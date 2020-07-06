@@ -43,7 +43,7 @@ func Run(plugin plugin.YomoObjectPlugin, endpoint string) {
 	framework.NewServer(endpoint, deStream, enStream.Reader)
 }
 
-// Run a server for YomoStreamPlugin
+// RunStream run a server for YomoStreamPlugin
 func RunStream(plugin plugin.YomoStreamPlugin, endpoint string) {
 	log.SetPrefix(fmt.Sprintf("[%s:%v]", plugin.Name(), os.Getpid()))
 	log.Printf("plugin servie start... [%s]", endpoint)
@@ -98,8 +98,15 @@ func RunDev(plugin plugin.YomoObjectPlugin, endpoint string) {
 		framework.NewServer(endpoint, deStream, enStream.Reader)
 	}()
 
-	yomoEchoClient, _ := util.QuicClient("echo.cella.fun:11521")
-	yomoPluginClient, _ := util.QuicClient(endpoint)
+	yomoEchoClient, err := util.QuicClient("echo.cella.fun:11521")
+	if err != nil {
+		panic(err)
+	}
+
+	yomoPluginClient, err := util.QuicClient(endpoint)
+	if err != nil {
+		panic(err)
+	}
 
 	go io.Copy(yomoPluginClient, yomoEchoClient)
 	go io.Copy(os.Stdout, yomoPluginClient)
