@@ -11,6 +11,10 @@
 ### 1. 创建工程，并引入yomo Create a go project and import yomo
 
 ```bash
+mkdir yomotest && cd yomotest
+
+go mod init yomotest 
+
 go get -u github.com/yomorun/yomo
 ```
 
@@ -56,7 +60,18 @@ func (p *EchoPlugin) Name() string {
 
 ### 3. 运行 Run plugin
 
-1. Open a new termial, run `go run echo.go`
+1. Open a new termial, run `go run echo.go`, you will see: 
+
+```bash
+% go run a.go
+[EchoPlugin:6031]2020/07/06 22:14:20 plugin service start... [localhost:4241]
+name:yomo!✅
+name:yomo!✅
+name:yomo!✅
+name:yomo!✅
+name:yomo!✅
+^Csignal: interrupt
+```
 
 ## 🌟 YoMo架构和亮点
 
