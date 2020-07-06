@@ -19,7 +19,7 @@ import (
 func Run(plugin plugin.YomoObjectPlugin, endpoint string) {
 
 	log.SetPrefix(fmt.Sprintf("[%s:%v]", plugin.Name(), os.Getpid()))
-	log.Printf("plugin servie start... [%s]", endpoint)
+	log.Printf("plugin service start... [%s]", endpoint)
 
 	// binding plugin
 	pluginStream := framework.NewObjectPlugin(plugin)
@@ -46,7 +46,7 @@ func Run(plugin plugin.YomoObjectPlugin, endpoint string) {
 // RunStream run a server for YomoStreamPlugin
 func RunStream(plugin plugin.YomoStreamPlugin, endpoint string) {
 	log.SetPrefix(fmt.Sprintf("[%s:%v]", plugin.Name(), os.Getpid()))
-	log.Printf("plugin servie start... [%s]", endpoint)
+	log.Printf("plugin service start... [%s]", endpoint)
 
 	// binding plugin
 	pluginStream := framework.NewStreamPlugin(plugin)
@@ -70,11 +70,12 @@ func RunStream(plugin plugin.YomoStreamPlugin, endpoint string) {
 	go func() { io.CopyN(enStream.Writer, deStream2.Reader, 1024) }()     // nolint
 }
 
+// RunDev makes test plugin connect to a demo YoMo server
 func RunDev(plugin plugin.YomoObjectPlugin, endpoint string) {
 
 	go func() {
 		log.SetPrefix(fmt.Sprintf("[%s:%v]", plugin.Name(), os.Getpid()))
-		log.Printf("plugin servie start... [%s]", endpoint)
+		log.Printf("plugin service start... [%s]", endpoint)
 
 		// binding plugin
 		pluginStream := framework.NewObjectPlugin(plugin)
