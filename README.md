@@ -1,6 +1,3 @@
-![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg?branch=master) 
-![Go](https://github.com/yomorun/yomo/workflows/golangci-lint/badge.svg?branch=master) 
-
 # YoMo
 
 > Build your own IoT & Edge Realtime Computing system easily, engaging 5G technology
@@ -12,7 +9,7 @@
 ### 1. 创建工程，并引入yomo Create a go project and import yomo
 
 ```bash
-go get -u github.com/yomorun/yomo
+go get -u github.com/yomorun/yomo@bf24ff4
 ```
 
 ### 2. 编写插件 Start writing your first plugin echo.go
@@ -22,18 +19,15 @@ package main
 
 // 引入yomo
 import (
-	"github.com/yomorun/yomo/pkg/env"
 	"github.com/yomorun/yomo/pkg/yomo"
 )
 
 func main() {
-	// 设置监听的地址和端口
-	endpoint := env.GetString("YOMO_PLUGIN_ENDPOINT", "0.0.0.0:4241")
 	// 运行该Plugin，监听:4241端口，数据会被YoMo Edge发送过来
 	// yomo.Run(&EchoPlugin{}, endpoint)
 	// 开发调试时的方法，处于联网状态下时，会自动连接至 yomo.run 的开发服务器，连接成功后，
 	// 该Plugin会没2秒收到一条Obseved()方法指定的Key的Value
-	yomo.RunDev(&EchoPlugin{}, endpoint)
+	yomo.RunDev(&EchoPlugin{}, "0.0.0.0:4241")
 }
 
 // EchoPlugin 是一个YoMo Plugin，会将接受到的数据转换成String形式，并再结尾添加内容，修改
@@ -60,7 +54,7 @@ func (p *EchoPlugin) Name() string {
 
 ### 3. 运行 Run plugin
 
-1. Open a new termial, run `env YOMO_PLUGIN_ENDPOINT=0.0.0.0:4241 go run echo.go`
+1. Open a new termial, run `go run echo.go`
 
 ## 🌟 YoMo架构和亮点
 
