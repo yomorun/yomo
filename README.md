@@ -9,7 +9,7 @@
 ### 1. 创建工程，并引入yomo Create a go project and import yomo
 
 ```bash
-go get -u github.com/yomorun/yomo@bf24ff4
+go get -u github.com/yomorun/yomo
 ```
 
 ### 2. 编写插件 Start writing your first plugin echo.go
