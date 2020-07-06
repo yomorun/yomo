@@ -2,6 +2,8 @@
 
 > Build your own IoT & Edge Realtime Computing system easily, engaging 5G technology
 
+![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg)
+
 是一个开源项目，方便构建属于您自己的IoT和边缘计算平台。基于YoMo，可快速完成微服务架构的工业App的开发，您的工业互联网平台将会充分发挥5G带来的低延时、大带宽的高通率优势。
 
 ## 🚀 3分钟构建工业微服务 Quick Start
