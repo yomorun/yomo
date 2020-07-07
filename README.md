@@ -32,7 +32,7 @@ func main() {
 	// 运行该Plugin，监听:4241端口，数据会被YoMo Edge发送过来
 	// yomo.Run(&EchoPlugin{}, "0.0.0.0:4241")
 	// 开发调试时的方法，处于联网状态下时，会自动连接至 yomo.run 的开发服务器，连接成功后，
-	// 该Plugin会没2秒收到一条Observed()方法指定的Key的Value
+	// 该Plugin会每2秒收到一条Observed()方法指定的Key的Value
 	yomo.RunDev(&EchoPlugin{}, "localhost:4241")
 }
 
