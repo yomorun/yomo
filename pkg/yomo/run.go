@@ -109,12 +109,15 @@ func RunDev(plugin plugin.YomoObjectPlugin, endpoint string) {
 		panic(err)
 	}
 
-	go io.Copy(yomoPluginClient, yomoEchoClient)
-	go io.Copy(os.Stdout, yomoPluginClient)
+	go io.Copy(yomoPluginClient, yomoEchoClient) // nolint
+	go io.Copy(os.Stdout, yomoPluginClient)      // nolint
 
 	for {
 		time.Sleep(time.Second)
-		yomoEchoClient.Write([]byte("ping"))
+		_, err = yomoEchoClient.Write([]byte("ping"))
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 }
