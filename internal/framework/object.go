@@ -27,6 +27,7 @@ type YomoObjectPluginStreamReader struct {
 func (w YomoObjectPluginStreamWriter) Write(b []byte) (int, error) {
 	head := b[:1]
 	var err error = nil
+	var n int
 
 	var value interface{}
 	value, err = txtkv.ObjectCodec{}.Unmarshal(b[1:])
@@ -34,13 +35,23 @@ func (w YomoObjectPluginStreamWriter) Write(b []byte) (int, error) {
 		return 0, err
 	}
 
-	value, err = w.Plugin.Handle(value) // nolint
+	value, err = w.Plugin.Handle(value)
+	if err != nil {
+		return 0, err
+	}
 
 	var result []byte
-	result, err = txtkv.ObjectCodec{}.Marshal(value.(string)) // nolint
+	result, err = txtkv.ObjectCodec{}.Marshal(value.(string))
+	if err != nil {
+		return 0, err
+	}
 
 	result = append(head, result...)
-	_, err = w.Writer.Write(result) // nolint
+
+	n, err = w.Writer.Write(result)
+	if err != nil {
+		return n, err
+	}
 
 	return len(b), err
 }
