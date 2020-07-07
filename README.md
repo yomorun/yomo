@@ -32,7 +32,7 @@ func main() {
 	// 运行该Plugin，监听:4241端口，数据会被YoMo Edge发送过来
 	// yomo.Run(&EchoPlugin{}, "0.0.0.0:4241")
 	// 开发调试时的方法，处于联网状态下时，会自动连接至 yomo.run 的开发服务器，连接成功后，
-	// 该Plugin会没2秒收到一条Obseved()方法指定的Key的Value
+	// 该Plugin会每2秒收到一条Observed()方法指定的Key的Value
 	yomo.RunDev(&EchoPlugin{}, "localhost:4241")
 }
 
@@ -94,11 +94,11 @@ name:yomo!✅
 
 ## 🦸 成为YoMo开发者 Contributing
 
-Github：[github.com/yomorun/yomo](github.com/yomorun/yomo)
+Github：[github.com/yomorun/yomo](https://github.com/yomorun/yomo)
 
-社区守则：[Code of Conduct](github.com/yomorun/yomo/blob/master/CODE_OF_CONDUCT.md)
+社区守则：[Code of Conduct](https://github.com/yomorun/yomo/blob/master/CODE_OF_CONDUCT.md)
 
-代码规范：[Contributing Rules](github.com/yomorun/yomo/blob/master/CONTRIBUTING.md)
+代码规范：[Contributing Rules](https://github.com/yomorun/yomo/blob/master/CONTRIBUTING.md)
 
 ## 🐛 提交Bug
 
@@ -106,4 +106,4 @@ Report bug: [https://github.com/yomorun/yomo/issues](https://github.com/yomorun/
 
 ## 🧙 Contact Maintainer Team
 
-[yomo@cel.la](yomo@cel.la)
+[yomo@cel.la](mailto:yomo@cel.la)
