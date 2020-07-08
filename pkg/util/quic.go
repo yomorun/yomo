@@ -17,7 +17,38 @@ import (
 
 	"github.com/lucas-clemente/quic-go"
 	quicGo "github.com/lucas-clemente/quic-go"
+	"github.com/yomorun/yomo/pkg/plugin"
+	txtkv "github.com/10cella/yomo-txtkv-codec"
 )
+
+type YomoFrameworkStreamWriter struct {
+	Name   string
+	Codec  *txtkv.Codec
+	Plugin plugin.YomoObjectPlugin
+	io.Writer
+}
+
+func (w YomoFrameworkStreamWriter) Write(b []byte) (int, error) {
+	var err error = nil
+	var value interface{}
+	var result interface{}
+
+	w.Codec.Decoder(b)
+
+	for {
+		value, err = w.Codec.Read()
+		if err != nil {
+			break
+		}
+
+		if len(value.(string)) > 0 {
+			result, err = w.Plugin.Handle(value)
+			w.Codec.Write(w.Writer, result.(string))
+			break
+		}
+	}
+	return len(b), err
+}
 
 func QuicClient(endpoint string) (quicGo.Stream, error) {
 	tlsConf := &tls.Config{
@@ -42,7 +73,7 @@ func QuicClient(endpoint string) (quicGo.Stream, error) {
 	return stream, nil
 }
 
-func QuicServer(endpoint string, w io.Writer, r io.Reader) {
+func QuicServer(endpoint string, plugin plugin.YomoObjectPlugin, codec *txtkv.Codec) {
 	listener, err := quicGo.ListenAddr(endpoint, GenerateTLSConfig(endpoint), nil)
 	if err != nil {
 		panic(err)
@@ -58,8 +89,7 @@ func QuicServer(endpoint string, w io.Writer, r io.Reader) {
 			panic(err)
 		}
 
-		go io.Copy(w, stream) // nolint
-		go io.Copy(stream, r) // nolint
+		go io.Copy(YomoFrameworkStreamWriter{plugin.Name(), codec, plugin, stream}, stream) // nolint
 	}
 
 }
