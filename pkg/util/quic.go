@@ -15,12 +15,13 @@ import (
 	"net"
 	"time"
 
+	txtkv "github.com/10cella/yomo-txtkv-codec"
 	"github.com/lucas-clemente/quic-go"
 	quicGo "github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/pkg/plugin"
-	txtkv "github.com/10cella/yomo-txtkv-codec"
 )
 
+// YomoFrameworkStreamWriter is the stream of framework
 type YomoFrameworkStreamWriter struct {
 	Name   string
 	Codec  *txtkv.Codec
@@ -50,6 +51,7 @@ func (w YomoFrameworkStreamWriter) Write(b []byte) (int, error) {
 	return len(b), err
 }
 
+// QuicClient create new QUIC client
 func QuicClient(endpoint string) (quicGo.Stream, error) {
 	tlsConf := &tls.Config{
 		InsecureSkipVerify: true, // nolint
@@ -73,8 +75,13 @@ func QuicClient(endpoint string) (quicGo.Stream, error) {
 	return stream, nil
 }
 
+// QuicServer create a QUIC server
 func QuicServer(endpoint string, plugin plugin.YomoObjectPlugin, codec *txtkv.Codec) {
-	listener, err := quicGo.ListenAddr(endpoint, GenerateTLSConfig(endpoint), nil)
+	// Lock to use QUIC draft-29 version
+	conf := &quic.Config{
+		Versions: []quicGo.VersionNumber{0xff00001d},
+	}
+	listener, err := quicGo.ListenAddr(endpoint, GenerateTLSConfig(endpoint), conf)
 	if err != nil {
 		panic(err)
 	}
@@ -95,14 +102,13 @@ func QuicServer(endpoint string, plugin plugin.YomoObjectPlugin, codec *txtkv.Co
 }
 
 // GenerateTLSConfig Setup a bare-bones TLS config for the server
-
 func GenerateTLSConfig(host ...string) *tls.Config {
 	tlsCert, _ := Certificate(host...)
 
 	return &tls.Config{
 		Certificates: []tls.Certificate{tlsCert},
-		NextProtos:   []string{"http/1.1"},
-		//ServerName:   "echo.cella.fun",
+		NextProtos:   []string{"hq-29"},
+		// NextProtos:   []string{"http/1.1"},
 	}
 }
 
