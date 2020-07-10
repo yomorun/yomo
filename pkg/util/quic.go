@@ -22,6 +22,7 @@ import (
 	"github.com/yomorun/yomo/pkg/plugin"
 )
 
+// YomoFrameworkStreamWriter is the stream of framework
 type YomoFrameworkStreamWriter struct {
 	Name   string
 	Codec  *json.Codec
@@ -51,6 +52,7 @@ func (w YomoFrameworkStreamWriter) Write(b []byte) (int, error) {
 	return len(b), err
 }
 
+// QuicClient create new QUIC client
 func QuicClient(endpoint string) (quicGo.Stream, error) {
 	tlsConf := &tls.Config{
 		InsecureSkipVerify: true, // nolint
@@ -74,8 +76,14 @@ func QuicClient(endpoint string) (quicGo.Stream, error) {
 	return stream, nil
 }
 
+// QuicServer create a QUIC server
 func QuicServer(endpoint string, plugin plugin.YomoObjectPlugin, codec *json.Codec) {
-	listener, err := quicGo.ListenAddr(endpoint, GenerateTLSConfig(endpoint), nil)
+	// Lock to use QUIC draft-29 version
+	conf := &quic.Config{
+		Versions: []quicGo.VersionNumber{0xff00001d},
+	}
+	listener, err := quicGo.ListenAddr(endpoint, GenerateTLSConfig(endpoint), conf)
+
 	if err != nil {
 		panic(err)
 	}
@@ -96,14 +104,13 @@ func QuicServer(endpoint string, plugin plugin.YomoObjectPlugin, codec *json.Cod
 }
 
 // GenerateTLSConfig Setup a bare-bones TLS config for the server
-
 func GenerateTLSConfig(host ...string) *tls.Config {
 	tlsCert, _ := Certificate(host...)
 
 	return &tls.Config{
 		Certificates: []tls.Certificate{tlsCert},
-		NextProtos:   []string{"http/1.1"},
-		//ServerName:   "echo.cella.fun",
+		NextProtos:   []string{"hq-29"},
+		// NextProtos:   []string{"http/1.1"},
 	}
 }
 
