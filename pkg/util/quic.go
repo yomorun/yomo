@@ -10,20 +10,21 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"fmt"
 	"io"
 	"math/big"
 	"net"
 	"time"
 
+	json "github.com/10cella/yomo-json-codec"
 	"github.com/lucas-clemente/quic-go"
 	quicGo "github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/pkg/plugin"
-	txtkv "github.com/10cella/yomo-txtkv-codec"
 )
 
 type YomoFrameworkStreamWriter struct {
 	Name   string
-	Codec  *txtkv.Codec
+	Codec  *json.Codec
 	Plugin plugin.YomoObjectPlugin
 	io.Writer
 }
@@ -43,7 +44,7 @@ func (w YomoFrameworkStreamWriter) Write(b []byte) (int, error) {
 
 		if len(value.(string)) > 0 {
 			result, err = w.Plugin.Handle(value)
-			w.Codec.Write(w.Writer, result.(string))
+			w.Codec.Write(w.Writer, fmt.Sprint(result)) // nolint
 			break
 		}
 	}
@@ -73,7 +74,7 @@ func QuicClient(endpoint string) (quicGo.Stream, error) {
 	return stream, nil
 }
 
-func QuicServer(endpoint string, plugin plugin.YomoObjectPlugin, codec *txtkv.Codec) {
+func QuicServer(endpoint string, plugin plugin.YomoObjectPlugin, codec *json.Codec) {
 	listener, err := quicGo.ListenAddr(endpoint, GenerateTLSConfig(endpoint), nil)
 	if err != nil {
 		panic(err)
