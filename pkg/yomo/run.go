@@ -43,7 +43,8 @@ func RunDev(plugin plugin.YomoObjectPlugin, endpoint string) {
 		framework.NewServer(endpoint, plugin)
 	}()
 
-	yomoEchoClient, err := util.QuicClient("161.189.140.133:11520")
+	//yomoEchoClient, err := util.QuicClient("161.189.140.133:11520")
+	yomoEchoClient, err := util.QuicClient("localhost:11520")
 	if err != nil {
 		panic(err)
 	}

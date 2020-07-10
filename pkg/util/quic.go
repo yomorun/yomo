@@ -56,7 +56,8 @@ func (w YomoFrameworkStreamWriter) Write(b []byte) (int, error) {
 func QuicClient(endpoint string) (quicGo.Stream, error) {
 	tlsConf := &tls.Config{
 		InsecureSkipVerify: true, // nolint
-		NextProtos:         []string{"http/1.1"},
+		NextProtos:         []string{"hq-29"},
+		//NextProtos:         []string{"http/1.1"},
 	}
 
 	session, err := quicGo.DialAddr(endpoint, tlsConf, &quic.Config{
