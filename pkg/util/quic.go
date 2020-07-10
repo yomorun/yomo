@@ -10,8 +10,8 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
-	"fmt"
 	"io"
+	"log"
 	"math/big"
 	"net"
 	"time"
@@ -38,16 +38,32 @@ func (w YomoFrameworkStreamWriter) Write(b []byte) (int, error) {
 	w.Codec.Decoder(b)
 
 	for {
-		value, err = w.Codec.Read()
+		value, err = w.Codec.Read(w.Plugin.Mold())
 		if err != nil {
 			break
 		}
 
-		if len(value.(string)) > 0 {
+		if value != nil {
 			result, err = w.Plugin.Handle(value)
-			w.Codec.Write(w.Writer, fmt.Sprint(result)) // nolint
+			if err != nil {
+				log.Fatal(err)
+			}
+			//fmt.Println("handle result:", result)
+			w.Codec.Write(w.Writer, result, w.Plugin.Mold()) // nolint
 			break
 		}
+
+		//if len(value.(string)) > 0 {
+		//	result, err = w.Plugin.Handle(value)
+		//	if err != nil {
+		//		log.Fatal(err)
+		//	}
+		//	if result == nil {
+		//		result = ""
+		//	}
+		//	w.Codec.Write(w.Writer, fmt.Sprint(result)) // nolint
+		//	break
+		//}
 	}
 	return len(b), err
 }
