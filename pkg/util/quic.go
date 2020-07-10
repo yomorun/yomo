@@ -10,12 +10,13 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"fmt"
 	"io"
 	"math/big"
 	"net"
 	"time"
 
-	txtkv "github.com/10cella/yomo-txtkv-codec"
+	json "github.com/10cella/yomo-json-codec"
 	"github.com/lucas-clemente/quic-go"
 	quicGo "github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/pkg/plugin"
@@ -24,7 +25,7 @@ import (
 // YomoFrameworkStreamWriter is the stream of framework
 type YomoFrameworkStreamWriter struct {
 	Name   string
-	Codec  *txtkv.Codec
+	Codec  *json.Codec
 	Plugin plugin.YomoObjectPlugin
 	io.Writer
 }
@@ -44,7 +45,7 @@ func (w YomoFrameworkStreamWriter) Write(b []byte) (int, error) {
 
 		if len(value.(string)) > 0 {
 			result, err = w.Plugin.Handle(value)
-			w.Codec.Write(w.Writer, result.(string))
+			w.Codec.Write(w.Writer, fmt.Sprint(result)) // nolint
 			break
 		}
 	}
@@ -55,7 +56,8 @@ func (w YomoFrameworkStreamWriter) Write(b []byte) (int, error) {
 func QuicClient(endpoint string) (quicGo.Stream, error) {
 	tlsConf := &tls.Config{
 		InsecureSkipVerify: true, // nolint
-		NextProtos:         []string{"http/1.1"},
+		NextProtos:         []string{"hq-29"},
+		//NextProtos:         []string{"http/1.1"},
 	}
 
 	session, err := quicGo.DialAddr(endpoint, tlsConf, &quic.Config{
@@ -76,12 +78,13 @@ func QuicClient(endpoint string) (quicGo.Stream, error) {
 }
 
 // QuicServer create a QUIC server
-func QuicServer(endpoint string, plugin plugin.YomoObjectPlugin, codec *txtkv.Codec) {
+func QuicServer(endpoint string, plugin plugin.YomoObjectPlugin, codec *json.Codec) {
 	// Lock to use QUIC draft-29 version
 	conf := &quic.Config{
 		Versions: []quicGo.VersionNumber{0xff00001d},
 	}
 	listener, err := quicGo.ListenAddr(endpoint, GenerateTLSConfig(endpoint), conf)
+
 	if err != nil {
 		panic(err)
 	}
