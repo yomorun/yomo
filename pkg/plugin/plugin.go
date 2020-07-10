@@ -3,6 +3,7 @@ package plugin
 type YomoObjectPlugin interface {
 	Handle(value interface{}) (interface{}, error)
 	Observed() string
+	Mold() interface{}
 	Name() string
 }
 
