@@ -40,28 +40,22 @@ func (w YomoFrameworkStreamWriter) Write(b []byte) (int, error) {
 	for {
 		value, err = w.Codec.Read(w.Plugin.Mold())
 		if err != nil {
+			log.Panic(err)
 			break
 		}
 
-		if value != nil {
-			result, err = w.Plugin.Handle(value)
-			if err != nil {
-				log.Fatal(err)
-			}
-			//fmt.Println("handle result:", result)
-			w.Codec.Write(w.Writer, result, w.Plugin.Mold()) // nolint
+		if value == nil {
+			w.Codec.Refresh(w.Writer) // nolint
 			break
 		}
 
-		//if len(value.(string)) > 0 {
-		//	result, err = w.Plugin.Handle(value)
-		//	if err != nil {
-		//		log.Fatal(err)
-		//	}
-		//	if result == nil {
-		//		result = ""
-		//	}
-		//	w.Codec.Write(w.Writer, fmt.Sprint(result)) // nolint
+		//if value != nil {
+		result, err = w.Plugin.Handle(value)
+		if err != nil {
+			log.Fatal(err)
+		}
+		//fmt.Println("handle result:", result)
+		w.Codec.Write(w.Writer, result, w.Plugin.Mold()) // nolint
 		//	break
 		//}
 	}
