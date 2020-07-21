@@ -15,6 +15,8 @@ github.com/10cella/yomo-json-codec v0.2.0 h1:VCFrpoVeYX6AnVQcYaIKcPbMKNERx/ZKno7
 github.com/10cella/yomo-json-codec v0.2.0/go.mod h1:oApqc2PnZohrtlVJ3T1Knou9Ap9mcCJW1i3xiRtvF7c=
 github.com/10cella/yomo-json-codec v0.2.1 h1:cWh5TovVPlrOJKkjTVuCkpQ4rj1QoY2ANHCD7afB+6M=
 github.com/10cella/yomo-json-codec v0.2.1/go.mod h1:oApqc2PnZohrtlVJ3T1Knou9Ap9mcCJW1i3xiRtvF7c=
+github.com/10cella/yomo-json-codec v0.2.2 h1:NppW6C1hWUaB9973E6leNnsGM6E4Aj1kSaBApMRuLx0=
+github.com/10cella/yomo-json-codec v0.2.2/go.mod h1:oApqc2PnZohrtlVJ3T1Knou9Ap9mcCJW1i3xiRtvF7c=
 github.com/10cella/yomo-txtkv-codec v1.0.5 h1:rVdtBcsff3RG3BEq7AHq2WvNiGDF6IEKlTiplypfX+c=
 github.com/10cella/yomo-txtkv-codec v1.0.5/go.mod h1:nBfcD3qVq6kkSRHOgSUxK1+gMRoXI0obLF+b1eiyCtM=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
