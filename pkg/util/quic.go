@@ -14,7 +14,6 @@ import (
 	"log"
 	"math/big"
 	"net"
-	"strings"
 	"time"
 
 	json "github.com/10cella/yomo-json-codec"
@@ -103,21 +102,14 @@ func QuicServer(endpoint string, plugin plugin.YomoObjectPlugin, codec *json.Cod
 	for {
 		sess, err := listener.Accept(context.Background())
 		if err != nil {
-			panic(err)
+			log.Printf("Accept error: %s", err.Error())
+			continue
 		}
 
-		var stream quic.Stream
-		for {
-			stream, err = sess.AcceptStream(context.Background())
-			if err != nil {
-				if !strings.Contains(err.Error(), "No recent network activity") {
-					panic(err)
-				}
-				log.Printf("%s", err.Error())
-				time.Sleep(5 * time.Second)
-				continue
-			}
-			break
+		stream, err := sess.AcceptStream(context.Background())
+		if err != nil {
+			log.Printf("AcceptStream error: %s", err.Error())
+			continue
 		}
 
 		go io.Copy(YomoFrameworkStreamWriter{plugin.Name(), codec, plugin, stream}, stream) // nolint
