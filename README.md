@@ -8,7 +8,7 @@
 
 ## 🚀 3分钟构建工业微服务 Quick Start
 
-### 1. 创建工程，并引入yomo Create a go project and import yomo
+### 1. Create a go project and import yomo
 
 ```bash
 mkdir yomotest && cd yomotest
