@@ -1,10 +1,10 @@
 ## Introduction
 
-> Build your own IoT & Edge Realtime Computing system easily, engaging 5G technology
+> Build your own IoT edge computing applications easily, engaging 5G technology
 
 ![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg)
 
-YoMo is an open source project，方便构建属于您自己的IoT and edge computing platform. 基于YoMo，可快速完成微服务架构的工业App的开发，您的工业互联网平台将会充分发挥5G带来的低延时、大带宽的高通率优势。
+YoMo is an open source project for building your own IoT edge computing applications. 基于YoMo，可快速完成微服务架构的工业App的开发，您的工业互联网平台将会充分发挥5G带来的低延时、大带宽的高通率优势。
 
 ## Getting Started
 
@@ -18,12 +18,14 @@ go mod init yomotest
 go get -u github.com/yomorun/yomo
 ```
 
-### 2. 编写插件 Start writing your first plugin echo.go
+### 2. Try your first program with YoMo
+
+To check that YoMo is installed correctly on your device, create a file named `echo.go` that looks like:
 
 ```rust
 package main
 
-// 引入yomo
+// import yomo
 import (
 	"github.com/yomorun/yomo/pkg/yomo"
 )
@@ -40,7 +42,7 @@ func main() {
 // 后的数据将流向下一个Plugin
 type EchoPlugin struct{}
 
-// Handle 方法将会在数据流入时被执行，使用Observed()方法通知YoMo该Plugin要关注的key，参数value
+// Handle - 方法将会在数据流入时被执行，使用Observed()方法通知YoMo该Plugin要关注的key，参数value
 // 即该Plugin要处理的内容
 func (p *EchoPlugin) Handle(value interface{}) (interface{}, error) {
 	return value.(string) + "✅", nil
@@ -52,15 +54,15 @@ func (p EchoPlugin) Observed() string {
 	return "name"
 }
 
-// Name - 用于设置该Plugin的名称，方便Debug等操作
+// Name - sets the name of 用于设置该Plugin的名称，方便Debug等操作
 func (p *EchoPlugin) Name() string {
 	return "EchoPlugin"
 }
 ```
 
-### 3. 运行 Run plugin
+### 3. Run plugin
 
-1. Open termial, run `go run echo.go`, you will see: 
+1. Run `go run echo.go` from the terminal, you will see:
 
 ```bash
 % go run a.go
@@ -82,15 +84,15 @@ name:yomo!✅
 - 工业互联网领域
 	- 在IoT设备接入侧，需要<10ms的低延时实时通讯
 	- 在智能设备侧，需要在边缘侧进行大算力的AI执行工作
-- YoMo包含两部分：
+- YoMo is consisted of 2 important parts：
 	- `yomo-edge`: 部署在企业内网，负责接收设备数据，并按照配置，依次执行各个`yomo-plugin`
 	- `yomo-plugin`: 可以部署在企业私有云、公有云及`yomo-edge-server`上
 
 ### YoMo的优势：
 
-- 全程基于Quic协议传输数据，使用UDP协议替代TCP协议后，大幅提升了传输的稳定性和高通率
-- 自研的`yomo-codec`优化了数据解码性能
-- 全程基于Stream Computing模型，并简化面向Stream编程的复杂度
+- 全程基于QUIC (Quick UDP Internet Connection) protocol传输数据, 使用the User Datagram Protocol (UDP) instead of the Transmission Control Protocol (TCP), 大幅提升了传输的稳定性和高通率
+- 自研的`yomo-codec`优化了数据解码性能. For more information, visit [its own repository](https://github.com/yomorun/yomo-codec) on GitHub.
+- 全程基于stream computing, which improves speed and accuracy when dealing with data handling and analysis, 并简化stream-based programming的复杂度
 
 ## Contributing
 
@@ -106,7 +108,7 @@ First off, thank you for considering making a contribution. It's people like you
 
 ## Feedback
 
-Email us: [yomo@cel.la](mailto:yomo@cel.la)
+Email us at [yomo@cel.la](mailto:yomo@cel.la). Any feedback would be greatly appreciated!
 
 ## License
 
