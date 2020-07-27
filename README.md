@@ -1,14 +1,12 @@
 ## Introduction
 
-> Build your own IoT edge computing applications easily, engaging 5G technology
-
 ![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg)
 
 YoMo is an open source project for building your own IoT edge computing applications. 基于YoMo，可快速完成微服务架构的工业App的开发，您的工业互联网平台将会充分发挥5G带来的低延时、大带宽的高通率优势。
 
 ## Getting Started
 
-### 1. Create a go project and import yomo
+### 1. Install the current release
 
 ```bash
 mkdir yomotest && cd yomotest
@@ -18,7 +16,7 @@ go mod init yomotest
 go get -u github.com/yomorun/yomo
 ```
 
-### 2. Try your first program with YoMo
+### 2. Create your first program with YoMo
 
 To check that YoMo is installed correctly on your device, create a file named `echo.go` that looks like:
 
@@ -38,7 +36,7 @@ func main() {
 	yomo.RunDev(&EchoPlugin{}, "localhost:4241")
 }
 
-// EchoPlugin 是一个YoMo Plugin，会将接受到的数据转换成String形式，并再结尾添加内容，修改
+// EchoPlugin a YoMo plugin，会将接受到的数据转换成String形式，并再结尾添加内容，修改
 // 后的数据将流向下一个Plugin
 type EchoPlugin struct{}
 
@@ -54,15 +52,15 @@ func (p EchoPlugin) Observed() string {
 	return "name"
 }
 
-// Name - sets the name of 用于设置该Plugin的名称，方便Debug等操作
+// Name - sets the name of a given plugin p (mainly used for debugging)
 func (p *EchoPlugin) Name() string {
 	return "EchoPlugin"
 }
 ```
 
-### 3. Run plugin
+### 3. Run the program
 
-1. Run `go run echo.go` from the terminal, you will see:
+1. Run `go run echo.go` from the terminal. If YoMo is installed successfully, you will see a message like:
 
 ```bash
 % go run a.go
@@ -90,9 +88,9 @@ name:yomo!✅
 
 ### YoMo的优势：
 
-- 全程基于QUIC (Quick UDP Internet Connection) protocol传输数据, 使用the User Datagram Protocol (UDP) instead of the Transmission Control Protocol (TCP), 大幅提升了传输的稳定性和高通率
+- 全程基于QUIC (Quick UDP Internet Connection) protocol for data transmission, which uses the User Datagram Protocol (UDP) as its basis instead of the Transmission Control Protocol (TCP), 大幅提升了传输的稳定性和高通率
 - 自研的`yomo-codec`优化了数据解码性能. For more information, visit [its own repository](https://github.com/yomorun/yomo-codec) on GitHub.
-- 全程基于stream computing, which improves speed and accuracy when dealing with data handling and analysis, 并简化stream-based programming的复杂度
+- 全程基于stream computing, which improves speed and accuracy when dealing with data handling and analysis, 并simplifies stream-based programming的复杂度
 
 ## Contributing
 
@@ -112,4 +110,4 @@ Email us at [yomo@cel.la](mailto:yomo@cel.la). Any feedback would be greatly app
 
 ## License
 
-Apache License 2.0
+[Apache License 2.0]()
