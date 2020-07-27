@@ -1,12 +1,12 @@
-# YoMo
+## Introduction
 
 > Build your own IoT & Edge Realtime Computing system easily, engaging 5G technology
 
 ![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg)
 
-是一个开源项目，方便构建属于您自己的IoT和边缘计算平台。基于YoMo，可快速完成微服务架构的工业App的开发，您的工业互联网平台将会充分发挥5G带来的低延时、大带宽的高通率优势。
+YoMo is an open source project，方便构建属于您自己的IoT and edge computing platform. 基于YoMo，可快速完成微服务架构的工业App的开发，您的工业互联网平台将会充分发挥5G带来的低延时、大带宽的高通率优势。
 
-## 🚀 3分钟构建工业微服务 Quick Start
+## Getting Started
 
 ### 1. Create a go project and import yomo
 
@@ -46,13 +46,13 @@ func (p *EchoPlugin) Handle(value interface{}) (interface{}, error) {
 	return value.(string) + "✅", nil
 }
 
-// Observed 返回一个string类型的值，该值是EchoPlugin插件关注的数据流中的Key，该数据流中Key对应
+// Observed - returns a value of type string, which 该值是EchoPlugin插件关注的数据流中的Key，该数据流中Key对应
 // 的Value将会以对象的形式被传递进Handle()方法中
 func (p EchoPlugin) Observed() string {
 	return "name"
 }
 
-// Name 用于设置该Plugin的名称，方便Debug等操作
+// Name - 用于设置该Plugin的名称，方便Debug等操作
 func (p *EchoPlugin) Name() string {
 	return "EchoPlugin"
 }
@@ -60,7 +60,7 @@ func (p *EchoPlugin) Name() string {
 
 ### 3. 运行 Run plugin
 
-1. Open a new termial, run `go run echo.go`, you will see: 
+1. Open termial, run `go run echo.go`, you will see: 
 
 ```bash
 % go run a.go
@@ -92,18 +92,22 @@ name:yomo!✅
 - 自研的`yomo-codec`优化了数据解码性能
 - 全程基于Stream Computing模型，并简化面向Stream编程的复杂度
 
-## 🦸 成为YoMo开发者 Contributing
+## Contributing
 
-Github：[github.com/yomorun/yomo](https://github.com/yomorun/yomo)
+First off, thank you for considering making a contribution. It's people like you that make YoMo better. There are many ways in which you can participate in the project, for example:
 
-社区守则：[Code of Conduct](https://github.com/yomorun/yomo/blob/master/CODE_OF_CONDUCT.md)
+- File a [bug report](https://github.com/yomorun/yomo/issues/new?assignees=&labels=bug&template=bug_report.md&title=%5BBUG%5D). Be sure to include information like what version of YoMo you are using, what your operating system is, and steps to recreate the bug.
 
-代码规范：[Contributing Rules](https://github.com/yomorun/yomo/blob/master/CONTRIBUTING.md)
+- Suggest a new feature.
 
-## 🐛 提交Bug
+- Read our [contributing guidelines](https://github.com/yomorun/yomo/blob/master/CONTRIBUTING.md) to learn about what types of contributions we are looking for.
 
-Report bug: [https://github.com/yomorun/yomo/issues](https://github.com/yomorun/yomo/issues/new?assignees=&labels=bug&template=bug_report.md&title=%5BBUG%5D)
+- We have adopted a [code of conduct](https://github.com/yomorun/yomo/blob/master/CODE_OF_CONDUCT.md) that we expect project participants to adhere to.
 
-## 🧙 Contact Maintainer Team
+## Feedback
 
-[yomo@cel.la](mailto:yomo@cel.la)
+Email us: [yomo@cel.la](mailto:yomo@cel.la)
+
+## License
+
+Apache License 2.0
