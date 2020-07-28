@@ -1,22 +1,27 @@
-## Introduction
+## YoMo ![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg)
 
-![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg)
+YoMo is an open source project for building your own IoT edge computing applications. Based on YoMo, the development of可快速完成microservice architecture的工业App的开发，您的工业互联网平台将会充分发挥5G带来的低延时、大带宽的高通率优势 the low latency and **?** brought by 5G.
 
-YoMo is an open source project for building your own IoT edge computing applications. 基于YoMo，可快速完成微服务架构的工业App的开发，您的工业互联网平台将会充分发挥5G带来的低延时、大带宽的高通率优势。
+More info at [yomo.run](https://yomo.run/).
 
 ## Getting Started
 
 ### 1. Install the current release
 
-```bash
-mkdir yomotest && cd yomotest
+Create a directory named `yomotest` and `cd` into it
 
-go mod init yomotest 
+	mkdir yomotest
+	cd yomotest
 
-go get -u github.com/yomorun/yomo
-```
+Make the current directory the root of a module by using `go mod init`
 
-### 2. Create your first program with YoMo
+	go mod init yomotest
+
+Download and install
+
+	go get -u github.com/yomorun/yomo
+
+### 2. Create file `echo.go`
 
 To check that YoMo is installed correctly on your device, create a file named `echo.go` that looks like:
 
@@ -36,7 +41,7 @@ func main() {
 	yomo.RunDev(&EchoPlugin{}, "localhost:4241")
 }
 
-// EchoPlugin a YoMo plugin，会将接受到的数据转换成String形式，并再结尾添加内容，修改
+// EchoPlugin - a yomo plugin，会将接受到的数据转换成String形式，并再结尾添加内容，修改
 // 后的数据将流向下一个Plugin
 type EchoPlugin struct{}
 
@@ -58,7 +63,7 @@ func (p *EchoPlugin) Name() string {
 }
 ```
 
-### 3. Run the program
+### 3. Build and run
 
 1. Run `go run echo.go` from the terminal. If YoMo is installed successfully, you will see a message like:
 
@@ -72,6 +77,7 @@ name:yomo!✅
 name:yomo!✅
 ^Csignal: interrupt
 ```
+Congratulations! You have written and tested your first YoMo app.
 
 ## 🌟 YoMo架构和亮点
 
@@ -86,7 +92,7 @@ name:yomo!✅
 	- `yomo-edge`: 部署在企业内网，负责接收设备数据，并按照配置，依次执行各个`yomo-plugin`
 	- `yomo-plugin`: 可以部署在企业私有云、公有云及`yomo-edge-server`上
 
-### YoMo的优势：
+### Why YoMo
 
 - 全程基于QUIC (Quick UDP Internet Connection) protocol for data transmission, which uses the User Datagram Protocol (UDP) as its basis instead of the Transmission Control Protocol (TCP), 大幅提升了传输的稳定性和高通率
 - 自研的`yomo-codec`优化了数据解码性能. For more information, visit [its own repository](https://github.com/yomorun/yomo-codec) on GitHub.
@@ -102,7 +108,7 @@ First off, thank you for considering making a contribution. It's people like you
 
 - Read our [contributing guidelines](https://github.com/yomorun/yomo/blob/master/CONTRIBUTING.md) to learn about what types of contributions we are looking for.
 
-- We have adopted a [code of conduct](https://github.com/yomorun/yomo/blob/master/CODE_OF_CONDUCT.md) that we expect project participants to adhere to.
+- We have also adopted a [code of conduct](https://github.com/yomorun/yomo/blob/master/CODE_OF_CONDUCT.md) that we expect project participants to adhere to.
 
 ## Feedback
 
@@ -110,4 +116,4 @@ Email us at [yomo@cel.la](mailto:yomo@cel.la). Any feedback would be greatly app
 
 ## License
 
-[Apache License 2.0]()
+[Apache License 2.0](http://www.apache.org/licenses/LICENSE-2.0.html)
