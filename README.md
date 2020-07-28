@@ -1,6 +1,6 @@
 ## YoMo ![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg)
 
-YoMo is an open source project for building your own IoT edge computing applications. Based on YoMo, the development of可快速完成microservice architecture的工业App的开发，您的工业互联网平台将会充分发挥5G带来的低延时、大带宽的高通率优势 the low latency and **?** brought by 5G.
+YoMo is an open source project for building your own IoT edge computing applications. With YoMo, you can speed up the development of microservices-based applications, and your industrial IoT platform will take full advantage of the low latency and high bandwidth brought by 5G.
 
 More info at [yomo.run](https://yomo.run/).
 
@@ -8,22 +8,22 @@ More info at [yomo.run](https://yomo.run/).
 
 ### 1. Install the current release
 
-Create a directory named `yomotest` and `cd` into it
+Create a directory named `yomotest` and `cd` into it.
 
 	mkdir yomotest
 	cd yomotest
 
-Make the current directory the root of a module by using `go mod init`
+Make the current directory the root of a module by using `go mod init`.
 
 	go mod init yomotest
 
-Download and install
+Download and install.
 
 	go get -u github.com/yomorun/yomo
 
 ### 2. Create file `echo.go`
 
-To check that YoMo is installed correctly on your device, create a file named `echo.go` that looks like:
+To check that YoMo is installed correctly on your device, create a file named `echo.go` and copy the following code to your file:
 
 ```rust
 package main
@@ -34,10 +34,11 @@ import (
 )
 
 func main() {
-	// 运行该Plugin，监听:4241端口，数据会被YoMo Edge发送过来
+	// 运行该Plugin，监听:port 4241, data will be sent by yomo egde
 	// yomo.Run(&EchoPlugin{}, "0.0.0.0:4241")
-	// 开发调试时的方法，处于联网状态下时，会自动连接至 yomo.run 的开发服务器，连接成功后，
-	// 该Plugin会每2秒收到一条Observed()方法指定的Key的Value
+	
+	// 开发调试时的方法, when connected to the Internet, it will automatically connect to the development server of yomo.run 会自动连接至 yomo.run 的开发服务器
+	// 连接成功后，该Plugin会每2秒收到一条Observed()方法指定的Key的Value
 	yomo.RunDev(&EchoPlugin{}, "localhost:4241")
 }
 
@@ -53,6 +54,7 @@ func (p *EchoPlugin) Handle(value interface{}) (interface{}, error) {
 
 // Observed - returns a value of type string, which 该值是EchoPlugin插件关注的数据流中的Key，该数据流中Key对应
 // 的Value将会以对象的形式被传递进Handle()方法中
+// the corresponding value will be passed into the Handle() method as an object
 func (p EchoPlugin) Observed() string {
 	return "name"
 }
@@ -65,7 +67,7 @@ func (p *EchoPlugin) Name() string {
 
 ### 3. Build and run
 
-1. Run `go run echo.go` from the terminal. If YoMo is installed successfully, you will see a message like:
+1. Run `go run echo.go` from the terminal. If YoMo is installed successfully, you will see the following message:
 
 ```bash
 % go run a.go
@@ -85,8 +87,8 @@ Congratulations! You have written and tested your first YoMo app.
 
 ### YoMo关注在：
 
-- 工业互联网领域
-	- 在IoT设备接入侧，需要<10ms的低延时实时通讯
+- industrial IoT:
+	- 在IoT device接入侧, real-time communication with a latency of less than 10ms is required
 	- 在智能设备侧，需要在边缘侧进行大算力的AI执行工作
 - YoMo is consisted of 2 important parts：
 	- `yomo-edge`: 部署在企业内网，负责接收设备数据，并按照配置，依次执行各个`yomo-plugin`
@@ -94,13 +96,13 @@ Congratulations! You have written and tested your first YoMo app.
 
 ### Why YoMo
 
-- 全程基于QUIC (Quick UDP Internet Connection) protocol for data transmission, which uses the User Datagram Protocol (UDP) as its basis instead of the Transmission Control Protocol (TCP), 大幅提升了传输的稳定性和高通率
-- 自研的`yomo-codec`优化了数据解码性能. For more information, visit [its own repository](https://github.com/yomorun/yomo-codec) on GitHub.
-- 全程基于stream computing, which improves speed and accuracy when dealing with data handling and analysis, 并simplifies stream-based programming的复杂度
+- Based on QUIC (Quick UDP Internet Connection) protocol for data transmission, which uses the User Datagram Protocol (UDP) as its basis instead of the Transmission Control Protocol (TCP); significantly improves the stability and 高通率 of data transmission
+- A self-developed `yomo-codec` optimizes decoding performance. For more information, visit [its own repository](https://github.com/yomorun/yomo-codec) on GitHub.
+- Based on stream computing, which improves speed and accuracy when dealing with data handling and analysis; simplifies the complexity of stream-oriented programming.
 
 ## Contributing
 
-First off, thank you for considering making a contribution. It's people like you that make YoMo better. There are many ways in which you can participate in the project, for example:
+First off, thank you for considering making contributions. It's people like you that make YoMo better. There are many ways in which you can participate in the project, for example:
 
 - File a [bug report](https://github.com/yomorun/yomo/issues/new?assignees=&labels=bug&template=bug_report.md&title=%5BBUG%5D). Be sure to include information like what version of YoMo you are using, what your operating system is, and steps to recreate the bug.
 
