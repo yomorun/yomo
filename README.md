@@ -83,7 +83,7 @@ name:yomo!✅
 ```
 Congratulations! You have written and tested your first YoMo app.
 
-## 🌟 YoMo架构和亮点
+## Illustration
 
 ![yomo-arch](https://yomo.run/yomo-arch.png)
 
