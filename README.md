@@ -49,13 +49,13 @@ func main() {
 type EchoPlugin struct{}
 
 // Handle - this method will be called when data flows in; the Observed() method is used
-// to notify yomo
-// 通知YoMo该Plugin要关注的key，参数value即该Plugin要处理的内容
+// to tell yomo which key the plugin should monitor; the parameter value is what the plugin
+// needs to process
 func (p *EchoPlugin) Handle(value interface{}) (interface{}, error) {
 	return value.(string) + "✅", nil
 }
 
-// Observed - returns a value of type string, which 该值是EchoPlugin插件关注的数据流中的Key
+// Observed - returns a value of type string, which is the key monitored by echo plugin;
 // the corresponding value will be passed into the Handle() method as an object
 func (p EchoPlugin) Observed() string {
 	return "name"
