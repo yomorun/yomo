@@ -1,4 +1,4 @@
-## YoMo ![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg)
+# YoMo ![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg)
 
 YoMo is an open source project for building your own IoT edge computing applications. With YoMo, you can speed up the development of microservices-based applications, and your industrial IoT platform will take full advantage of the low latency and high bandwidth brought by 5G.
 
@@ -34,26 +34,28 @@ import (
 )
 
 func main() {
-	// 运行该Plugin，监听:port 4241, data will be sent by yomo egde
+	// run echo plugin and monitor port 4241; data will be sent by yomo egde
 	// yomo.Run(&EchoPlugin{}, "0.0.0.0:4241")
 	
-	// 开发调试时的方法, when connected to the Internet, it will automatically connect to the development server of yomo.run 会自动连接至 yomo.run 的开发服务器
-	// 连接成功后，该Plugin会每2秒收到一条Observed()方法指定的Key的Value
+	// a method for development and testing; when connected to the Internet, it will
+	// automatically connect to the development server of yomo.run
+	// after successfully connected to the server, the plugin will receive the value
+	// of the key specified by the Observed() method every 2 seconds
 	yomo.RunDev(&EchoPlugin{}, "localhost:4241")
 }
 
-// EchoPlugin - a yomo plugin，会将接受到的数据转换成String形式，并再结尾添加内容，修改
-// 后的数据将流向下一个Plugin
+// EchoPlugin - a yomo plugin that converts received data into strings and appends
+// additional information to the strings; the modified data will flow to the next plugin
 type EchoPlugin struct{}
 
-// Handle - 方法将会在数据流入时被执行，使用Observed()方法通知YoMo该Plugin要关注的key，参数value
-// 即该Plugin要处理的内容
+// Handle - this method will be called when data flows in; the Observed() method is used
+// to notify yomo
+// 通知YoMo该Plugin要关注的key，参数value即该Plugin要处理的内容
 func (p *EchoPlugin) Handle(value interface{}) (interface{}, error) {
 	return value.(string) + "✅", nil
 }
 
-// Observed - returns a value of type string, which 该值是EchoPlugin插件关注的数据流中的Key，该数据流中Key对应
-// 的Value将会以对象的形式被传递进Handle()方法中
+// Observed - returns a value of type string, which 该值是EchoPlugin插件关注的数据流中的Key
 // the corresponding value will be passed into the Handle() method as an object
 func (p EchoPlugin) Observed() string {
 	return "name"
@@ -85,18 +87,18 @@ Congratulations! You have written and tested your first YoMo app.
 
 ![yomo-arch](https://yomo.run/yomo-arch.png)
 
-### YoMo关注在：
+### YoMo focuses on：
 
-- industrial IoT:
+- Industrial IoT:
 	- 在IoT device接入侧, real-time communication with a latency of less than 10ms is required
 	- 在智能设备侧，需要在边缘侧进行大算力的AI执行工作
-- YoMo is consisted of 2 important parts：
-	- `yomo-edge`: 部署在企业内网，负责接收设备数据，并按照配置，依次执行各个`yomo-plugin`
-	- `yomo-plugin`: 可以部署在企业私有云、公有云及`yomo-edge-server`上
+- YoMo is consisted of 2 parts：
+	- `yomo-edge`: deployed on company intranet; responsible for receiving device data and executing each yomo-plugin in turn according to the configuration
+	- `yomo-plugin`: can be deployed on public cloud, private cloud, and `yomo-edge-server`
 
 ### Why YoMo
 
-- Based on QUIC (Quick UDP Internet Connection) protocol for data transmission, which uses the User Datagram Protocol (UDP) as its basis instead of the Transmission Control Protocol (TCP); significantly improves the stability and 高通率 of data transmission
+- Based on QUIC (Quick UDP Internet Connection) protocol for data transmission, which uses the User Datagram Protocol (UDP) as its basis instead of the Transmission Control Protocol (TCP); significantly improves the stability and 高通率 of data transmission.
 - A self-developed `yomo-codec` optimizes decoding performance. For more information, visit [its own repository](https://github.com/yomorun/yomo-codec) on GitHub.
 - Based on stream computing, which improves speed and accuracy when dealing with data handling and analysis; simplifies the complexity of stream-oriented programming.
 
