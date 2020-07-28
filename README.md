@@ -90,8 +90,8 @@ Congratulations! You have written and tested your first YoMo app.
 ### YoMo focuses on：
 
 - Industrial IoT:
-	- 在IoT device接入侧, real-time communication with a latency of less than 10ms is required
-	- 在智能设备侧，需要在边缘侧进行大算力的AI执行工作
+	- On the IoT device side, real-time communication with a latency of less than 10ms is required.
+	- On the smart device side, AI performing with a high hash rate is required.
 - YoMo is consisted of 2 parts：
 	- `yomo-edge`: deployed on company intranet; responsible for receiving device data and executing each yomo-plugin in turn according to the configuration
 	- `yomo-plugin`: can be deployed on public cloud, private cloud, and `yomo-edge-server`
