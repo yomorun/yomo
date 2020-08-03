@@ -1,66 +1,75 @@
-# YoMo
+# YoMo ![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg)
 
-> Build your own IoT & Edge Realtime Computing system easily, engaging 5G technology
+YoMo is an open-source project for building your own IoT edge computing applications. With YoMo, you can speed up the development of microservices-based applications, and your industrial IoT platform will take full advantage of the low latency and high bandwidth brought by 5G.
 
-![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg)
+More info at [yomo.run](https://yomo.run/).
 
-是一个开源项目，方便构建属于您自己的IoT和边缘计算平台。基于YoMo，可快速完成微服务架构的工业App的开发，您的工业互联网平台将会充分发挥5G带来的低延时、大带宽的高通率优势。
+## Getting Started
 
-## 🚀 3分钟构建工业微服务 Quick Start
+### 1. Install the current release
 
-### 1. 创建工程，并引入yomo Create a go project and import yomo
+Create a directory named `yomotest` and `cd` into it.
 
-```bash
-mkdir yomotest && cd yomotest
+	mkdir yomotest
+	cd yomotest
 
-go mod init yomotest 
+Make the current directory the root of a module by using `go mod init`.
 
-go get -u github.com/yomorun/yomo
-```
+	go mod init yomotest
 
-### 2. 编写插件 Start writing your first plugin echo.go
+Download and install.
+
+	go get -u github.com/yomorun/yomo
+
+### 2. Create file `echo.go`
+
+To check that YoMo is installed correctly on your device, create a file named `echo.go` and copy the following code to your file:
 
 ```rust
 package main
 
-// 引入yomo
+// import yomo
 import (
 	"github.com/yomorun/yomo/pkg/yomo"
 )
 
 func main() {
-	// 运行该Plugin，监听:4241端口，数据会被YoMo Edge发送过来
+	// run echo plugin and monitor port 4241; data will be sent by yomo egde
 	// yomo.Run(&EchoPlugin{}, "0.0.0.0:4241")
-	// 开发调试时的方法，处于联网状态下时，会自动连接至 yomo.run 的开发服务器，连接成功后，
-	// 该Plugin会每2秒收到一条Observed()方法指定的Key的Value
+	
+	// a method for development and testing; when connected to the Internet, it will
+	// automatically connect to the development server of yomo.run
+	// after successfully connected to the server, the plugin will receive the value
+	// of the key specified by the Observed() method every 2 seconds
 	yomo.RunDev(&EchoPlugin{}, "localhost:4241")
 }
 
-// EchoPlugin 是一个YoMo Plugin，会将接受到的数据转换成String形式，并再结尾添加内容，修改
-// 后的数据将流向下一个Plugin
+// EchoPlugin - a yomo plugin that converts received data into strings and appends
+// additional information to the strings; the modified data will flow to the next plugin
 type EchoPlugin struct{}
 
-// Handle 方法将会在数据流入时被执行，使用Observed()方法通知YoMo该Plugin要关注的key，参数value
-// 即该Plugin要处理的内容
+// Handle - this method will be called when data flows in; the Observed() method is used
+// to tell yomo which key the plugin should monitor; the parameter value is what the plugin
+// needs to process
 func (p *EchoPlugin) Handle(value interface{}) (interface{}, error) {
 	return value.(string) + "✅", nil
 }
 
-// Observed 返回一个string类型的值，该值是EchoPlugin插件关注的数据流中的Key，该数据流中Key对应
-// 的Value将会以对象的形式被传递进Handle()方法中
+// Observed - returns a value of type string, which is the key monitored by echo plugin;
+// the corresponding value will be passed into the Handle() method as an object
 func (p EchoPlugin) Observed() string {
 	return "name"
 }
 
-// Name 用于设置该Plugin的名称，方便Debug等操作
+// Name - sets the name of a given plugin p (mainly used for debugging)
 func (p *EchoPlugin) Name() string {
 	return "EchoPlugin"
 }
 ```
 
-### 3. 运行 Run plugin
+### 3. Build and run
 
-1. Open a new termial, run `go run echo.go`, you will see: 
+1. Run `go run echo.go` from the terminal. If YoMo is installed successfully, you will see the following message:
 
 ```bash
 % go run a.go
@@ -72,38 +81,43 @@ name:yomo!✅
 name:yomo!✅
 ^Csignal: interrupt
 ```
+Congratulations! You have written and tested your first YoMo app.
 
-## 🌟 YoMo架构和亮点
+## Illustration
 
 ![yomo-arch](https://yomo.run/yomo-arch.png)
 
-### YoMo关注在：
+### YoMo focuses on：
 
-- 工业互联网领域
-	- 在IoT设备接入侧，需要<10ms的低延时实时通讯
-	- 在智能设备侧，需要在边缘侧进行大算力的AI执行工作
-- YoMo包含两部分：
-	- `yomo-edge`: 部署在企业内网，负责接收设备数据，并按照配置，依次执行各个`yomo-plugin`
-	- `yomo-plugin`: 可以部署在企业私有云、公有云及`yomo-edge-server`上
+- Industrial IoT:
+	- On the IoT device side, real-time communication with a latency of less than 10ms is required.
+	- On the smart device side, AI performing with a high hash rate is required.
+- YoMo consists of 2 parts：
+	- `yomo-edge`: deployed on company intranet; responsible for receiving device data and executing each yomo-plugin in turn according to the configuration
+	- `yomo-plugin`: can be deployed on public cloud, private cloud, and `yomo-edge-server`
 
-### YoMo的优势：
+### Why YoMo
 
-- 全程基于Quic协议传输数据，使用UDP协议替代TCP协议后，大幅提升了传输的稳定性和高通率
-- 自研的`yomo-codec`优化了数据解码性能
-- 全程基于Stream Computing模型，并简化面向Stream编程的复杂度
+- Based on QUIC (Quick UDP Internet Connection) protocol for data transmission, which uses the User Datagram Protocol (UDP) as its basis instead of the Transmission Control Protocol (TCP); significantly improves the stability and throughput of data transmission.
+- A self-developed `yomo-codec` optimizes decoding performance. For more information, visit [its own repository](https://github.com/yomorun/yomo-codec) on GitHub.
+- Based on stream computing, which improves speed and accuracy when dealing with data handling and analysis; simplifies the complexity of stream-oriented programming.
 
-## 🦸 成为YoMo开发者 Contributing
+## Contributing
 
-Github：[github.com/yomorun/yomo](https://github.com/yomorun/yomo)
+First off, thank you for considering making contributions. It's people like you that make YoMo better. There are many ways in which you can participate in the project, for example:
 
-社区守则：[Code of Conduct](https://github.com/yomorun/yomo/blob/master/CODE_OF_CONDUCT.md)
+- File a [bug report](https://github.com/yomorun/yomo/issues/new?assignees=&labels=bug&template=bug_report.md&title=%5BBUG%5D). Be sure to include information like what version of YoMo you are using, what your operating system is, and steps to recreate the bug.
 
-代码规范：[Contributing Rules](https://github.com/yomorun/yomo/blob/master/CONTRIBUTING.md)
+- Suggest a new feature.
 
-## 🐛 提交Bug
+- Read our [contributing guidelines](https://github.com/yomorun/yomo/blob/master/CONTRIBUTING.md) to learn about what types of contributions we are looking for.
 
-Report bug: [https://github.com/yomorun/yomo/issues](https://github.com/yomorun/yomo/issues/new?assignees=&labels=bug&template=bug_report.md&title=%5BBUG%5D)
+- We have also adopted a [code of conduct](https://github.com/yomorun/yomo/blob/master/CODE_OF_CONDUCT.md) that we expect project participants to adhere to.
 
-## 🧙 Contact Maintainer Team
+## Feedback
 
-[yomo@cel.la](mailto:yomo@cel.la)
+Email us at [yomo@cel.la](mailto:yomo@cel.la). Any feedback would be greatly appreciated!
+
+## License
+
+[Apache License 2.0](http://www.apache.org/licenses/LICENSE-2.0.html)
