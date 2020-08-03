@@ -1,6 +1,6 @@
 # YoMo ![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg)
 
-YoMo is an open source project for building your own IoT edge computing applications. With YoMo, you can speed up the development of microservices-based applications, and your industrial IoT platform will take full advantage of the low latency and high bandwidth brought by 5G.
+YoMo is an open-source project for building your own IoT edge computing applications. With YoMo, you can speed up the development of microservices-based applications, and your industrial IoT platform will take full advantage of the low latency and high bandwidth brought by 5G.
 
 More info at [yomo.run](https://yomo.run/).
 
@@ -92,13 +92,13 @@ Congratulations! You have written and tested your first YoMo app.
 - Industrial IoT:
 	- On the IoT device side, real-time communication with a latency of less than 10ms is required.
 	- On the smart device side, AI performing with a high hash rate is required.
-- YoMo is consisted of 2 parts：
+- YoMo consists of 2 parts：
 	- `yomo-edge`: deployed on company intranet; responsible for receiving device data and executing each yomo-plugin in turn according to the configuration
 	- `yomo-plugin`: can be deployed on public cloud, private cloud, and `yomo-edge-server`
 
 ### Why YoMo
 
-- Based on QUIC (Quick UDP Internet Connection) protocol for data transmission, which uses the User Datagram Protocol (UDP) as its basis instead of the Transmission Control Protocol (TCP); significantly improves the stability and 高通率 of data transmission.
+- Based on QUIC (Quick UDP Internet Connection) protocol for data transmission, which uses the User Datagram Protocol (UDP) as its basis instead of the Transmission Control Protocol (TCP); significantly improves the stability and throughput of data transmission.
 - A self-developed `yomo-codec` optimizes decoding performance. For more information, visit [its own repository](https://github.com/yomorun/yomo-codec) on GitHub.
 - Based on stream computing, which improves speed and accuracy when dealing with data handling and analysis; simplifies the complexity of stream-oriented programming.
 
