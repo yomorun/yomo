@@ -113,7 +113,8 @@ func QuicServer(endpoint string, plugin plugin.YomoObjectPlugin, codec *json.Cod
 
 		stream, err := sess.AcceptStream(context.Background())
 		if err != nil {
-			if strings.Index(err.Error(), "NO_ERROR") == 0 {
+			if strings.Index(err.Error(), "NO_ERROR") == 0 ||
+				strings.Index(err.Error(), "PROTOCOL_VIOLATION") == 0 {
 				log.Printf("AcceptStream error: %s", err.Error())
 				continue
 			} else {
