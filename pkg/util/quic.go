@@ -161,7 +161,7 @@ func QuicServer(endpoint string, plugin plugin.YomoObjectPlugin, codec *json.Cod
 			logger.Errorf("QuicServer::Accept error: %s", err.Error())
 			continue
 		}
-		logger.Debugf("QuicServer::loop[%v] Accept after: state=%v", n, session.ConnectionState())
+		logger.Debugf("QuicServer::loop[%v] Accept after: %v", n, session.ConnectionState())
 
 		logger.Debugf("QuicServer::loop[%v] AcceptStream before", n)
 		stream, err := session.AcceptStream(context.Background())
@@ -169,8 +169,8 @@ func QuicServer(endpoint string, plugin plugin.YomoObjectPlugin, codec *json.Cod
 			logger.Errorf("QuicServer::AcceptStream error: %s", err.Error())
 			continue
 		}
-		logger.Debugf("QuicServer::loop[%v] AcceptStream after: StreamID=%v", n, stream.StreamID())
-		logger.Infof("QuicServer::Establish new Stream[%v]: StreamID=%v", n, stream.StreamID())
+		logger.Debugf("QuicServer::loop[%v] AcceptStream after: %v", n, stream.StreamID())
+		logger.Infof("QuicServer::Establish new Stream: StreamID=%v", stream.StreamID())
 
 		go func() {
 			go monitorContextErr(session, stream)
@@ -201,6 +201,7 @@ func monitorContextErr(session quicGo.Session, stream quicGo.Stream) {
 		}
 		time.Sleep(5 * time.Second)
 	}
+
 }
 
 func closeSession(session quicGo.Session, stream quicGo.Stream) {
