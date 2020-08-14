@@ -22,6 +22,8 @@ import (
 	"github.com/yomorun/yomo/pkg/plugin"
 )
 
+var logger = GetLogger("yomo::quic")
+
 // YomoFrameworkStreamWriter is the stream of framework
 type YomoFrameworkStreamWriter struct {
 	Name   string
@@ -30,36 +32,86 @@ type YomoFrameworkStreamWriter struct {
 	io.Writer
 }
 
-func (w YomoFrameworkStreamWriter) Write(b []byte) (int, error) {
-	var err error = nil
-	var value interface{}
-	var result interface{}
+func (w YomoFrameworkStreamWriter) Write(b []byte) (c int, e error) {
+	defer func() {
+		if err := recover(); err != nil {
+			logger.Errorf("Write error: %v, input data: %s", err, string(b[:]))
+			c = 0
+			e = err.(error)
+		}
+	}()
+
+	var (
+		err    error = nil
+		value  interface{}
+		result interface{}
+		num    = 0
+		sum    = 0
+	)
 
 	w.Codec.Decoder(b)
 
 	for {
 		value, err = w.Codec.Read(w.Plugin.Mold())
 		if err != nil {
-			log.Panic(err)
-			break
+			logger.Errorf("Codec.Read error: %s", err.Error())
+			return sum, nil
 		}
 
 		if value == nil {
-			w.Codec.Refresh(w.Writer) // nolint
-			break
+			num, err = w.Codec.Refresh(w.Writer)
+			if err != nil {
+				logger.Errorf("Codec.Refresh error: %s", err.Error())
+			}
+			return sum + num, nil
 		}
 
-		//if value != nil {
-		result, err = w.Plugin.Handle(value)
+		result, err = w.process(value)
 		if err != nil {
-			log.Fatal(err)
+			logger.Errorf("Plugin.Handle error: %s", err.Error())
+			// if plugin handle has error, then write the value of the original
+			num, err = w.Codec.Write(w.Writer, value, w.Plugin.Mold())
+			if err != nil {
+				logger.Errorf("Codec.Write error: %s", err.Error())
+				return 0, err
+			}
+			return sum + num, nil
 		}
-		//fmt.Println("handle result:", result)
-		w.Codec.Write(w.Writer, result, w.Plugin.Mold()) // nolint
-		//	break
-		//}
+
+		logger.Debugf("Plugin.Handle result: %s", result) //debug:
+
+		num, err = w.Codec.Write(w.Writer, result, w.Plugin.Mold())
+		if err != nil {
+			logger.Errorf("Codec.Write error: %s", err.Error())
+			break
+		}
+		sum = sum + num
+		num = 0
 	}
-	return len(b), err
+
+	if sum > 0 {
+		return sum, nil
+	}
+
+	if num > 0 {
+		return num, nil
+	}
+	return 0, nil
+}
+
+func (w YomoFrameworkStreamWriter) process(value interface{}) (v interface{}, e error) {
+	defer func() {
+		if err := recover(); err != nil {
+			logger.Errorf("Plugin.Handle panic error: %v", err)
+			e = err.(error)
+		}
+	}()
+
+	result, err := w.Plugin.Handle(value)
+	if err != nil {
+		logger.Errorf("Plugin.Handle error: %s", err.Error())
+	}
+	return result, nil
 }
 
 // QuicClient create new QUIC client
@@ -67,7 +119,7 @@ func QuicClient(endpoint string) (quicGo.Stream, error) {
 	tlsConf := &tls.Config{
 		InsecureSkipVerify: true, // nolint
 		NextProtos:         []string{"hq-29"},
-		//NextProtos:         []string{"http/1.1"},
+		//NextProtos: []string{"http/1.1"},
 	}
 
 	session, err := quicGo.DialAddr(endpoint, tlsConf, &quic.Config{
@@ -91,7 +143,8 @@ func QuicClient(endpoint string) (quicGo.Stream, error) {
 func QuicServer(endpoint string, plugin plugin.YomoObjectPlugin, codec *json.Codec) {
 	// Lock to use QUIC draft-29 version
 	conf := &quic.Config{
-		Versions: []quicGo.VersionNumber{0xff00001d},
+		Versions:  []quicGo.VersionNumber{0xff00001d},
+		KeepAlive: true,
 	}
 	listener, err := quicGo.ListenAddr(endpoint, GenerateTLSConfig(endpoint), conf)
 
@@ -99,22 +152,75 @@ func QuicServer(endpoint string, plugin plugin.YomoObjectPlugin, codec *json.Cod
 		panic(err)
 	}
 
+	var n = 0
 	for {
-		sess, err := listener.Accept(context.Background())
+		n = n + 1
+		logger.Debugf("QuicServer::loop[%v] Accept before", n)
+		session, err := listener.Accept(context.Background())
 		if err != nil {
-			log.Printf("Accept error: %s", err.Error())
+			logger.Errorf("QuicServer::Accept error: %s", err.Error())
 			continue
 		}
+		logger.Debugf("QuicServer::loop[%v] Accept after: %v", n, session.ConnectionState())
 
-		stream, err := sess.AcceptStream(context.Background())
+		logger.Debugf("QuicServer::loop[%v] AcceptStream before", n)
+		stream, err := session.AcceptStream(context.Background())
 		if err != nil {
-			log.Printf("AcceptStream error: %s", err.Error())
+			logger.Errorf("QuicServer::AcceptStream error: %s", err.Error())
 			continue
 		}
+		logger.Debugf("QuicServer::loop[%v] AcceptStream after: %v", n, stream.StreamID())
+		logger.Infof("QuicServer::Establish new Stream: StreamID=%v", stream.StreamID())
 
-		go io.Copy(YomoFrameworkStreamWriter{plugin.Name(), codec, plugin, stream}, stream) // nolint
+		go func() {
+			go monitorContextErr(session, stream)
+			yStream := YomoFrameworkStreamWriter{plugin.Name(), codec, plugin, stream}
+			_, err = CopyTo(yStream, stream)
+			//_, err = io.Copy(yStream, stream)
+			if err != nil {
+				closeSession(session, stream)
+			}
+		}()
+	}
+}
+
+func monitorContextErr(session quicGo.Session, stream quicGo.Stream) {
+	for {
+		var err error = nil
+		if session.Context().Err() != nil {
+			err = session.Context().Err()
+			logger.Errorf("session context error: %v", err)
+		}
+		if stream.Context().Err() != nil {
+			err = stream.Context().Err()
+			logger.Errorf("stream context error: %v", err)
+		}
+		if err != nil {
+			closeSession(session, stream)
+			break
+		}
+		time.Sleep(5 * time.Second)
 	}
 
+}
+
+func closeSession(session quicGo.Session, stream quicGo.Stream) {
+	var err error
+
+	// close stream
+	streamID := stream.StreamID()
+	err = stream.Close()
+	if err != nil {
+		logger.Errorf("stream[%v] close error: %s", streamID, err.Error())
+	} else {
+		logger.Infof("stream[%v] closed", streamID)
+	}
+
+	// close session
+	err = session.CloseWithError(0, "close session")
+	if err != nil {
+		logger.Errorf("close session error: %s", err.Error())
+	}
 }
 
 // GenerateTLSConfig Setup a bare-bones TLS config for the server
@@ -124,7 +230,7 @@ func GenerateTLSConfig(host ...string) *tls.Config {
 	return &tls.Config{
 		Certificates: []tls.Certificate{tlsCert},
 		NextProtos:   []string{"hq-29"},
-		// NextProtos:   []string{"http/1.1"},
+		//NextProtos: []string{"http/1.1"},
 	}
 }
 
@@ -191,4 +297,40 @@ func Certificate(host ...string) (tls.Certificate, error) {
 	}
 
 	return tls.X509KeyPair(certOut.Bytes(), keyOut.Bytes())
+}
+
+func CopyTo(dst io.Writer, src io.Reader) (written int64, err error) {
+	var buf []byte
+	size := 32 * 1024
+	if l, ok := src.(*io.LimitedReader); ok && int64(size) > l.N {
+		if l.N < 1 {
+			size = 1
+		} else {
+			size = int(l.N)
+		}
+	}
+	buf = make([]byte, size)
+
+	for {
+		nr, er := src.Read(buf)
+		if nr > 0 {
+			nw, ew := dst.Write(buf[0:nr])
+			if nw > 0 {
+				written += int64(nw)
+			}
+			if ew != nil {
+				err = ew
+				log.Printf("dst.Write error: %s", ew.Error())
+				break
+			}
+		}
+		if er != nil {
+			if er != io.EOF {
+				err = er
+			}
+			log.Printf("src.Read error: %s", er.Error())
+			break
+		}
+	}
+	return written, err
 }
