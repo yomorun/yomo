@@ -1,7 +1,6 @@
 package yomo
 
 import (
-	"fmt"
 	"io"
 	"log"
 	"os"
@@ -13,11 +12,11 @@ import (
 	"github.com/yomorun/yomo/internal/framework"
 )
 
+var logger = util.GetLogger("yomo::run")
+
 // Run a server for YomoObjectPlugin
 func Run(plugin plugin.YomoObjectPlugin, endpoint string) {
-
-	log.SetPrefix(fmt.Sprintf("[%s:%v]", plugin.Name(), os.Getpid()))
-	log.Printf("plugin service start... [%s]", endpoint)
+	logger.Infof("plugin service [%s] start... [%s]", plugin.Name(), endpoint)
 
 	// activation service
 	framework.NewServer(endpoint, plugin)
@@ -25,8 +24,7 @@ func Run(plugin plugin.YomoObjectPlugin, endpoint string) {
 
 // RunStream run a server for YomoStreamPlugin
 func RunStream(plugin plugin.YomoStreamPlugin, endpoint string) {
-	log.SetPrefix(fmt.Sprintf("[%s:%v]", plugin.Name(), os.Getpid()))
-	log.Printf("plugin service start... [%s]", endpoint)
+	logger.Infof("plugin service [%s] start... [%s]", plugin.Name(), endpoint)
 
 	// activation service
 	panic("not impl")
@@ -36,8 +34,7 @@ func RunStream(plugin plugin.YomoStreamPlugin, endpoint string) {
 func RunDev(plugin plugin.YomoObjectPlugin, endpoint string) {
 
 	go func() {
-		log.SetPrefix(fmt.Sprintf("[%s:%v]", plugin.Name(), os.Getpid()))
-		log.Printf("plugin service start... [%s]", endpoint)
+		logger.Infof("plugin service [%s] start... [%s]", plugin.Name(), endpoint)
 
 		// activation service
 		framework.NewServer(endpoint, plugin)
