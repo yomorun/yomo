@@ -79,6 +79,9 @@ func (w YomoFrameworkStreamWriter) Write(b []byte) (c int, e error) {
 		}
 
 		logger.Debugf("Plugin.Handle result: %s", result) //debug:
+		if result == nil {
+			continue
+		}
 
 		num, err = w.Codec.Write(w.Writer, result, w.Plugin.Mold())
 		if err != nil {
