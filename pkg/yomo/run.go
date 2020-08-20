@@ -6,6 +6,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/yomorun/yomo/pkg/pprof"
+
 	"github.com/yomorun/yomo/pkg/plugin"
 	"github.com/yomorun/yomo/pkg/util"
 
@@ -17,6 +19,9 @@ var logger = util.GetLogger("yomo::run")
 // Run a server for YomoObjectPlugin
 func Run(plugin plugin.YomoObjectPlugin, endpoint string) {
 	logger.Infof("plugin service [%s] start... [%s]", plugin.Name(), endpoint)
+
+	// pprof
+	go pprof.Run()
 
 	// activation service
 	framework.NewServer(endpoint, plugin)

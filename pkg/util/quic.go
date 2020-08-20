@@ -78,7 +78,7 @@ func (w YomoFrameworkStreamWriter) Write(b []byte) (c int, e error) {
 			return sum + num, nil
 		}
 
-		logger.Debugf("Plugin.Handle result: %s", result) //debug:
+		logger.Debugf("Plugin.Handle result: %v", result) //debug:
 		if result == nil {
 			continue
 		}
