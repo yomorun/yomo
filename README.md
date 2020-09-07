@@ -65,6 +65,11 @@ func (p EchoPlugin) Observed() string {
 func (p *EchoPlugin) Name() string {
 	return "EchoPlugin"
 }
+
+// Mold describe the struct of `Observed` value
+func (p EchoPlugin) Mold() interface{} {
+	return ""
+}
 ```
 
 ### 3. Build and run
@@ -82,6 +87,8 @@ name:yomo!✅
 ^Csignal: interrupt
 ```
 Congratulations! You have written and tested your first YoMo app.
+
+Note: If you want to use a complex Mold, please refer to  [yomo-echo-plugin](https://github.com/yomorun/yomo-echo-plugin).
 
 ## Illustration
 
