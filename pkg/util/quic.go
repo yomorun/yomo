@@ -126,8 +126,10 @@ func QuicClient(endpoint string) (quicGo.Stream, error) {
 	}
 
 	session, err := quicGo.DialAddr(endpoint, tlsConf, &quic.Config{
-		MaxIdleTimeout: time.Minute * 2,
-		KeepAlive:      true,
+		MaxIdleTimeout:        time.Minute * 10080,
+		KeepAlive:             true,
+		MaxIncomingStreams:    1000000,
+		MaxIncomingUniStreams: 1000000,
 	})
 
 	if err != nil {
@@ -146,8 +148,11 @@ func QuicClient(endpoint string) (quicGo.Stream, error) {
 func QuicServer(endpoint string, plugin plugin.YomoObjectPlugin, codec *json.Codec) {
 	// Lock to use QUIC draft-29 version
 	conf := &quic.Config{
-		Versions:  []quicGo.VersionNumber{0xff00001d},
-		KeepAlive: true,
+		Versions:              []quicGo.VersionNumber{0xff00001d},
+		MaxIdleTimeout:        time.Minute * 10080,
+		KeepAlive:             true,
+		MaxIncomingStreams:    1000000,
+		MaxIncomingUniStreams: 1000000,
 	}
 	listener, err := quicGo.ListenAddr(endpoint, GenerateTLSConfig(endpoint), conf)
 
