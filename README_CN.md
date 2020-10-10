@@ -1,8 +1,36 @@
 # YoMo ![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg)
 
-YoMo 是一套开源的实时边缘计算网关、开发框架和微服务平台，通讯层基于QUIC协议，更好的释放了未来5G等低时延网络的价值；为流式处理（Streaming Computing）设计的编解码器`yomo-codec`能大幅提升计算服务的吞吐量；基于插件的开发模式，5分钟即可上线您的物联网实时边缘计算处理系统。YoMo关注在工业互联网领域，目的是打造国产化自主可控的工业实时边缘计算体系。
+YoMo 是一套开源的实时边缘计算网关、开发框架和微服务平台，通讯层基于 [QUIC](https://en.wikipedia.org/wiki/QUIC) 协议 ([2020-09-25更新到Draft-31版本](https://tools.ietf.org/html/draft-ietf-quic-transport-31))，更好的释放了 5G 等下一代低时延网络的价值。为流式处理（Streaming Computing）设计的编解码器`yomo-codec`能大幅提升计算服务的吞吐量；基于插件的开发模式，5分钟即可上线您的物联网实时边缘计算处理系统。YoMo 目前已在工业互联网领域被部署应用。
 
-官网： [yomo.run](https://yomo.run/).
+官网： [https://yomo.run](https://yomo.run/)
+
+## 💘 QUIC 快速学习资源 Awesome QUIC
+
+* 不在爱了 TCP 💔:
+	* [为什么TCP是个烂协议](https://zhuanlan.zhihu.com/p/20144829)
+	* 今天 TCP 烂了怎么办？[如何看待谷歌 Google 打算用 QUIC 协议替代 TCP/UDP？](https://www.zhihu.com/question/29705994)
+* 浅尝 QUIC 科普贴 🎱：
+	* 知乎腾讯技术官号 [科普：QUIC协议原理分析](https://zhuanlan.zhihu.com/p/32553477)
+	* [新一代互联网传输协议QUIC浅析](https://zhuanlan.zhihu.com/p/76202865)
+* 真干实践大厂贴 🏌️‍♂️:
+	* 腾讯 QUIC 实践 [让互联网更快的协议，QUIC在腾讯的实践及性能优化](https://zhuanlan.zhihu.com/p/32560981)
+	* 阿里 QUIC 实践 [AliQUIC：场景化高性能传输网络实践](https://developer.aliyun.com/article/643770)
+	* 七牛 QUIC 实践 [流畅度提高 100%！七牛云 QUIC 推流方案如何实现直播 0 卡顿](https://zhuanlan.zhihu.com/p/33698793)
+	* 又拍云 QUIC 实践 [QUIC协议详解之Initial包的处理](https://zhuanlan.zhihu.com/p/162914823)
+* 熬夜充电技术细节贴 🦾:
+	* [让互联网更快的“快”---QUIC协议原理分析](https://zhuanlan.zhihu.com/p/32630510)
+	* [QUIC 是如何做到 0RTT 的](https://zhuanlan.zhihu.com/p/142794794)
+	* [快速理解为什么说UDP有时比TCP更有优势](http://www.52im.net/thread-1277-1-1.html)
+	* [一泡尿的时间，快速读懂QUIC协议](http://www.52im.net/thread-2816-1-1.html)
+* 墙裂推荐英文贴 🍿:
+	* 谷歌官方 2014 年发布的视频：[QUIC: next generation multiplexed transport over UDP](https://www.youtube.com/watch?v=hQZ-0mXFmk8)
+	* Codevel博客文章 [https://medium.com/codavel-blog/quic-vs-tcp-tls-and-why-quic-is-not-the-next-big-thing-d4ef59143efd](https://medium.com/codavel-blog/quic-vs-tcp-tls-and-why-quic-is-not-the-next-big-thing-d4ef59143efd)
+* 估计你们不会看的🧟‍♀️:
+	* QUIC: A UDP-Based Multiplexed and Secure Transport [draft-ietf-quic-transport-31](https://datatracker.ietf.org/doc/draft-ietf-quic-transport/)
+	* Using TLS to Secure QUIC [draft-ietf-quic-tls-31](https://datatracker.ietf.org/doc/draft-ietf-quic-tls/)
+	* Version-Independent Properties of QUIC [draft-ietf-quic-invariants-11](https://datatracker.ietf.org/doc/draft-ietf-quic-invariants/)
+	* QUIC Loss Detection and Congestion Control [draft-ietf-quic-recovery-31](https://datatracker.ietf.org/doc/draft-ietf-quic-recovery/)
+	* Compatible Version Negotiation for QUIC [draft-ietf-quic-version-negotiation-01](https://datatracker.ietf.org/doc/draft-ietf-quic-version-negotiation/)
 
 ## 🚀 3分钟构建工业微服务 Quick Start
 
@@ -99,14 +127,14 @@ name:yomo!✅
 - 工业互联网领域
   - 在IoT设备接入侧，需要<10ms的低延时实时通讯
   - 在智能设备侧，需要在边缘侧进行大算力的AI执行工作
-- YoMo包含两部分：
-  - yomo-edge: 部署在企业内网，负责接收设备数据，并按照配置，依次执行各个yomo-plugin
-  - yomo-plugin: 可以部署在企业私有云、公有云及yomo-edge-server上
+- YoMo 包含两部分：
+  - `yomo-edge`: 部署在企业内网，负责接收设备数据，并按照配置，依次执行各个`yomo-plugin`
+  - `yomo-plugin`: 可以部署在企业私有云、公有云及 YoMo Edge Server 上
 
 ### YoMo的优势：
 
-- 全程基于Quic协议传输数据，使用UDP协议替代TCP协议后，大幅提升了传输的稳定性和高通率
-- 自研的yomo-codec优化了数据解码性能
+- 全程基于 QUIC 协议传输数据，使用UDP协议替代TCP协议后，大幅提升了传输的稳定性和高通率
+- 自研的`yomo-codec`优化了数据解码性能
 - 全程基于Stream Computing模型，并简化面向Stream编程的复杂度
 
 ## 🦸 成为YoMo开发者
