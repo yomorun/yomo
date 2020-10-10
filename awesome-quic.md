@@ -28,6 +28,8 @@
 
 * 谷歌官方 2014 年发布的视频：[QUIC: next generation multiplexed transport over UDP](https://www.youtube.com/watch?v=hQZ-0mXFmk8)
 * Codevel博客文章 [https://medium.com/codavel-blog/quic-vs-tcp-tls-and-why-quic-is-not-the-next-big-thing-d4ef59143efd](https://medium.com/codavel-blog/quic-vs-tcp-tls-and-why-quic-is-not-the-next-big-thing-d4ef59143efd)
+* [How Secure and Quick is QUIC? Provable Security and Performance Analyses](https://www.ietf.org/proceedings/96/slides/slides-96-irtfopen-1.pdf)
+* [QUIC at 10,000 feet](https://docs.google.com/document/d/1gY9-YNDNAB1eip-RTPbqphgySwSNSDHLq9D5Bty4FSU/edit)
 
 ### 6.估计你们不会看的🧟‍♀️
 
