@@ -4,7 +4,7 @@ YoMo 是一套开源的实时边缘计算网关、开发框架和微服务平台
 
 官网： [https://yomo.run](https://yomo.run/)
 
-## 💘 QUIC 快速学习资源 Awesome QUIC
+## 💘 QUIC快速学习资源 Awesome QUIC
 
 * 不在爱了 TCP 💔:
 	* [为什么TCP是个烂协议](https://zhuanlan.zhihu.com/p/20144829)
