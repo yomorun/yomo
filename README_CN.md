@@ -52,7 +52,7 @@ go mod init yomotest
 引入yomo
 
 ```
-go get -u github.com/yomorun/yomo
+go get -u gitee.com/yomorun/yomo
 ```
 
 ### 2. 编写业务逻辑`echo.go`
@@ -116,7 +116,7 @@ name:yomo!✅
 ```
 恭喜！您的第一个YoMo应用已经完成！
 
-小提示: 如果您使用复合数据结构（Complex Mold）, 请参考：[yomo-echo-plugin](https://github.com/yomorun/yomo-echo-plugin)。
+小提示: 如果您使用复合数据结构（Complex Mold）, 请参考：[yomo-echo-plugin](https://gitee.com/yomorun/yomo-echo-plugin)。
 
 ## 🌟 YoMo架构和亮点
 
@@ -146,9 +146,9 @@ First off, thank you for considering making contributions. It's people like you 
 
 - 建议新的功能
 
-- 在贡献代码前，请先阅读[Contributing Guidelines](https://github.com/yomorun/yomo/blob/master/CONTRIBUTING.md) 
+- 在贡献代码前，请先阅读[Contributing Guidelines](https://gitee.com/yomorun/yomo/blob/master/CONTRIBUTING.md) 
 
-- 当然我们也有 [Code of Conduct](https://github.com/yomorun/yomo/blob/master/CODE_OF_CONDUCT.md)
+- 当然我们也有 [Code of Conduct](https://gitee.com/yomorun/yomo/blob/master/CODE_OF_CONDUCT.md)
 
 ##  🧙 联系YoMo组织
 
