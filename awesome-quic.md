@@ -16,6 +16,12 @@
 * 阿里 QUIC 实践 [AliQUIC：场景化高性能传输网络实践](https://developer.aliyun.com/article/643770)
 * 七牛 QUIC 实践 [流畅度提高 100%！七牛云 QUIC 推流方案如何实现直播 0 卡顿](https://zhuanlan.zhihu.com/p/33698793)
 * 又拍云 QUIC 实践 [QUIC协议详解之Initial包的处理](https://zhuanlan.zhihu.com/p/162914823)
+* 华为 QUIC 实践 [Efforts to Improve OTT Video Experience by ICPs](https://www-file.huawei.com/-/media/corporate/pdf/ilab/13-en.pdf)
+* Facebook QUIC 实践 [Building Zero protocol for fast, secure mobile connections](https://engineering.fb.com/networking-traffic/building-zero-protocol-for-fast-secure-mobile-connections/)
+* Cloudflare QUIC 实践 [The Road to QUIC](https://blog.cloudflare.com/the-road-to-quic/)
+* Uber QUIC 实践 [Employing QUIC Protocol to Optimize Uber’s App Performance](https://eng.uber.com/employing-quic-protocol/)
+* [Uber Networking: Challenges and Opportunities](https://www.slideshare.net/dhaval2025/uber-mobility-high-performance-networking)
+* Fastly QUIC 实践 [Modernizing the internet with HTTP/3 and QUIC](https://www.fastly.com/blog/modernizing-the-internet-with-http3-and-quic)
   
 ### 4.熬夜充电技术细节贴 🦾
 
@@ -28,6 +34,8 @@
 
 * 谷歌官方 2014 年发布的视频：[QUIC: next generation multiplexed transport over UDP](https://www.youtube.com/watch?v=hQZ-0mXFmk8)
 * Codevel博客文章 [https://medium.com/codavel-blog/quic-vs-tcp-tls-and-why-quic-is-not-the-next-big-thing-d4ef59143efd](https://medium.com/codavel-blog/quic-vs-tcp-tls-and-why-quic-is-not-the-next-big-thing-d4ef59143efd)
+* [How Secure and Quick is QUIC? Provable Security and Performance Analyses](https://www.ietf.org/proceedings/96/slides/slides-96-irtfopen-1.pdf)
+* [QUIC at 10,000 feet](https://docs.google.com/document/d/1gY9-YNDNAB1eip-RTPbqphgySwSNSDHLq9D5Bty4FSU/edit)
 
 ### 6.估计你们不会看的🧟‍♀️
 
