@@ -14,10 +14,13 @@ YoMo 是一套开源的实时边缘计算网关、开发框架和微服务平台
 	* [新一代互联网传输协议QUIC浅析](https://zhuanlan.zhihu.com/p/76202865)
 * 真干实践大厂贴 🏌️‍♂️:
 	* 腾讯 QUIC 实践 [让互联网更快的协议，QUIC在腾讯的实践及性能优化](https://zhuanlan.zhihu.com/p/32560981)
-	* 阿里 QUIC 实践 [AliQUIC：场景化高性能传输网络实践](https://developer.aliyun.com/article/643770)
+	* 阿里 QUIC 实践 
+		* [阿里XQUIC：标准QUIC实现自研之路](https://mp.weixin.qq.com/s/pBv_DnG05YWl4ZYRHThaTw)
+		* [AliQUIC：场景化高性能传输网络实践](https://developer.aliyun.com/article/643770)
 	* 七牛 QUIC 实践 [流畅度提高 100%！七牛云 QUIC 推流方案如何实现直播 0 卡顿](https://zhuanlan.zhihu.com/p/33698793)
 	* 又拍云 QUIC 实践 [QUIC协议详解之Initial包的处理](https://zhuanlan.zhihu.com/p/162914823)
 	* 微博 QUIC 实践 [QUIC在微博中的落地思考](https://www.infoq.cn/article/2018/03/weibo-quic)
+	* B站 QUIC 实践 [B站QUIC实践之路](https://mp.weixin.qq.com/s/DrGm-OkSpJbzPWbFmSBT8g)
 	* Facebook QUIC 实践 [Building Zero protocol for fast, secure mobile connections](https://engineering.fb.com/networking-traffic/building-zero-protocol-for-fast-secure-mobile-connections/)
 	* Cloudflare QUIC 实践 [The Road to QUIC](https://blog.cloudflare.com/the-road-to-quic/)
 	* Uber QUIC 实践
