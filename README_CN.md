@@ -21,7 +21,9 @@ YoMo 是一套开源的实时边缘计算网关、开发框架和微服务平台
 	* 又拍云 QUIC 实践 [QUIC协议详解之Initial包的处理](https://zhuanlan.zhihu.com/p/162914823)
 	* 微博 QUIC 实践 [QUIC在微博中的落地思考](https://www.infoq.cn/article/2018/03/weibo-quic)
 	* B站 QUIC 实践 [B站QUIC实践之路](https://mp.weixin.qq.com/s/DrGm-OkSpJbzPWbFmSBT8g)
-	* Facebook QUIC 实践 [Building Zero protocol for fast, secure mobile connections](https://engineering.fb.com/networking-traffic/building-zero-protocol-for-fast-secure-mobile-connections/)
+	* Facebook QUIC 实践 
+		* _2020-10-21_ [How Facebook is bringing QUIC to billions](https://engineering.fb.com/networking-traffic/how-facebook-is-bringing-quic-to-billions/)
+		* [Building Zero protocol for fast, secure mobile connections](https://engineering.fb.com/networking-traffic/building-zero-protocol-for-fast-secure-mobile-connections/)
 	* Cloudflare QUIC 实践 [The Road to QUIC](https://blog.cloudflare.com/the-road-to-quic/)
 	* Uber QUIC 实践
 		* [Employing QUIC Protocol to Optimize Uber’s App Performance](https://eng.uber.com/employing-quic-protocol/)
