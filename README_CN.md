@@ -10,7 +10,21 @@ YoMo 是一套开源的实时边缘计算网关、开发框架和微服务平台
 
 ## QUIC Weekly - 每周一草
 
-在线社区：🍖[discord/quic](https://discord.gg/CTH3wv9)  🦖[YoMo](https://yomo.run/)
+在线社区：🍖[discord/quic](https://discord.gg/CTH3wv9)  
+维护者：🦖[YoMo](https://yomo.run/)
+
+## QUIC Weekly - 20201118期
+
+* 📽 Throwback to [乘坐时光机回到2016年7月QUIC工作组的成立会议](https://www.youtube.com/watch?v=aGvFuvmEufs)，这次会议是基于 Google 当时的实践经验，讨论 QUIC 是否应该成为 IETF 的标准
+* 📽 [Robin Marx 讲述 QUIC 和 HTTP/3 的基本功能，开放了他研究的问题及他再 qlog 和 qvis 这两个调试工具上的进展](https://www.youtube.com/watch?v=SuSpghHP0uI&feature=youtu.be)。
+* [lsquic 发布了 v2.24.4](https://github.com/litespeedtech/lsquic), 修复了拥塞控制和 CID 生命周期的相关问题。
+* [iOS 14 和 macOS Big Sur 包含了 HTTP/3 实验版本的支持](https://developer.apple.com/videos/play/wwdc2020/10111/?time=701) ，并讲述了如何开启 QUIC 的使用，比如在 macOS Big Sur 上，执行: `defaults write -g CFNetworkHTTP3Override -int 3`就可以了。
+* Fastly 的官方博客 [《QUIC 成熟时》](https://www.fastly.com/blog/maturing-of-quic)
+* 2020-11-16 发布的 [IETF-109 Slide: Tunneling Internet protocols inside QUIC](https://datatracker.ietf.org/meeting/109/materials/slides-109-intarea-tunneling-internet-protocols-inside-quic-00) Rev.00 版本的发布，意味着 QUIC 在整个现有网络生态兼容性的标准迈出的重要一步，这也是为 RFC 标准发布后整体推进而准备。
+
+## QUIC Weekly - 20201111期
+
+* 📢 关于多路复用技术的WG值得关注 **MASQUE Working Group** [Multiplexed Application Substrate over QUIC Encryption (masque)](https://datatracker.ietf.org/wg/masque/about/)
 
 ### QUIC Weekly - 20201104期
 
