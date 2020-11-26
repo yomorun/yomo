@@ -170,7 +170,7 @@ func main() {
   // 开发调试时运行该方法，处于联网状态时，程序会自动连接至 yomo.run 的开发服务器，连接成功后，
   // 该Plugin会每2秒收到一条Observed()方法指定的Key的Value
   // yomo.RunDev(&EchoPlugin{}, "localhost:4241")
-  yomo.RunDevWith(&EchoPlugin{}, endpoint, yomo.OutputEchoData)
+  yomo.RunDevWith(&EchoPlugin{}, "localhost:4241", yomo.OutputEchoData)
 }
 
 // EchoPlugin 是一个YoMo Plugin，会将接受到的数据转换成String形式，并再结尾添加内容，修改
