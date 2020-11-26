@@ -20,6 +20,6 @@ const (
 
 func GetEchoConf() EchoConf {
 	conf := EchoConf{}
-	conf.EchoServerAddr = env.GetString(echoServerAddr, "161.189.140.133:11520")
+	conf.EchoServerAddr = env.GetString(echoServerAddr, "161.189.140.133:11521")
 	return conf
 }
