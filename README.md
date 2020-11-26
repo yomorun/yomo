@@ -25,24 +25,23 @@ Download and install.
 
 To check that YoMo is installed correctly on your device, create a file named `echo.go` and copy the following code to your file:
 
-```rust
+```go 
 package main
 
-// import yomo
 import (
 	"github.com/yomorun/yomo/pkg/yomo"
 )
 
 func main() {
-	// run echo plugin and monitor port 4241; data will be sent by yomo egde
-	// yomo.Run(&EchoPlugin{}, "0.0.0.0:4241")
-	
-	// a method for development and testing; when connected to the Internet, it will
-	// automatically connect to the development server of yomo.run
-	// after successfully connected to the server, the plugin will receive the value
-	// of the key specified by the Observed() method every 2 seconds
-	// yomo.RunDev(&EchoPlugin{}, "localhost:4241")
-  yomo.RunDevWith(&EchoPlugin{}, endpoint, yomo.OutputEchoData)
+  // run echo plugin and monitor port 4241; data will be sent by yomo egde
+  // yomo.Run(&EchoPlugin{}, "0.0.0.0:4241")
+  
+  // a method for development and testing; when connected to the Internet, it will
+  // automatically connect to the development server of yomo.run
+  // after successfully connected to the server, the plugin will receive the value
+  // of the key specified by the Observed() method every 2 seconds
+  // yomo.RunDev(&EchoPlugin{}, "localhost:4241")
+  yomo.RunDevWith(&EchoPlugin{}, "localhost:4241", yomo.OutputEchoData)
 }
 
 // EchoPlugin - a yomo plugin that converts received data into strings and appends
