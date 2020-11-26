@@ -41,7 +41,8 @@ func main() {
 	// automatically connect to the development server of yomo.run
 	// after successfully connected to the server, the plugin will receive the value
 	// of the key specified by the Observed() method every 2 seconds
-	yomo.RunDev(&EchoPlugin{}, "localhost:4241")
+	// yomo.RunDev(&EchoPlugin{}, "localhost:4241")
+  yomo.RunDevWith(&EchoPlugin{}, endpoint, yomo.OutputEchoData)
 }
 
 // EchoPlugin - a yomo plugin that converts received data into strings and appends
@@ -58,7 +59,7 @@ func (p *EchoPlugin) Handle(value interface{}) (interface{}, error) {
 // Observed - returns a value of type string, which is the key monitored by echo plugin;
 // the corresponding value will be passed into the Handle() method as an object
 func (p EchoPlugin) Observed() string {
-	return "name"
+	return "0x11" //name
 }
 
 // Name - sets the name of a given plugin p (mainly used for debugging)
@@ -77,7 +78,7 @@ func (p EchoPlugin) Mold() interface{} {
 1. Run `go run echo.go` from the terminal. If YoMo is installed successfully, you will see the following message:
 
 ```bash
-% go run a.go
+% go run echo.go
 [EchoPlugin:6031]2020/07/06 22:14:20 plugin service start... [localhost:4241]
 name:yomo!✅
 name:yomo!✅

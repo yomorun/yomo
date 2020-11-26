@@ -169,7 +169,8 @@ func main() {
 	
   // 开发调试时运行该方法，处于联网状态时，程序会自动连接至 yomo.run 的开发服务器，连接成功后，
   // 该Plugin会每2秒收到一条Observed()方法指定的Key的Value
-  yomo.RunDev(&EchoPlugin{}, "localhost:4241")
+  // yomo.RunDev(&EchoPlugin{}, "localhost:4241")
+  yomo.RunDevWith(&EchoPlugin{}, endpoint, yomo.OutputEchoData)
 }
 
 // EchoPlugin 是一个YoMo Plugin，会将接受到的数据转换成String形式，并再结尾添加内容，修改
@@ -185,7 +186,7 @@ func (p *EchoPlugin) Handle(value interface{}) (interface{}, error) {
 // Observed 返回一个string类型的值，该值是EchoPlugin插件关注的数据流中的Key，该数据流中Key对应
 // 的Value将会以对象的形式被传递进Handle()方法中
 func (p EchoPlugin) Observed() string {
-	return "name"
+	return "0x11" //name
 }
 
 // Name 用于设置该Plugin的名称，方便Debug等操作
