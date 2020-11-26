@@ -16,11 +16,9 @@ import (
 	"net"
 	"time"
 
-	//ycd "github.com/10cella/yomo-json-codec"
 	"github.com/lucas-clemente/quic-go"
 	quicGo "github.com/lucas-clemente/quic-go"
 
-	//ycd "github.com/yomorun/yomo-codec-golang"
 	"github.com/yomorun/yomo-codec-golang/pkg/codes"
 	"github.com/yomorun/yomo/pkg/plugin"
 )
@@ -68,7 +66,6 @@ func (w YomoFrameworkStreamWriter) Write(b []byte) (c int, e error) {
 			}
 			return sum + num, nil
 		}
-		//fmt.Printf("#79 w.Codec.Read value1=%v, value2=%v\n", value.(interface{}), reflect.ValueOf(value).Type())
 
 		result, err = w.process(value)
 		if err != nil {
@@ -87,7 +84,6 @@ func (w YomoFrameworkStreamWriter) Write(b []byte) (c int, e error) {
 			continue
 		}
 
-		//fmt.Printf("#65 process result %#x\n", result) //debug:
 		num, err = w.Codec.Write(w.Writer, result, w.Plugin.Mold())
 		if err != nil {
 			logger.Errorf("Codec.Write error: %s", err.Error())
