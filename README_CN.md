@@ -13,6 +13,19 @@ YoMo 是一套开源的实时边缘计算网关、开发框架和微服务平台
 在线社区：🍖[discord/quic](https://discord.gg/CTH3wv9)  
 维护者：🦖[YoMo](https://yomo.run/)
 
+## QUIC Weekly - 20201125期
+
+* Wikipedia 上更新了关于 HTTP/3 的章节：[HTTP/3 - Wikipedia](https://en.wikipedia.org/wiki/HTTP/3)
+* [IETF-QUIC 的标准依赖树](https://datatracker.ietf.org/wg/quic/deps/svg/)
+* Daniel Stenberg 的新 Keynote [HTTP/3 是下一代 HTTP](https://www2.slideshare.net/bagder/http3-is-next-generation-http?qid=5d7f42ff-797b-4e2f-b4b6-ba223a6afb5a&v=&b=&from_search=1)
+* QUIC 在 5G 网络中的实验：[QUIC Throughput and Fairness over Dual Connectivity](https://www.ida.liu.se/~nikca89/papers/mascots20a.slides.pdf)
+* [Google's cloud gaming platform Stadia is using QUIC](https://www.reddit.com/r/Stadia/comments/dxam9f/protocol_used_to_stream_games_on_stadia_qos/)
+* [跟坚哥学QUIC系列：4 - 连接迁移（Connection Migration）](https://zhuanlan.zhihu.com/p/311221111)
+* [跟坚哥学QUIC系列：3 - 加密和传输握手](https://zhuanlan.zhihu.com/p/301505712)
+* [跟坚哥学QUIC系列：2 - 地址验证（Address Validation）](https://zhuanlan.zhihu.com/p/290694322)
+* [跟坚哥学QUIC系列：1 - 版本协商（Version Negotiation）](https://zhuanlan.zhihu.com/p/286328927)
+* 📈 [Builtwith 的 QUIC 应用状况监测](https://trends.builtwith.com/Server/QUIC)
+
 ## QUIC Weekly - 20201118期
 
 * 📽 Throwback to [乘坐时光机回到2016年7月QUIC工作组的成立会议](https://www.youtube.com/watch?v=aGvFuvmEufs)，这次会议是基于 Google 当时的实践经验，讨论 QUIC 是否应该成为 IETF 的标准
