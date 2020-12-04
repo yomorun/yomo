@@ -2,6 +2,8 @@
 
 YoMo 是为边缘计算打造的低时延流式 Serverless 开发框架，基于 [QUIC Transport](https://quicwg.org/) 协议通讯，以 [Functional Reactive Programming](https://en.wikipedia.org/wiki/Functional_reactive_programming) 为编程范式，简化构建可靠、安全的低时延计算应用的复杂度，挖掘5G潜力，释放实时计算价值。
 
+5G 和 AI 的发展，带来数据的爆发式增长，和对数据的实时计算需求。从 VR/AR游戏和云游戏、超清视频，到智能制造、远程医疗和自动驾驶，低时延应用正在各行各业涌现。YoMo 提供的低时延流式计算框架，致力于简化低时延应用开发成本，屏蔽底层技术细节，帮助用户简化开发过程，缩短开发周期，极大的减少了开发和维护成本。
+
 官网： [https://yomo.run](https://yomo.run/)
 
 For English：https://github.com/yomorun/yomo
