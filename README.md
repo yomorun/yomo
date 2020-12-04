@@ -1,8 +1,10 @@
 # YoMo ![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg)
 
-YoMo is an open-source project for building your own IoT edge computing applications. With YoMo, you can speed up the development of microservices-based applications, and your industrial IoT platform will take full advantage of the low latency and high bandwidth brought by 5G.
+YoMo is an open source Streaming Serverless Framework for building Low-latency Edge Computing applications. Built atop QUIC Transport Protocol and Functional Reactive Programming interface, made real-time data processing reliable, secure and easy.
 
 More info at [yomo.run](https://yomo.run/).
+
+[中文内容在Gitee](https://gitee.com/yomorun/yomo)
 
 ## Getting Started
 
