@@ -1,6 +1,6 @@
 # YoMo ![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg)
 
-YoMo is an open source Streaming Serverless Framework for building Low-latency Edge Computing applications. Built atop QUIC Transport Protocol and Functional Reactive Programming interface, made real-time data processing reliable, secure and easy.
+YoMo is an open-source Streaming Serverless Framework for building Low-latency Edge Computing applications. Built atop QUIC Transport Protocol and Functional Reactive Programming interface, it makes real-time data processing reliable, secure, and easy.
 
 More info at [yomo.run](https://yomo.run/).
 
