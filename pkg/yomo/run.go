@@ -158,7 +158,7 @@ type thermometerDataFormatter struct {
 func (w *thermometerDataFormatter) Write(b []byte) (int, error) {
 	var mold = []thermometerData{}
 
-	proto := codes.NewProtoCodec("0x20")
+	proto := codes.NewProtoCodec(packetutils.KeyOf("0x20"))
 	proto.UnmarshalStruct(b, &mold)
 	fmt.Printf("%v:\t %v\n", time.Now().Format("2006-01-02 15:04:05"), mold) // debug:
 	return 0, nil
