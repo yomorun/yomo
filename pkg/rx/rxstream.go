@@ -10,7 +10,7 @@ import (
 
 type RxStream interface {
 	rxgo.Iterable
-	AlertingConsole(opts ...rxgo.Option) RxStream
+	ConsoleLog(opts ...rxgo.Option) RxStream
 	TakeLastWithTime(timespan rxgo.Duration, opts ...rxgo.Option) RxStream
 	Timeout(timespan time.Duration, opts ...rxgo.Option) RxStream
 	All(predicate rxgo.Predicate, opts ...rxgo.Option) RxStream

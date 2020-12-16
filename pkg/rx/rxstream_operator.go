@@ -338,7 +338,7 @@ func (s *RxStreamImpl) Timeout(timespan time.Duration, opts ...rxgo.Option) RxSt
 	return CreateObservable(f, opts...)
 }
 
-func (s *RxStreamImpl) AlertingConsole(opts ...rxgo.Option) RxStream {
+func (s *RxStreamImpl) ConsoleLog(opts ...rxgo.Option) RxStream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
 		observe := s.Observe(opts...)
