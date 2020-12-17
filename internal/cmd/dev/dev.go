@@ -1,15 +1,15 @@
 package dev
 
 import (
-	"bytes"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/yomorun/yomo-codec-golang/pkg/codes"
-	"github.com/yomorun/yomo-codec-golang/pkg/packetutils"
 	"github.com/yomorun/yomo/internal/dispatcher"
+	"github.com/yomorun/yomo/internal/serverless"
+	"github.com/yomorun/yomo/pkg/quic"
 	"github.com/yomorun/yomo/pkg/rx"
 )
 
@@ -19,11 +19,6 @@ type Options struct {
 	Filename string
 	// Port is the port number of UDP host for Serverless function (default is 4242).
 	Port int
-}
-
-type ThermometerCodecData struct {
-	Temperature float32 `yomo:"0x11"`
-	Humidity    float32 `yomo:"0x12"`
 }
 
 var opts = &Options{}
@@ -38,30 +33,23 @@ var devCmd = &cobra.Command{
 			opts.Filename = args[1]
 		}
 
-		var sendingData = []ThermometerCodecData{
-			ThermometerCodecData{
-				Temperature: 11.1,
-				Humidity:    10.1,
-			},
-		}
-
-		proto := codes.NewProtoCodec(packetutils.KeyOf("0x20"))
-		sendingBuf, _ := proto.Marshal(sendingData)
-
-		reader := bytes.NewReader(sendingBuf)
-		stream := rx.FromReader(reader)
-		stream, err := dispatcher.AutoDispatcher(opts.Filename, stream)
+		// build the file first
+		log.Print("Building the Serverless Function File...")
+		file, err := serverless.Build(opts.Filename)
 		if err != nil {
-			fmt.Println("AutoDispatcher failure with error:", err)
+			log.Print("Build serverless file failure with err: ", err)
 			return
 		}
 
-		for customer := range stream.Observe() {
-			if customer.Error() {
-				fmt.Println((customer.E.Error()))
-				return
-			}
-			fmt.Println("cli get:", customer.V)
+		// serve the Serverless app
+		endpoint := fmt.Sprintf("127.0.0.1:%d", opts.Port)
+		handler := &quicServerHandler{
+			filePath: file,
+		}
+
+		err = serverless.Run(endpoint, handler)
+		if err != nil {
+			log.Print("Run the serverless failure with err: ", err)
 		}
 	},
 }
@@ -69,7 +57,7 @@ var devCmd = &cobra.Command{
 // Execute executes the run command.
 func Execute() {
 	if err := devCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		log.Print(err)
 		os.Exit(1)
 	}
 }
@@ -77,4 +65,26 @@ func Execute() {
 func init() {
 	devCmd.Flags().StringVar(&opts.Filename, "file-name", "app.go", "Serverless function file (default is app.go)")
 	devCmd.Flags().IntVar(&opts.Port, "port", 4242, "Port is the port number of UDP host for Serverless function (default is 4242)")
+}
+
+type quicServerHandler struct {
+	filePath string
+}
+
+func (s quicServerHandler) Read(st quic.Stream) error {
+	stream := rx.FromReader(st)
+	stream, err := dispatcher.AutoDispatcher(s.filePath, stream)
+	if err != nil {
+		log.Print("AutoDispatcher failure with error: ", err)
+		return err
+	}
+
+	for customer := range stream.Observe() {
+		if customer.Error() {
+			log.Print(customer.E.Error())
+			return customer.E
+		}
+		log.Print("cli get: ", customer.V)
+	}
+	return nil
 }
