@@ -12,11 +12,11 @@ func LoadHandle(filePath string) (plugin.Symbol, error) {
 		return nil, err
 	}
 
-	hanlder, err := plugin.Lookup("Hanlder")
+	handler, err := plugin.Lookup("Handler")
 	if err != nil {
 		fmt.Println("lookup plugin error", err)
 		return nil, err
 	}
 
-	return hanlder, nil
+	return handler, nil
 }

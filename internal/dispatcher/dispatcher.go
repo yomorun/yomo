@@ -17,9 +17,9 @@ func AutoDispatcher(appPath string, rxstream rx.RxStream) (rx.RxStream, error) {
 		return nil, err
 	}
 
-	hanlder, err := serverless.LoadHandle(sofile)
+	handler, err := serverless.LoadHandle(sofile)
 	if err != nil {
 		return nil, err
 	}
-	return Dispatcher(hanlder, rxstream), nil
+	return Dispatcher(handler, rxstream), nil
 }
