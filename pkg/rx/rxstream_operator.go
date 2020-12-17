@@ -4,11 +4,36 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/reactivex/rxgo/v2"
 )
+
+func FromReader(reader io.Reader) RxStream {
+	next := make(chan rxgo.Item)
+
+	go func() {
+		for {
+			buf := make([]byte, 3*1024)
+			n, err := reader.Read(buf)
+
+			if err != nil {
+				return
+			} else {
+				value := buf[:n]
+				next <- Of(value)
+			}
+		}
+	}()
+
+	return ConvertObservable(rxgo.FromChannel(next))
+}
+
+func Of(i interface{}) rxgo.Item {
+	return rxgo.Item{V: i}
+}
 
 type RxStreamImpl struct {
 	observable rxgo.Observable
