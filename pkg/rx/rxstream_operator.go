@@ -390,8 +390,8 @@ func (s *RxStreamImpl) StdOut(opts ...rxgo.Option) RxStream {
 	return CreateObservable(f, opts...)
 }
 
-func (s *RxStreamImpl) AuditTime(timespan rxgo.Duration, opts ...rxgo.Option) RxStream {
-	o := s.observable.BufferWithTime(timespan).Map(func(_ context.Context, i interface{}) (interface{}, error) {
+func (s *RxStreamImpl) AuditTime(timespan time.Duration, opts ...rxgo.Option) RxStream {
+	o := s.observable.BufferWithTime(rxgo.WithDuration(timespan)).Map(func(_ context.Context, i interface{}) (interface{}, error) {
 		return i.([]interface{})[len(i.([]interface{}))-1], nil
 	})
 	return ConvertObservable(o)
