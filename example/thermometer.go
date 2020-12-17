@@ -19,8 +19,8 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 	stream := rxstream.Y3Decoder("0x20", func() interface{} {
 		return &[]Thermometer{}
 	}).AuditTime(time.Second).Map(func(_ context.Context, i interface{}) (interface{}, error) {
-		fmt.Println("serverless get:", i, "string:", string(i.([]byte)))
-		return string(i.([]byte)), nil
+		fmt.Println("serverless get:", i, "value:", *value.(*[]Thermometer))
+		return *value.(*[]Thermometer), nil
 	}).Timeout(6 * time.Second).StdOut()
 
 	return stream
