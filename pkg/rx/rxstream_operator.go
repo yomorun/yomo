@@ -382,7 +382,7 @@ func (s *RxStreamImpl) StdOut(opts ...rxgo.Option) RxStream {
 				}
 
 				if !item.Error() {
-					fmt.Println("[Alerting]: ", item.V)
+					fmt.Println("[StdOut]: ", item.V)
 				}
 			}
 		}
