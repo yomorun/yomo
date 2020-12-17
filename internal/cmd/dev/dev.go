@@ -1,13 +1,14 @@
 package dev
 
 import (
+	"bytes"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/yomorun/yomo/internal/serverless"
+	"github.com/yomorun/yomo/internal/dispatcher"
+	"github.com/yomorun/yomo/pkg/rx"
 )
 
 // Options are the options for dev command.
@@ -30,21 +31,20 @@ var devCmd = &cobra.Command{
 			opts.Filename = args[1]
 		}
 
-		// build serverless file
-		log.Print("Building the Serverless Function File to serverless.go...")
-		file, err := serverless.BuildFuncFile(opts.Filename)
-		if err != nil {
-			log.Printf("Build serverless.go failure with error: %v", err)
-		} else {
-			log.Print("Build serverless.go successfully!")
-		}
+    reader := bytes.NewReader([]byte("1"))
+    stream := rx.FromReader(reader)
+    stream, err := dispatcher.AutoDispatcher(opts.Filename, stream)
+    if err != nil {
+      fmt.Println("AutoDispatcher failure with error:", err)
+    }
 
-		// run serverless.so and host the endpoint
-		endpoint := fmt.Sprintf("localhost:%d", opts.Port)
-		err = serverless.Run(file, endpoint)
-		if err != nil {
-			log.Printf("Run serverless.go failure with error: %v", err)
-		}
+    for customer := range stream.Observe() {
+      if customer.Error() {
+        fmt.Println((customer.E.Error()))
+        return
+      }
+      fmt.Println("cli get:", customer.V)
+    }
 	},
 }
 
