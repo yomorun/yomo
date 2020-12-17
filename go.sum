@@ -182,6 +182,8 @@ github.com/yomorun/yomo-codec-golang v0.4.0 h1:/6jQ5rhY5B6Q8qCk2zJF31WUsBkFsLHOF
 github.com/yomorun/yomo-codec-golang v0.4.0/go.mod h1:r/611MRnZbd31sd9wNzoDKxYy4Tnt8WHnC4iDTAW3NY=
 github.com/yomorun/yomo-codec-golang v1.0.0 h1:kZu4hcgE08PFQO80UPBw+ygjTfovzMlwOK40anQb6TY=
 github.com/yomorun/yomo-codec-golang v1.0.0/go.mod h1:jxcwjw+UU1l9W4yMgGkVyFvLyLqcjFZ88AZLBxyr5O4=
+github.com/yomorun/yomo-codec-golang v1.1.0 h1:ZpWBp2+JJi6LB5dctCMDJzdflgdOV+1AW8u6oiZruRg=
+github.com/yomorun/yomo-codec-golang v1.1.0/go.mod h1:jxcwjw+UU1l9W4yMgGkVyFvLyLqcjFZ88AZLBxyr5O4=
 go.opencensus.io v0.18.0/go.mod h1:vKdFvxhtzZ9onBp9VKHK8z/sRpBMnKAsufL7wlDrCOA=
 go.opencensus.io v0.22.2/go.mod h1:yxeiOL68Rb0Xd1ddK5vPZ/oVn4vY4Ynel7k9FzqtOIw=
 go4.org v0.0.0-20180809161055-417644f6feb5/go.mod h1:MkTOUMDaeVYJUOUsaDXIhWPZYa1yOyC1qaOBpL57BhE=
