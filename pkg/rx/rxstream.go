@@ -11,7 +11,7 @@ import (
 type RxStream interface {
 	rxgo.Iterable
 	StdOut(opts ...rxgo.Option) RxStream
-	TakeLastWithTime(timespan rxgo.Duration, opts ...rxgo.Option) RxStream
+	AuditTime(timespan rxgo.Duration, opts ...rxgo.Option) RxStream
 	Timeout(timespan time.Duration, opts ...rxgo.Option) RxStream
 	All(predicate rxgo.Predicate, opts ...rxgo.Option) RxStream
 	AverageFloat32(opts ...rxgo.Option) RxStream
