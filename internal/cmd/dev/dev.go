@@ -36,6 +36,7 @@ var devCmd = &cobra.Command{
     stream, err := dispatcher.AutoDispatcher(opts.Filename, stream)
     if err != nil {
       fmt.Println("AutoDispatcher failure with error:", err)
+      return
     }
 
     for customer := range stream.Observe() {
