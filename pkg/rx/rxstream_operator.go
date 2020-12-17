@@ -9,6 +9,7 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/reactivex/rxgo/v2"
+	"github.com/yomorun/yomo-codec-golang/pkg/codes"
 )
 
 func FromReader(reader io.Reader) RxStream {
@@ -397,6 +398,52 @@ func (s *RxStreamImpl) AuditTime(timespan time.Duration, opts ...rxgo.Option) Rx
 	return ConvertObservable(o)
 }
 
+func (s *RxStreamImpl) Y3Decoder(key string, mold func() interface{}, opts ...rxgo.Option) RxStream {
+	codec := codes.NewCodec(key)
+
+	f := func(ctx context.Context, next chan rxgo.Item) {
+		defer close(next)
+		observe := s.Observe(opts...)
+		done := false
+
+		go func() {
+			for !done {
+				select {
+				case <-ctx.Done():
+					done = true
+					return
+				case item, ok := <-observe:
+					if !ok {
+						done = true
+						return
+					}
+
+					if item.Error() {
+						done = true
+						return
+					} else {
+						codec.Decoder(item.V.([]byte))
+					}
+				}
+			}
+
+		}()
+
+		for !done {
+			value, _ := codec.Read(mold())
+
+			if value != nil {
+				if !rxgo.Of(value).SendContext(ctx, next) {
+					done = true
+				}
+			} else {
+				codec.Refresh(&infiniteWriter{})
+			}
+		}
+	}
+	return CreateObservable(f, opts...)
+}
+
 func CreateObservable(f func(ctx context.Context, next chan rxgo.Item), opts ...rxgo.Option) RxStream {
 	next := make(chan rxgo.Item)
 	ctx := context.Background()
@@ -406,4 +453,12 @@ func CreateObservable(f func(ctx context.Context, next chan rxgo.Item), opts ...
 
 func ConvertObservable(observable rxgo.Observable) RxStream {
 	return &RxStreamImpl{observable: observable}
+}
+
+type infiniteWriter struct {
+	io.Writer
+}
+
+func (i *infiniteWriter) Write(p []byte) (n int, err error) {
+	return len(p), nil
 }
