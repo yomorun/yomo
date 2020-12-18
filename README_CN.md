@@ -78,7 +78,8 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 
 - 全程基于 QUIC 协议传输数据，使用UDP协议替代TCP协议后，大幅提升了传输的稳定性和高通率
 - 自研的`yomo-codec`优化了数据解码性能
-- 全程基于Stream Computing模型，并简化面向Stream编程的复杂度
+- 全程基于 Rx 实现 Stream Computing 模型，并简化面向流式编程的复杂度
+- 通讯协议级别的“本质安全”
 
 ## 🦸 成为 YoMo 贡献者
 
