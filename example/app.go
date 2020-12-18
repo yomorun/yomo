@@ -14,7 +14,7 @@ var printer = func(_ context.Context, i interface{}) (interface{}, error) {
 	return value, nil
 }
 
-// Handler will handle data in RX way
+// Handler will handle data in Rx way
 func Handler(rxstream rx.RxStream) rx.RxStream {
 	stream := rxstream.
 		Y3Decoder("0x10", float32(0)).
