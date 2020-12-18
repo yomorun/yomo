@@ -17,7 +17,7 @@ For English：https://github.com/yomorun/yomo
 在线社区：🍖[discord/quic](https://discord.gg/CTH3wv9)  
 维护者：🦖[YoMo](https://yomo.run/)
 
-## QUIC Weekly - 20201209期
+### QUIC Weekly - 20201209期
 
 * Wireshark v3.4.1 发布，[增加了很多与 QUIC 相关的更新](https://www.wireshark.org/docs/relnotes/wireshark-3.4.1.html)
 * 📢 [draft-ietf-quic-manageability](https://quicwg.org/ops-drafts/draft-ietf-quic-manageability.html) 讨论了 QUIC 传输协议的可管理性，重点讨论影响 QUIC 流量的网络操作的注意事项，比如，要实现 QUIC 的负载均衡，建议参考该文
@@ -29,14 +29,14 @@ For English：https://github.com/yomorun/yomo
 * [PDF: 软件模拟器 QUIC 协议的性能分析](https://www.researchgate.net/publication/343651688_Performance_analysis_of_Google%27s_Quick_UDP_Internet_Connection_Protocol_under_Software_Simulator)
 * 📢 [draft-schinazi-masque-h3-datagram-01](https://tools.ietf.org/html/draft-schinazi-masque-h3-datagram-01) QUIC DATAGRAM 扩展为在 QUIC 上运行的应用协议提供了一种发送不可靠数据的机制，同时利用了QUIC的安全和拥塞控制特性。本文档定义了当在 QUIC 上运行的应用协议是 HTTP/3 时，如何通过在 frame payload 的开头添加一个标识符来使用 QUIC DATAGRAM frame。这允许HTTP消息使用不可靠的DATAGRAM帧来传递相关信息，确保这些帧与HTTP消息正确关联。
 
-## QUIC Weekly - 20201202期
+### QUIC Weekly - 20201202期
 
 * 📽 Robin Marx 的 [QUIC和HTTP/3的队头阻塞：细节](https://calendar.perfplanet.com/2020/head-of-line-blocking-in-quic-and-http-3-the-details/) [中文版Chinese Version](https://github.com/rmarx/holblocking-blogpost/blob/master/README_CN.md)
 * 📽 Hussein Nasser 的 [QUIC之路 - HTTP/1.1、HTTP/2、HTTP Pipelining、CRIME、HTTP/2队头阻塞、HPACK都错在了哪](https://www.youtube.com/watch?v=jp8lvtZa1a8)
 * [Netty的实验版开始支持QUIC](https://github.com/netty/netty-incubator-codec-quic) makes use of [quiche](https://github.com/cloudflare/quiche)
 * [GnuTLS 3.7.0 开始支持 QUIC 支持](https://blogs.gnome.org/dueno/whats-new-in-gnutls-3-7-0/)
 
-## QUIC Weekly - 20201125期
+### QUIC Weekly - 20201125期
 
 * Wikipedia 上更新了关于 HTTP/3 的章节：[HTTP/3 - Wikipedia](https://en.wikipedia.org/wiki/HTTP/3)
 * [IETF-QUIC 的标准依赖树](https://datatracker.ietf.org/wg/quic/deps/svg/)
@@ -49,7 +49,7 @@ For English：https://github.com/yomorun/yomo
 * [跟坚哥学QUIC系列：1 - 版本协商（Version Negotiation）](https://zhuanlan.zhihu.com/p/286328927)
 * 📈 [Builtwith 的 QUIC 应用状况监测](https://trends.builtwith.com/Server/QUIC)
 
-## QUIC Weekly - 20201118期
+### QUIC Weekly - 20201118期
 
 * 📽 Throwback to [乘坐时光机回到2016年7月QUIC工作组的成立会议](https://www.youtube.com/watch?v=aGvFuvmEufs)，这次会议是基于 Google 当时的实践经验，讨论 QUIC 是否应该成为 IETF 的标准
 * 📽 [Robin Marx 讲述 QUIC 和 HTTP/3 的基本功能，开放了他研究的问题及他再 qlog 和 qvis 这两个调试工具上的进展](https://www.youtube.com/watch?v=SuSpghHP0uI&feature=youtu.be)。
@@ -58,7 +58,7 @@ For English：https://github.com/yomorun/yomo
 * Fastly 的官方博客 [《QUIC 成熟时》](https://www.fastly.com/blog/maturing-of-quic)
 * 2020-11-16 发布的 [IETF-109 Slide: Tunneling Internet protocols inside QUIC](https://datatracker.ietf.org/meeting/109/materials/slides-109-intarea-tunneling-internet-protocols-inside-quic-00) Rev.00 版本的发布，意味着 QUIC 在整个现有网络生态兼容性的标准迈出的重要一步，这也是为 RFC 标准发布后整体推进而准备。
 
-## QUIC Weekly - 20201111期
+### QUIC Weekly - 20201111期
 
 * 📢 关于多路复用技术的WG值得关注 **MASQUE Working Group** [Multiplexed Application Substrate over QUIC Encryption (masque)](https://datatracker.ietf.org/wg/masque/about/)
 
@@ -118,7 +118,7 @@ For English：https://github.com/yomorun/yomo
 * [在 Haskell 中开发 QUIC 丢失检测和拥塞控制](https://kazu-yamamoto.hatenablog.jp/entry/2020/09/15/121613)。
 ---
 
-### IETF进展
+## IETF进展
 
 * [draft-ietf-quic-transport-32](https://datatracker.ietf.org/doc/draft-ietf-quic-transport/) QUIC: A UDP-Based Multiplexed and Secure Transport
 * [draft-ietf-quic-tls-32](https://datatracker.ietf.org/doc/draft-ietf-quic-tls/) Using TLS to Secure QUIC

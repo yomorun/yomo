@@ -4,7 +4,7 @@ YoMo is an open-source Streaming Serverless Framework for building Low-latency E
 
 More info at [https://yomo.run](https://yomo.run/?utm_source=github&utm_campaign=ossc) <a href="https://vercel.com/?utm_source=cella&utm_campaign=oss" target="_blank"><img src="https://raw.githubusercontent.com/abumalick/powered-by-vercel/master/powered-by-vercel.svg" height="25px" /></a>
 
-[中文内容在Gitee](https://gitee.com/yomorun/yomo)
+[中文](https://gitee.com/yomorun/yomo)
 
 ## Getting Started
 
