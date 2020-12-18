@@ -13,7 +13,7 @@ type RxStream interface {
 	Y3Decoder(key string, mold interface{}, opts ...rxgo.Option) RxStream
 	StdOut(opts ...rxgo.Option) RxStream
 	AuditTime(timespan time.Duration, opts ...rxgo.Option) RxStream
-	Timeout(timespan time.Duration, opts ...rxgo.Option) RxStream
+	DefaultIfEmptyWithTime(timespan time.Duration, defaultValue interface{}, opts ...rxgo.Option) RxStream
 	All(predicate rxgo.Predicate, opts ...rxgo.Option) RxStream
 	AverageFloat32(opts ...rxgo.Option) RxStream
 	AverageFloat64(opts ...rxgo.Option) RxStream

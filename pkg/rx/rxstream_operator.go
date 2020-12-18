@@ -2,7 +2,6 @@ package rx
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -340,7 +339,7 @@ func (s *RxStreamImpl) Observe(opts ...rxgo.Option) <-chan rxgo.Item {
 	return s.observable.Observe(opts...)
 }
 
-func (s *RxStreamImpl) Timeout(timespan time.Duration, opts ...rxgo.Option) RxStream {
+func (s *RxStreamImpl) DefaultIfEmptyWithTime(timespan time.Duration, defaultValue interface{}, opts ...rxgo.Option) RxStream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
 		observe := s.Observe(opts...)
@@ -349,13 +348,16 @@ func (s *RxStreamImpl) Timeout(timespan time.Duration, opts ...rxgo.Option) RxSt
 			select {
 			case <-ctx.Done():
 				return
-			case _, ok := <-observe:
+			case item, ok := <-observe:
 				if !ok {
 					return
 				}
 
+				if !item.SendContext(ctx, next) {
+					return
+				}
 			case <-time.After(timespan):
-				if !rxgo.Of(errors.New("timeout with "+timespan.String())).SendContext(ctx, next) {
+				if !rxgo.Of(defaultValue).SendContext(ctx, next) {
 					return
 				}
 			}
@@ -378,12 +380,12 @@ func (s *RxStreamImpl) StdOut(opts ...rxgo.Option) RxStream {
 					return
 				}
 
-				if !item.SendContext(ctx, next) {
-					return
-				}
-
 				if !item.Error() {
 					fmt.Println("[StdOut]: ", item.V)
+				}
+
+				if !item.SendContext(ctx, next) {
+					return
 				}
 			}
 		}

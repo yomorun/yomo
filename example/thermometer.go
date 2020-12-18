@@ -18,7 +18,7 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 		value := *i.(*Thermometer)
 		fmt.Println("serverless get:", i, "temperature:", value.Temperature, "humidity:", value.Humidity)
 		return value, nil
-	}).Timeout(6 * time.Second).StdOut()
+	}).DefaultIfEmptyWithTime(6*time.Second, "No data in 6s").StdOut()
 
 	return stream
 }
