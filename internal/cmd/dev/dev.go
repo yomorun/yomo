@@ -50,7 +50,7 @@ var devCmd = &cobra.Command{
 		}
 
 		// serve the Serverless app
-		endpoint := fmt.Sprintf("127.0.0.1:%d", opts.Port)
+		endpoint := fmt.Sprintf("0.0.0.0:%d", opts.Port)
 		quicHandler := &quicServerHandler{
 			serverlessHandle: slHandler,
 		}
@@ -80,7 +80,14 @@ type quicServerHandler struct {
 }
 
 func (s quicServerHandler) Read(st quic.Stream) error {
-	stream := rx.FromReader(st)
-	dispatcher.Dispatcher(s.serverlessHandle, stream)
+	stream := dispatcher.Dispatcher(s.serverlessHandle, rx.FromReader(st))
+
+	go func() {
+		for customer := range stream.Observe() {
+			if customer.Error() {
+				fmt.Println(customer.E.Error())
+			}
+		}
+	}()
 	return nil
 }
