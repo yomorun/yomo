@@ -3,10 +3,10 @@ module github.com/yomorun/yomo
 go 1.14
 
 require (
-	github.com/golang/protobuf v1.4.3 // indirect
-	github.com/lucas-clemente/quic-go v0.19.2
+	github.com/cenkalti/backoff/v4 v4.0.0
+	github.com/lucas-clemente/quic-go v0.19.3
+	github.com/reactivex/rxgo/v2 v2.4.0
+	github.com/spf13/cobra v1.1.1
 	github.com/yomorun/yomo-codec-golang v1.1.0
-	golang.org/x/crypto v0.0.0-20201124201722-c8d3bf9c5392 // indirect
-	golang.org/x/sys v0.0.0-20201119102817-f84b799fce68 // indirect
-	google.golang.org/protobuf v1.25.0 // indirect
+	golang.org/x/tools v0.0.0-20191125144606-a911d9008d1f // indirect
 )
