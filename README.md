@@ -22,8 +22,8 @@ mkdir yomo-demo && cd $_ && touch app.go
 
 Write your `app.go` code:
 
-``` golang 
-ppackage main
+```go
+package main
 
 import (
 	"context"
