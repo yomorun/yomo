@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"plugin"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -35,19 +36,26 @@ var devCmd = &cobra.Command{
 
 		// build the file first
 		log.Print("Building the Serverless Function File...")
-		file, err := serverless.Build(opts.Filename)
+		soFile, err := serverless.Build(opts.Filename)
 		if err != nil {
 			log.Print("Build serverless file failure with err: ", err)
 			return
 		}
 
-		// serve the Serverless app
-		endpoint := fmt.Sprintf("127.0.0.1:%d", opts.Port)
-		handler := &quicServerHandler{
-			filePath: file,
+		// load handle
+		slHandler, err := serverless.LoadHandle(soFile)
+		if err != nil {
+			log.Print("Load handle from .so file failure with err: ", err)
+			return
 		}
 
-		err = serverless.Run(endpoint, handler)
+		// serve the Serverless app
+		endpoint := fmt.Sprintf("127.0.0.1:%d", opts.Port)
+		quicHandler := &quicServerHandler{
+			serverlessHandle: slHandler,
+		}
+
+		err = serverless.Run(endpoint, quicHandler)
 		if err != nil {
 			log.Print("Run the serverless failure with err: ", err)
 		}
@@ -68,23 +76,11 @@ func init() {
 }
 
 type quicServerHandler struct {
-	filePath string
+	serverlessHandle plugin.Symbol
 }
 
 func (s quicServerHandler) Read(st quic.Stream) error {
 	stream := rx.FromReader(st)
-	stream, err := dispatcher.AutoDispatcher(s.filePath, stream)
-	if err != nil {
-		log.Print("AutoDispatcher failure with error: ", err)
-		return err
-	}
-
-	for customer := range stream.Observe() {
-		if customer.Error() {
-			log.Print(customer.E.Error())
-			return customer.E
-		}
-		log.Print("cli get: ", customer.V)
-	}
+	dispatcher.Dispatcher(s.serverlessHandle, stream)
 	return nil
 }
