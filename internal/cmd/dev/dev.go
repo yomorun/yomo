@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/yomorun/yomo-codec-golang/pkg/codes"
+	"github.com/yomorun/yomo-codec-golang/pkg/packetutils"
 	"github.com/yomorun/yomo/internal/dispatcher"
 	"github.com/yomorun/yomo/pkg/rx"
 )
@@ -17,6 +19,11 @@ type Options struct {
 	Filename string
 	// Port is the port number of UDP host for Serverless function (default is 4242).
 	Port int
+}
+
+type ThermometerCodecData struct {
+	Temperature float32 `yomo:"0x11"`
+	Humidity    float32 `yomo:"0x12"`
 }
 
 var opts = &Options{}
@@ -31,21 +38,31 @@ var devCmd = &cobra.Command{
 			opts.Filename = args[1]
 		}
 
-    reader := bytes.NewReader([]byte("1"))
-    stream := rx.FromReader(reader)
-    stream, err := dispatcher.AutoDispatcher(opts.Filename, stream)
-    if err != nil {
-      fmt.Println("AutoDispatcher failure with error:", err)
-      return
-    }
+		var sendingData = []ThermometerCodecData{
+			ThermometerCodecData{
+				Temperature: 11.1,
+				Humidity:    10.1,
+			},
+		}
 
-    for customer := range stream.Observe() {
-      if customer.Error() {
-        fmt.Println((customer.E.Error()))
-        return
-      }
-      fmt.Println("cli get:", customer.V)
-    }
+		proto := codes.NewProtoCodec(packetutils.KeyOf("0x20"))
+		sendingBuf, _ := proto.Marshal(sendingData)
+
+		reader := bytes.NewReader(sendingBuf)
+		stream := rx.FromReader(reader)
+		stream, err := dispatcher.AutoDispatcher(opts.Filename, stream)
+		if err != nil {
+			fmt.Println("AutoDispatcher failure with error:", err)
+			return
+		}
+
+		for customer := range stream.Observe() {
+			if customer.Error() {
+				fmt.Println((customer.E.Error()))
+				return
+			}
+			fmt.Println("cli get:", customer.V)
+		}
 	},
 }
 

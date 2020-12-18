@@ -398,7 +398,7 @@ func (s *RxStreamImpl) AuditTime(timespan time.Duration, opts ...rxgo.Option) Rx
 	return ConvertObservable(o)
 }
 
-func (s *RxStreamImpl) Y3Decoder(key string, mold func() interface{}, opts ...rxgo.Option) RxStream {
+func (s *RxStreamImpl) Y3Decoder(key string, mold interface{}, opts ...rxgo.Option) RxStream {
 	codec := codes.NewCodec(key)
 
 	f := func(ctx context.Context, next chan rxgo.Item) {
@@ -430,7 +430,7 @@ func (s *RxStreamImpl) Y3Decoder(key string, mold func() interface{}, opts ...rx
 		}()
 
 		for !done {
-			value, _ := codec.Read(mold())
+			value, _ := codec.Read(mold)
 
 			if value != nil {
 				if !rxgo.Of(value).SendContext(ctx, next) {
