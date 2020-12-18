@@ -4,17 +4,17 @@ YoMo is an open-source Streaming Serverless Framework for building Low-latency E
 
 More info at [https://yomo.run](https://yomo.run/?utm_source=github&utm_campaign=ossc) <a href="https://vercel.com/?utm_source=cella&utm_campaign=oss" target="_blank"><img src="https://raw.githubusercontent.com/abumalick/powered-by-vercel/master/powered-by-vercel.svg" height="25px" /></a>
 
-[🇨🇳中文](https://gitee.com/yomorun/yomo)
+[🇨🇳 简体中文](https://docs.yomo.run/zh)
 
 ## Getting Started
 
-### 1. Install yomo CLI
+### 1. Install CLI
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/yomorun/install/HEAD/install.sh)"
 ```
 
-### 2. Create app.go
+### 2. Create your serverless code
 
 ```bash
 mkdir yomo-demo && cd $_ && touch app.go
@@ -22,7 +22,7 @@ mkdir yomo-demo && cd $_ && touch app.go
 
 Write your `app.go` code:
 
-```go 
+``` golang 
 ppackage main
 
 import (
@@ -62,20 +62,19 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 ```
 Congratulations! You have done your first YoMo application.
 
-### YoMo focuses on：
+## Focuses on computings out of data center
 
-- Industrial IoT:
-	- On the IoT device side, real-time communication with a latency of less than 10ms is required.
-	- On the smart device side, AI performing with a high hash rate is required.
-- YoMo consists of 2 parts：
-	- `yomo-edge`: deployed on company intranet; responsible for receiving device data and executing each yomo-plugin in turn according to the configuration
-	- `yomo-plugin`: can be deployed on public cloud, private cloud, and `yomo-edge-server`
+- Latency-sensitive applications
+- Networking situation with packet loss or high latency
+- Handling continuous high frequency generated data with stream-processing
+- Building Complex systems with Streaming-Serverless architecture
 
-### Why YoMo
+## Why YoMo
 
-- Based on QUIC (Quick UDP Internet Connection) protocol for data transmission, which uses the User Datagram Protocol (UDP) as its basis instead of the Transmission Control Protocol (TCP); significantly improves the stability and throughput of data transmission.
+- Based on QUIC (Quick UDP Internet Connection) protocol for data transmission, which uses the User Datagram Protocol (UDP) as its basis instead of the Transmission Control Protocol (TCP); significantly improves the stability and throughput of data transmission. Especially for cellular networks like 5G and WiFi-6
 - A self-developed `yomo-codec` optimizes decoding performance. For more information, visit [its own repository](https://github.com/yomorun/yomo-codec) on GitHub.
 - Based on stream computing, which improves speed and accuracy when dealing with data handling and analysis; simplifies the complexity of stream-oriented programming.
+- Security start from UDP data packet.
 
 ## Contributing
 
