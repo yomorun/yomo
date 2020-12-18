@@ -10,7 +10,7 @@ More info at [https://yomo.run](https://yomo.run/?utm_source=github&utm_campaign
 
 🇨🇳 [简体中文](https://docs.yomo.run/zh)
 
-## Getting Started
+## 🚀 Getting Started
 
 ### 1. Install CLI
 
@@ -66,33 +66,30 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 ```
 Congratulations! You have done your first YoMo application.
 
-## Focuses on computings out of data center
+## 🎯 Focuses on computings out of data center
 
-- Latency-sensitive applications
-- Networking situation with packet loss or high latency
-- Handling continuous high frequency generated data with stream-processing
-- Building Complex systems with Streaming-Serverless architecture
+- Latency-sensitive applications.
+- Networking situation with packet loss or high latency.
+- Handling continuous high frequency generated data with stream-processing.
+- Building Complex systems with Streaming-Serverless architecture.
 
-## Why YoMo
+## 🌟 Why YoMo
 
-- Based on QUIC (Quick UDP Internet Connection) protocol for data transmission, which uses the User Datagram Protocol (UDP) as its basis instead of the Transmission Control Protocol (TCP); significantly improves the stability and throughput of data transmission. Especially for cellular networks like 5G and WiFi-6
+- Based on QUIC (Quick UDP Internet Connection) protocol for data transmission, which uses the User Datagram Protocol (UDP) as its basis instead of the Transmission Control Protocol (TCP); significantly improves the stability and throughput of data transmission. Especially for cellular networks like 5G.
 - A self-developed `yomo-codec` optimizes decoding performance. For more information, visit [its own repository](https://github.com/yomorun/yomo-codec) on GitHub.
 - Based on stream computing, which improves speed and accuracy when dealing with data handling and analysis; simplifies the complexity of stream-oriented programming.
-- Security start from UDP data packet.
+- Secure-by-default from transport protocol.
 
-## Contributing
+## 🦸 Contributing
 
 First off, thank you for considering making contributions. It's people like you that make YoMo better. There are many ways in which you can participate in the project, for example:
 
 - File a [bug report](https://github.com/yomorun/yomo/issues/new?assignees=&labels=bug&template=bug_report.md&title=%5BBUG%5D). Be sure to include information like what version of YoMo you are using, what your operating system is, and steps to recreate the bug.
-
 - Suggest a new feature.
-
 - Read our [contributing guidelines](https://github.com/yomorun/yomo/blob/master/CONTRIBUTING.md) to learn about what types of contributions we are looking for.
-
 - We have also adopted a [code of conduct](https://github.com/yomorun/yomo/blob/master/CODE_OF_CONDUCT.md) that we expect project participants to adhere to.
 
-## Feedback
+## 🤹🏻‍♀️ Feedback
 
 Any questions or good ideas, please feel free to come to our [Discussion](https://github.com/yomorun/yomo/discussions). Any feedback would be greatly appreciated!
 
