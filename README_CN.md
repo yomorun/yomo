@@ -93,7 +93,7 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 
 - 当然我们也有 [Code of Conduct](https://gitee.com/yomorun/yomo/blob/master/CODE_OF_CONDUCT.md)
 
-## 🤹🏻‍♀️ 联系
+## 🤹🏻‍♀️ 反馈和建议
 
 任何时候，建议和意见都可以写在 [Discussion](https://github.com/yomorun/yomo/discussions)，每一条反馈都一定会被社区感谢！
 
