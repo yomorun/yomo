@@ -9,3 +9,5 @@ fmt:
 
 vet:
 	$(GO) vet $(VETPACKAGES)
+build:
+	$(GO) build -o bin/yomo -ldflags "-s -w" ./cmd/yomo
