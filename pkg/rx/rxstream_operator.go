@@ -441,6 +441,8 @@ func (s *RxStreamImpl) Y3Decoder(key string, mold interface{}, opts ...rxgo.Opti
 			} else {
 				codec.Refresh(&infiniteWriter{})
 			}
+
+			time.Sleep(5 * time.Millisecond)
 		}
 	}
 	return CreateObservable(f, opts...)
