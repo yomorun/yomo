@@ -21,7 +21,7 @@ func NewCmdDev() *cobra.Command {
 
 	var cmd = &cobra.Command{
 		Use:   "dev",
-		Short: "Dev a YoMo Serverless Function.",
+		Short: "Dev a YoMo Serverless Function",
 		Long:  "Dev a YoMo Serverless Function with mocking yomo-source data from YCloud.",
 		Run: func(cmd *cobra.Command, args []string) {
 			slHandler, err := buildAndLoadHandler(&opts.baseOptions, args)
@@ -42,8 +42,8 @@ func NewCmdDev() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.Filename, "file-name", "app.go", "Serverless function file (default is app.go)")
-	cmd.Flags().IntVar(&opts.Port, "port", 4242, "Port is the port number of UDP host for Serverless function (default is 4242)")
+	cmd.Flags().StringVarP(&opts.Filename, "file-name", "f", "app.go", "Serverless function file (default is app.go)")
+	cmd.Flags().IntVarP(&opts.Port, "port",  "p", 4242, "Port is the port number of UDP host for Serverless function (default is 4242)")
 
 	return cmd
 }

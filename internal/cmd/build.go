@@ -28,7 +28,7 @@ func NewCmdBuild() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.Filename, "file-name", "app.go", "Serverless function file (default is app.go)")
+	cmd.Flags().StringVarP(&opts.Filename, "file-name", "f", "app.go", "Serverless function file (default is app.go)")
 
 	return cmd
 }
