@@ -43,7 +43,7 @@ func (s *quicGoServer) ListenAndServe(ctx context.Context, addr string) error {
 	}
 
 	// serve
-	log.Print("QUIC Server listens on ", addr)
+	log.Print("✅ Listening on ", addr)
 	for {
 		session, err := listener.Accept(context.Background())
 		if err != nil {
