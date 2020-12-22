@@ -4,9 +4,13 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"plugin"
 
 	"github.com/spf13/cobra"
+	"github.com/yomorun/yomo/internal/dispatcher"
 	"github.com/yomorun/yomo/internal/serverless"
+	"github.com/yomorun/yomo/pkg/quic"
+	"github.com/yomorun/yomo/pkg/rx"
 )
 
 // RunOptions are the options for run command.
@@ -54,4 +58,25 @@ func NewCmdRun() *cobra.Command {
 	cmd.Flags().IntVarP(&opts.Port, "port", "p", 4242, "Port is the port number of UDP host for Serverless function (default is 4242)")
 
 	return cmd
+}
+
+type quicServerHandler struct {
+	serverlessHandle plugin.Symbol
+}
+
+func (s quicServerHandler) Listen() error {
+	return nil
+}
+
+func (s quicServerHandler) Read(st quic.Stream) error {
+	stream := dispatcher.Dispatcher(s.serverlessHandle, rx.FromReader(st))
+
+	go func() {
+		for customer := range stream.Observe() {
+			if customer.Error() {
+				fmt.Println(customer.E.Error())
+			}
+		}
+	}()
+	return nil
 }
