@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"log"
 	"math/big"
 	"net"
@@ -44,6 +45,11 @@ func (s *quicGoServer) ListenAndServe(ctx context.Context, addr string) error {
 
 	// serve
 	log.Print("✅ Listening on ", addr)
+
+	if s.handler != nil {
+		s.handler.Listen()
+	}
+
 	for {
 		session, err := listener.Accept(context.Background())
 		if err != nil {
@@ -61,6 +67,44 @@ func (s *quicGoServer) ListenAndServe(ctx context.Context, addr string) error {
 			log.Print("handler isn't set in QUIC server")
 		}
 	}
+}
+
+type quicGoClient struct {
+	session quicGo.Session
+}
+
+func (c *quicGoClient) Connect(addr string) error {
+	tlsConf := &tls.Config{
+		InsecureSkipVerify: true,
+		NextProtos:         []string{"hq-29"},
+	}
+
+	session, err := quicGo.DialAddr(addr, tlsConf, &quicGo.Config{
+		MaxIdleTimeout:        time.Minute * 10080,
+		KeepAlive:             true,
+		MaxIncomingStreams:    1000000,
+		MaxIncomingUniStreams: 1000000,
+	})
+
+	if err != nil {
+		return err
+	}
+
+	c.session = session
+	return nil
+}
+
+func (c *quicGoClient) CreateStream(ctx context.Context) (Stream, error) {
+	if c.session == nil {
+		return nil, errors.New("session is nil")
+	}
+
+	stream, err := c.session.OpenStreamSync(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return stream, nil
 }
 
 // generateTLSConfig Setup a bare-bones TLS config for the server

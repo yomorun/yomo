@@ -1,15 +1,11 @@
 package cmd
 
 import (
-	"fmt"
 	"log"
 	"plugin"
 	"strings"
 
-	"github.com/yomorun/yomo/internal/dispatcher"
 	"github.com/yomorun/yomo/internal/serverless"
-	"github.com/yomorun/yomo/pkg/quic"
-	"github.com/yomorun/yomo/pkg/rx"
 )
 
 type baseOptions struct {
@@ -48,21 +44,4 @@ func buildAndLoadHandler(opts *baseOptions, args []string) (plugin.Symbol, error
 		return nil, err
 	}
 	return slHandler, nil
-}
-
-type quicServerHandler struct {
-	serverlessHandle plugin.Symbol
-}
-
-func (s quicServerHandler) Read(st quic.Stream) error {
-	stream := dispatcher.Dispatcher(s.serverlessHandle, rx.FromReader(st))
-
-	go func() {
-		for customer := range stream.Observe() {
-			if customer.Error() {
-				fmt.Println(customer.E.Error())
-			}
-		}
-	}()
-	return nil
 }

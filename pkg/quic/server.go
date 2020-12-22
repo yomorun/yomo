@@ -2,7 +2,7 @@ package quic
 
 import "context"
 
-// Server is the QUIC server
+// Server is the QUIC server.
 type Server interface {
 	// SetHandler sets QUIC callbacks.
 	SetHandler(handler ServerHandler)
@@ -14,10 +14,11 @@ type Server interface {
 
 // ServerHandler defines interface to handle the QUIC stream callbacks.
 type ServerHandler interface {
+	Listen() error
 	Read(st Stream) error
 }
 
-// NewServer inits the default implementation of QUIC server
+// NewServer inits the default implementation of QUIC server.
 func NewServer(handle ServerHandler) Server {
 	server := &quicGoServer{}
 	server.SetHandler(handle)

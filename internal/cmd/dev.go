@@ -3,9 +3,14 @@ package cmd
 import (
 	"fmt"
 	"log"
+	"plugin"
 
 	"github.com/spf13/cobra"
+	"github.com/yomorun/yomo/internal/dispatcher"
+	"github.com/yomorun/yomo/internal/mocker"
 	"github.com/yomorun/yomo/internal/serverless"
+	"github.com/yomorun/yomo/pkg/quic"
+	"github.com/yomorun/yomo/pkg/rx"
 )
 
 // DevOptions are the options for dev command.
@@ -31,8 +36,9 @@ func NewCmdDev() *cobra.Command {
 
 			// serve the Serverless app
 			endpoint := fmt.Sprintf("0.0.0.0:%d", opts.Port)
-			quicHandler := &quicServerHandler{
+			quicHandler := &quicDevHandler{
 				serverlessHandle: slHandler,
+				serverAddr:       fmt.Sprintf("localhost:%d", opts.Port),
 			}
 
 			err = serverless.Run(endpoint, quicHandler)
@@ -46,4 +52,27 @@ func NewCmdDev() *cobra.Command {
 	cmd.Flags().IntVarP(&opts.Port, "port", "p", 4242, "Port is the port number of UDP host for Serverless function (default is 4242)")
 
 	return cmd
+}
+
+type quicDevHandler struct {
+	serverlessHandle plugin.Symbol
+	serverAddr       string
+}
+
+func (s quicDevHandler) Listen() error {
+	err := mocker.EmitMockDataFromCloud(s.serverAddr)
+	return err
+}
+
+func (s quicDevHandler) Read(st quic.Stream) error {
+	stream := dispatcher.Dispatcher(s.serverlessHandle, rx.FromReader(st))
+
+	go func() {
+		for customer := range stream.Observe() {
+			if customer.Error() {
+				fmt.Println(customer.E.Error())
+			}
+		}
+	}()
+	return nil
 }
