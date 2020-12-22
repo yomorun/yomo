@@ -11,6 +11,7 @@ func main() {
 		cmd.NewCmdBuild(),
 		cmd.NewCmdDev(),
 		cmd.NewCmdRun(),
+		cmd.NewCmdVersion(),
 	)
 	rootCmd.Execute()
 }

@@ -43,7 +43,7 @@ func NewCmdDev() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&opts.Filename, "file-name", "f", "app.go", "Serverless function file (default is app.go)")
-	cmd.Flags().IntVarP(&opts.Port, "port",  "p", 4242, "Port is the port number of UDP host for Serverless function (default is 4242)")
+	cmd.Flags().IntVarP(&opts.Port, "port", "p", 4242, "Port is the port number of UDP host for Serverless function (default is 4242)")
 
 	return cmd
 }
