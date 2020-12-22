@@ -5,7 +5,7 @@ import (
 	"plugin"
 )
 
-func LoadHandle(filePath string) (plugin.Symbol, error) {
+func LoadHandler(filePath string) (plugin.Symbol, error) {
 	plugin, err := plugin.Open(filePath)
 	if err != nil {
 		fmt.Println("open plugin error", err)

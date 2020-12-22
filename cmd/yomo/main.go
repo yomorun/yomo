@@ -1,9 +1,16 @@
 package main
 
 import (
-	"github.com/yomorun/yomo/internal/cmd/dev"
+	"github.com/spf13/cobra"
+	"github.com/yomorun/yomo/internal/cmd"
 )
 
 func main() {
-	dev.Execute()
+	rootCmd := &cobra.Command{Use: "yomo"}
+	rootCmd.AddCommand(
+		cmd.NewCmdBuild(),
+		cmd.NewCmdDev(),
+		cmd.NewCmdRun(),
+	)
+	rootCmd.Execute()
 }
