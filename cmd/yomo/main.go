@@ -6,7 +6,10 @@ import (
 )
 
 func main() {
-	rootCmd := &cobra.Command{Use: "yomo"}
+	rootCmd := &cobra.Command{
+		Use: "yomo",
+		Version: cmd.GetVersion(),
+	}
 	rootCmd.AddCommand(
 		cmd.NewCmdInit(),
 		cmd.NewCmdBuild(),
