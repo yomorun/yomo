@@ -8,6 +8,7 @@ import (
 func main() {
 	rootCmd := &cobra.Command{Use: "yomo"}
 	rootCmd.AddCommand(
+		cmd.NewCmdInit(),
 		cmd.NewCmdBuild(),
 		cmd.NewCmdDev(),
 		cmd.NewCmdRun(),
