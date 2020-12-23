@@ -14,11 +14,7 @@ func NewCmdVersion() *cobra.Command {
 		Use:    "version",
 		Hidden: true,
 		Run: func(cmd *cobra.Command, args []string) {
-			version := strings.TrimPrefix(Version, "v")
-			if Date != "" {
-				version = fmt.Sprintf("%s (%s)", version, Date)
-			}
-			fmt.Println("yomo version", version)
+			fmt.Println("yomo version", GetVersion())
 		},
 	}
 
@@ -37,4 +33,13 @@ func init() {
 			Version = "v" + info.Main.Version
 		}
 	}
+}
+
+// GetVersion gets the version of CLI.
+func GetVersion() string {
+	version := strings.TrimPrefix(Version, "v")
+	if Date != "" {
+		version = fmt.Sprintf("%s (%s)", version, Date)
+	}
+	return version
 }
