@@ -401,27 +401,23 @@ func (s *RxStreamImpl) AuditTime(timespan time.Duration, opts ...rxgo.Option) Rx
 }
 
 func (s *RxStreamImpl) Y3Decoder(key string, mold interface{}, opts ...rxgo.Option) RxStream {
-	codec := codes.NewCodec(key)
+	codec, inform := codes.NewCodecWithInform(key)
 
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
 		observe := s.Observe(opts...)
-		done := false
 
 		go func() {
-			for !done {
+			for {
 				select {
 				case <-ctx.Done():
-					done = true
 					return
 				case item, ok := <-observe:
 					if !ok {
-						done = true
 						return
 					}
 
 					if item.Error() {
-						done = true
 						return
 					} else {
 						codec.Decoder(item.V.([]byte))
@@ -431,18 +427,25 @@ func (s *RxStreamImpl) Y3Decoder(key string, mold interface{}, opts ...rxgo.Opti
 
 		}()
 
-		for !done {
-			value, _ := codec.Read(mold)
-
-			if value != nil {
-				if !rxgo.Of(value).SendContext(ctx, next) {
-					done = true
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case _, ok := <-inform:
+				if !ok {
+					return
 				}
-			} else {
-				codec.Refresh(&infiniteWriter{})
-			}
+				value, _ := codec.Read(mold)
 
-			time.Sleep(5 * time.Millisecond)
+				if value != nil {
+					if !rxgo.Of(value).SendContext(ctx, next) {
+						return
+					}
+				} else {
+					codec.Refresh(&infiniteWriter{})
+				}
+
+			}
 		}
 	}
 	return CreateObservable(f, opts...)
