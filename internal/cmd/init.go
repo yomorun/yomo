@@ -3,6 +3,7 @@ package cmd
 import (
 	"log"
 	"os"
+	"os/exec"
 
 	"github.com/spf13/cobra"
 )
@@ -59,10 +60,21 @@ func NewCmdInit() *cobra.Command {
 				return
 			}
 
+			// go mod
+			modCmd := exec.Command("go", "mod", "init", opts.appName)
+			err = modCmd.Run()
+			if err != nil {
+				log.Print("❌ Generate go.mod file failure with the error: ", err)
+				return
+			}
+			// download dependencies
+			modCmd = exec.Command("go", "mod", "tidy")
+			modCmd.Run()
+
 			log.Print("✅ Congratulations! You have initialized the serverless app successfully.")
 			log.Print("🎉 You can enjoy the YoMo Serverless in the following steps:")
-			log.Printf("1. `cd %s`", opts.appName)
-			log.Print("2. `yomo dev`")
+			log.Printf("1. cd %s", opts.appName)
+			log.Print("2. yomo dev")
 		},
 	}
 
