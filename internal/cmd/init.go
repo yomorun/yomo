@@ -72,9 +72,7 @@ func NewCmdInit() *cobra.Command {
 			modCmd.Run()
 
 			log.Print("✅ Congratulations! You have initialized the serverless app successfully.")
-			log.Print("🎉 You can enjoy the YoMo Serverless in the following steps:")
-			log.Printf("1. cd %s", opts.appName)
-			log.Print("2. yomo dev")
+			log.Print("🎉 You can enjoy the YoMo Serverless via the command: yomo dev")
 		},
 	}
 
