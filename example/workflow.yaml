@@ -1,0 +1,15 @@
+name: Service
+host: localhost
+port: 9999
+sources:
+  - name: Emitter server
+    host: emitter.cella.fun
+    port: 11521
+actions:
+  - name: Noise Serverless
+    host: localhost
+    port: 4242
+sinks:
+  - name: Mock DB
+    host: localhost
+    port: 4141

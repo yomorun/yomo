@@ -7,6 +7,7 @@ import (
 	"plugin"
 
 	"github.com/spf13/cobra"
+	"github.com/yomorun/yomo-codec-golang/pkg/codes"
 	"github.com/yomorun/yomo/internal/dispatcher"
 	"github.com/yomorun/yomo/internal/serverless"
 	"github.com/yomorun/yomo/pkg/quic"
@@ -15,15 +16,16 @@ import (
 
 // RunOptions are the options for run command.
 type RunOptions struct {
-	// Filename is the name of Serverless function file (default is app.go).
-	Filename string
+	baseOptions
 	// Port is the port number of UDP host for Serverless function (default is 4242).
 	Port int
+
+	mockSink bool
 }
 
 // NewCmdRun creates a new command run.
 func NewCmdRun() *cobra.Command {
-	var opts = &DevOptions{}
+	var opts = &RunOptions{}
 
 	var cmd = &cobra.Command{
 		Use:   "run",
@@ -45,6 +47,7 @@ func NewCmdRun() *cobra.Command {
 			endpoint := fmt.Sprintf("0.0.0.0:%d", opts.Port)
 			quicHandler := &quicServerHandler{
 				serverlessHandle: slHandler,
+				mockSink:         opts.mockSink,
 			}
 
 			err = serverless.Run(endpoint, quicHandler)
@@ -56,17 +59,21 @@ func NewCmdRun() *cobra.Command {
 
 	cmd.Flags().StringVarP(&opts.Filename, "file-name", "f", "app.go", "Serverless function file (default is app.go)")
 	cmd.Flags().IntVarP(&opts.Port, "port", "p", 4242, "Port is the port number of UDP host for Serverless function (default is 4242)")
+	cmd.Flags().BoolVar(&opts.mockSink, "mock-sink", false, "Indicates whether the Serverless is a mock sink")
 
 	return cmd
 }
 
 type quicServerHandler struct {
 	serverlessHandle plugin.Symbol
+	mockSink         bool
 }
 
 func (s quicServerHandler) Listen() error {
 	return nil
 }
+
+var protoCodec = codes.NewProtoCodec(0x10)
 
 func (s quicServerHandler) Read(st quic.Stream) error {
 	stream := dispatcher.Dispatcher(s.serverlessHandle, rx.FromReader(st))
@@ -75,6 +82,15 @@ func (s quicServerHandler) Read(st quic.Stream) error {
 		for customer := range stream.Observe() {
 			if customer.Error() {
 				fmt.Println(customer.E.Error())
+			} else if customer.V != nil {
+				// HACK
+				if s.mockSink {
+					st.Write([]byte("Finish sink!"))
+				} else {
+					// use Y3 codec to encode the data
+					sendingBuf, _ := protoCodec.Marshal(customer.V)
+					st.Write(sendingBuf)
+				}
 			}
 		}
 	}()

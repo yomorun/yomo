@@ -18,7 +18,7 @@ func NewCmdInit() *cobra.Command {
 	var opts = &initOptions{}
 
 	var cmd = &cobra.Command{
-		Use:    "init",
+		Use:   "init",
 		Short: "Initialize a YoMo Serverless Application",
 		Long:  "Initialize a YoMo Serverless Application.",
 		Run: func(cmd *cobra.Command, args []string) {
@@ -43,7 +43,7 @@ func NewCmdInit() *cobra.Command {
 			// change working directory by app name.
 			err = os.Chdir(opts.appName)
 			if err != nil {
-				log.Print("❌ Change the working directory into " + opts.appName + " failure with the error: ", err)
+				log.Print("❌ Change the working directory into "+opts.appName+" failure with the error: ", err)
 				return
 			}
 
