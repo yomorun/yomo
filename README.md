@@ -18,7 +18,27 @@ More info at 🦖[https://yomo.run]
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/yomorun/install/HEAD/install.sh)"
 ```
 
-### 2. Create your serverless app
+### 2. Add CLI to $PATH
+
+for current session:
+
+```bash
+export PATH=$PATH:~/.yomo
+```
+
+for `zsh` users
+
+```bash
+echo "path+=~/.yomo" >> .zshrc
+```
+
+for `bash` users
+
+```bash
+echo 'export PATH="~/.yomo:$PATH"' >> ~/.bashrc
+```
+
+### 3. Create your serverless app
 
 ```bash
 yomo init yomo-demo && cd $_
@@ -63,7 +83,7 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 }
 ```
 
-### 3. Build and run
+### 4. Build and run
 
 1. Run `yomo dev` from the terminal. you will see the following message:
 
