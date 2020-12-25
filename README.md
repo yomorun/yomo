@@ -18,13 +18,21 @@ More info at 🦖[https://yomo.run]
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/yomorun/install/HEAD/install.sh)"
 ```
 
-### 2. Create your serverless code
+### 2. Create your serverless app
 
 ```bash
-mkdir yomo-demo && cd $_ && touch app.go
+yomo init yomo-demo && cd $_
 ```
 
-Write your `app.go` code:
+You will see the following message:
+
+```bash
+(10:20:26 ~/Downloads)──> yomo init yomo-demo && cd $_
+2020/12/25 10:20:26 ✅ Congratulations! You have initialized the serverless app successfully.
+2020/12/25 10:20:26 🎉 You can enjoy the YoMo Serverless via the command: yomo dev
+```
+
+CLI will automatically create the `app.go`:
 
 ```go
 package main
@@ -60,10 +68,15 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 1. Run `yomo dev` from the terminal. you will see the following message:
 
 ```bash
-(20:08:50 ~/yomo/examples)──> yomo dev
-2020/12/18 20:09:12 Building the Serverless Function File...
-2020/12/18 20:09:14 ✅ Listening on 0.0.0.0:4242
+(10:21:48 ~/yomo-demo)──> yomo dev
+2020/12/25 10:21:48 Building the Serverless Function File...
+2020/12/25 10:21:49 ✅ Listening on 0.0.0.0:4242
+serverless get value: 81.24497
+[StdOut]:  81.24497
+serverless get value: 100.879654
+[StdOut]:  100.879654
 ```
+
 Congratulations! You have done your first YoMo application.
 
 ## 🎯 Focuses on computings out of data center

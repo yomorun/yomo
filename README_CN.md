@@ -18,13 +18,21 @@ For english, check: [Github](https://github.com/yomorun/yomo)
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/yomorun/install/HEAD/install.sh)"
 ```
 
-### 2. 以 Serverless 的范式编写业务代码
+### 2. 初始化 Serverless app 目录和代码
 
 ```bash
-mkdir yomo-demo && cd $_ && touch app.go
+yomo init yomo-demo && cd $_
 ```
 
-`app.go` 的内容为
+运行 CLI 命令后，您可以看到下列信息:
+
+```bash
+(10:20:26 ~/Downloads)──> yomo init yomo-demo && cd $_
+2020/12/25 10:20:26 ✅ Congratulations! You have initialized the serverless app successfully.
+2020/12/25 10:20:26 🎉 You can enjoy the YoMo Serverless via the command: yomo dev
+```
+
+CLI 自动创建的 `app.go` 内容为：
 
 ```go
 package main
@@ -60,9 +68,13 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 1. 在终端里执行 `yomo dev`，该命令将自动连接至 YoMo 的公开调试服务，服务将以`100ms`的频率持续发送`float`类型的数据，这就是`YoMo 北京Office`的噪声传感器的实时数据。
 
 ```bash
-(20:08:50 ~/yomo/examples)──> yomo dev
-2020/12/18 20:09:12 Building the Serverless Function File...
-2020/12/18 20:09:14 ✅ Listening on 0.0.0.0:4242
+(10:21:48 ~/yomo-demo)──> yomo dev
+2020/12/25 10:21:48 Building the Serverless Function File...
+2020/12/25 10:21:49 ✅ Listening on 0.0.0.0:4242
+serverless get value: 81.24497
+[StdOut]:  81.24497
+serverless get value: 100.879654
+[StdOut]:  100.879654
 ```
 
 恭喜！您的 Real-time stream processing application 已经全部写完！
