@@ -20,11 +20,37 @@ func FromReader(reader io.Reader) RxStream {
 			n, err := reader.Read(buf)
 
 			if err != nil {
-				return
+				break
 			} else {
 				value := buf[:n]
 				next <- Of(value)
 			}
+		}
+	}()
+
+	return ConvertObservable(rxgo.FromChannel(next))
+}
+
+func FromReaderWithFunc(f func() io.Reader) RxStream {
+	next := make(chan rxgo.Item)
+
+	go func() {
+		for {
+			reader := f()
+
+			if reader == nil {
+				time.Sleep(time.Second)
+			} else {
+				buf := make([]byte, 3*1024)
+				n, err := reader.Read(buf)
+				if err != nil {
+					fmt.Println("[FromReaderWithFunc Reader Error] ", err)
+				} else {
+					value := buf[:n]
+					next <- Of(value)
+				}
+			}
+
 		}
 	}()
 
@@ -448,6 +474,84 @@ func (s *RxStreamImpl) Y3Decoder(key string, mold interface{}, opts ...rxgo.Opti
 			}
 		}
 	}
+	return CreateObservable(f, opts...)
+}
+
+func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf func() io.ReadWriter, opts ...rxgo.Option) RxStream {
+	f := func(ctx context.Context, next chan rxgo.Item) {
+		defer close(next)
+		ready := make(chan bool)
+		observe := s.Observe(opts...)
+
+		go func() {
+			defer close(ready)
+
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case item, ok := <-observe:
+					if !ok {
+						return
+					}
+					if item.Error() {
+						return
+					} else {
+						for {
+							rw := rwf()
+
+							if rw == nil {
+								time.Sleep(time.Second)
+							} else {
+								rw.Write(item.V.([]byte))
+								ready <- true
+								break
+							}
+						}
+					}
+				}
+			}
+		}()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case _, ok := <-ready:
+				if !ok {
+					return
+				}
+
+				isStop := false
+
+				for {
+					rw := rwf()
+
+					if rw == nil {
+						time.Sleep(time.Second)
+					} else {
+						buf := make([]byte, 3*1024)
+						n, err := rw.Read(buf)
+
+						if err != nil {
+							fmt.Println("[MergeReadWriterWithFunc Reader Error] ", err)
+						} else {
+							value := buf[:n]
+							if !rxgo.Of(value).SendContext(ctx, next) {
+								isStop = true
+							}
+							break
+						}
+					}
+				}
+
+				if isStop {
+					return
+				}
+			}
+		}
+	}
+
 	return CreateObservable(f, opts...)
 }
 
