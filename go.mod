@@ -9,4 +9,5 @@ require (
 	github.com/spf13/cobra v1.1.1
 	github.com/yomorun/yomo-codec-golang v1.2.0
 	golang.org/x/tools v0.0.0-20191125144606-a911d9008d1f // indirect
+	gopkg.in/yaml.v2 v2.4.0
 )
