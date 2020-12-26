@@ -1,20 +1,10 @@
 package wf
 
 import (
-	"bytes"
-	"context"
 	"errors"
-	"fmt"
-	"io"
-	"log"
-	"math/rand"
 	"strings"
-	"time"
 
-	"github.com/yomorun/yomo-codec-golang/pkg/codes"
 	"github.com/yomorun/yomo/internal/conf"
-	"github.com/yomorun/yomo/pkg/quic"
-	"github.com/yomorun/yomo/pkg/rx"
 )
 
 type baseOptions struct {
@@ -92,90 +82,4 @@ func validateConfig(wfConf *conf.WorkflowConfig) error {
 	}
 
 	return nil
-}
-
-func run(wfConf *conf.WorkflowConfig) error {
-	// TODO: multi sources
-	// sourceApp := wfConf.Sources[0]
-	// sourceStream, err := connectToApp(sourceApp)
-	// if err != nil {
-	// 	log.Print("❌ Connect to Source " + sourceApp.Name + " failure with err: ", err)
-	// }
-
-	// actions
-	actionStreams := []quic.Stream{}
-	for _, app := range wfConf.Actions {
-		actionStream, err := connectToApp(app)
-		if err != nil {
-			log.Print("❌ Connect to Action "+app.Name+" failure with err: ", err)
-		} else {
-			actionStreams = append(actionStreams, actionStream)
-		}
-	}
-
-	// sinks
-	sinkStreams := []quic.Stream{}
-	for _, app := range wfConf.Sinks {
-		sinkStream, err := connectToApp(app)
-		if err != nil {
-			log.Print("❌ Connect to Sink "+app.Name+" failure with err: ", err)
-		} else {
-			sinkStreams = append(sinkStreams, sinkStream)
-		}
-	}
-
-	// validate
-	// if sourceStream == nil {
-	// 	return nil, errors.New("Not available sources")
-	// }
-	if len(actionStreams) == 0 {
-		return errors.New("Not available actions")
-	}
-	if len(sinkStreams) == 0 {
-		return errors.New("Not available sinks")
-	}
-
-	// build rxStream
-	rxStream := rx.FromReaderWithFunc(mockSource())
-	for _, stream := range actionStreams {
-		s := func() io.ReadWriter { return stream }
-		rxStream = rxStream.MergeReadWriterWithFunc(s)
-	}
-
-	for _, stream := range sinkStreams {
-		s := func() io.ReadWriter { return stream }
-		rxStream = rxStream.MergeReadWriterWithFunc(s)
-	}
-
-	// observe stream
-	for customer := range rxStream.Observe() {
-		if customer.Error() {
-			log.Print(customer.E.Error())
-		}
-
-		fmt.Println(string(customer.V.([]byte)))
-	}
-
-	return nil
-}
-
-var protoCodec = codes.NewProtoCodec(0x10)
-
-func mockSource() func() io.Reader {
-	f := func() io.Reader {
-		sendingBuf, _ := protoCodec.Marshal((rand.New(rand.NewSource(time.Now().UnixNano())).Float32() * 200))
-		r := bytes.NewReader(sendingBuf)
-		time.Sleep(100 * time.Millisecond)
-		return r
-	}
-	return f
-}
-
-func connectToApp(app conf.App) (quic.Stream, error) {
-	client, err := quic.NewClient(fmt.Sprintf("%s:%d", app.Host, app.Port))
-	if err != nil {
-		return nil, err
-	}
-
-	return client.CreateStream(context.Background())
 }

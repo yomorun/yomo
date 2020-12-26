@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/spf13/cobra"
+	"github.com/yomorun/yomo/internal/workflow"
 )
 
 // RunOptions are the options for run command.
@@ -27,7 +28,7 @@ func NewCmdRun() *cobra.Command {
 			}
 
 			log.Print("Running YoMo workflow...")
-			err = run(conf)
+			err = workflow.Run(conf)
 			if err != nil {
 				log.Print("❌ ", err)
 				return

@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/spf13/cobra"
+	"github.com/yomorun/yomo/internal/workflow"
 )
 
 // DevOptions are the options for dev command.
@@ -27,7 +28,7 @@ func NewCmdDev() *cobra.Command {
 			}
 
 			log.Print("Running YoMo workflow...")
-			err = run(conf)
+			err = workflow.Run(conf)
 			if err != nil {
 				log.Print("❌ ", err)
 				return
