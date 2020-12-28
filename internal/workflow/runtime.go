@@ -33,6 +33,7 @@ func Run(wfConf *conf.WorkflowConfig) error {
 			log.Print(getConnectFailedMsg("Action", app), err)
 		} else {
 			actionStreams = append(actionStreams, actionStream)
+			log.Print(fmt.Sprintf("✅ Connect to %s successfully.", getAppInfo("Action", app)))
 		}
 	}
 
@@ -44,6 +45,7 @@ func Run(wfConf *conf.WorkflowConfig) error {
 			log.Print(getConnectFailedMsg("Sink", app), err)
 		} else {
 			sinkStreams = append(sinkStreams, sinkStream)
+			log.Print(fmt.Sprintf("✅ Connect to %s successfully.", getAppInfo("Sink", app)))
 		}
 	}
 
@@ -104,7 +106,12 @@ func connectToApp(app conf.App) (quic.Stream, error) {
 }
 
 func getConnectFailedMsg(appType string, app conf.App) string {
-	return fmt.Sprintf("❌ Connect to %s %s (%s:%d) failure with err: ",
+	return fmt.Sprintf("❌ Connect to %s failure with err: ",
+		getAppInfo(appType, app))
+}
+
+func getAppInfo(appType string, app conf.App) string {
+	return fmt.Sprintf("%s %s (%s:%d)",
 		appType,
 		app.Name,
 		app.Host,
