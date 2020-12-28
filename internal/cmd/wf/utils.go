@@ -47,7 +47,6 @@ func validateConfig(wfConf *conf.WorkflowConfig) error {
 	}
 
 	m := map[string][]conf.App{
-		"Sources": wfConf.Sources,
 		"Actions": wfConf.Actions,
 		"Sinks":   wfConf.Sinks,
 	}

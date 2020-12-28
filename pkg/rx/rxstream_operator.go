@@ -499,7 +499,6 @@ func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf func() io.ReadWriter, opts ..
 					} else {
 						for {
 							rw := rwf()
-
 							if rw == nil {
 								time.Sleep(time.Second)
 							} else {

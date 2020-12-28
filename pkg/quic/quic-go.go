@@ -60,7 +60,6 @@ func (s *quicGoServer) ListenAndServe(ctx context.Context, addr string) error {
 		if err != nil {
 			return err
 		}
-
 		if s.handler != nil {
 			s.handler.Read(stream)
 		} else {
