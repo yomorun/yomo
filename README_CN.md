@@ -15,24 +15,40 @@ For english, check: [Github](https://github.com/yomorun/yomo)
 ### 1. 安装CLI
 
 ```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/yomorun/install/HEAD/install.sh)"
+# 确保设置了$GOPATH, Golang的设计里main和plugin是高度耦合的
+$ echo $GOPATH
+
 ```
 
-### 2. 初始化 Serverless app 目录和代码
+如果没有设置`$GOPATH`，参考这里：[如何设置$GOPATH和$GOBIN](#optional-set-gopath-and-gobin)。
 
 ```bash
-yomo init yomo-demo && cd $_
+$ GO111MODULE=off go get github.com/yomorun/yomo
+
+$ cd $GOPATH/src/github.com/yomorun/yomo
+
+$ make install
 ```
 
-运行 CLI 命令后，您可以看到下列信息:
+![YoMo Tutorial 1](docs/tutorial-1.png)
+
+### 2. 创建第一个yomo应用
 
 ```bash
-(10:20:26 ~/Downloads)──> yomo init yomo-demo && cd $_
-2020/12/25 10:20:26 ✅ Congratulations! You have initialized the serverless app successfully.
-2020/12/25 10:20:26 🎉 You can enjoy the YoMo Serverless via the command: yomo dev
+$ mkdir -p $GOPATH/src/github.com/{YOUR_GITHUB_USERNAME} && cd $_
+
+$ yomo init yomo-app-demo
+2020/12/29 13:03:57 Initializing the Serverless app...
+2020/12/29 13:04:00 ✅ Congratulations! You have initialized the serverless app successfully.
+2020/12/29 13:04:00 🎉 You can enjoy the YoMo Serverless via the command: yomo dev
+
+$ cd yomo-app-demo
+
 ```
 
-CLI 自动创建的 `app.go` 内容为：
+![YoMo Tutorial 2](docs/tutorial-2.png)
+
+CLI将会自动创建一个`app.go`文件:
 
 ```go
 package main
@@ -63,21 +79,42 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 }
 ```
 
-### 3. 开始运行
+### 3. 调试和运行
 
-1. 在终端里执行 `yomo dev`，该命令将自动连接至 YoMo 的公开调试服务，服务将以`100ms`的频率持续发送`float`类型的数据，这就是`YoMo 北京Office`的噪声传感器的实时数据。
+1. 为了方便调试，我们创建了一个云端的数据模拟器，它可以产生源源不断的数据，我们只需要运行`yomo dev`就可以看到:
+
+![YoMo Tutorial 3](docs/tutorial-3.png)
+
+恭喜您！第一个YoMo应用已经完美运行起来啦！
+
+### Optional: Set $GOPATH and $GOBIN
+
+针对Terminal当前的Session:
 
 ```bash
-(10:21:48 ~/yomo-demo)──> yomo dev
-2020/12/25 10:21:48 Building the Serverless Function File...
-2020/12/25 10:21:49 ✅ Listening on 0.0.0.0:4242
-serverless get value: 81.24497
-[StdOut]:  81.24497
-serverless get value: 100.879654
-[StdOut]:  100.879654
+export GOPATH=~/.go
+export PATH=$GOPATH/bin:$PATH
 ```
 
-恭喜！您的 Real-time stream processing application 已经全部写完！
+Shell用户持久保存配置设置: 
+
+如果您是`zsh`用户：
+
+```bash
+echo "export GOPATH=~/.go" >> .zshrc
+echo "path+=$GOPATH/bin" >> .zshrc
+```
+
+如果您是`bash`用户：
+
+```bash
+echo 'export GOPATH=~/.go' >> .bashrc
+echo 'export PATH="$GOPATH/bin:$PATH"' >> ~/.bashrc
+```
+
+## 📚 文档
+
+**状态** 工作进行中 [docs.yomo.run](https://docs.yomo.run)
 
 ## 🎯 越来越多的数据产生在数据中心之外，YoMo 关注在离数据更近的位置，提供便利的计算框架
 
