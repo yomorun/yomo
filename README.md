@@ -23,31 +23,30 @@ More info at 🦖[https://yomo.run]
 if `$GOPATH` is not set, check [Set $GOPATH and $GOBIN](#optional-set-gopath-and-gobin) first.
 
 ```bash
-○ GO111MODULE=off go get github.com/yomorun/yomo
+$ GO111MODULE=off go get github.com/yomorun/yomo
 
-○ cd $GOPATH/src/github.com/yomorun/yomo
+$ cd $GOPATH/src/github.com/yomorun/yomo
 
-○ make install
-
-○ which yomo
-
-○ yomo version
-yomo version 0.5.1-1-gacaf08a (2020-12-29)
+$ make install
 ```
+
+![YoMo Tutorial 1](docs/tutorial-1.png)
 
 ### 2. Create your serverless app
 
 ```bash
-○ mkdir $GOPATH/src/github.com/{YOUR_GITHUB_USERNAME} && cd $_
+$ mkdir -p $GOPATH/src/github.com/{YOUR_GITHUB_USERNAME} && cd $_
 
-○ yomo init yomo-app-demo
+$ yomo init yomo-app-demo
 2020/12/29 13:03:57 Initializing the Serverless app...
 2020/12/29 13:04:00 ✅ Congratulations! You have initialized the serverless app successfully.
 2020/12/29 13:04:00 🎉 You can enjoy the YoMo Serverless via the command: yomo dev
 
-○ cd yomo-app-demo
+$ cd yomo-app-demo
 
 ```
+
+![YoMo Tutorial 2](docs/tutorial-2.png)
 
 CLI will automatically create the `app.go`:
 
@@ -80,32 +79,11 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 }
 ```
 
-### 4. Build and run
+### 3. Build and run
 
 1. Run `yomo dev` from the terminal. you will see the following message:
 
-```bash
-○ yomo dev
-2020/12/29 13:24:01 Building the Serverless Function File...
-2020/12/29 13:24:02 ✅ Listening on 0.0.0.0:4242
-serverless get value: 8.049803
-[StdOut]:  8.049803
-serverless get value: 24.885649
-[StdOut]:  24.885649
-serverless get value: 57.41162
-[StdOut]:  57.41162
-serverless get value: 98.15276
-[StdOut]:  98.15276
-serverless get value: 176.20674
-[StdOut]:  176.20674
-serverless get value: 160.75317
-[StdOut]:  160.75317
-serverless get value: 56.65883
-[StdOut]:  56.65883
-serverless get value: 192.10464
-[StdOut]:  192.10464
-serverless get value: 75.196396
-```
+![YoMo Tutorial 3](docs/tutorial-3.png)
 
 Congratulations! You have done your first YoMo application.
 
