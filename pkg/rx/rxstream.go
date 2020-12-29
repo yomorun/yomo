@@ -11,7 +11,7 @@ import (
 
 type RxStream interface {
 	rxgo.Iterable
-	MergeReadWriterWithFunc(rwf func() io.ReadWriter, opts ...rxgo.Option) RxStream
+	MergeReadWriterWithFunc(rwf func() (io.ReadWriter, func()), opts ...rxgo.Option) RxStream
 	Y3Decoder(key string, mold interface{}, opts ...rxgo.Option) RxStream
 	StdOut(opts ...rxgo.Option) RxStream
 	AuditTime(timespan time.Duration, opts ...rxgo.Option) RxStream

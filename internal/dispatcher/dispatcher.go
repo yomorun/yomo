@@ -32,7 +32,7 @@ func AutoDispatcher(appPath string, rxstream rx.RxStream) (rx.RxStream, error) {
 	return Dispatcher(handler, rxstream), nil
 }
 
-func DispatcherWithFunc(actions []func() io.ReadWriter, reader func() io.Reader) rx.RxStream {
+func DispatcherWithFunc(actions []func() (io.ReadWriter, func()), reader func() io.Reader) rx.RxStream {
 	stream := rx.FromReaderWithFunc(reader)
 
 	for _, action := range actions {

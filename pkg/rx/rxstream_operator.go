@@ -477,11 +477,12 @@ func (s *RxStreamImpl) Y3Decoder(key string, mold interface{}, opts ...rxgo.Opti
 	return CreateObservable(f, opts...)
 }
 
-func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf func() io.ReadWriter, opts ...rxgo.Option) RxStream {
+func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf func() (io.ReadWriter, func()), opts ...rxgo.Option) RxStream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
 		ready := make(chan bool)
 		observe := s.Observe(opts...)
+		readerErr := false
 
 		go func() {
 			defer close(ready)
@@ -498,13 +499,17 @@ func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf func() io.ReadWriter, opts ..
 						return
 					} else {
 						for {
-							rw := rwf()
+							rw, cancel := rwf()
 							if rw == nil {
 								time.Sleep(time.Second)
 							} else {
-								rw.Write(item.V.([]byte))
-								ready <- true
-								break
+								_, err := rw.Write(item.V.([]byte))
+								if err == nil {
+									ready <- true
+									break
+								} else {
+									cancel()
+								}
 							}
 						}
 					}
@@ -524,16 +529,21 @@ func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf func() io.ReadWriter, opts ..
 				isStop := false
 
 				for {
-					rw := rwf()
-
+					rw, cancel := rwf()
 					if rw == nil {
 						time.Sleep(time.Second)
 					} else {
+						if readerErr {
+							readerErr = false
+							break
+						}
+
 						buf := make([]byte, 3*1024)
 						n, err := rw.Read(buf)
 
 						if err != nil {
-							fmt.Println("[MergeReadWriterWithFunc Reader Error] ", err)
+							cancel()
+							readerErr = true
 						} else {
 							value := buf[:n]
 							if !rxgo.Of(value).SendContext(ctx, next) {

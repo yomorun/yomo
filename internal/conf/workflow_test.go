@@ -38,16 +38,4 @@ sinks:
 	if wf.Port != 9999 {
 		t.Errorf("port value should be `%v`", "9999")
 	}
-
-	if wf.Sources[0].Name != "Emitter server" {
-		t.Errorf("Sources[0].Name value should be `%v`", "Emitter server")
-	}
-
-	if wf.Actions[0].Name != "Noise Serverless" {
-		t.Errorf("Actions[0].Name value should be `%v`", "Noise Serverless")
-	}
-
-	if wf.Sinks[0].Name != "Mock DB" {
-		t.Errorf("Sinks[0].Name value should be `%v`", "Mock DB")
-	}
 }

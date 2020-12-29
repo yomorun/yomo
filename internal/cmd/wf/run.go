@@ -36,7 +36,7 @@ func NewCmdRun() *cobra.Command {
 				serverlessConfig: conf,
 			}
 
-			endpoint := fmt.Sprintf("0.0.0.0:%d", &conf.Port)
+			endpoint := fmt.Sprintf("0.0.0.0:%d", conf.Port)
 
 			log.Print("Running YoMo workflow...")
 			err = workflow.Run(endpoint, quicHandler)

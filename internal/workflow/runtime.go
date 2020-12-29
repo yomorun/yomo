@@ -12,8 +12,9 @@ import (
 var Clients map[string]Client
 
 type Client struct {
-	App    conf.App
-	Stream io.ReadWriter
+	App        conf.App
+	Stream     io.ReadWriter
+	CancelFunc context.CancelFunc
 }
 
 func init() {
@@ -28,72 +29,27 @@ func Run(endpoint string, handle quic.ServerHandler) error {
 }
 
 // Build build the workflow by config (.yaml).
-func Build(wfConf *conf.WorkflowConfig) []func() io.ReadWriter {
+func Build(wfConf *conf.WorkflowConfig) []func() (io.ReadWriter, func()) {
 	//init workflow
-	actions := make([]func() io.ReadWriter, 0)
+	actions := make([]func() (io.ReadWriter, func()), 0)
 
 	for _, app := range wfConf.Actions {
-		f := func() io.ReadWriter {
-
-			if Clients[app.Name].Stream != nil {
-				return Clients[app.Name].Stream
-			} else {
-				stream, err := connectToApp(app)
-				if err != nil {
-					Clients[app.Name] = Client{
-						App:    app,
-						Stream: nil,
-					}
-					return nil
-				} else {
-					Clients[app.Name] = Client{
-						App:    app,
-						Stream: stream,
-					}
-					return stream
-				}
-			}
-
-		}
-		actions = append(actions, f)
-
+		actions = append(actions, createReadWriter(app))
 	}
 
 	for _, app := range wfConf.Sinks {
-		f := func() io.ReadWriter {
-			if Clients[app.Name].Stream != nil {
-				return Clients[app.Name].Stream
-			} else {
-				stream, err := connectToApp(app)
-				if err != nil {
-					Clients[app.Name] = Client{
-						App:    app,
-						Stream: nil,
-					}
-					return nil
-				} else {
-					Clients[app.Name] = Client{
-						App:    app,
-						Stream: stream,
-					}
-					return stream
-				}
-			}
-		}
-
-		actions = append(actions, f)
+		actions = append(actions, createReadWriter(app))
 	}
 
 	return actions
 }
 
-func connectToApp(app conf.App) (quic.Stream, error) {
+func connectToApp(app conf.App, ctx context.Context) (quic.Stream, error) {
 	client, err := quic.NewClient(fmt.Sprintf("%s:%d", app.Host, app.Port))
 	if err != nil {
 		return nil, err
 	}
-
-	return client.CreateStream(context.Background())
+	return client.CreateStream(ctx)
 }
 
 func getConnectFailedMsg(appType string, app conf.App) string {
@@ -107,4 +63,45 @@ func getAppInfo(appType string, app conf.App) string {
 		app.Name,
 		app.Host,
 		app.Port)
+}
+
+func createReadWriter(app conf.App) func() (io.ReadWriter, func()) {
+	f := func() (io.ReadWriter, func()) {
+		if Clients[app.Name].Stream != nil {
+			return Clients[app.Name].Stream, Clients[app.Name].CancelFunc
+		} else {
+			ctx, cancel := context.WithCancel(context.Background())
+			stream, err := connectToApp(app, ctx)
+			if err != nil {
+				Clients[app.Name] = Client{
+					App:        app,
+					Stream:     nil,
+					CancelFunc: cancelStream(cancel, app),
+				}
+				return nil, cancelStream(cancel, app)
+			} else {
+				Clients[app.Name] = Client{
+					App:        app,
+					Stream:     stream,
+					CancelFunc: cancelStream(cancel, app),
+				}
+
+				return stream, cancelStream(cancel, app)
+			}
+		}
+
+	}
+
+	return f
+}
+
+func cancelStream(cancel context.CancelFunc, app conf.App) func() {
+	f := func() {
+		cancel()
+		Clients[app.Name] = Client{
+			App:    app,
+			Stream: nil,
+		}
+	}
+	return f
 }

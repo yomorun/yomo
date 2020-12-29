@@ -1,6 +1,8 @@
 package quic
 
-import "context"
+import (
+	"context"
+)
 
 // Client is the QUIC client.
 type Client interface {
@@ -12,6 +14,7 @@ type Client interface {
 func NewClient(addr string) (Client, error) {
 	client := &quicGoClient{}
 	err := client.Connect(addr)
+
 	if err != nil {
 		return nil, err
 	}
