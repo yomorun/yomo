@@ -9,7 +9,7 @@ import (
 )
 
 var printer = func(_ context.Context, i interface{}) (interface{}, error) {
-	value := i.(float32)
+	value := i.(float32) / 10
 	fmt.Println("serverless get value:", value)
 	return value, nil
 }
