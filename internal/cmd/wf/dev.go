@@ -2,7 +2,6 @@ package wf
 
 import (
 	"fmt"
-	"io"
 	"log"
 
 	"github.com/spf13/cobra"
@@ -39,6 +38,7 @@ func NewCmdDev() *cobra.Command {
 			quicHandler := &quicDevHandler{
 				serverlessConfig: conf,
 				serverAddr:       fmt.Sprintf("localhost:%d", conf.Port),
+				mergeChan:        make(chan []byte, 20),
 			}
 
 			err = workflow.Run(endpoint, quicHandler)
@@ -57,21 +57,14 @@ func NewCmdDev() *cobra.Command {
 type quicDevHandler struct {
 	serverlessConfig *conf.WorkflowConfig
 	serverAddr       string
+	mergeChan        chan []byte
 }
 
-func (s quicDevHandler) Listen() error {
+func (s *quicDevHandler) Listen() error {
 	err := mocker.EmitMockDataFromCloud(s.serverAddr)
-	return err
-}
-
-func (s quicDevHandler) Read(st quic.Stream) error {
-	reader := func() io.Reader {
-		return st
-	}
-
 	actions := workflow.Build(s.serverlessConfig)
 
-	stream := dispatcher.DispatcherWithFunc(actions, reader)
+	stream := dispatcher.DispatcherWithFunc(actions, s.mergeChan)
 
 	go func() {
 		for customer := range stream.Observe() {
@@ -80,5 +73,23 @@ func (s quicDevHandler) Read(st quic.Stream) error {
 			}
 		}
 	}()
+	return err
+}
+
+func (s *quicDevHandler) Read(st quic.Stream) error {
+
+	go func() {
+		for {
+			buf := make([]byte, 3*1024)
+			n, err := st.Read(buf)
+			if err != nil {
+				break
+			} else {
+				value := buf[:n]
+				s.mergeChan <- value
+			}
+		}
+	}()
+
 	return nil
 }

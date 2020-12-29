@@ -2,7 +2,6 @@ package wf
 
 import (
 	"fmt"
-	"io"
 	"log"
 
 	"github.com/spf13/cobra"
@@ -34,6 +33,7 @@ func NewCmdRun() *cobra.Command {
 
 			quicHandler := &quicHandler{
 				serverlessConfig: conf,
+				mergeChan:        make(chan []byte, 20),
 			}
 
 			endpoint := fmt.Sprintf("0.0.0.0:%d", conf.Port)
@@ -54,20 +54,13 @@ func NewCmdRun() *cobra.Command {
 
 type quicHandler struct {
 	serverlessConfig *conf.WorkflowConfig
+	mergeChan        chan []byte
 }
 
-func (s quicHandler) Listen() error {
-	return nil
-}
-
-func (s quicHandler) Read(st quic.Stream) error {
-	reader := func() io.Reader {
-		return st
-	}
-
+func (s *quicHandler) Listen() error {
 	actions := workflow.Build(s.serverlessConfig)
 
-	stream := dispatcher.DispatcherWithFunc(actions, reader)
+	stream := dispatcher.DispatcherWithFunc(actions, s.mergeChan)
 
 	go func() {
 		for customer := range stream.Observe() {
@@ -76,5 +69,23 @@ func (s quicHandler) Read(st quic.Stream) error {
 			}
 		}
 	}()
+	return nil
+}
+
+func (s *quicHandler) Read(st quic.Stream) error {
+	go func() {
+		for {
+			buf := make([]byte, 3*1024)
+			n, err := st.Read(buf)
+
+			if err != nil {
+				break
+			} else {
+				value := buf[:n]
+				s.mergeChan <- value
+			}
+		}
+	}()
+
 	return nil
 }

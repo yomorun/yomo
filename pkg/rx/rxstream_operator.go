@@ -11,6 +11,28 @@ import (
 	"github.com/yomorun/yomo-codec-golang/pkg/codes"
 )
 
+func FromChannel(channel chan []byte) RxStream {
+	f := func(ctx context.Context, next chan rxgo.Item) {
+		defer close(next)
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case item, ok := <-channel:
+				if !ok {
+					return
+				}
+
+				if !Of(item).SendContext(ctx, next) {
+					return
+				}
+			}
+		}
+	}
+	return CreateObservable(f)
+}
+
 func FromReader(reader io.Reader) RxStream {
 	next := make(chan rxgo.Item)
 
