@@ -33,7 +33,7 @@ func Build(appPath string, clean bool) (string, error) {
 	}
 
 	if version == "linux" {
-		cmd := exec.Command("/bin/sh", "-c", "CGO_ENABLED=1 GOOS=linux go build -buildmode=plugin -o "+sl+" "+appPath)
+		cmd := exec.Command("/bin/sh", "-c", "CGO_ENABLED=1 GOOS=linux go build -ldflags \"-s -w\"  -buildmode=plugin -o "+sl+" "+appPath)
 		err := cmd.Start()
 		if err != nil {
 			return "", err
@@ -41,7 +41,7 @@ func Build(appPath string, clean bool) (string, error) {
 		err = cmd.Wait()
 		return sl, err
 	} else if version == "darwin" {
-		cmd := exec.Command("/bin/sh", "-c", "go build -buildmode=plugin -o "+sl+" "+appPath)
+		cmd := exec.Command("/bin/sh", "-c", "go build -buildmode=plugin -ldflags \"-s -w\" -o "+sl+" "+appPath)
 		err := cmd.Start()
 		if err != nil {
 			return "", err

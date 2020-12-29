@@ -15,41 +15,33 @@ More info at 🦖[https://yomo.run]
 ### 1. Install CLI
 
 ```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/yomorun/install/HEAD/install.sh)"
+# Ensure use $GOPATH, golang requires main and plugin highly coupled
+○ echo $GOPATH
+
+○ GO111MODULE=off go get github.com/yomorun/yomo
+
+○ cd $GOPATH/src/github.com/yomorun/yomo
+
+○ make install
+
+○ which yomo
+
+○ yomo version
+yomo version 0.5.1-1-gacaf08a (2020-12-29)
 ```
 
-### 2. Add CLI to $PATH
-
-for current session:
+### 2. Create your serverless app
 
 ```bash
-export PATH=$PATH:~/.yomo
-```
+○ mkdir $GOPATH/src/github.com/{YOUR_GITHUB_USERNAME} && cd $_
 
-for `zsh` users
+○ yomo init yomo-app-demo
+2020/12/29 13:03:57 Initializing the Serverless app...
+2020/12/29 13:04:00 ✅ Congratulations! You have initialized the serverless app successfully.
+2020/12/29 13:04:00 🎉 You can enjoy the YoMo Serverless via the command: yomo dev
 
-```bash
-echo "path+=~/.yomo" >> .zshrc
-```
+○ cd yomo-app-demo
 
-for `bash` users
-
-```bash
-echo 'export PATH="~/.yomo:$PATH"' >> ~/.bashrc
-```
-
-### 3. Create your serverless app
-
-```bash
-yomo init yomo-demo && cd $_
-```
-
-You will see the following message:
-
-```bash
-(10:20:26 ~/Downloads)──> yomo init yomo-demo && cd $_
-2020/12/25 10:20:26 ✅ Congratulations! You have initialized the serverless app successfully.
-2020/12/25 10:20:26 🎉 You can enjoy the YoMo Serverless via the command: yomo dev
 ```
 
 CLI will automatically create the `app.go`:
@@ -88,16 +80,51 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 1. Run `yomo dev` from the terminal. you will see the following message:
 
 ```bash
-(10:21:48 ~/yomo-demo)──> yomo dev
-2020/12/25 10:21:48 Building the Serverless Function File...
-2020/12/25 10:21:49 ✅ Listening on 0.0.0.0:4242
-serverless get value: 81.24497
-[StdOut]:  81.24497
-serverless get value: 100.879654
-[StdOut]:  100.879654
+○ yomo dev
+2020/12/29 13:24:01 Building the Serverless Function File...
+2020/12/29 13:24:02 ✅ Listening on 0.0.0.0:4242
+serverless get value: 8.049803
+[StdOut]:  8.049803
+serverless get value: 24.885649
+[StdOut]:  24.885649
+serverless get value: 57.41162
+[StdOut]:  57.41162
+serverless get value: 98.15276
+[StdOut]:  98.15276
+serverless get value: 176.20674
+[StdOut]:  176.20674
+serverless get value: 160.75317
+[StdOut]:  160.75317
+serverless get value: 56.65883
+[StdOut]:  56.65883
+serverless get value: 192.10464
+[StdOut]:  192.10464
+serverless get value: 75.196396
 ```
 
 Congratulations! You have done your first YoMo application.
+
+### Optional: Set $GOPATH and $GOBIN
+
+for current session:
+
+```bash
+export PATH=$GOPATH/bin:$PATH
+```
+
+for shell: 
+
+for `zsh` users
+
+```bash
+echo "path+=$GOPATH/bin" >> .zshrc
+```
+
+for `bash` users
+
+```bash
+echo 'export PATH="$GOPATH/bin:$PATH"' >> ~/.bashrc
+```
 
 ## 🎯 Focuses on computings out of data center
 
