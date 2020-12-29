@@ -18,6 +18,11 @@ More info at 🦖[https://yomo.run]
 # Ensure use $GOPATH, golang requires main and plugin highly coupled
 ○ echo $GOPATH
 
+```
+
+if `$GOPATH` is not set, check [Set $GOPATH and $GOBIN](#optional-set-gopath-and-gobin) first.
+
+```bash
 ○ GO111MODULE=off go get github.com/yomorun/yomo
 
 ○ cd $GOPATH/src/github.com/yomorun/yomo
@@ -109,6 +114,7 @@ Congratulations! You have done your first YoMo application.
 for current session:
 
 ```bash
+export GOPATH=~/.go
 export PATH=$GOPATH/bin:$PATH
 ```
 
@@ -117,14 +123,20 @@ for shell:
 for `zsh` users
 
 ```bash
+echo "export GOPATH=~/.go" >> .zshrc
 echo "path+=$GOPATH/bin" >> .zshrc
 ```
 
 for `bash` users
 
 ```bash
+echo 'export GOPATH=~/.go' >> .bashrc
 echo 'export PATH="$GOPATH/bin:$PATH"' >> ~/.bashrc
 ```
+
+## 📚 Documentation
+
+**status** WIP [docs.yomo.run](https://docs.yomo.run)
 
 ## 🎯 Focuses on computings out of data center
 
