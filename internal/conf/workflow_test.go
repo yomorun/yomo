@@ -13,7 +13,7 @@ sources:
   - name: Emitter server
     host: emitter.cella.fun
     port: 11521
-actions:
+flows:
   - name: Noise Serverless
     host: localhost
     port: 4242

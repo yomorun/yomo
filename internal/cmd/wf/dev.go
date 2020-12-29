@@ -62,9 +62,9 @@ type quicDevHandler struct {
 
 func (s *quicDevHandler) Listen() error {
 	err := mocker.EmitMockDataFromCloud(s.serverAddr)
-	actions := workflow.Build(s.serverlessConfig)
+	flows := workflow.Build(s.serverlessConfig)
 
-	stream := dispatcher.DispatcherWithFunc(actions, s.mergeChan)
+	stream := dispatcher.DispatcherWithFunc(flows, s.mergeChan)
 
 	go func() {
 		for customer := range stream.Observe() {

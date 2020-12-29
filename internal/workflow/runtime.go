@@ -31,17 +31,17 @@ func Run(endpoint string, handle quic.ServerHandler) error {
 // Build build the workflow by config (.yaml).
 func Build(wfConf *conf.WorkflowConfig) []func() (io.ReadWriter, func()) {
 	//init workflow
-	actions := make([]func() (io.ReadWriter, func()), 0)
+	flows := make([]func() (io.ReadWriter, func()), 0)
 
-	for _, app := range wfConf.Actions {
-		actions = append(actions, createReadWriter(app))
+	for _, app := range wfConf.Flows {
+		flows = append(flows, createReadWriter(app))
 	}
 
 	for _, app := range wfConf.Sinks {
-		actions = append(actions, createReadWriter(app))
+		flows = append(flows, createReadWriter(app))
 	}
 
-	return actions
+	return flows
 }
 
 func connectToApp(app conf.App, ctx context.Context) (quic.Stream, error) {

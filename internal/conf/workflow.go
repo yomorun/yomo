@@ -13,8 +13,8 @@ type App struct {
 }
 
 type Workflow struct {
-	Actions []App `yaml:"actions"`
-	Sinks   []App `yaml:"sinks"`
+	Flows []App `yaml:"flows"`
+	Sinks []App `yaml:"sinks"`
 }
 
 type WorkflowConfig struct {

@@ -58,9 +58,9 @@ type quicHandler struct {
 }
 
 func (s *quicHandler) Listen() error {
-	actions := workflow.Build(s.serverlessConfig)
+	flows := workflow.Build(s.serverlessConfig)
 
-	stream := dispatcher.DispatcherWithFunc(actions, s.mergeChan)
+	stream := dispatcher.DispatcherWithFunc(flows, s.mergeChan)
 
 	go func() {
 		for customer := range stream.Observe() {
