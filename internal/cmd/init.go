@@ -18,7 +18,7 @@ func NewCmdInit() *cobra.Command {
 	var opts = &initOptions{}
 
 	var cmd = &cobra.Command{
-		Use:    "init",
+		Use:   "init",
 		Short: "Initialize a YoMo Serverless Application",
 		Long:  "Initialize a YoMo Serverless Application.",
 		Run: func(cmd *cobra.Command, args []string) {
@@ -43,7 +43,7 @@ func NewCmdInit() *cobra.Command {
 			// change working directory by app name.
 			err = os.Chdir(opts.appName)
 			if err != nil {
-				log.Print("❌ Change the working directory into " + opts.appName + " failure with the error: ", err)
+				log.Print("❌ Change the working directory into "+opts.appName+" failure with the error: ", err)
 				return
 			}
 
@@ -60,6 +60,8 @@ func NewCmdInit() *cobra.Command {
 				return
 			}
 
+			log.Print("------------------------")
+
 			// go mod
 			modCmd := exec.Command("go", "mod", "init", opts.appName)
 			err = modCmd.Run()
@@ -67,8 +69,24 @@ func NewCmdInit() *cobra.Command {
 				log.Print("❌ Generate go.mod file failure with the error: ", err)
 				return
 			}
+
 			// download dependencies
 			modCmd = exec.Command("go", "mod", "tidy")
+			err = modCmd.Run()
+			if err != nil {
+				log.Print("🛠 go.mod tidy err: ", err)
+				return
+			}
+
+			// fix version issue
+			modCmd = exec.Command("go", "mod", "edit", "-replace", "github.com/yomorun/yomo=../../yomorun/yomo")
+			err = modCmd.Run()
+			if err == nil {
+				log.Print("🛠 go.mod replaced")
+			} else {
+				log.Print("🛠 go.mod replace err: ", err.Error())
+				return
+			}
 			modCmd.Run()
 
 			log.Print("✅ Congratulations! You have initialized the serverless app successfully.")
