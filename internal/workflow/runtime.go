@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 
 	"github.com/yomorun/yomo/internal/conf"
 	"github.com/yomorun/yomo/pkg/quic"
@@ -44,22 +45,23 @@ func Build(wfConf *conf.WorkflowConfig) []func() (io.ReadWriter, func()) {
 	return flows
 }
 
-func connectToApp(app conf.App, ctx context.Context) (quic.Stream, error) {
+func connectToApp(ctx context.Context, app conf.App) (quic.Stream, error) {
 	client, err := quic.NewClient(fmt.Sprintf("%s:%d", app.Host, app.Port))
 	if err != nil {
+		log.Print(getConnectFailedMsg(app), err)
 		return nil, err
 	}
+	log.Printf("✅ Connect to %s successfully.", getAppInfo(app))
 	return client.CreateStream(ctx)
 }
 
-func getConnectFailedMsg(appType string, app conf.App) string {
+func getConnectFailedMsg(app conf.App) string {
 	return fmt.Sprintf("❌ Connect to %s failure with err: ",
-		getAppInfo(appType, app))
+		getAppInfo(app))
 }
 
-func getAppInfo(appType string, app conf.App) string {
-	return fmt.Sprintf("%s %s (%s:%d)",
-		appType,
+func getAppInfo(app conf.App) string {
+	return fmt.Sprintf("%s (%s:%d)",
 		app.Name,
 		app.Host,
 		app.Port)
@@ -69,27 +71,26 @@ func createReadWriter(app conf.App) func() (io.ReadWriter, func()) {
 	f := func() (io.ReadWriter, func()) {
 		if Clients[app.Name].Stream != nil {
 			return Clients[app.Name].Stream, Clients[app.Name].CancelFunc
-		} else {
-			ctx, cancel := context.WithCancel(context.Background())
-			stream, err := connectToApp(app, ctx)
-			if err != nil {
-				Clients[app.Name] = Client{
-					App:        app,
-					Stream:     nil,
-					CancelFunc: cancelStream(cancel, app),
-				}
-				return nil, cancelStream(cancel, app)
-			} else {
-				Clients[app.Name] = Client{
-					App:        app,
-					Stream:     stream,
-					CancelFunc: cancelStream(cancel, app),
-				}
-
-				return stream, cancelStream(cancel, app)
-			}
 		}
 
+		ctx, cancel := context.WithCancel(context.Background())
+		stream, err := connectToApp(ctx, app)
+		if err != nil {
+			Clients[app.Name] = Client{
+				App:        app,
+				Stream:     nil,
+				CancelFunc: cancelStream(cancel, app),
+			}
+			return nil, cancelStream(cancel, app)
+		}
+
+		Clients[app.Name] = Client{
+			App:        app,
+			Stream:     stream,
+			CancelFunc: cancelStream(cancel, app),
+		}
+
+		return stream, cancelStream(cancel, app)
 	}
 
 	return f
