@@ -19,5 +19,9 @@ fmt:
 
 vet:
 	$(GO) vet $(VETPACKAGES)
+
 build:
-	$(GO) build -o bin/yomo -ldflags "-s -w ${GO_LDFLAGS}" ./cmd/yomo
+	$(GO) build -o bin/yomo -ldflags "-s -w ${GO_LDFLAGS}" github.com/yomorun/yomo/cmd/yomo
+
+install:
+	$(GO) install -ldflags "-s -w ${GO_LDFLAGS}" github.com/yomorun/yomo/cmd/yomo

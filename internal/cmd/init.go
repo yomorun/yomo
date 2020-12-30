@@ -67,14 +67,28 @@ func NewCmdInit() *cobra.Command {
 				log.Print("❌ Generate go.mod file failure with the error: ", err)
 				return
 			}
+
 			// download dependencies
 			modCmd = exec.Command("go", "mod", "tidy")
+			err = modCmd.Run()
+			if err != nil {
+				log.Print("🛠 go.mod tidy err: ", err)
+				return
+			}
+
+			// fix version issue
+			modCmd = exec.Command("go", "mod", "edit", "-replace", "github.com/yomorun/yomo=../../yomorun/yomo")
+			err = modCmd.Run()
+			if err == nil {
+				log.Print("🛠 go.mod replaced")
+			} else {
+				log.Print("🛠 go.mod replace err: ", err.Error())
+				return
+			}
 			modCmd.Run()
 
 			log.Print("✅ Congratulations! You have initialized the serverless app successfully.")
-			log.Print("🎉 You can enjoy the YoMo Serverless in the following steps:")
-			log.Printf("1. cd %s", opts.appName)
-			log.Print("2. yomo dev")
+			log.Print("🎉 You can enjoy the YoMo Serverless via the command: yomo dev")
 		},
 	}
 

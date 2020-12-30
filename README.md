@@ -15,16 +15,40 @@ More info at 🦖[https://yomo.run]
 ### 1. Install CLI
 
 ```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/yomorun/install/HEAD/install.sh)"
+# Ensure use $GOPATH, golang requires main and plugin highly coupled
+○ echo $GOPATH
+
 ```
 
-### 2. Create your serverless code
+if `$GOPATH` is not set, check [Set $GOPATH and $GOBIN](#optional-set-gopath-and-gobin) first.
 
 ```bash
-mkdir yomo-demo && cd $_ && touch app.go
+$ GO111MODULE=off go get github.com/yomorun/yomo
+
+$ cd $GOPATH/src/github.com/yomorun/yomo
+
+$ make install
 ```
 
-Write your `app.go` code:
+![YoMo Tutorial 1](docs/tutorial-1.png)
+
+### 2. Create your serverless app
+
+```bash
+$ mkdir -p $GOPATH/src/github.com/{YOUR_GITHUB_USERNAME} && cd $_
+
+$ yomo init yomo-app-demo
+2020/12/29 13:03:57 Initializing the Serverless app...
+2020/12/29 13:04:00 ✅ Congratulations! You have initialized the serverless app successfully.
+2020/12/29 13:04:00 🎉 You can enjoy the YoMo Serverless via the command: yomo dev
+
+$ cd yomo-app-demo
+
+```
+
+![YoMo Tutorial 2](docs/tutorial-2.png)
+
+CLI will automatically create the `app.go`:
 
 ```go
 package main
@@ -59,12 +83,38 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 
 1. Run `yomo dev` from the terminal. you will see the following message:
 
-```bash
-(20:08:50 ~/yomo/examples)──> yomo dev
-2020/12/18 20:09:12 Building the Serverless Function File...
-2020/12/18 20:09:14 ✅ Listening on 0.0.0.0:4242
-```
+![YoMo Tutorial 3](docs/tutorial-3.png)
+
 Congratulations! You have done your first YoMo application.
+
+### Optional: Set $GOPATH and $GOBIN
+
+for current session:
+
+```bash
+export GOPATH=~/.go
+export PATH=$GOPATH/bin:$PATH
+```
+
+for shell: 
+
+for `zsh` users
+
+```bash
+echo "export GOPATH=~/.go" >> .zshrc
+echo "path+=$GOPATH/bin" >> .zshrc
+```
+
+for `bash` users
+
+```bash
+echo 'export GOPATH=~/.go' >> .bashrc
+echo 'export PATH="$GOPATH/bin:$PATH"' >> ~/.bashrc
+```
+
+## 📚 Documentation
+
+**status** WIP [docs.yomo.run](https://docs.yomo.run)
 
 ## 🎯 Focuses on computings out of data center
 
