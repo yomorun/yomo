@@ -30,19 +30,20 @@ func Run(endpoint string, handle quic.ServerHandler) error {
 }
 
 // Build build the workflow by config (.yaml).
-func Build(wfConf *conf.WorkflowConfig) []func() (io.ReadWriter, func()) {
+func Build(wfConf *conf.WorkflowConfig) ([]func() (io.ReadWriter, func()), []func() (io.Writer, func())) {
 	//init workflow
 	flows := make([]func() (io.ReadWriter, func()), 0)
+	sinks := make([]func() (io.Writer, func()), 0)
 
 	for _, app := range wfConf.Flows {
 		flows = append(flows, createReadWriter(app))
 	}
 
 	for _, app := range wfConf.Sinks {
-		flows = append(flows, createReadWriter(app))
+		sinks = append(sinks, createWriter(app))
 	}
 
-	return flows
+	return flows, sinks
 }
 
 func connectToApp(ctx context.Context, app conf.App) (quic.Stream, error) {
@@ -69,6 +70,35 @@ func getAppInfo(app conf.App) string {
 
 func createReadWriter(app conf.App) func() (io.ReadWriter, func()) {
 	f := func() (io.ReadWriter, func()) {
+		if Clients[app.Name].Stream != nil {
+			return Clients[app.Name].Stream, Clients[app.Name].CancelFunc
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		stream, err := connectToApp(ctx, app)
+		if err != nil {
+			Clients[app.Name] = Client{
+				App:        app,
+				Stream:     nil,
+				CancelFunc: cancelStream(cancel, app),
+			}
+			return nil, cancelStream(cancel, app)
+		}
+
+		Clients[app.Name] = Client{
+			App:        app,
+			Stream:     stream,
+			CancelFunc: cancelStream(cancel, app),
+		}
+
+		return stream, cancelStream(cancel, app)
+	}
+
+	return f
+}
+
+func createWriter(app conf.App) func() (io.Writer, func()) {
+	f := func() (io.Writer, func()) {
 		if Clients[app.Name].Stream != nil {
 			return Clients[app.Name].Stream, Clients[app.Name].CancelFunc
 		}

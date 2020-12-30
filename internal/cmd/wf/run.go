@@ -2,6 +2,7 @@ package wf
 
 import (
 	"fmt"
+	"io"
 	"log"
 
 	"github.com/spf13/cobra"
@@ -58,7 +59,7 @@ type quicHandler struct {
 }
 
 func (s *quicHandler) Listen() error {
-	flows := workflow.Build(s.serverlessConfig)
+	flows, sinks := workflow.Build(s.serverlessConfig)
 
 	stream := dispatcher.DispatcherWithFunc(flows, s.mergeChan)
 
@@ -66,6 +67,21 @@ func (s *quicHandler) Listen() error {
 		for customer := range stream.Observe() {
 			if customer.Error() {
 				fmt.Println(customer.E.Error())
+				continue
+			}
+			value := customer.V.([]byte)
+
+			for _, sink := range sinks {
+				go func(_sink func() (io.Writer, func()), buf []byte) {
+					writer, cancel := _sink()
+
+					if writer != nil {
+						_, err := writer.Write(buf)
+						if err != nil {
+							cancel()
+						}
+					}
+				}(sink, value)
 			}
 		}
 	}()
