@@ -60,8 +60,6 @@ func NewCmdInit() *cobra.Command {
 				return
 			}
 
-			log.Print("------------------------")
-
 			// go mod
 			modCmd := exec.Command("go", "mod", "init", opts.appName)
 			err = modCmd.Run()

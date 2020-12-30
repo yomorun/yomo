@@ -60,7 +60,6 @@ func (s *quicGoServer) ListenAndServe(ctx context.Context, addr string) error {
 		if err != nil {
 			return err
 		}
-
 		if s.handler != nil {
 			s.handler.Read(stream)
 		} else {
@@ -80,7 +79,7 @@ func (c *quicGoClient) Connect(addr string) error {
 	}
 
 	session, err := quicGo.DialAddr(addr, tlsConf, &quicGo.Config{
-		MaxIdleTimeout:        time.Minute * 10080,
+		MaxIdleTimeout:        time.Second * 5,
 		KeepAlive:             true,
 		MaxIncomingStreams:    1000000,
 		MaxIncomingUniStreams: 1000000,
@@ -89,7 +88,6 @@ func (c *quicGoClient) Connect(addr string) error {
 	if err != nil {
 		return err
 	}
-
 	c.session = session
 	return nil
 }
@@ -103,7 +101,6 @@ func (c *quicGoClient) CreateStream(ctx context.Context) (Stream, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	return stream, nil
 }
 

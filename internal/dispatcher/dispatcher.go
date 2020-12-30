@@ -1,6 +1,7 @@
 package dispatcher
 
 import (
+	"io"
 	"path/filepath"
 	"plugin"
 
@@ -29,4 +30,14 @@ func AutoDispatcher(appPath string, rxstream rx.RxStream) (rx.RxStream, error) {
 		return nil, err
 	}
 	return Dispatcher(handler, rxstream), nil
+}
+
+func DispatcherWithFunc(flows []func() (io.ReadWriter, func()), reader chan []byte) rx.RxStream {
+	stream := rx.FromChannel(reader)
+
+	for _, flow := range flows {
+		stream = stream.MergeReadWriterWithFunc(flow)
+	}
+
+	return stream
 }

@@ -11,6 +11,28 @@ import (
 	"github.com/yomorun/yomo-codec-golang/pkg/codes"
 )
 
+func FromChannel(channel chan []byte) RxStream {
+	f := func(ctx context.Context, next chan rxgo.Item) {
+		defer close(next)
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case item, ok := <-channel:
+				if !ok {
+					return
+				}
+
+				if !Of(item).SendContext(ctx, next) {
+					return
+				}
+			}
+		}
+	}
+	return CreateObservable(f)
+}
+
 func FromReader(reader io.Reader) RxStream {
 	next := make(chan rxgo.Item)
 
@@ -20,11 +42,37 @@ func FromReader(reader io.Reader) RxStream {
 			n, err := reader.Read(buf)
 
 			if err != nil {
-				return
+				break
 			} else {
 				value := buf[:n]
 				next <- Of(value)
 			}
+		}
+	}()
+
+	return ConvertObservable(rxgo.FromChannel(next))
+}
+
+func FromReaderWithFunc(f func() io.Reader) RxStream {
+	next := make(chan rxgo.Item)
+
+	go func() {
+		for {
+			reader := f()
+
+			if reader == nil {
+				time.Sleep(time.Second)
+			} else {
+				buf := make([]byte, 3*1024)
+				n, err := reader.Read(buf)
+				if err != nil {
+					fmt.Println("[FromReaderWithFunc Reader Error] ", err)
+				} else {
+					value := buf[:n]
+					next <- Of(value)
+				}
+			}
+
 		}
 	}()
 
@@ -448,6 +496,93 @@ func (s *RxStreamImpl) Y3Decoder(key string, mold interface{}, opts ...rxgo.Opti
 			}
 		}
 	}
+	return CreateObservable(f, opts...)
+}
+
+func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf func() (io.ReadWriter, func()), opts ...rxgo.Option) RxStream {
+	f := func(ctx context.Context, next chan rxgo.Item) {
+		defer close(next)
+		ready := make(chan bool)
+		observe := s.Observe(opts...)
+		readerErr := false
+
+		go func() {
+			defer close(ready)
+
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case item, ok := <-observe:
+					if !ok {
+						return
+					}
+					if item.Error() {
+						return
+					} else {
+						for {
+							rw, cancel := rwf()
+							if rw == nil {
+								time.Sleep(time.Second)
+							} else {
+								_, err := rw.Write(item.V.([]byte))
+								if err == nil {
+									ready <- true
+									break
+								} else {
+									cancel()
+								}
+							}
+						}
+					}
+				}
+			}
+		}()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case _, ok := <-ready:
+				if !ok {
+					return
+				}
+
+				isStop := false
+
+				for {
+					rw, cancel := rwf()
+					if rw == nil {
+						time.Sleep(time.Second)
+					} else {
+						if readerErr {
+							readerErr = false
+							break
+						}
+
+						buf := make([]byte, 3*1024)
+						n, err := rw.Read(buf)
+
+						if err != nil {
+							cancel()
+							readerErr = true
+						} else {
+							value := buf[:n]
+							if !rxgo.Of(value).SendContext(ctx, next) {
+								isStop = true
+							}
+							break
+						}
+					}
+				}
+
+				if isStop {
+					return
+				}
+			}
+		}
+	}
+
 	return CreateObservable(f, opts...)
 }
 
