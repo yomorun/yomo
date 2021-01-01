@@ -8,7 +8,7 @@ YoMo is an open-source Streaming Serverless Framework for building Low-latency E
 
 More info at 🦖[https://yomo.run]
 
-[简体中文](https://gitee.com/yomorun/yomo)
+[Gitee](https://gitee.com/yomorun/yomo)
 
 ## 🚀 Getting Started
 
@@ -118,6 +118,7 @@ echo 'export PATH="$GOPATH/bin:$PATH"' >> ~/.bashrc
 
 ## 🎯 Focuses on computings out of data center
 
+- IoT/IIoT/AIoT
 - Latency-sensitive applications.
 - Networking situation with packet loss or high latency.
 - Handling continuous high frequency generated data with stream-processing.
