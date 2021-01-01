@@ -114,7 +114,7 @@ echo 'export PATH="$GOPATH/bin:$PATH"' >> ~/.bashrc
 
 ## 📚 Documentation
 
-**status** WIP [docs.yomo.run](https://docs.yomo.run)
+**status** WIP [yomo.run](https://yomo.run)
 
 ## 🎯 Focuses on computings out of data center
 
