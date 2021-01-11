@@ -8,7 +8,7 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/reactivex/rxgo/v2"
-	"github.com/yomorun/yomo-codec-golang/pkg/codes"
+	"github.com/yomorun/y3-codec-golang/pkg/codes"
 )
 
 func FromChannel(channel chan []byte) RxStream {
