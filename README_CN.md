@@ -30,7 +30,7 @@ $ cd $GOPATH/src/github.com/yomorun/yomo
 $ make install
 ```
 
-![YoMo Tutorial 1](docs/tutorial-1.png)
+![YoMo Tutorial 1](/yomorun/yomo/raw/master/docs/tutorial-1.png)
 
 ### 2. 创建第一个yomo应用
 
@@ -46,7 +46,7 @@ $ cd yomo-app-demo
 
 ```
 
-![YoMo Tutorial 2](docs/tutorial-2.png)
+![YoMo Tutorial 2](/yomorun/yomo/raw/master/docs/tutorial-2.png)
 
 CLI将会自动创建一个`app.go`文件:
 
@@ -83,7 +83,7 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 
 1. 为了方便调试，我们创建了一个云端的数据模拟器，它可以产生源源不断的数据，我们只需要运行`yomo dev`就可以看到:
 
-![YoMo Tutorial 3](docs/tutorial-3.png)
+![YoMo Tutorial 3](/yomorun/yomo/raw/master/docs/tutorial-3.png)
 
 恭喜您！第一个YoMo应用已经完美运行起来啦！
 
