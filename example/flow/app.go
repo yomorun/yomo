@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	y3 "github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo/pkg/rx"
 )
 
@@ -14,10 +15,15 @@ var printer = func(_ context.Context, i interface{}) (interface{}, error) {
 	return value, nil
 }
 
+var callback = func(v []byte) (interface{}, error) {
+	return y3.ToFloat32(v)
+}
+
 // Handler will handle data in Rx way
 func Handler(rxstream rx.RxStream) rx.RxStream {
 	stream := rxstream.
-		Y3Decoder("0x10", float32(0)).
+		Subscribe(0x10).
+		OnObserve(callback).
 		AuditTime(100 * time.Millisecond).
 		Map(printer).
 		StdOut()
