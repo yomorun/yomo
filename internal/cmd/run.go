@@ -7,7 +7,7 @@ import (
 	"plugin"
 
 	"github.com/spf13/cobra"
-	"github.com/yomorun/y3-codec-golang/pkg/codes"
+	y3 "github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo/internal/dispatcher"
 	"github.com/yomorun/yomo/internal/serverless"
 	"github.com/yomorun/yomo/pkg/quic"
@@ -73,10 +73,10 @@ func (s quicServerHandler) Listen() error {
 	return nil
 }
 
-var protoCodec = codes.NewProtoCodec(0x10)
-
 func (s quicServerHandler) Read(st quic.Stream) error {
 	stream := dispatcher.Dispatcher(s.serverlessHandle, rx.FromReader(st))
+
+	y3codec := y3.NewCodec(0x10)
 
 	go func() {
 		for customer := range stream.Observe() {
@@ -88,7 +88,7 @@ func (s quicServerHandler) Read(st quic.Stream) error {
 					st.Write([]byte("Finish sink!"))
 				} else {
 					// use Y3 codec to encode the data
-					sendingBuf, _ := protoCodec.Marshal(customer.V)
+					sendingBuf, _ := y3codec.Marshal(customer.V)
 					st.Write(sendingBuf)
 				}
 			}
