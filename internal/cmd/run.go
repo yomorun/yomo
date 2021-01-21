@@ -74,7 +74,7 @@ func (s quicServerHandler) Listen() error {
 }
 
 func (s quicServerHandler) Read(st quic.Stream) error {
-	stream := dispatcher.Dispatcher(s.serverlessHandle, rx.FromReader(st))
+	stream := dispatcher.Dispatcher(s.serverlessHandle, rx.FromReaderWithY3(st))
 
 	y3codec := y3.NewCodec(0x10)
 

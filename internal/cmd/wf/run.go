@@ -59,9 +59,14 @@ type quicHandler struct {
 }
 
 func (s *quicHandler) Listen() error {
+
+	return nil
+}
+
+func (s *quicHandler) Read(st quic.Stream) error {
 	flows, sinks := workflow.Build(s.serverlessConfig)
 
-	stream := dispatcher.DispatcherWithFunc(flows, s.mergeChan)
+	stream := dispatcher.DispatcherWithFunc(flows, st)
 
 	go func() {
 		for customer := range stream.Observe() {
@@ -82,23 +87,6 @@ func (s *quicHandler) Listen() error {
 						}
 					}
 				}(sink, value)
-			}
-		}
-	}()
-	return nil
-}
-
-func (s *quicHandler) Read(st quic.Stream) error {
-	go func() {
-		for {
-			buf := make([]byte, 3*1024)
-			n, err := st.Read(buf)
-
-			if err != nil {
-				break
-			} else {
-				value := buf[:n]
-				s.mergeChan <- value
 			}
 		}
 	}()

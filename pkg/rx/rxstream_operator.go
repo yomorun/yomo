@@ -34,6 +34,28 @@ func FromChannel(channel chan []byte) RxStream {
 }
 
 func FromReader(reader io.Reader) RxStream {
+	next := make(chan rxgo.Item)
+
+	go func() {
+		defer close(next)
+
+		for {
+			buf := make([]byte, 3*1024)
+			n, err := reader.Read(buf)
+
+			if err != nil {
+				break
+			} else {
+				value := buf[:n]
+				next <- Of(value)
+			}
+		}
+	}()
+
+	return ConvertObservable(rxgo.FromChannel(next))
+}
+
+func FromReaderWithY3(reader io.Reader) RxStream {
 	source := y3.FromStream(reader)
 	return ConvertObservableWithY3(source)
 }
