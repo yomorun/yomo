@@ -32,8 +32,8 @@ func AutoDispatcher(appPath string, rxstream rx.RxStream) (rx.RxStream, error) {
 	return Dispatcher(handler, rxstream), nil
 }
 
-func DispatcherWithFunc(flows []func() (io.ReadWriter, func()), reader chan []byte) rx.RxStream {
-	stream := rx.FromChannel(reader)
+func DispatcherWithFunc(flows []func() (io.ReadWriter, func()), reader io.Reader) rx.RxStream {
+	stream := rx.FromReader(reader)
 
 	for _, flow := range flows {
 		stream = stream.MergeReadWriterWithFunc(flow)

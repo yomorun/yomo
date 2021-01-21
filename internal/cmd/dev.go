@@ -65,7 +65,7 @@ func (s quicDevHandler) Listen() error {
 }
 
 func (s quicDevHandler) Read(st quic.Stream) error {
-	stream := dispatcher.Dispatcher(s.serverlessHandle, rx.FromReader(st))
+	stream := dispatcher.Dispatcher(s.serverlessHandle, rx.FromReaderWithY3(st))
 
 	go func() {
 		for customer := range stream.Observe() {
