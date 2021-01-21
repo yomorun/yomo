@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/reactivex/rxgo/v2"
 	y3 "github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo/pkg/rx"
 )
@@ -38,9 +39,9 @@ var callback = func(v []byte) (interface{}, error) {
 // Handler will handle data in Rx way
 func Handler(rxstream rx.RxStream) rx.RxStream {
 	stream := rxstream.
-		Subscribe(KeyNoise).
+		Subscribe(0x10).
 		OnObserve(callback).
-		AuditTime(100 * time.Millisecond).
+		Debounce(rxgo.WithDuration(50 * time.Millisecond)).
 		Map(printer).
 		StdOut()
 
