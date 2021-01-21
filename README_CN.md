@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="200px" height="200px" src="https://docs.yomo.run/favicon.ico" />
+  <img width="200px" height="200px" src="https://yomo.run/yomo-logo.png" />
 </p>
 
 # YoMo ![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg)
@@ -93,7 +93,7 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 	stream := rxstream.
 		Subscribe(KeyNoise).
 		OnObserve(callback).
-		AuditTime(100 * time.Millisecond).
+		Debounce(rxgo.WithDuration(50 * time.Millisecond)).
 		Map(printer).
 		StdOut()
 

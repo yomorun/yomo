@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="200px" height="200px" src="https://docs.yomo.run/favicon.ico" />
+  <img width="200px" height="200px" src="https://yomo.run/yomo-logo.png" />
 </p>
 
 # YoMo ![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg)
@@ -30,7 +30,7 @@ $ cd $GOPATH/src/github.com/yomorun/yomo
 $ make install
 ```
 
-![YoMo Tutorial 1](docs/tutorial-1.png)
+![YoMo Tutorial 1](https://yomo.run/tutorial-1.png)
 
 ### 2. Create your serverless app
 
@@ -46,7 +46,7 @@ $ cd yomo-app-demo
 
 ```
 
-![YoMo Tutorial 2](docs/tutorial-2.png)
+![YoMo Tutorial 2](https://yomo.run/tutorial-2.png)
 
 CLI will automatically create the `app.go`:
 
@@ -58,6 +58,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/reactivex/rxgo/v2"
 	y3 "github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo/pkg/rx"
 )
@@ -91,21 +92,22 @@ var callback = func(v []byte) (interface{}, error) {
 // Handler will handle data in Rx way
 func Handler(rxstream rx.RxStream) rx.RxStream {
 	stream := rxstream.
-		Subscribe(KeyNoise).
+		Subscribe(0x10).
 		OnObserve(callback).
-		AuditTime(100 * time.Millisecond).
+		Debounce(rxgo.WithDuration(50 * time.Millisecond)).
 		Map(printer).
 		StdOut()
 
 	return stream
 }
+
 ```
 
 ### 3. Build and run
 
 1. Run `yomo dev` from the terminal. you will see the following message:
 
-![YoMo Tutorial 3](docs/tutorial-3.png)
+![YoMo Tutorial 3](https://yomo.run/tutorial-3.png)
 
 Congratulations! You have done your first YoMo application.
 
