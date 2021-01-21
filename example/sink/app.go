@@ -22,7 +22,7 @@ var callback = func(v []byte) (interface{}, error) {
 // Handler will handle data in Rx way
 func Handler(rxstream rx.RxStream) rx.RxStream {
 	stream := rxstream.
-		Subscribe(0x10).
+		Subscribe(0x11).
 		OnObserve(callback).
 		AuditTime(100 * time.Millisecond).
 		Map(store)
