@@ -9,14 +9,26 @@ import (
 	"github.com/yomorun/yomo/pkg/rx"
 )
 
+type NoiseData struct {
+	Noise float32 `yomo:"0x11"`
+	Time  int64   `yomo:"0x12"`
+	From  string  `yomo:"0x13"`
+}
+
 var printer = func(_ context.Context, i interface{}) (interface{}, error) {
-	value := i.(float32) / 10
-	fmt.Println("serverless get value:", value)
+	value := i.(NoiseData)
+	fmt.Println("serverless get value:", value.Noise)
 	return value, nil
 }
 
 var callback = func(v []byte) (interface{}, error) {
-	return y3.ToFloat32(v)
+	var mold NoiseData
+	err := y3.ToObject(v, &mold)
+	if err != nil {
+		return nil, err
+	}
+	mold.Noise = mold.Noise / 10
+	return mold, nil
 }
 
 // Handler will handle data in Rx way
