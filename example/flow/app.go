@@ -10,8 +10,8 @@ import (
 	"github.com/yomorun/yomo/pkg/rx"
 )
 
-// KeyNoise represents the Tag of a Y3 encoded data packet
-const KeyNoise = 0x10
+// NoiseDataKey represents the Tag of a Y3 encoded data packet
+const NoiseDataKey = 0x10
 
 // NoiseData represents the structure of data
 type NoiseData struct {
@@ -39,7 +39,7 @@ var callback = func(v []byte) (interface{}, error) {
 // Handler will handle data in Rx way
 func Handler(rxstream rx.RxStream) rx.RxStream {
 	stream := rxstream.
-		Subscribe(0x10).
+		Subscribe(NoiseDataKey).
 		OnObserve(callback).
 		Debounce(rxgo.WithDuration(50 * time.Millisecond)).
 		Map(printer).

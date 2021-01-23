@@ -62,8 +62,8 @@ import (
 	"github.com/yomorun/yomo/pkg/rx"
 )
 
-// KeyNoise 用于通知YoMo只订阅Y3序列化后Tag为0x10的value
-const KeyNoise = 0x10
+// NoiseDataKey 用于通知YoMo只订阅Y3序列化后Tag为0x10的value
+const NoiseDataKey = 0x10
 
 // NoiseData 描述了Y3序列化后的Tag为0x10的Value所对应的反序列化数据结构
 type NoiseData struct {
@@ -91,7 +91,7 @@ var callback = func(v []byte) (interface{}, error) {
 // Handler will handle data in Rx way
 func Handler(rxstream rx.RxStream) rx.RxStream {
 	stream := rxstream.
-		Subscribe(KeyNoise).
+		Subscribe(NoiseDataKey).
 		OnObserve(callback).
 		Debounce(rxgo.WithDuration(50 * time.Millisecond)).
 		Map(printer).
