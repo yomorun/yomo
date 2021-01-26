@@ -1,0 +1,7 @@
+name: Service
+host: localhost
+port: 9998
+sinks:
+  - name: db
+    host: localhost
+    port: 4242
