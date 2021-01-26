@@ -275,6 +275,7 @@ github.com/stretchr/testify v1.4.0 h1:2E4SXV/wtOkTonXsotYi4li6zVWxYlZuYNCXe9XRJy
 github.com/stretchr/testify v1.4.0/go.mod h1:j7eGeouHqKxXV5pUuKE4zz7dFj8WfuZ+81PSLYec5m4=
 github.com/stretchr/testify v1.6.1 h1:hDPOHmpOpP40lSULcqw7IrRb/u7w6RpDC9399XyoNd0=
 github.com/stretchr/testify v1.6.1/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
+github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/subosito/gotenv v1.2.0/go.mod h1:N0PQaV/YGNqwC0u51sEeR/aUtSLEXKX9iv69rRypqCw=
 github.com/tarm/serial v0.0.0-20180830185346-98f6abe2eb07/go.mod h1:kDXzergiv9cbyO7IOYJZWg1U88JhDg3PB6klq9Hg2pA=
 github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5/go.mod h1:ncp9v5uamzpCO7NfCPTXjqaC+bZgJeR0sMTm6dMHP7U=
@@ -287,6 +288,8 @@ github.com/yomorun/y3-codec-golang v1.5.0 h1:pd/D2o7GlhhIn0YSEADGaviID/fwUbiopGH
 github.com/yomorun/y3-codec-golang v1.5.0/go.mod h1:J9eZeyLeoAnmghuPBVzy1OVkhz3oj9kcTKTgVWILa9Q=
 github.com/yomorun/y3-codec-golang v1.6.1 h1:OvIu66cOWGg/GhoEx5rHXLM4b/ZyXgCySToHKjnohyA=
 github.com/yomorun/y3-codec-golang v1.6.1/go.mod h1:J9eZeyLeoAnmghuPBVzy1OVkhz3oj9kcTKTgVWILa9Q=
+github.com/yomorun/y3-codec-golang v1.6.2 h1:QMk7aDvtr080mp7x2XE8IW89FlX2adAYwZlRrJ9VATc=
+github.com/yomorun/y3-codec-golang v1.6.2/go.mod h1:R+y8hQ/AHZ1tDzWtmspVeX7omqVWFJ42gdlXIOp35rA=
 go.etcd.io/bbolt v1.3.2/go.mod h1:IbVyRI1SCnLcuJnV2u8VeU0CEYM7e686BmAb1XKL+uU=
 go.opencensus.io v0.18.0/go.mod h1:vKdFvxhtzZ9onBp9VKHK8z/sRpBMnKAsufL7wlDrCOA=
 go.opencensus.io v0.21.0/go.mod h1:mSImk1erAIZhrmZN+AvHh14ztQfjbGwt4TtuofqLduU=
