@@ -1,0 +1,7 @@
+name: Service
+host: localhost
+port: 9999
+sinks:
+  - name: receiver
+    host: localhost
+    port: 9998
