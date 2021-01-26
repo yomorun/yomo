@@ -14,6 +14,8 @@ Official Website: 🦖[https://yomo.run](https://yomo.run)
 
 ### 1. Install CLI
 
+> **Note:** YoMo requires Go 1.15 and above, run `go version` to get the version of Go in your environment, please follow [this link](https://golang.org/doc/install) to install or upgrade if it doesn't fit the requirement.
+
 ```bash
 # Ensure use $GOPATH, golang requires main and plugin highly coupled
 ○ echo $GOPATH

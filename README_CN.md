@@ -14,6 +14,9 @@ For english, check: [Github](https://github.com/yomorun/yomo)
 
 ### 1. 安装CLI
 
+> **注意：** YoMo 的运行环境要求 Go 版本为 1.15 或以上，运行 `go version` 获取当前环境的版本，如果未安装 Go 或者不符合 Go 版本要求时，请安装或者升级 Go 版本。
+安装 Go 环境之后，国内用户可参考 <https://goproxy.cn/> 设置 `GOPROXY`，以便下载 YoMo 项目依赖。
+
 ```bash
 # 确保设置了$GOPATH, Golang的设计里main和plugin是高度耦合的
 $ echo $GOPATH
