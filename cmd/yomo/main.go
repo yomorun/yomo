@@ -20,6 +20,7 @@ func main() {
 	}
 	wfCmd.AddCommand(
 		wf.NewCmdRun(),
+		wf.NewCmdDev(),
 	)
 
 	// add commands to root
