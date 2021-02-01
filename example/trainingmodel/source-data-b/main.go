@@ -19,7 +19,7 @@ var zipperAddr = os.Getenv("YOMO_ZIPPER_ENDPOINT")
 
 func main() {
 	if zipperAddr == "" {
-		zipperAddr = "localhost:9999"
+		zipperAddr = "localhost:4242"
 	}
 	err := emit(zipperAddr)
 	if err != nil {
@@ -53,7 +53,7 @@ func generateAndSendData(stream quic.Stream) {
 		time.Sleep(100 * time.Millisecond)
 
 		data := DataB{
-			NumB: rand.New(rand.NewSource(time.Now().UnixNano())).Float32() * 200,
+			NumB: rand.New(rand.NewSource(time.Now().UnixNano())).Float32() * 2000,
 		}
 
 		sendingBuf, _ := codec.Marshal(data)
