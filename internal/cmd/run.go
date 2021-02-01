@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"os"
 	"plugin"
 
 	"github.com/spf13/cobra"
+	"github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo/internal/dispatcher"
 	"github.com/yomorun/yomo/internal/serverless"
 	"github.com/yomorun/yomo/pkg/quic"
@@ -50,6 +52,7 @@ func NewCmdRun() *cobra.Command {
 				serverlessHandle: slHandler,
 				mockSink:         opts.mockSink,
 				readers:          make(chan io.Reader),
+				writers:          make([]io.Writer, 0),
 			}
 
 			err = serverless.Run(endpoint, quicHandler)
@@ -70,56 +73,47 @@ type quicServerHandler struct {
 	serverlessHandle plugin.Symbol
 	mockSink         bool
 	readers          chan io.Reader
+	writers          []io.Writer
 }
 
 func (s *quicServerHandler) Listen() error {
-	//var writers []io.Writer
-
 	rxstream := rx.FromReaderWithY3(s.readers)
-	//rxObserve := rxstream.Observe()
-
-	// go func() {
-	// 	for item := range rxObserve {
-	// 		writers = append(writers, (item.V).(io.Writer))
-	// 	}
-	// }()
 
 	stream := dispatcher.Dispatcher(s.serverlessHandle, rxstream)
 	rxstream.Connect(context.Background())
-	//	y3codec := y3.NewCodec(0x10)
+
+	y3codec := y3.NewCodec(0x10)
 
 	go func() {
 		for customer := range stream.Observe() {
 			if customer.Error() {
 				fmt.Println(customer.E.Error())
 			} else if customer.V != nil {
-				//	index := rand.Intn(len(writers))
-				// HACK
-				// if s.mockSink {
-				// 	_, err := writers[index].Write([]byte("Finish sink!"))
-				// 	if err != nil {
-				// 		for _, w := range writers {
-				// 			_, err := w.Write([]byte("Finish sink!"))
-				// 			if err == nil {
-				// 				break
-				// 			}
-				// 		}
-				// 	}
+				index := rand.Intn(len(s.writers))
 
-				// } else {
-				// 	// use Y3 codec to encode the data
-				// 	fmt.Println("==============1=============")
-				// 	sendingBuf, _ := y3codec.Marshal(customer.V)
-				// 	_, err := writers[index].Write(sendingBuf)
-				// 	if err != nil {
-				// 		for _, w := range writers {
-				// 			_, err := w.Write(sendingBuf)
-				// 			if err == nil {
-				// 				break
-				// 			}
-				// 		}
-				// 	}
-				// }
+				if s.mockSink {
+					_, err := s.writers[index].Write([]byte("Finish sink!"))
+					if err != nil {
+						for _, w := range s.writers {
+							_, err := w.Write([]byte("Finish sink!"))
+							if err == nil {
+								break
+							}
+						}
+					}
+
+				} else {
+					// use Y3 codec to encode the data
+					sendingBuf, _ := y3codec.Marshal(customer.V)
+
+					for i, w := range s.writers {
+						if index == i {
+							w.Write(sendingBuf)
+						} else {
+							w.Write([]byte{0})
+						}
+					}
+				}
 			}
 		}
 	}()
@@ -129,6 +123,7 @@ func (s *quicServerHandler) Listen() error {
 
 func (s *quicServerHandler) Read(st quic.Stream) error {
 	s.readers <- st
+	s.writers = append(s.writers, st)
 	fmt.Println("===========================")
 	return nil
 }

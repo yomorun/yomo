@@ -56,15 +56,19 @@ func (s *quicGoServer) ListenAndServe(ctx context.Context, addr string) error {
 			return err
 		}
 
-		stream, err := session.AcceptStream(context.Background())
-		if err != nil {
-			return err
-		}
-		if s.handler != nil {
-			s.handler.Read(stream)
-		} else {
-			log.Print("handler isn't set in QUIC server")
-		}
+		go func(session quicGo.Session) {
+			for {
+				stream, err := session.AcceptStream(context.Background())
+				if err != nil {
+					log.Print("acceptStream:", err)
+				}
+				if s.handler != nil {
+					s.handler.Read(stream)
+				} else {
+					log.Print("handler isn't set in QUIC server")
+				}
+			}
+		}(session)
 	}
 }
 
