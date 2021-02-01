@@ -138,6 +138,27 @@ echo 'export GOPATH=~/.go' >> .bashrc
 echo 'export PATH="$GOPATH/bin:$PATH"' >> ~/.bashrc
 ```
 
+## 🌶 Use Case
+
+### Sources
+
++ [Connect EMQ X Broker to YoMo](https://github.com/yomorun/yomo-source-emqx-starter)
++ [Connect MQTT to YoMo](https://github.com/yomorun/yomo-source-mqtt-broker-starter)
+
+### Flows
+
++ [Write a YoMo-Flow with WebAssembly by SSVM](https://github.com/yomorun/yomo-flow-ssvm-example)
+
+### Sinks
+
++ [Store process result to FaunaDB the serverless way](https://github.com/yomorun/yomo-sink-faunadb-example)
++ Connect to InfluxDB to store post-processed result
++ Connect YoMo to TDEngine
+
+## 🗺 Location Insensitive Deployment
+
+![yomo-flow-arch](https://yomo.run/yomo-flow-arch.jpg)
+
 ## 📚 Documentation
 
 + `YoMo-Source`: [yomo.run/source](https://yomo.run/source)
