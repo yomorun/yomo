@@ -151,9 +151,9 @@ echo 'export PATH="$GOPATH/bin:$PATH"' >> ~/.bashrc
 
 ### Sinks
 
-+ [Store process result to FaunaDB the serverless way](https://github.com/yomorun/yomo-sink-faunadb-example)
++ [Connect to FaunaDB to store post-processed result the serverless way](https://github.com/yomorun/yomo-sink-faunadb-example)
 + Connect to InfluxDB to store post-processed result
-+ Connect YoMo to TDEngine
++ [Connect to TDEngine to store post-processed result](https://github.com/yomorun/yomo-sink-tdengine-example)
 
 ## 🗺 Location Insensitive Deployment
 
