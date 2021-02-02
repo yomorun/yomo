@@ -109,9 +109,9 @@ import (
 )
 
 type NoiseData struct {
-	Noise float32 ` + "`yomo:\"0x11\"`" +`
-	Time  int64   ` + "`yomo:\"0x12\"`" +`
-	From  string  ` + "`yomo:\"0x13\"`" +`
+	Noise float32 ` + "`yomo:\"0x11\"`" + `
+	Time  int64   ` + "`yomo:\"0x12\"`" + `
+	From  string  ` + "`yomo:\"0x13\"`" + `
 }
 
 var printer = func(_ context.Context, i interface{}) (interface{}, error) {

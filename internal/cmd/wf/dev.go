@@ -32,6 +32,7 @@ func NewCmdDev() *cobra.Command {
 				log.Print("❌ ", err)
 				return
 			}
+			printZipperConf(conf)
 
 			log.Print("Running YoMo workflow...")
 			endpoint := fmt.Sprintf("0.0.0.0:%d", conf.Port)

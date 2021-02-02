@@ -2,6 +2,7 @@ package wf
 
 import (
 	"errors"
+	"log"
 	"strings"
 
 	"github.com/yomorun/yomo/internal/conf"
@@ -33,6 +34,7 @@ func parseConfig(opts *baseOptions, args []string) (*conf.WorkflowConfig, error)
 		return nil, errors.New("Parse the workflow config failure with the error: " + err.Error())
 	}
 
+	// validate
 	err = validateConfig(wfConf)
 	if err != nil {
 		return nil, err
@@ -46,9 +48,31 @@ func validateConfig(wfConf *conf.WorkflowConfig) error {
 		return errors.New("conf is nil")
 	}
 
+	if len(wfConf.Flows) == 0 && len(wfConf.Sinks) == 0 {
+		return errors.New("At least one flow or sink is required")
+	}
+
+	m := map[string][]conf.App{
+		"Flows": wfConf.Flows,
+		"Sinks": wfConf.Sinks,
+	}
+
+	missingParams := []string{}
+	for k, apps := range m {
+		for _, app := range apps {
+			if app.Name == "" || app.Host == "" || app.Port <= 0 {
+				missingParams = append(missingParams, k)
+			}
+		}
+	}
+
 	errMsg := ""
 	if wfConf.Name == "" || wfConf.Host == "" || wfConf.Port <= 0 {
 		errMsg = "Missing name, host or port in workflow config. "
+	}
+
+	if len(missingParams) > 0 {
+		errMsg += "Missing name, host or port in " + strings.Join(missingParams, ", "+". ")
 	}
 
 	if errMsg != "" {
@@ -56,4 +80,16 @@ func validateConfig(wfConf *conf.WorkflowConfig) error {
 	}
 
 	return nil
+}
+
+func printZipperConf(wfConf *conf.WorkflowConfig) {
+	log.Printf("Found %d flows in zipper config", len(wfConf.Flows))
+	for i, flow := range wfConf.Flows {
+		log.Printf("Flow %d: %s on %s:%d", i+1, flow.Name, flow.Host, flow.Port)
+	}
+
+	log.Printf("Found %d sinks in zipper config", len(wfConf.Sinks))
+	for i, sink := range wfConf.Sinks {
+		log.Printf("Sink %d: %s on %s:%d", i+1, sink.Name, sink.Host, sink.Port)
+	}
 }
