@@ -50,7 +50,7 @@ var codec = y3.NewCodec(0x10)
 func generateAndSendData(stream quic.Stream) {
 
 	for {
-		time.Sleep(1000 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 
 		data := DataB{
 			NumB: rand.New(rand.NewSource(time.Now().UnixNano())).Float32() * 2000,

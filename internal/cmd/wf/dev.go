@@ -83,6 +83,9 @@ func (s *quicDevHandler) Read(st quic.Stream) error {
 
 			value := customer.V.([]byte)
 
+			if len(value) == 1 && value[0] == byte(0) {
+				continue
+			}
 			for _, sink := range sinks {
 				go func(_sink func() (io.Writer, func()), buf []byte) {
 					writer, cancel := _sink()

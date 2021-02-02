@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"sync"
 
 	"github.com/yomorun/yomo/internal/conf"
 	"github.com/yomorun/yomo/pkg/quic"
 )
 
 var Clients map[string]Client
+var mutex sync.RWMutex
 
 type Client struct {
 	App        conf.App
@@ -79,14 +81,17 @@ func getAppInfo(app conf.App) string {
 
 func createReadWriter(app conf.App, id int64) func() (io.ReadWriter, func()) {
 	f := func() (io.ReadWriter, func()) {
+		mutex.Lock()
 		if len(Clients[app.Name].StreamMap) > 0 && Clients[app.Name].StreamMap[id].St != nil {
+			mutex.Unlock()
 			return Clients[app.Name].StreamMap[id].St, Clients[app.Name].StreamMap[id].CancelFunc
 		}
 
-		if Clients[app.Name].StreamMap == nil {
+		if Clients[app.Name].StreamMap == nil || (Clients[app.Name].StreamMap != nil && Clients[app.Name].QuicClient == nil) {
 			client, err := connectToApp(app)
 
 			if err != nil {
+				mutex.Unlock()
 				return nil, nil
 			}
 			streammap := make(map[int64]Stream)
@@ -100,13 +105,21 @@ func createReadWriter(app conf.App, id int64) func() (io.ReadWriter, func()) {
 		ctx, cancel := context.WithCancel(context.Background())
 		stream, err := createStream(ctx, Clients[app.Name].QuicClient)
 		if err != nil {
+			if err.Error() == "NO_ERROR: No recent network activity" {
+				Clients[app.Name] = Client{
+					App:        app,
+					StreamMap:  nil,
+					QuicClient: nil,
+				}
+			}
+			mutex.Unlock()
 			return nil, cancelStream(cancel, app, id)
 		}
 		Clients[app.Name].StreamMap[id] = Stream{
 			St:         stream,
 			CancelFunc: cancelStream(cancel, app, id),
 		}
-
+		mutex.Unlock()
 		return stream, cancelStream(cancel, app, id)
 	}
 
@@ -114,36 +127,49 @@ func createReadWriter(app conf.App, id int64) func() (io.ReadWriter, func()) {
 }
 
 func createWriter(app conf.App, id int64) func() (io.Writer, func()) {
+
 	f := func() (io.Writer, func()) {
+		mutex.Lock()
 		if len(Clients[app.Name].StreamMap) > 0 && Clients[app.Name].StreamMap[id].St != nil {
+			mutex.Unlock()
 			return Clients[app.Name].StreamMap[id].St, Clients[app.Name].StreamMap[id].CancelFunc
 		}
 
-		if Clients[app.Name].StreamMap == nil {
+		if Clients[app.Name].StreamMap == nil || (Clients[app.Name].StreamMap != nil && Clients[app.Name].QuicClient == nil) {
 			client, err := connectToApp(app)
 
 			if err != nil {
+				mutex.Unlock()
 				return nil, nil
 			}
+
 			streammap := make(map[int64]Stream)
 			Clients[app.Name] = Client{
 				App:        app,
 				StreamMap:  streammap,
 				QuicClient: client,
 			}
+
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())
 		stream, err := createStream(ctx, Clients[app.Name].QuicClient)
 		if err != nil {
+			if err.Error() == "NO_ERROR: No recent network activity" {
+				Clients[app.Name] = Client{
+					App:        app,
+					StreamMap:  nil,
+					QuicClient: nil,
+				}
+			}
+			mutex.Unlock()
 			return nil, cancelStream(cancel, app, id)
 		}
-
 		Clients[app.Name].StreamMap[id] = Stream{
 			St:         stream,
 			CancelFunc: cancelStream(cancel, app, id),
 		}
-
+		mutex.Unlock()
 		return stream, cancelStream(cancel, app, id)
 	}
 
@@ -152,11 +178,13 @@ func createWriter(app conf.App, id int64) func() (io.Writer, func()) {
 
 func cancelStream(cancel context.CancelFunc, app conf.App, id int64) func() {
 	f := func() {
-		cancel()
-		Clients[app.Name].StreamMap[id] = Stream{
-			St:         nil,
-			CancelFunc: cancelStream(cancel, app, id),
+		mutex.Lock()
+		if Clients[app.Name].StreamMap != nil {
+			stream := Clients[app.Name].StreamMap[id]
+			stream.St = nil
+			Clients[app.Name].StreamMap[id] = stream
 		}
+		mutex.Unlock()
 	}
 	return f
 }

@@ -84,12 +84,12 @@ func (s *quicHandler) Read(st quic.Stream) error {
 			for _, sink := range sinks {
 				go func(_sink func() (io.Writer, func()), buf []byte) {
 					writer, cancel := _sink()
-
 					if writer != nil {
 						_, err := writer.Write(buf)
 						if err != nil {
 							cancel()
 						}
+
 					}
 				}(sink, value)
 			}

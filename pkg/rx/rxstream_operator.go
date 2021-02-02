@@ -80,9 +80,26 @@ func FromReaderWithY3(readers chan io.Reader) RxStream {
 				if !ok {
 					return
 				}
-				if !Of(y3.FromStream(item)).SendContext(ctx, next) {
+				r, w := io.Pipe()
+				if !Of(y3.FromStream(r)).SendContext(ctx, next) {
 					return
 				}
+
+				go func() {
+					time.Sleep(time.Millisecond)
+					defer w.Close()
+					for {
+						buf := make([]byte, 3*1024)
+						n, err := item.Read(buf)
+
+						if err != nil {
+							break
+						} else {
+							value := buf[:n]
+							w.Write(value)
+						}
+					}
+				}()
 			}
 		}
 	}

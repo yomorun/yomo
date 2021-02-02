@@ -92,13 +92,16 @@ func (s *quicServerHandler) Listen() error {
 				index := rand.Intn(len(s.writers))
 
 				if s.mockSink {
-					_, err := s.writers[index].Write([]byte("Finish sink!"))
-					if err != nil {
-						for _, w := range s.writers {
+				loopmock:
+					for i, w := range s.writers {
+						if index == i {
 							_, err := w.Write([]byte("Finish sink!"))
-							if err == nil {
-								break
+							if err != nil {
+								index = rand.Intn(len(s.writers))
+								break loopmock
 							}
+						} else {
+							w.Write([]byte{0})
 						}
 					}
 
@@ -106,9 +109,14 @@ func (s *quicServerHandler) Listen() error {
 					// use Y3 codec to encode the data
 					sendingBuf, _ := y3codec.Marshal(customer.V)
 
+				loop:
 					for i, w := range s.writers {
 						if index == i {
-							w.Write(sendingBuf)
+							_, err := w.Write(sendingBuf)
+							if err != nil {
+								index = rand.Intn(len(s.writers))
+								break loop
+							}
 						} else {
 							w.Write([]byte{0})
 						}
@@ -124,6 +132,5 @@ func (s *quicServerHandler) Listen() error {
 func (s *quicServerHandler) Read(st quic.Stream) error {
 	s.readers <- st
 	s.writers = append(s.writers, st)
-	fmt.Println("===========================")
 	return nil
 }
