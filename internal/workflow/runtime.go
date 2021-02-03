@@ -11,8 +11,10 @@ import (
 	"github.com/yomorun/yomo/pkg/quic"
 )
 
-var Clients map[string]Client
-var mutex sync.RWMutex
+var FlowClients map[string]Client
+var SinkClients map[string]Client
+var flowmutex sync.RWMutex
+var sinkmutex sync.RWMutex
 
 type Client struct {
 	App        conf.App
@@ -26,7 +28,8 @@ type Stream struct {
 }
 
 func init() {
-	Clients = make(map[string]Client)
+	FlowClients = make(map[string]Client)
+	SinkClients = make(map[string]Client)
 }
 
 // Run runs quic service
@@ -81,21 +84,21 @@ func getAppInfo(app conf.App) string {
 
 func createReadWriter(app conf.App, id int64) func() (io.ReadWriter, func()) {
 	f := func() (io.ReadWriter, func()) {
-		mutex.Lock()
-		if len(Clients[app.Name].StreamMap) > 0 && Clients[app.Name].StreamMap[id].St != nil {
-			mutex.Unlock()
-			return Clients[app.Name].StreamMap[id].St, Clients[app.Name].StreamMap[id].CancelFunc
+		flowmutex.Lock()
+		if len(FlowClients[app.Name].StreamMap) > 0 && FlowClients[app.Name].StreamMap[id].St != nil {
+			flowmutex.Unlock()
+			return FlowClients[app.Name].StreamMap[id].St, FlowClients[app.Name].StreamMap[id].CancelFunc
 		}
 
-		if Clients[app.Name].StreamMap == nil || (Clients[app.Name].StreamMap != nil && Clients[app.Name].QuicClient == nil) {
+		if FlowClients[app.Name].StreamMap == nil || (FlowClients[app.Name].StreamMap != nil && FlowClients[app.Name].QuicClient == nil) {
 			client, err := connectToApp(app)
 
 			if err != nil {
-				mutex.Unlock()
+				flowmutex.Unlock()
 				return nil, nil
 			}
 			streammap := make(map[int64]Stream)
-			Clients[app.Name] = Client{
+			FlowClients[app.Name] = Client{
 				App:        app,
 				StreamMap:  streammap,
 				QuicClient: client,
@@ -103,24 +106,24 @@ func createReadWriter(app conf.App, id int64) func() (io.ReadWriter, func()) {
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())
-		stream, err := createStream(ctx, Clients[app.Name].QuicClient)
+		stream, err := createStream(ctx, FlowClients[app.Name].QuicClient)
 		if err != nil {
 			if err.Error() == "NO_ERROR: No recent network activity" {
-				Clients[app.Name] = Client{
+				FlowClients[app.Name] = Client{
 					App:        app,
 					StreamMap:  nil,
 					QuicClient: nil,
 				}
 			}
-			mutex.Unlock()
-			return nil, cancelStream(cancel, app, id)
+			flowmutex.Unlock()
+			return nil, cancelFlowStream(cancel, app, id)
 		}
-		Clients[app.Name].StreamMap[id] = Stream{
+		FlowClients[app.Name].StreamMap[id] = Stream{
 			St:         stream,
-			CancelFunc: cancelStream(cancel, app, id),
+			CancelFunc: cancelFlowStream(cancel, app, id),
 		}
-		mutex.Unlock()
-		return stream, cancelStream(cancel, app, id)
+		flowmutex.Unlock()
+		return stream, cancelFlowStream(cancel, app, id)
 	}
 
 	return f
@@ -129,22 +132,22 @@ func createReadWriter(app conf.App, id int64) func() (io.ReadWriter, func()) {
 func createWriter(app conf.App, id int64) func() (io.Writer, func()) {
 
 	f := func() (io.Writer, func()) {
-		mutex.Lock()
-		if len(Clients[app.Name].StreamMap) > 0 && Clients[app.Name].StreamMap[id].St != nil {
-			mutex.Unlock()
-			return Clients[app.Name].StreamMap[id].St, Clients[app.Name].StreamMap[id].CancelFunc
+		sinkmutex.Lock()
+		if len(SinkClients[app.Name].StreamMap) > 0 && SinkClients[app.Name].StreamMap[id].St != nil {
+			sinkmutex.Unlock()
+			return SinkClients[app.Name].StreamMap[id].St, SinkClients[app.Name].StreamMap[id].CancelFunc
 		}
 
-		if Clients[app.Name].StreamMap == nil || (Clients[app.Name].StreamMap != nil && Clients[app.Name].QuicClient == nil) {
+		if SinkClients[app.Name].StreamMap == nil || (SinkClients[app.Name].StreamMap != nil && SinkClients[app.Name].QuicClient == nil) {
 			client, err := connectToApp(app)
 
 			if err != nil {
-				mutex.Unlock()
+				sinkmutex.Unlock()
 				return nil, nil
 			}
 
 			streammap := make(map[int64]Stream)
-			Clients[app.Name] = Client{
+			SinkClients[app.Name] = Client{
 				App:        app,
 				StreamMap:  streammap,
 				QuicClient: client,
@@ -153,38 +156,51 @@ func createWriter(app conf.App, id int64) func() (io.Writer, func()) {
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())
-		stream, err := createStream(ctx, Clients[app.Name].QuicClient)
+		stream, err := createStream(ctx, SinkClients[app.Name].QuicClient)
 		if err != nil {
 			if err.Error() == "NO_ERROR: No recent network activity" {
-				Clients[app.Name] = Client{
+				SinkClients[app.Name] = Client{
 					App:        app,
 					StreamMap:  nil,
 					QuicClient: nil,
 				}
 			}
-			mutex.Unlock()
-			return nil, cancelStream(cancel, app, id)
+			sinkmutex.Unlock()
+			return nil, cancelSinkStream(cancel, app, id)
 		}
-		Clients[app.Name].StreamMap[id] = Stream{
+		SinkClients[app.Name].StreamMap[id] = Stream{
 			St:         stream,
-			CancelFunc: cancelStream(cancel, app, id),
+			CancelFunc: cancelSinkStream(cancel, app, id),
 		}
-		mutex.Unlock()
-		return stream, cancelStream(cancel, app, id)
+		sinkmutex.Unlock()
+		return stream, cancelSinkStream(cancel, app, id)
 	}
 
 	return f
 }
 
-func cancelStream(cancel context.CancelFunc, app conf.App, id int64) func() {
+func cancelFlowStream(cancel context.CancelFunc, app conf.App, id int64) func() {
 	f := func() {
-		mutex.Lock()
-		if Clients[app.Name].StreamMap != nil {
-			stream := Clients[app.Name].StreamMap[id]
+		flowmutex.Lock()
+		if FlowClients[app.Name].StreamMap != nil {
+			stream := FlowClients[app.Name].StreamMap[id]
 			stream.St = nil
-			Clients[app.Name].StreamMap[id] = stream
+			FlowClients[app.Name].StreamMap[id] = stream
 		}
-		mutex.Unlock()
+		flowmutex.Unlock()
+	}
+	return f
+}
+
+func cancelSinkStream(cancel context.CancelFunc, app conf.App, id int64) func() {
+	f := func() {
+		sinkmutex.Lock()
+		if SinkClients[app.Name].StreamMap != nil {
+			stream := SinkClients[app.Name].StreamMap[id]
+			stream.St = nil
+			SinkClients[app.Name].StreamMap[id] = stream
+		}
+		sinkmutex.Unlock()
 	}
 	return f
 }
