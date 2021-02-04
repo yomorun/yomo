@@ -168,9 +168,9 @@ echo 'export PATH="$GOPATH/bin:$PATH"' >> ~/.bashrc
 + `Stream Processing in Rx way`: [Rx](https://yomo.run/rx)
 + `Faster than real-time codec`: [Y3](https://github.com/yomorun/y3-codec)
 
-[YoMo](https://yomo.run) ❤️ [Vercel](https://vercel.com/?utm_source=cella&utm_campaign=oss), Our documentation website is
+[YoMo](https://yomo.run) ❤️ [Vercel](https://vercel.com/?utm_source=yomorun&utm_campaign=oss), Our documentation website is
 
-![Vercel Logo](https://raw.githubusercontent.com/yomorun/yomo-docs/main/public/vercel.svg)
+![Vercel Logo](https://yomo.run/vercel.svg)
 
 ## 🎯 Focuses on computings out of data center
 
