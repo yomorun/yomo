@@ -170,7 +170,7 @@ echo 'export PATH="$GOPATH/bin:$PATH"' >> ~/.bashrc
 
 [YoMo](https://yomo.run) ❤️ [Vercel](https://vercel.com/?utm_source=yomorun&utm_campaign=oss), Our documentation website is
 
-![Vercel Logo](https://yomo.run/vercel.svg)
+[![Vercel Logo](https://yomo.run/vercel.svg)](https://vercel.com/?utm_source=yomorun&utm_campaign=oss)
 
 ## 🎯 Focuses on computings out of data center
 
