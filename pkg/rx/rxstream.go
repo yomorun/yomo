@@ -13,6 +13,7 @@ type RxStream interface {
 	rxgo.Iterable
 	MergeReadWriterWithFunc(rwf func() (io.ReadWriter, func()), opts ...rxgo.Option) RxStream
 	Subscribe(key byte) RxStream
+	Encode(key byte, opts ...rxgo.Option) RxStream
 	OnObserve(function func(v []byte) (interface{}, error)) RxStream
 	StdOut(opts ...rxgo.Option) RxStream
 	AuditTime(timespan time.Duration, opts ...rxgo.Option) RxStream

@@ -43,7 +43,8 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 		OnObserve(callback).
 		Debounce(rxgo.WithDuration(50 * time.Millisecond)).
 		Map(printer).
-		StdOut()
+		StdOut().
+		Encode(0x10)
 
 	return stream
 }
