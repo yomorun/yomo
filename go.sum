@@ -282,6 +282,8 @@ github.com/viant/toolbox v0.24.0/go.mod h1:OxMCG57V0PXuIP2HNQrtJf2CjqdmbrOx5EkMI
 github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2/go.mod h1:UETIi67q53MR2AWcXfiuqkDkRtnGDLqkBTpCHuJHxtU=
 github.com/yomorun/y3-codec-golang v1.6.3 h1:7JTqWbdeKp9ZeIlIoZTFaMC8/PwQ2HKFVOCbxAEY2B0=
 github.com/yomorun/y3-codec-golang v1.6.3/go.mod h1:R+y8hQ/AHZ1tDzWtmspVeX7omqVWFJ42gdlXIOp35rA=
+github.com/yomorun/y3-codec-golang v1.6.4 h1:2XZBafqNXvHp8PoVrEE3r4WW/nOGJZg/d2Hh0A0WBuk=
+github.com/yomorun/y3-codec-golang v1.6.4/go.mod h1:R+y8hQ/AHZ1tDzWtmspVeX7omqVWFJ42gdlXIOp35rA=
 go.etcd.io/bbolt v1.3.2/go.mod h1:IbVyRI1SCnLcuJnV2u8VeU0CEYM7e686BmAb1XKL+uU=
 go.opencensus.io v0.18.0/go.mod h1:vKdFvxhtzZ9onBp9VKHK8z/sRpBMnKAsufL7wlDrCOA=
 go.opencensus.io v0.21.0/go.mod h1:mSImk1erAIZhrmZN+AvHh14ztQfjbGwt4TtuofqLduU=

@@ -15,9 +15,9 @@ const NoiseDataKey = 0x10
 
 // NoiseData represents the structure of data
 type NoiseData struct {
-	Noise float32 `yomo:"0x11"`
-	Time  int64   `yomo:"0x12"`
-	From  string  `yomo:"0x13"`
+	Noise float32 `y3:"0x11"`
+	Time  int64   `y3:"0x12"`
+	From  string  `y3:"0x13"`
 }
 
 var printer = func(_ context.Context, i interface{}) (interface{}, error) {
