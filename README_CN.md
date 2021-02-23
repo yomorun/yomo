@@ -70,9 +70,9 @@ const NoiseDataKey = 0x10
 
 // NoiseData 描述了Y3序列化后的Tag为0x10的Value所对应的反序列化数据结构
 type NoiseData struct {
-	Noise float32 `yomo:"0x11"`
-	Time  int64   `yomo:"0x12"`
-	From  string  `yomo:"0x13"`
+	Noise float32 `y3:"0x11"`
+	Time  int64   `y3:"0x12"`
+	From  string  `y3:"0x13"`
 }
 
 var printer = func(_ context.Context, i interface{}) (interface{}, error) {
