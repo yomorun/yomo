@@ -4,7 +4,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/yomorun/y3-codec-golang/pkg/encoding"
+	"github.com/yomorun/y3-codec-golang/pkg/common"
 )
 
 // Iterable iterate through and get the data of observe
@@ -157,7 +157,7 @@ func (o *observableImpl) Subscribe(key byte) Observable {
 					b := buf[i]
 					switch state {
 					case "RS":
-						if b&0x81 == 0x81 {
+						if common.IsRootTag(b) {
 							index++
 							state = "RLS"
 						} else {
@@ -172,7 +172,7 @@ func (o *observableImpl) Subscribe(key byte) Observable {
 					case "RLS":
 						index++
 						buffer = append(buffer, b)
-						l, err := decodeLength(buffer)
+						l, err := common.DecodeLength(buffer)
 
 						if err != nil {
 							continue
@@ -190,7 +190,7 @@ func (o *observableImpl) Subscribe(key byte) Observable {
 					case "LS":
 						index++
 						buffer = append(buffer, b)
-						l, err := decodeLength(buffer[1:])
+						l, err := common.DecodeLength(buffer[1:])
 						if err != nil {
 							continue
 						}
@@ -279,12 +279,6 @@ func (o *observableImpl) Subscribe(key byte) Observable {
 
 	return createObservable(f)
 
-}
-
-func decodeLength(buf []byte) (length int32, err error) {
-	varCodec := encoding.VarCodec{}
-	err = varCodec.DecodePVarInt32(buf, &length)
-	return
 }
 
 func createObservable(f func(next chan interface{})) Observable {
