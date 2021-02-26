@@ -10,6 +10,7 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/reactivex/rxgo/v2"
 	y3 "github.com/yomorun/y3-codec-golang"
+	"github.com/yomorun/yomo/pkg/yy3"
 )
 
 type echo struct {
@@ -81,7 +82,7 @@ func FromReaderWithY3(readers chan io.Reader) RxStream {
 					return
 				}
 				r, w := io.Pipe()
-				if !Of(y3.FromStream(r)).SendContext(ctx, next) {
+				if !Of(yy3.FromStream(r)).SendContext(ctx, next) {
 					return
 				}
 
@@ -513,9 +514,7 @@ func (s *RxStreamImpl) Encode(key byte, opts ...rxgo.Option) RxStream {
 				if item.Error() {
 					return
 				}
-
 				buf, err := y3codec.Marshal(item.V)
-
 				if err != nil {
 					return
 				}
@@ -641,7 +640,7 @@ func (s *RxStreamImpl) Subscribe(key byte) RxStream {
 					return
 				}
 
-				y3stream := (item.V).(y3.Observable)
+				y3stream := (item.V).(yy3.Observable)
 				if !Of(y3stream.Subscribe(key)).SendContext(ctx, next) {
 					return
 				}
@@ -668,7 +667,7 @@ func (s *RxStreamImpl) OnObserve(function func(v []byte) (interface{}, error)) R
 					return
 				}
 				go func() {
-					onObserve := (item.V).(y3.Observable).OnObserve(function)
+					onObserve := (item.V).(yy3.Observable).OnObserve(function)
 
 					for {
 						select {

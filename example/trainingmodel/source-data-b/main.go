@@ -11,10 +11,6 @@ import (
 	"github.com/yomorun/yomo/pkg/quic"
 )
 
-type DataB struct {
-	NumB float32 `yomo:"0x12"`
-}
-
 var zipperAddr = os.Getenv("YOMO_ZIPPER_ENDPOINT")
 
 func main() {
@@ -45,24 +41,22 @@ func emit(addr string) error {
 	return nil
 }
 
-var codec = y3.NewCodec(0x10)
+var codec = y3.NewCodec(0x12)
 
 func generateAndSendData(stream quic.Stream) {
 
 	for {
 		time.Sleep(100 * time.Millisecond)
 
-		data := DataB{
-			NumB: rand.New(rand.NewSource(time.Now().UnixNano())).Float32() * 2000,
-		}
+		num := rand.New(rand.NewSource(time.Now().UnixNano())).Float32() * 2000
 
-		sendingBuf, _ := codec.Marshal(data)
+		sendingBuf, _ := codec.Marshal(num)
 
 		_, err := stream.Write(sendingBuf)
 		if err != nil {
-			log.Printf("❌ Emit %v to yomo-zipper failure with err: %v", data, err)
+			log.Printf("❌ Emit %v to yomo-zipper failure with err: %v", num, err)
 		} else {
-			log.Printf("✅ Emit %v to yomo-zipper", data)
+			log.Printf("✅ Emit %v to yomo-zipper", num)
 		}
 	}
 }

@@ -36,6 +36,6 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 	streamA := rxstream.Subscribe(DataAKey).OnObserve(callback).Map(printera)
 	streamB := rxstream.Subscribe(DataBKey).OnObserve(callback).Map(printerb)
 
-	stream := streamA.ZipFromIterable(streamB, zipper).StdOut()
+	stream := streamA.ZipFromIterable(streamB, zipper).StdOut().Encode(0x10)
 	return stream
 }
