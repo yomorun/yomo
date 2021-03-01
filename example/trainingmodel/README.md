@@ -2,11 +2,13 @@
   <img width="200px" height="200px" src="https://yomo.run/yomo-logo.png" />
 </p>
 
-# YoMo应用案例：多数据源的合并计算
+# Use Case：Combined calculation of multiple data sources
 
-## 目标
+## Our customer's asked:
 
-当有多个高频产生数据的数据源时，我们的客户需要完成一种计算：当所有数据源的数据都到齐后，才进行一次计算任务，并将计算结果传递给下一个处理环节，否则，就一直等待。通常，我们的业务逻辑代码会侵入对多源异构数据的采集、多线程、并发和计算缓存等问题，致使我们不能专心在对业务逻辑的抽象和描述上，而借助YoMo，一切都变得简单起来，您所需要实现的，只有如下几行代码：
+Our client needs to complete a calculation when there are multiple data sources generating data at high frequencies: a calculation task is performed only when all the data from all the data sources have arrived, then send computed result to the next processing session,  otherwise, keeps waiting data. 
+
+Usually, our business logic code intrudes on the collection of heterogeneous data from multiple sources, multi-threading, concurrency and computation caching, which prevents us from concentrating on abstracting and describing the abstraction：
 
 ```go
 var convert = func(v []byte) (interface{}, error) {
@@ -30,27 +32,26 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 
 ```
 
-## 代码结构
+## Code structure
 
-+ `source-data-a`: 模拟数据源A，发送随机 Float32 数字. [yomo.run/source](https://yomo.run/source)
-+ `source-data-b`: 模拟数据源B，发送随机 Float32 数字. [yomo.run/source](https://yomo.run/source)
-+ `flow`: 将模拟数据源A和模拟数据源B进行合并计算[yomo.run/flow](https://yomo.run/flow)
-+ `zipper`: 设计一个workflow，接收多个source，并完成合并计算 [yomo.run/zipper](https://yomo.run/zipper)
++ `source-data-a`: Analog data source A, sending random Float32 numbers. [yomo.run/source](https://yomo.run/source)
++ `source-data-b`: Analog data source B, sending random Float32 numbers. [yomo.run/source](https://yomo.run/source)
++ `flow`: Combine simulated data source A and simulated data source B for calculation[yomo.run/flow](https://yomo.run/flow)
++ `zipper`: Setup a workflow that receives multiple sources and completes the merge calculation [yomo.run/zipper](https://yomo.run/zipper)
 
-## 实现过程
+## Implementation
 
-### 1. 安装CLI
+### 1. Install CLI
 
-> **注意：** YoMo 的运行环境要求 Go 版本为 1.15 或以上，运行 `go version` 获取当前环境的版本，如果未安装 Go 或者不符合 Go 版本要求时，请安装或者升级 Go 版本。
-安装 Go 环境之后，国内用户可参考 <https://goproxy.cn/> 设置 `GOPROXY`，以便下载 YoMo 项目依赖。
+> **Note:** YoMo requires Go 1.15 and above, run `go version` to get the version of Go in your environment, please follow [this link](https://golang.org/doc/install) to install or upgrade if it doesn't fit the requirement.
 
 ```bash
-# 确保设置了$GOPATH, Golang的设计里main和plugin是高度耦合的
-$ echo $GOPATH
+# Ensure use $GOPATH, golang requires main and plugin highly coupled
+○ echo $GOPATH
 
 ```
 
-如果没有设置`$GOPATH`，参考这里：[如何设置$GOPATH和$GOBIN](#optional-set-gopath-and-gobin)。
+if `$GOPATH` is not set, check [Set $GOPATH and $GOBIN](#optional-set-gopath-and-gobin) first.
 
 ```bash
 $ GO111MODULE=off go get github.com/yomorun/yomo
@@ -62,7 +63,7 @@ $ make install
 
 ![YoMo Tutorial 1](https://yomo.run/tutorial-1.png)
 
-### 2. 运行 `flow`
+### 2. Start `flow` for streaming calculating
 
 ```bash
 $ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/flow
@@ -74,7 +75,7 @@ $ yomo run
 
 ```
 
-### 3. 运行 `zipper`
+### 3. Start `zipper` to orgnize stream processing workflow
 
 ```bash
 $ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/zipper
@@ -89,7 +90,7 @@ $ yomo wf run
 
 ```
 
-### 3. 运行 `source-data-a`
+### 3. Run `source-data-a`
 
 ```bash
 $ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/source-data-a
@@ -101,7 +102,7 @@ $ go run main.go
 
 ```
 
-### 4. 运行 `source-data-b`
+### 4. Run `source-data-b`
 
 ```bash
 $ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/source-data-b
@@ -113,7 +114,7 @@ $ go run main.go
 
 ```
 
-### 5. 观察 `flow` 窗口会有持续不断的数据
+### 5. `flow` will have a constant flow of output
 
 ```bash
 [StdOut]:  ⚡️ Sum(data A: 89.820206, data B: 1651.740967) => Result: 1741.561157
@@ -121,8 +122,10 @@ $ go run main.go
 [StdOut]:  ⚡️ Sum(data A: 114.736366, data B: 964.614075) => Result: 1079.350464
 ```
 
-这时候，尝试不断的`Ctrl-C`掉`source-data-a`，过一会再启动它，看看`flow`的窗口会有什么变化
+At this point, try to keep `Ctrl-C` dropping `source-data-a`, start it again after a while and see what happens to the `flow` output
 
-### 6. 恭喜您！问题以前所未有的简单的方式解决啦！🚀
+### 6. Congratulations! 
 
-更多[使用案例](https://github.com/yomorun/yomo)
+The problem has been solved in a simpler way than ever before! 
+
+Find [More YoMo Use Cases](https://github.com/yomorun/yomo)
