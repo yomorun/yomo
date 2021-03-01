@@ -1,0 +1,7 @@
+name: Service
+host: localhost
+port: 9999
+flows:
+  - name: training
+    host: localhost
+    port: 4242

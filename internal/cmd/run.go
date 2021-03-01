@@ -1,8 +1,11 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"log"
+	"math/rand"
 	"os"
 	"plugin"
 
@@ -44,6 +47,8 @@ func NewCmdRun() *cobra.Command {
 			endpoint := fmt.Sprintf("0.0.0.0:%d", opts.Port)
 			quicHandler := &quicServerHandler{
 				serverlessHandle: slHandler,
+				readers:          make(chan io.Reader),
+				writers:          make([]io.Writer, 0),
 			}
 
 			err = serverless.Run(endpoint, quicHandler)
@@ -61,23 +66,45 @@ func NewCmdRun() *cobra.Command {
 
 type quicServerHandler struct {
 	serverlessHandle plugin.Symbol
+	readers          chan io.Reader
+	writers          []io.Writer
 }
 
-func (s quicServerHandler) Listen() error {
-	return nil
-}
+func (s *quicServerHandler) Listen() error {
+	rxstream := rx.FromReaderWithY3(s.readers)
 
-func (s quicServerHandler) Read(st quic.Stream) error {
-	stream := dispatcher.Dispatcher(s.serverlessHandle, rx.FromReaderWithY3(st))
+	stream := dispatcher.Dispatcher(s.serverlessHandle, rxstream)
+	rxstream.Connect(context.Background())
 
 	go func() {
 		for customer := range stream.Observe() {
 			if customer.Error() {
 				fmt.Println(customer.E.Error())
 			} else if customer.V != nil {
-				st.Write((customer.V).([]byte))
+				index := rand.Intn(len(s.writers))
+
+			loop:
+				for i, w := range s.writers {
+					if index == i {
+						_, err := w.Write((customer.V).([]byte))
+						if err != nil {
+							index = rand.Intn(len(s.writers))
+							break loop
+						}
+					} else {
+						w.Write([]byte{0})
+					}
+				}
+
 			}
 		}
 	}()
+
+	return nil
+}
+
+func (s *quicServerHandler) Read(st quic.Stream) error {
+	s.readers <- st
+	s.writers = append(s.writers, st)
 	return nil
 }

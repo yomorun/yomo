@@ -51,20 +51,29 @@ func (s *quicGoServer) ListenAndServe(ctx context.Context, addr string) error {
 	}
 
 	for {
-		session, err := listener.Accept(context.Background())
+		ctx, cancel := context.WithCancel(context.Background())
+		session, err := listener.Accept(ctx)
 		if err != nil {
+			cancel()
 			return err
 		}
 
-		stream, err := session.AcceptStream(context.Background())
-		if err != nil {
-			return err
-		}
-		if s.handler != nil {
-			s.handler.Read(stream)
-		} else {
-			log.Print("handler isn't set in QUIC server")
-		}
+		go func(session quicGo.Session, cancel context.CancelFunc) {
+			defer cancel()
+
+			for {
+				stream, err := session.AcceptStream(context.Background())
+				if err != nil {
+					break
+				}
+				if s.handler != nil {
+					s.handler.Read(stream)
+				} else {
+					log.Print("handler isn't set in QUIC server")
+					break
+				}
+			}
+		}(session, cancel)
 	}
 }
 
@@ -79,7 +88,7 @@ func (c *quicGoClient) Connect(addr string) error {
 	}
 
 	session, err := quicGo.DialAddr(addr, tlsConf, &quicGo.Config{
-		MaxIdleTimeout:        time.Second * 5,
+		MaxIdleTimeout:        500 * time.Millisecond,
 		KeepAlive:             true,
 		MaxIncomingStreams:    1000000,
 		MaxIncomingUniStreams: 1000000,

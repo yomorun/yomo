@@ -1,20 +1,8 @@
 package quic
 
-import "io"
+import "github.com/lucas-clemente/quic-go"
 
 // Stream is the QUIC stream
 type Stream interface {
-	ReceiveStream
-	SendStream
-}
-
-// ReceiveStream is an unidirectional Receive Stream.
-type ReceiveStream interface {
-	io.Reader
-}
-
-// A SendStream is an unidirectional Send Stream.
-type SendStream interface {
-	io.Writer
-	io.Closer
+	quic.Stream
 }
