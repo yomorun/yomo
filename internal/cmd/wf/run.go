@@ -32,6 +32,7 @@ func NewCmdRun() *cobra.Command {
 				log.Print("❌ ", err)
 				return
 			}
+			printZipperConf(conf)
 
 			quicHandler := &quicHandler{
 				serverlessConfig: conf,

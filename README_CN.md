@@ -70,9 +70,9 @@ const NoiseDataKey = 0x10
 
 // NoiseData 描述了Y3序列化后的Tag为0x10的Value所对应的反序列化数据结构
 type NoiseData struct {
-	Noise float32 `yomo:"0x11"`
-	Time  int64   `yomo:"0x12"`
-	From  string  `yomo:"0x13"`
+	Noise float32 `y3:"0x11"`
+	Time  int64   `y3:"0x12"`
+	From  string  `y3:"0x13"`
 }
 
 var printer = func(_ context.Context, i interface{}) (interface{}, error) {
@@ -138,9 +138,30 @@ echo 'export GOPATH=~/.go' >> .bashrc
 echo 'export PATH="$GOPATH/bin:$PATH"' >> ~/.bashrc
 ```
 
-## 📚 文档
+## 🌶 与更多的优秀开源项目天然集成
 
-**WIP**
+### Sources
+
++ [将 EMQX Broker 连接至 YoMo](https://github.com/yomorun/yomo-source-emqx-starter)
++ [将使用 MQTT 的数据源连接至 YoMo](https://github.com/yomorun/yomo-source-mqtt-broker-starter)
+
+### Flows
+
++ [基于 SSVM 使用 WebAssembly 编写 YoMo-Flow](https://github.com/yomorun/yomo-flow-ssvm-example)
+
+### Sinks
+
++ [将 YoMo-Flow 处理完的内容存储至 FaunaDB](https://github.com/yomorun/yomo-sink-faunadb-example)
++ 连接 InfluxDB 落地数据存储
++ [将 YoMo-Flow 处理完的内容存储至 TDengine](https://github.com/yomorun/yomo-sink-tdengine-example)
+
+## 🗺 YoMo系统架构
+
+**Edge-Native**: YoMo 追求随地部署、随时迁移、随时扩容 
+
+![yomo-flow-arch](https://yomo.run/yomo-flow-arch.jpg)
+
+## 📚 Documentation
 
 + `YoMo-Source`: [yomo.run/source](https://yomo.run/source)
 + `YoMo-Flow`: [yomo.run/flow](https://yomo.run/flow)
@@ -149,7 +170,7 @@ echo 'export PATH="$GOPATH/bin:$PATH"' >> ~/.bashrc
 + `Stream Processing in Rx way`: [Rx](https://yomo.run/rx)
 + `Faster than real-time codec`: [Y3](https://github.com/yomorun/y3-codec)
 
-[YoMo](https://yomo.run) ❤️ [Vercel](https://vercel.com/?utm_source=cella&utm_campaign=oss), Our documentation website is
+[YoMo](https://yomo.run) ❤️ [Vercel](https://vercel.com/?utm_source=yomorun&utm_campaign=oss), Our documentation website is
 
 ![Vercel Logo](https://raw.githubusercontent.com/yomorun/yomo-docs/main/public/vercel.svg)
 

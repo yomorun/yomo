@@ -70,9 +70,9 @@ const NoiseDataKey = 0x10
 
 // NoiseData represents the structure of data
 type NoiseData struct {
-	Noise float32 `yomo:"0x11"`
-	Time  int64   `yomo:"0x12"`
-	From  string  `yomo:"0x13"`
+	Noise float32 `y3:"0x11"`
+	Time  int64   `y3:"0x12"`
+	From  string  `y3:"0x13"`
 }
 
 var printer = func(_ context.Context, i interface{}) (interface{}, error) {
@@ -138,6 +138,27 @@ echo 'export GOPATH=~/.go' >> .bashrc
 echo 'export PATH="$GOPATH/bin:$PATH"' >> ~/.bashrc
 ```
 
+## 🌶 Use Case
+
+### Sources
+
++ [Connect EMQ X Broker to YoMo](https://github.com/yomorun/yomo-source-emqx-starter)
++ [Connect MQTT to YoMo](https://github.com/yomorun/yomo-source-mqtt-broker-starter)
+
+### Flows
+
++ [Write a YoMo-Flow with WebAssembly by SSVM](https://github.com/yomorun/yomo-flow-ssvm-example)
+
+### Sinks
+
++ [Connect to FaunaDB to store post-processed result the serverless way](https://github.com/yomorun/yomo-sink-faunadb-example)
++ Connect to InfluxDB to store post-processed result
++ [Connect to TDEngine to store post-processed result](https://github.com/yomorun/yomo-sink-tdengine-example)
+
+## 🗺 Location Insensitive Deployment
+
+![yomo-flow-arch](https://yomo.run/yomo-flow-arch.jpg)
+
 ## 📚 Documentation
 
 + `YoMo-Source`: [yomo.run/source](https://yomo.run/source)
@@ -147,9 +168,9 @@ echo 'export PATH="$GOPATH/bin:$PATH"' >> ~/.bashrc
 + `Stream Processing in Rx way`: [Rx](https://yomo.run/rx)
 + `Faster than real-time codec`: [Y3](https://github.com/yomorun/y3-codec)
 
-[YoMo](https://yomo.run) ❤️ [Vercel](https://vercel.com/?utm_source=cella&utm_campaign=oss), Our documentation website is
+[YoMo](https://yomo.run) ❤️ [Vercel](https://vercel.com/?utm_source=yomorun&utm_campaign=oss), Our documentation website is
 
-![Vercel Logo](https://raw.githubusercontent.com/yomorun/yomo-docs/main/public/vercel.svg)
+[![Vercel Logo](https://yomo.run/vercel.svg)](https://vercel.com/?utm_source=yomorun&utm_campaign=oss)
 
 ## 🎯 Focuses on computings out of data center
 
@@ -162,7 +183,7 @@ echo 'export PATH="$GOPATH/bin:$PATH"' >> ~/.bashrc
 ## 🌟 Why YoMo
 
 - Based on QUIC (Quick UDP Internet Connection) protocol for data transmission, which uses the User Datagram Protocol (UDP) as its basis instead of the Transmission Control Protocol (TCP); significantly improves the stability and throughput of data transmission. Especially for cellular networks like 5G.
-- A self-developed `yomo-codec` optimizes decoding performance. For more information, visit [its own repository](https://github.com/yomorun/yomo-codec) on GitHub.
+- A self-developed `y3-codec` optimizes decoding performance. For more information, visit [its own repository](https://github.com/yomorun/y3-codec) on GitHub.
 - Based on stream computing, which improves speed and accuracy when dealing with data handling and analysis; simplifies the complexity of stream-oriented programming.
 - Secure-by-default from transport protocol.
 

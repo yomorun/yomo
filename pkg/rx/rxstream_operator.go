@@ -495,40 +495,6 @@ func (s *RxStreamImpl) StdOut(opts ...rxgo.Option) RxStream {
 	return CreateObservable(f, opts...)
 }
 
-func (s *RxStreamImpl) Encode(key byte, opts ...rxgo.Option) RxStream {
-	y3codec := y3.NewCodec(key)
-
-	f := func(ctx context.Context, next chan rxgo.Item) {
-		defer close(next)
-		observe := s.Observe(opts...)
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case item, ok := <-observe:
-				if !ok {
-					return
-				}
-
-				if item.Error() {
-					return
-				}
-				buf, err := y3codec.Marshal(item.V)
-				if err != nil {
-					return
-				}
-
-				if !Of(buf).SendContext(ctx, next) {
-					return
-				}
-
-			}
-		}
-	}
-	return CreateObservable(f, opts...)
-}
-
 func (s *RxStreamImpl) AuditTime(timespan time.Duration, opts ...rxgo.Option) RxStream {
 	o := s.observable.BufferWithTime(rxgo.WithDuration(timespan)).Map(func(_ context.Context, i interface{}) (interface{}, error) {
 		return i.([]interface{})[len(i.([]interface{}))-1], nil
@@ -687,6 +653,42 @@ func (s *RxStreamImpl) OnObserve(function func(v []byte) (interface{}, error)) R
 		}
 	}
 	return CreateObservable(f)
+}
+
+func (s *RxStreamImpl) Encode(key byte, opts ...rxgo.Option) RxStream {
+	y3codec := y3.NewCodec(key)
+
+	f := func(ctx context.Context, next chan rxgo.Item) {
+		defer close(next)
+		observe := s.Observe(opts...)
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case item, ok := <-observe:
+				if !ok {
+					return
+				}
+
+				if item.Error() {
+					return
+				}
+
+				buf, err := y3codec.Marshal(item.V)
+
+				if err != nil {
+					return
+				}
+
+				if !Of(buf).SendContext(ctx, next) {
+					return
+				}
+
+			}
+		}
+	}
+	return CreateObservable(f, opts...)
 }
 
 func CreateObservable(f func(ctx context.Context, next chan rxgo.Item), opts ...rxgo.Option) RxStream {
