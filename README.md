@@ -10,6 +10,19 @@ Official Website: 🦖[https://yomo.run](https://yomo.run)
 
 [Gitee](https://gitee.com/yomorun/yomo)
 
+## 🌶 Features
+
+|     | **Features**|
+| --- | ----------------------------------------------------------------------------------|
+| ⚡️   | **Low-latency** gurantee by running atop [QUIC](https://datatracker.ietf.org/wg/quic/documents/) |
+| 🔐  | **Encryption** default by TLS v1.3 on every data packet |
+| 📱   | **5G/WiFi-6** Reliable networking in Celluar/Wireless |
+| 🌎  | **Geo-Distributed Edge Mesh** Edge-Mesh Native architecture makes your services close to end users |
+| 📸  | **Event-First** architecture leverage serverless to be event driven and elastic  |
+| 🦖  | **Streaming Serverless** Only Write a few lines of codes to build applications and micro-services |
+| 🚀  | **Y3** a [faster than real-time codec](https://yomo.run/y3) |
+| 📨  | **Reactive** stream-processing based on [Rx](http://reactivex.io/documentation/operators.html) |
+
 ## 🚀 Getting Started
 
 ### 1. Install CLI
@@ -138,7 +151,7 @@ echo 'export GOPATH=~/.go' >> .bashrc
 echo 'export PATH="$GOPATH/bin:$PATH"' >> ~/.bashrc
 ```
 
-## 🌶 Use Case
+## 🧩 Interop
 
 ### Sources
 
