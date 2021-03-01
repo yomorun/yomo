@@ -1,6 +1,7 @@
 package rx
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -9,7 +10,20 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/reactivex/rxgo/v2"
 	y3 "github.com/yomorun/y3-codec-golang"
+	"github.com/yomorun/yomo/pkg/yy3"
 )
+
+type echo struct {
+	buf *bytes.Buffer
+}
+
+func (e *echo) Write(p []byte) (n int, err error) {
+	return e.buf.Write(p)
+}
+
+func (e *echo) Read(p []byte) (n int, err error) {
+	return e.buf.Read(p)
+}
 
 func FromChannel(channel chan []byte) RxStream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
@@ -55,9 +69,42 @@ func FromReader(reader io.Reader) RxStream {
 	return ConvertObservable(rxgo.FromChannel(next))
 }
 
-func FromReaderWithY3(reader io.Reader) RxStream {
-	source := y3.FromStream(reader)
-	return ConvertObservableWithY3(source)
+func FromReaderWithY3(readers chan io.Reader) RxStream {
+	f := func(ctx context.Context, next chan rxgo.Item) {
+		defer close(next)
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case item, ok := <-readers:
+				if !ok {
+					return
+				}
+				r, w := io.Pipe()
+				if !Of(yy3.FromStream(r)).SendContext(ctx, next) {
+					return
+				}
+
+				go func() {
+					time.Sleep(time.Millisecond)
+					defer w.Close()
+					for {
+						buf := make([]byte, 3*1024)
+						n, err := item.Read(buf)
+
+						if err != nil {
+							break
+						} else {
+							value := buf[:n]
+							w.Write(value)
+						}
+					}
+				}()
+			}
+		}
+	}
+	return CreateObservable(f, rxgo.WithPublishStrategy())
 }
 
 func FromReaderWithFunc(f func() io.Reader) RxStream {
@@ -92,7 +139,6 @@ func Of(i interface{}) rxgo.Item {
 
 type RxStreamImpl struct {
 	observable rxgo.Observable
-	y3         y3.Observable
 }
 
 func (s *RxStreamImpl) All(predicate rxgo.Predicate, opts ...rxgo.Option) RxStream {
@@ -544,15 +590,10 @@ func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf func() (io.ReadWriter, func()
 }
 
 func (s *RxStreamImpl) Subscribe(key byte) RxStream {
-	return ConvertObservableWithY3(s.y3.Subscribe(key))
-}
-
-func (s *RxStreamImpl) OnObserve(function func(v []byte) (interface{}, error)) RxStream {
 
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
-		observe := s.y3.OnObserve(function)
-
+		observe := s.Observe()
 		for {
 			select {
 			case <-ctx.Done():
@@ -561,10 +602,53 @@ func (s *RxStreamImpl) OnObserve(function func(v []byte) (interface{}, error)) R
 				if !ok {
 					return
 				}
-
-				if !Of(item).SendContext(ctx, next) {
+				if item.Error() {
 					return
 				}
+
+				y3stream := (item.V).(yy3.Observable)
+				if !Of(y3stream.Subscribe(key)).SendContext(ctx, next) {
+					return
+				}
+			}
+		}
+	}
+	return CreateObservable(f)
+}
+
+func (s *RxStreamImpl) OnObserve(function func(v []byte) (interface{}, error)) RxStream {
+
+	f := func(ctx context.Context, next chan rxgo.Item) {
+		defer close(next)
+		observe := s.Observe()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case item, ok := <-observe:
+				if !ok {
+					return
+				}
+				if item.Error() {
+					return
+				}
+				go func() {
+					onObserve := (item.V).(yy3.Observable).OnObserve(function)
+
+					for {
+						select {
+						case <-ctx.Done():
+							return
+						case item, ok := <-onObserve:
+							if !ok {
+								return
+							}
+							if !Of(item).SendContext(ctx, next) {
+								return
+							}
+						}
+					}
+				}()
 			}
 		}
 	}
@@ -616,10 +700,6 @@ func CreateObservable(f func(ctx context.Context, next chan rxgo.Item), opts ...
 
 func ConvertObservable(observable rxgo.Observable) RxStream {
 	return &RxStreamImpl{observable: observable}
-}
-
-func ConvertObservableWithY3(observable y3.Observable) RxStream {
-	return &RxStreamImpl{y3: observable}
 }
 
 type infiniteWriter struct {

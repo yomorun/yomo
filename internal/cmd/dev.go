@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"log"
 	"plugin"
 
@@ -39,6 +41,7 @@ func NewCmdDev() *cobra.Command {
 			quicHandler := &quicDevHandler{
 				serverlessHandle: slHandler,
 				serverAddr:       fmt.Sprintf("localhost:%d", opts.Port),
+				readers:          make(chan io.Reader),
 			}
 
 			err = serverless.Run(endpoint, quicHandler)
@@ -57,16 +60,16 @@ func NewCmdDev() *cobra.Command {
 type quicDevHandler struct {
 	serverlessHandle plugin.Symbol
 	serverAddr       string
+	readers          chan io.Reader
 }
 
-func (s quicDevHandler) Listen() error {
+func (s *quicDevHandler) Listen() error {
 	err := mocker.EmitMockDataFromCloud(s.serverAddr)
-	return err
-}
-
-func (s quicDevHandler) Read(st quic.Stream) error {
-	stream := dispatcher.Dispatcher(s.serverlessHandle, rx.FromReaderWithY3(st))
-
+	if err != nil {
+		return err
+	}
+	rxstream := rx.FromReaderWithY3(s.readers)
+	stream := dispatcher.Dispatcher(s.serverlessHandle, rxstream)
 	go func() {
 		for customer := range stream.Observe() {
 			if customer.Error() {
@@ -74,5 +77,13 @@ func (s quicDevHandler) Read(st quic.Stream) error {
 			}
 		}
 	}()
+
+	rxstream.Connect(context.Background())
+
+	return nil
+}
+
+func (s *quicDevHandler) Read(st quic.Stream) error {
+	s.readers <- st
 	return nil
 }

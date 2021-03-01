@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/yomorun/yomo/internal/conf"
@@ -65,7 +66,8 @@ func (s *quicHandler) Listen() error {
 }
 
 func (s *quicHandler) Read(st quic.Stream) error {
-	flows, sinks := workflow.Build(s.serverlessConfig)
+	id := time.Now().UnixNano()
+	flows, sinks := workflow.Build(s.serverlessConfig, id)
 
 	stream := dispatcher.DispatcherWithFunc(flows, st)
 
@@ -76,16 +78,19 @@ func (s *quicHandler) Read(st quic.Stream) error {
 				continue
 			}
 			value := customer.V.([]byte)
+			if len(value) == 1 && value[0] == byte(0) {
+				continue
+			}
 
 			for _, sink := range sinks {
 				go func(_sink func() (io.Writer, func()), buf []byte) {
 					writer, cancel := _sink()
-
 					if writer != nil {
 						_, err := writer.Write(buf)
 						if err != nil {
 							cancel()
 						}
+
 					}
 				}(sink, value)
 			}
