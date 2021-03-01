@@ -140,6 +140,10 @@ echo 'export PATH="$GOPATH/bin:$PATH"' >> ~/.bashrc
 
 ## 🌶 Use Case
 
+### event-first processing
+
+[Multiple data sources combined calculation](https://github.com/yomorun/yomo/tree/master/example/trainingmodel)
+
 ### Sources
 
 + [Connect EMQ X Broker to YoMo](https://github.com/yomorun/yomo-source-emqx-starter)
