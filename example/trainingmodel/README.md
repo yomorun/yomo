@@ -6,9 +6,9 @@
 
 ## Our customer's asked:
 
-Our client needs to complete a calculation when there are multiple data sources generating data at high frequencies: a calculation task is performed only when all the data from all the data sources have arrived, then send computed result to the next processing session,  otherwise, keeps waiting data. 
+Our client needs to perform a calculation in an environment where high frequency data generation occurs from multiple data sources. A calculation is only performed when data from all the sources has arrived. After calculation, the computed result is sent to the next processing session, and the whole process repeats. 
 
-Usually, our business logic code intrudes on the collection of heterogeneous data from multiple sources, multi-threading, concurrency and computation caching, which prevents us from concentrating on abstracting and describing the abstraction：
+Traditionally, in a scenario where heterogenous data from multiple data sources is collected, developers face several issues related to multi-threading, concurrency, race, locking, cache, among other things. As a result, instead of abstraction and implementation, developers spend time fixing issues. YoMo solves that below:
 
 ```go
 var convert = func(v []byte) (interface{}, error) {
@@ -20,7 +20,7 @@ var zipper = func(_ context.Context, ia interface{}, ib interface{}) (interface{
 	return fmt.Sprintf("⚡️ Sum(%s: %f, %s: %f) => Result: %f", "data A", ia.(float32), "data B", ib.(float32), result), nil
 }
 
-// Handler handle two event streams and calculate sum when data arrived
+// Handler handles two event streams and calculates sum upon data's arrival
 func Handler(rxstream rx.RxStream) rx.RxStream {
 	streamA := rxstream.Subscribe(0x11).OnObserve(convert)
 	streamB := rxstream.Subscribe(0x12).OnObserve(convert)
@@ -34,9 +34,9 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 
 ## Code structure
 
-+ `source-data-a`: Analog data source A, sending random Float32 numbers. [yomo.run/source](https://yomo.run/source)
-+ `source-data-b`: Analog data source B, sending random Float32 numbers. [yomo.run/source](https://yomo.run/source)
-+ `flow`: Combine simulated data source A and simulated data source B for calculation[yomo.run/flow](https://yomo.run/flow)
++ `source-data-a`: Analog data source A, sending random Float32 numbers [yomo.run/source](https://yomo.run/source)
++ `source-data-b`: Analog data source B, sending random Float32 numbers [yomo.run/source](https://yomo.run/source)
++ `flow`: Combine simulated data sources A and B for calculation [yomo.run/flow](https://yomo.run/flow)
 + `zipper`: Setup a workflow that receives multiple sources and completes the merge calculation [yomo.run/zipper](https://yomo.run/zipper)
 
 ## Implementation
@@ -51,7 +51,7 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 
 ```
 
-if `$GOPATH` is not set, check [Set $GOPATH and $GOBIN](#optional-set-gopath-and-gobin) first.
+if `$GOPATH` is not set, immediately check [Set $GOPATH and $GOBIN](#optional-set-gopath-and-gobin).
 
 ```bash
 $ GO111MODULE=off go get github.com/yomorun/yomo
@@ -61,9 +61,7 @@ $ cd $GOPATH/src/github.com/yomorun/yomo
 $ make install
 ```
 
-![YoMo Tutorial 1](https://yomo.run/tutorial-1.png)
-
-### 2. Start `flow` for streaming calculating
+### 2. Start `flow` for streaming calculation
 
 ```bash
 $ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/flow
@@ -75,7 +73,7 @@ $ yomo run
 
 ```
 
-### 3. Start `zipper` to orgnize stream processing workflow
+### 3. Start `zipper` to organize stream processing workflow
 
 ```bash
 $ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/zipper
@@ -110,7 +108,7 @@ $ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/source-data-b
 $ go run main.go
 
 2021/03/01 17:35:04 ✅ Connected to yomo-zipper localhost:9999
-2021/03/01 17:35:05 ✅ Emit 123.41881 to yomo-zipper
+2021/03/01 17:35:05 ✅ Emit 36.92933 to yomo-zipper
 
 ```
 
