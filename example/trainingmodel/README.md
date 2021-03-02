@@ -88,7 +88,7 @@ $ yomo wf run
 
 ```
 
-### 3. Run `source-data-a`
+### 4. Run `source-data-a`
 
 ```bash
 $ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/source-data-a
@@ -100,7 +100,7 @@ $ go run main.go
 
 ```
 
-### 4. Run `source-data-b`
+### 5. Run `source-data-b`
 
 ```bash
 $ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/source-data-b
@@ -112,7 +112,7 @@ $ go run main.go
 
 ```
 
-### 5. `flow` will have a constant flow of output
+### 6. `flow` will have a constant flow of output
 
 ```bash
 [StdOut]:  ⚡️ Sum(data A: 89.820206, data B: 1651.740967) => Result: 1741.561157
@@ -122,7 +122,7 @@ $ go run main.go
 
 At this point, try to keep `Ctrl-C` dropping `source-data-a`, start it again after a while and see what happens to the `flow` output
 
-### 6. Congratulations! 
+### 7. Congratulations! 
 
 The problem has been solved in a simpler way than ever before! 
 
