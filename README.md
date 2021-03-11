@@ -20,7 +20,7 @@ Official Website: 🦖[https://yomo.run](https://yomo.run)
 | 🌎  | **Geo-Distributed Edge Mesh** Edge-Mesh Native architecture makes your services close to end users |
 | 📸  | **Event-First** Architecture leverages serverless service to be event driven and elastic  |
 | 🦖  | **Streaming Serverless** Write only a few lines of code to build applications and microservices |
-| 🚀  | **Y3** a [faster than real-time codec](https://yomo.run/y3) |
+| 🚀  | **Y3** a [faster than real-time codec](https://github.com/yomorun/y3-codec-golang) |
 | 📨  | **Reactive** stream processing based on [Rx](http://reactivex.io/documentation/operators.html) |
 
 ## 🚀 Getting Started
