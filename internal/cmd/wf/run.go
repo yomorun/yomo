@@ -16,6 +16,7 @@ import (
 // RunOptions are the options for run command.
 type RunOptions struct {
 	baseOptions
+	SendToSource bool
 }
 
 // NewCmdRun creates a new command run.
@@ -37,6 +38,7 @@ func NewCmdRun() *cobra.Command {
 			quicHandler := &quicHandler{
 				serverlessConfig: conf,
 				mergeChan:        make(chan []byte, 20),
+				sendToSource:     opts.SendToSource,
 			}
 
 			endpoint := fmt.Sprintf("0.0.0.0:%d", conf.Port)
@@ -51,6 +53,7 @@ func NewCmdRun() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&opts.Config, "config", "c", "workflow.yaml", "Workflow config file (default is workflow.yaml)")
+	cmd.Flags().BoolVar(&opts.SendToSource, "send-to-source", false, "Whether send the data back to yomo-source (default is false)")
 
 	return cmd
 }
@@ -58,6 +61,7 @@ func NewCmdRun() *cobra.Command {
 type quicHandler struct {
 	serverlessConfig *conf.WorkflowConfig
 	mergeChan        chan []byte
+	sendToSource     bool
 }
 
 func (s *quicHandler) Listen() error {
@@ -80,6 +84,10 @@ func (s *quicHandler) Read(st quic.Stream) error {
 			value := customer.V.([]byte)
 			if len(value) == 1 && value[0] == byte(0) {
 				continue
+			}
+
+			if s.sendToSource {
+				st.Write(value)
 			}
 
 			for _, sink := range sinks {
