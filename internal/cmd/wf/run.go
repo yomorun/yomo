@@ -87,7 +87,7 @@ func (s *quicHandler) Read(st quic.Stream) error {
 			}
 
 			if s.sendToSource {
-				st.Write(value)
+				go st.Write(value)
 			}
 
 			for _, sink := range sinks {
