@@ -121,34 +121,31 @@ func (c *client) Write(b []byte) error {
 }
 
 // flow || sink
-func (c *client) Pipe(f func(rxstream rx.RxStream) rx.RxStream) error {
+func (c *client) Pipe(f func(rxstream rx.RxStream) rx.RxStream) {
 	rxstream := rx.FromReaderWithY3(c.readers)
 	stream := f(rxstream)
 
 	rxstream.Connect(context.Background())
 
-	go func() {
-		for customer := range stream.Observe() {
-			if customer.Error() {
-				fmt.Println(customer.E.Error())
-			} else if customer.V != nil {
-				index := rand.Intn(len(c.writers))
+	for customer := range stream.Observe() {
+		if customer.Error() {
+			panic(customer.E)
+		} else if customer.V != nil {
+			index := rand.Intn(len(c.writers))
 
-			loop:
-				for i, w := range c.writers {
-					if index == i {
-						_, err := w.Write((customer.V).([]byte))
-						if err != nil {
-							index = rand.Intn(len(c.writers))
-							break loop
-						}
+		loop:
+			for i, w := range c.writers {
+				if index == i {
+					_, err := w.Write((customer.V).([]byte))
+					if err != nil {
+						index = rand.Intn(len(c.writers))
+						break loop
 					}
 				}
-
 			}
+
 		}
-	}()
-	return nil
+	}
 }
 
 func (c *client) Close() {
