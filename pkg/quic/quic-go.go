@@ -88,7 +88,7 @@ func (c *quicGoClient) Connect(addr string) error {
 	}
 
 	session, err := quicGo.DialAddr(addr, tlsConf, &quicGo.Config{
-		MaxIdleTimeout:        500 * time.Millisecond,
+		MaxIdleTimeout:        time.Minute * 10080,
 		KeepAlive:             true,
 		MaxIncomingStreams:    1000000,
 		MaxIncomingUniStreams: 1000000,
@@ -111,6 +111,10 @@ func (c *quicGoClient) CreateStream(ctx context.Context) (Stream, error) {
 		return nil, err
 	}
 	return stream, nil
+}
+
+func (c *quicGoClient) Close() error {
+	return c.session.CloseWithError(0, "")
 }
 
 // generateTLSConfig Setup a bare-bones TLS config for the server

@@ -8,6 +8,7 @@ import (
 type Client interface {
 	// CreateStream creates a bidirectional stream.
 	CreateStream(ctx context.Context) (Stream, error)
+	Close() error
 }
 
 // NewClient inits the default implementation of QUIC client.
