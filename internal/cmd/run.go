@@ -1,18 +1,13 @@
 package cmd
 
 import (
-	"context"
-	"fmt"
-	"io"
 	"log"
-	"math/rand"
 	"os"
-	"plugin"
+	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/yomorun/yomo/internal/dispatcher"
-	"github.com/yomorun/yomo/internal/serverless"
-	"github.com/yomorun/yomo/pkg/quic"
+	"github.com/yomorun/yomo/pkg/client"
 	"github.com/yomorun/yomo/pkg/rx"
 )
 
@@ -20,7 +15,7 @@ import (
 type RunOptions struct {
 	baseOptions
 	// Port is the port number of UDP host for Serverless function (default is 4242).
-	Port int
+	Endpoint string
 }
 
 // NewCmdRun creates a new command run.
@@ -36,75 +31,24 @@ func NewCmdRun() *cobra.Command {
 			if err != nil {
 				return
 			}
-
 			// get YoMo env
 			env := os.Getenv("YOMO_ENV")
 			if env != "" {
 				log.Printf("Get YOMO_ENV: %s", env)
 			}
 
-			// serve the Serverless app
-			endpoint := fmt.Sprintf("0.0.0.0:%d", opts.Port)
-			quicHandler := &quicServerHandler{
-				serverlessHandle: slHandler,
-				readers:          make(chan io.Reader),
-				writers:          make([]io.Writer, 0),
-			}
+			host := strings.Split(opts.Endpoint, ":")[0]
+			port, _ := strconv.Atoi(strings.Split(opts.Endpoint, ":")[1])
+			cli, err := client.Connect(host, port).Name("Noise").ReadWriter()
 
-			err = serverless.Run(endpoint, quicHandler)
-			if err != nil {
-				log.Print("Run the serverless failure with err: ", err)
-			}
+			hanlder := slHandler.(func(rxStream rx.RxStream) rx.RxStream)
+			cli.Pipe(hanlder)
+
 		},
 	}
 
 	cmd.Flags().StringVarP(&opts.Filename, "file-name", "f", "app.go", "Serverless function file (default is app.go)")
-	cmd.Flags().IntVarP(&opts.Port, "port", "p", 4242, "Port is the port number of UDP host for Serverless function (default is 4242)")
+	cmd.Flags().StringVarP(&opts.Endpoint, "endpoint", "e", "localhost:9999", "xxx")
 
 	return cmd
-}
-
-type quicServerHandler struct {
-	serverlessHandle plugin.Symbol
-	readers          chan io.Reader
-	writers          []io.Writer
-}
-
-func (s *quicServerHandler) Listen() error {
-	rxstream := rx.FromReaderWithY3(s.readers)
-
-	stream := dispatcher.Dispatcher(s.serverlessHandle, rxstream)
-	rxstream.Connect(context.Background())
-
-	go func() {
-		for customer := range stream.Observe() {
-			if customer.Error() {
-				fmt.Println(customer.E.Error())
-			} else if customer.V != nil {
-				index := rand.Intn(len(s.writers))
-
-			loop:
-				for i, w := range s.writers {
-					if index == i {
-						_, err := w.Write((customer.V).([]byte))
-						if err != nil {
-							index = rand.Intn(len(s.writers))
-							break loop
-						}
-					} else {
-						w.Write([]byte{0})
-					}
-				}
-
-			}
-		}
-	}()
-
-	return nil
-}
-
-func (s *quicServerHandler) Read(st quic.Stream) error {
-	s.readers <- st
-	s.writers = append(s.writers, st)
-	return nil
 }

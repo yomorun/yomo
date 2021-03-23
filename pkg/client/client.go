@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -10,26 +11,28 @@ import (
 	"github.com/yomorun/yomo/pkg/rx"
 )
 
-const FLOW = byte(0)
-const SINK = byte(1)
+var FLOW = []byte{0, 0}
+var SINK = []byte{0, 1}
 
 type client struct {
-	ip      string
-	port    int
-	name    string
-	readers chan io.Reader
-	writers []io.Writer
-	session quic.Client
-	signal  quic.Stream
-	stream  quic.Stream
+	ip       string
+	port     int
+	name     string
+	readers  chan io.Reader
+	writers  []io.Writer
+	session  quic.Client
+	signal   quic.Stream
+	stream   quic.Stream
+	accepted chan bool
 }
 
 func Connect(ip string, port int) *client {
 	c := &client{
-		ip:      ip,
-		port:    port,
-		readers: make(chan io.Reader),
-		writers: make([]io.Writer, 0),
+		ip:       ip,
+		port:     port,
+		readers:  make(chan io.Reader),
+		writers:  make([]io.Writer, 0),
+		accepted: make(chan bool),
 	}
 	return c
 }
@@ -50,30 +53,39 @@ func (c *client) Name(name string) *client {
 	c.session = quic_cli
 	c.signal = quic_stream
 
-	_, err = quic_stream.Write([]byte(c.name))
+	_, err = c.signal.Write([]byte(c.name))
 
 	if err != nil {
 		panic(err)
 	}
 
-	// flow ,sink create stream
+	// flow ,sink create stream or heartbeat
 	go func() {
 		for {
-			buf := make([]byte, 1)
-			_, err := c.signal.Read(buf)
-
+			buf := make([]byte, 2)
+			n, err := c.signal.Read(buf)
 			if err != nil {
 				panic(err)
 			}
+			switch n {
+			case 1:
+				if buf[0] == byte(0) {
+					c.signal.Write(buf[:n])
+				} else {
+					c.accepted <- true
+				}
+			case 2:
+				stream, err := c.session.CreateStream(context.Background())
 
-			stream, err := c.session.CreateStream(context.Background())
+				if err != nil {
+					panic(err)
+				}
 
-			if err != nil {
-				panic(err)
+				c.readers <- stream
+				c.writers = append(c.writers, stream)
+				stream.Write([]byte("王耀光"))
 			}
 
-			c.readers <- stream
-			c.writers = append(c.writers, stream)
 		}
 	}()
 
@@ -82,36 +94,64 @@ func (c *client) Name(name string) *client {
 
 // source
 func (c *client) Writer() (*client, error) {
-	stream, err := c.session.CreateStream(context.Background())
+	for {
+		select {
+		case _, ok := <-c.accepted:
+			if !ok {
+				return nil, errors.New("not accepted")
+			}
+			fmt.Println("client-www1:")
+			stream, err := c.session.CreateStream(context.Background())
 
-	if err != nil {
-		return nil, err
+			if err != nil {
+				return nil, err
+			}
+			c.stream = stream
+			return c, nil
+		}
 	}
-	c.stream = stream
-	return c, nil
+
 }
 
 // flow
 func (c *client) ReadWriter() (*client, error) {
 	// first send flow-signal to zipper
-	_, err := c.signal.Write([]byte{FLOW})
 
-	if err != nil {
-		return nil, err
+	for {
+		select {
+		case _, ok := <-c.accepted:
+			if !ok {
+				return nil, errors.New("not accepted")
+			}
+			fmt.Println("client-www2:")
+			_, err := c.signal.Write(FLOW)
+			if err != nil {
+				return nil, err
+			}
+			return c, nil
+		}
 	}
-
-	return c, nil
 }
 
 func (c *client) Reader() (*client, error) {
 	// first send sink-signal to zipper
-	_, err := c.signal.Write([]byte{SINK})
+	for {
+		select {
+		case _, ok := <-c.accepted:
+			if !ok {
+				return nil, errors.New("not accepted")
+			}
+			fmt.Println("client-www3:")
+			_, err := c.signal.Write(SINK)
 
-	if err != nil {
-		return nil, err
+			if err != nil {
+				return nil, err
+			}
+
+			return c, nil
+		}
 	}
 
-	return c, nil
 }
 
 // source

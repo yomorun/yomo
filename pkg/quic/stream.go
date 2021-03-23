@@ -6,3 +6,7 @@ import "github.com/lucas-clemente/quic-go"
 type Stream interface {
 	quic.Stream
 }
+
+type Session interface {
+	quic.Session
+}

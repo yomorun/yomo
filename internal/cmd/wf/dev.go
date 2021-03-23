@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -41,7 +42,10 @@ func NewCmdDev() *cobra.Command {
 			quicHandler := &quicDevHandler{
 				serverlessConfig: conf,
 				serverAddr:       fmt.Sprintf("localhost:%d", conf.Port),
-				mergeChan:        make(chan []byte, 20),
+				connMap:          map[int64]*workflow.QuicConn{},
+				build:            make(chan quic.Stream),
+				index:            0,
+				lastStream:       make(chan bool),
 			}
 
 			err = workflow.Run(endpoint, quicHandler)
@@ -60,47 +64,131 @@ func NewCmdDev() *cobra.Command {
 type quicDevHandler struct {
 	serverlessConfig *conf.WorkflowConfig
 	serverAddr       string
-	mergeChan        chan []byte
+	connMap          map[int64]*workflow.QuicConn
+	build            chan quic.Stream
+	index            int
+	mutex            sync.RWMutex
+	lastStream       chan bool
 }
 
 func (s *quicDevHandler) Listen() error {
-	err := mocker.EmitMockDataFromCloud(s.serverAddr)
-	return err
-}
-
-func (s *quicDevHandler) Read(st quic.Stream) error {
-	id := time.Now().UnixNano()
-
-	flows, sinks := workflow.Build(s.serverlessConfig, id)
-
-	stream := dispatcher.DispatcherWithFunc(flows, st)
+	go mocker.EmitMockDataFromCloud(s.serverAddr)
 
 	go func() {
-		for customer := range stream.Observe() {
-			if customer.Error() {
-				fmt.Println(customer.E.Error())
-				continue
-			}
+		for {
+			select {
+			case item, ok := <-s.build:
+				if !ok {
+					return
+				}
 
-			value := customer.V.([]byte)
+				flows, sinks := workflow.Build(s.serverlessConfig, &s.connMap, &s.lastStream)
+				stream := dispatcher.DispatcherWithFunc(flows, item)
 
-			if len(value) == 1 && value[0] == byte(0) {
-				continue
-			}
-			for _, sink := range sinks {
-				go func(_sink func() (io.Writer, func()), buf []byte) {
-					writer, cancel := _sink()
+				go func() {
+					for customer := range stream.Observe() {
+						if customer.Error() {
+							fmt.Println(customer.E.Error())
+							continue
+						}
 
-					if writer != nil {
-						_, err := writer.Write(buf)
-						if err != nil {
-							cancel()
+						value := customer.V.([]byte)
+
+						for _, sink := range sinks {
+							go func(_sink func() (io.Writer, func()), buf []byte) {
+								writer, cancel := _sink()
+
+								if writer != nil {
+									_, err := writer.Write(buf)
+									if err != nil {
+										cancel()
+									}
+								}
+							}(sink, value)
 						}
 					}
-				}(sink, value)
+				}()
+
 			}
 		}
 	}()
 
+	return nil
+}
+
+func (s *quicDevHandler) Read(id int64, sess quic.Session, st quic.Stream) error {
+	s.mutex.Lock()
+	if conn, ok := s.connMap[id]; ok {
+		appName := ""
+		appType := []byte{0}
+
+		for i, v := range s.serverlessConfig.Sinks {
+			if i == 0 {
+				appName = v.Name
+				appType = []byte{0, 1}
+			}
+		}
+
+		for i, v := range s.serverlessConfig.Flows {
+			if i == 0 {
+				appName = v.Name
+				appType = []byte{0, 0}
+			}
+		}
+		// source : receivable is false
+		if !conn.Receivable {
+			conn.StreamType = "source"
+			conn.Stream = append(conn.Stream, st)
+			s.index++
+			s.build <- st
+
+			if s.index > 1 {
+				go func() {
+					var c *workflow.QuicConn = nil
+				loop:
+					for _, v := range s.connMap {
+						if v.Name == appName {
+							c = v
+						}
+					}
+					if c == nil {
+						time.Sleep(time.Second)
+						goto loop
+					} else {
+						c.SendSignal(appType)
+					}
+				}()
+			}
+
+		} else if conn.StreamType == "flow" {
+			conn.Stream = append(conn.Stream, st)
+			if appName == conn.Name {
+				s.index--
+			}
+		} else if conn.StreamType == "sink" {
+			conn.Stream = append(conn.Stream, st)
+			if appName == conn.Name {
+				s.index--
+			}
+		}
+
+		if s.index == 0 {
+			s.lastStream <- true
+		}
+	} else {
+		conn := &workflow.QuicConn{
+			Session:    sess,
+			Signal:     st,
+			Receivable: false,
+			Stream:     make([]quic.Stream, 0),
+			StreamType: "",
+			Name:       "",
+			Heartbeat:  make(chan byte),
+			IsClose:    false,
+		}
+		conn.Init()
+		s.connMap[id] = conn
+	}
+	s.mutex.Unlock()
 	return nil
 }

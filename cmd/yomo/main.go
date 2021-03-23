@@ -19,7 +19,7 @@ func main() {
 		Long:  "Wf is the commands for YoMo workflow.",
 	}
 	wfCmd.AddCommand(
-		wf.NewCmdRun(),
+		// wf.NewCmdRun(),
 		wf.NewCmdDev(),
 	)
 
@@ -27,7 +27,7 @@ func main() {
 	rootCmd.AddCommand(
 		cmd.NewCmdInit(),
 		cmd.NewCmdBuild(),
-		cmd.NewCmdDev(),
+		// cmd.NewCmdDev(),
 		cmd.NewCmdRun(),
 		cmd.NewCmdVersion(),
 		wfCmd,

@@ -56,7 +56,6 @@ func FromReader(reader io.Reader) RxStream {
 		for {
 			buf := make([]byte, 3*1024)
 			n, err := reader.Read(buf)
-
 			if err != nil {
 				break
 			} else {
@@ -571,6 +570,7 @@ func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf func() (io.ReadWriter, func()
 							readerErr = true
 						} else {
 							value := buf[:n]
+							fmt.Println("---------------:", string(value))
 							if !rxgo.Of(value).SendContext(ctx, next) {
 								isStop = true
 							}

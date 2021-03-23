@@ -31,7 +31,7 @@ func EmitMockDataFromCloud(addr string) error {
 		return err
 	}
 
-	cli, err := client.Connect(host, port).Name("Mock-Source").Writer()
+	cli, err := client.Connect(host, port).Name("Mock").Writer()
 
 	if err != nil {
 		return err

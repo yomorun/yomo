@@ -60,6 +60,7 @@ func (s *quicGoServer) ListenAndServe(ctx context.Context, addr string) error {
 
 		go func(session quicGo.Session, cancel context.CancelFunc) {
 			defer cancel()
+			id := time.Now().UnixNano()
 
 			for {
 				stream, err := session.AcceptStream(context.Background())
@@ -67,7 +68,7 @@ func (s *quicGoServer) ListenAndServe(ctx context.Context, addr string) error {
 					break
 				}
 				if s.handler != nil {
-					s.handler.Read(stream)
+					s.handler.Read(id, session, stream)
 				} else {
 					log.Print("handler isn't set in QUIC server")
 					break

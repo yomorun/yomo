@@ -2,10 +2,10 @@ name: Service
 host: localhost
 port: 9999
 flows:
-  - name: Noise Serverless
+  - name: Noise
     host: localhost
     port: 4242
-sinks:
-  - name: Mock DB
-    host: localhost
-    port: 4141
+# sinks:
+#   - name: Mock DB
+#     host: localhost
+#     port: 4141
