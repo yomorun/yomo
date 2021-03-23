@@ -115,9 +115,8 @@ func (c *client) Reader() (*client, error) {
 }
 
 // source
-func (c *client) Write(b []byte) error {
-	_, err := c.stream.Write(b)
-	return err
+func (c *client) Write(b []byte) (int, error) {
+	return c.stream.Write(b)
 }
 
 // flow || sink
