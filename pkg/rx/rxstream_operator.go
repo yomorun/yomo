@@ -3,8 +3,11 @@ package rx
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"log"
+	"sync"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -689,6 +692,169 @@ func (s *RxStreamImpl) Encode(key byte, opts ...rxgo.Option) RxStream {
 		}
 	}
 	return CreateObservable(f, opts...)
+}
+
+func (s *RxStreamImpl) SlidingWindowWithCount(windowSize int, slideSize int, apply rxgo.Func, opts ...rxgo.Option) RxStream {
+	if windowSize <= 0 {
+		return s.thrown(errors.New("windowSize must be positive"))
+	}
+	if slideSize <= 0 {
+		return s.thrown(errors.New("slideSize must be positive"))
+	}
+
+	f := func(ctx context.Context, next chan rxgo.Item) {
+		defer close(next)
+		observe := s.Observe()
+
+		windowCount := 0
+		currentSlideCount := 0
+		buf := make([]interface{}, windowSize)
+		firstTimeSend := true
+		mutex := sync.Mutex{}
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case item, ok := <-observe:
+				if !ok {
+					return
+				}
+				if item.Error() {
+					return
+				}
+
+				mutex.Lock()
+				if windowCount < windowSize {
+					buf[windowCount] = item.V
+					windowCount++
+				}
+
+				if windowCount == windowSize {
+					// start sliding
+					currentSlideCount++
+
+					// append slide item to buffer
+					if !firstTimeSend {
+						buf = append(buf[1:windowSize], item.V)
+					}
+
+					// reach slide size
+					if currentSlideCount%slideSize == 0 {
+						log.Println(buf)
+						_, err := apply(ctx, buf)
+						firstTimeSend = false
+						if err != nil {
+							rxgo.Error(err).SendContext(ctx, next)
+							return
+						}
+					}
+				}
+				mutex.Unlock()
+
+				Of(item.V).SendContext(ctx, next)
+			}
+		}
+	}
+	return CreateObservable(f, opts...)
+}
+
+func (s *RxStreamImpl) SlidingWindowWithTime(windowTimespan time.Duration, slideTimespan time.Duration, apply rxgo.Func, opts ...rxgo.Option) RxStream {
+	f := func(ctx context.Context, next chan rxgo.Item) {
+		observe := s.Observe()
+		buf := make([]slidingWithTimeItem, 0)
+		stop := make(chan struct{})
+		firstTimeSend := true
+		mutex := sync.Mutex{}
+
+		checkBuffer := func() {
+			mutex.Lock()
+			// filter items by item
+			updatedBuf := make([]slidingWithTimeItem, 0)
+			availableItems := make([]interface{}, 0)
+			t := time.Now().Add(-windowTimespan)
+			for _, item := range buf {
+				if item.timestamp.After(t) || item.timestamp.Equal(t) {
+					updatedBuf = append(updatedBuf, item)
+					availableItems = append(availableItems, item.data)
+				}
+			}
+			buf = updatedBuf
+
+			// apply and send items
+			if len(availableItems) != 0 {
+				v, err := apply(ctx, availableItems)
+				if err != nil {
+					rxgo.Error(err).SendContext(ctx, next)
+					return
+				}
+				if !Of(v).SendContext(ctx, next) {
+					firstTimeSend = false
+					mutex.Unlock()
+					return
+				}
+			}
+			firstTimeSend = false
+			mutex.Unlock()
+		}
+
+		go func() {
+			defer close(next)
+			for {
+				select {
+				case <-stop:
+					checkBuffer()
+					return
+				case <-ctx.Done():
+					return
+				case <-time.After(windowTimespan):
+					if firstTimeSend {
+						checkBuffer()
+					}
+				case <-time.After(slideTimespan):
+					checkBuffer()
+				}
+			}
+		}()
+
+		for {
+			select {
+			case <-ctx.Done():
+				close(stop)
+				return
+			case item, ok := <-observe:
+				if !ok {
+					close(stop)
+					return
+				}
+				if item.Error() {
+					item.SendContext(ctx, next)
+					close(stop)
+					return
+				} else {
+					mutex.Lock()
+					buf = append(buf, slidingWithTimeItem{
+						timestamp: time.Now(),
+						data:      item.V,
+					})
+					mutex.Unlock()
+				}
+			}
+		}
+	}
+	return CreateObservable(f, opts...)
+}
+
+type slidingWithTimeItem struct {
+	timestamp time.Time
+	data      interface{}
+}
+
+func (s *RxStreamImpl) thrown(err error) RxStream {
+	next := make(chan rxgo.Item, 1)
+	next <- rxgo.Error(err)
+	defer close(next)
+	return &RxStreamImpl{observable: rxgo.FromChannel(next)}
 }
 
 func CreateObservable(f func(ctx context.Context, next chan rxgo.Item), opts ...rxgo.Option) RxStream {
