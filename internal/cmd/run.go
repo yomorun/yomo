@@ -39,7 +39,7 @@ func NewCmdRun() *cobra.Command {
 
 			host := strings.Split(opts.Endpoint, ":")[0]
 			port, _ := strconv.Atoi(strings.Split(opts.Endpoint, ":")[1])
-			cli, err := client.Connect(host, port).Name("Noise").ReadWriter()
+			cli, err := client.Connect(host, port).Name("Noise").Stream()
 
 			hanlder := slHandler.(func(rxStream rx.RxStream) rx.RxStream)
 			cli.Pipe(hanlder)

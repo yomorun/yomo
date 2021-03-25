@@ -45,7 +45,6 @@ func NewCmdDev() *cobra.Command {
 				connMap:          map[int64]*workflow.QuicConn{},
 				build:            make(chan quic.Stream),
 				index:            0,
-				lastStream:       make(chan bool),
 			}
 
 			err = workflow.Run(endpoint, quicHandler)
@@ -68,12 +67,9 @@ type quicDevHandler struct {
 	build            chan quic.Stream
 	index            int
 	mutex            sync.RWMutex
-	lastStream       chan bool
 }
 
 func (s *quicDevHandler) Listen() error {
-	go mocker.EmitMockDataFromCloud(s.serverAddr)
-
 	go func() {
 		for {
 			select {
@@ -82,7 +78,7 @@ func (s *quicDevHandler) Listen() error {
 					return
 				}
 
-				flows, sinks := workflow.Build(s.serverlessConfig, &s.connMap, &s.lastStream)
+				flows, sinks := workflow.Build(s.serverlessConfig, &s.connMap, s.index)
 				stream := dispatcher.DispatcherWithFunc(flows, item)
 
 				go func() {
@@ -108,41 +104,40 @@ func (s *quicDevHandler) Listen() error {
 						}
 					}
 				}()
+				s.index++
 
 			}
 		}
 	}()
+
+	go mocker.EmitMockDataFromCloud(s.serverAddr)
 
 	return nil
 }
 
 func (s *quicDevHandler) Read(id int64, sess quic.Session, st quic.Stream) error {
 	s.mutex.Lock()
+
 	if conn, ok := s.connMap[id]; ok {
 		appName := ""
-		appType := []byte{0}
 
 		for i, v := range s.serverlessConfig.Sinks {
 			if i == 0 {
 				appName = v.Name
-				appType = []byte{0, 1}
 			}
 		}
 
 		for i, v := range s.serverlessConfig.Flows {
 			if i == 0 {
 				appName = v.Name
-				appType = []byte{0, 0}
 			}
 		}
-		// source : receivable is false
-		if !conn.Receivable {
-			conn.StreamType = "source"
-			conn.Stream = append(conn.Stream, st)
-			s.index++
-			s.build <- st
+		fmt.Println(id, s.index)
 
-			if s.index > 1 {
+		if conn.StreamType == "source" {
+			conn.Stream = append(conn.Stream, st)
+			s.build <- st
+			if len(conn.Stream) > 1 {
 				go func() {
 					var c *workflow.QuicConn = nil
 				loop:
@@ -155,38 +150,25 @@ func (s *quicDevHandler) Read(id int64, sess quic.Session, st quic.Stream) error
 						time.Sleep(time.Second)
 						goto loop
 					} else {
-						c.SendSignal(appType)
+						c.SendSignal([]byte{0, 0})
 					}
 				}()
 			}
 
-		} else if conn.StreamType == "flow" {
+		} else {
 			conn.Stream = append(conn.Stream, st)
-			if appName == conn.Name {
-				s.index--
-			}
-		} else if conn.StreamType == "sink" {
-			conn.Stream = append(conn.Stream, st)
-			if appName == conn.Name {
-				s.index--
-			}
-		}
-
-		if s.index == 0 {
-			s.lastStream <- true
 		}
 	} else {
 		conn := &workflow.QuicConn{
 			Session:    sess,
 			Signal:     st,
-			Receivable: false,
-			Stream:     make([]quic.Stream, 0),
+			Stream:     make([]io.ReadWriter, 0),
 			StreamType: "",
 			Name:       "",
 			Heartbeat:  make(chan byte),
 			IsClose:    false,
 		}
-		conn.Init()
+		conn.Init(s.serverlessConfig)
 		s.connMap[id] = conn
 	}
 	s.mutex.Unlock()

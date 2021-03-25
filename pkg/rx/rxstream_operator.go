@@ -527,6 +527,7 @@ func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf func() (io.ReadWriter, func()
 							if rw == nil {
 								time.Sleep(time.Second)
 							} else {
+								fmt.Println("-----++-------------:", item.V)
 								_, err := rw.Write(item.V.([]byte))
 								if err == nil {
 									ready <- true
@@ -570,7 +571,7 @@ func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf func() (io.ReadWriter, func()
 							readerErr = true
 						} else {
 							value := buf[:n]
-							fmt.Println("---------------:", string(value))
+							fmt.Println("------------------:", value)
 							if !rxgo.Of(value).SendContext(ctx, next) {
 								isStop = true
 							}
@@ -605,7 +606,6 @@ func (s *RxStreamImpl) Subscribe(key byte) RxStream {
 				if item.Error() {
 					return
 				}
-
 				y3stream := (item.V).(yy3.Observable)
 				if !Of(y3stream.Subscribe(key)).SendContext(ctx, next) {
 					return

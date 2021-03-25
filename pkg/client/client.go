@@ -11,8 +11,7 @@ import (
 	"github.com/yomorun/yomo/pkg/rx"
 )
 
-var FLOW = []byte{0, 0}
-var SINK = []byte{0, 1}
+var FLOWORSINK = []byte{0, 0}
 
 type client struct {
 	ip       string
@@ -23,16 +22,16 @@ type client struct {
 	session  quic.Client
 	signal   quic.Stream
 	stream   quic.Stream
-	accepted chan bool
+	accepted chan int
 }
 
 func Connect(ip string, port int) *client {
 	c := &client{
 		ip:       ip,
 		port:     port,
-		readers:  make(chan io.Reader),
+		readers:  make(chan io.Reader, 1),
 		writers:  make([]io.Writer, 0),
-		accepted: make(chan bool),
+		accepted: make(chan int),
 	}
 	return c
 }
@@ -71,8 +70,10 @@ func (c *client) Name(name string) *client {
 			case 1:
 				if buf[0] == byte(0) {
 					c.signal.Write(buf[:n])
+				} else if buf[0] == byte(1) {
+					c.accepted <- 1
 				} else {
-					c.accepted <- true
+					c.accepted <- 2
 				}
 			case 2:
 				stream, err := c.session.CreateStream(context.Background())
@@ -83,7 +84,7 @@ func (c *client) Name(name string) *client {
 
 				c.readers <- stream
 				c.writers = append(c.writers, stream)
-				stream.Write([]byte("王耀光"))
+				stream.Write([]byte{0}) //create stream
 			}
 
 		}
@@ -92,70 +93,34 @@ func (c *client) Name(name string) *client {
 	return c
 }
 
-// source
-func (c *client) Writer() (*client, error) {
+func (c *client) Stream() (*client, error) {
 	for {
 		select {
-		case _, ok := <-c.accepted:
+		case i, ok := <-c.accepted:
 			if !ok {
 				return nil, errors.New("not accepted")
 			}
-			fmt.Println("client-www1:")
 			stream, err := c.session.CreateStream(context.Background())
-
 			if err != nil {
 				return nil, err
+			}
+			if i == 2 {
+				_, err = stream.Write([]byte{0}) //create flow and sink stream
+				if err != nil {
+					return nil, err
+				}
 			}
 			c.stream = stream
+			c.readers <- stream
+			c.writers = append(c.writers, stream)
 			return c, nil
 		}
 	}
-
-}
-
-// flow
-func (c *client) ReadWriter() (*client, error) {
-	// first send flow-signal to zipper
-
-	for {
-		select {
-		case _, ok := <-c.accepted:
-			if !ok {
-				return nil, errors.New("not accepted")
-			}
-			fmt.Println("client-www2:")
-			_, err := c.signal.Write(FLOW)
-			if err != nil {
-				return nil, err
-			}
-			return c, nil
-		}
-	}
-}
-
-func (c *client) Reader() (*client, error) {
-	// first send sink-signal to zipper
-	for {
-		select {
-		case _, ok := <-c.accepted:
-			if !ok {
-				return nil, errors.New("not accepted")
-			}
-			fmt.Println("client-www3:")
-			_, err := c.signal.Write(SINK)
-
-			if err != nil {
-				return nil, err
-			}
-
-			return c, nil
-		}
-	}
-
 }
 
 // source
 func (c *client) Write(b []byte) (int, error) {
+	fmt.Println("=======================")
 	return c.stream.Write(b)
 }
 
@@ -167,6 +132,7 @@ func (c *client) Pipe(f func(rxstream rx.RxStream) rx.RxStream) {
 	rxstream.Connect(context.Background())
 
 	for customer := range stream.Observe() {
+		fmt.Println(customer.V)
 		if customer.Error() {
 			panic(customer.E)
 		} else if customer.V != nil {
