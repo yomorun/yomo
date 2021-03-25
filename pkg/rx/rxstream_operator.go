@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"sync"
 	"time"
 
@@ -694,7 +693,7 @@ func (s *RxStreamImpl) Encode(key byte, opts ...rxgo.Option) RxStream {
 	return CreateObservable(f, opts...)
 }
 
-func (s *RxStreamImpl) SlidingWindowWithCount(windowSize int, slideSize int, apply rxgo.Func, opts ...rxgo.Option) RxStream {
+func (s *RxStreamImpl) SlidingWindowWithCount(windowSize int, slideSize int, handler Handler, opts ...rxgo.Option) RxStream {
 	if windowSize <= 0 {
 		return s.thrown(errors.New("windowSize must be positive"))
 	}
@@ -741,8 +740,7 @@ func (s *RxStreamImpl) SlidingWindowWithCount(windowSize int, slideSize int, app
 
 					// reach slide size
 					if currentSlideCount%slideSize == 0 {
-						log.Println(buf)
-						_, err := apply(ctx, buf)
+						err := handler(buf)
 						firstTimeSend = false
 						if err != nil {
 							rxgo.Error(err).SendContext(ctx, next)
@@ -759,7 +757,7 @@ func (s *RxStreamImpl) SlidingWindowWithCount(windowSize int, slideSize int, app
 	return CreateObservable(f, opts...)
 }
 
-func (s *RxStreamImpl) SlidingWindowWithTime(windowTimespan time.Duration, slideTimespan time.Duration, apply rxgo.Func, opts ...rxgo.Option) RxStream {
+func (s *RxStreamImpl) SlidingWindowWithTime(windowTimespan time.Duration, slideTimespan time.Duration, handler Handler, opts ...rxgo.Option) RxStream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		observe := s.Observe()
 		buf := make([]slidingWithTimeItem, 0)
@@ -783,14 +781,9 @@ func (s *RxStreamImpl) SlidingWindowWithTime(windowTimespan time.Duration, slide
 
 			// apply and send items
 			if len(availableItems) != 0 {
-				v, err := apply(ctx, availableItems)
+				err := handler(availableItems)
 				if err != nil {
 					rxgo.Error(err).SendContext(ctx, next)
-					return
-				}
-				if !Of(v).SendContext(ctx, next) {
-					firstTimeSend = false
-					mutex.Unlock()
 					return
 				}
 			}
@@ -839,6 +832,8 @@ func (s *RxStreamImpl) SlidingWindowWithTime(windowTimespan time.Duration, slide
 					})
 					mutex.Unlock()
 				}
+
+				Of(item.V).SendContext(ctx, next)
 			}
 		}
 	}
@@ -849,6 +844,9 @@ type slidingWithTimeItem struct {
 	timestamp time.Time
 	data      interface{}
 }
+
+// Handler defines a function that handle the input value.
+type Handler func(interface{}) error
 
 func (s *RxStreamImpl) thrown(err error) RxStream {
 	next := make(chan rxgo.Item, 1)

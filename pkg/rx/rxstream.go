@@ -92,6 +92,6 @@ type RxStream interface {
 	WindowWithTime(timespan rxgo.Duration, opts ...rxgo.Option) RxStream
 	WindowWithTimeOrCount(timespan rxgo.Duration, count int, opts ...rxgo.Option) RxStream
 	ZipFromIterable(iterable rxgo.Iterable, zipper rxgo.Func2, opts ...rxgo.Option) RxStream
-	SlidingWindowWithCount(windowSize int, slideSize int, apply rxgo.Func, opts ...rxgo.Option) RxStream
-	SlidingWindowWithTime(windowTimespan time.Duration, slideTimespan time.Duration, apply rxgo.Func, opts ...rxgo.Option) RxStream
+	SlidingWindowWithCount(windowSize int, slideSize int, handler Handler, opts ...rxgo.Option) RxStream
+	SlidingWindowWithTime(windowTimespan time.Duration, slideTimespan time.Duration, handler Handler, opts ...rxgo.Option) RxStream
 }
