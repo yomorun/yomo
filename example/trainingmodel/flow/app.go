@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/yomorun/yomo/pkg/client"
+
 	y3 "github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo/pkg/rx"
 )
@@ -42,4 +44,16 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 
 	stream := streamA.ZipFromIterable(streamB, zipper).StdOut().Encode(0x10)
 	return stream
+}
+
+func main() {
+	st, err := client.Connect("localhost", 9000).Name("training").Stream()
+	defer st.Close()
+
+	if err != nil {
+		panic(err)
+	}
+
+	st.Pipe(Handler)
+
 }
