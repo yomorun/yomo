@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"time"
 
 	"github.com/yomorun/yomo/pkg/quic"
 	"github.com/yomorun/yomo/pkg/rx"
@@ -14,24 +15,28 @@ import (
 var FLOWORSINK = []byte{0, 0}
 
 type client struct {
-	ip       string
-	port     int
-	name     string
-	readers  chan io.Reader
-	writers  []io.Writer
-	session  quic.Client
-	signal   quic.Stream
-	stream   quic.Stream
-	accepted chan int
+	ip        string
+	port      int
+	name      string
+	readers   chan io.Reader
+	writers   []io.Writer
+	session   quic.Client
+	signal    quic.Stream
+	stream    quic.Stream
+	heartbeat chan byte
+	accepted  chan int
+	err       error
 }
 
 func Connect(ip string, port int) *client {
 	c := &client{
-		ip:       ip,
-		port:     port,
-		readers:  make(chan io.Reader, 1),
-		writers:  make([]io.Writer, 0),
-		accepted: make(chan int),
+		ip:        ip,
+		port:      port,
+		readers:   make(chan io.Reader, 1),
+		writers:   make([]io.Writer, 0),
+		accepted:  make(chan int),
+		heartbeat: make(chan byte),
+		err:       nil,
 	}
 	return c
 }
@@ -41,12 +46,16 @@ func (c *client) Name(name string) *client {
 	c.name = name
 	quic_cli, err := quic.NewClient(fmt.Sprintf("%s:%d", c.ip, c.port))
 	if err != nil {
-		panic(err)
+		fmt.Println("client [NewClient] Error:", err)
+		c.err = err
+		return c
 	}
 
 	quic_stream, err := quic_cli.CreateStream(context.Background())
 	if err != nil {
-		panic(err)
+		fmt.Println("client [CreateStream] Error:", err)
+		c.err = err
+		return c
 	}
 
 	c.session = quic_cli
@@ -55,7 +64,9 @@ func (c *client) Name(name string) *client {
 	_, err = c.signal.Write([]byte(c.name))
 
 	if err != nil {
-		panic(err)
+		fmt.Println("client [Write] Error:", err)
+		c.err = err
+		return c
 	}
 
 	// flow ,sink create stream or heartbeat
@@ -64,12 +75,12 @@ func (c *client) Name(name string) *client {
 			buf := make([]byte, 2)
 			n, err := c.signal.Read(buf)
 			if err != nil {
-				panic(err)
+				break
 			}
 			switch n {
 			case 1:
 				if buf[0] == byte(0) {
-					c.signal.Write(buf[:n])
+					c.heartbeat <- buf[0]
 				} else if buf[0] == byte(1) {
 					c.accepted <- 1
 				} else {
@@ -79,7 +90,7 @@ func (c *client) Name(name string) *client {
 				stream, err := c.session.CreateStream(context.Background())
 
 				if err != nil {
-					panic(err)
+					break
 				}
 
 				c.readers <- stream
@@ -90,37 +101,67 @@ func (c *client) Name(name string) *client {
 		}
 	}()
 
+	go func() {
+		defer c.Close()
+		for {
+			select {
+			case item, ok := <-c.heartbeat:
+				if !ok {
+					return
+				}
+				_, err := c.signal.Write([]byte{item})
+
+				if err != nil {
+					return
+				}
+			case <-time.After(time.Second):
+				return
+			}
+		}
+
+	}()
+
 	return c
 }
 
 func (c *client) Stream() (*client, error) {
+	if c.err != nil {
+		return nil, c.err
+	}
+
 	for {
 		select {
-		case i, ok := <-c.accepted:
+		case item, ok := <-c.accepted:
 			if !ok {
 				return nil, errors.New("not accepted")
 			}
-			stream, err := c.session.CreateStream(context.Background())
-			if err != nil {
-				return nil, err
-			}
-			if i == 2 {
-				_, err = stream.Write([]byte{0}) //create flow and sink stream
+
+			if item == 1 {
+				stream, err := c.session.CreateStream(context.Background())
 				if err != nil {
 					return nil, err
 				}
+				c.stream = stream
 			}
-			c.stream = stream
-			c.readers <- stream
-			c.writers = append(c.writers, stream)
+
 			return c, nil
+		}
+	}
+}
+
+func (c *client) reTry() {
+	for {
+		_, err := c.Name(c.name).Stream()
+		if err == nil {
+			break
+		} else {
+			time.Sleep(time.Second)
 		}
 	}
 }
 
 // source
 func (c *client) Write(b []byte) (int, error) {
-	fmt.Println("=======================")
 	return c.stream.Write(b)
 }
 
@@ -132,7 +173,6 @@ func (c *client) Pipe(f func(rxstream rx.RxStream) rx.RxStream) {
 	rxstream.Connect(context.Background())
 
 	for customer := range stream.Observe() {
-		fmt.Println(customer.V)
 		if customer.Error() {
 			panic(customer.E)
 		} else if customer.V != nil {
@@ -155,4 +195,12 @@ func (c *client) Pipe(f func(rxstream rx.RxStream) rx.RxStream) {
 
 func (c *client) Close() {
 	c.session.Close()
+	close(c.accepted)
+	close(c.heartbeat)
+	c.writers = make([]io.Writer, 0)
+	c.accepted = make(chan int)
+	c.heartbeat = make(chan byte)
+	c.signal = nil
+	c.stream = nil
+	c.reTry()
 }

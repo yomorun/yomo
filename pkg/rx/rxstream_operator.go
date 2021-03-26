@@ -525,9 +525,8 @@ func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf func() (io.ReadWriter, func()
 						for {
 							rw, cancel := rwf()
 							if rw == nil {
-								time.Sleep(time.Second)
+								time.Sleep(200 * time.Millisecond)
 							} else {
-								fmt.Println("-----++-------------:", item.V)
 								_, err := rw.Write(item.V.([]byte))
 								if err == nil {
 									ready <- true
@@ -556,7 +555,7 @@ func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf func() (io.ReadWriter, func()
 				for {
 					rw, cancel := rwf()
 					if rw == nil {
-						time.Sleep(time.Second)
+						time.Sleep(200 * time.Millisecond)
 					} else {
 						if readerErr {
 							readerErr = false
@@ -571,7 +570,6 @@ func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf func() (io.ReadWriter, func()
 							readerErr = true
 						} else {
 							value := buf[:n]
-							fmt.Println("------------------:", value)
 							if !rxgo.Of(value).SendContext(ctx, next) {
 								isStop = true
 							}

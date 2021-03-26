@@ -5,7 +5,6 @@ import (
 	"io"
 	"log"
 	"sync"
-	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/yomorun/yomo/internal/conf"
@@ -119,42 +118,9 @@ func (s *quicDevHandler) Read(id int64, sess quic.Session, st quic.Stream) error
 	s.mutex.Lock()
 
 	if conn, ok := s.connMap[id]; ok {
-		appName := ""
-
-		for i, v := range s.serverlessConfig.Sinks {
-			if i == 0 {
-				appName = v.Name
-			}
-		}
-
-		for i, v := range s.serverlessConfig.Flows {
-			if i == 0 {
-				appName = v.Name
-			}
-		}
-		fmt.Println(id, s.index)
-
 		if conn.StreamType == "source" {
 			conn.Stream = append(conn.Stream, st)
 			s.build <- st
-			if len(conn.Stream) > 1 {
-				go func() {
-					var c *workflow.QuicConn = nil
-				loop:
-					for _, v := range s.connMap {
-						if v.Name == appName {
-							c = v
-						}
-					}
-					if c == nil {
-						time.Sleep(time.Second)
-						goto loop
-					} else {
-						c.SendSignal([]byte{0, 0})
-					}
-				}()
-			}
-
 		} else {
 			conn.Stream = append(conn.Stream, st)
 		}
@@ -167,6 +133,7 @@ func (s *quicDevHandler) Read(id int64, sess quic.Session, st quic.Stream) error
 			Name:       "",
 			Heartbeat:  make(chan byte),
 			IsClose:    false,
+			Ready:      true,
 		}
 		conn.Init(s.serverlessConfig)
 		s.connMap[id] = conn
