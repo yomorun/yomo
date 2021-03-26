@@ -92,4 +92,12 @@ type RxStream interface {
 	WindowWithTime(timespan rxgo.Duration, opts ...rxgo.Option) RxStream
 	WindowWithTimeOrCount(timespan rxgo.Duration, count int, opts ...rxgo.Option) RxStream
 	ZipFromIterable(iterable rxgo.Iterable, zipper rxgo.Func2, opts ...rxgo.Option) RxStream
+
+	// SlidingWindowWithCount buffers the data in the specified sliding window size, the buffered data can be processed in the handler func.
+	// It returns the orginal data to RxStream, not the buffered slice.
+	SlidingWindowWithCount(windowSize int, slideSize int, handler Handler, opts ...rxgo.Option) RxStream
+
+	// SlidingWindowWithTime buffers the data in the specified sliding window time, the buffered data can be processed in the handler func.
+	// It returns the orginal data to RxStream, not the buffered slice.
+	SlidingWindowWithTime(windowTimespan time.Duration, slideTimespan time.Duration, handler Handler, opts ...rxgo.Option) RxStream
 }
