@@ -88,11 +88,9 @@ func (s *quicDevHandler) Listen() error {
 						}
 
 						value := customer.V.([]byte)
-
 						for _, sink := range sinks {
 							go func(_sink func() (io.Writer, func()), buf []byte) {
 								writer, cancel := _sink()
-
 								if writer != nil {
 									_, err := writer.Write(buf)
 									if err != nil {

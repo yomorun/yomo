@@ -24,7 +24,7 @@ var printer = func(_ context.Context, i interface{}) (interface{}, error) {
 	value := i.(NoiseData)
 	rightNow := time.Now().UnixNano() / int64(time.Millisecond)
 	fmt.Println(fmt.Sprintf("[%s] %d > value: %f ⚡️=%dms", value.From, value.Time, value.Noise, rightNow-value.Time))
-	return i, nil
+	return value.Noise, nil
 }
 
 var callback = func(v []byte) (interface{}, error) {
@@ -45,7 +45,7 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 		Debounce(rxgo.WithDuration(50 * time.Millisecond)).
 		Map(printer).
 		StdOut().
-		Encode(0x10)
+		Encode(0x11)
 
 	return stream
 }

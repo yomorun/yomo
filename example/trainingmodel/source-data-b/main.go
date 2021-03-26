@@ -1,21 +1,27 @@
 package main
 
 import (
-	"context"
+	"io"
 	"log"
 	"math/rand"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	y3 "github.com/yomorun/y3-codec-golang"
-	"github.com/yomorun/yomo/pkg/quic"
+	"github.com/yomorun/yomo/pkg/client"
 )
 
 var zipperAddr = os.Getenv("YOMO_ZIPPER_ENDPOINT")
 
+const charset = "abcdefghijklmnopqrstuvwxyz"
+
+var seed *rand.Rand = rand.New(rand.NewSource(time.Now().UnixNano()))
+
 func main() {
 	if zipperAddr == "" {
-		zipperAddr = "localhost:9999"
+		zipperAddr = "localhost:9000"
 	}
 	err := emit(zipperAddr)
 	if err != nil {
@@ -25,38 +31,43 @@ func main() {
 
 func emit(addr string) error {
 
-	client, err := quic.NewClient(addr)
-	if err != nil {
-		return err
-	}
-	log.Printf("✅ Connected to yomo-zipper %s", addr)
+	host := strings.Split(addr, ":")[0]
+	port, err := strconv.Atoi(strings.Split(addr, ":")[1])
 
-	stream, err := client.CreateStream(context.Background())
+	cli, err := client.Connect(host, port).Name("source-b").Stream()
 	if err != nil {
-		return err
+		panic(err)
 	}
 
-	generateAndSendData(stream)
+	generateAndSendData(cli)
 
 	return nil
 }
 
-var codec = y3.NewCodec(0x12)
+var codec = y3.NewCodec(0x3b)
 
-func generateAndSendData(stream quic.Stream) {
+func generateAndSendData(writer io.Writer) {
 
 	for {
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 
-		num := rand.New(rand.NewSource(time.Now().UnixNano())).Float32() * 2000
+		str := generateString()
 
-		sendingBuf, _ := codec.Marshal(num)
+		sendingBuf, _ := codec.Marshal(str)
 
-		_, err := stream.Write(sendingBuf)
+		_, err := writer.Write(sendingBuf)
 		if err != nil {
-			log.Printf("❌ Emit %v to yomo-zipper failure with err: %v", num, err)
+			log.Printf("❌ Emit %v to yomo-zipper failure with err: %s", str, err)
 		} else {
-			log.Printf("✅ Emit %v to yomo-zipper", num)
+			log.Printf("✅ Emit %s to yomo-zipper", str)
 		}
 	}
+}
+
+func generateString() string {
+	b := make([]byte, 10)
+	for i := range b {
+		b[i] = charset[seed.Intn(len(charset))]
+	}
+	return string(b)
 }

@@ -53,7 +53,7 @@ func (c *QuicConn) Init(conf *conf.WorkflowConfig) {
 					}
 				}
 				index++
-				fmt.Println("Receive App:", c.Name, c.StreamType, index)
+				fmt.Println("Receive App:", c.Name, c.StreamType)
 				if c.StreamType == "source" {
 					c.Signal.Write([]byte{1})
 				} else {
@@ -142,6 +142,7 @@ func Build(wfConf *conf.WorkflowConfig, connMap *map[int64]*QuicConn, index int)
 }
 
 func createReadWriter(app conf.App, connMap *map[int64]*QuicConn, index int) func() (io.ReadWriter, func()) {
+	fmt.Println("flow s.index.:", index)
 	f := func() (io.ReadWriter, func()) {
 		if app.Name != GlobalApp {
 			index = 0
@@ -159,6 +160,7 @@ func createReadWriter(app conf.App, connMap *map[int64]*QuicConn, index int) fun
 		if conn == nil {
 			return nil, func() {}
 		} else if len(conn.Stream) > index && conn.Stream[index] != nil {
+			conn.Ready = true
 			return conn.Stream[index], cancelStream(app, conn, connMap, id)
 		} else {
 			if conn.Ready {
@@ -174,11 +176,11 @@ func createReadWriter(app conf.App, connMap *map[int64]*QuicConn, index int) fun
 }
 
 func createWriter(app conf.App, connMap *map[int64]*QuicConn, index int) func() (io.Writer, func()) {
-
+	fmt.Println("sink s.index.:", index)
 	f := func() (io.Writer, func()) {
-		if app.Name != GlobalApp {
-			index = 0
-		}
+		// if app.Name != GlobalApp {
+		// 	index = 0
+		// }
 
 		var conn *QuicConn = nil
 		var id int64 = 0
@@ -193,6 +195,7 @@ func createWriter(app conf.App, connMap *map[int64]*QuicConn, index int) func() 
 		if conn == nil {
 			return nil, func() {}
 		} else if len(conn.Stream) > index && conn.Stream[index] != nil {
+			conn.Ready = true
 			return conn.Stream[index], cancelStream(app, conn, connMap, id)
 		} else {
 			if conn.Ready {

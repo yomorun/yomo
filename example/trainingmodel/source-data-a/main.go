@@ -1,21 +1,23 @@
 package main
 
 import (
-	"context"
+	"io"
 	"log"
 	"math/rand"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	y3 "github.com/yomorun/y3-codec-golang"
-	"github.com/yomorun/yomo/pkg/quic"
+	"github.com/yomorun/yomo/pkg/client"
 )
 
 var zipperAddr = os.Getenv("YOMO_ZIPPER_ENDPOINT")
 
 func main() {
 	if zipperAddr == "" {
-		zipperAddr = "localhost:9999"
+		zipperAddr = "localhost:9000"
 	}
 	err := emit(zipperAddr)
 	if err != nil {
@@ -24,36 +26,32 @@ func main() {
 }
 
 func emit(addr string) error {
-	client, err := quic.NewClient(addr)
-	if err != nil {
-		return err
-	}
-	log.Printf("✅ Connected to yomo-zipper %s", addr)
+	host := strings.Split(addr, ":")[0]
+	port, err := strconv.Atoi(strings.Split(addr, ":")[1])
 
-	stream, err := client.CreateStream(context.Background())
+	cli, err := client.Connect(host, port).Name("source-a").Stream()
 	if err != nil {
-		return err
+		panic(err)
 	}
-
-	generateAndSendData(stream)
+	generateAndSendData(cli)
 
 	return nil
 }
 
-var codec = y3.NewCodec(0x11)
+var codec = y3.NewCodec(0x3a)
 
-func generateAndSendData(stream quic.Stream) {
+func generateAndSendData(writer io.Writer) {
 	for {
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 		num := rand.New(rand.NewSource(time.Now().UnixNano())).Float32() * 200
 
 		sendingBuf, _ := codec.Marshal(num)
 
-		_, err := stream.Write(sendingBuf)
+		_, err := writer.Write(sendingBuf)
 		if err != nil {
-			log.Printf("❌ Emit %v to yomo-zipper failure with err: %v", num, err)
+			log.Printf("❌ Emit %v to yomo-zipper failure with err: %f", num, err)
 		} else {
-			log.Printf("✅ Emit %v to yomo-zipper", num)
+			log.Printf("✅ Emit %f to yomo-zipper", num)
 		}
 	}
 }

@@ -162,7 +162,11 @@ func (c *client) reTry() {
 
 // source
 func (c *client) Write(b []byte) (int, error) {
-	return c.stream.Write(b)
+	if c.stream != nil {
+		return c.stream.Write(b)
+	} else {
+		return 0, errors.New("not found stream")
+	}
 }
 
 // flow || sink
@@ -177,7 +181,6 @@ func (c *client) Pipe(f func(rxstream rx.RxStream) rx.RxStream) {
 			panic(customer.E)
 		} else if customer.V != nil {
 			index := rand.Intn(len(c.writers))
-
 		loop:
 			for i, w := range c.writers {
 				if index == i {
@@ -186,6 +189,8 @@ func (c *client) Pipe(f func(rxstream rx.RxStream) rx.RxStream) {
 						index = rand.Intn(len(c.writers))
 						break loop
 					}
+				} else {
+					w.Write([]byte{0})
 				}
 			}
 
@@ -195,8 +200,6 @@ func (c *client) Pipe(f func(rxstream rx.RxStream) rx.RxStream) {
 
 func (c *client) Close() {
 	c.session.Close()
-	close(c.accepted)
-	close(c.heartbeat)
 	c.writers = make([]io.Writer, 0)
 	c.accepted = make(chan int)
 	c.heartbeat = make(chan byte)
