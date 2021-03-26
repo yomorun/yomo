@@ -693,6 +693,8 @@ func (s *RxStreamImpl) Encode(key byte, opts ...rxgo.Option) RxStream {
 	return CreateObservable(f, opts...)
 }
 
+// SlidingWindowWithCount buffers the data in the specified sliding window size, the buffered data can be processed in the handler func.
+// It returns the orginal data to RxStream, not the buffered slice.
 func (s *RxStreamImpl) SlidingWindowWithCount(windowSize int, slideSize int, handler Handler, opts ...rxgo.Option) RxStream {
 	if windowSize <= 0 {
 		return s.thrown(errors.New("windowSize must be positive"))
@@ -757,6 +759,8 @@ func (s *RxStreamImpl) SlidingWindowWithCount(windowSize int, slideSize int, han
 	return CreateObservable(f, opts...)
 }
 
+// SlidingWindowWithTime buffers the data in the specified sliding window time, the buffered data can be processed in the handler func.
+// It returns the orginal data to RxStream, not the buffered slice.
 func (s *RxStreamImpl) SlidingWindowWithTime(windowTimespan time.Duration, slideTimespan time.Duration, handler Handler, opts ...rxgo.Option) RxStream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		observe := s.Observe()
