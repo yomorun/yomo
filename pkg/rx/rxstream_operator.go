@@ -749,7 +749,7 @@ func (s *RxStreamImpl) SlidingWindowWithCount(windowSize int, slideSize int, han
 					}
 				}
 				mutex.Unlock()
-
+				// immediately send the original item to downstream
 				Of(item.V).SendContext(ctx, next)
 			}
 		}
@@ -826,13 +826,14 @@ func (s *RxStreamImpl) SlidingWindowWithTime(windowTimespan time.Duration, slide
 					return
 				} else {
 					mutex.Lock()
+					// buffer data
 					buf = append(buf, slidingWithTimeItem{
 						timestamp: time.Now(),
 						data:      item.V,
 					})
 					mutex.Unlock()
 				}
-
+				// immediately send the original item to downstream
 				Of(item.V).SendContext(ctx, next)
 			}
 		}

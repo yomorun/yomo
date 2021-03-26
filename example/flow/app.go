@@ -51,7 +51,7 @@ var callback = func(v []byte) (interface{}, error) {
 	return mold, nil
 }
 
-var slidingTimeHandler = func(i interface{}) error {
+var slidingWindowHandler = func(i interface{}) error {
 	values, ok := i.([]interface{})
 	if ok {
 		var total float32 = 0
@@ -73,7 +73,7 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 		OnObserve(callback).
 		Debounce(rxgo.WithDuration(50*time.Millisecond)).
 		Map(printer).
-		SlidingWindowWithTime(SlidingWindowSeconds*time.Second, 1*time.Second, slidingTimeHandler).
+		SlidingWindowWithTime(SlidingWindowSeconds*time.Second, 1*time.Second, slidingWindowHandler).
 		StdOut().
 		Encode(0x11)
 
