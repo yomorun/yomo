@@ -67,6 +67,7 @@ func (s *quicGoServer) ListenAndServe(ctx context.Context, addr string) error {
 				if err != nil {
 					break
 				}
+				defer stream.Close()
 				if s.handler != nil {
 					s.handler.Read(id, session, stream)
 				} else {
