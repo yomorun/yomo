@@ -14,13 +14,13 @@ import (
 const NoiseDataKey = 0x10
 
 // ThresholdSingleValue is the threshold of a single value.
-const ThresholdSingleValue = 60
+const ThresholdSingleValue = 16
 
 // ThresholdAverageValue is the threshold of the average value after a sliding window.
-const ThresholdAverageValue = 55
+const ThresholdAverageValue = 13
 
 // SlidingWindowSeconds is the time in seconds of the sliding window.
-const SlidingWindowSeconds = 30
+const SlidingWindowSeconds = 10
 
 // NoiseData represents the structure of data
 type NoiseData struct {
@@ -29,19 +29,22 @@ type NoiseData struct {
 	From  string  `y3:"0x13"`
 }
 
-var printer = func(_ context.Context, i interface{}) (interface{}, error) {
+// Print every value and alert for value greater than ThresholdSingleValue
+var computePeek = func(_ context.Context, i interface{}) (interface{}, error) {
 	value := i.(NoiseData)
 	rightNow := time.Now().UnixNano() / int64(time.Millisecond)
 	fmt.Println(fmt.Sprintf("[%s] %d > value: %f ⚡️=%dms", value.From, value.Time, value.Noise, rightNow-value.Time))
 
+	// Compute peek value, if greater than ThresholdSingleValue, alert
 	if value.Noise >= ThresholdSingleValue {
-		fmt.Println(fmt.Sprintf("❗ value: %f reaches the threshold %d!", value.Noise, ThresholdSingleValue))
+		fmt.Println(fmt.Sprintf("❗ value: %f reaches the threshold %d! 𝚫=%f", value.Noise, ThresholdSingleValue, value.Noise-ThresholdSingleValue))
 	}
 
 	return value.Noise, nil
 }
 
-var callback = func(v []byte) (interface{}, error) {
+// Unserialize data to `NoiseData` struct, transfer to next process
+var decode = func(v []byte) (interface{}, error) {
 	var mold NoiseData
 	err := y3.ToObject(v, &mold)
 	if err != nil {
@@ -51,7 +54,8 @@ var callback = func(v []byte) (interface{}, error) {
 	return mold, nil
 }
 
-var slidingWindowHandler = func(i interface{}) error {
+// Compute avg of every past 10-seconds IoT data
+var slidingAvg = func(i interface{}) error {
 	values, ok := i.([]interface{})
 	if ok {
 		var total float32 = 0
@@ -59,8 +63,9 @@ var slidingWindowHandler = func(i interface{}) error {
 			total += value.(float32)
 		}
 		avg := total / float32(len(values))
+		fmt.Println(fmt.Sprintf("🧩 average value in last %d seconds: %f!", SlidingWindowSeconds, avg))
 		if avg >= ThresholdAverageValue {
-			fmt.Println(fmt.Sprintf("❗ average value in last %d seconds: %f reaches the threshold %d!", SlidingWindowSeconds, avg, ThresholdAverageValue))
+			fmt.Println(fmt.Sprintf("❗❗  average value in last %d seconds: %f reaches the threshold %d!", SlidingWindowSeconds, avg, ThresholdAverageValue))
 		}
 	}
 	return nil
@@ -70,11 +75,10 @@ var slidingWindowHandler = func(i interface{}) error {
 func Handler(rxstream rx.RxStream) rx.RxStream {
 	stream := rxstream.
 		Subscribe(NoiseDataKey).
-		OnObserve(callback).
 		Debounce(rxgo.WithDuration(50*time.Millisecond)).
-		Map(printer).
-		SlidingWindowWithTime(SlidingWindowSeconds*time.Second, 1*time.Second, slidingWindowHandler).
-		StdOut().
+		OnObserve(decode).
+		Map(computePeek).
+		SlidingWindowWithTime(SlidingWindowSeconds*time.Second, 1*time.Second, slidingAvg).
 		Encode(0x11)
 
 	return stream
