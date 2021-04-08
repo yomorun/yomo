@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"time"
 
 	y3 "github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo/pkg/rx"
@@ -24,7 +23,7 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 	stream := rxstream.
 		Subscribe(0x11).
 		OnObserve(callback).
-		AuditTime(100 * time.Millisecond).
+		AuditTime(100).
 		Map(store).
 		Encode(0x11)
 	return stream

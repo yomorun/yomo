@@ -183,12 +183,16 @@ func (s *RxStreamImpl) BufferWithCount(count int, opts ...rxgo.Option) RxStream 
 	return &RxStreamImpl{observable: rxgo.FromChannel(s.observable.BufferWithCount(count, opts...).Observe(), opts...)}
 }
 
-func (s *RxStreamImpl) BufferWithTime(timespan rxgo.Duration, opts ...rxgo.Option) RxStream {
-	return &RxStreamImpl{observable: rxgo.FromChannel(s.observable.BufferWithTime(timespan, opts...).Observe(), opts...)}
+func getRxDuration(milliseconds uint32) rxgo.Duration {
+	return rxgo.WithDuration(time.Duration(milliseconds)*time.Millisecond)
 }
 
-func (s *RxStreamImpl) BufferWithTimeOrCount(timespan rxgo.Duration, count int, opts ...rxgo.Option) RxStream {
-	return &RxStreamImpl{observable: rxgo.FromChannel(s.observable.BufferWithTimeOrCount(timespan, count, opts...).Observe(), opts...)}
+func (s *RxStreamImpl) BufferWithTime(milliseconds uint32, opts ...rxgo.Option) RxStream {
+	return &RxStreamImpl{observable: rxgo.FromChannel(s.observable.BufferWithTime(getRxDuration(milliseconds), opts...).Observe(), opts...)}
+}
+
+func (s *RxStreamImpl) BufferWithTimeOrCount(milliseconds uint32, count int, opts ...rxgo.Option) RxStream {
+	return &RxStreamImpl{observable: rxgo.FromChannel(s.observable.BufferWithTimeOrCount(getRxDuration(milliseconds), count, opts...).Observe(), opts...)}
 }
 
 func (s *RxStreamImpl) Connect(ctx context.Context) (context.Context, rxgo.Disposable) {
@@ -203,8 +207,8 @@ func (s *RxStreamImpl) Count(opts ...rxgo.Option) RxStream {
 	return &RxStreamImpl{observable: rxgo.FromChannel(s.observable.Count(opts...).Observe(), opts...)}
 }
 
-func (s *RxStreamImpl) Debounce(timespan rxgo.Duration, opts ...rxgo.Option) RxStream {
-	return &RxStreamImpl{observable: rxgo.FromChannel(s.observable.Debounce(timespan, opts...).Observe(), opts...)}
+func (s *RxStreamImpl) Debounce(milliseconds uint32, opts ...rxgo.Option) RxStream {
+	return &RxStreamImpl{observable: rxgo.FromChannel(s.observable.Debounce(getRxDuration(milliseconds), opts...).Observe(), opts...)}
 }
 
 func (s *RxStreamImpl) DefaultIfEmpty(defaultValue interface{}, opts ...rxgo.Option) RxStream {
@@ -271,8 +275,8 @@ func (s *RxStreamImpl) IgnoreElements(opts ...rxgo.Option) RxStream {
 	return &RxStreamImpl{observable: rxgo.FromChannel(s.observable.IgnoreElements(opts...).Observe(), opts...)}
 }
 
-func (s *RxStreamImpl) Join(joiner rxgo.Func2, right rxgo.Observable, timeExtractor func(interface{}) time.Time, window rxgo.Duration, opts ...rxgo.Option) RxStream {
-	return &RxStreamImpl{observable: rxgo.FromChannel(s.observable.Join(joiner, right, timeExtractor, window, opts...).Observe(), opts...)}
+func (s *RxStreamImpl) Join(joiner rxgo.Func2, right rxgo.Observable, timeExtractor func(interface{}) time.Time, windowInMS uint32, opts ...rxgo.Option) RxStream {
+	return &RxStreamImpl{observable: rxgo.FromChannel(s.observable.Join(joiner, right, timeExtractor, getRxDuration(windowInMS), opts...).Observe(), opts...)}
 }
 
 func (s *RxStreamImpl) GroupBy(length int, distribution func(rxgo.Item) int, opts ...rxgo.Option) RxStream {
@@ -323,8 +327,8 @@ func (s *RxStreamImpl) Reduce(apply rxgo.Func2, opts ...rxgo.Option) RxStream {
 	return &RxStreamImpl{observable: rxgo.FromChannel(s.observable.Reduce(apply, opts...).Observe(), opts...)}
 }
 
-func (s *RxStreamImpl) Repeat(count int64, frequency rxgo.Duration, opts ...rxgo.Option) RxStream {
-	return &RxStreamImpl{observable: rxgo.FromChannel(s.observable.Repeat(count, frequency, opts...).Observe(), opts...)}
+func (s *RxStreamImpl) Repeat(count int64, milliseconds uint32, opts ...rxgo.Option) RxStream {
+	return &RxStreamImpl{observable: rxgo.FromChannel(s.observable.Repeat(count, getRxDuration(milliseconds), opts...).Observe(), opts...)}
 }
 
 func (s *RxStreamImpl) Retry(count int, shouldRetry func(error) bool, opts ...rxgo.Option) RxStream {
@@ -427,12 +431,12 @@ func (s *RxStreamImpl) WindowWithCount(count int, opts ...rxgo.Option) RxStream 
 	return &RxStreamImpl{observable: rxgo.FromChannel(s.observable.WindowWithCount(count, opts...).Observe(), opts...)}
 }
 
-func (s *RxStreamImpl) WindowWithTime(timespan rxgo.Duration, opts ...rxgo.Option) RxStream {
-	return &RxStreamImpl{observable: rxgo.FromChannel(s.observable.WindowWithTime(timespan, opts...).Observe(), opts...)}
+func (s *RxStreamImpl) WindowWithTime(milliseconds uint32, opts ...rxgo.Option) RxStream {
+	return &RxStreamImpl{observable: rxgo.FromChannel(s.observable.WindowWithTime(getRxDuration(milliseconds), opts...).Observe(), opts...)}
 }
 
-func (s *RxStreamImpl) WindowWithTimeOrCount(timespan rxgo.Duration, count int, opts ...rxgo.Option) RxStream {
-	return &RxStreamImpl{observable: rxgo.FromChannel(s.observable.WindowWithTimeOrCount(timespan, count, opts...).Observe(), opts...)}
+func (s *RxStreamImpl) WindowWithTimeOrCount(milliseconds uint32, count int, opts ...rxgo.Option) RxStream {
+	return &RxStreamImpl{observable: rxgo.FromChannel(s.observable.WindowWithTimeOrCount(getRxDuration(milliseconds), count, opts...).Observe(), opts...)}
 }
 
 func (s *RxStreamImpl) ZipFromIterable(iterable rxgo.Iterable, zipper rxgo.Func2, opts ...rxgo.Option) RxStream {
@@ -443,7 +447,7 @@ func (s *RxStreamImpl) Observe(opts ...rxgo.Option) <-chan rxgo.Item {
 	return s.observable.Observe(opts...)
 }
 
-func (s *RxStreamImpl) DefaultIfEmptyWithTime(timespan time.Duration, defaultValue interface{}, opts ...rxgo.Option) RxStream {
+func (s *RxStreamImpl) DefaultIfEmptyWithTime(milliseconds uint32, defaultValue interface{}, opts ...rxgo.Option) RxStream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
 		observe := s.Observe(opts...)
@@ -460,7 +464,7 @@ func (s *RxStreamImpl) DefaultIfEmptyWithTime(timespan time.Duration, defaultVal
 				if !item.SendContext(ctx, next) {
 					return
 				}
-			case <-time.After(timespan):
+			case <-time.After(time.Duration(milliseconds)*time.Millisecond):
 				if !rxgo.Of(defaultValue).SendContext(ctx, next) {
 					return
 				}
@@ -497,8 +501,8 @@ func (s *RxStreamImpl) StdOut(opts ...rxgo.Option) RxStream {
 	return CreateObservable(f, opts...)
 }
 
-func (s *RxStreamImpl) AuditTime(timespan time.Duration, opts ...rxgo.Option) RxStream {
-	o := s.observable.BufferWithTime(rxgo.WithDuration(timespan)).Map(func(_ context.Context, i interface{}) (interface{}, error) {
+func (s *RxStreamImpl) AuditTime(milliseconds uint32, opts ...rxgo.Option) RxStream {
+	o := s.observable.BufferWithTime(getRxDuration(milliseconds)).Map(func(_ context.Context, i interface{}) (interface{}, error) {
 		return i.([]interface{})[len(i.([]interface{}))-1], nil
 	})
 	return ConvertObservable(o)
@@ -761,7 +765,7 @@ func (s *RxStreamImpl) SlidingWindowWithCount(windowSize int, slideSize int, han
 
 // SlidingWindowWithTime buffers the data in the specified sliding window time, the buffered data can be processed in the handler func.
 // It returns the orginal data to RxStream, not the buffered slice.
-func (s *RxStreamImpl) SlidingWindowWithTime(windowTimespan time.Duration, slideTimespan time.Duration, handler Handler, opts ...rxgo.Option) RxStream {
+func (s *RxStreamImpl) SlidingWindowWithTime(windowTimeInMS uint32, slideTimeInMS uint32, handler Handler, opts ...rxgo.Option) RxStream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		observe := s.Observe()
 		buf := make([]slidingWithTimeItem, 0)
@@ -771,10 +775,10 @@ func (s *RxStreamImpl) SlidingWindowWithTime(windowTimespan time.Duration, slide
 
 		checkBuffer := func() {
 			mutex.Lock()
-			// filter items by item
+			// filter items by time
 			updatedBuf := make([]slidingWithTimeItem, 0)
 			availableItems := make([]interface{}, 0)
-			t := time.Now().Add(-windowTimespan)
+			t := time.Now().Add(-time.Duration(windowTimeInMS)*time.Millisecond)
 			for _, item := range buf {
 				if item.timestamp.After(t) || item.timestamp.Equal(t) {
 					updatedBuf = append(updatedBuf, item)
@@ -804,11 +808,11 @@ func (s *RxStreamImpl) SlidingWindowWithTime(windowTimespan time.Duration, slide
 					return
 				case <-ctx.Done():
 					return
-				case <-time.After(windowTimespan):
+				case <-time.After(time.Duration(windowTimeInMS)*time.Millisecond):
 					if firstTimeSend {
 						checkBuffer()
 					}
-				case <-time.After(slideTimespan):
+				case <-time.After(time.Duration(slideTimeInMS)*time.Millisecond):
 					checkBuffer()
 				}
 			}
