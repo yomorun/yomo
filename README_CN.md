@@ -96,7 +96,7 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 	stream := rxstream.
 		Subscribe(NoiseDataKey).
 		OnObserve(callback).
-		Debounce(rxgo.WithDuration(50 * time.Millisecond)).
+		Debounce(50).
 		Map(printer).
 		StdOut()
 
