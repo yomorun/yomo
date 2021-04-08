@@ -73,7 +73,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/reactivex/rxgo/v2"
 	y3 "github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo/pkg/rx"
 )
@@ -110,7 +109,7 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 	stream := rxstream.
 		Subscribe(NoiseDataKey).
 		OnObserve(callback).
-		Debounce(rxgo.WithDuration(50 * time.Millisecond)).
+		Debounce(50).
 		Map(printer).
 		StdOut()
 

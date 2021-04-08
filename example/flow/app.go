@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/reactivex/rxgo/v2"
 	y3 "github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo/pkg/rx"
 )
@@ -19,8 +18,11 @@ const ThresholdSingleValue = 16
 // ThresholdAverageValue is the threshold of the average value after a sliding window.
 const ThresholdAverageValue = 13
 
-// SlidingWindowSeconds is the time in seconds of the sliding window.
-const SlidingWindowSeconds = 10
+// SlidingWindowInMS is the time in milliseconds of the sliding window.
+const SlidingWindowInMS uint32 = 1e4
+
+// SlidingTimeInMS is the interval in milliseconds of the sliding.
+const SlidingTimeInMS uint32 = 1e3
 
 // NoiseData represents the structure of data
 type NoiseData struct {
@@ -63,9 +65,9 @@ var slidingAvg = func(i interface{}) error {
 			total += value.(float32)
 		}
 		avg := total / float32(len(values))
-		fmt.Println(fmt.Sprintf("🧩 average value in last %d seconds: %f!", SlidingWindowSeconds, avg))
+		fmt.Println(fmt.Sprintf("🧩 average value in last %d ms: %f!", SlidingWindowInMS, avg))
 		if avg >= ThresholdAverageValue {
-			fmt.Println(fmt.Sprintf("❗❗  average value in last %d seconds: %f reaches the threshold %d!", SlidingWindowSeconds, avg, ThresholdAverageValue))
+			fmt.Println(fmt.Sprintf("❗❗  average value in last %d ms: %f reaches the threshold %d!", SlidingWindowInMS, avg, ThresholdAverageValue))
 		}
 	}
 	return nil
@@ -75,10 +77,10 @@ var slidingAvg = func(i interface{}) error {
 func Handler(rxstream rx.RxStream) rx.RxStream {
 	stream := rxstream.
 		Subscribe(NoiseDataKey).
-		Debounce(rxgo.WithDuration(50*time.Millisecond)).
+		Debounce(50).
 		OnObserve(decode).
 		Map(computePeek).
-		SlidingWindowWithTime(SlidingWindowSeconds*time.Second, 1*time.Second, slidingAvg).
+		SlidingWindowWithTime(SlidingWindowInMS, SlidingTimeInMS, slidingAvg).
 		Encode(0x11)
 
 	return stream
