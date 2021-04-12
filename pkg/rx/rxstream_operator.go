@@ -184,7 +184,7 @@ func (s *RxStreamImpl) BufferWithCount(count int, opts ...rxgo.Option) RxStream 
 }
 
 func getRxDuration(milliseconds uint32) rxgo.Duration {
-	return rxgo.WithDuration(time.Duration(milliseconds)*time.Millisecond)
+	return rxgo.WithDuration(time.Duration(milliseconds) * time.Millisecond)
 }
 
 func (s *RxStreamImpl) BufferWithTime(milliseconds uint32, opts ...rxgo.Option) RxStream {
@@ -464,7 +464,7 @@ func (s *RxStreamImpl) DefaultIfEmptyWithTime(milliseconds uint32, defaultValue 
 				if !item.SendContext(ctx, next) {
 					return
 				}
-			case <-time.After(time.Duration(milliseconds)*time.Millisecond):
+			case <-time.After(time.Duration(milliseconds) * time.Millisecond):
 				if !rxgo.Of(defaultValue).SendContext(ctx, next) {
 					return
 				}
@@ -778,7 +778,7 @@ func (s *RxStreamImpl) SlidingWindowWithTime(windowTimeInMS uint32, slideTimeInM
 			// filter items by time
 			updatedBuf := make([]slidingWithTimeItem, 0)
 			availableItems := make([]interface{}, 0)
-			t := time.Now().Add(-time.Duration(windowTimeInMS)*time.Millisecond)
+			t := time.Now().Add(-time.Duration(windowTimeInMS) * time.Millisecond)
 			for _, item := range buf {
 				if item.timestamp.After(t) || item.timestamp.Equal(t) {
 					updatedBuf = append(updatedBuf, item)
@@ -808,11 +808,11 @@ func (s *RxStreamImpl) SlidingWindowWithTime(windowTimeInMS uint32, slideTimeInM
 					return
 				case <-ctx.Done():
 					return
-				case <-time.After(time.Duration(windowTimeInMS)*time.Millisecond):
+				case <-time.After(time.Duration(windowTimeInMS) * time.Millisecond):
 					if firstTimeSend {
 						checkBuffer()
 					}
-				case <-time.After(time.Duration(slideTimeInMS)*time.Millisecond):
+				case <-time.After(time.Duration(slideTimeInMS) * time.Millisecond):
 					checkBuffer()
 				}
 			}
