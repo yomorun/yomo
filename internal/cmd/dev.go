@@ -7,6 +7,7 @@ import (
 	"log"
 	"plugin"
 
+	"github.com/reactivex/rxgo/v2"
 	"github.com/spf13/cobra"
 	"github.com/yomorun/yomo/internal/dispatcher"
 	"github.com/yomorun/yomo/internal/mocker"
@@ -71,7 +72,7 @@ func (s *quicDevHandler) Listen() error {
 	rxstream := rx.FromReaderWithY3(s.readers)
 	stream := dispatcher.Dispatcher(s.serverlessHandle, rxstream)
 	go func() {
-		for customer := range stream.Observe() {
+		for customer := range stream.Observe(rxgo.WithErrorStrategy(rxgo.ContinueOnError)) {
 			if customer.Error() {
 				fmt.Println(customer.E.Error())
 			}

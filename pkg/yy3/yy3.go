@@ -2,6 +2,7 @@ package yy3
 
 import (
 	"io"
+	"log"
 	"sync"
 
 	"github.com/yomorun/y3-codec-golang/pkg/common"
@@ -115,7 +116,8 @@ func (o *observableImpl) OnObserve(function func(v []byte) (interface{}, error))
 				buf := item.([]byte)
 				value, err := function(buf)
 				if err != nil {
-					return
+					// log the error and contine consuming the item from observe
+					log.Println("Y3 OnObserve error:", err)
 				}
 
 				next <- value

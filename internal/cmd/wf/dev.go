@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/reactivex/rxgo/v2"
 	"github.com/spf13/cobra"
 	"github.com/yomorun/yomo/internal/conf"
 	"github.com/yomorun/yomo/internal/dispatcher"
@@ -76,7 +77,7 @@ func (s *quicDevHandler) Read(st quic.Stream) error {
 	stream := dispatcher.DispatcherWithFunc(flows, st)
 
 	go func() {
-		for customer := range stream.Observe() {
+		for customer := range stream.Observe(rxgo.WithErrorStrategy(rxgo.ContinueOnError)) {
 			if customer.Error() {
 				fmt.Println(customer.E.Error())
 				continue
