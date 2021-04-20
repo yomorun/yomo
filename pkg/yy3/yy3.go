@@ -118,9 +118,9 @@ func (o *observableImpl) OnObserve(function func(v []byte) (interface{}, error))
 				if err != nil {
 					// log the error and contine consuming the item from observe
 					log.Println("Y3 OnObserve error:", err)
+				} else {
+					next <- value
 				}
-
-				next <- value
 			}
 		}
 	}
