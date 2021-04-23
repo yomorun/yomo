@@ -107,20 +107,14 @@ func (o *observableImpl) OnObserve(function func(v []byte) (interface{}, error))
 
 		observe := o.Observe()
 
-		for {
-			select {
-			case item, ok := <-observe:
-				if !ok {
-					return
-				}
-				buf := item.([]byte)
-				value, err := function(buf)
-				if err != nil {
-					// log the error and contine consuming the item from observe
-					log.Println("Y3 OnObserve error:", err)
-				} else {
-					next <- value
-				}
+		for item := range observe {
+			buf := item.([]byte)
+			value, err := function(buf)
+			if err != nil {
+				// log the error and contine consuming the item from observe
+				log.Println("Y3 OnObserve error:", err)
+			} else {
+				next <- value
 			}
 		}
 	}
