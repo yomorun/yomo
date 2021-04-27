@@ -5,7 +5,7 @@ flows:
   - name: Noise Serverless
     host: localhost
     port: 4242
-sinks:
-  - name: Mock DB
-    host: localhost
-    port: 4141
+# sinks:
+#   - name: Mock DB
+#     host: localhost
+#     port: 4141

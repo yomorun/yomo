@@ -12,6 +12,7 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/reactivex/rxgo/v2"
 	y3 "github.com/yomorun/y3-codec-golang"
+	"github.com/yomorun/yomo/pkg/quic"
 	"github.com/yomorun/yomo/pkg/yy3"
 )
 
@@ -588,13 +589,15 @@ func (s *RxStreamImpl) AuditTime(milliseconds uint32, opts ...rxgo.Option) RxStr
 	return ConvertObservable(o)
 }
 
-func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf func() (io.ReadWriter, func()), opts ...rxgo.Option) RxStream {
+func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf func() (quic.Stream, func()), opts ...rxgo.Option) RxStream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
 		ready := make(chan bool)
+		response := make(chan []byte)
 		observe := s.Observe(opts...)
 		readerErr := false
 
+		// send the stream to downstream
 		go func() {
 			defer close(ready)
 
@@ -628,44 +631,59 @@ func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf func() (io.ReadWriter, func()
 			}
 		}()
 
+		// receive the response from downstream
+		go func() {
+			for {
+				select {
+				case _, ok := <-ready:
+					if !ok {
+						return
+					}
+
+					isStop := false
+
+					for {
+						rw, cancel := rwf()
+						if rw == nil {
+							time.Sleep(time.Second)
+						} else {
+							if readerErr {
+								readerErr = false
+								break
+							}
+
+							buf := make([]byte, 3*1024)
+							// set read deadline to 5 seconds
+							rw.SetReadDeadline(time.Now().Add(5 * time.Second))
+							n, err := rw.Read(buf)
+
+							if err != nil {
+								cancel()
+								readerErr = true
+							} else {
+								response <- buf[:n]
+								break
+							}
+						}
+					}
+
+					if isStop {
+						return
+					}
+				}
+			}
+		}()
+
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case _, ok := <-ready:
+			case value, ok := <-response:
 				if !ok {
 					return
 				}
 
-				isStop := false
-
-				for {
-					rw, cancel := rwf()
-					if rw == nil {
-						time.Sleep(time.Second)
-					} else {
-						if readerErr {
-							readerErr = false
-							break
-						}
-
-						buf := make([]byte, 3*1024)
-						n, err := rw.Read(buf)
-
-						if err != nil {
-							cancel()
-							readerErr = true
-						} else {
-							value := buf[:n]
-							if !rxgo.Of(value).SendContext(ctx, next) {
-								isStop = true
-							}
-							break
-						}
-					}
-				}
-
-				if isStop {
+				if !rxgo.Of(value).SendContext(ctx, next) {
 					return
 				}
 			}

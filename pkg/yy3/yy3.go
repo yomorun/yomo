@@ -124,7 +124,7 @@ func (o *observableImpl) OnObserve(function func(v []byte) (interface{}, error))
 	return _next
 }
 
-//Get the value of the subscribe key from the stream
+// Subscribe gets the value of the subscribe key from the stream
 func (o *observableImpl) Subscribe(key byte) Observable {
 
 	f := func(next chan interface{}) {
@@ -132,8 +132,14 @@ func (o *observableImpl) Subscribe(key byte) Observable {
 
 		buffer := make([]byte, 0)
 		var (
-			index  int32  = 0    //vernier
-			state  string = "RS" //RS,RLS,TS,LS,VS,REJECT
+			index int32 = 0 // vernier
+			// state:
+			// RS: Root Start
+			// RLS: Root Length Start
+			// TS: Tag Start
+			// LS: Root Start
+			// VS: Value Start
+			state  string = "RS" // RS,RLS,TS,LS,VS,REJECT
 			length int32  = 0
 			value  int32  = 0
 			limit  int32  = 0
@@ -205,8 +211,10 @@ func (o *observableImpl) Subscribe(key byte) Observable {
 							buffer = append(buffer, buf[start:end]...)
 							index += ((1 + length + value) - buflength)
 							i += (int((1+length+value)-buflength) - 1)
-							//check key
+							// Y3 Codec draft-1, the least significant 6 bits is the key (SeqID).
+							// https://github.com/yomorun/y3-codec/blob/draft-01/draft-01.md
 							k := (buffer[0] << 2) >> 2
+							// check key
 							if k == key {
 								next <- buffer
 								if limit == index {

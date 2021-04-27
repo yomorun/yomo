@@ -6,6 +6,7 @@ import (
 	"plugin"
 
 	"github.com/yomorun/yomo/internal/serverless"
+	"github.com/yomorun/yomo/pkg/quic"
 	"github.com/yomorun/yomo/pkg/rx"
 )
 
@@ -32,7 +33,7 @@ func AutoDispatcher(appPath string, rxstream rx.RxStream) (rx.RxStream, error) {
 	return Dispatcher(handler, rxstream), nil
 }
 
-func DispatcherWithFunc(flows []func() (io.ReadWriter, func()), reader io.Reader) rx.RxStream {
+func DispatcherWithFunc(flows []func() (quic.Stream, func()), reader io.Reader) rx.RxStream {
 	stream := rx.FromReader(reader)
 
 	for _, flow := range flows {
