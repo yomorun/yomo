@@ -24,7 +24,7 @@ type Client struct {
 }
 
 type Stream struct {
-	St         quic.Stream
+	St         io.ReadWriter
 	CancelFunc context.CancelFunc
 }
 
@@ -41,9 +41,9 @@ func Run(endpoint string, handle quic.ServerHandler) error {
 }
 
 // Build build the workflow by config (.yaml).
-func Build(wfConf *conf.WorkflowConfig, id int64) ([]func() (quic.Stream, func()), []func() (io.Writer, func())) {
+func Build(wfConf *conf.WorkflowConfig, id int64) ([]func() (io.ReadWriter, func()), []func() (io.Writer, func())) {
 	//init workflow
-	flows := make([]func() (quic.Stream, func()), 0)
+	flows := make([]func() (io.ReadWriter, func()), 0)
 	sinks := make([]func() (io.Writer, func()), 0)
 
 	for _, app := range wfConf.Flows {
@@ -83,8 +83,8 @@ func getAppInfo(app conf.App) string {
 		app.Port)
 }
 
-func createReadWriter(app conf.App, id int64) func() (quic.Stream, func()) {
-	f := func() (quic.Stream, func()) {
+func createReadWriter(app conf.App, id int64) func() (io.ReadWriter, func()) {
+	f := func() (io.ReadWriter, func()) {
 		flowmutex.Lock()
 		if len(FlowClients[app.Name].StreamMap) > 0 && FlowClients[app.Name].StreamMap[id].St != nil {
 			flowmutex.Unlock()

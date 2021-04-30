@@ -13,7 +13,6 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/reactivex/rxgo/v2"
 	y3 "github.com/yomorun/y3-codec-golang"
-	"github.com/yomorun/yomo/pkg/quic"
 	"github.com/yomorun/yomo/pkg/yy3"
 )
 
@@ -590,12 +589,11 @@ func (s *RxStreamImpl) AuditTime(milliseconds uint32, opts ...rxgo.Option) RxStr
 	return ConvertObservable(o)
 }
 
-func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf func() (quic.Stream, func()), opts ...rxgo.Option) RxStream {
+func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf func() (io.ReadWriter, func()), opts ...rxgo.Option) RxStream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
 		response := make(chan []byte)
 		observe := s.Observe(opts...)
-		readerErr := false
 
 		// send the stream to downstream
 		go func() {
@@ -637,20 +635,13 @@ func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf func() (quic.Stream, func()),
 				if rw == nil {
 					time.Sleep(time.Second)
 				} else {
-					if readerErr {
-						readerErr = false
-						break
-					}
-
 					buf := make([]byte, 3*1024)
 					n, err := rw.Read(buf)
 
 					if err != nil {
 						cancel()
-						readerErr = true
 					} else {
 						response <- buf[:n]
-						break
 					}
 				}
 			}

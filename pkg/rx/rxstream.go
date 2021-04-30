@@ -2,17 +2,17 @@ package rx
 
 import (
 	"context"
+	"io"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/reactivex/rxgo/v2"
-	"github.com/yomorun/yomo/pkg/quic"
 	"github.com/yomorun/yomo/pkg/yy3"
 )
 
 type RxStream interface {
 	rxgo.Iterable
-	MergeReadWriterWithFunc(rwf func() (quic.Stream, func()), opts ...rxgo.Option) RxStream
+	MergeReadWriterWithFunc(rwf func() (io.ReadWriter, func()), opts ...rxgo.Option) RxStream
 	Subscribe(key byte) RxStream
 	Encode(key byte, opts ...rxgo.Option) RxStream
 	OnObserve(function func(v []byte) (interface{}, error)) RxStream
