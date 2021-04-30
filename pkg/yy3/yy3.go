@@ -2,6 +2,7 @@ package yy3
 
 import (
 	"io"
+	"log"
 	"sync"
 
 	"github.com/yomorun/y3-codec-golang/pkg/common"
@@ -12,15 +13,43 @@ type Iterable interface {
 	Observe() <-chan interface{}
 }
 
+type OnObserveFunc func(v []byte) (interface{}, error)
+
 // Observable provide subscription and notification processing
 type Observable interface {
 	Iterable
 	Subscribe(key byte) Observable
+
+	// OnMultiObserve calls the callback function when one of key is observed.
+	OnMultiObserve(keyObserveMap map[byte]OnObserveFunc) chan KeyValue
+
 	OnObserve(function func(v []byte) (interface{}, error)) chan interface{}
+
+	// MultiSubscribe gets the value of the multi keys from the stream.
+	// It will return the value to next operator if any key is matched.
+	MultiSubscribe(keys ...byte) Observable
 }
 
 type observableImpl struct {
 	iterable Iterable
+}
+
+// KeyObserveFunc is a pair of subscribed key and onObserve callback.
+type KeyObserveFunc struct {
+	Key       byte
+	OnObserve OnObserveFunc
+}
+
+// KeyBuf is a pair of subscribed key and buffer.
+type KeyBuf struct {
+	Key byte
+	Buf []byte
+}
+
+// KeyValue is a pair of observed key and value.
+type KeyValue struct {
+	Key   byte
+	Value interface{}
 }
 
 type iterableImpl struct {
@@ -97,7 +126,7 @@ func FromStream(reader io.Reader) Observable {
 	return createObservable(f)
 }
 
-//Processing callback function when there is data
+// OnObserve calls the callback function when the key is observed.
 func (o *observableImpl) OnObserve(function func(v []byte) (interface{}, error)) chan interface{} {
 	_next := make(chan interface{})
 
@@ -106,18 +135,13 @@ func (o *observableImpl) OnObserve(function func(v []byte) (interface{}, error))
 
 		observe := o.Observe()
 
-		for {
-			select {
-			case item, ok := <-observe:
-				if !ok {
-					return
-				}
-				buf := item.([]byte)
-				value, err := function(buf)
-				if err != nil {
-					return
-				}
-
+		for item := range observe {
+			kv := item.(KeyBuf)
+			value, err := function(kv.Buf)
+			if err != nil {
+				// log the error and contine consuming the item from observe
+				log.Println("Y3 OnObserve error:", err)
+			} else {
 				next <- value
 			}
 		}
@@ -128,16 +152,67 @@ func (o *observableImpl) OnObserve(function func(v []byte) (interface{}, error))
 	return _next
 }
 
-//Get the value of the subscribe key from the stream
+// OnMultiObserve calls the callback function when one of key is observed.
+func (o *observableImpl) OnMultiObserve(keyObserveMap map[byte]OnObserveFunc) chan KeyValue {
+	_next := make(chan KeyValue)
+
+	f := func(next chan KeyValue) {
+		defer close(next)
+
+		observe := o.Observe()
+
+		for item := range observe {
+			kv := item.(KeyBuf)
+			function := keyObserveMap[kv.Key]
+			if function == nil {
+				log.Println("Y3 OnObserve func is not found")
+				continue
+			}
+			val, err := function(kv.Buf)
+			if err != nil {
+				// log the error and contine consuming the item from observe
+				log.Println("Y3 OnObserve error:", err)
+			} else {
+				next <- KeyValue{
+					Key:   kv.Key,
+					Value: val,
+				}
+			}
+		}
+	}
+
+	go f(_next)
+
+	return _next
+}
+
+// Subscribe gets the value of the subscribe key from the stream
 func (o *observableImpl) Subscribe(key byte) Observable {
+	return o.MultiSubscribe(key)
+}
+
+// MultiSubscribe gets the value of the multi keys from the stream.
+// It will return the value to next operator if any key is matched.
+func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
+	// set keys to map
+	m := make(map[byte]bool, len(keys))
+	for _, key := range keys {
+		m[key] = true
+	}
 
 	f := func(next chan interface{}) {
 		defer close(next)
 
 		buffer := make([]byte, 0)
 		var (
-			index  int32  = 0    //vernier
-			state  string = "RS" //RS,RLS,TS,LS,VS,REJECT
+			index int32 = 0 // vernier
+			// state:
+			// RS: Root Start
+			// RLS: Root Length Start
+			// TS: Tag Start
+			// LS: Root Start
+			// VS: Value Start
+			state  string = "RS" // RS,RLS,TS,LS,VS,REJECT
 			length int32  = 0
 			value  int32  = 0
 			limit  int32  = 0
@@ -209,10 +284,17 @@ func (o *observableImpl) Subscribe(key byte) Observable {
 							buffer = append(buffer, buf[start:end]...)
 							index += ((1 + length + value) - buflength)
 							i += (int((1+length+value)-buflength) - 1)
-							//check key
+							// Y3 Codec draft-1, the least significant 6 bits is the key (SeqID).
+							// https://github.com/yomorun/y3-codec/blob/draft-01/draft-01.md
 							k := (buffer[0] << 2) >> 2
-							if k == key {
-								next <- buffer
+							// check if key is matched
+							if m[k] {
+								// subscribe multi keys, return key value to distinguish the values of different keys.
+								next <- KeyBuf{
+									Key: k,
+									Buf: buffer,
+								}
+
 								if limit == index {
 									state = "RS"
 									length = 0
@@ -224,7 +306,6 @@ func (o *observableImpl) Subscribe(key byte) Observable {
 									state = "REJECT"
 								}
 							} else {
-
 								if limit == index {
 									state = "RS"
 									length = 0
@@ -270,15 +351,11 @@ func (o *observableImpl) Subscribe(key byte) Observable {
 						}
 					}
 				}
-
 			}
-
 		}
-
 	}
 
 	return createObservable(f)
-
 }
 
 func createObservable(f func(next chan interface{})) Observable {

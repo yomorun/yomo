@@ -7,6 +7,7 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/reactivex/rxgo/v2"
+	"github.com/yomorun/yomo/pkg/yy3"
 )
 
 type RxStream interface {
@@ -100,4 +101,7 @@ type RxStream interface {
 	// SlidingWindowWithTime buffers the data in the specified sliding window time in milliseconds, the buffered data can be processed in the handler func.
 	// It returns the orginal data to RxStream, not the buffered slice.
 	SlidingWindowWithTime(windowTimeInMS uint32, slideTimeInMS uint32, handler Handler, opts ...rxgo.Option) RxStream
+
+	// ZipMultiObservers subscribes multi Y3 observers, zips the values into a slice and calls the zipper callback when all keys are observed.
+	ZipMultiObservers(observers []yy3.KeyObserveFunc, zipper func(items []interface{}) (interface{}, error)) RxStream
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"strings"
 	"sync"
 
 	"github.com/yomorun/yomo/internal/conf"
@@ -108,7 +109,8 @@ func createReadWriter(app conf.App, id int64) func() (io.ReadWriter, func()) {
 		ctx, cancel := context.WithCancel(context.Background())
 		stream, err := createStream(ctx, FlowClients[app.Name].QuicClient)
 		if err != nil {
-			if err.Error() == "NO_ERROR: No recent network activity" {
+			log.Print(getConnectFailedMsg(app), err)
+			if strings.Contains(err.Error(), "No recent network activity") {
 				FlowClients[app.Name] = Client{
 					App:        app,
 					StreamMap:  nil,
@@ -158,7 +160,8 @@ func createWriter(app conf.App, id int64) func() (io.Writer, func()) {
 		ctx, cancel := context.WithCancel(context.Background())
 		stream, err := createStream(ctx, SinkClients[app.Name].QuicClient)
 		if err != nil {
-			if err.Error() == "NO_ERROR: No recent network activity" {
+			log.Print(getConnectFailedMsg(app), err)
+			if strings.Contains(err.Error(), "No recent network activity") {
 				SinkClients[app.Name] = Client{
 					App:        app,
 					StreamMap:  nil,

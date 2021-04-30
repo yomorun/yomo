@@ -9,6 +9,7 @@ import (
 	"os"
 	"plugin"
 
+	"github.com/reactivex/rxgo/v2"
 	"github.com/spf13/cobra"
 	"github.com/yomorun/yomo/internal/dispatcher"
 	"github.com/yomorun/yomo/internal/serverless"
@@ -77,7 +78,7 @@ func (s *quicServerHandler) Listen() error {
 	rxstream.Connect(context.Background())
 
 	go func() {
-		for customer := range stream.Observe() {
+		for customer := range stream.Observe(rxgo.WithErrorStrategy(rxgo.ContinueOnError)) {
 			if customer.Error() {
 				fmt.Println(customer.E.Error())
 			} else if customer.V != nil {
