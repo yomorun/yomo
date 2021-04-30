@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"sync"
 	"time"
 
@@ -592,15 +593,12 @@ func (s *RxStreamImpl) AuditTime(milliseconds uint32, opts ...rxgo.Option) RxStr
 func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf func() (quic.Stream, func()), opts ...rxgo.Option) RxStream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
-		ready := make(chan bool)
 		response := make(chan []byte)
 		observe := s.Observe(opts...)
 		readerErr := false
 
 		// send the stream to downstream
 		go func() {
-			defer close(ready)
-
 			for {
 				select {
 				case <-ctx.Done():
@@ -619,7 +617,6 @@ func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf func() (quic.Stream, func()),
 							} else {
 								_, err := rw.Write(item.V.([]byte))
 								if err == nil {
-									ready <- true
 									break
 								} else {
 									cancel()
@@ -633,42 +630,27 @@ func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf func() (quic.Stream, func()),
 
 		// receive the response from downstream
 		go func() {
+			defer close(response)
+
 			for {
-				select {
-				case _, ok := <-ready:
-					if !ok {
-						return
+				rw, cancel := rwf()
+				if rw == nil {
+					time.Sleep(time.Second)
+				} else {
+					if readerErr {
+						readerErr = false
+						break
 					}
 
-					isStop := false
+					buf := make([]byte, 3*1024)
+					n, err := rw.Read(buf)
 
-					for {
-						rw, cancel := rwf()
-						if rw == nil {
-							time.Sleep(time.Second)
-						} else {
-							if readerErr {
-								readerErr = false
-								break
-							}
-
-							buf := make([]byte, 3*1024)
-							// set read deadline to 5 seconds
-							rw.SetReadDeadline(time.Now().Add(5 * time.Second))
-							n, err := rw.Read(buf)
-
-							if err != nil {
-								cancel()
-								readerErr = true
-							} else {
-								response <- buf[:n]
-								break
-							}
-						}
-					}
-
-					if isStop {
-						return
+					if err != nil {
+						cancel()
+						readerErr = true
+					} else {
+						response <- buf[:n]
+						break
 					}
 				}
 			}
@@ -712,6 +694,125 @@ func (s *RxStreamImpl) Subscribe(key byte) RxStream {
 
 				y3stream := (item.V).(yy3.Observable)
 				if !Of(y3stream.Subscribe(key)).SendContext(ctx, next) {
+					return
+				}
+			}
+		}
+	}
+	return CreateObservable(f)
+}
+
+// ZipMultiObservers subscribes multi Y3 observers, zips the values into a slice and calls the zipper callback when all keys are observed.
+func (s *RxStreamImpl) ZipMultiObservers(observers []yy3.KeyObserveFunc, zipper func(items []interface{}) (interface{}, error)) RxStream {
+	count := len(observers)
+	if count < 2 {
+		return s.thrown(errors.New("ZipMultiObservers - the number of observers must be >= 2"))
+	}
+
+	// the function to zip the values into a slice
+	var zipObserveFunc = func(_ context.Context, a interface{}, b interface{}) (interface{}, error) {
+		items, ok := a.([]interface{})
+		if !ok {
+			return []interface{}{a, b}, nil
+		}
+
+		items = append(items, b)
+		return items, nil
+	}
+
+	// the function of the `ZipMultiObservers` operator
+	f := func(ctx context.Context, next chan rxgo.Item) {
+		defer close(next)
+
+		// prepare slices and maps
+		keys := make([]byte, count)
+		keyObserveMap := make(map[byte]yy3.OnObserveFunc, count)
+		keyChans := make(map[byte]chan rxgo.Item, count)
+		keyObservables := make([]rxgo.Observable, count)
+		for i, item := range observers {
+			keys[i] = item.Key
+			keyObserveMap[item.Key] = item.OnObserve
+			ch := make(chan rxgo.Item)
+			keyChans[item.Key] = ch
+			keyObservables[i] = rxgo.FromChannel(ch)
+		}
+
+		// zip all observables
+		zipObservable := keyObservables[0]
+		for i := 1; i < count; i++ {
+			zipObservable = zipObservable.ZipFromIterable(keyObservables[i], zipObserveFunc)
+		}
+
+		observe := s.Observe()
+		go func() {
+			defer func() {
+				for _, ch := range keyChans {
+					close(ch)
+				}
+			}()
+
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case item, ok := <-observe:
+					if !ok {
+						return
+					}
+					if item.Error() {
+						return
+					}
+
+					y3stream := (item.V).(yy3.Observable)
+					// subscribe multi keys
+					y3Observable := y3stream.MultiSubscribe(keys...)
+					go func() {
+						// get the value when the key is observed
+						kvCh := y3Observable.OnMultiObserve(keyObserveMap)
+						for {
+							select {
+							case <-ctx.Done():
+								return
+							case kv, ok := <-kvCh:
+								if !ok {
+									return
+								}
+
+								ch := keyChans[kv.Key]
+								if ch != nil {
+									ch <- rxgo.Item{V: kv.Value}
+								} else {
+									ch <- rxgo.Item{E: fmt.Errorf("ch is not found for key %v", kv.Key)}
+								}
+							}
+						}
+					}()
+				}
+			}
+		}()
+
+		for {
+			// observe the value from zipObservable
+			for item := range zipObservable.Observe(rxgo.WithErrorStrategy(rxgo.ContinueOnError)) {
+				if item.Error() {
+					log.Println(item.E.Error())
+					continue
+				}
+
+				items, ok := item.V.([]interface{})
+				if !ok {
+					log.Println("ZipMultiObservers - item.V is not a slice")
+					continue
+				}
+
+				// call the zipper callback
+				v, err := zipper(items)
+				if err != nil {
+					log.Println("ZipMultiObservers Zipper", err.Error())
+					continue
+				}
+
+				if !Of(v).SendContext(ctx, next) {
 					return
 				}
 			}

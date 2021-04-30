@@ -45,16 +45,15 @@ func generateAndSendData(stream quic.Stream) {
 	for {
 		for i, key := range keys {
 			time.Sleep(100 * time.Millisecond)
-
 			codec := y3.NewCodec(key)
-
-			sendingBuf, _ := codec.Marshal(int64(i))
+			num := int64(i + 1)
+			sendingBuf, _ := codec.Marshal(num)
 
 			_, err := stream.Write(sendingBuf)
 			if err != nil {
-				log.Printf("Couldn't send buffer with i=%v", i)
+				log.Printf("Couldn't send buffer with i=%v", num)
 			} else {
-				log.Print(".")
+				log.Print("Sent: ", num)
 			}
 		}
 	}

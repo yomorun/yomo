@@ -1,23 +1,19 @@
 package main
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo/pkg/rx"
+	"github.com/yomorun/yomo/pkg/yy3"
 )
 
-var zipper = func(_ context.Context, a interface{}, b interface{}) (interface{}, error) {
-	accumulator, ok := a.([]int64)
-	if !ok {
-		fmt.Printf("No accumulator: %v + %v\n", a, b)
-		return []int64{a.(int64), b.(int64)}, nil
+var zipper = func(items []interface{}) (interface{}, error) {
+	var result int64 = 0
+	for _, item := range items {
+		result += item.(int64)
 	}
-
-	fmt.Printf("With accumulator: %v + %v\n", accumulator, b)
-	accumulator = append(accumulator, b.(int64))
-	return accumulator, nil
+	return fmt.Sprintf("Sum (%v), result: %v", items, result), nil
 }
 
 var convert = func(v []byte) (interface{}, error) {
@@ -26,17 +22,31 @@ var convert = func(v []byte) (interface{}, error) {
 
 // Handler will handle data in Rx way
 func Handler(rxstream rx.RxStream) rx.RxStream {
-	streamA := rxstream.Subscribe(0x10).OnObserve(convert)
-	streamB := rxstream.Subscribe(0x11).OnObserve(convert)
-	streamC := rxstream.Subscribe(0x12).OnObserve(convert)
-	streamD := rxstream.Subscribe(0x13).OnObserve(convert)
-	streamE := rxstream.Subscribe(0x14).OnObserve(convert)
+	observers := []yy3.KeyObserveFunc{
+		{
+			Key:       0x10,
+			OnObserve: convert,
+		},
+		{
+			Key:       0x11,
+			OnObserve: convert,
+		},
+		{
+			Key:       0x12,
+			OnObserve: convert,
+		},
+		{
+			Key:       0x13,
+			OnObserve: convert,
+		},
+		{
+			Key:       0x14,
+			OnObserve: convert,
+		},
+	}
 
-	return streamA.
-		ZipFromIterable(streamB, zipper).
-		ZipFromIterable(streamC, zipper).
-		ZipFromIterable(streamD, zipper).
-		ZipFromIterable(streamE, zipper).
+	return rxstream.
+		ZipMultiObservers(observers, zipper).
 		StdOut().
 		Encode(0x11)
 }
