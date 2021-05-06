@@ -82,7 +82,7 @@ func (s *quicDevHandler) Listen() error {
 				stream := dispatcher.DispatcherWithFunc(flows, item)
 
 				go func() {
-					for customer := range stream.Observe(rxgo.WithErrorStrategy(rxgo.ContinueOnError))) {
+					for customer := range stream.Observe(rxgo.WithErrorStrategy(rxgo.ContinueOnError)) {
 						if customer.Error() {
 							fmt.Println(customer.E.Error())
 							continue

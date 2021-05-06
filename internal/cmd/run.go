@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/reactivex/rxgo/v2"
 	"github.com/spf13/cobra"
 	"github.com/yomorun/yomo/pkg/client"
 	"github.com/yomorun/yomo/pkg/rx"
