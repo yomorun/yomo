@@ -38,6 +38,7 @@ var zipper = func(_ context.Context, ia interface{}, ib interface{}) (interface{
 	return fmt.Sprintf("⚡️ Zip [%s],[%s] -> Value: %f, %s", "dataA", "dataB", ia.(float32), ib.(string)), nil
 }
 
+// Handler handle two event streams and calculate sum when data arrived
 func Handler(rxstream rx.RxStream) rx.RxStream {
 	streamA := rxstream.Subscribe(DataAKey).OnObserve(callbacka).Map(printera)
 	streamB := rxstream.Subscribe(DataBKey).OnObserve(callbackb).Map(printerb)

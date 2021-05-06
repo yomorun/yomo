@@ -7,6 +7,7 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/reactivex/rxgo/v2"
+	"github.com/yomorun/yomo/pkg/yy3"
 )
 
 type RxStream interface {
@@ -16,8 +17,8 @@ type RxStream interface {
 	Encode(key byte, opts ...rxgo.Option) RxStream
 	OnObserve(function func(v []byte) (interface{}, error)) RxStream
 	StdOut(opts ...rxgo.Option) RxStream
-	AuditTime(timespan time.Duration, opts ...rxgo.Option) RxStream
-	DefaultIfEmptyWithTime(timespan time.Duration, defaultValue interface{}, opts ...rxgo.Option) RxStream
+	AuditTime(milliseconds uint32, opts ...rxgo.Option) RxStream
+	DefaultIfEmptyWithTime(milliseconds uint32, defaultValue interface{}, opts ...rxgo.Option) RxStream
 	All(predicate rxgo.Predicate, opts ...rxgo.Option) RxStream
 	AverageFloat32(opts ...rxgo.Option) RxStream
 	AverageFloat64(opts ...rxgo.Option) RxStream
@@ -28,12 +29,12 @@ type RxStream interface {
 	AverageInt64(opts ...rxgo.Option) RxStream
 	BackOffRetry(backOffCfg backoff.BackOff, opts ...rxgo.Option) RxStream
 	BufferWithCount(count int, opts ...rxgo.Option) RxStream
-	BufferWithTime(timespan rxgo.Duration, opts ...rxgo.Option) RxStream
-	BufferWithTimeOrCount(timespan rxgo.Duration, count int, opts ...rxgo.Option) RxStream
+	BufferWithTime(milliseconds uint32, opts ...rxgo.Option) RxStream
+	BufferWithTimeOrCount(milliseconds uint32, count int, opts ...rxgo.Option) RxStream
 	Connect(ctx context.Context) (context.Context, rxgo.Disposable)
 	Contains(equal rxgo.Predicate, opts ...rxgo.Option) RxStream
 	Count(opts ...rxgo.Option) RxStream
-	Debounce(timespan rxgo.Duration, opts ...rxgo.Option) RxStream
+	Debounce(milliseconds uint32, opts ...rxgo.Option) RxStream
 	DefaultIfEmpty(defaultValue interface{}, opts ...rxgo.Option) RxStream
 	Distinct(apply rxgo.Func, opts ...rxgo.Option) RxStream
 	DistinctUntilChanged(apply rxgo.Func, opts ...rxgo.Option) RxStream
@@ -52,7 +53,7 @@ type RxStream interface {
 	GroupBy(length int, distribution func(rxgo.Item) int, opts ...rxgo.Option) RxStream
 	GroupByDynamic(distribution func(rxgo.Item) string, opts ...rxgo.Option) RxStream
 	IgnoreElements(opts ...rxgo.Option) RxStream
-	Join(joiner rxgo.Func2, right rxgo.Observable, timeExtractor func(interface{}) time.Time, window rxgo.Duration, opts ...rxgo.Option) RxStream
+	Join(joiner rxgo.Func2, right rxgo.Observable, timeExtractor func(interface{}) time.Time, windowInMS uint32, opts ...rxgo.Option) RxStream
 	Last(opts ...rxgo.Option) RxStream
 	LastOrDefault(defaultValue interface{}, opts ...rxgo.Option) RxStream
 	Map(apply rxgo.Func, opts ...rxgo.Option) RxStream
@@ -63,7 +64,7 @@ type RxStream interface {
 	OnErrorReturn(resumeFunc rxgo.ErrorFunc, opts ...rxgo.Option) RxStream
 	OnErrorReturnItem(resume interface{}, opts ...rxgo.Option) RxStream
 	Reduce(apply rxgo.Func2, opts ...rxgo.Option) RxStream
-	Repeat(count int64, frequency rxgo.Duration, opts ...rxgo.Option) RxStream
+	Repeat(count int64, milliseconds uint32, opts ...rxgo.Option) RxStream
 	Retry(count int, shouldRetry func(error) bool, opts ...rxgo.Option) RxStream
 	Run(opts ...rxgo.Option) rxgo.Disposed
 	Sample(iterable rxgo.Iterable, opts ...rxgo.Option) RxStream
@@ -89,7 +90,18 @@ type RxStream interface {
 	ToSlice(initialCapacity int, opts ...rxgo.Option) ([]interface{}, error)
 	Unmarshal(unmarshaller rxgo.Unmarshaller, factory func() interface{}, opts ...rxgo.Option) RxStream
 	WindowWithCount(count int, opts ...rxgo.Option) RxStream
-	WindowWithTime(timespan rxgo.Duration, opts ...rxgo.Option) RxStream
-	WindowWithTimeOrCount(timespan rxgo.Duration, count int, opts ...rxgo.Option) RxStream
+	WindowWithTime(milliseconds uint32, opts ...rxgo.Option) RxStream
+	WindowWithTimeOrCount(milliseconds uint32, count int, opts ...rxgo.Option) RxStream
 	ZipFromIterable(iterable rxgo.Iterable, zipper rxgo.Func2, opts ...rxgo.Option) RxStream
+
+	// SlidingWindowWithCount buffers the data in the specified sliding window size, the buffered data can be processed in the handler func.
+	// It returns the orginal data to RxStream, not the buffered slice.
+	SlidingWindowWithCount(windowSize int, slideSize int, handler Handler, opts ...rxgo.Option) RxStream
+
+	// SlidingWindowWithTime buffers the data in the specified sliding window time in milliseconds, the buffered data can be processed in the handler func.
+	// It returns the orginal data to RxStream, not the buffered slice.
+	SlidingWindowWithTime(windowTimeInMS uint32, slideTimeInMS uint32, handler Handler, opts ...rxgo.Option) RxStream
+
+	// ZipMultiObservers subscribes multi Y3 observers, zips the values into a slice and calls the zipper callback when all keys are observed.
+	ZipMultiObservers(observers []yy3.KeyObserveFunc, zipper func(items []interface{}) (interface{}, error)) RxStream
 }

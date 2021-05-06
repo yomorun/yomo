@@ -2,13 +2,26 @@
   <img width="200px" height="200px" src="https://yomo.run/yomo-logo.png" />
 </p>
 
-# YoMo ![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg)
+# YoMo ![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg) [![Discord](https://img.shields.io/discord/770589787404369930.svg?label=discord&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/RMtNhx7vds)
 
 YoMo is an open-source Streaming Serverless Framework for building Low-latency Edge Computing applications. Built atop QUIC Transport Protocol and Functional Reactive Programming interface. makes real-time data processing reliable, secure, and easy.
 
 Official Website: 🦖[https://yomo.run](https://yomo.run)
 
 [Gitee](https://gitee.com/yomorun/yomo)
+
+## 🌶 Features
+
+|     | **Features**|
+| --- | ----------------------------------------------------------------------------------|
+| ⚡️  | **Low-latency** Guaranteed by implementing atop QUIC [QUIC](https://datatracker.ietf.org/wg/quic/documents/) |
+| 🔐  | **Security** TLS v1.3 on every data packet by design |
+| 📱  | **5G/WiFi-6** Reliable networking in Celluar/Wireless |
+| 🌎  | **Geo-Distributed Edge Mesh** Edge-Mesh Native architecture makes your services close to end users |
+| 📸  | **Event-First** Architecture leverages serverless service to be event driven and elastic  |
+| 🦖  | **Streaming Serverless** Write only a few lines of code to build applications and microservices |
+| 🚀  | **Y3** a [faster than real-time codec](https://github.com/yomorun/y3-codec-golang) |
+| 📨  | **Reactive** stream processing based on [Rx](http://reactivex.io/documentation/operators.html) |
 
 ## 🚀 Getting Started
 
@@ -60,7 +73,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/reactivex/rxgo/v2"
 	y3 "github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo/pkg/rx"
 )
@@ -78,7 +90,8 @@ type NoiseData struct {
 var printer = func(_ context.Context, i interface{}) (interface{}, error) {
 	value := i.(NoiseData)
 	rightNow := time.Now().UnixNano() / int64(time.Millisecond)
-	return fmt.Sprintf("[%s] %d > value: %f ⚡️=%dms", value.From, value.Time, value.Noise, rightNow-value.Time), nil
+	fmt.Println(fmt.Sprintf("[%s] %d > value: %f ⚡️=%dms", value.From, value.Time, value.Noise, rightNow-value.Time))
+	return value.Noise, nil
 }
 
 var callback = func(v []byte) (interface{}, error) {
@@ -96,7 +109,7 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 	stream := rxstream.
 		Subscribe(NoiseDataKey).
 		OnObserve(callback).
-		Debounce(rxgo.WithDuration(50 * time.Millisecond)).
+		Debounce(50).
 		Map(printer).
 		StdOut()
 
@@ -138,7 +151,11 @@ echo 'export GOPATH=~/.go' >> .bashrc
 echo 'export PATH="$GOPATH/bin:$PATH"' >> ~/.bashrc
 ```
 
-## 🌶 Use Case
+## 🧩 Interop
+
+### event-first processing
+
+[Multiple data sources combined calculation](https://github.com/yomorun/yomo/tree/master/example/trainingmodel)
 
 ### Sources
 
