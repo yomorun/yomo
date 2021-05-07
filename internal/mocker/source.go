@@ -30,7 +30,7 @@ func EmitMockDataFromCloud(addr string) error {
 		panic(err)
 	}
 
-	cli, err := client.NewSource("Mock", host, port).Connect()
+	cli, err := client.NewSource("Mock").Connect(host, port)
 	if err != nil {
 		panic(err)
 	}

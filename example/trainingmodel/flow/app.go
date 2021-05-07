@@ -48,7 +48,7 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 }
 
 func main() {
-	st, err := client.NewServerless("training", "localhost", 9000).Connect()
+	st, err := client.NewServerless("training").Connect("localhost", 9000)
 	defer st.Close()
 
 	if err != nil {

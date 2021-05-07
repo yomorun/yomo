@@ -91,10 +91,11 @@ func (c *client) connect() (*client, error) {
 			}
 			value := buf[:n]
 
-			// heartbeart
 			if bytes.Equal(value, SignalHeartbeat) {
+				// heartbeart
 				c.heartbeat <- buf[0]
 			} else if bytes.Equal(value, SignalAccepted) {
+				// accepted
 				if c.isSource {
 					// create the stream from source.
 					stream, err := c.session.CreateStream(context.Background())
@@ -106,6 +107,7 @@ func (c *client) connect() (*client, error) {
 				}
 				accepted <- true
 			} else if bytes.Equal(value, SignalFlowSink) {
+				// create stream
 				stream, err := c.session.CreateStream(context.Background())
 
 				if err != nil {
@@ -115,7 +117,7 @@ func (c *client) connect() (*client, error) {
 
 				c.readers <- stream
 				c.writers = append(c.writers, stream)
-				stream.Write(SignalHeartbeat) //create stream
+				stream.Write(SignalHeartbeat)
 			}
 		}
 	}()
@@ -168,23 +170,24 @@ func (c *client) Close() {
 }
 
 // NewSource setups the client of YoMo-Source.
-func NewSource(appName string, zipperIP string, zipperPort int) *SourceClient {
+func NewSource(appName string) *SourceClient {
 	c := &SourceClient{
 		client: &client{
-			name:       appName,
-			zipperIP:   zipperIP,
-			zipperPort: zipperPort,
-			isSource:   true,
-			readers:    make(chan io.Reader, 1),
-			writers:    make([]io.Writer, 0),
-			heartbeat:  make(chan byte),
+			name:      appName,
+			isSource:  true,
+			readers:   make(chan io.Reader, 1),
+			writers:   make([]io.Writer, 0),
+			heartbeat: make(chan byte),
 		},
 	}
 	return c
 }
 
 // Connect to yomo-zipper.
-func (c *SourceClient) Connect() (*SourceClient, error) {
+func (c *SourceClient) Connect(ip string, port int) (*SourceClient, error) {
+	c.zipperIP = ip
+	c.zipperPort = port
+
 	cli, err := c.connect()
 	if err != nil {
 		return nil, err
@@ -196,16 +199,14 @@ func (c *SourceClient) Connect() (*SourceClient, error) {
 
 // NewServerless setups the client of YoMo-Serverless.
 // The "appName" should match the name of flows (or sinks) in workflow.yaml in zipper.
-func NewServerless(appName string, zipperIP string, zipperPort int) *ServerlessClient {
+func NewServerless(appName string) *ServerlessClient {
 	c := &ServerlessClient{
 		client: &client{
-			name:       appName,
-			zipperIP:   zipperIP,
-			zipperPort: zipperPort,
-			isSource:   false,
-			readers:    make(chan io.Reader, 1),
-			writers:    make([]io.Writer, 0),
-			heartbeat:  make(chan byte),
+			name:      appName,
+			isSource:  false,
+			readers:   make(chan io.Reader, 1),
+			writers:   make([]io.Writer, 0),
+			heartbeat: make(chan byte),
 		},
 	}
 	return c
@@ -221,7 +222,10 @@ func (c *SourceClient) Write(b []byte) (int, error) {
 }
 
 // Connect to yomo-zipper.
-func (c *ServerlessClient) Connect() (*ServerlessClient, error) {
+func (c *ServerlessClient) Connect(ip string, port int) (*ServerlessClient, error) {
+	c.zipperIP = ip
+	c.zipperPort = port
+
 	cli, err := c.connect()
 	if err != nil {
 		return nil, err

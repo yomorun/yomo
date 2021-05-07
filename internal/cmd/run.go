@@ -48,7 +48,7 @@ func NewCmdRun() *cobra.Command {
 			}
 			host := splits[0]
 			port, _ := strconv.Atoi(splits[1])
-			cli, err := client.NewServerless(opts.Name, host, port).Connect()
+			cli, err := client.NewServerless(opts.Name).Connect(host, port)
 			if err != nil {
 				log.Print("❌ Connect to zipper failure: ", err)
 				return
