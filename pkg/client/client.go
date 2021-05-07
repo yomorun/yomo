@@ -1,10 +1,12 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math/rand"
 	"time"
 
@@ -12,64 +14,74 @@ import (
 	"github.com/yomorun/yomo/pkg/rx"
 )
 
-var FLOWORSINK = []byte{0, 0}
+var (
+	// SignalHeartbeat represents the signal of Heartbeat.
+	SignalHeartbeat = []byte{0}
+
+	// SignalAccepted represents the signal of Accpeted.
+	SignalAccepted = []byte{1}
+
+	// SignalFlowSink represents the signal for flow/sink.
+	SignalFlowSink = []byte{0, 0}
+)
 
 type client struct {
-	ip        string
-	port      int
-	name      string
-	readers   chan io.Reader
-	writers   []io.Writer
-	session   quic.Client
-	signal    quic.Stream
-	stream    quic.Stream
-	heartbeat chan byte
-	accepted  chan int
-	err       error
+	zipperIP   string
+	zipperPort int
+	name       string
+	isSource   bool // isSource indicates whether it is a yomo-source client.
+	readers    chan io.Reader
+	writers    []io.Writer
+	session    quic.Client
+	signal     quic.Stream
+	stream     quic.Stream
+	heartbeat  chan byte
 }
 
-func Connect(ip string, port int) *client {
-	c := &client{
-		ip:        ip,
-		port:      port,
-		readers:   make(chan io.Reader, 1),
-		writers:   make([]io.Writer, 0),
-		accepted:  make(chan int),
-		heartbeat: make(chan byte),
-		err:       nil,
-	}
-	return c
+// SourceClient is the client for YoMo-Source.
+// https://yomo.run/source
+type SourceClient struct {
+	*client
 }
 
-//TODO login auth
-func (c *client) Name(name string) *client {
-	c.name = name
-	quic_cli, err := quic.NewClient(fmt.Sprintf("%s:%d", c.ip, c.port))
+// ServerlessClient is the client for YoMo-Serverless.
+type ServerlessClient struct {
+	*client
+}
+
+// connect to yomo-zipper.
+// TODO: login auth
+func (c *client) connect() (*client, error) {
+	addr := fmt.Sprintf("%s:%d", c.zipperIP, c.zipperPort)
+	log.Println("Connecting to zipper", addr, "...")
+	// connect to yomo-zipper
+	quic_cli, err := quic.NewClient(addr)
 	if err != nil {
 		fmt.Println("client [NewClient] Error:", err)
-		c.err = err
-		return c
+		return c, err
 	}
-
+	// create stream
 	quic_stream, err := quic_cli.CreateStream(context.Background())
 	if err != nil {
 		fmt.Println("client [CreateStream] Error:", err)
-		c.err = err
-		return c
+		return c, err
 	}
 
 	c.session = quic_cli
 	c.signal = quic_stream
 
+	// send name to zipper
 	_, err = c.signal.Write([]byte(c.name))
 
 	if err != nil {
 		fmt.Println("client [Write] Error:", err)
-		c.err = err
-		return c
+		return c, err
 	}
 
-	// flow ,sink create stream or heartbeat
+	// flow, sink create stream or heartbeat
+	accepted := make(chan bool)
+	defer close(accepted)
+
 	go func() {
 		for {
 			buf := make([]byte, 2)
@@ -77,27 +89,34 @@ func (c *client) Name(name string) *client {
 			if err != nil {
 				break
 			}
-			switch n {
-			case 1:
-				if buf[0] == byte(0) {
-					c.heartbeat <- buf[0]
-				} else if buf[0] == byte(1) {
-					c.accepted <- 1
-				} else {
-					c.accepted <- 2
+			value := buf[:n]
+
+			// heartbeart
+			if bytes.Equal(value, SignalHeartbeat) {
+				c.heartbeat <- buf[0]
+			} else if bytes.Equal(value, SignalAccepted) {
+				if c.isSource {
+					// create the stream from source.
+					stream, err := c.session.CreateStream(context.Background())
+					if err != nil {
+						fmt.Println("client [session.CreateStream] Error:", err)
+						break
+					}
+					c.stream = stream
 				}
-			case 2:
+				accepted <- true
+			} else if bytes.Equal(value, SignalFlowSink) {
 				stream, err := c.session.CreateStream(context.Background())
 
 				if err != nil {
+					log.Println(err)
 					break
 				}
 
 				c.readers <- stream
 				c.writers = append(c.writers, stream)
-				stream.Write([]byte{0}) //create stream
+				stream.Write(SignalHeartbeat) //create stream
 			}
-
 		}
 	}()
 
@@ -115,43 +134,22 @@ func (c *client) Name(name string) *client {
 					return
 				}
 			case <-time.After(time.Second):
+				// disconnect if didn't receive the heartbeat after 1s.
 				return
 			}
 		}
 
 	}()
 
-	return c
+	// waiting when the connection is accepted.
+	<-accepted
+	log.Print("✅ Connected to zipper", addr)
+	return c, nil
 }
 
-func (c *client) Stream() (*client, error) {
-	if c.err != nil {
-		return nil, c.err
-	}
-
+func (c *client) retry() {
 	for {
-		select {
-		case item, ok := <-c.accepted:
-			if !ok {
-				return nil, errors.New("not accepted")
-			}
-
-			if item == 1 {
-				stream, err := c.session.CreateStream(context.Background())
-				if err != nil {
-					return nil, err
-				}
-				c.stream = stream
-			}
-
-			return c, nil
-		}
-	}
-}
-
-func (c *client) reTry() {
-	for {
-		_, err := c.Name(c.name).Stream()
+		_, err := c.connect()
 		if err == nil {
 			break
 		} else {
@@ -160,17 +158,80 @@ func (c *client) reTry() {
 	}
 }
 
-// source
-func (c *client) Write(b []byte) (int, error) {
-	if c.stream != nil {
+// Close the client.
+func (c *client) Close() {
+	c.session.Close()
+	c.writers = make([]io.Writer, 0)
+	c.heartbeat = make(chan byte)
+	c.signal = nil
+	c.retry()
+}
+
+// NewSourceClient setups the client of YoMo-Source.
+func NewSourceClient(clientName string, zipperIP string, zipperPort int) *SourceClient {
+	c := &SourceClient{
+		client: &client{
+			name:       clientName,
+			zipperIP:   zipperIP,
+			zipperPort: zipperPort,
+			isSource:   true,
+			readers:    make(chan io.Reader, 1),
+			writers:    make([]io.Writer, 0),
+			heartbeat:  make(chan byte),
+		},
+	}
+	return c
+}
+
+// Connect to yomo-zipper.
+func (c *SourceClient) Connect() (*SourceClient, error) {
+	cli, err := c.connect()
+	if err != nil {
+		return nil, err
+	}
+	return &SourceClient{
+		cli,
+	}, nil
+}
+
+// NewServerlessClient setups the client of YoMo-Serverless.
+func NewServerlessClient(clientName string, zipperIP string, zipperPort int) *ServerlessClient {
+	c := &ServerlessClient{
+		client: &client{
+			name:       clientName,
+			zipperIP:   zipperIP,
+			zipperPort: zipperPort,
+			isSource:   false,
+			readers:    make(chan io.Reader, 1),
+			writers:    make([]io.Writer, 0),
+			heartbeat:  make(chan byte),
+		},
+	}
+	return c
+}
+
+// Write the data to YoMo-Zipper.
+func (c *SourceClient) Write(b []byte) (int, error) {
+	if c.client.stream != nil {
 		return c.stream.Write(b)
 	} else {
 		return 0, errors.New("not found stream")
 	}
 }
 
-// flow || sink
-func (c *client) Pipe(f func(rxstream rx.RxStream) rx.RxStream) {
+// Connect to yomo-zipper.
+func (c *ServerlessClient) Connect() (*ServerlessClient, error) {
+	cli, err := c.connect()
+	if err != nil {
+		return nil, err
+	}
+	return &ServerlessClient{
+		cli,
+	}, nil
+}
+
+// Pipe the handler function in flow/sink serverless.
+func (c *ServerlessClient) Pipe(f func(rxstream rx.RxStream) rx.RxStream) {
 	rxstream := rx.FromReaderWithY3(c.readers)
 	stream := f(rxstream)
 
@@ -190,20 +251,10 @@ func (c *client) Pipe(f func(rxstream rx.RxStream) rx.RxStream) {
 						break loop
 					}
 				} else {
-					w.Write([]byte{0})
+					w.Write(SignalHeartbeat)
 				}
 			}
 
 		}
 	}
-}
-
-func (c *client) Close() {
-	c.session.Close()
-	c.writers = make([]io.Writer, 0)
-	c.accepted = make(chan int)
-	c.heartbeat = make(chan byte)
-	c.signal = nil
-	c.stream = nil
-	c.reTry()
 }

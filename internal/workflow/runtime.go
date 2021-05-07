@@ -1,17 +1,26 @@
 package workflow
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"time"
 
 	"github.com/yomorun/yomo/internal/conf"
+	"github.com/yomorun/yomo/pkg/client"
 	"github.com/yomorun/yomo/pkg/quic"
+)
+
+const (
+	StreamTypeSource string = "source"
+	StreamTypeFlow   string = "flow"
+	StreamTypeSink   string = "sink"
 )
 
 var GlobalApp = ""
 
+// QuicConn represents the QUIC connection.
 type QuicConn struct {
 	Session    quic.Session
 	Signal     quic.Stream
@@ -23,11 +32,14 @@ type QuicConn struct {
 	Ready      bool
 }
 
+// SendSignal sends the signal to clients.
 func (c *QuicConn) SendSignal(b []byte) {
 	c.Signal.Write(b)
 }
+
+// Init the QUIC connection.
 func (c *QuicConn) Init(conf *conf.WorkflowConfig) {
-	index := 0
+	isInit := true
 	go func() {
 		for {
 			buf := make([]byte, 1024)
@@ -37,40 +49,37 @@ func (c *QuicConn) Init(conf *conf.WorkflowConfig) {
 				break
 			}
 			value := buf[:n]
-			length := len(value)
-			switch index {
-			case 0:
+
+			if isInit {
 				c.Name = string(value)
-				c.StreamType = "source"
+				c.StreamType = StreamTypeSource
 				for _, app := range conf.Flows {
 					if app.Name == c.Name {
-						c.StreamType = "flow"
+						c.StreamType = StreamTypeFlow
+						break
 					}
 				}
 				for _, app := range conf.Sinks {
 					if app.Name == c.Name {
-						c.StreamType = "sink"
+						c.StreamType = StreamTypeSink
+						break
 					}
 				}
-				index++
 				fmt.Println("Receive App:", c.Name, c.StreamType)
-				if c.StreamType == "source" {
-					c.Signal.Write([]byte{1})
-				} else {
-					c.Signal.Write([]byte{2})
-				}
+				isInit = false
+				c.SendSignal(client.SignalAccepted)
 				c.Beat()
-				length = 0
-			case 1:
-				switch length {
-				case 1:
-					c.Heartbeat <- value[0]
-				}
+				continue
+			}
+
+			if bytes.Equal(value, client.SignalHeartbeat) {
+				c.Heartbeat <- value[0]
 			}
 		}
 	}()
 }
 
+// Beat sends the heartbeat to clients and checks if receiving the heartbeat back.
 func (c *QuicConn) Beat() {
 	go func() {
 		defer c.Close()
@@ -82,6 +91,7 @@ func (c *QuicConn) Beat() {
 				}
 
 			case <-time.After(time.Second):
+				// close the connection if didn't receive the heartbeat after 1s.
 				c.Close()
 			}
 		}
@@ -89,8 +99,9 @@ func (c *QuicConn) Beat() {
 
 	go func() {
 		for {
+			// send heartbeat in every 200ms.
 			time.Sleep(200 * time.Millisecond)
-			c.Signal.Write([]byte{0})
+			c.SendSignal(client.SignalHeartbeat)
 		}
 	}()
 }
@@ -101,17 +112,16 @@ func (c *QuicConn) Close() {
 	c.Ready = true
 }
 
-// Run runs quic service
+// Run QUIC service.
 func Run(endpoint string, handle quic.ServerHandler) error {
 	server := quic.NewServer(handle)
 
 	return server.ListenAndServe(context.Background(), endpoint)
 }
 
-// Build build the workflow by config (.yaml).
+// Build the workflow by config (.yaml).
 func Build(wfConf *conf.WorkflowConfig, connMap *map[int64]*QuicConn, index int) ([]func() (io.ReadWriter, func()), []func() (io.Writer, func())) {
 	//init workflow
-
 	if GlobalApp == "" {
 		for i, v := range wfConf.Sinks {
 			if i == 0 {
@@ -165,7 +175,7 @@ func createReadWriter(app conf.App, connMap *map[int64]*QuicConn, index int) fun
 		} else {
 			if conn.Ready {
 				conn.Ready = false
-				conn.SendSignal([]byte{0, 0})
+				conn.SendSignal(client.SignalFlowSink)
 			}
 			return nil, func() {}
 		}
@@ -200,7 +210,7 @@ func createWriter(app conf.App, connMap *map[int64]*QuicConn, index int) func() 
 		} else {
 			if conn.Ready {
 				conn.Ready = false
-				conn.SendSignal([]byte{0, 0})
+				conn.SendSignal(client.SignalFlowSink)
 			}
 			return nil, func() {}
 		}

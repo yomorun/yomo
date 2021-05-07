@@ -43,7 +43,7 @@ func NewCmdRun() *cobra.Command {
 
 			host := strings.Split(opts.Url, ":")[0]
 			port, _ := strconv.Atoi(strings.Split(opts.Url, ":")[1])
-			cli, err := client.Connect(host, port).Name(opts.Name).Stream()
+			cli, err := client.NewServerlessClient(opts.Name, host, port).Connect()
 
 			hanlder := slHandler.(func(rxStream rx.RxStream) rx.RxStream)
 			log.Print("Running the Serverless Function.")

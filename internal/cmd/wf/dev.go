@@ -117,7 +117,7 @@ func (s *quicDevHandler) Read(id int64, sess quic.Session, st quic.Stream) error
 	s.mutex.Lock()
 
 	if conn, ok := s.connMap[id]; ok {
-		if conn.StreamType == "source" {
+		if conn.StreamType == workflow.StreamTypeSource {
 			conn.Stream = append(conn.Stream, st)
 			s.build <- st
 		} else {
