@@ -127,7 +127,7 @@ func (s *quicHandler) Read(id int64, sess quic.Session, st quic.Stream) error {
 			StreamType: "",
 			Name:       "",
 			Heartbeat:  make(chan byte),
-			IsClose:    false,
+			IsClosed:   false,
 			Ready:      true,
 		}
 		conn.Init(s.serverlessConfig)

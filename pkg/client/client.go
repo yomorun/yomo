@@ -167,11 +167,11 @@ func (c *client) Close() {
 	c.retry()
 }
 
-// NewSourceClient setups the client of YoMo-Source.
-func NewSourceClient(clientName string, zipperIP string, zipperPort int) *SourceClient {
+// NewSource setups the client of YoMo-Source.
+func NewSource(appName string, zipperIP string, zipperPort int) *SourceClient {
 	c := &SourceClient{
 		client: &client{
-			name:       clientName,
+			name:       appName,
 			zipperIP:   zipperIP,
 			zipperPort: zipperPort,
 			isSource:   true,
@@ -194,11 +194,12 @@ func (c *SourceClient) Connect() (*SourceClient, error) {
 	}, nil
 }
 
-// NewServerlessClient setups the client of YoMo-Serverless.
-func NewServerlessClient(clientName string, zipperIP string, zipperPort int) *ServerlessClient {
+// NewServerless setups the client of YoMo-Serverless.
+// The "appName" should match the name of flows (or sinks) in workflow.yaml in zipper.
+func NewServerless(appName string, zipperIP string, zipperPort int) *ServerlessClient {
 	c := &ServerlessClient{
 		client: &client{
-			name:       clientName,
+			name:       appName,
 			zipperIP:   zipperIP,
 			zipperPort: zipperPort,
 			isSource:   false,

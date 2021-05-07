@@ -29,7 +29,7 @@ func emit(addr string) error {
 	host := strings.Split(addr, ":")[0]
 	port, err := strconv.Atoi(strings.Split(addr, ":")[1])
 
-	cli, err := client.NewSourceClient("source-a", host, port).Connect()
+	cli, err := client.NewSource("source-a", host, port).Connect()
 	if err != nil {
 		panic(err)
 	}

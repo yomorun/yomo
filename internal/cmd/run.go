@@ -41,14 +41,22 @@ func NewCmdRun() *cobra.Command {
 				opts.Url = "localhost:9000"
 			}
 
-			host := strings.Split(opts.Url, ":")[0]
-			port, _ := strconv.Atoi(strings.Split(opts.Url, ":")[1])
-			cli, err := client.NewServerlessClient(opts.Name, host, port).Connect()
+			splits := strings.Split(opts.Url, ":")
+			if len(splits) != 2 {
+				log.Printf(`❌ The format of url "%s" is incorrect, it should be "host:port", f.e. localhost:9000`, opts.Url)
+				return
+			}
+			host := splits[0]
+			port, _ := strconv.Atoi(splits[1])
+			cli, err := client.NewServerless(opts.Name, host, port).Connect()
+			if err != nil {
+				log.Print("❌ Connect to zipper failure: ", err)
+				return
+			}
 
 			hanlder := slHandler.(func(rxStream rx.RxStream) rx.RxStream)
 			log.Print("Running the Serverless Function.")
 			cli.Pipe(hanlder)
-
 		},
 	}
 

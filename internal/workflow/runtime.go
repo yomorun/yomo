@@ -28,7 +28,7 @@ type QuicConn struct {
 	StreamType string
 	Name       string
 	Heartbeat  chan byte
-	IsClose    bool
+	IsClosed   bool
 	Ready      bool
 }
 
@@ -108,7 +108,7 @@ func (c *QuicConn) Beat() {
 
 func (c *QuicConn) Close() {
 	c.Session.CloseWithError(0, "")
-	c.IsClose = true
+	c.IsClosed = true
 	c.Ready = true
 }
 
