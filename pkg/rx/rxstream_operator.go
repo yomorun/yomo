@@ -13,7 +13,7 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/reactivex/rxgo/v2"
 	y3 "github.com/yomorun/y3-codec-golang"
-	"github.com/yomorun/yomo/pkg/yy3"
+	"github.com/yomorun/yomo/pkg/decoder"
 )
 
 type echo struct {
@@ -71,7 +71,7 @@ func FromReader(reader io.Reader) RxStream {
 	return ConvertObservable(rxgo.FromChannel(next, rxgo.WithErrorStrategy(rxgo.ContinueOnError)))
 }
 
-func FromReaderWithY3(readers chan io.Reader) RxStream {
+func FromReaderWithDecoder(readers chan io.Reader) RxStream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
 
@@ -84,7 +84,7 @@ func FromReaderWithY3(readers chan io.Reader) RxStream {
 					return
 				}
 				r, w := io.Pipe()
-				if !Of(yy3.FromStream(r)).SendContext(ctx, next) {
+				if !Of(decoder.FromStream(r)).SendContext(ctx, next) {
 					return
 				}
 
@@ -341,9 +341,52 @@ func (s *RxStreamImpl) Map(apply rxgo.Func, opts ...rxgo.Option) RxStream {
 	return &RxStreamImpl{observable: rxgo.FromChannel(s.observable.Map(apply, opts...).Observe(), opts...)}
 }
 
-func (s *RxStreamImpl) Marshal(marshaller rxgo.Marshaller, opts ...rxgo.Option) RxStream {
+// Marshal transforms the items emitted by an Observable by applying a marshalling to each item.
+func (s *RxStreamImpl) Marshal(marshaller decoder.Marshaller, opts ...rxgo.Option) RxStream {
 	opts = appendContinueOnError(opts...)
-	return &RxStreamImpl{observable: rxgo.FromChannel(s.observable.Marshal(marshaller, opts...).Observe(), opts...)}
+
+	return s.Map(func(_ context.Context, i interface{}) (interface{}, error) {
+		return marshaller(i)
+	}, opts...)
+}
+
+// Unmarshal transforms the items emitted by an Observable by applying an unmarshalling to each item.
+func (s *RxStreamImpl) Unmarshal(unmarshaller decoder.Unmarshaller, factory func() interface{}, opts ...rxgo.Option) RxStream {
+	f := func(ctx context.Context, next chan rxgo.Item) {
+		defer close(next)
+		observe := s.Observe()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case item, ok := <-observe:
+				if !ok {
+					return
+				}
+				if item.Error() {
+					return
+				}
+				go func() {
+					onObserve := (item.V).(decoder.Observable).Unmarshal(unmarshaller, factory)
+
+					for {
+						select {
+						case <-ctx.Done():
+							return
+						case item, ok := <-onObserve:
+							if !ok {
+								return
+							}
+							if !Of(item).SendContext(ctx, next) {
+								return
+							}
+						}
+					}
+				}()
+			}
+		}
+	}
+	return CreateObservable(f)
 }
 
 func (s *RxStreamImpl) Max(comparator rxgo.Comparator, opts ...rxgo.Option) RxStream {
@@ -494,11 +537,6 @@ func (s *RxStreamImpl) ToMapWithValueSelector(keySelector, valueSelector rxgo.Fu
 func (s *RxStreamImpl) ToSlice(initialCapacity int, opts ...rxgo.Option) ([]interface{}, error) {
 	opts = appendContinueOnError(opts...)
 	return s.observable.ToSlice(initialCapacity, opts...)
-}
-
-func (s *RxStreamImpl) Unmarshal(unmarshaller rxgo.Unmarshaller, factory func() interface{}, opts ...rxgo.Option) RxStream {
-	opts = appendContinueOnError(opts...)
-	return &RxStreamImpl{observable: rxgo.FromChannel(s.observable.Unmarshal(unmarshaller, factory, opts...).Observe(), opts...)}
 }
 
 func (s *RxStreamImpl) WindowWithCount(count int, opts ...rxgo.Option) RxStream {
@@ -681,7 +719,7 @@ func (s *RxStreamImpl) Subscribe(key byte) RxStream {
 				if item.Error() {
 					return
 				}
-				y3stream := (item.V).(yy3.Observable)
+				y3stream := (item.V).(decoder.Observable)
 				if !Of(y3stream.Subscribe(key)).SendContext(ctx, next) {
 					return
 				}
@@ -692,7 +730,7 @@ func (s *RxStreamImpl) Subscribe(key byte) RxStream {
 }
 
 // ZipMultiObservers subscribes multi Y3 observers, zips the values into a slice and calls the zipper callback when all keys are observed.
-func (s *RxStreamImpl) ZipMultiObservers(observers []yy3.KeyObserveFunc, zipper func(items []interface{}) (interface{}, error)) RxStream {
+func (s *RxStreamImpl) ZipMultiObservers(observers []decoder.KeyObserveFunc, zipper func(items []interface{}) (interface{}, error)) RxStream {
 	count := len(observers)
 	if count < 2 {
 		return s.thrown(errors.New("ZipMultiObservers - the number of observers must be >= 2"))
@@ -715,7 +753,7 @@ func (s *RxStreamImpl) ZipMultiObservers(observers []yy3.KeyObserveFunc, zipper 
 
 		// prepare slices and maps
 		keys := make([]byte, count)
-		keyObserveMap := make(map[byte]yy3.OnObserveFunc, count)
+		keyObserveMap := make(map[byte]decoder.OnObserveFunc, count)
 		keyChans := make(map[byte]chan rxgo.Item, count)
 		keyObservables := make([]rxgo.Observable, count)
 		for i, item := range observers {
@@ -752,7 +790,7 @@ func (s *RxStreamImpl) ZipMultiObservers(observers []yy3.KeyObserveFunc, zipper 
 						return
 					}
 
-					y3stream := (item.V).(yy3.Observable)
+					y3stream := (item.V).(decoder.Observable)
 					// subscribe multi keys
 					y3Observable := y3stream.MultiSubscribe(keys...)
 					go func() {
@@ -827,7 +865,7 @@ func (s *RxStreamImpl) OnObserve(function func(v []byte) (interface{}, error)) R
 					return
 				}
 				go func() {
-					onObserve := (item.V).(yy3.Observable).OnObserve(function)
+					onObserve := (item.V).(decoder.Observable).OnObserve(function)
 
 					for {
 						select {

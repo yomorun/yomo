@@ -7,7 +7,7 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/reactivex/rxgo/v2"
-	"github.com/yomorun/yomo/pkg/yy3"
+	"github.com/yomorun/yomo/pkg/decoder"
 )
 
 type RxStream interface {
@@ -57,7 +57,8 @@ type RxStream interface {
 	Last(opts ...rxgo.Option) RxStream
 	LastOrDefault(defaultValue interface{}, opts ...rxgo.Option) RxStream
 	Map(apply rxgo.Func, opts ...rxgo.Option) RxStream
-	Marshal(marshaller rxgo.Marshaller, opts ...rxgo.Option) RxStream
+	// Marshal transforms the items emitted by an Observable by applying a marshalling to each item.
+	Marshal(marshaller decoder.Marshaller, opts ...rxgo.Option) RxStream
 	Max(comparator rxgo.Comparator, opts ...rxgo.Option) RxStream
 	Min(comparator rxgo.Comparator, opts ...rxgo.Option) RxStream
 	OnErrorResumeNext(resumeSequence rxgo.ErrorToObservable, opts ...rxgo.Option) RxStream
@@ -88,7 +89,8 @@ type RxStream interface {
 	ToMap(keySelector rxgo.Func, opts ...rxgo.Option) RxStream
 	ToMapWithValueSelector(keySelector, valueSelector rxgo.Func, opts ...rxgo.Option) RxStream
 	ToSlice(initialCapacity int, opts ...rxgo.Option) ([]interface{}, error)
-	Unmarshal(unmarshaller rxgo.Unmarshaller, factory func() interface{}, opts ...rxgo.Option) RxStream
+	// Unmarshal transforms the items emitted by an Observable by applying an unmarshalling to each item.
+	Unmarshal(unmarshaller decoder.Unmarshaller, factory func() interface{}, opts ...rxgo.Option) RxStream
 	WindowWithCount(count int, opts ...rxgo.Option) RxStream
 	WindowWithTime(milliseconds uint32, opts ...rxgo.Option) RxStream
 	WindowWithTimeOrCount(milliseconds uint32, count int, opts ...rxgo.Option) RxStream
@@ -103,5 +105,5 @@ type RxStream interface {
 	SlidingWindowWithTime(windowTimeInMS uint32, slideTimeInMS uint32, handler Handler, opts ...rxgo.Option) RxStream
 
 	// ZipMultiObservers subscribes multi Y3 observers, zips the values into a slice and calls the zipper callback when all keys are observed.
-	ZipMultiObservers(observers []yy3.KeyObserveFunc, zipper func(items []interface{}) (interface{}, error)) RxStream
+	ZipMultiObservers(observers []decoder.KeyObserveFunc, zipper func(items []interface{}) (interface{}, error)) RxStream
 }

@@ -237,7 +237,7 @@ func (c *ServerlessClient) Connect(ip string, port int) (*ServerlessClient, erro
 
 // Pipe the handler function in flow/sink serverless.
 func (c *ServerlessClient) Pipe(f func(rxstream rx.RxStream) rx.RxStream) {
-	rxstream := rx.FromReaderWithY3(c.readers)
+	rxstream := rx.FromReaderWithDecoder(c.readers)
 	stream := f(rxstream)
 
 	rxstream.Connect(context.Background())
@@ -250,7 +250,12 @@ func (c *ServerlessClient) Pipe(f func(rxstream rx.RxStream) rx.RxStream) {
 		loop:
 			for i, w := range c.writers {
 				if index == i {
-					_, err := w.Write((customer.V).([]byte))
+					buf, ok := (customer.V).([]byte)
+					if !ok {
+						log.Printf("❌ Please add the encode/marshal operator in the end of your Serverless handler.")
+						break loop
+					}
+					_, err := w.Write(buf)
 					if err != nil {
 						index = rand.Intn(len(c.writers))
 						break loop
