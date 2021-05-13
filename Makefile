@@ -23,5 +23,11 @@ vet:
 build:
 	$(GO) build -o bin/yomo -ldflags "-s -w ${GO_LDFLAGS}" github.com/yomorun/yomo/cmd/yomo
 
+build-arm:
+	GOARCH=arm64 GOOS=linux $(GO) build -o bin/yomo-arm64 -ldflags "-s -w ${GO_LDFLAGS}" github.com/yomorun/yomo/cmd/yomo
+
+build-linux:
+	GOOS=linux $(GO) build -o bin/yomo -ldflags "-s -w ${GO_LDFLAGS}" github.com/yomorun/yomo/cmd/yomo
+
 install:
 	$(GO) install -ldflags "-s -w ${GO_LDFLAGS}" github.com/yomorun/yomo/cmd/yomo
