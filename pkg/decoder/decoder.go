@@ -62,10 +62,10 @@ type KeyValue struct {
 }
 
 type iterableImpl struct {
-	next                   chan interface{}
-	subscribers            []chan interface{}
-	mutex                  sync.RWMutex
-	producerAlreadyCreated bool
+	next        chan interface{}
+	subscribers []chan interface{}
+	mutex       sync.RWMutex
+	start       sync.Once
 }
 
 func (i *iterableImpl) Observe() <-chan interface{} {
@@ -78,12 +78,9 @@ func (i *iterableImpl) Observe() <-chan interface{} {
 }
 
 func (i *iterableImpl) connect() {
-	i.mutex.Lock()
-	if !i.producerAlreadyCreated {
+	i.start.Do(func() {
 		go i.produce()
-		i.producerAlreadyCreated = true
-	}
-	i.mutex.Unlock()
+	})
 }
 
 func (i *iterableImpl) produce() {

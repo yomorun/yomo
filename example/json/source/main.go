@@ -21,6 +21,7 @@ func main() {
 	cli, err := client.NewSource("yomo-source").Connect("localhost", 9000)
 	if err != nil {
 		log.Printf("❌ Emit the data to yomo-zipper failure with err: %v", err)
+		return
 	}
 	log.Printf("✅ Connected to yomo-zipper")
 
