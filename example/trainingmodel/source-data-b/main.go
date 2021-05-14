@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"math/rand"
@@ -15,10 +16,6 @@ import (
 
 var zipperAddr = os.Getenv("YOMO_ZIPPER_ENDPOINT")
 
-const charset = "abcdefghijklmnopqrstuvwxyz"
-
-var seed *rand.Rand = rand.New(rand.NewSource(time.Now().UnixNano()))
-
 func main() {
 	if zipperAddr == "" {
 		zipperAddr = "localhost:9000"
@@ -30,9 +27,12 @@ func main() {
 }
 
 func emit(addr string) error {
-
-	host := strings.Split(addr, ":")[0]
-	port, err := strconv.Atoi(strings.Split(addr, ":")[1])
+	splits := strings.Split(addr, ":")
+	if len(splits) != 2 {
+		return fmt.Errorf(`❌ The format of url "%s" is incorrect, it should be "host:port", f.e. localhost:9000`, addr)
+	}
+	host := splits[0]
+	port, err := strconv.Atoi(splits[1])
 
 	cli, err := client.NewSource("source-b").Connect(host, port)
 	if err != nil {
@@ -44,30 +44,20 @@ func emit(addr string) error {
 	return nil
 }
 
-var codec = y3.NewCodec(0x3b)
+var codec = y3.NewCodec(0x12)
 
 func generateAndSendData(writer io.Writer) {
-
 	for {
 		time.Sleep(200 * time.Millisecond)
+		num := rand.New(rand.NewSource(time.Now().UnixNano())).Float32() * 200
 
-		str := generateString()
-
-		sendingBuf, _ := codec.Marshal(str)
+		sendingBuf, _ := codec.Marshal(num)
 
 		_, err := writer.Write(sendingBuf)
 		if err != nil {
-			log.Printf("❌ Emit %v to yomo-zipper failure with err: %s", str, err)
+			log.Printf("❌ Emit %v to yomo-zipper failure with err: %f", num, err)
 		} else {
-			log.Printf("✅ Emit %s to yomo-zipper", str)
+			log.Printf("✅ Emit %f to yomo-zipper", num)
 		}
 	}
-}
-
-func generateString() string {
-	b := make([]byte, 10)
-	for i := range b {
-		b[i] = charset[seed.Intn(len(charset))]
-	}
-	return string(b)
 }

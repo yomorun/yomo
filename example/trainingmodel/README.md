@@ -61,19 +61,7 @@ $ cd $GOPATH/src/github.com/yomorun/yomo
 $ make install
 ```
 
-### 2. Start `flow` for streaming calculation
-
-```bash
-$ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/flow
-
-$ yomo run
-
-2021/03/01 19:01:48 Building the Serverless Function File...
-2021/03/01 19:01:49 ✅ Listening on 0.0.0.0:4242
-
-```
-
-### 3. Start `zipper` to organize stream processing workflow
+### 2. Start `zipper` to organize stream processing workflow
 
 ```bash
 $ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/zipper
@@ -81,10 +69,26 @@ $ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/zipper
 $ yomo wf run
 
 2021/03/01 19:05:55 Found 1 flows in zipper config
-2021/03/01 19:05:55 Flow 1: training on localhost:4242
+2021/03/01 19:05:55 Flow 1: training
 2021/03/01 19:05:55 Found 0 sinks in zipper config
 2021/03/01 19:05:55 Running YoMo workflow...
-2021/03/01 19:05:55 ✅ Listening on 0.0.0.0:9999
+2021/03/01 19:05:55 ✅ Listening on 0.0.0.0:9000
+
+```
+
+### 3. Start `flow` for streaming calculation
+
+> **Note**: `-n` flag represents the name of flow, which should match the specific flow in zipper config (workflow.yaml).
+
+```bash
+$ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/flow
+
+$ yomo run -n training
+
+2021/03/01 19:05:55 Building the Serverless Function File...
+2021/03/01 19:05:55 Connecting to zipper localhost:9000 ...
+2021/03/01 19:05:55 ✅ Connected to zipperlocalhost:9000
+2021/03/01 19:05:55 Running the Serverless Function.
 
 ```
 
@@ -95,7 +99,7 @@ $ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/source-data-a
 
 $ go run main.go
 
-2021/03/01 17:35:04 ✅ Connected to yomo-zipper localhost:9999
+2021/03/01 17:35:04 ✅ Connected to yomo-zipper localhost:9000
 2021/03/01 17:35:05 ✅ Emit 123.41881 to yomo-zipper
 
 ```
@@ -107,7 +111,7 @@ $ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/source-data-b
 
 $ go run main.go
 
-2021/03/01 17:35:04 ✅ Connected to yomo-zipper localhost:9999
+2021/03/01 17:35:04 ✅ Connected to yomo-zipper localhost:9000
 2021/03/01 17:35:05 ✅ Emit 36.92933 to yomo-zipper
 
 ```

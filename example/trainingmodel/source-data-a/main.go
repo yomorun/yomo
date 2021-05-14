@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"math/rand"
@@ -26,8 +27,12 @@ func main() {
 }
 
 func emit(addr string) error {
-	host := strings.Split(addr, ":")[0]
-	port, err := strconv.Atoi(strings.Split(addr, ":")[1])
+	splits := strings.Split(addr, ":")
+	if len(splits) != 2 {
+		return fmt.Errorf(`❌ The format of url "%s" is incorrect, it should be "host:port", f.e. localhost:9000`, addr)
+	}
+	host := splits[0]
+	port, err := strconv.Atoi(splits[1])
 
 	cli, err := client.NewSource("source-a").Connect(host, port)
 	if err != nil {
@@ -38,7 +43,7 @@ func emit(addr string) error {
 	return nil
 }
 
-var codec = y3.NewCodec(0x3a)
+var codec = y3.NewCodec(0x11)
 
 func generateAndSendData(writer io.Writer) {
 	for {
