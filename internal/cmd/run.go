@@ -60,9 +60,10 @@ func NewCmdRun() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVarP(&opts.Filename, "file-name", "f", "app.go", "Serverless function file (default is app.go)")
-	cmd.Flags().StringVarP(&opts.Url, "url", "u", "localhost:9000", "zipper server endpoint addr (default is localhost:9000)")
-	cmd.Flags().StringVarP(&opts.Name, "name", "n", "yomo-app", "yomo serverless app name(default is yomo-app)")
+	cmd.Flags().StringVarP(&opts.Filename, "file-name", "f", "app.go", "Serverless function file")
+	cmd.Flags().StringVarP(&opts.Url, "url", "u", "localhost:9000", "zipper server endpoint addr")
+	cmd.Flags().StringVarP(&opts.Name, "name", "n", "", "yomo serverless app name (required). It should match the specific service name in zipper config (workflow.yaml)")
+	cmd.MarkFlagRequired("name")
 
 	return cmd
 }

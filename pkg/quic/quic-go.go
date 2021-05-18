@@ -95,7 +95,7 @@ func (c *quicGoClient) Connect(addr string) error {
 		KeepAlive:             true,
 		MaxIncomingStreams:    1000000,
 		MaxIncomingUniStreams: 1000000,
-		TokenStore: quicGo.NewLRUTokenStore(1, 1),
+		TokenStore:            quicGo.NewLRUTokenStore(1, 1),
 	})
 
 	if err != nil {

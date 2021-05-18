@@ -55,7 +55,7 @@ func NewCmdDev() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVarP(&opts.Config, "config", "c", "workflow.yaml", "Workflow config file (default is workflow.yaml)")
+	cmd.Flags().StringVarP(&opts.Config, "config", "c", "workflow.yaml", "Workflow config file")
 
 	return cmd
 }
