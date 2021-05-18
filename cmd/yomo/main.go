@@ -27,7 +27,7 @@ func main() {
 	rootCmd.AddCommand(
 		cmd.NewCmdInit(),
 		cmd.NewCmdBuild(),
-		// cmd.NewCmdDev(),
+		cmd.NewCmdDev(),
 		cmd.NewCmdRun(),
 		cmd.NewCmdVersion(),
 		wfCmd,
