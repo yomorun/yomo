@@ -145,7 +145,7 @@ func (c *client) connect() (*client, error) {
 
 	// waiting when the connection is accepted.
 	<-accepted
-	log.Print("✅ Connected to zipper", addr)
+	log.Print("✅ Connected to zipper ", addr)
 	return c, nil
 }
 

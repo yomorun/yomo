@@ -87,7 +87,7 @@ $ yomo run -n training
 
 2021/03/01 19:05:55 Building the Serverless Function File...
 2021/03/01 19:05:55 Connecting to zipper localhost:9000 ...
-2021/03/01 19:05:55 ✅ Connected to zipperlocalhost:9000
+2021/03/01 19:05:55 ✅ Connected to zipper localhost:9000
 2021/03/01 19:05:55 Running the Serverless Function.
 
 ```
