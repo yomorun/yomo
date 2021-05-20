@@ -6,7 +6,7 @@
 
 ## Our customer's asked:
 
-Our client needs to perform a calculation in an environment where high frequency data generation occurs from multiple data sources. A calculation is only performed when data from all the sources has arrived. After calculation, the computed result is sent to the next processing session, and the whole process repeats. 
+Our client needs to perform a calculation in an environment where high frequency data generation occurs from multiple data sources. A calculation is only performed when data from all the sources have arrived. After calculation, the computed result is sent to the next processing session, and the whole process repeats. 
 
 Traditionally, in a scenario where heterogenous data from multiple data sources is collected, developers face several issues related to multi-threading, concurrency, race, locking, cache, among other things. As a result, instead of abstraction and implementation, developers spend time fixing issues. YoMo solves that below:
 
