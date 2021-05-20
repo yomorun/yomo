@@ -4,10 +4,10 @@ This example represents how YoMo works with the mock data of sound sensor.
 
 ## Code structure
 
-+ `source`: sending mock data of sound sensor [yomo.run/source](https://yomo.run/source)
-+ `flow`: calculate the real-time noise level and print the warning message when it reaches the threshold. [yomo.run/flow](https://yomo.run/flow)
-+ `sink`: mock persisting the real-time noise level in DB. [yomo.run/sink](https://yomo.run/sink)
-+ `zipper`: orchestrate a workflow that receives the data from `source`, stream computing in `flow` and output the result to `sink` [yomo.run/zipper](https://yomo.run/zipper)
++ `source`: Mocking data of a Noise Decibel Detection Sensor. [yomo.run/source](https://yomo.run/source)
++ `flow`: Detecting noise pollution in real-time and print the warning message when it reaches the threshold. [yomo.run/flow](https://yomo.run/flow)
++ `sink`: Demonstrating persistent storage for IoT data. [yomo.run/sink](https://yomo.run/sink)
++ `zipper`: Orchestrate a workflow that receives the data from `source`, stream computing in `flow` and output the result to `sink` [yomo.run/zipper](https://yomo.run/zipper)
 
 ## How to run the example
 
@@ -68,7 +68,7 @@ go run ./source/main.go
 
 #### yomo-flow
 
-The terminal of `yomo-flow` will print the real-time noise level, and show the waring when noise level reaches the threshold.
+The terminal of `yomo-flow` will print the real-time noise decibel value, and show the warning when the value reaches the threshold.
 
 ```bash
 [localhost] 1621491060839 > value: 15.714272 ⚡️=1ms
