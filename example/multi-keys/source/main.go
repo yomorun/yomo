@@ -1,45 +1,32 @@
 package main
 
 import (
-	"context"
+	"io"
 	"log"
 	"os"
 	"time"
 
 	y3 "github.com/yomorun/y3-codec-golang"
-	"github.com/yomorun/yomo/pkg/quic"
+	"github.com/yomorun/yomo/pkg/client"
 )
 
 var zipperAddr = os.Getenv("YOMO_ZIPPER_ENDPOINT")
 
 func main() {
 	if zipperAddr == "" {
-		zipperAddr = "localhost:9999"
+		zipperAddr = "localhost:9000"
 	}
-	err := emit(zipperAddr)
+	// connect to yomo-zipper.
+	cli, err := client.NewSource("yomo-source").Connect("localhost", 9000)
 	if err != nil {
-		log.Printf("❌ Emit the data to yomo-zipper %s failure with err: %v", zipperAddr, err)
+		log.Printf("❌ Emit the data to yomo-zipper failure with err: %v", err)
+		return
 	}
+
+	generateAndSendData(cli)
 }
 
-func emit(addr string) error {
-	client, err := quic.NewClient(addr)
-	if err != nil {
-		return err
-	}
-	log.Printf("✅ Connected to yomo-zipper %s", addr)
-
-	stream, err := client.CreateStream(context.Background())
-	if err != nil {
-		return err
-	}
-
-	generateAndSendData(stream)
-
-	return nil
-}
-
-func generateAndSendData(stream quic.Stream) {
+func generateAndSendData(stream io.Writer) {
 	keys := []byte{0x10, 0x11, 0x12, 0x13, 0x14}
 
 	for {

@@ -60,14 +60,16 @@ func (s *quicGoServer) ListenAndServe(ctx context.Context, addr string) error {
 
 		go func(session quicGo.Session, cancel context.CancelFunc) {
 			defer cancel()
+			id := time.Now().UnixNano()
 
 			for {
 				stream, err := session.AcceptStream(context.Background())
 				if err != nil {
 					break
 				}
+				defer stream.Close()
 				if s.handler != nil {
-					s.handler.Read(stream)
+					s.handler.Read(id, session, stream)
 				} else {
 					log.Print("handler isn't set in QUIC server")
 					break
@@ -85,13 +87,15 @@ func (c *quicGoClient) Connect(addr string) error {
 	tlsConf := &tls.Config{
 		InsecureSkipVerify: true,
 		NextProtos:         []string{"hq-29"},
+		ClientSessionCache: tls.NewLRUClientSessionCache(1),
 	}
 
 	session, err := quicGo.DialAddr(addr, tlsConf, &quicGo.Config{
-		MaxIdleTimeout:        500 * time.Millisecond,
+		MaxIdleTimeout:        time.Minute * 10080,
 		KeepAlive:             true,
 		MaxIncomingStreams:    1000000,
 		MaxIncomingUniStreams: 1000000,
+		TokenStore:            quicGo.NewLRUTokenStore(1, 1),
 	})
 
 	if err != nil {
@@ -111,6 +115,10 @@ func (c *quicGoClient) CreateStream(ctx context.Context) (Stream, error) {
 		return nil, err
 	}
 	return stream, nil
+}
+
+func (c *quicGoClient) Close() error {
+	return c.session.CloseWithError(0, "")
 }
 
 // generateTLSConfig Setup a bare-bones TLS config for the server

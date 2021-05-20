@@ -15,7 +15,7 @@ type Server interface {
 // ServerHandler defines interface to handle the QUIC stream callbacks.
 type ServerHandler interface {
 	Listen() error
-	Read(st Stream) error
+	Read(id int64, sess Session, st Stream) error
 }
 
 // NewServer inits the default implementation of QUIC server.

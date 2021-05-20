@@ -62,19 +62,7 @@ $ make install
 
 ![YoMo Tutorial 1](https://yomo.run/tutorial-1.png)
 
-### 2. 运行 `flow`
-
-```bash
-$ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/flow
-
-$ yomo run
-
-2021/03/01 19:01:48 Building the Serverless Function File...
-2021/03/01 19:01:49 ✅ Listening on 0.0.0.0:4242
-
-```
-
-### 3. 运行 `zipper`
+### 2. 运行 `zipper`
 
 ```bash
 $ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/zipper
@@ -82,10 +70,26 @@ $ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/zipper
 $ yomo wf run
 
 2021/03/01 19:05:55 Found 1 flows in zipper config
-2021/03/01 19:05:55 Flow 1: training on localhost:4242
+2021/03/01 19:05:55 Flow 1: training
 2021/03/01 19:05:55 Found 0 sinks in zipper config
 2021/03/01 19:05:55 Running YoMo workflow...
-2021/03/01 19:05:55 ✅ Listening on 0.0.0.0:9999
+2021/03/01 19:05:55 ✅ Listening on 0.0.0.0:9000
+
+```
+
+### 3. 运行 `flow`
+
+> **注意**: `-n` flag 用于表示 flow 的名称, 它需要跟 zipper config (workflow.yaml) 里面 flow 名称匹配.
+
+```bash
+$ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/flow
+
+$ yomo run -n training
+
+2021/03/01 19:05:55 Building the Serverless Function File...
+2021/03/01 19:05:55 Connecting to zipper localhost:9000 ...
+2021/03/01 19:05:55 ✅ Connected to zipper localhost:9000
+2021/03/01 19:05:55 Running the Serverless Function.
 
 ```
 
@@ -96,7 +100,7 @@ $ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/source-data-a
 
 $ go run main.go
 
-2021/03/01 17:35:04 ✅ Connected to yomo-zipper localhost:9999
+2021/03/01 17:35:04 ✅ Connected to yomo-zipper localhost:9000
 2021/03/01 17:35:05 ✅ Emit 123.41881 to yomo-zipper
 
 ```
@@ -108,8 +112,8 @@ $ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/source-data-b
 
 $ go run main.go
 
-2021/03/01 17:35:04 ✅ Connected to yomo-zipper localhost:9999
-2021/03/01 17:35:05 ✅ Emit 123.41881 to yomo-zipper
+2021/03/01 17:35:04 ✅ Connected to yomo-zipper localhost:9000
+2021/03/01 17:35:05 ✅ Emit 36.92933 to yomo-zipper
 
 ```
 

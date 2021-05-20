@@ -1,19 +1,13 @@
 package cmd
 
 import (
-	"context"
-	"fmt"
-	"io"
 	"log"
-	"math/rand"
 	"os"
-	"plugin"
+	"strconv"
+	"strings"
 
-	"github.com/reactivex/rxgo/v2"
 	"github.com/spf13/cobra"
-	"github.com/yomorun/yomo/internal/dispatcher"
-	"github.com/yomorun/yomo/internal/serverless"
-	"github.com/yomorun/yomo/pkg/quic"
+	"github.com/yomorun/yomo/pkg/client"
 	"github.com/yomorun/yomo/pkg/rx"
 )
 
@@ -21,7 +15,8 @@ import (
 type RunOptions struct {
 	baseOptions
 	// Port is the port number of UDP host for Serverless function (default is 4242).
-	Port int
+	Url  string
+	Name string
 }
 
 // NewCmdRun creates a new command run.
@@ -37,75 +32,38 @@ func NewCmdRun() *cobra.Command {
 			if err != nil {
 				return
 			}
-
 			// get YoMo env
 			env := os.Getenv("YOMO_ENV")
 			if env != "" {
 				log.Printf("Get YOMO_ENV: %s", env)
 			}
-
-			// serve the Serverless app
-			endpoint := fmt.Sprintf("0.0.0.0:%d", opts.Port)
-			quicHandler := &quicServerHandler{
-				serverlessHandle: slHandler,
-				readers:          make(chan io.Reader),
-				writers:          make([]io.Writer, 0),
+			if opts.Url == "" {
+				opts.Url = "localhost:9000"
 			}
 
-			err = serverless.Run(endpoint, quicHandler)
+			splits := strings.Split(opts.Url, ":")
+			if len(splits) != 2 {
+				log.Printf(`❌ The format of url "%s" is incorrect, it should be "host:port", f.e. localhost:9000`, opts.Url)
+				return
+			}
+			host := splits[0]
+			port, _ := strconv.Atoi(splits[1])
+			cli, err := client.NewServerless(opts.Name).Connect(host, port)
 			if err != nil {
-				log.Print("Run the serverless failure with err: ", err)
+				log.Print("❌ Connect to zipper failure: ", err)
+				return
 			}
+
+			hanlder := slHandler.(func(rxStream rx.RxStream) rx.RxStream)
+			log.Print("Running the Serverless Function.")
+			cli.Pipe(hanlder)
 		},
 	}
 
-	cmd.Flags().StringVarP(&opts.Filename, "file-name", "f", "app.go", "Serverless function file (default is app.go)")
-	cmd.Flags().IntVarP(&opts.Port, "port", "p", 4242, "Port is the port number of UDP host for Serverless function (default is 4242)")
+	cmd.Flags().StringVarP(&opts.Filename, "file-name", "f", "app.go", "Serverless function file")
+	cmd.Flags().StringVarP(&opts.Url, "url", "u", "localhost:9000", "zipper server endpoint addr")
+	cmd.Flags().StringVarP(&opts.Name, "name", "n", "", "yomo serverless app name (required). It should match the specific service name in zipper config (workflow.yaml)")
+	cmd.MarkFlagRequired("name")
 
 	return cmd
-}
-
-type quicServerHandler struct {
-	serverlessHandle plugin.Symbol
-	readers          chan io.Reader
-	writers          []io.Writer
-}
-
-func (s *quicServerHandler) Listen() error {
-	rxstream := rx.FromReaderWithY3(s.readers)
-
-	stream := dispatcher.Dispatcher(s.serverlessHandle, rxstream)
-	rxstream.Connect(context.Background())
-
-	go func() {
-		for customer := range stream.Observe(rxgo.WithErrorStrategy(rxgo.ContinueOnError)) {
-			if customer.Error() {
-				fmt.Println(customer.E.Error())
-			} else if customer.V != nil {
-				index := rand.Intn(len(s.writers))
-
-			loop:
-				for i, w := range s.writers {
-					if index == i {
-						_, err := w.Write((customer.V).([]byte))
-						if err != nil {
-							index = rand.Intn(len(s.writers))
-							break loop
-						}
-					} else {
-						w.Write([]byte{0})
-					}
-				}
-
-			}
-		}
-	}()
-
-	return nil
-}
-
-func (s *quicServerHandler) Read(st quic.Stream) error {
-	s.readers <- st
-	s.writers = append(s.writers, st)
-	return nil
 }

@@ -8,8 +8,6 @@ import (
 
 type App struct {
 	Name string `yaml:"name"`
-	Host string `yaml:"host"`
-	Port int    `yaml:"port"`
 }
 
 type Workflow struct {
@@ -18,7 +16,9 @@ type Workflow struct {
 }
 
 type WorkflowConfig struct {
-	App      `yaml:",inline"`
+	Name     string `yaml:"name"`
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
 	Workflow `yaml:",inline"`
 }
 

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"time"
+	"sync"
 
 	"github.com/reactivex/rxgo/v2"
 	"github.com/spf13/cobra"
@@ -42,7 +42,9 @@ func NewCmdDev() *cobra.Command {
 			quicHandler := &quicDevHandler{
 				serverlessConfig: conf,
 				serverAddr:       fmt.Sprintf("localhost:%d", conf.Port),
-				mergeChan:        make(chan []byte, 20),
+				connMap:          map[int64]*workflow.QuicConn{},
+				build:            make(chan quic.Stream),
+				index:            0,
 			}
 
 			err = workflow.Run(endpoint, quicHandler)
@@ -53,7 +55,7 @@ func NewCmdDev() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVarP(&opts.Config, "config", "c", "workflow.yaml", "Workflow config file (default is workflow.yaml)")
+	cmd.Flags().StringVarP(&opts.Config, "config", "c", "workflow.yaml", "Workflow config file")
 
 	return cmd
 }
@@ -61,47 +63,80 @@ func NewCmdDev() *cobra.Command {
 type quicDevHandler struct {
 	serverlessConfig *conf.WorkflowConfig
 	serverAddr       string
-	mergeChan        chan []byte
+	connMap          map[int64]*workflow.QuicConn
+	build            chan quic.Stream
+	index            int
+	mutex            sync.RWMutex
 }
 
 func (s *quicDevHandler) Listen() error {
-	err := mocker.EmitMockDataFromCloud(s.serverAddr)
-	return err
-}
-
-func (s *quicDevHandler) Read(st quic.Stream) error {
-	id := time.Now().UnixNano()
-
-	flows, sinks := workflow.Build(s.serverlessConfig, id)
-
-	stream := dispatcher.DispatcherWithFunc(flows, st)
-
 	go func() {
-		for customer := range stream.Observe(rxgo.WithErrorStrategy(rxgo.ContinueOnError)) {
-			if customer.Error() {
-				fmt.Println(customer.E.Error())
-				continue
-			}
+		for {
+			select {
+			case item, ok := <-s.build:
+				if !ok {
+					return
+				}
 
-			value := customer.V.([]byte)
+				flows, sinks := workflow.Build(s.serverlessConfig, &s.connMap, s.index)
+				stream := dispatcher.DispatcherWithFunc(flows, item)
 
-			if len(value) == 1 && value[0] == byte(0) {
-				continue
-			}
-			for _, sink := range sinks {
-				go func(_sink func() (io.Writer, func()), buf []byte) {
-					writer, cancel := _sink()
+				go func() {
+					for customer := range stream.Observe(rxgo.WithErrorStrategy(rxgo.ContinueOnError)) {
+						if customer.Error() {
+							fmt.Println(customer.E.Error())
+							continue
+						}
 
-					if writer != nil {
-						_, err := writer.Write(buf)
-						if err != nil {
-							cancel()
+						value := customer.V.([]byte)
+						for _, sink := range sinks {
+							go func(_sink func() (io.Writer, func()), buf []byte) {
+								writer, cancel := _sink()
+								if writer != nil {
+									_, err := writer.Write(buf)
+									if err != nil {
+										cancel()
+									}
+								}
+							}(sink, value)
 						}
 					}
-				}(sink, value)
+				}()
+				s.index++
+
 			}
 		}
 	}()
 
+	go mocker.EmitMockDataFromCloud(s.serverAddr)
+
+	return nil
+}
+
+func (s *quicDevHandler) Read(id int64, sess quic.Session, st quic.Stream) error {
+	s.mutex.Lock()
+
+	if conn, ok := s.connMap[id]; ok {
+		if conn.StreamType == workflow.StreamTypeSource {
+			conn.Stream = append(conn.Stream, st)
+			s.build <- st
+		} else {
+			conn.Stream = append(conn.Stream, st)
+		}
+	} else {
+		conn := &workflow.QuicConn{
+			Session:    sess,
+			Signal:     st,
+			Stream:     make([]io.ReadWriter, 0),
+			StreamType: "",
+			Name:       "",
+			Heartbeat:  make(chan byte),
+			IsClosed:   false,
+			Ready:      true,
+		}
+		conn.Init(s.serverlessConfig)
+		s.connMap[id] = conn
+	}
+	s.mutex.Unlock()
 	return nil
 }

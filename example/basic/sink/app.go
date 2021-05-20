@@ -25,6 +25,6 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 		OnObserve(callback).
 		AuditTime(100).
 		Map(store).
-		Encode(0x11)
+		Encode(0x12)
 	return stream
 }

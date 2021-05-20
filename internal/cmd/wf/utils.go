@@ -60,7 +60,7 @@ func validateConfig(wfConf *conf.WorkflowConfig) error {
 	missingParams := []string{}
 	for k, apps := range m {
 		for _, app := range apps {
-			if app.Name == "" || app.Host == "" || app.Port <= 0 {
+			if app.Name == "" {
 				missingParams = append(missingParams, k)
 			}
 		}
@@ -85,11 +85,11 @@ func validateConfig(wfConf *conf.WorkflowConfig) error {
 func printZipperConf(wfConf *conf.WorkflowConfig) {
 	log.Printf("Found %d flows in zipper config", len(wfConf.Flows))
 	for i, flow := range wfConf.Flows {
-		log.Printf("Flow %d: %s on %s:%d", i+1, flow.Name, flow.Host, flow.Port)
+		log.Printf("Flow %d: %s", i+1, flow.Name)
 	}
 
 	log.Printf("Found %d sinks in zipper config", len(wfConf.Sinks))
 	for i, sink := range wfConf.Sinks {
-		log.Printf("Sink %d: %s on %s:%d", i+1, sink.Name, sink.Host, sink.Port)
+		log.Printf("Sink %d: %s", i+1, sink.Name)
 	}
 }

@@ -1,209 +1,228 @@
 package workflow
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
-	"log"
-	"strings"
-	"sync"
+	"time"
 
 	"github.com/yomorun/yomo/internal/conf"
+	"github.com/yomorun/yomo/pkg/client"
 	"github.com/yomorun/yomo/pkg/quic"
 )
 
-var FlowClients map[string]Client
-var SinkClients map[string]Client
-var flowmutex sync.RWMutex
-var sinkmutex sync.RWMutex
+const (
+	StreamTypeSource string = "source"
+	StreamTypeFlow   string = "flow"
+	StreamTypeSink   string = "sink"
+)
 
-type Client struct {
-	App        conf.App
-	StreamMap  map[int64]Stream
-	QuicClient quic.Client
+var GlobalApp = ""
+
+// QuicConn represents the QUIC connection.
+type QuicConn struct {
+	Session    quic.Session
+	Signal     quic.Stream
+	Stream     []io.ReadWriter
+	StreamType string
+	Name       string
+	Heartbeat  chan byte
+	IsClosed   bool
+	Ready      bool
 }
 
-type Stream struct {
-	St         io.ReadWriter
-	CancelFunc context.CancelFunc
+// SendSignal sends the signal to clients.
+func (c *QuicConn) SendSignal(b []byte) {
+	c.Signal.Write(b)
 }
 
-func init() {
-	FlowClients = make(map[string]Client)
-	SinkClients = make(map[string]Client)
+// Init the QUIC connection.
+func (c *QuicConn) Init(conf *conf.WorkflowConfig) {
+	isInit := true
+	go func() {
+		for {
+			buf := make([]byte, 1024)
+			n, err := c.Signal.Read(buf)
+
+			if err != nil {
+				break
+			}
+			value := buf[:n]
+
+			if isInit {
+				c.Name = string(value)
+				c.StreamType = StreamTypeSource
+				for _, app := range conf.Flows {
+					if app.Name == c.Name {
+						c.StreamType = StreamTypeFlow
+						break
+					}
+				}
+				for _, app := range conf.Sinks {
+					if app.Name == c.Name {
+						c.StreamType = StreamTypeSink
+						break
+					}
+				}
+				fmt.Println("Receive App:", c.Name, c.StreamType)
+				isInit = false
+				c.SendSignal(client.SignalAccepted)
+				c.Beat()
+				continue
+			}
+
+			if bytes.Equal(value, client.SignalHeartbeat) {
+				c.Heartbeat <- value[0]
+			}
+		}
+	}()
 }
 
-// Run runs quic service
+// Beat sends the heartbeat to clients and checks if receiving the heartbeat back.
+func (c *QuicConn) Beat() {
+	go func() {
+		defer c.Close()
+		for {
+			select {
+			case _, ok := <-c.Heartbeat:
+				if !ok {
+					return
+				}
+
+			case <-time.After(time.Second):
+				// close the connection if didn't receive the heartbeat after 1s.
+				c.Close()
+			}
+		}
+	}()
+
+	go func() {
+		for {
+			// send heartbeat in every 200ms.
+			time.Sleep(200 * time.Millisecond)
+			c.SendSignal(client.SignalHeartbeat)
+		}
+	}()
+}
+
+func (c *QuicConn) Close() {
+	c.Session.CloseWithError(0, "")
+	c.IsClosed = true
+	c.Ready = true
+}
+
+// Run QUIC service.
 func Run(endpoint string, handle quic.ServerHandler) error {
 	server := quic.NewServer(handle)
 
 	return server.ListenAndServe(context.Background(), endpoint)
 }
 
-// Build build the workflow by config (.yaml).
-func Build(wfConf *conf.WorkflowConfig, id int64) ([]func() (io.ReadWriter, func()), []func() (io.Writer, func())) {
+// Build the workflow by config (.yaml).
+func Build(wfConf *conf.WorkflowConfig, connMap *map[int64]*QuicConn, index int) ([]func() (io.ReadWriter, func()), []func() (io.Writer, func())) {
 	//init workflow
+	if GlobalApp == "" {
+		for i, v := range wfConf.Sinks {
+			if i == 0 {
+				GlobalApp = v.Name
+			}
+		}
+
+		for i, v := range wfConf.Flows {
+			if i == 0 {
+				GlobalApp = v.Name
+			}
+		}
+	}
+
 	flows := make([]func() (io.ReadWriter, func()), 0)
 	sinks := make([]func() (io.Writer, func()), 0)
 
 	for _, app := range wfConf.Flows {
-		flows = append(flows, createReadWriter(app, id))
+		flows = append(flows, createReadWriter(app, connMap, index))
 	}
 
 	for _, app := range wfConf.Sinks {
-		sinks = append(sinks, createWriter(app, 0))
+		sinks = append(sinks, createWriter(app, connMap, index))
 	}
 
 	return flows, sinks
+
 }
 
-func connectToApp(app conf.App) (quic.Client, error) {
-	client, err := quic.NewClient(fmt.Sprintf("%s:%d", app.Host, app.Port))
-	if err != nil {
-		log.Print(getConnectFailedMsg(app), err)
-		return nil, err
-	}
-	log.Printf("✅ Connect to %s successfully.", getAppInfo(app))
-	return client, err
-}
-
-func createStream(ctx context.Context, client quic.Client) (quic.Stream, error) {
-	return client.CreateStream(ctx)
-}
-
-func getConnectFailedMsg(app conf.App) string {
-	return fmt.Sprintf("❌ Connect to %s failure with err: ",
-		getAppInfo(app))
-}
-
-func getAppInfo(app conf.App) string {
-	return fmt.Sprintf("%s (%s:%d)",
-		app.Name,
-		app.Host,
-		app.Port)
-}
-
-func createReadWriter(app conf.App, id int64) func() (io.ReadWriter, func()) {
+func createReadWriter(app conf.App, connMap *map[int64]*QuicConn, index int) func() (io.ReadWriter, func()) {
+	fmt.Println("flow s.index.:", index)
 	f := func() (io.ReadWriter, func()) {
-		flowmutex.Lock()
-		if len(FlowClients[app.Name].StreamMap) > 0 && FlowClients[app.Name].StreamMap[id].St != nil {
-			flowmutex.Unlock()
-			return FlowClients[app.Name].StreamMap[id].St, FlowClients[app.Name].StreamMap[id].CancelFunc
+		if app.Name != GlobalApp {
+			index = 0
 		}
 
-		if FlowClients[app.Name].StreamMap == nil || (FlowClients[app.Name].StreamMap != nil && FlowClients[app.Name].QuicClient == nil) {
-			client, err := connectToApp(app)
+		var conn *QuicConn = nil
+		var id int64 = 0
 
-			if err != nil {
-				flowmutex.Unlock()
-				return nil, nil
+		for i, c := range *connMap {
+			if c.Name == app.Name {
+				conn = c
+				id = i
 			}
-			streammap := make(map[int64]Stream)
-			FlowClients[app.Name] = Client{
-				App:        app,
-				StreamMap:  streammap,
-				QuicClient: client,
+		}
+		if conn == nil {
+			return nil, func() {}
+		} else if len(conn.Stream) > index && conn.Stream[index] != nil {
+			conn.Ready = true
+			return conn.Stream[index], cancelStream(app, conn, connMap, id)
+		} else {
+			if conn.Ready {
+				conn.Ready = false
+				conn.SendSignal(client.SignalFlowSink)
 			}
+			return nil, func() {}
 		}
 
-		ctx, cancel := context.WithCancel(context.Background())
-		stream, err := createStream(ctx, FlowClients[app.Name].QuicClient)
-		if err != nil {
-			log.Print(getConnectFailedMsg(app), err)
-			if strings.Contains(err.Error(), "No recent network activity") {
-				FlowClients[app.Name] = Client{
-					App:        app,
-					StreamMap:  nil,
-					QuicClient: nil,
-				}
-			}
-			flowmutex.Unlock()
-			return nil, cancelFlowStream(cancel, app, id)
-		}
-		FlowClients[app.Name].StreamMap[id] = Stream{
-			St:         stream,
-			CancelFunc: cancelFlowStream(cancel, app, id),
-		}
-		flowmutex.Unlock()
-		return stream, cancelFlowStream(cancel, app, id)
 	}
 
 	return f
 }
 
-func createWriter(app conf.App, id int64) func() (io.Writer, func()) {
-
+func createWriter(app conf.App, connMap *map[int64]*QuicConn, index int) func() (io.Writer, func()) {
+	fmt.Println("sink s.index.:", index)
 	f := func() (io.Writer, func()) {
-		sinkmutex.Lock()
-		if len(SinkClients[app.Name].StreamMap) > 0 && SinkClients[app.Name].StreamMap[id].St != nil {
-			sinkmutex.Unlock()
-			return SinkClients[app.Name].StreamMap[id].St, SinkClients[app.Name].StreamMap[id].CancelFunc
-		}
+		// if app.Name != GlobalApp {
+		// 	index = 0
+		// }
 
-		if SinkClients[app.Name].StreamMap == nil || (SinkClients[app.Name].StreamMap != nil && SinkClients[app.Name].QuicClient == nil) {
-			client, err := connectToApp(app)
+		var conn *QuicConn = nil
+		var id int64 = 0
 
-			if err != nil {
-				sinkmutex.Unlock()
-				return nil, nil
+		for i, c := range *connMap {
+			if c.Name == app.Name {
+				conn = c
+				id = i
 			}
+		}
 
-			streammap := make(map[int64]Stream)
-			SinkClients[app.Name] = Client{
-				App:        app,
-				StreamMap:  streammap,
-				QuicClient: client,
+		if conn == nil {
+			return nil, func() {}
+		} else if len(conn.Stream) > index && conn.Stream[index] != nil {
+			conn.Ready = true
+			return conn.Stream[index], cancelStream(app, conn, connMap, id)
+		} else {
+			if conn.Ready {
+				conn.Ready = false
+				conn.SendSignal(client.SignalFlowSink)
 			}
-
+			return nil, func() {}
 		}
 
-		ctx, cancel := context.WithCancel(context.Background())
-		stream, err := createStream(ctx, SinkClients[app.Name].QuicClient)
-		if err != nil {
-			log.Print(getConnectFailedMsg(app), err)
-			if strings.Contains(err.Error(), "No recent network activity") {
-				SinkClients[app.Name] = Client{
-					App:        app,
-					StreamMap:  nil,
-					QuicClient: nil,
-				}
-			}
-			sinkmutex.Unlock()
-			return nil, cancelSinkStream(cancel, app, id)
-		}
-		SinkClients[app.Name].StreamMap[id] = Stream{
-			St:         stream,
-			CancelFunc: cancelSinkStream(cancel, app, id),
-		}
-		sinkmutex.Unlock()
-		return stream, cancelSinkStream(cancel, app, id)
-	}
-
-	return f
-}
-
-func cancelFlowStream(cancel context.CancelFunc, app conf.App, id int64) func() {
-	f := func() {
-		flowmutex.Lock()
-		if FlowClients[app.Name].StreamMap != nil {
-			stream := FlowClients[app.Name].StreamMap[id]
-			stream.St = nil
-			FlowClients[app.Name].StreamMap[id] = stream
-		}
-		flowmutex.Unlock()
 	}
 	return f
 }
 
-func cancelSinkStream(cancel context.CancelFunc, app conf.App, id int64) func() {
+func cancelStream(app conf.App, conn *QuicConn, connMap *map[int64]*QuicConn, id int64) func() {
 	f := func() {
-		sinkmutex.Lock()
-		if SinkClients[app.Name].StreamMap != nil {
-			stream := SinkClients[app.Name].StreamMap[id]
-			stream.St = nil
-			SinkClients[app.Name].StreamMap[id] = stream
-		}
-		sinkmutex.Unlock()
+		conn.Close()
+		delete(*connMap, id)
 	}
 	return f
 }

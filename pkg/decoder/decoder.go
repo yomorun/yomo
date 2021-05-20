@@ -1,4 +1,4 @@
-package yy3
+package decoder
 
 import (
 	"io"
@@ -13,7 +13,13 @@ type Iterable interface {
 	Observe() <-chan interface{}
 }
 
-type OnObserveFunc func(v []byte) (interface{}, error)
+type (
+	OnObserveFunc func(v []byte) (interface{}, error)
+	// Marshaller defines a marshaller type (interface{} to []byte).
+	Marshaller func(interface{}) ([]byte, error)
+	// Unmarshaller defines an unmarshaller type ([]byte to interface).
+	Unmarshaller func([]byte, interface{}) error
+)
 
 // Observable provide subscription and notification processing
 type Observable interface {
@@ -28,6 +34,9 @@ type Observable interface {
 	// MultiSubscribe gets the value of the multi keys from the stream.
 	// It will return the value to next operator if any key is matched.
 	MultiSubscribe(keys ...byte) Observable
+
+	// Unmarshal transforms the items emitted by an Observable by applying an unmarshalling to each item.
+	Unmarshal(unmarshaller Unmarshaller, factory func() interface{}) chan interface{}
 }
 
 type observableImpl struct {
@@ -53,10 +62,10 @@ type KeyValue struct {
 }
 
 type iterableImpl struct {
-	next                   chan interface{}
-	subscribers            []chan interface{}
-	mutex                  sync.RWMutex
-	producerAlreadyCreated bool
+	next        chan interface{}
+	subscribers []chan interface{}
+	mutex       sync.RWMutex
+	start       sync.Once
 }
 
 func (i *iterableImpl) Observe() <-chan interface{} {
@@ -69,12 +78,9 @@ func (i *iterableImpl) Observe() <-chan interface{} {
 }
 
 func (i *iterableImpl) connect() {
-	i.mutex.Lock()
-	if !i.producerAlreadyCreated {
+	i.start.Do(func() {
 		go i.produce()
-		i.producerAlreadyCreated = true
-	}
-	i.mutex.Unlock()
+	})
 }
 
 func (i *iterableImpl) produce() {
@@ -140,7 +146,7 @@ func (o *observableImpl) OnObserve(function func(v []byte) (interface{}, error))
 			value, err := function(kv.Buf)
 			if err != nil {
 				// log the error and contine consuming the item from observe
-				log.Println("Y3 OnObserve error:", err)
+				log.Println("Decoder OnObserve error:", err)
 			} else {
 				next <- value
 			}
@@ -165,13 +171,13 @@ func (o *observableImpl) OnMultiObserve(keyObserveMap map[byte]OnObserveFunc) ch
 			kv := item.(KeyBuf)
 			function := keyObserveMap[kv.Key]
 			if function == nil {
-				log.Println("Y3 OnObserve func is not found")
+				log.Println("Decoder OnObserve func is not found")
 				continue
 			}
 			val, err := function(kv.Buf)
 			if err != nil {
 				// log the error and contine consuming the item from observe
-				log.Println("Y3 OnObserve error:", err)
+				log.Println("Decoder OnObserve error:", err)
 			} else {
 				next <- KeyValue{
 					Key:   kv.Key,
@@ -284,7 +290,7 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 							buffer = append(buffer, buf[start:end]...)
 							index += ((1 + length + value) - buflength)
 							i += (int((1+length+value)-buflength) - 1)
-							// Y3 Codec draft-1, the least significant 6 bits is the key (SeqID).
+							// Decoder Codec draft-1, the least significant 6 bits is the key (SeqID).
 							// https://github.com/yomorun/y3-codec/blob/draft-01/draft-01.md
 							k := (buffer[0] << 2) >> 2
 							// check if key is matched
@@ -356,6 +362,32 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 	}
 
 	return createObservable(f)
+}
+
+func (o *observableImpl) Unmarshal(unmarshaller Unmarshaller, factory func() interface{}) chan interface{} {
+	next := make(chan interface{})
+
+	f := func(next chan interface{}) {
+		defer close(next)
+
+		observe := o.Observe()
+
+		for item := range observe {
+			buf := item.([]byte)
+			value := factory()
+			err := unmarshaller(buf, value)
+			if err != nil {
+				// log the error and contine consuming the item from observe
+				log.Println("Decoder Unmarshal error:", err)
+			} else {
+				next <- value
+			}
+		}
+	}
+
+	go f(next)
+
+	return next
 }
 
 func createObservable(f func(next chan interface{})) Observable {
