@@ -149,7 +149,8 @@ func (c *client) connect() (*client, error) {
 	return c, nil
 }
 
-func (c *client) retry() {
+// Retry the connection between client and server.
+func (c *client) Retry() {
 	for {
 		_, err := c.connect()
 		if err == nil {
@@ -166,7 +167,6 @@ func (c *client) Close() {
 	c.writers = make([]io.Writer, 0)
 	c.heartbeat = make(chan byte)
 	c.signal = nil
-	c.retry()
 }
 
 // NewSource setups the client of YoMo-Source.

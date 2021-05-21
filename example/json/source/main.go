@@ -25,6 +25,8 @@ func main() {
 	}
 	log.Printf("✅ Connected to yomo-zipper")
 
+	defer cli.Close()
+
 	// generate mock data and send it to yomo-zipper in every 100 ms.
 	generateAndSendData(cli)
 }

@@ -12,8 +12,8 @@ import (
 
 type noiseData struct {
 	Noise float32 `y3:"0x11"` // Noise value
-	Time  int64   `y3:"0x12"`  // Timestamp (ms)
-	From  string  `y3:"0x13"`  // Source IP
+	Time  int64   `y3:"0x12"` // Timestamp (ms)
+	From  string  `y3:"0x13"` // Source IP
 }
 
 func main() {
@@ -23,6 +23,8 @@ func main() {
 		log.Printf("❌ Emit the data to yomo-zipper failure with err: %v", err)
 		return
 	}
+
+	defer cli.Close()
 
 	// generate mock data and send it to yomo-zipper in every 100 ms.
 	generateAndSendData(cli)
