@@ -12,7 +12,7 @@ const dataAKey = 0x11
 const dataBKey = 0x12
 
 var convert = func(v []byte) (interface{}, error) {
-  fmt.Println(len(v))
+	fmt.Println(len(v))
 	return y3.ToFloat32(v)
 }
 

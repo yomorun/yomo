@@ -23,6 +23,8 @@ func main() {
 		return
 	}
 
+	defer cli.Close()
+
 	generateAndSendData(cli)
 }
 

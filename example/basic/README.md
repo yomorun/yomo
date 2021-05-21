@@ -39,6 +39,32 @@ yomo run ./flow/app.go -n Noise
 2021/05/20 14:10:17 Running the Serverless Function.
 ```
 
+### (Optional) Run `yomo-flow` via `Go CLI`
+
+Besides run `yomo-flow` via `YoMo CLI`, you can also run `yomo-flow` via `Go CLI` which requires the following additional code snippets in `app.go`:
+
+```go
+func main() {
+	cli, err := client.NewServerless("Noise").Connect("localhost", 9000)
+	if err != nil {
+		log.Print("❌ Connect to zipper failure: ", err)
+		return
+	}
+
+	defer cli.Close()
+	cli.Pipe(Handler)
+}
+```
+
+You can find the exmaple in `flow-via-go-cli` folder.
+
+```shell
+go run ./flow-via-go-cli/app.go
+
+2021/05/21 20:54:52 Connecting to zipper localhost:9000 ...
+2021/05/21 20:54:52 ✅ Connected to zipper localhost:9000
+```
+
 ### 4. Run [yomo-sink](https://yomo.run/sink)
 
 ```bash

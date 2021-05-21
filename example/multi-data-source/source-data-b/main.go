@@ -39,6 +39,7 @@ func emit(addr string) error {
 		panic(err)
 	}
 
+	defer cli.Close()
 	generateAndSendData(cli)
 
 	return nil
