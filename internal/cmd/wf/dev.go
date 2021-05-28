@@ -76,7 +76,7 @@ func (s *quicDevHandler) Listen() error {
 					return
 				}
 
-				flows, sinks := workflow.Build(s.serverlessConfig, &s.connMap)
+				flows, sinks := workflow.Build(s.serverlessConfig, &s.connMap, 0)
 				stream := dispatcher.DispatcherWithFunc(flows, item)
 
 				go func() {
@@ -117,7 +117,7 @@ func (s *quicDevHandler) Read(id int64, sess quic.Session, st quic.Stream) error
 		if conn.StreamType == workflow.StreamTypeSource {
 			s.build <- st
 		} else {
-			conn.Stream = st
+			conn.Streams = append(conn.Streams, st)
 		}
 	} else {
 		conn := &workflow.QuicConn{
