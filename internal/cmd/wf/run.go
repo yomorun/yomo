@@ -62,8 +62,8 @@ type quicHandler struct {
 	serverlessConfig *conf.WorkflowConfig
 	connMap          map[int64]*workflow.QuicConn
 	build            chan quic.Stream
-	index            int
 	mutex            sync.RWMutex
+	index            int
 }
 
 func (s *quicHandler) Listen() error {
@@ -114,16 +114,16 @@ func (s *quicHandler) Read(id int64, sess quic.Session, st quic.Stream) error {
 
 	if conn, ok := s.connMap[id]; ok {
 		if conn.StreamType == workflow.StreamTypeSource {
-			conn.Stream = append(conn.Stream, st)
+			conn.Streams = append(conn.Streams, st)
 			s.build <- st
 		} else {
-			conn.Stream = append(conn.Stream, st)
+			conn.Streams = append(conn.Streams, st)
 		}
 	} else {
 		conn := &workflow.QuicConn{
 			Session:    sess,
 			Signal:     st,
-			Stream:     make([]io.ReadWriter, 0),
+			Streams:    make([]io.ReadWriter, 0),
 			StreamType: "",
 			Name:       "",
 			Heartbeat:  make(chan byte),
