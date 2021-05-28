@@ -41,3 +41,13 @@ func DispatcherWithFunc(flows []func() (io.ReadWriter, func()), reader io.Reader
 
 	return stream
 }
+
+func DispatcherWithMultReaders(flows []func() (io.ReadWriter, func()), readers chan io.Reader) rx.RxStream {
+	stream := rx.FromMultiReaders(readers)
+
+	for _, flow := range flows {
+		stream = stream.MergeReadWriterWithFunc(flow)
+	}
+
+	return stream
+}

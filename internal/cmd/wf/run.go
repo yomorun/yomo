@@ -38,8 +38,7 @@ func NewCmdRun() *cobra.Command {
 			quicHandler := &quicHandler{
 				serverlessConfig: conf,
 				connMap:          map[int64]*workflow.QuicConn{},
-				build:            make(chan quic.Stream),
-				index:            0,
+				reader:           make(chan io.Reader),
 			}
 
 			endpoint := fmt.Sprintf("0.0.0.0:%d", conf.Port)
@@ -61,48 +60,34 @@ func NewCmdRun() *cobra.Command {
 type quicHandler struct {
 	serverlessConfig *conf.WorkflowConfig
 	connMap          map[int64]*workflow.QuicConn
-	build            chan quic.Stream
+	reader           chan io.Reader
 	mutex            sync.RWMutex
-	index            int
 }
 
 func (s *quicHandler) Listen() error {
+	flows, sinks := workflow.Build(s.serverlessConfig, &s.connMap)
+	stream := dispatcher.DispatcherWithMultReaders(flows, s.reader)
+
 	go func() {
-		for {
-			select {
-			case item, ok := <-s.build:
-				if !ok {
-					return
-				}
+		for customer := range stream.Observe(rxgo.WithErrorStrategy(rxgo.ContinueOnError)) {
+			if customer.Error() {
+				fmt.Println(customer.E.Error())
+				continue
+			}
 
-				flows, sinks := workflow.Build(s.serverlessConfig, &s.connMap, s.index)
-				stream := dispatcher.DispatcherWithFunc(flows, item)
+			value := customer.V.([]byte)
 
-				go func() {
-					for customer := range stream.Observe(rxgo.WithErrorStrategy(rxgo.ContinueOnError)) {
-						if customer.Error() {
-							fmt.Println(customer.E.Error())
-							continue
-						}
+			for _, sink := range sinks {
+				go func(_sink func() (io.Writer, func()), buf []byte) {
+					writer, cancel := _sink()
 
-						value := customer.V.([]byte)
-
-						for _, sink := range sinks {
-							go func(_sink func() (io.Writer, func()), buf []byte) {
-								writer, cancel := _sink()
-
-								if writer != nil {
-									_, err := writer.Write(buf)
-									if err != nil {
-										cancel()
-									}
-								}
-							}(sink, value)
+					if writer != nil {
+						_, err := writer.Write(buf)
+						if err != nil {
+							cancel()
 						}
 					}
-				}()
-				s.index++
-
+				}(sink, value)
 			}
 		}
 	}()
@@ -114,16 +99,14 @@ func (s *quicHandler) Read(id int64, sess quic.Session, st quic.Stream) error {
 
 	if conn, ok := s.connMap[id]; ok {
 		if conn.StreamType == workflow.StreamTypeSource {
-			conn.Streams = append(conn.Streams, st)
-			s.build <- st
+			s.reader <- st
 		} else {
-			conn.Streams = append(conn.Streams, st)
+			conn.Stream = st
 		}
 	} else {
 		conn := &workflow.QuicConn{
 			Session:    sess,
 			Signal:     st,
-			Streams:    make([]io.ReadWriter, 0),
 			StreamType: "",
 			Name:       "",
 			Heartbeat:  make(chan byte),

@@ -22,7 +22,7 @@ const (
 type QuicConn struct {
 	Session    quic.Session
 	Signal     quic.Stream
-	Streams    []io.ReadWriter
+	Stream     io.ReadWriter
 	StreamType string
 	Name       string
 	Heartbeat  chan byte
@@ -124,24 +124,24 @@ func Run(endpoint string, handle quic.ServerHandler) error {
 }
 
 // Build the workflow by config (.yaml).
-func Build(wfConf *conf.WorkflowConfig, connMap *map[int64]*QuicConn, index int) ([]func() (io.ReadWriter, func()), []func() (io.Writer, func())) {
+func Build(wfConf *conf.WorkflowConfig, connMap *map[int64]*QuicConn) ([]func() (io.ReadWriter, func()), []func() (io.Writer, func())) {
 	//init workflow
 	flows := make([]func() (io.ReadWriter, func()), 0)
 	sinks := make([]func() (io.Writer, func()), 0)
 
 	for _, app := range wfConf.Flows {
-		flows = append(flows, createReadWriter(app, connMap, index))
+		flows = append(flows, createReadWriter(app, connMap))
 	}
 
 	for _, app := range wfConf.Sinks {
-		sinks = append(sinks, createWriter(app, connMap, index))
+		sinks = append(sinks, createWriter(app, connMap))
 	}
 
 	return flows, sinks
 
 }
 
-func createReadWriter(app conf.App, connMap *map[int64]*QuicConn, index int) func() (io.ReadWriter, func()) {
+func createReadWriter(app conf.App, connMap *map[int64]*QuicConn) func() (io.ReadWriter, func()) {
 	f := func() (io.ReadWriter, func()) {
 		var conn *QuicConn = nil
 		var id int64 = 0
@@ -154,9 +154,9 @@ func createReadWriter(app conf.App, connMap *map[int64]*QuicConn, index int) fun
 		}
 		if conn == nil {
 			return nil, func() {}
-		} else if len(conn.Streams) > index && conn.Streams[index] != nil {
+		} else if conn.Stream != nil {
 			conn.Ready = true
-			return conn.Streams[index], cancelStream(app, conn, connMap, id)
+			return conn.Stream, cancelStream(app, conn, connMap, id)
 		} else {
 			if conn.Ready {
 				conn.Ready = false
@@ -170,7 +170,7 @@ func createReadWriter(app conf.App, connMap *map[int64]*QuicConn, index int) fun
 	return f
 }
 
-func createWriter(app conf.App, connMap *map[int64]*QuicConn, index int) func() (io.Writer, func()) {
+func createWriter(app conf.App, connMap *map[int64]*QuicConn) func() (io.Writer, func()) {
 	f := func() (io.Writer, func()) {
 		var conn *QuicConn = nil
 		var id int64 = 0
@@ -184,9 +184,9 @@ func createWriter(app conf.App, connMap *map[int64]*QuicConn, index int) func() 
 
 		if conn == nil {
 			return nil, func() {}
-		} else if len(conn.Streams) > index && conn.Streams[index] != nil {
+		} else if conn.Stream != nil {
 			conn.Ready = true
-			return conn.Streams[index], cancelStream(app, conn, connMap, id)
+			return conn.Stream, cancelStream(app, conn, connMap, id)
 		} else {
 			if conn.Ready {
 				conn.Ready = false

@@ -71,6 +71,40 @@ func FromReader(reader io.Reader) RxStream {
 	return ConvertObservable(rxgo.FromChannel(next, rxgo.WithErrorStrategy(rxgo.ContinueOnError)))
 }
 
+func FromMultiReaders(readers chan io.Reader) RxStream {
+	f := func(ctx context.Context, next chan rxgo.Item) {
+		defer close(next)
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case item, ok := <-readers:
+				if !ok {
+					return
+				}
+
+				go func() {
+					for {
+						buf := make([]byte, 3*1024)
+						n, err := item.Read(buf)
+
+						if err != nil {
+							break
+						} else {
+							value := buf[:n]
+							if !Of(value).SendContext(ctx, next) {
+								return
+							}
+						}
+					}
+				}()
+			}
+		}
+	}
+	return CreateObservable(f)
+}
+
 func FromReaderWithDecoder(readers chan io.Reader) RxStream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
