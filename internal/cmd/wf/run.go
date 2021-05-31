@@ -38,8 +38,7 @@ func NewCmdRun() *cobra.Command {
 			quicHandler := &quicHandler{
 				serverlessConfig: conf,
 				connMap:          map[int64]*workflow.QuicConn{},
-				source:           make(chan sourceItem),
-				sourceNames:      make(map[string]int),
+				source:           make(chan io.Reader),
 			}
 
 			endpoint := fmt.Sprintf("0.0.0.0:%d", conf.Port)
@@ -61,14 +60,8 @@ func NewCmdRun() *cobra.Command {
 type quicHandler struct {
 	serverlessConfig *conf.WorkflowConfig
 	connMap          map[int64]*workflow.QuicConn
-	source           chan sourceItem
-	sourceNames      map[string]int
+	source           chan io.Reader
 	mutex            sync.RWMutex
-}
-
-type sourceItem struct {
-	name string
-	st   quic.Stream
 }
 
 func (s *quicHandler) Listen() error {
@@ -80,23 +73,10 @@ func (s *quicHandler) Listen() error {
 					return
 				}
 
-				s.mutex.Lock()
-				index := 0
-				// get index by source name
-				if i, ok := s.sourceNames[item.name]; ok {
-					// the source name exists, return the index.
-					index = i
-				} else {
-					// add the source name to map
-					index = len(s.sourceNames)
-					s.sourceNames[item.name] = index
-				}
-
 				// get the flows/sinks by index
 				// make sure each unique source name only create one stream for flows/sinks.
-				flows, sinks := workflow.Build(s.serverlessConfig, &s.connMap, index)
-				stream := dispatcher.DispatcherWithFunc(flows, item.st)
-				s.mutex.Unlock()
+				flows, sinks := workflow.Build(s.serverlessConfig, &s.connMap)
+				stream := dispatcher.DispatcherWithFunc(flows, item)
 
 				go func() {
 					for customer := range stream.Observe(rxgo.WithErrorStrategy(rxgo.ContinueOnError)) {
@@ -132,12 +112,9 @@ func (s *quicHandler) Read(id int64, sess quic.Session, st quic.Stream) error {
 
 	if conn, ok := s.connMap[id]; ok {
 		if conn.StreamType == workflow.StreamTypeSource {
-			s.source <- sourceItem{
-				name: conn.Name,
-				st:   st,
-			}
+			s.source <- st
 		} else {
-			conn.Streams = append(conn.Streams, st)
+			conn.Stream = st
 		}
 	} else {
 		conn := &workflow.QuicConn{

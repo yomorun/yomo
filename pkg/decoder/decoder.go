@@ -41,6 +41,8 @@ type Observable interface {
 
 type observableImpl struct {
 	iterable Iterable
+	keyMap   map[byte]bool
+	mutex    sync.RWMutex
 }
 
 // KeyObserveFunc is a pair of subscribed key and onObserve callback.
@@ -201,10 +203,11 @@ func (o *observableImpl) Subscribe(key byte) Observable {
 // It will return the value to next operator if any key is matched.
 func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 	// set keys to map
-	m := make(map[byte]bool, len(keys))
+	o.mutex.Lock()
 	for _, key := range keys {
-		m[key] = true
+		o.keyMap[key] = true
 	}
+	o.mutex.Unlock()
 
 	f := func(next chan interface{}) {
 		defer close(next)
@@ -294,7 +297,7 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 							// https://github.com/yomorun/y3-codec/blob/draft-01/draft-01.md
 							k := (buffer[0] << 2) >> 2
 							// check if key is matched
-							if m[k] {
+							if o.keyMap[k] {
 								// subscribe multi keys, return key value to distinguish the values of different keys.
 								next <- KeyBuf{
 									Key: k,
@@ -324,7 +327,6 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 									length = 0
 									value = 0
 								}
-
 							}
 							continue
 						} else {
@@ -393,7 +395,8 @@ func (o *observableImpl) Unmarshal(unmarshaller Unmarshaller, factory func() int
 func createObservable(f func(next chan interface{})) Observable {
 	next := make(chan interface{})
 	subscribers := make([]chan interface{}, 0)
+	keyMap := make(map[byte]bool, 0)
 
 	go f(next)
-	return &observableImpl{iterable: &iterableImpl{next: next, subscribers: subscribers}}
+	return &observableImpl{iterable: &iterableImpl{next: next, subscribers: subscribers}, keyMap: keyMap, mutex: sync.RWMutex{}}
 }
