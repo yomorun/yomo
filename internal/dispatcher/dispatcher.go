@@ -32,6 +32,7 @@ func AutoDispatcher(appPath string, rxstream rx.RxStream) (rx.RxStream, error) {
 	return Dispatcher(handler, rxstream), nil
 }
 
+// DispatcherWithFunc dispatches the input stream to downstreams.
 func DispatcherWithFunc(flows []func() (io.ReadWriter, func()), reader io.Reader) rx.RxStream {
 	stream := rx.FromReader(reader)
 

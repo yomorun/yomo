@@ -73,8 +73,7 @@ func (s *quicHandler) Listen() error {
 					return
 				}
 
-				// get the flows/sinks by index
-				// make sure each unique source name only create one stream for flows/sinks.
+				// one stream for each flows/sinks.
 				flows, sinks := workflow.Build(s.serverlessConfig, &s.connMap)
 				stream := dispatcher.DispatcherWithFunc(flows, item)
 

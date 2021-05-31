@@ -110,6 +110,7 @@ func (c *QuicConn) Beat() {
 	}()
 }
 
+// Close the QUIC connections.
 func (c *QuicConn) Close() {
 	c.Session.CloseWithError(0, "")
 	c.IsClosed = true
@@ -124,6 +125,7 @@ func Run(endpoint string, handle quic.ServerHandler) error {
 }
 
 // Build the workflow by config (.yaml).
+// It will create one stream for each flows/sinks.
 func Build(wfConf *conf.WorkflowConfig, connMap *map[int64]*QuicConn) ([]func() (io.ReadWriter, func()), []func() (io.Writer, func())) {
 	//init workflow
 	flows := make([]func() (io.ReadWriter, func()), 0)
