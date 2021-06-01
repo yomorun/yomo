@@ -4,9 +4,13 @@ import (
 	"io"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/yomorun/y3-codec-golang/pkg/common"
 )
+
+// bufferSize is the capacity of decoder.
+const bufferSize = 50
 
 // Iterable iterate through and get the data of observe
 type Iterable interface {
@@ -24,11 +28,14 @@ type (
 // Observable provide subscription and notification processing
 type Observable interface {
 	Iterable
+
+	// Subscribe the specified key via Y3 Codec.
 	Subscribe(key byte) Observable
 
 	// OnMultiObserve calls the callback function when one of key is observed.
 	OnMultiObserve(keyObserveMap map[byte]OnObserveFunc) chan KeyValue
 
+	// OnObserve calls the callback function when the key is observed.
 	OnObserve(function func(v []byte) (interface{}, error)) chan interface{}
 
 	// MultiSubscribe gets the value of the multi keys from the stream.
@@ -41,8 +48,6 @@ type Observable interface {
 
 type observableImpl struct {
 	iterable Iterable
-	keyMap   map[byte]bool
-	mutex    sync.RWMutex
 }
 
 // KeyObserveFunc is a pair of subscribed key and onObserve callback.
@@ -113,7 +118,7 @@ func (o *observableImpl) Observe() <-chan interface{} {
 	return o.iterable.Observe()
 }
 
-//FromStream reads data from reader
+// FromStream reads data from reader
 func FromStream(reader io.Reader) Observable {
 
 	f := func(next chan interface{}) {
@@ -203,11 +208,10 @@ func (o *observableImpl) Subscribe(key byte) Observable {
 // It will return the value to next operator if any key is matched.
 func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 	// set keys to map
-	o.mutex.Lock()
+	m := make(map[byte]bool, len(keys))
 	for _, key := range keys {
-		o.keyMap[key] = true
+		m[key] = true
 	}
-	o.mutex.Unlock()
 
 	f := func(next chan interface{}) {
 		defer close(next)
@@ -297,7 +301,7 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 							// https://github.com/yomorun/y3-codec/blob/draft-01/draft-01.md
 							k := (buffer[0] << 2) >> 2
 							// check if key is matched
-							if o.keyMap[k] {
+							if m[k] {
 								// subscribe multi keys, return key value to distinguish the values of different keys.
 								next <- KeyBuf{
 									Key: k,
@@ -393,10 +397,28 @@ func (o *observableImpl) Unmarshal(unmarshaller Unmarshaller, factory func() int
 }
 
 func createObservable(f func(next chan interface{})) Observable {
-	next := make(chan interface{})
+	next := make(chan interface{}, bufferSize)
 	subscribers := make([]chan interface{}, 0)
-	keyMap := make(map[byte]bool, 0)
 
 	go f(next)
-	return &observableImpl{iterable: &iterableImpl{next: next, subscribers: subscribers}, keyMap: keyMap, mutex: sync.RWMutex{}}
+	go dropOldData(next)
+	return &observableImpl{iterable: &iterableImpl{next: next, subscribers: subscribers}}
+}
+
+// dropOldData drops the old data if the size of "next" channel reaches the capacity.
+func dropOldData(next chan interface{}) {
+	for {
+		select {
+		case <-time.After(100 * time.Millisecond):
+			if len(next) < bufferSize {
+				// the "next" channel is not full yet.
+				continue
+			}
+
+			// the "next"  channel is full, drop 1/2 old data to receive the new data.
+			for i := 0; i < bufferSize/2; i++ {
+				<-next
+			}
+		}
+	}
 }

@@ -71,6 +71,7 @@ func FromReader(reader io.Reader) RxStream {
 	return ConvertObservable(rxgo.FromChannel(next, rxgo.WithErrorStrategy(rxgo.ContinueOnError)))
 }
 
+// FromReaderWithDecoder creates a RxStream with decoder
 func FromReaderWithDecoder(readers chan io.Reader) RxStream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
@@ -83,26 +84,10 @@ func FromReaderWithDecoder(readers chan io.Reader) RxStream {
 				if !ok {
 					return
 				}
-				r, w := io.Pipe()
-				if !Of(decoder.FromStream(r)).SendContext(ctx, next) {
+
+				if !Of(decoder.FromStream(item)).SendContext(ctx, next) {
 					return
 				}
-
-				go func() {
-					time.Sleep(time.Millisecond)
-					defer w.Close()
-					for {
-						buf := make([]byte, 3*1024)
-						n, err := item.Read(buf)
-
-						if err != nil {
-							break
-						} else {
-							value := buf[:n]
-							w.Write(value)
-						}
-					}
-				}()
 			}
 		}
 	}
