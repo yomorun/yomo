@@ -3,16 +3,27 @@ package client
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
 	"sync"
 	"time"
 
 	"github.com/yomorun/yomo/pkg/quic"
 	"github.com/yomorun/yomo/pkg/rx"
+)
+
+const (
+	// ClientTypeSource represents the client type of Source.
+	ClientTypeSource = "source"
+
+	// ClientTypeServerless represents the client type of Serverless.
+	ClientTypeServerless = "serverless"
+
+	// ClientTypeZipperSender represents the client type of ZipperSender.
+	ClientTypeZipperSender = "zipper-sender"
 )
 
 var (
@@ -26,13 +37,53 @@ var (
 	SignalFlowSink = []byte{0, 0}
 )
 
-type client struct {
+// NegotiationPayload represents the payload for negotiation.
+type NegotiationPayload struct {
+	AppName    string `json:"app_name"`
+	ClientType string `json:"client_type"`
+}
+
+type client interface {
+	io.Writer
+	Close() error
+	Retry()
+}
+
+// SourceClient is the client for YoMo-Source.
+// https://yomo.run/source
+type SourceClient interface {
+	client
+
+	// Connect to YoMo-Zipper
+	Connect(ip string, port int) (SourceClient, error)
+}
+
+// ServerlessClient is the client for YoMo-Serverless.
+type ServerlessClient interface {
+	client
+
+	// Connect to YoMo-Zipper
+	Connect(ip string, port int) (ServerlessClient, error)
+
+	// Pipe the Handler function.
+	Pipe(f func(rxstream rx.RxStream) rx.RxStream)
+}
+
+// ZipperSenderClient is the client for Zipper-Sender to connect the downsteam Zipper-Receiver  in edge-mesh.
+type ZipperSenderClient interface {
+	client
+
+	// Connect to downsteam Zipper-Receiver
+	Connect(ip string, port int) (ZipperSenderClient, error)
+}
+
+type clientImpl struct {
 	zipperIP   string
 	zipperPort int
 	name       string
-	isSource   bool // isSource indicates whether it is a yomo-source client.
+	clientType string
 	readers    chan io.Reader
-	writers    []io.Writer
+	writer     io.Writer
 	session    quic.Client
 	signal     quic.Stream
 	stream     quic.Stream
@@ -40,21 +91,35 @@ type client struct {
 	mutex      sync.Mutex
 }
 
-// SourceClient is the client for YoMo-Source.
-// https://yomo.run/source
-type SourceClient struct {
-	*client
+type sourceClientImpl struct {
+	*clientImpl
 }
 
-// ServerlessClient is the client for YoMo-Serverless.
-type ServerlessClient struct {
-	*client
+type serverlessClientImpl struct {
+	*clientImpl
+}
+
+type zipperSenderClientImpl struct {
+	*clientImpl
+}
+
+// newClient creates a new client.
+func newClient(appName string, clientType string) *clientImpl {
+	c := &clientImpl{
+		name:       appName,
+		clientType: clientType,
+		readers:    make(chan io.Reader, 1),
+		heartbeat:  make(chan byte),
+	}
+	return c
 }
 
 // connect to yomo-zipper.
 // TODO: login auth
-func (c *client) connect() (*client, error) {
-	addr := fmt.Sprintf("%s:%d", c.zipperIP, c.zipperPort)
+func (c *clientImpl) connect(ip string, port int) (*clientImpl, error) {
+	c.zipperIP = ip
+	c.zipperPort = port
+	addr := fmt.Sprintf("%s:%d", ip, port)
 	log.Println("Connecting to zipper", addr, "...")
 	// connect to yomo-zipper
 	quic_cli, err := quic.NewClient(addr)
@@ -72,8 +137,13 @@ func (c *client) connect() (*client, error) {
 	c.session = quic_cli
 	c.signal = quic_stream
 
-	// send name to zipper
-	_, err = c.signal.Write([]byte(c.name))
+	// send negotiation payload to zipper
+	payload := NegotiationPayload{
+		AppName:    c.name,
+		ClientType: c.clientType,
+	}
+	buf, _ := json.Marshal(payload)
+	_, err = c.signal.Write(buf)
 
 	if err != nil {
 		fmt.Println("client [Write] Error:", err)
@@ -98,7 +168,7 @@ func (c *client) connect() (*client, error) {
 				c.heartbeat <- buf[0]
 			} else if bytes.Equal(value, SignalAccepted) {
 				// accepted
-				if c.isSource {
+				if c.clientType == ClientTypeSource {
 					// create the stream from source.
 					stream, err := c.session.CreateStream(context.Background())
 					if err != nil {
@@ -118,7 +188,7 @@ func (c *client) connect() (*client, error) {
 				}
 
 				c.readers <- stream
-				c.writers = append(c.writers, stream)
+				c.writer = stream
 				stream.Write(SignalHeartbeat)
 			}
 		}
@@ -140,7 +210,7 @@ func (c *client) connect() (*client, error) {
 			case <-time.After(time.Second):
 				// reconnect if didn't receive the heartbeat after 1s.
 				c.mutex.Lock()
-				c.connect()
+				c.connect(c.zipperIP, c.zipperPort)
 				c.mutex.Unlock()
 			}
 		}
@@ -153,10 +223,19 @@ func (c *client) connect() (*client, error) {
 	return c, nil
 }
 
+// Write the data to downstream.
+func (c *clientImpl) Write(b []byte) (int, error) {
+	if c.stream != nil {
+		return c.stream.Write(b)
+	} else {
+		return 0, errors.New("not found stream")
+	}
+}
+
 // Retry the connection between client and server.
-func (c *client) Retry() {
+func (c *clientImpl) Retry() {
 	for {
-		_, err := c.connect()
+		_, err := c.connect(c.zipperIP, c.zipperPort)
 		if err == nil {
 			break
 		} else {
@@ -166,81 +245,54 @@ func (c *client) Retry() {
 }
 
 // Close the client.
-func (c *client) Close() {
-	c.session.Close()
-	c.writers = make([]io.Writer, 0)
+func (c *clientImpl) Close() error {
+	err := c.session.Close()
 	c.heartbeat = make(chan byte)
 	c.signal = nil
+	return err
 }
 
 // NewSource setups the client of YoMo-Source.
-func NewSource(appName string) *SourceClient {
-	c := &SourceClient{
-		client: &client{
-			name:      appName,
-			isSource:  true,
-			readers:   make(chan io.Reader, 1),
-			writers:   make([]io.Writer, 0),
-			heartbeat: make(chan byte),
-		},
+func NewSource(appName string) SourceClient {
+	c := &sourceClientImpl{
+		clientImpl: newClient(appName, ClientTypeSource),
 	}
 	return c
 }
 
 // Connect to yomo-zipper.
-func (c *SourceClient) Connect(ip string, port int) (*SourceClient, error) {
-	c.zipperIP = ip
-	c.zipperPort = port
-
-	cli, err := c.connect()
+func (c *sourceClientImpl) Connect(ip string, port int) (SourceClient, error) {
+	cli, err := c.connect(ip, port)
 	if err != nil {
 		return nil, err
 	}
-	return &SourceClient{
+	return &sourceClientImpl{
 		cli,
 	}, nil
 }
 
 // NewServerless setups the client of YoMo-Serverless.
 // The "appName" should match the name of flows (or sinks) in workflow.yaml in zipper.
-func NewServerless(appName string) *ServerlessClient {
-	c := &ServerlessClient{
-		client: &client{
-			name:      appName,
-			isSource:  false,
-			readers:   make(chan io.Reader, 1),
-			writers:   make([]io.Writer, 0),
-			heartbeat: make(chan byte),
-		},
+func NewServerless(appName string) ServerlessClient {
+	c := &serverlessClientImpl{
+		clientImpl: newClient(appName, ClientTypeServerless),
 	}
 	return c
 }
 
-// Write the data to YoMo-Zipper.
-func (c *SourceClient) Write(b []byte) (int, error) {
-	if c.client.stream != nil {
-		return c.stream.Write(b)
-	} else {
-		return 0, errors.New("not found stream")
-	}
-}
-
 // Connect to yomo-zipper.
-func (c *ServerlessClient) Connect(ip string, port int) (*ServerlessClient, error) {
-	c.zipperIP = ip
-	c.zipperPort = port
-
-	cli, err := c.connect()
+func (c *serverlessClientImpl) Connect(ip string, port int) (ServerlessClient, error) {
+	cli, err := c.connect(ip, port)
 	if err != nil {
 		return nil, err
 	}
-	return &ServerlessClient{
+	return &serverlessClientImpl{
 		cli,
 	}, nil
 }
 
 // Pipe the handler function in flow/sink serverless.
-func (c *ServerlessClient) Pipe(f func(rxstream rx.RxStream) rx.RxStream) {
+func (c *serverlessClientImpl) Pipe(f func(rxstream rx.RxStream) rx.RxStream) {
 	rxstream := rx.FromReaderWithDecoder(c.readers)
 	stream := f(rxstream)
 
@@ -250,25 +302,39 @@ func (c *ServerlessClient) Pipe(f func(rxstream rx.RxStream) rx.RxStream) {
 		if customer.Error() {
 			panic(customer.E)
 		} else if customer.V != nil {
-			index := rand.Intn(len(c.writers))
-		loop:
-			for i, w := range c.writers {
-				if index == i {
-					buf, ok := (customer.V).([]byte)
-					if !ok {
-						log.Printf("❌ Please add the encode/marshal operator in the end of your Serverless handler.")
-						break loop
-					}
-					_, err := w.Write(buf)
-					if err != nil {
-						index = rand.Intn(len(c.writers))
-						break loop
-					}
-				} else {
-					w.Write(SignalHeartbeat)
-				}
+			if c.writer == nil {
+				continue
 			}
 
+			buf, ok := (customer.V).([]byte)
+			if !ok {
+				log.Print("❌ Please add the encode/marshal operator in the end of your Serverless handler.")
+				continue
+			}
+			_, err := c.writer.Write(buf)
+			if err != nil {
+				log.Print("❌ Send data to zipper failed. ", err)
+			}
 		}
+
 	}
+}
+
+// NewZipperSender setups the client of Zipper-Sender.
+func NewZipperSender(appName string) ZipperSenderClient {
+	c := &zipperSenderClientImpl{
+		clientImpl: newClient(appName, ClientTypeZipperSender),
+	}
+	return c
+}
+
+// Connect to downstream zipper-receiver in edge-mesh.
+func (c *zipperSenderClientImpl) Connect(ip string, port int) (ZipperSenderClient, error) {
+	cli, err := c.connect(ip, port)
+	if err != nil {
+		return nil, err
+	}
+	return &zipperSenderClientImpl{
+		cli,
+	}, nil
 }
