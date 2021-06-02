@@ -43,8 +43,7 @@ func NewCmdDev() *cobra.Command {
 				serverlessConfig: conf,
 				serverAddr:       fmt.Sprintf("localhost:%d", conf.Port),
 				connMap:          map[int64]*workflow.QuicConn{},
-				build:            make(chan quic.Stream),
-				index:            0,
+				source:           make(chan quic.Stream),
 			}
 
 			err = workflow.Run(endpoint, quicHandler)
@@ -64,8 +63,7 @@ type quicDevHandler struct {
 	serverlessConfig *conf.WorkflowConfig
 	serverAddr       string
 	connMap          map[int64]*workflow.QuicConn
-	build            chan quic.Stream
-	index            int
+	source           chan quic.Stream
 	mutex            sync.RWMutex
 }
 
@@ -73,12 +71,12 @@ func (s *quicDevHandler) Listen() error {
 	go func() {
 		for {
 			select {
-			case item, ok := <-s.build:
+			case item, ok := <-s.source:
 				if !ok {
 					return
 				}
 
-				flows, sinks := workflow.Build(s.serverlessConfig, &s.connMap, s.index)
+				flows, sinks := workflow.Build(s.serverlessConfig, &s.connMap)
 				stream := dispatcher.DispatcherWithFunc(flows, item)
 
 				go func() {
@@ -102,7 +100,6 @@ func (s *quicDevHandler) Listen() error {
 						}
 					}
 				}()
-				s.index++
 
 			}
 		}
@@ -118,16 +115,14 @@ func (s *quicDevHandler) Read(id int64, sess quic.Session, st quic.Stream) error
 
 	if conn, ok := s.connMap[id]; ok {
 		if conn.StreamType == workflow.StreamTypeSource {
-			conn.Stream = append(conn.Stream, st)
-			s.build <- st
+			s.source <- st
 		} else {
-			conn.Stream = append(conn.Stream, st)
+			conn.Stream = st
 		}
 	} else {
 		conn := &workflow.QuicConn{
 			Session:    sess,
 			Signal:     st,
-			Stream:     make([]io.ReadWriter, 0),
 			StreamType: "",
 			Name:       "",
 			Heartbeat:  make(chan byte),

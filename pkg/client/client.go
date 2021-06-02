@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"math/rand"
+	"sync"
 	"time"
 
 	"github.com/yomorun/yomo/pkg/quic"
@@ -36,6 +37,7 @@ type client struct {
 	signal     quic.Stream
 	stream     quic.Stream
 	heartbeat  chan byte
+	mutex      sync.Mutex
 }
 
 // SourceClient is the client for YoMo-Source.
@@ -80,9 +82,9 @@ func (c *client) connect() (*client, error) {
 
 	// flow, sink create stream or heartbeat
 	accepted := make(chan bool)
-	defer close(accepted)
 
 	go func() {
+		defer close(accepted)
 		for {
 			buf := make([]byte, 2)
 			n, err := c.signal.Read(buf)
@@ -136,8 +138,10 @@ func (c *client) connect() (*client, error) {
 					return
 				}
 			case <-time.After(time.Second):
-				// disconnect if didn't receive the heartbeat after 1s.
-				return
+				// reconnect if didn't receive the heartbeat after 1s.
+				c.mutex.Lock()
+				c.connect()
+				c.mutex.Unlock()
 			}
 		}
 

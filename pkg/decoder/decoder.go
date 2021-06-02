@@ -4,9 +4,13 @@ import (
 	"io"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/yomorun/y3-codec-golang/pkg/common"
 )
+
+// bufferSize is the capacity of decoder.
+const bufferSize = 50
 
 // Iterable iterate through and get the data of observe
 type Iterable interface {
@@ -24,11 +28,14 @@ type (
 // Observable provide subscription and notification processing
 type Observable interface {
 	Iterable
+
+	// Subscribe the specified key via Y3 Codec.
 	Subscribe(key byte) Observable
 
 	// OnMultiObserve calls the callback function when one of key is observed.
 	OnMultiObserve(keyObserveMap map[byte]OnObserveFunc) chan KeyValue
 
+	// OnObserve calls the callback function when the key is observed.
 	OnObserve(function func(v []byte) (interface{}, error)) chan interface{}
 
 	// MultiSubscribe gets the value of the multi keys from the stream.
@@ -111,7 +118,7 @@ func (o *observableImpl) Observe() <-chan interface{} {
 	return o.iterable.Observe()
 }
 
-//FromStream reads data from reader
+// FromStream reads data from reader
 func FromStream(reader io.Reader) Observable {
 
 	f := func(next chan interface{}) {
@@ -324,7 +331,6 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 									length = 0
 									value = 0
 								}
-
 							}
 							continue
 						} else {
@@ -391,9 +397,28 @@ func (o *observableImpl) Unmarshal(unmarshaller Unmarshaller, factory func() int
 }
 
 func createObservable(f func(next chan interface{})) Observable {
-	next := make(chan interface{})
+	next := make(chan interface{}, bufferSize)
 	subscribers := make([]chan interface{}, 0)
 
 	go f(next)
+	go dropOldData(next)
 	return &observableImpl{iterable: &iterableImpl{next: next, subscribers: subscribers}}
+}
+
+// dropOldData drops the old data if the size of "next" channel reaches the capacity.
+func dropOldData(next chan interface{}) {
+	for {
+		select {
+		case <-time.After(100 * time.Millisecond):
+			if len(next) < bufferSize {
+				// the "next" channel is not full yet.
+				continue
+			}
+
+			// the "next"  channel is full, drop 1/2 old data to receive the new data.
+			for i := 0; i < bufferSize/2; i++ {
+				<-next
+			}
+		}
+	}
 }
