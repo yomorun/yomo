@@ -2,7 +2,6 @@ package wf
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"sync"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/yomorun/yomo/internal/mocker"
 	"github.com/yomorun/yomo/internal/workflow"
 	"github.com/yomorun/yomo/pkg/quic"
+	"github.com/yomorun/yomo/pkg/yomo"
 )
 
 // DevOptions are the options for dev command.
@@ -88,7 +88,7 @@ func (s *quicDevHandler) Listen() error {
 
 						value := customer.V.([]byte)
 						for _, sink := range sinks {
-							go func(_sink func() (io.Writer, func()), buf []byte) {
+							go func(_sink yomo.SinkFunc, buf []byte) {
 								writer, cancel := _sink()
 								if writer != nil {
 									_, err := writer.Write(buf)

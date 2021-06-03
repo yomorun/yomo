@@ -7,6 +7,7 @@ import (
 
 	"github.com/yomorun/yomo/internal/serverless"
 	"github.com/yomorun/yomo/pkg/rx"
+	"github.com/yomorun/yomo/pkg/yomo"
 )
 
 func Dispatcher(hanlder plugin.Symbol, rxstream rx.RxStream) rx.RxStream {
@@ -33,7 +34,7 @@ func AutoDispatcher(appPath string, rxstream rx.RxStream) (rx.RxStream, error) {
 }
 
 // DispatcherWithFunc dispatches the input stream to downstreams.
-func DispatcherWithFunc(flows []func() (io.ReadWriter, func()), reader io.Reader) rx.RxStream {
+func DispatcherWithFunc(flows []yomo.FlowFunc, reader io.Reader) rx.RxStream {
 	stream := rx.FromReader(reader)
 
 	for _, flow := range flows {

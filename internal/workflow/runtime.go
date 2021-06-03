@@ -12,6 +12,7 @@ import (
 	"github.com/yomorun/yomo/internal/conf"
 	"github.com/yomorun/yomo/pkg/client"
 	"github.com/yomorun/yomo/pkg/quic"
+	"github.com/yomorun/yomo/pkg/yomo"
 )
 
 const (
@@ -152,10 +153,10 @@ func Run(endpoint string, handle quic.ServerHandler) error {
 
 // Build the workflow by config (.yaml).
 // It will create one stream for each flows/sinks.
-func Build(wfConf *conf.WorkflowConfig, connMap *map[int64]*QuicConn) ([]func() (io.ReadWriter, func()), []func() (io.Writer, func())) {
+func Build(wfConf *conf.WorkflowConfig, connMap *map[int64]*QuicConn) ([]yomo.FlowFunc, []yomo.SinkFunc) {
 	//init workflow
-	flows := make([]func() (io.ReadWriter, func()), 0)
-	sinks := make([]func() (io.Writer, func()), 0)
+	flows := make([]yomo.FlowFunc, 0)
+	sinks := make([]yomo.SinkFunc, 0)
 
 	for _, app := range wfConf.Flows {
 		flows = append(flows, createReadWriter(app, connMap))
@@ -168,8 +169,8 @@ func Build(wfConf *conf.WorkflowConfig, connMap *map[int64]*QuicConn) ([]func() 
 	return flows, sinks
 }
 
-func createReadWriter(app conf.App, connMap *map[int64]*QuicConn) func() (io.ReadWriter, func()) {
-	f := func() (io.ReadWriter, func()) {
+func createReadWriter(app conf.App, connMap *map[int64]*QuicConn) yomo.FlowFunc {
+	f := func() (io.ReadWriter, yomo.CancelFunc) {
 		var conn *QuicConn = nil
 		var id int64 = 0
 
@@ -197,8 +198,8 @@ func createReadWriter(app conf.App, connMap *map[int64]*QuicConn) func() (io.Rea
 	return f
 }
 
-func createWriter(app conf.App, connMap *map[int64]*QuicConn) func() (io.Writer, func()) {
-	f := func() (io.Writer, func()) {
+func createWriter(app conf.App, connMap *map[int64]*QuicConn) yomo.SinkFunc {
+	f := func() (io.Writer, yomo.CancelFunc) {
 		var conn *QuicConn = nil
 		var id int64 = 0
 

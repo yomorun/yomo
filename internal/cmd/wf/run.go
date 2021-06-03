@@ -12,6 +12,7 @@ import (
 	"github.com/yomorun/yomo/internal/dispatcher"
 	"github.com/yomorun/yomo/internal/workflow"
 	"github.com/yomorun/yomo/pkg/quic"
+	"github.com/yomorun/yomo/pkg/yomo"
 )
 
 // RunOptions are the options for run command.
@@ -87,7 +88,7 @@ func (s *quicHandler) Listen() error {
 						value := customer.V.([]byte)
 
 						for _, sink := range sinks {
-							go func(_sink func() (io.Writer, func()), buf []byte) {
+							go func(_sink yomo.SinkFunc, buf []byte) {
 								writer, cancel := _sink()
 
 								if writer != nil {

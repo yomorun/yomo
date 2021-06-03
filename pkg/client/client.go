@@ -45,7 +45,11 @@ type NegotiationPayload struct {
 
 type client interface {
 	io.Writer
+
+	// Close the client.
 	Close() error
+
+	// Retry the connection between client and server.
 	Retry()
 }
 
@@ -168,7 +172,7 @@ func (c *clientImpl) connect(ip string, port int) (*clientImpl, error) {
 				c.heartbeat <- buf[0]
 			} else if bytes.Equal(value, SignalAccepted) {
 				// accepted
-				if c.clientType == ClientTypeSource {
+				if c.clientType == ClientTypeSource || c.clientType == ClientTypeZipperSender {
 					// create the stream from source.
 					stream, err := c.session.CreateStream(context.Background())
 					if err != nil {
@@ -263,12 +267,9 @@ func NewSource(appName string) SourceClient {
 // Connect to yomo-zipper.
 func (c *sourceClientImpl) Connect(ip string, port int) (SourceClient, error) {
 	cli, err := c.connect(ip, port)
-	if err != nil {
-		return nil, err
-	}
 	return &sourceClientImpl{
 		cli,
-	}, nil
+	}, err
 }
 
 // NewServerless setups the client of YoMo-Serverless.
@@ -283,12 +284,9 @@ func NewServerless(appName string) ServerlessClient {
 // Connect to yomo-zipper.
 func (c *serverlessClientImpl) Connect(ip string, port int) (ServerlessClient, error) {
 	cli, err := c.connect(ip, port)
-	if err != nil {
-		return nil, err
-	}
 	return &serverlessClientImpl{
 		cli,
-	}, nil
+	}, err
 }
 
 // Pipe the handler function in flow/sink serverless.
@@ -331,10 +329,7 @@ func NewZipperSender(appName string) ZipperSenderClient {
 // Connect to downstream zipper-receiver in edge-mesh.
 func (c *zipperSenderClientImpl) Connect(ip string, port int) (ZipperSenderClient, error) {
 	cli, err := c.connect(ip, port)
-	if err != nil {
-		return nil, err
-	}
 	return &zipperSenderClientImpl{
 		cli,
-	}, nil
+	}, err
 }
