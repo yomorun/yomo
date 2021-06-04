@@ -45,7 +45,7 @@ $ cd $GOPATH/src/github.com/yomorun/yomo
 $ make install
 ```
 
-![YoMo Tutorial 1](https://yomo.run/tutorial-1.png)
+![YoMo Tutorial 1](https://docs.yomo.run/tutorial-1.png)
 
 ### 2. Create your serverless app
 
@@ -61,7 +61,7 @@ $ cd yomo-app-demo
 
 ```
 
-![YoMo Tutorial 2](https://yomo.run/tutorial-2.png)
+![YoMo Tutorial 2](https://docs.yomo.run/tutorial-2.png)
 
 CLI will automatically create the `app.go`:
 
@@ -122,7 +122,7 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 
 1. Run `yomo dev` from the terminal. you will see the following message:
 
-![YoMo Tutorial 3](https://yomo.run/tutorial-3.png)
+![YoMo Tutorial 3](https://docs.yomo.run/tutorial-3.png)
 
 Congratulations! You have done your first YoMo application.
 
@@ -174,20 +174,20 @@ echo 'export PATH="$GOPATH/bin:$PATH"' >> ~/.bashrc
 
 ## 🗺 Location Insensitive Deployment
 
-![yomo-flow-arch](https://yomo.run/yomo-flow-arch.jpg)
+![yomo-flow-arch](https://docs.yomo.run/yomo-flow-arch.jpg)
 
 ## 📚 Documentation
 
-+ `YoMo-Source`: [yomo.run/source](https://yomo.run/source)
-+ `YoMo-Flow`: [yomo.run/flow](https://yomo.run/flow)
-+ `YoMo-Sink`: [yomo.run/sink](https://yomo.run/sink)
-+ `YoMo-Zipper`: [yomo.run/zipper](https://yomo.run/zipper)
-+ `Stream Processing in Rx way`: [Rx](https://yomo.run/rx)
++ `YoMo-Source`: [yomo.run/source](https://docs.yomo.run/source)
++ `YoMo-Flow`: [yomo.run/flow](https://docs.yomo.run/flow)
++ `YoMo-Sink`: [yomo.run/sink](https://docs.yomo.run/sink)
++ `YoMo-Zipper`: [yomo.run/zipper](https://docs.yomo.run/zipper)
++ `Stream Processing in Rx way`: [Rx](https://docs.yomo.run/rx)
 + `Faster than real-time codec`: [Y3](https://github.com/yomorun/y3-codec)
 
 [YoMo](https://yomo.run) ❤️ [Vercel](https://vercel.com/?utm_source=yomorun&utm_campaign=oss), Our documentation website is
 
-[![Vercel Logo](https://yomo.run/vercel.svg)](https://vercel.com/?utm_source=yomorun&utm_campaign=oss)
+[![Vercel Logo](https://docs.yomo.run/vercel.svg)](https://vercel.com/?utm_source=yomorun&utm_campaign=oss)
 
 ## 🎯 Focuses on computings out of data center
 
