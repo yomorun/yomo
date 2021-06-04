@@ -19,8 +19,8 @@ type ServerHandler interface {
 }
 
 // NewServer inits the default implementation of QUIC server.
-func NewServer(handle ServerHandler) Server {
+func NewServer(handler ServerHandler) Server {
 	server := &quicGoServer{}
-	server.SetHandler(handle)
+	server.SetHandler(handler)
 	return server
 }

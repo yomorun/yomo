@@ -3,19 +3,23 @@ package workflow
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"time"
 
 	"github.com/yomorun/yomo/internal/conf"
 	"github.com/yomorun/yomo/pkg/client"
 	"github.com/yomorun/yomo/pkg/quic"
+	"github.com/yomorun/yomo/pkg/yomo"
 )
 
 const (
-	StreamTypeSource string = "source"
-	StreamTypeFlow   string = "flow"
-	StreamTypeSink   string = "sink"
+	StreamTypeSource       string = "source"
+	StreamTypeFlow         string = "flow"
+	StreamTypeSink         string = "sink"
+	StreamTypeZipperSender string = "zipper-sender"
 )
 
 // QuicConn represents the QUIC connection.
@@ -50,22 +54,22 @@ func (c *QuicConn) Init(conf *conf.WorkflowConfig) {
 			value := buf[:n]
 
 			if isInit {
-				// app name
-				c.Name = string(value)
-				c.StreamType = StreamTypeSource
-				// match stream type by name
-				for _, app := range conf.Flows {
-					if app.Name == c.Name {
-						c.StreamType = StreamTypeFlow
-						break
-					}
+				// get negotiation payload
+				var payload client.NegotiationPayload
+				err := json.Unmarshal(value, &payload)
+				if err != nil {
+					log.Print("Zipper inits the connection failed: ", err)
+					return
 				}
-				for _, app := range conf.Sinks {
-					if app.Name == c.Name {
-						c.StreamType = StreamTypeSink
-						break
-					}
+
+				streamType, err := c.getStreamType(payload, conf)
+				if err != nil {
+					log.Print("Zipper get the stream type from the connection failed: ", err)
+					return
 				}
+
+				c.Name = payload.AppName
+				c.StreamType = streamType
 				fmt.Println("Receive App:", c.Name, c.StreamType)
 				isInit = false
 				c.SendSignal(client.SignalAccepted)
@@ -78,6 +82,29 @@ func (c *QuicConn) Init(conf *conf.WorkflowConfig) {
 			}
 		}
 	}()
+}
+
+func (c *QuicConn) getStreamType(payload client.NegotiationPayload, conf *conf.WorkflowConfig) (string, error) {
+	switch payload.ClientType {
+	case client.ClientTypeSource:
+		return StreamTypeSource, nil
+	case client.ClientTypeZipperSender:
+		return StreamTypeZipperSender, nil
+	case client.ClientTypeServerless:
+		// check if the app name is in flows
+		for _, app := range conf.Flows {
+			if app.Name == payload.AppName {
+				return StreamTypeFlow, nil
+			}
+		}
+		// check if the app name is in sinks
+		for _, app := range conf.Sinks {
+			if app.Name == payload.AppName {
+				return StreamTypeSink, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("the client type %s isn't matched any stream type", payload.ClientType)
 }
 
 // Beat sends the heartbeat to clients and checks if receiving the heartbeat back.
@@ -126,10 +153,10 @@ func Run(endpoint string, handle quic.ServerHandler) error {
 
 // Build the workflow by config (.yaml).
 // It will create one stream for each flows/sinks.
-func Build(wfConf *conf.WorkflowConfig, connMap *map[int64]*QuicConn) ([]func() (io.ReadWriter, func()), []func() (io.Writer, func())) {
+func Build(wfConf *conf.WorkflowConfig, connMap *map[int64]*QuicConn) ([]yomo.FlowFunc, []yomo.SinkFunc) {
 	//init workflow
-	flows := make([]func() (io.ReadWriter, func()), 0)
-	sinks := make([]func() (io.Writer, func()), 0)
+	flows := make([]yomo.FlowFunc, 0)
+	sinks := make([]yomo.SinkFunc, 0)
 
 	for _, app := range wfConf.Flows {
 		flows = append(flows, createReadWriter(app, connMap))
@@ -142,8 +169,8 @@ func Build(wfConf *conf.WorkflowConfig, connMap *map[int64]*QuicConn) ([]func() 
 	return flows, sinks
 }
 
-func createReadWriter(app conf.App, connMap *map[int64]*QuicConn) func() (io.ReadWriter, func()) {
-	f := func() (io.ReadWriter, func()) {
+func createReadWriter(app conf.App, connMap *map[int64]*QuicConn) yomo.FlowFunc {
+	f := func() (io.ReadWriter, yomo.CancelFunc) {
 		var conn *QuicConn = nil
 		var id int64 = 0
 
@@ -171,8 +198,8 @@ func createReadWriter(app conf.App, connMap *map[int64]*QuicConn) func() (io.Rea
 	return f
 }
 
-func createWriter(app conf.App, connMap *map[int64]*QuicConn) func() (io.Writer, func()) {
-	f := func() (io.Writer, func()) {
+func createWriter(app conf.App, connMap *map[int64]*QuicConn) yomo.SinkFunc {
+	f := func() (io.Writer, yomo.CancelFunc) {
 		var conn *QuicConn = nil
 		var id int64 = 0
 
