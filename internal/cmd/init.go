@@ -76,17 +76,6 @@ func NewCmdInit() *cobra.Command {
 				return
 			}
 
-			// fix version issue
-			modCmd = exec.Command("go", "mod", "edit", "-replace", "github.com/yomorun/yomo=../../yomorun/yomo")
-			err = modCmd.Run()
-			if err == nil {
-				log.Print("🛠 go.mod replaced")
-			} else {
-				log.Print("🛠 go.mod replace err: ", err.Error())
-				return
-			}
-			modCmd.Run()
-
 			log.Print("✅ Congratulations! You have initialized the serverless app successfully.")
 			log.Print("🎉 You can enjoy the YoMo Serverless via the command: yomo dev")
 		},
