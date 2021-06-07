@@ -217,7 +217,7 @@ func (c *clientImpl) connect(ip string, port int) (*clientImpl, error) {
 				if err != nil {
 					return
 				}
-			case <-time.After(time.Second):
+			case <-time.After(5 * time.Second):
 				// reconnect if didn't receive the heartbeat after 1s.
 				c.mutex.Lock()
 				c.connect(c.zipperIP, c.zipperPort)
