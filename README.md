@@ -25,7 +25,7 @@ Official Website: 🦖[https://yomo.run](https://yomo.run)
 
 ## 🚀 Getting Started
 
-### Prerequisite**
+### Prerequisite
 
 [Install Go](https://golang.org/doc/install)
 
