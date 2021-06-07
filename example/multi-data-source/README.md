@@ -64,9 +64,9 @@ $ make install
 ### 2. Start `zipper` to organize stream processing workflow
 
 ```bash
-$ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/zipper
+$ cd $GOPATH/src/github.com/yomorun/yomo/example/multi-data-source/zipper
 
-$ yomo wf run
+$ yomo serve
 
 2021/03/01 19:05:55 Found 1 flows in zipper config
 2021/03/01 19:05:55 Flow 1: training
@@ -81,7 +81,7 @@ $ yomo wf run
 > **Note**: `-n` flag represents the name of flow, which should match the specific flow in zipper config (workflow.yaml).
 
 ```bash
-$ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/flow
+$ cd $GOPATH/src/github.com/yomorun/yomo/example/multi-data-source/flow
 
 $ yomo run -n training
 
@@ -95,7 +95,7 @@ $ yomo run -n training
 ### 4. Run `source-data-a`
 
 ```bash
-$ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/source-data-a
+$ cd $GOPATH/src/github.com/yomorun/yomo/example/multi-data-source/source-data-a
 
 $ go run main.go
 
@@ -107,7 +107,7 @@ $ go run main.go
 ### 5. Run `source-data-b`
 
 ```bash
-$ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/source-data-b
+$ cd $GOPATH/src/github.com/yomorun/yomo/example/multi-data-source/source-data-b
 
 $ go run main.go
 

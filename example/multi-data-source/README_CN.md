@@ -65,9 +65,9 @@ $ make install
 ### 2. 运行 `zipper`
 
 ```bash
-$ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/zipper
+$ cd $GOPATH/src/github.com/yomorun/yomo/example/multi-data-source/zipper
 
-$ yomo wf run
+$ yomo serve
 
 2021/03/01 19:05:55 Found 1 flows in zipper config
 2021/03/01 19:05:55 Flow 1: training
@@ -82,7 +82,7 @@ $ yomo wf run
 > **注意**: `-n` flag 用于表示 flow 的名称, 它需要跟 zipper config (workflow.yaml) 里面 flow 名称匹配.
 
 ```bash
-$ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/flow
+$ cd $GOPATH/src/github.com/yomorun/yomo/example/multi-data-source/flow
 
 $ yomo run -n training
 
@@ -96,7 +96,7 @@ $ yomo run -n training
 ### 3. 运行 `source-data-a`
 
 ```bash
-$ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/source-data-a
+$ cd $GOPATH/src/github.com/yomorun/yomo/example/multi-data-source/source-data-a
 
 $ go run main.go
 
@@ -108,7 +108,7 @@ $ go run main.go
 ### 4. 运行 `source-data-b`
 
 ```bash
-$ cd $GOPATH/src/github.com/yomorun/yomo/example/trainingmodel/source-data-b
+$ cd $GOPATH/src/github.com/yomorun/yomo/example/multi-data-source/source-data-b
 
 $ go run main.go
 
