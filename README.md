@@ -25,43 +25,39 @@ Official Website: 🦖[https://yomo.run](https://yomo.run)
 
 ## 🚀 Getting Started
 
+### Prerequisite**
+
+[Install Go](https://golang.org/doc/install)
+
 ### 1. Install CLI
 
-> **Note:** YoMo requires Go 1.15 and above, run `go version` to get the version of Go in your environment, please follow [this link](https://golang.org/doc/install) to install or upgrade if it doesn't fit the requirement.
-
 ```bash
-# Ensure use $GOPATH, golang requires main and plugin highly coupled
-○ echo $GOPATH
-
+$ go install github.com/yomorun/cli/yomo@latest
 ```
 
-if `$GOPATH` is not set, check [Set $GOPATH and $GOBIN](#optional-set-gopath-and-gobin) first.
+#### Verify if the CLI was installed successfully
 
 ```bash
-$ GO111MODULE=off go get github.com/yomorun/yomo
+$ yomo -v
 
-$ cd $GOPATH/src/github.com/yomorun/yomo
-
-$ make install
+YoMo CLI version: v0.0.1
 ```
-
-![YoMo Tutorial 1](https://docs.yomo.run/tutorial-1.png)
 
 ### 2. Create your serverless app
 
 ```bash
-$ mkdir -p $GOPATH/src/github.com/{YOUR_GITHUB_USERNAME} && cd $_
-
 $ yomo init yomo-app-demo
-2020/12/29 13:03:57 Initializing the Serverless app...
-2020/12/29 13:04:00 ✅ Congratulations! You have initialized the serverless app successfully.
-2020/12/29 13:04:00 🎉 You can enjoy the YoMo Serverless via the command: yomo dev
+
+⌛  Initializing the Serverless app...
+✅  Congratulations! You have initialized the serverless function successfully.
+ℹ️   You can enjoy the YoMo Serverless via the command: 
+ℹ️   	DEV: 	yomo dev -n Noise yomo-app-demo/app.go
+ℹ️   	PROD: 	First run source application, eg: go run example/source/main.go
+		Second: yomo run -n yomo-app-demo yomo-app-demo/app.go
 
 $ cd yomo-app-demo
 
 ```
-
-![YoMo Tutorial 2](https://docs.yomo.run/tutorial-2.png)
 
 CLI will automatically create the `app.go`:
 
@@ -111,7 +107,8 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 		OnObserve(callback).
 		Debounce(50).
 		Map(printer).
-		StdOut()
+		StdOut().
+		Encode(0x11)
 
 	return stream
 }
@@ -122,34 +119,34 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 
 1. Run `yomo dev` from the terminal. you will see the following message:
 
-![YoMo Tutorial 3](https://docs.yomo.run/tutorial-3.png)
+```sh
+$ yomo dev
+
+ℹ️   YoMo serverless function file: app.go
+⌛  Create YoMo serverless instance...
+⌛  YoMo serverless function building...
+✅  Success! YoMo serverless function build.
+ℹ️   YoMo serverless function is running...
+ℹ️   Run: /Users/xiaojianhong/Downloads/yomo-app-demo/sl.yomo
+2021/06/07 12:00:06 Connecting to zipper dev.yomo.run:9000 ...
+2021/06/07 12:00:07 ✅ Connected to zipper dev.yomo.run:9000
+[10.10.79.50] 1623038407236 > value: 1.919251 ⚡️=-25ms
+[StdOut]:  1.9192511
+[10.10.79.50] 1623038407336 > value: 11.370256 ⚡️=-25ms
+[StdOut]:  11.370256
+[10.10.79.50] 1623038407436 > value: 8.672209 ⚡️=-25ms
+[StdOut]:  8.672209
+[10.10.79.50] 1623038407536 > value: 4.826996 ⚡️=-25ms
+[StdOut]:  4.826996
+[10.10.79.50] 1623038407636 > value: 16.201773 ⚡️=-25ms
+[StdOut]:  16.201773
+[10.10.79.50] 1623038407737 > value: 13.875483 ⚡️=-26ms
+[StdOut]:  13.875483
+
+```
 
 Congratulations! You have done your first YoMo application.
 
-### Optional: Set $GOPATH and $GOBIN
-
-for current session:
-
-```bash
-export GOPATH=~/.go
-export PATH=$GOPATH/bin:$PATH
-```
-
-for shell: 
-
-for `zsh` users
-
-```bash
-echo "export GOPATH=~/.go" >> .zshrc
-echo "path+=$GOPATH/bin" >> .zshrc
-```
-
-for `bash` users
-
-```bash
-echo 'export GOPATH=~/.go' >> .bashrc
-echo 'export PATH="$GOPATH/bin:$PATH"' >> ~/.bashrc
-```
 
 ## 🧩 Interop
 

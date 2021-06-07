@@ -49,7 +49,7 @@ Please visit [YoMo Getting Started](https://github.com/yomorun/yomo#1-install-cl
 ### 2. Run [yomo-zipper](https://yomo.run/zipper)
 
 ```bash
-yomo wf run ./zipper/workflow.yaml
+yomo serve -c ./zipper/workflow.yaml
 
 2021/05/20 15:34:23 Found 1 flows in zipper config
 2021/05/20 15:34:23 Flow 1: training
