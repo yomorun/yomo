@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="200px" height="200px" src="https://yomo.run/yomo-logo.png" />
+  <img width="200px" height="200px" src="https://blog.yomo.run/static/images/logo.png" />
 </p>
 
 # YoMo ![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg)
@@ -12,46 +12,48 @@ For english, check: [Github](https://github.com/yomorun/yomo)
 
 ## 🚀 3分钟教程
 
-### 1. 安装CLI
+### 先决条件
 
-> **注意：** YoMo 的运行环境要求 Go 版本为 1.15 或以上，运行 `go version` 获取当前环境的版本，如果未安装 Go 或者不符合 Go 版本要求时，请安装或者升级 Go 版本。
-安装 Go 环境之后，国内用户可参考 <https://goproxy.cn/> 设置 `GOPROXY`，以便下载 YoMo 项目依赖。
+确保已安装 Go 编译运行环境，参考 [安装 Go](https://golang.org/doc/install)
 
-```bash
-# 确保设置了$GOPATH, Golang的设计里main和plugin是高度耦合的
-$ echo $GOPATH
+### 1. 安装 CLI
 
+可以通过以下的命令全局安装最新发布的 YoMo CLI：
+
+```sh
+go install github.com/yomorun/cli/yomo@latest
 ```
 
-如果没有设置`$GOPATH`，参考这里：[如何设置$GOPATH和$GOBIN](#optional-set-gopath-and-gobin)。
+或者也可以将 CLI 安装在不同的目录：
 
-```bash
-$ GO111MODULE=off go get github.com/yomorun/yomo
-
-$ cd $GOPATH/src/github.com/yomorun/yomo
-
-$ make install
+```sh
+env GOBIN=/bin go install github.com/yomorun/cli/yomo@latest
 ```
 
-![YoMo Tutorial 1](https://yomo.run/tutorial-1.png)
+#### 验证 CLI 是否成功安装
+
+```bash
+$ yomo -v
+
+YoMo CLI version: v0.0.2
+```
 
 ### 2. 创建第一个yomo应用
 
 ```bash
-$ mkdir -p $GOPATH/src/github.com/{YOUR_GITHUB_USERNAME} && cd $_
-
 $ yomo init yomo-app-demo
-2020/12/29 13:03:57 Initializing the Serverless app...
-2020/12/29 13:04:00 ✅ Congratulations! You have initialized the serverless app successfully.
-2020/12/29 13:04:00 🎉 You can enjoy the YoMo Serverless via the command: yomo dev
+
+⌛  Initializing the Serverless app...
+✅  Congratulations! You have initialized the serverless function successfully.
+ℹ️   You can enjoy the YoMo Serverless via the command: 
+ℹ️   	DEV: 	yomo dev -n Noise yomo-app-demo/app.go
+ℹ️   	PROD: 	First run source application, eg: go run example/source/main.go
+		Second: yomo run -n yomo-app-demo yomo-app-demo/app.go
 
 $ cd yomo-app-demo
-
 ```
 
-![YoMo Tutorial 2](https://yomo.run/tutorial-2.png)
-
-CLI将会自动创建一个`app.go`文件:
+YoMo CLI 会自动创建带有以下内容的 `app.go` 文件：
 
 ```go
 package main
@@ -78,7 +80,8 @@ type NoiseData struct {
 var printer = func(_ context.Context, i interface{}) (interface{}, error) {
 	value := i.(NoiseData)
 	rightNow := time.Now().UnixNano() / int64(time.Millisecond)
-	return fmt.Sprintf("[%s] %d > value: %f ⚡️=%dms", value.From, value.Time, value.Noise, rightNow-value.Time), nil
+	fmt.Println(fmt.Sprintf("[%s] %d > value: %f ⚡️=%dms", value.From, value.Time, value.Noise, rightNow-value.Time))
+	return value.Noise, nil
 }
 
 var callback = func(v []byte) (interface{}, error) {
@@ -98,7 +101,8 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 		OnObserve(callback).
 		Debounce(50).
 		Map(printer).
-		StdOut()
+		StdOut().
+		Encode(0x11)
 
 	return stream
 }
@@ -109,33 +113,30 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 
 1. 为了方便调试，我们创建了一个云端的数据模拟器，它可以产生源源不断的数据，我们只需要运行`yomo dev`就可以看到:
 
-![YoMo Tutorial 3](https://yomo.run/tutorial-3.png)
+```sh
+$ yomo dev
 
-恭喜您！第一个YoMo应用已经完美运行起来啦！
+ℹ️   YoMo serverless function file: app.go
+⌛  Create YoMo serverless instance...
+⌛  YoMo serverless function building...
+✅  Success! YoMo serverless function build.
+ℹ️   YoMo serverless function is running...
+ℹ️   Run: /Users/xiaojianhong/Downloads/yomo-app-demo/sl.yomo
+2021/06/07 12:00:06 Connecting to zipper dev.yomo.run:9000 ...
+2021/06/07 12:00:07 ✅ Connected to zipper dev.yomo.run:9000
+[10.10.79.50] 1623038407236 > value: 1.919251 ⚡️=-25ms
+[StdOut]:  1.9192511
+[10.10.79.50] 1623038407336 > value: 11.370256 ⚡️=-25ms
+[StdOut]:  11.370256
+[10.10.79.50] 1623038407436 > value: 8.672209 ⚡️=-25ms
+[StdOut]:  8.672209
+[10.10.79.50] 1623038407536 > value: 4.826996 ⚡️=-25ms
+[StdOut]:  4.826996
+[10.10.79.50] 1623038407636 > value: 16.201773 ⚡️=-25ms
+[StdOut]:  16.201773
+[10.10.79.50] 1623038407737 > value: 13.875483 ⚡️=-26ms
+[StdOut]:  13.875483
 
-### Optional: Set $GOPATH and $GOBIN
-
-针对Terminal当前的Session:
-
-```bash
-export GOPATH=~/.go
-export PATH=$GOPATH/bin:$PATH
-```
-
-Shell用户持久保存配置设置: 
-
-如果您是`zsh`用户：
-
-```bash
-echo "export GOPATH=~/.go" >> .zshrc
-echo "path+=$GOPATH/bin" >> .zshrc
-```
-
-如果您是`bash`用户：
-
-```bash
-echo 'export GOPATH=~/.go' >> .bashrc
-echo 'export PATH="$GOPATH/bin:$PATH"' >> ~/.bashrc
 ```
 
 ## 🌶 与更多的优秀开源项目天然集成
