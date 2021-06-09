@@ -51,6 +51,9 @@ type client interface {
 
 	// Retry the connection between client and server.
 	Retry()
+
+	// RetryWithCount the connection with a certain count.
+	RetryWithCount(count int) bool
 }
 
 // SourceClient is the client for YoMo-Source.
@@ -92,7 +95,7 @@ type clientImpl struct {
 	signal     quic.Stream
 	stream     quic.Stream
 	heartbeat  chan byte
-	mutex      sync.Mutex
+	once       *sync.Once
 }
 
 type sourceClientImpl struct {
@@ -114,6 +117,7 @@ func newClient(appName string, clientType string) *clientImpl {
 		clientType: clientType,
 		readers:    make(chan io.Reader, 1),
 		heartbeat:  make(chan byte),
+		once:       new(sync.Once),
 	}
 	return c
 }
@@ -171,25 +175,19 @@ func (c *clientImpl) connect(ip string, port int) (*clientImpl, error) {
 				// heartbeart
 				c.heartbeat <- buf[0]
 			} else if bytes.Equal(value, SignalAccepted) {
-				// create stream when the connection is accepted.
-				stream, err := c.session.CreateStream(context.Background())
-				if err != nil {
-					fmt.Println("client [session.CreateStream] Error:", err)
-					break
-				}
-
+				// accepted
 				if c.clientType == ClientTypeSource || c.clientType == ClientTypeZipperSender {
-					// source/zipper
+					// create the stream from source.
+					stream, err := c.session.CreateStream(context.Background())
+					if err != nil {
+						fmt.Println("client [session.CreateStream] Error:", err)
+						break
+					}
 					c.stream = stream
-				} else {
-					// flow/sink
-					c.readers <- stream
-					c.writer = stream
-					stream.Write(SignalHeartbeat)
 				}
 				accepted <- true
 			} else if bytes.Equal(value, SignalFlowSink) {
-				// create stream for flow/sink
+				// create stream
 				stream, err := c.session.CreateStream(context.Background())
 
 				if err != nil {
@@ -218,10 +216,15 @@ func (c *clientImpl) connect(ip string, port int) (*clientImpl, error) {
 					return
 				}
 			case <-time.After(5 * time.Second):
-				// reconnect if didn't receive the heartbeat after 1s.
-				c.mutex.Lock()
-				c.connect(c.zipperIP, c.zipperPort)
-				c.mutex.Unlock()
+				// reconnect if didn't receive the heartbeat after 5s.
+				c.once.Do(func() {
+					c.connect(c.zipperIP, c.zipperPort)
+
+					// reset the sync.Once after 5s.
+					time.AfterFunc(5*time.Second, func() {
+						c.once = new(sync.Once)
+					})
+				})
 			}
 		}
 
@@ -248,10 +251,23 @@ func (c *clientImpl) Retry() {
 		_, err := c.connect(c.zipperIP, c.zipperPort)
 		if err == nil {
 			break
-		} else {
-			time.Sleep(time.Second)
 		}
+
+		time.Sleep(time.Second)
 	}
+}
+
+// RetryWithCount the connection with a certain count.
+func (c *clientImpl) RetryWithCount(count int) bool {
+	for i := 0; i < count; i++ {
+		_, err := c.connect(c.zipperIP, c.zipperPort)
+		if err == nil {
+			return true
+		}
+
+		time.Sleep(time.Second)
+	}
+	return false
 }
 
 // Close the client.
