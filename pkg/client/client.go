@@ -175,25 +175,19 @@ func (c *clientImpl) connect(ip string, port int) (*clientImpl, error) {
 				// heartbeart
 				c.heartbeat <- buf[0]
 			} else if bytes.Equal(value, SignalAccepted) {
-				// create stream when the connection is accepted.
-				stream, err := c.session.CreateStream(context.Background())
-				if err != nil {
-					fmt.Println("client [session.CreateStream] Error:", err)
-					break
-				}
-
+				// accepted
 				if c.clientType == ClientTypeSource || c.clientType == ClientTypeZipperSender {
-					// source/zipper
+					// create the stream from source.
+					stream, err := c.session.CreateStream(context.Background())
+					if err != nil {
+						fmt.Println("client [session.CreateStream] Error:", err)
+						break
+					}
 					c.stream = stream
-				} else {
-					// flow/sink
-					c.readers <- stream
-					c.writer = stream
 				}
-				stream.Write(SignalHeartbeat)
 				accepted <- true
 			} else if bytes.Equal(value, SignalFlowSink) {
-				// create stream for flow/sink
+				// create stream
 				stream, err := c.session.CreateStream(context.Background())
 
 				if err != nil {
