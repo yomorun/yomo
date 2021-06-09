@@ -7,12 +7,12 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/reactivex/rxgo/v2"
 	"github.com/yomorun/yomo/pkg/decoder"
-	"github.com/yomorun/yomo/pkg/yomo"
+	"github.com/yomorun/yomo/pkg/serverless"
 )
 
 type RxStream interface {
 	rxgo.Iterable
-	MergeReadWriterWithFunc(rwf yomo.FlowFunc, opts ...rxgo.Option) RxStream
+	MergeReadWriterWithFunc(rwf serverless.GetFlowFunc, opts ...rxgo.Option) RxStream
 	Subscribe(key byte) RxStream
 	Encode(key byte, opts ...rxgo.Option) RxStream
 	OnObserve(function func(v []byte) (interface{}, error)) RxStream
