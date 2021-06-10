@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"time"
 
@@ -12,94 +11,43 @@ import (
 	"github.com/yomorun/yomo/pkg/quic"
 )
 
-// Conn represents a YoMo Server connection.
-type Conn interface {
-	// SendSignal sends the signal to client.
-	SendSignal(b []byte) error
-
-	// SendSinkFlowSignal sends the signal Flow/Sink to client.
-	SendSinkFlowSignal() error
-
-	// Beat sends the heartbeat to clients and checks if receiving the heartbeat back.
-	Beat()
-
-	// Close the connection.
-	Close()
-
-	// GetStream gets the current stream in connection.
-	GetStream() io.ReadWriter
-
-	// GetStreamType gets the type of current stream.
-	GetStreamType() string
-
-	// OnRead reads new stream and calls the callback handler.
-	OnRead(st io.ReadWriter, handler func())
-
-	// OnClosed sets the `OnClosed` handler.
-	OnClosed(handler func())
-
-	// IsMatched indicates if the connection is matched.
-	IsMatched(streamType string, name string) bool
+// ServerConn represents the YoMo Server connection.
+type ServerConn struct {
+	conn     *quic.QuicConn
+	Session  quic.Session
+	onClosed func() // onClosed is the callback when the connection is closed.
 }
 
-// NewConn inits a new YoMo Server connection.
-func NewConn(sess quic.Session, st quic.Stream, conf *WorkflowConfig) Conn {
-	conn := &quicConn{
-		Session:    sess,
-		Signal:     st,
-		StreamType: "",
-		Name:       "",
-		Heartbeat:  make(chan byte),
-		IsClosed:   false,
-		Ready:      true,
+// NewServerConn inits a new YoMo Server connection.
+func NewServerConn(sess quic.Session, st quic.Stream, conf *WorkflowConfig) *ServerConn {
+	c := &ServerConn{
+		conn:    quic.NewQuicConn("", ""),
+		Session: sess,
 	}
 
-	conn.Init(conf)
-	return conn
-}
+	c.conn.Signal = st
+	c.handleSignal(conf)
+	c.conn.OnClosed = c.Close
 
-const (
-	StreamTypeSource       string = "source"
-	StreamTypeFlow         string = "flow"
-	StreamTypeSink         string = "sink"
-	StreamTypeZipperSender string = "zipper-sender"
-)
-
-// quicConn represents the QUIC connection.
-type quicConn struct {
-	Session    quic.Session
-	Signal     quic.Stream
-	Stream     io.ReadWriter
-	StreamType string
-	Name       string
-	Heartbeat  chan byte
-	IsClosed   bool
-	Ready      bool
-	onClosed   func() // onClosed is the callback when the connection is closed.
-}
-
-// SendSignal sends the signal to client.
-func (c *quicConn) SendSignal(b []byte) error {
-	_, err := c.Signal.Write(b)
-	return err
+	return c
 }
 
 // SendSinkFlowSignal sends the signal Flow/Sink to client.
-func (c *quicConn) SendSinkFlowSignal() error {
-	if c.Ready {
-		c.Ready = false
-		return c.SendSignal(client.SignalFlowSink)
+func (c *ServerConn) SendSinkFlowSignal() error {
+	if c.conn.Ready {
+		c.conn.Ready = false
+		return c.conn.SendSignal(quic.SignalFlowSink)
 	}
 	return nil
 }
 
-// Init the QUIC connection.
-func (c *quicConn) Init(conf *WorkflowConfig) {
+// handleSignal handles the logic when receiving signal from client.
+func (c *ServerConn) handleSignal(conf *WorkflowConfig) {
 	isInit := true
 	go func() {
 		for {
 			buf := make([]byte, 1024)
-			n, err := c.Signal.Read(buf)
+			n, err := c.conn.Signal.Read(buf)
 
 			if err != nil {
 				break
@@ -115,121 +63,68 @@ func (c *quicConn) Init(conf *WorkflowConfig) {
 					return
 				}
 
-				streamType, err := c.getStreamType(payload, conf)
-				if err != nil {
-					log.Printf("❌ Zipper get the stream type from the connection failed: %s", err.Error())
-					return
-				}
-
-				c.Name = payload.AppName
-				c.StreamType = streamType
-				fmt.Println("Receive App:", c.Name, c.StreamType)
+				c.conn.Name = payload.AppName
+				c.conn.Type = c.getConnType(payload, conf)
+				fmt.Println("Receive App:", c.conn.Name, c.conn.Type)
 				isInit = false
-				c.SendSignal(client.SignalAccepted)
+
+				c.conn.SendSignal(quic.SignalAccepted)
+				c.conn.Healthcheck()
 				c.Beat()
+
 				continue
 			}
 
-			if bytes.Equal(value, client.SignalHeartbeat) {
-				c.Heartbeat <- value[0]
+			// receive heatbeat from client.
+			if bytes.Equal(value, quic.SignalHeartbeat) {
+				c.conn.Heartbeat <- value[0]
 			}
 		}
 	}()
 }
 
-func (c *quicConn) getStreamType(payload client.NegotiationPayload, conf *WorkflowConfig) (string, error) {
+func (c *ServerConn) getConnType(payload client.NegotiationPayload, conf *WorkflowConfig) string {
 	switch payload.ClientType {
-	case client.ClientTypeSource:
-		return StreamTypeSource, nil
-	case client.ClientTypeZipperSender:
-		return StreamTypeZipperSender, nil
-	case client.ClientTypeServerless:
+	case quic.ConnTypeServerless:
 		// check if the app name is in flows
 		for _, app := range conf.Flows {
 			if app.Name == payload.AppName {
-				return StreamTypeFlow, nil
+				return quic.ConnTypeFlow
 			}
 		}
 		// check if the app name is in sinks
 		for _, app := range conf.Sinks {
 			if app.Name == payload.AppName {
-				return StreamTypeSink, nil
+				return quic.ConnTypeSink
 			}
 		}
 	}
-	return "", fmt.Errorf("the client %s (type: %s) isn't matched any stream type", payload.AppName, payload.ClientType)
+
+	return payload.ClientType
 }
 
-// Beat sends the heartbeat to clients and checks if receiving the heartbeat back.
-func (c *quicConn) Beat() {
-	go func() {
-		defer c.Close()
-	loop:
-		for {
-			select {
-			case _, ok := <-c.Heartbeat:
-				if !ok {
-					return
-				}
-
-			case <-time.After(5 * time.Second):
-				// close the connection if didn't receive the heartbeat after 5s.
-				log.Printf("Server didn't receive the heartbeat from the app [%s] after 5s, will close the connection.", c.Name)
-				break loop
-			}
-		}
-	}()
-
+// Beat sends the heartbeat to clients in every 200ms.
+func (c *ServerConn) Beat() {
 	go func() {
 		for {
 			// send heartbeat in every 200ms.
 			time.Sleep(200 * time.Millisecond)
-			err := c.SendSignal(client.SignalHeartbeat)
+			err := c.conn.SendSignal(quic.SignalHeartbeat)
 			if err != nil {
-				log.Printf("❌ Server sent SignalHeartbeat to app [%s] failed: %s", c.Name, err.Error())
+				log.Printf("❌ Server sent SignalHeartbeat to app [%s] failed: %s", c.conn.Name, err.Error())
 				break
 			}
 		}
 	}()
 }
 
-// GetStream gets the current stream in connection.
-func (c *quicConn) GetStream() io.ReadWriter {
-	return c.Stream
-}
-
-// GetStreamType gets the type of current stream.
-func (c *quicConn) GetStreamType() string {
-	return c.StreamType
-}
-
-// Read the new QUIC stream.
-func (c *quicConn) OnRead(st io.ReadWriter, handler func()) {
-	c.Ready = true
-	c.Stream = st
-
-	if handler != nil {
-		handler()
-	}
-}
-
-// Close the QUIC connections.
-func (c *quicConn) Close() {
-	c.Session.CloseWithError(0, "")
-	c.IsClosed = true
-	c.Ready = true
+// Close the QUIC connection.
+func (c *ServerConn) Close() error {
+	err := c.Session.CloseWithError(0, "")
 
 	if c.onClosed != nil {
 		c.onClosed()
 	}
-}
 
-// OnClosed sets the `OnClosed` handler.
-func (c *quicConn) OnClosed(handler func()) {
-	c.onClosed = handler
-}
-
-// IsMatched indicates if the connection is matched.
-func (c *quicConn) IsMatched(streamType string, name string) bool {
-	return c.StreamType == streamType && c.Name == name
+	return err
 }

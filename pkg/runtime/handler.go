@@ -60,21 +60,20 @@ func (s *quicHandler) Read(id int64, sess quic.Session, st quic.Stream) error {
 
 	if c, ok := s.connMap.Load(id); ok {
 		// the conn exists, reads new stream.
-		conn := c.(Conn)
-		conn.OnRead(st, func() {
-			streamType := conn.GetStreamType()
-			if streamType == StreamTypeSource {
-				s.source <- st
-			} else if streamType == StreamTypeZipperSender {
-				s.zipperReceiver <- st
-			}
-		})
+		c := c.(*ServerConn)
+		if c.conn.Type == quic.ConnTypeSource {
+			s.source <- st
+		} else if c.conn.Type == quic.ConnTypeZipperSender {
+			s.zipperReceiver <- st
+		} else {
+			c.conn.Stream = st
+		}
 	} else {
 		// init
-		conn := NewConn(sess, st, s.serverlessConfig)
-		conn.OnClosed(func() {
+		conn := NewServerConn(sess, st, s.serverlessConfig)
+		conn.onClosed = func() {
 			s.connMap.Delete(id)
-		})
+		}
 		s.connMap.Store(id, conn)
 	}
 	s.mutex.Unlock()

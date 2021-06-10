@@ -5,7 +5,6 @@ import (
 	"io"
 	"sync"
 
-	"github.com/yomorun/yomo/pkg/client"
 	"github.com/yomorun/yomo/pkg/quic"
 	"github.com/yomorun/yomo/pkg/serverless"
 )
@@ -45,11 +44,11 @@ func Build(wfConf *WorkflowConfig, connMap *sync.Map) ([]serverless.GetFlowFunc,
 	sinks := make([]serverless.GetSinkFunc, 0)
 
 	for _, app := range wfConf.Flows {
-		flows = append(flows, createReadWriter(app, connMap, StreamTypeFlow))
+		flows = append(flows, createReadWriter(app, connMap, quic.ConnTypeFlow))
 	}
 
 	for _, app := range wfConf.Sinks {
-		sinks = append(sinks, createWriter(app, connMap, StreamTypeSink))
+		sinks = append(sinks, createWriter(app, connMap, quic.ConnTypeSink))
 	}
 
 	return flows, sinks
@@ -60,64 +59,41 @@ func GetSinks(wfConf *WorkflowConfig, connMap *sync.Map) []serverless.GetSinkFun
 	sinks := make([]serverless.GetSinkFunc, 0)
 
 	for _, app := range wfConf.Sinks {
-		sinks = append(sinks, createWriter(app, connMap, StreamTypeSink))
+		sinks = append(sinks, createWriter(app, connMap, quic.ConnTypeSink))
 	}
 
 	return sinks
 }
 
 // createReadWriter creates a `GetFlowFunc` for `YoMo-Flow`.
-func createReadWriter(app App, connMap *sync.Map, streamType string) serverless.GetFlowFunc {
+func createReadWriter(app App, connMap *sync.Map, connType string) serverless.GetFlowFunc {
 	f := func() (io.ReadWriter, serverless.CancelFunc) {
-		var conn Conn = nil
-		var id int64 = 0
+		id, c := findConn(app, connMap, connType)
 
-		connMap.Range(func(key, value interface{}) bool {
-			c := value.(Conn)
-			if c.IsMatched(streamType, app.Name) {
-				conn = c
-				id = key.(int64)
-				return false
-			}
-			return true
-		})
-
-		if conn == nil {
+		if c == nil {
 			return nil, func() {}
-		} else if conn.GetStream() != nil {
-			return conn.GetStream(), cancelStream(app, conn, connMap, id)
+		} else if c.conn.Stream != nil {
+			return c.conn.Stream, cancelStream(app, c, connMap, id)
 		} else {
-			conn.SendSinkFlowSignal()
+			c.SendSinkFlowSignal()
 			return nil, func() {}
 		}
-
 	}
 
 	return f
 }
 
 // createWriter creates a `GetSinkFunc` for `YoMo-Sink`.
-func createWriter(app App, connMap *sync.Map, streamType string) serverless.GetSinkFunc {
+func createWriter(app App, connMap *sync.Map, connType string) serverless.GetSinkFunc {
 	f := func() (io.Writer, serverless.CancelFunc) {
-		var conn Conn = nil
-		var id int64 = 0
+		id, c := findConn(app, connMap, connType)
 
-		connMap.Range(func(key, value interface{}) bool {
-			c := value.(Conn)
-			if c.IsMatched(streamType, app.Name) {
-				conn = c
-				id = key.(int64)
-				return false
-			}
-			return true
-		})
-
-		if conn == nil {
+		if c == nil {
 			return nil, func() {}
-		} else if conn.GetStream() != nil {
-			return conn.GetStream(), cancelStream(app, conn, connMap, id)
+		} else if c.conn.Stream != nil {
+			return c.conn.Stream, cancelStream(app, c, connMap, id)
 		} else {
-			conn.SendSignal(client.SignalFlowSink)
+			c.SendSinkFlowSignal()
 			return nil, func() {}
 		}
 
@@ -125,10 +101,28 @@ func createWriter(app App, connMap *sync.Map, streamType string) serverless.GetS
 	return f
 }
 
-func cancelStream(app App, conn Conn, connMap *sync.Map, id int64) func() {
+func cancelStream(app App, conn *ServerConn, connMap *sync.Map, id int64) func() {
 	f := func() {
 		conn.Close()
 		connMap.Delete(id)
 	}
 	return f
+}
+
+// IsMatched indicates if the connection is matched.
+func findConn(app App, connMap *sync.Map, connType string) (int64, *ServerConn) {
+	var conn *ServerConn = nil
+	var id int64 = 0
+	connMap.Range(func(key, value interface{}) bool {
+		c := value.(*ServerConn)
+		if c.conn.Name == app.Name && c.conn.Type == connType {
+			conn = c
+			id = key.(int64)
+
+			return false
+		}
+		return true
+	})
+
+	return id, conn
 }
