@@ -14,7 +14,7 @@ import (
 	"github.com/reactivex/rxgo/v2"
 	y3 "github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo/pkg/decoder"
-	"github.com/yomorun/yomo/pkg/yomo"
+	"github.com/yomorun/yomo/pkg/serverless"
 )
 
 type echo struct {
@@ -612,7 +612,7 @@ func (s *RxStreamImpl) AuditTime(milliseconds uint32, opts ...rxgo.Option) RxStr
 	return ConvertObservable(o)
 }
 
-func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf yomo.FlowFunc, opts ...rxgo.Option) RxStream {
+func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf serverless.GetFlowFunc, opts ...rxgo.Option) RxStream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
 		response := make(chan []byte)
