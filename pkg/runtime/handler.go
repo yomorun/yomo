@@ -21,7 +21,8 @@ func NewServerHandler(conf *WorkflowConfig, meshConfURL string) quic.ServerHandl
 		meshConfigURL:    meshConfURL,
 		connMap:          sync.Map{},
 		source:           make(chan io.Reader),
-		zipperSenders:    make([]io.Writer, 0),
+		zipperMap:        sync.Map{},
+		zipperSenders:    make([]serverless.GetSinkFunc, 0),
 		zipperReceiver:   make(chan io.Reader),
 	}
 	return handler
@@ -32,7 +33,8 @@ type quicHandler struct {
 	meshConfigURL    string
 	connMap          sync.Map
 	source           chan io.Reader
-	zipperSenders    []io.Writer
+	zipperMap        sync.Map // the stream map for downstream zippers.
+	zipperSenders    []serverless.GetSinkFunc
 	zipperReceiver   chan io.Reader
 	mutex            sync.RWMutex
 }
@@ -48,7 +50,7 @@ func (s *quicHandler) Listen() error {
 
 	if s.meshConfigURL != "" {
 		go func() {
-			s.getZipperSenders()
+			s.buildZipperSenders()
 		}()
 	}
 
@@ -117,18 +119,23 @@ func (s *quicHandler) receiveDataFromSources() {
 					}
 
 					// Zipper-Senders
-					for i, sender := range s.zipperSenders {
+					for _, sender := range s.zipperSenders {
 						if sender == nil {
 							continue
 						}
 
-						go func(w io.Writer, buf []byte, index int) {
+						go func(f serverless.GetSinkFunc, buf []byte) {
+							writer, cancel := f()
+							if writer == nil {
+								return
+							}
 							// send data to donwstream zippers
-							_, err := w.Write(value)
+							_, err := writer.Write(value)
 							if err != nil {
 								log.Printf("❌ [Zipper Sender] sent data to downstream zipper failed: %s", err.Error())
+								cancel()
 							}
-						}(sender, value, i)
+						}(sender, value)
 					}
 				}
 			}()
@@ -185,8 +192,8 @@ type zipperServerConf struct {
 	Port int    `json:"port"`
 }
 
-// getZipperSenders connects to downstream zippers and get Zipper-Senders.
-func (s *quicHandler) getZipperSenders() error {
+// buildZipperSenders builds Zipper-Senders from edge-mesh config center.
+func (s *quicHandler) buildZipperSenders() error {
 	log.Print("Connecting to downstream zippers...")
 
 	// download mesh conf
@@ -214,17 +221,48 @@ func (s *quicHandler) getZipperSenders() error {
 		}
 
 		go func(conf zipperServerConf) {
-			cli, err := client.NewZipperSender(s.serverlessConfig.Name).
-				Connect(conf.Host, conf.Port)
-			if err != nil {
-				cli.Retry()
-			}
-
 			s.mutex.Lock()
-			s.zipperSenders = append(s.zipperSenders, cli)
+			sender := s.createZipperSender(conf)
+			s.zipperSenders = append(s.zipperSenders, sender)
 			s.mutex.Unlock()
 		}(conf)
 	}
 
 	return nil
+}
+
+// createZipperSender creates a zipper sender.
+func (s *quicHandler) createZipperSender(conf zipperServerConf) serverless.GetSinkFunc {
+	f := func() (io.Writer, serverless.CancelFunc) {
+		if writer, ok := s.zipperMap.Load(conf.Name); ok {
+			cli, ok := writer.(client.ZipperSenderClient)
+			if ok {
+				return cli, s.cancelZipperSender(conf)
+			}
+			return nil, s.cancelZipperSender(conf)
+		}
+
+		// Reset zipper in map
+		s.zipperMap.Store(conf.Name, nil)
+
+		// connect to downstream zipper
+		cli, err := client.NewZipperSender(s.serverlessConfig.Name).
+			Connect(conf.Host, conf.Port)
+		if err != nil {
+			cli.Retry()
+		}
+
+		s.zipperMap.Store(conf.Name, cli)
+		return cli, s.cancelZipperSender(conf)
+	}
+
+	return f
+}
+
+// cancelZipperSender removes the zipper sender from `zipperMap`.
+func (s *quicHandler) cancelZipperSender(conf zipperServerConf) func() {
+	f := func() {
+		s.zipperMap.Delete(conf.Name)
+	}
+	return f
 }

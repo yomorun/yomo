@@ -57,8 +57,11 @@ func newClient(appName string, clientType string) *clientImpl {
 	}
 
 	c.conn.OnHeartbeatExpired = func() {
-		// reconnect when the heartbeat is expired.
 		c.once.Do(func() {
+			// reset stream to nil.
+			c.conn.Stream = nil
+
+			// reconnect when the heartbeat is expired.
 			c.connect(c.zipperIP, c.zipperPort)
 
 			// reset the sync.Once after 5s.
