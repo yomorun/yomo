@@ -105,17 +105,20 @@ func (c *ServerConn) getConnType(payload client.NegotiationPayload, conf *Workfl
 
 // Beat sends the heartbeat to clients in every 200ms.
 func (c *ServerConn) Beat() {
-	go func() {
+	go func(c *ServerConn) {
+		t := time.NewTicker(200 * time.Millisecond)
 		for {
-			// send heartbeat in every 200ms.
-			time.Sleep(200 * time.Millisecond)
-			err := c.conn.SendSignal(quic.SignalHeartbeat)
-			if err != nil {
-				log.Printf("❌ Server sent SignalHeartbeat to app [%s] failed: %s", c.conn.Name, err.Error())
-				break
+			select {
+			case <-t.C:
+				err := c.conn.SendSignal(quic.SignalHeartbeat)
+				if err != nil {
+					log.Printf("❌ Server sent SignalHeartbeat to app [%s] failed: %s", c.conn.Name, err.Error())
+					t.Stop()
+					break
+				}
 			}
 		}
-	}()
+	}(c)
 }
 
 // Close the QUIC connection.
