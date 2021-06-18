@@ -123,15 +123,14 @@ func FromStream(reader io.Reader) Observable {
 
 	f := func(next chan interface{}) {
 		defer close(next)
+		fd := NewFrameDecoder(reader)
 		for {
-			buf := make([]byte, 3*1024)
-			n, err := reader.Read(buf)
-
+			// read next raw frame.
+			buf, err := fd.Read(true)
 			if err != nil {
 				break
 			} else {
-				value := buf[:n]
-				next <- value
+				next <- buf
 			}
 		}
 	}

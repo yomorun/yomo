@@ -10,6 +10,7 @@ import (
 
 	"github.com/reactivex/rxgo/v2"
 	"github.com/yomorun/yomo/pkg/client"
+	"github.com/yomorun/yomo/pkg/decoder"
 	"github.com/yomorun/yomo/pkg/quic"
 	"github.com/yomorun/yomo/pkg/serverless"
 )
@@ -158,13 +159,12 @@ func (s *quicHandler) receiveDataFromZipperSenders() {
 			}
 
 			go func() {
+				fd := decoder.NewFrameDecoder(receiver)
 				for {
-					buf := make([]byte, 3*1024)
-					n, err := receiver.Read(buf)
+					buf, err := fd.Read(false)
 					if err != nil {
 						break
 					} else {
-						value := buf[:n]
 						// send data to sinks
 						for _, sink := range sinks {
 							go func(sf serverless.GetSinkFunc, buf []byte) {
@@ -176,7 +176,7 @@ func (s *quicHandler) receiveDataFromZipperSenders() {
 										cancel()
 									}
 								}
-							}(sink, value)
+							}(sink, buf)
 						}
 					}
 				}
