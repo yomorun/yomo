@@ -81,7 +81,6 @@ func (c *QuicConn) Healthcheck() {
 				if c.OnHeartbeatExpired != nil {
 					c.OnHeartbeatExpired()
 				}
-				break loop
 			}
 		}
 	}()

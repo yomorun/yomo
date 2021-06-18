@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yomorun/yomo/pkg/framing"
 	"github.com/yomorun/yomo/pkg/quic"
 )
 
@@ -135,7 +136,6 @@ func (c *clientImpl) handleSignal(accepted chan bool) {
 				break
 			}
 			value := buf[:n]
-
 			if bytes.Equal(value, quic.SignalHeartbeat) {
 				// heartbeart
 				c.conn.Heartbeat <- buf[0]
@@ -169,9 +169,11 @@ func (c *clientImpl) handleSignal(accepted chan bool) {
 }
 
 // Write the data to downstream.
-func (c *clientImpl) Write(b []byte) (int, error) {
+func (c *clientImpl) Write(data []byte) (int, error) {
 	if c.conn.Stream != nil {
-		return c.conn.Stream.Write(b)
+		// wrap data with framing.
+		f := framing.NewPayloadFrame(data)
+		return c.conn.Stream.Write(f.Bytes())
 	} else {
 		return 0, errors.New("not found stream")
 	}

@@ -57,14 +57,13 @@ func FromReader(reader io.Reader) RxStream {
 	go func() {
 		defer close(next)
 
+		fd := decoder.NewFrameDecoder(reader)
 		for {
-			buf := make([]byte, 3*1024)
-			n, err := reader.Read(buf)
+			buf, err := fd.Read(false)
 			if err != nil {
 				break
 			} else {
-				value := buf[:n]
-				next <- Of(value)
+				next <- Of(buf)
 			}
 		}
 	}()
@@ -105,16 +104,16 @@ func FromReaderWithFunc(f func() io.Reader) RxStream {
 			if reader == nil {
 				time.Sleep(time.Second)
 			} else {
-				buf := make([]byte, 3*1024)
-				n, err := reader.Read(buf)
-				if err != nil {
-					fmt.Println("[FromReaderWithFunc Reader Error] ", err)
-				} else {
-					value := buf[:n]
-					next <- Of(value)
+				fd := decoder.NewFrameDecoder(reader)
+				for {
+					buf, err := fd.Read(false)
+					if err != nil {
+						break
+					} else {
+						next <- Of(buf)
+					}
 				}
 			}
-
 		}
 	}()
 
@@ -658,13 +657,13 @@ func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf serverless.GetFlowFunc, opts 
 				if rw == nil {
 					time.Sleep(time.Second)
 				} else {
-					buf := make([]byte, 3*1024)
-					n, err := rw.Read(buf)
-
-					if err != nil {
+					fd := decoder.NewFrameDecoder(rw)
+					buf, err := fd.Read(false)
+					if err != nil && err != io.EOF {
 						cancel()
+						break
 					} else {
-						response <- buf[:n]
+						response <- buf
 					}
 				}
 			}
