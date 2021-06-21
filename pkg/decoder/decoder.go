@@ -3,14 +3,23 @@ package decoder
 import (
 	"io"
 	"log"
+	"os"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/yomorun/y3-codec-golang/pkg/common"
 )
 
-// bufferSize is the capacity of decoder.
-const bufferSize = 50
+const bufferSizeEnvKey = "YOMO_BUFFER_SIZE"
+
+var (
+	// bufferSize is the capacity of decoder.
+	bufferSize = 200
+
+	// dropSizeWhenFull is the size of data to drop when the buffer is full.
+	dropSizeWhenFull = getDropDataSize(bufferSize)
+)
 
 // Iterable iterate through and get the data of observe
 type Iterable interface {
@@ -396,6 +405,14 @@ func (o *observableImpl) Unmarshal(unmarshaller Unmarshaller, factory func() int
 }
 
 func createObservable(f func(next chan interface{})) Observable {
+	if os.Getenv(bufferSizeEnvKey) != "" {
+		newSize, err := strconv.Atoi(os.Getenv(bufferSizeEnvKey))
+		if newSize > 0 && err == nil {
+			bufferSize = newSize
+			dropSizeWhenFull = getDropDataSize(bufferSize)
+		}
+	}
+
 	next := make(chan interface{}, bufferSize)
 	subscribers := make([]chan interface{}, 0)
 
@@ -414,10 +431,16 @@ func dropOldData(next chan interface{}) {
 				continue
 			}
 
-			// the "next"  channel is full, drop 1/2 old data to receive the new data.
-			for i := 0; i < bufferSize/2; i++ {
+			// the "next" channel is full, drop old data to receive the new data.
+			for i := 0; i < dropSizeWhenFull; i++ {
 				<-next
 			}
 		}
 	}
+}
+
+// get the drop size when the buffer is full.
+func getDropDataSize(bufferSize int) int {
+	dropSize := float64(bufferSize) * 0.2
+	return int(dropSize)
 }
