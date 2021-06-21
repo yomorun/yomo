@@ -137,8 +137,10 @@ func FromStream(reader io.Reader) Observable {
 			// read next raw frame.
 			buf, err := fd.Read(true)
 			if err != nil {
+				log.Printf("Receive data from zipper failed: %v", err)
 				break
 			} else {
+				log.Printf("Receive raw data %v from zipper", buf)
 				next <- buf
 			}
 		}
@@ -327,6 +329,7 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 									state = "REJECT"
 								}
 							} else {
+								log.Printf("The key %v is not matched in the observed keys %v", k, m)
 								if limit == index {
 									state = "RS"
 									length = 0

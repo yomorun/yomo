@@ -113,7 +113,10 @@ func (s *quicHandler) receiveDataFromSources() {
 							if writer != nil {
 								_, err := writer.Write(buf)
 								if err != nil {
+									log.Printf("Zipper sent frame %v to sink failed: %v", buf, err)
 									cancel()
+								} else {
+									log.Printf("Zipper sent frame %v to sink", buf)
 								}
 							}
 						}(sink, value)

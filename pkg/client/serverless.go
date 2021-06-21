@@ -67,6 +67,8 @@ func (c *serverlessClientImpl) Pipe(f func(rxstream rx.RxStream) rx.RxStream) {
 			_, err := c.writer.Write(f.Bytes())
 			if err != nil {
 				log.Print("❌ Send data to zipper failed. ", err)
+			} else {
+				log.Printf("Send frame %v to zipper", f.Bytes())
 			}
 		}
 
