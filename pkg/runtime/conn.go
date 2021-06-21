@@ -112,7 +112,11 @@ func (c *ServerConn) Beat() {
 			case <-t.C:
 				err := c.conn.SendSignal(quic.SignalHeartbeat)
 				if err != nil {
-					log.Printf("❌ Server sent SignalHeartbeat to app [%s] failed: %s", c.conn.Name, err.Error())
+					if err.Error() == "Application error 0x0" {
+						log.Printf("❌ The app [%s] is disconnected.", c.conn.Name)
+					} else {
+						log.Printf("❌ Server sent SignalHeartbeat to app [%s] failed: %s", c.conn.Name, err.Error())
+					}
 					t.Stop()
 					break
 				}

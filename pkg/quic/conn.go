@@ -80,6 +80,8 @@ func (c *QuicConn) Healthcheck() {
 				// didn't receive the heartbeat after 5s, call the callback function when expired.
 				if c.OnHeartbeatExpired != nil {
 					c.OnHeartbeatExpired()
+				} else {
+					break loop
 				}
 			}
 		}
