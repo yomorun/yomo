@@ -259,6 +259,7 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 							index++
 							state = "RLS"
 						} else {
+							log.Printf("%v is not a root tag", b)
 							buffer = make([]byte, 0)
 							length = 0
 							value = 0
