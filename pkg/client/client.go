@@ -7,11 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"sync"
 	"time"
 
 	"github.com/yomorun/yomo/pkg/framing"
+	"github.com/yomorun/yomo/pkg/logger"
 	"github.com/yomorun/yomo/pkg/quic"
 )
 
@@ -32,6 +32,9 @@ type client interface {
 
 	// RetryWithCount the connection with a certain count.
 	RetryWithCount(count int) bool
+
+	// EnableDebug enables the enables the development model for logging.
+	EnableDebug()
 }
 
 type clientImpl struct {
@@ -81,19 +84,19 @@ func (c *clientImpl) connect(ip string, port int) (*clientImpl, error) {
 	c.zipperIP = ip
 	c.zipperPort = port
 	addr := fmt.Sprintf("%s:%d", ip, port)
-	log.Println("Connecting to zipper", addr, "...")
+	logger.Info("Connecting to zipper...", "addr", addr)
 
 	// connect to yomo-zipper
 	quic_cli, err := quic.NewClient(addr)
 	if err != nil {
-		fmt.Println("client [NewClient] Error:", err)
+		logger.Error("client [NewClient] Error:", "err", err)
 		return c, err
 	}
 
 	// create stream
 	quic_stream, err := quic_cli.CreateStream(context.Background())
 	if err != nil {
-		fmt.Println("client [CreateStream] Error:", err)
+		logger.Error("client [CreateStream] Error:", "err", err)
 		return c, err
 	}
 
@@ -110,7 +113,7 @@ func (c *clientImpl) connect(ip string, port int) (*clientImpl, error) {
 	err = c.conn.SendSignal(buf)
 
 	if err != nil {
-		fmt.Println("client [Write] Error:", err)
+		logger.Error("client [Write] Error:", "err", err)
 		return c, err
 	}
 
@@ -121,7 +124,7 @@ func (c *clientImpl) connect(ip string, port int) (*clientImpl, error) {
 
 	// waiting when the connection is accepted.
 	<-accepted
-	log.Print("✅ Connected to zipper ", addr)
+	logger.Info("✅ Connected to zipper.", "addr", addr)
 	return c, nil
 }
 
@@ -145,7 +148,7 @@ func (c *clientImpl) handleSignal(accepted chan bool) {
 					// create stream for source.
 					stream, err := c.session.CreateStream(context.Background())
 					if err != nil {
-						fmt.Println("client [session.CreateStream] Error:", err)
+						logger.Error("client [session.CreateStream] Error:", "err", err)
 						break
 					}
 					c.conn.Stream = stream
@@ -156,7 +159,7 @@ func (c *clientImpl) handleSignal(accepted chan bool) {
 				stream, err := c.session.CreateStream(context.Background())
 
 				if err != nil {
-					log.Println(err)
+					logger.Error("client [session.CreateStream] Error:", "err", err)
 					break
 				}
 
@@ -210,4 +213,9 @@ func (c *clientImpl) Close() error {
 	c.conn.Heartbeat = make(chan byte)
 	c.conn.Signal = nil
 	return err
+}
+
+// EnableDebug enables the enables the development model for logging.
+func (c *clientImpl) EnableDebug() {
+	logger.EnableDebug()
 }

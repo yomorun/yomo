@@ -3,11 +3,10 @@ package runtime
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
-	"log"
 	"time"
 
 	"github.com/yomorun/yomo/pkg/client"
+	"github.com/yomorun/yomo/pkg/logger"
 	"github.com/yomorun/yomo/pkg/quic"
 )
 
@@ -59,13 +58,13 @@ func (c *ServerConn) handleSignal(conf *WorkflowConfig) {
 				var payload client.NegotiationPayload
 				err := json.Unmarshal(value, &payload)
 				if err != nil {
-					log.Printf("❌ Zipper inits the connection failed: %s", err.Error())
+					logger.Error("❌ Zipper inits the connection failed.", "err", err)
 					return
 				}
 
 				c.conn.Name = payload.AppName
 				c.conn.Type = c.getConnType(payload, conf)
-				fmt.Println("Receive App:", c.conn.Name, c.conn.Type)
+				logger.Info("Receive App", "name", c.conn.Name, "type", c.conn.Type)
 				isInit = false
 
 				c.conn.SendSignal(quic.SignalAccepted)
@@ -113,9 +112,9 @@ func (c *ServerConn) Beat() {
 				err := c.conn.SendSignal(quic.SignalHeartbeat)
 				if err != nil {
 					if err.Error() == "Application error 0x0" {
-						log.Printf("❌ The app [%s] is disconnected.", c.conn.Name)
+						logger.Info("❌ The app is disconnected.", "name", c.conn.Name)
 					} else {
-						log.Printf("❌ Server sent SignalHeartbeat to app [%s] failed: %s", c.conn.Name, err.Error())
+						logger.Error("❌ Server sent SignalHeartbeat to app failed.", "name", c.conn.Name, "err", err)
 					}
 					t.Stop()
 					break
