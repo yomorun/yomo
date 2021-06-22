@@ -61,8 +61,10 @@ func FromReader(reader io.Reader) RxStream {
 		for {
 			buf, err := fd.Read(false)
 			if err != nil {
+				log.Printf("Receive frame from source failed: %v", err)
 				break
 			} else {
+				log.Printf("Receive frame %v from source", buf)
 				next <- Of(buf)
 			}
 		}
@@ -635,10 +637,13 @@ func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf serverless.GetFlowFunc, opts 
 							if rw == nil {
 								time.Sleep(200 * time.Millisecond)
 							} else {
-								_, err := rw.Write(item.V.([]byte))
+								data := item.V.([]byte)
+								_, err := rw.Write(data)
 								if err == nil {
+									log.Printf("Zipper sent frame %v to flow", data)
 									break
 								} else {
+									log.Printf("Zipper sent frame %v to flow failed: %v", data, err)
 									cancel()
 								}
 							}
@@ -660,9 +665,11 @@ func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf serverless.GetFlowFunc, opts 
 					fd := decoder.NewFrameDecoder(rw)
 					buf, err := fd.Read(false)
 					if err != nil && err != io.EOF {
+						log.Printf("Zipper received frame from flow/sink failed: %v", err)
 						cancel()
 						break
 					} else {
+						log.Printf("Zipper received frame %v from flow/sink", buf)
 						response <- buf
 					}
 				}
@@ -860,6 +867,7 @@ func (s *RxStreamImpl) OnObserve(function func(v []byte) (interface{}, error)) R
 							if !ok {
 								return
 							}
+							log.Printf("Observed data %v by Y3", item)
 							if !Of(item).SendContext(ctx, next) {
 								return
 							}
