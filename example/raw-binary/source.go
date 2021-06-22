@@ -22,12 +22,8 @@ func main() {
 	// .SetBytes() store value to y3 codec
 	obj.SetBytes(data)
 
-	// Wrap the payload buffer with a y3.NodePacket with key=0x01
-	wrapper := y3.NewNodePacketEncoder(0x01)
-	wrapper.AddPrimitivePacket(obj)
-
 	// Finish the data packet to transfer over YoMo
-	payload := wrapper.Encode()
+	payload := obj.Encode()
 	log.Printf("payload=%v", payload)
 
 	// Write to QUIC Stream
