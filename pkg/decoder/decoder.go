@@ -214,8 +214,18 @@ func (o *observableImpl) Subscribe(key byte) Observable {
 	return o.MultiSubscribe(key)
 }
 
+const (
+	y3StateRootStart       string = "RS"  // Root Start
+	y3StateRootLengthStart string = "RLS" // Root Length Start
+	y3StateTagStart        string = "TS"  // Tag Start
+	y3StateLengthStart     string = "LS"  // Length Start
+	y3StateValueStart      string = "VS"  // Value Start
+	y3StateReject          string = "REJECT"
+)
+
 // MultiSubscribe gets the value of the multi keys from the stream.
 // It will return the value to next operator if any key is matched.
+//
 // https://github.com/yomorun/y3-codec/blob/draft-01/draft-01.md
 // 0        7
 // +--------+
@@ -241,14 +251,8 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 
 		buffer := make([]byte, 0)
 		var (
-			index int32 = 0 // vernier
-			// state:
-			// RS: Root Start
-			// RLS: Root Length Start
-			// TS: Tag Start
-			// LS: Length Start
-			// VS: Value Start
-			state       string = "RS" // RS,RLS,TS,LS,VS,REJECT
+			index       int32  = 0 // vernier
+			state       string = y3StateRootStart
 			length      int32  = 0
 			value       int32  = 0
 			limit       int32  = 0
@@ -260,7 +264,7 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 
 		// reset all variables
 		var resetVars = func() {
-			state = "RS"
+			state = y3StateRootStart
 			length = 0
 			value = 0
 			index = 0
@@ -282,15 +286,15 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 				for i := 0; i < len(buf); i++ {
 					b := buf[i]
 					switch state {
-					case "RS":
+					case y3StateRootStart:
 						if common.IsRootTag(b) {
 							log.Printf("%v is a root tag, it's a node packet.", b)
 							index++
-							state = "RLS"
+							state = y3StateRootLengthStart
 						} else {
 							log.Printf("%v is not a root tag, it's a primitive packet.", b)
 							// the first byte is a tag, the next state is LS (Length Start).
-							state = "LS"
+							state = y3StateLengthStart
 							isPrimitive = true
 							buffer = make([]byte, 0)
 							buffer = append(buffer, b) // append tag.
@@ -298,7 +302,7 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 						}
 						continue
 
-					case "RLS":
+					case y3StateRootLengthStart:
 						index++
 						buffer = append(buffer, b)
 						l, err := common.DecodeLength(buffer)
@@ -307,16 +311,16 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 							continue
 						}
 						limit = index + l
-						state = "TS"
+						state = y3StateTagStart
 						buffer = make([]byte, 0)
 						continue
-					case "TS":
+					case y3StateTagStart:
 						index++
 						buffer = make([]byte, 0)
 						buffer = append(buffer, b)
-						state = "LS"
+						state = y3StateLengthStart
 						continue
-					case "LS":
+					case y3StateLengthStart:
 						index++
 						buffer = append(buffer, b)
 						l, err := common.DecodeLength(buffer[1:])
@@ -326,12 +330,12 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 
 						length = int32(len(buffer[1:]))
 						value = l
-						state = "VS"
+						state = y3StateValueStart
 						if isPrimitive {
 							limit = index + l
 						}
 						continue
-					case "VS":
+					case y3StateValueStart:
 						tail := int32(len(buf[i:]))
 						buflength := int32(len(buffer))
 
@@ -360,16 +364,15 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 
 								if limit == index {
 									resetVars()
-									log.Println("limit == index", "RS")
 								} else {
-									state = "REJECT"
+									state = y3StateReject
 								}
 							} else {
 								log.Printf("The key %v is not matched in the observed keys %v", k, m)
 								if limit == index {
 									resetVars()
 								} else {
-									state = "TS"
+									state = y3StateTagStart
 									length = 0
 									value = 0
 								}
@@ -380,7 +383,7 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 							index += tail
 							break
 						}
-					case "REJECT":
+					case y3StateReject:
 						tail := int32(len(buf[i:]))
 						if limit == index {
 							resetVars()
