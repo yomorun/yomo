@@ -216,6 +216,19 @@ func (o *observableImpl) Subscribe(key byte) Observable {
 
 // MultiSubscribe gets the value of the multi keys from the stream.
 // It will return the value to next operator if any key is matched.
+// https://github.com/yomorun/y3-codec/blob/draft-01/draft-01.md
+// 0        7
+// +--------+
+// | Tag    |
+// +--------+--------+--------+--------+
+// | Length (PVarUInt32)               |
+// +--------+--------+--------+--------+
+// | ...
+// +--------+--------+--------+--------+
+// | Value Payloads                    |
+// +--------+--------+--------+--------+
+// | ...
+// +--------+--------+--------+--------+
 func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 	// set keys to map
 	m := make(map[byte]bool, len(keys))
@@ -233,13 +246,28 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 			// RS: Root Start
 			// RLS: Root Length Start
 			// TS: Tag Start
-			// LS: Root Start
+			// LS: Length Start
 			// VS: Value Start
-			state  string = "RS" // RS,RLS,TS,LS,VS,REJECT
-			length int32  = 0
-			value  int32  = 0
-			limit  int32  = 0
+			state       string = "RS" // RS,RLS,TS,LS,VS,REJECT
+			length      int32  = 0
+			value       int32  = 0
+			limit       int32  = 0
+			isPrimitive bool   = false
 		)
+
+		// tagLength represents the length of Tag.
+		const tagLength int32 = 1
+
+		// reset all variables
+		var resetVars = func() {
+			state = "RS"
+			length = 0
+			value = 0
+			index = 0
+			limit = 0
+			buffer = make([]byte, 0)
+			isPrimitive = false
+		}
 
 		observe := o.Observe()
 
@@ -256,15 +284,17 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 					switch state {
 					case "RS":
 						if common.IsRootTag(b) {
+							log.Printf("%v is a root tag, it's a node packet.", b)
 							index++
 							state = "RLS"
 						} else {
-							log.Printf("%v is not a root tag", b)
+							log.Printf("%v is not a root tag, it's a primitive packet.", b)
+							// the first byte is a tag, the next state is LS (Length Start).
+							state = "LS"
+							isPrimitive = true
 							buffer = make([]byte, 0)
-							length = 0
-							value = 0
-							index = 0
-							limit = 0
+							buffer = append(buffer, b) // append tag.
+							index++
 						}
 						continue
 
@@ -297,22 +327,31 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 						length = int32(len(buffer[1:]))
 						value = l
 						state = "VS"
+						if isPrimitive {
+							limit = index + l
+						}
 						continue
 					case "VS":
 						tail := int32(len(buf[i:]))
 						buflength := int32(len(buffer))
 
-						if tail >= ((1 + length + value) - buflength) {
+						if tail >= ((tagLength + length + value) - buflength) {
 							start := i
-							end := int32(i) + (1 + length + value) - buflength
+							end := int32(i) + (tagLength + length + value) - buflength
 							buffer = append(buffer, buf[start:end]...)
-							index += ((1 + length + value) - buflength)
-							i += (int((1+length+value)-buflength) - 1)
+							index += ((tagLength + length + value) - buflength)
+							i += (int((tagLength+length+value)-buflength) - 1)
 							// Decoder Codec draft-1, the least significant 6 bits is the key (SeqID).
 							// https://github.com/yomorun/y3-codec/blob/draft-01/draft-01.md
 							k := (buffer[0] << 2) >> 2
 							// check if key is matched
 							if m[k] {
+								// the key is matched
+								// if primitive packet, it doesn't need the full TLV packet, directly returns the raw value without Tag + Length.
+								if isPrimitive {
+									buffer = buffer[tagLength+length:]
+								}
+
 								// subscribe multi keys, return key value to distinguish the values of different keys.
 								next <- KeyBuf{
 									Key: k,
@@ -320,24 +359,15 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 								}
 
 								if limit == index {
-									state = "RS"
-									length = 0
-									value = 0
-									index = 0
-									limit = 0
-									buffer = make([]byte, 0)
+									resetVars()
+									log.Println("limit == index", "RS")
 								} else {
 									state = "REJECT"
 								}
 							} else {
 								log.Printf("The key %v is not matched in the observed keys %v", k, m)
 								if limit == index {
-									state = "RS"
-									length = 0
-									value = 0
-									index = 0
-									limit = 0
-									buffer = make([]byte, 0)
+									resetVars()
 								} else {
 									state = "TS"
 									length = 0
@@ -353,21 +383,11 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 					case "REJECT":
 						tail := int32(len(buf[i:]))
 						if limit == index {
-							state = "RS"
-							length = 0
-							value = 0
-							index = 0
-							limit = 0
-							buffer = make([]byte, 0)
+							resetVars()
 							continue
 						} else if tail >= (limit - index) {
 							i += (int(limit-index) - 1)
-							state = "RS"
-							length = 0
-							value = 0
-							index = 0
-							limit = 0
-							buffer = make([]byte, 0)
+							resetVars()
 							continue
 						} else {
 							index += tail
