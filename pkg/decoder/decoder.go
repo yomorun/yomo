@@ -351,12 +351,18 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 						continue
 					case y3StateValueStart:
 						tail := int32(len(buf[i:]))
-						buflength := int32(len(buffer))
-						tlvRestLength := (tagLen + lengthFieldLen + valueLen) - buflength // the rest length of TLV packet.
+						bufLen := int32(len(buffer))
+						// the rest length of TLV packet.
+						tlvRestLen := (tagLen + lengthFieldLen + valueLen) - bufLen
+						if tlvRestLen < 0 {
+							logger.Error("The value length is greater than the length of TLV.", "value", bufLen, "tlv", tagLen+lengthFieldLen+valueLen)
+							resetVars()
+							continue
+						}
 
-						if tail >= tlvRestLength {
+						if tail >= tlvRestLen {
 							start := i
-							end := int32(i) + tlvRestLength
+							end := int32(i) + tlvRestLen
 							// validate start index and end index.
 							if start >= int(end) {
 								logger.Error("The start index is greater than end index.", "start", start, "end", end)
@@ -365,8 +371,8 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 							}
 
 							buffer = append(buffer, buf[start:end]...)
-							index += tlvRestLength
-							i += (int(tlvRestLength) - 1)
+							index += tlvRestLen
+							i += (int(tlvRestLen) - 1)
 							// Decoder Codec draft-1, the least significant 6 bits is the key (SeqID).
 							// https://github.com/yomorun/y3-codec/blob/draft-01/draft-01.md
 							k := getKey(buffer[0])
