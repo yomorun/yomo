@@ -44,7 +44,7 @@ func (s *quicGoServer) ListenAndServe(ctx context.Context, addr string) error {
 	}
 
 	// serve
-	logger.Info("✅ Listening on " + addr)
+	logger.Print("✅ Listening on " + addr)
 
 	if s.handler != nil {
 		s.handler.Listen()
@@ -71,7 +71,7 @@ func (s *quicGoServer) ListenAndServe(ctx context.Context, addr string) error {
 				if s.handler != nil {
 					s.handler.Read(id, session, stream)
 				} else {
-					logger.Warn("handler isn't set in QUIC server")
+					logger.Print("handler isn't set in QUIC server")
 					break
 				}
 			}

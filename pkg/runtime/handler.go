@@ -197,7 +197,7 @@ type zipperServerConf struct {
 
 // buildZipperSenders builds Zipper-Senders from edge-mesh config center.
 func (s *quicHandler) buildZipperSenders() error {
-	logger.Info("Connecting to downstream zippers...")
+	logger.Print("Connecting to downstream zippers...")
 
 	// download mesh conf
 	res, err := http.Get(s.meshConfigURL)

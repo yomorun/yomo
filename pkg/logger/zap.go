@@ -1,6 +1,8 @@
 package logger
 
 import (
+	"log"
+
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -9,11 +11,22 @@ func newLogger(isDebug bool) Logger {
 	var cfg zap.Config
 	if isDebug {
 		cfg = zap.NewDevelopmentConfig()
+		// set the minimal level to debug
+		cfg.Level.SetLevel(zap.DebugLevel)
 	} else {
 		cfg = zap.NewProductionConfig()
+		// set the minimal level to error
+		cfg.Level.SetLevel(zap.ErrorLevel)
 	}
 
 	cfg.EncoderConfig.CallerKey = zapcore.OmitKey
+
+	if isJsonFormat() {
+		cfg.Encoding = "json"
+	} else {
+		cfg.Encoding = "console"
+	}
+
 	logger, err := cfg.Build()
 	if err != nil {
 		panic(err)
@@ -27,6 +40,14 @@ func newLogger(isDebug bool) Logger {
 // zapLogger is the logger implementation in go.uber.org/zap
 type zapLogger struct {
 	logger *zap.SugaredLogger
+}
+
+func (z zapLogger) Print(v ...interface{}) {
+	log.Print(v...)
+}
+
+func (z zapLogger) Printf(format string, v ...interface{}) {
+	log.Printf(format, v...)
 }
 
 func (z zapLogger) Debug(msg string, fields ...interface{}) {

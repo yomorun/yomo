@@ -820,7 +820,7 @@ func (s *RxStreamImpl) ZipMultiObservers(observers []decoder.KeyObserveFunc, zip
 
 				items, ok := item.V.([]interface{})
 				if !ok {
-					logger.Warn("ZipMultiObservers - item.V is not a slice")
+					logger.Error("ZipMultiObservers - item.V is not a slice")
 					continue
 				}
 

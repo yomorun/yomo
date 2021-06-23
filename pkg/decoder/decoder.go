@@ -188,7 +188,7 @@ func (o *observableImpl) OnMultiObserve(keyObserveMap map[byte]OnObserveFunc) ch
 			kv := item.(KeyBuf)
 			function := keyObserveMap[kv.Key]
 			if function == nil {
-				logger.Info("The OnObserve func is not found for the specified key", "key", kv.Key)
+				logger.Print("The OnObserve func is not found for the specified key", kv.Key)
 				continue
 			}
 			val, err := function(kv.Buf)
@@ -369,7 +369,7 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 									state = y3StateReject
 								}
 							} else {
-								logger.Info("The key is not matched in the observed keys.", "key", k, "observed keys", logger.BytesString(keys))
+								logger.Printf("The key %v is not matched in the observed keys %v.", k, keys)
 								if limit == index {
 									resetVars()
 								} else {

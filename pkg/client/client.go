@@ -84,7 +84,7 @@ func (c *clientImpl) connect(ip string, port int) (*clientImpl, error) {
 	c.zipperIP = ip
 	c.zipperPort = port
 	addr := fmt.Sprintf("%s:%d", ip, port)
-	logger.Info("Connecting to zipper...", "addr", addr)
+	logger.Printf("Connecting to zipper %s...", addr)
 
 	// connect to yomo-zipper
 	quic_cli, err := quic.NewClient(addr)
@@ -124,7 +124,7 @@ func (c *clientImpl) connect(ip string, port int) (*clientImpl, error) {
 
 	// waiting when the connection is accepted.
 	<-accepted
-	logger.Info("✅ Connected to zipper.", "addr", addr)
+	logger.Printf("✅ Connected to zipper %s.", addr)
 	return c, nil
 }
 

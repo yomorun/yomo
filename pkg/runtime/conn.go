@@ -64,7 +64,7 @@ func (c *ServerConn) handleSignal(conf *WorkflowConfig) {
 
 				c.conn.Name = payload.AppName
 				c.conn.Type = c.getConnType(payload, conf)
-				logger.Info("Receive App", "name", c.conn.Name, "type", c.conn.Type)
+				logger.Printf("Receive App %s, type: %s", c.conn.Name, c.conn.Type)
 				isInit = false
 
 				c.conn.SendSignal(quic.SignalAccepted)
@@ -112,7 +112,7 @@ func (c *ServerConn) Beat() {
 				err := c.conn.SendSignal(quic.SignalHeartbeat)
 				if err != nil {
 					if err.Error() == "Application error 0x0" {
-						logger.Info("❌ The app is disconnected.", "name", c.conn.Name)
+						logger.Printf("❌ The app %s is disconnected.", c.conn.Name)
 					} else {
 						logger.Error("❌ Server sent SignalHeartbeat to app failed.", "name", c.conn.Name, "err", err)
 					}

@@ -7,6 +7,12 @@ import (
 
 // Logger
 type Logger interface {
+	// Print prints a farmat message without a specified level.
+	Print(v ...interface{})
+
+	// Printf prints a formated message without a specified level.
+	Printf(format string, v ...interface{})
+
 	// Debug logs a message at DebugLevel.
 	Debug(msg string, fields ...interface{})
 
@@ -27,11 +33,21 @@ type Logger interface {
 	Fatal(msg string, fields ...interface{})
 }
 
-var logger = newLogger(getDefaultEnableDebug())
+var logger = newLogger(isEnableDebug())
 
 // EnableDebug enables the development model for logging.
 func EnableDebug() {
 	logger = newLogger(true)
+}
+
+// Print prints a farmat message without a specified level.
+func Print(v ...interface{}) {
+	logger.Print(v...)
+}
+
+// Printf prints a formated message without a specified level.
+func Printf(format string, v ...interface{}) {
+	logger.Printf(format, v...)
 }
 
 // Debug logs a message at DebugLevel.
@@ -70,9 +86,17 @@ func BytesString(bytes []byte) string {
 	return fmt.Sprintf("%v", bytes)
 }
 
-// getDefaultEnableDebug indicates whether enable debug by default.
-func getDefaultEnableDebug() bool {
+// isEnableDebug indicates whether the debug is enabled.
+func isEnableDebug() bool {
 	if os.Getenv("YOMO_ENABLE_DEBUG") == "true" {
+		return true
+	}
+	return false
+}
+
+// isProductionMode indicates whether the log is in production model.
+func isJsonFormat() bool {
+	if os.Getenv("YOMO_LOG_FORMAT") == "json" {
 		return true
 	}
 	return false
