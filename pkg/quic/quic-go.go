@@ -11,12 +11,12 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
-	"log"
 	"math/big"
 	"net"
 	"time"
 
 	quicGo "github.com/lucas-clemente/quic-go"
+	"github.com/yomorun/yomo/pkg/logger"
 )
 
 type quicGoServer struct {
@@ -44,7 +44,7 @@ func (s *quicGoServer) ListenAndServe(ctx context.Context, addr string) error {
 	}
 
 	// serve
-	log.Print("✅ Listening on ", addr)
+	logger.Print("✅ Listening on " + addr)
 
 	if s.handler != nil {
 		s.handler.Listen()
@@ -71,7 +71,7 @@ func (s *quicGoServer) ListenAndServe(ctx context.Context, addr string) error {
 				if s.handler != nil {
 					s.handler.Read(id, session, stream)
 				} else {
-					log.Print("handler isn't set in QUIC server")
+					logger.Print("handler isn't set in QUIC server")
 					break
 				}
 			}

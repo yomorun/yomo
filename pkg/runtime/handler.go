@@ -4,13 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"sync"
 
 	"github.com/reactivex/rxgo/v2"
 	"github.com/yomorun/yomo/pkg/client"
 	"github.com/yomorun/yomo/pkg/decoder"
+	"github.com/yomorun/yomo/pkg/logger"
 	"github.com/yomorun/yomo/pkg/quic"
 	"github.com/yomorun/yomo/pkg/serverless"
 )
@@ -113,10 +113,10 @@ func (s *quicHandler) receiveDataFromSources() {
 							if writer != nil {
 								_, err := writer.Write(buf)
 								if err != nil {
-									log.Printf("Zipper sent frame %v to sink failed: %v", buf, err)
+									logger.Error("Zipper sent frame to sink failed.", "frame", logger.BytesString(buf), "err", err)
 									cancel()
 								} else {
-									log.Printf("Zipper sent frame %v to sink", buf)
+									logger.Debug("Zipper sent frame to sink", "frame", logger.BytesString(buf))
 								}
 							}
 						}(sink, value)
@@ -136,7 +136,7 @@ func (s *quicHandler) receiveDataFromSources() {
 							// send data to donwstream zippers
 							_, err := writer.Write(value)
 							if err != nil {
-								log.Printf("❌ [Zipper Sender] sent data to downstream zipper failed: %s", err.Error())
+								logger.Error("❌ [Zipper Sender] sent data to downstream zipper failed.", "err", err)
 								cancel()
 							}
 						}(sender, value)
@@ -197,7 +197,7 @@ type zipperServerConf struct {
 
 // buildZipperSenders builds Zipper-Senders from edge-mesh config center.
 func (s *quicHandler) buildZipperSenders() error {
-	log.Print("Connecting to downstream zippers...")
+	logger.Print("Connecting to downstream zippers...")
 
 	// download mesh conf
 	res, err := http.Get(s.meshConfigURL)

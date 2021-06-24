@@ -2,9 +2,9 @@ package client
 
 import (
 	"context"
-	"log"
 
 	"github.com/yomorun/yomo/pkg/framing"
+	"github.com/yomorun/yomo/pkg/logger"
 	"github.com/yomorun/yomo/pkg/quic"
 	"github.com/yomorun/yomo/pkg/rx"
 )
@@ -58,7 +58,7 @@ func (c *serverlessClientImpl) Pipe(f func(rxstream rx.RxStream) rx.RxStream) {
 
 			buf, ok := (customer.V).([]byte)
 			if !ok {
-				log.Print("❌ Please add the encode/marshal operator in the end of your Serverless handler.")
+				logger.Error("❌ Please add the encode/marshal operator in the end of your Serverless handler.")
 				continue
 			}
 
@@ -66,9 +66,9 @@ func (c *serverlessClientImpl) Pipe(f func(rxstream rx.RxStream) rx.RxStream) {
 			f := framing.NewPayloadFrame(buf)
 			_, err := c.writer.Write(f.Bytes())
 			if err != nil {
-				log.Print("❌ Send data to zipper failed. ", err)
+				logger.Error("❌ Send data to zipper failed.", "err", err)
 			} else {
-				log.Printf("Send frame %v to zipper", f.Bytes())
+				logger.Debug("Send frame to zipper", "frame", logger.BytesString(f.Bytes()))
 			}
 		}
 

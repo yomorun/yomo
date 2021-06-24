@@ -2,13 +2,13 @@ package decoder
 
 import (
 	"io"
-	"log"
 	"os"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/yomorun/y3-codec-golang/pkg/common"
+	"github.com/yomorun/yomo/pkg/logger"
 )
 
 const bufferSizeEnvKey = "YOMO_BUFFER_SIZE"
@@ -137,10 +137,10 @@ func FromStream(reader io.Reader) Observable {
 			// read next raw frame.
 			buf, err := fd.Read(true)
 			if err != nil {
-				log.Printf("Receive data from zipper failed: %v", err)
+				logger.Debug("Receive data from zipper failed.", "err", err)
 				break
 			} else {
-				log.Printf("Receive raw data %v from zipper", buf)
+				logger.Debug("Receive raw data from zipper.", "data", logger.BytesString(buf))
 				next <- buf
 			}
 		}
@@ -163,7 +163,7 @@ func (o *observableImpl) OnObserve(function func(v []byte) (interface{}, error))
 			value, err := function(kv.Buf)
 			if err != nil {
 				// log the error and contine consuming the item from observe
-				log.Println("Decoder OnObserve error:", err)
+				logger.Error("The callback function in OnObserve returns error.", "err", err)
 			} else {
 				next <- value
 			}
@@ -188,13 +188,13 @@ func (o *observableImpl) OnMultiObserve(keyObserveMap map[byte]OnObserveFunc) ch
 			kv := item.(KeyBuf)
 			function := keyObserveMap[kv.Key]
 			if function == nil {
-				log.Println("Decoder OnObserve func is not found")
+				logger.Print("The OnObserve func is not found for the specified key", kv.Key)
 				continue
 			}
 			val, err := function(kv.Buf)
 			if err != nil {
 				// log the error and contine consuming the item from observe
-				log.Println("Decoder OnObserve error:", err)
+				logger.Error("The callback function in OnObserve returns error.", "err", err)
 			} else {
 				next <- KeyValue{
 					Key:   kv.Key,
@@ -214,8 +214,31 @@ func (o *observableImpl) Subscribe(key byte) Observable {
 	return o.MultiSubscribe(key)
 }
 
+const (
+	y3StateRootStart       string = "RS"  // Root Start
+	y3StateRootLengthStart string = "RLS" // Root Length Start
+	y3StateTagStart        string = "TS"  // Tag Start
+	y3StateLengthStart     string = "LS"  // Length Start
+	y3StateValueStart      string = "VS"  // Value Start
+	y3StateReject          string = "REJECT"
+)
+
 // MultiSubscribe gets the value of the multi keys from the stream.
 // It will return the value to next operator if any key is matched.
+//
+// https://github.com/yomorun/y3-codec/blob/draft-01/draft-01.md
+// 0        7
+// +--------+
+// | Tag    |
+// +--------+--------+--------+--------+
+// | Length (PVarUInt32)               |
+// +--------+--------+--------+--------+
+// | ...
+// +--------+--------+--------+--------+
+// | Value Payloads                    |
+// +--------+--------+--------+--------+
+// | ...
+// +--------+--------+--------+--------+
 func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 	// set keys to map
 	m := make(map[byte]bool, len(keys))
@@ -228,18 +251,34 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 
 		buffer := make([]byte, 0)
 		var (
-			index int32 = 0 // vernier
-			// state:
-			// RS: Root Start
-			// RLS: Root Length Start
-			// TS: Tag Start
-			// LS: Root Start
-			// VS: Value Start
-			state  string = "RS" // RS,RLS,TS,LS,VS,REJECT
-			length int32  = 0
-			value  int32  = 0
-			limit  int32  = 0
+			index          int32  = 0 // vernier
+			state          string = y3StateRootStart
+			lengthFieldLen int32  = 0
+			valueLen       int32  = 0
+			limit          int32  = 0
+			isPrimitive    bool   = false
 		)
+
+		// tagLen represents the length of Tag.
+		const tagLen int32 = 1
+
+		// reset all variables
+		var resetVars = func() {
+			state = y3StateRootStart
+			lengthFieldLen = 0
+			valueLen = 0
+			index = 0
+			limit = 0
+			buffer = make([]byte, 0)
+			isPrimitive = false
+		}
+
+		// get the key of TLV packet.
+		var getKey = func(b byte) byte {
+			// Decoder Codec draft-1, the least significant 6 bits is the key (SeqID).
+			// https://github.com/yomorun/y3-codec/blob/draft-01/draft-01.md
+			return (buffer[0] << 2) >> 2
+		}
 
 		observe := o.Observe()
 
@@ -254,21 +293,30 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 				for i := 0; i < len(buf); i++ {
 					b := buf[i]
 					switch state {
-					case "RS":
+					case y3StateRootStart:
 						if common.IsRootTag(b) {
+							logger.Debug("The first byte is a root tag, it's a node packet.", "byte", b)
 							index++
-							state = "RLS"
+							state = y3StateRootLengthStart
 						} else {
-							log.Printf("%v is not a root tag", b)
+							logger.Debug("The first byte is not a root tag, perhaps it's a primitive packet.", "byte", b)
 							buffer = make([]byte, 0)
-							length = 0
-							value = 0
-							index = 0
-							limit = 0
+							buffer = append(buffer, b) // append tag.
+							k := getKey(b)
+							if !m[k] {
+								logger.Debug("The key is not matched the observed keys.", "key", k, "observed keys", logger.BytesString(keys))
+								resetVars()
+								continue
+							}
+
+							// the first byte is a tag, the next state is LS (Length Start).
+							state = y3StateLengthStart
+							isPrimitive = true
+							index++
 						}
 						continue
 
-					case "RLS":
+					case y3StateRootLengthStart:
 						index++
 						buffer = append(buffer, b)
 						l, err := common.DecodeLength(buffer)
@@ -277,16 +325,16 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 							continue
 						}
 						limit = index + l
-						state = "TS"
+						state = y3StateTagStart
 						buffer = make([]byte, 0)
 						continue
-					case "TS":
+					case y3StateTagStart:
 						index++
 						buffer = make([]byte, 0)
 						buffer = append(buffer, b)
-						state = "LS"
+						state = y3StateLengthStart
 						continue
-					case "LS":
+					case y3StateLengthStart:
 						index++
 						buffer = append(buffer, b)
 						l, err := common.DecodeLength(buffer[1:])
@@ -294,54 +342,68 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 							continue
 						}
 
-						length = int32(len(buffer[1:]))
-						value = l
-						state = "VS"
+						lengthFieldLen = int32(len(buffer[1:]))
+						valueLen = l
+						state = y3StateValueStart
+						if isPrimitive {
+							limit = index + l
+						}
 						continue
-					case "VS":
+					case y3StateValueStart:
 						tail := int32(len(buf[i:]))
-						buflength := int32(len(buffer))
+						bufLen := int32(len(buffer))
+						// the rest length of TLV packet.
+						tlvRestLen := (tagLen + lengthFieldLen + valueLen) - bufLen
+						if tlvRestLen < 0 {
+							logger.Error("The value length is greater than the length of TLV.", "value", bufLen, "tlv", tagLen+lengthFieldLen+valueLen)
+							resetVars()
+							continue
+						}
 
-						if tail >= ((1 + length + value) - buflength) {
+						if tail >= tlvRestLen {
 							start := i
-							end := int32(i) + (1 + length + value) - buflength
+							end := int32(i) + tlvRestLen
+							// validate start index and end index.
+							if start >= int(end) {
+								logger.Error("The start index is greater than end index.", "start", start, "end", end)
+								resetVars()
+								continue
+							}
+
 							buffer = append(buffer, buf[start:end]...)
-							index += ((1 + length + value) - buflength)
-							i += (int((1+length+value)-buflength) - 1)
+							index += tlvRestLen
+							i += (int(tlvRestLen) - 1)
 							// Decoder Codec draft-1, the least significant 6 bits is the key (SeqID).
 							// https://github.com/yomorun/y3-codec/blob/draft-01/draft-01.md
-							k := (buffer[0] << 2) >> 2
+							k := getKey(buffer[0])
 							// check if key is matched
 							if m[k] {
+								// the key is matched
+								// if primitive packet, it doesn't need the full TLV packet, directly returns the raw value without Tag + Length.
+								if isPrimitive {
+									buffer = buffer[tagLen+lengthFieldLen:]
+								}
+
 								// subscribe multi keys, return key value to distinguish the values of different keys.
 								next <- KeyBuf{
 									Key: k,
 									Buf: buffer,
 								}
+								logger.Debug("Observe data by the specified key.", "data", logger.BytesString(buffer), "key", k)
 
 								if limit == index {
-									state = "RS"
-									length = 0
-									value = 0
-									index = 0
-									limit = 0
-									buffer = make([]byte, 0)
+									resetVars()
 								} else {
-									state = "REJECT"
+									state = y3StateReject
 								}
 							} else {
-								log.Printf("The key %v is not matched in the observed keys %v", k, m)
+								logger.Debug("The key is not matched the observed keys.", "key", k, "observed keys", logger.BytesString(keys))
 								if limit == index {
-									state = "RS"
-									length = 0
-									value = 0
-									index = 0
-									limit = 0
-									buffer = make([]byte, 0)
+									resetVars()
 								} else {
-									state = "TS"
-									length = 0
-									value = 0
+									state = y3StateTagStart
+									lengthFieldLen = 0
+									valueLen = 0
 								}
 							}
 							continue
@@ -350,24 +412,14 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 							index += tail
 							break
 						}
-					case "REJECT":
+					case y3StateReject:
 						tail := int32(len(buf[i:]))
 						if limit == index {
-							state = "RS"
-							length = 0
-							value = 0
-							index = 0
-							limit = 0
-							buffer = make([]byte, 0)
+							resetVars()
 							continue
 						} else if tail >= (limit - index) {
 							i += (int(limit-index) - 1)
-							state = "RS"
-							length = 0
-							value = 0
-							index = 0
-							limit = 0
-							buffer = make([]byte, 0)
+							resetVars()
 							continue
 						} else {
 							index += tail
@@ -396,7 +448,7 @@ func (o *observableImpl) Unmarshal(unmarshaller Unmarshaller, factory func() int
 			err := unmarshaller(buf, value)
 			if err != nil {
 				// log the error and contine consuming the item from observe
-				log.Println("Decoder Unmarshal error:", err)
+				logger.Error("Unmarshal error in decoder", "err", err)
 			} else {
 				next <- value
 			}
