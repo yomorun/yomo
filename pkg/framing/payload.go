@@ -12,6 +12,7 @@ func NewPayloadFrame(data []byte) *PayloadFrame {
 	}
 }
 
+// Bytes get the bytes of PayloadFrame.
 func (p *PayloadFrame) Bytes() []byte {
 	len := len(p.data)
 	buf := make([]byte, FrameLengthFieldSize)

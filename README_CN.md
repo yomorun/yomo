@@ -33,9 +33,9 @@ env GOBIN=/bin go install github.com/yomorun/cli/yomo@latest
 #### 验证 CLI 是否成功安装
 
 ```bash
-$ yomo -v
+$ yomo -V
 
-YoMo CLI version: v0.0.2
+YoMo CLI version: v0.0.6
 ```
 
 ### 2. 创建第一个yomo应用

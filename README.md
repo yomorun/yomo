@@ -38,9 +38,9 @@ $ go install github.com/yomorun/cli/yomo@latest
 #### Verify if the CLI was installed successfully
 
 ```bash
-$ yomo -v
+$ yomo -V
 
-YoMo CLI version: v0.0.1
+YoMo CLI version: v0.0.6
 ```
 
 ### 2. Create your serverless app

@@ -9,7 +9,7 @@ yomo serve -c zipper.yaml
 #### 2. Hook the streaming serverless function to YoMo
 
 ```bash
-yomo run func.go -n cc
+yomo run -n cc func.go
 ```
 
 #### 3. Generating binary data

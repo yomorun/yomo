@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"sync"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 	"github.com/reactivex/rxgo/v2"
 	y3 "github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo/pkg/decoder"
+	"github.com/yomorun/yomo/pkg/logger"
 	"github.com/yomorun/yomo/pkg/serverless"
 )
 
@@ -61,10 +61,10 @@ func FromReader(reader io.Reader) RxStream {
 		for {
 			buf, err := fd.Read(false)
 			if err != nil {
-				log.Printf("Receive frame from source failed: %v", err)
+				logger.Error("Receive frame from source failed.", "err", err)
 				break
 			} else {
-				log.Printf("Receive frame %v from source", buf)
+				logger.Debug("Receive frame from source.", "frame", logger.BytesString(buf))
 				next <- Of(buf)
 			}
 		}
@@ -640,10 +640,10 @@ func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf serverless.GetFlowFunc, opts 
 								data := item.V.([]byte)
 								_, err := rw.Write(data)
 								if err == nil {
-									log.Printf("Zipper sent frame %v to flow", data)
+									logger.Debug("Zipper sent frame to flow.", "frame", logger.BytesString(data))
 									break
 								} else {
-									log.Printf("Zipper sent frame %v to flow failed: %v", data, err)
+									logger.Error("Zipper sent frame to flow failed.", "frame", logger.BytesString(data), "err", err)
 									cancel()
 								}
 							}
@@ -665,11 +665,11 @@ func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf serverless.GetFlowFunc, opts 
 					fd := decoder.NewFrameDecoder(rw)
 					buf, err := fd.Read(false)
 					if err != nil && err != io.EOF {
-						log.Printf("Zipper received frame from flow/sink failed: %v", err)
+						logger.Error("Zipper received frame from flow failed.", "err", err)
 						cancel()
 						break
 					} else {
-						log.Printf("Zipper received frame %v from flow/sink", buf)
+						logger.Debug("Zipper received frame from flow.", "frame", logger.BytesString(buf))
 						response <- buf
 					}
 				}
@@ -814,20 +814,20 @@ func (s *RxStreamImpl) ZipMultiObservers(observers []decoder.KeyObserveFunc, zip
 			// observe the value from zipObservable
 			for item := range zipObservable.Observe(rxgo.WithErrorStrategy(rxgo.ContinueOnError)) {
 				if item.Error() {
-					log.Println(item.E.Error())
+					logger.Error("ZipMultiObservers - observe the value failed.", "err", item.E)
 					continue
 				}
 
 				items, ok := item.V.([]interface{})
 				if !ok {
-					log.Println("ZipMultiObservers - item.V is not a slice")
+					logger.Error("ZipMultiObservers - item.V is not a slice")
 					continue
 				}
 
 				// call the zipper callback
 				v, err := zipper(items)
 				if err != nil {
-					log.Println("ZipMultiObservers Zipper", err.Error())
+					logger.Error("ZipMultiObservers - zipper func returns an err.", "err", err)
 					continue
 				}
 
@@ -867,7 +867,7 @@ func (s *RxStreamImpl) OnObserve(function func(v []byte) (interface{}, error)) R
 							if !ok {
 								return
 							}
-							log.Printf("Observed data %v by Y3", item)
+							logger.Debug("Get data after OnObserve.", "data", item)
 							if !Of(item).SendContext(ctx, next) {
 								return
 							}
