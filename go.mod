@@ -7,8 +7,7 @@ require (
 	github.com/lucas-clemente/quic-go v0.21.1
 	github.com/reactivex/rxgo/v2 v2.5.0
 	github.com/stretchr/objx v0.1.1 // indirect
-	github.com/yomorun/y3-codec-golang v1.6.9
+	github.com/yomorun/y3-codec-golang v1.7.0
 	go.uber.org/zap v1.17.0
-	golang.org/x/tools v0.0.0-20191125144606-a911d9008d1f // indirect
 	gopkg.in/yaml.v2 v2.4.0
 )
