@@ -9,6 +9,5 @@ require (
 	github.com/stretchr/objx v0.1.1 // indirect
 	github.com/yomorun/y3-codec-golang v1.6.9
 	go.uber.org/zap v1.17.0
-	golang.org/x/tools v0.0.0-20191125144606-a911d9008d1f // indirect
 	gopkg.in/yaml.v2 v2.4.0
 )
