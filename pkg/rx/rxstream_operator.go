@@ -667,7 +667,6 @@ func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf serverless.GetFlowFunc, opts 
 					if err != nil && err != io.EOF {
 						logger.Error("Zipper received frame from flow failed.", "err", err)
 						cancel()
-						break
 					} else {
 						logger.Debug("Zipper received frame from flow.", "frame", logger.BytesString(buf))
 						response <- buf
