@@ -12,9 +12,10 @@ import (
 
 // ServerConn represents the YoMo Server connection.
 type ServerConn struct {
-	conn     *quic.QuicConn
-	Session  quic.Session
-	onClosed func() // onClosed is the callback when the connection is closed.
+	conn              *quic.QuicConn
+	Session           quic.Session
+	onClosed          func()      // onClosed is the callback when the connection is closed.
+	isNewAppAvailable func() bool // indicates whether the server receives a new app.
 }
 
 // NewServerConn inits a new YoMo Server connection.
@@ -112,10 +113,15 @@ func (c *ServerConn) Beat() {
 				err := c.conn.SendSignal(quic.SignalHeartbeat)
 				if err != nil {
 					if err.Error() == "Application error 0x0" {
-						logger.Printf("❌ The app %s is disconnected.", c.conn.Name)
+						// when the app reconnected immediately before the heartbeat expiration time (5s), it shoudn't print the outdated error message.
+						// only print the message when there is not any new available app with the same name and type.
+						if c.isNewAppAvailable == nil || !c.isNewAppAvailable() {
+							logger.Printf("❌ The app %s is disconnected.", c.conn.Name)
+						}
 					} else {
 						logger.Error("❌ Server sent SignalHeartbeat to app failed.", "name", c.conn.Name, "err", err)
 					}
+
 					t.Stop()
 					break
 				}

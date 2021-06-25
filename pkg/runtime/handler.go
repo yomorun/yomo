@@ -74,11 +74,25 @@ func (s *quicHandler) Read(id int64, sess quic.Session, st quic.Stream) error {
 		}
 	} else {
 		// init
-		conn := NewServerConn(sess, st, s.serverlessConfig)
-		conn.onClosed = func() {
+		svrConn := NewServerConn(sess, st, s.serverlessConfig)
+		svrConn.onClosed = func() {
 			s.connMap.Delete(id)
 		}
-		s.connMap.Store(id, conn)
+		svrConn.isNewAppAvailable = func() bool {
+			isNewAvailable := false
+			// check if any new app (same name and type) is in connMap.
+			s.connMap.Range(func(key, value interface{}) bool {
+				c := value.(*ServerConn)
+				if c.conn.Name == svrConn.conn.Name && c.conn.Type == svrConn.conn.Type && key.(int64) > id {
+					isNewAvailable = true
+					return false
+				}
+				return true
+			})
+
+			return isNewAvailable
+		}
+		s.connMap.Store(id, svrConn)
 	}
 	s.mutex.Unlock()
 	return nil
