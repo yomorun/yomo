@@ -25,8 +25,8 @@ func appendFrameLength(buf []byte, len int) {
 	}
 }
 
-// ReadFrameLength reads frame length from bytes.
-func ReadFrameLength(buf []byte) int {
+// ReadFrameLength reads frame length from bytes and returns the clean buf.
+func ReadFrameLength(buf []byte) (int, []byte) {
 	c := 0
 	for i := 0; i < FrameLengthFieldSize; i++ {
 		offset := 8 * (FrameLengthFieldSize - i - 1)
@@ -38,10 +38,10 @@ func ReadFrameLength(buf []byte) int {
 	}
 
 	if c == 0 && len(buf) > FrameLengthFieldSize {
-		// skip the first byte and contine reading frame length from buf
+		// skip the first 0 byte and contine reading frame length from buf
 		buf = buf[1:]
 		return ReadFrameLength(buf)
 	}
 
-	return c
+	return c, buf
 }

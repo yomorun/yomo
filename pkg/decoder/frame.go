@@ -45,7 +45,7 @@ func doSplit(data []byte, eof bool) (advance int, token []byte, err error) {
 	if len(data) < framing.FrameLengthFieldSize {
 		return
 	}
-	frameLength := framing.ReadFrameLength(data)
+	frameLength, data := framing.ReadFrameLength(data)
 	if frameLength < 1 {
 		err = errors.New("invalid frame length")
 		return

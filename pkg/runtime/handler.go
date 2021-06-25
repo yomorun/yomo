@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/reactivex/rxgo/v2"
 	"github.com/yomorun/yomo/pkg/client"
@@ -108,15 +109,19 @@ func (s *quicHandler) receiveDataFromSources() {
 					// sinks
 					for _, sink := range sinks {
 						go func(sf serverless.GetSinkFunc, buf []byte) {
-							writer, cancel := sf()
-
-							if writer != nil {
-								_, err := writer.Write(buf)
-								if err != nil {
-									logger.Error("Zipper sent frame to sink failed.", "frame", logger.BytesString(buf), "err", err)
-									cancel()
+							for {
+								writer, cancel := sf()
+								if writer == nil {
+									time.Sleep(200 * time.Millisecond)
 								} else {
-									logger.Debug("Zipper sent frame to sink", "frame", logger.BytesString(buf))
+									_, err := writer.Write(buf)
+									if err != nil {
+										logger.Error("Zipper sent frame to sink failed.", "frame", logger.BytesString(buf), "err", err)
+										cancel()
+									} else {
+										logger.Debug("Zipper sent frame to sink", "frame", logger.BytesString(buf))
+										break
+									}
 								}
 							}
 						}(sink, value)

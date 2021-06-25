@@ -19,7 +19,7 @@ func newLogger(isDebug bool) Logger {
 	}
 
 	cfg.DisableCaller = true
-	// cfg.DisableStacktrace = true
+	cfg.DisableStacktrace = true
 
 	if isJsonFormat() {
 		cfg.Encoding = "json"
