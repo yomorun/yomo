@@ -58,10 +58,11 @@ func (c *serverlessClientImpl) Pipe(f func(rxstream rx.RxStream) rx.RxStream) {
 
 			buf, ok := (customer.V).([]byte)
 			if !ok {
-				logger.Error("❌ Please add the encode/marshal operator in the end of your Serverless handler.")
+				logger.Debug("[Serverless Client] the data is not a []byte in RxStream, it won't be sent to zipper.", "data", customer.V)
 				continue
 			}
 
+			// send data to zipper
 			// wrap data with framing.
 			f := framing.NewPayloadFrame(buf)
 			_, err := c.writer.Write(f.Bytes())

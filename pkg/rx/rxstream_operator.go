@@ -912,13 +912,13 @@ func (s *RxStreamImpl) Encode(key byte, opts ...rxgo.Option) RxStream {
 				buf, err := y3codec.Marshal(item.V)
 
 				if err != nil {
-					return
+					logger.Debug("[Encode Operator] encodes data failed via Y3 Codec.", "key", key, "data", item.V, "err", err)
+					continue
 				}
 
 				if !Of(buf).SendContext(ctx, next) {
 					return
 				}
-
 			}
 		}
 	}
