@@ -23,7 +23,6 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 	stream := rxstream.
 		Subscribe(0x11).
 		OnObserve(callback).
-		Map(store).
-		Encode(0x12)
+		Map(store)
 	return stream
 }
