@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/reactivex/rxgo/v2"
 	"github.com/yomorun/yomo/pkg/client"
@@ -73,11 +74,25 @@ func (s *quicHandler) Read(id int64, sess quic.Session, st quic.Stream) error {
 		}
 	} else {
 		// init
-		conn := NewServerConn(sess, st, s.serverlessConfig)
-		conn.onClosed = func() {
+		svrConn := NewServerConn(sess, st, s.serverlessConfig)
+		svrConn.onClosed = func() {
 			s.connMap.Delete(id)
 		}
-		s.connMap.Store(id, conn)
+		svrConn.isNewAppAvailable = func() bool {
+			isNewAvailable := false
+			// check if any new app (same name and type) is in connMap.
+			s.connMap.Range(func(key, value interface{}) bool {
+				c := value.(*ServerConn)
+				if c.conn.Name == svrConn.conn.Name && c.conn.Type == svrConn.conn.Type && key.(int64) > id {
+					isNewAvailable = true
+					return false
+				}
+				return true
+			})
+
+			return isNewAvailable
+		}
+		s.connMap.Store(id, svrConn)
 	}
 	s.mutex.Unlock()
 	return nil
@@ -107,19 +122,7 @@ func (s *quicHandler) receiveDataFromSources() {
 
 					// sinks
 					for _, sink := range sinks {
-						go func(sf serverless.GetSinkFunc, buf []byte) {
-							writer, cancel := sf()
-
-							if writer != nil {
-								_, err := writer.Write(buf)
-								if err != nil {
-									logger.Error("Zipper sent frame to sink failed.", "frame", logger.BytesString(buf), "err", err)
-									cancel()
-								} else {
-									logger.Debug("Zipper sent frame to sink", "frame", logger.BytesString(buf))
-								}
-							}
-						}(sink, value)
+						go sendDataToSink(sink, value, "Zipper sent frame to sink", "❌ Zipper sent frame to sink failed.")
 					}
 
 					// Zipper-Senders
@@ -128,18 +131,7 @@ func (s *quicHandler) receiveDataFromSources() {
 							continue
 						}
 
-						go func(f serverless.GetSinkFunc, buf []byte) {
-							writer, cancel := f()
-							if writer == nil {
-								return
-							}
-							// send data to donwstream zippers
-							_, err := writer.Write(value)
-							if err != nil {
-								logger.Error("❌ [Zipper Sender] sent data to downstream zipper failed.", "err", err)
-								cancel()
-							}
-						}(sender, value)
+						go sendDataToSink(sender, value, "[Zipper Sender] sent frame to downstream zipper.", "❌ [Zipper Sender] sent frame to downstream zipper failed.")
 					}
 				}
 			}()
@@ -170,20 +162,29 @@ func (s *quicHandler) receiveDataFromZipperSenders() {
 					} else {
 						// send data to sinks
 						for _, sink := range sinks {
-							go func(sf serverless.GetSinkFunc, buf []byte) {
-								writer, cancel := sf()
-
-								if writer != nil {
-									_, err := writer.Write(buf)
-									if err != nil {
-										cancel()
-									}
-								}
-							}(sink, buf)
+							go sendDataToSink(sink, buf, "[Zipper Receiver] sent frame to sink.", "❌ [Zipper Receiver] sent frame to sink failed.")
 						}
 					}
 				}
 			}()
+		}
+	}
+}
+
+func sendDataToSink(sf serverless.GetSinkFunc, buf []byte, succssMsg string, errMsg string) {
+	for {
+		writer, cancel := sf()
+		if writer == nil {
+			time.Sleep(200 * time.Millisecond)
+		} else {
+			_, err := writer.Write(buf)
+			if err != nil {
+				logger.Error(errMsg, "frame", logger.BytesString(buf), "err", err)
+				cancel()
+			} else {
+				logger.Debug(succssMsg, "frame", logger.BytesString(buf))
+				break
+			}
 		}
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"log"
 
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 func newLogger(isDebug bool) Logger {
@@ -19,7 +18,8 @@ func newLogger(isDebug bool) Logger {
 		cfg.Level.SetLevel(zap.ErrorLevel)
 	}
 
-	cfg.EncoderConfig.CallerKey = zapcore.OmitKey
+	cfg.DisableCaller = true
+	cfg.DisableStacktrace = true
 
 	if isJsonFormat() {
 		cfg.Encoding = "json"

@@ -617,6 +617,7 @@ func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf serverless.GetFlowFunc, opts 
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
 		response := make(chan []byte)
+		streamReady := make(chan bool)
 		observe := s.Observe(opts...)
 
 		// send the stream to downstream
@@ -638,6 +639,7 @@ func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf serverless.GetFlowFunc, opts 
 								time.Sleep(200 * time.Millisecond)
 							} else {
 								data := item.V.([]byte)
+								streamReady <- true
 								_, err := rw.Write(data)
 								if err == nil {
 									logger.Debug("Zipper sent frame to flow.", "frame", logger.BytesString(data))
@@ -656,21 +658,28 @@ func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf serverless.GetFlowFunc, opts 
 		// receive the response from downstream
 		go func() {
 			defer close(response)
+			defer close(streamReady)
 
 			for {
-				rw, cancel := rwf()
-				if rw == nil {
-					time.Sleep(time.Second)
-				} else {
-					fd := decoder.NewFrameDecoder(rw)
-					buf, err := fd.Read(false)
-					if err != nil && err != io.EOF {
-						logger.Error("Zipper received frame from flow failed.", "err", err)
-						cancel()
-						break
+				select {
+				case ready, ok := <-streamReady:
+					if !ready || !ok {
+						return
+					}
+
+					rw, cancel := rwf()
+					if rw == nil {
+						time.Sleep(time.Second)
 					} else {
-						logger.Debug("Zipper received frame from flow.", "frame", logger.BytesString(buf))
-						response <- buf
+						fd := decoder.NewFrameDecoder(rw)
+						buf, err := fd.Read(false)
+						if err != nil && err != io.EOF {
+							logger.Error("Zipper received frame from flow failed.", "err", err)
+							cancel()
+						} else {
+							logger.Debug("Zipper received frame from flow.", "frame", logger.BytesString(buf))
+							response <- buf
+						}
 					}
 				}
 			}
@@ -903,13 +912,13 @@ func (s *RxStreamImpl) Encode(key byte, opts ...rxgo.Option) RxStream {
 				buf, err := y3codec.Marshal(item.V)
 
 				if err != nil {
-					return
+					logger.Debug("[Encode Operator] encodes data failed via Y3 Codec.", "key", key, "data", item.V, "err", err)
+					continue
 				}
 
 				if !Of(buf).SendContext(ctx, next) {
 					return
 				}
-
 			}
 		}
 	}
