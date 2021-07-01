@@ -636,10 +636,12 @@ func (s *RxStreamImpl) MergeStreamFunc(sfn serverless.GetStreamFunc, opts ...rxg
 					} else {
 						for {
 							rw, cancel := sfn()
+							data := item.V.([]byte)
 							if rw == nil {
-								time.Sleep(200 * time.Millisecond)
+								// pass the data to next stream function if the curren stream function is nil
+								response <- data
+								break
 							} else {
-								data := item.V.([]byte)
 								streamReady <- true
 								_, err := rw.Write(data)
 								if err == nil {
@@ -670,9 +672,7 @@ func (s *RxStreamImpl) MergeStreamFunc(sfn serverless.GetStreamFunc, opts ...rxg
 
 					go func() {
 						rw, cancel := sfn()
-						if rw == nil {
-							time.Sleep(time.Second)
-						} else {
+						if rw != nil {
 							fd := decoder.NewFrameDecoder(rw)
 							buf, err := fd.Read(false)
 							if err != nil && err != io.EOF {
