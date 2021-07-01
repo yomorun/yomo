@@ -77,6 +77,9 @@ func (c *ServerConn) handleSignal(conf *WorkflowConfig) {
 				c.conn.Healthcheck()
 				c.Beat()
 
+				// create stream when the connetion is initialized.
+				c.createStream()
+
 				continue
 			}
 
@@ -92,6 +95,10 @@ func (c *ServerConn) getConnType(payload client.NegotiationPayload, conf *Workfl
 	switch payload.ClientType {
 	case quic.ConnTypeStreamFunction:
 		// check if the app name is in functions
+		if len(conf.Functions) == 0 {
+			return quic.ConnTypeStreamFunction
+		}
+
 		for _, app := range conf.Functions {
 			if app.Name == payload.AppName {
 				return quic.ConnTypeStreamFunction
@@ -123,6 +130,32 @@ func (c *ServerConn) Beat() {
 						logger.Error("❌ Server sent SignalHeartbeat to app failed.", "name", c.conn.Name, "err", err)
 					}
 
+					t.Stop()
+					break
+				}
+			}
+		}
+	}(c)
+}
+
+// createStream sends the singal to create a stream for receiving data.
+func (c *ServerConn) createStream() {
+	go func(c *ServerConn) {
+		t := time.NewTicker(200 * time.Millisecond)
+		for {
+			select {
+			case <-t.C:
+				// skip if the stream was created or the conn was closed.
+				if c.conn.Stream != nil || c.conn.IsClosed {
+					t.Stop()
+					break
+				}
+
+				// send the signal to create stream.
+				err := c.SendSignalFunction()
+				if err != nil {
+					logger.Error("❌ Server sent SignalFunction to app failed.", "name", c.conn.Name, "err", err)
+				} else {
 					t.Stop()
 					break
 				}
