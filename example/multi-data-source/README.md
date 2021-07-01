@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="200px" height="200px" src="https://docs.yomo.run/yomo-logo.png" />
+  <img width="200px" height="200px" src="https://yomo.run/yomo-logo.png" />
 </p>
 
 # Use Case：Combined calculation of multiple data sources
@@ -34,89 +34,78 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 
 ## Code structure
 
-+ `source-data-a`: Analog data source A, sending random Float32 numbers [docs.yomo.run/source](https://docs.yomo.run/source)
-+ `source-data-b`: Analog data source B, sending random Float32 numbers [docs.yomo.run/source](https://docs.yomo.run/source)
-+ `flow`: Combine simulated data sources A and B for calculation [docs.yomo.run/flow](https://docs.yomo.run/flow)
-+ `zipper`: Setup a workflow that receives multiple sources and completes the merge calculation [docs.yomo.run/zipper](https://docs.yomo.run/zipper)
++ `source-data-a`: Analog data source A, sending random Float32 numbers [yomo.run/source](https://yomo.run/source)
++ `source-data-b`: Analog data source B, sending random Float32 numbers [yomo.run/source](https://yomo.run/source)
++ `stream-fn` (formerly flow): Combine simulated data sources A and B for calculation [yomo.run/stream-function](https://yomo.run/flow)
++ `yomo-server` (formerly zipper): Setup a workflow that receives multiple sources and completes the merge calculation [yomo.run/yomo-server](https://yomo.run/zipper)
 
 ## Implementation
 
 ### 1. Install CLI
 
-> **Note:** YoMo requires Go 1.15 and above, run `go version` to get the version of Go in your environment, please follow [this link](https://golang.org/doc/install) to install or upgrade if it doesn't fit the requirement.
-
 ```bash
-# Ensure use $GOPATH, golang requires main and plugin highly coupled
-○ echo $GOPATH
-
+$ go install github.com/yomorun/cli/yomo@latest
 ```
 
-if `$GOPATH` is not set, immediately check [Set $GOPATH and $GOBIN](#optional-set-gopath-and-gobin).
+### 2. Start `yomo-server` to organize stream processing workflow
 
 ```bash
-$ GO111MODULE=off go get github.com/yomorun/yomo
-
-$ cd $GOPATH/src/github.com/yomorun/yomo
-
-$ make install
-```
-
-### 2. Start `zipper` to organize stream processing workflow
-
-```bash
-$ cd $GOPATH/src/github.com/yomorun/yomo/example/multi-data-source/zipper
+$ cd ./example/multi-data-source/yomo-server
 
 $ yomo serve
 
-2021/03/01 19:05:55 Found 1 flows in zipper config
-2021/03/01 19:05:55 Flow 1: training
-2021/03/01 19:05:55 Found 0 sinks in zipper config
-2021/03/01 19:05:55 Running YoMo workflow...
+ℹ️   Found 1 stream functions in yomo-server config
+ℹ️   Stream Function 1: training
+ℹ️   Running YoMo Server...
 2021/03/01 19:05:55 ✅ Listening on 0.0.0.0:9000
 
 ```
 
-### 3. Start `flow` for streaming calculation
+### 3. Start `stream-fn` for streaming calculation
 
-> **Note**: `-n` flag represents the name of flow, which should match the specific flow in zipper config (workflow.yaml).
+> **Note**: `-n` flag represents the name of stream function, which should match the specific function in yomo-server config (workflow.yaml).
 
 ```bash
-$ cd $GOPATH/src/github.com/yomorun/yomo/example/multi-data-source/flow
+$ cd ./example/multi-data-source/stream-fn
 
 $ yomo run -n training
 
-2021/03/01 19:05:55 Building the Serverless Function File...
-2021/03/01 19:05:55 Connecting to zipper localhost:9000 ...
-2021/03/01 19:05:55 ✅ Connected to zipper localhost:9000
-2021/03/01 19:05:55 Running the Serverless Function.
+ℹ️   YoMo Stream Function file: example/multi-data-source/stream-fn/app.go
+⌛  Create YoMo Stream Function instance...
+ℹ️   Starting YoMo Stream Function instance with Name: Noise. Host: localhost. Port: 9000.
+⌛  YoMo Stream Function building...
+✅  Success! YoMo Stream Function build.
+ℹ️   YoMo Stream Function is running...
+2021/03/01 19:05:55 Connecting to yomo-server localhost:9000 ...
+2021/03/01 19:05:55 ✅ Connected to yomo-server localhost:9000
 
 ```
 
 ### 4. Run `source-data-a`
 
 ```bash
-$ cd $GOPATH/src/github.com/yomorun/yomo/example/multi-data-source/source-data-a
+$ cd ./example/multi-data-source/source-data-a
 
 $ go run main.go
 
-2021/03/01 17:35:04 ✅ Connected to yomo-zipper localhost:9000
-2021/03/01 17:35:05 ✅ Emit 123.41881 to yomo-zipper
+2021/03/01 17:35:04 ✅ Connected to yomo-server localhost:9000
+2021/03/01 17:35:05 ✅ Emit 123.41881 to yomo-server
 
 ```
 
 ### 5. Run `source-data-b`
 
 ```bash
-$ cd $GOPATH/src/github.com/yomorun/yomo/example/multi-data-source/source-data-b
+$ cd ./example/multi-data-source/source-data-b
 
 $ go run main.go
 
-2021/03/01 17:35:04 ✅ Connected to yomo-zipper localhost:9000
-2021/03/01 17:35:05 ✅ Emit 36.92933 to yomo-zipper
+2021/03/01 17:35:04 ✅ Connected to yomo-server localhost:9000
+2021/03/01 17:35:05 ✅ Emit 36.92933 to yomo-server
 
 ```
 
-### 6. `flow` will have a constant flow of output
+### 6. `stream-fn` will have a constant flow of output
 
 ```bash
 [StdOut]:  ⚡️ Sum(data A: 89.820206, data B: 1651.740967) => Result: 1741.561157

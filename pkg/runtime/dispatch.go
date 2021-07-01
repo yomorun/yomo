@@ -8,11 +8,11 @@ import (
 )
 
 // DispatcherWithFunc dispatches the input stream to downstreams.
-func DispatcherWithFunc(flows []serverless.GetFlowFunc, reader io.Reader) rx.RxStream {
+func DispatcherWithFunc(sfns []serverless.GetStreamFunc, reader io.Reader) rx.RxStream {
 	stream := rx.FromReader(reader)
 
-	for _, flow := range flows {
-		stream = stream.MergeReadWriterWithFunc(flow)
+	for _, sfn := range sfns {
+		stream = stream.MergeStreamFunc(sfn)
 	}
 
 	return stream

@@ -6,9 +6,9 @@ type (
 	// CancelFunc represents the function for cancellation.
 	CancelFunc func()
 
-	// GetFlowFunc represents the function to get flow.
-	GetFlowFunc func() (io.ReadWriter, CancelFunc)
+	// GetStreamFunc represents the function to get stream function (former flow/sink).
+	GetStreamFunc func() (io.ReadWriter, CancelFunc)
 
-	// GetSinkFunc represents the function to get sink.
-	GetSinkFunc func() (io.Writer, CancelFunc)
+	// GetSenderFunc represents the function to get YoMo-Sender.
+	GetSenderFunc func() (io.Writer, CancelFunc)
 )

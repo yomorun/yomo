@@ -613,7 +613,8 @@ func (s *RxStreamImpl) AuditTime(milliseconds uint32, opts ...rxgo.Option) RxStr
 	return ConvertObservable(o)
 }
 
-func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf serverless.GetFlowFunc, opts ...rxgo.Option) RxStream {
+// MergeStreamFunc sends the stream data to Stream Function and receives the new stream data from it.
+func (s *RxStreamImpl) MergeStreamFunc(sfn serverless.GetStreamFunc, opts ...rxgo.Option) RxStream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
 		response := make(chan []byte)
@@ -634,7 +635,7 @@ func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf serverless.GetFlowFunc, opts 
 						return
 					} else {
 						for {
-							rw, cancel := rwf()
+							rw, cancel := sfn()
 							if rw == nil {
 								time.Sleep(200 * time.Millisecond)
 							} else {
@@ -667,7 +668,7 @@ func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf serverless.GetFlowFunc, opts 
 						return
 					}
 
-					rw, cancel := rwf()
+					rw, cancel := sfn()
 					if rw == nil {
 						time.Sleep(time.Second)
 					} else {
@@ -704,6 +705,7 @@ func (s *RxStreamImpl) MergeReadWriterWithFunc(rwf serverless.GetFlowFunc, opts 
 	return CreateObservable(f, opts...)
 }
 
+// Subscribe a specified key in stream and gets the data when the key is observed by Y3 Codec.
 func (s *RxStreamImpl) Subscribe(key byte) RxStream {
 
 	f := func(ctx context.Context, next chan rxgo.Item) {
@@ -849,6 +851,7 @@ func (s *RxStreamImpl) ZipMultiObservers(observers []decoder.KeyObserveFunc, zip
 	return CreateObservable(f)
 }
 
+// OnObserve calls the function to process the observed data.
 func (s *RxStreamImpl) OnObserve(function func(v []byte) (interface{}, error)) RxStream {
 
 	f := func(ctx context.Context, next chan rxgo.Item) {
@@ -889,6 +892,7 @@ func (s *RxStreamImpl) OnObserve(function func(v []byte) (interface{}, error)) R
 	return CreateObservable(f)
 }
 
+// Encode the data with a specified key by Y3 Codec and append it to stream.
 func (s *RxStreamImpl) Encode(key byte, opts ...rxgo.Option) RxStream {
 	y3codec := y3.NewCodec(key)
 

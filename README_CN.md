@@ -43,9 +43,9 @@ YoMo CLI version: v0.0.6
 ```bash
 $ yomo init yomo-app-demo
 
-⌛  Initializing the Serverless app...
-✅  Congratulations! You have initialized the serverless function successfully.
-ℹ️   You can enjoy the YoMo Serverless via the command: 
+⌛  Initializing the Stream Function...
+✅  Congratulations! You have initialized the stream function successfully.
+ℹ️   You can enjoy the YoMo Stream Function via the command: 
 ℹ️   	DEV: 	yomo dev -n Noise yomo-app-demo/app.go
 ℹ️   	PROD: 	First run source application, eg: go run example/source/main.go
 		Second: yomo run -n yomo-app-demo yomo-app-demo/app.go
@@ -116,14 +116,14 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 ```sh
 $ yomo dev
 
-ℹ️   YoMo serverless function file: app.go
-⌛  Create YoMo serverless instance...
-⌛  YoMo serverless function building...
-✅  Success! YoMo serverless function build.
-ℹ️   YoMo serverless function is running...
+ℹ️   YoMo Stream Function file: app.go
+⌛  Create YoMo Stream Function instance...
+⌛  YoMo Stream Function building...
+✅  Success! YoMo Stream Function build.
+ℹ️   YoMo Stream Function is running...
 ℹ️   Run: /Users/xiaojianhong/Downloads/yomo-app-demo/sl.yomo
-2021/06/07 12:00:06 Connecting to zipper dev.yomo.run:9000 ...
-2021/06/07 12:00:07 ✅ Connected to zipper dev.yomo.run:9000
+2021/06/07 12:00:06 Connecting to yomo-server dev.yomo.run:9000 ...
+2021/06/07 12:00:07 ✅ Connected to yomo-server dev.yomo.run:9000
 [10.10.79.50] 1623038407236 > value: 1.919251 ⚡️=-25ms
 [StdOut]:  1.9192511
 [10.10.79.50] 1623038407336 > value: 11.370256 ⚡️=-25ms
@@ -146,29 +146,29 @@ $ yomo dev
 + [将 EMQX Broker 连接至 YoMo](https://github.com/yomorun/yomo-source-emqx-starter)
 + [将使用 MQTT 的数据源连接至 YoMo](https://github.com/yomorun/yomo-source-mqtt-broker-starter)
 
-### Flows
+### Stream Functions
 
-+ [基于 SSVM 使用 WebAssembly 编写 YoMo-Flow](https://github.com/yomorun/yomo-flow-ssvm-example)
++ [基于 SSVM 使用 WebAssembly 编写 YoMo-Stream-Function](https://github.com/yomorun/yomo-flow-ssvm-example)
 
-### Sinks
+### Output Connectors
 
-+ [将 YoMo-Flow 处理完的内容存储至 FaunaDB](https://github.com/yomorun/yomo-sink-faunadb-example)
++ [将 YoMo-Stream-Function 处理完的内容存储至 FaunaDB](https://github.com/yomorun/yomo-sink-faunadb-example)
 + 连接 InfluxDB 落地数据存储
-+ [将 YoMo-Flow 处理完的内容存储至 TDengine](https://github.com/yomorun/yomo-sink-tdengine-example)
++ [将 YoMo-Stream-Function 处理完的内容存储至 TDengine](https://github.com/yomorun/yomo-sink-tdengine-example)
 
 ## 🗺 YoMo系统架构
 
 **Edge-Native**: YoMo 追求随地部署、随时迁移、随时扩容 
 
-![yomo-flow-arch](https://docs.yomo.run/yomo-flow-arch.jpg)
+![yomo-flow-arch](https://yomo.run/yomo-flow-arch.jpg)
 
 ## 📚 Documentation
 
-+ `YoMo-Source`: [docs.yomo.run/source](https://docs.yomo.run/source)
-+ `YoMo-Flow`: [docs.yomo.run/flow](https://docs.yomo.run/flow)
-+ `YoMo-Sink`: [docs.yomo.run/sink](https://docs.yomo.run/sink)
-+ `YoMo-Zipper`: [docs.yomo.run/zipper](https://docs.yomo.run/zipper)
-+ `Stream Processing in Rx way`: [Rx](https://docs.yomo.run/rx)
++ `YoMo-Source`: [yomo.run/source](https://yomo.run/source)
++ `YoMo-Stream-Function` (formerly flow): [yomo.run/stream-function](https://yomo.run/flow)
++ `YoMo-Output-Connector` (formerly sink): [yomo.run/output-connector](https://yomo.run/sink)
++ `YoMo-Server` (formerly zipper): [yomo.run/yomo-server](https://yomo.run/zipper)
++ `Stream Processing in Rx way`: [Rx](https://yomo.run/rx)
 + `Faster than real-time codec`: [Y3](https://github.com/yomorun/y3-codec)
 
 [YoMo](https://yomo.run) ❤️ [Vercel](https://vercel.com/?utm_source=yomorun&utm_campaign=oss), Our documentation website is

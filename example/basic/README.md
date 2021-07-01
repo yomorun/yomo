@@ -4,10 +4,10 @@ This example represents how YoMo works with the mock data of sound sensor.
 
 ## Code structure
 
-+ `source`: Mocking data of a Noise Decibel Detection Sensor. [docs.yomo.run/source](https://docs.yomo.run/source)
-+ `flow`: Detecting noise pollution in real-time and print the warning message when it reaches the threshold. [docs.yomo.run/flow](https://docs.yomo.run/flow)
-+ `sink`: Demonstrating persistent storage for IoT data. [docs.yomo.run/sink](https://docs.yomo.run/sink)
-+ `zipper`: Orchestrate a workflow that receives the data from `source`, stream computing in `flow` and output the result to `sink` [docs.yomo.run/zipper](https://docs.yomo.run/zipper)
++ `source`: Mocking data of a Noise Decibel Detection Sensor. [yomo.run/source](https://yomo.run/source)
++ `stream-fn` (formerly flow): Detecting noise pollution in real-time and print the warning message when it reaches the threshold. [yomo.run/stream-function](https://yomo.run/flow)
++ `output-connector` (formerly sink): Demonstrating persistent storage for IoT data. [yomo.run/output-connector](https://yomo.run/sink)
++ `yomo-server` (formerly zipper): Orchestrate a workflow that receives the data from `source`, stream computing in `stream-fn` and output the result to `output-connector` [yomo.run/yomo-server](https://yomo.run/zipper)
 
 ## How to run the example
 
@@ -15,39 +15,40 @@ This example represents how YoMo works with the mock data of sound sensor.
 
 Please visit [YoMo Getting Started](https://github.com/yomorun/yomo#1-install-cli) for details.
 
-### 2. Run [yomo-zipper](https://docs.yomo.run/zipper)
+### 2. Run [yomo-server](https://yomo.run/zipper)
 
 ```bash
-yomo serve -c ./zipper/workflow.yaml
+yomo serve -c ./yomo-server/workflow.yaml
 
-2021/05/20 14:09:42 Found 1 flows in zipper config
-2021/05/20 14:09:42 Flow 1: Noise
-2021/05/20 14:09:42 Found 1 sinks in zipper config
-2021/05/20 14:09:42 Sink 1: MockDB
-2021/05/20 14:09:42 Running YoMo workflow...
-2021/05/20 14:09:42 ✅ Listening on 0.0.0.0:9000
+ℹ️   Found 1 stream functions in yomo-server config
+ℹ️   Stream Function 1: Noise
+ℹ️   Running YoMo Server...
 ```
 
-### 3. Run [yomo-flow](https://docs.yomo.run/flow)
+### 3. Run [stream-function](https://yomo.run/flow)
 
 ```bash
-yomo run ./flow/app.go -n Noise
+yomo run ./stream-fn/app.go -n Noise
 
-2021/05/20 14:10:15 Building the Serverless Function File...
-2021/05/20 14:10:17 Connecting to zipper localhost:9000 ...
-2021/05/20 14:10:17 ✅ Connected to zipper localhost:9000
-2021/05/20 14:10:17 Running the Serverless Function.
+ℹ️  YoMo Stream Function file: example/basic/stream-fn/app.go
+⌛  Create YoMo Stream Function instance...
+ℹ️  Starting YoMo Stream Function instance with Name: Noise. Host: localhost. Port: 9000.
+⌛  YoMo Stream Function building...
+✅  Success! YoMo Stream Function build.
+ℹ️  YoMo Stream Function is running...
+2021/05/20 14:10:17 ✅ Connected to yomo-server localhost:9000
+2021/05/20 14:10:17 Running the Stream Function.
 ```
 
-### (Optional) Run `yomo-flow` via `Go CLI`
+### (Optional) Run `stream-function` via `Go CLI`
 
-Besides run `yomo-flow` via `YoMo CLI`, you can also run `yomo-flow` via `Go CLI` which requires the following additional code snippets in `app.go`:
+Besides run `stream-function` via `YoMo CLI`, you can also run `stream-function` via `Go CLI` which requires the following additional code snippets in `app.go`:
 
 ```go
 func main() {
-	cli, err := client.NewServerless("Noise").Connect("localhost", 9000)
+	cli, err := client.NewStreamFunction("Noise").Connect("localhost", 9000)
 	if err != nil {
-		log.Print("❌ Connect to zipper failure: ", err)
+		log.Print("❌ Connect to yomo-server failure: ", err)
 		return
 	}
 
@@ -56,45 +57,42 @@ func main() {
 }
 ```
 
-You can find the exmaple in `flow-via-go-cli` folder.
+You can find the exmaple in `stream-fn-via-go-cli` folder.
 
 ```shell
-go run ./flow-via-go-cli/app.go
+go run ./stream-fn-via-go-cli/app.go
 
-2021/05/21 20:54:52 Connecting to zipper localhost:9000 ...
-2021/05/21 20:54:52 ✅ Connected to zipper localhost:9000
+2021/05/21 20:54:52 Connecting to yomo-server localhost:9000 ...
+2021/05/21 20:54:52 ✅ Connected to yomo-server localhost:9000
 ```
 
-### 4. Run [yomo-sink](https://docs.yomo.run/sink)
+### 4. Run [output-connector](https://yomo.run/sink)
 
 ```bash
-yomo run ./sink/app.go -n MockDB
+go run ./output-connector/app.go -n MockDB
 
-2021/05/20 14:10:28 Building the Serverless Function File...
-2021/05/20 14:10:29 Connecting to zipper localhost:9000 ...
-2021/05/20 14:10:29 ✅ Connected to zipper localhost:9000
+2021/05/20 14:10:29 ✅ Connected to yomo-server localhost:9000
 2021/05/20 14:10:29 Running the Serverless Function.
 ```
 
-### 5. Run [yomo-source](https://docs.yomo.run/source)
+### 5. Run [yomo-source](https://yomo.run/source)
 
 ```bash
 go run ./source/main.go
 
-2021/05/20 14:10:28 Building the Serverless Function File...
-2021/05/20 14:11:00 Connecting to zipper localhost:9000 ...
-2021/05/20 14:11:00 ✅ Connected to zipper localhost:9000
-2021/05/20 14:11:00 ✅ Emit {99.11785 1621491060031 localhost} to yomo-zipper
-2021/05/20 14:11:00 ✅ Emit {145.5075 1621491060131 localhost} to yomo-zipper
-2021/05/20 14:11:00 ✅ Emit {118.27067 1621491060233 localhost} to yomo-zipper
-2021/05/20 14:11:00 ✅ Emit {56.369446 1621491060335 localhost} to yomo-zipper
+2021/05/20 14:11:00 Connecting to yomo-server localhost:9000 ...
+2021/05/20 14:11:00 ✅ Connected to yomo-server localhost:9000
+2021/05/20 14:11:00 ✅ Emit {99.11785 1621491060031 localhost} to yomo-server
+2021/05/20 14:11:00 ✅ Emit {145.5075 1621491060131 localhost} to yomo-server
+2021/05/20 14:11:00 ✅ Emit {118.27067 1621491060233 localhost} to yomo-server
+2021/05/20 14:11:00 ✅ Emit {56.369446 1621491060335 localhost} to yomo-server
 ```
 
 ### Results
 
-#### yomo-flow
+#### stream-function
 
-The terminal of `yomo-flow` will print the real-time noise decibel value, and show the warning when the value reaches the threshold.
+The terminal of `stream-function` will print the real-time noise decibel value, and show the warning when the value reaches the threshold.
 
 ```bash
 [localhost] 1621491060839 > value: 15.714272 ⚡️=1ms
@@ -107,7 +105,7 @@ The terminal of `yomo-flow` will print the real-time noise decibel value, and sh
 🧩 average value in last 10000 ms: 10.918112!
 ```
 
-#### yomo-sink
+#### output-connector
 
 The terminal of `yomo-sink` will print the message for saving the data in DB.
 

@@ -10,16 +10,16 @@ import (
 	"github.com/yomorun/yomo/pkg/client"
 )
 
-var zipperAddr = os.Getenv("YOMO_ZIPPER_ENDPOINT")
+var serverAddr = os.Getenv("YOMO_SERVER_ENDPOINT")
 
 func main() {
-	if zipperAddr == "" {
-		zipperAddr = "localhost:9000"
+	if serverAddr == "" {
+		serverAddr = "localhost:9000"
 	}
-	// connect to yomo-zipper.
+	// connect to yomo-server.
 	cli, err := client.NewSource("yomo-source").Connect("localhost", 9000)
 	if err != nil {
-		log.Printf("❌ Emit the data to yomo-zipper failure with err: %v", err)
+		log.Printf("❌ Emit the data to yomo-server failure with err: %v", err)
 		return
 	}
 

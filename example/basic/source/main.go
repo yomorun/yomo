@@ -17,16 +17,16 @@ type noiseData struct {
 }
 
 func main() {
-	// connect to yomo-zipper.
+	// connect to yomo-server.
 	cli, err := client.NewSource("yomo-source").Connect("localhost", 9000)
 	if err != nil {
-		log.Printf("❌ Emit the data to yomo-zipper failure with err: %v", err)
+		log.Printf("❌ Emit the data to yomo-server failure with err: %v", err)
 		return
 	}
 
 	defer cli.Close()
 
-	// generate mock data and send it to yomo-zipper in every 100 ms.
+	// generate mock data and send it to yomo-server in every 100 ms.
 	generateAndSendData(cli)
 }
 
@@ -47,9 +47,9 @@ func generateAndSendData(stream io.Writer) {
 		// send data via QUIC stream.
 		_, err := stream.Write(sendingBuf)
 		if err != nil {
-			log.Printf("❌ Emit %v to yomo-zipper failure with err: %v", data, err)
+			log.Printf("❌ Emit %v to yomo-server failure with err: %v", data, err)
 		} else {
-			log.Printf("✅ Emit %v to yomo-zipper", data)
+			log.Printf("✅ Emit %v to yomo-server", data)
 		}
 
 		time.Sleep(100 * time.Millisecond)

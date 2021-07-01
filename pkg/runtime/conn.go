@@ -15,6 +15,7 @@ type ServerConn struct {
 	conn              *quic.QuicConn
 	Session           quic.Session
 	onClosed          func()      // onClosed is the callback when the connection is closed.
+	onGotAppType      func()      // onGotAppType is the callback when the YoMo server got app type from client's signal.
 	isNewAppAvailable func() bool // indicates whether the server receives a new app.
 }
 
@@ -32,11 +33,11 @@ func NewServerConn(sess quic.Session, st quic.Stream, conf *WorkflowConfig) *Ser
 	return c
 }
 
-// SendSinkFlowSignal sends the signal Flow/Sink to client.
-func (c *ServerConn) SendSinkFlowSignal() error {
+// SendSignalFunction sends the signal `function` to client.
+func (c *ServerConn) SendSignalFunction() error {
 	if c.conn.Ready {
 		c.conn.Ready = false
-		return c.conn.SendSignal(quic.SignalFlowSink)
+		return c.conn.SendSignal(quic.SignalFunction)
 	}
 	return nil
 }
@@ -68,6 +69,10 @@ func (c *ServerConn) handleSignal(conf *WorkflowConfig) {
 				logger.Printf("Receive App %s, type: %s", c.conn.Name, c.conn.Type)
 				isInit = false
 
+				if c.onGotAppType != nil {
+					c.onGotAppType()
+				}
+
 				c.conn.SendSignal(quic.SignalAccepted)
 				c.conn.Healthcheck()
 				c.Beat()
@@ -85,22 +90,18 @@ func (c *ServerConn) handleSignal(conf *WorkflowConfig) {
 
 func (c *ServerConn) getConnType(payload client.NegotiationPayload, conf *WorkflowConfig) string {
 	switch payload.ClientType {
-	case quic.ConnTypeServerless:
-		// check if the app name is in flows
-		for _, app := range conf.Flows {
+	case quic.ConnTypeStreamFunction:
+		// check if the app name is in functions
+		for _, app := range conf.Functions {
 			if app.Name == payload.AppName {
-				return quic.ConnTypeFlow
+				return quic.ConnTypeStreamFunction
 			}
 		}
-		// check if the app name is in sinks
-		for _, app := range conf.Sinks {
-			if app.Name == payload.AppName {
-				return quic.ConnTypeSink
-			}
-		}
+		// name is not found
+		return "Function name is not found in zipper!"
+	default:
+		return payload.ClientType
 	}
-
-	return payload.ClientType
 }
 
 // Beat sends the heartbeat to clients in every 200ms.

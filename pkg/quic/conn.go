@@ -7,11 +7,10 @@ import (
 )
 
 const (
-	ConnTypeSource       string = "source"
-	ConnTypeFlow         string = "flow"
-	ConnTypeSink         string = "sink"
-	ConnTypeServerless   string = "serverless"
-	ConnTypeZipperSender string = "zipper-sender"
+	ConnTypeSource          string = "source"
+	ConnTypeStreamFunction  string = "stream-function"
+	ConnTypeOutputConnector string = "output-connector"
+	ConnTypeZipperSender    string = "zipper-sender"
 )
 
 var (
@@ -21,8 +20,8 @@ var (
 	// SignalAccepted represents the signal of Accpeted.
 	SignalAccepted = []byte{1}
 
-	// SignalFlowSink represents the signal for flow/sink.
-	SignalFlowSink = []byte{0, 0}
+	// SignalFunction represents the signal for Stream Function and Output Connector.
+	SignalFunction = []byte{0, 0}
 )
 
 // QuicConn represents the QUIC connection.

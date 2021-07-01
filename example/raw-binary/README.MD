@@ -3,7 +3,7 @@
 #### 1. Start YoMo Server
 
 ```bash
-yomo serve -c zipper.yaml
+yomo serve -c yomo.yaml
 ```
 
 #### 2. Hook the streaming serverless function to YoMo

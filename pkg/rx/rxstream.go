@@ -12,10 +12,19 @@ import (
 
 type RxStream interface {
 	rxgo.Iterable
-	MergeReadWriterWithFunc(rwf serverless.GetFlowFunc, opts ...rxgo.Option) RxStream
+
+	// MergeStreamFunc sends the stream data to Stream Function and receives the new stream data from it.
+	MergeStreamFunc(sfn serverless.GetStreamFunc, opts ...rxgo.Option) RxStream
+
+	// Subscribe a specified key in stream and gets the data when the key is observed by Y3 Codec.
 	Subscribe(key byte) RxStream
-	Encode(key byte, opts ...rxgo.Option) RxStream
+
+	// OnObserve calls the function to process the observed data.
 	OnObserve(function func(v []byte) (interface{}, error)) RxStream
+
+	// Encode the data with a specified key by Y3 Codec and append it to stream.
+	Encode(key byte, opts ...rxgo.Option) RxStream
+
 	StdOut(opts ...rxgo.Option) RxStream
 	AuditTime(milliseconds uint32, opts ...rxgo.Option) RxStream
 	DefaultIfEmptyWithTime(milliseconds uint32, defaultValue interface{}, opts ...rxgo.Option) RxStream
