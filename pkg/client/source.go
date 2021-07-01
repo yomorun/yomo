@@ -7,7 +7,7 @@ import "github.com/yomorun/yomo/pkg/quic"
 type SourceClient interface {
 	client
 
-	// Connect to YoMo-Zipper
+	// Connect to YoMo-Server
 	Connect(ip string, port int) (SourceClient, error)
 }
 
@@ -23,7 +23,7 @@ func NewSource(appName string) SourceClient {
 	return c
 }
 
-// Connect to yomo-zipper.
+// Connect to yomo-server.
 func (c *sourceClientImpl) Connect(ip string, port int) (SourceClient, error) {
 	cli, err := c.connect(ip, port)
 	return &sourceClientImpl{

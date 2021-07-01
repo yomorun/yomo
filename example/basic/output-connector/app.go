@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 
 	y3 "github.com/yomorun/y3-codec-golang"
+	"github.com/yomorun/yomo/pkg/client"
 	"github.com/yomorun/yomo/pkg/rx"
 )
 
@@ -25,4 +27,15 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 		OnObserve(callback).
 		Map(store)
 	return stream
+}
+
+func main() {
+	cli, err := client.NewOutputConnector("MockDB").Connect("localhost", 9000)
+	if err != nil {
+		log.Print("❌ Connect to yomo-server failure: ", err)
+		return
+	}
+
+	defer cli.Close()
+	cli.Run(Handler)
 }

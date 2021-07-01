@@ -89,9 +89,9 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 }
 
 func main() {
-	cli, err := client.NewServerless("Noise").Connect("localhost", 9000)
+	cli, err := client.NewStreamFunction("Noise").Connect("localhost", 9000)
 	if err != nil {
-		log.Print("❌ Connect to zipper failure: ", err)
+		log.Print("❌ Connect to yomo-server failure: ", err)
 		return
 	}
 

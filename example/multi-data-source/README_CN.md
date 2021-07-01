@@ -34,90 +34,76 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 
 + `source-data-a`: 模拟数据源A，发送随机 Float32 数字. [yomo.run/source](https://yomo.run/source)
 + `source-data-b`: 模拟数据源B，发送随机 Float32 数字. [yomo.run/source](https://yomo.run/source)
-+ `flow`: 将模拟数据源A和模拟数据源B进行合并计算[yomo.run/flow](https://yomo.run/flow)
-+ `zipper`: 设计一个workflow，接收多个source，并完成合并计算 [yomo.run/zipper](https://yomo.run/zipper)
++ `stream-fn`（旧名称：flow）: 将模拟数据源A和模拟数据源B进行合并计算[yomo.run/stream-function](https://yomo.run/flow)
++ `yomo-server`（旧名称：zipper）: 设计一个workflow，接收多个source，并完成合并计算 [yomo.run/yomo-server](https://yomo.run/zipper)
 
 ## 实现过程
 
 ### 1. 安装CLI
 
-> **注意：** YoMo 的运行环境要求 Go 版本为 1.15 或以上，运行 `go version` 获取当前环境的版本，如果未安装 Go 或者不符合 Go 版本要求时，请安装或者升级 Go 版本。
-安装 Go 环境之后，国内用户可参考 <https://goproxy.cn/> 设置 `GOPROXY`，以便下载 YoMo 项目依赖。
-
 ```bash
-# 确保设置了$GOPATH, Golang的设计里main和plugin是高度耦合的
-$ echo $GOPATH
-
+$ go install github.com/yomorun/cli/yomo@latest
 ```
 
-如果没有设置`$GOPATH`，参考这里：[如何设置$GOPATH和$GOBIN](#optional-set-gopath-and-gobin)。
+### 2. 运行 ``yomo-server`
 
 ```bash
-$ GO111MODULE=off go get github.com/yomorun/yomo
-
-$ cd $GOPATH/src/github.com/yomorun/yomo
-
-$ make install
-```
-
-![YoMo Tutorial 1](https://yomo.run/tutorial-1.png)
-
-### 2. 运行 `zipper`
-
-```bash
-$ cd $GOPATH/src/github.com/yomorun/yomo/example/multi-data-source/zipper
+$ cd ./example/multi-data-source/zipper
 
 $ yomo serve
 
-2021/03/01 19:05:55 Found 1 flows in zipper config
-2021/03/01 19:05:55 Flow 1: training
-2021/03/01 19:05:55 Found 0 sinks in zipper config
-2021/03/01 19:05:55 Running YoMo workflow...
+ℹ️   Found 1 stream functions in yomo-server config
+ℹ️   Stream Function 1: training
+ℹ️   Running YoMo Server...
 2021/03/01 19:05:55 ✅ Listening on 0.0.0.0:9000
 
 ```
 
-### 3. 运行 `flow`
+### 3. 运行 `stream-fn`
 
-> **注意**: `-n` flag 用于表示 flow 的名称, 它需要跟 zipper config (workflow.yaml) 里面 flow 名称匹配.
+> **注意**: `-n` flag 用于表示 flow 的名称, 它需要跟 yomo-server config (workflow.yaml) 里面 function 名称匹配.
 
 ```bash
-$ cd $GOPATH/src/github.com/yomorun/yomo/example/multi-data-source/flow
+$ cd ./example/multi-data-source/flow
 
 $ yomo run -n training
 
-2021/03/01 19:05:55 Building the Serverless Function File...
+ℹ️   YoMo Stream Function file: example/multi-data-source/stream-fn/app.go
+⌛  Create YoMo Stream Function instance...
+ℹ️   Starting YoMo Stream Function instance with Name: Noise. Host: localhost. Port: 9000.
+⌛  YoMo Stream Function building...
+✅  Success! YoMo Stream Function build.
+ℹ️   YoMo Stream Function is running...
 2021/03/01 19:05:55 Connecting to zipper localhost:9000 ...
 2021/03/01 19:05:55 ✅ Connected to zipper localhost:9000
-2021/03/01 19:05:55 Running the Serverless Function.
 
 ```
 
 ### 3. 运行 `source-data-a`
 
 ```bash
-$ cd $GOPATH/src/github.com/yomorun/yomo/example/multi-data-source/source-data-a
+$ cd ./example/multi-data-source/source-data-a
 
 $ go run main.go
 
-2021/03/01 17:35:04 ✅ Connected to yomo-zipper localhost:9000
-2021/03/01 17:35:05 ✅ Emit 123.41881 to yomo-zipper
+2021/03/01 17:35:04 ✅ Connected to yomo-server localhost:9000
+2021/03/01 17:35:05 ✅ Emit 123.41881 to yomo-server
 
 ```
 
 ### 4. 运行 `source-data-b`
 
 ```bash
-$ cd $GOPATH/src/github.com/yomorun/yomo/example/multi-data-source/source-data-b
+$ cd ./example/multi-data-source/source-data-b
 
 $ go run main.go
 
-2021/03/01 17:35:04 ✅ Connected to yomo-zipper localhost:9000
-2021/03/01 17:35:05 ✅ Emit 36.92933 to yomo-zipper
+2021/03/01 17:35:04 ✅ Connected to yomo-server localhost:9000
+2021/03/01 17:35:05 ✅ Emit 36.92933 to yomo-server
 
 ```
 
-### 5. 观察 `flow` 窗口会有持续不断的数据
+### 5. 观察 `stream-fn` 窗口会有持续不断的数据
 
 ```bash
 [StdOut]:  ⚡️ Sum(data A: 89.820206, data B: 1651.740967) => Result: 1741.561157
@@ -125,7 +111,7 @@ $ go run main.go
 [StdOut]:  ⚡️ Sum(data A: 114.736366, data B: 964.614075) => Result: 1079.350464
 ```
 
-这时候，尝试不断的`Ctrl-C`掉`source-data-a`，过一会再启动它，看看`flow`的窗口会有什么变化
+这时候，尝试不断的`Ctrl-C`掉`source-data-a`，过一会再启动它，看看`stream-fn`的窗口会有什么变化
 
 ### 6. 恭喜您！问题以前所未有的简单的方式解决啦！🚀
 

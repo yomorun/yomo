@@ -2,7 +2,7 @@ package client
 
 import "github.com/yomorun/yomo/pkg/quic"
 
-// ZipperSenderClient is the client for Zipper-Sender to connect the downsteam Zipper-Receiver  in edge-mesh.
+// ZipperSenderClient is the client for Zipper-Sender to connect the downsteam Zipper-Receiver in edge-mesh.
 type ZipperSenderClient interface {
 	client
 

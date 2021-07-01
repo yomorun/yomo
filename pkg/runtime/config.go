@@ -15,8 +15,7 @@ type App struct {
 
 // Workflow represents a YoMo Workflow.
 type Workflow struct {
-	Flows []App `yaml:"flows"`
-	Sinks []App `yaml:"sinks"`
+	Functions []App `yaml:"functions"`
 }
 
 // Workflow represents a YoMo Workflow config.
@@ -85,13 +84,12 @@ func validateConfig(wfConf *WorkflowConfig) error {
 		return errors.New("conf is nil")
 	}
 
-	if len(wfConf.Flows) == 0 && len(wfConf.Sinks) == 0 {
-		return errors.New("At least one flow or sink is required")
+	if len(wfConf.Functions) == 0 {
+		return errors.New("At least one function is required")
 	}
 
 	m := map[string][]App{
-		"Flows": wfConf.Flows,
-		"Sinks": wfConf.Sinks,
+		"Functions": wfConf.Functions,
 	}
 
 	missingParams := []string{}

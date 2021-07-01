@@ -39,8 +39,8 @@ type client interface {
 
 type clientImpl struct {
 	conn       *quic.QuicConn
-	zipperIP   string
-	zipperPort int
+	serverIP   string
+	serverPort int
 	readers    chan io.Reader
 	writer     io.Writer
 	session    quic.Client
@@ -66,7 +66,7 @@ func newClient(appName string, clientType string) *clientImpl {
 			c.conn.Stream = nil
 
 			// reconnect when the heartbeat is expired.
-			c.connect(c.zipperIP, c.zipperPort)
+			c.connect(c.serverIP, c.serverPort)
 
 			// reset the sync.Once after 5s.
 			time.AfterFunc(5*time.Second, func() {
@@ -78,15 +78,15 @@ func newClient(appName string, clientType string) *clientImpl {
 	return c
 }
 
-// connect to yomo-zipper.
+// connect to yomo-server.
 // TODO: login auth
 func (c *clientImpl) connect(ip string, port int) (*clientImpl, error) {
-	c.zipperIP = ip
-	c.zipperPort = port
+	c.serverIP = ip
+	c.serverPort = port
 	addr := fmt.Sprintf("%s:%d", ip, port)
-	logger.Printf("Connecting to zipper %s...", addr)
+	logger.Printf("Connecting to yomo-server %s...", addr)
 
-	// connect to yomo-zipper
+	// connect to yomo-server
 	quic_cli, err := quic.NewClient(addr)
 	if err != nil {
 		logger.Error("client [NewClient] Error:", "err", err)
@@ -104,7 +104,7 @@ func (c *clientImpl) connect(ip string, port int) (*clientImpl, error) {
 	c.session = quic_cli
 	c.conn.Signal = quic_stream
 
-	// send negotiation payload to zipper
+	// send negotiation payload to yomo-server
 	payload := NegotiationPayload{
 		AppName:    c.conn.Name,
 		ClientType: c.conn.Type,
@@ -124,7 +124,7 @@ func (c *clientImpl) connect(ip string, port int) (*clientImpl, error) {
 
 	// waiting when the connection is accepted.
 	<-accepted
-	logger.Printf("✅ Connected to zipper %s.", addr)
+	logger.Printf("✅ Connected to yomo-server %s.", addr)
 	return c, nil
 }
 
@@ -154,7 +154,7 @@ func (c *clientImpl) handleSignal(accepted chan bool) {
 					c.conn.Stream = stream
 				}
 				accepted <- true
-			} else if bytes.Equal(value, quic.SignalFlowSink) {
+			} else if bytes.Equal(value, quic.SignalFunction) {
 				// create stream for flow/sink.
 				stream, err := c.session.CreateStream(context.Background())
 
@@ -185,7 +185,7 @@ func (c *clientImpl) Write(data []byte) (int, error) {
 // Retry the connection between client and server.
 func (c *clientImpl) Retry() {
 	for {
-		_, err := c.connect(c.zipperIP, c.zipperPort)
+		_, err := c.connect(c.serverIP, c.serverPort)
 		if err == nil {
 			break
 		}
@@ -197,7 +197,7 @@ func (c *clientImpl) Retry() {
 // RetryWithCount the connection with a certain count.
 func (c *clientImpl) RetryWithCount(count int) bool {
 	for i := 0; i < count; i++ {
-		_, err := c.connect(c.zipperIP, c.zipperPort)
+		_, err := c.connect(c.serverIP, c.serverPort)
 		if err == nil {
 			return true
 		}

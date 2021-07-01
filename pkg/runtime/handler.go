@@ -19,26 +19,28 @@ import (
 // NewServerHandler inits a new ServerHandler
 func NewServerHandler(conf *WorkflowConfig, meshConfURL string) quic.ServerHandler {
 	handler := &quicHandler{
-		serverlessConfig: conf,
-		meshConfigURL:    meshConfURL,
-		connMap:          sync.Map{},
-		source:           make(chan io.Reader),
-		zipperMap:        sync.Map{},
-		zipperSenders:    make([]serverless.GetSinkFunc, 0),
-		zipperReceiver:   make(chan io.Reader),
+		serverlessConfig:   conf,
+		meshConfigURL:      meshConfURL,
+		connMap:            sync.Map{},
+		source:             make(chan io.Reader),
+		outputConnectorMap: sync.Map{},
+		zipperMap:          sync.Map{},
+		zipperSenders:      make([]serverless.GetSenderFunc, 0),
+		zipperReceiver:     make(chan io.Reader),
 	}
 	return handler
 }
 
 type quicHandler struct {
-	serverlessConfig *WorkflowConfig
-	meshConfigURL    string
-	connMap          sync.Map
-	source           chan io.Reader
-	zipperMap        sync.Map // the stream map for downstream zippers.
-	zipperSenders    []serverless.GetSinkFunc
-	zipperReceiver   chan io.Reader
-	mutex            sync.RWMutex
+	serverlessConfig   *WorkflowConfig
+	meshConfigURL      string
+	connMap            sync.Map
+	source             chan io.Reader
+	outputConnectorMap sync.Map
+	zipperMap          sync.Map // the stream map for downstream zippers.
+	zipperSenders      []serverless.GetSenderFunc
+	zipperReceiver     chan io.Reader
+	mutex              sync.RWMutex
 }
 
 func (s *quicHandler) Listen() error {
@@ -93,6 +95,13 @@ func (s *quicHandler) Read(id int64, sess quic.Session, st quic.Stream) error {
 			return isNewAvailable
 		}
 		s.connMap.Store(id, svrConn)
+
+		svrConn.onGotAppType = func() {
+			// output connector
+			if svrConn.conn.Type == quic.ConnTypeOutputConnector {
+				s.outputConnectorMap.Store(id, createOutputConnectorFunc(id, &s.connMap, &s.outputConnectorMap))
+			}
+		}
 	}
 	s.mutex.Unlock()
 	return nil
@@ -107,9 +116,9 @@ func (s *quicHandler) receiveDataFromSources() {
 				return
 			}
 
-			// one stream for each flows/sinks.
-			flows, sinks := Build(s.serverlessConfig, &s.connMap)
-			stream := DispatcherWithFunc(flows, item)
+			// one stream for each stream functions.
+			sfns := getStreamFuncs(s.serverlessConfig, &s.connMap)
+			stream := DispatcherWithFunc(sfns, item)
 
 			go func() {
 				for customer := range stream.Observe(rxgo.WithErrorStrategy(rxgo.ContinueOnError)) {
@@ -118,12 +127,20 @@ func (s *quicHandler) receiveDataFromSources() {
 						continue
 					}
 
-					value := customer.V.([]byte)
+					buf := customer.V.([]byte)
 
-					// sinks
-					for _, sink := range sinks {
-						go sendDataToSink(sink, value, "Zipper sent frame to sink", "❌ Zipper sent frame to sink failed.")
-					}
+					// send data to `Output Connectors`
+					s.outputConnectorMap.Range(func(key, value interface{}) bool {
+						if value == nil {
+							return true
+						}
+
+						sf, ok := value.(serverless.GetSenderFunc)
+						if ok {
+							go sendDataToConnector(sf, buf, "Zipper sent frame to sink", "❌ Zipper sent frame to sink failed.")
+						}
+						return true
+					})
 
 					// Zipper-Senders
 					for _, sender := range s.zipperSenders {
@@ -131,7 +148,7 @@ func (s *quicHandler) receiveDataFromSources() {
 							continue
 						}
 
-						go sendDataToSink(sender, value, "[Zipper Sender] sent frame to downstream zipper.", "❌ [Zipper Sender] sent frame to downstream zipper failed.")
+						go sendDataToConnector(sender, buf, "[Zipper Sender] sent frame to downstream zipper.", "❌ [Zipper Sender] sent frame to downstream zipper failed.")
 					}
 				}
 			}()
@@ -148,11 +165,6 @@ func (s *quicHandler) receiveDataFromZipperSenders() {
 				return
 			}
 
-			sinks := GetSinks(s.serverlessConfig, &s.connMap)
-			if len(sinks) == 0 {
-				continue
-			}
-
 			go func() {
 				fd := decoder.NewFrameDecoder(receiver)
 				for {
@@ -160,10 +172,18 @@ func (s *quicHandler) receiveDataFromZipperSenders() {
 					if err != nil {
 						break
 					} else {
-						// send data to sinks
-						for _, sink := range sinks {
-							go sendDataToSink(sink, buf, "[Zipper Receiver] sent frame to sink.", "❌ [Zipper Receiver] sent frame to sink failed.")
-						}
+						// send data to `Output Connectors`
+						s.outputConnectorMap.Range(func(key, value interface{}) bool {
+							if value == nil {
+								return true
+							}
+
+							sf, ok := value.(serverless.GetSenderFunc)
+							if ok {
+								go sendDataToConnector(sf, buf, "[Zipper Receiver] sent frame to sink.", "❌ [Zipper Receiver] sent frame to sink failed.")
+							}
+							return true
+						})
 					}
 				}
 			}()
@@ -171,7 +191,7 @@ func (s *quicHandler) receiveDataFromZipperSenders() {
 	}
 }
 
-func sendDataToSink(sf serverless.GetSinkFunc, buf []byte, succssMsg string, errMsg string) {
+func sendDataToConnector(sf serverless.GetSenderFunc, buf []byte, succssMsg string, errMsg string) {
 	for {
 		writer, cancel := sf()
 		if writer == nil {
@@ -187,6 +207,94 @@ func sendDataToSink(sf serverless.GetSinkFunc, buf []byte, succssMsg string, err
 			}
 		}
 	}
+}
+
+// getStreamFuncs gets stream functions by config (.yaml).
+// It will create one stream for each function.
+func getStreamFuncs(wfConf *WorkflowConfig, connMap *sync.Map) []serverless.GetStreamFunc {
+	//init workflow
+	funcs := make([]serverless.GetStreamFunc, 0)
+
+	for _, app := range wfConf.Functions {
+		funcs = append(funcs, createStreamFunc(app, connMap, quic.ConnTypeStreamFunction))
+	}
+
+	return funcs
+}
+
+// createStreamFunc creates a `GetStreamFunc` for `Stream Function`.
+func createStreamFunc(app App, connMap *sync.Map, connType string) serverless.GetStreamFunc {
+	f := func() (io.ReadWriter, serverless.CancelFunc) {
+		id, c := findConn(app, connMap, connType)
+
+		if c == nil {
+			return nil, func() {}
+		} else if c.conn.Stream != nil {
+			return c.conn.Stream, cancelStreamFunc(c, connMap, id)
+		} else {
+			c.SendSignalFunction()
+			return nil, func() {}
+		}
+	}
+
+	return f
+}
+
+func cancelStreamFunc(conn *ServerConn, connMap *sync.Map, id int64) func() {
+	f := func() {
+		conn.Close()
+		connMap.Delete(id)
+	}
+	return f
+}
+
+// IsMatched indicates if the connection is matched.
+func findConn(app App, connMap *sync.Map, connType string) (int64, *ServerConn) {
+	var conn *ServerConn = nil
+	var id int64 = 0
+	connMap.Range(func(key, value interface{}) bool {
+		c := value.(*ServerConn)
+		if c.conn.Name == app.Name && c.conn.Type == connType {
+			conn = c
+			id = key.(int64)
+
+			return false
+		}
+		return true
+	})
+
+	return id, conn
+}
+
+// createOutputConnectorFunc creates a `GetSenderFunc` for `Output Connector`.
+func createOutputConnectorFunc(id int64, connMap *sync.Map, outputConnectorMap *sync.Map) serverless.GetSenderFunc {
+	f := func() (io.Writer, serverless.CancelFunc) {
+		value, ok := connMap.Load(id)
+
+		if !ok {
+			return nil, func() {}
+		}
+
+		c := value.(*ServerConn)
+
+		if c.conn.Stream != nil {
+			return c.conn.Stream, cancelOutputConnectorFunc(c, connMap, outputConnectorMap, id)
+		} else {
+			c.SendSignalFunction()
+			return nil, func() {}
+		}
+	}
+
+	return f
+}
+
+func cancelOutputConnectorFunc(conn *ServerConn, connMap *sync.Map, outputConnectorMap *sync.Map, id int64) func() {
+	f := func() {
+		conn.Close()
+		connMap.Delete(id)
+		outputConnectorMap.Delete(id)
+	}
+	return f
 }
 
 // zipperServerConf represents the config of zipper servers
@@ -236,7 +344,7 @@ func (s *quicHandler) buildZipperSenders() error {
 }
 
 // createZipperSender creates a zipper sender.
-func (s *quicHandler) createZipperSender(conf zipperServerConf) serverless.GetSinkFunc {
+func (s *quicHandler) createZipperSender(conf zipperServerConf) serverless.GetSenderFunc {
 	f := func() (io.Writer, serverless.CancelFunc) {
 		if writer, ok := s.zipperMap.Load(conf.Name); ok {
 			cli, ok := writer.(client.ZipperSenderClient)
