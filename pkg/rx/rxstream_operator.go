@@ -668,20 +668,22 @@ func (s *RxStreamImpl) MergeStreamFunc(sfn serverless.GetStreamFunc, opts ...rxg
 						return
 					}
 
-					rw, cancel := sfn()
-					if rw == nil {
-						time.Sleep(time.Second)
-					} else {
-						fd := decoder.NewFrameDecoder(rw)
-						buf, err := fd.Read(false)
-						if err != nil && err != io.EOF {
-							logger.Error("Zipper received frame from flow failed.", "err", err)
-							cancel()
+					go func() {
+						rw, cancel := sfn()
+						if rw == nil {
+							time.Sleep(time.Second)
 						} else {
-							logger.Debug("Zipper received frame from flow.", "frame", logger.BytesString(buf))
-							response <- buf
+							fd := decoder.NewFrameDecoder(rw)
+							buf, err := fd.Read(false)
+							if err != nil && err != io.EOF {
+								logger.Error("Zipper received frame from flow failed.", "err", err)
+								cancel()
+							} else {
+								logger.Debug("Zipper received frame from flow.", "frame", logger.BytesString(buf))
+								response <- buf
+							}
 						}
-					}
+					}()
 				}
 			}
 		}()
