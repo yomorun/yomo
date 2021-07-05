@@ -1,7 +1,6 @@
 package rx
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -17,18 +16,7 @@ import (
 	"github.com/yomorun/yomo/pkg/serverless"
 )
 
-type echo struct {
-	buf *bytes.Buffer
-}
-
-func (e *echo) Write(p []byte) (n int, err error) {
-	return e.buf.Write(p)
-}
-
-func (e *echo) Read(p []byte) (n int, err error) {
-	return e.buf.Read(p)
-}
-
+// FromChannel creates a new RxStream from a []byte channel.
 func FromChannel(channel chan []byte) RxStream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
@@ -51,6 +39,7 @@ func FromChannel(channel chan []byte) RxStream {
 	return CreateObservable(f)
 }
 
+// FromReader creates a new RxStream from io.Reader.
 func FromReader(reader io.Reader) RxStream {
 	next := make(chan rxgo.Item)
 
@@ -73,7 +62,7 @@ func FromReader(reader io.Reader) RxStream {
 	return ConvertObservable(rxgo.FromChannel(next, rxgo.WithErrorStrategy(rxgo.ContinueOnError)))
 }
 
-// FromReaderWithDecoder creates a RxStream with decoder
+// FromReaderWithDecoder creates a RxStream with decoder.
 func FromReaderWithDecoder(readers chan io.Reader) RxStream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
@@ -126,6 +115,7 @@ func Of(i interface{}) rxgo.Item {
 	return rxgo.Item{V: i}
 }
 
+// RxStreamImpl is the implementation of RxStream.
 type RxStreamImpl struct {
 	observable rxgo.Observable
 }
@@ -724,9 +714,49 @@ func (s *RxStreamImpl) Subscribe(key byte) RxStream {
 				if item.Error() {
 					return
 				}
-				y3stream := (item.V).(decoder.Observable)
+				y3stream, ok := (item.V).(decoder.Observable)
+				if !ok {
+					logger.Error("[Subscribe] the type of item.V is not `decoder.Observable`")
+					return
+				}
+
 				if !Of(y3stream.Subscribe(key)).SendContext(ctx, next) {
 					return
+				}
+			}
+		}
+	}
+	return CreateObservable(f)
+}
+
+// RawBytes get the raw bytes in RxStream which receives from yomo-server.
+func (s *RxStreamImpl) RawBytes() RxStream {
+	f := func(ctx context.Context, next chan rxgo.Item) {
+		defer close(next)
+		observe := s.Observe()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case item, ok := <-observe:
+				if !ok {
+					return
+				}
+				if item.Error() {
+					return
+				}
+				y3stream, ok := (item.V).(decoder.Observable)
+				if !ok {
+					logger.Error("[RawBytes] the type of item.V is not `decoder.Observable`")
+					return
+				}
+
+				bufCh := y3stream.RawBytes()
+				for buf := range bufCh {
+					logger.Debug("[RawBytes] get the raw bytes from yomo-server.", "buf", logger.BytesString(buf))
+					if !Of(buf).SendContext(ctx, next) {
+						return
+					}
 				}
 			}
 		}
@@ -738,7 +768,7 @@ func (s *RxStreamImpl) Subscribe(key byte) RxStream {
 func (s *RxStreamImpl) ZipMultiObservers(observers []decoder.KeyObserveFunc, zipper func(items []interface{}) (interface{}, error)) RxStream {
 	count := len(observers)
 	if count < 2 {
-		return s.thrown(errors.New("ZipMultiObservers - the number of observers must be >= 2"))
+		return s.thrown(errors.New("[ZipMultiObservers] the number of observers must be >= 2"))
 	}
 
 	// the function to zip the values into a slice
@@ -814,7 +844,7 @@ func (s *RxStreamImpl) ZipMultiObservers(observers []decoder.KeyObserveFunc, zip
 								if ch != nil {
 									ch <- rxgo.Item{V: kv.Value}
 								} else {
-									ch <- rxgo.Item{E: fmt.Errorf("ch is not found for key %v", kv.Key)}
+									ch <- rxgo.Item{E: fmt.Errorf("[ZipMultiObservers] ch is not found for key %v", kv.Key)}
 								}
 							}
 						}
@@ -827,20 +857,20 @@ func (s *RxStreamImpl) ZipMultiObservers(observers []decoder.KeyObserveFunc, zip
 			// observe the value from zipObservable
 			for item := range zipObservable.Observe(rxgo.WithErrorStrategy(rxgo.ContinueOnError)) {
 				if item.Error() {
-					logger.Error("ZipMultiObservers - observe the value failed.", "err", item.E)
+					logger.Error("[ZipMultiObservers] observe the value failed.", "err", item.E)
 					continue
 				}
 
 				items, ok := item.V.([]interface{})
 				if !ok {
-					logger.Error("ZipMultiObservers - item.V is not a slice")
+					logger.Error("[ZipMultiObservers] item.V is not a slice")
 					continue
 				}
 
 				// call the zipper callback
 				v, err := zipper(items)
 				if err != nil {
-					logger.Error("ZipMultiObservers - zipper func returns an err.", "err", err)
+					logger.Error("[ZipMultiObservers] zipper func returns an err.", "err", err)
 					continue
 				}
 
@@ -881,7 +911,7 @@ func (s *RxStreamImpl) OnObserve(function func(v []byte) (interface{}, error)) R
 							if !ok {
 								return
 							}
-							logger.Debug("Get data after OnObserve.", "data", item)
+							logger.Debug("[OnObserve] Get data after OnObserve.", "data", item)
 							if !Of(item).SendContext(ctx, next) {
 								return
 							}

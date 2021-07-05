@@ -53,6 +53,9 @@ type Observable interface {
 
 	// Unmarshal transforms the items emitted by an Observable by applying an unmarshalling to each item.
 	Unmarshal(unmarshaller Unmarshaller, factory func() interface{}) chan interface{}
+
+	// RawBytes returns the raw bytes from YoMo-Server.
+	RawBytes() chan []byte
 }
 
 type observableImpl struct {
@@ -127,7 +130,7 @@ func (o *observableImpl) Observe() <-chan interface{} {
 	return o.iterable.Observe()
 }
 
-// FromStream reads data from reader
+// FromStream reads data from reader.
 func FromStream(reader io.Reader) Observable {
 
 	f := func(next chan interface{}) {
@@ -137,10 +140,10 @@ func FromStream(reader io.Reader) Observable {
 			// read next raw frame.
 			buf, err := fd.Read(true)
 			if err != nil {
-				logger.Debug("Receive data from zipper failed.", "err", err)
+				logger.Debug("[Decoder] Receive data from YoMo-Server failed.", "err", err)
 				break
 			} else {
-				logger.Debug("Receive raw data from zipper.", "data", logger.BytesString(buf))
+				logger.Debug("[Decoder] Receive raw data from YoMo-Server.", "data", logger.BytesString(buf))
 				next <- buf
 			}
 		}
@@ -163,7 +166,7 @@ func (o *observableImpl) OnObserve(function func(v []byte) (interface{}, error))
 			value, err := function(kv.Buf)
 			if err != nil {
 				// log the error and contine consuming the item from observe
-				logger.Error("The callback function in OnObserve returns error.", "err", err)
+				logger.Error("[Decoder] The callback function in OnObserve returns error.", "err", err)
 			} else {
 				next <- value
 			}
@@ -188,13 +191,13 @@ func (o *observableImpl) OnMultiObserve(keyObserveMap map[byte]OnObserveFunc) ch
 			kv := item.(KeyBuf)
 			function := keyObserveMap[kv.Key]
 			if function == nil {
-				logger.Print("The OnObserve func is not found for the specified key", kv.Key)
+				logger.Print("[Decoder] The OnObserve func is not found for the specified key", kv.Key)
 				continue
 			}
 			val, err := function(kv.Buf)
 			if err != nil {
 				// log the error and contine consuming the item from observe
-				logger.Error("The callback function in OnObserve returns error.", "err", err)
+				logger.Error("[Decoder] The callback function in OnObserve returns error.", "err", err)
 			} else {
 				next <- KeyValue{
 					Key:   kv.Key,
@@ -295,16 +298,16 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 					switch state {
 					case y3StateRootStart:
 						if common.IsRootTag(b) {
-							logger.Debug("The first byte is a root tag, it's a node packet.", "byte", b)
+							logger.Debug("[Decoder] The first byte is a root tag, it's a node packet.", "byte", b)
 							index++
 							state = y3StateRootLengthStart
 						} else {
-							logger.Debug("The first byte is not a root tag, perhaps it's a primitive packet.", "byte", b)
+							logger.Debug("[Decoder] The first byte is not a root tag, perhaps it's a primitive packet.", "byte", b)
 							buffer = make([]byte, 0)
 							buffer = append(buffer, b) // append tag.
 							k := getKey(b)
 							if !m[k] {
-								logger.Debug("The key is not matched the observed keys.", "key", k, "observed keys", logger.BytesString(keys))
+								logger.Debug("[Decoder] The key is not matched the observed keys.", "key", k, "observed keys", logger.BytesString(keys))
 								resetVars()
 								continue
 							}
@@ -355,7 +358,7 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 						// the rest length of TLV packet.
 						tlvRestLen := (tagLen + lengthFieldLen + valueLen) - bufLen
 						if tlvRestLen < 0 {
-							logger.Error("The value length is greater than the length of TLV.", "value", bufLen, "tlv", tagLen+lengthFieldLen+valueLen)
+							logger.Error("[Decoder] The value length is greater than the length of TLV.", "value", bufLen, "tlv", tagLen+lengthFieldLen+valueLen)
 							resetVars()
 							continue
 						}
@@ -365,7 +368,7 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 							end := int32(i) + tlvRestLen
 							// validate start index and end index.
 							if start >= int(end) {
-								logger.Error("The start index is greater than end index.", "start", start, "end", end)
+								logger.Error("[Decoder] The start index is greater than end index.", "start", start, "end", end)
 								resetVars()
 								continue
 							}
@@ -389,7 +392,7 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 									Key: k,
 									Buf: buffer,
 								}
-								logger.Debug("Observe data by the specified key.", "data", logger.BytesString(buffer), "key", k)
+								logger.Debug("[Decoder] Observe data by the specified key.", "data", logger.BytesString(buffer), "key", k)
 
 								if limit == index {
 									resetVars()
@@ -397,7 +400,7 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 									state = y3StateReject
 								}
 							} else {
-								logger.Debug("The key is not matched the observed keys.", "key", k, "observed keys", logger.BytesString(keys))
+								logger.Debug("[Decoder] The key is not matched the observed keys.", "key", k, "observed keys", logger.BytesString(keys))
 								if limit == index {
 									resetVars()
 								} else {
@@ -448,7 +451,7 @@ func (o *observableImpl) Unmarshal(unmarshaller Unmarshaller, factory func() int
 			err := unmarshaller(buf, value)
 			if err != nil {
 				// log the error and contine consuming the item from observe
-				logger.Error("Unmarshal error in decoder", "err", err)
+				logger.Error("[Decoder] Unmarshal error in decoder", "err", err)
 			} else {
 				next <- value
 			}
@@ -458,6 +461,30 @@ func (o *observableImpl) Unmarshal(unmarshaller Unmarshaller, factory func() int
 	go f(next)
 
 	return next
+}
+
+func (o *observableImpl) RawBytes() chan []byte {
+	_next := make(chan []byte)
+
+	f := func(next chan []byte) {
+		defer close(next)
+
+		observe := o.Observe()
+
+		for item := range observe {
+			buf, ok := item.([]byte)
+			if !ok {
+				// log the error and contine consuming the item from observe
+				logger.Error("[Decoder] The observed data is not a []byte.", "data", item)
+			} else {
+				next <- buf
+			}
+		}
+	}
+
+	go f(_next)
+
+	return _next
 }
 
 func createObservable(f func(next chan interface{})) Observable {
