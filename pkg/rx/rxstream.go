@@ -10,6 +10,7 @@ import (
 	"github.com/yomorun/yomo/pkg/serverless"
 )
 
+// RxStream is the interface for RxStream.
 type RxStream interface {
 	rxgo.Iterable
 
@@ -24,6 +25,9 @@ type RxStream interface {
 
 	// Encode the data with a specified key by Y3 Codec and append it to stream.
 	Encode(key byte, opts ...rxgo.Option) RxStream
+
+	// RawBytes get the raw bytes in RxStream which receives from yomo-server.
+	RawBytes() RxStream
 
 	StdOut(opts ...rxgo.Option) RxStream
 	AuditTime(milliseconds uint32, opts ...rxgo.Option) RxStream
