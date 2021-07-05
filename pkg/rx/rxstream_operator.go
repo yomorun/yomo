@@ -635,10 +635,10 @@ func (s *RxStreamImpl) MergeStreamFunc(sfn serverless.GetStreamFunc, opts ...rxg
 								streamReady <- true
 								_, err := rw.Write(data)
 								if err == nil {
-									logger.Debug("Zipper sent frame to flow.", "frame", logger.BytesString(data))
+									logger.Debug("[MergeStreamFunc] YoMo-Server sent frame to Stream Function.", "frame", logger.BytesString(data))
 									break
 								} else {
-									logger.Error("Zipper sent frame to flow failed.", "frame", logger.BytesString(data), "err", err)
+									logger.Error("[MergeStreamFunc] YoMo-Server sent frame to Stream Function failed.", "frame", logger.BytesString(data), "err", err)
 									cancel()
 								}
 							}
@@ -666,10 +666,10 @@ func (s *RxStreamImpl) MergeStreamFunc(sfn serverless.GetStreamFunc, opts ...rxg
 							fd := decoder.NewFrameDecoder(rw)
 							buf, err := fd.Read(false)
 							if err != nil && err != io.EOF {
-								logger.Error("Zipper received frame from flow failed.", "err", err)
+								logger.Error("[MergeStreamFunc] YoMo-Server received frame from Stream Function failed.", "err", err)
 								cancel()
 							} else {
-								logger.Debug("Zipper received frame from flow.", "frame", logger.BytesString(buf))
+								logger.Debug("[MergeStreamFunc] YoMo-Server received frame from Stream Function.", "frame", logger.BytesString(buf))
 								response <- buf
 							}
 						}
