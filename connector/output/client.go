@@ -1,4 +1,4 @@
-package outconn
+package output
 
 import (
 	"context"
@@ -20,28 +20,28 @@ type Client interface {
 	Run(f func(rxstream rx.Stream) rx.Stream)
 }
 
-type outputConnClientImpl struct {
+type clientImpl struct {
 	*client.Impl
 }
 
 // NewClient setups the client of YoMo Output Connector.
 func NewClient(appName string) Client {
-	c := &outputConnClientImpl{
+	c := &clientImpl{
 		Impl: client.New(appName, quic.ConnTypeOutputConnector),
 	}
 	return c
 }
 
 // Connect to yomo-server.
-func (c *outputConnClientImpl) Connect(ip string, port int) (Client, error) {
+func (c *clientImpl) Connect(ip string, port int) (Client, error) {
 	cli, err := c.BaseConnect(ip, port)
-	return &outputConnClientImpl{
+	return &clientImpl{
 		cli,
 	}, err
 }
 
-// Run the handler function in Output Connector.
-func (c *outputConnClientImpl) Run(f func(rxstream rx.Stream) rx.Stream) {
+// Run the Handler function in Output Connector.
+func (c *clientImpl) Run(f func(rxstream rx.Stream) rx.Stream) {
 	rxstream := rx.FromReaderWithDecoder(c.Readers)
 	stream := f(rxstream)
 
@@ -49,7 +49,7 @@ func (c *outputConnClientImpl) Run(f func(rxstream rx.Stream) rx.Stream) {
 
 	for customer := range stream.Observe() {
 		if customer.Error() {
-			logger.Error("[Output Connector Client] Handler got the error.", "err", customer.E)
+			logger.Error("[Output Connector Client] Handler got an error.", "err", customer.E)
 		} else if customer.V != nil {
 			logger.Debug("[Output Connector Client] Got the data after ran Handler.", "data", customer.V)
 		}

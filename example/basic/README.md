@@ -6,7 +6,7 @@ This example represents how YoMo works with the mock data of sound sensor.
 
 + `source`: Mocking data of a Noise Decibel Detection Sensor. [yomo.run/source](https://yomo.run/source)
 + `stream-fn` (formerly flow): Detecting noise pollution in real-time and print the warning message when it reaches the threshold. [yomo.run/stream-function](https://yomo.run/flow)
-+ `out-conn` (formerly sink): Demonstrating persistent storage for IoT data. [yomo.run/out-conn](https://yomo.run/sink)
++ `connector` (formerly sink): Demonstrating persistent storage for IoT data. [yomo.run/output-connector](https://yomo.run/sink)
 + `yomo-server` (formerly zipper): Orchestrate a workflow that receives the data from `source`, stream computing in `stream-fn` and output the result to `output-connector` [yomo.run/yomo-server](https://yomo.run/zipper)
 
 ## How to run the example
@@ -66,10 +66,10 @@ go run ./stream-fn-via-go-cli/app.go
 2021/05/21 20:54:52 ✅ Connected to yomo-server localhost:9000
 ```
 
-### 4. Run [out-conn](https://yomo.run/sink)
+### 4. Run [connector](https://yomo.run/sink)
 
 ```bash
-go run ./out-conn/app.go -n MockDB
+go run ./connector/app.go -n MockDB
 
 2021/05/20 14:10:29 ✅ Connected to yomo-server localhost:9000
 2021/05/20 14:10:29 Running the Serverless Function.
@@ -107,7 +107,7 @@ The terminal of `stream-function` will print the real-time noise decibel value, 
 
 #### output-connector
 
-The terminal of `out-conn` will print the message for saving the data in DB.
+The terminal of `connector` will print the message for saving the data in DB.
 
 ```bash
 save `18.71246` to FaunaDB

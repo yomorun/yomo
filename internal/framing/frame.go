@@ -12,6 +12,7 @@ type Frame interface {
 	Bytes() []byte
 }
 
+// FrameLengthFieldSize is the size of FrameLength.
 const FrameLengthFieldSize = 3
 
 func appendFrameLength(buf []byte, len int) {

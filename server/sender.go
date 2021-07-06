@@ -9,7 +9,7 @@ import (
 type SenderClient interface {
 	client.Client
 
-	// Connect to downsteam Zipper-Receiver
+	// Connect to downsteam  YoMo-Server-Receiver (formerly Zipper-Receiver).
 	Connect(ip string, port int) (SenderClient, error)
 }
 
@@ -20,12 +20,12 @@ type senderClientImpl struct {
 // NewSender setups the client of YoMo-Server-Sender (formerly Zipper-Sender).
 func NewSender(appName string) SenderClient {
 	c := &senderClientImpl{
-		Impl: client.New(appName, quic.ConnTypeZipperSender),
+		Impl: client.New(appName, quic.ConnTypeServerSender),
 	}
 	return c
 }
 
-// Connect to downstream zipper-receiver in edge-mesh.
+// Connect to downstream YoMo-Server-Receiver in edge-mesh.
 func (c *senderClientImpl) Connect(ip string, port int) (SenderClient, error) {
 	cli, err := c.BaseConnect(ip, port)
 	return &senderClientImpl{

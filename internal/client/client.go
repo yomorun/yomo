@@ -17,32 +17,34 @@ import (
 
 // NegotiationPayload represents the payload for negotiation.
 type NegotiationPayload struct {
-	AppName    string `json:"app_name"`
-	ClientType string `json:"client_type"`
+	AppName    string `json:"app_name"`    // AppName is the name of client.
+	ClientType string `json:"client_type"` // ClientType is the type of client.
 }
 
+// Client is the interface for common functions of YoMo client.
 type Client interface {
 	io.Writer
 
-	// Close the client.
+	// Close the client connection.
 	Close() error
 
 	// Retry the connection between client and server.
 	Retry()
 
-	// RetryWithCount the connection with a certain count.
+	// RetryWithCount retry the connection with a certain count.
 	RetryWithCount(count int) bool
 
-	// EnableDebug enables the enables the development model for logging.
+	// EnableDebug enables the development model for logging.
 	EnableDebug()
 }
 
+// Impl is the implementation of Client interface.
 type Impl struct {
 	conn       *quic.QuicConn
 	serverIP   string
 	serverPort int
-	Readers    chan io.Reader
-	Writer     io.Writer
+	Readers    chan io.Reader // Readers are the reader to receive the data from YoMo Server.
+	Writer     io.Writer      // Writer is the stream to send the data to YoMo Server.
 	session    quic.Client
 	once       *sync.Once
 }
@@ -113,7 +115,7 @@ func (c *Impl) BaseConnect(ip string, port int) (*Impl, error) {
 	err = c.conn.SendSignal(buf)
 
 	if err != nil {
-		logger.Error("client [Write] Error:", "err", err)
+		logger.Error("client [SendSignal] Error:", "err", err)
 		return c, err
 	}
 
@@ -140,11 +142,11 @@ func (c *Impl) handleSignal(accepted chan bool) {
 			}
 			value := buf[:n]
 			if bytes.Equal(value, quic.SignalHeartbeat) {
-				// heartbeart
+				// heartbeat
 				c.conn.Heartbeat <- buf[0]
 			} else if bytes.Equal(value, quic.SignalAccepted) {
 				// accepted
-				if c.conn.Type == quic.ConnTypeSource || c.conn.Type == quic.ConnTypeZipperSender {
+				if c.conn.Type == quic.ConnTypeSource || c.conn.Type == quic.ConnTypeServerSender {
 					// create stream for source.
 					stream, err := c.session.CreateStream(context.Background())
 					if err != nil {
@@ -155,7 +157,7 @@ func (c *Impl) handleSignal(accepted chan bool) {
 				}
 				accepted <- true
 			} else if bytes.Equal(value, quic.SignalFunction) {
-				// create stream for flow/sink.
+				// create stream for Stream Function/Output Connector.
 				stream, err := c.session.CreateStream(context.Background())
 
 				if err != nil {
@@ -217,7 +219,7 @@ func (c *Impl) Close() error {
 	return err
 }
 
-// EnableDebug enables the enables the development model for logging.
+// EnableDebug enables the development model for logging.
 func (c *Impl) EnableDebug() {
 	logger.EnableDebug()
 }

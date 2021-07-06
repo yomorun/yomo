@@ -176,7 +176,7 @@ Congratulations! You have done your first YoMo Stream Function.
 
 + `YoMo-Source`: [yomo.run/source](https://docs.yomo.run/source)
 + `YoMo-Stream-Function` (formerly flow): [yomo.run/stream-function](https://docs.yomo.run/flow)
-+ `YoMo-outconn` (formerly sink): [yomo.run/outconn](https://docs.yomo.run/sink)
++ `YoMo-Output-Connector` (formerly sink): [yomo.run/output-connector](https://docs.yomo.run/sink)
 + `YoMo-Server` (formerly zipper): [yomo.run/yomo-server](https://docs.yomo.run/zipper)
 + `Stream Processing in Rx way`: [Rx](https://docs.yomo.run/rx)
 + `Faster than real-time codec`: [Y3](https://github.com/yomorun/y3-codec)
