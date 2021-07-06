@@ -3,8 +3,8 @@
 This example represents how to observe multiple keys and zip the data in batch for calculation.
 
 ```go
-func Handler(rxstream rx.RxStream) rx.RxStream {
-	observers := []decoder.KeyObserveFunc{
+func Handler(rxstream rx.Stream) rx.Stream {
+	observers := []yomo.KeyObserveFunc{
 		{
 			Key:       0x10,
 			OnObserve: convert,

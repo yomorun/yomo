@@ -1,4 +1,4 @@
-package runtime
+package server
 
 import (
 	"encoding/json"
@@ -9,11 +9,10 @@ import (
 	"time"
 
 	"github.com/reactivex/rxgo/v2"
-	"github.com/yomorun/yomo/pkg/client"
-	"github.com/yomorun/yomo/pkg/decoder"
-	"github.com/yomorun/yomo/pkg/logger"
-	"github.com/yomorun/yomo/pkg/quic"
-	"github.com/yomorun/yomo/pkg/serverless"
+	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/internal/decoder"
+	"github.com/yomorun/yomo/logger"
+	"github.com/yomorun/yomo/quic"
 )
 
 // NewServerHandler inits a new ServerHandler
@@ -25,7 +24,7 @@ func NewServerHandler(conf *WorkflowConfig, meshConfURL string) quic.ServerHandl
 		source:             make(chan io.Reader),
 		outputConnectorMap: sync.Map{},
 		zipperMap:          sync.Map{},
-		zipperSenders:      make([]serverless.GetSenderFunc, 0),
+		zipperSenders:      make([]yomo.GetSenderFunc, 0),
 		zipperReceiver:     make(chan io.Reader),
 	}
 	return handler
@@ -38,7 +37,7 @@ type quicHandler struct {
 	source             chan io.Reader
 	outputConnectorMap sync.Map
 	zipperMap          sync.Map // the stream map for downstream zippers.
-	zipperSenders      []serverless.GetSenderFunc
+	zipperSenders      []yomo.GetSenderFunc
 	zipperReceiver     chan io.Reader
 	mutex              sync.RWMutex
 }
@@ -135,7 +134,7 @@ func (s *quicHandler) receiveDataFromSources() {
 							return true
 						}
 
-						sf, ok := value.(serverless.GetSenderFunc)
+						sf, ok := value.(yomo.GetSenderFunc)
 						if ok {
 							go sendDataToConnector(sf, buf, "Zipper sent frame to sink", "❌ Zipper sent frame to sink failed.")
 						}
@@ -178,7 +177,7 @@ func (s *quicHandler) receiveDataFromZipperSenders() {
 								return true
 							}
 
-							sf, ok := value.(serverless.GetSenderFunc)
+							sf, ok := value.(yomo.GetSenderFunc)
 							if ok {
 								go sendDataToConnector(sf, buf, "[Zipper Receiver] sent frame to sink.", "❌ [Zipper Receiver] sent frame to sink failed.")
 							}
@@ -192,7 +191,7 @@ func (s *quicHandler) receiveDataFromZipperSenders() {
 }
 
 // sendDataToConnector sends data to `Output Connector`.
-func sendDataToConnector(sf serverless.GetSenderFunc, buf []byte, succssMsg string, errMsg string) {
+func sendDataToConnector(sf yomo.GetSenderFunc, buf []byte, succssMsg string, errMsg string) {
 	for {
 		writer, cancel := sf()
 		if writer == nil {
@@ -212,9 +211,9 @@ func sendDataToConnector(sf serverless.GetSenderFunc, buf []byte, succssMsg stri
 
 // getStreamFuncs gets stream functions by config (.yaml).
 // It will create one stream for each function.
-func getStreamFuncs(wfConf *WorkflowConfig, connMap *sync.Map) []serverless.GetStreamFunc {
+func getStreamFuncs(wfConf *WorkflowConfig, connMap *sync.Map) []yomo.GetStreamFunc {
 	//init workflow
-	funcs := make([]serverless.GetStreamFunc, 0)
+	funcs := make([]yomo.GetStreamFunc, 0)
 
 	for _, app := range wfConf.Functions {
 		funcs = append(funcs, createStreamFunc(app, connMap, quic.ConnTypeStreamFunction))
@@ -224,8 +223,8 @@ func getStreamFuncs(wfConf *WorkflowConfig, connMap *sync.Map) []serverless.GetS
 }
 
 // createStreamFunc creates a `GetStreamFunc` for `Stream Function`.
-func createStreamFunc(app App, connMap *sync.Map, connType string) serverless.GetStreamFunc {
-	f := func() (io.ReadWriter, serverless.CancelFunc) {
+func createStreamFunc(app App, connMap *sync.Map, connType string) yomo.GetStreamFunc {
+	f := func() (io.ReadWriter, yomo.CancelFunc) {
 		id, c := findConn(app, connMap, connType)
 
 		if c == nil {
@@ -269,8 +268,8 @@ func findConn(app App, connMap *sync.Map, connType string) (int64, *ServerConn) 
 }
 
 // createOutputConnectorFunc creates a `GetSenderFunc` for `Output Connector`.
-func createOutputConnectorFunc(id int64, connMap *sync.Map, outputConnectorMap *sync.Map) serverless.GetSenderFunc {
-	f := func() (io.Writer, serverless.CancelFunc) {
+func createOutputConnectorFunc(id int64, connMap *sync.Map, outputConnectorMap *sync.Map) yomo.GetSenderFunc {
+	f := func() (io.Writer, yomo.CancelFunc) {
 		value, ok := connMap.Load(id)
 
 		if !ok {
@@ -347,10 +346,10 @@ func (s *quicHandler) buildZipperSenders() error {
 }
 
 // createZipperSender creates a zipper sender.
-func (s *quicHandler) createZipperSender(conf zipperServerConf) serverless.GetSenderFunc {
-	f := func() (io.Writer, serverless.CancelFunc) {
+func (s *quicHandler) createZipperSender(conf zipperServerConf) yomo.GetSenderFunc {
+	f := func() (io.Writer, yomo.CancelFunc) {
 		if writer, ok := s.zipperMap.Load(conf.Name); ok {
-			cli, ok := writer.(client.ZipperSenderClient)
+			cli, ok := writer.(SenderClient)
 			if ok {
 				return cli, s.cancelZipperSender(conf)
 			}
@@ -361,7 +360,7 @@ func (s *quicHandler) createZipperSender(conf zipperServerConf) serverless.GetSe
 		s.zipperMap.Store(conf.Name, nil)
 
 		// connect to downstream zipper
-		cli, err := client.NewZipperSender(s.serverlessConfig.Name).
+		cli, err := NewSender(s.serverlessConfig.Name).
 			Connect(conf.Host, conf.Port)
 		if err != nil {
 			cli.Retry()

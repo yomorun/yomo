@@ -5,11 +5,11 @@ import (
 	"time"
 
 	"github.com/yomorun/y3-codec-golang"
-	"github.com/yomorun/yomo/pkg/client"
+	"github.com/yomorun/yomo/source"
 )
 
 func main() {
-	c, err := client.NewSource("cc-src").Connect("localhost", 9000)
+	c, err := source.NewClient("cc-src").Connect("localhost", 9000)
 	if err != nil {
 		log.Printf("❌ Emit the data to yomo-server failure with err: %v", err)
 		return

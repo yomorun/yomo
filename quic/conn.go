@@ -9,7 +9,7 @@ import (
 const (
 	ConnTypeSource          string = "source"
 	ConnTypeStreamFunction  string = "stream-function"
-	ConnTypeOutputConnector string = "output-connector"
+	ConnTypeOutputConnector string = "outconn"
 	ConnTypeZipperSender    string = "zipper-sender"
 
 	ErrConnectionClosed string = "Application error 0x0" // the error message when the connection was closed

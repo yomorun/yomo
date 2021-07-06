@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	y3 "github.com/yomorun/y3-codec-golang"
-	"github.com/yomorun/yomo/pkg/rx"
+	"github.com/yomorun/yomo/rx"
 )
 
 const dataAKey = 0x11
@@ -21,7 +21,7 @@ var zipper = func(_ context.Context, ia interface{}, ib interface{}) (interface{
 }
 
 // Handler handle two event streams and calculate sum when data arrived
-func Handler(rxstream rx.RxStream) rx.RxStream {
+func Handler(rxstream rx.Stream) rx.Stream {
 	streamA := rxstream.Subscribe(dataAKey).OnObserve(convert)
 	streamB := rxstream.Subscribe(dataBKey).OnObserve(convert)
 

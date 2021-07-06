@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yomorun/yomo/pkg/framing"
-	"github.com/yomorun/yomo/pkg/logger"
-	"github.com/yomorun/yomo/pkg/quic"
+	"github.com/yomorun/yomo/internal/framing"
+	"github.com/yomorun/yomo/logger"
+	"github.com/yomorun/yomo/quic"
 )
 
 // NegotiationPayload represents the payload for negotiation.
@@ -21,7 +21,7 @@ type NegotiationPayload struct {
 	ClientType string `json:"client_type"`
 }
 
-type client interface {
+type Client interface {
 	io.Writer
 
 	// Close the client.
@@ -37,21 +37,21 @@ type client interface {
 	EnableDebug()
 }
 
-type clientImpl struct {
+type Impl struct {
 	conn       *quic.QuicConn
 	serverIP   string
 	serverPort int
-	readers    chan io.Reader
-	writer     io.Writer
+	Readers    chan io.Reader
+	Writer     io.Writer
 	session    quic.Client
 	once       *sync.Once
 }
 
-// newClient creates a new client.
-func newClient(appName string, clientType string) *clientImpl {
-	c := &clientImpl{
+// New creates a new client.
+func New(appName string, clientType string) *Impl {
+	c := &Impl{
 		conn:    quic.NewQuicConn(appName, clientType),
-		readers: make(chan io.Reader, 1),
+		Readers: make(chan io.Reader, 1),
 		once:    new(sync.Once),
 	}
 
@@ -66,7 +66,7 @@ func newClient(appName string, clientType string) *clientImpl {
 			c.conn.Stream = nil
 
 			// reconnect when the heartbeat is expired.
-			c.connect(c.serverIP, c.serverPort)
+			c.BaseConnect(c.serverIP, c.serverPort)
 
 			// reset the sync.Once after 5s.
 			time.AfterFunc(5*time.Second, func() {
@@ -78,9 +78,9 @@ func newClient(appName string, clientType string) *clientImpl {
 	return c
 }
 
-// connect to yomo-server.
+// BaseConnect connects to yomo-server.
 // TODO: login auth
-func (c *clientImpl) connect(ip string, port int) (*clientImpl, error) {
+func (c *Impl) BaseConnect(ip string, port int) (*Impl, error) {
 	c.serverIP = ip
 	c.serverPort = port
 	addr := fmt.Sprintf("%s:%d", ip, port)
@@ -129,7 +129,7 @@ func (c *clientImpl) connect(ip string, port int) (*clientImpl, error) {
 }
 
 // handleSignal handles the logic when receiving signal from server.
-func (c *clientImpl) handleSignal(accepted chan bool) {
+func (c *Impl) handleSignal(accepted chan bool) {
 	go func() {
 		defer close(accepted)
 		for {
@@ -163,8 +163,8 @@ func (c *clientImpl) handleSignal(accepted chan bool) {
 					break
 				}
 
-				c.readers <- stream
-				c.writer = stream
+				c.Readers <- stream
+				c.Writer = stream
 				stream.Write(quic.SignalHeartbeat)
 			} else {
 				logger.Debug("client: unknown signal.", "value", logger.BytesString(value))
@@ -174,7 +174,7 @@ func (c *clientImpl) handleSignal(accepted chan bool) {
 }
 
 // Write the data to downstream.
-func (c *clientImpl) Write(data []byte) (int, error) {
+func (c *Impl) Write(data []byte) (int, error) {
 	if c.conn.Stream != nil {
 		// wrap data with framing.
 		f := framing.NewPayloadFrame(data)
@@ -185,9 +185,9 @@ func (c *clientImpl) Write(data []byte) (int, error) {
 }
 
 // Retry the connection between client and server.
-func (c *clientImpl) Retry() {
+func (c *Impl) Retry() {
 	for {
-		_, err := c.connect(c.serverIP, c.serverPort)
+		_, err := c.BaseConnect(c.serverIP, c.serverPort)
 		if err == nil {
 			break
 		}
@@ -197,9 +197,9 @@ func (c *clientImpl) Retry() {
 }
 
 // RetryWithCount the connection with a certain count.
-func (c *clientImpl) RetryWithCount(count int) bool {
+func (c *Impl) RetryWithCount(count int) bool {
 	for i := 0; i < count; i++ {
-		_, err := c.connect(c.serverIP, c.serverPort)
+		_, err := c.BaseConnect(c.serverIP, c.serverPort)
 		if err == nil {
 			return true
 		}
@@ -210,7 +210,7 @@ func (c *clientImpl) RetryWithCount(count int) bool {
 }
 
 // Close the client.
-func (c *clientImpl) Close() error {
+func (c *Impl) Close() error {
 	err := c.session.Close()
 	c.conn.Heartbeat = make(chan byte)
 	c.conn.Signal = nil
@@ -218,6 +218,6 @@ func (c *clientImpl) Close() error {
 }
 
 // EnableDebug enables the enables the development model for logging.
-func (c *clientImpl) EnableDebug() {
+func (c *Impl) EnableDebug() {
 	logger.EnableDebug()
 }

@@ -21,7 +21,7 @@ var zipper = func(_ context.Context, ia interface{}, ib interface{}) (interface{
 }
 
 // Handler handles two event streams and calculates sum upon data's arrival
-func Handler(rxstream rx.RxStream) rx.RxStream {
+func Handler(rxstream rx.Stream) rx.Stream {
 	streamA := rxstream.Subscribe(0x11).OnObserve(convert)
 	streamB := rxstream.Subscribe(0x12).OnObserve(convert)
 

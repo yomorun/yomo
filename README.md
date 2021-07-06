@@ -101,7 +101,7 @@ var callback = func(v []byte) (interface{}, error) {
 }
 
 // Handler will handle data in Rx way
-func Handler(rxstream rx.RxStream) rx.RxStream {
+func Handler(rxstream rx.Stream) rx.Stream {
 	stream := rxstream.
 		Subscribe(NoiseDataKey).
 		OnObserve(callback).
@@ -127,7 +127,6 @@ $ yomo dev
 ⌛  YoMo Stream Function building...
 ✅  Success! YoMo Stream Function build.
 ℹ️   YoMo Stream Function is running...
-ℹ️   Run: /Users/xiaojianhong/Downloads/yomo-app-demo/sl.yomo
 2021/06/07 12:00:06 Connecting to yomo-server dev.yomo.run:9000 ...
 2021/06/07 12:00:07 ✅ Connected to yomo-server dev.yomo.run:9000
 [10.10.79.50] 1623038407236 > value: 1.919251 ⚡️=-25ms
@@ -177,7 +176,7 @@ Congratulations! You have done your first YoMo Stream Function.
 
 + `YoMo-Source`: [yomo.run/source](https://docs.yomo.run/source)
 + `YoMo-Stream-Function` (formerly flow): [yomo.run/stream-function](https://docs.yomo.run/flow)
-+ `YoMo-Output-Connector` (formerly sink): [yomo.run/output-connector](https://docs.yomo.run/sink)
++ `YoMo-outconn` (formerly sink): [yomo.run/outconn](https://docs.yomo.run/sink)
 + `YoMo-Server` (formerly zipper): [yomo.run/yomo-server](https://docs.yomo.run/zipper)
 + `Stream Processing in Rx way`: [Rx](https://docs.yomo.run/rx)
 + `Faster than real-time codec`: [Y3](https://github.com/yomorun/y3-codec)

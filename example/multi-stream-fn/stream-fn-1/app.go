@@ -6,7 +6,7 @@ import (
 	"time"
 
 	y3 "github.com/yomorun/y3-codec-golang"
-	"github.com/yomorun/yomo/pkg/rx"
+	"github.com/yomorun/yomo/rx"
 )
 
 // NoiseDataKey represents the Tag of a Y3 encoded data packet.
@@ -40,7 +40,7 @@ var decode = func(v []byte) (interface{}, error) {
 }
 
 // Handler will handle data in Rx way
-func Handler(rxstream rx.RxStream) rx.RxStream {
+func Handler(rxstream rx.Stream) rx.Stream {
 	stream := rxstream.
 		Subscribe(NoiseDataKey).
 		OnObserve(decode).

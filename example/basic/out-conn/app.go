@@ -6,8 +6,8 @@ import (
 	"log"
 
 	y3 "github.com/yomorun/y3-codec-golang"
-	"github.com/yomorun/yomo/pkg/client"
-	"github.com/yomorun/yomo/pkg/rx"
+	"github.com/yomorun/yomo/outconn"
+	"github.com/yomorun/yomo/rx"
 )
 
 var store = func(_ context.Context, i interface{}) (interface{}, error) {
@@ -21,7 +21,7 @@ var callback = func(v []byte) (interface{}, error) {
 }
 
 // Handler will handle data in Rx way
-func Handler(rxstream rx.RxStream) rx.RxStream {
+func Handler(rxstream rx.Stream) rx.Stream {
 	stream := rxstream.
 		Subscribe(0x11).
 		OnObserve(callback).
@@ -30,7 +30,7 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 }
 
 func main() {
-	cli, err := client.NewOutputConnector("MockDB").Connect("localhost", 9000)
+	cli, err := outconn.NewClient("MockDB").Connect("localhost", 9000)
 	if err != nil {
 		log.Print("❌ Connect to yomo-server failure: ", err)
 		return

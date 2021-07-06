@@ -16,7 +16,7 @@ import (
 	"time"
 
 	quicGo "github.com/lucas-clemente/quic-go"
-	"github.com/yomorun/yomo/pkg/logger"
+	"github.com/yomorun/yomo/logger"
 )
 
 type quicGoServer struct {
