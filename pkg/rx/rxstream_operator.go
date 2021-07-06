@@ -13,6 +13,7 @@ import (
 	y3 "github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo/pkg/decoder"
 	"github.com/yomorun/yomo/pkg/logger"
+	"github.com/yomorun/yomo/pkg/quic"
 	"github.com/yomorun/yomo/pkg/serverless"
 )
 
@@ -50,7 +51,9 @@ func FromReader(reader io.Reader) RxStream {
 		for {
 			buf, err := fd.Read(false)
 			if err != nil {
-				logger.Error("Receive frame from source failed.", "err", err)
+				if err.Error() != quic.ErrConnectionClosed {
+					logger.Error("Receive frame from source failed.", "err", err)
+				}
 				break
 			} else {
 				logger.Debug("Receive frame from source.", "frame", logger.BytesString(buf))
@@ -76,9 +79,7 @@ func FromReaderWithDecoder(readers chan io.Reader) RxStream {
 					return
 				}
 
-				if !Of(decoder.FromStream(item)).SendContext(ctx, next) {
-					return
-				}
+				Of(decoder.FromStream(item)).SendContext(ctx, next)
 			}
 		}
 	}
@@ -666,7 +667,9 @@ func (s *RxStreamImpl) MergeStreamFunc(sfn serverless.GetStreamFunc, opts ...rxg
 							fd := decoder.NewFrameDecoder(rw)
 							buf, err := fd.Read(false)
 							if err != nil && err != io.EOF {
-								logger.Error("[MergeStreamFunc] YoMo-Server received frame from Stream Function failed.", "err", err)
+								if err.Error() != quic.ErrConnectionClosed {
+									logger.Error("[MergeStreamFunc] YoMo-Server received frame from Stream Function failed.", "err", err)
+								}
 								cancel()
 							} else {
 								logger.Debug("[MergeStreamFunc] YoMo-Server received frame from Stream Function.", "frame", logger.BytesString(buf))
@@ -752,12 +755,12 @@ func (s *RxStreamImpl) RawBytes() RxStream {
 				}
 
 				bufCh := y3stream.RawBytes()
-				for buf := range bufCh {
-					logger.Debug("[RawBytes] get the raw bytes from yomo-server.", "buf", logger.BytesString(buf))
-					if !Of(buf).SendContext(ctx, next) {
-						return
+				go func ()  {
+					for buf := range bufCh {
+						logger.Debug("[RawBytes] get the raw bytes from yomo-server.", "buf", logger.BytesString(buf))
+						Of(buf).SendContext(ctx, next)
 					}
-				}
+				}()
 			}
 		}
 	}

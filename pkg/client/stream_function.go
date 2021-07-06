@@ -154,10 +154,12 @@ func (c *streamFuncClientImpl) appendNewDataToRawStream(rawStream rx.RxStream, f
 					}
 				}
 
-				// send buf to yomo-server.
-				rx.Of(buf).SendContext(ctx, next)
-				// clean the buf
-				buf = make([]byte, 0)
+				if len(buf) > 0 {
+					// send data to yomo-server.
+					rx.Of(buf).SendContext(ctx, next)
+					// clean the buf
+					buf = make([]byte, 0)
+				}
 
 				mutex.Unlock()
 			}

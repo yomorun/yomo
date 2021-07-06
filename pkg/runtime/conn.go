@@ -78,7 +78,9 @@ func (c *ServerConn) handleSignal(conf *WorkflowConfig) {
 				c.Beat()
 
 				// create stream when the connetion is initialized.
-				c.createStream()
+				if c.conn.Type == quic.ConnTypeStreamFunction || c.conn.Type == quic.ConnTypeOutputConnector {
+					c.createStream()
+				}
 
 				continue
 			}
@@ -120,13 +122,14 @@ func (c *ServerConn) Beat() {
 			case <-t.C:
 				err := c.conn.SendSignal(quic.SignalHeartbeat)
 				if err != nil {
-					if err.Error() == "Application error 0x0" {
+					if err.Error() == quic.ErrConnectionClosed {
 						// when the app reconnected immediately before the heartbeat expiration time (5s), it shoudn't print the outdated error message.
 						// only print the message when there is not any new available app with the same name and type.
 						if c.isNewAppAvailable == nil || !c.isNewAppAvailable() {
 							logger.Printf("❌ The app %s is disconnected.", c.conn.Name)
 						}
 					} else {
+						// other errors.
 						logger.Error("❌ Server sent SignalHeartbeat to app failed.", "name", c.conn.Name, "err", err)
 					}
 

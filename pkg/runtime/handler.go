@@ -75,14 +75,14 @@ func (s *quicHandler) Read(id int64, sess quic.Session, st quic.Stream) error {
 			c.conn.Stream = st
 		}
 	} else {
-		// init
+		// init conn.
 		svrConn := NewServerConn(sess, st, s.serverlessConfig)
 		svrConn.onClosed = func() {
 			s.connMap.Delete(id)
 		}
 		svrConn.isNewAppAvailable = func() bool {
 			isNewAvailable := false
-			// check if any new app (same name and type) is in connMap.
+			// check if any new app (same name and type) is available in connMap.
 			s.connMap.Range(func(key, value interface{}) bool {
 				c := value.(*ServerConn)
 				if c.conn.Name == svrConn.conn.Name && c.conn.Type == svrConn.conn.Type && key.(int64) > id {
@@ -191,6 +191,7 @@ func (s *quicHandler) receiveDataFromZipperSenders() {
 	}
 }
 
+// sendDataToConnector sends data to `Output Connector`.
 func sendDataToConnector(sf serverless.GetSenderFunc, buf []byte, succssMsg string, errMsg string) {
 	for {
 		writer, cancel := sf()
@@ -240,6 +241,7 @@ func createStreamFunc(app App, connMap *sync.Map, connType string) serverless.Ge
 	return f
 }
 
+// cancelStreamFunc close the connection of Stream Function.
 func cancelStreamFunc(conn *ServerConn, connMap *sync.Map, id int64) func() {
 	f := func() {
 		conn.Close()
@@ -288,6 +290,7 @@ func createOutputConnectorFunc(id int64, connMap *sync.Map, outputConnectorMap *
 	return f
 }
 
+// cancelOutputConnectorFunc close the connection of Output Connection.
 func cancelOutputConnectorFunc(conn *ServerConn, connMap *sync.Map, outputConnectorMap *sync.Map, id int64) func() {
 	f := func() {
 		conn.Close()
