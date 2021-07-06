@@ -43,7 +43,6 @@ var decode = func(v []byte) (interface{}, error) {
 func Handler(rxstream rx.RxStream) rx.RxStream {
 	stream := rxstream.
 		Subscribe(NoiseDataKey).
-		Debounce(50).
 		OnObserve(decode).
 		Map(print).
 		Encode(0x14)
