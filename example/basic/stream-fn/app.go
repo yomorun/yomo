@@ -81,7 +81,7 @@ func Handler(rxstream rx.Stream) rx.Stream {
 		OnObserve(decode).
 		Map(computePeek).
 		SlidingWindowWithTime(SlidingWindowInMS, SlidingTimeInMS, slidingAvg).
-		Encode(0x11)
+		Encode(0x14)
 
 	return stream
 }

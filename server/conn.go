@@ -60,7 +60,7 @@ func (c *ServerConn) handleSignal(conf *WorkflowConfig) {
 				var payload client.NegotiationPayload
 				err := json.Unmarshal(value, &payload)
 				if err != nil {
-					logger.Error("❌ Zipper inits the connection failed.", "err", err)
+					logger.Error("❌ YoMo-Server inits the connection failed.", "err", err)
 					return
 				}
 
@@ -107,7 +107,7 @@ func (c *ServerConn) getConnType(payload client.NegotiationPayload, conf *Workfl
 			}
 		}
 		// name is not found
-		return "Function name is not found in zipper!"
+		return "Function name is not found in YoMo-Server!"
 	default:
 		return payload.ClientType
 	}

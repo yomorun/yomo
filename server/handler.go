@@ -23,9 +23,9 @@ func NewServerHandler(conf *WorkflowConfig, meshConfURL string) quic.ServerHandl
 		connMap:            sync.Map{},
 		source:             make(chan io.Reader),
 		outputConnectorMap: sync.Map{},
-		zipperMap:          sync.Map{},
-		zipperSenders:      make([]yomo.GetSenderFunc, 0),
-		zipperReceiver:     make(chan io.Reader),
+		serverMap:          sync.Map{},
+		serverSenders:      make([]yomo.GetSenderFunc, 0),
+		serverReceiver:     make(chan io.Reader),
 	}
 	return handler
 }
@@ -36,9 +36,9 @@ type quicHandler struct {
 	connMap            sync.Map
 	source             chan io.Reader
 	outputConnectorMap sync.Map
-	zipperMap          sync.Map // the stream map for downstream zippers.
-	zipperSenders      []yomo.GetSenderFunc
-	zipperReceiver     chan io.Reader
+	serverMap          sync.Map // the stream map for downstream yomo servers.
+	serverSenders      []yomo.GetSenderFunc
+	serverReceiver     chan io.Reader
 	mutex              sync.RWMutex
 }
 
@@ -48,12 +48,12 @@ func (s *quicHandler) Listen() error {
 	}()
 
 	go func() {
-		s.receiveDataFromZipperSenders()
+		s.receiveDataFromServerSenders()
 	}()
 
 	if s.meshConfigURL != "" {
 		go func() {
-			s.buildZipperSenders()
+			s.buildServerSenders()
 		}()
 	}
 
@@ -68,8 +68,8 @@ func (s *quicHandler) Read(id int64, sess quic.Session, st quic.Stream) error {
 		c := c.(*ServerConn)
 		if c.conn.Type == quic.ConnTypeSource {
 			s.source <- st
-		} else if c.conn.Type == quic.ConnTypeZipperSender {
-			s.zipperReceiver <- st
+		} else if c.conn.Type == quic.ConnTypeServerSender {
+			s.serverReceiver <- st
 		} else {
 			c.conn.Stream = st
 		}
@@ -136,18 +136,18 @@ func (s *quicHandler) receiveDataFromSources() {
 
 						sf, ok := value.(yomo.GetSenderFunc)
 						if ok {
-							go sendDataToConnector(sf, buf, "Zipper sent frame to sink", "❌ Zipper sent frame to sink failed.")
+							go sendDataToConnector(sf, buf, "YoMo-Server sent frame to Output-Connector", "❌ YoMo-Server sent frame to Output-Connector failed.")
 						}
 						return true
 					})
 
-					// Zipper-Senders
-					for _, sender := range s.zipperSenders {
+					// YoMo-Server-Senders
+					for _, sender := range s.serverSenders {
 						if sender == nil {
 							continue
 						}
 
-						go sendDataToConnector(sender, buf, "[Zipper Sender] sent frame to downstream zipper.", "❌ [Zipper Sender] sent frame to downstream zipper failed.")
+						go sendDataToConnector(sender, buf, "[YoMo-Server Sender] sent frame to downstream yomo-server.", "❌ [YoMo-Server Sender] sent frame to downstream yomo-server failed.")
 					}
 				}
 			}()
@@ -155,11 +155,11 @@ func (s *quicHandler) receiveDataFromSources() {
 	}
 }
 
-// receiveDataFromZipperSenders receives data from `YoMo-Zipper Senders`.
-func (s *quicHandler) receiveDataFromZipperSenders() {
+// receiveDataFromServerSenders receives data from `YoMo-Server Senders`.
+func (s *quicHandler) receiveDataFromServerSenders() {
 	for {
 		select {
-		case receiver, ok := <-s.zipperReceiver:
+		case receiver, ok := <-s.serverReceiver:
 			if !ok {
 				return
 			}
@@ -179,7 +179,7 @@ func (s *quicHandler) receiveDataFromZipperSenders() {
 
 							sf, ok := value.(yomo.GetSenderFunc)
 							if ok {
-								go sendDataToConnector(sf, buf, "[Zipper Receiver] sent frame to sink.", "❌ [Zipper Receiver] sent frame to sink failed.")
+								go sendDataToConnector(sf, buf, "[YoMo-Server Receiver] sent frame to Output-Connector.", "❌ [YoMo-Server Receiver] sent frame to Output-Connector failed.")
 							}
 							return true
 						})
@@ -299,16 +299,16 @@ func cancelOutputConnectorFunc(conn *ServerConn, connMap *sync.Map, outputConnec
 	return f
 }
 
-// zipperServerConf represents the config of zipper servers
-type zipperServerConf struct {
+// serverConf represents the config of yomo servers
+type serverConf struct {
 	Name string `json:"name"`
 	Host string `json:"host"`
 	Port int    `json:"port"`
 }
 
-// buildZipperSenders builds Zipper-Senders from edge-mesh config center.
-func (s *quicHandler) buildZipperSenders() error {
-	logger.Print("Connecting to downstream zippers...")
+// buildServerSenders builds YoMo-Server-Senders from edge-mesh config center.
+func (s *quicHandler) buildServerSenders() error {
+	logger.Print("Connecting to downstream yomo-servers...")
 
 	// download mesh conf
 	res, err := http.Get(s.meshConfigURL)
@@ -318,7 +318,7 @@ func (s *quicHandler) buildZipperSenders() error {
 	defer res.Body.Close()
 
 	decoder := json.NewDecoder(res.Body)
-	var configs []zipperServerConf
+	var configs []serverConf
 	err = decoder.Decode(&configs)
 	if err != nil {
 		return err
@@ -330,14 +330,14 @@ func (s *quicHandler) buildZipperSenders() error {
 
 	for _, conf := range configs {
 		if conf.Name == s.serverlessConfig.Name {
-			// skip current zipper, only need to connect other zippers in edge-mesh.
+			// skip current yomo-server, only need to connect other yomo-servers in edge-mesh.
 			continue
 		}
 
-		go func(conf zipperServerConf) {
+		go func(conf serverConf) {
 			s.mutex.Lock()
-			sender := s.createZipperSender(conf)
-			s.zipperSenders = append(s.zipperSenders, sender)
+			sender := s.createServerSender(conf)
+			s.serverSenders = append(s.serverSenders, sender)
 			s.mutex.Unlock()
 		}(conf)
 	}
@@ -345,38 +345,38 @@ func (s *quicHandler) buildZipperSenders() error {
 	return nil
 }
 
-// createZipperSender creates a zipper sender.
-func (s *quicHandler) createZipperSender(conf zipperServerConf) yomo.GetSenderFunc {
+// createServerSender creates a yomo-server sender.
+func (s *quicHandler) createServerSender(conf serverConf) yomo.GetSenderFunc {
 	f := func() (io.Writer, yomo.CancelFunc) {
-		if writer, ok := s.zipperMap.Load(conf.Name); ok {
+		if writer, ok := s.serverMap.Load(conf.Name); ok {
 			cli, ok := writer.(SenderClient)
 			if ok {
-				return cli, s.cancelZipperSender(conf)
+				return cli, s.cancelServerSender(conf)
 			}
-			return nil, s.cancelZipperSender(conf)
+			return nil, s.cancelServerSender(conf)
 		}
 
-		// Reset zipper in map
-		s.zipperMap.Store(conf.Name, nil)
+		// Reset yomo-server in map
+		s.serverMap.Store(conf.Name, nil)
 
-		// connect to downstream zipper
+		// connect to downstream yomo-server
 		cli, err := NewSender(s.serverlessConfig.Name).
 			Connect(conf.Host, conf.Port)
 		if err != nil {
 			cli.Retry()
 		}
 
-		s.zipperMap.Store(conf.Name, cli)
-		return cli, s.cancelZipperSender(conf)
+		s.serverMap.Store(conf.Name, cli)
+		return cli, s.cancelServerSender(conf)
 	}
 
 	return f
 }
 
-// cancelZipperSender removes the zipper sender from `zipperMap`.
-func (s *quicHandler) cancelZipperSender(conf zipperServerConf) func() {
+// cancelServerSender removes the yomo-server sender from `serverMap`.
+func (s *quicHandler) cancelServerSender(conf serverConf) func() {
 	f := func() {
-		s.zipperMap.Delete(conf.Name)
+		s.serverMap.Delete(conf.Name)
 	}
 	return f
 }

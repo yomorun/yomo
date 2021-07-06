@@ -165,7 +165,7 @@ $ yomo dev
 
 + `YoMo-Source`: [yomo.run/source](https://yomo.run/source)
 + `YoMo-Stream-Function` (formerly flow): [yomo.run/stream-function](https://yomo.run/flow)
-+ `YoMo-outconn` (formerly sink): [yomo.run/outconn](https://yomo.run/sink)
++ `YoMo-Output-Connector` (formerly sink): [yomo.run/output-connector](https://yomo.run/sink)
 + `YoMo-Server` (formerly zipper): [yomo.run/yomo-server](https://yomo.run/zipper)
 + `Stream Processing in Rx way`: [Rx](https://yomo.run/rx)
 + `Faster than real-time codec`: [Y3](https://github.com/yomorun/y3-codec)

@@ -113,7 +113,7 @@ $ go run main.go
 [StdOut]:  ⚡️ Sum(data A: 114.736366, data B: 964.614075) => Result: 1079.350464
 ```
 
-At this point, try to keep `Ctrl-C` dropping `source-data-a`, start it again after a while and see what happens to the `flow` output
+At this point, try to keep `Ctrl-C` dropping `source-data-a`, start it again after a while and see what happens to the `stream-fn` output
 
 ### 7. Congratulations! 
 

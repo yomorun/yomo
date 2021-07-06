@@ -9,8 +9,8 @@ import (
 const (
 	ConnTypeSource          string = "source"
 	ConnTypeStreamFunction  string = "stream-function"
-	ConnTypeOutputConnector string = "outconn"
-	ConnTypeZipperSender    string = "zipper-sender"
+	ConnTypeOutputConnector string = "output-connector"
+	ConnTypeServerSender    string = "server-sender"
 
 	ErrConnectionClosed string = "Application error 0x0" // the error message when the connection was closed
 )
@@ -28,16 +28,16 @@ var (
 
 // QuicConn represents the QUIC connection.
 type QuicConn struct {
-	Signal              io.ReadWriter
-	Stream              io.ReadWriter
-	Type                string
-	Name                string
-	Heartbeat           chan byte
-	IsClosed            bool
-	Ready               bool
-	OnClosed            func() error // OnClosed is the callback when the connection is closed.
-	OnHeartbeatReceived func()       // OnHeartbeatReceived is the callback when the heartbeat is received.
-	OnHeartbeatExpired  func()       // OnHeartbeatExpired is the callback when the heartbeat is expired.
+	Signal              io.ReadWriter // Signal is the specified stream to receive the signal.
+	Stream              io.ReadWriter // Stream is the stream to receive actual data.
+	Type                string        // Type is the type of connection. Possible value: source, stream-function, output-connector, server-sender
+	Name                string        // Name is the name of connection.
+	Heartbeat           chan byte     // Heartbeat is the channel to receive heartbeat.
+	IsClosed            bool          // IsClosed indicates whether the connection is closed.
+	Ready               bool          // Ready indicates whether the connection is ready.
+	OnClosed            func() error  // OnClosed is the callback when the connection is closed.
+	OnHeartbeatReceived func()        // OnHeartbeatReceived is the callback when the heartbeat is received.
+	OnHeartbeatExpired  func()        // OnHeartbeatExpired is the callback when the heartbeat is expired.
 }
 
 // NewQuicConn inits a new QUIC connection.
@@ -61,7 +61,7 @@ func (c *QuicConn) SendSignal(b []byte) error {
 	return err
 }
 
-// Healthcheck checks if receiving the heartbeat from peer.
+// Healthcheck checks if peer is online by heartbeat.
 func (c *QuicConn) Healthcheck() {
 	go func() {
 		// receive heartbeat
@@ -89,7 +89,7 @@ func (c *QuicConn) Healthcheck() {
 	}()
 }
 
-// Close the QUIC connections.
+// Close the QUIC connection.
 func (c *QuicConn) Close() error {
 	c.IsClosed = true
 	c.Ready = true
