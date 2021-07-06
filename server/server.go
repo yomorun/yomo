@@ -1,32 +1,32 @@
-package runtime
+package server
 
 import (
 	"context"
 
-	"github.com/yomorun/yomo/pkg/quic"
+	"github.com/yomorun/yomo/quic"
 )
 
-// Runtime represents the YoMo runtime.
-type Runtime interface {
+// Server represents the YoMo Server.
+type Server interface {
 	// Serve a YoMo server.
 	Serve(endpoint string) error
 }
 
-// NewRuntime inits a new YoMo runtime.
-func NewRuntime(conf *WorkflowConfig, meshConfURL string) Runtime {
-	return &runtimeImpl{
+// NewServer inits a new YoMo Server.
+func NewServer(conf *WorkflowConfig, meshConfURL string) Server {
+	return &serverImpl{
 		conf:        conf,
 		meshConfURL: meshConfURL,
 	}
 }
 
-type runtimeImpl struct {
+type serverImpl struct {
 	conf        *WorkflowConfig
 	meshConfURL string
 }
 
 // Serve a YoMo server.
-func (r *runtimeImpl) Serve(endpoint string) error {
+func (r *serverImpl) Serve(endpoint string) error {
 	handler := NewServerHandler(r.conf, r.meshConfURL)
 	server := quic.NewServer(handler)
 

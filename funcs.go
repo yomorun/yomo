@@ -1,4 +1,4 @@
-package serverless
+package yomo
 
 import "io"
 
@@ -11,4 +11,13 @@ type (
 
 	// GetSenderFunc represents the function to get YoMo-Sender.
 	GetSenderFunc func() (io.Writer, CancelFunc)
+
+	// GetSenderFunc represents the callback function when the specificed key is observed.
+	OnObserveFunc func(v []byte) (interface{}, error)
 )
+
+// KeyObserveFunc is a pair of subscribed key and onObserve callback.
+type KeyObserveFunc struct {
+	Key       byte
+	OnObserve OnObserveFunc
+}

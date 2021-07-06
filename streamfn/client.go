@@ -1,52 +1,53 @@
-package client
+package streamfn
 
 import (
 	"context"
 	"sync"
 
 	"github.com/reactivex/rxgo/v2"
-	"github.com/yomorun/yomo/pkg/framing"
-	"github.com/yomorun/yomo/pkg/logger"
-	"github.com/yomorun/yomo/pkg/quic"
-	"github.com/yomorun/yomo/pkg/rx"
+	"github.com/yomorun/yomo/internal/client"
+	"github.com/yomorun/yomo/internal/framing"
+	"github.com/yomorun/yomo/logger"
+	"github.com/yomorun/yomo/quic"
+	"github.com/yomorun/yomo/rx"
 )
 
-// StreamFunctionClient is the client for YoMo Stream Function.
-type StreamFunctionClient interface {
-	client
+// Client is the client for YoMo Stream Function.
+type Client interface {
+	client.Client
 
 	// Connect to YoMo-Server.
-	Connect(ip string, port int) (StreamFunctionClient, error)
+	Connect(ip string, port int) (Client, error)
 
 	// Pipe the Handler function.
-	Pipe(f func(rxstream rx.RxStream) rx.RxStream)
+	Pipe(f func(rxstream rx.Stream) rx.Stream)
 }
 
-type streamFuncClientImpl struct {
-	*clientImpl
+type clientImpl struct {
+	*client.Impl
 }
 
-// NewStreamFunction setups the client of YoMo Stream Function.
+// NewClient setups the client of YoMo Stream Function.
 // The "appName" should match the name of functions in workflow.yaml in yomo-server.
-func NewStreamFunction(appName string) StreamFunctionClient {
-	c := &streamFuncClientImpl{
-		clientImpl: newClient(appName, quic.ConnTypeStreamFunction),
+func NewClient(appName string) Client {
+	c := &clientImpl{
+		Impl: client.New(appName, quic.ConnTypeStreamFunction),
 	}
 	return c
 }
 
 // Connect to yomo-server.
-func (c *streamFuncClientImpl) Connect(ip string, port int) (StreamFunctionClient, error) {
-	cli, err := c.connect(ip, port)
-	return &streamFuncClientImpl{
+func (c *clientImpl) Connect(ip string, port int) (Client, error) {
+	cli, err := c.BaseConnect(ip, port)
+	return &clientImpl{
 		cli,
 	}, err
 }
 
 // Pipe the handler function in Stream Function.
-func (c *streamFuncClientImpl) Pipe(f func(rxstream rx.RxStream) rx.RxStream) {
+func (c *clientImpl) Pipe(f func(rxstream rx.Stream) rx.Stream) {
 	// create a RxStream from io.Reader with decoder.
-	rxStream := rx.FromReaderWithDecoder(c.readers)
+	rxStream := rx.FromReaderWithDecoder(c.Readers)
 	// create a RawStream from the raw bytes in RxStream.
 	rawStream := rxStream.RawBytes()
 	// create a new stream by running the `Handler` function.
@@ -63,7 +64,7 @@ func (c *streamFuncClientImpl) Pipe(f func(rxstream rx.RxStream) rx.RxStream) {
 		if customer.Error() {
 			logger.Error("[Stream Function Client] Handler got the error.", "err", customer.E)
 		} else if customer.V != nil {
-			if c.writer == nil {
+			if c.Writer == nil {
 				continue
 			}
 
@@ -76,7 +77,7 @@ func (c *streamFuncClientImpl) Pipe(f func(rxstream rx.RxStream) rx.RxStream) {
 			// send data to yomo-server.
 			// wrap data with framing.
 			f := framing.NewPayloadFrame(buf)
-			_, err := c.writer.Write(f.Bytes())
+			_, err := c.Writer.Write(f.Bytes())
 			if err != nil {
 				logger.Error("[Stream Function Client] ❌ Send data to yomo-server failed.", "err", err)
 			} else {
@@ -88,7 +89,7 @@ func (c *streamFuncClientImpl) Pipe(f func(rxstream rx.RxStream) rx.RxStream) {
 }
 
 // appendNewDataToRawStream appends new data to raw stream.
-func (c *streamFuncClientImpl) appendNewDataToRawStream(rawStream rx.RxStream, funcStream rx.RxStream) rx.RxStream {
+func (c *clientImpl) appendNewDataToRawStream(rawStream rx.Stream, funcStream rx.Stream) rx.Stream {
 	opts := []rxgo.Option{
 		rxgo.WithErrorStrategy(rxgo.ContinueOnError),
 	}

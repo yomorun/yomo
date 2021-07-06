@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/yomorun/y3-codec-golang"
-	"github.com/yomorun/yomo/pkg/decoder"
-	"github.com/yomorun/yomo/pkg/rx"
+	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/rx"
 )
 
 var zipper = func(items []interface{}) (interface{}, error) {
@@ -21,8 +21,8 @@ var convert = func(v []byte) (interface{}, error) {
 }
 
 // Handler will handle data in Rx way
-func Handler(rxstream rx.RxStream) rx.RxStream {
-	observers := []decoder.KeyObserveFunc{
+func Handler(rxstream rx.Stream) rx.Stream {
+	observers := []yomo.KeyObserveFunc{
 		{
 			Key:       0x10,
 			OnObserve: convert,

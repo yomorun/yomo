@@ -4,8 +4,8 @@ import (
 	"bufio"
 	"io"
 
-	"github.com/yomorun/yomo/pkg/framing"
-	"github.com/yomorun/yomo/pkg/logger"
+	"github.com/yomorun/yomo/internal/framing"
+	"github.com/yomorun/yomo/logger"
 )
 
 const (

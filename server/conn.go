@@ -1,13 +1,13 @@
-package runtime
+package server
 
 import (
 	"bytes"
 	"encoding/json"
 	"time"
 
-	"github.com/yomorun/yomo/pkg/client"
-	"github.com/yomorun/yomo/pkg/logger"
-	"github.com/yomorun/yomo/pkg/quic"
+	"github.com/yomorun/yomo/internal/client"
+	"github.com/yomorun/yomo/logger"
+	"github.com/yomorun/yomo/quic"
 )
 
 // ServerConn represents the YoMo Server connection.

@@ -8,7 +8,8 @@ import (
 	"time"
 
 	"github.com/yomorun/y3-codec-golang/pkg/common"
-	"github.com/yomorun/yomo/pkg/logger"
+	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/logger"
 )
 
 const bufferSizeEnvKey = "YOMO_BUFFER_SIZE"
@@ -27,7 +28,6 @@ type Iterable interface {
 }
 
 type (
-	OnObserveFunc func(v []byte) (interface{}, error)
 	// Marshaller defines a marshaller type (interface{} to []byte).
 	Marshaller func(interface{}) ([]byte, error)
 	// Unmarshaller defines an unmarshaller type ([]byte to interface).
@@ -42,7 +42,7 @@ type Observable interface {
 	Subscribe(key byte) Observable
 
 	// OnMultiObserve calls the callback function when one of key is observed.
-	OnMultiObserve(keyObserveMap map[byte]OnObserveFunc) chan KeyValue
+	OnMultiObserve(keyObserveMap map[byte]yomo.OnObserveFunc) chan KeyValue
 
 	// OnObserve calls the callback function when the key is observed.
 	OnObserve(function func(v []byte) (interface{}, error)) chan interface{}
@@ -60,12 +60,6 @@ type Observable interface {
 
 type observableImpl struct {
 	iterable Iterable
-}
-
-// KeyObserveFunc is a pair of subscribed key and onObserve callback.
-type KeyObserveFunc struct {
-	Key       byte
-	OnObserve OnObserveFunc
 }
 
 // KeyBuf is a pair of subscribed key and buffer.
@@ -179,7 +173,7 @@ func (o *observableImpl) OnObserve(function func(v []byte) (interface{}, error))
 }
 
 // OnMultiObserve calls the callback function when one of key is observed.
-func (o *observableImpl) OnMultiObserve(keyObserveMap map[byte]OnObserveFunc) chan KeyValue {
+func (o *observableImpl) OnMultiObserve(keyObserveMap map[byte]yomo.OnObserveFunc) chan KeyValue {
 	_next := make(chan KeyValue)
 
 	f := func(next chan KeyValue) {

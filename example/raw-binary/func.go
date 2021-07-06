@@ -3,10 +3,10 @@ package main
 import (
 	"fmt"
 
-	"github.com/yomorun/yomo/pkg/rx"
+	"github.com/yomorun/yomo/rx"
 )
 
-func Handler(rx rx.RxStream) rx.RxStream {
+func Handler(rx rx.Stream) rx.Stream {
 	return rx.Subscribe(0x10).
 	OnObserve(f).
 	StdOut().

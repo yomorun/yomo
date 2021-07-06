@@ -7,8 +7,8 @@ import (
 	"time"
 
 	y3 "github.com/yomorun/y3-codec-golang"
-	"github.com/yomorun/yomo/pkg/client"
-	"github.com/yomorun/yomo/pkg/rx"
+	"github.com/yomorun/yomo/rx"
+	"github.com/yomorun/yomo/streamfn"
 )
 
 // NoiseDataKey represents the Tag of a Y3 encoded data packet.
@@ -76,7 +76,7 @@ var slidingAvg = func(i interface{}) error {
 }
 
 // Handler will handle data in Rx way
-func Handler(rxstream rx.RxStream) rx.RxStream {
+func Handler(rxstream rx.Stream) rx.Stream {
 	stream := rxstream.
 		Subscribe(NoiseDataKey).
 		Debounce(50).
@@ -89,7 +89,7 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 }
 
 func main() {
-	cli, err := client.NewStreamFunction("Noise").Connect("localhost", 9000)
+	cli, err := streamfn.NewClient("Noise").Connect("localhost", 9000)
 	if err != nil {
 		log.Print("❌ Connect to yomo-server failure: ", err)
 		return

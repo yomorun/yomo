@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/yomorun/yomo/pkg/rx"
+	"github.com/yomorun/yomo/rx"
 )
 
 // NoiseDataKey represents the Tag of a Y3 encoded data packet.
@@ -67,7 +67,7 @@ var slidingAvg = func(i interface{}) error {
 }
 
 // Handler will handle data in Rx way
-func Handler(rxstream rx.RxStream) rx.RxStream {
+func Handler(rxstream rx.Stream) rx.Stream {
 	stream := rxstream.
 		Unmarshal(json.Unmarshal, func() interface{} { return &NoiseData{} }).
 		Debounce(50).

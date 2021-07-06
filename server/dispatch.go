@@ -1,14 +1,14 @@
-package runtime
+package server
 
 import (
 	"io"
 
-	"github.com/yomorun/yomo/pkg/rx"
-	"github.com/yomorun/yomo/pkg/serverless"
+	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/rx"
 )
 
 // DispatcherWithFunc dispatches the input stream to downstreams.
-func DispatcherWithFunc(sfns []serverless.GetStreamFunc, reader io.Reader) rx.RxStream {
+func DispatcherWithFunc(sfns []yomo.GetStreamFunc, reader io.Reader) rx.Stream {
 	stream := rx.FromReader(reader)
 
 	for _, sfn := range sfns {

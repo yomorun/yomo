@@ -15,7 +15,7 @@ _, err := stream.Write(sendingBuf)
 2. In [stream-fn](https://yomo.run/flow), use `Unmarshal` operator to decode the data via JSON, and then use `Marshal` operator to encode the data back to the stream.
 
 ```go
-func Handler(rxstream rx.RxStream) rx.RxStream {
+func Handler(rxstream rx.Stream) rx.Stream {
 	stream := rxstream.
 		Unmarshal(json.Unmarshal, func() interface{} { return &NoiseData{} }).
 		Map(computePeek).
