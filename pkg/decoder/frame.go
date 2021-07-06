@@ -2,10 +2,10 @@ package decoder
 
 import (
 	"bufio"
-	"errors"
 	"io"
 
 	"github.com/yomorun/yomo/pkg/framing"
+	"github.com/yomorun/yomo/pkg/logger"
 )
 
 const (
@@ -47,7 +47,7 @@ func doSplit(data []byte, eof bool) (advance int, token []byte, err error) {
 	}
 	frameLength, data := framing.ReadFrameLength(data)
 	if frameLength < 1 {
-		err = errors.New("invalid frame length")
+		logger.Debug("[decoder frame] the length of frame is < 1.", "length", frameLength, "data", logger.BytesString(data))
 		return
 	}
 	frameSize := frameLength + framing.FrameLengthFieldSize

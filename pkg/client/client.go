@@ -166,6 +166,8 @@ func (c *clientImpl) handleSignal(accepted chan bool) {
 				c.readers <- stream
 				c.writer = stream
 				stream.Write(quic.SignalHeartbeat)
+			} else {
+				logger.Debug("client: unknown signal.", "value", logger.BytesString(value))
 			}
 		}
 	}()
