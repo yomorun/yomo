@@ -8,7 +8,7 @@ import (
 
 	y3 "github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo/rx"
-	"github.com/yomorun/yomo/streamfn"
+	"github.com/yomorun/yomo/streamfunction"
 )
 
 // NoiseDataKey represents the Tag of a Y3 encoded data packet.
@@ -89,7 +89,7 @@ func Handler(rxstream rx.Stream) rx.Stream {
 }
 
 func main() {
-	cli, err := streamfn.NewClient("Noise").Connect("localhost", 9000)
+	cli, err := streamfunction.NewClient("Noise").Connect("localhost", 9000)
 	if err != nil {
 		log.Print("❌ Connect to yomo-server failure: ", err)
 		return

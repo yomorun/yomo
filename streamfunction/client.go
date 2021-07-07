@@ -1,4 +1,4 @@
-package streamfn
+package streamfunction
 
 import (
 	"context"
