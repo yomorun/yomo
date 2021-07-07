@@ -9,10 +9,20 @@ import (
 	"time"
 
 	"github.com/reactivex/rxgo/v2"
-	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/internal/decoder"
 	"github.com/yomorun/yomo/logger"
 	"github.com/yomorun/yomo/quic"
+)
+
+type (
+	// CancelFunc represents the function for cancellation.
+	CancelFunc func()
+
+	// GetStreamFunc represents the function to get stream function (former flow/sink).
+	GetStreamFunc func() (io.ReadWriter, CancelFunc)
+
+	// GetSenderFunc represents the function to get YoMo-Sender.
+	GetSenderFunc func() (io.Writer, CancelFunc)
 )
 
 // NewServerHandler inits a new ServerHandler
@@ -24,7 +34,7 @@ func NewServerHandler(conf *WorkflowConfig, meshConfURL string) quic.ServerHandl
 		source:             make(chan io.Reader),
 		outputConnectorMap: sync.Map{},
 		serverMap:          sync.Map{},
-		serverSenders:      make([]yomo.GetSenderFunc, 0),
+		serverSenders:      make([]GetSenderFunc, 0),
 		serverReceiver:     make(chan io.Reader),
 	}
 	return handler
@@ -37,7 +47,7 @@ type quicHandler struct {
 	source             chan io.Reader
 	outputConnectorMap sync.Map
 	serverMap          sync.Map // the stream map for downstream yomo servers.
-	serverSenders      []yomo.GetSenderFunc
+	serverSenders      []GetSenderFunc
 	serverReceiver     chan io.Reader
 	mutex              sync.RWMutex
 }
@@ -134,7 +144,7 @@ func (s *quicHandler) receiveDataFromSources() {
 							return true
 						}
 
-						sf, ok := value.(yomo.GetSenderFunc)
+						sf, ok := value.(GetSenderFunc)
 						if ok {
 							go sendDataToConnector(sf, buf, "YoMo-Server sent frame to Output-Connector", "❌ YoMo-Server sent frame to Output-Connector failed.")
 						}
@@ -177,7 +187,7 @@ func (s *quicHandler) receiveDataFromServerSenders() {
 								return true
 							}
 
-							sf, ok := value.(yomo.GetSenderFunc)
+							sf, ok := value.(GetSenderFunc)
 							if ok {
 								go sendDataToConnector(sf, buf, "[YoMo-Server Receiver] sent frame to Output-Connector.", "❌ [YoMo-Server Receiver] sent frame to Output-Connector failed.")
 							}
@@ -191,7 +201,7 @@ func (s *quicHandler) receiveDataFromServerSenders() {
 }
 
 // sendDataToConnector sends data to `Output Connector`.
-func sendDataToConnector(sf yomo.GetSenderFunc, buf []byte, succssMsg string, errMsg string) {
+func sendDataToConnector(sf GetSenderFunc, buf []byte, succssMsg string, errMsg string) {
 	for {
 		writer, cancel := sf()
 		if writer == nil {
@@ -211,9 +221,9 @@ func sendDataToConnector(sf yomo.GetSenderFunc, buf []byte, succssMsg string, er
 
 // getStreamFuncs gets stream functions by config (.yaml).
 // It will create one stream for each function.
-func getStreamFuncs(wfConf *WorkflowConfig, connMap *sync.Map) []yomo.GetStreamFunc {
+func getStreamFuncs(wfConf *WorkflowConfig, connMap *sync.Map) []GetStreamFunc {
 	//init workflow
-	funcs := make([]yomo.GetStreamFunc, 0)
+	funcs := make([]GetStreamFunc, 0)
 
 	for _, app := range wfConf.Functions {
 		funcs = append(funcs, createStreamFunc(app, connMap, quic.ConnTypeStreamFunction))
@@ -223,8 +233,8 @@ func getStreamFuncs(wfConf *WorkflowConfig, connMap *sync.Map) []yomo.GetStreamF
 }
 
 // createStreamFunc creates a `GetStreamFunc` for `Stream Function`.
-func createStreamFunc(app App, connMap *sync.Map, connType string) yomo.GetStreamFunc {
-	f := func() (io.ReadWriter, yomo.CancelFunc) {
+func createStreamFunc(app App, connMap *sync.Map, connType string) GetStreamFunc {
+	f := func() (io.ReadWriter, CancelFunc) {
 		id, c := findConn(app, connMap, connType)
 
 		if c == nil {
@@ -268,8 +278,8 @@ func findConn(app App, connMap *sync.Map, connType string) (int64, *ServerConn) 
 }
 
 // createOutputConnectorFunc creates a `GetSenderFunc` for `Output Connector`.
-func createOutputConnectorFunc(id int64, connMap *sync.Map, outputConnectorMap *sync.Map) yomo.GetSenderFunc {
-	f := func() (io.Writer, yomo.CancelFunc) {
+func createOutputConnectorFunc(id int64, connMap *sync.Map, outputConnectorMap *sync.Map) GetSenderFunc {
+	f := func() (io.Writer, CancelFunc) {
 		value, ok := connMap.Load(id)
 
 		if !ok {
@@ -346,8 +356,8 @@ func (s *quicHandler) buildServerSenders() error {
 }
 
 // createServerSender creates a yomo-server sender.
-func (s *quicHandler) createServerSender(conf serverConf) yomo.GetSenderFunc {
-	f := func() (io.Writer, yomo.CancelFunc) {
+func (s *quicHandler) createServerSender(conf serverConf) GetSenderFunc {
+	f := func() (io.Writer, CancelFunc) {
 		if writer, ok := s.serverMap.Load(conf.Name); ok {
 			cli, ok := writer.(SenderClient)
 			if ok {

@@ -24,8 +24,8 @@ type clientImpl struct {
 	*client.Impl
 }
 
-// NewClient setups the client of YoMo Output Connector.
-func NewClient(appName string) Client {
+// New a YoMo Output Connector client.
+func New(appName string) Client {
 	c := &clientImpl{
 		Impl: client.New(appName, quic.ConnTypeOutputConnector),
 	}

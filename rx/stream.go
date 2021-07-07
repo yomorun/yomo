@@ -6,16 +6,12 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/reactivex/rxgo/v2"
-	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/internal/decoder"
 )
 
 // Stream is the interface for RxStream.
 type Stream interface {
 	rxgo.Iterable
-
-	// MergeStreamFunc sends the stream data to Stream Function and receives the new stream data from it.
-	MergeStreamFunc(sfn yomo.GetStreamFunc, opts ...rxgo.Option) Stream
 
 	// Subscribe a specified key in stream and gets the data when the key is observed by Y3 Codec.
 	Subscribe(key byte) Stream
@@ -118,5 +114,11 @@ type Stream interface {
 	SlidingWindowWithTime(windowTimeInMS uint32, slideTimeInMS uint32, handler Handler, opts ...rxgo.Option) Stream
 
 	// ZipMultiObservers subscribes multi Y3 observers, zips the values into a slice and calls the zipper callback when all keys are observed.
-	ZipMultiObservers(observers []yomo.KeyObserveFunc, zipper func(items []interface{}) (interface{}, error)) Stream
+	ZipMultiObservers(observers []KeyObserveFunc, zipper func(items []interface{}) (interface{}, error)) Stream
+}
+
+// KeyObserveFunc is a pair of subscribed key and onObserve callback.
+type KeyObserveFunc struct {
+	Key       byte
+	OnObserve decoder.OnObserveFunc
 }

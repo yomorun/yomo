@@ -46,7 +46,7 @@ Besides run `stream-function` via `YoMo CLI`, you can also run `stream-function`
 
 ```go
 func main() {
-	cli, err := source.NewClient("Noise").Connect("localhost", 9000)
+	cli, err := yomo.NewSource(yomo.WithName("Noise")).Connect("localhost", 9000)
 	if err != nil {
 		log.Print("❌ Connect to yomo-server failure: ", err)
 		return

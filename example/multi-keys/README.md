@@ -4,7 +4,7 @@ This example represents how to observe multiple keys and zip the data in batch f
 
 ```go
 func Handler(rxstream rx.Stream) rx.Stream {
-	observers := []yomo.KeyObserveFunc{
+	observers := []rx.KeyObserveFunc{
 		{
 			Key:       0x10,
 			OnObserve: convert,

@@ -11,7 +11,6 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/reactivex/rxgo/v2"
 	y3 "github.com/yomorun/y3-codec-golang"
-	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/internal/decoder"
 	"github.com/yomorun/yomo/logger"
 	"github.com/yomorun/yomo/quic"
@@ -604,102 +603,6 @@ func (s *StreamImpl) AuditTime(milliseconds uint32, opts ...rxgo.Option) Stream 
 	return ConvertObservable(o)
 }
 
-// MergeStreamFunc sends the stream data to Stream Function and receives the new stream data from it.
-func (s *StreamImpl) MergeStreamFunc(sfn yomo.GetStreamFunc, opts ...rxgo.Option) Stream {
-	f := func(ctx context.Context, next chan rxgo.Item) {
-		defer close(next)
-		response := make(chan []byte)
-		streamReady := make(chan bool)
-		observe := s.Observe(opts...)
-
-		// send the stream to downstream
-		go func() {
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case item, ok := <-observe:
-					if !ok {
-						return
-					}
-					if item.Error() {
-						return
-					} else {
-						for {
-							rw, cancel := sfn()
-							data := item.V.([]byte)
-							if rw == nil {
-								// pass the data to next stream function if the curren stream function is nil
-								response <- data
-								break
-							} else {
-								streamReady <- true
-								_, err := rw.Write(data)
-								if err == nil {
-									logger.Debug("[MergeStreamFunc] YoMo-Server sent frame to Stream Function.", "frame", logger.BytesString(data))
-									break
-								} else {
-									logger.Error("[MergeStreamFunc] YoMo-Server sent frame to Stream Function failed.", "frame", logger.BytesString(data), "err", err)
-									cancel()
-								}
-							}
-						}
-					}
-				}
-			}
-		}()
-
-		// receive the response from downstream
-		go func() {
-			defer close(response)
-			defer close(streamReady)
-
-			for {
-				select {
-				case ready, ok := <-streamReady:
-					if !ready || !ok {
-						return
-					}
-
-					go func() {
-						rw, cancel := sfn()
-						if rw != nil {
-							fd := decoder.NewFrameDecoder(rw)
-							buf, err := fd.Read(false)
-							if err != nil && err != io.EOF {
-								if err.Error() != quic.ErrConnectionClosed {
-									logger.Error("[MergeStreamFunc] YoMo-Server received frame from Stream Function failed.", "err", err)
-								}
-								cancel()
-							} else {
-								logger.Debug("[MergeStreamFunc] YoMo-Server received frame from Stream Function.", "frame", logger.BytesString(buf))
-								response <- buf
-							}
-						}
-					}()
-				}
-			}
-		}()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case value, ok := <-response:
-				if !ok {
-					return
-				}
-
-				if !rxgo.Of(value).SendContext(ctx, next) {
-					return
-				}
-			}
-		}
-	}
-
-	return CreateObservable(f, opts...)
-}
-
 // Subscribe a specified key in stream and gets the data when the key is observed by Y3 Codec.
 func (s *StreamImpl) Subscribe(key byte) Stream {
 
@@ -768,7 +671,7 @@ func (s *StreamImpl) RawBytes() Stream {
 }
 
 // ZipMultiObservers subscribes multi Y3 observers, zips the values into a slice and calls the zipper callback when all keys are observed.
-func (s *StreamImpl) ZipMultiObservers(observers []yomo.KeyObserveFunc, zipper func(items []interface{}) (interface{}, error)) Stream {
+func (s *StreamImpl) ZipMultiObservers(observers []KeyObserveFunc, zipper func(items []interface{}) (interface{}, error)) Stream {
 	count := len(observers)
 	if count < 2 {
 		return s.thrown(errors.New("[ZipMultiObservers] the number of observers must be >= 2"))
@@ -791,7 +694,7 @@ func (s *StreamImpl) ZipMultiObservers(observers []yomo.KeyObserveFunc, zipper f
 
 		// prepare slices and maps
 		keys := make([]byte, count)
-		keyObserveMap := make(map[byte]yomo.OnObserveFunc, count)
+		keyObserveMap := make(map[byte]decoder.OnObserveFunc, count)
 		keyChans := make(map[byte]chan rxgo.Item, count)
 		keyObservables := make([]rxgo.Observable, count)
 		for i, item := range observers {

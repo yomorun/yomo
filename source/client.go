@@ -18,8 +18,8 @@ type clientImpl struct {
 	*client.Impl
 }
 
-// NewSource setups the client of YoMo-Source.
-func NewClient(appName string) Client {
+// New a YoMo-Source client.
+func New(appName string) Client {
 	c := &clientImpl{
 		Impl: client.New(appName, quic.ConnTypeSource),
 	}

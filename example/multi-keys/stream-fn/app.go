@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/yomorun/y3-codec-golang"
-	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/rx"
 )
 
@@ -22,7 +21,7 @@ var convert = func(v []byte) (interface{}, error) {
 
 // Handler will handle data in Rx way
 func Handler(rxstream rx.Stream) rx.Stream {
-	observers := []yomo.KeyObserveFunc{
+	observers := []rx.KeyObserveFunc{
 		{
 			Key:       0x10,
 			OnObserve: convert,

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	y3 "github.com/yomorun/y3-codec-golang"
-	"github.com/yomorun/yomo/source"
+	"github.com/yomorun/yomo"
 )
 
 var serverAddr = os.Getenv("YOMO_SERVER_ENDPOINT")
@@ -34,7 +34,7 @@ func emit(addr string) error {
 	host := splits[0]
 	port, err := strconv.Atoi(splits[1])
 
-	cli, err := source.NewClient("source-b").Connect(host, port)
+	cli, err := yomo.NewSource(yomo.WithName("source-b")).Connect(host, port)
 	if err != nil {
 		panic(err)
 	}

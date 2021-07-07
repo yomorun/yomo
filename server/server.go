@@ -12,11 +12,12 @@ type Server interface {
 	Serve(endpoint string) error
 }
 
-// NewServer inits a new YoMo Server.
-func NewServer(conf *WorkflowConfig, meshConfURL string) Server {
+// New a new YoMo Server.
+func New(conf *WorkflowConfig, opts ...Option) Server {
+	options := newOptions(opts...)
 	return &serverImpl{
 		conf:        conf,
-		meshConfURL: meshConfURL,
+		meshConfURL: options.meshConfURL,
 	}
 }
 

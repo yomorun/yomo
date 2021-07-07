@@ -7,7 +7,7 @@ import (
 	"time"
 
 	y3 "github.com/yomorun/y3-codec-golang"
-	"github.com/yomorun/yomo/source"
+	"github.com/yomorun/yomo"
 )
 
 var serverAddr = os.Getenv("YOMO_SERVER_ENDPOINT")
@@ -17,7 +17,7 @@ func main() {
 		serverAddr = "localhost:9000"
 	}
 	// connect to yomo-server.
-	cli, err := source.NewClient("yomo-source").Connect("localhost", 9000)
+	cli, err := yomo.NewSource(yomo.WithName("yomo-source")).Connect("localhost", 9000)
 	if err != nil {
 		log.Printf("❌ Emit the data to yomo-server failure with err: %v", err)
 		return
