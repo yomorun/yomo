@@ -27,9 +27,9 @@ type clientImpl struct {
 	*client.Impl
 }
 
-// NewClient setups the client of YoMo Stream Function.
+// New a YoMo Stream Function client.
 // The "appName" should match the name of functions in workflow.yaml in yomo-server.
-func NewClient(appName string) Client {
+func New(appName string) Client {
 	c := &clientImpl{
 		Impl: client.New(appName, quic.ConnTypeStreamFunction),
 	}

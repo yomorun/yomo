@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/yomorun/y3-codec-golang/pkg/common"
-	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/logger"
 )
 
@@ -32,6 +31,9 @@ type (
 	Marshaller func(interface{}) ([]byte, error)
 	// Unmarshaller defines an unmarshaller type ([]byte to interface).
 	Unmarshaller func([]byte, interface{}) error
+
+	// OnObserveFunc represents the callback function when the specificed key is observed.
+	OnObserveFunc func(v []byte) (interface{}, error)
 )
 
 // Observable provide subscription and notification processing
@@ -42,7 +44,7 @@ type Observable interface {
 	Subscribe(key byte) Observable
 
 	// OnMultiObserve calls the callback function when one of key is observed.
-	OnMultiObserve(keyObserveMap map[byte]yomo.OnObserveFunc) chan KeyValue
+	OnMultiObserve(keyObserveMap map[byte]OnObserveFunc) chan KeyValue
 
 	// OnObserve calls the callback function when the key is observed.
 	OnObserve(function func(v []byte) (interface{}, error)) chan interface{}
@@ -173,7 +175,7 @@ func (o *observableImpl) OnObserve(function func(v []byte) (interface{}, error))
 }
 
 // OnMultiObserve calls the callback function when one of key is observed.
-func (o *observableImpl) OnMultiObserve(keyObserveMap map[byte]yomo.OnObserveFunc) chan KeyValue {
+func (o *observableImpl) OnMultiObserve(keyObserveMap map[byte]OnObserveFunc) chan KeyValue {
 	_next := make(chan KeyValue)
 
 	f := func(next chan KeyValue) {
