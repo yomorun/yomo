@@ -4,10 +4,10 @@ This example represents how YoMo works with the mock data of sound sensor.
 
 ## Code structure
 
-+ `source`: Mocking data of a Noise Decibel Detection Sensor. [yomo.run/source](https://yomo.run/source)
-+ `flow`: Detecting noise pollution in real-time and print the warning message when it reaches the threshold. [yomo.run/flow](https://yomo.run/flow)
-+ `sink`: Demonstrating persistent storage for IoT data. [yomo.run/sink](https://yomo.run/sink)
-+ `zipper`: Orchestrate a workflow that receives the data from `source`, stream computing in `flow` and output the result to `sink` [yomo.run/zipper](https://yomo.run/zipper)
++ `source`: Mocking data of a Noise Decibel Detection Sensor. [docs.yomo.run/source](https://docs.yomo.run/source)
++ `flow`: Detecting noise pollution in real-time and print the warning message when it reaches the threshold. [docs.yomo.run/flow](https://docs.yomo.run/flow)
++ `sink`: Demonstrating persistent storage for IoT data. [docs.yomo.run/sink](https://docs.yomo.run/sink)
++ `zipper`: Orchestrate a workflow that receives the data from `source`, stream computing in `flow` and output the result to `sink` [docs.yomo.run/zipper](https://docs.yomo.run/zipper)
 
 ## How to run the example
 
@@ -15,7 +15,7 @@ This example represents how YoMo works with the mock data of sound sensor.
 
 Please visit [YoMo Getting Started](https://github.com/yomorun/yomo#1-install-cli) for details.
 
-### 2. Run [yomo-zipper](https://yomo.run/zipper)
+### 2. Run [yomo-zipper](https://docs.yomo.run/zipper)
 
 ```bash
 yomo serve -c ./zipper/workflow.yaml
@@ -28,7 +28,7 @@ yomo serve -c ./zipper/workflow.yaml
 2021/05/20 14:09:42 ✅ Listening on 0.0.0.0:9000
 ```
 
-### 3. Run [yomo-flow](https://yomo.run/flow)
+### 3. Run [yomo-flow](https://docs.yomo.run/flow)
 
 ```bash
 yomo run ./flow/app.go -n Noise
@@ -65,7 +65,7 @@ go run ./flow-via-go-cli/app.go
 2021/05/21 20:54:52 ✅ Connected to zipper localhost:9000
 ```
 
-### 4. Run [yomo-sink](https://yomo.run/sink)
+### 4. Run [yomo-sink](https://docs.yomo.run/sink)
 
 ```bash
 yomo run ./sink/app.go -n MockDB
@@ -76,7 +76,7 @@ yomo run ./sink/app.go -n MockDB
 2021/05/20 14:10:29 Running the Serverless Function.
 ```
 
-### 5. Run [yomo-source](https://yomo.run/source)
+### 5. Run [yomo-source](https://docs.yomo.run/source)
 
 ```bash
 go run ./source/main.go
