@@ -18,7 +18,7 @@ func NewStreamFn(opts ...Option) streamfunction.Client {
 	return streamfunction.New(options.AppName)
 }
 
-// NewOutputConnector creates a new YoMo-Stream-Function client.
+// NewOutputConnector creates a new YoMo-Output-Connector client.
 func NewOutputConnector(opts ...Option) output.Client {
 	options := newOptions(opts...)
 	return output.New(options.AppName)
