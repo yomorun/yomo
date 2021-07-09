@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="200px" height="200px" src="https://yomo.run/yomo-logo.png" />
+  <img width="200px" height="200px" src="https://docs.yomo.run/yomo-logo.png" />
 </p>
 
 # Use Case：Combined calculation of multiple data sources
@@ -34,10 +34,10 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 
 ## Code structure
 
-+ `source-data-a`: Analog data source A, sending random Float32 numbers [yomo.run/source](https://yomo.run/source)
-+ `source-data-b`: Analog data source B, sending random Float32 numbers [yomo.run/source](https://yomo.run/source)
-+ `flow`: Combine simulated data sources A and B for calculation [yomo.run/flow](https://yomo.run/flow)
-+ `zipper`: Setup a workflow that receives multiple sources and completes the merge calculation [yomo.run/zipper](https://yomo.run/zipper)
++ `source-data-a`: Analog data source A, sending random Float32 numbers [docs.yomo.run/source](https://docs.yomo.run/source)
++ `source-data-b`: Analog data source B, sending random Float32 numbers [docs.yomo.run/source](https://docs.yomo.run/source)
++ `flow`: Combine simulated data sources A and B for calculation [docs.yomo.run/flow](https://docs.yomo.run/flow)
++ `zipper`: Setup a workflow that receives multiple sources and completes the merge calculation [docs.yomo.run/zipper](https://docs.yomo.run/zipper)
 
 ## Implementation
 
