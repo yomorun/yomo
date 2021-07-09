@@ -3,7 +3,7 @@ package client
 import "github.com/yomorun/yomo/pkg/quic"
 
 // SourceClient is the client for YoMo-Source.
-// https://yomo.run/source
+// https://docs.yomo.run/source
 type SourceClient interface {
 	client
 

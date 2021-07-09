@@ -36,9 +36,9 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 
 ## Code structure
 
-+ `source`: sending sequential numbers in 5 different keys [yomo.run/source](https://yomo.run/source)
-+ `flow`: combine multiple numbers from 5 keys for calculation [yomo.run/flow](https://yomo.run/flow)
-+ `zipper`: setup a workflow that receives multiple keys and completes the merge calculation [yomo.run/zipper](https://yomo.run/zipper)
++ `source`: sending sequential numbers in 5 different keys [docs.yomo.run/source](https://docs.yomo.run/source)
++ `flow`: combine multiple numbers from 5 keys for calculation [docs.yomo.run/flow](https://docs.yomo.run/flow)
++ `zipper`: setup a workflow that receives multiple keys and completes the merge calculation [docs.yomo.run/zipper](https://docs.yomo.run/zipper)
 
 ## How to run the example
 
@@ -46,7 +46,7 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 
 Please visit [YoMo Getting Started](https://github.com/yomorun/yomo#1-install-cli) for details.
 
-### 2. Run [yomo-zipper](https://yomo.run/zipper)
+### 2. Run [yomo-zipper](https://docs.yomo.run/zipper)
 
 ```bash
 yomo serve -c ./zipper/workflow.yaml
@@ -58,7 +58,7 @@ yomo serve -c ./zipper/workflow.yaml
 2021/05/20 15:34:23 ✅ Listening on 0.0.0.0:9000
 ```
 
-### 3. Run [yomo-flow](https://yomo.run/flow)
+### 3. Run [yomo-flow](https://docs.yomo.run/flow)
 
 ```bash
 yomo run ./flow/app.go -n training
@@ -69,7 +69,7 @@ yomo run ./flow/app.go -n training
 2021/05/20 15:35:25 Running the Serverless Function.
 ```
 
-### 4. Run [yomo-source](https://yomo.run/source)
+### 4. Run [yomo-source](https://docs.yomo.run/source)
 
 ```bash
 go run ./source/main.go

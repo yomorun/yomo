@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="200px" height="200px" src="https://yomo.run/yomo-logo.png" />
+  <img width="200px" height="200px" src="https://docs.yomo.run/yomo-logo.png" />
 </p>
 
 # YoMo应用案例：多数据源的合并计算
@@ -32,10 +32,10 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 
 ## 代码结构
 
-+ `source-data-a`: 模拟数据源A，发送随机 Float32 数字. [yomo.run/source](https://yomo.run/source)
-+ `source-data-b`: 模拟数据源B，发送随机 Float32 数字. [yomo.run/source](https://yomo.run/source)
-+ `flow`: 将模拟数据源A和模拟数据源B进行合并计算[yomo.run/flow](https://yomo.run/flow)
-+ `zipper`: 设计一个workflow，接收多个source，并完成合并计算 [yomo.run/zipper](https://yomo.run/zipper)
++ `source-data-a`: 模拟数据源A，发送随机 Float32 数字. [docs.yomo.run/source](https://docs.yomo.run/source)
++ `source-data-b`: 模拟数据源B，发送随机 Float32 数字. [docs.yomo.run/source](https://docs.yomo.run/source)
++ `flow`: 将模拟数据源A和模拟数据源B进行合并计算[docs.yomo.run/flow](https://docs.yomo.run/flow)
++ `zipper`: 设计一个workflow，接收多个source，并完成合并计算 [docs.yomo.run/zipper](https://docs.yomo.run/zipper)
 
 ## 实现过程
 
@@ -60,7 +60,7 @@ $ cd $GOPATH/src/github.com/yomorun/yomo
 $ make install
 ```
 
-![YoMo Tutorial 1](https://yomo.run/tutorial-1.png)
+![YoMo Tutorial 1](https://docs.yomo.run/tutorial-1.png)
 
 ### 2. 运行 `zipper`
 

@@ -175,10 +175,10 @@ Congratulations! You have done your first YoMo application.
 
 ## 📚 Documentation
 
-+ `YoMo-Source`: [yomo.run/source](https://docs.yomo.run/source)
-+ `YoMo-Flow`: [yomo.run/flow](https://docs.yomo.run/flow)
-+ `YoMo-Sink`: [yomo.run/sink](https://docs.yomo.run/sink)
-+ `YoMo-Zipper`: [yomo.run/zipper](https://docs.yomo.run/zipper)
++ `YoMo-Source`: [docs.yomo.run/source](https://docs.yomo.run/source)
++ `YoMo-Flow`: [docs.yomo.run/flow](https://docs.yomo.run/flow)
++ `YoMo-Sink`: [docs.yomo.run/sink](https://docs.yomo.run/sink)
++ `YoMo-Zipper`: [docs.yomo.run/zipper](https://docs.yomo.run/zipper)
 + `Stream Processing in Rx way`: [Rx](https://docs.yomo.run/rx)
 + `Faster than real-time codec`: [Y3](https://github.com/yomorun/y3-codec)
 
