@@ -16,8 +16,8 @@ import (
 	"github.com/yomorun/yomo/quic"
 )
 
-// FromChannel creates a new Stream from a []byte channel.
-func FromChannel(channel chan []byte) Stream {
+// FromChannel creates a new Stream from a channel.
+func FromChannel(channel chan interface{}) Stream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
 
@@ -30,8 +30,11 @@ func FromChannel(channel chan []byte) Stream {
 					return
 				}
 
-				if !Of(item).SendContext(ctx, next) {
-					return
+				switch item := item.(type) {
+				default:
+					Of(item).SendContext(ctx, next)
+				case error:
+					rxgo.Error(item).SendContext(ctx, next)
 				}
 			}
 		}

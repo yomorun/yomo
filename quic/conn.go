@@ -13,6 +13,8 @@ const (
 	ConnTypeServerSender    string = "server-sender"
 
 	ErrConnectionClosed string = "Application error 0x0" // the error message when the connection was closed
+
+	HeartbeatTimeOut = 5 * time.Second // HeartbeatTimeOut is the duration when the heartbeat will be time-out.
 )
 
 var (
@@ -77,8 +79,8 @@ func (c *QuicConn) Healthcheck() {
 					c.OnHeartbeatReceived()
 				}
 
-			case <-time.After(5 * time.Second):
-				// didn't receive the heartbeat after 5s, call the callback function when expired.
+			case <-time.After(HeartbeatTimeOut):
+				// didn't receive the heartbeat after a certain duration, call the callback function when expired.
 				if c.OnHeartbeatExpired != nil {
 					c.OnHeartbeatExpired()
 				} else {
