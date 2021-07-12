@@ -8,7 +8,8 @@ import (
 	"github.com/yomorun/yomo/internal/client"
 	"github.com/yomorun/yomo/internal/framing"
 	"github.com/yomorun/yomo/rx"
-	"github.com/yomorun/yomo/streamfunction/mock_streamfunction"
+	mockrx "github.com/yomorun/yomo/rx/mock"
+	"github.com/yomorun/yomo/streamfunction/mock"
 	"go.uber.org/goleak"
 )
 
@@ -18,7 +19,7 @@ func TestPipeHandler(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockFnRx := mock_streamfunction.NewMockStreamfnRx(ctrl)
+	mockFnRx := mock.NewMockStreamfnRx(ctrl)
 	var mockWriter bytes.Buffer
 
 	cli := &clientImpl{
@@ -33,12 +34,12 @@ func TestPipeHandler(t *testing.T) {
 	mockFnRx.
 		EXPECT().
 		GetAppendedStream(gomock.Any(), gomock.Any()).
-		Return(rx.MockStream(data)).
+		Return(mockrx.Stream(data)).
 		AnyTimes()
 
 	mockHandler := func(rxstream rx.Stream) rx.Stream {
 		// always return a fixed data in mock handler.
-		return rx.MockStream([]byte{01})
+		return mockrx.Stream([]byte{01})
 	}
 
 	// pipe handler
@@ -48,7 +49,7 @@ func TestPipeHandler(t *testing.T) {
 	// wrap data with framing.
 	f := framing.NewPayloadFrame(data)
 	expected := f.Bytes()
-	
+
 	// assert
 	if !bytes.Equal(got, expected) {
 		t.Errorf("cli.Pipe, got %v, want %v", got, expected)
