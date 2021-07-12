@@ -9,7 +9,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/reactivex/rxgo/v2"
 	"github.com/yomorun/yomo/rx"
-	"github.com/yomorun/yomo/rx/mock_rx"
+	"github.com/yomorun/yomo/rx/mock"
 	"go.uber.org/goleak"
 )
 
@@ -22,8 +22,8 @@ func TestAppendNewData(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		rawStream := rx.MockStream([]byte{10})
-		fnStream := rx.MockStreamWithInterval(time.Millisecond, []byte{01})
+		rawStream := mock.Stream([]byte{10})
+		fnStream := mock.StreamWithInterval(time.Millisecond, []byte{01})
 		result := impl.AppendNewDataToRawStream(rawStream, fnStream)
 
 		rxgo.Assert(ctx, t, result, rxgo.HasItem([]byte{10, 01}), rxgo.HasNoError())
@@ -35,8 +35,8 @@ func TestAppendNewData(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		rawStream := rx.MockStream([]byte{10}, []byte{11})
-		fnStream := rx.MockStreamWithInterval(time.Millisecond, []byte{01})
+		rawStream := mock.Stream([]byte{10}, []byte{11})
+		fnStream := mock.StreamWithInterval(time.Millisecond, []byte{01})
 		result := impl.AppendNewDataToRawStream(rawStream, fnStream)
 
 		rxgo.Assert(ctx, t, result, rxgo.HasItem([]byte{10, 11, 01}), rxgo.HasNoError())
@@ -50,8 +50,8 @@ func TestSkipNewData(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		rawStream := rx.MockStream([]byte{10})
-		fnStream := rx.MockStreamWithInterval(time.Millisecond, "not a []byte")
+		rawStream := mock.Stream([]byte{10})
+		fnStream := mock.StreamWithInterval(time.Millisecond, "not a []byte")
 		result := impl.AppendNewDataToRawStream(rawStream, fnStream)
 
 		rxgo.Assert(ctx, t, result, rxgo.HasItem([]byte{10}), rxgo.HasNoError())
@@ -67,8 +67,8 @@ func TestGetAppendedStream(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockRxFactory := mock_rx.NewMockFactory(ctrl)
-	mockRxStream := mock_rx.NewMockStream(ctrl)
+	mockRxFactory := mock.NewMockFactory(ctrl)
+	mockRxStream := mock.NewMockStream(ctrl)
 
 	impl := &rxImpl{
 		rxFactory: mockRxFactory,
@@ -79,7 +79,7 @@ func TestGetAppendedStream(t *testing.T) {
 
 	mockHandler := func(rxstream rx.Stream) rx.Stream {
 		// always return a fixed data in mock handler.
-		return rx.MockStream([]byte{01})
+		return mock.Stream([]byte{01})
 	}
 
 	mockRxFactory.
@@ -91,7 +91,7 @@ func TestGetAppendedStream(t *testing.T) {
 	mockRxStream.
 		EXPECT().
 		RawBytes().
-		Return(rx.MockStream([]byte{10})).
+		Return(mock.Stream([]byte{10})).
 		AnyTimes()
 
 	mockRxStream.
