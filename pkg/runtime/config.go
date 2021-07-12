@@ -85,9 +85,9 @@ func validateConfig(wfConf *WorkflowConfig) error {
 		return errors.New("conf is nil")
 	}
 
-	if len(wfConf.Flows) == 0 && len(wfConf.Sinks) == 0 {
-		return errors.New("At least one flow or sink is required")
-	}
+	// if len(wfConf.Flows) == 0 && len(wfConf.Sinks) == 0 {
+	// 	return errors.New("At least one flow or sink is required")
+	// }
 
 	m := map[string][]App{
 		"Flows": wfConf.Flows,

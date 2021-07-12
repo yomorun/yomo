@@ -156,7 +156,7 @@ func (s *quicHandler) receiveDataFromZipperSenders() {
 			go func() {
 				fd := decoder.NewFrameDecoder(receiver)
 				for {
-					buf, err := fd.Read(false)
+					buf, err := fd.Read(true)
 					if err != nil {
 						break
 					} else {
