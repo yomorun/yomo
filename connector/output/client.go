@@ -42,7 +42,7 @@ func (c *clientImpl) Connect(ip string, port int) (Client, error) {
 
 // Run the Handler function in Output Connector.
 func (c *clientImpl) Run(f func(rxstream rx.Stream) rx.Stream) {
-	rxstream := rx.FromReaderWithDecoder(c.Readers)
+	rxstream := rx.NewFactory().FromReaderWithDecoder(c.Readers)
 	stream := f(rxstream)
 
 	rxstream.Connect(context.Background())

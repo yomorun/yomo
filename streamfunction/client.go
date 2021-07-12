@@ -1,8 +1,6 @@
 package streamfunction
 
 import (
-	"context"
-
 	"github.com/yomorun/yomo/internal/client"
 	"github.com/yomorun/yomo/internal/framing"
 	"github.com/yomorun/yomo/logger"
@@ -23,7 +21,7 @@ type Client interface {
 
 type clientImpl struct {
 	*client.Impl
-	rx streamfnRx
+	fnRx StreamfnRx
 }
 
 // New a YoMo Stream Function client.
@@ -31,7 +29,7 @@ type clientImpl struct {
 func New(appName string) Client {
 	c := &clientImpl{
 		Impl: client.New(appName, quic.ConnTypeStreamFunction),
-		rx:   newStreamFnRx(),
+		fnRx: newStreamFnRx(),
 	}
 	return c
 }
@@ -41,19 +39,20 @@ func (c *clientImpl) Connect(ip string, port int) (Client, error) {
 	cli, err := c.BaseConnect(ip, port)
 	return &clientImpl{
 		cli,
-		c.rx,
+		c.fnRx,
 	}, err
 }
 
 // Pipe the handler function in Stream Function.
 func (c *clientImpl) Pipe(handler func(rxstream rx.Stream) rx.Stream) {
-	appendedStream := c.getAppendedStream(handler)
+	appendedStream := c.fnRx.GetAppendedStream(c.Readers, handler)
 
 	for item := range appendedStream.Observe() {
 		if item.Error() {
 			logger.Error("[Stream Function Client] Handler got the error.", "err", item.E)
 		} else if item.V != nil {
 			if c.Writer == nil {
+				logger.Debug("[Stream Function Client] the writer is nil, won't send the data to yomo-server.", "data", item.V)
 				continue
 			}
 
@@ -63,9 +62,9 @@ func (c *clientImpl) Pipe(handler func(rxstream rx.Stream) rx.Stream) {
 				continue
 			}
 
-			// send data to yomo-server.
 			// wrap data with framing.
 			f := framing.NewPayloadFrame(buf)
+			// send data to yomo-server.
 			_, err := c.Writer.Write(f.Bytes())
 			if err != nil {
 				logger.Error("[Stream Function Client] ❌ Send data to yomo-server failed.", "err", err)
@@ -75,21 +74,4 @@ func (c *clientImpl) Pipe(handler func(rxstream rx.Stream) rx.Stream) {
 		}
 
 	}
-}
-
-// getAppendedStream gets the stream which appending the new data.
-func (c *clientImpl) getAppendedStream(handler func(rxstream rx.Stream) rx.Stream) rx.Stream {
-	// create a RxStream from io.Reader with decoder.
-	rxStream := rx.FromReaderWithDecoder(c.Readers)
-	// create a RawStream from the raw bytes in RxStream.
-	rawStream := rxStream.RawBytes()
-	// create a new stream by running the `Handler` function.
-	fnStream := handler(rxStream)
-
-	// https://github.com/ReactiveX/RxGo#connectable-observable
-	// rxstream begins to emit items.
-	rxStream.Connect(context.Background())
-
-	// zip RawStream and the new stream from 'Handler' function.
-	return c.rx.appendNewDataToRawStream(rawStream, fnStream)
 }

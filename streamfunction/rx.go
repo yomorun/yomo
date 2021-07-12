@@ -3,6 +3,7 @@ package streamfunction
 import (
 	"context"
 	"fmt"
+	"io"
 	"sync"
 
 	"github.com/reactivex/rxgo/v2"
@@ -10,24 +11,30 @@ import (
 	"github.com/yomorun/yomo/rx"
 )
 
-// streamfnRx is an interface for the internal Rx Operators in Stream Function.
-type streamfnRx interface {
-	// appendNewDataToRawStream appends new data into raw stream.
-	appendNewDataToRawStream(rawStream rx.Stream, fnStream rx.Stream) rx.Stream
+// StreamfnRx is an interface for the internal Rx Operators in Stream Function.
+type StreamfnRx interface {
+	// AppendNewDataToRawStream appends new data into raw stream.
+	AppendNewDataToRawStream(rawStream rx.Stream, fnStream rx.Stream) rx.Stream
+
+	// GetAppendedStream gets the stream which appending the new data.
+	GetAppendedStream(readers chan io.Reader, handler func(rxstream rx.Stream) rx.Stream) rx.Stream
 }
 
 type rxImpl struct {
+	rxFactory rx.Factory
 }
 
-func newStreamFnRx() streamfnRx {
-	return &rxImpl{}
+func newStreamFnRx() StreamfnRx {
+	return &rxImpl{
+		rxFactory: rx.NewFactory(),
+	}
 }
 
-// appendNewDataToRawStream appends new data into raw stream.
+// AppendNewDataToRawStream appends new data into raw stream.
 // 1. receive `raw stream` from YoMo-Server.
 // 2. receive a new `fn stream` after running `Handler` function.
 // 3. append the data in `fn stream` to `raw stream`.
-func (r *rxImpl) appendNewDataToRawStream(rawStream rx.Stream, fnStream rx.Stream) rx.Stream {
+func (r *rxImpl) AppendNewDataToRawStream(rawStream rx.Stream, fnStream rx.Stream) rx.Stream {
 	opts := []rxgo.Option{
 		rxgo.WithErrorStrategy(rxgo.ContinueOnError),
 	}
@@ -113,4 +120,21 @@ func (r *rxImpl) appendNewDataToRawStream(rawStream rx.Stream, fnStream rx.Strea
 	}
 
 	return rx.CreateObservable(f, opts...)
+}
+
+// GetAppendedStream gets the stream which appending the new data.
+func (r *rxImpl) GetAppendedStream(readers chan io.Reader, handler func(rxstream rx.Stream) rx.Stream) rx.Stream {
+	// create a RxStream from io.Reader with decoder.
+	rxStream := r.rxFactory.FromReaderWithDecoder(readers)
+	// create a RawStream from the raw bytes in RxStream.
+	rawStream := rxStream.RawBytes()
+	// create a new stream by running the `Handler` function.
+	fnStream := handler(rxStream)
+
+	// https://github.com/ReactiveX/RxGo#connectable-observable
+	// rxstream begins to emit items.
+	rxStream.Connect(context.Background())
+
+	// zip RawStream and the new stream from 'Handler' function.
+	return r.AppendNewDataToRawStream(rawStream, fnStream)
 }
