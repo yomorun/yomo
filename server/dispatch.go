@@ -13,7 +13,7 @@ import (
 
 // DispatcherWithFunc dispatches the input stream to downstreams.
 func DispatcherWithFunc(sfns []GetStreamFunc, reader io.Reader) rx.Stream {
-	stream := rx.FromReader(reader)
+	stream := rx.NewFactory().FromReader(reader)
 
 	for _, sfn := range sfns {
 		stream = mergeStreamFn(stream, sfn)

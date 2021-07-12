@@ -1,6 +1,8 @@
 package rx
 
-import "time"
+import (
+	"time"
+)
 
 func channelValue(interval time.Duration, items ...interface{}) chan interface{} {
 	next := make(chan interface{})
@@ -18,10 +20,10 @@ func channelValue(interval time.Duration, items ...interface{}) chan interface{}
 
 // MockStream mocks a rx.Stream with items slice.
 func MockStream(items ...interface{}) Stream {
-	return FromChannel(channelValue(0, items...))
+	return NewFactory().FromChannel(channelValue(0, items...))
 }
 
 // MockStream mocks a rx.Stream with items slice.
 func MockStreamWithInterval(interval time.Duration, items ...interface{}) Stream {
-	return FromChannel(channelValue(interval, items...))
+	return NewFactory().FromChannel(channelValue(interval, items...))
 }

@@ -2,51 +2,104 @@ package streamfunction
 
 import (
 	"context"
+	"io"
 	"testing"
 	"time"
 
+	"github.com/golang/mock/gomock"
 	"github.com/reactivex/rxgo/v2"
 	"github.com/yomorun/yomo/rx"
+	"github.com/yomorun/yomo/rx/mock_rx"
 	"go.uber.org/goleak"
 )
 
 var impl = newStreamFnRx()
 
-func Test_Append_New_Data_To_Raw_Stream(t *testing.T) {
+func TestAppendNewData(t *testing.T) {
+	t.Run("append new data when one raw data", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		rawStream := rx.MockStream([]byte{10})
+		fnStream := rx.MockStreamWithInterval(time.Millisecond, []byte{01})
+		result := impl.AppendNewDataToRawStream(rawStream, fnStream)
+
+		rxgo.Assert(ctx, t, result, rxgo.HasItem([]byte{10, 01}), rxgo.HasNoError())
+	})
+
+	t.Run("append new data when multi raw data", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		rawStream := rx.MockStream([]byte{10}, []byte{11})
+		fnStream := rx.MockStreamWithInterval(time.Millisecond, []byte{01})
+		result := impl.AppendNewDataToRawStream(rawStream, fnStream)
+
+		rxgo.Assert(ctx, t, result, rxgo.HasItem([]byte{10, 11, 01}), rxgo.HasNoError())
+	})
+}
+
+func TestSkipNewData(t *testing.T) {
+	t.Run("Skip when the type is not []byte", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		rawStream := rx.MockStream([]byte{10})
+		fnStream := rx.MockStreamWithInterval(time.Millisecond, "not a []byte")
+		result := impl.AppendNewDataToRawStream(rawStream, fnStream)
+
+		rxgo.Assert(ctx, t, result, rxgo.HasItem([]byte{10}), rxgo.HasNoError())
+	})
+}
+
+func TestGetAppendedStream(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	rawStream := rx.MockStream([]byte{10})
-	fnStream := rx.MockStreamWithInterval(time.Millisecond, []byte{01})
-	result := impl.appendNewDataToRawStream(rawStream, fnStream)
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
 
+	mockRxFactory := mock_rx.NewMockFactory(ctrl)
+	mockRxStream := mock_rx.NewMockStream(ctrl)
+
+	impl := &rxImpl{
+		rxFactory: mockRxFactory,
+	}
+
+	// mock
+	mockReader := make(chan io.Reader)
+
+	mockHandler := func(rxstream rx.Stream) rx.Stream {
+		// always return a fixed data in mock handler.
+		return rx.MockStream([]byte{01})
+	}
+
+	mockRxFactory.
+		EXPECT().
+		FromReaderWithDecoder(gomock.Eq(mockReader)).
+		Return(mockRxStream).
+		AnyTimes()
+
+	mockRxStream.
+		EXPECT().
+		RawBytes().
+		Return(rx.MockStream([]byte{10})).
+		AnyTimes()
+
+	mockRxStream.
+		EXPECT().
+		Connect(gomock.Any()).
+		AnyTimes()
+
+	// result
+	result := impl.GetAppendedStream(mockReader, mockHandler)
 	rxgo.Assert(ctx, t, result, rxgo.HasItem([]byte{10, 01}), rxgo.HasNoError())
-}
-
-func Test_Append_New_Data_To_Raw_Stream_When_Multi_Sources(t *testing.T) {
-	defer goleak.VerifyNone(t)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	rawStream := rx.MockStream([]byte{10}, []byte{11})
-	fnStream := rx.MockStreamWithInterval(time.Millisecond, []byte{01})
-	result := impl.appendNewDataToRawStream(rawStream, fnStream)
-
-	rxgo.Assert(ctx, t, result, rxgo.HasItem([]byte{10, 11, 01}), rxgo.HasNoError())
-}
-
-func Test_Skip_New_Data_When_No_Bytes(t *testing.T) {
-	defer goleak.VerifyNone(t)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	rawStream := rx.MockStream([]byte{10})
-	fnStream := rx.MockStreamWithInterval(time.Millisecond, "not a []byte")
-	result := impl.appendNewDataToRawStream(rawStream, fnStream)
-
-	rxgo.Assert(ctx, t, result, rxgo.HasItem([]byte{10}), rxgo.HasNoError())
 }
