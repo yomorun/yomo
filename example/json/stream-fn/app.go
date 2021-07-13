@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/yomorun/yomo/rx"
+	"github.com/yomorun/yomo/core/rx"
 )
 
 // NoiseDataKey represents the Tag of a Y3 encoded data packet.

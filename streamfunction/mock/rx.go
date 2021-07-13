@@ -9,7 +9,7 @@ import (
 	reflect "reflect"
 
 	gomock "github.com/golang/mock/gomock"
-	rx "github.com/yomorun/yomo/rx"
+	rx "github.com/yomorun/yomo/core/rx"
 )
 
 // MockStreamfnRx is a mock of StreamfnRx interface.

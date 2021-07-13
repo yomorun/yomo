@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/internal/client"
 	"github.com/yomorun/yomo/logger"
-	"github.com/yomorun/yomo/quic"
 )
 
 // ServerConn represents the YoMo Server connection.

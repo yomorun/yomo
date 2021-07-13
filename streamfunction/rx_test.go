@@ -8,8 +8,8 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/reactivex/rxgo/v2"
-	"github.com/yomorun/yomo/rx"
-	"github.com/yomorun/yomo/rx/mock"
+	"github.com/yomorun/yomo/core/rx"
+	"github.com/yomorun/yomo/core/rx/mock"
 	"go.uber.org/goleak"
 )
 

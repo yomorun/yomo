@@ -1,11 +1,11 @@
 package streamfunction
 
 import (
+	"github.com/yomorun/yomo/core/quic"
+	"github.com/yomorun/yomo/core/rx"
 	"github.com/yomorun/yomo/internal/client"
 	"github.com/yomorun/yomo/internal/framing"
 	"github.com/yomorun/yomo/logger"
-	"github.com/yomorun/yomo/quic"
-	"github.com/yomorun/yomo/rx"
 )
 
 // Client is the client for YoMo Stream Function.
@@ -16,7 +16,7 @@ type Client interface {
 	Connect(ip string, port int) (Client, error)
 
 	// Pipe the Handler function.
-	Pipe(f func(rxstream rx.Stream) rx.Stream)
+	Pipe(handler func(rxstream rx.Stream) rx.Stream)
 }
 
 type clientImpl struct {

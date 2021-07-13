@@ -5,10 +5,10 @@ import (
 	"testing"
 
 	"github.com/golang/mock/gomock"
+	"github.com/yomorun/yomo/core/rx"
+	mockrx "github.com/yomorun/yomo/core/rx/mock"
 	"github.com/yomorun/yomo/internal/client"
 	"github.com/yomorun/yomo/internal/framing"
-	"github.com/yomorun/yomo/rx"
-	mockrx "github.com/yomorun/yomo/rx/mock"
 	"github.com/yomorun/yomo/streamfunction/mock"
 	"go.uber.org/goleak"
 )

@@ -1,8 +1,8 @@
 package server
 
 import (
+	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/internal/client"
-	"github.com/yomorun/yomo/quic"
 )
 
 // SenderClient is the client for YoMo-Server-Sender (formerly Zipper-Sender) to connect the downsteam YoMo-Server-Receiver (formerly Zipper-Receiver) in edge-mesh.
