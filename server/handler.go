@@ -65,7 +65,7 @@ func (s *quicHandler) Listen() error {
 		go func() {
 			err := s.buildServerSenders()
 			if err != nil {
-				logger.Debug("❌ Downloaded the mesh config failed.", "err", err)
+				logger.Debug("❌ Download the mesh config failed.", "err", err)
 			}
 		}()
 	}
@@ -149,7 +149,7 @@ func (s *quicHandler) receiveDataFromSources() {
 
 						sf, ok := value.(GetSenderFunc)
 						if ok {
-							go sendDataToConnector(sf, buf, "YoMo-Server sent frame to Output-Connector", "❌ YoMo-Server sent frame to Output-Connector failed.")
+							go sendDataToConnector(sf, buf, "[YoMo-Server] sent frame to Output-Connector", "❌ [YoMo-Server] sent frame to Output-Connector failed.")
 						}
 						return true
 					})
@@ -160,7 +160,7 @@ func (s *quicHandler) receiveDataFromSources() {
 							continue
 						}
 
-						go sendDataToConnector(sender, buf, "[YoMo-Server Sender] sent frame to downstream yomo-server.", "❌ [YoMo-Server Sender] sent frame to downstream yomo-server failed.")
+						go sendDataToConnector(sender, buf, "[YoMo-Server Sender] sent frame to downstream YoMo-Server Receiver.", "❌ [YoMo-Server Sender] sent frame to downstream YoMo-Server Receiver failed.")
 					}
 				}
 			}()
@@ -182,8 +182,11 @@ func (s *quicHandler) receiveDataFromServerSenders() {
 				for {
 					buf, err := fd.Read(true)
 					if err != nil {
+						logger.Error("❌ [YoMo-Server Receiver] received data from upstream YoMo-Server Sender failed.", "err", err)
 						break
 					} else {
+						logger.Debug("[YoMo-Server Receiver] received frame from upstream YoMo-Server Sender.", "frame", logger.BytesString(buf))
+
 						// send data to `Output Connectors`
 						s.outputConnectorMap.Range(func(key, value interface{}) bool {
 							if value == nil {
@@ -321,7 +324,7 @@ type serverConf struct {
 
 // buildServerSenders builds YoMo-Server-Senders from edge-mesh config center.
 func (s *quicHandler) buildServerSenders() error {
-	logger.Print("Connecting to downstream yomo-servers...")
+	logger.Print("Downloading mesh config...")
 
 	// download mesh conf
 	res, err := http.Get(s.meshConfigURL)
@@ -337,7 +340,7 @@ func (s *quicHandler) buildServerSenders() error {
 		return err
 	}
 
-	logger.Debug("Successfully downloaded the mesh config.", "config", configs)
+	logger.Print("✅ Successfully downloaded the Mesh config. ", configs)
 
 	if len(configs) == 0 {
 		return nil
