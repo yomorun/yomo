@@ -152,20 +152,24 @@ func (s *quicHandler) receiveDataFromZipperSenders() {
 			}
 
 			sinks := GetSinks(s.serverlessConfig, &s.connMap)
-			if len(sinks) == 0 {
-				continue
-			}
 
 			go func() {
 				fd := decoder.NewFrameDecoder(receiver)
 				for {
 					buf, err := fd.Read(true)
 					if err != nil {
+						logger.Error("❌ [Zipper Receiver] received data from upstream zipper failed.", "err", err)
 						break
 					} else {
-						// send data to sinks
-						for _, sink := range sinks {
-							go sendDataToSink(sink, buf, "[Zipper Receiver] sent frame to sink.", "❌ [Zipper Receiver] sent frame to sink failed.")
+						logger.Debug("[Zipper Receiver] received frame from upstream zipper.", "frame", logger.BytesString(buf))
+
+						if len(sinks) == 0 {
+							logger.Warn("[Zipper Receiver] no sinks are available to receive the data.")
+						} else {
+							// send data to sinks
+							for _, sink := range sinks {
+								go sendDataToSink(sink, buf, "[Zipper Receiver] sent frame to sink.", "❌ [Zipper Receiver] sent frame to sink failed.")
+							}
 						}
 					}
 				}
