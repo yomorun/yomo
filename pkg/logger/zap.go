@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 func newLogger(isDebug bool) Logger {
@@ -20,6 +21,7 @@ func newLogger(isDebug bool) Logger {
 
 	cfg.DisableCaller = true
 	cfg.DisableStacktrace = true
+	cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 
 	if isJsonFormat() {
 		cfg.Encoding = "json"
