@@ -52,7 +52,10 @@ func (s *quicHandler) Listen() error {
 
 	if s.meshConfigURL != "" {
 		go func() {
-			s.buildZipperSenders()
+			err := s.buildZipperSenders()
+			if err != nil {
+				logger.Error("❌ Downloaded the Mesh config failed.", "err", err)
+			}
 		}()
 	}
 
@@ -198,7 +201,7 @@ type zipperServerConf struct {
 
 // buildZipperSenders builds Zipper-Senders from edge-mesh config center.
 func (s *quicHandler) buildZipperSenders() error {
-	logger.Print("Connecting to downstream zippers...")
+	logger.Print("Downloading Mesh config...")
 
 	// download mesh conf
 	res, err := http.Get(s.meshConfigURL)
@@ -213,6 +216,8 @@ func (s *quicHandler) buildZipperSenders() error {
 	if err != nil {
 		return err
 	}
+
+	logger.Print("✅ Successfully downloaded the Mesh config. ", configs)
 
 	if len(configs) == 0 {
 		return nil
