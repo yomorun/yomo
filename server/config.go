@@ -84,10 +84,6 @@ func validateConfig(wfConf *WorkflowConfig) error {
 		return errors.New("conf is nil")
 	}
 
-	if len(wfConf.Functions) == 0 {
-		return errors.New("At least one function is required")
-	}
-
 	m := map[string][]App{
 		"Functions": wfConf.Functions,
 	}

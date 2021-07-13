@@ -63,7 +63,10 @@ func (s *quicHandler) Listen() error {
 
 	if s.meshConfigURL != "" {
 		go func() {
-			s.buildServerSenders()
+			err := s.buildServerSenders()
+			if err != nil {
+				logger.Debug("❌ Downloaded the mesh config failed.", "err", err)
+			}
 		}()
 	}
 
@@ -177,7 +180,7 @@ func (s *quicHandler) receiveDataFromServerSenders() {
 			go func() {
 				fd := decoder.NewFrameDecoder(receiver)
 				for {
-					buf, err := fd.Read(false)
+					buf, err := fd.Read(true)
 					if err != nil {
 						break
 					} else {
@@ -333,6 +336,8 @@ func (s *quicHandler) buildServerSenders() error {
 	if err != nil {
 		return err
 	}
+
+	logger.Debug("Successfully downloaded the mesh config.", "config", configs)
 
 	if len(configs) == 0 {
 		return nil
