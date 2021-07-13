@@ -7,7 +7,7 @@ import (
 
 	y3 "github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/rx"
+	"github.com/yomorun/yomo/core/rx"
 )
 
 var store = func(_ context.Context, i interface{}) (interface{}, error) {

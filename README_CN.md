@@ -64,7 +64,7 @@ import (
 	"time"
 
 	y3 "github.com/yomorun/y3-codec-golang"
-	"github.com/yomorun/yomo/pkg/rx"
+	"github.com/yomorun/yomo/core/rx"
 )
 
 // NoiseDataKey 用于通知YoMo只订阅Y3序列化后Tag为0x10的value

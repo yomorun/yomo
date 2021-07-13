@@ -1,8 +1,8 @@
 package source
 
 import (
+	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/internal/client"
-	"github.com/yomorun/yomo/quic"
 )
 
 // Client is the client for YoMo-Source.

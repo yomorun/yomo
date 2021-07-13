@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	y3 "github.com/yomorun/y3-codec-golang"
-	"github.com/yomorun/yomo/rx"
+	"github.com/yomorun/yomo/core/rx"
 )
 
 // NoiseDataKey represents the Tag of a Y3 encoded data packet.

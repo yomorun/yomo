@@ -5,9 +5,9 @@ import (
 	"io"
 
 	"github.com/reactivex/rxgo/v2"
+	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/internal/decoder"
 	"github.com/yomorun/yomo/logger"
-	"github.com/yomorun/yomo/quic"
 )
 
 // Factory creates the rx.Stream from several sources.

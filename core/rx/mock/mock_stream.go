@@ -3,7 +3,7 @@ package mock
 import (
 	"time"
 
-	rx "github.com/yomorun/yomo/rx"
+	rx "github.com/yomorun/yomo/core/rx"
 )
 
 func channelValue(interval time.Duration, items ...interface{}) chan interface{} {

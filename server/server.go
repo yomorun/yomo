@@ -3,7 +3,7 @@ package server
 import (
 	"context"
 
-	"github.com/yomorun/yomo/quic"
+	"github.com/yomorun/yomo/core/quic"
 )
 
 // Server represents the YoMo Server.

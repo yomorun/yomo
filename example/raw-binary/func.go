@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/yomorun/yomo/rx"
+	"github.com/yomorun/yomo/core/rx"
 )
 
 func Handler(rx rx.Stream) rx.Stream {

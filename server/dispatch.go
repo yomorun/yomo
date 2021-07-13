@@ -5,10 +5,10 @@ import (
 	"io"
 
 	"github.com/reactivex/rxgo/v2"
+	"github.com/yomorun/yomo/core/quic"
+	"github.com/yomorun/yomo/core/rx"
 	"github.com/yomorun/yomo/internal/decoder"
 	"github.com/yomorun/yomo/logger"
-	"github.com/yomorun/yomo/quic"
-	"github.com/yomorun/yomo/rx"
 )
 
 // DispatcherWithFunc dispatches the input stream to downstreams.

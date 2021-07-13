@@ -7,8 +7,8 @@ import (
 	"sync"
 
 	"github.com/reactivex/rxgo/v2"
+	"github.com/yomorun/yomo/core/rx"
 	"github.com/yomorun/yomo/logger"
-	"github.com/yomorun/yomo/rx"
 )
 
 // StreamfnRx is an interface for the internal Rx Operators in Stream Function.

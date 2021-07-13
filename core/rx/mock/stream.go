@@ -12,8 +12,8 @@ import (
 	backoff "github.com/cenkalti/backoff/v4"
 	gomock "github.com/golang/mock/gomock"
 	rxgo "github.com/reactivex/rxgo/v2"
+	rx "github.com/yomorun/yomo/core/rx"
 	decoder "github.com/yomorun/yomo/internal/decoder"
-	rx "github.com/yomorun/yomo/rx"
 )
 
 // MockStream is a mock of Stream interface.

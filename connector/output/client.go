@@ -3,10 +3,10 @@ package output
 import (
 	"context"
 
+	"github.com/yomorun/yomo/core/quic"
+	"github.com/yomorun/yomo/core/rx"
 	"github.com/yomorun/yomo/internal/client"
 	"github.com/yomorun/yomo/logger"
-	"github.com/yomorun/yomo/quic"
-	"github.com/yomorun/yomo/rx"
 )
 
 // Client is the client for YoMo Output Connector.

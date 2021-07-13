@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/internal/framing"
 	"github.com/yomorun/yomo/logger"
-	"github.com/yomorun/yomo/quic"
 )
 
 // NegotiationPayload represents the payload for negotiation.
