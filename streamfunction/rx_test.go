@@ -10,15 +10,12 @@ import (
 	"github.com/reactivex/rxgo/v2"
 	"github.com/yomorun/yomo/core/rx"
 	"github.com/yomorun/yomo/core/rx/mock"
-	"go.uber.org/goleak"
 )
 
 var impl = newStreamFnRx()
 
 func TestAppendNewData(t *testing.T) {
 	t.Run("append new data when one raw data", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
-
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
@@ -30,8 +27,6 @@ func TestAppendNewData(t *testing.T) {
 	})
 
 	t.Run("append new data when multi raw data", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
-
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
@@ -45,8 +40,6 @@ func TestAppendNewData(t *testing.T) {
 
 func TestSkipNewData(t *testing.T) {
 	t.Run("Skip when the type is not []byte", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
-
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
@@ -59,8 +52,6 @@ func TestSkipNewData(t *testing.T) {
 }
 
 func TestGetAppendedStream(t *testing.T) {
-	defer goleak.VerifyNone(t)
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
