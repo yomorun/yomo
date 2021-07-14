@@ -7,12 +7,12 @@ import (
 )
 
 const (
-	ServerIP   string = "127.0.0.1"
-	ServerPort int    = 8111
+	IP   string = "127.0.0.1"
+	Port int    = 8111
 )
 
-// NewServer initializes a new mock server.
-func NewServer() {
+// New a mock server.
+func New() {
 	svr := server.New(&server.WorkflowConfig{})
-	svr.Serve(fmt.Sprintf("%s:%d", ServerIP, ServerPort))
+	svr.Serve(fmt.Sprintf("%s:%d", IP, Port))
 }
