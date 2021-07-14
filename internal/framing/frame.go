@@ -15,7 +15,14 @@ type Frame interface {
 // FrameLengthFieldSize is the size of FrameLength.
 const FrameLengthFieldSize = 3
 
-func appendFrameLength(buf []byte, len int) {
+func getFrameLengthBytes(len int) []byte {
+	buf := make([]byte, FrameLengthFieldSize)
+	// the len is invalid
+	if len <= 0 {
+		return buf
+	}
+
+	// set len to buf.
 	for i := 0; i < FrameLengthFieldSize; i++ {
 		offset := 8 * (FrameLengthFieldSize - i - 1)
 		if offset > 0 {
@@ -24,6 +31,7 @@ func appendFrameLength(buf []byte, len int) {
 			buf[i] = byte(len)
 		}
 	}
+	return buf
 }
 
 // ReadFrameLength reads frame length from bytes and returns the clean buf.

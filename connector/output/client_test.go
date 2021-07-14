@@ -1,11 +1,11 @@
 package output
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	y3 "github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo/core/rx"
 	mockserver "github.com/yomorun/yomo/server/mock"
@@ -36,9 +36,7 @@ func TestReceiveRawData(t *testing.T) {
 
 	// check if the raw data matches the test data sent from source.
 	check := func(_ context.Context, i interface{}) (interface{}, error) {
-		if !bytes.Equal(i.([]byte), data) {
-			t.Errorf("[output] check data expected %v, but got %v", data, i)
-		}
+		assert.Equal(t, data, i)
 		return i, nil
 	}
 
@@ -77,9 +75,7 @@ func TestReceiveDataWithY3Codec(t *testing.T) {
 
 	// check if the data matches the test data sent from source.
 	check := func(_ context.Context, i interface{}) (interface{}, error) {
-		if i.(string) != data {
-			t.Errorf("[output] check data expected %v, but got %v", data, i)
-		}
+		assert.Equal(t, data, i)
 		return i, nil
 	}
 
@@ -120,9 +116,8 @@ func TestReceiveDataWithJSON(t *testing.T) {
 
 	// check if the data matches the test data sent from source.
 	check := func(_ context.Context, i interface{}) (interface{}, error) {
-		if i.(testData).Name != data.Name {
-			t.Errorf("[output] check data expected %v, but got %v", data, i)
-		}
+		actual := i.(*testData)
+		assert.Equal(t, data, *actual)
 		return i, nil
 	}
 
