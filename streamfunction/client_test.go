@@ -1,11 +1,11 @@
 package streamfunction
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo/core/rx"
 	mockserver "github.com/yomorun/yomo/server/mock"
@@ -39,9 +39,7 @@ func TestProcessRawData(t *testing.T) {
 	// check if the raw data matches the test data sent from source.
 	check := func(_ context.Context, i interface{}) (interface{}, error) {
 		b := i.([]byte)
-		if !bytes.Equal(b, data) {
-			t.Errorf("[stream-fn] check data expected %v, but got %v", data, i)
-		}
+		assert.Equal(t, data, b)
 
 		// convert bytes to string.
 		return string(b), nil
@@ -86,9 +84,7 @@ func TestProcessDataWithY3Codec(t *testing.T) {
 
 	// check if the data matches the test data sent from source.
 	check := func(_ context.Context, i interface{}) (interface{}, error) {
-		if i.(string) != data {
-			t.Errorf("[stream-fn] check data expected %v, but got %v", data, i)
-		}
+		assert.Equal(t, data, i)
 		return i, nil
 	}
 
@@ -131,9 +127,8 @@ func TestReceiveDataWithJSON(t *testing.T) {
 
 	// check if the data matches the test data sent from source.
 	check := func(_ context.Context, i interface{}) (interface{}, error) {
-		if i.(testData).Name != data.Name {
-			t.Errorf("[stream-fn] check data expected %v, but got %v", data, i)
-		}
+		actual := i.(*testData)
+		assert.Equal(t, data, *actual)
 		return i, nil
 	}
 
