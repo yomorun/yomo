@@ -17,7 +17,8 @@ type Client interface {
 	Connect(ip string, port int) (Client, error)
 
 	// Run the Handler function.
-	Run(f func(rxstream rx.Stream) rx.Stream)
+	// This method is blocking.
+	Run(handler func(rxstream rx.Stream) rx.Stream)
 }
 
 type clientImpl struct {
@@ -41,9 +42,10 @@ func (c *clientImpl) Connect(ip string, port int) (Client, error) {
 }
 
 // Run the Handler function in Output Connector.
-func (c *clientImpl) Run(f func(rxstream rx.Stream) rx.Stream) {
+// This method is blocking.
+func (c *clientImpl) Run(handler func(rxstream rx.Stream) rx.Stream) {
 	rxstream := rx.NewFactory().FromReaderWithDecoder(c.Readers)
-	stream := f(rxstream)
+	stream := handler(rxstream)
 
 	rxstream.Connect(context.Background())
 

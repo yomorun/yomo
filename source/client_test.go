@@ -3,17 +3,17 @@ package source
 import (
 	"testing"
 
-	"github.com/yomorun/yomo/server/mock"
+	mockserver "github.com/yomorun/yomo/server/mock"
 )
 
 func TestSendDataToServer(t *testing.T) {
-	go mock.NewServer()
+	go mockserver.New()
 
 	cli := New("test source")
 	defer cli.Close()
 
 	// connect to server
-	cli, err := cli.Connect(mock.ServerIP, mock.ServerPort)
+	cli, err := cli.Connect(mockserver.IP, mockserver.Port)
 	if err != nil {
 		t.Errorf("[source.Connect] expected err is nil, but got %v", err)
 	}
