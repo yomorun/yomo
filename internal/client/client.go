@@ -64,6 +64,8 @@ func New(appName string, clientType string) *Impl {
 
 	c.conn.OnHeartbeatExpired = func() {
 		c.once.Do(func() {
+			logger.Debug("[client] heartbeat to YoMo-Server was expired, client will reconnect to YoMo-Server.", "addr", getServerAddr(c.serverIP, c.serverPort))
+
 			// reset stream to nil.
 			c.conn.Stream = nil
 
@@ -85,20 +87,20 @@ func New(appName string, clientType string) *Impl {
 func (c *Impl) BaseConnect(ip string, port int) (*Impl, error) {
 	c.serverIP = ip
 	c.serverPort = port
-	addr := fmt.Sprintf("%s:%d", ip, port)
+	addr := getServerAddr(c.serverIP, c.serverPort)
 	logger.Printf("Connecting to yomo-server %s...", addr)
 
 	// connect to yomo-server
 	quic_cli, err := quic.NewClient(addr)
 	if err != nil {
-		logger.Error("client [NewClient] Error:", "err", err)
+		logger.Error("[client] NewClient Error:", "err", err)
 		return c, err
 	}
 
 	// create stream
 	quic_stream, err := quic_cli.CreateStream(context.Background())
 	if err != nil {
-		logger.Error("client [CreateStream] Error:", "err", err)
+		logger.Error("[client] CreateStream Error:", "err", err)
 		return c, err
 	}
 
@@ -115,7 +117,7 @@ func (c *Impl) BaseConnect(ip string, port int) (*Impl, error) {
 	err = c.conn.SendSignal(buf)
 
 	if err != nil {
-		logger.Error("client [SendSignal] Error:", "err", err)
+		logger.Error("[client] SendSignal Error:", "err", err)
 		return c, err
 	}
 
@@ -150,7 +152,7 @@ func (c *Impl) handleSignal(accepted chan bool) {
 					// create stream for source.
 					stream, err := c.session.CreateStream(context.Background())
 					if err != nil {
-						logger.Error("client [session.CreateStream] Error:", "err", err)
+						logger.Error("[client] session.CreateStream Error:", "err", err)
 						break
 					}
 					c.conn.Stream = stream
@@ -161,7 +163,7 @@ func (c *Impl) handleSignal(accepted chan bool) {
 				stream, err := c.session.CreateStream(context.Background())
 
 				if err != nil {
-					logger.Error("client [session.CreateStream] Error:", "err", err)
+					logger.Error("[client] session.CreateStream Error:", "err", err)
 					break
 				}
 
@@ -169,7 +171,7 @@ func (c *Impl) handleSignal(accepted chan bool) {
 				c.Writer = stream
 				stream.Write(quic.SignalHeartbeat)
 			} else {
-				logger.Debug("client: unknown signal.", "value", logger.BytesString(value))
+				logger.Debug("[client] unknown signal.", "value", logger.BytesString(value))
 			}
 		}
 	}()
@@ -182,37 +184,40 @@ func (c *Impl) Write(data []byte) (int, error) {
 		f := framing.NewPayloadFrame(data)
 		return c.conn.Stream.Write(f.Bytes())
 	} else {
-		return 0, errors.New("not found stream")
+		return 0, errors.New("[client] conn.Stream is nil.")
 	}
 }
 
 // Retry the connection between client and server.
 func (c *Impl) Retry() {
 	for {
+		logger.Debug("[client] retry to connect the YoMo-Server...", "addr", getServerAddr(c.serverIP, c.serverPort))
 		_, err := c.BaseConnect(c.serverIP, c.serverPort)
 		if err == nil {
 			break
 		}
 
-		time.Sleep(time.Second)
+		time.Sleep(3 * time.Second)
 	}
 }
 
 // RetryWithCount the connection with a certain count.
 func (c *Impl) RetryWithCount(count int) bool {
 	for i := 0; i < count; i++ {
+		logger.Debug("[client] retry to connect the YoMo-Server with count...", "addr", getServerAddr(c.serverIP, c.serverPort), "count", count)
 		_, err := c.BaseConnect(c.serverIP, c.serverPort)
 		if err == nil {
 			return true
 		}
 
-		time.Sleep(time.Second)
+		time.Sleep(3 * time.Second)
 	}
 	return false
 }
 
 // Close the client.
 func (c *Impl) Close() error {
+	logger.Debug("[client] close the connection to YoMo-Server.")
 	err := c.session.Close()
 	c.conn.Heartbeat = make(chan byte)
 	c.conn.Signal = nil
@@ -222,4 +227,8 @@ func (c *Impl) Close() error {
 // EnableDebug enables the development model for logging.
 func (c *Impl) EnableDebug() {
 	logger.EnableDebug()
+}
+
+func getServerAddr(ip string, port int) string {
+	return fmt.Sprintf("%s:%d", ip, port)
 }
