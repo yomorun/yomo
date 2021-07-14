@@ -16,6 +16,7 @@ type Client interface {
 	Connect(ip string, port int) (Client, error)
 
 	// Pipe the Handler function.
+	// This method is blocking.
 	Pipe(handler func(rxstream rx.Stream) rx.Stream)
 }
 
@@ -44,6 +45,7 @@ func (c *clientImpl) Connect(ip string, port int) (Client, error) {
 }
 
 // Pipe the handler function in Stream Function.
+// This method is blocking.
 func (c *clientImpl) Pipe(handler func(rxstream rx.Stream) rx.Stream) {
 	appendedStream := c.fnRx.GetAppendedStream(c.Readers, handler)
 
