@@ -472,6 +472,7 @@ func (s *StreamImpl) DefaultIfEmptyWithTime(milliseconds uint32, defaultValue in
 	return CreateObservable(f, opts...)
 }
 
+// Write to standard output
 func (s *StreamImpl) StdOut(opts ...rxgo.Option) Stream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
@@ -499,6 +500,7 @@ func (s *StreamImpl) StdOut(opts ...rxgo.Option) Stream {
 	return CreateObservable(f, opts...)
 }
 
+// Discard items emitted by an Observable for a given time span
 func (s *StreamImpl) AuditTime(milliseconds uint32, opts ...rxgo.Option) Stream {
 	opts = appendContinueOnError(opts...)
 	o := s.observable.BufferWithTime(getRxDuration(milliseconds), opts...).Map(func(_ context.Context, i interface{}) (interface{}, error) {
