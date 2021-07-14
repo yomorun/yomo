@@ -84,6 +84,7 @@ func (c *QuicConn) Healthcheck() {
 				if c.OnHeartbeatExpired != nil {
 					c.OnHeartbeatExpired()
 				} else {
+					// didn't set the custom callback function, will break the loop and close the connection.
 					break loop
 				}
 			}
