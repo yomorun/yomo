@@ -381,6 +381,7 @@ func (s *quicHandler) createServerSender(conf serverConf) GetSenderFunc {
 		cli, err := NewSender(s.serverlessConfig.Name).
 			Connect(conf.Host, conf.Port)
 		if err != nil {
+			logger.Error("[YoMo-Server Sender] connect to YoMo-Server Receiver failed, will retry...", "conf", conf, "err", err)
 			cli.Retry()
 		}
 
