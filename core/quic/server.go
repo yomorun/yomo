@@ -1,6 +1,8 @@
 package quic
 
-import "context"
+import (
+	"context"
+)
 
 // Server is the QUIC server.
 type Server interface {
@@ -10,6 +12,9 @@ type Server interface {
 	// ListenAndServe starts listening on UDP network address addr and
 	// serves incoming packets.
 	ListenAndServe(ctx context.Context, addr string) error
+
+	// Close the server. All active sessions will be closed.
+	Close() error
 }
 
 // ServerHandler defines interface to handle the QUIC stream callbacks.
@@ -18,6 +23,10 @@ type ServerHandler interface {
 	Listen() error
 	// Read is the callback function when the QUIC server receiving a new stream.
 	Read(id int64, sess Session, st Stream) error
+	// get conn
+	GetConn(name string) *QuicConn
+	// get data
+	GetData() []byte
 }
 
 // NewServer inits the default implementation of QUIC server.

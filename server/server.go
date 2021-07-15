@@ -13,6 +13,9 @@ type Server interface {
 
 	// ServeWithHandler serves a YoMo Server with handler.
 	ServeWithHandler(endpoint string, handler quic.ServerHandler) error
+
+	// Close the server. All active sessions will be closed.
+	Close() error
 }
 
 // New a YoMo Server.
@@ -27,19 +30,31 @@ func New(conf *WorkflowConfig, opts ...Option) Server {
 type serverImpl struct {
 	conf        *WorkflowConfig
 	meshConfURL string
+	quicServer  quic.Server
 }
 
 // Serve a YoMo server.
 func (r *serverImpl) Serve(endpoint string) error {
 	handler := NewServerHandler(r.conf, r.meshConfURL)
 	server := quic.NewServer(handler)
+	r.quicServer = server
 
-	return server.ListenAndServe(context.Background(), endpoint)
+	// return server.ListenAndServe(context.Background(), endpoint)
+	return r.quicServer.ListenAndServe(context.Background(), endpoint)
 }
 
 // ServeWithHandler serves a YoMo Server with handler.
 func (r *serverImpl) ServeWithHandler(endpoint string, handler quic.ServerHandler) error {
 	server := quic.NewServer(handler)
+	r.quicServer = server
 
-	return server.ListenAndServe(context.Background(), endpoint)
+	return r.quicServer.ListenAndServe(context.Background(), endpoint)
+}
+
+// Close the server. All active sessions will be closed.
+func (r *serverImpl) Close() error {
+	if r.quicServer != nil {
+		return r.quicServer.Close()
+	}
+	return nil
 }

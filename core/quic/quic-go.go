@@ -20,7 +20,8 @@ import (
 )
 
 type quicGoServer struct {
-	handler ServerHandler
+	handler  ServerHandler
+	listener quicGo.Listener
 }
 
 func (s *quicGoServer) SetHandler(handler ServerHandler) {
@@ -42,6 +43,7 @@ func (s *quicGoServer) ListenAndServe(ctx context.Context, addr string) error {
 	if err != nil {
 		return err
 	}
+	s.listener = listener
 
 	// serve
 	logger.Print("✅ Listening on " + addr)
@@ -52,7 +54,7 @@ func (s *quicGoServer) ListenAndServe(ctx context.Context, addr string) error {
 
 	for {
 		ctx, cancel := context.WithCancel(context.Background())
-		session, err := listener.Accept(ctx)
+		session, err := s.listener.Accept(ctx)
 		if err != nil {
 			cancel()
 			return err
@@ -195,4 +197,13 @@ func generateCertificate(host ...string) (tls.Certificate, error) {
 	}
 
 	return tls.X509KeyPair(certOut.Bytes(), keyOut.Bytes())
+}
+
+// Close the server. All active sessions will be closed.
+func (s *quicGoServer) Close() error {
+	if s.listener != nil {
+		logger.Debug("quicGoServer closing...")
+		return s.listener.Close()
+	}
+	return nil
 }

@@ -2,6 +2,6 @@ name: Server
 host: 127.0.0.1
 port: 8111
 functions:
-  - name: "fun1"
-  - name: "fun2"
-  - name: "fun3"
+  - name: "func1"
+  - name: "func2"
+  - name: "func3"

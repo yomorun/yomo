@@ -36,6 +36,7 @@ func NewServerHandler(conf *WorkflowConfig, meshConfURL string) quic.ServerHandl
 		serverMap:          sync.Map{},
 		serverSenders:      make([]GetSenderFunc, 0),
 		serverReceiver:     make(chan io.Reader),
+		data:               make([]byte, 0),
 	}
 	return handler
 }
@@ -50,6 +51,7 @@ type quicHandler struct {
 	serverSenders      []GetSenderFunc
 	serverReceiver     chan io.Reader
 	mutex              sync.RWMutex
+	data               []byte // temporary data
 }
 
 func (s *quicHandler) Listen() error {
@@ -140,6 +142,8 @@ func (s *quicHandler) receiveDataFromSources() {
 					}
 
 					buf := customer.V.([]byte)
+					// for source data verify
+					s.data = buf
 
 					// send data to `Output Connectors`
 					s.outputConnectorMap.Range(func(key, value interface{}) bool {
@@ -398,4 +402,21 @@ func (s *quicHandler) cancelServerSender(conf serverConf) func() {
 		s.serverMap.Delete(conf.Name)
 	}
 	return f
+}
+
+func (s *quicHandler) GetConn(name string) *quic.QuicConn {
+	var conn *quic.QuicConn
+	s.connMap.Range(func(key, value interface{}) bool {
+		c := value.(*ServerConn)
+		if c.conn.Name == name {
+			conn = c.conn
+			return false
+		}
+		return true
+	})
+	return conn
+}
+
+func (s *quicHandler) GetData() []byte {
+	return s.data
 }
