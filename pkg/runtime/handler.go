@@ -262,6 +262,7 @@ func (s *quicHandler) createZipperSender(conf zipperServerConf) serverless.GetSi
 		cli, err := client.NewZipperSender(s.serverlessConfig.Name).
 			Connect(conf.Host, conf.Port)
 		if err != nil {
+			logger.Error("[Zipper Sender] connect to Zipper-Receiver failed, will retry...", "conf", conf, "err", err)
 			cli.Retry()
 		}
 
