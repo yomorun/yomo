@@ -500,7 +500,7 @@ func (s *StreamImpl) StdOut(opts ...rxgo.Option) Stream {
 	return CreateObservable(f, opts...)
 }
 
-// Discard items emitted by an Observable for a given time span
+// Discard items emitted by an Observable for a given time span (keep the last item)
 func (s *StreamImpl) AuditTime(milliseconds uint32, opts ...rxgo.Option) Stream {
 	opts = appendContinueOnError(opts...)
 	o := s.observable.BufferWithTime(getRxDuration(milliseconds), opts...).Map(func(_ context.Context, i interface{}) (interface{}, error) {
