@@ -1,15 +1,18 @@
 package rx
 
 import (
+	"bytes"
 	"context"
 	"testing"
 	"time"
 
 	"github.com/reactivex/rxgo/v2"
+	"github.com/stretchr/testify/assert"
+	y3 "github.com/yomorun/y3-codec-golang"
 	"go.uber.org/goleak"
 )
 
-// // HELPER FUNCTIONS
+// HELPER FUNCTIONS
 
 // // Reference:
 // // https://github.com/ReactiveX/RxGo/blob/master/util_test.go
@@ -41,21 +44,27 @@ func toStream(obs rxgo.Observable) Stream {
 
 // TESTS
 
+var testStream = toStream(rxgo.Defer([]rxgo.Producer{func(_ context.Context, ch chan<- rxgo.Item) {
+	for i := 1; i <= 3; i++ {
+		ch <- rxgo.Of(i)
+		time.Sleep(100 * time.Millisecond)
+	}
+}}))
+
 func Test_DefaultIfEmptyWithTime_Empty(t *testing.T) {
 	t.Run("0 milliseconds", func(t *testing.T) {
 		defer goleak.VerifyNone(t)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		obs := rxgo.Timer(rxgo.WithDuration(time.Millisecond))
-		st := toStream(obs).DefaultIfEmptyWithTime(0, 3)
-		rxgo.Assert(ctx, t, st, rxgo.IsNotEmpty())
+		st := toStream(rxgo.Empty()).DefaultIfEmptyWithTime(0, 3)
+		rxgo.Assert(ctx, t, st, rxgo.IsEmpty())
 	})
 
 	t.Run("100 milliseconds", func(t *testing.T) {
 		defer goleak.VerifyNone(t)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		obs := rxgo.Timer(rxgo.WithDuration(120 * time.Millisecond))
+		obs := rxgo.Timer(rxgo.WithDuration(100 * time.Millisecond))
 		st := toStream(obs).DefaultIfEmptyWithTime(100, 3)
 		rxgo.Assert(ctx, t, st, rxgo.HasItem(3))
 	})
@@ -65,8 +74,8 @@ func Test_DefaultIfEmptyWithTime_NotEmpty(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	st := toStream(rxgo.Just(1, 2, 3)()).DefaultIfEmptyWithTime(1e2, 3)
-	rxgo.Assert(ctx, t, st, rxgo.HasItems(1, 2, 3))
+	st := testStream.DefaultIfEmptyWithTime(100, 3)
+	rxgo.Assert(ctx, t, st, rxgo.HasItems(1, 3, 2, 3, 3, 3))
 }
 
 func Test_StdOut_Empty(t *testing.T) {
@@ -77,27 +86,99 @@ func Test_StdOut_Empty(t *testing.T) {
 	rxgo.Assert(ctx, t, st, rxgo.IsEmpty())
 }
 
-func Test_StdOut_Delayed(t *testing.T) {
-	defer goleak.VerifyNone(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	obs := rxgo.Timer(rxgo.WithDuration(100 * time.Millisecond))
-	st := toStream(obs).StdOut()
-	rxgo.Assert(ctx, t, st, rxgo.IsEmpty())
-}
-
 func Test_StdOut_NotEmpty(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	st := toStream(rxgo.Just(1, 2, 3)()).StdOut()
+	st := testStream.StdOut()
 	rxgo.Assert(ctx, t, st, rxgo.HasItems(1, 2, 3))
 }
 
-func Test_AuditTime_KeepMost(t *testing.T) {
-	defer goleak.VerifyNone(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	st := toStream(rxgo.Just(1, 2, 3)()).AuditTime(0)
-	rxgo.Assert(ctx, t, st, rxgo.IsNotEmpty())
+func Test_AuditTime(t *testing.T) {
+	t.Run("0 milliseconds", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		st := testStream.AuditTime(0)
+		rxgo.Assert(ctx, t, st, rxgo.HasItems(1, 2, 3))
+	})
+
+	t.Run("100 milliseconds", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		st := testStream.AuditTime(100)
+		rxgo.Assert(ctx, t, st, rxgo.HasItems(2, 3))
+	})
+
+	t.Run("keep last", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		st := testStream.AuditTime(500)
+		rxgo.Assert(ctx, t, st, rxgo.HasItem(3))
+	})
+}
+
+type testStruct struct {
+	ID   uint32 `y3:"0x11"`
+	Name string `y3:"0x12"`
+}
+
+func Test_Subscribe_OnObserve(t *testing.T) {
+	t.Run("string", func(t *testing.T) {
+		data := "abc"
+		buf, _ := y3.NewCodec(0x10).Marshal(data)
+		source := y3.FromStream(bytes.NewReader(buf))
+		obs := source.Subscribe(0x10).OnObserve(func(v []byte) (interface{}, error) {
+			str, err := y3.ToUTF8String(v)
+			if err != nil {
+				return nil, err
+			}
+			assert.Equal(t, "abc", str)
+			return str, nil
+		})
+		for range obs {
+		} // necessary for producing human readable output
+	})
+
+	t.Run("struct slice", func(t *testing.T) {
+		data := []testStruct{
+			{ID: 1, Name: "foo"},
+			{ID: 2, Name: "bar"},
+		}
+		buf, _ := y3.NewCodec(0x10).Marshal(data)
+		source := y3.FromStream(bytes.NewReader(buf))
+		obs := source.Subscribe(0x10).OnObserve(func(v []byte) (interface{}, error) {
+			var s []testStruct
+			err := y3.ToObject(v, &s)
+			if err != nil {
+				return nil, err
+			}
+			assert.Equal(t, []testStruct{{ID: 1, Name: "foo"}, {ID: 2, Name: "bar"}}, s)
+			return s, nil
+		})
+		for range obs {
+		}
+	})
+}
+
+func Test_RawBytes(t *testing.T) {
+	// TODO
+}
+
+func Test_ZipMultiObservers(t *testing.T) {
+	// TODO
+}
+
+func Test_Encode(t *testing.T) {
+	// TODO
+}
+
+func Test_SlidingWindowWithCount(t *testing.T) {
+	// TODO
+}
+
+func Test_SlidingWindowWithTime(t *testing.T) {
+	// TODO
 }
