@@ -20,8 +20,8 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("======== Server Test Begin ========")
+	fmt.Println("======== server Test Begin ========")
 	code := m.Run()
-	fmt.Println("========= Server Test End =========")
+	fmt.Println("========= server Test End =========")
 	os.Exit(code)
 }

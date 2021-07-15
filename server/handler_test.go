@@ -19,14 +19,15 @@ func TestServerHandlerListen(t *testing.T) {
 }
 
 // TestServerHandlerRead
-// TODO
-func testServerHandlerRead(t *testing.T) {
+func TestServerHandlerRead(t *testing.T) {
 	// new a server handler
 	serverHandler := NewServerHandler(testConfig, testMeshURL)
 	assert.NotNil(t, serverHandler)
 	var err error
-	// err := serverHandler.Listen()
-	// assert.Nil(t, err)
+
+	// close signal
+	c := make(chan bool, 0)
+	defer close(c)
 
 	// test data
 	data := []byte("test")
@@ -39,6 +40,7 @@ func testServerHandlerRead(t *testing.T) {
 		assert.NotNil(t, server)
 		err = server.ServeWithHandler(addr, serverHandler)
 		assert.NotNil(t, err)
+		<-c
 	}()
 
 	// source
@@ -47,16 +49,19 @@ func testServerHandlerRead(t *testing.T) {
 	defer source.Close()
 	n, err := source.Write(data)
 	assert.Nil(t, err)
-	t.Logf("soure write %d bytes: %s", n, data)
+	t.Logf("source write %d bytes: %s", n, data)
 	conn := serverHandler.GetConn("source")
 	assert.NotNil(t, conn)
 	// handler.data
-	assert.Equal(t, true, conn.Ready)
+	// assert.Equal(t, true, conn.Ready)
 	for {
 		buf := serverHandler.GetData()
 		// frame length: 3
 		if len(buf) > 3 {
 			actual := buf[3:]
+			if actual[0] == 0 {
+				continue
+			}
 			t.Logf("handler.data: %s", actual)
 			assert.Equal(t, data, actual)
 			break
@@ -64,4 +69,5 @@ func testServerHandlerRead(t *testing.T) {
 	}
 	time.Sleep(time.Second)
 	server.Close()
+	c <- true
 }
