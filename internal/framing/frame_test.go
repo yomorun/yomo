@@ -41,3 +41,17 @@ func TestReadFrameLength(t *testing.T) {
 		assert.Equal(t, expected, buf)
 	})
 }
+
+func TestGetRawBytesWithoutFraming(t *testing.T) {
+	t.Run("return original bytes when the length <= 3", func(t *testing.T) {
+		input := []byte{1, 2, 3}
+		actual := GetRawBytesWithoutFraming(input)
+		assert.Equal(t, input, actual)
+	})
+	t.Run("should remove the framing bytes", func(t *testing.T) {
+		input := []byte{0, 0, 3, 1, 2, 3}
+		actual := GetRawBytesWithoutFraming(input)
+		expected := []byte{1, 2, 3}
+		assert.Equal(t, expected, actual)
+	})
+}

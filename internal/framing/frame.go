@@ -54,3 +54,12 @@ func ReadFrameLength(buf []byte) (int, []byte) {
 
 	return c, buf
 }
+
+// GetRawBytesWithoutFraming gets the raw bytes without framing bytes.
+func GetRawBytesWithoutFraming(buf []byte) []byte {
+	if len(buf) <= FrameLengthFieldSize {
+		return buf
+	}
+
+	return buf[FrameLengthFieldSize:]
+}
