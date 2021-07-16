@@ -66,7 +66,7 @@ func (fac *factoryImpl) FromReader(reader io.Reader) Stream {
 		for {
 			buf, err := fd.Read(false)
 			if err != nil {
-				if err.Error() != quic.ErrConnectionClosed {
+				if err.Error() != quic.ErrConnectionClosed && err != io.EOF {
 					logger.Error("Receive frame from source failed.", "err", err)
 				}
 				break

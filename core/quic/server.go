@@ -23,10 +23,6 @@ type ServerHandler interface {
 	Listen() error
 	// Read is the callback function when the QUIC server receiving a new stream.
 	Read(id int64, sess Session, st Stream) error
-	// get conn
-	GetConn(name string) *QuicConn
-	// get data
-	GetData() []byte
 }
 
 // NewServer inits the default implementation of QUIC server.
