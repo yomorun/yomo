@@ -509,7 +509,7 @@ func (s *StreamImpl) AuditTime(milliseconds uint32, opts ...rxgo.Option) Stream 
 	return ConvertObservable(o)
 }
 
-// Subscribe a specified key in stream and gets the data when the key is observed by Y3 Codec.
+// Get data specified by key
 func (s *StreamImpl) Subscribe(key byte) Stream {
 
 	f := func(ctx context.Context, next chan rxgo.Item) {

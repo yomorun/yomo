@@ -131,12 +131,12 @@ func Test_Subscribe_OnObserve(t *testing.T) {
 		buf, _ := y3.NewCodec(0x10).Marshal(data)
 		source := y3.FromStream(bytes.NewReader(buf))
 		obs := source.Subscribe(0x10).OnObserve(func(v []byte) (interface{}, error) {
-			str, err := y3.ToUTF8String(v)
+			s, err := y3.ToUTF8String(v)
 			if err != nil {
 				return nil, err
 			}
-			assert.Equal(t, "abc", str)
-			return str, nil
+			assert.Equal(t, "abc", s)
+			return s, nil
 		})
 		for range obs {
 		} // necessary for producing human readable output
@@ -159,6 +159,85 @@ func Test_Subscribe_OnObserve(t *testing.T) {
 			return s, nil
 		})
 		for range obs {
+		} // necessary for producing human readable output
+	})
+}
+
+func Test_Subscribe_MultipleKeys(t *testing.T) {
+	t.Run("two", func(t *testing.T) {
+		buf1, _ := y3.NewCodec(0x10).Marshal("abc")
+		buf2, _ := y3.NewCodec(0x11).Marshal("def")
+		source := y3.FromStream(bytes.NewReader(append(buf1, buf2...)))
+		obs1 := source.Subscribe(0x10).OnObserve(func(v []byte) (interface{}, error) {
+			str, err := y3.ToUTF8String(v)
+			if err != nil {
+				return nil, err
+			}
+			assert.Equal(t, "abc", str)
+			return str, nil
+		})
+
+		obs2 := source.Subscribe(0x11).OnObserve(func(v []byte) (interface{}, error) {
+			str, err := y3.ToUTF8String(v)
+			if err != nil {
+				return nil, err
+			}
+			assert.Equal(t, "def", str)
+			return str, nil
+		})
+		// necessary for producing human readable output
+		for range obs1 {
+		}
+		for range obs2 {
+		}
+	})
+
+	t.Run("more", func(t *testing.T) {
+		buf1, _ := y3.NewCodec(0x10).Marshal("abc")
+		buf2, _ := y3.NewCodec(0x11).Marshal("def")
+		buf3, _ := y3.NewCodec(0x12).Marshal("uvw")
+		buf4, _ := y3.NewCodec(0x13).Marshal("xyz")
+		source := y3.FromStream(bytes.NewReader(append(append(append(buf1, buf2...), buf3...), buf4...)))
+		obs1 := source.Subscribe(0x10).OnObserve(func(v []byte) (interface{}, error) {
+			str, err := y3.ToUTF8String(v)
+			if err != nil {
+				return nil, err
+			}
+			assert.Equal(t, "abc", str)
+			return str, nil
+		})
+		obs2 := source.Subscribe(0x11).OnObserve(func(v []byte) (interface{}, error) {
+			str, err := y3.ToUTF8String(v)
+			if err != nil {
+				return nil, err
+			}
+			assert.Equal(t, "def", str)
+			return str, nil
+		})
+		obs3 := source.Subscribe(0x12).OnObserve(func(v []byte) (interface{}, error) {
+			str, err := y3.ToUTF8String(v)
+			if err != nil {
+				return nil, err
+			}
+			assert.Equal(t, "uvw", str)
+			return str, nil
+		})
+		obs4 := source.Subscribe(0x13).OnObserve(func(v []byte) (interface{}, error) {
+			str, err := y3.ToUTF8String(v)
+			if err != nil {
+				return nil, err
+			}
+			assert.Equal(t, "xyz", str)
+			return str, nil
+		})
+		// necessary for producing human readable output
+		for range obs1 {
+		}
+		for range obs2 {
+		}
+		for range obs3 {
+		}
+		for range obs4 {
 		}
 	})
 }
