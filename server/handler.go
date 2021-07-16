@@ -27,18 +27,7 @@ type (
 
 // NewServerHandler inits a new ServerHandler
 func NewServerHandler(conf *WorkflowConfig, meshConfURL string) quic.ServerHandler {
-	handler := &quicHandler{
-		serverlessConfig:   conf,
-		meshConfigURL:      meshConfURL,
-		connMap:            sync.Map{},
-		source:             make(chan io.Reader),
-		outputConnectorMap: sync.Map{},
-		serverMap:          sync.Map{},
-		serverSenders:      make([]GetSenderFunc, 0),
-		serverReceiver:     make(chan io.Reader),
-		data:               make([]byte, 0),
-	}
-	return handler
+	return newQuicHandler(conf, meshConfURL)
 }
 
 type quicHandler struct {
@@ -51,7 +40,20 @@ type quicHandler struct {
 	serverSenders      []GetSenderFunc
 	serverReceiver     chan io.Reader
 	mutex              sync.RWMutex
-	data               []byte // temporary data
+	onReceivedData     func(buf []byte) // the callback function when the data is received.
+}
+
+func newQuicHandler(conf *WorkflowConfig, meshConfURL string) *quicHandler {
+	return &quicHandler{
+		serverlessConfig:   conf,
+		meshConfigURL:      meshConfURL,
+		connMap:            sync.Map{},
+		source:             make(chan io.Reader),
+		outputConnectorMap: sync.Map{},
+		serverMap:          sync.Map{},
+		serverSenders:      make([]GetSenderFunc, 0),
+		serverReceiver:     make(chan io.Reader),
+	}
 }
 
 func (s *quicHandler) Listen() error {
@@ -142,8 +144,10 @@ func (s *quicHandler) receiveDataFromSources() {
 					}
 
 					buf := customer.V.([]byte)
-					// for source data verify
-					s.data = buf
+					// call the `onReceivedData` callback function.
+					if s.onReceivedData != nil {
+						s.onReceivedData(buf)
+					}
 
 					// send data to `Output Connectors`
 					s.outputConnectorMap.Range(func(key, value interface{}) bool {
@@ -404,7 +408,7 @@ func (s *quicHandler) cancelServerSender(conf serverConf) func() {
 	return f
 }
 
-func (s *quicHandler) GetConn(name string) *quic.QuicConn {
+func (s *quicHandler) getConn(name string) *quic.QuicConn {
 	var conn *quic.QuicConn
 	s.connMap.Range(func(key, value interface{}) bool {
 		c := value.(*ServerConn)
@@ -415,8 +419,4 @@ func (s *quicHandler) GetConn(name string) *quic.QuicConn {
 		return true
 	})
 	return conn
-}
-
-func (s *quicHandler) GetData() []byte {
-	return s.data
 }

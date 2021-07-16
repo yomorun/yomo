@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/internal/client"
+	"github.com/yomorun/yomo/internal/framing"
 )
 
 func TestServerHandlerListen(t *testing.T) {
@@ -21,7 +22,7 @@ func TestServerHandlerListen(t *testing.T) {
 // TestServerHandlerRead
 func TestServerHandlerRead(t *testing.T) {
 	// new a server handler
-	serverHandler := NewServerHandler(testConfig, testMeshURL)
+	serverHandler := newQuicHandler(testConfig, testMeshURL)
 	assert.NotNil(t, serverHandler)
 	var err error
 
@@ -43,6 +44,14 @@ func TestServerHandlerRead(t *testing.T) {
 		<-c
 	}()
 
+	// define a function to check if the data is received.
+	serverHandler.onReceivedData = func(buf []byte) {
+		// frame length: 3
+		actual := framing.GetRawBytesWithoutFraming(buf)
+		t.Logf("handler.data: %s", actual)
+		assert.Equal(t, data, actual)
+	}
+
 	// source
 	source := client.New("source", quic.ConnTypeSource)
 	source, _ = source.BaseConnect(testConfig.Host, testConfig.Port)
@@ -50,23 +59,9 @@ func TestServerHandlerRead(t *testing.T) {
 	n, err := source.Write(data)
 	assert.Nil(t, err)
 	t.Logf("source write %d bytes: %s", n, data)
-	conn := serverHandler.GetConn("source")
+	conn := serverHandler.getConn("source")
 	assert.NotNil(t, conn)
-	// handler.data
-	// assert.Equal(t, true, conn.Ready)
-	for {
-		buf := serverHandler.GetData()
-		// frame length: 3
-		if len(buf) > 3 {
-			actual := buf[3:]
-			if actual[0] == 0 {
-				continue
-			}
-			t.Logf("handler.data: %s", actual)
-			assert.Equal(t, data, actual)
-			break
-		}
-	}
+
 	time.Sleep(time.Second)
 	server.Close()
 	c <- true
