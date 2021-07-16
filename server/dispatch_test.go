@@ -29,7 +29,7 @@ func TestDispatcherWithFunc(t *testing.T) {
 		actual := item.V.([]byte)
 		assert.Equal(t, data, actual)
 		// frame length: 3
-		t.Logf("stream.item: %s\n", actual[3:])
+		t.Logf("stream.item: %s\n", framing.GetRawBytesWithoutFraming(actual))
 		break
 	}
 }
