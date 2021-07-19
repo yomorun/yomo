@@ -75,7 +75,7 @@ func Test_DefaultIfEmptyWithTime_NotEmpty(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	st := testStream.DefaultIfEmptyWithTime(100, 3)
-	rxgo.Assert(ctx, t, st, rxgo.HasItems(1, 3, 2, 3, 3, 3))
+	rxgo.Assert(ctx, t, st, rxgo.HasItemsNoOrder(1, 3, 2, 3, 3, 3))
 }
 
 func Test_StdOut_Empty(t *testing.T) {
@@ -251,13 +251,81 @@ func Test_ZipMultiObservers(t *testing.T) {
 }
 
 func Test_Encode(t *testing.T) {
-	// TODO
+	t.Run("string", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		st := toStream(rxgo.Just("abc")()).Encode(0x11)
+		rxgo.Assert(ctx, t, st, rxgo.HasItem([]uint8{0x81, 0x5, 0x11, 0x3, 0x61, 0x62, 0x63}))
+	})
+
+	t.Run("struct slice", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		data := []testStruct{
+			{ID: 1, Name: "foo"},
+			{ID: 2, Name: "bar"},
+		}
+		st := toStream(rxgo.Just(data)()).Encode(0x11)
+		rxgo.Assert(ctx, t, st, rxgo.HasItems([]uint8{0x81, 0xa, 0x91, 0x8, 0x11, 0x1, 0x1, 0x12, 0x3, 0x66, 0x6f, 0x6f}, []uint8{0x81, 0xa, 0x91, 0x8, 0x11, 0x1, 0x2, 0x12, 0x3, 0x62, 0x61, 0x72}))
+	})
 }
 
 func Test_SlidingWindowWithCount(t *testing.T) {
-	// TODO
+	t.Run("window size = 1, slide size = 1, handler does nothing", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		st := testStream.SlidingWindowWithCount(1, 1, func(buf interface{}) error {
+			return nil
+		})
+		rxgo.Assert(ctx, t, st, rxgo.HasItems(1, 2, 3))
+	})
+
+	t.Run("window size = 3, slide size = 3, handler sums elements in buf", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		st := testStream.SlidingWindowWithCount(3, 3, func(buf interface{}) error {
+			slice, ok := buf.([]interface{})
+			assert.Equal(t, true, ok)
+			sum := 0
+			for _, v := range slice {
+				sum += v.(int)
+			}
+			assert.Equal(t, 6, sum)
+			return nil
+		})
+		rxgo.Assert(ctx, t, st, rxgo.HasItems(1, 2, 3))
+	})
 }
 
 func Test_SlidingWindowWithTime(t *testing.T) {
-	// TODO
+	t.Run("window size = 120ms, slide size = 120ms, handler does nothing", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		st := testStream.SlidingWindowWithTime(120, 120, func(buf interface{}) error {
+			return nil
+		})
+		rxgo.Assert(ctx, t, st, rxgo.HasItems(1, 2, 3))
+	})
+
+	t.Run("window size = 360ms, slide size = 360ms, handler sums elements in buf", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		st := testStream.SlidingWindowWithTime(360, 360, func(buf interface{}) error {
+			slice, ok := buf.([]interface{})
+			assert.Equal(t, true, ok)
+			sum := 0
+			for _, v := range slice {
+				sum += v.(int)
+			}
+			assert.Equal(t, 6, sum)
+			return nil
+		})
+		rxgo.Assert(ctx, t, st, rxgo.HasItems(1, 2, 3))
+	})
 }
