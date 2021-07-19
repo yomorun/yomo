@@ -9,6 +9,7 @@ import (
 	"github.com/reactivex/rxgo/v2"
 	"github.com/stretchr/testify/assert"
 	y3 "github.com/yomorun/y3-codec-golang"
+	"github.com/yomorun/yomo/internal/decoder"
 	"go.uber.org/goleak"
 )
 
@@ -243,7 +244,14 @@ func Test_Subscribe_MultipleKeys(t *testing.T) {
 }
 
 func Test_RawBytes(t *testing.T) {
-	// TODO
+	buf := &bytes.Buffer{}
+	buf.Write([]byte{0, 0, 3, 1, 2, 3})
+	obs := decoder.FromStream(buf)
+	rawBytes := obs.RawBytes()
+	for b := range rawBytes {
+		assert.Equal(t, []byte{1, 2, 3}, b)
+		break
+	}
 }
 
 func Test_ZipMultiObservers(t *testing.T) {
