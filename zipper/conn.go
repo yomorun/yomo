@@ -10,8 +10,8 @@ import (
 	"github.com/yomorun/yomo/logger"
 )
 
-// ServerConn represents the YoMo Zipper connection.
-type ServerConn struct {
+// Conn represents the YoMo Zipper connection.
+type Conn struct {
 	conn              *quic.QuicConn
 	Session           quic.Session
 	onClosed          func()      // onClosed is the callback when the connection is closed.
@@ -19,9 +19,9 @@ type ServerConn struct {
 	isNewAppAvailable func() bool // indicates whether the server receives a new app.
 }
 
-// NewServerConn inits a new YoMo Zipper connection.
-func NewServerConn(sess quic.Session, st quic.Stream, conf *WorkflowConfig) *ServerConn {
-	c := &ServerConn{
+// NewConn inits a new YoMo Zipper connection.
+func NewConn(sess quic.Session, st quic.Stream, conf *WorkflowConfig) *Conn {
+	c := &Conn{
 		conn:    quic.NewQuicConn("", ""),
 		Session: sess,
 	}
@@ -34,7 +34,7 @@ func NewServerConn(sess quic.Session, st quic.Stream, conf *WorkflowConfig) *Ser
 }
 
 // SendSignalFunction sends the signal `function` to client.
-func (c *ServerConn) SendSignalFunction() error {
+func (c *Conn) SendSignalFunction() error {
 	if c.conn.Ready {
 		c.conn.Ready = false
 		return c.conn.SendSignal(quic.SignalFunction)
@@ -43,7 +43,7 @@ func (c *ServerConn) SendSignalFunction() error {
 }
 
 // handleSignal handles the logic when receiving signal from client.
-func (c *ServerConn) handleSignal(conf *WorkflowConfig) {
+func (c *Conn) handleSignal(conf *WorkflowConfig) {
 	isInit := true
 	go func() {
 		for {
@@ -93,7 +93,7 @@ func (c *ServerConn) handleSignal(conf *WorkflowConfig) {
 	}()
 }
 
-func (c *ServerConn) getConnType(payload client.NegotiationPayload, conf *WorkflowConfig) string {
+func (c *Conn) getConnType(payload client.NegotiationPayload, conf *WorkflowConfig) string {
 	switch payload.ClientType {
 	case quic.ConnTypeStreamFunction:
 		// check if the app name is in functions
@@ -114,8 +114,8 @@ func (c *ServerConn) getConnType(payload client.NegotiationPayload, conf *Workfl
 }
 
 // Beat sends the heartbeat to clients in every 200ms.
-func (c *ServerConn) Beat() {
-	go func(c *ServerConn) {
+func (c *Conn) Beat() {
+	go func(c *Conn) {
 		t := time.NewTicker(200 * time.Millisecond)
 		for {
 			select {
@@ -142,8 +142,8 @@ func (c *ServerConn) Beat() {
 }
 
 // createStream sends the singal to create a stream for receiving data.
-func (c *ServerConn) createStream() {
-	go func(c *ServerConn) {
+func (c *Conn) createStream() {
+	go func(c *Conn) {
 		t := time.NewTicker(200 * time.Millisecond)
 		for {
 			select {
@@ -168,7 +168,7 @@ func (c *ServerConn) createStream() {
 }
 
 // Close the QUIC connection.
-func (c *ServerConn) Close() error {
+func (c *Conn) Close() error {
 	err := c.Session.CloseWithError(0, "")
 
 	if c.onClosed != nil {

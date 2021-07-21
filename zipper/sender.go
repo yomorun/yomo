@@ -20,7 +20,7 @@ type senderClientImpl struct {
 // NewSender setups the client of YoMo-Zipper-Sender (formerly Zipper-Sender).
 func NewSender(appName string) SenderClient {
 	c := &senderClientImpl{
-		Impl: client.New(appName, quic.ConnTypeServerSender),
+		Impl: client.New(appName, quic.ConnTypeZipperSender),
 	}
 	return c
 }
