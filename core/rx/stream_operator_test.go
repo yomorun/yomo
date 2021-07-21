@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	y3 "github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo/internal/decoder"
-	"go.uber.org/goleak"
 )
 
 // HELPER FUNCTIONS
@@ -54,7 +53,6 @@ var testStream = toStream(rxgo.Defer([]rxgo.Producer{func(_ context.Context, ch 
 
 func Test_DefaultIfEmptyWithTime_Empty(t *testing.T) {
 	t.Run("0 milliseconds", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		st := toStream(rxgo.Empty()).DefaultIfEmptyWithTime(0, 3)
@@ -62,7 +60,6 @@ func Test_DefaultIfEmptyWithTime_Empty(t *testing.T) {
 	})
 
 	t.Run("100 milliseconds", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		obs := rxgo.Timer(rxgo.WithDuration(120 * time.Millisecond))
@@ -72,7 +69,6 @@ func Test_DefaultIfEmptyWithTime_Empty(t *testing.T) {
 }
 
 func Test_DefaultIfEmptyWithTime_NotEmpty(t *testing.T) {
-	defer goleak.VerifyNone(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	st := testStream.DefaultIfEmptyWithTime(100, 3)
@@ -80,7 +76,6 @@ func Test_DefaultIfEmptyWithTime_NotEmpty(t *testing.T) {
 }
 
 func Test_StdOut_Empty(t *testing.T) {
-	defer goleak.VerifyNone(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	st := toStream(rxgo.Empty()).StdOut()
@@ -88,7 +83,6 @@ func Test_StdOut_Empty(t *testing.T) {
 }
 
 func Test_StdOut_NotEmpty(t *testing.T) {
-	defer goleak.VerifyNone(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	st := testStream.StdOut()
@@ -97,7 +91,6 @@ func Test_StdOut_NotEmpty(t *testing.T) {
 
 func Test_AuditTime(t *testing.T) {
 	t.Run("0 milliseconds", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		st := testStream.AuditTime(0)
@@ -105,7 +98,6 @@ func Test_AuditTime(t *testing.T) {
 	})
 
 	t.Run("100 milliseconds", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		st := testStream.AuditTime(100)
@@ -113,7 +105,6 @@ func Test_AuditTime(t *testing.T) {
 	})
 
 	t.Run("keep last", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		st := testStream.AuditTime(500)
@@ -273,7 +264,6 @@ func Test_RawBytes(t *testing.T) {
 
 func Test_Encode(t *testing.T) {
 	t.Run("string", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		st := toStream(rxgo.Just("abc")()).Encode(0x11)
@@ -281,7 +271,6 @@ func Test_Encode(t *testing.T) {
 	})
 
 	t.Run("struct slice", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		data := []testStruct{
@@ -295,7 +284,6 @@ func Test_Encode(t *testing.T) {
 
 func Test_SlidingWindowWithCount(t *testing.T) {
 	t.Run("window size = 1, slide size = 1, handler does nothing", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		st := testStream.SlidingWindowWithCount(1, 1, func(buf interface{}) error {
@@ -305,7 +293,6 @@ func Test_SlidingWindowWithCount(t *testing.T) {
 	})
 
 	t.Run("window size = 3, slide size = 3, handler sums elements in buf", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		st := testStream.SlidingWindowWithCount(3, 3, func(buf interface{}) error {
@@ -324,7 +311,6 @@ func Test_SlidingWindowWithCount(t *testing.T) {
 
 func Test_SlidingWindowWithTime(t *testing.T) {
 	t.Run("window size = 120ms, slide size = 120ms, handler does nothing", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		st := testStream.SlidingWindowWithTime(120, 120, func(buf interface{}) error {
@@ -334,7 +320,6 @@ func Test_SlidingWindowWithTime(t *testing.T) {
 	})
 
 	t.Run("window size = 360ms, slide size = 360ms, handler sums elements in buf", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		st := testStream.SlidingWindowWithTime(360, 360, func(buf interface{}) error {
