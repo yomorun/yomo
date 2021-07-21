@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="200px" height="200px" src="https://yomo.run/yomo-logo.png" />
+  <img width="200px" height="200px" src="https://docs.yomo.run/yomo-logo.png" />
 </p>
 
 # YoMo应用案例：多数据源的合并计算
@@ -32,10 +32,10 @@ func Handler(rxstream rx.Stream) rx.Stream {
 
 ## 代码结构
 
-+ `source-data-a`: 模拟数据源A，发送随机 Float32 数字. [yomo.run/source](https://yomo.run/source)
-+ `source-data-b`: 模拟数据源B，发送随机 Float32 数字. [yomo.run/source](https://yomo.run/source)
-+ `stream-fn`（旧名称：flow）: 将模拟数据源A和模拟数据源B进行合并计算[yomo.run/stream-function](https://yomo.run/flow)
-+ `yomo-server`（旧名称：zipper）: 设计一个workflow，接收多个source，并完成合并计算 [yomo.run/yomo-server](https://yomo.run/zipper)
++ `source-data-a`: 模拟数据源A，发送随机 Float32 数字. [yomo.run/source](https://docs.yomo.run/source)
++ `source-data-b`: 模拟数据源B，发送随机 Float32 数字. [yomo.run/source](https://docs.yomo.run/source)
++ `stream-fn`（旧名称：flow）: 将模拟数据源A和模拟数据源B进行合并计算[yomo.run/stream-function](https://docs.yomo.run/stream-function)
++ `zipper`: 设计一个workflow，接收多个source，并完成合并计算 [yomo.run/zipper](https://docs.yomo.run/zipper)
 
 ## 实现过程
 
@@ -45,23 +45,23 @@ func Handler(rxstream rx.Stream) rx.Stream {
 $ go install github.com/yomorun/cli/yomo@latest
 ```
 
-### 2. 运行 ``yomo-server`
+### 2. 运行 ``YoMo-Zipper`
 
 ```bash
 $ cd ./example/multi-data-source/zipper
 
 $ yomo serve
 
-ℹ️   Found 1 stream functions in yomo-server config
+ℹ️   Found 1 stream functions in YoMo-Zipper config
 ℹ️   Stream Function 1: training
-ℹ️   Running YoMo Server...
+ℹ️   Running YoMo Zipper...
 2021/03/01 19:05:55 ✅ Listening on 0.0.0.0:9000
 
 ```
 
 ### 3. 运行 `stream-fn`
 
-> **注意**: `-n` flag 用于表示 flow 的名称, 它需要跟 yomo-server config (workflow.yaml) 里面 function 名称匹配.
+> **注意**: `-n` flag 用于表示 flow 的名称, 它需要跟 YoMo-Zipper config (workflow.yaml) 里面 function 名称匹配.
 
 ```bash
 $ cd ./example/multi-data-source/flow
@@ -74,8 +74,8 @@ $ yomo run -n training
 ⌛  YoMo Stream Function building...
 ✅  Success! YoMo Stream Function build.
 ℹ️   YoMo Stream Function is running...
-2021/03/01 19:05:55 Connecting to yomo-server localhost:9000 ...
-2021/03/01 19:05:55 ✅ Connected to yomo-server localhost:9000
+2021/03/01 19:05:55 Connecting to YoMo-Zipper localhost:9000 ...
+2021/03/01 19:05:55 ✅ Connected to YoMo-Zipper localhost:9000
 
 ```
 
@@ -86,8 +86,8 @@ $ cd ./example/multi-data-source/source-data-a
 
 $ go run main.go
 
-2021/03/01 17:35:04 ✅ Connected to yomo-server localhost:9000
-2021/03/01 17:35:05 ✅ Emit 123.41881 to yomo-server
+2021/03/01 17:35:04 ✅ Connected to YoMo-Zipper localhost:9000
+2021/03/01 17:35:05 ✅ Emit 123.41881 to YoMo-Zipper
 
 ```
 
@@ -98,8 +98,8 @@ $ cd ./example/multi-data-source/source-data-b
 
 $ go run main.go
 
-2021/03/01 17:35:04 ✅ Connected to yomo-server localhost:9000
-2021/03/01 17:35:05 ✅ Emit 36.92933 to yomo-server
+2021/03/01 17:35:04 ✅ Connected to YoMo-Zipper localhost:9000
+2021/03/01 17:35:05 ✅ Emit 36.92933 to YoMo-Zipper
 
 ```
 

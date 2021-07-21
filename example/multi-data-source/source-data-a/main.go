@@ -22,7 +22,7 @@ func main() {
 	}
 	err := emit(serverAddr)
 	if err != nil {
-		log.Printf("❌ Emit the data to yomo-server %s failure with err: %v", serverAddr, err)
+		log.Printf("❌ Emit the data to YoMo-Zipper %s failure with err: %v", serverAddr, err)
 	}
 }
 
@@ -56,9 +56,9 @@ func generateAndSendData(writer io.Writer) {
 
 		_, err := writer.Write(sendingBuf)
 		if err != nil {
-			log.Printf("❌ Emit %v to yomo-server failure with err: %f", num, err)
+			log.Printf("❌ Emit %v to YoMo-Zipper failure with err: %f", num, err)
 		} else {
-			log.Printf("✅ Emit %f to yomo-server", num)
+			log.Printf("✅ Emit %f to YoMo-Zipper", num)
 		}
 	}
 }

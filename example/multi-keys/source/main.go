@@ -16,10 +16,10 @@ func main() {
 	if serverAddr == "" {
 		serverAddr = "localhost:9000"
 	}
-	// connect to yomo-server.
+	// connect to YoMo-Zipper.
 	cli, err := yomo.NewSource(yomo.WithName("yomo-source")).Connect("localhost", 9000)
 	if err != nil {
-		log.Printf("❌ Emit the data to yomo-server failure with err: %v", err)
+		log.Printf("❌ Emit the data to YoMo-Zipper failure with err: %v", err)
 		return
 	}
 

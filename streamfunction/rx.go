@@ -31,7 +31,7 @@ func newStreamFnRx() StreamfnRx {
 }
 
 // AppendNewDataToRawStream appends new data into raw stream.
-// 1. receive `raw stream` from YoMo-Server.
+// 1. receive `raw stream` from YoMo-Zipper.
 // 2. receive a new `fn stream` after running `Handler` function.
 // 3. append the data in `fn stream` to `raw stream`.
 func (r *rxImpl) AppendNewDataToRawStream(rawStream rx.Stream, fnStream rx.Stream) rx.Stream {
@@ -87,7 +87,7 @@ func (r *rxImpl) AppendNewDataToRawStream(rawStream rx.Stream, fnStream rx.Strea
 
 				// Correct steps: receive raw data first, then run `Handler` function and get new data.
 				for len(buf) == 0 {
-					logger.Debug("[Stream Function Client] didn't receive raw data from YoMo-Server, skip this new data", "newData", newItem.V)
+					logger.Debug("[Stream Function Client] didn't receive raw data from YoMo-Zipper, skip this new data", "newData", newItem.V)
 					continue
 				}
 
@@ -108,7 +108,7 @@ func (r *rxImpl) AppendNewDataToRawStream(rawStream rx.Stream, fnStream rx.Strea
 				}
 
 				if len(buf) > 0 {
-					// send data to yomo-server.
+					// send data to YoMo-Zipper.
 					rx.Of(buf).SendContext(ctx, next)
 					// reset
 					buf = make([]byte, 0)

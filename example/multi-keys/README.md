@@ -36,9 +36,9 @@ func Handler(rxstream rx.Stream) rx.Stream {
 
 ## Code structure
 
-+ `source`: sending sequential numbers in 5 different keys [yomo.run/source](https://yomo.run/source)
-+ `stream-fn` (formerly flow): combine multiple numbers from 5 keys for calculation [yomo.run/stream-function](https://yomo.run/flow)
-+ `yomo-server` (formerly zipper): setup a workflow that receives multiple keys and completes the merge calculation [yomo.run/yomo-server](https://yomo.run/zipper)
++ `source`: sending sequential numbers in 5 different keys [yomo.run/source](https://docs.yomo.run/source)
++ `stream-fn` (formerly flow): combine multiple numbers from 5 keys for calculation [yomo.run/stream-function](https://docs.yomo.run/stream-function)
++ `zipper` (formerly zipper): setup a workflow that receives multiple keys and completes the merge calculation [yomo.run/zipper](https://docs.yomo.run/zipper)
 
 ## How to run the example
 
@@ -46,18 +46,18 @@ func Handler(rxstream rx.Stream) rx.Stream {
 
 Please visit [YoMo Getting Started](https://github.com/yomorun/yomo#1-install-cli) for details.
 
-### 2. Run [yomo-server](https://yomo.run/zipper)
+### 2. Run [YoMo-Zipper](https://docs.yomo.run/zipper)
 
 ```bash
-yomo serve -c ./yomo-server/workflow.yaml
+yomo serve -c ./zipper/workflow.yaml
 
-ℹ️   Found 1 stream functions in yomo-server config
+ℹ️   Found 1 stream functions in YoMo-Zipper config
 ℹ️   Stream Function 1: training
-ℹ️   Running YoMo Server...
+ℹ️   Running YoMo Zipper...
 2021/05/20 15:34:23 ✅ Listening on 0.0.0.0:9000
 ```
 
-### 3. Run [stream-fn](https://yomo.run/flow)
+### 3. Run [stream-fn](https://docs.yomo.run/stream-function)
 
 ```bash
 yomo run ./stream-fn/app.go -n training
@@ -68,11 +68,11 @@ yomo run ./stream-fn/app.go -n training
 ⌛  YoMo Stream Function building...
 ✅  Success! YoMo Stream Function build.
 ℹ️   YoMo Stream Function is running...
-2021/05/20 15:35:25 ✅ Connecting to yomo-server localhost:9000...
-2021/05/20 15:35:25 ✅ Connected to yomo-server localhost:9000.
+2021/05/20 15:35:25 ✅ Connecting to YoMo-Zipper localhost:9000...
+2021/05/20 15:35:25 ✅ Connected to YoMo-Zipper localhost:9000.
 ```
 
-### 4. Run [yomo-source](https://yomo.run/source)
+### 4. Run [yomo-source](https://docs.yomo.run/source)
 
 ```bash
 go run ./source/main.go

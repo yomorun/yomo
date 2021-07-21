@@ -1,9 +1,9 @@
 ### Example: Transfer binary data over YoMo
 
-#### 1. Start YoMo Server
+#### 1. Start YoMo-Zipper
 
 ```bash
-yomo serve -c yomo.yaml
+yomo serve -c zipper.yaml
 ```
 
 #### 2. Hook the streaming serverless function to YoMo

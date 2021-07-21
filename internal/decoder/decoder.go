@@ -56,7 +56,7 @@ type Observable interface {
 	// Unmarshal transforms the items emitted by an Observable by applying an unmarshalling to each item.
 	Unmarshal(unmarshaller Unmarshaller, factory func() interface{}) chan interface{}
 
-	// RawBytes returns the raw bytes from YoMo-Server.
+	// RawBytes returns the raw bytes from YoMo-Zipper.
 	RawBytes() chan []byte
 }
 
@@ -136,10 +136,10 @@ func FromStream(reader io.Reader) Observable {
 			// read next raw frame.
 			buf, err := fd.Read(true)
 			if err != nil {
-				logger.Debug("[Decoder] Receive data from YoMo-Server failed.", "err", err)
+				logger.Debug("[Decoder] Receive data from YoMo-Zipper failed.", "err", err)
 				break
 			} else {
-				logger.Debug("[Decoder] Receive raw data from YoMo-Server.", "data", logger.BytesString(buf))
+				logger.Debug("[Decoder] Receive raw data from YoMo-Zipper.", "data", logger.BytesString(buf))
 				next <- buf
 			}
 		}

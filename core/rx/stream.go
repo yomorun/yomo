@@ -22,7 +22,7 @@ type Stream interface {
 	// Encode the data with a specified key by Y3 Codec and append it to stream.
 	Encode(key byte, opts ...rxgo.Option) Stream
 
-	// RawBytes get the raw bytes in Stream which receives from yomo-server.
+	// RawBytes get the raw bytes in Stream which receives from YoMo-Zipper.
 	RawBytes() Stream
 
 	StdOut(opts ...rxgo.Option) Stream

@@ -12,7 +12,7 @@ import (
 type Client interface {
 	client.Client
 
-	// Connect to YoMo-Server.
+	// Connect to YoMo-Zipper.
 	Connect(ip string, port int) (Client, error)
 
 	// Pipe the Handler function.
@@ -26,7 +26,7 @@ type clientImpl struct {
 }
 
 // New a YoMo Stream Function client.
-// The "appName" should match the name of functions in workflow.yaml in yomo-server.
+// The "appName" should match the name of functions in workflow.yaml in YoMo-Zipper.
 func New(appName string) Client {
 	c := &clientImpl{
 		Impl: client.New(appName, quic.ConnTypeStreamFunction),
@@ -35,7 +35,7 @@ func New(appName string) Client {
 	return c
 }
 
-// Connect to yomo-server.
+// Connect to YoMo-Zipper.
 func (c *clientImpl) Connect(ip string, port int) (Client, error) {
 	cli, err := c.BaseConnect(ip, port)
 	return &clientImpl{
@@ -54,24 +54,24 @@ func (c *clientImpl) Pipe(handler func(rxstream rx.Stream) rx.Stream) {
 			logger.Error("[Stream Function Client] Handler got the error.", "err", item.E)
 		} else if item.V != nil {
 			if c.Writer == nil {
-				logger.Debug("[Stream Function Client] the writer is nil, won't send the data to yomo-server.", "data", item.V)
+				logger.Debug("[Stream Function Client] the writer is nil, won't send the data to YoMo-Zipper.", "data", item.V)
 				continue
 			}
 
 			buf, ok := (item.V).([]byte)
 			if !ok {
-				logger.Debug("[Stream Function Client] the data is not a []byte in RxStream, won't send it to yomo-server.", "data", item.V)
+				logger.Debug("[Stream Function Client] the data is not a []byte in RxStream, won't send it to YoMo-Zipper.", "data", item.V)
 				continue
 			}
 
 			// wrap data with framing.
 			f := framing.NewPayloadFrame(buf)
-			// send data to yomo-server.
+			// send data to YoMo-Zipper.
 			_, err := c.Writer.Write(f.Bytes())
 			if err != nil {
-				logger.Error("[Stream Function Client] ❌ Send data to yomo-server failed.", "err", err)
+				logger.Error("[Stream Function Client] ❌ Send data to YoMo-Zipper failed.", "err", err)
 			} else {
-				logger.Debug("[Stream Function Client] Send frame to yomo-server", "frame", logger.BytesString(f.Bytes()))
+				logger.Debug("[Stream Function Client] Send frame to YoMo-Zipper", "frame", logger.BytesString(f.Bytes()))
 			}
 		}
 

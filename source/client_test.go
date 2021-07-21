@@ -3,7 +3,7 @@ package source
 import (
 	"testing"
 
-	mockserver "github.com/yomorun/yomo/server/mock"
+	mockserver "github.com/yomorun/yomo/zipper/mock"
 )
 
 func TestSendDataToServer(t *testing.T) {

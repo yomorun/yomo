@@ -541,7 +541,7 @@ func (s *StreamImpl) Subscribe(key byte) Stream {
 	return CreateObservable(f)
 }
 
-// RawBytes get the raw bytes in Stream which receives from yomo-server.
+// RawBytes get the raw bytes in Stream which receives from YoMo-Zipper.
 func (s *StreamImpl) RawBytes() Stream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
@@ -566,7 +566,7 @@ func (s *StreamImpl) RawBytes() Stream {
 				bufCh := y3stream.RawBytes()
 				go func() {
 					for buf := range bufCh {
-						logger.Debug("[RawBytes] get the raw bytes from yomo-server.", "buf", logger.BytesString(buf))
+						logger.Debug("[RawBytes] get the raw bytes from YoMo-Zipper.", "buf", logger.BytesString(buf))
 						Of(buf).SendContext(ctx, next)
 					}
 				}()

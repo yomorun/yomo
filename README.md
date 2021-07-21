@@ -127,8 +127,8 @@ $ yomo dev
 ⌛  YoMo Stream Function building...
 ✅  Success! YoMo Stream Function build.
 ℹ️   YoMo Stream Function is running...
-2021/06/07 12:00:06 Connecting to yomo-server dev.yomo.run:9000 ...
-2021/06/07 12:00:07 ✅ Connected to yomo-server dev.yomo.run:9000
+2021/06/07 12:00:06 Connecting to YoMo-Zipper dev.yomo.run:9000 ...
+2021/06/07 12:00:07 ✅ Connected to YoMo-Zipper dev.yomo.run:9000
 [10.10.79.50] 1623038407236 > value: 1.919251 ⚡️=-25ms
 [StdOut]:  1.9192511
 [10.10.79.50] 1623038407336 > value: 11.370256 ⚡️=-25ms
@@ -175,9 +175,8 @@ Congratulations! You have done your first YoMo Stream Function.
 ## 📚 Documentation
 
 + `YoMo-Source`: [yomo.run/source](https://docs.yomo.run/source)
-+ `YoMo-Stream-Function` (formerly flow): [yomo.run/stream-function](https://docs.yomo.run/flow)
-+ `YoMo-Output-Connector` (formerly sink): [yomo.run/output-connector](https://docs.yomo.run/sink)
-+ `YoMo-Server` (formerly zipper): [yomo.run/yomo-server](https://docs.yomo.run/zipper)
++ `YoMo-Stream-Function` (formerly flow): [yomo.run/stream-function](https://docs.yomo.run/stream-function)
++ `YoMo-Zipper`: [yomo.run/zipper](https://docs.yomo.run/zipper)
 + `Stream Processing in Rx way`: [Rx](https://docs.yomo.run/rx)
 + `Faster than real-time codec`: [Y3](https://github.com/yomorun/y3-codec)
 

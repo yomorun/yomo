@@ -3,7 +3,7 @@ package mock
 import (
 	"fmt"
 
-	"github.com/yomorun/yomo/server"
+	server "github.com/yomorun/yomo/zipper"
 )
 
 const (

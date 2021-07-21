@@ -43,8 +43,8 @@ type Impl struct {
 	conn       *quic.QuicConn
 	serverIP   string
 	serverPort int
-	Readers    chan io.Reader // Readers are the reader to receive the data from YoMo Server.
-	Writer     io.Writer      // Writer is the stream to send the data to YoMo Server.
+	Readers    chan io.Reader // Readers are the reader to receive the data from YoMo Zipper.
+	Writer     io.Writer      // Writer is the stream to send the data to YoMo Zipper.
 	session    quic.Client
 	once       *sync.Once
 }
@@ -64,7 +64,7 @@ func New(appName string, clientType string) *Impl {
 
 	c.conn.OnHeartbeatExpired = func() {
 		c.once.Do(func() {
-			logger.Debug("[client] heartbeat to YoMo-Server was expired, client will reconnect to YoMo-Server.", "addr", getServerAddr(c.serverIP, c.serverPort))
+			logger.Debug("[client] heartbeat to YoMo-Zipper was expired, client will reconnect to YoMo-Zipper.", "addr", getServerAddr(c.serverIP, c.serverPort))
 
 			// reset stream to nil.
 			c.conn.Stream = nil
@@ -82,15 +82,15 @@ func New(appName string, clientType string) *Impl {
 	return c
 }
 
-// BaseConnect connects to yomo-server.
+// BaseConnect connects to YoMo-Zipper.
 // TODO: login auth
 func (c *Impl) BaseConnect(ip string, port int) (*Impl, error) {
 	c.serverIP = ip
 	c.serverPort = port
 	addr := getServerAddr(c.serverIP, c.serverPort)
-	logger.Printf("Connecting to yomo-server %s...", addr)
+	logger.Printf("Connecting to YoMo-Zipper %s...", addr)
 
-	// connect to yomo-server
+	// connect to YoMo-Zipper
 	quic_cli, err := quic.NewClient(addr)
 	if err != nil {
 		logger.Error("[client] NewClient Error:", "err", err)
@@ -108,7 +108,7 @@ func (c *Impl) BaseConnect(ip string, port int) (*Impl, error) {
 	c.session = quic_cli
 	c.conn.Signal = quic_stream
 
-	// send negotiation payload to yomo-server
+	// send negotiation payload to YoMo-Zipper
 	payload := NegotiationPayload{
 		AppName:    c.conn.Name,
 		ClientType: c.conn.Type,
@@ -128,7 +128,7 @@ func (c *Impl) BaseConnect(ip string, port int) (*Impl, error) {
 
 	// waiting when the connection is accepted.
 	<-accepted
-	logger.Printf("✅ Connected to yomo-server %s.", addr)
+	logger.Printf("✅ Connected to YoMo-Zipper %s.", addr)
 	return c, nil
 }
 
@@ -191,7 +191,7 @@ func (c *Impl) Write(data []byte) (int, error) {
 // Retry the connection between client and server.
 func (c *Impl) Retry() {
 	for {
-		logger.Debug("[client] retry to connect the YoMo-Server...", "addr", getServerAddr(c.serverIP, c.serverPort))
+		logger.Debug("[client] retry to connect the YoMo-Zipper...", "addr", getServerAddr(c.serverIP, c.serverPort))
 		_, err := c.BaseConnect(c.serverIP, c.serverPort)
 		if err == nil {
 			break
@@ -204,7 +204,7 @@ func (c *Impl) Retry() {
 // RetryWithCount the connection with a certain count.
 func (c *Impl) RetryWithCount(count int) bool {
 	for i := 0; i < count; i++ {
-		logger.Debug("[client] retry to connect the YoMo-Server with count...", "addr", getServerAddr(c.serverIP, c.serverPort), "count", count)
+		logger.Debug("[client] retry to connect the YoMo-Zipper with count...", "addr", getServerAddr(c.serverIP, c.serverPort), "count", count)
 		_, err := c.BaseConnect(c.serverIP, c.serverPort)
 		if err == nil {
 			return true
@@ -217,7 +217,7 @@ func (c *Impl) RetryWithCount(count int) bool {
 
 // Close the client.
 func (c *Impl) Close() error {
-	logger.Debug("[client] close the connection to YoMo-Server.")
+	logger.Debug("[client] close the connection to YoMo-Zipper.")
 	err := c.session.Close()
 	c.conn.Heartbeat = make(chan byte)
 	c.conn.Signal = nil
