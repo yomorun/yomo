@@ -148,7 +148,7 @@ func (c *Impl) handleSignal(accepted chan bool) {
 				c.conn.Heartbeat <- buf[0]
 			} else if bytes.Equal(value, quic.SignalAccepted) {
 				// accepted
-				if c.conn.Type == quic.ConnTypeSource || c.conn.Type == quic.ConnTypeServerSender {
+				if c.conn.Type == quic.ConnTypeSource || c.conn.Type == quic.ConnTypeZipperSender {
 					// create stream for source.
 					stream, err := c.session.CreateStream(context.Background())
 					if err != nil {

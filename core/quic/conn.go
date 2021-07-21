@@ -7,9 +7,9 @@ import (
 )
 
 const (
-	ConnTypeSource          string = "source"
-	ConnTypeStreamFunction  string = "stream-function"
-	ConnTypeServerSender    string = "server-sender"
+	ConnTypeSource         string = "source"
+	ConnTypeStreamFunction string = "stream-function"
+	ConnTypeZipperSender   string = "server-sender"
 
 	ErrConnectionClosed string = "Application error 0x0" // the error message when the connection was closed
 

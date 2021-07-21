@@ -30,26 +30,26 @@ func NewServerHandler(conf *WorkflowConfig, meshConfURL string) quic.ServerHandl
 }
 
 type quicHandler struct {
-	serverlessConfig   *WorkflowConfig
-	meshConfigURL      string
-	connMap            sync.Map
-	source             chan io.Reader
-	serverMap          sync.Map // the stream map for downstream yomo servers.
-	serverSenders      []GetSenderFunc
-	serverReceiver     chan io.Reader
-	mutex              sync.RWMutex
-	onReceivedData     func(buf []byte) // the callback function when the data is received.
+	serverlessConfig *WorkflowConfig
+	meshConfigURL    string
+	connMap          sync.Map
+	source           chan io.Reader
+	zipperMap        sync.Map // the stream map for downstream YoMo-Zippers.
+	zipperSenders    []GetSenderFunc
+	zipperReceiver   chan io.Reader
+	mutex            sync.RWMutex
+	onReceivedData   func(buf []byte) // the callback function when the data is received.
 }
 
 func newQuicHandler(conf *WorkflowConfig, meshConfURL string) *quicHandler {
 	return &quicHandler{
-		serverlessConfig:   conf,
-		meshConfigURL:      meshConfURL,
-		connMap:            sync.Map{},
-		source:             make(chan io.Reader),
-		serverMap:          sync.Map{},
-		serverSenders:      make([]GetSenderFunc, 0),
-		serverReceiver:     make(chan io.Reader),
+		serverlessConfig: conf,
+		meshConfigURL:    meshConfURL,
+		connMap:          sync.Map{},
+		source:           make(chan io.Reader),
+		zipperMap:        sync.Map{},
+		zipperSenders:    make([]GetSenderFunc, 0),
+		zipperReceiver:   make(chan io.Reader),
 	}
 }
 
@@ -59,12 +59,12 @@ func (s *quicHandler) Listen() error {
 	}()
 
 	go func() {
-		s.receiveDataFromServerSenders()
+		s.receiveDataFromZipperSenders()
 	}()
 
 	if s.meshConfigURL != "" {
 		go func() {
-			err := s.buildServerSenders()
+			err := s.buildZipperSenders()
 			if err != nil {
 				logger.Debug("❌ Download the mesh config failed.", "err", err)
 			}
@@ -79,17 +79,17 @@ func (s *quicHandler) Read(id int64, sess quic.Session, st quic.Stream) error {
 
 	if c, ok := s.connMap.Load(id); ok {
 		// the conn exists, reads new stream.
-		c := c.(*ServerConn)
+		c := c.(*Conn)
 		if c.conn.Type == quic.ConnTypeSource {
 			s.source <- st
-		} else if c.conn.Type == quic.ConnTypeServerSender {
-			s.serverReceiver <- st
+		} else if c.conn.Type == quic.ConnTypeZipperSender {
+			s.zipperReceiver <- st
 		} else {
 			c.conn.Stream = st
 		}
 	} else {
 		// init conn.
-		svrConn := NewServerConn(sess, st, s.serverlessConfig)
+		svrConn := NewConn(sess, st, s.serverlessConfig)
 		svrConn.onClosed = func() {
 			s.connMap.Delete(id)
 		}
@@ -97,7 +97,7 @@ func (s *quicHandler) Read(id int64, sess quic.Session, st quic.Stream) error {
 			isNewAvailable := false
 			// check if any new app (same name and type) is available in connMap.
 			s.connMap.Range(func(key, value interface{}) bool {
-				c := value.(*ServerConn)
+				c := value.(*Conn)
 				if c.conn.Name == svrConn.conn.Name && c.conn.Type == svrConn.conn.Type && key.(int64) > id {
 					isNewAvailable = true
 					return false
@@ -140,7 +140,7 @@ func (s *quicHandler) receiveDataFromSources() {
 					}
 
 					// YoMo-Zipper-Senders
-					for _, sender := range s.serverSenders {
+					for _, sender := range s.zipperSenders {
 						if sender == nil {
 							continue
 						}
@@ -153,11 +153,11 @@ func (s *quicHandler) receiveDataFromSources() {
 	}
 }
 
-// receiveDataFromServerSenders receives data from `YoMo-Zipper Senders`.
-func (s *quicHandler) receiveDataFromServerSenders() {
+// receiveDataFromZipperSenders receives data from `YoMo-Zipper Senders`.
+func (s *quicHandler) receiveDataFromZipperSenders() {
 	for {
 		select {
-		case receiver, ok := <-s.serverReceiver:
+		case receiver, ok := <-s.zipperReceiver:
 			if !ok {
 				return
 			}
@@ -229,7 +229,7 @@ func createStreamFunc(app App, connMap *sync.Map, connType string) GetStreamFunc
 }
 
 // cancelStreamFunc close the connection of Stream Function.
-func cancelStreamFunc(conn *ServerConn, connMap *sync.Map, id int64) func() {
+func cancelStreamFunc(conn *Conn, connMap *sync.Map, id int64) func() {
 	f := func() {
 		conn.Close()
 		connMap.Delete(id)
@@ -238,11 +238,11 @@ func cancelStreamFunc(conn *ServerConn, connMap *sync.Map, id int64) func() {
 }
 
 // IsMatched indicates if the connection is matched.
-func findConn(app App, connMap *sync.Map, connType string) (int64, *ServerConn) {
-	var conn *ServerConn = nil
+func findConn(app App, connMap *sync.Map, connType string) (int64, *Conn) {
+	var conn *Conn = nil
 	var id int64 = 0
 	connMap.Range(func(key, value interface{}) bool {
-		c := value.(*ServerConn)
+		c := value.(*Conn)
 		if c.conn.Name == app.Name && c.conn.Type == connType {
 			conn = c
 			id = key.(int64)
@@ -255,15 +255,15 @@ func findConn(app App, connMap *sync.Map, connType string) (int64, *ServerConn) 
 	return id, conn
 }
 
-// serverConf represents the config of yomo servers
-type serverConf struct {
+// zipperConf represents the config of yomo-zipper
+type zipperConf struct {
 	Name string `json:"name"`
 	Host string `json:"host"`
 	Port int    `json:"port"`
 }
 
-// buildServerSenders builds YoMo-Zipper-Senders from edge-mesh config center.
-func (s *quicHandler) buildServerSenders() error {
+// buildZipperSenders builds YoMo-Zipper-Senders from edge-mesh config center.
+func (s *quicHandler) buildZipperSenders() error {
 	logger.Print("Downloading mesh config...")
 
 	// download mesh conf
@@ -274,7 +274,7 @@ func (s *quicHandler) buildServerSenders() error {
 	defer res.Body.Close()
 
 	decoder := json.NewDecoder(res.Body)
-	var configs []serverConf
+	var configs []zipperConf
 	err = decoder.Decode(&configs)
 	if err != nil {
 		return err
@@ -287,15 +287,10 @@ func (s *quicHandler) buildServerSenders() error {
 	}
 
 	for _, conf := range configs {
-		if conf.Name == s.serverlessConfig.Name {
-			// skip current YoMo-Zipper, only need to connect other YoMo-Zippers in edge-mesh.
-			continue
-		}
-
-		go func(conf serverConf) {
+		go func(conf zipperConf) {
 			s.mutex.Lock()
-			sender := s.createServerSender(conf)
-			s.serverSenders = append(s.serverSenders, sender)
+			sender := s.createZipperSender(conf)
+			s.zipperSenders = append(s.zipperSenders, sender)
 			s.mutex.Unlock()
 		}(conf)
 	}
@@ -303,19 +298,19 @@ func (s *quicHandler) buildServerSenders() error {
 	return nil
 }
 
-// createServerSender creates a YoMo-Zipper sender.
-func (s *quicHandler) createServerSender(conf serverConf) GetSenderFunc {
+// createZipperSender creates a YoMo-Zipper sender.
+func (s *quicHandler) createZipperSender(conf zipperConf) GetSenderFunc {
 	f := func() (io.Writer, CancelFunc) {
-		if writer, ok := s.serverMap.Load(conf.Name); ok {
+		if writer, ok := s.zipperMap.Load(conf.Name); ok {
 			cli, ok := writer.(SenderClient)
 			if ok {
-				return cli, s.cancelServerSender(conf)
+				return cli, s.cancelZipperSender(conf)
 			}
-			return nil, s.cancelServerSender(conf)
+			return nil, s.cancelZipperSender(conf)
 		}
 
 		// Reset YoMo-Zipper in map
-		s.serverMap.Store(conf.Name, nil)
+		s.zipperMap.Store(conf.Name, nil)
 
 		// connect to downstream YoMo-Zipper
 		cli, err := NewSender(s.serverlessConfig.Name).
@@ -325,17 +320,17 @@ func (s *quicHandler) createServerSender(conf serverConf) GetSenderFunc {
 			cli.Retry()
 		}
 
-		s.serverMap.Store(conf.Name, cli)
-		return cli, s.cancelServerSender(conf)
+		s.zipperMap.Store(conf.Name, cli)
+		return cli, s.cancelZipperSender(conf)
 	}
 
 	return f
 }
 
-// cancelServerSender removes the YoMo-Zipper sender from `serverMap`.
-func (s *quicHandler) cancelServerSender(conf serverConf) func() {
+// cancelZipperSender removes the YoMo-Zipper sender from `zipperMap`.
+func (s *quicHandler) cancelZipperSender(conf zipperConf) func() {
 	f := func() {
-		s.serverMap.Delete(conf.Name)
+		s.zipperMap.Delete(conf.Name)
 	}
 	return f
 }
@@ -343,7 +338,7 @@ func (s *quicHandler) cancelServerSender(conf serverConf) func() {
 func (s *quicHandler) getConn(name string) *quic.QuicConn {
 	var conn *quic.QuicConn
 	s.connMap.Range(func(key, value interface{}) bool {
-		c := value.(*ServerConn)
+		c := value.(*Conn)
 		if c.conn.Name == name {
 			conn = c.conn
 			return false
