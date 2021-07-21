@@ -8,14 +8,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestServer New a YoMo Server.
-func TestServerNew(t *testing.T) {
+// TestZipper New a YoMo Zipper.
+func TestZipperNew(t *testing.T) {
 	server := New(testConfig, WithMeshConfURL(testMeshURL))
 	assert.NotNil(t, server)
 }
 
-// TestServerServe serves a YoMo server.
-func TestServerServe(t *testing.T) {
+// TestZipperServe serves a YoMo Zipper.
+func TestZipperServe(t *testing.T) {
 	// new
 	server := New(testConfig, WithMeshConfURL(testMeshURL))
 	assert.NotNil(t, server)

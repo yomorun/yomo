@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo/core/rx"
-	mockserver "github.com/yomorun/yomo/server/mock"
 	mocksource "github.com/yomorun/yomo/source/mock"
+	mockserver "github.com/yomorun/yomo/zipper/mock"
 )
 
 const testFuncName = "test stream function"
@@ -19,7 +19,7 @@ func mockStreamFn(t *testing.T, handler func(rxstream rx.Stream) rx.Stream) {
 	cli := New(testFuncName)
 	defer cli.Close()
 
-	// connect to YoMo-Server.
+	// connect to YoMo-Zipper.
 	cli, err := cli.Connect(mockserver.IP, mockserver.Port)
 	if err != nil {
 		t.Errorf("[stream-fn] connect expected err is nil, but got %v", err)
@@ -30,7 +30,7 @@ func mockStreamFn(t *testing.T, handler func(rxstream rx.Stream) rx.Stream) {
 }
 
 func TestProcessRawData(t *testing.T) {
-	// new a YoMo-Server.
+	// new a YoMo-Zipper.
 	go mockserver.NewWithFuncName(testFuncName)
 
 	// test data
@@ -56,7 +56,7 @@ func TestProcessRawData(t *testing.T) {
 	// run Stream-Function to process the data in real-time.
 	mockStreamFn(t, handler)
 
-	// send the raw bytes from YoMo-Source to YoMo-Server.
+	// send the raw bytes from YoMo-Source to YoMo-Zipper.
 	err := mocksource.SendDataToYoMoServer(data)
 	if err != nil {
 		t.Errorf("[stream-fn] SendDataToYoMoServer expected err is nil, but got %v", err)
@@ -64,7 +64,7 @@ func TestProcessRawData(t *testing.T) {
 }
 
 func TestProcessDataWithY3Codec(t *testing.T) {
-	// new a YoMo-Server.
+	// new a YoMo-Zipper.
 	go mockserver.New()
 
 	// test data
@@ -100,7 +100,7 @@ func TestProcessDataWithY3Codec(t *testing.T) {
 	// run Stream-Function to process the data in real-time.
 	mockStreamFn(t, handler)
 
-	// send the Y3 encoded data from YoMo-Source to YoMo-Server.
+	// send the Y3 encoded data from YoMo-Source to YoMo-Zipper.
 	err = mocksource.SendDataToYoMoServer(buf)
 	if err != nil {
 		t.Errorf("[stream-fn] SendDataToYoMoServer expected err is nil, but got %v", err)
@@ -108,7 +108,7 @@ func TestProcessDataWithY3Codec(t *testing.T) {
 }
 
 func TestReceiveDataWithJSON(t *testing.T) {
-	// new a YoMo-Server.
+	// new a YoMo-Zipper.
 	go mockserver.New()
 
 	// test data
@@ -143,7 +143,7 @@ func TestReceiveDataWithJSON(t *testing.T) {
 	// run Stream-Function to process the data in real-time.
 	mockStreamFn(t, handler)
 
-	// send the JSON encoded data from YoMo-Source to YoMo-Server.
+	// send the JSON encoded data from YoMo-Source to YoMo-Zipper.
 	err = mocksource.SendDataToYoMoServer(buf)
 	if err != nil {
 		t.Errorf("[stream-fn] SendDataToYoMoServer expected err is nil, but got %v", err)

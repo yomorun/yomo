@@ -6,7 +6,7 @@
 
 YoMo 是为边缘计算打造的低时延流式 Serverless 开发框架，基于 [QUIC Transport](https://quicwg.org/) 协议通讯，以 [Functional Reactive Programming](https://en.wikipedia.org/wiki/Functional_reactive_programming) 为编程范式，简化构建可靠、安全的低时延计算应用的复杂度，挖掘5G潜力，释放实时计算价值。
 
-官网：[https://yomo.run](https://yomo.run/?utm_source=github&utm_campaign=ossc) （感谢 <a href="https://vercel.com/?utm_source=cella&utm_campaign=oss" target="_blank">Vercel</a> 支持）
+官网：[https://yomo.run](https://docs.yomo.run/?utm_source=github&utm_campaign=ossc) （感谢 <a href="https://vercel.com/?utm_source=cella&utm_campaign=oss" target="_blank">Vercel</a> 支持）
 
 For english, check: [Github](https://github.com/yomorun/yomo)
 
@@ -121,8 +121,8 @@ $ yomo dev
 ⌛  YoMo Stream Function building...
 ✅  Success! YoMo Stream Function build.
 ℹ️   YoMo Stream Function is running...
-2021/06/07 12:00:06 Connecting to yomo-server dev.yomo.run:9000 ...
-2021/06/07 12:00:07 ✅ Connected to yomo-server dev.yomo.run:9000
+2021/06/07 12:00:06 Connecting to YoMo-Zipper dev.yomo.run:9000 ...
+2021/06/07 12:00:07 ✅ Connected to YoMo-Zipper dev.yomo.run:9000
 [10.10.79.50] 1623038407236 > value: 1.919251 ⚡️=-25ms
 [StdOut]:  1.9192511
 [10.10.79.50] 1623038407336 > value: 11.370256 ⚡️=-25ms
@@ -159,15 +159,14 @@ $ yomo dev
 
 **Edge-Native**: YoMo 追求随地部署、随时迁移、随时扩容 
 
-![yomo-flow-arch](https://yomo.run/yomo-flow-arch.jpg)
+![yomo-flow-arch](https://docs.yomo.run/yomo-flow-arch.jpg)
 
 ## 📚 Documentation
 
-+ `YoMo-Source`: [yomo.run/source](https://yomo.run/source)
-+ `YoMo-Stream-Function` (formerly flow): [yomo.run/stream-function](https://yomo.run/flow)
-+ `YoMo-Output-Connector` (formerly sink): [yomo.run/output-connector](https://yomo.run/sink)
-+ `YoMo-Server` (formerly zipper): [yomo.run/yomo-server](https://yomo.run/zipper)
-+ `Stream Processing in Rx way`: [Rx](https://yomo.run/rx)
++ `YoMo-Source`: [yomo.run/source](https://docs.yomo.run/source)
++ `YoMo-Stream-Function` (formerly flow): [yomo.run/stream-function](https://docs.yomo.run/stream-function)
++ `YoMo-Zipper`: [yomo.run/zipper](https://docs.yomo.run/zipper)
++ `Stream Processing in Rx way`: [Rx](https://docs.yomo.run/rx)
 + `Faster than real-time codec`: [Y3](https://github.com/yomorun/y3-codec)
 
 [YoMo](https://yomo.run) ❤️ [Vercel](https://vercel.com/?utm_source=yomorun&utm_campaign=oss), Our documentation website is
@@ -305,7 +304,7 @@ $ yomo dev
   * 数据传输速率的抖动也因为QUIC的连接迁移特性得到明显的改善。
 * **Article** [HTTP/3: 你需要知道的下一代互联内网协议](https://portswigger.net/daily-swig/http-3-everything-you-need-to-know-about-the-next-generation-web-protocol)
 * **Article** [QUIC和物联网IoT](https://calendar.perfplanet.com/2018/quic-and-http-3-too-big-to-fail/)
-  * IoT设备是应用QUIC协议的一个好场景，因为这些设备通常工作在无线（蜂窝）网络下（Cellular network），且需要快速建连、0-RTT和重传。但是，这些设备CPU能力普遍较弱。QUIC的作者其实多次提到QUIC对IoT应用场景有很大的提升，可惜的是，至今还没有一套为这个场景设计的协议栈（其实有啊：基于QUIC协议的Edge Computing框架: [🦖YoMo](https://yomo.run/)）
+  * IoT设备是应用QUIC协议的一个好场景，因为这些设备通常工作在无线（蜂窝）网络下（Cellular network），且需要快速建连、0-RTT和重传。但是，这些设备CPU能力普遍较弱。QUIC的作者其实多次提到QUIC对IoT应用场景有很大的提升，可惜的是，至今还没有一套为这个场景设计的协议栈（其实有啊：基于QUIC协议的Edge Computing框架: [🦖YoMo](https://docs.yomo.run/)）
 * **Article** [未来的Internet: HTTP/3 — No More TCP, let’s QUIC fix it（谐音梗我翻不出来了...）](https://thexbhpguy.medium.com/the-new-internet-http-3-no-more-tcp-lets-quic-fix-it-6a4cbb6280c7)
 
 ## QUIC Weekly - 20201021期

@@ -6,11 +6,11 @@ import (
 )
 
 // Client is the client for YoMo-Source.
-// https://yomo.run/source
+// https://docs.yomo.run/source
 type Client interface {
 	client.Client
 
-	// Connect to YoMo-Server
+	// Connect to YoMo-Zipper
 	Connect(ip string, port int) (Client, error)
 }
 
@@ -26,7 +26,7 @@ func New(appName string) Client {
 	return c
 }
 
-// Connect to yomo-server.
+// Connect to YoMo-Zipper.
 func (c *clientImpl) Connect(ip string, port int) (Client, error) {
 	cli, err := c.BaseConnect(ip, port)
 	return &clientImpl{

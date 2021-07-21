@@ -1,11 +1,11 @@
 package mock
 
 import (
-	mockserver "github.com/yomorun/yomo/server/mock"
 	"github.com/yomorun/yomo/source"
+	mockserver "github.com/yomorun/yomo/zipper/mock"
 )
 
-// SendDataToYoMoServer sends data to YoMo-Server.
+// SendDataToYoMoServer sends data to YoMo-Zipper.
 func SendDataToYoMoServer(data []byte) error {
 	cli := source.New("test source")
 	defer cli.Close()

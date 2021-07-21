@@ -9,7 +9,6 @@ import (
 const (
 	ConnTypeSource          string = "source"
 	ConnTypeStreamFunction  string = "stream-function"
-	ConnTypeOutputConnector string = "output-connector"
 	ConnTypeServerSender    string = "server-sender"
 
 	ErrConnectionClosed string = "Application error 0x0" // the error message when the connection was closed
@@ -32,7 +31,7 @@ var (
 type QuicConn struct {
 	Signal              io.ReadWriter // Signal is the specified stream to receive the signal.
 	Stream              io.ReadWriter // Stream is the stream to receive actual data.
-	Type                string        // Type is the type of connection. Possible value: source, stream-function, output-connector, server-sender
+	Type                string        // Type is the type of connection. Possible value: source, stream-function, server-sender
 	Name                string        // Name is the name of connection.
 	Heartbeat           chan byte     // Heartbeat is the channel to receive heartbeat.
 	IsClosed            bool          // IsClosed indicates whether the connection is closed.

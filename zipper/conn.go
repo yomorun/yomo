@@ -10,16 +10,16 @@ import (
 	"github.com/yomorun/yomo/logger"
 )
 
-// ServerConn represents the YoMo Server connection.
+// ServerConn represents the YoMo Zipper connection.
 type ServerConn struct {
 	conn              *quic.QuicConn
 	Session           quic.Session
 	onClosed          func()      // onClosed is the callback when the connection is closed.
-	onGotAppType      func()      // onGotAppType is the callback when the YoMo server got app type from client's signal.
+	onGotAppType      func()      // onGotAppType is the callback when the YoMo-Zipper got app type from client's signal.
 	isNewAppAvailable func() bool // indicates whether the server receives a new app.
 }
 
-// NewServerConn inits a new YoMo Server connection.
+// NewServerConn inits a new YoMo Zipper connection.
 func NewServerConn(sess quic.Session, st quic.Stream, conf *WorkflowConfig) *ServerConn {
 	c := &ServerConn{
 		conn:    quic.NewQuicConn("", ""),
@@ -60,7 +60,7 @@ func (c *ServerConn) handleSignal(conf *WorkflowConfig) {
 				var payload client.NegotiationPayload
 				err := json.Unmarshal(value, &payload)
 				if err != nil {
-					logger.Error("❌ YoMo-Server inits the connection failed.", "err", err)
+					logger.Error("❌ YoMo-Zipper inits the connection failed.", "err", err)
 					return
 				}
 
@@ -78,7 +78,7 @@ func (c *ServerConn) handleSignal(conf *WorkflowConfig) {
 				c.Beat()
 
 				// create stream when the connetion is initialized.
-				if c.conn.Type == quic.ConnTypeStreamFunction || c.conn.Type == quic.ConnTypeOutputConnector {
+				if c.conn.Type == quic.ConnTypeStreamFunction {
 					c.createStream()
 				}
 
@@ -107,7 +107,7 @@ func (c *ServerConn) getConnType(payload client.NegotiationPayload, conf *Workfl
 			}
 		}
 		// name is not found
-		return "Function name is not found in YoMo-Server!"
+		return "Function name is not found in YoMo-Zipper!"
 	default:
 		return payload.ClientType
 	}

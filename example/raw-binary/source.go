@@ -11,7 +11,7 @@ import (
 func main() {
 	c, err := yomo.NewSource(yomo.WithName("cc-src")).Connect("localhost", 9000)
 	if err != nil {
-		log.Printf("❌ Emit the data to yomo-server failure with err: %v", err)
+		log.Printf("❌ Emit the data to YoMo-Zipper failure with err: %v", err)
 		return
 	}
 	defer c.Close()

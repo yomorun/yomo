@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="200px" height="200px" src="https://yomo.run/yomo-logo.png" />
+  <img width="200px" height="200px" src="https://docs.yomo.run/yomo-logo.png" />
 </p>
 
 # Use Case：Combined calculation of multiple data sources
@@ -34,10 +34,10 @@ func Handler(rxstream rx.Stream) rx.Stream {
 
 ## Code structure
 
-+ `source-data-a`: Analog data source A, sending random Float32 numbers [yomo.run/source](https://yomo.run/source)
-+ `source-data-b`: Analog data source B, sending random Float32 numbers [yomo.run/source](https://yomo.run/source)
-+ `stream-fn` (formerly flow): Combine simulated data sources A and B for calculation [yomo.run/stream-function](https://yomo.run/flow)
-+ `yomo-server` (formerly zipper): Setup a workflow that receives multiple sources and completes the merge calculation [yomo.run/yomo-server](https://yomo.run/zipper)
++ `source-data-a`: Analog data source A, sending random Float32 numbers [yomo.run/source](https://docs.yomo.run/source)
++ `source-data-b`: Analog data source B, sending random Float32 numbers [yomo.run/source](https://docs.yomo.run/source)
++ `stream-fn` (formerly flow): Combine simulated data sources A and B for calculation [yomo.run/stream-function](https://docs.yomo.run/stream-function)
++ `zipper`: Setup a workflow that receives multiple sources and completes the merge calculation [yomo.run/zipper](https://docs.yomo.run/zipper)
 
 ## Implementation
 
@@ -47,23 +47,23 @@ func Handler(rxstream rx.Stream) rx.Stream {
 $ go install github.com/yomorun/cli/yomo@latest
 ```
 
-### 2. Start `yomo-server` to organize stream processing workflow
+### 2. Start `YoMo-Zipper` to organize stream processing workflow
 
 ```bash
-$ cd ./example/multi-data-source/yomo-server
+$ cd ./example/multi-data-source/zipper
 
 $ yomo serve
 
-ℹ️   Found 1 stream functions in yomo-server config
+ℹ️   Found 1 stream functions in YoMo-Zipper config
 ℹ️   Stream Function 1: training
-ℹ️   Running YoMo Server...
+ℹ️   Running YoMo Zipper...
 2021/03/01 19:05:55 ✅ Listening on 0.0.0.0:9000
 
 ```
 
 ### 3. Start `stream-fn` for streaming calculation
 
-> **Note**: `-n` flag represents the name of stream function, which should match the specific function in yomo-server config (workflow.yaml).
+> **Note**: `-n` flag represents the name of stream function, which should match the specific function in YoMo-Zipper config (workflow.yaml).
 
 ```bash
 $ cd ./example/multi-data-source/stream-fn
@@ -76,8 +76,8 @@ $ yomo run -n training
 ⌛  YoMo Stream Function building...
 ✅  Success! YoMo Stream Function build.
 ℹ️   YoMo Stream Function is running...
-2021/03/01 19:05:55 Connecting to yomo-server localhost:9000 ...
-2021/03/01 19:05:55 ✅ Connected to yomo-server localhost:9000
+2021/03/01 19:05:55 Connecting to YoMo-Zipper localhost:9000 ...
+2021/03/01 19:05:55 ✅ Connected to YoMo-Zipper localhost:9000
 
 ```
 
@@ -88,8 +88,8 @@ $ cd ./example/multi-data-source/source-data-a
 
 $ go run main.go
 
-2021/03/01 17:35:04 ✅ Connected to yomo-server localhost:9000
-2021/03/01 17:35:05 ✅ Emit 123.41881 to yomo-server
+2021/03/01 17:35:04 ✅ Connected to YoMo-Zipper localhost:9000
+2021/03/01 17:35:05 ✅ Emit 123.41881 to YoMo-Zipper
 
 ```
 
@@ -100,8 +100,8 @@ $ cd ./example/multi-data-source/source-data-b
 
 $ go run main.go
 
-2021/03/01 17:35:04 ✅ Connected to yomo-server localhost:9000
-2021/03/01 17:35:05 ✅ Emit 36.92933 to yomo-server
+2021/03/01 17:35:04 ✅ Connected to YoMo-Zipper localhost:9000
+2021/03/01 17:35:05 ✅ Emit 36.92933 to YoMo-Zipper
 
 ```
 
