@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/yomorun/y3-codec-golang/pkg/common"
+	"github.com/yomorun/yomo/internal/framing"
 	"github.com/yomorun/yomo/logger"
 )
 
@@ -138,10 +139,16 @@ func FromStream(reader io.Reader) Observable {
 			if err != nil {
 				logger.Debug("[Decoder] Receive data from YoMo-Zipper failed.", "err", err)
 				break
-			} else {
-				logger.Debug("[Decoder] Receive raw data from YoMo-Zipper.", "data", logger.BytesString(buf))
-				next <- buf
 			}
+
+			f, err := framing.FromRawBytes(buf)
+			if err != nil {
+				logger.Debug("[Decoder] framing.FromRawBytes failed.", "err", err)
+				break
+			}
+
+			logger.Debug("[Decoder] Receive raw data from YoMo-Zipper.", "data", logger.BytesString(f.Data()))
+			next <- f.Data()
 		}
 	}
 

@@ -1,7 +1,6 @@
 package client
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"github.com/yomorun/yomo/core/quic"
+	"github.com/yomorun/yomo/internal/decoder"
 	"github.com/yomorun/yomo/internal/framing"
 	"github.com/yomorun/yomo/logger"
 )
@@ -58,8 +58,8 @@ func New(appName string, clientType string) *Impl {
 	}
 
 	c.conn.OnHeartbeatReceived = func() {
-		// when the client received the heartbeat from server, send it back back to server (ping/pong).
-		c.conn.SendSignal(quic.SignalHeartbeat)
+		// when the client received the heartbeat from server, send it back back to server.
+		c.conn.SendSignal(framing.NewHeartbeatFrame().Bytes())
 	}
 
 	c.conn.OnHeartbeatExpired = func() {
@@ -114,7 +114,7 @@ func (c *Impl) BaseConnect(ip string, port int) (*Impl, error) {
 		ClientType: c.conn.Type,
 	}
 	buf, _ := json.Marshal(payload)
-	err = c.conn.SendSignal(buf)
+	err = c.conn.SendSignal(framing.NewHandshakeFrame(buf).Bytes())
 
 	if err != nil {
 		logger.Error("[client] SendSignal Error:", "err", err)
@@ -136,18 +136,25 @@ func (c *Impl) BaseConnect(ip string, port int) (*Impl, error) {
 func (c *Impl) handleSignal(accepted chan bool) {
 	go func() {
 		defer close(accepted)
+		fd := decoder.NewFrameDecoder(c.conn.Signal)
 		for {
-			buf := make([]byte, 2)
-			n, err := c.conn.Signal.Read(buf)
+			buf, err := fd.Read(true)
 			if err != nil {
-				break
+				logger.Error("[client] FrameDecoder read failed:", "err", err)
+				continue
 			}
-			value := buf[:n]
-			if bytes.Equal(value, quic.SignalHeartbeat) {
-				// heartbeat
-				c.conn.Heartbeat <- buf[0]
-			} else if bytes.Equal(value, quic.SignalAccepted) {
-				// accepted
+
+			f, err := framing.FromRawBytes(buf)
+			if err != nil {
+				logger.Error("[client] framing.FromRawBytes failed:", "err", err)
+				continue
+			}
+
+			switch f.Type() {
+			case framing.FrameTypeHeartbeat:
+				c.conn.Heartbeat <- true
+
+			case framing.FrameTypeAccepted:
 				if c.conn.Type == quic.ConnTypeSource || c.conn.Type == quic.ConnTypeZipperSender {
 					// create stream for source.
 					stream, err := c.session.CreateStream(context.Background())
@@ -158,8 +165,17 @@ func (c *Impl) handleSignal(accepted chan bool) {
 					c.conn.Stream = stream
 				}
 				accepted <- true
-			} else if bytes.Equal(value, quic.SignalFunction) {
-				// create stream for Stream Function/Output Connector.
+
+			case framing.FrameTypeRejected:
+				if c.conn.Type == quic.ConnTypeStreamFunction {
+					logger.Warn("[client] the connection was rejected by zipper, please check if the function name matches the one in zipper config.")
+				} else {
+					logger.Warn("[client] the connection was rejected by zipper.")
+				}
+				c.Close()
+
+			case framing.FrameTypeCreateStream:
+				// create stream for Stream Function.
 				stream, err := c.session.CreateStream(context.Background())
 
 				if err != nil {
@@ -169,9 +185,10 @@ func (c *Impl) handleSignal(accepted chan bool) {
 
 				c.Readers <- stream
 				c.Writer = stream
-				stream.Write(quic.SignalHeartbeat)
-			} else {
-				logger.Debug("[client] unknown signal.", "value", logger.BytesString(value))
+				stream.Write(framing.NewHeartbeatFrame().Bytes())
+
+			default:
+				logger.Debug("[client] unknown signal.", "frame", f)
 			}
 		}
 	}()
@@ -219,7 +236,7 @@ func (c *Impl) RetryWithCount(count int) bool {
 func (c *Impl) Close() error {
 	logger.Debug("[client] close the connection to YoMo-Zipper.")
 	err := c.session.Close()
-	c.conn.Heartbeat = make(chan byte)
+	c.conn.Heartbeat = make(chan bool)
 	c.conn.Signal = nil
 	return err
 }

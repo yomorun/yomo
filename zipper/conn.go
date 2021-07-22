@@ -1,12 +1,13 @@
 package server
 
 import (
-	"bytes"
 	"encoding/json"
 	"time"
 
 	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/internal/client"
+	"github.com/yomorun/yomo/internal/decoder"
+	"github.com/yomorun/yomo/internal/framing"
 	"github.com/yomorun/yomo/logger"
 )
 
@@ -33,32 +34,39 @@ func NewConn(sess quic.Session, st quic.Stream, conf *WorkflowConfig) *Conn {
 	return c
 }
 
-// SendSignalFunction sends the signal `function` to client.
-func (c *Conn) SendSignalFunction() error {
+// SendSignalCreateStream sends the signal `function` to client.
+func (c *Conn) SendSignalCreateStream() error {
 	if c.conn.Ready {
 		c.conn.Ready = false
-		return c.conn.SendSignal(quic.SignalFunction)
+		return c.conn.SendSignal(framing.NewCreateStreamFrame().Bytes())
 	}
 	return nil
 }
 
+const mismatchedFuncName = "mismatched function name"
+
 // handleSignal handles the logic when receiving signal from client.
 func (c *Conn) handleSignal(conf *WorkflowConfig) {
-	isInit := true
 	go func() {
+		fd := decoder.NewFrameDecoder(c.conn.Signal)
 		for {
-			buf := make([]byte, 1024)
-			n, err := c.conn.Signal.Read(buf)
-
+			buf, err := fd.Read(true)
 			if err != nil {
+				logger.Error("[zipper conn] FrameDecoder read failed:", "err", err)
 				break
 			}
-			value := buf[:n]
 
-			if isInit {
+			f, err := framing.FromRawBytes(buf)
+			if err != nil {
+				logger.Error("[zipper conn] framing.FromRawBytes failed:", "err", err)
+				break
+			}
+
+			switch f.Type() {
+			case framing.FrameTypeHandshake:
 				// get negotiation payload
 				var payload client.NegotiationPayload
-				err := json.Unmarshal(value, &payload)
+				err := json.Unmarshal(f.Data(), &payload)
 				if err != nil {
 					logger.Error("❌ YoMo-Zipper inits the connection failed.", "err", err)
 					return
@@ -66,14 +74,18 @@ func (c *Conn) handleSignal(conf *WorkflowConfig) {
 
 				c.conn.Name = payload.AppName
 				c.conn.Type = c.getConnType(payload, conf)
+				if c.conn.Type == mismatchedFuncName {
+					logger.Printf("The %s name %s is mismatched with the one in zipper config.", payload.ClientType, payload.AppName)
+					c.conn.SendSignal(framing.NewRejectedFrame().Bytes())
+					continue
+				}
 				logger.Printf("Receive App %s, type: %s", c.conn.Name, c.conn.Type)
-				isInit = false
 
 				if c.onGotAppType != nil {
 					c.onGotAppType()
 				}
 
-				c.conn.SendSignal(quic.SignalAccepted)
+				c.conn.SendSignal(framing.NewAcceptedFrame().Bytes())
 				c.conn.Healthcheck()
 				c.Beat()
 
@@ -82,12 +94,8 @@ func (c *Conn) handleSignal(conf *WorkflowConfig) {
 					c.createStream()
 				}
 
-				continue
-			}
-
-			// receive heatbeat from client.
-			if bytes.Equal(value, quic.SignalHeartbeat) {
-				c.conn.Heartbeat <- value[0]
+			case framing.FrameTypeHeartbeat:
+				c.conn.Heartbeat <- true
 			}
 		}
 	}()
@@ -107,7 +115,7 @@ func (c *Conn) getConnType(payload client.NegotiationPayload, conf *WorkflowConf
 			}
 		}
 		// name is not found
-		return "Function name is not found in YoMo-Zipper!"
+		return mismatchedFuncName
 	default:
 		return payload.ClientType
 	}
@@ -120,7 +128,7 @@ func (c *Conn) Beat() {
 		for {
 			select {
 			case <-t.C:
-				err := c.conn.SendSignal(quic.SignalHeartbeat)
+				err := c.conn.SendSignal(framing.NewHeartbeatFrame().Bytes())
 				if err != nil {
 					if err.Error() == quic.ErrConnectionClosed {
 						// when the app reconnected immediately before the heartbeat expiration time (5s), it shoudn't print the outdated error message.
@@ -155,7 +163,7 @@ func (c *Conn) createStream() {
 				}
 
 				// send the signal to create stream.
-				err := c.SendSignalFunction()
+				err := c.SendSignalCreateStream()
 				if err != nil {
 					logger.Error("❌ Server sent SignalFunction to app failed.", "name", c.conn.Name, "err", err)
 				} else {

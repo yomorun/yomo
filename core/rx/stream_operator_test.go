@@ -253,7 +253,7 @@ func Test_Subscribe_MultipleKeys(t *testing.T) {
 
 func Test_RawBytes(t *testing.T) {
 	buf := &bytes.Buffer{}
-	buf.Write([]byte{0, 0, 3, 1, 2, 3})
+	buf.Write([]byte{0, 0, 4, 0, 1, 2, 3})
 	obs := decoder.FromStream(buf)
 	rawBytes := obs.RawBytes()
 	for b := range rawBytes {
