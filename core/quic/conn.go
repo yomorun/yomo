@@ -16,24 +16,13 @@ const (
 	HeartbeatTimeOut = 5 * time.Second // HeartbeatTimeOut is the duration when the heartbeat will be time-out.
 )
 
-var (
-	// SignalHeartbeat represents the signal of Heartbeat.
-	SignalHeartbeat = []byte{0}
-
-	// SignalAccepted represents the signal of Accpeted.
-	SignalAccepted = []byte{1}
-
-	// SignalFunction represents the signal for Stream Function and Output Connector.
-	SignalFunction = []byte{0, 0}
-)
-
 // QuicConn represents the QUIC connection.
 type QuicConn struct {
 	Signal              io.ReadWriter // Signal is the specified stream to receive the signal.
 	Stream              io.ReadWriter // Stream is the stream to receive actual data.
 	Type                string        // Type is the type of connection. Possible value: source, stream-function, server-sender
 	Name                string        // Name is the name of connection.
-	Heartbeat           chan byte     // Heartbeat is the channel to receive heartbeat.
+	Heartbeat           chan bool     // Heartbeat is the channel to receive heartbeat.
 	IsClosed            bool          // IsClosed indicates whether the connection is closed.
 	Ready               bool          // Ready indicates whether the connection is ready.
 	OnClosed            func() error  // OnClosed is the callback when the connection is closed.
@@ -46,7 +35,7 @@ func NewQuicConn(name string, connType string) *QuicConn {
 	return &QuicConn{
 		Name:      name,
 		Type:      connType,
-		Heartbeat: make(chan byte),
+		Heartbeat: make(chan bool),
 		IsClosed:  false,
 		Ready:     true,
 	}

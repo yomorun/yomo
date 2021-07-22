@@ -220,7 +220,7 @@ func createStreamFunc(app App, connMap *sync.Map, connType string) GetStreamFunc
 		} else if c.conn.Stream != nil {
 			return c.conn.Stream, cancelStreamFunc(c, connMap, id)
 		} else {
-			c.SendSignalFunction()
+			c.SendSignalCreateStream()
 			return nil, func() {}
 		}
 	}
