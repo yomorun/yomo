@@ -14,14 +14,6 @@ func TestReadFrameLength(t *testing.T) {
 		assert.Equal(t, 5, len)
 		assert.Equal(t, input, buf)
 	})
-
-	t.Run("skip 0 from frame bytes", func(t *testing.T) {
-		input := []byte{0, 0, 0, 0, 5, 129, 128, 83}
-		expected := []byte{0, 0, 5, 129, 128, 83}
-		len, buf := ReadFrameLength(input)
-		assert.Equal(t, 5, len)
-		assert.Equal(t, expected, buf)
-	})
 }
 
 func TestGetRawBytesWithoutFraming(t *testing.T) {
