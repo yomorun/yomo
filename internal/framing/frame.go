@@ -35,6 +35,7 @@ const (
 	FrameTypeRejected     FrameType = 0x04 // FrameTypeHandshake represents the frame type Rejected.
 	FrameTypeCreateStream FrameType = 0x05 // FrameTypeHandshake represents the frame type CreateStream.
 	FrameTypePayload      FrameType = 0x06 // FrameTypeHandshake represents the frame type Payload.
+	FrameTypeInit         FrameType = 0x07 // FrameTypeHandshake represents the frame type Init.
 )
 
 // frame is an implementation of Frame.
@@ -136,6 +137,10 @@ func convertSpecificFrame(f *frame) (Frame, error) {
 		return &PayloadFrame{
 			frame: f,
 		}, nil
+	case FrameTypeInit:
+		return &InitFrame{
+			frame: f,
+		}, nil
 	default:
 		return nil, errors.New("invalid frame type")
 	}
@@ -151,12 +156,6 @@ func ReadFrameLength(buf []byte) (int, []byte) {
 		} else {
 			c += int(buf[i])
 		}
-	}
-
-	if c == 0 && len(buf) > FrameLengthFieldSize {
-		// skip the first 0 byte and contine reading frame length from buf
-		buf = buf[1:]
-		return ReadFrameLength(buf)
 	}
 
 	return c, buf

@@ -22,7 +22,6 @@ type Client interface {
 
 type clientImpl struct {
 	*client.Impl
-	fnRx StreamfnRx
 }
 
 // New a YoMo Stream Function client.
@@ -30,7 +29,6 @@ type clientImpl struct {
 func New(appName string) Client {
 	c := &clientImpl{
 		Impl: client.New(appName, quic.ConnTypeStreamFunction),
-		fnRx: newStreamFnRx(),
 	}
 	return c
 }
@@ -40,16 +38,18 @@ func (c *clientImpl) Connect(ip string, port int) (Client, error) {
 	cli, err := c.BaseConnect(ip, port)
 	return &clientImpl{
 		cli,
-		c.fnRx,
 	}, err
 }
 
 // Pipe the handler function in Stream Function.
 // This method is blocking.
 func (c *clientImpl) Pipe(handler func(rxstream rx.Stream) rx.Stream) {
-	appendedStream := c.fnRx.GetAppendedStream(c.Readers, handler)
+	rxstream := rx.NewFactory().FromReaderWithDecoder(c.Readers)
+	stream := handler(rxstream)
 
-	for item := range appendedStream.Observe() {
+	// rxstream.Connect(context.Background())
+
+	for item := range stream.Observe() {
 		if item.Error() {
 			logger.Error("[Stream Function Client] Handler got the error.", "err", item.E)
 		} else if item.V != nil {

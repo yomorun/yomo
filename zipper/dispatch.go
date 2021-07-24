@@ -8,6 +8,7 @@ import (
 	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/core/rx"
 	"github.com/yomorun/yomo/internal/decoder"
+	"github.com/yomorun/yomo/internal/framing"
 	"github.com/yomorun/yomo/logger"
 )
 
@@ -27,7 +28,6 @@ func mergeStreamFn(upstream rx.Stream, sfn GetStreamFunc) rx.Stream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
 		response := make(chan []byte)
-		streamReady := make(chan bool)
 		observe := upstream.Observe()
 
 		// send the stream to downstream
@@ -44,20 +44,20 @@ func mergeStreamFn(upstream rx.Stream, sfn GetStreamFunc) rx.Stream {
 						return
 					} else {
 						for {
-							rw, cancel := sfn()
+							name, rw, cancel := sfn()
 							data := item.V.([]byte)
 							if rw == nil {
+								logger.Debug("[MergeStreamFunc] the writer of the stream-function is nil", "stream-fn", name)
 								// pass the data to next stream function if the curren stream function is nil
 								response <- data
 								break
 							} else {
-								streamReady <- true
 								_, err := rw.Write(data)
 								if err == nil {
-									logger.Debug("[MergeStreamFunc] YoMo-Zipper sent frame to Stream Function.", "frame", logger.BytesString(data))
+									logger.Debug("[MergeStreamFunc] YoMo-Zipper sent frame to Stream Function.", "stream-fn", name, "frame", logger.BytesString(data))
 									break
 								} else {
-									logger.Error("[MergeStreamFunc] YoMo-Zipper sent frame to Stream Function failed.", "frame", logger.BytesString(data), "err", err)
+									logger.Error("[MergeStreamFunc] YoMo-Zipper sent frame to Stream Function failed.", "stream-fn", name, "frame", logger.BytesString(data), "err", err)
 									cancel()
 								}
 							}
@@ -70,31 +70,27 @@ func mergeStreamFn(upstream rx.Stream, sfn GetStreamFunc) rx.Stream {
 		// receive the response from downstream
 		go func() {
 			defer close(response)
-			defer close(streamReady)
-
 			for {
-				select {
-				case ready, ok := <-streamReady:
-					if !ready || !ok {
-						return
-					}
-
-					go func() {
-						rw, cancel := sfn()
-						if rw != nil {
-							fd := decoder.NewFrameDecoder(rw)
-							buf, err := fd.Read(false)
-							if err != nil && err != io.EOF {
-								if err.Error() != quic.ErrConnectionClosed {
-									logger.Error("[MergeStreamFunc] YoMo-Zipper received frame from Stream Function failed.", "err", err)
-								}
-								cancel()
-							} else {
-								logger.Debug("[MergeStreamFunc] YoMo-Zipper received frame from Stream Function.", "frame", logger.BytesString(buf))
-								response <- buf
-							}
+				name, rw, cancel := sfn()
+				if rw != nil {
+					fd := decoder.NewFrameDecoder(rw)
+					buf, err := fd.Read(true)
+					if err != nil && err != io.EOF {
+						if err.Error() != quic.ErrConnectionClosed {
+							logger.Error("[MergeStreamFunc] YoMo-Zipper received frame from Stream Function failed.", "stream-fn", name, "err", err)
 						}
-					}()
+						cancel()
+					} else {
+						logger.Debug("[MergeStreamFunc] YoMo-Zipper received frame from Stream Function.", "stream-fn", name, "frame", logger.BytesString(buf))
+						f, err := framing.FromRawBytes(buf)
+						if err != nil {
+							logger.Error("[MergeStreamFunc] framing.FromRawBytes failed:", "stream-fn", name, "err", err)
+						} else if f.Type() == framing.FrameTypePayload {
+							response <- f.Bytes()
+						} else {
+							logger.Debug("[MergeStreamFunc] it is not a Payload Frame.", "stream-fn", name, "frame_type", f.Type())
+						}
+					}
 				}
 			}
 		}()

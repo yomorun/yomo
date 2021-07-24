@@ -13,8 +13,8 @@ import (
 func TestDispatcherWithFunc(t *testing.T) {
 	// GetStreamFunc slice
 	streamFunc := new(bytes.Buffer)
-	getStreamFunc := func() (w io.ReadWriter, cf CancelFunc) {
-		return streamFunc, nil
+	getStreamFunc := func() (n string, w io.ReadWriter, cf CancelFunc) {
+		return "test-fn", streamFunc, nil
 	}
 	// reader
 	msg := "Clear is better than clever"

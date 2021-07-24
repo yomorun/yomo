@@ -98,5 +98,5 @@ func (fac *factoryImpl) FromReaderWithDecoder(readers chan io.Reader) Stream {
 			}
 		}
 	}
-	return CreateObservable(f, rxgo.WithPublishStrategy())
+	return CreateObservable(f)
 }

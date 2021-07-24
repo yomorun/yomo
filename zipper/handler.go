@@ -18,10 +18,10 @@ type (
 	CancelFunc func()
 
 	// GetStreamFunc represents the function to get stream function (former flow/sink).
-	GetStreamFunc func() (io.ReadWriter, CancelFunc)
+	GetStreamFunc func() (string, io.ReadWriter, CancelFunc)
 
 	// GetSenderFunc represents the function to get YoMo-Sender.
-	GetSenderFunc func() (io.Writer, CancelFunc)
+	GetSenderFunc func() (string, io.Writer, CancelFunc)
 )
 
 // NewServerHandler inits a new ServerHandler
@@ -85,6 +85,7 @@ func (s *quicHandler) Read(id int64, sess quic.Session, st quic.Stream) error {
 		} else if c.conn.Type == quic.ConnTypeZipperSender {
 			s.zipperReceiver <- st
 		} else {
+			logger.Debug("[zipper] inits a new stream from Stream Function.", "name", c.conn.Name)
 			c.conn.Stream = st
 		}
 	} else {
@@ -129,11 +130,12 @@ func (s *quicHandler) receiveDataFromSources() {
 			go func() {
 				for customer := range stream.Observe(rxgo.WithErrorStrategy(rxgo.ContinueOnError)) {
 					if customer.Error() {
-						fmt.Println(customer.E.Error())
+						logger.Error("[zipper] receive an error when running Stream Function.", "err", customer.E.Error())
 						continue
 					}
 
 					buf := customer.V.([]byte)
+					logger.Debug("[zipper] receive data after running all Stream Functions, will drop it.", "data", logger.BytesString(buf))
 					// call the `onReceivedData` callback function.
 					if s.onReceivedData != nil {
 						s.onReceivedData(buf)
@@ -145,7 +147,7 @@ func (s *quicHandler) receiveDataFromSources() {
 							continue
 						}
 
-						go sendDataToConnector(sender, buf, "[YoMo-Zipper Sender] sent frame to downstream YoMo-Zipper Receiver.", "❌ [YoMo-Zipper Sender] sent frame to downstream YoMo-Zipper Receiver failed.")
+						go sendDataToDownstream(sender, buf, "[YoMo-Zipper Sender] sent frame to downstream YoMo-Zipper Receiver.", "❌ [YoMo-Zipper Sender] sent frame to downstream YoMo-Zipper Receiver failed.")
 					}
 				}
 			}()
@@ -178,19 +180,20 @@ func (s *quicHandler) receiveDataFromZipperSenders() {
 	}
 }
 
-// sendDataToConnector sends data to `Output Connector`.
-func sendDataToConnector(sf GetSenderFunc, buf []byte, succssMsg string, errMsg string) {
+// sendDataToDownstream sends data to `downstream`.
+func sendDataToDownstream(sf GetSenderFunc, buf []byte, succssMsg string, errMsg string) {
 	for {
-		writer, cancel := sf()
+		name, writer, cancel := sf()
 		if writer == nil {
-			time.Sleep(200 * time.Millisecond)
+			logger.Debug("[zipper] the downstream writer is nil", "name", name)
+			break
 		} else {
 			_, err := writer.Write(buf)
 			if err != nil {
-				logger.Error(errMsg, "frame", logger.BytesString(buf), "err", err)
+				logger.Error(errMsg, "name", name, "frame", logger.BytesString(buf), "err", err)
 				cancel()
 			} else {
-				logger.Debug(succssMsg, "frame", logger.BytesString(buf))
+				logger.Debug(succssMsg, "name", name, "frame", logger.BytesString(buf))
 				break
 			}
 		}
@@ -210,18 +213,28 @@ func getStreamFuncs(wfConf *WorkflowConfig, connMap *sync.Map) []GetStreamFunc {
 	return funcs
 }
 
+var onceCreateStream = new(sync.Once)
+
 // createStreamFunc creates a `GetStreamFunc` for `Stream Function`.
 func createStreamFunc(app App, connMap *sync.Map, connType string) GetStreamFunc {
-	f := func() (io.ReadWriter, CancelFunc) {
+	f := func() (string, io.ReadWriter, CancelFunc) {
 		id, c := findConn(app, connMap, connType)
 
 		if c == nil {
-			return nil, func() {}
+			return app.Name, nil, func() {}
 		} else if c.conn.Stream != nil {
-			return c.conn.Stream, cancelStreamFunc(c, connMap, id)
+			return app.Name, c.conn.Stream, cancelStreamFunc(c, connMap, id)
 		} else {
-			c.SendSignalCreateStream()
-			return nil, func() {}
+			onceCreateStream.Do(func() {
+				logger.Debug("[zipper] send CreateStream Frame to Stream Function.", "stream-fn", app.Name)
+				c.SendSignalCreateStream()
+
+				// reset the sync.Once after 3s.
+				time.AfterFunc(3*time.Second, func() {
+					onceCreateStream = new(sync.Once)
+				})
+			})
+			return app.Name, nil, func() {}
 		}
 	}
 
@@ -300,13 +313,13 @@ func (s *quicHandler) buildZipperSenders() error {
 
 // createZipperSender creates a YoMo-Zipper sender.
 func (s *quicHandler) createZipperSender(conf zipperConf) GetSenderFunc {
-	f := func() (io.Writer, CancelFunc) {
+	f := func() (string, io.Writer, CancelFunc) {
 		if writer, ok := s.zipperMap.Load(conf.Name); ok {
 			cli, ok := writer.(SenderClient)
 			if ok {
-				return cli, s.cancelZipperSender(conf)
+				return conf.Name, cli, s.cancelZipperSender(conf)
 			}
-			return nil, s.cancelZipperSender(conf)
+			return conf.Name, nil, s.cancelZipperSender(conf)
 		}
 
 		// Reset YoMo-Zipper in map
@@ -321,7 +334,7 @@ func (s *quicHandler) createZipperSender(conf zipperConf) GetSenderFunc {
 		}
 
 		s.zipperMap.Store(conf.Name, cli)
-		return cli, s.cancelZipperSender(conf)
+		return conf.Name, cli, s.cancelZipperSender(conf)
 	}
 
 	return f
