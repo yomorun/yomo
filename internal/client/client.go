@@ -156,24 +156,14 @@ func (c *Impl) handleSignal(accepted chan bool) {
 
 			case framing.FrameTypeAccepted:
 				// create stream
-				stream, err := c.session.CreateStream(context.Background())
-				if err != nil {
-					logger.Error("[client] session.CreateStream Error:", "err", err)
-					break
-				}
-
-				rw := decoder.NewReadWriter(stream)
-
 				if c.conn.Type == quic.ConnTypeSource || c.conn.Type == quic.ConnTypeZipperSender {
-					c.conn.Stream = rw
-				} else {
-					// stream function.
-					c.Readers <- rw
-					c.Writer = rw
-					_, err := stream.Write(framing.NewInitFrame().Bytes())
+					stream, err := c.session.CreateStream(context.Background())
 					if err != nil {
-						logger.Error("[client] send init frame to zipper failed.", "err", err)
+						logger.Error("[client] session.CreateStream Error:", "err", err)
+						break
 					}
+
+					c.conn.Stream = decoder.NewReadWriter(stream)
 				}
 				accepted <- true
 
@@ -199,7 +189,7 @@ func (c *Impl) handleSignal(accepted chan bool) {
 				rw := decoder.NewReadWriter(stream)
 				c.Readers <- rw
 				c.Writer = rw
-				stream.Write(framing.NewInitFrame().Bytes())
+				rw.Write(framing.NewInitFrame())
 
 			default:
 				logger.Debug("[client] unknown signal.", "frame", logger.BytesString(frame.Bytes()))
