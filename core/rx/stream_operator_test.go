@@ -3,6 +3,7 @@ package rx
 import (
 	"bytes"
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -333,5 +334,41 @@ func Test_SlidingWindowWithTime(t *testing.T) {
 			return nil
 		})
 		rxgo.Assert(ctx, t, st, rxgo.HasItems(1, 2, 3))
+	})
+}
+
+func Test_ContinueOnError(t *testing.T) {
+	t.Run("ContinueOnError on a single operator by default", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		errFoo := errors.New("foo")
+		defer cancel()
+		obs := testStream.
+			Map(func(_ context.Context, i interface{}) (interface{}, error) {
+				if i == 2 {
+					return nil, errFoo
+				}
+				return i, nil
+			})
+		rxgo.Assert(ctx, t, obs, rxgo.HasItems(1, 3), rxgo.HasError(errFoo))
+	})
+
+	t.Run("ContinueOnError on Handler by default", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		errFoo := errors.New("foo")
+		defer cancel()
+
+		handler := func(stream Stream) Stream {
+			stream = stream.
+				Map(func(_ context.Context, i interface{}) (interface{}, error) {
+					if i == 2 {
+						return nil, errFoo
+					}
+					return i, nil
+				})
+			return stream
+		}
+
+		stream := handler(testStream)
+		rxgo.Assert(ctx, t, stream, rxgo.HasItems(1, 3), rxgo.HasError(errFoo))
 	})
 }
