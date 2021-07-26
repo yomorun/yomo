@@ -1,6 +1,8 @@
 package streamfunction
 
 import (
+	"context"
+
 	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/core/rx"
 	"github.com/yomorun/yomo/internal/client"
@@ -46,6 +48,8 @@ func (c *clientImpl) Connect(ip string, port int) (Client, error) {
 func (c *clientImpl) Pipe(handler func(rxstream rx.Stream) rx.Stream) {
 	rxstream := rx.NewFactory().FromReaderWithDecoder(c.Readers)
 	stream := handler(rxstream)
+
+	rxstream.Connect(context.Background())
 
 	for item := range stream.Observe() {
 		if item.Error() {
