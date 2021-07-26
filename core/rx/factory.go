@@ -88,5 +88,5 @@ func (fac *factoryImpl) FromReaderWithDecoder(readers chan decoder.Reader) Strea
 			}
 		}
 	}
-	return CreateObservable(f)
+	return CreateObservable(f, rxgo.WithPublishStrategy())
 }
