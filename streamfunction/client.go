@@ -54,28 +54,33 @@ func (c *clientImpl) Pipe(handler func(rxstream rx.Stream) rx.Stream) {
 	for item := range stream.Observe() {
 		if item.Error() {
 			logger.Error("[Stream Function Client] Handler got the error.", "err", item.E)
-		} else if item.V != nil {
-			if c.Writer == nil {
-				logger.Debug("[Stream Function Client] the writer is nil, won't send the data to YoMo-Zipper.", "data", item.V)
-				continue
-			}
-
-			buf, ok := (item.V).([]byte)
-			if !ok {
-				logger.Debug("[Stream Function Client] the data is not a []byte in RxStream, won't send it to YoMo-Zipper.", "data", item.V)
-				continue
-			}
-
-			// wrap data with framing.
-			frame := framing.NewPayloadFrame(buf)
-			// send data to YoMo-Zipper.
-			err := c.Writer.Write(frame)
-			if err != nil {
-				logger.Error("[Stream Function Client] ❌ Send data to YoMo-Zipper failed.", "err", err)
-			} else {
-				logger.Debug("[Stream Function Client] Send frame to YoMo-Zipper", "frame", logger.BytesString(frame.Bytes()))
-			}
+			continue
 		}
 
+		if item.V == nil {
+			logger.Debug("[Stream Function Client] the returned data of Handler is nil.", "data", item.V)
+			continue
+		}
+
+		if c.Writer == nil {
+			logger.Debug("[Stream Function Client] the writer is nil, won't send the data to YoMo-Zipper.", "data", item.V)
+			continue
+		}
+
+		buf, ok := (item.V).([]byte)
+		if !ok {
+			logger.Debug("[Stream Function Client] the data is not a []byte in RxStream, won't send it to YoMo-Zipper.", "data", item.V)
+			continue
+		}
+
+		// wrap data with framing.
+		frame := framing.NewPayloadFrame(buf)
+		// send data to YoMo-Zipper.
+		err := c.Writer.Write(frame)
+		if err != nil {
+			logger.Error("[Stream Function Client] ❌ Send data to YoMo-Zipper failed.", "err", err)
+		} else {
+			logger.Debug("[Stream Function Client] Send frame to YoMo-Zipper", "frame", logger.BytesString(frame.Bytes()))
+		}
 	}
 }

@@ -245,7 +245,7 @@ func (s *StreamImpl) Unmarshal(unmarshaller decoder.Unmarshaller, factory func()
 					return
 				}
 				if item.Error() {
-					return
+					continue
 				}
 				go func() {
 					onObserve := (item.V).(decoder.Observable).Unmarshal(unmarshaller, factory)
@@ -524,7 +524,7 @@ func (s *StreamImpl) Subscribe(key byte) Stream {
 					return
 				}
 				if item.Error() {
-					return
+					continue
 				}
 				y3stream, ok := (item.V).(decoder.Observable)
 				if !ok {
@@ -555,7 +555,7 @@ func (s *StreamImpl) RawBytes() Stream {
 					return
 				}
 				if item.Error() {
-					return
+					continue
 				}
 				y3stream, ok := (item.V).(decoder.Observable)
 				if !ok {
@@ -634,7 +634,7 @@ func (s *StreamImpl) ZipMultiObservers(observers []KeyObserveFunc, zipper func(i
 						return
 					}
 					if item.Error() {
-						return
+						continue
 					}
 
 					y3stream := (item.V).(decoder.Observable)
@@ -710,7 +710,7 @@ func (s *StreamImpl) OnObserve(function func(v []byte) (interface{}, error)) Str
 					return
 				}
 				if item.Error() {
-					return
+					continue
 				}
 				go func() {
 					onObserve := (item.V).(decoder.Observable).OnObserve(function)
@@ -754,7 +754,7 @@ func (s *StreamImpl) Encode(key byte, opts ...rxgo.Option) Stream {
 				}
 
 				if item.Error() {
-					return
+					continue
 				}
 
 				buf, err := y3codec.Marshal(item.V)
@@ -802,7 +802,7 @@ func (s *StreamImpl) SlidingWindowWithCount(windowSize int, slideSize int, handl
 					return
 				}
 				if item.Error() {
-					return
+					continue
 				}
 
 				mutex.Lock()
@@ -905,9 +905,7 @@ func (s *StreamImpl) SlidingWindowWithTime(windowTimeInMS uint32, slideTimeInMS 
 					return
 				}
 				if item.Error() {
-					item.SendContext(ctx, next)
-					close(stop)
-					return
+					continue
 				} else {
 					mutex.Lock()
 					// buffer data

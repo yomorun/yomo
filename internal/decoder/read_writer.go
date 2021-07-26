@@ -1,7 +1,6 @@
 package decoder
 
 import (
-	"fmt"
 	"io"
 
 	"github.com/yomorun/yomo/internal/framing"
@@ -87,7 +86,6 @@ func (r *readerImpl) Read() chan framing.Frame {
 
 			f, err := framing.FromRawBytes(buf)
 			if err != nil {
-				fmt.Println(2, err)
 				logger.Debug("[Decoder ReadeWriter] read the frame from bytes failed.", "err", err, "bytes", logger.BytesString(buf))
 				break LOOP
 			}
