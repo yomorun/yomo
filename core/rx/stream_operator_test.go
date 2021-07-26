@@ -100,7 +100,7 @@ func Test_AuditTime(t *testing.T) {
 	t.Run("100 milliseconds", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		st := testStream.AuditTime(100)
+		st := testStream.AuditTime(120)
 		rxgo.Assert(ctx, t, st, rxgo.HasItems(2, 3))
 	})
 
@@ -254,7 +254,7 @@ func Test_Subscribe_MultipleKeys(t *testing.T) {
 func Test_RawBytes(t *testing.T) {
 	buf := &bytes.Buffer{}
 	buf.Write([]byte{0, 0, 4, 0, 1, 2, 3})
-	obs := decoder.FromStream(buf)
+	obs := decoder.FromStream(decoder.NewReader(buf))
 	rawBytes := obs.RawBytes()
 	for b := range rawBytes {
 		assert.Equal(t, []byte{1, 2, 3}, b)

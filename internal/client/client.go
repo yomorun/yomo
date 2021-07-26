@@ -43,8 +43,8 @@ type Impl struct {
 	conn       *quic.QuicConn
 	serverIP   string
 	serverPort int
-	Readers    chan io.Reader // Readers are the reader to receive the data from YoMo Zipper.
-	Writer     io.Writer      // Writer is the stream to send the data to YoMo Zipper.
+	Readers    chan decoder.Reader // Readers are the reader to receive the data from YoMo Zipper.
+	Writer     decoder.Writer      // Writer is the stream to send the data to YoMo Zipper.
 	session    quic.Client
 	once       *sync.Once
 }
@@ -53,13 +53,13 @@ type Impl struct {
 func New(appName string, clientType string) *Impl {
 	c := &Impl{
 		conn:    quic.NewQuicConn(appName, clientType),
-		Readers: make(chan io.Reader, 1),
+		Readers: make(chan decoder.Reader, 1),
 		once:    new(sync.Once),
 	}
 
 	c.conn.OnHeartbeatReceived = func() {
 		// when the client received the heartbeat from server, send it back back to server.
-		c.conn.SendSignal(framing.NewHeartbeatFrame().Bytes())
+		c.conn.SendSignal(framing.NewHeartbeatFrame())
 	}
 
 	c.conn.OnHeartbeatExpired = func() {
@@ -106,7 +106,7 @@ func (c *Impl) BaseConnect(ip string, port int) (*Impl, error) {
 
 	// set session and signal
 	c.session = quic_cli
-	c.conn.Signal = quic_stream
+	c.conn.Signal = decoder.NewReadWriter(quic_stream)
 
 	// send negotiation payload to YoMo-Zipper
 	payload := NegotiationPayload{
@@ -114,7 +114,7 @@ func (c *Impl) BaseConnect(ip string, port int) (*Impl, error) {
 		ClientType: c.conn.Type,
 	}
 	buf, _ := json.Marshal(payload)
-	err = c.conn.SendSignal(framing.NewHandshakeFrame(buf).Bytes())
+	err = c.conn.SendSignal(framing.NewHandshakeFrame(buf))
 
 	if err != nil {
 		logger.Error("[client] SendSignal Error:", "err", err)
@@ -136,21 +136,9 @@ func (c *Impl) BaseConnect(ip string, port int) (*Impl, error) {
 func (c *Impl) handleSignal(accepted chan bool) {
 	go func() {
 		defer close(accepted)
-		fd := decoder.NewFrameDecoder(c.conn.Signal)
-		for {
-			buf, err := fd.Read(true)
-			if err != nil {
-				logger.Error("[client] FrameDecoder read failed:", "err", err)
-				continue
-			}
-
-			f, err := framing.FromRawBytes(buf)
-			if err != nil {
-				logger.Error("[client] framing.FromRawBytes failed:", "err", err)
-				continue
-			}
-
-			switch f.Type() {
+		frameCh := c.conn.Signal.Read()
+		for frame := range frameCh {
+			switch frame.Type() {
 			case framing.FrameTypeHeartbeat:
 				c.conn.Heartbeat <- true
 
@@ -162,12 +150,14 @@ func (c *Impl) handleSignal(accepted chan bool) {
 					break
 				}
 
+				rw := decoder.NewReadWriter(stream)
+
 				if c.conn.Type == quic.ConnTypeSource || c.conn.Type == quic.ConnTypeZipperSender {
-					c.conn.Stream = stream
+					c.conn.Stream = rw
 				} else {
 					// stream function.
-					c.Readers <- stream
-					c.Writer = stream
+					c.Readers <- rw
+					c.Writer = rw
 					_, err := stream.Write(framing.NewInitFrame().Bytes())
 					if err != nil {
 						logger.Error("[client] send init frame to zipper failed.", "err", err)
@@ -182,6 +172,7 @@ func (c *Impl) handleSignal(accepted chan bool) {
 					logger.Warn("[client] the connection was rejected by zipper.")
 				}
 				c.Close()
+				break
 
 			case framing.FrameTypeCreateStream:
 				// create stream for Stream Function.
@@ -192,12 +183,13 @@ func (c *Impl) handleSignal(accepted chan bool) {
 					break
 				}
 
-				c.Readers <- stream
-				c.Writer = stream
+				rw := decoder.NewReadWriter(stream)
+				c.Readers <- rw
+				c.Writer = rw
 				stream.Write(framing.NewInitFrame().Bytes())
 
 			default:
-				logger.Debug("[client] unknown signal.", "frame", f)
+				logger.Debug("[client] unknown signal.", "frame", logger.BytesString(frame.Bytes()))
 			}
 		}
 	}()
@@ -206,9 +198,11 @@ func (c *Impl) handleSignal(accepted chan bool) {
 // Write the data to downstream.
 func (c *Impl) Write(data []byte) (int, error) {
 	if c.conn.Stream != nil {
-		// wrap data with framing.
-		f := framing.NewPayloadFrame(data)
-		return c.conn.Stream.Write(f.Bytes())
+		err := c.conn.Stream.Write(framing.NewPayloadFrame(data))
+		if err != nil {
+			return 0, err
+		}
+		return len(data), nil
 	} else {
 		return 0, errors.New("[client] conn.Stream is nil.")
 	}

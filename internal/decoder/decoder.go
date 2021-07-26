@@ -1,14 +1,12 @@
 package decoder
 
 import (
-	"io"
 	"os"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/yomorun/y3-codec-golang/pkg/common"
-	"github.com/yomorun/yomo/internal/framing"
 	"github.com/yomorun/yomo/logger"
 )
 
@@ -128,27 +126,15 @@ func (o *observableImpl) Observe() <-chan interface{} {
 }
 
 // FromStream reads data from reader.
-func FromStream(reader io.Reader) Observable {
+func FromStream(reader Reader) Observable {
 
 	f := func(next chan interface{}) {
 		defer close(next)
-		fd := NewFrameDecoder(reader)
-		for {
-			// read next raw frame.
-			buf, err := fd.Read(true)
-			if err != nil {
-				logger.Debug("[Decoder] Receive data from YoMo-Zipper failed.", "err", err)
-				break
-			}
 
-			f, err := framing.FromRawBytes(buf)
-			if err != nil {
-				logger.Debug("[Decoder] framing.FromRawBytes failed.", "err", err)
-				break
-			}
-
-			logger.Debug("[Decoder] Receive raw data from YoMo-Zipper.", "data", logger.BytesString(f.Data()))
-			next <- f.Data()
+		frameChan := reader.Read()
+		for frame := range frameChan {
+			logger.Debug("[Decoder] Receive raw data from YoMo-Zipper.", "data", logger.BytesString(frame.Data()))
+			next <- frame.Data()
 		}
 	}
 

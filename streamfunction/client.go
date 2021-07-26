@@ -47,8 +47,6 @@ func (c *clientImpl) Pipe(handler func(rxstream rx.Stream) rx.Stream) {
 	rxstream := rx.NewFactory().FromReaderWithDecoder(c.Readers)
 	stream := handler(rxstream)
 
-	// rxstream.Connect(context.Background())
-
 	for item := range stream.Observe() {
 		if item.Error() {
 			logger.Error("[Stream Function Client] Handler got the error.", "err", item.E)
@@ -65,13 +63,13 @@ func (c *clientImpl) Pipe(handler func(rxstream rx.Stream) rx.Stream) {
 			}
 
 			// wrap data with framing.
-			f := framing.NewPayloadFrame(buf)
+			frame := framing.NewPayloadFrame(buf)
 			// send data to YoMo-Zipper.
-			_, err := c.Writer.Write(f.Bytes())
+			err := c.Writer.Write(frame)
 			if err != nil {
 				logger.Error("[Stream Function Client] ❌ Send data to YoMo-Zipper failed.", "err", err)
 			} else {
-				logger.Debug("[Stream Function Client] Send frame to YoMo-Zipper", "frame", logger.BytesString(f.Bytes()))
+				logger.Debug("[Stream Function Client] Send frame to YoMo-Zipper", "frame", logger.BytesString(frame.Bytes()))
 			}
 		}
 

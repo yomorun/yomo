@@ -2,10 +2,10 @@ package server
 
 import (
 	"bytes"
-	"io"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/yomorun/yomo/internal/decoder"
 	"github.com/yomorun/yomo/internal/framing"
 )
 
@@ -13,23 +13,23 @@ import (
 func TestDispatcherWithFunc(t *testing.T) {
 	// GetStreamFunc slice
 	streamFunc := new(bytes.Buffer)
-	getStreamFunc := func() (n string, w io.ReadWriter, cf CancelFunc) {
-		return "test-fn", streamFunc, nil
+	getStreamFunc := func() (n string, w decoder.ReadWriter, cf CancelFunc) {
+		return "test-fn", decoder.NewReadWriter(streamFunc), nil
 	}
 	// reader
 	msg := "Clear is better than clever"
 	frame := framing.NewPayloadFrame([]byte(msg))
 	data := frame.Bytes()
-	reader := bytes.NewBuffer(data)
+	reader := decoder.NewReader(bytes.NewBuffer(data))
 	// dispatch reader to stream functions
 	stream := DispatcherWithFunc([]GetStreamFunc{getStreamFunc}, reader)
 	// get data from stream
 	ch := stream.Observe()
 	for item := range ch {
-		actual := item.V.([]byte)
-		assert.Equal(t, data, actual)
+		frame := item.V.(framing.Frame)
+		assert.Equal(t, data, frame.Bytes())
 		// frame length: 3
-		t.Logf("stream.item: %s\n", framing.GetRawBytesWithoutFraming(actual))
+		t.Logf("stream.item: %s\n", frame.Data())
 		break
 	}
 }

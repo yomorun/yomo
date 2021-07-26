@@ -20,7 +20,7 @@ func TestReadRawBytesFromDecoder(t *testing.T) {
 	b.Write([]byte{0, 0, 4, 5, 1, 2, 3})
 
 	// mock observable
-	observable := FromStream(b)
+	observable := FromStream(NewReader(b))
 	// get raw bytes
 	bytesCh := observable.RawBytes()
 	expected := []byte{1, 2, 3}
@@ -33,11 +33,11 @@ func TestReadRawBytesFromDecoder(t *testing.T) {
 func TestObserveDataFromY3Decoder(t *testing.T) {
 	t.Run("Observe data from Y3 Node Packet", func(t *testing.T) {
 		b := &bytes.Buffer{}
-		// first 3 bytes indicates the FrameLength, the rest are the raw bytes which encoded by Y3 Codec.
+		// first 3 bytes indicates the FrameLength, the rest are the frame bytes.
 		b.Write([]byte{0, 0, 30, 5, 129, 3, 144, 25, 17, 4, 65, 233, 15, 156, 18, 6, 175, 170, 192, 218, 156, 100, 19, 9, 108, 111, 99, 97, 108, 104, 111, 115, 116})
 
 		// mock observable
-		observable := FromStream(b)
+		observable := FromStream(NewReader(b))
 		var key byte = 0x10
 		ch := observable.
 			Subscribe(key).
@@ -52,11 +52,11 @@ func TestObserveDataFromY3Decoder(t *testing.T) {
 
 	t.Run("Observe data from Y3 Primitive Packet", func(t *testing.T) {
 		b := &bytes.Buffer{}
-		// first 3 bytes indicates the FrameLength, the rest are the raw bytes which encoded by Y3 Codec.
+		// first 3 bytes indicates the FrameLength, the rest are the frame bytes.
 		b.Write([]byte{0, 0, 6, 5, 16, 3, 1, 2, 3})
 
 		// mock observable
-		observable := FromStream(b)
+		observable := FromStream(NewReader(b))
 		var key byte = 0x10
 		ch := observable.
 			Subscribe(key).
@@ -71,11 +71,11 @@ func TestObserveDataFromY3Decoder(t *testing.T) {
 
 	t.Run("Observe data by multi keys", func(t *testing.T) {
 		b := &bytes.Buffer{}
-		// first 3 bytes indicates the FrameLength, the rest are the raw bytes which encoded by Y3 Codec.
+		// first 3 bytes indicates the FrameLength, the rest are the frame bytes.
 		b.Write([]byte{0, 0, 10, 5, 16, 3, 1, 2, 3, 17, 2, 1, 2})
 
 		// mock observable
-		observable := FromStream(b)
+		observable := FromStream(NewReader(b))
 
 		// multi keys
 		var key1 byte = 0x10
@@ -108,11 +108,11 @@ func TestObserveDataFromY3Decoder(t *testing.T) {
 func TestNotObservefFromY3Decoder(t *testing.T) {
 	t.Run("key is not matched from Y3 Node Packet", func(t *testing.T) {
 		b := &bytes.Buffer{}
-		// first 3 bytes indicates the FrameLength, the rest are the raw bytes which encoded by Y3 Codec.
+		// first 3 bytes indicates the FrameLength, the rest are the frame bytes.
 		b.Write([]byte{0, 0, 30, 5, 129, 3, 144, 25, 17, 4, 65, 233, 15, 156, 18, 6, 175, 170, 192, 218, 156, 100, 19, 9, 108, 111, 99, 97, 108, 104, 111, 115, 116})
 
 		// mock observable
-		observable := FromStream(b)
+		observable := FromStream(NewReader(b))
 		var key byte = 0x20
 		ch := observable.
 			Subscribe(key).
@@ -129,11 +129,11 @@ func TestNotObservefFromY3Decoder(t *testing.T) {
 	})
 	t.Run("key is not matched from Y3 Primitive Packet", func(t *testing.T) {
 		b := &bytes.Buffer{}
-		// first 3 bytes indicates the FrameLength, the rest are the raw bytes which encoded by Y3 Codec.
+		// first 3 bytes indicates the FrameLength, the rest are the frame bytes.
 		b.Write([]byte{0, 0, 6, 5, 16, 3, 1, 2, 3})
 
 		// mock observable
-		observable := FromStream(b)
+		observable := FromStream(NewReader(b))
 		var key byte = 0x20
 		ch := observable.
 			Subscribe(key).
@@ -171,7 +171,7 @@ func TestUnmarshalFromJSONDecoder(t *testing.T) {
 	assert.NoError(t, err)
 
 	// mock observable
-	observable := FromStream(b)
+	observable := FromStream(NewReader(b))
 
 	ch := observable.
 		Unmarshal(json.Unmarshal, func() interface{} { return &testData{} })

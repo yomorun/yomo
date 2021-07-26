@@ -28,7 +28,7 @@ func NewConn(sess quic.Session, st quic.Stream, conf *WorkflowConfig) *Conn {
 		Session: sess,
 	}
 
-	c.conn.Signal = st
+	c.conn.Signal = decoder.NewReadWriter(st)
 	c.handleSignal(conf)
 	c.conn.OnClosed = c.Close
 
@@ -39,7 +39,7 @@ func NewConn(sess quic.Session, st quic.Stream, conf *WorkflowConfig) *Conn {
 func (c *Conn) SendSignalCreateStream() error {
 	if c.conn.Ready {
 		c.conn.Ready = false
-		return c.conn.SendSignal(framing.NewCreateStreamFrame().Bytes())
+		return c.conn.SendSignal(framing.NewCreateStreamFrame())
 	}
 	return nil
 }
@@ -49,25 +49,13 @@ const mismatchedFuncName = "mismatched function name"
 // handleSignal handles the logic when receiving signal from client.
 func (c *Conn) handleSignal(conf *WorkflowConfig) {
 	go func() {
-		fd := decoder.NewFrameDecoder(c.conn.Signal)
-		for {
-			buf, err := fd.Read(true)
-			if err != nil {
-				logger.Error("[zipper conn] FrameDecoder read failed:", "name", c.conn.Name, "err", err)
-				break
-			}
-
-			f, err := framing.FromRawBytes(buf)
-			if err != nil {
-				logger.Error("[zipper conn] framing.FromRawBytes failed.", "name", c.conn.Name, "err", err)
-				break
-			}
-
-			switch f.Type() {
+		frameCh := c.conn.Signal.Read()
+		for frame := range frameCh {
+			switch frame.Type() {
 			case framing.FrameTypeHandshake:
 				// get negotiation payload
 				var payload client.NegotiationPayload
-				err := json.Unmarshal(f.Data(), &payload)
+				err := json.Unmarshal(frame.Data(), &payload)
 				if err != nil {
 					logger.Error("❌ YoMo-Zipper inits the connection failed.", "err", err)
 					return
@@ -77,7 +65,7 @@ func (c *Conn) handleSignal(conf *WorkflowConfig) {
 				c.conn.Type = c.getConnType(payload, conf)
 				if c.conn.Type == mismatchedFuncName {
 					logger.Printf("The %s name %s is mismatched with the one in zipper config.", payload.ClientType, payload.AppName)
-					c.conn.SendSignal(framing.NewRejectedFrame().Bytes())
+					c.conn.SendSignal(framing.NewRejectedFrame())
 					continue
 				}
 				logger.Printf("Receive App %s, type: %s", c.conn.Name, c.conn.Type)
@@ -86,7 +74,7 @@ func (c *Conn) handleSignal(conf *WorkflowConfig) {
 					c.onGotAppType()
 				}
 
-				c.conn.SendSignal(framing.NewAcceptedFrame().Bytes())
+				c.conn.SendSignal(framing.NewAcceptedFrame())
 				c.conn.Healthcheck()
 				c.Beat()
 
@@ -124,7 +112,7 @@ func (c *Conn) Beat() {
 		for {
 			select {
 			case <-t.C:
-				err := c.conn.SendSignal(framing.NewHeartbeatFrame().Bytes())
+				err := c.conn.SendSignal(framing.NewHeartbeatFrame())
 				if err != nil {
 					if err.Error() == quic.ErrConnectionClosed {
 						// when the app reconnected immediately before the heartbeat expiration time (5s), it shoudn't print the outdated error message.
