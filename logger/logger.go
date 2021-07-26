@@ -14,23 +14,23 @@ type Logger interface {
 	Printf(format string, v ...interface{})
 
 	// Debug logs a message at DebugLevel.
-	Debug(msg string, fields ...interface{})
+	Debug(msg string, kvPairs ...interface{})
 
 	// Info logs a message at InfoLevel.
-	Info(msg string, fields ...interface{})
+	Info(msg string, kvPairs ...interface{})
 
 	// Warn logs a message at WarnLevel.
-	Warn(msg string, fields ...interface{})
+	Warn(msg string, kvPairs ...interface{})
 
 	// Error logs a message at ErrorLevel.
-	Error(msg string, fields ...interface{})
+	Error(msg string, kvPairs ...interface{})
 
 	// Panic logs a message at PanicLevel.
-	Panic(msg string, fields ...interface{})
+	Panic(msg string, kvPairs ...interface{})
 
 	// Fatal logs a message at FatalLevel.
 	// The logger then calls os.Exit(1).
-	Fatal(msg string, fields ...interface{})
+	Fatal(msg string, kvPairs ...interface{})
 }
 
 var logger = newLogger(isEnableDebug())
@@ -51,34 +51,34 @@ func Printf(format string, v ...interface{}) {
 }
 
 // Debug logs a message at DebugLevel.
-func Debug(msg string, fields ...interface{}) {
-	logger.Debug(msg, fields...)
+func Debug(msg string, kvPairs ...interface{}) {
+	logger.Debug(msg, kvPairs...)
 }
 
 // Info logs a message at InfoLevel.
-func Info(msg string, fields ...interface{}) {
-	logger.Info(msg, fields...)
+func Info(msg string, kvPairs ...interface{}) {
+	logger.Info(msg, kvPairs...)
 }
 
 // Warn logs a message at WarnLevel.
-func Warn(msg string, fields ...interface{}) {
-	logger.Warn(msg, fields...)
+func Warn(msg string, kvPairs ...interface{}) {
+	logger.Warn(msg, kvPairs...)
 }
 
 // Error logs a message at ErrorLevel.
-func Error(msg string, fields ...interface{}) {
-	logger.Error(msg, fields...)
+func Error(msg string, kvPairs ...interface{}) {
+	logger.Error(msg, kvPairs...)
 }
 
 // Panic logs a message at PanicLevel.
-func Panic(msg string, fields ...interface{}) {
-	logger.Panic(msg, fields...)
+func Panic(msg string, kvPairs ...interface{}) {
+	logger.Panic(msg, kvPairs...)
 }
 
 // Fatal logs a message at FatalLevel.
 // The logger then calls os.Exit(1).
-func Fatal(msg string, fields ...interface{}) {
-	logger.Fatal(msg, fields...)
+func Fatal(msg string, kvPairs ...interface{}) {
+	logger.Fatal(msg, kvPairs...)
 }
 
 // BytesString formats the bytes to string.

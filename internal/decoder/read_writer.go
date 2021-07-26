@@ -75,7 +75,9 @@ func (r *readerImpl) Read() chan framing.Frame {
 				break LOOP
 			}
 			if err != nil {
-				logger.Debug("[Decoder ReadeWriter] read the bytes failed.", "err", err, "bytes", logger.BytesString(buf))
+				if err.Error() != "Application error 0x0" {
+					logger.Debug("[Decoder ReadeWriter] read the bytes failed.", "err", err, "bytes", logger.BytesString(buf))
+				}
 				break LOOP
 			}
 

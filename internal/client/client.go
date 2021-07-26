@@ -47,6 +47,7 @@ type Impl struct {
 	Writer     decoder.Writer      // Writer is the stream to send the data to YoMo Zipper.
 	session    quic.Client
 	once       *sync.Once
+	isRejected bool
 }
 
 // New creates a new client.
@@ -63,6 +64,12 @@ func New(appName string, clientType string) *Impl {
 	}
 
 	c.conn.OnHeartbeatExpired = func() {
+		if c.isRejected {
+			// the connection was rejected by YoMo-Zipper, don't need to re-connect.
+			return
+		}
+
+		// retry the connection.
 		c.once.Do(func() {
 			logger.Debug("[client] heartbeat to YoMo-Zipper was expired, client will reconnect to YoMo-Zipper.", "addr", getServerAddr(c.serverIP, c.serverPort))
 
@@ -128,7 +135,12 @@ func (c *Impl) BaseConnect(ip string, port int) (*Impl, error) {
 
 	// waiting when the connection is accepted.
 	<-accepted
-	logger.Printf("✅ Connected to YoMo-Zipper %s.", addr)
+
+	if c.isRejected {
+		logger.Printf("❌ The connection to YoMo-Zipper %s was rejected.", addr)
+	} else {
+		logger.Printf("✅ Connected to YoMo-Zipper %s.", addr)
+	}
 	return c, nil
 }
 
@@ -172,6 +184,7 @@ func (c *Impl) handleSignal(accepted chan bool) {
 					logger.Warn("[client] the connection was rejected by zipper.")
 				}
 				c.Close()
+				c.isRejected = true
 				break
 
 			case framing.FrameTypeCreateStream:

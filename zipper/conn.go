@@ -64,7 +64,7 @@ func (c *Conn) handleSignal(conf *WorkflowConfig) {
 				c.conn.Name = payload.AppName
 				c.conn.Type = c.getConnType(payload, conf)
 				if c.conn.Type == mismatchedFuncName {
-					logger.Printf("The %s name %s is mismatched with the one in zipper config.", payload.ClientType, payload.AppName)
+					logger.Printf("The %s name %s is mismatched with the name of Stream Function in zipper config.", payload.ClientType, payload.AppName)
 					c.conn.SendSignal(framing.NewRejectedFrame())
 					continue
 				}
