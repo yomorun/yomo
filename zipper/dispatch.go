@@ -82,6 +82,9 @@ func mergeStreamFn(upstream rx.Stream, sfn GetStreamFunc) rx.Stream {
 						logger.Debug("[MergeStreamFunc] YoMo-Zipper received frame from Stream Function.", "stream-fn", name, "frame", logger.BytesString(frame.Bytes()))
 						if frame.Type() == framing.FrameTypePayload {
 							response <- frame
+						} else if frame.Type() == framing.FrameTypeAck {
+							logger.Debug("[MergeStreamFunc] YoMo-Zipper received ACK from Stream Function, will send the data to next Stream Function.", "stream-fn", name)
+							// TODO: send data to next Stream Function.
 						} else {
 							logger.Debug("[MergeStreamFunc] it is not a Payload Frame.", "stream-fn", name, "frame_type", frame.Type())
 						}
