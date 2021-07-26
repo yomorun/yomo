@@ -2,10 +2,8 @@ package rx
 
 import (
 	"context"
-	"io"
 
 	"github.com/reactivex/rxgo/v2"
-	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/internal/decoder"
 	"github.com/yomorun/yomo/logger"
 )
@@ -16,10 +14,10 @@ type Factory interface {
 	FromChannel(channel chan interface{}) Stream
 
 	// FromReader creates a new Stream from io.Reader.
-	FromReader(reader io.Reader) Stream
+	FromReader(reader decoder.Reader) Stream
 
 	// FromReaderWithDecoder creates a new Stream with decoder.
-	FromReaderWithDecoder(readers chan io.Reader) Stream
+	FromReaderWithDecoder(readers chan decoder.Reader) Stream
 }
 
 type factoryImpl struct {
@@ -55,25 +53,17 @@ func (fac *factoryImpl) FromChannel(channel chan interface{}) Stream {
 	return CreateObservable(f)
 }
 
-// FromReader creates a new Stream from io.Reader.
-func (fac *factoryImpl) FromReader(reader io.Reader) Stream {
+// FromReader creates a new Stream from decoder.Reader.
+func (fac *factoryImpl) FromReader(reader decoder.Reader) Stream {
 	next := make(chan rxgo.Item)
 
 	go func() {
 		defer close(next)
 
-		fd := decoder.NewFrameDecoder(reader)
-		for {
-			buf, err := fd.Read(false)
-			if err != nil {
-				if err.Error() != quic.ErrConnectionClosed && err != io.EOF {
-					logger.Error("Receive frame from source failed.", "err", err)
-				}
-				break
-			} else {
-				logger.Debug("Receive frame from source.", "frame", logger.BytesString(buf))
-				next <- Of(buf)
-			}
+		frameChan := reader.Read()
+		for frame := range frameChan {
+			logger.Debug("Receive frame from source.", "frame", logger.BytesString(frame.Bytes()))
+			next <- Of(frame)
 		}
 	}()
 
@@ -81,7 +71,7 @@ func (fac *factoryImpl) FromReader(reader io.Reader) Stream {
 }
 
 // FromReaderWithDecoder creates a Stream with decoder.
-func (fac *factoryImpl) FromReaderWithDecoder(readers chan io.Reader) Stream {
+func (fac *factoryImpl) FromReaderWithDecoder(readers chan decoder.Reader) Stream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
 

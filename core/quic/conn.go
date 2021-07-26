@@ -2,8 +2,10 @@ package quic
 
 import (
 	"errors"
-	"io"
 	"time"
+
+	"github.com/yomorun/yomo/internal/decoder"
+	"github.com/yomorun/yomo/internal/framing"
 )
 
 const (
@@ -18,16 +20,16 @@ const (
 
 // QuicConn represents the QUIC connection.
 type QuicConn struct {
-	Signal              io.ReadWriter // Signal is the specified stream to receive the signal.
-	Stream              io.ReadWriter // Stream is the stream to receive actual data.
-	Type                string        // Type is the type of connection. Possible value: source, stream-function, server-sender
-	Name                string        // Name is the name of connection.
-	Heartbeat           chan bool     // Heartbeat is the channel to receive heartbeat.
-	IsClosed            bool          // IsClosed indicates whether the connection is closed.
-	Ready               bool          // Ready indicates whether the connection is ready.
-	OnClosed            func() error  // OnClosed is the callback when the connection is closed.
-	OnHeartbeatReceived func()        // OnHeartbeatReceived is the callback when the heartbeat is received.
-	OnHeartbeatExpired  func()        // OnHeartbeatExpired is the callback when the heartbeat is expired.
+	Signal              decoder.ReadWriter // Signal is the specified stream to receive the signal.
+	Stream              decoder.ReadWriter // Stream is the stream to receive actual data.
+	Type                string             // Type is the type of connection. Possible value: source, stream-function, server-sender
+	Name                string             // Name is the name of connection.
+	Heartbeat           chan bool          // Heartbeat is the channel to receive heartbeat.
+	IsClosed            bool               // IsClosed indicates whether the connection is closed.
+	Ready               bool               // Ready indicates whether the connection is ready.
+	OnClosed            func() error       // OnClosed is the callback when the connection is closed.
+	OnHeartbeatReceived func()             // OnHeartbeatReceived is the callback when the heartbeat is received.
+	OnHeartbeatExpired  func()             // OnHeartbeatExpired is the callback when the heartbeat is expired.
 }
 
 // NewQuicConn inits a new QUIC connection.
@@ -42,12 +44,12 @@ func NewQuicConn(name string, connType string) *QuicConn {
 }
 
 // SendSignal sends the signal to client.
-func (c *QuicConn) SendSignal(b []byte) error {
+func (c *QuicConn) SendSignal(f framing.Frame) error {
 	if c.Signal == nil {
 		return errors.New("Signal is nil")
 	}
 
-	_, err := c.Signal.Write(b)
+	err := c.Signal.Write(f)
 	return err
 }
 
