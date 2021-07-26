@@ -17,7 +17,7 @@ type Factory interface {
 	FromReader(reader decoder.Reader) Stream
 
 	// FromReaderWithDecoder creates a new Stream with decoder.
-	FromReaderWithDecoder(readers chan decoder.Reader) Stream
+	FromReaderWithDecoder(readers chan decoder.Reader, opts ...decoder.Option) Stream
 }
 
 type factoryImpl struct {
@@ -71,7 +71,7 @@ func (fac *factoryImpl) FromReader(reader decoder.Reader) Stream {
 }
 
 // FromReaderWithDecoder creates a Stream with decoder.
-func (fac *factoryImpl) FromReaderWithDecoder(readers chan decoder.Reader) Stream {
+func (fac *factoryImpl) FromReaderWithDecoder(readers chan decoder.Reader, opts ...decoder.Option) Stream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
 
@@ -84,7 +84,7 @@ func (fac *factoryImpl) FromReaderWithDecoder(readers chan decoder.Reader) Strea
 					return
 				}
 
-				Of(decoder.FromStream(item)).SendContext(ctx, next)
+				Of(decoder.FromStream(item, opts...)).SendContext(ctx, next)
 			}
 		}
 	}

@@ -126,7 +126,12 @@ func (o *observableImpl) Observe() <-chan interface{} {
 }
 
 // FromStream reads data from reader.
-func FromStream(reader Reader) Observable {
+func FromStream(reader Reader, opts ...Option) Observable {
+	options := &options{}
+
+	for _, o := range opts {
+		o(options)
+	}
 
 	f := func(next chan interface{}) {
 		defer close(next)
@@ -134,6 +139,11 @@ func FromStream(reader Reader) Observable {
 		frameChan := reader.Read()
 		for frame := range frameChan {
 			logger.Debug("[Decoder] Receive raw data from YoMo-Zipper.", "data", logger.BytesString(frame.Data()))
+
+			if options.OnReceivedData != nil {
+				options.OnReceivedData(frame.Data())
+			}
+
 			next <- frame.Data()
 		}
 	}

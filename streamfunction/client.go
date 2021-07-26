@@ -6,6 +6,7 @@ import (
 	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/core/rx"
 	"github.com/yomorun/yomo/internal/client"
+	"github.com/yomorun/yomo/internal/decoder"
 	"github.com/yomorun/yomo/internal/framing"
 	"github.com/yomorun/yomo/logger"
 )
@@ -46,7 +47,7 @@ func (c *clientImpl) Connect(ip string, port int) (Client, error) {
 // Pipe the handler function in Stream Function.
 // This method is blocking.
 func (c *clientImpl) Pipe(handler func(rxstream rx.Stream) rx.Stream) {
-	rxstream := rx.NewFactory().FromReaderWithDecoder(c.Readers)
+	rxstream := rx.NewFactory().FromReaderWithDecoder(c.Readers, decoder.WithReceivedDataFunc(c.onReceivedData))
 	stream := handler(rxstream)
 
 	rxstream.Connect(context.Background())
@@ -82,5 +83,17 @@ func (c *clientImpl) Pipe(handler func(rxstream rx.Stream) rx.Stream) {
 		} else {
 			logger.Debug("[Stream Function Client] Send frame to YoMo-Zipper", "frame", logger.BytesString(frame.Bytes()))
 		}
+	}
+}
+
+func (c *clientImpl) onReceivedData(data []byte) {
+	if c.Writer == nil {
+		return
+	}
+
+	logger.Debug("[Stream Function Client] received data from YoMo-Zipper, send ACK to YoMo-Zipper.", "data", logger.BytesString(data))
+	err := c.Writer.Write(framing.NewAckFrame())
+	if err != nil {
+		logger.Error("[Stream Function Client] ❌ Send ACK to YoMo-Zipper failed.", "err", err)
 	}
 }
