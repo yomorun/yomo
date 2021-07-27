@@ -6,10 +6,11 @@ import (
 
 // Frame represents a YoMo frame.
 //  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//  |                    Frame Length               |
+//  |                  Frame Length                 |
 //  +-----------------------------------------------+
-//  |    Header   |           Data                  |
-//  |                                               |
+//  |                     Header                    |
+//  +-----------------------------------------------+
+//  |                      Data                     |
 //  +-----------------------------------------------+
 type Frame interface {
 	// Bytes converts the frame to bytes.
@@ -17,6 +18,9 @@ type Frame interface {
 
 	// Type gets the type of frame.
 	Type() FrameType
+
+	// Metadata gets the metadata in frame.
+	Metadata() []byte
 
 	// Data gets the data in frame.
 	Data() []byte
@@ -28,14 +32,14 @@ type FrameType uint8
 const (
 	FrameLengthFieldSize = 3 // FrameLengthFieldSize is the size of FrameLength.
 
-	FrameTypeHandshake    FrameType = 0x00 // FrameTypeHandshake represents the frame type Handshake.
-	FrameTypeHeartbeat    FrameType = 0x01 // FrameTypeHandshake represents the frame type Heartbeat.
-	FrameTypeAck          FrameType = 0x02 // FrameTypeHandshake represents the frame type ACK.
-	FrameTypeAccepted     FrameType = 0x03 // FrameTypeHandshake represents the frame type Accepted.
-	FrameTypeRejected     FrameType = 0x04 // FrameTypeHandshake represents the frame type Rejected.
-	FrameTypeCreateStream FrameType = 0x05 // FrameTypeHandshake represents the frame type CreateStream.
-	FrameTypePayload      FrameType = 0x06 // FrameTypeHandshake represents the frame type Payload.
-	FrameTypeInit         FrameType = 0x07 // FrameTypeHandshake represents the frame type Init.
+	FrameTypeHandshake    FrameType = 0x00 // FrameTypeHandshake is the frame type HANDSHAKE.
+	FrameTypeHeartbeat    FrameType = 0x01 // FrameTypeHeartbeat is the frame type HEARTBEAT.
+	FrameTypeAck          FrameType = 0x02 // FrameTypeAck is the frame type ACK.
+	FrameTypeAccepted     FrameType = 0x03 // FrameTypeAccepted is the frame type ACCEPTED.
+	FrameTypeRejected     FrameType = 0x04 // FrameTypeRejected is the frame type REJECTED.
+	FrameTypeCreateStream FrameType = 0x05 // FrameTypeCreateStream is the frame type CREATE_STREAM.
+	FrameTypePayload      FrameType = 0x06 // FrameTypePayload is the frame type PAYLOAD.
+	FrameTypeInit         FrameType = 0x07 // FrameTypeInit is the frame type INIT.
 )
 
 // frame is an implementation of Frame.
@@ -44,20 +48,22 @@ type frame struct {
 	data   []byte
 }
 
-func newFrame(frameType FrameType) *frame {
+func newFrame(frameType FrameType, opts ...Option) *frame {
+	options := newOptions(opts...)
 	return &frame{
-		header: newHeader(frameType),
+		header: newHeader(frameType, options.Metadata),
 	}
 }
 
-func newFrameWithData(frameType FrameType, data []byte) *frame {
+func newFrameWithData(frameType FrameType, data []byte, opts ...Option) *frame {
+	options := newOptions(opts...)
 	return &frame{
-		header: newHeader(frameType),
+		header: newHeader(frameType, options.Metadata),
 		data:   data,
 	}
 }
 
-// Bytes get the bytes of PayloadFrame.
+// Bytes get the bytes of frame.
 func (f *frame) Bytes() []byte {
 	buf := f.getFrameLengthBytes()
 	buf = append(buf, f.header.Bytes()...)
@@ -70,18 +76,29 @@ func (f *frame) Type() FrameType {
 	return f.header.FrameType
 }
 
+// Metadata gets the metadata of frame.
+func (f *frame) Metadata() []byte {
+	return f.header.Metadata
+}
+
 // Data gets the data in frame.
 func (f *frame) Data() []byte {
 	return f.data
 }
 
 func (f *frame) getFrameLengthBytes() []byte {
-	buf := make([]byte, FrameLengthFieldSize)
 	len := f.header.len() + len(f.data)
 
+	return getLengthBytes(FrameLengthFieldSize, len)
+}
+
+// getLengthBytes gets the bytes of length
+func getLengthBytes(sizeOfBytes int, len int) []byte {
+	buf := make([]byte, sizeOfBytes)
+
 	// set len to buf.
-	for i := 0; i < FrameLengthFieldSize; i++ {
-		offset := 8 * (FrameLengthFieldSize - i - 1)
+	for i := 0; i < sizeOfBytes; i++ {
+		offset := 8 * (sizeOfBytes - i - 1)
 		if offset > 0 {
 			buf[i] = byte(len >> offset)
 		} else {
@@ -100,7 +117,7 @@ func FromRawBytes(buf []byte) (Frame, error) {
 
 	f := &frame{
 		header: header,
-		data:   buf[FrameHeaderSize:],
+		data:   buf[header.len():],
 	}
 
 	return convertSpecificFrame(f)
@@ -146,11 +163,20 @@ func convertSpecificFrame(f *frame) (Frame, error) {
 	}
 }
 
-// ReadFrameLength reads frame length from bytes and returns the clean buf.
-func ReadFrameLength(buf []byte) (int, []byte) {
+// ReadFrameLength reads frame length from bytes.
+func ReadFrameLength(buf []byte) int {
+	return readLengthFromBytes(buf, FrameLengthFieldSize)
+}
+
+// readLengthFromBytes reads length from bytes.
+func readLengthFromBytes(buf []byte, sizeOfLen int) int {
+	if len(buf) < sizeOfLen {
+		return 0
+	}
+
 	c := 0
-	for i := 0; i < FrameLengthFieldSize; i++ {
-		offset := 8 * (FrameLengthFieldSize - i - 1)
+	for i := 0; i < sizeOfLen; i++ {
+		offset := 8 * (sizeOfLen - i - 1)
 		if offset > 0 {
 			c += int(buf[i]) << offset
 		} else {
@@ -158,15 +184,5 @@ func ReadFrameLength(buf []byte) (int, []byte) {
 		}
 	}
 
-	return c, buf
-}
-
-// GetRawBytesWithoutFraming gets the raw bytes without framing bytes.
-func GetRawBytesWithoutFraming(buf []byte) []byte {
-	headLen := FrameLengthFieldSize + FrameHeaderSize
-	if len(buf) <= headLen {
-		return buf
-	}
-
-	return buf[headLen:]
+	return c
 }

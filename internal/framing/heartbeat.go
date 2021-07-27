@@ -1,13 +1,13 @@
 package framing
 
-// HeartbeatFrame represents a heartbeat frame.
+// HeartbeatFrame represents a HEARTBEAT frame.
 type HeartbeatFrame struct {
 	*frame
 }
 
-// NewHeartbeatFrame inits a new HeartbeatFrame.
-func NewHeartbeatFrame() *HeartbeatFrame {
+// NewHeartbeatFrame inits a new HEARTBEAT frame.
+func NewHeartbeatFrame(opts ...Option) *HeartbeatFrame {
 	return &HeartbeatFrame{
-		frame: newFrame(FrameTypeHeartbeat),
+		frame: newFrame(FrameTypeHeartbeat, opts...),
 	}
 }

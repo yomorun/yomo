@@ -1,13 +1,13 @@
 package framing
 
-// InitFrame represents an Accepected frame.
+// InitFrame represents an INIT frame.
 type InitFrame struct {
 	*frame
 }
 
-// NewInitFrame inits a new InitFrame.
-func NewInitFrame() *InitFrame {
+// NewInitFrame inits a new INIT frame.
+func NewInitFrame(opts ...Option) *InitFrame {
 	return &InitFrame{
-		frame: newFrame(FrameTypeInit),
+		frame: newFrame(FrameTypeInit, opts...),
 	}
 }
