@@ -1,13 +1,13 @@
 package framing
 
-// RejectedFrame represents an Accepected frame.
+// RejectedFrame represents a REJECTED frame.
 type RejectedFrame struct {
 	*frame
 }
 
-// NewRejectedFrame inits a new RejectedFrame.
-func NewRejectedFrame() *RejectedFrame {
+// NewRejectedFrame inits a new REJECTED frame.
+func NewRejectedFrame(opts ...Option) *RejectedFrame {
 	return &RejectedFrame{
-		frame: newFrame(FrameTypeRejected),
+		frame: newFrame(FrameTypeRejected, opts...),
 	}
 }

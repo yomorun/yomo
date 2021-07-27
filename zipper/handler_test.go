@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/internal/client"
-	"github.com/yomorun/yomo/internal/framing"
 )
 
 func TestServerHandlerListen(t *testing.T) {
@@ -46,10 +45,9 @@ func TestServerHandlerRead(t *testing.T) {
 
 	// define a function to check if the data is received.
 	serverHandler.onReceivedData = func(buf []byte) {
-		// frame length: 3
-		actual := framing.GetRawBytesWithoutFraming(buf)
-		t.Logf("handler.data: %s", actual)
-		assert.Equal(t, data, actual)
+		fmt.Println(buf)
+		t.Logf("handler.data: %s", buf)
+		assert.Equal(t, data, buf)
 	}
 
 	// source
