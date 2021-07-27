@@ -30,7 +30,7 @@ type Frame interface {
 type FrameType uint8
 
 const (
-	FrameLengthFieldSize = 3 // FrameLengthFieldSize is the size of FrameLength.
+	FrameLengthFieldSize = 3 // FrameLengthFieldSize is the size of FrameLength in bytes.
 
 	FrameTypeHandshake    FrameType = 0x00 // FrameTypeHandshake is the frame type HANDSHAKE.
 	FrameTypeHeartbeat    FrameType = 0x01 // FrameTypeHeartbeat is the frame type HEARTBEAT.
@@ -89,11 +89,11 @@ func (f *frame) Data() []byte {
 func (f *frame) getFrameLengthBytes() []byte {
 	len := f.header.len() + len(f.data)
 
-	return getLengthBytes(FrameLengthFieldSize, len)
+	return getLengthInBytes(FrameLengthFieldSize, len)
 }
 
-// getLengthBytes gets the bytes of length
-func getLengthBytes(sizeOfBytes int, len int) []byte {
+// getLengthBytes gets the length in bytes.
+func getLengthInBytes(sizeOfBytes int, len int) []byte {
 	buf := make([]byte, sizeOfBytes)
 
 	// set len to buf.
