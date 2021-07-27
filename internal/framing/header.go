@@ -17,10 +17,10 @@ type Header struct {
 }
 
 const (
-	// FrameTypeSize is the size of FrameType.
+	// FrameTypeSize is the size of FrameType in bytes.
 	FrameTypeSize = 1
 
-	// FrameTypeSize is the size of Metadata Length.
+	// FrameTypeSize is the size of Metadata Length in bytes.
 	MetadataLengthSize = 2
 )
 
@@ -36,7 +36,7 @@ func newHeader(frameType FrameType, metadata []byte) *Header {
 func (h *Header) Bytes() []byte {
 	metaLen := len(h.Metadata)
 	buf := []byte{byte(h.FrameType)}
-	buf = append(buf, getLengthBytes(MetadataLengthSize, metaLen)...)
+	buf = append(buf, getLengthInBytes(MetadataLengthSize, metaLen)...)
 	if metaLen > 0 {
 		buf = append(buf, h.Metadata...)
 	}
