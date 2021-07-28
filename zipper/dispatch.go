@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"reflect"
+	"time"
 
 	"github.com/reactivex/rxgo/v2"
 	"github.com/yomorun/yomo/core/rx"
@@ -41,30 +42,31 @@ func mergeStreamFn(upstream rx.Stream, sfn GetStreamFunc) rx.Stream {
 					}
 					if item.Error() {
 						return
-					} else {
-						for {
-							name, rw, cancel := sfn()
-							frame, ok := item.V.(framing.Frame)
-							if !ok {
-								logger.Debug("[MergeStreamFunc] the type of item.V is not a Frame", "type", reflect.TypeOf(item.V))
-								continue
-							}
+					}
 
-							if rw == nil {
-								logger.Debug("[MergeStreamFunc] the writer of the stream-function is nil", "stream-fn", name)
-								// pass the data to next stream function if the curren stream function is nil
-								response <- frame
-								break
-							} else {
-								err := rw.Write(frame)
-								if err == nil {
-									logger.Debug("[MergeStreamFunc] YoMo-Zipper sent frame to Stream Function.", "stream-fn", name, "frame", logger.BytesString(frame.Bytes()))
-									break
-								} else {
-									logger.Error("[MergeStreamFunc] YoMo-Zipper sent frame to Stream Function failed.", "stream-fn", name, "frame", logger.BytesString(frame.Bytes()), "err", err)
-									cancel()
-								}
-							}
+					for {
+						name, rw, cancel := sfn()
+						frame, ok := item.V.(framing.Frame)
+						if !ok {
+							logger.Debug("[MergeStreamFunc] the type of item.V is not a Frame", "type", reflect.TypeOf(item.V))
+							continue
+						}
+
+						if rw == nil {
+							logger.Debug("[MergeStreamFunc] the writer of the stream-function is nil", "stream-fn", name)
+							// pass the data to next stream function if the curren stream function is nil
+							response <- frame
+							break
+						}
+
+						// send frame to downstream.
+						err := rw.Write(frame)
+						if err == nil {
+							logger.Debug("[MergeStreamFunc] YoMo-Zipper sent frame to Stream Function.", "stream-fn", name, "frame", logger.BytesString(frame.Bytes()))
+							break
+						} else {
+							logger.Error("[MergeStreamFunc] YoMo-Zipper sent frame to Stream Function failed.", "stream-fn", name, "frame", logger.BytesString(frame.Bytes()), "err", err)
+							cancel()
 						}
 					}
 				}
@@ -76,23 +78,27 @@ func mergeStreamFn(upstream rx.Stream, sfn GetStreamFunc) rx.Stream {
 			defer close(response)
 			for {
 				name, rw, _ := sfn()
-				if rw != nil {
-					frameCh := rw.Read()
-					for frame := range frameCh {
-						logger.Debug("[MergeStreamFunc] YoMo-Zipper received frame from Stream Function.", "stream-fn", name, "frame", logger.BytesString(frame.Bytes()))
-						if frame.Type() == framing.FrameTypePayload {
-							response <- frame
-						} else if frame.Type() == framing.FrameTypeAck {
-							logger.Debug("[MergeStreamFunc] YoMo-Zipper received ACK from Stream Function, will send the data to next Stream Function.", "stream-fn", name)
-							// TODO: send data to next Stream Function.
-						} else {
-							logger.Debug("[MergeStreamFunc] it is not a Payload Frame.", "stream-fn", name, "frame_type", frame.Type())
-						}
+				if rw == nil {
+					time.Sleep(100 * time.Millisecond)
+					continue
+				}
+
+				frameCh := rw.Read()
+				for frame := range frameCh {
+					logger.Debug("[MergeStreamFunc] YoMo-Zipper received frame from Stream Function.", "stream-fn", name, "frame", logger.BytesString(frame.Bytes()))
+					if frame.Type() == framing.FrameTypePayload {
+						response <- frame
+					} else if frame.Type() == framing.FrameTypeAck {
+						logger.Debug("[MergeStreamFunc] YoMo-Zipper received ACK from Stream Function, will send the data to next Stream Function.", "stream-fn", name)
+						// TODO: send data to next Stream Function.
+					} else {
+						logger.Debug("[MergeStreamFunc] it is not a Payload Frame.", "stream-fn", name, "frame_type", frame.Type())
 					}
 				}
 			}
 		}()
 
+		// send response to downstream
 		for {
 			select {
 			case <-ctx.Done():
