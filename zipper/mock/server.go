@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	IP   string = "127.0.0.1"
-	Port int    = 8111
+	IP   string = "127.0.0.1" // IP is the IP of mock server.
+	Port int    = 8111        // Port is the Port of mock server.
 )
 
 // New a mock server.
@@ -17,7 +17,7 @@ func New() {
 	svr.Serve(fmt.Sprintf("%s:%d", IP, Port))
 }
 
-// New a mock server with a certain stream-function name.
+// NewWithFuncName creates a mock server with a certain stream-function name.
 func NewWithFuncName(funcName string) {
 	svr := server.New(&server.WorkflowConfig{
 		Workflow: server.Workflow{

@@ -23,7 +23,7 @@ func newLogger(isDebug bool) Logger {
 	cfg.DisableStacktrace = true
 	cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 
-	if isJsonFormat() {
+	if isJSONFormat() {
 		cfg.Encoding = "json"
 	} else {
 		cfg.Encoding = "console"

@@ -40,7 +40,7 @@ type Client interface {
 
 // Impl is the implementation of Client interface.
 type Impl struct {
-	conn       *quic.QuicConn
+	conn       *quic.Conn
 	serverIP   string
 	serverPort int
 	Readers    chan decoder.Reader // Readers are the reader to receive the data from YoMo Zipper.
@@ -53,7 +53,7 @@ type Impl struct {
 // New creates a new client.
 func New(appName string, clientType string) *Impl {
 	c := &Impl{
-		conn:    quic.NewQuicConn(appName, clientType),
+		conn:    quic.NewConn(appName, clientType),
 		Readers: make(chan decoder.Reader, 1),
 		once:    new(sync.Once),
 	}
@@ -98,22 +98,22 @@ func (c *Impl) BaseConnect(ip string, port int) (*Impl, error) {
 	logger.Printf("Connecting to YoMo-Zipper %s...", addr)
 
 	// connect to YoMo-Zipper
-	quic_cli, err := quic.NewClient(addr)
+	client, err := quic.NewClient(addr)
 	if err != nil {
-		logger.Error("[client] NewClient Error:", "err", err)
+		logger.Error("[client] quic.NewClient Error:", "err", err)
 		return c, err
 	}
 
 	// create stream
-	quic_stream, err := quic_cli.CreateStream(context.Background())
+	stream, err := client.CreateStream(context.Background())
 	if err != nil {
 		logger.Error("[client] CreateStream Error:", "err", err)
 		return c, err
 	}
 
 	// set session and signal
-	c.session = quic_cli
-	c.conn.Signal = decoder.NewReadWriter(quic_stream)
+	c.session = client
+	c.conn.Signal = decoder.NewReadWriter(stream)
 
 	// send negotiation payload to YoMo-Zipper
 	payload := NegotiationPayload{
@@ -200,15 +200,15 @@ func (c *Impl) handleSignal(accepted chan bool) {
 
 // Write the data to downstream.
 func (c *Impl) Write(data []byte) (int, error) {
-	if c.conn.Stream != nil {
-		err := c.conn.Stream.Write(framing.NewPayloadFrame(data))
-		if err != nil {
-			return 0, err
-		}
-		return len(data), nil
-	} else {
-		return 0, errors.New("[client] conn.Stream is nil.")
+	if c.conn.Stream == nil {
+		return 0, errors.New("[client] conn.Stream is nil")
 	}
+
+	err := c.conn.Stream.Write(framing.NewPayloadFrame(data))
+	if err != nil {
+		return 0, err
+	}
+	return len(data), nil
 }
 
 // Retry the connection between client and server.

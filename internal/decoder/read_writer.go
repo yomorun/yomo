@@ -25,6 +25,7 @@ type Writer interface {
 	Write(f framing.Frame) error
 }
 
+// NewReadWriter creates a new decoder.ReadWriter by io.ReadWriter.
 func NewReadWriter(readWriter io.ReadWriter) ReadWriter {
 	return &readWriterImpl{
 		reader: NewReader(readWriter),

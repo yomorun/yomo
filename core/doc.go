@@ -1,2 +1,2 @@
-// core
+// Package core
 package core

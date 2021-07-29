@@ -18,7 +18,7 @@ type Workflow struct {
 	Functions []App `yaml:"functions"`
 }
 
-// Workflow represents a YoMo Workflow config.
+// WorkflowConfig represents a YoMo Workflow config.
 type WorkflowConfig struct {
 	Name     string `yaml:"name"`
 	Host     string `yaml:"host"`
@@ -59,6 +59,7 @@ func load(data []byte) (*WorkflowConfig, error) {
 	return config, nil
 }
 
+// ParseConfig parses the config.
 func ParseConfig(config string) (*WorkflowConfig, error) {
 	if !(strings.HasSuffix(config, ".yaml") || strings.HasSuffix(config, ".yml")) {
 		return nil, errors.New(`The extension of workflow config is incorrect, it should ".yaml|.yml"`)

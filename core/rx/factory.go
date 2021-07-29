@@ -23,6 +23,7 @@ type Factory interface {
 type factoryImpl struct {
 }
 
+// NewFactory creates a new Rx factory.
 func NewFactory() Factory {
 	return &factoryImpl{}
 }
