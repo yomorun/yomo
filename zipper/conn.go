@@ -13,7 +13,7 @@ import (
 
 // Conn represents the YoMo Zipper connection.
 type Conn struct {
-	conn              *quic.QuicConn
+	conn              *quic.Conn
 	Session           quic.Session
 	onClosed          func()      // onClosed is the callback when the connection is closed.
 	onGotAppType      func()      // onGotAppType is the callback when the YoMo-Zipper got app type from client's signal.
@@ -24,7 +24,7 @@ type Conn struct {
 func NewConn(sess quic.Session, st quic.Stream, conf *WorkflowConfig) *Conn {
 	logger.Debug("[zipper] inits a new connection.")
 	c := &Conn{
-		conn:    quic.NewQuicConn("", ""),
+		conn:    quic.NewConn("", ""),
 		Session: sess,
 	}
 

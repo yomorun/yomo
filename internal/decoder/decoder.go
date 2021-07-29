@@ -253,12 +253,12 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 
 		buffer := make([]byte, 0)
 		var (
-			index          int32  = 0 // vernier
+			index          int32  // vernier
 			state          string = y3StateRootStart
-			lengthFieldLen int32  = 0
-			valueLen       int32  = 0
-			limit          int32  = 0
-			isPrimitive    bool   = false
+			lengthFieldLen int32
+			valueLen       int32
+			limit          int32
+			isPrimitive    bool
 		)
 
 		// tagLen represents the length of Tag.

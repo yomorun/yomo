@@ -20,7 +20,7 @@ const (
 	// FrameTypeSize is the size of FrameType in bytes.
 	FrameTypeSize = 1
 
-	// FrameTypeSize is the size of Metadata Length in bytes.
+	// MetadataLengthSize is the size of Metadata Length in bytes.
 	MetadataLengthSize = 2
 )
 

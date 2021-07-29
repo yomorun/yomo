@@ -9,17 +9,17 @@ import (
 )
 
 const (
-	ConnTypeSource         string = "source"
-	ConnTypeStreamFunction string = "stream-function"
-	ConnTypeZipperSender   string = "server-sender"
+	ConnTypeSource         string = "source"          // ConnTypeSource is the connection type "source".
+	ConnTypeStreamFunction string = "stream-function" // ConnTypeSource is the connection type "stream-function".
+	ConnTypeZipperSender   string = "server-sender"   // ConnTypeSource is the connection type "server-sender".
 
 	ErrConnectionClosed string = "Application error 0x0" // the error message when the connection was closed
 
 	HeartbeatTimeOut = 5 * time.Second // HeartbeatTimeOut is the duration when the heartbeat will be time-out.
 )
 
-// QuicConn represents the QUIC connection.
-type QuicConn struct {
+// Conn represents the QUIC connection.
+type Conn struct {
 	Signal              decoder.ReadWriter // Signal is the specified stream to receive the signal.
 	Stream              decoder.ReadWriter // Stream is the stream to receive actual data.
 	Type                string             // Type is the type of connection. Possible value: source, stream-function, server-sender
@@ -32,9 +32,9 @@ type QuicConn struct {
 	OnHeartbeatExpired  func()             // OnHeartbeatExpired is the callback when the heartbeat is expired.
 }
 
-// NewQuicConn inits a new QUIC connection.
-func NewQuicConn(name string, connType string) *QuicConn {
-	return &QuicConn{
+// NewConn inits a new QUIC connection.
+func NewConn(name string, connType string) *Conn {
+	return &Conn{
 		Name:      name,
 		Type:      connType,
 		Heartbeat: make(chan bool),
@@ -44,7 +44,7 @@ func NewQuicConn(name string, connType string) *QuicConn {
 }
 
 // SendSignal sends the signal to client.
-func (c *QuicConn) SendSignal(f framing.Frame) error {
+func (c *Conn) SendSignal(f framing.Frame) error {
 	if c.Signal == nil {
 		return errors.New("Signal is nil")
 	}
@@ -54,7 +54,7 @@ func (c *QuicConn) SendSignal(f framing.Frame) error {
 }
 
 // Healthcheck checks if peer is online by heartbeat.
-func (c *QuicConn) Healthcheck() {
+func (c *Conn) Healthcheck() {
 	go func() {
 		// receive heartbeat
 		defer c.Close()
@@ -83,7 +83,7 @@ func (c *QuicConn) Healthcheck() {
 }
 
 // Close the QUIC connection.
-func (c *QuicConn) Close() error {
+func (c *Conn) Close() error {
 	c.IsClosed = true
 	c.Ready = true
 

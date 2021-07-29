@@ -94,8 +94,8 @@ func isEnableDebug() bool {
 	return false
 }
 
-// isProductionMode indicates whether the log is in production model.
-func isJsonFormat() bool {
+// isJSONFormat indicates whether the log is in JSON format.
+func isJSONFormat() bool {
 	if os.Getenv("YOMO_LOG_FORMAT") == "json" {
 		return true
 	}

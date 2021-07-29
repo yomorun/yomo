@@ -259,8 +259,8 @@ func cancelStreamFunc(conn *Conn, connMap *sync.Map, id int64) func() {
 
 // IsMatched indicates if the connection is matched.
 func findConn(app App, connMap *sync.Map, connType string) (int64, *Conn) {
-	var conn *Conn = nil
-	var id int64 = 0
+	var conn *Conn
+	var id int64
 	connMap.Range(func(key, value interface{}) bool {
 		c := value.(*Conn)
 		if c.conn.Name == app.Name && c.conn.Type == connType {
@@ -355,8 +355,8 @@ func (s *quicHandler) cancelZipperSender(conf zipperConf) func() {
 	return f
 }
 
-func (s *quicHandler) getConn(name string) *quic.QuicConn {
-	var conn *quic.QuicConn
+func (s *quicHandler) getConn(name string) *quic.Conn {
+	var conn *quic.Conn
 	s.connMap.Range(func(key, value interface{}) bool {
 		c := value.(*Conn)
 		if c.conn.Name == name {
