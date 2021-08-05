@@ -2,7 +2,6 @@ package quic
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 
 	"github.com/lucas-clemente/quic-go"
@@ -37,20 +36,19 @@ LOOP_READ_STREAM:
 	for {
 		buf := make([]byte, bufferSize)
 		n, err := stream.Read(buf)
-		// read all data.
-		if err == io.EOF {
-			fmt.Println("eof")
-			break LOOP_READ_STREAM
-		}
 
 		// read data failed.
-		if err != nil {
+		if err != nil && err != io.EOF {
 			return nil, err
+		}
+
+		// read all data.
+		if err == io.EOF && n == 0 {
+			break LOOP_READ_STREAM
 		}
 
 		// reading data
 		b.Write(buf[:n])
-		fmt.Println(n)
 	}
 
 	return b.Bytes(), nil
