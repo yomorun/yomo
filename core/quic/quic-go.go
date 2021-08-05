@@ -107,16 +107,36 @@ func (c *quicGoClient) Connect(addr string) error {
 	return nil
 }
 
-func (c *quicGoClient) CreateStream(ctx context.Context) (Stream, error) {
+func (c *quicGoClient) AcceptStream(ctx context.Context) (Stream, error) {
 	if c.session == nil {
-		return nil, errors.New("session is nil")
+		return nil, errors.New("[QUIC client] session is nil")
 	}
 
-	stream, err := c.session.OpenStreamSync(ctx)
-	if err != nil {
-		return nil, err
+	return c.session.AcceptStream(ctx)
+}
+
+func (c *quicGoClient) AcceptUniStream(ctx context.Context) (ReceiveStream, error) {
+	if c.session == nil {
+		return nil, errors.New("[QUIC client] session is nil")
 	}
-	return stream, nil
+
+	return c.session.AcceptUniStream(ctx)
+}
+
+func (c *quicGoClient) CreateStream(ctx context.Context) (Stream, error) {
+	if c.session == nil {
+		return nil, errors.New("[QUIC client] session is nil")
+	}
+
+	return c.session.OpenStreamSync(ctx)
+}
+
+func (c *quicGoClient) CreateUniStream(ctx context.Context) (SendStream, error) {
+	if c.session == nil {
+		return nil, errors.New("[QUIC client] session is nil")
+	}
+
+	return c.session.OpenUniStreamSync(ctx)
 }
 
 func (c *quicGoClient) Close() error {

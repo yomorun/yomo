@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"reflect"
 	"sync"
-	"time"
 
 	"github.com/reactivex/rxgo/v2"
 	"github.com/yomorun/yomo/core/quic"
@@ -21,7 +20,7 @@ type (
 	CancelFunc func()
 
 	// GetStreamFunc represents the function to get stream function (former flow/sink).
-	GetStreamFunc func() (string, decoder.ReadWriter, CancelFunc)
+	GetStreamFunc func() (string, quic.Session, CancelFunc)
 
 	// GetSenderFunc represents the function to get YoMo-Sender.
 	GetSenderFunc func() (string, io.Writer, CancelFunc)
@@ -78,41 +77,41 @@ func (s *quicHandler) Listen() error {
 }
 
 func (s *quicHandler) Read(id int64, sess quic.Session, st quic.Stream) error {
-	s.mutex.Lock()
-
+	// the connection exists
 	if c, ok := s.connMap.Load(id); ok {
-		// the conn exists, reads new stream.
+		s.mutex.Lock()
 		c := c.(*Conn)
 		if c.conn.Type == quic.ConnTypeSource {
 			s.source <- decoder.NewReader(st)
 		} else if c.conn.Type == quic.ConnTypeZipperSender {
 			s.zipperReceiver <- decoder.NewReader(st)
-		} else {
-			logger.Debug("[zipper] inits a new stream from Stream Function.", "name", c.conn.Name)
-			c.conn.Stream = decoder.NewReadWriter(st)
 		}
-	} else {
-		// init conn.
-		svrConn := NewConn(sess, st, s.serverlessConfig)
-		svrConn.onClosed = func() {
-			s.connMap.Delete(id)
-		}
-		svrConn.isNewAppAvailable = func() bool {
-			isNewAvailable := false
-			// check if any new app (same name and type) is available in connMap.
-			s.connMap.Range(func(key, value interface{}) bool {
-				c := value.(*Conn)
-				if c.conn.Name == svrConn.conn.Name && c.conn.Type == svrConn.conn.Type && key.(int64) > id {
-					isNewAvailable = true
-					return false
-				}
-				return true
-			})
 
-			return isNewAvailable
-		}
-		s.connMap.Store(id, svrConn)
+		s.mutex.Unlock()
+		return nil
 	}
+
+	// init a new connection.
+	s.mutex.Lock()
+	svrConn := NewConn(sess, st, s.serverlessConfig)
+	svrConn.onClosed = func() {
+		s.connMap.Delete(id)
+	}
+	svrConn.isNewAppAvailable = func() bool {
+		isNewAvailable := false
+		// check if any new app (same name and type) is available in connMap.
+		s.connMap.Range(func(key, value interface{}) bool {
+			c := value.(*Conn)
+			if c.conn.Name == svrConn.conn.Name && c.conn.Type == svrConn.conn.Type && key.(int64) > id {
+				isNewAvailable = true
+				return false
+			}
+			return true
+		})
+
+		return isNewAvailable
+	}
+	s.connMap.Store(id, svrConn)
 	s.mutex.Unlock()
 	return nil
 }
@@ -224,25 +223,18 @@ var onceCreateStream = new(sync.Once)
 
 // createStreamFunc creates a `GetStreamFunc` for `Stream Function`.
 func createStreamFunc(app App, connMap *sync.Map, connType string) GetStreamFunc {
-	f := func() (string, decoder.ReadWriter, CancelFunc) {
+	f := func() (string, quic.Session, CancelFunc) {
 		id, c := findConn(app, connMap, connType)
 
 		if c == nil {
 			return app.Name, nil, func() {}
-		} else if c.conn.Stream != nil {
-			return app.Name, c.conn.Stream, cancelStreamFunc(c, connMap, id)
-		} else {
-			onceCreateStream.Do(func() {
-				logger.Debug("[zipper] send CreateStream Frame to Stream Function.", "stream-fn", app.Name)
-				c.SendSignalCreateStream()
-
-				// reset the sync.Once after 3s.
-				time.AfterFunc(3*time.Second, func() {
-					onceCreateStream = new(sync.Once)
-				})
-			})
-			return app.Name, nil, func() {}
 		}
+
+		if c.Session != nil {
+			return app.Name, c.Session, cancelStreamFunc(c, connMap, id)
+		}
+
+		return app.Name, nil, func() {}
 	}
 
 	return f

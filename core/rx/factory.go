@@ -13,11 +13,17 @@ type Factory interface {
 	// FromChannel creates a new Stream from a channel.
 	FromChannel(channel chan interface{}) Stream
 
-	// FromReader creates a new Stream from io.Reader.
+	// FromReader creates a new Stream from decoder.Reader.
 	FromReader(reader decoder.Reader) Stream
 
 	// FromReaderWithDecoder creates a new Stream with decoder.
 	FromReaderWithDecoder(readers chan decoder.Reader, opts ...decoder.Option) Stream
+
+	// FromItems creates a new Stream from items.
+	FromItems(items ...interface{}) Stream
+
+	// FromItemsWithDecoder creates a new Stream from items with decoder.
+	FromItemsWithDecoder(items ...interface{}) Stream
 }
 
 type factoryImpl struct {
@@ -63,7 +69,7 @@ func (fac *factoryImpl) FromReader(reader decoder.Reader) Stream {
 
 		frameChan := reader.Read()
 		for frame := range frameChan {
-			logger.Debug("Receive frame from source.", "frame", logger.BytesString(frame.Bytes()))
+			logger.Debug("Receive frame from source.")
 			next <- Of(frame)
 		}
 	}()
@@ -80,14 +86,44 @@ func (fac *factoryImpl) FromReaderWithDecoder(readers chan decoder.Reader, opts 
 			select {
 			case <-ctx.Done():
 				return
-			case item, ok := <-readers:
+			case reader, ok := <-readers:
 				if !ok {
 					return
 				}
 
-				Of(decoder.FromStream(item, opts...)).SendContext(ctx, next)
+				go func() {
+					frameChan := reader.Read()
+					for frame := range frameChan {
+						Of(decoder.FromItems(frame.Data())).SendContext(ctx, next)
+					}
+				}()
 			}
 		}
 	}
-	return CreateObservable(f, rxgo.WithPublishStrategy())
+	return CreateObservable(f)
+}
+
+// FromItems creates a new Stream from items.
+func (fac *factoryImpl) FromItems(items ...interface{}) Stream {
+	next := make(chan rxgo.Item)
+
+	go func() {
+		for _, item := range items {
+			next <- Of(item)
+		}
+	}()
+
+	return ConvertObservable(rxgo.FromChannel(next))
+}
+
+// FromItemsWithDecoder creates a new Stream from items with decoder.
+func (fac *factoryImpl) FromItemsWithDecoder(items ...interface{}) Stream {
+	f := func(ctx context.Context, next chan rxgo.Item) {
+		defer close(next)
+
+		for _, item := range items {
+			Of(decoder.FromItems(item)).SendContext(ctx, next)
+		}
+	}
+	return CreateObservable(f)
 }

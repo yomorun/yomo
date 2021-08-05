@@ -28,6 +28,7 @@ func NewConn(sess quic.Session, st quic.Stream, conf *WorkflowConfig) *Conn {
 		Session: sess,
 	}
 
+	c.Session = sess
 	c.conn.Signal = decoder.NewReadWriter(st)
 	c.handleSignal(conf)
 	c.conn.OnClosed = c.Close
@@ -78,11 +79,6 @@ func (c *Conn) handleSignal(conf *WorkflowConfig) {
 				c.conn.Healthcheck()
 				c.Beat()
 
-				// create stream when the connetion is initialized.
-				if c.conn.Type == quic.ConnTypeStreamFunction {
-					c.createStream()
-				}
-
 			case framing.FrameTypeHeartbeat:
 				c.conn.Heartbeat <- true
 			}
@@ -130,32 +126,6 @@ func (c *Conn) Beat() {
 						logger.Error("❌ Server sent SignalHeartbeat to app failed.", "name", c.conn.Name, "err", err)
 					}
 
-					t.Stop()
-					break
-				}
-			}
-		}
-	}(c)
-}
-
-// createStream sends the singal to create a stream for receiving data.
-func (c *Conn) createStream() {
-	go func(c *Conn) {
-		t := time.NewTicker(200 * time.Millisecond)
-		for {
-			select {
-			case <-t.C:
-				// skip if the stream was created or the conn was closed.
-				if c.conn.Stream != nil || c.conn.IsClosed {
-					t.Stop()
-					break
-				}
-
-				// send the signal to create stream.
-				err := c.SendSignalCreateStream()
-				if err != nil {
-					logger.Error("❌ Server sent SignalFunction to app failed.", "name", c.conn.Name, "err", err)
-				} else {
 					t.Stop()
 					break
 				}

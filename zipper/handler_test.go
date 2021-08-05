@@ -6,8 +6,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/yomorun/yomo/core/quic"
-	"github.com/yomorun/yomo/internal/client"
+	"github.com/yomorun/yomo/source"
 )
 
 func TestServerHandlerListen(t *testing.T) {
@@ -51,8 +50,8 @@ func TestServerHandlerRead(t *testing.T) {
 	}
 
 	// source
-	source := client.New("source", quic.ConnTypeSource)
-	source, _ = source.BaseConnect(testConfig.Host, testConfig.Port)
+	source := source.New("source")
+	source, _ = source.Connect(testConfig.Host, testConfig.Port)
 	defer source.Close()
 	n, err := source.Write(data)
 	assert.Nil(t, err)

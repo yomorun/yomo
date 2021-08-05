@@ -21,7 +21,6 @@ const (
 // Conn represents the QUIC connection.
 type Conn struct {
 	Signal              decoder.ReadWriter // Signal is the specified stream to receive the signal.
-	Stream              decoder.ReadWriter // Stream is the stream to receive actual data.
 	Type                string             // Type is the type of connection. Possible value: source, stream-function, server-sender
 	Name                string             // Name is the name of connection.
 	Heartbeat           chan bool          // Heartbeat is the channel to receive heartbeat.
