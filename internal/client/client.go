@@ -3,9 +3,7 @@ package client
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"sync"
 	"time"
 
@@ -15,6 +13,9 @@ import (
 	"github.com/yomorun/yomo/logger"
 )
 
+// streamPoolCount is the number of streams in pool.
+const streamPoolCount = 10
+
 // NegotiationPayload represents the payload for negotiation.
 type NegotiationPayload struct {
 	AppName    string `json:"app_name"`    // AppName is the name of client.
@@ -23,8 +24,6 @@ type NegotiationPayload struct {
 
 // Client is the interface for common functions of YoMo client.
 type Client interface {
-	io.Writer
-
 	// Close the client connection.
 	Close() error
 
@@ -43,9 +42,8 @@ type Impl struct {
 	conn       *quic.Conn
 	serverIP   string
 	serverPort int
-	Readers    chan decoder.Reader // Readers are the reader to receive the data from YoMo Zipper.
-	Writer     decoder.Writer      // Writer is the stream to send the data to YoMo Zipper.
-	session    quic.Client
+	Session    quic.Client
+	Stream     decoder.ReadWriter // Stream is the stream to receive actual data from source.
 	once       *sync.Once
 	isRejected bool
 }
@@ -53,9 +51,8 @@ type Impl struct {
 // New creates a new client.
 func New(appName string, clientType string) *Impl {
 	c := &Impl{
-		conn:    quic.NewConn(appName, clientType),
-		Readers: make(chan decoder.Reader, 1),
-		once:    new(sync.Once),
+		conn: quic.NewConn(appName, clientType),
+		once: new(sync.Once),
 	}
 
 	c.conn.OnHeartbeatReceived = func() {
@@ -73,8 +70,8 @@ func New(appName string, clientType string) *Impl {
 		c.once.Do(func() {
 			logger.Debug("[client] heartbeat to YoMo-Zipper was expired, client will reconnect to YoMo-Zipper.", "addr", getServerAddr(c.serverIP, c.serverPort))
 
-			// reset stream to nil.
-			c.conn.Stream = nil
+			// reset session to nil.
+			c.Session = nil
 
 			// reconnect when the heartbeat is expired.
 			c.BaseConnect(c.serverIP, c.serverPort)
@@ -112,7 +109,7 @@ func (c *Impl) BaseConnect(ip string, port int) (*Impl, error) {
 	}
 
 	// set session and signal
-	c.session = client
+	c.Session = client
 	c.conn.Signal = decoder.NewReadWriter(stream)
 
 	// send negotiation payload to YoMo-Zipper
@@ -157,13 +154,13 @@ func (c *Impl) handleSignal(accepted chan bool) {
 			case framing.FrameTypeAccepted:
 				// create stream
 				if c.conn.Type == quic.ConnTypeSource || c.conn.Type == quic.ConnTypeZipperSender {
-					stream, err := c.session.CreateStream(context.Background())
+					stream, err := c.Session.CreateStream(context.Background())
 					if err != nil {
 						logger.Error("[client] session.CreateStream Error:", "err", err)
 						break
 					}
 
-					c.conn.Stream = decoder.NewReadWriter(stream)
+					c.Stream = decoder.NewReadWriter(stream)
 				}
 				accepted <- true
 
@@ -177,38 +174,11 @@ func (c *Impl) handleSignal(accepted chan bool) {
 				c.isRejected = true
 				break
 
-			case framing.FrameTypeCreateStream:
-				// create stream for Stream Function.
-				stream, err := c.session.CreateStream(context.Background())
-
-				if err != nil {
-					logger.Error("[client] session.CreateStream Error:", "err", err)
-					break
-				}
-
-				rw := decoder.NewReadWriter(stream)
-				c.Readers <- rw
-				c.Writer = rw
-				rw.Write(framing.NewInitFrame())
-
 			default:
 				logger.Debug("[client] unknown signal.", "frame", logger.BytesString(frame.Bytes()))
 			}
 		}
 	}()
-}
-
-// Write the data to downstream.
-func (c *Impl) Write(data []byte) (int, error) {
-	if c.conn.Stream == nil {
-		return 0, errors.New("[client] conn.Stream is nil")
-	}
-
-	err := c.conn.Stream.Write(framing.NewPayloadFrame(data))
-	if err != nil {
-		return 0, err
-	}
-	return len(data), nil
 }
 
 // Retry the connection between client and server.
@@ -241,7 +211,12 @@ func (c *Impl) RetryWithCount(count int) bool {
 // Close the client.
 func (c *Impl) Close() error {
 	logger.Debug("[client] close the connection to YoMo-Zipper.")
-	err := c.session.Close()
+	err := c.Session.Close()
+	if err != nil {
+		return err
+	}
+
+	err = c.conn.Close()
 	c.conn.Heartbeat = make(chan bool)
 	c.conn.Signal = nil
 	return err

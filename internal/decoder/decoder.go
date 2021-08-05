@@ -151,6 +151,20 @@ func FromStream(reader Reader, opts ...Option) Observable {
 	return createObservable(f)
 }
 
+// FromStream reads data from reader.
+func FromItems(items ...interface{}) Observable {
+	f := func(next chan interface{}) {
+		defer close(next)
+
+		for _, item := range items {
+			logger.Debug("[Decoder] Receive raw data from YoMo-Zipper.")
+			next <- item
+		}
+	}
+
+	return createObservable(f)
+}
+
 // OnObserve calls the callback function when the key is observed.
 func (o *observableImpl) OnObserve(function func(v []byte) (interface{}, error)) chan interface{} {
 	_next := make(chan interface{})
