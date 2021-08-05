@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/reactivex/rxgo/v2"
+	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/core/rx"
 	"github.com/yomorun/yomo/internal/decoder"
-	"github.com/yomorun/yomo/internal/framing"
 	"github.com/yomorun/yomo/logger"
 )
 
@@ -28,7 +28,7 @@ func DispatcherWithFunc(sfns []GetStreamFunc, reader decoder.Reader) rx.Stream {
 func mergeStreamFn(upstream rx.Stream, sfn GetStreamFunc) rx.Stream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
-		response := make(chan framing.Frame)
+		response := make(chan []byte)
 		observe := upstream.Observe()
 
 		// send the stream to downstream
@@ -44,7 +44,7 @@ func mergeStreamFn(upstream rx.Stream, sfn GetStreamFunc) rx.Stream {
 	return rx.CreateObservable(f)
 }
 
-func sendObservedDataToStreamFn(ctx context.Context, sfn GetStreamFunc, observe <-chan rxgo.Item, response chan framing.Frame) {
+func sendObservedDataToStreamFn(ctx context.Context, sfn GetStreamFunc, observe <-chan rxgo.Item, response chan []byte) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -61,16 +61,16 @@ func sendObservedDataToStreamFn(ctx context.Context, sfn GetStreamFunc, observe 
 		LOOP_READ_STREAM:
 			for {
 				name, session, cancel := sfn()
-				frame, ok := item.V.(framing.Frame)
+				data, ok := item.V.([]byte)
 				if !ok {
-					logger.Debug("[MergeStreamFunc] the type of item.V is not a Frame", "type", reflect.TypeOf(item.V))
+					logger.Debug("[MergeStreamFunc] the type of item.V is not a []byte", "type", reflect.TypeOf(item.V))
 					continue
 				}
 
 				if session == nil {
 					logger.Debug("[MergeStreamFunc] the session of the stream-function is nil", "stream-fn", name)
 					// pass the data to next stream function if the curren stream function is nil
-					response <- frame
+					response <- data
 					break LOOP_READ_STREAM
 				}
 
@@ -79,11 +79,11 @@ func sendObservedDataToStreamFn(ctx context.Context, sfn GetStreamFunc, observe 
 				if err != nil {
 					logger.Debug("[MergeStreamFunc] session.OpenUniStreamSync failed", "stream-fn", name)
 					// pass the data to next stream function if the current stream function is nil
-					response <- frame
+					response <- data
 					break LOOP_READ_STREAM
 				}
 
-				_, err = stream.Write(frame.Bytes())
+				_, err = stream.Write(data)
 				if err == nil {
 					logger.Debug("[MergeStreamFunc] YoMo-Zipper sent data to Stream Function.", "stream-fn", name)
 
@@ -104,14 +104,13 @@ func sendObservedDataToStreamFn(ctx context.Context, sfn GetStreamFunc, observe 
 	}
 }
 
-func receiveResponseFromStreamFn(sfn GetStreamFunc, response chan framing.Frame) {
+func receiveResponseFromStreamFn(sfn GetStreamFunc, response chan []byte) {
 	defer close(response)
 	for {
 		name, session, _ := sfn()
 
 		if session == nil {
 			time.Sleep(100 * time.Millisecond)
-			logger.Debug("[MergeStreamFunc] Response session == nil.", "stream-fn", name)
 			continue
 		}
 
@@ -128,29 +127,20 @@ func receiveResponseFromStreamFn(sfn GetStreamFunc, response chan framing.Frame)
 			}
 
 			go func() {
-				reader := decoder.NewReader(stream)
-				frameCh := reader.Read()
-
-			LOOP_FRAME:
-				for frame := range frameCh {
-					logger.Debug("[MergeStreamFunc] YoMo-Zipper received frame from Stream Function.", "stream-fn", name)
-					if frame.Type() == framing.FrameTypePayload {
-						response <- frame
-					} else if frame.Type() == framing.FrameTypeAck {
-						logger.Debug("[MergeStreamFunc] YoMo-Zipper received ACK from Stream Function, will send the data to next Stream Function.", "stream-fn", name)
-						// TODO: send data to next Stream Function.
-					} else {
-						logger.Debug("[MergeStreamFunc] it is not a Payload Frame.", "stream-fn", name, "frame_type", frame.Type())
-					}
-
-					break LOOP_FRAME
+				data, err := quic.ReadStream(stream)
+				if err != nil {
+					logger.Debug("[MergeStreamFunc] YoMo-Zipper received data from Stream Function failed.", "stream-fn", name, "err", err)
+					return
 				}
+
+				logger.Debug("[MergeStreamFunc] YoMo-Zipper received data from Stream Function.", "stream-fn", name)
+				response <- data
 			}()
 		}
 	}
 }
 
-func sendResponseToStreamFn(ctx context.Context, next chan rxgo.Item, response chan framing.Frame) {
+func sendResponseToStreamFn(ctx context.Context, next chan rxgo.Item, response chan []byte) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -163,8 +153,6 @@ func sendResponseToStreamFn(ctx context.Context, next chan rxgo.Item, response c
 			logger.Print("________ goroutine", runtime.NumGoroutine())
 			if !rxgo.Of(value).SendContext(ctx, next) {
 				return
-			} else {
-				logger.Print("________ rxgo.Of(value).SendContext(ctx, next)", len(value.Data()))
 			}
 		}
 	}

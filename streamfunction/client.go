@@ -5,14 +5,11 @@ import (
 	"errors"
 	"io"
 	"runtime"
-	"time"
 
 	"github.com/reactivex/rxgo/v2"
 	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/core/rx"
 	"github.com/yomorun/yomo/internal/client"
-	"github.com/yomorun/yomo/internal/decoder"
-	"github.com/yomorun/yomo/internal/framing"
 	"github.com/yomorun/yomo/logger"
 )
 
@@ -55,23 +52,9 @@ func (c *clientImpl) Write(data []byte) (int, error) {
 		return 0, err
 	}
 
-	// wrap data with frame.
-	frame := framing.NewPayloadFrame(data)
+	defer stream.Close()
 
-	n, err := stream.Write(frame.Bytes())
-	if err != nil {
-		stream.Close()
-		return 0, err
-	}
-
-	// close stream
-	go func() {
-		time.AfterFunc(time.Second, func() {
-			stream.Close()
-		})
-	}()
-
-	return n, err
+	return stream.Write(data)
 }
 
 // Connect to YoMo-Zipper.
@@ -101,32 +84,27 @@ LOOP_ACCP_STREAM:
 }
 
 func (c *clientImpl) readStream(stream quic.ReceiveStream, handler func(rxstream rx.Stream) rx.Stream, fac rx.Factory) {
-	reader := decoder.NewReader(stream)
-	frameCh := reader.Read()
-	for frame := range frameCh {
-		data := frame.Data()
-		if len(data) == 0 {
-			break
+	data, err := quic.ReadStream(stream)
+	if err != nil {
+		logger.Error("[Stream Function Client] receive data from zipper failed.", "err", err)
+		return
+	}
+
+	logger.Debug("[Stream Function Client] received data from zipper.")
+
+	rxstream := fac.FromItemsWithDecoder(data)
+
+	for item := range rxstream.Observe(rxgo.WithObservationStrategy(rxgo.ObservationStrategy(rxgo.CloseChannel))) {
+		if item.Error() {
+			logger.Error("[Stream Function Client] rxstream got an error.", "err", item.E)
+			continue
 		}
 
-		logger.Debug("Received data from zipper.")
-
-		rxstream := fac.FromItemsWithDecoder(data)
-
-		for item := range rxstream.Observe(rxgo.WithObservationStrategy(rxgo.ObservationStrategy(rxgo.CloseChannel))) {
-			if item.Error() {
-				logger.Error("[Stream Function Client] rxstream got an error.", "err", item.E)
-				continue
-			}
-
-			go c.executeHandler(item.V, handler, fac)
-			// one data per time.
-			break
-		}
-
+		go c.executeHandler(item.V, handler, fac)
 		// one data per time.
 		break
 	}
+
 }
 
 func (c *clientImpl) executeHandler(data interface{}, handler func(rxstream rx.Stream) rx.Stream, fac rx.Factory) {
@@ -155,7 +133,7 @@ func (c *clientImpl) executeHandler(data interface{}, handler func(rxstream rx.S
 		if err != nil {
 			logger.Error("[Stream Function Client] ❌ Send data to YoMo-Zipper failed.", "err", err)
 		} else {
-			logger.Debug("[Stream Function Client] Send frame to YoMo-Zipper.")
+			logger.Debug("[Stream Function Client] Send data to YoMo-Zipper.")
 		}
 
 		// one data per time.

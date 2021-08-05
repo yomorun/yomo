@@ -70,7 +70,7 @@ func (fac *factoryImpl) FromReader(reader decoder.Reader) Stream {
 		frameChan := reader.Read()
 		for frame := range frameChan {
 			logger.Debug("Receive frame from source.")
-			next <- Of(frame)
+			next <- Of(frame.Data())
 		}
 	}()
 
