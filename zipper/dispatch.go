@@ -86,13 +86,8 @@ func sendObservedDataToStreamFn(ctx context.Context, sfn GetStreamFunc, observe 
 				_, err = stream.Write(data)
 				if err == nil {
 					logger.Debug("[MergeStreamFunc] YoMo-Zipper sent data to Stream Function.", "stream-fn", name)
-
 					// close stream
-					go func() {
-						time.AfterFunc(time.Second, func() {
-							stream.Close()
-						})
-					}()
+					stream.Close()
 					break LOOP_READ_STREAM
 				}
 
