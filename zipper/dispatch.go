@@ -111,7 +111,7 @@ func receiveResponseFromStreamFn(sfn GetStreamFunc, response chan framing.Frame)
 
 		if session == nil {
 			time.Sleep(100 * time.Millisecond)
-			logger.Print("[MergeStreamFunc] Response session == nil", "stream-fn", name)
+			logger.Debug("[MergeStreamFunc] Response session == nil.", "stream-fn", name)
 			continue
 		}
 
@@ -127,23 +127,25 @@ func receiveResponseFromStreamFn(sfn GetStreamFunc, response chan framing.Frame)
 				break LOOP_ACCP_STREAM
 			}
 
-			reader := decoder.NewReader(stream)
-			frameCh := reader.Read()
+			go func() {
+				reader := decoder.NewReader(stream)
+				frameCh := reader.Read()
 
-		LOOP_FRAME:
-			for frame := range frameCh {
-				logger.Debug("[MergeStreamFunc] YoMo-Zipper received frame from Stream Function.", "stream-fn", name)
-				if frame.Type() == framing.FrameTypePayload {
-					response <- frame
-				} else if frame.Type() == framing.FrameTypeAck {
-					logger.Debug("[MergeStreamFunc] YoMo-Zipper received ACK from Stream Function, will send the data to next Stream Function.", "stream-fn", name)
-					// TODO: send data to next Stream Function.
-				} else {
-					logger.Debug("[MergeStreamFunc] it is not a Payload Frame.", "stream-fn", name, "frame_type", frame.Type())
+			LOOP_FRAME:
+				for frame := range frameCh {
+					logger.Debug("[MergeStreamFunc] YoMo-Zipper received frame from Stream Function.", "stream-fn", name)
+					if frame.Type() == framing.FrameTypePayload {
+						response <- frame
+					} else if frame.Type() == framing.FrameTypeAck {
+						logger.Debug("[MergeStreamFunc] YoMo-Zipper received ACK from Stream Function, will send the data to next Stream Function.", "stream-fn", name)
+						// TODO: send data to next Stream Function.
+					} else {
+						logger.Debug("[MergeStreamFunc] it is not a Payload Frame.", "stream-fn", name, "frame_type", frame.Type())
+					}
+
+					break LOOP_FRAME
 				}
-
-				break LOOP_FRAME
-			}
+			}()
 		}
 	}
 }
