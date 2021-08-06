@@ -46,7 +46,7 @@ func (r *zipperImpl) Serve(endpoint string) error {
 	if err != nil {
 		log.Println(err)
 	}
-	
+
 	// return server.ListenAndServe(context.Background(), endpoint)
 	return r.quicServer.ListenAndServe(context.Background(), endpoint)
 }
