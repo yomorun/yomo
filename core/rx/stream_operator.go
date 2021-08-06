@@ -1075,6 +1075,14 @@ func CreateObservable(f func(ctx context.Context, next chan rxgo.Item), opts ...
 	return &StreamImpl{observable: rxgo.FromChannel(next, opts...)}
 }
 
+func CreateZipperObservable(f func(ctx context.Context, next chan rxgo.Item), opts ...rxgo.Option) Stream {
+	next := make(chan rxgo.Item, 100)
+	ctx := context.Background()
+	go f(ctx, next)
+	opts = appendContinueOnError(opts...)
+	return &StreamImpl{observable: rxgo.FromChannel(next, opts...)}
+}
+
 func ConvertObservable(observable rxgo.Observable) Stream {
 	return &StreamImpl{observable: observable}
 }
