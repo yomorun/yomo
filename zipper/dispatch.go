@@ -3,14 +3,16 @@ package server
 import (
 	"context"
 	"reflect"
-	"runtime"
 	"time"
 
 	"github.com/reactivex/rxgo/v2"
+	"github.com/tidwall/gjson"
 	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/core/rx"
 	"github.com/yomorun/yomo/internal/decoder"
 	"github.com/yomorun/yomo/logger"
+	"github.com/yomorun/yomo/zipper/tracing"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // DispatcherWithFunc dispatches the input stream to downstreams.
@@ -28,23 +30,21 @@ func DispatcherWithFunc(sfns []GetStreamFunc, reader decoder.Reader) rx.Stream {
 func mergeStreamFn(upstream rx.Stream, sfn GetStreamFunc) rx.Stream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
-		response := make(chan []byte)
 		observe := upstream.Observe()
 
-		// send the stream to downstream
-		go sendObservedDataToStreamFn(ctx, sfn, observe, response)
+		// send the stream to flow (zipper -> flow/sink)
+		for i:= 0; i < 100; i++ {
+			go sendObservedDataToStreamFn(ctx, sfn, observe, next)
+		}
 
-		// receive the response from downstream
-		go receiveResponseFromStreamFn(sfn, response)
-
-		// send response to downstream
-		sendResponseToStreamFn(ctx, next, response)
+		// receive the response from flow  (flow/sink -> zipper)
+		receiveResponseFromStreamFn(ctx, sfn, next)
 	}
 
-	return rx.CreateObservable(f)
+	return rx.CreateZipperObservable(f)
 }
 
-func sendObservedDataToStreamFn(ctx context.Context, sfn GetStreamFunc, observe <-chan rxgo.Item, response chan []byte) {
+func sendObservedDataToStreamFn(ctx context.Context, sfn GetStreamFunc, observe <-chan rxgo.Item, next chan rxgo.Item) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -64,22 +64,40 @@ func sendObservedDataToStreamFn(ctx context.Context, sfn GetStreamFunc, observe 
 				data, ok := item.V.([]byte)
 				if !ok {
 					logger.Debug("[MergeStreamFunc] the type of item.V is not a []byte", "type", reflect.TypeOf(item.V))
-					continue
+					break LOOP_READ_STREAM
 				}
 
 				if session == nil {
 					logger.Debug("[MergeStreamFunc] the session of the stream-function is nil", "stream-fn", name)
 					// pass the data to next stream function if the curren stream function is nil
-					response <- data
+					rxgo.Of(data).SendContext(ctx, next)
 					break LOOP_READ_STREAM
 				}
 
+				// tracing
+				var traceID, spanID string
+				traceIDValue := gjson.Get(string(data), `metadatas.#(name=="TraceID").value`)
+				if traceIDValue.Exists() {
+					traceID = traceIDValue.String()
+				}
+				spanIDValue := gjson.Get(string(data), `metadatas.#(name=="SpanID").value`)
+				if spanIDValue.Exists() {
+					spanID = spanIDValue.String()
+				}
+
+				logger.Print("Send TraceID: ", traceID, " SpanID: ", spanID)
+
+				var span trace.Span
+				if traceID != "" && spanID != "" {
+					span, _ = tracing.NewRemoteTraceSpan(traceID, spanID, name, "zipper-send-to-"+name)
+				}
+
 				// send data to downstream.
-				stream, err := session.OpenUniStreamSync(context.Background())
+				stream, err := session.OpenUniStream()
 				if err != nil {
-					logger.Debug("[MergeStreamFunc] session.OpenUniStreamSync failed", "stream-fn", name)
+					logger.Debug("[MergeStreamFunc] session.OpenUniStream failed", "stream-fn", name)
 					// pass the data to next stream function if the current stream function is nil
-					response <- data
+					rxgo.Of(data).SendContext(ctx, next)
 					break LOOP_READ_STREAM
 				}
 
@@ -88,6 +106,7 @@ func sendObservedDataToStreamFn(ctx context.Context, sfn GetStreamFunc, observe 
 					logger.Debug("[MergeStreamFunc] YoMo-Zipper sent data to Stream Function.", "stream-fn", name)
 					// close stream
 					stream.Close()
+					span.End()
 					break LOOP_READ_STREAM
 				}
 
@@ -99,8 +118,7 @@ func sendObservedDataToStreamFn(ctx context.Context, sfn GetStreamFunc, observe 
 	}
 }
 
-func receiveResponseFromStreamFn(sfn GetStreamFunc, response chan []byte) {
-	defer close(response)
+func receiveResponseFromStreamFn(ctx context.Context, sfn GetStreamFunc, next chan rxgo.Item) {
 	for {
 		name, session, _ := sfn()
 
@@ -128,27 +146,30 @@ func receiveResponseFromStreamFn(sfn GetStreamFunc, response chan []byte) {
 					return
 				}
 
+				// tracing
+				var traceID, spanID string
+				traceIDValue := gjson.Get(string(data), `metadatas.#(name=="TraceID").value`)
+				if traceIDValue.Exists() {
+					traceID = traceIDValue.String()
+				}
+				spanIDValue := gjson.Get(string(data), `metadatas.#(name=="SpanID").value`)
+				if spanIDValue.Exists() {
+					spanID = spanIDValue.String()
+				}
+
+				logger.Print("Receive TraceID: ", traceID, " SpanID: ", spanID)
+
+				var span trace.Span
+				if traceID != "" && spanID != "" {
+					span, _ = tracing.NewRemoteTraceSpan(traceID, spanID, name, "zipper-receive-from-" + name)
+				}
+
 				logger.Debug("[MergeStreamFunc] YoMo-Zipper received data from Stream Function.", "stream-fn", name)
-				response <- data
+
+				rxgo.Of(data).SendContext(ctx, next)
+
+				span.End()
 			}()
-		}
-	}
-}
-
-func sendResponseToStreamFn(ctx context.Context, next chan rxgo.Item, response chan []byte) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case value, ok := <-response:
-			if !ok {
-				return
-			}
-
-			logger.Print("________ goroutine", runtime.NumGoroutine())
-			if !rxgo.Of(value).SendContext(ctx, next) {
-				return
-			}
 		}
 	}
 }

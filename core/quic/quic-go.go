@@ -128,7 +128,7 @@ func (c *quicGoClient) CreateStream(ctx context.Context) (Stream, error) {
 		return nil, errors.New("[QUIC client] session is nil")
 	}
 
-	return c.session.OpenStreamSync(ctx)
+	return c.session.OpenStream()
 }
 
 func (c *quicGoClient) CreateUniStream(ctx context.Context) (SendStream, error) {
@@ -136,7 +136,7 @@ func (c *quicGoClient) CreateUniStream(ctx context.Context) (SendStream, error) 
 		return nil, errors.New("[QUIC client] session is nil")
 	}
 
-	return c.session.OpenUniStreamSync(ctx)
+	return c.session.OpenUniStream()
 }
 
 func (c *quicGoClient) Close() error {
