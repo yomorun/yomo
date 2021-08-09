@@ -1071,6 +1071,9 @@ func (s *StreamImpl) thrown(err error) Stream {
 
 func CreateObservable(ctx context.Context, f func(ctx context.Context, next chan rxgo.Item), opts ...rxgo.Option) Stream {
 	next := make(chan rxgo.Item)
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	go f(ctx, next)
 	opts = appendContinueOnError(ctx, opts...)
 	return &StreamImpl{ctx: ctx, observable: rxgo.FromChannel(next, opts...)}
@@ -1078,12 +1081,18 @@ func CreateObservable(ctx context.Context, f func(ctx context.Context, next chan
 
 func CreateZipperObservable(ctx context.Context, f func(ctx context.Context, next chan rxgo.Item), opts ...rxgo.Option) Stream {
 	next := make(chan rxgo.Item, 100)
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	go f(ctx, next)
 	opts = appendContinueOnError(ctx, opts...)
 	return &StreamImpl{ctx: ctx, observable: rxgo.FromChannel(next, opts...)}
 }
 
 func ConvertObservable(ctx context.Context, observable rxgo.Observable) Stream {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	return &StreamImpl{ctx: ctx, observable: observable}
 }
 
