@@ -11,19 +11,19 @@ import (
 // Factory creates the rx.Stream from several sources.
 type Factory interface {
 	// FromChannel creates a new Stream from a channel.
-	FromChannel(channel chan interface{}) Stream
+	FromChannel(ctx context.Context, channel chan interface{}) Stream
 
 	// FromReader creates a new Stream from decoder.Reader.
-	FromReader(reader decoder.Reader) Stream
+	FromReader(ctx context.Context, reader decoder.Reader) Stream
 
 	// FromReaderWithDecoder creates a new Stream with decoder.
 	FromReaderWithDecoder(readers chan decoder.Reader, opts ...decoder.Option) Stream
 
 	// FromItems creates a new Stream from items.
-	FromItems(items ...interface{}) Stream
+	FromItems(ctx context.Context, items []interface{}) Stream
 
 	// FromItemsWithDecoder creates a new Stream from items with decoder.
-	FromItemsWithDecoder(items ...interface{}) Stream
+	FromItemsWithDecoder(items []interface{}, opts ...decoder.Option) Stream
 }
 
 type factoryImpl struct {
@@ -35,7 +35,7 @@ func NewFactory() Factory {
 }
 
 // FromChannel creates a new Stream from a channel.
-func (fac *factoryImpl) FromChannel(channel chan interface{}) Stream {
+func (fac *factoryImpl) FromChannel(ctx context.Context, channel chan interface{}) Stream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
 
@@ -57,24 +57,31 @@ func (fac *factoryImpl) FromChannel(channel chan interface{}) Stream {
 			}
 		}
 	}
-	return CreateObservable(f)
+	return CreateObservable(ctx, f)
 }
 
 // FromReader creates a new Stream from decoder.Reader.
-func (fac *factoryImpl) FromReader(reader decoder.Reader) Stream {
-	next := make(chan rxgo.Item)
-
-	go func() {
+func (fac *factoryImpl) FromReader(ctx context.Context, reader decoder.Reader) Stream {
+	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
 
 		frameChan := reader.Read()
-		for frame := range frameChan {
-			logger.Debug("Receive frame from source.")
-			next <- Of(frame.Data())
-		}
-	}()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case frame, ok := <-frameChan:
+				if !ok {
+					return
+				}
 
-	return ConvertObservable(rxgo.FromChannel(next, rxgo.WithErrorStrategy(rxgo.ContinueOnError)))
+				logger.Debug("Receive frame from source.")
+				next <- Of(frame.Data())
+			}
+		}
+	}
+
+	return CreateObservable(ctx, f)
 }
 
 // FromReaderWithDecoder creates a Stream with decoder.
@@ -94,36 +101,35 @@ func (fac *factoryImpl) FromReaderWithDecoder(readers chan decoder.Reader, opts 
 				go func() {
 					frameChan := reader.Read()
 					for frame := range frameChan {
-						Of(decoder.FromItems(frame.Data())).SendContext(ctx, next)
+						Of(decoder.FromItems([]interface{}{frame.Data()}, opts...)).SendContext(ctx, next)
 					}
 				}()
 			}
 		}
 	}
-	return CreateObservable(f)
+	return CreateObservable(decoder.GetContext(opts...), f)
 }
 
 // FromItems creates a new Stream from items.
-func (fac *factoryImpl) FromItems(items ...interface{}) Stream {
+func (fac *factoryImpl) FromItems(ctx context.Context, items []interface{}) Stream {
 	next := make(chan rxgo.Item)
-
 	go func() {
 		for _, item := range items {
 			next <- Of(item)
 		}
 	}()
 
-	return ConvertObservable(rxgo.FromChannel(next))
+	return ConvertObservable(ctx, rxgo.FromChannel(next))
 }
 
 // FromItemsWithDecoder creates a new Stream from items with decoder.
-func (fac *factoryImpl) FromItemsWithDecoder(items ...interface{}) Stream {
+func (fac *factoryImpl) FromItemsWithDecoder(items []interface{}, opts ...decoder.Option) Stream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
 
 		for _, item := range items {
-			Of(decoder.FromItems(item)).SendContext(ctx, next)
+			Of(decoder.FromItems([]interface{}{item}, opts...)).SendContext(ctx, next)
 		}
 	}
-	return CreateObservable(f)
+	return CreateObservable(decoder.GetContext(opts...), f)
 }
