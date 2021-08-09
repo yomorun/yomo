@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
-	"runtime"
+	"time"
 
 	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/core/rx"
@@ -70,13 +70,19 @@ func (c *clientImpl) Connect(ip string, port int) (Client, error) {
 func (c *clientImpl) Pipe(handler func(rxstream rx.Stream) rx.Stream) {
 	fac := rx.NewFactory()
 
-LOOP_ACCP_STREAM:
 	for {
+		if c.Session == nil {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+
 		quicStream, err := c.Session.AcceptUniStream(context.Background())
 
 		if err != nil {
-			logger.Error("[Stream Function Client] QUIC Session.AcceptUniStream(ctx) failed.", "err", err)
-			break LOOP_ACCP_STREAM
+			if err.Error() != quic.ErrConnectionClosed {
+				logger.Error("[Stream Function Client] QUIC Session.AcceptUniStream(ctx) failed.", "err", err)
+			}
+			continue
 		}
 
 		go c.readStream(quicStream, handler, fac)
@@ -132,7 +138,7 @@ func (c *clientImpl) executeHandler(ctx context.Context, cancel context.CancelFu
 
 		// send data to YoMo-Zipper.
 		_, err := c.Write(buf)
-		logger.Printf("<<<<<<< goroutine ", runtime.NumGoroutine())
+		// logger.Printf("<<<<<<< goroutine %d", runtime.NumGoroutine())
 		if err != nil {
 			logger.Error("[Stream Function Client] ❌ Send data to YoMo-Zipper failed.", "err", err)
 		} else {

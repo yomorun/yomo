@@ -71,7 +71,13 @@ func New(appName string, clientType string) *Impl {
 			logger.Debug("[client] heartbeat to YoMo-Zipper was expired, client will reconnect to YoMo-Zipper.", "addr", getServerAddr(c.serverIP, c.serverPort))
 
 			// reset session to nil.
+			if c.Session != nil {
+				c.Session.Close()
+			}
 			c.Session = nil
+
+			// reset Stream to nil.
+			c.Stream = nil
 
 			// reconnect when the heartbeat is expired.
 			c.BaseConnect(c.serverIP, c.serverPort)
@@ -211,12 +217,14 @@ func (c *Impl) RetryWithCount(count int) bool {
 // Close the client.
 func (c *Impl) Close() error {
 	logger.Debug("[client] close the connection to YoMo-Zipper.")
-	err := c.Session.Close()
-	if err != nil {
-		return err
+	if c.Session != nil {
+		err := c.Session.Close()
+		if err != nil {
+			return err
+		}
 	}
 
-	err = c.conn.Close()
+	err := c.conn.Close()
 	c.conn.Heartbeat = make(chan bool)
 	c.conn.Signal = nil
 	return err

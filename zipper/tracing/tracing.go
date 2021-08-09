@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/tidwall/gjson"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/jaeger"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
@@ -108,4 +109,24 @@ func newTraceSpan(tp trace.TracerProvider, otelTraceID string, otelSpanID string
 	tr := tp.Tracer(tracerName)
 	_, span := tr.Start(ctx, spanName)
 	return span, nil
+}
+
+// NewSpanFromData gets tje TraceID and SpanID from data and creates a new Span.
+func NewSpanFromData(data string, tracerName string, spanName string) trace.Span {
+	// tracing
+	var traceID, spanID string
+	traceIDValue := gjson.Get(string(data), `metadatas.#(name=="TraceID").value`)
+	if traceIDValue.Exists() {
+		traceID = traceIDValue.String()
+	}
+	spanIDValue := gjson.Get(string(data), `metadatas.#(name=="SpanID").value`)
+	if spanIDValue.Exists() {
+		spanID = spanIDValue.String()
+	}
+
+	var span trace.Span
+	if traceID != "" && spanID != "" {
+		span, _ = NewRemoteTraceSpan(traceID, spanID, tracerName, spanName)
+	}
+	return span
 }
