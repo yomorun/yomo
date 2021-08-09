@@ -16,18 +16,18 @@ import (
 )
 
 // DispatcherWithFunc dispatches the input stream to downstreams.
-func DispatcherWithFunc(sfns []GetStreamFunc, reader decoder.Reader) rx.Stream {
-	stream := rx.NewFactory().FromReader(reader)
+func DispatcherWithFunc(ctx context.Context, sfns []GetStreamFunc, reader decoder.Reader) rx.Stream {
+	stream := rx.NewFactory().FromReader(ctx, reader)
 
 	for _, sfn := range sfns {
-		stream = mergeStreamFn(stream, sfn)
+		stream = mergeStreamFn(ctx, stream, sfn)
 	}
 
 	return stream
 }
 
 // mergeStreamFn sends the stream data to Stream Function and receives the new stream data from it.
-func mergeStreamFn(upstream rx.Stream, sfn GetStreamFunc) rx.Stream {
+func mergeStreamFn(ctx context.Context, upstream rx.Stream, sfn GetStreamFunc) rx.Stream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
 		observe := upstream.Observe()
@@ -39,7 +39,7 @@ func mergeStreamFn(upstream rx.Stream, sfn GetStreamFunc) rx.Stream {
 		receiveResponseFromStreamFn(ctx, sfn, next)
 	}
 
-	return rx.CreateZipperObservable(f)
+	return rx.CreateZipperObservable(ctx, f)
 }
 
 func sendDataToStreamFn(ctx context.Context, sfn GetStreamFunc, observe <-chan rxgo.Item, next chan rxgo.Item) {
@@ -55,8 +55,6 @@ func sendDataToStreamFn(ctx context.Context, sfn GetStreamFunc, observe <-chan r
 				logger.Error("[MergeStreamFunc] observe data from upstream failed.", "err", item.E)
 				return
 			}
-
-			logger.Print(len(observe))
 
 			go dispatchToStreamFn(ctx, sfn, item.V, next)
 		}
@@ -98,7 +96,7 @@ func dispatchToStreamFn(ctx context.Context, sfn GetStreamFunc, buf interface{},
 		}
 
 		// send data to downstream.
-		stream, err := session.OpenUniStreamSync(ctx)
+		stream, err := session.OpenUniStream()
 		if err != nil {
 			logger.Debug("[MergeStreamFunc] session.OpenUniStream failed", "stream-fn", name)
 			// pass the data to next stream function if the current stream function is nil

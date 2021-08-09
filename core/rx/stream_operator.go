@@ -22,67 +22,69 @@ func Of(i interface{}) rxgo.Item {
 
 // StreamImpl is the implementation of Stream.
 type StreamImpl struct {
+	ctx        context.Context
 	observable rxgo.Observable
 }
 
 // appendContinueOnError appends the "ContinueOnError" to options
-func appendContinueOnError(opts ...rxgo.Option) []rxgo.Option {
-	return append(opts, rxgo.WithErrorStrategy(rxgo.ContinueOnError))
+func appendContinueOnError(ctx context.Context, opts ...rxgo.Option) []rxgo.Option {
+	options := append(opts, rxgo.WithErrorStrategy(rxgo.ContinueOnError))
+	return append(options, rxgo.WithContext(ctx))
 }
 
 // All determines whether all items emitted by an Observable meet some criteria
 func (s *StreamImpl) All(predicate rxgo.Predicate, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.All(predicate, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.All(predicate, opts...).Observe(), opts...)}
 }
 
 // AverageFloat32 calculates the average of numbers emitted by an Observable and emits the average float32.
 func (s *StreamImpl) AverageFloat32(opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.AverageFloat32(opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.AverageFloat32(opts...).Observe(), opts...)}
 }
 
 // AverageFloat64 calculates the average of numbers emitted by an Observable and emits the average float64.
 func (s *StreamImpl) AverageFloat64(opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.AverageFloat64(opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.AverageFloat64(opts...).Observe(), opts...)}
 }
 
 // AverageInt calculates the average of numbers emitted by an Observable and emits the average int.
 func (s *StreamImpl) AverageInt(opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.AverageInt(opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.AverageInt(opts...).Observe(), opts...)}
 }
 
 // AverageInt8 calculates the average of numbers emitted by an Observable and emits the≤ average int8.
 func (s *StreamImpl) AverageInt8(opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.AverageInt8(opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.AverageInt8(opts...).Observe(), opts...)}
 }
 
 // AverageInt16 calculates the average of numbers emitted by an Observable and emits the average int16.
 func (s *StreamImpl) AverageInt16(opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.AverageInt16(opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.AverageInt16(opts...).Observe(), opts...)}
 }
 
 // AverageInt32 calculates the average of numbers emitted by an Observable and emits the average int32.
 func (s *StreamImpl) AverageInt32(opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.AverageInt32(opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.AverageInt32(opts...).Observe(), opts...)}
 }
 
 // AverageInt64 calculates the average of numbers emitted by an Observable and emits the average int64.
 func (s *StreamImpl) AverageInt64(opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.AverageInt64(opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.AverageInt64(opts...).Observe(), opts...)}
 }
 
 // BackOffRetry implements a backoff retry if a source Observable sends an error, resubscribe to it in the hopes that it will complete without error.
 // Cannot be run in parallel.
 func (s *StreamImpl) BackOffRetry(backOffCfg backoff.BackOff, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.BackOffRetry(backOffCfg, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.BackOffRetry(backOffCfg, opts...).Observe(), opts...)}
 }
 
 // BufferWithCount returns an Observable that emits buffers of items it collects
@@ -92,8 +94,8 @@ func (s *StreamImpl) BackOffRetry(backOffCfg backoff.BackOff, opts ...rxgo.Optio
 // the resulting Observable emits the current buffer and propagates
 // the notification from the source Observable.
 func (s *StreamImpl) BufferWithCount(count int, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.BufferWithCount(count, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.BufferWithCount(count, opts...).Observe(), opts...)}
 }
 
 func getRxDuration(milliseconds uint32) rxgo.Duration {
@@ -106,15 +108,15 @@ func getRxDuration(milliseconds uint32) rxgo.Duration {
 // When the source Observable completes or encounters an error, the resulting Observable emits
 // the current buffer and propagates the notification from the source Observable.
 func (s *StreamImpl) BufferWithTime(milliseconds uint32, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.BufferWithTime(getRxDuration(milliseconds), opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.BufferWithTime(getRxDuration(milliseconds), opts...).Observe(), opts...)}
 }
 
 // BufferWithTimeOrCount returns an Observable that emits buffers of items it collects from the source
 // Observable either from a given count or at a given time interval.
 func (s *StreamImpl) BufferWithTimeOrCount(milliseconds uint32, count int, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.BufferWithTimeOrCount(getRxDuration(milliseconds), count, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.BufferWithTimeOrCount(getRxDuration(milliseconds), count, opts...).Observe(), opts...)}
 }
 
 // Connect instructs a connectable Observable to begin emitting items to its subscribers.
@@ -124,172 +126,172 @@ func (s *StreamImpl) Connect(ctx context.Context) (context.Context, rxgo.Disposa
 
 // Contains determines whether an Observable emits a particular item or not.
 func (s *StreamImpl) Contains(equal rxgo.Predicate, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.Contains(equal, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.Contains(equal, opts...).Observe(), opts...)}
 }
 
 // Count counts the number of items emitted by the source Observable and emit only this value.
 func (s *StreamImpl) Count(opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.Count(opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.Count(opts...).Observe(), opts...)}
 }
 
 // Debounce only emits an item from an Observable if a particular timespan has passed without it emitting another item.
 func (s *StreamImpl) Debounce(milliseconds uint32, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.Debounce(getRxDuration(milliseconds), opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.Debounce(getRxDuration(milliseconds), opts...).Observe(), opts...)}
 }
 
 // DefaultIfEmpty returns an Observable that emits the items emitted by the source
 // Observable or a specified default item if the source Observable is empty.
 func (s *StreamImpl) DefaultIfEmpty(defaultValue interface{}, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.DefaultIfEmpty(defaultValue, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.DefaultIfEmpty(defaultValue, opts...).Observe(), opts...)}
 }
 
 // Distinct suppresses duplicate items in the original Observable and returns
 // a new Observable.
 func (s *StreamImpl) Distinct(apply rxgo.Func, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.Distinct(apply, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.Distinct(apply, opts...).Observe(), opts...)}
 }
 
 // DistinctUntilChanged suppresses consecutive duplicate items in the original Observable.
 // Cannot be run in parallel.
 func (s *StreamImpl) DistinctUntilChanged(apply rxgo.Func, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.DistinctUntilChanged(apply, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.DistinctUntilChanged(apply, opts...).Observe(), opts...)}
 }
 
 // DoOnCompleted registers a callback action that will be called once the Observable terminates.
 func (s *StreamImpl) DoOnCompleted(completedFunc rxgo.CompletedFunc, opts ...rxgo.Option) rxgo.Disposed {
-	opts = appendContinueOnError(opts...)
+	opts = appendContinueOnError(s.ctx, opts...)
 	return s.observable.DoOnCompleted(completedFunc, opts...)
 }
 
 // DoOnError registers a callback action that will be called if the Observable terminates abnormally.
 func (s *StreamImpl) DoOnError(errFunc rxgo.ErrFunc, opts ...rxgo.Option) rxgo.Disposed {
-	opts = appendContinueOnError(opts...)
+	opts = appendContinueOnError(s.ctx, opts...)
 	return s.observable.DoOnError(errFunc, opts...)
 }
 
 // DoOnNext registers a callback action that will be called on each item emitted by the Observable.
 func (s *StreamImpl) DoOnNext(nextFunc rxgo.NextFunc, opts ...rxgo.Option) rxgo.Disposed {
-	opts = appendContinueOnError(opts...)
+	opts = appendContinueOnError(s.ctx, opts...)
 	return s.observable.DoOnNext(nextFunc, opts...)
 }
 
 // Error returns the eventual Observable error.
 // This method is blocking.
 func (s *StreamImpl) Error(opts ...rxgo.Option) error {
-	opts = appendContinueOnError(opts...)
+	opts = appendContinueOnError(s.ctx, opts...)
 	return s.observable.Error(opts...)
 }
 
 // Errors returns an eventual list of Observable errors.
 // This method is blocking
 func (s *StreamImpl) Errors(opts ...rxgo.Option) []error {
-	opts = appendContinueOnError(opts...)
+	opts = appendContinueOnError(s.ctx, opts...)
 	return s.observable.Errors(opts...)
 }
 
 // Filter emits only those items from an Observable that pass a predicate test.
 func (s *StreamImpl) Filter(apply rxgo.Predicate, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.Filter(apply, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.Filter(apply, opts...).Observe(), opts...)}
 }
 
 // ElementAt emits only item n emitted by an Observable.
 // Cannot be run in parallel.
 func (s *StreamImpl) ElementAt(index uint, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.ElementAt(index, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.ElementAt(index, opts...).Observe(), opts...)}
 }
 
 // Find emits the first item passing a predicate then complete.
 func (s *StreamImpl) Find(find rxgo.Predicate, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.Find(find, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.Find(find, opts...).Observe(), opts...)}
 }
 
 // First returns new Observable which emit only first item.
 // Cannot be run in parallel.
 func (s *StreamImpl) First(opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.First(opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.First(opts...).Observe(), opts...)}
 }
 
 // FirstOrDefault returns new Observable which emit only first item.
 // If the observable fails to emit any items, it emits a default value.
 // Cannot be run in parallel.
 func (s *StreamImpl) FirstOrDefault(defaultValue interface{}, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.FirstOrDefault(defaultValue, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.FirstOrDefault(defaultValue, opts...).Observe(), opts...)}
 }
 
 // FlatMap transforms the items emitted by an Observable into Observables, then flatten the emissions from those into a single Observable.
 func (s *StreamImpl) FlatMap(apply rxgo.ItemToObservable, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.FlatMap(apply, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.FlatMap(apply, opts...).Observe(), opts...)}
 }
 
 // ForEach subscribes to the Observable and receives notifications for each element.
 func (s *StreamImpl) ForEach(nextFunc rxgo.NextFunc, errFunc rxgo.ErrFunc, completedFunc rxgo.CompletedFunc, opts ...rxgo.Option) rxgo.Disposed {
-	opts = appendContinueOnError(opts...)
+	opts = appendContinueOnError(s.ctx, opts...)
 	return s.observable.ForEach(nextFunc, errFunc, completedFunc, opts...)
 }
 
 // IgnoreElements ignores all items emitted by the source ObservableSource except for the errors.
 // Cannot be run in parallel.
 func (s *StreamImpl) IgnoreElements(opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.IgnoreElements(opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.IgnoreElements(opts...).Observe(), opts...)}
 }
 
 // Join combines items emitted by two Observables whenever an item from one Observable is emitted during
 // a time window defined according to an item emitted by the other Observable.
 // The time is extracted using a timeExtractor function.
 func (s *StreamImpl) Join(joiner rxgo.Func2, right rxgo.Observable, timeExtractor func(interface{}) time.Time, windowInMS uint32, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.Join(joiner, right, timeExtractor, getRxDuration(windowInMS), opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.Join(joiner, right, timeExtractor, getRxDuration(windowInMS), opts...).Observe(), opts...)}
 }
 
 // GroupBy divides an Observable into a set of Observables that each emit a different group of items from the original Observable, organized by key.
 func (s *StreamImpl) GroupBy(length int, distribution func(rxgo.Item) int, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.GroupBy(length, distribution, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.GroupBy(length, distribution, opts...).Observe(), opts...)}
 }
 
 // GroupByDynamic divides an Observable into a dynamic set of Observables that each emit GroupedObservable from the original Observable, organized by key.
 func (s *StreamImpl) GroupByDynamic(distribution func(rxgo.Item) string, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.GroupByDynamic(distribution, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.GroupByDynamic(distribution, opts...).Observe(), opts...)}
 }
 
 // Last returns a new Observable which emit only last item.
 // Cannot be run in parallel.
 func (s *StreamImpl) Last(opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.Last(opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.Last(opts...).Observe(), opts...)}
 }
 
 // LastOrDefault returns a new Observable which emit only last item.
 // If the observable fails to emit any items, it emits a default value.
 // Cannot be run in parallel.
 func (s *StreamImpl) LastOrDefault(defaultValue interface{}, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.LastOrDefault(defaultValue, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.LastOrDefault(defaultValue, opts...).Observe(), opts...)}
 }
 
 // Map transforms the items emitted by an Observable by applying a function to each item.
 func (s *StreamImpl) Map(apply rxgo.Func, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.Map(apply, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.Map(apply, opts...).Observe(), opts...)}
 }
 
 // Marshal transforms the items emitted by an Observable by applying a marshalling to each item.
 func (s *StreamImpl) Marshal(marshaller decoder.Marshaller, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
+	opts = appendContinueOnError(s.ctx, opts...)
 
 	return s.Map(func(_ context.Context, i interface{}) (interface{}, error) {
 		return marshaller(i)
@@ -332,196 +334,196 @@ func (s *StreamImpl) Unmarshal(unmarshaller decoder.Unmarshaller, factory func()
 			}
 		}
 	}
-	return CreateObservable(f)
+	return CreateObservable(s.ctx, f)
 }
 
 // Max determines and emits the maximum-valued item emitted by an Observable according to a comparator.
 func (s *StreamImpl) Max(comparator rxgo.Comparator, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.Max(comparator, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.Max(comparator, opts...).Observe(), opts...)}
 }
 
 // Min determines and emits the minimum-valued item emitted by an Observable according to a comparator.
 func (s *StreamImpl) Min(comparator rxgo.Comparator, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.Min(comparator, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.Min(comparator, opts...).Observe(), opts...)}
 }
 
 // OnErrorResumeNext instructs an Observable to pass control to another Observable rather than invoking
 // onError if it encounters an error.
 func (s *StreamImpl) OnErrorResumeNext(resumeSequence rxgo.ErrorToObservable, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.OnErrorResumeNext(resumeSequence, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.OnErrorResumeNext(resumeSequence, opts...).Observe(), opts...)}
 }
 
 // OnErrorReturn instructs an Observable to emit an item (returned by a specified function)
 // rather than invoking onError if it encounters an error.
 func (s *StreamImpl) OnErrorReturn(resumeFunc rxgo.ErrorFunc, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.OnErrorReturn(resumeFunc, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.OnErrorReturn(resumeFunc, opts...).Observe(), opts...)}
 }
 
 // OnErrorReturnItem instructs on Observable to emit an item if it encounters an error.
 func (s *StreamImpl) OnErrorReturnItem(resume interface{}, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.OnErrorReturnItem(resume, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.OnErrorReturnItem(resume, opts...).Observe(), opts...)}
 }
 
 // Reduce applies a function to each item emitted by an Observable, sequentially, and emit the final value.
 func (s *StreamImpl) Reduce(apply rxgo.Func2, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.Reduce(apply, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.Reduce(apply, opts...).Observe(), opts...)}
 }
 
 // Repeat returns an Observable that repeats the sequence of items emitted by the source Observable
 // at most count times, at a particular frequency.
 // Cannot run in parallel.
 func (s *StreamImpl) Repeat(count int64, milliseconds uint32, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.Repeat(count, getRxDuration(milliseconds), opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.Repeat(count, getRxDuration(milliseconds), opts...).Observe(), opts...)}
 }
 
 // Retry retries if a source Observable sends an error, resubscribe to it in the hopes that it will complete without error.
 // Cannot be run in parallel.
 func (s *StreamImpl) Retry(count int, shouldRetry func(error) bool, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.Retry(count, shouldRetry, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.Retry(count, shouldRetry, opts...).Observe(), opts...)}
 }
 
 // Run creates an Observer without consuming the emitted items.
 func (s *StreamImpl) Run(opts ...rxgo.Option) rxgo.Disposed {
-	opts = appendContinueOnError(opts...)
+	opts = appendContinueOnError(s.ctx, opts...)
 	return s.observable.Run(opts...)
 }
 
 // Sample returns an Observable that emits the most recent items emitted by the source
 // Iterable whenever the input Iterable emits an item.
 func (s *StreamImpl) Sample(iterable rxgo.Iterable, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.Sample(iterable, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.Sample(iterable, opts...).Observe(), opts...)}
 }
 
 // Scan apply a Func2 to each item emitted by an Observable, sequentially, and emit each successive value.
 // Cannot be run in parallel.
 func (s *StreamImpl) Scan(apply rxgo.Func2, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.Scan(apply, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.Scan(apply, opts...).Observe(), opts...)}
 }
 
 // Send sends the items to a given channel.
 func (s *StreamImpl) Send(output chan<- rxgo.Item, opts ...rxgo.Option) {
-	opts = appendContinueOnError(opts...)
+	opts = appendContinueOnError(s.ctx, opts...)
 	s.observable.Send(output, opts...)
 }
 
 // SequenceEqual emits true if an Observable and the input Observable emit the same items,
 // in the same order, with the same termination state. Otherwise, it emits false.
 func (s *StreamImpl) SequenceEqual(iterable rxgo.Iterable, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.SequenceEqual(iterable, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.SequenceEqual(iterable, opts...).Observe(), opts...)}
 }
 
 // Serialize forces an Observable to make serialized calls and to be well-behaved.
 func (s *StreamImpl) Serialize(from int, identifier func(interface{}) int, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.Serialize(from, identifier, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.Serialize(from, identifier, opts...).Observe(), opts...)}
 }
 
 // Skip suppresses the first n items in the original Observable and
 // returns a new Observable with the rest items.
 // Cannot be run in parallel.
 func (s *StreamImpl) Skip(nth uint, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.Skip(nth, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.Skip(nth, opts...).Observe(), opts...)}
 }
 
 // SkipLast suppresses the last n items in the original Observable and
 // returns a new Observable with the rest items.
 // Cannot be run in parallel.
 func (s *StreamImpl) SkipLast(nth uint, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.SkipLast(nth, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.SkipLast(nth, opts...).Observe(), opts...)}
 }
 
 // SkipWhile discard items emitted by an Observable until a specified condition becomes false.
 // Cannot be run in parallel.
 func (s *StreamImpl) SkipWhile(apply rxgo.Predicate, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.SkipWhile(apply, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.SkipWhile(apply, opts...).Observe(), opts...)}
 }
 
 // StartWith emits a specified Iterable before beginning to emit the items from the source Observable.
 func (s *StreamImpl) StartWith(iterable rxgo.Iterable, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.StartWith(iterable, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.StartWith(iterable, opts...).Observe(), opts...)}
 }
 
 // SumFloat32 calculates the average of float32 emitted by an Observable and emits a float32.
 func (s *StreamImpl) SumFloat32(opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.SumFloat32(opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.SumFloat32(opts...).Observe(), opts...)}
 }
 
 // SumFloat64 calculates the average of float64 emitted by an Observable and emits a float64.
 func (s *StreamImpl) SumFloat64(opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.SumFloat64(opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.SumFloat64(opts...).Observe(), opts...)}
 }
 
 // SumInt64 calculates the average of integers emitted by an Observable and emits an int64.
 func (s *StreamImpl) SumInt64(opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.SumInt64(opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.SumInt64(opts...).Observe(), opts...)}
 }
 
 // Take emits only the first n items emitted by an Observable.
 // Cannot be run in parallel.
 func (s *StreamImpl) Take(nth uint, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.Take(nth, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.Take(nth, opts...).Observe(), opts...)}
 }
 
 // TakeLast emits only the last n items emitted by an Observable.
 // Cannot be run in parallel.
 func (s *StreamImpl) TakeLast(nth uint, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.TakeLast(nth, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.TakeLast(nth, opts...).Observe(), opts...)}
 }
 
 // TakeUntil returns an Observable that emits items emitted by the source Observable,
 // checks the specified predicate for each item, and then completes when the condition is satisfied.
 // Cannot be run in parallel.
 func (s *StreamImpl) TakeUntil(apply rxgo.Predicate, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.TakeUntil(apply, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.TakeUntil(apply, opts...).Observe(), opts...)}
 }
 
 // TakeWhile returns an Observable that emits items emitted by the source ObservableSource so long as each
 // item satisfied a specified condition, and then completes as soon as this condition is not satisfied.
 // Cannot be run in parallel.
 func (s *StreamImpl) TakeWhile(apply rxgo.Predicate, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.TakeWhile(apply, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.TakeWhile(apply, opts...).Observe(), opts...)}
 }
 
 // TimeInterval converts an Observable that emits items into one that emits indications of the amount of time elapsed between those emissions.
 func (s *StreamImpl) TimeInterval(opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.TimeInterval(opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.TimeInterval(opts...).Observe(), opts...)}
 }
 
 // Timestamp attaches a timestamp to each item emitted by an Observable indicating when it was emitted.
 func (s *StreamImpl) Timestamp(opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.Timestamp(opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.Timestamp(opts...).Observe(), opts...)}
 }
 
 // ToMap convert the sequence of items emitted by an Observable
 // into a map keyed by a specified key function.
 // Cannot be run in parallel.
 func (s *StreamImpl) ToMap(keySelector rxgo.Func, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.ToMap(keySelector, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.ToMap(keySelector, opts...).Observe(), opts...)}
 }
 
 // ToMapWithValueSelector convert the sequence of items emitted by an Observable
@@ -529,47 +531,47 @@ func (s *StreamImpl) ToMap(keySelector rxgo.Func, opts ...rxgo.Option) Stream {
 // value function.
 // Cannot be run in parallel.
 func (s *StreamImpl) ToMapWithValueSelector(keySelector, valueSelector rxgo.Func, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.ToMapWithValueSelector(keySelector, valueSelector, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.ToMapWithValueSelector(keySelector, valueSelector, opts...).Observe(), opts...)}
 }
 
 // ToSlice collects all items from an Observable and emit them in a slice and an optional error.
 // Cannot be run in parallel.
 func (s *StreamImpl) ToSlice(initialCapacity int, opts ...rxgo.Option) ([]interface{}, error) {
-	opts = appendContinueOnError(opts...)
+	opts = appendContinueOnError(s.ctx, opts...)
 	return s.observable.ToSlice(initialCapacity, opts...)
 }
 
 // WindowWithCount periodically subdivides items from an Observable into Observable windows of a given size and emit these windows
 // rather than emitting the items one at a time.
 func (s *StreamImpl) WindowWithCount(count int, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.WindowWithCount(count, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.WindowWithCount(count, opts...).Observe(), opts...)}
 }
 
 // WindowWithTime periodically subdivides items from an Observable into Observables based on timed windows
 // and emit them rather than emitting the items one at a time.
 func (s *StreamImpl) WindowWithTime(milliseconds uint32, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.WindowWithTime(getRxDuration(milliseconds), opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.WindowWithTime(getRxDuration(milliseconds), opts...).Observe(), opts...)}
 }
 
 // WindowWithTimeOrCount periodically subdivides items from an Observable into Observables based on timed windows or a specific size
 // and emit them rather than emitting the items one at a time.
 func (s *StreamImpl) WindowWithTimeOrCount(milliseconds uint32, count int, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.WindowWithTimeOrCount(getRxDuration(milliseconds), count, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.WindowWithTimeOrCount(getRxDuration(milliseconds), count, opts...).Observe(), opts...)}
 }
 
 // ZipFromIterable merges the emissions of an Iterable via a specified function
 // and emit single items for each combination based on the results of this function.
 func (s *StreamImpl) ZipFromIterable(iterable rxgo.Iterable, zipper rxgo.Func2, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(s.observable.ZipFromIterable(iterable, zipper, opts...).Observe(), opts...)}
+	opts = appendContinueOnError(s.ctx, opts...)
+	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.ZipFromIterable(iterable, zipper, opts...).Observe(), opts...)}
 }
 
 func (s *StreamImpl) Observe(opts ...rxgo.Option) <-chan rxgo.Item {
-	opts = appendContinueOnError(opts...)
+	opts = appendContinueOnError(s.ctx, opts...)
 	return s.observable.Observe(opts...)
 }
 
@@ -598,7 +600,7 @@ func (s *StreamImpl) DefaultIfEmptyWithTime(milliseconds uint32, defaultValue in
 			}
 		}
 	}
-	return CreateObservable(f, opts...)
+	return CreateObservable(s.ctx, f, opts...)
 }
 
 // StdOut writes the item as standard output.
@@ -626,16 +628,16 @@ func (s *StreamImpl) StdOut(opts ...rxgo.Option) Stream {
 			}
 		}
 	}
-	return CreateObservable(f, opts...)
+	return CreateObservable(s.ctx, f, opts...)
 }
 
 // AuditTime ignores values for duration milliseconds, then only emits the most recent value.
 func (s *StreamImpl) AuditTime(milliseconds uint32, opts ...rxgo.Option) Stream {
-	opts = appendContinueOnError(opts...)
+	opts = appendContinueOnError(s.ctx, opts...)
 	o := s.observable.BufferWithTime(getRxDuration(milliseconds), opts...).Map(func(_ context.Context, i interface{}) (interface{}, error) {
 		return i.([]interface{})[len(i.([]interface{}))-1], nil
 	}, opts...)
-	return ConvertObservable(o)
+	return ConvertObservable(s.ctx, o)
 }
 
 // Get data specified by key
@@ -667,7 +669,7 @@ func (s *StreamImpl) Subscribe(key byte) Stream {
 			}
 		}
 	}
-	return CreateObservable(f)
+	return CreateObservable(s.ctx, f)
 }
 
 // RawBytes get the raw bytes in Stream which receives from YoMo-Zipper.
@@ -702,7 +704,7 @@ func (s *StreamImpl) RawBytes() Stream {
 			}
 		}
 	}
-	return CreateObservable(f)
+	return CreateObservable(s.ctx, f)
 }
 
 // ZipMultiObservers subscribes multi Y3 observers, zips the values into a slice and calls the zipper callback when all keys are observed.
@@ -821,7 +823,7 @@ func (s *StreamImpl) ZipMultiObservers(observers []KeyObserveFunc, zipper func(i
 			}
 		}
 	}
-	return CreateObservable(f)
+	return CreateObservable(s.ctx, f)
 }
 
 // OnObserve calls the function to process the observed data.
@@ -862,7 +864,7 @@ func (s *StreamImpl) OnObserve(function func(v []byte) (interface{}, error)) Str
 			}
 		}
 	}
-	return CreateObservable(f)
+	return CreateObservable(s.ctx, f)
 }
 
 // Encode the data with a specified key by Y3 Codec and append it to stream.
@@ -899,7 +901,7 @@ func (s *StreamImpl) Encode(key byte, opts ...rxgo.Option) Stream {
 			}
 		}
 	}
-	return CreateObservable(f, opts...)
+	return CreateObservable(s.ctx, f, opts...)
 }
 
 // SlidingWindowWithCount buffers the data in the specified sliding window size, the buffered data can be processed in the handler func.
@@ -965,7 +967,7 @@ func (s *StreamImpl) SlidingWindowWithCount(windowSize int, slideSize int, handl
 			}
 		}
 	}
-	return CreateObservable(f, opts...)
+	return CreateObservable(s.ctx, f, opts...)
 }
 
 // SlidingWindowWithTime buffers the data in the specified sliding window time, the buffered data can be processed in the handler func.
@@ -1049,7 +1051,7 @@ func (s *StreamImpl) SlidingWindowWithTime(windowTimeInMS uint32, slideTimeInMS 
 			}
 		}
 	}
-	return CreateObservable(f, opts...)
+	return CreateObservable(s.ctx, f, opts...)
 }
 
 type slidingWithTimeItem struct {
@@ -1067,24 +1069,22 @@ func (s *StreamImpl) thrown(err error) Stream {
 	return &StreamImpl{observable: rxgo.FromChannel(next)}
 }
 
-func CreateObservable(f func(ctx context.Context, next chan rxgo.Item), opts ...rxgo.Option) Stream {
+func CreateObservable(ctx context.Context, f func(ctx context.Context, next chan rxgo.Item), opts ...rxgo.Option) Stream {
 	next := make(chan rxgo.Item)
-	ctx := context.Background()
 	go f(ctx, next)
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(next, opts...)}
+	opts = appendContinueOnError(ctx, opts...)
+	return &StreamImpl{ctx: ctx, observable: rxgo.FromChannel(next, opts...)}
 }
 
-func CreateZipperObservable(f func(ctx context.Context, next chan rxgo.Item), opts ...rxgo.Option) Stream {
+func CreateZipperObservable(ctx context.Context, f func(ctx context.Context, next chan rxgo.Item), opts ...rxgo.Option) Stream {
 	next := make(chan rxgo.Item, 100)
-	ctx := context.Background()
 	go f(ctx, next)
-	opts = appendContinueOnError(opts...)
-	return &StreamImpl{observable: rxgo.FromChannel(next, opts...)}
+	opts = appendContinueOnError(ctx, opts...)
+	return &StreamImpl{ctx: ctx, observable: rxgo.FromChannel(next, opts...)}
 }
 
-func ConvertObservable(observable rxgo.Observable) Stream {
-	return &StreamImpl{observable: observable}
+func ConvertObservable(ctx context.Context, observable rxgo.Observable) Stream {
+	return &StreamImpl{ctx: ctx, observable: observable}
 }
 
 type infiniteWriter struct {

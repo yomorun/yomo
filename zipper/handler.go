@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -125,11 +126,13 @@ func (s *quicHandler) receiveDataFromSources() {
 				return
 			}
 
-			// one stream for each stream functions.
+			ctx, cancel := context.WithCancel(context.Background())
 			sfns := getStreamFuncs(s.serverlessConfig, &s.connMap)
-			stream := DispatcherWithFunc(sfns, item)
+			stream := DispatcherWithFunc(ctx, sfns, item)
 
 			go func() {
+				defer cancel()
+
 				for item := range stream.Observe(rxgo.WithErrorStrategy(rxgo.ContinueOnError)) {
 					if item.Error() {
 						logger.Error("[zipper] receive an error when running Stream Function.", "err", item.E.Error())
@@ -170,11 +173,13 @@ func (s *quicHandler) receiveDataFromZipperSenders() {
 				return
 			}
 
-			// one stream for each stream functions.
+			ctx, cancel := context.WithCancel(context.Background())
 			sfns := getStreamFuncs(s.serverlessConfig, &s.connMap)
-			stream := DispatcherWithFunc(sfns, receiver)
+			stream := DispatcherWithFunc(ctx, sfns, receiver)
 
 			go func() {
+				defer cancel()
+
 				for customer := range stream.Observe(rxgo.WithErrorStrategy(rxgo.ContinueOnError)) {
 					if customer.Error() {
 						fmt.Println(customer.E.Error())

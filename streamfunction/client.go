@@ -6,10 +6,10 @@ import (
 	"io"
 	"runtime"
 
-	"github.com/reactivex/rxgo/v2"
 	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/core/rx"
 	"github.com/yomorun/yomo/internal/client"
+	"github.com/yomorun/yomo/internal/decoder"
 	"github.com/yomorun/yomo/logger"
 )
 
@@ -92,44 +92,47 @@ func (c *clientImpl) readStream(stream quic.ReceiveStream, handler func(rxstream
 
 	logger.Debug("[Stream Function Client] received data from zipper.")
 
-	rxstream := fac.FromItemsWithDecoder(data)
+	ctx, cancel := context.WithCancel(context.Background())
+	rxstream := fac.FromItemsWithDecoder([]interface{}{data}, decoder.WithContext(ctx))
 
-	for item := range rxstream.Observe(rxgo.WithObservationStrategy(rxgo.ObservationStrategy(rxgo.CloseChannel))) {
+	for item := range rxstream.Observe() {
 		if item.Error() {
 			logger.Error("[Stream Function Client] rxstream got an error.", "err", item.E)
-			continue
+			cancel()
+			break
 		}
 
-		go c.executeHandler(item.V, handler, fac)
+		go c.executeHandler(ctx, cancel, item.V, handler, fac)
 		// one data per time.
 		break
 	}
 
 }
 
-func (c *clientImpl) executeHandler(data interface{}, handler func(rxstream rx.Stream) rx.Stream, fac rx.Factory) {
-	stream := handler(fac.FromItems(data))
+func (c *clientImpl) executeHandler(ctx context.Context, cancel context.CancelFunc, data interface{}, handler func(rxstream rx.Stream) rx.Stream, fac rx.Factory) {
+	defer cancel()
+	stream := handler(fac.FromItems(ctx, []interface{}{data}))
 
-	for item := range stream.Observe(rxgo.WithObservationStrategy(rxgo.ObservationStrategy(rxgo.CloseChannel))) {
+	for item := range stream.Observe() {
 		if item.Error() {
 			logger.Error("[Stream Function Client] Handler got the error.", "err", item.E)
-			continue
+			break
 		}
 
 		if item.V == nil {
 			logger.Debug("[Stream Function Client] the returned data of Handler is nil.")
-			continue
+			break
 		}
 
 		buf, ok := (item.V).([]byte)
 		if !ok {
 			logger.Debug("[Stream Function Client] the data is not a []byte in RxStream, won't send it to YoMo-Zipper.")
-			continue
+			break
 		}
 
 		// send data to YoMo-Zipper.
 		_, err := c.Write(buf)
-		logger.Print("<<<<<<< goroutine", runtime.NumGoroutine())
+		logger.Printf("<<<<<<< goroutine ", runtime.NumGoroutine())
 		if err != nil {
 			logger.Error("[Stream Function Client] ❌ Send data to YoMo-Zipper failed.", "err", err)
 		} else {

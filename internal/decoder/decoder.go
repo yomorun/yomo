@@ -1,6 +1,7 @@
 package decoder
 
 import (
+	"context"
 	"os"
 	"strconv"
 	"sync"
@@ -60,6 +61,7 @@ type Observable interface {
 }
 
 type observableImpl struct {
+	ctx      context.Context
 	iterable Iterable
 }
 
@@ -127,42 +129,57 @@ func (o *observableImpl) Observe() <-chan interface{} {
 
 // FromStream reads data from reader.
 func FromStream(reader Reader, opts ...Option) Observable {
-	options := &options{}
+	options := newOptions(opts...)
 
-	for _, o := range opts {
-		o(options)
-	}
-
-	f := func(next chan interface{}) {
+	f := func(ctx context.Context, next chan interface{}) {
 		defer close(next)
 
 		frameChan := reader.Read()
-		for frame := range frameChan {
-			logger.Debug("[Decoder] Receive raw data from YoMo-Zipper.", "data", logger.BytesString(frame.Data()))
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case frame, ok := <-frameChan:
+				if !ok {
+					return
+				}
 
-			if options.OnReceivedData != nil {
-				options.OnReceivedData(frame.Data())
+				logger.Debug("[Decoder] Receive raw data from YoMo-Zipper.", "data", logger.BytesString(frame.Data()))
+
+				if options.OnReceivedData != nil {
+					options.OnReceivedData(frame.Data())
+				}
+
+				next <- frame.Data()
 			}
-
-			next <- frame.Data()
 		}
 	}
 
-	return createObservable(f)
+	return createObservable(options.ctx, f)
 }
 
 // FromStream reads data from reader.
-func FromItems(items ...interface{}) Observable {
-	f := func(next chan interface{}) {
+func FromItems(items []interface{}, opts ...Option) Observable {
+	options := newOptions(opts...)
+
+	f := func(ctx context.Context, next chan interface{}) {
 		defer close(next)
 
-		for _, item := range items {
-			logger.Debug("[Decoder] Receive raw data from YoMo-Zipper.")
-			next <- item
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				for _, item := range items {
+					logger.Debug("[Decoder] Receive raw data from YoMo-Zipper.")
+					next <- item
+				}
+				return
+			}
 		}
 	}
 
-	return createObservable(f)
+	return createObservable(options.ctx, f)
 }
 
 // OnObserve calls the callback function when the key is observed.
@@ -262,7 +279,7 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 		m[key] = true
 	}
 
-	f := func(next chan interface{}) {
+	f := func(ctx context.Context, next chan interface{}) {
 		defer close(next)
 
 		buffer := make([]byte, 0)
@@ -300,6 +317,8 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 
 		for {
 			select {
+			case <-ctx.Done():
+				return
 			case item, ok := <-observe:
 				if !ok {
 					return
@@ -447,31 +466,40 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 		}
 	}
 
-	return createObservable(f)
+	return createObservable(o.ctx, f)
 }
 
 func (o *observableImpl) Unmarshal(unmarshaller Unmarshaller, factory func() interface{}) chan interface{} {
 	next := make(chan interface{})
 
-	f := func(next chan interface{}) {
+	f := func(ctx context.Context, next chan interface{}) {
 		defer close(next)
 
 		observe := o.Observe()
 
-		for item := range observe {
-			buf := item.([]byte)
-			value := factory()
-			err := unmarshaller(buf, value)
-			if err != nil {
-				// log the error and contine consuming the item from observe
-				logger.Error("[Decoder] Unmarshal error in decoder", "err", err)
-			} else {
-				next <- value
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case item, ok := <-observe:
+				if !ok {
+					return
+				}
+
+				buf := item.([]byte)
+				value := factory()
+				err := unmarshaller(buf, value)
+				if err != nil {
+					// log the error and contine consuming the item from observe
+					logger.Error("[Decoder] Unmarshal error in decoder", "err", err)
+				} else {
+					next <- value
+				}
 			}
 		}
 	}
 
-	go f(next)
+	go f(o.ctx, next)
 
 	return next
 }
@@ -500,7 +528,7 @@ func (o *observableImpl) RawBytes() chan []byte {
 	return _next
 }
 
-func createObservable(f func(next chan interface{})) Observable {
+func createObservable(ctx context.Context, f func(ctx context.Context, next chan interface{})) Observable {
 	if os.Getenv(bufferSizeEnvKey) != "" {
 		newSize, err := strconv.Atoi(os.Getenv(bufferSizeEnvKey))
 		if newSize > 0 && err == nil {
@@ -512,16 +540,17 @@ func createObservable(f func(next chan interface{})) Observable {
 	next := make(chan interface{}, bufferSize)
 	subscribers := make([]chan interface{}, 0)
 
-	go f(next)
-	go dropOldData(next)
-	return &observableImpl{iterable: &iterableImpl{next: next, subscribers: subscribers}}
+	go f(ctx, next)
+	// go dropOldData(next)
+	return &observableImpl{iterable: &iterableImpl{next: next, subscribers: subscribers}, ctx: ctx}
 }
 
 // dropOldData drops the old data if the size of "next" channel reaches the capacity.
 func dropOldData(next chan interface{}) {
+	t := time.NewTicker(100 * time.Millisecond)
 	for {
 		select {
-		case <-time.After(100 * time.Millisecond):
+		case <-t.C:
 			if len(next) < bufferSize {
 				// the "next" channel is not full yet.
 				continue
