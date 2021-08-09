@@ -24,8 +24,7 @@ type Conn struct {
 func NewConn(sess quic.Session, st quic.Stream, conf *WorkflowConfig) *Conn {
 	logger.Debug("[zipper] inits a new connection.")
 	c := &Conn{
-		conn:    quic.NewConn("", ""),
-		Session: sess,
+		conn: quic.NewConn("", ""),
 	}
 
 	c.Session = sess
