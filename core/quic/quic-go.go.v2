@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/lucas-clemente/quic-go"
+	"github.com/yomorun/yomo/core/parser"
 	"github.com/yomorun/yomo/logger"
 )
 
@@ -32,7 +33,7 @@ func (s *quicGoServer) ListenAndServe(ctx context.Context, addr string) error {
 	// Lock to use QUIC draft-29 version
 	conf := &quic.Config{
 		Versions:              []quic.VersionNumber{0xff00001d},
-		MaxIdleTimeout:        time.Minute * 10,
+		MaxIdleTimeout:        time.Minute * 1,
 		KeepAlive:             true,
 		MaxIncomingStreams:    1000000,
 		MaxIncomingUniStreams: 1000000,
@@ -48,13 +49,15 @@ func (s *quicGoServer) ListenAndServe(ctx context.Context, addr string) error {
 	// serve
 	logger.Print("✅ Listening on " + addr)
 
-	if s.handler != nil {
-		s.handler.Listen()
-	}
+	// TODO: @fanweixiao
+	// if s.handler != nil {
+	// 	s.handler.Listen()
+	// }
 
 	for {
 		logger.Print("❤️1/ waiting for new session")
 		ctx, cancel := context.WithCancel(context.Background())
+		// get new connection
 		session, err := s.listener.Accept(ctx)
 		if err != nil {
 			// TODO: should log this error
@@ -63,9 +66,10 @@ func (s *quicGoServer) ListenAndServe(ctx context.Context, addr string) error {
 			return err
 		}
 
+		logger.Print("❤️2/ got connection , waiting for stream")
 		go func(session quic.Session, cancel context.CancelFunc) {
 			defer cancel()
-			id := time.Now().UnixNano()
+			// id := time.Now().UnixNano()
 
 			for {
 				logger.Print("❤️3/ waiting for new stream")
@@ -77,12 +81,32 @@ func (s *quicGoServer) ListenAndServe(ctx context.Context, addr string) error {
 				}
 				logger.Printf("❤️4/ [stream:%d] created", stream.StreamID())
 				defer stream.Close()
-				if s.handler != nil {
-					s.handler.Read(id, session, stream)
-				} else {
-					logger.Print("handler isn't set in QUIC server")
-					break
+
+				for {
+					f, err := parser.ParseFrame(stream, session)
+					if err != nil {
+						logger.Printf("❤️ [ERR] on [ParseFrame] %v", err)
+						if errors.Is(err, net.ErrClosed) {
+							// if client close the connection, net.ErrClosed will be raise
+							// by quic-go IdleTimeoutError after connection's KeepAlive config.
+							logger.Printf("❤️ [ERR] on [ParseFrame] %v", net.ErrClosed)
+						}
+						// any error occurred, we should close the session
+						// after this, session.AcceptStream() will raise the error
+						// which specific in session.CloseWithError()
+						stream.Close()
+						session.CloseWithError(0xCC, err.Error())
+						break
+					}
+					logger.Printf("❤️❤️❤️ [parsed] %v", f)
 				}
+
+				// if s.handler != nil {
+				// 	s.handler.Read(id, session, stream)
+				// } else {
+				// 	logger.Print("handler isn't set in QUIC server")
+				// 	break
+				// }
 			}
 		}(session, cancel)
 	}
@@ -100,7 +124,7 @@ func (c *quicGoClient) Connect(addr string) error {
 	}
 
 	session, err := quic.DialAddr(addr, tlsConf, &quic.Config{
-		MaxIdleTimeout:        time.Minute * 10,
+		MaxIdleTimeout:        time.Minute * 1,
 		KeepAlive:             true,
 		MaxIncomingStreams:    1000000,
 		MaxIncomingUniStreams: 1000000,

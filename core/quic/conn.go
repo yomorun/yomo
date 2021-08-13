@@ -1,11 +1,9 @@
 package quic
 
 import (
-	"errors"
 	"time"
 
-	"github.com/yomorun/yomo/internal/decoder"
-	"github.com/yomorun/yomo/internal/framing"
+	"github.com/yomorun/yomo/internal/frame"
 )
 
 const (
@@ -20,39 +18,35 @@ const (
 
 // Conn represents the QUIC connection.
 type Conn struct {
-	Signal              decoder.ReadWriter // Signal is the specified stream to receive the signal.
-	Type                string             // Type is the type of connection. Possible value: source, stream-function, server-sender
-	Name                string             // Name is the name of connection.
-	Heartbeat           chan bool          // Heartbeat is the channel to receive heartbeat.
-	IsClosed            bool               // IsClosed indicates whether the connection is closed.
-	Ready               bool               // Ready indicates whether the connection is ready.
-	OnClosed            func() error       // OnClosed is the callback when the connection is closed.
-	OnHeartbeatReceived func()             // OnHeartbeatReceived is the callback when the heartbeat is received.
-	OnHeartbeatExpired  func()             // OnHeartbeatExpired is the callback when the heartbeat is expired.
+	Signal              *FrameStream // Signal is the specified stream to receive the signal from peer.
+	Type                string       // Type is the type of connection. Possible value: source, stream-function, server-sender
+	Name                string       // Name is the name of connection.
+	ReceivedPingPong    chan bool    // Heartbeat is the channel to receive  ping/pingheartbeat.
+	IsClosed            bool         // IsClosed indicates whether the connection is closed.
+	Ready               bool         // Ready indicates whether the connection is ready.
+	OnClosed            func() error // OnClosed is the callback when the connection is closed.
+	OnHeartbeatReceived func()       // OnHeartbeatReceived is the callback when the heartbeat is received.
+	OnHeartbeatExpired  func()       // OnHeartbeatExpired is the callback when the heartbeat is expired.
 }
 
 // NewConn inits a new QUIC connection.
 func NewConn(name string, connType string) *Conn {
 	return &Conn{
-		Name:      name,
-		Type:      connType,
-		Heartbeat: make(chan bool),
-		IsClosed:  false,
-		Ready:     true,
+		Name:             name,
+		Type:             connType,
+		ReceivedPingPong: make(chan bool),
+		IsClosed:         false,
+		Ready:            true,
 	}
 }
 
 // SendSignal sends the signal to client.
-func (c *Conn) SendSignal(f framing.Frame) error {
-	if c.Signal == nil {
-		return errors.New("Signal is nil")
-	}
-
-	err := c.Signal.Write(f)
+func (c *Conn) SendSignal(f frame.Frame) error {
+	_, err := c.Signal.Write(f)
 	return err
 }
 
-// Healthcheck checks if peer is online by heartbeat.
+// Healthcheck checks if peer is online by Ping/Pong heartbeat.
 func (c *Conn) Healthcheck() {
 	go func() {
 		// receive heartbeat
@@ -60,7 +54,7 @@ func (c *Conn) Healthcheck() {
 	loop:
 		for {
 			select {
-			case _, ok := <-c.Heartbeat:
+			case _, ok := <-c.ReceivedPingPong:
 				if !ok {
 					break loop
 				}
@@ -72,10 +66,10 @@ func (c *Conn) Healthcheck() {
 				// didn't receive the heartbeat after a certain duration, call the callback function when expired.
 				if c.OnHeartbeatExpired != nil {
 					c.OnHeartbeatExpired()
-				} else {
-					// didn't set the custom callback function, will break the loop and close the connection.
-					break loop
 				}
+
+				// break the loop and close the connection.
+				break loop
 			}
 		}
 	}()

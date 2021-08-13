@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	testConfig  *WorkflowConfig
+	testConfig  *Config
 	testMeshURL string
 )
 

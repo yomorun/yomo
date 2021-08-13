@@ -6,7 +6,7 @@ import (
 
 	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/internal/client"
-	"github.com/yomorun/yomo/internal/framing"
+	"github.com/yomorun/yomo/internal/frame"
 )
 
 // SenderClient is the client for YoMo-Zipper-Sender (formerly Zipper-Sender) to connect the downsteam YoMo-Zipper-Receiver (formerly Zipper-Receiver) in edge-mesh.
@@ -38,14 +38,11 @@ func (c *senderClientImpl) Write(data []byte) (int, error) {
 	}
 
 	// wrap data with frame.
-	frame := framing.NewPayloadFrame(data)
+	frame := frame.NewDataFrame("tid-test")
+	// TODO: let users set the "sid".
+	frame.SetCarriage(0x10, data)
 
-	err := c.Stream.Write(frame)
-	if err != nil {
-		return 0, err
-	}
-
-	return len(frame.Bytes()), err
+	return c.Stream.Write(frame)
 }
 
 // Connect to downstream YoMo-Zipper-Receiver in edge-mesh.

@@ -88,16 +88,10 @@ func BytesString(bytes []byte) string {
 
 // isEnableDebug indicates whether the debug is enabled.
 func isEnableDebug() bool {
-	if os.Getenv("YOMO_ENABLE_DEBUG") == "true" {
-		return true
-	}
-	return false
+	return os.Getenv("YOMO_ENABLE_DEBUG") == "true"
 }
 
 // isJSONFormat indicates whether the log is in JSON format.
 func isJSONFormat() bool {
-	if os.Getenv("YOMO_LOG_FORMAT") == "json" {
-		return true
-	}
-	return false
+	return os.Getenv("YOMO_LOG_FORMAT") == "json"
 }

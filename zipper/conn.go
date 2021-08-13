@@ -1,13 +1,8 @@
 package server
 
 import (
-	"encoding/json"
-	"time"
-
 	"github.com/yomorun/yomo/core/quic"
-	"github.com/yomorun/yomo/internal/client"
-	"github.com/yomorun/yomo/internal/decoder"
-	"github.com/yomorun/yomo/internal/framing"
+	"github.com/yomorun/yomo/internal/frame"
 	"github.com/yomorun/yomo/logger"
 )
 
@@ -21,51 +16,64 @@ type Conn struct {
 }
 
 // NewConn inits a new YoMo Zipper connection.
-func NewConn(sess quic.Session, st quic.Stream, conf *WorkflowConfig) *Conn {
-	logger.Debug("[zipper] inits a new connection.")
+func NewConn(sess quic.Session, st quic.Stream, conf *Config) *Conn {
+	logger.Debug("inits a new connection.")
 	c := &Conn{
 		conn: quic.NewConn("", ""),
 	}
 
 	c.Session = sess
-	c.conn.Signal = decoder.NewReadWriter(st)
+	c.conn.Signal = quic.NewFrameStream(st)
 	c.handleSignal(conf)
 	c.conn.OnClosed = c.Close
+	c.conn.OnHeartbeatReceived = func() {
+		logger.Debug("Received Ping from client, will send Pong to client.", "name", c.conn.Name)
+		// when the zipper received Ping from client, send Pong to client.
+		c.conn.SendSignal(frame.NewPongFrame())
+	}
+
+	c.conn.OnHeartbeatExpired = func() {
+		logger.Printf("❌ The client %s was offline.", c.conn.Name)
+		st.Close()
+		c.conn.Close()
+	}
 
 	return c
-}
-
-// SendSignalCreateStream sends the signal `function` to client.
-func (c *Conn) SendSignalCreateStream() error {
-	if c.conn.Ready {
-		c.conn.Ready = false
-		return c.conn.SendSignal(framing.NewCreateStreamFrame())
-	}
-	return nil
 }
 
 const mismatchedFuncName = "mismatched function name"
 
 // handleSignal handles the logic when receiving signal from client.
-func (c *Conn) handleSignal(conf *WorkflowConfig) {
+func (c *Conn) handleSignal(conf *Config) {
 	go func() {
-		frameCh := c.conn.Signal.Read()
-		for frame := range frameCh {
-			switch frame.Type() {
-			case framing.FrameTypeHandshake:
-				// get negotiation payload
-				var payload client.NegotiationPayload
-				err := json.Unmarshal(frame.Data(), &payload)
-				if err != nil {
-					logger.Error("❌ YoMo-Zipper inits the connection failed.", "err", err)
-					return
-				}
+		for {
+			signal := c.conn.Signal
+			if signal == nil {
+				logger.Error("Signal is nil.")
+				break
+			}
 
-				c.conn.Name = payload.AppName
-				c.conn.Type = c.getConnType(payload, conf)
+			f, err := signal.Read()
+			if err != nil {
+				if err.Error() == quic.ErrConnectionClosed {
+					logger.Info("Reand the signail failed, the client was disconneced.", "name", c.conn.Name)
+					break
+				} else {
+					logger.Error("Read the signal failed.", "name", c.conn.Name, "err", err)
+					continue
+				}
+			}
+
+			switch f.Type() {
+			case frame.TagOfHandshakeFrame:
+				// get negotiation payload
+				handshake := f.(*frame.HandshakeFrame)
+
+				c.conn.Name = handshake.Name
+				c.conn.Type = c.getConnType(*handshake, conf)
 				if c.conn.Type == mismatchedFuncName {
-					logger.Printf("The %s name %s is mismatched with the name of Stream Function in zipper config.", payload.ClientType, payload.AppName)
-					c.conn.SendSignal(framing.NewRejectedFrame())
+					logger.Printf("The %s name %s is mismatched with the name of Stream Function in zipper config.", handshake.ClientType, handshake.Name)
+					c.conn.SendSignal(frame.NewRejectedFrame())
 					continue
 				}
 				logger.Printf("Receive App %s, type: %s", c.conn.Name, c.conn.Type)
@@ -74,19 +82,19 @@ func (c *Conn) handleSignal(conf *WorkflowConfig) {
 					c.onGotAppType()
 				}
 
-				c.conn.SendSignal(framing.NewAcceptedFrame())
+				c.conn.SendSignal(frame.NewAcceptedFrame())
 				c.conn.Healthcheck()
-				c.Beat()
 
-			case framing.FrameTypeHeartbeat:
-				c.conn.Heartbeat <- true
+			case frame.TagOfPingFrame:
+				logger.Debug("Received Ping from client.", "name", c.conn.Name)
+				c.conn.ReceivedPingPong <- true
 			}
 		}
 	}()
 }
 
-func (c *Conn) getConnType(payload client.NegotiationPayload, conf *WorkflowConfig) string {
-	switch payload.ClientType {
+func (c *Conn) getConnType(handshake frame.HandshakeFrame, conf *Config) string {
+	switch handshake.ClientType {
 	case quic.ConnTypeStreamFunction:
 		// check if the app name is in functions
 		if len(conf.Functions) == 0 {
@@ -94,43 +102,15 @@ func (c *Conn) getConnType(payload client.NegotiationPayload, conf *WorkflowConf
 		}
 
 		for _, app := range conf.Functions {
-			if app.Name == payload.AppName {
+			if app.Name == handshake.Name {
 				return quic.ConnTypeStreamFunction
 			}
 		}
 		// name is not found
 		return mismatchedFuncName
 	default:
-		return payload.ClientType
+		return handshake.ClientType
 	}
-}
-
-// Beat sends the heartbeat to clients in every 200ms.
-func (c *Conn) Beat() {
-	go func(c *Conn) {
-		t := time.NewTicker(200 * time.Millisecond)
-		for {
-			select {
-			case <-t.C:
-				err := c.conn.SendSignal(framing.NewHeartbeatFrame())
-				if err != nil {
-					if err.Error() == quic.ErrConnectionClosed {
-						// when the app reconnected immediately before the heartbeat expiration time (5s), it shoudn't print the outdated error message.
-						// only print the message when there is not any new available app with the same name and type.
-						if c.isNewAppAvailable == nil || !c.isNewAppAvailable() {
-							logger.Printf("❌ The app %s is disconnected.", c.conn.Name)
-						}
-					} else {
-						// other errors.
-						logger.Error("❌ Server sent SignalHeartbeat to app failed.", "name", c.conn.Name, "err", err)
-					}
-
-					t.Stop()
-					break
-				}
-			}
-		}
-	}(c)
 }
 
 // Close the QUIC connection.

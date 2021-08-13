@@ -127,38 +127,7 @@ func (o *observableImpl) Observe() <-chan interface{} {
 	return o.iterable.Observe()
 }
 
-// FromStream reads data from reader.
-func FromStream(reader Reader, opts ...Option) Observable {
-	options := newOptions(opts...)
-
-	f := func(ctx context.Context, next chan interface{}) {
-		defer close(next)
-
-		frameChan := reader.Read()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case frame, ok := <-frameChan:
-				if !ok {
-					return
-				}
-
-				logger.Debug("[Decoder] Receive raw data from YoMo-Zipper.", "data", logger.BytesString(frame.Data()))
-
-				if options.OnReceivedData != nil {
-					options.OnReceivedData(frame.Data())
-				}
-
-				next <- frame.Data()
-			}
-		}
-	}
-
-	return createObservable(options.ctx, f)
-}
-
-// FromStream reads data from reader.
+// FromStream reads data from items slice.
 func FromItems(items []interface{}, opts ...Option) Observable {
 	options := newOptions(opts...)
 

@@ -2,25 +2,15 @@ package client
 
 import (
 	"context"
-	"encoding/json"
+	// "encoding/json"
 	"fmt"
-	"sync"
 	"time"
 
+	// "github.com/google/martian/log"
 	"github.com/yomorun/yomo/core/quic"
-	"github.com/yomorun/yomo/internal/decoder"
-	"github.com/yomorun/yomo/internal/framing"
+	"github.com/yomorun/yomo/internal/frame"
 	"github.com/yomorun/yomo/logger"
 )
-
-// streamPoolCount is the number of streams in pool.
-const streamPoolCount = 10
-
-// NegotiationPayload represents the payload for negotiation.
-type NegotiationPayload struct {
-	AppName    string `json:"app_name"`    // AppName is the name of client.
-	ClientType string `json:"client_type"` // ClientType is the type of client.
-}
 
 // Client is the interface for common functions of YoMo client.
 type Client interface {
@@ -43,21 +33,15 @@ type Impl struct {
 	serverIP   string
 	serverPort int
 	Session    quic.Client
-	Stream     decoder.ReadWriter // Stream is the stream to receive actual data from source.
-	once       *sync.Once
+	Stream     *quic.FrameStream // Stream is the stream to receive actual data from source.
 	isRejected bool
+	QuicStream quic.Stream
 }
 
 // New creates a new client.
 func New(appName string, clientType string) *Impl {
 	c := &Impl{
 		conn: quic.NewConn(appName, clientType),
-		once: new(sync.Once),
-	}
-
-	c.conn.OnHeartbeatReceived = func() {
-		// when the client received the heartbeat from server, send it back back to server.
-		c.conn.SendSignal(framing.NewHeartbeatFrame())
 	}
 
 	c.conn.OnHeartbeatExpired = func() {
@@ -67,26 +51,22 @@ func New(appName string, clientType string) *Impl {
 		}
 
 		// retry the connection.
-		c.once.Do(func() {
-			logger.Debug("[client] heartbeat to YoMo-Zipper was expired, client will reconnect to YoMo-Zipper.", "addr", getServerAddr(c.serverIP, c.serverPort))
+		logger.Debug("[client] heartbeat to YoMo-Zipper was expired, client will reconnect to YoMo-Zipper.", "addr", getServerAddr(c.serverIP, c.serverPort))
 
-			// reset session to nil.
-			if c.Session != nil {
-				c.Session.Close()
-			}
-			c.Session = nil
+		// reset session to nil.
+		if c.Session != nil {
+			c.Session.Close()
+		}
+		c.Session = nil
 
-			// reset Stream to nil.
+		// reset Stream to nil.
+		if c.Stream != nil {
+			c.Stream.Close()
 			c.Stream = nil
+		}
 
-			// reconnect when the heartbeat is expired.
-			c.BaseConnect(c.serverIP, c.serverPort)
-
-			// reset the sync.Once after 5s.
-			time.AfterFunc(5*time.Second, func() {
-				c.once = new(sync.Once)
-			})
-		})
+		// reconnect when the heartbeat is expired.
+		c.Retry()
 	}
 
 	return c
@@ -102,29 +82,31 @@ func (c *Impl) BaseConnect(ip string, port int) (*Impl, error) {
 
 	// connect to YoMo-Zipper
 	client, err := quic.NewClient(addr)
+
 	if err != nil {
 		logger.Error("[client] quic.NewClient Error:", "err", err)
 		return c, err
 	}
 
 	// create stream
-	stream, err := client.CreateStream(context.Background())
+	stream, err := client.CreateStreamSync(context.Background())
 	if err != nil {
 		logger.Error("[client] CreateStream Error:", "err", err)
 		return c, err
 	}
 
+	// // Send handshake frame
+	// handshake := frame.NewHandshakeFrame(c.conn.Name, c.conn.Type)
+	// buf := handshake.Encode()
+	// logger.Printf(fmt.Sprintf("> [%# x]", buf))
+	// stream.Write(buf)
+
 	// set session and signal
 	c.Session = client
-	c.conn.Signal = decoder.NewReadWriter(stream)
+	c.conn.Signal = quic.NewFrameStream(stream)
 
-	// send negotiation payload to YoMo-Zipper
-	payload := NegotiationPayload{
-		AppName:    c.conn.Name,
-		ClientType: c.conn.Type,
-	}
-	buf, _ := json.Marshal(payload)
-	err = c.conn.SendSignal(framing.NewHandshakeFrame(buf))
+	// send handshake to YoMo-Zipper
+	err = c.conn.SendSignal(frame.NewHandshakeFrame(c.conn.Name, c.conn.Type))
 
 	if err != nil {
 		logger.Error("[client] SendSignal Error:", "err", err)
@@ -144,6 +126,12 @@ func (c *Impl) BaseConnect(ip string, port int) (*Impl, error) {
 	} else {
 		logger.Printf("✅ Connected to YoMo-Zipper %s.", addr)
 	}
+
+	// ping zipper
+	c.ping()
+
+	c.QuicStream = stream
+
 	return c, nil
 }
 
@@ -151,13 +139,29 @@ func (c *Impl) BaseConnect(ip string, port int) (*Impl, error) {
 func (c *Impl) handleSignal(accepted chan bool) {
 	go func() {
 		defer close(accepted)
-		frameCh := c.conn.Signal.Read()
-		for frame := range frameCh {
-			switch frame.Type() {
-			case framing.FrameTypeHeartbeat:
-				c.conn.Heartbeat <- true
+		for {
+			signal := c.conn.Signal
+			if signal == nil {
+				logger.Error("[client] Signal is nil.")
+				break
+			}
 
-			case framing.FrameTypeAccepted:
+			f, err := signal.Read()
+			if err != nil {
+				if err.Error() == quic.ErrConnectionClosed {
+					logger.Error("[client] Read the signal failed, the zipper was disconnected.")
+					break
+				} else {
+					logger.Error("[client] Read the signal failed.", "err", err)
+					continue
+				}
+			}
+
+			switch f.Type() {
+			case frame.TagOfPongFrame:
+				c.conn.ReceivedPingPong <- true
+
+			case frame.TagOfAcceptedFrame:
 				// create stream
 				if c.conn.Type == quic.ConnTypeSource || c.conn.Type == quic.ConnTypeZipperSender {
 					stream, err := c.Session.CreateStream(context.Background())
@@ -166,11 +170,11 @@ func (c *Impl) handleSignal(accepted chan bool) {
 						break
 					}
 
-					c.Stream = decoder.NewReadWriter(stream)
+					c.Stream = quic.NewFrameStream(stream)
 				}
 				accepted <- true
 
-			case framing.FrameTypeRejected:
+			case frame.TagOfRejectedFrame:
 				if c.conn.Type == quic.ConnTypeStreamFunction {
 					logger.Warn("[client] the connection was rejected by zipper, please check if the function name matches the one in zipper config.")
 				} else {
@@ -181,10 +185,37 @@ func (c *Impl) handleSignal(accepted chan bool) {
 				break
 
 			default:
-				logger.Debug("[client] unknown signal.", "frame", logger.BytesString(frame.Bytes()))
+				logger.Debug("[client] unknown signal.", "type", f.Type())
 			}
 		}
 	}()
+}
+
+// Ping sends the PingFrame to YoMo-Zipper in every 3s.
+func (c *Impl) ping() {
+	go func(c *Impl) {
+		t := time.NewTicker(3 * time.Second)
+		for {
+			select {
+			case <-t.C:
+				err := c.conn.SendSignal(frame.NewPingFrame())
+				logger.Debug("Send Ping to zipper.")
+				if err != nil {
+					if err.Error() == quic.ErrConnectionClosed {
+						// when the app reconnected immediately before the heartbeat expiration time (5s), it shoudn't print the outdated error message.
+						// only print the message when there is not any new available app with the same name and type.
+						logger.Print("[client] ❌ the zipper was offline.")
+					} else {
+						// other errors.
+						logger.Error("[client] ❌ sent Ping to zipper failed.", "err", err)
+					}
+
+					t.Stop()
+					break
+				}
+			}
+		}
+	}(c)
 }
 
 // Retry the connection between client and server.
@@ -225,7 +256,7 @@ func (c *Impl) Close() error {
 	}
 
 	err := c.conn.Close()
-	c.conn.Heartbeat = make(chan bool)
+	c.conn.ReceivedPingPong = make(chan bool)
 	c.conn.Signal = nil
 	return err
 }

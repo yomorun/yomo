@@ -11,8 +11,7 @@ import (
 
 	"github.com/reactivex/rxgo/v2"
 	"github.com/yomorun/yomo/core/quic"
-	"github.com/yomorun/yomo/internal/decoder"
-	"github.com/yomorun/yomo/internal/framing"
+	"github.com/yomorun/yomo/internal/frame"
 	"github.com/yomorun/yomo/logger"
 )
 
@@ -28,31 +27,31 @@ type (
 )
 
 // NewServerHandler inits a new ServerHandler
-func NewServerHandler(conf *WorkflowConfig, meshConfURL string) quic.ServerHandler {
+func NewServerHandler(conf *Config, meshConfURL string) quic.ServerHandler {
 	return newQuicHandler(conf, meshConfURL)
 }
 
 type quicHandler struct {
-	serverlessConfig *WorkflowConfig
+	serverlessConfig *Config
 	meshConfigURL    string
 	connMap          sync.Map
-	source           chan decoder.Reader
+	source           chan quic.Stream
 	zipperMap        sync.Map // the stream map for downstream YoMo-Zippers.
 	zipperSenders    []GetSenderFunc
-	zipperReceiver   chan decoder.Reader
+	zipperReceiver   chan quic.Stream
 	mutex            sync.RWMutex
 	onReceivedData   func(buf []byte) // the callback function when the data is received.
 }
 
-func newQuicHandler(conf *WorkflowConfig, meshConfURL string) *quicHandler {
+func newQuicHandler(conf *Config, meshConfURL string) *quicHandler {
 	return &quicHandler{
 		serverlessConfig: conf,
 		meshConfigURL:    meshConfURL,
 		connMap:          sync.Map{},
-		source:           make(chan decoder.Reader),
+		source:           make(chan quic.Stream),
 		zipperMap:        sync.Map{},
 		zipperSenders:    make([]GetSenderFunc, 0),
-		zipperReceiver:   make(chan decoder.Reader),
+		zipperReceiver:   make(chan quic.Stream),
 	}
 }
 
@@ -83,9 +82,9 @@ func (s *quicHandler) Read(id int64, sess quic.Session, st quic.Stream) error {
 		s.mutex.Lock()
 		c := c.(*Conn)
 		if c.conn.Type == quic.ConnTypeSource {
-			s.source <- decoder.NewReader(st)
+			s.source <- st
 		} else if c.conn.Type == quic.ConnTypeZipperSender {
-			s.zipperReceiver <- decoder.NewReader(st)
+			s.zipperReceiver <- st
 		}
 
 		s.mutex.Unlock()
@@ -139,15 +138,15 @@ func (s *quicHandler) receiveDataFromSources() {
 						continue
 					}
 
-					frame, ok := item.V.(framing.Frame)
+					f, ok := item.V.(frame.DataFrame)
 					if !ok {
 						logger.Debug("[zipper] the type of item.V is not a Frame", "type", reflect.TypeOf(item.V))
 						continue
 					}
-					logger.Debug("[zipper] receive data after running all Stream Functions, will drop it.", "data", logger.BytesString(frame.Data()))
+					logger.Debug("[zipper] receive data after running all Stream Functions, will drop it.", "data", logger.BytesString(f.Encode()))
 					// call the `onReceivedData` callback function.
 					if s.onReceivedData != nil {
-						s.onReceivedData(frame.Data())
+						s.onReceivedData(f.GetCarriage())
 					}
 
 					// YoMo-Zipper-Senders
@@ -156,7 +155,7 @@ func (s *quicHandler) receiveDataFromSources() {
 							continue
 						}
 
-						go sendDataToDownstream(sender, frame, "[YoMo-Zipper Sender] sent frame to downstream YoMo-Zipper Receiver.", "❌ [YoMo-Zipper Sender] sent frame to downstream YoMo-Zipper Receiver failed.")
+						go sendDataToDownstream(sender, f, "[YoMo-Zipper Sender] sent frame to downstream YoMo-Zipper Receiver.", "❌ [YoMo-Zipper Sender] sent frame to downstream YoMo-Zipper Receiver failed.")
 					}
 				}
 			}()
@@ -192,19 +191,19 @@ func (s *quicHandler) receiveDataFromZipperSenders() {
 }
 
 // sendDataToDownstream sends data to `downstream`.
-func sendDataToDownstream(sf GetSenderFunc, frame framing.Frame, succssMsg string, errMsg string) {
+func sendDataToDownstream(sf GetSenderFunc, f frame.DataFrame, succssMsg string, errMsg string) {
 	for {
 		name, writer, cancel := sf()
 		if writer == nil {
 			logger.Debug("[zipper] the downstream writer is nil", "name", name)
 			break
 		} else {
-			_, err := writer.Write(frame.Data())
+			_, err := writer.Write(f.GetCarriage())
 			if err != nil {
-				logger.Error(errMsg, "name", name, "frame", logger.BytesString(frame.Bytes()), "err", err)
+				logger.Error(errMsg, "name", name, "frame", logger.BytesString(f.Encode()), "err", err)
 				cancel()
 			} else {
-				logger.Debug(succssMsg, "name", name, "frame", logger.BytesString(frame.Bytes()))
+				logger.Debug(succssMsg, "name", name, "frame", logger.BytesString(f.Encode()))
 				break
 			}
 		}
@@ -213,7 +212,7 @@ func sendDataToDownstream(sf GetSenderFunc, frame framing.Frame, succssMsg strin
 
 // getStreamFuncs gets stream functions by config (.yaml).
 // It will create one stream for each function.
-func getStreamFuncs(wfConf *WorkflowConfig, connMap *sync.Map) []GetStreamFunc {
+func getStreamFuncs(wfConf *Config, connMap *sync.Map) []GetStreamFunc {
 	//init workflow
 	funcs := make([]GetStreamFunc, 0)
 
@@ -224,10 +223,8 @@ func getStreamFuncs(wfConf *WorkflowConfig, connMap *sync.Map) []GetStreamFunc {
 	return funcs
 }
 
-var onceCreateStream = new(sync.Once)
-
 // createStreamFunc creates a `GetStreamFunc` for `Stream Function`.
-func createStreamFunc(app App, connMap *sync.Map, connType string) GetStreamFunc {
+func createStreamFunc(app Function, connMap *sync.Map, connType string) GetStreamFunc {
 	f := func() (string, quic.Session, CancelFunc) {
 		id, c := findConn(app, connMap, connType)
 
@@ -255,7 +252,7 @@ func cancelStreamFunc(conn *Conn, connMap *sync.Map, id int64) func() {
 }
 
 // IsMatched indicates if the connection is matched.
-func findConn(app App, connMap *sync.Map, connType string) (int64, *Conn) {
+func findConn(app Function, connMap *sync.Map, connType string) (int64, *Conn) {
 	var conn *Conn
 	var id int64
 	connMap.Range(func(key, value interface{}) bool {

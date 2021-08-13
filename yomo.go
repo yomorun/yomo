@@ -6,7 +6,7 @@ import (
 )
 
 // NewSource creates a new YoMo-Source client.
-func NewSource(opts ...Option) source.Client {
+func NewSource(opts ...Option) *source.Client {
 	options := newOptions(opts...)
 	return source.New(options.AppName)
 }

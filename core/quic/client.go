@@ -19,6 +19,9 @@ type Client interface {
 	// CreateStream creates a bidirectional stream.
 	CreateStream(ctx context.Context) (Stream, error)
 
+	// CreateStreamSync creates a bidirectional stream.
+	CreateStreamSync(ctx context.Context) (Stream, error)
+
 	// CreateStream creates a unidirectional stream.
 	CreateUniStream(ctx context.Context) (SendStream, error)
 

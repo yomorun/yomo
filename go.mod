@@ -10,6 +10,7 @@ require (
 	github.com/stretchr/objx v0.1.1 // indirect
 	github.com/stretchr/testify v1.7.0
 	github.com/tidwall/gjson v1.8.1
+	github.com/yomorun/y3 v0.0.0
 	github.com/yomorun/y3-codec-golang v1.7.0
 	go.opentelemetry.io/otel v1.0.0-RC2
 	go.opentelemetry.io/otel/exporters/jaeger v1.0.0-RC2
@@ -19,3 +20,5 @@ require (
 	go.uber.org/zap v1.17.0
 	gopkg.in/yaml.v2 v2.4.0
 )
+
+replace github.com/yomorun/y3 => ../y3

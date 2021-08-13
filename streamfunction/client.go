@@ -108,8 +108,10 @@ func (c *clientImpl) readStream(stream quic.ReceiveStream, handler func(rxstream
 			break
 		}
 
+		// run Handler.
 		go c.executeHandler(ctx, cancel, item.V, handler, fac)
-		// one data per time.
+
+		// one data per time, break the loop when one data was handled.
 		break
 	}
 
@@ -130,6 +132,7 @@ func (c *clientImpl) executeHandler(ctx context.Context, cancel context.CancelFu
 			break
 		}
 
+		// didn't wrap the data in frame at this moment.
 		buf, ok := (item.V).([]byte)
 		if !ok {
 			logger.Debug("[Stream Function Client] the data is not a []byte in RxStream, won't send it to YoMo-Zipper.")

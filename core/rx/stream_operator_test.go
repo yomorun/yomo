@@ -10,7 +10,6 @@ import (
 	"github.com/reactivex/rxgo/v2"
 	"github.com/stretchr/testify/assert"
 	y3 "github.com/yomorun/y3-codec-golang"
-	"github.com/yomorun/yomo/internal/decoder"
 )
 
 // HELPER FUNCTIONS
@@ -250,17 +249,6 @@ func Test_Subscribe_MultipleKeys(t *testing.T) {
 			return str, nil
 		})
 	})
-}
-
-func Test_RawBytes(t *testing.T) {
-	buf := &bytes.Buffer{}
-	buf.Write([]byte{0, 0, 6, 0, 0, 0, 1, 2, 3})
-	obs := decoder.FromStream(decoder.NewReader(buf))
-	rawBytes := obs.RawBytes()
-	for b := range rawBytes {
-		assert.Equal(t, []byte{1, 2, 3}, b)
-		break
-	}
 }
 
 func Test_Encode(t *testing.T) {

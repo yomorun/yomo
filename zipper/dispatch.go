@@ -8,23 +8,21 @@ import (
 	"github.com/reactivex/rxgo/v2"
 	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/core/rx"
-	"github.com/yomorun/yomo/internal/decoder"
 	"github.com/yomorun/yomo/logger"
-	"github.com/yomorun/yomo/zipper/tracing"
 )
 
 // DispatcherWithFunc dispatches the input stream to downstreams.
-func DispatcherWithFunc(ctx context.Context, sfns []GetStreamFunc, reader decoder.Reader) rx.Stream {
-	stream := rx.NewFactory().FromReader(ctx, reader)
+func DispatcherWithFunc(ctx context.Context, sfns []GetStreamFunc, stream quic.Stream) rx.Stream {
+	rxStream := rx.NewFactory().FromQuicStream(ctx, stream)
 
 	for _, sfn := range sfns {
-		stream = mergeStreamFn(ctx, stream, sfn)
+		rxStream = mergeStreamFn(ctx, rxStream, sfn)
 	}
 
-	return stream
+	return rxStream
 }
 
-// mergeStreamFn sends the stream data to Stream Function and receives the new stream data from it.
+// mergeStreamFn sends the stream data to Stream Function and receives the new stream data from it. (in Rx way)
 func mergeStreamFn(ctx context.Context, upstream rx.Stream, sfn GetStreamFunc) rx.Stream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
@@ -76,10 +74,10 @@ func dispatchToStreamFn(ctx context.Context, sfn GetStreamFunc, buf interface{},
 		return
 	}
 
-	// tracing
-	span := tracing.NewSpanFromData(string(data), name, "zipper-send-to-"+name)
+	// // tracing
+	// span := tracing.NewSpanFromData(string(data), name, "zipper-send-to-"+name)
 
-	// send data to downstream.
+	// create a new QUIC stream.
 	stream, err := session.OpenUniStream()
 	if err != nil {
 		logger.Debug("[MergeStreamFunc] session.OpenUniStream failed", "stream-fn", name)
@@ -88,15 +86,16 @@ func dispatchToStreamFn(ctx context.Context, sfn GetStreamFunc, buf interface{},
 		return
 	}
 
+	// send data to downstream. (no frame at this moment)
 	_, err = stream.Write(data)
 	stream.Close()
 	if err == nil {
 		logger.Debug("[MergeStreamFunc] YoMo-Zipper sent data to Stream Function.", "stream-fn", name)
 
-		// end span in tracing
-		if span != nil {
-			span.End()
-		}
+		// // end span in tracing
+		// if span != nil {
+		// 	span.End()
+		// }
 		return
 	}
 
@@ -116,6 +115,7 @@ func receiveResponseFromStreamFn(ctx context.Context, sfn GetStreamFunc, next ch
 
 	LOOP_ACCP_STREAM:
 		for {
+			// accept stream from `stream-fn`.
 			stream, err := session.AcceptUniStream(context.Background())
 			if err != nil {
 				if err.Error() != quic.ErrConnectionClosed {
@@ -139,14 +139,14 @@ func readDataFromStream(ctx context.Context, name string, stream quic.ReceiveStr
 
 	logger.Debug("[MergeStreamFunc] YoMo-Zipper received data from Stream Function.", "stream-fn", name)
 
-	// tracing
-	span := tracing.NewSpanFromData(string(data), name, "zipper-receive-from-"+name)
+	// // tracing
+	// span := tracing.NewSpanFromData(string(data), name, "zipper-receive-from-"+name)
 
-	// send data to downstream.
+	// send data to "next" stream function.
 	rxgo.Of(data).SendContext(ctx, next)
 
-	// end span in tracing
-	if span != nil {
-		span.End()
-	}
+	// // end span in tracing
+	// if span != nil {
+	// 	span.End()
+	// }
 }

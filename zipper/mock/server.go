@@ -13,18 +13,16 @@ const (
 
 // New a mock server.
 func New() {
-	svr := server.New(&server.WorkflowConfig{})
+	svr := server.New(&server.Config{})
 	svr.Serve(fmt.Sprintf("%s:%d", IP, Port))
 }
 
 // NewWithFuncName creates a mock server with a certain stream-function name.
 func NewWithFuncName(funcName string) {
-	svr := server.New(&server.WorkflowConfig{
-		Workflow: server.Workflow{
-			Functions: []server.App{
-				{
-					Name: funcName,
-				},
+	svr := server.New(&server.Config{
+		Functions: []server.Function{
+			{
+				Name: funcName,
 			},
 		},
 	})

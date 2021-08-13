@@ -8,26 +8,21 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// App represents a YoMo Application.
-type App struct {
+// Config represents a YoMo Zipper config.
+type Config struct {
+	Name      string     `yaml:"name"`
+	Host      string     `yaml:"host"`
+	Port      int        `yaml:"port"`
+	Functions []Function `yaml:"functions"`
+}
+
+// App represents a YoMo Stream Function.
+type Function struct {
 	Name string `yaml:"name"`
 }
 
-// Workflow represents a YoMo Workflow.
-type Workflow struct {
-	Functions []App `yaml:"functions"`
-}
-
-// WorkflowConfig represents a YoMo Workflow config.
-type WorkflowConfig struct {
-	Name     string `yaml:"name"`
-	Host     string `yaml:"host"`
-	Port     int    `yaml:"port"`
-	Workflow `yaml:",inline"`
-}
-
-// Load the WorkflowConfig by path.
-func Load(path string) (*WorkflowConfig, error) {
+// Load the Config by path.
+func Load(path string) (*Config, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -50,8 +45,8 @@ func Load(path string) (*WorkflowConfig, error) {
 	return load(buffer)
 }
 
-func load(data []byte) (*WorkflowConfig, error) {
-	var config = &WorkflowConfig{}
+func load(data []byte) (*Config, error) {
+	var config = &Config{}
 	err := yaml.Unmarshal(data, config)
 	if err != nil {
 		return nil, err
@@ -60,7 +55,7 @@ func load(data []byte) (*WorkflowConfig, error) {
 }
 
 // ParseConfig parses the config.
-func ParseConfig(config string) (*WorkflowConfig, error) {
+func ParseConfig(config string) (*Config, error) {
 	if !(strings.HasSuffix(config, ".yaml") || strings.HasSuffix(config, ".yml")) {
 		return nil, errors.New(`The extension of workflow config is incorrect, it should ".yaml|.yml"`)
 	}
@@ -80,12 +75,12 @@ func ParseConfig(config string) (*WorkflowConfig, error) {
 	return wfConf, nil
 }
 
-func validateConfig(wfConf *WorkflowConfig) error {
+func validateConfig(wfConf *Config) error {
 	if wfConf == nil {
 		return errors.New("conf is nil")
 	}
 
-	m := map[string][]App{
+	m := map[string][]Function{
 		"Functions": wfConf.Functions,
 	}
 

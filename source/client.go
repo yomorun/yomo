@@ -2,57 +2,42 @@ package source
 
 import (
 	"errors"
-	"io"
 
 	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/internal/client"
-	"github.com/yomorun/yomo/internal/framing"
+	"github.com/yomorun/yomo/internal/frame"
 )
 
-// Client is the client for YoMo-Source.
-// https://docs.yomo.run/source
-type Client interface {
-	io.Writer
-
-	client.Client
-
-	// Connect to YoMo-Zipper
-	Connect(ip string, port int) (Client, error)
-}
-
-type clientImpl struct {
+type Client struct {
 	*client.Impl
 }
 
 // New a YoMo-Source client.
-func New(appName string) Client {
-	c := &clientImpl{
+func New(appName string) *Client {
+	c := &Client{
 		Impl: client.New(appName, quic.ConnTypeSource),
 	}
 	return c
 }
 
 // Write the data to downstream.
-func (c *clientImpl) Write(data []byte) (int, error) {
+func (c *Client) Write(data []byte) (int, error) {
 	if c.Stream == nil {
 		return 0, errors.New("[Source] Stream is nil")
 	}
 
 	// wrap data with frame.
-	frame := framing.NewPayloadFrame(data)
+	frame := frame.NewDataFrame("tid-test")
+	// TODO: let users set the "sid".
+	frame.SetCarriage(0x10, data)
 
-	err := c.Stream.Write(frame)
-	if err != nil {
-		return 0, err
-	}
-
-	return len(frame.Bytes()), err
+	return c.Stream.Write(frame)
 }
 
 // Connect to YoMo-Zipper.
-func (c *clientImpl) Connect(ip string, port int) (Client, error) {
+func (c *Client) Connect(ip string, port int) (*Client, error) {
 	cli, err := c.BaseConnect(ip, port)
-	return &clientImpl{
+	return &Client{
 		cli,
 	}, err
 }
