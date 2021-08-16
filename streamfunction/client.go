@@ -43,6 +43,8 @@ func New(appName string) Client {
 // Write the data to downstream.
 func (c *clientImpl) Write(data []byte) (int, error) {
 	if c.Session == nil {
+		// the connection was disconnected, retry again.
+		c.RetryWithCount(1)
 		return 0, errors.New("[Stream Function Client] Session is nil")
 	}
 

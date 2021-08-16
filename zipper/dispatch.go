@@ -3,14 +3,14 @@ package server
 import (
 	"context"
 	"reflect"
-	"time"
+	"sync/atomic"
 
 	"github.com/reactivex/rxgo/v2"
 	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/core/rx"
 	"github.com/yomorun/yomo/internal/decoder"
 	"github.com/yomorun/yomo/logger"
-	"github.com/yomorun/yomo/zipper/tracing"
+	// "github.com/yomorun/yomo/zipper/tracing"
 )
 
 // DispatcherWithFunc dispatches the input stream to downstreams.
@@ -42,6 +42,7 @@ func mergeStreamFn(ctx context.Context, upstream rx.Stream, sfn GetStreamFunc) r
 
 // sendDataToStreamFn gets the data from `upstream` and sends it to `stream-fn`.
 func sendDataToStreamFn(ctx context.Context, sfn GetStreamFunc, observe <-chan rxgo.Item, next chan rxgo.Item) {
+	var nextNum uint32
 	for {
 		select {
 		case <-ctx.Done():
@@ -55,14 +56,31 @@ func sendDataToStreamFn(ctx context.Context, sfn GetStreamFunc, observe <-chan r
 				return
 			}
 
-			go dispatchToStreamFn(ctx, sfn, item.V, next)
+			name, funcs := sfn()
+			len := len(funcs)
+			// no sessions in this stream-fn.
+			if len == 0 {
+				continue
+			}
+
+			// only one session in this stream-fn.
+			if len == 1 {
+				go dispatchToStreamFn(ctx, name, funcs[0].session, funcs[0].cancel, item.V, next)
+				continue
+			}
+
+			// get next session by RoundRobin when has more sessions in this stream-fn.
+			n := atomic.AddUint32(&nextNum, 1)
+			i := (int(n) - 1) % len
+			logger.Debug("[MergeStreamFunc] dispatch data to next stream-function", "name", name, "index", i)
+
+			go dispatchToStreamFn(ctx, name, funcs[i].session, funcs[i].cancel, item.V, next)
 		}
 	}
 }
 
 // dispatchToStreamFn dispatch the data to `stream-fn`.
-func dispatchToStreamFn(ctx context.Context, sfn GetStreamFunc, buf interface{}, next chan rxgo.Item) {
-	name, session, cancel := sfn()
+func dispatchToStreamFn(ctx context.Context, name string, session quic.Session, cancel CancelFunc, buf interface{}, next chan rxgo.Item) {
 	data, ok := buf.([]byte)
 	if !ok {
 		logger.Debug("[MergeStreamFunc] the type of item.V is not a []byte", "type", reflect.TypeOf(buf))
@@ -70,21 +88,23 @@ func dispatchToStreamFn(ctx context.Context, sfn GetStreamFunc, buf interface{},
 	}
 
 	if session == nil {
-		logger.Debug("[MergeStreamFunc] the session of the stream-function is nil", "stream-fn", name)
+		logger.Error("[MergeStreamFunc] the session of the stream-function is nil", "stream-fn", name)
 		// pass the data to next stream function if the curren stream function is nil
 		rxgo.Of(data).SendContext(ctx, next)
+		cancel()
 		return
 	}
 
 	// tracing
-	span := tracing.NewSpanFromData(string(data), name, "zipper-send-to-"+name)
+	// span := tracing.NewSpanFromData(string(data), name, "zipper-send-to-"+name)
 
 	// send data to downstream.
 	stream, err := session.OpenUniStream()
 	if err != nil {
-		logger.Debug("[MergeStreamFunc] session.OpenUniStream failed", "stream-fn", name)
+		logger.Error("[MergeStreamFunc] session.OpenUniStream failed", "stream-fn", name)
 		// pass the data to next `stream function` if the current stream function is nil
 		rxgo.Of(data).SendContext(ctx, next)
+		cancel()
 		return
 	}
 
@@ -93,10 +113,10 @@ func dispatchToStreamFn(ctx context.Context, sfn GetStreamFunc, buf interface{},
 	if err == nil {
 		logger.Debug("[MergeStreamFunc] YoMo-Zipper sent data to Stream Function.", "stream-fn", name)
 
-		// end span in tracing
-		if span != nil {
-			span.End()
-		}
+		// // end span in tracing
+		// if span != nil {
+		// 	span.End()
+		// }
 		return
 	}
 
@@ -106,25 +126,36 @@ func dispatchToStreamFn(ctx context.Context, sfn GetStreamFunc, buf interface{},
 
 // receiveResponseFromStreamFn receives the response from `stream-fn`.
 func receiveResponseFromStreamFn(ctx context.Context, sfn GetStreamFunc, next chan rxgo.Item) {
+	name, _ := sfn()
+	ch, _ := newStreamFuncSessionCache.LoadOrStore(name, make(chan quic.Session, 5))
+
 	for {
-		name, session, _ := sfn()
-
-		if session == nil {
-			time.Sleep(100 * time.Millisecond)
-			continue
-		}
-
-	LOOP_ACCP_STREAM:
-		for {
-			stream, err := session.AcceptUniStream(context.Background())
-			if err != nil {
-				if err.Error() != quic.ErrConnectionClosed {
-					logger.Error("[MergeStreamFunc] session.AcceptUniStream(ctx) failed", "stream-fn", name, "err", err)
-				}
-				break LOOP_ACCP_STREAM
+		select {
+		case <-ctx.Done():
+			return
+		case session, ok := <-ch.(chan quic.Session):
+			if !ok {
+				return
 			}
 
-			go readDataFromStream(ctx, name, stream, next)
+			if session == nil {
+				continue
+			}
+
+			go func() {
+			LOOP_ACCP_STREAM:
+				for {
+					stream, err := session.AcceptUniStream(context.Background())
+					if err != nil {
+						if err.Error() != quic.ErrConnectionClosed {
+							logger.Error("[MergeStreamFunc] session.AcceptUniStream(ctx) failed", "stream-fn", name, "err", err)
+						}
+						break LOOP_ACCP_STREAM
+					}
+
+					go readDataFromStream(ctx, name, stream, next)
+				}
+			}()
 		}
 	}
 }
@@ -139,14 +170,14 @@ func readDataFromStream(ctx context.Context, name string, stream quic.ReceiveStr
 
 	logger.Debug("[MergeStreamFunc] YoMo-Zipper received data from Stream Function.", "stream-fn", name)
 
-	// tracing
-	span := tracing.NewSpanFromData(string(data), name, "zipper-receive-from-"+name)
+	// // tracing
+	// span := tracing.NewSpanFromData(string(data), name, "zipper-receive-from-"+name)
 
 	// send data to downstream.
 	rxgo.Of(data).SendContext(ctx, next)
 
-	// end span in tracing
-	if span != nil {
-		span.End()
-	}
+	// // end span in tracing
+	// if span != nil {
+	// 	span.End()
+	// }
 }

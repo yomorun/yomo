@@ -16,7 +16,6 @@ type Conn struct {
 	conn              *quic.Conn
 	Session           quic.Session
 	onClosed          func()      // onClosed is the callback when the connection is closed.
-	onGotAppType      func()      // onGotAppType is the callback when the YoMo-Zipper got app type from client's signal.
 	isNewAppAvailable func() bool // indicates whether the server receives a new app.
 }
 
@@ -70,8 +69,18 @@ func (c *Conn) handleSignal(conf *WorkflowConfig) {
 				}
 				logger.Printf("Receive App %s, type: %s", c.conn.Name, c.conn.Type)
 
-				if c.onGotAppType != nil {
-					c.onGotAppType()
+				if c.conn.Type == quic.ConnTypeStreamFunction {
+					// clear local cache when zipper has a new stream-fn connection.
+					clearStreamFuncCache(c.conn.Name)
+
+					// add new connection to channcel
+					if ch, ok := newStreamFuncSessionCache.Load(c.conn.Name); ok {
+						ch.(chan quic.Session) <- c.Session
+					} else {
+						ch := make(chan quic.Session, 5)
+						ch <- c.Session
+						newStreamFuncSessionCache.Store(c.conn.Name, ch)
+					}
 				}
 
 				c.conn.SendSignal(framing.NewAcceptedFrame())
