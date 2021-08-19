@@ -3,8 +3,8 @@
 This example represents how to observe multiple keys and zip the data in batch for calculation.
 
 ```go
-func Handler(rxstream rx.RxStream) rx.RxStream {
-	observers := []decoder.KeyObserveFunc{
+func Handler(rxstream rx.Stream) rx.Stream {
+	observers := []rx.KeyObserveFunc{
 		{
 			Key:       0x10,
 			OnObserve: convert,
@@ -36,9 +36,9 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 
 ## Code structure
 
-+ `source`: sending sequential numbers in 5 different keys [docs.yomo.run/source](https://docs.yomo.run/source)
-+ `flow`: combine multiple numbers from 5 keys for calculation [docs.yomo.run/flow](https://docs.yomo.run/flow)
-+ `zipper`: setup a workflow that receives multiple keys and completes the merge calculation [docs.yomo.run/zipper](https://docs.yomo.run/zipper)
++ `source`: sending sequential numbers in 5 different keys [yomo.run/source](https://docs.yomo.run/source)
++ `stream-fn` (formerly flow): combine multiple numbers from 5 keys for calculation [yomo.run/stream-function](https://docs.yomo.run/stream-function)
++ `zipper` (formerly zipper): setup a workflow that receives multiple keys and completes the merge calculation [yomo.run/zipper](https://docs.yomo.run/zipper)
 
 ## How to run the example
 
@@ -46,27 +46,30 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 
 Please visit [YoMo Getting Started](https://github.com/yomorun/yomo#1-install-cli) for details.
 
-### 2. Run [yomo-zipper](https://docs.yomo.run/zipper)
+### 2. Run [YoMo-Zipper](https://docs.yomo.run/zipper)
 
 ```bash
 yomo serve -c ./zipper/workflow.yaml
 
-2021/05/20 15:34:23 Found 1 flows in zipper config
-2021/05/20 15:34:23 Flow 1: training
-2021/05/20 15:34:23 Found 0 sinks in zipper config
-2021/05/20 15:34:23 Running YoMo workflow...
+ℹ️   Found 1 stream functions in YoMo-Zipper config
+ℹ️   Stream Function 1: training
+ℹ️   Running YoMo Zipper...
 2021/05/20 15:34:23 ✅ Listening on 0.0.0.0:9000
 ```
 
-### 3. Run [yomo-flow](https://docs.yomo.run/flow)
+### 3. Run [stream-fn](https://docs.yomo.run/stream-function)
 
 ```bash
-yomo run ./flow/app.go -n training
+yomo run ./stream-fn/app.go -n training
 
-2021/05/20 15:35:22 Building the Serverless Function File...
-2021/05/20 15:35:25 Connecting to zipper localhost:9000 ...
-2021/05/20 15:35:25 ✅ Connected to zipper localhost:9000
-2021/05/20 15:35:25 Running the Serverless Function.
+ℹ️   YoMo Stream Function file: example/multi-keys/stream-fn/app.go
+⌛  Create YoMo Stream Function instance...
+ℹ️   Starting YoMo Stream Function instance with Name: training. Host: localhost. Port: 9000.
+⌛  YoMo Stream Function building...
+✅  Success! YoMo Stream Function build.
+ℹ️   YoMo Stream Function is running...
+2021/05/20 15:35:25 ✅ Connecting to YoMo-Zipper localhost:9000...
+2021/05/20 15:35:25 ✅ Connected to YoMo-Zipper localhost:9000.
 ```
 
 ### 4. Run [yomo-source](https://docs.yomo.run/source)

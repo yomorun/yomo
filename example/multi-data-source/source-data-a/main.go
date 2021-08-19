@@ -11,18 +11,18 @@ import (
 	"time"
 
 	y3 "github.com/yomorun/y3-codec-golang"
-	"github.com/yomorun/yomo/pkg/client"
+	"github.com/yomorun/yomo"
 )
 
-var zipperAddr = os.Getenv("YOMO_ZIPPER_ENDPOINT")
+var serverAddr = os.Getenv("YOMO_SERVER_ENDPOINT")
 
 func main() {
-	if zipperAddr == "" {
-		zipperAddr = "localhost:9000"
+	if serverAddr == "" {
+		serverAddr = "localhost:9000"
 	}
-	err := emit(zipperAddr)
+	err := emit(serverAddr)
 	if err != nil {
-		log.Printf("❌ Emit the data to yomo-zipper %s failure with err: %v", zipperAddr, err)
+		log.Printf("❌ Emit the data to YoMo-Zipper %s failure with err: %v", serverAddr, err)
 	}
 }
 
@@ -34,7 +34,7 @@ func emit(addr string) error {
 	host := splits[0]
 	port, err := strconv.Atoi(splits[1])
 
-	cli, err := client.NewSource("source-a").Connect(host, port)
+	cli, err := yomo.NewSource(yomo.WithName("source-a")).Connect(host, port)
 	if err != nil {
 		panic(err)
 	}
@@ -56,9 +56,9 @@ func generateAndSendData(writer io.Writer) {
 
 		_, err := writer.Write(sendingBuf)
 		if err != nil {
-			log.Printf("❌ Emit %v to yomo-zipper failure with err: %f", num, err)
+			log.Printf("❌ Emit %v to YoMo-Zipper failure with err: %f", num, err)
 		} else {
-			log.Printf("✅ Emit %f to yomo-zipper", num)
+			log.Printf("✅ Emit %f to YoMo-Zipper", num)
 		}
 	}
 }

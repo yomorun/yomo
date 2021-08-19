@@ -7,7 +7,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/yomorun/yomo/pkg/client"
+	"github.com/yomorun/yomo"
 )
 
 type noiseData struct {
@@ -17,17 +17,17 @@ type noiseData struct {
 }
 
 func main() {
-	// connect to yomo-zipper.
-	cli, err := client.NewSource("yomo-source").Connect("localhost", 9000)
+	// connect to YoMo-Zipper.
+	cli, err := yomo.NewSource(yomo.WithName("yomo-source")).Connect("localhost", 9000)
 	if err != nil {
-		log.Printf("❌ Emit the data to yomo-zipper failure with err: %v", err)
+		log.Printf("❌ Emit the data to YoMo-Zipper failure with err: %v", err)
 		return
 	}
-	log.Printf("✅ Connected to yomo-zipper")
+	log.Printf("✅ Connected to YoMo-Zipper")
 
 	defer cli.Close()
 
-	// generate mock data and send it to yomo-zipper in every 100 ms.
+	// generate mock data and send it to YoMo-Zipper in every 100 ms.
 	generateAndSendData(cli)
 }
 
@@ -46,9 +46,9 @@ func generateAndSendData(stream io.Writer) {
 		// send data via QUIC stream.
 		_, err := stream.Write(sendingBuf)
 		if err != nil {
-			log.Printf("❌ Emit %v to yomo-zipper failure with err: %v", data, err)
+			log.Printf("❌ Emit %v to YoMo-Zipper failure with err: %v", data, err)
 		} else {
-			log.Printf("✅ Emit %v to yomo-zipper", data)
+			log.Printf("✅ Emit %v to YoMo-Zipper", data)
 		}
 
 		time.Sleep(100 * time.Millisecond)

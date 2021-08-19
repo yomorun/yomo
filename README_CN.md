@@ -6,7 +6,7 @@
 
 YoMo 是为边缘计算打造的低时延流式 Serverless 开发框架，基于 [QUIC Transport](https://quicwg.org/) 协议通讯，以 [Functional Reactive Programming](https://en.wikipedia.org/wiki/Functional_reactive_programming) 为编程范式，简化构建可靠、安全的低时延计算应用的复杂度，挖掘5G潜力，释放实时计算价值。
 
-官网：[https://yomo.run](https://yomo.run/?utm_source=github&utm_campaign=ossc) （感谢 <a href="https://vercel.com/?utm_source=cella&utm_campaign=oss" target="_blank">Vercel</a> 支持）
+官网：[https://yomo.run](https://docs.yomo.run/?utm_source=github&utm_campaign=ossc) （感谢 <a href="https://vercel.com/?utm_source=cella&utm_campaign=oss" target="_blank">Vercel</a> 支持）
 
 For english, check: [Github](https://github.com/yomorun/yomo)
 
@@ -43,9 +43,9 @@ YoMo CLI version: v0.0.6
 ```bash
 $ yomo init yomo-app-demo
 
-⌛  Initializing the Serverless app...
-✅  Congratulations! You have initialized the serverless function successfully.
-ℹ️   You can enjoy the YoMo Serverless via the command: 
+⌛  Initializing the Stream Function...
+✅  Congratulations! You have initialized the stream function successfully.
+ℹ️   You can enjoy the YoMo Stream Function via the command: 
 ℹ️   	DEV: 	yomo dev -n Noise yomo-app-demo/app.go
 ℹ️   	PROD: 	First run source application, eg: go run example/source/main.go
 		Second: yomo run -n yomo-app-demo yomo-app-demo/app.go
@@ -64,7 +64,7 @@ import (
 	"time"
 
 	y3 "github.com/yomorun/y3-codec-golang"
-	"github.com/yomorun/yomo/pkg/rx"
+	"github.com/yomorun/yomo/core/rx"
 )
 
 // NoiseDataKey 用于通知YoMo只订阅Y3序列化后Tag为0x10的value
@@ -95,7 +95,7 @@ var callback = func(v []byte) (interface{}, error) {
 }
 
 // Handler will handle data in Rx way
-func Handler(rxstream rx.RxStream) rx.RxStream {
+func Handler(rxstream rx.Stream) rx.Stream {
 	stream := rxstream.
 		Subscribe(NoiseDataKey).
 		OnObserve(callback).
@@ -116,14 +116,13 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 ```sh
 $ yomo dev
 
-ℹ️   YoMo serverless function file: app.go
-⌛  Create YoMo serverless instance...
-⌛  YoMo serverless function building...
-✅  Success! YoMo serverless function build.
-ℹ️   YoMo serverless function is running...
-ℹ️   Run: /Users/xiaojianhong/Downloads/yomo-app-demo/sl.yomo
-2021/06/07 12:00:06 Connecting to zipper dev.yomo.run:9000 ...
-2021/06/07 12:00:07 ✅ Connected to zipper dev.yomo.run:9000
+ℹ️   YoMo Stream Function file: app.go
+⌛  Create YoMo Stream Function instance...
+⌛  YoMo Stream Function building...
+✅  Success! YoMo Stream Function build.
+ℹ️   YoMo Stream Function is running...
+2021/06/07 12:00:06 Connecting to YoMo-Zipper dev.yomo.run:9000 ...
+2021/06/07 12:00:07 ✅ Connected to YoMo-Zipper dev.yomo.run:9000
 [10.10.79.50] 1623038407236 > value: 1.919251 ⚡️=-25ms
 [StdOut]:  1.9192511
 [10.10.79.50] 1623038407336 > value: 11.370256 ⚡️=-25ms
@@ -146,15 +145,15 @@ $ yomo dev
 + [将 EMQX Broker 连接至 YoMo](https://github.com/yomorun/yomo-source-emqx-starter)
 + [将使用 MQTT 的数据源连接至 YoMo](https://github.com/yomorun/yomo-source-mqtt-broker-starter)
 
-### Flows
+### Stream Functions
 
-+ [基于 SSVM 使用 WebAssembly 编写 YoMo-Flow](https://github.com/yomorun/yomo-flow-ssvm-example)
++ [基于 SSVM 使用 WebAssembly 编写 YoMo-Stream-Function](https://github.com/yomorun/yomo-flow-ssvm-example)
 
-### Sinks
+### Output Connectors
 
-+ [将 YoMo-Flow 处理完的内容存储至 FaunaDB](https://github.com/yomorun/yomo-sink-faunadb-example)
++ [将 YoMo-Stream-Function 处理完的内容存储至 FaunaDB](https://github.com/yomorun/yomo-sink-faunadb-example)
 + 连接 InfluxDB 落地数据存储
-+ [将 YoMo-Flow 处理完的内容存储至 TDengine](https://github.com/yomorun/yomo-sink-tdengine-example)
++ [将 YoMo-Stream-Function 处理完的内容存储至 TDengine](https://github.com/yomorun/yomo-sink-tdengine-example)
 
 ## 🗺 YoMo系统架构
 
@@ -164,10 +163,9 @@ $ yomo dev
 
 ## 📚 Documentation
 
-+ `YoMo-Source`: [docs.yomo.run/source](https://docs.yomo.run/source)
-+ `YoMo-Flow`: [docs.yomo.run/flow](https://docs.yomo.run/flow)
-+ `YoMo-Sink`: [docs.yomo.run/sink](https://docs.yomo.run/sink)
-+ `YoMo-Zipper`: [docs.yomo.run/zipper](https://docs.yomo.run/zipper)
++ `YoMo-Source`: [yomo.run/source](https://docs.yomo.run/source)
++ `YoMo-Stream-Function` (formerly flow): [yomo.run/stream-function](https://docs.yomo.run/stream-function)
++ `YoMo-Zipper`: [yomo.run/zipper](https://docs.yomo.run/zipper)
 + `Stream Processing in Rx way`: [Rx](https://docs.yomo.run/rx)
 + `Faster than real-time codec`: [Y3](https://github.com/yomorun/y3-codec)
 
@@ -306,7 +304,7 @@ $ yomo dev
   * 数据传输速率的抖动也因为QUIC的连接迁移特性得到明显的改善。
 * **Article** [HTTP/3: 你需要知道的下一代互联内网协议](https://portswigger.net/daily-swig/http-3-everything-you-need-to-know-about-the-next-generation-web-protocol)
 * **Article** [QUIC和物联网IoT](https://calendar.perfplanet.com/2018/quic-and-http-3-too-big-to-fail/)
-  * IoT设备是应用QUIC协议的一个好场景，因为这些设备通常工作在无线（蜂窝）网络下（Cellular network），且需要快速建连、0-RTT和重传。但是，这些设备CPU能力普遍较弱。QUIC的作者其实多次提到QUIC对IoT应用场景有很大的提升，可惜的是，至今还没有一套为这个场景设计的协议栈（其实有啊：基于QUIC协议的Edge Computing框架: [🦖YoMo](https://yomo.run/)）
+  * IoT设备是应用QUIC协议的一个好场景，因为这些设备通常工作在无线（蜂窝）网络下（Cellular network），且需要快速建连、0-RTT和重传。但是，这些设备CPU能力普遍较弱。QUIC的作者其实多次提到QUIC对IoT应用场景有很大的提升，可惜的是，至今还没有一套为这个场景设计的协议栈（其实有啊：基于QUIC协议的Edge Computing框架: [🦖YoMo](https://docs.yomo.run/)）
 * **Article** [未来的Internet: HTTP/3 — No More TCP, let’s QUIC fix it（谐音梗我翻不出来了...）](https://thexbhpguy.medium.com/the-new-internet-http-3-no-more-tcp-lets-quic-fix-it-6a4cbb6280c7)
 
 ## QUIC Weekly - 20201021期

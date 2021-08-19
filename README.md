@@ -43,14 +43,14 @@ $ yomo -V
 YoMo CLI version: v0.0.6
 ```
 
-### 2. Create your serverless app
+### 2. Create your stream function
 
 ```bash
 $ yomo init yomo-app-demo
 
-⌛  Initializing the Serverless app...
-✅  Congratulations! You have initialized the serverless function successfully.
-ℹ️   You can enjoy the YoMo Serverless via the command: 
+⌛  Initializing the Stream Function...
+✅  Congratulations! You have initialized the stream function successfully.
+ℹ️   You can enjoy the YoMo Stream Function via the command: 
 ℹ️   	DEV: 	yomo dev -n Noise yomo-app-demo/app.go
 ℹ️   	PROD: 	First run source application, eg: go run example/source/main.go
 		Second: yomo run -n yomo-app-demo yomo-app-demo/app.go
@@ -70,7 +70,7 @@ import (
 	"time"
 
 	y3 "github.com/yomorun/y3-codec-golang"
-	"github.com/yomorun/yomo/pkg/rx"
+	"github.com/yomorun/yomo/core/rx"
 )
 
 // NoiseDataKey represents the Tag of a Y3 encoded data packet
@@ -101,7 +101,7 @@ var callback = func(v []byte) (interface{}, error) {
 }
 
 // Handler will handle data in Rx way
-func Handler(rxstream rx.RxStream) rx.RxStream {
+func Handler(rxstream rx.Stream) rx.Stream {
 	stream := rxstream.
 		Subscribe(NoiseDataKey).
 		OnObserve(callback).
@@ -122,14 +122,13 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 ```sh
 $ yomo dev
 
-ℹ️   YoMo serverless function file: app.go
-⌛  Create YoMo serverless instance...
-⌛  YoMo serverless function building...
-✅  Success! YoMo serverless function build.
-ℹ️   YoMo serverless function is running...
-ℹ️   Run: /Users/xiaojianhong/Downloads/yomo-app-demo/sl.yomo
-2021/06/07 12:00:06 Connecting to zipper dev.yomo.run:9000 ...
-2021/06/07 12:00:07 ✅ Connected to zipper dev.yomo.run:9000
+ℹ️   YoMo Stream Function file: app.go
+⌛  Create YoMo Stream Function instance...
+⌛  YoMo Stream Function building...
+✅  Success! YoMo Stream Function build.
+ℹ️   YoMo Stream Function is running...
+2021/06/07 12:00:06 Connecting to YoMo-Zipper dev.yomo.run:9000 ...
+2021/06/07 12:00:07 ✅ Connected to YoMo-Zipper dev.yomo.run:9000
 [10.10.79.50] 1623038407236 > value: 1.919251 ⚡️=-25ms
 [StdOut]:  1.9192511
 [10.10.79.50] 1623038407336 > value: 11.370256 ⚡️=-25ms
@@ -145,7 +144,7 @@ $ yomo dev
 
 ```
 
-Congratulations! You have done your first YoMo application.
+Congratulations! You have done your first YoMo Stream Function.
 
 
 ## 🧩 Interop
@@ -159,11 +158,11 @@ Congratulations! You have done your first YoMo application.
 + [Connect EMQ X Broker to YoMo](https://github.com/yomorun/yomo-source-emqx-starter)
 + [Connect MQTT to YoMo](https://github.com/yomorun/yomo-source-mqtt-broker-starter)
 
-### Flows
+### Stream Functions
 
-+ [Write a YoMo-Flow with WebAssembly by SSVM](https://github.com/yomorun/yomo-flow-ssvm-example)
++ [Write a Stream Function with WebAssembly by SSVM](https://github.com/yomorun/yomo-flow-ssvm-example)
 
-### Sinks
+### Output Connectors
 
 + [Connect to FaunaDB to store post-processed result the serverless way](https://github.com/yomorun/yomo-sink-faunadb-example)
 + Connect to InfluxDB to store post-processed result
@@ -175,10 +174,9 @@ Congratulations! You have done your first YoMo application.
 
 ## 📚 Documentation
 
-+ `YoMo-Source`: [docs.yomo.run/source](https://docs.yomo.run/source)
-+ `YoMo-Flow`: [docs.yomo.run/flow](https://docs.yomo.run/flow)
-+ `YoMo-Sink`: [docs.yomo.run/sink](https://docs.yomo.run/sink)
-+ `YoMo-Zipper`: [docs.yomo.run/zipper](https://docs.yomo.run/zipper)
++ `YoMo-Source`: [yomo.run/source](https://docs.yomo.run/source)
++ `YoMo-Stream-Function` (formerly flow): [yomo.run/stream-function](https://docs.yomo.run/stream-function)
++ `YoMo-Zipper`: [yomo.run/zipper](https://docs.yomo.run/zipper)
 + `Stream Processing in Rx way`: [Rx](https://docs.yomo.run/rx)
 + `Faster than real-time codec`: [Y3](https://github.com/yomorun/y3-codec)
 
