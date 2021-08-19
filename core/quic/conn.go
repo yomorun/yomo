@@ -9,11 +9,11 @@ import (
 const (
 	// ConnTypeSource is the connection type "source".
 	ConnTypeSource string = "source"
-	// ConnTypeSource is the connection type "stream-function".
+	// ConnTypeStreamFunction is the connection type "stream-function".
 	ConnTypeStreamFunction string = "stream-function"
-	// ConnTypeSource is the connection type "server-sender".
+	// ConnTypeZipperSender is the connection type "server-sender".
 	ConnTypeZipperSender string = "server-sender"
-	// the error message when the connection was closed
+	// ErrConnectionClosed is the error message when the connection was closed.
 	ErrConnectionClosed string = "Application error 0x0"
 	// HeartbeatTimeOut is the duration when the heartbeat will be time-out.
 	HeartbeatTimeOut = 5 * time.Second
