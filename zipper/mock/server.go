@@ -7,8 +7,10 @@ import (
 )
 
 const (
-	IP   string = "127.0.0.1" // IP is the IP of mock server.
-	Port int    = 8111        // Port is the Port of mock server.
+	// IP is the IP of mock server.
+	IP string = "127.0.0.1"
+	// Port is the Port of mock server.
+	Port int = 8111
 )
 
 // New a mock server.

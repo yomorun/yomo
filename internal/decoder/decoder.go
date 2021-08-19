@@ -158,7 +158,7 @@ func FromStream(reader Reader, opts ...Option) Observable {
 	return createObservable(options.ctx, f)
 }
 
-// FromStream reads data from reader.
+// FromItems reads data from items.
 func FromItems(items []interface{}, opts ...Option) Observable {
 	options := newOptions(opts...)
 

@@ -1,4 +1,4 @@
-package server
+package zipper
 
 // Option is a function that applies a YoMo-Zipper option.
 type Option func(o *options)

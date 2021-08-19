@@ -9,26 +9,38 @@ import (
 )
 
 const (
-	ConnTypeSource         string = "source"          // ConnTypeSource is the connection type "source".
-	ConnTypeStreamFunction string = "stream-function" // ConnTypeSource is the connection type "stream-function".
-	ConnTypeZipperSender   string = "server-sender"   // ConnTypeSource is the connection type "server-sender".
-
-	ErrConnectionClosed string = "Application error 0x0" // the error message when the connection was closed
-
-	HeartbeatTimeOut = 5 * time.Second // HeartbeatTimeOut is the duration when the heartbeat will be time-out.
+	// ConnTypeSource is the connection type "source".
+	ConnTypeSource string = "source"
+	// ConnTypeStreamFunction is the connection type "stream-function".
+	ConnTypeStreamFunction string = "stream-function"
+	// ConnTypeZipperSender is the connection type "zipper-sender".
+	ConnTypeZipperSender string = "zipper-sender"
+	// ErrConnectionClosed is the error message when the connection was closed.
+	ErrConnectionClosed string = "Application error 0x0"
+	// HeartbeatTimeOut is the duration when the heartbeat will be time-out.
+	HeartbeatTimeOut = 5 * time.Second
 )
 
 // Conn represents the QUIC connection.
 type Conn struct {
-	Signal              decoder.ReadWriter // Signal is the specified stream to receive the signal.
-	Type                string             // Type is the type of connection. Possible value: source, stream-function, server-sender
-	Name                string             // Name is the name of connection.
-	Heartbeat           chan bool          // Heartbeat is the channel to receive heartbeat.
-	IsClosed            bool               // IsClosed indicates whether the connection is closed.
-	Ready               bool               // Ready indicates whether the connection is ready.
-	OnClosed            func() error       // OnClosed is the callback when the connection is closed.
-	OnHeartbeatReceived func()             // OnHeartbeatReceived is the callback when the heartbeat is received.
-	OnHeartbeatExpired  func()             // OnHeartbeatExpired is the callback when the heartbeat is expired.
+	// Signal is the specified stream to receive the signal.
+	Signal decoder.ReadWriter
+	// Type is the type of connection. Possible value: source, stream-function, server-sender.
+	Type string
+	// Name is the name of connection.
+	Name string
+	// Heartbeat is the channel to receive heartbeat.
+	Heartbeat chan bool
+	// IsClosed indicates whether the connection is closed.
+	IsClosed bool
+	// Ready indicates whether the connection is ready.
+	Ready bool
+	// OnClosed is the callback when the connection is closed.
+	OnClosed func() error
+	// OnHeartbeatReceived is the callback when the heartbeat is received.
+	OnHeartbeatReceived func()
+	// OnHeartbeatExpired is the callback when the heartbeat is expired.
+	OnHeartbeatExpired func()
 }
 
 // NewConn inits a new QUIC connection.
@@ -72,10 +84,9 @@ func (c *Conn) Healthcheck() {
 				// didn't receive the heartbeat after a certain duration, call the callback function when expired.
 				if c.OnHeartbeatExpired != nil {
 					c.OnHeartbeatExpired()
-				} else {
-					// didn't set the custom callback function, will break the loop and close the connection.
-					break loop
 				}
+
+				break loop
 			}
 		}
 	}()

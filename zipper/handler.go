@@ -1,4 +1,4 @@
-package server
+package zipper
 
 import (
 	"context"
@@ -144,15 +144,15 @@ func (s *quicHandler) receiveDataFromSources() {
 						continue
 					}
 
-					frame, ok := item.V.(framing.Frame)
+					data, ok := item.V.([]byte)
 					if !ok {
-						logger.Debug("[zipper] the type of item.V is not a Frame", "type", reflect.TypeOf(item.V))
+						logger.Debug("[zipper] the type of item.V is not a []byte.", "type", reflect.TypeOf(item.V))
 						continue
 					}
-					logger.Debug("[zipper] receive data after running all Stream Functions, will drop it.", "data", logger.BytesString(frame.Data()))
+					logger.Debug("[zipper] receive data after running all Stream Functions, will drop it.", "data", logger.BytesString(data))
 					// call the `onReceivedData` callback function.
 					if s.onReceivedData != nil {
-						s.onReceivedData(frame.Data())
+						s.onReceivedData(data)
 					}
 
 					// YoMo-Zipper-Senders
@@ -161,6 +161,7 @@ func (s *quicHandler) receiveDataFromSources() {
 							continue
 						}
 
+						frame := framing.NewPayloadFrame(data)
 						go sendDataToDownstream(sender, frame, "[YoMo-Zipper Sender] sent frame to downstream YoMo-Zipper Receiver.", "❌ [YoMo-Zipper Sender] sent frame to downstream YoMo-Zipper Receiver failed.")
 					}
 				}

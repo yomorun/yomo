@@ -1,4 +1,4 @@
-package server
+package zipper
 
 import (
 	"encoding/json"

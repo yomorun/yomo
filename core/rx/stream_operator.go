@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"sync"
 	"time"
 
@@ -570,6 +569,7 @@ func (s *StreamImpl) ZipFromIterable(iterable rxgo.Iterable, zipper rxgo.Func2, 
 	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.ZipFromIterable(iterable, zipper, opts...).Observe(), opts...)}
 }
 
+// Observe the items in RxStream.
 func (s *StreamImpl) Observe(opts ...rxgo.Option) <-chan rxgo.Item {
 	opts = appendContinueOnError(s.ctx, opts...)
 	return s.observable.Observe(opts...)
@@ -640,7 +640,7 @@ func (s *StreamImpl) AuditTime(milliseconds uint32, opts ...rxgo.Option) Stream 
 	return ConvertObservable(s.ctx, o)
 }
 
-// Get data specified by key
+// Subscribe the specified key by Y3 Codec.
 func (s *StreamImpl) Subscribe(key byte) Stream {
 
 	f := func(ctx context.Context, next chan rxgo.Item) {
@@ -1069,6 +1069,7 @@ func (s *StreamImpl) thrown(err error) Stream {
 	return &StreamImpl{observable: rxgo.FromChannel(next)}
 }
 
+// CreateObservable creates a new observable.
 func CreateObservable(ctx context.Context, f func(ctx context.Context, next chan rxgo.Item), opts ...rxgo.Option) Stream {
 	next := make(chan rxgo.Item)
 	if ctx == nil {
@@ -1079,6 +1080,7 @@ func CreateObservable(ctx context.Context, f func(ctx context.Context, next chan
 	return &StreamImpl{ctx: ctx, observable: rxgo.FromChannel(next, opts...)}
 }
 
+// CreateZipperObservable creates a new observable with the capacity 100 for Zipper.
 func CreateZipperObservable(ctx context.Context, f func(ctx context.Context, next chan rxgo.Item), opts ...rxgo.Option) Stream {
 	next := make(chan rxgo.Item, 100)
 	if ctx == nil {
@@ -1089,17 +1091,10 @@ func CreateZipperObservable(ctx context.Context, f func(ctx context.Context, nex
 	return &StreamImpl{ctx: ctx, observable: rxgo.FromChannel(next, opts...)}
 }
 
+// ConvertObservable converts the observable to RxStream.
 func ConvertObservable(ctx context.Context, observable rxgo.Observable) Stream {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	return &StreamImpl{ctx: ctx, observable: observable}
-}
-
-type infiniteWriter struct {
-	io.Writer
-}
-
-func (i *infiniteWriter) Write(p []byte) (n int, err error) {
-	return len(p), nil
 }

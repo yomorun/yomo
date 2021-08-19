@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/yomorun/yomo/core/quic"
@@ -12,9 +11,6 @@ import (
 	"github.com/yomorun/yomo/internal/framing"
 	"github.com/yomorun/yomo/logger"
 )
-
-// streamPoolCount is the number of streams in pool.
-const streamPoolCount = 10
 
 // NegotiationPayload represents the payload for negotiation.
 type NegotiationPayload struct {
@@ -44,7 +40,6 @@ type Impl struct {
 	serverPort int
 	Session    quic.Client
 	Stream     decoder.ReadWriter // Stream is the stream to receive actual data from source.
-	once       *sync.Once
 	isRejected bool
 }
 
@@ -52,7 +47,6 @@ type Impl struct {
 func New(appName string, clientType string) *Impl {
 	c := &Impl{
 		conn: quic.NewConn(appName, clientType),
-		once: new(sync.Once),
 	}
 
 	c.conn.OnHeartbeatReceived = func() {
@@ -67,26 +61,19 @@ func New(appName string, clientType string) *Impl {
 		}
 
 		// retry the connection.
-		c.once.Do(func() {
-			logger.Debug("[client] heartbeat to YoMo-Zipper was expired, client will reconnect to YoMo-Zipper.", "addr", getServerAddr(c.serverIP, c.serverPort))
+		logger.Debug("[client] heartbeat to YoMo-Zipper was expired, client will reconnect to YoMo-Zipper.", "addr", getServerAddr(c.serverIP, c.serverPort))
 
-			// reset session to nil.
-			if c.Session != nil {
-				c.Session.Close()
-			}
+		// reset session to nil.
+		if c.Session != nil {
+			c.Session.Close()
 			c.Session = nil
+		}
 
-			// reset Stream to nil.
-			c.Stream = nil
+		// reset Stream to nil.
+		c.Stream = nil
 
-			// reconnect when the heartbeat is expired.
-			c.BaseConnect(c.serverIP, c.serverPort)
-
-			// reset the sync.Once after 5s.
-			time.AfterFunc(5*time.Second, func() {
-				c.once = new(sync.Once)
-			})
-		})
+		// reconnect when the heartbeat is expired.
+		c.Retry()
 	}
 
 	return c
