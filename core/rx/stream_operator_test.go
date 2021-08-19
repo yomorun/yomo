@@ -136,7 +136,7 @@ func Test_Subscribe_OnObserve(t *testing.T) {
 	})
 
 	t.Run("float64", func(t *testing.T) {
-		var data float64 = 1.23
+		var data = 1.23
 		buf, _ := y3.NewCodec(0x10).Marshal(data)
 		source := y3.FromStream(bytes.NewReader(buf))
 		obs := source.Subscribe(0x10).OnObserve(func(v []byte) (interface{}, error) {

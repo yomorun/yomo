@@ -284,8 +284,8 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 
 		buffer := make([]byte, 0)
 		var (
-			index          int32  // vernier
-			state          string = y3StateRootStart
+			index          int32 // vernier
+			state          = y3StateRootStart
 			lengthFieldLen int32
 			valueLen       int32
 			limit          int32

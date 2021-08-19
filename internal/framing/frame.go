@@ -30,16 +30,24 @@ type Frame interface {
 type FrameType uint8
 
 const (
-	FrameLengthFieldSize = 3 // FrameLengthFieldSize is the size of FrameLength in bytes.
-
-	FrameTypeHandshake    FrameType = 0x00 // FrameTypeHandshake is the frame type HANDSHAKE.
-	FrameTypeHeartbeat    FrameType = 0x01 // FrameTypeHeartbeat is the frame type HEARTBEAT.
-	FrameTypeAck          FrameType = 0x02 // FrameTypeAck is the frame type ACK.
-	FrameTypeAccepted     FrameType = 0x03 // FrameTypeAccepted is the frame type ACCEPTED.
-	FrameTypeRejected     FrameType = 0x04 // FrameTypeRejected is the frame type REJECTED.
-	FrameTypeCreateStream FrameType = 0x05 // FrameTypeCreateStream is the frame type CREATE_STREAM.
-	FrameTypePayload      FrameType = 0x06 // FrameTypePayload is the frame type PAYLOAD.
-	FrameTypeInit         FrameType = 0x07 // FrameTypeInit is the frame type INIT.
+	// FrameLengthFieldSize is the size of FrameLength in bytes.
+	FrameLengthFieldSize = 3
+	// FrameTypeHandshake is the frame type HANDSHAKE.
+	FrameTypeHandshake FrameType = 0x00
+	// FrameTypeHeartbeat is the frame type HEARTBEAT.
+	FrameTypeHeartbeat FrameType = 0x01
+	// FrameTypeAck is the frame type ACK.
+	FrameTypeAck FrameType = 0x02
+	// FrameTypeAccepted is the frame type ACCEPTED.
+	FrameTypeAccepted FrameType = 0x03
+	// FrameTypeRejected is the frame type REJECTED.
+	FrameTypeRejected FrameType = 0x04
+	// FrameTypeCreateStream is the frame type CREATE_STREAM.
+	FrameTypeCreateStream FrameType = 0x05
+	// FrameTypePayload is the frame type PAYLOAD.
+	FrameTypePayload FrameType = 0x06
+	// FrameTypeInit is the frame type INIT.
+	FrameTypeInit FrameType = 0x07
 )
 
 // frame is an implementation of Frame.
