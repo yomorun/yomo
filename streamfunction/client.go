@@ -99,12 +99,13 @@ func (c *clientImpl) readStream(stream quic.ReceiveStream, handler func(rxstream
 	logger.Debug("[Stream Function Client] received data from zipper.")
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	rxstream := fac.FromItemsWithDecoder([]interface{}{data}, decoder.WithContext(ctx))
 
 	for item := range rxstream.Observe() {
 		if item.Error() {
 			logger.Error("[Stream Function Client] rxstream got an error.", "err", item.E)
-			cancel()
 			break
 		}
 
