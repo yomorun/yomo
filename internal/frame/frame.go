@@ -1,6 +1,6 @@
 package frame
 
-// Kinds of frames transferable within YoMo
+// Kinds of frames transmitted within YoMo
 const (
 	TagOfDataFrame      FrameType = 0x3F
 	TagOfTokenFrame     FrameType = 0x3E
@@ -16,7 +16,7 @@ const (
 	TagOfHandshakeType  FrameType = 0x02 // in `HandshakeFrame`
 )
 
-// FrameType defines the type of frame
+// FrameType represents the Tag of Frame
 type FrameType byte
 
 // Frame is the minimal unit transmitted within YoMo

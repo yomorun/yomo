@@ -11,7 +11,7 @@ import (
 
 var logger = utils.DefaultLogger.WithPrefix("\033[36m[yomo:parser]\033[0m")
 
-// ParseFrames parses the frames from QUIC
+// ParseFrame parses the frames from QUIC
 func ParseFrame(stream quic.Stream) (frame.Frame, error) {
 	buf, err := y3.ReadPacket(stream)
 	if err != nil {
