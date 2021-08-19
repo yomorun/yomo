@@ -8,6 +8,6 @@ require (
 	github.com/reactivex/rxgo/v2 v2.5.0
 	github.com/stretchr/objx v0.1.1 // indirect
 	github.com/yomorun/y3-codec-golang v1.7.0
-	go.uber.org/zap v1.18.1
+	go.uber.org/zap v1.19.0
 	gopkg.in/yaml.v2 v2.4.0
 )
