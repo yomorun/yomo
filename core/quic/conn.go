@@ -7,13 +7,16 @@ import (
 )
 
 const (
-	ConnTypeSource         string = "source"          // ConnTypeSource is the connection type "source".
-	ConnTypeStreamFunction string = "stream-function" // ConnTypeSource is the connection type "stream-function".
-	ConnTypeZipperSender   string = "server-sender"   // ConnTypeSource is the connection type "server-sender".
-
-	ErrConnectionClosed string = "Application error 0x0" // the error message when the connection was closed
-
-	HeartbeatTimeOut = 5 * time.Second // HeartbeatTimeOut is the duration when the heartbeat will be time-out.
+	// ConnTypeSource is the connection type "source".
+	ConnTypeSource string = "source"
+	// ConnTypeSource is the connection type "stream-function".
+	ConnTypeStreamFunction string = "stream-function"
+	// ConnTypeSource is the connection type "server-sender".
+	ConnTypeZipperSender string = "server-sender"
+	// the error message when the connection was closed
+	ErrConnectionClosed string = "Application error 0x0"
+	// HeartbeatTimeOut is the duration when the heartbeat will be time-out.
+	HeartbeatTimeOut = 5 * time.Second
 )
 
 // Conn represents the QUIC connection.

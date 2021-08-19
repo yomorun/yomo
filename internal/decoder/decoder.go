@@ -127,7 +127,7 @@ func (o *observableImpl) Observe() <-chan interface{} {
 	return o.iterable.Observe()
 }
 
-// FromStream reads data from items slice.
+// FromItems reads data from items slice.
 func FromItems(items []interface{}, opts ...Option) Observable {
 	options := newOptions(opts...)
 

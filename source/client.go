@@ -8,6 +8,7 @@ import (
 	"github.com/yomorun/yomo/internal/frame"
 )
 
+// Client should discribe frame related operatoins over QUIC
 type Client struct {
 	*client.Impl
 }

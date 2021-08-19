@@ -16,7 +16,7 @@ type Config struct {
 	Functions []Function `yaml:"functions"`
 }
 
-// App represents a YoMo Stream Function.
+// Function represents a YoMo Stream Function.
 type Function struct {
 	Name string `yaml:"name"`
 }

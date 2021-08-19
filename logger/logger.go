@@ -5,7 +5,7 @@ import (
 	"os"
 )
 
-// Logger
+// Logger is the interface for logging
 type Logger interface {
 	// Print prints a farmat message without a specified level.
 	Print(v ...interface{})

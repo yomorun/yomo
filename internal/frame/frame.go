@@ -16,8 +16,10 @@ const (
 	TagOfHandshakeType  FrameType = 0x02 // in `HandshakeFrame`
 )
 
+// FrameType is the type of frame
 type FrameType byte
 
+// Frame is the minimal unit transmitted within YoMo
 type Frame interface {
 	// Type gets the type of Frame.
 	Type() FrameType

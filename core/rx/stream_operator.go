@@ -569,6 +569,7 @@ func (s *StreamImpl) ZipFromIterable(iterable rxgo.Iterable, zipper rxgo.Func2, 
 	return &StreamImpl{ctx: s.ctx, observable: rxgo.FromChannel(s.observable.ZipFromIterable(iterable, zipper, opts...).Observe(), opts...)}
 }
 
+// Observe merge context to observe
 func (s *StreamImpl) Observe(opts ...rxgo.Option) <-chan rxgo.Item {
 	opts = appendContinueOnError(s.ctx, opts...)
 	return s.observable.Observe(opts...)
@@ -639,9 +640,8 @@ func (s *StreamImpl) AuditTime(milliseconds uint32, opts ...rxgo.Option) Stream 
 	return ConvertObservable(s.ctx, o)
 }
 
-// Get data specified by key
+// Subscribe get data specified by key
 func (s *StreamImpl) Subscribe(key byte) Stream {
-
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
 		observe := s.Observe()
@@ -1079,7 +1079,7 @@ func CreateObservable(ctx context.Context, f func(ctx context.Context, next chan
 	return &StreamImpl{ctx: ctx, observable: rxgo.FromChannel(next, opts...)}
 }
 
-// CreateObservable creates a new observable with the capacity 100 for Zipper.
+// CreateZipperObservable creates a new observable with the capacity 100 for Zipper.
 func CreateZipperObservable(ctx context.Context, f func(ctx context.Context, next chan rxgo.Item), opts ...rxgo.Option) Stream {
 	next := make(chan rxgo.Item, 100)
 	if ctx == nil {

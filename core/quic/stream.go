@@ -29,6 +29,7 @@ type Session interface {
 
 const bufferSize = 1024 // bufferSize is the size of buffer when receiving data from QUIC Stream.
 
+// ReadStream read data from QUIC stream.
 func ReadStream(stream io.Reader) ([]byte, error) {
 	b := &bytes.Buffer{}
 

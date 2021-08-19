@@ -51,6 +51,7 @@ func tracerProvider(service string, collectorEndpoint string) (*tracesdk.TracerP
 	return tp, nil
 }
 
+// NewTracerProvider returns a trace.TracerProvider for tracing
 func NewTracerProvider(service string) (trace.TracerProvider, func(context.Context), error) {
 	// tracer provider
 	tp, err := tracerProvider(service, "http://localhost:14268/api/traces")
