@@ -143,15 +143,15 @@ func (s *quicHandler) receiveDataFromSources() {
 						continue
 					}
 
-					f, ok := item.V.(frame.DataFrame)
+					data, ok := item.V.([]byte)
 					if !ok {
-						logger.Debug("[zipper] the type of item.V is not a Frame", "type", reflect.TypeOf(item.V))
+						logger.Debug("[zipper] the type of item.V is not a []byte", "type", reflect.TypeOf(item.V))
 						continue
 					}
-					logger.Debug("[zipper] receive data after running all Stream Functions, will drop it.", "data", logger.BytesString(f.Encode()))
+					logger.Debug("[zipper] receive data after running all Stream Functions, will drop it.", "data", logger.BytesString(data))
 					// call the `onReceivedData` callback function.
 					if s.onReceivedData != nil {
-						s.onReceivedData(f.GetCarriage())
+						s.onReceivedData(data)
 					}
 
 					// YoMo-Zipper-Senders
@@ -159,6 +159,10 @@ func (s *quicHandler) receiveDataFromSources() {
 						if sender == nil {
 							continue
 						}
+
+						// TODO: set TransactionID and TagID in somewhere.
+						f := frame.NewDataFrame("tid-test")
+						f.SetCarriage(0x2c, data)
 
 						go sendDataToDownstream(sender, f, "[YoMo-Zipper Sender] sent frame to downstream YoMo-Zipper Receiver.", "❌ [YoMo-Zipper Sender] sent frame to downstream YoMo-Zipper Receiver failed.")
 					}
@@ -196,7 +200,7 @@ func (s *quicHandler) receiveDataFromZipperSenders() {
 }
 
 // sendDataToDownstream sends data to `downstream`.
-func sendDataToDownstream(sf GetSenderFunc, f frame.DataFrame, succssMsg string, errMsg string) {
+func sendDataToDownstream(sf GetSenderFunc, f *frame.DataFrame, succssMsg string, errMsg string) {
 	for {
 		name, writer, cancel := sf()
 		if writer == nil {
