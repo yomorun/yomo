@@ -7,19 +7,19 @@ import (
 	"time"
 
 	y3 "github.com/yomorun/y3-codec-golang"
-	"github.com/yomorun/yomo/pkg/client"
+	"github.com/yomorun/yomo"
 )
 
-var zipperAddr = os.Getenv("YOMO_ZIPPER_ENDPOINT")
+var serverAddr = os.Getenv("YOMO_SERVER_ENDPOINT")
 
 func main() {
-	if zipperAddr == "" {
-		zipperAddr = "localhost:9000"
+	if serverAddr == "" {
+		serverAddr = "localhost:9000"
 	}
-	// connect to yomo-zipper.
-	cli, err := client.NewSource("yomo-source").Connect("localhost", 9000)
+	// connect to YoMo-Zipper.
+	cli, err := yomo.NewSource(yomo.WithName("yomo-source")).Connect("localhost", 9000)
 	if err != nil {
-		log.Printf("❌ Emit the data to yomo-zipper failure with err: %v", err)
+		log.Printf("❌ Emit the data to YoMo-Zipper failure with err: %v", err)
 		return
 	}
 

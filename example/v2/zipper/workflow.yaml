@@ -1,0 +1,5 @@
+name: v2zipper
+host: localhost
+port: 9000
+functions:
+  - name: sfn-1

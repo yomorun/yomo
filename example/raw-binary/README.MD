@@ -1,6 +1,6 @@
 ### Example: Transfer binary data over YoMo
 
-#### 1. Start YoMo Server
+#### 1. Start YoMo-Zipper
 
 ```bash
 yomo serve -c zipper.yaml

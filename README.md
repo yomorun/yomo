@@ -12,16 +12,16 @@ Official Website: 🦖[https://yomo.run](https://yomo.run)
 
 ## 🌶 Features
 
-|     | **Features**|
-| --- | ----------------------------------------------------------------------------------|
-| ⚡️  | **Low-latency** Guaranteed by implementing atop QUIC [QUIC](https://datatracker.ietf.org/wg/quic/documents/) |
-| 🔐  | **Security** TLS v1.3 on every data packet by design |
-| 📱  | **5G/WiFi-6** Reliable networking in Celluar/Wireless |
-| 🌎  | **Geo-Distributed Edge Mesh** Edge-Mesh Native architecture makes your services close to end users |
-| 📸  | **Event-First** Architecture leverages serverless service to be event driven and elastic  |
-| 🦖  | **Streaming Serverless** Write only a few lines of code to build applications and microservices |
-| 🚀  | **Y3** a [faster than real-time codec](https://github.com/yomorun/y3-codec-golang) |
-| 📨  | **Reactive** stream processing based on [Rx](http://reactivex.io/documentation/operators.html) |
+|     | **Features**                                                                                                 |
+| --- | ------------------------------------------------------------------------------------------------------------ |
+| ⚡️ | **Low-latency** Guaranteed by implementing atop QUIC [QUIC](https://datatracker.ietf.org/wg/quic/documents/) |
+| 🔐  | **Security** TLS v1.3 on every data packet by design                                                         |
+| 📱  | **5G/WiFi-6** Reliable networking in Celluar/Wireless                                                        |
+| 🌎  | **Geo-Distributed Edge Mesh** Edge-Mesh Native architecture makes your services close to end users           |
+| 📸  | **Event-First** Architecture leverages serverless service to be event driven and elastic                     |
+| 🦖  | **Streaming Serverless** Write only a few lines of code to build applications and microservices              |
+| 🚀  | **Y3** a [faster than real-time codec](https://github.com/yomorun/y3-codec-golang)                           |
+| 📨  | **Reactive** stream processing based on [Rx](http://reactivex.io/documentation/operators.html)               |
 
 ## 🚀 Getting Started
 
@@ -43,14 +43,14 @@ $ yomo -V
 YoMo CLI version: v0.0.6
 ```
 
-### 2. Create your serverless app
+### 2. Create your stream function
 
 ```bash
 $ yomo init yomo-app-demo
 
-⌛  Initializing the Serverless app...
-✅  Congratulations! You have initialized the serverless function successfully.
-ℹ️   You can enjoy the YoMo Serverless via the command: 
+⌛  Initializing the Stream Function...
+✅  Congratulations! You have initialized the stream function successfully.
+ℹ️   You can enjoy the YoMo Stream Function via the command:
 ℹ️   	DEV: 	yomo dev -n Noise yomo-app-demo/app.go
 ℹ️   	PROD: 	First run source application, eg: go run example/source/main.go
 		Second: yomo run -n yomo-app-demo yomo-app-demo/app.go
@@ -70,7 +70,7 @@ import (
 	"time"
 
 	y3 "github.com/yomorun/y3-codec-golang"
-	"github.com/yomorun/yomo/pkg/rx"
+	"github.com/yomorun/yomo/core/rx"
 )
 
 // NoiseDataKey represents the Tag of a Y3 encoded data packet
@@ -101,7 +101,7 @@ var callback = func(v []byte) (interface{}, error) {
 }
 
 // Handler will handle data in Rx way
-func Handler(rxstream rx.RxStream) rx.RxStream {
+func Handler(rxstream rx.Stream) rx.Stream {
 	stream := rxstream.
 		Subscribe(NoiseDataKey).
 		OnObserve(callback).
@@ -122,14 +122,13 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 ```sh
 $ yomo dev
 
-ℹ️   YoMo serverless function file: app.go
-⌛  Create YoMo serverless instance...
-⌛  YoMo serverless function building...
-✅  Success! YoMo serverless function build.
-ℹ️   YoMo serverless function is running...
-ℹ️   Run: /Users/xiaojianhong/Downloads/yomo-app-demo/sl.yomo
-2021/06/07 12:00:06 Connecting to zipper dev.yomo.run:9000 ...
-2021/06/07 12:00:07 ✅ Connected to zipper dev.yomo.run:9000
+ℹ️   YoMo Stream Function file: app.go
+⌛  Create YoMo Stream Function instance...
+⌛  YoMo Stream Function building...
+✅  Success! YoMo Stream Function build.
+ℹ️   YoMo Stream Function is running...
+2021/06/07 12:00:06 Connecting to YoMo-Zipper dev.yomo.run:9000 ...
+2021/06/07 12:00:07 ✅ Connected to YoMo-Zipper dev.yomo.run:9000
 [10.10.79.50] 1623038407236 > value: 1.919251 ⚡️=-25ms
 [StdOut]:  1.9192511
 [10.10.79.50] 1623038407336 > value: 11.370256 ⚡️=-25ms
@@ -145,8 +144,7 @@ $ yomo dev
 
 ```
 
-Congratulations! You have done your first YoMo application.
-
+Congratulations! You have done your first YoMo Stream Function.
 
 ## 🧩 Interop
 
@@ -156,18 +154,18 @@ Congratulations! You have done your first YoMo application.
 
 ### Sources
 
-+ [Connect EMQ X Broker to YoMo](https://github.com/yomorun/yomo-source-emqx-starter)
-+ [Connect MQTT to YoMo](https://github.com/yomorun/yomo-source-mqtt-broker-starter)
+- [Connect EMQ X Broker to YoMo](https://github.com/yomorun/yomo-source-emqx-starter)
+- [Connect MQTT to YoMo](https://github.com/yomorun/yomo-source-mqtt-broker-starter)
 
-### Flows
+### Stream Functions
 
-+ [Write a YoMo-Flow with WebAssembly by SSVM](https://github.com/yomorun/yomo-flow-ssvm-example)
+- [Write a Stream Function with WebAssembly by SSVM](https://github.com/yomorun/yomo-flow-ssvm-example)
 
-### Sinks
+### Output Connectors
 
-+ [Connect to FaunaDB to store post-processed result the serverless way](https://github.com/yomorun/yomo-sink-faunadb-example)
-+ Connect to InfluxDB to store post-processed result
-+ [Connect to TDEngine to store post-processed result](https://github.com/yomorun/yomo-sink-tdengine-example)
+- [Connect to FaunaDB to store post-processed result the serverless way](https://github.com/yomorun/yomo-sink-faunadb-example)
+- Connect to InfluxDB to store post-processed result
+- [Connect to TDEngine to store post-processed result](https://github.com/yomorun/yomo-sink-tdengine-example)
 
 ## 🗺 Location Insensitive Deployment
 
@@ -175,12 +173,11 @@ Congratulations! You have done your first YoMo application.
 
 ## 📚 Documentation
 
-+ `YoMo-Source`: [docs.yomo.run/source](https://docs.yomo.run/source)
-+ `YoMo-Flow`: [docs.yomo.run/flow](https://docs.yomo.run/flow)
-+ `YoMo-Sink`: [docs.yomo.run/sink](https://docs.yomo.run/sink)
-+ `YoMo-Zipper`: [docs.yomo.run/zipper](https://docs.yomo.run/zipper)
-+ `Stream Processing in Rx way`: [Rx](https://docs.yomo.run/rx)
-+ `Faster than real-time codec`: [Y3](https://github.com/yomorun/y3-codec)
+- `YoMo-Source`: [yomo.run/source](https://docs.yomo.run/source)
+- `YoMo-Stream-Function` (formerly flow): [yomo.run/stream-function](https://docs.yomo.run/stream-fn)
+- `YoMo-Zipper`: [yomo.run/zipper](https://docs.yomo.run/zipper)
+- `Stream Processing in Rx way`: [Rx](https://docs.yomo.run/rx)
+- `Faster than real-time codec`: [Y3](https://github.com/yomorun/y3-codec)
 
 [YoMo](https://yomo.run) ❤️ [Vercel](https://vercel.com/?utm_source=yomorun&utm_campaign=oss), Our documentation website is
 
