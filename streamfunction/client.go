@@ -43,6 +43,8 @@ func New(appName string) Client {
 // Write the data to downstream.
 func (c *clientImpl) Write(data []byte) (int, error) {
 	if c.Session == nil {
+		// the connection was disconnected, retry again.
+		c.RetryWithCount(1)
 		return 0, errors.New("[Stream Function Client] Session is nil")
 	}
 
@@ -110,7 +112,7 @@ func (c *clientImpl) readStream(stream quic.ReceiveStream, handler func(rxstream
 		}
 
 		// run Handler.
-		go c.executeHandler(ctx, cancel, item.V, handler, fac)
+		c.executeHandler(ctx, cancel, item.V, handler, fac)
 
 		// one data per time, break the loop when one data was handled.
 		break

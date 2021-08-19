@@ -15,12 +15,17 @@ import (
 	"github.com/yomorun/yomo/logger"
 )
 
+type streamFuncWithCancel struct {
+	session quic.Session
+	cancel  CancelFunc
+}
+
 type (
 	// CancelFunc represents the function for cancellation.
 	CancelFunc func()
 
 	// GetStreamFunc represents the function to get stream function (former flow/sink).
-	GetStreamFunc func() (string, quic.Session, CancelFunc)
+	GetStreamFunc func() (string, []streamFuncWithCancel)
 
 	// GetSenderFunc represents the function to get YoMo-Sender.
 	GetSenderFunc func() (string, io.Writer, CancelFunc)
@@ -223,50 +228,69 @@ func getStreamFuncs(wfConf *Config, connMap *sync.Map) []GetStreamFunc {
 	return funcs
 }
 
+var streamFuncCache = sync.Map{}           // the cache for all connections by name.
+var newStreamFuncSessionCache = sync.Map{} // the cache for new connection channel by name.
+
 // createStreamFunc creates a `GetStreamFunc` for `Stream Function`.
 func createStreamFunc(app Function, connMap *sync.Map, connType string) GetStreamFunc {
-	f := func() (string, quic.Session, CancelFunc) {
-		id, c := findConn(app, connMap, connType)
-
-		if c == nil {
-			return app.Name, nil, func() {}
+	f := func() (string, []streamFuncWithCancel) {
+		// get from local cache.
+		if funcs, ok := streamFuncCache.Load(app.Name); ok {
+			return app.Name, funcs.([]streamFuncWithCancel)
 		}
 
-		if c.Session != nil {
-			return app.Name, c.Session, cancelStreamFunc(c, connMap, id)
+		// get from connMap.
+		conns := findConn(app, connMap, connType)
+		funcs := make([]streamFuncWithCancel, len(conns))
+
+		if len(conns) == 0 {
+			streamFuncCache.Store(app.Name, funcs)
+			return app.Name, funcs
 		}
 
-		return app.Name, nil, func() {}
+		i := 0
+		for id, conn := range conns {
+			funcs[i] = streamFuncWithCancel{
+				session: conn.Session,
+				cancel:  cancelStreamFunc(app.Name, conn, connMap, id),
+			}
+			i++
+		}
+
+		streamFuncCache.Store(app.Name, funcs)
+		return app.Name, funcs
 	}
 
 	return f
 }
 
 // cancelStreamFunc close the connection of Stream Function.
-func cancelStreamFunc(conn *Conn, connMap *sync.Map, id int64) func() {
+func cancelStreamFunc(name string, conn *Conn, connMap *sync.Map, id int64) func() {
 	f := func() {
+		clearStreamFuncCache(name)
 		conn.Close()
 		connMap.Delete(id)
 	}
 	return f
 }
 
+// clearStreamFuncCache clear the local stream-function cache.
+func clearStreamFuncCache(name string) {
+	streamFuncCache.Delete(name)
+}
+
 // IsMatched indicates if the connection is matched.
-func findConn(app Function, connMap *sync.Map, connType string) (int64, *Conn) {
-	var conn *Conn
-	var id int64
+func findConn(app Function, connMap *sync.Map, connType string) map[int64]*Conn {
+	results := make(map[int64]*Conn)
 	connMap.Range(func(key, value interface{}) bool {
 		c := value.(*Conn)
 		if c.conn.Name == app.Name && c.conn.Type == connType {
-			conn = c
-			id = key.(int64)
-
-			return false
+			results[key.(int64)] = c
 		}
 		return true
 	})
 
-	return id, conn
+	return results
 }
 
 // zipperConf represents the config of yomo-zipper

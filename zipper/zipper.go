@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	// "log"
 
 	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/internal/utils"
