@@ -2,21 +2,16 @@ package client
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
 	"time"
 
 	"github.com/yomorun/yomo/core/quic"
-	"github.com/yomorun/yomo/internal/decoder"
-	"github.com/yomorun/yomo/internal/framing"
+	"github.com/yomorun/yomo/internal/core"
+	"github.com/yomorun/yomo/internal/frame"
 	"github.com/yomorun/yomo/logger"
 )
-
-// NegotiationPayload represents the payload for negotiation.
-type NegotiationPayload struct {
-	AppName    string `json:"app_name"`    // AppName is the name of client.
-	ClientType string `json:"client_type"` // ClientType is the type of client.
-}
 
 // Client is the interface for common functions of YoMo client.
 type Client interface {
@@ -39,19 +34,19 @@ type Impl struct {
 	serverIP   string
 	serverPort int
 	Session    quic.Client
-	Stream     decoder.ReadWriter // Stream is the stream to receive actual data from source.
+	Stream     *core.FrameStream // Stream is the stream to receive actual data from source.
 	isRejected bool
 }
 
 // New creates a new client.
-func New(appName string, clientType string) *Impl {
+func New(appName string, clientType core.ConnectionType) *Impl {
 	c := &Impl{
 		conn: quic.NewConn(appName, clientType),
 	}
 
 	c.conn.OnHeartbeatReceived = func() {
 		// when the client received the heartbeat from server, send it back back to server.
-		c.conn.SendSignal(framing.NewHeartbeatFrame())
+		c.conn.SendSignal(frame.NewPingFrame())
 	}
 
 	c.conn.OnHeartbeatExpired = func() {
@@ -94,7 +89,7 @@ func (c *Impl) BaseConnect(ip string, port int) (*Impl, error) {
 		return c, err
 	}
 
-	// create stream
+	// create quic stream
 	stream, err := client.CreateStream(context.Background())
 	if err != nil {
 		logger.Error("[client] CreateStream Error:", "err", err)
@@ -103,20 +98,12 @@ func (c *Impl) BaseConnect(ip string, port int) (*Impl, error) {
 
 	// set session and signal
 	c.Session = client
-	c.conn.Signal = decoder.NewReadWriter(stream)
+	c.conn.Signal = core.NewFrameStream(stream)
 
-	// send negotiation payload to YoMo-Zipper
-	payload := NegotiationPayload{
-		AppName:    c.conn.Name,
-		ClientType: c.conn.Type,
-	}
-	buf, _ := json.Marshal(payload)
-	err = c.conn.SendSignal(framing.NewHandshakeFrame(buf))
-
-	if err != nil {
-		logger.Error("[client] SendSignal Error:", "err", err)
-		return c, err
-	}
+	// handshake
+	handshake := frame.NewHandshakeFrame(c.conn.Name, byte(c.conn.Type))
+	logger.Printf("handshake frame: %#v", handshake)
+	c.conn.Signal.WriteFrame(handshake)
 
 	accepted := make(chan bool)
 
@@ -137,28 +124,45 @@ func (c *Impl) BaseConnect(ip string, port int) (*Impl, error) {
 // handleSignal handles the logic when receiving signal from server.
 func (c *Impl) handleSignal(accepted chan bool) {
 	go func() {
-		defer close(accepted)
-		frameCh := c.conn.Signal.Read()
-		for frame := range frameCh {
-			switch frame.Type() {
-			case framing.FrameTypeHeartbeat:
+		for {
+			f, err := c.conn.Signal.ReadFrame()
+			if err != nil {
+				logger.Error("[ERR] on [ParseFrame]", "err", err)
+				if errors.Is(err, net.ErrClosed) {
+					// if client close the connection, net.ErrClosed will be raise
+					// by quic-go IdleTimeoutError after connection's KeepAlive config.
+					logger.Error("[ERR] on [ParseFrame]", "err", net.ErrClosed)
+					break
+				}
+				// any error occurred, we should close the session
+				// after this, session.AcceptStream() will raise the error
+				// which specific in session.CloseWithError()
+				c.conn.Close()
+				// c.Session.Close()
+				break
+			}
+			// frame type
+			frameType := f.Type()
+			logger.Debug("[parsed]", "type", frameType, "frame", logger.BytesString(f.Encode()))
+			switch frameType {
+			case frame.TagOfPongFrame:
 				c.conn.Heartbeat <- true
 
-			case framing.FrameTypeAccepted:
+			case frame.TagOfAcceptedFrame:
 				// create stream
-				if c.conn.Type == quic.ConnTypeSource || c.conn.Type == quic.ConnTypeZipperSender {
+				if c.conn.Type == core.ConnTypeSource || c.conn.Type == core.ConnTypeZipperSender {
 					stream, err := c.Session.CreateStream(context.Background())
 					if err != nil {
 						logger.Error("[client] session.CreateStream Error:", "err", err)
 						break
 					}
 
-					c.Stream = decoder.NewReadWriter(stream)
+					c.Stream = core.NewFrameStream(stream)
 				}
 				accepted <- true
 
-			case framing.FrameTypeRejected:
-				if c.conn.Type == quic.ConnTypeStreamFunction {
+			case frame.TagOfRejectedFrame:
+				if c.conn.Type == core.ConnTypeStreamFunction {
 					logger.Warn("[client] the connection was rejected by zipper, please check if the function name matches the one in zipper config.")
 				} else {
 					logger.Warn("[client] the connection was rejected by zipper.")
@@ -168,7 +172,7 @@ func (c *Impl) handleSignal(accepted chan bool) {
 				break
 
 			default:
-				logger.Debug("[client] unknown signal.", "frame", logger.BytesString(frame.Bytes()))
+				logger.Debug("[client] unknown signal.", "frame", logger.BytesString(f.Encode()))
 			}
 		}
 	}()

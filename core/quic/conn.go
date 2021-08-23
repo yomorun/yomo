@@ -4,8 +4,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/yomorun/yomo/internal/decoder"
-	"github.com/yomorun/yomo/internal/framing"
+	"github.com/yomorun/yomo/internal/core"
+	"github.com/yomorun/yomo/internal/frame"
 )
 
 const (
@@ -24,9 +24,9 @@ const (
 // Conn represents the QUIC connection.
 type Conn struct {
 	// Signal is the specified stream to receive the signal.
-	Signal decoder.ReadWriter
+	Signal *core.FrameStream
 	// Type is the type of connection. Possible value: source, stream-function, server-sender.
-	Type string
+	Type core.ConnectionType
 	// Name is the name of connection.
 	Name string
 	// Heartbeat is the channel to receive heartbeat.
@@ -44,7 +44,7 @@ type Conn struct {
 }
 
 // NewConn inits a new QUIC connection.
-func NewConn(name string, connType string) *Conn {
+func NewConn(name string, connType core.ConnectionType) *Conn {
 	return &Conn{
 		Name:      name,
 		Type:      connType,
@@ -55,12 +55,12 @@ func NewConn(name string, connType string) *Conn {
 }
 
 // SendSignal sends the signal to client.
-func (c *Conn) SendSignal(f framing.Frame) error {
+func (c *Conn) SendSignal(f frame.Frame) error {
 	if c.Signal == nil {
 		return errors.New("Signal is nil")
 	}
 
-	err := c.Signal.Write(f)
+	_, err := c.Signal.WriteFrame(f)
 	return err
 }
 

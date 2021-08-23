@@ -9,6 +9,7 @@ import (
 	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/core/rx"
 	"github.com/yomorun/yomo/internal/client"
+	"github.com/yomorun/yomo/internal/core"
 	"github.com/yomorun/yomo/internal/decoder"
 	"github.com/yomorun/yomo/logger"
 )
@@ -35,7 +36,7 @@ type clientImpl struct {
 // The "appName" should match the name of functions in workflow.yaml in YoMo-Zipper.
 func New(appName string) Client {
 	c := &clientImpl{
-		Impl: client.New(appName, quic.ConnTypeStreamFunction),
+		Impl: client.New(appName, core.ConnTypeStreamFunction),
 	}
 	return c
 }
