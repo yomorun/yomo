@@ -101,6 +101,7 @@ func (c *clientImpl) readStream(stream quic.ReceiveStream, handler func(rxstream
 	logger.Debug("[Stream Function Client] received data from zipper.")
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	rxstream := fac.FromItemsWithDecoder([]interface{}{data}, decoder.WithContext(ctx))
 
 	for item := range rxstream.Observe() {
