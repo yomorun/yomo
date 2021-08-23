@@ -3,7 +3,6 @@ package zipper
 import (
 	"errors"
 	"net"
-	"time"
 
 	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/internal/core"
@@ -30,6 +29,17 @@ func NewConn(sess quic.Session, st quic.Stream, conf *WorkflowConfig) *Conn {
 	c.conn.Signal = core.NewFrameStream(st)
 	c.handleSignal(conf)
 	c.conn.OnClosed = c.Close
+	c.conn.OnHeartbeatReceived = func() {
+		logger.Debug("Received Ping from client, will send Pong to client.", "name", c.conn.Name)
+		// when the zipper received Ping from client, send Pong to client.
+		c.conn.SendSignal(frame.NewPongFrame())
+	}
+
+	c.conn.OnHeartbeatExpired = func() {
+		logger.Printf("❌ The client %s was offline.", c.conn.Name)
+		st.Close()
+		c.conn.Close()
+	}
 
 	return c
 }
@@ -91,7 +101,6 @@ func (c *Conn) handleSignal(conf *WorkflowConfig) {
 
 				c.conn.SendSignal(frame.NewAcceptedFrame())
 				c.conn.Healthcheck()
-				c.Beat()
 
 			case frame.TagOfPingFrame:
 				c.conn.Heartbeat <- true
@@ -119,34 +128,6 @@ func (c *Conn) getConnType(payload *frame.HandshakeFrame, conf *WorkflowConfig) 
 	default:
 		return clientType
 	}
-}
-
-// Beat sends the heartbeat to clients in every 200ms.
-func (c *Conn) Beat() {
-	go func(c *Conn) {
-		t := time.NewTicker(200 * time.Millisecond)
-		for {
-			select {
-			case <-t.C:
-				err := c.conn.SendSignal(frame.NewPongFrame())
-				if err != nil {
-					if err.Error() == quic.ErrConnectionClosed {
-						// when the app reconnected immediately before the heartbeat expiration time (5s), it shoudn't print the outdated error message.
-						// only print the message when there is not any new available app with the same name and type.
-						if c.isNewAppAvailable == nil || !c.isNewAppAvailable() {
-							logger.Printf("❌ The app %s is disconnected.", c.conn.Name)
-						}
-					} else {
-						// other errors.
-						logger.Error("❌ Server sent SignalHeartbeat to app failed.", "name", c.conn.Name, "err", err)
-					}
-
-					t.Stop()
-					break
-				}
-			}
-		}
-	}(c)
 }
 
 // Close the QUIC connection.

@@ -44,11 +44,6 @@ func New(appName string, clientType core.ConnectionType) *Impl {
 		conn: quic.NewConn(appName, clientType),
 	}
 
-	c.conn.OnHeartbeatReceived = func() {
-		// when the client received the heartbeat from server, send it back back to server.
-		c.conn.SendSignal(frame.NewPingFrame())
-	}
-
 	c.conn.OnHeartbeatExpired = func() {
 		if c.isRejected {
 			// the connection was rejected by YoMo-Zipper, don't need to re-connect.
@@ -108,7 +103,6 @@ func (c *Impl) BaseConnect(ip string, port int) (*Impl, error) {
 	accepted := make(chan bool)
 
 	c.handleSignal(accepted)
-	c.conn.Healthcheck()
 
 	// waiting when the connection is accepted.
 	<-accepted
@@ -118,6 +112,13 @@ func (c *Impl) BaseConnect(ip string, port int) (*Impl, error) {
 	} else {
 		logger.Printf("✅ Connected to YoMo-Zipper %s.", addr)
 	}
+
+	// send ping to zipper.
+	c.ping()
+
+	// check if receiving the pong from zipper.
+	c.conn.Healthcheck()
+
 	return c, nil
 }
 
@@ -176,6 +177,31 @@ func (c *Impl) handleSignal(accepted chan bool) {
 			}
 		}
 	}()
+}
+
+// Ping sends the PingFrame to YoMo-Zipper in every 3s.
+func (c *Impl) ping() {
+	go func(c *Impl) {
+		t := time.NewTicker(3 * time.Second)
+		for {
+			select {
+			case <-t.C:
+				err := c.conn.SendSignal(frame.NewPingFrame())
+				logger.Info("Send Ping to zipper.")
+				if err != nil {
+					if err.Error() == quic.ErrConnectionClosed {
+						logger.Print("[client] ❌ the zipper was offline.")
+					} else {
+						// other errors.
+						logger.Error("[client] ❌ sent Ping to zipper failed.", "err", err)
+					}
+
+					t.Stop()
+					break
+				}
+			}
+		}
+	}(c)
 }
 
 // Retry the connection between client and server.
