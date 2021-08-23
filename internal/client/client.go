@@ -95,10 +95,10 @@ func (c *Impl) BaseConnect(ip string, port int) (*Impl, error) {
 	c.Session = client
 	c.conn.Signal = core.NewFrameStream(stream)
 
-	// handshake
-	handshake := frame.NewHandshakeFrame(c.conn.Name, byte(c.conn.Type))
-	logger.Printf("handshake frame: %#v", handshake)
-	c.conn.Signal.WriteFrame(handshake)
+	// handshake frame
+	handshakeFrame := frame.NewHandshakeFrame(c.conn.Name, byte(c.conn.Type))
+	logger.Debug(fmt.Sprintf("[HandshakeFrame] name=%s, type=%s ", handshakeFrame.Name, handshakeFrame.Type()))
+	c.conn.Signal.WriteFrame(handshakeFrame)
 
 	accepted := make(chan bool)
 
@@ -144,7 +144,7 @@ func (c *Impl) handleSignal(accepted chan bool) {
 			}
 			// frame type
 			frameType := f.Type()
-			logger.Debug("[parsed]", "type", frameType, "frame", logger.BytesString(f.Encode()))
+			logger.Debug("[parsed]", "type", frameType.String(), "frame", logger.BytesString(f.Encode()))
 			switch frameType {
 			case frame.TagOfPongFrame:
 				c.conn.Heartbeat <- true

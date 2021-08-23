@@ -25,3 +25,34 @@ type Frame interface {
 	// Encode the frame into []byte.
 	Encode() []byte
 }
+
+func (f FrameType) String() string {
+	switch f {
+	case TagOfDataFrame:
+		return "DataFrame"
+	case TagOfTokenFrame:
+		return "TokenFrame"
+	case TagOfHandshakeFrame:
+		return "HandshakeFrame"
+	case TagOfPingFrame:
+		return "PingFrame"
+	case TagOfPongFrame:
+		return "PongFrame"
+	case TagOfAcceptedFrame:
+		return "AcceptedFrame"
+	case TagOfRejectedFrame:
+		return "RejectedFrame"
+	case TagOfMetaFrame:
+		return "MetaFrame"
+	case TagOfPayloadFrame:
+		return "PayloadFrame"
+	// case TagOfTransactionID:
+	// 	return "TransactionID"
+	case TagOfHandshakeName:
+		return "HandshakeName"
+	case TagOfHandshakeType:
+		return "HandshakeType"
+	default:
+		return "UnknownFrame"
+	}
+}
