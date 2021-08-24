@@ -8,6 +8,7 @@ import (
 	"github.com/yomorun/yomo/internal/core"
 	"github.com/yomorun/yomo/internal/frame"
 	"github.com/yomorun/yomo/logger"
+	"github.com/yomorun/yomo/zipper/tracing"
 )
 
 // DispatcherWithFunc dispatches the input stream to downstreams.
@@ -123,6 +124,9 @@ func sendDataToStreamFn(name string, session quic.Session, cancel CancelFunc, da
 		return
 	}
 
+	// tracing
+	span := tracing.NewSpanFromData(string(data), name, "zipper-send-to-"+name)
+
 	// send data to downstream.
 	stream, err := session.OpenUniStream()
 	if err != nil {
@@ -141,6 +145,10 @@ func sendDataToStreamFn(name string, session quic.Session, cancel CancelFunc, da
 		// cancel the current session when error.
 		cancel()
 		return
+	}
+	// end span in tracing
+	if span != nil {
+		span.End()
 	}
 
 	logger.Debug("[MergeStreamFunc] YoMo-Zipper sent data to `stream-fn`.", "stream-fn", name)
@@ -197,8 +205,16 @@ func readDataFromStreamFn(ctx context.Context, name string, stream quic.ReceiveS
 
 			logger.Debug("[MergeStreamFunc] YoMo-Zipper received data from `stream-fn`.", "stream-fn", name)
 
+			// tracing
+			span := tracing.NewSpanFromData(string(data), name, "zipper-receive-from-"+name)
+
 			// pass data to downstream.
 			next <- data
+
+			// end span in tracing
+			if span != nil {
+				span.End()
+			}
 			return
 		}
 	}
