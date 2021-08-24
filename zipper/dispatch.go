@@ -63,22 +63,24 @@ func pipeStreamFn(ctx context.Context, upstream chan []byte, sfn GetStreamFunc) 
 	go func() {
 		defer close(next)
 
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case item, ok := <-upstream:
-				if !ok {
+		// send the stream to flow (zipper -> flow/sink)
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
 					return
+				case item, ok := <-upstream:
+					if !ok {
+						return
+					}
+
+					go dispatchToStreamFn(sfn, item, next)
 				}
-
-				// send the stream to flow (zipper -> flow/sink)
-				go dispatchToStreamFn(sfn, item, next)
-
-				// receive the response from flow  (flow/sink -> zipper)
-				go receiveResponseFromStreamFn(ctx, sfn, next)
 			}
-		}
+		}()
+
+		// receive the response from flow  (flow/sink -> zipper)
+		receiveResponseFromStreamFn(ctx, sfn, next)
 	}()
 
 	return next
