@@ -1,12 +1,10 @@
 package decoder
 
 import (
-	"bytes"
 	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/yomorun/yomo/internal/framing"
 )
 
 // observeFunc is the callback function for `OnObserve` in Y3 Decoder.
@@ -15,15 +13,13 @@ var observeFunc = func(v []byte) (interface{}, error) {
 }
 
 func TestReadRawBytesFromDecoder(t *testing.T) {
-	b := &bytes.Buffer{}
-	// first 3 bytes indicates the FrameLength, the rest are the raw bytes.
-	b.Write([]byte{0, 0, 6, 5, 0, 0, 1, 2, 3})
+	data := "test"
 
 	// mock observable
-	observable := FromStream(NewReader(b))
+	observable := FromItems([]interface{}{data})
 	// get raw bytes
 	bytesCh := observable.RawBytes()
-	expected := []byte{1, 2, 3}
+	expected := []byte(data)
 	for b := range bytesCh {
 		assert.Equal(t, expected, b)
 		break
@@ -32,12 +28,10 @@ func TestReadRawBytesFromDecoder(t *testing.T) {
 
 func TestObserveDataFromY3Decoder(t *testing.T) {
 	t.Run("Observe data from Y3 Node Packet", func(t *testing.T) {
-		b := &bytes.Buffer{}
-		// first 3 bytes indicates the FrameLength, the rest are the frame bytes.
-		b.Write([]byte{0, 0, 32, 5, 0, 0, 129, 3, 144, 25, 17, 4, 65, 233, 15, 156, 18, 6, 175, 170, 192, 218, 156, 100, 19, 9, 108, 111, 99, 97, 108, 104, 111, 115, 116})
+		data := []byte{129, 3, 144, 25, 17, 4, 65, 233, 15, 156, 18, 6, 175, 170, 192, 218, 156, 100, 19, 9, 108, 111, 99, 97, 108, 104, 111, 115, 116}
 
 		// mock observable
-		observable := FromStream(NewReader(b))
+		observable := FromItems([]interface{}{data})
 		var key byte = 0x10
 		ch := observable.
 			Subscribe(key).
@@ -51,12 +45,10 @@ func TestObserveDataFromY3Decoder(t *testing.T) {
 	})
 
 	t.Run("Observe data from Y3 Primitive Packet", func(t *testing.T) {
-		b := &bytes.Buffer{}
-		// first 3 bytes indicates the FrameLength, the rest are the frame bytes.
-		b.Write([]byte{0, 0, 8, 0, 0, 5, 16, 3, 1, 2, 3})
+		data := []byte{5, 16, 3, 1, 2, 3}
 
 		// mock observable
-		observable := FromStream(NewReader(b))
+		observable := FromItems([]interface{}{data})
 		var key byte = 0x10
 		ch := observable.
 			Subscribe(key).
@@ -70,12 +62,10 @@ func TestObserveDataFromY3Decoder(t *testing.T) {
 	})
 
 	t.Run("Observe data by multi keys", func(t *testing.T) {
-		b := &bytes.Buffer{}
-		// first 3 bytes indicates the FrameLength, the rest are the frame bytes.
-		b.Write([]byte{0, 0, 12, 5, 0, 0, 16, 3, 1, 2, 3, 17, 2, 1, 2})
+		data := []byte{16, 3, 1, 2, 3, 17, 2, 1, 2}
 
 		// mock observable
-		observable := FromStream(NewReader(b))
+		observable := FromItems([]interface{}{data})
 
 		// multi keys
 		var key1 byte = 0x10
@@ -107,12 +97,10 @@ func TestObserveDataFromY3Decoder(t *testing.T) {
 
 func TestNotObservefFromY3Decoder(t *testing.T) {
 	t.Run("key is not matched from Y3 Node Packet", func(t *testing.T) {
-		b := &bytes.Buffer{}
-		// first 3 bytes indicates the FrameLength, the rest are the frame bytes.
-		b.Write([]byte{0, 0, 32, 5, 0, 0, 129, 3, 144, 25, 17, 4, 65, 233, 15, 156, 18, 6, 175, 170, 192, 218, 156, 100, 19, 9, 108, 111, 99, 97, 108, 104, 111, 115, 116})
+		data := []byte{129, 3, 144, 25, 17, 4, 65, 233, 15, 156, 18, 6, 175, 170, 192, 218, 156, 100, 19, 9, 108, 111, 99, 97, 108, 104, 111, 115, 116}
 
 		// mock observable
-		observable := FromStream(NewReader(b))
+		observable := FromItems([]interface{}{data})
 		var key byte = 0x20
 		ch := observable.
 			Subscribe(key).
@@ -128,12 +116,10 @@ func TestNotObservefFromY3Decoder(t *testing.T) {
 		assert.False(t, hasValue)
 	})
 	t.Run("key is not matched from Y3 Primitive Packet", func(t *testing.T) {
-		b := &bytes.Buffer{}
-		// first 3 bytes indicates the FrameLength, the rest are the frame bytes.
-		b.Write([]byte{0, 0, 8, 0, 0, 5, 16, 3, 1, 2, 3})
+		data := []byte{16, 3, 1, 2, 3}
 
 		// mock observable
-		observable := FromStream(NewReader(b))
+		observable := FromItems([]interface{}{data})
 		var key byte = 0x20
 		ch := observable.
 			Subscribe(key).
@@ -163,15 +149,8 @@ func TestUnmarshalFromJSONDecoder(t *testing.T) {
 	dataBuf, err := json.Marshal(data)
 	assert.NoError(t, err)
 
-	// write test data to buffer
-	b := &bytes.Buffer{}
-	frame := framing.NewPayloadFrame(dataBuf)
-	n, err := b.Write(frame.Bytes())
-	assert.Greater(t, n, 0)
-	assert.NoError(t, err)
-
 	// mock observable
-	observable := FromStream(NewReader(b))
+	observable := FromItems([]interface{}{dataBuf})
 
 	ch := observable.
 		Unmarshal(json.Unmarshal, func() interface{} { return &testData{} })

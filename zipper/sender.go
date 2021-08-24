@@ -3,10 +3,12 @@ package zipper
 import (
 	"errors"
 	"io"
+	"strconv"
+	"time"
 
-	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/internal/client"
-	"github.com/yomorun/yomo/internal/framing"
+	"github.com/yomorun/yomo/internal/core"
+	"github.com/yomorun/yomo/internal/frame"
 )
 
 // SenderClient is the client for YoMo-Zipper-Sender (formerly Zipper-Sender) to connect the downsteam YoMo-Zipper-Receiver (formerly Zipper-Receiver) in edge-mesh.
@@ -26,7 +28,7 @@ type senderClientImpl struct {
 // NewSender setups the client of YoMo-Zipper-Sender (formerly Zipper-Sender).
 func NewSender(appName string) SenderClient {
 	c := &senderClientImpl{
-		Impl: client.New(appName, quic.ConnTypeZipperSender),
+		Impl: client.New(appName, core.ConnTypeZipperSender),
 	}
 	return c
 }
@@ -38,14 +40,12 @@ func (c *senderClientImpl) Write(data []byte) (int, error) {
 	}
 
 	// wrap data with frame.
-	frame := framing.NewPayloadFrame(data)
+	txid := strconv.FormatInt(time.Now().UnixNano(), 10)
+	frame := frame.NewDataFrame(txid)
+	// TODO: tag id
+	frame.SetCarriage(0x11, data)
 
-	err := c.Stream.Write(frame)
-	if err != nil {
-		return 0, err
-	}
-
-	return len(frame.Bytes()), err
+	return c.Stream.WriteFrame(frame)
 }
 
 // Connect to downstream YoMo-Zipper-Receiver in edge-mesh.

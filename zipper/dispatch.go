@@ -8,20 +8,19 @@ import (
 	"github.com/reactivex/rxgo/v2"
 	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/core/rx"
-	"github.com/yomorun/yomo/internal/decoder"
 	"github.com/yomorun/yomo/logger"
 	// "github.com/yomorun/yomo/zipper/tracing"
 )
 
 // DispatcherWithFunc dispatches the input stream to downstreams.
-func DispatcherWithFunc(ctx context.Context, sfns []GetStreamFunc, reader decoder.Reader) rx.Stream {
-	stream := rx.NewFactory().FromReader(ctx, reader)
+func DispatcherWithFunc(ctx context.Context, sfns []GetStreamFunc, stream quic.Stream) rx.Stream {
+	rxStream := rx.NewFactory().FromQuicStream(ctx, stream)
 
 	for _, sfn := range sfns {
-		stream = mergeStreamFn(ctx, stream, sfn)
+		rxStream = mergeStreamFn(ctx, rxStream, sfn)
 	}
 
-	return stream
+	return rxStream
 }
 
 // mergeStreamFn sends the stream data to Stream Function and receives the new stream data from it.

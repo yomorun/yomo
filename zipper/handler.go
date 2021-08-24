@@ -7,12 +7,14 @@ import (
 	"io"
 	"net/http"
 	"reflect"
+	"strconv"
 	"sync"
+	"time"
 
 	"github.com/reactivex/rxgo/v2"
 	"github.com/yomorun/yomo/core/quic"
-	"github.com/yomorun/yomo/internal/decoder"
-	"github.com/yomorun/yomo/internal/framing"
+	"github.com/yomorun/yomo/internal/core"
+	"github.com/yomorun/yomo/internal/frame"
 	"github.com/yomorun/yomo/logger"
 )
 
@@ -41,10 +43,10 @@ type quicHandler struct {
 	serverlessConfig *WorkflowConfig
 	meshConfigURL    string
 	connMap          sync.Map
-	source           chan decoder.Reader
+	source           chan quic.Stream
 	zipperMap        sync.Map // the stream map for downstream YoMo-Zippers.
 	zipperSenders    []GetSenderFunc
-	zipperReceiver   chan decoder.Reader
+	zipperReceiver   chan quic.Stream
 	mutex            sync.RWMutex
 	onReceivedData   func(buf []byte) // the callback function when the data is received.
 }
@@ -54,10 +56,10 @@ func newQuicHandler(conf *WorkflowConfig, meshConfURL string) *quicHandler {
 		serverlessConfig: conf,
 		meshConfigURL:    meshConfURL,
 		connMap:          sync.Map{},
-		source:           make(chan decoder.Reader),
+		source:           make(chan quic.Stream),
 		zipperMap:        sync.Map{},
 		zipperSenders:    make([]GetSenderFunc, 0),
-		zipperReceiver:   make(chan decoder.Reader),
+		zipperReceiver:   make(chan quic.Stream),
 	}
 }
 
@@ -87,10 +89,10 @@ func (s *quicHandler) Read(id int64, sess quic.Session, st quic.Stream) error {
 	if c, ok := s.connMap.Load(id); ok {
 		s.mutex.Lock()
 		c := c.(*Conn)
-		if c.conn.Type == quic.ConnTypeSource {
-			s.source <- decoder.NewReader(st)
-		} else if c.conn.Type == quic.ConnTypeZipperSender {
-			s.zipperReceiver <- decoder.NewReader(st)
+		if c.conn.Type == core.ConnTypeSource {
+			s.source <- st
+		} else if c.conn.Type == core.ConnTypeZipperSender {
+			s.zipperReceiver <- st
 		}
 
 		s.mutex.Unlock()
@@ -161,7 +163,11 @@ func (s *quicHandler) receiveDataFromSources() {
 							continue
 						}
 
-						frame := framing.NewPayloadFrame(data)
+						txid := strconv.FormatInt(time.Now().UnixNano(), 10)
+						frame := frame.NewDataFrame(txid)
+						// playload frame
+						// TODO: tag id
+						frame.SetCarriage(0x12, data)
 						go sendDataToDownstream(sender, frame, "[YoMo-Zipper Sender] sent frame to downstream YoMo-Zipper Receiver.", "❌ [YoMo-Zipper Sender] sent frame to downstream YoMo-Zipper Receiver failed.")
 					}
 				}
@@ -198,19 +204,20 @@ func (s *quicHandler) receiveDataFromZipperSenders() {
 }
 
 // sendDataToDownstream sends data to `downstream`.
-func sendDataToDownstream(sf GetSenderFunc, frame framing.Frame, succssMsg string, errMsg string) {
+func sendDataToDownstream(sf GetSenderFunc, frame frame.Frame, succssMsg string, errMsg string) {
 	for {
 		name, writer, cancel := sf()
 		if writer == nil {
 			logger.Debug("[zipper] the downstream writer is nil", "name", name)
 			break
 		} else {
-			_, err := writer.Write(frame.Data())
+			data := frame.Encode()
+			_, err := writer.Write(data)
 			if err != nil {
-				logger.Error(errMsg, "name", name, "frame", logger.BytesString(frame.Bytes()), "err", err)
+				logger.Error(errMsg, "name", name, "frame", logger.BytesString(data), "err", err)
 				cancel()
 			} else {
-				logger.Debug(succssMsg, "name", name, "frame", logger.BytesString(frame.Bytes()))
+				logger.Debug(succssMsg, "name", name, "frame", logger.BytesString(data))
 				break
 			}
 		}
@@ -224,7 +231,7 @@ func getStreamFuncs(wfConf *WorkflowConfig, connMap *sync.Map) []GetStreamFunc {
 	funcs := make([]GetStreamFunc, 0)
 
 	for _, app := range wfConf.Functions {
-		funcs = append(funcs, createStreamFunc(app, connMap, quic.ConnTypeStreamFunction))
+		funcs = append(funcs, createStreamFunc(app, connMap, core.ConnTypeStreamFunction))
 	}
 
 	return funcs
@@ -234,7 +241,7 @@ var streamFuncCache = sync.Map{}           // the cache for all connections by n
 var newStreamFuncSessionCache = sync.Map{} // the cache for new connection channel by name.
 
 // createStreamFunc creates a `GetStreamFunc` for `Stream Function`.
-func createStreamFunc(app App, connMap *sync.Map, connType string) GetStreamFunc {
+func createStreamFunc(app App, connMap *sync.Map, connType core.ConnectionType) GetStreamFunc {
 	f := func() (string, []streamFuncWithCancel) {
 		// get from local cache.
 		if funcs, ok := streamFuncCache.Load(app.Name); ok {
@@ -282,7 +289,7 @@ func clearStreamFuncCache(name string) {
 }
 
 // IsMatched indicates if the connection is matched.
-func findConn(app App, connMap *sync.Map, connType string) map[int64]*Conn {
+func findConn(app App, connMap *sync.Map, connType core.ConnectionType) map[int64]*Conn {
 	results := make(map[int64]*Conn)
 	connMap.Range(func(key, value interface{}) bool {
 		c := value.(*Conn)

@@ -3,10 +3,12 @@ package source
 import (
 	"errors"
 	"io"
+	"strconv"
+	"time"
 
-	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/internal/client"
-	"github.com/yomorun/yomo/internal/framing"
+	"github.com/yomorun/yomo/internal/core"
+	"github.com/yomorun/yomo/internal/frame"
 )
 
 // Client is the client for YoMo-Source.
@@ -27,7 +29,7 @@ type clientImpl struct {
 // New a YoMo-Source client.
 func New(appName string) Client {
 	c := &clientImpl{
-		Impl: client.New(appName, quic.ConnTypeSource),
+		Impl: client.New(appName, core.ConnTypeSource),
 	}
 	return c
 }
@@ -39,14 +41,13 @@ func (c *clientImpl) Write(data []byte) (int, error) {
 	}
 
 	// wrap data with frame.
-	frame := framing.NewPayloadFrame(data)
+	txid := strconv.FormatInt(time.Now().UnixNano(), 10)
+	frame := frame.NewDataFrame(txid)
+	// playload frame
+	// TODO: tag id
+	frame.SetCarriage(0x10, data)
 
-	err := c.Stream.Write(frame)
-	if err != nil {
-		return 0, err
-	}
-
-	return len(frame.Bytes()), err
+	return c.Stream.WriteFrame(frame)
 }
 
 // Connect to YoMo-Zipper.

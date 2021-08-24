@@ -4,7 +4,10 @@ import (
 	"context"
 
 	"github.com/reactivex/rxgo/v2"
+	"github.com/yomorun/yomo/core/quic"
+	"github.com/yomorun/yomo/internal/core"
 	"github.com/yomorun/yomo/internal/decoder"
+	"github.com/yomorun/yomo/internal/frame"
 	"github.com/yomorun/yomo/logger"
 )
 
@@ -13,11 +16,8 @@ type Factory interface {
 	// FromChannel creates a new Stream from a channel.
 	FromChannel(ctx context.Context, channel chan interface{}) Stream
 
-	// FromReader creates a new Stream from decoder.Reader.
-	FromReader(ctx context.Context, reader decoder.Reader) Stream
-
-	// FromReaderWithDecoder creates a new Stream with decoder.
-	FromReaderWithDecoder(readers chan decoder.Reader, opts ...decoder.Option) Stream
+	// FromQuicStream creates a new Stream from QuicStream.
+	FromQuicStream(ctx context.Context, stream quic.Stream) Stream
 
 	// FromItems creates a new Stream from items.
 	FromItems(ctx context.Context, items []interface{}) Stream
@@ -60,54 +60,30 @@ func (fac *factoryImpl) FromChannel(ctx context.Context, channel chan interface{
 	return CreateObservable(ctx, f)
 }
 
-// FromReader creates a new Stream from decoder.Reader.
-func (fac *factoryImpl) FromReader(ctx context.Context, reader decoder.Reader) Stream {
+// FromQuicStream creates a new RxStream from QUIC Stream.
+func (fac *factoryImpl) FromQuicStream(ctx context.Context, stream quic.Stream) Stream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
 
-		frameChan := reader.Read()
 		for {
-			select {
-			case <-ctx.Done():
-				return
-			case frame, ok := <-frameChan:
-				if !ok {
-					return
-				}
+			f, err := core.ParseFrame(stream)
+			if err != nil {
+				logger.Error("Parse the frame failed", "err", err)
+				break
+			}
 
-				logger.Debug("Receive frame from source.")
-				next <- Of(frame.Data())
+			switch f.Type() {
+			case frame.TagOfDataFrame:
+				dataFrame := f.(*frame.DataFrame)
+				logger.Debug("Receive data frame from source.", "TransactionID", dataFrame.TransactionID())
+				next <- Of(dataFrame.GetCarriage())
+			default:
+				logger.Debug("Only support data frame in RxStream.", "type", f.Type())
 			}
 		}
 	}
 
 	return CreateObservable(ctx, f)
-}
-
-// FromReaderWithDecoder creates a Stream with decoder.
-func (fac *factoryImpl) FromReaderWithDecoder(readers chan decoder.Reader, opts ...decoder.Option) Stream {
-	f := func(ctx context.Context, next chan rxgo.Item) {
-		defer close(next)
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case reader, ok := <-readers:
-				if !ok {
-					return
-				}
-
-				go func() {
-					frameChan := reader.Read()
-					for frame := range frameChan {
-						Of(decoder.FromItems([]interface{}{frame.Data()}, opts...)).SendContext(ctx, next)
-					}
-				}()
-			}
-		}
-	}
-	return CreateObservable(decoder.GetContext(opts...), f)
 }
 
 // FromItems creates a new Stream from items.
