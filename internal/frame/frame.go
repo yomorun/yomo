@@ -16,8 +16,10 @@ const (
 	TagOfHandshakeType  FrameType = 0x02 // in `HandshakeFrame`
 )
 
+// FrameType represents the type of frame.
 type FrameType uint8
 
+// Frame is the inferface for frame.
 type Frame interface {
 	// Type gets the type of Frame.
 	Type() FrameType

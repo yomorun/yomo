@@ -9,7 +9,7 @@ import (
 	"github.com/yomorun/yomo/logger"
 )
 
-// 使用 Frame 机制解析流
+// ParseFrame parses the frame from QUIC stream.
 func ParseFrame(stream io.Reader) (frame.Frame, error) {
 	buf, err := y3.ReadPacket(stream)
 	if err != nil {

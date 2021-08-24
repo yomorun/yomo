@@ -38,7 +38,7 @@ func DecodeToPingFrame(buf []byte) (*PingFrame, error) {
 // PongFrame is a Y3 encoded bytes, Tag is a fixed value TYPE_ID_PONG_FRAME
 type PongFrame struct{}
 
-// NewPOongFrame creates a new PongFrame with a given TagID of user's data
+// NewPongFrame creates a new PongFrame with a given TagID of user's data
 func NewPongFrame() *PongFrame {
 	return &PongFrame{}
 }

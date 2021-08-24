@@ -20,7 +20,7 @@ func NewFrameStream(s io.ReadWriter) *FrameStream {
 	}
 }
 
-// Read next frame from QUIC stream.
+// ReadFrame reads next frame from QUIC stream.
 func (fs *FrameStream) ReadFrame() (frame.Frame, error) {
 	if fs.stream == nil {
 		return nil, errors.New("stream can not be nil")
@@ -28,7 +28,7 @@ func (fs *FrameStream) ReadFrame() (frame.Frame, error) {
 	return ParseFrame(fs.stream)
 }
 
-// Write a frame into QUIC stream.
+// WriteFrame writes a frame into QUIC stream.
 func (fs *FrameStream) WriteFrame(f frame.Frame) (int, error) {
 	if fs.stream == nil {
 		return 0, errors.New("stream can not be nil")
