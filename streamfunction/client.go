@@ -111,7 +111,7 @@ func (c *clientImpl) readStream(stream quic.ReceiveStream, handler func(rxstream
 			break
 		}
 
-		go c.executeHandler(ctx, cancel, item.V, handler, fac)
+		c.executeHandler(ctx, cancel, item.V, handler, fac)
 		// one data per time.
 		break
 	}
