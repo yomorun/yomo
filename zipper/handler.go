@@ -3,15 +3,12 @@ package zipper
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
-	"reflect"
 	"strconv"
 	"sync"
 	"time"
 
-	"github.com/reactivex/rxgo/v2"
 	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/internal/core"
 	"github.com/yomorun/yomo/internal/frame"
@@ -135,22 +132,12 @@ func (s *quicHandler) receiveDataFromSources() {
 
 			ctx, cancel := context.WithCancel(context.Background())
 			sfns := getStreamFuncs(s.serverlessConfig, &s.connMap)
-			stream := DispatcherWithFunc(ctx, sfns, item)
+			dataCh := DispatcherWithFunc(ctx, sfns, item)
 
 			go func() {
 				defer cancel()
 
-				for item := range stream.Observe(rxgo.WithErrorStrategy(rxgo.ContinueOnError)) {
-					if item.Error() {
-						logger.Error("[zipper] receive an error when running Stream Function.", "err", item.E.Error())
-						continue
-					}
-
-					data, ok := item.V.([]byte)
-					if !ok {
-						logger.Debug("[zipper] the type of item.V is not a []byte.", "type", reflect.TypeOf(item.V))
-						continue
-					}
+				for data := range dataCh {
 					logger.Debug("[zipper] receive data after running all Stream Functions, will drop it.", "data", logger.BytesString(data))
 					// call the `onReceivedData` callback function.
 					if s.onReceivedData != nil {
@@ -187,16 +174,13 @@ func (s *quicHandler) receiveDataFromZipperSenders() {
 
 			ctx, cancel := context.WithCancel(context.Background())
 			sfns := getStreamFuncs(s.serverlessConfig, &s.connMap)
-			stream := DispatcherWithFunc(ctx, sfns, receiver)
+			dataCh := DispatcherWithFunc(ctx, sfns, receiver)
 
 			go func() {
 				defer cancel()
 
-				for customer := range stream.Observe(rxgo.WithErrorStrategy(rxgo.ContinueOnError)) {
-					if customer.Error() {
-						fmt.Println(customer.E.Error())
-						continue
-					}
+				for data := range dataCh {
+					logger.Debug("[YoMo-Zipper Receiver] receive data after running all Stream Functions, will drop it.", "data", logger.BytesString(data))
 				}
 			}()
 		}
