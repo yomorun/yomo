@@ -31,11 +31,12 @@ func (s *quicGoServer) SetHandler(handler ServerHandler) {
 func (s *quicGoServer) ListenAndServe(ctx context.Context, addr string) error {
 	// Lock to use QUIC draft-29 version
 	conf := &quicGo.Config{
-		Versions:              []quicGo.VersionNumber{0xff00001d},
-		MaxIdleTimeout:        time.Minute * 10080,
-		KeepAlive:             true,
-		MaxIncomingStreams:    1000000,
-		MaxIncomingUniStreams: 1000000,
+		Versions:                []quicGo.VersionNumber{0xff00001d},
+		MaxIdleTimeout:          time.Minute * 10080,
+		KeepAlive:               true,
+		MaxIncomingStreams:      1000000,
+		MaxIncomingUniStreams:   1000000,
+		DisablePathMTUDiscovery: true,
 	}
 
 	// listen the address
