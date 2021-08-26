@@ -12,6 +12,7 @@ import (
 	"github.com/yomorun/yomo/internal/core"
 	"github.com/yomorun/yomo/internal/decoder"
 	"github.com/yomorun/yomo/logger"
+	"github.com/yomorun/yomo/zipper/tracing"
 )
 
 // Client is the client for YoMo Stream Function.
@@ -57,6 +58,12 @@ func (c *clientImpl) Write(data []byte) (int, error) {
 
 	defer stream.Close()
 
+	// tracing
+	span := tracing.NewSpanFromData(string(data), "sfn", "sfn-write-to-zipper")
+	if span != nil {
+		defer span.End()
+	}
+
 	return stream.Write(data)
 }
 
@@ -97,6 +104,11 @@ func (c *clientImpl) readStream(stream quic.ReceiveStream, handler func(rxstream
 	if err != nil {
 		logger.Error("[Stream Function Client] receive data from zipper failed.", "err", err)
 		return
+	}
+	// tracing
+	span := tracing.NewSpanFromData(string(data), "sfn", "sfn-read-from-stream")
+	if span != nil {
+		defer span.End()
 	}
 
 	logger.Debug("[Stream Function Client] received data from zipper.")
