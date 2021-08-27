@@ -9,12 +9,6 @@ import (
 )
 
 const (
-	// ConnTypeSource is the connection type "source".
-	ConnTypeSource string = "source"
-	// ConnTypeStreamFunction is the connection type "stream-function".
-	ConnTypeStreamFunction string = "stream-function"
-	// ConnTypeZipperSender is the connection type "zipper-sender".
-	ConnTypeZipperSender string = "zipper-sender"
 	// ErrConnectionClosed is the error message when the connection was closed.
 	ErrConnectionClosed string = "Application error 0x0"
 	// HeartbeatTimeOut is the duration when the heartbeat will be time-out.

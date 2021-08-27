@@ -6,7 +6,7 @@ const (
 	// ConnTypeNone is connection type "Source".
 	ConnTypeSource ConnectionType = 0x5F
 	// ConnTypeNone is connection type "Upstream Zipper".
-	ConnTypeZipperSender ConnectionType = 0x5E
+	ConnTypeUpstreamZipper ConnectionType = 0x5E
 	// ConnTypeNone is connection type "Stream Function".
 	ConnTypeStreamFunction ConnectionType = 0x5D
 )
@@ -18,8 +18,8 @@ func (c ConnectionType) String() string {
 	switch c {
 	case ConnTypeSource:
 		return "Source"
-	case ConnTypeZipperSender:
-		return "Zipper Sender"
+	case ConnTypeUpstreamZipper:
+		return "Upstream Zipper"
 	case ConnTypeStreamFunction:
 		return "Stream Function"
 	default:

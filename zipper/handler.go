@@ -16,6 +16,7 @@ import (
 )
 
 type streamFuncWithCancel struct {
+	addr    string
 	session quic.Session
 	cancel  CancelFunc
 }
@@ -81,43 +82,28 @@ func (s *quicHandler) Listen() error {
 	return nil
 }
 
-func (s *quicHandler) Read(id int64, sess quic.Session, st quic.Stream) error {
+func (s *quicHandler) Read(addr string, sess quic.Session, st quic.Stream) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
 	// the connection exists
-	if c, ok := s.connMap.Load(id); ok {
-		s.mutex.Lock()
+	if c, ok := s.connMap.Load(addr); ok {
 		c := c.(*Conn)
-		if c.conn.Type == core.ConnTypeSource {
+		if c.Conn.Type == core.ConnTypeSource {
 			s.source <- st
-		} else if c.conn.Type == core.ConnTypeZipperSender {
+		} else if c.Conn.Type == core.ConnTypeUpstreamZipper {
 			s.zipperReceiver <- st
 		}
 
-		s.mutex.Unlock()
 		return nil
 	}
 
 	// init a new connection.
-	s.mutex.Lock()
-	svrConn := NewConn(sess, st, s.serverlessConfig)
+	svrConn := NewConn(addr, sess, st, s.serverlessConfig)
 	svrConn.onClosed = func() {
-		s.connMap.Delete(id)
+		s.connMap.Delete(addr)
 	}
-	svrConn.isNewAppAvailable = func() bool {
-		isNewAvailable := false
-		// check if any new app (same name and type) is available in connMap.
-		s.connMap.Range(func(key, value interface{}) bool {
-			c := value.(*Conn)
-			if c.conn.Name == svrConn.conn.Name && c.conn.Type == svrConn.conn.Type && key.(int64) > id {
-				isNewAvailable = true
-				return false
-			}
-			return true
-		})
-
-		return isNewAvailable
-	}
-	s.connMap.Store(id, svrConn)
-	s.mutex.Unlock()
+	s.connMap.Store(addr, svrConn)
 	return nil
 }
 
@@ -144,7 +130,7 @@ func (s *quicHandler) receiveDataFromSources() {
 						s.onReceivedData(data)
 					}
 
-					// YoMo-Zipper-Senders
+					// Upstream YoMo-Zippers
 					for _, sender := range s.zipperSenders {
 						if sender == nil {
 							continue
@@ -155,7 +141,7 @@ func (s *quicHandler) receiveDataFromSources() {
 						// playload frame
 						// TODO: tag id
 						frame.SetCarriage(0x12, data)
-						go sendDataToDownstream(sender, frame, "[YoMo-Zipper Sender] sent frame to downstream YoMo-Zipper Receiver.", "❌ [YoMo-Zipper Sender] sent frame to downstream YoMo-Zipper Receiver failed.")
+						go sendDataToDownstream(sender, frame, "[Upstream YoMo-Zipper] sent frame to downstream YoMo-Zipper Receiver.", "❌ [Upstream YoMo-Zipper] sent frame to downstream YoMo-Zipper Receiver failed.")
 					}
 				}
 			}()
@@ -163,7 +149,7 @@ func (s *quicHandler) receiveDataFromSources() {
 	}
 }
 
-// receiveDataFromZipperSenders receives data from `YoMo-Zipper Senders`.
+// receiveDataFromZipperSenders receives data from `Upstream YoMo-Zippers`.
 func (s *quicHandler) receiveDataFromZipperSenders() {
 	for {
 		select {
@@ -244,6 +230,7 @@ func createStreamFunc(app App, connMap *sync.Map, connType core.ConnectionType) 
 		i := 0
 		for id, conn := range conns {
 			funcs[i] = streamFuncWithCancel{
+				addr:    conn.Addr,
 				session: conn.Session,
 				cancel:  cancelStreamFunc(app.Name, conn, connMap, id),
 			}
@@ -258,11 +245,11 @@ func createStreamFunc(app App, connMap *sync.Map, connType core.ConnectionType) 
 }
 
 // cancelStreamFunc close the connection of Stream Function.
-func cancelStreamFunc(name string, conn *Conn, connMap *sync.Map, id int64) func() {
+func cancelStreamFunc(name string, conn *Conn, connMap *sync.Map, addr string) func() {
 	f := func() {
 		clearStreamFuncCache(name)
 		conn.Close()
-		connMap.Delete(id)
+		connMap.Delete(addr)
 	}
 	return f
 }
@@ -273,12 +260,12 @@ func clearStreamFuncCache(name string) {
 }
 
 // IsMatched indicates if the connection is matched.
-func findConn(app App, connMap *sync.Map, connType core.ConnectionType) map[int64]*Conn {
-	results := make(map[int64]*Conn)
+func findConn(app App, connMap *sync.Map, connType core.ConnectionType) map[string]*Conn {
+	results := make(map[string]*Conn)
 	connMap.Range(func(key, value interface{}) bool {
 		c := value.(*Conn)
-		if c.conn.Name == app.Name && c.conn.Type == connType {
-			results[key.(int64)] = c
+		if c.Conn.Name == app.Name && c.Conn.Type == connType {
+			results[key.(string)] = c
 		}
 		return true
 	})
@@ -293,7 +280,7 @@ type zipperConf struct {
 	Port int    `json:"port"`
 }
 
-// buildZipperSenders builds YoMo-Zipper-Senders from edge-mesh config center.
+// buildZipperSenders builds Upstream YoMo-Zippers from edge-mesh config center.
 func (s *quicHandler) buildZipperSenders() error {
 	logger.Print("Downloading mesh config...")
 
@@ -329,7 +316,7 @@ func (s *quicHandler) buildZipperSenders() error {
 	return nil
 }
 
-// createZipperSender creates a YoMo-Zipper sender.
+// createZipperSender creates a Upstream YoMo-Zipper.
 func (s *quicHandler) createZipperSender(conf zipperConf) GetSenderFunc {
 	f := func() (string, io.Writer, CancelFunc) {
 		if writer, ok := s.zipperMap.Load(conf.Name); ok {
@@ -347,18 +334,19 @@ func (s *quicHandler) createZipperSender(conf zipperConf) GetSenderFunc {
 		cli, err := NewSender(s.serverlessConfig.Name).
 			Connect(conf.Host, conf.Port)
 		if err != nil {
-			logger.Error("[YoMo-Zipper Sender] connect to YoMo-Zipper Receiver failed, will retry...", "conf", conf, "err", err)
+			logger.Error("[Upstream YoMo-Zipper] connect to downstream YoMo-Zipper failed, will retry...", "conf", conf, "err", err)
 			cli.Retry()
 		}
 
 		s.zipperMap.Store(conf.Name, cli)
+		logger.Printf("[Upstream YoMo-Zipper] Connected to downstream YoMo-Zipper %s, addr %s:%d", conf.Name, conf.Host, conf.Port)
 		return conf.Name, cli, s.cancelZipperSender(conf)
 	}
 
 	return f
 }
 
-// cancelZipperSender removes the YoMo-Zipper sender from `zipperMap`.
+// cancelZipperSender removes the Upstream YoMo-Zipper from `zipperMap`.
 func (s *quicHandler) cancelZipperSender(conf zipperConf) func() {
 	f := func() {
 		s.zipperMap.Delete(conf.Name)
@@ -370,8 +358,8 @@ func (s *quicHandler) getConn(name string) *quic.Conn {
 	var conn *quic.Conn
 	s.connMap.Range(func(key, value interface{}) bool {
 		c := value.(*Conn)
-		if c.conn.Name == name {
-			conn = c.conn
+		if c.Conn.Name == name {
+			conn = c.Conn
 			return false
 		}
 		return true

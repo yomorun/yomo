@@ -12,33 +12,38 @@ import (
 
 // Conn represents the YoMo Zipper connection.
 type Conn struct {
-	conn              *quic.Conn
-	Session           quic.Session
-	onClosed          func()      // onClosed is the callback when the connection is closed.
-	isNewAppAvailable func() bool // indicates whether the server receives a new app.
+	// Addr is the peer's address.
+	Addr string
+	// Conn is a QUIC connection.
+	Conn *quic.Conn
+	// Session is a QUIC connection.
+	Session quic.Session
+	// onClosed is the callback when the connection is closed.
+	onClosed func()
 }
 
 // NewConn inits a new YoMo Zipper connection.
-func NewConn(sess quic.Session, st quic.Stream, conf *WorkflowConfig) *Conn {
+func NewConn(addr string, sess quic.Session, st quic.Stream, conf *WorkflowConfig) *Conn {
 	logger.Debug("[zipper] inits a new connection.")
 	c := &Conn{
-		conn: quic.NewConn("", core.ConnTypeNone),
+		Conn: quic.NewConn("", core.ConnTypeNone),
 	}
 
+	c.Addr = addr
 	c.Session = sess
-	c.conn.Signal = core.NewFrameStream(st)
+	c.Conn.Signal = core.NewFrameStream(st)
 	c.handleSignal(conf)
-	c.conn.OnClosed = c.Close
-	c.conn.OnHeartbeatReceived = func() {
-		logger.Debug("Received Ping from client, will send Pong to client.", "name", c.conn.Name)
+	c.Conn.OnClosed = c.Close
+	c.Conn.OnHeartbeatReceived = func() {
+		logger.Debug("Received Ping from client, will send Pong to client.", "name", c.Conn.Name, "addr", c.Addr)
 		// when the zipper received Ping from client, send Pong to client.
-		c.conn.SendSignal(frame.NewPongFrame())
+		c.Conn.SendSignal(frame.NewPongFrame())
 	}
 
-	c.conn.OnHeartbeatExpired = func() {
-		logger.Printf("❌ The client %s was offline.", c.conn.Name)
+	c.Conn.OnHeartbeatExpired = func() {
+		logger.Printf("❌ The client %s was offline, addr: %s", c.Conn.Name, c.Addr)
 		st.Close()
-		c.conn.Close()
+		c.Conn.Close()
 	}
 
 	return c
@@ -49,7 +54,7 @@ func (c *Conn) handleSignal(conf *WorkflowConfig) {
 	go func() {
 		for {
 			logger.Info("💚 waiting read next..")
-			f, err := c.conn.Signal.ReadFrame()
+			f, err := c.Conn.Signal.ReadFrame()
 			if err != nil {
 				logger.Error("[ERR] on [ParseFrame]", "err", err)
 				if errors.Is(err, net.ErrClosed) {
@@ -60,7 +65,7 @@ func (c *Conn) handleSignal(conf *WorkflowConfig) {
 				// any error occurred, we should close the session
 				// after this, session.AcceptStream() will raise the error
 				// which specific in session.CloseWithError()
-				c.conn.Close()
+				c.Conn.Close()
 				c.Session.CloseWithError(0xCC, err.Error())
 				break
 			}
@@ -76,34 +81,34 @@ func (c *Conn) handleSignal(conf *WorkflowConfig) {
 					return
 				}
 
-				c.conn.Name = payload.Name
-				c.conn.Type = c.getConnType(payload, conf)
-				if c.conn.Type == core.ConnTypeNone {
+				c.Conn.Name = payload.Name
+				c.Conn.Type = c.getConnType(payload, conf)
+				if c.Conn.Type == core.ConnTypeNone {
 					logger.Printf("The %s name %s is mismatched with the name of Stream Function in zipper config.", payload.ClientType, payload.Name)
-					c.conn.SendSignal(frame.NewRejectedFrame())
+					c.Conn.SendSignal(frame.NewRejectedFrame())
 					continue
 				}
-				logger.Printf("Receive App %s, type: %s", c.conn.Name, c.conn.Type)
+				logger.Printf("Receive App %s, type: %s, addr: %s", c.Conn.Name, c.Conn.Type, c.Addr)
 
-				if c.conn.Type == core.ConnTypeStreamFunction {
+				if c.Conn.Type == core.ConnTypeStreamFunction {
 					// clear local cache when zipper has a new stream-fn connection.
-					clearStreamFuncCache(c.conn.Name)
+					clearStreamFuncCache(c.Conn.Name)
 
 					// add new connection to channcel
-					if ch, ok := newStreamFuncSessionCache.Load(c.conn.Name); ok {
+					if ch, ok := newStreamFuncSessionCache.Load(c.Conn.Name); ok {
 						ch.(chan quic.Session) <- c.Session
 					} else {
 						ch := make(chan quic.Session, 5)
 						ch <- c.Session
-						newStreamFuncSessionCache.Store(c.conn.Name, ch)
+						newStreamFuncSessionCache.Store(c.Conn.Name, ch)
 					}
 				}
 
-				c.conn.SendSignal(frame.NewAcceptedFrame())
-				c.conn.Healthcheck()
+				c.Conn.SendSignal(frame.NewAcceptedFrame())
+				c.Conn.Healthcheck()
 
 			case frame.TagOfPingFrame:
-				c.conn.Heartbeat <- true
+				c.Conn.Heartbeat <- true
 			}
 		}
 	}()
