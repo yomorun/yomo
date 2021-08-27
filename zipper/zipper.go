@@ -47,7 +47,7 @@ func (r *zipperImpl) Serve(endpoint string) error {
 		log.Println(err)
 	}
 
-	handler := NewServerHandler(r.conf, r.meshConfURL)
+	handler := newServerHandler(r.conf, r.meshConfURL)
 	server := quic.NewServer(handler)
 	r.quicServer = server
 	r.handler = handler

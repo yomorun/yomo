@@ -32,8 +32,8 @@ type (
 	GetSenderFunc func() (string, io.Writer, CancelFunc)
 )
 
-// NewServerHandler inits a new ServerHandler
-func NewServerHandler(conf *WorkflowConfig, meshConfURL string) *quicHandler {
+// newServerHandler inits a new ServerHandler
+func newServerHandler(conf *WorkflowConfig, meshConfURL string) *quicHandler {
 	return &quicHandler{
 		serverlessConfig: conf,
 		meshConfigURL:    meshConfURL,
@@ -364,9 +364,9 @@ func (s *quicHandler) getConn(name string) *quic.Conn {
 }
 
 // currentConnections gets the current connections.
-func (r *quicHandler) currentConnections() []Conn {
+func (s *quicHandler) currentConnections() []Conn {
 	conns := make([]Conn, 0)
-	r.connMap.Range(func(key, value interface{}) bool {
+	s.connMap.Range(func(key, value interface{}) bool {
 		c := value.(*Conn)
 		if c.Session != nil {
 			conns = append(conns, *c)

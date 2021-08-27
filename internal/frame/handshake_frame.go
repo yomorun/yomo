@@ -40,6 +40,7 @@ func (h *HandshakeFrame) Encode() []byte {
 	return handshake.Encode()
 }
 
+// DecodeToHandshakeFrame decodes Y3 encoded bytes to HandshakeFrame.
 func DecodeToHandshakeFrame(buf []byte) (*HandshakeFrame, error) {
 	node := y3.NodePacket{}
 	_, err := y3.DecodeToNodePacket(buf, &node)
