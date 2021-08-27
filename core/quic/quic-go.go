@@ -31,7 +31,7 @@ func (s *quicGoServer) SetHandler(handler ServerHandler) {
 func (s *quicGoServer) ListenAndServe(ctx context.Context, addr string) error {
 	// Lock to use QUIC draft-29 version
 	conf := &quicGo.Config{
-		Versions:                []quicGo.VersionNumber{0xff00001d},
+		Versions:                []quicGo.VersionNumber{quicGo.Version1},
 		MaxIdleTimeout:          time.Minute * 10080,
 		KeepAlive:               true,
 		MaxIncomingStreams:      1000000,
@@ -89,7 +89,7 @@ type quicGoClient struct {
 func (c *quicGoClient) Connect(addr string) error {
 	tlsConf := &tls.Config{
 		InsecureSkipVerify: true,
-		NextProtos:         []string{"hq-29"},
+		NextProtos:         []string{"spdy/3", "h2", "hq-29"},
 		ClientSessionCache: tls.NewLRUClientSessionCache(1),
 	}
 
