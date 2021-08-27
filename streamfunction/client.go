@@ -95,18 +95,19 @@ func (c *clientImpl) Pipe(handler func(rxstream rx.Stream) rx.Stream) {
 			continue
 		}
 
-		go c.readStream(quicStream, handler, fac)
+		go c.readStreamAndRunHandler(quicStream, handler, fac)
 	}
 }
 
-func (c *clientImpl) readStream(stream quic.ReceiveStream, handler func(rxstream rx.Stream) rx.Stream, fac rx.Factory) {
+// readStreamAndRunHandler reads the QUIC stream from zipper and run `Handler`.
+func (c *clientImpl) readStreamAndRunHandler(stream quic.ReceiveStream, handler func(rxstream rx.Stream) rx.Stream, fac rx.Factory) {
 	data, err := quic.ReadStream(stream)
 	if err != nil {
 		logger.Error("[Stream Function Client] receive data from zipper failed.", "err", err)
 		return
 	}
 	// tracing
-	span := tracing.NewSpanFromData(string(data), "sfn", "sfn-read-from-stream")
+	span := tracing.NewSpanFromData(string(data), "sfn", "sfn-read-stream-and-run-handler")
 	if span != nil {
 		defer span.End()
 	}
@@ -124,14 +125,15 @@ func (c *clientImpl) readStream(stream quic.ReceiveStream, handler func(rxstream
 			break
 		}
 
-		c.executeHandler(ctx, cancel, item.V, handler, fac)
+		c.runHandler(ctx, cancel, item.V, handler, fac)
 		// one data per time.
 		break
 	}
 
 }
 
-func (c *clientImpl) executeHandler(ctx context.Context, cancel context.CancelFunc, data interface{}, handler func(rxstream rx.Stream) rx.Stream, fac rx.Factory) {
+// runHandler runs the `Handler` and sends the result to zipper if the stream function returns a new data.
+func (c *clientImpl) runHandler(ctx context.Context, cancel context.CancelFunc, data interface{}, handler func(rxstream rx.Stream) rx.Stream, fac rx.Factory) {
 	defer cancel()
 	stream := handler(fac.FromItems(ctx, []interface{}{data}))
 

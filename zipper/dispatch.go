@@ -127,6 +127,9 @@ func sendDataToStreamFn(name string, session quic.Session, cancel CancelFunc, da
 
 	// tracing
 	span := tracing.NewSpanFromData(string(data), name, "zipper-send-to-"+name)
+	if span != nil {
+		defer span.End()
+	}
 
 	// send data to downstream.
 	stream, err := session.OpenUniStream()
@@ -146,10 +149,6 @@ func sendDataToStreamFn(name string, session quic.Session, cancel CancelFunc, da
 		// cancel the current session when error.
 		cancel()
 		return
-	}
-	// end span in tracing
-	if span != nil {
-		span.End()
 	}
 
 	logger.Debug("[MergeStreamFunc] YoMo-Zipper sent data to `stream-fn`.", "stream-fn", name)
@@ -222,14 +221,12 @@ func readDataFromStreamFn(ctx context.Context, name string, stream quic.ReceiveS
 
 			// tracing
 			span := tracing.NewSpanFromData(string(data), name, "zipper-receive-from-"+name)
+			if span != nil {
+				defer span.End()
+			}
 
 			// pass data to downstream.
 			next <- data
-
-			// end span in tracing
-			if span != nil {
-				span.End()
-			}
 			return
 		}
 	}
