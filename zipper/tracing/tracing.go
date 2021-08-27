@@ -2,7 +2,10 @@ package tracing
 
 import (
 	"context"
+	"errors"
 	"log"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/tidwall/gjson"
@@ -14,6 +17,13 @@ import (
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 	"go.opentelemetry.io/otel/trace"
+)
+
+const (
+	// DefaultTracingEnable is the default option to enable/disable the tracing.
+	DefaultTracingEnable = false
+	// DefaultTracingEndpoint is the default endpoint for the tracing.
+	DefaultTracingEndpoint = "http://localhost:14268/api/traces"
 )
 
 // tracerProvider returns an OpenTelemetry TracerProvider configured to use
@@ -53,8 +63,23 @@ func tracerProvider(service string, collectorEndpoint string) (*tracesdk.TracerP
 
 // NewTracerProvider creates a new TracerProvider.
 func NewTracerProvider(service string) (trace.TracerProvider, func(context.Context), error) {
+	// tracing enable
+	tracingEnable := DefaultTracingEnable
+	if envTracingEnable := os.Getenv("YOMO_TRACING_ENABLE"); envTracingEnable != "" {
+		enable, err := strconv.ParseBool(envTracingEnable)
+		if err == nil {
+			tracingEnable = enable
+		}
+	}
+	if !tracingEnable {
+		return nil, func(context.Context) {}, errors.New("tracing disabled")
+	}
 	// tracer provider
-	tp, err := tracerProvider(service, "http://localhost:14268/api/traces")
+	tracingEndpoint := DefaultTracingEndpoint
+	if envTracingEndpoint := os.Getenv("YOMO_TRACING_ENDPOINT"); envTracingEndpoint != "" {
+		tracingEndpoint = envTracingEndpoint
+	}
+	tp, err := tracerProvider(service, tracingEndpoint)
 	if err != nil {
 		return nil, func(context.Context) {}, err
 	}

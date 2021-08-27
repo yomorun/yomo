@@ -3,11 +3,13 @@ package zipper
 import (
 	"context"
 	"sync/atomic"
+	"time"
 
 	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/internal/core"
 	"github.com/yomorun/yomo/internal/frame"
 	"github.com/yomorun/yomo/logger"
+	"github.com/yomorun/yomo/zipper/tracing"
 )
 
 // DispatcherWithFunc dispatches the input stream to downstreams.
@@ -123,6 +125,12 @@ func sendDataToStreamFn(name string, session quic.Session, cancel CancelFunc, da
 		return
 	}
 
+	// tracing
+	span := tracing.NewSpanFromData(string(data), name, "zipper-send-to-"+name)
+	if span != nil {
+		defer span.End()
+	}
+
 	// send data to downstream.
 	stream, err := session.OpenUniStream()
 	if err != nil {
@@ -189,6 +197,11 @@ func readDataFromStreamFn(ctx context.Context, name string, stream quic.ReceiveS
 		case <-ctx.Done():
 			return
 		default:
+			// 起始
+			t1 := time.Now()
+			logger.Printf("💚 waiting read next..")
+
+			// 开始接收数据
 			data, err := quic.ReadStream(stream)
 			if err != nil {
 				logger.Debug("[MergeStreamFunc] YoMo-Zipper received data from `stream-fn` failed.", "stream-fn", name, "err", err)
@@ -196,6 +209,21 @@ func readDataFromStreamFn(ctx context.Context, name string, stream quic.ReceiveS
 			}
 
 			logger.Debug("[MergeStreamFunc] YoMo-Zipper received data from `stream-fn`.", "stream-fn", name)
+
+			// 完成接收
+			logger.Printf("💚 receive complete data(%d), duration=%d", len(data), time.Since(t1).Milliseconds())
+
+			// if len(data) > 512 {
+			// 	log.Printf("🔗 parsed out total %d bytes: \n\thead 64 bytes are: [%# x], \n\ttail 64 bytes are: [%# x]\n", len(data), data[0:64], data[len(data)-64:])
+			// } else {
+			// 	log.Printf("🔗 parsed out: [%# x]\n", data)
+			// }
+
+			// tracing
+			span := tracing.NewSpanFromData(string(data), name, "zipper-receive-from-"+name)
+			if span != nil {
+				defer span.End()
+			}
 
 			// pass data to downstream.
 			next <- data

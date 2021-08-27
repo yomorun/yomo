@@ -2,8 +2,10 @@ package zipper
 
 import (
 	"context"
+	"log"
 
 	"github.com/yomorun/yomo/core/quic"
+	"github.com/yomorun/yomo/zipper/tracing"
 )
 
 // Zipper represents the YoMo Zipper.
@@ -35,15 +37,15 @@ type zipperImpl struct {
 
 // Serve a YoMo Zipper.
 func (r *zipperImpl) Serve(endpoint string) error {
+	// tracing
+	_, _, err := tracing.NewTracerProvider("zipper")
+	if err != nil {
+		log.Println(err)
+	}
+
 	handler := NewServerHandler(r.conf, r.meshConfURL)
 	server := quic.NewServer(handler)
 	r.quicServer = server
-
-	// // tracing
-	// _, _, err := tracing.NewTracerProvider("zipper")
-	// if err != nil {
-	// 	log.Println(err)
-	// }
 
 	// return server.ListenAndServe(context.Background(), endpoint)
 	return r.quicServer.ListenAndServe(context.Background(), endpoint)
