@@ -20,7 +20,9 @@ import (
 )
 
 const (
-	DefaultTracingEnable   = false
+	// DefaultTracingEnable is the default option to enable/disable the tracing.
+	DefaultTracingEnable = false
+	// DefaultTracingEndpoint is the default endpoint for the tracing.
 	DefaultTracingEndpoint = "http://localhost:14268/api/traces"
 )
 
