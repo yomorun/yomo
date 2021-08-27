@@ -22,7 +22,7 @@ type ServerHandler interface {
 	// Listen is the callback function when the QUIC server listening on a given address.
 	Listen() error
 	// Read is the callback function when the QUIC server receiving a new stream.
-	Read(id int64, sess Session, st Stream) error
+	Read(addr string, sess Session, st Stream) error
 }
 
 // NewServer inits the default implementation of QUIC server.

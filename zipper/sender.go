@@ -11,13 +11,13 @@ import (
 	"github.com/yomorun/yomo/internal/frame"
 )
 
-// SenderClient is the client for YoMo-Zipper-Sender (formerly Zipper-Sender) to connect the downsteam YoMo-Zipper-Receiver (formerly Zipper-Receiver) in edge-mesh.
+// SenderClient is the client for Upstream YoMo-Zipper (formerly Zipper-Sender) to connect the downsteam YoMo-Zipper (formerly Zipper-Receiver) in edge-mesh.
 type SenderClient interface {
 	io.Writer
 
 	client.Client
 
-	// Connect to downsteam  YoMo-Zipper-Receiver (formerly Zipper-Receiver).
+	// Connect to downsteam YoMo-Zipper (formerly Zipper-Receiver).
 	Connect(ip string, port int) (SenderClient, error)
 }
 
@@ -25,10 +25,10 @@ type senderClientImpl struct {
 	*client.Impl
 }
 
-// NewSender setups the client of YoMo-Zipper-Sender (formerly Zipper-Sender).
+// NewSender setups the client of Upstream YoMo-Zipper (formerly Zipper-Sender).
 func NewSender(appName string) SenderClient {
 	c := &senderClientImpl{
-		Impl: client.New(appName, core.ConnTypeZipperSender),
+		Impl: client.New(appName, core.ConnTypeUpstreamZipper),
 	}
 	return c
 }
@@ -36,7 +36,7 @@ func NewSender(appName string) SenderClient {
 // Write the data to downstream.
 func (c *senderClientImpl) Write(data []byte) (int, error) {
 	if c.Stream == nil {
-		return 0, errors.New("[YoMo-Zipper-Sender] Stream is nil")
+		return 0, errors.New("[Upstream YoMo-Zipper] Stream is nil")
 	}
 
 	// wrap data with frame.
@@ -48,7 +48,7 @@ func (c *senderClientImpl) Write(data []byte) (int, error) {
 	return c.Stream.WriteFrame(frame)
 }
 
-// Connect to downstream YoMo-Zipper-Receiver in edge-mesh.
+// Connect to downstream YoMo-Zipper in edge-mesh.
 func (c *senderClientImpl) Connect(ip string, port int) (SenderClient, error) {
 	cli, err := c.BaseConnect(ip, port)
 	return &senderClientImpl{

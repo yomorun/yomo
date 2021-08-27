@@ -16,6 +16,9 @@ type Zipper interface {
 	// ServeWithHandler serves a YoMo Zipper with handler.
 	ServeWithHandler(endpoint string, handler quic.ServerHandler) error
 
+	// CurrentConnections gets the current connections in zipper.
+	CurrentConnections() []Conn
+
 	// Close the server. All active sessions will be closed.
 	Close() error
 }
@@ -33,6 +36,7 @@ type zipperImpl struct {
 	conf        *WorkflowConfig
 	meshConfURL string
 	quicServer  quic.Server
+	handler     *quicHandler
 }
 
 // Serve a YoMo Zipper.
@@ -43,9 +47,10 @@ func (r *zipperImpl) Serve(endpoint string) error {
 		log.Println(err)
 	}
 
-	handler := NewServerHandler(r.conf, r.meshConfURL)
+	handler := newServerHandler(r.conf, r.meshConfURL)
 	server := quic.NewServer(handler)
 	r.quicServer = server
+	r.handler = handler
 
 	// return server.ListenAndServe(context.Background(), endpoint)
 	return r.quicServer.ListenAndServe(context.Background(), endpoint)
@@ -56,7 +61,20 @@ func (r *zipperImpl) ServeWithHandler(endpoint string, handler quic.ServerHandle
 	server := quic.NewServer(handler)
 	r.quicServer = server
 
+	if h, ok := handler.(*quicHandler); ok {
+		r.handler = h
+	}
+
 	return r.quicServer.ListenAndServe(context.Background(), endpoint)
+}
+
+// CurrentConnections gets the current connections in zipper.
+func (r *zipperImpl) CurrentConnections() []Conn {
+	if r.handler == nil {
+		return make([]Conn, 0)
+	}
+
+	return r.handler.currentConnections()
 }
 
 // Close the server. All active sessions will be closed.

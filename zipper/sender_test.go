@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestNewSender setups the client of YoMo-Zipper-Sender (formerly Zipper-Sender).
+// TestNewSender setups the client of Upstream YoMo-Zipper (formerly Zipper-Sender).
 func TestNewSender(t *testing.T) {
 	sender := NewSender("sender")
 	assert.NotNil(t, sender)

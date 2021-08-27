@@ -151,7 +151,7 @@ func (c *Impl) handleSignal(accepted chan bool) {
 
 			case frame.TagOfAcceptedFrame:
 				// create stream
-				if c.conn.Type == core.ConnTypeSource || c.conn.Type == core.ConnTypeZipperSender {
+				if c.conn.Type == core.ConnTypeSource || c.conn.Type == core.ConnTypeUpstreamZipper {
 					stream, err := c.Session.CreateStream(context.Background())
 					if err != nil {
 						logger.Error("[client] session.CreateStream Error:", "err", err)
