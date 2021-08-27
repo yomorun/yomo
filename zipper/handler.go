@@ -33,8 +33,16 @@ type (
 )
 
 // NewServerHandler inits a new ServerHandler
-func NewServerHandler(conf *WorkflowConfig, meshConfURL string) quic.ServerHandler {
-	return newQuicHandler(conf, meshConfURL)
+func NewServerHandler(conf *WorkflowConfig, meshConfURL string) *quicHandler {
+	return &quicHandler{
+		serverlessConfig: conf,
+		meshConfigURL:    meshConfURL,
+		connMap:          sync.Map{},
+		source:           make(chan quic.Stream),
+		zipperMap:        sync.Map{},
+		zipperSenders:    make([]GetSenderFunc, 0),
+		zipperReceiver:   make(chan quic.Stream),
+	}
 }
 
 type quicHandler struct {
@@ -47,18 +55,6 @@ type quicHandler struct {
 	zipperReceiver   chan quic.Stream
 	mutex            sync.RWMutex
 	onReceivedData   func(buf []byte) // the callback function when the data is received.
-}
-
-func newQuicHandler(conf *WorkflowConfig, meshConfURL string) *quicHandler {
-	return &quicHandler{
-		serverlessConfig: conf,
-		meshConfigURL:    meshConfURL,
-		connMap:          sync.Map{},
-		source:           make(chan quic.Stream),
-		zipperMap:        sync.Map{},
-		zipperSenders:    make([]GetSenderFunc, 0),
-		zipperReceiver:   make(chan quic.Stream),
-	}
 }
 
 func (s *quicHandler) Listen() error {
@@ -365,4 +361,18 @@ func (s *quicHandler) getConn(name string) *quic.Conn {
 		return true
 	})
 	return conn
+}
+
+// currentConnections gets the current connections.
+func (r *quicHandler) currentConnections() []Conn {
+	conns := make([]Conn, 0)
+	r.connMap.Range(func(key, value interface{}) bool {
+		c := value.(*Conn)
+		if c.Session != nil {
+			conns = append(conns, *c)
+		}
+		return true
+	})
+
+	return conns
 }

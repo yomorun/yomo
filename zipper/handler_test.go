@@ -20,7 +20,7 @@ func TestServerHandlerListen(t *testing.T) {
 // TestServerHandlerRead
 func TestServerHandlerRead(t *testing.T) {
 	// new a server handler
-	serverHandler := newQuicHandler(testConfig, testMeshURL)
+	serverHandler := NewServerHandler(testConfig, testMeshURL)
 	assert.NotNil(t, serverHandler)
 	var err error
 
