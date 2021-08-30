@@ -10,7 +10,11 @@ import (
 	"github.com/yomorun/yomo/logger"
 )
 
-type YomoSource interface {
+const (
+	SourceLogPrefix = "\033[32m[yomo:source]\033[0m "
+)
+
+type Source interface {
 	Write(p []byte) (n int, err error)
 	SetDataTag(tag uint8)
 	Close() error
@@ -28,10 +32,10 @@ type yomoSource struct {
 	tag uint8
 }
 
-var _ YomoSource = &yomoSource{}
+var _ Source = &yomoSource{}
 
 // NewSource create a yomo-source
-func NewSource(opts ...Option) YomoSource {
+func NewSource(opts ...Option) Source {
 	options := newOptions(opts...)
 	client := core.NewClient(options.AppName, core.ConnTypeSource)
 
@@ -52,14 +56,19 @@ func (s *yomoSource) SetDataTag(tag uint8) {
 }
 
 func (s *yomoSource) Close() error {
-	return s.client.Close()
+	if err := s.client.Close(); err != nil {
+		logger.Errorf("%sClose(): %v", SourceLogPrefix, err)
+		return err
+	}
+	logger.Debugf("%s is closed", SourceLogPrefix)
+	return nil
 }
 
 // Connect to YoMo-Zipper.
 func (s *yomoSource) Connect() error {
 	err := s.client.Connect(context.Background(), s.zipperEndpoint)
 	if err != nil {
-		logger.Errorf("Connect() error: %s", err)
+		logger.Errorf("%sConnect() error: %s", SourceLogPrefix, err)
 		return err
 	}
 	return nil
@@ -74,9 +83,9 @@ func (s *yomoSource) WriteWithTag(tag uint8, data []byte) error {
 // 向 Zipper 发送用户数据，指定该次发送数据使用的 tag 以及 transactionID
 func (s *yomoSource) WriteWithTransaction(transactionID string, tag uint8, data []byte) error {
 	if len(data) > 1024 {
-		logger.Debugf("WriteDataWithTransactionID: len(data)=%d", len(data))
+		logger.Debugf("%sWriteDataWithTransactionID: len(data)=%d", SourceLogPrefix, len(data))
 	} else {
-		logger.Debugf("WriteDataWithTransactionID: data=%# x", data)
+		logger.Debugf("%sWriteDataWithTransactionID: data=%# x", SourceLogPrefix, data)
 	}
 	frame := frame.NewDataFrame(transactionID)
 	frame.SetCarriage(byte(tag), data)

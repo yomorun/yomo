@@ -13,7 +13,7 @@ import (
 func ParseFrame(stream io.Reader) (frame.Frame, error) {
 	buf, err := y3.ReadPacket(stream)
 	if err != nil {
-		logger.Errorf("\t\t ||||read first byte||||", "err", err)
+		logger.Errorf("[ParseFrame] read first byte", "err", err)
 		return nil, err
 	}
 	if len(buf) > 512 {
@@ -24,14 +24,15 @@ func ParseFrame(stream io.Reader) (frame.Frame, error) {
 
 	frameType := buf[0]
 	// determine the frame type
+	logger.Debugf("[ParseFrame] type=%s", frameType)
 	switch frameType {
 	case 0x80 | byte(frame.TagOfHandshakeFrame):
 		handshakeFrame := readHandshakeFrame(buf)
-		logger.Debugf("[HandshakeFrame] name=%s, type=%s", handshakeFrame.Name, handshakeFrame.Type())
+		logger.Debugf("[ParseFrame] HandshakeFrame name=%s, type=%s", handshakeFrame.Name, handshakeFrame.Type())
 		return handshakeFrame, nil
 	case 0x80 | byte(frame.TagOfDataFrame):
 		data := readDataFrame(buf)
-		logger.Debugf("[DataFrame] tid=%s, data-tag=%v, len(carriage)=%d", data.TransactionID(), data.GetDataTagID(), len(data.GetCarriage()))
+		logger.Debugf("[ParseFrame] DataFrame tid=%s, data-tag=%v, len(carriage)=%d", data.TransactionID(), data.GetDataTagID(), len(data.GetCarriage()))
 		return data, nil
 	case 0x80 | byte(frame.TagOfPingFrame):
 		return frame.DecodeToPingFrame(buf)

@@ -1,5 +1,9 @@
 package yomo
 
+const (
+	DefaultZipperEndpoint = "localhost:9000"
+)
+
 // Option is a function that applies a YoMo-Client option.
 type Option func(o *options)
 
@@ -28,6 +32,10 @@ func newOptions(opts ...Option) *options {
 
 	for _, o := range opts {
 		o(options)
+	}
+
+	if options.ZipperEndpoint == "" {
+		options.ZipperEndpoint = DefaultZipperEndpoint
 	}
 
 	return options

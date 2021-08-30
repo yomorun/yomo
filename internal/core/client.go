@@ -18,12 +18,15 @@ type ConnState = string
 const (
 	ConnStateDisconnected   ConnState = "Disconnected"
 	ConnStateConnecting     ConnState = "Connecting"
+	ConnStateConnected      ConnState = "Connected"
 	ConnStateAuthenticating ConnState = "Authenticating"
 	ConnStateAccepted       ConnState = "Accepted"
 	ConnStateRejected       ConnState = "Rejected"
 	ConnStatePing           ConnState = "Ping"
 	ConnStatePong           ConnState = "Pong"
 	ConnStateTransportData  ConnState = "TransportData"
+
+	ClientLogPrefix = "\033[36m[core:client]\033[0m "
 )
 
 // Client is the implementation of Client interface.
@@ -34,6 +37,7 @@ type Client struct {
 	stream            quic.Stream
 	state             string
 	lastFrameSentTick time.Time
+	processor         func([]byte)
 	mu                sync.Mutex
 }
 
@@ -51,7 +55,7 @@ func NewClient(appName string, connType ConnectionType) *Client {
 // Connect connects to quic server
 func (c *Client) Connect(ctx context.Context, addr string) error {
 	c.state = ConnStateConnecting
-	logger.Printf("Connecting to YoMo-Zipper %s...", addr)
+	logger.Printf("%sConnecting to YoMo-Zipper %s...", ClientLogPrefix, addr)
 
 	// connect to quic server
 	tlsConf := &tls.Config{
@@ -95,10 +99,7 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 	handshake := frame.NewHandshakeFrame(c.token, byte(c.connType))
 	c.WriteFrame(handshake)
 	c.handleFrame()
-	// send ping to zipper.
-	// c.ping()
-	// check if receiving the pong from zipper.
-	// c.Healthcheck()
+
 	return nil
 }
 
@@ -106,9 +107,10 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 func (c *Client) handleFrame() {
 	go func() {
 		for {
-			f, err := ParseFrame(c.stream)
+			fs := NewFrameStream(c.stream)
+			f, err := fs.ReadFrame()
 			if err != nil {
-				logger.Error("[client] on [ParseFrame]", "err", err)
+				logger.Error(ClientLogPrefix, "method", "handleFrame.ReadFrame", "err", err)
 				if errors.Is(err, net.ErrClosed) {
 					// if client close the connection, net.ErrClosed will be raise
 					// by quic-go IdleTimeoutError after connection's KeepAlive config.
@@ -123,13 +125,15 @@ func (c *Client) handleFrame() {
 			}
 			// frame type
 			frameType := f.Type()
-			logger.Debug("[client]", "type", frameType.String(), "frame", logger.BytesString(f.Encode()))
+			logger.Debug(ClientLogPrefix, "type", frameType.String(), "frame", logger.BytesString(f.Encode()))
 			switch frameType {
 			case frame.TagOfPongFrame:
+				// TODO: pong frame
 				// c.heartbeat <- true
 				c.setState(ConnStatePong)
 
 			case frame.TagOfAcceptedFrame:
+				// TODO: accepted
 				// create stream
 				// if c.conn.Type == core.ConnTypeSource || c.conn.Type == core.ConnTypeUpstreamZipper {
 				// 	stream, err := c.Session.CreateStream(context.Background())
@@ -146,8 +150,8 @@ func (c *Client) handleFrame() {
 				// 	c.Close()
 				// 	break
 				// }
-				// TODO: accepted
 			case frame.TagOfRejectedFrame:
+				// TODO: rejected frame
 				// if c.conn.Type == core.ConnTypeStreamFunction {
 				// 	logger.Warn("[client] the connection was rejected by zipper, please check if the function name matches the one in zipper config.")
 				// } else {
@@ -156,88 +160,38 @@ func (c *Client) handleFrame() {
 				c.setState(ConnStateRejected)
 				c.Close()
 				break
-				// TODO: data frame 独立处理
 			case frame.TagOfDataFrame:
+				// TODO: data frame
 				// if c.conn.Type == core.ConnTypeStreamFunction {
 				// 	logger.Warn("[client] the connection was rejected by zipper, please check if the function name matches the one in zipper config.")
 				// } else {
 				// 	logger.Warn("[client] the connection was rejected by zipper.")
 				// }
-				c.setState(ConnStateTransportData)
-				data := f.Encode()
-				c.OnData(data)
+				if v, ok := f.(*frame.DataFrame); ok {
+					c.setState(ConnStateTransportData)
+					logger.Debug(ClientLogPrefix+"receive DataFrame", "tag", v.GetDataTagID(), "tid", v.TransactionID(), "carry", v.GetCarriage())
+				}
 			default:
-				logger.Debug("[client] unknown signal.", "frame", logger.BytesString(f.Encode()))
+				logger.Errorf(ClientLogPrefix+" unknown signal.", "frame", logger.BytesString(f.Encode()))
 			}
 		}
 	}()
 }
 
-// Ping sends the PingFrame to YoMo-Zipper in every 3s.
-// func (c *Client) ping() {
-// 	go func(c *Client) {
-// 		t := time.NewTicker(3 * time.Second)
-// 		for {
-// 			select {
-// 			case <-t.C:
-// 				_, err := c.signal.WriteFrame(frame.NewPingFrame())
-// 				logger.Info("Send Ping to zipper.")
-// 				if err != nil {
-// 					if err.Error() == quic.ErrConnectionClosed {
-// 						logger.Print("[client] ❌ the zipper was offline.")
-// 					} else {
-// 						// other errors.
-// 						logger.Error("[client] ❌ sent Ping to zipper failed.", "err", err)
-// 					}
-
-// 					t.Stop()
-// 					break
-// 				}
-// 			}
-// 		}
-// 	}(c)
-// }
-
-// Retry the connection between client and server.
-// func (c *Impl) Retry() {
-// 	for {
-// 		logger.Debug("[client] retry to connect the YoMo-Zipper...", "addr", getServerAddr(c.serverIP, c.serverPort))
-// 		_, err := c.BaseConnect(c.serverIP, c.serverPort)
-// 		if err == nil {
-// 			break
-// 		}
-
-// 		time.Sleep(3 * time.Second)
-// 	}
-// }
-
-// RetryWithCount the connection with a certain count.
-// func (c *Impl) RetryWithCount(count int) bool {
-// 	for i := 0; i < count; i++ {
-// 		logger.Debug("[client] retry to connect the YoMo-Zipper with count...", "addr", getServerAddr(c.serverIP, c.serverPort), "count", count)
-// 		_, err := c.BaseConnect(c.serverIP, c.serverPort)
-// 		if err == nil {
-// 			return true
-// 		}
-
-// 		time.Sleep(3 * time.Second)
-// 	}
-// 	return false
-// }
-
 // Close the client.
 func (c *Client) Close() error {
-	logger.Debug("[client] close the connection")
+	logger.Debugf("%sclose the connection", ClientLogPrefix)
 	if c.stream != nil {
 		err := c.stream.Close()
 		if err != nil {
-			logger.Errorf("close(): %v", err)
+			logger.Errorf("%s stream.Close(): %v", ClientLogPrefix, err)
 			return err
 		}
 	}
 	if c.session != nil {
 		err := c.session.CloseWithError(255, "client.session closed")
 		if err != nil {
+			logger.Errorf("%s session.Close(): %v", ClientLogPrefix, err)
 			return err
 		}
 	}
@@ -254,25 +208,27 @@ func (c *Client) WriteFrame(frame frame.Frame) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.stream == nil {
-		return errors.New("[client] Stream is nil")
+		return errors.New("Stream is nil")
 	}
-	logger.Debug("[client] WriteFrame() will write frame: %# x", frame.Type())
+	logger.Debugf("%sWriteFrame() will write frame: %s", ClientLogPrefix, frame.Type())
 	c.lastFrameSentTick = time.Now()
 	data := frame.Encode()
 	n, err := c.stream.Write(data)
 	if len(data) > 256 {
-		logger.Debugf("[client] WriteFrame() wrote n=%d, len(data)=%d", n, len(data))
+		logger.Debugf("%sWriteFrame() wrote n=%d, len(data)=%d", ClientLogPrefix, n, len(data))
 	} else {
-		logger.Debugf("[client] WriteFrame() wrote n=%d, data=%# x", n, data)
+		logger.Debugf("%sWriteFrame() wrote n=%d, data=%# x", ClientLogPrefix, n, data)
 	}
 	if err != nil {
-		logger.Errorf("[client] WriteFrame() wrote error=%v", err)
+		logger.Errorf("%sWriteFrame() wrote error=%v", ClientLogPrefix, err)
 		// 发送数据时出错
 		return err
 	}
 	if n != len(data) {
 		// 发送的数据不完整
-		return errors.New("[client] yomo Client .Write() wroten error")
+		err := errors.New("[client] yomo Client .Write() wroten error")
+		logger.Errorf("%s error:%v", ClientLogPrefix, err)
+		return err
 	}
 	return err
 }
@@ -290,45 +246,6 @@ func (c *Client) OnAccepted(hdl func() error) error {
 	return nil
 }
 
-func (c *Client) OnData(data []byte) error {
-	logger.Debugf("[client] OnData: data=%v", data)
-	return nil
+func (c *Client) SetDataFrameObserver(fn func([]byte)) {
+	c.processor = fn
 }
-
-// SendSignal sends the signal to client.
-// func (c *Client) SendSignal(f frame.Frame) error {
-// 	if c.signal == nil {
-// 		return errors.New("Signal is nil")
-// 	}
-
-// 	_, err := c.signal.WriteFrame(f)
-// 	return err
-// }
-
-// Healthcheck checks if peer is online by heartbeat.
-// func (c *Client) Healthcheck() {
-// 	go func() {
-// 		// receive heartbeat
-// 		defer c.Close()
-// 	loop:
-// 		for {
-// 			select {
-// 			case _, ok := <-c.heartbeat:
-// 				if !ok {
-// 					break loop
-// 				}
-// 				if c.OnHeartbeatReceived != nil {
-// 					c.OnHeartbeatReceived()
-// 				}
-
-// 			case <-time.After(HeartbeatTimeOut):
-// 				// didn't receive the heartbeat after a certain duration, call the callback function when expired.
-// 				if c.OnHeartbeatExpired != nil {
-// 					c.OnHeartbeatExpired()
-// 				}
-
-// 				break loop
-// 			}
-// 		}
-// 	}()
-// }

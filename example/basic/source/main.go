@@ -1,13 +1,13 @@
 package main
 
 import (
-	"io"
-	"log"
 	"math/rand"
+	"os"
 	"time"
 
 	y3 "github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/logger"
 )
 
 type noiseData struct {
@@ -21,19 +21,23 @@ func main() {
 	source := yomo.NewSource(yomo.WithName("yomo-source"), yomo.WithZipperEndpoint("localhost:9000"))
 	err := source.Connect()
 	if err != nil {
-		log.Printf("❌ Emit the data to YoMo-Zipper failure with err: %v", err)
+		logger.Printf("❌ Emit the data to YoMo-Zipper failure with err: %v", err)
 		return
 	}
 
 	defer source.Close()
 
 	// generate mock data and send it to YoMo-Zipper in every 100 ms.
-	generateAndSendData(source)
+	err = generateAndSendData(source)
+	if err != nil {
+		logger.Printf(">>>> ERR >>>> %v", err)
+		os.Exit(1)
+	}
 }
 
 var codec = y3.NewCodec(0x10)
 
-func generateAndSendData(stream io.Writer) {
+func generateAndSendData(stream yomo.Source) error {
 	for {
 		// generate random data.
 		data := noiseData{
@@ -48,9 +52,11 @@ func generateAndSendData(stream io.Writer) {
 		// send data via QUIC stream.
 		_, err := stream.Write(sendingBuf)
 		if err != nil {
-			log.Printf("❌ Emit %v to YoMo-Zipper failure with err: %v", data, err)
+			logger.Printf("❌ Emit %v to YoMo-Zipper failure with err: %v", data, err)
+			return err
+
 		} else {
-			log.Printf("✅ Emit %v to YoMo-Zipper", data)
+			logger.Printf("✅ Emit %v to YoMo-Zipper", data)
 		}
 
 		time.Sleep(100 * time.Millisecond)

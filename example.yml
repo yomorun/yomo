@@ -15,7 +15,8 @@ tasks:
     dir: "example/basic/source"
     cmds:
       - "./source{{exeExt}}"
-    silent: false
+    env:
+      YOMO_ENABLE_DEBUG: true
 
   basic-source-build:
     desc: build basic source example
@@ -28,9 +29,19 @@ tasks:
 
   basic-zipper:
     desc: run basic zipper service
+    deps: [basic-zipper-build]
     dir: "example/basic/zipper"
     cmds:
-      - "yomo serve -v -c workflow.yaml"
+      # - "yomo serve -v -c workflow.yaml"
+      - "./zipper{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: true
+
+  basic-zipper-build:
+    desc: build basic zipper example
+    dir: "example/basic/zipper"
+    cmds:
+      - echo "basic zipper building..."
+      - "go build -o zipper{{exeExt}} main.go"
+      - echo "basic zipper built."
     silent: false
-
-
