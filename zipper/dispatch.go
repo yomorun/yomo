@@ -13,7 +13,7 @@ import (
 )
 
 // DispatcherWithFunc dispatches the input stream to downstreams.
-func DispatcherWithFunc(ctx context.Context, sfns []GetStreamFunc, stream quic.Stream) chan []byte {
+func DispatcherWithFunc(ctx context.Context, sfns []GetStreamFunc, stream quic.Stream) chan *frame.DataFrame {
 	next := readDataFromSource(ctx, stream)
 	for _, sfn := range sfns {
 		next = pipeStreamFn(ctx, next, sfn)
@@ -25,8 +25,8 @@ func DispatcherWithFunc(ctx context.Context, sfns []GetStreamFunc, stream quic.S
 const bufferSize int = 100
 
 // readDataFromSource reads data from source QUIC stream.
-func readDataFromSource(ctx context.Context, stream quic.Stream) chan []byte {
-	next := make(chan []byte, bufferSize)
+func readDataFromSource(ctx context.Context, stream quic.Stream) chan *frame.DataFrame {
+	next := make(chan *frame.DataFrame, bufferSize)
 
 	go func() {
 		defer close(next)
@@ -47,7 +47,7 @@ func readDataFromSource(ctx context.Context, stream quic.Stream) chan []byte {
 				case frame.TagOfDataFrame:
 					dataFrame := f.(*frame.DataFrame)
 					logger.Debug("Receive data frame from source.", "TransactionID", dataFrame.TransactionID())
-					next <- dataFrame.GetCarriage()
+					next <- dataFrame
 				default:
 					logger.Debug("Only dispatch data frame to stream functions.", "type", f.Type())
 				}
@@ -59,8 +59,8 @@ func readDataFromSource(ctx context.Context, stream quic.Stream) chan []byte {
 }
 
 // pipeStreamFn sends the raw data to `stream-fn`, receives the new raw data and send it to next `stream-fn`.
-func pipeStreamFn(ctx context.Context, upstream chan []byte, sfn GetStreamFunc) chan []byte {
-	next := make(chan []byte, bufferSize)
+func pipeStreamFn(ctx context.Context, upstream chan *frame.DataFrame, sfn GetStreamFunc) chan *frame.DataFrame {
+	next := make(chan *frame.DataFrame, bufferSize)
 
 	go func() {
 		defer close(next)
@@ -89,7 +89,7 @@ func pipeStreamFn(ctx context.Context, upstream chan []byte, sfn GetStreamFunc) 
 }
 
 // dispatchToStreamFn dispatch the data from `upstream` to next `stream-fn` by Round Robin.
-func dispatchToStreamFn(sfn GetStreamFunc, data []byte, next chan []byte) {
+func dispatchToStreamFn(sfn GetStreamFunc, data *frame.DataFrame, next chan *frame.DataFrame) {
 	var nextNum uint32
 
 	name, funcs := sfn()
@@ -115,7 +115,7 @@ func dispatchToStreamFn(sfn GetStreamFunc, data []byte, next chan []byte) {
 }
 
 // sendDataToStreamFn send the data to a specified `stream-fn` by QUIC Stream.
-func sendDataToStreamFn(name string, session quic.Session, cancel CancelFunc, data []byte, next chan []byte) {
+func sendDataToStreamFn(name string, session quic.Session, cancel CancelFunc, data *frame.DataFrame, next chan *frame.DataFrame) {
 	if session == nil {
 		logger.Error("[MergeStreamFunc] the session of the stream-function is nil", "stream-fn", name)
 		// pass the data to next stream function if the current stream function is nil
@@ -126,7 +126,7 @@ func sendDataToStreamFn(name string, session quic.Session, cancel CancelFunc, da
 	}
 
 	// tracing
-	span := tracing.NewSpanFromData(string(data), name, "zipper-send-to-"+name)
+	span := tracing.NewSpanFromData(string(data.GetCarriage()), name, "zipper-send-to-"+name)
 	if span != nil {
 		defer span.End()
 	}
@@ -142,7 +142,7 @@ func sendDataToStreamFn(name string, session quic.Session, cancel CancelFunc, da
 		return
 	}
 
-	_, err = stream.Write(data)
+	_, err = stream.Write(data.Encode())
 	stream.Close()
 	if err != nil {
 		logger.Error("[MergeStreamFunc] YoMo-Zipper sent data to `stream-fn` failed.", "stream-fn", name, "err", err)
@@ -155,7 +155,7 @@ func sendDataToStreamFn(name string, session quic.Session, cancel CancelFunc, da
 }
 
 // receiveResponseFromStreamFn receives the response from `stream-fn`.
-func receiveResponseFromStreamFn(ctx context.Context, sfn GetStreamFunc, next chan []byte) {
+func receiveResponseFromStreamFn(ctx context.Context, sfn GetStreamFunc, next chan *frame.DataFrame) {
 	name, _ := sfn()
 	ch, _ := newStreamFuncSessionCache.LoadOrStore(name, make(chan quic.Session, 5))
 
@@ -191,7 +191,7 @@ func receiveResponseFromStreamFn(ctx context.Context, sfn GetStreamFunc, next ch
 }
 
 // readDataFromStreamFn reads the data from `stream-fn`.
-func readDataFromStreamFn(ctx context.Context, name string, stream quic.ReceiveStream, next chan []byte) {
+func readDataFromStreamFn(ctx context.Context, name string, stream quic.ReceiveStream, next chan *frame.DataFrame) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -202,7 +202,7 @@ func readDataFromStreamFn(ctx context.Context, name string, stream quic.ReceiveS
 			logger.Printf("💚 waiting read next..")
 
 			// 开始接收数据
-			data, err := quic.ReadStream(stream)
+			f, err := core.ParseFrame(stream)
 			if err != nil {
 				logger.Debug("[MergeStreamFunc] YoMo-Zipper received data from `stream-fn` failed.", "stream-fn", name, "err", err)
 				return
@@ -211,7 +211,14 @@ func readDataFromStreamFn(ctx context.Context, name string, stream quic.ReceiveS
 			logger.Debug("[MergeStreamFunc] YoMo-Zipper received data from `stream-fn`.", "stream-fn", name)
 
 			// 完成接收
-			logger.Printf("💚 receive complete data(%d), duration=%d", len(data), time.Since(t1).Milliseconds())
+			if f.Type() != frame.TagOfDataFrame {
+				logger.Debug("[MergeStreamFunc] YoMo-Zipper received frame from `stream-fn`, but the frame type is not a DataFrame.", "stream-fn", name, "type", f.Type().String())
+				continue
+			}
+
+			data := f.(*frame.DataFrame)
+
+			logger.Printf("💚 receive complete data(%d), duration=%d", len(data.GetCarriage()), time.Since(t1).Milliseconds())
 
 			// if len(data) > 512 {
 			// 	log.Printf("🔗 parsed out total %d bytes: \n\thead 64 bytes are: [%# x], \n\ttail 64 bytes are: [%# x]\n", len(data), data[0:64], data[len(data)-64:])
@@ -220,7 +227,7 @@ func readDataFromStreamFn(ctx context.Context, name string, stream quic.ReceiveS
 			// }
 
 			// tracing
-			span := tracing.NewSpanFromData(string(data), name, "zipper-receive-from-"+name)
+			span := tracing.NewSpanFromData(string(data.GetCarriage()), name, "zipper-receive-from-"+name)
 			if span != nil {
 				defer span.End()
 			}

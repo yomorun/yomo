@@ -5,9 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"strconv"
 	"sync"
-	"time"
 
 	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/internal/core"
@@ -120,10 +118,10 @@ func (s *quicHandler) receiveDataFromSources() {
 				defer cancel()
 
 				for data := range dataCh {
-					logger.Debug("[zipper] receive data after running all Stream Functions, will drop it.", "data", logger.BytesString(data))
+					logger.Debug("[zipper] receive data after running all Stream Functions, will drop it.", "data", logger.BytesString(data.GetCarriage()))
 					// call the `onReceivedData` callback function.
 					if s.onReceivedData != nil {
-						s.onReceivedData(data)
+						s.onReceivedData(data.GetCarriage())
 					}
 
 					// Upstream YoMo-Zippers
@@ -132,12 +130,7 @@ func (s *quicHandler) receiveDataFromSources() {
 							continue
 						}
 
-						txid := strconv.FormatInt(time.Now().UnixNano(), 10)
-						frame := frame.NewDataFrame(txid)
-						// playload frame
-						// TODO: tag id
-						frame.SetCarriage(0x12, data)
-						go sendDataToDownstream(sender, frame, "[Upstream YoMo-Zipper] sent frame to downstream YoMo-Zipper Receiver.", "❌ [Upstream YoMo-Zipper] sent frame to downstream YoMo-Zipper Receiver failed.")
+						go sendDataToDownstream(sender, data, "[Upstream YoMo-Zipper] sent frame to downstream YoMo-Zipper Receiver.", "❌ [Upstream YoMo-Zipper] sent frame to downstream YoMo-Zipper Receiver failed.")
 					}
 				}
 			}()
@@ -162,7 +155,7 @@ func (s *quicHandler) receiveDataFromZipperSenders() {
 				defer cancel()
 
 				for data := range dataCh {
-					logger.Debug("[YoMo-Zipper Receiver] receive data after running all Stream Functions, will drop it.", "data", logger.BytesString(data))
+					logger.Debug("[YoMo-Zipper Receiver] receive data after running all Stream Functions, will drop it.", "data", logger.BytesString(data.GetCarriage()))
 				}
 			}()
 		}
