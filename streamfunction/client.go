@@ -79,6 +79,7 @@ func (c *clientImpl) Pipe(handler func(rxstream rx.Stream) rx.Stream) {
 	fac := rx.NewFactory()
 
 	for {
+		// TODO: escape out of here, cause will enter endless loop if c.Session has been destroyed
 		if c.Session == nil {
 			time.Sleep(100 * time.Millisecond)
 			continue
@@ -100,7 +101,6 @@ func (c *clientImpl) Pipe(handler func(rxstream rx.Stream) rx.Stream) {
 // readStreamAndRunHandler reads the QUIC stream from zipper and run `Handler`.
 func (c *clientImpl) readStreamAndRunHandler(stream quic.ReceiveStream, handler func(rxstream rx.Stream) rx.Stream, fac rx.Factory) {
 	f, err := core.ParseFrame(stream)
-	// TODO: Y3 should handle "EOF".
 	if err != nil {
 		logger.Error("[Stream Function Client] receive data from zipper failed.", "err", err)
 		return
@@ -166,7 +166,6 @@ func (c *clientImpl) runHandler(ctx context.Context, data interface{}, dataFrame
 		// TODO: tag id should be set by user.
 		dataFrame.SetCarriage(0x13, buf)
 		_, err := c.Write(dataFrame)
-		// logger.Printf("<<<<<<< goroutine %d", runtime.NumGoroutine())
 		if err != nil {
 			logger.Error("[Stream Function Client] ❌ Send data to YoMo-Zipper failed.", "err", err)
 		} else {
