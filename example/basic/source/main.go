@@ -18,16 +18,17 @@ type noiseData struct {
 
 func main() {
 	// connect to YoMo-Zipper.
-	cli, err := yomo.NewSource(yomo.WithName("yomo-source")).Connect("localhost", 9000)
+	source := yomo.NewSource(yomo.WithName("yomo-source"), yomo.WithZipperEndpoint("localhost:9000"))
+	err := source.Connect()
 	if err != nil {
 		log.Printf("❌ Emit the data to YoMo-Zipper failure with err: %v", err)
 		return
 	}
 
-	defer cli.Close()
+	defer source.Close()
 
 	// generate mock data and send it to YoMo-Zipper in every 100 ms.
-	generateAndSendData(cli)
+	generateAndSendData(source)
 }
 
 var codec = y3.NewCodec(0x10)

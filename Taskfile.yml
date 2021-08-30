@@ -1,0 +1,14 @@
+# https://taskfile.dev
+
+version: '3'
+
+includes:
+  example: ./example.yml
+
+tasks:
+  default:
+    cmds:
+      - task -l 
+    silent: true
+
+

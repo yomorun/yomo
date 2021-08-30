@@ -1,0 +1,36 @@
+# https://taskfile.dev
+
+version: '3'
+
+tasks:
+  basic:
+    desc: run basic example
+    deps: [basic-zipper,basic-source]
+    cmds:
+      - echo 'basic example'
+
+  basic-source:
+    desc: run basic source example
+    deps: [basic-source-build]
+    dir: "example/basic/source"
+    cmds:
+      - "./source{{exeExt}}"
+    silent: false
+
+  basic-source-build:
+    desc: build basic source example
+    dir: "example/basic/source"
+    cmds:
+      - echo "basic source building..."
+      - "go build -o source{{exeExt}} main.go"
+      - echo "basic source built."
+    silent: false
+
+  basic-zipper:
+    desc: run basic zipper service
+    dir: "example/basic/zipper"
+    cmds:
+      - "yomo serve -v -c workflow.yaml"
+    silent: false
+
+

@@ -13,13 +13,13 @@ import (
 func ParseFrame(stream io.Reader) (frame.Frame, error) {
 	buf, err := y3.ReadPacket(stream)
 	if err != nil {
-		logger.Error("\t\t ||||read first byte||||", "err", err)
+		logger.Errorf("\t\t ||||read first byte||||", "err", err)
 		return nil, err
 	}
 	if len(buf) > 512 {
-		logger.Debug(fmt.Sprintf("🔗 parsed out total %d bytes: \n\thead 64 bytes are: [%# x], \n\ttail 64 bytes are: [%# x]", len(buf), buf[0:64], buf[len(buf)-64:]))
+		logger.Debugf("🔗 parsed out total %d bytes: \n\thead 64 bytes are: [%# x], \n\ttail 64 bytes are: [%# x]", len(buf), buf[0:64], buf[len(buf)-64:])
 	} else {
-		logger.Debug(fmt.Sprintf("🔗 parsed out: [%# x]", buf))
+		logger.Debugf("🔗 parsed out: [%# x]", buf)
 	}
 
 	frameType := buf[0]
@@ -27,11 +27,11 @@ func ParseFrame(stream io.Reader) (frame.Frame, error) {
 	switch frameType {
 	case 0x80 | byte(frame.TagOfHandshakeFrame):
 		handshakeFrame := readHandshakeFrame(buf)
-		logger.Debug(fmt.Sprintf("[HandshakeFrame] name=%s, type=%s", handshakeFrame.Name, handshakeFrame.Type()))
+		logger.Debugf("[HandshakeFrame] name=%s, type=%s", handshakeFrame.Name, handshakeFrame.Type())
 		return handshakeFrame, nil
 	case 0x80 | byte(frame.TagOfDataFrame):
 		data := readDataFrame(buf)
-		logger.Debug(fmt.Sprintf("[DataFrame] tid=%s, data-tag=%v, len(carriage)=%d", data.TransactionID(), data.GetDataTagID(), len(data.GetCarriage())))
+		logger.Debugf("[DataFrame] tid=%s, data-tag=%v, len(carriage)=%d", data.TransactionID(), data.GetDataTagID(), len(data.GetCarriage()))
 		return data, nil
 	case 0x80 | byte(frame.TagOfPingFrame):
 		return frame.DecodeToPingFrame(buf)
