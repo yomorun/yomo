@@ -125,6 +125,7 @@ func (c *Impl) BaseConnect(ip string, port int) (*Impl, error) {
 // handleSignal handles the logic when receiving signal from server.
 func (c *Impl) handleSignal(accepted chan bool) {
 	go func() {
+	LOOP:
 		for {
 			f, err := c.conn.Signal.ReadFrame()
 			if err != nil {
@@ -133,14 +134,14 @@ func (c *Impl) handleSignal(accepted chan bool) {
 					// if client close the connection, net.ErrClosed will be raise
 					// by quic-go IdleTimeoutError after connection's KeepAlive config.
 					logger.Error("[ERR] on [ParseFrame]", "err", net.ErrClosed)
-					break
+					break LOOP
 				}
 				// any error occurred, we should close the session
 				// after this, session.AcceptStream() will raise the error
 				// which specific in session.CloseWithError()
 				c.conn.Close()
 				// c.Session.Close()
-				break
+				break LOOP
 			}
 			// frame type
 			frameType := f.Type()
@@ -155,7 +156,7 @@ func (c *Impl) handleSignal(accepted chan bool) {
 					stream, err := c.Session.CreateStream(context.Background())
 					if err != nil {
 						logger.Error("[client] session.CreateStream Error:", "err", err)
-						break
+						break LOOP
 					}
 
 					c.Stream = core.NewFrameStream(stream)
@@ -164,13 +165,13 @@ func (c *Impl) handleSignal(accepted chan bool) {
 
 			case frame.TagOfRejectedFrame:
 				if c.conn.Type == core.ConnTypeStreamFunction {
-					logger.Warn("[client] the connection was rejected by zipper, please check if the function name matches the one in zipper config.")
+					logger.Error("[client] ❌ the connection was rejected by zipper, please check if the function name matches the one in zipper config.")
 				} else {
-					logger.Warn("[client] the connection was rejected by zipper.")
+					logger.Error("[client] ❌ the connection was rejected by zipper.")
 				}
 				c.Close()
 				c.isRejected = true
-				break
+				break LOOP
 
 			default:
 				logger.Debug("[client] unknown signal.", "frame", logger.BytesString(f.Encode()))
