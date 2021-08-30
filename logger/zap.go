@@ -56,22 +56,46 @@ func (z zapLogger) Debug(msg string, fields ...interface{}) {
 	z.logger.Debugw(msg, fields...)
 }
 
+func (z zapLogger) Debugf(template string, args ...interface{}) {
+	z.logger.Debugf(template, args...)
+}
+
 func (z zapLogger) Info(msg string, fields ...interface{}) {
 	z.logger.Infow(msg, fields...)
+}
+
+func (z zapLogger) Infof(template string, args ...interface{}) {
+	z.logger.Infof(template, args...)
 }
 
 func (z zapLogger) Warn(msg string, fields ...interface{}) {
 	z.logger.Warnw(msg, fields...)
 }
 
+func (z zapLogger) Warnf(template string, args ...interface{}) {
+	z.logger.Warnf(template, args...)
+}
+
 func (z zapLogger) Error(msg string, fields ...interface{}) {
 	z.logger.Errorw(msg, fields...)
+}
+
+func (z zapLogger) Errorf(template string, args ...interface{}) {
+	z.logger.Errorf(template, args...)
 }
 
 func (z zapLogger) Panic(msg string, fields ...interface{}) {
 	z.logger.Panicw(msg, fields...)
 }
 
+func (z zapLogger) Panicf(template string, args ...interface{}) {
+	z.logger.Panicf(template, args...)
+}
+
 func (z zapLogger) Fatal(msg string, fields ...interface{}) {
 	z.logger.Fatalw(msg, fields...)
+}
+
+func (z zapLogger) Fatalf(template string, args ...interface{}) {
+	z.logger.Fatalf(template, args...)
 }
