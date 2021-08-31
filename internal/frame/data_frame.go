@@ -11,9 +11,9 @@ type DataFrame struct {
 
 // NewDataFrame create `DataFrame` with a transactionID string,
 // consider change transactionID to UUID type later
-func NewDataFrame(transactionID string) *DataFrame {
+func NewDataFrame(transactionID string, issuer string) *DataFrame {
 	data := &DataFrame{
-		metaFrame: NewMetaFrame(transactionID),
+		metaFrame: NewMetaFrame(transactionID, issuer),
 	}
 	return data
 }
@@ -36,6 +36,11 @@ func (d *DataFrame) GetCarriage() []byte {
 // TransactionID return transactionID string
 func (d *DataFrame) TransactionID() string {
 	return d.metaFrame.TransactionID()
+}
+
+// Issuer return issuer
+func (d *DataFrame) Issuer() string {
+	return d.metaFrame.Issuer()
 }
 
 // GetDataTagID return the Tag of user's data

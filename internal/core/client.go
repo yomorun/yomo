@@ -16,16 +16,6 @@ import (
 type ConnState = string
 
 const (
-	ConnStateDisconnected   ConnState = "Disconnected"
-	ConnStateConnecting     ConnState = "Connecting"
-	ConnStateConnected      ConnState = "Connected"
-	ConnStateAuthenticating ConnState = "Authenticating"
-	ConnStateAccepted       ConnState = "Accepted"
-	ConnStateRejected       ConnState = "Rejected"
-	ConnStatePing           ConnState = "Ping"
-	ConnStatePong           ConnState = "Pong"
-	ConnStateTransportData  ConnState = "TransportData"
-
 	ClientLogPrefix = "\033[36m[core:client]\033[0m "
 )
 
@@ -37,7 +27,7 @@ type Client struct {
 	stream            quic.Stream
 	state             string
 	lastFrameSentTick time.Time
-	processor         func([]byte)
+	processor         func(byte, []byte)
 	mu                sync.Mutex
 }
 
@@ -161,18 +151,17 @@ func (c *Client) handleFrame() {
 				c.Close()
 				break
 			case frame.TagOfDataFrame:
-				// TODO: data frame
-				// if c.conn.Type == core.ConnTypeStreamFunction {
-				// 	logger.Warn("[client] the connection was rejected by zipper, please check if the function name matches the one in zipper config.")
-				// } else {
-				// 	logger.Warn("[client] the connection was rejected by zipper.")
-				// }
 				if v, ok := f.(*frame.DataFrame); ok {
 					c.setState(ConnStateTransportData)
 					logger.Debug(ClientLogPrefix+"receive DataFrame", "tag", v.GetDataTagID(), "tid", v.TransactionID(), "carry", v.GetCarriage())
+					if c.processor == nil {
+						logger.Warnf("%sprocessor is nil", ClientLogPrefix)
+					} else {
+						c.processor(v.GetDataTagID(), v.GetCarriage())
+					}
 				}
 			default:
-				logger.Errorf(ClientLogPrefix+" unknown signal.", "frame", logger.BytesString(f.Encode()))
+				logger.Errorf(ClientLogPrefix+"unknown signal.", "frame", logger.BytesString(f.Encode()))
 			}
 		}
 	}()
@@ -246,6 +235,6 @@ func (c *Client) OnAccepted(hdl func() error) error {
 	return nil
 }
 
-func (c *Client) SetDataFrameObserver(fn func([]byte)) {
+func (c *Client) SetDataFrameObserver(fn func(byte, []byte)) {
 	c.processor = fn
 }

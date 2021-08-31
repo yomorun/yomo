@@ -21,16 +21,18 @@ func main() {
 	source := yomo.NewSource(yomo.WithName("yomo-source"), yomo.WithZipperEndpoint("localhost:9000"))
 	err := source.Connect()
 	if err != nil {
-		logger.Printf("❌ Emit the data to YoMo-Zipper failure with err: %v", err)
+		logger.Printf("[source] ❌ Emit the data to YoMo-Zipper failure with err: %v", err)
 		return
 	}
 
 	defer source.Close()
 
+	source.SetDataTag(0x33)
+
 	// generate mock data and send it to YoMo-Zipper in every 100 ms.
 	err = generateAndSendData(source)
 	if err != nil {
-		logger.Printf(">>>> ERR >>>> %v", err)
+		logger.Printf("[source] >>>> ERR >>>> %v", err)
 		os.Exit(1)
 	}
 }
@@ -52,13 +54,13 @@ func generateAndSendData(stream yomo.Source) error {
 		// send data via QUIC stream.
 		_, err := stream.Write(sendingBuf)
 		if err != nil {
-			logger.Printf("❌ Emit %v to YoMo-Zipper failure with err: %v", data, err)
+			logger.Printf("[source] ❌ Emit %v to YoMo-Zipper failure with err: %v", data, err)
 			return err
 
 		} else {
-			logger.Printf("✅ Emit %v to YoMo-Zipper", data)
+			logger.Printf("[source] ✅ Emit %v to YoMo-Zipper", data)
 		}
 
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(300 * time.Millisecond)
 	}
 }

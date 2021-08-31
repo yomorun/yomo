@@ -6,19 +6,28 @@ import (
 
 // MetaFrame defines the data structure of meta data in a `DataFrame`
 type MetaFrame struct {
+	// transactionID is the unique identifier of the transaction
 	transactionID string
+	// issuer issue this transaction
+	issuer string
 }
 
 // NewMetaFrame creates a new MetaFrame with a given transactionID
-func NewMetaFrame(tid string) *MetaFrame {
+func NewMetaFrame(tid string, issuer string) *MetaFrame {
 	return &MetaFrame{
 		transactionID: tid,
+		issuer:        issuer,
 	}
 }
 
 // TransactionID returns the transactionID of the MetaFrame
 func (m *MetaFrame) TransactionID() string {
 	return m.transactionID
+}
+
+// Issuer returns the issuer of the MetaFrame
+func (m *MetaFrame) Issuer() string {
+	return m.issuer
 }
 
 // Encode returns Y3 encoded bytes of the MetaFrame
@@ -43,15 +52,23 @@ func DecodeToMetaFrame(buf []byte) (*MetaFrame, error) {
 	}
 
 	var tid string
-	if s, ok := packet.PrimitivePackets[0x01]; ok {
+	if s, ok := packet.PrimitivePackets[byte(TagOfTransactionID)]; ok {
 		tid, err = s.ToUTF8String()
 		if err != nil {
 			return nil, err
 		}
 	}
 
+	var issuer string
+	if s, ok := packet.PrimitivePackets[byte(TagOfIssuer)]; ok {
+		issuer, err = s.ToUTF8String()
+		if err != nil {
+			return nil, err
+		}
+	}
 	meta := &MetaFrame{
 		transactionID: tid,
+		issuer:        issuer,
 	}
 	return meta, nil
 }

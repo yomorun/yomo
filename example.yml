@@ -5,7 +5,7 @@ version: '3'
 tasks:
   basic:
     desc: run basic example
-    deps: [basic-zipper,basic-source]
+    deps: [basic-zipper,basic-source,basic-flow]
     cmds:
       - echo 'basic example'
 
@@ -44,4 +44,22 @@ tasks:
       - echo "basic zipper building..."
       - "go build -o zipper{{exeExt}} main.go"
       - echo "basic zipper built."
+    silent: false
+
+  basic-flow:
+    desc: run basic flow stream function
+    deps: [basic-flow-build]
+    dir: "example/basic/flow"
+    cmds:
+      - "./flow{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: true
+
+  basic-flow-build:
+    desc: build basic flow stream function
+    dir: "example/basic/flow"
+    cmds:
+      - echo "basic flow building..."
+      - "go build -o flow{{exeExt}} main.go"
+      - echo "basic flow built."
     silent: false

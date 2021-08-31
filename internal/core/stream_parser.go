@@ -24,7 +24,7 @@ func ParseFrame(stream io.Reader) (frame.Frame, error) {
 
 	frameType := buf[0]
 	// determine the frame type
-	logger.Debugf("[ParseFrame] type=%s", frameType)
+	logger.Debugf("[ParseFrame] type=%v", frameType)
 	switch frameType {
 	case 0x80 | byte(frame.TagOfHandshakeFrame):
 		handshakeFrame := readHandshakeFrame(buf)
