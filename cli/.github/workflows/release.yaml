@@ -1,0 +1,69 @@
+name: release
+
+on:
+  push:
+    tags:
+      - v*
+jobs:
+  build:
+    name: Build Linux binaries
+    runs-on: ubuntu-latest
+    env:
+      GOVER: 1.16
+    steps:
+      - name: Set up Go ${{ env.GOVER }}
+        uses: actions/setup-go@v2
+        with:
+          go-version: ${{ env.GOVER }}
+      - name: Check out code
+        uses: actions/checkout@v2
+      - name: Run go mod tidy
+        run: go mod tidy
+      - name: build binaries
+        run: make build-arm build-linux
+      - name: archive binaries
+        run: make archive-bin-arm archive-bin-linux
+      - name: upload artifacts
+        uses: actions/upload-artifact@master
+        with:
+          name: yomo-artifact
+          path: ./bin/*.tar.gz
+  publish:
+    name: Publish binaries
+    needs: build
+    env:
+      ARTIFACT_DIR: ./release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v2
+      - name: download artifacts
+        uses: actions/download-artifact@master
+        with:
+          name: yomo-artifact
+          path: ${{ env.ARTIFACT_DIR }}
+      - name: lists artifacts
+        run: ls -l ${{ env.ARTIFACT_DIR }}
+      - name: Get version
+        id: vars
+        run: echo ::set-output name=version::$(cat ./VERSION)
+      - name: publish binaries to github
+        run: |
+          echo "installing github-release-cli..."
+          sudo npm install --silent --no-progress -g github-release-cli@1.3.1
+
+          # Get the list of files
+          RELEASE_ARTIFACT=(${ARTIFACT_DIR}/*)
+
+          # Parse repository to get owner and repo names
+          OWNER_NAME="${GITHUB_REPOSITORY%%/*}"
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+
+          export GITHUB_TOKEN=${{ secrets.YOMO_BOT_TOKEN }}
+          echo "Uploading YoMo Binaries to GitHub Release"
+          github-release upload \
+            --owner $OWNER_NAME --repo $REPO_NAME \
+            --tag "${{ steps.vars.outputs.version }}" \
+            --name "${{ steps.vars.outputs.version }}" \
+            --prerelease true \
+            ${RELEASE_ARTIFACT[*]}

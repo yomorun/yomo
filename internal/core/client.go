@@ -97,7 +97,6 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 func (c *Client) handleFrame() {
 	go func() {
 		for {
-			logger.Errorf("%shandleFrame.for %v", ClientLogPrefix, time.Now().UnixNano())
 			fs := NewFrameStream(c.stream)
 			f, err := fs.ReadFrame()
 			if err != nil {

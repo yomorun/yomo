@@ -4,6 +4,7 @@ version: '3'
 
 includes:
   example: ./example.yml
+  cli: ./cli/cli.yml
 
 tasks:
   default:
