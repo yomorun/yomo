@@ -16,3 +16,6 @@
 vendor/
 /bin/yomo
 main
+example/basic/flow/flow
+example/basic/source/source
+example/basic/zipper/zipper
