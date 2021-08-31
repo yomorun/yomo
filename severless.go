@@ -2,6 +2,7 @@ package yomo
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/yomorun/yomo/internal/core"
 	"github.com/yomorun/yomo/internal/frame"
@@ -57,11 +58,13 @@ func (s *streamFunction) SetObserveDataID(id ...uint8) {
 // 注入 Handler() 回调
 func (s *streamFunction) SetHandler(fn func([]byte) (byte, []byte)) error {
 	s.fn = fn
+	logger.Debugf("%sSetHandler(%v)", StreamFunctionLogPrefix, s.fn)
 	return nil
 }
 
 // 开始连接到 Zipper，接收到的数据将被 SetHandler() 方法注入的 func_ 处理
 func (s *streamFunction) Connect() error {
+	logger.Debugf("%s Connect()", StreamFunctionLogPrefix)
 	// 注册给底层的 quic-client，当收到 DataFrame 时，转发过来
 	s.client.SetDataFrameObserver(func(tag byte, carraige []byte) {
 		for _, t := range s.observed {
@@ -98,13 +101,13 @@ func (s *streamFunction) onDataFrame(data []byte) {
 		logger.Warnf("%sStreamFunction is nil", StreamFunctionLogPrefix)
 		return
 	}
-	logger.Debugf("%sexecute-start fn: data=%# x", StreamFunctionLogPrefix, data)
+	logger.Debugf("%sexecute-start fn: data=%#x", StreamFunctionLogPrefix, data)
 	tag, resp := s.fn(data)
-	logger.Debugf("%sexecute-done fn: tag=%# x, resp=%# x", StreamFunctionLogPrefix, tag, resp)
+	logger.Debugf("%sexecute-done fn: tag=%#x, resp=%#x", StreamFunctionLogPrefix, tag, resp)
 	// resp 是用户返回的数据，如果不为空，要发送回给 zipper
 	if len(resp) != 0 {
-		logger.Debugf("%s\tstart WriteFrame(): tag=%# x, data=%v", StreamFunctionLogPrefix, tag, resp)
-		transactionID := "tid-sfn-"
+		logger.Debugf("%sstart WriteFrame(): tag=%#x, data=%v", StreamFunctionLogPrefix, tag, resp)
+		transactionID := fmt.Sprintf("tid-sfn-%s", s.name)
 		frame := frame.NewDataFrame(transactionID, s.name)
 		frame.SetCarriage(tag, resp)
 		s.client.WriteFrame(frame)

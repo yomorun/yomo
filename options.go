@@ -9,8 +9,9 @@ type Option func(o *options)
 
 // options are the options for YoMo-Client.
 type options struct {
-	AppName        string // AppName is the name of client.
-	ZipperEndpoint string // Zipper endpoint address
+	AppName              string // AppName is the name of client.
+	ZipperEndpoint       string // Zipper endpoint address
+	ZipperWorkflowConfig string // Zipper workflow file
 }
 
 // WithName sets the initial name for the YoMo-Client.

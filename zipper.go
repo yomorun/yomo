@@ -12,7 +12,8 @@ const (
 )
 
 type Zipper interface {
-	ConfigWorkflow(opts ...interface{}) error
+	ConfigWorkflow(conf string) error
+	AddWorkflow(wf ...core.Workflow) error
 	ConfigDownstream(opts ...interface{}) error
 	ListenAndServe() error
 	Connect() error
@@ -69,8 +70,21 @@ func NewZipperServer(opts ...Option) Zipper {
 // 读取 workflow.yaml 配置文件，
 // CLI： 读取 workflow.yaml，
 // Cloud：从 Database 或 API 读取
-func (s *zipper) ConfigWorkflow(opts ...interface{}) error {
+func (s *zipper) ConfigWorkflow(conf string) error {
+	config, err := ParseConfig(conf)
+	if err != nil {
+		return err
+	}
+	for i, app := range config.Functions {
+		if err := s.server.AddWorkflow(core.Workflow{Seq: i, Token: app.Name}); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+func (s *zipper) AddWorkflow(wfs ...core.Workflow) error {
+	return s.server.AddWorkflow(wfs...)
 }
 
 // 读取下游downstream的配置

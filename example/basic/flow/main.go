@@ -4,12 +4,20 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/logger"
 )
 
+// NoiseData represents the structure of data
+type NoiseData struct {
+	Noise float32 `y3:"0x11"`
+	Time  int64   `y3:"0x12"`
+	From  string  `y3:"0x13"`
+}
+
 func main() {
-	sfn := yomo.NewStreamFunction(yomo.WithName("yomo-sfn"), yomo.WithZipperEndpoint("localhost:9000"))
+	sfn := yomo.NewStreamFunction(yomo.WithName("Noise"), yomo.WithZipperEndpoint("localhost:9000"))
 	defer sfn.Close()
 
 	// 开始监听 dataID 为 0x30~0x33 的数据
@@ -30,7 +38,13 @@ func main() {
 }
 
 func handler(data []byte) (byte, []byte) {
-	logger.Debugf("[flow] => go [tag=0x33] data=%# x, str: %s", data, data)
-	return 0x34, []byte{byte(len(data))}
+	var model NoiseData
+	err := y3.ToObject(data, &model)
+	if err != nil {
+		logger.Errorf("[flow] y3.ToObject err=%v", err)
+		return 0x34, []byte{8}
+	}
+	logger.Debugf("[flow] => go [tag=0x33] data=%# x, model: %#v", data, model)
+	return 0x34, data
 	// return 0x34, []byte{8}
 }

@@ -97,13 +97,15 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 func (c *Client) handleFrame() {
 	go func() {
 		for {
+			logger.Errorf("%shandleFrame.for %v", ClientLogPrefix, time.Now().UnixNano())
 			fs := NewFrameStream(c.stream)
 			f, err := fs.ReadFrame()
 			if err != nil {
-				logger.Error(ClientLogPrefix, "method", "handleFrame.ReadFrame", "err", err)
+				logger.Errorf("%shandleFrame.ReadFrame(): %v", ClientLogPrefix, err)
 				if errors.Is(err, net.ErrClosed) {
 					// if client close the connection, net.ErrClosed will be raise
 					// by quic-go IdleTimeoutError after connection's KeepAlive config.
+					// logger.Errorf("%s handleFrame.ReadFrame(): %v", ClientLogPrefix, err)
 					break
 				}
 				// any error occurred, we should close the session
@@ -115,7 +117,7 @@ func (c *Client) handleFrame() {
 			}
 			// frame type
 			frameType := f.Type()
-			logger.Debug(ClientLogPrefix, "type", frameType.String(), "frame", logger.BytesString(f.Encode()))
+			logger.Debugf("%stype=%s, frame=%# x", ClientLogPrefix, frameType, logger.BytesString(f.Encode()))
 			switch frameType {
 			case frame.TagOfPongFrame:
 				// TODO: pong frame
@@ -124,36 +126,16 @@ func (c *Client) handleFrame() {
 
 			case frame.TagOfAcceptedFrame:
 				// TODO: accepted
-				// create stream
-				// if c.conn.Type == core.ConnTypeSource || c.conn.Type == core.ConnTypeUpstreamZipper {
-				// 	stream, err := c.Session.CreateStream(context.Background())
-				// 	if err != nil {
-				// 		logger.Error("[client] session.CreateStream Error:", "err", err)
-				// 		break
-				// 	}
-
-				// 	c.Stream = core.NewFrameStream(stream)
-				// }
-				// accepted <- true
 				c.setState(ConnStateAccepted)
-				// if err := c.OnAccepted(); err != nil {
-				// 	c.Close()
-				// 	break
-				// }
 			case frame.TagOfRejectedFrame:
 				// TODO: rejected frame
-				// if c.conn.Type == core.ConnTypeStreamFunction {
-				// 	logger.Warn("[client] the connection was rejected by zipper, please check if the function name matches the one in zipper config.")
-				// } else {
-				// 	logger.Warn("[client] the connection was rejected by zipper.")
-				// }
 				c.setState(ConnStateRejected)
 				c.Close()
 				break
 			case frame.TagOfDataFrame:
 				if v, ok := f.(*frame.DataFrame); ok {
 					c.setState(ConnStateTransportData)
-					logger.Debug(ClientLogPrefix+"receive DataFrame", "tag", v.GetDataTagID(), "tid", v.TransactionID(), "carry", v.GetCarriage())
+					logger.Debugf("%sreceive DataFrame, tag=%#x, tid=%s, carry=%s", ClientLogPrefix, v.GetDataTagID(), v.TransactionID(), v.GetCarriage())
 					if c.processor == nil {
 						logger.Warnf("%sprocessor is nil", ClientLogPrefix)
 					} else {
@@ -161,7 +143,7 @@ func (c *Client) handleFrame() {
 					}
 				}
 			default:
-				logger.Errorf(ClientLogPrefix+"unknown signal.", "frame", logger.BytesString(f.Encode()))
+				logger.Errorf("%sunknown signal", ClientLogPrefix)
 			}
 		}
 	}()
@@ -237,4 +219,6 @@ func (c *Client) OnAccepted(hdl func() error) error {
 
 func (c *Client) SetDataFrameObserver(fn func(byte, []byte)) {
 	c.processor = fn
+	logger.Debugf("%sSetDataFrameObserver(%v)", ClientLogPrefix, c.processor)
+
 }

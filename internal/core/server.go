@@ -31,15 +31,17 @@ type Server struct {
 	// logger             utils.Logger
 	funcs              *ConcurrentMap
 	counterOfDataFrame int64
+	funcBuckets        map[int]string
 }
 
 func NewServer() *Server {
-	return &Server{}
+	return &Server{
+		funcs:       NewConcurrentMap(),
+		funcBuckets: make(map[int]string, 0),
+	}
 }
 
 func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
-	s.funcs = NewConcurrentMap()
-
 	qconf := &quic.Config{
 		Versions:                       []quic.VersionNumber{quic.Version1},
 		MaxIdleTimeout:                 time.Second * 30,
@@ -78,22 +80,21 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 		session, err := listener.Accept(sctx)
 		if err != nil {
 			logger.Errorf("%screate session error: %v", ServerLogPrefix, err)
-			// sctx.Done()
-			cancel()
+			sctx.Done()
 			finalErr = err
 			break
 		}
 		logger.Infof("%s❤️1/ new connection: %s", ServerLogPrefix, session.RemoteAddr())
 
-		go func(sess quic.Session, cancel context.CancelFunc) {
-			defer cancel()
+		go func(sess quic.Session) {
 			for {
 				logger.Infof("%s❤️2/ waiting for new stream", ServerLogPrefix)
 				stream, err := sess.AcceptStream(sctx)
 				if err != nil {
 					// if client close the connection, then we should close the session
 					logger.Errorf("%s❤️3/ [ERR] on [stream] %v, deleting from s.funcs if this stream is [sfn]", ServerLogPrefix, err)
-					s.funcs.Remove(sess.RemoteAddr().String())
+					// TODO: 要删除已注册的 sfn
+					// s.funcs.Remove(f.Name)
 					break
 				}
 				defer stream.Close()
@@ -103,7 +104,7 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 				s.handleSession(stream, session)
 				logger.Infof("%s❤️5/ [stream:%d] handleSession DONE", ServerLogPrefix, stream.StreamID())
 			}
-		}(session, cancel)
+		}(session)
 	}
 
 	logger.Errorf("%sXXXXXXXXXXXXXXX - zipper - XXXXXXXXXXXXXXXX: ", ServerLogPrefix, finalErr)
@@ -143,51 +144,14 @@ func (s *Server) handleSession(stream quic.Stream, session quic.Session) {
 		}
 
 		frameType := f.Type()
-		logger.Debug(ServerLogPrefix, "type", frameType.String(), "frame", logger.BytesString(f.Encode()))
+		logger.Debugf("%stype=%s, frame=%# x", ServerLogPrefix, frameType, logger.BytesString(f.Encode()))
 		switch frameType {
-		// Step 1：handshake frame
 		case frame.TagOfHandshakeFrame:
-			v := f.(*frame.HandshakeFrame)
-			logger.Infof("%s ------> GOT ❤️ HandshakeFrame : %# x", ServerLogPrefix, v)
-			// 判断 client-type
-			if v.ClientType == byte(ConnTypeSource) {
-				// Step 1-1：如果是 `source`，则接收消息，并转发
-				logger.Infof("%sClientType=%# x, is source", ServerLogPrefix, v.ClientType)
-			} else if v.ClientType == byte(ConnTypeStreamFunction) {
-				// Step 1-2：如果是 `sfn`，则开始转发数据模式，TODO：immutable stream、流经 sfn 而不会被 handler 所 block
-				logger.Infof("%sClientType=%# x, is sfn", ServerLogPrefix, v.ClientType)
-				// 注册 sfn 给 SfnManager
-				s.funcs.Set(session.RemoteAddr().String(), &stream)
-			} else if v.ClientType == byte(ConnTypeUpstreamZipper) {
-				// Step 1-3：如果是 `upstream zipper`，则并行转发消息
-				logger.Infof("%sClientType=%# x, is upstream zipper", ServerLogPrefix, v.ClientType)
-			} else {
-				// Step 1-4: 错误，不认识该 client-type，关闭连接
-				logger.Errorf("%sClientType=%# x, ilegal!", ServerLogPrefix, v.ClientType)
-				break
-			}
-
-			// Step 2: PingFrame
+			s.handleHandShakeFrame(stream, session, f.(*frame.HandshakeFrame))
 		case frame.TagOfPingFrame:
-			if v, ok := f.(*frame.PingFrame); ok {
-				// 收到心跳
-				logger.Infof("%s------> GOT ❤️ PingFrame : %# x", ServerLogPrefix, v)
-			}
-
-			// Step 3: DataFrame
+			s.handlePingFrame(stream, session, f.(*frame.PingFrame))
 		case frame.TagOfDataFrame:
-			if v, ok := f.(*frame.DataFrame); ok {
-				// counter +1
-				s.counterOfDataFrame++
-				// 收到数据帧
-				logger.Infof("%s------> GOT ❤️ DataFrame: %# x, seqNum(%d)", ServerLogPrefix, v, s.counterOfDataFrame)
-				// 因为是Immutable Stream，按照规则发送给 sfn
-				// for k, target := range s.sfnCollection {
-				// 	s.logger.Infof("\t💚 send to sfn: %s, frame: %v", k, v)
-				// 	target.Write(v.Encode())
-				// }
-				s.funcs.WriteToAll(v.Encode())
-			}
+			s.handleDataFrame(stream, session, f.(*frame.DataFrame))
 		default:
 			logger.Errorf("%sunknown signal.", "frame", ServerLogPrefix, logger.BytesString(f.Encode()))
 		}
@@ -200,6 +164,73 @@ func (s *Server) StatsFunctions() map[string]*quic.Stream {
 
 func (s *Server) StatsCounter() int64 {
 	return s.counterOfDataFrame
+}
+
+func (s *Server) handleHandShakeFrame(stream quic.Stream, session quic.Session, f *frame.HandshakeFrame) {
+	logger.Infof("%s ------> GOT ❤️ HandshakeFrame : %# x", ServerLogPrefix, f)
+	logger.Infof("%sClientType=%# x, is %s", ServerLogPrefix, f.ClientType, ConnectionType(f.ClientType))
+	// client type
+	clientType := ConnectionType(f.ClientType)
+	switch clientType {
+	case ConnTypeSource:
+	case ConnTypeStreamFunction:
+		// 注册 sfn 给 SfnManager
+		s.funcs.Set(f.Name, &stream)
+	case ConnTypeUpstreamZipper:
+	default:
+		// Step 1-4: 错误，不认识该 client-type，关闭连接
+		logger.Errorf("%sClientType=%# x, ilegal!", ServerLogPrefix, f.ClientType)
+	}
+}
+
+func (s *Server) handlePingFrame(stream quic.Stream, session quic.Session, f *frame.PingFrame) {
+	logger.Infof("%s------> GOT ❤️ PingFrame : %# x", ServerLogPrefix, f)
+}
+
+func (s *Server) handleDataFrame(stream quic.Stream, session quic.Session, f *frame.DataFrame) {
+	// counter +1
+	s.counterOfDataFrame++
+	// 收到数据帧
+	currentSfn := f.Issuer()
+	logger.Infof("%ssfn[%s]-> GOT ❤️ DataFrame: %# x, seqNum(%d)", ServerLogPrefix, currentSfn, f, s.counterOfDataFrame)
+	// 因为是Immutable Stream，按照规则发送给 sfn
+	var j int
+	for i, k := range s.funcBuckets {
+		// 发送给 currentSfn 的下一个 sfn
+		if k == currentSfn {
+			j = i + 1
+		}
+	}
+	// 表示要执行第一个 sfn
+	if j == 0 {
+		logger.Debugf("%s1st sfn write to [(source):%s] -> [%s]:", ServerLogPrefix, currentSfn, s.funcBuckets[0])
+		targetStream := s.funcs.Get(s.funcBuckets[0])
+		if targetStream == nil {
+			logger.Debugf("%s sfn[%s] stream is nil", ServerLogPrefix, s.funcBuckets[0])
+			return
+		}
+		(*targetStream).Write(f.Encode())
+		return
+	}
+
+	if len(s.funcBuckets[j]) == 0 {
+		logger.Debugf("%sno sfn found, drop this data frame", ServerLogPrefix)
+		return
+	}
+
+	targetStream := s.funcs.Get(s.funcBuckets[j])
+	logger.Debugf("%swill write to: [%s] -> [%s], target is nil:%v", ServerLogPrefix, currentSfn, s.funcBuckets[j], targetStream == nil)
+	if targetStream != nil {
+		(*targetStream).Write(f.Encode())
+	}
+	// s.funcs.WriteToAll(f.Encode())
+}
+
+func (s *Server) AddWorkflow(wfs ...Workflow) error {
+	for _, wf := range wfs {
+		s.funcBuckets[wf.Seq] = wf.Token
+	}
+	return nil
 }
 
 // generateTLSConfig Setup a bare-bones TLS config for the server

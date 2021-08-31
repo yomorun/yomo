@@ -5,17 +5,17 @@ const (
 	// DataFrame
 	TagOfDataFrame FrameType = 0x3F
 	// MetaFrame of DataFrame
-	TagOfMetaFrame     FrameType = 0x2F // in `DataFrame`
-	TagOfTransactionID FrameType = 0x01 // in `MetaFrame`
-	TagOfIssuer        FrameType = 0x02 // in `MetaFrame`
+	TagOfMetaFrame     FrameType = 0x2F
+	TagOfTransactionID FrameType = 0x01
+	TagOfIssuer        FrameType = 0x02
 	// PayloadFrame of DataFrame
-	TagOfPayloadFrame FrameType = 0x2E // in `DataFrame`
+	TagOfPayloadFrame FrameType = 0x2E
 
 	TagOfTokenFrame FrameType = 0x3E
 	// HandshakeFrame
 	TagOfHandshakeFrame FrameType = 0x3D
-	TagOfHandshakeName  FrameType = 0x01 // in `HandshakeFrame`
-	TagOfHandshakeType  FrameType = 0x02 // in `HandshakeFrame`
+	TagOfHandshakeName  FrameType = 0x01
+	TagOfHandshakeType  FrameType = 0x02
 
 	TagOfPingFrame     FrameType = 0x3C
 	TagOfPongFrame     FrameType = 0x3B

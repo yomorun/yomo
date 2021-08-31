@@ -13,11 +13,11 @@ import (
 func ParseFrame(stream io.Reader) (frame.Frame, error) {
 	buf, err := y3.ReadPacket(stream)
 	if err != nil {
-		logger.Errorf("[ParseFrame] read first byte", "err", err)
+		logger.Error("[ParseFrame] read first byte", "err", err)
 		return nil, err
 	}
 	if len(buf) > 512 {
-		logger.Debugf("🔗 parsed out total %d bytes: \n\thead 64 bytes are: [%# x], \n\ttail 64 bytes are: [%# x]", len(buf), buf[0:64], buf[len(buf)-64:])
+		logger.Debugf("🔗 parsed out total %d bytes: \n\thead 64 bytes are: [%# x], \n\ttail 64 bytes are: [%#x]", len(buf), buf[0:64], buf[len(buf)-64:])
 	} else {
 		logger.Debugf("🔗 parsed out: [%# x]", buf)
 	}
@@ -32,7 +32,7 @@ func ParseFrame(stream io.Reader) (frame.Frame, error) {
 		return handshakeFrame, nil
 	case 0x80 | byte(frame.TagOfDataFrame):
 		data := readDataFrame(buf)
-		logger.Debugf("[ParseFrame] DataFrame tid=%s, data-tag=%v, len(carriage)=%d", data.TransactionID(), data.GetDataTagID(), len(data.GetCarriage()))
+		logger.Debugf("[ParseFrame] DataFrame tid=%s, issuer=%s, data-tag=%#x, len(carriage)=%d", data.TransactionID(), data.Issuer(), data.GetDataTagID(), len(data.GetCarriage()))
 		return data, nil
 	case 0x80 | byte(frame.TagOfPingFrame):
 		return frame.DecodeToPingFrame(buf)
@@ -43,7 +43,7 @@ func ParseFrame(stream io.Reader) (frame.Frame, error) {
 	case 0x80 | byte(frame.TagOfRejectedFrame):
 		return frame.DecodeToRejectedFrame(buf)
 	default:
-		return nil, fmt.Errorf("unknown frame type, buf[0]=%# x", buf[0])
+		return nil, fmt.Errorf("unknown frame type, buf[0]=%#x", buf[0])
 	}
 }
 

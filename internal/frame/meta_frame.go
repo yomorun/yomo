@@ -2,6 +2,7 @@ package frame
 
 import (
 	"github.com/yomorun/y3"
+	"github.com/yomorun/yomo/logger"
 )
 
 // MetaFrame defines the data structure of meta data in a `DataFrame`
@@ -62,6 +63,7 @@ func DecodeToMetaFrame(buf []byte) (*MetaFrame, error) {
 	var issuer string
 	if s, ok := packet.PrimitivePackets[byte(TagOfIssuer)]; ok {
 		issuer, err = s.ToUTF8String()
+		logger.Warnf("meta_frame.DecodeToMetaFrame: issuer=%s,err=%v", issuer, err)
 		if err != nil {
 			return nil, err
 		}
