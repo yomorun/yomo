@@ -19,3 +19,7 @@ main
 example/basic/flow/flow
 example/basic/source/source
 example/basic/zipper/zipper
+cli/example/source/source
+cli/example/stream-fn-db/stream-fn-db
+cli/example/stream-fn/stream-fn
+cmd/yomo/yomo
