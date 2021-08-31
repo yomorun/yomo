@@ -40,7 +40,7 @@ func main() {
 var codec = y3.NewCodec(0x10)
 
 func generateAndSendData(stream yomo.Source) error {
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 100; i++ {
 		// generate random data.
 		data := noiseData{
 			Noise: rand.New(rand.NewSource(time.Now().UnixNano())).Float32() * 200,
