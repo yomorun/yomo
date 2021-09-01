@@ -3,6 +3,7 @@ package logger
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 // Logger is the interface for logger.
@@ -130,4 +131,8 @@ func isJSONFormat() bool {
 		return true
 	}
 	return false
+}
+
+func logLevel() string {
+	return strings.ToLower(os.Getenv("YOMO_LOG_LEVEL"))
 }

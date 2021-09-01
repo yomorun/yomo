@@ -2,7 +2,6 @@ package frame
 
 import (
 	"github.com/yomorun/y3"
-	"github.com/yomorun/yomo/logger"
 )
 
 // MetaFrame defines the data structure of meta data in a `DataFrame`
@@ -40,6 +39,11 @@ func (m *MetaFrame) Encode() []byte {
 	// add TransactionID to MetaFrame
 	metaNode.AddPrimitivePacket(tidPacket)
 
+	// Issuer
+	issuerPacket := y3.NewPrimitivePacketEncoder(byte(TagOfIssuer))
+	issuerPacket.SetStringValue(m.issuer)
+	metaNode.AddPrimitivePacket(issuerPacket)
+
 	return metaNode.Encode()
 }
 
@@ -63,7 +67,6 @@ func DecodeToMetaFrame(buf []byte) (*MetaFrame, error) {
 	var issuer string
 	if s, ok := packet.PrimitivePackets[byte(TagOfIssuer)]; ok {
 		issuer, err = s.ToUTF8String()
-		logger.Warnf("meta_frame.DecodeToMetaFrame: issuer=%s,err=%v", issuer, err)
 		if err != nil {
 			return nil, err
 		}

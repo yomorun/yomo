@@ -13,6 +13,7 @@ import (
 	"errors"
 	"math/big"
 	"net"
+	"sync/atomic"
 	"time"
 
 	"github.com/lucas-clemente/quic-go"
@@ -20,18 +21,14 @@ import (
 	"github.com/yomorun/yomo/logger"
 )
 
-const (
-	ServerLogPrefix = "\033[32m[core:server]\033[0m "
-)
-
 // Server 是 QUIC Server 的抽象，被 Zipper 使用
 type Server struct {
-	stream quic.Stream
-	state  string
-	// logger             utils.Logger
+	stream             quic.Stream
+	state              string
 	funcs              *ConcurrentMap
-	counterOfDataFrame int64
 	funcBuckets        map[int]string
+	counterOfDataFrame int64
+	// logger             utils.Logger
 }
 
 func NewServer() *Server {
@@ -43,12 +40,12 @@ func NewServer() *Server {
 
 func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 	qconf := &quic.Config{
-		Versions:                       []quic.VersionNumber{quic.Version1},
+		Versions:                       []quic.VersionNumber{quic.Version1, quic.VersionDraft29},
 		MaxIdleTimeout:                 time.Second * 30,
 		KeepAlive:                      true,
 		MaxIncomingStreams:             1000000,
 		MaxIncomingUniStreams:          1000000,
-		HandshakeIdleTimeout:           time.Second * 10,
+		HandshakeIdleTimeout:           time.Second * 5,
 		InitialStreamReceiveWindow:     1024 * 1024 * 2,
 		InitialConnectionReceiveWindow: 1024 * 1024 * 2,
 		DisablePathMTUDiscovery:        true,
@@ -63,10 +60,11 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 	// listen the address
 	listener, err := quic.ListenAddr(endpoint, generateTLSConfig(endpoint), qconf)
 	if err != nil {
+		logger.Errorf("%s quic.ListenAddr on: %s, err=%v", ServerLogPrefix, endpoint, err)
 		return err
 	}
 	defer listener.Close()
-	logger.Printf("%s✅ Listening on: %s", ServerLogPrefix, listener.Addr())
+	logger.Printf("%s✅ Listening on: %s, QUIC: %v", ServerLogPrefix, listener.Addr(), qconf.Versions)
 
 	s.state = ConnStateConnected
 
@@ -86,10 +84,10 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 		}
 		logger.Infof("%s❤️1/ new connection: %s", ServerLogPrefix, session.RemoteAddr())
 
-		go func(sess quic.Session) {
+		go func(ctx context.Context, sess quic.Session) {
 			for {
 				logger.Infof("%s❤️2/ waiting for new stream", ServerLogPrefix)
-				stream, err := sess.AcceptStream(sctx)
+				stream, err := sess.AcceptStream(ctx)
 				if err != nil {
 					// if client close the connection, then we should close the session
 					logger.Errorf("%s❤️3/ [ERR] on [stream] %v, deleting from s.funcs if this stream is [sfn]", ServerLogPrefix, err)
@@ -98,13 +96,14 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 					break
 				}
 				defer stream.Close()
+				defer ctx.Done()
 				// defer sctx.Done()
 				logger.Infof("%s❤️4/ [stream:%d] created", ServerLogPrefix, stream.StreamID())
 				// 监听 stream 并做处理
 				s.handleSession(stream, session)
 				logger.Infof("%s❤️5/ [stream:%d] handleSession DONE", ServerLogPrefix, stream.StreamID())
 			}
-		}(session)
+		}(sctx, session)
 	}
 
 	logger.Errorf("%sXXXXXXXXXXXXXXX - zipper - XXXXXXXXXXXXXXXX: ", ServerLogPrefix, finalErr)
@@ -124,10 +123,10 @@ func (s *Server) Close() error {
 func (s *Server) handleSession(stream quic.Stream, session quic.Session) {
 	fs := NewFrameStream(stream)
 	for {
-		logger.Printf("%shandleSession 💚 waiting read next..", ServerLogPrefix)
+		logger.Infof("%shandleSession 💚 waiting read next..", ServerLogPrefix)
 		f, err := fs.ReadFrame()
 		if err != nil {
-			logger.Errorf("%son [ParseFrame] %v", ServerLogPrefix, err)
+			logger.Errorf("%s%v", ServerLogPrefix, err)
 			if errors.Is(err, net.ErrClosed) {
 				// if client close the connection, net.ErrClosed will be raise
 				// by quic-go IdleTimeoutError after connection's KeepAlive config.
@@ -189,10 +188,10 @@ func (s *Server) handlePingFrame(stream quic.Stream, session quic.Session, f *fr
 
 func (s *Server) handleDataFrame(stream quic.Stream, session quic.Session, f *frame.DataFrame) {
 	// counter +1
-	s.counterOfDataFrame++
+	atomic.AddInt64(&s.counterOfDataFrame, 1)
 	// 收到数据帧
 	currentSfn := f.Issuer()
-	logger.Infof("%ssfn[%s]-> GOT ❤️ DataFrame: %# x, seqNum(%d)", ServerLogPrefix, currentSfn, f, s.counterOfDataFrame)
+	logger.Infof("%sframeType=%s, issuer=%s, counter=%d", ServerLogPrefix, f.Type(), currentSfn, s.counterOfDataFrame)
 	// 因为是Immutable Stream，按照规则发送给 sfn
 	var j int
 	for i, k := range s.funcBuckets {
@@ -206,7 +205,7 @@ func (s *Server) handleDataFrame(stream quic.Stream, session quic.Session, f *fr
 		logger.Debugf("%s1st sfn write to [(source):%s] -> [%s]:", ServerLogPrefix, currentSfn, s.funcBuckets[0])
 		targetStream := s.funcs.Get(s.funcBuckets[0])
 		if targetStream == nil {
-			logger.Debugf("%s sfn[%s] stream is nil", ServerLogPrefix, s.funcBuckets[0])
+			logger.Debugf("%ssfn[%s] stream is nil", ServerLogPrefix, s.funcBuckets[0])
 			return
 		}
 		(*targetStream).Write(f.Encode())

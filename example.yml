@@ -16,7 +16,7 @@ tasks:
     cmds:
       - "./source{{exeExt}}"
     env:
-      YOMO_ENABLE_DEBUG: true
+      YOMO_ENABLE_DEBUG: false
 
   basic-source-build:
     desc: build basic source example
@@ -35,7 +35,8 @@ tasks:
       # - "yomo serve -v -c workflow.yaml"
       - "./zipper{{exeExt}}"
     env:
-      YOMO_ENABLE_DEBUG: true
+      YOMO_ENABLE_DEBUG: false
+      YOMO_LOG_LEVEL: info
 
   basic-zipper-build:
     desc: build basic zipper example
@@ -53,7 +54,7 @@ tasks:
     cmds:
       - "./flow{{exeExt}}"
     env:
-      YOMO_ENABLE_DEBUG: true
+      YOMO_ENABLE_DEBUG: false
 
   basic-flow-build:
     desc: build basic flow stream function

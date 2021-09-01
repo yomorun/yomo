@@ -31,11 +31,14 @@ func main() {
 	zipper.RemoveDownstreamZipper(yomo.NewZipper(yomo.WithZipperEndpoint("localhost:9001")))
 
 	// 启动 Zipper 服务
-	go zipper.ListenAndServe()
+	err := zipper.ListenAndServe()
+	if err != nil {
+		panic(err)
+	}
 
 	logger.Printf("Server has started!, pid: %d", os.Getpid())
 
-	sgnl := make(chan struct{})
+	sgnl := make(chan struct{}, 1)
 
 	go func() {
 		c := make(chan os.Signal, 1)

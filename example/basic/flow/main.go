@@ -20,7 +20,7 @@ func main() {
 	sfn := yomo.NewStreamFunction(yomo.WithName("Noise"), yomo.WithZipperEndpoint("localhost:9000"))
 	defer sfn.Close()
 
-	// 开始监听 dataID 为 0x30~0x33 的数据
+	// 开始监听 dataID 为 0x33 的数据
 	sfn.SetObserveDataID(0x33)
 
 	// 设置要执行的函数
@@ -33,7 +33,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// time.Sleep(30 * time.Second)
 	fmt.Scanf("[flow] Press to stop")
 }
 
@@ -42,9 +41,8 @@ func handler(data []byte) (byte, []byte) {
 	err := y3.ToObject(data, &model)
 	if err != nil {
 		logger.Errorf("[flow] y3.ToObject err=%v", err)
-		return 0x34, []byte{8}
+		return 0x0, nil
 	}
-	logger.Debugf("[flow] => go [tag=0x33] data=%# x, model: %#v", data, model)
-	return 0x34, data
-	// return 0x34, []byte{8}
+	logger.Printf("[flow] got tag=0x33, data=%v", model)
+	return 0x0, nil
 }

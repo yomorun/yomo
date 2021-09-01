@@ -29,6 +29,25 @@ func newLogger(isDebug bool) Logger {
 		cfg.Encoding = "console"
 	}
 
+	if lvl := logLevel(); lvl != "" {
+		switch lvl {
+		case "debug":
+			cfg.Level.SetLevel(zap.DebugLevel)
+		case "info":
+			cfg.Level.SetLevel(zap.InfoLevel)
+		case "warn":
+			cfg.Level.SetLevel(zap.WarnLevel)
+		case "error":
+			cfg.Level.SetLevel(zap.ErrorLevel)
+		case "dpanic":
+			cfg.Level.SetLevel(zap.DPanicLevel)
+		case "panic":
+			cfg.Level.SetLevel(zap.PanicLevel)
+		case "fatal":
+			cfg.Level.SetLevel(zap.FatalLevel)
+		}
+	}
+
 	logger, err := cfg.Build()
 	if err != nil {
 		panic(err)

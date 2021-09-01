@@ -15,10 +15,6 @@ import (
 
 type ConnState = string
 
-const (
-	ClientLogPrefix = "\033[36m[core:client]\033[0m "
-)
-
 // Client is the implementation of Client interface.
 type Client struct {
 	token             string
@@ -54,12 +50,12 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 		ClientSessionCache: tls.NewLRUClientSessionCache(1),
 	}
 	quicConf := &quic.Config{
-		Versions:                       []quic.VersionNumber{quic.Version1},
+		Versions:                       []quic.VersionNumber{quic.Version1, quic.VersionDraft29},
 		MaxIdleTimeout:                 time.Second * 60,
 		KeepAlive:                      true,
 		MaxIncomingStreams:             1000000,
 		MaxIncomingUniStreams:          1000000,
-		HandshakeIdleTimeout:           time.Second * 10,
+		HandshakeIdleTimeout:           time.Second * 5,
 		InitialStreamReceiveWindow:     1024 * 1024 * 2,
 		InitialConnectionReceiveWindow: 1024 * 1024 * 2,
 		TokenStore:                     quic.NewLRUTokenStore(1, 1),
@@ -134,7 +130,7 @@ func (c *Client) handleFrame() {
 			case frame.TagOfDataFrame:
 				if v, ok := f.(*frame.DataFrame); ok {
 					c.setState(ConnStateTransportData)
-					logger.Debugf("%sreceive DataFrame, tag=%#x, tid=%s, carry=%s", ClientLogPrefix, v.GetDataTagID(), v.TransactionID(), v.GetCarriage())
+					logger.Debugf("%sreceive DataFrame, tag=%#x, tid=%s, issuer=%s, carry=%s", ClientLogPrefix, v.GetDataTagID(), v.TransactionID(), v.Issuer(), v.GetCarriage())
 					if c.processor == nil {
 						logger.Warnf("%sprocessor is nil", ClientLogPrefix)
 					} else {

@@ -1,6 +1,8 @@
 package frame
 
-import "github.com/yomorun/y3"
+import (
+	"github.com/yomorun/y3"
+)
 
 // DataFrame defines the data structure carried with user's data
 // when transfering within YoMo
