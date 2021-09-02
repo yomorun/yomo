@@ -1,7 +1,7 @@
 ## TODO
 
 - [x] `source`/`stream function`，断线后，不能重新自动连接zipper
-- [ ] 注册 `stream function`后，没能即时删除
+- [x] 注册 `stream function`后，没能即时删除
 - [x] handshake 需要校验 `stream function` 的 `name/token` 是否有效
 - [x] MetaFrame `Issuer()` 没有获取到值
 - [x] 增加环境变量 `YOMO_LOG_LEVEL` 设置不同日志级别

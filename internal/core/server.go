@@ -13,6 +13,7 @@ import (
 	"errors"
 	"math/big"
 	"net"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -27,6 +28,7 @@ type Server struct {
 	state              string
 	funcs              *ConcurrentMap
 	funcBuckets        map[int]string
+	connSfnMap         sync.Map // key: ConnID, value: Sfn Name.
 	counterOfDataFrame int64
 	// logger             utils.Logger
 }
@@ -35,6 +37,7 @@ func NewServer() *Server {
 	return &Server{
 		funcs:       NewConcurrentMap(),
 		funcBuckets: make(map[int]string, 0),
+		connSfnMap:  sync.Map{},
 	}
 }
 
@@ -82,7 +85,9 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 			finalErr = err
 			break
 		}
-		logger.Infof("%s❤️1/ new connection: %s", ServerLogPrefix, session.RemoteAddr())
+
+		connID := session.RemoteAddr().String()
+		logger.Infof("%s❤️1/ new connection: %s", ServerLogPrefix, connID)
 
 		go func(ctx context.Context, sess quic.Session) {
 			for {
@@ -91,8 +96,11 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 				if err != nil {
 					// if client close the connection, then we should close the session
 					logger.Errorf("%s❤️3/ %T on [stream] %v, deleting from s.funcs if this stream is [sfn]", ServerLogPrefix, err, err)
-					// TODO: 要删除已注册的 sfn
-					// s.funcs.Remove(f.Name)
+					// 检查当前连接是否为 sfn，如果是则需要删除已注册的 sfn
+					if name, ok := s.connSfnMap.Load(connID); ok {
+						s.funcs.Remove(name.(string))
+						s.connSfnMap.Delete(connID)
+					}
 					break
 				}
 				defer stream.Close()
@@ -100,7 +108,7 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 				// defer sctx.Done()
 				logger.Infof("%s❤️4/ [stream:%d] created", ServerLogPrefix, stream.StreamID())
 				// 监听 stream 并做处理
-				s.handleSession(stream, session)
+				s.handleSession(connID, stream, session)
 				logger.Infof("%s❤️5/ [stream:%d] handleSession DONE", ServerLogPrefix, stream.StreamID())
 			}
 		}(sctx, session)
@@ -120,7 +128,7 @@ func (s *Server) Close() error {
 	return nil
 }
 
-func (s *Server) handleSession(stream quic.Stream, session quic.Session) {
+func (s *Server) handleSession(connID string, stream quic.Stream, session quic.Session) {
 	fs := NewFrameStream(stream)
 	for {
 		logger.Infof("%shandleSession 💚 waiting read next..", ServerLogPrefix)
@@ -146,7 +154,7 @@ func (s *Server) handleSession(stream quic.Stream, session quic.Session) {
 		logger.Debugf("%stype=%s, frame=%# x", ServerLogPrefix, frameType, logger.BytesString(f.Encode()))
 		switch frameType {
 		case frame.TagOfHandshakeFrame:
-			s.handleHandShakeFrame(stream, session, f.(*frame.HandshakeFrame))
+			s.handleHandShakeFrame(connID, stream, session, f.(*frame.HandshakeFrame))
 		case frame.TagOfPingFrame:
 			s.handlePingFrame(stream, session, f.(*frame.PingFrame))
 		case frame.TagOfDataFrame:
@@ -165,7 +173,7 @@ func (s *Server) StatsCounter() int64 {
 	return s.counterOfDataFrame
 }
 
-func (s *Server) handleHandShakeFrame(stream quic.Stream, session quic.Session, f *frame.HandshakeFrame) {
+func (s *Server) handleHandShakeFrame(connID string, stream quic.Stream, session quic.Session, f *frame.HandshakeFrame) {
 	logger.Infof("%s ------> GOT ❤️ HandshakeFrame : %# x", ServerLogPrefix, f)
 	logger.Infof("%sClientType=%# x, is %s", ServerLogPrefix, f.ClientType, ConnectionType(f.ClientType))
 	// client type
@@ -183,6 +191,9 @@ func (s *Server) handleHandShakeFrame(stream quic.Stream, session quic.Session, 
 
 		// 校验成功，注册 sfn 给 SfnManager
 		s.funcs.Set(f.Name, &stream)
+		// 添加 conn 和 sfn 的映射关系
+		s.connSfnMap.Store(connID, f.Name)
+
 	case ConnTypeUpstreamZipper:
 	default:
 		// Step 1-4: 错误，不认识该 client-type，关闭连接
