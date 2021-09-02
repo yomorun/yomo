@@ -51,7 +51,7 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 	}
 	quicConf := &quic.Config{
 		Versions:                       []quic.VersionNumber{quic.Version1, quic.VersionDraft29},
-		MaxIdleTimeout:                 time.Second * 60,
+		MaxIdleTimeout:                 time.Second * 3,
 		KeepAlive:                      true,
 		MaxIncomingStreams:             1000000,
 		MaxIncomingUniStreams:          1000000,

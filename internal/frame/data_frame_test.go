@@ -8,7 +8,7 @@ import (
 
 func TestDataFrameEncode(t *testing.T) {
 	var userDataTag byte = 0x15
-	d := NewDataFrame("1234")
+	d := NewDataFrame("1234", "issuer")
 	d.SetCarriage(userDataTag, []byte("yomo"))
 	assert.Equal(t, []byte{
 		0x80 | byte(TagOfDataFrame), 0x10,

@@ -41,7 +41,7 @@ func NewServer() *Server {
 func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 	qconf := &quic.Config{
 		Versions:                       []quic.VersionNumber{quic.Version1, quic.VersionDraft29},
-		MaxIdleTimeout:                 time.Second * 30,
+		MaxIdleTimeout:                 time.Second * 3,
 		KeepAlive:                      true,
 		MaxIncomingStreams:             1000000,
 		MaxIncomingUniStreams:          1000000,
@@ -173,12 +173,15 @@ func (s *Server) handleHandShakeFrame(stream quic.Stream, session quic.Session, 
 	switch clientType {
 	case ConnTypeSource:
 	case ConnTypeStreamFunction:
+		// TODO: 检查 name 或者 token 是否有效，如果无效则需要关闭连接。
 		// 注册 sfn 给 SfnManager
 		s.funcs.Set(f.Name, &stream)
 	case ConnTypeUpstreamZipper:
 	default:
 		// Step 1-4: 错误，不认识该 client-type，关闭连接
 		logger.Errorf("%sClientType=%# x, ilegal!", ServerLogPrefix, f.ClientType)
+		stream.Close()
+		session.CloseWithError(0xCC, "Unknown ClientType, ilegal!")
 	}
 }
 
