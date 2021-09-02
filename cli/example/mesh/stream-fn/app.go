@@ -71,6 +71,6 @@ func getPort() int {
 	if os.Getenv("PORT") != "" && os.Getenv("PORT") != "9000" {
 		port, _ = strconv.Atoi(os.Getenv("PORT"))
 	}
-	
+
 	return port
 }

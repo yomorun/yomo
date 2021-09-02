@@ -173,8 +173,15 @@ func (s *Server) handleHandShakeFrame(stream quic.Stream, session quic.Session, 
 	switch clientType {
 	case ConnTypeSource:
 	case ConnTypeStreamFunction:
-		// TODO: 检查 name 或者 token 是否有效，如果无效则需要关闭连接。
-		// 注册 sfn 给 SfnManager
+		// 检查 name 是否有效，如果无效则需要关闭连接。
+		if !s.validateHandshake(f) {
+			// 校验无效，关闭连接
+			stream.Close()
+			session.CloseWithError(0xCC, "Didn't pass the handshake validation, ilegal!")
+			break
+		}
+
+		// 校验成功，注册 sfn 给 SfnManager
 		s.funcs.Set(f.Name, &stream)
 	case ConnTypeUpstreamZipper:
 	default:
@@ -233,6 +240,20 @@ func (s *Server) AddWorkflow(wfs ...Workflow) error {
 		s.funcBuckets[wf.Seq] = wf.Token
 	}
 	return nil
+}
+
+// validateHandshake validates if the handshake frame is valid.
+func (s *Server) validateHandshake(f *frame.HandshakeFrame) bool {
+	isValid := false
+	for _, k := range s.funcBuckets {
+		if k == f.Name {
+			isValid = true
+			break
+		}
+	}
+
+	logger.Debugf("%svalidateHandshake(%v), result: %v", ServerLogPrefix, *f, isValid)
+	return isValid
 }
 
 // generateTLSConfig Setup a bare-bones TLS config for the server
