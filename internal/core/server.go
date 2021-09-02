@@ -90,7 +90,7 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 				stream, err := sess.AcceptStream(ctx)
 				if err != nil {
 					// if client close the connection, then we should close the session
-					logger.Errorf("%s❤️3/ [ERR] on [stream] %v, deleting from s.funcs if this stream is [sfn]", ServerLogPrefix, err)
+					logger.Errorf("%s❤️3/ %T on [stream] %v, deleting from s.funcs if this stream is [sfn]", ServerLogPrefix, err, err)
 					// TODO: 要删除已注册的 sfn
 					// s.funcs.Remove(f.Name)
 					break
@@ -126,7 +126,7 @@ func (s *Server) handleSession(stream quic.Stream, session quic.Session) {
 		logger.Infof("%shandleSession 💚 waiting read next..", ServerLogPrefix)
 		f, err := fs.ReadFrame()
 		if err != nil {
-			logger.Errorf("%s%v", ServerLogPrefix, err)
+			logger.Errorf("%s%T %v", ServerLogPrefix, err, err)
 			if errors.Is(err, net.ErrClosed) {
 				// if client close the connection, net.ErrClosed will be raise
 				// by quic-go IdleTimeoutError after connection's KeepAlive config.

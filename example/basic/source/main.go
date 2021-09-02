@@ -35,12 +35,13 @@ func main() {
 		logger.Printf("[source] >>>> ERR >>>> %v", err)
 		os.Exit(1)
 	}
+	select {}
 }
 
 var codec = y3.NewCodec(0x10)
 
 func generateAndSendData(stream yomo.Source) error {
-	for i := 0; i < 100; i++ {
+	for {
 		// generate random data.
 		data := noiseData{
 			Noise: rand.New(rand.NewSource(time.Now().UnixNano())).Float32() * 200,
@@ -55,7 +56,8 @@ func generateAndSendData(stream yomo.Source) error {
 		_, err := stream.Write(sendingBuf)
 		if err != nil {
 			logger.Printf("[source] ❌ Emit %v to YoMo-Zipper failure with err: %v", data, err)
-			return err
+			time.Sleep(300 * time.Millisecond)
+			continue
 
 		} else {
 			logger.Printf("[source] ✅ Emit %v to YoMo-Zipper", data)

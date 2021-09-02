@@ -2,6 +2,7 @@ package core
 
 const (
 	// ConnState
+	ConnStateReady          ConnState = "Ready"
 	ConnStateDisconnected   ConnState = "Disconnected"
 	ConnStateConnecting     ConnState = "Connecting"
 	ConnStateConnected      ConnState = "Connected"

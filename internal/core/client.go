@@ -13,6 +13,10 @@ import (
 	"github.com/yomorun/yomo/logger"
 )
 
+const (
+	DefaultRetries = 3 // 3sec*120 = 1hour
+)
+
 type ConnState = string
 
 // Client is the implementation of Client interface.
@@ -32,7 +36,7 @@ func NewClient(appName string, connType ConnectionType) *Client {
 	c := &Client{
 		token:    appName,
 		connType: connType,
-		state:    ConnStateDisconnected,
+		state:    ConnStateReady,
 	}
 
 	return c
@@ -41,7 +45,6 @@ func NewClient(appName string, connType ConnectionType) *Client {
 // Connect connects to quic server
 func (c *Client) Connect(ctx context.Context, addr string) error {
 	c.state = ConnStateConnecting
-	logger.Printf("%sConnecting to YoMo-Zipper %s...", ClientLogPrefix, addr)
 
 	// connect to quic server
 	tlsConf := &tls.Config{
@@ -84,7 +87,12 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 	// handshake frame
 	handshake := frame.NewHandshakeFrame(c.token, byte(c.connType))
 	c.WriteFrame(handshake)
-	c.handleFrame()
+	go c.handleFrame()
+
+	c.state = ConnStateConnected
+	logger.Printf("%s[%s] is connected to YoMo-Zipper %s", ClientLogPrefix, c.token, addr)
+	// reconnect
+	go c.reconnect(ctx, addr)
 
 	return nil
 }
@@ -93,14 +101,21 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 func (c *Client) handleFrame() {
 	go func() {
 		for {
+			logger.Infof("%sconnection state=%v", ClientLogPrefix, c.state)
 			fs := NewFrameStream(c.stream)
 			f, err := fs.ReadFrame()
 			if err != nil {
-				logger.Errorf("%shandleFrame.ReadFrame(): %v", ClientLogPrefix, err)
-				if errors.Is(err, net.ErrClosed) {
+				c.setState(ConnStateDisconnected)
+				logger.Errorf("%shandleFrame.ReadFrame(): %T %v", ClientLogPrefix, err, err)
+				if e, ok := err.(*quic.IdleTimeoutError); ok {
+					logger.Errorf("%sconnection timeout, err=%v", ClientLogPrefix, e)
+					// c.reconnect(context.Background(), c.zipperEndpoint)
+				} else if e, ok := err.(*quic.ApplicationError); ok {
+					logger.Errorf("%sapplication error, err=%#v", ClientLogPrefix, f, e)
+				} else if errors.Is(err, net.ErrClosed) {
 					// if client close the connection, net.ErrClosed will be raise
+					logger.Errorf("%sconnection is closed, err=%v", ClientLogPrefix, err)
 					// by quic-go IdleTimeoutError after connection's KeepAlive config.
-					// logger.Errorf("%s handleFrame.ReadFrame(): %v", ClientLogPrefix, err)
 					break
 				}
 				// any error occurred, we should close the session
@@ -186,9 +201,13 @@ func (c *Client) WriteFrame(frame frame.Frame) error {
 		logger.Debugf("%sWriteFrame() wrote n=%d, data=%# x", ClientLogPrefix, n, data)
 	}
 	if err != nil {
-		logger.Errorf("%sWriteFrame() wrote error=%v", ClientLogPrefix, err)
-		// 发送数据时出错
-		return err
+		if e, ok := err.(*quic.IdleTimeoutError); ok {
+			logger.Errorf("%sWriteFrame() connection timeout, err=%v", ClientLogPrefix, e)
+		} else {
+			logger.Errorf("%sWriteFrame() wrote error=%v", ClientLogPrefix, err)
+			// 发送数据时出错
+			return err
+		}
 	}
 	if n != len(data) {
 		// 发送的数据不完整
@@ -216,4 +235,21 @@ func (c *Client) SetDataFrameObserver(fn func(byte, []byte)) {
 	c.processor = fn
 	logger.Debugf("%sSetDataFrameObserver(%v)", ClientLogPrefix, c.processor)
 
+}
+
+// reconnect the connection between client and server.
+func (c *Client) reconnect(ctx context.Context, addr string) {
+	t := time.NewTicker(3 * time.Second)
+	for {
+		select {
+		case <-t.C:
+			if c.state == ConnStateDisconnected {
+				logger.Printf("%s[%s] is retring to YoMo-Zipper %s...", ClientLogPrefix, c.token, addr)
+				err := c.Connect(ctx, addr)
+				if err == nil {
+					break
+				}
+			}
+		}
+	}
 }

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 
@@ -36,7 +35,5 @@ func main() {
 		log.Printf("[stream-fn-db] connect err=%v", err)
 		os.Exit(1)
 	}
-
-	// time.Sleep(30 * time.Second)
-	fmt.Scanf("[stream-fn-db] Press to stop")
+	select {}
 }

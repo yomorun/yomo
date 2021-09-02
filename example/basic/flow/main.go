@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/yomorun/y3-codec-golang"
@@ -33,7 +32,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Scanf("[flow] Press to stop")
+	select {}
 }
 
 func handler(data []byte) (byte, []byte) {
