@@ -46,12 +46,12 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 		Versions:                       []quic.VersionNumber{quic.Version1, quic.VersionDraft29},
 		MaxIdleTimeout:                 time.Second * 3,
 		KeepAlive:                      true,
-		MaxIncomingStreams:             1000000,
-		MaxIncomingUniStreams:          1000000,
-		HandshakeIdleTimeout:           time.Second * 5,
+		MaxIncomingStreams:             100000,
+		MaxIncomingUniStreams:          100000,
+		HandshakeIdleTimeout:           time.Second * 3,
 		InitialStreamReceiveWindow:     1024 * 1024 * 2,
 		InitialConnectionReceiveWindow: 1024 * 1024 * 2,
-		DisablePathMTUDiscovery:        true,
+		DisablePathMTUDiscovery:        false,
 		// Tracer:                         getQlogConfig("server"),
 	}
 
@@ -151,7 +151,7 @@ func (s *Server) handleSession(connID string, stream quic.Stream, session quic.S
 		}
 
 		frameType := f.Type()
-		logger.Debugf("%stype=%s, frame=%# x", ServerLogPrefix, frameType, logger.BytesString(f.Encode()))
+		// logger.Debugf("%stype=%s, frame=%# x", ServerLogPrefix, frameType, logger.BytesString(f.Encode()))
 		switch frameType {
 		case frame.TagOfHandshakeFrame:
 			s.handleHandShakeFrame(connID, stream, session, f.(*frame.HandshakeFrame))
@@ -263,7 +263,7 @@ func (s *Server) validateHandshake(f *frame.HandshakeFrame) bool {
 		}
 	}
 
-	logger.Debugf("%svalidateHandshake(%v), result: %v", ServerLogPrefix, *f, isValid)
+	logger.Warnf("%svalidateHandshake(%v), result: %v", ServerLogPrefix, *f, isValid)
 	return isValid
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -56,13 +57,13 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 		Versions:                       []quic.VersionNumber{quic.Version1, quic.VersionDraft29},
 		MaxIdleTimeout:                 time.Second * 3,
 		KeepAlive:                      true,
-		MaxIncomingStreams:             1000000,
-		MaxIncomingUniStreams:          1000000,
-		HandshakeIdleTimeout:           time.Second * 5,
+		MaxIncomingStreams:             100000,
+		MaxIncomingUniStreams:          100000,
+		HandshakeIdleTimeout:           time.Second * 3,
 		InitialStreamReceiveWindow:     1024 * 1024 * 2,
 		InitialConnectionReceiveWindow: 1024 * 1024 * 2,
 		TokenStore:                     quic.NewLRUTokenStore(1, 1),
-		DisablePathMTUDiscovery:        true,
+		DisablePathMTUDiscovery:        false,
 	}
 	// quic session
 	session, err := quic.DialAddr(addr, tlsConf, quicConf)
@@ -244,7 +245,7 @@ func (c *Client) reconnect(ctx context.Context, addr string) {
 		select {
 		case <-t.C:
 			if c.state == ConnStateDisconnected {
-				logger.Printf("%s[%s] is retring to YoMo-Zipper %s...", ClientLogPrefix, c.token, addr)
+				fmt.Printf("%s[%s] is retring to YoMo-Zipper %s...\n", ClientLogPrefix, c.token, addr)
 				err := c.Connect(ctx, addr)
 				if err == nil {
 					break
