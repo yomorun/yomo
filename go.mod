@@ -9,7 +9,7 @@ require (
 	github.com/reactivex/rxgo/v2 v2.5.0
 	github.com/stretchr/objx v0.1.1 // indirect
 	github.com/stretchr/testify v1.7.0
-	github.com/tidwall/gjson v1.8.1
+	github.com/tidwall/gjson v1.9.0
 	github.com/yomorun/y3 v1.0.4
 	github.com/yomorun/y3-codec-golang v1.7.0
 	go.opentelemetry.io/otel v1.0.0-RC2
