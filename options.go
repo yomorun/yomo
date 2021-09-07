@@ -1,7 +1,8 @@
 package yomo
 
 const (
-	DefaultZipperEndpoint = "localhost:9000"
+	DefaultZipperAddr       = "localhost:9000"
+	DefaultZipperListenAddr = "0.0.0.0:9000"
 )
 
 // Option is a function that applies a YoMo-Client option.
@@ -10,7 +11,8 @@ type Option func(o *options)
 // options are the options for YoMo-Client.
 type options struct {
 	AppName              string // AppName is the name of client.
-	ZipperEndpoint       string // Zipper endpoint address
+	ZipperAddr           string // Zipper endpoint address
+	ZipperListenAddr     string // Zipper endpoint address
 	ZipperWorkflowConfig string // Zipper workflow file
 }
 
@@ -21,9 +23,15 @@ func WithName(name string) Option {
 	}
 }
 
-func WithZipperEndpoint(addr string) Option {
+func WithZipperAddr(addr string) Option {
 	return func(o *options) {
-		o.ZipperEndpoint = addr
+		o.ZipperAddr = addr
+	}
+}
+
+func WithZipperListenAddr(addr string) Option {
+	return func(o *options) {
+		o.ZipperListenAddr = addr
 	}
 }
 
@@ -35,8 +43,12 @@ func newOptions(opts ...Option) *options {
 		o(options)
 	}
 
-	if options.ZipperEndpoint == "" {
-		options.ZipperEndpoint = DefaultZipperEndpoint
+	if options.ZipperAddr == "" {
+		options.ZipperAddr = DefaultZipperAddr
+	}
+
+	if options.ZipperListenAddr == "" {
+		options.ZipperListenAddr = DefaultZipperListenAddr
 	}
 
 	return options

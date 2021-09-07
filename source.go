@@ -41,7 +41,7 @@ func NewSource(opts ...Option) Source {
 
 	return &yomoSource{
 		name:           options.AppName,
-		zipperEndpoint: options.ZipperEndpoint,
+		zipperEndpoint: options.ZipperAddr,
 		client:         client,
 	}
 }

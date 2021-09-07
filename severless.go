@@ -26,7 +26,7 @@ func NewStreamFunction(opts ...Option) *streamFunction {
 	client := core.NewClient(options.AppName, core.ConnTypeStreamFunction)
 	sfn := streamFunction{
 		name:           options.AppName,
-		zipperEndpoint: options.ZipperEndpoint,
+		zipperEndpoint: options.ZipperAddr,
 		client:         client,
 		observed:       make([]uint8, 0),
 		// logger:         utils.DefaultLogger.WithPrefix("\033[31m[yomo:sfn]\033[0m"),

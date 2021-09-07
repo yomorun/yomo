@@ -13,6 +13,7 @@
 *.out
 
 # Dependency directories (remove the comment below to include it)
+.DS_Store
 vendor/
 /bin/yomo
 main
@@ -23,3 +24,4 @@ cli/example/source/source
 cli/example/stream-fn-db/stream-fn-db
 cli/example/stream-fn/stream-fn
 cmd/yomo/yomo
+release/

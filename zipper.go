@@ -19,7 +19,7 @@ type Zipper interface {
 	Connect() error
 	AddDownstreamZipper(downstream Zipper) error
 	RemoveDownstreamZipper(downstream Zipper) error
-	Endpoint() string
+	ListenAddr() string
 	Stats() int
 	Close() error
 }
@@ -28,7 +28,8 @@ type Zipper interface {
 // Upstream 可以同时连接到多个 Downstream，数据由 Upstream 被分发给下游的多个 Downstream。
 type zipper struct {
 	token             string
-	endpoint          string
+	addr              string
+	listenAddr        string
 	hasDownstreams    bool
 	server            *core.Server
 	client            *core.Client
@@ -44,9 +45,10 @@ func NewZipper(opts ...Option) *zipper {
 	client := core.NewClient(options.AppName, core.ConnTypeUpstreamZipper)
 
 	return &zipper{
-		token:    options.AppName,
-		endpoint: options.ZipperEndpoint,
-		client:   client,
+		token:      options.AppName,
+		listenAddr: options.ZipperListenAddr,
+		addr:       options.ZipperAddr,
+		client:     client,
 	}
 }
 
@@ -58,7 +60,7 @@ func NewZipperServer(opts ...Option) Zipper {
 
 	return &zipper{
 		token:          options.AppName,
-		endpoint:       options.ZipperEndpoint,
+		listenAddr:     options.ZipperListenAddr,
 		hasDownstreams: false,
 		server:         srv,
 		// logger:         utils.DefaultLogger.WithPrefix("\033[33m[yomo:zipper]\033[0m"),
@@ -100,7 +102,7 @@ func (s *zipper) ConfigDownstream(opts ...interface{}) error {
 //    2、并行传输给 Downstream Zipper
 func (s *zipper) ListenAndServe() error {
 	logger.Debugf("%sCreating Zipper Server ...", ZipperLogPrefix)
-	return s.server.ListenAndServe(context.Background(), s.endpoint)
+	return s.server.ListenAndServe(context.Background(), s.listenAddr)
 }
 
 /*************** Client ONLY ****************************
@@ -110,7 +112,7 @@ func (s *zipper) ListenAndServe() error {
 
 // Client：建立到 downstream zipper 的连接
 func (s *zipper) Connect() error {
-	err := s.client.Connect(context.Background(), s.endpoint)
+	err := s.client.Connect(context.Background(), s.addr)
 	if err != nil {
 		logger.Errorf("%sConnect() error: %s", ZipperLogPrefix, err)
 		return err
@@ -132,7 +134,7 @@ func (s *zipper) AddDownstreamZipper(downstream Zipper) error {
 func (s *zipper) RemoveDownstreamZipper(downstream Zipper) error {
 	index := -1
 	for i, v := range s.downstreamZippers {
-		if v.Endpoint() == downstream.Endpoint() {
+		if v.ListenAddr() == downstream.ListenAddr() {
 			index = i
 			break
 		}
@@ -144,8 +146,8 @@ func (s *zipper) RemoveDownstreamZipper(downstream Zipper) error {
 }
 
 // 获取 zipper 监听的 endpoint
-func (s *zipper) Endpoint() string {
-	return s.endpoint
+func (s *zipper) ListenAddr() string {
+	return s.listenAddr
 }
 
 /*************** Client/Server 都用 ***************/

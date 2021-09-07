@@ -40,21 +40,20 @@ tasks:
   install:
     desc: install yomo cli tools
     deps: []
-    dir: yomo
     cmds:
-      - echo "{{.Name}} install..."
+      - echo "{{.Name}} CLI install..."
       - go install -ldflags "-s -w -X {{.Module}}/cli/cmd.Version={{.Version}} -X {{.Module}}/cli/cmd.Date={{.Date}}" {{.Module}}/cmd/yomo
-      - echo "{{.Name}} {{.Version}}({{.Date}}) is installed."
+      - echo "{{.Name}} CLI {{.Version}}({{.Date}}) is installed."
     silent: false
 
   release:
     desc: release yomo cli tools
     cmds:
-      - echo "{{.Name}} release..."
-      - GOOS=darwin GOARCH=amd64 go build -ldflags "-w -s -X {{.Module}}/cmd.Version={{.Version}} -X {{.Module}}/cmd.Date={{.Date}}" -o {{.ReleaseDir}}/{{.Name}}_{{.Version}}_mac yomo/main.go
-      - GOOS=linux GOARCH=amd64 go build -ldflags "-w -s -X {{.Module}}/cmd.Version={{.Version}} -X {{.Module}}/cmd.Date={{.Date}}" -o {{.ReleaseDir}}/{{.Name}}_{{.Version}}_linux yomo/main.go
-      - GOOS=windows GOARCH=amd64 go build -ldflags "-w -s -X {{.Module}}/cmd.Version={{.Version}} -X {{.Module}}/cmd.Date={{.Date}}" -o {{.ReleaseDir}}/{{.Name}}_{{.Version}}_windows.exe yomo/main.go
-      - echo "{{.Name}} {{.Version}} is released."
+      - echo "{{.Name}} CLI release..."
+      - GOOS=darwin GOARCH=amd64 go build -ldflags "-w -s -X {{.Module}}/cli/cmd.Version={{.Version}} -X {{.Module}}/cli/cmd.Date={{.Date}}" -o {{.ReleaseDir}}/{{.Name}}_{{.Version}}_mac {{.ExeDir}}/main.go
+      - GOOS=linux GOARCH=amd64 go build -ldflags "-w -s -X {{.Module}}/cli/cmd.Version={{.Version}} -X {{.Module}}/cli/cmd.Date={{.Date}}" -o {{.ReleaseDir}}/{{.Name}}_{{.Version}}_linux {{.ExeDir}}/main.go
+      - GOOS=windows GOARCH=amd64 go build -ldflags "-w -s -X {{.Module}}/cli/cmd.Version={{.Version}} -X {{.Module}}/cli/cmd.Date={{.Date}}" -o {{.ReleaseDir}}/{{.Name}}_{{.Version}}_windows.exe {{.ExeDir}}/main.go
+      - echo "{{.Name}} CLI {{.Version}} is released."
     silent: true
 
   run:

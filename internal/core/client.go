@@ -101,9 +101,9 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 // handleFrame handles the logic when receiving frame from server.
 func (c *Client) handleFrame() {
 	go func() {
+		fs := NewFrameStream(c.stream)
 		for {
 			logger.Infof("%sconnection state=%v", ClientLogPrefix, c.state)
-			fs := NewFrameStream(c.stream)
 			f, err := fs.ReadFrame()
 			if err != nil {
 				c.setState(ConnStateDisconnected)
@@ -112,7 +112,7 @@ func (c *Client) handleFrame() {
 					logger.Errorf("%sconnection timeout, err=%v", ClientLogPrefix, e)
 					// c.reconnect(context.Background(), c.zipperEndpoint)
 				} else if e, ok := err.(*quic.ApplicationError); ok {
-					logger.Errorf("%sapplication error, err=%#v", ClientLogPrefix, f, e)
+					logger.Errorf("%sapplication error, err=%#v", ClientLogPrefix, e)
 				} else if errors.Is(err, net.ErrClosed) {
 					// if client close the connection, net.ErrClosed will be raise
 					logger.Errorf("%sconnection is closed, err=%v", ClientLogPrefix, err)
@@ -150,7 +150,7 @@ func (c *Client) handleFrame() {
 					if c.processor == nil {
 						logger.Warnf("%sprocessor is nil", ClientLogPrefix)
 					} else {
-						c.processor(v.GetDataTagID(), v.GetCarriage())
+						go c.processor(v.GetDataTagID(), v.GetCarriage())
 					}
 				}
 			default:

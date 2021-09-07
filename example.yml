@@ -17,6 +17,7 @@ tasks:
       - "./source{{exeExt}}"
     env:
       YOMO_ENABLE_DEBUG: false
+      YOMO_LOG_LEVEL: info
 
   basic-source-build:
     desc: build basic source example
@@ -55,6 +56,7 @@ tasks:
       - "./flow{{exeExt}}"
     env:
       YOMO_ENABLE_DEBUG: false
+      YOMO_LOG_LEVEL: info
 
   basic-flow-build:
     desc: build basic flow stream function

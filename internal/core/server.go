@@ -11,6 +11,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"math/big"
 	"net"
 	"sync"
@@ -71,8 +72,6 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 
 	s.state = ConnStateConnected
 
-	var finalErr error = nil
-
 	for {
 		// 有新的 YomoClient 连接时，创建一个 session
 		sctx, cancel := context.WithCancel(ctx)
@@ -82,8 +81,7 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 		if err != nil {
 			logger.Errorf("%screate session error: %v", ServerLogPrefix, err)
 			sctx.Done()
-			finalErr = err
-			break
+			return err
 		}
 
 		connID := session.RemoteAddr().String()
@@ -104,18 +102,18 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 					break
 				}
 				defer stream.Close()
-				defer ctx.Done()
-				// defer sctx.Done()
-				logger.Infof("%s❤️4/ [stream:%d] created", ServerLogPrefix, stream.StreamID())
+				// defer ctx.Done()
+				logger.Infof("%s❤️4/ [stream:%d] created, connID=%s", ServerLogPrefix, stream.StreamID(), connID)
 				// 监听 stream 并做处理
-				s.handleSession(connID, stream, session)
+				s.handleSession(connID, session, stream)
 				logger.Infof("%s❤️5/ [stream:%d] handleSession DONE", ServerLogPrefix, stream.StreamID())
 			}
 		}(sctx, session)
 	}
 
-	logger.Errorf("%sXXXXXXXXXXXXXXX - zipper - XXXXXXXXXXXXXXXX: ", ServerLogPrefix, finalErr)
-	return finalErr
+	// logger.Errorf("%sXXXXXXXXXXXXXXX - zipper - XXXXXXXXXXXXXXXX: ", ServerLogPrefix, finalErr)
+	// return finalErr
+	return nil
 }
 
 func (s *Server) Close() error {
@@ -128,10 +126,11 @@ func (s *Server) Close() error {
 	return nil
 }
 
-func (s *Server) handleSession(connID string, stream quic.Stream, session quic.Session) {
-	fs := NewFrameStream(stream)
+func (s *Server) handleSession(connID string, session quic.Session, mainStream quic.Stream) {
+	fs := NewFrameStream(mainStream)
+	// check update for stream
 	for {
-		logger.Infof("%shandleSession 💚 waiting read next..", ServerLogPrefix)
+		logger.Infof("%shandleSession 💚 waiting read next...", ServerLogPrefix)
 		f, err := fs.ReadFrame()
 		if err != nil {
 			logger.Errorf("%s%T %v", ServerLogPrefix, err, err)
@@ -144,23 +143,23 @@ func (s *Server) handleSession(connID string, stream quic.Stream, session quic.S
 			// any error occurred, we should close the session
 			// after this, session.AcceptStream() will raise the error
 			// which specific in session.CloseWithError()
-			stream.Close()
+			mainStream.Close()
 			session.CloseWithError(0xCC, err.Error())
 			logger.Warnf("%ssession.Close()", ServerLogPrefix)
 			break
 		}
 
 		frameType := f.Type()
-		// logger.Debugf("%stype=%s, frame=%# x", ServerLogPrefix, frameType, logger.BytesString(f.Encode()))
+		logger.Debugf("%stype=%s, frame=%# x", ServerLogPrefix, frameType, logger.BytesString(f.Encode()))
 		switch frameType {
 		case frame.TagOfHandshakeFrame:
-			s.handleHandShakeFrame(connID, stream, session, f.(*frame.HandshakeFrame))
+			s.handleHandShakeFrame(connID, mainStream, session, f.(*frame.HandshakeFrame))
 		case frame.TagOfPingFrame:
-			s.handlePingFrame(stream, session, f.(*frame.PingFrame))
+			s.handlePingFrame(mainStream, session, f.(*frame.PingFrame))
 		case frame.TagOfDataFrame:
-			s.handleDataFrame(stream, session, f.(*frame.DataFrame))
+			s.handleDataFrame(mainStream, session, f.(*frame.DataFrame))
 		default:
-			logger.Errorf("%sunknown signal.", "frame", ServerLogPrefix, logger.BytesString(f.Encode()))
+			logger.Errorf("%serr=%v, frame=%v", ServerLogPrefix, err, logger.BytesString(f.Encode()))
 		}
 	}
 }
@@ -173,7 +172,7 @@ func (s *Server) StatsCounter() int64 {
 	return s.counterOfDataFrame
 }
 
-func (s *Server) handleHandShakeFrame(connID string, stream quic.Stream, session quic.Session, f *frame.HandshakeFrame) {
+func (s *Server) handleHandShakeFrame(connID string, stream quic.Stream, session quic.Session, f *frame.HandshakeFrame) error {
 	logger.Infof("%s ------> GOT ❤️ HandshakeFrame : %# x", ServerLogPrefix, f)
 	logger.Infof("%sClientType=%# x, is %s", ServerLogPrefix, f.ClientType, ConnectionType(f.ClientType))
 	// client type
@@ -186,7 +185,8 @@ func (s *Server) handleHandShakeFrame(connID string, stream quic.Stream, session
 			// 校验无效，关闭连接
 			stream.Close()
 			session.CloseWithError(0xCC, "Didn't pass the handshake validation, ilegal!")
-			break
+			// break
+			return fmt.Errorf("Didn't pass the handshake validation, ilegal!")
 		}
 
 		// 校验成功，注册 sfn 给 SfnManager
@@ -198,16 +198,19 @@ func (s *Server) handleHandShakeFrame(connID string, stream quic.Stream, session
 	default:
 		// Step 1-4: 错误，不认识该 client-type，关闭连接
 		logger.Errorf("%sClientType=%# x, ilegal!", ServerLogPrefix, f.ClientType)
-		stream.Close()
-		session.CloseWithError(0xCC, "Unknown ClientType, ilegal!")
+		// stream.Close()
+		// session.CloseWithError(0xCC, "Unknown ClientType, ilegal!")
+		return fmt.Errorf("Unknown ClientType, ilegal!")
 	}
+	return nil
 }
 
-func (s *Server) handlePingFrame(stream quic.Stream, session quic.Session, f *frame.PingFrame) {
+func (s *Server) handlePingFrame(stream quic.Stream, session quic.Session, f *frame.PingFrame) error {
 	logger.Infof("%s------> GOT ❤️ PingFrame : %# x", ServerLogPrefix, f)
+	return nil
 }
 
-func (s *Server) handleDataFrame(stream quic.Stream, session quic.Session, f *frame.DataFrame) {
+func (s *Server) handleDataFrame(mainStream quic.Stream, session quic.Session, f *frame.DataFrame) error {
 	// counter +1
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
 	// 收到数据帧
@@ -227,15 +230,17 @@ func (s *Server) handleDataFrame(stream quic.Stream, session quic.Session, f *fr
 		targetStream := s.funcs.Get(s.funcBuckets[0])
 		if targetStream == nil {
 			logger.Debugf("%ssfn[%s] stream is nil", ServerLogPrefix, s.funcBuckets[0])
-			return
+			err := fmt.Errorf("sfn[%s] stream is nil", s.funcBuckets[0])
+			return err
 		}
 		(*targetStream).Write(f.Encode())
-		return
+		return nil
 	}
 
 	if len(s.funcBuckets[j]) == 0 {
 		logger.Debugf("%sno sfn found, drop this data frame", ServerLogPrefix)
-		return
+		err := errors.New("no sfn found, drop this data frame")
+		return err
 	}
 
 	targetStream := s.funcs.Get(s.funcBuckets[j])
@@ -243,7 +248,29 @@ func (s *Server) handleDataFrame(stream quic.Stream, session quic.Session, f *fr
 	if targetStream != nil {
 		(*targetStream).Write(f.Encode())
 	}
+	// TODO: 独立流测试
+	// send data to downstream.
+	// stream, err := session.OpenUniStream()
+	// if err != nil {
+	// 	logger.Error("[MergeStreamFunc] session.OpenUniStream failed", "stream-fn", currentSfn, "err", err)
+	// 	// pass the data to next `stream function` if the current stream has error.
+	// 	// next <- data
+	// 	// cancel the current session when error.
+	// 	// cancel()
+	// 	return
+	// }
+
+	// _, err = stream.Write(f.Encode())
+	// stream.Close()
+	// logger.Info("[MergeStreamFunc] session.ISOStream Write", "stream-fn", currentSfn, "err", err)
+	// if err != nil {
+	// 	logger.Error("[MergeStreamFunc] YoMo-Zipper sent data to `stream-fn` failed.", "stream-fn", currentSfn, "err", err)
+	// 	// cancel the current session when error.
+	// 	// cancel()
+	// 	return
+	// }
 	// s.funcs.WriteToAll(f.Encode())
+	return nil
 }
 
 func (s *Server) AddWorkflow(wfs ...Workflow) error {
@@ -342,3 +369,58 @@ func generateCertificate(host ...string) (tls.Certificate, error) {
 
 	return tls.X509KeyPair(certOut.Bytes(), keyOut.Bytes())
 }
+
+// Notify
+// func (s *Server) Notify() <-chan error {
+// 	return s.notify
+// }
+
+/*
+// createStreamFunc creates a `GetStreamFunc` for `Stream Function`.
+func createStreamFunc(app App, connMap *sync.Map, connType ConnectionType) GetStreamFunc {
+	f := func() (string, []streamFuncWithCancel) {
+		// get from local cache.
+		// if funcs, ok := streamFuncCache.Load(app.Name); ok {
+		// 	return app.Name, funcs.([]streamFuncWithCancel)
+		// }
+
+		// get from connMap.
+		conns := findConn(app, connMap, connType)
+		funcs := make([]streamFuncWithCancel, len(conns))
+
+		// if len(conns) == 0 {
+		// 	streamFuncCache.Store(app.Name, funcs)
+		// 	return app.Name, funcs
+		// }
+
+		i := 0
+		for id, conn := range conns {
+			funcs[i] = streamFuncWithCancel{
+				addr:    conn.Addr,
+				session: conn.Session,
+				// cancel:  cancelStreamFunc(app.Name, conn, connMap, id),
+			}
+			i++
+		}
+
+		// streamFuncCache.Store(app.Name, funcs)
+		return app.Name, funcs
+	}
+
+	return f
+}
+
+// IsMatched indicates if the connection is matched.
+func findConn(app App, connMap *sync.Map, connType ConnectionType) map[string]*Conn {
+	results := make(map[string]*Conn)
+	connMap.Range(func(key, value interface{}) bool {
+		c := value.(*Conn)
+		if c.Conn.Name == app.Name && c.Conn.Type == connType {
+			results[key.(string)] = c
+		}
+		return true
+	})
+
+	return results
+}
+*/
