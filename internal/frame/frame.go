@@ -6,6 +6,7 @@ const (
 	TagOfDataFrame FrameType = 0x3F
 	// MetaFrame of DataFrame
 	TagOfMetaFrame     FrameType = 0x2F
+	TagOfMetadata      FrameType = 0x03
 	TagOfTransactionID FrameType = 0x01
 	TagOfIssuer        FrameType = 0x02
 	// PayloadFrame of DataFrame

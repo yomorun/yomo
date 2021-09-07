@@ -146,7 +146,7 @@ func (c *Client) handleFrame() {
 			case frame.TagOfDataFrame:
 				if v, ok := f.(*frame.DataFrame); ok {
 					c.setState(ConnStateTransportData)
-					logger.Debugf("%sreceive DataFrame, tag=%#x, tid=%s, issuer=%s, carry=%s", ClientLogPrefix, v.GetDataTagID(), v.TransactionID(), v.Issuer(), v.GetCarriage())
+					logger.Debugf("%sreceive DataFrame, tag=%#x, tid=%s, issuer=%s, carry=%s", ClientLogPrefix, v.GetDataTagID(), v.GetMetadata("tid"), v.GetMetadata("issuer"), v.GetCarriage())
 					if c.processor == nil {
 						logger.Warnf("%sprocessor is nil", ClientLogPrefix)
 					} else {

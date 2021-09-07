@@ -211,10 +211,15 @@ func (s *Server) handlePingFrame(stream quic.Stream, session quic.Session, f *fr
 }
 
 func (s *Server) handleDataFrame(mainStream quic.Stream, session quic.Session, f *frame.DataFrame) error {
+	// TODO: tracing
+	// span := tracing.NewSpanFromData(string(data), name, "server.handleDataFrame"+name)
+	// if span != nil {
+	// 	defer span.End()
+	// }
 	// counter +1
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
 	// 收到数据帧
-	currentSfn := f.Issuer()
+	currentSfn := f.GetMetadata("issuer")
 	logger.Infof("%sframeType=%s, issuer=%s, counter=%d", ServerLogPrefix, f.Type(), currentSfn, s.counterOfDataFrame)
 	// 因为是Immutable Stream，按照规则发送给 sfn
 	var j int

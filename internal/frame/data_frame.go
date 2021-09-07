@@ -7,15 +7,16 @@ import (
 // DataFrame defines the data structure carried with user's data
 // when transfering within YoMo
 type DataFrame struct {
-	metaFrame    *MetaFrame
+	metaFrame    MetaFrame
 	payloadFrame *PayloadFrame
 }
 
 // NewDataFrame create `DataFrame` with a transactionID string,
 // consider change transactionID to UUID type later
-func NewDataFrame(transactionID string, issuer string) *DataFrame {
+// func NewDataFrame(transactionID string, issuer string) *DataFrame {
+func NewDataFrame(datas ...Metadata) *DataFrame {
 	data := &DataFrame{
-		metaFrame: NewMetaFrame(transactionID, issuer),
+		metaFrame: NewMetaFrame(datas...),
 	}
 	return data
 }
@@ -35,14 +36,24 @@ func (d *DataFrame) GetCarriage() []byte {
 	return d.payloadFrame.Carriage
 }
 
-// TransactionID return transactionID string
-func (d *DataFrame) TransactionID() string {
-	return d.metaFrame.TransactionID()
+// // TransactionID return transactionID string
+// func (d *DataFrame) TransactionID() string {
+// 	return d.metaFrame.TransactionID()
+// }
+
+// // Issuer return issuer
+// func (d *DataFrame) Issuer() string {
+// 	return d.metaFrame.Issuer()
+// }
+
+// GetMetadata get metadata by name
+func (d *DataFrame) GetMetadata(name string) string {
+	val, _ := d.metaFrame.Get(name)
+	return val
 }
 
-// Issuer return issuer
-func (d *DataFrame) Issuer() string {
-	return d.metaFrame.Issuer()
+func (d *DataFrame) GetMetadatas() []Metadata {
+	return d.metaFrame.GetMetadatas()
 }
 
 // GetDataTagID return the Tag of user's data

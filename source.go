@@ -87,7 +87,7 @@ func (s *yomoSource) WriteWithTransaction(transactionID string, tag uint8, data 
 	} else {
 		logger.Debugf("%sWriteDataWithTransactionID: data=%# x", SourceLogPrefix, data)
 	}
-	frame := frame.NewDataFrame(transactionID, s.name)
+	frame := frame.NewDataFrame(frame.NewMetadata("tid", transactionID), frame.NewMetadata("issuer", s.name))
 	frame.SetCarriage(byte(tag), data)
 
 	return s.client.WriteFrame(frame)

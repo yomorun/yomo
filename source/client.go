@@ -42,7 +42,7 @@ func (c *clientImpl) Write(data []byte) (int, error) {
 
 	// wrap data with frame.
 	txid := strconv.FormatInt(time.Now().UnixNano(), 10)
-	frame := frame.NewDataFrame(txid)
+	frame := frame.NewDataFrame(frame.NewMetadata("tid", txid))
 	// playload frame
 	// TODO: tag id
 	frame.SetCarriage(0x10, data)

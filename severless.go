@@ -108,7 +108,7 @@ func (s *streamFunction) onDataFrame(data []byte) {
 	if len(resp) != 0 {
 		logger.Debugf("%sstart WriteFrame(): tag=%#x, data=%v", StreamFunctionLogPrefix, tag, resp)
 		transactionID := fmt.Sprintf("tid-sfn-%s", s.name)
-		frame := frame.NewDataFrame(transactionID, s.name)
+		frame := frame.NewDataFrame(frame.NewMetadata("tid", transactionID), frame.NewMetadata("issuer", s.name))
 		frame.SetCarriage(tag, resp)
 		s.client.WriteFrame(frame)
 	}

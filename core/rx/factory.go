@@ -75,7 +75,7 @@ func (fac *factoryImpl) FromQuicStream(ctx context.Context, stream quic.Stream) 
 			switch f.Type() {
 			case frame.TagOfDataFrame:
 				dataFrame := f.(*frame.DataFrame)
-				logger.Debug("Receive data frame from source.", "TransactionID", dataFrame.TransactionID())
+				logger.Debug("Receive data frame from source.", "metadatas", dataFrame.GetMetadatas())
 				next <- Of(dataFrame.GetCarriage())
 			default:
 				logger.Debug("Only support data frame in RxStream.", "type", f.Type())
