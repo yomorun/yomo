@@ -15,12 +15,12 @@ const (
 )
 
 type Source interface {
-	Write(p []byte) (n int, err error)
+	Write(p []byte, metadatas ...Metadata) (n int, err error)
 	SetDataTag(tag uint8)
 	Close() error
 	Connect() error
-	WriteWithTag(tag uint8, data []byte) error
-	WriteWithTransaction(transactionID string, tag uint8, data []byte) error
+	WriteWithTag(tag uint8, data []byte, metadatas ...frame.Metadata) error
+	WriteWithTransaction(transactionID string, tag uint8, data []byte, metadatas ...frame.Metadata) error
 }
 
 // YoMo-Source
@@ -47,8 +47,8 @@ func NewSource(opts ...Option) Source {
 }
 
 // Write the data to downstream.
-func (s *yomoSource) Write(data []byte) (int, error) {
-	return len(data), s.WriteWithTag(s.tag, data)
+func (s *yomoSource) Write(data []byte, metadatas ...Metadata) (int, error) {
+	return len(data), s.WriteWithTag(s.tag, data, metadatas...)
 }
 
 func (s *yomoSource) SetDataTag(tag uint8) {
@@ -75,19 +75,20 @@ func (s *yomoSource) Connect() error {
 }
 
 // 向 Zipper 发送用户数据，指定该次发送数据使用的 tag
-func (s *yomoSource) WriteWithTag(tag uint8, data []byte) error {
+func (s *yomoSource) WriteWithTag(tag uint8, data []byte, metadatas ...frame.Metadata) error {
 	transactionID := strconv.FormatInt(time.Now().UnixNano(), 10)
-	return s.WriteWithTransaction(transactionID, tag, data)
+	return s.WriteWithTransaction(transactionID, tag, data, metadatas...)
 }
 
 // 向 Zipper 发送用户数据，指定该次发送数据使用的 tag 以及 transactionID
-func (s *yomoSource) WriteWithTransaction(transactionID string, tag uint8, data []byte) error {
+func (s *yomoSource) WriteWithTransaction(transactionID string, tag uint8, data []byte, metadatas ...frame.Metadata) error {
 	if len(data) > 1024 {
 		logger.Debugf("%sWriteDataWithTransactionID: len(data)=%d", SourceLogPrefix, len(data))
 	} else {
 		logger.Debugf("%sWriteDataWithTransactionID: data=%# x", SourceLogPrefix, data)
 	}
-	frame := frame.NewDataFrame(frame.NewMetadata("tid", transactionID), frame.NewMetadata("issuer", s.name))
+	md := append(metadatas, frame.NewMetadata("issuer", s.name))
+	frame := frame.NewDataFrame(md...)
 	frame.SetCarriage(byte(tag), data)
 
 	return s.client.WriteFrame(frame)

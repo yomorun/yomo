@@ -12,6 +12,7 @@ import (
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/internal/frame"
 	"github.com/yomorun/yomo/logger"
+	"github.com/yomorun/yomo/zipper/tracing"
 )
 
 const (
@@ -34,6 +35,11 @@ type Client struct {
 
 // New creates a new client.
 func NewClient(appName string, connType ConnectionType) *Client {
+	// tracing
+	_, _, err := tracing.NewTracerProvider(fmt.Sprintf("yomo.Client[%s]", appName))
+	if err != nil {
+		logger.Errorf("tracing: %v", err)
+	}
 	c := &Client{
 		token:    appName,
 		connType: connType,
@@ -145,8 +151,13 @@ func (c *Client) handleFrame() {
 				break
 			case frame.TagOfDataFrame:
 				if v, ok := f.(*frame.DataFrame); ok {
+					// tracing
+					span, err := tracing.NewRemoteTraceSpan(v.GetMetadata("TraceID"), v.GetMetadata("SpanID"), "client", "processor-"+v.GetMetadata("issuer"))
+					if err == nil {
+						defer span.End()
+					}
 					c.setState(ConnStateTransportData)
-					logger.Debugf("%sreceive DataFrame, tag=%#x, tid=%s, issuer=%s, carry=%s", ClientLogPrefix, v.GetDataTagID(), v.GetMetadata("tid"), v.GetMetadata("issuer"), v.GetCarriage())
+					logger.Debugf("%sreceive DataFrame, tag=%#x, metadata=%v, carry=%s", ClientLogPrefix, v.GetDataTagID(), v.GetMetadatas(), v.GetCarriage())
 					if c.processor == nil {
 						logger.Warnf("%sprocessor is nil", ClientLogPrefix)
 					} else {

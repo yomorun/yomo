@@ -21,6 +21,7 @@ import (
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/internal/frame"
 	"github.com/yomorun/yomo/logger"
+	"github.com/yomorun/yomo/zipper/tracing"
 )
 
 // Server 是 QUIC Server 的抽象，被 Zipper 使用
@@ -35,6 +36,11 @@ type Server struct {
 }
 
 func NewServer() *Server {
+	// tracing
+	_, _, err := tracing.NewTracerProvider("yomo.Server")
+	if err != nil {
+		logger.Errorf("tracing: %v", err)
+	}
 	return &Server{
 		funcs:       NewConcurrentMap(),
 		funcBuckets: make(map[int]string, 0),
@@ -211,16 +217,16 @@ func (s *Server) handlePingFrame(stream quic.Stream, session quic.Session, f *fr
 }
 
 func (s *Server) handleDataFrame(mainStream quic.Stream, session quic.Session, f *frame.DataFrame) error {
-	// TODO: tracing
-	// span := tracing.NewSpanFromData(string(data), name, "server.handleDataFrame"+name)
-	// if span != nil {
-	// 	defer span.End()
-	// }
+	// tracing
+	span, err := tracing.NewRemoteTraceSpan(f.GetMetadata("TraceID"), f.GetMetadata("SpanID"), "server", "handleDataFrame-"+f.GetMetadata("issuer"))
+	if err == nil {
+		defer span.End()
+	}
 	// counter +1
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
 	// 收到数据帧
 	currentSfn := f.GetMetadata("issuer")
-	logger.Infof("%sframeType=%s, issuer=%s, counter=%d", ServerLogPrefix, f.Type(), currentSfn, s.counterOfDataFrame)
+	logger.Infof("%sframeType=%s, metadata=%s, counter=%d", ServerLogPrefix, f.Type(), f.GetMetadatas(), s.counterOfDataFrame)
 	// 因为是Immutable Stream，按照规则发送给 sfn
 	var j int
 	for i, k := range s.funcBuckets {
