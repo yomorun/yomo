@@ -63,7 +63,7 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 		InitialStreamReceiveWindow:     1024 * 1024 * 2,
 		InitialConnectionReceiveWindow: 1024 * 1024 * 2,
 		TokenStore:                     quic.NewLRUTokenStore(1, 1),
-		DisablePathMTUDiscovery:        false,
+		DisablePathMTUDiscovery:        true,
 	}
 	// quic session
 	session, err := quic.DialAddr(addr, tlsConf, quicConf)

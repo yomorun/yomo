@@ -10,4 +10,5 @@
 - [ ] zipper 互通
 - [ ] sfn 支持 `rx` 和 `raw bytes` 两种 Handler
 - [ ] 添加/修改 frame，让传输的数据支持 scale
+- [x] yomo-aftership POC 测试(目前测试结果没有明显改进)
 

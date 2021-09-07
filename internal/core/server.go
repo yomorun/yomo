@@ -52,7 +52,7 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 		HandshakeIdleTimeout:           time.Second * 3,
 		InitialStreamReceiveWindow:     1024 * 1024 * 2,
 		InitialConnectionReceiveWindow: 1024 * 1024 * 2,
-		DisablePathMTUDiscovery:        false,
+		DisablePathMTUDiscovery:        true,
 		// Tracer:                         getQlogConfig("server"),
 	}
 

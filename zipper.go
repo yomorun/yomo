@@ -20,6 +20,7 @@ type Zipper interface {
 	AddDownstreamZipper(downstream Zipper) error
 	RemoveDownstreamZipper(downstream Zipper) error
 	ListenAddr() string
+	Addr() string
 	Stats() int
 	Close() error
 }
@@ -134,7 +135,7 @@ func (s *zipper) AddDownstreamZipper(downstream Zipper) error {
 func (s *zipper) RemoveDownstreamZipper(downstream Zipper) error {
 	index := -1
 	for i, v := range s.downstreamZippers {
-		if v.ListenAddr() == downstream.ListenAddr() {
+		if v.ListenAddr() == downstream.Addr() {
 			index = i
 			break
 		}
@@ -148,6 +149,10 @@ func (s *zipper) RemoveDownstreamZipper(downstream Zipper) error {
 // 获取 zipper 监听的 endpoint
 func (s *zipper) ListenAddr() string {
 	return s.listenAddr
+}
+
+func (s *zipper) Addr() string {
+	return s.addr
 }
 
 /*************** Client/Server 都用 ***************/
