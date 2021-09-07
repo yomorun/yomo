@@ -135,7 +135,7 @@ func (s *zipper) AddDownstreamZipper(downstream Zipper) error {
 func (s *zipper) RemoveDownstreamZipper(downstream Zipper) error {
 	index := -1
 	for i, v := range s.downstreamZippers {
-		if v.ListenAddr() == downstream.Addr() {
+		if v.Addr() == downstream.Addr() {
 			index = i
 			break
 		}
