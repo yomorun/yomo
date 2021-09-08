@@ -1,14 +1,24 @@
 package frame
 
 import (
+	"fmt"
+	"sync"
+
 	"github.com/yomorun/y3"
+)
+
+const (
+	MetadataIssuer = "_issuer_"
+	MetadataTID    = "_transaction-id_"
+	MetadataGID    = "_global-id_"
 )
 
 type MetaFrame interface {
 	Encode() []byte
-	Get(name string) (string, bool)
+	Get(name string) string
 	Set(name string, val string)
-	GetMetadatas() []Metadata
+	GetMetadatas() []*Metadata
+	GetIssuer() string
 }
 
 type Metadata struct {
@@ -16,16 +26,31 @@ type Metadata struct {
 	Value string
 }
 
-func NewMetadata(name string, value string) Metadata {
-	return Metadata{
+func NewMetadata(name string, value string) *Metadata {
+	return &Metadata{
 		Name:  name,
 		Value: value,
 	}
 }
 
-func NewMetaFrame(datas ...Metadata) MetaFrame {
+func (m Metadata) String() string {
+	return fmt.Sprintf(`"%s":"%s"`, m.Name, m.Value)
+}
+
+func NewMetaFrame(datas ...*Metadata) MetaFrame {
+	// cleanup duplicated metadata
+	cleanData := make([]*Metadata, 0)
+	keys := make(map[string]byte, 0)
+	for _, d := range datas {
+		l := len(keys)
+		keys[d.Name] = 0
+		if len(keys) != l {
+			cleanData = append(cleanData, d)
+		}
+	}
+
 	return &metaFrame{
-		data: datas,
+		data: cleanData,
 	}
 }
 
@@ -37,8 +62,8 @@ type metaFrame struct {
 	// transactionID string
 	// // issuer issue this transaction
 	// issuer string
-	data      []Metadata
-	isDecoded bool
+	data []*Metadata
+	mu   sync.Mutex
 }
 
 // NewMetaFrame creates a new MetaFrame with a given transactionID
@@ -90,16 +115,21 @@ func (m *metaFrame) Encode() []byte {
 	return metaNode.Encode()
 }
 
-func (m *metaFrame) Get(name string) (string, bool) {
+func (m *metaFrame) Get(name string) string {
 	for _, data := range m.data {
 		if data.Name == name {
-			return data.Value, true
+			return data.Value
 		}
 	}
-	return "", false
+	return ""
 }
 
 func (m *metaFrame) Set(name string, value string) {
+	if len(m.data) == 0 {
+		m.data = append(m.data, NewMetadata(name, value))
+		return
+	}
+
 	for _, data := range m.data {
 		if data.Name == name {
 			data.Value = value
@@ -109,8 +139,12 @@ func (m *metaFrame) Set(name string, value string) {
 	}
 }
 
-func (m *metaFrame) GetMetadatas() []Metadata {
+func (m *metaFrame) GetMetadatas() []*Metadata {
 	return m.data
+}
+
+func (m *metaFrame) GetIssuer() string {
+	return m.Get(MetadataIssuer)
 }
 
 // DecodeToMetaFrame decodes Y3 encoded bytes to a MetaFrame
@@ -142,7 +176,7 @@ func DecodeToMetaFrame(buf []byte) (MetaFrame, error) {
 	// 	issuer:        issuer,
 	// }
 	// return meta, nil
-	data := make([]Metadata, 0)
+	data := make([]*Metadata, 0)
 	for _, p := range packet.NodePackets {
 		md := Metadata{}
 		if v, ok := p.PrimitivePackets[0x01]; ok {
@@ -155,7 +189,7 @@ func DecodeToMetaFrame(buf []byte) (MetaFrame, error) {
 				md.Value = value
 			}
 		}
-		data = append(data, md)
+		data = append(data, &md)
 	}
 
 	return &metaFrame{

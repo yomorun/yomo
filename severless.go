@@ -7,6 +7,7 @@ import (
 	"github.com/yomorun/yomo/internal/core"
 	"github.com/yomorun/yomo/internal/frame"
 	"github.com/yomorun/yomo/logger"
+	"github.com/yomorun/yomo/zipper/tracing"
 )
 
 const (
@@ -21,11 +22,11 @@ type StreamFunction interface {
 }
 
 // NewStreamFunction create a stream function
-func NewStreamFunction(opts ...Option) *streamFunction {
+func NewStreamFunction(name string, opts ...Option) *streamFunction {
 	options := newOptions(opts...)
-	client := core.NewClient(options.AppName, core.ConnTypeStreamFunction)
+	client := core.NewClient(name, core.ConnTypeStreamFunction)
 	sfn := streamFunction{
-		name:           options.AppName,
+		name:           name,
 		zipperEndpoint: options.ZipperAddr,
 		client:         client,
 		observed:       make([]uint8, 0),
@@ -66,11 +67,11 @@ func (s *streamFunction) SetHandler(fn func([]byte) (byte, []byte)) error {
 func (s *streamFunction) Connect() error {
 	logger.Debugf("%s Connect()", StreamFunctionLogPrefix)
 	// 注册给底层的 quic-client，当收到 DataFrame 时，转发过来
-	s.client.SetDataFrameObserver(func(tag byte, carraige []byte) {
+	s.client.SetDataFrameObserver(func(tag byte, carraige []byte, metaFrame MetaFrame) {
 		for _, t := range s.observed {
 			if t == tag {
 				logger.Debugf("%sreceive DataFrame, tag=%# x, carraige=%# x", StreamFunctionLogPrefix, tag, carraige)
-				s.onDataFrame(carraige)
+				s.onDataFrame(carraige, metaFrame)
 				return
 			}
 		}
@@ -96,19 +97,25 @@ func (s *streamFunction) Close() error {
 	return nil
 }
 
-func (s *streamFunction) onDataFrame(data []byte) {
+func (s *streamFunction) onDataFrame(data []byte, metaFrame MetaFrame) {
+	// tracing
+	span, err := tracing.NewRemoteTraceSpan(metaFrame.Get("TraceID"), metaFrame.Get("SpanID"), "serverless", fmt.Sprintf("onDataFrame[%s->%s]-", metaFrame.GetIssuer(), s.name))
+	if err == nil {
+		defer span.End()
+	}
 	if s.fn == nil {
 		logger.Warnf("%sStreamFunction is nil", StreamFunctionLogPrefix)
 		return
 	}
+	logger.Infof("%sonDataFrame metadata=%s, [%s]->[%s]", StreamFunctionLogPrefix, metaFrame.GetMetadatas(), metaFrame.GetIssuer(), s.name)
 	logger.Debugf("%sexecute-start fn: data=%#x", StreamFunctionLogPrefix, data)
 	tag, resp := s.fn(data)
 	logger.Debugf("%sexecute-done fn: tag=%#x, resp=%#x", StreamFunctionLogPrefix, tag, resp)
 	// resp 是用户返回的数据，如果不为空，要发送回给 zipper
 	if len(resp) != 0 {
 		logger.Debugf("%sstart WriteFrame(): tag=%#x, data=%v", StreamFunctionLogPrefix, tag, resp)
-		transactionID := fmt.Sprintf("tid-sfn-%s", s.name)
-		frame := frame.NewDataFrame(frame.NewMetadata("tid", transactionID), frame.NewMetadata("issuer", s.name))
+		frame := frame.NewDataFrame(metaFrame.GetMetadatas()...)
+		frame.SetIssuer(s.name)
 		frame.SetCarriage(tag, resp)
 		s.client.WriteFrame(frame)
 	}

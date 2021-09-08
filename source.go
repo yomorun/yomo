@@ -15,12 +15,12 @@ const (
 )
 
 type Source interface {
-	Write(p []byte, metadatas ...Metadata) (n int, err error)
+	Write(p []byte, metadatas ...*Metadata) (n int, err error)
 	SetDataTag(tag uint8)
 	Close() error
 	Connect() error
-	WriteWithTag(tag uint8, data []byte, metadatas ...frame.Metadata) error
-	WriteWithTransaction(transactionID string, tag uint8, data []byte, metadatas ...frame.Metadata) error
+	WriteWithTag(tag uint8, data []byte, metadatas ...*Metadata) error
+	WriteWithTransaction(transactionID string, tag uint8, data []byte, metadatas ...*Metadata) error
 }
 
 // YoMo-Source
@@ -35,19 +35,19 @@ type yomoSource struct {
 var _ Source = &yomoSource{}
 
 // NewSource create a yomo-source
-func NewSource(opts ...Option) Source {
+func NewSource(name string, opts ...Option) Source {
 	options := newOptions(opts...)
-	client := core.NewClient(options.AppName, core.ConnTypeSource)
+	client := core.NewClient(name, core.ConnTypeSource)
 
 	return &yomoSource{
-		name:           options.AppName,
+		name:           name,
 		zipperEndpoint: options.ZipperAddr,
 		client:         client,
 	}
 }
 
 // Write the data to downstream.
-func (s *yomoSource) Write(data []byte, metadatas ...Metadata) (int, error) {
+func (s *yomoSource) Write(data []byte, metadatas ...*Metadata) (int, error) {
 	return len(data), s.WriteWithTag(s.tag, data, metadatas...)
 }
 
@@ -75,20 +75,20 @@ func (s *yomoSource) Connect() error {
 }
 
 // 向 Zipper 发送用户数据，指定该次发送数据使用的 tag
-func (s *yomoSource) WriteWithTag(tag uint8, data []byte, metadatas ...frame.Metadata) error {
+func (s *yomoSource) WriteWithTag(tag uint8, data []byte, metadatas ...*Metadata) error {
 	transactionID := strconv.FormatInt(time.Now().UnixNano(), 10)
 	return s.WriteWithTransaction(transactionID, tag, data, metadatas...)
 }
 
 // 向 Zipper 发送用户数据，指定该次发送数据使用的 tag 以及 transactionID
-func (s *yomoSource) WriteWithTransaction(transactionID string, tag uint8, data []byte, metadatas ...frame.Metadata) error {
+func (s *yomoSource) WriteWithTransaction(transactionID string, tag uint8, data []byte, metadatas ...*Metadata) error {
 	if len(data) > 1024 {
 		logger.Debugf("%sWriteDataWithTransactionID: len(data)=%d", SourceLogPrefix, len(data))
 	} else {
 		logger.Debugf("%sWriteDataWithTransactionID: data=%# x", SourceLogPrefix, data)
 	}
-	md := append(metadatas, frame.NewMetadata("issuer", s.name))
-	frame := frame.NewDataFrame(md...)
+	frame := frame.NewDataFrame(metadatas...)
+	frame.SetIssuer(s.name)
 	frame.SetCarriage(byte(tag), data)
 
 	return s.client.WriteFrame(frame)

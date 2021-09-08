@@ -20,7 +20,7 @@ func handler(data []byte) (byte, []byte) {
 }
 
 func main() {
-	sfn := yomo.NewStreamFunction(yomo.WithName("MockDB"), yomo.WithZipperAddr("localhost:9000"))
+	sfn := yomo.NewStreamFunction("MockDB", yomo.WithZipperAddr("localhost:9000"))
 	defer sfn.Close()
 
 	// 开始监听 dataID 为 0x30~0x33 的数据

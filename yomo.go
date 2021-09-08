@@ -2,11 +2,11 @@ package yomo
 
 import (
 	"github.com/yomorun/yomo/internal/frame"
-	"github.com/yomorun/yomo/streamfunction"
 )
 
 // Metadata
 type Metadata = frame.Metadata
+type MetaFrame = frame.MetaFrame
 
 var NewMetadata = frame.NewMetadata
 
@@ -17,7 +17,7 @@ var NewMetadata = frame.NewMetadata
 // }
 
 // NewStreamFn creates a new YoMo-Stream-Function client.
-func NewStreamFn(opts ...Option) streamfunction.Client {
-	options := newOptions(opts...)
-	return streamfunction.New(options.AppName)
-}
+// func NewStreamFn(opts ...Option) streamfunction.Client {
+// 	options := newOptions(opts...)
+// 	return streamfunction.New(options.AppName)
+// }

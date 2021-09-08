@@ -26,6 +26,7 @@ import (
 
 // Server 是 QUIC Server 的抽象，被 Zipper 使用
 type Server struct {
+	token              string
 	stream             quic.Stream
 	state              string
 	funcs              *ConcurrentMap
@@ -35,13 +36,14 @@ type Server struct {
 	// logger             utils.Logger
 }
 
-func NewServer() *Server {
+func NewServer(name string) *Server {
 	// tracing
-	_, _, err := tracing.NewTracerProvider("yomo.Server")
+	_, _, err := tracing.NewTracerProvider(fmt.Sprintf("yomo.Server[%s]", name))
 	if err != nil {
 		logger.Errorf("tracing: %v", err)
 	}
 	return &Server{
+		token:       name,
 		funcs:       NewConcurrentMap(),
 		funcBuckets: make(map[int]string, 0),
 		connSfnMap:  sync.Map{},
@@ -217,27 +219,27 @@ func (s *Server) handlePingFrame(stream quic.Stream, session quic.Session, f *fr
 }
 
 func (s *Server) handleDataFrame(mainStream quic.Stream, session quic.Session, f *frame.DataFrame) error {
+	currentIssuer := f.GetIssuer()
 	// tracing
-	span, err := tracing.NewRemoteTraceSpan(f.GetMetadata("TraceID"), f.GetMetadata("SpanID"), "server", "handleDataFrame-"+f.GetMetadata("issuer"))
+	span, err := tracing.NewRemoteTraceSpan(f.GetMetadata("TraceID"), f.GetMetadata("SpanID"), "server", fmt.Sprintf("handleDataFrame[ISS:%s]", currentIssuer))
 	if err == nil {
 		defer span.End()
 	}
 	// counter +1
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
 	// 收到数据帧
-	currentSfn := f.GetMetadata("issuer")
-	logger.Infof("%sframeType=%s, metadata=%s, counter=%d", ServerLogPrefix, f.Type(), f.GetMetadatas(), s.counterOfDataFrame)
+	logger.Infof("%sframeType=%s, metadata=%s, issuer=%s, counter=%d", ServerLogPrefix, f.Type(), f.GetMetadatas(), currentIssuer, s.counterOfDataFrame)
 	// 因为是Immutable Stream，按照规则发送给 sfn
 	var j int
-	for i, k := range s.funcBuckets {
-		// 发送给 currentSfn 的下一个 sfn
-		if k == currentSfn {
+	for i, fn := range s.funcBuckets {
+		// 发送给 currentIssuer 的下一个 sfn
+		if fn == currentIssuer {
 			j = i + 1
 		}
 	}
 	// 表示要执行第一个 sfn
 	if j == 0 {
-		logger.Debugf("%s1st sfn write to [(source):%s] -> [%s]:", ServerLogPrefix, currentSfn, s.funcBuckets[0])
+		logger.Infof("%s1st sfn write to [%s] -> [%s]:", ServerLogPrefix, currentIssuer, s.funcBuckets[0])
 		targetStream := s.funcs.Get(s.funcBuckets[0])
 		if targetStream == nil {
 			logger.Debugf("%ssfn[%s] stream is nil", ServerLogPrefix, s.funcBuckets[0])
@@ -255,7 +257,7 @@ func (s *Server) handleDataFrame(mainStream quic.Stream, session quic.Session, f
 	}
 
 	targetStream := s.funcs.Get(s.funcBuckets[j])
-	logger.Debugf("%swill write to: [%s] -> [%s], target is nil:%v", ServerLogPrefix, currentSfn, s.funcBuckets[j], targetStream == nil)
+	logger.Infof("%swill write to: [%s] -> [%s], target is nil:%v", ServerLogPrefix, currentIssuer, s.funcBuckets[j], targetStream == nil)
 	if targetStream != nil {
 		(*targetStream).Write(f.Encode())
 	}
@@ -263,7 +265,7 @@ func (s *Server) handleDataFrame(mainStream quic.Stream, session quic.Session, f
 	// send data to downstream.
 	// stream, err := session.OpenUniStream()
 	// if err != nil {
-	// 	logger.Error("[MergeStreamFunc] session.OpenUniStream failed", "stream-fn", currentSfn, "err", err)
+	// 	logger.Error("[MergeStreamFunc] session.OpenUniStream failed", "stream-fn", currentIssuer, "err", err)
 	// 	// pass the data to next `stream function` if the current stream has error.
 	// 	// next <- data
 	// 	// cancel the current session when error.
@@ -273,9 +275,9 @@ func (s *Server) handleDataFrame(mainStream quic.Stream, session quic.Session, f
 
 	// _, err = stream.Write(f.Encode())
 	// stream.Close()
-	// logger.Info("[MergeStreamFunc] session.ISOStream Write", "stream-fn", currentSfn, "err", err)
+	// logger.Info("[MergeStreamFunc] session.ISOStream Write", "stream-fn", currentIssuer, "err", err)
 	// if err != nil {
-	// 	logger.Error("[MergeStreamFunc] YoMo-Zipper sent data to `stream-fn` failed.", "stream-fn", currentSfn, "err", err)
+	// 	logger.Error("[MergeStreamFunc] YoMo-Zipper sent data to `stream-fn` failed.", "stream-fn", currentIssuer, "err", err)
 	// 	// cancel the current session when error.
 	// 	// cancel()
 	// 	return

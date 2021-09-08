@@ -84,6 +84,7 @@ tasks:
     silent: false
     env:
       YOMO_ENABLE_DEBUG: false
+      YOMO_LOG_LEVEL: info
 
   example-source:
     desc: run source application

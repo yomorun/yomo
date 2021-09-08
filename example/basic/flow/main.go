@@ -16,7 +16,7 @@ type NoiseData struct {
 }
 
 func main() {
-	sfn := yomo.NewStreamFunction(yomo.WithName("Noise"), yomo.WithZipperAddr("localhost:9000"))
+	sfn := yomo.NewStreamFunction("Noise", yomo.WithZipperAddr("localhost:9000"))
 	defer sfn.Close()
 
 	// 开始监听 dataID 为 0x33 的数据

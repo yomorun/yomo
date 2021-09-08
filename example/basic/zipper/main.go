@@ -13,7 +13,7 @@ import (
 
 func main() {
 	// 初始化 zipper，指定监听本机的 udp:19000 端口
-	zipper := yomo.NewZipperServer(yomo.WithName("basic-zipper"), yomo.WithZipperListenAddr("localhost:9000"))
+	zipper := yomo.NewZipperServer("basic-zipper", yomo.WithZipperListenAddr("localhost:9000"))
 	defer zipper.Close()
 
 	// 设置 sfn 的工作流：
@@ -26,9 +26,9 @@ func main() {
 	zipper.ConfigDownstream("can_be_read_from_http://vhq.yomo.run/dev.json")
 
 	// 可随时添加下游级联的 Downstream Zipper
-	zipper.AddDownstreamZipper(yomo.NewZipper(yomo.WithZipperAddr("localhost:9001")))
+	zipper.AddDownstreamZipper(yomo.NewZipper("z1", yomo.WithZipperAddr("localhost:9001")))
 	// 可随时删除下游级联的 Downstream Zipper
-	zipper.RemoveDownstreamZipper(yomo.NewZipper(yomo.WithZipperAddr("localhost:9001")))
+	zipper.RemoveDownstreamZipper(yomo.NewZipper("z1", yomo.WithZipperAddr("localhost:9001")))
 
 	// 启动 Zipper 服务
 	go func(zipper yomo.Zipper) {

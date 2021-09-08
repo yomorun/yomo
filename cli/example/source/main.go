@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io"
 	"log"
 	"math/rand"
 	"time"
@@ -18,7 +17,7 @@ type noiseData struct {
 
 func main() {
 	// connect to YoMo-Zipper.
-	source := yomo.NewSource(yomo.WithName("yomo-source"), yomo.WithZipperAddr("localhost:9000"))
+	source := yomo.NewSource("yomo-source", yomo.WithZipperAddr("localhost:9000"))
 	err := source.Connect()
 	if err != nil {
 		log.Printf("[source] ❌ Emit the data to YoMo-Zipper failure with err: %v", err)
@@ -34,7 +33,7 @@ func main() {
 
 var codec = y3.NewCodec(0x10)
 
-func generateAndSendData(stream io.Writer) {
+func generateAndSendData(stream yomo.Source) {
 	for {
 		// generate random data.
 		data := noiseData{

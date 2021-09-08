@@ -14,7 +14,7 @@ type DataFrame struct {
 // NewDataFrame create `DataFrame` with a transactionID string,
 // consider change transactionID to UUID type later
 // func NewDataFrame(transactionID string, issuer string) *DataFrame {
-func NewDataFrame(datas ...Metadata) *DataFrame {
+func NewDataFrame(datas ...*Metadata) *DataFrame {
 	data := &DataFrame{
 		metaFrame: NewMetaFrame(datas...),
 	}
@@ -41,19 +41,31 @@ func (d *DataFrame) GetCarriage() []byte {
 // 	return d.metaFrame.TransactionID()
 // }
 
-// // Issuer return issuer
-// func (d *DataFrame) Issuer() string {
-// 	return d.metaFrame.Issuer()
-// }
+func (d *DataFrame) SetIssuer(issuer string) {
+	d.metaFrame.Set(MetadataIssuer, issuer)
+}
+
+// GetIssuer return issuer
+func (d *DataFrame) GetIssuer() string {
+	return d.metaFrame.Get(MetadataIssuer)
+}
 
 // GetMetadata get metadata by name
 func (d *DataFrame) GetMetadata(name string) string {
-	val, _ := d.metaFrame.Get(name)
-	return val
+	return d.metaFrame.Get(name)
 }
 
-func (d *DataFrame) GetMetadatas() []Metadata {
+// SetMetadata set metadata
+func (d *DataFrame) SetMetadata(name string, val string) {
+	d.metaFrame.Set(name, val)
+}
+
+func (d *DataFrame) GetMetadatas() []*Metadata {
 	return d.metaFrame.GetMetadatas()
+}
+
+func (d *DataFrame) GetMetaFrame() MetaFrame {
+	return d.metaFrame
 }
 
 // GetDataTagID return the Tag of user's data

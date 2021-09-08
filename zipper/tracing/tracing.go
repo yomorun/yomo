@@ -109,6 +109,9 @@ func NewTraceSpan(otelTraceID string, otelSpanID string, tracerName string, span
 
 // NewRemoteTraceSpan creates a new span of OpenTelemetry from remote parent tracing.
 func NewRemoteTraceSpan(otelTraceID string, otelSpanID string, tracerName string, spanName string) (trace.Span, error) {
+	if otelTraceID == "" || otelSpanID == "" {
+		return nil, errors.New("TraceID or SpanID is empty")
+	}
 	return newTraceSpan(otel.GetTracerProvider(), otelTraceID, otelSpanID, tracerName, spanName, true)
 }
 

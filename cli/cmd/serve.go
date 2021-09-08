@@ -46,7 +46,7 @@ var serveCmd = &cobra.Command{
 		// endpoint := fmt.Sprintf("%s:%d", conf.Host, conf.Port)
 
 		log.InfoStatusEvent(os.Stdout, "Running YoMo-Zipper...")
-		zipper := yomo.NewZipperServer(yomo.WithName(conf.Name))
+		zipper := yomo.NewZipperServer(conf.Name)
 		zipper.ConfigWorkflow(config)
 		err = zipper.ListenAndServe()
 		if err != nil {

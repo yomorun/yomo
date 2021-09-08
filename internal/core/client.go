@@ -29,7 +29,7 @@ type Client struct {
 	stream            quic.Stream
 	state             string
 	lastFrameSentTick time.Time
-	processor         func(byte, []byte)
+	processor         func(byte, []byte, frame.MetaFrame)
 	mu                sync.Mutex
 }
 
@@ -151,17 +151,12 @@ func (c *Client) handleFrame() {
 				break
 			case frame.TagOfDataFrame:
 				if v, ok := f.(*frame.DataFrame); ok {
-					// tracing
-					span, err := tracing.NewRemoteTraceSpan(v.GetMetadata("TraceID"), v.GetMetadata("SpanID"), "client", "processor-"+v.GetMetadata("issuer"))
-					if err == nil {
-						defer span.End()
-					}
 					c.setState(ConnStateTransportData)
 					logger.Debugf("%sreceive DataFrame, tag=%#x, metadata=%v, carry=%s", ClientLogPrefix, v.GetDataTagID(), v.GetMetadatas(), v.GetCarriage())
 					if c.processor == nil {
 						logger.Warnf("%sprocessor is nil", ClientLogPrefix)
 					} else {
-						go c.processor(v.GetDataTagID(), v.GetCarriage())
+						go c.processor(v.GetDataTagID(), v.GetCarriage(), v.GetMetaFrame())
 					}
 				}
 			default:
@@ -243,7 +238,7 @@ func (c *Client) OnAccepted(hdl func() error) error {
 	return nil
 }
 
-func (c *Client) SetDataFrameObserver(fn func(byte, []byte)) {
+func (c *Client) SetDataFrameObserver(fn func(byte, []byte, frame.MetaFrame)) {
 	c.processor = fn
 	logger.Debugf("%sSetDataFrameObserver(%v)", ClientLogPrefix, c.processor)
 

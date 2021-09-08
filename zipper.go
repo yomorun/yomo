@@ -41,12 +41,12 @@ type zipper struct {
 var _ Zipper = &zipper{}
 
 // 创建下游级联的 Zipper
-func NewZipper(opts ...Option) *zipper {
+func NewZipper(name string, opts ...Option) *zipper {
 	options := newOptions(opts...)
-	client := core.NewClient(options.AppName, core.ConnTypeUpstreamZipper)
+	client := core.NewClient(name, core.ConnTypeUpstreamZipper)
 
 	return &zipper{
-		token:      options.AppName,
+		token:      name,
 		listenAddr: options.ZipperListenAddr,
 		addr:       options.ZipperAddr,
 		client:     client,
@@ -55,12 +55,12 @@ func NewZipper(opts ...Option) *zipper {
 
 // 创建 Zipper 服务端，
 // 会接入 Source, Upstream Zipper, Sfn
-func NewZipperServer(opts ...Option) Zipper {
+func NewZipperServer(name string, opts ...Option) Zipper {
 	options := newOptions(opts...)
-	srv := core.NewServer()
+	srv := core.NewServer(name)
 
 	return &zipper{
-		token:          options.AppName,
+		token:          name,
 		listenAddr:     options.ZipperListenAddr,
 		hasDownstreams: false,
 		server:         srv,
