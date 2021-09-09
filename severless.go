@@ -99,7 +99,7 @@ func (s *streamFunction) Close() error {
 
 func (s *streamFunction) onDataFrame(data []byte, metaFrame MetaFrame) {
 	// tracing
-	span, err := tracing.NewRemoteTraceSpan(metaFrame.Get("TraceID"), metaFrame.Get("SpanID"), "serverless", fmt.Sprintf("onDataFrame[%s->%s]-", metaFrame.GetIssuer(), s.name))
+	span, err := tracing.NewRemoteTraceSpan(metaFrame.Get("TraceID"), metaFrame.Get("SpanID"), "serverless", fmt.Sprintf("onDataFrame [%s]", s.name))
 	if err == nil {
 		defer span.End()
 	}

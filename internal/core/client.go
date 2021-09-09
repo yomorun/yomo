@@ -192,15 +192,22 @@ func (c *Client) EnableDebug() {
 	logger.EnableDebug()
 }
 
-func (c *Client) WriteFrame(frame frame.Frame) error {
+func (c *Client) WriteFrame(frm frame.Frame) error {
+	// tracing
+	if f, ok := frm.(*frame.DataFrame); ok {
+		span, err := tracing.NewRemoteTraceSpan(f.GetMetadata("TraceID"), f.GetMetadata("SpanID"), c.token, fmt.Sprintf("WriteFrame [%s]->[zipper]", c.token))
+		if err == nil {
+			defer span.End()
+		}
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.stream == nil {
 		return errors.New("Stream is nil")
 	}
-	logger.Debugf("%sWriteFrame() will write frame: %s", ClientLogPrefix, frame.Type())
+	logger.Debugf("%sWriteFrame() will write frame: %s", ClientLogPrefix, frm.Type())
 	c.lastFrameSentTick = time.Now()
-	data := frame.Encode()
+	data := frm.Encode()
 	n, err := c.stream.Write(data)
 	if len(data) > 256 {
 		logger.Debugf("%sWriteFrame() wrote n=%d, len(data)=%d", ClientLogPrefix, n, len(data))

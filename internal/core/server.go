@@ -221,7 +221,7 @@ func (s *Server) handlePingFrame(stream quic.Stream, session quic.Session, f *fr
 func (s *Server) handleDataFrame(mainStream quic.Stream, session quic.Session, f *frame.DataFrame) error {
 	currentIssuer := f.GetIssuer()
 	// tracing
-	span, err := tracing.NewRemoteTraceSpan(f.GetMetadata("TraceID"), f.GetMetadata("SpanID"), "server", fmt.Sprintf("handleDataFrame[ISS:%s]", currentIssuer))
+	span, err := tracing.NewRemoteTraceSpan(f.GetMetadata("TraceID"), f.GetMetadata("SpanID"), "server", fmt.Sprintf("handleDataFrame <-[%s]", currentIssuer))
 	if err == nil {
 		defer span.End()
 	}
