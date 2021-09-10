@@ -37,17 +37,17 @@ type Server struct {
 }
 
 func NewServer(name string) *Server {
-	// tracing
-	_, _, err := tracing.NewTracerProvider(fmt.Sprintf("yomo.Server[%s]", name))
-	if err != nil {
-		logger.Errorf("tracing: %v", err)
-	}
-	return &Server{
+	s := &Server{
 		token:       name,
 		funcs:       NewConcurrentMap(),
 		funcBuckets: make(map[int]string, 0),
 		connSfnMap:  sync.Map{},
 	}
+	once.Do(func() {
+		s.init()
+	})
+
+	return s
 }
 
 func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
@@ -437,3 +437,11 @@ func findConn(app App, connMap *sync.Map, connType ConnectionType) map[string]*C
 	return results
 }
 */
+
+func (s *Server) init() {
+	// tracing
+	_, _, err := tracing.NewTracerProvider(s.token)
+	if err != nil {
+		logger.Errorf("tracing: %v", err)
+	}
+}

@@ -35,16 +35,14 @@ type Client struct {
 
 // New creates a new client.
 func NewClient(appName string, connType ConnectionType) *Client {
-	// tracing
-	_, _, err := tracing.NewTracerProvider(fmt.Sprintf("yomo.Client[%s]", appName))
-	if err != nil {
-		logger.Errorf("tracing: %v", err)
-	}
 	c := &Client{
 		token:    appName,
 		connType: connType,
 		state:    ConnStateReady,
 	}
+	once.Do(func() {
+		c.init()
+	})
 
 	return c
 }
@@ -265,5 +263,13 @@ func (c *Client) reconnect(ctx context.Context, addr string) {
 				}
 			}
 		}
+	}
+}
+
+func (c *Client) init() {
+	// tracing
+	_, _, err := tracing.NewTracerProvider(c.token)
+	if err != nil {
+		logger.Errorf("tracing: %v", err)
 	}
 }

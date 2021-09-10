@@ -1,5 +1,11 @@
 package core
 
+import "sync"
+
+var (
+	once sync.Once
+)
+
 const (
 	// ConnState
 	ConnStateReady          ConnState = "Ready"
