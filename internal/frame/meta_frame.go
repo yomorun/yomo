@@ -2,7 +2,6 @@ package frame
 
 import (
 	"fmt"
-	"sync"
 
 	"github.com/yomorun/y3"
 )
@@ -44,8 +43,15 @@ func NewMetaFrame(datas ...*Metadata) MetaFrame {
 	for _, d := range datas {
 		l := len(keys)
 		keys[d.Name] = 0
+		// append metadata
 		if len(keys) != l {
 			cleanData = append(cleanData, d)
+		} else { // update latest value
+			for _, cd := range cleanData {
+				if cd.Name == d.Name {
+					cd.Value = d.Value
+				}
+			}
 		}
 	}
 
@@ -63,7 +69,6 @@ type metaFrame struct {
 	// // issuer issue this transaction
 	// issuer string
 	data []*Metadata
-	mu   sync.Mutex
 }
 
 // NewMetaFrame creates a new MetaFrame with a given transactionID
@@ -129,13 +134,17 @@ func (m *metaFrame) Set(name string, value string) {
 		m.data = append(m.data, NewMetadata(name, value))
 		return
 	}
-
-	for _, data := range m.data {
-		if data.Name == name {
-			data.Value = value
-		} else {
-			m.data = append(m.data, NewMetadata(name, value))
+	keys := make(map[string]byte, 0)
+	// update latest value
+	for _, d := range m.data {
+		keys[d.Name] = 0
+		if d.Name == name {
+			d.Value = value
 		}
+	}
+	// append new metadata
+	if _, ok := keys[name]; !ok {
+		m.data = append(m.data, NewMetadata(name, value))
 	}
 }
 
