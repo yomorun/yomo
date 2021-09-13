@@ -5,7 +5,7 @@ import (
 )
 
 // DataFrame defines the data structure carried with user's data
-// when transfering within YoMo
+// transferring within YoMo
 type DataFrame struct {
 	metaFrame    MetaFrame
 	payloadFrame *PayloadFrame
@@ -13,7 +13,6 @@ type DataFrame struct {
 
 // NewDataFrame create `DataFrame` with a transactionID string,
 // consider change transactionID to UUID type later
-// func NewDataFrame(transactionID string, issuer string) *DataFrame {
 func NewDataFrame(datas ...*Metadata) *DataFrame {
 	data := &DataFrame{
 		metaFrame: NewMetaFrame(datas...),
