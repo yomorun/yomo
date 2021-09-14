@@ -17,11 +17,19 @@
 vendor/
 /bin/yomo
 main
+# example
 example/basic/flow/flow
 example/basic/source/source
 example/basic/zipper/zipper
+example/multi-stream-fn/source/source
+example/multi-stream-fn/stream-fn-1/fn1
+example/multi-stream-fn/stream-fn-2/fn2
+example/multi-stream-fn/stream-fn-3/fn3
+example/multi-stream-fn/zipper/zipper
+# cli
 cli/example/source/source
 cli/example/stream-fn-db/stream-fn-db
 cli/example/stream-fn/stream-fn
 cmd/yomo/yomo
+# release
 release/

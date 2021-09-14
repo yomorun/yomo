@@ -3,6 +3,7 @@
 version: '3'
 
 tasks:
+  # basic example
   basic:
     desc: run basic example
     deps: [basic-zipper,basic-source,basic-flow]
@@ -65,4 +66,106 @@ tasks:
       - echo "basic flow building..."
       - "go build -o flow{{exeExt}} main.go"
       - echo "basic flow built."
+    silent: false
+
+  # multi stream function example 
+  multi-stream-fn:
+    desc: run multi stream function example
+    deps: [multi-stream-fn-zipper,multi-stream-fn-source,multi-stream-fn-1,multi-stream-fn-2,multi-stream-fn-3]
+    cmds:
+      - echo 'multi stream function example'
+
+  multi-stream-fn-source:
+    desc: run multi stream function example
+    deps: [multi-stream-fn-source-build]
+    dir: "example/multi-stream-fn/source"
+    cmds:
+      - "./source{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: false
+      YOMO_LOG_LEVEL: info
+
+  multi-stream-fn-source-build:
+    desc: build multi stream function source example
+    dir: "example/multi-stream-fn/source"
+    cmds:
+      - echo "multi stream function source building..."
+      - "go build -o source{{exeExt}} main.go"
+      - echo "multi stream function source built."
+    silent: false
+
+  multi-stream-fn-zipper:
+    desc: run multi stream function zipper service
+    deps: [multi-stream-fn-zipper-build]
+    dir: "example/multi-stream-fn/zipper"
+    cmds:
+      - "./zipper{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: false
+      YOMO_LOG_LEVEL: info
+
+  multi-stream-fn-zipper-build:
+    desc: build multi stream funcgion zipper example
+    dir: "example/multi-stream-fn/zipper"
+    cmds:
+      - echo "multi stream function zipper building..."
+      - "go build -o zipper{{exeExt}} main.go"
+      - echo "mult stream function zipper built."
+    silent: false
+
+  multi-stream-fn-1:
+    desc: run multi stream function 1 
+    deps: [multi-stream-fn-1-build]
+    dir: "example/multi-stream-fn/stream-fn-1"
+    cmds:
+      - "./fn1{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: false
+      YOMO_LOG_LEVEL: info
+
+  multi-stream-fn-1-build:
+    desc: build multi stream function 1
+    dir: "example/multi-stream-fn/stream-fn-1"
+    cmds:
+      - echo "fn1 building..."
+      - "go build -o fn1{{exeExt}} app.go"
+      - echo "fn1 built."
+    silent: false
+
+  multi-stream-fn-2:
+    desc: run multi stream function 2 
+    deps: [multi-stream-fn-2-build]
+    dir: "example/multi-stream-fn/stream-fn-2"
+    cmds:
+      - "./fn2{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: false
+      YOMO_LOG_LEVEL: info
+
+  multi-stream-fn-2-build:
+    desc: build multi stream function 2
+    dir: "example/multi-stream-fn/stream-fn-2"
+    cmds:
+      - echo "fn2 building..."
+      - "go build -o fn2{{exeExt}} app.go"
+      - echo "fn2 built."
+    silent: false
+
+  multi-stream-fn-3:
+    desc: run multi stream function 3 
+    deps: [multi-stream-fn-3-build]
+    dir: "example/multi-stream-fn/stream-fn-3"
+    cmds:
+      - "./fn3{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: false
+      YOMO_LOG_LEVEL: info
+
+  multi-stream-fn-3-build:
+    desc: build multi stream function 3
+    dir: "example/multi-stream-fn/stream-fn-3"
+    cmds:
+      - echo "fn3 building..."
+      - "go build -o fn3{{exeExt}} app.go"
+      - echo "fn3 built."
     silent: false

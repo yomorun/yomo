@@ -1,14 +1,18 @@
 package main
 
 import (
-	"fmt"
+	"context"
+	"os"
+	"sync"
+	"time"
 
 	y3 "github.com/yomorun/y3-codec-golang"
-	"github.com/yomorun/yomo/core/rx"
+	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/logger"
 )
 
 // NoiseDataKey represents the Tag of a Y3 encoded data packet.
-const NoiseDataKey = 0x10
+const NoiseDataKey = 0x15
 
 // ThresholdAverageValue is the threshold of the average value after a sliding window.
 const ThresholdAverageValue = 13
@@ -27,15 +31,15 @@ type NoiseData struct {
 }
 
 // Unserialize data to `NoiseData` struct, transfer the noise value to next process
-var decode = func(v []byte) (interface{}, error) {
-	var mold NoiseData
-	err := y3.ToObject(v, &mold)
-	if err != nil {
-		return nil, err
-	}
-	mold.Noise = mold.Noise / 10
-	return mold.Noise, nil
-}
+// var decode = func(v []byte) (interface{}, error) {
+// 	var mold NoiseData
+// 	err := y3.ToObject(v, &mold)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	mold.Noise = mold.Noise / 10
+// 	return mold.Noise, nil
+// }
 
 // Compute avg of every past 10-seconds IoT data
 var slidingAvg = func(i interface{}) error {
@@ -46,21 +50,159 @@ var slidingAvg = func(i interface{}) error {
 			total += value.(float32)
 		}
 		avg := total / float32(len(values))
-		fmt.Println(fmt.Sprintf("🧩 average value in last %d ms: %f!", SlidingWindowInMS, avg))
+		logger.Printf("🧩 average value in last %d ms: %f!", SlidingWindowInMS, avg)
 		if avg >= ThresholdAverageValue {
-			fmt.Println(fmt.Sprintf("❗❗  average value in last %d ms: %f reaches the threshold %d!", SlidingWindowInMS, avg, ThresholdAverageValue))
+			logger.Printf("❗❗  average value in last %d ms: %f reaches the threshold %d!", SlidingWindowInMS, avg, ThresholdAverageValue)
 		}
 	}
 	return nil
 }
 
 // Handler will handle data in Rx way
-func Handler(rxstream rx.Stream) rx.Stream {
-	stream := rxstream.
-		Subscribe(NoiseDataKey).
-		OnObserve(decode).
-		StdOut().
-		SlidingWindowWithTime(SlidingWindowInMS, SlidingTimeInMS, slidingAvg)
+// func Handler(rxstream rx.Stream) rx.Stream {
+// 	stream := rxstream.
+// 		Subscribe(NoiseDataKey).
+// 		OnObserve(decode).
+// 		StdOut().
+// 		SlidingWindowWithTime(SlidingWindowInMS, SlidingTimeInMS, slidingAvg)
 
-	return stream
+// 	return stream
+// }
+
+var (
+	observe = make(chan float32, 1)
+)
+
+func main() {
+	sfn := yomo.NewStreamFunction("Noise-3", yomo.WithZipperAddr("localhost:9000"))
+	defer sfn.Close()
+
+	sfn.SetObserveDataID(NoiseDataKey)
+	sfn.SetHandler(handler)
+
+	err := sfn.Connect()
+	if err != nil {
+		logger.Errorf("[fn3] connect err=%v", err)
+		os.Exit(1)
+	}
+
+	go SlidingWindowWithTime(observe, SlidingWindowInMS, SlidingTimeInMS, slidingAvg)
+
+	select {}
+}
+
+func handler(data []byte) (byte, []byte) {
+	v, err := y3.ToFloat32(data)
+	if err != nil {
+		logger.Errorf("[fn3] y3.ToObject err=%v", err)
+		return 0x0, nil
+	}
+	logger.Printf("[fn3] observe <- %v", v)
+	observe <- v
+
+	return 0x16, nil // no more processing, return nil
+}
+
+// Handler defines a function that handle the input value.
+type Handler func(interface{}) error
+
+type slidingWithTimeItem struct {
+	timestamp time.Time
+	data      interface{}
+}
+
+// SlidingWindowWithTime buffers the data in the specified sliding window time, the buffered data can be processed in the handler func.
+// It returns the orginal data to Stream, not the buffered slice.
+func SlidingWindowWithTime(observe <-chan float32, windowTimeInMS uint32, slideTimeInMS uint32, handler Handler) {
+	f := func(ctx context.Context, next chan float32) {
+		buf := make([]slidingWithTimeItem, 0)
+		stop := make(chan struct{})
+		firstTimeSend := true
+		mutex := sync.Mutex{}
+
+		checkBuffer := func() {
+			mutex.Lock()
+			// filter items by time
+			updatedBuf := make([]slidingWithTimeItem, 0)
+			availableItems := make([]interface{}, 0)
+			t := time.Now().Add(-time.Duration(windowTimeInMS) * time.Millisecond)
+			for _, item := range buf {
+				if item.timestamp.After(t) || item.timestamp.Equal(t) {
+					updatedBuf = append(updatedBuf, item)
+					availableItems = append(availableItems, item.data)
+				}
+			}
+			buf = updatedBuf
+
+			// apply and send items
+			if len(availableItems) != 0 {
+				err := handler(availableItems)
+				if err != nil {
+					logger.Errorf("[fn3] SlidingWindowWithTime err=%v", err)
+					// rxgo.Error(err).SendContext(ctx, next)
+					return
+				}
+			}
+			firstTimeSend = false
+			mutex.Unlock()
+		}
+
+		go func() {
+			defer close(next)
+			for {
+				select {
+				case <-stop:
+					checkBuffer()
+					return
+				case <-ctx.Done():
+					return
+				case <-time.After(time.Duration(windowTimeInMS) * time.Millisecond):
+					if firstTimeSend {
+						checkBuffer()
+					}
+				case <-time.After(time.Duration(slideTimeInMS) * time.Millisecond):
+					checkBuffer()
+				}
+			}
+		}()
+
+		for {
+			select {
+			case <-ctx.Done():
+				close(stop)
+				return
+			case item, ok := <-observe:
+				if !ok {
+					close(stop)
+					return
+				}
+				mutex.Lock()
+				// buffer data
+				buf = append(buf, slidingWithTimeItem{
+					timestamp: time.Now(),
+					data:      item,
+				})
+				mutex.Unlock()
+				// immediately send the original item to downstream
+				SendContext(ctx, item, next)
+			}
+		}
+	}
+
+	next := make(chan float32)
+	go f(context.Background(), next)
+}
+
+func SendContext(ctx context.Context, input float32, ch chan<- float32) bool {
+	select {
+	case <-ctx.Done(): // Context's done channel has the highest priority
+		return false
+	default:
+		select {
+		case <-ctx.Done():
+			return false
+		case ch <- input:
+			return true
+		}
+	}
 }
