@@ -16,60 +16,69 @@ import (
 )
 
 const (
+	// DefaultRetries is the default number of retries for a quic connection creation.
 	DefaultRetries = 3 // 3sec*120 = 1hour
 )
 
+// ConneState describes the state of the connection.
 type ConnState = string
 
-// Client is the implementation of Client interface.
+// Client is the abstraction of a YoMo-Client. a YoMo-Client can be
+// Source, Upstream Zipper or StreamFunction.
 type Client struct {
-	token             string
-	connType          ConnectionType
-	session           quic.Session
-	stream            quic.Stream
-	state             string
-	lastFrameSentTick time.Time
-	processor         func(byte, []byte, frame.MetaFrame)
-	mu                sync.Mutex
+	token     string                              // name of the client
+	connType  ConnectionType                      // type of the connection
+	session   quic.Session                        // quic session
+	stream    quic.Stream                         // quic stream
+	state     ConnState                           // state of the connection
+	processor func(byte, []byte, frame.MetaFrame) // functions to invoke when data arrived
+	mu        sync.Mutex
 }
 
-// New creates a new client.
+// NewClient creates a new YoMo-Client.
 func NewClient(appName string, connType ConnectionType) *Client {
 	c := &Client{
 		token:    appName,
 		connType: connType,
 		state:    ConnStateReady,
 	}
-	once.Do(func() {
-		c.init()
-	})
+
+	// once.Do(func() {
+	// 	c.init()
+	// })
+
+	once.Do(c.init)
 
 	return c
 }
 
-// Connect connects to quic server
+// Connect connects to YoMo-Zipper.
 func (c *Client) Connect(ctx context.Context, addr string) error {
 	c.state = ConnStateConnecting
 
 	// connect to quic server
 	tlsConf := &tls.Config{
 		InsecureSkipVerify: true,
-		NextProtos:         []string{"spdy/3", "h2", "hq-29"},
-		ClientSessionCache: tls.NewLRUClientSessionCache(1),
+		// TODO: set to yomo
+		NextProtos: []string{"spdy/3", "h2", "hq-29", "yomo"},
+		// TODO: default capacity is 1, shall we set it to a large number?
+		ClientSessionCache: tls.NewLRUClientSessionCache(64),
 	}
+
 	quicConf := &quic.Config{
 		Versions:                       []quic.VersionNumber{quic.Version1, quic.VersionDraft29},
 		MaxIdleTimeout:                 time.Second * 3,
 		KeepAlive:                      true,
-		MaxIncomingStreams:             100000,
-		MaxIncomingUniStreams:          100000,
+		MaxIncomingStreams:             10000,
+		MaxIncomingUniStreams:          10000,
 		HandshakeIdleTimeout:           time.Second * 3,
 		InitialStreamReceiveWindow:     1024 * 1024 * 2,
 		InitialConnectionReceiveWindow: 1024 * 1024 * 2,
 		TokenStore:                     quic.NewLRUTokenStore(1, 1),
 		DisablePathMTUDiscovery:        true,
 	}
-	// quic session
+
+	// create quic connection
 	session, err := quic.DialAddr(addr, tlsConf, quicConf)
 	if err != nil {
 		c.state = ConnStateDisconnected
@@ -77,25 +86,28 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 	}
 
 	// quic stream
-	// old: 	return c.session.OpenStream()
 	stream, err := session.OpenStreamSync(ctx)
 	if err != nil {
 		c.state = ConnStateDisconnected
 		return err
 	}
 
-	// set session and signal
 	c.stream = stream
-	// c.signal = NewFrameStream(stream)
 	c.session = session
+
 	c.state = ConnStateAuthenticating
-	// handshake frame
+	// send handshake
 	handshake := frame.NewHandshakeFrame(c.token, byte(c.connType))
 	c.WriteFrame(handshake)
+
+	// receiving frames
 	go c.handleFrame()
 
+	// TODO: ConnStateConnected should be presented when Zipper answer handshake
 	c.state = ConnStateConnected
 	logger.Printf("%s[%s] is connected to YoMo-Zipper %s", ClientLogPrefix, c.token, addr)
+
+	// TODO: refactor this later
 	// reconnect
 	go c.reconnect(ctx, addr)
 
@@ -104,17 +116,22 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 
 // handleFrame handles the logic when receiving frame from server.
 func (c *Client) handleFrame() {
+	// TODO: as this function is called in a goroutine, shall we remove go keyword below?
 	go func() {
+		// transform raw QUIC stream to wire format
 		fs := NewFrameStream(c.stream)
 		for {
 			logger.Infof("%sconnection state=%v", ClientLogPrefix, c.state)
+			// this will block until a frame is received
 			f, err := fs.ReadFrame()
 			if err != nil {
-				c.setState(ConnStateDisconnected)
+				defer c.stream.Close()
+				defer c.session.CloseWithError(0xCC, err.Error())
+				defer c.setState(ConnStateDisconnected)
+
 				logger.Errorf("%shandleFrame.ReadFrame(): %T %v", ClientLogPrefix, err, err)
 				if e, ok := err.(*quic.IdleTimeoutError); ok {
 					logger.Errorf("%sconnection timeout, err=%v", ClientLogPrefix, e)
-					// c.reconnect(context.Background(), c.zipperEndpoint)
 				} else if e, ok := err.(*quic.ApplicationError); ok {
 					logger.Errorf("%sapplication error, err=%#v", ClientLogPrefix, e)
 				} else if errors.Is(err, net.ErrClosed) {
@@ -126,11 +143,11 @@ func (c *Client) handleFrame() {
 				// any error occurred, we should close the session
 				// after this, session.AcceptStream() will raise the error
 				// which specific in session.CloseWithError()
-				c.stream.Close()
-				c.session.CloseWithError(0xCC, err.Error())
 				break
 			}
-			// frame type
+
+			// read frame
+			// first, get frame type
 			frameType := f.Type()
 			logger.Debugf("%stype=%s, frame=%# x", ClientLogPrefix, frameType, logger.BytesString(f.Encode()))
 			switch frameType {
@@ -138,7 +155,6 @@ func (c *Client) handleFrame() {
 				// TODO: pong frame
 				// c.heartbeat <- true
 				c.setState(ConnStatePong)
-
 			case frame.TagOfAcceptedFrame:
 				// TODO: accepted
 				c.setState(ConnStateAccepted)
@@ -147,13 +163,15 @@ func (c *Client) handleFrame() {
 				c.setState(ConnStateRejected)
 				c.Close()
 				break
-			case frame.TagOfDataFrame:
+			case frame.TagOfDataFrame: // DataFrame carries user's data
 				if v, ok := f.(*frame.DataFrame); ok {
 					c.setState(ConnStateTransportData)
-					logger.Debugf("%sreceive DataFrame, tag=%#x, metadata=%v, carry=%s", ClientLogPrefix, v.GetDataTagID(), v.GetMetadatas(), v.GetCarriage())
+					logger.Debugf("%sreceive DataFrame, tag=%# x, metadata=%v, carry=%# x", ClientLogPrefix, v.GetDataTagID(), v.GetMetadatas(), v.GetCarriage())
 					if c.processor == nil {
+						// TODO: what is the best practise for this situation?
 						logger.Warnf("%sprocessor is nil", ClientLogPrefix)
 					} else {
+						// TODO: should c.processor accept a DataFrame as parameter?
 						go c.processor(v.GetDataTagID(), v.GetCarriage(), v.GetMetaFrame())
 					}
 				}
@@ -165,24 +183,22 @@ func (c *Client) handleFrame() {
 }
 
 // Close the client.
-func (c *Client) Close() error {
+func (c *Client) Close() (err error) {
 	logger.Debugf("%sclose the connection", ClientLogPrefix)
 	if c.stream != nil {
-		err := c.stream.Close()
+		err = c.stream.Close()
 		if err != nil {
 			logger.Errorf("%s stream.Close(): %v", ClientLogPrefix, err)
-			return err
 		}
 	}
 	if c.session != nil {
-		err := c.session.CloseWithError(255, "client.session closed")
+		err = c.session.CloseWithError(255, "client.session closed")
 		if err != nil {
 			logger.Errorf("%s session.Close(): %v", ClientLogPrefix, err)
-			return err
 		}
 	}
 
-	return nil
+	return err
 }
 
 // EnableDebug enables the development model for logging.
@@ -190,6 +206,7 @@ func (c *Client) EnableDebug() {
 	logger.EnableDebug()
 }
 
+// WriteFrame writes a frame to the connection, gurantee threadsafe.
 func (c *Client) WriteFrame(frm frame.Frame) error {
 	// tracing
 	if f, ok := frm.(*frame.DataFrame); ok {
@@ -198,31 +215,35 @@ func (c *Client) WriteFrame(frm frame.Frame) error {
 			defer span.End()
 		}
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	// write on QUIC stream
 	if c.stream == nil {
-		return errors.New("Stream is nil")
+		return errors.New("stream is nil")
 	}
 	logger.Debugf("%sWriteFrame() will write frame: %s", ClientLogPrefix, frm.Type())
-	c.lastFrameSentTick = time.Now()
+
 	data := frm.Encode()
+	// emit raw bytes of Frame
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	n, err := c.stream.Write(data)
+	// TODO: move partial logging as a utility
 	if len(data) > 256 {
 		logger.Debugf("%sWriteFrame() wrote n=%d, len(data)=%d", ClientLogPrefix, n, len(data))
 	} else {
 		logger.Debugf("%sWriteFrame() wrote n=%d, data=%# x", ClientLogPrefix, n, data)
 	}
 	if err != nil {
+		// TODO: how to handle this error? close this connection?
 		if e, ok := err.(*quic.IdleTimeoutError); ok {
 			logger.Errorf("%sWriteFrame() connection timeout, err=%v", ClientLogPrefix, e)
 		} else {
 			logger.Errorf("%sWriteFrame() wrote error=%v", ClientLogPrefix, err)
-			// 发送数据时出错
 			return err
 		}
 	}
 	if n != len(data) {
-		// 发送的数据不完整
+		// TODO: if for some reason the write is not completed, we should return an error,
+		// and, need to tell Zipper on this situation.
 		err := errors.New("[client] yomo Client .Write() wroten error")
 		logger.Errorf("%s error:%v", ClientLogPrefix, err)
 		return err
@@ -230,12 +251,14 @@ func (c *Client) WriteFrame(frm frame.Frame) error {
 	return err
 }
 
+// update connection state
 func (c *Client) setState(state ConnState) {
 	c.mu.Lock()
 	c.state = state
 	c.mu.Unlock()
 }
 
+// TODO: is this only used in Stream Functions?
 func (c *Client) OnAccepted(hdl func() error) error {
 	if hdl != nil {
 		return hdl()
@@ -246,24 +269,32 @@ func (c *Client) OnAccepted(hdl func() error) error {
 func (c *Client) SetDataFrameObserver(fn func(byte, []byte, frame.MetaFrame)) {
 	c.processor = fn
 	logger.Debugf("%sSetDataFrameObserver(%v)", ClientLogPrefix, c.processor)
-
 }
 
 // reconnect the connection between client and server.
 func (c *Client) reconnect(ctx context.Context, addr string) {
 	t := time.NewTicker(3 * time.Second)
-	for {
-		select {
-		case <-t.C:
-			if c.state == ConnStateDisconnected {
-				fmt.Printf("%s[%s] is retring to YoMo-Zipper %s...\n", ClientLogPrefix, c.token, addr)
-				err := c.Connect(ctx, addr)
-				if err == nil {
-					break
-				}
+	for range t.C {
+		if c.state == ConnStateDisconnected {
+			fmt.Printf("%s[%s] is retring to YoMo-Zipper %s...\n", ClientLogPrefix, c.token, addr)
+			err := c.Connect(ctx, addr)
+			if err == nil {
+				break
 			}
 		}
 	}
+	// for {
+	// 	select {
+	// 	case <-t.C:
+	// 		if c.state == ConnStateDisconnected {
+	// 			fmt.Printf("%s[%s] is retring to YoMo-Zipper %s...\n", ClientLogPrefix, c.token, addr)
+	// 			err := c.Connect(ctx, addr)
+	// 			if err == nil {
+	// 				break
+	// 			}
+	// 		}
+	// 	}
+	// }
 }
 
 func (c *Client) init() {
