@@ -92,7 +92,7 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 			return err
 		}
 
-		connID := session.RemoteAddr().String()
+		connID := GetConnID(session)
 		logger.Infof("%s❤️1/ new connection: %s", ServerLogPrefix, connID)
 
 		go func(ctx context.Context, sess quic.Session) {
@@ -113,7 +113,7 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 				// defer ctx.Done()
 				logger.Infof("%s❤️4/ [stream:%d] created, connID=%s", ServerLogPrefix, stream.StreamID(), connID)
 				// 监听 stream 并做处理
-				s.handleSession(connID, session, stream)
+				s.handleSession(session, stream)
 				logger.Infof("%s❤️5/ [stream:%d] handleSession DONE", ServerLogPrefix, stream.StreamID())
 			}
 		}(sctx, session)
@@ -134,7 +134,7 @@ func (s *Server) Close() error {
 	return nil
 }
 
-func (s *Server) handleSession(connID string, session quic.Session, mainStream quic.Stream) {
+func (s *Server) handleSession(session quic.Session, mainStream quic.Stream) {
 	fs := NewFrameStream(mainStream)
 	// check update for stream
 	for {
@@ -161,7 +161,7 @@ func (s *Server) handleSession(connID string, session quic.Session, mainStream q
 		logger.Debugf("%stype=%s, frame=%# x", ServerLogPrefix, frameType, logger.BytesString(f.Encode()))
 		switch frameType {
 		case frame.TagOfHandshakeFrame:
-			s.handleHandShakeFrame(connID, mainStream, session, f.(*frame.HandshakeFrame))
+			s.handleHandShakeFrame(mainStream, session, f.(*frame.HandshakeFrame))
 		case frame.TagOfPingFrame:
 			s.handlePingFrame(mainStream, session, f.(*frame.PingFrame))
 		case frame.TagOfDataFrame:
@@ -180,7 +180,7 @@ func (s *Server) StatsCounter() int64 {
 	return s.counterOfDataFrame
 }
 
-func (s *Server) handleHandShakeFrame(connID string, stream quic.Stream, session quic.Session, f *frame.HandshakeFrame) error {
+func (s *Server) handleHandShakeFrame(stream quic.Stream, session quic.Session, f *frame.HandshakeFrame) error {
 	logger.Infof("%s ------> GOT ❤️ HandshakeFrame : %# x", ServerLogPrefix, f)
 	logger.Infof("%sClientType=%# x, is %s", ServerLogPrefix, f.ClientType, ConnectionType(f.ClientType))
 	// client type
@@ -200,7 +200,7 @@ func (s *Server) handleHandShakeFrame(connID string, stream quic.Stream, session
 		// 校验成功，注册 sfn 给 SfnManager
 		s.funcs.Set(f.Name, &stream)
 		// 添加 conn 和 sfn 的映射关系
-		s.connSfnMap.Store(connID, f.Name)
+		s.connSfnMap.Store(GetConnID(session), f.Name)
 
 	case ConnTypeUpstreamZipper:
 	default:
@@ -261,28 +261,7 @@ func (s *Server) handleDataFrame(mainStream quic.Stream, session quic.Session, f
 	if targetStream != nil {
 		(*targetStream).Write(f.Encode())
 	}
-	// TODO: 独立流测试
-	// send data to downstream.
-	// stream, err := session.OpenUniStream()
-	// if err != nil {
-	// 	logger.Error("[MergeStreamFunc] session.OpenUniStream failed", "stream-fn", currentIssuer, "err", err)
-	// 	// pass the data to next `stream function` if the current stream has error.
-	// 	// next <- data
-	// 	// cancel the current session when error.
-	// 	// cancel()
-	// 	return
-	// }
 
-	// _, err = stream.Write(f.Encode())
-	// stream.Close()
-	// logger.Info("[MergeStreamFunc] session.ISOStream Write", "stream-fn", currentIssuer, "err", err)
-	// if err != nil {
-	// 	logger.Error("[MergeStreamFunc] YoMo-Zipper sent data to `stream-fn` failed.", "stream-fn", currentIssuer, "err", err)
-	// 	// cancel the current session when error.
-	// 	// cancel()
-	// 	return
-	// }
-	// s.funcs.WriteToAll(f.Encode())
 	return nil
 }
 
@@ -444,4 +423,9 @@ func (s *Server) init() {
 	if err != nil {
 		logger.Errorf("tracing: %v", err)
 	}
+}
+
+// GetConnID get quic session connection id
+func GetConnID(sess quic.Session) string {
+	return sess.RemoteAddr().String()
 }
