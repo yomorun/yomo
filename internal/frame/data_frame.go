@@ -25,6 +25,11 @@ func (d *DataFrame) Type() FrameType {
 	return TagOfDataFrame
 }
 
+// SeqID return the SeqID of carriage data.
+func (d *DataFrame) SeqID() byte {
+	return d.payloadFrame.Sid
+}
+
 // SetCarriage set user's raw data in `DataFrame`
 func (d *DataFrame) SetCarriage(sid byte, carriage []byte) {
 	d.payloadFrame = NewPayloadFrame(sid).SetCarriage(carriage)

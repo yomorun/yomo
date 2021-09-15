@@ -69,11 +69,11 @@ func (s *streamFunction) SetHandler(fn func([]byte) (byte, []byte)) error {
 func (s *streamFunction) Connect() error {
 	logger.Debugf("%s Connect()", streamFunctionLogPrefix)
 	// notify underlying network operations, when data with tag we observed arrived, invoke the func
-	s.client.SetDataFrameObserver(func(tag byte, carraige []byte, metaFrame MetaFrame) {
+	s.client.SetDataFrameObserver(func(data *frame.DataFrame) {
 		for _, t := range s.observed {
-			if t == tag {
-				logger.Debugf("%sreceive DataFrame, tag=%# x, carraige=%# x", streamFunctionLogPrefix, tag, carraige)
-				s.onDataFrame(carraige, metaFrame)
+			if t == data.SeqID() {
+				logger.Debugf("%sreceive DataFrame, tag=%# x, carraige=%# x", streamFunctionLogPrefix, data.SeqID(), data.GetCarriage())
+				s.onDataFrame(data.GetCarriage(), data.GetMetaFrame())
 				return
 			}
 		}

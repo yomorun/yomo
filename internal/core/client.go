@@ -21,12 +21,12 @@ type ConnState = string
 // Client is the abstraction of a YoMo-Client. a YoMo-Client can be
 // Source, Upstream Zipper or StreamFunction.
 type Client struct {
-	token     string                              // name of the client
-	connType  ConnectionType                      // type of the connection
-	session   quic.Session                        // quic session
-	stream    quic.Stream                         // quic stream
-	state     ConnState                           // state of the connection
-	processor func(byte, []byte, frame.MetaFrame) // functions to invoke when data arrived
+	token     string                 // name of the client
+	connType  ConnectionType         // type of the connection
+	session   quic.Session           // quic session
+	stream    quic.Stream            // quic stream
+	state     ConnState              // state of the connection
+	processor func(*frame.DataFrame) // functions to invoke when data arrived
 	mu        sync.Mutex
 }
 
@@ -154,7 +154,8 @@ func (c *Client) handleFrame() {
 					logger.Warnf("%sprocessor is nil", ClientLogPrefix)
 				} else {
 					// TODO: should c.processor accept a DataFrame as parameter?
-					go c.processor(v.GetDataTagID(), v.GetCarriage(), v.GetMetaFrame())
+					// go c.processor(v.GetDataTagID(), v.GetCarriage(), v.GetMetaFrame())
+					go c.processor(v)
 				}
 			}
 		default:
@@ -236,7 +237,8 @@ func (c *Client) setState(state ConnState) {
 	c.mu.Unlock()
 }
 
-func (c *Client) SetDataFrameObserver(fn func(byte, []byte, frame.MetaFrame)) {
+// func (c *Client) SetDataFrameObserver(fn func(byte, []byte, frame.MetaFrame)) {
+func (c *Client) SetDataFrameObserver(fn func(*frame.DataFrame)) {
 	c.processor = fn
 	logger.Debugf("%sSetDataFrameObserver(%v)", ClientLogPrefix, c.processor)
 }
