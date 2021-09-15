@@ -15,12 +15,18 @@ const (
 )
 
 type Source interface {
-	Write(p []byte, metadatas ...*Metadata) (n int, err error)
-	SetDataTag(tag uint8)
+	// Close will close the connection to YoMo-Zipper.
 	Close() error
+	// Connect to YoMo-Zipper.
 	Connect() error
+	// SetDataTag will set the tag of data when invoking Write().
+	SetDataTag(tag uint8)
+	// Write the data to downstream.
+	Write(p []byte, metadatas ...*Metadata) (n int, err error)
+	// WriteWithTag will write data with specified tag, default transactionID is epoch time.
 	WriteWithTag(tag uint8, data []byte, metadatas ...*Metadata) error
-	WriteWithTransaction(transactionID string, tag uint8, data []byte, metadatas ...*Metadata) error
+	// WriteWithTagTransactionID will write data with specified transactionID and tag.
+	WriteWithTagTransactionID(transactionID string, tag uint8, data []byte, metadatas ...*Metadata) error
 }
 
 // YoMo-Source
@@ -28,8 +34,7 @@ type yomoSource struct {
 	name           string
 	zipperEndpoint string
 	client         *core.Client
-	// logger         utils.Logger
-	tag uint8
+	tag            uint8
 }
 
 var _ Source = &yomoSource{}
@@ -51,10 +56,12 @@ func (s *yomoSource) Write(data []byte, metadatas ...*Metadata) (int, error) {
 	return len(data), s.WriteWithTag(s.tag, data, metadatas...)
 }
 
+// SetDataTag will set the tag of data when invoking Write().
 func (s *yomoSource) SetDataTag(tag uint8) {
 	s.tag = tag
 }
 
+// Close will close the connection to YoMo-Zipper.
 func (s *yomoSource) Close() error {
 	if err := s.client.Close(); err != nil {
 		logger.Errorf("%sClose(): %v", SourceLogPrefix, err)
@@ -69,19 +76,18 @@ func (s *yomoSource) Connect() error {
 	err := s.client.Connect(context.Background(), s.zipperEndpoint)
 	if err != nil {
 		logger.Errorf("%sConnect() error: %s", SourceLogPrefix, err)
-		return err
 	}
-	return nil
+	return err
 }
 
-// 向 Zipper 发送用户数据，指定该次发送数据使用的 tag
+// WriteWithTag will write data with specified tag, default transactionID is epoch time.
 func (s *yomoSource) WriteWithTag(tag uint8, data []byte, metadatas ...*Metadata) error {
 	transactionID := strconv.FormatInt(time.Now().UnixNano(), 10)
-	return s.WriteWithTransaction(transactionID, tag, data, metadatas...)
+	return s.WriteWithTagTransactionID(transactionID, tag, data, metadatas...)
 }
 
-// 向 Zipper 发送用户数据，指定该次发送数据使用的 tag 以及 transactionID
-func (s *yomoSource) WriteWithTransaction(transactionID string, tag uint8, data []byte, metadatas ...*Metadata) error {
+// WriteWithTagTransactionID will write data with specified transactionID and tag.
+func (s *yomoSource) WriteWithTagTransactionID(transactionID string, tag uint8, data []byte, metadatas ...*Metadata) error {
 	if len(data) > 1024 {
 		logger.Debugf("%sWriteDataWithTransactionID: len(data)=%d", SourceLogPrefix, len(data))
 	} else {

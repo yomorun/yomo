@@ -18,13 +18,13 @@ func main() {
 	sfn := yomo.NewStreamFunction("Noise", yomo.WithZipperAddr("localhost:9000"))
 	defer sfn.Close()
 
-	// 开始监听 dataID 为 0x33 的数据
+	// set only monitoring data which tag=0x33
 	sfn.SetObserveDataID(0x33)
 
-	// 设置要执行的函数
+	// set handler
 	sfn.SetHandler(handler)
 
-	// 开始执行
+	// start
 	err := sfn.Connect()
 	if err != nil {
 		logger.Errorf("[flow] connect err=%v", err)
@@ -35,22 +35,13 @@ func main() {
 }
 
 func handler(data []byte) (byte, []byte) {
-	// var model NoiseData
-	// err := y3.ToObject(data, &model)
-	// if err != nil {
-	// 	logger.Errorf("[flow] y3.ToObject err=%v", err)
-	// 	return 0x0, nil
-	// }
-	// logger.Printf("[flow] got tag=0x33, data=%v", model)
-	// return 0x0, nil
-
 	var model noiseData
 	err := json.Unmarshal(data, &model)
 	if err != nil {
 		logger.Errorf("[flow] json.Marshal err=%v", err)
 		os.Exit(-2)
 	} else {
-		logger.Printf(">>>>>>>>>>>>>>> [flow] got tag=0x33, data=%v", model)
+		logger.Printf(">> [flow] got tag=0x33, data=%v", model)
 	}
 	return 0x0, nil
 }
