@@ -8,6 +8,7 @@
 - [x] 增加环境变量 `YOMO_LOG_LEVEL` 设置不同日志级别
 - [x] 心跳 Ping/Pong（使用 quic-go 自带的 ping）
 - [ ] 去除无用的 frame: Accepted/Rejected, Ping/Pong
+- [x] 多 sfn 支持
 - [ ] zipper 互通
 - [ ] sfn 支持 `rx` 和 `raw bytes` 两种 Handler
 - [ ] 添加/修改 frame，让传输的数据支持 scale

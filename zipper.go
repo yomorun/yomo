@@ -179,7 +179,11 @@ func (s *zipper) Close() error {
 func (s *zipper) Stats() int {
 	logger.Debugf("%sall sfn connected: %d", zipperLogPrefix, len(s.server.StatsFunctions()))
 	for k, v := range s.server.StatsFunctions() {
-		logger.Debugf("%s%s-> k=%v, v.StreamID=%d", zipperLogPrefix, k, (*v).StreamID())
+		ids := make([]int64, 0)
+		for _, c := range v {
+			ids = append(ids, int64((*c).StreamID()))
+		}
+		logger.Debugf("%s%s-> k=%v, v.StreamID=%v", zipperLogPrefix, k, ids)
 	}
 
 	logger.Debugf("%stotal DataFrames received: %d", zipperLogPrefix, s.server.StatsCounter())

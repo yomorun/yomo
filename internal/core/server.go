@@ -29,9 +29,9 @@ type Server struct {
 	token              string
 	stream             quic.Stream
 	state              string
-	funcs              *ConcurrentMap
-	funcBuckets        map[int]string
-	connSfnMap         sync.Map // key: ConnID, value: Sfn Name.
+	funcs              *ConcurrentMap // connected stream functions
+	funcBuckets        map[int]string // user config stream functions
+	connSfnMap         sync.Map       // key: connection ID, value: stream function name.
 	counterOfDataFrame int64
 	// logger             utils.Logger
 }
@@ -72,14 +72,16 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 	// listen the address
 	listener, err := quic.ListenAddr(endpoint, generateTLSConfig(endpoint), qconf)
 	if err != nil {
-		logger.Errorf("%s quic.ListenAddr on: %s, err=%v", ServerLogPrefix, endpoint, err)
+		logger.Errorf("%squic.ListenAddr on: %s, err=%v", ServerLogPrefix, endpoint, err)
 		return err
 	}
 	defer listener.Close()
 	logger.Printf("%s✅ Listening on: %s, QUIC: %v", ServerLogPrefix, listener.Addr(), qconf.Versions)
 
 	s.state = ConnStateConnected
-
+	// serve
+	// go s.run(ctx)
+	// accept session
 	for {
 		// 有新的 YomoClient 连接时，创建一个 session
 		sctx, cancel := context.WithCancel(ctx)
@@ -92,7 +94,7 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 			return err
 		}
 
-		connID := GetConnID(session)
+		connID := getConnID(session)
 		logger.Infof("%s❤️1/ new connection: %s", ServerLogPrefix, connID)
 
 		go func(ctx context.Context, sess quic.Session) {
@@ -104,7 +106,7 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 					logger.Errorf("%s❤️3/ %T on [stream] %v, deleting from s.funcs if this stream is [sfn]", ServerLogPrefix, err, err)
 					// 检查当前连接是否为 sfn，如果是则需要删除已注册的 sfn
 					if name, ok := s.connSfnMap.Load(connID); ok {
-						s.funcs.Remove(name.(string))
+						s.funcs.Remove(name.(string), connID)
 						s.connSfnMap.Delete(connID)
 					}
 					break
@@ -119,8 +121,6 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 		}(sctx, session)
 	}
 
-	// logger.Errorf("%sXXXXXXXXXXXXXXX - zipper - XXXXXXXXXXXXXXXX: ", ServerLogPrefix, finalErr)
-	// return finalErr
 	return nil
 }
 
@@ -134,6 +134,32 @@ func (s *Server) Close() error {
 	return nil
 }
 
+// func (s *Server) handleSession(session quic.Session, stream quic.Stream) {
+// 	logger.Infof("%shandleSession s.session <-", ServerLogPrefix)
+
+// 	// s.sessions.Store(GetConnID(session),[]{}) <- NewSession(session)
+// 	// TODO session manger
+// 	logger.Infof("%shandleSession s.streams <-", ServerLogPrefix)
+// 	s.streams <- stream
+
+// }
+
+// func (s *Server) run(ctx context.Context) {
+// 	logger.Infof("%srun first", ServerLogPrefix)
+// 	for {
+// 		select {
+// 		case <-ctx.Done():
+// 			logger.Errorf("%scontext.Deadline err=%v", ServerLogPrefix, ctx.Err())
+// 			return
+// 			// check update for stream
+// 		case stream := <-s.streams:
+// 			// logger.Infof("%sstream received: %v", ServerLogPrefix, stream)
+// 			go s.handleStream(stream)
+// 		}
+// 	}
+// }
+
+// func (s *Server) handleStream(mainStream quic.Stream) {
 func (s *Server) handleSession(session quic.Session, mainStream quic.Stream) {
 	fs := NewFrameStream(mainStream)
 	// check update for stream
@@ -172,7 +198,7 @@ func (s *Server) handleSession(session quic.Session, mainStream quic.Stream) {
 	}
 }
 
-func (s *Server) StatsFunctions() map[string]*quic.Stream {
+func (s *Server) StatsFunctions() map[string][]*quic.Stream {
 	return s.funcs.GetCurrentSnapshot()
 }
 
@@ -198,9 +224,9 @@ func (s *Server) handleHandShakeFrame(stream quic.Stream, session quic.Session, 
 		}
 
 		// 校验成功，注册 sfn 给 SfnManager
-		s.funcs.Set(f.Name, &stream)
+		s.funcs.Set(f.Name, getConnID(session), &stream)
 		// 添加 conn 和 sfn 的映射关系
-		s.connSfnMap.Store(GetConnID(session), f.Name)
+		s.connSfnMap.Store(getConnID(session), f.Name)
 
 	case ConnTypeUpstreamZipper:
 	default:
@@ -425,7 +451,7 @@ func (s *Server) init() {
 	}
 }
 
-// GetConnID get quic session connection id
-func GetConnID(sess quic.Session) string {
+// getConnID get quic session connection id
+func getConnID(sess quic.Session) string {
 	return sess.RemoteAddr().String()
 }

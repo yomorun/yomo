@@ -169,3 +169,77 @@ tasks:
       - "go build -o fn3{{exeExt}} app.go"
       - echo "fn3 built."
     silent: false
+  # same-stream-fn example
+  same-stream-fn:
+    desc: run same stream function example
+    deps: [same-stream-fn-zipper,same-stream-fn-source,same-stream-fn-1,same-stream-fn-2]
+    cmds:
+      - echo 'same stream function example'
+
+  same-stream-fn-source:
+    desc: run same stream function example
+    deps: [same-stream-fn-source-build]
+    dir: "example/multi-stream-fn/source"
+    cmds:
+      - "./source{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: false
+      YOMO_LOG_LEVEL: info
+
+  same-stream-fn-source-build:
+    desc: build same stream function source example
+    dir: "example/same-stream-fn/source"
+    cmds:
+      - echo "same stream function source building..."
+      - "go build -o source{{exeExt}} main.go"
+      - echo "same stream function source built."
+    silent: false
+
+  same-stream-fn-zipper:
+    desc: run same stream function zipper service
+    deps: [same-stream-fn-zipper-build]
+    dir: "example/same-stream-fn/zipper"
+    cmds:
+      - "./zipper{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: false
+      YOMO_LOG_LEVEL: info
+
+  same-stream-fn-zipper-build:
+    desc: build same stream funcgion zipper example
+    dir: "example/same-stream-fn/zipper"
+    cmds:
+      - echo "same stream function zipper building..."
+      - "go build -o zipper{{exeExt}} main.go"
+      - echo "same stream function zipper built."
+    silent: false
+
+  same-stream-fn-1:
+    desc: run same stream function  
+    deps: [same-stream-fn-build]
+    dir: "example/same-stream-fn/stream-fn"
+    cmds:
+      - "./fn1{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: false
+      YOMO_LOG_LEVEL: info
+
+  same-stream-fn-build:
+    desc: build same stream function 3
+    dir: "example/same-stream-fn/stream-fn"
+    cmds:
+      - echo "fn building..."
+      - "go build -o fn1{{exeExt}} app.go"
+      - "cp ./fn1 ./fn2"
+      - echo "fn built."
+    silent: false
+
+  same-stream-fn-2:
+    desc: run same stream function  
+    deps: [same-stream-fn-build]
+    dir: "example/same-stream-fn/stream-fn"
+    cmds:
+      - "./fn2{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: false
+      YOMO_LOG_LEVEL: info

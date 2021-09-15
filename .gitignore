@@ -33,3 +33,8 @@ cli/example/stream-fn/stream-fn
 cmd/yomo/yomo
 # release
 release/
+# git commitzen
+node_modules/
+package-lock.json
+package.json
+
