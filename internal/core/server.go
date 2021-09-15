@@ -79,8 +79,6 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 	logger.Printf("%s✅ Listening on: %s, QUIC: %v", ServerLogPrefix, listener.Addr(), qconf.Versions)
 
 	s.state = ConnStateConnected
-	// serve
-	// go s.run(ctx)
 	// accept session
 	for {
 		// 有新的 YomoClient 连接时，创建一个 session
@@ -134,32 +132,6 @@ func (s *Server) Close() error {
 	return nil
 }
 
-// func (s *Server) handleSession(session quic.Session, stream quic.Stream) {
-// 	logger.Infof("%shandleSession s.session <-", ServerLogPrefix)
-
-// 	// s.sessions.Store(GetConnID(session),[]{}) <- NewSession(session)
-// 	// TODO session manger
-// 	logger.Infof("%shandleSession s.streams <-", ServerLogPrefix)
-// 	s.streams <- stream
-
-// }
-
-// func (s *Server) run(ctx context.Context) {
-// 	logger.Infof("%srun first", ServerLogPrefix)
-// 	for {
-// 		select {
-// 		case <-ctx.Done():
-// 			logger.Errorf("%scontext.Deadline err=%v", ServerLogPrefix, ctx.Err())
-// 			return
-// 			// check update for stream
-// 		case stream := <-s.streams:
-// 			// logger.Infof("%sstream received: %v", ServerLogPrefix, stream)
-// 			go s.handleStream(stream)
-// 		}
-// 	}
-// }
-
-// func (s *Server) handleStream(mainStream quic.Stream) {
 func (s *Server) handleSession(session quic.Session, mainStream quic.Stream) {
 	fs := NewFrameStream(mainStream)
 	// check update for stream
@@ -387,61 +359,6 @@ func generateCertificate(host ...string) (tls.Certificate, error) {
 
 	return tls.X509KeyPair(certOut.Bytes(), keyOut.Bytes())
 }
-
-// Notify
-// func (s *Server) Notify() <-chan error {
-// 	return s.notify
-// }
-
-/*
-// createStreamFunc creates a `GetStreamFunc` for `Stream Function`.
-func createStreamFunc(app App, connMap *sync.Map, connType ConnectionType) GetStreamFunc {
-	f := func() (string, []streamFuncWithCancel) {
-		// get from local cache.
-		// if funcs, ok := streamFuncCache.Load(app.Name); ok {
-		// 	return app.Name, funcs.([]streamFuncWithCancel)
-		// }
-
-		// get from connMap.
-		conns := findConn(app, connMap, connType)
-		funcs := make([]streamFuncWithCancel, len(conns))
-
-		// if len(conns) == 0 {
-		// 	streamFuncCache.Store(app.Name, funcs)
-		// 	return app.Name, funcs
-		// }
-
-		i := 0
-		for id, conn := range conns {
-			funcs[i] = streamFuncWithCancel{
-				addr:    conn.Addr,
-				session: conn.Session,
-				// cancel:  cancelStreamFunc(app.Name, conn, connMap, id),
-			}
-			i++
-		}
-
-		// streamFuncCache.Store(app.Name, funcs)
-		return app.Name, funcs
-	}
-
-	return f
-}
-
-// IsMatched indicates if the connection is matched.
-func findConn(app App, connMap *sync.Map, connType ConnectionType) map[string]*Conn {
-	results := make(map[string]*Conn)
-	connMap.Range(func(key, value interface{}) bool {
-		c := value.(*Conn)
-		if c.Conn.Name == app.Name && c.Conn.Type == connType {
-			results[key.(string)] = c
-		}
-		return true
-	})
-
-	return results
-}
-*/
 
 func (s *Server) init() {
 	// tracing
