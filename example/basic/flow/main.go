@@ -1,18 +1,17 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 
-	"github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/logger"
 )
 
-// NoiseData represents the structure of data
-type NoiseData struct {
-	Noise float32 `y3:"0x11"`
-	Time  int64   `y3:"0x12"`
-	From  string  `y3:"0x13"`
+type noiseData struct {
+	Noise float32 `json:"noise"` // Noise value
+	Time  int64   `json:"time"`  // Timestamp (ms)
+	From  string  `json:"from"`  // Source IP
 }
 
 func main() {
@@ -36,12 +35,22 @@ func main() {
 }
 
 func handler(data []byte) (byte, []byte) {
-	var model NoiseData
-	err := y3.ToObject(data, &model)
+	// var model NoiseData
+	// err := y3.ToObject(data, &model)
+	// if err != nil {
+	// 	logger.Errorf("[flow] y3.ToObject err=%v", err)
+	// 	return 0x0, nil
+	// }
+	// logger.Printf("[flow] got tag=0x33, data=%v", model)
+	// return 0x0, nil
+
+	var model noiseData
+	err := json.Unmarshal(data, &model)
 	if err != nil {
-		logger.Errorf("[flow] y3.ToObject err=%v", err)
-		return 0x0, nil
+		logger.Errorf("[flow] json.Marshal err=%v", err)
+		os.Exit(-2)
+	} else {
+		logger.Printf(">>>>>>>>>>>>>>> [flow] got tag=0x33, data=%v", model)
 	}
-	logger.Printf("[flow] got tag=0x33, data=%v", model)
 	return 0x0, nil
 }
