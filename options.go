@@ -1,7 +1,9 @@
 package yomo
 
 const (
-	DefaultZipperAddr       = "localhost:9000"
+	// DefaultZipperAddr is the default address of downstream zipper.
+	DefaultZipperAddr = "localhost:9000"
+	// DefaultZipperListenAddr set default listening port to 9000 and binding to all interfaces.
 	DefaultZipperListenAddr = "0.0.0.0:9000"
 )
 
@@ -15,12 +17,14 @@ type options struct {
 	ZipperWorkflowConfig string // Zipper workflow file
 }
 
+// WithZipperAddr return a new options with ZipperAddr set to addr.
 func WithZipperAddr(addr string) Option {
 	return func(o *options) {
 		o.ZipperAddr = addr
 	}
 }
 
+// WithZipperListenAddr return a new options with ZipperListenAddr set to addr.
 func WithZipperListenAddr(addr string) Option {
 	return func(o *options) {
 		o.ZipperListenAddr = addr

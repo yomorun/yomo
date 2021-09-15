@@ -14,6 +14,7 @@ const (
 	sourceLogPrefix = "\033[32m[yomo:source]\033[0m "
 )
 
+// Source is responsible for sending data to yomo.
 type Source interface {
 	// Close will close the connection to YoMo-Zipper.
 	Close() error

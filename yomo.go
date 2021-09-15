@@ -4,20 +4,11 @@ import (
 	"github.com/yomorun/yomo/internal/frame"
 )
 
-// Metadata
+// Metadata is a struct that holds metadata for a frame.
 type Metadata = frame.Metadata
+
+// MetaFrame  is a struct that holds metadata for a frame.
 type MetaFrame = frame.MetaFrame
 
+// NewMetadata creates a new Metadata.
 var NewMetadata = frame.NewMetadata
-
-// NewSource creates a new YoMo-Source client.
-// func NewSource(opts ...Option) source.Client {
-// 	options := newOptions(opts...)
-// 	return source.New(options.AppName)
-// }
-
-// NewStreamFn creates a new YoMo-Stream-Function client.
-// func NewStreamFn(opts ...Option) streamfunction.Client {
-// 	options := newOptions(opts...)
-// 	return streamfunction.New(options.AppName)
-// }

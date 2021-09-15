@@ -118,7 +118,7 @@ func (s *streamFunction) onDataFrame(data []byte, metaFrame MetaFrame) {
 	if len(resp) != 0 {
 		logger.Debugf("%sstart WriteFrame(): tag=%#x, data=%v", streamFunctionLogPrefix, tag, resp)
 		// build a DataFrame
-		// TODO: seems we should implement a DeepCopy() of MetaFrame
+		// TODO: seems we should implement a DeepCopy() of MetaFrame in the future
 		frame := frame.NewDataFrame(metaFrame.GetMetadatas()...)
 		frame.SetIssuer(s.name)
 		frame.SetCarriage(tag, resp)

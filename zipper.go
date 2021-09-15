@@ -8,9 +8,10 @@ import (
 )
 
 const (
-	ZipperLogPrefix = "\033[33m[yomo:zipper]\033[0m "
+	zipperLogPrefix = "\033[33m[yomo:zipper]\033[0m "
 )
 
+// Zipper is the orchestrator of yomo
 type Zipper interface {
 	ConfigWorkflow(conf string) error
 	AddWorkflow(wf ...core.Workflow) error
@@ -40,8 +41,8 @@ type zipper struct {
 
 var _ Zipper = &zipper{}
 
-// 创建下游级联的 Zipper
-func NewZipper(name string, opts ...Option) *zipper {
+// NewZipper 创建下游级联的 Zipper
+func NewZipper(name string, opts ...Option) Zipper {
 	options := newOptions(opts...)
 	client := core.NewClient(name, core.ConnTypeUpstreamZipper)
 
@@ -53,7 +54,7 @@ func NewZipper(name string, opts ...Option) *zipper {
 	}
 }
 
-// 创建 Zipper 服务端，
+// NewZipperServer 创建 Zipper 服务端，
 // 会接入 Source, Upstream Zipper, Sfn
 func NewZipperServer(name string, opts ...Option) Zipper {
 	options := newOptions(opts...)
@@ -102,7 +103,7 @@ func (s *zipper) ConfigDownstream(opts ...interface{}) error {
 //    1、按顺序传递个 sfn，
 //    2、并行传输给 Downstream Zipper
 func (s *zipper) ListenAndServe() error {
-	logger.Debugf("%sCreating Zipper Server ...", ZipperLogPrefix)
+	logger.Debugf("%sCreating Zipper Server ...", zipperLogPrefix)
 	return s.server.ListenAndServe(context.Background(), s.listenAddr)
 }
 
@@ -115,7 +116,7 @@ func (s *zipper) ListenAndServe() error {
 func (s *zipper) Connect() error {
 	err := s.client.Connect(context.Background(), s.addr)
 	if err != nil {
-		logger.Errorf("%sConnect() error: %s", ZipperLogPrefix, err)
+		logger.Errorf("%sConnect() error: %s", zipperLogPrefix, err)
 		return err
 	}
 
@@ -124,10 +125,10 @@ func (s *zipper) Connect() error {
 
 // Client：添加 upstream zipper
 func (s *zipper) AddDownstreamZipper(downstream Zipper) error {
-	logger.Debugf("%sAddDownstreamZipper: %v", ZipperLogPrefix, downstream)
+	logger.Debugf("%sAddDownstreamZipper: %v", zipperLogPrefix, downstream)
 	s.downstreamZippers = append(s.downstreamZippers, downstream)
 	s.hasDownstreams = true
-	logger.Debugf("%scurrent downstreams: %v", ZipperLogPrefix, s.downstreamZippers)
+	logger.Debugf("%scurrent downstreams: %v", zipperLogPrefix, s.downstreamZippers)
 	return nil
 }
 
@@ -162,13 +163,13 @@ func (s *zipper) Addr() string {
 func (s *zipper) Close() error {
 	if s.server != nil {
 		if err := s.server.Close(); err != nil {
-			logger.Errorf("%s Close(): %v", ZipperLogPrefix, err)
+			logger.Errorf("%s Close(): %v", zipperLogPrefix, err)
 			return err
 		}
 	}
 	if s.client != nil {
 		if err := s.client.Close(); err != nil {
-			logger.Errorf("%s Close(): %v", ZipperLogPrefix, err)
+			logger.Errorf("%s Close(): %v", zipperLogPrefix, err)
 			return err
 		}
 	}
@@ -176,11 +177,11 @@ func (s *zipper) Close() error {
 }
 
 func (s *zipper) Stats() int {
-	logger.Debugf("%sall sfn connected: %d", ZipperLogPrefix, len(s.server.StatsFunctions()))
+	logger.Debugf("%sall sfn connected: %d", zipperLogPrefix, len(s.server.StatsFunctions()))
 	for k, v := range s.server.StatsFunctions() {
-		logger.Debugf("%s%s-> k=%v, v.StreamID=%d", ZipperLogPrefix, k, (*v).StreamID())
+		logger.Debugf("%s%s-> k=%v, v.StreamID=%d", zipperLogPrefix, k, (*v).StreamID())
 	}
 
-	logger.Debugf("%stotal DataFrames received: %d", ZipperLogPrefix, s.server.StatsCounter())
+	logger.Debugf("%stotal DataFrames received: %d", zipperLogPrefix, s.server.StatsCounter())
 	return len(s.server.StatsFunctions())
 }

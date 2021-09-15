@@ -62,7 +62,7 @@ func load(data []byte) (*WorkflowConfig, error) {
 // ParseConfig parses the config.
 func ParseConfig(config string) (*WorkflowConfig, error) {
 	if !(strings.HasSuffix(config, ".yaml") || strings.HasSuffix(config, ".yml")) {
-		return nil, errors.New(`The extension of workflow config is incorrect, it should ".yaml|.yml"`)
+		return nil, errors.New(`workflow: the extension of workflow config is incorrect, it should ".yaml|.yml"`)
 	}
 
 	// parse workflow.yaml
