@@ -314,7 +314,7 @@ func generateTLSConfig(host ...string) *tls.Config {
 	return &tls.Config{
 		Certificates:       []tls.Certificate{tlsCert},
 		ClientSessionCache: tls.NewLRUClientSessionCache(1),
-		NextProtos:         []string{"spdy/3", "h2", "hq-29"},
+		NextProtos:         []string{"yomo"},
 	}
 }
 
