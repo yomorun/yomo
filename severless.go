@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	StreamFunctionLogPrefix = "\033[31m[yomo:sfn]\033[0m "
+	streamFunctionLogPrefix = "\033[31m[yomo:sfn]\033[0m "
 )
 
 // StreamFunction defines serverless streaming functions.
@@ -27,17 +27,17 @@ type StreamFunction interface {
 }
 
 // NewStreamFunction create a stream function.
-func NewStreamFunction(name string, opts ...Option) *streamFunction {
+func NewStreamFunction(name string, opts ...Option) StreamFunction {
 	options := newOptions(opts...)
 	client := core.NewClient(name, core.ConnTypeStreamFunction)
-	sfn := streamFunction{
+	sfn := &streamFunction{
 		name:           name,
 		zipperEndpoint: options.ZipperAddr,
 		client:         client,
 		observed:       make([]uint8, 0),
 	}
 
-	return &sfn
+	return sfn
 }
 
 var _ StreamFunction = &streamFunction{}
@@ -54,13 +54,13 @@ type streamFunction struct {
 // SetObserveDataID set the data id list that will be observed.
 func (s *streamFunction) SetObserveDataID(id ...uint8) {
 	s.observed = append(s.observed, id...)
-	logger.Debugf("%sSetObserveDataID(%v)", StreamFunctionLogPrefix, s.observed)
+	logger.Debugf("%sSetObserveDataID(%v)", streamFunctionLogPrefix, s.observed)
 }
 
 // SetHandler set the handler function, which accept the raw bytes data and return the tag & response.
 func (s *streamFunction) SetHandler(fn func([]byte) (byte, []byte)) error {
 	s.fn = fn
-	logger.Debugf("%sSetHandler(%v)", StreamFunctionLogPrefix, s.fn)
+	logger.Debugf("%sSetHandler(%v)", streamFunctionLogPrefix, s.fn)
 	return nil
 }
 
@@ -68,12 +68,12 @@ func (s *streamFunction) SetHandler(fn func([]byte) (byte, []byte)) error {
 // handler which setted by SetHandler method.
 func (s *streamFunction) Connect() error {
 	// TODO: should guarante SetHandler() has been called
-	logger.Debugf("%s Connect()", StreamFunctionLogPrefix)
+	logger.Debugf("%s Connect()", streamFunctionLogPrefix)
 	// notify underlying network operations, when data with tag we observed arrived, invoke the func
 	s.client.SetDataFrameObserver(func(tag byte, carraige []byte, metaFrame MetaFrame) {
 		for _, t := range s.observed {
 			if t == tag {
-				logger.Debugf("%sreceive DataFrame, tag=%# x, carraige=%# x", StreamFunctionLogPrefix, tag, carraige)
+				logger.Debugf("%sreceive DataFrame, tag=%# x, carraige=%# x", streamFunctionLogPrefix, tag, carraige)
 				s.onDataFrame(carraige, metaFrame)
 				// TODO: consider remove return
 				return
@@ -83,7 +83,7 @@ func (s *streamFunction) Connect() error {
 
 	err := s.client.Connect(context.Background(), s.zipperEndpoint)
 	if err != nil {
-		logger.Errorf("%sConnect() error: %s", StreamFunctionLogPrefix, err)
+		logger.Errorf("%sConnect() error: %s", streamFunctionLogPrefix, err)
 	}
 	return err
 }
@@ -103,7 +103,7 @@ func (s *streamFunction) Close() error {
 func (s *streamFunction) onDataFrame(data []byte, metaFrame MetaFrame) {
 	// check
 	if s.fn == nil {
-		logger.Warnf("%sStreamFunction is nil", StreamFunctionLogPrefix)
+		logger.Warnf("%sStreamFunction is nil", streamFunctionLogPrefix)
 		return
 	}
 	// tracing
@@ -111,15 +111,15 @@ func (s *streamFunction) onDataFrame(data []byte, metaFrame MetaFrame) {
 	if err == nil {
 		defer span.End()
 	}
-	logger.Infof("%sonDataFrame metadata=%s, [%s]->[%s]", StreamFunctionLogPrefix, metaFrame.GetMetadatas(), metaFrame.GetIssuer(), s.name)
-	logger.Debugf("%sexecute-start fn: data=%#x", StreamFunctionLogPrefix, data)
+	logger.Infof("%sonDataFrame metadata=%s, [%s]->[%s]", streamFunctionLogPrefix, metaFrame.GetMetadatas(), metaFrame.GetIssuer(), s.name)
+	logger.Debugf("%sexecute-start fn: data=%#x", streamFunctionLogPrefix, data)
 	// invoke serverless
 	tag, resp := s.fn(data)
-	logger.Debugf("%sexecute-done fn: tag=%#x, resp=%#x", StreamFunctionLogPrefix, tag, resp)
+	logger.Debugf("%sexecute-done fn: tag=%#x, resp=%#x", streamFunctionLogPrefix, tag, resp)
 	// if resp is not nil, means the user's function has returned something, we should send it to the zipper
 	// TODO: a better way to explict the return value
 	if len(resp) != 0 {
-		logger.Debugf("%sstart WriteFrame(): tag=%#x, data=%v", StreamFunctionLogPrefix, tag, resp)
+		logger.Debugf("%sstart WriteFrame(): tag=%#x, data=%v", streamFunctionLogPrefix, tag, resp)
 		// build a DataFrame
 		// TODO: seems we should implement a DeepCopy() of MetaFrame
 		frame := frame.NewDataFrame(metaFrame.GetMetadatas()...)
