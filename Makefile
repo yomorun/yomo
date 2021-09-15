@@ -9,3 +9,6 @@ fmt:
 
 vet:
 	$(GO) vet $(VETPACKAGES)
+
+lint:
+	revive -formatter friendly ./...
