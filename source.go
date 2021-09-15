@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	SourceLogPrefix = "\033[32m[yomo:source]\033[0m "
+	sourceLogPrefix = "\033[32m[yomo:source]\033[0m "
 )
 
 type Source interface {
@@ -64,10 +64,10 @@ func (s *yomoSource) SetDataTag(tag uint8) {
 // Close will close the connection to YoMo-Zipper.
 func (s *yomoSource) Close() error {
 	if err := s.client.Close(); err != nil {
-		logger.Errorf("%sClose(): %v", SourceLogPrefix, err)
+		logger.Errorf("%sClose(): %v", sourceLogPrefix, err)
 		return err
 	}
-	logger.Debugf("%s is closed", SourceLogPrefix)
+	logger.Debugf("%s is closed", sourceLogPrefix)
 	return nil
 }
 
@@ -75,7 +75,7 @@ func (s *yomoSource) Close() error {
 func (s *yomoSource) Connect() error {
 	err := s.client.Connect(context.Background(), s.zipperEndpoint)
 	if err != nil {
-		logger.Errorf("%sConnect() error: %s", SourceLogPrefix, err)
+		logger.Errorf("%sConnect() error: %s", sourceLogPrefix, err)
 	}
 	return err
 }
@@ -89,9 +89,9 @@ func (s *yomoSource) WriteWithTag(tag uint8, data []byte, metadatas ...*Metadata
 // WriteWithTagTransactionID will write data with specified transactionID and tag.
 func (s *yomoSource) WriteWithTagTransactionID(transactionID string, tag uint8, data []byte, metadatas ...*Metadata) error {
 	if len(data) > 1024 {
-		logger.Debugf("%sWriteDataWithTransactionID: len(data)=%d", SourceLogPrefix, len(data))
+		logger.Debugf("%sWriteDataWithTransactionID: len(data)=%d", sourceLogPrefix, len(data))
 	} else {
-		logger.Debugf("%sWriteDataWithTransactionID: data=%# x", SourceLogPrefix, data)
+		logger.Debugf("%sWriteDataWithTransactionID: data=%# x", sourceLogPrefix, data)
 	}
 	frame := frame.NewDataFrame(metadatas...)
 	frame.SetIssuer(s.name)

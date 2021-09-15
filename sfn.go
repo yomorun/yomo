@@ -67,7 +67,6 @@ func (s *streamFunction) SetHandler(fn func([]byte) (byte, []byte)) error {
 // Connect create a connection to the zipper, when data arrvied, the data will be passed to the
 // handler which setted by SetHandler method.
 func (s *streamFunction) Connect() error {
-	// TODO: should guarante SetHandler() has been called
 	logger.Debugf("%s Connect()", streamFunctionLogPrefix)
 	// notify underlying network operations, when data with tag we observed arrived, invoke the func
 	s.client.SetDataFrameObserver(func(tag byte, carraige []byte, metaFrame MetaFrame) {
@@ -75,7 +74,6 @@ func (s *streamFunction) Connect() error {
 			if t == tag {
 				logger.Debugf("%sreceive DataFrame, tag=%# x, carraige=%# x", streamFunctionLogPrefix, tag, carraige)
 				s.onDataFrame(carraige, metaFrame)
-				// TODO: consider remove return
 				return
 			}
 		}
@@ -117,7 +115,6 @@ func (s *streamFunction) onDataFrame(data []byte, metaFrame MetaFrame) {
 	tag, resp := s.fn(data)
 	logger.Debugf("%sexecute-done fn: tag=%#x, resp=%#x", streamFunctionLogPrefix, tag, resp)
 	// if resp is not nil, means the user's function has returned something, we should send it to the zipper
-	// TODO: a better way to explict the return value
 	if len(resp) != 0 {
 		logger.Debugf("%sstart WriteFrame(): tag=%#x, data=%v", streamFunctionLogPrefix, tag, resp)
 		// build a DataFrame
