@@ -50,18 +50,18 @@ func (r *RxRuntime) Pipe(rxHandler func(rxstream rx.Stream) rx.Stream) {
 	for item := range stream.Observe() {
 		if item.Error() {
 			log.FailureStatusEvent(os.Stdout, "[Rx Handler] Handler got an error, err=%v", item.E)
-			break
+			continue
 		}
 
 		if item.V == nil {
 			log.InfoStatusEvent(os.Stdout, "[Rx Handler] the returned data is nil.")
-			break
+			continue
 		}
 
 		dataFrame, ok := (item.V).(*frame.DataFrame)
 		if !ok {
 			log.InfoStatusEvent(os.Stdout, "[Rx Handler] the data is not a *DataFrame, won't send it to YoMo-Zipper.")
-			break
+			continue
 		}
 
 		// send data to YoMo-Zipper.
