@@ -1,15 +1,14 @@
 # https://taskfile.dev
 
-version: '3'
+version: "3"
 
 includes:
   example: ./example.yml
   cli: ./cli/cli.yml
+  multi_zipper: ./example/multi-zipper/Taskfile.yml
 
 tasks:
   default:
     cmds:
-      - task -l 
+      - task -l
     silent: true
-
-

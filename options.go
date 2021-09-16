@@ -12,8 +12,8 @@ type Option func(o *options)
 
 // options are the options for YoMo-Client.
 type options struct {
-	ZipperAddr           string // Zipper endpoint address
-	ZipperListenAddr     string // Zipper endpoint address
+	ZipperAddr string // target Zipper endpoint address
+	// ZipperListenAddr     string // Zipper endpoint address
 	ZipperWorkflowConfig string // Zipper workflow file
 }
 
@@ -24,12 +24,12 @@ func WithZipperAddr(addr string) Option {
 	}
 }
 
-// WithZipperListenAddr return a new options with ZipperListenAddr set to addr.
-func WithZipperListenAddr(addr string) Option {
-	return func(o *options) {
-		o.ZipperListenAddr = addr
-	}
-}
+// // WithZipperListenAddr return a new options with ZipperListenAddr set to addr.
+// func WithZipperListenAddr(addr string) Option {
+// 	return func(o *options) {
+// 		o.ZipperListenAddr = addr
+// 	}
+// }
 
 // newOptions creates a new options for YoMo-Client.
 func newOptions(opts ...Option) *options {
@@ -43,9 +43,9 @@ func newOptions(opts ...Option) *options {
 		options.ZipperAddr = DefaultZipperAddr
 	}
 
-	if options.ZipperListenAddr == "" {
-		options.ZipperListenAddr = DefaultZipperListenAddr
-	}
+	// if options.ZipperListenAddr == "" {
+	// 	options.ZipperListenAddr = DefaultZipperListenAddr
+	// }
 
 	return options
 }

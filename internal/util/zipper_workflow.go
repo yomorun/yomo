@@ -1,4 +1,4 @@
-package yomo
+package util
 
 import (
 	"errors"
@@ -20,9 +20,13 @@ type Workflow struct {
 
 // WorkflowConfig represents a YoMo Workflow config.
 type WorkflowConfig struct {
-	Name     string `yaml:"name"`
-	Host     string `yaml:"host"`
-	Port     int    `yaml:"port"`
+	// Name represents the name of the zipper.
+	Name string `yaml:"name"`
+	// Host represents the listening host of the zipper.
+	Host string `yaml:"host"`
+	// Port represents the listening port of the zipper.
+	Port int `yaml:"port"`
+	// Workflow represents the sfn workflow.
 	Workflow `yaml:",inline"`
 }
 
@@ -68,7 +72,7 @@ func ParseConfig(config string) (*WorkflowConfig, error) {
 	// parse workflow.yaml
 	wfConf, err := Load(config)
 	if err != nil {
-		return nil, errors.New("Parse the workflow config failure with the error: " + err.Error())
+		return nil, errors.New("workflow: read the workflow config failure: " + err.Error())
 	}
 
 	// validate

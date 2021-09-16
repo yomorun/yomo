@@ -24,7 +24,7 @@ import (
 	"github.com/yomorun/yomo/pkg/tracing"
 )
 
-// Server 是 QUIC Server 的抽象，被 Zipper 使用
+// Server is the underlining server of Zipper
 type Server struct {
 	token              string
 	stream             quic.Stream
@@ -33,15 +33,16 @@ type Server struct {
 	funcBuckets        map[int]string // user config stream functions
 	connSfnMap         sync.Map       // key: connection ID, value: stream function name.
 	counterOfDataFrame int64
-	// logger             utils.Logger
+	downstreams        map[string]*Client
 }
 
 func NewServer(name string) *Server {
 	s := &Server{
 		token:       name,
 		funcs:       NewConcurrentMap(),
-		funcBuckets: make(map[int]string, 0),
+		funcBuckets: make(map[int]string),
 		connSfnMap:  sync.Map{},
+		downstreams: make(map[string]*Client),
 	}
 	once.Do(func() {
 		s.init()
@@ -55,8 +56,8 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 		Versions:                       []quic.VersionNumber{quic.Version1, quic.VersionDraft29},
 		MaxIdleTimeout:                 time.Second * 3,
 		KeepAlive:                      true,
-		MaxIncomingStreams:             100000,
-		MaxIncomingUniStreams:          100000,
+		MaxIncomingStreams:             10000,
+		MaxIncomingUniStreams:          10000,
 		HandshakeIdleTimeout:           time.Second * 3,
 		InitialStreamReceiveWindow:     1024 * 1024 * 2,
 		InitialConnectionReceiveWindow: 1024 * 1024 * 2,
@@ -76,12 +77,11 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 		return err
 	}
 	defer listener.Close()
-	logger.Printf("%s✅ Listening on: %s, QUIC: %v", ServerLogPrefix, listener.Addr(), qconf.Versions)
+	logger.Printf("%s✅ (name:%s) Listening on: %s, QUIC: %v", ServerLogPrefix, s.token, listener.Addr(), qconf.Versions)
 
 	s.state = ConnStateConnected
-	// accept session
 	for {
-		// 有新的 YomoClient 连接时，创建一个 session
+		// create a new session when new yomo-client connected
 		sctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
@@ -156,7 +156,8 @@ func (s *Server) handleSession(session quic.Session, mainStream quic.Stream) {
 		}
 
 		frameType := f.Type()
-		logger.Debugf("%stype=%s, frame=%# x", ServerLogPrefix, frameType, logger.BytesString(f.Encode()))
+		// logger.Debugf("%stype=%s, frame=%# x", ServerLogPrefix, frameType, logger.BytesString(f.Encode()))
+		logger.Debugf("%stype=%s, frame=%# x", ServerLogPrefix, frameType, f.Encode())
 		switch frameType {
 		case frame.TagOfHandshakeFrame:
 			s.handleHandShakeFrame(mainStream, session, f.(*frame.HandshakeFrame))
@@ -164,8 +165,10 @@ func (s *Server) handleSession(session quic.Session, mainStream quic.Stream) {
 			s.handlePingFrame(mainStream, session, f.(*frame.PingFrame))
 		case frame.TagOfDataFrame:
 			s.handleDataFrame(mainStream, session, f.(*frame.DataFrame))
+			s.dispatchToDownstreams(f.(*frame.DataFrame))
 		default:
-			logger.Errorf("%serr=%v, frame=%v", ServerLogPrefix, err, logger.BytesString(f.Encode()))
+			// logger.Errorf("%serr=%v, frame=%v", ServerLogPrefix, err, logger.BytesString(f.Encode()))
+			logger.Errorf("%serr=%v, frame=%v", ServerLogPrefix, err, f.Encode())
 		}
 	}
 }
@@ -274,6 +277,7 @@ func (s *Server) AddWorkflow(wfs ...Workflow) error {
 func (s *Server) validateHandshake(f *frame.HandshakeFrame) bool {
 	isValid := false
 	for _, k := range s.funcBuckets {
+		logger.Debugf(">>> validateHandshake: (f)=%s, (list)=%s", f.Name, k)
 		if k == f.Name {
 			isValid = true
 			break
@@ -282,6 +286,28 @@ func (s *Server) validateHandshake(f *frame.HandshakeFrame) bool {
 
 	logger.Warnf("%svalidateHandshake(%v), result: %v", ServerLogPrefix, *f, isValid)
 	return isValid
+}
+
+func (s *Server) init() {
+	// tracing
+	_, _, err := tracing.NewTracerProvider(s.token)
+	if err != nil {
+		logger.Errorf("tracing: %v", err)
+	}
+}
+
+// AddDownstreamServer add a downstream server to this server. all the DataFrames will be
+// dispatch to all the downstreams.
+func (s *Server) AddDownstreamServer(addr string, c *Client) {
+	s.downstreams[addr] = c
+}
+
+// dispatch every DataFrames to all downstreams
+func (s *Server) dispatchToDownstreams(df *frame.DataFrame) {
+	for addr, ds := range s.downstreams {
+		logger.Debugf("dispatching to [%s]: %# x", addr, df)
+		ds.WriteFrame(df)
+	}
 }
 
 // generateTLSConfig Setup a bare-bones TLS config for the server
@@ -358,14 +384,6 @@ func generateCertificate(host ...string) (tls.Certificate, error) {
 	}
 
 	return tls.X509KeyPair(certOut.Bytes(), keyOut.Bytes())
-}
-
-func (s *Server) init() {
-	// tracing
-	_, _, err := tracing.NewTracerProvider(s.token)
-	if err != nil {
-		logger.Errorf("tracing: %v", err)
-	}
 }
 
 // getConnID get quic session connection id

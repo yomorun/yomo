@@ -1,0 +1,88 @@
+# https://taskfile.dev
+
+version: "3"
+
+tasks:
+  # multi-zippers
+  all:
+    desc: run example
+    deps: [zipper-2, sfn, zipper-1, source]
+    cmds:
+      - "echo +_+"
+
+  source:
+    desc: run source example
+    deps: [source-build]
+    dir: "source"
+    cmds:
+      - "./source{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: false
+      YOMO_LOG_LEVEL: info
+
+  source-build:
+    desc: build source example
+    dir: "source"
+    cmds:
+      - echo "source building..."
+      - "go build -o source{{exeExt}} source.go"
+      - echo "source built."
+    silent: false
+
+  sfn:
+    desc: run source example
+    deps: [sfn-build]
+    dir: "sfn"
+    cmds:
+      - "./sfn{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: false
+      YOMO_LOG_LEVEL: info
+
+  sfn-build:
+    desc: build sfn example
+    dir: "sfn"
+    cmds:
+      - echo "sfn building..."
+      - "go build -o sfn{{exeExt}} sfn_echo.go"
+      - echo "sfn built."
+    silent: false
+
+  zipper-1:
+    desc: run zipper-1 example
+    deps: [zipper-1-build]
+    dir: "zipper-1"
+    cmds:
+      - "./zipper-1{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: false
+      YOMO_LOG_LEVEL: info
+
+  zipper-1-build:
+    desc: build zipper-1 example
+    dir: "zipper-1"
+    cmds:
+      - echo "zipper-1 building..."
+      - "go build -o zipper-1{{exeExt}} zipper_1.go"
+      - echo "zipper-1 built."
+    silent: false
+
+  zipper-2:
+    desc: run zipper-2 example
+    deps: [zipper-2-build]
+    dir: "zipper-2"
+    cmds:
+      - "./zipper-2{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: false
+      YOMO_LOG_LEVEL: info
+
+  zipper-2-build:
+    desc: build zipper-2 example
+    dir: "zipper-2"
+    cmds:
+      - pwd
+      - echo "zipper-2 building..."
+      - go build -o zipper-2{{exeExt}} zipper_2.go
+      - echo "zipper-2 built."
+    silent: false
