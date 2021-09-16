@@ -1,12 +1,24 @@
 
 // Serverless main function
 func main() {
-	cli, err := yomo.NewStreamFn(yomo.WithName("{{.Name}}")).Connect("{{.Host}}", {{.Port}})
+	sfn := yomo.NewStreamFunction("{{.Name}}", yomo.WithZipperAddr("{{.Host}}:{{.Port}}"))
+	defer sfn.Close()
+
+	// set observe DataIDs
+	sfn.SetObserveDataID(DataID()...)
+
+	// create a Rx runtime.
+	rt := serverless.NewRxRuntime(sfn)
+
+	// set handler
+	sfn.SetHandler(rt.RawByteHandler)
+
+	// start
+	err := sfn.Connect()
 	if err != nil {
-		stdlog.Print("Connect to YoMo-Zipper failure: ", err)
-		return
+		stdlog.Print("[flow] connect err=%v", err)
 	}
 
-	defer cli.Close()
-	cli.Pipe(Handler)
+	// pipe rxstream and rx handler.
+	rt.Pipe(Handler)
 }

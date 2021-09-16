@@ -262,26 +262,6 @@ func Test_Subscribe_MultipleKeys(t *testing.T) {
 // 	}
 // }
 
-func Test_Encode(t *testing.T) {
-	t.Run("string", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		st := toStream(rxgo.Just("abc")()).Encode(0x11)
-		rxgo.Assert(ctx, t, st, rxgo.HasItem([]uint8{0x81, 0x5, 0x11, 0x3, 0x61, 0x62, 0x63}))
-	})
-
-	t.Run("struct slice", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		data := []testStruct{
-			{ID: 1, Name: "foo"},
-			{ID: 2, Name: "bar"},
-		}
-		st := toStream(rxgo.Just(data)()).Encode(0x11)
-		rxgo.Assert(ctx, t, st, rxgo.HasItems([]uint8{0x81, 0xa, 0x91, 0x8, 0x11, 0x1, 0x1, 0x12, 0x3, 0x66, 0x6f, 0x6f}, []uint8{0x81, 0xa, 0x91, 0x8, 0x11, 0x1, 0x2, 0x12, 0x3, 0x62, 0x61, 0x72}))
-	})
-}
-
 func Test_SlidingWindowWithCount(t *testing.T) {
 	t.Run("window size = 1, slide size = 1, handler does nothing", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())

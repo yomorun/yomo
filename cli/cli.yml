@@ -7,7 +7,7 @@ output: prefixed
 vars:
   Name: yomo
   ExeName: yomo{{exeExt}}
-  ExeDir: cmd/yomo 
+  ExeDir: ./cmd/yomo 
   ReleaseDir: release 
   Version: 
     sh: git describe --always --tags --dirty
@@ -105,39 +105,16 @@ tasks:
 
   example-stream-fn:
     desc: "run stream-fn application"
-    deps: [example-stream-fn-build]
-    dir: "cli/example/stream-fn"
+    deps: [build]
     cmds:
-      # - "{{.ExeDir}}/{{.ExeName}} run -n Noise -m example/go.mod example/stream-fn/app.go"
-      - "./stream-fn{{exeExt}}"
+      - "{{.ExeDir}}/{{.ExeName}} run -n Noise -m cli/example/go.mod cli/example/stream-fn/app.go"
     silent: false
-
-  example-stream-fn-build:
-    desc: build stream-fn application
-    dir: "cli/example/stream-fn"
-    cmds:
-      - echo "stream-fn building..."
-      - "go build -o stream-fn{{exeExt}} main.go"
-      - echo "stream-fn built."
-    silent: false
-
 
   example-stream-fn-db:
     desc: run output stream-fn-db
-    deps: [example-stream-fn-db-build]
-    dir: "cli/example/stream-fn-db"
+    deps: [build]
     cmds:
-      # - "{{.ExeDir}}/{{.ExeName}} run -n MockDB -m example/go.mod example/stream-fn-db/app.go"
-      - "./stream-fn-db{{exeExt}}"
-    silent: false
-
-  example-stream-fn-db-build:
-    desc: build stream-fn-db application
-    dir: "cli/example/stream-fn-db"
-    cmds:
-      - echo "stream-fn-db building..."
-      - "go build -o stream-fn-db{{exeExt}} main.go"
-      - echo "stream-fn-db built."
+      - "{{.ExeDir}}/{{.ExeName}} run -n MockDB -m cli/example/go.mod cli/example/stream-fn-db/app.go"
     silent: false
 
   version:

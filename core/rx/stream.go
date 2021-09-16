@@ -7,20 +7,15 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/reactivex/rxgo/v2"
 	"github.com/yomorun/yomo/internal/decoder"
+	"github.com/yomorun/yomo/internal/frame"
 )
 
 // Stream is the interface for RxStream.
 type Stream interface {
 	rxgo.Iterable
 
-	// Subscribe a specified key in stream and gets the data when the key is observed by Y3 Codec.
-	Subscribe(key byte) Stream
-
-	// OnObserve calls the function to process the observed data.
-	OnObserve(function func(v []byte) (interface{}, error)) Stream
-
-	// Encode the data with a specified key by Y3 Codec and append it to stream.
-	Encode(key byte, opts ...rxgo.Option) Stream
+// WriteNewData write the DataFrame with a specified TagID.
+	WriteNewData(tagID byte, metas ...*frame.Metadata) Stream
 
 	// RawBytes get the raw bytes in Stream which receives from YoMo-Zipper.
 	RawBytes() Stream
@@ -175,7 +170,7 @@ type Stream interface {
 	Map(apply rxgo.Func, opts ...rxgo.Option) Stream
 
 	// Marshal transforms the items emitted by an Observable by applying a marshalling to each item.
-	Marshal(marshaller decoder.Marshaller, opts ...rxgo.Option) Stream
+	Marshal(marshaller Marshaller, opts ...rxgo.Option) Stream
 
 	// Max determines and emits the maximum-valued item emitted by an Observable according to a comparator.
 	Max(comparator rxgo.Comparator, opts ...rxgo.Option) Stream
@@ -293,7 +288,7 @@ type Stream interface {
 	ToSlice(initialCapacity int, opts ...rxgo.Option) ([]interface{}, error)
 
 	// Unmarshal transforms the items emitted by an Observable by applying an unmarshalling to each item.
-	Unmarshal(unmarshaller decoder.Unmarshaller, factory func() interface{}, opts ...rxgo.Option) Stream
+	Unmarshal(unmarshaller Unmarshaller, factory func() interface{}, opts ...rxgo.Option) Stream
 
 	// WindowWithCount periodically subdivides items from an Observable into Observable windows of a given size and emit these windows
 	// rather than emitting the items one at a time.
@@ -328,3 +323,10 @@ type KeyObserveFunc struct {
 	Key       byte
 	OnObserve decoder.OnObserveFunc
 }
+
+type (
+	// Marshaller defines a marshaller type (interface{} to []byte).
+	Marshaller func(interface{}) ([]byte, error)
+	// Unmarshaller defines an unmarshaller type ([]byte to interface).
+	Unmarshaller func([]byte, interface{}) error
+)

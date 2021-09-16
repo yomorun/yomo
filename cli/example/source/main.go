@@ -1,18 +1,18 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"math/rand"
 	"time"
 
-	y3 "github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo"
 )
 
 type noiseData struct {
-	Noise float32 `y3:"0x11"` // Noise value
-	Time  int64   `y3:"0x12"` // Timestamp (ms)
-	From  string  `y3:"0x13"` // Source IP
+	Noise float32 `json:"noise"` // Noise value
+	Time  int64   `json:"time"` // Timestamp (ms)
+	From  string  `json:"from"` // Source IP
 }
 
 func main() {
@@ -31,8 +31,6 @@ func main() {
 	generateAndSendData(source)
 }
 
-var codec = y3.NewCodec(0x10)
-
 func generateAndSendData(stream yomo.Source) {
 	for {
 		// generate random data.
@@ -42,8 +40,8 @@ func generateAndSendData(stream yomo.Source) {
 			From:  "localhost",
 		}
 
-		// Encode data via Y3 codec https://github.com/yomorun/y3-codec.
-		sendingBuf, _ := codec.Marshal(data)
+		// encode data via JSON codec.
+		sendingBuf, _ := json.Marshal(data)
 
 		// send data via QUIC stream.
 		_, err := stream.Write(sendingBuf)

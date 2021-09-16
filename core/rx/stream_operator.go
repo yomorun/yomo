@@ -9,8 +9,8 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/reactivex/rxgo/v2"
-	y3 "github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo/internal/decoder"
+	"github.com/yomorun/yomo/internal/frame"
 	"github.com/yomorun/yomo/logger"
 )
 
@@ -289,7 +289,7 @@ func (s *StreamImpl) Map(apply rxgo.Func, opts ...rxgo.Option) Stream {
 }
 
 // Marshal transforms the items emitted by an Observable by applying a marshalling to each item.
-func (s *StreamImpl) Marshal(marshaller decoder.Marshaller, opts ...rxgo.Option) Stream {
+func (s *StreamImpl) Marshal(marshaller Marshaller, opts ...rxgo.Option) Stream {
 	opts = appendContinueOnError(s.ctx, opts...)
 
 	return s.Map(func(_ context.Context, i interface{}) (interface{}, error) {
@@ -298,42 +298,17 @@ func (s *StreamImpl) Marshal(marshaller decoder.Marshaller, opts ...rxgo.Option)
 }
 
 // Unmarshal transforms the items emitted by an Observable by applying an unmarshalling to each item.
-func (s *StreamImpl) Unmarshal(unmarshaller decoder.Unmarshaller, factory func() interface{}, opts ...rxgo.Option) Stream {
-	f := func(ctx context.Context, next chan rxgo.Item) {
-		defer close(next)
-		observe := s.Observe()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case item, ok := <-observe:
-				if !ok {
-					return
-				}
-				if item.Error() {
-					continue
-				}
-				go func() {
-					onObserve := (item.V).(decoder.Observable).Unmarshal(unmarshaller, factory)
+func (s *StreamImpl) Unmarshal(unmarshaller Unmarshaller, factory func() interface{}, opts ...rxgo.Option) Stream {
+	opts = appendContinueOnError(s.ctx, opts...)
 
-					for {
-						select {
-						case <-ctx.Done():
-							return
-						case item, ok := <-onObserve:
-							if !ok {
-								return
-							}
-							if !Of(item).SendContext(ctx, next) {
-								return
-							}
-						}
-					}
-				}()
-			}
+	return s.Map(func(_ context.Context, i interface{}) (interface{}, error) {
+		v := factory()
+		err := unmarshaller(i.([]byte), v)
+		if err != nil {
+			return nil, err
 		}
-	}
-	return CreateObservable(s.ctx, f)
+		return v, nil
+	}, opts...)
 }
 
 // Max determines and emits the maximum-valued item emitted by an Observable according to a comparator.
@@ -640,38 +615,6 @@ func (s *StreamImpl) AuditTime(milliseconds uint32, opts ...rxgo.Option) Stream 
 	return ConvertObservable(s.ctx, o)
 }
 
-// Subscribe the specified key by Y3 Codec.
-func (s *StreamImpl) Subscribe(key byte) Stream {
-
-	f := func(ctx context.Context, next chan rxgo.Item) {
-		defer close(next)
-		observe := s.Observe()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case item, ok := <-observe:
-				if !ok {
-					return
-				}
-				if item.Error() {
-					continue
-				}
-				y3stream, ok := (item.V).(decoder.Observable)
-				if !ok {
-					logger.Error("[Subscribe] the type of item.V is not `decoder.Observable`")
-					return
-				}
-
-				if !Of(y3stream.Subscribe(key)).SendContext(ctx, next) {
-					return
-				}
-			}
-		}
-	}
-	return CreateObservable(s.ctx, f)
-}
-
 // RawBytes get the raw bytes in Stream which receives from YoMo-Zipper.
 func (s *StreamImpl) RawBytes() Stream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
@@ -826,12 +769,12 @@ func (s *StreamImpl) ZipMultiObservers(observers []KeyObserveFunc, zipper func(i
 	return CreateObservable(s.ctx, f)
 }
 
-// OnObserve calls the function to process the observed data.
-func (s *StreamImpl) OnObserve(function func(v []byte) (interface{}, error)) Stream {
-
+// WriteNewData write the DataFrame with a specified TagID.
+func (s *StreamImpl) WriteNewData(tagID byte, metas ...*frame.Metadata) Stream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
 		observe := s.Observe()
+
 		for {
 			select {
 			case <-ctx.Done():
@@ -840,68 +783,27 @@ func (s *StreamImpl) OnObserve(function func(v []byte) (interface{}, error)) Str
 				if !ok {
 					return
 				}
+
 				if item.Error() {
 					continue
 				}
-				go func() {
-					onObserve := (item.V).(decoder.Observable).OnObserve(function)
 
-					for {
-						select {
-						case <-ctx.Done():
-							return
-						case item, ok := <-onObserve:
-							if !ok {
-								return
-							}
-							logger.Debug("[OnObserve] Get data after OnObserve.", "data", item)
-							if !Of(item).SendContext(ctx, next) {
-								return
-							}
-						}
-					}
-				}()
+				buf, ok := (item.V).([]byte)
+				if !ok {
+					logger.Error("[WriteNewData] the data is not a []byte, won't send pass it to next.")
+					continue
+				}
+
+				frame := frame.NewDataFrame(metas...)
+				frame.SetCarriage(tagID, buf)
+
+				if !Of(frame).SendContext(ctx, next) {
+					return
+				}
 			}
 		}
 	}
 	return CreateObservable(s.ctx, f)
-}
-
-// Encode the data with a specified key by Y3 Codec and append it to stream.
-func (s *StreamImpl) Encode(key byte, opts ...rxgo.Option) Stream {
-	y3codec := y3.NewCodec(key)
-
-	f := func(ctx context.Context, next chan rxgo.Item) {
-		defer close(next)
-		observe := s.Observe(opts...)
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case item, ok := <-observe:
-				if !ok {
-					return
-				}
-
-				if item.Error() {
-					continue
-				}
-
-				buf, err := y3codec.Marshal(item.V)
-
-				if err != nil {
-					logger.Debug("[Encode Operator] encodes data failed via Y3 Codec.", "key", key, "data", item.V, "err", err)
-					continue
-				}
-
-				if !Of(buf).SendContext(ctx, next) {
-					return
-				}
-			}
-		}
-	}
-	return CreateObservable(s.ctx, f, opts...)
 }
 
 // SlidingWindowWithCount buffers the data in the specified sliding window size, the buffered data can be processed in the handler func.

@@ -40,6 +40,10 @@ func (cmap *ConcurrentMap) Get(key string) *quic.Stream {
 	if val, ok := cmap.sfnCollection[key]; ok {
 		l := len(val)
 		if len(val) == 0 {
+			logger.Debugf("not available stream, key=%s", key)
+			return nil
+		}
+		if len(val) == 1 {
 			logger.Debugf("stream[1st]")
 			return val[0].stream
 		}
