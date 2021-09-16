@@ -1,62 +1,31 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
+	"encoding/json"
 	"os"
 	"time"
 
-	y3 "github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/logger"
 )
 
-// NoiseDataKey represents the Tag of a Y3 encoded data packet.
-const NoiseDataKey = 0x10
-
 // NoiseData represents the structure of data
-type NoiseData struct {
-	Noise float32 `y3:"0x11"`
-	Time  int64   `y3:"0x12"`
-	From  string  `y3:"0x13"`
+type noiseData struct {
+	Noise float32 `json:"noise"` // Noise value
+	Time  int64   `json:"time"`  // Timestamp (ms)
+	From  string  `json:"from"`  // Source IP
 }
 
-// Print every value and return noise value to downstream.
-var print = func(_ context.Context, i interface{}) (interface{}, error) {
-	value := i.(NoiseData)
-	rightNow := time.Now().UnixNano() / int64(time.Millisecond)
-	// fmt.Println(fmt.Sprintf("[%s] %d > value: %f ⚡️=%dms", value.From, value.Time, value.Noise, rightNow-value.Time))
-	logger.Printf("[%s] %d > value: %f ⚡️=%dms", value.From, value.Time, value.Noise, rightNow-value.Time)
-
-	return value.Noise, nil
-}
-
-// Unserialize data to `NoiseData` struct, transfer to next process
-// var decode = func(v []byte) (interface{}, error) {
-// 	var mold NoiseData
-// 	err := y3.ToObject(v, &mold)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	mold.Noise = mold.Noise / 10
-// 	return mold, nil
-// }
-
-// Handler will handle data in Rx way
-// func Handler(rxstream rx.Stream) rx.Stream {
-// 	stream := rxstream.
-// 		Subscribe(NoiseDataKey).
-// 		OnObserve(decode).
-// 		Map(print).
-// 		Encode(0x14)
-
-// 	return stream
-// }
-
+// main will observe data with SeqID=0x10, and tranform to SeqID=0x14 with Noise value
+// to downstream sfn.
 func main() {
 	sfn := yomo.NewStreamFunction("Noise-1", yomo.WithZipperAddr("localhost:9000"))
 	defer sfn.Close()
 
-	sfn.SetObserveDataID(NoiseDataKey)
+	sfn.SetObserveDataID(0x10)
 	sfn.SetHandler(handler)
 
 	err := sfn.Connect()
@@ -69,21 +38,35 @@ func main() {
 }
 
 func handler(data []byte) (byte, []byte) {
-	var mold NoiseData
-	err := y3.ToObject(data, &mold)
+	var mold noiseData
+	err := json.Unmarshal(data, &mold)
 	if err != nil {
 		logger.Errorf("[fn1] y3.ToObject err=%v", err)
 		return 0x0, nil
 	}
 	mold.Noise = mold.Noise / 10
+
 	// Print every value and return noise value to downstream.
-	result, err := print(context.Background(), mold)
+	result, err := printExtract(context.Background(), &mold)
 	if err != nil {
 		logger.Errorf("[fn1] to downstream err=%v", err)
 		return 0x0, nil
 	}
-	// encode
-	buf, _ := y3.NewCodec(0x20).Marshal(result)
 
-	return 0x14, buf
+	// transfer result to downstream
+	return 0x14, float32ToByte(result)
+}
+
+// Print every value and return noise value to downstream.
+var printExtract = func(_ context.Context, value *noiseData) (float32, error) {
+	rightNow := time.Now().UnixNano() / int64(time.Millisecond)
+	logger.Printf("✅ [%s] %d > value: %f ⚡️=%dms", value.From, value.Time, value.Noise, rightNow-value.Time)
+
+	return value.Noise, nil
+}
+
+func float32ToByte(f float32) []byte {
+	var buf bytes.Buffer
+	binary.Write(&buf, binary.BigEndian, f)
+	return buf.Bytes()
 }

@@ -2,17 +2,15 @@ package main
 
 import (
 	"context"
+	"encoding/binary"
+	"math"
 	"os"
 	"sync"
 	"time"
 
-	y3 "github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/logger"
 )
-
-// NoiseDataKey represents the Tag of a Y3 encoded data packet.
-const NoiseDataKey = 0x15
 
 // ThresholdAverageValue is the threshold of the average value after a sliding window.
 const ThresholdAverageValue = 13
@@ -22,24 +20,6 @@ const SlidingWindowInMS uint32 = 1e4
 
 // SlidingTimeInMS is the interval in milliseconds of the sliding.
 const SlidingTimeInMS uint32 = 1e3
-
-// NoiseData represents the structure of data
-type NoiseData struct {
-	Noise float32 `y3:"0x11"`
-	Time  int64   `y3:"0x12"`
-	From  string  `y3:"0x13"`
-}
-
-// Unserialize data to `NoiseData` struct, transfer the noise value to next process
-// var decode = func(v []byte) (interface{}, error) {
-// 	var mold NoiseData
-// 	err := y3.ToObject(v, &mold)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	mold.Noise = mold.Noise / 10
-// 	return mold.Noise, nil
-// }
 
 // Compute avg of every past 10-seconds IoT data
 var slidingAvg = func(i interface{}) error {
@@ -58,17 +38,6 @@ var slidingAvg = func(i interface{}) error {
 	return nil
 }
 
-// Handler will handle data in Rx way
-// func Handler(rxstream rx.Stream) rx.Stream {
-// 	stream := rxstream.
-// 		Subscribe(NoiseDataKey).
-// 		OnObserve(decode).
-// 		StdOut().
-// 		SlidingWindowWithTime(SlidingWindowInMS, SlidingTimeInMS, slidingAvg)
-
-// 	return stream
-// }
-
 var (
 	observe = make(chan float32, 1)
 )
@@ -77,7 +46,7 @@ func main() {
 	sfn := yomo.NewStreamFunction("Noise-3", yomo.WithZipperAddr("localhost:9000"))
 	defer sfn.Close()
 
-	sfn.SetObserveDataID(NoiseDataKey)
+	sfn.SetObserveDataID(0x15)
 	sfn.SetHandler(handler)
 
 	err := sfn.Connect()
@@ -92,12 +61,8 @@ func main() {
 }
 
 func handler(data []byte) (byte, []byte) {
-	v, err := y3.ToFloat32(data)
-	if err != nil {
-		logger.Errorf("[fn3] y3.ToObject err=%v", err)
-		return 0x0, nil
-	}
-	logger.Printf("[fn3] observe <- %v", v)
+	v := Float32frombytes(data)
+	logger.Printf("✅ [fn3] observe <- %v", v)
 	observe <- v
 
 	return 0x16, nil // no more processing, return nil
@@ -139,7 +104,6 @@ func SlidingWindowWithTime(observe <-chan float32, windowTimeInMS uint32, slideT
 				err := handler(availableItems)
 				if err != nil {
 					logger.Errorf("[fn3] SlidingWindowWithTime err=%v", err)
-					// rxgo.Error(err).SendContext(ctx, next)
 					return
 				}
 			}
@@ -205,4 +169,9 @@ func SendContext(ctx context.Context, input float32, ch chan<- float32) bool {
 			return true
 		}
 	}
+}
+
+func Float32frombytes(bytes []byte) float32 {
+	bits := binary.BigEndian.Uint32(bytes)
+	return math.Float32frombits(bits)
 }
