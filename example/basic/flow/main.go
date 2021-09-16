@@ -15,7 +15,7 @@ type noiseData struct {
 }
 
 func main() {
-	sfn := yomo.NewStreamFunction("Noise", yomo.WithZipperAddr("localhost:9000"))
+	sfn := yomo.NewStreamFunction("Noise", yomo.WithZipperAddr("localhost:9001"))
 	defer sfn.Close()
 
 	// set only monitoring data which tag=0x33

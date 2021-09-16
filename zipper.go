@@ -22,6 +22,8 @@ const (
 // another one is Downstream Zipper (will call it as Zipper directly), which is used
 // to connected by `Upstream Zipper`, `Source` and `Stream Function`
 type Zipper interface {
+	// ConfigWorkflow will register workflows from config files to zipper.
+	ConfigWorkflow(conf string) error
 	// ListenAndServe start zipper as server.
 	ListenAndServe() error
 	// ReadConfigFile(conf string) error
@@ -29,7 +31,7 @@ type Zipper interface {
 	// ConfigDownstream(opts ...interface{}) error
 	// Connect() error
 	AddDownstreamZipper(downstream Zipper) error
-	RemoveDownstreamZipper(downstream Zipper) error
+	// RemoveDownstreamZipper(downstream Zipper) error
 	// ListenAddr() string
 	Addr() string
 	Stats() int
@@ -122,6 +124,19 @@ func (z *zipper) init() {
 	}()
 }
 
+func (z *zipper) ConfigWorkflow(conf string) error {
+	config, err := util.ParseConfig(conf)
+	if err != nil {
+		return err
+	}
+	for i, app := range config.Functions {
+		if err := z.server.AddWorkflow(core.Workflow{Seq: i, Token: app.Name}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // // ReadConfigFile read zipper configs from workflow.yaml file
 // func (s *zipper) ReadConfigFile(conf string) error {
 // 	config, err := util.ParseConfig(conf)
@@ -167,7 +182,7 @@ func (s *zipper) Connect() error {
 	return nil
 }
 
-// Client：添加 upstream zipper
+// AddDownstreamZipper will add downstream zipper.
 func (s *zipper) AddDownstreamZipper(downstream Zipper) error {
 	logger.Debugf("%sAddDownstreamZipper: %v", zipperLogPrefix, downstream)
 	s.downstreamZippers = append(s.downstreamZippers, downstream)

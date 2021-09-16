@@ -283,6 +283,14 @@ func (s *Server) validateHandshake(f *frame.HandshakeFrame) bool {
 	return isValid
 }
 
+func (s *Server) init() {
+	// tracing
+	_, _, err := tracing.NewTracerProvider(s.token)
+	if err != nil {
+		logger.Errorf("tracing: %v", err)
+	}
+}
+
 // generateTLSConfig Setup a bare-bones TLS config for the server
 func generateTLSConfig(host ...string) *tls.Config {
 	tlsCert, _ := generateCertificate(host...)
@@ -357,14 +365,6 @@ func generateCertificate(host ...string) (tls.Certificate, error) {
 	}
 
 	return tls.X509KeyPair(certOut.Bytes(), keyOut.Bytes())
-}
-
-func (s *Server) init() {
-	// tracing
-	_, _, err := tracing.NewTracerProvider(s.token)
-	if err != nil {
-		logger.Errorf("tracing: %v", err)
-	}
 }
 
 // getConnID get quic session connection id
