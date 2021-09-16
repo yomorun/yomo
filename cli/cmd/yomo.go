@@ -21,7 +21,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/yomorun/yomo/cli/serverless"
-	"github.com/yomorun/yomo/logger"
+	"github.com/yomorun/yomo/pkg/logger"
 
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/viper"

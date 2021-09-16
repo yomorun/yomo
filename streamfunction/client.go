@@ -11,7 +11,7 @@ import (
 	"github.com/yomorun/yomo/internal/client"
 	"github.com/yomorun/yomo/internal/core"
 	"github.com/yomorun/yomo/internal/decoder"
-	"github.com/yomorun/yomo/logger"
+	"github.com/yomorun/yomo/pkg/logger"
 	"github.com/yomorun/yomo/zipper/tracing"
 )
 

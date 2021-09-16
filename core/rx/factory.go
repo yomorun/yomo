@@ -8,7 +8,7 @@ import (
 	"github.com/yomorun/yomo/internal/core"
 	"github.com/yomorun/yomo/internal/decoder"
 	"github.com/yomorun/yomo/internal/frame"
-	"github.com/yomorun/yomo/logger"
+	"github.com/yomorun/yomo/pkg/logger"
 )
 
 // Factory creates the rx.Stream from several sources.

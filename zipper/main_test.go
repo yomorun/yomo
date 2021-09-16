@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/yomorun/yomo/logger"
+	"github.com/yomorun/yomo/pkg/logger"
 )
 
 var (

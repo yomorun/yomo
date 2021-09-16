@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/yomorun/y3-codec-golang/pkg/common"
-	"github.com/yomorun/yomo/logger"
+	"github.com/yomorun/yomo/pkg/logger"
 )
 
 const bufferSizeEnvKey = "YOMO_BUFFER_SIZE"

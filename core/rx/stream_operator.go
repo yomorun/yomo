@@ -11,7 +11,7 @@ import (
 	"github.com/reactivex/rxgo/v2"
 	"github.com/yomorun/yomo/internal/decoder"
 	"github.com/yomorun/yomo/internal/frame"
-	"github.com/yomorun/yomo/logger"
+	"github.com/yomorun/yomo/pkg/logger"
 )
 
 // Of creates an item from a value.
