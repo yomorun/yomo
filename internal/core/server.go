@@ -33,7 +33,7 @@ type Server struct {
 	funcBuckets        map[int]string // user config stream functions
 	connSfnMap         sync.Map       // key: connection ID, value: stream function name.
 	counterOfDataFrame int64
-	// logger             utils.Logger
+	downstreams        map[string]*Client
 }
 
 func NewServer(name string) *Server {
@@ -42,6 +42,7 @@ func NewServer(name string) *Server {
 		funcs:       NewConcurrentMap(),
 		funcBuckets: make(map[int]string),
 		connSfnMap:  sync.Map{},
+		downstreams: make(map[string]*Client),
 	}
 	once.Do(func() {
 		s.init()
@@ -155,7 +156,8 @@ func (s *Server) handleSession(session quic.Session, mainStream quic.Stream) {
 		}
 
 		frameType := f.Type()
-		logger.Debugf("%stype=%s, frame=%# x", ServerLogPrefix, frameType, logger.BytesString(f.Encode()))
+		// logger.Debugf("%stype=%s, frame=%# x", ServerLogPrefix, frameType, logger.BytesString(f.Encode()))
+		logger.Debugf("%stype=%s, frame=%# x", ServerLogPrefix, frameType, f.Encode())
 		switch frameType {
 		case frame.TagOfHandshakeFrame:
 			s.handleHandShakeFrame(mainStream, session, f.(*frame.HandshakeFrame))
@@ -163,8 +165,10 @@ func (s *Server) handleSession(session quic.Session, mainStream quic.Stream) {
 			s.handlePingFrame(mainStream, session, f.(*frame.PingFrame))
 		case frame.TagOfDataFrame:
 			s.handleDataFrame(mainStream, session, f.(*frame.DataFrame))
+			s.dispatchToDownstreams(f.(*frame.DataFrame))
 		default:
-			logger.Errorf("%serr=%v, frame=%v", ServerLogPrefix, err, logger.BytesString(f.Encode()))
+			// logger.Errorf("%serr=%v, frame=%v", ServerLogPrefix, err, logger.BytesString(f.Encode()))
+			logger.Errorf("%serr=%v, frame=%v", ServerLogPrefix, err, f.Encode())
 		}
 	}
 }
@@ -273,6 +277,7 @@ func (s *Server) AddWorkflow(wfs ...Workflow) error {
 func (s *Server) validateHandshake(f *frame.HandshakeFrame) bool {
 	isValid := false
 	for _, k := range s.funcBuckets {
+		logger.Debugf(">>> validateHandshake: (f)=%s, (list)=%s", f.Name, k)
 		if k == f.Name {
 			isValid = true
 			break
@@ -288,6 +293,20 @@ func (s *Server) init() {
 	_, _, err := tracing.NewTracerProvider(s.token)
 	if err != nil {
 		logger.Errorf("tracing: %v", err)
+	}
+}
+
+// AddDownstreamServer add a downstream server to this server. all the DataFrames will be
+// dispatch to all the downstreams.
+func (s *Server) AddDownstreamServer(addr string, c *Client) {
+	s.downstreams[addr] = c
+}
+
+// dispatch every DataFrames to all downstreams
+func (s *Server) dispatchToDownstreams(df *frame.DataFrame) {
+	for addr, ds := range s.downstreams {
+		logger.Debugf("dispatching to [%s]: %# x", addr, df)
+		ds.WriteFrame(df)
 	}
 }
 

@@ -9,19 +9,19 @@ import (
 )
 
 func main() {
-	zipper, err := yomo.NewZipper("workflow.yaml")
-	if err != nil {
-		panic(err)
-	}
+	zipper := yomo.NewZipperWithOptions("zipper-2", yomo.WithZipperAddr("localhost:9002"))
 	defer zipper.Close()
+
+	zipper.ConfigWorkflow("workflow.yaml")
 
 	// start zipper service
 	log.Printf("Server has started!, pid: %d", os.Getpid())
 	go func() {
-		err = zipper.ListenAndServe()
+		err := zipper.ListenAndServe()
 		if err != nil {
 			panic(err)
 		}
 	}()
+
 	runtime.Goexit()
 }

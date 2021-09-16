@@ -24,25 +24,34 @@ const (
 type Zipper interface {
 	// ConfigWorkflow will register workflows from config files to zipper.
 	ConfigWorkflow(conf string) error
+
 	// ListenAndServe start zipper as server.
 	ListenAndServe() error
+
+	// AddDownstreamZipper will add downstream zipper.
+	AddDownstreamZipper(downstream Zipper) error
+
+	// Addr returns the listen address of zipper.
+	Addr() string
+
+	// Stats return insight data
+	Stats() int
+
+	// Close will close the zipper.
+	Close() error
+
 	// ReadConfigFile(conf string) error
 	// AddWorkflow(wf ...core.Workflow) error
 	// ConfigDownstream(opts ...interface{}) error
 	// Connect() error
-	AddDownstreamZipper(downstream Zipper) error
 	// RemoveDownstreamZipper(downstream Zipper) error
 	// ListenAddr() string
-	Addr() string
-	Stats() int
-	Close() error
 }
 
 // zipper is the implementation of Zipper interface.
 type zipper struct {
 	token             string
 	addr              string
-	listenAddr        string
 	hasDownstreams    bool
 	server            *core.Server
 	client            *core.Client
@@ -52,23 +61,10 @@ type zipper struct {
 
 var _ Zipper = &zipper{}
 
-// NewDownstreamZipper create a zipper descriptor for downstream zipper.
-func NewDownstreamZipper(name string, opts ...Option) Zipper {
-	options := newOptions(opts...)
-	client := core.NewClient(name, core.ConnTypeUpstreamZipper)
-
-	return &zipper{
-		token:      name,
-		listenAddr: options.ZipperListenAddr,
-		addr:       options.ZipperAddr,
-		client:     client,
-	}
-}
-
 // NewZipperWithOptions create a zipper instance.
 func NewZipperWithOptions(name string, opts ...Option) Zipper {
 	options := newOptions(opts...)
-	return createZipperServer(name, options.ZipperListenAddr)
+	return createZipperServer(name, options.ZipperAddr)
 }
 
 // NewZipper create a zipper instance from config files.
@@ -83,15 +79,27 @@ func NewZipper(conf string) (Zipper, error) {
 	return createZipperServer(config.Name, listenAddr), nil
 }
 
+// NewDownstreamZipper create a zipper descriptor for downstream zipper.
+func NewDownstreamZipper(name string, opts ...Option) Zipper {
+	options := newOptions(opts...)
+	client := core.NewClient(name, core.ConnTypeUpstreamZipper)
+
+	return &zipper{
+		token:  name,
+		addr:   options.ZipperAddr,
+		client: client,
+	}
+}
+
 /*************** Server ONLY ***************/
 // createZipperServer create a zipper instance as server.
 func createZipperServer(name string, addr string) *zipper {
 	// create underlying QUIC server
 	srv := core.NewServer(name)
 	z := &zipper{
-		server:     srv,
-		token:      name,
-		listenAddr: addr,
+		server: srv,
+		token:  name,
+		addr:   addr,
 	}
 	// initialize
 	z.init()
@@ -124,6 +132,7 @@ func (z *zipper) init() {
 	}()
 }
 
+// ConfigWorkflow will read workflows from config files and register them to zipper.
 func (z *zipper) ConfigWorkflow(conf string) error {
 	config, err := util.ParseConfig(conf)
 	if err != nil {
@@ -137,33 +146,17 @@ func (z *zipper) ConfigWorkflow(conf string) error {
 	return nil
 }
 
-// // ReadConfigFile read zipper configs from workflow.yaml file
-// func (s *zipper) ReadConfigFile(conf string) error {
-// 	config, err := util.ParseConfig(conf)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	for i, app := range config.Functions {
-// 		if err := s.server.AddWorkflow(core.Workflow{Seq: i, Token: app.Name}); err != nil {
-// 			return err
-// 		}
-// 	}
-// 	return nil
-// }
-
-// func (s *zipper) AddWorkflow(wfs ...core.Workflow) error {
-// 	return s.server.AddWorkflow(wfs...)
-// }
-
-// // ConfigDownstream will add a downstream zipper to upstream zipper.
-// func (s *zipper) ConfigDownstream(opts ...interface{}) error {
-// 	return nil
-// }
-
 // ListenAndServe will start zipper service.
 func (s *zipper) ListenAndServe() error {
 	logger.Debugf("%sCreating Zipper Server ...", zipperLogPrefix)
-	return s.server.ListenAndServe(context.Background(), s.listenAddr)
+	// check downstream zippers
+	for _, ds := range s.downstreamZippers {
+		if dsZipper, ok := ds.(*zipper); ok {
+			dsZipper.client.Connect(context.Background(), dsZipper.addr)
+			s.server.AddDownstreamServer(dsZipper.addr, dsZipper.client)
+		}
+	}
+	return s.server.ListenAndServe(context.Background(), s.addr)
 }
 
 /*************** Client ONLY ****************************
@@ -206,11 +199,7 @@ func (s *zipper) RemoveDownstreamZipper(downstream Zipper) error {
 	return nil
 }
 
-// 获取 zipper 监听的 endpoint
-func (s *zipper) ListenAddr() string {
-	return s.listenAddr
-}
-
+// Addr returns listen address of zipper.
 func (s *zipper) Addr() string {
 	return s.addr
 }
