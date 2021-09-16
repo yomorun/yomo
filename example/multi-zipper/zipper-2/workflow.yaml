@@ -1,0 +1,5 @@
+name: Zipper-2
+host: localhost
+port: 9001
+functions:
+  - name: echo-sfn

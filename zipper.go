@@ -2,8 +2,14 @@ package yomo
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"os/signal"
+	"runtime"
+	"syscall"
 
 	"github.com/yomorun/yomo/internal/core"
+	"github.com/yomorun/yomo/internal/util"
 	"github.com/yomorun/yomo/logger"
 )
 
@@ -11,23 +17,26 @@ const (
 	zipperLogPrefix = "\033[33m[yomo:zipper]\033[0m "
 )
 
-// Zipper is the orchestrator of yomo
+// Zipper is the orchestrator of yomo. There are two types of zipper:
+// one is Upstream Zipper, which is used to connect to multiple downstream zippers,
+// another one is Downstream Zipper (will call it as Zipper directly), which is used
+// to connected by `Upstream Zipper`, `Source` and `Stream Function`
 type Zipper interface {
-	ConfigWorkflow(conf string) error
-	AddWorkflow(wf ...core.Workflow) error
-	ConfigDownstream(opts ...interface{}) error
+	// ListenAndServe start zipper as server.
 	ListenAndServe() error
-	Connect() error
+	// ReadConfigFile(conf string) error
+	// AddWorkflow(wf ...core.Workflow) error
+	// ConfigDownstream(opts ...interface{}) error
+	// Connect() error
 	AddDownstreamZipper(downstream Zipper) error
 	RemoveDownstreamZipper(downstream Zipper) error
-	ListenAddr() string
+	// ListenAddr() string
 	Addr() string
 	Stats() int
 	Close() error
 }
 
-// Zipper 有两种存在形式：UpstreamZipper（QUIC Client端） 和 DownstreamZipper（QUIC Server端）。
-// Upstream 可以同时连接到多个 Downstream，数据由 Upstream 被分发给下游的多个 Downstream。
+// zipper is the implementation of Zipper interface.
 type zipper struct {
 	token             string
 	addr              string
@@ -41,8 +50,8 @@ type zipper struct {
 
 var _ Zipper = &zipper{}
 
-// NewZipper 创建下游级联的 Zipper
-func NewZipper(name string, opts ...Option) Zipper {
+// NewDownstreamZipper create a zipper descriptor for downstream zipper.
+func NewDownstreamZipper(name string, opts ...Option) Zipper {
 	options := newOptions(opts...)
 	client := core.NewClient(name, core.ConnTypeUpstreamZipper)
 
@@ -54,54 +63,89 @@ func NewZipper(name string, opts ...Option) Zipper {
 	}
 }
 
-// NewZipperServer 创建 Zipper 服务端，
-// 会接入 Source, Upstream Zipper, Sfn
-func NewZipperServer(name string, opts ...Option) Zipper {
+// NewZipperWithOptions create a zipper instance.
+func NewZipperWithOptions(name string, opts ...Option) Zipper {
 	options := newOptions(opts...)
-	srv := core.NewServer(name)
+	return createZipperServer(name, options.ZipperListenAddr)
+}
 
-	return &zipper{
-		token:          name,
-		listenAddr:     options.ZipperListenAddr,
-		hasDownstreams: false,
-		server:         srv,
-		// logger:         utils.DefaultLogger.WithPrefix("\033[33m[yomo:zipper]\033[0m"),
+// NewZipper create a zipper instance from config files.
+func NewZipper(conf string) (Zipper, error) {
+	config, err := util.ParseConfig(conf)
+	if err != nil {
+		return nil, err
 	}
+	// listening address
+	listenAddr := fmt.Sprintf("%s:%d", config.Host, config.Port)
+
+	return createZipperServer(config.Name, listenAddr), nil
 }
 
 /*************** Server ONLY ***************/
-
-// 读取 workflow.yaml 配置文件，
-// CLI： 读取 workflow.yaml，
-// Cloud：从 Database 或 API 读取
-func (s *zipper) ConfigWorkflow(conf string) error {
-	config, err := ParseConfig(conf)
-	if err != nil {
-		return err
+// createZipperServer create a zipper instance as server.
+func createZipperServer(name string, addr string) *zipper {
+	// create underlying QUIC server
+	srv := core.NewServer(name)
+	z := &zipper{
+		server:     srv,
+		token:      name,
+		listenAddr: addr,
 	}
-	for i, app := range config.Functions {
-		if err := s.server.AddWorkflow(core.Workflow{Seq: i, Token: app.Name}); err != nil {
-			return err
+	// initialize
+	z.init()
+	return z
+}
+
+// initialize when zipper running as server. support inspection:
+// - `kill -SIGUSR1 <pid>` inspect state()
+// - `kill -SIGTERM <pid>` graceful shutdown
+// - `kill -SIGUSR2 <pid>` inspect golang GC
+func (z *zipper) init() {
+	go func() {
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGUSR2, syscall.SIGUSR1, syscall.SIGINT)
+		logger.Printf("Listening signals ...")
+		for p1 := range c {
+			logger.Printf("Received signal: %s", p1)
+			if p1 == syscall.SIGTERM || p1 == syscall.SIGINT {
+				logger.Printf("graceful shutting down ... %s", p1)
+				os.Exit(0)
+				// close(sgnl)
+			} else if p1 == syscall.SIGUSR2 {
+				var m runtime.MemStats
+				runtime.ReadMemStats(&m)
+				fmt.Printf("\tNumGC = %v\n", m.NumGC)
+			} else if p1 == syscall.SIGUSR1 {
+				logger.Printf("print zipper stats(): %d", z.Stats())
+			}
 		}
-	}
-	return nil
+	}()
 }
 
-func (s *zipper) AddWorkflow(wfs ...core.Workflow) error {
-	return s.server.AddWorkflow(wfs...)
-}
+// // ReadConfigFile read zipper configs from workflow.yaml file
+// func (s *zipper) ReadConfigFile(conf string) error {
+// 	config, err := util.ParseConfig(conf)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	for i, app := range config.Functions {
+// 		if err := s.server.AddWorkflow(core.Workflow{Seq: i, Token: app.Name}); err != nil {
+// 			return err
+// 		}
+// 	}
+// 	return nil
+// }
 
-// 读取下游downstream的配置
-// CLI：通过 HTTP 请求读取（目前还未添加 auth 相关的功能，安全上会是个问题）
-// Cloud：从 Database 或 API 读取
-func (s *zipper) ConfigDownstream(opts ...interface{}) error {
-	return nil
-}
+// func (s *zipper) AddWorkflow(wfs ...core.Workflow) error {
+// 	return s.server.AddWorkflow(wfs...)
+// }
 
-// 启动 Zipper Server，
-// 将 Source 的内容：
-//    1、按顺序传递个 sfn，
-//    2、并行传输给 Downstream Zipper
+// // ConfigDownstream will add a downstream zipper to upstream zipper.
+// func (s *zipper) ConfigDownstream(opts ...interface{}) error {
+// 	return nil
+// }
+
+// ListenAndServe will start zipper service.
 func (s *zipper) ListenAndServe() error {
 	logger.Debugf("%sCreating Zipper Server ...", zipperLogPrefix)
 	return s.server.ListenAndServe(context.Background(), s.listenAddr)

@@ -24,7 +24,7 @@ import (
 	"github.com/yomorun/yomo/zipper/tracing"
 )
 
-// Server 是 QUIC Server 的抽象，被 Zipper 使用
+// Server is the underlining server of Zipper
 type Server struct {
 	token              string
 	stream             quic.Stream
@@ -40,7 +40,7 @@ func NewServer(name string) *Server {
 	s := &Server{
 		token:       name,
 		funcs:       NewConcurrentMap(),
-		funcBuckets: make(map[int]string, 0),
+		funcBuckets: make(map[int]string),
 		connSfnMap:  sync.Map{},
 	}
 	once.Do(func() {
@@ -55,8 +55,8 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 		Versions:                       []quic.VersionNumber{quic.Version1, quic.VersionDraft29},
 		MaxIdleTimeout:                 time.Second * 3,
 		KeepAlive:                      true,
-		MaxIncomingStreams:             100000,
-		MaxIncomingUniStreams:          100000,
+		MaxIncomingStreams:             10000,
+		MaxIncomingUniStreams:          10000,
 		HandshakeIdleTimeout:           time.Second * 3,
 		InitialStreamReceiveWindow:     1024 * 1024 * 2,
 		InitialConnectionReceiveWindow: 1024 * 1024 * 2,
@@ -76,12 +76,11 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 		return err
 	}
 	defer listener.Close()
-	logger.Printf("%s✅ Listening on: %s, QUIC: %v", ServerLogPrefix, listener.Addr(), qconf.Versions)
+	logger.Printf("%s✅ (name:%s) Listening on: %s, QUIC: %v", ServerLogPrefix, s.token, listener.Addr(), qconf.Versions)
 
 	s.state = ConnStateConnected
-	// accept session
 	for {
-		// 有新的 YomoClient 连接时，创建一个 session
+		// create a new session when new yomo-client connected
 		sctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 

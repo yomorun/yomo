@@ -12,7 +12,7 @@ type Option func(o *options)
 
 // options are the options for YoMo-Client.
 type options struct {
-	ZipperAddr           string // Zipper endpoint address
+	ZipperAddr           string // target Zipper endpoint address
 	ZipperListenAddr     string // Zipper endpoint address
 	ZipperWorkflowConfig string // Zipper workflow file
 }
