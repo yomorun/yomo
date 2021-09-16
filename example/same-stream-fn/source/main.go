@@ -1,18 +1,20 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"math/rand"
+	"os"
 	"time"
 
-	y3 "github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/pkg/logger"
 )
 
 type noiseData struct {
-	Noise float32 `y3:"0x11"` // Noise value
-	Time  int64   `y3:"0x12"` // Timestamp (ms)
-	From  string  `y3:"0x13"` // Source IP
+	Noise float32 `json:"noise"` // Noise value
+	Time  int64   `json:"time"`  // Timestamp (ms)
+	From  string  `json:"from"`  // Source IP
 }
 
 func main() {
@@ -31,8 +33,6 @@ func main() {
 	generateAndSendData(source)
 }
 
-var codec = y3.NewCodec(0x10)
-
 func generateAndSendData(source yomo.Source) {
 	for {
 		// generate random data.
@@ -42,13 +42,18 @@ func generateAndSendData(source yomo.Source) {
 			From:  "localhost",
 		}
 
-		// Encode data via Y3 codec https://github.com/yomorun/y3-codec.
-		sendingBuf, _ := codec.Marshal(data)
+		sendingBuf, err := json.Marshal(data)
+		if err != nil {
+			log.Fatalln(err)
+			os.Exit(-1)
+		}
 
 		// send data via QUIC stream.
-		_, err := source.Write(sendingBuf)
+		_, err = source.Write(sendingBuf)
 		if err != nil {
-			log.Printf("❌ Emit %v to YoMo-Zipper failure with err: %v", data, err)
+			logger.Errorf("[source] ❌ Emit %v to YoMo-Zipper failure with err: %v", data, err)
+			time.Sleep(300 * time.Millisecond)
+			continue
 		} else {
 			log.Printf("✅ Emit %v to YoMo-Zipper", data)
 		}

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/logger"
+	"github.com/yomorun/yomo/pkg/logger"
 )
 
 type noiseData struct {
@@ -52,7 +52,7 @@ func generateAndSendData(stream yomo.Source) error {
 
 		//// Encode data via Y3 codec https://github.com/yomorun/y3-codec.
 		// sendingBuf, _ := codec.Marshal(data)
-		sendingBuf, err := json.Marshal(data)
+		sendingBuf, err := json.Marshal(&data)
 		if err != nil {
 			log.Fatalln(err)
 			os.Exit(-1)

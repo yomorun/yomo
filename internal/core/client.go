@@ -11,8 +11,8 @@ import (
 
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/internal/frame"
-	"github.com/yomorun/yomo/logger"
-	"github.com/yomorun/yomo/zipper/tracing"
+	"github.com/yomorun/yomo/pkg/logger"
+	"github.com/yomorun/yomo/pkg/tracing"
 )
 
 // ConneState describes the state of the connection.

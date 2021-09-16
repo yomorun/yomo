@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/logger"
+	"github.com/yomorun/yomo/pkg/logger"
 )
 
 // ThresholdAverageValue is the threshold of the average value after a sliding window.

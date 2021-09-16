@@ -20,8 +20,8 @@ import (
 
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/internal/frame"
-	"github.com/yomorun/yomo/logger"
-	"github.com/yomorun/yomo/zipper/tracing"
+	"github.com/yomorun/yomo/pkg/logger"
+	"github.com/yomorun/yomo/pkg/tracing"
 )
 
 // Server 是 QUIC Server 的抽象，被 Zipper 使用

@@ -8,7 +8,7 @@ import (
 	"syscall"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/logger"
+	"github.com/yomorun/yomo/pkg/logger"
 )
 
 func main() {

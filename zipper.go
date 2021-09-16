@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/yomorun/yomo/internal/core"
-	"github.com/yomorun/yomo/logger"
+	"github.com/yomorun/yomo/pkg/logger"
 )
 
 const (
