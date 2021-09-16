@@ -9,14 +9,8 @@ import (
 	"syscall"
 
 	"github.com/yomorun/yomo/internal/core"
-<<<<<<< HEAD
-	"github.com/yomorun/yomo/pkg/logger"
-||||||| 2159ec3
-	"github.com/yomorun/yomo/logger"
-=======
 	"github.com/yomorun/yomo/internal/util"
-	"github.com/yomorun/yomo/logger"
->>>>>>> multi-zipper
+	"github.com/yomorun/yomo/pkg/logger"
 )
 
 const (

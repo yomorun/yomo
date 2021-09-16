@@ -1,10 +1,10 @@
 package main
 
 import (
+	"log"
 	"os"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/logger"
 )
 
 func main() {
@@ -20,7 +20,7 @@ func main() {
 	// start
 	err := sfn.Connect()
 	if err != nil {
-		logger.Errorf("[flow] connect err=%v", err)
+		log.Fatalf("[flow] connect err=%v", err)
 		os.Exit(1)
 	}
 
@@ -29,6 +29,6 @@ func main() {
 
 func handler(data []byte) (byte, []byte) {
 	val := string(data)
-	logger.Printf(">> [flow] got tag=0x33, data=%s", val)
+	log.Printf(">> [flow] got tag=0x33, data=%s", val)
 	return 0x0, nil
 }
