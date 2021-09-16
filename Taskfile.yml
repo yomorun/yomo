@@ -5,10 +5,13 @@ version: "3"
 includes:
   example: ./example.yml
   cli: ./cli/cli.yml
-  multi_zipper: ./example/multi-zipper/Taskfile.yml
+  # multi_zipper: ./example/multi-zipper/Taskfile.yml
 
 tasks:
   default:
     cmds:
       - task -l
     silent: true
+  multi_zipper:
+    cmds:
+      - cd example/multi-zipper && task all
