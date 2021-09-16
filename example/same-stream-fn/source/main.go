@@ -42,7 +42,7 @@ func generateAndSendData(source yomo.Source) {
 			From:  "localhost",
 		}
 
-		sendingBuf, err := json.Marshal(data)
+		sendingBuf, err := json.Marshal(&data)
 		if err != nil {
 			log.Fatalln(err)
 			os.Exit(-1)

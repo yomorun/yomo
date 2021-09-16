@@ -3,6 +3,25 @@
 version: '3'
 
 tasks:
+  # example cleanup
+  clean:
+    desc: example cleanup
+    silent: true
+    cmds:
+      - echo 'example cleaning...'
+      - rm -rf example/basic/flow/flow
+      - rm -rf example/basic/source/source
+      - rm -rf example/basic/zipper/zipper
+      - rm -rf example/multi-stream-fn/source/source
+      - rm -rf example/multi-stream-fn/stream-fn-1/fn1
+      - rm -rf example/multi-stream-fn/stream-fn-2/fn2
+      - rm -rf example/multi-stream-fn/stream-fn-3/fn3
+      - rm -rf example/multi-stream-fn/zipper/zipper
+      - rm -rf example/same-stream-fn/source/source
+      - rm -rf example/same-stream-fn/stream-fn/fn1
+      - rm -rf example/same-stream-fn/stream-fn/fn2
+      - rm -rf example/same-stream-fn/zipper/zipper
+      - echo 'example clean.'
   # basic example
   basic:
     desc: run basic example
@@ -179,7 +198,7 @@ tasks:
   same-stream-fn-source:
     desc: run same stream function example
     deps: [same-stream-fn-source-build]
-    dir: "example/multi-stream-fn/source"
+    dir: "example/same-stream-fn/source"
     cmds:
       - "./source{{exeExt}}"
     env:
