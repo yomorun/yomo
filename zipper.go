@@ -149,47 +149,31 @@ func (z *zipper) ConfigWorkflow(conf string) error {
 }
 
 // ListenAndServe will start zipper service.
-func (s *zipper) ListenAndServe() error {
+func (z *zipper) ListenAndServe() error {
 	logger.Debugf("%sCreating Zipper Server ...", zipperLogPrefix)
 	// check downstream zippers
-	for _, ds := range s.downstreamZippers {
+	for _, ds := range z.downstreamZippers {
 		if dsZipper, ok := ds.(*zipper); ok {
 			dsZipper.client.Connect(context.Background(), dsZipper.addr)
-			s.server.AddDownstreamServer(dsZipper.addr, dsZipper.client)
+			z.server.AddDownstreamServer(dsZipper.addr, dsZipper.client)
 		}
 	}
-	return s.server.ListenAndServe(context.Background(), s.addr)
-}
-
-/*************** Client ONLY ****************************
-/* 在 Zipper 级联场景中，Zipper 本身也可以作为 QUIC Client，
-/* 此时，我们称该种 Zipper 为 Upstream Zipper。
-*********************************************************/
-
-// Client：建立到 downstream zipper 的连接
-func (s *zipper) Connect() error {
-	err := s.client.Connect(context.Background(), s.addr)
-	if err != nil {
-		logger.Errorf("%sConnect() error: %s", zipperLogPrefix, err)
-		return err
-	}
-
-	return nil
+	return z.server.ListenAndServe(context.Background(), z.addr)
 }
 
 // AddDownstreamZipper will add downstream zipper.
-func (s *zipper) AddDownstreamZipper(downstream Zipper) error {
+func (z *zipper) AddDownstreamZipper(downstream Zipper) error {
 	logger.Debugf("%sAddDownstreamZipper: %v", zipperLogPrefix, downstream)
-	s.downstreamZippers = append(s.downstreamZippers, downstream)
-	s.hasDownstreams = true
-	logger.Debugf("%scurrent downstreams: %v", zipperLogPrefix, s.downstreamZippers)
+	z.downstreamZippers = append(z.downstreamZippers, downstream)
+	z.hasDownstreams = true
+	logger.Debugf("%scurrent downstreams: %v", zipperLogPrefix, z.downstreamZippers)
 	return nil
 }
 
-// Client：去除 downstream Zipper
-func (s *zipper) RemoveDownstreamZipper(downstream Zipper) error {
+// RemoveDownstreamZipper remove downstream zipper.
+func (z *zipper) RemoveDownstreamZipper(downstream Zipper) error {
 	index := -1
-	for i, v := range s.downstreamZippers {
+	for i, v := range z.downstreamZippers {
 		if v.Addr() == downstream.Addr() {
 			index = i
 			break
@@ -197,28 +181,25 @@ func (s *zipper) RemoveDownstreamZipper(downstream Zipper) error {
 	}
 
 	// remove from slice
-	s.downstreamZippers = append(s.downstreamZippers[:index], s.downstreamZippers[index+1:]...)
+	z.downstreamZippers = append(z.downstreamZippers[:index], z.downstreamZippers[index+1:]...)
 	return nil
 }
 
 // Addr returns listen address of zipper.
-func (s *zipper) Addr() string {
-	return s.addr
+func (z *zipper) Addr() string {
+	return z.addr
 }
 
-/*************** Client/Server 都用 ***************/
-
-// Client：关闭本地连接；
-// Server：关闭服务器；
-func (s *zipper) Close() error {
-	if s.server != nil {
-		if err := s.server.Close(); err != nil {
+// Close will close a connection. If zipper is Server, close the server. If zipper is Client, close the client.
+func (z *zipper) Close() error {
+	if z.server != nil {
+		if err := z.server.Close(); err != nil {
 			logger.Errorf("%s Close(): %v", zipperLogPrefix, err)
 			return err
 		}
 	}
-	if s.client != nil {
-		if err := s.client.Close(); err != nil {
+	if z.client != nil {
+		if err := z.client.Close(); err != nil {
 			logger.Errorf("%s Close(): %v", zipperLogPrefix, err)
 			return err
 		}
@@ -227,22 +208,22 @@ func (s *zipper) Close() error {
 }
 
 // Stats inspects current server.
-func (s *zipper) Stats() int {
-	log.Printf("[%s] all sfn connected: %d", s.token, len(s.server.StatsFunctions()))
-	for k, v := range s.server.StatsFunctions() {
+func (z *zipper) Stats() int {
+	log.Printf("[%s] all sfn connected: %d", z.token, len(z.server.StatsFunctions()))
+	for k, v := range z.server.StatsFunctions() {
 		ids := make([]int64, 0)
 		for _, c := range v {
 			ids = append(ids, int64((*c).StreamID()))
 		}
-		log.Printf("[%s] -> k=%v, v.StreamID=%v", s.token, k, ids)
+		log.Printf("[%s] -> k=%v, v.StreamID=%v", z.token, k, ids)
 	}
 
-	log.Printf("[%s] all downstream zippers connected: %d", s.token, len(s.server.Downstreams()))
-	for k, v := range s.server.Downstreams() {
-		log.Printf("[%s] |> [%s] %s", s.token, k, v.ServerAddr())
+	log.Printf("[%s] all downstream zippers connected: %d", z.token, len(z.server.Downstreams()))
+	for k, v := range z.server.Downstreams() {
+		log.Printf("[%s] |> [%s] %s", z.token, k, v.ServerAddr())
 	}
 
-	log.Printf("[%s] total DataFrames received: %d", s.token, s.server.StatsCounter())
+	log.Printf("[%s] total DataFrames received: %d", z.token, z.server.StatsCounter())
 
-	return len(s.server.StatsFunctions())
+	return len(z.server.StatsFunctions())
 }

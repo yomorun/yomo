@@ -1,7 +1,7 @@
 GO ?= go
 GOFMT ?= gofmt "-s"
 GOFILES := $(shell find . -name "*.go")
-VETPACKAGES ?= $(shell $(GO) list ./... | grep -v /examples/)
+VETPACKAGES ?= $(shell $(GO) list ./... | grep -v /example/)
 
 .PHONY: fmt
 fmt:
@@ -11,4 +11,4 @@ vet:
 	$(GO) vet $(VETPACKAGES)
 
 lint:
-	revive -formatter friendly ./...
+	revive -exclude examples/... -formatter friendly ./...

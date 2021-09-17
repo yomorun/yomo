@@ -27,6 +27,7 @@ type Server struct {
 	downstreams        map[string]*Client
 }
 
+// NewServer create a Server instance.
 func NewServer(name string) *Server {
 	s := &Server{
 		token:       name,
@@ -42,6 +43,7 @@ func NewServer(name string) *Server {
 	return s
 }
 
+// ListenAndServe starts the server.
 func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 	qconf := &quic.Config{
 		Versions:                       []quic.VersionNumber{quic.Version1, quic.VersionDraft29},
@@ -109,10 +111,9 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 			}
 		}(sctx, session)
 	}
-
-	return nil
 }
 
+// Close will shutdown the server.
 func (s *Server) Close() error {
 	if s.stream != nil {
 		if err := s.stream.Close(); err != nil {
@@ -123,6 +124,7 @@ func (s *Server) Close() error {
 	return nil
 }
 
+// handle streams on a session
 func (s *Server) handleSession(session quic.Session, mainStream quic.Stream) {
 	fs := NewFrameStream(mainStream)
 	// check update for stream
@@ -162,10 +164,12 @@ func (s *Server) handleSession(session quic.Session, mainStream quic.Stream) {
 	}
 }
 
+// StatsFunctions returns the sfn stats of server.
 func (s *Server) StatsFunctions() map[string][]*quic.Stream {
 	return s.funcs.GetCurrentSnapshot()
 }
 
+// StatsCounter returns how many DataFrames pass through server.
 func (s *Server) StatsCounter() int64 {
 	return s.counterOfDataFrame
 }
@@ -187,9 +191,9 @@ func (s *Server) handleHandShakeFrame(stream quic.Stream, session quic.Session, 
 		if !s.validateHandshake(f) {
 			// 校验无效，关闭连接
 			stream.Close()
-			session.CloseWithError(0xCC, "Didn't pass the handshake validation, ilegal!")
+			session.CloseWithError(0xCC, "handshake validation faild, illegal sfn")
 			// break
-			return fmt.Errorf("Didn't pass the handshake validation, ilegal!")
+			return errors.New("core.server: handshake validation faild, illegal sfn")
 		}
 
 		// 校验成功，注册 sfn 给 SfnManager
@@ -203,7 +207,7 @@ func (s *Server) handleHandShakeFrame(stream quic.Stream, session quic.Session, 
 		logger.Errorf("%sClientType=%# x, ilegal!", ServerLogPrefix, f.ClientType)
 		// stream.Close()
 		// session.CloseWithError(0xCC, "Unknown ClientType, ilegal!")
-		return fmt.Errorf("Unknown ClientType, ilegal!")
+		return errors.New("core.server: Unknown ClientType, illegal")
 	}
 	return nil
 }
@@ -260,6 +264,7 @@ func (s *Server) handleDataFrame(mainStream quic.Stream, session quic.Session, f
 	return nil
 }
 
+// AddWorkflow add sfn to this server.
 func (s *Server) AddWorkflow(wfs ...Workflow) error {
 	for _, wf := range wfs {
 		s.funcBuckets[wf.Seq] = wf.Token
