@@ -21,7 +21,7 @@ func NewDataFrame(datas ...*Metadata) *DataFrame {
 }
 
 // Type gets the type of Frame.
-func (d *DataFrame) Type() FrameType {
+func (d *DataFrame) Type() Type {
 	return TagOfDataFrame
 }
 

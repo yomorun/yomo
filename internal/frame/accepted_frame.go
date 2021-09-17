@@ -11,7 +11,7 @@ func NewAcceptedFrame() *AcceptedFrame {
 }
 
 // Type gets the type of Frame.
-func (m *AcceptedFrame) Type() FrameType {
+func (m *AcceptedFrame) Type() Type {
 	return TagOfAcceptedFrame
 }
 

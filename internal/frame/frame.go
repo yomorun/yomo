@@ -3,41 +3,40 @@ package frame
 // Kinds of frames transferable within YoMo
 const (
 	// DataFrame
-	TagOfDataFrame FrameType = 0x3F
+	TagOfDataFrame Type = 0x3F
 	// MetaFrame of DataFrame
-	TagOfMetaFrame     FrameType = 0x2F
-	TagOfMetadata      FrameType = 0x03
-	TagOfTransactionID FrameType = 0x01
-	TagOfIssuer        FrameType = 0x02
+	TagOfMetaFrame     Type = 0x2F
+	TagOfMetadata      Type = 0x03
+	TagOfTransactionID Type = 0x01
+	TagOfIssuer        Type = 0x02
 	// PayloadFrame of DataFrame
-	TagOfPayloadFrame FrameType = 0x2E
+	TagOfPayloadFrame Type = 0x2E
 
-	TagOfTokenFrame FrameType = 0x3E
+	TagOfTokenFrame Type = 0x3E
 	// HandshakeFrame
-	TagOfHandshakeFrame FrameType = 0x3D
-	TagOfHandshakeName  FrameType = 0x01
-	TagOfHandshakeType  FrameType = 0x02
+	TagOfHandshakeFrame Type = 0x3D
+	TagOfHandshakeName  Type = 0x01
+	TagOfHandshakeType  Type = 0x02
 
-	TagOfPingFrame     FrameType = 0x3C
-	TagOfPongFrame     FrameType = 0x3B
-	TagOfAcceptedFrame FrameType = 0x3A
-	TagOfRejectedFrame FrameType = 0x39
+	TagOfPingFrame     Type = 0x3C
+	TagOfPongFrame     Type = 0x3B
+	TagOfAcceptedFrame Type = 0x3A
+	TagOfRejectedFrame Type = 0x39
 )
 
-// FrameType represents the type of frame.
-// TODO: consider change to `Type`
-type FrameType uint8
+// Type represents the type of frame.
+type Type uint8
 
 // Frame is the inferface for frame.
 type Frame interface {
 	// Type gets the type of Frame.
-	Type() FrameType
+	Type() Type
 
 	// Encode the frame into []byte.
 	Encode() []byte
 }
 
-func (f FrameType) String() string {
+func (f Type) String() string {
 	switch f {
 	case TagOfDataFrame:
 		return "DataFrame"

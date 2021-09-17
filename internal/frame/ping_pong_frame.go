@@ -13,7 +13,7 @@ func NewPingFrame() *PingFrame {
 }
 
 // Type gets the type of Frame.
-func (m *PingFrame) Type() FrameType {
+func (m *PingFrame) Type() Type {
 	return TagOfPingFrame
 }
 
@@ -44,7 +44,7 @@ func NewPongFrame() *PongFrame {
 }
 
 // Type gets the type of Frame.
-func (m *PongFrame) Type() FrameType {
+func (m *PongFrame) Type() Type {
 	return TagOfPongFrame
 }
 

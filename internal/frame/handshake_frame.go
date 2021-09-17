@@ -21,7 +21,7 @@ func NewHandshakeFrame(name string, clientType byte) *HandshakeFrame {
 }
 
 // Type gets the type of Frame.
-func (h *HandshakeFrame) Type() FrameType {
+func (h *HandshakeFrame) Type() Type {
 	return TagOfHandshakeFrame
 }
 
