@@ -45,29 +45,32 @@ func (d *DataFrame) GetCarriage() []byte {
 // 	return d.metaFrame.TransactionID()
 // }
 
+// SetIssuer set issuer.
 func (d *DataFrame) SetIssuer(issuer string) {
 	d.metaFrame.Set(MetadataIssuer, issuer)
 }
 
-// GetIssuer return issuer
+// GetIssuer return issuer.
 func (d *DataFrame) GetIssuer() string {
 	return d.metaFrame.Get(MetadataIssuer)
 }
 
-// GetMetadata get metadata by name
+// GetMetadata get metadata by name.
 func (d *DataFrame) GetMetadata(name string) string {
 	return d.metaFrame.Get(name)
 }
 
-// SetMetadata set metadata
+// SetMetadata set metadata.
 func (d *DataFrame) SetMetadata(name string, val string) {
 	d.metaFrame.Set(name, val)
 }
 
+// GetMetadatas return Metadata list.
 func (d *DataFrame) GetMetadatas() []*Metadata {
 	return d.metaFrame.GetMetadatas()
 }
 
+// GetMetaFrame return MetaFrame.
 func (d *DataFrame) GetMetaFrame() MetaFrame {
 	return d.metaFrame
 }

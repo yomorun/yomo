@@ -7,24 +7,41 @@ import (
 )
 
 const (
+	// MetadataIssuer describes issuer
 	MetadataIssuer = "_issuer_"
-	MetadataTID    = "_transaction-id_"
-	MetadataGID    = "_global-id_"
+	// MetadataTID describes transaction ID
+	MetadataTID = "_transaction-id_"
+	// MetadataGID describes global ID
+	MetadataGID = "_global-id_"
 )
 
+// MetaFrame holds metadatas with DataFrames
 type MetaFrame interface {
+	// Encode will encode to raw bytes
 	Encode() []byte
+
+	// Get will return the value of specified name
 	Get(name string) string
+
+	// Set add metadata
 	Set(name string, val string)
+
+	// GetMetadatas return all the metadatas
 	GetMetadatas() []*Metadata
+
+	// GetIssuer return issuer
 	GetIssuer() string
 }
 
+// Metadata describles the structure.
 type Metadata struct {
-	Name  string
+	// Name represents name.
+	Name string
+	// Value represents value.
 	Value string
 }
 
+// NewMetadata create Metadata instance with given name and value.
 func NewMetadata(name string, value string) *Metadata {
 	return &Metadata{
 		Name:  name,
@@ -32,14 +49,16 @@ func NewMetadata(name string, value string) *Metadata {
 	}
 }
 
+// String returns string representation of the MetaFrame.
 func (m Metadata) String() string {
 	return fmt.Sprintf(`"%s":"%s"`, m.Name, m.Value)
 }
 
+// NewMetaFrame creates a new MetaFrame instance.
 func NewMetaFrame(datas ...*Metadata) MetaFrame {
 	// cleanup duplicated metadata
 	cleanData := make([]*Metadata, 0)
-	keys := make(map[string]byte, 0)
+	keys := make(map[string]byte)
 	for _, d := range datas {
 		l := len(keys)
 		keys[d.Name] = 0

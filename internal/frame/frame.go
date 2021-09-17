@@ -25,6 +25,7 @@ const (
 )
 
 // FrameType represents the type of frame.
+// TODO: consider change to `Type`
 type FrameType uint8
 
 // Frame is the inferface for frame.
