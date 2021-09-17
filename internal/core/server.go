@@ -1,18 +1,9 @@
 package core
 
 import (
-	"bytes"
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/pem"
 	"errors"
 	"fmt"
-	"math/big"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -179,6 +170,11 @@ func (s *Server) StatsCounter() int64 {
 	return s.counterOfDataFrame
 }
 
+// Downstreams return all the downstream servers.
+func (s *Server) Downstreams() map[string]*Client {
+	return s.downstreams
+}
+
 func (s *Server) handleHandShakeFrame(stream quic.Stream, session quic.Session, f *frame.HandshakeFrame) error {
 	logger.Infof("%s ------> GOT ❤️ HandshakeFrame : %# x", ServerLogPrefix, f)
 	logger.Infof("%sClientType=%# x, is %s", ServerLogPrefix, f.ClientType, ConnectionType(f.ClientType))
@@ -306,82 +302,6 @@ func (s *Server) dispatchToDownstreams(df *frame.DataFrame) {
 		logger.Debugf("dispatching to [%s]: %# x", addr, df.SeqID())
 		ds.WriteFrame(df)
 	}
-}
-
-// generateTLSConfig Setup a bare-bones TLS config for the server
-func generateTLSConfig(host ...string) *tls.Config {
-	tlsCert, _ := generateCertificate(host...)
-
-	return &tls.Config{
-		Certificates:       []tls.Certificate{tlsCert},
-		ClientSessionCache: tls.NewLRUClientSessionCache(1),
-		NextProtos:         []string{"yomo"},
-	}
-}
-
-func generateCertificate(host ...string) (tls.Certificate, error) {
-	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-
-	notBefore := time.Now()
-	notAfter := notBefore.Add(time.Hour * 24 * 365)
-
-	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
-	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-
-	template := x509.Certificate{
-		SerialNumber: serialNumber,
-		Subject: pkix.Name{
-			Organization: []string{"YoMo"},
-		},
-		NotBefore: notBefore,
-		NotAfter:  notAfter,
-
-		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		BasicConstraintsValid: true,
-	}
-
-	for _, h := range host {
-		if ip := net.ParseIP(h); ip != nil {
-			template.IPAddresses = append(template.IPAddresses, ip)
-		} else {
-			template.DNSNames = append(template.DNSNames, h)
-		}
-	}
-
-	template.IsCA = true
-	template.KeyUsage |= x509.KeyUsageCertSign
-
-	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-
-	// create public key
-	certOut := bytes.NewBuffer(nil)
-	err = pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-
-	// create private key
-	keyOut := bytes.NewBuffer(nil)
-	b, err := x509.MarshalECPrivateKey(priv)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-	err = pem.Encode(keyOut, &pem.Block{Type: "EC PRIVATE KEY", Bytes: b})
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-
-	return tls.X509KeyPair(certOut.Bytes(), keyOut.Bytes())
 }
 
 // getConnID get quic session connection id

@@ -3,6 +3,7 @@ package yomo
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"runtime"
@@ -225,16 +226,23 @@ func (s *zipper) Close() error {
 	return nil
 }
 
+// Stats inspects current server.
 func (s *zipper) Stats() int {
-	logger.Debugf("%sall sfn connected: %d", zipperLogPrefix, len(s.server.StatsFunctions()))
+	log.Printf("[%s] all sfn connected: %d", s.token, len(s.server.StatsFunctions()))
 	for k, v := range s.server.StatsFunctions() {
 		ids := make([]int64, 0)
 		for _, c := range v {
 			ids = append(ids, int64((*c).StreamID()))
 		}
-		logger.Debugf("%s%s-> k=%v, v.StreamID=%v", zipperLogPrefix, k, ids)
+		log.Printf("[%s] -> k=%v, v.StreamID=%v", s.token, k, ids)
 	}
 
-	logger.Debugf("%stotal DataFrames received: %d", zipperLogPrefix, s.server.StatsCounter())
+	log.Printf("[%s] all downstream zippers connected: %d", s.token, len(s.server.Downstreams()))
+	for k, v := range s.server.Downstreams() {
+		log.Printf("[%s] |> [%s] %s", s.token, k, v.ServerAddr())
+	}
+
+	log.Printf("[%s] total DataFrames received: %d", s.token, s.server.StatsCounter())
+
 	return len(s.server.StatsFunctions())
 }

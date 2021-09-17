@@ -27,6 +27,7 @@ type Client struct {
 	stream    quic.Stream            // quic stream
 	state     ConnState              // state of the connection
 	processor func(*frame.DataFrame) // functions to invoke when data arrived
+	addr      string                 // the address of server connected to
 	mu        sync.Mutex
 }
 
@@ -47,6 +48,7 @@ func NewClient(appName string, connType ConnectionType) *Client {
 
 // Connect connects to YoMo-Zipper.
 func (c *Client) Connect(ctx context.Context, addr string) error {
+	c.addr = addr
 	c.state = ConnStateConnecting
 
 	// connect to quic server
@@ -261,4 +263,9 @@ func (c *Client) init() {
 	if err != nil {
 		logger.Errorf("tracing: %v", err)
 	}
+}
+
+// ServerAddr returns the address of the server.
+func (c *Client) ServerAddr() string {
+	return c.addr
 }
