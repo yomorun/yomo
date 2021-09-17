@@ -120,7 +120,7 @@ func (s *quicHandler) receiveDataFromSources() {
 				defer cancel()
 
 				for data := range dataCh {
-					logger.Debug("[zipper] receive data after running all Stream Functions, will drop it.", "data", logger.BytesString(data))
+					logger.Debug("[zipper] receive data after running all Stream Functions, will drop it.", "data", data)
 					// call the `onReceivedData` callback function.
 					if s.onReceivedData != nil {
 						s.onReceivedData(data)
@@ -162,7 +162,7 @@ func (s *quicHandler) receiveDataFromZipperSenders() {
 				defer cancel()
 
 				for data := range dataCh {
-					logger.Debug("[YoMo-Zipper Receiver] receive data after running all Stream Functions, will drop it.", "data", logger.BytesString(data))
+					logger.Debug("[YoMo-Zipper Receiver] receive data after running all Stream Functions, will drop it.", "data", data)
 				}
 			}()
 		}
@@ -180,10 +180,10 @@ func sendDataToDownstream(sf GetSenderFunc, frame frame.Frame, succssMsg string,
 			data := frame.Encode()
 			_, err := writer.Write(data)
 			if err != nil {
-				logger.Error(errMsg, "name", name, "frame", logger.BytesString(data), "err", err)
+				logger.Error(errMsg, "name", name, "frame", data, "err", err)
 				cancel()
 			} else {
-				logger.Debug(succssMsg, "name", name, "frame", logger.BytesString(data))
+				logger.Debug(succssMsg, "name", name, "frame", data)
 				break
 			}
 		}

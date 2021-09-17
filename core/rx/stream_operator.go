@@ -640,7 +640,7 @@ func (s *StreamImpl) RawBytes() Stream {
 				bufCh := y3stream.RawBytes()
 				go func() {
 					for buf := range bufCh {
-						logger.Debug("[RawBytes] get the raw bytes from YoMo-Zipper.", "buf", logger.BytesString(buf))
+						logger.Debug("[RawBytes] get the raw bytes from YoMo-Zipper.", "buf", buf)
 						Of(buf).SendContext(ctx, next)
 					}
 				}()

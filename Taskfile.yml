@@ -13,5 +13,6 @@ tasks:
       - task -l
     silent: true
   multi_zipper:
+    dir: example/multi-zipper
     cmds:
-      - cd example/multi-zipper && task all
+      - task all

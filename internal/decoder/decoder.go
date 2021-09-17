@@ -308,7 +308,7 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 							buffer = append(buffer, b) // append tag.
 							k := getKey(b)
 							if !m[k] {
-								logger.Debug("[Decoder] The key is not matched the observed keys.", "key", k, "observed keys", logger.BytesString(keys))
+								logger.Debug("[Decoder] The key is not matched the observed keys.", "key", k, "observed keys", keys)
 								resetVars()
 								continue
 							}
@@ -393,7 +393,7 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 									Key: k,
 									Buf: buffer,
 								}
-								logger.Debug("[Decoder] Observe data by the specified key.", "data", logger.BytesString(buffer), "key", k)
+								logger.Debug("[Decoder] Observe data by the specified key.", "data", buffer, "key", k)
 
 								if limit == index {
 									resetVars()
@@ -401,7 +401,7 @@ func (o *observableImpl) MultiSubscribe(keys ...byte) Observable {
 									state = y3StateReject
 								}
 							} else {
-								logger.Debug("[Decoder] The key is not matched the observed keys.", "key", k, "observed keys", logger.BytesString(keys))
+								logger.Debug("[Decoder] The key is not matched the observed keys.", "key", k, "observed keys", keys)
 								if limit == index {
 									resetVars()
 								} else {

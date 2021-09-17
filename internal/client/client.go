@@ -144,7 +144,7 @@ func (c *Impl) handleSignal(accepted chan bool) {
 			}
 			// frame type
 			frameType := f.Type()
-			logger.Debug("[parsed]", "type", frameType.String(), "frame", logger.BytesString(f.Encode()))
+			logger.Debug("[parsed]", "type", frameType.String(), "frame", f.Encode())
 			switch frameType {
 			case frame.TagOfPongFrame:
 				c.conn.Heartbeat <- true
@@ -173,7 +173,7 @@ func (c *Impl) handleSignal(accepted chan bool) {
 				break
 
 			default:
-				logger.Debug("[client] unknown signal.", "frame", logger.BytesString(f.Encode()))
+				logger.Debug("[client] unknown signal.", "frame", f.Encode())
 			}
 		}
 	}()

@@ -156,7 +156,6 @@ func (s *Server) handleSession(session quic.Session, mainStream quic.Stream) {
 		}
 
 		frameType := f.Type()
-		// logger.Debugf("%stype=%s, frame=%# x", ServerLogPrefix, frameType, logger.BytesString(f.Encode()))
 		logger.Debugf("%stype=%s, frame=%# x", ServerLogPrefix, frameType, f.Encode())
 		switch frameType {
 		case frame.TagOfHandshakeFrame:
@@ -167,7 +166,6 @@ func (s *Server) handleSession(session quic.Session, mainStream quic.Stream) {
 			s.handleDataFrame(mainStream, session, f.(*frame.DataFrame))
 			s.dispatchToDownstreams(f.(*frame.DataFrame))
 		default:
-			// logger.Errorf("%serr=%v, frame=%v", ServerLogPrefix, err, logger.BytesString(f.Encode()))
 			logger.Errorf("%serr=%v, frame=%v", ServerLogPrefix, err, f.Encode())
 		}
 	}
@@ -305,7 +303,7 @@ func (s *Server) AddDownstreamServer(addr string, c *Client) {
 // dispatch every DataFrames to all downstreams
 func (s *Server) dispatchToDownstreams(df *frame.DataFrame) {
 	for addr, ds := range s.downstreams {
-		logger.Debugf("dispatching to [%s]: %# x", addr, df)
+		logger.Debugf("dispatching to [%s]: %# x", addr, df.SeqID())
 		ds.WriteFrame(df)
 	}
 }

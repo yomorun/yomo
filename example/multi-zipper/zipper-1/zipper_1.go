@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	zipper, err := yomo.NewZipper("workflow.yaml")
+	zipper, err := yomo.NewZipper("zipper_1_wf.yaml")
 	if err != nil {
 		panic(err)
 	}

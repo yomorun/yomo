@@ -137,7 +137,7 @@ func (c *Client) handleFrame() {
 		// read frame
 		// first, get frame type
 		frameType := f.Type()
-		logger.Debugf("%stype=%s, frame=%# x", ClientLogPrefix, frameType, logger.BytesString(f.Encode()))
+		logger.Debugf("%stype=%s, frame=%# x", ClientLogPrefix, frameType, f.Encode())
 		switch frameType {
 		case frame.TagOfPongFrame:
 			c.setState(ConnStatePong)

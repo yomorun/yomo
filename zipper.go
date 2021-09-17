@@ -71,6 +71,7 @@ func NewZipperWithOptions(name string, opts ...Option) Zipper {
 func NewZipper(conf string) (Zipper, error) {
 	config, err := util.ParseConfig(conf)
 	if err != nil {
+		logger.Errorf("%s[ERR] %v", zipperLogPrefix, err)
 		return nil, err
 	}
 	// listening address
