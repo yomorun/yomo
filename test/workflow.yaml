@@ -2,4 +2,4 @@ name: Service
 host: localhost
 port: 9000
 functions:
-  - name: test-source
+  - name: test-sfn
