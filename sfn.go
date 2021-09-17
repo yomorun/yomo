@@ -24,8 +24,8 @@ type StreamFunction interface {
 	Connect() error
 	// Close will close the connection
 	Close() error
-	// Send a DataFrame to zipper.
-	Send(f *frame.DataFrame) error
+	// Send a data to zipper.
+	Write(dataID byte, carriage []byte) error
 }
 
 // NewStreamFunction create a stream function.
@@ -129,7 +129,9 @@ func (s *streamFunction) onDataFrame(data []byte, metaFrame MetaFrame) {
 }
 
 // Send a DataFrame to zipper.
-func (s *streamFunction) Send(f *frame.DataFrame) error {
-	f.SetIssuer(s.name)
-	return s.client.WriteFrame(f)
+func (s *streamFunction) Write(dataID byte, carriage []byte) error {
+	frame := frame.NewDataFrame()
+	frame.SetIssuer(s.name)
+	frame.SetCarriage(dataID, carriage)
+	return s.client.WriteFrame(frame)
 }

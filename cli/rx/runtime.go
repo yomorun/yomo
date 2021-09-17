@@ -1,4 +1,4 @@
-package serverless
+package rx
 
 import (
 	"context"
@@ -6,28 +6,26 @@ import (
 
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/cli/pkg/log"
-	"github.com/yomorun/yomo/core/rx"
-	"github.com/yomorun/yomo/internal/frame"
 )
 
 const bufferSize = 100
 
-// RxRuntime is the Stream Serverless Runtime for RxStream.
-type RxRuntime struct {
+// Runtime is the Stream Serverless Runtime for RxStream.
+type Runtime struct {
 	rawBytesChan chan interface{}
 	sfn          yomo.StreamFunction
 }
 
-// NewRxRuntime creates a new Rx Stream Serverless Runtime.
-func NewRxRuntime(sfn yomo.StreamFunction) *RxRuntime {
-	return &RxRuntime{
+// NewRuntime creates a new Rx Stream Serverless Runtime.
+func NewRuntime(sfn yomo.StreamFunction) *Runtime {
+	return &Runtime{
 		rawBytesChan: make(chan interface{}, bufferSize),
 		sfn:          sfn,
 	}
 }
 
 // RawByteHandler is the Handler for RawBytes.
-func (r *RxRuntime) RawByteHandler(data []byte) (byte, []byte) {
+func (r *Runtime) RawByteHandler(data []byte) (byte, []byte) {
 	// set raw bytes to channel.
 	go func() {
 		r.rawBytesChan <- data
@@ -38,8 +36,8 @@ func (r *RxRuntime) RawByteHandler(data []byte) (byte, []byte) {
 }
 
 // Pipe the RxHandler with RxStream.
-func (r *RxRuntime) Pipe(rxHandler func(rxstream rx.Stream) rx.Stream) {
-	fac := rx.NewFactory()
+func (r *Runtime) Pipe(rxHandler func(rxstream Stream) Stream) {
+	fac := NewFactory()
 	// create a RxStream from raw bytes channel.
 	rxstream := fac.FromChannel(context.Background(), r.rawBytesChan)
 
@@ -58,14 +56,14 @@ func (r *RxRuntime) Pipe(rxHandler func(rxstream rx.Stream) rx.Stream) {
 			continue
 		}
 
-		dataFrame, ok := (item.V).(*frame.DataFrame)
+		data, ok := (item.V).(BytesWithDataID)
 		if !ok {
-			log.InfoStatusEvent(os.Stdout, "[Rx Handler] the data is not a *DataFrame, won't send it to YoMo-Zipper.")
+			log.InfoStatusEvent(os.Stdout, "[Rx Handler] the data is not a BytesWithDataID, won't send it to YoMo-Zipper.")
 			continue
 		}
 
 		// send data to YoMo-Zipper.
-		err := r.sfn.Send(dataFrame)
+		err := r.sfn.Write(data.DataID, data.Bytes)
 		if err != nil {
 			log.FailureStatusEvent(os.Stdout, "[Rx Handler] ❌ Send data to YoMo-Zipper failed, err=%v", err)
 		} else {

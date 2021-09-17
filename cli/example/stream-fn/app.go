@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/yomorun/yomo/core/rx"
+	"github.com/yomorun/yomo/cli/rx"
 )
 
 // NoiseData represents the structure of data
@@ -33,7 +33,7 @@ func Handler(rxstream rx.Stream) rx.Stream {
 		Map(printer).
 		StdOut().
 		Marshal(json.Marshal).
-		WriteNewData(0x34)
+		PipeBackToZipper(0x34)
 
 	return stream
 }

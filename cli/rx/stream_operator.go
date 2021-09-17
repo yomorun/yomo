@@ -769,8 +769,8 @@ func (s *StreamImpl) ZipMultiObservers(observers []KeyObserveFunc, zipper func(i
 	return CreateObservable(s.ctx, f)
 }
 
-// PipeBackToZipper write the DataFrame with a specified TagID.
-func (s *StreamImpl) PipeBackToZipper(tagID byte, metas ...*frame.Metadata) Stream {
+// PipeBackToZipper sets a specified DataID to bytes and will pipe it back to zipper.
+func (s *StreamImpl) PipeBackToZipper(dataID byte, metas ...*frame.Metadata) Stream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
 		observe := s.Observe()
@@ -794,10 +794,12 @@ func (s *StreamImpl) PipeBackToZipper(tagID byte, metas ...*frame.Metadata) Stre
 					continue
 				}
 
-				frame := frame.NewDataFrame(metas...)
-				frame.SetCarriage(tagID, buf)
+				data := BytesWithDataID{
+					DataID: dataID,
+					Bytes:  buf,
+				}
 
-				if !Of(frame).SendContext(ctx, next) {
+				if !Of(data).SendContext(ctx, next) {
 					return
 				}
 			}

@@ -8,7 +8,7 @@ func main() {
 	sfn.SetObserveDataID(DataID()...)
 
 	// create a Rx runtime.
-	rt := serverless.NewRxRuntime(sfn)
+	rt := rx.NewRuntime(sfn)
 
 	// set handler
 	sfn.SetHandler(rt.RawByteHandler)
@@ -19,6 +19,6 @@ func main() {
 		stdlog.Print("[flow] connect err=%v", err)
 	}
 
-	// pipe rxstream and rx handler.
+	// pipe rx stream and rx handler.
 	rt.Pipe(Handler)
 }

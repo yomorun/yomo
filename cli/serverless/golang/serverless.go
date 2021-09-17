@@ -77,9 +77,6 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 	// Add import packages
 	astutil.AddNamedImport(fset, astf, "yomoclient", "github.com/yomorun/yomo")
 	astutil.AddNamedImport(fset, astf, "stdlog", "log")
-	if isRx {
-		astutil.AddNamedImport(fset, astf, "serverless", "github.com/yomorun/yomo/cli/serverless")
-	}
 	// log.InfoStatusEvent(os.Stdout, "import elapse: %v", time.Since(now))
 	// Generate the code
 	code, err := GenerateCode(fset, astf)
