@@ -71,8 +71,9 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 	// Create the AST by parsing src
 	fset := token.NewFileSet()
 	astf, err := parser.ParseFile(fset, "", source, 0)
+	fmt.Println(string(source))
 	if err != nil {
-		return err
+		return fmt.Errorf("Init: parse source file err %s", err)
 	}
 	// Add import packages
 	astutil.AddNamedImport(fset, astf, "yomoclient", "github.com/yomorun/yomo")

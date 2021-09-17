@@ -11,8 +11,8 @@ import (
 
 type noiseData struct {
 	Noise float32 `json:"noise"` // Noise value
-	Time  int64   `json:"time"` // Timestamp (ms)
-	From  string  `json:"from"` // Source IP
+	Time  int64   `json:"time"`  // Timestamp (ms)
+	From  string  `json:"from"`  // Source IP
 }
 
 func main() {
@@ -44,13 +44,13 @@ func generateAndSendData(stream yomo.Source) {
 		sendingBuf, _ := json.Marshal(data)
 
 		// send data via QUIC stream.
-		_, err := stream.Write(sendingBuf)
+		_, err := stream.Write(sendingBuf, yomo.NewMetadata("md1", "metadata1"))
 		if err != nil {
 			log.Printf("[source] ❌ Emit %v to YoMo-Zipper failure with err: %v", data, err)
 		} else {
 			log.Printf("[source] ✅ Emit %v to YoMo-Zipper", data)
 		}
 
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(300 * time.Millisecond)
 	}
 }
