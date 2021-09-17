@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"time"
 
@@ -21,8 +20,8 @@ var printer = func(_ context.Context, i interface{}) (interface{}, error) {
 	value := i.(*NoiseData)
 	value.Noise = value.Noise / 10
 	rightNow := time.Now().UnixNano() / int64(time.Millisecond)
-	fmt.Println(fmt.Sprintf("[%s] %d > value: %f ⚡️=%dms", value.From, value.Time, value.Noise, rightNow-value.Time))
-	return value, nil
+	log.Printf(">> [flow] [%s] %d > value: %f ⚡️=%dms", value.From, value.Time, value.Noise, rightNow-value.Time)
+	return value.Noise, nil
 }
 
 // Handler will handle data in Rx way

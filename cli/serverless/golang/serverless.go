@@ -45,13 +45,24 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 	if len(source) < 1 {
 		return fmt.Errorf(`"%s" content is empty`, s.opts.Filename)
 	}
+
+	// rx stream serverless or raw bytes serverless.
+	isRx := strings.Contains(string(source), "rx.Stream")
+
 	// append main function
 	ctx := Context{
 		Name: s.opts.Name,
 		Host: s.opts.Host,
 		Port: s.opts.Port,
 	}
-	mainFunc, err := RenderTmpl(string(MainFuncTmpl), &ctx)
+
+	mainFuncTmpl := ""
+	if isRx {
+		mainFuncTmpl = string(MainFuncRxTmpl)
+	} else {
+		mainFuncTmpl = string(MainFuncRawBytesTmpl)
+	}
+	mainFunc, err := RenderTmpl(mainFuncTmpl, &ctx)
 	if err != nil {
 		return fmt.Errorf("Init: %s", err)
 	}
@@ -66,7 +77,9 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 	// Add import packages
 	astutil.AddNamedImport(fset, astf, "yomoclient", "github.com/yomorun/yomo")
 	astutil.AddNamedImport(fset, astf, "stdlog", "log")
-	astutil.AddNamedImport(fset, astf, "serverless", "github.com/yomorun/yomo/cli/serverless")
+	if isRx {
+		astutil.AddNamedImport(fset, astf, "serverless", "github.com/yomorun/yomo/cli/serverless")
+	}
 	// log.InfoStatusEvent(os.Stdout, "import elapse: %v", time.Since(now))
 	// Generate the code
 	code, err := GenerateCode(fset, astf)

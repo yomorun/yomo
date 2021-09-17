@@ -14,7 +14,7 @@ import (
 type Stream interface {
 	rxgo.Iterable
 
-// WriteNewData write the DataFrame with a specified TagID.
+	// WriteNewData write the DataFrame with a specified TagID.
 	WriteNewData(tagID byte, metas ...*frame.Metadata) Stream
 
 	// RawBytes get the raw bytes in Stream which receives from YoMo-Zipper.

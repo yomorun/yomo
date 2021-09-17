@@ -22,6 +22,7 @@ import (
 
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/cli/pkg/log"
+	"github.com/yomorun/yomo/internal/util"
 )
 
 var meshConfURL string
@@ -36,7 +37,7 @@ var serveCmd = &cobra.Command{
 			log.FailureStatusEvent(os.Stdout, "Please input the file name of workflow config")
 			return
 		}
-		conf, err := yomo.ParseConfig(config)
+		conf, err := util.ParseConfig(config)
 		if err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
 			return
@@ -46,7 +47,7 @@ var serveCmd = &cobra.Command{
 		// endpoint := fmt.Sprintf("%s:%d", conf.Host, conf.Port)
 
 		log.InfoStatusEvent(os.Stdout, "Running YoMo-Zipper...")
-		zipper := yomo.NewZipperServer(conf.Name)
+		zipper := yomo.NewZipperWithOptions(conf.Name)
 		zipper.ConfigWorkflow(config)
 		err = zipper.ListenAndServe()
 		if err != nil {
@@ -64,7 +65,7 @@ func init() {
 	// serveCmd.MarkFlagRequired("config")
 }
 
-func printYoMoServerConf(wfConf *yomo.WorkflowConfig) {
+func printYoMoServerConf(wfConf *util.WorkflowConfig) {
 	log.InfoStatusEvent(os.Stdout, "Found %d stream functions in YoMo-Zipper config", len(wfConf.Functions))
 	for i, sfn := range wfConf.Functions {
 		log.InfoStatusEvent(os.Stdout, "Stream Function %d: %s", i+1, sfn.Name)
