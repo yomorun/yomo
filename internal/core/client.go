@@ -15,7 +15,7 @@ import (
 	"github.com/yomorun/yomo/pkg/tracing"
 )
 
-// ConneState describes the state of the connection.
+// ConnState describes the state of the connection.
 type ConnState = string
 
 // Client is the abstraction of a YoMo-Client. a YoMo-Client can be
@@ -239,7 +239,7 @@ func (c *Client) setState(state ConnState) {
 	c.mu.Unlock()
 }
 
-// func (c *Client) SetDataFrameObserver(fn func(byte, []byte, frame.MetaFrame)) {
+// SetDataFrameObserver sets the data frame handler.
 func (c *Client) SetDataFrameObserver(fn func(*frame.DataFrame)) {
 	c.processor = fn
 	logger.Debugf("%sSetDataFrameObserver(%v)", ClientLogPrefix, c.processor)

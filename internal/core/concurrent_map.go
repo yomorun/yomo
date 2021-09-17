@@ -13,18 +13,21 @@ type connStream struct {
 	stream *quic.Stream
 }
 
+// ConcurrentMap store all stream function connections.
 type ConcurrentMap struct {
 	l             sync.RWMutex
 	sfnCollection map[string][]connStream
 	next          uint32
 }
 
+// NewConcurrentMap create a ConcurrentMap instance.
 func NewConcurrentMap() *ConcurrentMap {
 	return &ConcurrentMap{
 		sfnCollection: make(map[string][]connStream),
 	}
 }
 
+// Set will add a quic stream as stream function connection.
 func (cmap *ConcurrentMap) Set(key string, connID string, stream *quic.Stream) {
 	cmap.l.Lock()
 	defer cmap.l.Unlock()
@@ -34,6 +37,7 @@ func (cmap *ConcurrentMap) Set(key string, connID string, stream *quic.Stream) {
 	cmap.sfnCollection[key] = connStreams
 }
 
+// Get returns a quic stream which represents stream function connection.
 func (cmap *ConcurrentMap) Get(key string) *quic.Stream {
 	cmap.l.RLock()
 	defer cmap.l.RUnlock()
@@ -57,6 +61,7 @@ func (cmap *ConcurrentMap) Get(key string) *quic.Stream {
 	return nil
 }
 
+// Remove will remove a stream function connection.
 func (cmap *ConcurrentMap) Remove(key string, connIDs ...string) {
 	cmap.l.Lock()
 	defer cmap.l.Unlock()
@@ -77,6 +82,7 @@ func (cmap *ConcurrentMap) Remove(key string, connIDs ...string) {
 	}
 }
 
+// WriteToAll will dispatch data to all stream functions.
 func (cmap *ConcurrentMap) WriteToAll(val []byte) {
 	for _, targets := range cmap.sfnCollection {
 		for _, target := range targets {
@@ -85,8 +91,9 @@ func (cmap *ConcurrentMap) WriteToAll(val []byte) {
 	}
 }
 
+// GetCurrentSnapshot returns current snapshot of stream function connections.
 func (cmap *ConcurrentMap) GetCurrentSnapshot() map[string][]*quic.Stream {
-	result := make(map[string][]*quic.Stream, 0)
+	result := make(map[string][]*quic.Stream)
 	for key, connStreams := range cmap.sfnCollection {
 		streams := make([]*quic.Stream, 0)
 		for _, connStream := range connStreams {
