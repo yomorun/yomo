@@ -1,26 +1,26 @@
 package core
 
 const (
-	// ConnTypeNone is connection type "None".
-	ConnTypeNone ConnectionType = 0xFF
-	// ConnTypeSource is connection type "Source".
-	ConnTypeSource ConnectionType = 0x5F
-	// ConnTypeUpstreamZipper is connection type "Upstream Zipper".
-	ConnTypeUpstreamZipper ConnectionType = 0x5E
-	// ConnTypeStreamFunction is connection type "Stream Function".
-	ConnTypeStreamFunction ConnectionType = 0x5D
+	// ClientTypeNone is connection type "None".
+	ClientTypeNone ClientType = 0xFF
+	// ClientTypeSource is connection type "Source".
+	ClientTypeSource ClientType = 0x5F
+	// ClientTypeUpstreamZipper is connection type "Upstream Zipper".
+	ClientTypeUpstreamZipper ClientType = 0x5E
+	// ClientTypeStreamFunction is connection type "Stream Function".
+	ClientTypeStreamFunction ClientType = 0x5D
 )
 
-// ConnectionType represents the connection type.
-type ConnectionType byte
+// ClientType represents the connection type.
+type ClientType byte
 
-func (c ConnectionType) String() string {
+func (c ClientType) String() string {
 	switch c {
-	case ConnTypeSource:
+	case ClientTypeSource:
 		return "Source"
-	case ConnTypeUpstreamZipper:
+	case ClientTypeUpstreamZipper:
 		return "Upstream Zipper"
-	case ConnTypeStreamFunction:
+	case ClientTypeStreamFunction:
 		return "Stream Function"
 	default:
 		return "None"

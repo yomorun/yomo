@@ -39,7 +39,7 @@ type Impl struct {
 }
 
 // New creates a new client.
-func New(appName string, clientType core.ConnectionType) *Impl {
+func New(appName string, clientType core.ClientType) *Impl {
 	c := &Impl{
 		conn: quic.NewConn(appName, clientType),
 	}
@@ -151,7 +151,7 @@ func (c *Impl) handleSignal(accepted chan bool) {
 
 			case frame.TagOfAcceptedFrame:
 				// create stream
-				if c.conn.Type == core.ConnTypeSource || c.conn.Type == core.ConnTypeUpstreamZipper {
+				if c.conn.Type == core.ClientTypeSource || c.conn.Type == core.ClientTypeUpstreamZipper {
 					stream, err := c.Session.CreateStream(context.Background())
 					if err != nil {
 						logger.Error("[client] session.CreateStream Error:", "err", err)
@@ -163,7 +163,7 @@ func (c *Impl) handleSignal(accepted chan bool) {
 				accepted <- true
 
 			case frame.TagOfRejectedFrame:
-				if c.conn.Type == core.ConnTypeStreamFunction {
+				if c.conn.Type == core.ClientTypeStreamFunction {
 					logger.Warn("[client] the connection was rejected by zipper, please check if the function name matches the one in zipper config.")
 				} else {
 					logger.Warn("[client] the connection was rejected by zipper.")

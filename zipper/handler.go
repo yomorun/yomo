@@ -85,9 +85,9 @@ func (s *quicHandler) Read(addr string, sess quic.Session, st quic.Stream) error
 	// the connection exists
 	if c, ok := s.connMap.Load(addr); ok {
 		c := c.(*Conn)
-		if c.Conn.Type == core.ConnTypeSource {
+		if c.Conn.Type == core.ClientTypeSource {
 			s.source <- st
-		} else if c.Conn.Type == core.ConnTypeUpstreamZipper {
+		} else if c.Conn.Type == core.ClientTypeUpstreamZipper {
 			s.zipperReceiver <- st
 		}
 
@@ -197,7 +197,7 @@ func getStreamFuncs(wfConf *WorkflowConfig, connMap *sync.Map) []GetStreamFunc {
 	funcs := make([]GetStreamFunc, 0)
 
 	for _, app := range wfConf.Functions {
-		funcs = append(funcs, createStreamFunc(app, connMap, core.ConnTypeStreamFunction))
+		funcs = append(funcs, createStreamFunc(app, connMap, core.ClientTypeStreamFunction))
 	}
 
 	return funcs
@@ -207,7 +207,7 @@ var streamFuncCache = sync.Map{}           // the cache for all connections by n
 var newStreamFuncSessionCache = sync.Map{} // the cache for new connection channel by name.
 
 // createStreamFunc creates a `GetStreamFunc` for `Stream Function`.
-func createStreamFunc(app App, connMap *sync.Map, connType core.ConnectionType) GetStreamFunc {
+func createStreamFunc(app App, connMap *sync.Map, connType core.ClientType) GetStreamFunc {
 	f := func() (string, []streamFuncWithCancel) {
 		// get from local cache.
 		if funcs, ok := streamFuncCache.Load(app.Name); ok {
@@ -256,7 +256,7 @@ func clearStreamFuncCache(name string) {
 }
 
 // IsMatched indicates if the connection is matched.
-func findConn(app App, connMap *sync.Map, connType core.ConnectionType) map[string]*Conn {
+func findConn(app App, connMap *sync.Map, connType core.ClientType) map[string]*Conn {
 	results := make(map[string]*Conn)
 	connMap.Range(func(key, value interface{}) bool {
 		c := value.(*Conn)

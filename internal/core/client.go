@@ -21,22 +21,22 @@ type ConnState = string
 // Client is the abstraction of a YoMo-Client. a YoMo-Client can be
 // Source, Upstream Zipper or StreamFunction.
 type Client struct {
-	token     string                 // name of the client
-	connType  ConnectionType         // type of the connection
-	session   quic.Session           // quic session
-	stream    quic.Stream            // quic stream
-	state     ConnState              // state of the connection
-	processor func(*frame.DataFrame) // functions to invoke when data arrived
-	addr      string                 // the address of server connected to
-	mu        sync.Mutex
+	token      string                 // name of the client
+	clientType ClientType             // type of the connection
+	session    quic.Session           // quic session
+	stream     quic.Stream            // quic stream
+	state      ConnState              // state of the connection
+	processor  func(*frame.DataFrame) // functions to invoke when data arrived
+	addr       string                 // the address of server connected to
+	mu         sync.Mutex
 }
 
 // NewClient creates a new YoMo-Client.
-func NewClient(appName string, connType ConnectionType) *Client {
+func NewClient(appName string, connType ClientType) *Client {
 	c := &Client{
-		token:    appName,
-		connType: connType,
-		state:    ConnStateReady,
+		token:      appName,
+		clientType: connType,
+		state:      ConnStateReady,
 	}
 
 	once.Do(func() {
@@ -90,7 +90,7 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 
 	c.state = ConnStateAuthenticating
 	// send handshake
-	handshake := frame.NewHandshakeFrame(c.token, byte(c.connType))
+	handshake := frame.NewHandshakeFrame(c.token, byte(c.clientType))
 	c.WriteFrame(handshake)
 
 	// receiving frames

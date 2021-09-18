@@ -26,7 +26,7 @@ type Conn struct {
 func NewConn(addr string, sess quic.Session, st quic.Stream, conf *WorkflowConfig) *Conn {
 	logger.Debug("[zipper] inits a new connection.")
 	c := &Conn{
-		Conn: quic.NewConn("", core.ConnTypeNone),
+		Conn: quic.NewConn("", core.ClientTypeNone),
 	}
 
 	c.Addr = addr
@@ -83,14 +83,14 @@ func (c *Conn) handleSignal(conf *WorkflowConfig) {
 
 				c.Conn.Name = payload.Name
 				c.Conn.Type = c.getConnType(payload, conf)
-				if c.Conn.Type == core.ConnTypeNone {
+				if c.Conn.Type == core.ClientTypeNone {
 					logger.Printf("The %s name %s is mismatched with the name of Stream Function in zipper config.", payload.ClientType, payload.Name)
 					c.Conn.SendSignal(frame.NewRejectedFrame())
 					continue
 				}
 				logger.Printf("Receive App %s, type: %s, addr: %s", c.Conn.Name, c.Conn.Type, c.Addr)
 
-				if c.Conn.Type == core.ConnTypeStreamFunction {
+				if c.Conn.Type == core.ClientTypeStreamFunction {
 					// clear local cache when zipper has a new stream-fn connection.
 					clearStreamFuncCache(c.Conn.Name)
 
@@ -114,22 +114,22 @@ func (c *Conn) handleSignal(conf *WorkflowConfig) {
 	}()
 }
 
-func (c *Conn) getConnType(payload *frame.HandshakeFrame, conf *WorkflowConfig) core.ConnectionType {
-	clientType := core.ConnectionType(payload.ClientType)
+func (c *Conn) getConnType(payload *frame.HandshakeFrame, conf *WorkflowConfig) core.ClientType {
+	clientType := core.ClientType(payload.ClientType)
 	switch clientType {
-	case core.ConnTypeStreamFunction:
+	case core.ClientTypeStreamFunction:
 		// check if the app name is in functions
 		if len(conf.Functions) == 0 {
-			return core.ConnTypeNone
+			return core.ClientTypeNone
 		}
 
 		for _, app := range conf.Functions {
 			if app.Name == payload.Name {
-				return core.ConnTypeStreamFunction
+				return core.ClientTypeStreamFunction
 			}
 		}
 		// name is not found
-		return core.ConnTypeNone
+		return core.ClientTypeNone
 	default:
 		return clientType
 	}

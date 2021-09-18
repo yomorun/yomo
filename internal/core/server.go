@@ -176,12 +176,12 @@ func (s *Server) Downstreams() map[string]*Client {
 
 func (s *Server) handleHandShakeFrame(stream quic.Stream, session quic.Session, f *frame.HandshakeFrame) error {
 	logger.Infof("%s ------> GOT ❤️ HandshakeFrame : %# x", ServerLogPrefix, f)
-	logger.Infof("%sClientType=%# x, is %s", ServerLogPrefix, f.ClientType, ConnectionType(f.ClientType))
+	logger.Infof("%sClientType=%# x, is %s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType))
 	// client type
-	clientType := ConnectionType(f.ClientType)
+	clientType := ClientType(f.ClientType)
 	switch clientType {
-	case ConnTypeSource:
-	case ConnTypeStreamFunction:
+	case ClientTypeSource:
+	case ClientTypeStreamFunction:
 		// 检查 name 是否有效，如果无效则需要关闭连接。
 		if !s.validateHandshake(f) {
 			// 校验无效，关闭连接
@@ -194,7 +194,7 @@ func (s *Server) handleHandShakeFrame(stream quic.Stream, session quic.Session, 
 		// 校验成功，注册 sfn 给 SfnManager
 		s.funcs.Set(f.Name, getConnID(session), &stream)
 
-	case ConnTypeUpstreamZipper:
+	case ClientTypeUpstreamZipper:
 	default:
 		// Step 1-4: 错误，不认识该 client-type，关闭连接
 		logger.Errorf("%sClientType=%# x, ilegal!", ServerLogPrefix, f.ClientType)
