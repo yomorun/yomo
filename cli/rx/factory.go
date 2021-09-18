@@ -3,8 +3,8 @@ package rx
 import (
 	"context"
 
+	"github.com/lucas-clemente/quic-go"
 	"github.com/reactivex/rxgo/v2"
-	"github.com/yomorun/yomo/core/quic"
 	"github.com/yomorun/yomo/internal/core"
 	"github.com/yomorun/yomo/internal/decoder"
 	"github.com/yomorun/yomo/internal/frame"
