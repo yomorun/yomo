@@ -15,15 +15,19 @@ type connStream struct {
 
 // ConcurrentMap store all stream function connections.
 type ConcurrentMap struct {
-	l             sync.RWMutex
+	l sync.RWMutex
+	// stream function connection stream
 	sfnCollection map[string][]connStream
-	next          uint32
+	// key: connection ID, value: stream function name.
+	connSfnMap map[string]string
+	next       uint32
 }
 
 // NewConcurrentMap create a ConcurrentMap instance.
 func NewConcurrentMap() *ConcurrentMap {
 	return &ConcurrentMap{
 		sfnCollection: make(map[string][]connStream),
+		connSfnMap:    make(map[string]string),
 	}
 }
 
@@ -35,6 +39,7 @@ func (cmap *ConcurrentMap) Set(key string, connID string, stream *quic.Stream) {
 	connStream := connStream{id: connID, stream: stream}
 	connStreams = append(connStreams, connStream)
 	cmap.sfnCollection[key] = connStreams
+	cmap.connSfnMap[connID] = key
 }
 
 // Get returns a quic stream which represents stream function connection.
@@ -61,6 +66,14 @@ func (cmap *ConcurrentMap) Get(key string) *quic.Stream {
 	return nil
 }
 
+// Get stream function's name
+func (cmap *ConcurrentMap) GetSfn(connID string) (string, bool) {
+	cmap.l.RLock()
+	defer cmap.l.RUnlock()
+	name, ok := cmap.connSfnMap[connID]
+	return name, ok
+}
+
 // Remove will remove a stream function connection.
 func (cmap *ConcurrentMap) Remove(key string, connIDs ...string) {
 	cmap.l.Lock()
@@ -79,6 +92,10 @@ func (cmap *ConcurrentMap) Remove(key string, connIDs ...string) {
 			}
 		}
 		cmap.sfnCollection[key] = connStreams
+	}
+	// remove connection and stream function map
+	for _, connID := range connIDs {
+		delete(cmap.connSfnMap, connID)
 	}
 }
 

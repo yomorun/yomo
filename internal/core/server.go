@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -22,7 +21,6 @@ type Server struct {
 	state              string
 	funcs              *ConcurrentMap // connected stream functions
 	funcBuckets        map[int]string // user config stream functions
-	connSfnMap         sync.Map       // key: connection ID, value: stream function name.
 	counterOfDataFrame int64
 	downstreams        map[string]*Client
 }
@@ -33,7 +31,6 @@ func NewServer(name string) *Server {
 		token:       name,
 		funcs:       NewConcurrentMap(),
 		funcBuckets: make(map[int]string),
-		connSfnMap:  sync.Map{},
 		downstreams: make(map[string]*Client),
 	}
 	once.Do(func() {
@@ -95,10 +92,8 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 				if err != nil {
 					// if client close the connection, then we should close the session
 					logger.Errorf("%s❤️3/ %T on [stream] %v, deleting from s.funcs if this stream is [sfn]", ServerLogPrefix, err, err)
-					// 检查当前连接是否为 sfn，如果是则需要删除已注册的 sfn
-					if name, ok := s.connSfnMap.Load(connID); ok {
-						s.funcs.Remove(name.(string), connID)
-						s.connSfnMap.Delete(connID)
+					if name, ok := s.funcs.GetSfn(connID); ok {
+						s.funcs.Remove(name, connID)
 					}
 					break
 				}
@@ -198,8 +193,6 @@ func (s *Server) handleHandShakeFrame(stream quic.Stream, session quic.Session, 
 
 		// 校验成功，注册 sfn 给 SfnManager
 		s.funcs.Set(f.Name, getConnID(session), &stream)
-		// 添加 conn 和 sfn 的映射关系
-		s.connSfnMap.Store(getConnID(session), f.Name)
 
 	case ConnTypeUpstreamZipper:
 	default:
@@ -304,7 +297,7 @@ func (s *Server) AddDownstreamServer(addr string, c *Client) {
 // dispatch every DataFrames to all downstreams
 func (s *Server) dispatchToDownstreams(df *frame.DataFrame) {
 	for addr, ds := range s.downstreams {
-		logger.Debugf("dispatching to [%s]: %# x", addr, df.SeqID())
+		logger.Debugf("%sdispatching to [%s]: %# x", ServerLogPrefix, addr, df.SeqID())
 		ds.WriteFrame(df)
 	}
 }
