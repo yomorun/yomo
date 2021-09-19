@@ -184,7 +184,7 @@ func (s *Server) handleHandShakeFrame(stream quic.Stream, session quic.Session, 
 	case ClientTypeStreamFunction:
 		// 检查 name 是否有效，如果无效则需要关闭连接。
 		if !s.validateHandshake(f) {
-			// 校验无效，关闭连接
+			// unexpected client connected. close the connection.
 			stream.Close()
 			session.CloseWithError(0xCC, "handshake validation faild, illegal sfn")
 			// break
@@ -212,6 +212,7 @@ func (s *Server) handlePingFrame(stream quic.Stream, session quic.Session, f *fr
 
 func (s *Server) handleDataFrame(mainStream quic.Stream, session quic.Session, f *frame.DataFrame) error {
 	currentIssuer := f.GetIssuer()
+
 	// tracing
 	span, err := tracing.NewRemoteTraceSpan(f.GetMetadata("TraceID"), f.GetMetadata("SpanID"), "server", fmt.Sprintf("handleDataFrame <-[%s]", currentIssuer))
 	if err == nil {
@@ -220,7 +221,7 @@ func (s *Server) handleDataFrame(mainStream quic.Stream, session quic.Session, f
 	// counter +1
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
 	// 收到数据帧
-	logger.Infof("%sframeType=%s, metadata=%s, issuer=%s, counter=%d", ServerLogPrefix, f.Type(), f.GetMetadatas(), currentIssuer, s.counterOfDataFrame)
+	logger.Infof("%sframeType=%s, metadata=%s, issuer=%s, session.RemoteAddr()=%s, counter=%d", ServerLogPrefix, f.Type(), f.GetMetadatas(), currentIssuer, session.RemoteAddr(), s.counterOfDataFrame)
 	// 因为是Immutable Stream，按照规则发送给 sfn
 	var j int
 	for i, fn := range s.funcBuckets {
@@ -269,7 +270,7 @@ func (s *Server) AddWorkflow(wfs ...Workflow) error {
 func (s *Server) validateHandshake(f *frame.HandshakeFrame) bool {
 	isValid := false
 	for _, k := range s.funcBuckets {
-		logger.Debugf(">>> validateHandshake: (f)=%s, (list)=%s", f.Name, k)
+		logger.Debugf("%s>>> validateHandshake: (f)=%s, (list)=%s", ServerLogPrefix, f.Name, k)
 		if k == f.Name {
 			isValid = true
 			break

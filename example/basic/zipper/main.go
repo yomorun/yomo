@@ -11,7 +11,10 @@ func main() {
 	zipper := yomo.NewZipperWithOptions("basic-zipper", yomo.WithZipperAddr("localhost:9000"))
 	defer zipper.Close()
 
-	zipper.ConfigWorkflow("workflow.yaml")
+	err := zipper.ConfigWorkflow("workflow.yaml")
+	if err != nil {
+		panic(err)
+	}
 
 	// start zipper service
 	go func(zipper yomo.Zipper) {

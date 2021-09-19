@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"sync"
 	"time"
 
@@ -123,7 +124,12 @@ func (c *Client) handleFrame() {
 			if e, ok := err.(*quic.IdleTimeoutError); ok {
 				logger.Errorf("%sconnection timeout, err=%v", ClientLogPrefix, e)
 			} else if e, ok := err.(*quic.ApplicationError); ok {
-				logger.Errorf("%sapplication error, err=%#v", ClientLogPrefix, e)
+				logger.Errorf("%sapplication error, err=%v, errcode=%v", ClientLogPrefix, e, e.ErrorCode)
+				if e.ErrorCode == 0xCC {
+					logger.Errorf("%sIllegal client, server rejected.", ClientLogPrefix)
+					// TODO: stop reconnect policy will be much better than exit process.
+					os.Exit(0xCC)
+				}
 			} else if errors.Is(err, net.ErrClosed) {
 				// if client close the connection, net.ErrClosed will be raise
 				logger.Errorf("%sconnection is closed, err=%v", ClientLogPrefix, err)

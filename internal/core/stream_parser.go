@@ -13,7 +13,7 @@ import (
 func ParseFrame(stream io.Reader) (frame.Frame, error) {
 	buf, err := y3.ReadPacket(stream)
 	if err != nil {
-		logger.Errorf("%sParseFrame: read first byte, err=%v", ParseFrameLogPrefix, err)
+		logger.Errorf("%sParseFrame: read first byte with err=%v", ParseFrameLogPrefix, err)
 		return nil, err
 	}
 	if len(buf) > 512 {

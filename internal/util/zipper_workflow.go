@@ -72,7 +72,7 @@ func ParseConfig(config string) (*WorkflowConfig, error) {
 	// parse workflow.yaml
 	wfConf, err := Load(config)
 	if err != nil {
-		return nil, errors.New("workflow: read the workflow config failure: " + err.Error())
+		return nil, err
 	}
 
 	// validate

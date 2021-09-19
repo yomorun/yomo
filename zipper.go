@@ -116,7 +116,7 @@ func (z *zipper) init() {
 	go func() {
 		c := make(chan os.Signal, 1)
 		signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGUSR2, syscall.SIGUSR1, syscall.SIGINT)
-		logger.Printf("Listening signals ...")
+		logger.Printf("%sListening SIGUSR1, SIGUSR2, SIGTERM/SIGINT...", zipperLogPrefix)
 		for p1 := range c {
 			logger.Printf("Received signal: %s", p1)
 			if p1 == syscall.SIGTERM || p1 == syscall.SIGINT {
@@ -144,6 +144,7 @@ func (z *zipper) ConfigWorkflow(conf string) error {
 		if err := z.server.AddWorkflow(core.Workflow{Seq: i, Token: app.Name}); err != nil {
 			return err
 		}
+		logger.Printf("%s[AddWorkflow] %d, %s", zipperLogPrefix, i, app.Name)
 	}
 	return nil
 }
