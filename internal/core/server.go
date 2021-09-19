@@ -98,9 +98,8 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 					break
 				}
 				defer stream.Close()
-				// defer ctx.Done()
 				logger.Infof("%s❤️4/ [stream:%d] created, connID=%s", ServerLogPrefix, stream.StreamID(), connID)
-				// 监听 stream 并做处理
+				// process frames on stream
 				s.handleSession(session, stream)
 				logger.Infof("%s❤️5/ [stream:%d] handleSession DONE", ServerLogPrefix, stream.StreamID())
 			}
@@ -148,8 +147,8 @@ func (s *Server) handleSession(session quic.Session, mainStream quic.Stream) {
 		switch frameType {
 		case frame.TagOfHandshakeFrame:
 			s.handleHandShakeFrame(mainStream, session, f.(*frame.HandshakeFrame))
-		case frame.TagOfPingFrame:
-			s.handlePingFrame(mainStream, session, f.(*frame.PingFrame))
+		// case frame.TagOfPingFrame:
+		// 	s.handlePingFrame(mainStream, session, f.(*frame.PingFrame))
 		case frame.TagOfDataFrame:
 			s.handleDataFrame(mainStream, session, f.(*frame.DataFrame))
 			s.dispatchToDownstreams(f.(*frame.DataFrame))
@@ -182,33 +181,35 @@ func (s *Server) handleHandShakeFrame(stream quic.Stream, session quic.Session, 
 	switch clientType {
 	case ClientTypeSource:
 	case ClientTypeStreamFunction:
-		// 检查 name 是否有效，如果无效则需要关闭连接。
+		// when sfn connect, it will provide its token to the server. server will check if this client
+		// has permission connected to.
 		if !s.validateHandshake(f) {
-			// unexpected client connected. close the connection.
+			// unexpected client connected, close the connection
 			stream.Close()
 			session.CloseWithError(0xCC, "handshake validation faild, illegal sfn")
 			// break
 			return errors.New("core.server: handshake validation faild, illegal sfn")
 		}
 
-		// 校验成功，注册 sfn 给 SfnManager
+		// validation successful, register this sfn
 		s.funcs.Set(f.Name, getConnID(session), &stream)
-
+		logger.Infof("%s sfn: %s connected!", ServerLogPrefix, f.Name)
 	case ClientTypeUpstreamZipper:
 	default:
-		// Step 1-4: 错误，不认识该 client-type，关闭连接
+		// unknown client type
 		logger.Errorf("%sClientType=%# x, ilegal!", ServerLogPrefix, f.ClientType)
-		// stream.Close()
-		// session.CloseWithError(0xCC, "Unknown ClientType, ilegal!")
+		stream.Close()
+		session.CloseWithError(0xCC, "Unknown ClientType, illegal!")
 		return errors.New("core.server: Unknown ClientType, illegal")
 	}
 	return nil
 }
 
-func (s *Server) handlePingFrame(stream quic.Stream, session quic.Session, f *frame.PingFrame) error {
-	logger.Infof("%s------> GOT ❤️ PingFrame : %# x", ServerLogPrefix, f)
-	return nil
-}
+// will reuse quic-go's keep-alive feature
+// func (s *Server) handlePingFrame(stream quic.Stream, session quic.Session, f *frame.PingFrame) error {
+// 	logger.Infof("%s------> GOT ❤️ PingFrame : %# x", ServerLogPrefix, f)
+// 	return nil
+// }
 
 func (s *Server) handleDataFrame(mainStream quic.Stream, session quic.Session, f *frame.DataFrame) error {
 	currentIssuer := f.GetIssuer()
@@ -220,17 +221,17 @@ func (s *Server) handleDataFrame(mainStream quic.Stream, session quic.Session, f
 	}
 	// counter +1
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
-	// 收到数据帧
+	// inspect data frame
 	logger.Infof("%sframeType=%s, metadata=%s, issuer=%s, session.RemoteAddr()=%s, counter=%d", ServerLogPrefix, f.Type(), f.GetMetadatas(), currentIssuer, session.RemoteAddr(), s.counterOfDataFrame)
-	// 因为是Immutable Stream，按照规则发送给 sfn
+	// immutable data stream, route to next sfn
 	var j int
 	for i, fn := range s.funcBuckets {
-		// 发送给 currentIssuer 的下一个 sfn
+		// find next sfn
 		if fn == currentIssuer {
 			j = i + 1
 		}
 	}
-	// 表示要执行第一个 sfn
+	// execute first one
 	if j == 0 {
 		logger.Infof("%s1st sfn write to [%s] -> [%s]:", ServerLogPrefix, currentIssuer, s.funcBuckets[0])
 		targetStream := s.funcs.Get(s.funcBuckets[0])
