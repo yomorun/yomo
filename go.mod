@@ -17,6 +17,6 @@ require (
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.0.0-RC2
 	go.opentelemetry.io/otel/sdk v1.0.0-RC2
 	go.opentelemetry.io/otel/trace v1.0.0-RC2
-	go.uber.org/zap v1.19.0
+	go.uber.org/zap v1.19.1
 	gopkg.in/yaml.v2 v2.4.0
 )
