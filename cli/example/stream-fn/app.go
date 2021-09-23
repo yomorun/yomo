@@ -16,11 +16,11 @@ type NoiseData struct {
 	From  string  `json:"from"`  // Source IP
 }
 
-var printer = func(_ context.Context, i interface{}) (interface{}, error) {
+var echo = func(_ context.Context, i interface{}) (interface{}, error) {
 	value := i.(*NoiseData)
 	value.Noise = value.Noise / 10
 	rightNow := time.Now().UnixNano() / int64(time.Millisecond)
-	fmt.Println(fmt.Sprintf("[%s] %d > value: %f ⚡️=%dms", value.From, value.Time, value.Noise, rightNow-value.Time))
+	fmt.Println(fmt.Sprintf("[stream-fn] from=%s, Timestamp=%d, value=%f (⚡️=%dms)", value.From, value.Time, value.Noise, rightNow-value.Time))
 	return value.Noise, nil
 }
 
@@ -29,8 +29,7 @@ func Handler(rxstream rx.Stream) rx.Stream {
 	stream := rxstream.
 		Unmarshal(json.Unmarshal, func() interface{} { return &NoiseData{} }).
 		Debounce(50).
-		Map(printer).
-		StdOut().
+		Map(echo).
 		Marshal(json.Marshal).
 		PipeBackToZipper(0x34)
 

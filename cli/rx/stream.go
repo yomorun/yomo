@@ -6,7 +6,6 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/reactivex/rxgo/v2"
-	"github.com/yomorun/yomo/internal/decoder"
 )
 
 // Stream is the interface for RxStream.
@@ -313,15 +312,15 @@ type Stream interface {
 	// It returns the orginal data to Stream, not the buffered slice.
 	SlidingWindowWithTime(windowTimeInMS uint32, slideTimeInMS uint32, handler Handler, opts ...rxgo.Option) Stream
 
-	// ZipMultiObservers subscribes multi Y3 observers, zips the values into a slice and calls the zipper callback when all keys are observed.
-	ZipMultiObservers(observers []KeyObserveFunc, zipper func(items []interface{}) (interface{}, error)) Stream
+	// // ZipMultiObservers subscribes multi Y3 observers, zips the values into a slice and calls the zipper callback when all keys are observed.
+	// ZipMultiObservers(observers []KeyObserveFunc, zipper func(items []interface{}) (interface{}, error)) Stream
 }
 
-// KeyObserveFunc is a pair of subscribed key and onObserve callback.
-type KeyObserveFunc struct {
-	Key       byte
-	OnObserve decoder.OnObserveFunc
-}
+// // KeyObserveFunc is a pair of subscribed key and onObserve callback.
+// type KeyObserveFunc struct {
+// 	Key       byte
+// 	OnObserve decoder.OnObserveFunc
+// }
 
 type (
 	// Marshaller defines a marshaller type (interface{} to []byte).

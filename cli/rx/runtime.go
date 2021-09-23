@@ -47,7 +47,7 @@ func (r *Runtime) RawByteHandler(data []byte) (byte, []byte) {
 			continue
 		}
 
-		log.InfoStatusEvent(os.Stdout, "[RawByteHandler] Send data[%v] to YoMo-Zipper.", data.DataID)
+		log.InfoStatusEvent(os.Stdout, "[RawByteHandler] Send data with [tag=%#x] to YoMo-Zipper.", data.DataID)
 		return data.DataID, data.Bytes
 	}
 
