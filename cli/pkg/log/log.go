@@ -16,13 +16,17 @@ const (
 	windowsOS = "windows"
 )
 
+// Result descrbiles the result of a task.
 type Result bool
 
 const (
+	// Success means true result.
 	Success Result = true
+	// Failure means false result.
 	Failure Result = false
 )
 
+// Colors of term style.
 var (
 	Yellow    = color.New(color.FgHiYellow, color.Bold).SprintFunc()
 	Green     = color.New(color.FgHiGreen, color.Bold).SprintFunc()
@@ -35,6 +39,7 @@ var (
 
 var logAsJSON bool
 
+// EnableJSONLogging enables JSON logging.
 func EnableJSONFormat() {
 	logAsJSON = true
 }
@@ -94,6 +99,7 @@ func InfoStatusEvent(w io.Writer, fmtstr string, a ...interface{}) {
 	}
 }
 
+// Spinner is a spinner for long running tasks.
 func Spinner(w io.Writer, fmtstr string, a ...interface{}) func(result Result) {
 	msg := fmt.Sprintf(fmtstr, a...)
 	var once sync.Once
