@@ -7,15 +7,15 @@ import (
 // DataFrame defines the data structure carried with user's data
 // transferring within YoMo
 type DataFrame struct {
-	metaFrame    MetaFrame
+	metaFrame    *MetaFrame
 	payloadFrame *PayloadFrame
 }
 
 // NewDataFrame create `DataFrame` with a transactionID string,
 // consider change transactionID to UUID type later
-func NewDataFrame(datas ...*Metadata) *DataFrame {
+func NewDataFrame() *DataFrame {
 	data := &DataFrame{
-		metaFrame: NewMetaFrame(datas...),
+		metaFrame: NewMetaFrame(),
 	}
 	return data
 }
@@ -40,38 +40,18 @@ func (d *DataFrame) GetCarriage() []byte {
 	return d.payloadFrame.Carriage
 }
 
-// // TransactionID return transactionID string
-// func (d *DataFrame) TransactionID() string {
-// 	return d.metaFrame.TransactionID()
-// }
-
-// SetIssuer set issuer.
-func (d *DataFrame) SetIssuer(issuer string) {
-	d.metaFrame.Set(MetadataIssuer, issuer)
+// TransactionID return transactionID string
+func (d *DataFrame) TransactionID() string {
+	return d.metaFrame.TransactionID()
 }
 
-// GetIssuer return issuer.
-func (d *DataFrame) GetIssuer() string {
-	return d.metaFrame.Get(MetadataIssuer)
-}
-
-// GetMetadata get metadata by name.
-func (d *DataFrame) GetMetadata(name string) string {
-	return d.metaFrame.Get(name)
-}
-
-// SetMetadata set metadata.
-func (d *DataFrame) SetMetadata(name string, val string) {
-	d.metaFrame.Set(name, val)
-}
-
-// GetMetadatas return Metadata list.
-func (d *DataFrame) GetMetadatas() []*Metadata {
-	return d.metaFrame.GetMetadatas()
+// SetTransactionID set transactionID string
+func (d *DataFrame) SetTransactionID(transactionID string) {
+	d.metaFrame.SetTransactionID(transactionID)
 }
 
 // GetMetaFrame return MetaFrame.
-func (d *DataFrame) GetMetaFrame() MetaFrame {
+func (d *DataFrame) GetMetaFrame() *MetaFrame {
 	return d.metaFrame
 }
 

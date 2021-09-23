@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"sync/atomic"
 	"time"
@@ -11,7 +10,7 @@ import (
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/internal/frame"
 	"github.com/yomorun/yomo/pkg/logger"
-	"github.com/yomorun/yomo/pkg/tracing"
+	// "github.com/yomorun/yomo/pkg/tracing"
 )
 
 // Server is the underlining server of Zipper
@@ -92,6 +91,7 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 					logger.Errorf("%s❤️3/ %T on [stream] %v, deleting from s.funcs if this stream is [sfn]", ServerLogPrefix, err, err)
 					if name, ok := s.funcs.GetSfn(connID); ok {
 						s.funcs.Remove(name, connID)
+						logger.Debugf("%s sfn=%s removed", ServerLogPrefix, name)
 					}
 					break
 				}
@@ -121,7 +121,7 @@ func (s *Server) handleSession(session quic.Session, mainStream quic.Stream) {
 	fs := NewFrameStream(mainStream)
 	// check update for stream
 	for {
-		logger.Infof("%shandleSession 💚 waiting read next...", ServerLogPrefix)
+		logger.Debugf("%shandleSession 💚 waiting read next...", ServerLogPrefix)
 		f, err := fs.ReadFrame()
 		if err != nil {
 			logger.Errorf("%s%T %v", ServerLogPrefix, err, err)
@@ -144,7 +144,7 @@ func (s *Server) handleSession(session quic.Session, mainStream quic.Stream) {
 		logger.Debugf("%stype=%s, frame=%# x", ServerLogPrefix, frameType, f.Encode())
 		switch frameType {
 		case frame.TagOfHandshakeFrame:
-			s.handleHandShakeFrame(mainStream, session, f.(*frame.HandshakeFrame))
+			s.handleHandshakeFrame(mainStream, session, f.(*frame.HandshakeFrame))
 		// case frame.TagOfPingFrame:
 		// 	s.handlePingFrame(mainStream, session, f.(*frame.PingFrame))
 		case frame.TagOfDataFrame:
@@ -156,22 +156,8 @@ func (s *Server) handleSession(session quic.Session, mainStream quic.Stream) {
 	}
 }
 
-// StatsFunctions returns the sfn stats of server.
-func (s *Server) StatsFunctions() map[string][]*quic.Stream {
-	return s.funcs.GetCurrentSnapshot()
-}
-
-// StatsCounter returns how many DataFrames pass through server.
-func (s *Server) StatsCounter() int64 {
-	return s.counterOfDataFrame
-}
-
-// Downstreams return all the downstream servers.
-func (s *Server) Downstreams() map[string]*Client {
-	return s.downstreams
-}
-
-func (s *Server) handleHandShakeFrame(stream quic.Stream, session quic.Session, f *frame.HandshakeFrame) error {
+// handle HandShakeFrame
+func (s *Server) handleHandshakeFrame(stream quic.Stream, session quic.Session, f *frame.HandshakeFrame) error {
 	logger.Infof("%s ------> GOT ❤️ HandshakeFrame : %# x", ServerLogPrefix, f)
 	logger.Infof("%sClientType=%# x, is %s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType))
 	// client type
@@ -191,7 +177,7 @@ func (s *Server) handleHandShakeFrame(stream quic.Stream, session quic.Session, 
 
 		// validation successful, register this sfn
 		s.funcs.Set(f.Name, getConnID(session), &stream)
-		logger.Infof("%s sfn: %s connected!", ServerLogPrefix, f.Name)
+		logger.Infof("%s sfn: %s (%s) connected!", ServerLogPrefix, f.Name, getConnID(session))
 	case ClientTypeUpstreamZipper:
 	default:
 		// unknown client type
@@ -210,22 +196,38 @@ func (s *Server) handleHandShakeFrame(stream quic.Stream, session quic.Session, 
 // }
 
 func (s *Server) handleDataFrame(mainStream quic.Stream, session quic.Session, f *frame.DataFrame) error {
-	currentIssuer := f.GetIssuer()
+	// currentIssuer := f.GetIssuer()
+	currentIssuer := getConnID(session)
 
-	// tracing
-	span, err := tracing.NewRemoteTraceSpan(f.GetMetadata("TraceID"), f.GetMetadata("SpanID"), "server", fmt.Sprintf("handleDataFrame <-[%s]", currentIssuer))
-	if err == nil {
-		defer span.End()
-	}
+	// // tracing
+	// span, err := tracing.NewRemoteTraceSpan(f.GetMetadata("TraceID"), f.GetMetadata("SpanID"), "server", fmt.Sprintf("handleDataFrame <-[%s]", currentIssuer))
+	// if err == nil {
+	// 	defer span.End()
+	// }
 	// counter +1
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
 	// inspect data frame
-	logger.Infof("%sframeType=%s, metadata=%s, issuer=%s, session.RemoteAddr()=%s, counter=%d", ServerLogPrefix, f.Type(), f.GetMetadatas(), currentIssuer, session.RemoteAddr(), s.counterOfDataFrame)
+	logger.Infof("%sframeType=%s, tid=%s, session.RemoteAddr()=%s, counter=%d", ServerLogPrefix, f.Type(), f.TransactionID(), session.RemoteAddr(), s.counterOfDataFrame)
 	// write data frame to stream
-	return s.funcs.Write(f)
+	return s.funcs.Write(f, currentIssuer)
 }
 
-// AddWorkflow add sfn to this server.
+// StatsFunctions returns the sfn stats of server.
+func (s *Server) StatsFunctions() map[string][]*quic.Stream {
+	return s.funcs.GetCurrentSnapshot()
+}
+
+// StatsCounter returns how many DataFrames pass through server.
+func (s *Server) StatsCounter() int64 {
+	return s.counterOfDataFrame
+}
+
+// Downstreams return all the downstream servers.
+func (s *Server) Downstreams() map[string]*Client {
+	return s.downstreams
+}
+
+// AddWorkflow register sfn to this server.
 func (s *Server) AddWorkflow(wfs ...Workflow) error {
 	for _, wf := range wfs {
 		s.funcs.AddFunc(wf.Seq, wf.Token)
@@ -243,11 +245,11 @@ func (s *Server) validateHandshake(f *frame.HandshakeFrame) bool {
 }
 
 func (s *Server) init() {
-	// tracing
-	_, _, err := tracing.NewTracerProvider(s.token)
-	if err != nil {
-		logger.Errorf("tracing: %v", err)
-	}
+	// // tracing
+	// _, _, err := tracing.NewTracerProvider(s.token)
+	// if err != nil {
+	// 	logger.Errorf("tracing: %v", err)
+	// }
 }
 
 // AddDownstreamServer add a downstream server to this server. all the DataFrames will be

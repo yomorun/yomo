@@ -2,12 +2,12 @@ package yomo
 
 import (
 	"context"
-	"fmt"
+	// "fmt"
 
 	"github.com/yomorun/yomo/internal/core"
 	"github.com/yomorun/yomo/internal/frame"
 	"github.com/yomorun/yomo/pkg/logger"
-	"github.com/yomorun/yomo/pkg/tracing"
+	// "github.com/yomorun/yomo/pkg/tracing"
 )
 
 const (
@@ -100,18 +100,18 @@ func (s *streamFunction) Close() error {
 }
 
 // when DataFrame we observed arrived, invoke the user's function
-func (s *streamFunction) onDataFrame(data []byte, metaFrame MetaFrame) {
+func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
 	// check
 	if s.fn == nil {
 		logger.Warnf("%sStreamFunction is nil", streamFunctionLogPrefix)
 		return
 	}
-	// tracing
-	span, err := tracing.NewRemoteTraceSpan(metaFrame.Get("TraceID"), metaFrame.Get("SpanID"), "serverless", fmt.Sprintf("onDataFrame [%s]", s.name))
-	if err == nil {
-		defer span.End()
-	}
-	logger.Infof("%sonDataFrame metadata=%s, [%s]->[%s]", streamFunctionLogPrefix, metaFrame.GetMetadatas(), metaFrame.GetIssuer(), s.name)
+	// // tracing
+	// span, err := tracing.NewRemoteTraceSpan(metaFrame.Get("TraceID"), metaFrame.Get("SpanID"), "serverless", fmt.Sprintf("onDataFrame [%s]", s.name))
+	// if err == nil {
+	// 	defer span.End()
+	// }
+	logger.Infof("%sonDataFrame ->[%s]", streamFunctionLogPrefix, s.name)
 	logger.Debugf("%sexecute-start fn: data=%#x", streamFunctionLogPrefix, data)
 	// invoke serverless
 	tag, resp := s.fn(data)
@@ -121,8 +121,10 @@ func (s *streamFunction) onDataFrame(data []byte, metaFrame MetaFrame) {
 		logger.Debugf("%sstart WriteFrame(): tag=%#x, data=%v", streamFunctionLogPrefix, tag, resp)
 		// build a DataFrame
 		// TODO: seems we should implement a DeepCopy() of MetaFrame in the future
-		frame := frame.NewDataFrame(metaFrame.GetMetadatas()...)
-		frame.SetIssuer(s.name)
+		frame := frame.NewDataFrame()
+		// reuse transactionID
+		frame.SetTransactionID(metaFrame.TransactionID())
+		// frame.SetIssuer(s.name)
 		frame.SetCarriage(tag, resp)
 		s.client.WriteFrame(frame)
 	}
@@ -131,7 +133,7 @@ func (s *streamFunction) onDataFrame(data []byte, metaFrame MetaFrame) {
 // Send a DataFrame to zipper.
 func (s *streamFunction) Write(dataID byte, carriage []byte) error {
 	frame := frame.NewDataFrame()
-	frame.SetIssuer(s.name)
+	// frame.SetIssuer(s.name)
 	frame.SetCarriage(dataID, carriage)
 	return s.client.WriteFrame(frame)
 }

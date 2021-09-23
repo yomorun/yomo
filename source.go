@@ -2,8 +2,6 @@ package yomo
 
 import (
 	"context"
-	"strconv"
-	"time"
 
 	"github.com/yomorun/yomo/internal/core"
 	"github.com/yomorun/yomo/internal/frame"
@@ -23,11 +21,9 @@ type Source interface {
 	// SetDataTag will set the tag of data when invoking Write().
 	SetDataTag(tag uint8)
 	// Write the data to downstream.
-	Write(p []byte, metadatas ...*Metadata) (n int, err error)
+	Write(p []byte) (n int, err error)
 	// WriteWithTag will write data with specified tag, default transactionID is epoch time.
-	WriteWithTag(tag uint8, data []byte, metadatas ...*Metadata) error
-	// WriteWithTagTransactionID will write data with specified transactionID and tag.
-	WriteWithTagTransactionID(transactionID string, tag uint8, data []byte, metadatas ...*Metadata) error
+	WriteWithTag(tag uint8, data []byte) error
 }
 
 // YoMo-Source
@@ -53,8 +49,8 @@ func NewSource(name string, opts ...Option) Source {
 }
 
 // Write the data to downstream.
-func (s *yomoSource) Write(data []byte, metadatas ...*Metadata) (int, error) {
-	return len(data), s.WriteWithTag(s.tag, data, metadatas...)
+func (s *yomoSource) Write(data []byte) (int, error) {
+	return len(data), s.WriteWithTag(s.tag, data)
 }
 
 // SetDataTag will set the tag of data when invoking Write().
@@ -82,21 +78,13 @@ func (s *yomoSource) Connect() error {
 }
 
 // WriteWithTag will write data with specified tag, default transactionID is epoch time.
-func (s *yomoSource) WriteWithTag(tag uint8, data []byte, metadatas ...*Metadata) error {
-	transactionID := strconv.FormatInt(time.Now().UnixNano(), 10)
-	return s.WriteWithTagTransactionID(transactionID, tag, data, metadatas...)
-}
-
-// WriteWithTagTransactionID will write data with specified transactionID and tag.
-func (s *yomoSource) WriteWithTagTransactionID(transactionID string, tag uint8, data []byte, metadatas ...*Metadata) error {
+func (s *yomoSource) WriteWithTag(tag uint8, data []byte) error {
 	if len(data) > 1024 {
 		logger.Debugf("%sWriteDataWithTransactionID: len(data)=%d", sourceLogPrefix, len(data))
 	} else {
 		logger.Debugf("%sWriteDataWithTransactionID: data=%# x", sourceLogPrefix, data)
 	}
-	frame := frame.NewDataFrame(metadatas...)
-	frame.SetIssuer(s.name)
+	frame := frame.NewDataFrame()
 	frame.SetCarriage(byte(tag), data)
-
 	return s.client.WriteFrame(frame)
 }

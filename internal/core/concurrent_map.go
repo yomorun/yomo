@@ -12,8 +12,8 @@ import (
 )
 
 type connStream struct {
-	id     string
-	stream *quic.Stream
+	id     string       // connection rem_addr
+	stream *quic.Stream // quic stream
 }
 
 // ConcurrentMap store all stream function connections.
@@ -37,25 +37,25 @@ func NewConcurrentMap() *ConcurrentMap {
 	}
 }
 
-// Set will add a quic stream as stream function connection.
-func (cmap *ConcurrentMap) Set(key string, connID string, stream *quic.Stream) {
+// Set will add stream function connection to collection.
+func (cmap *ConcurrentMap) Set(token string, connID string, stream *quic.Stream) {
 	cmap.l.Lock()
 	defer cmap.l.Unlock()
-	connStreams := cmap.sfnCollection[key]
+	connStreams := cmap.sfnCollection[token]
 	connStream := connStream{id: connID, stream: stream}
 	connStreams = append(connStreams, connStream)
-	cmap.sfnCollection[key] = connStreams
-	cmap.connSfnMap[connID] = key
+	cmap.sfnCollection[token] = connStreams
+	cmap.connSfnMap[connID] = token
 }
 
 // Get returns a quic stream which represents stream function connection.
-func (cmap *ConcurrentMap) Get(key string) *quic.Stream {
+func (cmap *ConcurrentMap) Get(token string) *quic.Stream {
 	cmap.l.RLock()
 	defer cmap.l.RUnlock()
-	if val, ok := cmap.sfnCollection[key]; ok {
+	if val, ok := cmap.sfnCollection[token]; ok {
 		l := len(val)
 		if len(val) == 0 {
-			logger.Debugf("not available stream, key=%s", key)
+			logger.Debugf("not available stream, token=%s", token)
 			return nil
 		}
 		if len(val) == 1 {
@@ -72,7 +72,7 @@ func (cmap *ConcurrentMap) Get(key string) *quic.Stream {
 	return nil
 }
 
-// Get stream function's name
+// GetSfn get the name of stream function.
 func (cmap *ConcurrentMap) GetSfn(connID string) (string, bool) {
 	cmap.l.RLock()
 	defer cmap.l.RUnlock()
@@ -105,14 +105,14 @@ func (cmap *ConcurrentMap) Remove(key string, connIDs ...string) {
 	}
 }
 
-// WriteToAll will dispatch data to all stream functions.
-func (cmap *ConcurrentMap) WriteToAll(val []byte) {
-	for _, targets := range cmap.sfnCollection {
-		for _, target := range targets {
-			(*target.stream).Write(val)
-		}
-	}
-}
+// // WriteToAll will dispatch data to all stream functions.
+// func (cmap *ConcurrentMap) WriteToAll(val []byte) {
+// 	for _, targets := range cmap.sfnCollection {
+// 		for _, target := range targets {
+// 			(*target.stream).Write(val)
+// 		}
+// 	}
+// }
 
 // GetCurrentSnapshot returns current snapshot of stream function connections.
 func (cmap *ConcurrentMap) GetCurrentSnapshot() map[string][]*quic.Stream {
@@ -127,13 +127,14 @@ func (cmap *ConcurrentMap) GetCurrentSnapshot() map[string][]*quic.Stream {
 	return result
 }
 
-// AddFunc add user stream function to workflow
+// AddFunc add user stream function to workflow.
 func (cmap *ConcurrentMap) AddFunc(index int, name string) {
 	cmap.l.Lock()
 	defer cmap.l.Unlock()
 	cmap.funcBuckets[index] = name
 }
 
+// ExistsFunc returns if func by given name is existed.
 func (cmap *ConcurrentMap) ExistsFunc(name string) bool {
 	cmap.l.RLock()
 	defer cmap.l.RUnlock()
@@ -145,19 +146,19 @@ func (cmap *ConcurrentMap) ExistsFunc(name string) bool {
 	return false
 }
 
-func (cmap *ConcurrentMap) Write(f *frame.DataFrame) error {
-	currentIssuer := f.GetIssuer()
+// Write will dispatch DataFrame to stream functions. from is the f sent from.
+func (cmap *ConcurrentMap) Write(f *frame.DataFrame, from string) error {
 	// immutable data stream, route to next sfn
 	var j int
 	for i, fn := range cmap.funcBuckets {
 		// find next sfn
-		if fn == currentIssuer {
+		if fn == from {
 			j = i + 1
 		}
 	}
 	// execute first one
 	if j == 0 {
-		logger.Infof("%s1st sfn write to [%s] -> [%s]:", ServerLogPrefix, currentIssuer, cmap.funcBuckets[0])
+		logger.Infof("%s1st sfn write to [%s] -> [%s]:", ServerLogPrefix, from, cmap.funcBuckets[0])
 		targetStream := cmap.Get(cmap.funcBuckets[0])
 		if targetStream == nil {
 			logger.Debugf("%ssfn[%s] stream is nil", ServerLogPrefix, cmap.funcBuckets[0])
@@ -175,7 +176,7 @@ func (cmap *ConcurrentMap) Write(f *frame.DataFrame) error {
 	}
 
 	targetStream := cmap.Get(cmap.funcBuckets[j])
-	logger.Infof("%swill write to: [%s] -> [%s], target is nil:%v", ServerLogPrefix, currentIssuer, cmap.funcBuckets[j], targetStream == nil)
+	logger.Infof("%swill write to: [%s] -> [%s], target is nil:%v", ServerLogPrefix, from, cmap.funcBuckets[j], targetStream == nil)
 	if targetStream != nil {
 		_, err := (*targetStream).Write(f.Encode())
 		return err

@@ -13,7 +13,7 @@ import (
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/internal/frame"
 	"github.com/yomorun/yomo/pkg/logger"
-	"github.com/yomorun/yomo/pkg/tracing"
+	// "github.com/yomorun/yomo/pkg/tracing"
 )
 
 // ConnState describes the state of the connection.
@@ -157,7 +157,7 @@ func (c *Client) handleFrame() {
 		case frame.TagOfDataFrame: // DataFrame carries user's data
 			if v, ok := f.(*frame.DataFrame); ok {
 				c.setState(ConnStateTransportData)
-				logger.Debugf("%sreceive DataFrame, tag=%# x, metadata=%v, carry=%# x", ClientLogPrefix, v.GetDataTagID(), v.GetMetadatas(), v.GetCarriage())
+				logger.Debugf("%sreceive DataFrame, tag=%# x, tid=%s, carry=%# x", ClientLogPrefix, v.GetDataTagID(), v.TransactionID(), v.GetCarriage())
 				if c.processor == nil {
 					logger.Warnf("%sprocessor is nil", ClientLogPrefix)
 				} else {
@@ -198,13 +198,13 @@ func (c *Client) EnableDebug() {
 
 // WriteFrame writes a frame to the connection, gurantee threadsafe.
 func (c *Client) WriteFrame(frm frame.Frame) error {
-	// tracing
-	if f, ok := frm.(*frame.DataFrame); ok {
-		span, err := tracing.NewRemoteTraceSpan(f.GetMetadata("TraceID"), f.GetMetadata("SpanID"), c.token, fmt.Sprintf("WriteFrame [%s]->[zipper]", c.token))
-		if err == nil {
-			defer span.End()
-		}
-	}
+	// // tracing
+	// if f, ok := frm.(*frame.DataFrame); ok {
+	// 	span, err := tracing.NewRemoteTraceSpan(f.GetMetadata("TraceID"), f.GetMetadata("SpanID"), c.token, fmt.Sprintf("WriteFrame [%s]->[zipper]", c.token))
+	// 	if err == nil {
+	// 		defer span.End()
+	// 	}
+	// }
 	// write on QUIC stream
 	if c.stream == nil {
 		return errors.New("stream is nil")
@@ -264,11 +264,11 @@ func (c *Client) reconnect(ctx context.Context, addr string) {
 }
 
 func (c *Client) init() {
-	// tracing
-	_, _, err := tracing.NewTracerProvider(c.token)
-	if err != nil {
-		logger.Errorf("tracing: %v", err)
-	}
+	// // tracing
+	// _, _, err := tracing.NewTracerProvider(c.token)
+	// if err != nil {
+	// 	logger.Errorf("tracing: %v", err)
+	// }
 }
 
 // ServerAddr returns the address of the server.
