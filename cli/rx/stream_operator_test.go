@@ -1,7 +1,6 @@
 package rx
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"testing"
@@ -9,7 +8,6 @@ import (
 
 	"github.com/reactivex/rxgo/v2"
 	"github.com/stretchr/testify/assert"
-	y3 "github.com/yomorun/y3-codec-golang"
 )
 
 // HELPER FUNCTIONS
@@ -116,151 +114,6 @@ type testStruct struct {
 	ID   uint32 `y3:"0x11"`
 	Name string `y3:"0x12"`
 }
-
-func Test_Subscribe_OnObserve(t *testing.T) {
-	t.Run("uint32", func(t *testing.T) {
-		var data uint32 = 123
-		buf, _ := y3.NewCodec(0x10).Marshal(data)
-		source := y3.FromStream(bytes.NewReader(buf))
-		obs := source.Subscribe(0x10).OnObserve(func(v []byte) (interface{}, error) {
-			i, err := y3.ToUInt32(v)
-			if err != nil {
-				return nil, err
-			}
-			assert.Equal(t, uint32(123), i)
-			return i, nil
-		})
-		for range obs {
-		} // necessary for producing human readable output
-	})
-
-	t.Run("float64", func(t *testing.T) {
-		var data = 1.23
-		buf, _ := y3.NewCodec(0x10).Marshal(data)
-		source := y3.FromStream(bytes.NewReader(buf))
-		obs := source.Subscribe(0x10).OnObserve(func(v []byte) (interface{}, error) {
-			f, err := y3.ToFloat64(v)
-			if err != nil {
-				return nil, err
-			}
-			assert.Equal(t, float64(1.23), f)
-			return f, nil
-		})
-		for range obs {
-		} // necessary for producing human readable output
-	})
-
-	t.Run("string", func(t *testing.T) {
-		data := "abc"
-		buf, _ := y3.NewCodec(0x10).Marshal(data)
-		source := y3.FromStream(bytes.NewReader(buf))
-		obs := source.Subscribe(0x10).OnObserve(func(v []byte) (interface{}, error) {
-			s, err := y3.ToUTF8String(v)
-			if err != nil {
-				return nil, err
-			}
-			assert.Equal(t, "abc", s)
-			return s, nil
-		})
-		for range obs {
-		} // necessary for producing human readable output
-	})
-
-	t.Run("struct slice", func(t *testing.T) {
-		data := []testStruct{
-			{ID: 1, Name: "foo"},
-			{ID: 2, Name: "bar"},
-		}
-		buf, _ := y3.NewCodec(0x10).Marshal(data)
-		source := y3.FromStream(bytes.NewReader(buf))
-		obs := source.Subscribe(0x10).OnObserve(func(v []byte) (interface{}, error) {
-			var s []testStruct
-			err := y3.ToObject(v, &s)
-			if err != nil {
-				return nil, err
-			}
-			assert.Equal(t, []testStruct{{ID: 1, Name: "foo"}, {ID: 2, Name: "bar"}}, s)
-			return s, nil
-		})
-		for range obs {
-		} // necessary for producing human readable output
-	})
-}
-
-func Test_Subscribe_MultipleKeys(t *testing.T) {
-	t.Run("two", func(t *testing.T) {
-		buf1, _ := y3.NewCodec(0x10).Marshal("abc")
-		buf2, _ := y3.NewCodec(0x11).Marshal("def")
-		source := y3.FromStream(bytes.NewReader(append(buf1, buf2...)))
-		_ = source.Subscribe(0x10).OnObserve(func(v []byte) (interface{}, error) {
-			str, err := y3.ToUTF8String(v)
-			if err != nil {
-				return nil, err
-			}
-			assert.Equal(t, "abc", str)
-			return str, nil
-		})
-		_ = source.Subscribe(0x11).OnObserve(func(v []byte) (interface{}, error) {
-			str, err := y3.ToUTF8String(v)
-			if err != nil {
-				return nil, err
-			}
-			assert.Equal(t, "def", str)
-			return str, nil
-		})
-	})
-
-	t.Run("more", func(t *testing.T) {
-		buf1, _ := y3.NewCodec(0x10).Marshal("abc")
-		buf2, _ := y3.NewCodec(0x11).Marshal("def")
-		buf3, _ := y3.NewCodec(0x12).Marshal("uvw")
-		buf4, _ := y3.NewCodec(0x13).Marshal("xyz")
-		source := y3.FromStream(bytes.NewReader(append(append(append(buf1, buf2...), buf3...), buf4...)))
-		_ = source.Subscribe(0x10).OnObserve(func(v []byte) (interface{}, error) {
-			str, err := y3.ToUTF8String(v)
-			if err != nil {
-				return nil, err
-			}
-			assert.Equal(t, "abc", str)
-			return str, nil
-		})
-		_ = source.Subscribe(0x11).OnObserve(func(v []byte) (interface{}, error) {
-			str, err := y3.ToUTF8String(v)
-			if err != nil {
-				return nil, err
-			}
-			assert.Equal(t, "def", str)
-			return str, nil
-		})
-		_ = source.Subscribe(0x12).OnObserve(func(v []byte) (interface{}, error) {
-			str, err := y3.ToUTF8String(v)
-			if err != nil {
-				return nil, err
-			}
-			assert.Equal(t, "uvw", str)
-			return str, nil
-		})
-		_ = source.Subscribe(0x13).OnObserve(func(v []byte) (interface{}, error) {
-			str, err := y3.ToUTF8String(v)
-			if err != nil {
-				return nil, err
-			}
-			assert.Equal(t, "xyz", str)
-			return str, nil
-		})
-	})
-}
-
-// func Test_RawBytes(t *testing.T) {
-// 	buf := &bytes.Buffer{}
-// 	buf.Write([]byte{0, 0, 6, 0, 0, 0, 1, 2, 3})
-// 	obs := decoder.FromStream(decoder.NewReader(buf))
-// 	rawBytes := obs.RawBytes()
-// 	for b := range rawBytes {
-// 		assert.Equal(t, []byte{1, 2, 3}, b)
-// 		break
-// 	}
-// }
 
 func Test_SlidingWindowWithCount(t *testing.T) {
 	t.Run("window size = 1, slide size = 1, handler does nothing", func(t *testing.T) {

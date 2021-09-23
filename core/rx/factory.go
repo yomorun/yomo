@@ -34,6 +34,8 @@ func NewFactory() Factory {
 	return &factoryImpl{}
 }
 
+var _ Factory = &factoryImpl{}
+
 // FromChannel creates a new Stream from a channel.
 func (fac *factoryImpl) FromChannel(ctx context.Context, channel chan interface{}) Stream {
 	f := func(ctx context.Context, next chan rxgo.Item) {

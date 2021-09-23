@@ -51,6 +51,6 @@ func generateAndSendData(stream yomo.Source) {
 			log.Printf("[source] ✅ Emit %v to YoMo-Zipper", data)
 		}
 
-		time.Sleep(300 * time.Millisecond)
+		time.Sleep(1000 * time.Millisecond)
 	}
 }

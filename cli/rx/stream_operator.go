@@ -10,7 +10,6 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/reactivex/rxgo/v2"
 	"github.com/yomorun/yomo/internal/decoder"
-	"github.com/yomorun/yomo/internal/frame"
 	"github.com/yomorun/yomo/pkg/logger"
 )
 
@@ -19,7 +18,7 @@ func Of(i interface{}) rxgo.Item {
 	return rxgo.Item{V: i}
 }
 
-// StreamImpl is the implementation of Stream.
+// StreamImpl is the implementation of Stream interface.
 type StreamImpl struct {
 	ctx        context.Context
 	observable rxgo.Observable
@@ -770,7 +769,7 @@ func (s *StreamImpl) ZipMultiObservers(observers []KeyObserveFunc, zipper func(i
 }
 
 // PipeBackToZipper sets a specified DataID to bytes and will pipe it back to zipper.
-func (s *StreamImpl) PipeBackToZipper(dataID byte, metas ...*frame.Metadata) Stream {
+func (s *StreamImpl) PipeBackToZipper(dataID byte) Stream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
 		observe := s.Observe()
