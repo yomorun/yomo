@@ -44,7 +44,7 @@ func generateAndSendData(stream yomo.Source) {
 		sendingBuf, _ := json.Marshal(data)
 
 		// send data via QUIC stream.
-		_, err := stream.Write(sendingBuf, yomo.NewMetadata("md1", "metadata1"))
+		_, err := stream.Write(sendingBuf)
 		if err != nil {
 			log.Printf("[source] ❌ Emit %v to YoMo-Zipper failure with err: %v", data, err)
 		} else {

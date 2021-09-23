@@ -41,7 +41,7 @@ func handler(data []byte) (byte, []byte) {
 		logger.Errorf("[flow] json.Marshal err=%v", err)
 		os.Exit(-2)
 	} else {
-		logger.Printf(">> [flow] got tag=0x33, data=%v", model)
+		logger.Printf(">> [flow] got tag=0x33, data=%# x", model)
 	}
 	return 0x0, nil
 }

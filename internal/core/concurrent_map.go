@@ -146,19 +146,31 @@ func (cmap *ConcurrentMap) ExistsFunc(name string) bool {
 	return false
 }
 
+func (cmap *ConcurrentMap) getSfnTokenByConnectionID(remAddr string) string {
+	for connID, token := range cmap.connSfnMap {
+		if connID == remAddr {
+			return token
+		}
+	}
+	return ""
+}
+
 // Write will dispatch DataFrame to stream functions. from is the f sent from.
 func (cmap *ConcurrentMap) Write(f *frame.DataFrame, from string) error {
+	// from is the rem_addr of sfn
+	currentIssuer := cmap.getSfnTokenByConnectionID(from)
 	// immutable data stream, route to next sfn
 	var j int
 	for i, fn := range cmap.funcBuckets {
 		// find next sfn
-		if fn == from {
+		if fn == currentIssuer {
 			j = i + 1
 		}
 	}
+
 	// execute first one
 	if j == 0 {
-		logger.Infof("%s1st sfn write to [%s] -> [%s]:", ServerLogPrefix, from, cmap.funcBuckets[0])
+		logger.Infof("%s1st sfn write to [%s] -> [%s]:", ServerLogPrefix, currentIssuer, cmap.funcBuckets[0])
 		targetStream := cmap.Get(cmap.funcBuckets[0])
 		if targetStream == nil {
 			logger.Debugf("%ssfn[%s] stream is nil", ServerLogPrefix, cmap.funcBuckets[0])
@@ -176,7 +188,7 @@ func (cmap *ConcurrentMap) Write(f *frame.DataFrame, from string) error {
 	}
 
 	targetStream := cmap.Get(cmap.funcBuckets[j])
-	logger.Infof("%swill write to: [%s] -> [%s], target is nil:%v", ServerLogPrefix, from, cmap.funcBuckets[j], targetStream == nil)
+	logger.Infof("%swill write to: [%s] -> [%s], target is nil:%v", ServerLogPrefix, currentIssuer, cmap.funcBuckets[j], targetStream == nil)
 	if targetStream != nil {
 		_, err := (*targetStream).Write(f.Encode())
 		return err

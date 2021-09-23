@@ -207,7 +207,7 @@ func (s *Server) handleDataFrame(mainStream quic.Stream, session quic.Session, f
 	// counter +1
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
 	// inspect data frame
-	logger.Infof("%sframeType=%s, tid=%s, session.RemoteAddr()=%s, counter=%d", ServerLogPrefix, f.Type(), f.TransactionID(), session.RemoteAddr(), s.counterOfDataFrame)
+	logger.Infof("%s[handleDataFrame] seqID=%#x tid=%s, session.RemoteAddr()=%s, counter=%d, from=%s", ServerLogPrefix, f.SeqID(), f.TransactionID(), session.RemoteAddr(), s.counterOfDataFrame, currentIssuer)
 	// write data frame to stream
 	return s.funcs.Write(f, currentIssuer)
 }
