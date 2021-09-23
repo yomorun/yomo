@@ -146,19 +146,13 @@ func (cmap *ConcurrentMap) ExistsFunc(name string) bool {
 	return false
 }
 
-func (cmap *ConcurrentMap) getSfnTokenByConnectionID(remAddr string) string {
-	for connID, token := range cmap.connSfnMap {
-		if connID == remAddr {
-			return token
-		}
-	}
-	return ""
-}
-
 // Write will dispatch DataFrame to stream functions. from is the f sent from.
 func (cmap *ConcurrentMap) Write(f *frame.DataFrame, from string) error {
 	// from is the rem_addr of sfn
-	currentIssuer := cmap.getSfnTokenByConnectionID(from)
+	currentIssuer, ok := cmap.GetSfn(from)
+	if !ok {
+		currentIssuer = "*source*"
+	}
 	// immutable data stream, route to next sfn
 	var j int
 	for i, fn := range cmap.funcBuckets {
