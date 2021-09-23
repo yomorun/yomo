@@ -23,6 +23,7 @@ import (
 	"github.com/yomorun/yomo/cli/serverless"
 )
 
+// GolangServerless defines golang implementation of Serverless interface.
 type GolangServerless struct {
 	opts    *serverless.Options
 	source  string
@@ -30,6 +31,7 @@ type GolangServerless struct {
 	tempDir string
 }
 
+// Init initializes the serverless
 func (s *GolangServerless) Init(opts *serverless.Options) error {
 	// now := time.Now()
 	// msg := "Init: serverless function..."
@@ -40,14 +42,12 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 	if !file.Exists(s.opts.Filename) {
 		return fmt.Errorf("the file %s doesn't exist", s.opts.Filename)
 	}
+
 	// generate source code
 	source := file.GetBinContents(s.opts.Filename)
 	if len(source) < 1 {
 		return fmt.Errorf(`"%s" content is empty`, s.opts.Filename)
 	}
-
-	// rx stream serverless or raw bytes serverless.
-	isRx := strings.Contains(string(source), "rx.Stream")
 
 	// append main function
 	ctx := Context{
@@ -56,12 +56,15 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 		Port: s.opts.Port,
 	}
 
+	// determine: rx stream serverless or raw bytes serverless.
+	isRx := strings.Contains(string(source), "rx.Stream")
 	mainFuncTmpl := ""
 	if isRx {
 		mainFuncTmpl = string(MainFuncRxTmpl)
 	} else {
 		mainFuncTmpl = string(MainFuncRawBytesTmpl)
 	}
+
 	mainFunc, err := RenderTmpl(mainFuncTmpl, &ctx)
 	if err != nil {
 		return fmt.Errorf("Init: %s", err)
@@ -79,7 +82,7 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 	astutil.AddNamedImport(fset, astf, "stdlog", "log")
 	// log.InfoStatusEvent(os.Stdout, "import elapse: %v", time.Since(now))
 	// Generate the code
-	code, err := GenerateCode(fset, astf)
+	code, err := generateCode(fset, astf)
 	if err != nil {
 		return fmt.Errorf("Init: generate code err %s", err)
 	}
@@ -113,11 +116,12 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 		return err
 	}
 
-	// TODO: 检查临时目录是否已存构建源码文件md5
+	// TODO: check if is already built in temp dir by MD5
 	s.source = tempFile
 	return nil
 }
 
+// Build compiles the serverless to executable
 func (s *GolangServerless) Build(clean bool) error {
 	// check if the file exists
 	appPath := s.source
@@ -191,6 +195,7 @@ func (s *GolangServerless) Build(clean bool) error {
 	return nil
 }
 
+// Run compiles and runs the serverless
 func (s *GolangServerless) Run(verbose bool) error {
 	log.InfoStatusEvent(os.Stdout, "Run: %s", s.target)
 	cmd := exec.Command(s.target)
@@ -202,7 +207,7 @@ func (s *GolangServerless) Run(verbose bool) error {
 	return cmd.Run()
 }
 
-func GenerateCode(fset *token.FileSet, file *ast.File) ([]byte, error) {
+func generateCode(fset *token.FileSet, file *ast.File) ([]byte, error) {
 	var output []byte
 	buffer := bytes.NewBuffer(output)
 	if err := printer.Fprint(buffer, fset, file); err != nil {

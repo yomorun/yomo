@@ -11,12 +11,19 @@ var (
 	drivers   = make(map[string]Serverless)
 )
 
+// Serverless defines the interface for serverless
 type Serverless interface {
+	// Init initializes the serverless
 	Init(opts *Options) error
+
+	// Build compiles the serverless to executable
 	Build(clean bool) error
+
+	// Run compiles and runs the serverless
 	Run(verbose bool) error
 }
 
+// Register will register a serverless to drivers collections safely
 func Register(ext string, s Serverless) {
 	driversMu.Lock()
 	defer driversMu.Unlock()
@@ -29,12 +36,9 @@ func Register(ext string, s Serverless) {
 	drivers[ext] = s
 }
 
+// Create returns a new serverless instance with options.
 func Create(opts *Options) (Serverless, error) {
-	// isSource := false
 	ext := filepath.Ext(opts.Filename)
-	// if ext != "" && ext != ".exe" {
-	// 	isSource = true
-	// }
 
 	driversMu.RLock()
 	s, ok := drivers[ext]
