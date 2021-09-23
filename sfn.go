@@ -112,13 +112,13 @@ func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
 	// 	defer span.End()
 	// }
 	logger.Infof("%sonDataFrame ->[%s]", streamFunctionLogPrefix, s.name)
-	logger.Debugf("%sexecute-start fn: data=%#x", streamFunctionLogPrefix, data)
+	logger.Debugf("%sexecute-start fn: data=%# x", streamFunctionLogPrefix, data)
 	// invoke serverless
 	tag, resp := s.fn(data)
-	logger.Debugf("%sexecute-done fn: tag=%#x, resp=%#x", streamFunctionLogPrefix, tag, resp)
+	logger.Debugf("%sexecute-done fn: tag=%#x, resp=%# x", streamFunctionLogPrefix, tag, resp)
 	// if resp is not nil, means the user's function has returned something, we should send it to the zipper
 	if len(resp) != 0 {
-		logger.Debugf("%sstart WriteFrame(): tag=%#x, data=%v", streamFunctionLogPrefix, tag, resp)
+		logger.Debugf("%sstart WriteFrame(): tag=%#x, data=%# x", streamFunctionLogPrefix, tag, resp)
 		// build a DataFrame
 		// TODO: seems we should implement a DeepCopy() of MetaFrame in the future
 		frame := frame.NewDataFrame()
