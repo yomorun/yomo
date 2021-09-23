@@ -19,8 +19,7 @@ type Server struct {
 	token              string
 	stream             quic.Stream
 	state              string
-	funcs              *ConcurrentMap // connected stream functions
-	funcBuckets        map[int]string // user config stream functions
+	funcs              *ConcurrentMap
 	counterOfDataFrame int64
 	downstreams        map[string]*Client
 }
@@ -30,7 +29,6 @@ func NewServer(name string) *Server {
 	s := &Server{
 		token:       name,
 		funcs:       NewConcurrentMap(),
-		funcBuckets: make(map[int]string),
 		downstreams: make(map[string]*Client),
 	}
 	once.Do(func() {
@@ -223,62 +221,24 @@ func (s *Server) handleDataFrame(mainStream quic.Stream, session quic.Session, f
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
 	// inspect data frame
 	logger.Infof("%sframeType=%s, metadata=%s, issuer=%s, session.RemoteAddr()=%s, counter=%d", ServerLogPrefix, f.Type(), f.GetMetadatas(), currentIssuer, session.RemoteAddr(), s.counterOfDataFrame)
-	// immutable data stream, route to next sfn
-	var j int
-	for i, fn := range s.funcBuckets {
-		// find next sfn
-		if fn == currentIssuer {
-			j = i + 1
-		}
-	}
-	// execute first one
-	if j == 0 {
-		logger.Infof("%s1st sfn write to [%s] -> [%s]:", ServerLogPrefix, currentIssuer, s.funcBuckets[0])
-		targetStream := s.funcs.Get(s.funcBuckets[0])
-		if targetStream == nil {
-			logger.Debugf("%ssfn[%s] stream is nil", ServerLogPrefix, s.funcBuckets[0])
-			err := fmt.Errorf("sfn[%s] stream is nil", s.funcBuckets[0])
-			return err
-		}
-		(*targetStream).Write(f.Encode())
-		return nil
-	}
-
-	if len(s.funcBuckets[j]) == 0 {
-		logger.Debugf("%sno sfn found, drop this data frame", ServerLogPrefix)
-		err := errors.New("no sfn found, drop this data frame")
-		return err
-	}
-
-	targetStream := s.funcs.Get(s.funcBuckets[j])
-	logger.Infof("%swill write to: [%s] -> [%s], target is nil:%v", ServerLogPrefix, currentIssuer, s.funcBuckets[j], targetStream == nil)
-	if targetStream != nil {
-		(*targetStream).Write(f.Encode())
-	}
-
-	return nil
+	// write data frame to stream
+	return s.funcs.Write(f)
 }
 
 // AddWorkflow add sfn to this server.
 func (s *Server) AddWorkflow(wfs ...Workflow) error {
 	for _, wf := range wfs {
-		s.funcBuckets[wf.Seq] = wf.Token
+		s.funcs.AddFunc(wf.Seq, wf.Token)
 	}
 	return nil
 }
 
 // validateHandshake validates if the handshake frame is valid.
 func (s *Server) validateHandshake(f *frame.HandshakeFrame) bool {
-	isValid := false
-	for _, k := range s.funcBuckets {
-		logger.Debugf("%s>>> validateHandshake: (f)=%s, (list)=%s", ServerLogPrefix, f.Name, k)
-		if k == f.Name {
-			isValid = true
-			break
-		}
+	isValid := s.funcs.ExistsFunc(f.Name)
+	if !isValid {
+		logger.Warnf("%svalidateHandshake(%v), result: %v", ServerLogPrefix, *f, isValid)
 	}
-
-	logger.Warnf("%svalidateHandshake(%v), result: %v", ServerLogPrefix, *f, isValid)
 	return isValid
 }
 

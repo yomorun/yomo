@@ -1,10 +1,13 @@
 package core
 
 import (
+	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 
 	"github.com/lucas-clemente/quic-go"
+	"github.com/yomorun/yomo/internal/frame"
 	"github.com/yomorun/yomo/pkg/logger"
 )
 
@@ -20,7 +23,9 @@ type ConcurrentMap struct {
 	sfnCollection map[string][]connStream
 	// key: connection ID, value: stream function name.
 	connSfnMap map[string]string
-	next       uint32
+	// user config stream functions
+	funcBuckets map[int]string
+	next        uint32
 }
 
 // NewConcurrentMap create a ConcurrentMap instance.
@@ -28,6 +33,7 @@ func NewConcurrentMap() *ConcurrentMap {
 	return &ConcurrentMap{
 		sfnCollection: make(map[string][]connStream),
 		connSfnMap:    make(map[string]string),
+		funcBuckets:   make(map[int]string),
 	}
 }
 
@@ -119,5 +125,60 @@ func (cmap *ConcurrentMap) GetCurrentSnapshot() map[string][]*quic.Stream {
 		result[key] = streams
 	}
 	return result
+}
 
+// AddFunc add user stream function to workflow
+func (cmap *ConcurrentMap) AddFunc(index int, name string) {
+	cmap.l.Lock()
+	defer cmap.l.Unlock()
+	cmap.funcBuckets[index] = name
+}
+
+func (cmap *ConcurrentMap) ExistsFunc(name string) bool {
+	cmap.l.RLock()
+	defer cmap.l.RUnlock()
+	for _, k := range cmap.funcBuckets {
+		if k == name {
+			return true
+		}
+	}
+	return false
+}
+
+func (cmap *ConcurrentMap) Write(f *frame.DataFrame) error {
+	currentIssuer := f.GetIssuer()
+	// immutable data stream, route to next sfn
+	var j int
+	for i, fn := range cmap.funcBuckets {
+		// find next sfn
+		if fn == currentIssuer {
+			j = i + 1
+		}
+	}
+	// execute first one
+	if j == 0 {
+		logger.Infof("%s1st sfn write to [%s] -> [%s]:", ServerLogPrefix, currentIssuer, cmap.funcBuckets[0])
+		targetStream := cmap.Get(cmap.funcBuckets[0])
+		if targetStream == nil {
+			logger.Debugf("%ssfn[%s] stream is nil", ServerLogPrefix, cmap.funcBuckets[0])
+			err := fmt.Errorf("sfn[%s] stream is nil", cmap.funcBuckets[0])
+			return err
+		}
+		_, err := (*targetStream).Write(f.Encode())
+		return err
+	}
+
+	if len(cmap.funcBuckets[j]) == 0 {
+		logger.Debugf("%sno sfn found, drop this data frame", ServerLogPrefix)
+		err := errors.New("no sfn found, drop this data frame")
+		return err
+	}
+
+	targetStream := cmap.Get(cmap.funcBuckets[j])
+	logger.Infof("%swill write to: [%s] -> [%s], target is nil:%v", ServerLogPrefix, currentIssuer, cmap.funcBuckets[j], targetStream == nil)
+	if targetStream != nil {
+		_, err := (*targetStream).Write(f.Encode())
+		return err
+	}
+	return nil
 }
