@@ -2,6 +2,8 @@
 
 version: '3'
 
+output: 'prefixed'
+
 tasks:
   # example cleanup
   clean:
@@ -9,18 +11,18 @@ tasks:
     silent: true
     cmds:
       - echo 'example cleaning...'
-      - rm -rf example/basic/flow/flow
-      - rm -rf example/basic/source/source
-      - rm -rf example/basic/zipper/zipper
-      - rm -rf example/multi-stream-fn/source/source
-      - rm -rf example/multi-stream-fn/stream-fn-1/fn1
-      - rm -rf example/multi-stream-fn/stream-fn-2/fn2
-      - rm -rf example/multi-stream-fn/stream-fn-3/fn3
-      - rm -rf example/multi-stream-fn/zipper/zipper
-      - rm -rf example/same-stream-fn/source/source
-      - rm -rf example/same-stream-fn/stream-fn/fn1
-      - rm -rf example/same-stream-fn/stream-fn/fn2
-      - rm -rf example/same-stream-fn/zipper/zipper
+      - rm -rf basic/flow/flow
+      - rm -rf basic/source/source
+      - rm -rf basic/zipper/zipper
+      - rm -rf multi-stream-fn/source/source
+      - rm -rf multi-stream-fn/stream-fn-1/fn1
+      - rm -rf multi-stream-fn/stream-fn-2/fn2
+      - rm -rf multi-stream-fn/stream-fn-3/fn3
+      - rm -rf multi-stream-fn/zipper/zipper
+      - rm -rf same-stream-fn/source/source
+      - rm -rf same-stream-fn/stream-fn/fn1
+      - rm -rf same-stream-fn/stream-fn/fn2
+      - rm -rf same-stream-fn/zipper/zipper
       - echo 'example clean.'
   # basic example
   basic:
@@ -32,7 +34,7 @@ tasks:
   basic-source:
     desc: run basic source example
     deps: [basic-source-build]
-    dir: "example/basic/source"
+    dir: "basic/source"
     cmds:
       - "./source{{exeExt}}"
     env:
@@ -41,7 +43,7 @@ tasks:
 
   basic-source-build:
     desc: build basic source example
-    dir: "example/basic/source"
+    dir: "basic/source"
     cmds:
       - echo "basic source building..."
       - "go build -o source{{exeExt}} main.go"
@@ -51,7 +53,7 @@ tasks:
   basic-zipper:
     desc: run basic zipper service
     deps: [basic-zipper-build]
-    dir: "example/basic/zipper"
+    dir: "basic/zipper"
     cmds:
       # - "yomo serve -v -c workflow.yaml"
       - "./zipper{{exeExt}}"
@@ -61,7 +63,7 @@ tasks:
 
   basic-zipper-build:
     desc: build basic zipper example
-    dir: "example/basic/zipper"
+    dir: "basic/zipper"
     cmds:
       - echo "basic zipper building..."
       - "go build -o zipper{{exeExt}} main.go"
@@ -71,7 +73,7 @@ tasks:
   basic-flow:
     desc: run basic flow stream function
     deps: [basic-flow-build]
-    dir: "example/basic/flow"
+    dir: "basic/flow"
     cmds:
       - "./flow{{exeExt}}"
     env:
@@ -80,7 +82,7 @@ tasks:
 
   basic-flow-build:
     desc: build basic flow stream function
-    dir: "example/basic/flow"
+    dir: "basic/flow"
     cmds:
       - echo "basic flow building..."
       - "go build -o flow{{exeExt}} main.go"
@@ -97,7 +99,7 @@ tasks:
   multi-stream-fn-source:
     desc: run multi stream function example
     deps: [multi-stream-fn-source-build]
-    dir: "example/multi-stream-fn/source"
+    dir: "multi-stream-fn/source"
     cmds:
       - "./source{{exeExt}}"
     env:
@@ -106,7 +108,7 @@ tasks:
 
   multi-stream-fn-source-build:
     desc: build multi stream function source example
-    dir: "example/multi-stream-fn/source"
+    dir: "multi-stream-fn/source"
     cmds:
       - echo "multi stream function source building..."
       - "go build -o source{{exeExt}} main.go"
@@ -116,7 +118,7 @@ tasks:
   multi-stream-fn-zipper:
     desc: run multi stream function zipper service
     deps: [multi-stream-fn-zipper-build]
-    dir: "example/multi-stream-fn/zipper"
+    dir: "multi-stream-fn/zipper"
     cmds:
       - "./zipper{{exeExt}}"
     env:
@@ -125,7 +127,7 @@ tasks:
 
   multi-stream-fn-zipper-build:
     desc: build multi stream funcgion zipper example
-    dir: "example/multi-stream-fn/zipper"
+    dir: "multi-stream-fn/zipper"
     cmds:
       - echo "multi stream function zipper building..."
       - "go build -o zipper{{exeExt}} main.go"
@@ -135,7 +137,7 @@ tasks:
   multi-stream-fn-1:
     desc: run multi stream function 1 
     deps: [multi-stream-fn-1-build]
-    dir: "example/multi-stream-fn/stream-fn-1"
+    dir: "multi-stream-fn/stream-fn-1"
     cmds:
       - "./fn1{{exeExt}}"
     env:
@@ -144,7 +146,7 @@ tasks:
 
   multi-stream-fn-1-build:
     desc: build multi stream function 1
-    dir: "example/multi-stream-fn/stream-fn-1"
+    dir: "multi-stream-fn/stream-fn-1"
     cmds:
       - echo "fn1 building..."
       - "go build -o fn1{{exeExt}} app.go"
@@ -154,7 +156,7 @@ tasks:
   multi-stream-fn-2:
     desc: run multi stream function 2 
     deps: [multi-stream-fn-2-build]
-    dir: "example/multi-stream-fn/stream-fn-2"
+    dir: "multi-stream-fn/stream-fn-2"
     cmds:
       - "./fn2{{exeExt}}"
     env:
@@ -163,7 +165,7 @@ tasks:
 
   multi-stream-fn-2-build:
     desc: build multi stream function 2
-    dir: "example/multi-stream-fn/stream-fn-2"
+    dir: "multi-stream-fn/stream-fn-2"
     cmds:
       - echo "fn2 building..."
       - "go build -o fn2{{exeExt}} app.go"
@@ -173,7 +175,7 @@ tasks:
   multi-stream-fn-3:
     desc: run multi stream function 3 
     deps: [multi-stream-fn-3-build]
-    dir: "example/multi-stream-fn/stream-fn-3"
+    dir: "multi-stream-fn/stream-fn-3"
     cmds:
       - "./fn3{{exeExt}}"
     env:
@@ -182,7 +184,7 @@ tasks:
 
   multi-stream-fn-3-build:
     desc: build multi stream function 3
-    dir: "example/multi-stream-fn/stream-fn-3"
+    dir: "multi-stream-fn/stream-fn-3"
     cmds:
       - echo "fn3 building..."
       - "go build -o fn3{{exeExt}} app.go"
@@ -198,7 +200,7 @@ tasks:
   same-stream-fn-source:
     desc: run same stream function example
     deps: [same-stream-fn-source-build]
-    dir: "example/same-stream-fn/source"
+    dir: "same-stream-fn/source"
     cmds:
       - "./source{{exeExt}}"
     env:
@@ -207,7 +209,7 @@ tasks:
 
   same-stream-fn-source-build:
     desc: build same stream function source example
-    dir: "example/same-stream-fn/source"
+    dir: "same-stream-fn/source"
     cmds:
       - echo "same stream function source building..."
       - "go build -o source{{exeExt}} main.go"
@@ -217,7 +219,7 @@ tasks:
   same-stream-fn-zipper:
     desc: run same stream function zipper service
     deps: [same-stream-fn-zipper-build]
-    dir: "example/same-stream-fn/zipper"
+    dir: "same-stream-fn/zipper"
     cmds:
       - "./zipper{{exeExt}}"
     env:
@@ -226,7 +228,7 @@ tasks:
 
   same-stream-fn-zipper-build:
     desc: build same stream funcgion zipper example
-    dir: "example/same-stream-fn/zipper"
+    dir: "same-stream-fn/zipper"
     cmds:
       - echo "same stream function zipper building..."
       - "go build -o zipper{{exeExt}} main.go"
@@ -236,7 +238,7 @@ tasks:
   same-stream-fn-1:
     desc: run same stream function  
     deps: [same-stream-fn-build]
-    dir: "example/same-stream-fn/stream-fn"
+    dir: "same-stream-fn/stream-fn"
     cmds:
       - "./fn1{{exeExt}}"
     env:
@@ -245,7 +247,7 @@ tasks:
 
   same-stream-fn-build:
     desc: build same stream function 3
-    dir: "example/same-stream-fn/stream-fn"
+    dir: "same-stream-fn/stream-fn"
     cmds:
       - echo "fn building..."
       - "go build -o fn1{{exeExt}} app.go"
@@ -256,9 +258,77 @@ tasks:
   same-stream-fn-2:
     desc: run same stream function  
     deps: [same-stream-fn-build]
-    dir: "example/same-stream-fn/stream-fn"
+    dir: "same-stream-fn/stream-fn"
     cmds:
       - "./fn2{{exeExt}}"
     env:
       YOMO_ENABLE_DEBUG: false
       YOMO_LOG_LEVEL: info
+
+  # multi zipper example 
+  multi-zipper:
+    desc: run example
+    deps: [multi-zipper-build]
+    cmds: 
+      - task: multi-zipper-services
+
+  multi-zipper-services:
+    desc: yomo services
+    deps: [multi-zipper-2, multi-zipper-sfn, multi-zipper-1, multi-zipper-source]
+
+
+  multi-zipper-build:
+    run: once
+    desc: go build
+    dir: "multi-zipper"
+    cmds:
+      - rm -rf bin
+      - mkdir -p bin
+      - go build -o bin/source source/source.go
+      - go build -o bin/zipper-2 zipper-2/zipper_2.go
+      - go build -o bin/zipper-1 zipper-1/zipper_1.go
+      - go build -o bin/sfn sfn/sfn_echo.go
+      - task: multi-zipper-copy
+
+  multi-zipper-copy:
+    desc: copy workflow configs
+    dir: "multi-zipper"
+    cmds:
+      - cp zipper-1/*.yaml bin/.
+      - cp zipper-2/*.yaml bin/.
+
+  multi-zipper-2:
+    desc: start zipper service 2
+    dir: "multi-zipper/bin"
+    env:
+      YOMO_ENABLE_DEBUG: false
+      YOMO_LOG_LEVEL: debug
+    cmds:
+      - ./zipper-2
+
+  multi-zipper-1:
+    desc: start zipper service 1
+    dir: "multi-zipper/bin"
+    env:
+      YOMO_ENABLE_DEBUG: false
+      YOMO_LOG_LEVEL: debug
+    cmds:
+      - ./zipper-1
+
+  multi-zipper-sfn:
+    desc: start stream function
+    dir: "multi-zipper/bin"
+    env:
+      YOMO_ENABLE_DEBUG: false
+      YOMO_LOG_LEVEL: debug
+    cmds:
+      - ./sfn
+
+  multi-zipper-source:
+    desc: run source
+    dir: "multi-zipper/bin"
+    env:
+      YOMO_ENABLE_DEBUG: false
+      YOMO_LOG_LEVEL: debug
+    cmds:
+      - ./source

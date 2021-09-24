@@ -30,6 +30,7 @@ example/same-stream-fn/source/source
 example/same-stream-fn/stream-fn/fn1
 example/same-stream-fn/stream-fn/fn2
 example/same-stream-fn/zipper/zipper
+example/multi-zipper/bin
 # cli
 cli/example/source/source
 cli/example/stream-fn-db/stream-fn-db

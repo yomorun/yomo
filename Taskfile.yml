@@ -2,18 +2,15 @@
 
 version: "3"
 
+output: 'prefixed'
+
 includes:
-  example: ./example.yml
-  cli: ./cli/cli.yml
-  # multi-zipper: ./example/multi-zipper
+  example: 
+    dir: ./example
+    taskfile: ./example/Taskfile.yml
 
 tasks:
   default:
     cmds:
       - task -l
     silent: true
-  multi_zipper:
-    dir: example/multi-zipper
-    desc: multi zipper example
-    cmds:
-      - task all
