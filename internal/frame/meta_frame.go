@@ -1,57 +1,60 @@
 package frame
 
 import (
+	"strconv"
+	"time"
+
 	"github.com/yomorun/y3"
 )
 
-// MetaFrame defines the data structure of meta data in a `DataFrame`
+// MetaFrame is a Y3 encoded bytes, SeqID is a fixed value of TYPE_ID_TRANSACTION.
+// used for describes metadata for a DataFrame.
 type MetaFrame struct {
-	transactionID string
+	tid string
 }
 
-// NewMetaFrame creates a new MetaFrame with a given transactionID
-func NewMetaFrame(tid string) *MetaFrame {
+// NewMetaFrame creates a new MetaFrame instance.
+func NewMetaFrame() *MetaFrame {
 	return &MetaFrame{
-		transactionID: tid,
+		tid: strconv.FormatInt(time.Now().Unix(), 10),
 	}
 }
 
-// TransactionID returns the transactionID of the MetaFrame
+// SetTransactinID set the transaction ID.
+func (m *MetaFrame) SetTransactionID(transactionID string) {
+	m.tid = transactionID
+}
+
+// TransactionID returns transactionID
 func (m *MetaFrame) TransactionID() string {
-	return m.transactionID
+	return m.tid
 }
 
-// Encode returns Y3 encoded bytes of the MetaFrame
+// Encode implements Frame.Encode method.
 func (m *MetaFrame) Encode() []byte {
-	metaNode := y3.NewNodePacketEncoder(byte(TagOfMetaFrame))
-	// TransactionID string
-	tidPacket := y3.NewPrimitivePacketEncoder(byte(TagOfTransactionID))
-	tidPacket.SetStringValue(m.transactionID)
-	// add TransactionID to MetaFrame
-	metaNode.AddPrimitivePacket(tidPacket)
+	meta := y3.NewNodePacketEncoder(byte(TagOfMetaFrame))
 
-	return metaNode.Encode()
+	transactionID := y3.NewPrimitivePacketEncoder(byte(TagOfTransactionID))
+	transactionID.SetStringValue(m.tid)
+
+	meta.AddPrimitivePacket(transactionID)
+	return meta.Encode()
 }
 
-// DecodeToMetaFrame decodes Y3 encoded bytes to a MetaFrame
+// DecodeToMetaFrame decode a MetaFrame instance from given buffer.
 func DecodeToMetaFrame(buf []byte) (*MetaFrame, error) {
-	packet := &y3.NodePacket{}
-	_, err := y3.DecodeToNodePacket(buf, packet)
-
+	nodeBlock := y3.NodePacket{}
+	_, err := y3.DecodeToNodePacket(buf, &nodeBlock)
 	if err != nil {
 		return nil, err
 	}
 
-	var tid string
-	if s, ok := packet.PrimitivePackets[0x01]; ok {
-		tid, err = s.ToUTF8String()
-		if err != nil {
-			return nil, err
-		}
+	meta := &MetaFrame{}
+	for _, v := range nodeBlock.PrimitivePackets {
+		val, _ := v.ToUTF8String()
+		meta.tid = val
+		break
 	}
 
-	meta := &MetaFrame{
-		transactionID: tid,
-	}
 	return meta, nil
 }

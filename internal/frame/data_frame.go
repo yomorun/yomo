@@ -1,9 +1,11 @@
 package frame
 
-import "github.com/yomorun/y3"
+import (
+	"github.com/yomorun/y3"
+)
 
 // DataFrame defines the data structure carried with user's data
-// when transfering within YoMo
+// transferring within YoMo
 type DataFrame struct {
 	metaFrame    *MetaFrame
 	payloadFrame *PayloadFrame
@@ -11,16 +13,21 @@ type DataFrame struct {
 
 // NewDataFrame create `DataFrame` with a transactionID string,
 // consider change transactionID to UUID type later
-func NewDataFrame(transactionID string) *DataFrame {
+func NewDataFrame() *DataFrame {
 	data := &DataFrame{
-		metaFrame: NewMetaFrame(transactionID),
+		metaFrame: NewMetaFrame(),
 	}
 	return data
 }
 
 // Type gets the type of Frame.
-func (d *DataFrame) Type() FrameType {
+func (d *DataFrame) Type() Type {
 	return TagOfDataFrame
+}
+
+// SeqID return the SeqID of carriage data.
+func (d *DataFrame) SeqID() byte {
+	return d.payloadFrame.Sid
 }
 
 // SetCarriage set user's raw data in `DataFrame`
@@ -36,6 +43,16 @@ func (d *DataFrame) GetCarriage() []byte {
 // TransactionID return transactionID string
 func (d *DataFrame) TransactionID() string {
 	return d.metaFrame.TransactionID()
+}
+
+// SetTransactionID set transactionID string
+func (d *DataFrame) SetTransactionID(transactionID string) {
+	d.metaFrame.SetTransactionID(transactionID)
+}
+
+// GetMetaFrame return MetaFrame.
+func (d *DataFrame) GetMetaFrame() *MetaFrame {
+	return d.metaFrame
 }
 
 // GetDataTagID return the Tag of user's data

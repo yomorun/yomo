@@ -1,0 +1,16 @@
+# https://taskfile.dev
+
+version: "3"
+
+output: 'prefixed'
+
+includes:
+  example: 
+    dir: ./example
+    taskfile: ./example/Taskfile.yml
+
+tasks:
+  default:
+    cmds:
+      - task -l
+    silent: true
