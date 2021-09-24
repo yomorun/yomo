@@ -9,8 +9,8 @@ import (
 	"runtime"
 	"syscall"
 
+	"github.com/yomorun/yomo/internal/config"
 	"github.com/yomorun/yomo/internal/core"
-	"github.com/yomorun/yomo/internal/util"
 	"github.com/yomorun/yomo/pkg/logger"
 )
 
@@ -57,7 +57,6 @@ type zipper struct {
 	server            *core.Server
 	client            *core.Client
 	downstreamZippers []Zipper
-	// logger            utils.Logger
 }
 
 var _ Zipper = &zipper{}
@@ -70,7 +69,7 @@ func NewZipperWithOptions(name string, opts ...Option) Zipper {
 
 // NewZipper create a zipper instance from config files.
 func NewZipper(conf string) (Zipper, error) {
-	config, err := util.ParseConfig(conf)
+	config, err := config.ParseWorkflowConfig(conf)
 	if err != nil {
 		logger.Errorf("%s[ERR] %v", zipperLogPrefix, err)
 		return nil, err
@@ -78,7 +77,10 @@ func NewZipper(conf string) (Zipper, error) {
 	// listening address
 	listenAddr := fmt.Sprintf("%s:%d", config.Host, config.Port)
 
-	return createZipperServer(config.Name, listenAddr), nil
+	zipper := createZipperServer(config.Name, listenAddr)
+	err = zipper.configWorkflow(config)
+
+	return zipper, err
 }
 
 // NewDownstreamZipper create a zipper descriptor for downstream zipper.
@@ -136,10 +138,15 @@ func (z *zipper) init() {
 
 // ConfigWorkflow will read workflows from config files and register them to zipper.
 func (z *zipper) ConfigWorkflow(conf string) error {
-	config, err := util.ParseConfig(conf)
+	config, err := config.ParseWorkflowConfig(conf)
 	if err != nil {
+		logger.Errorf("%s[ERR] %v", zipperLogPrefix, err)
 		return err
 	}
+	return z.configWorkflow(config)
+}
+
+func (z *zipper) configWorkflow(config *config.WorkflowConfig) error {
 	for i, app := range config.Functions {
 		if err := z.server.AddWorkflow(core.Workflow{Seq: i, Token: app.Name}); err != nil {
 			return err
