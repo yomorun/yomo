@@ -72,6 +72,12 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 		DisablePathMTUDiscovery:        true,
 	}
 
+	// TODO: refactor this later as a Connection Manager
+	// reconnect
+	// for download zipper
+	// If you do not check for errors, the connection will be automatically reconnected
+	go c.reconnect(ctx, addr)
+
 	// create quic connection
 	session, err := quic.DialAddr(addr, tlsConf, quicConf)
 	if err != nil {
@@ -99,10 +105,6 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 
 	c.state = ConnStateConnected
 	logger.Printf("%s[%s] is connected to YoMo-Zipper %s", ClientLogPrefix, c.token, addr)
-
-	// TODO: refactor this later as a Connection Manager
-	// reconnect
-	go c.reconnect(ctx, addr)
 
 	return nil
 }
