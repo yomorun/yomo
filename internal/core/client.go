@@ -104,7 +104,7 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 	go c.handleFrame()
 
 	c.state = ConnStateConnected
-	logger.Printf("%s[%s] is connected to YoMo-Zipper %s", ClientLogPrefix, c.token, addr)
+	logger.Printf("%s❤️  [%s] is connected to YoMo-Zipper %s", ClientLogPrefix, c.token, addr)
 
 	return nil
 }
@@ -260,7 +260,9 @@ func (c *Client) reconnect(ctx context.Context, addr string) {
 		if c.state == ConnStateDisconnected {
 			fmt.Printf("%s[%s] is retring to YoMo-Zipper %s...\n", ClientLogPrefix, c.token, addr)
 			err := c.Connect(ctx, addr)
-			logger.Errorf("%s reconnect error:%v", ClientLogPrefix, err)
+			if err != nil {
+				logger.Errorf("%sreconnect error:%v", ClientLogPrefix, err)
+			}
 		}
 	}
 }

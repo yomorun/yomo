@@ -64,7 +64,7 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 		return err
 	}
 	defer listener.Close()
-	logger.Printf("%s✅ (name:%s) Listening on: %s, QUIC: %v", ServerLogPrefix, s.token, listener.Addr(), qconf.Versions)
+	logger.Printf("%s✅ [%s] Listening on: %s, QUIC: %v", ServerLogPrefix, s.token, listener.Addr(), qconf.Versions)
 
 	s.state = ConnStateConnected
 	for {
@@ -88,10 +88,14 @@ func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 				stream, err := sess.AcceptStream(ctx)
 				if err != nil {
 					// if client close the connection, then we should close the session
-					logger.Errorf("%s❤️3/ %T on [stream] %v, deleting from s.funcs if this stream is [sfn]", ServerLogPrefix, err, err)
-					if name, ok := s.funcs.GetSfn(connID); ok {
+					name, ok := s.funcs.GetSfn(connID)
+					if !ok {
+						name = "unknown"
+					}
+					logger.Errorf("%s❤️3/ [%s](%s) on stream %v", ServerLogPrefix, name, connID, err)
+					if ok {
 						s.funcs.Remove(name, connID)
-						logger.Debugf("%s sfn=%s removed", ServerLogPrefix, name)
+						logger.Printf("%s💔 [%s](%s) is disconnected", ServerLogPrefix, name, connID)
 					}
 					break
 				}
@@ -164,6 +168,7 @@ func (s *Server) handleHandshakeFrame(stream quic.Stream, session quic.Session, 
 	clientType := ClientType(f.ClientType)
 	switch clientType {
 	case ClientTypeSource:
+		s.funcs.Set(f.Name, getConnID(session), &stream)
 	case ClientTypeStreamFunction:
 		// when sfn connect, it will provide its token to the server. server will check if this client
 		// has permission connected to.
@@ -177,8 +182,8 @@ func (s *Server) handleHandshakeFrame(stream quic.Stream, session quic.Session, 
 
 		// validation successful, register this sfn
 		s.funcs.Set(f.Name, getConnID(session), &stream)
-		logger.Infof("%s sfn: %s (%s) connected!", ServerLogPrefix, f.Name, getConnID(session))
 	case ClientTypeUpstreamZipper:
+		s.funcs.Set(f.Name, getConnID(session), &stream)
 	default:
 		// unknown client type
 		logger.Errorf("%sClientType=%# x, ilegal!", ServerLogPrefix, f.ClientType)
@@ -186,6 +191,7 @@ func (s *Server) handleHandshakeFrame(stream quic.Stream, session quic.Session, 
 		session.CloseWithError(0xCC, "Unknown ClientType, illegal!")
 		return errors.New("core.server: Unknown ClientType, illegal")
 	}
+	logger.Printf("%s❤️  <%s> [%s](%s) is connected!", ServerLogPrefix, clientType, f.Name, getConnID(session))
 	return nil
 }
 
