@@ -41,10 +41,10 @@ func NewServer(name string) *Server {
 func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
 	qconf := &quic.Config{
 		Versions:                       []quic.VersionNumber{quic.Version1, quic.VersionDraft29},
-		MaxIdleTimeout:                 time.Second * 3,
+		MaxIdleTimeout:                 time.Second * 10,
 		KeepAlive:                      true,
-		MaxIncomingStreams:             10000,
-		MaxIncomingUniStreams:          10000,
+		MaxIncomingStreams:             1000,
+		MaxIncomingUniStreams:          1000,
 		HandshakeIdleTimeout:           time.Second * 3,
 		InitialStreamReceiveWindow:     1024 * 1024 * 2,
 		InitialConnectionReceiveWindow: 1024 * 1024 * 2,
