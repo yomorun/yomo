@@ -124,18 +124,19 @@ func (s *Server) handleSession(session quic.Session, mainStream quic.Stream) {
 		logger.Debugf("%shandleSession 💚 waiting read next...", ServerLogPrefix)
 		f, err := fs.ReadFrame()
 		if err != nil {
-			logger.Errorf("%s%T %v", ServerLogPrefix, err, err)
+			logger.Errorf("%s [ERR] %T %v", ServerLogPrefix, err, err)
 			if errors.Is(err, net.ErrClosed) {
 				// if client close the connection, net.ErrClosed will be raise
 				// by quic-go IdleTimeoutError after connection's KeepAlive config.
-				// logger.Infof("[ERR] on [ParseFrame] %v", net.ErrClosed)
+				logger.Warnf("%s [ERR] net.ErrClosed on [handleSession] %v", ServerLogPrefix, net.ErrClosed)
+				session.CloseWithError(0xC1, "net.ErrClosed")
 				break
 			}
 			// any error occurred, we should close the session
 			// after this, session.AcceptStream() will raise the error
 			// which specific in session.CloseWithError()
 			mainStream.Close()
-			session.CloseWithError(0xCC, err.Error())
+			session.CloseWithError(0xC0, err.Error())
 			logger.Warnf("%ssession.Close()", ServerLogPrefix)
 			break
 		}
@@ -183,7 +184,7 @@ func (s *Server) handleHandshakeFrame(stream quic.Stream, session quic.Session, 
 		// unknown client type
 		logger.Errorf("%sClientType=%# x, ilegal!", ServerLogPrefix, f.ClientType)
 		stream.Close()
-		session.CloseWithError(0xCC, "Unknown ClientType, illegal!")
+		session.CloseWithError(0xCD, "Unknown ClientType, illegal!")
 		return errors.New("core.server: Unknown ClientType, illegal")
 	}
 	return nil

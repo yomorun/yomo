@@ -119,7 +119,7 @@ func (c *Client) handleFrame() {
 		f, err := fs.ReadFrame()
 		if err != nil {
 			defer c.stream.Close()
-			defer c.session.CloseWithError(0xCC, err.Error())
+			defer c.session.CloseWithError(0xD0, err.Error())
 			defer c.setState(ConnStateDisconnected)
 
 			logger.Errorf("%shandleFrame.ReadFrame(): %T %v", ClientLogPrefix, err, err)
