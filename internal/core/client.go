@@ -124,7 +124,7 @@ func (c *Client) handleFrame() {
 
 			logger.Errorf("%shandleFrame.ReadFrame(): %T %v", ClientLogPrefix, err, err)
 			if e, ok := err.(*quic.IdleTimeoutError); ok {
-				logger.Errorf("%sconnection timeout, err=%v", ClientLogPrefix, e)
+				logger.Errorf("%sconnection timeout, err=%v, zipper=%s", ClientLogPrefix, e, c.addr)
 			} else if e, ok := err.(*quic.ApplicationError); ok {
 				logger.Errorf("%sapplication error, err=%v, errcode=%v", ClientLogPrefix, e, e.ErrorCode)
 				if e.ErrorCode == 0xCC {
