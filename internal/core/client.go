@@ -104,7 +104,7 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 	go c.handleFrame()
 
 	c.state = ConnStateConnected
-	logger.Printf("%s[%s] is connected to YoMo-Zipper %s", ClientLogPrefix, c.token, addr)
+	logger.Printf("%s has connected to %s (%s)", ClientLogPrefix, c.token, addr)
 
 	return nil
 }
