@@ -219,10 +219,10 @@ func (c *Client) WriteFrame(frm frame.Frame) error {
 	defer c.mu.Unlock()
 	n, err := c.stream.Write(data)
 	// TODO: move partial logging as a utility
-	if len(data) > 256 {
-		logger.Debugf("%sWriteFrame() wrote n=%d, len(data)=%d", ClientLogPrefix, n, len(data))
+	if len(data) > 16 {
+		logger.Debugf("%sWriteFrame() wrote n=%d, len(data)=%d, data=%# x", ClientLogPrefix, n, len(data), data[:16])
 	} else {
-		logger.Debugf("%sWriteFrame() wrote n=%d, data=%# x", ClientLogPrefix, n, data)
+		logger.Debugf("%sWriteFrame() wrote n=%d, len(data)=%d, data=%# x", ClientLogPrefix, n, len(data), data)
 	}
 	if err != nil {
 		if e, ok := err.(*quic.IdleTimeoutError); ok {
