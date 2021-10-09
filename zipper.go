@@ -193,7 +193,7 @@ func (z *zipper) AddDownstreamZipper(downstream Zipper) error {
 	logger.Debugf("%sAddDownstreamZipper: %v", zipperLogPrefix, downstream)
 	z.downstreamZippers = append(z.downstreamZippers, downstream)
 	z.hasDownstreams = true
-	logger.Debugf("%scurrent downstreams: %v", zipperLogPrefix, z.downstreamZippers)
+	logger.Debugf("%scurrent downstreams: %d", zipperLogPrefix, len(z.downstreamZippers))
 	return nil
 }
 

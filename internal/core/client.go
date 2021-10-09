@@ -61,14 +61,14 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 
 	quicConf := &quic.Config{
 		Versions:                       []quic.VersionNumber{quic.Version1, quic.VersionDraft29},
-		MaxIdleTimeout:                 time.Second * 3,
+		MaxIdleTimeout:                 time.Second * 10,
 		KeepAlive:                      true,
-		MaxIncomingStreams:             10000,
-		MaxIncomingUniStreams:          10000,
+		MaxIncomingStreams:             1000,
+		MaxIncomingUniStreams:          1000,
 		HandshakeIdleTimeout:           time.Second * 3,
 		InitialStreamReceiveWindow:     1024 * 1024 * 2,
 		InitialConnectionReceiveWindow: 1024 * 1024 * 2,
-		TokenStore:                     quic.NewLRUTokenStore(1, 1),
+		TokenStore:                     quic.NewLRUTokenStore(10, 5),
 		DisablePathMTUDiscovery:        true,
 	}
 
@@ -104,7 +104,7 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 	go c.handleFrame()
 
 	c.state = ConnStateConnected
-	logger.Printf("%s[%s] is connected to YoMo-Zipper %s", ClientLogPrefix, c.token, addr)
+	logger.Printf("%s has connected to %s (%s)", ClientLogPrefix, c.token, addr)
 
 	return nil
 }
@@ -119,12 +119,12 @@ func (c *Client) handleFrame() {
 		f, err := fs.ReadFrame()
 		if err != nil {
 			defer c.stream.Close()
-			defer c.session.CloseWithError(0xCC, err.Error())
+			defer c.session.CloseWithError(0xD0, err.Error())
 			defer c.setState(ConnStateDisconnected)
 
 			logger.Errorf("%shandleFrame.ReadFrame(): %T %v", ClientLogPrefix, err, err)
 			if e, ok := err.(*quic.IdleTimeoutError); ok {
-				logger.Errorf("%sconnection timeout, err=%v", ClientLogPrefix, e)
+				logger.Errorf("%sconnection timeout, err=%v, zipper=%s", ClientLogPrefix, e, c.addr)
 			} else if e, ok := err.(*quic.ApplicationError); ok {
 				logger.Errorf("%sapplication error, err=%v, errcode=%v", ClientLogPrefix, e, e.ErrorCode)
 				if e.ErrorCode == 0xCC {
@@ -219,10 +219,10 @@ func (c *Client) WriteFrame(frm frame.Frame) error {
 	defer c.mu.Unlock()
 	n, err := c.stream.Write(data)
 	// TODO: move partial logging as a utility
-	if len(data) > 256 {
-		logger.Debugf("%sWriteFrame() wrote n=%d, len(data)=%d", ClientLogPrefix, n, len(data))
+	if len(data) > 16 {
+		logger.Debugf("%sWriteFrame() wrote n=%d, len(data)=%d, data[:16]=%# x ...", ClientLogPrefix, n, len(data), data[:16])
 	} else {
-		logger.Debugf("%sWriteFrame() wrote n=%d, data=%# x", ClientLogPrefix, n, data)
+		logger.Debugf("%sWriteFrame() wrote n=%d, len(data)=%d, data=%# x", ClientLogPrefix, n, len(data), data)
 	}
 	if err != nil {
 		if e, ok := err.(*quic.IdleTimeoutError); ok {
@@ -258,9 +258,11 @@ func (c *Client) reconnect(ctx context.Context, addr string) {
 	t := time.NewTicker(3 * time.Second)
 	for range t.C {
 		if c.state == ConnStateDisconnected {
-			fmt.Printf("%s[%s] is retring to YoMo-Zipper %s...\n", ClientLogPrefix, c.token, addr)
+			fmt.Printf("%s[%s] is retrying to YoMo-Zipper %s...\n", ClientLogPrefix, c.token, addr)
 			err := c.Connect(ctx, addr)
-			logger.Errorf("%s reconnect error:%v", ClientLogPrefix, err)
+			if err != nil {
+				logger.Errorf("%s reconnect to %s error:%v", ClientLogPrefix, addr, err)
+			}
 		}
 	}
 }
