@@ -258,9 +258,11 @@ func (c *Client) reconnect(ctx context.Context, addr string) {
 	t := time.NewTicker(3 * time.Second)
 	for range t.C {
 		if c.state == ConnStateDisconnected {
-			fmt.Printf("%s[%s] is retring to YoMo-Zipper %s...\n", ClientLogPrefix, c.token, addr)
+			fmt.Printf("%s[%s] is retrying to YoMo-Zipper %s...\n", ClientLogPrefix, c.token, addr)
 			err := c.Connect(ctx, addr)
-			logger.Errorf("%s reconnect error:%v", ClientLogPrefix, err)
+			if err != nil {
+				logger.Errorf("%s reconnect to %s error:%v", ClientLogPrefix, addr, err)
+			}
 		}
 	}
 }
