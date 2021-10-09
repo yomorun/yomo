@@ -220,7 +220,7 @@ func (c *Client) WriteFrame(frm frame.Frame) error {
 	n, err := c.stream.Write(data)
 	// TODO: move partial logging as a utility
 	if len(data) > 16 {
-		logger.Debugf("%sWriteFrame() wrote n=%d, len(data)=%d, data=%# x", ClientLogPrefix, n, len(data), data[:16])
+		logger.Debugf("%sWriteFrame() wrote n=%d, len(data)=%d, data[:16]=%# x ...", ClientLogPrefix, n, len(data), data[:16])
 	} else {
 		logger.Debugf("%sWriteFrame() wrote n=%d, len(data)=%d, data=%# x", ClientLogPrefix, n, len(data), data)
 	}
