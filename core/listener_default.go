@@ -43,7 +43,7 @@ func (l *defaultListener) Listen(ctx context.Context, addr string) error {
 	if l.c == nil {
 		l.c = &quic.Config{
 			Versions:                       []quic.VersionNumber{quic.Version1, quic.VersionDraft29},
-			MaxIdleTimeout:                 time.Second * 10,
+			MaxIdleTimeout:                 time.Second * 5,
 			KeepAlive:                      true,
 			MaxIncomingStreams:             1000,
 			MaxIncomingUniStreams:          1000,

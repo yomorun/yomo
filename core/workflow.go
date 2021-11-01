@@ -6,5 +6,5 @@ type Workflow struct {
 	Seq int
 
 	// Token represents the name of workflow.
-	Token string
+	Name string
 }

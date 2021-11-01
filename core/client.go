@@ -24,7 +24,7 @@ type ConnState = string
 // Client is the abstraction of a YoMo-Client. a YoMo-Client can be
 // Source, Upstream Zipper or StreamFunction.
 type Client struct {
-	token      string                 // name of the client
+	name       string                 // name of the client
 	clientType ClientType             // type of the connection
 	session    quic.Session           // quic session
 	stream     quic.Stream            // quic stream
@@ -38,7 +38,7 @@ type Client struct {
 // NewClient creates a new YoMo-Client.
 func NewClient(appName string, connType ClientType, opts ...ClientOption) *Client {
 	c := &Client{
-		token:      appName,
+		name:       appName,
 		clientType: connType,
 		state:      ConnStateReady,
 	}
@@ -89,13 +89,12 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 	c.state = ConnStateAuthenticating
 	// send handshake
 	handshake := frame.NewHandshakeFrame(
-		c.token,
+		c.name,
 		byte(c.clientType),
 		byte(c.opts.Credential.Type()),
 		c.opts.Credential.Payload(),
 	)
 	err = c.WriteFrame(handshake)
-	logger.Printf("handshake frame=%#v,err=%v", handshake, err)
 	if err != nil {
 		c.state = ConnStateRejected
 		return err
@@ -105,7 +104,7 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 	go c.handleFrame()
 
 	c.state = ConnStateConnected
-	logger.Printf("%s❤️  [%s] is connected to YoMo-Zipper %s", ClientLogPrefix, c.token, addr)
+	logger.Printf("%s❤️  [%s] is connected to YoMo-Zipper %s", ClientLogPrefix, c.name, addr)
 
 	return nil
 }
@@ -203,7 +202,7 @@ func (c *Client) EnableDebug() {
 func (c *Client) WriteFrame(frm frame.Frame) error {
 	// // tracing
 	// if f, ok := frm.(*frame.DataFrame); ok {
-	// 	span, err := tracing.NewRemoteTraceSpan(f.GetMetadata("TraceID"), f.GetMetadata("SpanID"), c.token, fmt.Sprintf("WriteFrame [%s]->[zipper]", c.token))
+	// 	span, err := tracing.NewRemoteTraceSpan(f.GetMetadata("TraceID"), f.GetMetadata("SpanID"), c.name, fmt.Sprintf("WriteFrame [%s]->[zipper]", c.name))
 	// 	if err == nil {
 	// 		defer span.End()
 	// 	}
@@ -256,10 +255,11 @@ func (c *Client) SetDataFrameObserver(fn func(*frame.DataFrame)) {
 
 // reconnect the connection between client and server.
 func (c *Client) reconnect(ctx context.Context, addr string) {
-	t := time.NewTicker(3 * time.Second)
+	t := time.NewTicker(1 * time.Second)
+	defer t.Stop()
 	for range t.C {
 		if c.state == ConnStateDisconnected {
-			fmt.Printf("%s[%s] is retrying to YoMo-Zipper %s...\n", ClientLogPrefix, c.token, addr)
+			fmt.Printf("%s[%s] is retrying to YoMo-Zipper %s...\n", ClientLogPrefix, c.name, addr)
 			err := c.Connect(ctx, addr)
 			if err != nil {
 				logger.Errorf("%sreconnect error:%v", ClientLogPrefix, err)
@@ -270,7 +270,7 @@ func (c *Client) reconnect(ctx context.Context, addr string) {
 
 func (c *Client) init() {
 	// // tracing
-	// _, _, err := tracing.NewTracerProvider(c.token)
+	// _, _, err := tracing.NewTracerProvider(c.name)
 	// if err != nil {
 	// 	logger.Errorf("tracing: %v", err)
 	// }

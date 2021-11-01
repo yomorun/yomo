@@ -18,10 +18,11 @@ type ServerOption func(*ServerOptions)
 
 // Server is the underlining server of Zipper
 type Server struct {
-	token              string
+	name               string
 	stream             quic.Stream
 	state              string
-	funcs              *ConcurrentMap
+	connector          Connector
+	router             Router
 	counterOfDataFrame int64
 	downstreams        map[string]*Client
 	mu                 sync.Mutex
@@ -31,8 +32,9 @@ type Server struct {
 // NewServer create a Server instance.
 func NewServer(name string, opts ...ServerOption) *Server {
 	s := &Server{
-		token:       name,
-		funcs:       NewConcurrentMap(),
+		name:        name,
+		connector:   newConnector(),
+		router:      newRouter(),
 		downstreams: make(map[string]*Client),
 	}
 	s.Init(opts...)
@@ -63,7 +65,7 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 		return err
 	}
 	defer listener.Close()
-	logger.Printf("%s✅ [%s] Listening on: %s, QUIC: %v", ServerLogPrefix, s.token, listener.Addr(), listener.Versions())
+	logger.Printf("%s✅ [%s] Listening on: %s, QUIC: %v", ServerLogPrefix, s.name, listener.Addr(), listener.Versions())
 
 	s.state = ConnStateConnected
 	for {
@@ -87,13 +89,13 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 				stream, err := sess.AcceptStream(ctx)
 				if err != nil {
 					// if client close the connection, then we should close the session
-					name, ok := s.funcs.GetSfn(connID)
+					name, ok := s.connector.Name(connID)
 					if !ok {
 						name = "unknown"
 					}
 					logger.Errorf("%s❤️3/ [%s](%s) on stream %v", ServerLogPrefix, name, connID, err)
 					if ok {
-						s.funcs.Remove(name, connID)
+						s.connector.Remove(connID)
 						logger.Printf("%s💔 [%s](%s) is disconnected", ServerLogPrefix, name, connID)
 					}
 					break
@@ -162,7 +164,7 @@ func (s *Server) handleSession(session quic.Session, mainStream quic.Stream) {
 
 // handle HandShakeFrame
 func (s *Server) handleHandshakeFrame(stream quic.Stream, session quic.Session, f *frame.HandshakeFrame) error {
-	logger.Infof("%s ------> GOT ❤️ HandshakeFrame : %# x", ServerLogPrefix, f)
+	logger.Infof("%sGOT ❤️ HandshakeFrame : %# x", ServerLogPrefix, f)
 	logger.Infof("%sClientType=%# x is %s, AuthType=%s, CredentialType=%s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType), auth.AuthType(s.opts.Auth.Type()), auth.AuthType(f.AuthType()))
 	// authentication
 	if !s.authenticate(f) {
@@ -174,32 +176,51 @@ func (s *Server) handleHandshakeFrame(stream quic.Stream, session quic.Session, 
 
 	// client type
 	clientType := ClientType(f.ClientType)
+	connID := getConnID(session)
+	name := f.Name
 	switch clientType {
 	case ClientTypeSource:
-		s.funcs.Set(f.Name, getConnID(session), &stream)
+		s.connector.Add(connID, &stream)
+		s.connector.Link(connID, name)
 	case ClientTypeStreamFunction:
-		// when sfn connect, it will provide its token to the server. server will check if this client
+		// when sfn connect, it will provide its name to the server. server will check if this client
 		// has permission connected to.
-		if !s.validateHandshake(f) {
+		// if !s.validateHandshake(f) {
+		if !s.router.Exists(f.Name) {
 			// unexpected client connected, close the connection
+			s.connector.Remove(connID)
+			// SFN: stream function
+			err := fmt.Errorf("handshake router validation faild, illegal SFN[%s]", f.Name)
 			stream.Close()
-			session.CloseWithError(0xCC, "handshake validation faild, illegal sfn")
+			session.CloseWithError(0xCC, err.Error())
 			// break
-			return errors.New("core.server: handshake validation faild, illegal sfn")
+			return err
 		}
 
-		// validation successful, register this sfn
-		s.funcs.Set(f.Name, getConnID(session), &stream)
+		// is it validation connection?
+		// if !s.validateConn(connID) {
+		// 	// unexpected client connected, close the connection
+		// 	err := fmt.Errorf("handshake validation faild, illegal connection %s", connID)
+		// 	stream.Close()
+		// 	session.CloseWithError(0xCC, err.Error())
+		// 	// break
+		// 	return err
+		// }
+		s.connector.Add(connID, &stream)
+		// link connection to stream function
+		s.connector.Link(connID, name)
 	case ClientTypeUpstreamZipper:
-		s.funcs.Set(f.Name, getConnID(session), &stream)
+		s.connector.Add(connID, &stream)
+		s.connector.Link(connID, name)
 	default:
 		// unknown client type
+		s.connector.Remove(connID)
 		logger.Errorf("%sClientType=%# x, ilegal!", ServerLogPrefix, f.ClientType)
 		stream.Close()
 		session.CloseWithError(0xCD, "Unknown ClientType, illegal!")
 		return errors.New("core.server: Unknown ClientType, illegal")
 	}
-	logger.Printf("%s❤️  <%s> [%s](%s) is connected!", ServerLogPrefix, clientType, f.Name, getConnID(session))
+	logger.Printf("%s❤️  <%s> [%s](%s) is connected!", ServerLogPrefix, clientType, name, connID)
 	return nil
 }
 
@@ -210,25 +231,44 @@ func (s *Server) handleHandshakeFrame(stream quic.Stream, session quic.Session, 
 // }
 
 func (s *Server) handleDataFrame(mainStream quic.Stream, session quic.Session, f *frame.DataFrame) error {
+	// counter +1
+	atomic.AddInt64(&s.counterOfDataFrame, 1)
 	// currentIssuer := f.GetIssuer()
-	currentIssuer := getConnID(session)
-
+	fromID := getConnID(session)
+	from, ok := s.connector.Name(fromID)
+	if !ok {
+		logger.Warnf("%shandleDataFrame have connection[%s], but not have function", ServerLogPrefix, fromID)
+		return nil
+	}
 	// // tracing
 	// span, err := tracing.NewRemoteTraceSpan(f.GetMetadata("TraceID"), f.GetMetadata("SpanID"), "server", fmt.Sprintf("handleDataFrame <-[%s]", currentIssuer))
 	// if err == nil {
 	// 	defer span.End()
 	// }
-	// counter +1
-	atomic.AddInt64(&s.counterOfDataFrame, 1)
-	// inspect data frame
-	logger.Infof("%s[handleDataFrame] seqID=%#x tid=%s, session.RemoteAddr()=%s, counter=%d, from=%s", ServerLogPrefix, f.SeqID(), f.TransactionID(), session.RemoteAddr(), s.counterOfDataFrame, currentIssuer)
+
+	// get stream function name from router
+	to, ok := s.router.Next(from)
+	if !ok {
+		logger.Warnf("%shandleDataFrame have not next function, from=[%s](%s)", ServerLogPrefix, from, fromID)
+		return nil
+	}
+	// get connection
+	toID, ok := s.connector.ConnID(to)
+	if !ok {
+		logger.Warnf("%shandleDataFrame have next function, but not have connection, from=[%s](%s), to=[%s]", ServerLogPrefix, from, fromID, to)
+		return nil
+	}
+	logger.Debugf("%shandleDataFrame seqID=%#x tid=%s, counter=%d, from=[%s](%s), to=[%s](%s)", ServerLogPrefix, f.SeqID(), f.TransactionID(), s.counterOfDataFrame, from, fromID, to, toID)
+
 	// write data frame to stream
-	return s.funcs.Write(f, currentIssuer)
+	logger.Infof("%swrite data: [%s](%s) --> [%s](%s)", ServerLogPrefix, from, fromID, to, toID)
+	return s.connector.Write(f, fromID, toID)
 }
 
 // StatsFunctions returns the sfn stats of server.
-func (s *Server) StatsFunctions() map[string][]*quic.Stream {
-	return s.funcs.GetCurrentSnapshot()
+// func (s *Server) StatsFunctions() map[string][]*quic.Stream {
+func (s *Server) StatsFunctions() map[string]*quic.Stream {
+	return s.connector.GetSnapshot()
 }
 
 // StatsCounter returns how many DataFrames pass through server.
@@ -244,23 +284,14 @@ func (s *Server) Downstreams() map[string]*Client {
 // AddWorkflow register sfn to this server.
 func (s *Server) AddWorkflow(wfs ...Workflow) error {
 	for _, wf := range wfs {
-		s.funcs.AddFunc(wf.Seq, wf.Token)
+		s.router.Add(wf.Seq, wf.Name)
 	}
 	return nil
 }
 
-// validateHandshake validates if the handshake frame is valid.
-func (s *Server) validateHandshake(f *frame.HandshakeFrame) bool {
-	isValid := s.funcs.ExistsFunc(f.Name)
-	if !isValid {
-		logger.Warnf("%svalidateHandshake(%v), result: %v", ServerLogPrefix, *f, isValid)
-	}
-	return isValid
-}
-
 func (s *Server) init() {
 	// // tracing
-	// _, _, err := tracing.NewTracerProvider(s.token)
+	// _, _, err := tracing.NewTracerProvider(s.name)
 	// if err != nil {
 	// 	logger.Errorf("tracing: %v", err)
 	// }
