@@ -64,26 +64,6 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 	c.addr = addr
 	c.state = ConnStateConnecting
 
-	// connect to quic server
-	tlsConf := &tls.Config{
-		InsecureSkipVerify: true,
-		NextProtos:         []string{"yomo"},
-		ClientSessionCache: tls.NewLRUClientSessionCache(64),
-	}
-
-	quicConf := &quic.Config{
-		Versions:                       []quic.VersionNumber{quic.Version1, quic.VersionDraft29},
-		MaxIdleTimeout:                 time.Second * 10,
-		KeepAlive:                      true,
-		MaxIncomingStreams:             1000,
-		MaxIncomingUniStreams:          1000,
-		HandshakeIdleTimeout:           time.Second * 3,
-		InitialStreamReceiveWindow:     1024 * 1024 * 2,
-		InitialConnectionReceiveWindow: 1024 * 1024 * 2,
-		TokenStore:                     quic.NewLRUTokenStore(10, 5),
-		DisablePathMTUDiscovery:        true,
-	}
-
 	// TODO: refactor this later as a Connection Manager
 	// reconnect
 	// for download zipper
@@ -91,7 +71,7 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 	go c.reconnect(ctx, addr)
 
 	// create quic connection
-	session, err := quic.DialAddr(addr, tlsConf, quicConf)
+	session, err := quic.DialAddr(addr, c.opts.TLSConfig, c.opts.QuicConfig)
 	if err != nil {
 		c.state = ConnStateDisconnected
 		return err
@@ -302,5 +282,28 @@ func (c *Client) initOptions() {
 	// credential
 	if c.opts.Credential == nil {
 		c.opts.Credential = auth.NewCredendialNone()
+	}
+	// tls config
+	if c.opts.TLSConfig == nil {
+		c.opts.TLSConfig = &tls.Config{
+			InsecureSkipVerify: true,
+			NextProtos:         []string{"yomo"},
+			ClientSessionCache: tls.NewLRUClientSessionCache(64),
+		}
+	}
+	// quic config
+	if c.opts.QuicConfig == nil {
+		c.opts.QuicConfig = &quic.Config{
+			Versions:                       []quic.VersionNumber{quic.Version1, quic.VersionDraft29},
+			MaxIdleTimeout:                 time.Second * 10,
+			KeepAlive:                      true,
+			MaxIncomingStreams:             1000,
+			MaxIncomingUniStreams:          1000,
+			HandshakeIdleTimeout:           time.Second * 3,
+			InitialStreamReceiveWindow:     1024 * 1024 * 2,
+			InitialConnectionReceiveWindow: 1024 * 1024 * 2,
+			TokenStore:                     quic.NewLRUTokenStore(10, 5),
+			DisablePathMTUDiscovery:        true,
+		}
 	}
 }
