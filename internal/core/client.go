@@ -11,10 +11,13 @@ import (
 	"time"
 
 	"github.com/lucas-clemente/quic-go"
+	"github.com/yomorun/yomo/internal/auth"
 	"github.com/yomorun/yomo/internal/frame"
 	"github.com/yomorun/yomo/pkg/logger"
 	// "github.com/yomorun/yomo/pkg/tracing"
 )
+
+type ClientOption func(*ClientOptions)
 
 // ConnState describes the state of the connection.
 type ConnState = string
@@ -30,21 +33,30 @@ type Client struct {
 	processor  func(*frame.DataFrame) // functions to invoke when data arrived
 	addr       string                 // the address of server connected to
 	mu         sync.Mutex
+	opts       ClientOptions
 }
 
 // NewClient creates a new YoMo-Client.
-func NewClient(appName string, connType ClientType) *Client {
+func NewClient(appName string, connType ClientType, opts ...ClientOption) *Client {
 	c := &Client{
 		token:      appName,
 		clientType: connType,
 		state:      ConnStateReady,
 	}
-
+	c.Init(opts...)
 	once.Do(func() {
 		c.init()
 	})
 
 	return c
+}
+
+func (c *Client) Init(opts ...ClientOption) error {
+	for _, o := range opts {
+		o(&c.opts)
+	}
+	c.initOptions()
+	return nil
 }
 
 // Connect connects to YoMo-Zipper.
@@ -97,7 +109,12 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 
 	c.state = ConnStateAuthenticating
 	// send handshake
-	handshake := frame.NewHandshakeFrame(c.token, byte(c.clientType))
+	handshake := frame.NewHandshakeFrame(
+		c.token,
+		byte(c.clientType),
+		byte(c.opts.Credential.Type()),
+		c.opts.Credential.Payload(),
+	)
 	c.WriteFrame(handshake)
 
 	// receiving frames
@@ -278,4 +295,12 @@ func (c *Client) init() {
 // ServerAddr returns the address of the server.
 func (c *Client) ServerAddr() string {
 	return c.addr
+}
+
+// initOptions init options defaults
+func (c *Client) initOptions() {
+	// credential
+	if c.opts.Credential == nil {
+		c.opts.Credential = auth.NewCredendialNone()
+	}
 }
