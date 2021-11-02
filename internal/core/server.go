@@ -3,11 +3,13 @@ package core
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"sync"
 	"sync/atomic"
 
 	"github.com/lucas-clemente/quic-go"
+	"github.com/yomorun/yomo/internal/auth"
 	"github.com/yomorun/yomo/internal/frame"
 	"github.com/yomorun/yomo/pkg/logger"
 	// "github.com/yomorun/yomo/pkg/tracing"
@@ -162,9 +164,14 @@ func (s *Server) handleSession(session quic.Session, mainStream quic.Stream) {
 // handle HandShakeFrame
 func (s *Server) handleHandshakeFrame(stream quic.Stream, session quic.Session, f *frame.HandshakeFrame) error {
 	logger.Infof("%s ------> GOT ❤️ HandshakeFrame : %# x", ServerLogPrefix, f)
-	logger.Infof("%sClientType=%# x, is %s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType))
+	logger.Infof("%sClientType=%# x is %s, AuthType=%s, CredentialType=%s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType), auth.AuthType(s.opts.Auth.Type()), auth.AuthType(f.AuthType()))
 	// authentication
-	s.authenticate(f)
+	if !s.authenticate(f) {
+		err := fmt.Errorf("core.server: handshake authentication[%s] fails, client credential type is %s", auth.AuthType(s.opts.Auth.Type()), auth.AuthType(f.AuthType()))
+		stream.Close()
+		session.CloseWithError(0xCC, err.Error())
+		return err
+	}
 
 	// client type
 	clientType := ClientType(f.ClientType)
@@ -283,7 +290,9 @@ func getConnID(sess quic.Session) string {
 
 func (s *Server) authenticate(f *frame.HandshakeFrame) bool {
 	if s.opts.Auth != nil {
-		return s.opts.Auth.Authenticate(f)
+		isAuthenticated := s.opts.Auth.Authenticate(f)
+		logger.Debugf("%sauthenticate: [%s]=%v", ServerLogPrefix, s.opts.Auth.Type(), isAuthenticated)
+		return isAuthenticated
 	}
 	return true
 }
@@ -298,8 +307,9 @@ func (s *Server) initOptions() {
 	// if s.opts.Store == nil {
 	// 	s.opts.Store = store.NewMemoryStore()
 	// }
+
 	// auth
-	// if s.opts.Auth != nil {
-	// 	s.opts.Store.Set(s.opts.Auth.Type(), s.opts.Auth.Payload())
-	// }
+	if s.opts.Auth != nil {
+		logger.Printf("%suse authentication: [%s]", ServerLogPrefix, s.opts.Auth.Type())
+	}
 }

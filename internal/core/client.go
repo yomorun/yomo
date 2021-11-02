@@ -95,7 +95,12 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 		byte(c.opts.Credential.Type()),
 		c.opts.Credential.Payload(),
 	)
-	c.WriteFrame(handshake)
+	err = c.WriteFrame(handshake)
+	logger.Printf("handshake frame=%#v,err=%v", handshake, err)
+	if err != nil {
+		c.state = ConnStateRejected
+		return err
+	}
 
 	// receiving frames
 	go c.handleFrame()
@@ -305,5 +310,9 @@ func (c *Client) initOptions() {
 			TokenStore:                     quic.NewLRUTokenStore(10, 5),
 			DisablePathMTUDiscovery:        true,
 		}
+	}
+	// credential
+	if c.opts.Credential != nil {
+		logger.Printf("%suse credential: [%s]", ClientLogPrefix, c.opts.Credential.Type())
 	}
 }

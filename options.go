@@ -1,5 +1,10 @@
 package yomo
 
+import (
+	"github.com/yomorun/yomo/internal/core"
+	"github.com/yomorun/yomo/pkg/auth"
+)
+
 const (
 	// DefaultZipperAddr is the default address of downstream zipper.
 	DefaultZipperAddr = "localhost:9000"
@@ -16,6 +21,10 @@ type options struct {
 	// ZipperListenAddr     string // Zipper endpoint address
 	ZipperWorkflowConfig string // Zipper workflow file
 	MeshConfigURL        string // meshConfigURL is the URL of edge-mesh config
+	ServerOptions        []core.ServerOption
+	ClientOptions        []core.ClientOption
+	// Auth                 auth.Authentication
+	// Credential           auth.Credential
 }
 
 // WithZipperAddr return a new options with ZipperAddr set to addr.
@@ -36,6 +45,38 @@ func WithZipperAddr(addr string) Option {
 func WithMeshConfigURL(url string) Option {
 	return func(o *options) {
 		o.MeshConfigURL = url
+	}
+}
+
+func WithClientOptions(opts ...core.ClientOption) Option {
+	return func(o *options) {
+		o.ClientOptions = opts
+	}
+}
+
+func WithServerOptions(opts ...core.ServerOption) Option {
+	return func(o *options) {
+		o.ServerOptions = opts
+	}
+}
+
+// WithAppKeyAuth sets the server authentication method (used by server): AppKey
+func WithAppKeyAuth(appID string, appSecret string) Option {
+	return func(o *options) {
+		o.ServerOptions = append(
+			o.ServerOptions,
+			core.WithAuth(auth.NewAppKeyAuth(appID, appSecret)),
+		)
+	}
+}
+
+// WithAppKeyCredential sets the client credential (used by client): AppKey
+func WithAppKeyCredential(appID string, appSecret string) Option {
+	return func(o *options) {
+		o.ClientOptions = append(
+			o.ClientOptions,
+			core.WithCredential(auth.NewAppKeyCredential(appID, appSecret)),
+		)
 	}
 }
 
