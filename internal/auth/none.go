@@ -1,10 +1,22 @@
 package auth
 
-// type AuthNone struct{}
+import "github.com/yomorun/yomo/internal/frame"
 
-// func (a *AuthNone) Authenticate(f *frame.HandshakeFrame) bool {
-// 	return true
-// }
+var _ = Authentication(&AuthNone{})
+
+type AuthNone struct{}
+
+func NewAuthNone() *AuthNone {
+	return &AuthNone{}
+}
+
+func (a *AuthNone) Type() AuthType {
+	return AuthTypeNone
+}
+
+func (a *AuthNone) Authenticate(f *frame.HandshakeFrame) bool {
+	return true
+}
 
 var _ = Credential(&CredentialNone{})
 
