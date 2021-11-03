@@ -40,3 +40,15 @@ func WithStore(store store.Store) ServerOption {
 		o.Store = store
 	}
 }
+
+func WithServerTLSConfig(tc *tls.Config) ServerOption {
+	return func(o *ServerOptions) {
+		o.TLSConfig = tc
+	}
+}
+
+func WithServerQuicConfig(qc *quic.Config) ServerOption {
+	return func(o *ServerOptions) {
+		o.QuicConfig = qc
+	}
+}

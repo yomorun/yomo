@@ -18,3 +18,15 @@ func WithCredential(cred auth.Credential) ClientOption {
 		o.Credential = cred
 	}
 }
+
+func WithClientTLSConfig(tc *tls.Config) ClientOption {
+	return func(o *ClientOptions) {
+		o.TLSConfig = tc
+	}
+}
+
+func WithClientQuicConfig(qc *quic.Config) ClientOption {
+	return func(o *ClientOptions) {
+		o.QuicConfig = qc
+	}
+}

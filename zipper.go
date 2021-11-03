@@ -64,7 +64,7 @@ var _ Zipper = &zipper{}
 
 // NewZipperWithOptions create a zipper instance.
 func NewZipperWithOptions(name string, opts ...Option) Zipper {
-	options := newOptions(opts...)
+	options := NewOptions(opts...)
 	zipper := createZipperServer(name, options)
 	zipper.ConfigMesh(options.MeshConfigURL)
 
@@ -81,7 +81,7 @@ func NewZipper(conf string) (Zipper, error) {
 	// listening address
 	listenAddr := fmt.Sprintf("%s:%d", config.Host, config.Port)
 
-	options := newOptions()
+	options := NewOptions()
 	options.ZipperAddr = listenAddr
 	zipper := createZipperServer(config.Name, options)
 	// zipper workflow
@@ -92,8 +92,8 @@ func NewZipper(conf string) (Zipper, error) {
 
 // NewDownstreamZipper create a zipper descriptor for downstream zipper.
 func NewDownstreamZipper(name string, opts ...Option) Zipper {
-	options := newOptions(opts...)
-	client := core.NewClient(name, core.ClientTypeUpstreamZipper)
+	options := NewOptions(opts...)
+	client := core.NewClient(name, core.ClientTypeUpstreamZipper, options.ClientOptions...)
 
 	return &zipper{
 		token:  name,
@@ -104,7 +104,7 @@ func NewDownstreamZipper(name string, opts ...Option) Zipper {
 
 /*************** Server ONLY ***************/
 // createZipperServer create a zipper instance as server.
-func createZipperServer(name string, options *options) *zipper {
+func createZipperServer(name string, options *Options) *zipper {
 	// create underlying QUIC server
 	srv := core.NewServer(name, options.ServerOptions...)
 	z := &zipper{
