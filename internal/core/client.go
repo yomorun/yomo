@@ -71,7 +71,7 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 	go c.reconnect(ctx, addr)
 
 	// create quic connection
-	session, err := quic.DialAddr(addr, c.opts.TLSConfig, c.opts.QuicConfig)
+	session, err := quic.DialAddrContext(ctx, addr, c.opts.TLSConfig, c.opts.QuicConfig)
 	if err != nil {
 		c.state = ConnStateDisconnected
 		return err

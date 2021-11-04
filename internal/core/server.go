@@ -311,6 +311,6 @@ func (s *Server) initOptions() {
 	// auth
 	if s.opts.Auth == nil {
 		s.opts.Auth = auth.NewAuthNone()
-		logger.Printf("%suse authentication: [%s]", ServerLogPrefix, s.opts.Auth.Type())
 	}
+	logger.Printf("%suse authentication: [%s]", ServerLogPrefix, s.opts.Auth.Type())
 }

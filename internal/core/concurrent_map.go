@@ -93,7 +93,11 @@ func (cmap *ConcurrentMap) Remove(key string, connIDs ...string) {
 		for i, connStream := range connStreams {
 			for _, connID := range connIDs {
 				if connStream.id == connID {
-					connStreams = append(connStreams[:i], connStreams[i+1:]...)
+					if i+1 < len(connStreams) {
+						connStreams = append(connStreams[:i], connStreams[i+1:]...)
+					} else {
+						connStreams = connStreams[:i]
+					}
 				}
 			}
 		}
