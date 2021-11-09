@@ -9,10 +9,9 @@ import (
 	"sync/atomic"
 
 	"github.com/lucas-clemente/quic-go"
-	"github.com/yomorun/yomo/internal/auth"
-	"github.com/yomorun/yomo/internal/frame"
+	"github.com/yomorun/yomo/core/auth"
+	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/logger"
-	// "github.com/yomorun/yomo/pkg/tracing"
 )
 
 type ServerOption func(*ServerOptions)
@@ -56,7 +55,7 @@ func (s *Server) Init(opts ...ServerOption) error {
 
 // ListenAndServe starts the server.
 func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
-	listener := s.opts.Listener
+	listener := newListener(s.opts.TLSConfig, s.opts.QuicConfig)
 	// listen the address
 	err := listener.Listen(ctx, addr)
 	if err != nil {
@@ -300,9 +299,9 @@ func (s *Server) authenticate(f *frame.HandshakeFrame) bool {
 func (s *Server) initOptions() {
 	// defaults
 	// listener
-	if s.opts.Listener == nil {
-		s.opts.Listener = newListener(s.opts.TLSConfig, s.opts.QuicConfig)
-	}
+	// if s.opts.Listener == nil {
+	// 	s.opts.Listener = newListener(s.opts.TLSConfig, s.opts.QuicConfig)
+	// }
 	// store
 	// if s.opts.Store == nil {
 	// 	s.opts.Store = store.NewMemoryStore()

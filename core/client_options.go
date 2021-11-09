@@ -4,7 +4,7 @@ import (
 	"crypto/tls"
 
 	"github.com/lucas-clemente/quic-go"
-	"github.com/yomorun/yomo/internal/auth"
+	"github.com/yomorun/yomo/core/auth"
 )
 
 type ClientOptions struct {

@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 
 	"github.com/lucas-clemente/quic-go"
-	"github.com/yomorun/yomo/internal/frame"
+	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/logger"
 )
 

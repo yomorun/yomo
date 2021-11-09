@@ -11,10 +11,9 @@ import (
 	"time"
 
 	"github.com/lucas-clemente/quic-go"
-	"github.com/yomorun/yomo/internal/auth"
-	"github.com/yomorun/yomo/internal/frame"
+	"github.com/yomorun/yomo/core/auth"
+	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/logger"
-	// "github.com/yomorun/yomo/pkg/tracing"
 )
 
 type ClientOption func(*ClientOptions)

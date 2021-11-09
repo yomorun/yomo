@@ -4,12 +4,12 @@ import (
 	"crypto/tls"
 
 	"github.com/lucas-clemente/quic-go"
-	"github.com/yomorun/yomo/internal/auth"
-	"github.com/yomorun/yomo/internal/store"
+	"github.com/yomorun/yomo/core/auth"
+	"github.com/yomorun/yomo/core/store"
 )
 
 type ServerOptions struct {
-	Listener   Listener
+	// Listener   Listener
 	QuicConfig *quic.Config
 	TLSConfig  *tls.Config
 	Addr       string
@@ -17,11 +17,11 @@ type ServerOptions struct {
 	Store      store.Store
 }
 
-func WithListener(l Listener) ServerOption {
-	return func(o *ServerOptions) {
-		o.Listener = l
-	}
-}
+// func WithListener(l Listener) ServerOption {
+// 	return func(o *ServerOptions) {
+// 		o.Listener = l
+// 	}
+// }
 
 func WithAddr(addr string) ServerOption {
 	return func(o *ServerOptions) {

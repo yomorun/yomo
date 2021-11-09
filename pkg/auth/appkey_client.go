@@ -3,7 +3,7 @@ package auth
 import (
 	"bytes"
 
-	"github.com/yomorun/yomo/internal/auth"
+	"github.com/yomorun/yomo/core/auth"
 )
 
 var _ = auth.Credential(&AppKeyCredential{})

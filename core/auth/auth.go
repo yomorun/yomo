@@ -1,6 +1,6 @@
 package auth
 
-import "github.com/yomorun/yomo/internal/frame"
+import "github.com/yomorun/yomo/core/frame"
 
 type AuthType byte
 

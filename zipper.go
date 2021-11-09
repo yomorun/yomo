@@ -7,8 +7,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/yomorun/yomo/internal/config"
-	"github.com/yomorun/yomo/internal/core"
+	"github.com/yomorun/yomo/core"
+	"github.com/yomorun/yomo/core/config"
 	"github.com/yomorun/yomo/pkg/logger"
 )
 

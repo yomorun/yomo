@@ -5,7 +5,7 @@ import (
 	"io"
 
 	"github.com/yomorun/y3"
-	"github.com/yomorun/yomo/internal/frame"
+	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/logger"
 )
 

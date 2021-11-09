@@ -3,8 +3,8 @@ package auth
 import (
 	"bytes"
 
-	"github.com/yomorun/yomo/internal/auth"
-	"github.com/yomorun/yomo/internal/frame"
+	"github.com/yomorun/yomo/core/auth"
+	"github.com/yomorun/yomo/core/frame"
 )
 
 var _ = auth.Authentication(&AppKeyAuth{})
