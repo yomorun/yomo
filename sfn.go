@@ -4,10 +4,9 @@ import (
 	"context"
 	// "fmt"
 
-	"github.com/yomorun/yomo/internal/core"
-	"github.com/yomorun/yomo/internal/frame"
+	"github.com/yomorun/yomo/core"
+	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/logger"
-	// "github.com/yomorun/yomo/pkg/tracing"
 )
 
 const (
@@ -30,8 +29,8 @@ type StreamFunction interface {
 
 // NewStreamFunction create a stream function.
 func NewStreamFunction(name string, opts ...Option) StreamFunction {
-	options := newOptions(opts...)
-	client := core.NewClient(name, core.ClientTypeStreamFunction)
+	options := NewOptions(opts...)
+	client := core.NewClient(name, core.ClientTypeStreamFunction, options.ClientOptions...)
 	sfn := &streamFunction{
 		name:           name,
 		zipperEndpoint: options.ZipperAddr,

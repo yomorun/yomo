@@ -11,10 +11,12 @@ import (
 	"time"
 
 	"github.com/lucas-clemente/quic-go"
-	"github.com/yomorun/yomo/internal/frame"
+	"github.com/yomorun/yomo/core/auth"
+	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/logger"
-	// "github.com/yomorun/yomo/pkg/tracing"
 )
+
+type ClientOption func(*ClientOptions)
 
 // ConnState describes the state of the connection.
 type ConnState = string
@@ -30,16 +32,17 @@ type Client struct {
 	processor  func(*frame.DataFrame) // functions to invoke when data arrived
 	addr       string                 // the address of server connected to
 	mu         sync.Mutex
+	opts       ClientOptions
 }
 
 // NewClient creates a new YoMo-Client.
-func NewClient(appName string, connType ClientType) *Client {
+func NewClient(appName string, connType ClientType, opts ...ClientOption) *Client {
 	c := &Client{
 		token:      appName,
 		clientType: connType,
 		state:      ConnStateReady,
 	}
-
+	c.Init(opts...)
 	once.Do(func() {
 		c.init()
 	})
@@ -47,30 +50,18 @@ func NewClient(appName string, connType ClientType) *Client {
 	return c
 }
 
+func (c *Client) Init(opts ...ClientOption) error {
+	for _, o := range opts {
+		o(&c.opts)
+	}
+	c.initOptions()
+	return nil
+}
+
 // Connect connects to YoMo-Zipper.
 func (c *Client) Connect(ctx context.Context, addr string) error {
 	c.addr = addr
 	c.state = ConnStateConnecting
-
-	// connect to quic server
-	tlsConf := &tls.Config{
-		InsecureSkipVerify: true,
-		NextProtos:         []string{"yomo"},
-		ClientSessionCache: tls.NewLRUClientSessionCache(64),
-	}
-
-	quicConf := &quic.Config{
-		Versions:                       []quic.VersionNumber{quic.Version1, quic.VersionDraft29},
-		MaxIdleTimeout:                 time.Second * 10,
-		KeepAlive:                      true,
-		MaxIncomingStreams:             1000,
-		MaxIncomingUniStreams:          1000,
-		HandshakeIdleTimeout:           time.Second * 3,
-		InitialStreamReceiveWindow:     1024 * 1024 * 2,
-		InitialConnectionReceiveWindow: 1024 * 1024 * 2,
-		TokenStore:                     quic.NewLRUTokenStore(10, 5),
-		DisablePathMTUDiscovery:        true,
-	}
 
 	// TODO: refactor this later as a Connection Manager
 	// reconnect
@@ -79,7 +70,7 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 	go c.reconnect(ctx, addr)
 
 	// create quic connection
-	session, err := quic.DialAddr(addr, tlsConf, quicConf)
+	session, err := quic.DialAddrContext(ctx, addr, c.opts.TLSConfig, c.opts.QuicConfig)
 	if err != nil {
 		c.state = ConnStateDisconnected
 		return err
@@ -97,8 +88,18 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 
 	c.state = ConnStateAuthenticating
 	// send handshake
-	handshake := frame.NewHandshakeFrame(c.token, byte(c.clientType))
-	c.WriteFrame(handshake)
+	handshake := frame.NewHandshakeFrame(
+		c.token,
+		byte(c.clientType),
+		byte(c.opts.Credential.Type()),
+		c.opts.Credential.Payload(),
+	)
+	err = c.WriteFrame(handshake)
+	logger.Printf("handshake frame=%#v,err=%v", handshake, err)
+	if err != nil {
+		c.state = ConnStateRejected
+		return err
+	}
 
 	// receiving frames
 	go c.handleFrame()
@@ -278,4 +279,39 @@ func (c *Client) init() {
 // ServerAddr returns the address of the server.
 func (c *Client) ServerAddr() string {
 	return c.addr
+}
+
+// initOptions init options defaults
+func (c *Client) initOptions() {
+	// credential
+	if c.opts.Credential == nil {
+		c.opts.Credential = auth.NewCredendialNone()
+	}
+	// tls config
+	if c.opts.TLSConfig == nil {
+		c.opts.TLSConfig = &tls.Config{
+			InsecureSkipVerify: true,
+			NextProtos:         []string{"yomo"},
+			ClientSessionCache: tls.NewLRUClientSessionCache(64),
+		}
+	}
+	// quic config
+	if c.opts.QuicConfig == nil {
+		c.opts.QuicConfig = &quic.Config{
+			Versions:                       []quic.VersionNumber{quic.Version1, quic.VersionDraft29},
+			MaxIdleTimeout:                 time.Second * 10,
+			KeepAlive:                      true,
+			MaxIncomingStreams:             1000,
+			MaxIncomingUniStreams:          1000,
+			HandshakeIdleTimeout:           time.Second * 3,
+			InitialStreamReceiveWindow:     1024 * 1024 * 2,
+			InitialConnectionReceiveWindow: 1024 * 1024 * 2,
+			TokenStore:                     quic.NewLRUTokenStore(10, 5),
+			DisablePathMTUDiscovery:        true,
+		}
+	}
+	// credential
+	if c.opts.Credential != nil {
+		logger.Printf("%suse credential: [%s]", ClientLogPrefix, c.opts.Credential.Type())
+	}
 }

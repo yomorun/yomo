@@ -3,8 +3,8 @@ package yomo
 import (
 	"context"
 
-	"github.com/yomorun/yomo/internal/core"
-	"github.com/yomorun/yomo/internal/frame"
+	"github.com/yomorun/yomo/core"
+	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/logger"
 )
 
@@ -38,8 +38,8 @@ var _ Source = &yomoSource{}
 
 // NewSource create a yomo-source
 func NewSource(name string, opts ...Option) Source {
-	options := newOptions(opts...)
-	client := core.NewClient(name, core.ClientTypeSource)
+	options := NewOptions(opts...)
+	client := core.NewClient(name, core.ClientTypeSource, options.ClientOptions...)
 
 	return &yomoSource{
 		name:           name,

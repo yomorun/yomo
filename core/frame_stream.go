@@ -4,7 +4,7 @@ import (
 	"errors"
 	"io"
 
-	"github.com/yomorun/yomo/internal/frame"
+	"github.com/yomorun/yomo/core/frame"
 )
 
 // FrameStream is the QUIC Stream with the minimum unit Frame.

@@ -38,8 +38,8 @@ tasks:
     cmds:
       - "./source{{exeExt}}"
     env:
-      YOMO_ENABLE_DEBUG: false
-      YOMO_LOG_LEVEL: info
+      YOMO_ENABLE_DEBUG: true
+      YOMO_LOG_LEVEL: debug
 
   basic-source-build:
     desc: build basic source example

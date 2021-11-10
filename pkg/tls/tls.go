@@ -1,4 +1,4 @@
-package core
+package tls
 
 import (
 	"bytes"
@@ -14,9 +14,9 @@ import (
 	"time"
 )
 
-// generateTLSConfig Setup a bare-bones TLS config for the server
-func generateTLSConfig(host ...string) *tls.Config {
-	tlsCert, _ := generateCertificate(host...)
+// GenerateTLSConfig Setup a bare-bones TLS config for the server
+func GenerateTLSConfig(host ...string) *tls.Config {
+	tlsCert, _ := GenerateCertificate(host...)
 
 	return &tls.Config{
 		Certificates:       []tls.Certificate{tlsCert},
@@ -25,7 +25,7 @@ func generateTLSConfig(host ...string) *tls.Config {
 	}
 }
 
-func generateCertificate(host ...string) (tls.Certificate, error) {
+func GenerateCertificate(host ...string) (tls.Certificate, error) {
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return tls.Certificate{}, err

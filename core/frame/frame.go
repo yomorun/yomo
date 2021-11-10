@@ -14,9 +14,11 @@ const (
 
 	TagOfTokenFrame Type = 0x3E
 	// HandshakeFrame
-	TagOfHandshakeFrame Type = 0x3D
-	TagOfHandshakeName  Type = 0x01
-	TagOfHandshakeType  Type = 0x02
+	TagOfHandshakeFrame       Type = 0x3D
+	TagOfHandshakeName        Type = 0x01
+	TagOfHandshakeType        Type = 0x02
+	TagOfHandshakeAuthType    Type = 0x03
+	TagOfHandshakeAuthPayload Type = 0x04
 
 	TagOfPingFrame     Type = 0x3C
 	TagOfPongFrame     Type = 0x3B

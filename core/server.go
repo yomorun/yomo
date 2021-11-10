@@ -3,15 +3,18 @@ package core
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
+	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/lucas-clemente/quic-go"
-	"github.com/yomorun/yomo/internal/frame"
+	"github.com/yomorun/yomo/core/auth"
+	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/logger"
-	// "github.com/yomorun/yomo/pkg/tracing"
 )
+
+type ServerOption func(*ServerOptions)
 
 // Server is the underlining server of Zipper
 type Server struct {
@@ -21,15 +24,18 @@ type Server struct {
 	funcs              *ConcurrentMap
 	counterOfDataFrame int64
 	downstreams        map[string]*Client
+	mu                 sync.Mutex
+	opts               ServerOptions
 }
 
 // NewServer create a Server instance.
-func NewServer(name string) *Server {
+func NewServer(name string, opts ...ServerOption) *Server {
 	s := &Server{
 		token:       name,
 		funcs:       NewConcurrentMap(),
 		downstreams: make(map[string]*Client),
 	}
+	s.Init(opts...)
 	once.Do(func() {
 		s.init()
 	})
@@ -37,34 +43,27 @@ func NewServer(name string) *Server {
 	return s
 }
 
-// ListenAndServe starts the server.
-func (s *Server) ListenAndServe(ctx context.Context, endpoint string) error {
-	qconf := &quic.Config{
-		Versions:                       []quic.VersionNumber{quic.Version1, quic.VersionDraft29},
-		MaxIdleTimeout:                 time.Second * 10,
-		KeepAlive:                      true,
-		MaxIncomingStreams:             1000,
-		MaxIncomingUniStreams:          1000,
-		HandshakeIdleTimeout:           time.Second * 3,
-		InitialStreamReceiveWindow:     1024 * 1024 * 2,
-		InitialConnectionReceiveWindow: 1024 * 1024 * 2,
-		DisablePathMTUDiscovery:        true,
-		// Tracer:                         getQlogConfig("server"),
+func (s *Server) Init(opts ...ServerOption) error {
+	for _, o := range opts {
+		o(&s.opts)
 	}
+	// options defaults
+	s.initOptions()
 
-	// if os.Getenv("YOMO_QLOG") != "" {
-	// 	s.logger.Debugf("YOMO_QLOG=%s", os.Getenv("YOMO_QLOG"))
-	// 	qconf.Tracer = getQlogConfig("server")
-	// }
+	return nil
+}
 
+// ListenAndServe starts the server.
+func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
+	listener := newListener(s.opts.TLSConfig, s.opts.QuicConfig)
 	// listen the address
-	listener, err := quic.ListenAddr(endpoint, generateTLSConfig(endpoint), qconf)
+	err := listener.Listen(ctx, addr)
 	if err != nil {
-		logger.Errorf("%squic.ListenAddr on: %s, err=%v", ServerLogPrefix, endpoint, err)
+		logger.Errorf("%squic.ListenAddr on: %s, err=%v", ServerLogPrefix, addr, err)
 		return err
 	}
 	defer listener.Close()
-	logger.Printf("%s✅ [%s] Listening on: %s, QUIC: %v", ServerLogPrefix, s.token, listener.Addr(), qconf.Versions)
+	logger.Printf("%s✅ [%s] Listening on: %s, QUIC: %v", ServerLogPrefix, s.token, listener.Addr(), listener.Versions())
 
 	s.state = ConnStateConnected
 	for {
@@ -164,7 +163,15 @@ func (s *Server) handleSession(session quic.Session, mainStream quic.Stream) {
 // handle HandShakeFrame
 func (s *Server) handleHandshakeFrame(stream quic.Stream, session quic.Session, f *frame.HandshakeFrame) error {
 	logger.Infof("%s ------> GOT ❤️ HandshakeFrame : %# x", ServerLogPrefix, f)
-	logger.Infof("%sClientType=%# x, is %s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType))
+	logger.Infof("%sClientType=%# x is %s, AuthType=%s, CredentialType=%s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType), auth.AuthType(s.opts.Auth.Type()), auth.AuthType(f.AuthType()))
+	// authentication
+	if !s.authenticate(f) {
+		err := fmt.Errorf("core.server: handshake authentication[%s] fails, client credential type is %s", auth.AuthType(s.opts.Auth.Type()), auth.AuthType(f.AuthType()))
+		stream.Close()
+		session.CloseWithError(0xCC, err.Error())
+		return err
+	}
+
 	// client type
 	clientType := ClientType(f.ClientType)
 	switch clientType {
@@ -262,7 +269,9 @@ func (s *Server) init() {
 // AddDownstreamServer add a downstream server to this server. all the DataFrames will be
 // dispatch to all the downstreams.
 func (s *Server) AddDownstreamServer(addr string, c *Client) {
+	s.mu.Lock()
 	s.downstreams[addr] = c
+	s.mu.Unlock()
 }
 
 // dispatch every DataFrames to all downstreams
@@ -276,4 +285,31 @@ func (s *Server) dispatchToDownstreams(df *frame.DataFrame) {
 // getConnID get quic session connection id
 func getConnID(sess quic.Session) string {
 	return sess.RemoteAddr().String()
+}
+
+func (s *Server) authenticate(f *frame.HandshakeFrame) bool {
+	if s.opts.Auth != nil {
+		isAuthenticated := s.opts.Auth.Authenticate(f)
+		logger.Debugf("%sauthenticate: [%s]=%v", ServerLogPrefix, s.opts.Auth.Type(), isAuthenticated)
+		return isAuthenticated
+	}
+	return true
+}
+
+func (s *Server) initOptions() {
+	// defaults
+	// listener
+	// if s.opts.Listener == nil {
+	// 	s.opts.Listener = newListener(s.opts.TLSConfig, s.opts.QuicConfig)
+	// }
+	// store
+	// if s.opts.Store == nil {
+	// 	s.opts.Store = store.NewMemoryStore()
+	// }
+
+	// auth
+	if s.opts.Auth == nil {
+		s.opts.Auth = auth.NewAuthNone()
+	}
+	logger.Printf("%suse authentication: [%s]", ServerLogPrefix, s.opts.Auth.Type())
 }
