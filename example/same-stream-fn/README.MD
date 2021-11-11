@@ -1,13 +1,11 @@
 # Multi stream functions example
 
-This example represents how YoMo works with multiple stream functions.
+This example represents how YoMo works with multiple instances of the same stream function, `zipper` will send the data to these instances alternately by round-robin.
 
 ## Code structure
 
 + `source`: Mocking data of a Noise Decibel Detection Sensor. [yomo.run/source](https://docs.yomo.run/source)
-+ `stream-fn-1` (formerly flow): Calculate the noise value in real-time. [yomo.run/stream-function](https://docs.yomo.run/stream-function)
-+ `stream-fn-2` (formerly flow): Print the warning message when the noise value reaches the threshold. [yomo.run/stream-function](https://docs.yomo.run/stream-function)
-+ `stream-fn-3` (formerly flow): The raw stream is immutable, `stream-fn-3` can still observe the raw data and calculate the average value in a sliding window. [yomo.run/stream-function](https://docs.yomo.run/stream-function)
++ `stream-fn` (formerly flow): Calculate the noise value in real-time. [yomo.run/stream-function](https://docs.yomo.run/stream-function)
 + `zipper`: Orchestrate a workflow that receives the data from `source`, stream computing in `stream-fn-1`, `stream-fn-2` and `stream-fn-3` [yomo.run/zipper](https://docs.yomo.run/zipper)
 
 ## How to run the example
@@ -21,102 +19,60 @@ Please visit [YoMo Getting Started](https://github.com/yomorun/yomo#1-install-cl
 ```bash
 yomo serve -c ./zipper/workflow.yaml
 
-ℹ️   Found 3 stream functions in YoMo-Zipper config
-ℹ️   Stream Function 1: Noise-1
-ℹ️   Stream Function 2: Noise-2
-ℹ️   Stream Function 3: Noise-3
-ℹ️   Running YoMo Zipper...
+2021/11/11 16:39:34 [yomo:zipper] [AddWorkflow] 0, Noise
+ℹ️   Running YoMo-Zipper...
+2021/11/11 16:39:34 [yomo:zipper] Listening SIGTERM/SIGINT...
+2021/11/11 16:39:34 [core:server] ✅ (name:Service) Listening on: 127.0.0.1:9000, QUIC: [v1 draft-29]
 ```
 
-### 3. Run [stream-fn-1](https://docs.yomo.run/stream-function)
+### 3. Run first [stream-fn-1](https://docs.yomo.run/stream-function) instance
 
 ```bash
-yomo run ./stream-fn-1/app.go -n Noise-1
+go run ./stream-fn/app.go
 
-ℹ️  YoMo Stream Function file: example/multi-stream-fn/stream-fn-1/app.go
-⌛  Create YoMo Stream Function instance...
-ℹ️  Starting YoMo Stream Function instance with Name: Noise-1. Host: localhost. Port: 9000.
-⌛  YoMo Stream Function building...
-✅  Success! YoMo Stream Function build.
-ℹ️  YoMo Stream Function is running...
-2021/07/05 19:14:24 Connecting to YoMo-Zipper localhost:9000...
-2021/07/05 19:14:24 ✅ Connected to YoMo-Zipper localhost:9000.
+2021/11/11 16:41:02 [core:client] use credential: [None]
+2021/11/11 16:41:02 handshake frame=&frame.HandshakeFrame{Name:"Noise", ClientType:0x5d, authType:0x0, authPayload:[]uint8(nil)},err=<nil>
+2021/11/11 16:41:02 [core:client] ❤️  [Noise] is connected to YoMo-Zipper localhost:9000
 ```
 
-### 4. Run [stream-fn-2](https://docs.yomo.run/stream-function)
+### 4. Run second [stream-fn-2](https://docs.yomo.run/stream-function) instance
 
 ```bash
-yomo run ./stream-fn-2/app.go -n Noise-2
+go run ./stream-fn/app.go
 
-ℹ️  YoMo Stream Function file: example/multi-stream-fn/stream-fn-2/app.go
-⌛  Create YoMo Stream Function instance...
-ℹ️  Starting YoMo Stream Function instance with Name: Noise-2. Host: localhost. Port: 9000.
-⌛  YoMo Stream Function building...
-✅  Success! YoMo Stream Function build.
-ℹ️  YoMo Stream Function is running...
-2021/07/05 19:14:24 Connecting to YoMo-Zipper localhost:9000...
-2021/07/05 19:14:24 ✅ Connected to YoMo-Zipper localhost:9000.
+2021/11/11 16:41:48 [core:client] use credential: [None]
+2021/11/11 16:41:48 handshake frame=&frame.HandshakeFrame{Name:"Noise", ClientType:0x5d, authType:0x0, authPayload:[]uint8(nil)},err=<nil>
+2021/11/11 16:41:48 [core:client] ❤️  [Noise] is connected to YoMo-Zipper localhost:9000
 ```
 
-### 5. Run [stream-fn-3](https://docs.yomo.run/stream-function)
-
-```bash
-yomo run ./stream-fn-3/app.go -n Noise-3
-
-ℹ️  YoMo Stream Function file: example/multi-stream-fn/stream-fn-3/app.go
-⌛  Create YoMo Stream Function instance...
-ℹ️  Starting YoMo Stream Function instance with Name: Noise-3. Host: localhost. Port: 9000.
-⌛  YoMo Stream Function building...
-✅  Success! YoMo Stream Function build.
-ℹ️  YoMo Stream Function is running...
-2021/07/05 19:14:24 Connecting to YoMo-Zipper localhost:9000...
-2021/07/05 19:14:24 ✅ Connected to YoMo-Zipper localhost:9000.
-```
-
-### 6. Run [yomo-source](https://docs.yomo.run/source)
+### 5. Run [yomo-source](https://docs.yomo.run/source)
 
 ```bash
 go run ./source/main.go
 
-2021/07/05 19:15:00 Connecting to YoMo-Zipper localhost:9000 ...
-2021/07/05 19:15:00 ✅ Connected to YoMo-Zipper localhost:9000
-2021/07/05 19:15:00 ✅ Emit {157.14272 1621491060839 localhost} to YoMo-Zipper
-2021/07/05 19:15:00 ✅ Emit {149.61421 1621491060942 localhost} to YoMo-Zipper
-2021/07/05 19:15:00 ✅ Emit {187.12460 1621491061043 localhost} to YoMo-Zipper
-2021/07/05 19:15:00 ✅ Emit {164.58117 1621491061146 localhost} to YoMo-Zipper
+2021/11/11 16:42:32 [core:client] use credential: [None]
+2021/11/11 16:42:32 handshake frame=&frame.HandshakeFrame{Name:"yomo-source", ClientType:0x5f, authType:0x0, authPayload:[]uint8(nil)},err=<nil>
+2021/11/11 16:42:32 [core:client] ❤️  [yomo-source] is connected to YoMo-Zipper localhost:9000
+2021/11/11 16:42:32 ✅ Emit {139.61163 1636620152801 localhost} to YoMo-Zipper
+2021/11/11 16:42:33 ✅ Emit {124.2831 1636620153104 localhost} to YoMo-Zipper
+2021/11/11 16:42:33 ✅ Emit {108.49202 1636620153409 localhost} to YoMo-Zipper
+2021/11/11 16:42:33 ✅ Emit {87.19999 1636620153709 localhost} to YoMo-Zipper
 ```
 
 ### Results
 
-The terminal of `stream-fn-1` will print the real-time noise value.
+The two `stream-fn` will receive the data alternately by round-robin.
+
+The terminal of `stream-fn-1` will print:
 
 ```bash
-[localhost] 1621491060839 > value: 15.714272 ⚡️=1ms
-[localhost] 1621491060942 > value: 14.961421 ⚡️=1ms
-[localhost] 1621491061043 > value: 18.712460 ⚡️=1ms
-[localhost] 1621491061146 > value: 1.071311 ⚡️=1ms
-[localhost] 1621491061246 > value: 16.458117 ⚡️=1ms
+2021/11/11 16:42:33 [localhost] 1636620153104 > value: 12.428309 ⚡️=1ms
+2021/11/11 16:42:33 [localhost] 1636620153709 > value: 8.719999 ⚡️=2ms
 ```
 
-The terminal of `stream-fn-2` will show the warning when the value reaches the threshold.
+The terminal of `stream-fn-2` will print:
 
 ```bash
-receive noise value: 15.714272
-receive noise value: 14.961421
-receive noise value: 18.712460
-❗ value: 18.712460 reaches the threshold 16! 𝚫=2.712460
-[localhost] 1621491061146 > value: 1.071311 ⚡️=1ms
-[localhost] 1621491061246 > value: 16.458117 ⚡️=1ms
-❗ value: 16.458117 reaches the threshold 16! 𝚫=0.458117
-```
-
-The terminal of `stream-fn-3` will show the average value in a sliding window 10s.
-
-```bash
-[StdOut]:  15.714272
-[StdOut]:  14.961421
-[StdOut]:  18.712460
-[StdOut]:  1.071311
-[StdOut]:  16.458117
-🧩 average value in last 10000 ms: 10.931099!
+2021/11/11 16:42:32 [localhost] 1636620152801 > value: 13.961164 ⚡️=1ms
+2021/11/11 16:42:33 [localhost] 1636620153409 > value: 10.849202 ⚡️=0ms
 ```
