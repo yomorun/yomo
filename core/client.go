@@ -91,6 +91,7 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 	handshake := frame.NewHandshakeFrame(
 		c.name,
 		byte(c.clientType),
+		c.opts.AppID,
 		byte(c.opts.Credential.Type()),
 		c.opts.Credential.Payload(),
 	)

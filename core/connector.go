@@ -26,17 +26,23 @@ type Connector interface {
 	GetSnapshot() map[string]*quic.Stream
 	Link(connID string, name string)
 	Unlink(connID string, name string)
+	LinkApp(connID string, appID string)
+	UnlinkApp(connID string, appID string)
+	AppID(connID string) (string, bool)
+	Clean()
 }
 
 type connector struct {
 	conns sync.Map
 	links sync.Map
+	apps  sync.Map
 }
 
 func newConnector() Connector {
 	return &connector{
 		conns: sync.Map{},
 		links: sync.Map{},
+		apps:  sync.Map{},
 	}
 }
 
@@ -49,6 +55,7 @@ func (c *connector) Remove(connID string) {
 	logger.Debugf("%sconnector remove: connID=%s", ServerLogPrefix, connID)
 	c.conns.Delete(connID)
 	c.links.Delete(connID)
+	c.apps.Delete(connID)
 }
 
 func (c *connector) Get(connID string) *quic.Stream {
@@ -114,4 +121,29 @@ func (c *connector) Link(connID string, name string) {
 func (c *connector) Unlink(connID string, name string) {
 	logger.Debugf("%sconnector unlink: connID[%s] x-> SFN[%s]", ServerLogPrefix, connID, name)
 	c.links.Delete(connID)
+}
+
+func (c *connector) LinkApp(connID string, appID string) {
+	logger.Debugf("%sconnector link application: connID[%s] --> app[%s]", ServerLogPrefix, connID, appID)
+	c.apps.Store(connID, appID)
+}
+
+func (c *connector) UnlinkApp(connID string, appID string) {
+	logger.Debugf("%sconnector unlink application: connID[%s] x-> app[%s]", ServerLogPrefix, connID, appID)
+	c.apps.Delete(connID)
+}
+
+func (c *connector) AppID(connID string) (string, bool) {
+	if appID, ok := c.apps.Load(connID); ok {
+		logger.Debugf("%sconnector get appID=%s, connID=%s", ServerLogPrefix, appID.(string), connID)
+		return appID.(string), true
+	}
+	logger.Warnf("%sconnector get appID is empty, connID=%s", ServerLogPrefix, connID)
+	return "", false
+}
+
+func (c *connector) Clean() {
+	c.conns = sync.Map{}
+	c.links = sync.Map{}
+	c.apps = sync.Map{}
 }

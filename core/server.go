@@ -11,6 +11,7 @@ import (
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/store"
 	"github.com/yomorun/yomo/pkg/logger"
 )
 
@@ -34,7 +35,6 @@ func NewServer(name string, opts ...ServerOption) *Server {
 	s := &Server{
 		name:        name,
 		connector:   newConnector(),
-		router:      newRouter(),
 		downstreams: make(map[string]*Client),
 	}
 	s.Init(opts...)
@@ -118,6 +118,18 @@ func (s *Server) Close() error {
 			return err
 		}
 	}
+	// router
+	if s.router != nil {
+		s.router.Clean()
+	}
+	// connector
+	if s.connector != nil {
+		s.connector.Clean()
+	}
+	// store
+	if s.opts.Store != nil {
+		s.opts.Store.Clean()
+	}
 	return nil
 }
 
@@ -150,7 +162,11 @@ func (s *Server) handleSession(session quic.Session, mainStream quic.Stream) {
 		logger.Debugf("%stype=%s, frame=%# x", ServerLogPrefix, frameType, f.Encode())
 		switch frameType {
 		case frame.TagOfHandshakeFrame:
-			s.handleHandshakeFrame(mainStream, session, f.(*frame.HandshakeFrame))
+			if err := s.handleHandshakeFrame(mainStream, session, f.(*frame.HandshakeFrame)); err != nil {
+				logger.Errorf("%shandleHandshakeFrame err: %s", ServerLogPrefix, err)
+				s.Close()
+				break
+			}
 		// case frame.TagOfPingFrame:
 		// 	s.handlePingFrame(mainStream, session, f.(*frame.PingFrame))
 		case frame.TagOfDataFrame:
@@ -164,8 +180,8 @@ func (s *Server) handleSession(session quic.Session, mainStream quic.Stream) {
 
 // handle HandShakeFrame
 func (s *Server) handleHandshakeFrame(stream quic.Stream, session quic.Session, f *frame.HandshakeFrame) error {
-	logger.Infof("%sGOT ❤️ HandshakeFrame : %# x", ServerLogPrefix, f)
-	logger.Infof("%sClientType=%# x is %s, AuthType=%s, CredentialType=%s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType), auth.AuthType(s.opts.Auth.Type()), auth.AuthType(f.AuthType()))
+	logger.Debugf("%sGOT ❤️ HandshakeFrame : %# x", ServerLogPrefix, f)
+	logger.Infof("%sClientType=%# x is %s, AppID=%s, AuthType=%s, CredentialType=%s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType), f.AppID(), auth.AuthType(s.opts.Auth.Type()), auth.AuthType(f.AuthType()))
 	// authentication
 	if !s.authenticate(f) {
 		err := fmt.Errorf("core.server: handshake authentication[%s] fails, client credential type is %s", auth.AuthType(s.opts.Auth.Type()), auth.AuthType(f.AuthType()))
@@ -173,10 +189,18 @@ func (s *Server) handleHandshakeFrame(stream quic.Stream, session quic.Session, 
 		session.CloseWithError(0xCC, err.Error())
 		return err
 	}
+	// route
+	appID := f.AppID()
+	if err := s.validateRouter(); err != nil {
+		return err
+	}
+	connID := getConnID(session)
+	route := s.router.Route(appID)
+	s.connector.LinkApp(connID, appID)
+	s.opts.Store.Set(appID, route)
 
 	// client type
 	clientType := ClientType(f.ClientType)
-	connID := getConnID(session)
 	name := f.Name
 	switch clientType {
 	case ClientTypeSource:
@@ -185,8 +209,7 @@ func (s *Server) handleHandshakeFrame(stream quic.Stream, session quic.Session, 
 	case ClientTypeStreamFunction:
 		// when sfn connect, it will provide its name to the server. server will check if this client
 		// has permission connected to.
-		// if !s.validateHandshake(f) {
-		if !s.router.Exists(f.Name) {
+		if !route.Exists(name) {
 			// unexpected client connected, close the connection
 			s.connector.Remove(connID)
 			// SFN: stream function
@@ -197,15 +220,6 @@ func (s *Server) handleHandshakeFrame(stream quic.Stream, session quic.Session, 
 			return err
 		}
 
-		// is it validation connection?
-		// if !s.validateConn(connID) {
-		// 	// unexpected client connected, close the connection
-		// 	err := fmt.Errorf("handshake validation faild, illegal connection %s", connID)
-		// 	stream.Close()
-		// 	session.CloseWithError(0xCC, err.Error())
-		// 	// break
-		// 	return err
-		// }
 		s.connector.Add(connID, &stream)
 		// link connection to stream function
 		s.connector.Link(connID, name)
@@ -246,8 +260,18 @@ func (s *Server) handleDataFrame(mainStream quic.Stream, session quic.Session, f
 	// 	defer span.End()
 	// }
 
-	// get stream function name from router
-	to, ok := s.router.Next(from)
+	// route
+	appID, _ := s.connector.AppID(fromID)
+	cacheRoute, ok := s.opts.Store.Get(appID)
+	if !ok {
+		err := fmt.Errorf("get route failure, appID=%s, connID=%s", appID, fromID)
+		logger.Errorf("%shandleDataFrame %s", ServerLogPrefix, err.Error())
+		return err
+	}
+	route := cacheRoute.(Route)
+
+	// get stream function name from route
+	to, ok := route.Next(from)
 	if !ok {
 		logger.Warnf("%shandleDataFrame have not next function, from=[%s](%s)", ServerLogPrefix, from, fromID)
 		return nil
@@ -282,10 +306,17 @@ func (s *Server) Downstreams() map[string]*Client {
 }
 
 // AddWorkflow register sfn to this server.
-func (s *Server) AddWorkflow(wfs ...Workflow) error {
-	for _, wf := range wfs {
-		s.router.Add(wf.Seq, wf.Name)
-	}
+// func (s *Server) AddWorkflow(wfs ...Workflow) error {
+// 	for _, wf := range wfs {
+// 		s.router.Add(wf.Seq, wf.Name)
+// 	}
+// 	return nil
+// }
+
+func (s *Server) ConfigRouter(router Router) error {
+	s.mu.Lock()
+	s.router = router
+	s.mu.Unlock()
 	return nil
 }
 
@@ -329,18 +360,21 @@ func (s *Server) authenticate(f *frame.HandshakeFrame) bool {
 
 func (s *Server) initOptions() {
 	// defaults
-	// listener
-	// if s.opts.Listener == nil {
-	// 	s.opts.Listener = newListener(s.opts.TLSConfig, s.opts.QuicConfig)
-	// }
 	// store
-	// if s.opts.Store == nil {
-	// 	s.opts.Store = store.NewMemoryStore()
-	// }
+	if s.opts.Store == nil {
+		s.opts.Store = store.NewMemoryStore()
+	}
 
 	// auth
 	if s.opts.Auth == nil {
 		s.opts.Auth = auth.NewAuthNone()
 	}
 	logger.Printf("%suse authentication: [%s]", ServerLogPrefix, s.opts.Auth.Type())
+}
+
+func (s *Server) validateRouter() error {
+	if s.router == nil {
+		return errors.New("server's router is nil")
+	}
+	return nil
 }

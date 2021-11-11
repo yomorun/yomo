@@ -19,3 +19,7 @@ func (s *MemoryStore) Set(key interface{}, val interface{}) {
 func (s *MemoryStore) Get(key interface{}) (interface{}, bool) {
 	return s.m.Load(key)
 }
+
+func (s *MemoryStore) Clean() {
+	s.m = sync.Map{}
+}

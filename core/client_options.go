@@ -11,6 +11,7 @@ type ClientOptions struct {
 	QuicConfig *quic.Config
 	TLSConfig  *tls.Config
 	Credential auth.Credential
+	AppID      string
 }
 
 func WithCredential(cred auth.Credential) ClientOption {
@@ -28,5 +29,11 @@ func WithClientTLSConfig(tc *tls.Config) ClientOption {
 func WithClientQuicConfig(qc *quic.Config) ClientOption {
 	return func(o *ClientOptions) {
 		o.QuicConfig = qc
+	}
+}
+
+func WithAppID(appID string) ClientOption {
+	return func(o *ClientOptions) {
+		o.AppID = appID
 	}
 }
