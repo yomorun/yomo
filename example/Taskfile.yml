@@ -223,7 +223,7 @@ tasks:
     cmds:
       - "./zipper{{exeExt}}"
     env:
-      YOMO_ENABLE_DEBUG: false
+      YOMO_ENABLE_DEBUG: true
       YOMO_LOG_LEVEL: info
 
   same-stream-fn-zipper-build:

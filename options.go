@@ -97,15 +97,15 @@ func WithAppKeyCredential(appID string, appSecret string) Option {
 	}
 }
 
-// WithListener sets the server listener
-// func WithListener(listener Listener) Option {
-// 	return func(o *Options) {
-// 		o.ServerOptions = append(
-// 			o.ServerOptions,
-// 			core.WithListener(listener),
-// 		)
-// 	}
-// }
+// WithAppID sets the client application ID
+func WithAppID(appID string) Option {
+	return func(o *Options) {
+		o.ClientOptions = append(
+			o.ClientOptions,
+			core.WithAppID(appID),
+		)
+	}
+}
 
 // NewOptions creates a new options for YoMo-Client.
 func NewOptions(opts ...Option) *Options {

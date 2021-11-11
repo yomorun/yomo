@@ -164,8 +164,7 @@ func (s *Server) handleSession(session quic.Session, mainStream quic.Stream) {
 		case frame.TagOfHandshakeFrame:
 			if err := s.handleHandshakeFrame(mainStream, session, f.(*frame.HandshakeFrame)); err != nil {
 				logger.Errorf("%shandleHandshakeFrame err: %s", ServerLogPrefix, err)
-				s.Close()
-				break
+				// break
 			}
 		// case frame.TagOfPingFrame:
 		// 	s.handlePingFrame(mainStream, session, f.(*frame.PingFrame))
@@ -269,6 +268,7 @@ func (s *Server) handleDataFrame(mainStream quic.Stream, session quic.Session, f
 		return err
 	}
 	route := cacheRoute.(Route)
+	// TODO: 验证连接是否属于这个APP
 
 	// get stream function name from route
 	to, ok := route.Next(from)
