@@ -3,7 +3,6 @@ package main
 import (
 	"log"
 	"os"
-	"runtime"
 
 	"github.com/yomorun/yomo"
 )
@@ -16,12 +15,12 @@ func main() {
 
 	// start zipper service
 	log.Printf("Server has started!, pid: %d", os.Getpid())
-	go func() {
-		err := zipper.ListenAndServe()
-		if err != nil {
-			panic(err)
-		}
-	}()
+	// go func() {
+	err := zipper.ListenAndServe()
+	if err != nil {
+		panic(err)
+	}
+	// }()
 
-	runtime.Goexit()
+	// runtime.Goexit()
 }

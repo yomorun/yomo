@@ -58,6 +58,7 @@ type zipper struct {
 	server            *core.Server
 	client            *core.Client
 	downstreamZippers []Zipper
+	ready             chan bool
 }
 
 var _ Zipper = &zipper{}
@@ -124,6 +125,7 @@ func (z *zipper) ConfigWorkflow(conf string) error {
 		logger.Errorf("%s[ERR] %v", zipperLogPrefix, err)
 		return err
 	}
+	logger.Debugf("%sConfigWorkflow config=%+v", zipperLogPrefix, config)
 	return z.configWorkflow(config)
 }
 

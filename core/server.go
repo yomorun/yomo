@@ -89,14 +89,15 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 				stream, err := sess.AcceptStream(ctx)
 				if err != nil {
 					// if client close the connection, then we should close the session
-					name, ok := s.connector.Name(connID)
+					app, ok := s.connector.App(connID)
+					name := app.Name()
 					if !ok {
 						name = "unknown"
 					}
-					logger.Errorf("%s❤️3/ [%s](%s) on stream %v", ServerLogPrefix, name, connID, err)
+					logger.Errorf("%s❤️3/ [%s::%s](%s) on stream %v", ServerLogPrefix, app.ID(), name, connID, err)
 					if ok {
 						s.connector.Remove(connID)
-						logger.Printf("%s💔 [%s](%s) is disconnected", ServerLogPrefix, name, connID)
+						logger.Printf("%s💔 [%s::%s](%s) is disconnected", ServerLogPrefix, app.ID(), name, connID)
 					}
 					break
 				}
@@ -195,7 +196,6 @@ func (s *Server) handleHandshakeFrame(stream quic.Stream, session quic.Session, 
 	}
 	connID := getConnID(session)
 	route := s.router.Route(appID)
-	s.connector.LinkApp(connID, appID)
 	s.opts.Store.Set(appID, route)
 
 	// client type
@@ -204,7 +204,7 @@ func (s *Server) handleHandshakeFrame(stream quic.Stream, session quic.Session, 
 	switch clientType {
 	case ClientTypeSource:
 		s.connector.Add(connID, &stream)
-		s.connector.Link(connID, name)
+		s.connector.LinkApp(connID, appID, name)
 	case ClientTypeStreamFunction:
 		// when sfn connect, it will provide its name to the server. server will check if this client
 		// has permission connected to.
@@ -221,10 +221,10 @@ func (s *Server) handleHandshakeFrame(stream quic.Stream, session quic.Session, 
 
 		s.connector.Add(connID, &stream)
 		// link connection to stream function
-		s.connector.Link(connID, name)
+		s.connector.LinkApp(connID, appID, name)
 	case ClientTypeUpstreamZipper:
 		s.connector.Add(connID, &stream)
-		s.connector.Link(connID, name)
+		s.connector.LinkApp(connID, appID, name)
 	default:
 		// unknown client type
 		s.connector.Remove(connID)
@@ -233,7 +233,7 @@ func (s *Server) handleHandshakeFrame(stream quic.Stream, session quic.Session, 
 		session.CloseWithError(0xCD, "Unknown ClientType, illegal!")
 		return errors.New("core.server: Unknown ClientType, illegal")
 	}
-	logger.Printf("%s❤️  <%s> [%s](%s) is connected!", ServerLogPrefix, clientType, name, connID)
+	logger.Printf("%s❤️  <%s> [%s::%s](%s) is connected!", ServerLogPrefix, clientType, appID, name, connID)
 	return nil
 }
 
@@ -248,7 +248,7 @@ func (s *Server) handleDataFrame(mainStream quic.Stream, session quic.Session, f
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
 	// currentIssuer := f.GetIssuer()
 	fromID := getConnID(session)
-	from, ok := s.connector.Name(fromID)
+	from, ok := s.connector.AppName(fromID)
 	if !ok {
 		logger.Warnf("%shandleDataFrame have connection[%s], but not have function", ServerLogPrefix, fromID)
 		return nil
@@ -268,8 +268,6 @@ func (s *Server) handleDataFrame(mainStream quic.Stream, session quic.Session, f
 		return err
 	}
 	route := cacheRoute.(Route)
-	// TODO: 验证连接是否属于这个APP
-
 	// get stream function name from route
 	to, ok := route.Next(from)
 	if !ok {
@@ -277,7 +275,7 @@ func (s *Server) handleDataFrame(mainStream quic.Stream, session quic.Session, f
 		return nil
 	}
 	// get connection
-	toID, ok := s.connector.ConnID(to)
+	toID, ok := s.connector.ConnID(appID, to)
 	if !ok {
 		logger.Warnf("%shandleDataFrame have next function, but not have connection, from=[%s](%s), to=[%s]", ServerLogPrefix, from, fromID, to)
 		return nil
