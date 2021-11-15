@@ -160,7 +160,7 @@ func (c *Client) handleFrame() {
 		case frame.TagOfDataFrame: // DataFrame carries user's data
 			if v, ok := f.(*frame.DataFrame); ok {
 				c.setState(ConnStateTransportData)
-				logger.Debugf("%sreceive DataFrame, tag=%# x, tid=%s, carry=%# x", ClientLogPrefix, v.GetDataTagID(), v.TransactionID(), v.GetCarriage())
+				logger.Debugf("%sreceive DataFrame, tag=%# x, tid=%s, carry=%# x", ClientLogPrefix, v.GetDataTag(), v.TransactionID(), v.GetCarriage())
 				if c.processor == nil {
 					logger.Warnf("%sprocessor is nil", ClientLogPrefix)
 				} else {

@@ -33,6 +33,6 @@ func TestDataFrameDecode(t *testing.T) {
 	data, err := DecodeToDataFrame(buf)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "1234", data.TransactionID())
-	assert.EqualValues(t, userDataTag, data.GetDataTagID())
+	assert.EqualValues(t, userDataTag, data.GetDataTag())
 	assert.EqualValues(t, []byte("yomo"), data.GetCarriage())
 }

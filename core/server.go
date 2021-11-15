@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"reflect"
 	"sync"
 	"sync/atomic"
 
@@ -109,14 +110,12 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 				if err != nil {
 					// if client close the connection, then we should close the session
 					app, ok := s.connector.App(connID)
-					name := app.Name()
-					if !ok {
-						name = "unknown"
-					}
-					logger.Errorf("%s❤️3/ [%s::%s](%s) on stream %v", ServerLogPrefix, app.ID(), name, connID, err)
 					if ok {
 						s.connector.Remove(connID)
-						logger.Printf("%s💔 [%s::%s](%s) is disconnected", ServerLogPrefix, app.ID(), name, connID)
+						logger.Errorf("%s❤️3/ [%s::%s](%s) on stream %v", ServerLogPrefix, app.ID(), app.Name(), connID, err)
+						logger.Printf("%s💔 [%s::%s](%s) is disconnected", ServerLogPrefix, app.ID(), app.Name(), connID)
+					} else {
+						logger.Errorf("%s❤️3/ [unknown](%s) on stream %v", ServerLogPrefix, connID, err)
 					}
 					break
 				}
@@ -184,6 +183,8 @@ func (s *Server) handleSession(session quic.Session, mainStream quic.Stream) {
 		case frame.TagOfHandshakeFrame:
 			if err := s.handleHandshakeFrame(mainStream, session, f.(*frame.HandshakeFrame)); err != nil {
 				logger.Errorf("%shandleHandshakeFrame err: %s", ServerLogPrefix, err)
+				mainStream.Close()
+				session.CloseWithError(0xCC, err.Error())
 				// break
 			}
 		// case frame.TagOfPingFrame:
@@ -204,8 +205,6 @@ func (s *Server) handleHandshakeFrame(stream quic.Stream, session quic.Session, 
 	// authentication
 	if !s.authenticate(f) {
 		err := fmt.Errorf("core.server: handshake authentication[%s] fails, client credential type is %s", auth.AuthType(s.opts.Auth.Type()), auth.AuthType(f.AuthType()))
-		stream.Close()
-		session.CloseWithError(0xCC, err.Error())
 		return err
 	}
 	// route
@@ -215,6 +214,10 @@ func (s *Server) handleHandshakeFrame(stream quic.Stream, session quic.Session, 
 	}
 	connID := getConnID(session)
 	route := s.router.Route(appID)
+	if reflect.ValueOf(route).IsNil() {
+		err := errors.New("handleHandshakeFrame route is nil")
+		return err
+	}
 	s.opts.Store.Set(appID, route)
 
 	// client type
@@ -287,6 +290,10 @@ func (s *Server) handleDataFrame(mainStream quic.Stream, session quic.Session, f
 		return err
 	}
 	route := cacheRoute.(Route)
+	if route == nil {
+		logger.Warnf("%shandleDataFrame route is nil", ServerLogPrefix)
+		return fmt.Errorf("handleDataFrame route is nil")
+	}
 	// get stream function name from route
 	to, ok := route.Next(from)
 	if !ok {
@@ -299,7 +306,7 @@ func (s *Server) handleDataFrame(mainStream quic.Stream, session quic.Session, f
 		logger.Warnf("%shandleDataFrame have next function, but not have connection, from=[%s](%s), to=[%s]", ServerLogPrefix, from, fromID, to)
 		return nil
 	}
-	logger.Debugf("%shandleDataFrame seqID=%#x tid=%s, counter=%d, from=[%s](%s), to=[%s](%s)", ServerLogPrefix, f.SeqID(), f.TransactionID(), s.counterOfDataFrame, from, fromID, to, toID)
+	logger.Debugf("%shandleDataFrame tag=%#x tid=%s, counter=%d, from=[%s](%s), to=[%s](%s)", ServerLogPrefix, f.Tag(), f.TransactionID(), s.counterOfDataFrame, from, fromID, to, toID)
 
 	// write data frame to stream
 	logger.Infof("%swrite data: [%s](%s) --> [%s](%s)", ServerLogPrefix, from, fromID, to, toID)
@@ -333,6 +340,7 @@ func (s *Server) Downstreams() map[string]*Client {
 func (s *Server) ConfigRouter(router Router) error {
 	s.mu.Lock()
 	s.router = router
+	logger.Debugf("%sconfig router is %#v", ServerLogPrefix, router)
 	s.mu.Unlock()
 	return nil
 }
@@ -356,7 +364,7 @@ func (s *Server) AddDownstreamServer(addr string, c *Client) {
 // dispatch every DataFrames to all downstreams
 func (s *Server) dispatchToDownstreams(df *frame.DataFrame) {
 	for addr, ds := range s.downstreams {
-		logger.Debugf("%sdispatching to [%s]: %# x", ServerLogPrefix, addr, df.SeqID())
+		logger.Debugf("%sdispatching to [%s]: %# x", ServerLogPrefix, addr, df.Tag())
 		ds.WriteFrame(df)
 	}
 }
@@ -381,7 +389,6 @@ func (s *Server) initOptions() {
 	if s.opts.Store == nil {
 		s.opts.Store = store.NewMemoryStore()
 	}
-
 	// auth
 	if s.opts.Auth == nil {
 		s.opts.Auth = auth.NewAuthNone()

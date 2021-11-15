@@ -8,14 +8,14 @@ import (
 // the Len is the length of Val. Val is also a Y3 encoded PrimitivePacket, storing
 // raw bytes as user's data
 type PayloadFrame struct {
-	Sid      byte
+	Tag      byte
 	Carriage []byte
 }
 
 // NewPayloadFrame creates a new PayloadFrame with a given TagID of user's data
 func NewPayloadFrame(tag byte) *PayloadFrame {
 	return &PayloadFrame{
-		Sid: tag,
+		Tag: tag,
 	}
 }
 
@@ -27,7 +27,7 @@ func (m *PayloadFrame) SetCarriage(buf []byte) *PayloadFrame {
 
 // Encode to Y3 encoded bytes
 func (m *PayloadFrame) Encode() []byte {
-	carriage := y3.NewPrimitivePacketEncoder(m.Sid)
+	carriage := y3.NewPrimitivePacketEncoder(m.Tag)
 	carriage.SetBytesValue(m.Carriage)
 
 	payload := y3.NewNodePacketEncoder(byte(TagOfPayloadFrame))
@@ -46,7 +46,7 @@ func DecodeToPayloadFrame(buf []byte) (*PayloadFrame, error) {
 
 	payload := &PayloadFrame{}
 	for _, v := range nodeBlock.PrimitivePackets {
-		payload.Sid = v.SeqID()
+		payload.Tag = v.SeqID()
 		payload.Carriage = v.GetValBuf()
 		break
 	}

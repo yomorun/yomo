@@ -29,7 +29,5 @@ func main() {
 	}(zipper)
 
 	logger.Printf("Server has started!, pid: %d", os.Getpid())
-	for {
-		select {}
-	}
+	select {}
 }

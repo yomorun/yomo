@@ -15,12 +15,11 @@ func main() {
 
 	// start zipper service
 	log.Printf("Server has started!, pid: %d", os.Getpid())
-	// go func() {
-	err := zipper.ListenAndServe()
-	if err != nil {
-		panic(err)
-	}
-	// }()
-
-	// runtime.Goexit()
+	go func() {
+		err := zipper.ListenAndServe()
+		if err != nil {
+			panic(err)
+		}
+	}()
+	select {}
 }

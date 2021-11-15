@@ -8,6 +8,11 @@ import (
 	"github.com/yomorun/yomo/pkg/auth"
 )
 
+const (
+	// DefaultZipperAddr is the default address of downstream zipper.
+	DefaultZipperAddr = "localhost:9000"
+)
+
 // Option is a function that applies a YoMo-Client option.
 type Option func(o *Options)
 
@@ -106,6 +111,10 @@ func NewOptions(opts ...Option) *Options {
 
 	for _, o := range opts {
 		o(options)
+	}
+
+	if options.ZipperAddr == "" {
+		options.ZipperAddr = DefaultZipperAddr
 	}
 
 	return options

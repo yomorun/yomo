@@ -18,9 +18,9 @@ func newRouter(config *config.WorkflowConfig) core.Router {
 }
 
 // router interface
-func (r *router) Route(_ string) core.Route {
+func (r *router) Route(appID string) core.Route {
+	logger.Errorf("%sapp[%s] workflowconfig is %#v", zipperLogPrefix, appID, r.config)
 	return newRoute(r.config)
-	// return nil
 }
 
 func (r *router) Clean() {
@@ -55,6 +55,7 @@ func (r *route) Add(index int, name string) {
 
 func (r *route) Exists(name string) bool {
 	var ok bool
+	logger.Debugf("%srouter[%v] exists name: %s", zipperLogPrefix, r, name)
 	r.data.Range(func(key interface{}, val interface{}) bool {
 		if val.(string) == name {
 			ok = true
