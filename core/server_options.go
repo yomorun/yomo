@@ -2,6 +2,7 @@ package core
 
 import (
 	"crypto/tls"
+	"net"
 
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/core/auth"
@@ -15,6 +16,7 @@ type ServerOptions struct {
 	Addr       string
 	Auth       auth.Authentication
 	Store      store.Store
+	Conn       net.PacketConn
 }
 
 // func WithListener(l Listener) ServerOption {
@@ -50,5 +52,11 @@ func WithServerTLSConfig(tc *tls.Config) ServerOption {
 func WithServerQuicConfig(qc *quic.Config) ServerOption {
 	return func(o *ServerOptions) {
 		o.QuicConfig = qc
+	}
+}
+
+func WithConn(conn net.PacketConn) ServerOption {
+	return func(o *ServerOptions) {
+		o.Conn = conn
 	}
 }

@@ -15,6 +15,10 @@ import (
 	"github.com/yomorun/yomo/pkg/logger"
 )
 
+const (
+	DefaultListenAddr = "0.0.0.0:9000"
+)
+
 type ServerOption func(*ServerOptions)
 
 // Server is the underlining server of Zipper
@@ -57,11 +61,26 @@ func (s *Server) Init(opts ...ServerOption) error {
 
 // ListenAndServe starts the server.
 func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
-	listener := newListener(s.opts.TLSConfig, s.opts.QuicConfig)
-	// listen the address
-	err := listener.Listen(ctx, addr)
+	if addr == "" {
+		addr = DefaultListenAddr
+	}
+	udpAddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
-		logger.Errorf("%squic.ListenAddr on: %s, err=%v", ServerLogPrefix, addr, err)
+		return nil
+	}
+	conn, err := net.ListenUDP("udp", udpAddr)
+	if err != nil {
+		return err
+	}
+	return s.Serve(ctx, conn)
+}
+
+func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
+	listener := newListener()
+	// listen the address
+	err := listener.Listen(conn, s.opts.TLSConfig, s.opts.QuicConfig)
+	if err != nil {
+		logger.Errorf("%squic.ListenAddr on: %s, err=%v", ServerLogPrefix, listener.Addr(), err)
 		return err
 	}
 	defer listener.Close()
