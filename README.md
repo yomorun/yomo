@@ -112,7 +112,7 @@ func DataID() []byte {
 ```sh
 $ yomo dev
 
-   YoMo Stream Function file: app.go
+ℹ️  YoMo Stream Function file: app.go
 ⌛  Create YoMo Stream Function instance...
 ⌛  YoMo Stream Function building...
 ✅  Success! YoMo Stream Function build.
@@ -136,9 +136,10 @@ Congratulations! You have done your first YoMo Stream Function.
 
 ## 🧩 Interop
 
-### event-first processing
+### Metaverse Workplace (Virtual Office) with YoMo
 
-[Multiple data sources combined calculation](https://github.com/yomorun/yomo/tree/master/example/trainingmodel)
++ [Frontend](https://github.com/yomorun/yomo-metaverse-workplace-nextjs)
++ [Backend](https://github.com/yomorun/yomo-vhq-backend)
 
 ### Sources
 
@@ -147,7 +148,7 @@ Congratulations! You have done your first YoMo Stream Function.
 
 ### Stream Functions
 
-+ [Write a Stream Function with WebAssembly by SSVM](https://github.com/yomorun/yomo-flow-ssvm-example)
++ [Write a Stream Function with WebAssembly by WasmEdge](https://github.com/yomorun/yomo-wasmedge-tensorflow)
 
 ### Output Connectors
 
