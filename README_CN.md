@@ -156,9 +156,9 @@ $ yomo dev
 + `Stream Processing in Rx way`: [Rx](https://docs.yomo.run/rx)
 + `Faster than real-time codec`: [Y3](https://github.com/yomorun/y3-codec)
 
-[YoMo](https://yomo.run) ❤️ [Vercel](https://vercel.com/?utm_source=yomorun&utm_campaign=oss), Our documentation website is
+[YoMo](https://yomo.run) ❤️ [Vercel](https://vercel.com/?utm_source=yomorun&utm_campaign=oss), Our documentation website is [https://docs.yomo.run/](https://docs.yomo.run/).
 
-![Vercel Logo](https://raw.githubusercontent.com/yomorun/yomo-docs/main/public/vercel.svg)
+[![Vercel Logo](https://docs.yomo.run/vercel.svg)](https://vercel.com/?utm_source=yomorun&utm_campaign=oss)
 
 ## 🎯 越来越多的数据产生在数据中心之外，YoMo 关注在离数据更近的位置，提供便利的计算框架
 
