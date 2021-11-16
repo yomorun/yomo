@@ -117,7 +117,6 @@ $ yomo dev
 ⌛  YoMo Stream Function building...
 ✅  Success! YoMo Stream Function build.
 ℹ️   YoMo Stream Function is running...
-ℹ️   Run: /Users/xiaojianhong/Downloads/yomo-app-demo/sl.yomo
 2021/11/16 10:02:43 [core:client]  has connected to yomo-app-demo (dev.yomo.run:9140)
 [localhost] 1637028164050 > value: 6.575044 ⚡️=9ms
 [StdOut]:  6.5750437

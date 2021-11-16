@@ -35,7 +35,7 @@ env GOBIN=/bin go install github.com/yomorun/cli/yomo@latest
 ```bash
 $ yomo -V
 
-YoMo CLI version: v0.0.6
+YoMo CLI version: v0.1.3
 ```
 
 ### 2. 创建第一个yomo应用
@@ -60,51 +60,41 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
-	y3 "github.com/yomorun/y3-codec-golang"
-	"github.com/yomorun/yomo/core/rx"
+	"github.com/yomorun/yomo/rx"
 )
 
-// NoiseDataKey 用于通知YoMo只订阅Y3序列化后Tag为0x10的value
-const NoiseDataKey = 0x10
-
-// NoiseData 描述了Y3序列化后的Tag为0x10的Value所对应的反序列化数据结构
+// NoiseData represents the structure of data
 type NoiseData struct {
-	Noise float32 `y3:"0x11"`
-	Time  int64   `y3:"0x12"`
-	From  string  `y3:"0x13"`
+	Noise float32 `json:"noise"` // Noise value
+	Time  int64   `json:"time"`  // Timestamp (ms)
+	From  string  `json:"from"`  // Source IP
 }
 
-var printer = func(_ context.Context, i interface{}) (interface{}, error) {
-	value := i.(NoiseData)
+var echo = func(_ context.Context, i interface{}) (interface{}, error) {
+	value := i.(*NoiseData)
+	value.Noise = value.Noise / 10
 	rightNow := time.Now().UnixNano() / int64(time.Millisecond)
 	fmt.Println(fmt.Sprintf("[%s] %d > value: %f ⚡️=%dms", value.From, value.Time, value.Noise, rightNow-value.Time))
 	return value.Noise, nil
 }
 
-var callback = func(v []byte) (interface{}, error) {
-	var mold NoiseData
-	err := y3.ToObject(v, &mold)
-	if err != nil {
-		return nil, err
-	}
-	mold.Noise = mold.Noise / 10
-	return mold, nil
-}
-
 // Handler will handle data in Rx way
 func Handler(rxstream rx.Stream) rx.Stream {
 	stream := rxstream.
-		Subscribe(NoiseDataKey).
-		OnObserve(callback).
+		Unmarshal(json.Unmarshal, func() interface{} { return &NoiseData{} }).
 		Debounce(50).
-		Map(printer).
-		StdOut().
-		Encode(0x11)
+		Map(echo).
+		StdOut()
 
 	return stream
+}
+
+func DataID() []byte {
+	return []byte{0x33}
 }
 
 ```
@@ -121,20 +111,17 @@ $ yomo dev
 ⌛  YoMo Stream Function building...
 ✅  Success! YoMo Stream Function build.
 ℹ️   YoMo Stream Function is running...
-2021/06/07 12:00:06 Connecting to YoMo-Zipper dev.yomo.run:9000 ...
-2021/06/07 12:00:07 ✅ Connected to YoMo-Zipper dev.yomo.run:9000
-[10.10.79.50] 1623038407236 > value: 1.919251 ⚡️=-25ms
-[StdOut]:  1.9192511
-[10.10.79.50] 1623038407336 > value: 11.370256 ⚡️=-25ms
-[StdOut]:  11.370256
-[10.10.79.50] 1623038407436 > value: 8.672209 ⚡️=-25ms
-[StdOut]:  8.672209
-[10.10.79.50] 1623038407536 > value: 4.826996 ⚡️=-25ms
-[StdOut]:  4.826996
-[10.10.79.50] 1623038407636 > value: 16.201773 ⚡️=-25ms
-[StdOut]:  16.201773
-[10.10.79.50] 1623038407737 > value: 13.875483 ⚡️=-26ms
-[StdOut]:  13.875483
+2021/11/16 10:02:43 [core:client]  has connected to yomo-app-demo (dev.yomo.run:9140)
+[localhost] 1637028164050 > value: 6.575044 ⚡️=9ms
+[StdOut]:  6.5750437
+[localhost] 1637028164151 > value: 10.076103 ⚡️=5ms
+[StdOut]:  10.076103
+[localhost] 1637028164251 > value: 15.560066 ⚡️=8ms
+[StdOut]:  15.560066
+[localhost] 1637028164352 > value: 15.330824 ⚡️=2ms
+[StdOut]:  15.330824
+[localhost] 1637028164453 > value: 10.859857 ⚡️=7ms
+[StdOut]:  10.859857
 
 ```
 
@@ -147,7 +134,7 @@ $ yomo dev
 
 ### Stream Functions
 
-+ [基于 SSVM 使用 WebAssembly 编写 YoMo-Stream-Function](https://github.com/yomorun/yomo-flow-ssvm-example)
++ [基于 WasmEdge 使用 WebAssembly 编写 YoMo-Stream-Function](https://github.com/yomorun/yomo-wasmedge-tensorflow)
 
 ### Output Connectors
 
@@ -169,9 +156,9 @@ $ yomo dev
 + `Stream Processing in Rx way`: [Rx](https://docs.yomo.run/rx)
 + `Faster than real-time codec`: [Y3](https://github.com/yomorun/y3-codec)
 
-[YoMo](https://yomo.run) ❤️ [Vercel](https://vercel.com/?utm_source=yomorun&utm_campaign=oss), Our documentation website is
+[YoMo](https://yomo.run) ❤️ [Vercel](https://vercel.com/?utm_source=yomorun&utm_campaign=oss), Our documentation website is [https://docs.yomo.run/](https://docs.yomo.run/).
 
-![Vercel Logo](https://raw.githubusercontent.com/yomorun/yomo-docs/main/public/vercel.svg)
+[![Vercel Logo](https://docs.yomo.run/vercel.svg)](https://vercel.com/?utm_source=yomorun&utm_campaign=oss)
 
 ## 🎯 越来越多的数据产生在数据中心之外，YoMo 关注在离数据更近的位置，提供便利的计算框架
 
