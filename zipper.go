@@ -7,10 +7,19 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/core"
+	"github.com/yomorun/yomo/core/auth"
+	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/store"
 	"github.com/yomorun/yomo/pkg/config"
 	"github.com/yomorun/yomo/pkg/logger"
 )
+
+type AppIDKey struct{}
+
+// var appID AppIDKey
+var appID = "app_id"
 
 const (
 	zipperLogPrefix = "\033[33m[yomo:zipper]\033[0m "
@@ -173,6 +182,8 @@ func (z *zipper) ConfigMesh(url string) error {
 
 // ListenAndServe will start zipper service.
 func (z *zipper) ListenAndServe() error {
+	z.server.BeforeHandleFrame(z.beforeFrameHandler)
+	z.server.AfterHandleFrame(z.afterFrameHandler)
 	logger.Debugf("%sCreating Zipper Server ...", zipperLogPrefix)
 	// check downstream zippers
 	for _, ds := range z.downstreamZippers {
@@ -247,4 +258,88 @@ func (z *zipper) Stats() int {
 	log.Printf("[%s] total DataFrames received: %d", z.name, z.server.StatsCounter())
 
 	return len(z.server.StatsFunctions())
+}
+
+func (z *zipper) beforeFrameHandler(store store.Store, stream quic.Stream, session quic.Session, frm frame.Frame) error {
+	// authentication
+	f, ok := frm.(*frame.HandshakeFrame)
+	if !ok {
+		return nil
+	}
+	if !z.authenticate(f) {
+		err := fmt.Errorf("core.server: handshake authentication[%s] fails, client credential type is %s", auth.AuthType(z.server.Options().Auth.Type()), auth.AuthType(f.AuthType()))
+		return err
+	}
+	// ctx = context.WithValue(ctx, appID, "测试appID")
+	store.Set(appID, "测试appID")
+	id, _ := store.Get(appID)
+	logger.Debugf("%sbeforFrameHandler: AppID=%v,ConnID=%v", zipperLogPrefix, id, core.GetConnID(session))
+	return nil
+	// // route
+	// appID := f.AppID()
+	// if err := s.validateRouter(); err != nil {
+	// 	return err
+	// }
+	// connID := core.GetConnID(session)
+	// route := z.server.Router().Route(appID)
+	// if reflect.ValueOf(route).IsNil() {
+	// 	err := errors.New("handleHandshakeFrame route is nil")
+	// 	return err
+	// }
+	// // s.opts.Store.Set(appID, route)
+	// ctx = context.WithValue(ctx, AppID, route)
+	// // TODO: 结束
+
+	// client type
+	// clientType := core.ClientType(f.ClientType)
+	// name := f.Name
+	// switch clientType {
+	// case ClientTypeSource:
+	// 	// s.connector.Add(connID, &stream)
+	// 	z.server.Connector().LinkApp(connID, appID, name)
+	// case ClientTypeStreamFunction:
+	// 	// when sfn connect, it will provide its name to the server. server will check if this client
+	// 	// has permission connected to.
+	// 	if !route.Exists(name) {
+	// 		// unexpected client connected, close the connection
+	// 		z.server.Connector().Remove(connID)
+	// 		// SFN: stream function
+	// 		err := fmt.Errorf("handshake router validation faild, illegal SFN[%s]", f.Name)
+	// 		stream.Close()
+	// 		session.CloseWithError(0xCC, err.Error())
+	// 		return err
+	// 	}
+
+	// 	// s.connector.Add(connID, &stream)
+	// 	// link connection to stream function
+	// 	z.server.Connector().LinkApp(connID, appID, name)
+	// case ClientTypeUpstreamZipper:
+	// 	// s.connector.Add(connID, &stream)
+	// 	z.server.Connector().LinkApp(connID, appID, name)
+	// default:
+	// 	// unknown client type
+	// 	s.connector.Remove(connID)
+	// 	logger.Errorf("%sClientType=%# x, ilegal!", ServerLogPrefix, f.ClientType)
+	// 	stream.Close()
+	// 	session.CloseWithError(0xCD, "Unknown ClientType, illegal!")
+	// 	return errors.New("core.server: Unknown ClientType, illegal")
+	// }
+}
+
+func (z *zipper) afterFrameHandler(store store.Store, stream quic.Stream, session quic.Session, frm frame.Frame) error {
+	_, ok := frm.(*frame.HandshakeFrame)
+	if !ok {
+		return nil
+	}
+	id, _ := store.Get(appID)
+	logger.Debugf("%safterFrameHandler: AppID=%v,ConnID=%v", zipperLogPrefix, id, core.GetConnID(session))
+	return nil
+}
+func (z *zipper) authenticate(f *frame.HandshakeFrame) bool {
+	if z.server.Options().Auth != nil {
+		isAuthenticated := z.server.Options().Auth.Authenticate(f)
+		logger.Debugf("%sauthenticate: [%s]=%v", zipperLogPrefix, z.server.Options().Auth.Type(), isAuthenticated)
+		return isAuthenticated
+	}
+	return true
 }

@@ -14,9 +14,15 @@ type ServerOptions struct {
 	QuicConfig *quic.Config
 	TLSConfig  *tls.Config
 	Addr       string
-	Auth       auth.Authentication
-	Store      store.Store
-	Conn       net.PacketConn
+	// TODO: 移到 BeforeHandshakeFrameHandler, 这个应该是个数组,以便同时支持不同的鉴权方式
+	Auth  auth.Authentication
+	Store store.Store
+	Conn  net.PacketConn
+	// TODO: 不在这里增加,直接增加Server方法
+	// 增加 BeforeHandshakeFrameHandler
+	// 增加 AfterHandshakeFrameHandler
+	// 增加 BeforeDataFrameHandler
+	// 增加 AfterDataFrameHandler
 }
 
 // func WithListener(l Listener) ServerOption {
@@ -33,6 +39,7 @@ func WithAddr(addr string) ServerOption {
 
 func WithAuth(auth auth.Authentication) ServerOption {
 	return func(o *ServerOptions) {
+		// TODO: 追加方式
 		o.Auth = auth
 	}
 }

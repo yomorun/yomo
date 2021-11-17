@@ -19,7 +19,7 @@ func newRouter(config *config.WorkflowConfig) core.Router {
 
 // router interface
 func (r *router) Route(appID string) core.Route {
-	logger.Errorf("%sapp[%s] workflowconfig is %#v", zipperLogPrefix, appID, r.config)
+	logger.Debugf("%sapp[%s] workflowconfig is %#v", zipperLogPrefix, appID, r.config)
 	return newRoute(r.config)
 }
 

@@ -75,6 +75,7 @@ func WithServerOptions(opts ...core.ServerOption) Option {
 	}
 }
 
+// TODO: 开源版本考虑移出去
 // WithAppKeyAuth sets the server authentication method (used by server): AppKey
 func WithAppKeyAuth(appID string, appSecret string) Option {
 	return func(o *Options) {

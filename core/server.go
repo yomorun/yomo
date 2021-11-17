@@ -21,6 +21,7 @@ const (
 )
 
 type ServerOption func(*ServerOptions)
+type FrameHandler func(store store.Store, stream quic.Stream, session quic.Session, f frame.Frame) error
 
 // Server is the underlining server of Zipper
 type Server struct {
@@ -33,6 +34,8 @@ type Server struct {
 	downstreams        map[string]*Client
 	mu                 sync.Mutex
 	opts               ServerOptions
+	beforeFrameHandler FrameHandler
+	afterFrameHandler  FrameHandler
 }
 
 // NewServer create a Server instance.
@@ -100,7 +103,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 			return err
 		}
 
-		connID := getConnID(session)
+		connID := GetConnID(session)
 		logger.Infof("%s❤️1/ new connection: %s", ServerLogPrefix, connID)
 
 		go func(ctx context.Context, sess quic.Session) {
@@ -179,47 +182,74 @@ func (s *Server) handleSession(session quic.Session, mainStream quic.Stream) {
 
 		frameType := f.Type()
 		logger.Debugf("%stype=%s, frame=%# x", ServerLogPrefix, frameType, f.Encode())
-		switch frameType {
-		case frame.TagOfHandshakeFrame:
-			if err := s.handleHandshakeFrame(mainStream, session, f.(*frame.HandshakeFrame)); err != nil {
-				logger.Errorf("%shandleHandshakeFrame err: %s", ServerLogPrefix, err)
+		if s.beforeFrameHandler != nil {
+			err := s.beforeFrameHandler(s.opts.Store, mainStream, session, f)
+			if err != nil {
+				logger.Errorf("%safterFrameHandler err: %s", ServerLogPrefix, err)
 				mainStream.Close()
 				session.CloseWithError(0xCC, err.Error())
-				// break
 			}
-		// case frame.TagOfPingFrame:
-		// 	s.handlePingFrame(mainStream, session, f.(*frame.PingFrame))
-		case frame.TagOfDataFrame:
-			s.handleDataFrame(mainStream, session, f.(*frame.DataFrame))
-			s.dispatchToDownstreams(f.(*frame.DataFrame))
-		default:
-			logger.Errorf("%serr=%v, frame=%v", ServerLogPrefix, err, f.Encode())
+		}
+		// main handler
+		err = s.mainFrameHandler(s.opts.Store, mainStream, session, f)
+		if err != nil {
+			mainStream.Close()
+			session.CloseWithError(0xCC, err.Error())
+		}
+		// after frame handler
+		if s.afterFrameHandler != nil {
+			err := s.afterFrameHandler(s.opts.Store, mainStream, session, f)
+			if err != nil {
+				logger.Errorf("%safterFrameHandler err: %s", ServerLogPrefix, err)
+				mainStream.Close()
+				session.CloseWithError(0xCC, err.Error())
+			}
 		}
 	}
 }
 
+func (s *Server) mainFrameHandler(store store.Store, mainStream quic.Stream, session quic.Session, f frame.Frame) error {
+	var err error
+	frameType := f.Type()
+
+	switch frameType {
+	case frame.TagOfHandshakeFrame:
+		if err := s.handleHandshakeFrame(store, mainStream, session, f.(*frame.HandshakeFrame)); err != nil {
+			logger.Errorf("%shandleHandshakeFrame err: %s", ServerLogPrefix, err)
+			mainStream.Close()
+			session.CloseWithError(0xCC, err.Error())
+			// break
+		}
+	// case frame.TagOfPingFrame:
+	// 	s.handlePingFrame(mainStream, session, f.(*frame.PingFrame))
+	case frame.TagOfDataFrame:
+		s.handleDataFrame(mainStream, session, f.(*frame.DataFrame))
+		s.dispatchToDownstreams(f.(*frame.DataFrame))
+	default:
+		logger.Errorf("%serr=%v, frame=%v", ServerLogPrefix, err, f.Encode())
+	}
+	return nil
+}
+
 // handle HandShakeFrame
-func (s *Server) handleHandshakeFrame(stream quic.Stream, session quic.Session, f *frame.HandshakeFrame) error {
+func (s *Server) handleHandshakeFrame(store store.Store, stream quic.Stream, session quic.Session, f *frame.HandshakeFrame) error {
 	logger.Debugf("%sGOT ❤️ HandshakeFrame : %# x", ServerLogPrefix, f)
 	logger.Infof("%sClientType=%# x is %s, AppID=%s, AuthType=%s, CredentialType=%s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType), f.AppID(), auth.AuthType(s.opts.Auth.Type()), auth.AuthType(f.AuthType()))
-	// authentication
-	if !s.authenticate(f) {
-		err := fmt.Errorf("core.server: handshake authentication[%s] fails, client credential type is %s", auth.AuthType(s.opts.Auth.Type()), auth.AuthType(f.AuthType()))
-		return err
-	}
+
 	// route
 	appID := f.AppID()
 	if err := s.validateRouter(); err != nil {
 		return err
 	}
-	connID := getConnID(session)
+	connID := GetConnID(session)
 	route := s.router.Route(appID)
 	if reflect.ValueOf(route).IsNil() {
 		err := errors.New("handleHandshakeFrame route is nil")
 		return err
 	}
 	s.opts.Store.Set(appID, route)
-
+	// ctx = context.WithValue(ctx, AppID, route)
+	// TODO: 结束
 	// client type
 	clientType := ClientType(f.ClientType)
 	name := f.Name
@@ -269,7 +299,7 @@ func (s *Server) handleDataFrame(mainStream quic.Stream, session quic.Session, f
 	// counter +1
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
 	// currentIssuer := f.GetIssuer()
-	fromID := getConnID(session)
+	fromID := GetConnID(session)
 	from, ok := s.connector.AppName(fromID)
 	if !ok {
 		logger.Warnf("%shandleDataFrame have connection[%s], but not have function", ServerLogPrefix, fromID)
@@ -345,6 +375,12 @@ func (s *Server) ConfigRouter(router Router) error {
 	return nil
 }
 
+func (s *Server) Router() Router {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.router
+}
+
 func (s *Server) init() {
 	// // tracing
 	// _, _, err := tracing.NewTracerProvider(s.name)
@@ -369,18 +405,9 @@ func (s *Server) dispatchToDownstreams(df *frame.DataFrame) {
 	}
 }
 
-// getConnID get quic session connection id
-func getConnID(sess quic.Session) string {
+// GetConnID get quic session connection id
+func GetConnID(sess quic.Session) string {
 	return sess.RemoteAddr().String()
-}
-
-func (s *Server) authenticate(f *frame.HandshakeFrame) bool {
-	if s.opts.Auth != nil {
-		isAuthenticated := s.opts.Auth.Authenticate(f)
-		logger.Debugf("%sauthenticate: [%s]=%v", ServerLogPrefix, s.opts.Auth.Type(), isAuthenticated)
-		return isAuthenticated
-	}
-	return true
 }
 
 func (s *Server) initOptions() {
@@ -401,4 +428,24 @@ func (s *Server) validateRouter() error {
 		return errors.New("server's router is nil")
 	}
 	return nil
+}
+
+func (s *Server) Options() ServerOptions {
+	return s.opts
+}
+
+func (s *Server) Connector() Connector {
+	return s.connector
+}
+
+func (s *Server) Store() store.Store {
+	return s.opts.Store
+}
+
+func (s *Server) BeforeHandleFrame(handler FrameHandler) {
+	s.beforeFrameHandler = handler
+}
+
+func (s *Server) AfterHandleFrame(handler FrameHandler) {
+	s.afterFrameHandler = handler
 }
