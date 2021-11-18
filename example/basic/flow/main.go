@@ -18,7 +18,6 @@ func main() {
 	sfn := yomo.NewStreamFunction(
 		"Noise",
 		yomo.WithZipperAddr("localhost:9000"),
-		yomo.WithAppKeyCredential("abc", "123"),
 	)
 	defer sfn.Close()
 

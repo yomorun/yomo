@@ -11,7 +11,6 @@ func main() {
 	zipper := yomo.NewZipperWithOptions(
 		"basic-zipper",
 		yomo.WithZipperAddr("localhost:9000"),
-		yomo.WithAppKeyAuth("abc", "123"),
 	)
 	defer zipper.Close()
 

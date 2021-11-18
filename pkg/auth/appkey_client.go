@@ -6,9 +6,10 @@ import (
 	"github.com/yomorun/yomo/core/auth"
 )
 
-var _ = auth.Credential(&AppKeyCredential{})
+var _ auth.Credential = (*AppKeyCredential)(nil)
 
 type AppKeyCredential struct {
+	appID    string
 	authType auth.AuthType
 	payload  []byte
 }
@@ -20,9 +21,14 @@ func NewAppKeyCredential(appID string, appSecret string) *AppKeyCredential {
 	payload := buf.Bytes()
 
 	return &AppKeyCredential{
+		appID:    appID,
 		authType: auth.AuthTypeAppKey,
 		payload:  payload,
 	}
+}
+
+func (a *AppKeyCredential) AppID() string {
+	return a.appID
 }
 
 func (a *AppKeyCredential) Type() auth.AuthType {

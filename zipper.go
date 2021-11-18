@@ -8,16 +8,9 @@ import (
 	"net/http"
 
 	"github.com/yomorun/yomo/core"
-	"github.com/yomorun/yomo/core/auth"
-	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/config"
 	"github.com/yomorun/yomo/pkg/logger"
 )
-
-type AppIDKey struct{}
-
-// var appID AppIDKey
-var appID = "app_id"
 
 const (
 	zipperLogPrefix = "\033[33m[yomo:zipper]\033[0m "
@@ -180,8 +173,6 @@ func (z *zipper) ConfigMesh(url string) error {
 
 // ListenAndServe will start zipper service.
 func (z *zipper) ListenAndServe() error {
-	z.server.SetBeforeHandlers(z.beforeFrameHandler)
-	z.server.SetAfterHandlers(z.afterFrameHandler)
 	logger.Debugf("%sCreating Zipper Server ...", zipperLogPrefix)
 	// check downstream zippers
 	for _, ds := range z.downstreamZippers {
@@ -256,38 +247,4 @@ func (z *zipper) Stats() int {
 	log.Printf("[%s] total DataFrames received: %d", z.name, z.server.StatsCounter())
 
 	return len(z.server.StatsFunctions())
-}
-
-func (z *zipper) beforeFrameHandler(c *core.Context) error {
-	// authentication
-	f, ok := c.Frame.(*frame.HandshakeFrame)
-	if !ok {
-		return nil
-	}
-	if !z.authenticate(f) {
-		err := fmt.Errorf("core.server: handshake authentication[%s] fails, client credential type is %s", auth.AuthType(z.server.Options().Auth.Type()), auth.AuthType(f.AuthType()))
-		return err
-	}
-	c.Set(appID, "使用context设置键")
-	id := c.GetString(appID)
-	logger.Debugf("%sbeforFrameHandler: AppID=%v,ConnID=%v", zipperLogPrefix, id, c.ConnID())
-	return nil
-}
-
-func (z *zipper) afterFrameHandler(c *core.Context) error {
-	_, ok := c.Frame.(*frame.HandshakeFrame)
-	if !ok {
-		return nil
-	}
-	id := c.GetString(appID)
-	logger.Debugf("%safterFrameHandler: AppID=%v,ConnID=%v", zipperLogPrefix, id, c.ConnID())
-	return nil
-}
-func (z *zipper) authenticate(f *frame.HandshakeFrame) bool {
-	if z.server.Options().Auth != nil {
-		isAuthenticated := z.server.Options().Auth.Authenticate(f)
-		logger.Debugf("%sauthenticate: [%s]=%v", zipperLogPrefix, z.server.Options().Auth.Type(), isAuthenticated)
-		return isAuthenticated
-	}
-	return true
 }

@@ -90,7 +90,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		return err
 	}
 	defer listener.Close()
-	logger.Printf("%s✅ [%s] Listening on: %s, QUIC: %v", ServerLogPrefix, s.name, listener.Addr(), listener.Versions())
+	logger.Printf("%s✅ [%s] Listening on: %s, QUIC: %v, AUTH: %s", ServerLogPrefix, s.name, listener.Addr(), listener.Versions(), s.authNames())
 
 	s.state = ConnStateConnected
 	for {
@@ -244,7 +244,13 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	f := c.Frame.(*frame.HandshakeFrame)
 
 	logger.Debugf("%sGOT ❤️ HandshakeFrame : %# x", ServerLogPrefix, f)
-	logger.Infof("%sClientType=%# x is %s, AppID=%s, AuthType=%s, CredentialType=%s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType), f.AppID(), auth.AuthType(s.opts.Auth.Type()), auth.AuthType(f.AuthType()))
+	// credential
+	logger.Infof("%sClientType=%# x is %s, CredentialType=%s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType), auth.AuthType(f.AuthType()))
+	// authenticate
+	if !s.authenticate(f) {
+		err := fmt.Errorf("handshake authentication fails, client credential type is %s", auth.AuthType(f.AuthType()))
+		return err
+	}
 
 	// route
 	appID := f.AppID()
@@ -422,10 +428,9 @@ func (s *Server) initOptions() {
 		s.opts.Store = store.NewMemoryStore()
 	}
 	// auth
-	if s.opts.Auth == nil {
-		s.opts.Auth = auth.NewAuthNone()
+	if s.opts.Auths == nil {
+		s.opts.Auths = append(s.opts.Auths, auth.NewAuthNone())
 	}
-	logger.Printf("%suse authentication: [%s]", ServerLogPrefix, s.opts.Auth.Type())
 }
 
 func (s *Server) validateRouter() error {
@@ -453,4 +458,26 @@ func (s *Server) SetBeforeHandlers(handlers ...FrameHandler) {
 
 func (s *Server) SetAfterHandlers(handlers ...FrameHandler) {
 	s.afterHandlers = append(s.afterHandlers, handlers...)
+}
+
+func (s *Server) authNames() []string {
+	result := []string{}
+	for _, auth := range s.opts.Auths {
+		result = append(result, auth.Type().String())
+	}
+	return result
+}
+
+func (s *Server) authenticate(f *frame.HandshakeFrame) bool {
+	if len(s.opts.Auths) > 0 {
+		for _, auth := range s.opts.Auths {
+			isAuthenticated := auth.Authenticate(f)
+			if isAuthenticated {
+				logger.Debugf("%sauthenticate: [%s]=%v", ServerLogPrefix, auth.Type(), isAuthenticated)
+				return isAuthenticated
+			}
+		}
+		return false
+	}
+	return true
 }

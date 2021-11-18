@@ -41,8 +41,12 @@ func (c *Context) Clean() {
 
 func (c *Context) CloseWithError(code uint64, msg string) {
 	logger.Debugf("%sconn[%s] context close, errCode=%d, msg=%s", ServerLogPrefix, c.ConnID(), code, msg)
-	c.Stream.Close()
-	c.Session.CloseWithError(quic.ApplicationErrorCode(code), msg)
+	if c.Stream != nil {
+		c.Stream.Close()
+	}
+	if c.Session != nil {
+		c.Session.CloseWithError(quic.ApplicationErrorCode(code), msg)
+	}
 	c.Clean()
 }
 
