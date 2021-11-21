@@ -3,7 +3,6 @@ package main
 import (
 	"log"
 	"os"
-	"runtime"
 
 	"github.com/yomorun/yomo"
 )
@@ -26,5 +25,5 @@ func main() {
 			panic(err)
 		}
 	}()
-	runtime.Goexit()
+	select {}
 }

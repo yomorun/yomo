@@ -5,14 +5,13 @@ import (
 
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/core"
-	"github.com/yomorun/yomo/pkg/auth"
+	"github.com/yomorun/yomo/core/auth"
+	pkgauth "github.com/yomorun/yomo/pkg/auth"
 )
 
 const (
 	// DefaultZipperAddr is the default address of downstream zipper.
 	DefaultZipperAddr = "localhost:9000"
-	// DefaultZipperListenAddr set default listening port to 9000 and binding to all interfaces.
-	DefaultZipperListenAddr = "0.0.0.0:9000"
 )
 
 // Option is a function that applies a YoMo-Client option.
@@ -77,35 +76,30 @@ func WithServerOptions(opts ...core.ServerOption) Option {
 	}
 }
 
-// WithAppKeyAuth sets the server authentication method (used by server): AppKey
-func WithAppKeyAuth(appID string, appSecret string) Option {
+// WithAuth sets the server authentication method (used by server)
+func WithAuth(auth auth.Authentication) Option {
 	return func(o *Options) {
 		o.ServerOptions = append(
 			o.ServerOptions,
-			core.WithAuth(auth.NewAppKeyAuth(appID, appSecret)),
+			core.WithAuth(auth),
 		)
 	}
 }
 
 // WithAppKeyCredential sets the client credential (used by client): AppKey
 func WithAppKeyCredential(appID string, appSecret string) Option {
+	return WithCredential(pkgauth.NewAppKeyCredential(appID, appSecret))
+}
+
+// WithCredential sets the client credential
+func WithCredential(cred auth.Credential) Option {
 	return func(o *Options) {
 		o.ClientOptions = append(
 			o.ClientOptions,
-			core.WithCredential(auth.NewAppKeyCredential(appID, appSecret)),
+			core.WithCredential(cred),
 		)
 	}
 }
-
-// WithListener sets the server listener
-// func WithListener(listener Listener) Option {
-// 	return func(o *Options) {
-// 		o.ServerOptions = append(
-// 			o.ServerOptions,
-// 			core.WithListener(listener),
-// 		)
-// 	}
-// }
 
 // NewOptions creates a new options for YoMo-Client.
 func NewOptions(opts ...Option) *Options {
@@ -118,10 +112,6 @@ func NewOptions(opts ...Option) *Options {
 	if options.ZipperAddr == "" {
 		options.ZipperAddr = DefaultZipperAddr
 	}
-
-	// if options.ZipperListenAddr == "" {
-	// 	options.ZipperListenAddr = DefaultZipperListenAddr
-	// }
 
 	return options
 }

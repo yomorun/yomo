@@ -11,7 +11,6 @@ func main() {
 	zipper := yomo.NewZipperWithOptions(
 		"basic-zipper",
 		yomo.WithZipperAddr("localhost:9000"),
-		yomo.WithAppKeyAuth("abc", "123"),
 	)
 	defer zipper.Close()
 
@@ -29,7 +28,5 @@ func main() {
 	}(zipper)
 
 	logger.Printf("Server has started!, pid: %d", os.Getpid())
-	for {
-		select {}
-	}
+	select {}
 }

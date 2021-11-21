@@ -1,49 +1,43 @@
 package core
 
 import (
-	"context"
 	"crypto/tls"
+	"net"
 	"time"
 
 	"github.com/lucas-clemente/quic-go"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
 )
 
-const (
-	DefaultListenAddr = "0.0.0.0:9000"
-)
+var _ Listener = (*defaultListener)(nil)
 
 type defaultListener struct {
-	tc *tls.Config
-	c  *quic.Config
+	c *quic.Config
 	quic.Listener
 }
 
-func newListener(tlsConfig *tls.Config, quicConfig *quic.Config) *defaultListener {
-	return &defaultListener{
-		tc: tlsConfig,
-		c:  quicConfig,
-	}
+func newListener() *defaultListener {
+	return &defaultListener{}
 }
 
 func (l *defaultListener) Name() string {
 	return "QUIC-Server"
 }
 
-func (l *defaultListener) Listen(ctx context.Context, addr string) error {
+func (l *defaultListener) Listen(conn net.PacketConn, tlsConfig *tls.Config, quicConfig *quic.Config) error {
 	// listen addr
-	if addr == "" {
-		addr = DefaultListenAddr
-	}
+	addr := conn.LocalAddr().String()
 	// tls config
-	if l.tc == nil {
-		l.tc = pkgtls.GenerateTLSConfig(addr)
+	var tc *tls.Config = tlsConfig
+	if tc == nil {
+		tc = pkgtls.GenerateTLSConfig(addr)
 	}
 	// quic config
-	if l.c == nil {
-		l.c = &quic.Config{
+	var c *quic.Config = quicConfig
+	if c == nil {
+		c = &quic.Config{
 			Versions:                       []quic.VersionNumber{quic.Version1, quic.VersionDraft29},
-			MaxIdleTimeout:                 time.Second * 10,
+			MaxIdleTimeout:                 time.Second * 5,
 			KeepAlive:                      true,
 			MaxIncomingStreams:             1000,
 			MaxIncomingUniStreams:          1000,
@@ -54,8 +48,9 @@ func (l *defaultListener) Listen(ctx context.Context, addr string) error {
 			// Tracer:                         getQlogConfig("server"),
 		}
 	}
+	l.c = c
 
-	listener, err := quic.ListenAddr(addr, l.tc, l.c)
+	listener, err := quic.Listen(conn, tc, l.c)
 	if err != nil {
 		return err
 	}

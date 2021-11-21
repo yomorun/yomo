@@ -13,13 +13,16 @@ type HandshakeFrame struct {
 	// auth
 	authType    byte
 	authPayload []byte
+	// app id
+	appID string
 }
 
 // NewHandshakeFrame creates a new HandshakeFrame.
-func NewHandshakeFrame(name string, clientType byte, authType byte, authPayload []byte) *HandshakeFrame {
+func NewHandshakeFrame(name string, clientType byte, appID string, authType byte, authPayload []byte) *HandshakeFrame {
 	return &HandshakeFrame{
 		Name:        name,
 		ClientType:  clientType,
+		appID:       appID,
 		authType:    authType,
 		authPayload: authPayload,
 	}
@@ -38,16 +41,19 @@ func (h *HandshakeFrame) Encode() []byte {
 	// type
 	typeBlock := y3.NewPrimitivePacketEncoder(byte(TagOfHandshakeType))
 	typeBlock.SetBytesValue([]byte{h.ClientType})
+	// app id
+	appIDBlock := y3.NewPrimitivePacketEncoder(byte(TagOfHandshakeAppID))
+	appIDBlock.SetStringValue(h.appID)
 	// auth
 	authTypeBlock := y3.NewPrimitivePacketEncoder(byte(TagOfHandshakeAuthType))
 	authTypeBlock.SetBytesValue([]byte{h.authType})
 	authPayloadBlock := y3.NewPrimitivePacketEncoder(byte(TagOfHandshakeAuthPayload))
 	authPayloadBlock.SetBytesValue(h.authPayload)
-
 	// handshake frame
 	handshake := y3.NewNodePacketEncoder(byte(h.Type()))
 	handshake.AddPrimitivePacket(nameBlock)
 	handshake.AddPrimitivePacket(typeBlock)
+	handshake.AddPrimitivePacket(appIDBlock)
 	handshake.AddPrimitivePacket(authTypeBlock)
 	handshake.AddPrimitivePacket(authPayloadBlock)
 
@@ -76,6 +82,14 @@ func DecodeToHandshakeFrame(buf []byte) (*HandshakeFrame, error) {
 		clientType := typeBlock.ToBytes()
 		handshake.ClientType = clientType[0]
 	}
+	// app id
+	if appIDBlock, ok := node.PrimitivePackets[byte(TagOfHandshakeAppID)]; ok {
+		appID, err := appIDBlock.ToUTF8String()
+		if err != nil {
+			return nil, err
+		}
+		handshake.appID = appID
+	}
 	// auth type
 	if authTypeBlock, ok := node.PrimitivePackets[byte(TagOfHandshakeAuthType)]; ok {
 		authType := authTypeBlock.ToBytes()
@@ -96,4 +110,8 @@ func (h *HandshakeFrame) AuthType() byte {
 
 func (h *HandshakeFrame) AuthPayload() []byte {
 	return h.authPayload
+}
+
+func (h *HandshakeFrame) AppID() string {
+	return h.appID
 }

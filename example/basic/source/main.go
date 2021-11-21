@@ -22,7 +22,6 @@ func main() {
 	source := yomo.NewSource(
 		"yomo-source",
 		yomo.WithZipperAddr("localhost:9000"),
-		yomo.WithAppKeyCredential("abc", "123"),
 	)
 	err := source.Connect()
 	if err != nil {

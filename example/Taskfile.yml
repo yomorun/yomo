@@ -58,8 +58,8 @@ tasks:
       # - "yomo serve -v -c workflow.yaml"
       - "./zipper{{exeExt}}"
     env:
-      YOMO_ENABLE_DEBUG: false
-      YOMO_LOG_LEVEL: info
+      YOMO_ENABLE_DEBUG: true
+      YOMO_LOG_LEVEL: debug
 
   basic-zipper-build:
     desc: build basic zipper example
@@ -223,7 +223,7 @@ tasks:
     cmds:
       - "./zipper{{exeExt}}"
     env:
-      YOMO_ENABLE_DEBUG: false
+      YOMO_ENABLE_DEBUG: true
       YOMO_LOG_LEVEL: info
 
   same-stream-fn-zipper-build:

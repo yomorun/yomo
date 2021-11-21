@@ -25,14 +25,14 @@ func (d *DataFrame) Type() Type {
 	return TagOfDataFrame
 }
 
-// SeqID return the SeqID of carriage data.
-func (d *DataFrame) SeqID() byte {
-	return d.payloadFrame.Sid
+// Tag return the tag of carriage data.
+func (d *DataFrame) Tag() byte {
+	return d.payloadFrame.Tag
 }
 
 // SetCarriage set user's raw data in `DataFrame`
-func (d *DataFrame) SetCarriage(sid byte, carriage []byte) {
-	d.payloadFrame = NewPayloadFrame(sid).SetCarriage(carriage)
+func (d *DataFrame) SetCarriage(tag byte, carriage []byte) {
+	d.payloadFrame = NewPayloadFrame(tag).SetCarriage(carriage)
 }
 
 // GetCarriage return user's raw data in `DataFrame`
@@ -55,9 +55,9 @@ func (d *DataFrame) GetMetaFrame() *MetaFrame {
 	return d.metaFrame
 }
 
-// GetDataTagID return the Tag of user's data
-func (d *DataFrame) GetDataTagID() byte {
-	return d.payloadFrame.Sid
+// GetDataTag return the Tag of user's data
+func (d *DataFrame) GetDataTag() byte {
+	return d.payloadFrame.Tag
 }
 
 // Encode return Y3 encoded bytes of `DataFrame`

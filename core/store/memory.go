@@ -1,6 +1,8 @@
 package store
 
-import "sync"
+import (
+	"sync"
+)
 
 type MemoryStore struct {
 	m sync.Map
@@ -18,4 +20,12 @@ func (s *MemoryStore) Set(key interface{}, val interface{}) {
 
 func (s *MemoryStore) Get(key interface{}) (interface{}, bool) {
 	return s.m.Load(key)
+}
+
+func (s *MemoryStore) Remove(key interface{}) {
+	s.m.Delete(key)
+}
+
+func (s *MemoryStore) Clean() {
+	s.m = sync.Map{}
 }

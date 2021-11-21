@@ -8,7 +8,7 @@ import (
 	"net/http"
 
 	"github.com/yomorun/yomo/core"
-	"github.com/yomorun/yomo/core/config"
+	"github.com/yomorun/yomo/pkg/config"
 	"github.com/yomorun/yomo/pkg/logger"
 )
 
@@ -52,12 +52,13 @@ type Zipper interface {
 
 // zipper is the implementation of Zipper interface.
 type zipper struct {
-	token             string
+	name              string
 	addr              string
 	hasDownstreams    bool
 	server            *core.Server
 	client            *core.Client
 	downstreamZippers []Zipper
+	ready             chan bool
 }
 
 var _ Zipper = &zipper{}
@@ -96,7 +97,7 @@ func NewDownstreamZipper(name string, opts ...Option) Zipper {
 	client := core.NewClient(name, core.ClientTypeUpstreamZipper, options.ClientOptions...)
 
 	return &zipper{
-		token:  name,
+		name:   name,
 		addr:   options.ZipperAddr,
 		client: client,
 	}
@@ -109,7 +110,7 @@ func createZipperServer(name string, options *Options) *zipper {
 	srv := core.NewServer(name, options.ServerOptions...)
 	z := &zipper{
 		server: srv,
-		token:  name,
+		name:   name,
 		addr:   options.ZipperAddr,
 	}
 	// initialize
@@ -124,17 +125,12 @@ func (z *zipper) ConfigWorkflow(conf string) error {
 		logger.Errorf("%s[ERR] %v", zipperLogPrefix, err)
 		return err
 	}
+	logger.Debugf("%sConfigWorkflow config=%+v", zipperLogPrefix, config)
 	return z.configWorkflow(config)
 }
 
 func (z *zipper) configWorkflow(config *config.WorkflowConfig) error {
-	for i, app := range config.Functions {
-		if err := z.server.AddWorkflow(core.Workflow{Seq: i, Token: app.Name}); err != nil {
-			return err
-		}
-		logger.Printf("%s[AddWorkflow] %d, %s", zipperLogPrefix, i, app.Name)
-	}
-	return nil
+	return z.server.ConfigRouter(newRouter(config))
 }
 
 func (z *zipper) ConfigMesh(url string) error {
@@ -165,7 +161,7 @@ func (z *zipper) ConfigMesh(url string) error {
 	}
 
 	for _, downstream := range configs {
-		if downstream.Name == z.token {
+		if downstream.Name == z.name {
 			continue
 		}
 		addr := fmt.Sprintf("%s:%d", downstream.Host, downstream.Port)
@@ -238,21 +234,17 @@ func (z *zipper) Close() error {
 
 // Stats inspects current server.
 func (z *zipper) Stats() int {
-	log.Printf("[%s] all sfn connected: %d", z.token, len(z.server.StatsFunctions()))
-	for k, v := range z.server.StatsFunctions() {
-		ids := make([]int64, 0)
-		for _, c := range v {
-			ids = append(ids, int64((*c).StreamID()))
-		}
-		log.Printf("[%s] -> k=%v, v.StreamID=%v", z.token, k, ids)
+	log.Printf("[%s] all sfn connected: %d", z.name, len(z.server.StatsFunctions()))
+	for k, _ := range z.server.StatsFunctions() {
+		log.Printf("[%s] -> ConnID=%v", z.name, k)
 	}
 
-	log.Printf("[%s] all downstream zippers connected: %d", z.token, len(z.server.Downstreams()))
+	log.Printf("[%s] all downstream zippers connected: %d", z.name, len(z.server.Downstreams()))
 	for k, v := range z.server.Downstreams() {
-		log.Printf("[%s] |> [%s] %s", z.token, k, v.ServerAddr())
+		log.Printf("[%s] |> [%s] %s", z.name, k, v.ServerAddr())
 	}
 
-	log.Printf("[%s] total DataFrames received: %d", z.token, z.server.StatsCounter())
+	log.Printf("[%s] total DataFrames received: %d", z.name, z.server.StatsCounter())
 
 	return len(z.server.StatsFunctions())
 }

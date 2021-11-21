@@ -15,8 +15,8 @@ const (
 
 // StreamFunction defines serverless streaming functions.
 type StreamFunction interface {
-	// SetObserveDataID set the data id list that will be observed
-	SetObserveDataID(id ...uint8)
+	// SetObserveDataTag set the data tag list that will be observed
+	SetObserveDataTag(id ...uint8)
 	// SetHandler set the handler function, which accept the raw bytes data and return the tag & response
 	SetHandler(fn func([]byte) (byte, []byte)) error
 	// Connect create a connection to the zipper
@@ -52,10 +52,10 @@ type streamFunction struct {
 	fn             func([]byte) (byte, []byte) // user's function which will be invoked when data arrived
 }
 
-// SetObserveDataID set the data id list that will be observed.
-func (s *streamFunction) SetObserveDataID(id ...uint8) {
+// SetObserveDataTag set the data tag list that will be observed.
+func (s *streamFunction) SetObserveDataTag(id ...uint8) {
 	s.observed = append(s.observed, id...)
-	logger.Debugf("%sSetObserveDataID(%v)", streamFunctionLogPrefix, s.observed)
+	logger.Debugf("%sSetObserveDataTag(%v)", streamFunctionLogPrefix, s.observed)
 }
 
 // SetHandler set the handler function, which accept the raw bytes data and return the tag & response.
@@ -72,8 +72,8 @@ func (s *streamFunction) Connect() error {
 	// notify underlying network operations, when data with tag we observed arrived, invoke the func
 	s.client.SetDataFrameObserver(func(data *frame.DataFrame) {
 		for _, t := range s.observed {
-			if t == data.SeqID() {
-				logger.Debugf("%sreceive DataFrame, tag=%# x, carraige=%# x", streamFunctionLogPrefix, data.SeqID(), data.GetCarriage())
+			if t == data.Tag() {
+				logger.Debugf("%sreceive DataFrame, tag=%# x, carraige=%# x", streamFunctionLogPrefix, data.Tag(), data.GetCarriage())
 				s.onDataFrame(data.GetCarriage(), data.GetMetaFrame())
 				return
 			}

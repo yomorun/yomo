@@ -1,7 +1,8 @@
 package core
 
 import (
-	"context"
+	"crypto/tls"
+	"net"
 
 	"github.com/lucas-clemente/quic-go"
 )
@@ -12,7 +13,7 @@ type Listener interface {
 	// Name listerner's name
 	Name() string
 	// Listen listen incoming connections
-	Listen(ctx context.Context, addr string) error
+	Listen(conn net.PacketConn, tlsConfig *tls.Config, quicConfig *quic.Config) error
 	// Versions
 	Versions() []string
 }
