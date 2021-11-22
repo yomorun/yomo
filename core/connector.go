@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"io"
 	"sync"
 
 	"github.com/lucas-clemente/quic-go"
@@ -34,12 +35,12 @@ func (a *app) Name() string {
 var _ Connector = &connector{}
 
 type Connector interface {
-	Add(connID string, stream *quic.Stream)
+	Add(connID string, stream io.ReadWriteCloser)
 	Remove(connID string)
-	Get(connID string) *quic.Stream
+	Get(connID string) io.ReadWriteCloser
 	ConnID(appID string, name string) (string, bool)
 	Write(f *frame.DataFrame, fromID string, toID string) error
-	GetSnapshot() map[string]*quic.Stream
+	GetSnapshot() map[string]io.ReadWriteCloser
 
 	App(connID string) (*app, bool)
 	AppID(connID string) (string, bool)
@@ -62,7 +63,7 @@ func newConnector() Connector {
 	}
 }
 
-func (c *connector) Add(connID string, stream *quic.Stream) {
+func (c *connector) Add(connID string, stream io.ReadWriteCloser) {
 	logger.Debugf("%sconnector add: connID=%s", ServerLogPrefix, connID)
 	c.conns.Store(connID, stream)
 }
@@ -74,10 +75,10 @@ func (c *connector) Remove(connID string) {
 	c.apps.Delete(connID)
 }
 
-func (c *connector) Get(connID string) *quic.Stream {
+func (c *connector) Get(connID string) io.ReadWriteCloser {
 	logger.Debugf("%sconnector get connection: connID=%s", ServerLogPrefix, connID)
 	if stream, ok := c.conns.Load(connID); ok {
-		return stream.(*quic.Stream)
+		return stream.(io.ReadWriteCloser)
 	}
 	return nil
 }
@@ -137,14 +138,14 @@ func (c *connector) Write(f *frame.DataFrame, fromID string, toID string) error 
 		logger.Warnf("%swill write to: [%s] -> [%s], target stream is nil", ServerLogPrefix, fromID, toID)
 		return fmt.Errorf("target[%s] stream is nil", toID)
 	}
-	_, err := (*targetStream).Write(f.Encode())
+	_, err := targetStream.Write(f.Encode())
 	return err
 }
 
-func (c *connector) GetSnapshot() map[string]*quic.Stream {
-	result := make(map[string]*quic.Stream)
+func (c *connector) GetSnapshot() map[string]io.ReadWriteCloser {
+	result := make(map[string]io.ReadWriteCloser)
 	c.conns.Range(func(key interface{}, val interface{}) bool {
-		result[key.(string)] = val.(*quic.Stream)
+		result[key.(string)] = val.(io.ReadWriteCloser)
 		return true
 	})
 	return result

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"io"
 	"sync"
 	"time"
 
@@ -10,8 +11,9 @@ import (
 )
 
 type Context struct {
+	// TODO: remove quic.Session which is only specified for quic?
 	Session quic.Session
-	Stream  quic.Stream
+	Stream  io.ReadWriteCloser
 	Frame   frame.Frame
 	Keys    map[string]interface{}
 

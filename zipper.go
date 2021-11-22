@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/yomorun/yomo/core"
+	"github.com/yomorun/yomo/pkg/bridge"
 	"github.com/yomorun/yomo/pkg/config"
 	"github.com/yomorun/yomo/pkg/logger"
 )
@@ -130,6 +131,13 @@ func (z *zipper) ConfigWorkflow(conf string) error {
 }
 
 func (z *zipper) configWorkflow(config *config.WorkflowConfig) error {
+	// bridges
+	bridges := bridge.InitBridges(config)
+	for _, bridge := range bridges {
+		z.server.AddBridge(bridge)
+	}
+
+	// router
 	return z.server.ConfigRouter(newRouter(config))
 }
 

@@ -23,6 +23,8 @@ tasks:
       - rm -rf same-stream-fn/stream-fn/fn1
       - rm -rf same-stream-fn/stream-fn/fn2
       - rm -rf same-stream-fn/zipper/zipper
+      - rm -rf websocket-bridge/client/client
+      - rm -rf websocket-bridge/zipper/zipper
       - echo 'example clean.'
   # basic example
   basic:
@@ -332,3 +334,48 @@ tasks:
       YOMO_LOG_LEVEL: debug
     cmds:
       - ./source
+
+  websocket-bridge:
+    desc: run websocket bridge example
+    deps: [websocket-bridge-zipper, websocket-bridge-client]
+    cmds:
+      - echo 'websocket bridge example'
+
+  websocket-bridge-zipper:
+    desc: run websocket bridge zipper
+    deps: [websocket-bridge-zipper-build]
+    dir: "websocket-bridge/zipper"
+    cmds:
+      # - "yomo serve -v -c workflow.yaml"
+      - "./zipper{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: true
+      YOMO_LOG_LEVEL: debug
+
+  websocket-bridge-zipper-build:
+    desc: build websocket bridge zipper
+    dir: "websocket-bridge/zipper"
+    cmds:
+      - echo "websocket bridge zipper building..."
+      - "go build -o zipper{{exeExt}} main.go"
+      - echo "websocket bridge zipper built."
+    silent: false
+
+  websocket-bridge-client:
+    desc: run websocket bridge client example
+    deps: [websocket-bridge-client-build]
+    dir: "websocket-bridge/client"
+    cmds:
+      - "./client{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: true
+      YOMO_LOG_LEVEL: debug
+
+  websocket-bridge-client-build:
+    desc: build websocket bridge client example
+    dir: "websocket-bridge/client"
+    cmds:
+      - echo "websocket bridge client building..."
+      - "go build -o client{{exeExt}} main.go"
+      - echo "websocket bridge client built."
+    silent: false

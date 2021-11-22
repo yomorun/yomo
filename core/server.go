@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"reflect"
 	"sync"
@@ -34,6 +35,7 @@ type Server struct {
 	router             Router
 	counterOfDataFrame int64
 	downstreams        map[string]*Client
+	bridges            []Bridge
 	mu                 sync.Mutex
 	opts               ServerOptions
 	beforeHandlers     []FrameHandler
@@ -46,6 +48,7 @@ func NewServer(name string, opts ...ServerOption) *Server {
 		name:        name,
 		connector:   newConnector(),
 		downstreams: make(map[string]*Client),
+		bridges:     make([]Bridge, 0),
 	}
 	s.Init(opts...)
 	once.Do(func() {
@@ -272,7 +275,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	stream := c.Stream
 	switch clientType {
 	case ClientTypeSource:
-		s.connector.Add(connID, &stream)
+		s.connector.Add(connID, stream)
 		s.connector.LinkApp(connID, appID, name)
 	case ClientTypeStreamFunction:
 		// when sfn connect, it will provide its name to the server. server will check if this client
@@ -287,11 +290,11 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 			return err
 		}
 
-		s.connector.Add(connID, &stream)
+		s.connector.Add(connID, stream)
 		// link connection to stream function
 		s.connector.LinkApp(connID, appID, name)
 	case ClientTypeUpstreamZipper:
-		s.connector.Add(connID, &stream)
+		s.connector.Add(connID, stream)
 		s.connector.LinkApp(connID, appID, name)
 	default:
 		// unknown client type
@@ -356,7 +359,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 
 // StatsFunctions returns the sfn stats of server.
 // func (s *Server) StatsFunctions() map[string][]*quic.Stream {
-func (s *Server) StatsFunctions() map[string]*quic.Stream {
+func (s *Server) StatsFunctions() map[string]io.ReadWriteCloser {
 	return s.connector.GetSnapshot()
 }
 
@@ -414,6 +417,18 @@ func (s *Server) dispatchToDownstreams(df *frame.DataFrame) {
 		logger.Debugf("%sdispatching to [%s]: %# x", ServerLogPrefix, addr, df.Tag())
 		ds.WriteFrame(df)
 	}
+}
+
+// AddBridge add a bridge to this server.
+func (s *Server) AddBridge(bridge Bridge) {
+	// serve bridge
+	go bridge.ListenAndServe(s.handleSession)
+
+	// add bridge
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.bridges = append(s.bridges, bridge)
+	logger.Debugf("%sadd a bridge, name=[%s], addr=[%s]", ServerLogPrefix, bridge.Name(), bridge.Addr())
 }
 
 // GetConnID get quic session connection id
