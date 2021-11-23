@@ -17,6 +17,10 @@ type Context struct {
 	Frame   frame.Frame
 	Keys    map[string]interface{}
 
+	// SendDataBack indicates whether the zipper needs to send the data back to the origin connection or not.
+	// For example, the data needs to be sent back to the connections from WebSocket Bridge.
+	SendDataBack bool
+
 	mu sync.RWMutex
 }
 

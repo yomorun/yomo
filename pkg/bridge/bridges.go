@@ -12,8 +12,8 @@ const (
 	nameOfWebSocket = "websocket"
 )
 
-// InitBridges initialize the bridges from conf.
-func InitBridges(conf *config.WorkflowConfig) []core.Bridge {
+// Init the bridges from conf.
+func Init(conf *config.WorkflowConfig) []core.Bridge {
 	bridges := make([]core.Bridge, 0)
 	if conf.Bridges == nil {
 		return bridges

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"time"
 
@@ -15,7 +16,11 @@ func main() {
 	url := "ws://localhost:7000/"
 	ws, err := websocket.Dial(url, "", origin)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		// wait 2s for zipper start-up.
+		time.Sleep(2 * time.Second)
+		// reconnect
+		ws, _ = websocket.Dial(url, "", origin)
 	}
 
 	// handshake
@@ -25,21 +30,30 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// data
+	count := 1
 	for {
+		// send data.
+		msg := fmt.Sprintf("websocket-bridge #%d", count)
 		dataFrame := frame.NewDataFrame()
-		dataFrame.SetCarriage(0x33, []byte("websocket-bridge"))
+		dataFrame.SetCarriage(0x33, []byte(msg))
 		if _, err := ws.Write(dataFrame.Encode()); err != nil {
 			log.Fatal(err)
 		}
+		log.Printf("Sent: %s.\n", msg)
+		count++
 
 		time.Sleep(1 * time.Second)
-	}
 
-	// var msg = make([]byte, 512)
-	// var n int
-	// if n, err = ws.Read(msg); err != nil {
-	// 	log.Fatal(err)
-	// }
-	// fmt.Printf("Received: %s.\n", msg[:n])
+		// receive echo data.
+		var buf = make([]byte, 512)
+		var n int
+		if n, err = ws.Read(buf); err == nil {
+			dataFrame, err := frame.DecodeToDataFrame(buf[:n])
+			if err != nil {
+				log.Fatalf("Decode data to DataFrame failed, frame=%# x", buf[:n])
+			} else {
+				log.Printf("Received: %s.\n", dataFrame.GetCarriage())
+			}
+		}
+	}
 }

@@ -2,6 +2,7 @@ package bridge
 
 import (
 	"net/http"
+	"net/url"
 
 	"github.com/yomorun/yomo/core"
 	"golang.org/x/net/websocket"
@@ -18,6 +19,11 @@ func NewWebSocketBridge(addr string) *WebSocketBridge {
 	return &WebSocketBridge{
 		addr: addr,
 		server: &websocket.Server{
+			Config: websocket.Config{
+				Origin: &url.URL{
+					Host: addr,
+				},
+			},
 			Handshake: func(c *websocket.Config, r *http.Request) error {
 				// TODO: check Origin header for auth.
 				return nil
@@ -40,9 +46,10 @@ func (ws *WebSocketBridge) Addr() string {
 func (ws *WebSocketBridge) ListenAndServe(handler func(ctx *core.Context)) error {
 	// wrap the WebSocket handler.
 	ws.server.Handler = func(c *websocket.Conn) {
-		// trigger the Handler in bridge.
+		// trigger the YoMo Server's Handler in bridge.
 		handler(&core.Context{
-			Stream: c,
+			Stream:       c,
+			SendDataBack: true,
 		})
 	}
 
