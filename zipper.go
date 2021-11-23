@@ -140,10 +140,9 @@ func (z *zipper) configWorkflow(config *config.WorkflowConfig) error {
 
 	// send DataFrame back to the connections from bridges.
 	z.server.SetBeforeHandlers(func(c *core.Context) error {
-		if c.SendDataBack && c.Stream != nil &&
+		if c.SendDataBack != nil && c.Stream != nil &&
 			c.Frame != nil && c.Frame.Type() == frame.TagOfDataFrame {
-			_, err := c.Stream.Write(c.Frame.Encode())
-			return err
+			return c.SendDataBack(c.Frame)
 		}
 		return nil
 	})

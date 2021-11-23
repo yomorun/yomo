@@ -33,7 +33,7 @@ func main() {
 	count := 1
 	for {
 		// send data.
-		msg := fmt.Sprintf("websocket-bridge #%d", count)
+		msg := fmt.Sprintf("websocket-bridge #%d from [client 1]", count)
 		dataFrame := frame.NewDataFrame()
 		dataFrame.SetCarriage(0x33, []byte(msg))
 		if _, err := ws.Write(dataFrame.Encode()); err != nil {

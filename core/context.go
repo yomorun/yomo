@@ -17,9 +17,12 @@ type Context struct {
 	Frame   frame.Frame
 	Keys    map[string]interface{}
 
-	// SendDataBack indicates whether the zipper needs to send the data back to the origin connection or not.
+	// SendDataBack is the callback function when the zipper needs to send the data back to the client's connection.
 	// For example, the data needs to be sent back to the connections from WebSocket Bridge.
-	SendDataBack bool
+	SendDataBack func(f frame.Frame) error
+
+	// OnClose is the callback function when the conn (or stream) is closed.
+	OnClose func()
 
 	mu sync.RWMutex
 }
@@ -52,6 +55,9 @@ func (c *Context) CloseWithError(code uint64, msg string) {
 	}
 	if c.Session != nil {
 		c.Session.CloseWithError(quic.ApplicationErrorCode(code), msg)
+	}
+	if c.OnClose != nil {
+		c.OnClose()
 	}
 	c.Clean()
 }
