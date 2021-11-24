@@ -35,7 +35,6 @@ type Server struct {
 	router             Router
 	counterOfDataFrame int64
 	downstreams        map[string]*Client
-	bridges            []Bridge
 	mu                 sync.Mutex
 	opts               ServerOptions
 	beforeHandlers     []FrameHandler
@@ -48,7 +47,6 @@ func NewServer(name string, opts ...ServerOption) *Server {
 		name:        name,
 		connector:   newConnector(),
 		downstreams: make(map[string]*Client),
-		bridges:     make([]Bridge, 0),
 	}
 	s.Init(opts...)
 	once.Do(func() {
@@ -58,6 +56,7 @@ func NewServer(name string, opts ...ServerOption) *Server {
 	return s
 }
 
+// Init the options.
 func (s *Server) Init(opts ...ServerOption) error {
 	for _, o := range opts {
 		o(&s.opts)
@@ -84,6 +83,7 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	return s.Serve(ctx, conn)
 }
 
+// Serve the server with a net.PacketConn.
 func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 	listener := newListener()
 	// listen the address
@@ -104,7 +104,6 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		session, err := listener.Accept(sctx)
 		if err != nil {
 			logger.Errorf("%screate session error: %v", ServerLogPrefix, err)
-			sctx.Done()
 			return err
 		}
 
@@ -134,8 +133,13 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 
 				logger.Infof("%s❤️4/ [stream:%d] created, connID=%s", ServerLogPrefix, stream.StreamID(), connID)
 				// process frames on stream
-				c := newContext(sess, stream)
+				c := newContext(connID, stream)
 				defer c.Clean()
+				c.OnClose = func(code uint64, msg string) {
+					if sess != nil {
+						sess.CloseWithError(quic.ApplicationErrorCode(code), msg)
+					}
+				}
 				s.handleSession(c)
 				logger.Infof("%s❤️5/ [stream:%d] handleSession DONE", ServerLogPrefix, stream.StreamID())
 			}
@@ -260,7 +264,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	if err := s.validateRouter(); err != nil {
 		return err
 	}
-	connID := c.ConnID()
+	connID := c.ConnID
 	route := s.router.Route(appID)
 	if reflect.ValueOf(route).IsNil() {
 		err := errors.New("handleHandshakeFrame route is nil")
@@ -317,7 +321,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 	// counter +1
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
 	// currentIssuer := f.GetIssuer()
-	fromID := c.ConnID()
+	fromID := c.ConnID
 	from, ok := s.connector.AppName(fromID)
 	if !ok {
 		logger.Warnf("%shandleDataFrame have connection[%s], but not have function", ServerLogPrefix, fromID)
@@ -423,11 +427,6 @@ func (s *Server) dispatchToDownstreams(df *frame.DataFrame) {
 func (s *Server) AddBridge(bridge Bridge) {
 	// serve bridge
 	go bridge.ListenAndServe(s.handleSession)
-
-	// add bridge
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.bridges = append(s.bridges, bridge)
 	logger.Debugf("%sadd a bridge, name=[%s], addr=[%s]", ServerLogPrefix, bridge.Name(), bridge.Addr())
 }
 

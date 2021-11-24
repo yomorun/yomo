@@ -19,8 +19,8 @@ type WebSocketBridge struct {
 	server *websocket.Server
 
 	// Registered the connections in each room.
-	// Key: room id
-	// Value: conns in room, sync.Map
+	// Key: room id (string)
+	// Value: conns in room (sync.Map)
 	rooms sync.Map
 }
 
@@ -67,9 +67,10 @@ func (ws *WebSocketBridge) ListenAndServe(handler func(ctx *core.Context)) error
 
 		// trigger the YoMo Server's Handler in bridge.
 		handler(&core.Context{
+			ConnID:       c.Request().RemoteAddr,
 			Stream:       c,
 			SendDataBack: ws.Send,
-			OnClose: func() {
+			OnClose: func(code uint64, msg string) {
 				// remove this connection in room.
 				conns := ws.getConnsByRoomID(roomID)
 				conns.Delete(c)

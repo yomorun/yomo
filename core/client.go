@@ -50,6 +50,7 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 	return c
 }
 
+// Init the options.
 func (c *Client) Init(opts ...ClientOption) error {
 	for _, o := range opts {
 		o(&c.opts)
