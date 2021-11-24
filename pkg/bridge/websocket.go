@@ -57,6 +57,8 @@ func (ws *WebSocketBridge) Addr() string {
 func (ws *WebSocketBridge) ListenAndServe(handler func(ctx *core.Context)) error {
 	// wrap the WebSocket handler.
 	ws.server.Handler = func(c *websocket.Conn) {
+		// set payload type
+		c.PayloadType = websocket.BinaryFrame
 		// TODO: support multi rooms.
 		roomID := defaultRoomID
 		conns := ws.getConnsByRoomID(roomID)
