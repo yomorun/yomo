@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"sync"
@@ -76,6 +77,8 @@ func (ws *WebSocketBridge) ListenAndServe(handler func(ctx *core.Context)) error
 				// remove this connection in room.
 				conns := ws.getConnsByRoomID(roomID)
 				conns.Delete(c)
+				// broadcast offline message to clients
+				ws.broadcastOffline(c)
 			},
 		})
 	}
@@ -108,4 +111,32 @@ func (ws *WebSocketBridge) getConnsByRoomID(roomID string) sync.Map {
 	}
 	conns, _ := v.(sync.Map)
 	return conns
+}
+
+// TODO: we need to find a good solution to broadcast the `offline` message.
+func (ws *WebSocketBridge) broadcastOffline(c *websocket.Conn) error {
+	clientID := c.Request().URL.Query().Get("clientId")
+	if clientID == "" {
+		clientID = c.Request().RemoteAddr
+	}
+	payload := presence{
+		Event: "offline",
+		Data: presencePayload{
+			ID: clientID,
+		},
+	}
+	carrige, _ := json.Marshal(payload)
+	dataFrame := frame.NewDataFrame()
+	dataFrame.SetCarriage(0x11, carrige)
+	return ws.Send(dataFrame)
+}
+
+// presence is the predefined data structure for presence. (f.e. offline event)
+type presence struct {
+	Event string          `json:"event"`
+	Data  presencePayload `json:"data"`
+}
+
+type presencePayload struct {
+	ID string `json:"id"`
 }
