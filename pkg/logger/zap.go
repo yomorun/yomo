@@ -2,9 +2,15 @@ package logger
 
 import (
 	"log"
+	"os"
+	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+)
+
+const (
+	timeFormat = "2006-01-02 15:04:05.000"
 )
 
 func newLogger(isDebug bool) Logger {
@@ -21,7 +27,10 @@ func newLogger(isDebug bool) Logger {
 
 	cfg.DisableCaller = true
 	cfg.DisableStacktrace = true
-	cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	cfg.EncoderConfig.EncodeTime = timeEncoder
+	// std logger
+	log.Default().SetFlags(0)
+	log.Default().SetOutput(new(logWriter))
 
 	if isJSONFormat() {
 		cfg.Encoding = "json"
@@ -117,4 +126,16 @@ func (z zapLogger) Fatal(msg string, fields ...interface{}) {
 
 func (z zapLogger) Fatalf(template string, args ...interface{}) {
 	z.logger.Fatalf(template, args...)
+}
+
+func timeEncoder(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
+	enc.AppendString(t.Format(timeFormat))
+}
+
+type logWriter struct{}
+
+func (l logWriter) Write(bytes []byte) (int, error) {
+	os.Stderr.WriteString(time.Now().Format(timeFormat))
+	os.Stderr.Write([]byte("\t"))
+	return os.Stderr.Write(bytes)
 }
