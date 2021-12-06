@@ -31,6 +31,9 @@ example/same-stream-fn/stream-fn/fn1
 example/same-stream-fn/stream-fn/fn2
 example/same-stream-fn/zipper/zipper
 example/multi-zipper/bin
+example/websocket-bridge/client-1/client
+example/websocket-bridge/client-2/client
+example/websocket-bridge/zipper/zipper
 # cli
 cli/example/source/source
 cli/example/stream-fn-db/stream-fn-db

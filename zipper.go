@@ -8,6 +8,8 @@ import (
 	"net/http"
 
 	"github.com/yomorun/yomo/core"
+	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/pkg/bridge"
 	"github.com/yomorun/yomo/pkg/config"
 	"github.com/yomorun/yomo/pkg/logger"
 )
@@ -130,6 +132,22 @@ func (z *zipper) ConfigWorkflow(conf string) error {
 }
 
 func (z *zipper) configWorkflow(config *config.WorkflowConfig) error {
+	// bridges
+	bridges := bridge.Init(config)
+	for _, bridge := range bridges {
+		z.server.AddBridge(bridge)
+	}
+
+	// send DataFrame back to the connections from bridges.
+	z.server.SetBeforeHandlers(func(c *core.Context) error {
+		if c.SendDataBack != nil && c.Stream != nil &&
+			c.Frame != nil && c.Frame.Type() == frame.TagOfDataFrame {
+			return c.SendDataBack(c.Frame)
+		}
+		return nil
+	})
+
+	// router
 	return z.server.ConfigRouter(newRouter(config))
 }
 

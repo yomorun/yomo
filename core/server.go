@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"reflect"
 	"sync"
@@ -55,6 +56,7 @@ func NewServer(name string, opts ...ServerOption) *Server {
 	return s
 }
 
+// Init the options.
 func (s *Server) Init(opts ...ServerOption) error {
 	for _, o := range opts {
 		o(&s.opts)
@@ -81,6 +83,7 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	return s.Serve(ctx, conn)
 }
 
+// Serve the server with a net.PacketConn.
 func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 	listener := newListener()
 	// listen the address
@@ -101,7 +104,6 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		session, err := listener.Accept(sctx)
 		if err != nil {
 			logger.Errorf("%screate session error: %v", ServerLogPrefix, err)
-			sctx.Done()
 			return err
 		}
 
@@ -131,8 +133,13 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 
 				logger.Infof("%s❤️4/ [stream:%d] created, connID=%s", ServerLogPrefix, stream.StreamID(), connID)
 				// process frames on stream
-				c := newContext(sess, stream)
+				c := newContext(connID, stream)
 				defer c.Clean()
+				c.OnClose = func(code uint64, msg string) {
+					if sess != nil {
+						sess.CloseWithError(quic.ApplicationErrorCode(code), msg)
+					}
+				}
 				s.handleSession(c)
 				logger.Infof("%s❤️5/ [stream:%d] handleSession DONE", ServerLogPrefix, stream.StreamID())
 			}
@@ -257,7 +264,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	if err := s.validateRouter(); err != nil {
 		return err
 	}
-	connID := c.ConnID()
+	connID := c.ConnID
 	route := s.router.Route(appID)
 	if reflect.ValueOf(route).IsNil() {
 		err := errors.New("handleHandshakeFrame route is nil")
@@ -272,7 +279,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	stream := c.Stream
 	switch clientType {
 	case ClientTypeSource:
-		s.connector.Add(connID, &stream)
+		s.connector.Add(connID, stream)
 		s.connector.LinkApp(connID, appID, name)
 	case ClientTypeStreamFunction:
 		// when sfn connect, it will provide its name to the server. server will check if this client
@@ -287,11 +294,11 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 			return err
 		}
 
-		s.connector.Add(connID, &stream)
+		s.connector.Add(connID, stream)
 		// link connection to stream function
 		s.connector.LinkApp(connID, appID, name)
 	case ClientTypeUpstreamZipper:
-		s.connector.Add(connID, &stream)
+		s.connector.Add(connID, stream)
 		s.connector.LinkApp(connID, appID, name)
 	default:
 		// unknown client type
@@ -314,7 +321,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 	// counter +1
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
 	// currentIssuer := f.GetIssuer()
-	fromID := c.ConnID()
+	fromID := c.ConnID
 	from, ok := s.connector.AppName(fromID)
 	if !ok {
 		logger.Warnf("%shandleDataFrame have connection[%s], but not have function", ServerLogPrefix, fromID)
@@ -356,7 +363,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 
 // StatsFunctions returns the sfn stats of server.
 // func (s *Server) StatsFunctions() map[string][]*quic.Stream {
-func (s *Server) StatsFunctions() map[string]*quic.Stream {
+func (s *Server) StatsFunctions() map[string]io.ReadWriteCloser {
 	return s.connector.GetSnapshot()
 }
 
@@ -414,6 +421,13 @@ func (s *Server) dispatchToDownstreams(df *frame.DataFrame) {
 		logger.Debugf("%sdispatching to [%s]: %# x", ServerLogPrefix, addr, df.Tag())
 		ds.WriteFrame(df)
 	}
+}
+
+// AddBridge add a bridge to this server.
+func (s *Server) AddBridge(bridge Bridge) {
+	// serve bridge
+	go bridge.ListenAndServe(s.handleSession)
+	logger.Debugf("%sadd a bridge, name=[%s], addr=[%s]", ServerLogPrefix, bridge.Name(), bridge.Addr())
 }
 
 // GetConnID get quic session connection id
