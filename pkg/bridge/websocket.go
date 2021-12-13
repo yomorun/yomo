@@ -11,17 +11,15 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-const defaultRoomID = "default"
-
 // WebSocketBridge implements the Bridge interface for WebSocket.
 type WebSocketBridge struct {
 	addr   string
 	server *websocket.Server
 
 	// Registered the connections in each room.
-	// Key: room id (string)
-	// Value: conns in room (sync.Map)
-	rooms sync.Map
+	// Key: connID
+	// Value: *websocket.Conn
+	conns sync.Map
 }
 
 // NewWebSocketBridge initializes an instance for WebSocketBridge.
@@ -39,7 +37,7 @@ func NewWebSocketBridge(addr string) *WebSocketBridge {
 				return nil
 			},
 		},
-		rooms: sync.Map{},
+		conns: sync.Map{},
 	}
 }
 
@@ -60,22 +58,17 @@ func (ws *WebSocketBridge) ListenAndServe(handler func(ctx *core.Context)) error
 		// set payload type
 		c.PayloadType = websocket.BinaryFrame
 		// TODO: support multi rooms.
-		roomID := defaultRoomID
-		conns := ws.getConnsByRoomID(roomID)
-
-		// register new connections.
-		conns.Store(c, true)
-		ws.rooms.Store(roomID, conns)
+		connID := c.Request().RemoteAddr
+		ws.conns.Store(connID, c)
 
 		// trigger the YoMo Server's Handler in bridge.
 		handler(&core.Context{
-			ConnID:       c.Request().RemoteAddr,
+			ConnID:       connID,
 			Stream:       c,
 			SendDataBack: ws.Send,
 			OnClose: func(code uint64, msg string) {
 				// remove this connection in room.
-				conns := ws.getConnsByRoomID(roomID)
-				conns.Delete(c)
+				ws.conns.Delete(connID)
 			},
 		})
 	}
@@ -86,26 +79,14 @@ func (ws *WebSocketBridge) ListenAndServe(handler func(ctx *core.Context)) error
 
 // Send the data to WebSocket clients.
 func (ws *WebSocketBridge) Send(f frame.Frame) error {
-	// TODO: get RoomID from MetaFrame.
-	roomID := defaultRoomID
-	conns := ws.getConnsByRoomID(roomID)
-	conns.Range(func(key, value interface{}) bool {
-		if c, ok := key.(*websocket.Conn); ok {
+	ws.conns.Range(func(key, value interface{}) bool {
+		if c, ok := value.(*websocket.Conn); ok {
 			_, err := c.Write(f.Encode())
 			if err != nil {
-				logger.Errorf("[WebSocketBridge] send data to conn failed, roomID=%s", roomID)
+				logger.Errorf("[WebSocketBridge] send data to conn failed, connID=%s", key)
 			}
 		}
 		return true
 	})
 	return nil
-}
-
-func (ws *WebSocketBridge) getConnsByRoomID(roomID string) sync.Map {
-	v, ok := ws.rooms.Load(roomID)
-	if !ok || v == nil {
-		v = sync.Map{}
-	}
-	conns, _ := v.(sync.Map)
-	return conns
 }
