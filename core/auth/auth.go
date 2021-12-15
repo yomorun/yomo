@@ -7,14 +7,20 @@ import (
 type AuthType byte
 
 const (
-	AuthTypeNone   AuthType = 0x0
-	AuthTypeAppKey AuthType = 0x1
+	AuthTypeNone       AuthType = 0x0
+	AuthTypeAppKey     AuthType = 0x1
+	AuthTypePublicKey  AuthType = 0x2
+	AuthTypePrivateKey AuthType = 0x3
 )
 
 func (a AuthType) String() string {
 	switch a {
 	case AuthTypeAppKey:
 		return "AppKey"
+	case PublicKey:
+		return "PublicKey"
+	case PrivateKey:
+		return "PrivateKey"
 	default:
 		return "None"
 	}
