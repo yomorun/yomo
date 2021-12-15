@@ -17,9 +17,9 @@ func (a AuthType) String() string {
 	switch a {
 	case AuthTypeAppKey:
 		return "AppKey"
-	case PublicKey:
+	case AuthTypePublicKey:
 		return "PublicKey"
-	case PrivateKey:
+	case AuthTypePrivateKey:
 		return "PrivateKey"
 	default:
 		return "None"
