@@ -3,6 +3,7 @@ package bridge
 import (
 	"net/http"
 	"net/url"
+	"os"
 	"sync"
 
 	"github.com/yomorun/yomo/core"
@@ -22,16 +23,29 @@ type WebSocketBridge struct {
 	conns sync.Map
 }
 
+// meshID is the access point for users. This services can be deployed at anywhere
+// to decrease connection_time. Users can connect to the nearest access point.
+var meshID = os.Getenv("MESH_ID")
+
 // NewWebSocketBridge initializes an instance for WebSocketBridge.
 func NewWebSocketBridge(addr string) *WebSocketBridge {
+	// server config
+	conf := websocket.Config{
+		Origin: &url.URL{
+			Host: addr,
+		},
+		Header: make(http.Header),
+	}
+	
+	// add mesh ID to header.
+	if meshID != "" {
+		conf.Header.Add("YoMo-Mesh-ID", meshID);
+	}
+
 	return &WebSocketBridge{
 		addr: addr,
 		server: &websocket.Server{
-			Config: websocket.Config{
-				Origin: &url.URL{
-					Host: addr,
-				},
-			},
+			Config: conf,
 			Handshake: func(c *websocket.Config, r *http.Request) error {
 				// TODO: check Origin header for auth.
 				return nil
