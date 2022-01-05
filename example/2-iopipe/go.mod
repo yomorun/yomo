@@ -1,4 +1,4 @@
-module yomo.run/example-pipe
+module yomo.run/example-2-iopipe
 
 go 1.17
 
