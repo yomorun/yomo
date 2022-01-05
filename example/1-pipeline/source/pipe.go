@@ -38,8 +38,6 @@ func main() {
 		client.Close()
 	}
 	log.Printf("written: %d", written)
-
-	select {}
 }
 
 func processPipe(r io.Reader, w io.Writer) (int64, error) {
