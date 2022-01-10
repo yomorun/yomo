@@ -4,7 +4,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"time"
 
 	"github.com/yomorun/yomo"
 )
@@ -31,29 +30,12 @@ func main() {
 	// set dataID = 0x01
 	client.SetDataTag(0x01)
 
-	written, err := processPipe(os.Stdin, client)
-
+	written, err := io.Copy(client, os.Stdin)
 	if err != nil {
-		log.Printf(">>>> ERR >>>> %v", err)
-		client.Close()
+		log.Fatal(err)
 	}
+	defer client.Close()
 	log.Printf("written: %d", written)
-}
 
-func processPipe(r io.Reader, w io.Writer) (int64, error) {
-	buf := make([]byte, 4)
-	for {
-		n, e := r.Read(buf)
-		if e != nil {
-			log.Printf("\n--ERR--r.Read(): %v", e)
-			return 0, e
-		}
-		// emit data
-		written, e := w.Write(buf[:n])
-		if e != nil {
-			return 0, e
-		}
-		log.Printf("Read: %# x, written: %d", buf[:n], written)
-		time.Sleep(100 * time.Millisecond)
-	}
+	select {}
 }

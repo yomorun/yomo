@@ -50,6 +50,7 @@ func NewSource(name string, opts ...Option) Source {
 
 // Write the data to downstream.
 func (s *yomoSource) Write(data []byte) (int, error) {
+	logger.Debugf("%s\tWrite: data=%# x", sourceLogPrefix, data)
 	return len(data), s.WriteWithTag(s.tag, data)
 }
 

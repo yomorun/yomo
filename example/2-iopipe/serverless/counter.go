@@ -1,14 +1,14 @@
 package main
 
 import (
-	"encoding/binary"
 	"log"
 )
 
-// Handler will handle the raw data.
+// Handler counts how many bytes received
 func Handler(data []byte) (byte, []byte) {
-	randint := binary.LittleEndian.Uint32(data)
-	log.Printf("Generate random uint32: %d (%# x)", randint, data)
+	log.Printf("Got: %d", len(data))
+
+	// return 0, nil will tell zipper end the workflow.
 	return 0, nil
 }
 
