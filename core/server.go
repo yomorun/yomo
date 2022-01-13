@@ -135,11 +135,6 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 				// process frames on stream
 				c := newContext(connID, stream)
 				defer c.Clean()
-				c.OnClose = func(code uint64, msg string) {
-					if sess != nil {
-						sess.CloseWithError(quic.ApplicationErrorCode(code), msg)
-					}
-				}
 				s.handleSession(c)
 				logger.Infof("%s❤️5/ [stream:%d] handleSession DONE", ServerLogPrefix, stream.StreamID())
 			}
@@ -421,13 +416,6 @@ func (s *Server) dispatchToDownstreams(df *frame.DataFrame) {
 		logger.Debugf("%sdispatching to [%s]: %# x", ServerLogPrefix, addr, df.Tag())
 		ds.WriteFrame(df)
 	}
-}
-
-// AddBridge add a bridge to this server.
-func (s *Server) AddBridge(bridge Bridge) {
-	// serve bridge
-	go bridge.ListenAndServe(s.handleSession)
-	logger.Debugf("%sadd a bridge, name=[%s], addr=[%s]", ServerLogPrefix, bridge.Name(), bridge.Addr())
 }
 
 // GetConnID get quic session connection id

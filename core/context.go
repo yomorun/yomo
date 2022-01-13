@@ -21,13 +21,6 @@ type Context struct {
 	// Keys store the key/value pairs in context.
 	Keys map[string]interface{}
 
-	// SendDataBack is the callback function when the zipper needs to send the data back to the client's connection.
-	// For example, the data needs to be sent back to the connections from WebSocket Bridge.
-	SendDataBack func(f frame.Frame) error
-
-	// OnClose is the callback function when the conn (or stream) is closed.
-	OnClose func(code uint64, msg string)
-
 	mu sync.RWMutex
 }
 
@@ -58,9 +51,6 @@ func (c *Context) CloseWithError(code uint64, msg string) {
 	logger.Debugf("%sconn[%s] context close, errCode=%d, msg=%s", ServerLogPrefix, c.ConnID, code, msg)
 	if c.Stream != nil {
 		c.Stream.Close()
-	}
-	if c.OnClose != nil {
-		c.OnClose(code, msg)
 	}
 	c.Clean()
 }
