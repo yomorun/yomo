@@ -62,10 +62,9 @@ tasks:
       - "./zipper{{exeExt}}"
     env:
       YOMO_ENABLE_DEBUG: true
-      YOMO_LOG_LEVEL: info
+      YOMO_LOG_LEVEL: error
       YOMO_ADDR: "localhost:9000"
-      # YOMO_DOWNSTREAM_ADDR: "localhost:9001"
-      YOMO_DOWNSTREAM_ADDR: ""
+      YOMO_DOWNSTREAM_ADDR: "localhost:9001"
 
   basic-downstream-zipper:
     desc: run basic zipper downstream service
@@ -74,6 +73,28 @@ tasks:
     cmds:
       # - "yomo serve -v -c workflow.yaml"
       - "./zipper{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: true
+      YOMO_LOG_LEVEL: info
+      YOMO_ADDR: "localhost:9001"
+
+  basic-downstream-source:
+    desc: run basic downstream source example
+    deps: [basic-source-build]
+    dir: "basic/source"
+    cmds:
+      - "./source{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: true
+      YOMO_LOG_LEVEL: error
+      YOMO_ADDR: "localhost:9001"
+
+  basic-downstream-flow:
+    desc: run basic downstream flow stream function
+    deps: [basic-flow-build]
+    dir: "basic/flow"
+    cmds:
+      - "./flow{{exeExt}}"
     env:
       YOMO_ENABLE_DEBUG: true
       YOMO_LOG_LEVEL: error
@@ -97,7 +118,7 @@ tasks:
       - "./flow{{exeExt}}"
     env:
       YOMO_ENABLE_DEBUG: true
-      YOMO_LOG_LEVEL: debug
+      YOMO_LOG_LEVEL: error
 
   basic-flow-build:
     desc: build basic flow stream function
