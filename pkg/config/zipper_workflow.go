@@ -18,14 +18,6 @@ type Workflow struct {
 	Functions []App `yaml:"functions"`
 }
 
-// Bridge represents a YoMo Bridge.
-type Bridge struct {
-	// Name represents the name of the bridge.
-	Name string `yaml:"name"`
-	// Port represents the listening port of the bridge.
-	Port int `yaml:"port"`
-}
-
 // WorkflowConfig represents a YoMo Workflow config.
 type WorkflowConfig struct {
 	// Name represents the name of the zipper.
@@ -36,8 +28,6 @@ type WorkflowConfig struct {
 	Port int `yaml:"port"`
 	// Workflow represents the sfn workflow.
 	Workflow `yaml:",inline"`
-	// Bridges represents a YoMo Bridges.
-	Bridges []Bridge `yaml:"bridges"`
 }
 
 // LoadWorkflowConfig the WorkflowConfig by path.
