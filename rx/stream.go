@@ -327,12 +327,4 @@ type (
 	Marshaller func(interface{}) ([]byte, error)
 	// Unmarshaller defines an unmarshaller type ([]byte to interface).
 	Unmarshaller func([]byte, interface{}) error
-
-	// BytesWithDataID is the bytes with a specific DataID to pipe back to zipper.
-	BytesWithDataID struct {
-		// DataID to identify the bytes when pipe back to zipper.
-		DataID byte
-		// Bytes of the new data.
-		Bytes []byte
-	}
 )

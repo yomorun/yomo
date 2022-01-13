@@ -18,7 +18,9 @@ type StreamFunction interface {
 	// SetObserveDataTag set the data tag list that will be observed
 	SetObserveDataTag(id ...uint8)
 	// SetHandler set the handler function, which accept the raw bytes data and return the tag & response
-	SetHandler(fn func([]byte) (byte, []byte)) error
+	SetHandler(fn core.SimpleHandler) error
+	// SetPipeHandler set the pipe handler function
+	SetPipeHandler(fn core.PipeHandler) error
 	// Connect create a connection to the zipper
 	Connect() error
 	// Close will close the connection
@@ -48,8 +50,11 @@ type streamFunction struct {
 	name           string
 	zipperEndpoint string
 	client         *core.Client
-	observed       []uint8                     // ID list that will be observed
-	fn             func([]byte) (byte, []byte) // user's function which will be invoked when data arrived
+	observed       []uint8            // ID list that will be observed
+	fn             core.SimpleHandler // user's function which will be invoked when data arrived
+	pfn            core.PipeHandler
+	pIn            chan []byte
+	pOut           chan *frame.PayloadFrame
 }
 
 // SetObserveDataTag set the data tag list that will be observed.
@@ -59,8 +64,14 @@ func (s *streamFunction) SetObserveDataTag(id ...uint8) {
 }
 
 // SetHandler set the handler function, which accept the raw bytes data and return the tag & response.
-func (s *streamFunction) SetHandler(fn func([]byte) (byte, []byte)) error {
+func (s *streamFunction) SetHandler(fn core.SimpleHandler) error {
 	s.fn = fn
+	logger.Debugf("%sSetHandler(%v)", streamFunctionLogPrefix, s.fn)
+	return nil
+}
+
+func (s *streamFunction) SetPipeHandler(fn core.PipeHandler) error {
+	s.pfn = fn
 	logger.Debugf("%sSetHandler(%v)", streamFunctionLogPrefix, s.fn)
 	return nil
 }
@@ -79,6 +90,30 @@ func (s *streamFunction) Connect() error {
 			}
 		}
 	})
+
+	if s.pfn != nil {
+		s.pIn = make(chan []byte)
+		s.pOut = make(chan *frame.PayloadFrame)
+
+		// handle user's pipe function
+		go func() {
+			s.pfn(s.pIn, s.pOut)
+		}()
+
+		// send user's pipe function outputs to zipper
+		go func() {
+			for {
+				data := <-s.pOut
+				if data != nil {
+					logger.Debugf("%sstart WriteFrame(): tag=%#x, data=%# x", streamFunctionLogPrefix, data.Tag, data.Carriage)
+					frame := frame.NewDataFrame()
+					// todo: frame.SetTransactionID
+					frame.SetCarriage(data.Tag, data.Carriage)
+					s.client.WriteFrame(frame)
+				}
+			}
+		}()
+	}
 
 	err := s.client.Connect(context.Background(), s.zipperEndpoint)
 	if err != nil {
@@ -100,32 +135,31 @@ func (s *streamFunction) Close() error {
 
 // when DataFrame we observed arrived, invoke the user's function
 func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
-	// check
-	if s.fn == nil {
-		logger.Warnf("%sStreamFunction is nil", streamFunctionLogPrefix)
-		return
-	}
-	// // tracing
-	// span, err := tracing.NewRemoteTraceSpan(metaFrame.Get("TraceID"), metaFrame.Get("SpanID"), "serverless", fmt.Sprintf("onDataFrame [%s]", s.name))
-	// if err == nil {
-	// 	defer span.End()
-	// }
 	logger.Infof("%sonDataFrame ->[%s]", streamFunctionLogPrefix, s.name)
-	logger.Debugf("%sexecute-start fn: data=%# x", streamFunctionLogPrefix, data)
-	// invoke serverless
-	tag, resp := s.fn(data)
-	logger.Debugf("%sexecute-done fn: tag=%#x, resp=%# x", streamFunctionLogPrefix, tag, resp)
-	// if resp is not nil, means the user's function has returned something, we should send it to the zipper
-	if len(resp) != 0 {
-		logger.Debugf("%sstart WriteFrame(): tag=%#x, data=%# x", streamFunctionLogPrefix, tag, resp)
-		// build a DataFrame
-		// TODO: seems we should implement a DeepCopy() of MetaFrame in the future
-		frame := frame.NewDataFrame()
-		// reuse transactionID
-		frame.SetTransactionID(metaFrame.TransactionID())
-		// frame.SetIssuer(s.name)
-		frame.SetCarriage(tag, resp)
-		s.client.WriteFrame(frame)
+
+	if s.fn != nil {
+		go func() {
+			logger.Debugf("%sexecute-start fn: data=%# x", streamFunctionLogPrefix, data)
+			// invoke serverless
+			tag, resp := s.fn(data)
+			logger.Debugf("%sexecute-done fn: tag=%#x, resp=%# x", streamFunctionLogPrefix, tag, resp)
+			// if resp is not nil, means the user's function has returned something, we should send it to the zipper
+			if len(resp) != 0 {
+				logger.Debugf("%sstart WriteFrame(): tag=%#x, data=%# x", streamFunctionLogPrefix, tag, resp)
+				// build a DataFrame
+				// TODO: seems we should implement a DeepCopy() of MetaFrame in the future
+				frame := frame.NewDataFrame()
+				// reuse transactionID
+				frame.SetTransactionID(metaFrame.TransactionID())
+				// frame.SetIssuer(s.name)
+				frame.SetCarriage(tag, resp)
+				s.client.WriteFrame(frame)
+			}
+		}()
+	} else if s.pfn != nil {
+		s.pIn <- data
+	} else {
+		logger.Warnf("%sStreamFunction is nil", streamFunctionLogPrefix)
 	}
 }
 
