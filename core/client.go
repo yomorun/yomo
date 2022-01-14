@@ -33,6 +33,7 @@ type Client struct {
 	addr       string                 // the address of server connected to
 	mu         sync.Mutex
 	opts       ClientOptions
+	localAddr  string // client local addr, it will be changed on reconnect
 }
 
 // NewClient creates a new YoMo-Client.
@@ -61,14 +62,24 @@ func (c *Client) Init(opts ...ClientOption) error {
 
 // Connect connects to YoMo-Zipper.
 func (c *Client) Connect(ctx context.Context, addr string) error {
-	c.addr = addr
-	c.state = ConnStateConnecting
 
 	// TODO: refactor this later as a Connection Manager
 	// reconnect
 	// for download zipper
 	// If you do not check for errors, the connection will be automatically reconnected
 	go c.reconnect(ctx, addr)
+
+	// connect
+	if err := c.connect(ctx, addr); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *Client) connect(ctx context.Context, addr string) error {
+	c.addr = addr
+	c.state = ConnStateConnecting
 
 	// create quic connection
 	session, err := quic.DialAddrContext(ctx, addr, c.opts.TLSConfig, c.opts.QuicConfig)
@@ -101,12 +112,13 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 		c.state = ConnStateRejected
 		return err
 	}
+	c.state = ConnStateConnected
+	c.localAddr = c.session.LocalAddr().String()
+
+	logger.Printf("%s❤️  [%s](%s) is connected to YoMo-Zipper %s", ClientLogPrefix, c.name, c.localAddr, addr)
 
 	// receiving frames
 	go c.handleFrame()
-
-	c.state = ConnStateConnected
-	logger.Printf("%s❤️  [%s] is connected to YoMo-Zipper %s", ClientLogPrefix, c.name, addr)
 
 	return nil
 }
@@ -116,7 +128,7 @@ func (c *Client) handleFrame() {
 	// transform raw QUIC stream to wire format
 	fs := NewFrameStream(c.stream)
 	for {
-		logger.Infof("%sconnection state=%v", ClientLogPrefix, c.state)
+		logger.Debugf("%shandleFrame connection state=%v", ClientLogPrefix, c.state)
 		// this will block until a frame is received
 		f, err := fs.ReadFrame()
 		if err != nil {
@@ -213,12 +225,16 @@ func (c *Client) WriteFrame(frm frame.Frame) error {
 	if c.stream == nil {
 		return errors.New("stream is nil")
 	}
-	logger.Debugf("%sWriteFrame() will write frame: %s", ClientLogPrefix, frm.Type())
+	if c.state == ConnStateDisconnected || c.state == ConnStateRejected {
+		return fmt.Errorf("client connection state is %s", c.state)
+	}
+	logger.Debugf("%s[%s](%s)@%s WriteFrame() will write frame: %s", ClientLogPrefix, c.name, c.localAddr, c.state, frm.Type())
 
 	data := frm.Encode()
 	// emit raw bytes of Frame
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	// It's blocked used by lock when downstream zipper reconnect
+	// c.mu.Lock()
+	// defer c.mu.Unlock()
 	n, err := c.stream.Write(data)
 	// TODO: move partial logging as a utility
 	if len(data) > 16 {
@@ -227,6 +243,8 @@ func (c *Client) WriteFrame(frm frame.Frame) error {
 		logger.Debugf("%sWriteFrame() wrote n=%d, len(data)=%d, data=%# x", ClientLogPrefix, n, len(data), data)
 	}
 	if err != nil {
+		c.setState(ConnStateDisconnected)
+		// c.state = ConnStateDisconnected
 		if e, ok := err.(*quic.IdleTimeoutError); ok {
 			logger.Errorf("%sWriteFrame() connection timeout, err=%v", ClientLogPrefix, e)
 		} else {
@@ -249,6 +267,13 @@ func (c *Client) setState(state ConnState) {
 	c.mu.Unlock()
 }
 
+// update connection local addr
+func (c *Client) setLocalAddr(addr string) {
+	c.mu.Lock()
+	c.localAddr = addr
+	c.mu.Unlock()
+}
+
 // SetDataFrameObserver sets the data frame handler.
 func (c *Client) SetDataFrameObserver(fn func(*frame.DataFrame)) {
 	c.processor = fn
@@ -260,11 +285,23 @@ func (c *Client) reconnect(ctx context.Context, addr string) {
 	t := time.NewTicker(1 * time.Second)
 	defer t.Stop()
 	for range t.C {
+		// if c.state != ConnStateConnected {
+		// localAddr := c.localAddr
+		// newLocalAddr := "0.0.0.0:0"
+		// if c.session != nil {
+		// 	newLocalAddr = c.session.LocalAddr().String()
+		// }
+		// fmt.Printf("%s[%s] reconnect old.local.addr=%v, new.local.addr=%v, state=%s\n", ClientLogPrefix, c.name, c.localAddr, newLocalAddr, c.state)
+		// logger.Errorf("%s[%s](%s) is reconnect to YoMo-Zipper %s, state=%s\n", ClientLogPrefix, c.name, c.localAddr, addr, c.state)
+		// if c.state == ConnStateRejected {
+		// 	c.Close()
+		// 	return
+		// }
 		if c.state == ConnStateDisconnected {
-			fmt.Printf("%s[%s] is retrying to YoMo-Zipper %s...\n", ClientLogPrefix, c.name, addr)
-			err := c.Connect(ctx, addr)
+			fmt.Printf("%s[%s](%s) is retrying to YoMo-Zipper %s...\n", ClientLogPrefix, c.name, c.localAddr, addr)
+			err := c.connect(ctx, addr)
 			if err != nil {
-				logger.Errorf("%sreconnect error:%v", ClientLogPrefix, err)
+				logger.Errorf("%s[%s](%s) reconnect error:%v", ClientLogPrefix, c.name, c.localAddr, err)
 			}
 		}
 	}

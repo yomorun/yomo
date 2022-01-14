@@ -19,9 +19,13 @@ type noiseData struct {
 
 func main() {
 	// connect to YoMo-Zipper.
+	addr := "localhost:9000"
+	if v := os.Getenv("YOMO_ADDR"); v != "" {
+		addr = v
+	}
 	source := yomo.NewSource(
 		"yomo-source",
-		yomo.WithZipperAddr("localhost:9000"),
+		yomo.WithZipperAddr(addr),
 	)
 	err := source.Connect()
 	if err != nil {
@@ -65,13 +69,13 @@ func generateAndSendData(stream yomo.Source) error {
 		_, err = stream.Write(sendingBuf)
 		if err != nil {
 			logger.Printf("[source] ❌ Emit %v to YoMo-Zipper failure with err: %v", data, err)
-			time.Sleep(300 * time.Millisecond)
+			time.Sleep(500 * time.Millisecond)
 			continue
 
 		} else {
 			logger.Printf("[source] ✅ Emit %v to YoMo-Zipper", data)
 		}
 
-		time.Sleep(300 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 	}
 }

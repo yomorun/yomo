@@ -129,6 +129,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 					}
 					break
 				}
+				// TODO: 确实执行了吗？
 				defer stream.Close()
 
 				logger.Infof("%s❤️4/ [stream:%d] created, connID=%s", ServerLogPrefix, stream.StreamID(), connID)
@@ -233,8 +234,11 @@ func (s *Server) mainFrameHandler(c *Context) error {
 	// case frame.TagOfPingFrame:
 	// 	s.handlePingFrame(mainStream, session, f.(*frame.PingFrame))
 	case frame.TagOfDataFrame:
-		s.handleDataFrame(c)
-		s.dispatchToDownstreams(c.Frame.(*frame.DataFrame))
+		if err := s.handleDataFrame(c); err != nil {
+			c.CloseWithError(0xCC, "处理DataFrame出错")
+		} else {
+			s.dispatchToDownstreams(c.Frame.(*frame.DataFrame))
+		}
 	default:
 		logger.Errorf("%serr=%v, frame=%v", ServerLogPrefix, err, c.Frame.Encode())
 	}
@@ -353,7 +357,11 @@ func (s *Server) handleDataFrame(c *Context) error {
 
 	// write data frame to stream
 	logger.Infof("%swrite data: [%s](%s) --> [%s](%s)", ServerLogPrefix, from, fromID, to, toID)
-	return s.connector.Write(f, fromID, toID)
+	if err := s.connector.Write(f, fromID, toID); err != nil {
+		logger.Errorf("%swrite data: [%s](%s) --> [%s](%s), err=%v", ServerLogPrefix, from, fromID, to, toID, err)
+		return err
+	}
+	return nil
 }
 
 // StatsFunctions returns the sfn stats of server.

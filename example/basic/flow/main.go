@@ -15,9 +15,13 @@ type noiseData struct {
 }
 
 func main() {
+	addr := "localhost:9000"
+	if v := os.Getenv("YOMO_ADDR"); v != "" {
+		addr = v
+	}
 	sfn := yomo.NewStreamFunction(
 		"Noise",
-		yomo.WithZipperAddr("localhost:9000"),
+		yomo.WithZipperAddr(addr),
 	)
 	defer sfn.Close()
 
@@ -44,7 +48,7 @@ func handler(data []byte) (byte, []byte) {
 		logger.Errorf("[flow] json.Marshal err=%v", err)
 		os.Exit(-2)
 	} else {
-		logger.Printf(">> [flow] got tag=0x33, data=%# x", model)
+		logger.Printf(">> [flow] got tag=0x33, data=%+v", model)
 	}
 	return 0x0, nil
 }
