@@ -285,18 +285,6 @@ func (c *Client) reconnect(ctx context.Context, addr string) {
 	t := time.NewTicker(1 * time.Second)
 	defer t.Stop()
 	for range t.C {
-		// if c.state != ConnStateConnected {
-		// localAddr := c.localAddr
-		// newLocalAddr := "0.0.0.0:0"
-		// if c.session != nil {
-		// 	newLocalAddr = c.session.LocalAddr().String()
-		// }
-		// fmt.Printf("%s[%s] reconnect old.local.addr=%v, new.local.addr=%v, state=%s\n", ClientLogPrefix, c.name, c.localAddr, newLocalAddr, c.state)
-		// logger.Errorf("%s[%s](%s) is reconnect to YoMo-Zipper %s, state=%s\n", ClientLogPrefix, c.name, c.localAddr, addr, c.state)
-		// if c.state == ConnStateRejected {
-		// 	c.Close()
-		// 	return
-		// }
 		if c.state == ConnStateDisconnected {
 			fmt.Printf("%s[%s](%s) is retrying to YoMo-Zipper %s...\n", ClientLogPrefix, c.name, c.localAddr, addr)
 			err := c.connect(ctx, addr)
