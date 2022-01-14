@@ -9,6 +9,7 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/reactivex/rxgo/v2"
+	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/logger"
 )
 
@@ -793,9 +794,9 @@ func (s *StreamImpl) PipeBackToZipper(dataID byte) Stream {
 					continue
 				}
 
-				data := BytesWithDataID{
-					DataID: dataID,
-					Bytes:  buf,
+				data := frame.PayloadFrame{
+					Tag:      dataID,
+					Carriage: buf,
 				}
 
 				if !Of(data).SendContext(ctx, next) {

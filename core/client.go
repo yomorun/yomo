@@ -166,8 +166,8 @@ func (c *Client) handleFrame() {
 					logger.Warnf("%sprocessor is nil", ClientLogPrefix)
 				} else {
 					// TODO: should c.processor accept a DataFrame as parameter?
-					// go c.processor(v.GetDataTagID(), v.GetCarriage(), v.GetMetaFrame())
-					go c.processor(v)
+					// c.processor(v.GetDataTagID(), v.GetCarriage(), v.GetMetaFrame())
+					c.processor(v)
 				}
 			}
 		default:
