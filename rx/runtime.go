@@ -58,11 +58,10 @@ func (r *Runtime) RawByteHandler(req []byte) (byte, []byte) {
 // PipeHandler processes data sequentially.
 func (r *Runtime) PipeHandler(in <-chan []byte, out chan<- *frame.PayloadFrame) {
 	for {
-		req := <-in
-		r.rawBytesChan <- req
-
-		// observe the data from RxStream.
-		for item := range r.stream.Observe() {
+		select {
+		case req := <-in:
+			r.rawBytesChan <- req
+		case item := <-r.stream.Observe():
 			if item.Error() {
 				logger.Errorf("[rx PipeHandler] Handler got an error, err=%v", item.E)
 				continue

@@ -18,7 +18,7 @@ type StreamFunction interface {
 	// SetObserveDataTag set the data tag list that will be observed
 	SetObserveDataTag(id ...uint8)
 	// SetHandler set the handler function, which accept the raw bytes data and return the tag & response
-	SetHandler(fn core.SimpleHandler) error
+	SetHandler(fn core.AsyncHandler) error
 	// SetPipeHandler set the pipe handler function
 	SetPipeHandler(fn core.PipeHandler) error
 	// Connect create a connection to the zipper
@@ -50,8 +50,8 @@ type streamFunction struct {
 	name           string
 	zipperEndpoint string
 	client         *core.Client
-	observed       []uint8            // ID list that will be observed
-	fn             core.SimpleHandler // user's function which will be invoked when data arrived
+	observed       []uint8           // ID list that will be observed
+	fn             core.AsyncHandler // user's function which will be invoked when data arrived
 	pfn            core.PipeHandler
 	pIn            chan []byte
 	pOut           chan *frame.PayloadFrame
@@ -64,7 +64,7 @@ func (s *streamFunction) SetObserveDataTag(id ...uint8) {
 }
 
 // SetHandler set the handler function, which accept the raw bytes data and return the tag & response.
-func (s *streamFunction) SetHandler(fn core.SimpleHandler) error {
+func (s *streamFunction) SetHandler(fn core.AsyncHandler) error {
 	s.fn = fn
 	logger.Debugf("%sSetHandler(%v)", streamFunctionLogPrefix, s.fn)
 	return nil
