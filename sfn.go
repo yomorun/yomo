@@ -105,7 +105,7 @@ func (s *streamFunction) Connect() error {
 			for {
 				data := <-s.pOut
 				if data != nil {
-					logger.Debugf("%sstart WriteFrame(): tag=%#x, data=%# x", streamFunctionLogPrefix, data.Tag, data.Carriage)
+					logger.Debugf("%spipe fn send: tag=%#x, data=%# x", streamFunctionLogPrefix, data.Tag, data.Carriage)
 					frame := frame.NewDataFrame()
 					// todo: frame.SetTransactionID
 					frame.SetCarriage(data.Tag, data.Carriage)
@@ -157,6 +157,7 @@ func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
 			}
 		}()
 	} else if s.pfn != nil {
+		logger.Debugf("%spipe fn receive: data=%# x", streamFunctionLogPrefix, data)
 		s.pIn <- data
 	} else {
 		logger.Warnf("%sStreamFunction is nil", streamFunctionLogPrefix)
