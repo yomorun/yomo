@@ -232,10 +232,9 @@ func (c *Client) WriteFrame(frm frame.Frame) error {
 
 	data := frm.Encode()
 	// emit raw bytes of Frame
-	// It's blocked used by lock when downstream zipper reconnect
-	// c.mu.Lock()
-	// defer c.mu.Unlock()
+	c.mu.Lock()
 	n, err := c.stream.Write(data)
+	c.mu.Unlock()
 	// TODO: move partial logging as a utility
 	if len(data) > 16 {
 		logger.Debugf("%sWriteFrame() wrote n=%d, len(data)=%d, data[:16]=%# x ...", ClientLogPrefix, n, len(data), data[:16])
