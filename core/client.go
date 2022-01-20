@@ -232,7 +232,6 @@ func (c *Client) WriteFrame(frm frame.Frame) error {
 
 	data := frm.Encode()
 	// emit raw bytes of Frame
-	// It's blocked used by lock when downstream zipper reconnect
 	c.mu.Lock()
 	n, err := c.stream.Write(data)
 	c.mu.Unlock()
