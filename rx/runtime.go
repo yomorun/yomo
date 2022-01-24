@@ -57,11 +57,8 @@ func (r *Runtime) RawByteHandler(req []byte) (byte, []byte) {
 
 // PipeHandler processes data sequentially.
 func (r *Runtime) PipeHandler(in <-chan []byte, out chan<- *frame.PayloadFrame) {
-	for {
-		select {
-		case req := <-in:
-			r.rawBytesChan <- req
-		case item := <-r.stream.Observe():
+	go func() {
+		for item := range r.stream.Observe() {
 			if item.Error() {
 				logger.Errorf("[rx PipeHandler] Handler got an error, err=%v", item.E)
 				continue
@@ -81,6 +78,10 @@ func (r *Runtime) PipeHandler(in <-chan []byte, out chan<- *frame.PayloadFrame) 
 			logger.Infof("[rx PipeHandler] Send data with [tag=%#x] to YoMo-Zipper.", res.Tag)
 			out <- &res
 		}
+	}()
+
+	for req := range in {
+		r.rawBytesChan <- req
 	}
 }
 

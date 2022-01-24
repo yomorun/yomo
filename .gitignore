@@ -17,6 +17,7 @@
 vendor/
 /bin/yomo
 main
+
 # example
 example/basic/flow/flow
 example/basic/source/source
@@ -31,6 +32,10 @@ example/same-stream-fn/stream-fn/fn1
 example/same-stream-fn/stream-fn/fn2
 example/same-stream-fn/zipper/zipper
 example/multi-zipper/bin
+example/pipe-stream-fn/stream-fn-1/fn1
+example/pipe-stream-fn/stream-fn-2/fn2
+example/pipe-stream-fn/source/source
+
 # cli
 cli/example/source/source
 cli/example/stream-fn-db/stream-fn-db

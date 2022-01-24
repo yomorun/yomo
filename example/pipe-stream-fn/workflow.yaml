@@ -1,0 +1,6 @@
+name: Service
+host: localhost
+port: 9000
+functions:
+  - name: App-1
+  - name: App-2

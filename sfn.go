@@ -102,12 +102,10 @@ func (s *streamFunction) Connect() error {
 
 		// send user's pipe function outputs to zipper
 		go func() {
-			for {
-				data := <-s.pOut
+			for data := range s.pOut {
 				if data != nil {
 					logger.Debugf("%spipe fn send: tag=%#x, data=%# x", streamFunctionLogPrefix, data.Tag, data.Carriage)
 					frame := frame.NewDataFrame()
-					// todo: frame.SetTransactionID
 					frame.SetCarriage(data.Tag, data.Carriage)
 					s.client.WriteFrame(frame)
 				}
@@ -124,12 +122,21 @@ func (s *streamFunction) Connect() error {
 
 // Close will close the connection.
 func (s *streamFunction) Close() error {
+	if s.pIn != nil {
+		close(s.pIn)
+	}
+
+	if s.pOut != nil {
+		close(s.pOut)
+	}
+
 	if s.client != nil {
 		if err := s.client.Close(); err != nil {
 			logger.Errorf("%sClose(): %v", err)
 			return err
 		}
 	}
+
 	return nil
 }
 

@@ -1,8 +1,8 @@
 # https://taskfile.dev
 
-version: '3'
+version: "3"
 
-output: 'prefixed'
+output: "prefixed"
 
 tasks:
   # example cleanup
@@ -23,11 +23,14 @@ tasks:
       - rm -rf same-stream-fn/stream-fn/fn1
       - rm -rf same-stream-fn/stream-fn/fn2
       - rm -rf same-stream-fn/zipper/zipper
+      - rm -rf pipe-stream-fn/source/source
+      - rm -rf pipe-stream-fn/stream-fn-1/fn1
+      - rm -rf pipe-stream-fn/stream-fn-2/fn2
       - echo 'example clean.'
   # basic example
   basic:
     desc: run basic example
-    deps: [basic-zipper,basic-source,basic-flow]
+    deps: [basic-zipper, basic-source, basic-flow]
     cmds:
       - echo 'basic example'
 
@@ -97,7 +100,6 @@ tasks:
       YOMO_LOG_LEVEL: error
       YOMO_ADDR: "localhost:9001"
 
-
   basic-zipper-build:
     desc: build basic zipper example
     dir: "basic/zipper"
@@ -126,10 +128,17 @@ tasks:
       - echo "basic flow built."
     silent: false
 
-  # multi stream function example 
+  # multi stream function example
   multi-stream-fn:
     desc: run multi stream function example
-    deps: [multi-stream-fn-zipper,multi-stream-fn-source,multi-stream-fn-1,multi-stream-fn-2,multi-stream-fn-3]
+    deps:
+      [
+        multi-stream-fn-zipper,
+        multi-stream-fn-source,
+        multi-stream-fn-1,
+        multi-stream-fn-2,
+        multi-stream-fn-3,
+      ]
     cmds:
       - echo 'multi stream function example'
 
@@ -172,7 +181,7 @@ tasks:
     silent: false
 
   multi-stream-fn-1:
-    desc: run multi stream function 1 
+    desc: run multi stream function 1
     deps: [multi-stream-fn-1-build]
     dir: "multi-stream-fn/stream-fn-1"
     cmds:
@@ -191,7 +200,7 @@ tasks:
     silent: false
 
   multi-stream-fn-2:
-    desc: run multi stream function 2 
+    desc: run multi stream function 2
     deps: [multi-stream-fn-2-build]
     dir: "multi-stream-fn/stream-fn-2"
     cmds:
@@ -210,7 +219,7 @@ tasks:
     silent: false
 
   multi-stream-fn-3:
-    desc: run multi stream function 3 
+    desc: run multi stream function 3
     deps: [multi-stream-fn-3-build]
     dir: "multi-stream-fn/stream-fn-3"
     cmds:
@@ -230,7 +239,13 @@ tasks:
   # same-stream-fn example
   same-stream-fn:
     desc: run same stream function example
-    deps: [same-stream-fn-zipper,same-stream-fn-source,same-stream-fn-1,same-stream-fn-2]
+    deps:
+      [
+        same-stream-fn-zipper,
+        same-stream-fn-source,
+        same-stream-fn-1,
+        same-stream-fn-2,
+      ]
     cmds:
       - echo 'same stream function example'
 
@@ -273,7 +288,7 @@ tasks:
     silent: false
 
   same-stream-fn-1:
-    desc: run same stream function  
+    desc: run same stream function
     deps: [same-stream-fn-build]
     dir: "same-stream-fn/stream-fn"
     cmds:
@@ -293,7 +308,7 @@ tasks:
     silent: false
 
   same-stream-fn-2:
-    desc: run same stream function  
+    desc: run same stream function
     deps: [same-stream-fn-build]
     dir: "same-stream-fn/stream-fn"
     cmds:
@@ -302,17 +317,17 @@ tasks:
       YOMO_ENABLE_DEBUG: false
       YOMO_LOG_LEVEL: info
 
-  # multi zipper example 
+  # multi zipper example
   multi-zipper:
     desc: run example
     deps: [multi-zipper-build]
-    cmds: 
+    cmds:
       - task: multi-zipper-services
 
   multi-zipper-services:
     desc: yomo services
-    deps: [multi-zipper-2, multi-zipper-sfn, multi-zipper-1, multi-zipper-source]
-
+    deps:
+      [multi-zipper-2, multi-zipper-sfn, multi-zipper-1, multi-zipper-source]
 
   multi-zipper-build:
     run: once
@@ -369,3 +384,81 @@ tasks:
       YOMO_LOG_LEVEL: debug
     cmds:
       - ./source
+
+  # pipe-stream-fn example
+  pipe-stream-fn:
+    desc: run pipe stream function example
+    deps:
+      [
+        pipe-stream-fn-zipper,
+        pipe-stream-fn-1,
+        pipe-stream-fn-2,
+        pipe-stream-fn-source,
+      ]
+    cmds:
+      - echo 'run pipe stream function example'
+
+  pipe-stream-fn-build:
+    desc: build all pipe stream function programs
+    deps:
+      [
+        pipe-stream-fn-1-build,
+        pipe-stream-fn-2-build,
+        pipe-stream-fn-source-build,
+      ]
+    cmds:
+      - echo 'build pipe stream function example'
+
+  pipe-stream-fn-zipper:
+    desc: run pipe stream function zipper service
+    dir: "pipe-stream-fn"
+    cmds:
+      - "yomo serve -c workflow.yaml"
+
+  pipe-stream-fn-1:
+    desc: run pipe stream function 1
+    deps: [pipe-stream-fn-1-build]
+    dir: "pipe-stream-fn/stream-fn-1"
+    cmds:
+      - "./fn1{{exeExt}}"
+
+  pipe-stream-fn-1-build:
+    desc: build pipe stream function 1
+    dir: "pipe-stream-fn/stream-fn-1"
+    cmds:
+      - echo "fn 1 building..."
+      - "go build -o fn1{{exeExt}} app.go"
+      - echo "fn 1 built."
+    silent: false
+
+  pipe-stream-fn-2:
+    desc: run pipe stream function 2
+    deps: [pipe-stream-fn-2-build]
+    dir: "pipe-stream-fn/stream-fn-2"
+    cmds:
+      - "./fn2{{exeExt}}"
+
+  pipe-stream-fn-2-build:
+    desc: build pipe stream function 2
+    dir: "pipe-stream-fn/stream-fn-2"
+    cmds:
+      - echo "fn 2 building..."
+      - "go build -o fn2{{exeExt}} app.go"
+      - echo "fn 2 built."
+    silent: false
+
+  pipe-stream-fn-source:
+    desc: run pipe stream function example
+    deps: [pipe-stream-fn-source-build]
+    dir: "pipe-stream-fn/source"
+    cmds:
+      - "./source{{exeExt}}"
+
+  pipe-stream-fn-source-build:
+    desc: build pipe stream function source
+    dir: "pipe-stream-fn/source"
+    cmds:
+      - echo "pipe stream function source building..."
+      - "go build -o source{{exeExt}} main.go"
+      - echo "pipe stream function source built."
+    silent: false
