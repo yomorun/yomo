@@ -89,7 +89,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 	// listen the address
 	err := listener.Listen(conn, s.opts.TLSConfig, s.opts.QuicConfig)
 	if err != nil {
-		logger.Errorf("%squic.ListenAddr on: %s, err=%v", ServerLogPrefix, listener.Addr(), err)
+		logger.Errorf("%slistener.Listen: err=%v", ServerLogPrefix, err)
 		return err
 	}
 	defer listener.Close()
