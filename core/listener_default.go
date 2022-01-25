@@ -25,12 +25,14 @@ func (l *defaultListener) Name() string {
 }
 
 func (l *defaultListener) Listen(conn net.PacketConn, tlsConfig *tls.Config, quicConfig *quic.Config) error {
-	// listen addr
-	addr := conn.LocalAddr().String()
+	var err error
 	// tls config
 	var tc *tls.Config = tlsConfig
 	if tc == nil {
-		tc = pkgtls.GenerateTLSConfig(addr)
+		tc, err = pkgtls.GetTLSConfig()
+		if err != nil {
+			return err
+		}
 	}
 	// quic config
 	var c *quic.Config = quicConfig
