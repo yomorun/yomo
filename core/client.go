@@ -329,8 +329,9 @@ func (c *Client) initOptions() {
 	}
 	// tls config
 	if c.opts.TLSConfig == nil {
+		env := os.Getenv("YOMO_ENV")
 		c.opts.TLSConfig = &tls.Config{
-			InsecureSkipVerify: true,
+			InsecureSkipVerify: len(env) == 0 || env == "development",
 			NextProtos:         []string{"yomo"},
 			ClientSessionCache: tls.NewLRUClientSessionCache(64),
 		}
