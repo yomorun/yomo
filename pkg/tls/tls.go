@@ -17,6 +17,7 @@ import (
 	"time"
 )
 
+// Generate certificate by server host ip addresses and DNS names.
 func GenerateCertificate(expireMonths uint, host ...string) (string, string, error) {
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -79,6 +80,7 @@ func GenerateCertificate(expireMonths uint, host ...string) (string, string, err
 	return certOut.String(), keyOut.String(), nil
 }
 
+// Load tls certificate according to environment variables.
 func GetTLSConfig() (*tls.Config, error) {
 	var err error
 	var cert, key []byte
@@ -102,8 +104,8 @@ func GetTLSConfig() (*tls.Config, error) {
 		}
 	}
 
-	if cert == nil || key == nil {
-		return nil, errors.New("cannot load tls cert/key files")
+	if len(cert) == 0 || len(key) == 0 {
+		return nil, errors.New("cannot load tls certificate")
 	}
 
 	tlsCert, err := tls.X509KeyPair(cert, key)
