@@ -28,11 +28,10 @@ func CreateServerTLSConfig() (*tls.Config, error) {
 	}
 
 	return &tls.Config{
-		Certificates:       []tls.Certificate{*tlsCert},
-		ClientCAs:          pool,
-		ClientAuth:         clientAuth,
-		NextProtos:         []string{"yomo"},
-		ClientSessionCache: tls.NewLRUClientSessionCache(1),
+		Certificates: []tls.Certificate{*tlsCert},
+		ClientCAs:    pool,
+		ClientAuth:   clientAuth,
+		NextProtos:   []string{"yomo"},
 	}, nil
 }
 
@@ -53,7 +52,7 @@ func CreateClientTLSConfig() (*tls.Config, error) {
 		Certificates:       []tls.Certificate{*tlsCert},
 		RootCAs:            pool,
 		NextProtos:         []string{"yomo"},
-		ClientSessionCache: tls.NewLRUClientSessionCache(64),
+		ClientSessionCache: tls.NewLRUClientSessionCache(0),
 	}, nil
 }
 
