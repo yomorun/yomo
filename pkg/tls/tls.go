@@ -15,7 +15,7 @@ func CreateServerTLSConfig() (*tls.Config, error) {
 		return nil, err
 	}
 
-	tlsCert, err := getCert(true)
+	tlsCert, err := getCertAndKey()
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +42,7 @@ func CreateClientTLSConfig() (*tls.Config, error) {
 		return nil, err
 	}
 
-	tlsCert, err := getCert(false)
+	tlsCert, err := getCertAndKey()
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +84,7 @@ func getCACertPool() (*x509.CertPool, error) {
 	return pool, nil
 }
 
-func getCert(isServer bool) (*tls.Certificate, error) {
+func getCertAndKey() (*tls.Certificate, error) {
 	var err error
 	var cert, key []byte
 
@@ -92,11 +92,7 @@ func getCert(isServer bool) (*tls.Certificate, error) {
 	keyPath := os.Getenv("YOMO_TLS_KEY_FILE")
 	if len(certPath) == 0 || len(keyPath) == 0 {
 		if isDev() {
-			if isServer {
-				cert, key = getDevServerCertAndKey()
-			} else {
-				cert, key = getDevClientCertAndKey()
-			}
+			cert, key = getDevCertAndKey()
 		}
 	} else {
 		cert, err = ioutil.ReadFile(certPath)
@@ -145,7 +141,7 @@ CA==
 }
 
 // !!! This function is for TEST only, do NOT use it in a production environment !!!
-func getDevServerCertAndKey() ([]byte, []byte) {
+func getDevCertAndKey() ([]byte, []byte) {
 	return []byte(`-----BEGIN CERTIFICATE-----
 MIIB7zCCAXagAwIBAgIUVPVD9XjB7UIrtpLn4wPZyNHaGBMwCgYIKoZIzj0EAwIw
 JjENMAsGA1UECgwEWW9NbzEVMBMGA1UEAwwMWW9NbyBSb290IENBMB4XDTIyMDEy
@@ -164,26 +160,5 @@ MIGkAgEBBDAivM1Y5DuJHgfvbqzXFgUVnhISTgLzxEsQZTZDiO/jYijPRd9vtH00
 uvklju3bLCqgBwYFK4EEACKhZANiAAQYjP9OGw5pMCn4djgJYOcNvu8/ptUxJzMb
 ApyYmGK9ZA0brsNrUxbJERnWAykxB1swn/wz6JHEDLVDziRxYLRVS3rYqd3SRUF5
 4FSRzsOxzXKpBWEy5tbcRt6G7L2J5jo=
------END EC PRIVATE KEY-----`)
-}
-
-// !!! This function is for TEST only, do NOT use it in a production environment !!!
-func getDevClientCertAndKey() ([]byte, []byte) {
-	return []byte(`-----BEGIN CERTIFICATE-----
-MIIBgjCCAQkCFHMTosvu0KP7A+l0zRQo2XaDniaLMAoGCCqGSM49BAMCMCYxDTAL
-BgNVBAoMBFlvTW8xFTATBgNVBAMMDFlvTW8gUm9vdCBDQTAeFw0yMjAxMjYwODUz
-MTFaFw0zMjAxMjQwODUzMTFaMCUxDTALBgNVBAoMBFlvTW8xFDASBgNVBAMMC1lv
-TW8gQ2xpZW50MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAELNvoJzAV9wcmwdVdiP22
-YApUrimQUGLD8YpfNihE4GXc0B3znZBjJyCiWIoCZPoGhROp905rq59PypBHx5bM
-FFeDSRm3v5hAzFVi1jjWS4f5ThrJLpn6ioeEhX+lKLhyMAoGCCqGSM49BAMCA2cA
-MGQCMG13CEyvaxRXXh+1Aakq+Gv/U2E/66oVoJE5nMZL/qbn3mcOpLMDMUkyv+Hz
-xRljdgIwCKm80IdPNSz+XrDRxT1DigMLVNtBZsjXJ5y+lIbTXzssIdo5n42894NH
-ZqzSo/lc
------END CERTIFICATE-----`),
-		[]byte(`-----BEGIN EC PRIVATE KEY-----
-MIGkAgEBBDC56ngaLW2T+YIAmA9sxlRtisrnE3Toiv2bHB/MhWtbYuhpX2JtZASO
-PUG8oONZA2agBwYFK4EEACKhZANiAAQs2+gnMBX3BybB1V2I/bZgClSuKZBQYsPx
-il82KETgZdzQHfOdkGMnIKJYigJk+gaFE6n3Tmurn0/KkEfHlswUV4NJGbe/mEDM
-VWLWONZLh/lOGskumfqKh4SFf6UouHI=
 -----END EC PRIVATE KEY-----`)
 }
