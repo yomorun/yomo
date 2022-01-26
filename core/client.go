@@ -2,10 +2,10 @@ package core
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
+
 	// "os"
 	"sync"
 	"time"
@@ -15,6 +15,7 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/log"
 	"github.com/yomorun/yomo/pkg/logger"
+	pkgtls "github.com/yomorun/yomo/pkg/tls"
 )
 
 type ClientOption func(*ClientOptions)
@@ -59,8 +60,7 @@ func (c *Client) Init(opts ...ClientOption) error {
 	for _, o := range opts {
 		o(&c.opts)
 	}
-	c.initOptions()
-	return nil
+	return c.initOptions()
 }
 
 // Connect connects to YoMo-Zipper.
@@ -329,12 +329,12 @@ func (c *Client) initOptions() {
 	}
 	// tls config
 	if c.opts.TLSConfig == nil {
-		env := os.Getenv("YOMO_ENV")
-		c.opts.TLSConfig = &tls.Config{
-			InsecureSkipVerify: len(env) == 0 || env == "development",
-			NextProtos:         []string{"yomo"},
-			ClientSessionCache: tls.NewLRUClientSessionCache(64),
+		tc, err := pkgtls.CreateClientTLSConfig()
+		if err != nil {
+			c.logger.Errorf("%sCreateClientTLSConfig: %v", ClientLogPrefix, err)
+			return
 		}
+		c.opts.TLSConfig = tc
 	}
 	// quic config
 	if c.opts.QuicConfig == nil {
