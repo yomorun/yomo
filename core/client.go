@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -14,6 +13,7 @@ import (
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/logger"
+	pkgtls "github.com/yomorun/yomo/pkg/tls"
 )
 
 type ClientOption func(*ClientOptions)
@@ -56,8 +56,7 @@ func (c *Client) Init(opts ...ClientOption) error {
 	for _, o := range opts {
 		o(&c.opts)
 	}
-	c.initOptions()
-	return nil
+	return c.initOptions()
 }
 
 // Connect connects to YoMo-Zipper.
@@ -308,19 +307,19 @@ func (c *Client) ServerAddr() string {
 }
 
 // initOptions init options defaults
-func (c *Client) initOptions() {
+func (c *Client) initOptions() error {
 	// credential
 	if c.opts.Credential == nil {
 		c.opts.Credential = auth.NewCredendialNone()
 	}
 	// tls config
 	if c.opts.TLSConfig == nil {
-		env := os.Getenv("YOMO_ENV")
-		c.opts.TLSConfig = &tls.Config{
-			InsecureSkipVerify: len(env) == 0 || env == "development",
-			NextProtos:         []string{"yomo"},
-			ClientSessionCache: tls.NewLRUClientSessionCache(64),
+		tc, err := pkgtls.CreateClientTLSConfig()
+		if err != nil {
+			logger.Errorf("%sCreateClientTLSConfig: %v", ClientLogPrefix, err)
+			return err
 		}
+		c.opts.TLSConfig = tc
 	}
 	// quic config
 	if c.opts.QuicConfig == nil {
@@ -341,4 +340,6 @@ func (c *Client) initOptions() {
 	if c.opts.Credential != nil {
 		logger.Printf("%suse credential: [%s]", ClientLogPrefix, c.opts.Credential.Type())
 	}
+
+	return nil
 }

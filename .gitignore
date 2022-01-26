@@ -21,6 +21,7 @@ main
 example/basic/flow/flow
 example/basic/source/source
 example/basic/zipper/zipper
+example/basic-tls/tls-files
 example/multi-stream-fn/source/source
 example/multi-stream-fn/stream-fn-1/fn1
 example/multi-stream-fn/stream-fn-2/fn2

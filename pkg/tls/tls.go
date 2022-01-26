@@ -1,96 +1,103 @@
 package tls
 
 import (
-	"bytes"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/pem"
 	"errors"
 	"io/ioutil"
-	"math/big"
-	"net"
 	"os"
-	"time"
 )
 
-// Generate certificate by server host ip addresses and DNS names.
-func GenerateCertificate(expireMonths uint, host ...string) (string, string, error) {
-	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+// Create server tls config.
+func CreateServerTLSConfig() (*tls.Config, error) {
+	pool, err := getCACertPool()
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
-	notBefore := time.Now()
-	notAfter := notBefore.Add(time.Hour * time.Duration(expireMonths*24*30))
-
-	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
-	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
+	tlsCert, err := getCert(true)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
-	template := x509.Certificate{
-		SerialNumber:          serialNumber,
-		Subject:               pkix.Name{Organization: []string{"YoMo"}},
-		NotBefore:             notBefore,
-		NotAfter:              notAfter,
-		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		BasicConstraintsValid: true,
-		IsCA:                  true,
-		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::")},
-		DNSNames:              []string{"localhost"},
+	var clientAuth tls.ClientAuthType
+	if isDev() {
+		clientAuth = tls.NoClientCert
+	} else {
+		clientAuth = tls.RequireAndVerifyClientCert
 	}
 
-	for _, h := range host {
-		if ip := net.ParseIP(h); ip != nil {
-			template.IPAddresses = append(template.IPAddresses, ip)
-		} else {
-			template.DNSNames = append(template.DNSNames, h)
+	return &tls.Config{
+		Certificates:       []tls.Certificate{*tlsCert},
+		ClientCAs:          pool,
+		ClientAuth:         clientAuth,
+		NextProtos:         []string{"yomo"},
+		ClientSessionCache: tls.NewLRUClientSessionCache(1),
+	}, nil
+}
+
+// Create client tls config.
+func CreateClientTLSConfig() (*tls.Config, error) {
+	pool, err := getCACertPool()
+	if err != nil {
+		return nil, err
+	}
+
+	tlsCert, err := getCert(false)
+	if err != nil {
+		return nil, err
+	}
+
+	return &tls.Config{
+		InsecureSkipVerify: isDev(),
+		Certificates:       []tls.Certificate{*tlsCert},
+		RootCAs:            pool,
+		NextProtos:         []string{"yomo"},
+		ClientSessionCache: tls.NewLRUClientSessionCache(64),
+	}, nil
+}
+
+func getCACertPool() (*x509.CertPool, error) {
+	var err error
+	var caCert []byte
+
+	caCertPath := os.Getenv("YOMO_TLS_CACERT_FILE")
+	if len(caCertPath) == 0 {
+		if isDev() {
+			caCert = getDevCACert()
+		}
+	} else {
+		caCert, err = ioutil.ReadFile(caCertPath)
+		if err != nil {
+			return nil, err
 		}
 	}
 
-	certBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
-	if err != nil {
-		return "", "", err
+	if len(caCert) == 0 {
+		return nil, errors.New("tls: cannot load CA cert")
 	}
 
-	// create public key
-	certOut := bytes.NewBuffer(nil)
-	err = pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
-	if err != nil {
-		return "", "", err
+	pool := x509.NewCertPool()
+	if ok := pool.AppendCertsFromPEM(caCert); !ok {
+		return nil, errors.New("tls: cannot append CA cert to pool")
 	}
 
-	// create private key
-	keyOut := bytes.NewBuffer(nil)
-	b, err := x509.MarshalECPrivateKey(priv)
-	if err != nil {
-		return "", "", err
-	}
-	err = pem.Encode(keyOut, &pem.Block{Type: "EC PRIVATE KEY", Bytes: b})
-	if err != nil {
-		return "", "", err
-	}
-
-	return certOut.String(), keyOut.String(), nil
+	return pool, nil
 }
 
-// Load tls certificate according to environment variables.
-func GetTLSConfig() (*tls.Config, error) {
+func getCert(isServer bool) (*tls.Certificate, error) {
 	var err error
 	var cert, key []byte
 
-	certPath := os.Getenv("YOMO_TLS_CERT_PATH")
-	keyPath := os.Getenv("YOMO_TLS_KEY_PATH")
+	certPath := os.Getenv("YOMO_TLS_CERT_FILE")
+	keyPath := os.Getenv("YOMO_TLS_KEY_FILE")
 	if len(certPath) == 0 || len(keyPath) == 0 {
-		env := os.Getenv("YOMO_ENV")
-		if len(env) == 0 || env == "development" {
-			cert, key = getDevCertAndKey()
+		if isDev() {
+			if isServer {
+				cert, key = getDevServerCertAndKey()
+			} else {
+				cert, key = getDevClientCertAndKey()
+			}
 		}
 	} else {
 		cert, err = ioutil.ReadFile(certPath)
@@ -105,7 +112,7 @@ func GetTLSConfig() (*tls.Config, error) {
 	}
 
 	if len(cert) == 0 || len(key) == 0 {
-		return nil, errors.New("cannot load tls certificate")
+		return nil, errors.New("tls: cannot load tls cert/key")
 	}
 
 	tlsCert, err := tls.X509KeyPair(cert, key)
@@ -113,29 +120,71 @@ func GetTLSConfig() (*tls.Config, error) {
 		return nil, err
 	}
 
-	return &tls.Config{
-		Certificates:       []tls.Certificate{tlsCert},
-		ClientSessionCache: tls.NewLRUClientSessionCache(1),
-		NextProtos:         []string{"yomo"},
-	}, nil
+	return &tlsCert, nil
 }
 
-// !!! For test only, do NOT use it in production environment !!!
-func getDevCertAndKey() ([]byte, []byte) {
+func isDev() bool {
+	env := os.Getenv("YOMO_ENV")
+	return len(env) == 0 || env == "development"
+}
+
+// !!! This function is for TEST only, do NOT use it in a production environment !!!
+func getDevCACert() []byte {
 	return []byte(`-----BEGIN CERTIFICATE-----
-MIIBpDCCAUqgAwIBAgIRAOEth6xOv1kpOuy6xMrcdAAwCgYIKoZIzj0EAwIwDzEN
-MAsGA1UEChMEWW9NbzAeFw0yMjAxMjUwMzAyNTlaFw0zMTEyMDQwMzAyNTlaMA8x
-DTALBgNVBAoTBFlvTW8wWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAThySyF4tnA
-qBBCRXb6OqSZOfhWMqvJJUOI4YGTkLGIHdP2gdGigNzG4zE8zSzYQ34yaN/PiyDX
-A6qaVd7h8d77o4GGMIGDMA4GA1UdDwEB/wQEAwICpDATBgNVHSUEDDAKBggrBgEF
-BQcDATAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQWBBSj6eRkPl2VKRPnMSPAhiNt
-b9SrcjAsBgNVHREEJTAjgglsb2NhbGhvc3SHBH8AAAGHEAAAAAAAAAAAAAAAAAAA
-AAAwCgYIKoZIzj0EAwIDSAAwRQIhALbGwA4X/N2hEY9gsu60UW1AsUS4QLYFGhdc
-1d9cXFP8AiB+OOkZfresxFnWwDB8gJAjiep9X/9Ma4XhXZXiE4k+8Q==
+MIIB3TCCAWSgAwIBAgIUILqj4uyFbP+EyHVNhQ4hP/COvbMwCgYIKoZIzj0EAwIw
+JjENMAsGA1UECgwEWW9NbzEVMBMGA1UEAwwMWW9NbyBSb290IENBMB4XDTIyMDEy
+NjA4NTMxMVoXDTMyMDEyNDA4NTMxMVowJjENMAsGA1UECgwEWW9NbzEVMBMGA1UE
+AwwMWW9NbyBSb290IENBMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEEZ2WlpfetVRE
+R0sa7cC1EDN3XX3y9bY32e3573j8XfAGqxAbHvCp0kPLLzP8H4BrvcbCYEcRwdlS
+ChXxfgIFJ4g5urmQozrJIxWFEsBrC/HswakEqwqCFQCPEfhlAe8po1MwUTAdBgNV
+HQ4EFgQURfVDCXsj+cKrIDWfZfBJRN0JaXwwHwYDVR0jBBgwFoAURfVDCXsj+cKr
+IDWfZfBJRN0JaXwwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNnADBkAjA9
+qY0hbfHdba3uAjamhfhoaERh1gX8HNh09KZCOVykMyiAWwsEZo3vSE74vgA02dQC
+MG/wcqBETM6Hj8u5jwIPboTWTdcybD6QdZoUYXlMLcElu9CGSBpY6Ro0aHY3xNr6
+CA==
+-----END CERTIFICATE-----`)
+}
+
+// !!! This function is for TEST only, do NOT use it in a production environment !!!
+func getDevServerCertAndKey() ([]byte, []byte) {
+	return []byte(`-----BEGIN CERTIFICATE-----
+MIIB7zCCAXagAwIBAgIUVPVD9XjB7UIrtpLn4wPZyNHaGBMwCgYIKoZIzj0EAwIw
+JjENMAsGA1UECgwEWW9NbzEVMBMGA1UEAwwMWW9NbyBSb290IENBMB4XDTIyMDEy
+NjA4NTMxMVoXDTMyMDEyNDA4NTMxMVowJTENMAsGA1UECgwEWW9NbzEUMBIGA1UE
+AwwLWW9NbyBTZXJ2ZXIwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAAQYjP9OGw5pMCn4
+djgJYOcNvu8/ptUxJzMbApyYmGK9ZA0brsNrUxbJERnWAykxB1swn/wz6JHEDLVD
+ziRxYLRVS3rYqd3SRUF54FSRzsOxzXKpBWEy5tbcRt6G7L2J5jqjZjBkMCIGA1Ud
+EQQbMBmCCWxvY2FsaG9zdIIMeW9tby1hcHAuZGV2MB0GA1UdDgQWBBQiQzn3YBH8
+fi80WYFeGm9mLdVb9DAfBgNVHSMEGDAWgBRF9UMJeyP5wqsgNZ9l8ElE3QlpfDAK
+BggqhkjOPQQDAgNnADBkAjB4Vd8HgqPWKjsTUXwq4nhetzBLq0Bgmms0ljptHoz2
+1gHGWXFLc+T921FV4sryPE0CMCJOYw/lG7+kMFULxVTLjOG0Px3AMheeTXojwZ9l
+ByUoaD/JYodLTsNRlJUaw0zZuQ==
 -----END CERTIFICATE-----`),
 		[]byte(`-----BEGIN EC PRIVATE KEY-----
-MHcCAQEEICbh0gxW/oF3kCHv3TWJALGggT+pFZcAX1iqsRbLG2+XoAoGCCqGSM49
-AwEHoUQDQgAE4cksheLZwKgQQkV2+jqkmTn4VjKrySVDiOGBk5CxiB3T9oHRooDc
-xuMxPM0s2EN+Mmjfz4sg1wOqmlXe4fHe+w==
+MIGkAgEBBDAivM1Y5DuJHgfvbqzXFgUVnhISTgLzxEsQZTZDiO/jYijPRd9vtH00
+uvklju3bLCqgBwYFK4EEACKhZANiAAQYjP9OGw5pMCn4djgJYOcNvu8/ptUxJzMb
+ApyYmGK9ZA0brsNrUxbJERnWAykxB1swn/wz6JHEDLVDziRxYLRVS3rYqd3SRUF5
+4FSRzsOxzXKpBWEy5tbcRt6G7L2J5jo=
+-----END EC PRIVATE KEY-----`)
+}
+
+// !!! This function is for TEST only, do NOT use it in a production environment !!!
+func getDevClientCertAndKey() ([]byte, []byte) {
+	return []byte(`-----BEGIN CERTIFICATE-----
+MIIBgjCCAQkCFHMTosvu0KP7A+l0zRQo2XaDniaLMAoGCCqGSM49BAMCMCYxDTAL
+BgNVBAoMBFlvTW8xFTATBgNVBAMMDFlvTW8gUm9vdCBDQTAeFw0yMjAxMjYwODUz
+MTFaFw0zMjAxMjQwODUzMTFaMCUxDTALBgNVBAoMBFlvTW8xFDASBgNVBAMMC1lv
+TW8gQ2xpZW50MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAELNvoJzAV9wcmwdVdiP22
+YApUrimQUGLD8YpfNihE4GXc0B3znZBjJyCiWIoCZPoGhROp905rq59PypBHx5bM
+FFeDSRm3v5hAzFVi1jjWS4f5ThrJLpn6ioeEhX+lKLhyMAoGCCqGSM49BAMCA2cA
+MGQCMG13CEyvaxRXXh+1Aakq+Gv/U2E/66oVoJE5nMZL/qbn3mcOpLMDMUkyv+Hz
+xRljdgIwCKm80IdPNSz+XrDRxT1DigMLVNtBZsjXJ5y+lIbTXzssIdo5n42894NH
+ZqzSo/lc
+-----END CERTIFICATE-----`),
+		[]byte(`-----BEGIN EC PRIVATE KEY-----
+MIGkAgEBBDC56ngaLW2T+YIAmA9sxlRtisrnE3Toiv2bHB/MhWtbYuhpX2JtZASO
+PUG8oONZA2agBwYFK4EEACKhZANiAAQs2+gnMBX3BybB1V2I/bZgClSuKZBQYsPx
+il82KETgZdzQHfOdkGMnIKJYigJk+gaFE6n3Tmurn0/KkEfHlswUV4NJGbe/mEDM
+VWLWONZLh/lOGskumfqKh4SFf6UouHI=
 -----END EC PRIVATE KEY-----`)
 }
