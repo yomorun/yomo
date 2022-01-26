@@ -65,8 +65,8 @@ go run ../basic/flow/main.go
 ```bash
 YOMO_ENV=production \
 YOMO_TLS_CACERT_FILE=tls-files/ca.crt \
-YOMO_TLS_CERT_FILE=tls-files/server.crt \
-YOMO_TLS_KEY_FILE=tls-files/server.key \
+YOMO_TLS_CERT_FILE=tls-files/client.crt \
+YOMO_TLS_KEY_FILE=tls-files/client.key \
 YOMO_ADDR=yomo-app.dev:9000 \
 go run ../basic/source/main.go
 ```
