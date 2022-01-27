@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-// Create server tls config.
+// CreateServerTLSConfig creates server tls config.
 func CreateServerTLSConfig() (*tls.Config, error) {
 	pool, err := getCACertPool()
 	if err != nil {
@@ -35,7 +35,7 @@ func CreateServerTLSConfig() (*tls.Config, error) {
 	}, nil
 }
 
-// Create client tls config.
+// CreateClientTLSConfig creates client tls config.
 func CreateClientTLSConfig() (*tls.Config, error) {
 	pool, err := getCACertPool()
 	if err != nil {
