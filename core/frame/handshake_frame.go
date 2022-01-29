@@ -115,18 +115,22 @@ func DecodeToHandshakeFrame(buf []byte) (*HandshakeFrame, error) {
 	return handshake, nil
 }
 
+// AuthType getter
 func (h *HandshakeFrame) AuthType() byte {
 	return h.authType
 }
 
+// AuthPayload getter
 func (h *HandshakeFrame) AuthPayload() []byte {
 	return h.authPayload
 }
 
+// AppID getter
 func (h *HandshakeFrame) AppID() string {
 	return h.appID
 }
 
+// Observed getter
 func (h *HandshakeFrame) Observed() []byte {
 	return h.observed
 }
