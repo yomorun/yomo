@@ -2,7 +2,9 @@ package core
 
 import (
 	"fmt"
+	"hash/adler32"
 	"io"
+	"sort"
 	"sync"
 
 	"github.com/yomorun/yomo/core/frame"
@@ -10,12 +12,9 @@ import (
 )
 
 type app struct {
-	id   string // app id
-	name string // app name
-}
-
-func newApp(id string, name string) *app {
-	return &app{id: id, name: name}
+	id       string // app id
+	name     string // app name
+	observed []byte // observed data tag
 }
 
 func (a *app) ID() string {
@@ -36,8 +35,8 @@ type Connector interface {
 	Remove(connID string)
 	// Get a connection by connection id.
 	Get(connID string) io.ReadWriteCloser
-	// ConnID gets the connection id by appID and mae.
-	ConnID(appID string, name string) (string, bool)
+	// ConnID gets the connection id by appID, name, data tag and transaction ID.
+	ConnID(appID string, name string, tag byte, tid string) (string, bool)
 	// Write a DataFrame from a connection to another one.
 	Write(f *frame.DataFrame, fromID string, toID string) error
 	// GetSnapshot gets the snapshot of all connections.
@@ -50,9 +49,7 @@ type Connector interface {
 	// AppName gets the name of app by connID.
 	AppName(connID string) (string, bool)
 	// LinkApp links the app and connection.
-	LinkApp(connID string, appID string, name string)
-	// UnlinkApp removes the app by connID.
-	UnlinkApp(connID string, appID string, name string)
+	LinkApp(connID string, appID string, name string, observed []byte)
 
 	// Clean the connector.
 	Clean()
@@ -124,24 +121,38 @@ func (c *connector) AppName(connID string) (string, bool) {
 	return "", false
 }
 
-// ConnID gets the connection id by appID and mae.
-func (c *connector) ConnID(appID string, name string) (string, bool) {
-	var connID string
-	var ok bool
+// ConnID gets the connection id by appID, name, data tag and transaction ID.
+func (c *connector) ConnID(appID string, name string, tag byte, tid string) (string, bool) {
+	var connIDs []string
 
 	c.apps.Range(func(key interface{}, val interface{}) bool {
 		app := val.(*app)
 		if app.id == appID && app.name == name {
-			connID = key.(string)
-			ok = true
-			return false
+			if app.observed == nil {
+				connIDs = append(connIDs, key.(string))
+			} else {
+				for _, o := range app.observed {
+					if o == tag {
+						connIDs = append(connIDs, key.(string))
+					}
+				}
+			}
 		}
 		return true
 	})
-	if !ok {
-		logger.Warnf("%snot available connection, name=%s::%s", ServerLogPrefix, appID, name)
+
+	if len(connIDs) == 0 {
+		logger.Warnf("%snot available connection, name=%s::%s, tag=%#x", ServerLogPrefix, appID, name, tag)
 		return "", false
 	}
+
+	sort.Strings(connIDs)
+
+	// hash tid
+	hash := adler32.Checksum([]byte(tid))
+
+	// mod by connection numbers
+	connID := connIDs[hash%uint32(len(connIDs))]
 	logger.Debugf("%suse connection: connID=%s", ServerLogPrefix, connID)
 	return connID, true
 }
@@ -168,34 +179,10 @@ func (c *connector) GetSnapshot() map[string]io.ReadWriteCloser {
 }
 
 // LinkApp links the app and connection.
-func (c *connector) LinkApp(connID string, appID string, name string) {
+func (c *connector) LinkApp(connID string, appID string, name string, observed []byte) {
 	logger.Debugf("%sconnector link application: connID[%s] --> app[%s::%s]", ServerLogPrefix, connID, appID, name)
-	c.apps.Store(connID, newApp(appID, name))
+	c.apps.Store(connID, &app{appID, name, observed})
 }
-
-// UnlinkApp removes the app by connID.
-func (c *connector) UnlinkApp(connID string, appID string, name string) {
-	logger.Debugf("%sconnector unlink application: connID[%s] x-> app[%s::%s]", ServerLogPrefix, connID, appID, name)
-	c.apps.Delete(connID)
-}
-
-// func (c *connector) RemoveApp(appID string) {
-// 	logger.Debugf("%sconnector unlink application: connID[%s] x-> app[%s]", ServerLogPrefix, connID, appID)
-// 	c.apps.Range(func(key interface{},val interface{})bool{
-// 		return true
-// 	})
-// 	c.rapps.Delete(appID)
-// }
-
-// func (c *connector) AppConns(appID string) []string {
-// 	conns := make([]string, 0)
-// 	c.apps.Range(func(key interface{},val interface{})bool{
-// 		if val.(string)==appID{
-// 			conns=append(conns,key.(string))
-// 		}
-// 	})
-// 	return conns
-// }
 
 // Clean the connector.
 func (c *connector) Clean() {

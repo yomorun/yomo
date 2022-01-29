@@ -279,7 +279,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	switch clientType {
 	case ClientTypeSource:
 		s.connector.Add(connID, stream)
-		s.connector.LinkApp(connID, appID, name)
+		s.connector.LinkApp(connID, appID, name, nil)
 	case ClientTypeStreamFunction:
 		// when sfn connect, it will provide its name to the server. server will check if this client
 		// has permission connected to.
@@ -295,10 +295,10 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 
 		s.connector.Add(connID, stream)
 		// link connection to stream function
-		s.connector.LinkApp(connID, appID, name)
+		s.connector.LinkApp(connID, appID, name, f.Observed())
 	case ClientTypeUpstreamZipper:
 		s.connector.Add(connID, stream)
-		s.connector.LinkApp(connID, appID, name)
+		s.connector.LinkApp(connID, appID, name, nil)
 	default:
 		// unknown client type
 		s.connector.Remove(connID)
@@ -346,13 +346,13 @@ func (s *Server) handleDataFrame(c *Context) error {
 		logger.Warnf("%shandleDataFrame have not next function, from=[%s](%s)", ServerLogPrefix, from, fromID)
 		return nil
 	}
+	f := c.Frame.(*frame.DataFrame)
 	// get connection
-	toID, ok := s.connector.ConnID(appID, to)
+	toID, ok := s.connector.ConnID(appID, to, f.GetDataTag(), f.TransactionID())
 	if !ok {
 		logger.Warnf("%shandleDataFrame have next function, but not have connection, from=[%s](%s), to=[%s]", ServerLogPrefix, from, fromID, to)
 		return nil
 	}
-	f := c.Frame.(*frame.DataFrame)
 	logger.Debugf("%shandleDataFrame tag=%#x tid=%s, counter=%d, from=[%s](%s), to=[%s](%s)", ServerLogPrefix, f.Tag(), f.TransactionID(), s.counterOfDataFrame, from, fromID, to, toID)
 
 	// write data frame to stream

@@ -14,17 +14,19 @@ type HandshakeFrame struct {
 	authType    byte
 	authPayload []byte
 	// app id
-	appID string
+	appID    string
+	observed []byte
 }
 
 // NewHandshakeFrame creates a new HandshakeFrame.
-func NewHandshakeFrame(name string, clientType byte, appID string, authType byte, authPayload []byte) *HandshakeFrame {
+func NewHandshakeFrame(name string, clientType byte, appID string, authType byte, authPayload []byte, observed []byte) *HandshakeFrame {
 	return &HandshakeFrame{
 		Name:        name,
 		ClientType:  clientType,
 		appID:       appID,
 		authType:    authType,
 		authPayload: authPayload,
+		observed:    observed,
 	}
 }
 
@@ -49,6 +51,9 @@ func (h *HandshakeFrame) Encode() []byte {
 	authTypeBlock.SetBytesValue([]byte{h.authType})
 	authPayloadBlock := y3.NewPrimitivePacketEncoder(byte(TagOfHandshakeAuthPayload))
 	authPayloadBlock.SetBytesValue(h.authPayload)
+	// observed
+	observedBlock := y3.NewPrimitivePacketEncoder(byte(TagOfHandshakeObserved))
+	observedBlock.SetBytesValue(h.observed)
 	// handshake frame
 	handshake := y3.NewNodePacketEncoder(byte(h.Type()))
 	handshake.AddPrimitivePacket(nameBlock)
@@ -56,6 +61,7 @@ func (h *HandshakeFrame) Encode() []byte {
 	handshake.AddPrimitivePacket(appIDBlock)
 	handshake.AddPrimitivePacket(authTypeBlock)
 	handshake.AddPrimitivePacket(authPayloadBlock)
+	handshake.AddPrimitivePacket(observedBlock)
 
 	return handshake.Encode()
 }
@@ -100,6 +106,11 @@ func DecodeToHandshakeFrame(buf []byte) (*HandshakeFrame, error) {
 		authPayload := authPayloadBlock.ToBytes()
 		handshake.authPayload = authPayload
 	}
+	// observed
+	if observedBlock, ok := node.PrimitivePackets[byte(TagOfHandshakeObserved)]; ok {
+		observed := observedBlock.ToBytes()
+		handshake.observed = observed
+	}
 
 	return handshake, nil
 }
@@ -114,4 +125,8 @@ func (h *HandshakeFrame) AuthPayload() []byte {
 
 func (h *HandshakeFrame) AppID() string {
 	return h.appID
+}
+
+func (h *HandshakeFrame) Observed() []byte {
+	return h.observed
 }

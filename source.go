@@ -24,6 +24,8 @@ type Source interface {
 	Write(p []byte) (n int, err error)
 	// WriteWithTag will write data with specified tag, default transactionID is epoch time.
 	WriteWithTag(tag uint8, data []byte) error
+	// WriteDataFrame will write data frame to zipper.
+	WriteDataFrame(f *frame.DataFrame) error
 }
 
 // YoMo-Source
@@ -71,7 +73,7 @@ func (s *yomoSource) Close() error {
 
 // Connect to YoMo-Zipper.
 func (s *yomoSource) Connect() error {
-	err := s.client.Connect(context.Background(), s.zipperEndpoint)
+	err := s.client.Connect(context.Background(), s.zipperEndpoint, nil)
 	if err != nil {
 		logger.Errorf("%sConnect() error: %s", sourceLogPrefix, err)
 	}
@@ -80,12 +82,17 @@ func (s *yomoSource) Connect() error {
 
 // WriteWithTag will write data with specified tag, default transactionID is epoch time.
 func (s *yomoSource) WriteWithTag(tag uint8, data []byte) error {
-	if len(data) > 1024 {
-		logger.Debugf("%sWriteDataWithTransactionID: len(data)=%d", sourceLogPrefix, len(data))
+	f := frame.NewDataFrame()
+	f.SetCarriage(byte(tag), data)
+	return s.WriteDataFrame(f)
+}
+
+// WriteDataFrame will write data frame to zipper.
+func (s *yomoSource) WriteDataFrame(f *frame.DataFrame) error {
+	if len(f.GetCarriage()) > 1024 {
+		logger.Debugf("%sWriteDataFrame: len(data)=%d", sourceLogPrefix, len(f.GetCarriage()))
 	} else {
-		logger.Debugf("%sWriteDataWithTransactionID: data=%# x", sourceLogPrefix, data)
+		logger.Debugf("%sWriteDataFrame: data=%# x", sourceLogPrefix, f.GetCarriage())
 	}
-	frame := frame.NewDataFrame()
-	frame.SetCarriage(byte(tag), data)
-	return s.client.WriteFrame(frame)
+	return s.client.WriteFrame(f)
 }

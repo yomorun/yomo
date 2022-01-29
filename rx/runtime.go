@@ -10,23 +10,23 @@ import (
 
 // Runtime is the Stream Serverless Runtime for RxStream.
 type Runtime struct {
-	rawBytesChan chan interface{}
-	sfn          yomo.StreamFunction
-	stream       Stream
+	ch     chan interface{}
+	sfn    yomo.StreamFunction
+	stream Stream
 }
 
 // NewRuntime creates a new Rx Stream Serverless Runtime.
 func NewRuntime(sfn yomo.StreamFunction) *Runtime {
 	return &Runtime{
-		rawBytesChan: make(chan interface{}),
-		sfn:          sfn,
+		ch:  make(chan interface{}),
+		sfn: sfn,
 	}
 }
 
 // RawByteHandler is the Handler for RawBytes.
 func (r *Runtime) RawByteHandler(req []byte) (byte, []byte) {
 	go func() {
-		r.rawBytesChan <- req
+		r.ch <- req
 	}()
 
 	// observe the data from RxStream.
@@ -56,12 +56,9 @@ func (r *Runtime) RawByteHandler(req []byte) (byte, []byte) {
 }
 
 // PipeHandler processes data sequentially.
-func (r *Runtime) PipeHandler(in <-chan []byte, out chan<- *frame.PayloadFrame) {
-	for {
-		select {
-		case req := <-in:
-			r.rawBytesChan <- req
-		case item := <-r.stream.Observe():
+func (r *Runtime) PipeHandler(in <-chan *frame.DataFrame, out chan<- *frame.DataFrame) {
+	go func() {
+		for item := range r.stream.Observe() {
 			if item.Error() {
 				logger.Errorf("[rx PipeHandler] Handler got an error, err=%v", item.E)
 				continue
@@ -72,15 +69,19 @@ func (r *Runtime) PipeHandler(in <-chan []byte, out chan<- *frame.PayloadFrame) 
 				continue
 			}
 
-			res, ok := (item.V).(frame.PayloadFrame)
+			res, ok := (item.V).(frame.DataFrame)
 			if !ok {
-				logger.Warn("[rx PipeHandler] the data is not a frame.PayloadFrame, won't send it to YoMo-Zipper.")
+				logger.Warn("[rx PipeHandler] the data is not a DataFrame, won't send it to YoMo-Zipper.")
 				continue
 			}
 
 			logger.Infof("[rx PipeHandler] Send data with [tag=%#x] to YoMo-Zipper.", res.Tag)
 			out <- &res
 		}
+	}()
+
+	for req := range in {
+		r.ch <- req
 	}
 }
 
@@ -88,7 +89,7 @@ func (r *Runtime) PipeHandler(in <-chan []byte, out chan<- *frame.PayloadFrame) 
 func (r *Runtime) Pipe(rxHandler func(rxstream Stream) Stream) {
 	fac := NewFactory()
 	// create a RxStream from raw bytes channel.
-	rxstream := fac.FromChannel(context.Background(), r.rawBytesChan)
+	rxstream := fac.FromChannel(context.Background(), r.ch)
 
 	// run RxHandler and get a new RxStream.
 	r.stream = rxHandler(rxstream)

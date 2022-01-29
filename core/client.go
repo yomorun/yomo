@@ -61,23 +61,23 @@ func (c *Client) Init(opts ...ClientOption) error {
 }
 
 // Connect connects to YoMo-Zipper.
-func (c *Client) Connect(ctx context.Context, addr string) error {
+func (c *Client) Connect(ctx context.Context, addr string, observed []byte) error {
 
 	// TODO: refactor this later as a Connection Manager
 	// reconnect
 	// for download zipper
 	// If you do not check for errors, the connection will be automatically reconnected
-	go c.reconnect(ctx, addr)
+	go c.reconnect(ctx, addr, observed)
 
 	// connect
-	if err := c.connect(ctx, addr); err != nil {
+	if err := c.connect(ctx, addr, observed); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (c *Client) connect(ctx context.Context, addr string) error {
+func (c *Client) connect(ctx context.Context, addr string, observed []byte) error {
 	c.addr = addr
 	c.state = ConnStateConnecting
 
@@ -106,6 +106,7 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 		c.opts.Credential.AppID(),
 		byte(c.opts.Credential.Type()),
 		c.opts.Credential.Payload(),
+		observed,
 	)
 	err = c.WriteFrame(handshake)
 	if err != nil {
@@ -280,13 +281,13 @@ func (c *Client) SetDataFrameObserver(fn func(*frame.DataFrame)) {
 }
 
 // reconnect the connection between client and server.
-func (c *Client) reconnect(ctx context.Context, addr string) {
+func (c *Client) reconnect(ctx context.Context, addr string, observed []byte) {
 	t := time.NewTicker(1 * time.Second)
 	defer t.Stop()
 	for range t.C {
 		if c.state == ConnStateDisconnected {
 			fmt.Printf("%s[%s](%s) is retrying to YoMo-Zipper %s...\n", ClientLogPrefix, c.name, c.localAddr, addr)
-			err := c.connect(ctx, addr)
+			err := c.connect(ctx, addr, observed)
 			if err != nil {
 				logger.Errorf("%s[%s](%s) reconnect error:%v", ClientLogPrefix, c.name, c.localAddr, err)
 			}
