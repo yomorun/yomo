@@ -27,7 +27,7 @@ type MetaFrame struct {
 // NewMetaFrame creates a new MetaFrame instance.
 func NewMetaFrame() *MetaFrame {
 	return &MetaFrame{
-		timestamp: time.Now().UnixMicro(),
+		timestamp: time.Now().UnixNano() / 1000, // go 1.17: UnixMicro()
 		LBType:    LoadBalanceRandomPick,
 	}
 }
