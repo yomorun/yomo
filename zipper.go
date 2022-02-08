@@ -94,7 +94,7 @@ func NewZipper(conf string) (Zipper, error) {
 // NewDownstreamZipper create a zipper descriptor for downstream zipper.
 func NewDownstreamZipper(name string, opts ...Option) Zipper {
 	options := NewOptions(opts...)
-	client := core.NewClient(name, core.ClientTypeUpstreamZipper, options.ClientOptions...)
+	client := core.NewClient(name, core.ClientTypeUpstreamZipper, "", options.ClientOptions...)
 
 	return &zipper{
 		name:   name,
@@ -179,7 +179,7 @@ func (z *zipper) ListenAndServe() error {
 	for _, ds := range z.downstreamZippers {
 		if dsZipper, ok := ds.(*zipper); ok {
 			go func(dsZipper *zipper) {
-				dsZipper.client.Connect(context.Background(), dsZipper.addr, nil)
+				dsZipper.client.Connect(context.Background(), dsZipper.addr)
 				z.server.AddDownstreamServer(dsZipper.addr, dsZipper.client)
 			}(dsZipper)
 		}
@@ -236,7 +236,7 @@ func (z *zipper) Close() error {
 // Stats inspects current server.
 func (z *zipper) Stats() int {
 	log.Printf("[%s] all sfn connected: %d", z.name, len(z.server.StatsFunctions()))
-	for k := range z.server.StatsFunctions() {
+	for k, _ := range z.server.StatsFunctions() {
 		log.Printf("[%s] -> ConnID=%v", z.name, k)
 	}
 

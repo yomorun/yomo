@@ -24,12 +24,8 @@ type Context struct {
 	mu sync.RWMutex
 }
 
-func newContext(connID string, stream quic.Stream) *Context {
-	return &Context{
-		ConnID: connID,
-		Stream: stream,
-		// keys:    make(map[string]interface{}),
-	}
+func newContext(stream quic.Stream) *Context {
+	return &Context{Stream: stream}
 }
 
 // WithFrame sets a frame to context.

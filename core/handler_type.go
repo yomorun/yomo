@@ -8,4 +8,4 @@ import (
 type AsyncHandler func([]byte) (byte, []byte)
 
 // PipeHandler is the bidirectional stream mode (blocking).
-type PipeHandler func(in <-chan *frame.DataFrame, out chan<- *frame.DataFrame)
+type PipeHandler func(in <-chan []byte, out chan<- *frame.DataFrame)

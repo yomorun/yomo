@@ -107,34 +107,33 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 			return err
 		}
 
-		connID := GetConnID(session)
-		logger.Infof("%s❤️1/ new connection: %s", ServerLogPrefix, connID)
+		logger.Infof("%s❤️1/ new connection: %s", ServerLogPrefix, session.RemoteAddr().String())
 
 		go func(ctx context.Context, sess quic.Session) {
+			var c *Context
 			for {
 				logger.Infof("%s❤️2/ waiting for new stream", ServerLogPrefix)
 				stream, err := sess.AcceptStream(ctx)
-				if err != nil {
+				if err != nil && c != nil {
 					// if client close the connection, then we should close the session
-					app, ok := s.connector.App(connID)
+					app, ok := s.connector.App(c.ConnID)
 					if ok {
 						// connector
-						s.connector.Remove(connID)
+						s.connector.Remove(c.ConnID)
 						// store
 						// when remove store by appID? let me think...
-						logger.Errorf("%s❤️3/ [%s::%s](%s) on stream %v", ServerLogPrefix, app.ID(), app.Name(), connID, err)
-						logger.Printf("%s💔 [%s::%s](%s) is disconnected", ServerLogPrefix, app.ID(), app.Name(), connID)
+						logger.Errorf("%s❤️3/ [%s::%s](%s) on stream %v", ServerLogPrefix, app.ID(), app.Name(), c.ConnID, err)
+						logger.Printf("%s💔 [%s::%s](%s) is disconnected", ServerLogPrefix, app.ID(), app.Name(), c.ConnID)
 					} else {
-						logger.Errorf("%s❤️3/ [unknown](%s) on stream %v", ServerLogPrefix, connID, err)
+						logger.Errorf("%s❤️3/ [unknown](%s) on stream %v", ServerLogPrefix, c.ConnID, err)
 					}
 					break
 				}
-				// TODO: 确实执行了吗？
 				defer stream.Close()
 
-				logger.Infof("%s❤️4/ [stream:%d] created, connID=%s", ServerLogPrefix, stream.StreamID(), connID)
+				logger.Infof("%s❤️4/ [stream:%d] created, %s", ServerLogPrefix, stream.StreamID(), sess.RemoteAddr().String())
 				// process frames on stream
-				c := newContext(connID, stream)
+				c = newContext(stream)
 				defer c.Clean()
 				s.handleSession(c)
 				logger.Infof("%s❤️5/ [stream:%d] handleSession DONE", ServerLogPrefix, stream.StreamID())
@@ -198,7 +197,7 @@ func (s *Server) handleSession(c *Context) {
 		// before frame handlers
 		for _, handler := range s.beforeHandlers {
 			if err := handler(c); err != nil {
-				logger.Errorf("%safterFrameHandler err: %s", ServerLogPrefix, err)
+				logger.Errorf("%sbeforeFrameHandler err: %s", ServerLogPrefix, err)
 				c.CloseWithError(0xCC, err.Error())
 				return
 			}
@@ -247,7 +246,14 @@ func (s *Server) mainFrameHandler(c *Context) error {
 
 // handle HandShakeFrame
 func (s *Server) handleHandshakeFrame(c *Context) error {
+
 	f := c.Frame.(*frame.HandshakeFrame)
+
+	if len(f.InstanceID) == 0 {
+		return errors.New("handleHandshakeFrame f.InstanceID is empty")
+	} else if len(c.ConnID) > 0 {
+		return errors.New("handleHandshakeFrame c.ConnID is not empty")
+	}
 
 	logger.Debugf("%sGOT ❤️ HandshakeFrame : %# x", ServerLogPrefix, f)
 	// credential
@@ -263,7 +269,8 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	if err := s.validateRouter(); err != nil {
 		return err
 	}
-	connID := c.ConnID
+	connID := f.InstanceID
+	c.ConnID = connID
 	route := s.router.Route(appID)
 	if reflect.ValueOf(route).IsNil() {
 		err := errors.New("handleHandshakeFrame route is nil")
@@ -279,7 +286,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	switch clientType {
 	case ClientTypeSource:
 		s.connector.Add(connID, stream)
-		s.connector.LinkApp(connID, appID, name, nil)
+		s.connector.LinkApp(connID, appID, name)
 	case ClientTypeStreamFunction:
 		// when sfn connect, it will provide its name to the server. server will check if this client
 		// has permission connected to.
@@ -295,10 +302,10 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 
 		s.connector.Add(connID, stream)
 		// link connection to stream function
-		s.connector.LinkApp(connID, appID, name, f.Observed())
+		s.connector.LinkApp(connID, appID, name)
 	case ClientTypeUpstreamZipper:
 		s.connector.Add(connID, stream)
-		s.connector.LinkApp(connID, appID, name, nil)
+		s.connector.LinkApp(connID, appID, name)
 	default:
 		// unknown client type
 		s.connector.Remove(connID)
@@ -346,20 +353,15 @@ func (s *Server) handleDataFrame(c *Context) error {
 		logger.Warnf("%shandleDataFrame have not next function, from=[%s](%s)", ServerLogPrefix, from, fromID)
 		return nil
 	}
-	f := c.Frame.(*frame.DataFrame)
-	// get connection
-	toID, ok := s.connector.ConnID(appID, to, f.GetDataTag(), f.TransactionID())
-	if !ok {
-		logger.Warnf("%shandleDataFrame have next function, but not have connection, from=[%s](%s), to=[%s]", ServerLogPrefix, from, fromID, to)
-		return nil
-	}
-	logger.Debugf("%shandleDataFrame tag=%#x tid=%s, counter=%d, from=[%s](%s), to=[%s](%s)", ServerLogPrefix, f.Tag(), f.TransactionID(), s.counterOfDataFrame, from, fromID, to, toID)
-
 	// write data frame to stream
-	logger.Infof("%swrite data: [%s](%s) --> [%s](%s)", ServerLogPrefix, from, fromID, to, toID)
-	if err := s.connector.Write(f, fromID, toID); err != nil {
-		logger.Errorf("%swrite data: [%s](%s) --> [%s](%s), err=%v", ServerLogPrefix, from, fromID, to, toID, err)
-		return err
+	f := c.Frame.(*frame.DataFrame)
+	toIDs := s.connector.GetConnIDs(appID, to, f.GetMetaFrame())
+	for _, toID := range toIDs {
+		logger.Infof("%swrite data: [%s](%s) --> [%s](%s)", ServerLogPrefix, from, fromID, to, toID)
+		if err := s.connector.Write(f, toID); err != nil {
+			logger.Errorf("%swrite data: [%s](%s) --> [%s](%s), err=%v", ServerLogPrefix, from, fromID, to, toID, err)
+			return err
+		}
 	}
 	return nil
 }
@@ -424,11 +426,6 @@ func (s *Server) dispatchToDownstreams(df *frame.DataFrame) {
 		logger.Debugf("%sdispatching to [%s]: %# x", ServerLogPrefix, addr, df.Tag())
 		ds.WriteFrame(df)
 	}
-}
-
-// GetConnID get quic session connection id
-func GetConnID(sess quic.Session) string {
-	return sess.RemoteAddr().String()
 }
 
 func (s *Server) initOptions() {

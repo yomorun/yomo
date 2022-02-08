@@ -25,6 +25,7 @@ type ConnState = string
 // Source, Upstream Zipper or StreamFunction.
 type Client struct {
 	name       string                 // name of the client
+	id         string                 // uuid of the client
 	clientType ClientType             // type of the connection
 	session    quic.Session           // quic session
 	stream     quic.Stream            // quic stream
@@ -37,9 +38,10 @@ type Client struct {
 }
 
 // NewClient creates a new YoMo-Client.
-func NewClient(appName string, connType ClientType, opts ...ClientOption) *Client {
+func NewClient(appName string, connType ClientType, id string, opts ...ClientOption) *Client {
 	c := &Client{
 		name:       appName,
+		id:         id,
 		clientType: connType,
 		state:      ConnStateReady,
 	}
@@ -61,23 +63,23 @@ func (c *Client) Init(opts ...ClientOption) error {
 }
 
 // Connect connects to YoMo-Zipper.
-func (c *Client) Connect(ctx context.Context, addr string, observed []byte) error {
+func (c *Client) Connect(ctx context.Context, addr string) error {
 
 	// TODO: refactor this later as a Connection Manager
 	// reconnect
 	// for download zipper
 	// If you do not check for errors, the connection will be automatically reconnected
-	go c.reconnect(ctx, addr, observed)
+	go c.reconnect(ctx, addr)
 
 	// connect
-	if err := c.connect(ctx, addr, observed); err != nil {
+	if err := c.connect(ctx, addr); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (c *Client) connect(ctx context.Context, addr string, observed []byte) error {
+func (c *Client) connect(ctx context.Context, addr string) error {
 	c.addr = addr
 	c.state = ConnStateConnecting
 
@@ -103,10 +105,10 @@ func (c *Client) connect(ctx context.Context, addr string, observed []byte) erro
 	handshake := frame.NewHandshakeFrame(
 		c.name,
 		byte(c.clientType),
+		c.id,
 		c.opts.Credential.AppID(),
 		byte(c.opts.Credential.Type()),
 		c.opts.Credential.Payload(),
-		observed,
 	)
 	err = c.WriteFrame(handshake)
 	if err != nil {
@@ -174,7 +176,7 @@ func (c *Client) handleFrame() {
 		case frame.TagOfDataFrame: // DataFrame carries user's data
 			if v, ok := f.(*frame.DataFrame); ok {
 				c.setState(ConnStateTransportData)
-				logger.Debugf("%sreceive DataFrame, tag=%# x, tid=%s, carry=%# x", ClientLogPrefix, v.GetDataTag(), v.TransactionID(), v.GetCarriage())
+				logger.Debugf("%sreceive DataFrame, tag=%# x, ts=%d, carry=%# x", ClientLogPrefix, v.GetDataTag(), v.GetMetaFrame().Timestamp(), v.GetCarriage())
 				if c.processor == nil {
 					logger.Warnf("%sprocessor is nil", ClientLogPrefix)
 				} else {
@@ -281,13 +283,13 @@ func (c *Client) SetDataFrameObserver(fn func(*frame.DataFrame)) {
 }
 
 // reconnect the connection between client and server.
-func (c *Client) reconnect(ctx context.Context, addr string, observed []byte) {
+func (c *Client) reconnect(ctx context.Context, addr string) {
 	t := time.NewTicker(1 * time.Second)
 	defer t.Stop()
 	for range t.C {
 		if c.state == ConnStateDisconnected {
 			fmt.Printf("%s[%s](%s) is retrying to YoMo-Zipper %s...\n", ClientLogPrefix, c.name, c.localAddr, addr)
-			err := c.connect(ctx, addr, observed)
+			err := c.connect(ctx, addr)
 			if err != nil {
 				logger.Errorf("%s[%s](%s) reconnect error:%v", ClientLogPrefix, c.name, c.localAddr, err)
 			}

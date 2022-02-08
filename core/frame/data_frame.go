@@ -11,8 +11,7 @@ type DataFrame struct {
 	payloadFrame *PayloadFrame
 }
 
-// NewDataFrame create `DataFrame` with a transactionID string,
-// consider change transactionID to UUID type later
+// NewDataFrame create `DataFrame` with a MetaFrame,
 func NewDataFrame() *DataFrame {
 	data := &DataFrame{
 		metaFrame: NewMetaFrame(),
@@ -38,16 +37,6 @@ func (d *DataFrame) SetCarriage(tag byte, carriage []byte) {
 // GetCarriage return user's raw data in `DataFrame`
 func (d *DataFrame) GetCarriage() []byte {
 	return d.payloadFrame.Carriage
-}
-
-// TransactionID return transactionID string
-func (d *DataFrame) TransactionID() string {
-	return d.metaFrame.TransactionID()
-}
-
-// SetTransactionID set transactionID string
-func (d *DataFrame) SetTransactionID(transactionID string) {
-	d.metaFrame.SetTransactionID(transactionID)
 }
 
 // GetMetaFrame return MetaFrame.

@@ -1,43 +1,62 @@
 package frame
 
 import (
-	"strconv"
 	"time"
 
 	"github.com/yomorun/y3"
 )
 
-// MetaFrame is a Y3 encoded bytes, SeqID is a fixed value of TYPE_ID_TRANSACTION.
-// used for describes metadata for a DataFrame.
+const (
+	// LoadBalanceRandomPick means Zipper will choose SFN instance by a load balance strategy.
+	LoadBalanceRandomPick byte = 0x00
+	// LoadBalanceBindInstance means data will be sent to the specific SFN according to instanceID.
+	LoadBalanceBindInstance byte = 0x01
+	// LoadBalanceBroadcast means data will be sent to all SFN instances.
+	LoadBalanceBroadcast byte = 0x02
+)
+
+// MetaFrame is a Y3 encoded bytes, used for describing metadata of a DataFrame.
 type MetaFrame struct {
-	tid string
+	timestamp int64
+	// LBType is load balance type.
+	LBType byte
+	// ToInstanceID is the downstream SFN instance id, only used when LBType equals LoadBalanceBindInstance.
+	ToInstanceID string
 }
 
 // NewMetaFrame creates a new MetaFrame instance.
 func NewMetaFrame() *MetaFrame {
 	return &MetaFrame{
-		tid: strconv.FormatInt(time.Now().Unix(), 10),
+		timestamp: time.Now().UnixMicro(),
+		LBType:    LoadBalanceRandomPick,
 	}
 }
 
-// SetTransactinID set the transaction ID.
-func (m *MetaFrame) SetTransactionID(transactionID string) {
-	m.tid = transactionID
-}
-
-// TransactionID returns transactionID
-func (m *MetaFrame) TransactionID() string {
-	return m.tid
+// Timestamp returns Unix time in microsecends.
+func (m *MetaFrame) Timestamp() int64 {
+	return m.timestamp
 }
 
 // Encode implements Frame.Encode method.
 func (m *MetaFrame) Encode() []byte {
 	meta := y3.NewNodePacketEncoder(byte(TagOfMetaFrame))
 
-	transactionID := y3.NewPrimitivePacketEncoder(byte(TagOfTransactionID))
-	transactionID.SetStringValue(m.tid)
+	enc := y3.NewPrimitivePacketEncoder(byte(TagOfTimestamp))
+	enc.SetInt64Value(m.timestamp)
+	meta.AddPrimitivePacket(enc)
 
-	meta.AddPrimitivePacket(transactionID)
+	if m.LBType != LoadBalanceRandomPick {
+		enc = y3.NewPrimitivePacketEncoder(byte(TagOfLBType))
+		enc.SetBytesValue([]byte{m.LBType})
+		meta.AddPrimitivePacket(enc)
+
+		if m.LBType == LoadBalanceBindInstance {
+			instanceID := y3.NewPrimitivePacketEncoder(byte(TagOfToInstanceID))
+			instanceID.SetStringValue(m.ToInstanceID)
+			meta.AddPrimitivePacket(instanceID)
+		}
+	}
+
 	return meta.Encode()
 }
 
@@ -49,11 +68,18 @@ func DecodeToMetaFrame(buf []byte) (*MetaFrame, error) {
 		return nil, err
 	}
 
-	meta := &MetaFrame{}
-	for _, v := range nodeBlock.PrimitivePackets {
-		val, _ := v.ToUTF8String()
-		meta.tid = val
-		break
+	meta := &MetaFrame{LBType: LoadBalanceRandomPick}
+	for k, v := range nodeBlock.PrimitivePackets {
+		switch k {
+		case byte(TagOfTimestamp):
+			val, _ := v.ToInt64()
+			meta.timestamp = val
+		case byte(TagOfLBType):
+			meta.LBType = v.ToBytes()[0]
+		case byte(TagOfToInstanceID):
+			val, _ := v.ToUTF8String()
+			meta.ToInstanceID = val
+		}
 	}
 
 	return meta, nil

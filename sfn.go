@@ -4,6 +4,7 @@ import (
 	"context"
 	// "fmt"
 
+	"github.com/google/uuid"
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/logger"
@@ -25,18 +26,22 @@ type StreamFunction interface {
 	Connect() error
 	// Close will close the connection
 	Close() error
-	// Write will write data with specified tag, default transactionID is epoch time.
-	Write(dataID byte, carriage []byte) error
+	// Write will write data with specified tag.
+	Write(tag byte, carriage []byte) error
 	// WriteDataFrame will write data frame to zipper.
 	WriteDataFrame(f *frame.DataFrame) error
+	// GetInstanceID returns the unique id of this SFN instance
+	GetInstanceID() string
 }
 
 // NewStreamFunction create a stream function.
 func NewStreamFunction(name string, opts ...Option) StreamFunction {
 	options := NewOptions(opts...)
-	client := core.NewClient(name, core.ClientTypeStreamFunction, options.ClientOptions...)
+	instanceID := uuid.NewString()
+	client := core.NewClient(name, core.ClientTypeStreamFunction, instanceID, options.ClientOptions...)
 	sfn := &streamFunction{
 		name:           name,
+		instanceID:     instanceID,
 		zipperEndpoint: options.ZipperAddr,
 		client:         client,
 		observed:       make([]byte, 0),
@@ -50,12 +55,13 @@ var _ StreamFunction = &streamFunction{}
 // streamFunction implements StreamFunction interface.
 type streamFunction struct {
 	name           string
+	instanceID     string
 	zipperEndpoint string
 	client         *core.Client
 	observed       []byte            // ID list that will be observed
 	fn             core.AsyncHandler // user's function which will be invoked when data arrived
 	pfn            core.PipeHandler
-	pIn            chan *frame.DataFrame
+	pIn            chan []byte
 	pOut           chan *frame.DataFrame
 }
 
@@ -89,7 +95,7 @@ func (s *streamFunction) Connect() error {
 	})
 
 	if s.pfn != nil {
-		s.pIn = make(chan *frame.DataFrame)
+		s.pIn = make(chan []byte)
 		s.pOut = make(chan *frame.DataFrame)
 
 		// handle user's pipe function
@@ -102,14 +108,14 @@ func (s *streamFunction) Connect() error {
 			for {
 				data := <-s.pOut
 				if data != nil {
-					logger.Debugf("%spipe fn send: tid=%s, tag=%#x, data=%# x", streamFunctionLogPrefix, data.TransactionID(), data.Tag(), data.GetCarriage())
+					logger.Debugf("%spipe fn send: ts=%s, tag=%#x, data=%# x", streamFunctionLogPrefix, data.GetMetaFrame().Timestamp(), data.Tag(), data.GetCarriage())
 					s.client.WriteFrame(data)
 				}
 			}
 		}()
 	}
 
-	err := s.client.Connect(context.Background(), s.zipperEndpoint, s.observed)
+	err := s.client.Connect(context.Background(), s.zipperEndpoint)
 	if err != nil {
 		logger.Errorf("%sConnect() error: %s", streamFunctionLogPrefix, err)
 	}
@@ -137,44 +143,44 @@ func (s *streamFunction) Close() error {
 }
 
 // when DataFrame we observed arrived, invoke the user's function
-func (s *streamFunction) onDataFrame(data *frame.DataFrame) {
+func (s *streamFunction) onDataFrame(req *frame.DataFrame) {
 	logger.Infof("%sonDataFrame ->[%s]", streamFunctionLogPrefix, s.name)
 
 	if s.fn != nil {
 		go func() {
-			logger.Debugf("%sexecute-start fn: data=%# x", streamFunctionLogPrefix, data)
+			logger.Debugf("%sexecute-start fn: req=%# x", streamFunctionLogPrefix, req)
 			// invoke serverless
-			tag, resp := s.fn(data.GetCarriage())
+			tag, resp := s.fn(req.GetCarriage())
 			logger.Debugf("%sexecute-done fn: tag=%#x, resp=%# x", streamFunctionLogPrefix, tag, resp)
 			// if resp is not nil, means the user's function has returned something, we should send it to the zipper
 			if len(resp) != 0 {
-				logger.Debugf("%sstart WriteFrame(): tag=%#x, data=%# x", streamFunctionLogPrefix, tag, resp)
-				// build a DataFrame
-				// TODO: seems we should implement a DeepCopy() of MetaFrame in the future
-				frame := frame.NewDataFrame()
-				// reuse transactionID
-				frame.SetTransactionID(data.TransactionID())
-				// frame.SetIssuer(s.name)
-				frame.SetCarriage(tag, resp)
-				s.client.WriteFrame(frame)
+				logger.Debugf("%sstart WriteFrame(): tag=%#x, res=%# x", streamFunctionLogPrefix, tag, resp)
+				res := frame.NewDataFrame()
+				res.SetCarriage(tag, resp)
+				s.client.WriteFrame(res)
 			}
 		}()
 	} else if s.pfn != nil {
-		logger.Debugf("%spipe fn receive: data=%# x", streamFunctionLogPrefix, data)
-		s.pIn <- data
+		logger.Debugf("%spipe fn receive: req=%# x", streamFunctionLogPrefix, req)
+		s.pIn <- req.GetCarriage()
 	} else {
 		logger.Warnf("%sStreamFunction is nil", streamFunctionLogPrefix)
 	}
 }
 
-// Write will write data with specified tag, default transactionID is epoch time.
-func (s *streamFunction) Write(dataID byte, carriage []byte) error {
+// Write will write data with specified tag.
+func (s *streamFunction) Write(tag byte, carriage []byte) error {
 	f := frame.NewDataFrame()
-	f.SetCarriage(dataID, carriage)
+	f.SetCarriage(tag, carriage)
 	return s.WriteDataFrame(f)
 }
 
 // WriteDataFrame will write data frame to zipper.
 func (s *streamFunction) WriteDataFrame(f *frame.DataFrame) error {
 	return s.client.WriteFrame(f)
+}
+
+// GetInstanceID returns the unique id of this SFN instance
+func (s *streamFunction) GetInstanceID() string {
+	return s.instanceID
 }

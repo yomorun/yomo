@@ -31,7 +31,7 @@ func ParseFrame(stream io.Reader) (frame.Frame, error) {
 		return handshakeFrame, nil
 	case 0x80 | byte(frame.TagOfDataFrame):
 		data := readDataFrame(buf)
-		logger.Debugf("%sDataFrame: tid=%s, tag=%#x, len(carriage)=%d", ParseFrameLogPrefix, data.TransactionID(), data.GetDataTag(), len(data.GetCarriage()))
+		logger.Debugf("%sDataFrame: ts=%d, tag=%#x, len(carriage)=%d", ParseFrameLogPrefix, data.GetMetaFrame().Timestamp(), data.GetDataTag(), len(data.GetCarriage()))
 		return data, nil
 	case 0x80 | byte(frame.TagOfAcceptedFrame):
 		return frame.DecodeToAcceptedFrame(buf)

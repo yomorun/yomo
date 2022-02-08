@@ -56,7 +56,7 @@ func (r *Runtime) RawByteHandler(req []byte) (byte, []byte) {
 }
 
 // PipeHandler processes data sequentially.
-func (r *Runtime) PipeHandler(in <-chan *frame.DataFrame, out chan<- *frame.DataFrame) {
+func (r *Runtime) PipeHandler(in <-chan []byte, out chan<- *frame.DataFrame) {
 	go func() {
 		for item := range r.stream.Observe() {
 			if item.Error() {
