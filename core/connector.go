@@ -3,6 +3,7 @@ package core
 import (
 	"fmt"
 	"io"
+	"math/rand"
 	"sync"
 
 	"github.com/yomorun/yomo/core/frame"
@@ -126,29 +127,36 @@ func (c *connector) AppName(connID string) (string, bool) {
 
 // GetConnIDs gets the connection ids by appID, name and meta.
 func (c *connector) GetConnIDs(appID string, name string, meta *frame.MetaFrame) []string {
-	connIDs := []string{}
+	connIDs := make([]string, 0)
 
 	c.apps.Range(func(key interface{}, val interface{}) bool {
 		app := val.(*app)
 		if app.id == appID && app.name == name {
-			connID := key.(string)
-			switch meta.LBType {
-			case frame.LoadBalanceRandomPick:
-				connIDs = append(connIDs, connID)
-				return false
-			case frame.LoadBalanceBindInstance:
-				if connID == meta.ToInstanceID {
-					connIDs = append(connIDs, connID)
-					return false
-				}
-			case frame.LoadBalanceBroadcast:
-				connIDs = append(connIDs, connID)
-			}
+			connIDs = append(connIDs, key.(string))
 		}
 		return true
 	})
 
-	return connIDs
+	if len(connIDs) == 0 {
+		return connIDs
+	}
+
+	switch meta.LBType {
+	case frame.LoadBalanceBindInstance:
+		for _, id := range connIDs {
+			if id == meta.ToInstanceID {
+				return []string{id}
+			}
+		}
+		return make([]string, 0)
+	case frame.LoadBalanceBroadcast:
+		return connIDs
+	case frame.LoadBalanceRandomPick:
+		fallthrough
+	default:
+		index := rand.Intn(len(connIDs))
+		return connIDs[index : index+1]
+	}
 }
 
 // Write a DataFrame to a connection.

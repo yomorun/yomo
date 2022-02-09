@@ -274,13 +274,6 @@ func (c *Client) setState(state ConnState) {
 	c.mu.Unlock()
 }
 
-// update connection local addr
-func (c *Client) setLocalAddr(addr string) {
-	c.mu.Lock()
-	c.localAddr = addr
-	c.mu.Unlock()
-}
-
 // SetDataFrameObserver sets the data frame handler.
 func (c *Client) SetDataFrameObserver(fn func(*frame.DataFrame)) {
 	c.processor = fn
