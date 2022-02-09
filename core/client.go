@@ -26,7 +26,6 @@ type ConnState = string
 // Source, Upstream Zipper or StreamFunction.
 type Client struct {
 	name       string                 // name of the client
-	id         string                 // uuid of the client
 	clientType ClientType             // type of the connection
 	session    quic.Session           // quic session
 	stream     quic.Stream            // quic stream
@@ -39,14 +38,9 @@ type Client struct {
 }
 
 // NewClient creates a new YoMo-Client.
-func NewClient(appName string, connType ClientType, id string, opts ...ClientOption) *Client {
-	if len(id) == 0 {
-		id = uuid.NewString()
-	}
-
+func NewClient(appName string, connType ClientType, opts ...ClientOption) *Client {
 	c := &Client{
 		name:       appName,
-		id:         id,
 		clientType: connType,
 		state:      ConnStateReady,
 	}
@@ -110,7 +104,7 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	handshake := frame.NewHandshakeFrame(
 		c.name,
 		byte(c.clientType),
-		c.id,
+		c.opts.InstanceID,
 		c.opts.Credential.AppID(),
 		byte(c.opts.Credential.Type()),
 		c.opts.Credential.Payload(),
@@ -310,6 +304,10 @@ func (c *Client) ServerAddr() string {
 
 // initOptions init options defaults
 func (c *Client) initOptions() {
+	// instance id
+	if len(c.opts.InstanceID) == 0 {
+		c.opts.InstanceID = uuid.NewString()
+	}
 	// credential
 	if c.opts.Credential == nil {
 		c.opts.Credential = auth.NewCredendialNone()

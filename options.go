@@ -101,6 +101,16 @@ func WithCredential(cred auth.Credential) Option {
 	}
 }
 
+// WithInstanceID sets client instance id.
+func WithInstanceID(id string) Option {
+	return func(o *Options) {
+		o.ClientOptions = append(
+			o.ClientOptions,
+			core.WithInstanceID(id),
+		)
+	}
+}
+
 // NewOptions creates a new options for YoMo-Client.
 func NewOptions(opts ...Option) *Options {
 	options := &Options{}

@@ -4,7 +4,6 @@ import (
 	"context"
 	// "fmt"
 
-	"github.com/google/uuid"
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/logger"
@@ -30,20 +29,14 @@ type StreamFunction interface {
 	Write(tag byte, carriage []byte) error
 	// WriteDataFrame will write data frame to zipper.
 	WriteDataFrame(f *frame.DataFrame) error
-	// GetInstanceID returns the unique id of this SFN instance.
-	GetInstanceID() string
-	// SetInstanceID updates the unique id of this SFN instance.
-	SetInstanceID(instanceID string)
 }
 
 // NewStreamFunction create a stream function.
 func NewStreamFunction(name string, opts ...Option) StreamFunction {
 	options := NewOptions(opts...)
-	instanceID := uuid.NewString()
-	client := core.NewClient(name, core.ClientTypeStreamFunction, instanceID, options.ClientOptions...)
+	client := core.NewClient(name, core.ClientTypeStreamFunction, options.ClientOptions...)
 	sfn := &streamFunction{
 		name:           name,
-		instanceID:     instanceID,
 		zipperEndpoint: options.ZipperAddr,
 		client:         client,
 		observed:       make([]byte, 0),
@@ -57,7 +50,6 @@ var _ StreamFunction = &streamFunction{}
 // streamFunction implements StreamFunction interface.
 type streamFunction struct {
 	name           string
-	instanceID     string
 	zipperEndpoint string
 	client         *core.Client
 	observed       []byte            // ID list that will be observed
@@ -180,16 +172,4 @@ func (s *streamFunction) Write(tag byte, carriage []byte) error {
 // WriteDataFrame will write data frame to zipper.
 func (s *streamFunction) WriteDataFrame(f *frame.DataFrame) error {
 	return s.client.WriteFrame(f)
-}
-
-// GetInstanceID returns the unique id of this SFN instance.
-func (s *streamFunction) GetInstanceID() string {
-	return s.instanceID
-}
-
-// SetInstanceID updates the unique id of this SFN instance.
-func (s *streamFunction) SetInstanceID(instanceID string) {
-	if len(instanceID) > 0 {
-		s.instanceID = instanceID
-	}
 }

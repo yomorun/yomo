@@ -28,6 +28,11 @@ func newContext(stream quic.Stream) *Context {
 	return &Context{Stream: stream}
 }
 
+// SetConnID sets the connection id.
+func (c *Context) SetConnID(id string) {
+	c.ConnID = id
+}
+
 // WithFrame sets a frame to context.
 func (c *Context) WithFrame(f frame.Frame) *Context {
 	c.Frame = f

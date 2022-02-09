@@ -252,7 +252,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	} else if len(c.ConnID) > 0 {
 		return errors.New("handleHandshakeFrame c.ConnID is not empty")
 	}
-	c.ConnID = f.InstanceID
+	c.SetConnID(f.InstanceID)
 
 	logger.Debugf("%sGOT ❤️ HandshakeFrame : %# x", ServerLogPrefix, f)
 	// credential
