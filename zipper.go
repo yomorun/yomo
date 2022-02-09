@@ -58,7 +58,6 @@ type zipper struct {
 	server            *core.Server
 	client            *core.Client
 	downstreamZippers []Zipper
-	ready             chan bool
 }
 
 var _ Zipper = &zipper{}
@@ -236,7 +235,7 @@ func (z *zipper) Close() error {
 // Stats inspects current server.
 func (z *zipper) Stats() int {
 	log.Printf("[%s] all sfn connected: %d", z.name, len(z.server.StatsFunctions()))
-	for k, _ := range z.server.StatsFunctions() {
+	for k := range z.server.StatsFunctions() {
 		log.Printf("[%s] -> ConnID=%v", z.name, k)
 	}
 

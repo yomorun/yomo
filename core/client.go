@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/frame"
@@ -39,6 +40,10 @@ type Client struct {
 
 // NewClient creates a new YoMo-Client.
 func NewClient(appName string, connType ClientType, id string, opts ...ClientOption) *Client {
+	if len(id) == 0 {
+		id = uuid.NewString()
+	}
+
 	c := &Client{
 		name:       appName,
 		id:         id,

@@ -3,7 +3,6 @@ package yomo
 import (
 	"context"
 
-	"github.com/google/uuid"
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/logger"
@@ -27,14 +26,11 @@ type Source interface {
 	WriteWithTag(tag uint8, data []byte) error
 	// WriteDataFrame will write data frame to zipper.
 	WriteDataFrame(f *frame.DataFrame) error
-	// GetInstanceID returns the unique id of this Source instance
-	GetInstanceID() string
 }
 
 // YoMo-Source
 type yomoSource struct {
 	name           string
-	instanceID     string
 	zipperEndpoint string
 	client         *core.Client
 	tag            uint8
@@ -45,12 +41,10 @@ var _ Source = &yomoSource{}
 // NewSource create a yomo-source
 func NewSource(name string, opts ...Option) Source {
 	options := NewOptions(opts...)
-	instanceID := uuid.NewString()
-	client := core.NewClient(name, core.ClientTypeSource, instanceID, options.ClientOptions...)
+	client := core.NewClient(name, core.ClientTypeSource, "", options.ClientOptions...)
 
 	return &yomoSource{
 		name:           name,
-		instanceID:     instanceID,
 		zipperEndpoint: options.ZipperAddr,
 		client:         client,
 	}
@@ -101,9 +95,4 @@ func (s *yomoSource) WriteDataFrame(f *frame.DataFrame) error {
 		logger.Debugf("%sWriteDataFrame: data=%# x", sourceLogPrefix, f.GetCarriage())
 	}
 	return s.client.WriteFrame(f)
-}
-
-// GetInstanceID returns the unique id of this Source instance
-func (s *yomoSource) GetInstanceID() string {
-	return s.instanceID
 }

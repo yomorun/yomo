@@ -132,7 +132,6 @@ func (c *connector) GetConnIDs(appID string, name string, meta *frame.MetaFrame)
 		app := val.(*app)
 		if app.id == appID && app.name == name {
 			connID := key.(string)
-
 			switch meta.LBType {
 			case frame.LoadBalanceRandomPick:
 				connIDs = append(connIDs, connID)
@@ -145,7 +144,6 @@ func (c *connector) GetConnIDs(appID string, name string, meta *frame.MetaFrame)
 			case frame.LoadBalanceBroadcast:
 				connIDs = append(connIDs, connID)
 			}
-
 		}
 		return true
 	})

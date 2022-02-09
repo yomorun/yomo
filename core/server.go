@@ -246,14 +246,13 @@ func (s *Server) mainFrameHandler(c *Context) error {
 
 // handle HandShakeFrame
 func (s *Server) handleHandshakeFrame(c *Context) error {
-
 	f := c.Frame.(*frame.HandshakeFrame)
-
 	if len(f.InstanceID) == 0 {
 		return errors.New("handleHandshakeFrame f.InstanceID is empty")
 	} else if len(c.ConnID) > 0 {
 		return errors.New("handleHandshakeFrame c.ConnID is not empty")
 	}
+	c.ConnID = f.InstanceID
 
 	logger.Debugf("%sGOT ❤️ HandshakeFrame : %# x", ServerLogPrefix, f)
 	// credential
@@ -269,8 +268,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	if err := s.validateRouter(); err != nil {
 		return err
 	}
-	connID := f.InstanceID
-	c.ConnID = connID
+	connID := c.ConnID
 	route := s.router.Route(appID)
 	if reflect.ValueOf(route).IsNil() {
 		err := errors.New("handleHandshakeFrame route is nil")
@@ -353,8 +351,8 @@ func (s *Server) handleDataFrame(c *Context) error {
 		logger.Warnf("%shandleDataFrame have not next function, from=[%s](%s)", ServerLogPrefix, from, fromID)
 		return nil
 	}
-	// write data frame to stream
 	f := c.Frame.(*frame.DataFrame)
+	// write data frame to stream
 	toIDs := s.connector.GetConnIDs(appID, to, f.GetMetaFrame())
 	for _, toID := range toIDs {
 		logger.Infof("%swrite data: [%s](%s) --> [%s](%s)", ServerLogPrefix, from, fromID, to, toID)

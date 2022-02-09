@@ -30,8 +30,10 @@ type StreamFunction interface {
 	Write(tag byte, carriage []byte) error
 	// WriteDataFrame will write data frame to zipper.
 	WriteDataFrame(f *frame.DataFrame) error
-	// GetInstanceID returns the unique id of this SFN instance
+	// GetInstanceID returns the unique id of this SFN instance.
 	GetInstanceID() string
+	// SetInstanceID updates the unique id of this SFN instance.
+	SetInstanceID(instanceID string)
 }
 
 // NewStreamFunction create a stream function.
@@ -180,7 +182,14 @@ func (s *streamFunction) WriteDataFrame(f *frame.DataFrame) error {
 	return s.client.WriteFrame(f)
 }
 
-// GetInstanceID returns the unique id of this SFN instance
+// GetInstanceID returns the unique id of this SFN instance.
 func (s *streamFunction) GetInstanceID() string {
 	return s.instanceID
+}
+
+// SetInstanceID updates the unique id of this SFN instance.
+func (s *streamFunction) SetInstanceID(instanceID string) {
+	if len(instanceID) > 0 {
+		s.instanceID = instanceID
+	}
 }
