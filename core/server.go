@@ -114,18 +114,20 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 			for {
 				logger.Infof("%s❤️2/ waiting for new stream", ServerLogPrefix)
 				stream, err := sess.AcceptStream(ctx)
-				if err != nil && c != nil {
-					// if client close the connection, then we should close the session
-					app, ok := s.connector.App(c.ConnID)
-					if ok {
-						// connector
-						s.connector.Remove(c.ConnID)
-						// store
-						// when remove store by appID? let me think...
-						logger.Errorf("%s❤️3/ [%s::%s](%s) on stream %v", ServerLogPrefix, app.ID(), app.Name(), c.ConnID, err)
-						logger.Printf("%s💔 [%s::%s](%s) is disconnected", ServerLogPrefix, app.ID(), app.Name(), c.ConnID)
-					} else {
-						logger.Errorf("%s❤️3/ [unknown](%s) on stream %v", ServerLogPrefix, c.ConnID, err)
+				if err != nil {
+					if c != nil {
+						// if client close the connection, then we should close the session
+						app, ok := s.connector.App(c.ConnID)
+						if ok {
+							// connector
+							s.connector.Remove(c.ConnID)
+							// store
+							// when remove store by appID? let me think...
+							logger.Errorf("%s❤️3/ [%s::%s](%s) on stream %v", ServerLogPrefix, app.ID(), app.Name(), c.ConnID, err)
+							logger.Printf("%s💔 [%s::%s](%s) is disconnected", ServerLogPrefix, app.ID(), app.Name(), c.ConnID)
+						} else {
+							logger.Errorf("%s❤️3/ [unknown](%s) on stream %v", ServerLogPrefix, c.ConnID, err)
+						}
 					}
 					break
 				}
