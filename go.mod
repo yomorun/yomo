@@ -8,6 +8,6 @@ require (
 	github.com/reactivex/rxgo/v2 v2.5.0
 	github.com/stretchr/testify v1.7.0
 	github.com/yomorun/y3 v1.0.4
-	go.uber.org/zap v1.19.0
+	go.uber.org/zap v1.21.0
 	gopkg.in/yaml.v2 v2.4.0
 )
