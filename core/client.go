@@ -103,6 +103,7 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	handshake := frame.NewHandshakeFrame(
 		c.name,
 		byte(c.clientType),
+		c.opts.ObservedDataTags,
 		c.opts.Credential.AppID(),
 		byte(c.opts.Credential.Type()),
 		c.opts.Credential.Payload(),
@@ -309,6 +310,10 @@ func (c *Client) ServerAddr() string {
 
 // initOptions init options defaults
 func (c *Client) initOptions() {
+	// observed
+	if c.opts.ObservedDataTags == nil {
+		c.opts.ObservedDataTags = make([]byte, 0)
+	}
 	// credential
 	if c.opts.Credential == nil {
 		c.opts.Credential = auth.NewCredendialNone()
@@ -340,4 +345,10 @@ func (c *Client) initOptions() {
 	if c.opts.Credential != nil {
 		logger.Printf("%suse credential: [%s]", ClientLogPrefix, c.opts.Credential.Type())
 	}
+}
+
+// SetObserveDataTag set the data tag list that will be observed.
+// Deprecated: use yomo.WithObservedDataTags instead
+func (c *Client) SetObserveDataTag(tag ...byte) {
+	c.opts.ObservedDataTags = append(c.opts.ObservedDataTags, tag...)
 }

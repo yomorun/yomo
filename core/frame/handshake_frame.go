@@ -10,6 +10,8 @@ type HandshakeFrame struct {
 	Name string
 	// ClientType represents client type (source or sfn)
 	ClientType byte
+	// ObservedDataTags are the client data tag list.
+	ObservedDataTags []byte
 	// auth
 	authType    byte
 	authPayload []byte
@@ -18,13 +20,14 @@ type HandshakeFrame struct {
 }
 
 // NewHandshakeFrame creates a new HandshakeFrame.
-func NewHandshakeFrame(name string, clientType byte, appID string, authType byte, authPayload []byte) *HandshakeFrame {
+func NewHandshakeFrame(name string, clientType byte, observed []byte, appID string, authType byte, authPayload []byte) *HandshakeFrame {
 	return &HandshakeFrame{
-		Name:        name,
-		ClientType:  clientType,
-		appID:       appID,
-		authType:    authType,
-		authPayload: authPayload,
+		Name:             name,
+		ClientType:       clientType,
+		ObservedDataTags: observed,
+		appID:            appID,
+		authType:         authType,
+		authPayload:      authPayload,
 	}
 }
 
@@ -41,6 +44,9 @@ func (h *HandshakeFrame) Encode() []byte {
 	// type
 	typeBlock := y3.NewPrimitivePacketEncoder(byte(TagOfHandshakeType))
 	typeBlock.SetBytesValue([]byte{h.ClientType})
+	// observed
+	observedBlock := y3.NewPrimitivePacketEncoder(byte(TagOfHandshakeObserved))
+	observedBlock.SetBytesValue(h.ObservedDataTags)
 	// app id
 	appIDBlock := y3.NewPrimitivePacketEncoder(byte(TagOfHandshakeAppID))
 	appIDBlock.SetStringValue(h.appID)
@@ -53,6 +59,7 @@ func (h *HandshakeFrame) Encode() []byte {
 	handshake := y3.NewNodePacketEncoder(byte(h.Type()))
 	handshake.AddPrimitivePacket(nameBlock)
 	handshake.AddPrimitivePacket(typeBlock)
+	handshake.AddPrimitivePacket(observedBlock)
 	handshake.AddPrimitivePacket(appIDBlock)
 	handshake.AddPrimitivePacket(authTypeBlock)
 	handshake.AddPrimitivePacket(authPayloadBlock)
@@ -81,6 +88,10 @@ func DecodeToHandshakeFrame(buf []byte) (*HandshakeFrame, error) {
 	if typeBlock, ok := node.PrimitivePackets[byte(TagOfHandshakeType)]; ok {
 		clientType := typeBlock.ToBytes()
 		handshake.ClientType = clientType[0]
+	}
+	// observed
+	if observedBlock, ok := node.PrimitivePackets[byte(TagOfHandshakeObserved)]; ok {
+		handshake.ObservedDataTags = observedBlock.ToBytes()
 	}
 	// app id
 	if appIDBlock, ok := node.PrimitivePackets[byte(TagOfHandshakeAppID)]; ok {

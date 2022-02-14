@@ -101,6 +101,16 @@ func WithCredential(cred auth.Credential) Option {
 	}
 }
 
+// WithObservedDataTags sets client data tag list.
+func WithObservedDataTags(tags ...byte) Option {
+	return func(o *Options) {
+		o.ClientOptions = append(
+			o.ClientOptions,
+			core.WithObservedDataTags(tags...),
+		)
+	}
+}
+
 // NewOptions creates a new options for YoMo-Client.
 func NewOptions(opts ...Option) *Options {
 	options := &Options{}
