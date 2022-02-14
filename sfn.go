@@ -16,7 +16,8 @@ const (
 // StreamFunction defines serverless streaming functions.
 type StreamFunction interface {
 	// SetObserveDataTag set the data tag list that will be observed
-	SetObserveDataTag(id ...uint8)
+	// Deprecated: use yomo.WithObservedDataTags instead
+	SetObserveDataTag(tag ...byte)
 	// SetHandler set the handler function, which accept the raw bytes data and return the tag & response
 	SetHandler(fn core.AsyncHandler) error
 	// SetPipeHandler set the pipe handler function
@@ -26,7 +27,7 @@ type StreamFunction interface {
 	// Close will close the connection
 	Close() error
 	// Send a data to zipper.
-	Write(dataID byte, carriage []byte) error
+	Write(tag byte, carriage []byte) error
 }
 
 // NewStreamFunction create a stream function.
@@ -37,7 +38,7 @@ func NewStreamFunction(name string, opts ...Option) StreamFunction {
 		name:           name,
 		zipperEndpoint: options.ZipperAddr,
 		client:         client,
-		observed:       make([]uint8, 0),
+		observed:       make([]byte, 0),
 	}
 
 	return sfn
@@ -50,7 +51,7 @@ type streamFunction struct {
 	name           string
 	zipperEndpoint string
 	client         *core.Client
-	observed       []uint8           // ID list that will be observed
+	observed       []byte            // tag list that will be observed
 	fn             core.AsyncHandler // user's function which will be invoked when data arrived
 	pfn            core.PipeHandler
 	pIn            chan []byte
@@ -58,8 +59,9 @@ type streamFunction struct {
 }
 
 // SetObserveDataTag set the data tag list that will be observed.
-func (s *streamFunction) SetObserveDataTag(id ...uint8) {
-	s.observed = append(s.observed, id...)
+// Deprecated: use yomo.WithObservedDataTags instead
+func (s *streamFunction) SetObserveDataTag(tag ...byte) {
+	s.client.SetObserveDataTag(tag...)
 	logger.Debugf("%sSetObserveDataTag(%v)", streamFunctionLogPrefix, s.observed)
 }
 
@@ -82,13 +84,8 @@ func (s *streamFunction) Connect() error {
 	logger.Debugf("%s Connect()", streamFunctionLogPrefix)
 	// notify underlying network operations, when data with tag we observed arrived, invoke the func
 	s.client.SetDataFrameObserver(func(data *frame.DataFrame) {
-		for _, t := range s.observed {
-			if t == data.Tag() {
-				logger.Debugf("%sreceive DataFrame, tag=%# x, carraige=%# x", streamFunctionLogPrefix, data.Tag(), data.GetCarriage())
-				s.onDataFrame(data.GetCarriage(), data.GetMetaFrame())
-				return
-			}
-		}
+		logger.Debugf("%sreceive DataFrame, tag=%# x, carraige=%# x", streamFunctionLogPrefix, data.Tag(), data.GetCarriage())
+		s.onDataFrame(data.GetCarriage(), data.GetMetaFrame())
 	})
 
 	if s.pfn != nil {
@@ -124,12 +121,21 @@ func (s *streamFunction) Connect() error {
 
 // Close will close the connection.
 func (s *streamFunction) Close() error {
+	if s.pIn != nil {
+		close(s.pIn)
+	}
+
+	if s.pOut != nil {
+		close(s.pOut)
+	}
+
 	if s.client != nil {
 		if err := s.client.Close(); err != nil {
 			logger.Errorf("%sClose(): %v", err)
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -151,7 +157,6 @@ func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
 				frame := frame.NewDataFrame()
 				// reuse transactionID
 				frame.SetTransactionID(metaFrame.TransactionID())
-				// frame.SetIssuer(s.name)
 				frame.SetCarriage(tag, resp)
 				s.client.WriteFrame(frame)
 			}
@@ -165,9 +170,8 @@ func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
 }
 
 // Send a DataFrame to zipper.
-func (s *streamFunction) Write(dataID byte, carriage []byte) error {
+func (s *streamFunction) Write(tag byte, carriage []byte) error {
 	frame := frame.NewDataFrame()
-	// frame.SetIssuer(s.name)
-	frame.SetCarriage(dataID, carriage)
+	frame.SetCarriage(tag, carriage)
 	return s.client.WriteFrame(frame)
 }

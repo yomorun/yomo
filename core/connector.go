@@ -10,12 +10,9 @@ import (
 )
 
 type app struct {
-	id   string // app id
-	name string // app name
-}
-
-func newApp(id string, name string) *app {
-	return &app{id: id, name: name}
+	id       string // app id
+	name     string // app name
+	observed []byte // data tags
 }
 
 func (a *app) ID() string {
@@ -36,10 +33,10 @@ type Connector interface {
 	Remove(connID string)
 	// Get a connection by connection id.
 	Get(connID string) io.ReadWriteCloser
-	// ConnID gets the connection id by appID and mae.
-	ConnID(appID string, name string) (string, bool)
-	// Write a DataFrame from a connection to another one.
-	Write(f *frame.DataFrame, fromID string, toID string) error
+	// GetConnIDs gets the connection ids by appID, name and tag.
+	GetConnIDs(appID string, name string, tags byte) []string
+	// Write a DataFrame to a connection.
+	Write(f *frame.DataFrame, toID string) error
 	// GetSnapshot gets the snapshot of all connections.
 	GetSnapshot() map[string]io.ReadWriteCloser
 
@@ -50,7 +47,7 @@ type Connector interface {
 	// AppName gets the name of app by connID.
 	AppName(connID string) (string, bool)
 	// LinkApp links the app and connection.
-	LinkApp(connID string, appID string, name string)
+	LinkApp(connID string, appID string, name string, observed []byte)
 	// UnlinkApp removes the app by connID.
 	UnlinkApp(connID string, appID string, name string)
 
@@ -124,33 +121,30 @@ func (c *connector) AppName(connID string) (string, bool) {
 	return "", false
 }
 
-// ConnID gets the connection id by appID and mae.
-func (c *connector) ConnID(appID string, name string) (string, bool) {
-	var connID string
-	var ok bool
+// GetConnIDs gets the connection ids by appID, name and tag.
+func (c *connector) GetConnIDs(appID string, name string, tag byte) []string {
+	connIDs := make([]string, 0)
 
 	c.apps.Range(func(key interface{}, val interface{}) bool {
 		app := val.(*app)
 		if app.id == appID && app.name == name {
-			connID = key.(string)
-			ok = true
+			for _, v := range app.observed {
+				if v == tag {
+					connIDs = append(connIDs, key.(string))
+				}
+			}
 			return false
 		}
 		return true
 	})
-	if !ok {
-		logger.Warnf("%snot available connection, name=%s::%s", ServerLogPrefix, appID, name)
-		return "", false
-	}
-	logger.Debugf("%suse connection: connID=%s", ServerLogPrefix, connID)
-	return connID, true
+	return connIDs
 }
 
-// Write a DataFrame from a connection to another one.
-func (c *connector) Write(f *frame.DataFrame, fromID string, toID string) error {
+// Write a DataFrame to a connection.
+func (c *connector) Write(f *frame.DataFrame, toID string) error {
 	targetStream := c.Get(toID)
 	if targetStream == nil {
-		logger.Warnf("%swill write to: [%s] -> [%s], target stream is nil", ServerLogPrefix, fromID, toID)
+		logger.Warnf("%swill write to: [%s], target stream is nil", ServerLogPrefix, toID)
 		return fmt.Errorf("target[%s] stream is nil", toID)
 	}
 	_, err := targetStream.Write(f.Encode())
@@ -168,9 +162,9 @@ func (c *connector) GetSnapshot() map[string]io.ReadWriteCloser {
 }
 
 // LinkApp links the app and connection.
-func (c *connector) LinkApp(connID string, appID string, name string) {
+func (c *connector) LinkApp(connID string, appID string, name string, observed []byte) {
 	logger.Debugf("%sconnector link application: connID[%s] --> app[%s::%s]", ServerLogPrefix, connID, appID, name)
-	c.apps.Store(connID, newApp(appID, name))
+	c.apps.Store(connID, &app{appID, name, observed})
 }
 
 // UnlinkApp removes the app by connID.

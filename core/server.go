@@ -279,7 +279,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	switch clientType {
 	case ClientTypeSource:
 		s.connector.Add(connID, stream)
-		s.connector.LinkApp(connID, appID, name)
+		s.connector.LinkApp(connID, appID, name, nil)
 	case ClientTypeStreamFunction:
 		// when sfn connect, it will provide its name to the server. server will check if this client
 		// has permission connected to.
@@ -295,10 +295,10 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 
 		s.connector.Add(connID, stream)
 		// link connection to stream function
-		s.connector.LinkApp(connID, appID, name)
+		s.connector.LinkApp(connID, appID, name, f.ObservedDataTags)
 	case ClientTypeUpstreamZipper:
 		s.connector.Add(connID, stream)
-		s.connector.LinkApp(connID, appID, name)
+		s.connector.LinkApp(connID, appID, name, nil)
 	default:
 		// unknown client type
 		s.connector.Remove(connID)
@@ -327,6 +327,8 @@ func (s *Server) handleDataFrame(c *Context) error {
 		return nil
 	}
 
+	f := c.Frame.(*frame.DataFrame)
+
 	// route
 	appID, _ := s.connector.AppID(fromID)
 	cacheRoute, ok := s.opts.Store.Get(appID)
@@ -340,26 +342,20 @@ func (s *Server) handleDataFrame(c *Context) error {
 		logger.Warnf("%shandleDataFrame route is nil", ServerLogPrefix)
 		return fmt.Errorf("handleDataFrame route is nil")
 	}
-	// get stream function name from route
-	to, ok := route.Next(from)
-	if !ok {
-		logger.Warnf("%shandleDataFrame have not next function, from=[%s](%s)", ServerLogPrefix, from, fromID)
-		return nil
-	}
-	// get connection
-	toID, ok := s.connector.ConnID(appID, to)
-	if !ok {
-		logger.Warnf("%shandleDataFrame have next function, but not have connection, from=[%s](%s), to=[%s]", ServerLogPrefix, from, fromID, to)
-		return nil
-	}
-	f := c.Frame.(*frame.DataFrame)
-	logger.Debugf("%shandleDataFrame tag=%#x tid=%s, counter=%d, from=[%s](%s), to=[%s](%s)", ServerLogPrefix, f.Tag(), f.TransactionID(), s.counterOfDataFrame, from, fromID, to, toID)
+	// get stream function names from route
+	downstreams := route.Downstreams(from)
+	for _, to := range downstreams {
+		toIDs := s.connector.GetConnIDs(appID, to, f.GetDataTag())
+		for _, toID := range toIDs {
+			logger.Debugf("%shandleDataFrame tag=%#x tid=%s, counter=%d, from=[%s](%s), to=[%s](%s)", ServerLogPrefix, f.Tag(), f.TransactionID(), s.counterOfDataFrame, from, fromID, to, toID)
 
-	// write data frame to stream
-	logger.Infof("%swrite data: [%s](%s) --> [%s](%s)", ServerLogPrefix, from, fromID, to, toID)
-	if err := s.connector.Write(f, fromID, toID); err != nil {
-		logger.Errorf("%swrite data: [%s](%s) --> [%s](%s), err=%v", ServerLogPrefix, from, fromID, to, toID, err)
-		return err
+			// write data frame to stream
+			logger.Infof("%swrite data: [%s](%s) --> [%s](%s)", ServerLogPrefix, from, fromID, to, toID)
+			if err := s.connector.Write(f, toID); err != nil {
+				logger.Errorf("%swrite data: [%s](%s) --> [%s](%s), err=%v", ServerLogPrefix, from, fromID, to, toID, err)
+				continue
+			}
+		}
 	}
 	return nil
 }
