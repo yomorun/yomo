@@ -67,7 +67,7 @@ func (r *route) Exists(name string) bool {
 	return ok
 }
 
-func (r *route) Downstreams(current string) []string {
+func (r *route) GetForwardRoutes(current string) []string {
 	idx := -1
 	r.data.Range(func(key interface{}, val interface{}) bool {
 		if val.(string) == current {

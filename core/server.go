@@ -343,8 +343,8 @@ func (s *Server) handleDataFrame(c *Context) error {
 		return fmt.Errorf("handleDataFrame route is nil")
 	}
 	// get stream function names from route
-	downstreams := route.Downstreams(from)
-	for _, to := range downstreams {
+	routes := route.GetForwardRoutes(from)
+	for _, to := range routes {
 		toIDs := s.connector.GetConnIDs(appID, to, f.GetDataTag())
 		for _, toID := range toIDs {
 			logger.Debugf("%shandleDataFrame tag=%#x tid=%s, counter=%d, from=[%s](%s), to=[%s](%s)", ServerLogPrefix, f.Tag(), f.TransactionID(), s.counterOfDataFrame, from, fromID, to, toID)
