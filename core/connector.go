@@ -3,6 +3,7 @@ package core
 import (
 	"fmt"
 	"io"
+	"math/rand"
 	"sync"
 
 	"github.com/yomorun/yomo/core/frame"
@@ -131,13 +132,20 @@ func (c *connector) GetConnIDs(appID string, name string, tag byte) []string {
 			for _, v := range app.observed {
 				if v == tag {
 					connIDs = append(connIDs, key.(string))
+					break
 				}
 			}
-			return false
 		}
 		return true
 	})
-	return connIDs
+
+	n := len(connIDs)
+	if n > 1 {
+		index := rand.Intn(n)
+		return connIDs[index : index+1]
+	} else {
+		return connIDs
+	}
 }
 
 // Write a DataFrame to a connection.
