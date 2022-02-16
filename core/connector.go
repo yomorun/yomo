@@ -139,13 +139,12 @@ func (c *connector) GetConnIDs(appID string, name string, tag byte) []string {
 		return true
 	})
 
-	n := len(connIDs)
-	if n > 1 {
+	if n := len(connIDs); n > 1 {
 		index := rand.Intn(n)
 		return connIDs[index : index+1]
-	} else {
-		return connIDs
 	}
+
+	return connIDs
 }
 
 // Write a DataFrame to a connection.
