@@ -1,6 +1,10 @@
 package core
 
-import "sync"
+import (
+	"math/rand"
+	"sync"
+	"time"
+)
 
 var (
 	once sync.Once
@@ -26,3 +30,7 @@ const (
 	ServerLogPrefix     = "\033[32m[core:server]\033[0m "
 	ParseFrameLogPrefix = "\033[36m[core:stream_parser]\033[0m "
 )
+
+func init() {
+	rand.Seed(time.Now().Unix())
+}

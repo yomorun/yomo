@@ -1,6 +1,6 @@
-# Multi stream functions example
+# Same stream functions example
 
-This example represents how YoMo works with multiple instances of the same stream function, `zipper` will send the data to these instances alternately by round-robin.
+This example represents how YoMo works with multiple instances of the same stream function, `zipper` will send the data to one of these instances randomly.
 
 ## Code structure
 
