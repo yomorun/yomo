@@ -14,17 +14,8 @@ const (
 	timeFormat = "2006-01-02 15:04:05.000"
 )
 
-func newLogger(isDebug bool) log.Logger {
-	cfg := initConfig()
-	if isDebug {
-		cfg.Development = true
-		cfg.Encoding = "console"
-		// set the minimal level to debug
-		cfg.Level.SetLevel(zap.DebugLevel)
-	} else {
-		// set the minimal level to error
-		cfg.Level.SetLevel(zap.ErrorLevel)
-	}
+func newLogger(isDebug bool, errorOutput string) log.Logger {
+	cfg := initConfig(isDebug, errorOutput)
 
 	if lvl := logLevel(); lvl != "" {
 		switch lvl {
@@ -36,12 +27,12 @@ func newLogger(isDebug bool) log.Logger {
 			cfg.Level.SetLevel(zap.WarnLevel)
 		case "error":
 			cfg.Level.SetLevel(zap.ErrorLevel)
-		case "dpanic":
-			cfg.Level.SetLevel(zap.DPanicLevel)
-		case "panic":
-			cfg.Level.SetLevel(zap.PanicLevel)
-		case "fatal":
-			cfg.Level.SetLevel(zap.FatalLevel)
+			// case "dpanic":
+			// 	cfg.Level.SetLevel(zap.DPanicLevel)
+			// case "panic":
+			// 	cfg.Level.SetLevel(zap.PanicLevel)
+			// case "fatal":
+			// 	cfg.Level.SetLevel(zap.FatalLevel)
 		}
 	}
 
@@ -61,7 +52,7 @@ func newLogger(isDebug bool) log.Logger {
 	}
 }
 
-func initConfig() zap.Config {
+func initConfig(isDebug bool, errorOutput string) zap.Config {
 	// std logger
 	stdlog.Default().SetFlags(0)
 	stdlog.Default().SetOutput(new(logWriter))
@@ -75,14 +66,14 @@ func initConfig() zap.Config {
 		MessageKey:     "msg",
 		StacktraceKey:  "stacktrace",
 		LineEnding:     zapcore.DefaultLineEnding,
-		EncodeLevel:    zapcore.LowercaseLevelEncoder,
+		EncodeLevel:    zapcore.CapitalColorLevelEncoder,
 		EncodeTime:     timeEncoder,
 		EncodeDuration: zapcore.SecondsDurationEncoder,
 		EncodeCaller:   zapcore.ShortCallerEncoder,
 	}
-	return zap.Config{
-		Level:             zap.NewAtomicLevelAt(zap.InfoLevel),
-		Development:       false,
+	cfg := zap.Config{
+		Level:             zap.NewAtomicLevelAt(zap.ErrorLevel),
+		Development:       isDebug,
 		DisableCaller:     true,
 		DisableStacktrace: true,
 		Encoding:          "console",
@@ -90,7 +81,18 @@ func initConfig() zap.Config {
 		OutputPaths:       []string{"stderr"},
 		ErrorOutputPaths:  []string{"stderr"},
 	}
+	if isDebug {
+		// set the minimal level to debug
+		cfg.Level.SetLevel(zap.DebugLevel)
+	}
+	if errorOutput != "" {
+		cfg.OutputPaths = append(cfg.OutputPaths, "out.log")
+		cfg.ErrorOutputPaths = append(cfg.ErrorOutputPaths, errorOutput)
+	}
+
+	return cfg
 }
+
 func newLoggerWithConfig(cfg zap.Config) zapLogger {
 	logger, err := cfg.Build()
 	if err != nil {
@@ -109,7 +111,8 @@ type zapLogger struct {
 }
 
 func (z zapLogger) SetLevel(lvl log.Level) {
-	cfg := initConfig()
+	isDebug := lvl == log.LevelDebug
+	cfg := initConfig(isDebug, z.errorOutput)
 	switch lvl {
 	case log.LevelDebug:
 		cfg.Level.SetLevel(zap.DebugLevel)
@@ -131,6 +134,9 @@ func (z zapLogger) WithPrefix(prefix string) log.Logger {
 
 func (z zapLogger) ErrorOutput(file string) {
 	// TODO:
+	if z.errorOutput != "" {
+		z.errorOutput = file
+	}
 }
 
 func (z zapLogger) Printf(format string, v ...interface{}) {

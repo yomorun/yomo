@@ -5,11 +5,11 @@ import (
 	"strings"
 )
 
-var logger = newLogger(isEnableDebug())
+var logger = newLogger(isEnableDebug(), errorOutput())
 
 // EnableDebug enables the development model for logging.
 func EnableDebug() {
-	logger = newLogger(true)
+	logger = newLogger(true, errorOutput())
 }
 
 // Printf prints a formated message without a specified level.
@@ -49,4 +49,8 @@ func isJSONFormat() bool {
 
 func logLevel() string {
 	return strings.ToLower(os.Getenv("YOMO_LOG_LEVEL"))
+}
+
+func errorOutput() string {
+	return strings.ToLower(os.Getenv("YOMO_LOG_ERROR_OUTPUT"))
 }
