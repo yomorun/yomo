@@ -5,7 +5,7 @@ This example represents how YoMo works with multiple instances of the same strea
 ## Code structure
 
 + `source`: Mocking data of a Sound Sensor. [docs.yomo.run/source](https://docs.yomo.run/source)
-+ `stream-fn`: Calculate the sound value in real-time. [docs.yomo.run/stream-function](https://docs.yomo.run/stream-function)
++ `stream-fn`: Calculate the sound value in real-time. [docs.yomo.run/stream-function](https://docs.yomo.run/stream-fn)
 + `zipper`: Orchestrate a workflow that receives the data from `source`, send the data to `stream-fn-1` and `stream-fn-2` randomly [docs.yomo.run/zipper](https://docs.yomo.run/zipper)
 
 ## How to run the example
@@ -15,7 +15,7 @@ This example represents how YoMo works with multiple instances of the same strea
 ### Binary (Recommended)
 
 ```bash
-Ξ _wrk/yomo git:(feat/example) ▶ curl -fsSL "https://bina.egoist.sh/yomorun/cli?name=yomo" | sh
+$ curl -fsSL "https://bina.egoist.sh/yomorun/cli?name=yomo" | sh
 
   ==> Resolved version latest to v0.1.7
   ==> Downloading asset for darwin amd64
@@ -26,8 +26,8 @@ This example represents how YoMo works with multiple instances of the same strea
 ### Or build from source
 
 ```bash
-Ξ _wrk/yomo git:(feat/example) ▶ go install github.com/yomorun/cli/yomo@latest
-Ξ _wrk/yomo git:(feat/example) ▶ yomo version
+$ go install github.com/yomorun/cli/yomo@latest
+$ yomo version
 YoMo CLI Version: v0.1.7
 ```
 
@@ -44,7 +44,7 @@ yomo serve -c ./zipper/workflow.yaml
 2021/11/11 16:39:34 [core:server] ✅ (name:Service) Listening on: 127.0.0.1:9000, QUIC: [v1 draft-29]
 ```
 
-### 3. Run first [stream-fn-1](https://docs.yomo.run/stream-function) instance
+### 3. Run first [stream-fn-1](https://docs.yomo.run/stream-fn) instance
 
 ```bash
 go run ./stream-fn/app.go
@@ -54,7 +54,7 @@ go run ./stream-fn/app.go
 2021/11/11 16:41:02 [core:client] ❤️  [Noise] is connected to YoMo-Zipper localhost:9000
 ```
 
-### 4. Run second [stream-fn-2](https://docs.yomo.run/stream-function) instance
+### 4. Run second [stream-fn-2](https://docs.yomo.run/stream-fn) instance
 
 ```bash
 go run ./stream-fn/app.go

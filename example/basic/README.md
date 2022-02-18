@@ -5,7 +5,7 @@ This example represents how YoMo works with the mock data of the sound sensor.
 ## Code structure
 
 + `source`: Mocking data of a Sound Sensor. [docs.yomo.run/source](https://docs.yomo.run/source)
-+ `sfn`: Detecting noise pollution in real-time. [docs.yomo.run/stream-function](https://docs.yomo.run/stream-function)
++ `sfn`: Detecting noise pollution in real-time. [docs.yomo.run/stream-function](https://docs.yomo.run/stream-fn)
 + `zipper`: Orchestrate a workflow that receives the data from `source`, stream computing in `stream-fn` [docs.yomo.run/zipper](https://docs.yomo.run/zipper)
 
 ## How to run the example
@@ -15,7 +15,7 @@ This example represents how YoMo works with the mock data of the sound sensor.
 ### Binary (Recommended)
 
 ```bash
-Ξ _wrk/yomo git:(feat/example) ▶ curl -fsSL "https://bina.egoist.sh/yomorun/cli?name=yomo" | sh
+$ curl -fsSL "https://bina.egoist.sh/yomorun/cli?name=yomo" | sh
 
   ==> Resolved version latest to v0.1.7
   ==> Downloading asset for darwin amd64
@@ -26,8 +26,8 @@ This example represents how YoMo works with the mock data of the sound sensor.
 ### Or build from source
 
 ```bash
-Ξ _wrk/yomo git:(feat/example) ▶ go install github.com/yomorun/cli/yomo@latest
-Ξ _wrk/yomo git:(feat/example) ▶ yomo version
+$ go install github.com/yomorun/cli/yomo@latest
+$ yomo version
 YoMo CLI Version: v0.1.7
 ```
 
@@ -45,7 +45,7 @@ Using config file: ./zipper/workflow.yaml
 2021/11/11 16:09:54 [core:server] ✅ (name:Service) Listening on: 127.0.0.1:9000, QUIC: [v1 draft-29]
 ```
 
-### 3. Run [stream-function](https://docs.yomo.run/stream-function)
+### 3. Run [stream-function](https://docs.yomo.run/stream-fn)
 
 ```bash
 go run ./sfn/main.go

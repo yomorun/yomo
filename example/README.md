@@ -16,10 +16,6 @@
   - stream-fn-2: print the warning message when the sound value reaches a threshold.
   - stream-fn-3: calculate the average value in a sliding window.
 
-## Multiple zippers
+## Cascading zippers
 
-- [multi-zipper](https://github.com/yomorun/yomo/tree/master/example/multi-zipper): [source](https://docs.yomo.run/source) sends the streams to [zipper-1](https://docs.yomo.run/zipper), then `zipper-1` will broadcast the streams to the zippers in other regions, f.e. `zipper-2`.
-
-## Multiple instances of the same stream function
-
-- [same-stream-fn](https://github.com/yomorun/yomo/tree/master/example/same-stream-fn): multiple instances of the same stream function, `zipper` will send the data to these instances randomly.
+- [cascading-zipper](https://github.com/yomorun/yomo/tree/master/example/multi-zipper): [source](https://docs.yomo.run/source) sends the streams to [zipper-1](https://docs.yomo.run/zipper), then [zipper-1](https://docs.yomo.run/zipper) will broadcast the streams to the zippers in other regions, e.g. [zipper-1](https://docs.yomo.run/zipper).

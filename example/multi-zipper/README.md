@@ -1,13 +1,13 @@
-# Multiple Zippers
+# Cascading Zippers
 
-This example represents how YoMo works with multiple zippers in mesh network.
+This example represents how YoMo works with cascading zippers in mesh network.
 
 ## Code structure
 
 + `source`: Mocking random data and send it to `zipper-1`. [docs.yomo.run/source](https://docs.yomo.run/source)
 + `zipper-1`: Receive the streams from `source`, and broadcast it to downstream `zipper-2` in another region. [docs.yomo.run/zipper](https://docs.yomo.run/zipper)
 + `zipper-2`: Receive the streams from upstream `zipper-1`. [docs.yomo.run/zipper](https://docs.yomo.run/zipper)
-+ `sfn`: Receive the streams from `zipper-2` and print it in terminal. [docs.yomo.run/stream-function](https://docs.yomo.run/stream-function)
++ `sfn`: Receive the streams from `zipper-2` and print it in terminal. [docs.yomo.run/stream-function](https://docs.yomo.run/stream-fn)
 
 ## How to run the example
 
@@ -16,7 +16,7 @@ This example represents how YoMo works with multiple zippers in mesh network.
 ### Binary (Recommended)
 
 ```bash
-Ξ _wrk/yomo git:(feat/example) ▶ curl -fsSL "https://bina.egoist.sh/yomorun/cli?name=yomo" | sh
+$ curl -fsSL "https://bina.egoist.sh/yomorun/cli?name=yomo" | sh
 
   ==> Resolved version latest to v0.1.7
   ==> Downloading asset for darwin amd64
@@ -27,8 +27,8 @@ This example represents how YoMo works with multiple zippers in mesh network.
 ### Or build from source
 
 ```bash
-Ξ _wrk/yomo git:(feat/example) ▶ go install github.com/yomorun/cli/yomo@latest
-Ξ _wrk/yomo git:(feat/example) ▶ yomo version
+$ go install github.com/yomorun/cli/yomo@latest
+$ yomo version
 YoMo CLI Version: v0.1.7
 ```
 
@@ -56,7 +56,7 @@ go run zipper_2.go
 2021/11/11 16:09:54 [core:server] ✅ [zipper-2] Listening on: [::]:9002, QUIC: [v1 draft-29], AUTH: [None]
 ```
 
-### 3. Run [stream-function](https://docs.yomo.run/stream-function)
+### 3. Run [stream-function](https://docs.yomo.run/stream-fn)
 
 ```bash
 go run ./sfn/sfn_echo.go

@@ -159,7 +159,7 @@ $ yomo dev
 ## 📚 Documentation
 
 + `YoMo-Source`: [docs.yomo.run/source](https://docs.yomo.run/source)
-+ `YoMo-Stream-Function`: [docs.yomo.run/stream-function](https://docs.yomo.run/stream-function)
++ `YoMo-Stream-Function`: [docs.yomo.run/stream-function](https://docs.yomo.run/stream-fn)
 + `YoMo-Zipper`: [docs.yomo.run/zipper](https://docs.yomo.run/zipper)
 + `Stream Processing in Rx way`: [Rx](https://docs.yomo.run/rx)
 + `Faster than real-time codec`: [Y3](https://github.com/yomorun/y3-codec)

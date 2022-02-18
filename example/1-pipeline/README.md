@@ -21,7 +21,7 @@ Install YoMo CLI
 ### Binary (Recommended)
 
 ```bash
-Ξ _wrk/yomo git:(feat/example) ▶ curl -fsSL "https://bina.egoist.sh/yomorun/cli?name=yomo" | sh
+$ curl -fsSL "https://bina.egoist.sh/yomorun/cli?name=yomo" | sh
 
   ==> Resolved version latest to v0.1.7
   ==> Downloading asset for darwin amd64
@@ -32,8 +32,8 @@ Install YoMo CLI
 ### Or build from source
 
 ```bash
-Ξ _wrk/yomo git:(feat/example) ▶ go install github.com/yomorun/cli/yomo@latest
-Ξ _wrk/yomo git:(feat/example) ▶ yomo version
+$ go install github.com/yomorun/cli/yomo@latest
+$ yomo version
 YoMo CLI Version: v0.1.7
 ```
 
