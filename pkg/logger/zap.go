@@ -1,10 +1,11 @@
 package logger
 
 import (
-	"log"
+	stdlog "log"
 	"os"
 	"time"
 
+	"github.com/yomorun/yomo/core/log"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -13,29 +14,16 @@ const (
 	timeFormat = "2006-01-02 15:04:05.000"
 )
 
-func newLogger(isDebug bool) Logger {
-	var cfg zap.Config
+func newLogger(isDebug bool) log.Logger {
+	cfg := initConfig()
 	if isDebug {
-		cfg = zap.NewDevelopmentConfig()
+		cfg.Development = true
+		cfg.Encoding = "console"
 		// set the minimal level to debug
 		cfg.Level.SetLevel(zap.DebugLevel)
 	} else {
-		cfg = zap.NewProductionConfig()
 		// set the minimal level to error
 		cfg.Level.SetLevel(zap.ErrorLevel)
-	}
-
-	cfg.DisableCaller = true
-	cfg.DisableStacktrace = true
-	cfg.EncoderConfig.EncodeTime = timeEncoder
-	// std logger
-	log.Default().SetFlags(0)
-	log.Default().SetOutput(new(logWriter))
-
-	if isJSONFormat() {
-		cfg.Encoding = "json"
-	} else {
-		cfg.Encoding = "console"
 	}
 
 	if lvl := logLevel(); lvl != "" {
@@ -57,6 +45,53 @@ func newLogger(isDebug bool) Logger {
 		}
 	}
 
+	if isJSONFormat() {
+		cfg.Encoding = "json"
+	} else {
+		cfg.Encoding = "console"
+	}
+
+	logger, err := cfg.Build()
+	if err != nil {
+		panic(err)
+	}
+
+	return zapLogger{
+		logger: logger.Sugar(),
+	}
+}
+
+func initConfig() zap.Config {
+	// std logger
+	stdlog.Default().SetFlags(0)
+	stdlog.Default().SetOutput(new(logWriter))
+	// zap config
+	encoderConfig := zapcore.EncoderConfig{
+		TimeKey:        "ts",
+		LevelKey:       "level",
+		NameKey:        "logger",
+		CallerKey:      "caller",
+		FunctionKey:    zapcore.OmitKey,
+		MessageKey:     "msg",
+		StacktraceKey:  "stacktrace",
+		LineEnding:     zapcore.DefaultLineEnding,
+		EncodeLevel:    zapcore.LowercaseLevelEncoder,
+		EncodeTime:     timeEncoder,
+		EncodeDuration: zapcore.SecondsDurationEncoder,
+		EncodeCaller:   zapcore.ShortCallerEncoder,
+	}
+	return zap.Config{
+		Level:             zap.NewAtomicLevelAt(zap.InfoLevel),
+		Development:       false,
+		DisableCaller:     true,
+		DisableStacktrace: true,
+		Encoding:          "console",
+		EncoderConfig:     encoderConfig,
+		OutputPaths:       []string{"stderr"},
+		ErrorOutputPaths:  []string{"stderr"},
+	}
+}
+func newLoggerWithConfig(cfg zap.Config) zapLogger {
 	logger, err := cfg.Build()
 	if err != nil {
 		panic(err)
@@ -69,63 +104,53 @@ func newLogger(isDebug bool) Logger {
 
 // zapLogger is the logger implementation in go.uber.org/zap
 type zapLogger struct {
-	logger *zap.SugaredLogger
+	logger      *zap.SugaredLogger
+	errorOutput string
 }
 
-func (z zapLogger) Print(v ...interface{}) {
-	log.Print(v...)
+func (z zapLogger) SetLevel(lvl log.Level) {
+	cfg := initConfig()
+	switch lvl {
+	case log.LevelDebug:
+		cfg.Level.SetLevel(zap.DebugLevel)
+	case log.LevelInfo:
+		cfg.Level.SetLevel(zap.InfoLevel)
+	case log.LevelWarn:
+		cfg.Level.SetLevel(zap.WarnLevel)
+	case log.LevelError:
+		cfg.Level.SetLevel(zap.ErrorLevel)
+	}
+
+	z = newLoggerWithConfig(cfg)
+}
+
+func (z zapLogger) WithPrefix(prefix string) log.Logger {
+	// TODO:
+	return z
+}
+
+func (z zapLogger) ErrorOutput(file string) {
+	// TODO:
 }
 
 func (z zapLogger) Printf(format string, v ...interface{}) {
-	log.Printf(format, v...)
-}
-
-func (z zapLogger) Debug(msg string, fields ...interface{}) {
-	z.logger.Debugw(msg, fields...)
+	stdlog.Printf(format, v...)
 }
 
 func (z zapLogger) Debugf(template string, args ...interface{}) {
 	z.logger.Debugf(template, args...)
 }
 
-func (z zapLogger) Info(msg string, fields ...interface{}) {
-	z.logger.Infow(msg, fields...)
-}
-
 func (z zapLogger) Infof(template string, args ...interface{}) {
 	z.logger.Infof(template, args...)
-}
-
-func (z zapLogger) Warn(msg string, fields ...interface{}) {
-	z.logger.Warnw(msg, fields...)
 }
 
 func (z zapLogger) Warnf(template string, args ...interface{}) {
 	z.logger.Warnf(template, args...)
 }
 
-func (z zapLogger) Error(msg string, fields ...interface{}) {
-	z.logger.Errorw(msg, fields...)
-}
-
 func (z zapLogger) Errorf(template string, args ...interface{}) {
 	z.logger.Errorf(template, args...)
-}
-
-func (z zapLogger) Panic(msg string, fields ...interface{}) {
-	z.logger.Panicw(msg, fields...)
-}
-
-func (z zapLogger) Panicf(template string, args ...interface{}) {
-	z.logger.Panicf(template, args...)
-}
-
-func (z zapLogger) Fatal(msg string, fields ...interface{}) {
-	z.logger.Fatalw(msg, fields...)
-}
-
-func (z zapLogger) Fatalf(template string, args ...interface{}) {
-	z.logger.Fatalf(template, args...)
 }
 
 func timeEncoder(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
