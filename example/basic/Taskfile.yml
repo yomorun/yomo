@@ -1,0 +1,113 @@
+# https://taskfile.dev
+
+version: '3'
+
+output: 'prefixed'
+
+tasks:
+  # example cleanup
+  clean:
+    desc: example cleanup
+    silent: true
+    cmds:
+      - echo 'example cleaning...'
+      - rm -rf bin
+      - echo 'example clean.'
+
+  build:
+    desc: build source, flow and zipper
+    deps: [source-build, flow-build, zipper-build]
+    cmds:
+      - echo 'building done'
+
+  source-build:
+    desc: build basic source example
+    dir: "source"
+    cmds:
+      - "go build -o ../bin/source{{exeExt}} main.go"
+    silent: false
+
+  zipper-build:
+    desc: build basic zipper example
+    dir: "zipper"
+    cmds:
+      - "go build -o ../bin/zipper{{exeExt}} main.go"
+    silent: false
+
+  flow-build:
+    desc: build basic flow stream function
+    dir: "flow"
+    cmds:
+      - "go build -o ../bin/flow{{exeExt}} main.go"
+    silent: false
+
+  basic:
+    desc: run basic example
+    deps: [zipper, source, flow]
+    cmds:
+      - echo 'basic example run'
+
+  source:
+    desc: run basic source example
+    deps: [source-build]
+    cmds:
+      - "./bin/source{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: true
+      YOMO_LOG_LEVEL: error
+
+  flow:
+    desc: run basic flow stream function
+    deps: [flow-build]
+    cmds:
+      - "./bin/flow{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: true
+      YOMO_LOG_LEVEL: error
+
+  zipper:
+    desc: run basic zipper service
+    deps: [zipper-build]
+    cmds:
+      - "yomo serve -v -c zipper/workflow.yaml"
+      # - "cp zipper/workflow.yaml ./bin/."
+      # - "./bin/zipper{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: true
+      YOMO_LOG_LEVEL: error
+      YOMO_ADDR: "localhost:9000"
+      YOMO_DOWNSTREAM_ADDR: "localhost:9001"
+
+  downstream-zipper:
+    desc: run basic zipper downstream service
+    deps: [zipper-build]
+    dir: "zipper"
+    cmds:
+      # - "yomo serve -v -c workflow.yaml"
+      - "./zipper{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: true
+      YOMO_LOG_LEVEL: info
+      YOMO_ADDR: "localhost:9001"
+
+  downstream-source:
+    desc: run basic downstream source example
+    deps: [source-build]
+    dir: "source"
+    cmds:
+      - "./source{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: true
+      YOMO_LOG_LEVEL: error
+      YOMO_ADDR: "localhost:9001"
+
+  downstream-flow:
+    desc: run basic downstream flow stream function
+    deps: [flow-build]
+    dir: "flow"
+    cmds:
+      - "./flow{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: true
+      YOMO_LOG_LEVEL: error
+      YOMO_ADDR: "localhost:9001"
