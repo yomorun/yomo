@@ -1,18 +1,37 @@
 # Multi stream functions example
 
-This example represents how YoMo works with multiple instances of the same stream function, `zipper` will send the data to these instances alternately by round-robin.
+This example represents how YoMo works with multiple instances of the same stream function, `zipper` will send the data to these instances randomly.
 
 ## Code structure
 
-+ `source`: Mocking data of a Noise Decibel Detection Sensor. [yomo.run/source](https://docs.yomo.run/source)
-+ `stream-fn` (formerly flow): Calculate the noise value in real-time. [yomo.run/stream-function](https://docs.yomo.run/stream-function)
-+ `zipper`: Orchestrate a workflow that receives the data from `source`, stream computing in `stream-fn-1`, `stream-fn-2` and `stream-fn-3` [yomo.run/zipper](https://docs.yomo.run/zipper)
++ `source`: Mocking data of a Sound Sensor. [docs.yomo.run/source](https://docs.yomo.run/source)
++ `stream-fn`: Calculate the sound value in real-time. [docs.yomo.run/stream-function](https://docs.yomo.run/stream-function)
++ `zipper`: Orchestrate a workflow that receives the data from `source`, send the data to `stream-fn-1` and `stream-fn-2` randomly [docs.yomo.run/zipper](https://docs.yomo.run/zipper)
 
 ## How to run the example
 
 ### 1. Install YoMo CLI
 
-Please visit [YoMo Getting Started](https://github.com/yomorun/yomo#1-install-cli) for details.
+### Binary (Recommended)
+
+```bash
+Ξ _wrk/yomo git:(feat/example) ▶ curl -fsSL "https://bina.egoist.sh/yomorun/cli?name=yomo" | sh
+
+  ==> Resolved version latest to v0.1.7
+  ==> Downloading asset for darwin amd64
+  ==> Installing yomo to /usr/local/bin
+  ==> Installation complete
+```
+
+### Or build from source
+
+```bash
+Ξ _wrk/yomo git:(feat/example) ▶ go install github.com/yomorun/cli/yomo@latest
+Ξ _wrk/yomo git:(feat/example) ▶ yomo version
+YoMo CLI Version: v0.1.7
+```
+
+> You could install [task](https://taskfile.dev/#/installation) and run the following steps in one command `task example:same-stream-fn`.
 
 ### 2. Run [YoMo-Zipper](https://docs.yomo.run/zipper)
 
@@ -51,7 +70,6 @@ go run ./stream-fn/app.go
 go run ./source/main.go
 
 2021/11/11 16:42:32 [core:client] use credential: [None]
-2021/11/11 16:42:32 handshake frame=&frame.HandshakeFrame{Name:"yomo-source", ClientType:0x5f, authType:0x0, authPayload:[]uint8(nil)},err=<nil>
 2021/11/11 16:42:32 [core:client] ❤️  [yomo-source] is connected to YoMo-Zipper localhost:9000
 2021/11/11 16:42:32 ✅ Emit {139.61163 1636620152801 localhost} to YoMo-Zipper
 2021/11/11 16:42:33 ✅ Emit {124.2831 1636620153104 localhost} to YoMo-Zipper
@@ -61,7 +79,7 @@ go run ./source/main.go
 
 ### Results
 
-The two `stream-fn` will receive the data alternately by round-robin.
+The two `stream-fn` instances will receive the data randomly.
 
 The terminal of `stream-fn-1` will print:
 

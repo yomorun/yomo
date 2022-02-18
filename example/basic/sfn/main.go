@@ -34,7 +34,7 @@ func main() {
 	// start
 	err := sfn.Connect()
 	if err != nil {
-		logger.Errorf("[flow] connect err=%v", err)
+		logger.Errorf("[sfn] connect err=%v", err)
 		os.Exit(1)
 	}
 
@@ -45,10 +45,10 @@ func handler(data []byte) (byte, []byte) {
 	var model noiseData
 	err := json.Unmarshal(data, &model)
 	if err != nil {
-		logger.Errorf("[flow] json.Marshal err=%v", err)
+		logger.Errorf("[sfn] json.Marshal err=%v", err)
 		os.Exit(-2)
 	} else {
-		logger.Printf(">> [flow] got tag=0x33, data=%+v", model)
+		logger.Printf(">> [sfn] got tag=0x33, data=%+v", model)
 	}
 	return 0x0, nil
 }

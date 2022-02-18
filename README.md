@@ -31,6 +31,14 @@ Official Website: 🦖[https://yomo.run](https://yomo.run)
 
 ### 1. Install CLI
 
+#### Binary (Recommended)
+
+```bash
+$ curl -fsSL "https://bina.egoist.sh/yomorun/cli?name=yomo" | sh
+```
+
+#### Or build from source
+
 ```bash
 $ go install github.com/yomorun/cli/yomo@latest
 ```
@@ -40,7 +48,7 @@ $ go install github.com/yomorun/cli/yomo@latest
 ```bash
 $ yomo -V
 
-YoMo CLI version: v0.1.3
+YoMo CLI version: v0.1.7
 ```
 
 ### 2. Create your stream function
@@ -161,9 +169,9 @@ Congratulations! You have done your first YoMo Stream Function.
 
 ## 📚 Documentation
 
-+ `YoMo-Source`: [yomo.run/source](https://docs.yomo.run/source)
-+ `YoMo-Stream-Function` (formerly flow): [yomo.run/stream-function](https://docs.yomo.run/stream-function)
-+ `YoMo-Zipper`: [yomo.run/zipper](https://docs.yomo.run/zipper)
++ `YoMo-Source`: [docs.yomo.run/source](https://docs.yomo.run/source)
++ `YoMo-Stream-Function`: [docs.yomo.run/stream-function](https://docs.yomo.run/stream-function)
++ `YoMo-Zipper`: [docs.yomo.run/zipper](https://docs.yomo.run/zipper)
 + `Stream Processing in Rx way`: [Rx](https://docs.yomo.run/rx)
 + `Faster than real-time codec`: [Y3](https://github.com/yomorun/y3-codec)
 

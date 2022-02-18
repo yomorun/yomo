@@ -16,12 +16,25 @@ By introducting [YoMo](https://yomo.run), we can build it just like `unix pipeli
 
 ## 1. Prepare
 
-Install yomo cli `go install github.com/yomorun/cli/yomo@latest`:
+Install YoMo CLI
+
+### Binary (Recommended)
+
+```bash
+Ξ _wrk/yomo git:(feat/example) ▶ curl -fsSL "https://bina.egoist.sh/yomorun/cli?name=yomo" | sh
+
+  ==> Resolved version latest to v0.1.7
+  ==> Downloading asset for darwin amd64
+  ==> Installing yomo to /usr/local/bin
+  ==> Installation complete
+```
+
+### Or build from source
 
 ```bash
 Ξ _wrk/yomo git:(feat/example) ▶ go install github.com/yomorun/cli/yomo@latest
 Ξ _wrk/yomo git:(feat/example) ▶ yomo version
-YoMo CLI Version: v0.1.1
+YoMo CLI Version: v0.1.7
 ```
 
 ## 2. Run program
@@ -30,7 +43,7 @@ YoMo CLI Version: v0.1.1
 
 `yomo serve -c workflow.yaml`
 
-### Start the Streaming Serverless to observe data:
+### Start the Streaming Function to observe data:
 
 `yomo run serverless/counter.go -n counter`
 
