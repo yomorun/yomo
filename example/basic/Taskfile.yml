@@ -1,10 +1,28 @@
 # https://taskfile.dev
 
-version: '3'
+version: "3"
 
-output: 'prefixed'
+output: "prefixed"
 
 tasks:
+  run:
+    desc: run with downstream
+    deps:
+      [
+        source,
+        flow,
+        zipper,
+        downstream-zipper,
+        downstream-source,
+        downstream-flow,
+      ]
+
+  run-only-basic:
+    desc: only run the very basic example
+    deps: [zipper, source, flow]
+    cmds:
+      - echo 'basic example run'
+
   # example cleanup
   clean:
     desc: example cleanup
@@ -12,7 +30,6 @@ tasks:
     cmds:
       - echo 'example cleaning...'
       - rm -rf bin
-      - echo 'example clean.'
 
   build:
     desc: build source, flow and zipper
@@ -22,30 +39,19 @@ tasks:
 
   source-build:
     desc: build basic source example
-    dir: "source"
     cmds:
-      - "go build -o ../bin/source{{exeExt}} main.go"
-    silent: false
+      - "go build -o ./bin/source{{exeExt}} source/main.go"
 
   zipper-build:
     desc: build basic zipper example
-    dir: "zipper"
     cmds:
-      - "go build -o ../bin/zipper{{exeExt}} main.go"
-    silent: false
+      - "go build -o ./bin/zipper{{exeExt}} zipper/main.go"
+      - "cp zipper/workflow.yaml ./bin/."
 
   flow-build:
     desc: build basic flow stream function
-    dir: "flow"
     cmds:
-      - "go build -o ../bin/flow{{exeExt}} main.go"
-    silent: false
-
-  basic:
-    desc: run basic example
-    deps: [zipper, source, flow]
-    cmds:
-      - echo 'basic example run'
+      - "go build -o ./bin/flow{{exeExt}} flow/main.go"
 
   source:
     desc: run basic source example
@@ -68,10 +74,11 @@ tasks:
   zipper:
     desc: run basic zipper service
     deps: [zipper-build]
+    dir: bin
     cmds:
-      - "yomo serve -v -c zipper/workflow.yaml"
-      # - "cp zipper/workflow.yaml ./bin/."
-      # - "./bin/zipper{{exeExt}}"
+      # - "yomo serve -v -c zipper/workflow.yaml"
+      - "cp ../zipper/workflow.yaml ."
+      - "./zipper{{exeExt}}"
     env:
       YOMO_ENABLE_DEBUG: true
       YOMO_LOG_LEVEL: error
@@ -81,9 +88,8 @@ tasks:
   downstream-zipper:
     desc: run basic zipper downstream service
     deps: [zipper-build]
-    dir: "zipper"
+    dir: "bin"
     cmds:
-      # - "yomo serve -v -c workflow.yaml"
       - "./zipper{{exeExt}}"
     env:
       YOMO_ENABLE_DEBUG: true
@@ -93,7 +99,7 @@ tasks:
   downstream-source:
     desc: run basic downstream source example
     deps: [source-build]
-    dir: "source"
+    dir: "bin"
     cmds:
       - "./source{{exeExt}}"
     env:
@@ -104,7 +110,7 @@ tasks:
   downstream-flow:
     desc: run basic downstream flow stream function
     deps: [flow-build]
-    dir: "flow"
+    dir: "bin"
     cmds:
       - "./flow{{exeExt}}"
     env:
