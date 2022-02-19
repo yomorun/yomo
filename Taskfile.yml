@@ -4,23 +4,13 @@ version: "3"
 
 output: "prefixed"
 
-# includes:
-#   example:
-#     dir: ./example
-#     taskfile: ./example/Taskfile.yml
-
-# tasks:
-#   default:
-#     dir: ./example
-#     cmds:
-#       - echo "Go to ./example for detail usage, like [task basic:run]"
-#       - echo "🍭 all examples list here"
-#       - ls ./
-#       - echo "🍭 all tasks list here"
-#       - task -l
-#     silent: true
-
-includes:
-  basic:
-    taskfile: ./example/basic/Taskfile.yml
-    dir: ./example/basic
+tasks:
+  default:
+    dir: ./example
+    cmds:
+      - echo "Go to ./example for detail usage, like [task basic:run]"
+      - echo "🍭 all examples list here"
+      - ls ./
+      - echo "🍭 all tasks list here"
+      - task -l
+    silent: true

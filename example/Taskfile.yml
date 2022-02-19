@@ -16,6 +16,9 @@ tasks:
     silent: true
     cmds:
       - echo 'example cleaning...'
+      # - rm -rf basic/flow/flow
+      # - rm -rf basic/source/source
+      # - rm -rf basic/zipper/zipper
       - rm -rf multi-stream-fn/source/source
       - rm -rf multi-stream-fn/stream-fn-1/fn1
       - rm -rf multi-stream-fn/stream-fn-2/fn2
