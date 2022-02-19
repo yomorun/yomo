@@ -20,14 +20,22 @@ For english, check: [Github](https://github.com/yomorun/yomo)
 
 可以通过以下的命令全局安装最新发布的 YoMo CLI：
 
-```sh
-go install github.com/yomorun/cli/yomo@latest
+#### Binary (推荐)
+
+```bash
+$ curl -fsSL "https://bina.egoist.sh/yomorun/cli?name=yomo" | sh
+```
+
+#### 或者也通过以下方式安装 YoMo CLI
+
+```bash
+$ go install github.com/yomorun/cli/yomo@latest
 ```
 
 或者也可以将 CLI 安装在不同的目录：
 
 ```sh
-env GOBIN=/bin go install github.com/yomorun/cli/yomo@latest
+$ env GOBIN=/bin go install github.com/yomorun/cli/yomo@latest
 ```
 
 #### 验证 CLI 是否成功安装
@@ -150,9 +158,9 @@ $ yomo dev
 
 ## 📚 Documentation
 
-+ `YoMo-Source`: [yomo.run/source](https://docs.yomo.run/source)
-+ `YoMo-Stream-Function` (formerly flow): [yomo.run/stream-function](https://docs.yomo.run/stream-function)
-+ `YoMo-Zipper`: [yomo.run/zipper](https://docs.yomo.run/zipper)
++ `YoMo-Source`: [docs.yomo.run/source](https://docs.yomo.run/source)
++ `YoMo-Stream-Function`: [docs.yomo.run/stream-function](https://docs.yomo.run/stream-fn)
++ `YoMo-Zipper`: [docs.yomo.run/zipper](https://docs.yomo.run/zipper)
 + `Stream Processing in Rx way`: [Rx](https://docs.yomo.run/rx)
 + `Faster than real-time codec`: [Y3](https://github.com/yomorun/y3-codec)
 

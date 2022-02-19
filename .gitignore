@@ -19,6 +19,7 @@ vendor/
 main
 # example
 example/basic/flow/flow
+example/basic/sfn/sfn
 example/basic/source/source
 example/basic/zipper/zipper
 example/multi-stream-fn/source/source

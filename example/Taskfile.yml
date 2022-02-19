@@ -11,7 +11,7 @@ tasks:
     silent: true
     cmds:
       - echo 'example cleaning...'
-      - rm -rf basic/flow/flow
+      - rm -rf basic/sfn/sfn
       - rm -rf basic/source/source
       - rm -rf basic/zipper/zipper
       - rm -rf multi-stream-fn/source/source
@@ -27,7 +27,7 @@ tasks:
   # basic example
   basic:
     desc: run basic example
-    deps: [basic-zipper,basic-source,basic-flow]
+    deps: [basic-zipper,basic-source,basic-sfn]
     cmds:
       - echo 'basic example'
 
@@ -86,12 +86,12 @@ tasks:
       YOMO_LOG_LEVEL: error
       YOMO_ADDR: "localhost:9001"
 
-  basic-downstream-flow:
-    desc: run basic downstream flow stream function
-    deps: [basic-flow-build]
-    dir: "basic/flow"
+  basic-downstream-sfn:
+    desc: run basic downstream stream function
+    deps: [basic-sfn-build]
+    dir: "basic/sfn"
     cmds:
-      - "./flow{{exeExt}}"
+      - "./sfn{{exeExt}}"
     env:
       YOMO_ENABLE_DEBUG: true
       YOMO_LOG_LEVEL: error
@@ -107,23 +107,23 @@ tasks:
       - echo "basic zipper built."
     silent: false
 
-  basic-flow:
-    desc: run basic flow stream function
-    deps: [basic-flow-build]
-    dir: "basic/flow"
+  basic-sfn:
+    desc: run basic stream function
+    deps: [basic-sfn-build]
+    dir: "basic/sfn"
     cmds:
-      - "./flow{{exeExt}}"
+      - "./sfn{{exeExt}}"
     env:
       YOMO_ENABLE_DEBUG: true
       YOMO_LOG_LEVEL: error
 
-  basic-flow-build:
-    desc: build basic flow stream function
-    dir: "basic/flow"
+  basic-sfn-build:
+    desc: build basic stream function
+    dir: "basic/sfn"
     cmds:
-      - echo "basic flow building..."
-      - "go build -o flow{{exeExt}} main.go"
-      - echo "basic flow built."
+      - echo "basic sfn building..."
+      - "go build -o sfn{{exeExt}} main.go"
+      - echo "basic sfn built."
     silent: false
 
   # multi stream function example 
