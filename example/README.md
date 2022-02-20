@@ -3,12 +3,13 @@
 All examples can be run by [Task](https://taskfile.dev), following the [Install Task](https://taskfile.dev/#/installation), execute `task -l` in this directory will list all the examples.
 
 ```bash
-task -l |grep example
-* example-basic: 			          YoMo basic usage
+$ task -l |grep example
+
+* example-basic: 			YoMo basic usage
+* example-pipeline: 			Unix pipeline to cloud
+* example-iopipe: 			IO Pipe
+* example-multi-sfn: 			Multiple stream functions
 * example-cascading-zipper: 		Cascading zippers
-* example-iopipe: 			        IO Pipe
-* example-multi-sfn:      			Multiple stream functions
-* example-pipeline:       			Unix pipeline to cloud
 ```
 
 can run each example directly by `task example-basic`, `task example-cascading-zipper` and etc.
