@@ -1,0 +1,153 @@
+# https://taskfile.dev
+
+version: "3"
+
+output: "prefixed"
+
+tasks:
+  run:
+    desc: run with downstream
+    deps:
+      [
+        source,
+        flow,
+        zipper,
+        downstream-zipper,
+        downstream-source,
+        downstream-flow,
+      ]
+
+  run-only-basic:
+    desc: only run the very basic example
+    deps: [zipper, source, flow]
+    cmds:
+      - echo 'basic example run'
+
+  # example cleanup
+  clean:
+    desc: example cleanup
+    silent: true
+    cmds:
+      - echo 'example cleaning...'
+      - rm -rf bin
+
+  build:
+    desc: build source, sfn and zipper
+    deps: [source-build, sfn-build, zipper-build]
+    cmds:
+      - echo 'building done'
+
+  source-build:
+    desc: build basic source example
+    cmds:
+      - "go build -o ./bin/source{{exeExt}} source/main.go"
+
+  zipper-build:
+    desc: build basic zipper example
+    cmds:
+      - "go build -o ./bin/zipper{{exeExt}} zipper/main.go"
+      - "cp zipper/workflow.yaml ./bin/."
+
+<<<<<<< HEAD
+  sfn-build:
+    desc: build basic stream function
+||||||| parent of b933201 (could run task at root dir, ./example dir, and each example dir)
+  flow-build:
+    desc: build basic flow stream function
+    dir: "flow"
+=======
+  flow-build:
+    desc: build basic flow stream function
+>>>>>>> b933201 (could run task at root dir, ./example dir, and each example dir)
+    cmds:
+<<<<<<< HEAD
+      - "go build -o ./bin/sfn{{exeExt}} sfn/main.go"
+||||||| parent of b933201 (could run task at root dir, ./example dir, and each example dir)
+      - "go build -o ../bin/flow{{exeExt}} main.go"
+    silent: false
+
+  basic:
+    desc: run basic example
+    deps: [zipper, source, flow]
+    cmds:
+      - echo 'basic example run'
+=======
+      - "go build -o ./bin/flow{{exeExt}} flow/main.go"
+>>>>>>> b933201 (could run task at root dir, ./example dir, and each example dir)
+
+  source:
+    desc: run basic source example
+    deps: [source-build]
+    cmds:
+      - "./bin/source{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: true
+      YOMO_LOG_LEVEL: error
+
+  sfn:
+    desc: run basic stream function
+    deps: [sfn-build]
+    cmds:
+      - "./bin/sfn{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: true
+      YOMO_LOG_LEVEL: error
+
+  zipper:
+    desc: run basic zipper service
+    deps: [zipper-build]
+    dir: bin
+    cmds:
+      # - "yomo serve -v -c zipper/workflow.yaml"
+      - "cp ../zipper/workflow.yaml ."
+      - "./zipper{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: true
+      YOMO_LOG_LEVEL: error
+      YOMO_ADDR: "localhost:9000"
+      YOMO_DOWNSTREAM_ADDR: "localhost:9001"
+
+  downstream-zipper:
+    desc: run basic zipper downstream service
+    deps: [zipper-build]
+    dir: "bin"
+    cmds:
+      - "./zipper{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: true
+      YOMO_LOG_LEVEL: info
+      YOMO_ADDR: "localhost:9001"
+
+  downstream-source:
+    desc: run basic downstream source example
+    deps: [source-build]
+    dir: "bin"
+    cmds:
+      - "./source{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: true
+      YOMO_LOG_LEVEL: error
+      YOMO_ADDR: "localhost:9001"
+
+<<<<<<< HEAD
+  downstream-sfn:
+    desc: run basic downstream stream function
+    deps: [sfn-build]
+    dir: "bin"
+||||||| parent of b933201 (could run task at root dir, ./example dir, and each example dir)
+  downstream-flow:
+    desc: run basic downstream flow stream function
+    deps: [flow-build]
+    dir: "flow"
+=======
+  downstream-flow:
+    desc: run basic downstream flow stream function
+    deps: [flow-build]
+    dir: "bin"
+>>>>>>> b933201 (could run task at root dir, ./example dir, and each example dir)
+    cmds:
+      - "./sfn{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: true
+      YOMO_LOG_LEVEL: error
+      YOMO_ADDR: "localhost:9001"
