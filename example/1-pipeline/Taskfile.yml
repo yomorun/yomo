@@ -1,0 +1,33 @@
+# https://taskfile.dev
+
+version: "3"
+
+output: "prefixed"
+
+tasks:
+  run:
+    desc: run
+    deps: [sfn, zipper, source]
+
+  zipper:
+    desc: zipper
+    cmds:
+      - "yomo serve -c workflow.yaml"
+    env:
+      YOMO_ENABLE_DEBUG: true
+      YOMO_LOG_LEVEL: error
+
+  sfn:
+    desc: sfn
+    cmds:
+      - "yomo run -n rand serverless/rand.go"
+
+  source:
+    desc: source
+    cmds:
+      - "cat /dev/urandom | go run source/pipe.go"
+
+  clean:
+    desc: clean
+    cmds:
+      - "rm -rf ./serverless/sl.yomo"

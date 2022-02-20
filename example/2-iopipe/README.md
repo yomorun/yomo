@@ -37,24 +37,47 @@ $ yomo version
 YoMo CLI Version: v0.1.7
 ```
 
-## 2. Run program
+## Option 1: Auto Run
 
-### Start the Zipper service:
+```bash
+$ task run
+task: [sfn] yomo run serverless/counter.go -n counter
+task: [source] cat /dev/urandom | go run source/pipe.go
+task: [zipper] yomo serve -c workflow.yaml
+[sfn] Using config file: workflow.yaml
+[sfn] ℹ️   YoMo Stream Function file: serverless/counter.go
+[sfn] ⌛  Create YoMo Stream Function instance...
+[zipper] Using config file: workflow.yaml
+[zipper] ℹ️   Running YoMo-Zipper...
+[zipper] 2022-02-20 16:35:14.140	[yomo:zipper] Listening SIGUSR1, SIGUSR2, SIGTERM/SIGINT...
+[zipper] 2022-02-20 16:35:14.148	[core:server] ✅ [example-pipeline] Listening on: [::]:9000, QUIC: [v1 draft-29], AUTH: [None]
+[sfn] ℹ️   Starting YoMo Stream Function instance with Name: counter. Host: localhost. Port: 9000.
+[sfn] ⌛  YoMo Stream Function building...
+[source] 2022-02-20 16:35:14.552	[core:client] use credential: [None]
+[source] 2022-02-20 16:35:14.558	[core:client] ❤️  [source-pipe]([::]:51817) is connected to YoMo-Zipper localhost:9000
+[zipper] 2022-02-20 16:35:14.558	[core:server] ❤️  <Source> [::source-pipe](127.0.0.1:51817) is connected!
+
+[iopipe:sfn] 2022-02-20 16:34:34.690	Got: 32768
+[iopipe:sfn] 2022-02-20 16:34:34.690	Got: 32768
+[iopipe:sfn] 2022-02-20 16:34:34.691	Got: 32768
+[iopipe:sfn] 2022-02-20 16:34:34.691	Got: 32768
+[iopipe:sfn] 2022-02-20 16:34:34.691	Got: 32768
+[iopipe:sfn] 2022-02-20 16:34:34.692	Got: 32768
+[iopipe:sfn] 2022-02-20 16:34:34.692	Got: 32768
+[iopipe:sfn] 2022-02-20 16:34:34.693	Got: 32768
+[iopipe:sfn] 2022-02-20 16:34:34.693	Got: 32768
+```
+
+## Option 2: Manual
+
+First, start `Zipper` process:
 
 `yomo serve -c workflow.yaml`
 
-### Start the Streaming Function to observe data:
+Then, start the Streaming Function to observe data:
 
 `yomo run serverless/counter.go -n counter`
 
-![yomo example 1: unix pipeline, build streaming function](https://docs.yomo.run/1.5/2-sfn1.png)
-
-after few seconds, build is success, you should see the following:
-
-![yomo example 1: unix pipeline, build streaming function](https://docs.yomo.run/1.5/2-sfn2.png)
-
-### Start the Source to generate random data and send to Zipper:
+after few seconds, build is success, then, start the Source to generate random data and send to Zipper:
 
 `cat /dev/urandom | go run source/pipe.go`
-
-![yomo example 1: unix pipeline, start source to emit data](https://docs.yomo.run/1.5/3-source.png)

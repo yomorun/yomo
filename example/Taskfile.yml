@@ -6,31 +6,65 @@ output: "prefixed"
 
 includes:
   basic:
-    taskfile: ./basic/Taskfile.yml
-    dir: ./basic
+    taskfile: ./0-basic/Taskfile.yml
+    dir: ./0-basic
+  pipeline:
+    taskfile: ./1-pipeline/Taskfile.yml
+    dir: ./1-pipeline
+  iopipe:
+    taskfile: ./2-iopipe/Taskfile.yml
+    dir: ./2-iopipe
+  multi-sfn:
+    taskfile: ./3-multi-sfn/Taskfile.yml
+    dir: ./3-multi-sfn
+  cascading-zipper:
+    taskfile: ./4-cascading-zipper/Taskfile.yml
+    dir: ./4-cascading-zipper
 
 tasks:
+  example-basic:
+    desc: basic example
+    silent: false
+    cmds:
+      - task: basic:run
+
+  example-pipeline:
+    desc: 1-pipeline example
+    silent: false
+    cmds:
+      - task: pipeline:run
+
+  example-iopipe:
+    desc: 2-iopipe example
+    silent: false
+    cmds:
+      - task: iopipe:run
+
+  example-multi-sfn:
+    desc: multi-sfn example
+    silent: false
+    cmds:
+      - task: multi-sfn:run
+
+  example-cascading-zipper:
+    desc: cascading-zipper example
+    silent: false
+    cmds:
+      - task: cascading-zipper:run
+
   # example cleanup
   clean:
     desc: example cleanup
     silent: true
     cmds:
       - echo 'example cleaning...'
-      # - rm -rf basic/flow/flow
-      # - rm -rf basic/source/source
-      # - rm -rf basic/zipper/zipper
-      - rm -rf multi-stream-fn/source/source
-      - rm -rf multi-stream-fn/stream-fn-1/fn1
-      - rm -rf multi-stream-fn/stream-fn-2/fn2
-      - rm -rf multi-stream-fn/stream-fn-3/fn3
-      - rm -rf multi-stream-fn/zipper/zipper
-      - rm -rf same-stream-fn/source/source
-      - rm -rf same-stream-fn/stream-fn/fn1
-      - rm -rf same-stream-fn/stream-fn/fn2
-      - rm -rf same-stream-fn/zipper/zipper
-      - echo 'example clean.'
+      - task: basic:clean
+      - task: pipeline:clean
+      - task: iopipe:clean
+      - task: multi-sfn:clean
+      - task: cascading-zipper:clean
 
-  ############## basic has migrated to ./basic/Taskfile.yml ##############
+  # ############# basic has migrated to ./basic/Taskfile.yml ##############
   # # basic example
   # basic:
   #   desc: run basic example
@@ -132,7 +166,7 @@ tasks:
   #     - echo "basic flow built."
   #   silent: false
 
-  ############## need to rewrite ##############
+  # ############# need to rewrite ##############
   # # multi stream function example
   # multi-stream-fn:
   #   desc: run multi stream function example
