@@ -14,7 +14,7 @@ Nowadays, our software deployed on the cloud and serve people from all over the 
 
 By introducting [YoMo](https://yomo.run), we can build it just like `unix pipeline over cloud`.
 
-## 1. Prepare
+## Prepare
 
 Install YoMo CLI
 

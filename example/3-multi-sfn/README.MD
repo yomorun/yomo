@@ -10,9 +10,9 @@ This example represents how YoMo works with multiple stream functions.
 - `stream-fn-3`: The raw stream is immutable, `stream-fn-3` can still observe the raw data and calculate the average value in a sliding window. [docs.yomo.run/stream-function](https://docs.yomo.run/stream-fn)
 - `zipper`: Orchestrate a workflow that receives the data from `source`, stream computing in `stream-fn-1`, `stream-fn-2` and `stream-fn-3` [docs.yomo.run/zipper](https://docs.yomo.run/zipper)
 
-## How to run the example
+## Prepare
 
-### 1. Install YoMo CLI
+Install YoMo CLI
 
 ### Binary (Recommended)
 
@@ -32,8 +32,6 @@ $ go install github.com/yomorun/cli/yomo@latest
 $ yomo version
 YoMo CLI Version: v0.1.7
 ```
-
-> You could install [task](https://taskfile.dev/#/installation) and run the following steps in one command `task example:multi-stream-fn`.
 
 ## Option 1: Auto Run
 

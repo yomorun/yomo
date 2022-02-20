@@ -9,9 +9,9 @@ This example represents how YoMo works with cascading zippers in mesh network.
 - `zipper-2`: Receive the streams from upstream `zipper-1`. [docs.yomo.run/zipper](https://docs.yomo.run/zipper)
 - `sfn`: Receive the streams from `zipper-2` and print it in terminal. [docs.yomo.run/stream-function](https://docs.yomo.run/stream-fn)
 
-## How to run the example
+## Prepare
 
-### Install YoMo CLI
+Install YoMo CLI
 
 ### Binary (Recommended)
 
@@ -31,8 +31,6 @@ $ go install github.com/yomorun/cli/yomo@latest
 $ yomo version
 YoMo CLI Version: v0.1.7
 ```
-
-> You could install [task](https://taskfile.dev/#/installation) and run the following steps in one command `task example:multi-zipper`.
 
 ## Option 1: Auto Run
 
