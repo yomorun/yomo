@@ -61,6 +61,7 @@ tasks:
       YOMO_ENABLE_DEBUG: true
       YOMO_LOG_LEVEL: info 
       YOMO_LOG_ERROR_OUTPUT: err.log 
+      YOMO_LOG_OUTPUT: out.log 
       YOMO_ADDR: "localhost:9000"
       YOMO_DOWNSTREAM_ADDR: "localhost:9001"
 

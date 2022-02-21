@@ -8,155 +8,205 @@ import (
 	"github.com/yomorun/yomo/core/log"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 const (
 	timeFormat = "2006-01-02 15:04:05.000"
 )
 
-func newLogger(isDebug bool, errorOutput string) log.Logger {
-	cfg := initConfig(isDebug, errorOutput)
-
-	if lvl := logLevel(); lvl != "" {
-		switch lvl {
-		case "debug":
-			cfg.Level.SetLevel(zap.DebugLevel)
-		case "info":
-			cfg.Level.SetLevel(zap.InfoLevel)
-		case "warn":
-			cfg.Level.SetLevel(zap.WarnLevel)
-		case "error":
-			cfg.Level.SetLevel(zap.ErrorLevel)
-			// case "dpanic":
-			// 	cfg.Level.SetLevel(zap.DPanicLevel)
-			// case "panic":
-			// 	cfg.Level.SetLevel(zap.PanicLevel)
-			// case "fatal":
-			// 	cfg.Level.SetLevel(zap.FatalLevel)
-		}
-	}
-
+func newLogger(isDebug bool) log.Logger {
+	// cfg := initConfig(isDebug, errorOutput)
+	z := NewZapLogger()
+	z.SetLevel(logLevel())
 	if isJSONFormat() {
-		cfg.Encoding = "json"
-	} else {
-		cfg.Encoding = "console"
+		z.SetEncoding("json")
 	}
+	z.Output(output())
+	z.ErrorOutput(errorOutput())
 
-	logger, err := cfg.Build()
-	if err != nil {
-		panic(err)
-	}
-
-	return zapLogger{
-		logger: logger.Sugar(),
-	}
-}
-
-func initConfig(isDebug bool, errorOutput string) zap.Config {
-	// std logger
-	stdlog.Default().SetFlags(0)
-	stdlog.Default().SetOutput(new(logWriter))
-	// zap config
-	encoderConfig := zapcore.EncoderConfig{
-		TimeKey:        "ts",
-		LevelKey:       "level",
-		NameKey:        "logger",
-		CallerKey:      "caller",
-		FunctionKey:    zapcore.OmitKey,
-		MessageKey:     "msg",
-		StacktraceKey:  "stacktrace",
-		LineEnding:     zapcore.DefaultLineEnding,
-		EncodeLevel:    zapcore.CapitalColorLevelEncoder,
-		EncodeTime:     timeEncoder,
-		EncodeDuration: zapcore.SecondsDurationEncoder,
-		EncodeCaller:   zapcore.ShortCallerEncoder,
-	}
-	cfg := zap.Config{
-		Level:             zap.NewAtomicLevelAt(zap.ErrorLevel),
-		Development:       isDebug,
-		DisableCaller:     true,
-		DisableStacktrace: true,
-		Encoding:          "console",
-		EncoderConfig:     encoderConfig,
-		OutputPaths:       []string{"stderr"},
-		ErrorOutputPaths:  []string{"stderr"},
-	}
-	if isDebug {
-		// set the minimal level to debug
-		cfg.Level.SetLevel(zap.DebugLevel)
-	}
-	if errorOutput != "" {
-		cfg.OutputPaths = append(cfg.OutputPaths, "out.log")
-		cfg.ErrorOutputPaths = append(cfg.ErrorOutputPaths, errorOutput)
-	}
-
-	return cfg
-}
-
-func newLoggerWithConfig(cfg zap.Config) zapLogger {
-	logger, err := cfg.Build()
-	if err != nil {
-		panic(err)
-	}
-
-	return zapLogger{
-		logger: logger.Sugar(),
-	}
+	return z
 }
 
 // zapLogger is the logger implementation in go.uber.org/zap
 type zapLogger struct {
-	logger      *zap.SugaredLogger
+	level       zapcore.Level
+	debug       bool
+	encoding    string
+	logger      *zap.Logger
+	instance    *zap.SugaredLogger
+	output      string
 	errorOutput string
 }
 
-func (z zapLogger) SetLevel(lvl log.Level) {
-	isDebug := lvl == log.LevelDebug
-	cfg := initConfig(isDebug, z.errorOutput)
-	switch lvl {
-	case log.LevelDebug:
-		cfg.Level.SetLevel(zap.DebugLevel)
-	case log.LevelInfo:
-		cfg.Level.SetLevel(zap.InfoLevel)
-	case log.LevelWarn:
-		cfg.Level.SetLevel(zap.WarnLevel)
-	case log.LevelError:
-		cfg.Level.SetLevel(zap.ErrorLevel)
+func NewZapLogger(opts ...zap.Option) *zapLogger {
+	// std logger
+	stdlog.Default().SetFlags(0)
+	stdlog.Default().SetOutput(new(logWriter))
+
+	z := zapLogger{
+		level:    zap.ErrorLevel,
+		debug:    false,
+		encoding: "console",
 	}
 
-	z = newLoggerWithConfig(cfg)
+	return &z
 }
 
-func (z zapLogger) WithPrefix(prefix string) log.Logger {
-	// TODO:
+func combineWriteSyncers(cfg zap.Config, syncers ...zapcore.WriteSyncer) zapcore.WriteSyncer {
+	sink, closeOut, err := zap.Open(cfg.OutputPaths...)
+	if err != nil {
+		return nil
+	}
+	errSink, _, err := zap.Open(cfg.ErrorOutputPaths...)
+	if err != nil {
+		closeOut()
+		return nil
+	}
+	syncers = append(syncers, sink, errSink)
+	return zap.CombineWriteSyncers(syncers...)
+}
+
+func (z *zapLogger) SetEncoding(enc string) {
+	z.encoding = enc
+}
+
+func (z *zapLogger) SetDebug(debug bool) {
+	z.debug = debug
+}
+
+func (z *zapLogger) SetOptions(opts ...zap.Option) {
+	z.Instance()
+	z.logger.WithOptions(opts...)
+}
+
+func (z *zapLogger) SetLevel(lvl log.Level) {
+	isDebug := lvl == log.LevelDebug
+	level := zap.ErrorLevel
+	switch lvl {
+	case log.LevelDebug:
+		level = zap.DebugLevel
+	case log.LevelInfo:
+		level = zap.InfoLevel
+	case log.LevelWarn:
+		level = zap.WarnLevel
+	case log.LevelError:
+		level = zap.ErrorLevel
+	}
+	if isDebug {
+		level = zap.DebugLevel
+	}
+	z.level = level
+	z.debug = isDebug
+}
+
+func (z *zapLogger) WithPrefix(prefix string) log.Logger {
 	return z
 }
 
-func (z zapLogger) ErrorOutput(file string) {
-	// TODO:
-	if z.errorOutput != "" {
+func (z *zapLogger) Output(file string) {
+	if file != "" {
+		z.output = file
+	}
+}
+
+func (z *zapLogger) ErrorOutput(file string) {
+	if file != "" {
 		z.errorOutput = file
 	}
 }
 
-func (z zapLogger) Printf(format string, v ...interface{}) {
+func (z *zapLogger) Printf(format string, v ...interface{}) {
 	stdlog.Printf(format, v...)
 }
 
-func (z zapLogger) Debugf(template string, args ...interface{}) {
-	z.logger.Debugf(template, args...)
+func (z *zapLogger) Debugf(template string, args ...interface{}) {
+	z.Instance().Debugf(template, args...)
 }
 
-func (z zapLogger) Infof(template string, args ...interface{}) {
-	z.logger.Infof(template, args...)
+func (z *zapLogger) Infof(template string, args ...interface{}) {
+	z.Instance().Infof(template, args...)
 }
 
 func (z zapLogger) Warnf(template string, args ...interface{}) {
-	z.logger.Warnf(template, args...)
+	z.Instance().Warnf(template, args...)
 }
 
 func (z zapLogger) Errorf(template string, args ...interface{}) {
-	z.logger.Errorf(template, args...)
+	z.Instance().Errorf(template, args...)
+}
+
+func (z *zapLogger) Instance() *zap.SugaredLogger {
+	if z.instance == nil {
+		// zap
+		encoderConfig := zapcore.EncoderConfig{
+			TimeKey:        "ts",
+			LevelKey:       "level",
+			NameKey:        "logger",
+			CallerKey:      "caller",
+			FunctionKey:    zapcore.OmitKey,
+			MessageKey:     "msg",
+			StacktraceKey:  "stacktrace",
+			LineEnding:     zapcore.DefaultLineEnding,
+			EncodeLevel:    zapcore.CapitalColorLevelEncoder,
+			EncodeTime:     timeEncoder,
+			EncodeDuration: zapcore.SecondsDurationEncoder,
+			EncodeCaller:   zapcore.ShortCallerEncoder,
+		}
+		cfg := zap.Config{
+			Level:             zap.NewAtomicLevelAt(zap.ErrorLevel),
+			Development:       z.debug,
+			DisableCaller:     true,
+			DisableStacktrace: true,
+			Encoding:          z.encoding,
+			EncoderConfig:     encoderConfig,
+			OutputPaths:       []string{"stderr"},
+			ErrorOutputPaths:  []string{"stderr"},
+		}
+		cfg.Level.SetLevel(z.level)
+		if z.debug {
+			// set the minimal level to debug
+			cfg.Level.SetLevel(zap.DebugLevel)
+		}
+		// output
+		if z.output != "" {
+			cfg.OutputPaths = append(cfg.OutputPaths, z.output)
+		}
+		encoder := zapcore.NewConsoleEncoder(encoderConfig)
+		writeSyncer := combineWriteSyncers(cfg)
+		core := zapcore.NewCore(encoder, writeSyncer, cfg.Level)
+		// error output
+		opts := make([]zap.Option, 0)
+		if z.errorOutput != "" {
+			rotatedLogger := errorRotatedLogger(z.errorOutput, 10, 5, 30)
+			errorOutputOption := zap.Hooks(func(entry zapcore.Entry) error {
+				if entry.Level == zap.ErrorLevel {
+					msg, err := encoder.EncodeEntry(entry, nil)
+					if err != nil {
+						return err
+					}
+					rotatedLogger.Write(msg.Bytes())
+				}
+				return nil
+			})
+			opts = append(opts, errorOutputOption)
+		}
+		logger := zap.New(core, opts...)
+
+		z.logger = logger
+		z.instance = z.logger.Sugar()
+	}
+	return z.instance
+}
+
+func errorRotatedLogger(file string, maxSize, maxBacukups, maxAge int) *lumberjack.Logger {
+	return &lumberjack.Logger{
+		Filename:   file,
+		MaxSize:    maxSize,
+		MaxBackups: maxBacukups,
+		MaxAge:     maxAge,
+		Compress:   false,
+	}
 }
 
 func timeEncoder(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
