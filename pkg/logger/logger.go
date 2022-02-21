@@ -7,11 +7,11 @@ import (
 	"github.com/yomorun/yomo/core/log"
 )
 
-var logger = newLogger(isEnableDebug())
+var logger = Default(isEnableDebug())
 
 // EnableDebug enables the development model for logging.
 func EnableDebug() {
-	logger = newLogger(true)
+	logger = Default(true)
 }
 
 // Printf prints a formated message without a specified level.

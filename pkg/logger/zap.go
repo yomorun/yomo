@@ -15,19 +15,6 @@ const (
 	timeFormat = "2006-01-02 15:04:05.000"
 )
 
-func newLogger(isDebug bool) log.Logger {
-	// cfg := initConfig(isDebug, errorOutput)
-	z := NewZapLogger()
-	z.SetLevel(logLevel())
-	if isJSONFormat() {
-		z.SetEncoding("json")
-	}
-	z.Output(output())
-	z.ErrorOutput(errorOutput())
-
-	return z
-}
-
 // zapLogger is the logger implementation in go.uber.org/zap
 type zapLogger struct {
 	level       zapcore.Level
@@ -39,7 +26,23 @@ type zapLogger struct {
 	errorOutput string
 }
 
-func NewZapLogger(opts ...zap.Option) *zapLogger {
+func Default(debug ...bool) log.Logger {
+	z := New()
+	z.SetDebug(isEnableDebug())
+	if len(debug) > 0 {
+		z.SetDebug(debug[0])
+	}
+	z.SetLevel(logLevel())
+	if isJSONFormat() {
+		z.SetEncoding("json")
+	}
+	z.Output(output())
+	z.ErrorOutput(errorOutput())
+
+	return z
+}
+
+func New(opts ...zap.Option) *zapLogger {
 	// std logger
 	stdlog.Default().SetFlags(0)
 	stdlog.Default().SetOutput(new(logWriter))
@@ -93,16 +96,13 @@ func (z *zapLogger) SetLevel(lvl log.Level) {
 	case log.LevelError:
 		level = zap.ErrorLevel
 	}
-	if isDebug {
-		level = zap.DebugLevel
-	}
 	z.level = level
 	z.debug = isDebug
 }
 
-func (z *zapLogger) WithPrefix(prefix string) log.Logger {
-	return z
-}
+// func (z *zapLogger) WithPrefix(prefix string) log.Logger {
+// 	return z
+// }
 
 func (z *zapLogger) Output(file string) {
 	if file != "" {
@@ -178,7 +178,7 @@ func (z *zapLogger) Instance() *zap.SugaredLogger {
 		// error output
 		opts := make([]zap.Option, 0)
 		if z.errorOutput != "" {
-			rotatedLogger := errorRotatedLogger(z.errorOutput, 10, 5, 30)
+			rotatedLogger := errorRotatedLogger(z.errorOutput, 1, 5, 30)
 			errorOutputOption := zap.Hooks(func(entry zapcore.Entry) error {
 				if entry.Level == zap.ErrorLevel {
 					msg, err := encoder.EncodeEntry(entry, nil)

@@ -22,7 +22,7 @@ const (
 type Logger interface {
 	SetLevel(Level)
 	// SetTimeFormat(format string)
-	WithPrefix(prefix string) Logger
+	// WithPrefix(prefix string) Logger
 	// Printf prints a formated message at LevelNo
 	Printf(template string, v ...interface{})
 	// Debugf logs a message at LevelDebug.

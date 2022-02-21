@@ -6,6 +6,7 @@ import (
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/auth"
+	"github.com/yomorun/yomo/core/log"
 	pkgauth "github.com/yomorun/yomo/pkg/auth"
 )
 
@@ -27,6 +28,7 @@ type Options struct {
 	ClientOptions        []core.ClientOption
 	QuicConfig           *quic.Config
 	TLSConfig            *tls.Config
+	Logger               log.Logger
 }
 
 // WithZipperAddr return a new options with ZipperAddr set to addr.
@@ -97,6 +99,16 @@ func WithCredential(cred auth.Credential) Option {
 		o.ClientOptions = append(
 			o.ClientOptions,
 			core.WithCredential(cred),
+		)
+	}
+}
+
+// WithLogger sets the client logger
+func WithLogger(logger log.Logger) Option {
+	return func(o *Options) {
+		o.ClientOptions = append(
+			o.ClientOptions,
+			core.WithLogger(logger),
 		)
 	}
 }

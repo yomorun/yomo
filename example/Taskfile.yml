@@ -39,7 +39,8 @@ tasks:
       - "./source{{exeExt}}"
     env:
       YOMO_ENABLE_DEBUG: true
-      YOMO_LOG_LEVEL: error
+      YOMO_LOG_LEVEL: info
+      YOMO_LOG_ERROR_OUTPUT: err.log
 
   basic-source-build:
     desc: build basic source example
