@@ -33,6 +33,8 @@ type Logger interface {
 	Warnf(template string, args ...interface{})
 	// Errorf logs a message at LevelError.
 	Errorf(template string, args ...interface{})
-	// ErrorOutput file paths to write error message soutput to
+	// Output file path to write log message output to
+	Output(file string)
+	// ErrorOutput file path to write error message output to
 	ErrorOutput(file string)
 }

@@ -3,13 +3,15 @@ package logger
 import (
 	"os"
 	"strings"
+
+	"github.com/yomorun/yomo/core/log"
 )
 
-var logger = newLogger(isEnableDebug(), errorOutput())
+var logger = newLogger(isEnableDebug())
 
 // EnableDebug enables the development model for logging.
 func EnableDebug() {
-	logger = newLogger(true, errorOutput())
+	logger = newLogger(true)
 }
 
 // Printf prints a formated message without a specified level.
@@ -47,8 +49,28 @@ func isJSONFormat() bool {
 	return os.Getenv("YOMO_LOG_FORMAT") == "json"
 }
 
-func logLevel() string {
-	return strings.ToLower(os.Getenv("YOMO_LOG_LEVEL"))
+func logFormat() string {
+	return os.Getenv("YOMO_LOG_FORMAT")
+}
+
+func logLevel() log.Level {
+	envLevel := strings.ToLower(os.Getenv("YOMO_LOG_LEVEL"))
+	level := log.LevelError
+	switch envLevel {
+	case "debug":
+		return log.LevelDebug
+	case "info":
+		return log.LevelInfo
+	case "warn":
+		return log.LevelWarn
+	case "error":
+		return log.LevelError
+	}
+	return level
+}
+
+func output() string {
+	return strings.ToLower(os.Getenv("YOMO_LOG_OUTPUT"))
 }
 
 func errorOutput() string {
