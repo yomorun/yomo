@@ -1,0 +1,61 @@
+# https://taskfile.dev
+
+version: "3"
+
+output: "prefixed"
+
+tasks:
+  run:
+    desc: run
+    deps: [source, sfn, zipper]
+
+  # example cleanup
+  clean:
+    desc: cleanup
+    cmds:
+      - rm -rf ./bin
+
+  zipper:
+    desc: run zipper
+    cmds:
+      - "yomo serve -c ./zipper/workflow.yaml"
+    env:
+      YOMO_ENABLE_DEBUG: true
+      YOMO_LOG_LEVEL: error
+
+  source-build:
+    desc: build source
+    cmds:
+      - "go build -o ./bin/source{{exeExt}} source/main.go"
+
+  source:
+    desc: run source
+    deps: [source-build]
+    cmds:
+      - "go build -o ./bin/source{{exeExt}} source/main.go"
+      - "./bin/source{{exeExt}}"
+    env:
+      YOMO_ENABLE_DEBUG: true
+      YOMO_LOG_LEVEL: error
+
+  sfn:
+    desc: run stream functions
+    deps: [sfn-1, sfn-2, sfn-3]
+
+  sfn-1:
+    desc: run stream functions 1
+    cmds:
+      - "go build -o ./bin/sfn-1{{exeExt}} ./stream-fn-1/app.go"
+      - "./bin/sfn-1{{exeExt}}"
+
+  sfn-2:
+    desc: run stream functions 2
+    cmds:
+      - "go build -o ./bin/sfn-2{{exeExt}} ./stream-fn-2/app.go"
+      - "./bin/sfn-2{{exeExt}}"
+
+  sfn-3:
+    desc: run stream functions 3
+    cmds:
+      - "go build -o ./bin/sfn-3{{exeExt}} ./stream-fn-3/app.go"
+      - "./bin/sfn-3{{exeExt}}"

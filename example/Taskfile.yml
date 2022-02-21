@@ -6,386 +6,60 @@ output: "prefixed"
 
 includes:
   basic:
-    taskfile: ./basic/Taskfile.yml
-    dir: ./basic
+    taskfile: ./0-basic/Taskfile.yml
+    dir: ./0-basic
+  pipeline:
+    taskfile: ./1-pipeline/Taskfile.yml
+    dir: ./1-pipeline
+  iopipe:
+    taskfile: ./2-iopipe/Taskfile.yml
+    dir: ./2-iopipe
+  multi-sfn:
+    taskfile: ./3-multi-sfn/Taskfile.yml
+    dir: ./3-multi-sfn
+  cascading-zipper:
+    taskfile: ./4-cascading-zipper/Taskfile.yml
+    dir: ./4-cascading-zipper
 
 tasks:
+  example-basic:
+    desc: YoMo basic usage
+    silent: false
+    cmds:
+      - task: basic:run
+
+  example-pipeline:
+    desc: Unix pipeline to cloud
+    silent: false
+    cmds:
+      - task: pipeline:run
+
+  example-iopipe:
+    desc: IO Pipe
+    silent: false
+    cmds:
+      - task: iopipe:run
+
+  example-multi-sfn:
+    desc: Multiple stream functions
+    silent: false
+    cmds:
+      - task: multi-sfn:run
+
+  example-cascading-zipper:
+    desc: Cascading zippers
+    silent: false
+    cmds:
+      - task: cascading-zipper:run
+
   # example cleanup
   clean:
-    desc: example cleanup
+    desc: clean
     silent: true
     cmds:
       - echo 'example cleaning...'
-      # - rm -rf basic/flow/flow
-      # - rm -rf basic/source/source
-      # - rm -rf basic/zipper/zipper
-      - rm -rf multi-stream-fn/source/source
-      - rm -rf multi-stream-fn/stream-fn-1/fn1
-      - rm -rf multi-stream-fn/stream-fn-2/fn2
-      - rm -rf multi-stream-fn/stream-fn-3/fn3
-      - rm -rf multi-stream-fn/zipper/zipper
-      - rm -rf same-stream-fn/source/source
-      - rm -rf same-stream-fn/stream-fn/fn1
-      - rm -rf same-stream-fn/stream-fn/fn2
-      - rm -rf same-stream-fn/zipper/zipper
-      - echo 'example clean.'
-
-  ############## basic has migrated to ./basic/Taskfile.yml ##############
-  # # basic example
-  # basic:
-  #   desc: run basic example
-  #   deps: [basic-zipper,basic-source,basic-flow]
-  #   cmds:
-  #     - echo 'basic example'
-
-  # basic-source:
-  #   desc: run basic source example
-  #   deps: [basic-source-build]
-  #   dir: "basic/source"
-  #   cmds:
-  #     - "./source{{exeExt}}"
-  #   env:
-  #     YOMO_ENABLE_DEBUG: true
-  #     YOMO_LOG_LEVEL: error
-
-  # basic-source-build:
-  #   desc: build basic source example
-  #   dir: "basic/source"
-  #   cmds:
-  #     - echo "basic source building..."
-  #     - "go build -o source{{exeExt}} main.go"
-  #     - echo "basic source built."
-  #   silent: false
-
-  # basic-zipper:
-  #   desc: run basic zipper service
-  #   deps: [basic-zipper-build]
-  #   dir: "basic/zipper"
-  #   cmds:
-  #     # - "yomo serve -v -c workflow.yaml"
-  #     - "./zipper{{exeExt}}"
-  #   env:
-  #     YOMO_ENABLE_DEBUG: true
-  #     YOMO_LOG_LEVEL: error
-  #     YOMO_ADDR: "localhost:9000"
-  #     YOMO_DOWNSTREAM_ADDR: "localhost:9001"
-
-  # basic-downstream-zipper:
-  #   desc: run basic zipper downstream service
-  #   deps: [basic-zipper-build]
-  #   dir: "basic/zipper"
-  #   cmds:
-  #     # - "yomo serve -v -c workflow.yaml"
-  #     - "./zipper{{exeExt}}"
-  #   env:
-  #     YOMO_ENABLE_DEBUG: true
-  #     YOMO_LOG_LEVEL: info
-  #     YOMO_ADDR: "localhost:9001"
-
-  # basic-downstream-source:
-  #   desc: run basic downstream source example
-  #   deps: [basic-source-build]
-  #   dir: "basic/source"
-  #   cmds:
-  #     - "./source{{exeExt}}"
-  #   env:
-  #     YOMO_ENABLE_DEBUG: true
-  #     YOMO_LOG_LEVEL: error
-  #     YOMO_ADDR: "localhost:9001"
-
-  # basic-downstream-flow:
-  #   desc: run basic downstream flow stream function
-  #   deps: [basic-flow-build]
-  #   dir: "basic/flow"
-  #   cmds:
-  #     - "./flow{{exeExt}}"
-  #   env:
-  #     YOMO_ENABLE_DEBUG: true
-  #     YOMO_LOG_LEVEL: error
-  #     YOMO_ADDR: "localhost:9001"
-
-  # basic-zipper-build:
-  #   desc: build basic zipper example
-  #   dir: "basic/zipper"
-  #   cmds:
-  #     - echo "basic zipper building..."
-  #     - "go build -o zipper{{exeExt}} main.go"
-  #     - echo "basic zipper built."
-  #   silent: false
-
-  # basic-flow:
-  #   desc: run basic flow stream function
-  #   deps: [basic-flow-build]
-  #   dir: "basic/flow"
-  #   cmds:
-  #     - "./flow{{exeExt}}"
-  #   env:
-  #     YOMO_ENABLE_DEBUG: true
-  #     YOMO_LOG_LEVEL: error
-
-  # basic-flow-build:
-  #   desc: build basic flow stream function
-  #   dir: "basic/flow"
-  #   cmds:
-  #     - echo "basic flow building..."
-  #     - "go build -o flow{{exeExt}} main.go"
-  #     - echo "basic flow built."
-  #   silent: false
-
-  ############## need to rewrite ##############
-  # # multi stream function example
-  # multi-stream-fn:
-  #   desc: run multi stream function example
-  #   deps:
-  #     [
-  #       multi-stream-fn-zipper,
-  #       multi-stream-fn-source,
-  #       multi-stream-fn-1,
-  #       multi-stream-fn-2,
-  #       multi-stream-fn-3,
-  #     ]
-  #   cmds:
-  #     - echo 'multi stream function example'
-
-  # multi-stream-fn-source:
-  #   desc: run multi stream function example
-  #   deps: [multi-stream-fn-source-build]
-  #   dir: "multi-stream-fn/source"
-  #   cmds:
-  #     - "./source{{exeExt}}"
-  #   env:
-  #     YOMO_ENABLE_DEBUG: false
-  #     YOMO_LOG_LEVEL: info
-
-  # multi-stream-fn-source-build:
-  #   desc: build multi stream function source example
-  #   dir: "multi-stream-fn/source"
-  #   cmds:
-  #     - echo "multi stream function source building..."
-  #     - "go build -o source{{exeExt}} main.go"
-  #     - echo "multi stream function source built."
-  #   silent: false
-
-  # multi-stream-fn-zipper:
-  #   desc: run multi stream function zipper service
-  #   deps: [multi-stream-fn-zipper-build]
-  #   dir: "multi-stream-fn/zipper"
-  #   cmds:
-  #     - "./zipper{{exeExt}}"
-  #   env:
-  #     YOMO_ENABLE_DEBUG: false
-  #     YOMO_LOG_LEVEL: info
-
-  # multi-stream-fn-zipper-build:
-  #   desc: build multi stream funcgion zipper example
-  #   dir: "multi-stream-fn/zipper"
-  #   cmds:
-  #     - echo "multi stream function zipper building..."
-  #     - "go build -o zipper{{exeExt}} main.go"
-  #     - echo "mult stream function zipper built."
-  #   silent: false
-
-  # multi-stream-fn-1:
-  #   desc: run multi stream function 1
-  #   deps: [multi-stream-fn-1-build]
-  #   dir: "multi-stream-fn/stream-fn-1"
-  #   cmds:
-  #     - "./fn1{{exeExt}}"
-  #   env:
-  #     YOMO_ENABLE_DEBUG: false
-  #     YOMO_LOG_LEVEL: info
-
-  # multi-stream-fn-1-build:
-  #   desc: build multi stream function 1
-  #   dir: "multi-stream-fn/stream-fn-1"
-  #   cmds:
-  #     - echo "fn1 building..."
-  #     - "go build -o fn1{{exeExt}} app.go"
-  #     - echo "fn1 built."
-  #   silent: false
-
-  # multi-stream-fn-2:
-  #   desc: run multi stream function 2
-  #   deps: [multi-stream-fn-2-build]
-  #   dir: "multi-stream-fn/stream-fn-2"
-  #   cmds:
-  #     - "./fn2{{exeExt}}"
-  #   env:
-  #     YOMO_ENABLE_DEBUG: false
-  #     YOMO_LOG_LEVEL: info
-
-  # multi-stream-fn-2-build:
-  #   desc: build multi stream function 2
-  #   dir: "multi-stream-fn/stream-fn-2"
-  #   cmds:
-  #     - echo "fn2 building..."
-  #     - "go build -o fn2{{exeExt}} app.go"
-  #     - echo "fn2 built."
-  #   silent: false
-
-  # multi-stream-fn-3:
-  #   desc: run multi stream function 3
-  #   deps: [multi-stream-fn-3-build]
-  #   dir: "multi-stream-fn/stream-fn-3"
-  #   cmds:
-  #     - "./fn3{{exeExt}}"
-  #   env:
-  #     YOMO_ENABLE_DEBUG: false
-  #     YOMO_LOG_LEVEL: info
-
-  # multi-stream-fn-3-build:
-  #   desc: build multi stream function 3
-  #   dir: "multi-stream-fn/stream-fn-3"
-  #   cmds:
-  #     - echo "fn3 building..."
-  #     - "go build -o fn3{{exeExt}} app.go"
-  #     - echo "fn3 built."
-  #   silent: false
-  # # same-stream-fn example
-  # same-stream-fn:
-  #   desc: run same stream function example
-  #   deps:
-  #     [
-  #       same-stream-fn-zipper,
-  #       same-stream-fn-source,
-  #       same-stream-fn-1,
-  #       same-stream-fn-2,
-  #     ]
-  #   cmds:
-  #     - echo 'same stream function example'
-
-  # same-stream-fn-source:
-  #   desc: run same stream function example
-  #   deps: [same-stream-fn-source-build]
-  #   dir: "same-stream-fn/source"
-  #   cmds:
-  #     - "./source{{exeExt}}"
-  #   env:
-  #     YOMO_ENABLE_DEBUG: false
-  #     YOMO_LOG_LEVEL: info
-
-  # same-stream-fn-source-build:
-  #   desc: build same stream function source example
-  #   dir: "same-stream-fn/source"
-  #   cmds:
-  #     - echo "same stream function source building..."
-  #     - "go build -o source{{exeExt}} main.go"
-  #     - echo "same stream function source built."
-  #   silent: false
-
-  # same-stream-fn-zipper:
-  #   desc: run same stream function zipper service
-  #   deps: [same-stream-fn-zipper-build]
-  #   dir: "same-stream-fn/zipper"
-  #   cmds:
-  #     - "./zipper{{exeExt}}"
-  #   env:
-  #     YOMO_ENABLE_DEBUG: true
-  #     YOMO_LOG_LEVEL: info
-
-  # same-stream-fn-zipper-build:
-  #   desc: build same stream funcgion zipper example
-  #   dir: "same-stream-fn/zipper"
-  #   cmds:
-  #     - echo "same stream function zipper building..."
-  #     - "go build -o zipper{{exeExt}} main.go"
-  #     - echo "same stream function zipper built."
-  #   silent: false
-
-  # same-stream-fn-1:
-  #   desc: run same stream function
-  #   deps: [same-stream-fn-build]
-  #   dir: "same-stream-fn/stream-fn"
-  #   cmds:
-  #     - "./fn1{{exeExt}}"
-  #   env:
-  #     YOMO_ENABLE_DEBUG: false
-  #     YOMO_LOG_LEVEL: info
-
-  # same-stream-fn-build:
-  #   desc: build same stream function 3
-  #   dir: "same-stream-fn/stream-fn"
-  #   cmds:
-  #     - echo "fn building..."
-  #     - "go build -o fn1{{exeExt}} app.go"
-  #     - "cp ./fn1 ./fn2"
-  #     - echo "fn built."
-  #   silent: false
-
-  # same-stream-fn-2:
-  #   desc: run same stream function
-  #   deps: [same-stream-fn-build]
-  #   dir: "same-stream-fn/stream-fn"
-  #   cmds:
-  #     - "./fn2{{exeExt}}"
-  #   env:
-  #     YOMO_ENABLE_DEBUG: false
-  #     YOMO_LOG_LEVEL: info
-
-  # # multi zipper example
-  # multi-zipper:
-  #   desc: run example
-  #   deps: [multi-zipper-build]
-  #   cmds:
-  #     - task: multi-zipper-services
-
-  # multi-zipper-services:
-  #   desc: yomo services
-  #   deps:
-  #     [multi-zipper-2, multi-zipper-sfn, multi-zipper-1, multi-zipper-source]
-
-  # multi-zipper-build:
-  #   run: once
-  #   desc: go build
-  #   dir: "multi-zipper"
-  #   cmds:
-  #     - rm -rf bin
-  #     - mkdir -p bin
-  #     - go build -o bin/source source/source.go
-  #     - go build -o bin/zipper-2 zipper-2/zipper_2.go
-  #     - go build -o bin/zipper-1 zipper-1/zipper_1.go
-  #     - go build -o bin/sfn sfn/sfn_echo.go
-  #     - task: multi-zipper-copy
-
-  # multi-zipper-copy:
-  #   desc: copy workflow configs
-  #   dir: "multi-zipper"
-  #   cmds:
-  #     - cp zipper-1/*.yaml bin/.
-  #     - cp zipper-2/*.yaml bin/.
-
-  # multi-zipper-2:
-  #   desc: start zipper service 2
-  #   dir: "multi-zipper/bin"
-  #   env:
-  #     YOMO_ENABLE_DEBUG: false
-  #     YOMO_LOG_LEVEL: debug
-  #   cmds:
-  #     - ./zipper-2
-
-  # multi-zipper-1:
-  #   desc: start zipper service 1
-  #   dir: "multi-zipper/bin"
-  #   env:
-  #     YOMO_ENABLE_DEBUG: false
-  #     YOMO_LOG_LEVEL: debug
-  #   cmds:
-  #     - ./zipper-1
-
-  # multi-zipper-sfn:
-  #   desc: start stream function
-  #   dir: "multi-zipper/bin"
-  #   env:
-  #     YOMO_ENABLE_DEBUG: false
-  #     YOMO_LOG_LEVEL: debug
-  #   cmds:
-  #     - ./sfn
-
-  # multi-zipper-source:
-  #   desc: run source
-  #   dir: "multi-zipper/bin"
-  #   env:
-  #     YOMO_ENABLE_DEBUG: false
-  #     YOMO_LOG_LEVEL: debug
-  #   cmds:
-  #     - ./source
+      - task: basic:clean
+      - task: pipeline:clean
+      - task: iopipe:clean
+      - task: multi-sfn:clean
+      - task: cascading-zipper:clean

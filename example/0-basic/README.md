@@ -8,9 +8,9 @@ This example represents how YoMo works with the mock data of the sound sensor.
 + `sfn`: Detecting noise pollution in real-time. [docs.yomo.run/stream-function](https://docs.yomo.run/stream-fn)
 + `zipper`: Orchestrate a workflow that receives the data from `source`, stream computing in `stream-fn` [docs.yomo.run/zipper](https://docs.yomo.run/zipper)
 
-## How to run the example
+## Prepare
 
-### 1. Install YoMo CLI
+Install YoMo CLI
 
 ### Binary (Recommended)
 
@@ -31,9 +31,13 @@ $ yomo version
 YoMo CLI Version: v0.1.7
 ```
 
-> You could install [task](https://taskfile.dev/#/installation) and run the following steps in one command `task example:basic`.
+## Option 1: Auto Run
 
-### 2. Run [zipper](https://docs.yomo.run/zipper)
+`task run`
+
+## Option 2: Manual
+
+### Run [zipper](https://docs.yomo.run/zipper)
 
 ```bash
 yomo serve -c ./zipper/workflow.yaml
@@ -45,7 +49,7 @@ Using config file: ./zipper/workflow.yaml
 2021/11/11 16:09:54 [core:server] ✅ (name:Service) Listening on: 127.0.0.1:9000, QUIC: [v1 draft-29]
 ```
 
-### 3. Run [stream-function](https://docs.yomo.run/stream-fn)
+### Run [stream-function](https://docs.yomo.run/stream-fn)
 
 ```bash
 go run ./sfn/main.go
@@ -54,7 +58,7 @@ go run ./sfn/main.go
 2021/11/11 16:11:05 [core:client] ❤️  [Noise] is connected to YoMo-Zipper localhost:9000
 ```
 
-### 4. Run [yomo-source](https://docs.yomo.run/source)
+### Run [yomo-source](https://docs.yomo.run/source)
 
 ```bash
 go run ./source/main.go

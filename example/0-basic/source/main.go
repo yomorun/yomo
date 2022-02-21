@@ -57,8 +57,6 @@ func generateAndSendData(stream yomo.Source) error {
 			From:  "localhost",
 		}
 
-		//// Encode data via Y3 codec https://github.com/yomorun/y3-codec.
-		// sendingBuf, _ := codec.Marshal(data)
 		sendingBuf, err := json.Marshal(&data)
 		if err != nil {
 			log.Fatalln(err)

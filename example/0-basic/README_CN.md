@@ -13,8 +13,5 @@ task -l
 ## 运行基本示例
 
 ```sh
-task example:basic
+task run
 ```
-
-
-

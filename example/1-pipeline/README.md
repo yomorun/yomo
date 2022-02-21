@@ -14,7 +14,7 @@ Nowadays, our software deployed on the cloud and serve people from all over the 
 
 By introducting [YoMo](https://yomo.run), we can build it just like `unix pipeline over cloud`.
 
-## 1. Prepare
+## Prepare
 
 Install YoMo CLI
 
@@ -37,7 +37,11 @@ $ yomo version
 YoMo CLI Version: v0.1.7
 ```
 
-## 2. Run program
+## Option 1: Auto Run
+
+`task run`
+
+## Option 2: Manual
 
 ### Start the Zipper service:
 
