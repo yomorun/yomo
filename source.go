@@ -5,7 +5,6 @@ import (
 
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/pkg/logger"
 )
 
 const (
@@ -50,7 +49,7 @@ func NewSource(name string, opts ...Option) Source {
 
 // Write the data to downstream.
 func (s *yomoSource) Write(data []byte) (int, error) {
-	logger.Debugf("%s\tWrite: data=%# x", sourceLogPrefix, data)
+	s.client.Logger().Debugf("%s\tWrite: data=%# x", sourceLogPrefix, data)
 	return len(data), s.WriteWithTag(s.tag, data)
 }
 
@@ -62,10 +61,10 @@ func (s *yomoSource) SetDataTag(tag uint8) {
 // Close will close the connection to YoMo-Zipper.
 func (s *yomoSource) Close() error {
 	if err := s.client.Close(); err != nil {
-		logger.Errorf("%sClose(): %v", sourceLogPrefix, err)
+		s.client.Logger().Errorf("%sClose(): %v", sourceLogPrefix, err)
 		return err
 	}
-	logger.Debugf("%s is closed", sourceLogPrefix)
+	s.client.Logger().Debugf("%s is closed", sourceLogPrefix)
 	return nil
 }
 
@@ -73,7 +72,7 @@ func (s *yomoSource) Close() error {
 func (s *yomoSource) Connect() error {
 	err := s.client.Connect(context.Background(), s.zipperEndpoint)
 	if err != nil {
-		logger.Errorf("%sConnect() error: %s", sourceLogPrefix, err)
+		s.client.Logger().Errorf("%sConnect() error: %s", sourceLogPrefix, err)
 	}
 	return err
 }
@@ -81,9 +80,9 @@ func (s *yomoSource) Connect() error {
 // WriteWithTag will write data with specified tag, default transactionID is epoch time.
 func (s *yomoSource) WriteWithTag(tag uint8, data []byte) error {
 	if len(data) > 1024 {
-		logger.Debugf("%sWriteDataWithTransactionID: len(data)=%d", sourceLogPrefix, len(data))
+		s.client.Logger().Debugf("%sWriteDataWithTransactionID: len(data)=%d", sourceLogPrefix, len(data))
 	} else {
-		logger.Debugf("%sWriteDataWithTransactionID: data=%# x", sourceLogPrefix, data)
+		s.client.Logger().Debugf("%sWriteDataWithTransactionID: data=%# x", sourceLogPrefix, data)
 	}
 	frame := frame.NewDataFrame()
 	frame.SetCarriage(byte(tag), data)
