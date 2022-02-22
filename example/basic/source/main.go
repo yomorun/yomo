@@ -2,14 +2,15 @@ package main
 
 import (
 	"encoding/json"
-	"log"
 	"math/rand"
 	"os"
 	"time"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/pkg/logger"
+	"github.com/yomorun/yomo/core/log"
 )
+
+var logger = NewCustomLogger(log.InfoLevel)
 
 type noiseData struct {
 	Noise float32 `json:"noise"` // Noise value
@@ -26,6 +27,7 @@ func main() {
 	source := yomo.NewSource(
 		"yomo-source",
 		yomo.WithZipperAddr(addr),
+		yomo.WithLogger(logger),
 	)
 	err := source.Connect()
 	if err != nil {
@@ -61,14 +63,14 @@ func generateAndSendData(stream yomo.Source) error {
 		// sendingBuf, _ := codec.Marshal(data)
 		sendingBuf, err := json.Marshal(&data)
 		if err != nil {
-			log.Fatalln(err)
+			logger.Errorf("json.Marshal err:%v", err)
 			os.Exit(-1)
 		}
 
 		// send data via QUIC stream.
 		_, err = stream.Write(sendingBuf)
 		if err != nil {
-			logger.Printf("[source] ❌ Emit %v to YoMo-Zipper failure with err: %v", data, err)
+			logger.Errorf("[source] ❌ Emit %v to YoMo-Zipper failure with err: %v", data, err)
 			time.Sleep(500 * time.Millisecond)
 			continue
 

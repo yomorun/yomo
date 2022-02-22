@@ -47,7 +47,7 @@ tasks:
     dir: "basic/source"
     cmds:
       - echo "basic source building..."
-      - "go build -o source{{exeExt}} main.go"
+      - "go build -o source{{exeExt}} *.go"
       - echo "basic source built."
     silent: false
 
