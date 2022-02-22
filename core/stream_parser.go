@@ -6,7 +6,6 @@ import (
 
 	"github.com/yomorun/y3"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/pkg/logger"
 )
 
 // ParseFrame parses the frame from QUIC stream.
@@ -25,13 +24,13 @@ func ParseFrame(stream io.Reader) (frame.Frame, error) {
 	// determine the frame type
 	switch frameType {
 	case 0x80 | byte(frame.TagOfHandshakeFrame):
-		handshakeFrame := readHandshakeFrame(buf)
-		logger.Debugf("%sHandshakeFrame: name=%s, type=%s", ParseFrameLogPrefix, handshakeFrame.Name, handshakeFrame.Type())
-		return handshakeFrame, nil
+		handshakeFrame, err := readHandshakeFrame(buf)
+		// logger.Debugf("%sHandshakeFrame: name=%s, type=%s", ParseFrameLogPrefix, handshakeFrame.Name, handshakeFrame.Type())
+		return handshakeFrame, err
 	case 0x80 | byte(frame.TagOfDataFrame):
-		data := readDataFrame(buf)
-		logger.Debugf("%sDataFrame: tid=%s, tag=%#x, len(carriage)=%d", ParseFrameLogPrefix, data.TransactionID(), data.GetDataTag(), len(data.GetCarriage()))
-		return data, nil
+		data, err := readDataFrame(buf)
+		// logger.Debugf("%sDataFrame: tid=%s, tag=%#x, len(carriage)=%d", ParseFrameLogPrefix, data.TransactionID(), data.GetDataTag(), len(data.GetCarriage()))
+		return data, err
 	case 0x80 | byte(frame.TagOfAcceptedFrame):
 		return frame.DecodeToAcceptedFrame(buf)
 	case 0x80 | byte(frame.TagOfRejectedFrame):
@@ -41,22 +40,24 @@ func ParseFrame(stream io.Reader) (frame.Frame, error) {
 	}
 }
 
-func readHandshakeFrame(buf []byte) *frame.HandshakeFrame {
+func readHandshakeFrame(buf []byte) (*frame.HandshakeFrame, error) {
 	// parse to HandshakeFrame
-	handshake, err := frame.DecodeToHandshakeFrame(buf)
-	if err != nil {
-		logger.Errorf("%sreadHandshakeFrame: err=%v", ParseFrameLogPrefix, err)
-		return nil
-	}
-	return handshake
+	// handshake, err := frame.DecodeToHandshakeFrame(buf)
+	// if err != nil {
+	// 	logger.Errorf("%sreadHandshakeFrame: err=%v", ParseFrameLogPrefix, err)
+	// 	return nil
+	// }
+	// return handshake
+	return frame.DecodeToHandshakeFrame(buf)
 }
 
-func readDataFrame(buf []byte) *frame.DataFrame {
+func readDataFrame(buf []byte) (*frame.DataFrame, error) {
 	// parse to DataFrame
-	data, err := frame.DecodeToDataFrame(buf)
-	if err != nil {
-		logger.Errorf("%sreadDataFrame: err=%v", ParseFrameLogPrefix, err)
-		return nil
-	}
-	return data
+	// data, err := frame.DecodeToDataFrame(buf)
+	// if err != nil {
+	// 	logger.Errorf("%sreadDataFrame: err=%v", ParseFrameLogPrefix, err)
+	// 	return err
+	// }
+	// return data
+	return frame.DecodeToDataFrame(buf)
 }

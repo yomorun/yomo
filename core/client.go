@@ -140,7 +140,7 @@ func (c *Client) handleFrame() {
 			defer c.session.CloseWithError(0xD0, err.Error())
 			defer c.setState(ConnStateDisconnected)
 
-			c.Logger().Errorf("%shandleFrame.ReadFrame(): %T %v", ClientLogPrefix, err, err)
+			c.logger.Errorf("%shandleFrame.ReadFrame(): %T %v", ClientLogPrefix, err, err)
 			if e, ok := err.(*quic.IdleTimeoutError); ok {
 				c.logger.Errorf("%sconnection timeout, err=%v, zipper=%s", ClientLogPrefix, e, c.addr)
 			} else if e, ok := err.(*quic.ApplicationError); ok {
