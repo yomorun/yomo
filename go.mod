@@ -9,6 +9,6 @@ require (
 	github.com/stretchr/testify v1.7.0
 	github.com/yomorun/y3 v1.0.4
 	go.uber.org/zap v1.19.0
-	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
+	gopkg.in/natefinch/lumberjack.v2 v2.0.0
 	gopkg.in/yaml.v2 v2.4.0
 )
