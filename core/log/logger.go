@@ -4,18 +4,18 @@ package log
 type Level uint8
 
 const (
-	// Disabled disables the logger.
-	Disabled Level = iota
-	// LevelDebug defines debug log level.
-	LevelDebug
+	// DebugLevel defines debug log level.
+	DebugLevel Level = iota + 1
+	// InfoLevel defines info log level.
+	InfoLevel
+	// WarnLevel defines warn log level.
+	WarnLevel
 	// ErrorLevel defines error log level.
-	LevelError
-	// LevelWarn defines warn log level.
-	LevelWarn
-	// LevelInfo defines info log level.
-	LevelInfo
-	// LevelNo defines an absent log level.
-	LevelNo
+	ErrorLevel
+	// NoLevel defines an absent log level.
+	NoLevel Level = 254
+	// Disabled disables the logger.
+	Disabled Level = 255
 )
 
 // Logger is the interface for logger.
@@ -24,7 +24,7 @@ type Logger interface {
 	// SetTimeFormat(format string)
 	// WithPrefix(prefix string) Logger
 	// Printf prints a formated message at LevelNo
-	Printf(template string, v ...interface{})
+	Printf(template string, args ...interface{})
 	// Debugf logs a message at LevelDebug.
 	Debugf(template string, args ...interface{})
 	// Infof logs a message at LevelInfo.
@@ -37,4 +37,19 @@ type Logger interface {
 	Output(file string)
 	// ErrorOutput file path to write error message output to
 	ErrorOutput(file string)
+}
+
+func (l Level) String() string {
+	switch l {
+	case DebugLevel:
+		return "DEBUG"
+	case ErrorLevel:
+		return "ERROR"
+	case WarnLevel:
+		return "WARN"
+	case InfoLevel:
+		return "INFO"
+	default:
+		return ""
+	}
 }

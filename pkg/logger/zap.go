@@ -84,16 +84,16 @@ func (z *zapLogger) SetOptions(opts ...zap.Option) {
 }
 
 func (z *zapLogger) SetLevel(lvl log.Level) {
-	isDebug := lvl == log.LevelDebug
+	isDebug := lvl == log.DebugLevel
 	level := zap.ErrorLevel
 	switch lvl {
-	case log.LevelDebug:
+	case log.DebugLevel:
 		level = zap.DebugLevel
-	case log.LevelInfo:
+	case log.InfoLevel:
 		level = zap.InfoLevel
-	case log.LevelWarn:
+	case log.WarnLevel:
 		level = zap.WarnLevel
-	case log.LevelError:
+	case log.ErrorLevel:
 		level = zap.ErrorLevel
 	}
 	z.level = level

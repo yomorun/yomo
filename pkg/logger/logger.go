@@ -55,16 +55,16 @@ func logFormat() string {
 
 func logLevel() log.Level {
 	envLevel := strings.ToLower(os.Getenv("YOMO_LOG_LEVEL"))
-	level := log.LevelError
+	level := log.ErrorLevel
 	switch envLevel {
 	case "debug":
-		return log.LevelDebug
+		return log.DebugLevel
 	case "info":
-		return log.LevelInfo
+		return log.InfoLevel
 	case "warn":
-		return log.LevelWarn
+		return log.WarnLevel
 	case "error":
-		return log.LevelError
+		return log.ErrorLevel
 	}
 	return level
 }
