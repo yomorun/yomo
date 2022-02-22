@@ -18,30 +18,9 @@ vendor/
 bin/
 /bin/yomo
 main
-# example
-example/basic/flow/flow
-example/basic/sfn/sfn
-example/basic/source/source
-example/basic/zipper/zipper
-example/multi-stream-fn/source/source
-example/multi-stream-fn/stream-fn-1/fn1
-example/multi-stream-fn/stream-fn-2/fn2
-example/multi-stream-fn/stream-fn-3/fn3
-example/multi-stream-fn/zipper/zipper
-example/same-stream-fn/source/source
-example/same-stream-fn/stream-fn/fn1
-example/same-stream-fn/stream-fn/fn2
-example/same-stream-fn/zipper/zipper
-example/multi-zipper/bin
-# cli
-cli/example/source/source
-cli/example/stream-fn-db/stream-fn-db
-cli/example/stream-fn/stream-fn
-cmd/yomo/yomo
 # release
 release/
 # git commitzen
 node_modules/
 package-lock.json
 package.json
-
