@@ -178,7 +178,7 @@ func (z *zapLogger) Instance() *zap.SugaredLogger {
 		// error output
 		opts := make([]zap.Option, 0)
 		if z.errorOutput != "" {
-			rotatedLogger := errorRotatedLogger(z.errorOutput, 1, 5, 30)
+			rotatedLogger := errorRotatedLogger(z.errorOutput, 10, 30, 7)
 			errorOutputOption := zap.Hooks(func(entry zapcore.Entry) error {
 				if entry.Level == zap.ErrorLevel {
 					msg, err := encoder.EncodeEntry(entry, nil)
