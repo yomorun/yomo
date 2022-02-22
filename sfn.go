@@ -5,7 +5,6 @@ import (
 
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/pkg/logger"
 )
 
 const (
@@ -61,7 +60,7 @@ type streamFunction struct {
 // Deprecated: use yomo.WithObservedDataTags instead
 func (s *streamFunction) SetObserveDataTag(tag ...byte) {
 	s.client.SetObserveDataTag(tag...)
-	logger.Debugf("%sSetObserveDataTag(%v)", streamFunctionLogPrefix, s.observed)
+	s.client.Logger().Debugf("%sSetObserveDataTag(%v)", streamFunctionLogPrefix, s.observed)
 }
 
 // SetHandler set the handler function, which accept the raw bytes data and return the tag & response.
