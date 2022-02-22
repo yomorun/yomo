@@ -119,6 +119,7 @@ tasks:
     env:
       YOMO_ENABLE_DEBUG: true
       YOMO_LOG_LEVEL: error
+      YOMO_LOG_ERROR_OUTPUT: err.log
 
   basic-flow-build:
     desc: build basic flow stream function
