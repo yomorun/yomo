@@ -67,19 +67,23 @@ func (r *route) Exists(name string) bool {
 	return ok
 }
 
-func (r *route) Next(current string) (string, bool) {
-	var idx int
+func (r *route) GetForwardRoutes(current string) []string {
+	idx := -1
 	r.data.Range(func(key interface{}, val interface{}) bool {
 		if val.(string) == current {
-			idx = key.(int) + 1
+			idx = key.(int)
 			return false
 		}
 		return true
 	})
-	to, ok := r.data.Load(idx)
-	if ok {
-		return to.(string), true
-	}
 
-	return "", false
+	routes := make([]string, 0)
+	r.data.Range(func(key interface{}, val interface{}) bool {
+		if key.(int) > idx {
+			routes = append(routes, val.(string))
+		}
+		return true
+	})
+
+	return routes
 }

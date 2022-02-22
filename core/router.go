@@ -12,8 +12,8 @@ type Router interface {
 type Route interface {
 	// Add a route.
 	Add(index int, name string)
-	// Next gets the next route.
-	Next(current string) (string, bool)
+	// GetForwardRoutes returns all the forward routes from current node.
+	GetForwardRoutes(current string) []string
 	// Exists indicates whether the route exists or not.
 	Exists(name string) bool
 }
