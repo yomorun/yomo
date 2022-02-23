@@ -9,17 +9,17 @@ import (
 )
 
 type ClientOptions struct {
-	ObservedDataTags []byte
-	QuicConfig       *quic.Config
-	TLSConfig        *tls.Config
-	Credential       auth.Credential
-	Logger           log.Logger
+	ObserveDataTags []byte
+	QuicConfig      *quic.Config
+	TLSConfig       *tls.Config
+	Credential      auth.Credential
+	Logger          log.Logger
 }
 
-// WithObservedDataTags sets data tag list for the client.
-func WithObservedDataTags(tags ...byte) ClientOption {
+// WithObserveDataTags sets data tag list for the client.
+func WithObserveDataTags(tags ...byte) ClientOption {
 	return func(o *ClientOptions) {
-		o.ObservedDataTags = tags
+		o.ObserveDataTags = tags
 	}
 }
 

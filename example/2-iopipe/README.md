@@ -41,7 +41,7 @@ YoMo CLI Version: v0.1.7
 
 ```bash
 $ task run
-task: [sfn] yomo run serverless/counter.go -n counter
+task: [sfn] yomo run -n counter serverless/counter.go
 task: [source] cat /dev/urandom | go run source/pipe.go
 task: [zipper] yomo serve -c workflow.yaml
 [sfn] Using config file: workflow.yaml
@@ -76,7 +76,7 @@ First, start `Zipper` process:
 
 Then, start the Streaming Function to observe data:
 
-`yomo run serverless/counter.go -n counter`
+`yomo run -n counter serverless/counter.go`
 
 after few seconds, build is success, then, start the Source to generate random data and send to Zipper:
 

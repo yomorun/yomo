@@ -7,11 +7,12 @@ import (
 )
 
 func TestSfnConnectToServer(t *testing.T) {
-	sfn := NewStreamFunction("test-sfn", WithZipperAddr("localhost:9000"))
+	sfn := NewStreamFunction(
+		"test-sfn",
+		WithZipperAddr("localhost:9000"),
+		WithObserveDataTags(0x33),
+	)
 	defer sfn.Close()
-
-	// set only monitoring data which tag=0x33
-	sfn.SetObserveDataTag(0x33)
 
 	// set handler
 	sfn.SetHandler(nil)

@@ -22,10 +22,13 @@ type noiseData struct {
 // main will observe data with SeqID=0x10, and tranform to SeqID=0x14 with Noise value
 // to downstream sfn.
 func main() {
-	sfn := yomo.NewStreamFunction("Noise-1", yomo.WithZipperAddr("localhost:9000"))
+	sfn := yomo.NewStreamFunction(
+		"Noise-1",
+		yomo.WithZipperAddr("localhost:9000"),
+		yomo.WithObserveDataTags(0x10),
+	)
 	defer sfn.Close()
 
-	sfn.SetObserveDataTag(0x10)
 	sfn.SetHandler(handler)
 
 	err := sfn.Connect()

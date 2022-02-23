@@ -22,11 +22,9 @@ func main() {
 	sfn := yomo.NewStreamFunction(
 		"Noise",
 		yomo.WithZipperAddr(addr),
+		yomo.WithObserveDataTags(0x33),
 	)
 	defer sfn.Close()
-
-	// set only monitoring data which tag=0x33
-	sfn.SetObserveDataTag(0x33)
 
 	// set handler
 	sfn.SetHandler(handler)

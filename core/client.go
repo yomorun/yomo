@@ -106,7 +106,7 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	handshake := frame.NewHandshakeFrame(
 		c.name,
 		byte(c.clientType),
-		c.opts.ObservedDataTags,
+		c.opts.ObserveDataTags,
 		c.opts.Credential.AppID(),
 		byte(c.opts.Credential.Type()),
 		c.opts.Credential.Payload(),
@@ -321,9 +321,9 @@ func (c *Client) initOptions() {
 			c.logger = logger.Default()
 		}
 	}
-	// observed
-	if c.opts.ObservedDataTags == nil {
-		c.opts.ObservedDataTags = make([]byte, 0)
+	// observe tag list
+	if c.opts.ObserveDataTags == nil {
+		c.opts.ObserveDataTags = make([]byte, 0)
 	}
 	// credential
 	if c.opts.Credential == nil {
@@ -358,10 +358,10 @@ func (c *Client) initOptions() {
 	}
 }
 
-// SetObserveDataTag set the data tag list that will be observed.
-// Deprecated: use yomo.WithObservedDataTags instead
-func (c *Client) SetObserveDataTag(tag ...byte) {
-	c.opts.ObservedDataTags = append(c.opts.ObservedDataTags, tag...)
+// SetObserveDataTags set the data tag list that will be observed.
+// Deprecated: use yomo.WithObserveDataTags instead
+func (c *Client) SetObserveDataTags(tag ...byte) {
+	c.opts.ObserveDataTags = append(c.opts.ObserveDataTags, tag...)
 }
 
 // Logger get client's logger instance, you can customize this using `yomo.WithLogger`

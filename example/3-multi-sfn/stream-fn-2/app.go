@@ -30,10 +30,13 @@ var computePeek = func(_ context.Context, value float32) (float32, error) {
 // main will observe data with SeqID=0x14, and tranform to SeqID=0x15 with Noise value
 // to downstream sfn.
 func main() {
-	sfn := yomo.NewStreamFunction("Noise-2", yomo.WithZipperAddr("localhost:9000"))
+	sfn := yomo.NewStreamFunction(
+		"Noise-2",
+		yomo.WithZipperAddr("localhost:9000"),
+		yomo.WithObserveDataTags(0x14),
+	)
 	defer sfn.Close()
 
-	sfn.SetObserveDataTag(0x14)
 	sfn.SetHandler(handler)
 
 	err := sfn.Connect()
