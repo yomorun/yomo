@@ -20,7 +20,6 @@ tasks:
     cmds:
       - "yomo serve -c ./zipper/workflow.yaml"
     env:
-      YOMO_ENABLE_DEBUG: true
       YOMO_LOG_LEVEL: error
 
   source-build:
@@ -35,7 +34,6 @@ tasks:
       - "go build -o ./bin/source{{exeExt}} source/main.go"
       - "./bin/source{{exeExt}}"
     env:
-      YOMO_ENABLE_DEBUG: true
       YOMO_LOG_LEVEL: error
 
   sfn:

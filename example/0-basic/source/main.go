@@ -5,13 +5,14 @@ import (
 	stdlog "log"
 	"math/rand"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/core/log"
 )
 
-var logger = NewCustomLogger(log.InfoLevel)
+var logger = NewCustomLogger()
 
 type noiseData struct {
 	Noise float32 `json:"noise"` // Noise value
@@ -89,7 +90,20 @@ type CustomLogger struct {
 	level log.Level
 }
 
-func NewCustomLogger(level log.Level) log.Logger {
+func NewCustomLogger() log.Logger {
+	envLevel := strings.ToLower(os.Getenv("YOMO_LOG_LEVEL"))
+	level := log.ErrorLevel
+	switch envLevel {
+	case "debug":
+		level = log.DebugLevel
+	case "info":
+		level = log.InfoLevel
+	case "warn":
+		level = log.WarnLevel
+	case "error":
+		level = log.ErrorLevel
+	}
+
 	return &CustomLogger{
 		level: level,
 	}
@@ -97,6 +111,9 @@ func NewCustomLogger(level log.Level) log.Logger {
 
 func (c *CustomLogger) SetLevel(level log.Level) {
 	c.level = level
+}
+
+func (c *CustomLogger) SetEncoding(encoding string) {
 }
 
 // Printf prints a formated message at LevelNo

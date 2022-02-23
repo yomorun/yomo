@@ -44,6 +44,7 @@ func WithClientQuicConfig(qc *quic.Config) ClientOption {
 	}
 }
 
+// WithLogger sets logger for the client.
 func WithLogger(logger log.Logger) ClientOption {
 	return func(o *ClientOptions) {
 		o.Logger = logger

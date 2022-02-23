@@ -364,6 +364,7 @@ func (c *Client) SetObserveDataTag(tag ...byte) {
 	c.opts.ObservedDataTags = append(c.opts.ObservedDataTags, tag...)
 }
 
+// Logger get client's logger instance, you can customize this using `yomo.WithLogger`
 func (c *Client) Logger() log.Logger {
 	return c.logger
 }

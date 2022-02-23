@@ -26,15 +26,21 @@ type zapLogger struct {
 	errorOutput string
 }
 
+// Default the default logger instance
 func Default(debug ...bool) log.Logger {
 	z := New()
-	z.SetDebug(isEnableDebug())
-	if len(debug) > 0 {
-		z.SetDebug(debug[0])
-	}
 	z.SetLevel(logLevel())
 	if isJSONFormat() {
 		z.SetEncoding("json")
+	}
+	// env debug
+	if isEnableDebug() {
+		z.SetLevel(log.DebugLevel)
+	}
+	if len(debug) > 0 {
+		if debug[0] {
+			z.SetLevel(log.DebugLevel)
+		}
 	}
 	z.Output(output())
 	z.ErrorOutput(errorOutput())
@@ -42,7 +48,8 @@ func Default(debug ...bool) log.Logger {
 	return z
 }
 
-func New(opts ...zap.Option) *zapLogger {
+// New create new logger instance
+func New(opts ...zap.Option) log.Logger {
 	// std logger
 	stdlog.Default().SetFlags(0)
 	stdlog.Default().SetOutput(new(logWriter))
@@ -70,19 +77,12 @@ func combineWriteSyncers(cfg zap.Config, syncers ...zapcore.WriteSyncer) zapcore
 	return zap.CombineWriteSyncers(syncers...)
 }
 
+// SetEncoding set logger message coding
 func (z *zapLogger) SetEncoding(enc string) {
 	z.encoding = enc
 }
 
-func (z *zapLogger) SetDebug(debug bool) {
-	z.debug = debug
-}
-
-func (z *zapLogger) SetOptions(opts ...zap.Option) {
-	z.Instance()
-	z.logger.WithOptions(opts...)
-}
-
+// SetLevel set logger level
 func (z *zapLogger) SetLevel(lvl log.Level) {
 	isDebug := lvl == log.DebugLevel
 	level := zap.ErrorLevel
@@ -100,38 +100,41 @@ func (z *zapLogger) SetLevel(lvl log.Level) {
 	z.debug = isDebug
 }
 
-// func (z *zapLogger) WithPrefix(prefix string) log.Logger {
-// 	return z
-// }
-
+// Output file path to write log message
 func (z *zapLogger) Output(file string) {
 	if file != "" {
 		z.output = file
 	}
 }
 
+// ErrorOutput file path to write log message
 func (z *zapLogger) ErrorOutput(file string) {
 	if file != "" {
 		z.errorOutput = file
 	}
 }
 
+// Printf logs a message wihout level
 func (z *zapLogger) Printf(format string, v ...interface{}) {
 	stdlog.Printf(format, v...)
 }
 
+// Debugf logs a message at DebugLevel
 func (z *zapLogger) Debugf(template string, args ...interface{}) {
 	z.Instance().Debugf(template, args...)
 }
 
+// Infof logs a message at InfoLevel
 func (z *zapLogger) Infof(template string, args ...interface{}) {
 	z.Instance().Infof(template, args...)
 }
 
+// Warnf logs a message at WarnLevel
 func (z zapLogger) Warnf(template string, args ...interface{}) {
 	z.Instance().Warnf(template, args...)
 }
 
+// Errorf logs a message at ErrorLevel
 func (z zapLogger) Errorf(template string, args ...interface{}) {
 	z.Instance().Errorf(template, args...)
 }

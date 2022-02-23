@@ -20,25 +20,27 @@ const (
 
 // Logger is the interface for logger.
 type Logger interface {
+	// SetLevel sets the logger level
 	SetLevel(Level)
-	// SetTimeFormat(format string)
-	// WithPrefix(prefix string) Logger
-	// Printf prints a formated message at LevelNo
+	// SetEncoding sets the logger's encoding
+	SetEncoding(encoding string)
+	// Printf logs a message wihout level
 	Printf(template string, args ...interface{})
-	// Debugf logs a message at LevelDebug.
+	// Debugf logs a message at DebugLevel
 	Debugf(template string, args ...interface{})
-	// Infof logs a message at LevelInfo.
+	// Infof logs a message at InfoLevel
 	Infof(template string, args ...interface{})
-	// Warnf logs a message at LevelWarn.
+	// Warnf logs a message at WarnLevel
 	Warnf(template string, args ...interface{})
-	// Errorf logs a message at LevelError.
+	// Errorf logs a message at ErrorLevel
 	Errorf(template string, args ...interface{})
-	// Output file path to write log message output to
+	// Output file path to write log message
 	Output(file string)
-	// ErrorOutput file path to write error message output to
+	// ErrorOutput file path to write error message
 	ErrorOutput(file string)
 }
 
+// String the logger level
 func (l Level) String() string {
 	switch l {
 	case DebugLevel:
