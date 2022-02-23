@@ -37,13 +37,13 @@ func (r *Runtime) RawByteHandler(req []byte) (byte, []byte) {
 		}
 
 		if item.V == nil {
-			logger.Warn("[Rx Handler] the returned data is nil.")
+			logger.Warnf("[Rx Handler] the returned data is nil.")
 			continue
 		}
 
 		res, ok := (item.V).(frame.PayloadFrame)
 		if !ok {
-			logger.Warn("[Rx Handler] the data is not a frame.PayloadFrame, won't send it to YoMo-Zipper.")
+			logger.Warnf("[Rx Handler] the data is not a frame.PayloadFrame, won't send it to YoMo-Zipper.")
 			continue
 		}
 
@@ -68,13 +68,13 @@ func (r *Runtime) PipeHandler(in <-chan []byte, out chan<- *frame.PayloadFrame) 
 			}
 
 			if item.V == nil {
-				logger.Warn("[rx PipeHandler] the returned data is nil.")
+				logger.Warnf("[rx PipeHandler] the returned data is nil.")
 				continue
 			}
 
 			res, ok := (item.V).(frame.PayloadFrame)
 			if !ok {
-				logger.Warn("[rx PipeHandler] the data is not a frame.PayloadFrame, won't send it to YoMo-Zipper.")
+				logger.Warnf("[rx PipeHandler] the data is not a frame.PayloadFrame, won't send it to YoMo-Zipper.")
 				continue
 			}
 

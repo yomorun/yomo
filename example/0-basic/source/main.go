@@ -2,14 +2,17 @@ package main
 
 import (
 	"encoding/json"
-	"log"
+	stdlog "log"
 	"math/rand"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/pkg/logger"
+	"github.com/yomorun/yomo/core/log"
 )
+
+var logger = NewCustomLogger()
 
 type noiseData struct {
 	Noise float32 `json:"noise"` // Noise value
@@ -26,6 +29,7 @@ func main() {
 	source := yomo.NewSource(
 		"yomo-source",
 		yomo.WithZipperAddr(addr),
+		yomo.WithLogger(logger),
 	)
 	err := source.Connect()
 	if err != nil {
@@ -59,14 +63,14 @@ func generateAndSendData(stream yomo.Source) error {
 
 		sendingBuf, err := json.Marshal(&data)
 		if err != nil {
-			log.Fatalln(err)
+			logger.Errorf("json.Marshal err:%v", err)
 			os.Exit(-1)
 		}
 
 		// send data via QUIC stream.
 		_, err = stream.Write(sendingBuf)
 		if err != nil {
-			logger.Printf("[source] ❌ Emit %v to YoMo-Zipper failure with err: %v", data, err)
+			logger.Errorf("[source] ❌ Emit %v to YoMo-Zipper failure with err: %v", data, err)
 			time.Sleep(500 * time.Millisecond)
 			continue
 
@@ -75,5 +79,88 @@ func generateAndSendData(stream yomo.Source) error {
 		}
 
 		time.Sleep(500 * time.Millisecond)
+	}
+}
+
+// custom logger
+
+var _ = log.Logger(&CustomLogger{})
+
+type CustomLogger struct {
+	level log.Level
+}
+
+func NewCustomLogger() log.Logger {
+	envLevel := strings.ToLower(os.Getenv("YOMO_LOG_LEVEL"))
+	level := log.ErrorLevel
+	switch envLevel {
+	case "debug":
+		level = log.DebugLevel
+	case "info":
+		level = log.InfoLevel
+	case "warn":
+		level = log.WarnLevel
+	case "error":
+		level = log.ErrorLevel
+	}
+
+	return &CustomLogger{
+		level: level,
+	}
+}
+
+func (c *CustomLogger) SetLevel(level log.Level) {
+	c.level = level
+}
+
+func (c *CustomLogger) SetEncoding(encoding string) {
+}
+
+// Printf prints a formated message at LevelNo
+func (c *CustomLogger) Printf(template string, args ...interface{}) {
+	c.log(log.NoLevel, template, args...)
+}
+
+// Debugf logs a message at LevelDebug.
+func (c *CustomLogger) Debugf(template string, args ...interface{}) {
+	c.log(log.DebugLevel, template, args...)
+}
+
+// Infof logs a message at LevelInfo.
+func (c *CustomLogger) Infof(template string, args ...interface{}) {
+	c.log(log.InfoLevel, template, args...)
+}
+
+// Warnf logs a message at LevelWarn.
+func (c *CustomLogger) Warnf(template string, args ...interface{}) {
+	c.log(log.WarnLevel, template, args...)
+}
+
+// Errorf logs a message at LevelError.
+func (c *CustomLogger) Errorf(template string, args ...interface{}) {
+	c.log(log.ErrorLevel, template, args...)
+}
+
+// Output file path to write log message output to
+func (c *CustomLogger) Output(file string) {
+}
+
+// ErrorOutput file path to write error message output to
+func (c *CustomLogger) ErrorOutput(file string) {
+}
+
+func (c *CustomLogger) log(level log.Level, template string, args ...interface{}) {
+	if c.level == log.Disabled {
+		return
+	}
+
+	v := []interface{}{level}
+	v = append(v, args...)
+	if c.level == log.NoLevel {
+		stdlog.Printf("%s "+template, v...)
+		return
+	}
+	if level >= c.level {
+		stdlog.Printf("%s "+template, v...)
 	}
 }

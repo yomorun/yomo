@@ -39,7 +39,6 @@ tasks:
     cmds:
       - "./bin/source{{exeExt}}"
     env:
-      YOMO_ENABLE_DEBUG: true
       YOMO_LOG_LEVEL: error
 
   sfn:
@@ -48,7 +47,6 @@ tasks:
     cmds:
       - "./bin/sfn{{exeExt}}"
     env:
-      YOMO_ENABLE_DEBUG: true
       YOMO_LOG_LEVEL: error
 
   zipper:
@@ -56,6 +54,6 @@ tasks:
     cmds:
       - "yomo serve -c workflow.yaml"
     env:
-      YOMO_ENABLE_DEBUG: true
       YOMO_LOG_LEVEL: error
       YOMO_ADDR: "localhost:9000"
+      YOMO_LOG_ERROR_OUTPUT: err.log

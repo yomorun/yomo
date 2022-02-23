@@ -14,7 +14,6 @@ tasks:
     cmds:
       - "yomo serve -c workflow.yaml"
     env:
-      YOMO_ENABLE_DEBUG: true
       YOMO_LOG_LEVEL: error
 
   sfn:

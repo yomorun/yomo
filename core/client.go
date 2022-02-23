@@ -13,6 +13,7 @@ import (
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/log"
 	"github.com/yomorun/yomo/pkg/logger"
 )
 
@@ -34,6 +35,7 @@ type Client struct {
 	mu         sync.Mutex
 	opts       ClientOptions
 	localAddr  string // client local addr, it will be changed on reconnect
+	logger     log.Logger
 }
 
 // NewClient creates a new YoMo-Client.
@@ -42,6 +44,7 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 		name:       appName,
 		clientType: connType,
 		state:      ConnStateReady,
+		opts:       ClientOptions{},
 	}
 	c.Init(opts...)
 	once.Do(func() {
@@ -116,7 +119,7 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	c.state = ConnStateConnected
 	c.localAddr = c.session.LocalAddr().String()
 
-	logger.Printf("%s❤️  [%s](%s) is connected to YoMo-Zipper %s", ClientLogPrefix, c.name, c.localAddr, addr)
+	c.logger.Printf("%s❤️  [%s](%s) is connected to YoMo-Zipper %s", ClientLogPrefix, c.name, c.localAddr, addr)
 
 	// receiving frames
 	go c.handleFrame()
@@ -129,7 +132,7 @@ func (c *Client) handleFrame() {
 	// transform raw QUIC stream to wire format
 	fs := NewFrameStream(c.stream)
 	for {
-		logger.Debugf("%shandleFrame connection state=%v", ClientLogPrefix, c.state)
+		c.logger.Debugf("%shandleFrame connection state=%v", ClientLogPrefix, c.state)
 		// this will block until a frame is received
 		f, err := fs.ReadFrame()
 		if err != nil {
@@ -137,19 +140,19 @@ func (c *Client) handleFrame() {
 			defer c.session.CloseWithError(0xD0, err.Error())
 			defer c.setState(ConnStateDisconnected)
 
-			logger.Errorf("%shandleFrame.ReadFrame(): %T %v", ClientLogPrefix, err, err)
+			c.logger.Errorf("%shandleFrame.ReadFrame(): %T %v", ClientLogPrefix, err, err)
 			if e, ok := err.(*quic.IdleTimeoutError); ok {
-				logger.Errorf("%sconnection timeout, err=%v, zipper=%s", ClientLogPrefix, e, c.addr)
+				c.logger.Errorf("%sconnection timeout, err=%v, zipper=%s", ClientLogPrefix, e, c.addr)
 			} else if e, ok := err.(*quic.ApplicationError); ok {
-				logger.Errorf("%sapplication error, err=%v, errcode=%v", ClientLogPrefix, e, e.ErrorCode)
+				c.logger.Errorf("%sapplication error, err=%v, errcode=%v", ClientLogPrefix, e, e.ErrorCode)
 				if e.ErrorCode == 0xCC {
-					logger.Errorf("%sIllegal client, server rejected.", ClientLogPrefix)
+					c.logger.Errorf("%sIllegal client, server rejected.", ClientLogPrefix)
 					// TODO: stop reconnect policy will be much better than exit process.
 					os.Exit(0xCC)
 				}
 			} else if errors.Is(err, net.ErrClosed) {
 				// if client close the connection, net.ErrClosed will be raise
-				logger.Errorf("%sconnection is closed, err=%v", ClientLogPrefix, err)
+				c.logger.Errorf("%sconnection is closed, err=%v", ClientLogPrefix, err)
 				// by quic-go IdleTimeoutError after connection's KeepAlive config.
 				break
 			}
@@ -162,7 +165,7 @@ func (c *Client) handleFrame() {
 		// read frame
 		// first, get frame type
 		frameType := f.Type()
-		logger.Debugf("%stype=%s, frame=%# x", ClientLogPrefix, frameType, f.Encode())
+		c.logger.Debugf("%stype=%s, frame=%# x", ClientLogPrefix, frameType, f.Encode())
 		switch frameType {
 		case frame.TagOfPongFrame:
 			c.setState(ConnStatePong)
@@ -174,9 +177,9 @@ func (c *Client) handleFrame() {
 		case frame.TagOfDataFrame: // DataFrame carries user's data
 			if v, ok := f.(*frame.DataFrame); ok {
 				c.setState(ConnStateTransportData)
-				logger.Debugf("%sreceive DataFrame, tag=%# x, tid=%s, carry=%# x", ClientLogPrefix, v.GetDataTag(), v.TransactionID(), v.GetCarriage())
+				c.logger.Debugf("%sreceive DataFrame, tag=%# x, tid=%s, carry=%# x", ClientLogPrefix, v.GetDataTag(), v.TransactionID(), v.GetCarriage())
 				if c.processor == nil {
-					logger.Warnf("%sprocessor is nil", ClientLogPrefix)
+					c.logger.Warnf("%sprocessor is nil", ClientLogPrefix)
 				} else {
 					// TODO: should c.processor accept a DataFrame as parameter?
 					// c.processor(v.GetDataTagID(), v.GetCarriage(), v.GetMetaFrame())
@@ -184,24 +187,24 @@ func (c *Client) handleFrame() {
 				}
 			}
 		default:
-			logger.Errorf("%sunknown signal", ClientLogPrefix)
+			c.logger.Errorf("%sunknown signal", ClientLogPrefix)
 		}
 	}
 }
 
 // Close the client.
 func (c *Client) Close() (err error) {
-	logger.Debugf("%sclose the connection", ClientLogPrefix)
+	c.logger.Debugf("%sclose the connection", ClientLogPrefix)
 	if c.stream != nil {
 		err = c.stream.Close()
 		if err != nil {
-			logger.Errorf("%s stream.Close(): %v", ClientLogPrefix, err)
+			c.logger.Errorf("%s stream.Close(): %v", ClientLogPrefix, err)
 		}
 	}
 	if c.session != nil {
 		err = c.session.CloseWithError(255, "client.session closed")
 		if err != nil {
-			logger.Errorf("%s session.Close(): %v", ClientLogPrefix, err)
+			c.logger.Errorf("%s session.Close(): %v", ClientLogPrefix, err)
 		}
 	}
 
@@ -209,9 +212,9 @@ func (c *Client) Close() (err error) {
 }
 
 // EnableDebug enables the development model for logging.
-func (c *Client) EnableDebug() {
-	logger.EnableDebug()
-}
+// func (c *Client) EnableDebug() {
+// 	logger.EnableDebug()
+// }
 
 // WriteFrame writes a frame to the connection, gurantee threadsafe.
 func (c *Client) WriteFrame(frm frame.Frame) error {
@@ -229,7 +232,7 @@ func (c *Client) WriteFrame(frm frame.Frame) error {
 	if c.state == ConnStateDisconnected || c.state == ConnStateRejected {
 		return fmt.Errorf("client connection state is %s", c.state)
 	}
-	logger.Debugf("%s[%s](%s)@%s WriteFrame() will write frame: %s", ClientLogPrefix, c.name, c.localAddr, c.state, frm.Type())
+	c.logger.Debugf("%s[%s](%s)@%s WriteFrame() will write frame: %s", ClientLogPrefix, c.name, c.localAddr, c.state, frm.Type())
 
 	data := frm.Encode()
 	// emit raw bytes of Frame
@@ -238,23 +241,23 @@ func (c *Client) WriteFrame(frm frame.Frame) error {
 	c.mu.Unlock()
 	// TODO: move partial logging as a utility
 	if len(data) > 16 {
-		logger.Debugf("%sWriteFrame() wrote n=%d, len(data)=%d, data[:16]=%# x ...", ClientLogPrefix, n, len(data), data[:16])
+		c.logger.Debugf("%sWriteFrame() wrote n=%d, len(data)=%d, data[:16]=%# x ...", ClientLogPrefix, n, len(data), data[:16])
 	} else {
-		logger.Debugf("%sWriteFrame() wrote n=%d, len(data)=%d, data=%# x", ClientLogPrefix, n, len(data), data)
+		c.logger.Debugf("%sWriteFrame() wrote n=%d, len(data)=%d, data=%# x", ClientLogPrefix, n, len(data), data)
 	}
 	if err != nil {
 		c.setState(ConnStateDisconnected)
 		// c.state = ConnStateDisconnected
 		if e, ok := err.(*quic.IdleTimeoutError); ok {
-			logger.Errorf("%sWriteFrame() connection timeout, err=%v", ClientLogPrefix, e)
+			c.logger.Errorf("%sWriteFrame() connection timeout, err=%v", ClientLogPrefix, e)
 		} else {
-			logger.Errorf("%sWriteFrame() wrote error=%v", ClientLogPrefix, err)
+			c.logger.Errorf("%sWriteFrame() wrote error=%v", ClientLogPrefix, err)
 			return err
 		}
 	}
 	if n != len(data) {
 		err := errors.New("[client] yomo Client .Write() wroten error")
-		logger.Errorf("%s error:%v", ClientLogPrefix, err)
+		c.logger.Errorf("%s error:%v", ClientLogPrefix, err)
 		return err
 	}
 	return err
@@ -277,7 +280,7 @@ func (c *Client) setLocalAddr(addr string) {
 // SetDataFrameObserver sets the data frame handler.
 func (c *Client) SetDataFrameObserver(fn func(*frame.DataFrame)) {
 	c.processor = fn
-	logger.Debugf("%sSetDataFrameObserver(%v)", ClientLogPrefix, c.processor)
+	c.logger.Debugf("%sSetDataFrameObserver(%v)", ClientLogPrefix, c.processor)
 }
 
 // reconnect the connection between client and server.
@@ -289,7 +292,7 @@ func (c *Client) reconnect(ctx context.Context, addr string) {
 			fmt.Printf("%s[%s](%s) is retrying to YoMo-Zipper %s...\n", ClientLogPrefix, c.name, c.localAddr, addr)
 			err := c.connect(ctx, addr)
 			if err != nil {
-				logger.Errorf("%s[%s](%s) reconnect error:%v", ClientLogPrefix, c.name, c.localAddr, err)
+				c.logger.Errorf("%s[%s](%s) reconnect error:%v", ClientLogPrefix, c.name, c.localAddr, err)
 			}
 		}
 	}
@@ -310,6 +313,14 @@ func (c *Client) ServerAddr() string {
 
 // initOptions init options defaults
 func (c *Client) initOptions() {
+	// logger
+	if c.logger == nil {
+		if c.opts.Logger != nil {
+			c.logger = c.opts.Logger
+		} else {
+			c.logger = logger.Default()
+		}
+	}
 	// observed
 	if c.opts.ObservedDataTags == nil {
 		c.opts.ObservedDataTags = make([]byte, 0)
@@ -343,7 +354,7 @@ func (c *Client) initOptions() {
 	}
 	// credential
 	if c.opts.Credential != nil {
-		logger.Printf("%suse credential: [%s]", ClientLogPrefix, c.opts.Credential.Type())
+		c.logger.Printf("%suse credential: [%s]", ClientLogPrefix, c.opts.Credential.Type())
 	}
 }
 
@@ -351,4 +362,9 @@ func (c *Client) initOptions() {
 // Deprecated: use yomo.WithObservedDataTags instead
 func (c *Client) SetObserveDataTag(tag ...byte) {
 	c.opts.ObservedDataTags = append(c.opts.ObservedDataTags, tag...)
+}
+
+// Logger get client's logger instance, you can customize this using `yomo.WithLogger`
+func (c *Client) Logger() log.Logger {
+	return c.logger
 }

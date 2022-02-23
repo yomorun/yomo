@@ -790,7 +790,7 @@ func (s *StreamImpl) PipeBackToZipper(dataID byte) Stream {
 
 				buf, ok := (item.V).([]byte)
 				if !ok {
-					logger.Error("[PipeBackToZipper] the data is not a []byte, won't send pass it to next.")
+					logger.Errorf("[PipeBackToZipper] the data is not a []byte, won't send pass it to next.")
 					continue
 				}
 

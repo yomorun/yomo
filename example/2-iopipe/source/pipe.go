@@ -34,7 +34,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer client.Close()
 	log.Printf("written: %d", written)
 
 	select {}
