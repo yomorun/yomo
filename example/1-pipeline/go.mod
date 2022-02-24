@@ -29,6 +29,3 @@ require (
 )
 
 replace github.com/yomorun/yomo => ../../
-
-// for development
-// replace github.com/yomorun/yomo => /Users/venjiang/gopath/src/github.com/yomorun/yomo
