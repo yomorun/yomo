@@ -20,6 +20,7 @@ type zapLogger struct {
 	level       zapcore.Level
 	debug       bool
 	encoding    string
+	opts        []zap.Option
 	logger      *zap.Logger
 	instance    *zap.SugaredLogger
 	output      string
@@ -58,23 +59,23 @@ func New(opts ...zap.Option) log.Logger {
 		level:    zap.ErrorLevel,
 		debug:    false,
 		encoding: "console",
+		opts:     opts,
 	}
 
 	return &z
 }
 
-func combineWriteSyncers(cfg zap.Config, syncers ...zapcore.WriteSyncer) zapcore.WriteSyncer {
+func openSinks(cfg zap.Config) (zapcore.WriteSyncer, zapcore.WriteSyncer, error) {
 	sink, closeOut, err := zap.Open(cfg.OutputPaths...)
 	if err != nil {
-		return nil
+		return nil, nil, err
 	}
 	errSink, _, err := zap.Open(cfg.ErrorOutputPaths...)
 	if err != nil {
 		closeOut()
-		return nil
+		return nil, nil, err
 	}
-	syncers = append(syncers, sink, errSink)
-	return zap.CombineWriteSyncers(syncers...)
+	return sink, errSink, nil
 }
 
 // SetEncoding set logger message coding
@@ -176,10 +177,12 @@ func (z *zapLogger) Instance() *zap.SugaredLogger {
 			cfg.OutputPaths = append(cfg.OutputPaths, z.output)
 		}
 		encoder := zapcore.NewConsoleEncoder(encoderConfig)
-		writeSyncer := combineWriteSyncers(cfg)
-		core := zapcore.NewCore(encoder, writeSyncer, cfg.Level)
+		sink, _, err := openSinks(cfg)
+		if err != nil {
+			panic(err)
+		}
+		core := zapcore.NewCore(encoder, sink, cfg.Level)
 		// error output
-		opts := make([]zap.Option, 0)
 		if z.errorOutput != "" {
 			rotatedLogger := errorRotatedLogger(z.errorOutput, 10, 30, 7)
 			errorOutputOption := zap.Hooks(func(entry zapcore.Entry) error {
@@ -192,9 +195,9 @@ func (z *zapLogger) Instance() *zap.SugaredLogger {
 				}
 				return nil
 			})
-			opts = append(opts, errorOutputOption)
+			z.opts = append(z.opts, errorOutputOption)
 		}
-		logger := zap.New(core, opts...)
+		logger := zap.New(core, z.opts...)
 
 		z.logger = logger
 		z.instance = z.logger.Sugar()
