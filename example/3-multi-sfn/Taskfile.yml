@@ -19,10 +19,9 @@ tasks:
     desc: run zipper
     dir: zipper
     cmds:
-      # - "yomo serve -c ./zipper/workflow.yaml"
       - "go run main.go"
     env:
-      YOMO_LOG_LEVEL: debug
+      YOMO_LOG_LEVEL: error
 
   source-build:
     desc: build source
@@ -36,7 +35,7 @@ tasks:
       - "go build -o ./bin/source{{exeExt}} source/main.go"
       - "./bin/source{{exeExt}}"
     env:
-      YOMO_LOG_LEVEL: debug
+      YOMO_LOG_LEVEL: error
 
   sfn:
     desc: run stream functions
@@ -48,7 +47,7 @@ tasks:
       - "go build -o ./bin/sfn-1{{exeExt}} ./stream-fn-1/app.go"
       - "./bin/sfn-1{{exeExt}}"
     env:
-      YOMO_LOG_LEVEL: debug
+      YOMO_LOG_LEVEL: error
 
   sfn-2:
     desc: run stream functions 2
