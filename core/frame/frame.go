@@ -70,3 +70,11 @@ func (f Type) String() string {
 		return "UnknownFrame"
 	}
 }
+
+// Shortly reduce data size for easy viewing
+func Shortly(data []byte) []byte {
+	if len(data) > 16 {
+		return data[:16]
+	}
+	return data
+}

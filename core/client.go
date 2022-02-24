@@ -165,7 +165,7 @@ func (c *Client) handleFrame() {
 		// read frame
 		// first, get frame type
 		frameType := f.Type()
-		c.logger.Debugf("%stype=%s, frame=%# x", ClientLogPrefix, frameType, f.Encode())
+		c.logger.Debugf("%stype=%s, frame=%# x", ClientLogPrefix, frameType, frame.Shortly(f.Encode()))
 		switch frameType {
 		case frame.TagOfPongFrame:
 			c.setState(ConnStatePong)
@@ -239,12 +239,7 @@ func (c *Client) WriteFrame(frm frame.Frame) error {
 	c.mu.Lock()
 	n, err := c.stream.Write(data)
 	c.mu.Unlock()
-	// TODO: move partial logging as a utility
-	if len(data) > 16 {
-		c.logger.Debugf("%sWriteFrame() wrote n=%d, len(data)=%d, data[:16]=%# x ...", ClientLogPrefix, n, len(data), data[:16])
-	} else {
-		c.logger.Debugf("%sWriteFrame() wrote n=%d, len(data)=%d, data=%# x", ClientLogPrefix, n, len(data), data)
-	}
+	c.logger.Debugf("%sWriteFrame() wrote n=%d, len(data)=%d, data=%# x", ClientLogPrefix, n, len(data), frame.Shortly(data))
 	if err != nil {
 		c.setState(ConnStateDisconnected)
 		// c.state = ConnStateDisconnected

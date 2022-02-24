@@ -191,7 +191,7 @@ func (s *Server) handleSession(c *Context) {
 		}
 
 		frameType := f.Type()
-		logger.Debugf("%stype=%s, frame=%# x", ServerLogPrefix, frameType, f.Encode())
+		logger.Debugf("%stype=%s, frame=%# x", ServerLogPrefix, frameType, frame.Shortly(f.Encode()))
 		// add frame to context
 		c := c.WithFrame(f)
 
