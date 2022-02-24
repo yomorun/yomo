@@ -1,5 +1,10 @@
 package frame
 
+import (
+	"os"
+	"strconv"
+)
+
 // Kinds of frames transferable within YoMo
 const (
 	// DataFrame
@@ -73,8 +78,14 @@ func (f Type) String() string {
 
 // Shortly reduce data size for easy viewing
 func Shortly(data []byte) []byte {
-	if len(data) > 16 {
-		return data[:16]
+	size := 16
+	if envFrameSize := os.Getenv("YOMO_DEBUG_FRAME_SIZE"); envFrameSize != "" {
+		if val, err := strconv.Atoi(envFrameSize); err == nil {
+			size = val
+		}
+	}
+	if len(data) > size {
+		return data[:size]
 	}
 	return data
 }

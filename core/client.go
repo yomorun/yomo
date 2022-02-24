@@ -218,13 +218,6 @@ func (c *Client) Close() (err error) {
 
 // WriteFrame writes a frame to the connection, gurantee threadsafe.
 func (c *Client) WriteFrame(frm frame.Frame) error {
-	// // tracing
-	// if f, ok := frm.(*frame.DataFrame); ok {
-	// 	span, err := tracing.NewRemoteTraceSpan(f.GetMetadata("TraceID"), f.GetMetadata("SpanID"), c.name, fmt.Sprintf("WriteFrame [%s]->[zipper]", c.name))
-	// 	if err == nil {
-	// 		defer span.End()
-	// 	}
-	// }
 	// write on QUIC stream
 	if c.stream == nil {
 		return errors.New("stream is nil")
@@ -239,7 +232,7 @@ func (c *Client) WriteFrame(frm frame.Frame) error {
 	c.mu.Lock()
 	n, err := c.stream.Write(data)
 	c.mu.Unlock()
-	c.logger.Debugf("%sWriteFrame() wrote n=%d, len(data)=%d, data=%# x", ClientLogPrefix, n, len(data), frame.Shortly(data))
+	c.logger.Debugf("%sWriteFrame() wrote n=%d, data=%# x", ClientLogPrefix, n, frame.Shortly(data))
 	if err != nil {
 		c.setState(ConnStateDisconnected)
 		// c.state = ConnStateDisconnected
