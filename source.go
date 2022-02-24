@@ -49,7 +49,6 @@ func NewSource(name string, opts ...Option) Source {
 
 // Write the data to downstream.
 func (s *yomoSource) Write(data []byte) (int, error) {
-	s.client.Logger().Debugf("%s\tWrite: data=%# x", sourceLogPrefix, data)
 	return len(data), s.WriteWithTag(s.tag, data)
 }
 
@@ -79,11 +78,7 @@ func (s *yomoSource) Connect() error {
 
 // WriteWithTag will write data with specified tag, default transactionID is epoch time.
 func (s *yomoSource) WriteWithTag(tag uint8, data []byte) error {
-	if len(data) > 1024 {
-		s.client.Logger().Debugf("%sWriteDataWithTransactionID: len(data)=%d", sourceLogPrefix, len(data))
-	} else {
-		s.client.Logger().Debugf("%sWriteDataWithTransactionID: data=%# x", sourceLogPrefix, data)
-	}
+	s.client.Logger().Debugf("%sWriteWithTag: len(data)=%d, data=%# x", sourceLogPrefix, len(data), frame.Shortly(data))
 	frame := frame.NewDataFrame()
 	frame.SetCarriage(byte(tag), data)
 	return s.client.WriteFrame(frame)

@@ -1,5 +1,13 @@
 package frame
 
+import (
+	"os"
+	"strconv"
+)
+
+// debugFrameSize print frame data size on debug mode
+var debugFrameSize = 16
+
 // Kinds of frames transferable within YoMo
 const (
 	// DataFrame
@@ -68,5 +76,21 @@ func (f Type) String() string {
 		return "HandshakeType"
 	default:
 		return "UnknownFrame"
+	}
+}
+
+// Shortly reduce data size for easy viewing
+func Shortly(data []byte) []byte {
+	if len(data) > debugFrameSize {
+		return data[:debugFrameSize]
+	}
+	return data
+}
+
+func init() {
+	if envFrameSize := os.Getenv("YOMO_DEBUG_FRAME_SIZE"); envFrameSize != "" {
+		if val, err := strconv.Atoi(envFrameSize); err == nil {
+			debugFrameSize = val
+		}
 	}
 }

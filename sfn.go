@@ -143,13 +143,13 @@ func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
 
 	if s.fn != nil {
 		go func() {
-			s.client.Logger().Debugf("%sexecute-start fn: data=%# x", streamFunctionLogPrefix, data)
+			s.client.Logger().Debugf("%sexecute-start fn: data[%d]=%# x", streamFunctionLogPrefix, len(data), frame.Shortly(data))
 			// invoke serverless
 			tag, resp := s.fn(data)
-			s.client.Logger().Debugf("%sexecute-done fn: tag=%#x, resp=%# x", streamFunctionLogPrefix, tag, resp)
+			s.client.Logger().Debugf("%sexecute-done fn: tag=%#x, resp[%d]=%# x", streamFunctionLogPrefix, tag, len(resp), frame.Shortly(resp))
 			// if resp is not nil, means the user's function has returned something, we should send it to the zipper
 			if len(resp) != 0 {
-				s.client.Logger().Debugf("%sstart WriteFrame(): tag=%#x, data=%# x", streamFunctionLogPrefix, tag, resp)
+				s.client.Logger().Debugf("%sstart WriteFrame(): tag=%#x, data[%d]=%# x", streamFunctionLogPrefix, tag, len(resp), frame.Shortly(resp))
 				// build a DataFrame
 				// TODO: seems we should implement a DeepCopy() of MetaFrame in the future
 				frame := frame.NewDataFrame()
@@ -160,7 +160,7 @@ func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
 			}
 		}()
 	} else if s.pfn != nil {
-		s.client.Logger().Debugf("%spipe fn receive: data=%# x", streamFunctionLogPrefix, data)
+		s.client.Logger().Debugf("%spipe fn receive: data[%d]=%# x", streamFunctionLogPrefix, len(data), data)
 		s.pIn <- data
 	} else {
 		s.client.Logger().Warnf("%sStreamFunction is nil", streamFunctionLogPrefix)
