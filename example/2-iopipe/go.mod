@@ -2,7 +2,7 @@ module yomo.run/example-2-iopipe
 
 go 1.17
 
-require github.com/yomorun/yomo v1.5.1
+require github.com/yomorun/yomo v1.6.0
 
 require (
 	github.com/cheekybits/genny v1.0.0 // indirect

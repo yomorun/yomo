@@ -14,13 +14,13 @@ tasks:
     cmds:
       - "yomo serve -c workflow.yaml"
     env:
-      YOMO_ENABLE_DEBUG: true
       YOMO_LOG_LEVEL: error
 
   sfn:
     desc: sfn
     cmds:
-      - "yomo run serverless/counter.go -n counter"
+      - "yomo run -n counter serverless/counter.go" # use latest yomo
+      # - "yomo run -m go.mod -n counter serverless/counter.go" # use custom go.mod for development
 
   source:
     desc: source

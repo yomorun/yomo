@@ -8,11 +8,12 @@ import (
 )
 
 func main() {
-	sfn := yomo.NewStreamFunction("echo-sfn", yomo.WithZipperAddr("localhost:9002"))
+	sfn := yomo.NewStreamFunction(
+		"echo-sfn",
+		yomo.WithZipperAddr("localhost:9002"),
+		yomo.WithObserveDataTags(0x33),
+	)
 	defer sfn.Close()
-
-	// set only monitoring data which tag=0x33
-	sfn.SetObserveDataTag(0x33)
 
 	// set handler
 	sfn.SetHandler(handler)

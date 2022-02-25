@@ -13,9 +13,9 @@ const (
 
 // StreamFunction defines serverless streaming functions.
 type StreamFunction interface {
-	// SetObserveDataTag set the data tag list that will be observed
-	// Deprecated: use yomo.WithObservedDataTags instead
-	SetObserveDataTag(tag ...byte)
+	// SetObserveDataTags set the data tag list that will be observed
+	// Deprecated: use yomo.WithObserveDataTags instead
+	SetObserveDataTags(tag ...byte)
 	// SetHandler set the handler function, which accept the raw bytes data and return the tag & response
 	SetHandler(fn core.AsyncHandler) error
 	// SetPipeHandler set the pipe handler function
@@ -56,10 +56,10 @@ type streamFunction struct {
 	pOut           chan *frame.PayloadFrame
 }
 
-// SetObserveDataTag set the data tag list that will be observed.
-// Deprecated: use yomo.WithObservedDataTags instead
-func (s *streamFunction) SetObserveDataTag(tag ...byte) {
-	s.client.SetObserveDataTag(tag...)
+// SetObserveDataTags set the data tag list that will be observed.
+// Deprecated: use yomo.WithObserveDataTags instead
+func (s *streamFunction) SetObserveDataTags(tag ...byte) {
+	s.client.SetObserveDataTags(tag...)
 	s.client.Logger().Debugf("%sSetObserveDataTag(%v)", streamFunctionLogPrefix, s.observed)
 }
 

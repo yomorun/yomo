@@ -103,12 +103,12 @@ func WithCredential(cred auth.Credential) Option {
 	}
 }
 
-// WithObservedDataTags sets client data tag list.
-func WithObservedDataTags(tags ...byte) Option {
+// WithObserveDataTags sets client data tag list.
+func WithObserveDataTags(tags ...byte) Option {
 	return func(o *Options) {
 		o.ClientOptions = append(
 			o.ClientOptions,
-			core.WithObservedDataTags(tags...),
+			core.WithObserveDataTags(tags...),
 		)
 	}
 }

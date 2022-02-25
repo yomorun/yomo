@@ -769,8 +769,8 @@ func (s *StreamImpl) RawBytes() Stream {
 // 	return CreateObservable(s.ctx, f)
 // }
 
-// PipeBackToZipper sets a specified DataID to bytes and will pipe it back to zipper.
-func (s *StreamImpl) PipeBackToZipper(dataID byte) Stream {
+// PipeBackToZipper sets a specified DataTag to bytes and will pipe it back to zipper.
+func (s *StreamImpl) PipeBackToZipper(dataTag byte) Stream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
 		observe := s.Observe()
@@ -795,7 +795,7 @@ func (s *StreamImpl) PipeBackToZipper(dataID byte) Stream {
 				}
 
 				data := frame.PayloadFrame{
-					Tag:      dataID,
+					Tag:      dataTag,
 					Carriage: buf,
 				}
 

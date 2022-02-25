@@ -12,7 +12,7 @@ func Handler(data []byte) (byte, []byte) {
 	return 0, nil
 }
 
-// DataID describes the type of data this serverless function observed.
-func DataID() []byte {
+// DataTags describes the type of data this serverless function observed.
+func DataTags() []byte {
 	return []byte{0x01}
 }
