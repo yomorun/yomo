@@ -14,7 +14,7 @@ func TestHandshakeFrameEncode(t *testing.T) {
 		0x80 | byte(TagOfHandshakeFrame), 0x14,
 		byte(TagOfHandshakeName), 0x04, 0x31, 0x32, 0x33, 0x34,
 		byte(TagOfHandshakeType), 0x01, 0xD3,
-		byte(TagOfHandshakeObserved), 0x02, 0x01, 0x02,
+		byte(TagOfHandshakeObserveDataTags), 0x02, 0x01, 0x02,
 		byte(TagOfHandshakeAppID), 0x0,
 		byte(TagOfHandshakeAuthType), 0x01, 0x0,
 		byte(TagOfHandshakeAuthPayload), 0x0,

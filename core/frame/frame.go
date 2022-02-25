@@ -22,13 +22,13 @@ const (
 
 	TagOfTokenFrame Type = 0x3E
 	// HandshakeFrame
-	TagOfHandshakeFrame       Type = 0x3D
-	TagOfHandshakeName        Type = 0x01
-	TagOfHandshakeType        Type = 0x02
-	TagOfHandshakeAppID       Type = 0x03
-	TagOfHandshakeAuthType    Type = 0x04
-	TagOfHandshakeAuthPayload Type = 0x05
-	TagOfHandshakeObserved    Type = 0x06
+	TagOfHandshakeFrame           Type = 0x3D
+	TagOfHandshakeName            Type = 0x01
+	TagOfHandshakeType            Type = 0x02
+	TagOfHandshakeAppID           Type = 0x03
+	TagOfHandshakeAuthType        Type = 0x04
+	TagOfHandshakeAuthPayload     Type = 0x05
+	TagOfHandshakeObserveDataTags Type = 0x06
 
 	TagOfPingFrame     Type = 0x3C
 	TagOfPongFrame     Type = 0x3B
