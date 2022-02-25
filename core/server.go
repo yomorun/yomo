@@ -296,7 +296,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 
 		s.connector.Add(connID, stream)
 		// link connection to stream function
-		s.connector.LinkApp(connID, appID, name, f.ObservedDataTags)
+		s.connector.LinkApp(connID, appID, name, f.ObserveDataTags)
 	case ClientTypeUpstreamZipper:
 		s.connector.Add(connID, stream)
 		s.connector.LinkApp(connID, appID, name, nil)

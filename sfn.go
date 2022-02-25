@@ -33,10 +33,10 @@ func NewStreamFunction(name string, opts ...Option) StreamFunction {
 	options := NewOptions(opts...)
 	client := core.NewClient(name, core.ClientTypeStreamFunction, options.ClientOptions...)
 	sfn := &streamFunction{
-		name:           name,
-		zipperEndpoint: options.ZipperAddr,
-		client:         client,
-		observed:       make([]byte, 0),
+		name:            name,
+		zipperEndpoint:  options.ZipperAddr,
+		client:          client,
+		observeDataTags: make([]byte, 0),
 	}
 
 	return sfn
@@ -46,21 +46,21 @@ var _ StreamFunction = &streamFunction{}
 
 // streamFunction implements StreamFunction interface.
 type streamFunction struct {
-	name           string
-	zipperEndpoint string
-	client         *core.Client
-	observed       []byte            // tag list that will be observed
-	fn             core.AsyncHandler // user's function which will be invoked when data arrived
-	pfn            core.PipeHandler
-	pIn            chan []byte
-	pOut           chan *frame.PayloadFrame
+	name            string
+	zipperEndpoint  string
+	client          *core.Client
+	observeDataTags []byte            // tag list that will be observed
+	fn              core.AsyncHandler // user's function which will be invoked when data arrived
+	pfn             core.PipeHandler
+	pIn             chan []byte
+	pOut            chan *frame.PayloadFrame
 }
 
 // SetObserveDataTags set the data tag list that will be observed.
 // Deprecated: use yomo.WithObserveDataTags instead
 func (s *streamFunction) SetObserveDataTags(tag ...byte) {
 	s.client.SetObserveDataTags(tag...)
-	s.client.Logger().Debugf("%sSetObserveDataTag(%v)", streamFunctionLogPrefix, s.observed)
+	s.client.Logger().Debugf("%sSetObserveDataTag(%v)", streamFunctionLogPrefix, s.observeDataTags)
 }
 
 // SetHandler set the handler function, which accept the raw bytes data and return the tag & response.
