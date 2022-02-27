@@ -203,7 +203,7 @@ func (c *Client) handleFrame() {
 
 // Close the client.
 func (c *Client) Close() (err error) {
-	c.logger.Infof("%sclose the connection, name:%s, addr:%s", ClientLogPrefix, c.name, c.session.RemoteAddr().String())
+	c.logger.Printf("%sclose the connection, name:%s, addr:%s", ClientLogPrefix, c.name, c.session.RemoteAddr().String())
 	if c.stream != nil {
 		err = c.stream.Close()
 		if err != nil {

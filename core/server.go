@@ -120,7 +120,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 						s.connector.Remove(connID)
 						// store
 						// when remove store by appID? let me think...
-						logger.Infof("%s💔 [%s::%s](%s) close the connection", ServerLogPrefix, app.ID(), app.Name(), connID)
+						logger.Printf("%s💔 [%s::%s](%s) close the connection", ServerLogPrefix, app.ID(), app.Name(), connID)
 					} else {
 						logger.Errorf("%s❤️3/ [unknown](%s) on stream %v", ServerLogPrefix, connID, err)
 					}

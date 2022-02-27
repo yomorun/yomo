@@ -39,7 +39,7 @@ tasks:
     cmds:
       - "./bin/source{{exeExt}}"
     env:
-      YOMO_LOG_LEVEL: debug
+      YOMO_LOG_LEVEL: error
 
   sfn:
     desc: run sfn
