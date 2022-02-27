@@ -43,16 +43,12 @@ func main() {
 
 	// generate mock data and send it to YoMo-Zipper in every 100 ms.
 	err = generateAndSendData(source)
-	if err != nil {
-		logger.Printf("[source] >>>> ERR >>>> %v", err)
-		os.Exit(1)
-	}
-	select {}
+	logger.Printf("[source] >>>> ERR >>>> %v", err)
+	os.Exit(0)
 }
 
-// var codec = y3.NewCodec(0x10)
-
 func generateAndSendData(stream yomo.Source) error {
+	var i = 0
 	for {
 		// generate random data.
 		data := noiseData{
@@ -79,6 +75,10 @@ func generateAndSendData(stream yomo.Source) error {
 		}
 
 		time.Sleep(500 * time.Millisecond)
+		if i++; i > 5 {
+			stream.Close()
+			return nil
+		}
 	}
 }
 

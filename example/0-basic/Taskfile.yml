@@ -39,7 +39,7 @@ tasks:
     cmds:
       - "./bin/source{{exeExt}}"
     env:
-      YOMO_LOG_LEVEL: error
+      YOMO_LOG_LEVEL: debug
 
   sfn:
     desc: run sfn
@@ -49,11 +49,20 @@ tasks:
     env:
       YOMO_LOG_LEVEL: error
 
-  zipper:
+  zipper-old:
     desc: run zipper
     cmds:
       - "yomo serve -c workflow.yaml"
     env:
       YOMO_LOG_LEVEL: error
+      YOMO_ADDR: "localhost:9000"
+      YOMO_LOG_ERROR_OUTPUT: err.log
+
+  zipper:
+    desc: run zipper
+    cmds:
+      - "$HOME/_wrk/cli/bin/yomo serve -c workflow.yaml"
+    env:
+      YOMO_LOG_LEVEL: info
       YOMO_ADDR: "localhost:9000"
       YOMO_LOG_ERROR_OUTPUT: err.log

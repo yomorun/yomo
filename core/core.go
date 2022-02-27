@@ -22,6 +22,7 @@ const (
 	ConnStatePing           ConnState = "Ping"
 	ConnStatePong           ConnState = "Pong"
 	ConnStateTransportData  ConnState = "TransportData"
+	ConnStateAborted        ConnState = "Aborted"
 )
 
 // Prefix is the prefix for logger.
