@@ -12,7 +12,7 @@ import (
 func ParseFrame(stream io.Reader) (frame.Frame, error) {
 	buf, err := y3.ReadPacket(stream)
 	if err != nil {
-		return nil, fmt.Errorf("ParseFrame: read first byte with err=%v", err)
+		return nil, err
 	}
 	// if len(buf) > 512 {
 	// 	logger.Debugf("%s🔗 parsed out total %d bytes: \n\thead 64 bytes are: [%# x], \n\ttail 64 bytes are: [%#x]", ParseFrameLogPrefix, len(buf), buf[0:64], buf[len(buf)-64:])

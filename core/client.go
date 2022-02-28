@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"os"
+	// "os"
 	"sync"
 	"time"
 
@@ -138,27 +138,36 @@ func (c *Client) handleFrame() {
 		if err != nil {
 			defer c.stream.Close()
 			defer c.session.CloseWithError(0xD0, err.Error())
-			defer c.setState(ConnStateDisconnected)
 
-			c.logger.Errorf("%shandleFrame.ReadFrame(): %T %v", ClientLogPrefix, err, err)
+			c.logger.Infof("%shandleFrame(): %T | %v", ClientLogPrefix, err, err)
 			if e, ok := err.(*quic.IdleTimeoutError); ok {
-				c.logger.Errorf("%sconnection timeout, err=%v, zipper=%s", ClientLogPrefix, e, c.addr)
+				c.logger.Errorf("%s>>1 connection timeout, err=%v, zipper=%s", ClientLogPrefix, e, c.addr)
+				c.setState(ConnStateDisconnected)
 			} else if e, ok := err.(*quic.ApplicationError); ok {
-				c.logger.Errorf("%sapplication error, err=%v, errcode=%v", ClientLogPrefix, e, e.ErrorCode)
+				c.logger.Infof("%s>>2 application error, err=%v, errcode=%v", ClientLogPrefix, e, e.ErrorCode)
 				if e.ErrorCode == 0xCC {
 					c.logger.Errorf("%sIllegal client, server rejected.", ClientLogPrefix)
-					// TODO: stop reconnect policy will be much better than exit process.
-					os.Exit(0xCC)
+					// stop reconnect policy
+					c.setState(ConnStateAborted)
+					break
+				} else if e.ErrorCode == 0x00 {
+					// client abort
+					c.logger.Infof("%sclient close the connection", ClientLogPrefix)
+					c.setState(ConnStateAborted)
+					break
 				}
 			} else if errors.Is(err, net.ErrClosed) {
 				// if client close the connection, net.ErrClosed will be raise
-				c.logger.Errorf("%sconnection is closed, err=%v", ClientLogPrefix, err)
+				c.logger.Errorf("%s>>3 connection is closed, err=%v", ClientLogPrefix, err)
+				c.setState(ConnStateDisconnected)
 				// by quic-go IdleTimeoutError after connection's KeepAlive config.
 				break
 			}
+			c.logger.Infof("%s>>4 xxx, err=%v", ClientLogPrefix, err)
 			// any error occurred, we should close the session
 			// after this, session.AcceptStream() will raise the error
 			// which specific in session.CloseWithError()
+			c.setState(ConnStateDisconnected)
 			break
 		}
 
@@ -194,7 +203,7 @@ func (c *Client) handleFrame() {
 
 // Close the client.
 func (c *Client) Close() (err error) {
-	c.logger.Debugf("%sclose the connection", ClientLogPrefix)
+	c.logger.Printf("%sclose the connection, name:%s, addr:%s", ClientLogPrefix, c.name, c.session.RemoteAddr().String())
 	if c.stream != nil {
 		err = c.stream.Close()
 		if err != nil {
@@ -202,7 +211,7 @@ func (c *Client) Close() (err error) {
 		}
 	}
 	if c.session != nil {
-		err = c.session.CloseWithError(255, "client.session closed")
+		err = c.session.CloseWithError(0, "client-ask-to-close-this-session")
 		if err != nil {
 			c.logger.Errorf("%s session.Close(): %v", ClientLogPrefix, err)
 		}
@@ -253,6 +262,7 @@ func (c *Client) WriteFrame(frm frame.Frame) error {
 
 // update connection state
 func (c *Client) setState(state ConnState) {
+	c.logger.Debugf("setState to:%s", state)
 	c.mu.Lock()
 	c.state = state
 	c.mu.Unlock()

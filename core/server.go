@@ -49,9 +49,6 @@ func NewServer(name string, opts ...ServerOption) *Server {
 		downstreams: make(map[string]*Client),
 	}
 	s.Init(opts...)
-	once.Do(func() {
-		s.init()
-	})
 
 	return s
 }
@@ -116,14 +113,14 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 				stream, err := sess.AcceptStream(ctx)
 				if err != nil {
 					// if client close the connection, then we should close the session
+					// @CC: when Source close the connection, it won't affect connectors
 					app, ok := s.connector.App(connID)
 					if ok {
 						// connector
 						s.connector.Remove(connID)
 						// store
 						// when remove store by appID? let me think...
-						logger.Errorf("%s❤️3/ [%s::%s](%s) on stream %v", ServerLogPrefix, app.ID(), app.Name(), connID, err)
-						logger.Printf("%s💔 [%s::%s](%s) is disconnected", ServerLogPrefix, app.ID(), app.Name(), connID)
+						logger.Printf("%s💔 [%s::%s](%s) close the connection", ServerLogPrefix, app.ID(), app.Name(), connID)
 					} else {
 						logger.Errorf("%s❤️3/ [unknown](%s) on stream %v", ServerLogPrefix, connID, err)
 					}
@@ -174,7 +171,17 @@ func (s *Server) handleSession(c *Context) {
 		logger.Debugf("%shandleSession 💚 waiting read next...", ServerLogPrefix)
 		f, err := fs.ReadFrame()
 		if err != nil {
-			logger.Errorf("%s [ERR] %T %v", ServerLogPrefix, err, err)
+			// if client close connection, will get ApplicationError with code = 0x00
+			if e, ok := err.(*quic.ApplicationError); ok {
+				if e.ErrorCode == 0x00 {
+					// client abort
+					logger.Infof("%sclient close the connection", ServerLogPrefix)
+					break
+				}
+			} else if err == io.EOF {
+				break
+			}
+			logger.Errorf("%s [ERR] %v", ServerLogPrefix, err)
 			if errors.Is(err, net.ErrClosed) {
 				// if client close the connection, net.ErrClosed will be raise
 				// by quic-go IdleTimeoutError after connection's KeepAlive config.
@@ -397,14 +404,6 @@ func (s *Server) Router() Router {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.router
-}
-
-func (s *Server) init() {
-	// // tracing
-	// _, _, err := tracing.NewTracerProvider(s.name)
-	// if err != nil {
-	// 	logger.Errorf("tracing: %v", err)
-	// }
 }
 
 // AddDownstreamServer add a downstream server to this server. all the DataFrames will be
