@@ -30,7 +30,7 @@ func (l *defaultListener) Listen(conn net.PacketConn, tlsConfig *tls.Config, qui
 	// tls config
 	var tc *tls.Config = tlsConfig
 	if tc == nil {
-		tc, err = pkgtls.CreateServerTLSConfig()
+		tc, err = pkgtls.CreateServerTLSConfig(conn.LocalAddr().String())
 		if err != nil {
 			logger.Errorf("%sCreateServerTLSConfig: %v", ServerLogPrefix, err)
 			return err
