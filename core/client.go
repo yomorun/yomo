@@ -310,7 +310,7 @@ func (c *Client) ServerAddr() string {
 }
 
 // initOptions init options defaults
-func (c *Client) initOptions() {
+func (c *Client) initOptions() error {
 	// logger
 	if c.logger == nil {
 		if c.opts.Logger != nil {
@@ -332,7 +332,7 @@ func (c *Client) initOptions() {
 		tc, err := pkgtls.CreateClientTLSConfig()
 		if err != nil {
 			c.logger.Errorf("%sCreateClientTLSConfig: %v", ClientLogPrefix, err)
-			return
+			return err
 		}
 		c.opts.TLSConfig = tc
 	}
@@ -355,6 +355,8 @@ func (c *Client) initOptions() {
 	if c.opts.Credential != nil {
 		c.logger.Printf("%suse credential: [%s]", ClientLogPrefix, c.opts.Credential.Type())
 	}
+
+	return nil
 }
 
 // SetObserveDataTags set the data tag list that will be observed.

@@ -6,20 +6,40 @@ import (
 	"errors"
 	"io/ioutil"
 	"os"
+	"path"
 )
+
+var workingDir string
+
+func init() {
+	wd, err := os.Getwd()
+	if err != nil {
+		panic("Failed to get current working directory")
+	}
+
+	workingDir = wd
+
+	// 	_, filename, _, ok := runtime.Caller(0)
+	// 	if !ok {
+	// 		panic("Failed to get current frame")
+	// 	}
+
+	// 	workingDir = path.Dir(filename)
+}
 
 // CreateServerTLSConfig creates server tls config.
 func CreateServerTLSConfig() (*tls.Config, error) {
+	// ca pool
 	pool, err := getCACertPool()
 	if err != nil {
 		return nil, err
 	}
-
+	// server certificate
 	tlsCert, err := getCertAndKey()
 	if err != nil {
 		return nil, err
 	}
-
+	// client auth
 	var clientAuth tls.ClientAuthType
 	if isDev() {
 		clientAuth = tls.NoClientCert
@@ -63,13 +83,13 @@ func getCACertPool() (*x509.CertPool, error) {
 	caCertPath := os.Getenv("YOMO_TLS_CACERT_FILE")
 	if len(caCertPath) == 0 {
 		if isDev() {
-			caCert = getDevCACert()
+			caCertPath = path.Join(workingDir, "ca.crt")
 		}
-	} else {
-		caCert, err = ioutil.ReadFile(caCertPath)
-		if err != nil {
-			return nil, err
-		}
+	}
+
+	caCert, err = ioutil.ReadFile(caCertPath)
+	if err != nil {
+		return nil, err
 	}
 
 	if len(caCert) == 0 {
@@ -92,18 +112,20 @@ func getCertAndKey() (*tls.Certificate, error) {
 	keyPath := os.Getenv("YOMO_TLS_KEY_FILE")
 	if len(certPath) == 0 || len(keyPath) == 0 {
 		if isDev() {
-			cert, key = getDevCertAndKey()
+			certPath = path.Join(workingDir, "server.crt")
+			keyPath = path.Join(workingDir, "server.key")
 		}
-	} else {
-		cert, err = ioutil.ReadFile(certPath)
-		if err != nil {
-			return nil, err
-		}
+	}
 
-		key, err = ioutil.ReadFile(keyPath)
-		if err != nil {
-			return nil, err
-		}
+	// certificate
+	cert, err = ioutil.ReadFile(certPath)
+	if err != nil {
+		return nil, err
+	}
+	// private key
+	key, err = ioutil.ReadFile(keyPath)
+	if err != nil {
+		return nil, err
 	}
 
 	if len(cert) == 0 || len(key) == 0 {
