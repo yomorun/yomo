@@ -4,6 +4,13 @@ version: "3"
 
 output: "prefixed"
 
+env:
+  YOMO_LOG_LEVEL: error
+  # YOMO_ENV: production
+  YOMO_TLS_CACERT_FILE: "../../test/tls/ca.crt"
+  YOMO_TLS_CERT_FILE: "../../test/tls/client.crt"
+  YOMO_TLS_KEY_FILE: "../../test/tls/client.key"
+
 tasks:
   run:
     desc: run
@@ -17,11 +24,13 @@ tasks:
 
   zipper:
     desc: run zipper
-    dir: zipper
     cmds:
-      - "go run main.go"
+      - "go run zipper/main.go"
     env:
       YOMO_LOG_LEVEL: error
+      YOMO_ZIPPER_WORKFLOW: ./zipper/workflow.yaml
+      YOMO_TLS_CERT_FILE: "../../test/tls/server.crt"
+      YOMO_TLS_KEY_FILE: "../../test/tls/server.key"
 
   source-build:
     desc: build source
@@ -34,8 +43,6 @@ tasks:
     cmds:
       - "go build -o ./bin/source{{exeExt}} source/main.go"
       - "./bin/source{{exeExt}}"
-    env:
-      YOMO_LOG_LEVEL: error
 
   sfn:
     desc: run stream functions
@@ -46,8 +53,6 @@ tasks:
     cmds:
       - "go build -o ./bin/sfn-1{{exeExt}} ./stream-fn-1/app.go"
       - "./bin/sfn-1{{exeExt}}"
-    env:
-      YOMO_LOG_LEVEL: error
 
   sfn-2:
     desc: run stream functions 2

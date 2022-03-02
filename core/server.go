@@ -15,6 +15,7 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/store"
 	"github.com/yomorun/yomo/pkg/logger"
+	pkgtls "github.com/yomorun/yomo/pkg/tls"
 )
 
 const (
@@ -86,11 +87,11 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 	// listen the address
 	err := listener.Listen(conn, s.opts.TLSConfig, s.opts.QuicConfig)
 	if err != nil {
-		logger.Errorf("%squic.ListenAddr on: %s, err=%v", ServerLogPrefix, listener.Addr(), err)
+		logger.Errorf("%slistener.Listen: err=%v", ServerLogPrefix, err)
 		return err
 	}
 	defer listener.Close()
-	logger.Printf("%s✅ [%s] Listening on: %s, QUIC: %v, AUTH: %s", ServerLogPrefix, s.name, listener.Addr(), listener.Versions(), s.authNames())
+	logger.Printf("%s✅ [%s] Listening on: %s, MODE: %s, QUIC: %v, AUTH: %s", ServerLogPrefix, s.name, listener.Addr(), mode(), listener.Versions(), s.authNames())
 
 	s.state = ConnStateConnected
 	for {
@@ -486,4 +487,11 @@ func (s *Server) authenticate(f *frame.HandshakeFrame) bool {
 		return false
 	}
 	return true
+}
+
+func mode() string {
+	if pkgtls.IsDev() {
+		return "DEVELOPMENT"
+	}
+	return "PRODUCTION"
 }

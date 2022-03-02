@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/pkg/logger"
 )
 
 type noiseData struct {
@@ -54,10 +53,9 @@ func generateAndSendData(source yomo.Source) {
 		if err != nil {
 			log.Printf("❌ Emit %v to YoMo-Zipper failure with err: %v", data, err)
 		} else {
-			// log.Printf("✅ Emit %v to YoMo-Zipper", data)
-			logger.Infof("✅ Emit %v to YoMo-Zipper", data)
+			log.Printf("✅ Emit %v to YoMo-Zipper", data)
 		}
 
-		time.Sleep(5000 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 	}
 }

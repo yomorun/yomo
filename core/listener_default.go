@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/lucas-clemente/quic-go"
+	"github.com/yomorun/yomo/pkg/logger"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
 )
 
@@ -25,12 +26,15 @@ func (l *defaultListener) Name() string {
 }
 
 func (l *defaultListener) Listen(conn net.PacketConn, tlsConfig *tls.Config, quicConfig *quic.Config) error {
-	// listen addr
-	addr := conn.LocalAddr().String()
+	var err error
 	// tls config
 	var tc *tls.Config = tlsConfig
 	if tc == nil {
-		tc = pkgtls.GenerateTLSConfig(addr)
+		tc, err = pkgtls.CreateServerTLSConfig(conn.LocalAddr().String())
+		if err != nil {
+			logger.Errorf("%sCreateServerTLSConfig: %v", ServerLogPrefix, err)
+			return err
+		}
 	}
 	// quic config
 	var c *quic.Config = quicConfig
