@@ -22,3 +22,6 @@ package-lock.json
 package.json
 
 *.log
+
+# tls generated files
+scripts/tls/

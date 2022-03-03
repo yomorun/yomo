@@ -7,7 +7,7 @@ fi
 
 echo "server name is: $SERVER_NAME"
 
-cd tls-files
+cd tls
 
 # Server key
 openssl ecparam \

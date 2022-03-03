@@ -7,7 +7,7 @@ fi
 
 echo "client name is: $CLIENT_NAME"
 
-cd tls-files
+cd tls
 
 # Client key
 openssl ecparam \
