@@ -48,7 +48,7 @@ $ go install github.com/yomorun/cli/yomo@latest
 ```bash
 $ yomo -V
 
-YoMo CLI version: v0.1.7
+YoMo CLI version: v0.1.9
 ```
 
 ### 2. Create your stream function
@@ -107,7 +107,7 @@ func Handler(rxstream rx.Stream) rx.Stream {
 	return stream
 }
 
-func DataID() []byte {
+func DataTags() []byte {
 	return []byte{0x33}
 }
 
