@@ -43,7 +43,7 @@ $ env GOBIN=/bin go install github.com/yomorun/cli/yomo@latest
 ```bash
 $ yomo -V
 
-YoMo CLI version: v0.1.3
+YoMo CLI version: v0.1.9
 ```
 
 ### 2. 创建第一个yomo应用
@@ -101,7 +101,7 @@ func Handler(rxstream rx.Stream) rx.Stream {
 	return stream
 }
 
-func DataID() []byte {
+func DataTags() []byte {
 	return []byte{0x33}
 }
 
