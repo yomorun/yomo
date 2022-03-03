@@ -1,7 +1,7 @@
 #!/bin/bash
 
-mkdir -p tls-files
-cd tls-files
+mkdir -p tls
+cd tls
 
 # CA key
 openssl ecparam \
