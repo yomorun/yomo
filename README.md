@@ -48,7 +48,7 @@ $ go install github.com/yomorun/cli/yomo@latest
 ```bash
 $ yomo -V
 
-YoMo CLI version: v0.1.9
+YoMo CLI version: v1.0.0
 ```
 
 ### 2. Create your stream function
