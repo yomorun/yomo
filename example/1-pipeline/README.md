@@ -23,7 +23,7 @@ Install YoMo CLI
 ```bash
 $ curl -fsSL "https://bina.egoist.sh/yomorun/cli?name=yomo" | sh
 
-  ==> Resolved version latest to v0.1.7
+  ==> Resolved version latest to v1.0.0
   ==> Downloading asset for darwin amd64
   ==> Installing yomo to /usr/local/bin
   ==> Installation complete
@@ -34,7 +34,7 @@ $ curl -fsSL "https://bina.egoist.sh/yomorun/cli?name=yomo" | sh
 ```bash
 $ go install github.com/yomorun/cli/yomo@latest
 $ yomo version
-YoMo CLI Version: v0.1.7
+YoMo CLI Version: v1.0.0
 ```
 
 ## Option 1: Auto Run
