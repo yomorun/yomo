@@ -24,3 +24,6 @@
 - `YOMO_TLS_KEY_FILE`，私钥
 
 在 `Zipper`，`Source`，`StreamFucntion` 实例分别配置相应证书文件。
+
+参考示例 [3-multi-sfn 运行设置](https://github.com/yomorun/yomo/blob/master/example/3-multi-sfn/Taskfile.yml) ，取消注释部分设置。
+
