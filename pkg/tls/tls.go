@@ -71,7 +71,7 @@ func CreateClientTLSConfig() (*tls.Config, error) {
 	}
 
 	return &tls.Config{
-		InsecureSkipVerify: true,
+		InsecureSkipVerify: false,
 		Certificates:       []tls.Certificate{*tlsCert},
 		RootCAs:            pool,
 		NextProtos:         []string{"yomo"},
