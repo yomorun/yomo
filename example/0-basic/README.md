@@ -43,9 +43,10 @@ YoMo CLI Version: v1.0.0
 yomo serve -c ./workflow.yaml
 
 Using config file: ./workflow.yaml
+2021/11/11 16:09:54 [yomo:zipper] [AddWorkflow] 0, Noise
 ℹ️   Running YoMo-Zipper...
-2022-03-18 10:21:05.820	[yomo:zipper] Listening SIGUSR1, SIGUSR2, SIGTERM/SIGINT...
-2022-03-18 10:21:05.829	[core:server] ✅ [Service] Listening on: 127.0.0.1:9000, MODE: DEVELOPMENT, QUIC: [v1 draft-29], AUTH: [None]
+2021/11/11 16:09:54 [yomo:zipper] Listening SIGTERM/SIGINT...
+2021/11/11 16:09:54 [core:server] ✅ (name:Service) Listening on: 127.0.0.1:9000, QUIC: [v1 draft-29]
 ```
 
 ### Run [stream-function](https://docs.yomo.run/stream-fn)
