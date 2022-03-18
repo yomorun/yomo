@@ -40,9 +40,9 @@ YoMo CLI Version: v1.0.0
 ### Run [zipper](https://docs.yomo.run/zipper)
 
 ```bash
-yomo serve -c ./zipper/workflow.yaml
+yomo serve -c ./workflow.yaml
 
-Using config file: ./zipper/workflow.yaml
+Using config file: ./workflow.yaml
 2021/11/11 16:09:54 [yomo:zipper] [AddWorkflow] 0, Noise
 ℹ️   Running YoMo-Zipper...
 2021/11/11 16:09:54 [yomo:zipper] Listening SIGTERM/SIGINT...
