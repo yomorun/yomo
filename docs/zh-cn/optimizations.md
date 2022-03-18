@@ -14,7 +14,7 @@
 - generate_client.sh
 - generate_server.sh
 
-您可参参照 [README.md](https://github.com/yomorun/yomo/blob/master/scripts/README.md) 文件说明，创建相关证书。
+您可参照 [README.md](https://github.com/yomorun/yomo/blob/master/scripts/README.md) 文件说明，创建相关证书。
 
 默认情况下，我们使用 `development` 开发模式，不进行服务端与客户端的双向 `TLS`认证，在生产环境下，**强烈建议**您修改如下环境变量：
 
