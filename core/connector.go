@@ -59,12 +59,14 @@ type Connector interface {
 type connector struct {
 	conns sync.Map
 	apps  sync.Map
+	mu    sync.Mutex
 }
 
 func newConnector() Connector {
 	return &connector{
 		conns: sync.Map{},
 		apps:  sync.Map{},
+		mu:    sync.Mutex{},
 	}
 }
 
@@ -154,7 +156,9 @@ func (c *connector) Write(f *frame.DataFrame, toID string) error {
 		logger.Warnf("%swill write to: [%s], target stream is nil", ServerLogPrefix, toID)
 		return fmt.Errorf("target[%s] stream is nil", toID)
 	}
+	c.mu.Lock()
 	_, err := targetStream.Write(f.Encode())
+	c.mu.Unlock()
 	return err
 }
 
