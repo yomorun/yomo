@@ -19,6 +19,7 @@ type FrameStream struct {
 func NewFrameStream(s io.ReadWriter) *FrameStream {
 	return &FrameStream{
 		stream: s,
+		mu:     sync.Mutex{},
 	}
 }
 
