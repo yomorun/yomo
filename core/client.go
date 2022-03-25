@@ -267,6 +267,13 @@ func (c *Client) setState(state ConnState) {
 	c.mu.Unlock()
 }
 
+// getState get connection state
+func (c *Client) getState() ConnState {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.state
+}
+
 // update connection local addr
 func (c *Client) setLocalAddr(addr string) {
 	c.mu.Lock()
@@ -285,7 +292,7 @@ func (c *Client) reconnect(ctx context.Context, addr string) {
 	t := time.NewTicker(1 * time.Second)
 	defer t.Stop()
 	for range t.C {
-		if c.state == ConnStateDisconnected {
+		if c.getState() == ConnStateDisconnected {
 			c.logger.Printf("%s[%s](%s) is reconnecting to YoMo-Zipper %s...\n", ClientLogPrefix, c.name, c.localAddr, addr)
 			err := c.connect(ctx, addr)
 			if err != nil {
