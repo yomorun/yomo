@@ -8,7 +8,13 @@ YoMo is an open-source Streaming Serverless Framework for building Low-latency E
 
 Official Website: 🦖[https://yomo.run](https://yomo.run)
 
-[Gitee](https://gitee.com/yomorun/yomo)
+💚 We care about: **The Demand For Real-Time Digital User Experiences**
+
+It’s no secret that today’s users want instant gratification, every productivity application is more powerful when it's collaborative. but, currently, when we talk about `distribution`, it's represents **distribution in data center**, API is far away from their users from all over the world.
+
+If an application can be deployed anywhere close to their end users, solve the problem, this is **Geo-distributed System Architecture**:
+
+<img width="580" alt="yomo geo-distributed system" src="https://user-images.githubusercontent.com/65603/162367572-5a0417fa-e2b2-4d35-8c92-2c95d461706d.png">
 
 ## 🌶 Features
 
@@ -206,6 +212,10 @@ First off, thank you for considering making contributions. It's people like you 
 ## 🤹🏻‍♀️ Feedback
 
 Any questions or good ideas, please feel free to come to our [Discussion](https://github.com/yomorun/yomo/discussions). Any feedback would be greatly appreciated!
+
+## 🏄‍♂️ Best Practice in Production
+
+[Discussion #314](https://github.com/yomorun/yomo/discussions/314) Tips: YoMo/QUIC Server Performance Tuning 
 
 ## License
 
