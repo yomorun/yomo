@@ -27,7 +27,7 @@ type ConnState = string
 type Client struct {
 	name       string                 // name of the client
 	clientType ClientType             // type of the connection
-	session    quic.Session           // quic session
+	conn       quic.Connection        // quic connection
 	stream     quic.Stream            // quic stream
 	state      ConnState              // state of the connection
 	processor  func(*frame.DataFrame) // functions to invoke when data arrived
@@ -84,21 +84,21 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	c.state = ConnStateConnecting
 
 	// create quic connection
-	session, err := quic.DialAddrContext(ctx, addr, c.opts.TLSConfig, c.opts.QuicConfig)
+	conn, err := quic.DialAddrContext(ctx, addr, c.opts.TLSConfig, c.opts.QuicConfig)
 	if err != nil {
 		c.state = ConnStateDisconnected
 		return err
 	}
 
 	// quic stream
-	stream, err := session.OpenStreamSync(ctx)
+	stream, err := conn.OpenStreamSync(ctx)
 	if err != nil {
 		c.state = ConnStateDisconnected
 		return err
 	}
 
 	c.stream = stream
-	c.session = session
+	c.conn = conn
 
 	c.state = ConnStateAuthenticating
 	// send handshake
@@ -116,7 +116,7 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 		return err
 	}
 	c.state = ConnStateConnected
-	c.localAddr = c.session.LocalAddr().String()
+	c.localAddr = c.conn.LocalAddr().String()
 
 	c.logger.Printf("%s❤️  [%s](%s) is connected to YoMo-Zipper %s", ClientLogPrefix, c.name, c.localAddr, addr)
 
@@ -136,7 +136,7 @@ func (c *Client) handleFrame() {
 		f, err := fs.ReadFrame()
 		if err != nil {
 			defer c.stream.Close()
-			defer c.session.CloseWithError(0xD0, err.Error())
+			defer c.conn.CloseWithError(0xD0, err.Error())
 
 			c.logger.Infof("%shandleFrame(): %T | %v", ClientLogPrefix, err, err)
 			if e, ok := err.(*quic.IdleTimeoutError); ok {
@@ -163,9 +163,8 @@ func (c *Client) handleFrame() {
 				break
 			}
 			c.logger.Infof("%s>>4 xxx, err=%v", ClientLogPrefix, err)
-			// any error occurred, we should close the session
-			// after this, session.AcceptStream() will raise the error
-			// which specific in session.CloseWithError()
+			// any error occurred, we should close the stream
+			// after this, conn.AcceptStream() will raise the error
 			c.setState(ConnStateDisconnected)
 			break
 		}
@@ -202,17 +201,17 @@ func (c *Client) handleFrame() {
 
 // Close the client.
 func (c *Client) Close() (err error) {
-	c.logger.Printf("%sclose the connection, name:%s, addr:%s", ClientLogPrefix, c.name, c.session.RemoteAddr().String())
+	c.logger.Printf("%sclose the connection, name:%s, addr:%s", ClientLogPrefix, c.name, c.conn.RemoteAddr().String())
 	if c.stream != nil {
 		err = c.stream.Close()
 		if err != nil {
 			c.logger.Errorf("%s stream.Close(): %v", ClientLogPrefix, err)
 		}
 	}
-	if c.session != nil {
-		err = c.session.CloseWithError(0, "client-ask-to-close-this-session")
+	if c.conn != nil {
+		err = c.conn.CloseWithError(0, "client-ask-to-close-this-connection")
 		if err != nil {
-			c.logger.Errorf("%s session.Close(): %v", ClientLogPrefix, err)
+			c.logger.Errorf("%s connection.Close(): %v", ClientLogPrefix, err)
 		}
 	}
 

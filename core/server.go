@@ -24,7 +24,7 @@ const (
 
 type ServerOption func(*ServerOptions)
 
-// type FrameHandler func(store store.Store, stream quic.Stream, session quic.Session, f frame.Frame) error
+// type FrameHandler func(store store.Store, stream quic.Stream, conn quic.Connection, f frame.Frame) error
 type FrameHandler func(c *Context) error
 
 // Server is the underlining server of Zipper
@@ -95,25 +95,25 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 
 	s.state = ConnStateConnected
 	for {
-		// create a new session when new yomo-client connected
+		// create a new connection when new yomo-client connected
 		sctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
-		session, err := listener.Accept(sctx)
+		conn, err := listener.Accept(sctx)
 		if err != nil {
-			logger.Errorf("%screate session error: %v", ServerLogPrefix, err)
+			logger.Errorf("%screate connection error: %v", ServerLogPrefix, err)
 			return err
 		}
 
-		connID := GetConnID(session)
+		connID := GetConnID(conn)
 		logger.Infof("%s❤️1/ new connection: %s", ServerLogPrefix, connID)
 
-		go func(ctx context.Context, sess quic.Session) {
+		go func(ctx context.Context, conn quic.Connection) {
 			for {
 				logger.Infof("%s❤️2/ waiting for new stream", ServerLogPrefix)
-				stream, err := sess.AcceptStream(ctx)
+				stream, err := conn.AcceptStream(ctx)
 				if err != nil {
-					// if client close the connection, then we should close the session
+					// if client close the connection, then we should close the connection
 					// @CC: when Source close the connection, it won't affect connectors
 					app, ok := s.connector.App(connID)
 					if ok {
@@ -134,10 +134,10 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 				// process frames on stream
 				c := newContext(connID, stream)
 				defer c.Clean()
-				s.handleSession(c)
-				logger.Infof("%s❤️5/ [stream:%d] handleSession DONE", ServerLogPrefix, stream.StreamID())
+				s.handleConnection(c)
+				logger.Infof("%s❤️5/ [stream:%d] handleConnection DONE", ServerLogPrefix, stream.StreamID())
 			}
-		}(sctx, session)
+		}(sctx, conn)
 	}
 }
 
@@ -164,12 +164,12 @@ func (s *Server) Close() error {
 	return nil
 }
 
-// handle streams on a session
-func (s *Server) handleSession(c *Context) {
+// handle streams on a connection
+func (s *Server) handleConnection(c *Context) {
 	fs := NewFrameStream(c.Stream)
 	// check update for stream
 	for {
-		logger.Debugf("%shandleSession 💚 waiting read next...", ServerLogPrefix)
+		logger.Debugf("%shandleConnection 💚 waiting read next...", ServerLogPrefix)
 		f, err := fs.ReadFrame()
 		if err != nil {
 			// if client close connection, will get ApplicationError with code = 0x00
@@ -186,15 +186,14 @@ func (s *Server) handleSession(c *Context) {
 			if errors.Is(err, net.ErrClosed) {
 				// if client close the connection, net.ErrClosed will be raise
 				// by quic-go IdleTimeoutError after connection's KeepAlive config.
-				logger.Warnf("%s [ERR] net.ErrClosed on [handleSession] %v", ServerLogPrefix, net.ErrClosed)
+				logger.Warnf("%s [ERR] net.ErrClosed on [handleConnection] %v", ServerLogPrefix, net.ErrClosed)
 				c.CloseWithError(0xC1, "net.ErrClosed")
 				break
 			}
-			// any error occurred, we should close the session
-			// after this, session.AcceptStream() will raise the error
-			// which specific in session.CloseWithError()
+			// any error occurred, we should close the stream
+			// after this, conn.AcceptStream() will raise the error
 			c.CloseWithError(0xC0, err.Error())
-			logger.Warnf("%ssession.Close()", ServerLogPrefix)
+			logger.Warnf("%sconnection.Close()", ServerLogPrefix)
 			break
 		}
 
@@ -241,7 +240,7 @@ func (s *Server) mainFrameHandler(c *Context) error {
 			// break
 		}
 	// case frame.TagOfPingFrame:
-	// 	s.handlePingFrame(mainStream, session, f.(*frame.PingFrame))
+	// 	s.handlePingFrame(mainStream, connection, f.(*frame.PingFrame))
 	case frame.TagOfDataFrame:
 		if err := s.handleDataFrame(c); err != nil {
 			c.CloseWithError(0xCC, "处理DataFrame出错")
@@ -320,7 +319,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 }
 
 // will reuse quic-go's keep-alive feature
-// func (s *Server) handlePingFrame(stream quic.Stream, session quic.Session, f *frame.PingFrame) error {
+// func (s *Server) handlePingFrame(stream quic.Stream, conn quic.Connection, f *frame.PingFrame) error {
 // 	logger.Infof("%s------> GOT ❤️ PingFrame : %# x", ServerLogPrefix, f)
 // 	return nil
 // }
@@ -423,9 +422,9 @@ func (s *Server) dispatchToDownstreams(df *frame.DataFrame) {
 	}
 }
 
-// GetConnID get quic session connection id
-func GetConnID(sess quic.Session) string {
-	return sess.RemoteAddr().String()
+// GetConnID get quic connection id
+func GetConnID(conn quic.Connection) string {
+	return conn.RemoteAddr().String()
 }
 
 func (s *Server) initOptions() {
