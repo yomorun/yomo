@@ -120,14 +120,13 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 						// connector
 						s.connector.Remove(connID)
 						// store
-						// when remove store by appID? let me think...
-						logger.Printf("%s💔 [%s::%s](%s) close the connection", ServerLogPrefix, app.ID(), app.Name(), connID)
+						// remove app route from store? let me think...
+						logger.Printf("%s💔 [%s](%s) close the connection", ServerLogPrefix, app.Name(), connID)
 					} else {
 						logger.Errorf("%s❤️3/ [unknown](%s) on stream %v", ServerLogPrefix, connID, err)
 					}
 					break
 				}
-				// TODO: 确实执行了吗？
 				defer stream.Close()
 
 				logger.Infof("%s❤️4/ [stream:%d] created, connID=%s", ServerLogPrefix, stream.StreamID(), connID)
@@ -259,35 +258,34 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 
 	logger.Debugf("%sGOT ❤️ HandshakeFrame : %# x", ServerLogPrefix, f)
 	// credential
-	logger.Infof("%sClientType=%# x is %s, CredentialType=%s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType), auth.AuthType(f.AuthType()))
+	logger.Infof("%sClientType=%# x is %s, Credential=%s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType), f.AuthName())
 	// authenticate
 	if !s.authenticate(f) {
-		err := fmt.Errorf("handshake authentication fails, client credential type is %s", auth.AuthType(f.AuthType()))
+		err := fmt.Errorf("handshake authentication fails, client credential type is %s", f.AuthName())
 		return err
 	}
 
 	// route
-	appID := f.AppID()
 	if err := s.validateRouter(); err != nil {
 		return err
 	}
 	connID := c.ConnID
-	route := s.router.Route(appID)
+	route := s.router.Route()
 	if reflect.ValueOf(route).IsNil() {
 		err := errors.New("handleHandshakeFrame route is nil")
 		return err
 	}
+	name:=f.Name
 	// store
-	s.opts.Store.Set(appID, route)
+	s.opts.Store.Set(name, route)
 
 	// client type
 	clientType := ClientType(f.ClientType)
-	name := f.Name
 	stream := c.Stream
 	switch clientType {
 	case ClientTypeSource:
 		s.connector.Add(connID, stream)
-		s.connector.LinkApp(connID, appID, name, nil)
+		s.connector.LinkApp(connID, name, nil)
 	case ClientTypeStreamFunction:
 		// when sfn connect, it will provide its name to the server. server will check if this client
 		// has permission connected to.
@@ -303,10 +301,10 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 
 		s.connector.Add(connID, stream)
 		// link connection to stream function
-		s.connector.LinkApp(connID, appID, name, f.ObserveDataTags)
+		s.connector.LinkApp(connID,  name, f.ObserveDataTags)
 	case ClientTypeUpstreamZipper:
 		s.connector.Add(connID, stream)
-		s.connector.LinkApp(connID, appID, name, nil)
+		s.connector.LinkApp(connID,  name, nil)
 	default:
 		// unknown client type
 		s.connector.Remove(connID)
@@ -314,7 +312,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 		c.CloseWithError(0xCD, "Unknown ClientType, illegal!")
 		return errors.New("core.server: Unknown ClientType, illegal")
 	}
-	logger.Printf("%s❤️  <%s> [%s::%s](%s) is connected!", ServerLogPrefix, clientType, appID, name, connID)
+	logger.Printf("%s❤️  <%s> [%s](%s) is connected!", ServerLogPrefix, clientType,  name, connID)
 	return nil
 }
 
@@ -338,10 +336,10 @@ func (s *Server) handleDataFrame(c *Context) error {
 	f := c.Frame.(*frame.DataFrame)
 
 	// route
-	appID, _ := s.connector.AppID(fromID)
-	cacheRoute, ok := s.opts.Store.Get(appID)
+	name, _ := s.connector.AppName(fromID)
+	cacheRoute, ok := s.opts.Store.Get(name)
 	if !ok {
-		err := fmt.Errorf("get route failure, appID=%s, connID=%s", appID, fromID)
+		err := fmt.Errorf("get route failure, appName=%s, connID=%s", name, fromID)
 		logger.Errorf("%shandleDataFrame %s", ServerLogPrefix, err.Error())
 		return err
 	}
@@ -353,7 +351,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 	// get stream function names from route
 	routes := route.GetForwardRoutes(from)
 	for _, to := range routes {
-		toIDs := s.connector.GetConnIDs(appID, to, f.GetDataTag())
+		toIDs := s.connector.GetConnIDs(to, f.GetDataTag())
 		for _, toID := range toIDs {
 			logger.Debugf("%shandleDataFrame tag=%#x tid=%s, counter=%d, from=[%s](%s), to=[%s](%s)", ServerLogPrefix, f.Tag(), f.TransactionID(), s.counterOfDataFrame, from, fromID, to, toID)
 
@@ -435,7 +433,7 @@ func (s *Server) initOptions() {
 	}
 	// auth
 	if s.opts.Auths == nil {
-		s.opts.Auths = append(s.opts.Auths, auth.NewAuthNone())
+		s.opts.Auths = append(s.opts.Auths, auth.NewNoneAuth())
 	}
 }
 
@@ -469,7 +467,7 @@ func (s *Server) SetAfterHandlers(handlers ...FrameHandler) {
 func (s *Server) authNames() []string {
 	result := []string{}
 	for _, auth := range s.opts.Auths {
-		result = append(result, auth.Type().String())
+		result = append(result, auth.Name())
 	}
 	return result
 }
@@ -477,9 +475,9 @@ func (s *Server) authNames() []string {
 func (s *Server) authenticate(f *frame.HandshakeFrame) bool {
 	if len(s.opts.Auths) > 0 {
 		for _, auth := range s.opts.Auths {
-			isAuthenticated := auth.Authenticate(f)
+			isAuthenticated := auth.Authenticate(f.AuthPayload())
 			if isAuthenticated {
-				logger.Debugf("%sauthenticate: [%s]=%v", ServerLogPrefix, auth.Type(), isAuthenticated)
+				logger.Debugf("%sauthenticated==%v", ServerLogPrefix, isAuthenticated)
 				return isAuthenticated
 			}
 		}

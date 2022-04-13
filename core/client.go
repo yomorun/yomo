@@ -17,6 +17,7 @@ import (
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
 )
 
+// ClientOption YoMo client options
 type ClientOption func(*ClientOptions)
 
 // ConnState describes the state of the connection.
@@ -106,8 +107,7 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 		c.name,
 		byte(c.clientType),
 		c.opts.ObserveDataTags,
-		c.opts.Credential.AppID(),
-		byte(c.opts.Credential.Type()),
+		c.opts.Credential.Name(),
 		c.opts.Credential.Payload(),
 	)
 	err = c.WriteFrame(handshake)
@@ -330,7 +330,7 @@ func (c *Client) initOptions() error {
 	}
 	// credential
 	if c.opts.Credential == nil {
-		c.opts.Credential = auth.NewCredendialNone()
+		c.opts.Credential = auth.NewNoneCredendial()
 	}
 	// tls config
 	if c.opts.TLSConfig == nil {
@@ -358,7 +358,7 @@ func (c *Client) initOptions() error {
 	}
 	// credential
 	if c.opts.Credential != nil {
-		c.logger.Printf("%suse credential: [%s]", ClientLogPrefix, c.opts.Credential.Type())
+		c.logger.Printf("%suse credential: [%s]", ClientLogPrefix, c.opts.Credential.Name())
 	}
 
 	return nil

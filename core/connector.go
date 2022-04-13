@@ -11,14 +11,13 @@ import (
 )
 
 type app struct {
-	id       string // app id
 	name     string // app name
 	observed []byte // data tags
 }
 
-func (a *app) ID() string {
-	return a.id
-}
+// func (a *app) ID() string {
+// 	return a.id
+// }
 
 func (a *app) Name() string {
 	return a.name
@@ -34,8 +33,8 @@ type Connector interface {
 	Remove(connID string)
 	// Get a connection by connection id.
 	Get(connID string) io.ReadWriteCloser
-	// GetConnIDs gets the connection ids by appID, name and tag.
-	GetConnIDs(appID string, name string, tags byte) []string
+	// GetConnIDs gets the connection ids by name and tag.
+	GetConnIDs(name string, tags byte) []string
 	// Write a DataFrame to a connection.
 	Write(f *frame.DataFrame, toID string) error
 	// GetSnapshot gets the snapshot of all connections.
@@ -44,13 +43,13 @@ type Connector interface {
 	// App gets the app by connID.
 	App(connID string) (*app, bool)
 	// AppID gets the ID of app by connID.
-	AppID(connID string) (string, bool)
+	// AppID(connID string) (string, bool)
 	// AppName gets the name of app by connID.
 	AppName(connID string) (string, bool)
 	// LinkApp links the app and connection.
-	LinkApp(connID string, appID string, name string, observed []byte)
+	LinkApp(connID string, name string, observed []byte)
 	// UnlinkApp removes the app by connID.
-	UnlinkApp(connID string, appID string, name string)
+	UnlinkApp(connID string, name string)
 
 	// Clean the connector.
 	Clean()
@@ -98,7 +97,7 @@ func (c *connector) App(connID string) (*app, bool) {
 	if result, found := c.apps.Load(connID); found {
 		app, ok := result.(*app)
 		if ok {
-			logger.Debugf("%sconnector get app=%s::%s, connID=%s", ServerLogPrefix, app.id, app.name, connID)
+			logger.Debugf("%sconnector get app=%s, connID=%s", ServerLogPrefix, app.name, connID)
 			return app, true
 		}
 		logger.Warnf("%sconnector get app convert fails, connID=%s", ServerLogPrefix, connID)
@@ -106,14 +105,6 @@ func (c *connector) App(connID string) (*app, bool) {
 	}
 	logger.Warnf("%sconnector get app is nil, connID=%s", ServerLogPrefix, connID)
 	return nil, false
-}
-
-// AppID gets the ID of app by connID.
-func (c *connector) AppID(connID string) (string, bool) {
-	if app, ok := c.App(connID); ok {
-		return app.id, true
-	}
-	return "", false
 }
 
 // AppName gets the name of app by connID.
@@ -124,13 +115,13 @@ func (c *connector) AppName(connID string) (string, bool) {
 	return "", false
 }
 
-// GetConnIDs gets the connection ids by appID, name and tag.
-func (c *connector) GetConnIDs(appID string, name string, tag byte) []string {
+// GetConnIDs gets the connection ids by name and tag.
+func (c *connector) GetConnIDs(name string, tag byte) []string {
 	connIDs := make([]string, 0)
 
 	c.apps.Range(func(key interface{}, val interface{}) bool {
 		app := val.(*app)
-		if app.id == appID && app.name == name {
+		if app.name == name {
 			for _, v := range app.observed {
 				if v == tag {
 					connIDs = append(connIDs, key.(string))
@@ -173,14 +164,14 @@ func (c *connector) GetSnapshot() map[string]io.ReadWriteCloser {
 }
 
 // LinkApp links the app and connection.
-func (c *connector) LinkApp(connID string, appID string, name string, observed []byte) {
-	logger.Debugf("%sconnector link application: connID[%s] --> app[%s::%s]", ServerLogPrefix, connID, appID, name)
-	c.apps.Store(connID, &app{appID, name, observed})
+func (c *connector) LinkApp(connID string, name string, observed []byte) {
+	logger.Debugf("%sconnector link application: connID[%s] --> app[%s]", ServerLogPrefix, connID, name)
+	c.apps.Store(connID, &app{name, observed})
 }
 
 // UnlinkApp removes the app by connID.
-func (c *connector) UnlinkApp(connID string, appID string, name string) {
-	logger.Debugf("%sconnector unlink application: connID[%s] x-> app[%s::%s]", ServerLogPrefix, connID, appID, name)
+func (c *connector) UnlinkApp(connID string, name string) {
+	logger.Debugf("%sconnector unlink application: connID[%s] x-> app[%s]", ServerLogPrefix, connID, name)
 	c.apps.Delete(connID)
 }
 

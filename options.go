@@ -88,9 +88,19 @@ func WithAuth(auth auth.Authentication) Option {
 	}
 }
 
-// WithAppKeyCredential sets the client credential (used by client): AppKey
-func WithAppKeyCredential(appID string, appSecret string) Option {
-	return WithCredential(pkgauth.NewAppKeyCredential(appID, appSecret))
+// WithTokenAuth sets the server authentication method (used by server)
+func WithTokenAuth(token string) Option {
+	return func(o *Options) {
+		o.ServerOptions = append(
+			o.ServerOptions,
+			core.WithAuth(pkgauth.NewTokenAuth(token)),
+		)
+	}
+}
+
+// WithToken sets the client credential (used by client): token
+func WithToken(token string) Option {
+	return WithCredential(pkgauth.NewTokenCredential(token))
 }
 
 // WithCredential sets the client credential
