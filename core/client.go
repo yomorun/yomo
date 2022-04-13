@@ -111,6 +111,7 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 		c.opts.Credential.Payload(),
 	)
 	err = c.WriteFrame(handshake)
+	logger.Warnf("WriteFrame err:%v",err)
 	if err != nil {
 		c.state = ConnStateRejected
 		return err
@@ -162,10 +163,10 @@ func (c *Client) handleFrame() {
 				// by quic-go IdleTimeoutError after connection's KeepAlive config.
 				break
 			}
-			c.logger.Infof("%s>>4 xxx, err=%v", ClientLogPrefix, err)
 			// any error occurred, we should close the stream
 			// after this, conn.AcceptStream() will raise the error
-			c.setState(ConnStateDisconnected)
+			c.setState(ConnStateRejected)
+			c.logger.Infof("%s>>4 xxx, err[%T]=%v, state=%v", ClientLogPrefix, err, err,c.getState())
 			break
 		}
 

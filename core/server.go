@@ -235,14 +235,15 @@ func (s *Server) mainFrameHandler(c *Context) error {
 	case frame.TagOfHandshakeFrame:
 		if err := s.handleHandshakeFrame(c); err != nil {
 			logger.Errorf("%shandleHandshakeFrame err: %s", ServerLogPrefix, err)
-			c.CloseWithError(0xCC, err.Error())
+			// c.CloseWithError(0xCC, err.Error())
+			return err
 			// break
 		}
 	// case frame.TagOfPingFrame:
 	// 	s.handlePingFrame(mainStream, connection, f.(*frame.PingFrame))
 	case frame.TagOfDataFrame:
 		if err := s.handleDataFrame(c); err != nil {
-			c.CloseWithError(0xCC, "处理DataFrame出错")
+			c.CloseWithError(0xCC, fmt.Sprintf("handleDataFrame err: %v", err))
 		} else {
 			s.dispatchToDownstreams(c.Frame.(*frame.DataFrame))
 		}
@@ -258,10 +259,10 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 
 	logger.Debugf("%sGOT ❤️ HandshakeFrame : %# x", ServerLogPrefix, f)
 	// credential
-	logger.Infof("%sClientType=%# x is %s, Credential=%s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType), f.AuthName())
+	logger.Infof("%sClientType=%# x is %s, Credential=%s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType), authName(f.AuthName()))
 	// authenticate
 	if !s.authenticate(f) {
-		err := fmt.Errorf("handshake authentication fails, client credential type is %s", f.AuthName())
+		err := fmt.Errorf("handshake authentication fails, client credential name is %s", authName(f.AuthName()))
 		return err
 	}
 
@@ -275,7 +276,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 		err := errors.New("handleHandshakeFrame route is nil")
 		return err
 	}
-	name:=f.Name
+	name := f.Name
 	// store
 	s.opts.Store.Set(name, route)
 
@@ -301,10 +302,10 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 
 		s.connector.Add(connID, stream)
 		// link connection to stream function
-		s.connector.LinkApp(connID,  name, f.ObserveDataTags)
+		s.connector.LinkApp(connID, name, f.ObserveDataTags)
 	case ClientTypeUpstreamZipper:
 		s.connector.Add(connID, stream)
-		s.connector.LinkApp(connID,  name, nil)
+		s.connector.LinkApp(connID, name, nil)
 	default:
 		// unknown client type
 		s.connector.Remove(connID)
@@ -312,7 +313,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 		c.CloseWithError(0xCD, "Unknown ClientType, illegal!")
 		return errors.New("core.server: Unknown ClientType, illegal")
 	}
-	logger.Printf("%s❤️  <%s> [%s](%s) is connected!", ServerLogPrefix, clientType,  name, connID)
+	logger.Printf("%s❤️  <%s> [%s](%s) is connected!", ServerLogPrefix, clientType, name, connID)
 	return nil
 }
 
@@ -491,4 +492,12 @@ func mode() string {
 		return "DEVELOPMENT"
 	}
 	return "PRODUCTION"
+}
+
+func authName(name string) string {
+	if name == "" {
+		return "empty"
+	}
+
+	return name
 }

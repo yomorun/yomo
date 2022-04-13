@@ -26,6 +26,7 @@ func main() {
 		"Noise-1",
 		yomo.WithZipperAddr("localhost:9000"),
 		yomo.WithObserveDataTags(0x10),
+		yomo.WithToken("12345"),
 	)
 	defer sfn.Close()
 

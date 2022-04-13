@@ -8,7 +8,11 @@ import (
 
 func main() {
 	// zipper initialize
-	zipper := yomo.NewZipperWithOptions("Zipper", yomo.WithZipperAddr("localhost:9000"))
+	zipper := yomo.NewZipperWithOptions(
+		"Zipper",
+		yomo.WithZipperAddr("localhost:9000"),
+		yomo.WithTokenAuth("12345"),
+	)
 	defer zipper.Close()
 	// configurate zipper workflow
 	zipper.ConfigWorkflow(os.Getenv("YOMO_ZIPPER_WORKFLOW"))
