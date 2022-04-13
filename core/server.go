@@ -115,13 +115,13 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 				if err != nil {
 					// if client close the connection, then we should close the connection
 					// @CC: when Source close the connection, it won't affect connectors
-					app, ok := s.connector.App(connID)
+					appName, ok := s.connector.AppName(connID)
 					if ok {
 						// connector
 						s.connector.Remove(connID)
 						// store
 						// remove app route from store? let me think...
-						logger.Printf("%s💔 [%s](%s) close the connection", ServerLogPrefix, app.Name(), connID)
+						logger.Printf("%s💔 [%s](%s) close the connection", ServerLogPrefix, appName, connID)
 					} else {
 						logger.Errorf("%s❤️3/ [unknown](%s) on stream %v", ServerLogPrefix, connID, err)
 					}

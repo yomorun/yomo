@@ -54,6 +54,7 @@ func (h *HandshakeFrame) Encode() []byte {
 	handshake.AddPrimitivePacket(nameBlock)
 	handshake.AddPrimitivePacket(typeBlock)
 	handshake.AddPrimitivePacket(observeDataTagsBlock)
+	handshake.AddPrimitivePacket(authNameBlock)
 	handshake.AddPrimitivePacket(authPayloadBlock)
 
 	return handshake.Encode()

@@ -18,7 +18,11 @@ type noiseData struct {
 
 func main() {
 	// connect to YoMo-Zipper.
-	source := yomo.NewSource("yomo-source", yomo.WithZipperAddr("localhost:9000"))
+	source := yomo.NewSource(
+		"yomo-source",
+		yomo.WithZipperAddr("localhost:9000"),
+		// yomo.WithToken("12345"),
+	)
 	err := source.Connect()
 	if err != nil {
 		log.Printf("❌ Emit the data to YoMo-Zipper failure with err: %v", err)

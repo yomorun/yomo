@@ -37,6 +37,7 @@ type Client struct {
 	opts       ClientOptions
 	localAddr  string // client local addr, it will be changed on reconnect
 	logger     log.Logger
+	wg         *sync.WaitGroup
 }
 
 // NewClient creates a new YoMo-Client.
@@ -46,6 +47,7 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 		clientType: connType,
 		state:      ConnStateReady,
 		opts:       ClientOptions{},
+		wg:         new(sync.WaitGroup),
 	}
 	c.Init(opts...)
 	once.Do(func() {
@@ -111,7 +113,7 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 		c.opts.Credential.Payload(),
 	)
 	err = c.WriteFrame(handshake)
-	logger.Warnf("WriteFrame err:%v",err)
+	logger.Warnf("WriteFrame err:%v", err)
 	if err != nil {
 		c.state = ConnStateRejected
 		return err
@@ -122,7 +124,13 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	c.logger.Printf("%s❤️  [%s](%s) is connected to YoMo-Zipper %s", ClientLogPrefix, c.name, c.localAddr, addr)
 
 	// receiving frames
+	// c.wg.Add(1)
 	go c.handleFrame()
+
+	// c.wg.Wait()
+	if c.getState() == ConnStateRejected {
+		return errors.New("connection rejected")
+	}
 
 	return nil
 }
@@ -133,11 +141,13 @@ func (c *Client) handleFrame() {
 	fs := NewFrameStream(c.stream)
 	for {
 		c.logger.Debugf("%shandleFrame connection state=%v", ClientLogPrefix, c.state)
+		// c.wg.Done()
 		// this will block until a frame is received
 		f, err := fs.ReadFrame()
+		logger.Warnf("frame.0=%+v", f)
 		if err != nil {
 			defer c.stream.Close()
-			defer c.conn.CloseWithError(0xD0, err.Error())
+			// defer c.conn.CloseWithError(0xD0, err.Error())
 
 			c.logger.Infof("%shandleFrame(): %T | %v", ClientLogPrefix, err, err)
 			if e, ok := err.(*quic.IdleTimeoutError); ok {
@@ -162,19 +172,30 @@ func (c *Client) handleFrame() {
 				c.setState(ConnStateDisconnected)
 				// by quic-go IdleTimeoutError after connection's KeepAlive config.
 				break
+			} else {
+				// any error occurred, we should close the stream
+				// after this, conn.AcceptStream() will raise the error
+				c.setState(ConnStateRejected)
+				c.conn.CloseWithError(0xD0, err.Error())
+				c.Close()
+				c.logger.Errorf("%s>>4 xxx, err[%T]=%v, state=%v", ClientLogPrefix, err, err, c.getState())
+				break
 			}
-			// any error occurred, we should close the stream
-			// after this, conn.AcceptStream() will raise the error
-			c.setState(ConnStateRejected)
-			c.logger.Infof("%s>>4 xxx, err[%T]=%v, state=%v", ClientLogPrefix, err, err,c.getState())
+		}
+		if f == nil {
 			break
 		}
-
 		// read frame
 		// first, get frame type
+		logger.Warnf("frame.1=%+v", f)
 		frameType := f.Type()
 		c.logger.Debugf("%stype=%s, frame=%# x", ClientLogPrefix, frameType, frame.Shortly(f.Encode()))
 		switch frameType {
+		case frame.TagOfHandshakeFrame:
+			if v, ok := f.(*frame.HandshakeFrame); ok {
+				c.logger.Debugf("%sreceive HandshakeFrame, name=%v", ClientLogPrefix, v.Name)
+				// c.wg.Done()
+			}
 		case frame.TagOfPongFrame:
 			c.setState(ConnStatePong)
 		case frame.TagOfAcceptedFrame:

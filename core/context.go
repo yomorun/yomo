@@ -48,7 +48,7 @@ func (c *Context) Clean() {
 
 // CloseWithError closes the stream and cleans the context.
 func (c *Context) CloseWithError(code uint64, msg string) {
-	logger.Debugf("%sconn[%s] context close, errCode=%# x, msg=%s", ServerLogPrefix, c.ConnID, code, msg)
+	logger.Debugf("%sconn[%s] context close, errCode=%#x, msg=%s", ServerLogPrefix, c.ConnID, code, msg)
 	if c.Stream != nil {
 		c.Stream.Close()
 	}
