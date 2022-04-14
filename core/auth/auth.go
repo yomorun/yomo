@@ -2,13 +2,13 @@ package auth
 
 // Authentication for server
 type Authentication interface {
-	Authenticate(payload []byte) bool
+	Authenticate(payload string) bool
 	Name() string
 }
 
 // Credential for client
 type Credential interface {
-	Payload() []byte
+	Payload() string
 	Name() string
 }
 
@@ -23,7 +23,7 @@ func NewNoneAuth() *NoneAuth {
 	return &NoneAuth{}
 }
 
-func (a *NoneAuth) Authenticate(payload []byte) bool {
+func (a *NoneAuth) Authenticate(payload string) bool {
 	return true
 }
 
@@ -39,8 +39,8 @@ func NewNoneCredendial() *NoneCredential {
 	return &NoneCredential{}
 }
 
-func (c *NoneCredential) Payload() []byte {
-	return nil
+func (c *NoneCredential) Payload() string {
+	return ""
 }
 
 func (c *NoneCredential) Name() string {

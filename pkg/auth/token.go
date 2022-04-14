@@ -7,16 +7,16 @@ import (
 var _ auth.Credential = (*TokenCredential)(nil)
 
 type TokenCredential struct {
-	payload []byte
+	payload string
 }
 
 func NewTokenCredential(token string) *TokenCredential {
 	return &TokenCredential{
-		payload: []byte(token),
+		payload: token,
 	}
 }
 
-func (c *TokenCredential) Payload() []byte {
+func (c *TokenCredential) Payload() string {
 	return c.payload
 }
 
@@ -35,8 +35,8 @@ func NewTokenAuth(token string) *TokenAuth {
 	return &TokenAuth{token}
 }
 
-func (a *TokenAuth) Authenticate(payload []byte) bool {
-	return a.token == string(payload)
+func (a *TokenAuth) Authenticate(payload string) bool {
+	return a.token == payload
 }
 
 func (a *TokenAuth) Name() string {

@@ -14,11 +14,11 @@ type HandshakeFrame struct {
 	ObserveDataTags []byte
 	// auth
 	authName    string
-	authPayload []byte
+	authPayload string
 }
 
 // NewHandshakeFrame creates a new HandshakeFrame.
-func NewHandshakeFrame(name string, clientType byte, observeDataTags []byte, authName string, authPayload []byte) *HandshakeFrame {
+func NewHandshakeFrame(name string, clientType byte, observeDataTags []byte, authName string, authPayload string) *HandshakeFrame {
 	return &HandshakeFrame{
 		Name:            name,
 		ClientType:      clientType,
@@ -48,7 +48,7 @@ func (h *HandshakeFrame) Encode() []byte {
 	authNameBlock := y3.NewPrimitivePacketEncoder(byte(TagOfHandshakeAuthName))
 	authNameBlock.SetStringValue(h.authName)
 	authPayloadBlock := y3.NewPrimitivePacketEncoder(byte(TagOfHandshakeAuthPayload))
-	authPayloadBlock.SetBytesValue(h.authPayload)
+	authPayloadBlock.SetStringValue(h.authPayload)
 	// handshake frame
 	handshake := y3.NewNodePacketEncoder(byte(h.Type()))
 	handshake.AddPrimitivePacket(nameBlock)
@@ -95,14 +95,17 @@ func DecodeToHandshakeFrame(buf []byte) (*HandshakeFrame, error) {
 		handshake.authName = authName
 	}
 	if authPayloadBlock, ok := node.PrimitivePackets[byte(TagOfHandshakeAuthPayload)]; ok {
-		authPayload := authPayloadBlock.ToBytes()
+		authPayload, err := authPayloadBlock.ToUTF8String()
+		if err != nil {
+			return nil, err
+		}
 		handshake.authPayload = authPayload
 	}
 
 	return handshake, nil
 }
 
-func (h *HandshakeFrame) AuthPayload() []byte {
+func (h *HandshakeFrame) AuthPayload() string {
 	return h.authPayload
 }
 
