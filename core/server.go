@@ -131,7 +131,8 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 
 				logger.Infof("%s❤️4/ [stream:%d] created, connID=%s", ServerLogPrefix, stream.StreamID(), connID)
 				// process frames on stream
-				c := newContext(connID, stream)
+				// c := newContext(connID, stream)
+				c := newContext(conn, stream)
 				defer c.Clean()
 				s.handleConnection(c)
 				logger.Infof("%s❤️5/ [stream:%d] handleConnection DONE", ServerLogPrefix, stream.StreamID())
@@ -179,9 +180,10 @@ func (s *Server) handleConnection(c *Context) {
 					break
 				}
 			} else if err == io.EOF {
+				logger.Errorf("%sthe connection is EOF", ServerLogPrefix)
 				break
 			}
-			logger.Errorf("%s [ERR] %v", ServerLogPrefix, err)
+			logger.Errorf("%s[ERR] %v", ServerLogPrefix, err)
 			if errors.Is(err, net.ErrClosed) {
 				// if client close the connection, net.ErrClosed will be raise
 				// by quic-go IdleTimeoutError after connection's KeepAlive config.
@@ -270,7 +272,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	if err := s.validateRouter(); err != nil {
 		return err
 	}
-	connID := c.ConnID
+	connID := c.ConnID()
 	route := s.router.Route()
 	if reflect.ValueOf(route).IsNil() {
 		err := errors.New("handleHandshakeFrame route is nil")
@@ -327,7 +329,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 	// counter +1
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
 	// currentIssuer := f.GetIssuer()
-	fromID := c.ConnID
+	fromID := c.ConnID()
 	from, ok := s.connector.AppName(fromID)
 	if !ok {
 		logger.Warnf("%shandleDataFrame have connection[%s], but not have function", ServerLogPrefix, fromID)
