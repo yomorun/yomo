@@ -24,9 +24,18 @@ func WithAddr(addr string) ServerOption {
 	}
 }
 
-func WithAuth(auth auth.Authentication) ServerOption {
+// func WithAuth(auth auth.Authentication) ServerOption {
+// 	return func(o *ServerOptions) {
+// 		o.Auths = append(o.Auths, auth)
+// 	}
+// }
+
+func WithAuth(name string, args ...string) ServerOption {
 	return func(o *ServerOptions) {
-		o.Auths = append(o.Auths, auth)
+		if auth, ok := auth.GetAuth(name); ok {
+			auth.Init(args...)
+			o.Auths = append(o.Auths, auth)
+		}
 	}
 }
 

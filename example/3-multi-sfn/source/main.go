@@ -21,7 +21,6 @@ func main() {
 	source := yomo.NewSource(
 		"yomo-source",
 		yomo.WithZipperAddr("localhost:9000"),
-		// yomo.WithToken("12345"),
 	)
 	err := source.Connect()
 	if err != nil {

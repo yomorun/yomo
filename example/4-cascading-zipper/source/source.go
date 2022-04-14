@@ -12,7 +12,11 @@ import (
 
 func main() {
 	// connect to YoMo-Zipper.
-	source := yomo.NewSource("yomo-source", yomo.WithZipperAddr("localhost:9001"))
+	source := yomo.NewSource(
+		"yomo-source",
+		yomo.WithZipperAddr("localhost:9001"),
+		yomo.WithCredential("token:z1"),
+	)
 	err := source.Connect()
 	if err != nil {
 		log.Printf("[source] ❌ Emit the data to YoMo-Zipper failure with err: %v", err)

@@ -1,48 +1,59 @@
 package auth
 
+import "strings"
+
+var (
+	auths = make(map[string]Authentication)
+)
+
 // Authentication for server
 type Authentication interface {
+	// Init authentication initialize arguments
+	Init(args ...string)
+	// Authenticate authentication client's credential
 	Authenticate(payload string) bool
+	// Name authentication name
 	Name() string
 }
 
-// Credential for client
-type Credential interface {
-	Payload() string
-	Name() string
+// Register register authentication
+func Register(authentication Authentication) {
+	auths[authentication.Name()] = authentication
 }
 
-// None auth
-
-var _ Authentication = (*NoneAuth)(nil)
-
-// NoneAuth defaults authentication
-type NoneAuth struct{}
-
-func NewNoneAuth() *NoneAuth {
-	return &NoneAuth{}
+// GetAuth get authentication by name
+func GetAuth(name string) (Authentication, bool) {
+	auth, ok := auths[name]
+	return auth, ok
 }
 
-func (a *NoneAuth) Authenticate(payload string) bool {
-	return true
+// Credential client credential
+type Credential struct {
+	name    string
+	payload string
 }
 
-func (a *NoneAuth) Name() string {
-	return "none"
+// NewCredential create client credential
+func NewCredential(payload string) *Credential {
+	idx := strings.Index(payload, ":")
+	if idx != -1 {
+		authName := payload[:idx]
+		idx++
+		authPayload := payload[idx:]
+		return &Credential{
+			name:    authName,
+			payload: authPayload,
+		}
+	}
+	return &Credential{name: "none"}
 }
 
-var _ = Credential(&NoneCredential{})
-
-type NoneCredential struct{}
-
-func NewNoneCredendial() *NoneCredential {
-	return &NoneCredential{}
+// Payload client credential payload
+func (c *Credential) Payload() string {
+	return c.payload
 }
 
-func (c *NoneCredential) Payload() string {
-	return ""
-}
-
-func (c *NoneCredential) Name() string {
-	return "none"
+// Name client credential name
+func (c *Credential) Name() string {
+	return c.name
 }

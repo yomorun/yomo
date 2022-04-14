@@ -145,9 +145,8 @@ func (c *Client) handleFrame() {
 			} else if e, ok := err.(*quic.ApplicationError); ok {
 				c.logger.Infof("%sapplication error, err=%v, errcode=%v", ClientLogPrefix, e, e.ErrorCode)
 				if e.ErrorCode == 0xCC {
-					// if connection is rejected(eg: authenticate fails) from server,
-					// the error type is *errorString, isn't *quic.ApplicationError
-					c.logger.Errorf("%sillegal client, server rejected.", ClientLogPrefix)
+					// if connection is rejected(eg: authenticate fails) from server
+					c.logger.Errorf("%sIllegal client, server rejected.", ClientLogPrefix)
 					c.setState(ConnStateRejected)
 					break
 				} else if e.ErrorCode == 0x00 {
@@ -338,7 +337,7 @@ func (c *Client) initOptions() error {
 	}
 	// credential
 	if c.opts.Credential == nil {
-		c.opts.Credential = auth.NewNoneCredendial()
+		c.opts.Credential = auth.NewCredential("")
 	}
 	// tls config
 	if c.opts.TLSConfig == nil {

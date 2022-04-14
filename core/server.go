@@ -11,9 +11,9 @@ import (
 	"sync/atomic"
 
 	"github.com/lucas-clemente/quic-go"
-	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/store"
+	_ "github.com/yomorun/yomo/pkg/auth"
 	"github.com/yomorun/yomo/pkg/logger"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
 )
@@ -435,9 +435,9 @@ func (s *Server) initOptions() {
 		s.opts.Store = store.NewMemoryStore()
 	}
 	// auth
-	if s.opts.Auths == nil {
-		s.opts.Auths = append(s.opts.Auths, auth.NewNoneAuth())
-	}
+	// if s.opts.Auths == nil {
+	// 	s.opts.Auths = append(s.opts.Auths, auth.NewNoneAuth())
+	// }
 }
 
 func (s *Server) validateRouter() error {
@@ -468,6 +468,9 @@ func (s *Server) SetAfterHandlers(handlers ...FrameHandler) {
 }
 
 func (s *Server) authNames() []string {
+	if len(s.opts.Auths) == 0 {
+		return []string{"none"}
+	}
 	result := []string{}
 	for _, auth := range s.opts.Auths {
 		result = append(result, auth.Name())
