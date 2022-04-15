@@ -105,10 +105,12 @@ func DecodeToHandshakeFrame(buf []byte) (*HandshakeFrame, error) {
 	return handshake, nil
 }
 
+// AuthPayload authentication payload
 func (h *HandshakeFrame) AuthPayload() string {
 	return h.authPayload
 }
 
+// AuthName authentication name
 func (h *HandshakeFrame) AuthName() string {
 	return h.authName
 }

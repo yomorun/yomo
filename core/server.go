@@ -13,6 +13,8 @@ import (
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/store"
+
+	// authentication implements, Currently, only token authentication is implemented
 	_ "github.com/yomorun/yomo/pkg/auth"
 	"github.com/yomorun/yomo/pkg/logger"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
