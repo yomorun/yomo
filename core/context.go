@@ -55,7 +55,9 @@ func (c *Context) CloseWithError(code uint64, msg string) {
 	if c.Stream != nil {
 		c.Stream.Close()
 	}
-	c.Conn.CloseWithError(quic.ApplicationErrorCode(code), msg)
+	if c.Conn != nil {
+		c.Conn.CloseWithError(quic.ApplicationErrorCode(code), msg)
+	}
 	c.Clean()
 }
 
