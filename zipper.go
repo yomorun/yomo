@@ -171,7 +171,11 @@ func (z *zipper) ConfigMesh(url string) error {
 			continue
 		}
 		addr := fmt.Sprintf("%s:%d", downstream.Host, downstream.Port)
-		z.AddDownstreamZipper(NewDownstreamZipper(downstream.Name, WithZipperAddr(addr)))
+		opts := []Option{WithZipperAddr(addr)}
+		if downstream.Credential != "" {
+			opts = append(opts, WithCredential(downstream.Credential))
+		}
+		z.AddDownstreamZipper(NewDownstreamZipper(downstream.Name, opts...))
 	}
 
 	return nil
