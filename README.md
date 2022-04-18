@@ -4,13 +4,13 @@
 
 # YoMo ![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg) [![Discord](https://img.shields.io/discord/770589787404369930.svg?label=discord&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/RMtNhx7vds)
 
-YoMo is an open-source Streaming Serverless Framework for building Low-latency Edge Computing applications. Built atop QUIC Transport Protocol and Functional Reactive Programming interface. makes real-time data processing reliable, secure, and easy.
+YoMo is an open-source Streaming Serverless Framework for building Low-latency Edge Computing applications. Built atop QUIC Transport Protocol and Functional Reactive Programming interface, it makes real-time data processing reliable, secure, and easy.
 
 Official Website: 🦖[https://yomo.run](https://yomo.run)
 
 💚 We care about: **The Demand For Real-Time Digital User Experiences**
 
-It’s no secret that today’s users want instant gratification, every productivity application is more powerful when it's collaborative. but, currently, when we talk about `distribution`, it's represents **distribution in data center**, API is far away from their users from all over the world.
+It’s no secret that today’s users want instant gratification, every productivity application is more powerful when it's collaborative. But, currently, when we talk about `distribution`, it represents **distribution in data center**. API is far away from their users from all over the world.
 
 If an application can be deployed anywhere close to their end users, solve the problem, this is **Geo-distributed System Architecture**:
 
