@@ -11,9 +11,11 @@ import (
 	"sync/atomic"
 
 	"github.com/lucas-clemente/quic-go"
-	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/store"
+
+	// authentication implements, Currently, only token authentication is implemented
+	_ "github.com/yomorun/yomo/pkg/auth"
 	"github.com/yomorun/yomo/pkg/logger"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
 )
@@ -115,24 +117,24 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 				if err != nil {
 					// if client close the connection, then we should close the connection
 					// @CC: when Source close the connection, it won't affect connectors
-					app, ok := s.connector.App(connID)
+					appName, ok := s.connector.AppName(connID)
 					if ok {
 						// connector
 						s.connector.Remove(connID)
 						// store
-						// when remove store by appID? let me think...
-						logger.Printf("%s💔 [%s::%s](%s) close the connection", ServerLogPrefix, app.ID(), app.Name(), connID)
+						// remove app route from store? let me think...
+						logger.Printf("%s💔 [%s](%s) close the connection", ServerLogPrefix, appName, connID)
 					} else {
 						logger.Errorf("%s❤️3/ [unknown](%s) on stream %v", ServerLogPrefix, connID, err)
 					}
 					break
 				}
-				// TODO: 确实执行了吗？
 				defer stream.Close()
 
 				logger.Infof("%s❤️4/ [stream:%d] created, connID=%s", ServerLogPrefix, stream.StreamID(), connID)
 				// process frames on stream
-				c := newContext(connID, stream)
+				// c := newContext(connID, stream)
+				c := newContext(conn, stream)
 				defer c.Clean()
 				s.handleConnection(c)
 				logger.Infof("%s❤️5/ [stream:%d] handleConnection DONE", ServerLogPrefix, stream.StreamID())
@@ -180,9 +182,10 @@ func (s *Server) handleConnection(c *Context) {
 					break
 				}
 			} else if err == io.EOF {
+				logger.Errorf("%sthe connection is EOF", ServerLogPrefix)
 				break
 			}
-			logger.Errorf("%s [ERR] %v", ServerLogPrefix, err)
+			logger.Errorf("%s[ERR] %v", ServerLogPrefix, err)
 			if errors.Is(err, net.ErrClosed) {
 				// if client close the connection, net.ErrClosed will be raise
 				// by quic-go IdleTimeoutError after connection's KeepAlive config.
@@ -236,14 +239,15 @@ func (s *Server) mainFrameHandler(c *Context) error {
 	case frame.TagOfHandshakeFrame:
 		if err := s.handleHandshakeFrame(c); err != nil {
 			logger.Errorf("%shandleHandshakeFrame err: %s", ServerLogPrefix, err)
-			c.CloseWithError(0xCC, err.Error())
+			// c.CloseWithError(0xCC, err.Error())
+			return err
 			// break
 		}
 	// case frame.TagOfPingFrame:
 	// 	s.handlePingFrame(mainStream, connection, f.(*frame.PingFrame))
 	case frame.TagOfDataFrame:
 		if err := s.handleDataFrame(c); err != nil {
-			c.CloseWithError(0xCC, "处理DataFrame出错")
+			c.CloseWithError(0xCC, fmt.Sprintf("handleDataFrame err: %v", err))
 		} else {
 			s.dispatchToDownstreams(c.Frame.(*frame.DataFrame))
 		}
@@ -259,35 +263,34 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 
 	logger.Debugf("%sGOT ❤️ HandshakeFrame : %# x", ServerLogPrefix, f)
 	// credential
-	logger.Infof("%sClientType=%# x is %s, CredentialType=%s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType), auth.AuthType(f.AuthType()))
+	logger.Infof("%sClientType=%# x is %s, Credential=%s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType), authName(f.AuthName()))
 	// authenticate
 	if !s.authenticate(f) {
-		err := fmt.Errorf("handshake authentication fails, client credential type is %s", auth.AuthType(f.AuthType()))
+		err := fmt.Errorf("handshake authentication fails, client credential name is %s", authName(f.AuthName()))
 		return err
 	}
 
 	// route
-	appID := f.AppID()
 	if err := s.validateRouter(); err != nil {
 		return err
 	}
-	connID := c.ConnID
-	route := s.router.Route(appID)
+	connID := c.ConnID()
+	route := s.router.Route()
 	if reflect.ValueOf(route).IsNil() {
 		err := errors.New("handleHandshakeFrame route is nil")
 		return err
 	}
+	name := f.Name
 	// store
-	s.opts.Store.Set(appID, route)
+	s.opts.Store.Set(name, route)
 
 	// client type
 	clientType := ClientType(f.ClientType)
-	name := f.Name
 	stream := c.Stream
 	switch clientType {
 	case ClientTypeSource:
 		s.connector.Add(connID, stream)
-		s.connector.LinkApp(connID, appID, name, nil)
+		s.connector.LinkApp(connID, name, nil)
 	case ClientTypeStreamFunction:
 		// when sfn connect, it will provide its name to the server. server will check if this client
 		// has permission connected to.
@@ -303,10 +306,10 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 
 		s.connector.Add(connID, stream)
 		// link connection to stream function
-		s.connector.LinkApp(connID, appID, name, f.ObserveDataTags)
+		s.connector.LinkApp(connID, name, f.ObserveDataTags)
 	case ClientTypeUpstreamZipper:
 		s.connector.Add(connID, stream)
-		s.connector.LinkApp(connID, appID, name, nil)
+		s.connector.LinkApp(connID, name, nil)
 	default:
 		// unknown client type
 		s.connector.Remove(connID)
@@ -314,7 +317,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 		c.CloseWithError(0xCD, "Unknown ClientType, illegal!")
 		return errors.New("core.server: Unknown ClientType, illegal")
 	}
-	logger.Printf("%s❤️  <%s> [%s::%s](%s) is connected!", ServerLogPrefix, clientType, appID, name, connID)
+	logger.Printf("%s❤️  <%s> [%s](%s) is connected!", ServerLogPrefix, clientType, name, connID)
 	return nil
 }
 
@@ -328,7 +331,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 	// counter +1
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
 	// currentIssuer := f.GetIssuer()
-	fromID := c.ConnID
+	fromID := c.ConnID()
 	from, ok := s.connector.AppName(fromID)
 	if !ok {
 		logger.Warnf("%shandleDataFrame have connection[%s], but not have function", ServerLogPrefix, fromID)
@@ -338,10 +341,10 @@ func (s *Server) handleDataFrame(c *Context) error {
 	f := c.Frame.(*frame.DataFrame)
 
 	// route
-	appID, _ := s.connector.AppID(fromID)
-	cacheRoute, ok := s.opts.Store.Get(appID)
+	name, _ := s.connector.AppName(fromID)
+	cacheRoute, ok := s.opts.Store.Get(name)
 	if !ok {
-		err := fmt.Errorf("get route failure, appID=%s, connID=%s", appID, fromID)
+		err := fmt.Errorf("get route failure, appName=%s, connID=%s", name, fromID)
 		logger.Errorf("%shandleDataFrame %s", ServerLogPrefix, err.Error())
 		return err
 	}
@@ -353,7 +356,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 	// get stream function names from route
 	routes := route.GetForwardRoutes(from)
 	for _, to := range routes {
-		toIDs := s.connector.GetConnIDs(appID, to, f.GetDataTag())
+		toIDs := s.connector.GetConnIDs(to, f.GetDataTag())
 		for _, toID := range toIDs {
 			logger.Debugf("%shandleDataFrame tag=%#x tid=%s, counter=%d, from=[%s](%s), to=[%s](%s)", ServerLogPrefix, f.Tag(), f.TransactionID(), s.counterOfDataFrame, from, fromID, to, toID)
 
@@ -434,9 +437,9 @@ func (s *Server) initOptions() {
 		s.opts.Store = store.NewMemoryStore()
 	}
 	// auth
-	if s.opts.Auths == nil {
-		s.opts.Auths = append(s.opts.Auths, auth.NewAuthNone())
-	}
+	// if s.opts.Auths == nil {
+	// 	s.opts.Auths = append(s.opts.Auths, auth.NewNoneAuth())
+	// }
 }
 
 func (s *Server) validateRouter() error {
@@ -467,9 +470,12 @@ func (s *Server) SetAfterHandlers(handlers ...FrameHandler) {
 }
 
 func (s *Server) authNames() []string {
+	if len(s.opts.Auths) == 0 {
+		return []string{"none"}
+	}
 	result := []string{}
 	for _, auth := range s.opts.Auths {
-		result = append(result, auth.Type().String())
+		result = append(result, auth.Name())
 	}
 	return result
 }
@@ -477,9 +483,9 @@ func (s *Server) authNames() []string {
 func (s *Server) authenticate(f *frame.HandshakeFrame) bool {
 	if len(s.opts.Auths) > 0 {
 		for _, auth := range s.opts.Auths {
-			isAuthenticated := auth.Authenticate(f)
+			isAuthenticated := auth.Authenticate(f.AuthPayload())
 			if isAuthenticated {
-				logger.Debugf("%sauthenticate: [%s]=%v", ServerLogPrefix, auth.Type(), isAuthenticated)
+				logger.Debugf("%sauthenticated==%v", ServerLogPrefix, isAuthenticated)
 				return isAuthenticated
 			}
 		}
@@ -493,4 +499,12 @@ func mode() string {
 		return "DEVELOPMENT"
 	}
 	return "PRODUCTION"
+}
+
+func authName(name string) string {
+	if name == "" {
+		return "empty"
+	}
+
+	return name
 }

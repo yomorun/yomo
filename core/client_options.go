@@ -12,7 +12,7 @@ type ClientOptions struct {
 	ObserveDataTags []byte
 	QuicConfig      *quic.Config
 	TLSConfig       *tls.Config
-	Credential      auth.Credential
+	Credential      *auth.Credential
 	Logger          log.Logger
 }
 
@@ -23,10 +23,10 @@ func WithObserveDataTags(tags ...byte) ClientOption {
 	}
 }
 
-// WithCredential sets app auth for the client.
-func WithCredential(cred auth.Credential) ClientOption {
+// WithCredential sets the client credential method (used by client)
+func WithCredential(payload string) ClientOption {
 	return func(o *ClientOptions) {
-		o.Credential = cred
+		o.Credential = auth.NewCredential(payload)
 	}
 }
 

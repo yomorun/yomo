@@ -12,8 +12,9 @@ import (
 
 // Context for YoMo Server.
 type Context struct {
-	// ConnID is the connection ID of client.
-	ConnID string
+	// Conn is the connection of client.
+	Conn   quic.Connection
+	connID string
 	// Stream is the long-lived connection between client and server.
 	Stream io.ReadWriteCloser
 	// Frame receives from client.
@@ -24,9 +25,10 @@ type Context struct {
 	mu sync.RWMutex
 }
 
-func newContext(connID string, stream quic.Stream) *Context {
+func newContext(conn quic.Connection, stream quic.Stream) *Context {
 	return &Context{
-		ConnID: connID,
+		Conn:   conn,
+		connID: conn.RemoteAddr().String(),
 		Stream: stream,
 		// keys:    make(map[string]interface{}),
 	}
@@ -40,19 +42,28 @@ func (c *Context) WithFrame(f frame.Frame) *Context {
 
 // Clean the context.
 func (c *Context) Clean() {
-	logger.Debugf("%sconn[%s] context clean", ServerLogPrefix, c.ConnID)
+	logger.Debugf("%sconn[%s] context clean", ServerLogPrefix, c.connID)
 	c.Stream = nil
 	c.Frame = nil
 	c.Keys = nil
+	c.Conn = nil
 }
 
 // CloseWithError closes the stream and cleans the context.
 func (c *Context) CloseWithError(code uint64, msg string) {
-	logger.Debugf("%sconn[%s] context close, errCode=%d, msg=%s", ServerLogPrefix, c.ConnID, code, msg)
+	logger.Debugf("%sconn[%s] context close, errCode=%#x, msg=%s", ServerLogPrefix, c.connID, code, msg)
 	if c.Stream != nil {
 		c.Stream.Close()
 	}
+	if c.Conn != nil {
+		c.Conn.CloseWithError(quic.ApplicationErrorCode(code), msg)
+	}
 	c.Clean()
+}
+
+// ConnID get quic connection id
+func (c *Context) ConnID() string {
+	return c.connID
 }
 
 // Set a key/value pair to context.

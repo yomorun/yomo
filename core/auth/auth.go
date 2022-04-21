@@ -1,78 +1,59 @@
 package auth
 
-import (
-	"github.com/yomorun/yomo/core/frame"
+import "strings"
+
+var (
+	auths = make(map[string]Authentication)
 )
-
-type AuthType byte
-
-const (
-	AuthTypeNone       AuthType = 0x0
-	AuthTypeAppKey     AuthType = 0x1
-	AuthTypePublicKey  AuthType = 0x2
-	AuthTypePrivateKey AuthType = 0x3
-)
-
-func (a AuthType) String() string {
-	switch a {
-	case AuthTypeAppKey:
-		return "AppKey"
-	case AuthTypePublicKey:
-		return "PublicKey"
-	case AuthTypePrivateKey:
-		return "PrivateKey"
-	default:
-		return "None"
-	}
-}
 
 // Authentication for server
 type Authentication interface {
-	Type() AuthType
-	Authenticate(f *frame.HandshakeFrame) bool
+	// Init authentication initialize arguments
+	Init(args ...string)
+	// Authenticate authentication client's credential
+	Authenticate(payload string) bool
+	// Name authentication name
+	Name() string
 }
 
-// Credential for client
-type Credential interface {
-	AppID() string
-	Type() AuthType
-	Payload() []byte
+// Register register authentication
+func Register(authentication Authentication) {
+	auths[authentication.Name()] = authentication
 }
 
-// None auth
-
-var _ Authentication = (*AuthNone)(nil)
-
-type AuthNone struct{}
-
-func NewAuthNone() *AuthNone {
-	return &AuthNone{}
+// GetAuth get authentication by name
+func GetAuth(name string) (Authentication, bool) {
+	auth, ok := auths[name]
+	return auth, ok
 }
 
-func (a *AuthNone) Type() AuthType {
-	return AuthTypeNone
+// Credential client credential
+type Credential struct {
+	name    string
+	payload string
 }
 
-func (a *AuthNone) Authenticate(f *frame.HandshakeFrame) bool {
-	return true
+// NewCredential create client credential
+func NewCredential(payload string) *Credential {
+	idx := strings.Index(payload, ":")
+	if idx != -1 {
+		authName := payload[:idx]
+		idx++
+		authPayload := payload[idx:]
+		return &Credential{
+			name:    authName,
+			payload: authPayload,
+		}
+	}
+	return &Credential{name: "none"}
 }
 
-var _ = Credential(&CredentialNone{})
-
-type CredentialNone struct{}
-
-func NewCredendialNone() *CredentialNone {
-	return &CredentialNone{}
+// Payload client credential payload
+func (c *Credential) Payload() string {
+	return c.payload
 }
 
-func (c *CredentialNone) AppID() string {
-	return ""
-}
-
-func (c *CredentialNone) Type() AuthType {
-	return AuthTypeNone
-}
-
-func (c *CredentialNone) Payload() []byte {
-	return nil
+// Name client credential name
+func (c *Credential) Name() string {
+	return c.name
 }

@@ -5,9 +5,7 @@ import (
 
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/core"
-	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/log"
-	pkgauth "github.com/yomorun/yomo/pkg/auth"
 )
 
 const (
@@ -79,26 +77,20 @@ func WithServerOptions(opts ...core.ServerOption) Option {
 }
 
 // WithAuth sets the server authentication method (used by server)
-func WithAuth(auth auth.Authentication) Option {
+func WithAuth(name string, args ...string) Option {
 	return func(o *Options) {
 		o.ServerOptions = append(
 			o.ServerOptions,
-			core.WithAuth(auth),
+			core.WithAuth(name, args...),
 		)
 	}
 }
-
-// WithAppKeyCredential sets the client credential (used by client): AppKey
-func WithAppKeyCredential(appID string, appSecret string) Option {
-	return WithCredential(pkgauth.NewAppKeyCredential(appID, appSecret))
-}
-
-// WithCredential sets the client credential
-func WithCredential(cred auth.Credential) Option {
+// WithCredential sets the client credential method (used by client)
+func WithCredential(payload string) Option {
 	return func(o *Options) {
 		o.ClientOptions = append(
 			o.ClientOptions,
-			core.WithCredential(cred),
+			core.WithCredential(payload),
 		)
 	}
 }

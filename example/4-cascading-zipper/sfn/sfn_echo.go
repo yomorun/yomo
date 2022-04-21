@@ -12,6 +12,7 @@ func main() {
 		"echo-sfn",
 		yomo.WithZipperAddr("localhost:9002"),
 		yomo.WithObserveDataTags(0x33),
+		yomo.WithCredential("token:z2"),
 	)
 	defer sfn.Close()
 

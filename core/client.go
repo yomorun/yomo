@@ -17,6 +17,7 @@ import (
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
 )
 
+// ClientOption YoMo client options
 type ClientOption func(*ClientOptions)
 
 // ConnState describes the state of the connection.
@@ -106,8 +107,7 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 		c.name,
 		byte(c.clientType),
 		c.opts.ObserveDataTags,
-		c.opts.Credential.AppID(),
-		byte(c.opts.Credential.Type()),
+		c.opts.Credential.Name(),
 		c.opts.Credential.Payload(),
 	)
 	err = c.WriteFrame(handshake)
@@ -136,18 +136,18 @@ func (c *Client) handleFrame() {
 		f, err := fs.ReadFrame()
 		if err != nil {
 			defer c.stream.Close()
-			defer c.conn.CloseWithError(0xD0, err.Error())
+			// defer c.conn.CloseWithError(0xD0, err.Error())
 
-			c.logger.Infof("%shandleFrame(): %T | %v", ClientLogPrefix, err, err)
+			c.logger.Debugf("%shandleFrame(): %T | %v", ClientLogPrefix, err, err)
 			if e, ok := err.(*quic.IdleTimeoutError); ok {
-				c.logger.Errorf("%s>>1 connection timeout, err=%v, zipper=%s", ClientLogPrefix, e, c.addr)
+				c.logger.Errorf("%sconnection timeout, err=%v, zipper=%s", ClientLogPrefix, e, c.addr)
 				c.setState(ConnStateDisconnected)
 			} else if e, ok := err.(*quic.ApplicationError); ok {
-				c.logger.Infof("%s>>2 application error, err=%v, errcode=%v", ClientLogPrefix, e, e.ErrorCode)
+				c.logger.Infof("%sapplication error, err=%v, errcode=%v", ClientLogPrefix, e, e.ErrorCode)
 				if e.ErrorCode == 0xCC {
+					// if connection is rejected(eg: authenticate fails) from server
 					c.logger.Errorf("%sIllegal client, server rejected.", ClientLogPrefix)
-					// stop reconnect policy
-					c.setState(ConnStateAborted)
+					c.setState(ConnStateRejected)
 					break
 				} else if e.ErrorCode == 0x00 {
 					// client abort
@@ -157,30 +157,37 @@ func (c *Client) handleFrame() {
 				}
 			} else if errors.Is(err, net.ErrClosed) {
 				// if client close the connection, net.ErrClosed will be raise
-				c.logger.Errorf("%s>>3 connection is closed, err=%v", ClientLogPrefix, err)
+				c.logger.Errorf("%sconnection is closed, err=%v", ClientLogPrefix, err)
 				c.setState(ConnStateDisconnected)
 				// by quic-go IdleTimeoutError after connection's KeepAlive config.
 				break
+			} else {
+				// any error occurred, we should close the stream
+				// after this, conn.AcceptStream() will raise the error
+				c.setState(ConnStateClosed)
+				c.conn.CloseWithError(0xD0, err.Error())
+				c.logger.Errorf("%sunknown error occurred, err=%v, state=%v", ClientLogPrefix, err, c.getState())
+				break
 			}
-			c.logger.Infof("%s>>4 xxx, err=%v", ClientLogPrefix, err)
-			// any error occurred, we should close the stream
-			// after this, conn.AcceptStream() will raise the error
-			c.setState(ConnStateDisconnected)
+		}
+		if f == nil {
 			break
 		}
-
 		// read frame
 		// first, get frame type
 		frameType := f.Type()
 		c.logger.Debugf("%stype=%s, frame=%# x", ClientLogPrefix, frameType, frame.Shortly(f.Encode()))
 		switch frameType {
+		case frame.TagOfHandshakeFrame:
+			if v, ok := f.(*frame.HandshakeFrame); ok {
+				c.logger.Debugf("%sreceive HandshakeFrame, name=%v", ClientLogPrefix, v.Name)
+			}
 		case frame.TagOfPongFrame:
 			c.setState(ConnStatePong)
 		case frame.TagOfAcceptedFrame:
 			c.setState(ConnStateAccepted)
 		case frame.TagOfRejectedFrame:
 			c.setState(ConnStateRejected)
-			c.Close()
 		case frame.TagOfDataFrame: // DataFrame carries user's data
 			if v, ok := f.(*frame.DataFrame); ok {
 				c.setState(ConnStateTransportData)
@@ -330,7 +337,7 @@ func (c *Client) initOptions() error {
 	}
 	// credential
 	if c.opts.Credential == nil {
-		c.opts.Credential = auth.NewCredendialNone()
+		c.opts.Credential = auth.NewCredential("")
 	}
 	// tls config
 	if c.opts.TLSConfig == nil {
@@ -358,7 +365,7 @@ func (c *Client) initOptions() error {
 	}
 	// credential
 	if c.opts.Credential != nil {
-		c.logger.Printf("%suse credential: [%s]", ClientLogPrefix, c.opts.Credential.Type())
+		c.logger.Printf("%suse credential: [%s]", ClientLogPrefix, c.opts.Credential.Name())
 	}
 
 	return nil
