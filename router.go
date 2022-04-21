@@ -42,22 +42,22 @@ func newRoute(config *config.WorkflowConfig) *route {
 	}
 	logger.Debugf("%sworkflowconfig %+v", zipperLogPrefix, *config)
 	for i, app := range config.Functions {
-		r.Add(i, app.Name)
+		r.Add(i, app)
 	}
 
 	return &r
 }
 
-func (r *route) Add(index int, name string) {
-	logger.Debugf("%sroute add: %s", zipperLogPrefix, name)
-	r.data.Store(index, name)
+func (r *route) Add(index int, app config.App) {
+	logger.Debugf("%sroute add: %s", zipperLogPrefix, app.Name)
+	r.data.Store(index, app)
 }
 
 func (r *route) Exists(name string) bool {
 	var ok bool
 	logger.Debugf("%srouter[%v] exists name: %s", zipperLogPrefix, r, name)
 	r.data.Range(func(key interface{}, val interface{}) bool {
-		if val.(string) == name {
+		if val.(config.App).Name == name {
 			ok = true
 			return false
 		}
@@ -67,20 +67,20 @@ func (r *route) Exists(name string) bool {
 	return ok
 }
 
-func (r *route) GetForwardRoutes(current string) []string {
+func (r *route) GetForwardRoutes(current string) []config.App {
 	idx := -1
 	r.data.Range(func(key interface{}, val interface{}) bool {
-		if val.(string) == current {
+		if val.(config.App).Name == current {
 			idx = key.(int)
 			return false
 		}
 		return true
 	})
 
-	routes := make([]string, 0)
+	routes := make([]config.App, 0)
 	r.data.Range(func(key interface{}, val interface{}) bool {
 		if key.(int) > idx {
-			routes = append(routes, val.(string))
+			routes = append(routes, val.(config.App))
 		}
 		return true
 	})

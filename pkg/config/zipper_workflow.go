@@ -11,6 +11,9 @@ import (
 // App represents a YoMo Application.
 type App struct {
 	Name string `yaml:"name"`
+	// Broadcast define the kind of publishing we want to do when multiple sfn are listening
+	// values acceptable would be [random|all]. Default to [random]
+	Broadcast string `yaml:"broadcast"`
 }
 
 // Workflow represents a YoMo Workflow.

@@ -1,13 +1,14 @@
 # Multi stream functions example
 
-This example represents how YoMo works with multiple stream functions.
+This example represents how YoMo works with multiple stream functions. The last cascading function is being listened by 2 stream functions wheras instead of sending only to one randomly, we would broadcast to all those subscribed on the function.
 
 ## Code structure
 
 - `source`: Mocking data of a Sound Sensor. [docs.yomo.run/source](https://docs.yomo.run/source)
 - `stream-fn-1`: Calculate the sound value in real-time. [docs.yomo.run/stream-function](https://docs.yomo.run/stream-fn)
 - `stream-fn-2`: Print the warning message when the noise value reaches the threshold. [docs.yomo.run/stream-function](https://docs.yomo.run/stream-fn)
-- `stream-fn-3`: The raw stream is immutable, `stream-fn-3` can still observe the raw data and calculate the average value in a sliding window. [docs.yomo.run/stream-function](https://docs.yomo.run/stream-fn)
+- `stream-fn-3a`: The raw stream is immutable, `stream-fn-3a` can still observe the raw data and calculate the average value in a sliding window. [docs.yomo.run/stream-function](https://docs.yomo.run/stream-fn)
+- `stream-fn-3b`: The raw stream is immutable, `stream-fn-3b` can still observe the raw data and calculate the average value in a sliding window. [docs.yomo.run/stream-function](https://docs.yomo.run/stream-fn)
 - `zipper`: Orchestrate a workflow that receives the data from `source`, stream computing in `stream-fn-1`, `stream-fn-2` and `stream-fn-3` [docs.yomo.run/zipper](https://docs.yomo.run/zipper)
 
 ## Prepare
@@ -40,47 +41,49 @@ YoMo CLI Version: v1.0.0
 ```bash
 $ task run
 
-task: [zipper] yomo serve -c ./zipper/workflow.yaml
-task: [sfn-3] go build -o ./bin/sfn-3 ./stream-fn-3/app.go
+task: [zipper] go run zipper/main.go
 task: [source-build] go build -o ./bin/source source/main.go
 task: [sfn-1] go build -o ./bin/sfn-1 ./stream-fn-1/app.go
 task: [sfn-2] go build -o ./bin/sfn-2 ./stream-fn-2/app.go
-[zipper] Using config file: ./zipper/workflow.yaml
-[zipper] ℹ️   Running YoMo-Zipper...
-[zipper] 2022-02-20 17:10:03.764	[yomo:zipper] Listening SIGUSR1, SIGUSR2, SIGTERM/SIGINT...
-[zipper] 2022-02-20 17:10:03.773	[core:server] ✅ [Service] Listening on: 127.0.0.1:9000, QUIC: [v1 draft-29], AUTH: [None]
+task: [sfn-3a] go build -o ./bin/sfn-3a ./stream-fn-3a/app.go
+task: [sfn-3b] go build -o ./bin/sfn-3b ./stream-fn-3b/app.go
 task: [sfn-1] ./bin/sfn-1
-task: [sfn-2] ./bin/sfn-2
-task: [sfn-3] ./bin/sfn-3
-[sfn-3] 2022-02-20 17:10:04.121	[core:client] use credential: [None]
-[sfn-1] 2022-02-20 17:10:04.122	[core:client] use credential: [None]
-[sfn-2] 2022-02-20 17:10:04.122	[core:client] use credential: [None]
-[sfn-3] 2022-02-20 17:10:04.124	[core:client] ❤️  [Noise-3]([::]:60308) is connected to YoMo-Zipper localhost:9000
-[sfn-2] 2022-02-20 17:10:04.124	[core:client] ❤️  [Noise-2]([::]:59332) is connected to YoMo-Zipper localhost:9000
-[sfn-1] 2022-02-20 17:10:04.125	[core:client] ❤️  [Noise-1]([::]:53199) is connected to YoMo-Zipper localhost:9000
-[zipper] 2022-02-20 17:10:04.125	[core:server] ❤️  <Stream Function> [::Noise-2](127.0.0.1:59332) is connected!
-[zipper] 2022-02-20 17:10:04.125	[core:server] ❤️  <Stream Function> [::Noise-3](127.0.0.1:60308) is connected!
-[zipper] 2022-02-20 17:10:04.125	[core:server] ❤️  <Stream Function> [::Noise-1](127.0.0.1:53199) is connected!
+task: [sfn-3a] ./bin/sfn-3a
+task: [sfn-3b] ./bin/sfn-3b
 task: [source] go build -o ./bin/source source/main.go
+task: [sfn-2] ./bin/sfn-2
+[zipper] 2022-04-20 21:48:31.754        [yomo:zipper] Listening SIGUSR1, SIGUSR2, SIGTERM/SIGINT...
+[zipper] 2022-04-20 21:48:31.757        [core:server] ✅ [Zipper] Listening on: 127.0.0.1:9000, MODE: DEVELOPMENT, QUIC: [v1 draft-29], AUTH: [None]
 task: [source] ./bin/source
-[source] 2022-02-20 17:10:05.032	[core:client] use credential: [None]
-[source] 2022-02-20 17:10:05.038	[core:client] ❤️  [yomo-source]([::]:64310) is connected to YoMo-Zipper localhost:9000
-[source] 2022-02-20 17:10:05.038	✅ Emit {121.417854 1645348205038 localhost} to YoMo-Zipper
-[zipper] 2022-02-20 17:10:05.038	[core:server] ❤️  <Source> [::yomo-source](127.0.0.1:64310) is connected!
-[sfn-1] 2022-02-20 17:10:05.039	✅ [localhost] 1645348205038 > value: 12.141786 ⚡️=1ms
-[sfn-2] ✅ receive noise value: 12.141786
-[sfn-3] 2022-02-20 17:10:05.040	✅ [fn3] observe <- 12.141786
-[sfn-3] 2022-02-20 17:10:05.125	🧩 average value in last 10000 ms: 12.141786!
-[sfn-3] 2022-02-20 17:10:06.125	🧩 average value in last 10000 ms: 12.141786!
-[sfn-3] 2022-02-20 17:10:07.126	🧩 average value in last 10000 ms: 12.141786!
-[sfn-3] 2022-02-20 17:10:08.127	🧩 average value in last 10000 ms: 12.141786!
-[sfn-3] 2022-02-20 17:10:09.127	🧩 average value in last 10000 ms: 12.141786!
-[source] 2022-02-20 17:10:10.039	✅ Emit {87.23943 1645348210039 localhost} to YoMo-Zipper
-[sfn-1] 2022-02-20 17:10:10.041	✅ [localhost] 1645348210039 > value: 8.723944 ⚡️=2ms
-[sfn-2] ✅ receive noise value: 8.723944
-[sfn-3] 2022-02-20 17:10:10.045	✅ [fn3] observe <- 8.723944
-[sfn-3] 2022-02-20 17:10:10.128	🧩 average value in last 10000 ms: 12.141786!
-[sfn-3] 2022-02-20 17:10:11.128	🧩 average value in last 10000 ms: 12.141786!
+[sfn-1] 2022-04-20 21:48:31.961 [core:client] use credential: [None]
+[sfn-1] 2022-04-20 21:48:31.969 [core:client] ❤️  [Noise-1]([::]:52350) is connected to YoMo-Zipper localhost:9000
+[zipper] 2022-04-20 21:48:31.969        [core:server] ❤️  <Stream Function> [::Noise-1](127.0.0.1:52350) is connected!
+[sfn-3b] 2022-04-20 21:48:32.043        [core:client] use credential: [None]
+[sfn-3b] 2022-04-20 21:48:32.049        [core:client] ❤️  [Noise-3]([::]:64524) is connected to YoMo-Zipper localhost:9000
+[zipper] 2022-04-20 21:48:32.050        [core:server] ❤️  <Stream Function> [::Noise-3](127.0.0.1:64524) is connected!
+[sfn-3a] 2022-04-20 21:48:32.134        [core:client] use credential: [None]
+[sfn-3a] 2022-04-20 21:48:32.141        [core:client] ❤️  [Noise-3]([::]:58187) is connected to YoMo-Zipper localhost:9000
+[zipper] 2022-04-20 21:48:32.141        [core:server] ❤️  <Stream Function> [::Noise-3](127.0.0.1:58187) is connected!
+[sfn-2] 2022-04-20 21:48:32.218 [core:client] use credential: [None]
+[sfn-2] 2022-04-20 21:48:32.225 [core:client] ❤️  [Noise-2]([::]:63430) is connected to YoMo-Zipper localhost:9000
+[zipper] 2022-04-20 21:48:32.225        [core:server] ❤️  <Stream Function> [::Noise-2](127.0.0.1:63430) is connected!
+[source] 2022-04-20 21:48:32.314        [core:client] use credential: [None]
+[source] 2022-04-20 21:48:32.321        [core:client] ❤️  [yomo-source]([::]:63332) is connected to YoMo-Zipper localhost:9000
+[source] 2022-04-20 21:48:32.322        ✅ Emit {194.21623 1650505712321 localhost} to YoMo-Zipper
+[zipper] 2022-04-20 21:48:32.322        [core:server] ❤️  <Source> [::yomo-source](127.0.0.1:63332) is connected!
+[sfn-1] 2022-04-20 21:48:32.323 ✅ [localhost] 1650505712321 > value: 19.421623 ⚡️=2ms
+[sfn-2] ✅ receive noise value: 19.421623
+[sfn-3b] 2022-04-20 21:48:32.324        ✅ [fn3] observe <- 19.421623
+[sfn-3a] 2022-04-20 21:48:32.324        ✅ [fn3] observe <- 19.421623
+[source] 2022-04-20 21:48:32.823        ✅ Emit {87.032425 1650505712823 localhost} to YoMo-Zipper
+[sfn-1] 2022-04-20 21:48:32.825 ✅ [localhost] 1650505712823 > value: 8.703242 ⚡️=2ms
+[sfn-2] ❗ value: 19.421623 reaches the threshold 16! 𝚫=3.421623✅ receive noise value: 8.703242
+[sfn-3a] 2022-04-20 21:48:32.826        ✅ [fn3] observe <- 8.703242
+[sfn-3b] 2022-04-20 21:48:32.826        ✅ [fn3] observe <- 8.703242
+[sfn-3b] 2022-04-20 21:48:33.050        🧩 average value in last 10000 ms: 19.421623!
+[sfn-3b] 2022-04-20 21:48:33.050        ❗❗  average value in last 10000 ms: 19.421623 reaches the threshold 13!
+[sfn-3a] 2022-04-20 21:48:33.141        🧩 average value in last 10000 ms: 19.421623!
+[sfn-3a] 2022-04-20 21:48:33.141        ❗❗  average value in last 10000 ms: 19.421623 reaches the threshold 13!
 ```
 
 ## Option 2: Manual
@@ -161,7 +164,18 @@ receive noise value: 18.712460
 ❗ value: 16.458117 reaches the threshold 16! 𝚫=0.458117
 ```
 
-The terminal of `stream-fn-3` will show the average value in a sliding window 10s.
+The terminal of `stream-fn-3a` will show the average value in a sliding window 10s.
+
+```bash
+[StdOut]:  15.714272
+[StdOut]:  14.961421
+[StdOut]:  18.712460
+[StdOut]:  1.071311
+[StdOut]:  16.458117
+🧩 average value in last 10000 ms: 10.931099!
+```
+
+The terminal of `stream-fn-3b` will show the average value in a sliding window 10s.
 
 ```bash
 [StdOut]:  15.714272

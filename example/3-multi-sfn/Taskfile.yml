@@ -49,7 +49,7 @@ tasks:
 
   sfn:
     desc: run stream functions
-    deps: [sfn-1, sfn-2, sfn-3]
+    deps: [sfn-1, sfn-2, sfn-3a, sfn-3b]
 
   sfn-1:
     desc: run stream functions 1
@@ -63,8 +63,14 @@ tasks:
       - "go build -o ./bin/sfn-2{{exeExt}} ./stream-fn-2/app.go"
       - "./bin/sfn-2{{exeExt}}"
 
-  sfn-3:
-    desc: run stream functions 3
+  sfn-3a:
+    desc: run stream functions 3a
     cmds:
-      - "go build -o ./bin/sfn-3{{exeExt}} ./stream-fn-3/app.go"
-      - "./bin/sfn-3{{exeExt}}"
+      - "go build -o ./bin/sfn-3a{{exeExt}} ./stream-fn-3a/app.go"
+      - "./bin/sfn-3a{{exeExt}}"
+
+  sfn-3b:
+    desc: run stream functions 3b
+    cmds:
+      - "go build -o ./bin/sfn-3b{{exeExt}} ./stream-fn-3b/app.go"
+      - "./bin/sfn-3b{{exeExt}}"

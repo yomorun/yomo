@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/pkg/config"
 	"github.com/yomorun/yomo/pkg/logger"
 )
 
@@ -34,8 +35,8 @@ type Connector interface {
 	Remove(connID string)
 	// Get a connection by connection id.
 	Get(connID string) io.ReadWriteCloser
-	// GetConnIDs gets the connection ids by appID, name and tag.
-	GetConnIDs(appID string, name string, tags byte) []string
+	// GetConnIDs gets the connection ids by appID, flowFn and tag.
+	GetConnIDs(appID string, flowFn config.App, tags byte) []string
 	// Write a DataFrame to a connection.
 	Write(f *frame.DataFrame, toID string) error
 	// GetSnapshot gets the snapshot of all connections.
@@ -124,13 +125,14 @@ func (c *connector) AppName(connID string) (string, bool) {
 	return "", false
 }
 
-// GetConnIDs gets the connection ids by appID, name and tag.
-func (c *connector) GetConnIDs(appID string, name string, tag byte) []string {
+// GetConnIDs gets the connection ids by appID, flowFn and tag. The flowFn relates to the step in
+// the workflow
+func (c *connector) GetConnIDs(appID string, flowFn config.App, tag byte) []string {
 	connIDs := make([]string, 0)
 
 	c.apps.Range(func(key interface{}, val interface{}) bool {
 		app := val.(*app)
-		if app.id == appID && app.name == name {
+		if app.id == appID && app.name == flowFn.Name {
 			for _, v := range app.observed {
 				if v == tag {
 					connIDs = append(connIDs, key.(string))
@@ -141,9 +143,16 @@ func (c *connector) GetConnIDs(appID string, name string, tag byte) []string {
 		return true
 	})
 
+	// Here, it would be better to know who wants to observe and publish to all of them in case there's many
+	// The workflow itself should specify if we want a round-robin alike, random, everyone to be notified
+	if flowFn.Broadcast == "all" || len(connIDs) == 1 {
+		return connIDs
+	}
+
+	// Old code below
 	if n := len(connIDs); n > 1 {
 		index := rand.Intn(n)
-		return connIDs[index : index+1]
+		return connIDs[index : index+1] // return a subset of 1
 	}
 
 	return connIDs
