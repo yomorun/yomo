@@ -37,6 +37,7 @@ type Client struct {
 	opts       ClientOptions
 	localAddr  string // client local addr, it will be changed on reconnect
 	logger     log.Logger
+	errc       chan error
 }
 
 // NewClient creates a new YoMo-Client.
@@ -46,6 +47,7 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 		clientType: connType,
 		state:      ConnStateReady,
 		opts:       ClientOptions{},
+		errc:       make(chan error),
 	}
 	c.Init(opts...)
 	once.Do(func() {
@@ -128,6 +130,7 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 
 // handleFrame handles the logic when receiving frame from server.
 func (c *Client) handleFrame() {
+	defer close(c.errc)
 	// transform raw QUIC stream to wire format
 	fs := NewFrameStream(c.stream)
 	for {
@@ -193,6 +196,8 @@ func (c *Client) handleFrame() {
 			if v, ok := f.(*frame.GoawayFrame); ok {
 				c.logger.Errorf("%sreceive GoawayFrame, code=%#x, message=%s", ClientLogPrefix, v.Code(), v.Message())
 				c.conn.CloseWithError(quic.ApplicationErrorCode(v.Code()), v.Message())
+				c.errc <- errors.New(v.Message())
+				break
 			}
 		case frame.TagOfDataFrame: // DataFrame carries user's data
 			if v, ok := f.(*frame.DataFrame); ok {
@@ -386,4 +391,14 @@ func (c *Client) SetObserveDataTags(tag ...byte) {
 // Logger get client's logger instance, you can customize this using `yomo.WithLogger`
 func (c *Client) Logger() log.Logger {
 	return c.logger
+}
+
+// SetErrorHandler set error handler
+func (c *Client) SetErrorHandler(fn func(err error)) {
+	if fn != nil {
+		err := <-c.errc
+		if err != nil {
+			fn(err)
+		}
+	}
 }
