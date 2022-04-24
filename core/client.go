@@ -134,6 +134,7 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 
 // handleFrame handles the logic when receiving frame from server.
 func (c *Client) handleFrame() {
+	defer close(c.errc)
 	// transform raw QUIC stream to wire format
 	fs := NewFrameStream(c.stream)
 	for {
