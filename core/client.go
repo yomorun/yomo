@@ -188,6 +188,12 @@ func (c *Client) handleFrame() {
 			c.setState(ConnStateAccepted)
 		case frame.TagOfRejectedFrame:
 			c.setState(ConnStateRejected)
+		case frame.TagOfGoawayFrame:
+			c.setState(ConnStateGoaway)
+			if v, ok := f.(*frame.GoawayFrame); ok {
+				c.logger.Errorf("%sreceive GoawayFrame, code=%#x, message=%s", ClientLogPrefix, v.Code(), v.Message())
+				c.conn.CloseWithError(quic.ApplicationErrorCode(v.Code()), v.Message())
+			}
 		case frame.TagOfDataFrame: // DataFrame carries user's data
 			if v, ok := f.(*frame.DataFrame); ok {
 				c.setState(ConnStateTransportData)

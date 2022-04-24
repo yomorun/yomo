@@ -35,8 +35,8 @@ type Connector interface {
 	Get(connID string) io.ReadWriteCloser
 	// GetConnIDs gets the connection ids by name and tag.
 	GetConnIDs(name string, tags byte) []string
-	// Write a DataFrame to a connection.
-	Write(f *frame.DataFrame, toID string) error
+	// Write a Frame to a connection.
+	Write(f frame.Frame, toID string) error
 	// GetSnapshot gets the snapshot of all connections.
 	GetSnapshot() map[string]io.ReadWriteCloser
 
@@ -143,7 +143,7 @@ func (c *connector) GetConnIDs(name string, tag byte) []string {
 }
 
 // Write a DataFrame to a connection.
-func (c *connector) Write(f *frame.DataFrame, toID string) error {
+func (c *connector) Write(f frame.Frame, toID string) error {
 	targetStream := c.Get(toID)
 	if targetStream == nil {
 		logger.Warnf("%swill write to: [%s], target stream is nil", ServerLogPrefix, toID)

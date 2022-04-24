@@ -24,6 +24,7 @@ const (
 	ConnStateTransportData  ConnState = "TransportData"
 	ConnStateAborted        ConnState = "Aborted"
 	ConnStateClosed         ConnState = "Closed" // close connection by server
+	ConnStateGoaway         ConnState = "Goaway"
 )
 
 // Prefix is the prefix for logger.

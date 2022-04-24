@@ -245,6 +245,8 @@ func (s *Server) mainFrameHandler(c *Context) error {
 		}
 	// case frame.TagOfPingFrame:
 	// 	s.handlePingFrame(mainStream, connection, f.(*frame.PingFrame))
+	case frame.TagOfGoawayFrame:
+		s.handleGoawayFrame(c)
 	case frame.TagOfDataFrame:
 		if err := s.handleDataFrame(c); err != nil {
 			c.CloseWithError(0xCC, fmt.Sprintf("handleDataFrame err: %v", err))
@@ -304,12 +306,33 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 			return err
 		}
 		// check app exists in connection list
+		// if s.connector.ExistsApp(name) {
+		// 	err := fmt.Errorf("SFN[%s] connection already exists", f.Name)
+		// 	c.CloseWithError(0xCC, err.Error())
+		// 	return err
+		// }
+		// check app exists in connection list
+		// logger.Printf("%sSFN[%s] write GoawayFrame to client", ServerLogPrefix, f.Name)
 		if s.connector.ExistsApp(name) {
+			logger.Debugf("%sSFN[%s] write GoawayFrame to client", ServerLogPrefix, f.Name)
+			// s.connector.Add(connID, stream)
+			// link connection to stream function
+			// s.connector.LinkApp(connID, name, f.ObserveDataTags)
 			err := fmt.Errorf("SFN[%s] connection already exists", f.Name)
-			c.CloseWithError(0xCC, err.Error())
-			return err
-		}
+			// c.CloseWithError(0xCC, err.Error())
+			// return err
+			goawayFrame := frame.NewGoawayFrame(0x4F, err.Error())
+			// if err := s.connector.Write(goawayFrame, connID); err != nil {
+			// 	return err
+			// }
+			if _, err = stream.Write(goawayFrame.Encode()); err != nil {
+				logger.Printf("%sSFN[%s] write GoawayFrame err=%v", ServerLogPrefix, f.Name, err)
+				// c.CloseWithError(goawayFrame.Code(), err.Error())
+				return err
+			}
 
+			// c.CloseWithError(goawayFrame.Code(), err.Error())
+		}
 		s.connector.Add(connID, stream)
 		// link connection to stream function
 		s.connector.LinkApp(connID, name, f.ObserveDataTags)
@@ -324,6 +347,17 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 		return errors.New("core.server: Unknown ClientType, illegal")
 	}
 	logger.Printf("%s❤️  <%s> [%s](%s) is connected!", ServerLogPrefix, clientType, name, connID)
+	return nil
+}
+
+// handle handleGoawayFrame
+func (s *Server) handleGoawayFrame(c *Context) error {
+	f := c.Frame.(*frame.GoawayFrame)
+
+	logger.Debugf("%sGOT ⛔️ GoawayFrame : %# x", ServerLogPrefix, f)
+	logger.Printf("%s⛔️  code=%d, message==%s", ServerLogPrefix, f.Code(), f.Message())
+
+	// logger.Printf("%s❤️  <%s> [%s](%s) is connected!", ServerLogPrefix, clientType, name, connID)
 	return nil
 }
 
