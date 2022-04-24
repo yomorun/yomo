@@ -254,7 +254,6 @@ func (s *Server) mainFrameHandler(c *Context) error {
 			// return err
 			return yerr.New(yerr.ErrorCodeGoaway, err)
 		}
-
 	case frame.TagOfDataFrame:
 		if err := s.handleDataFrame(c); err != nil {
 			c.CloseWithError(yerr.ErrorCodeData, fmt.Sprintf("handleDataFrame err: %v", err))
@@ -322,14 +321,6 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 			return err
 		}
 		// check app exists in connection list
-<<<<<<< HEAD
-		// if s.connector.ExistsApp(name) {
-		// 	err := fmt.Errorf("SFN[%s] connection already exists", f.Name)
-		// 	c.CloseWithError(0xCC, err.Error())
-		// 	return err
-		// }
-		// check app exists in connection list
-		// logger.Printf("%sSFN[%s] write GoawayFrame to client", ServerLogPrefix, f.Name)
 		if s.connector.ExistsApp(name) {
 			logger.Debugf("%swrite to SFN[%s] GoawayFrame", ServerLogPrefix, f.Name)
 			err := fmt.Errorf("SFN[%s] connection already exists", f.Name)
@@ -340,14 +331,24 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 			}
 			// c.CloseWithError(goawayFrame.Code(), err.Error())
 		}
-=======
 		if s.connector.ExistsApp(name) {
+			logger.Debugf("%sSFN[%s] write GoawayFrame to client", ServerLogPrefix, f.Name)
+			// s.connector.Add(connID, stream)
+			// link connection to stream function
+			// s.connector.LinkApp(connID, name, f.ObserveDataTags)
 			err := fmt.Errorf("SFN[%s] connection already exists", f.Name)
-			c.CloseWithError(0xCC, err.Error())
-			return err
+			// c.CloseWithError(0xCC, err.Error())
+			// return err
+			goawayFrame := frame.NewGoawayFrame(0x4F, err.Error())
+			// if err := s.connector.Write(goawayFrame, connID); err != nil {
+			// 	return err
+			// }
+			if _, err = stream.Write(goawayFrame.Encode()); err != nil {
+				logger.Printf("%sSFN[%s] write GoawayFrame err=%v", ServerLogPrefix, f.Name, err)
+				// c.CloseWithError(goawayFrame.Code(), err.Error())
+				return err
+			}
 		}
-
->>>>>>> 4f925b1 (check SFN with the same name)
 		s.connector.Add(connID, stream)
 		// link connection to stream function
 		s.connector.LinkApp(connID, name, f.ObserveDataTags)
