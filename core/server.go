@@ -322,6 +322,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 			return err
 		}
 		// check app exists in connection list
+<<<<<<< HEAD
 		// if s.connector.ExistsApp(name) {
 		// 	err := fmt.Errorf("SFN[%s] connection already exists", f.Name)
 		// 	c.CloseWithError(0xCC, err.Error())
@@ -339,6 +340,14 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 			}
 			// c.CloseWithError(goawayFrame.Code(), err.Error())
 		}
+=======
+		if s.connector.ExistsApp(name) {
+			err := fmt.Errorf("SFN[%s] connection already exists", f.Name)
+			c.CloseWithError(0xCC, err.Error())
+			return err
+		}
+
+>>>>>>> 4f925b1 (check SFN with the same name)
 		s.connector.Add(connID, stream)
 		// link connection to stream function
 		s.connector.LinkApp(connID, name, f.ObserveDataTags)
