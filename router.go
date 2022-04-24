@@ -49,6 +49,10 @@ func newRoute(config *config.WorkflowConfig) *route {
 }
 
 func (r *route) Add(index int, name string) {
+	if r.Exists(name) {
+		logger.Warnf("%sapp[%s] already exists in workflow and will not be added", zipperLogPrefix, name)
+		return
+	}
 	logger.Debugf("%sroute add: %s", zipperLogPrefix, name)
 	r.data.Store(index, name)
 }

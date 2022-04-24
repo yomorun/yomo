@@ -303,6 +303,12 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 			// break
 			return err
 		}
+		// check app exists in connection list
+		if s.connector.ExistsApp(name) {
+			err := fmt.Errorf("SFN[%s] connection already exists", f.Name)
+			c.CloseWithError(0xCC, err.Error())
+			return err
+		}
 
 		s.connector.Add(connID, stream)
 		// link connection to stream function
