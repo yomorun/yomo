@@ -184,9 +184,9 @@ func (c *connector) ExistsApp(name string) bool {
 		app := val.(*app)
 		if app.name == name {
 			found = true
-			return true
+			return false
 		}
-		return false
+		return true
 	})
 
 	return found
