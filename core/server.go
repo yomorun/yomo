@@ -264,31 +264,39 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	f := c.Frame.(*frame.HandshakeFrame)
 
 	logger.Debugf("%sGOT ❤️ HandshakeFrame : %# x", ServerLogPrefix, f)
+	// basic info
+	connID := c.ConnID()
+	name := f.Name
+	clientType := ClientType(f.ClientType)
+	stream := c.Stream
 	// credential
-	logger.Infof("%sClientType=%# x is %s, Credential=%s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType), authName(f.AuthName()))
+	logger.Debugf("%sClientType=%# x is %s, Credential=%s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType), authName(f.AuthName()))
 	// authenticate
 	if !s.authenticate(f) {
 		err := fmt.Errorf("handshake authentication fails, client credential name is %s", authName(f.AuthName()))
-		return err
+		// return err
+		logger.Debugf("%s🔑 <%s> [%s](%s) is connected!", ServerLogPrefix, clientType, name, connID)
+		rejectedFrame := frame.NewRejectedFrame(err.Error())
+		if _, err = stream.Write(rejectedFrame.Encode()); err != nil {
+			logger.Debugf("%s🔑 write to <%s> [%s](%s) RejectedFrame error:%v", ServerLogPrefix, clientType, name, connID, err)
+			return err
+		}
+		return nil
 	}
 
 	// route
 	if err := s.validateRouter(); err != nil {
 		return err
 	}
-	connID := c.ConnID()
 	route := s.router.Route()
 	if reflect.ValueOf(route).IsNil() {
 		err := errors.New("handleHandshakeFrame route is nil")
 		return err
 	}
-	name := f.Name
 	// store
 	s.opts.Store.Set(name, route)
 
 	// client type
-	clientType := ClientType(f.ClientType)
-	stream := c.Stream
 	switch clientType {
 	case ClientTypeSource:
 		s.connector.Add(connID, stream)
@@ -314,23 +322,13 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 		// check app exists in connection list
 		// logger.Printf("%sSFN[%s] write GoawayFrame to client", ServerLogPrefix, f.Name)
 		if s.connector.ExistsApp(name) {
-			logger.Debugf("%sSFN[%s] write GoawayFrame to client", ServerLogPrefix, f.Name)
-			// s.connector.Add(connID, stream)
-			// link connection to stream function
-			// s.connector.LinkApp(connID, name, f.ObserveDataTags)
+			logger.Debugf("%swrite to SFN[%s] GoawayFrame", ServerLogPrefix, f.Name)
 			err := fmt.Errorf("SFN[%s] connection already exists", f.Name)
-			// c.CloseWithError(0xCC, err.Error())
-			// return err
 			goawayFrame := frame.NewGoawayFrame(0x4F, err.Error())
-			// if err := s.connector.Write(goawayFrame, connID); err != nil {
-			// 	return err
-			// }
 			if _, err = stream.Write(goawayFrame.Encode()); err != nil {
-				logger.Printf("%sSFN[%s] write GoawayFrame err=%v", ServerLogPrefix, f.Name, err)
-				// c.CloseWithError(goawayFrame.Code(), err.Error())
+				logger.Errorf("%s⛔️ write to SFN[%s] GoawayFrame error:%v", ServerLogPrefix, f.Name, err)
 				return err
 			}
-
 			// c.CloseWithError(goawayFrame.Code(), err.Error())
 		}
 		s.connector.Add(connID, stream)
