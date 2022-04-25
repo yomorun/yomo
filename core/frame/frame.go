@@ -35,6 +35,7 @@ const (
 	TagOfPongFrame     Type = 0x3B
 	TagOfAcceptedFrame Type = 0x3A
 	TagOfRejectedFrame Type = 0x39
+	TagOfRejectedMessage Type = 0x02
 	// GoawayFrame
 	TagOfGoawayFrame        Type = 0x30
 	TagOfGoawayCode    Type = 0x01

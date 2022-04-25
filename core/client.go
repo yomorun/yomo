@@ -191,10 +191,16 @@ func (c *Client) handleFrame() {
 			c.setState(ConnStateAccepted)
 		case frame.TagOfRejectedFrame:
 			c.setState(ConnStateRejected)
+			if v, ok := f.(*frame.RejectedFrame); ok {
+				c.logger.Errorf("%s🔑 receive RejectedFrame, message=%s", ClientLogPrefix,  v.Message())
+				c.conn.CloseWithError(0xCC, v.Message())
+				c.errc <- errors.New(v.Message())
+				break
+			}
 		case frame.TagOfGoawayFrame:
 			c.setState(ConnStateGoaway)
 			if v, ok := f.(*frame.GoawayFrame); ok {
-				c.logger.Errorf("%sreceive GoawayFrame, code=%#x, message=%s", ClientLogPrefix, v.Code(), v.Message())
+				c.logger.Errorf("%s⛔️ receive GoawayFrame, code=%#x, message=%s", ClientLogPrefix, v.Code(), v.Message())
 				c.conn.CloseWithError(quic.ApplicationErrorCode(v.Code()), v.Message())
 				c.errc <- errors.New(v.Message())
 				break
