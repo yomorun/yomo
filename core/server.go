@@ -13,6 +13,7 @@ import (
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/store"
+	"github.com/yomorun/yomo/core/yerr"
 
 	// authentication implements, Currently, only token authentication is implemented
 	_ "github.com/yomorun/yomo/pkg/auth"
@@ -176,26 +177,28 @@ func (s *Server) handleConnection(c *Context) {
 		if err != nil {
 			// if client close connection, will get ApplicationError with code = 0x00
 			if e, ok := err.(*quic.ApplicationError); ok {
-				if e.ErrorCode == 0x00 {
+				if yerr.Is(e.ErrorCode, yerr.ErrorCodeClientAbort) {
 					// client abort
 					logger.Infof("%sclient close the connection", ServerLogPrefix)
 					break
+				} else {
+					ye := yerr.New(yerr.Parse(e.ErrorCode), err)
+					logger.Errorf("%s[ERR] %s", ServerLogPrefix, ye)
 				}
 			} else if err == io.EOF {
-				logger.Errorf("%sthe connection is EOF", ServerLogPrefix)
+				logger.Infof("%sthe connection is EOF", ServerLogPrefix)
 				break
 			}
-			logger.Errorf("%s[ERR] %v", ServerLogPrefix, err)
 			if errors.Is(err, net.ErrClosed) {
 				// if client close the connection, net.ErrClosed will be raise
 				// by quic-go IdleTimeoutError after connection's KeepAlive config.
-				logger.Warnf("%s [ERR] net.ErrClosed on [handleConnection] %v", ServerLogPrefix, net.ErrClosed)
-				c.CloseWithError(0xC1, "net.ErrClosed")
+				logger.Warnf("%s[ERR] net.ErrClosed on [handleConnection] %v", ServerLogPrefix, net.ErrClosed)
+				c.CloseWithError(yerr.ErrorCodeClosed, "net.ErrClosed")
 				break
 			}
 			// any error occurred, we should close the stream
 			// after this, conn.AcceptStream() will raise the error
-			c.CloseWithError(0xC0, err.Error())
+			c.CloseWithError(yerr.ErrorCodeUnknown, err.Error())
 			logger.Warnf("%sconnection.Close()", ServerLogPrefix)
 			break
 		}
@@ -210,21 +213,21 @@ func (s *Server) handleConnection(c *Context) {
 		for _, handler := range s.beforeHandlers {
 			if err := handler(c); err != nil {
 				logger.Errorf("%safterFrameHandler err: %s", ServerLogPrefix, err)
-				c.CloseWithError(0xCC, err.Error())
+				c.CloseWithError(yerr.ErrorCodeBeforeHandler, err.Error())
 				return
 			}
 		}
 		// main handler
 		if err := s.mainFrameHandler(c); err != nil {
 			logger.Errorf("%smainFrameHandler err: %s", ServerLogPrefix, err)
-			c.CloseWithError(0xCC, err.Error())
+			c.CloseWithError(yerr.ErrorCodeMainHandler, err.Error())
 			return
 		}
 		// after frame handler
 		for _, handler := range s.afterHandlers {
 			if err := handler(c); err != nil {
 				logger.Errorf("%safterFrameHandler err: %s", ServerLogPrefix, err)
-				c.CloseWithError(0xCC, err.Error())
+				c.CloseWithError(yerr.ErrorCodeAfterHandler, err.Error())
 				return
 			}
 		}
@@ -240,16 +243,21 @@ func (s *Server) mainFrameHandler(c *Context) error {
 		if err := s.handleHandshakeFrame(c); err != nil {
 			logger.Errorf("%shandleHandshakeFrame err: %s", ServerLogPrefix, err)
 			// c.CloseWithError(0xCC, err.Error())
-			return err
+			// return err
+			return yerr.New(yerr.ErrorCodeHandshake, err)
 			// break
 		}
 	// case frame.TagOfPingFrame:
 	// 	s.handlePingFrame(mainStream, connection, f.(*frame.PingFrame))
 	case frame.TagOfGoawayFrame:
-		s.handleGoawayFrame(c)
+		if err := s.handleGoawayFrame(c); err != nil {
+			// return err
+			return yerr.New(yerr.ErrorCodeGoaway, err)
+		}
+
 	case frame.TagOfDataFrame:
 		if err := s.handleDataFrame(c); err != nil {
-			c.CloseWithError(0xCC, fmt.Sprintf("handleDataFrame err: %v", err))
+			c.CloseWithError(yerr.ErrorCodeData, fmt.Sprintf("handleDataFrame err: %v", err))
 		} else {
 			s.dispatchToDownstreams(c.Frame.(*frame.DataFrame))
 		}
@@ -309,7 +317,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 			s.connector.Remove(connID)
 			// SFN: stream function
 			err := fmt.Errorf("handshake router validation faild, illegal SFN[%s]", f.Name)
-			c.CloseWithError(0xCC, err.Error())
+			c.CloseWithError(yerr.ErrorCodeRejected, err.Error())
 			// break
 			return err
 		}
@@ -324,7 +332,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 		if s.connector.ExistsApp(name) {
 			logger.Debugf("%swrite to SFN[%s] GoawayFrame", ServerLogPrefix, f.Name)
 			err := fmt.Errorf("SFN[%s] connection already exists", f.Name)
-			goawayFrame := frame.NewGoawayFrame(0x4F, err.Error())
+			goawayFrame := frame.NewGoawayFrame(err.Error())
 			if _, err = stream.Write(goawayFrame.Encode()); err != nil {
 				logger.Errorf("%s⛔️ write to SFN[%s] GoawayFrame error:%v", ServerLogPrefix, f.Name, err)
 				return err
@@ -341,7 +349,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 		// unknown client type
 		s.connector.Remove(connID)
 		logger.Errorf("%sClientType=%# x, ilegal!", ServerLogPrefix, f.ClientType)
-		c.CloseWithError(0xCD, "Unknown ClientType, illegal!")
+		c.CloseWithError(yerr.ErrorCodeUnknownClient, "Unknown ClientType, illegal!")
 		return errors.New("core.server: Unknown ClientType, illegal")
 	}
 	logger.Printf("%s❤️  <%s> [%s](%s) is connected!", ServerLogPrefix, clientType, name, connID)
@@ -352,11 +360,10 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 func (s *Server) handleGoawayFrame(c *Context) error {
 	f := c.Frame.(*frame.GoawayFrame)
 
-	logger.Debugf("%sGOT ⛔️ GoawayFrame : %# x", ServerLogPrefix, f)
-	logger.Printf("%s⛔️  code=%d, message==%s", ServerLogPrefix, f.Code(), f.Message())
-
-	// logger.Printf("%s❤️  <%s> [%s](%s) is connected!", ServerLogPrefix, clientType, name, connID)
-	return nil
+	logger.Debugf("%s⛔️ GOT GoawayFrame code=%d, message==%s", ServerLogPrefix, yerr.ErrorCodeGoaway, f.Message())
+	// c.CloseWithError(f.Code(), f.Message())
+	_, err := c.Stream.Write(f.Encode())
+	return err
 }
 
 // will reuse quic-go's keep-alive feature

@@ -73,6 +73,9 @@ func generateAndSendData(stream yomo.Source) error {
 		if i++; i > 6 {
 			stream.Close()
 			return nil
+			// logger.Printf("[source] send GoawayFrame")
+			// goawayFrame := frame.NewGoawayFrame("客户端发送Goaway")
+			// stream.WriteFrame(goawayFrame)
 		}
 		if err != nil {
 			logger.Errorf("[source] ❌ Emit %v to YoMo-Zipper failure with err: %v", data, err)

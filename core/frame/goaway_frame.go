@@ -1,16 +1,17 @@
 package frame
 
-import "github.com/yomorun/y3"
+import (
+	"github.com/yomorun/y3"
+)
 
 // GoawayFrame is a Y3 encoded bytes, Tag is a fixed value TYPE_ID_GOAWAY_FRAME
 type GoawayFrame struct {
-	code    uint64
 	message string
 }
 
 // NewGoawayFrame creates a new GoawayFrame
-func NewGoawayFrame(code uint64, msg string) *GoawayFrame {
-	return &GoawayFrame{code: code, message: msg}
+func NewGoawayFrame(msg string) *GoawayFrame {
+	return &GoawayFrame{message: msg}
 }
 
 // Type gets the type of Frame.
@@ -21,22 +22,13 @@ func (f *GoawayFrame) Type() Type {
 // Encode to Y3 encoded bytes
 func (f *GoawayFrame) Encode() []byte {
 	goaway := y3.NewNodePacketEncoder(byte(f.Type()))
-	// code
-	codeBlock := y3.NewPrimitivePacketEncoder(byte(TagOfGoawayCode))
-	codeBlock.SetUInt64Value(f.code)
 	// message
 	msgBlock := y3.NewPrimitivePacketEncoder(byte(TagOfGoawayMessage))
 	msgBlock.SetStringValue(f.message)
 
-	goaway.AddPrimitivePacket(codeBlock)
 	goaway.AddPrimitivePacket(msgBlock)
 
 	return goaway.Encode()
-}
-
-// Code goaway code
-func (f *GoawayFrame) Code() uint64 {
-	return f.code
 }
 
 // Message goaway message
@@ -53,14 +45,6 @@ func DecodeToGoawayFrame(buf []byte) (*GoawayFrame, error) {
 	}
 
 	goaway := &GoawayFrame{}
-	// code
-	if codeBlock, ok := node.PrimitivePackets[byte(TagOfGoawayCode)]; ok {
-		code, err := codeBlock.ToUInt64()
-		if err != nil {
-			return nil, err
-		}
-		goaway.code = code
-	}
 	// message
 	if msgBlock, ok := node.PrimitivePackets[byte(TagOfGoawayMessage)]; ok {
 		msg, err := msgBlock.ToUTF8String()

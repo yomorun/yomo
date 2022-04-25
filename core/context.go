@@ -7,6 +7,7 @@ import (
 
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/yerr"
 	"github.com/yomorun/yomo/pkg/logger"
 )
 
@@ -50,7 +51,7 @@ func (c *Context) Clean() {
 }
 
 // CloseWithError closes the stream and cleans the context.
-func (c *Context) CloseWithError(code uint64, msg string) {
+func (c *Context) CloseWithError(code yerr.ErrorCode, msg string) {
 	logger.Debugf("%sconn[%s] context close, errCode=%#x, msg=%s", ServerLogPrefix, c.connID, code, msg)
 	if c.Stream != nil {
 		c.Stream.Close()
