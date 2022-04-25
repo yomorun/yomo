@@ -334,7 +334,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 		if s.connector.ExistsApp(name) {
 			logger.Debugf("%swrite to SFN[%s] GoawayFrame", ServerLogPrefix, f.Name)
 			err := fmt.Errorf("SFN[%s] connection already exists", f.Name)
-			goawayFrame := frame.NewGoawayFrame(0x4F, err.Error())
+			goawayFrame := frame.NewGoawayFrame(err.Error())
 			if _, err = stream.Write(goawayFrame.Encode()); err != nil {
 				logger.Errorf("%s⛔️ write to SFN[%s] GoawayFrame error:%v", ServerLogPrefix, f.Name, err)
 				return err
