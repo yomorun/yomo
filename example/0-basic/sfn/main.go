@@ -34,9 +34,9 @@ func main() {
 		logger.Errorf("[sfn] connect err=%v", err)
 		os.Exit(1)
 	}
-	// set error handler
+	// set the error handler function when server error occurs
 	sfn.SetErrorHandler(func(err error) {
-		logger.Errorf("[sfn] error: %v", err)
+		logger.Errorf("[sfn] receive server error: %v", err)
 		sfn.Close()
 		os.Exit(1)
 	})

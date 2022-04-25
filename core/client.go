@@ -130,7 +130,6 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 
 // handleFrame handles the logic when receiving frame from server.
 func (c *Client) handleFrame() {
-	defer close(c.errc)
 	// transform raw QUIC stream to wire format
 	fs := NewFrameStream(c.stream)
 	for {
@@ -192,7 +191,7 @@ func (c *Client) handleFrame() {
 		case frame.TagOfRejectedFrame:
 			c.setState(ConnStateRejected)
 			if v, ok := f.(*frame.RejectedFrame); ok {
-				c.logger.Errorf("%s🔑 receive RejectedFrame, message=%s", ClientLogPrefix,  v.Message())
+				c.logger.Errorf("%s🔑 receive RejectedFrame, message=%s", ClientLogPrefix, v.Message())
 				c.conn.CloseWithError(0xCC, v.Message())
 				c.errc <- errors.New(v.Message())
 				break
@@ -238,6 +237,8 @@ func (c *Client) Close() (err error) {
 			c.logger.Errorf("%s connection.Close(): %v", ClientLogPrefix, err)
 		}
 	}
+	// error channel
+	close(c.errc)
 
 	return err
 }
@@ -402,9 +403,11 @@ func (c *Client) Logger() log.Logger {
 // SetErrorHandler set error handler
 func (c *Client) SetErrorHandler(fn func(err error)) {
 	if fn != nil {
-		err := <-c.errc
-		if err != nil {
-			fn(err)
-		}
+		go func() {
+			err := <-c.errc
+			if err != nil {
+				fn(err)
+			}
+		}()
 	}
 }

@@ -23,6 +23,8 @@ type Source interface {
 	Write(p []byte) (n int, err error)
 	// WriteWithTag will write data with specified tag, default transactionID is epoch time.
 	WriteWithTag(tag uint8, data []byte) error
+	// SetErrorHandler set the error handler function when server error occurs
+	SetErrorHandler(fn func(err error))
 }
 
 // YoMo-Source
@@ -82,4 +84,9 @@ func (s *yomoSource) WriteWithTag(tag uint8, data []byte) error {
 	frame := frame.NewDataFrame()
 	frame.SetCarriage(byte(tag), data)
 	return s.client.WriteFrame(frame)
+}
+
+// SetErrorHandler set the error handler function when server error occurs
+func (s *yomoSource) SetErrorHandler(fn func(err error)) {
+	s.client.SetErrorHandler(fn)
 }
