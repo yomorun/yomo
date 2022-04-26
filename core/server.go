@@ -266,6 +266,8 @@ func (s *Server) mainFrameHandler(c *Context) error {
 			if conn != nil && conn.ClientType() == ClientTypeSource {
 				f := c.Frame.(*frame.DataFrame)
 				f.GetMetaFrame().SetMetadata(conn.Metadata().Encode())
+				// observe datatags backflow
+				s.handleBackflowFrame(c)
 				s.dispatchToDownstreams(f)
 			}
 		}
@@ -408,27 +410,19 @@ func (s *Server) handleDataFrame(c *Context) error {
 	return nil
 }
 
-func (s *Server) handleObserver(c *Context) error {
+func (s *Server) handleBackflowFrame(c *Context) error {
 	f := c.Frame.(*frame.DataFrame)
-	// write to source
-	// TODO: 回流
 	tag := f.GetDataTag()
+	carriage := f.GetCarriage()
+	// write to source with BackflowFrame
+	bf := frame.NewBackflowFrame(tag, carriage)
 	sourceIDs := s.connector.GetSourceConnIDs(tag)
 	for _, sourceID := range sourceIDs {
-		// if targetStream != nil {
-		result :=f.GetCarriage()
-		// sfn := s.connector.Get("127.0.0.1:53697")
-		// if sfn != nil {
-		// 	// fs := NewFrameStream(c.Stream)
-		// 	// f,err:=fs.ReadFrame()
-		// 	// if err!=nil{
-		// 	// 	logger.Errorf("解析frame出错")
-		// 	// 	return err
-		// 	result = string(f.GetCarriage())
-		// 	// }
-		// }
-		logger.Printf("[回流] tag:%# v -> source:%s, result=%s", tag, sourceID, string(result))
-		// }
+		logger.Debugf("%shandleBackflowFrame tag:%# v -> source:%s, result=%# x", ServerLogPrefix, tag, sourceID, frame.Shortly(carriage))
+		source := s.connector.Get(sourceID)
+		if source != nil {
+			source.Write(bf.Encode())
+		}
 	}
 	return nil
 }

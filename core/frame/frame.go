@@ -17,7 +17,8 @@ const (
 	TagOfMetadata      Type = 0x03
 	TagOfTransactionID Type = 0x01
 	// PayloadFrame of DataFrame
-	TagOfPayloadFrame Type = 0x2E
+	TagOfPayloadFrame  Type = 0x2E
+	TagOfBackflowFrame Type = 0x2D
 
 	TagOfTokenFrame Type = 0x3E
 	// HandshakeFrame
