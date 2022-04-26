@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 
 	"github.com/yomorun/yomo"
@@ -53,5 +54,5 @@ func handler(data []byte) (byte, []byte) {
 	} else {
 		logger.Printf(">> [sfn] got tag=0x33, data=%+v", model)
 	}
-	return 0x34, []byte("sfn-1 处理结果")
+	return 0x34, []byte(fmt.Sprintf("sfn-1 处理结果: %v", model.Noise))
 }
