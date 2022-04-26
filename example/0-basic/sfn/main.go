@@ -53,5 +53,5 @@ func handler(data []byte) (byte, []byte) {
 	} else {
 		logger.Printf(">> [sfn] got tag=0x33, data=%+v", model)
 	}
-	return 0x0, nil
+	return 0x34, []byte("sfn-1 处理结果")
 }

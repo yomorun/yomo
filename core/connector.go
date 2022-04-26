@@ -18,16 +18,22 @@ type Connector interface {
 	Get(connID string) Connection
 	// GetSnapshot gets the snapshot of all connections.
 	GetSnapshot() map[string]string
+	GetSourceConnIDs(tags byte) []string
+	LinkSource(connID string, name string, observed []byte)
 	// Clean the connector.
 	Clean()
 }
 
 type connector struct {
 	conns sync.Map
+	sources sync.Map
 }
 
 func newConnector() Connector {
-	return &connector{conns: sync.Map{}}
+	return &connector{
+	conns   sync.Map
+	sources sync.Map
+	}
 }
 
 // Add a connection.
@@ -36,10 +42,16 @@ func (c *connector) Add(connID string, conn Connection) {
 	c.conns.Store(connID, conn)
 }
 
+// func (c *connector) AddSource(connID string, stream io.ReadWriteCloser) {
+// 	logger.Debugf("%sconnector add: connID=%s", ServerLogPrefix, connID)
+// 	c.sconns.Store(connID, stream)
+// }
+
 // Remove a connection.
 func (c *connector) Remove(connID string) {
 	logger.Debugf("%sconnector remove: connID=%s", ServerLogPrefix, connID)
 	c.conns.Delete(connID)
+	c.sources.Delete(connID)
 }
 
 // Get a connection by connection id.
@@ -61,6 +73,12 @@ func (c *connector) GetSnapshot() map[string]string {
 		return true
 	})
 	return result
+}
+
+// LinkSource links the source and connection.
+func (c *connector) LinkSource(connID string, name string, observed []byte) {
+	logger.Debugf("%sconnector link source: connID[%s] --> source[%s]", ServerLogPrefix, connID, name)
+	c.sources.Store(connID, &app{name, observed})
 }
 
 // Clean the connector.

@@ -408,6 +408,31 @@ func (s *Server) handleDataFrame(c *Context) error {
 	return nil
 }
 
+func (s *Server) handleObserver(c *Context) error {
+	f := c.Frame.(*frame.DataFrame)
+	// write to source
+	// TODO: 回流
+	tag := f.GetDataTag()
+	sourceIDs := s.connector.GetSourceConnIDs(tag)
+	for _, sourceID := range sourceIDs {
+		// if targetStream != nil {
+		result :=f.GetCarriage()
+		// sfn := s.connector.Get("127.0.0.1:53697")
+		// if sfn != nil {
+		// 	// fs := NewFrameStream(c.Stream)
+		// 	// f,err:=fs.ReadFrame()
+		// 	// if err!=nil{
+		// 	// 	logger.Errorf("解析frame出错")
+		// 	// 	return err
+		// 	result = string(f.GetCarriage())
+		// 	// }
+		// }
+		logger.Printf("[回流] tag:%# v -> source:%s, result=%s", tag, sourceID, string(result))
+		// }
+	}
+	return nil
+}
+
 // StatsFunctions returns the sfn stats of server.
 func (s *Server) StatsFunctions() map[string]string {
 	return s.connector.GetSnapshot()

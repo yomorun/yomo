@@ -49,6 +49,19 @@ tasks:
     env:
       YOMO_LOG_LEVEL: error
 
+  sfn2-build:
+    desc: build sfn2
+    cmds:
+      - "go build -o ./bin/sfn2{{exeExt}} sfn2/main.go"
+
+  sfn2:
+    desc: run sfn2
+    deps: [sfn2-build]
+    cmds:
+      - "./bin/sfn2{{exeExt}}"
+    env:
+      YOMO_LOG_LEVEL: error
+
   zipper:
     desc: run zipper
     cmds:

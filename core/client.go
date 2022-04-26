@@ -27,13 +27,13 @@ type ConnState = string
 // Client is the abstraction of a YoMo-Client. a YoMo-Client can be
 // Source, Upstream Zipper or StreamFunction.
 type Client struct {
-	name       string                 // name of the client
-	clientType ClientType             // type of the connection
-	conn       quic.Connection        // quic connection
-	stream     quic.Stream            // quic stream
-	state      ConnState              // state of the connection
-	processor  func(*frame.DataFrame) // functions to invoke when data arrived
-	addr       string                 // the address of server connected to
+	name       string                                       // name of the client
+	clientType ClientType                                   // type of the connection
+	conn       quic.Connection                              // quic connection
+	stream     quic.Stream                                  // quic stream
+	state      ConnState                                    // state of the connection
+	processor  func(*frame.DataFrame, ...func(data []byte)) // functions to invoke when data arrived
+	addr       string                                       // the address of server connected to
 	mu         sync.Mutex
 	opts       ClientOptions
 	localAddr  string // client local addr, it will be changed on reconnect
@@ -222,7 +222,7 @@ func (c *Client) handleFrame() {
 				} else {
 					// TODO: should c.processor accept a DataFrame as parameter?
 					// c.processor(v.GetDataTagID(), v.GetCarriage(), v.GetMetaFrame())
-					c.processor(v)
+					c.processor(v, c.callbacks...)
 				}
 			}
 		default:
@@ -323,9 +323,13 @@ func (c *Client) setLocalAddr(addr string) {
 }
 
 // SetDataFrameObserver sets the data frame handler.
-func (c *Client) SetDataFrameObserver(fn func(*frame.DataFrame)) {
+func (c *Client) SetDataFrameObserver(fn func(*frame.DataFrame, ...func([]byte))) {
 	c.processor = fn
 	c.logger.Debugf("%sSetDataFrameObserver(%v)", ClientLogPrefix, c.processor)
+}
+
+func (c *Client) SetDataFrameCallbacks(callbacks ...func(data []byte)) {
+	c.callbacks = callbacks
 }
 
 // reconnect the connection between client and server.
