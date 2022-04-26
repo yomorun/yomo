@@ -18,7 +18,8 @@ const (
 	TagOfTransactionID Type = 0x01
 	TagOfIssuer        Type = 0x02
 	// PayloadFrame of DataFrame
-	TagOfPayloadFrame Type = 0x2E
+	TagOfPayloadFrame  Type = 0x2E
+	TagOfBackflowFrame Type = 0x2D
 
 	TagOfTokenFrame Type = 0x3E
 	// HandshakeFrame
@@ -31,13 +32,13 @@ const (
 	TagOfHandshakeAuthPayload     Type = 0x05
 	TagOfHandshakeObserveDataTags Type = 0x06
 
-	TagOfPingFrame     Type = 0x3C
-	TagOfPongFrame     Type = 0x3B
-	TagOfAcceptedFrame Type = 0x3A
-	TagOfRejectedFrame Type = 0x39
+	TagOfPingFrame       Type = 0x3C
+	TagOfPongFrame       Type = 0x3B
+	TagOfAcceptedFrame   Type = 0x3A
+	TagOfRejectedFrame   Type = 0x39
 	TagOfRejectedMessage Type = 0x02
 	// GoawayFrame
-	TagOfGoawayFrame        Type = 0x30
+	TagOfGoawayFrame   Type = 0x30
 	TagOfGoawayCode    Type = 0x01
 	TagOfGoawayMessage Type = 0x02
 )

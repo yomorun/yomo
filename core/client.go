@@ -27,19 +27,19 @@ type ConnState = string
 // Client is the abstraction of a YoMo-Client. a YoMo-Client can be
 // Source, Upstream Zipper or StreamFunction.
 type Client struct {
-	name       string                                       // name of the client
-	clientType ClientType                                   // type of the connection
-	conn       quic.Connection                              // quic connection
-	stream     quic.Stream                                  // quic stream
-	state      ConnState                                    // state of the connection
-	processor  func(*frame.DataFrame, ...func(data []byte)) // functions to invoke when data arrived
-	addr       string                                       // the address of server connected to
+	name       string                     // name of the client
+	clientType ClientType                 // type of the connection
+	conn       quic.Connection            // quic connection
+	stream     quic.Stream                // quic stream
+	state      ConnState                  // state of the connection
+	processor  func(*frame.DataFrame)     // functions to invoke when data arrived
+	receiver   func(*frame.BackflowFrame) // functions to invoke when data is processed
+	addr       string                     // the address of server connected to
 	mu         sync.Mutex
 	opts       ClientOptions
 	localAddr  string // client local addr, it will be changed on reconnect
 	logger     log.Logger
 	errc       chan error
-	callbacks  []func([]byte) // callback functions after processor
 }
 
 // NewClient creates a new YoMo-Client.
@@ -50,7 +50,6 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 		state:      ConnStateReady,
 		opts:       ClientOptions{},
 		errc:       make(chan error),
-		callbacks:  make([]func([]byte), 0),
 	}
 	c.Init(opts...)
 	once.Do(func() {
@@ -221,7 +220,17 @@ func (c *Client) handleFrame() {
 				} else {
 					// TODO: should c.processor accept a DataFrame as parameter?
 					// c.processor(v.GetDataTagID(), v.GetCarriage(), v.GetMetaFrame())
-					c.processor(v, c.callbacks...)
+					c.processor(v)
+				}
+			}
+		case frame.TagOfBackflowFrame:
+			if v, ok := f.(*frame.BackflowFrame); ok {
+				c.setState(ConnStateTransportData)
+				c.logger.Debugf("%sreceive BackflowFrame, tag=%# x, carry=%# x", ClientLogPrefix, v.GetDataTag(), v.GetCarriage())
+				if c.receiver == nil {
+					c.logger.Warnf("%sreceiver is nil", ClientLogPrefix)
+				} else {
+					c.receiver(v)
 				}
 			}
 		default:
@@ -314,13 +323,15 @@ func (c *Client) setLocalAddr(addr string) {
 }
 
 // SetDataFrameObserver sets the data frame handler.
-func (c *Client) SetDataFrameObserver(fn func(*frame.DataFrame, ...func([]byte))) {
+func (c *Client) SetDataFrameObserver(fn func(*frame.DataFrame)) {
 	c.processor = fn
 	c.logger.Debugf("%sSetDataFrameObserver(%v)", ClientLogPrefix, c.processor)
 }
 
-func (c *Client) SetDataFrameCallbacks(callbacks ...func(data []byte)) {
-	c.callbacks = callbacks
+// SetBackflowFrameObserver sets the backflow frame handler.
+func (c *Client) SetBackflowFrameObserver(fn func(*frame.BackflowFrame)) {
+	c.receiver = fn
+	c.logger.Debugf("%sSetBackflowFrameObserver(%v)", ClientLogPrefix, c.receiver)
 }
 
 // reconnect the connection between client and server.

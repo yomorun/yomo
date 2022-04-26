@@ -261,8 +261,8 @@ func (s *Server) mainFrameHandler(c *Context) error {
 		if err := s.handleDataFrame(c); err != nil {
 			c.CloseWithError(yerr.ErrorCodeData, fmt.Sprintf("handleDataFrame err: %v", err))
 		} else {
-			// observe datatags
-			s.handleObserver(c)
+			// observe datatags backflow
+			s.handleBackflowFrame(c)
 			s.dispatchToDownstreams(c.Frame.(*frame.DataFrame))
 		}
 	default:
@@ -416,42 +416,24 @@ func (s *Server) handleDataFrame(c *Context) error {
 				logger.Errorf("%swrite data: [%s](%s) --> [%s](%s), err=%v", ServerLogPrefix, from, fromID, to, toID, err)
 				continue
 			}
-			// if s.connector.ExistsApp(name) {
-			// 	logger.Debugf("%swrite to SFN[%s] GoawayFrame", ServerLogPrefix, f.Name)
-			// 	err := fmt.Errorf("SFN[%s] connection already exists", f.Name)
-			// 	goawayFrame := frame.NewGoawayFrame(err.Error())
-			// 	if _, err = stream.Write(goawayFrame.Encode()); err != nil {
-			// 		logger.Errorf("%s⛔️ write to SFN[%s] GoawayFrame error:%v", ServerLogPrefix, f.Name, err)
-			// 		return err
-			// 	}
-			// 	// c.CloseWithError(goawayFrame.Code(), err.Error())
-			// }
 		}
 	}
 	return nil
 }
 
-func (s *Server) handleObserver(c *Context) error {
+func (s *Server) handleBackflowFrame(c *Context) error {
 	f := c.Frame.(*frame.DataFrame)
-	// write to source
-	// TODO: 回流
 	tag := f.GetDataTag()
+	carriage := f.GetCarriage()
+	// write to source with BackflowFrame
+	bf := frame.NewBackflowFrame(tag, carriage)
 	sourceIDs := s.connector.GetSourceConnIDs(tag)
 	for _, sourceID := range sourceIDs {
-		// if targetStream != nil {
-		result :=f.GetCarriage()
-		// sfn := s.connector.Get("127.0.0.1:53697")
-		// if sfn != nil {
-		// 	// fs := NewFrameStream(c.Stream)
-		// 	// f,err:=fs.ReadFrame()
-		// 	// if err!=nil{
-		// 	// 	logger.Errorf("解析frame出错")
-		// 	// 	return err
-		// 	result = string(f.GetCarriage())
-		// 	// }
-		// }
-		logger.Printf("[回流] tag:%# v -> source:%s, result=%s", tag, sourceID, string(result))
-		// }
+		logger.Debugf("%shandleBackflowFrame tag:%# v -> source:%s, result=%# x", ServerLogPrefix, tag, sourceID, frame.Shortly(carriage))
+		source := s.connector.Get(sourceID)
+		if source != nil {
+			source.Write(bf.Encode())
+		}
 	}
 	return nil
 }

@@ -83,9 +83,9 @@ func (s *streamFunction) SetPipeHandler(fn core.PipeHandler) error {
 func (s *streamFunction) Connect() error {
 	s.client.Logger().Debugf("%s Connect()", streamFunctionLogPrefix)
 	// notify underlying network operations, when data with tag we observed arrived, invoke the func
-	s.client.SetDataFrameObserver(func(data *frame.DataFrame, callbacks ...func(data []byte)) {
+	s.client.SetDataFrameObserver(func(data *frame.DataFrame) {
 		s.client.Logger().Debugf("%sreceive DataFrame, tag=%# x, carraige=%# x", streamFunctionLogPrefix, data.Tag(), data.GetCarriage())
-		s.onDataFrame(data.GetCarriage(), data.GetMetaFrame(), callbacks...)
+		s.onDataFrame(data.GetCarriage(), data.GetMetaFrame())
 	})
 
 	if s.pfn != nil {
@@ -140,7 +140,7 @@ func (s *streamFunction) Close() error {
 }
 
 // when DataFrame we observed arrived, invoke the user's function
-func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame, callbacks ...func(data []byte)) {
+func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
 	s.client.Logger().Infof("%sonDataFrame ->[%s]", streamFunctionLogPrefix, s.name)
 
 	if s.fn != nil {
@@ -158,15 +158,7 @@ func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame, ca
 				// reuse transactionID
 				frame.SetTransactionID(metaFrame.TransactionID())
 				frame.SetCarriage(tag, resp)
-				err := s.client.WriteFrame(frame)
-				// TODO: sfn 处理完成后，处理回流
-				if err != nil {
-					// TODO: 回流
-					for _, callback := range callbacks {
-						callback(resp)
-					}
-				}
-
+				s.client.WriteFrame(frame)
 			}
 		}()
 	} else if s.pfn != nil {
