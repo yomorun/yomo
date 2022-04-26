@@ -27,6 +27,8 @@ type Source interface {
 	SetErrorHandler(fn func(err error))
 	// WriteFrame writes a frame to the connection
 	WriteFrame(frm frame.Frame) error
+	// SetObserveHandler set the observe handler function
+	SetObserveHandler(fn func(data []byte)) error
 }
 
 // YoMo-Source
@@ -35,6 +37,7 @@ type yomoSource struct {
 	zipperEndpoint string
 	client         *core.Client
 	tag            uint8
+	fn             core.AsyncHandler
 }
 
 var _ Source = &yomoSource{}
@@ -96,4 +99,12 @@ func (s *yomoSource) SetErrorHandler(fn func(err error)) {
 // WriteFrame writes a frame to the connection
 func (s *yomoSource) WriteFrame(frm frame.Frame) error {
 	return s.client.WriteFrame(frm)
+}
+
+// SetObserveHandler set the observe handler function
+func (s *yomoSource) SetObserveHandler(fn func(data []byte)) error {
+	// s.fn = fn
+	// s.client.Logger().Debugf("%sSetObserveHandler(%v)", sourceLogPrefix, s.fn)
+	// s.client.SetDataFrameObserver(fn)
+	return nil
 }
