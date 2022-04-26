@@ -35,6 +35,7 @@ type Connector interface {
 	Get(connID string) io.ReadWriteCloser
 	// GetConnIDs gets the connection ids by name and tag.
 	GetConnIDs(name string, tags byte) []string
+	GetSourceConnIDs(tags byte) []string
 	// Write a Frame to a connection.
 	Write(f frame.Frame, toID string) error
 	// GetSnapshot gets the snapshot of all connections.
@@ -48,6 +49,7 @@ type Connector interface {
 	AppName(connID string) (string, bool)
 	// LinkApp links the app and connection.
 	LinkApp(connID string, name string, observed []byte)
+	LinkSource(connID string, name string, observed []byte)
 	// UnlinkApp removes the app by connID.
 	UnlinkApp(connID string, name string)
 	// ExistsApp check app exists
@@ -58,16 +60,18 @@ type Connector interface {
 }
 
 type connector struct {
-	conns sync.Map
-	apps  sync.Map
-	mu    sync.Mutex
+	conns   sync.Map
+	apps    sync.Map
+	sources sync.Map
+	mu      sync.Mutex
 }
 
 func newConnector() Connector {
 	return &connector{
-		conns: sync.Map{},
-		apps:  sync.Map{},
-		mu:    sync.Mutex{},
+		conns:   sync.Map{},
+		apps:    sync.Map{},
+		sources: sync.Map{},
+		mu:      sync.Mutex{},
 	}
 }
 
@@ -77,12 +81,18 @@ func (c *connector) Add(connID string, stream io.ReadWriteCloser) {
 	c.conns.Store(connID, stream)
 }
 
+// func (c *connector) AddSource(connID string, stream io.ReadWriteCloser) {
+// 	logger.Debugf("%sconnector add: connID=%s", ServerLogPrefix, connID)
+// 	c.sconns.Store(connID, stream)
+// }
+
 // Remove a connection.
 func (c *connector) Remove(connID string) {
 	logger.Debugf("%sconnector remove: connID=%s", ServerLogPrefix, connID)
 	c.conns.Delete(connID)
 	// c.funcs.Delete(connID)
 	c.apps.Delete(connID)
+	c.sources.Delete(connID)
 }
 
 // Get a connection by connection id.
@@ -142,6 +152,24 @@ func (c *connector) GetConnIDs(name string, tag byte) []string {
 	return connIDs
 }
 
+// GetSourceConnIDs gets the source connection ids by tag.
+func (c *connector) GetSourceConnIDs(tag byte) []string {
+	connIDs := make([]string, 0)
+
+	c.sources.Range(func(key interface{}, val interface{}) bool {
+		app := val.(*app)
+		for _, v := range app.observed {
+			if v == tag {
+				connIDs = append(connIDs, key.(string))
+				// break
+			}
+		}
+		return true
+	})
+
+	return connIDs
+}
+
 // Write a DataFrame to a connection.
 func (c *connector) Write(f frame.Frame, toID string) error {
 	targetStream := c.Get(toID)
@@ -153,6 +181,23 @@ func (c *connector) Write(f frame.Frame, toID string) error {
 	_, err := targetStream.Write(f.Encode())
 	c.mu.Unlock()
 	return err
+}
+
+// WriteWithCallback a DataFrame to a connection.
+func (c *connector) WriteWithCallback(f frame.Frame, toID string, callback func(stream io.ReadWriteCloser)) error {
+	targetStream := c.Get(toID)
+	if targetStream == nil {
+		logger.Warnf("%swill write to: [%s], target stream is nil", ServerLogPrefix, toID)
+		return fmt.Errorf("target[%s] stream is nil", toID)
+	}
+	c.mu.Lock()
+	_, err := targetStream.Write(f.Encode())
+	c.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	callback(targetStream)
+	return nil
 }
 
 // GetSnapshot gets the snapshot of all connections.
@@ -169,6 +214,12 @@ func (c *connector) GetSnapshot() map[string]io.ReadWriteCloser {
 func (c *connector) LinkApp(connID string, name string, observed []byte) {
 	logger.Debugf("%sconnector link application: connID[%s] --> app[%s]", ServerLogPrefix, connID, name)
 	c.apps.Store(connID, &app{name, observed})
+}
+
+// LinkSource links the source and connection.
+func (c *connector) LinkSource(connID string, name string, observed []byte) {
+	logger.Debugf("%sconnector link source: connID[%s] --> source[%s]", ServerLogPrefix, connID, name)
+	c.sources.Store(connID, &app{name, observed})
 }
 
 // UnlinkApp removes the app by connID.

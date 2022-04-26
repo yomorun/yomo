@@ -118,16 +118,18 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 				if err != nil {
 					// if client close the connection, then we should close the connection
 					// @CC: when Source close the connection, it won't affect connectors
-					appName, ok := s.connector.AppName(connID)
-					if ok {
-						// connector
-						s.connector.Remove(connID)
-						// store
-						// remove app route from store? let me think...
-						logger.Printf("%s💔 [%s](%s) close the connection", ServerLogPrefix, appName, connID)
-					} else {
-						logger.Errorf("%s❤️3/ [unknown](%s) on stream %v", ServerLogPrefix, connID, err)
-					}
+					s.connector.Remove(connID)
+					// appName, ok := s.connector.AppName(connID)
+					// if ok {
+					// 	// connector
+					// 	s.connector.Remove(connID)
+					// store
+					// remove app route from store? let me think...
+					// logger.Printf("%s💔 [%s](%s) close the connection", ServerLogPrefix, appName, connID)
+					logger.Printf("%s💔 (%s) close the connection", ServerLogPrefix, connID)
+					// } else {
+					// 	logger.Errorf("%s❤️3/ [unknown](%s) on stream %v", ServerLogPrefix, connID, err)
+					// }
 					break
 				}
 				defer stream.Close()
@@ -258,6 +260,8 @@ func (s *Server) mainFrameHandler(c *Context) error {
 		if err := s.handleDataFrame(c); err != nil {
 			c.CloseWithError(yerr.ErrorCodeData, fmt.Sprintf("handleDataFrame err: %v", err))
 		} else {
+			// observe datatags
+			s.handleObserver(c)
 			s.dispatchToDownstreams(c.Frame.(*frame.DataFrame))
 		}
 	default:
@@ -308,6 +312,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	case ClientTypeSource:
 		s.connector.Add(connID, stream)
 		s.connector.LinkApp(connID, name, nil)
+		s.connector.LinkSource(connID, name, f.ObserveDataTags)
 	case ClientTypeStreamFunction:
 		// when sfn connect, it will provide its name to the server. server will check if this client
 		// has permission connected to.
@@ -412,7 +417,42 @@ func (s *Server) handleDataFrame(c *Context) error {
 				logger.Errorf("%swrite data: [%s](%s) --> [%s](%s), err=%v", ServerLogPrefix, from, fromID, to, toID, err)
 				continue
 			}
+			// if s.connector.ExistsApp(name) {
+			// 	logger.Debugf("%swrite to SFN[%s] GoawayFrame", ServerLogPrefix, f.Name)
+			// 	err := fmt.Errorf("SFN[%s] connection already exists", f.Name)
+			// 	goawayFrame := frame.NewGoawayFrame(err.Error())
+			// 	if _, err = stream.Write(goawayFrame.Encode()); err != nil {
+			// 		logger.Errorf("%s⛔️ write to SFN[%s] GoawayFrame error:%v", ServerLogPrefix, f.Name, err)
+			// 		return err
+			// 	}
+			// 	// c.CloseWithError(goawayFrame.Code(), err.Error())
+			// }
 		}
+	}
+	return nil
+}
+
+func (s *Server) handleObserver(c *Context) error {
+	f := c.Frame.(*frame.DataFrame)
+	// write to source
+	// TODO: 回流
+	tag := f.GetDataTag()
+	sourceIDs := s.connector.GetSourceConnIDs(tag)
+	for _, sourceID := range sourceIDs {
+		// if targetStream != nil {
+		result :=f.GetCarriage()
+		// sfn := s.connector.Get("127.0.0.1:53697")
+		// if sfn != nil {
+		// 	// fs := NewFrameStream(c.Stream)
+		// 	// f,err:=fs.ReadFrame()
+		// 	// if err!=nil{
+		// 	// 	logger.Errorf("解析frame出错")
+		// 	// 	return err
+		// 	result = string(f.GetCarriage())
+		// 	// }
+		// }
+		logger.Printf("[回流] tag:%# v -> source:%s, result=%s", tag, sourceID, string(result))
+		// }
 	}
 	return nil
 }
