@@ -30,7 +30,7 @@ func main() {
 		"yomo-source",
 		yomo.WithZipperAddr(addr),
 		yomo.WithLogger(logger),
-		yomo.WithObserveDataTags(0x34, 0x35),
+		yomo.WithObserveDataTags(0x34, 0x0),
 	)
 	err := source.Connect()
 	if err != nil {
@@ -46,8 +46,9 @@ func main() {
 		logger.Printf("[source] receive server error: %v", err)
 		os.Exit(1)
 	})
+	// set receive handler for the observe datatags
 	source.SetReceiveHandler(func(tag byte, data []byte) {
-		logger.Printf("[source] receive backflow: tag=%#v, data=%v", tag, string(data))
+		logger.Printf("[source] ♻️  receive backflow: tag=%#v, data=%v", tag, string(data))
 	})
 
 	// generate mock data and send it to YoMo-Zipper in every 100 ms.
