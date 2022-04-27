@@ -171,7 +171,7 @@ func (c *connector) GetSourceConnIDs(tag byte) []string {
 	return connIDs
 }
 
-// Write a DataFrame to a connection.
+// Write a Frame to a connection.
 func (c *connector) Write(f frame.Frame, toID string) error {
 	targetStream := c.Get(toID)
 	if targetStream == nil {
@@ -182,23 +182,6 @@ func (c *connector) Write(f frame.Frame, toID string) error {
 	_, err := targetStream.Write(f.Encode())
 	c.mu.Unlock()
 	return err
-}
-
-// WriteWithCallback a DataFrame to a connection.
-func (c *connector) WriteWithCallback(f frame.Frame, toID string, callback func(stream io.ReadWriteCloser)) error {
-	targetStream := c.Get(toID)
-	if targetStream == nil {
-		logger.Warnf("%swill write to: [%s], target stream is nil", ServerLogPrefix, toID)
-		return fmt.Errorf("target[%s] stream is nil", toID)
-	}
-	c.mu.Lock()
-	_, err := targetStream.Write(f.Encode())
-	c.mu.Unlock()
-	if err != nil {
-		return err
-	}
-	callback(targetStream)
-	return nil
 }
 
 // GetSnapshot gets the snapshot of all connections.
