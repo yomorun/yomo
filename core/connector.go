@@ -27,20 +27,20 @@ var _ Connector = &connector{}
 
 // Connector is a interface to manage the connections and applications.
 type Connector interface {
-	// Add a connection.
+	// Add a connection. stream is quic.Stream
 	Add(connID string, stream io.ReadWriteCloser)
 	// Remove a connection.
 	Remove(connID string)
 	// Get a connection by connection id.
 	Get(connID string) io.ReadWriteCloser
 	// GetConnIDs gets the connection ids by name and tag.
-	GetConnIDs(name string, tags byte) []string
-	GetSourceConnIDs(tags byte) []string
+	GetConnIDs(name string, tag byte) []string
+	// GetSourceConnIDs gets the connection ids by source observe tag.
+	GetSourceConnIDs(tag byte) []string
 	// Write a Frame to a connection.
 	Write(f frame.Frame, toID string) error
 	// GetSnapshot gets the snapshot of all connections.
 	GetSnapshot() map[string]io.ReadWriteCloser
-
 	// App gets the app by connID.
 	App(connID string) (*app, bool)
 	// AppID gets the ID of app by connID.
@@ -49,6 +49,7 @@ type Connector interface {
 	AppName(connID string) (string, bool)
 	// LinkApp links the app and connection.
 	LinkApp(connID string, name string, observed []byte)
+	// LinkSource links the source and connection.
 	LinkSource(connID string, name string, observed []byte)
 	// UnlinkApp removes the app by connID.
 	UnlinkApp(connID string, name string)

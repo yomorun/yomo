@@ -46,7 +46,7 @@ func main() {
 		logger.Printf("[source] receive server error: %v", err)
 		os.Exit(1)
 	})
-	source.SetReceiverHandler(func(tag byte, data []byte) {
+	source.SetReceiveHandler(func(tag byte, data []byte) {
 		logger.Printf("[source] receive backflow: tag=%#v, data=%v", tag, string(data))
 	})
 
