@@ -111,5 +111,5 @@ func (s *yomoSource) WriteFrame(frm frame.Frame) error {
 // SetReceiveHandler set the receive handler function
 func (s *yomoSource) SetReceiveHandler(fn func(byte, []byte)) {
 	s.fn = fn
-	s.client.Logger().Debugf("%sSetObserveHandler(%v)", sourceLogPrefix, s.fn)
+	s.client.Logger().Debugf("%sSetReceiveHandler(%v)", sourceLogPrefix, s.fn)
 }
