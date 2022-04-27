@@ -133,19 +133,19 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 						}
 						logger.Printf("%s💔 [%s](%s) close the connection", ServerLogPrefix, conn.Name(), connID)
 					} else {
-						logger.Errorf("%s❤️3/ [unknown](%s) on stream %v", ServerLogPrefix, connID, err)
+						logger.Errorf("%s💙 [unknown](%s) on stream %v", ServerLogPrefix, connID, err)
 					}
 					break
 				}
 				defer stream.Close()
 
-				logger.Infof("%s❤️4/ [stream:%d] created, connID=%s", ServerLogPrefix, stream.StreamID(), connID)
+				logger.Infof("%s❤️3/ [stream:%d] created, connID=%s", ServerLogPrefix, stream.StreamID(), connID)
 				// process frames on stream
 				// c := newContext(connID, stream)
 				c := newContext(conn, stream)
 				defer c.Clean()
 				s.handleConnection(c)
-				logger.Infof("%s❤️5/ [stream:%d] handleConnection DONE", ServerLogPrefix, stream.StreamID())
+				logger.Infof("%s❤️4/ [stream:%d] handleConnection DONE", ServerLogPrefix, stream.StreamID())
 			}
 		}(sctx, conn)
 	}
@@ -418,13 +418,13 @@ func (s *Server) handleBackflowFrame(c *Context) error {
 	bf := frame.NewBackflowFrame(tag, carriage)
 	sourceIDs := s.connector.GetSourceConnIDs(tag)
 	for _, sourceID := range sourceIDs {
-		logger.Debugf("%shandleBackflowFrame tag:%#v --> source:%s, result=%# x", ServerLogPrefix, tag, sourceID, frame.Shortly(carriage))
 		// get source's quic.Stream
 		source := s.connector.Get(sourceID)
 		if source != nil {
+			logger.Debugf("%s♻️  handleBackflowFrame tag:%#v --> source:%s, result=%# x", ServerLogPrefix, tag, sourceID, frame.Shortly(carriage))
 			_, err := source.Write(bf.Encode())
 			if err != nil {
-				logger.Errorf("%shandleBackflowFrame tag:%#v --> source:%s, error=%v", ServerLogPrefix, tag, sourceID, err)
+				logger.Errorf("%s♻️  handleBackflowFrame tag:%#v --> source:%s, error=%v", ServerLogPrefix, tag, sourceID, err)
 				return err
 			}
 		}
