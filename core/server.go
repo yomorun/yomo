@@ -429,10 +429,15 @@ func (s *Server) handleBackflowFrame(c *Context) error {
 	bf := frame.NewBackflowFrame(tag, carriage)
 	sourceIDs := s.connector.GetSourceConnIDs(tag)
 	for _, sourceID := range sourceIDs {
-		logger.Debugf("%shandleBackflowFrame tag:%# v -> source:%s, result=%# x", ServerLogPrefix, tag, sourceID, frame.Shortly(carriage))
+		logger.Debugf("%shandleBackflowFrame tag:%#v --> source:%s, result=%# x", ServerLogPrefix, tag, sourceID, frame.Shortly(carriage))
+		// get source's quic.Stream
 		source := s.connector.Get(sourceID)
 		if source != nil {
-			source.Write(bf.Encode())
+			_, err := source.Write(bf.Encode())
+			if err != nil {
+				logger.Errorf("%shandleBackflowFrame tag:%#v --> source:%s, error=%v", ServerLogPrefix, tag, sourceID, err)
+				return err
+			}
 		}
 	}
 	return nil

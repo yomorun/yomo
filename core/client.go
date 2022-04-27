@@ -214,7 +214,7 @@ func (c *Client) handleFrame() {
 		case frame.TagOfDataFrame: // DataFrame carries user's data
 			if v, ok := f.(*frame.DataFrame); ok {
 				c.setState(ConnStateTransportData)
-				c.logger.Debugf("%sreceive DataFrame, tag=%# x, tid=%s, carry=%# x", ClientLogPrefix, v.GetDataTag(), v.TransactionID(), v.GetCarriage())
+				c.logger.Debugf("%sreceive DataFrame, tag=%#x, tid=%s, carry=%# x", ClientLogPrefix, v.GetDataTag(), v.TransactionID(), v.GetCarriage())
 				if c.processor == nil {
 					c.logger.Warnf("%sprocessor is nil", ClientLogPrefix)
 				} else {
@@ -225,8 +225,8 @@ func (c *Client) handleFrame() {
 			}
 		case frame.TagOfBackflowFrame:
 			if v, ok := f.(*frame.BackflowFrame); ok {
-				c.setState(ConnStateTransportData)
-				c.logger.Debugf("%sreceive BackflowFrame, tag=%# x, carry=%# x", ClientLogPrefix, v.GetDataTag(), v.GetCarriage())
+				c.setState(ConnStateBackflow)
+				c.logger.Debugf("%sreceive BackflowFrame, tag=%#x, carry=%# x", ClientLogPrefix, v.GetDataTag(), v.GetCarriage())
 				if c.receiver == nil {
 					c.logger.Warnf("%sreceiver is nil", ClientLogPrefix)
 				} else {
