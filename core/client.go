@@ -225,11 +225,11 @@ func (c *Client) handleFrame() {
 			}
 		case frame.TagOfBackflowFrame:
 			if v, ok := f.(*frame.BackflowFrame); ok {
-				c.setState(ConnStateBackflow)
 				c.logger.Debugf("%sreceive BackflowFrame, tag=%#x, carry=%# x", ClientLogPrefix, v.GetDataTag(), v.GetCarriage())
 				if c.receiver == nil {
 					c.logger.Warnf("%sreceiver is nil", ClientLogPrefix)
 				} else {
+					c.setState(ConnStateBackflow)
 					c.receiver(v)
 				}
 			}

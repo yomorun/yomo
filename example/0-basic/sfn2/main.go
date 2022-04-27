@@ -39,5 +39,5 @@ func main() {
 
 func handler(data []byte) (byte, []byte) {
 	logger.Printf(">> [sfn2] got tag=0x34, data=%s", string(data))
-	return 0x35, []byte("sfn2 processed result")
+	return 0x0, []byte("sfn2 processed result")
 }
