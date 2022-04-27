@@ -5,16 +5,17 @@ import (
 )
 
 // BackflowFrame is a Y3 encoded bytes
+// It's used to receive stream function processed result
 type BackflowFrame struct {
 	Tag      byte
 	Carriage []byte
 }
 
-// NewBackflowPayloadFrame creates a new PayloadFrame with a given TagID of user's data
-func NewBackflowFrame(tag byte,carriage []byte) *BackflowFrame {
+// NewBackflowFrame creates a new BackflowFrame with a given tag and carriage
+func NewBackflowFrame(tag byte, carriage []byte) *BackflowFrame {
 	return &BackflowFrame{
-		Tag: tag,
-		Carriage:carriage,
+		Tag:      tag,
+		Carriage: carriage,
 	}
 }
 
