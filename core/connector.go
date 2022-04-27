@@ -65,6 +65,37 @@ func (c *connector) Get(connID string) Connection {
 	return nil
 }
 
+// GetSourceConnIDs gets the source connection ids by tag.
+func (c *connector) GetSourceConnIDs(tag byte) []string {
+	connIDs := make([]string, 0)
+
+	c.sources.Range(func(key interface{}, val interface{}) bool {
+		app := val.(*app)
+		for _, v := range app.observed {
+			if v == tag {
+				connIDs = append(connIDs, key.(string))
+				// break
+			}
+		}
+		return true
+	})
+
+	return connIDs
+}
+
+// Write a Frame to a connection.
+func (c *connector) Write(f frame.Frame, toID string) error {
+	targetStream := c.Get(toID)
+	if targetStream == nil {
+		logger.Warnf("%swill write to: [%s], target stream is nil", ServerLogPrefix, toID)
+		return fmt.Errorf("target[%s] stream is nil", toID)
+	}
+	c.mu.Lock()
+	_, err := targetStream.Write(f.Encode())
+	c.mu.Unlock()
+	return err
+}
+
 // GetSnapshot gets the snapshot of all connections.
 func (c *connector) GetSnapshot() map[string]string {
 	result := make(map[string]string)
