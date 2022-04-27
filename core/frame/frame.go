@@ -72,6 +72,8 @@ func (f Type) String() string {
 		return "RejectedFrame"
 	case TagOfGoawayFrame:
 		return "GoawayFrame"
+	case TagOfBackflowFrame:
+		return "BackflowFrame"
 	case TagOfMetaFrame:
 		return "MetaFrame"
 	case TagOfPayloadFrame:

@@ -18,7 +18,9 @@ type Connector interface {
 	Get(connID string) Connection
 	// GetSnapshot gets the snapshot of all connections.
 	GetSnapshot() map[string]string
+	// GetSourceConnIDs gets the connection ids by source observe tag.
 	GetSourceConnIDs(tags byte) []string
+	// LinkSource links the source and connection.
 	LinkSource(connID string, name string, observed []byte)
 	// Clean the connector.
 	Clean()
