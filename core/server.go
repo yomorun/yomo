@@ -310,7 +310,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	case ClientTypeSource:
 		s.connector.Add(connID, stream)
 		s.connector.LinkApp(connID, name, nil)
-		s.connector.LinkSource(connID, name, f.ObserveDataTags)
+		s.connector.LinkSource(connID, name, f.SourceID(), f.ObserveDataTags)
 	case ClientTypeStreamFunction:
 		// when sfn connect, it will provide its name to the server. server will check if this client
 		// has permission connected to.

@@ -10,7 +10,8 @@ import (
 // MetaFrame is a Y3 encoded bytes, SeqID is a fixed value of TYPE_ID_TRANSACTION.
 // used for describes metadata for a DataFrame.
 type MetaFrame struct {
-	tid string
+	tid      string
+	sourceID string
 }
 
 // NewMetaFrame creates a new MetaFrame instance.
