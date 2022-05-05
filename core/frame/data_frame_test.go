@@ -13,10 +13,11 @@ func TestDataFrameEncode(t *testing.T) {
 
 	tidbuf := []byte(d.TransactionID())
 	result := []byte{
-		0x80 | byte(TagOfDataFrame), byte(len(tidbuf) + 4 + 8),
-		0x80 | byte(TagOfMetaFrame), byte(len(tidbuf) + 2),
+		0x80 | byte(TagOfDataFrame), byte(len(tidbuf) + 4 + 8 + 2),
+		0x80 | byte(TagOfMetaFrame), byte(len(tidbuf) + 2 + 2),
 		byte(TagOfTransactionID), byte(len(tidbuf))}
 	result = append(result, tidbuf...)
+	result = append(result, byte(TagOfSourceID), 0x0)
 	result = append(result, 0x80|byte(TagOfPayloadFrame), 0x06,
 		userDataTag, 0x04, 0x79, 0x6F, 0x6D, 0x6F)
 	assert.Equal(t, result, d.Encode())
