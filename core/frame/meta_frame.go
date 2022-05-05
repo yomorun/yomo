@@ -13,6 +13,7 @@ import (
 type MetaFrame struct {
 	tid      string
 	metadata []byte
+	sourceID string
 }
 
 // NewMetaFrame creates a new MetaFrame instance.

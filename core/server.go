@@ -287,7 +287,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	clientType := ClientType(f.ClientType)
 	stream := c.Stream
 	// credential
-	logger.Debugf("%sClientType=%# x is %s, Credential=%s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType), authName(f.AuthName()))
+	logger.Debugf("%sClientType=%# x is %s, sourceID=%s, Credential=%s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType), f.SourceID(), authName(f.AuthName()))
 	// authenticate
 	if !s.authenticate(f) {
 		err := fmt.Errorf("handshake authentication fails, client credential name is %s", authName(f.AuthName()))
