@@ -280,7 +280,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	clientType := ClientType(f.ClientType)
 	stream := c.Stream
 	// credential
-	logger.Debugf("%sClientType=%# x is %s, clientID=%s, Credential=%s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType), f.SourceID(), authName(f.AuthName()))
+	logger.Debugf("%sClientType=%# x is %s, sourceID=%s, Credential=%s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType), f.SourceID(), authName(f.AuthName()))
 	// authenticate
 	if !s.authenticate(f) {
 		err := fmt.Errorf("handshake authentication fails, client credential name is %s", authName(f.AuthName()))
@@ -311,9 +311,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	case ClientTypeSource:
 		s.connector.Add(connID, stream)
 		s.connector.LinkApp(connID, name, nil)
-		// TODO: 增加sourceid
-		sourceID := f.SourceID()
-		s.connector.LinkSource(connID, name, sourceID, f.ObserveDataTags)
+		s.connector.LinkSource(connID, name, f.SourceID(), f.ObserveDataTags)
 	case ClientTypeStreamFunction:
 		// when sfn connect, it will provide its name to the server. server will check if this client
 		// has permission connected to.

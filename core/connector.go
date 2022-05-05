@@ -111,8 +111,7 @@ func (c *connector) App(connID string) (*app, bool) {
 	if result, found := c.apps.Load(connID); found {
 		app, ok := result.(*app)
 		if ok {
-			// logger.Debugf("%sconnector get app=%s, connID=%s", ServerLogPrefix, app.name, connID)
-			logger.Debugf("%sconnector get app=%s, connID=%s, sourceID=%s", ServerLogPrefix, app.name, connID, app.sourceID)
+			logger.Debugf("%sconnector get app=%s, connID=%s", ServerLogPrefix, app.name, connID)
 			return app, true
 		}
 		logger.Warnf("%sconnector get app convert fails, connID=%s", ServerLogPrefix, connID)

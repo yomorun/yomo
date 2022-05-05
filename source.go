@@ -92,12 +92,12 @@ func (s *yomoSource) Connect() error {
 
 // WriteWithTag will write data with specified tag, default transactionID is epoch time.
 func (s *yomoSource) WriteWithTag(tag uint8, data []byte) error {
-	s.client.Logger().Debugf("%sWriteWithTag: len(data)=%d, data=%# x", sourceLogPrefix, len(data), frame.Shortly(data))
-	frame := frame.NewDataFrame()
-	frame.SetCarriage(byte(tag), data)
-	frame.SetSourceID(s.client.ClientID())
-	s.client.Logger().Debugf("%sWriteFrame: tid=%s, source_id=%s", sourceLogPrefix, frame.TransactionID(), frame.SourceID())
-	return s.WriteFrame(frame)
+	f := frame.NewDataFrame()
+	f.SetCarriage(byte(tag), data)
+	f.SetSourceID(s.client.ClientID())
+	s.client.Logger().Debugf("%sWriteWithTag: tid=%s, source_id=%s, data[%d]=%# x",
+		sourceLogPrefix, f.TransactionID(), f.SourceID(), len(data), frame.Shortly(data))
+	return s.WriteFrame(f)
 }
 
 // SetErrorHandler set the error handler function when server error occurs

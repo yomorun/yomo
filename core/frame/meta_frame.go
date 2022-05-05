@@ -12,7 +12,6 @@ import (
 type MetaFrame struct {
 	tid      string
 	sourceID string
-	// zipperID string
 }
 
 // NewMetaFrame creates a new MetaFrame instance.
