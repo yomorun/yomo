@@ -35,8 +35,8 @@ type Connector interface {
 	Get(connID string) io.ReadWriteCloser
 	// GetConnIDs gets the connection ids by name and tag.
 	GetConnIDs(name string, tags byte) []string
-	// Write a DataFrame to a connection.
-	Write(f *frame.DataFrame, toID string) error
+	// Write a Frame to a connection.
+	Write(f frame.Frame, toID string) error
 	// GetSnapshot gets the snapshot of all connections.
 	GetSnapshot() map[string]io.ReadWriteCloser
 
@@ -50,6 +50,8 @@ type Connector interface {
 	LinkApp(connID string, name string, observed []byte)
 	// UnlinkApp removes the app by connID.
 	UnlinkApp(connID string, name string)
+	// ExistsApp check app exists
+	ExistsApp(name string) bool
 
 	// Clean the connector.
 	Clean()
@@ -141,7 +143,7 @@ func (c *connector) GetConnIDs(name string, tag byte) []string {
 }
 
 // Write a DataFrame to a connection.
-func (c *connector) Write(f *frame.DataFrame, toID string) error {
+func (c *connector) Write(f frame.Frame, toID string) error {
 	targetStream := c.Get(toID)
 	if targetStream == nil {
 		logger.Warnf("%swill write to: [%s], target stream is nil", ServerLogPrefix, toID)
@@ -173,6 +175,21 @@ func (c *connector) LinkApp(connID string, name string, observed []byte) {
 func (c *connector) UnlinkApp(connID string, name string) {
 	logger.Debugf("%sconnector unlink application: connID[%s] x-> app[%s]", ServerLogPrefix, connID, name)
 	c.apps.Delete(connID)
+}
+
+// ExistsApp check app exists
+func (c *connector) ExistsApp(name string) bool {
+	var found bool
+	c.apps.Range(func(key interface{}, val interface{}) bool {
+		app := val.(*app)
+		if app.name == name {
+			found = true
+			return false
+		}
+		return true
+	})
+
+	return found
 }
 
 // func (c *connector) RemoveApp(appID string) {

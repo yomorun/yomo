@@ -28,13 +28,18 @@ func main() {
 
 	// set handler
 	sfn.SetHandler(handler)
-
 	// start
 	err := sfn.Connect()
 	if err != nil {
 		logger.Errorf("[sfn] connect err=%v", err)
 		os.Exit(1)
 	}
+	// set the error handler function when server error occurs
+	sfn.SetErrorHandler(func(err error) {
+		logger.Errorf("[sfn] receive server error: %v", err)
+		sfn.Close()
+		os.Exit(1)
+	})
 
 	select {}
 }

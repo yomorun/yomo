@@ -13,6 +13,7 @@ import (
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/log"
+	"github.com/yomorun/yomo/core/yerr"
 	"github.com/yomorun/yomo/pkg/logger"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
 )
@@ -37,6 +38,7 @@ type Client struct {
 	opts       ClientOptions
 	localAddr  string // client local addr, it will be changed on reconnect
 	logger     log.Logger
+	errc       chan error
 }
 
 // NewClient creates a new YoMo-Client.
@@ -46,6 +48,7 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 		clientType: connType,
 		state:      ConnStateReady,
 		opts:       ClientOptions{},
+		errc:       make(chan error),
 	}
 	c.Init(opts...)
 	once.Do(func() {
@@ -144,15 +147,20 @@ func (c *Client) handleFrame() {
 				c.setState(ConnStateDisconnected)
 			} else if e, ok := err.(*quic.ApplicationError); ok {
 				c.logger.Infof("%sapplication error, err=%v, errcode=%v", ClientLogPrefix, e, e.ErrorCode)
-				if e.ErrorCode == 0xCC {
+				if yerr.Is(e.ErrorCode, yerr.ErrorCodeRejected) {
 					// if connection is rejected(eg: authenticate fails) from server
 					c.logger.Errorf("%sIllegal client, server rejected.", ClientLogPrefix)
 					c.setState(ConnStateRejected)
 					break
-				} else if e.ErrorCode == 0x00 {
+				} else if yerr.Is(e.ErrorCode, yerr.ErrorCodeClientAbort) {
 					// client abort
 					c.logger.Infof("%sclient close the connection", ClientLogPrefix)
 					c.setState(ConnStateAborted)
+					break
+				} else if yerr.Is(e.ErrorCode, yerr.ErrorCodeGoaway) {
+					// server goaway
+					c.logger.Infof("%sserver goaway the connection", ClientLogPrefix)
+					c.setState(ConnStateGoaway)
 					break
 				}
 			} else if errors.Is(err, net.ErrClosed) {
@@ -165,7 +173,7 @@ func (c *Client) handleFrame() {
 				// any error occurred, we should close the stream
 				// after this, conn.AcceptStream() will raise the error
 				c.setState(ConnStateClosed)
-				c.conn.CloseWithError(0xD0, err.Error())
+				c.conn.CloseWithError(yerr.To(yerr.ErrorCodeUnknown), err.Error())
 				c.logger.Errorf("%sunknown error occurred, err=%v, state=%v", ClientLogPrefix, err, c.getState())
 				break
 			}
@@ -188,6 +196,20 @@ func (c *Client) handleFrame() {
 			c.setState(ConnStateAccepted)
 		case frame.TagOfRejectedFrame:
 			c.setState(ConnStateRejected)
+			if v, ok := f.(*frame.RejectedFrame); ok {
+				c.logger.Errorf("%s🔑 receive RejectedFrame, message=%s", ClientLogPrefix, v.Message())
+				c.conn.CloseWithError(yerr.To(yerr.ErrorCodeRejected), v.Message())
+				c.errc <- errors.New(v.Message())
+				break
+			}
+		case frame.TagOfGoawayFrame:
+			c.setState(ConnStateGoaway)
+			if v, ok := f.(*frame.GoawayFrame); ok {
+				c.logger.Errorf("%s⛔️ receive GoawayFrame, message=%s", ClientLogPrefix, v.Message())
+				c.conn.CloseWithError(yerr.To(yerr.ErrorCodeGoaway), v.Message())
+				c.errc <- errors.New(v.Message())
+				break
+			}
 		case frame.TagOfDataFrame: // DataFrame carries user's data
 			if v, ok := f.(*frame.DataFrame); ok {
 				c.setState(ConnStateTransportData)
@@ -221,6 +243,8 @@ func (c *Client) Close() (err error) {
 			c.logger.Errorf("%s connection.Close(): %v", ClientLogPrefix, err)
 		}
 	}
+	// error channel
+	close(c.errc)
 
 	return err
 }
@@ -380,4 +404,16 @@ func (c *Client) SetObserveDataTags(tag ...byte) {
 // Logger get client's logger instance, you can customize this using `yomo.WithLogger`
 func (c *Client) Logger() log.Logger {
 	return c.logger
+}
+
+// SetErrorHandler set error handler
+func (c *Client) SetErrorHandler(fn func(err error)) {
+	if fn != nil {
+		go func() {
+			err := <-c.errc
+			if err != nil {
+				fn(err)
+			}
+		}()
+	}
 }

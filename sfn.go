@@ -18,6 +18,8 @@ type StreamFunction interface {
 	SetObserveDataTags(tag ...byte)
 	// SetHandler set the handler function, which accept the raw bytes data and return the tag & response
 	SetHandler(fn core.AsyncHandler) error
+	// SetErrorHandler set the error handler function when server error occurs
+	SetErrorHandler(fn func(err error))
 	// SetPipeHandler set the pipe handler function
 	SetPipeHandler(fn core.PipeHandler) error
 	// Connect create a connection to the zipper
@@ -172,4 +174,9 @@ func (s *streamFunction) Write(tag byte, carriage []byte) error {
 	frame := frame.NewDataFrame()
 	frame.SetCarriage(tag, carriage)
 	return s.client.WriteFrame(frame)
+}
+
+// SetErrorHandler set the error handler function when server error occurs
+func (s *streamFunction) SetErrorHandler(fn func(err error)) {
+	s.client.SetErrorHandler(fn)
 }

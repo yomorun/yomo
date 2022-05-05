@@ -40,6 +40,11 @@ func main() {
 	defer source.Close()
 
 	source.SetDataTag(0x33)
+	// set the error handler function when server error occurs
+	source.SetErrorHandler(func(err error) {
+		logger.Printf("[source] receive server error: %v", err)
+		os.Exit(1)
+	})
 
 	// generate mock data and send it to YoMo-Zipper in every 100 ms.
 	err = generateAndSendData(source)
@@ -68,6 +73,9 @@ func generateAndSendData(stream yomo.Source) error {
 		if i++; i > 6 {
 			stream.Close()
 			return nil
+			// logger.Printf("[source] send GoawayFrame")
+			// goawayFrame := frame.NewGoawayFrame("客户端发送Goaway")
+			// stream.WriteFrame(goawayFrame)
 		}
 		if err != nil {
 			logger.Errorf("[source] ❌ Emit %v to YoMo-Zipper failure with err: %v", data, err)

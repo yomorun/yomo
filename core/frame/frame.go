@@ -35,6 +35,11 @@ const (
 	TagOfPongFrame     Type = 0x3B
 	TagOfAcceptedFrame Type = 0x3A
 	TagOfRejectedFrame Type = 0x39
+	TagOfRejectedMessage Type = 0x02
+	// GoawayFrame
+	TagOfGoawayFrame        Type = 0x30
+	TagOfGoawayCode    Type = 0x01
+	TagOfGoawayMessage Type = 0x02
 )
 
 // Type represents the type of frame.
@@ -65,6 +70,8 @@ func (f Type) String() string {
 		return "AcceptedFrame"
 	case TagOfRejectedFrame:
 		return "RejectedFrame"
+	case TagOfGoawayFrame:
+		return "GoawayFrame"
 	case TagOfMetaFrame:
 		return "MetaFrame"
 	case TagOfPayloadFrame:
