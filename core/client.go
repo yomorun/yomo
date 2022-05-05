@@ -14,6 +14,7 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/log"
 	"github.com/yomorun/yomo/core/yerr"
+	"github.com/yomorun/yomo/pkg/id"
 	"github.com/yomorun/yomo/pkg/logger"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
 )
@@ -29,6 +30,7 @@ type ConnState = string
 type Client struct {
 	name       string                     // name of the client
 	clientType ClientType                 // type of the connection
+	clientID   string                     // id of the client
 	conn       quic.Connection            // quic connection
 	stream     quic.Stream                // quic stream
 	state      ConnState                  // state of the connection
@@ -47,6 +49,7 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 	c := &Client{
 		name:       appName,
 		clientType: connType,
+		clientID:   id.New(),
 		state:      ConnStateReady,
 		opts:       ClientOptions{},
 		errc:       make(chan error),
@@ -114,6 +117,8 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 		c.opts.Credential.Name(),
 		c.opts.Credential.Payload(),
 	)
+	// source ID
+	handshake.SetSourceID(c.clientID)
 	err = c.WriteFrame(handshake)
 	if err != nil {
 		c.state = ConnStateRejected
@@ -122,7 +127,8 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	c.state = ConnStateConnected
 	c.localAddr = c.conn.LocalAddr().String()
 
-	c.logger.Printf("%s❤️  [%s](%s) is connected to YoMo-Zipper %s", ClientLogPrefix, c.name, c.localAddr, addr)
+	// c.logger.Printf("%s❤️  [%s](%s) is connected to YoMo-Zipper %s", ClientLogPrefix, c.name, c.localAddr, addr)
+	c.logger.Printf("%s❤️  [%s][%s](%s) is connected to YoMo-Zipper %s", ClientLogPrefix, c.name, c.clientID, c.localAddr, addr)
 
 	// receiving frames
 	go c.handleFrame()
@@ -433,4 +439,9 @@ func (c *Client) SetErrorHandler(fn func(err error)) {
 			}
 		}()
 	}
+}
+
+// ClientID return the client ID
+func (c *Client) ClientID() string {
+	return c.clientID
 }

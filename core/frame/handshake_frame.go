@@ -15,6 +15,7 @@ type HandshakeFrame struct {
 	// auth
 	authName    string
 	authPayload string
+	metaFrame   *MetaFrame
 }
 
 // NewHandshakeFrame creates a new HandshakeFrame.
@@ -25,7 +26,21 @@ func NewHandshakeFrame(name string, clientType byte, observeDataTags []byte, aut
 		ObserveDataTags: observeDataTags,
 		authName:        authName,
 		authPayload:     authPayload,
+		metaFrame:       NewMetaFrame(),
 	}
+}
+
+// SetSourceID set the source ID.
+func (h *HandshakeFrame) SetSourceID(sourceID string) {
+	h.metaFrame.SetSourceID(sourceID)
+}
+
+// SourceID returns source ID
+func (h *HandshakeFrame) SourceID() string {
+	if h.metaFrame != nil {
+		return h.metaFrame.SourceID()
+	}
+	return ""
 }
 
 // Type gets the type of Frame.
@@ -56,6 +71,8 @@ func (h *HandshakeFrame) Encode() []byte {
 	handshake.AddPrimitivePacket(observeDataTagsBlock)
 	handshake.AddPrimitivePacket(authNameBlock)
 	handshake.AddPrimitivePacket(authPayloadBlock)
+	// metaframe
+	handshake.AddBytes(h.metaFrame.Encode())
 
 	return handshake.Encode()
 }
@@ -100,6 +117,14 @@ func DecodeToHandshakeFrame(buf []byte) (*HandshakeFrame, error) {
 			return nil, err
 		}
 		handshake.authPayload = authPayload
+	}
+	// metaframe
+	if metaBlock, ok := node.NodePackets[byte(TagOfMetaFrame)]; ok {
+		meta, err := DecodeToMetaFrame(metaBlock.GetRawBytes())
+		if err != nil {
+			return nil, err
+		}
+		handshake.metaFrame = meta
 	}
 
 	return handshake, nil

@@ -13,6 +13,7 @@ import (
 type app struct {
 	name     string // app name
 	observed []byte // data tags
+	sourceID string // source id
 }
 
 // func (a *app) ID() string {
@@ -36,7 +37,7 @@ type Connector interface {
 	// GetConnIDs gets the connection ids by name and tag.
 	GetConnIDs(name string, tag byte) []string
 	// GetSourceConnIDs gets the connection ids by source observe tag.
-	GetSourceConnIDs(tag byte) []string
+	GetSourceConnIDs(sourceID string, tag byte) []string
 	// Write a Frame to a connection.
 	Write(f frame.Frame, toID string) error
 	// GetSnapshot gets the snapshot of all connections.
@@ -50,7 +51,7 @@ type Connector interface {
 	// LinkApp links the app and connection.
 	LinkApp(connID string, name string, observed []byte)
 	// LinkSource links the source and connection.
-	LinkSource(connID string, name string, observed []byte)
+	LinkSource(connID string, name string, sourceID string, observed []byte)
 	// UnlinkApp removes the app by connID.
 	UnlinkApp(connID string, name string)
 	// ExistsApp check app exists
@@ -110,7 +111,8 @@ func (c *connector) App(connID string) (*app, bool) {
 	if result, found := c.apps.Load(connID); found {
 		app, ok := result.(*app)
 		if ok {
-			logger.Debugf("%sconnector get app=%s, connID=%s", ServerLogPrefix, app.name, connID)
+			// logger.Debugf("%sconnector get app=%s, connID=%s", ServerLogPrefix, app.name, connID)
+			logger.Debugf("%sconnector get app=%s, connID=%s, sourceID=%s", ServerLogPrefix, app.name, connID, app.sourceID)
 			return app, true
 		}
 		logger.Warnf("%sconnector get app convert fails, connID=%s", ServerLogPrefix, connID)
@@ -154,13 +156,13 @@ func (c *connector) GetConnIDs(name string, tag byte) []string {
 }
 
 // GetSourceConnIDs gets the source connection ids by tag.
-func (c *connector) GetSourceConnIDs(tag byte) []string {
+func (c *connector) GetSourceConnIDs(sourceID string, tag byte) []string {
 	connIDs := make([]string, 0)
 
 	c.sources.Range(func(key interface{}, val interface{}) bool {
 		app := val.(*app)
 		for _, v := range app.observed {
-			if v == tag {
+			if v == tag && app.sourceID == sourceID {
 				connIDs = append(connIDs, key.(string))
 				// break
 			}
@@ -197,13 +199,13 @@ func (c *connector) GetSnapshot() map[string]io.ReadWriteCloser {
 // LinkApp links the app and connection.
 func (c *connector) LinkApp(connID string, name string, observed []byte) {
 	logger.Debugf("%sconnector link application: connID[%s] --> app[%s]", ServerLogPrefix, connID, name)
-	c.apps.Store(connID, &app{name, observed})
+	c.apps.Store(connID, &app{name, observed, ""})
 }
 
 // LinkSource links the source and connection.
-func (c *connector) LinkSource(connID string, name string, observed []byte) {
+func (c *connector) LinkSource(connID string, name string, sourceID string, observed []byte) {
 	logger.Debugf("%sconnector link source: connID[%s] --> source[%s]", ServerLogPrefix, connID, name)
-	c.sources.Store(connID, &app{name, observed})
+	c.sources.Store(connID, &app{name, observed, sourceID})
 }
 
 // UnlinkApp removes the app by connID.

@@ -95,7 +95,9 @@ func (s *yomoSource) WriteWithTag(tag uint8, data []byte) error {
 	s.client.Logger().Debugf("%sWriteWithTag: len(data)=%d, data=%# x", sourceLogPrefix, len(data), frame.Shortly(data))
 	frame := frame.NewDataFrame()
 	frame.SetCarriage(byte(tag), data)
-	return s.client.WriteFrame(frame)
+	frame.SetSourceID(s.client.ClientID())
+	s.client.Logger().Debugf("%sWriteFrame: tid=%s, source_id=%s", sourceLogPrefix, frame.TransactionID(), frame.SourceID())
+	return s.WriteFrame(frame)
 }
 
 // SetErrorHandler set the error handler function when server error occurs
