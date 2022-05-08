@@ -39,6 +39,7 @@ type Client struct {
 	localAddr  string // client local addr, it will be changed on reconnect
 	logger     log.Logger
 	errc       chan error
+	closec     chan bool
 }
 
 // NewClient creates a new YoMo-Client.
@@ -49,6 +50,7 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 		state:      ConnStateReady,
 		opts:       ClientOptions{},
 		errc:       make(chan error),
+		closec:     make(chan bool),
 	}
 	c.Init(opts...)
 	once.Do(func() {
@@ -230,7 +232,9 @@ func (c *Client) handleFrame() {
 
 // Close the client.
 func (c *Client) Close() (err error) {
-	c.logger.Printf("%sclose the connection, name:%s, addr:%s", ClientLogPrefix, c.name, c.conn.RemoteAddr().String())
+	if c.conn != nil {
+		c.logger.Printf("%sclose the connection, name:%s, addr:%s", ClientLogPrefix, c.name, c.conn.RemoteAddr().String())
+	}
 	if c.stream != nil {
 		err = c.stream.Close()
 		if err != nil {
@@ -245,6 +249,10 @@ func (c *Client) Close() (err error) {
 	}
 	// error channel
 	close(c.errc)
+	// close channel
+	c.closec <- true
+	close(c.closec)
+	c.logger.Debugf("%sreceive close chan", ClientLogPrefix)
 
 	return err
 }
@@ -321,12 +329,22 @@ func (c *Client) SetDataFrameObserver(fn func(*frame.DataFrame)) {
 func (c *Client) reconnect(ctx context.Context, addr string) {
 	t := time.NewTicker(1 * time.Second)
 	defer t.Stop()
-	for range t.C {
-		if c.getState() == ConnStateDisconnected {
-			c.logger.Printf("%s[%s](%s) is reconnecting to YoMo-Zipper %s...\n", ClientLogPrefix, c.name, c.localAddr, addr)
-			err := c.connect(ctx, addr)
-			if err != nil {
-				c.logger.Errorf("%s[%s](%s) reconnect error:%v", ClientLogPrefix, c.name, c.localAddr, err)
+
+	for {
+		select {
+		case <-ctx.Done():
+			c.logger.Debugf("%s[%s](%s) context.Done()", ClientLogPrefix, c.name, c.localAddr)
+			return
+		case <-c.closec:
+			c.logger.Debugf("%s[%s](%s) close channel", ClientLogPrefix, c.name, c.localAddr)
+			return
+		case <-t.C:
+			if c.getState() == ConnStateDisconnected {
+				c.logger.Printf("%s[%s](%s) is reconnecting to YoMo-Zipper %s...", ClientLogPrefix, c.name, c.localAddr, addr)
+				err := c.connect(ctx, addr)
+				if err != nil {
+					c.logger.Errorf("%s[%s](%s) reconnect error:%v", ClientLogPrefix, c.name, c.localAddr, err)
+				}
 			}
 		}
 	}
