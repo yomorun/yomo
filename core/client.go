@@ -40,6 +40,7 @@ type Client struct {
 	logger     log.Logger
 	errc       chan error
 	closec     chan bool
+	closed     bool
 }
 
 // NewClient creates a new YoMo-Client.
@@ -247,12 +248,14 @@ func (c *Client) Close() (err error) {
 			c.logger.Errorf("%s connection.Close(): %v", ClientLogPrefix, err)
 		}
 	}
-	// error channel
-	close(c.errc)
 	// close channel
-	c.closec <- true
-	close(c.closec)
-	c.logger.Debugf("%sreceive close chan", ClientLogPrefix)
+	c.mu.Lock()
+	if !c.closed {
+		close(c.errc)
+		close(c.closec)
+		c.closed = true
+	}
+	c.mu.Unlock()
 
 	return err
 }
