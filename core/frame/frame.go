@@ -12,15 +12,16 @@ var debugFrameSize = 16
 const (
 	// DataFrame
 	TagOfDataFrame Type = 0x3F
+
 	// MetaFrame of DataFrame
 	TagOfMetaFrame     Type = 0x2F
 	TagOfMetadata      Type = 0x03
 	TagOfTransactionID Type = 0x01
-	TagOfIssuer        Type = 0x02
+	TagOfExtFrame      Type = 0x02
+
 	// PayloadFrame of DataFrame
 	TagOfPayloadFrame Type = 0x2E
 
-	TagOfTokenFrame Type = 0x3E
 	// HandshakeFrame
 	TagOfHandshakeFrame Type = 0x3D
 	TagOfHandshakeName  Type = 0x01
@@ -31,13 +32,15 @@ const (
 	TagOfHandshakeAuthPayload     Type = 0x05
 	TagOfHandshakeObserveDataTags Type = 0x06
 
-	TagOfPingFrame     Type = 0x3C
-	TagOfPongFrame     Type = 0x3B
-	TagOfAcceptedFrame Type = 0x3A
-	TagOfRejectedFrame Type = 0x39
+	TagOfTokenFrame      Type = 0x3E
+	TagOfPingFrame       Type = 0x3C
+	TagOfPongFrame       Type = 0x3B
+	TagOfAcceptedFrame   Type = 0x3A
+	TagOfRejectedFrame   Type = 0x39
 	TagOfRejectedMessage Type = 0x02
+
 	// GoawayFrame
-	TagOfGoawayFrame        Type = 0x30
+	TagOfGoawayFrame   Type = 0x30
 	TagOfGoawayCode    Type = 0x01
 	TagOfGoawayMessage Type = 0x02
 )
