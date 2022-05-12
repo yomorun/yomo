@@ -135,8 +135,9 @@ func (z *zipper) ConfigWorkflow(conf string) error {
 
 func (z *zipper) configWorkflow(config *config.WorkflowConfig) error {
 	z.wfc = config
-	// router
-	return z.server.ConfigRouter(newRouter(config))
+	z.server.ConfigAppInfoBuilder(newAppInfoBuilder())
+	z.server.ConfigRouter(newRouter(config.Functions))
+	return nil
 }
 
 func (z *zipper) ConfigMesh(url string) error {

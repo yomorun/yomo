@@ -1,93 +1,90 @@
 package yomo
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/pkg/config"
-	"github.com/yomorun/yomo/pkg/logger"
 )
 
-// router
 type router struct {
-	config *config.WorkflowConfig
+	r *route
 }
 
-func newRouter(config *config.WorkflowConfig) core.Router {
-	return &router{config: config}
+func newRouter(functions []config.App) core.Router {
+	return &router{r: newRoute(functions)}
 }
 
-// router interface
-func (r *router) Route() core.Route {
-	logger.Debugf("%sworkflowconfig is %#v", zipperLogPrefix, r.config)
-	return newRoute(r.config)
+func (r *router) Route(info core.AppInfo) core.Route {
+	return r.r
 }
 
 func (r *router) Clean() {
-	r.config = nil
+	r.r = nil
 }
 
-// route interface
 type route struct {
-	data sync.Map
+	functions []config.App
+	data      map[byte]map[string]struct{}
+	mu        sync.RWMutex
 }
 
-func newRoute(config *config.WorkflowConfig) *route {
-	if config == nil {
-		logger.Errorf("%sworkflowconfig is nil", zipperLogPrefix)
-		return nil
+func newRoute(functions []config.App) *route {
+	return &route{
+		functions: functions,
+		data:      make(map[byte]map[string]struct{}),
 	}
-	r := route{
-		data: sync.Map{},
-	}
-	logger.Debugf("%sworkflowconfig %+v", zipperLogPrefix, *config)
-	for i, app := range config.Functions {
-		r.Add(i, app.Name)
-	}
-
-	return &r
 }
 
-func (r *route) Add(index int, name string) {
-	if r.Exists(name) {
-		logger.Warnf("%sapp[%s] already exists in workflow and will not be added", zipperLogPrefix, name)
-		return
-	}
-	logger.Debugf("%sroute add: %s", zipperLogPrefix, name)
-	r.data.Store(index, name)
-}
+func (r *route) Add(connID string, name string, observeDataTags []byte) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
-func (r *route) Exists(name string) bool {
-	var ok bool
-	logger.Debugf("%srouter[%v] exists name: %s", zipperLogPrefix, r, name)
-	r.data.Range(func(key interface{}, val interface{}) bool {
-		if val.(string) == name {
+	ok := false
+	for _, v := range r.functions {
+		if v.Name == name {
 			ok = true
-			return false
+			break
 		}
-		return true
-	})
+	}
+	if !ok {
+		return fmt.Errorf("SFN name %s does not exist in config functions", name)
+	}
 
-	return ok
+	for _, tag := range observeDataTags {
+		conns := r.data[tag]
+		if conns == nil {
+			conns = make(map[string]struct{})
+			r.data[tag] = conns
+		}
+		r.data[tag][connID] = struct{}{}
+	}
+
+	return nil
 }
 
-func (r *route) GetForwardRoutes(current string) []string {
-	idx := -1
-	r.data.Range(func(key interface{}, val interface{}) bool {
-		if val.(string) == current {
-			idx = key.(int)
-			return false
-		}
-		return true
-	})
+func (r *route) Remove(connID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
-	routes := make([]string, 0)
-	r.data.Range(func(key interface{}, val interface{}) bool {
-		if key.(int) > idx {
-			routes = append(routes, val.(string))
-		}
-		return true
-	})
+	for _, conns := range r.data {
+		delete(conns, connID)
+	}
 
-	return routes
+	return nil
+}
+
+func (r *route) GetForwardRoutes(tag byte) []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	if conns := r.data[tag]; conns != nil {
+		keys := make([]string, 0, len(conns))
+		for k := range conns {
+			keys = append(keys, k)
+		}
+		return keys
+	}
+	return make([]string, 0)
 }
