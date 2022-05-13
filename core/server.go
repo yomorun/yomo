@@ -251,7 +251,7 @@ func (s *Server) mainFrameHandler(c *Context) error {
 			c.CloseWithError(yerr.ErrorCodeData, fmt.Sprintf("handleDataFrame err: %v", err))
 		} else {
 			conn := s.connector.Get(c.connID)
-			if conn != nil && conn.GetClientType() == ClientTypeSource {
+			if conn != nil && conn.ClientType() == ClientTypeSource {
 				s.dispatchToDownstreams(c.Frame.(*frame.DataFrame))
 			}
 		}
@@ -305,7 +305,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	}
 
 	// client type
-	conn := NewConnection(connID, f.Name, clientType, appInfo, stream)
+	conn := newConnection(f.Name, clientType, appInfo, stream)
 	switch clientType {
 	case ClientTypeSource, ClientTypeUpstreamZipper:
 		s.connector.Add(connID, conn)
@@ -363,7 +363,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 	if err := s.validateRouter(); err != nil {
 		return err
 	}
-	route := s.router.Route(from.GetAppInfo())
+	route := s.router.Route(from.AppInfo())
 	if route == nil {
 		logger.Warnf("%shandleDataFrame route is nil", ServerLogPrefix)
 		return fmt.Errorf("handleDataFrame route is nil")
@@ -406,14 +406,7 @@ func (s *Server) Downstreams() map[string]*Client {
 	return s.downstreams
 }
 
-// AddWorkflow register sfn to this server.
-// func (s *Server) AddWorkflow(wfs ...Workflow) error {
-// 	for _, wf := range wfs {
-// 		s.router.Add(wf.Seq, wf.Name)
-// 	}
-// 	return nil
-// }
-
+// ConfigRouter is used to set router by zipper
 func (s *Server) ConfigRouter(router Router) {
 	s.mu.Lock()
 	s.router = router
@@ -421,17 +414,12 @@ func (s *Server) ConfigRouter(router Router) {
 	s.mu.Unlock()
 }
 
+// ConfigAppInfoBuilder is used to set appInfoBuilder by zipper
 func (s *Server) ConfigAppInfoBuilder(builder AppInfoBuilder) {
 	s.mu.Lock()
 	s.appInfoBuilder = builder
 	logger.Debugf("%sconfig appInfoBuilder is %#v", ServerLogPrefix, builder)
 	s.mu.Unlock()
-}
-
-func (s *Server) Router() Router {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.router
 }
 
 // AddDownstreamServer add a downstream server to this server. all the DataFrames will be

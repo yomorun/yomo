@@ -17,6 +17,6 @@ func newAppInfoBuilder() core.AppInfoBuilder {
 	return &appInfoBuilder{}
 }
 
-func (a *appInfoBuilder) Build(f *frame.HandshakeFrame) (core.AppInfo, error) {
+func (a *appInfoBuilder) Build(f frame.Frame) (core.AppInfo, error) {
 	return &appInfo{}, nil
 }
