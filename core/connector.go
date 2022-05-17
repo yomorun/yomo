@@ -6,6 +6,24 @@ import (
 	"github.com/yomorun/yomo/pkg/logger"
 )
 
+<<<<<<< HEAD
+=======
+type app struct {
+	id       string // client id
+	name     string // app name
+	observed []byte // data tags
+	sourceID string // source id
+}
+
+func (a *app) ID() string {
+	return a.id
+}
+
+func (a *app) Name() string {
+	return a.name
+}
+
+>>>>>>> 27a22b4 (handshake add client id field)
 var _ Connector = &connector{}
 
 // Connector is a interface to manage the connections and applications.
@@ -17,11 +35,30 @@ type Connector interface {
 	// Get a connection by connection id.
 	Get(connID string) Connection
 	// GetSnapshot gets the snapshot of all connections.
+<<<<<<< HEAD
 	GetSnapshot() map[string]string
 	// GetSourceConnIDs gets the connection ids by source observe tag.
 	GetSourceConnIDs(tags byte) []string
 	// LinkSource links the source and connection.
 	LinkSource(connID string, name string, observed []byte)
+=======
+	GetSnapshot() map[string]io.ReadWriteCloser
+	// App gets the app by connID.
+	App(connID string) (*app, bool)
+	// AppID gets the ID of app by connID.
+	// AppID(connID string) (string, bool)
+	// AppName gets the name of app by connID.
+	AppName(connID string) (string, bool)
+	// LinkApp links the app and connection.
+	LinkApp(connID string, id string, name string, observed []byte)
+	// LinkSource links the source and connection.
+	LinkSource(connID string, id string, name string, sourceID string, observed []byte)
+	// UnlinkApp removes the app by connID.
+	UnlinkApp(connID string, name string)
+	// ExistsApp check app exists
+	ExistsApp(name string) bool
+
+>>>>>>> 27a22b4 (handshake add client id field)
 	// Clean the connector.
 	Clean()
 }
@@ -104,9 +141,9 @@ func (c *connector) GetSnapshot() map[string]string {
 }
 
 // LinkSource links the source and connection.
-func (c *connector) LinkSource(connID string, name string, observed []byte) {
+func (c *connector) LinkSource(connID string, id string, name string, sourceID string, observed []byte) {
 	logger.Debugf("%sconnector link source: connID[%s] --> source[%s]", ServerLogPrefix, connID, name)
-	c.sources.Store(connID, &app{name, observed})
+	c.sources.Store(connID, &app{id, name, observed, sourceID})
 }
 
 // Clean the connector.
