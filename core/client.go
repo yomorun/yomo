@@ -14,6 +14,7 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/log"
 	"github.com/yomorun/yomo/core/yerr"
+	"github.com/yomorun/yomo/pkg/id"
 	"github.com/yomorun/yomo/pkg/logger"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
 )
@@ -28,6 +29,7 @@ type ConnState = string
 // Source, Upstream Zipper or StreamFunction.
 type Client struct {
 	name       string                     // name of the client
+	clientID   string                     // id the connection
 	clientType ClientType                 // type of the connection
 	conn       quic.Connection            // quic connection
 	stream     quic.Stream                // quic stream
@@ -48,6 +50,7 @@ type Client struct {
 func NewClient(appName string, connType ClientType, opts ...ClientOption) *Client {
 	c := &Client{
 		name:       appName,
+		clientID:   id.New(),
 		clientType: connType,
 		state:      ConnStateReady,
 		opts:       ClientOptions{},

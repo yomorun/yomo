@@ -17,6 +17,8 @@ type HandshakeFrame struct {
 	// auth
 	authName    string
 	authPayload string
+	// metaframe
+	metaFrame *MetaFrame
 }
 
 // NewHandshakeFrame creates a new HandshakeFrame.
@@ -28,6 +30,7 @@ func NewHandshakeFrame(name string, clientID string, clientType byte, observeDat
 		ObserveDataTags: observeDataTags,
 		authName:        authName,
 		authPayload:     authPayload,
+		metaFrame:       NewMetaFrame(),
 	}
 }
 
