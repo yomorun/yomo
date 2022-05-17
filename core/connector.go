@@ -44,11 +44,6 @@ func (c *connector) Add(connID string, conn Connection) {
 	c.conns.Store(connID, conn)
 }
 
-// func (c *connector) AddSource(connID string, stream io.ReadWriteCloser) {
-// 	logger.Debugf("%sconnector add: connID=%s", ServerLogPrefix, connID)
-// 	c.sconns.Store(connID, stream)
-// }
-
 // Remove a connection.
 func (c *connector) Remove(connID string) {
 	logger.Debugf("%sconnector remove: connID=%s", ServerLogPrefix, connID)
