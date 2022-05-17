@@ -311,7 +311,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 		if err != nil {
 			return err
 		}
-		conn = newConnection(f.Name, clientType, metadata, stream)
+		conn = newConnection(f.Name, f.ClientID, clientType, f.SourceID(), metadata, stream, f.ObserveDataTags)
 
 		if clientType == ClientTypeStreamFunction {
 			// route
@@ -329,16 +329,17 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 			}
 		}
 	case ClientTypeUpstreamZipper:
-		conn = newConnection(f.Name, clientType, nil, stream)
+		conn = newConnection(f.Name, f.ClientID, clientType, f.SourceID(), nil, stream, f.ObserveDataTags)
 	default:
 		// unknown client type
+		s.connector.Remove(connID)
 		logger.Errorf("%sClientType=%# x, ilegal!", ServerLogPrefix, f.ClientType)
 		c.CloseWithError(yerr.ErrorCodeUnknownClient, "Unknown ClientType, illegal!")
 		return errors.New("core.server: Unknown ClientType, illegal")
 	}
 
 	s.connector.Add(connID, conn)
-	logger.Printf("%s❤️  <%s> [%s](%s) is connected!", ServerLogPrefix, clientType, f.Name, connID)
+	logger.Printf("%s❤️  <%s> [%s][%s](%s) is connected!", ServerLogPrefix, clientType, f.Name, clientID, connID)
 	return nil
 }
 
@@ -415,16 +416,16 @@ func (s *Server) handleBackflowFrame(c *Context) error {
 	f := c.Frame.(*frame.DataFrame)
 	tag := f.GetDataTag()
 	carriage := f.GetCarriage()
+	sourceID := f.SourceID()
 	// write to source with BackflowFrame
 	bf := frame.NewBackflowFrame(tag, carriage)
-	sourceIDs := s.connector.GetSourceConnIDs(tag)
-	for _, sourceID := range sourceIDs {
+	sourceConns := s.connector.GetSourceConns(sourceID, tag)
+	for _, source := range sourceConns {
 		// get source's quic.Stream
-		source := s.connector.Get(sourceID)
+		// source := s.connector.Get(sourceID)
 		if source != nil {
 			logger.Debugf("%s♻️  handleBackflowFrame tag:%#v --> source:%s, result=%# x", ServerLogPrefix, tag, sourceID, frame.Shortly(carriage))
-			_, err := source.Write(bf.Encode())
-			if err != nil {
+			if err := source.Write(bf); err != nil {
 				logger.Errorf("%s♻️  handleBackflowFrame tag:%#v --> source:%s, error=%v", ServerLogPrefix, tag, sourceID, err)
 				return err
 			}

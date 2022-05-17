@@ -9,12 +9,13 @@ import (
 func TestHandshakeFrameEncode(t *testing.T) {
 	expectedName := "1234"
 	var expectedType byte = 0xD3
-	m := NewHandshakeFrame(expectedName, expectedType, []byte{0x01, 0x02}, "token", "a")
+	m := NewHandshakeFrame(expectedName, "", expectedType, []byte{0x01, 0x02}, "token", "a")
 	m.metaFrame.SetTransactionID("1234")
 	m.metaFrame.SetSourceID("1")
 	assert.Equal(t, []byte{
-		0x80 | byte(TagOfHandshakeFrame), 0x17 + 11,
+		0x80 | byte(TagOfHandshakeFrame), 0x17 + 13,
 		byte(TagOfHandshakeName), 0x04, 0x31, 0x32, 0x33, 0x34,
+		byte(TagOfHandshakeID), 0x0,
 		byte(TagOfHandshakeType), 0x01, 0xD3,
 		byte(TagOfHandshakeObserveDataTags), 0x02, 0x01, 0x02,
 		// byte(TagOfHandshakeAppID), 0x0,

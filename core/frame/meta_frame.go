@@ -45,19 +45,32 @@ func (m *MetaFrame) Metadata() []byte {
 	return m.metadata
 }
 
+// SetSourceID set the source ID.
+func (m *MetaFrame) SetSourceID(sourceID string) {
+	m.sourceID = sourceID
+}
+
+// SourceID returns source ID
+func (m *MetaFrame) SourceID() string {
+	return m.sourceID
+}
+
 // Encode implements Frame.Encode method.
 func (m *MetaFrame) Encode() []byte {
 	meta := y3.NewNodePacketEncoder(byte(TagOfMetaFrame))
-
+	// transaction ID
 	transactionID := y3.NewPrimitivePacketEncoder(byte(TagOfTransactionID))
 	transactionID.SetStringValue(m.tid)
 	meta.AddPrimitivePacket(transactionID)
-
-	if m.metadata != nil {
-		metadata := y3.NewPrimitivePacketEncoder(byte(TagOfMetadata))
-		metadata.SetBytesValue(m.metadata)
-		meta.AddPrimitivePacket(metadata)
-	}
+	// source ID
+	sourceID := y3.NewPrimitivePacketEncoder(byte(TagOfSourceID))
+	sourceID.SetStringValue(m.sourceID)
+	meta.AddPrimitivePacket(sourceID)
+	// if m.metadata != nil {
+	// 	metadata := y3.NewPrimitivePacketEncoder(byte(TagOfMetadata))
+	// 	metadata.SetBytesValue(m.metadata)
+	// 	meta.AddPrimitivePacket(metadata)
+	// }
 
 	return meta.Encode()
 }
@@ -82,6 +95,13 @@ func DecodeToMetaFrame(buf []byte) (*MetaFrame, error) {
 			break
 		case byte(TagOfMetadata):
 			meta.metadata = v.ToBytes()
+			break
+		case byte(TagOfSourceID):
+			sourceID, err := v.ToUTF8String()
+			if err != nil {
+				return nil, err
+			}
+			meta.sourceID = sourceID
 			break
 		}
 	}

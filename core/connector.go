@@ -6,24 +6,6 @@ import (
 	"github.com/yomorun/yomo/pkg/logger"
 )
 
-<<<<<<< HEAD
-=======
-type app struct {
-	id       string // client id
-	name     string // app name
-	observed []byte // data tags
-	sourceID string // source id
-}
-
-func (a *app) ID() string {
-	return a.id
-}
-
-func (a *app) Name() string {
-	return a.name
-}
-
->>>>>>> 27a22b4 (handshake add client id field)
 var _ Connector = &connector{}
 
 // Connector is a interface to manage the connections and applications.
@@ -35,44 +17,21 @@ type Connector interface {
 	// Get a connection by connection id.
 	Get(connID string) Connection
 	// GetSnapshot gets the snapshot of all connections.
-<<<<<<< HEAD
 	GetSnapshot() map[string]string
-	// GetSourceConnIDs gets the connection ids by source observe tag.
-	GetSourceConnIDs(tags byte) []string
+	// GetSourceConns gets the connections by source observe tags.
+	GetSourceConns(sourceID string, tags byte) []Connection
 	// LinkSource links the source and connection.
-	LinkSource(connID string, name string, observed []byte)
-=======
-	GetSnapshot() map[string]io.ReadWriteCloser
-	// App gets the app by connID.
-	App(connID string) (*app, bool)
-	// AppID gets the ID of app by connID.
-	// AppID(connID string) (string, bool)
-	// AppName gets the name of app by connID.
-	AppName(connID string) (string, bool)
-	// LinkApp links the app and connection.
-	LinkApp(connID string, id string, name string, observed []byte)
-	// LinkSource links the source and connection.
-	LinkSource(connID string, id string, name string, sourceID string, observed []byte)
-	// UnlinkApp removes the app by connID.
-	UnlinkApp(connID string, name string)
-	// ExistsApp check app exists
-	ExistsApp(name string) bool
-
->>>>>>> 27a22b4 (handshake add client id field)
+	// LinkSource(connID string, id string, name string, sourceID string, observed []byte)
 	// Clean the connector.
 	Clean()
 }
 
 type connector struct {
 	conns sync.Map
-	sources sync.Map
 }
 
 func newConnector() Connector {
-	return &connector{
-	conns   sync.Map
-	sources sync.Map
-	}
+	return &connector{conns: sync.Map{}}
 }
 
 // Add a connection.
@@ -85,7 +44,6 @@ func (c *connector) Add(connID string, conn Connection) {
 func (c *connector) Remove(connID string) {
 	logger.Debugf("%sconnector remove: connID=%s", ServerLogPrefix, connID)
 	c.conns.Delete(connID)
-	c.sources.Delete(connID)
 }
 
 // Get a connection by connection id.
@@ -97,36 +55,49 @@ func (c *connector) Get(connID string) Connection {
 	return nil
 }
 
-// GetSourceConnIDs gets the source connection ids by tag.
-func (c *connector) GetSourceConnIDs(tag byte) []string {
-	connIDs := make([]string, 0)
+// GetSourceConns gets the source connection by tag.
+func (c *connector) GetSourceConns(sourceID string, tag byte) []Connection {
+	// connIDs := make([]string, 0)
 
-	c.sources.Range(func(key interface{}, val interface{}) bool {
-		app := val.(*app)
-		for _, v := range app.observed {
+	// c.sources.Range(func(key interface{}, val interface{}) bool {
+	// 	app := val.(*app)
+	// 	for _, v := range app.observed {
+	// 		if v == tag {
+	// 			connIDs = append(connIDs, key.(string))
+	// 			// break
+	// 		}
+	// 	}
+	// 	return true
+	// })
+
+	// return connection list
+	conns := make([]Connection, 0)
+
+	c.conns.Range(func(key interface{}, val interface{}) bool {
+		conn := val.(Connection)
+		for _, v := range conn.ObserveDataTags() {
 			if v == tag {
-				connIDs = append(connIDs, key.(string))
-				// break
+				conns = append(conns, conn)
 			}
 		}
 		return true
 	})
 
-	return connIDs
+	return conns
 }
 
 // Write a Frame to a connection.
-func (c *connector) Write(f frame.Frame, toID string) error {
-	targetStream := c.Get(toID)
-	if targetStream == nil {
-		logger.Warnf("%swill write to: [%s], target stream is nil", ServerLogPrefix, toID)
-		return fmt.Errorf("target[%s] stream is nil", toID)
-	}
-	c.mu.Lock()
-	_, err := targetStream.Write(f.Encode())
-	c.mu.Unlock()
-	return err
-}
+// func (c *connector) Write(f frame.Frame, toID string) error {
+// 	targetStream := c.Get(toID)
+// 	if targetStream == nil {
+// 		logger.Warnf("%swill write to: [%s], target stream is nil", ServerLogPrefix, toID)
+// 		return fmt.Errorf("target[%s] stream is nil", toID)
+// 	}
+// 	c.mu.Lock()
+// 	_, err := targetStream.Write(f.Encode())
+// 	c.mu.Unlock()
+// 	return err
+// }
 
 // GetSnapshot gets the snapshot of all connections.
 func (c *connector) GetSnapshot() map[string]string {
@@ -141,10 +112,10 @@ func (c *connector) GetSnapshot() map[string]string {
 }
 
 // LinkSource links the source and connection.
-func (c *connector) LinkSource(connID string, id string, name string, sourceID string, observed []byte) {
-	logger.Debugf("%sconnector link source: connID[%s] --> source[%s]", ServerLogPrefix, connID, name)
-	c.sources.Store(connID, &app{id, name, observed, sourceID})
-}
+// func (c *connector) LinkSource(connID string, id string, name string, sourceID string, observed []byte) {
+// 	logger.Debugf("%sconnector link source: connID[%s] --> source[%s]", ServerLogPrefix, connID, name)
+// 	c.sources.Store(connID, &app{id, name, observed, sourceID})
+// }
 
 // Clean the connector.
 func (c *connector) Clean() {
