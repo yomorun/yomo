@@ -118,11 +118,11 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 				if err != nil {
 					// if client close the connection, then we should close the connection
 					// @CC: when Source close the connection, it won't affect connectors
-					appName, ok := s.connector.AppName(connID)
+					app, ok := s.connector.App(connID)
 					if ok {
 						// store
 						// remove app route from store? let me think...
-						logger.Printf("%s💔 [%s](%s) close the connection", ServerLogPrefix, appName, connID)
+						logger.Printf("%s💔 [%s][%s](%s) close the connection", ServerLogPrefix, app.Name(), app.ID(), connID)
 					} else {
 						logger.Errorf("%s💙 [unknown](%s) on stream %v", ServerLogPrefix, connID, err)
 					}
@@ -276,10 +276,11 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	// basic info
 	connID := c.ConnID()
 	name := f.Name
+	clientID := f.ClientID
 	clientType := ClientType(f.ClientType)
 	stream := c.Stream
 	// credential
-	logger.Debugf("%sClientType=%# x is %s, Credential=%s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType), authName(f.AuthName()))
+	logger.Debugf("%sClientType=%# x is %s, ClientID=%s, Credential=%s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType), clientID, authName(f.AuthName()))
 	// authenticate
 	if !s.authenticate(f) {
 		err := fmt.Errorf("handshake authentication fails, client credential name is %s", authName(f.AuthName()))
@@ -309,8 +310,8 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	switch clientType {
 	case ClientTypeSource:
 		s.connector.Add(connID, stream)
-		s.connector.LinkApp(connID, name, nil)
-		s.connector.LinkSource(connID, name, f.SourceID(), f.ObserveDataTags)
+		s.connector.LinkApp(connID, clientID, name, nil)
+		s.connector.LinkSource(connID, clientID, name, f.SourceID(), f.ObserveDataTags)
 	case ClientTypeStreamFunction:
 		// when sfn connect, it will provide its name to the server. server will check if this client
 		// has permission connected to.
@@ -345,18 +346,18 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 		}
 		s.connector.Add(connID, stream)
 		// link connection to stream function
-		s.connector.LinkApp(connID, name, f.ObserveDataTags)
+		s.connector.LinkApp(connID, clientID, name, f.ObserveDataTags)
 	case ClientTypeUpstreamZipper:
 		s.connector.Add(connID, stream)
-		s.connector.LinkApp(connID, name, nil)
+		s.connector.LinkApp(connID, clientID, name, nil)
 	default:
 		// unknown client type
 		s.connector.Remove(connID)
-		logger.Errorf("%sClientType=%# x, ilegal!", ServerLogPrefix, f.ClientType)
+		logger.Errorf("%sClientID=%s, ClientType=%# x, ilegal!", ServerLogPrefix, clientID, f.ClientType)
 		c.CloseWithError(yerr.ErrorCodeUnknownClient, "Unknown ClientType, illegal!")
 		return errors.New("core.server: Unknown ClientType, illegal")
 	}
-	logger.Printf("%s❤️  <%s> [%s](%s) is connected!", ServerLogPrefix, clientType, name, connID)
+	logger.Printf("%s❤️  <%s> [%s][%s](%s) is connected!", ServerLogPrefix, clientType, name, clientID, connID)
 	return nil
 }
 

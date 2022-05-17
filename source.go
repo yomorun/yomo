@@ -27,7 +27,7 @@ type Source interface {
 	SetErrorHandler(fn func(err error))
 	// WriteFrame writes a frame to the connection
 	WriteFrame(frm frame.Frame) error
-	// SetReceiveHandler set the observe handler function
+	// [Experimental] SetReceiveHandler set the observe handler function
 	SetReceiveHandler(fn func(tag byte, data []byte))
 }
 
@@ -110,7 +110,7 @@ func (s *yomoSource) WriteFrame(frm frame.Frame) error {
 	return s.client.WriteFrame(frm)
 }
 
-// SetReceiveHandler set the receive handler function
+// [Experimental] SetReceiveHandler set the observe handler function
 func (s *yomoSource) SetReceiveHandler(fn func(byte, []byte)) {
 	s.fn = fn
 	s.client.Logger().Debugf("%sSetReceiveHandler(%v)", sourceLogPrefix, s.fn)

@@ -112,6 +112,7 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	// send handshake
 	handshake := frame.NewHandshakeFrame(
 		c.name,
+		c.clientID,
 		byte(c.clientType),
 		c.opts.ObserveDataTags,
 		c.opts.Credential.Name(),
@@ -125,7 +126,7 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	c.state = ConnStateConnected
 	c.localAddr = c.conn.LocalAddr().String()
 
-	c.logger.Printf("%s❤️  [%s](%s) is connected to YoMo-Zipper %s", ClientLogPrefix, c.name, c.localAddr, addr)
+	c.logger.Printf("%s❤️  [%s][%s](%s) is connected to YoMo-Zipper %s", ClientLogPrefix, c.name, c.clientID, c.localAddr, addr)
 
 	// receiving frames
 	go c.handleFrame()
@@ -245,7 +246,7 @@ func (c *Client) handleFrame() {
 // Close the client.
 func (c *Client) Close() (err error) {
 	if c.conn != nil {
-		c.logger.Printf("%sclose the connection, name:%s, addr:%s", ClientLogPrefix, c.name, c.conn.RemoteAddr().String())
+		c.logger.Printf("%sclose the connection, name:%s, id:%s, addr:%s", ClientLogPrefix, c.name, c.clientID, c.conn.RemoteAddr().String())
 	}
 	if c.stream != nil {
 		err = c.stream.Close()
@@ -360,10 +361,10 @@ func (c *Client) reconnect(ctx context.Context, addr string) {
 			return
 		case <-t.C:
 			if c.getState() == ConnStateDisconnected {
-				c.logger.Printf("%s[%s](%s) is reconnecting to YoMo-Zipper %s...", ClientLogPrefix, c.name, c.localAddr, addr)
+				c.logger.Printf("%s[%s][%s](%s) is reconnecting to YoMo-Zipper %s...", ClientLogPrefix, c.name, c.clientID, c.localAddr, addr)
 				err := c.connect(ctx, addr)
 				if err != nil {
-					c.logger.Errorf("%s[%s](%s) reconnect error:%v", ClientLogPrefix, c.name, c.localAddr, err)
+					c.logger.Errorf("%s[%s][%s](%s) reconnect error:%v", ClientLogPrefix, c.name, c.clientID, c.localAddr, err)
 				}
 			}
 		}

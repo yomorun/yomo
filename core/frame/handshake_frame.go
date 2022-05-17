@@ -8,6 +8,8 @@ import (
 type HandshakeFrame struct {
 	// Name is client name
 	Name string
+	// ClientID represents client ID
+	ClientID string
 	// ClientType represents client type (source or sfn)
 	ClientType byte
 	// ObserveDataTags are the client data tag list.
@@ -18,9 +20,10 @@ type HandshakeFrame struct {
 }
 
 // NewHandshakeFrame creates a new HandshakeFrame.
-func NewHandshakeFrame(name string, clientType byte, observeDataTags []byte, authName string, authPayload string) *HandshakeFrame {
+func NewHandshakeFrame(name string, clientID string, clientType byte, observeDataTags []byte, authName string, authPayload string) *HandshakeFrame {
 	return &HandshakeFrame{
 		Name:            name,
+		ClientID:        clientID,
 		ClientType:      clientType,
 		ObserveDataTags: observeDataTags,
 		authName:        authName,
@@ -38,7 +41,10 @@ func (h *HandshakeFrame) Encode() []byte {
 	// name
 	nameBlock := y3.NewPrimitivePacketEncoder(byte(TagOfHandshakeName))
 	nameBlock.SetStringValue(h.Name)
-	// type
+	// client ID
+	idBlock := y3.NewPrimitivePacketEncoder(byte(TagOfHandshakeID))
+	idBlock.SetStringValue(h.ClientID)
+	// client type
 	typeBlock := y3.NewPrimitivePacketEncoder(byte(TagOfHandshakeType))
 	typeBlock.SetBytesValue([]byte{h.ClientType})
 	// observe data tags
@@ -51,6 +57,7 @@ func (h *HandshakeFrame) Encode() []byte {
 	authPayloadBlock.SetStringValue(h.authPayload)
 	// handshake frame
 	handshake := y3.NewNodePacketEncoder(byte(h.Type()))
+	handshake.AddPrimitivePacket(idBlock)
 	handshake.AddPrimitivePacket(nameBlock)
 	handshake.AddPrimitivePacket(typeBlock)
 	handshake.AddPrimitivePacket(observeDataTagsBlock)
@@ -81,7 +88,15 @@ func DecodeToHandshakeFrame(buf []byte) (*HandshakeFrame, error) {
 		}
 		handshake.Name = name
 	}
-	// type
+	// client ID
+	if idBlock, ok := node.PrimitivePackets[byte(TagOfHandshakeID)]; ok {
+		id, err := idBlock.ToUTF8String()
+		if err != nil {
+			return nil, err
+		}
+		handshake.ClientID = id
+	}
+	// client type
 	if typeBlock, ok := node.PrimitivePackets[byte(TagOfHandshakeType)]; ok {
 		clientType := typeBlock.ToBytes()
 		handshake.ClientType = clientType[0]
