@@ -252,7 +252,9 @@ func (s *Server) mainFrameHandler(c *Context) error {
 		} else {
 			conn := s.connector.Get(c.connID)
 			if conn != nil && conn.ClientType() == ClientTypeSource {
-				s.dispatchToDownstreams(c.Frame.(*frame.DataFrame))
+				f := c.Frame.(*frame.DataFrame)
+				f.GetMetaFrame().SetAppInfo(conn.AppInfo().Encode())
+				s.dispatchToDownstreams(f)
 			}
 		}
 	default:
@@ -360,12 +362,12 @@ func (s *Server) handleDataFrame(c *Context) error {
 	f := c.Frame.(*frame.DataFrame)
 
 	appInfo := from.AppInfo()
-	if appInfo == nil {
+	if appInfo == nil && from.ClientType() == ClientTypeUpstreamZipper {
 		err := s.validateAppInfoBuilder()
 		if err != nil {
 			return err
 		}
-		appInfo, err = s.appInfoBuilder.Build(f)
+		appInfo, err = s.appInfoBuilder.Decode(f.GetMetaFrame().AppInfo())
 		if err != nil {
 			return err
 		}

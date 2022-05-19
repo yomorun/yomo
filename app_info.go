@@ -11,12 +11,24 @@ func (a *appInfo) Key() string {
 	return ""
 }
 
-type appInfoBuilder struct{}
-
-func newAppInfoBuilder() core.AppInfoBuilder {
-	return &appInfoBuilder{}
+func (a *appInfo) Encode() []byte {
+	return nil
 }
 
-func (a *appInfoBuilder) Build(f frame.Frame) (core.AppInfo, error) {
-	return &appInfo{}, nil
+type appInfoBuilder struct {
+	a *appInfo
+}
+
+func newAppInfoBuilder() core.AppInfoBuilder {
+	return &appInfoBuilder{
+		a: &appInfo{},
+	}
+}
+
+func (builder *appInfoBuilder) Build(f *frame.HandshakeFrame) (core.AppInfo, error) {
+	return builder.a, nil
+}
+
+func (builder *appInfoBuilder) Decode(buf []byte) (core.AppInfo, error) {
+	return builder.a, nil
 }

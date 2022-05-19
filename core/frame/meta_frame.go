@@ -9,7 +9,7 @@ import (
 // used for describes metadata for a DataFrame.
 type MetaFrame struct {
 	tid     string
-	extInfo []byte
+	appInfo []byte
 }
 
 // NewMetaFrame creates a new MetaFrame instance.
@@ -29,14 +29,14 @@ func (m *MetaFrame) TransactionID() string {
 	return m.tid
 }
 
-// SetExtInfo set the extended information.
-func (m *MetaFrame) SetExtInfo(extInfo []byte) {
-	m.extInfo = extInfo
+// SetAppInfo set the extra application information.
+func (m *MetaFrame) SetAppInfo(appInfo []byte) {
+	m.appInfo = appInfo
 }
 
-// ExtInfo returns the extended information
-func (m *MetaFrame) ExtInfo() []byte {
-	return m.extInfo
+// AppInfo returns the extra application information.
+func (m *MetaFrame) AppInfo() []byte {
+	return m.appInfo
 }
 
 // Encode implements Frame.Encode method.
@@ -47,10 +47,10 @@ func (m *MetaFrame) Encode() []byte {
 	transactionID.SetStringValue(m.tid)
 	meta.AddPrimitivePacket(transactionID)
 
-	if m.extInfo != nil {
-		extInfo := y3.NewPrimitivePacketEncoder(byte(TagOfExtInfo))
-		extInfo.SetBytesValue(m.extInfo)
-		meta.AddPrimitivePacket(extInfo)
+	if m.appInfo != nil {
+		appInfo := y3.NewPrimitivePacketEncoder(byte(TagOfAppInfo))
+		appInfo.SetBytesValue(m.appInfo)
+		meta.AddPrimitivePacket(appInfo)
 	}
 
 	return meta.Encode()
@@ -74,8 +74,8 @@ func DecodeToMetaFrame(buf []byte) (*MetaFrame, error) {
 			}
 			meta.tid = val
 			break
-		case byte(TagOfExtInfo):
-			meta.extInfo = v.ToBytes()
+		case byte(TagOfAppInfo):
+			meta.appInfo = v.ToBytes()
 			break
 		}
 	}

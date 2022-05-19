@@ -16,7 +16,7 @@ const (
 	TagOfMetaFrame     Type = 0x2F
 	TagOfMetadata      Type = 0x03
 	TagOfTransactionID Type = 0x01
-	TagOfExtInfo       Type = 0x02
+	TagOfAppInfo       Type = 0x02
 	// PayloadFrame of DataFrame
 	TagOfPayloadFrame Type = 0x2E
 
