@@ -7,10 +7,6 @@ import (
 
 type appInfo struct{}
 
-func (a *appInfo) Key() string {
-	return ""
-}
-
 func (a *appInfo) Encode() []byte {
 	return nil
 }
