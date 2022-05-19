@@ -34,7 +34,7 @@ func (m *MetaFrame) SetExtInfo(extInfo []byte) {
 	m.extInfo = extInfo
 }
 
-// TransactionID returns the extended information
+// ExtInfo returns the extended information
 func (m *MetaFrame) ExtInfo() []byte {
 	return m.extInfo
 }
