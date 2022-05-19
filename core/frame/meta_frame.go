@@ -47,9 +47,11 @@ func (m *MetaFrame) Encode() []byte {
 	transactionID.SetStringValue(m.tid)
 	meta.AddPrimitivePacket(transactionID)
 
-	extInfo := y3.NewPrimitivePacketEncoder(byte(TagOfExtInfo))
-	extInfo.SetBytesValue(m.extInfo)
-	meta.AddPrimitivePacket(extInfo)
+	if m.extInfo != nil {
+		extInfo := y3.NewPrimitivePacketEncoder(byte(TagOfExtInfo))
+		extInfo.SetBytesValue(m.extInfo)
+		meta.AddPrimitivePacket(extInfo)
+	}
 
 	return meta.Encode()
 }
