@@ -359,11 +359,23 @@ func (s *Server) handleDataFrame(c *Context) error {
 
 	f := c.Frame.(*frame.DataFrame)
 
+	appInfo := from.AppInfo()
+	if appInfo == nil {
+		err := s.validateAppInfoBuilder()
+		if err != nil {
+			return err
+		}
+		appInfo, err = s.appInfoBuilder.Build(f)
+		if err != nil {
+			return err
+		}
+	}
+
 	// route
 	if err := s.validateRouter(); err != nil {
 		return err
 	}
-	route := s.router.Route(from.AppInfo())
+	route := s.router.Route(appInfo)
 	if route == nil {
 		logger.Warnf("%shandleDataFrame route is nil", ServerLogPrefix)
 		return fmt.Errorf("handleDataFrame route is nil")
