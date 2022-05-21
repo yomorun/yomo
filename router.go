@@ -79,12 +79,11 @@ func (r *route) GetForwardRoutes(tag byte) []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
+	var keys []string
 	if conns := r.data[tag]; conns != nil {
-		keys := make([]string, 0, len(conns))
 		for k := range conns {
 			keys = append(keys, k)
 		}
-		return keys
 	}
-	return make([]string, 0)
+	return keys
 }
