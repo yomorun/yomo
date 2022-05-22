@@ -26,14 +26,14 @@ func (r *router) Clean() {
 
 type route struct {
 	functions []config.App
-	data      map[byte]map[string]struct{}
+	data      map[byte]map[string]string
 	mu        sync.RWMutex
 }
 
 func newRoute(functions []config.App) *route {
 	return &route{
 		functions: functions,
-		data:      make(map[byte]map[string]struct{}),
+		data:      make(map[byte]map[string]string),
 	}
 }
 
@@ -49,16 +49,24 @@ func (r *route) Add(connID string, name string, observeDataTags []byte) error {
 		}
 	}
 	if !ok {
-		return fmt.Errorf("SFN name %s does not exist in config functions", name)
+		return fmt.Errorf("SFN[%s] does not exist in config functions", name)
+	}
+
+	for _, conns := range r.data {
+		for _, n := range conns {
+			if n == name {
+				return fmt.Errorf("SFN[%s] is already linked to another connection", name)
+			}
+		}
 	}
 
 	for _, tag := range observeDataTags {
 		conns := r.data[tag]
 		if conns == nil {
-			conns = make(map[string]struct{})
+			conns = make(map[string]string)
 			r.data[tag] = conns
 		}
-		r.data[tag][connID] = struct{}{}
+		r.data[tag][connID] = name
 	}
 
 	return nil
