@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"reflect"
 	"sync"
 	"sync/atomic"
 
@@ -301,7 +302,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 		return err
 	}
 	route := s.router.Route(appInfo)
-	if route == nil {
+	if reflect.ValueOf(route).IsNil() {
 		err := errors.New("handleHandshakeFrame route is nil")
 		return err
 	}
@@ -378,7 +379,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 		return err
 	}
 	route := s.router.Route(appInfo)
-	if route == nil {
+	if reflect.ValueOf(route).IsNil() {
 		logger.Warnf("%shandleDataFrame route is nil", ServerLogPrefix)
 		return fmt.Errorf("handleDataFrame route is nil")
 	}
