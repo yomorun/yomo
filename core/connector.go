@@ -17,7 +17,7 @@ type Connector interface {
 	// Get a connection by connection id.
 	Get(connID string) Connection
 	// GetSnapshot gets the snapshot of all connections.
-	GetSnapshot() map[string]Connection
+	GetSnapshot() map[string]string
 	// Clean the connector.
 	Clean()
 }
@@ -52,10 +52,12 @@ func (c *connector) Get(connID string) Connection {
 }
 
 // GetSnapshot gets the snapshot of all connections.
-func (c *connector) GetSnapshot() map[string]Connection {
-	result := make(map[string]Connection)
+func (c *connector) GetSnapshot() map[string]string {
+	result := make(map[string]string)
 	c.conns.Range(func(key interface{}, val interface{}) bool {
-		result[key.(string)] = val.(Connection)
+		connID := key.(string)
+		conn := val.(Connection)
+		result[connID] = conn.Name()
 		return true
 	})
 	return result

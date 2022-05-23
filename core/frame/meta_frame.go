@@ -1,6 +1,9 @@
 package frame
 
 import (
+	"strconv"
+	"time"
+
 	gonanoid "github.com/matoous/go-nanoid/v2"
 	"github.com/yomorun/y3"
 )
@@ -16,7 +19,7 @@ type MetaFrame struct {
 func NewMetaFrame() *MetaFrame {
 	tid, err := gonanoid.New()
 	if err != nil {
-		return nil
+		tid = strconv.FormatInt(time.Now().UnixMicro(), 10)
 	}
 	return &MetaFrame{tid: tid}
 }

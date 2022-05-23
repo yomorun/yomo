@@ -85,6 +85,14 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 
 // Serve the server with a net.PacketConn.
 func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
+	if err := s.validateMetaDataBuilder(); err != nil {
+		return err
+	}
+
+	if err := s.validateRouter(); err != nil {
+		return err
+	}
+
 	listener := newListener()
 	// listen the address
 	err := listener.Listen(conn, s.opts.TLSConfig, s.opts.QuicConfig)
@@ -120,6 +128,10 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 					if conn := s.connector.Get(connID); conn != nil {
 						// connector
 						s.connector.Remove(connID)
+						route := s.router.Route(conn.MetaData())
+						if !reflect.ValueOf(route).IsNil() {
+							route.Remove(connID)
+						}
 						logger.Printf("%s💔 [%s](%s) close the connection", ServerLogPrefix, conn.Name(), connID)
 					} else {
 						logger.Errorf("%s❤️3/ [unknown](%s) on stream %v", ServerLogPrefix, connID, err)
@@ -289,18 +301,12 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	}
 
 	// metaData
-	if err := s.validateMetaDataBuilder(); err != nil {
-		return err
-	}
 	metaData, err := s.metaDataBuilder.Build(f)
 	if err != nil {
 		return err
 	}
 
 	// route
-	if err := s.validateRouter(); err != nil {
-		return err
-	}
 	route := s.router.Route(metaData)
 	if reflect.ValueOf(route).IsNil() {
 		err := errors.New("handleHandshakeFrame route is nil")
@@ -363,21 +369,15 @@ func (s *Server) handleDataFrame(c *Context) error {
 	f := c.Frame.(*frame.DataFrame)
 
 	metaData := from.MetaData()
-	if metaData == nil && from.ClientType() == ClientTypeUpstreamZipper {
-		err := s.validateMetaDataBuilder()
+	if reflect.ValueOf(metaData).IsNil() && from.ClientType() == ClientTypeUpstreamZipper {
+		m, err := s.metaDataBuilder.Decode(f.GetMetaFrame().MetaData())
 		if err != nil {
 			return err
 		}
-		metaData, err = s.metaDataBuilder.Decode(f.GetMetaFrame().MetaData())
-		if err != nil {
-			return err
-		}
+		metaData = m
 	}
 
 	// route
-	if err := s.validateRouter(); err != nil {
-		return err
-	}
 	route := s.router.Route(metaData)
 	if reflect.ValueOf(route).IsNil() {
 		logger.Warnf("%shandleDataFrame route is nil", ServerLogPrefix)
@@ -407,7 +407,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 }
 
 // StatsFunctions returns the sfn stats of server.
-func (s *Server) StatsFunctions() map[string]Connection {
+func (s *Server) StatsFunctions() map[string]string {
 	return s.connector.GetSnapshot()
 }
 

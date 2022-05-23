@@ -245,9 +245,9 @@ func (z *zipper) Close() error {
 
 // Stats inspects current server.
 func (z *zipper) Stats() int {
-	log.Printf("[%s] all sfn connected: %d", z.name, len(z.server.StatsFunctions()))
-	for k := range z.server.StatsFunctions() {
-		log.Printf("[%s] -> ConnID=%v", z.name, k)
+	log.Printf("[%s] all connections: %d", z.name, len(z.server.StatsFunctions()))
+	for connID, name := range z.server.StatsFunctions() {
+		log.Printf("[%s] -> ConnID=%s, Name=%s", z.name, connID, name)
 	}
 
 	log.Printf("[%s] all downstream zippers connected: %d", z.name, len(z.server.Downstreams()))
