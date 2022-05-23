@@ -11,8 +11,8 @@ import (
 // MetaFrame is a Y3 encoded bytes, SeqID is a fixed value of TYPE_ID_TRANSACTION.
 // used for describes metadata for a DataFrame.
 type MetaFrame struct {
-	tid  string
-	data []byte
+	tid      string
+	metadata []byte
 }
 
 // NewMetaFrame creates a new MetaFrame instance.
@@ -34,14 +34,14 @@ func (m *MetaFrame) TransactionID() string {
 	return m.tid
 }
 
-// SetMetaData set the extra info of the application
-func (m *MetaFrame) SetMetaData(data []byte) {
-	m.data = data
+// SetMetadata set the extra info of the application
+func (m *MetaFrame) SetMetadata(metadata []byte) {
+	m.metadata = metadata
 }
 
-// MetaData returns the extra info of the application
-func (m *MetaFrame) MetaData() []byte {
-	return m.data
+// Metadata returns the extra info of the application
+func (m *MetaFrame) Metadata() []byte {
+	return m.metadata
 }
 
 // Encode implements Frame.Encode method.
@@ -52,10 +52,10 @@ func (m *MetaFrame) Encode() []byte {
 	transactionID.SetStringValue(m.tid)
 	meta.AddPrimitivePacket(transactionID)
 
-	if m.data != nil {
-		data := y3.NewPrimitivePacketEncoder(byte(TagOfMetaData))
-		data.SetBytesValue(m.data)
-		meta.AddPrimitivePacket(data)
+	if m.metadata != nil {
+		metadata := y3.NewPrimitivePacketEncoder(byte(TagOfMetadata))
+		metadata.SetBytesValue(m.metadata)
+		meta.AddPrimitivePacket(metadata)
 	}
 
 	return meta.Encode()
@@ -79,8 +79,8 @@ func DecodeToMetaFrame(buf []byte) (*MetaFrame, error) {
 			}
 			meta.tid = val
 			break
-		case byte(TagOfMetaData):
-			meta.data = v.ToBytes()
+		case byte(TagOfMetadata):
+			meta.metadata = v.ToBytes()
 			break
 		}
 	}

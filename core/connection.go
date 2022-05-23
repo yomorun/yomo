@@ -15,8 +15,8 @@ type Connection interface {
 	Name() string
 	// ClientType returns the type of the client (Source | SFN | UpstreamZipper)
 	ClientType() ClientType
-	// MetaData returns the extra info of the application
-	MetaData() MetaData
+	// Metadata returns the extra info of the application
+	Metadata() Metadata
 	// Write should goroutine-safely send y3 frames to peer side
 	Write(f frame.Frame) error
 }
@@ -24,16 +24,16 @@ type Connection interface {
 type connection struct {
 	name       string
 	clientType ClientType
-	metaData   MetaData
+	metadata   Metadata
 	stream     io.ReadWriteCloser
 	mu         sync.Mutex
 }
 
-func newConnection(name string, clientType ClientType, metaData MetaData, stream io.ReadWriteCloser) Connection {
+func newConnection(name string, clientType ClientType, metadata Metadata, stream io.ReadWriteCloser) Connection {
 	return &connection{
 		name:       name,
 		clientType: clientType,
-		metaData:   metaData,
+		metadata:   metadata,
 		stream:     stream,
 	}
 }
@@ -53,9 +53,9 @@ func (c *connection) ClientType() ClientType {
 	return c.clientType
 }
 
-// MetaData returns the extra info of the application
-func (c *connection) MetaData() MetaData {
-	return c.metaData
+// Metadata returns the extra info of the application
+func (c *connection) Metadata() Metadata {
+	return c.metadata
 }
 
 // Write should goroutine-safely send y3 frames to peer side

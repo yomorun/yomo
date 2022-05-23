@@ -35,7 +35,7 @@ type Server struct {
 	state              string
 	connector          Connector
 	router             Router
-	metaDataBuilder    MetaDataBuilder
+	metadataBuilder    MetadataBuilder
 	counterOfDataFrame int64
 	downstreams        map[string]*Client
 	mu                 sync.Mutex
@@ -85,7 +85,7 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 
 // Serve the server with a net.PacketConn.
 func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
-	if err := s.validateMetaDataBuilder(); err != nil {
+	if err := s.validateMetadataBuilder(); err != nil {
 		return err
 	}
 
@@ -128,7 +128,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 					if conn := s.connector.Get(connID); conn != nil {
 						// connector
 						s.connector.Remove(connID)
-						route := s.router.Route(conn.MetaData())
+						route := s.router.Route(conn.Metadata())
 						if !reflect.ValueOf(route).IsNil() {
 							route.Remove(connID)
 						}
@@ -266,7 +266,7 @@ func (s *Server) mainFrameHandler(c *Context) error {
 			conn := s.connector.Get(c.connID)
 			if conn != nil && conn.ClientType() == ClientTypeSource {
 				f := c.Frame.(*frame.DataFrame)
-				f.GetMetaFrame().SetMetaData(conn.MetaData().Encode())
+				f.GetMetaFrame().SetMetadata(conn.Metadata().Encode())
 				s.dispatchToDownstreams(f)
 			}
 		}
@@ -300,21 +300,21 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 		return nil
 	}
 
-	// metaData
-	metaData, err := s.metaDataBuilder.Build(f)
+	// metadata
+	metadata, err := s.metadataBuilder.Build(f)
 	if err != nil {
 		return err
 	}
 
 	// route
-	route := s.router.Route(metaData)
+	route := s.router.Route(metadata)
 	if reflect.ValueOf(route).IsNil() {
 		err := errors.New("handleHandshakeFrame route is nil")
 		return err
 	}
 
 	// client type
-	conn := newConnection(f.Name, clientType, metaData, stream)
+	conn := newConnection(f.Name, clientType, metadata, stream)
 	switch clientType {
 	case ClientTypeSource, ClientTypeUpstreamZipper:
 		s.connector.Add(connID, conn)
@@ -368,17 +368,17 @@ func (s *Server) handleDataFrame(c *Context) error {
 
 	f := c.Frame.(*frame.DataFrame)
 
-	metaData := from.MetaData()
-	if reflect.ValueOf(metaData).IsNil() && from.ClientType() == ClientTypeUpstreamZipper {
-		m, err := s.metaDataBuilder.Decode(f.GetMetaFrame().MetaData())
+	metadata := from.Metadata()
+	if reflect.ValueOf(metadata).IsNil() && from.ClientType() == ClientTypeUpstreamZipper {
+		m, err := s.metadataBuilder.Decode(f.GetMetaFrame().Metadata())
 		if err != nil {
 			return err
 		}
-		metaData = m
+		metadata = m
 	}
 
 	// route
-	route := s.router.Route(metaData)
+	route := s.router.Route(metadata)
 	if reflect.ValueOf(route).IsNil() {
 		logger.Warnf("%shandleDataFrame route is nil", ServerLogPrefix)
 		return fmt.Errorf("handleDataFrame route is nil")
@@ -429,11 +429,11 @@ func (s *Server) ConfigRouter(router Router) {
 	s.mu.Unlock()
 }
 
-// ConfigMetaDataBuilder is used to set metaDataBuilder by zipper
-func (s *Server) ConfigMetaDataBuilder(builder MetaDataBuilder) {
+// ConfigMetadataBuilder is used to set metadataBuilder by zipper
+func (s *Server) ConfigMetadataBuilder(builder MetadataBuilder) {
 	s.mu.Lock()
-	s.metaDataBuilder = builder
-	logger.Debugf("%sconfig metaDataBuilder is %#v", ServerLogPrefix, builder)
+	s.metadataBuilder = builder
+	logger.Debugf("%sconfig metadataBuilder is %#v", ServerLogPrefix, builder)
 	s.mu.Unlock()
 }
 
@@ -469,9 +469,9 @@ func (s *Server) validateRouter() error {
 	return nil
 }
 
-func (s *Server) validateMetaDataBuilder() error {
-	if s.metaDataBuilder == nil {
-		return errors.New("server's metaDataBuilder is nil")
+func (s *Server) validateMetadataBuilder() error {
+	if s.metadataBuilder == nil {
+		return errors.New("server's metadataBuilder is nil")
 	}
 	return nil
 }
