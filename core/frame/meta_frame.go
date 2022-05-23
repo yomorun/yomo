@@ -1,22 +1,24 @@
 package frame
 
 import (
-	"github.com/google/uuid"
+	gonanoid "github.com/matoous/go-nanoid/v2"
 	"github.com/yomorun/y3"
 )
 
 // MetaFrame is a Y3 encoded bytes, SeqID is a fixed value of TYPE_ID_TRANSACTION.
 // used for describes metadata for a DataFrame.
 type MetaFrame struct {
-	tid     string
-	appInfo []byte
+	tid  string
+	data []byte
 }
 
 // NewMetaFrame creates a new MetaFrame instance.
 func NewMetaFrame() *MetaFrame {
-	return &MetaFrame{
-		tid: uuid.NewString(),
+	tid, err := gonanoid.New()
+	if err != nil {
+		return nil
 	}
+	return &MetaFrame{tid: tid}
 }
 
 // SetTransactinID set the transaction ID.
@@ -29,14 +31,14 @@ func (m *MetaFrame) TransactionID() string {
 	return m.tid
 }
 
-// SetAppInfo set the extra application information.
-func (m *MetaFrame) SetAppInfo(appInfo []byte) {
-	m.appInfo = appInfo
+// SetMetaData set the extra info of the application
+func (m *MetaFrame) SetMetaData(data []byte) {
+	m.data = data
 }
 
-// AppInfo returns the extra application information.
-func (m *MetaFrame) AppInfo() []byte {
-	return m.appInfo
+// MetaData returns the extra info of the application
+func (m *MetaFrame) MetaData() []byte {
+	return m.data
 }
 
 // Encode implements Frame.Encode method.
@@ -47,10 +49,10 @@ func (m *MetaFrame) Encode() []byte {
 	transactionID.SetStringValue(m.tid)
 	meta.AddPrimitivePacket(transactionID)
 
-	if m.appInfo != nil {
-		appInfo := y3.NewPrimitivePacketEncoder(byte(TagOfAppInfo))
-		appInfo.SetBytesValue(m.appInfo)
-		meta.AddPrimitivePacket(appInfo)
+	if m.data != nil {
+		data := y3.NewPrimitivePacketEncoder(byte(TagOfMetaData))
+		data.SetBytesValue(m.data)
+		meta.AddPrimitivePacket(data)
 	}
 
 	return meta.Encode()
@@ -74,8 +76,8 @@ func DecodeToMetaFrame(buf []byte) (*MetaFrame, error) {
 			}
 			meta.tid = val
 			break
-		case byte(TagOfAppInfo):
-			meta.appInfo = v.ToBytes()
+		case byte(TagOfMetaData):
+			meta.data = v.ToBytes()
 			break
 		}
 	}

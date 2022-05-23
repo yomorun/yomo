@@ -3,7 +3,7 @@ package core
 // Router is the interface to manage the routes for applications.
 type Router interface {
 	// Route gets the route
-	Route(info AppInfo) Route
+	Route(metaData MetaData) Route
 	// Clean the routes.
 	Clean()
 }

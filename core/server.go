@@ -35,7 +35,7 @@ type Server struct {
 	state              string
 	connector          Connector
 	router             Router
-	appInfoBuilder     AppInfoBuilder
+	metaDataBuilder    MetaDataBuilder
 	counterOfDataFrame int64
 	downstreams        map[string]*Client
 	mu                 sync.Mutex
@@ -254,7 +254,7 @@ func (s *Server) mainFrameHandler(c *Context) error {
 			conn := s.connector.Get(c.connID)
 			if conn != nil && conn.ClientType() == ClientTypeSource {
 				f := c.Frame.(*frame.DataFrame)
-				f.GetMetaFrame().SetAppInfo(conn.AppInfo().Encode())
+				f.GetMetaFrame().SetMetaData(conn.MetaData().Encode())
 				s.dispatchToDownstreams(f)
 			}
 		}
@@ -288,11 +288,11 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 		return nil
 	}
 
-	// appInfo
-	if err := s.validateAppInfoBuilder(); err != nil {
+	// metaData
+	if err := s.validateMetaDataBuilder(); err != nil {
 		return err
 	}
-	appInfo, err := s.appInfoBuilder.Build(f)
+	metaData, err := s.metaDataBuilder.Build(f)
 	if err != nil {
 		return err
 	}
@@ -301,14 +301,14 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	if err := s.validateRouter(); err != nil {
 		return err
 	}
-	route := s.router.Route(appInfo)
+	route := s.router.Route(metaData)
 	if reflect.ValueOf(route).IsNil() {
 		err := errors.New("handleHandshakeFrame route is nil")
 		return err
 	}
 
 	// client type
-	conn := newConnection(f.Name, clientType, appInfo, stream)
+	conn := newConnection(f.Name, clientType, metaData, stream)
 	switch clientType {
 	case ClientTypeSource, ClientTypeUpstreamZipper:
 		s.connector.Add(connID, conn)
@@ -362,13 +362,13 @@ func (s *Server) handleDataFrame(c *Context) error {
 
 	f := c.Frame.(*frame.DataFrame)
 
-	appInfo := from.AppInfo()
-	if appInfo == nil && from.ClientType() == ClientTypeUpstreamZipper {
-		err := s.validateAppInfoBuilder()
+	metaData := from.MetaData()
+	if metaData == nil && from.ClientType() == ClientTypeUpstreamZipper {
+		err := s.validateMetaDataBuilder()
 		if err != nil {
 			return err
 		}
-		appInfo, err = s.appInfoBuilder.Decode(f.GetMetaFrame().AppInfo())
+		metaData, err = s.metaDataBuilder.Decode(f.GetMetaFrame().MetaData())
 		if err != nil {
 			return err
 		}
@@ -378,7 +378,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 	if err := s.validateRouter(); err != nil {
 		return err
 	}
-	route := s.router.Route(appInfo)
+	route := s.router.Route(metaData)
 	if reflect.ValueOf(route).IsNil() {
 		logger.Warnf("%shandleDataFrame route is nil", ServerLogPrefix)
 		return fmt.Errorf("handleDataFrame route is nil")
@@ -429,11 +429,11 @@ func (s *Server) ConfigRouter(router Router) {
 	s.mu.Unlock()
 }
 
-// ConfigAppInfoBuilder is used to set appInfoBuilder by zipper
-func (s *Server) ConfigAppInfoBuilder(builder AppInfoBuilder) {
+// ConfigMetaDataBuilder is used to set metaDataBuilder by zipper
+func (s *Server) ConfigMetaDataBuilder(builder MetaDataBuilder) {
 	s.mu.Lock()
-	s.appInfoBuilder = builder
-	logger.Debugf("%sconfig appInfoBuilder is %#v", ServerLogPrefix, builder)
+	s.metaDataBuilder = builder
+	logger.Debugf("%sconfig metaDataBuilder is %#v", ServerLogPrefix, builder)
 	s.mu.Unlock()
 }
 
@@ -469,9 +469,9 @@ func (s *Server) validateRouter() error {
 	return nil
 }
 
-func (s *Server) validateAppInfoBuilder() error {
-	if s.appInfoBuilder == nil {
-		return errors.New("server's appInfoBuilder is nil")
+func (s *Server) validateMetaDataBuilder() error {
+	if s.metaDataBuilder == nil {
+		return errors.New("server's metaDataBuilder is nil")
 	}
 	return nil
 }

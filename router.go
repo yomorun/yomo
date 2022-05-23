@@ -16,7 +16,7 @@ func newRouter(functions []config.App) core.Router {
 	return &router{r: newRoute(functions)}
 }
 
-func (r *router) Route(info core.AppInfo) core.Route {
+func (r *router) Route(metaData core.MetaData) core.Route {
 	return r.r
 }
 
