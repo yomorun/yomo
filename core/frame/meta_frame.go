@@ -19,7 +19,7 @@ type MetaFrame struct {
 func NewMetaFrame() *MetaFrame {
 	tid, err := gonanoid.New()
 	if err != nil {
-		tid = strconv.FormatInt(time.Now().UnixMicro(), 10)
+		tid = strconv.FormatInt(time.Now().Unix(), 10) // todo: UnixMicro since go 1.17
 	}
 	return &MetaFrame{tid: tid}
 }
