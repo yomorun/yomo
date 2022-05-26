@@ -266,10 +266,10 @@ func (s *Server) mainFrameHandler(c *Context) error {
 			if conn != nil && conn.ClientType() == ClientTypeSource {
 				f := c.Frame.(*frame.DataFrame)
 				f.GetMetaFrame().SetMetadata(conn.Metadata().Encode())
-				// observe datatags backflow
-				s.handleBackflowFrame(c)
 				s.dispatchToDownstreams(f)
 			}
+			// observe datatags backflow
+			s.handleBackflowFrame(c)
 		}
 	default:
 		logger.Errorf("%serr=%v, frame=%v", ServerLogPrefix, err, c.Frame.Encode())
@@ -420,9 +420,8 @@ func (s *Server) handleBackflowFrame(c *Context) error {
 	// write to source with BackflowFrame
 	bf := frame.NewBackflowFrame(tag, carriage)
 	sourceConns := s.connector.GetSourceConns(sourceID, tag)
+	// logger.Printf("%s♻️  handleBackflowFrame tag:%#v --> source:%s, result=%s", ServerLogPrefix, tag, sourceID, carriage)
 	for _, source := range sourceConns {
-		// get source's quic.Stream
-		// source := s.connector.Get(sourceID)
 		if source != nil {
 			logger.Debugf("%s♻️  handleBackflowFrame tag:%#v --> source:%s, result=%# x", ServerLogPrefix, tag, sourceID, frame.Shortly(carriage))
 			if err := source.Write(bf); err != nil {

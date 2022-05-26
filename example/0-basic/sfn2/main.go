@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 
 	"github.com/yomorun/yomo"
@@ -39,5 +40,6 @@ func main() {
 
 func handler(data []byte) (byte, []byte) {
 	logger.Printf(">> [sfn2] got tag=0x34, data=%s", string(data))
-	return 0x0, []byte("sfn2 processed result")
+	result := bytes.ReplaceAll(data, []byte("sfn1"), []byte("sfn2"))
+	return 0x0, result
 }

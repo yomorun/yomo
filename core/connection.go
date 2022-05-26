@@ -13,6 +13,8 @@ type Connection interface {
 
 	// Name returns the name of the connection, which is set by clients
 	Name() string
+	// ClientID connection client ID
+	ClientID() string
 	// ClientType returns the type of the client (Source | SFN | UpstreamZipper)
 	ClientType() ClientType
 	// Metadata returns the extra info of the application
@@ -77,4 +79,9 @@ func (c *connection) Write(f frame.Frame) error {
 // ObserveDataTags observed data tags
 func (c *connection) ObserveDataTags() []byte {
 	return c.observed
+}
+
+// ClientID connection client ID
+func (c *connection) ClientID() string {
+	return c.clientID
 }

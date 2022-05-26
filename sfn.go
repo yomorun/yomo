@@ -157,6 +157,8 @@ func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
 				frame := frame.NewDataFrame()
 				// reuse transactionID
 				frame.SetTransactionID(metaFrame.TransactionID())
+				// reuse sourceID
+				frame.SetSourceID(metaFrame.SourceID())
 				frame.SetCarriage(tag, resp)
 				s.client.WriteFrame(frame)
 			}

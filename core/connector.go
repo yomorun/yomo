@@ -57,26 +57,12 @@ func (c *connector) Get(connID string) Connection {
 
 // GetSourceConns gets the source connection by tag.
 func (c *connector) GetSourceConns(sourceID string, tag byte) []Connection {
-	// connIDs := make([]string, 0)
-
-	// c.sources.Range(func(key interface{}, val interface{}) bool {
-	// 	app := val.(*app)
-	// 	for _, v := range app.observed {
-	// 		if v == tag {
-	// 			connIDs = append(connIDs, key.(string))
-	// 			// break
-	// 		}
-	// 	}
-	// 	return true
-	// })
-
-	// return connection list
 	conns := make([]Connection, 0)
 
 	c.conns.Range(func(key interface{}, val interface{}) bool {
 		conn := val.(Connection)
 		for _, v := range conn.ObserveDataTags() {
-			if v == tag {
+			if v == tag && conn.ClientType() == ClientTypeSource && conn.ClientID() == sourceID {
 				conns = append(conns, conn)
 			}
 		}
