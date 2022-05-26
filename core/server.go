@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"reflect"
 	"sync"
 	"sync/atomic"
 
@@ -129,7 +128,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 						// connector
 						s.connector.Remove(connID)
 						route := s.router.Route(conn.Metadata())
-						if !reflect.ValueOf(route).IsNil() {
+						if route != nil {
 							route.Remove(connID)
 						}
 						logger.Printf("%s💔 [%s](%s) close the connection", ServerLogPrefix, conn.Name(), connID)
@@ -300,41 +299,42 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 		return nil
 	}
 
-	// metadata
-	metadata, err := s.metadataBuilder.Build(f)
-	if err != nil {
-		return err
-	}
-
-	// route
-	route := s.router.Route(metadata)
-	if reflect.ValueOf(route).IsNil() {
-		err := errors.New("handleHandshakeFrame route is nil")
-		return err
-	}
-
 	// client type
-	conn := newConnection(f.Name, clientType, metadata, stream)
+	var conn Connection
 	switch clientType {
-	case ClientTypeSource, ClientTypeUpstreamZipper:
-		s.connector.Add(connID, conn)
-	case ClientTypeStreamFunction:
-		if err := route.Add(connID, f.Name, f.ObserveDataTags); err != nil {
-			logger.Debugf("%swrite to SFN[%s] GoawayFrame", ServerLogPrefix, f.Name)
-			goawayFrame := frame.NewGoawayFrame(err.Error())
-			if _, err = stream.Write(goawayFrame.Encode()); err != nil {
-				logger.Errorf("%s⛔️ write to SFN[%s] GoawayFrame error:%v", ServerLogPrefix, f.Name, err)
-				return err
+	case ClientTypeSource, ClientTypeStreamFunction:
+		// metadata
+		metadata, err := s.metadataBuilder.Build(f)
+		if err != nil {
+			return err
+		}
+		conn = newConnection(f.Name, clientType, metadata, stream)
+
+		if clientType == ClientTypeStreamFunction {
+			// route
+			route := s.router.Route(metadata)
+			if route == nil {
+				return errors.New("handleHandshakeFrame route is nil")
+			}
+			if err := route.Add(connID, f.Name, f.ObserveDataTags); err != nil {
+				logger.Debugf("%swrite to SFN[%s] GoawayFrame", ServerLogPrefix, f.Name)
+				goawayFrame := frame.NewGoawayFrame(err.Error())
+				if _, err = stream.Write(goawayFrame.Encode()); err != nil {
+					logger.Errorf("%s⛔️ write to SFN[%s] GoawayFrame error:%v", ServerLogPrefix, f.Name, err)
+					return err
+				}
 			}
 		}
-		s.connector.Add(connID, conn)
+	case ClientTypeUpstreamZipper:
+		conn = newConnection(f.Name, clientType, nil, stream)
 	default:
 		// unknown client type
-		s.connector.Remove(connID)
 		logger.Errorf("%sClientType=%# x, ilegal!", ServerLogPrefix, f.ClientType)
 		c.CloseWithError(yerr.ErrorCodeUnknownClient, "Unknown ClientType, illegal!")
 		return errors.New("core.server: Unknown ClientType, illegal")
 	}
+
+	s.connector.Add(connID, conn)
 	logger.Printf("%s❤️  <%s> [%s](%s) is connected!", ServerLogPrefix, clientType, f.Name, connID)
 	return nil
 }
@@ -368,18 +368,20 @@ func (s *Server) handleDataFrame(c *Context) error {
 
 	f := c.Frame.(*frame.DataFrame)
 
-	metadata := from.Metadata()
-	if reflect.ValueOf(metadata).IsNil() && from.ClientType() == ClientTypeUpstreamZipper {
+	var metadata Metadata
+	if from.ClientType() == ClientTypeUpstreamZipper {
 		m, err := s.metadataBuilder.Decode(f.GetMetaFrame().Metadata())
 		if err != nil {
 			return err
 		}
 		metadata = m
+	} else {
+		metadata = from.Metadata()
 	}
 
 	// route
 	route := s.router.Route(metadata)
-	if reflect.ValueOf(route).IsNil() {
+	if route == nil {
 		logger.Warnf("%shandleDataFrame route is nil", ServerLogPrefix)
 		return fmt.Errorf("handleDataFrame route is nil")
 	}
@@ -506,10 +508,12 @@ func (s *Server) authNames() []string {
 func (s *Server) authenticate(f *frame.HandshakeFrame) bool {
 	if len(s.opts.Auths) > 0 {
 		for _, auth := range s.opts.Auths {
-			isAuthenticated := auth.Authenticate(f.AuthPayload())
-			if isAuthenticated {
-				logger.Debugf("%sauthenticated==%v", ServerLogPrefix, isAuthenticated)
-				return isAuthenticated
+			if f.AuthName() == auth.Name() {
+				isAuthenticated := auth.Authenticate(f.AuthPayload())
+				if isAuthenticated {
+					logger.Debugf("%sauthenticated==%v", ServerLogPrefix, isAuthenticated)
+					return isAuthenticated
+				}
 			}
 		}
 		return false
