@@ -6,7 +6,6 @@ import (
 
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/core/auth"
-	"github.com/yomorun/yomo/core/store"
 )
 
 type ServerOptions struct {
@@ -14,7 +13,6 @@ type ServerOptions struct {
 	TLSConfig  *tls.Config
 	Addr       string
 	Auths      []auth.Authentication
-	Store      store.Store
 	Conn       net.PacketConn
 }
 
@@ -31,12 +29,6 @@ func WithAuth(name string, args ...string) ServerOption {
 			auth.Init(args...)
 			o.Auths = append(o.Auths, auth)
 		}
-	}
-}
-
-func WithStore(store store.Store) ServerOption {
-	return func(o *ServerOptions) {
-		o.Store = store
 	}
 }
 

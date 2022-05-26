@@ -3,17 +3,17 @@ package core
 // Router is the interface to manage the routes for applications.
 type Router interface {
 	// Route gets the route
-	Route() Route
+	Route(metadata Metadata) Route
 	// Clean the routes.
 	Clean()
 }
 
-// Route is the interface for route.
+// Route manages data subscribers according to their observed data tags.
 type Route interface {
 	// Add a route.
-	Add(index int, name string)
-	// GetForwardRoutes returns all the forward routes from current node.
-	GetForwardRoutes(current string) []string
-	// Exists indicates whether the route exists or not.
-	Exists(name string) bool
+	Add(connID string, name string, observeDataTags []byte) error
+	// Remove a route.
+	Remove(connID string) error
+	// GetForwardRoutes returns all the subscribers by the given data tag.
+	GetForwardRoutes(tag byte) []string
 }
