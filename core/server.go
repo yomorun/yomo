@@ -420,7 +420,8 @@ func (s *Server) handleBackflowFrame(c *Context) error {
 	// write to source with BackflowFrame
 	bf := frame.NewBackflowFrame(tag, carriage)
 	sourceConns := s.connector.GetSourceConns(sourceID, tag)
-	// logger.Printf("%s♻️  handleBackflowFrame tag:%#v --> source:%s, result=%s", ServerLogPrefix, tag, sourceID, carriage)
+	// conn := s.connector.Get(c.connID)
+	// logger.Printf("%s♻️  handleBackflowFrame %s tag:%#v --> source:%s, result=%s", ServerLogPrefix, conn.ClientType(), tag, sourceID, carriage)
 	for _, source := range sourceConns {
 		if source != nil {
 			logger.Debugf("%s♻️  handleBackflowFrame tag:%#v --> source:%s, result=%# x", ServerLogPrefix, tag, sourceID, frame.Shortly(carriage))
