@@ -40,13 +40,13 @@ If an application can be deployed anywhere close to their end users, solve the p
 #### Binary (Recommended)
 
 ```bash
-$ curl -fsSL "https://bina.egoist.sh/yomorun/cli?name=yomo" | sh
+curl -fsSL "https://bina.egoist.sh/yomorun/cli?name=yomo" | sh
 ```
 
 #### Or build from source
 
 ```bash
-$ go install github.com/yomorun/cli/yomo@latest
+go install github.com/yomorun/cli/yomo@latest
 ```
 
 #### Verify if the CLI was installed successfully
