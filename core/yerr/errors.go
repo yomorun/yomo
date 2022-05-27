@@ -50,6 +50,8 @@ const (
 	ErrorCodeData ErrorCode = 0xCE
 	// ErrorCodeUnknownClient unknown client error
 	ErrorCodeUnknownClient ErrorCode = 0xCD
+	// ErrorCodeSameName unknown client error
+	ErrorCodeDuplicateName ErrorCode = 0xC6
 )
 
 func (e ErrorCode) String() string {
@@ -76,6 +78,8 @@ func (e ErrorCode) String() string {
 		return "DataFrame"
 	case ErrorCodeUnknownClient:
 		return "UnknownClient"
+	case ErrorCodeDuplicateName:
+		return "DuplicateName"
 	default:
 		return "XXX"
 	}
@@ -94,4 +98,25 @@ func Parse(qerr quic.ApplicationErrorCode) ErrorCode {
 // To convert yomo ErrorCode to quic ApplicationErrorCode
 func To(code ErrorCode) quic.ApplicationErrorCode {
 	return quic.ApplicationErrorCode(code)
+}
+
+// TODO
+type ConnError struct {
+	connID string
+	err    error
+}
+
+func NewConnError(connID string, err error) ConnError {
+	return ConnError{
+		connID: connID,
+		err:    err,
+	}
+}
+
+func (e ConnError) Error() string {
+	return e.err.Error()
+}
+
+func (e ConnError) ConnID() string {
+	return e.connID
 }

@@ -20,7 +20,7 @@ func main() {
 		addr = v
 	}
 	sfn := yomo.NewStreamFunction(
-		"Noise",
+		"Noise1",
 		yomo.WithZipperAddr(addr),
 		yomo.WithObserveDataTags(0x33),
 	)
