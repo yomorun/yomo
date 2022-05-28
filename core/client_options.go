@@ -8,6 +8,7 @@ import (
 	"github.com/yomorun/yomo/core/log"
 )
 
+// ClientOptions are the options for YoMo client.
 type ClientOptions struct {
 	ObserveDataTags []byte
 	QuicConfig      *quic.Config
@@ -23,7 +24,7 @@ func WithObserveDataTags(tags ...byte) ClientOption {
 	}
 }
 
-// WithCredential sets the client credential method (used by client)
+// WithCredential sets the client credential method (used by client).
 func WithCredential(payload string) ClientOption {
 	return func(o *ClientOptions) {
 		o.Credential = auth.NewCredential(payload)

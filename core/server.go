@@ -20,12 +20,14 @@ import (
 )
 
 const (
+	// DefaultListenAddr is the default address to listen.
 	DefaultListenAddr = "0.0.0.0:9000"
 )
 
+// ServerOption is the option for server.
 type ServerOption func(*ServerOptions)
 
-// type FrameHandler func(store store.Store, stream quic.Stream, conn quic.Connection, f frame.Frame) error
+// FrameHandler is the handler for frame.
 type FrameHandler func(c *Context) error
 
 // Server is the underlining server of Zipper
@@ -478,18 +480,22 @@ func (s *Server) validateMetadataBuilder() error {
 	return nil
 }
 
+// Options returns the options of server.
 func (s *Server) Options() ServerOptions {
 	return s.opts
 }
 
+// Connector returns the connector of server.
 func (s *Server) Connector() Connector {
 	return s.connector
 }
 
+// SetBeforeHandlers set the before handlers of server.
 func (s *Server) SetBeforeHandlers(handlers ...FrameHandler) {
 	s.beforeHandlers = append(s.beforeHandlers, handlers...)
 }
 
+// SetAfterHandlers set the after handlers of server.
 func (s *Server) SetAfterHandlers(handlers ...FrameHandler) {
 	s.afterHandlers = append(s.afterHandlers, handlers...)
 }

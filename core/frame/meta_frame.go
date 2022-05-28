@@ -24,7 +24,7 @@ func NewMetaFrame() *MetaFrame {
 	return &MetaFrame{tid: tid}
 }
 
-// SetTransactinID set the transaction ID.
+// SetTransactionID set the transaction ID.
 func (m *MetaFrame) SetTransactionID(transactionID string) {
 	m.tid = transactionID
 }
