@@ -90,4 +90,3 @@ func (s *yomoSource) WriteWithTag(tag uint8, data []byte) error {
 func (s *yomoSource) SetErrorHandler(fn func(err error)) {
 	s.client.SetErrorHandler(fn)
 }
-

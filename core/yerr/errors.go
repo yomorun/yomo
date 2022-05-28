@@ -50,7 +50,7 @@ const (
 	ErrorCodeData ErrorCode = 0xCE
 	// ErrorCodeUnknownClient unknown client error
 	ErrorCodeUnknownClient ErrorCode = 0xCD
-	// ErrorCodeSameName unknown client error
+	// ErrorCodeDuplicateName unknown client error
 	ErrorCodeDuplicateName ErrorCode = 0xC6
 )
 
@@ -100,7 +100,7 @@ func To(code ErrorCode) quic.ApplicationErrorCode {
 	return quic.ApplicationErrorCode(code)
 }
 
-// DuplicateName duplicate name(sfn)
+// DuplicateNameError duplicate name(sfn)
 type DuplicateNameError struct {
 	connID string
 	err    error

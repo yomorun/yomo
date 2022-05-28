@@ -85,6 +85,7 @@ func WithAuth(name string, args ...string) Option {
 		)
 	}
 }
+
 // WithCredential sets the client credential method (used by client)
 func WithCredential(payload string) Option {
 	return func(o *Options) {
