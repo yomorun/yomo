@@ -165,6 +165,11 @@ func (c *Client) handleFrame() {
 					c.logger.Infof("%sserver goaway the connection", ClientLogPrefix)
 					c.setState(ConnStateGoaway)
 					break
+				} else if yerr.Is(e.ErrorCode, yerr.ErrorCodeHandshake) {
+					// handshake
+					c.logger.Errorf("%shandshake fails", ClientLogPrefix)
+					c.setState(ConnStateRejected)
+					break
 				}
 			} else if errors.Is(err, net.ErrClosed) {
 				// if client close the connection, net.ErrClosed will be raise
