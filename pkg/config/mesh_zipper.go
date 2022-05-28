@@ -1,6 +1,6 @@
 package config
 
-// MeshZipper
+// MeshZipper describes mesh configurations.
 type MeshZipper struct {
 	Name       string `json:"name"`
 	Host       string `json:"host"`
