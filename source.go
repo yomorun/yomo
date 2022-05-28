@@ -25,8 +25,6 @@ type Source interface {
 	WriteWithTag(tag uint8, data []byte) error
 	// SetErrorHandler set the error handler function when server error occurs
 	SetErrorHandler(fn func(err error))
-	// WriteFrame writes a frame to the connection
-	WriteFrame(frm frame.Frame) error
 }
 
 // YoMo-Source
@@ -93,7 +91,3 @@ func (s *yomoSource) SetErrorHandler(fn func(err error)) {
 	s.client.SetErrorHandler(fn)
 }
 
-// WriteFrame writes a frame to the connection
-func (s *yomoSource) WriteFrame(frm frame.Frame) error {
-	return s.client.WriteFrame(frm)
-}

@@ -246,19 +246,15 @@ func (s *Server) mainFrameHandler(c *Context) error {
 	case frame.TagOfHandshakeFrame:
 		if err := s.handleHandshakeFrame(c); err != nil {
 			logger.Errorf("%shandleHandshakeFrame err: %s", ServerLogPrefix, err)
-			// close connections early to avoid resource trumpeting
-			c.CloseWithError(yerr.ErrorCodeHandshake, err.Error())
-			return yerr.New(yerr.ErrorCodeHandshake, err)
-			// break
+			// close connections early to avoid resource consumption
+			goawayFrame := frame.NewGoawayFrame(err.Error())
+			if _, err := c.Stream.Write(goawayFrame.Encode()); err != nil {
+				logger.Errorf("%s⛔️ write to client[%s] GoawayFrame error:%v", ServerLogPrefix, c.ConnID, err)
+				return err
+			}
 		}
 	// case frame.TagOfPingFrame:
 	// 	s.handlePingFrame(mainStream, connection, f.(*frame.PingFrame))
-	case frame.TagOfGoawayFrame:
-		if err := s.handleGoawayFrame(c); err != nil {
-			// return err
-			return yerr.New(yerr.ErrorCodeGoaway, err)
-		}
-
 	case frame.TagOfDataFrame:
 		if err := s.handleDataFrame(c); err != nil {
 			c.CloseWithError(yerr.ErrorCodeData, fmt.Sprintf("handleDataFrame err: %v", err))
@@ -271,7 +267,7 @@ func (s *Server) mainFrameHandler(c *Context) error {
 			}
 		}
 	default:
-		logger.Errorf("%serr=%v, frame=%v", ServerLogPrefix, err, c.Frame.Encode())
+		logger.Errorf("%serr=%v, frame=%v", ServerLogPrefix, err, frame.Shortly(c.Frame.Encode()))
 	}
 	return nil
 }
@@ -318,9 +314,8 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 				return errors.New("handleHandshakeFrame route is nil")
 			}
 			if err := route.Add(connID, f.Name, f.ObserveDataTags); err != nil {
-				// TODO: 上面需要返回已存在的 connids, 然后清除掉，
-				// 最后添加最后一条连接，避免同一客户端瞬时重连问题
-				if e, ok := err.(yerr.ConnError); ok {
+				// duplicate name
+				if e, ok := err.(yerr.DuplicateNameError); ok {
 					existsConnID := e.ConnID()
 					if conn := s.connector.Get(existsConnID); conn != nil {
 						logger.Debugf("%s%s, write to SFN[%s](%s) GoawayFrame", ServerLogPrefix, e.Error(), f.Name, existsConnID)
@@ -330,18 +325,9 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 							return err
 						}
 					}
-					// clean route
-					// route.Remove(existsConnID)
 				} else {
 					return err
 				}
-				// logger.Errorf("%s%s, write to SFN[%s] GoawayFrame", ServerLogPrefix, err.Error(), f.Name)
-				// logger.Debugf("%swrite to SFN[%s] GoawayFrame", ServerLogPrefix, f.Name)
-				// goawayFrame := frame.NewGoawayFrame(err.Error())
-				// if _, err = stream.Write(goawayFrame.Encode()); err != nil {
-				// 	logger.Errorf("%s⛔️ write to SFN[%s] GoawayFrame error:%v", ServerLogPrefix, f.Name, err)
-				// 	return err
-				// }
 			}
 		}
 	case ClientTypeUpstreamZipper:

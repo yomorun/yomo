@@ -100,23 +100,26 @@ func To(code ErrorCode) quic.ApplicationErrorCode {
 	return quic.ApplicationErrorCode(code)
 }
 
-// TODO
-type ConnError struct {
+// DuplicateName duplicate name(sfn)
+type DuplicateNameError struct {
 	connID string
 	err    error
 }
 
-func NewConnError(connID string, err error) ConnError {
-	return ConnError{
+// NewDuplicateNameError create a duplicate name error
+func NewDuplicateNameError(connID string, err error) DuplicateNameError {
+	return DuplicateNameError{
 		connID: connID,
 		err:    err,
 	}
 }
 
-func (e ConnError) Error() string {
+// Error raw error
+func (e DuplicateNameError) Error() string {
 	return e.err.Error()
 }
 
-func (e ConnError) ConnID() string {
+// ConnID duplicate connection ID
+func (e DuplicateNameError) ConnID() string {
 	return e.connID
 }

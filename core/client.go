@@ -157,12 +157,12 @@ func (c *Client) handleFrame() {
 					break
 				} else if yerr.Is(e.ErrorCode, yerr.ErrorCodeClientAbort) {
 					// client abort
-					c.logger.Errorf("%sclient close the connection", ClientLogPrefix)
+					c.logger.Infof("%sclient close the connection", ClientLogPrefix)
 					c.setState(ConnStateAborted)
 					break
 				} else if yerr.Is(e.ErrorCode, yerr.ErrorCodeGoaway) {
 					// server goaway
-					c.logger.Errorf("%sserver goaway the connection", ClientLogPrefix)
+					c.logger.Infof("%sserver goaway the connection", ClientLogPrefix)
 					c.setState(ConnStateGoaway)
 					break
 				} else if yerr.Is(e.ErrorCode, yerr.ErrorCodeHandshake) {

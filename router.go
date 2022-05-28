@@ -53,16 +53,11 @@ func (r *route) Add(connID string, name string, observeDataTags []byte) (err err
 		return fmt.Errorf("SFN[%s] does not exist in config functions", name)
 	}
 
-	// for _, conns := range r.data {
-	// 	for _, n := range conns {
-	// 		if n == name {
 LOOP:
 	for _, conns := range r.data {
 		for connID, n := range conns {
 			if n == name {
-				// only use the last connection
-				// return fmt.Errorf("SFN[%s] is already linked to another connection", name)
-				err = yerr.NewConnError(connID, fmt.Errorf("SFN[%s] is already linked to another connection", name))
+				err = yerr.NewDuplicateNameError(connID, fmt.Errorf("SFN[%s] is already linked to another connection", name))
 				delete(conns, connID)
 				break LOOP
 			}
