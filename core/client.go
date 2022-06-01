@@ -371,10 +371,10 @@ func (c *Client) reconnect(ctx context.Context, addr string) {
 			return
 		case <-t.C:
 			if c.getState() == ConnStateDisconnected {
-				c.logger.Printf("%s[%s](%s) is reconnecting to YoMo-Zipper %s...", ClientLogPrefix, c.name, c.localAddr, addr)
+				c.logger.Printf("%s[%s][%s](%s) is reconnecting to YoMo-Zipper %s...", ClientLogPrefix, c.name, c.clientID, c.localAddr, addr)
 				err := c.connect(ctx, addr)
 				if err != nil {
-					c.logger.Errorf("%s[%s](%s) reconnect error:%v", ClientLogPrefix, c.name, c.localAddr, err)
+					c.logger.Errorf("%s[%s][%s](%s) reconnect error:%v", ClientLogPrefix, c.name, c.clientID, c.localAddr, err)
 				}
 			}
 		}
@@ -466,6 +466,7 @@ func (c *Client) SetErrorHandler(fn func(err error)) {
 		}()
 	}
 }
+
 // ClientID return the client ID
 func (c *Client) ClientID() string {
 	return c.clientID
