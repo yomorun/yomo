@@ -52,24 +52,28 @@ func WithMeshConfigURL(url string) Option {
 	}
 }
 
+// WithTLSConfig sets the TLS configuration for the client.
 func WithTLSConfig(tc *tls.Config) Option {
 	return func(o *Options) {
 		o.TLSConfig = tc
 	}
 }
 
+// WithQuicConfig sets the QUIC configuration for the client.
 func WithQuicConfig(qc *quic.Config) Option {
 	return func(o *Options) {
 		o.QuicConfig = qc
 	}
 }
 
+// WithClientOptions returns a new options with opts.
 func WithClientOptions(opts ...core.ClientOption) Option {
 	return func(o *Options) {
 		o.ClientOptions = opts
 	}
 }
 
+// WithServerOptions returns a new options with opts.
 func WithServerOptions(opts ...core.ServerOption) Option {
 	return func(o *Options) {
 		o.ServerOptions = opts
@@ -85,6 +89,7 @@ func WithAuth(name string, args ...string) Option {
 		)
 	}
 }
+
 // WithCredential sets the client credential method (used by client)
 func WithCredential(payload string) Option {
 	return func(o *Options) {

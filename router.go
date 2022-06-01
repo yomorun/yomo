@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/yomorun/yomo/core"
+	"github.com/yomorun/yomo/core/yerr"
 	"github.com/yomorun/yomo/pkg/config"
 )
 
@@ -37,7 +38,7 @@ func newRoute(functions []config.App) *route {
 	}
 }
 
-func (r *route) Add(connID string, name string, observeDataTags []byte) error {
+func (r *route) Add(connID string, name string, observeDataTags []byte) (err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -52,10 +53,13 @@ func (r *route) Add(connID string, name string, observeDataTags []byte) error {
 		return fmt.Errorf("SFN[%s] does not exist in config functions", name)
 	}
 
+LOOP:
 	for _, conns := range r.data {
-		for _, n := range conns {
+		for connID, n := range conns {
 			if n == name {
-				return fmt.Errorf("SFN[%s] is already linked to another connection", name)
+				err = yerr.NewDuplicateNameError(connID, fmt.Errorf("SFN[%s] is already linked to another connection", name))
+				delete(conns, connID)
+				break LOOP
 			}
 		}
 	}
@@ -69,7 +73,7 @@ func (r *route) Add(connID string, name string, observeDataTags []byte) error {
 		r.data[tag][connID] = name
 	}
 
-	return nil
+	return err
 }
 
 func (r *route) Remove(connID string) error {

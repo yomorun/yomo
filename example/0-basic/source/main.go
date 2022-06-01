@@ -76,6 +76,10 @@ func generateAndSendData(stream yomo.Source) error {
 		// send data via QUIC stream.
 		_, err = stream.Write(sendingBuf)
 		i++
+		if i > 6 {
+			stream.Close()
+			return nil
+		}
 		if err != nil {
 			logger.Errorf("[source] ❌ Emit %v to YoMo-Zipper failure with err: %v", data, err)
 			time.Sleep(500 * time.Millisecond)
@@ -84,13 +88,6 @@ func generateAndSendData(stream yomo.Source) error {
 		} else {
 			logger.Printf("[source] ✅ Emit %v to YoMo-Zipper", data)
 		}
-		// if i > 6 {
-		// 	stream.Close()
-		// 	return nil
-		// 	// logger.Printf("[source] send GoawayFrame")
-		// 	// goawayFrame := frame.NewGoawayFrame("客户端发送Goaway")
-		// 	// stream.WriteFrame(goawayFrame)
-		// }
 
 		time.Sleep(1000 * time.Millisecond)
 	}

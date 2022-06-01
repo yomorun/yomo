@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"sync"
 	"sync/atomic"
 
@@ -20,12 +21,14 @@ import (
 )
 
 const (
+	// DefaultListenAddr is the default address to listen.
 	DefaultListenAddr = "0.0.0.0:9000"
 )
 
+// ServerOption is the option for server.
 type ServerOption func(*ServerOptions)
 
-// type FrameHandler func(store store.Store, stream quic.Stream, conn quic.Connection, f frame.Frame) error
+// FrameHandler is the handler for frame.
 type FrameHandler func(c *Context) error
 
 // Server is the underlining server of Zipper
@@ -100,7 +103,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		return err
 	}
 	defer listener.Close()
-	logger.Printf("%s✅ [%s] Listening on: %s, MODE: %s, QUIC: %v, AUTH: %s", ServerLogPrefix, s.name, listener.Addr(), mode(), listener.Versions(), s.authNames())
+	logger.Printf("%s✅ [%s][%d] Listening on: %s, MODE: %s, QUIC: %v, AUTH: %s", ServerLogPrefix, s.name, os.Getpid(), listener.Addr(), mode(), listener.Versions(), s.authNames())
 
 	s.state = ConnStateConnected
 	for {
@@ -117,10 +120,10 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		connID := GetConnID(conn)
 		logger.Infof("%s❤️1/ new connection: %s", ServerLogPrefix, connID)
 
-		go func(ctx context.Context, conn quic.Connection) {
+		go func(ctx context.Context, qconn quic.Connection) {
 			for {
 				logger.Infof("%s❤️2/ waiting for new stream", ServerLogPrefix)
-				stream, err := conn.AcceptStream(ctx)
+				stream, err := qconn.AcceptStream(ctx)
 				if err != nil {
 					// if client close the connection, then we should close the connection
 					// @CC: when Source close the connection, it won't affect connectors
@@ -245,19 +248,15 @@ func (s *Server) mainFrameHandler(c *Context) error {
 	case frame.TagOfHandshakeFrame:
 		if err := s.handleHandshakeFrame(c); err != nil {
 			logger.Errorf("%shandleHandshakeFrame err: %s", ServerLogPrefix, err)
-			// c.CloseWithError(0xCC, err.Error())
-			// return err
-			return yerr.New(yerr.ErrorCodeHandshake, err)
-			// break
+			// close connections early to avoid resource consumption
+			goawayFrame := frame.NewGoawayFrame(err.Error())
+			if _, err := c.Stream.Write(goawayFrame.Encode()); err != nil {
+				logger.Errorf("%s⛔️ write to client[%s] GoawayFrame error:%v", ServerLogPrefix, c.ConnID, err)
+				return err
+			}
 		}
 	// case frame.TagOfPingFrame:
 	// 	s.handlePingFrame(mainStream, connection, f.(*frame.PingFrame))
-	case frame.TagOfGoawayFrame:
-		if err := s.handleGoawayFrame(c); err != nil {
-			// return err
-			return yerr.New(yerr.ErrorCodeGoaway, err)
-		}
-
 	case frame.TagOfDataFrame:
 		if err := s.handleDataFrame(c); err != nil {
 			c.CloseWithError(yerr.ErrorCodeData, fmt.Sprintf("handleDataFrame err: %v", err))
@@ -272,7 +271,7 @@ func (s *Server) mainFrameHandler(c *Context) error {
 			s.handleBackflowFrame(c)
 		}
 	default:
-		logger.Errorf("%serr=%v, frame=%v", ServerLogPrefix, err, c.Frame.Encode())
+		logger.Errorf("%serr=%v, frame=%v", ServerLogPrefix, err, frame.Shortly(c.Frame.Encode()))
 	}
 	return nil
 }
@@ -320,10 +319,18 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 				return errors.New("handleHandshakeFrame route is nil")
 			}
 			if err := route.Add(connID, f.Name, f.ObserveDataTags); err != nil {
-				logger.Debugf("%swrite to SFN[%s] GoawayFrame", ServerLogPrefix, f.Name)
-				goawayFrame := frame.NewGoawayFrame(err.Error())
-				if _, err = stream.Write(goawayFrame.Encode()); err != nil {
-					logger.Errorf("%s⛔️ write to SFN[%s] GoawayFrame error:%v", ServerLogPrefix, f.Name, err)
+				// duplicate name
+				if e, ok := err.(yerr.DuplicateNameError); ok {
+					existsConnID := e.ConnID()
+					if conn := s.connector.Get(existsConnID); conn != nil {
+						logger.Debugf("%s%s, write to SFN[%s](%s) GoawayFrame", ServerLogPrefix, e.Error(), f.Name, existsConnID)
+						goawayFrame := frame.NewGoawayFrame(e.Error())
+						if err := conn.Write(goawayFrame); err != nil {
+							logger.Errorf("%s⛔️ write to SFN[%s] GoawayFrame error:%v", ServerLogPrefix, f.Name, err)
+							return err
+						}
+					}
+				} else {
 					return err
 				}
 			}
@@ -504,18 +511,22 @@ func (s *Server) validateMetadataBuilder() error {
 	return nil
 }
 
+// Options returns the options of server.
 func (s *Server) Options() ServerOptions {
 	return s.opts
 }
 
+// Connector returns the connector of server.
 func (s *Server) Connector() Connector {
 	return s.connector
 }
 
+// SetBeforeHandlers set the before handlers of server.
 func (s *Server) SetBeforeHandlers(handlers ...FrameHandler) {
 	s.beforeHandlers = append(s.beforeHandlers, handlers...)
 }
 
+// SetAfterHandlers set the after handlers of server.
 func (s *Server) SetAfterHandlers(handlers ...FrameHandler) {
 	s.afterHandlers = append(s.afterHandlers, handlers...)
 }

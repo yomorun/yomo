@@ -8,6 +8,7 @@ import (
 	"github.com/yomorun/yomo/core/auth"
 )
 
+// ServerOptions are the options for YoMo server.
 type ServerOptions struct {
 	QuicConfig *quic.Config
 	TLSConfig  *tls.Config
@@ -16,13 +17,14 @@ type ServerOptions struct {
 	Conn       net.PacketConn
 }
 
+// WithAddr sets the server address.
 func WithAddr(addr string) ServerOption {
 	return func(o *ServerOptions) {
 		o.Addr = addr
 	}
 }
 
-// WithAuth sets the server authentication method
+// WithAuth sets the server authentication method.
 func WithAuth(name string, args ...string) ServerOption {
 	return func(o *ServerOptions) {
 		if auth, ok := auth.GetAuth(name); ok {
@@ -32,18 +34,21 @@ func WithAuth(name string, args ...string) ServerOption {
 	}
 }
 
+// WithServerTLSConfig sets the TLS configuration for the server.
 func WithServerTLSConfig(tc *tls.Config) ServerOption {
 	return func(o *ServerOptions) {
 		o.TLSConfig = tc
 	}
 }
 
+// WithServerQuicConfig sets the QUIC configuration for the server.
 func WithServerQuicConfig(qc *quic.Config) ServerOption {
 	return func(o *ServerOptions) {
 		o.QuicConfig = qc
 	}
 }
 
+// WithConn sets the connection for the server.
 func WithConn(conn net.PacketConn) ServerOption {
 	return func(o *ServerOptions) {
 		o.Conn = conn
