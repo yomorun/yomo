@@ -121,8 +121,6 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 		c.opts.Credential.Name(),
 		c.opts.Credential.Payload(),
 	)
-	// source ID
-	handshake.SetSourceID(c.clientID)
 	err = c.WriteFrame(handshake)
 	if err != nil {
 		c.state = ConnStateRejected

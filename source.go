@@ -25,8 +25,6 @@ type Source interface {
 	WriteWithTag(tag uint8, data []byte) error
 	// SetErrorHandler set the error handler function when server error occurs
 	SetErrorHandler(fn func(err error))
-	// WriteFrame writes a frame to the connection
-	WriteFrame(frm frame.Frame) error
 	// [Experimental] SetReceiveHandler set the observe handler function
 	SetReceiveHandler(fn func(tag byte, data []byte))
 }
@@ -97,17 +95,12 @@ func (s *yomoSource) WriteWithTag(tag uint8, data []byte) error {
 	f.SetSourceID(s.client.ClientID())
 	s.client.Logger().Debugf("%sWriteWithTag: tid=%s, source_id=%s, data[%d]=%# x",
 		sourceLogPrefix, f.TransactionID(), f.SourceID(), len(data), frame.Shortly(data))
-	return s.WriteFrame(f)
+	return s.client.WriteFrame(f)
 }
 
 // SetErrorHandler set the error handler function when server error occurs
 func (s *yomoSource) SetErrorHandler(fn func(err error)) {
 	s.client.SetErrorHandler(fn)
-}
-
-// WriteFrame writes a frame to the connection
-func (s *yomoSource) WriteFrame(frm frame.Frame) error {
-	return s.client.WriteFrame(frm)
 }
 
 // [Experimental] SetReceiveHandler set the observe handler function

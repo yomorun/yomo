@@ -31,17 +31,15 @@ type connection struct {
 	metadata   Metadata
 	stream     io.ReadWriteCloser
 	clientID   string
-	sourceID   string
 	observed   []byte // observed data tags
 	mu         sync.Mutex
 }
 
-func newConnection(name string, clientID string, clientType ClientType, sourceID string, metadata Metadata, stream io.ReadWriteCloser, observed []byte) Connection {
+func newConnection(name string, clientID string, clientType ClientType, metadata Metadata, stream io.ReadWriteCloser, observed []byte) Connection {
 	return &connection{
 		name:       name,
 		clientID:   clientID,
 		clientType: clientType,
-		sourceID:   sourceID,
 		observed:   observed,
 		metadata:   metadata,
 		stream:     stream,

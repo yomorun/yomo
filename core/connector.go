@@ -20,8 +20,6 @@ type Connector interface {
 	GetSnapshot() map[string]string
 	// GetSourceConns gets the connections by source observe tags.
 	GetSourceConns(sourceID string, tags byte) []Connection
-	// LinkSource links the source and connection.
-	// LinkSource(connID string, id string, name string, sourceID string, observed []byte)
 	// Clean the connector.
 	Clean()
 }
@@ -72,19 +70,6 @@ func (c *connector) GetSourceConns(sourceID string, tag byte) []Connection {
 	return conns
 }
 
-// Write a Frame to a connection.
-// func (c *connector) Write(f frame.Frame, toID string) error {
-// 	targetStream := c.Get(toID)
-// 	if targetStream == nil {
-// 		logger.Warnf("%swill write to: [%s], target stream is nil", ServerLogPrefix, toID)
-// 		return fmt.Errorf("target[%s] stream is nil", toID)
-// 	}
-// 	c.mu.Lock()
-// 	_, err := targetStream.Write(f.Encode())
-// 	c.mu.Unlock()
-// 	return err
-// }
-
 // GetSnapshot gets the snapshot of all connections.
 func (c *connector) GetSnapshot() map[string]string {
 	result := make(map[string]string)
@@ -96,12 +81,6 @@ func (c *connector) GetSnapshot() map[string]string {
 	})
 	return result
 }
-
-// LinkSource links the source and connection.
-// func (c *connector) LinkSource(connID string, id string, name string, sourceID string, observed []byte) {
-// 	logger.Debugf("%sconnector link source: connID[%s] --> source[%s]", ServerLogPrefix, connID, name)
-// 	c.sources.Store(connID, &app{id, name, observed, sourceID})
-// }
 
 // Clean the connector.
 func (c *connector) Clean() {

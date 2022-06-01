@@ -310,7 +310,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 		if err != nil {
 			return err
 		}
-		conn = newConnection(f.Name, f.ClientID, clientType, f.SourceID(), metadata, stream, f.ObserveDataTags)
+		conn = newConnection(f.Name, f.ClientID, clientType, metadata, stream, f.ObserveDataTags)
 
 		if clientType == ClientTypeStreamFunction {
 			// route
@@ -336,7 +336,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 			}
 		}
 	case ClientTypeUpstreamZipper:
-		conn = newConnection(f.Name, f.ClientID, clientType, f.SourceID(), nil, stream, f.ObserveDataTags)
+		conn = newConnection(f.Name, f.ClientID, clientType, nil, stream, f.ObserveDataTags)
 	default:
 		// unknown client type
 		s.connector.Remove(connID)
@@ -428,7 +428,7 @@ func (s *Server) handleBackflowFrame(c *Context) error {
 	bf := frame.NewBackflowFrame(tag, carriage)
 	sourceConns := s.connector.GetSourceConns(sourceID, tag)
 	// conn := s.connector.Get(c.connID)
-	// logger.Printf("%s♻️  handleBackflowFrame %s tag:%#v --> source:%s, result=%s", ServerLogPrefix, conn.ClientType(), tag, sourceID, carriage)
+	// logger.Printf("%s♻️  handleBackflowFrame tag:%#v --> source:%s, result=%s", ServerLogPrefix, tag, sourceID, carriage)
 	for _, source := range sourceConns {
 		if source != nil {
 			logger.Debugf("%s♻️  handleBackflowFrame tag:%#v --> source:%s, result=%# x", ServerLogPrefix, tag, sourceID, frame.Shortly(carriage))
