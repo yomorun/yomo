@@ -19,6 +19,10 @@ type Connection interface {
 	Metadata() Metadata
 	// Write should goroutine-safely send y3 frames to peer side
 	Write(f frame.Frame) error
+	// GetSnapshot gets the snapshot for data statistics.
+	GetSnapshot() interface{}
+	// ClearStats clears stats result.
+	ClearStats()
 }
 
 type connection struct {
@@ -65,3 +69,11 @@ func (c *connection) Write(f frame.Frame) error {
 	_, err := c.stream.Write(f.Encode())
 	return err
 }
+
+// GetSnapshot gets the snapshot for data statistics.
+func (c *connection) GetSnapshot() interface{} {
+	return c.name
+}
+
+// ClearStats clears stats result.
+func (c *connection) ClearStats() {}

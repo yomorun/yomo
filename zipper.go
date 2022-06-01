@@ -37,7 +37,7 @@ type Zipper interface {
 	Addr() string
 
 	// Stats return insight data
-	Stats() int
+	Stats() interface{}
 
 	// Close will close the zipper.
 	Close() error
@@ -244,9 +244,11 @@ func (z *zipper) Close() error {
 }
 
 // Stats inspects current server.
-func (z *zipper) Stats() int {
-	log.Printf("[%s] all connections: %d", z.name, len(z.server.StatsFunctions()))
-	for connID, name := range z.server.StatsFunctions() {
+func (z *zipper) Stats() interface{} {
+	stat := z.server.Connector().GetSnapshot()
+
+	log.Printf("[%s] all connections: %d", z.name, len(stat))
+	for connID, name := range stat {
 		log.Printf("[%s] -> ConnID=%s, Name=%s", z.name, connID, name)
 	}
 
@@ -257,7 +259,7 @@ func (z *zipper) Stats() int {
 
 	log.Printf("[%s] total DataFrames received: %d", z.name, z.server.StatsCounter())
 
-	return len(z.server.StatsFunctions())
+	return len(stat)
 }
 
 func (z *zipper) InitOptions(opts ...Option) {

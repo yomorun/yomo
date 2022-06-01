@@ -37,6 +37,7 @@ type Server struct {
 	connector          Connector
 	router             Router
 	metadataBuilder    MetadataBuilder
+	connectionBuilder  func(string, ClientType, Metadata, io.ReadWriteCloser) Connection
 	counterOfDataFrame int64
 	downstreams        map[string]*Client
 	mu                 sync.Mutex
@@ -72,6 +73,9 @@ func (s *Server) Init(opts ...ServerOption) error {
 func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	if addr == "" {
 		addr = DefaultListenAddr
+	}
+	if s.connectionBuilder == nil {
+		s.connectionBuilder = newConnection
 	}
 	udpAddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
@@ -307,7 +311,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 		if err != nil {
 			return err
 		}
-		conn = newConnection(f.Name, clientType, metadata, stream)
+		conn = s.connectionBuilder(f.Name, clientType, metadata, stream)
 
 		if clientType == ClientTypeStreamFunction {
 			// route
@@ -333,7 +337,8 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 			}
 		}
 	case ClientTypeUpstreamZipper:
-		conn = newConnection(f.Name, clientType, nil, stream)
+		conn = s.connectionBuilder(f.Name, clientType, nil, stream)
+
 	default:
 		// unknown client type
 		logger.Errorf("%sClientType=%# x, ilegal!", ServerLogPrefix, f.ClientType)
@@ -415,11 +420,6 @@ func (s *Server) handleDataFrame(c *Context) error {
 	return nil
 }
 
-// StatsFunctions returns the sfn stats of server.
-func (s *Server) StatsFunctions() map[string]string {
-	return s.connector.GetSnapshot()
-}
-
 // StatsCounter returns how many DataFrames pass through server.
 func (s *Server) StatsCounter() int64 {
 	return s.counterOfDataFrame
@@ -428,6 +428,13 @@ func (s *Server) StatsCounter() int64 {
 // Downstreams return all the downstream servers.
 func (s *Server) Downstreams() map[string]*Client {
 	return s.downstreams
+}
+
+// ConfigConnectionBuilder is used to set connectionBuilder by zipper
+func (s *Server) ConfigConnectionBuilder(connectionBuilder func(string, ClientType, Metadata, io.ReadWriteCloser) Connection) {
+	s.mu.Lock()
+	s.connectionBuilder = connectionBuilder
+	s.mu.Unlock()
 }
 
 // ConfigRouter is used to set router by zipper

@@ -17,7 +17,9 @@ type Connector interface {
 	// Get a connection by connection id.
 	Get(connID string) Connection
 	// GetSnapshot gets the snapshot of all connections.
-	GetSnapshot() map[string]string
+	GetSnapshot() map[string]interface{}
+	// ClearStats clears stats of all connections.
+	ClearStats()
 	// Clean the connector.
 	Clean()
 }
@@ -52,15 +54,24 @@ func (c *connector) Get(connID string) Connection {
 }
 
 // GetSnapshot gets the snapshot of all connections.
-func (c *connector) GetSnapshot() map[string]string {
-	result := make(map[string]string)
+func (c *connector) GetSnapshot() map[string]interface{} {
+	result := make(map[string]interface{})
 	c.conns.Range(func(key interface{}, val interface{}) bool {
 		connID := key.(string)
 		conn := val.(Connection)
-		result[connID] = conn.Name()
+		result[connID] = conn.GetSnapshot()
 		return true
 	})
 	return result
+}
+
+// ClearStats clears stats of all connections.
+func (c *connector) ClearStats() {
+	c.conns.Range(func(_ interface{}, val interface{}) bool {
+		conn := val.(Connection)
+		conn.ClearStats()
+		return true
+	})
 }
 
 // Clean the connector.
