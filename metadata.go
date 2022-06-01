@@ -5,13 +5,10 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 )
 
-type metadata struct {
-	// sourceID string
-}
+type metadata struct{}
 
 func (m *metadata) Encode() []byte {
 	return nil
-	// return []byte(m.sourceID)
 }
 
 type metadataBuilder struct {
@@ -25,7 +22,6 @@ func newMetadataBuilder() core.MetadataBuilder {
 }
 
 func (builder *metadataBuilder) Build(f *frame.HandshakeFrame) (core.Metadata, error) {
-	// builder.m.sourceID = f.ClientID
 	return builder.m, nil
 }
 
