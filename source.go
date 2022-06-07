@@ -25,6 +25,8 @@ type Source interface {
 	WriteWithTag(tag uint8, data []byte) error
 	// SetErrorHandler set the error handler function when server error occurs
 	SetErrorHandler(fn func(err error))
+	// [Experimental] SetReceiveHandler set the observe handler function
+	SetReceiveHandler(fn func(tag byte, data []byte))
 }
 
 // YoMo-Source
@@ -33,6 +35,7 @@ type yomoSource struct {
 	zipperEndpoint string
 	client         *core.Client
 	tag            uint8
+	fn             func(byte, []byte)
 }
 
 var _ Source = &yomoSource{}
@@ -71,6 +74,13 @@ func (s *yomoSource) Close() error {
 
 // Connect to YoMo-Zipper.
 func (s *yomoSource) Connect() error {
+	// set backflowframe handler
+	s.client.SetBackflowFrameObserver(func(frm *frame.BackflowFrame) {
+		if s.fn != nil {
+			s.fn(frm.GetDataTag(), frm.GetCarriage())
+		}
+	})
+
 	err := s.client.Connect(context.Background(), s.zipperEndpoint)
 	if err != nil {
 		s.client.Logger().Errorf("%sConnect() error: %s", sourceLogPrefix, err)
@@ -80,13 +90,21 @@ func (s *yomoSource) Connect() error {
 
 // WriteWithTag will write data with specified tag, default transactionID is epoch time.
 func (s *yomoSource) WriteWithTag(tag uint8, data []byte) error {
-	s.client.Logger().Debugf("%sWriteWithTag: len(data)=%d, data=%# x", sourceLogPrefix, len(data), frame.Shortly(data))
-	frame := frame.NewDataFrame()
-	frame.SetCarriage(byte(tag), data)
-	return s.client.WriteFrame(frame)
+	f := frame.NewDataFrame()
+	f.SetCarriage(byte(tag), data)
+	f.SetSourceID(s.client.ClientID())
+	s.client.Logger().Debugf("%sWriteWithTag: tid=%s, source_id=%s, data[%d]=%# x",
+		sourceLogPrefix, f.TransactionID(), f.SourceID(), len(data), frame.Shortly(data))
+	return s.client.WriteFrame(f)
 }
 
 // SetErrorHandler set the error handler function when server error occurs
 func (s *yomoSource) SetErrorHandler(fn func(err error)) {
 	s.client.SetErrorHandler(fn)
+}
+
+// [Experimental] SetReceiveHandler set the observe handler function
+func (s *yomoSource) SetReceiveHandler(fn func(byte, []byte)) {
+	s.fn = fn
+	s.client.Logger().Debugf("%sSetReceiveHandler(%v)", sourceLogPrefix, s.fn)
 }

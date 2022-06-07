@@ -18,6 +18,8 @@ type Connector interface {
 	Get(connID string) Connection
 	// GetSnapshot gets the snapshot of all connections.
 	GetSnapshot() map[string]string
+	// GetSourceConns gets the connections by source observe tags.
+	GetSourceConns(sourceID string, tags byte) []Connection
 	// Clean the connector.
 	Clean()
 }
@@ -49,6 +51,23 @@ func (c *connector) Get(connID string) Connection {
 		return conn.(Connection)
 	}
 	return nil
+}
+
+// GetSourceConns gets the source connection by tag.
+func (c *connector) GetSourceConns(sourceID string, tag byte) []Connection {
+	conns := make([]Connection, 0)
+
+	c.conns.Range(func(key interface{}, val interface{}) bool {
+		conn := val.(Connection)
+		for _, v := range conn.ObserveDataTags() {
+			if v == tag && conn.ClientType() == ClientTypeSource && conn.ClientID() == sourceID {
+				conns = append(conns, conn)
+			}
+		}
+		return true
+	})
+
+	return conns
 }
 
 // GetSnapshot gets the snapshot of all connections.

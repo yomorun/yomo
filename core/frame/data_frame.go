@@ -60,6 +60,16 @@ func (d *DataFrame) GetDataTag() byte {
 	return d.payloadFrame.Tag
 }
 
+// SetSourceID set the source ID.
+func (d *DataFrame) SetSourceID(sourceID string) {
+	d.metaFrame.SetSourceID(sourceID)
+}
+
+// SourceID returns source ID
+func (d *DataFrame) SourceID() string {
+	return d.metaFrame.SourceID()
+}
+
 // Encode return Y3 encoded bytes of `DataFrame`
 func (d *DataFrame) Encode() []byte {
 	data := y3.NewNodePacketEncoder(byte(d.Type()))

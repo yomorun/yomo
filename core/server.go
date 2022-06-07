@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"sync"
 	"sync/atomic"
 
@@ -102,7 +103,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		return err
 	}
 	defer listener.Close()
-	logger.Printf("%s✅ [%s] Listening on: %s, MODE: %s, QUIC: %v, AUTH: %s", ServerLogPrefix, s.name, listener.Addr(), mode(), listener.Versions(), s.authNames())
+	logger.Printf("%s✅ [%s][%d] Listening on: %s, MODE: %s, QUIC: %v, AUTH: %s", ServerLogPrefix, s.name, os.Getpid(), listener.Addr(), mode(), listener.Versions(), s.authNames())
 
 	s.state = ConnStateConnected
 	for {
@@ -135,20 +136,19 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 						}
 						logger.Printf("%s💔 [%s](%s) close the connection", ServerLogPrefix, conn.Name(), connID)
 					} else {
-						logger.Errorf("%s❤️3/ [unknown](%s) on stream %v", ServerLogPrefix, connID, err)
-						// qconn.CloseWithError(quic.ApplicationErrorCode(yerr.ErrorCodeUnknown), err.Error())
+						logger.Errorf("%s💙 [unknown](%s) on stream %v", ServerLogPrefix, connID, err)
 					}
 					break
 				}
 				defer stream.Close()
 
-				logger.Infof("%s❤️4/ [stream:%d] created, connID=%s", ServerLogPrefix, stream.StreamID(), connID)
+				logger.Infof("%s❤️3/ [stream:%d] created, connID=%s", ServerLogPrefix, stream.StreamID(), connID)
 				// process frames on stream
 				// c := newContext(connID, stream)
 				c := newContext(conn, stream)
 				defer c.Clean()
 				s.handleConnection(c)
-				logger.Infof("%s❤️5/ [stream:%d] handleConnection DONE", ServerLogPrefix, stream.StreamID())
+				logger.Infof("%s❤️4/ [stream:%d] handleConnection DONE", ServerLogPrefix, stream.StreamID())
 			}
 		}(sctx, conn)
 	}
@@ -267,6 +267,8 @@ func (s *Server) mainFrameHandler(c *Context) error {
 				f.GetMetaFrame().SetMetadata(conn.Metadata().Encode())
 				s.dispatchToDownstreams(f)
 			}
+			// observe datatags backflow
+			s.handleBackflowFrame(c)
 		}
 	default:
 		logger.Errorf("%serr=%v, frame=%v", ServerLogPrefix, err, frame.Shortly(c.Frame.Encode()))
@@ -281,10 +283,11 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	logger.Debugf("%sGOT ❤️ HandshakeFrame : %# x", ServerLogPrefix, f)
 	// basic info
 	connID := c.ConnID()
+	clientID := f.ClientID
 	clientType := ClientType(f.ClientType)
 	stream := c.Stream
 	// credential
-	logger.Debugf("%sClientType=%# x is %s, Credential=%s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType), authName(f.AuthName()))
+	logger.Debugf("%sClientType=%# x is %s, ClientID=%s, Credential=%s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType), clientID, authName(f.AuthName()))
 	// authenticate
 	if !s.authenticate(f) {
 		err := fmt.Errorf("handshake authentication fails, client credential name is %s", authName(f.AuthName()))
@@ -307,7 +310,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 		if err != nil {
 			return err
 		}
-		conn = newConnection(f.Name, clientType, metadata, stream)
+		conn = newConnection(f.Name, f.ClientID, clientType, metadata, stream, f.ObserveDataTags)
 
 		if clientType == ClientTypeStreamFunction {
 			// route
@@ -333,16 +336,17 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 			}
 		}
 	case ClientTypeUpstreamZipper:
-		conn = newConnection(f.Name, clientType, nil, stream)
+		conn = newConnection(f.Name, f.ClientID, clientType, nil, stream, f.ObserveDataTags)
 	default:
 		// unknown client type
+		s.connector.Remove(connID)
 		logger.Errorf("%sClientType=%# x, ilegal!", ServerLogPrefix, f.ClientType)
 		c.CloseWithError(yerr.ErrorCodeUnknownClient, "Unknown ClientType, illegal!")
 		return errors.New("core.server: Unknown ClientType, illegal")
 	}
 
 	s.connector.Add(connID, conn)
-	logger.Printf("%s❤️  <%s> [%s](%s) is connected!", ServerLogPrefix, clientType, f.Name, connID)
+	logger.Printf("%s❤️  <%s> [%s][%s](%s) is connected!", ServerLogPrefix, clientType, f.Name, clientID, connID)
 	return nil
 }
 
@@ -410,6 +414,28 @@ func (s *Server) handleDataFrame(c *Context) error {
 		if err := conn.Write(f); err != nil {
 			logger.Errorf("%swrite data: [%s](%s) --> [%s](%s), err=%v", ServerLogPrefix, from, fromID, to, toID, err)
 			continue
+		}
+	}
+	return nil
+}
+
+func (s *Server) handleBackflowFrame(c *Context) error {
+	f := c.Frame.(*frame.DataFrame)
+	tag := f.GetDataTag()
+	carriage := f.GetCarriage()
+	sourceID := f.SourceID()
+	// write to source with BackflowFrame
+	bf := frame.NewBackflowFrame(tag, carriage)
+	sourceConns := s.connector.GetSourceConns(sourceID, tag)
+	// conn := s.connector.Get(c.connID)
+	// logger.Printf("%s♻️  handleBackflowFrame tag:%#v --> source:%s, result=%s", ServerLogPrefix, tag, sourceID, carriage)
+	for _, source := range sourceConns {
+		if source != nil {
+			logger.Debugf("%s♻️  handleBackflowFrame tag:%#v --> source:%s, result=%# x", ServerLogPrefix, tag, sourceID, frame.Shortly(carriage))
+			if err := source.Write(bf); err != nil {
+				logger.Errorf("%s♻️  handleBackflowFrame tag:%#v --> source:%s, error=%v", ServerLogPrefix, tag, sourceID, err)
+				return err
+			}
 		}
 	}
 	return nil

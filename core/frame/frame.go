@@ -16,16 +16,17 @@ const (
 	TagOfMetaFrame     Type = 0x2F
 	TagOfMetadata      Type = 0x03
 	TagOfTransactionID Type = 0x01
+	TagOfSourceID      Type = 0x02
 	// PayloadFrame of DataFrame
-	TagOfPayloadFrame Type = 0x2E
+	TagOfPayloadFrame  Type = 0x2E
+	TagOfBackflowFrame Type = 0x2D
 
 	TagOfTokenFrame Type = 0x3E
 	// HandshakeFrame
-	TagOfHandshakeFrame Type = 0x3D
-	TagOfHandshakeName  Type = 0x01
-	TagOfHandshakeType  Type = 0x02
-	// TagOfHandshakeAppID           Type = 0x03
-	// TagOfHandshakeAuthType        Type = 0x04
+	TagOfHandshakeFrame           Type = 0x3D
+	TagOfHandshakeName            Type = 0x01
+	TagOfHandshakeType            Type = 0x02
+	TagOfHandshakeID              Type = 0x03
 	TagOfHandshakeAuthName        Type = 0x04
 	TagOfHandshakeAuthPayload     Type = 0x05
 	TagOfHandshakeObserveDataTags Type = 0x06
@@ -71,6 +72,8 @@ func (f Type) String() string {
 		return "RejectedFrame"
 	case TagOfGoawayFrame:
 		return "GoawayFrame"
+	case TagOfBackflowFrame:
+		return "BackflowFrame"
 	case TagOfMetaFrame:
 		return "MetaFrame"
 	case TagOfPayloadFrame:

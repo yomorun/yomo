@@ -14,6 +14,7 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/log"
 	"github.com/yomorun/yomo/core/yerr"
+	"github.com/yomorun/yomo/pkg/id"
 	"github.com/yomorun/yomo/pkg/logger"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
 )
@@ -27,13 +28,15 @@ type ConnState = string
 // Client is the abstraction of a YoMo-Client. a YoMo-Client can be
 // Source, Upstream Zipper or StreamFunction.
 type Client struct {
-	name       string                 // name of the client
-	clientType ClientType             // type of the connection
-	conn       quic.Connection        // quic connection
-	stream     quic.Stream            // quic stream
-	state      ConnState              // state of the connection
-	processor  func(*frame.DataFrame) // functions to invoke when data arrived
-	addr       string                 // the address of server connected to
+	name       string                     // name of the client
+	clientID   string                     // id of the client
+	clientType ClientType                 // type of the connection
+	conn       quic.Connection            // quic connection
+	stream     quic.Stream                // quic stream
+	state      ConnState                  // state of the connection
+	processor  func(*frame.DataFrame)     // functions to invoke when data arrived
+	receiver   func(*frame.BackflowFrame) // functions to invoke when data is processed
+	addr       string                     // the address of server connected to
 	mu         sync.Mutex
 	opts       ClientOptions
 	localAddr  string // client local addr, it will be changed on reconnect
@@ -47,6 +50,7 @@ type Client struct {
 func NewClient(appName string, connType ClientType, opts ...ClientOption) *Client {
 	c := &Client{
 		name:       appName,
+		clientID:   id.New(),
 		clientType: connType,
 		state:      ConnStateReady,
 		opts:       ClientOptions{},
@@ -111,6 +115,7 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	// send handshake
 	handshake := frame.NewHandshakeFrame(
 		c.name,
+		c.clientID,
 		byte(c.clientType),
 		c.opts.ObserveDataTags,
 		c.opts.Credential.Name(),
@@ -124,7 +129,7 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	c.state = ConnStateConnected
 	c.localAddr = c.conn.LocalAddr().String()
 
-	c.logger.Printf("%s❤️  [%s](%s) is connected to YoMo-Zipper %s", ClientLogPrefix, c.name, c.localAddr, addr)
+	c.logger.Printf("%s❤️  [%s][%s](%s) is connected to YoMo-Zipper %s", ClientLogPrefix, c.name, c.clientID, c.localAddr, addr)
 
 	// receiving frames
 	go c.handleFrame()
@@ -221,13 +226,23 @@ func (c *Client) handleFrame() {
 		case frame.TagOfDataFrame: // DataFrame carries user's data
 			if v, ok := f.(*frame.DataFrame); ok {
 				c.setState(ConnStateTransportData)
-				c.logger.Debugf("%sreceive DataFrame, tag=%# x, tid=%s, carry=%# x", ClientLogPrefix, v.GetDataTag(), v.TransactionID(), v.GetCarriage())
+				c.logger.Debugf("%sreceive DataFrame, tag=%#x, tid=%s, carry=%# x", ClientLogPrefix, v.GetDataTag(), v.TransactionID(), v.GetCarriage())
 				if c.processor == nil {
 					c.logger.Warnf("%sprocessor is nil", ClientLogPrefix)
 				} else {
 					// TODO: should c.processor accept a DataFrame as parameter?
 					// c.processor(v.GetDataTagID(), v.GetCarriage(), v.GetMetaFrame())
 					c.processor(v)
+				}
+			}
+		case frame.TagOfBackflowFrame:
+			if v, ok := f.(*frame.BackflowFrame); ok {
+				c.logger.Debugf("%sreceive BackflowFrame, tag=%#x, carry=%# x", ClientLogPrefix, v.GetDataTag(), v.GetCarriage())
+				if c.receiver == nil {
+					c.logger.Warnf("%sreceiver is nil", ClientLogPrefix)
+				} else {
+					c.setState(ConnStateBackflow)
+					c.receiver(v)
 				}
 			}
 		default:
@@ -239,7 +254,7 @@ func (c *Client) handleFrame() {
 // Close the client.
 func (c *Client) Close() (err error) {
 	if c.conn != nil {
-		c.logger.Printf("%sclose the connection, name:%s, addr:%s", ClientLogPrefix, c.name, c.conn.RemoteAddr().String())
+		c.logger.Printf("%sclose the connection, name:%s, id:%s, addr:%s", ClientLogPrefix, c.name, c.clientID, c.conn.RemoteAddr().String())
 	}
 	if c.stream != nil {
 		err = c.stream.Close()
@@ -333,6 +348,12 @@ func (c *Client) SetDataFrameObserver(fn func(*frame.DataFrame)) {
 	c.logger.Debugf("%sSetDataFrameObserver(%v)", ClientLogPrefix, c.processor)
 }
 
+// SetBackflowFrameObserver sets the backflow frame handler.
+func (c *Client) SetBackflowFrameObserver(fn func(*frame.BackflowFrame)) {
+	c.receiver = fn
+	c.logger.Debugf("%sSetBackflowFrameObserver(%v)", ClientLogPrefix, c.receiver)
+}
+
 // reconnect the connection between client and server.
 func (c *Client) reconnect(ctx context.Context, addr string) {
 	t := time.NewTicker(1 * time.Second)
@@ -348,10 +369,10 @@ func (c *Client) reconnect(ctx context.Context, addr string) {
 			return
 		case <-t.C:
 			if c.getState() == ConnStateDisconnected {
-				c.logger.Printf("%s[%s](%s) is reconnecting to YoMo-Zipper %s...", ClientLogPrefix, c.name, c.localAddr, addr)
+				c.logger.Printf("%s[%s][%s](%s) is reconnecting to YoMo-Zipper %s...", ClientLogPrefix, c.name, c.clientID, c.localAddr, addr)
 				err := c.connect(ctx, addr)
 				if err != nil {
-					c.logger.Errorf("%s[%s](%s) reconnect error:%v", ClientLogPrefix, c.name, c.localAddr, err)
+					c.logger.Errorf("%s[%s][%s](%s) reconnect error:%v", ClientLogPrefix, c.name, c.clientID, c.localAddr, err)
 				}
 			}
 		}
@@ -442,4 +463,9 @@ func (c *Client) SetErrorHandler(fn func(err error)) {
 			}
 		}()
 	}
+}
+
+// ClientID return the client ID
+func (c *Client) ClientID() string {
+	return c.clientID
 }

@@ -7,7 +7,7 @@ output: "prefixed"
 tasks:
   run:
     desc: run
-    deps: [zipper, source, sfn]
+    deps: [zipper, source, sfn1, sfn2]
     cmds:
       - echo 'basic example run'
 
@@ -18,8 +18,8 @@ tasks:
       - rm -rf ./bin
 
   build:
-    desc: build source, sfn and zipper
-    deps: [source-build, sfn-build]
+    desc: build source, sfns and zipper
+    deps: [source-build, sfn1-build, sfn2-build]
     cmds:
       - echo 'building done'
 
@@ -28,10 +28,10 @@ tasks:
     cmds:
       - "go build -o ./bin/source{{exeExt}} source/main.go"
 
-  sfn-build:
-    desc: build sfn
+  sfn1-build:
+    desc: build sfn1
     cmds:
-      - "go build -o ./bin/sfn{{exeExt}} sfn/main.go"
+      - "go build -o ./bin/sfn1{{exeExt}} sfn/main.go"
 
   source:
     desc: run source
@@ -41,11 +41,24 @@ tasks:
     env:
       YOMO_LOG_LEVEL: error
 
-  sfn:
-    desc: run sfn
-    deps: [sfn-build]
+  sfn1:
+    desc: run sfn1
+    deps: [sfn1-build]
     cmds:
-      - "./bin/sfn{{exeExt}}"
+      - "./bin/sfn1{{exeExt}}"
+    env:
+      YOMO_LOG_LEVEL: error
+
+  sfn2-build:
+    desc: build sfn2
+    cmds:
+      - "go build -o ./bin/sfn2{{exeExt}} sfn2/main.go"
+
+  sfn2:
+    desc: run sfn2
+    deps: [sfn2-build]
+    cmds:
+      - "./bin/sfn2{{exeExt}}"
     env:
       YOMO_LOG_LEVEL: error
 
