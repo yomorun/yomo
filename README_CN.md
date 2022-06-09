@@ -26,6 +26,12 @@ For english, check: [Github](https://github.com/yomorun/yomo)
 $ curl -fsSL "https://bina.egoist.sh/yomorun/cli?name=yomo" | sh
 ```
 
+
+将`yomo`可执行文件移动至`/usr/local/bin/`.
+```bash
+sudo chmod +x yomo && sudo mv yomo /usr/local/bin/
+```
+
 #### 或者也通过以下方式安装 YoMo CLI
 
 ```bash

@@ -43,6 +43,13 @@ If an application can be deployed anywhere close to their end users, solve the p
 curl -fsSL "https://bina.egoist.sh/yomorun/cli?name=yomo" | sh
 ```
 
+
+Move `yomo` executable to `/usr/local/bin`/`.
+```bash
+sudo chmod +x yomo && sudo mv yomo /usr/local/bin/
+```
+
+
 #### Or build from source
 
 ```bash
