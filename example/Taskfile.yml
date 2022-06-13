@@ -20,6 +20,9 @@ includes:
   cascading-zipper:
     taskfile: ./4-cascading-zipper/Taskfile.yml
     dir: ./4-cascading-zipper
+  backflow:
+    taskfile: ./5-backflow/Taskfile.yml
+    dir: ./5-backflow
 
 tasks:
   example-basic:
@@ -52,6 +55,12 @@ tasks:
     cmds:
       - task: cascading-zipper:run
 
+  example-backflow:
+    desc: Backflow usage
+    silent: false
+    cmds:
+      - task: backflow:run
+
   # example cleanup
   clean:
     desc: clean
@@ -63,3 +72,4 @@ tasks:
       - task: iopipe:clean
       - task: multi-sfn:clean
       - task: cascading-zipper:clean
+      - task: backflow:clean
