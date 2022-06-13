@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 
 	"github.com/yomorun/yomo"
@@ -49,10 +48,10 @@ func handler(data []byte) (byte, []byte) {
 	var model noiseData
 	err := json.Unmarshal(data, &model)
 	if err != nil {
-		logger.Errorf("[sfn1] json.Marshal err=%v", err)
+		logger.Errorf("[sfn] json.Marshal err=%v", err)
 		os.Exit(-2)
 	} else {
-		logger.Printf(">> [sfn1] got tag=0x33, data=%+v", model)
+		logger.Printf(">> [sfn] got tag=0x33, data=%+v", model)
 	}
-	return 0x34, []byte(fmt.Sprintf("sfn1 processed result: %v", model.Noise))
+	return 0x0, nil
 }
