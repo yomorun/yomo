@@ -1,8 +1,8 @@
 package main
 
 import (
-	"encoding/json"
 	"os"
+	"strconv"
 
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/pkg/logger"
@@ -20,7 +20,7 @@ func main() {
 		addr = v
 	}
 	sfn := yomo.NewStreamFunction(
-		"Noise",
+		"sfn-1",
 		yomo.WithZipperAddr(addr),
 		yomo.WithObserveDataTags(0x33),
 	)
@@ -31,12 +31,12 @@ func main() {
 	// start
 	err := sfn.Connect()
 	if err != nil {
-		logger.Errorf("[sfn1] connect err=%v", err)
+		logger.Errorf("[sfn-1] connect err=%v", err)
 		os.Exit(1)
 	}
 	// set the error handler function when server error occurs
 	sfn.SetErrorHandler(func(err error) {
-		logger.Errorf("[sfn1] receive server error: %v", err)
+		logger.Errorf("[sfn-1] receive server error: %v", err)
 		sfn.Close()
 		os.Exit(1)
 	})
@@ -45,13 +45,15 @@ func main() {
 }
 
 func handler(data []byte) (byte, []byte) {
-	var model noiseData
-	err := json.Unmarshal(data, &model)
+	// got
+	noise, err := strconv.ParseFloat(string(data), 10)
 	if err != nil {
-		logger.Errorf("[sfn] json.Marshal err=%v", err)
-		os.Exit(-2)
-	} else {
-		logger.Printf(">> [sfn] got tag=0x33, data=%+v", model)
+		logger.Errorf("[sfn-1] got err=%v", err)
+		return 0x0, nil
 	}
-	return 0x0, nil
+	// result
+	result := int(noise)
+	logger.Printf("[sfn-1] got: tag=0x33, data=%v, return: tag=0x34, data=%v", noise, result)
+
+	return 0x34, []byte(strconv.Itoa(result))
 }

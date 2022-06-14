@@ -5,11 +5,12 @@ All examples can be run by [Task](https://taskfile.dev), following the [Install 
 ```bash
 $ task -l |grep example
 
-* example-basic: 			YoMo basic usage
-* example-pipeline: 			Unix pipeline to cloud
-* example-iopipe: 			IO Pipe
-* example-multi-sfn: 			Multiple stream functions
-* example-cascading-zipper: 		Cascading zippers
+* example-backflow:                     Backflow usage
+* example-basic:                        YoMo basic usage
+* example-cascading-zipper:             Cascading zippers
+* example-iopipe:                       IO Pipe
+* example-multi-sfn:                    Multiple stream functions
+* example-pipeline:                     Unix pipeline to cloud
 ```
 
 can run each example directly by `task example-basic`, `task example-cascading-zipper` and etc.
@@ -33,3 +34,34 @@ can run each example directly by `task example-basic`, `task example-cascading-z
 ## Cascading zippers
 
 - [4-cascading-zipper](https://github.com/yomorun/yomo/tree/master/example/4-cascading-zipper): [source](https://docs.yomo.run/source) connect to [zipper-1](https://docs.yomo.run/zipper), then [zipper-1](https://docs.yomo.run/zipper) will broadcast the streams to the zippers in other regions.
+
+## Backflow 
+
+- [5-backflow](https://github.com/yomorun/yomo/tree/master/example/5-backflow): [source](https://docs.yomo.run/source) can receive stream functions processed results.
+
+  *This feature is experimental.*
+
+### Steps:
+
+1. Set observe data tags on source:
+
+   ```go
+   source := yomo.NewSource(
+     "yomo-source",
+     yomo.WithZipperAddr(addr),
+     // set observe data tags, 0x34, 0x35 is sfn return data tags
+     yomo.WithObserveDataTags(0x34, 0x35), 
+   )
+   ```
+
+2.  Set receive handler on source
+
+   ```go
+   // set receive handler
+   source.SetReceiveHandler(func(tag byte, data []byte) {
+     logger.Printf("[source] ♻️  receive backflow: tag=%#v, data=%s", tag, data)
+     // TODO:
+   })
+   ```
+
+   
