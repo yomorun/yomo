@@ -7,9 +7,19 @@ import (
 	"github.com/yomorun/yomo/core/log"
 )
 
-var logger = Default(isEnableDebug())
+var logger log.Logger
+
+func init() {
+	logger = Default(isEnableDebug())
+}
+
+// SetLogger allows developers to customize the logger instance.
+func SetLogger(l log.Logger) {
+	logger = l
+}
 
 // EnableDebug enables the development model for logging.
+// Deprecated
 func EnableDebug() {
 	logger = Default(true)
 }

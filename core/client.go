@@ -280,11 +280,6 @@ func (c *Client) Close() (err error) {
 	return err
 }
 
-// EnableDebug enables the development model for logging.
-// func (c *Client) EnableDebug() {
-// 	logger.EnableDebug()
-// }
-
 // WriteFrame writes a frame to the connection, gurantee threadsafe.
 func (c *Client) WriteFrame(frm frame.Frame) error {
 	// write on QUIC stream
