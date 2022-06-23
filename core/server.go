@@ -76,7 +76,7 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	}
 	udpAddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
-		return nil
+		return err
 	}
 	conn, err := net.ListenUDP("udp", udpAddr)
 	if err != nil {
