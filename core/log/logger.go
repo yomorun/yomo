@@ -24,7 +24,7 @@ type Logger interface {
 	SetLevel(Level)
 	// SetEncoding sets the logger's encoding
 	SetEncoding(encoding string)
-	// Printf logs a message wihout level
+	// Printf logs a message without level
 	Printf(template string, args ...interface{})
 	// Debugf logs a message at DebugLevel
 	Debugf(template string, args ...interface{})
