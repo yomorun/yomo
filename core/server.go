@@ -128,6 +128,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 					// if client close the connection, then we should close the connection
 					// @CC: when Source close the connection, it won't affect connectors
 					if conn := s.connector.Get(connID); conn != nil {
+						conn.Close()
 						// connector
 						s.connector.Remove(connID)
 						route := s.router.Route(conn.Metadata())
@@ -410,12 +411,11 @@ func (s *Server) handleDataFrame(c *Context) error {
 		logger.Debugf("%shandleDataFrame tag=%#x tid=%s, counter=%d, from=[%s](%s), to=[%s](%s)", ServerLogPrefix, f.Tag(), f.TransactionID(), s.counterOfDataFrame, from.Name(), fromID, to, toID)
 
 		// write data frame to stream
-		logger.Infof("%swrite data: [%s](%s) --> [%s](%s)", ServerLogPrefix, from, fromID, to, toID)
 		if err := conn.Write(f); err != nil {
-			logger.Errorf("%swrite data: [%s](%s) --> [%s](%s), err=%v", ServerLogPrefix, from, fromID, to, toID, err)
-			continue
+			logger.Warnf("%shandleDataFrame conn.Write tag=%#x tid=%s, from=[%s](%s), to=[%s](%s), %v", ServerLogPrefix, f.Tag(), f.TransactionID(), from.Name(), fromID, to, toID, err)
 		}
 	}
+
 	return nil
 }
 
