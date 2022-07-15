@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/pkg/logger"
 )
 
 // Connection wraps the specific io connections (typically quic.Connection) to transfer y3 frames
@@ -33,6 +34,7 @@ type connection struct {
 	clientID   string
 	observed   []byte // observed data tags
 	mu         sync.Mutex
+	closed     bool
 }
 
 func newConnection(name string, clientID string, clientType ClientType, metadata Metadata, stream io.ReadWriteCloser, observed []byte) Connection {
@@ -43,11 +45,15 @@ func newConnection(name string, clientID string, clientType ClientType, metadata
 		observed:   observed,
 		metadata:   metadata,
 		stream:     stream,
+		closed:     false,
 	}
 }
 
 // Close implements io.Close interface
 func (c *connection) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.closed = true
 	return c.stream.Close()
 }
 
@@ -70,6 +76,10 @@ func (c *connection) Metadata() Metadata {
 func (c *connection) Write(f frame.Frame) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.closed {
+		logger.Warnf("%sclient stream is closed: %s", ServerLogPrefix, c.clientID)
+		return nil
+	}
 	_, err := c.stream.Write(f.Encode())
 	return err
 }
