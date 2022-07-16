@@ -127,6 +127,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 				if err != nil {
 					// if client close the connection, then we should close the connection
 					// @CC: when Source close the connection, it won't affect connectors
+					name := "--"
 					if conn := s.connector.Get(connID); conn != nil {
 						conn.Close()
 						// connector
@@ -135,10 +136,9 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 						if route != nil {
 							route.Remove(connID)
 						}
-						logger.Printf("%s💔 [%s](%s) close the connection", ServerLogPrefix, conn.Name(), connID)
-					} else {
-						logger.Errorf("%s💙 [unknown](%s) on stream %v", ServerLogPrefix, connID, err)
+						name = conn.Name()
 					}
+					logger.Printf("%s💔 [%s](%s) close the connection: %v", ServerLogPrefix, name, connID, err)
 					break
 				}
 				defer stream.Close()
@@ -250,10 +250,12 @@ func (s *Server) mainFrameHandler(c *Context) error {
 		if err := s.handleHandshakeFrame(c); err != nil {
 			logger.Errorf("%shandleHandshakeFrame err: %s", ServerLogPrefix, err)
 			// close connections early to avoid resource consumption
-			goawayFrame := frame.NewGoawayFrame(err.Error())
-			if _, err := c.Stream.Write(goawayFrame.Encode()); err != nil {
-				logger.Errorf("%s⛔️ write to client[%s] GoawayFrame error:%v", ServerLogPrefix, c.ConnID, err)
-				return err
+			if c.Stream != nil {
+				goawayFrame := frame.NewGoawayFrame(err.Error())
+				if _, err := c.Stream.Write(goawayFrame.Encode()); err != nil {
+					logger.Errorf("%s⛔️ write to client[%s] GoawayFrame error:%v", ServerLogPrefix, c.ConnID, err)
+					return err
+				}
 			}
 		}
 	// case frame.TagOfPingFrame:
@@ -341,9 +343,9 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	default:
 		// unknown client type
 		s.connector.Remove(connID)
-		logger.Errorf("%sClientType=%# x, ilegal!", ServerLogPrefix, f.ClientType)
-		c.CloseWithError(yerr.ErrorCodeUnknownClient, "Unknown ClientType, illegal!")
-		return errors.New("core.server: Unknown ClientType, illegal")
+		err := fmt.Errorf("Illegal ClientType: %#x", f.ClientType)
+		c.CloseWithError(yerr.ErrorCodeUnknownClient, err.Error())
+		return err
 	}
 
 	s.connector.Add(connID, conn)
