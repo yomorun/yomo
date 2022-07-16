@@ -343,9 +343,9 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	default:
 		// unknown client type
 		s.connector.Remove(connID)
-		logger.Errorf("%sClientType=%# x, ilegal!", ServerLogPrefix, f.ClientType)
-		c.CloseWithError(yerr.ErrorCodeUnknownClient, "Unknown ClientType, illegal!")
-		return errors.New("core.server: Unknown ClientType, illegal")
+		err := fmt.Errorf("Illegal ClientType: %#x", f.ClientType)
+		c.CloseWithError(yerr.ErrorCodeUnknownClient, err.Error())
+		return err
 	}
 
 	s.connector.Add(connID, conn)
