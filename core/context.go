@@ -11,6 +11,8 @@ import (
 	"github.com/yomorun/yomo/pkg/logger"
 )
 
+var ctxPool sync.Pool
+
 // Context for YoMo Server.
 type Context struct {
 	// Conn is the connection of client.
@@ -26,13 +28,17 @@ type Context struct {
 	mu sync.RWMutex
 }
 
-func newContext(conn quic.Connection, stream quic.Stream) *Context {
-	return &Context{
-		Conn:   conn,
-		connID: conn.RemoteAddr().String(),
-		Stream: stream,
-		// keys:    make(map[string]interface{}),
+func newContext(conn quic.Connection, stream quic.Stream) (ctx *Context) {
+	v := ctxPool.Get()
+	if v == nil {
+		ctx = new(Context)
+	} else {
+		ctx = v.(*Context)
 	}
+	ctx.Conn = conn
+	ctx.Stream = stream
+	ctx.connID = conn.RemoteAddr().String()
+	return
 }
 
 // WithFrame sets a frame to context.
@@ -44,10 +50,18 @@ func (c *Context) WithFrame(f frame.Frame) *Context {
 // Clean the context.
 func (c *Context) Clean() {
 	logger.Debugf("%sconn[%s] context clean", ServerLogPrefix, c.connID)
+	c.reset()
+	ctxPool.Put(c)
+}
+
+func (c *Context) reset() {
+	c.Conn = nil
+	c.connID = ""
 	c.Stream = nil
 	c.Frame = nil
-	c.Keys = nil
-	c.Conn = nil
+	for k := range c.Keys {
+		delete(c.Keys, k)
+	}
 }
 
 // CloseWithError closes the stream and cleans the context.
