@@ -42,7 +42,7 @@ func (l *defaultListener) Listen(conn net.PacketConn, tlsConfig *tls.Config, qui
 		c = &quic.Config{
 			Versions:                       []quic.VersionNumber{quic.Version1, quic.VersionDraft29},
 			MaxIdleTimeout:                 time.Second * 5,
-			KeepAlive:                      true,
+			KeepAlivePeriod:                time.Second * 3,
 			MaxIncomingStreams:             1000,
 			MaxIncomingUniStreams:          1000,
 			HandshakeIdleTimeout:           time.Second * 3,
