@@ -419,7 +419,7 @@ func (c *Client) initOptions() error {
 		c.opts.QuicConfig = &quic.Config{
 			Versions:                       []quic.VersionNumber{quic.Version1, quic.VersionDraft29},
 			MaxIdleTimeout:                 time.Second * 40,
-			KeepAlive:                      true,
+			KeepAlivePeriod:                time.Second * 20,
 			MaxIncomingStreams:             1000,
 			MaxIncomingUniStreams:          1000,
 			HandshakeIdleTimeout:           time.Second * 3,
