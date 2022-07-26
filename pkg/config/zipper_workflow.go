@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -30,27 +31,15 @@ type WorkflowConfig struct {
 	Workflow `yaml:",inline"`
 }
 
+// ErrWorkflowConfigExt represents the extension of workflow config is incorrect.
+var ErrWorkflowConfigExt = errors.New(`workflow: the extension of workflow config is incorrect, it should ".yaml|.yml"`)
+
 // LoadWorkflowConfig the WorkflowConfig by path.
 func LoadWorkflowConfig(path string) (*WorkflowConfig, error) {
-	file, err := os.Open(path)
+	buffer, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
-
-	fileInfo, err := file.Stat()
-	if err != nil {
-		return nil, err
-	}
-
-	fileSize := fileInfo.Size()
-	buffer := make([]byte, fileSize)
-
-	_, err = file.Read(buffer)
-	if err != nil {
-		return nil, err
-	}
-
 	return load(buffer)
 }
 
@@ -65,8 +54,8 @@ func load(data []byte) (*WorkflowConfig, error) {
 
 // ParseWorkflowConfig parses the config.
 func ParseWorkflowConfig(config string) (*WorkflowConfig, error) {
-	if !(strings.HasSuffix(config, ".yaml") || strings.HasSuffix(config, ".yml")) {
-		return nil, errors.New(`workflow: the extension of workflow config is incorrect, it should ".yaml|.yml"`)
+	if ext := filepath.Ext(config); ext != ".yaml" && ext != ".yml" {
+		return nil, ErrWorkflowConfigExt
 	}
 
 	// parse workflow.yaml
@@ -86,7 +75,7 @@ func ParseWorkflowConfig(config string) (*WorkflowConfig, error) {
 
 func validateWorkflowConfig(wfConf *WorkflowConfig) error {
 	if wfConf == nil {
-		return errors.New("conf is nil")
+		return errors.New("workflow: config nil")
 	}
 
 	m := map[string][]App{
