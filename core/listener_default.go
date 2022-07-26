@@ -21,13 +21,13 @@ type defaultListener struct {
 var DefalutQuicConfig = &quic.Config{
 	Versions:                       []quic.VersionNumber{quic.Version1, quic.VersionDraft29},
 	MaxIdleTimeout:                 time.Second * 5,
-	KeepAlive:                      true,
+	KeepAlivePeriod:                time.Second * 2,
 	MaxIncomingStreams:             1000,
 	MaxIncomingUniStreams:          1000,
 	HandshakeIdleTimeout:           time.Second * 3,
 	InitialStreamReceiveWindow:     1024 * 1024 * 2,
 	InitialConnectionReceiveWindow: 1024 * 1024 * 2,
-	DisablePathMTUDiscovery:        true,
+	// DisablePathMTUDiscovery:        true,
 }
 
 func newListener(conn net.PacketConn, tlsConfig *tls.Config, quicConfig *quic.Config) (*defaultListener, error) {
