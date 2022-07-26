@@ -13,59 +13,52 @@ import (
 var _ Listener = (*defaultListener)(nil)
 
 type defaultListener struct {
-	c *quic.Config
+	conf *quic.Config
 	quic.Listener
 }
 
-func newListener() *defaultListener {
-	return &defaultListener{}
+// DefalutQuicConfig be used when `quicConfig` is nil.
+var DefalutQuicConfig = &quic.Config{
+	Versions:                       []quic.VersionNumber{quic.Version1, quic.VersionDraft29},
+	MaxIdleTimeout:                 time.Second * 5,
+	KeepAlive:                      true,
+	MaxIncomingStreams:             1000,
+	MaxIncomingUniStreams:          1000,
+	HandshakeIdleTimeout:           time.Second * 3,
+	InitialStreamReceiveWindow:     1024 * 1024 * 2,
+	InitialConnectionReceiveWindow: 1024 * 1024 * 2,
+	DisablePathMTUDiscovery:        true,
 }
 
-func (l *defaultListener) Name() string {
-	return "QUIC-Server"
-}
-
-func (l *defaultListener) Listen(conn net.PacketConn, tlsConfig *tls.Config, quicConfig *quic.Config) error {
-	var err error
-	// tls config
-	var tc *tls.Config = tlsConfig
-	if tc == nil {
-		tc, err = pkgtls.CreateServerTLSConfig(conn.LocalAddr().String())
+func newListener(conn net.PacketConn, tlsConfig *tls.Config, quicConfig *quic.Config) (*defaultListener, error) {
+	if tlsConfig == nil {
+		tc, err := pkgtls.CreateServerTLSConfig(conn.LocalAddr().String())
 		if err != nil {
 			logger.Errorf("%sCreateServerTLSConfig: %v", ServerLogPrefix, err)
-			return err
+			return &defaultListener{}, err
 		}
+		tlsConfig = tc
 	}
-	// quic config
-	var c *quic.Config = quicConfig
-	if c == nil {
-		c = &quic.Config{
-			Versions:                       []quic.VersionNumber{quic.Version1, quic.VersionDraft29},
-			MaxIdleTimeout:                 time.Second * 5,
-			KeepAlivePeriod:                time.Second * 3,
-			MaxIncomingStreams:             1000,
-			MaxIncomingUniStreams:          1000,
-			HandshakeIdleTimeout:           time.Second * 3,
-			InitialStreamReceiveWindow:     1024 * 1024 * 2,
-			InitialConnectionReceiveWindow: 1024 * 1024 * 2,
-			DisablePathMTUDiscovery:        true,
-			// Tracer:                         getQlogConfig("server"),
-		}
-	}
-	l.c = c
 
-	listener, err := quic.Listen(conn, tc, l.c)
-	if err != nil {
-		return err
+	if quicConfig == nil {
+		quicConfig = DefalutQuicConfig
 	}
-	l.Listener = listener
-	return nil
+
+	quicListener, err := quic.Listen(conn, tlsConfig, quicConfig)
+	if err != nil {
+		logger.Errorf("%squic Listen: %v", ServerLogPrefix, err)
+		return &defaultListener{}, err
+	}
+
+	return &defaultListener{conf: quicConfig, Listener: quicListener}, nil
 }
 
+func (l *defaultListener) Name() string { return "QUIC-Server" }
+
 func (l *defaultListener) Versions() []string {
-	vers := make([]string, 0)
-	for _, v := range l.c.Versions {
-		vers = append(vers, v.String())
+	versions := make([]string, len(l.conf.Versions))
+	for k, v := range l.conf.Versions {
+		versions[k] = v.String()
 	}
-	return vers
+	return versions
 }
