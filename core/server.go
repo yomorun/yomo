@@ -95,9 +95,8 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		return err
 	}
 
-	listener := newListener()
 	// listen the address
-	err := listener.Listen(conn, s.opts.TLSConfig, s.opts.QuicConfig)
+	listener, err := newListener(conn, s.opts.TLSConfig, s.opts.QuicConfig)
 	if err != nil {
 		logger.Errorf("%slistener.Listen: err=%v", ServerLogPrefix, err)
 		return err
