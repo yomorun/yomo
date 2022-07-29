@@ -426,7 +426,7 @@ func (c *Client) initOptions() error {
 			InitialStreamReceiveWindow:     1024 * 1024 * 2,
 			InitialConnectionReceiveWindow: 1024 * 1024 * 2,
 			TokenStore:                     quic.NewLRUTokenStore(10, 5),
-			DisablePathMTUDiscovery:        true,
+			// DisablePathMTUDiscovery:        true,
 		}
 	}
 	// credential
