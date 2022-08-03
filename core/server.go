@@ -31,19 +31,23 @@ type ServerOption func(*ServerOptions)
 // FrameHandler is the handler for frame.
 type FrameHandler func(c *Context) error
 
+// ConnectionHandler is the handler for quic connection
+type ConnectionHandler func(conn quic.Connection)
+
 // Server is the underlining server of Zipper
 type Server struct {
-	name               string
-	state              string
-	connector          Connector
-	router             Router
-	metadataBuilder    MetadataBuilder
-	counterOfDataFrame int64
-	downstreams        map[string]*Client
-	mu                 sync.Mutex
-	opts               ServerOptions
-	beforeHandlers     []FrameHandler
-	afterHandlers      []FrameHandler
+	name                    string
+	state                   string
+	connector               Connector
+	router                  Router
+	metadataBuilder         MetadataBuilder
+	counterOfDataFrame      int64
+	downstreams             map[string]*Client
+	mu                      sync.Mutex
+	opts                    ServerOptions
+	beforeHandlers          []FrameHandler
+	afterHandlers           []FrameHandler
+	connectionCloseHandlers []ConnectionHandler
 }
 
 // NewServer create a Server instance.
@@ -120,6 +124,12 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		logger.Infof("%s❤️1/ new connection: %s", ServerLogPrefix, connID)
 
 		go func(ctx context.Context, qconn quic.Connection) {
+			// connection close handlers
+			defer func() {
+				for _, h := range s.connectionCloseHandlers {
+					h(qconn)
+				}
+			}()
 			for {
 				logger.Infof("%s❤️2/ waiting for new stream", ServerLogPrefix)
 				stream, err := qconn.AcceptStream(ctx)
@@ -530,6 +540,11 @@ func (s *Server) SetBeforeHandlers(handlers ...FrameHandler) {
 // SetAfterHandlers set the after handlers of server.
 func (s *Server) SetAfterHandlers(handlers ...FrameHandler) {
 	s.afterHandlers = append(s.afterHandlers, handlers...)
+}
+
+// SetConnectionCloseHandlers set the connection close handlers of server.
+func (s *Server) SetConnectionCloseHandlers(handlers ...ConnectionHandler) {
+	s.connectionCloseHandlers = append(s.connectionCloseHandlers, handlers...)
 }
 
 func (s *Server) authNames() []string {
