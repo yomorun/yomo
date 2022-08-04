@@ -154,6 +154,7 @@ func (c *Client) handleFrame() {
 				c.logger.Errorf("%sconnection timeout, err=%v, zipper=%s", ClientLogPrefix, e, c.addr)
 				c.setState(ConnStateDisconnected)
 			} else if e, ok := err.(*quic.ApplicationError); ok {
+				c.setState(ConnStateDisconnected)
 				c.logger.Infof("%sapplication error, err=%v, errcode=%v", ClientLogPrefix, e, e.ErrorCode)
 				if yerr.Is(e.ErrorCode, yerr.ErrorCodeRejected) {
 					// if connection is rejected(eg: authenticate fails) from server
