@@ -29,7 +29,7 @@ type ErrorCode uint64
 
 const (
 	// ErrorCodeClientAbort client abort
-	ErrorCodeClientAbort ErrorCode = 0x00
+	ErrorCodeClientAbort ErrorCode = 0xC7
 	// ErrorCodeUnknown unknown error
 	ErrorCodeUnknown ErrorCode = 0xC0
 	// ErrorCodeClosed net closed

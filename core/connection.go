@@ -53,8 +53,12 @@ func newConnection(name string, clientID string, clientType ClientType, metadata
 func (c *connection) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.closed = true
-	return c.stream.Close()
+	var err error
+	if !c.closed {
+		c.closed = true
+		err = c.stream.Close()
+	}
+	return err
 }
 
 // Name returns the name of the connection, which is set by clients
