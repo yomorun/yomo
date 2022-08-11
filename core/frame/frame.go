@@ -40,6 +40,9 @@ const (
 	TagOfGoawayFrame   Type = 0x30
 	TagOfGoawayCode    Type = 0x01
 	TagOfGoawayMessage Type = 0x02
+	// ConnectToFrame
+	TagOfConnectToFrame Type = 0x3E
+	TagOfConnectToAddr  Type = 0x01
 )
 
 // Type represents the type of frame.
