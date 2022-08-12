@@ -246,6 +246,11 @@ func (c *Client) handleFrame() {
 					c.receiver(v)
 				}
 			}
+		case frame.TagOfConnectToFrame:
+			if v, ok := f.(*frame.ConnectToFrame); ok {
+				c.logger.Printf("%sreceive ConnectToFrame, connect_to_addr=%s", ClientLogPrefix, v.Addr())
+				c.setState(ConnStateTo)
+			}
 		default:
 			c.logger.Errorf("%sunknown signal", ClientLogPrefix)
 		}

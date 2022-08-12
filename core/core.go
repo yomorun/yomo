@@ -26,6 +26,7 @@ const (
 	ConnStateClosed         ConnState = "Closed" // close connection by server
 	ConnStateGoaway         ConnState = "Goaway"
 	ConnStateBackflow       ConnState = "Backflow"
+	ConnStateTo             ConnState = "To" // connect to server
 )
 
 // Prefix is the prefix for logger.
