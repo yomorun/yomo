@@ -95,17 +95,14 @@ func DecodeToMetaFrame(buf []byte) (*MetaFrame, error) {
 				return nil, err
 			}
 			meta.tid = val
-			break
 		case byte(TagOfMetadata):
 			meta.metadata = v.ToBytes()
-			break
 		case byte(TagOfSourceID):
 			sourceID, err := v.ToUTF8String()
 			if err != nil {
 				return nil, err
 			}
 			meta.sourceID = sourceID
-			break
 		}
 	}
 

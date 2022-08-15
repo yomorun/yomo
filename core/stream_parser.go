@@ -40,6 +40,7 @@ func ParseFrame(stream io.Reader) (frame.Frame, error) {
 	case 0x80 | byte(frame.TagOfBackflowFrame):
 		return frame.DecodeToBackflowFrame(buf)
 	default:
+		// todo: distinguish between illegal protocol and newer unknown frame from peer side
 		return nil, fmt.Errorf("unknown frame type, buf[0]=%#x", buf[0])
 	}
 }

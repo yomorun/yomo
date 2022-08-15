@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
-
 	"sync"
 	"time"
 
@@ -22,9 +22,6 @@ import (
 // ClientOption YoMo client options
 type ClientOption func(*ClientOptions)
 
-// ConnState describes the state of the connection.
-type ConnState = string
-
 // Client is the abstraction of a YoMo-Client. a YoMo-Client can be
 // Source, Upstream Zipper or StreamFunction.
 type Client struct {
@@ -32,7 +29,7 @@ type Client struct {
 	clientID   string                     // id of the client
 	clientType ClientType                 // type of the connection
 	conn       quic.Connection            // quic connection
-	stream     quic.Stream                // quic stream
+	fs         *FrameStream               // yomo abstract stream
 	state      ConnState                  // state of the connection
 	processor  func(*frame.DataFrame)     // functions to invoke when data arrived
 	receiver   func(*frame.BackflowFrame) // functions to invoke when data is processed
@@ -42,8 +39,6 @@ type Client struct {
 	localAddr  string // client local addr, it will be changed on reconnect
 	logger     log.Logger
 	errc       chan error
-	closec     chan bool
-	closed     bool
 }
 
 // NewClient creates a new YoMo-Client.
@@ -55,7 +50,6 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 		state:      ConnStateReady,
 		opts:       ClientOptions{},
 		errc:       make(chan error),
-		closec:     make(chan bool),
 	}
 	c.Init(opts...)
 	once.Do(func() {
@@ -75,7 +69,6 @@ func (c *Client) Init(opts ...ClientOption) error {
 
 // Connect connects to YoMo-Zipper.
 func (c *Client) Connect(ctx context.Context, addr string) error {
-
 	// TODO: refactor this later as a Connection Manager
 	// reconnect
 	// for download zipper
@@ -91,6 +84,13 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 }
 
 func (c *Client) connect(ctx context.Context, addr string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.state != ConnStateReady && c.state != ConnStateDisconnected {
+		return nil
+	}
+
 	c.addr = addr
 	c.state = ConnStateConnecting
 
@@ -100,6 +100,7 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 		c.state = ConnStateDisconnected
 		return err
 	}
+	c.conn = conn
 
 	// quic stream
 	stream, err := conn.OpenStreamSync(ctx)
@@ -107,11 +108,8 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 		c.state = ConnStateDisconnected
 		return err
 	}
+	c.fs = NewFrameStream(stream)
 
-	c.stream = stream
-	c.conn = conn
-
-	c.state = ConnStateAuthenticating
 	// send handshake
 	handshake := frame.NewHandshakeFrame(
 		c.name,
@@ -121,118 +119,84 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 		c.opts.Credential.Name(),
 		c.opts.Credential.Payload(),
 	)
-	err = c.WriteFrame(handshake)
+	_, err = c.fs.WriteFrame(handshake)
 	if err != nil {
-		c.state = ConnStateRejected
+		c.state = ConnStateDisconnected
 		return err
 	}
+
+	// todo: set ConnStateConnected when AcceptedFrame received
 	c.state = ConnStateConnected
-	c.localAddr = c.conn.LocalAddr().String()
+	c.localAddr = conn.LocalAddr().String()
 
 	c.logger.Printf("%s❤️  [%s][%s](%s) is connected to YoMo-Zipper %s", ClientLogPrefix, c.name, c.clientID, c.localAddr, addr)
 
 	// receiving frames
-	go c.handleFrame()
+	go func() {
+		reason, msg := c.handleFrame()
+		c.logger.Errorf("%shandleFrame: %s | %s", ClientLogPrefix, reason, msg)
+		stream.Close()
+
+		switch reason {
+		case CloseReasonKeepAliveTimeout:
+			c.mu.Lock()
+			if c.state != ConnStateClosed {
+				c.state = ConnStateDisconnected
+			}
+			c.mu.Unlock()
+		case CloseReasonLocalClosed:
+		case CloseReasonPeerClosed:
+			c.closeWithError(false, reason, msg)
+		default:
+			c.closeWithError(true, reason, msg)
+		}
+	}()
 
 	return nil
 }
 
 // handleFrame handles the logic when receiving frame from server.
-func (c *Client) handleFrame() {
-	// transform raw QUIC stream to wire format
-	fs := NewFrameStream(c.stream)
+func (c *Client) handleFrame() (CloseReason, string) {
 	for {
-		c.logger.Debugf("%shandleFrame connection state=%v", ClientLogPrefix, c.state)
 		// this will block until a frame is received
-		f, err := fs.ReadFrame()
+		f, err := c.fs.ReadFrame()
 		if err != nil {
-			defer c.stream.Close()
-			// defer c.conn.CloseWithError(0xD0, err.Error())
-
-			c.logger.Debugf("%shandleFrame(): %T | %v", ClientLogPrefix, err, err)
 			if e, ok := err.(*quic.IdleTimeoutError); ok {
-				c.logger.Errorf("%sconnection timeout, err=%v, zipper=%s", ClientLogPrefix, e, c.addr)
-				c.setState(ConnStateDisconnected)
+				return CloseReasonKeepAliveTimeout, e.Error()
 			} else if e, ok := err.(*quic.ApplicationError); ok {
-				c.setState(ConnStateDisconnected)
-				c.logger.Infof("%sapplication error, err=%v, errcode=%v", ClientLogPrefix, e, e.ErrorCode)
-				if yerr.Is(e.ErrorCode, yerr.ErrorCodeRejected) {
-					// if connection is rejected(eg: authenticate fails) from server
-					c.logger.Errorf("%sIllegal client, server rejected.", ClientLogPrefix)
-					c.setState(ConnStateRejected)
-					break
-				} else if yerr.Is(e.ErrorCode, yerr.ErrorCodeClientAbort) {
-					// client abort
-					c.logger.Infof("%sclient close the connection", ClientLogPrefix)
-					c.setState(ConnStateAborted)
-					break
-				} else if yerr.Is(e.ErrorCode, yerr.ErrorCodeGoaway) {
-					// server goaway
-					c.logger.Infof("%sserver goaway the connection", ClientLogPrefix)
-					c.setState(ConnStateGoaway)
-					break
-				} else if yerr.Is(e.ErrorCode, yerr.ErrorCodeHandshake) {
-					// handshake
-					c.logger.Errorf("%shandshake fails", ClientLogPrefix)
-					c.setState(ConnStateRejected)
-					break
+				if e.Remote {
+					return CloseReasonPeerClosed, e.ErrorMessage
+				} else {
+					return CloseReasonLocalClosed, e.ErrorMessage
 				}
+			} else if err == io.EOF {
+				return CloseReasonPeerClosed, "conn read EOF"
 			} else if errors.Is(err, net.ErrClosed) {
-				// if client close the connection, net.ErrClosed will be raise
-				c.logger.Errorf("%sconnection is closed, err=%v", ClientLogPrefix, err)
-				c.setState(ConnStateDisconnected)
-				// by quic-go IdleTimeoutError after connection's KeepAlive config.
-				break
+				return CloseReasonLocalClosed, err.Error()
 			} else {
-				// any error occurred, we should close the stream
-				// after this, conn.AcceptStream() will raise the error
-				c.setState(ConnStateClosed)
-				c.conn.CloseWithError(yerr.To(yerr.ErrorCodeUnknown), err.Error())
-				c.logger.Errorf("%sunknown error occurred, err=%v, state=%v", ClientLogPrefix, err, c.getState())
-				break
+				return CloseReasonUnknownError, fmt.Sprintf("%T: %s", err, err.Error())
 			}
 		}
-		if f == nil {
-			break
-		}
+
 		// read frame
 		// first, get frame type
 		frameType := f.Type()
 		c.logger.Debugf("%stype=%s, frame=%# x", ClientLogPrefix, frameType, frame.Shortly(f.Encode()))
 		switch frameType {
-		case frame.TagOfHandshakeFrame:
-			if v, ok := f.(*frame.HandshakeFrame); ok {
-				c.logger.Debugf("%sreceive HandshakeFrame, name=%v", ClientLogPrefix, v.Name)
-			}
-		case frame.TagOfPongFrame:
-			c.setState(ConnStatePong)
-		case frame.TagOfAcceptedFrame:
-			c.setState(ConnStateAccepted)
 		case frame.TagOfRejectedFrame:
-			c.setState(ConnStateRejected)
 			if v, ok := f.(*frame.RejectedFrame); ok {
-				c.logger.Errorf("%s🔑 receive RejectedFrame, message=%s", ClientLogPrefix, v.Message())
-				c.conn.CloseWithError(yerr.To(yerr.ErrorCodeRejected), v.Message())
-				c.errc <- errors.New(v.Message())
-				break
+				return CloseReasonReceivedRejected, v.Message()
 			}
 		case frame.TagOfGoawayFrame:
-			c.setState(ConnStateGoaway)
 			if v, ok := f.(*frame.GoawayFrame); ok {
-				c.logger.Errorf("%s⛔️ receive GoawayFrame, message=%s", ClientLogPrefix, v.Message())
-				c.conn.CloseWithError(yerr.To(yerr.ErrorCodeGoaway), v.Message())
-				c.errc <- errors.New(v.Message())
-				break
+				return CloseReasonReceivedGoaway, v.Message()
 			}
 		case frame.TagOfDataFrame: // DataFrame carries user's data
 			if v, ok := f.(*frame.DataFrame); ok {
-				c.setState(ConnStateTransportData)
 				c.logger.Debugf("%sreceive DataFrame, tag=%#x, tid=%s, carry=%# x", ClientLogPrefix, v.GetDataTag(), v.TransactionID(), v.GetCarriage())
 				if c.processor == nil {
 					c.logger.Warnf("%sprocessor is nil", ClientLogPrefix)
 				} else {
-					// TODO: should c.processor accept a DataFrame as parameter?
-					// c.processor(v.GetDataTagID(), v.GetCarriage(), v.GetMetaFrame())
 					c.processor(v)
 				}
 			}
@@ -242,100 +206,57 @@ func (c *Client) handleFrame() {
 				if c.receiver == nil {
 					c.logger.Warnf("%sreceiver is nil", ClientLogPrefix)
 				} else {
-					c.setState(ConnStateBackflow)
 					c.receiver(v)
 				}
 			}
 		default:
-			c.logger.Errorf("%sunknown signal", ClientLogPrefix)
+			c.logger.Warnf("%sunknown or unsupported frame %#x", ClientLogPrefix, frameType)
 		}
 	}
 }
 
 // Close the client.
-func (c *Client) Close() (err error) {
-	if c.conn != nil {
-		c.logger.Printf("%sclose the connection, name:%s, id:%s, addr:%s", ClientLogPrefix, c.name, c.clientID, c.conn.RemoteAddr().String())
-	}
-	if c.stream != nil {
-		err = c.stream.Close()
-		if err != nil {
-			c.logger.Errorf("%s stream.Close(): %v", ClientLogPrefix, err)
-		}
-	}
-	if c.conn != nil {
-		err = c.conn.CloseWithError(0, "client-ask-to-close-this-connection")
-		if err != nil {
-			c.logger.Errorf("%s connection.Close(): %v", ClientLogPrefix, err)
-		}
-	}
-	// close channel
-	c.mu.Lock()
-	if !c.closed {
-		close(c.errc)
-		close(c.closec)
-		c.closed = true
-	}
-	c.mu.Unlock()
+func (c *Client) Close() error {
+	return c.closeWithError(true, CloseReasonLocalClosed, "client ask to close")
+}
 
-	return err
+func (c *Client) closeWithError(closeConn bool, reason string, msg string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.state == ConnStateClosed {
+		return nil
+	}
+
+	c.logger.Printf("%sclose the connection, name:%s, id:%s, addr:%s", ClientLogPrefix, c.name, c.clientID, c.addr)
+
+	err := errors.New(reason + " | " + msg)
+	c.errc <- err
+	close(c.errc)
+
+	if closeConn && c.conn != nil {
+		if err := c.conn.CloseWithError(yerr.ErrorCodeClientAbort.To(), err.Error()); err != nil {
+			c.logger.Errorf("%sconnection.Close(): %v", ClientLogPrefix, err)
+		}
+	}
+
+	c.state = ConnStateClosed
+	return nil
 }
 
 // WriteFrame writes a frame to the connection, gurantee threadsafe.
 func (c *Client) WriteFrame(frm frame.Frame) error {
-	// write on QUIC stream
-	if c.stream == nil {
-		return errors.New("stream is nil")
-	}
-	if c.state == ConnStateDisconnected || c.state == ConnStateRejected {
-		return fmt.Errorf("client connection state is %s", c.state)
-	}
 	c.logger.Debugf("%s[%s](%s)@%s WriteFrame() will write frame: %s", ClientLogPrefix, c.name, c.localAddr, c.state, frm.Type())
 
-	data := frm.Encode()
-	// emit raw bytes of Frame
-	c.mu.Lock()
-	n, err := c.stream.Write(data)
-	c.mu.Unlock()
-	c.logger.Debugf("%sWriteFrame() wrote n=%d, data=%# x", ClientLogPrefix, n, frame.Shortly(data))
-	if err != nil {
-		c.setState(ConnStateDisconnected)
-		// c.state = ConnStateDisconnected
-		if e, ok := err.(*quic.IdleTimeoutError); ok {
-			c.logger.Errorf("%sWriteFrame() connection timeout, err=%v", ClientLogPrefix, e)
-		} else {
-			c.logger.Errorf("%sWriteFrame() wrote error=%v", ClientLogPrefix, err)
-			return err
-		}
+	if c.state != ConnStateConnected {
+		return errors.New("client connection isn't connected")
 	}
-	if n != len(data) {
-		err := errors.New("[client] yomo Client .Write() wroten error")
-		c.logger.Errorf("%s error:%v", ClientLogPrefix, err)
+
+	if _, err := c.fs.WriteFrame(frm); err != nil {
 		return err
 	}
-	return err
-}
 
-// update connection state
-func (c *Client) setState(state ConnState) {
-	c.logger.Debugf("setState to:%s", state)
-	c.mu.Lock()
-	c.state = state
-	c.mu.Unlock()
-}
-
-// getState get connection state
-func (c *Client) getState() ConnState {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.state
-}
-
-// update connection local addr
-func (c *Client) setLocalAddr(addr string) {
-	c.mu.Lock()
-	c.localAddr = addr
-	c.mu.Unlock()
+	return nil
 }
 
 // SetDataFrameObserver sets the data frame handler.
@@ -360,16 +281,15 @@ func (c *Client) reconnect(ctx context.Context, addr string) {
 		case <-ctx.Done():
 			c.logger.Debugf("%s[%s](%s) context.Done()", ClientLogPrefix, c.name, c.localAddr)
 			return
-		case <-c.closec:
-			c.logger.Debugf("%s[%s](%s) close channel", ClientLogPrefix, c.name, c.localAddr)
-			return
 		case <-t.C:
-			if c.getState() == ConnStateDisconnected {
+			if c.state == ConnStateDisconnected {
 				c.logger.Printf("%s[%s][%s](%s) is reconnecting to YoMo-Zipper %s...", ClientLogPrefix, c.name, c.clientID, c.localAddr, addr)
 				err := c.connect(ctx, addr)
 				if err != nil {
 					c.logger.Errorf("%s[%s][%s](%s) reconnect error:%v", ClientLogPrefix, c.name, c.clientID, c.localAddr, err)
 				}
+			} else if c.state == ConnStateClosed {
+				return
 			}
 		}
 	}
@@ -453,10 +373,10 @@ func (c *Client) Logger() log.Logger {
 func (c *Client) SetErrorHandler(fn func(err error)) {
 	if fn != nil {
 		go func() {
-			err := <-c.errc
-			if err != nil {
+			for err := range c.errc {
 				fn(err)
 			}
+			c.logger.Debugf("%serror handler channel closed", ClientLogPrefix)
 		}()
 	}
 }

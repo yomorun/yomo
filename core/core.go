@@ -10,22 +10,29 @@ var (
 	once sync.Once
 )
 
+// ConnState describes the state of the connection.
+type ConnState = string
+
 // ConnState represents the state of a connection.
 const (
-	ConnStateReady          ConnState = "Ready"
-	ConnStateDisconnected   ConnState = "Disconnected"
-	ConnStateConnecting     ConnState = "Connecting"
-	ConnStateConnected      ConnState = "Connected"
-	ConnStateAuthenticating ConnState = "Authenticating"
-	ConnStateAccepted       ConnState = "Accepted"
-	ConnStateRejected       ConnState = "Rejected"
-	ConnStatePing           ConnState = "Ping"
-	ConnStatePong           ConnState = "Pong"
-	ConnStateTransportData  ConnState = "TransportData"
-	ConnStateAborted        ConnState = "Aborted"
-	ConnStateClosed         ConnState = "Closed" // close connection by server
-	ConnStateGoaway         ConnState = "Goaway"
-	ConnStateBackflow       ConnState = "Backflow"
+	ConnStateReady        ConnState = "Ready"
+	ConnStateDisconnected ConnState = "Disconnected"
+	ConnStateConnecting   ConnState = "Connecting"
+	ConnStateConnected    ConnState = "Connected"
+	ConnStateClosed       ConnState = "Closed"
+)
+
+// CloseReason describes the reason of the closed connection.
+type CloseReason = string
+
+const (
+	CloseReasonUnknownError     CloseReason = "Unknown Error"
+	CloseReasonIllegalProtocol  CloseReason = "Illegal Protocol"
+	CloseReasonKeepAliveTimeout CloseReason = "KeepAlive Timeout"
+	CloseReasonLocalClosed      CloseReason = "Local Closed"
+	CloseReasonPeerClosed       CloseReason = "Peer Closed"
+	CloseReasonReceivedRejected CloseReason = "Received Rejected"
+	CloseReasonReceivedGoaway   CloseReason = "Received Goaway"
 )
 
 // Prefix is the prefix for logger.
