@@ -134,7 +134,7 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	// receiving frames
 	go func() {
 		reason, msg := c.handleFrame()
-		c.logger.Errorf("%shandleFrame: %s | %s", ClientLogPrefix, reason, msg)
+		c.logger.Infof("%shandleFrame: %s | %s", ClientLogPrefix, reason, msg)
 		stream.Close()
 
 		switch reason {
@@ -192,21 +192,25 @@ func (c *Client) handleFrame() (CloseReason, string) {
 				return CloseReasonReceivedGoaway, v.Message()
 			}
 		case frame.TagOfDataFrame: // DataFrame carries user's data
-			if v, ok := f.(*frame.DataFrame); ok {
-				c.logger.Debugf("%sreceive DataFrame, tag=%#x, tid=%s, carry=%# x", ClientLogPrefix, v.GetDataTag(), v.TransactionID(), v.GetCarriage())
-				if c.processor == nil {
-					c.logger.Warnf("%sprocessor is nil", ClientLogPrefix)
-				} else {
-					c.processor(v)
+			if c.state == ConnStateConnected {
+				if v, ok := f.(*frame.DataFrame); ok {
+					c.logger.Debugf("%sreceive DataFrame, tag=%#x, tid=%s, carry=%# x", ClientLogPrefix, v.GetDataTag(), v.TransactionID(), v.GetCarriage())
+					if c.processor == nil {
+						c.logger.Warnf("%sprocessor is nil", ClientLogPrefix)
+					} else {
+						c.processor(v)
+					}
 				}
 			}
 		case frame.TagOfBackflowFrame:
-			if v, ok := f.(*frame.BackflowFrame); ok {
-				c.logger.Debugf("%sreceive BackflowFrame, tag=%#x, carry=%# x", ClientLogPrefix, v.GetDataTag(), v.GetCarriage())
-				if c.receiver == nil {
-					c.logger.Warnf("%sreceiver is nil", ClientLogPrefix)
-				} else {
-					c.receiver(v)
+			if c.state == ConnStateConnected {
+				if v, ok := f.(*frame.BackflowFrame); ok {
+					c.logger.Debugf("%sreceive BackflowFrame, tag=%#x, carry=%# x", ClientLogPrefix, v.GetDataTag(), v.GetCarriage())
+					if c.receiver == nil {
+						c.logger.Warnf("%sreceiver is nil", ClientLogPrefix)
+					} else {
+						c.receiver(v)
+					}
 				}
 			}
 		default:
@@ -228,7 +232,7 @@ func (c *Client) closeWithError(closeConn bool, reason string, msg string) error
 		return nil
 	}
 
-	c.logger.Printf("%sclose the connection, name:%s, id:%s, addr:%s", ClientLogPrefix, c.name, c.clientID, c.addr)
+	c.logger.Printf("%s💔 close the connection, name:%s, id:%s, addr:%s", ClientLogPrefix, c.name, c.clientID, c.addr)
 
 	err := errors.New(reason + " | " + msg)
 	c.errc <- err
