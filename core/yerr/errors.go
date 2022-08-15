@@ -96,8 +96,8 @@ func Parse(qerr quic.ApplicationErrorCode) ErrorCode {
 }
 
 // To convert yomo ErrorCode to quic ApplicationErrorCode
-func To(code ErrorCode) quic.ApplicationErrorCode {
-	return quic.ApplicationErrorCode(code)
+func (e ErrorCode) To() quic.ApplicationErrorCode {
+	return quic.ApplicationErrorCode(e)
 }
 
 // DuplicateNameError duplicate name(sfn)

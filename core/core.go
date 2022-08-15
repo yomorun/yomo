@@ -10,22 +10,16 @@ var (
 	once sync.Once
 )
 
+// ConnState represents the state of the connection.
+type ConnState = string
+
 // ConnState represents the state of a connection.
 const (
-	ConnStateReady          ConnState = "Ready"
-	ConnStateDisconnected   ConnState = "Disconnected"
-	ConnStateConnecting     ConnState = "Connecting"
-	ConnStateConnected      ConnState = "Connected"
-	ConnStateAuthenticating ConnState = "Authenticating"
-	ConnStateAccepted       ConnState = "Accepted"
-	ConnStateRejected       ConnState = "Rejected"
-	ConnStatePing           ConnState = "Ping"
-	ConnStatePong           ConnState = "Pong"
-	ConnStateTransportData  ConnState = "TransportData"
-	ConnStateAborted        ConnState = "Aborted"
-	ConnStateClosed         ConnState = "Closed" // close connection by server
-	ConnStateGoaway         ConnState = "Goaway"
-	ConnStateBackflow       ConnState = "Backflow"
+	ConnStateReady        ConnState = "Ready"
+	ConnStateDisconnected ConnState = "Disconnected"
+	ConnStateConnecting   ConnState = "Connecting"
+	ConnStateConnected    ConnState = "Connected"
+	ConnStateClosed       ConnState = "Closed"
 )
 
 // Prefix is the prefix for logger.
