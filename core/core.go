@@ -10,7 +10,7 @@ var (
 	once sync.Once
 )
 
-// ConnState describes the state of the connection.
+// ConnState represents the state of the connection.
 type ConnState = string
 
 // ConnState represents the state of a connection.
@@ -22,9 +22,10 @@ const (
 	ConnStateClosed       ConnState = "Closed"
 )
 
-// CloseReason describes the reason of the closed connection.
+// CloseReason represents the reason of the closed connection.
 type CloseReason = string
 
+// CloseReason represents the reason of the closed connection.
 const (
 	CloseReasonUnknownError     CloseReason = "Unknown Error"
 	CloseReasonIllegalProtocol  CloseReason = "Illegal Protocol"

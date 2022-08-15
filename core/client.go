@@ -77,11 +77,7 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 	go c.reconnect(ctx, addr)
 
 	// connect
-	if err := c.connect(ctx, addr); err != nil {
-		return err
-	}
-
-	return nil
+	return c.connect(ctx, addr)
 }
 
 func (c *Client) connect(ctx context.Context, addr string) error {
@@ -167,16 +163,14 @@ func (c *Client) handleFrame() (CloseReason, string) {
 			} else if e, ok := err.(*quic.ApplicationError); ok {
 				if e.Remote {
 					return CloseReasonPeerClosed, e.ErrorMessage
-				} else {
-					return CloseReasonLocalClosed, e.ErrorMessage
 				}
+				return CloseReasonLocalClosed, e.ErrorMessage
 			} else if err == io.EOF {
 				return CloseReasonPeerClosed, "conn read EOF"
 			} else if errors.Is(err, net.ErrClosed) {
 				return CloseReasonLocalClosed, err.Error()
-			} else {
-				return CloseReasonUnknownError, fmt.Sprintf("%T: %s", err, err.Error())
 			}
+			return CloseReasonUnknownError, fmt.Sprintf("%T: %s", err, err.Error())
 		}
 
 		// read frame
