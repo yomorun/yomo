@@ -31,8 +31,9 @@ type Client struct {
 	conn       quic.Connection            // quic connection
 	fs         *FrameStream               // yomo abstract stream
 	state      ConnState                  // state of the connection
-	processor  func(*frame.DataFrame)     // functions to invoke when data arrived
-	receiver   func(*frame.BackflowFrame) // functions to invoke when data is processed
+	processor  func(*frame.DataFrame)     // function to invoke when data arrived
+	receiver   func(*frame.BackflowFrame) // function to invoke when data is processed
+	errfn      func(error)                // function to invoke when error occured
 	addr       string                     // the address of server connected to
 	mu         sync.Mutex
 	opts       ClientOptions
@@ -285,6 +286,15 @@ func (c *Client) reconnect(ctx context.Context, addr string) {
 		case <-ctx.Done():
 			c.logger.Debugf("%s[%s](%s) context.Done()", ClientLogPrefix, c.name, c.localAddr)
 			return
+		case err, ok := <-c.errc:
+			fmt.Println("wujunzhuo error channel")
+			if !ok {
+				c.logger.Debugf("%s[%s](%s) error channel closed", ClientLogPrefix, c.name, c.localAddr)
+				return
+			}
+			if c.errfn != nil && err != nil {
+				c.errfn(err)
+			}
 		case <-t.C:
 			if c.state == ConnStateDisconnected {
 				c.logger.Printf("%s[%s][%s](%s) is reconnecting to YoMo-Zipper %s...", ClientLogPrefix, c.name, c.clientID, c.localAddr, addr)
@@ -292,8 +302,6 @@ func (c *Client) reconnect(ctx context.Context, addr string) {
 				if err != nil {
 					c.logger.Errorf("%s[%s][%s](%s) reconnect error:%v", ClientLogPrefix, c.name, c.clientID, c.localAddr, err)
 				}
-			} else if c.state == ConnStateClosed {
-				return
 			}
 		}
 	}
@@ -375,14 +383,7 @@ func (c *Client) Logger() log.Logger {
 
 // SetErrorHandler set error handler
 func (c *Client) SetErrorHandler(fn func(err error)) {
-	if fn != nil {
-		go func() {
-			for err := range c.errc {
-				fn(err)
-			}
-			c.logger.Debugf("%serror handler channel closed", ClientLogPrefix)
-		}()
-	}
+	c.errfn = fn
 }
 
 // ClientID return the client ID
