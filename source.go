@@ -19,14 +19,16 @@ type Source interface {
 	Connect() error
 	// SetDataTag will set the tag of data when invoking Write().
 	SetDataTag(tag uint8)
-	// Write the data to downstream.
-	Write(p []byte) (n int, err error)
+	// Write the data to directed downstream.
+	Write(data []byte) (n int, err error)
 	// WriteWithTag will write data with specified tag, default transactionID is epoch time.
 	WriteWithTag(tag uint8, data []byte) error
 	// SetErrorHandler set the error handler function when server error occurs
 	SetErrorHandler(fn func(err error))
 	// [Experimental] SetReceiveHandler set the observe handler function
 	SetReceiveHandler(fn func(tag byte, data []byte))
+	// Write the data to all downstream
+	Broadcast(data []byte) error
 }
 
 // YoMo-Source
@@ -107,4 +109,15 @@ func (s *yomoSource) SetErrorHandler(fn func(err error)) {
 func (s *yomoSource) SetReceiveHandler(fn func(byte, []byte)) {
 	s.fn = fn
 	s.client.Logger().Debugf("%sSetReceiveHandler(%v)", sourceLogPrefix, s.fn)
+}
+
+// Broadcast Write the data to all downstream
+func (s *yomoSource) Broadcast(data []byte) error {
+	f := frame.NewDataFrame()
+	f.SetCarriage(byte(s.tag), data)
+	f.SetSourceID(s.client.ClientID())
+	f.SetDispatch(frame.DispatchBroadcast)
+	s.client.Logger().Debugf("%sBroadcast: tid=%s, source_id=%s, data[%d]=%# x",
+		sourceLogPrefix, f.TransactionID(), f.SourceID(), len(data), frame.Shortly(data))
+	return s.client.WriteFrame(f)
 }
