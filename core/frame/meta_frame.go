@@ -1,6 +1,7 @@
 package frame
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 
@@ -14,6 +15,7 @@ type MetaFrame struct {
 	tid      string
 	metadata []byte
 	sourceID string
+	dispatch Dispatch
 }
 
 // NewMetaFrame creates a new MetaFrame instance.
@@ -22,7 +24,7 @@ func NewMetaFrame() *MetaFrame {
 	if err != nil {
 		tid = strconv.FormatInt(time.Now().Unix(), 10) // todo: UnixMicro since go 1.17
 	}
-	return &MetaFrame{tid: tid}
+	return &MetaFrame{tid: tid, dispatch: DispatchDirected}
 }
 
 // SetTransactionID set the transaction ID.
@@ -55,6 +57,16 @@ func (m *MetaFrame) SourceID() string {
 	return m.sourceID
 }
 
+// SetDispatch set dispatch mode
+func (m *MetaFrame) SetDispatch(mode Dispatch) {
+	m.dispatch = mode
+}
+
+// Dispatch get dispatch mode
+func (m *MetaFrame) Dispatch() Dispatch {
+	return m.dispatch
+}
+
 // Encode implements Frame.Encode method.
 func (m *MetaFrame) Encode() []byte {
 	meta := y3.NewNodePacketEncoder(byte(TagOfMetaFrame))
@@ -74,6 +86,11 @@ func (m *MetaFrame) Encode() []byte {
 		metadata.SetBytesValue(m.metadata)
 		meta.AddPrimitivePacket(metadata)
 	}
+
+	// dispatch mode
+	dispatch := y3.NewPrimitivePacketEncoder(byte(TagOfDispatch))
+	dispatch.SetBytesValue([]byte{m.dispatch})
+	meta.AddPrimitivePacket(dispatch)
 
 	return meta.Encode()
 }
@@ -95,17 +112,21 @@ func DecodeToMetaFrame(buf []byte) (*MetaFrame, error) {
 				return nil, err
 			}
 			meta.tid = val
-			break
 		case byte(TagOfMetadata):
 			meta.metadata = v.ToBytes()
-			break
 		case byte(TagOfSourceID):
 			sourceID, err := v.ToUTF8String()
 			if err != nil {
 				return nil, err
 			}
 			meta.sourceID = sourceID
-			break
+		case byte(TagOfDispatch):
+			dispatch := v.ToBytes()
+			fmt.Printf("dispatch: %v", dispatch)
+			if len(dispatch) < 1 {
+				meta.dispatch = DispatchDirected
+			}
+			meta.dispatch = dispatch[0]
 		}
 	}
 

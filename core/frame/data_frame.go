@@ -70,6 +70,16 @@ func (d *DataFrame) SourceID() string {
 	return d.metaFrame.SourceID()
 }
 
+// SetDispatch set dispatch mode
+func (d *DataFrame) SetDispatch(mode Dispatch) {
+	d.metaFrame.dispatch = mode
+}
+
+// Dispatch get dispatch mode
+func (d *DataFrame) Dispatch() Dispatch {
+	return d.metaFrame.dispatch
+}
+
 // Encode return Y3 encoded bytes of `DataFrame`
 func (d *DataFrame) Encode() []byte {
 	data := y3.NewNodePacketEncoder(byte(d.Type()))

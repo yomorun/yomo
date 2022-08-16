@@ -231,7 +231,7 @@ func (s *Server) handleConnection(c *Context) {
 		// before frame handlers
 		for _, handler := range s.beforeHandlers {
 			if err := handler(c); err != nil {
-				logger.Errorf("%safterFrameHandler err: %s", ServerLogPrefix, err)
+				logger.Errorf("%sbeforeFrameHandler err: %s", ServerLogPrefix, err)
 				c.CloseWithError(yerr.ErrorCodeBeforeHandler, err.Error())
 				return
 			}
