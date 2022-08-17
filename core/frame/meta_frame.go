@@ -1,7 +1,6 @@
 package frame
 
 import (
-	"fmt"
 	"strconv"
 	"time"
 
@@ -122,7 +121,6 @@ func DecodeToMetaFrame(buf []byte) (*MetaFrame, error) {
 			meta.sourceID = sourceID
 		case byte(TagOfDispatch):
 			dispatch := v.ToBytes()
-			fmt.Printf("dispatch: %v", dispatch)
 			if len(dispatch) < 1 {
 				meta.dispatch = DispatchDirected
 			}

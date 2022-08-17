@@ -41,6 +41,8 @@ func generateAndSendData(stream yomo.Source) error {
 		data := []byte(fmt.Sprintf("%d", rnd.Uint32()))
 		// send data via QUIC stream.
 		_, err := stream.Write(data)
+		// using the following code, zipper will broadcast this message to cascading zippers
+		// err := stream.Broadcast(data)
 		if err != nil {
 			log.Printf("[source] ❌ Emit %v to YoMo-Zipper failure with err: %v", data, err)
 			time.Sleep(500 * time.Millisecond)
