@@ -117,14 +117,13 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 		c.opts.Credential.Name(),
 		c.opts.Credential.Payload(),
 	)
-	_, err = c.fs.WriteFrame(handshake)
-	if err != nil {
+	if _, err := c.fs.WriteFrame(handshake); err != nil {
 		c.state = ConnStateDisconnected
 		return err
 	}
 
 	c.state = ConnStateConnected
-	c.localAddr = conn.LocalAddr().String()
+	c.localAddr = c.conn.LocalAddr().String()
 
 	c.logger.Printf("%s❤️  [%s][%s](%s) is connected to YoMo-Zipper %s", ClientLogPrefix, c.name, c.clientID, c.localAddr, addr)
 
