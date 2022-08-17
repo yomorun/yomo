@@ -47,7 +47,7 @@ const (
 type Dispatch = byte
 
 const (
-	// DispatchNormal dispatch directed mode
+	// DispatchDirected dispatch directed mode
 	DispatchDirected Dispatch = 0x00
 	// DispatchBroadcast dispatch broadcast mode
 	DispatchBroadcast Dispatch = 0x01
