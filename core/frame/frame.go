@@ -43,12 +43,14 @@ const (
 	TagOfGoawayMessage Type = 0x02
 )
 
-// frame dispatch mode
+// Dispatch frame dispatch mode
 type Dispatch = byte
 
 const (
-	DispatchDirected  Dispatch = 0x00 // directed
-	DispatchBroadcast Dispatch = 0x01 // broadcast
+	// DispatchNormal dispatch directed mode
+	DispatchDirected Dispatch = 0x00
+	// DispatchBroadcast dispatch broadcast mode
+	DispatchBroadcast Dispatch = 0x01
 )
 
 // Type represents the type of frame.
