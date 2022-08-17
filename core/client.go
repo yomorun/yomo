@@ -131,26 +131,26 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	// receiving frames
 	go func() {
 		closeConn, closeClient, err := c.handleFrame()
-		c.logger.Errorf("%shandleFrame: %v, %v, %v", ClientLogPrefix, closeConn, closeClient, err)
+		c.logger.Debugf("%shandleFrame: %v, %v, %T, %v", ClientLogPrefix, closeConn, closeClient, err, err)
+
+		c.mu.Lock()
+		defer c.mu.Unlock()
+
+		if c.state == ConnStateClosed {
+			return
+		}
+
+		c.state = ConnStateDisconnected
+		c.errc <- err
 
 		stream.Close()
 		if closeConn {
 			c.conn.CloseWithError(yerr.ErrorCodeClientAbort.To(), err.Error())
 		}
 
-		c.mu.Lock()
-
-		if c.state != ConnStateClosed {
-			c.errc <- err
-		}
-
 		if closeClient {
 			c.close()
-		} else if c.state != ConnStateClosed {
-			c.state = ConnStateDisconnected
 		}
-
-		c.mu.Unlock()
 	}()
 
 	return nil
@@ -165,6 +165,7 @@ func (c *Client) handleFrame() (bool, bool, error) {
 			if err == io.EOF {
 				return true, false, err
 			} else if strings.HasPrefix(err.Error(), "unknown frame type") {
+				c.logger.Warnf("%s%v", ClientLogPrefix, err)
 				continue
 			} else if e, ok := err.(*quic.IdleTimeoutError); ok {
 				return false, false, e
@@ -218,21 +219,21 @@ func (c *Client) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	if c.state == ConnStateClosed {
+		return nil
+	}
+
 	c.conn.CloseWithError(yerr.ErrorCodeClientAbort.To(), "client ask to close")
 	return c.close()
 }
 
 func (c *Client) close() error {
-	if c.state == ConnStateClosed {
-		return nil
-	}
-	c.state = ConnStateClosed
-
 	c.logger.Printf("%s💔 close the connection, name:%s, id:%s, addr:%s", ClientLogPrefix, c.name, c.clientID, c.addr)
 
 	// close error channel so that close handler function will be called
 	close(c.errc)
 
+	c.state = ConnStateClosed
 	return nil
 }
 
