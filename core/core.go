@@ -22,20 +22,6 @@ const (
 	ConnStateClosed       ConnState = "Closed"
 )
 
-// CloseReason represents the reason of the closed connection.
-type CloseReason = string
-
-// CloseReason represents the reason of the closed connection.
-const (
-	CloseReasonUnknownError     CloseReason = "Unknown Error"
-	CloseReasonIllegalProtocol  CloseReason = "Illegal Protocol"
-	CloseReasonKeepAliveTimeout CloseReason = "KeepAlive Timeout"
-	CloseReasonLocalClosed      CloseReason = "Local Closed"
-	CloseReasonPeerClosed       CloseReason = "Peer Closed"
-	CloseReasonReceivedRejected CloseReason = "Received Rejected"
-	CloseReasonReceivedGoaway   CloseReason = "Received Goaway"
-)
-
 // Prefix is the prefix for logger.
 const (
 	ClientLogPrefix     = "\033[36m[core:client]\033[0m "
