@@ -92,26 +92,26 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 
 func (c *Client) connect(ctx context.Context, addr string) error {
 	c.addr = addr
-	c.state = ConnStateConnecting
+	c.setState(ConnStateConnecting)
 
 	// create quic connection
 	conn, err := quic.DialAddrContext(ctx, addr, c.opts.TLSConfig, c.opts.QuicConfig)
 	if err != nil {
-		c.state = ConnStateDisconnected
+		c.setState(ConnStateDisconnected)
 		return err
 	}
 
 	// quic stream
 	stream, err := conn.OpenStreamSync(ctx)
 	if err != nil {
-		c.state = ConnStateDisconnected
+		c.setState(ConnStateDisconnected)
 		return err
 	}
 
 	c.stream = stream
 	c.conn = conn
 
-	c.state = ConnStateAuthenticating
+	c.setState(ConnStateAuthenticating)
 	// send handshake
 	handshake := frame.NewHandshakeFrame(
 		c.name,
@@ -123,10 +123,10 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	)
 	err = c.WriteFrame(handshake)
 	if err != nil {
-		c.state = ConnStateRejected
+		c.setState(ConnStateRejected)
 		return err
 	}
-	c.state = ConnStateConnected
+	c.setState(ConnStateConnected)
 	c.localAddr = c.conn.LocalAddr().String()
 
 	c.logger.Printf("%s❤️  [%s][%s](%s) is connected to YoMo-Zipper %s", ClientLogPrefix, c.name, c.clientID, c.localAddr, addr)
@@ -142,7 +142,7 @@ func (c *Client) handleFrame() {
 	// transform raw QUIC stream to wire format
 	fs := NewFrameStream(c.stream)
 	for {
-		c.logger.Debugf("%shandleFrame connection state=%v", ClientLogPrefix, c.state)
+		c.logger.Debugf("%shandleFrame connection state=%v", ClientLogPrefix, c.getState())
 		// this will block until a frame is received
 		f, err := fs.ReadFrame()
 		if err != nil {
@@ -287,10 +287,11 @@ func (c *Client) WriteFrame(frm frame.Frame) error {
 	if c.stream == nil {
 		return errors.New("stream is nil")
 	}
-	if c.state == ConnStateDisconnected || c.state == ConnStateRejected {
-		return fmt.Errorf("client connection state is %s", c.state)
+	state := c.getState()
+	if state == ConnStateDisconnected || state == ConnStateRejected {
+		return fmt.Errorf("client connection state is %s", state)
 	}
-	c.logger.Debugf("%s[%s](%s)@%s WriteFrame() will write frame: %s", ClientLogPrefix, c.name, c.localAddr, c.state, frm.Type())
+	c.logger.Debugf("%s[%s](%s)@%s WriteFrame() will write frame: %s", ClientLogPrefix, c.name, c.localAddr, state, frm.Type())
 
 	data := frm.Encode()
 	// emit raw bytes of Frame
@@ -327,8 +328,10 @@ func (c *Client) setState(state ConnState) {
 // getState get connection state
 func (c *Client) getState() ConnState {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.state
+	state := c.state
+	c.mu.Unlock()
+
+	return state
 }
 
 // update connection local addr
