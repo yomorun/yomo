@@ -142,7 +142,7 @@ func (c *Client) handleFrame() {
 	// transform raw QUIC stream to wire format
 	fs := NewFrameStream(c.stream)
 	for {
-		c.logger.Debugf("%shandleFrame connection state=%v", ClientLogPrefix, c.state)
+		c.logger.Debugf("%shandleFrame connection state=%v", ClientLogPrefix, c.getState())
 		// this will block until a frame is received
 		f, err := fs.ReadFrame()
 		if err != nil {
@@ -287,10 +287,11 @@ func (c *Client) WriteFrame(frm frame.Frame) error {
 	if c.stream == nil {
 		return errors.New("stream is nil")
 	}
-	if c.state == ConnStateDisconnected || c.state == ConnStateRejected {
-		return fmt.Errorf("client connection state is %s", c.state)
+	state := c.getState()
+	if state == ConnStateDisconnected || state == ConnStateRejected {
+		return fmt.Errorf("client connection state is %s", state)
 	}
-	c.logger.Debugf("%s[%s](%s)@%s WriteFrame() will write frame: %s", ClientLogPrefix, c.name, c.localAddr, c.state, frm.Type())
+	c.logger.Debugf("%s[%s](%s)@%s WriteFrame() will write frame: %s", ClientLogPrefix, c.name, c.localAddr, state, frm.Type())
 
 	data := frm.Encode()
 	// emit raw bytes of Frame
@@ -300,7 +301,6 @@ func (c *Client) WriteFrame(frm frame.Frame) error {
 	c.logger.Debugf("%sWriteFrame() wrote n=%d, data=%# x", ClientLogPrefix, n, frame.Shortly(data))
 	if err != nil {
 		c.setState(ConnStateDisconnected)
-		// c.state = ConnStateDisconnected
 		if e, ok := err.(*quic.IdleTimeoutError); ok {
 			c.logger.Errorf("%sWriteFrame() connection timeout, err=%v", ClientLogPrefix, e)
 		} else {
