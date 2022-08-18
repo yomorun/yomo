@@ -92,7 +92,7 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 
 func (c *Client) connect(ctx context.Context, addr string) error {
 	c.addr = addr
-	c.state = ConnStateConnecting
+	c.setState(ConnStateConnecting)
 
 	// create quic connection
 	conn, err := quic.DialAddrContext(ctx, addr, c.opts.TLSConfig, c.opts.QuicConfig)
@@ -111,7 +111,7 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	c.stream = stream
 	c.conn = conn
 
-	c.state = ConnStateAuthenticating
+	c.setState(ConnStateAuthenticating)
 	// send handshake
 	handshake := frame.NewHandshakeFrame(
 		c.name,
@@ -123,10 +123,10 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	)
 	err = c.WriteFrame(handshake)
 	if err != nil {
-		c.state = ConnStateRejected
+		c.setState(ConnStateRejected)
 		return err
 	}
-	c.state = ConnStateConnected
+	c.setState(ConnStateConnected)
 	c.localAddr = c.conn.LocalAddr().String()
 
 	c.logger.Printf("%s❤️  [%s][%s](%s) is connected to YoMo-Zipper %s", ClientLogPrefix, c.name, c.clientID, c.localAddr, addr)
