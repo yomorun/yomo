@@ -31,19 +31,25 @@ type ServerOption func(*ServerOptions)
 // FrameHandler is the handler for frame.
 type FrameHandler func(c *Context) error
 
+// ConnectionHandler is the handler for quic connection
+type ConnectionHandler func(conn quic.Connection)
+
 // Server is the underlining server of Zipper
 type Server struct {
-	name               string
-	state              string
-	connector          Connector
-	router             Router
-	metadataBuilder    MetadataBuilder
-	counterOfDataFrame int64
-	downstreams        map[string]*Client
-	mu                 sync.Mutex
-	opts               ServerOptions
-	beforeHandlers     []FrameHandler
-	afterHandlers      []FrameHandler
+	name                    string
+	state                   string
+	connector               Connector
+	router                  Router
+	metadataBuilder         MetadataBuilder
+	counterOfDataFrame      int64
+	downstreams             map[string]*Client
+	mu                      sync.Mutex
+	opts                    ServerOptions
+	beforeHandlers          []FrameHandler
+	afterHandlers           []FrameHandler
+	connectionCloseHandlers []ConnectionHandler
+	listener                Listener
+	wg                      *sync.WaitGroup
 }
 
 // NewServer create a Server instance.
@@ -52,6 +58,7 @@ func NewServer(name string, opts ...ServerOption) *Server {
 		name:        name,
 		connector:   newConnector(),
 		downstreams: make(map[string]*Client),
+		wg:          new(sync.WaitGroup),
 	}
 	s.Init(opts...)
 
@@ -101,34 +108,40 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		logger.Errorf("%slistener.Listen: err=%v", ServerLogPrefix, err)
 		return err
 	}
-	defer listener.Close()
+	s.listener = listener
+	// defer listener.Close()
 	logger.Printf("%s✅ [%s][%d] Listening on: %s, MODE: %s, QUIC: %v, AUTH: %s", ServerLogPrefix, s.name, os.Getpid(), listener.Addr(), mode(), listener.Versions(), s.authNames())
 
 	s.state = ConnStateConnected
+	// loop
 	for {
 		// create a new connection when new yomo-client connected
 		sctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
-		conn, err := listener.Accept(sctx)
+		conn, err := s.listener.Accept(sctx)
 		if err != nil {
-			logger.Errorf("%screate connection error: %v", ServerLogPrefix, err)
+			logger.Errorf("%slistener accept connections error: %v", ServerLogPrefix, err)
 			return err
 		}
-
+		// connection close handlers on server shutdown
+		// defer s.doConnectionCloseHandlers(conn)
+		s.wg.Add(1)
 		connID := GetConnID(conn)
 		logger.Infof("%s❤️1/ new connection: %s", ServerLogPrefix, connID)
 
 		go func(ctx context.Context, qconn quic.Connection) {
+			// connection close handlers on client connect timeout
+			defer s.doConnectionCloseHandlers(qconn)
 			for {
 				logger.Infof("%s❤️2/ waiting for new stream", ServerLogPrefix)
 				stream, err := qconn.AcceptStream(ctx)
 				if err != nil {
 					// if client close the connection, then we should close the connection
 					// @CC: when Source close the connection, it won't affect connectors
-					name := "--"
+					name := "-"
+					clientID := "-"
 					if conn := s.connector.Get(connID); conn != nil {
-						conn.Close()
 						// connector
 						s.connector.Remove(connID)
 						route := s.router.Route(conn.Metadata())
@@ -136,15 +149,16 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 							route.Remove(connID)
 						}
 						name = conn.Name()
+						clientID = conn.ClientID()
+						conn.Close()
 					}
-					logger.Printf("%s💔 [%s](%s) close the connection: %v", ServerLogPrefix, name, connID, err)
+					logger.Printf("%s💔 [%s][%s](%s) close the connection: %v", ServerLogPrefix, name, clientID, connID, err)
 					break
 				}
 				defer stream.Close()
 
 				logger.Infof("%s❤️3/ [stream:%d] created, connID=%s", ServerLogPrefix, stream.StreamID(), connID)
 				// process frames on stream
-				// c := newContext(connID, stream)
 				c := newContext(conn, stream)
 				defer c.Clean()
 				s.handleConnection(c)
@@ -156,12 +170,10 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 
 // Close will shutdown the server.
 func (s *Server) Close() error {
-	// if s.stream != nil {
-	// 	if err := s.stream.Close(); err != nil {
-	// 		logger.Errorf("%sClose(): %v", ServerLogPrefix, err)
-	// 		return err
-	// 	}
-	// }
+	// listener
+	if s.listener != nil {
+		s.listener.Close()
+	}
 	// router
 	if s.router != nil {
 		s.router.Clean()
@@ -170,6 +182,7 @@ func (s *Server) Close() error {
 	if s.connector != nil {
 		s.connector.Clean()
 	}
+	s.wg.Wait()
 	return nil
 }
 
@@ -532,6 +545,11 @@ func (s *Server) SetAfterHandlers(handlers ...FrameHandler) {
 	s.afterHandlers = append(s.afterHandlers, handlers...)
 }
 
+// SetConnectionCloseHandlers set the connection close handlers of server.
+func (s *Server) SetConnectionCloseHandlers(handlers ...ConnectionHandler) {
+	s.connectionCloseHandlers = append(s.connectionCloseHandlers, handlers...)
+}
+
 func (s *Server) authNames() []string {
 	if len(s.opts.Auths) == 0 {
 		return []string{"none"}
@@ -572,4 +590,12 @@ func authName(name string) string {
 	}
 
 	return name
+}
+
+func (s *Server) doConnectionCloseHandlers(qconn quic.Connection) {
+	defer s.wg.Done()
+	logger.Debugf("%s🖤 [%s] quic connection closed", ServerLogPrefix, qconn.RemoteAddr())
+	for _, h := range s.connectionCloseHandlers {
+		h(qconn)
+	}
 }

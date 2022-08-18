@@ -229,14 +229,16 @@ func (z *zipper) Addr() string {
 // Close will close a connection. If zipper is Server, close the server. If zipper is Client, close the client.
 func (z *zipper) Close() error {
 	if z.server != nil {
+		logger.Debugf("%sserver close()", zipperLogPrefix)
 		if err := z.server.Close(); err != nil {
-			logger.Errorf("%s Close(): %v", zipperLogPrefix, err)
+			logger.Errorf("%sserver close(): %v", zipperLogPrefix, err)
 			return err
 		}
 	}
 	if z.client != nil {
+		logger.Debugf("%sclient close()", zipperLogPrefix)
 		if err := z.client.Close(); err != nil {
-			logger.Errorf("%s Close(): %v", zipperLogPrefix, err)
+			logger.Errorf("%sclient close(): %v", zipperLogPrefix, err)
 			return err
 		}
 	}

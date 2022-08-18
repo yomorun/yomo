@@ -37,24 +37,17 @@ If an application can be deployed anywhere close to their end users, solve the p
 
 ### 1. Install CLI
 
-#### Binary (Recommended)
-
 ```bash
-curl -fsSL "https://bina.egoist.sh/yomorun/cli?name=yomo" | sh
+curl -fsSL https://get.yomo.run | sh
 ```
 
-#### Or build from source
+Verify if the CLI was installed successfully
 
 ```bash
-go install github.com/yomorun/cli/yomo@latest
-```
+$ yomo version
 
-#### Verify if the CLI was installed successfully
-
-```bash
-$ yomo -V
-
-YoMo CLI version: v1.0.0
+YoMo CLI Version: v1.1.1
+Runtime Version: v1.8.1
 ```
 
 ### 2. Create your stream function

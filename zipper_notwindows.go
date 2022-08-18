@@ -26,6 +26,8 @@ func (z *zipper) init() {
 			logger.Printf("Received signal: %s", p1)
 			if p1 == syscall.SIGTERM || p1 == syscall.SIGINT {
 				logger.Printf("graceful shutting down ... %s", p1)
+				// waiting for the server to finish processing the current request
+				z.Close()
 				os.Exit(0)
 				// close(sgnl)
 			} else if p1 == syscall.SIGUSR2 {
