@@ -97,14 +97,14 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	// create quic connection
 	conn, err := quic.DialAddrContext(ctx, addr, c.opts.TLSConfig, c.opts.QuicConfig)
 	if err != nil {
-		c.state = ConnStateDisconnected
+		c.setState(ConnStateDisconnected)
 		return err
 	}
 
 	// quic stream
 	stream, err := conn.OpenStreamSync(ctx)
 	if err != nil {
-		c.state = ConnStateDisconnected
+		c.setState(ConnStateDisconnected)
 		return err
 	}
 
@@ -326,8 +326,9 @@ func (c *Client) setState(state ConnState) {
 // getState get connection state
 func (c *Client) getState() ConnState {
 	c.mu.Lock()
+	state := c.state
 	defer c.mu.Unlock()
-	return c.state
+	return state
 }
 
 // update connection local addr
