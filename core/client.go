@@ -287,11 +287,12 @@ func (c *Client) WriteFrame(frm frame.Frame) error {
 	if c.stream == nil {
 		return errors.New("stream is nil")
 	}
-	state := c.getState()
-	if state == ConnStateDisconnected || state == ConnStateRejected {
-		return fmt.Errorf("client connection state is %s", state)
+	c.mu.Lock()
+	if c.state == ConnStateDisconnected || c.state == ConnStateRejected {
+		return fmt.Errorf("client connection state is %s", c.state)
 	}
-	c.logger.Debugf("%s[%s](%s)@%s WriteFrame() will write frame: %s", ClientLogPrefix, c.name, c.localAddr, state, frm.Type())
+	c.logger.Debugf("%s[%s](%s)@%s WriteFrame() will write frame: %s", ClientLogPrefix, c.name, c.localAddr, c.state, frm.Type())
+	c.mu.Unlock()
 
 	data := frm.Encode()
 	// emit raw bytes of Frame
@@ -334,6 +335,14 @@ func (c *Client) getState() ConnState {
 	return state
 }
 
+// compareState compares c.state and state
+func (c *Client) compareState(state ConnState) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return state == c.state
+}
+
 // update connection local addr
 func (c *Client) setLocalAddr(addr string) {
 	c.mu.Lock()
@@ -367,7 +376,7 @@ func (c *Client) reconnect(ctx context.Context, addr string) {
 			c.logger.Debugf("%s[%s](%s) close channel", ClientLogPrefix, c.name, c.localAddr)
 			return
 		case <-t.C:
-			if c.getState() == ConnStateDisconnected {
+			if c.compareState(ConnStateDisconnected) {
 				c.logger.Printf("%s[%s][%s](%s) is reconnecting to YoMo-Zipper %s...", ClientLogPrefix, c.name, c.clientID, c.localAddr, addr)
 				err := c.connect(ctx, addr)
 				if err != nil {
