@@ -279,7 +279,7 @@ func (s *Server) mainFrameHandler(c *Context) error {
 			conn := s.connector.Get(c.connID)
 			if conn != nil && conn.ClientType() == ClientTypeSource {
 				f := c.Frame.(*frame.DataFrame)
-				if f.Dispatch() == frame.DispatchBroadcast {
+				if f.IsBroadcast() {
 					f.GetMetaFrame().SetMetadata(conn.Metadata().Encode())
 					s.dispatchToDownstreams(f)
 				}

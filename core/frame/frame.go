@@ -17,7 +17,7 @@ const (
 	TagOfMetadata      Type = 0x03
 	TagOfTransactionID Type = 0x01
 	TagOfSourceID      Type = 0x02
-	TagOfDispatch      Type = 0x04
+	TagOfBroadcast     Type = 0x04
 	// PayloadFrame of DataFrame
 	TagOfPayloadFrame  Type = 0x2E
 	TagOfBackflowFrame Type = 0x2D
@@ -41,16 +41,6 @@ const (
 	TagOfGoawayFrame   Type = 0x30
 	TagOfGoawayCode    Type = 0x01
 	TagOfGoawayMessage Type = 0x02
-)
-
-// Dispatch frame dispatch mode
-type Dispatch = byte
-
-const (
-	// DispatchDirected dispatch directed mode
-	DispatchDirected Dispatch = 0x00
-	// DispatchBroadcast dispatch broadcast mode
-	DispatchBroadcast Dispatch = 0x01
 )
 
 // Type represents the type of frame.

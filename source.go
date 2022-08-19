@@ -116,7 +116,7 @@ func (s *yomoSource) Broadcast(data []byte) error {
 	f := frame.NewDataFrame()
 	f.SetCarriage(byte(s.tag), data)
 	f.SetSourceID(s.client.ClientID())
-	f.SetDispatch(frame.DispatchBroadcast)
+	f.SetBroadcast(true)
 	s.client.Logger().Debugf("%sBroadcast: tid=%s, source_id=%s, data[%d]=%# x",
 		sourceLogPrefix, f.TransactionID(), f.SourceID(), len(data), frame.Shortly(data))
 	return s.client.WriteFrame(f)

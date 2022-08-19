@@ -70,14 +70,14 @@ func (d *DataFrame) SourceID() string {
 	return d.metaFrame.SourceID()
 }
 
-// SetDispatch set dispatch mode
-func (d *DataFrame) SetDispatch(mode Dispatch) {
-	d.metaFrame.dispatch = mode
+// SetBroadcast set broadcast mode
+func (d *DataFrame) SetBroadcast(enabled bool) {
+	d.metaFrame.SetBroadcast(enabled)
 }
 
-// Dispatch get dispatch mode
-func (d *DataFrame) Dispatch() Dispatch {
-	return d.metaFrame.dispatch
+// IsBroadcast returns the broadcast mode is enabled
+func (d *DataFrame) IsBroadcast() bool {
+	return d.metaFrame.IsBroadcast()
 }
 
 // Encode return Y3 encoded bytes of `DataFrame`

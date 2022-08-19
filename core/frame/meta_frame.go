@@ -11,10 +11,10 @@ import (
 // MetaFrame is a Y3 encoded bytes, SeqID is a fixed value of TYPE_ID_TRANSACTION.
 // used for describes metadata for a DataFrame.
 type MetaFrame struct {
-	tid      string
-	metadata []byte
-	sourceID string
-	dispatch Dispatch
+	tid       string
+	metadata  []byte
+	sourceID  string
+	broadcast bool
 }
 
 // NewMetaFrame creates a new MetaFrame instance.
@@ -23,7 +23,7 @@ func NewMetaFrame() *MetaFrame {
 	if err != nil {
 		tid = strconv.FormatInt(time.Now().Unix(), 10) // todo: UnixMicro since go 1.17
 	}
-	return &MetaFrame{tid: tid, dispatch: DispatchDirected}
+	return &MetaFrame{tid: tid}
 }
 
 // SetTransactionID set the transaction ID.
@@ -56,14 +56,14 @@ func (m *MetaFrame) SourceID() string {
 	return m.sourceID
 }
 
-// SetDispatch set dispatch mode
-func (m *MetaFrame) SetDispatch(mode Dispatch) {
-	m.dispatch = mode
+// SetBroadcast set broadcast mode
+func (m *MetaFrame) SetBroadcast(enabled bool) {
+	m.broadcast = enabled
 }
 
-// Dispatch get dispatch mode
-func (m *MetaFrame) Dispatch() Dispatch {
-	return m.dispatch
+// IsBroadcast returns the broadcast mode is enabled
+func (m *MetaFrame) IsBroadcast() bool {
+	return m.broadcast
 }
 
 // Encode implements Frame.Encode method.
@@ -86,10 +86,10 @@ func (m *MetaFrame) Encode() []byte {
 		meta.AddPrimitivePacket(metadata)
 	}
 
-	// dispatch mode
-	dispatch := y3.NewPrimitivePacketEncoder(byte(TagOfDispatch))
-	dispatch.SetBytesValue([]byte{m.dispatch})
-	meta.AddPrimitivePacket(dispatch)
+	// broadcast mode
+	broadcast := y3.NewPrimitivePacketEncoder(byte(TagOfBroadcast))
+	broadcast.SetBoolValue(m.broadcast)
+	meta.AddPrimitivePacket(broadcast)
 
 	return meta.Encode()
 }
@@ -119,12 +119,12 @@ func DecodeToMetaFrame(buf []byte) (*MetaFrame, error) {
 				return nil, err
 			}
 			meta.sourceID = sourceID
-		case byte(TagOfDispatch):
-			dispatch := v.ToBytes()
-			if len(dispatch) < 1 {
-				meta.dispatch = DispatchDirected
+		case byte(TagOfBroadcast):
+			broadcast, err := v.ToBool()
+			if err != nil {
+				return nil, err
 			}
-			meta.dispatch = dispatch[0]
+			meta.broadcast = broadcast
 		}
 	}
 
