@@ -54,7 +54,11 @@ func NewSource(name string, opts ...Option) Source {
 
 // Write the data to downstream.
 func (s *yomoSource) Write(data []byte) (int, error) {
-	return len(data), s.WriteWithTag(s.tag, data)
+	err := s.WriteWithTag(s.tag, data)
+	if err != nil {
+		return 0, err
+	}
+	return len(data), nil
 }
 
 // SetDataTag will set the tag of data when invoking Write().
