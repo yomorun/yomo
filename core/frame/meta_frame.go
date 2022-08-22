@@ -11,9 +11,10 @@ import (
 // MetaFrame is a Y3 encoded bytes, SeqID is a fixed value of TYPE_ID_TRANSACTION.
 // used for describes metadata for a DataFrame.
 type MetaFrame struct {
-	tid      string
-	metadata []byte
-	sourceID string
+	tid       string
+	metadata  []byte
+	sourceID  string
+	broadcast bool
 }
 
 // NewMetaFrame creates a new MetaFrame instance.
@@ -55,6 +56,16 @@ func (m *MetaFrame) SourceID() string {
 	return m.sourceID
 }
 
+// SetBroadcast set broadcast mode
+func (m *MetaFrame) SetBroadcast(enabled bool) {
+	m.broadcast = enabled
+}
+
+// IsBroadcast returns the broadcast mode is enabled
+func (m *MetaFrame) IsBroadcast() bool {
+	return m.broadcast
+}
+
 // Encode implements Frame.Encode method.
 func (m *MetaFrame) Encode() []byte {
 	meta := y3.NewNodePacketEncoder(byte(TagOfMetaFrame))
@@ -74,6 +85,11 @@ func (m *MetaFrame) Encode() []byte {
 		metadata.SetBytesValue(m.metadata)
 		meta.AddPrimitivePacket(metadata)
 	}
+
+	// broadcast mode
+	broadcast := y3.NewPrimitivePacketEncoder(byte(TagOfBroadcast))
+	broadcast.SetBoolValue(m.broadcast)
+	meta.AddPrimitivePacket(broadcast)
 
 	return meta.Encode()
 }
@@ -95,17 +111,20 @@ func DecodeToMetaFrame(buf []byte) (*MetaFrame, error) {
 				return nil, err
 			}
 			meta.tid = val
-			break
 		case byte(TagOfMetadata):
 			meta.metadata = v.ToBytes()
-			break
 		case byte(TagOfSourceID):
 			sourceID, err := v.ToUTF8String()
 			if err != nil {
 				return nil, err
 			}
 			meta.sourceID = sourceID
-			break
+		case byte(TagOfBroadcast):
+			broadcast, err := v.ToBool()
+			if err != nil {
+				return nil, err
+			}
+			meta.broadcast = broadcast
 		}
 	}
 

@@ -231,7 +231,7 @@ func (s *Server) handleConnection(c *Context) {
 		// before frame handlers
 		for _, handler := range s.beforeHandlers {
 			if err := handler(c); err != nil {
-				logger.Errorf("%safterFrameHandler err: %s", ServerLogPrefix, err)
+				logger.Errorf("%sbeforeFrameHandler err: %s", ServerLogPrefix, err)
 				c.CloseWithError(yerr.ErrorCodeBeforeHandler, err.Error())
 				return
 			}
@@ -279,8 +279,10 @@ func (s *Server) mainFrameHandler(c *Context) error {
 			conn := s.connector.Get(c.connID)
 			if conn != nil && conn.ClientType() == ClientTypeSource {
 				f := c.Frame.(*frame.DataFrame)
-				f.GetMetaFrame().SetMetadata(conn.Metadata().Encode())
-				s.dispatchToDownstreams(f)
+				if f.IsBroadcast() {
+					f.GetMetaFrame().SetMetadata(conn.Metadata().Encode())
+					s.dispatchToDownstreams(f)
+				}
 			}
 			// observe datatags backflow
 			s.handleBackflowFrame(c)

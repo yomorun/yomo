@@ -70,6 +70,16 @@ func (d *DataFrame) SourceID() string {
 	return d.metaFrame.SourceID()
 }
 
+// SetBroadcast set broadcast mode
+func (d *DataFrame) SetBroadcast(enabled bool) {
+	d.metaFrame.SetBroadcast(enabled)
+}
+
+// IsBroadcast returns the broadcast mode is enabled
+func (d *DataFrame) IsBroadcast() bool {
+	return d.metaFrame.IsBroadcast()
+}
+
 // Encode return Y3 encoded bytes of `DataFrame`
 func (d *DataFrame) Encode() []byte {
 	data := y3.NewNodePacketEncoder(byte(d.Type()))
