@@ -22,7 +22,8 @@ func main() {
 	go func() {
 		err := zipper.ListenAndServe()
 		if err != nil {
-			panic(err)
+			log.Println(err)
+			os.Exit(1)
 		}
 	}()
 	select {}
