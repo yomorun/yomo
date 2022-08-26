@@ -144,7 +144,11 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 
 		stream.Close()
 		if closeConn {
-			c.conn.CloseWithError(yerr.ErrorCodeClientAbort.To(), err.Error())
+			code := yerr.ErrorCodeClientAbort
+			if e, ok := err.(yerr.YomoError); ok {
+				code = e.ErrorCode()
+			}
+			c.conn.CloseWithError(code.To(), err.Error())
 		}
 
 		if closeClient {

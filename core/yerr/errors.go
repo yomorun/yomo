@@ -7,21 +7,33 @@ import (
 )
 
 // YomoError yomo error
-type YomoError struct {
+type YomoError interface {
+	error
+	// Errorcode getter method
+	ErrorCode() ErrorCode
+}
+
+type yomoError struct {
 	errorCode ErrorCode
 	err       error
 }
 
 // New create yomo error
-func New(code ErrorCode, err error) *YomoError {
-	return &YomoError{
+func New(code ErrorCode, err error) YomoError {
+	return &yomoError{
 		errorCode: code,
 		err:       err,
 	}
 }
 
-func (e *YomoError) Error() string {
+// Error is the built-in error interface
+func (e *yomoError) Error() string {
 	return fmt.Sprintf("%s error: message=%s", e.errorCode, e.err.Error())
+}
+
+// Errorcode getter method
+func (e *yomoError) ErrorCode() ErrorCode {
+	return e.errorCode
 }
 
 // ErrorCode error code
@@ -117,6 +129,11 @@ func NewDuplicateNameError(connID string, err error) DuplicateNameError {
 // Error raw error
 func (e DuplicateNameError) Error() string {
 	return e.err.Error()
+}
+
+// Errorcode getter method
+func (e DuplicateNameError) ErrorCode() ErrorCode {
+	return ErrorCodeDuplicateName
 }
 
 // ConnID duplicate connection ID
