@@ -9,7 +9,7 @@ import (
 // YomoError yomo error
 type YomoError interface {
 	error
-	// Errorcode getter method
+	// ErrorCode getter method
 	ErrorCode() ErrorCode
 }
 
@@ -31,7 +31,7 @@ func (e *yomoError) Error() string {
 	return fmt.Sprintf("%s error: message=%s", e.errorCode, e.err.Error())
 }
 
-// Errorcode getter method
+// ErrorCode getter method
 func (e *yomoError) ErrorCode() ErrorCode {
 	return e.errorCode
 }
@@ -131,7 +131,7 @@ func (e DuplicateNameError) Error() string {
 	return e.err.Error()
 }
 
-// Errorcode getter method
+// ErrorCode getter method
 func (e DuplicateNameError) ErrorCode() ErrorCode {
 	return ErrorCodeDuplicateName
 }
