@@ -74,7 +74,7 @@ func (s *streamFunction) SetHandler(fn core.AsyncHandler) error {
 
 func (s *streamFunction) SetPipeHandler(fn core.PipeHandler) error {
 	s.pfn = fn
-	s.client.Logger().Debugf("%sSetHandler(%v)", streamFunctionLogPrefix, s.fn)
+	s.client.Logger().Debugf("%sSetHandler(%v)", streamFunctionLogPrefix, s.pfn)
 	return nil
 }
 
