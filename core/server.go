@@ -37,7 +37,6 @@ type ConnectionHandler func(conn quic.Connection)
 // Server is the underlining server of Zipper
 type Server struct {
 	name                    string
-	state                   string
 	connector               Connector
 	router                  Router
 	metadataBuilder         MetadataBuilder
@@ -112,8 +111,6 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 	// defer listener.Close()
 	logger.Printf("%s✅ [%s][%d] Listening on: %s, MODE: %s, QUIC: %v, AUTH: %s", ServerLogPrefix, s.name, os.Getpid(), listener.Addr(), mode(), listener.Versions(), s.authNames())
 
-	s.state = ConnStateConnected
-	// loop
 	for {
 		// create a new connection when new yomo-client connected
 		sctx, cancel := context.WithCancel(ctx)
