@@ -226,7 +226,10 @@ func (c *Client) Close() error {
 		return nil
 	}
 
-	c.conn.CloseWithError(yerr.ErrorCodeClientAbort.To(), "client ask to close")
+	if c.conn != nil {
+		c.conn.CloseWithError(yerr.ErrorCodeClientAbort.To(), "client ask to close")
+	}
+
 	return c.close()
 }
 
