@@ -22,7 +22,7 @@ If an application can be deployed anywhere close to their end users, solve the p
 | --- | ----------------------------------------------------------------------------------|
 | ⚡️  | **Low-latency** Guaranteed by implementing atop QUIC [QUIC](https://datatracker.ietf.org/wg/quic/documents/) |
 | 🔐  | **Security** TLS v1.3 on every data packet by design |
-| 📱  | **5G/WiFi-6** Reliable networking in Celluar/Wireless |
+| 📱  | **5G/WiFi-6** Reliable networking in Cellular/Wireless |
 | 🌎  | **Geo-Distributed Edge Mesh** Edge-Mesh Native architecture makes your services close to end users |
 | 📸  | **Event-First** Architecture leverages serverless service to be event driven and elastic  |
 | 🦖  | **Streaming Serverless** Write only a few lines of code to build applications and microservices |
