@@ -289,7 +289,10 @@ func (c *Client) reconnect(ctx context.Context, addr string) {
 				return
 			}
 		case <-t.C:
-			if c.state == ConnStateDisconnected {
+			c.mu.Lock()
+			state := c.state
+			c.mu.Unlock()
+			if state == ConnStateDisconnected {
 				c.logger.Printf("%s[%s][%s](%s) is reconnecting to YoMo-Zipper %s...", ClientLogPrefix, c.name, c.clientID, c.localAddr, addr)
 				err := c.connect(ctx, addr)
 				if err != nil {
