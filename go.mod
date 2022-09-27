@@ -1,6 +1,6 @@
 module github.com/yomorun/yomo
 
-go 1.16
+go 1.19
 
 require (
 	github.com/cenkalti/backoff/v4 v4.1.3
