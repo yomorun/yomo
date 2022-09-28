@@ -41,29 +41,12 @@ func GetVersion() string {
 	return fmt.Sprintf("%s(%s)", Version, Date)
 }
 
-// GetRuntimeVersion get yomo runtime version
-func GetRuntimeVersion() (v string) {
-	v = "(none)"
-	if info, ok := debug.ReadBuildInfo(); ok {
-		for _, d := range info.Deps {
-			if d.Path == "github.com/yomorun/yomo" {
-				if d.Replace != nil {
-					return d.Replace.Version + "[Replace]"
-				}
-				return d.Version
-			}
-		}
-	}
-	return
-}
-
 // versionCmd represents the version command
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "print CLI version",
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("YoMo CLI Version:", GetVersion())
-		fmt.Println("Runtime Version:", GetRuntimeVersion())
 	},
 }
 

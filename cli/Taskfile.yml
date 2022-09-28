@@ -27,10 +27,10 @@ tasks:
     desc: build yomo cli tools
     cmds:
       - echo "{{.Name}} building..."
-      - go build -v -tags "{{.TAGS}}" -o ../bin/{{.ExeName}} -ldflags "-s -w -X {{.Module}}/cli.Version={{.Version}} -X {{.Module}}/cli.Date={{.Date}}" ../cmd/yomo/main.go
+      - go build -v -tags "{{.TAGS}}" -o ./bin/{{.ExeName}} -ldflags "-s -w -X {{.Module}}.Version={{.Version}} -X {{.Module}}.Date={{.Date}}" ../cmd/yomo/main.go
       - echo "{{.Name}} built."
     method: none
-    silent: true
+    silent: false
 
   install:
     desc: install yomo cli tools
@@ -38,7 +38,7 @@ tasks:
     dir: ../cmd/yomo
     cmds:
       - echo "{{.Name}} install..."
-      - go install -ldflags "-s -w -X {{.Module}}/cli.Version={{.Version}} -X {{.Module}}/cli.Date={{.Date}}"
+      - go install -ldflags "-s -w -X {{.Module}}.Version={{.Version}} -X {{.Module}}.Date={{.Date}}"
       - echo "{{.Name}} {{.Version}}({{.Date}}) is installed."
     silent: true
 
@@ -61,7 +61,7 @@ tasks:
     desc: run yomo cli
     deps: [build]
     cmds:
-      - "../bin/{{.ExeName}}"
+      - "./bin/{{.ExeName}}"
     silent: false
 
   version:
@@ -74,7 +74,7 @@ tasks:
     desc: "cli clean"
     cmds:
       - echo 'cli cleaning...'
-      - rm -rf ../bin
-      - rm -rf ./release
+      - rm -rf ./bin
+      - rm -rf ../release/cli
       - echo 'cli clean.'
     silent: true

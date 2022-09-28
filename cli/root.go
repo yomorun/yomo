@@ -75,6 +75,6 @@ func initDotEnv() {
 }
 
 func setVersion() {
-	template := fmt.Sprintf("YoMo CLI version: %s\nRuntime Version: %s\n", rootCmd.Version, GetRuntimeVersion())
+	template := fmt.Sprintf("YoMo CLI version: %s\n", rootCmd.Version)
 	rootCmd.SetVersionTemplate(template)
 }
