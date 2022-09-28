@@ -15,7 +15,7 @@ tasks:
 
   run:
     desc: CLI example
-    deps: [zipper, zipper2, source, sfn-rx, sfn-db]
+    deps: [zipper, source, sfn-rx, sfn-db]
     cmds:
       - echo "CLI example"
 
@@ -24,16 +24,6 @@ tasks:
     deps: [build]
     cmds:
       - "./bin/{{.ExeName}} serve -c ./zipper/workflow.yaml"
-    silent: false
-    env:
-      YOMO_LOG_LEVEL: error
-      YOMO_AUTH: token:1234
-
-  zipper2:
-    desc: "run zipper2"
-    deps: [build]
-    cmds:
-      - "./bin/{{.ExeName}} serve -c zipper/workflow2.yaml"
     silent: false
     env:
       YOMO_LOG_LEVEL: error
@@ -82,7 +72,5 @@ tasks:
   clean:
     desc: "cli clean"
     cmds:
-      - echo 'cli cleaning...'
       - rm -rf ./bin
-      - echo 'cli clean.'
     silent: true

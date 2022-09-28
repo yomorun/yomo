@@ -23,6 +23,18 @@ includes:
   backflow:
     taskfile: ./5-backflow/Taskfile.yml
     dir: ./5-backflow
+  mesh:
+    taskfile: ./6-mesh/Taskfile.yaml
+    dir: ./6-mesh
+  wasm:
+    taskfile: ./7-wasm/Taskfile.yaml
+    dir: ./7-wasm
+  deno:
+    taskfile: ./8-deno/Taskfile.yaml
+    dir: ./8-deno
+  cli:
+    taskfile: ./9-cli/Taskfile.yaml
+    dir: ./9-cli
 
 tasks:
   example-basic:
@@ -61,6 +73,30 @@ tasks:
     cmds:
       - task: backflow:run
 
+  example-mesh:
+    desc: Mesh usage
+    silent: false
+    cmds:
+      - task: mesh:run
+
+  example-wasm:
+    desc: WASM usage
+    silent: false
+    cmds:
+      - task: wasm:run
+
+  example-deno:
+    desc: DENO usage
+    silent: false
+    cmds:
+      - task: deno:run
+
+  example-cli:
+    desc: CLI usage
+    silent: false
+    cmds:
+      - task: cli:run
+
   # example cleanup
   clean:
     desc: clean
@@ -73,3 +109,7 @@ tasks:
       - task: multi-sfn:clean
       - task: cascading-zipper:clean
       - task: backflow:clean
+      - task: mesh:clean
+      - task: wasm:clean
+      - task: deno:clean
+      - task: cli:clean

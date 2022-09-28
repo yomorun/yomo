@@ -2,97 +2,121 @@
 
 version: '3'
 
+output: "prefixed"
+
+vars:
+  ExeName: yomo{{exeExt}}
+
 tasks:
-  example-mesh-us:
-    desc: example-mesh-us
+  run:
+    desc: run
+    deps: [us, eu]
+    cmds:
+      - echo 'mesh example run'
+    silent: true
+
+  clean:
+    desc: clean
+    cmds:
+      - rm -rf ./bin
+      - rm -rf ./stream-fn/stream-fn*
+      - rm -rf ./stream-fn-db/stream-fn-db*
+
+  build:
+    desc: build yomo cli tools
+    cmds:
+      - go build -v -o ./bin/{{.ExeName}} -ldflags "-s -w -X {{.Module}}/cli.Version={{.Version}} -X {{.Module}}/cli.Date={{.Date}}" ../../cmd/yomo/main.go
+    method: none
+    silent: true
+
+  us:
+    desc: mesh-us
     deps:
       [
-        example-mesh-zipper-sender-us,
-        example-mesh-zipper-receiver-us,
-        example-mesh-stream-fn-us,
-        example-mesh-stream-fn-db-us,
-        example-mesh-source-us,
+        zipper-sender-us,
+        zipper-receiver-us,
+        stream-fn-us,
+        stream-fn-db-us,
+        source-us,
       ]
     cmds:
-      - echo "example-mesh-us"
+      - echo "mesh-us"
 
-  example-mesh-eu:
-    desc: example-mesh-eu
+  eu:
+    desc: mesh-eu
     deps:
       [
-        example-mesh-zipper-sender-eu,
-        example-mesh-zipper-receiver-eu,
-        example-mesh-stream-fn-eu,
-        example-mesh-stream-fn-db-eu,
-        example-mesh-source-eu,
+        zipper-sender-eu,
+        zipper-receiver-eu,
+        stream-fn-eu,
+        stream-fn-db-eu,
+        source-eu,
       ]
     cmds:
-      - echo "example-mesh-eu"
+      - echo "mesh-eu"
 
-  example-mesh-zipper-sender-us:
+  zipper-sender-us:
     desc: "run zipper-sender-us"
     deps: [build]
     cmds:
-      - "{{.ExeDir}}/{{.ExeName}} serve -c example/mesh/us/sender.yaml -m https://mesh-config.yomo.run/api/configs"
-      # - "{{.ExeDir}}/{{.ExeName}} serve -c example/mesh/us/sender.yaml "
+      - "./bin/{{.ExeName}} serve -c us/sender.yaml -m https://mesh-config.yomo.run/api/configs"
     silent: false
 
-  example-mesh-zipper-receiver-us:
+  zipper-receiver-us:
     desc: "run zipper-receiver-us"
     deps: [build]
     cmds:
-      - "{{.ExeDir}}/{{.ExeName}} serve -c example/mesh/us/receiver.yaml"
+      - "./bin/{{.ExeName}} serve -c us/receiver.yaml"
     silent: false
 
-  example-mesh-zipper-sender-eu:
+  zipper-sender-eu:
     desc: "run zipper-sender-eu"
     deps: [build]
     cmds:
-      - "{{.ExeDir}}/{{.ExeName}} serve -c example/mesh/eu/sender.yaml -m https://mesh-config.yomo.run/api/configs"
+      - "./bin/{{.ExeName}} serve -c eu/sender.yaml -m https://mesh-config.yomo.run/api/configs"
     silent: false
 
-  example-mesh-zipper-receiver-eu:
+  zipper-receiver-eu:
     desc: "run zipper-receiver-eu"
     deps: [build]
     cmds:
-      - "{{.ExeDir}}/{{.ExeName}} serve -c example/mesh/eu/receiver.yaml"
+      - "./bin/{{.ExeName}} serve -c eu/receiver.yaml"
     silent: false
 
-  example-mesh-source-us:
+  source-us:
     desc: run source application
-    deps: [example-mesh-source-build]
-    dir: "example/mesh/source"
+    deps: [source-build]
     cmds:
-      - "./source{{exeExt}}"
+      - "cp ./bin/source{{exeExt}} ./bin/source-us{{exeExt}}"
+      - "./bin/source-us{{exeExt}}"
     env:
       PORT: 9000
       REGION: "💖 US 💖"
     silent: false
 
-  example-mesh-source-eu:
+  source-eu:
     desc: run source application
-    deps: [example-mesh-source-build]
-    dir: "example/mesh/source"
+    deps: [source-build]
     cmds:
-      - "./source{{exeExt}}"
+      - "cp ./bin/source{{exeExt}} ./bin/source-eu{{exeExt}}"
+      - "./bin/source-eu{{exeExt}}"
     env:
       PORT: 9800
       REGION: "💙 EU 💙"
     silent: false
 
-  example-mesh-source-build:
+  source-build:
     desc: build source application
-    dir: "example/mesh/source"
     cmds:
       - echo "source building..."
-      - "go build -o source{{exeExt}} main.go"
+      - "go build -o ./bin/source{{exeExt}} ./source/main.go"
       - echo "source built."
     silent: false
 
-  example-mesh-stream-fn-us:
+  stream-fn-us:
     desc: run stream function
-    deps: [example-mesh-stream-fn-build]
-    dir: "example/mesh/stream-fn"
+    deps: [stream-fn-build]
+    dir: "stream-fn"
     cmds:
       - "cp ./stream-fn{{exeExt}} ./stream-fn-us{{exeExt}}"
       - "./stream-fn-us{{exeExt}}"
@@ -101,10 +125,10 @@ tasks:
       REGION: "💖 US 💖"
     silent: false
 
-  example-mesh-stream-fn-eu:
+  stream-fn-eu:
     desc: run stream function
-    deps: [example-mesh-stream-fn-build]
-    dir: "example/mesh/stream-fn"
+    deps: [stream-fn-build]
+    dir: "stream-fn"
     cmds:
       - "cp ./stream-fn{{exeExt}} ./stream-fn-eu{{exeExt}}"
       - "./stream-fn-eu{{exeExt}}"
@@ -113,36 +137,38 @@ tasks:
       REGION: "💙 EU 💙"
     silent: false
 
-  example-mesh-stream-fn-build:
+  stream-fn-build:
     desc: build stream function
-    dir: "example/mesh/stream-fn"
+    dir: "stream-fn"
     cmds:
-      - "go build -o stream-fn{{exeExt}} app.go"
+      - "go build -o ./stream-fn{{exeExt}} app.go"
     silent: false
 
-  example-mesh-stream-fn-db-us:
+  stream-fn-db-us:
     desc: run output stream-fn-db
-    deps: [example-mesh-stream-fn-db-build]
-    dir: "example/mesh/stream-fn-db"
+    deps: [stream-fn-db-build]
+    dir: "stream-fn-db"
     cmds:
-      - "./stream-fn-db{{exeExt}}"
+      - "cp ./stream-fn-db{{exeExt}} ./stream-fn-db-us{{exeExt}}"
+      - "./stream-fn-db-us{{exeExt}}"
     env:
       PORT: 9001
     silent: false
 
-  example-mesh-stream-fn-db-eu:
+  stream-fn-db-eu:
     desc: run output stream-fn-db
-    deps: [example-mesh-stream-fn-db-build]
-    dir: "example/mesh/stream-fn-db"
+    deps: [stream-fn-db-build]
+    dir: "stream-fn-db"
     cmds:
-      - "./stream-fn-db{{exeExt}}"
+      - "cp ./stream-fn-db{{exeExt}} ./stream-fn-db-eu{{exeExt}}"
+      - "./stream-fn-db-eu{{exeExt}}"
     env:
       PORT: 9801
     silent: false
 
-  example-mesh-stream-fn-db-build:
+  stream-fn-db-build:
     desc: build output stream-fn-db
-    dir: "example/mesh/stream-fn-db"
+    dir: "stream-fn-db"
     cmds:
       - "go build -o stream-fn-db{{exeExt}} app.go"
     silent: false
