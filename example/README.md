@@ -11,6 +11,10 @@ $ task -l |grep example
 * example-iopipe:                       IO Pipe
 * example-multi-sfn:                    Multiple stream functions
 * example-pipeline:                     Unix pipeline to cloud
+* example-mesh:                         Edge mesh
+* example-wasm:                         YoMo Stream Function using WebAssembly
+* example-deno:                         YoMo Stream Function using Deno
+* example-cli:                          Use the CLI to run stream functions
 ```
 
 can run each example directly by `task example-basic`, `task example-cascading-zipper` and etc.

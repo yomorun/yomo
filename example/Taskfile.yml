@@ -74,7 +74,7 @@ tasks:
       - task: backflow:run
 
   example-mesh:
-    desc: Mesh usage
+    desc: Edge mesh usage
     silent: false
     cmds:
       - task: mesh:run
@@ -86,7 +86,7 @@ tasks:
       - task: wasm:run
 
   example-deno:
-    desc: DENO usage
+    desc: Deno usage
     silent: false
     cmds:
       - task: deno:run
