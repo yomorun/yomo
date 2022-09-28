@@ -7,7 +7,6 @@ output: prefixed
 vars:
   Name: yomo
   ExeName: yomo{{exeExt}}
-  ExeDir: ../cmd/yomo
   ReleaseDir: ../release/cli
   Version:
     sh: git describe --always --tags --dirty
@@ -28,12 +27,8 @@ tasks:
     desc: build yomo cli tools
     cmds:
       - echo "{{.Name}} building..."
-      - go build -v -tags "{{.TAGS}}" -o {{.ExeDir}}/{{.ExeName}} -ldflags "-s -w -X {{.Module}}/cli.Version={{.Version}} -X {{.Module}}/cli.Date={{.Date}}" {{.ExeDir}}/main.go
+      - go build -v -tags "{{.TAGS}}" -o ../bin/{{.ExeName}} -ldflags "-s -w -X {{.Module}}/cli.Version={{.Version}} -X {{.Module}}/cli.Date={{.Date}}" ../cmd/yomo/main.go
       - echo "{{.Name}} built."
-    generates:
-      - "{{.ExeDir}}/{{.ExeName}}"
-    sources:
-      - "**/*.go"
     method: none
     silent: true
 
@@ -66,7 +61,7 @@ tasks:
     desc: run yomo cli
     deps: [build]
     cmds:
-      - "{{.ExeDir}}/{{.ExeName}}"
+      - "../bin/{{.ExeName}}"
     silent: false
 
   version:
@@ -79,7 +74,7 @@ tasks:
     desc: "cli clean"
     cmds:
       - echo 'cli cleaning...'
-      - rm -rf '{{.ExeDir}}/{{.ExeName}}'
-      - rm -rf release
+      - rm -rf ../bin
+      - rm -rf ./release
       - echo 'cli clean.'
     silent: true
