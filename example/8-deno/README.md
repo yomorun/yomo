@@ -28,7 +28,7 @@ https://deno.land/#installation
 - Start Source & Sink
 
   ```sh
-  cd ../source-hello
+  cd source
 
   go run main.go
   ```
