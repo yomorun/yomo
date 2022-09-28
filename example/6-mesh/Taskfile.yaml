@@ -1,0 +1,148 @@
+# https://taskfile.dev
+
+version: '3'
+
+tasks:
+  example-mesh-us:
+    desc: example-mesh-us
+    deps:
+      [
+        example-mesh-zipper-sender-us,
+        example-mesh-zipper-receiver-us,
+        example-mesh-stream-fn-us,
+        example-mesh-stream-fn-db-us,
+        example-mesh-source-us,
+      ]
+    cmds:
+      - echo "example-mesh-us"
+
+  example-mesh-eu:
+    desc: example-mesh-eu
+    deps:
+      [
+        example-mesh-zipper-sender-eu,
+        example-mesh-zipper-receiver-eu,
+        example-mesh-stream-fn-eu,
+        example-mesh-stream-fn-db-eu,
+        example-mesh-source-eu,
+      ]
+    cmds:
+      - echo "example-mesh-eu"
+
+  example-mesh-zipper-sender-us:
+    desc: "run zipper-sender-us"
+    deps: [build]
+    cmds:
+      - "{{.ExeDir}}/{{.ExeName}} serve -c example/mesh/us/sender.yaml -m https://mesh-config.yomo.run/api/configs"
+      # - "{{.ExeDir}}/{{.ExeName}} serve -c example/mesh/us/sender.yaml "
+    silent: false
+
+  example-mesh-zipper-receiver-us:
+    desc: "run zipper-receiver-us"
+    deps: [build]
+    cmds:
+      - "{{.ExeDir}}/{{.ExeName}} serve -c example/mesh/us/receiver.yaml"
+    silent: false
+
+  example-mesh-zipper-sender-eu:
+    desc: "run zipper-sender-eu"
+    deps: [build]
+    cmds:
+      - "{{.ExeDir}}/{{.ExeName}} serve -c example/mesh/eu/sender.yaml -m https://mesh-config.yomo.run/api/configs"
+    silent: false
+
+  example-mesh-zipper-receiver-eu:
+    desc: "run zipper-receiver-eu"
+    deps: [build]
+    cmds:
+      - "{{.ExeDir}}/{{.ExeName}} serve -c example/mesh/eu/receiver.yaml"
+    silent: false
+
+  example-mesh-source-us:
+    desc: run source application
+    deps: [example-mesh-source-build]
+    dir: "example/mesh/source"
+    cmds:
+      - "./source{{exeExt}}"
+    env:
+      PORT: 9000
+      REGION: "💖 US 💖"
+    silent: false
+
+  example-mesh-source-eu:
+    desc: run source application
+    deps: [example-mesh-source-build]
+    dir: "example/mesh/source"
+    cmds:
+      - "./source{{exeExt}}"
+    env:
+      PORT: 9800
+      REGION: "💙 EU 💙"
+    silent: false
+
+  example-mesh-source-build:
+    desc: build source application
+    dir: "example/mesh/source"
+    cmds:
+      - echo "source building..."
+      - "go build -o source{{exeExt}} main.go"
+      - echo "source built."
+    silent: false
+
+  example-mesh-stream-fn-us:
+    desc: run stream function
+    deps: [example-mesh-stream-fn-build]
+    dir: "example/mesh/stream-fn"
+    cmds:
+      - "cp ./stream-fn{{exeExt}} ./stream-fn-us{{exeExt}}"
+      - "./stream-fn-us{{exeExt}}"
+    env:
+      PORT: 9000
+      REGION: "💖 US 💖"
+    silent: false
+
+  example-mesh-stream-fn-eu:
+    desc: run stream function
+    deps: [example-mesh-stream-fn-build]
+    dir: "example/mesh/stream-fn"
+    cmds:
+      - "cp ./stream-fn{{exeExt}} ./stream-fn-eu{{exeExt}}"
+      - "./stream-fn-eu{{exeExt}}"
+    env:
+      PORT: 9800
+      REGION: "💙 EU 💙"
+    silent: false
+
+  example-mesh-stream-fn-build:
+    desc: build stream function
+    dir: "example/mesh/stream-fn"
+    cmds:
+      - "go build -o stream-fn{{exeExt}} app.go"
+    silent: false
+
+  example-mesh-stream-fn-db-us:
+    desc: run output stream-fn-db
+    deps: [example-mesh-stream-fn-db-build]
+    dir: "example/mesh/stream-fn-db"
+    cmds:
+      - "./stream-fn-db{{exeExt}}"
+    env:
+      PORT: 9001
+    silent: false
+
+  example-mesh-stream-fn-db-eu:
+    desc: run output stream-fn-db
+    deps: [example-mesh-stream-fn-db-build]
+    dir: "example/mesh/stream-fn-db"
+    cmds:
+      - "./stream-fn-db{{exeExt}}"
+    env:
+      PORT: 9801
+    silent: false
+
+  example-mesh-stream-fn-db-build:
+    desc: build output stream-fn-db
+    dir: "example/mesh/stream-fn-db"
+    cmds:
+      - "go build -o stream-fn-db{{exeExt}} app.go"
+    silent: false

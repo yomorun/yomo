@@ -1,0 +1,48 @@
+func init() {
+	{{if .UseEnv}} 
+	if err := godotenv.Load(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading .env file: %v\n", err)
+		os.Exit(1)
+	}
+	{{end}}
+}
+
+func env(name string) string {
+	return os.Getenv("YOMO_SFN_" + strings.ToUpper(strings.ReplaceAll(name, "-", "_")))
+}
+
+func parseZipperAddrs() ([]string, error) {
+	result := make([]string, 0)
+	{{if not .UseEnv}}
+	{{range $addr := .ZipperAddrs}}
+	result = append(result, "{{$addr}}")
+	{{end}}
+	return result, nil
+	{{else}}
+	url := env("Url")
+	if url == "" {
+		url = "localhost:9000"
+	}
+	addrs := strings.Split(url, ",")
+	for _, addr := range addrs {
+		addr = strings.TrimSpace(addr)
+		if len(addr) == 0 {
+			continue
+		}
+		splits := strings.Split(addr, ":")
+		l := len(splits)
+		if l == 1 {
+			result = append(result, splits[0]+":9000")
+		} else if l == 2 {
+			port, err := strconv.Atoi(splits[1])
+			if err != nil {
+				return nil, fmt.Errorf("%s: invalid port: %s", addr, splits[1])
+			}
+			result = append(result, fmt.Sprintf("%s:%d", splits[0], port))
+		} else {
+			return nil, fmt.Errorf(`the format of url "%s" is incorrect, it should be "host:port", f.e. localhost:9000`, addr)
+		}
+	}
+	return result, nil
+	{{end}}
+}

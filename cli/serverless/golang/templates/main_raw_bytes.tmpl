@@ -1,0 +1,50 @@
+
+// Serverless main function
+func main() {
+	addrs, err := parseZipperAddrs()
+	if err != nil {
+		log.Fatal(err)
+	}
+	{{if .UseEnv}} 
+	name := env("Name")
+	credential := env("Credential")
+	{{else}}
+	name := "{{.Name}}"
+	credential := "{{.Credential}}"
+	{{end}}
+	for _, addr := range addrs {
+		sfnClose, err := runSFN(name, addr, credential)
+		defer sfnClose()
+		if err != nil {
+			log.Printf("[sfn] connect to zipper[%s], %v\n", addr, err)
+			os.Exit(1)
+		}
+	}
+	select {}
+}
+
+func runSFN(name string, addr string, credential string) (closeFn func() error, err error) {
+	sfn := yomo.NewStreamFunction(
+        name,
+		yomo.WithZipperAddr(addr),
+		yomo.WithObserveDataTags(DataTags()...),
+		yomo.WithCredential(credential),
+	)
+	closeFn = sfn.Close
+
+	// set handler
+	sfn.SetHandler(Handler)
+
+	// set error handler
+	sfn.SetErrorHandler(func(err error) {
+		log.Printf("[sfn][%s] error handler: %T %v\n", addr, err, err)
+	})
+
+	// start
+	err = sfn.Connect()
+	if err != nil {
+		return 
+	}
+
+	return 
+}

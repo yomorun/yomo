@@ -1,0 +1,85 @@
+# https://taskfile.dev
+
+version: "3"
+
+output: prefixed
+
+vars:
+  Name: yomo
+  ExeName: yomo{{exeExt}}
+  ExeDir: ../cmd/yomo
+  ReleaseDir: ../release/cli
+  Version:
+    sh: git describe --always --tags --dirty
+  Date:
+    sh: git show -s --format=%cs {{.Commit}}
+  Commit:
+    sh: git rev-parse --short HEAD
+  Module:
+    sh: go list
+
+tasks:
+  default:
+    cmds:
+      - task -l
+    silent: true
+
+  build:
+    desc: build yomo cli tools
+    cmds:
+      - echo "{{.Name}} building..."
+      - go build -v -tags "{{.TAGS}}" -o {{.ExeDir}}/{{.ExeName}} -ldflags "-s -w -X {{.Module}}/cli.Version={{.Version}} -X {{.Module}}/cli.Date={{.Date}}" {{.ExeDir}}/main.go
+      - echo "{{.Name}} built."
+    generates:
+      - "{{.ExeDir}}/{{.ExeName}}"
+    sources:
+      - "**/*.go"
+    method: none
+    silent: true
+
+  install:
+    desc: install yomo cli tools
+    deps: []
+    dir: ../cmd/yomo
+    cmds:
+      - echo "{{.Name}} install..."
+      - go install -ldflags "-s -w -X {{.Module}}/cli.Version={{.Version}} -X {{.Module}}/cli.Date={{.Date}}"
+      - echo "{{.Name}} {{.Version}}({{.Date}}) is installed."
+    silent: true
+
+  release:
+    desc: release yomo cli tools
+    cmds:
+      - echo "{{.Name}} CLI release..."
+      - echo ">>darwin/amd64..."
+      - GOOS=darwin GOARCH=amd64 go build -ldflags "-w -s -X {{.Module}}/cli.Version={{.Version}} -X {{.Module}}/cli.Date={{.Date}}" -o {{.ReleaseDir}}/{{.Name}}_{{.Version}}_mac ../cmd/yomo/main.go
+      - echo ">>linux/amd64..."
+      - GOOS=linux GOARCH=amd64 go build -ldflags "-w -s -X {{.Module}}/cli.Version={{.Version}} -X {{.Module}}/cli.Date={{.Date}}" -o {{.ReleaseDir}}/{{.Name}}_{{.Version}}_linux ../cmd/yomo/main.go
+      - echo ">>linux/arm64..."
+      - GOOS=linux GOARCH=arm64 go build -ldflags "-w -s -X {{.Module}}/cli.Version={{.Version}} -X {{.Module}}/cli.Date={{.Date}}" -o {{.ReleaseDir}}/{{.Name}}_{{.Version}}_arm ../cmd/yomo/main.go
+      - echo ">>windows/amd64..."
+      - GOOS=windows GOARCH=amd64 go build -ldflags "-w -s -X {{.Module}}/cli.Version={{.Version}} -X {{.Module}}/cli.Date={{.Date}}" -o {{.ReleaseDir}}/{{.Name}}_{{.Version}}_windows.exe ../cmd/yomo/main.go
+      - echo "{{.Name}} CLI {{.Version}} is released."
+    silent: true
+
+  run:
+    desc: run yomo cli
+    deps: [build]
+    cmds:
+      - "{{.ExeDir}}/{{.ExeName}}"
+    silent: false
+
+  version:
+    desc: "print version"
+    cmds:
+      - echo "Version {{.Version}}({{.Date}})"
+    silent: true
+
+  clean:
+    desc: "cli clean"
+    cmds:
+      - echo 'cli cleaning...'
+      - rm -rf '{{.ExeDir}}/{{.ExeName}}'
+      - rm -rf release
+      - echo 'cli clean.'
+    silent: true

@@ -1,0 +1,11 @@
+# https://taskfile.dev
+
+version: '3'
+
+output: "prefixed"
+
+tasks:
+  default:
+    cmds:
+      - echo "{{.GREETING}}"
+    silent: true

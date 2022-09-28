@@ -1,0 +1,88 @@
+# https://taskfile.dev
+
+version: "3"
+
+output: prefixed
+
+vars:
+  ExeName: yomo{{exeExt}}
+
+tasks:
+  default:
+    cmds:
+      - task -l
+    silent: true
+
+  run:
+    desc: CLI example
+    deps: [zipper, zipper2, source, sfn-rx, sfn-db]
+    cmds:
+      - echo "CLI example"
+
+  zipper:
+    desc: "run zipper"
+    deps: [build]
+    cmds:
+      - "./bin/{{.ExeName}} serve -c ./zipper/workflow.yaml"
+    silent: false
+    env:
+      YOMO_LOG_LEVEL: error
+      YOMO_AUTH: token:1234
+
+  zipper2:
+    desc: "run zipper2"
+    deps: [build]
+    cmds:
+      - "./bin/{{.ExeName}} serve -c zipper/workflow2.yaml"
+    silent: false
+    env:
+      YOMO_LOG_LEVEL: error
+      YOMO_AUTH: token:1234
+
+  source:
+    desc: run source application
+    deps: [source-build]
+    cmds:
+      - "./bin/source{{exeExt}}"
+    silent: false
+    env:
+      YOMO_CREDENTIAL: token:1234
+
+  source-build:
+    desc: build source application
+    cmds:
+      - echo "source building..."
+      - "go build -o ./bin/source{{exeExt}} ./source/main.go"
+      - echo "source built."
+    silent: false
+
+  sfn-rx:
+    desc: "run rx stream application"
+    deps: [build]
+    dir: "sfn-rx"
+    cmds:
+      - "../bin/{{.ExeName}} run app.go"
+    silent: false
+
+  sfn-db:
+    desc: run output stream-fn-db
+    deps: [build]
+    dir: "sfn-db"
+    cmds:
+      - "../bin/{{.ExeName}} run app.go"
+    silent: false
+
+  build:
+    desc: build yomo cli tools
+    cmds:
+      - go build -v -o ./bin/{{.ExeName}} -ldflags "-s -w -X {{.Module}}/cli.Version={{.Version}} -X {{.Module}}/cli.Date={{.Date}}" ../../cmd/yomo/main.go
+    method: none
+    silent: true
+
+  clean:
+    desc: "cli clean"
+    cmds:
+      - echo 'cli cleaning...'
+      - rm -rf ./bin
+      - echo 'cli clean.'
+    silent: true
