@@ -11,30 +11,98 @@ on:
         required: true
         default: 'warning'
 jobs:
-  build:
-    name: Build Linux binaries
+  build-linux-amd64:
+    name: Build Linux x86-64 binary
     runs-on: ubuntu-latest
     env:
       GOVER: 1.19
     steps:
       - name: Set up Go ${{ env.GOVER }}
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
           go-version: ${{ env.GOVER }}
       - name: Check out code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: Run go mod tidy
         run: go mod tidy
       - name: build & archive binaries
-        run: make archive-release
+        run: cd ./cli && make archive-release-linux-amd64
       - name: upload artifacts
         uses: actions/upload-artifact@master
         with:
           name: yomo-artifact
-          path: ./bin/**/*
+          path: ./cli/bin/**/*.tar.gz
+  build-linux-arm64:
+    name: Build Linux arm64 binary
+    runs-on: [self-hosted, Linux, ARM64]
+    env:
+      GOVER: 1.19
+    steps:
+      - name: Set up Go ${{ env.GOVER }}
+        uses: actions/setup-go@v3
+        with:
+          go-version: ${{ env.GOVER }}
+      - name: Check out code
+        uses: actions/checkout@v3
+      - name: Run go mod tidy
+        run: go mod tidy
+      - name: build & archive binaries
+        run: |
+          sudo apt-get update && sudo apt-get -y upgrade
+          sudo apt-get install -y make
+          sudo apt-get install -y gcc
+          cd ./cli && make archive-release-linux-arm64
+      - name: upload artifacts
+        uses: actions/upload-artifact@master
+        with:
+          name: yomo-artifact
+          path: ./cli/bin/**/*.tar.gz
+  build-darwin-amd64:
+    name: Build MacOS x86-64 binary
+    runs-on: macos-latest
+    env:
+      GOVER: 1.19
+    steps:
+      - name: Set up Go ${{ env.GOVER }}
+        uses: actions/setup-go@v3
+        with:
+          go-version: ${{ env.GOVER }}
+      - name: Check out code
+        uses: actions/checkout@v3
+      - name: Run go mod tidy
+        run: go mod tidy
+      - name: build & archive binaries
+        run: cd ./cli && make archive-release-darwin-amd64
+      - name: upload artifacts
+        uses: actions/upload-artifact@master
+        with:
+          name: yomo-artifact
+          path: ./cli/bin/**/*.tar.gz
+  build-windows-amd64:
+    name: Build Windows x86-64 binary
+    runs-on: windows-latest
+    env:
+      GOVER: 1.19
+    steps:
+      - name: Set up Go ${{ env.GOVER }}
+        uses: actions/setup-go@v3
+        with:
+          go-version: ${{ env.GOVER }}
+      - name: Check out code
+        uses: actions/checkout@v3
+      - name: Run go mod tidy
+        run: go mod tidy
+      - name: build & archive binaries
+        run: |
+          cd ./cli && make archive-release-windows-amd64
+      - name: upload artifacts
+        uses: actions/upload-artifact@master
+        with:
+          name: yomo-artifact
+          path: ./cli/bin/**/*.tar.gz
   publish:
     name: Publish binaries
-    needs: build
+    needs: [build-linux-amd64, build-linux-arm64, build-darwin-amd64, build-windows-amd64]
     env:
       ARTIFACT_DIR: ./release
     runs-on: ubuntu-latest
@@ -49,10 +117,10 @@ jobs:
       - name: lists artifacts
         run: ls -l ${{ env.ARTIFACT_DIR }}
       - name: build version
-        run: make cli_version
+        run: cd ./cli && make cli_version
       - name: Get version
         id: tag
-        run: echo ::set-output name=version::$(cat ./VERSION)
+        run: echo ::set-output name=version::$(cat ./cli/VERSION)
       - name: publish binaries to github
         run: |
           echo "installing github-release-cli..."
