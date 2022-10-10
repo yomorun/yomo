@@ -5,7 +5,7 @@ serverless functions, which means developers can use their familiar programming
 languages other than Go to implement YoMo applications.
 
 **Notice**: _The wasm serverless API is an experimental feature currently, so
-feedback is highly welcome and there may be some changes in the future stable
+feedback is highly welcomed and there may be changes in the future stable
 releases._
 
 ## Install wasm runtime
@@ -49,11 +49,11 @@ serverless function runtime.
 
 2. Run the complete application
 
-   In this demo example, the source will keep sending a demo string
-   (`Hello, YoMo!`). The wasm serverless function will observe the source data,
-   and send the processed data to the sink node. The whole data flow is:
+   In this demo, the source will keep sending a string (`Hello, YoMo!`). The
+   wasm serverless function will observe the source data, and send the processed
+   data to the next streaming function. The whole data flow is:
 
-   `Source (original string) --> Wasm-SFN (convert to upper-case) --> Sink (print result)`
+   `Source (original string) --> Wasm-SFN (convert to upper-case) --> SFN-2 (print result)`
 
 - Start YoMo zipper
 
@@ -68,7 +68,7 @@ serverless function runtime.
   yomo run sfn.wasm
   ```
 
-  you can choose the wasm runtime via the `--runtime` parameter (`wasmtime` |
+  you can indicate the wasm runtime via the `--runtime` parameter (`wasmtime` |
   `wasmedge`), the default value is `wasmtime`.
 
 - Start Source & Sink

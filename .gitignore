@@ -28,3 +28,4 @@ scripts/tls/
 .vscode/
 release/cli
 example/7-wasm/sfn/zig/src/zig-cache/
+*.wasm
