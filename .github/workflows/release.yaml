@@ -78,6 +78,27 @@ jobs:
         with:
           name: yomo-artifact
           path: ./cli/bin/**/*.tar.gz
+  build-darwin-arm64:
+    name: Build MacOS arm64 binary
+    runs-on: ubuntu-latest
+    env:
+      GOVER: 1.19
+    steps:
+      - name: Set up Go ${{ env.GOVER }}
+        uses: actions/setup-go@v3
+        with:
+          go-version: ${{ env.GOVER }}
+      - name: Check out code
+        uses: actions/checkout@v3
+      - name: Run go mod tidy
+        run: go mod tidy
+      - name: build & archive binaries
+        run: cd ./cli && make archive-release-darwin-arm64
+      - name: upload artifacts
+        uses: actions/upload-artifact@master
+        with:
+          name: yomo-artifact
+          path: ./cli/bin/**/*.tar.gz
   build-windows-amd64:
     name: Build Windows x86-64 binary
     runs-on: windows-latest
@@ -102,7 +123,7 @@ jobs:
           path: ./cli/bin/**/*.tar.gz
   publish:
     name: Publish binaries
-    needs: [build-linux-amd64, build-linux-arm64, build-darwin-amd64, build-windows-amd64]
+    needs: [build-linux-amd64, build-linux-arm64, build-darwin-amd64, build-windows-amd64, build-darwin-arm64]
     env:
       ARTIFACT_DIR: ./release
     runs-on: ubuntu-latest
@@ -141,10 +162,10 @@ jobs:
             --name "${{ steps.tag.outputs.version }}" \
             --prerelease true \
             ${RELEASE_ARTIFACT[*]}
-      - name: Dispatch release notification
-        uses: peter-evans/repository-dispatch@v2
-        with:
-          token: ${{ secrets.YOMO_BOT_TOKEN }}
-          repository: yomorun/get.yomo.run
-          event-type: cli-released
-          client-payload: '{"version": "${{ steps.tag.outputs.version }}"}'
+      # - name: Dispatch release notification
+      #   uses: peter-evans/repository-dispatch@v2
+      #   with:
+      #     token: ${{ secrets.YOMO_BOT_TOKEN }}
+      #     repository: yomorun/get.yomo.run
+      #     event-type: cli-released
+      #     client-payload: '{"version": "${{ steps.tag.outputs.version }}"}'
