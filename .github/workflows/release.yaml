@@ -162,10 +162,10 @@ jobs:
             --name "${{ steps.tag.outputs.version }}" \
             --prerelease true \
             ${RELEASE_ARTIFACT[*]}
-      # - name: Dispatch release notification
-      #   uses: peter-evans/repository-dispatch@v2
-      #   with:
-      #     token: ${{ secrets.YOMO_BOT_TOKEN }}
-      #     repository: yomorun/get.yomo.run
-      #     event-type: cli-released
-      #     client-payload: '{"version": "${{ steps.tag.outputs.version }}"}'
+      - name: Dispatch release notification
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.YOMO_BOT_TOKEN }}
+          repository: yomorun/get.yomo.run
+          event-type: cli-released
+          client-payload: '{"version": "${{ steps.tag.outputs.version }}"}'
