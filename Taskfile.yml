@@ -4,6 +4,12 @@ version: "3"
 
 output: "prefixed"
 
+includes:
+  cli: 
+    taskfile: ./cli/Taskfile.yml
+    dir: ./cli
+    
+
 tasks:
   default:
     dir: ./example
@@ -12,5 +18,5 @@ tasks:
       - echo "🍭 all examples list here"
       - ls ./
       - echo "🍭 all tasks list here"
-      - task -l
+      - task -l 
     silent: true
