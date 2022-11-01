@@ -101,7 +101,7 @@ func WithCredential(payload string) Option {
 }
 
 // WithObserveDataTags sets client data tag list.
-func WithObserveDataTags(tags ...byte) Option {
+func WithObserveDataTags(tags ...uint32) Option {
 	return func(o *Options) {
 		o.ClientOptions = append(
 			o.ClientOptions,

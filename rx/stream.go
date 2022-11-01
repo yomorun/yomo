@@ -13,7 +13,7 @@ type Stream interface {
 	rxgo.Iterable
 
 	// PipeBackToZipper write the DataFrame with a specified DataID.
-	PipeBackToZipper(dataID byte) Stream
+	PipeBackToZipper(dataTag uint32) Stream
 
 	// RawBytes get the raw bytes in Stream which receives from YoMo-Zipper.
 	RawBytes() Stream

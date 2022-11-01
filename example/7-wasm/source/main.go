@@ -27,7 +27,7 @@ func main() {
 		yomo.WithObserveDataTags(0x34),
 	)
 	sink.SetHandler(
-		func(data []byte) (byte, []byte) {
+		func(data []byte) (uint32, []byte) {
 			log.Printf("[recv] %s", string(data))
 			return 0, nil
 		},

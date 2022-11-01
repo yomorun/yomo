@@ -27,18 +27,18 @@ func (r *router) Clean() {
 
 type route struct {
 	functions []config.App
-	data      map[byte]map[string]string
+	data      map[uint32]map[string]string
 	mu        sync.RWMutex
 }
 
 func newRoute(functions []config.App) *route {
 	return &route{
 		functions: functions,
-		data:      make(map[byte]map[string]string),
+		data:      make(map[uint32]map[string]string),
 	}
 }
 
-func (r *route) Add(connID string, name string, observeDataTags []byte) (err error) {
+func (r *route) Add(connID string, name string, observeDataTags []uint32) (err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -87,7 +87,7 @@ func (r *route) Remove(connID string) error {
 	return nil
 }
 
-func (r *route) GetForwardRoutes(tag byte) []string {
+func (r *route) GetForwardRoutes(tag uint32) []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 

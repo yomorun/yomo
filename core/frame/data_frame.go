@@ -26,12 +26,12 @@ func (d *DataFrame) Type() Type {
 }
 
 // Tag return the tag of carriage data.
-func (d *DataFrame) Tag() byte {
+func (d *DataFrame) Tag() uint32 {
 	return d.payloadFrame.Tag
 }
 
 // SetCarriage set user's raw data in `DataFrame`
-func (d *DataFrame) SetCarriage(tag byte, carriage []byte) {
+func (d *DataFrame) SetCarriage(tag uint32, carriage []byte) {
 	d.payloadFrame = NewPayloadFrame(tag).SetCarriage(carriage)
 }
 
@@ -56,7 +56,7 @@ func (d *DataFrame) GetMetaFrame() *MetaFrame {
 }
 
 // GetDataTag return the Tag of user's data
-func (d *DataFrame) GetDataTag() byte {
+func (d *DataFrame) GetDataTag() uint32 {
 	return d.payloadFrame.Tag
 }
 

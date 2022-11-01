@@ -23,7 +23,7 @@ type Connection interface {
 	// Write should goroutine-safely send y3 frames to peer side
 	Write(f frame.Frame) error
 	// ObserveDataTags observed data tags
-	ObserveDataTags() []byte
+	ObserveDataTags() []uint32
 }
 
 type connection struct {
@@ -32,12 +32,12 @@ type connection struct {
 	metadata   Metadata
 	stream     io.ReadWriteCloser
 	clientID   string
-	observed   []byte // observed data tags
+	observed   []uint32 // observed data tags
 	mu         sync.Mutex
 	closed     bool
 }
 
-func newConnection(name string, clientID string, clientType ClientType, metadata Metadata, stream io.ReadWriteCloser, observed []byte) Connection {
+func newConnection(name string, clientID string, clientType ClientType, metadata Metadata, stream io.ReadWriteCloser, observed []uint32) Connection {
 	return &connection{
 		name:       name,
 		clientID:   clientID,
@@ -89,7 +89,7 @@ func (c *connection) Write(f frame.Frame) error {
 }
 
 // ObserveDataTags observed data tags
-func (c *connection) ObserveDataTags() []byte {
+func (c *connection) ObserveDataTags() []uint32 {
 	return c.observed
 }
 

@@ -8,12 +8,12 @@ import (
 // the Len is the length of Val. Val is also a Y3 encoded PrimitivePacket, storing
 // raw bytes as user's data
 type PayloadFrame struct {
-	Tag      byte
+	Tag      uint32
 	Carriage []byte
 }
 
 // NewPayloadFrame creates a new PayloadFrame with a given TagID of user's data
-func NewPayloadFrame(tag byte) *PayloadFrame {
+func NewPayloadFrame(tag uint32) *PayloadFrame {
 	return &PayloadFrame{
 		Tag: tag,
 	}
@@ -27,10 +27,14 @@ func (m *PayloadFrame) SetCarriage(buf []byte) *PayloadFrame {
 
 // Encode to Y3 encoded bytes
 func (m *PayloadFrame) Encode() []byte {
-	carriage := y3.NewPrimitivePacketEncoder(m.Tag)
+	tag := y3.NewPrimitivePacketEncoder(byte(TagOfPayloadDataTag))
+	tag.SetUInt32Value(m.Tag)
+
+	carriage := y3.NewPrimitivePacketEncoder(byte(TagOfPayloadCarriage))
 	carriage.SetBytesValue(m.Carriage)
 
 	payload := y3.NewNodePacketEncoder(byte(TagOfPayloadFrame))
+	payload.AddPrimitivePacket(tag)
 	payload.AddPrimitivePacket(carriage)
 
 	return payload.Encode()
@@ -45,10 +49,16 @@ func DecodeToPayloadFrame(buf []byte) (*PayloadFrame, error) {
 	}
 
 	payload := &PayloadFrame{}
-	for _, v := range nodeBlock.PrimitivePackets {
-		payload.Tag = v.SeqID()
-		payload.Carriage = v.GetValBuf()
-		break
+	if p, ok := nodeBlock.PrimitivePackets[byte(TagOfPayloadDataTag)]; ok {
+		tag, err := p.ToUInt32()
+		if err != nil {
+			return nil, err
+		}
+		payload.Tag = tag
+	}
+
+	if p, ok := nodeBlock.PrimitivePackets[byte(TagOfPayloadCarriage)]; ok {
+		payload.Carriage = p.GetValBuf()
 	}
 
 	return payload, nil

@@ -36,7 +36,7 @@ func main() {
 		os.Exit(1)
 	})
 	// set receive handler for the observe datatags
-	source.SetReceiveHandler(func(tag byte, data []byte) {
+	source.SetReceiveHandler(func(tag uint32, data []byte) {
 		logger.Printf("[source] ♻️  receive backflow: tag=%#v, data=%s", tag, data)
 	})
 

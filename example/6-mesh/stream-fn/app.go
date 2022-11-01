@@ -80,8 +80,8 @@ func main() {
 }
 
 // DataTags observe tag list
-func DataTags() []byte {
-	return []byte{0x10}
+func DataTags() []uint32 {
+	return []uint32{0x10}
 }
 
 func getPort() int {

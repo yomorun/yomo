@@ -38,6 +38,6 @@ func Handler(rxstream rx.Stream) rx.Stream {
 	return stream
 }
 
-func DataTags() []byte {
-	return []byte{0x33}
+func DataTags() []uint32 {
+	return []uint32{0x33}
 }

@@ -44,7 +44,7 @@ func main() {
 	select {}
 }
 
-func handler(data []byte) (byte, []byte) {
+func handler(data []byte) (uint32, []byte) {
 	// got
 	noise, err := strconv.ParseFloat(string(data), 10)
 	if err != nil {

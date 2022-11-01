@@ -17,7 +17,7 @@ type NoiseData struct {
 }
 
 // Handler will handle the raw data.
-func Handler(data []byte) (byte, []byte) {
+func Handler(data []byte) (uint32, []byte) {
 	// var noise float32
 	var noise NoiseData
 	err := json.Unmarshal(data, &noise)
@@ -31,8 +31,8 @@ func Handler(data []byte) (byte, []byte) {
 }
 
 // DataTags observe tag list
-func DataTags() []byte {
-	return []byte{0x10}
+func DataTags() []uint32 {
+	return []uint32{0x10}
 }
 
 func main() {

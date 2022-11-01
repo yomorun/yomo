@@ -24,7 +24,7 @@ func NewRuntime(sfn yomo.StreamFunction) *Runtime {
 }
 
 // RawByteHandler is the Handler for RawBytes.
-func (r *Runtime) RawByteHandler(req []byte) (byte, []byte) {
+func (r *Runtime) RawByteHandler(req []byte) (uint32, []byte) {
 	go func() {
 		r.rawBytesChan <- req
 	}()

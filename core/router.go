@@ -11,9 +11,9 @@ type Router interface {
 // Route manages data subscribers according to their observed data tags.
 type Route interface {
 	// Add a route.
-	Add(connID string, name string, observeDataTags []byte) error
+	Add(connID string, name string, observeDataTags []uint32) error
 	// Remove a route.
 	Remove(connID string) error
 	// GetForwardRoutes returns all the subscribers by the given data tag.
-	GetForwardRoutes(tag byte) []string
+	GetForwardRoutes(tag uint32) []string
 }

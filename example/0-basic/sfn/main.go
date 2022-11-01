@@ -44,7 +44,7 @@ func main() {
 	select {}
 }
 
-func handler(data []byte) (byte, []byte) {
+func handler(data []byte) (uint32, []byte) {
 	var model noiseData
 	err := json.Unmarshal(data, &model)
 	if err != nil {

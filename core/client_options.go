@@ -10,7 +10,7 @@ import (
 
 // ClientOptions are the options for YoMo client.
 type ClientOptions struct {
-	ObserveDataTags []byte
+	ObserveDataTags []uint32
 	QuicConfig      *quic.Config
 	TLSConfig       *tls.Config
 	Credential      *auth.Credential
@@ -18,7 +18,7 @@ type ClientOptions struct {
 }
 
 // WithObserveDataTags sets data tag list for the client.
-func WithObserveDataTags(tags ...byte) ClientOption {
+func WithObserveDataTags(tags ...uint32) ClientOption {
 	return func(o *ClientOptions) {
 		o.ObserveDataTags = tags
 	}

@@ -63,7 +63,7 @@ func main() {
 	select {}
 }
 
-func handler(data []byte) (byte, []byte) {
+func handler(data []byte) (uint32, []byte) {
 	v := Float32frombytes(data)
 	logger.Printf("✅ [fn3] observe <- %v", v)
 	observe <- v

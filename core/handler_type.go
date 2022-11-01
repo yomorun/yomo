@@ -5,7 +5,7 @@ import (
 )
 
 // AsyncHandler is the request-response mode (asnyc)
-type AsyncHandler func([]byte) (byte, []byte)
+type AsyncHandler func([]byte) (uint32, []byte)
 
 // PipeHandler is the bidirectional stream mode (blocking).
 type PipeHandler func(in <-chan []byte, out chan<- *frame.PayloadFrame)

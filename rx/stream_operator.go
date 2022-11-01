@@ -770,7 +770,7 @@ func (s *StreamImpl) RawBytes() Stream {
 // }
 
 // PipeBackToZipper sets a specified DataTag to bytes and will pipe it back to zipper.
-func (s *StreamImpl) PipeBackToZipper(dataTag byte) Stream {
+func (s *StreamImpl) PipeBackToZipper(dataTag uint32) Stream {
 	f := func(ctx context.Context, next chan rxgo.Item) {
 		defer close(next)
 		observe := s.Observe()
