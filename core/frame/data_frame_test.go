@@ -7,7 +7,7 @@ import (
 )
 
 func TestDataFrameEncode(t *testing.T) {
-	var userDataTag uint32 = 0x15
+	var userDataTag Tag = 0x15
 	d := NewDataFrame()
 	d.SetCarriage(userDataTag, []byte("yomo"))
 	d.SetBroadcast(true)
@@ -26,7 +26,7 @@ func TestDataFrameEncode(t *testing.T) {
 }
 
 func TestDataFrameDecode(t *testing.T) {
-	var userDataTag uint32 = 0x15
+	var userDataTag Tag = 0x15
 	buf := []byte{
 		0x80 | byte(TagOfDataFrame), 0x10 + 3,
 		0x80 | byte(TagOfMetaFrame), 0x06 + 3,

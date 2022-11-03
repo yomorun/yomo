@@ -7,12 +7,12 @@ import (
 // BackflowFrame is a Y3 encoded bytes
 // It's used to receive stream function processed result
 type BackflowFrame struct {
-	Tag      uint32
+	Tag      Tag
 	Carriage []byte
 }
 
 // NewBackflowFrame creates a new BackflowFrame with a given tag and carriage
-func NewBackflowFrame(tag uint32, carriage []byte) *BackflowFrame {
+func NewBackflowFrame(tag Tag, carriage []byte) *BackflowFrame {
 	return &BackflowFrame{
 		Tag:      tag,
 		Carriage: carriage,
@@ -33,7 +33,7 @@ func (f *BackflowFrame) SetCarriage(buf []byte) *BackflowFrame {
 // Encode to Y3 encoded bytes
 func (f *BackflowFrame) Encode() []byte {
 	tag := y3.NewPrimitivePacketEncoder(byte(TagOfBackflowDataTag))
-	tag.SetUInt32Value(f.Tag)
+	tag.SetUInt32Value(uint32(f.Tag))
 
 	carriage := y3.NewPrimitivePacketEncoder(byte(TagOfBackflowCarriage))
 	carriage.SetBytesValue(f.Carriage)
@@ -45,7 +45,7 @@ func (f *BackflowFrame) Encode() []byte {
 }
 
 // GetDataTag return the Tag of user's data
-func (f *BackflowFrame) GetDataTag() uint32 {
+func (f *BackflowFrame) GetDataTag() Tag {
 	return f.Tag
 }
 
@@ -68,7 +68,7 @@ func DecodeToBackflowFrame(buf []byte) (*BackflowFrame, error) {
 		if err != nil {
 			return nil, err
 		}
-		payload.Tag = tag
+		payload.Tag = Tag(tag)
 	}
 
 	if p, ok := nodeBlock.PrimitivePackets[byte(TagOfBackflowCarriage)]; ok {

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/logger"
 )
 
@@ -63,7 +64,7 @@ func main() {
 	select {}
 }
 
-func handler(data []byte) (uint32, []byte) {
+func handler(data []byte) (frame.Tag, []byte) {
 	v := Float32frombytes(data)
 	logger.Printf("✅ [fn3] observe <- %v", v)
 	observe <- v

@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/yomorun/yomo/core"
+	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/yerr"
 	"github.com/yomorun/yomo/pkg/config"
 )
@@ -27,18 +28,18 @@ func (r *router) Clean() {
 
 type route struct {
 	functions []config.App
-	data      map[uint32]map[string]string
+	data      map[frame.Tag]map[string]string
 	mu        sync.RWMutex
 }
 
 func newRoute(functions []config.App) *route {
 	return &route{
 		functions: functions,
-		data:      make(map[uint32]map[string]string),
+		data:      make(map[frame.Tag]map[string]string),
 	}
 }
 
-func (r *route) Add(connID string, name string, observeDataTags []uint32) (err error) {
+func (r *route) Add(connID string, name string, observeDataTags []frame.Tag) (err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -87,7 +88,7 @@ func (r *route) Remove(connID string) error {
 	return nil
 }
 
-func (r *route) GetForwardRoutes(tag uint32) []string {
+func (r *route) GetForwardRoutes(tag frame.Tag) []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 

@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"log"
+
+	"github.com/yomorun/yomo/core/frame"
 )
 
 // NoiseData represents the structure of data
@@ -13,7 +15,7 @@ type NoiseData struct {
 }
 
 // Handler will handle the raw data.
-func Handler(data []byte) (uint32, []byte) {
+func Handler(data []byte) (frame.Tag, []byte) {
 	// var noise float32
 	var noise NoiseData
 	err := json.Unmarshal(data, &noise)
@@ -27,6 +29,6 @@ func Handler(data []byte) (uint32, []byte) {
 	return 0x0, nil
 }
 
-func DataTags() []uint32 {
-	return []uint32{0x34}
+func DataTags() []frame.Tag {
+	return []frame.Tag{0x34}
 }

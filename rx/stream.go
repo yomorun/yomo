@@ -6,6 +6,7 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/reactivex/rxgo/v2"
+	"github.com/yomorun/yomo/core/frame"
 )
 
 // Stream is the interface for RxStream.
@@ -13,7 +14,7 @@ type Stream interface {
 	rxgo.Iterable
 
 	// PipeBackToZipper write the DataFrame with a specified DataID.
-	PipeBackToZipper(dataTag uint32) Stream
+	PipeBackToZipper(dataTag frame.Tag) Stream
 
 	// RawBytes get the raw bytes in Stream which receives from YoMo-Zipper.
 	RawBytes() Stream

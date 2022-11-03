@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/logger"
 )
 
@@ -44,7 +45,7 @@ func main() {
 	select {}
 }
 
-func handler(data []byte) (uint32, []byte) {
+func handler(data []byte) (frame.Tag, []byte) {
 	// got
 	noise, err := strconv.ParseFloat(string(data), 10)
 	if err != nil {

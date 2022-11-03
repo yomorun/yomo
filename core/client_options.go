@@ -5,12 +5,13 @@ import (
 
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/core/auth"
+	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/log"
 )
 
 // ClientOptions are the options for YoMo client.
 type ClientOptions struct {
-	ObserveDataTags []uint32
+	ObserveDataTags []frame.Tag
 	QuicConfig      *quic.Config
 	TLSConfig       *tls.Config
 	Credential      *auth.Credential
@@ -18,7 +19,7 @@ type ClientOptions struct {
 }
 
 // WithObserveDataTags sets data tag list for the client.
-func WithObserveDataTags(tags ...uint32) ClientOption {
+func WithObserveDataTags(tags ...frame.Tag) ClientOption {
 	return func(o *ClientOptions) {
 		o.ObserveDataTags = tags
 	}

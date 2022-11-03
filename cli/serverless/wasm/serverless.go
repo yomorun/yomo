@@ -7,6 +7,7 @@ import (
 
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/cli/serverless"
+	"github.com/yomorun/yomo/core/frame"
 )
 
 // wasmServerless will run serverless functions from the given compiled WebAssembly files.
@@ -14,7 +15,7 @@ type wasmServerless struct {
 	runtime     Runtime
 	name        string
 	zipperAddrs []string
-	observed    []uint32
+	observed    []frame.Tag
 	credential  string
 }
 
@@ -59,7 +60,7 @@ func (s *wasmServerless) Run(verbose bool) error {
 		var ch chan struct{}
 
 		sfn.SetHandler(
-			func(req []byte) (uint32, []byte) {
+			func(req []byte) (frame.Tag, []byte) {
 				tag, res, err := s.runtime.RunHandler(req)
 				if err != nil {
 					ch <- struct{}{}

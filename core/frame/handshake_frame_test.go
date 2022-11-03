@@ -9,7 +9,7 @@ import (
 func TestHandshakeFrameEncode(t *testing.T) {
 	expectedName := "1234"
 	var expectedType byte = 0xD3
-	m := NewHandshakeFrame(expectedName, "", expectedType, []uint32{0x01, 0x02}, "token", "a")
+	m := NewHandshakeFrame(expectedName, "", expectedType, []Tag{0x01, 0x02}, "token", "a")
 	assert.Equal(t, []byte{
 		0x80 | byte(TagOfHandshakeFrame), 0x1f,
 		byte(TagOfHandshakeName), 0x04, 0x31, 0x32, 0x33, 0x34,

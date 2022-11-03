@@ -3,6 +3,7 @@ package core
 import (
 	"sync"
 
+	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/logger"
 )
 
@@ -19,7 +20,7 @@ type Connector interface {
 	// GetSnapshot gets the snapshot of all connections.
 	GetSnapshot() map[string]string
 	// GetSourceConns gets the connections by source observe tag.
-	GetSourceConns(sourceID string, tag uint32) []Connection
+	GetSourceConns(sourceID string, tag frame.Tag) []Connection
 	// Clean the connector.
 	Clean()
 }
@@ -54,7 +55,7 @@ func (c *connector) Get(connID string) Connection {
 }
 
 // GetSourceConns gets the source connection by tag.
-func (c *connector) GetSourceConns(sourceID string, tag uint32) []Connection {
+func (c *connector) GetSourceConns(sourceID string, tag frame.Tag) []Connection {
 	conns := make([]Connection, 0)
 
 	c.conns.Range(func(key interface{}, val interface{}) bool {

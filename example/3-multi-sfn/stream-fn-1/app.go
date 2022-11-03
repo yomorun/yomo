@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/logger"
 )
 
@@ -40,7 +41,7 @@ func main() {
 	select {}
 }
 
-func handler(data []byte) (uint32, []byte) {
+func handler(data []byte) (frame.Tag, []byte) {
 	var mold noiseData
 	err := json.Unmarshal(data, &mold)
 	if err != nil {

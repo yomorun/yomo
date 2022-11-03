@@ -15,14 +15,14 @@ type HandshakeFrame struct {
 	// ClientType represents client type (source or sfn)
 	ClientType byte
 	// ObserveDataTags are the client data tag list.
-	ObserveDataTags []uint32
+	ObserveDataTags []Tag
 	// auth
 	authName    string
 	authPayload string
 }
 
 // NewHandshakeFrame creates a new HandshakeFrame.
-func NewHandshakeFrame(name string, clientID string, clientType byte, observeDataTags []uint32, authName string, authPayload string) *HandshakeFrame {
+func NewHandshakeFrame(name string, clientID string, clientType byte, observeDataTags []Tag, authName string, authPayload string) *HandshakeFrame {
 	return &HandshakeFrame{
 		Name:            name,
 		ClientID:        clientID,
@@ -53,7 +53,7 @@ func (h *HandshakeFrame) Encode() []byte {
 	observeDataTagsBlock := y3.NewPrimitivePacketEncoder(byte(TagOfHandshakeObserveDataTags))
 	buf := make([]byte, 4)
 	for _, v := range h.ObserveDataTags {
-		binary.LittleEndian.PutUint32(buf, v)
+		binary.LittleEndian.PutUint32(buf, uint32(v))
 		observeDataTagsBlock.AddBytes(buf)
 	}
 	// auth
@@ -109,7 +109,7 @@ func DecodeToHandshakeFrame(buf []byte) (*HandshakeFrame, error) {
 		length := len(buf) / 4
 		for i := 0; i < length; i++ {
 			pos := i * 4
-			handshake.ObserveDataTags = append(handshake.ObserveDataTags, binary.LittleEndian.Uint32(buf[pos:pos+4]))
+			handshake.ObserveDataTags = append(handshake.ObserveDataTags, Tag(binary.LittleEndian.Uint32(buf[pos:pos+4])))
 		}
 	}
 	// auth

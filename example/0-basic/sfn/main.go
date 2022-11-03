@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/logger"
 )
 
@@ -44,7 +45,7 @@ func main() {
 	select {}
 }
 
-func handler(data []byte) (uint32, []byte) {
+func handler(data []byte) (frame.Tag, []byte) {
 	var model noiseData
 	err := json.Unmarshal(data, &model)
 	if err != nil {
