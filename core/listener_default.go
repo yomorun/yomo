@@ -19,7 +19,7 @@ type defaultListener struct {
 
 // DefalutQuicConfig be used when `quicConfig` is nil.
 var DefalutQuicConfig = &quic.Config{
-	Versions:                       []quic.VersionNumber{quic.Version1, quic.VersionDraft29},
+	Versions:                       []quic.VersionNumber{quic.Version2, quic.Version1, quic.VersionDraft29},
 	MaxIdleTimeout:                 time.Second * 5,
 	KeepAlivePeriod:                time.Second * 2,
 	MaxIncomingStreams:             1000,
