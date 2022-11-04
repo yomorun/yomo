@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/core/frame"
 )
 
 func main() {
@@ -27,7 +28,7 @@ func main() {
 		yomo.WithObserveDataTags(0x34),
 	)
 	sink.SetHandler(
-		func(data []byte) (byte, []byte) {
+		func(data []byte) (frame.Tag, []byte) {
 			log.Printf("[recv] %s", string(data))
 			return 0, nil
 		},

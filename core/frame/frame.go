@@ -19,8 +19,12 @@ const (
 	TagOfSourceID      Type = 0x02
 	TagOfBroadcast     Type = 0x04
 	// PayloadFrame of DataFrame
-	TagOfPayloadFrame  Type = 0x2E
-	TagOfBackflowFrame Type = 0x2D
+	TagOfPayloadFrame     Type = 0x2E
+	TagOfPayloadDataTag   Type = 0x01
+	TagOfPayloadCarriage  Type = 0x02
+	TagOfBackflowFrame    Type = 0x2D
+	TagOfBackflowDataTag  Type = 0x01
+	TagOfBackflowCarriage Type = 0x02
 
 	TagOfTokenFrame Type = 0x3E
 	// HandshakeFrame

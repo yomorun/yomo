@@ -5,6 +5,7 @@ import (
 
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/core"
+	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/log"
 )
 
@@ -101,7 +102,7 @@ func WithCredential(payload string) Option {
 }
 
 // WithObserveDataTags sets client data tag list.
-func WithObserveDataTags(tags ...byte) Option {
+func WithObserveDataTags(tags ...frame.Tag) Option {
 	return func(o *Options) {
 		o.ClientOptions = append(
 			o.ClientOptions,

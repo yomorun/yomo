@@ -18,15 +18,15 @@ type Source interface {
 	// Connect to YoMo-Zipper.
 	Connect() error
 	// SetDataTag will set the tag of data when invoking Write().
-	SetDataTag(tag uint8)
+	SetDataTag(tag frame.Tag)
 	// Write the data to directed downstream.
 	Write(data []byte) (n int, err error)
 	// WriteWithTag will write data with specified tag, default transactionID is epoch time.
-	WriteWithTag(tag uint8, data []byte) error
+	WriteWithTag(tag frame.Tag, data []byte) error
 	// SetErrorHandler set the error handler function when server error occurs
 	SetErrorHandler(fn func(err error))
 	// [Experimental] SetReceiveHandler set the observe handler function
-	SetReceiveHandler(fn func(tag byte, data []byte))
+	SetReceiveHandler(fn func(tag frame.Tag, data []byte))
 	// Write the data to all downstream
 	Broadcast(data []byte) error
 }
@@ -36,8 +36,8 @@ type yomoSource struct {
 	name           string
 	zipperEndpoint string
 	client         *core.Client
-	tag            uint8
-	fn             func(byte, []byte)
+	tag            frame.Tag
+	fn             func(frame.Tag, []byte)
 }
 
 var _ Source = &yomoSource{}
@@ -64,7 +64,7 @@ func (s *yomoSource) Write(data []byte) (int, error) {
 }
 
 // SetDataTag will set the tag of data when invoking Write().
-func (s *yomoSource) SetDataTag(tag uint8) {
+func (s *yomoSource) SetDataTag(tag frame.Tag) {
 	s.tag = tag
 }
 
@@ -95,9 +95,9 @@ func (s *yomoSource) Connect() error {
 }
 
 // WriteWithTag will write data with specified tag, default transactionID is epoch time.
-func (s *yomoSource) WriteWithTag(tag uint8, data []byte) error {
+func (s *yomoSource) WriteWithTag(tag frame.Tag, data []byte) error {
 	f := frame.NewDataFrame()
-	f.SetCarriage(byte(tag), data)
+	f.SetCarriage(tag, data)
 	f.SetSourceID(s.client.ClientID())
 	s.client.Logger().Debugf("%sWriteWithTag: tid=%s, source_id=%s, data[%d]=%# x",
 		sourceLogPrefix, f.TransactionID(), f.SourceID(), len(data), frame.Shortly(data))
@@ -110,7 +110,7 @@ func (s *yomoSource) SetErrorHandler(fn func(err error)) {
 }
 
 // [Experimental] SetReceiveHandler set the observe handler function
-func (s *yomoSource) SetReceiveHandler(fn func(byte, []byte)) {
+func (s *yomoSource) SetReceiveHandler(fn func(frame.Tag, []byte)) {
 	s.fn = fn
 	s.client.Logger().Debugf("%sSetReceiveHandler(%v)", sourceLogPrefix, s.fn)
 }
@@ -118,7 +118,7 @@ func (s *yomoSource) SetReceiveHandler(fn func(byte, []byte)) {
 // Broadcast Write the data to all downstream
 func (s *yomoSource) Broadcast(data []byte) error {
 	f := frame.NewDataFrame()
-	f.SetCarriage(byte(s.tag), data)
+	f.SetCarriage(s.tag, data)
 	f.SetSourceID(s.client.ClientID())
 	f.SetBroadcast(true)
 	s.client.Logger().Debugf("%sBroadcast: tid=%s, source_id=%s, data[%d]=%# x",

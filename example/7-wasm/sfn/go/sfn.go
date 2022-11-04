@@ -8,13 +8,13 @@ import (
 func main() {}
 
 //export yomo_observe_datatag
-func yomoObserveDataTag(tag uint8)
+func yomoObserveDataTag(tag uint32)
 
 //export yomo_load_input
 func yomoLoadInput(pointer *byte)
 
 //export yomo_dump_output
-func yomoDumpOutput(tag uint8, pointer *byte, length int)
+func yomoDumpOutput(tag uint32, pointer *byte, length int)
 
 //export yomo_init
 func yomoInit() {

@@ -3,6 +3,8 @@ package wasm
 
 import (
 	"fmt"
+
+	"github.com/yomorun/yomo/core/frame"
 )
 
 // Define wasm import/export function names
@@ -20,10 +22,10 @@ type Runtime interface {
 	Init(wasmFile string) error
 
 	// GetObserveDataTags returns observed datatags of the wasm sfn
-	GetObserveDataTags() []byte
+	GetObserveDataTags() []frame.Tag
 
 	// RunHandler runs the wasm application (request -> response mode)
-	RunHandler(data []byte) (byte, []byte, error)
+	RunHandler(data []byte) (frame.Tag, []byte, error)
 
 	// Close releases all the resources related to the runtime
 	Close() error

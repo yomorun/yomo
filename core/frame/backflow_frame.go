@@ -7,12 +7,12 @@ import (
 // BackflowFrame is a Y3 encoded bytes
 // It's used to receive stream function processed result
 type BackflowFrame struct {
-	Tag      byte
+	Tag      Tag
 	Carriage []byte
 }
 
 // NewBackflowFrame creates a new BackflowFrame with a given tag and carriage
-func NewBackflowFrame(tag byte, carriage []byte) *BackflowFrame {
+func NewBackflowFrame(tag Tag, carriage []byte) *BackflowFrame {
 	return &BackflowFrame{
 		Tag:      tag,
 		Carriage: carriage,
@@ -32,17 +32,20 @@ func (f *BackflowFrame) SetCarriage(buf []byte) *BackflowFrame {
 
 // Encode to Y3 encoded bytes
 func (f *BackflowFrame) Encode() []byte {
-	carriage := y3.NewPrimitivePacketEncoder(f.Tag)
+	tag := y3.NewPrimitivePacketEncoder(byte(TagOfBackflowDataTag))
+	tag.SetUInt32Value(uint32(f.Tag))
+
+	carriage := y3.NewPrimitivePacketEncoder(byte(TagOfBackflowCarriage))
 	carriage.SetBytesValue(f.Carriage)
 
 	node := y3.NewNodePacketEncoder(byte(TagOfBackflowFrame))
+	node.AddPrimitivePacket(tag)
 	node.AddPrimitivePacket(carriage)
-
 	return node.Encode()
 }
 
 // GetDataTag return the Tag of user's data
-func (f *BackflowFrame) GetDataTag() byte {
+func (f *BackflowFrame) GetDataTag() Tag {
 	return f.Tag
 }
 
@@ -60,10 +63,16 @@ func DecodeToBackflowFrame(buf []byte) (*BackflowFrame, error) {
 	}
 
 	payload := &BackflowFrame{}
-	for _, v := range nodeBlock.PrimitivePackets {
-		payload.Tag = v.SeqID()
-		payload.Carriage = v.GetValBuf()
-		break
+	if p, ok := nodeBlock.PrimitivePackets[byte(TagOfBackflowDataTag)]; ok {
+		tag, err := p.ToUInt32()
+		if err != nil {
+			return nil, err
+		}
+		payload.Tag = Tag(tag)
+	}
+
+	if p, ok := nodeBlock.PrimitivePackets[byte(TagOfBackflowCarriage)]; ok {
+		payload.Carriage = p.GetValBuf()
 	}
 
 	return payload, nil

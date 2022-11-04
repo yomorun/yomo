@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/logger"
 )
 
@@ -36,7 +37,7 @@ func main() {
 		os.Exit(1)
 	})
 	// set receive handler for the observe datatags
-	source.SetReceiveHandler(func(tag byte, data []byte) {
+	source.SetReceiveHandler(func(tag frame.Tag, data []byte) {
 		logger.Printf("[source] ♻️  receive backflow: tag=%#v, data=%s", tag, data)
 	})
 

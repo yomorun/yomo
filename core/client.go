@@ -328,7 +328,7 @@ func (c *Client) initOptions() error {
 	}
 	// observe tag list
 	if c.opts.ObserveDataTags == nil {
-		c.opts.ObserveDataTags = make([]byte, 0)
+		c.opts.ObserveDataTags = make([]frame.Tag, 0)
 	}
 	// credential
 	if c.opts.Credential == nil {
@@ -368,7 +368,7 @@ func (c *Client) initOptions() error {
 
 // SetObserveDataTags set the data tag list that will be observed.
 // Deprecated: use yomo.WithObserveDataTags instead
-func (c *Client) SetObserveDataTags(tag ...byte) {
+func (c *Client) SetObserveDataTags(tag ...frame.Tag) {
 	c.opts.ObserveDataTags = append(c.opts.ObserveDataTags, tag...)
 }
 

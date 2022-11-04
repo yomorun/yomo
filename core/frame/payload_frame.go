@@ -4,16 +4,19 @@ import (
 	"github.com/yomorun/y3"
 )
 
+// Tag is used for data router
+type Tag uint32
+
 // PayloadFrame is a Y3 encoded bytes, Tag is a fixed value TYPE_ID_PAYLOAD_FRAME
 // the Len is the length of Val. Val is also a Y3 encoded PrimitivePacket, storing
 // raw bytes as user's data
 type PayloadFrame struct {
-	Tag      byte
+	Tag      Tag
 	Carriage []byte
 }
 
 // NewPayloadFrame creates a new PayloadFrame with a given TagID of user's data
-func NewPayloadFrame(tag byte) *PayloadFrame {
+func NewPayloadFrame(tag Tag) *PayloadFrame {
 	return &PayloadFrame{
 		Tag: tag,
 	}
@@ -27,10 +30,14 @@ func (m *PayloadFrame) SetCarriage(buf []byte) *PayloadFrame {
 
 // Encode to Y3 encoded bytes
 func (m *PayloadFrame) Encode() []byte {
-	carriage := y3.NewPrimitivePacketEncoder(m.Tag)
+	tag := y3.NewPrimitivePacketEncoder(byte(TagOfPayloadDataTag))
+	tag.SetUInt32Value(uint32(m.Tag))
+
+	carriage := y3.NewPrimitivePacketEncoder(byte(TagOfPayloadCarriage))
 	carriage.SetBytesValue(m.Carriage)
 
 	payload := y3.NewNodePacketEncoder(byte(TagOfPayloadFrame))
+	payload.AddPrimitivePacket(tag)
 	payload.AddPrimitivePacket(carriage)
 
 	return payload.Encode()
@@ -45,10 +52,16 @@ func DecodeToPayloadFrame(buf []byte) (*PayloadFrame, error) {
 	}
 
 	payload := &PayloadFrame{}
-	for _, v := range nodeBlock.PrimitivePackets {
-		payload.Tag = v.SeqID()
-		payload.Carriage = v.GetValBuf()
-		break
+	if p, ok := nodeBlock.PrimitivePackets[byte(TagOfPayloadDataTag)]; ok {
+		tag, err := p.ToUInt32()
+		if err != nil {
+			return nil, err
+		}
+		payload.Tag = Tag(tag)
+	}
+
+	if p, ok := nodeBlock.PrimitivePackets[byte(TagOfPayloadCarriage)]; ok {
+		payload.Carriage = p.GetValBuf()
 	}
 
 	return payload, nil

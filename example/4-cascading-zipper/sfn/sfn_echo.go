@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/core/frame"
 )
 
 func main() {
@@ -29,7 +30,7 @@ func main() {
 	select {}
 }
 
-func handler(data []byte) (byte, []byte) {
+func handler(data []byte) (frame.Tag, []byte) {
 	val := string(data)
 	log.Printf(">> [sfn] got tag=0x33, data=%s", val)
 	return 0x0, nil

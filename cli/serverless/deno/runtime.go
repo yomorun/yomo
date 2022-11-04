@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/core/frame"
 )
 
 func listen(path string) (*net.UnixListener, error) {
@@ -21,7 +22,7 @@ func listen(path string) (*net.UnixListener, error) {
 	return net.ListenUnix("unix", addr)
 }
 
-func accept(listener *net.UnixListener) ([]byte, *net.UnixConn, error) {
+func accept(listener *net.UnixListener) ([]frame.Tag, *net.UnixConn, error) {
 	defer listener.Close()
 
 	listener.SetUnlinkOnClose(true)
@@ -40,13 +41,18 @@ func accept(listener *net.UnixListener) ([]byte, *net.UnixConn, error) {
 		return nil, nil, err
 	}
 
-	observed := make([]byte, length)
-	_, err = io.ReadFull(conn, observed)
+	observedBytes := make([]byte, length*4)
+	_, err = io.ReadFull(conn, observedBytes)
 	if err != nil {
 		conn.Close()
 		return nil, nil, err
 	}
 	conn.SetReadDeadline(time.Time{})
+
+	observed := make([]frame.Tag, length)
+	for i := 0; i < int(length); i++ {
+		observed[i] = frame.Tag(binary.LittleEndian.Uint32(observedBytes[i*4 : i*4+4]))
+	}
 
 	return observed, conn, nil
 }
@@ -73,7 +79,7 @@ func runDeno(jsPath string, socketPath string, errCh chan<- error) {
 	}
 }
 
-func startSfn(name string, zipperAddr string, credential string, observed []byte, conn net.Conn, errCh chan<- error) (yomo.StreamFunction, error) {
+func startSfn(name string, zipperAddr string, credential string, observed []frame.Tag, conn net.Conn, errCh chan<- error) (yomo.StreamFunction, error) {
 	sfn := yomo.NewStreamFunction(
 		name,
 		yomo.WithZipperAddr(zipperAddr),
@@ -82,7 +88,7 @@ func startSfn(name string, zipperAddr string, credential string, observed []byte
 	)
 
 	sfn.SetHandler(
-		func(data []byte) (byte, []byte) {
+		func(data []byte) (frame.Tag, []byte) {
 			err := binary.Write(conn, binary.LittleEndian, uint32(len(data)))
 			if err != nil {
 				errCh <- err
@@ -114,11 +120,11 @@ func startSfn(name string, zipperAddr string, credential string, observed []byte
 }
 
 func runResponse(conn net.Conn, sfn yomo.StreamFunction, errCh chan<- error) {
+	var tag frame.Tag
 	var length uint32
-	tag := make([]byte, 1)
 
 	for {
-		_, err := io.ReadFull(conn, tag)
+		err := binary.Read(conn, binary.LittleEndian, &tag)
 		if err != nil {
 			errCh <- err
 			return
@@ -137,7 +143,7 @@ func runResponse(conn net.Conn, sfn yomo.StreamFunction, errCh chan<- error) {
 			return
 		}
 
-		sfn.Write(tag[0], data)
+		sfn.Write(tag, data)
 	}
 }
 
