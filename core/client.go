@@ -346,7 +346,7 @@ func (c *Client) initOptions() error {
 	// quic config
 	if c.opts.QuicConfig == nil {
 		c.opts.QuicConfig = &quic.Config{
-			Versions:                       []quic.VersionNumber{quic.Version1, quic.VersionDraft29},
+			Versions:                       []quic.VersionNumber{quic.Version2},
 			MaxIdleTimeout:                 time.Second * 40,
 			KeepAlivePeriod:                time.Second * 20,
 			MaxIncomingStreams:             1000,

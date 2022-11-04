@@ -40,6 +40,7 @@ type Server struct {
 	connector               Connector
 	router                  Router
 	metadataBuilder         MetadataBuilder
+	alpnHandler             func(proto string) error
 	counterOfDataFrame      int64
 	downstreams             map[string]*Client
 	mu                      sync.Mutex
@@ -121,6 +122,12 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 			logger.Errorf("%slistener accept connections error: %v", ServerLogPrefix, err)
 			return err
 		}
+		err = s.alpnHandler(conn.ConnectionState().TLS.NegotiatedProtocol)
+		if err != nil {
+			conn.CloseWithError(quic.ApplicationErrorCode(yerr.ErrorCodeRejected), err.Error())
+			continue
+		}
+
 		// connection close handlers on server shutdown
 		// defer s.doConnectionCloseHandlers(conn)
 		s.wg.Add(1)
@@ -485,6 +492,14 @@ func (s *Server) ConfigMetadataBuilder(builder MetadataBuilder) {
 	s.mu.Unlock()
 }
 
+// ConfigAlpnHandler is used to set alpnHandler by zipper
+func (s *Server) ConfigAlpnHandler(h func(string) error) {
+	s.mu.Lock()
+	s.alpnHandler = h
+	logger.Debugf("%sconfig alpnHandler is %#v", ServerLogPrefix, h)
+	s.mu.Unlock()
+}
+
 // AddDownstreamServer add a downstream server to this server. all the DataFrames will be
 // dispatch to all the downstreams.
 func (s *Server) AddDownstreamServer(addr string, c *Client) {
@@ -508,6 +523,12 @@ func GetConnID(conn quic.Connection) string {
 
 func (s *Server) initOptions() {
 	// defaults
+	if s.alpnHandler == nil {
+		s.alpnHandler = func(proto string) error {
+			logger.Infof("%sclient alpn proto is: %s", ServerLogPrefix, proto)
+			return nil
+		}
+	}
 }
 
 func (s *Server) validateRouter() error {
