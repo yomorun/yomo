@@ -7,7 +7,7 @@ output: "prefixed"
 env:
   YOMO_LOG_LEVEL: error
   # set the following environment values on production mode
-  # YOMO_ENV: production
+  # YOMO_TLS_VERIFY_PEER: true
   # YOMO_TLS_CACERT_FILE: "../../test/tls/ca.crt"
   # YOMO_TLS_CERT_FILE: "../../test/tls/client.crt"
   # YOMO_TLS_KEY_FILE: "../../test/tls/client.key"
@@ -31,7 +31,8 @@ tasks:
       YOMO_LOG_LEVEL: error
       YOMO_ZIPPER_WORKFLOW: ./zipper/workflow.yaml
       # set the following environment values on production mode
-      # YOMO_ENV: production
+      # YOMO_TLS_VERIFY_PEER: true
+      # YOMO_TLS_CACERT_FILE: "../../test/tls/ca.crt"
       # YOMO_TLS_CERT_FILE: "../../test/tls/server.crt"
       # YOMO_TLS_KEY_FILE: "../../test/tls/server.key"
 
