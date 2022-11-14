@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 
 	"github.com/lucas-clemente/quic-go"
+	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/yerr"
 
@@ -310,7 +311,9 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	// credential
 	logger.Debugf("%sClientType=%# x is %s, ClientID=%s, Credential=%s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType), clientID, authName(f.AuthName()))
 	// authenticate
-	if !s.authenticate(f) {
+	authed := auth.Authenticate(s.opts.Auths, f)
+	logger.Debugf("%sauthenticated==%v", ServerLogPrefix, authed)
+	if !authed {
 		err := fmt.Errorf("handshake authentication fails, client credential name is %s", authName(f.AuthName()))
 		// return err
 		logger.Debugf("%s🔑 <%s> [%s](%s) is connected!", ServerLogPrefix, clientType, f.Name, connID)
@@ -361,7 +364,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	default:
 		// unknown client type
 		s.connector.Remove(connID)
-		err := fmt.Errorf("Illegal ClientType: %#x", f.ClientType)
+		err := fmt.Errorf("illegal ClientType: %#x", f.ClientType)
 		c.CloseWithError(yerr.ErrorCodeUnknownClient, err.Error())
 		return err
 	}
@@ -369,16 +372,6 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	s.connector.Add(connID, conn)
 	logger.Printf("%s❤️  <%s> [%s][%s](%s) is connected!", ServerLogPrefix, clientType, f.Name, clientID, connID)
 	return nil
-}
-
-// handle handleGoawayFrame
-func (s *Server) handleGoawayFrame(c *Context) error {
-	f := c.Frame.(*frame.GoawayFrame)
-
-	logger.Debugf("%s⛔️ GOT GoawayFrame code=%d, message==%s", ServerLogPrefix, yerr.ErrorCodeGoaway, f.Message())
-	// c.CloseWithError(f.Code(), f.Message())
-	_, err := c.Stream.Write(f.Encode())
-	return err
 }
 
 // will reuse quic-go's keep-alive feature
@@ -579,22 +572,6 @@ func (s *Server) authNames() []string {
 		result = append(result, auth.Name())
 	}
 	return result
-}
-
-func (s *Server) authenticate(f *frame.HandshakeFrame) bool {
-	if len(s.opts.Auths) > 0 {
-		for _, auth := range s.opts.Auths {
-			if f.AuthName() == auth.Name() {
-				isAuthenticated := auth.Authenticate(f.AuthPayload())
-				if isAuthenticated {
-					logger.Debugf("%sauthenticated==%v", ServerLogPrefix, isAuthenticated)
-					return isAuthenticated
-				}
-			}
-		}
-		return false
-	}
-	return true
 }
 
 func mode() string {
