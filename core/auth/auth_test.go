@@ -19,8 +19,8 @@ func init() { Register(mockAuth{}) }
 
 func Test_Authenticate(t *testing.T) {
 	type args struct {
-		auths  map[string]Authentication
-		auther Auther
+		auths   map[string]Authentication
+		authObj AuthObject
 	}
 	tests := []struct {
 		name string
@@ -30,47 +30,47 @@ func Test_Authenticate(t *testing.T) {
 		{
 			name: "auths is nil",
 			args: args{
-				auths:  nil,
-				auther: frame.NewHandshakeFrame("", "", byte(1), []frame.Tag{}, "mock", "mock_payload"),
+				auths:   nil,
+				authObj: frame.NewHandshakeFrame("", "", byte(1), []frame.Tag{}, "mock", "mock_payload"),
 			},
 			want: true,
 		},
 		{
-			name: "auther is nil",
+			name: "authObj is nil",
 			args: args{
-				auths:  map[string]Authentication{"mock": mockAuth{authed: true}},
-				auther: nil,
+				auths:   map[string]Authentication{"mock": mockAuth{authed: true}},
+				authObj: nil,
 			},
 			want: false,
 		},
 		{
-			name: "auther not found",
+			name: "authObj not found",
 			args: args{
-				auths:  map[string]Authentication{"mock": mockAuth{authed: true}},
-				auther: frame.NewHandshakeFrame("", "", byte(1), []frame.Tag{}, "mock_not_match", "mock_payload"),
+				auths:   map[string]Authentication{"mock": mockAuth{authed: true}},
+				authObj: frame.NewHandshakeFrame("", "", byte(1), []frame.Tag{}, "mock_not_match", "mock_payload"),
 			},
 			want: false,
 		},
 		{
 			name: "auth success",
 			args: args{
-				auths:  map[string]Authentication{"mock": mockAuth{authed: true}},
-				auther: frame.NewHandshakeFrame("", "", byte(1), []frame.Tag{}, "mock", "mock_payload"),
+				auths:   map[string]Authentication{"mock": mockAuth{authed: true}},
+				authObj: frame.NewHandshakeFrame("", "", byte(1), []frame.Tag{}, "mock", "mock_payload"),
 			},
 			want: true,
 		},
 		{
 			name: "auth failed",
 			args: args{
-				auths:  map[string]Authentication{"mock": mockAuth{authed: false}},
-				auther: frame.NewHandshakeFrame("", "", byte(1), []frame.Tag{}, "mock", "mock_payload"),
+				auths:   map[string]Authentication{"mock": mockAuth{authed: false}},
+				authObj: frame.NewHandshakeFrame("", "", byte(1), []frame.Tag{}, "mock", "mock_payload"),
 			},
 			want: false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := Authenticate(tt.args.auths, tt.args.auther)
+			got := Authenticate(tt.args.auths, tt.args.authObj)
 			assert.Equal(t, tt.want, got)
 		})
 	}
