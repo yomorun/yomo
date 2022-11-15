@@ -8,6 +8,8 @@ import (
 	"net/http"
 
 	"github.com/yomorun/yomo/core"
+	"github.com/yomorun/yomo/core/metadata"
+	"github.com/yomorun/yomo/core/router"
 	"github.com/yomorun/yomo/pkg/config"
 	"github.com/yomorun/yomo/pkg/logger"
 )
@@ -135,8 +137,8 @@ func (z *zipper) ConfigWorkflow(conf string) error {
 
 func (z *zipper) configWorkflow(config *config.WorkflowConfig) error {
 	z.wfc = config
-	z.server.ConfigMetadataBuilder(newMetadataBuilder())
-	z.server.ConfigRouter(newRouter(config.Functions))
+	z.server.ConfigMetadataBuilder(metadata.DefaultBuilder())
+	z.server.ConfigRouter(router.Default(config.Functions))
 	return nil
 }
 

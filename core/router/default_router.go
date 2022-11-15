@@ -1,45 +1,45 @@
-package yomo
+package router
 
 import (
 	"fmt"
 	"sync"
 
-	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/yerr"
 	"github.com/yomorun/yomo/pkg/config"
 )
 
-type router struct {
-	r *route
+type DefaultRouter struct {
+	r *DefaultRoute
 }
 
-func newRouter(functions []config.App) core.Router {
-	return &router{r: newRoute(functions)}
+func Default(functions []config.App) Router {
+	return &DefaultRouter{r: newRoute(functions)}
 }
 
-func (r *router) Route(metadata core.Metadata) core.Route {
+func (r *DefaultRouter) Route(metadata metadata.Metadata) Route {
 	return r.r
 }
 
-func (r *router) Clean() {
+func (r *DefaultRouter) Clean() {
 	r.r = nil
 }
 
-type route struct {
+type DefaultRoute struct {
 	functions []config.App
 	data      map[frame.Tag]map[string]string
 	mu        sync.RWMutex
 }
 
-func newRoute(functions []config.App) *route {
-	return &route{
+func newRoute(functions []config.App) *DefaultRoute {
+	return &DefaultRoute{
 		functions: functions,
 		data:      make(map[frame.Tag]map[string]string),
 	}
 }
 
-func (r *route) Add(connID string, name string, observeDataTags []frame.Tag) (err error) {
+func (r *DefaultRoute) Add(connID string, name string, observeDataTags []frame.Tag) (err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -77,7 +77,7 @@ LOOP:
 	return err
 }
 
-func (r *route) Remove(connID string) error {
+func (r *DefaultRoute) Remove(connID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -88,7 +88,7 @@ func (r *route) Remove(connID string) error {
 	return nil
 }
 
-func (r *route) GetForwardRoutes(tag frame.Tag) []string {
+func (r *DefaultRoute) GetForwardRoutes(tag frame.Tag) []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
