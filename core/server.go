@@ -13,6 +13,8 @@ import (
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/metadata"
+	"github.com/yomorun/yomo/core/router"
 	"github.com/yomorun/yomo/core/yerr"
 
 	// authentication implements, Currently, only token authentication is implemented
@@ -39,8 +41,8 @@ type ConnectionHandler func(conn quic.Connection)
 type Server struct {
 	name                    string
 	connector               Connector
-	router                  Router
-	metadataBuilder         MetadataBuilder
+	router                  router.Router
+	metadataBuilder         metadata.Builder
 	alpnHandler             func(proto string) error
 	counterOfDataFrame      int64
 	downstreams             map[string]*Client
@@ -393,7 +395,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 
 	f := c.Frame.(*frame.DataFrame)
 
-	var metadata Metadata
+	var metadata metadata.Metadata
 	if from.ClientType() == ClientTypeUpstreamZipper {
 		m, err := s.metadataBuilder.Decode(f.GetMetaFrame().Metadata())
 		if err != nil {
@@ -470,7 +472,7 @@ func (s *Server) Downstreams() map[string]*Client {
 }
 
 // ConfigRouter is used to set router by zipper
-func (s *Server) ConfigRouter(router Router) {
+func (s *Server) ConfigRouter(router router.Router) {
 	s.mu.Lock()
 	s.router = router
 	logger.Debugf("%sconfig router is %#v", ServerLogPrefix, router)
@@ -478,7 +480,7 @@ func (s *Server) ConfigRouter(router Router) {
 }
 
 // ConfigMetadataBuilder is used to set metadataBuilder by zipper
-func (s *Server) ConfigMetadataBuilder(builder MetadataBuilder) {
+func (s *Server) ConfigMetadataBuilder(builder metadata.Builder) {
 	s.mu.Lock()
 	s.metadataBuilder = builder
 	logger.Debugf("%sconfig metadataBuilder is %#v", ServerLogPrefix, builder)
