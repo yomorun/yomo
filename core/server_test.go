@@ -21,6 +21,149 @@ func init() {
 	tokenAuth.Init("token-for-test")
 }
 
+type mockConnectorArgs struct {
+	name        string
+	clientID    string
+	clientType  byte
+	obversedTag frame.Tag
+	connID      string
+	stream      *streamAssert
+}
+
+// buildMockConnector build a mock connector according to `args`
+// for preparing dataFrame testing.
+func buildMockConnector(router router.Router, metadataBuilder metadata.Builder, args []mockConnectorArgs) Connector {
+	connector := newConnector()
+
+	for _, arg := range args {
+
+		handshakeFrame := frame.NewHandshakeFrame(
+			arg.name,
+			arg.clientID,
+			arg.clientType,
+			[]frame.Tag{arg.obversedTag},
+			"token",
+			"mock-token",
+		)
+
+		metadata, _ := metadataBuilder.Build(handshakeFrame)
+
+		conn := newConnection(
+			handshakeFrame.Name,
+			handshakeFrame.ClientID,
+			ClientType(handshakeFrame.ClientType),
+			metadata,
+			arg.stream,
+			handshakeFrame.ObserveDataTags,
+		)
+
+		route := router.Route(conn.Metadata())
+
+		route.Add(arg.connID, arg.name, []frame.Tag{arg.obversedTag})
+
+		connector.Add(arg.connID, conn)
+	}
+
+	return connector
+}
+
+func Test_HandleDataFrame(t *testing.T) {
+	metadataBuilder := metadata.DefaultBuilder()
+
+	var (
+		sfnStream1   = newStreamAssert([]byte{})
+		sfnStream2   = newStreamAssert([]byte{})
+		sourceStream = newStreamAssert([]byte{})
+		zipperStream = newStreamAssert([]byte{})
+	)
+
+	sourceConnID := "source-conn-id-2"
+	zipperConnID := "zipper-conn-id-2"
+
+	routers := router.Default([]config.App{{Name: "sfn-1"}, {Name: "sfn-2"}})
+
+	connector := buildMockConnector(routers, metadataBuilder, []mockConnectorArgs{
+		{
+			name:        "sfn-1",
+			clientID:    "sfn-id-1",
+			clientType:  byte(ClientTypeStreamFunction),
+			obversedTag: 1,
+			connID:      "sfn-conn-id-1",
+			stream:      sfnStream1,
+		},
+		{
+			name:        "sfn-2",
+			clientID:    "sfn-id-2",
+			clientType:  byte(ClientTypeStreamFunction),
+			obversedTag: 2,
+			connID:      "sfn-conn-id-2",
+			stream:      sfnStream2,
+		},
+		{
+			name:        "source-1",
+			clientID:    "source-id-2",
+			clientType:  byte(ClientTypeSource),
+			obversedTag: 1,
+			connID:      sourceConnID,
+			stream:      sourceStream,
+		},
+		{
+			name:        "zipper-1",
+			clientID:    "zipper-id-2",
+			clientType:  byte(ClientTypeUpstreamZipper),
+			obversedTag: 1,
+			connID:      zipperConnID,
+			stream:      zipperStream,
+		},
+	})
+
+	server := &Server{connector: connector}
+
+	server.ConfigRouter(routers)
+	server.ConfigMetadataBuilder(metadataBuilder)
+
+	t.Run("test write data from source", func(t *testing.T) {
+		dataFrame := frame.NewDataFrame()
+		dataFrame.SetCarriage(1, []byte("hello yomo"))
+		dataFrame.SetSourceID(sourceConnID)
+
+		err := server.handleDataFrame(&Context{
+			connID: sourceConnID,
+			Stream: sourceStream,
+			Frame:  dataFrame,
+		})
+
+		assert.Equal(t, server.counterOfDataFrame, int64(1))
+
+		assert.Nil(t, err, "server.handleDataFrame() should not return error")
+
+		// sfn-1 obverse tag 1
+		sfnStream1.writeEqual(t, dataFrame.Encode())
+
+		// sfn-2 do not obverse tag 1
+		sfnStream2.writeEqual(t, []byte{})
+	})
+
+	t.Run("test write data from zipper", func(t *testing.T) {
+		dataFrame := frame.NewDataFrame()
+		dataFrame.SetCarriage(2, []byte("hello yomo"))
+		dataFrame.SetSourceID(zipperConnID)
+
+		err := server.handleDataFrame(&Context{
+			connID: zipperConnID,
+			Stream: zipperStream,
+			Frame:  dataFrame,
+		})
+
+		assert.Equal(t, server.counterOfDataFrame, int64(2))
+
+		assert.Nil(t, err, "server.handleDataFrame() should not return error")
+
+		sfnStream2.writeEqual(t, dataFrame.Encode())
+	})
+
+}
+
 func Test_HandShake(t *testing.T) {
 	type args struct {
 		clientID                 string
