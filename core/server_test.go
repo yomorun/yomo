@@ -101,7 +101,7 @@ func Test_HandleDataFrame(t *testing.T) {
 		},
 		{
 			name:        "source-1",
-			clientID:    "source-id-2",
+			clientID:    sourceConnID,
 			clientType:  byte(ClientTypeSource),
 			obversedTag: 1,
 			connID:      sourceConnID,
@@ -123,25 +123,38 @@ func Test_HandleDataFrame(t *testing.T) {
 	server.ConfigMetadataBuilder(metadataBuilder)
 
 	t.Run("test write data from source", func(t *testing.T) {
+		var (
+			payload = []byte("hello yomo")
+			tag     = frame.Tag(1)
+		)
+
 		dataFrame := frame.NewDataFrame()
-		dataFrame.SetCarriage(1, []byte("hello yomo"))
+		dataFrame.SetCarriage(tag, payload)
 		dataFrame.SetSourceID(sourceConnID)
 
-		err := server.handleDataFrame(&Context{
+		c := &Context{
 			connID: sourceConnID,
 			Stream: sourceStream,
 			Frame:  dataFrame,
-		})
+		}
+
+		err := server.handleDataFrame(c)
+		assert.Nil(t, err, "server.handleDataFrame() should not return error")
 
 		assert.Equal(t, server.counterOfDataFrame, int64(1))
-
-		assert.Nil(t, err, "server.handleDataFrame() should not return error")
 
 		// sfn-1 obverse tag 1
 		sfnStream1.writeEqual(t, dataFrame.Encode())
 
 		// sfn-2 do not obverse tag 1
 		sfnStream2.writeEqual(t, []byte{})
+
+		t.Run("test response with BackflowFrame", func(t *testing.T) {
+			err = server.handleBackflowFrame(c)
+			assert.Nil(t, err)
+
+			sourceStream.writeEqual(t, frame.NewBackflowFrame(tag, payload).Encode())
+		})
 	})
 
 	t.Run("test write data from zipper", func(t *testing.T) {
@@ -149,15 +162,16 @@ func Test_HandleDataFrame(t *testing.T) {
 		dataFrame.SetCarriage(2, []byte("hello yomo"))
 		dataFrame.SetSourceID(zipperConnID)
 
-		err := server.handleDataFrame(&Context{
+		c := &Context{
 			connID: zipperConnID,
 			Stream: zipperStream,
 			Frame:  dataFrame,
-		})
+		}
+
+		err := server.handleDataFrame(c)
+		assert.Nil(t, err, "server.handleDataFrame() should not return error")
 
 		assert.Equal(t, server.counterOfDataFrame, int64(2))
-
-		assert.Nil(t, err, "server.handleDataFrame() should not return error")
 
 		sfnStream2.writeEqual(t, dataFrame.Encode())
 	})
