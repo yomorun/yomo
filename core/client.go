@@ -391,3 +391,11 @@ func (c *Client) SetCloseHandler(fn func()) {
 func (c *Client) ClientID() string {
 	return c.clientID
 }
+
+func (c *Client) State() ConnState {
+	c.mu.Lock()
+	state := c.state
+	c.mu.Unlock()
+
+	return state
+}
