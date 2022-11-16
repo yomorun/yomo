@@ -20,7 +20,6 @@ import (
 	// authentication implements, Currently, only token authentication is implemented
 	_ "github.com/yomorun/yomo/pkg/auth"
 	"github.com/yomorun/yomo/pkg/logger"
-	pkgtls "github.com/yomorun/yomo/pkg/tls"
 )
 
 const (
@@ -113,7 +112,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 	}
 	s.listener = listener
 	// defer listener.Close()
-	logger.Printf("%s✅ [%s][%d] Listening on: %s, MODE: %s, QUIC: %v, AUTH: %s", ServerLogPrefix, s.name, os.Getpid(), listener.Addr(), mode(), listener.Versions(), s.authNames())
+	logger.Printf("%s✅ [%s][%d] Listening on: %s, QUIC: %v, AUTH: %s", ServerLogPrefix, s.name, os.Getpid(), listener.Addr(), listener.Versions(), s.authNames())
 
 	for {
 		// create a new connection when new yomo-client connected
@@ -574,13 +573,6 @@ func (s *Server) authNames() []string {
 		result = append(result, auth.Name())
 	}
 	return result
-}
-
-func mode() string {
-	if pkgtls.IsDev() {
-		return "DEVELOPMENT"
-	}
-	return "PRODUCTION"
 }
 
 func authName(name string) string {

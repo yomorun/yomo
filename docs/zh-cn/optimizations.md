@@ -18,7 +18,7 @@
 
 默认情况下，我们使用 `development` 开发模式，不进行服务端与客户端的双向 `TLS`认证，在生产环境下，**强烈建议**您修改如下环境变量：
 
-- `YOMO_ENV`，将该值设置为 `production`
+- `YOMO_TLS_VERIFY_PEER`，将该值设置为 `true`
 - `YOMO_TLS_CACERT_FILE`，CA 证书
 - `YOMO_TLS_CERT_FILE`，证书
 - `YOMO_TLS_KEY_FILE`，私钥
