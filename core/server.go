@@ -363,6 +363,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	case ClientTypeUpstreamZipper:
 		conn = newConnection(f.Name, f.ClientID, clientType, nil, stream, f.ObserveDataTags)
 	default:
+		// TODO: There is no need to Remove .
 		// unknown client type
 		s.connector.Remove(connID)
 		err := fmt.Errorf("illegal ClientType: %#x", f.ClientType)
@@ -370,6 +371,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 		return err
 	}
 
+	// TODO: maybe add twice.
 	s.connector.Add(connID, conn)
 	logger.Printf("%s❤️  <%s> [%s][%s](%s) is connected!", ServerLogPrefix, clientType, f.Name, clientID, connID)
 	return nil

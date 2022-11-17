@@ -1,5 +1,7 @@
-// metadata package defines `Metadata` and the `Builder`.
+// Package metadata defines `Metadata` and the `Builder`.
+//
 // metadata is the extra information that stored by application.
+//
 // the metadata usually be built from `HandshakeFrame`, and It can
 // be decode as byte array for io sharing.
 package metadata
