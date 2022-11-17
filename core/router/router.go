@@ -1,3 +1,7 @@
+// router package defines the interface of router,
+// router manages application's route according to application's metadata.
+//
+// route manages data subscribers according to their observed data tags.
 package router
 
 import (

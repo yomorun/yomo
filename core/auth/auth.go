@@ -60,9 +60,9 @@ func (c *Credential) Name() string {
 	return c.name
 }
 
-// AuthObject is the object to be authenticated,
-// AuthObject usually be pass to `Authenticate` function to auth the AuthObject.
-type AuthObject interface {
+// Object is the object to be authenticated,
+// The Object usually be pass to `Authenticate` function to be authed.
+type Object interface {
 	// AuthName returns the auth name, the name will be used to find the auth way.
 	AuthName() string
 
@@ -70,22 +70,22 @@ type AuthObject interface {
 	AuthPayload() string
 }
 
-// Authenticate finds an authentication way in `auths` and authenticates the AuthObject.
+// Authenticate finds an authentication way in `auths` and authenticates the Object.
 //
 // If `auths` is nil or empty, It returns true, It think that authentication is not required.
-func Authenticate(auths map[string]Authentication, authObj AuthObject) bool {
+func Authenticate(auths map[string]Authentication, obj Object) bool {
 	if auths == nil || len(auths) <= 0 {
 		return true
 	}
 
-	if authObj == nil {
+	if obj == nil {
 		return false
 	}
 
-	auth, ok := auths[authObj.AuthName()]
+	auth, ok := auths[obj.AuthName()]
 	if !ok {
 		return false
 	}
 
-	return auth.Authenticate(authObj.AuthPayload())
+	return auth.Authenticate(obj.AuthPayload())
 }
