@@ -1,3 +1,4 @@
+// package router providers a default implement of `router` and `Route`.
 package router
 
 import (
@@ -10,36 +11,41 @@ import (
 	"github.com/yomorun/yomo/pkg/config"
 )
 
+// DefaultRouter providers a default implement of `router`,
+// It route the data according to obversed tag or connID.
 type DefaultRouter struct {
-	r *DefaultRoute
+	r *defaultRoute
 }
 
+// Default return the DefaultRouter.
 func Default(functions []config.App) Router {
 	return &DefaultRouter{r: newRoute(functions)}
 }
 
+// Route get route from metadata.
 func (r *DefaultRouter) Route(metadata metadata.Metadata) Route {
 	return r.r
 }
 
+// Clean clean router.
 func (r *DefaultRouter) Clean() {
 	r.r = nil
 }
 
-type DefaultRoute struct {
+type defaultRoute struct {
 	functions []config.App
 	data      map[frame.Tag]map[string]string
 	mu        sync.RWMutex
 }
 
-func newRoute(functions []config.App) *DefaultRoute {
-	return &DefaultRoute{
+func newRoute(functions []config.App) *defaultRoute {
+	return &defaultRoute{
 		functions: functions,
 		data:      make(map[frame.Tag]map[string]string),
 	}
 }
 
-func (r *DefaultRoute) Add(connID string, name string, observeDataTags []frame.Tag) (err error) {
+func (r *defaultRoute) Add(connID string, name string, observeDataTags []frame.Tag) (err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -77,7 +83,7 @@ LOOP:
 	return err
 }
 
-func (r *DefaultRoute) Remove(connID string) error {
+func (r *defaultRoute) Remove(connID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -88,7 +94,7 @@ func (r *DefaultRoute) Remove(connID string) error {
 	return nil
 }
 
-func (r *DefaultRoute) GetForwardRoutes(tag frame.Tag) []string {
+func (r *defaultRoute) GetForwardRoutes(tag frame.Tag) []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 

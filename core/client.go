@@ -392,6 +392,9 @@ func (c *Client) ClientID() string {
 	return c.clientID
 }
 
+// State return the state of client,
+// NewClient returned, state is `Ready`, after calling `Connect()`,
+// the state is `Connected` if success is returned otherwise it is `Disconnected`.
 func (c *Client) State() ConnState {
 	c.mu.Lock()
 	state := c.state
