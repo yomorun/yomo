@@ -1,4 +1,8 @@
 // Package metadata provides a default implements of `Metadata`.
+<<<<<<< HEAD
+=======
+
+>>>>>>> f088ffd (style: fix code style issure from codacy)
 package metadata
 
 import (
