@@ -1,4 +1,4 @@
-// package router providers a default implement of `router` and `Route`.
+// Package router providers a default implement of `router` and `Route`.
 package router
 
 import (

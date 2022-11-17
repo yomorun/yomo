@@ -1,3 +1,5 @@
+// Package metadata provides a default implements of `Metadata`.
+
 package metadata
 
 import (
@@ -10,6 +12,7 @@ var _ Metadata = &Default{}
 // the default `Metadata` do not store anything.
 type Default struct{}
 
+// Encode returns nil, It indicates the application do not have metadata.
 func (m *Default) Encode() []byte {
 	return nil
 }
