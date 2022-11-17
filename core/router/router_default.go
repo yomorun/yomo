@@ -28,7 +28,14 @@ func (r *DefaultRouter) Route(metadata metadata.Metadata) Route {
 }
 
 // Clean clean router.
-func (r *DefaultRouter) Clean() {}
+func (r *DefaultRouter) Clean() {
+	r.r.mu.Lock()
+	defer r.r.mu.Unlock()
+
+	for key := range r.r.data {
+		delete(r.r.data, key)
+	}
+}
 
 type defaultRoute struct {
 	functions []config.App
