@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"strings"
@@ -402,3 +403,6 @@ func (c *Client) State() ConnState {
 
 	return state
 }
+
+// String returns client's name and addr format as a string.
+func (c *Client) String() string { return fmt.Sprintf("name:%s, addr: %s", c.name, c.ServerAddr()) }

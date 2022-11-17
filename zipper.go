@@ -256,7 +256,7 @@ func (z *zipper) Stats() int {
 
 	log.Printf("[%s] all downstream zippers connected: %d", z.name, len(z.server.Downstreams()))
 	for k, v := range z.server.Downstreams() {
-		log.Printf("[%s] |> [%s] %s", z.name, k, v.ServerAddr())
+		log.Printf("[%s] |> [%s] %v", z.name, k, v)
 	}
 
 	log.Printf("[%s] total DataFrames received: %d", z.name, z.server.StatsCounter())
