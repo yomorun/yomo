@@ -140,7 +140,7 @@ func Test_HandleDataFrame(t *testing.T) {
 		}
 
 		err := server.handleDataFrame(c)
-		assert.Nil(t, err, "server.handleDataFrame() should not return error")
+		assert.NoError(t, err, "server.handleDataFrame() should not return error")
 
 		assert.Equal(t, server.StatsCounter(), int64(1))
 
@@ -152,7 +152,7 @@ func Test_HandleDataFrame(t *testing.T) {
 
 		t.Run("test response with BackflowFrame", func(t *testing.T) {
 			err = server.handleBackflowFrame(c)
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 
 			sourceStream.writeEqual(t, frame.NewBackflowFrame(tag, payload).Encode())
 		})
@@ -170,7 +170,7 @@ func Test_HandleDataFrame(t *testing.T) {
 		}
 
 		err := server.handleDataFrame(c)
-		assert.Nil(t, err, "server.handleDataFrame() should not return error")
+		assert.NoError(t, err, "server.handleDataFrame() should not return error")
 
 		assert.Equal(t, server.StatsCounter(), int64(2))
 

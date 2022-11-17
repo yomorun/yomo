@@ -71,7 +71,7 @@ func Test_Frame_RoundTrip(t *testing.T) {
 	})
 
 	err := source.Connect(ctx, testaddr)
-	assert.Nil(t, err, "source connect must be success")
+	assert.NoError(t, err, "source connect must be success")
 	assert.Equal(t, ConnStateConnected, source.State(), "source state should be ConnStateReady")
 
 	sfn := NewClient("sfn-1", ClientTypeStreamFunction, WithCredential("token:auth-token"), WithObserveDataTags(obversedTag))
@@ -81,7 +81,7 @@ func Test_Frame_RoundTrip(t *testing.T) {
 	})
 
 	err = sfn.Connect(ctx, testaddr)
-	assert.Nil(t, err, "sfn connect must be success")
+	assert.NoError(t, err, "sfn connect must be success")
 	assert.Equal(t, ConnStateConnected, sfn.State(), "sfn state should be ConnStateReady")
 
 	// wait source and sfn handshake successful (not elegant).
@@ -100,17 +100,17 @@ func Test_Frame_RoundTrip(t *testing.T) {
 	dataFrame.SetBroadcast(true)
 
 	err = source.WriteFrame(dataFrame)
-	assert.Nil(t, err, "source write dataFrame must be success")
+	assert.NoError(t, err, "source write dataFrame must be success")
 
 	time.Sleep(time.Second)
 
 	w.assertEqual(t, dataFrame)
 
 	// TODO: closing server many times is blocking.
-	assert.Nil(t, server.Close(), "server.Close() should not return error")
+	assert.NoError(t, server.Close(), "server.Close() should not return error")
 
-	assert.Nil(t, source.Close(), "source client.Close() should not return error")
-	assert.Nil(t, sfn.Close(), "sfn client.Close() should not return error")
+	assert.NoError(t, source.Close(), "source client.Close() should not return error")
+	assert.NoError(t, sfn.Close(), "sfn client.Close() should not return error")
 }
 
 // mockFrameWriter mock a FrameWriter
