@@ -28,9 +28,7 @@ func (r *DefaultRouter) Route(metadata metadata.Metadata) Route {
 }
 
 // Clean clean router.
-func (r *DefaultRouter) Clean() {
-	r.r = nil
-}
+func (r *DefaultRouter) Clean() {}
 
 type defaultRoute struct {
 	functions []config.App
