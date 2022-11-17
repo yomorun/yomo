@@ -75,3 +75,43 @@ func Test_Authenticate(t *testing.T) {
 		})
 	}
 }
+
+func TestNewCredential(t *testing.T) {
+	type args struct {
+		payload string
+	}
+	tests := []struct {
+		name string
+		args args
+		want *Credential
+	}{
+		{
+			name: "key value pair",
+			args: args{
+				payload: "token:the-token",
+			},
+			want: &Credential{
+				name:    "token",
+				payload: "the-token",
+			},
+		},
+		{
+			name: "not key value pair",
+			args: args{
+				payload: "abcdefg",
+			},
+			want: &Credential{
+				name:    "none",
+				payload: "",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := NewCredential(tt.args.payload)
+
+			assert.Equal(t, tt.want.Name(), got.Name())
+			assert.Equal(t, tt.want.Payload(), got.Payload())
+		})
+	}
+}
