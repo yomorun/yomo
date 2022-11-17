@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"testing"
 	"time"
@@ -43,9 +44,13 @@ func Test_Frame_RoundTrip(t *testing.T) {
 		WithAddr(testaddr),
 		WithAuth("token", "auth-token"),
 		WithServerQuicConfig(DefalutQuicConfig),
+		WithServerTLSConfig(nil),
 	)
 	server.ConfigMetadataBuilder(metadata.DefaultBuilder())
 	server.ConfigRouter(router.Default([]config.App{{Name: "sfn-1"}}))
+
+	w := newMockFrameWriter()
+	server.AddDownstreamServer("mockAddr", w)
 
 	go func() {
 		server.ListenAndServe(ctx, testaddr)
@@ -82,14 +87,44 @@ func Test_Frame_RoundTrip(t *testing.T) {
 	// wait source and sfn handshake successful (not elegant).
 	time.Sleep(time.Second)
 
+	stats := server.StatsFunctions()
+	nameList := []string{}
+	for _, name := range stats {
+		nameList = append(nameList, name)
+	}
+	assert.ElementsMatch(t, nameList, []string{"source", "sfn-1"})
+
 	dataFrame := frame.NewDataFrame()
 	dataFrame.SetSourceID(source.clientID)
 	dataFrame.SetCarriage(obversedTag, payload)
+	dataFrame.SetBroadcast(true)
 
 	err = source.WriteFrame(dataFrame)
 	assert.Nil(t, err, "source write dataFrame must be success")
 
 	time.Sleep(time.Second)
+
+	w.assertEqual(t, dataFrame)
+
 	// TODO: closing server many times is blocking.
 	assert.Nil(t, server.Close(), "server.Close() should not return error")
+
+	assert.Nil(t, source.Close(), "source client.Close() should not return error")
+	assert.Nil(t, sfn.Close(), "sfn client.Close() should not return error")
+}
+
+// mockFrameWriter mock a FrameWriter
+type mockFrameWriter struct {
+	buf *bytes.Buffer
+}
+
+func newMockFrameWriter() *mockFrameWriter { return &mockFrameWriter{buf: bytes.NewBuffer([]byte{})} }
+
+func (w *mockFrameWriter) WriteFrame(frm frame.Frame) error {
+	_, err := w.buf.Write(frm.Encode())
+	return err
+}
+
+func (w *mockFrameWriter) assertEqual(t *testing.T, frm frame.Frame) {
+	assert.Equal(t, w.buf.Bytes(), frm.Encode())
 }

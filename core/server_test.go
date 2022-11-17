@@ -116,6 +116,7 @@ func Test_HandleDataFrame(t *testing.T) {
 			stream:      zipperStream,
 		},
 	})
+	defer connector.Clean()
 
 	server := &Server{connector: connector}
 
@@ -141,7 +142,7 @@ func Test_HandleDataFrame(t *testing.T) {
 		err := server.handleDataFrame(c)
 		assert.Nil(t, err, "server.handleDataFrame() should not return error")
 
-		assert.Equal(t, server.counterOfDataFrame, int64(1))
+		assert.Equal(t, server.StatsCounter(), int64(1))
 
 		// sfn-1 obverse tag 1
 		sfnStream1.writeEqual(t, dataFrame.Encode())
@@ -171,7 +172,7 @@ func Test_HandleDataFrame(t *testing.T) {
 		err := server.handleDataFrame(c)
 		assert.Nil(t, err, "server.handleDataFrame() should not return error")
 
-		assert.Equal(t, server.counterOfDataFrame, int64(2))
+		assert.Equal(t, server.StatsCounter(), int64(2))
 
 		sfnStream2.writeEqual(t, dataFrame.Encode())
 	})
