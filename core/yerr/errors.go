@@ -66,35 +66,27 @@ const (
 	ErrorCodeDuplicateName ErrorCode = 0xC6
 )
 
+var errCodeStringMap = map[ErrorCode]string{
+	ErrorCodeClientAbort:   "ClientAbort",
+	ErrorCodeUnknown:       "UnknownError",
+	ErrorCodeClosed:        "NetClosed",
+	ErrorCodeBeforeHandler: "BeforeHandler",
+	ErrorCodeMainHandler:   "MainHandler",
+	ErrorCodeAfterHandler:  "AfterHandler",
+	ErrorCodeHandshake:     "Handshake",
+	ErrorCodeRejected:      "Rejected",
+	ErrorCodeGoaway:        "Goaway",
+	ErrorCodeData:          "DataFrame",
+	ErrorCodeUnknownClient: "UnknownClient",
+	ErrorCodeDuplicateName: "DuplicateName",
+}
+
 func (e ErrorCode) String() string {
-	switch e {
-	case ErrorCodeClientAbort:
-		return "ClientAbort"
-	case ErrorCodeUnknown:
-		return "UnknownError"
-	case ErrorCodeClosed:
-		return "NetClosed"
-	case ErrorCodeBeforeHandler:
-		return "BeforeHandler"
-	case ErrorCodeMainHandler:
-		return "MainHandler"
-	case ErrorCodeAfterHandler:
-		return "AfterHandler"
-	case ErrorCodeHandshake:
-		return "Handshake"
-	case ErrorCodeRejected:
-		return "Rejected"
-	case ErrorCodeGoaway:
-		return "Goaway"
-	case ErrorCodeData:
-		return "DataFrame"
-	case ErrorCodeUnknownClient:
-		return "UnknownClient"
-	case ErrorCodeDuplicateName:
-		return "DuplicateName"
-	default:
+	msg, ok := errCodeStringMap[e]
+	if !ok {
 		return "XXX"
 	}
+	return msg
 }
 
 // Is parse quic ApplicationErrorCode to yomo ErrorCode
