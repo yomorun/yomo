@@ -17,7 +17,7 @@ func (auth mockAuth) Name() string                     { return "mock" }
 
 func init() { Register(mockAuth{}) }
 
-func Test_Authenticate(t *testing.T) {
+func TestAuthenticate(t *testing.T) {
 	type args struct {
 		auths map[string]Authentication
 		obj   Object

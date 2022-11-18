@@ -17,7 +17,7 @@ import (
 
 const testaddr = "127.0.0.1:19999"
 
-func Test_Client_Dial_Nothing(t *testing.T) {
+func TestClientDialNothing(t *testing.T) {
 	ctx := context.Background()
 
 	client := NewClient("source", ClientTypeSource)
@@ -32,7 +32,7 @@ func Test_Client_Dial_Nothing(t *testing.T) {
 	assert.ErrorAs(t, err, &qerr, "dial must timeout")
 }
 
-func Test_Frame_RoundTrip(t *testing.T) {
+func TestFrameRoundTrip(t *testing.T) {
 	ctx := context.Background()
 
 	var (

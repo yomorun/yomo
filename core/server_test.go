@@ -67,7 +67,7 @@ func buildMockConnector(router router.Router, metadataBuilder metadata.Builder, 
 	return connector
 }
 
-func Test_HandleDataFrame(t *testing.T) {
+func TestHandleDataFrame(t *testing.T) {
 	metadataBuilder := metadata.DefaultBuilder()
 
 	var (
@@ -179,7 +179,7 @@ func Test_HandleDataFrame(t *testing.T) {
 
 }
 
-func Test_HandShake(t *testing.T) {
+func TestHandShake(t *testing.T) {
 	type args struct {
 		clientID                 string
 		token                    string
