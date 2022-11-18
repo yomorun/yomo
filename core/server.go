@@ -44,7 +44,7 @@ type Server struct {
 	metadataBuilder         metadata.Builder
 	alpnHandler             func(proto string) error
 	counterOfDataFrame      int64
-	downstreams             map[string]frame.FrameWriter
+	downstreams             map[string]frame.Writer
 	mu                      sync.Mutex
 	opts                    ServerOptions
 	beforeHandlers          []FrameHandler
@@ -59,7 +59,7 @@ func NewServer(name string, opts ...ServerOption) *Server {
 	s := &Server{
 		name:        name,
 		connector:   newConnector(),
-		downstreams: make(map[string]frame.FrameWriter),
+		downstreams: make(map[string]frame.Writer),
 		wg:          new(sync.WaitGroup),
 	}
 	s.Init(opts...)
@@ -468,7 +468,7 @@ func (s *Server) StatsCounter() int64 {
 }
 
 // Downstreams return all the downstream servers.
-func (s *Server) Downstreams() map[string]frame.FrameWriter {
+func (s *Server) Downstreams() map[string]frame.Writer {
 	return s.downstreams
 }
 
@@ -498,7 +498,7 @@ func (s *Server) ConfigAlpnHandler(h func(string) error) {
 
 // AddDownstreamServer add a downstream server to this server. all the DataFrames will be
 // dispatch to all the downstreams.
-func (s *Server) AddDownstreamServer(addr string, c frame.FrameWriter) {
+func (s *Server) AddDownstreamServer(addr string, c frame.Writer) {
 	s.mu.Lock()
 	s.downstreams[addr] = c
 	s.mu.Unlock()

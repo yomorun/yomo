@@ -59,10 +59,10 @@ type Frame interface {
 	Encode() []byte
 }
 
-// FrameWriter is the interface that wraps the WriteFrame method.
+// Writer is the interface that wraps the WriteFrame method.
 
-// FrameWriter writes Frame from frm to the underlying data stream.
-type FrameWriter interface {
+// Writer writes Frame from frm to the underlying data stream.
+type Writer interface {
 	WriteFrame(frm Frame) error
 }
 

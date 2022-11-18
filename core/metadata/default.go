@@ -1,5 +1,4 @@
 // Package metadata provides a default implements of `Metadata`.
-
 package metadata
 
 import (
