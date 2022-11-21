@@ -144,8 +144,6 @@ func TestHandleDataFrame(t *testing.T) {
 
 		assert.Equal(t, server.StatsCounter(), int64(1))
 
-		assert.Equal(t, server.StatsCounter(), int64(1))
-
 		// sfn-1 obverse tag 1
 		sfnStream1.writeEqual(t, dataFrame.Encode())
 
@@ -173,8 +171,6 @@ func TestHandleDataFrame(t *testing.T) {
 
 		err := server.handleDataFrame(c)
 		assert.NoError(t, err, "server.handleDataFrame() should not return error")
-
-		assert.Equal(t, server.StatsCounter(), int64(2))
 
 		assert.Equal(t, server.StatsCounter(), int64(2))
 
