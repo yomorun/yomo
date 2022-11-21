@@ -5,10 +5,6 @@ import (
 	"testing"
 )
 
-var (
-	testMeshURL string
-)
-
 func TestMain(m *testing.M) {
 	zipper := NewZipperWithOptions("test-zipper")
 	defer zipper.Close()
