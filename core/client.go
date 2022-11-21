@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"strings"
@@ -391,3 +392,17 @@ func (c *Client) SetCloseHandler(fn func()) {
 func (c *Client) ClientID() string {
 	return c.clientID
 }
+
+// State return the state of client,
+// NewClient returned, state is `Ready`, after calling `Connect()`,
+// the state is `Connected` if success is returned otherwise it is `Disconnected`.
+func (c *Client) State() ConnState {
+	c.mu.Lock()
+	state := c.state
+	c.mu.Unlock()
+
+	return state
+}
+
+// String returns client's name and addr format as a string.
+func (c *Client) String() string { return fmt.Sprintf("name:%s, addr: %s", c.name, c.ServerAddr()) }
