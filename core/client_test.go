@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -115,16 +116,23 @@ func TestFrameRoundTrip(t *testing.T) {
 
 // mockFrameWriter mock a FrameWriter
 type mockFrameWriter struct {
+	mu  sync.Mutex
 	buf *bytes.Buffer
 }
 
 func newMockFrameWriter() *mockFrameWriter { return &mockFrameWriter{buf: bytes.NewBuffer([]byte{})} }
 
 func (w *mockFrameWriter) WriteFrame(frm frame.Frame) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
 	_, err := w.buf.Write(frm.Encode())
 	return err
 }
 
 func (w *mockFrameWriter) assertEqual(t *testing.T, frm frame.Frame) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
 	assert.Equal(t, w.buf.Bytes(), frm.Encode())
 }
