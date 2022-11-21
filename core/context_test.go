@@ -7,15 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 func TestContextKeys(t *testing.T) {
-=======
-func Test_Context_Keys(t *testing.T) {
->>>>>>> 7baa084 (test: context keys)
-=======
-func TestContextKeys(t *testing.T) {
->>>>>>> c4bc618 (style: fix code style)
 	c := &Context{}
 
 	t.Run("any keys", func(t *testing.T) {
