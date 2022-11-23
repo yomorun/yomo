@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/pkg/logger"
 )
 
@@ -19,7 +20,7 @@ type Connection interface {
 	// ClientType returns the type of the client (Source | SFN | UpstreamZipper)
 	ClientType() ClientType
 	// Metadata returns the extra info of the application
-	Metadata() Metadata
+	Metadata() metadata.Metadata
 	// Write should goroutine-safely send y3 frames to peer side
 	Write(f frame.Frame) error
 	// ObserveDataTags observed data tags
@@ -29,7 +30,7 @@ type Connection interface {
 type connection struct {
 	name       string
 	clientType ClientType
-	metadata   Metadata
+	metadata   metadata.Metadata
 	stream     io.ReadWriteCloser
 	clientID   string
 	observed   []frame.Tag // observed data tags
@@ -37,7 +38,7 @@ type connection struct {
 	closed     bool
 }
 
-func newConnection(name string, clientID string, clientType ClientType, metadata Metadata, stream io.ReadWriteCloser, observed []frame.Tag) Connection {
+func newConnection(name string, clientID string, clientType ClientType, metadata metadata.Metadata, stream io.ReadWriteCloser, observed []frame.Tag) Connection {
 	return &connection{
 		name:       name,
 		clientID:   clientID,
@@ -72,7 +73,7 @@ func (c *connection) ClientType() ClientType {
 }
 
 // Metadata returns the extra info of the application
-func (c *connection) Metadata() Metadata {
+func (c *connection) Metadata() metadata.Metadata {
 	return c.metadata
 }
 

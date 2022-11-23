@@ -59,6 +59,13 @@ type Frame interface {
 	Encode() []byte
 }
 
+// Writer is the interface that wraps the WriteFrame method.
+
+// Writer writes Frame from frm to the underlying data stream.
+type Writer interface {
+	WriteFrame(frm Frame) error
+}
+
 func (f Type) String() string {
 	switch f {
 	case TagOfDataFrame:

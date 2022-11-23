@@ -13,7 +13,7 @@ type ServerOptions struct {
 	QuicConfig *quic.Config
 	TLSConfig  *tls.Config
 	Addr       string
-	Auths      []auth.Authentication
+	Auths      map[string]auth.Authentication
 	Conn       net.PacketConn
 }
 
@@ -27,9 +27,12 @@ func WithAddr(addr string) ServerOption {
 // WithAuth sets the server authentication method.
 func WithAuth(name string, args ...string) ServerOption {
 	return func(o *ServerOptions) {
-		if auth, ok := auth.GetAuth(name); ok {
-			auth.Init(args...)
-			o.Auths = append(o.Auths, auth)
+		if a, ok := auth.GetAuth(name); ok {
+			a.Init(args...)
+			if o.Auths == nil {
+				o.Auths = make(map[string]auth.Authentication)
+			}
+			o.Auths[a.Name()] = a
 		}
 	}
 }

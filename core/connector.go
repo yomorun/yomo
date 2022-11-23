@@ -84,5 +84,8 @@ func (c *connector) GetSnapshot() map[string]string {
 
 // Clean the connector.
 func (c *connector) Clean() {
-	c.conns = sync.Map{}
+	c.conns.Range(func(key, value any) bool {
+		c.conns.Delete(key)
+		return true
+	})
 }
