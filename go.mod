@@ -8,7 +8,7 @@ require (
 	github.com/cenkalti/backoff/v4 v4.1.3
 	github.com/fatih/color v1.13.0
 	github.com/joho/godotenv v1.4.0
-	github.com/lucas-clemente/quic-go v0.30.0
+	github.com/lucas-clemente/quic-go v0.31.0
 	github.com/matoous/go-nanoid/v2 v2.0.0
 	github.com/reactivex/rxgo/v2 v2.5.0
 	github.com/second-state/WasmEdge-go v0.11.1
