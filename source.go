@@ -99,8 +99,7 @@ func (s *yomoSource) WriteWithTag(tag frame.Tag, data []byte) error {
 	f := frame.NewDataFrame()
 	f.SetCarriage(tag, data)
 	f.SetSourceID(s.client.ClientID())
-	s.client.Logger().Debugf("%sWriteWithTag: tid=%s, source_id=%s, data[%d]=%# x",
-		sourceLogPrefix, f.TransactionID(), f.SourceID(), len(data), frame.Shortly(data))
+	s.client.Logger().Debugf("%sWriteWithTag: %v", sourceLogPrefix, f)
 	return s.client.WriteFrame(f)
 }
 
@@ -121,7 +120,6 @@ func (s *yomoSource) Broadcast(data []byte) error {
 	f.SetCarriage(s.tag, data)
 	f.SetSourceID(s.client.ClientID())
 	f.SetBroadcast(true)
-	s.client.Logger().Debugf("%sBroadcast: tid=%s, source_id=%s, data[%d]=%# x",
-		sourceLogPrefix, f.TransactionID(), f.SourceID(), len(data), frame.Shortly(data))
+	s.client.Logger().Debugf("%sBroadcast: %v", sourceLogPrefix, f)
 	return s.client.WriteFrame(f)
 }

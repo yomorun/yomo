@@ -84,7 +84,7 @@ func (s *streamFunction) Connect() error {
 	s.client.Logger().Debugf("%s Connect()", streamFunctionLogPrefix)
 	// notify underlying network operations, when data with tag we observed arrived, invoke the func
 	s.client.SetDataFrameObserver(func(data *frame.DataFrame) {
-		s.client.Logger().Debugf("%sreceive DataFrame, tag=%# x, carraige=%# x", streamFunctionLogPrefix, data.Tag(), data.GetCarriage())
+		s.client.Logger().Debugf("%sreceive DataFrame: %v", streamFunctionLogPrefix, data)
 		s.onDataFrame(data.GetCarriage(), data.GetMetaFrame())
 	})
 
@@ -102,7 +102,7 @@ func (s *streamFunction) Connect() error {
 			for {
 				data := <-s.pOut
 				if data != nil {
-					s.client.Logger().Debugf("%spipe fn send: tag=%#x, data=%# x", streamFunctionLogPrefix, data.Tag, data.Carriage)
+					s.client.Logger().Debugf("%spipe fn send: %v", streamFunctionLogPrefix, data)
 					frame := frame.NewDataFrame()
 					// todo: frame.SetTransactionID
 					frame.SetCarriage(data.Tag, data.Carriage)
@@ -145,13 +145,10 @@ func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
 
 	if s.fn != nil {
 		go func() {
-			s.client.Logger().Debugf("%sexecute-start fn: data[%d]=%# x", streamFunctionLogPrefix, len(data), frame.Shortly(data))
 			// invoke serverless
 			tag, resp := s.fn(data)
-			s.client.Logger().Debugf("%sexecute-done fn: tag=%#x, resp[%d]=%# x", streamFunctionLogPrefix, tag, len(resp), frame.Shortly(resp))
 			// if resp is not nil, means the user's function has returned something, we should send it to the zipper
 			if len(resp) != 0 {
-				s.client.Logger().Debugf("%sstart WriteFrame(): tag=%#x, data[%d]=%# x", streamFunctionLogPrefix, tag, len(resp), frame.Shortly(resp))
 				// build a DataFrame
 				// TODO: seems we should implement a DeepCopy() of MetaFrame in the future
 				frame := frame.NewDataFrame()
@@ -160,6 +157,7 @@ func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
 				// reuse sourceID
 				frame.SetSourceID(metaFrame.SourceID())
 				frame.SetCarriage(tag, resp)
+				s.client.Logger().Debugf("%sstart WriteFrame(): %v", streamFunctionLogPrefix, resp)
 				s.client.WriteFrame(frame)
 			}
 		}()
