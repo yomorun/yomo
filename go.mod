@@ -11,7 +11,7 @@ require (
 	github.com/lucas-clemente/quic-go v0.31.0
 	github.com/matoous/go-nanoid/v2 v2.0.0
 	github.com/reactivex/rxgo/v2 v2.5.0
-	github.com/second-state/WasmEdge-go v0.11.1
+	github.com/second-state/WasmEdge-go v0.11.2
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.13.0
