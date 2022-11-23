@@ -12,16 +12,16 @@ import (
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
 )
 
-// ClientOptions are the options for YoMo client.
-type ClientOptions struct {
-	ObserveDataTags []frame.Tag
-	QuicConfig      *quic.Config
-	TLSConfig       *tls.Config
-	Credential      *auth.Credential
-	Logger          log.Logger
+// clientOptions are the options for YoMo client.
+type clientOptions struct {
+	observeDataTags []frame.Tag
+	quicConfig      *quic.Config
+	tlsConfig       *tls.Config
+	credential      *auth.Credential
+	logger          log.Logger
 }
 
-func defaultClientOption() *ClientOptions {
+func defaultClientOption() *clientOptions {
 	logger := logger.Default()
 
 	defalutQuicConfig := &quic.Config{
@@ -36,17 +36,16 @@ func defaultClientOption() *ClientOptions {
 		TokenStore:                     quic.NewLRUTokenStore(10, 5),
 	}
 
-	opts := &ClientOptions{
-		ObserveDataTags: make([]frame.Tag, 0),
-		QuicConfig:      defalutQuicConfig,
-		TLSConfig:       pkgtls.MustCreateClientTLSConfig(),
-		Credential:      auth.NewCredential(""),
-		Logger:          logger,
+	opts := &clientOptions{
+		observeDataTags: make([]frame.Tag, 0),
+		quicConfig:      defalutQuicConfig,
+		tlsConfig:       pkgtls.MustCreateClientTLSConfig(),
+		credential:      auth.NewCredential(""),
+		logger:          logger,
 	}
 
-	// credential
-	if opts.Credential != nil {
-		logger.Printf("%suse credential: [%s]", ClientLogPrefix, opts.Credential.Name())
+	if opts.credential != nil {
+		logger.Printf("%suse credential: [%s]", ClientLogPrefix, opts.credential.Name())
 	}
 
 	return opts
@@ -54,37 +53,37 @@ func defaultClientOption() *ClientOptions {
 
 // WithObserveDataTags sets data tag list for the client.
 func WithObserveDataTags(tags ...frame.Tag) ClientOption {
-	return func(o *ClientOptions) {
-		o.ObserveDataTags = tags
+	return func(o *clientOptions) {
+		o.observeDataTags = tags
 	}
 }
 
 // WithCredential sets the client credential method (used by client).
 func WithCredential(payload string) ClientOption {
-	return func(o *ClientOptions) {
-		o.Credential = auth.NewCredential(payload)
+	return func(o *clientOptions) {
+		o.credential = auth.NewCredential(payload)
 	}
 }
 
 // WithClientTLSConfig sets tls config for the client.
 func WithClientTLSConfig(tc *tls.Config) ClientOption {
-	return func(o *ClientOptions) {
+	return func(o *clientOptions) {
 		if tc != nil {
-			o.TLSConfig = tc
+			o.tlsConfig = tc
 		}
 	}
 }
 
 // WithClientQuicConfig sets quic config for the client.
 func WithClientQuicConfig(qc *quic.Config) ClientOption {
-	return func(o *ClientOptions) {
-		o.QuicConfig = qc
+	return func(o *clientOptions) {
+		o.quicConfig = qc
 	}
 }
 
 // WithLogger sets logger for the client.
 func WithLogger(logger log.Logger) ClientOption {
-	return func(o *ClientOptions) {
-		o.Logger = logger
+	return func(o *clientOptions) {
+		o.logger = logger
 	}
 }

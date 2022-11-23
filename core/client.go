@@ -18,7 +18,7 @@ import (
 )
 
 // ClientOption YoMo client options
-type ClientOption func(*ClientOptions)
+type ClientOption func(*clientOptions)
 
 // Client is the abstraction of a YoMo-Client. a YoMo-Client can be
 // Source, Upstream Zipper or StreamFunction.
@@ -35,7 +35,7 @@ type Client struct {
 	closefn    func()                     // function to invoke when client closed
 	addr       string                     // the address of server connected to
 	mu         sync.Mutex
-	opts       *ClientOptions
+	opts       *clientOptions
 	localAddr  string // client local addr, it will be changed on reconnect
 	logger     log.Logger
 	errc       chan error
@@ -56,7 +56,7 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 		state:      ConnStateReady,
 		opts:       option,
 		errc:       make(chan error),
-		logger:     option.Logger,
+		logger:     option.logger,
 	}
 }
 
@@ -84,7 +84,7 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	c.state = ConnStateConnecting
 
 	// create quic connection
-	conn, err := quic.DialAddrContext(ctx, addr, c.opts.TLSConfig, c.opts.QuicConfig)
+	conn, err := quic.DialAddrContext(ctx, addr, c.opts.tlsConfig, c.opts.quicConfig)
 	if err != nil {
 		c.state = ConnStateDisconnected
 		return err
@@ -104,9 +104,9 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 		c.name,
 		c.clientID,
 		byte(c.clientType),
-		c.opts.ObserveDataTags,
-		c.opts.Credential.Name(),
-		c.opts.Credential.Payload(),
+		c.opts.observeDataTags,
+		c.opts.credential.Name(),
+		c.opts.credential.Payload(),
 	)
 	if _, err := c.fs.WriteFrame(handshake); err != nil {
 		c.state = ConnStateDisconnected
@@ -300,7 +300,7 @@ func (c *Client) Addr() string { return c.addr }
 // SetObserveDataTags set the data tag list that will be observed.
 // Deprecated: use yomo.WithObserveDataTags instead
 func (c *Client) SetObserveDataTags(tag ...frame.Tag) {
-	c.opts.ObserveDataTags = append(c.opts.ObserveDataTags, tag...)
+	c.opts.observeDataTags = append(c.opts.observeDataTags, tag...)
 }
 
 // Logger get client's logger instance, you can customize this using `yomo.WithLogger`
