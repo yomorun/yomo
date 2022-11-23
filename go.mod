@@ -5,7 +5,7 @@ go 1.19
 require (
 	github.com/briandowns/spinner v1.19.0
 	github.com/bytecodealliance/wasmtime-go v1.0.0
-	github.com/cenkalti/backoff/v4 v4.1.3
+	github.com/cenkalti/backoff/v4 v4.2.0
 	github.com/fatih/color v1.13.0
 	github.com/joho/godotenv v1.4.0
 	github.com/lucas-clemente/quic-go v0.31.0
