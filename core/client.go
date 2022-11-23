@@ -11,13 +11,10 @@ import (
 	"time"
 
 	"github.com/lucas-clemente/quic-go"
-	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/log"
 	"github.com/yomorun/yomo/core/yerr"
 	"github.com/yomorun/yomo/pkg/id"
-	"github.com/yomorun/yomo/pkg/logger"
-	pkgtls "github.com/yomorun/yomo/pkg/tls"
 )
 
 // ClientOption YoMo client options
@@ -38,7 +35,7 @@ type Client struct {
 	closefn    func()                     // function to invoke when client closed
 	addr       string                     // the address of server connected to
 	mu         sync.Mutex
-	opts       ClientOptions
+	opts       *ClientOptions
 	localAddr  string // client local addr, it will be changed on reconnect
 	logger     log.Logger
 	errc       chan error
@@ -46,28 +43,21 @@ type Client struct {
 
 // NewClient creates a new YoMo-Client.
 func NewClient(appName string, connType ClientType, opts ...ClientOption) *Client {
-	c := &Client{
+	option := defaultClientOption()
+
+	for _, o := range opts {
+		o(option)
+	}
+
+	return &Client{
 		name:       appName,
 		clientID:   id.New(),
 		clientType: connType,
 		state:      ConnStateReady,
-		opts:       ClientOptions{},
+		opts:       option,
 		errc:       make(chan error),
+		logger:     option.Logger,
 	}
-	c.Init(opts...)
-	once.Do(func() {
-		c.init()
-	})
-
-	return c
-}
-
-// Init the options.
-func (c *Client) Init(opts ...ClientOption) error {
-	for _, o := range opts {
-		o(&c.opts)
-	}
-	return c.initOptions()
 }
 
 // Connect connects to YoMo-Zipper.
@@ -304,67 +294,9 @@ func (c *Client) reconnect(ctx context.Context, addr string) {
 	}
 }
 
-func (c *Client) init() {
-	// // tracing
-	// _, _, err := tracing.NewTracerProvider(c.name)
-	// if err != nil {
-	// 	logger.Errorf("tracing: %v", err)
-	// }
-}
-
 // ServerAddr returns the address of the server.
 func (c *Client) ServerAddr() string {
 	return c.addr
-}
-
-// initOptions init options defaults
-func (c *Client) initOptions() error {
-	// logger
-	if c.logger == nil {
-		if c.opts.Logger != nil {
-			c.logger = c.opts.Logger
-		} else {
-			c.logger = logger.Default()
-		}
-	}
-	// observe tag list
-	if c.opts.ObserveDataTags == nil {
-		c.opts.ObserveDataTags = make([]frame.Tag, 0)
-	}
-	// credential
-	if c.opts.Credential == nil {
-		c.opts.Credential = auth.NewCredential("")
-	}
-	// tls config
-	if c.opts.TLSConfig == nil {
-		tc, err := pkgtls.CreateClientTLSConfig()
-		if err != nil {
-			c.logger.Errorf("%sCreateClientTLSConfig: %v", ClientLogPrefix, err)
-			return err
-		}
-		c.opts.TLSConfig = tc
-	}
-	// quic config
-	if c.opts.QuicConfig == nil {
-		c.opts.QuicConfig = &quic.Config{
-			Versions:                       []quic.VersionNumber{quic.Version2},
-			MaxIdleTimeout:                 time.Second * 40,
-			KeepAlivePeriod:                time.Second * 20,
-			MaxIncomingStreams:             1000,
-			MaxIncomingUniStreams:          1000,
-			HandshakeIdleTimeout:           time.Second * 3,
-			InitialStreamReceiveWindow:     1024 * 1024 * 2,
-			InitialConnectionReceiveWindow: 1024 * 1024 * 2,
-			TokenStore:                     quic.NewLRUTokenStore(10, 5),
-			// DisablePathMTUDiscovery:        true,
-		}
-	}
-	// credential
-	if c.opts.Credential != nil {
-		c.logger.Printf("%suse credential: [%s]", ClientLogPrefix, c.opts.Credential.Name())
-	}
-
-	return nil
 }
 
 // SetObserveDataTags set the data tag list that will be observed.
