@@ -183,7 +183,7 @@ func (c *Client) handleFrame() (bool, bool, error) {
 		// read frame
 		// first, get frame type
 		frameType := f.Type()
-		c.logger.Debugf("%stype=%s, frame=%# x", ClientLogPrefix, frameType, frame.Shortly(f.Encode()))
+		c.logger.Debugf("%shandleFrame: %v", ClientLogPrefix, frameType)
 		switch frameType {
 		case frame.TagOfRejectedFrame:
 			if v, ok := f.(*frame.RejectedFrame); ok {
@@ -195,7 +195,6 @@ func (c *Client) handleFrame() (bool, bool, error) {
 			}
 		case frame.TagOfDataFrame: // DataFrame carries user's data
 			if v, ok := f.(*frame.DataFrame); ok {
-				c.logger.Debugf("%sreceive DataFrame, tag=%#x, tid=%s, carry=%# x", ClientLogPrefix, v.GetDataTag(), v.TransactionID(), v.GetCarriage())
 				if c.processor == nil {
 					c.logger.Warnf("%sprocessor is nil", ClientLogPrefix)
 				} else {
@@ -204,7 +203,6 @@ func (c *Client) handleFrame() (bool, bool, error) {
 			}
 		case frame.TagOfBackflowFrame:
 			if v, ok := f.(*frame.BackflowFrame); ok {
-				c.logger.Debugf("%sreceive BackflowFrame, tag=%#x, carry=%# x", ClientLogPrefix, v.GetDataTag(), v.GetCarriage())
 				if c.receiver == nil {
 					c.logger.Warnf("%sreceiver is nil", ClientLogPrefix)
 				} else {

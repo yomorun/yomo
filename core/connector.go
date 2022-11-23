@@ -47,7 +47,6 @@ func (c *connector) Remove(connID string) {
 
 // Get a connection by connection id.
 func (c *connector) Get(connID string) Connection {
-	logger.Debugf("%sconnector get connection: connID=%s", ServerLogPrefix, connID)
 	if conn, ok := c.conns.Load(connID); ok {
 		return conn.(Connection)
 	}

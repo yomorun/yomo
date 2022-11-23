@@ -94,14 +94,6 @@ func (f Type) String() string {
 	}
 }
 
-// Shortly reduce data size for easy viewing
-func Shortly(data []byte) []byte {
-	if len(data) > debugFrameSize {
-		return data[:debugFrameSize]
-	}
-	return data
-}
-
 func init() {
 	if envFrameSize := os.Getenv("YOMO_DEBUG_FRAME_SIZE"); envFrameSize != "" {
 		if val, err := strconv.Atoi(envFrameSize); err == nil {
