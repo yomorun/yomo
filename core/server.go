@@ -321,6 +321,10 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 		return nil
 	}
 
+	if _, err := stream.Write(frame.NewAckFrame().Encode()); err != nil {
+		logger.Debugf("%s🔑 write to <%s> [%s](%s) AckFrame error:%v", ServerLogPrefix, clientType, f.Name, connID, err)
+	}
+
 	// client type
 	var conn Connection
 	switch clientType {

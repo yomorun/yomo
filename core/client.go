@@ -27,7 +27,7 @@ type Client struct {
 	clientID   string                     // id of the client
 	clientType ClientType                 // type of the connection
 	conn       quic.Connection            // quic connection
-	fs         *FrameStream               // yomo abstract stream
+	fs         FrameReadwriter            // yomo abstract stream
 	state      ConnState                  // state of the connection
 	processor  func(*frame.DataFrame)     // function to invoke when data arrived
 	receiver   func(*frame.BackflowFrame) // function to invoke when data is processed
@@ -113,6 +113,11 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 		return err
 	}
 
+	if err := c.waitHandshakeACK(c.fs, time.Second); err != nil {
+		c.state = ConnStateDisconnected
+		return err
+	}
+
 	c.state = ConnStateConnected
 	c.localAddr = c.conn.LocalAddr().String()
 
@@ -148,6 +153,33 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	}()
 
 	return nil
+}
+
+// waitHandshakeACK wait handshake success or failed,
+// It returns nil if success or false to failed.
+func (c *Client) waitHandshakeACK(fs FrameReadwriter, timeout time.Duration) error {
+	errch := make(chan error)
+	go func() {
+		for {
+			f, err := c.fs.ReadFrame()
+			if err != nil {
+				errch <- err
+				return
+			}
+			if f.Type() == frame.TagOfAckFrame {
+				errch <- nil
+			}
+		}
+	}()
+
+	for {
+		select {
+		case <-time.After(timeout):
+			return errors.New("yomo: handshake timeout")
+		case err := <-errch:
+			return err
+		}
+	}
 }
 
 // handleFrame handles the logic when receiving frame from server.
