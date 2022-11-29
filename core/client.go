@@ -155,13 +155,16 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	return nil
 }
 
+// ErrHandshakeAckTimeout returned when handshake ack timeout.
+var ErrHandshakeAckTimeout = errors.New("yomo: client handshake wait ack timeout")
+
 // waitHandshakeAck wait handshake success or failed,
 // It returns nil if success or false to failed.
-func (c *Client) waitHandshakeAck(fs frame.Readwriter, timeout time.Duration) error {
+func (c *Client) waitHandshakeAck(frameReader frame.Reader, timeout time.Duration) error {
 	errch := make(chan error)
 	go func() {
 		for {
-			f, err := c.fs.ReadFrame()
+			f, err := frameReader.ReadFrame()
 			if err != nil {
 				errch <- err
 				return
@@ -175,7 +178,7 @@ func (c *Client) waitHandshakeAck(fs frame.Readwriter, timeout time.Duration) er
 	for {
 		select {
 		case <-time.After(timeout):
-			return errors.New("yomo: client handshake wait ack timeout")
+			return ErrHandshakeAckTimeout
 		case err := <-errch:
 			return err
 		}
