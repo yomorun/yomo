@@ -5,6 +5,26 @@ import (
 	"strconv"
 )
 
+// Readwriter is the interface that groups the ReadFrame and WriteFrame methods.
+type Readwriter interface {
+	Reader
+	Writer
+}
+
+// Reader reads frame from underlying stream.
+type Reader interface {
+	// ReadFrame reads frame, if error, the error returned is not empty
+	// and frame returned is nil.
+	ReadFrame() (Frame, error)
+}
+
+// Writer is the interface that wraps the WriteFrame method.
+
+// Writer writes Frame from frm to the underlying data stream.
+type Writer interface {
+	WriteFrame(frm Frame) error
+}
+
 // debugFrameSize print frame data size on debug mode
 var debugFrameSize = 16
 
@@ -59,13 +79,6 @@ type Frame interface {
 
 	// Encode the frame into []byte.
 	Encode() []byte
-}
-
-// Writer is the interface that wraps the WriteFrame method.
-
-// Writer writes Frame from frm to the underlying data stream.
-type Writer interface {
-	WriteFrame(frm Frame) error
 }
 
 func (f Type) String() string {
