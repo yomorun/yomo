@@ -171,6 +171,7 @@ func (c *Client) waitHandshakeAck(frameReader frame.Reader, timeout time.Duratio
 			}
 			if f.Type() == frame.TagOfHandshakeAckFrame {
 				errch <- nil
+				return
 			}
 		}
 	}()
