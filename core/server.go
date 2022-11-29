@@ -321,10 +321,6 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 		return nil
 	}
 
-	if _, err := stream.Write(frame.NewHandshakeAckFrame().Encode()); err != nil {
-		logger.Debugf("%s🔑 write to <%s> [%s](%s) AckFrame error:%v", ServerLogPrefix, clientType, f.Name, connID, err)
-	}
-
 	// client type
 	var conn Connection
 	switch clientType {
@@ -362,15 +358,18 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	case ClientTypeUpstreamZipper:
 		conn = newConnection(f.Name, f.ClientID, clientType, nil, stream, f.ObserveDataTags)
 	default:
-		// TODO: There is no need to Remove .
-		// unknown client type
+		// TODO: There is no need to Remove,
+		// unknown client type is not be add to connector.
 		s.connector.Remove(connID)
 		err := fmt.Errorf("illegal ClientType: %#x", f.ClientType)
 		c.CloseWithError(yerr.ErrorCodeUnknownClient, err.Error())
 		return err
 	}
 
-	// TODO: maybe add twice.
+	if _, err := stream.Write(frame.NewHandshakeAckFrame().Encode()); err != nil {
+		logger.Debugf("%s🔑 write to <%s> [%s](%s) AckFrame error:%v", ServerLogPrefix, clientType, f.Name, connID, err)
+	}
+
 	s.connector.Add(connID, conn)
 	logger.Printf("%s❤️  <%s> [%s][%s](%s) is connected!", ServerLogPrefix, clientType, f.Name, clientID, connID)
 	return nil

@@ -29,6 +29,8 @@ func ParseFrame(stream io.Reader) (frame.Frame, error) {
 		return frame.DecodeToGoawayFrame(buf)
 	case 0x80 | byte(frame.TagOfBackflowFrame):
 		return frame.DecodeToBackflowFrame(buf)
+	case 0x80 | byte(frame.TagOfHandshakeAckFrame):
+		return frame.DecodeToHandshakeAckFrame(buf)
 	default:
 		return nil, fmt.Errorf("unknown frame type, buf[0]=%#x", buf[0])
 	}
