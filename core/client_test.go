@@ -197,7 +197,7 @@ func TestClientWaitHandshakeAck(t *testing.T) {
 		{
 			name: "handshake ack success",
 			fields: fields{
-				frames:    []frame.Frame{frame.NewHandshakeAckFrame()},
+				frames:    []frame.Frame{frame.NewGoawayFrame("goaway"), frame.NewHandshakeAckFrame()},
 				intervals: time.Microsecond,
 			},
 			args: args{
@@ -209,7 +209,7 @@ func TestClientWaitHandshakeAck(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var (
-				client      = &Client{}
+				client      = &Client{logger: logger.Default()}
 				frameReader = newMockFrameReader(tt.fields.intervals, tt.fields.frames...)
 			)
 
