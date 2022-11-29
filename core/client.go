@@ -166,7 +166,7 @@ func (c *Client) waitHandshakeACK(fs FrameReadwriter, timeout time.Duration) err
 				errch <- err
 				return
 			}
-			if f.Type() == frame.TagOfAckFrame {
+			if f.Type() == frame.TagOfHandshakeAckFrame {
 				errch <- nil
 			}
 		}
@@ -175,7 +175,7 @@ func (c *Client) waitHandshakeACK(fs FrameReadwriter, timeout time.Duration) err
 	for {
 		select {
 		case <-time.After(timeout):
-			return errors.New("yomo: handshake timeout")
+			return errors.New("yomo: client handshake wait ack timeout")
 		case err := <-errch:
 			return err
 		}

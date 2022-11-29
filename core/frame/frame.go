@@ -45,8 +45,8 @@ const (
 	TagOfGoawayFrame   Type = 0x30
 	TagOfGoawayCode    Type = 0x01
 	TagOfGoawayMessage Type = 0x02
-	// AckFrame
-	TagOfAckFrame Type = 0x29
+	// TagOfHandshakeAckFrame
+	TagOfHandshakeAckFrame Type = 0x29
 )
 
 // Type represents the type of frame.
@@ -98,6 +98,8 @@ func (f Type) String() string {
 		return "HandshakeName"
 	case TagOfHandshakeType:
 		return "HandshakeType"
+	case TagOfHandshakeAckFrame:
+		return "TagOfHandshakeAckFrame"
 	default:
 		return "UnknownFrame"
 	}
