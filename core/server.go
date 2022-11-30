@@ -293,7 +293,7 @@ func (s *Server) mainFrameHandler(c *Context) error {
 
 	switch frameType {
 	case frame.TagOfHandshakeFrame:
-		logger.Errorf("%sreceive a handshakeFrame ingonre it", ServerLogPrefix)
+		logger.Errorf("%sreceive a handshakeFrame, ingonre it", ServerLogPrefix)
 	case frame.TagOfDataFrame:
 		if err := s.handleDataFrame(c); err != nil {
 			c.CloseWithError(yerr.ErrorCodeData, fmt.Sprintf("handleDataFrame err: %v", err))
