@@ -3,6 +3,7 @@ package frame
 import (
 	"os"
 	"strconv"
+	"time"
 )
 
 // Readwriter is the interface that groups the ReadFrame and WriteFrame methods.
@@ -16,6 +17,48 @@ type Reader interface {
 	// ReadFrame reads frame, if error, the error returned is not empty
 	// and frame returned is nil.
 	ReadFrame() (Frame, error)
+}
+
+// ErrReadUntilTimeout be returned when call ReadUntil timeout.
+type ErrReadUntilTimeout struct{ t Type }
+
+// Error implement error interface.
+func (err ErrReadUntilTimeout) Error() string {
+	return "yomo: frame read until timeout, tpye: " + err.t.String()
+}
+
+// ReadUntil reads frame from reader, until the frame of the specified type is returned.
+// It returns ErrReadUntilTimeout error if frame not be returned after timeout duration.
+func ReadUntil(reader Reader, t Type, timeout time.Duration) (Frame, error) {
+	var (
+		errch = make(chan error)
+		frmch = make(chan Frame)
+	)
+
+	go func() {
+		for {
+			f, err := reader.ReadFrame()
+			if err != nil {
+				errch <- err
+				return
+			}
+			if f.Type() == t {
+				frmch <- f
+				return
+			}
+		}
+	}()
+
+	for {
+		select {
+		case <-time.After(timeout):
+			return nil, ErrReadUntilTimeout{t: t}
+		case err := <-errch:
+			return nil, err
+		case frm := <-frmch:
+			return frm, nil
+		}
+	}
 }
 
 // Writer is the interface that wraps the WriteFrame method.

@@ -113,7 +113,7 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 		return err
 	}
 
-	if err := c.waitHandshakeAck(c.fs, 10*time.Second); err != nil {
+	if _, err := frame.ReadUntil(c.fs, frame.TagOfHandshakeAckFrame, 10*time.Second); err != nil {
 		c.state = ConnStateDisconnected
 		return err
 	}
@@ -153,37 +153,6 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	}()
 
 	return nil
-}
-
-// ErrHandshakeAckTimeout returned when handshake ack timeout.
-var ErrHandshakeAckTimeout = errors.New("yomo: client handshake wait ack timeout")
-
-// waitHandshakeAck wait handshake success or failed,
-// It returns nil if success or false to failed.
-func (c *Client) waitHandshakeAck(frameReader frame.Reader, timeout time.Duration) error {
-	errch := make(chan error)
-	go func() {
-		for {
-			f, err := frameReader.ReadFrame()
-			if err != nil {
-				errch <- err
-				return
-			}
-			if f.Type() == frame.TagOfHandshakeAckFrame {
-				errch <- nil
-				return
-			}
-		}
-	}()
-
-	for {
-		select {
-		case <-time.After(timeout):
-			return ErrHandshakeAckTimeout
-		case err := <-errch:
-			return err
-		}
-	}
 }
 
 // handleFrame handles the logic when receiving frame from server.

@@ -3,7 +3,6 @@ package core
 import (
 	"bytes"
 	"context"
-	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -136,85 +135,4 @@ func (w *mockFrameWriter) assertEqual(t *testing.T, frm frame.Frame) {
 	defer w.mu.Unlock()
 
 	assert.Equal(t, w.buf.Bytes(), frm.Encode())
-}
-
-// mockFrameReader mock a FrameReader
-type mockFrameReader struct {
-	mu        sync.Mutex
-	seq       int
-	intervals time.Duration
-	frames    []frame.Frame
-}
-
-func newMockFrameReader(intervals time.Duration, frames ...frame.Frame) *mockFrameReader {
-	return &mockFrameReader{
-		intervals: intervals,
-		frames:    frames,
-	}
-}
-
-func (r *mockFrameReader) ReadFrame() (frame.Frame, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if r.seq >= len(r.frames) {
-		return nil, errors.New("all data has been read")
-	}
-
-	time.Sleep(r.intervals)
-
-	frm := r.frames[r.seq]
-	r.seq++
-
-	return frm, nil
-}
-
-func TestClientWaitHandshakeAck(t *testing.T) {
-	type fields struct {
-		frames    []frame.Frame
-		intervals time.Duration
-	}
-	type args struct {
-		timeout time.Duration
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		wantErr error
-	}{
-		{
-			name: "handshake ack timeout",
-			fields: fields{
-				frames:    []frame.Frame{frame.NewGoawayFrame("goaway"), frame.NewHandshakeAckFrame()},
-				intervals: time.Second,
-			},
-			args: args{
-				timeout: time.Millisecond,
-			},
-			wantErr: ErrHandshakeAckTimeout,
-		},
-		{
-			name: "handshake ack success",
-			fields: fields{
-				frames:    []frame.Frame{frame.NewGoawayFrame("goaway"), frame.NewHandshakeAckFrame()},
-				intervals: time.Microsecond,
-			},
-			args: args{
-				timeout: time.Millisecond,
-			},
-			wantErr: nil,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var (
-				client      = &Client{logger: logger.Default()}
-				frameReader = newMockFrameReader(tt.fields.intervals, tt.fields.frames...)
-			)
-
-			err := client.waitHandshakeAck(frameReader, tt.args.timeout)
-			assert.Equal(t, tt.wantErr, err)
-		})
-	}
 }
