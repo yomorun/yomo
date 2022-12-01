@@ -278,14 +278,8 @@ func (s *Server) mainFrameHandler(c *Context) error {
 		if err := s.handleDataFrame(c); err != nil {
 			c.CloseWithError(yerr.ErrorCodeData, fmt.Sprintf("handleDataFrame err: %v", err))
 		} else {
-			conn := s.connector.Get(c.connID)
-			if conn != nil && conn.ClientType() == ClientTypeSource {
-				f := c.Frame.(*frame.DataFrame)
-				if f.IsBroadcast() {
-					f.GetMetaFrame().SetMetadata(conn.Metadata().Encode())
-					s.dispatchToDownstreams(f)
-				}
-			}
+			s.dispatchToDownstreams(c)
+
 			// observe datatags backflow
 			s.handleBackflowFrame(c)
 		}
@@ -391,14 +385,12 @@ func (s *Server) handleDataFrame(c *Context) error {
 
 	f := c.Frame.(*frame.DataFrame)
 
-	var metadata metadata.Metadata
-	if from.ClientType() == ClientTypeUpstreamZipper {
-		m, err := s.metadataBuilder.Decode(f.GetMetaFrame().Metadata())
-		if err != nil {
-			return err
-		}
-		metadata = m
-	} else {
+	m, err := s.metadataBuilder.Decode(f.GetMetaFrame().Metadata())
+	if err != nil {
+		return err
+	}
+	metadata := m
+	if metadata == nil {
 		metadata = from.Metadata()
 	}
 
@@ -498,10 +490,25 @@ func (s *Server) AddDownstreamServer(addr string, c frame.Writer) {
 }
 
 // dispatch every DataFrames to all downstreams
-func (s *Server) dispatchToDownstreams(df *frame.DataFrame) {
-	for addr, ds := range s.downstreams {
-		logger.Debugf("%sdispatching to [%s]: %# x", ServerLogPrefix, addr, df.Tag())
-		ds.WriteFrame(df)
+func (s *Server) dispatchToDownstreams(c *Context) {
+	conn := s.connector.Get(c.connID)
+	if conn == nil {
+		logger.Debugf("%sdispatchToDownstreams: s.connector.Get(%s) is nil", ServerLogPrefix, c.connID)
+	}
+
+	if conn.ClientType() == ClientTypeSource {
+		f := c.Frame.(*frame.DataFrame)
+		if f.IsBroadcast() {
+			if f.GetMetaFrame().Metadata() == nil {
+				f.GetMetaFrame().SetMetadata(conn.Metadata().Encode())
+			}
+			for addr, ds := range s.downstreams {
+				logger.Debugf("%sdispatching to [%s]: %# x", ServerLogPrefix, addr, f.TransactionID())
+				ds.WriteFrame(f)
+			}
+		} else {
+			logger.Debugf("%sdispatchToDownstreams: frame is local only [%s, %s]", ServerLogPrefix, c.connID, f.TransactionID())
+		}
 	}
 }
 
