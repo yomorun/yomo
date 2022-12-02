@@ -292,8 +292,8 @@ func (c *Client) reconnect(ctx context.Context, addr string) {
 	}
 }
 
-// Addr returns the address of the client.
-func (c *Client) Addr() string { return c.addr }
+// RemoteAddr returns the address of the client.
+func (c *Client) RemoteAddr() string { return c.addr }
 
 // SetObserveDataTags set the data tag list that will be observed.
 // Deprecated: use yomo.WithObserveDataTags instead
@@ -333,4 +333,4 @@ func (c *Client) State() ConnState {
 }
 
 // String returns client's name and addr format as a string.
-func (c *Client) String() string { return fmt.Sprintf("name:%s, addr: %s", c.name, c.Addr()) }
+func (c *Client) String() string { return fmt.Sprintf("name:%s, addr: %s", c.name, c.RemoteAddr()) }
