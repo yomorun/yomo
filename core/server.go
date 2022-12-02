@@ -164,7 +164,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 				}
 				defer stream.Close()
 
-				if ok := s.handshakeWithtimeout(conn, stream, 10*time.Second); !ok {
+				if ok := s.handshakeWithTimeout(conn, stream, 10*time.Second); !ok {
 					return
 				}
 
@@ -179,8 +179,8 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 	}
 }
 
-// handshakeWithtimeout call handshake with a timeout.
-func (s *Server) handshakeWithtimeout(conn quic.Connection, stream quic.Stream, timeout time.Duration) bool {
+// handshakeWithTimeout call handshake with a timeout.
+func (s *Server) handshakeWithTimeout(conn quic.Connection, stream quic.Stream, timeout time.Duration) bool {
 	ch := make(chan bool)
 
 	fs := NewFrameStream(stream)
