@@ -197,7 +197,8 @@ func (s *Server) handshakeWithtimeout(conn quic.Connection, stream quic.Stream, 
 	}
 }
 
-// handshake wait a handshakeFrame from client until timeout reached.
+// handshake accepts a handshakeFrame from client.
+// the first frame from client must be handshakeFrame,
 // It returns true if handshake successful otherwise return false.
 // It response to client a handshakeAckFrame if the handshake is successful
 // otherwise response a goawayFrame.
@@ -211,7 +212,7 @@ func (s *Server) handshake(conn quic.Connection, stream quic.Stream, fs frame.Re
 	}
 
 	if frm.Type() != frame.TagOfHandshakeFrame {
-		if err := fs.WriteFrame(frame.NewRejectedFrame("handshake failed")); err != nil {
+		if err := fs.WriteFrame(frame.NewGoawayFrame("handshake failed")); err != nil {
 			logger.Errorf("%s⛔️ reads first frame from client[%s] is not handshakeFrame, type :%v", ServerLogPrefix, conn.RemoteAddr().String(), frm.Type())
 		}
 		return false
