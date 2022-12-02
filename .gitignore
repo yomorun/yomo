@@ -32,3 +32,4 @@ zig-cache/
 *.wasm
 Cargo.lock
 target
+coverage.txt

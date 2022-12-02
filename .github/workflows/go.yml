@@ -22,3 +22,8 @@ jobs:
 
     - name: Build
       run: go build $(go list ./... | grep -v /example)
+      
+    - name: Upload coverage
+      uses: codecov/codecov-action@v3
+      with:
+        file: coverage.txt
