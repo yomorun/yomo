@@ -164,7 +164,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 				}
 				defer stream.Close()
 
-				if ok := s.handshake(conn, stream, 10*time.Second); !ok {
+				if ok := s.handshakeWithtimeout(conn, stream, 10*time.Second); !ok {
 					return
 				}
 
@@ -179,17 +179,40 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 	}
 }
 
+// handshakeWithtimeout call handshake with a timeout.
+func (s *Server) handshakeWithtimeout(conn quic.Connection, stream quic.Stream, timeout time.Duration) bool {
+	ch := make(chan bool)
+
+	fs := NewFrameStream(stream)
+
+	go func() {
+		ch <- s.handshake(conn, stream, fs)
+	}()
+
+	select {
+	case <-time.After(timeout):
+		return false
+	case ok := <-ch:
+		return ok
+	}
+}
+
 // handshake wait a handshakeFrame from client until timeout reached.
 // It returns true if handshake successful otherwise return false.
 // It response to client a handshakeAckFrame if the handshake is successful
 // otherwise response a goawayFrame.
-func (s *Server) handshake(conn quic.Connection, stream quic.Stream, timeout time.Duration) bool {
-	fs := NewFrameStream(stream)
-
-	frm, err := frame.ReadUntil(fs, frame.TagOfHandshakeFrame, timeout)
+func (s *Server) handshake(conn quic.Connection, stream quic.Stream, fs frame.Readwriter) bool {
+	frm, err := fs.ReadFrame()
 	if err != nil {
 		if err := fs.WriteFrame(frame.NewGoawayFrame(err.Error())); err != nil {
 			logger.Errorf("%s⛔️ write to client[%s] GoawayFrame error:%v", ServerLogPrefix, conn.RemoteAddr().String(), err)
+		}
+		return false
+	}
+
+	if frm.Type() != frame.TagOfHandshakeFrame {
+		if err := fs.WriteFrame(frame.NewRejectedFrame("handshake failed")); err != nil {
+			logger.Errorf("%s⛔️ reads first frame from client[%s] is not handshakeFrame, type :%v", ServerLogPrefix, conn.RemoteAddr().String(), frm.Type())
 		}
 		return false
 	}
