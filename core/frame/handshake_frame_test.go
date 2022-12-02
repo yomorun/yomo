@@ -26,4 +26,6 @@ func TestHandshakeFrameEncode(t *testing.T) {
 	assert.NoError(t, err)
 	assert.EqualValues(t, expectedName, Handshake.Name)
 	assert.EqualValues(t, expectedType, Handshake.ClientType)
+	assert.EqualValues(t, "token", Handshake.AuthName())
+	assert.EqualValues(t, "a", Handshake.AuthPayload())
 }

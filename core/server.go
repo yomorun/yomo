@@ -11,7 +11,10 @@ import (
 	"sync/atomic"
 
 	"github.com/lucas-clemente/quic-go"
+	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/metadata"
+	"github.com/yomorun/yomo/core/router"
 	"github.com/yomorun/yomo/core/yerr"
 
 	// authentication implements, Currently, only token authentication is implemented
@@ -37,11 +40,11 @@ type ConnectionHandler func(conn quic.Connection)
 type Server struct {
 	name                    string
 	connector               Connector
-	router                  Router
-	metadataBuilder         MetadataBuilder
+	router                  router.Router
+	metadataBuilder         metadata.Builder
 	alpnHandler             func(proto string) error
 	counterOfDataFrame      int64
-	downstreams             map[string]*Client
+	downstreams             map[string]frame.Writer
 	mu                      sync.Mutex
 	opts                    ServerOptions
 	beforeHandlers          []FrameHandler
@@ -56,7 +59,7 @@ func NewServer(name string, opts ...ServerOption) *Server {
 	s := &Server{
 		name:        name,
 		connector:   newConnector(),
-		downstreams: make(map[string]*Client),
+		downstreams: make(map[string]frame.Writer),
 		wg:          new(sync.WaitGroup),
 	}
 	s.Init(opts...)
@@ -194,7 +197,6 @@ func (s *Server) handleConnection(c *Context) {
 	fs := NewFrameStream(c.Stream)
 	// check update for stream
 	for {
-		logger.Debugf("%shandleConnection 💚 waiting read next...", ServerLogPrefix)
 		f, err := fs.ReadFrame()
 		if err != nil {
 			// if client close connection, will get ApplicationError with code = 0x00
@@ -225,9 +227,6 @@ func (s *Server) handleConnection(c *Context) {
 			break
 		}
 
-		frameType := f.Type()
-		data := f.Encode()
-		logger.Debugf("%stype=%s, frame[%d]=%# x", ServerLogPrefix, frameType, len(data), frame.Shortly(data))
 		// add frame to context
 		c := c.WithFrame(f)
 
@@ -291,7 +290,7 @@ func (s *Server) mainFrameHandler(c *Context) error {
 			s.handleBackflowFrame(c)
 		}
 	default:
-		logger.Errorf("%serr=%v, frame=%v", ServerLogPrefix, err, frame.Shortly(c.Frame.Encode()))
+		logger.Errorf("%serr=%v, frameType=%v", ServerLogPrefix, err, frameType)
 	}
 	return nil
 }
@@ -300,16 +299,17 @@ func (s *Server) mainFrameHandler(c *Context) error {
 func (s *Server) handleHandshakeFrame(c *Context) error {
 	f := c.Frame.(*frame.HandshakeFrame)
 
-	logger.Debugf("%sGOT ❤️ HandshakeFrame : %# x", ServerLogPrefix, f)
 	// basic info
 	connID := c.ConnID()
 	clientID := f.ClientID
 	clientType := ClientType(f.ClientType)
 	stream := c.Stream
 	// credential
-	logger.Debugf("%sClientType=%# x is %s, ClientID=%s, Credential=%s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType), clientID, authName(f.AuthName()))
+	logger.Debugf("%sGOT ❤️ HandshakeFrame: ClientType=%# x is %s, ClientID=%s, Credential=%s", ServerLogPrefix, f.ClientType, ClientType(f.ClientType), clientID, authName(f.AuthName()))
 	// authenticate
-	if !s.authenticate(f) {
+	authed := auth.Authenticate(s.opts.Auths, f)
+	logger.Debugf("%sauthenticated==%v", ServerLogPrefix, authed)
+	if !authed {
 		err := fmt.Errorf("handshake authentication fails, client credential name is %s", authName(f.AuthName()))
 		// return err
 		logger.Debugf("%s🔑 <%s> [%s](%s) is connected!", ServerLogPrefix, clientType, f.Name, connID)
@@ -358,6 +358,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	case ClientTypeUpstreamZipper:
 		conn = newConnection(f.Name, f.ClientID, clientType, nil, stream, f.ObserveDataTags)
 	default:
+		// TODO: There is no need to Remove .
 		// unknown client type
 		s.connector.Remove(connID)
 		err := fmt.Errorf("illegal ClientType: %#x", f.ClientType)
@@ -365,19 +366,10 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 		return err
 	}
 
+	// TODO: maybe add twice.
 	s.connector.Add(connID, conn)
 	logger.Printf("%s❤️  <%s> [%s][%s](%s) is connected!", ServerLogPrefix, clientType, f.Name, clientID, connID)
 	return nil
-}
-
-// handle handleGoawayFrame
-func (s *Server) handleGoawayFrame(c *Context) error {
-	f := c.Frame.(*frame.GoawayFrame)
-
-	logger.Debugf("%s⛔️ GOT GoawayFrame code=%d, message==%s", ServerLogPrefix, yerr.ErrorCodeGoaway, f.Message())
-	// c.CloseWithError(f.Code(), f.Message())
-	_, err := c.Stream.Write(f.Encode())
-	return err
 }
 
 // will reuse quic-go's keep-alive feature
@@ -399,7 +391,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 
 	f := c.Frame.(*frame.DataFrame)
 
-	var metadata Metadata
+	var metadata metadata.Metadata
 	if from.ClientType() == ClientTypeUpstreamZipper {
 		m, err := s.metadataBuilder.Decode(f.GetMetaFrame().Metadata())
 		if err != nil {
@@ -427,11 +419,11 @@ func (s *Server) handleDataFrame(c *Context) error {
 		}
 
 		to := conn.Name()
-		logger.Debugf("%shandleDataFrame tag=%#x tid=%s, counter=%d, from=[%s](%s), to=[%s](%s)", ServerLogPrefix, f.Tag(), f.TransactionID(), s.counterOfDataFrame, from.Name(), fromID, to, toID)
+		logger.Debugf("%shandleDataFrame [%s](%s) -> [%s](%s): %v", ServerLogPrefix, from.Name(), fromID, to, toID, f)
 
 		// write data frame to stream
 		if err := conn.Write(f); err != nil {
-			logger.Warnf("%shandleDataFrame conn.Write tag=%#x tid=%s, from=[%s](%s), to=[%s](%s), %v", ServerLogPrefix, f.Tag(), f.TransactionID(), from.Name(), fromID, to, toID, err)
+			logger.Warnf("%shandleDataFrame conn.Write %v", ServerLogPrefix, err)
 		}
 	}
 
@@ -446,13 +438,11 @@ func (s *Server) handleBackflowFrame(c *Context) error {
 	// write to source with BackflowFrame
 	bf := frame.NewBackflowFrame(tag, carriage)
 	sourceConns := s.connector.GetSourceConns(sourceID, tag)
-	// conn := s.connector.Get(c.connID)
-	// logger.Printf("%s♻️  handleBackflowFrame tag:%#v --> source:%s, result=%s", ServerLogPrefix, tag, sourceID, carriage)
 	for _, source := range sourceConns {
 		if source != nil {
-			logger.Debugf("%s♻️  handleBackflowFrame tag:%#v --> source:%s, result=%# x", ServerLogPrefix, tag, sourceID, frame.Shortly(carriage))
+			logger.Debugf("%s♻️  handleBackflowFrame --> source:%s, result=%v", ServerLogPrefix, sourceID, f)
 			if err := source.Write(bf); err != nil {
-				logger.Errorf("%s♻️  handleBackflowFrame tag:%#v --> source:%s, error=%v", ServerLogPrefix, tag, sourceID, err)
+				logger.Errorf("%s♻️  handleBackflowFrame --> source:%s, error=%v", ServerLogPrefix, sourceID, err)
 				return err
 			}
 		}
@@ -471,12 +461,12 @@ func (s *Server) StatsCounter() int64 {
 }
 
 // Downstreams return all the downstream servers.
-func (s *Server) Downstreams() map[string]*Client {
+func (s *Server) Downstreams() map[string]frame.Writer {
 	return s.downstreams
 }
 
 // ConfigRouter is used to set router by zipper
-func (s *Server) ConfigRouter(router Router) {
+func (s *Server) ConfigRouter(router router.Router) {
 	s.mu.Lock()
 	s.router = router
 	logger.Debugf("%sconfig router is %#v", ServerLogPrefix, router)
@@ -484,7 +474,7 @@ func (s *Server) ConfigRouter(router Router) {
 }
 
 // ConfigMetadataBuilder is used to set metadataBuilder by zipper
-func (s *Server) ConfigMetadataBuilder(builder MetadataBuilder) {
+func (s *Server) ConfigMetadataBuilder(builder metadata.Builder) {
 	s.mu.Lock()
 	s.metadataBuilder = builder
 	logger.Debugf("%sconfig metadataBuilder is %#v", ServerLogPrefix, builder)
@@ -501,7 +491,7 @@ func (s *Server) ConfigAlpnHandler(h func(string) error) {
 
 // AddDownstreamServer add a downstream server to this server. all the DataFrames will be
 // dispatch to all the downstreams.
-func (s *Server) AddDownstreamServer(addr string, c *Client) {
+func (s *Server) AddDownstreamServer(addr string, c frame.Writer) {
 	s.mu.Lock()
 	s.downstreams[addr] = c
 	s.mu.Unlock()
@@ -578,22 +568,6 @@ func (s *Server) authNames() []string {
 		result = append(result, auth.Name())
 	}
 	return result
-}
-
-func (s *Server) authenticate(f *frame.HandshakeFrame) bool {
-	if len(s.opts.Auths) > 0 {
-		for _, auth := range s.opts.Auths {
-			if f.AuthName() == auth.Name() {
-				isAuthenticated := auth.Authenticate(f.AuthPayload())
-				if isAuthenticated {
-					logger.Debugf("%sauthenticated==%v", ServerLogPrefix, isAuthenticated)
-					return isAuthenticated
-				}
-			}
-		}
-		return false
-	}
-	return true
 }
 
 func authName(name string) string {

@@ -1,6 +1,8 @@
 package frame
 
 import (
+	"fmt"
+
 	"github.com/yomorun/y3"
 )
 
@@ -9,6 +11,16 @@ import (
 type DataFrame struct {
 	metaFrame    *MetaFrame
 	payloadFrame *PayloadFrame
+}
+
+// String method implements fmt %v
+func (d DataFrame) String() string {
+	data := d.GetCarriage()
+	length := len(data)
+	if length > debugFrameSize {
+		data = data[:debugFrameSize]
+	}
+	return fmt.Sprintf("tid=%s | tag=%#x | source=%s | data[%d]=%# x", d.metaFrame.tid, d.Tag(), d.SourceID(), length, data)
 }
 
 // NewDataFrame create `DataFrame` with a transactionID string,

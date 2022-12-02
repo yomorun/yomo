@@ -1,11 +1,19 @@
-package core
+// Package router defines the interface of router.
+//
+// router manages application's route according to application's metadata.
+//
+// route manages data subscribers according to their observed data tags.
+package router
 
-import "github.com/yomorun/yomo/core/frame"
+import (
+	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/metadata"
+)
 
 // Router is the interface to manage the routes for applications.
 type Router interface {
 	// Route gets the route
-	Route(metadata Metadata) Route
+	Route(metadata metadata.Metadata) Route
 	// Clean the routes.
 	Clean()
 }

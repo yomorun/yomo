@@ -12,6 +12,8 @@ func TestDataFrameEncode(t *testing.T) {
 	d.SetCarriage(userDataTag, []byte("yomo"))
 	d.SetBroadcast(true)
 
+	assert.EqualValues(t, "", d.SourceID())
+
 	tidbuf := []byte(d.TransactionID())
 	result := []byte{
 		0x80 | byte(TagOfDataFrame), byte(len(tidbuf) + 4 + 8 + 5 + 3),
@@ -36,6 +38,8 @@ func TestDataFrameDecode(t *testing.T) {
 		0x01, 0x1, 0x15, 0x02, 0x04, 0x79, 0x6F, 0x6D, 0x6F}
 	data, err := DecodeToDataFrame(buf)
 	assert.NoError(t, err)
+
+	assert.EqualValues(t, 0x15, data.Tag())
 	assert.EqualValues(t, "1234", data.TransactionID())
 	assert.EqualValues(t, userDataTag, data.GetDataTag())
 	assert.EqualValues(t, []byte("yomo"), data.GetCarriage())

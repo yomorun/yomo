@@ -47,7 +47,6 @@ func (c *connector) Remove(connID string) {
 
 // Get a connection by connection id.
 func (c *connector) Get(connID string) Connection {
-	logger.Debugf("%sconnector get connection: connID=%s", ServerLogPrefix, connID)
 	if conn, ok := c.conns.Load(connID); ok {
 		return conn.(Connection)
 	}
@@ -85,5 +84,8 @@ func (c *connector) GetSnapshot() map[string]string {
 
 // Clean the connector.
 func (c *connector) Clean() {
-	c.conns = sync.Map{}
+	c.conns.Range(func(key, value any) bool {
+		c.conns.Delete(key)
+		return true
+	})
 }

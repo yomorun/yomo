@@ -59,6 +59,13 @@ type Frame interface {
 	Encode() []byte
 }
 
+// Writer is the interface that wraps the WriteFrame method.
+
+// Writer writes Frame from frm to the underlying data stream.
+type Writer interface {
+	WriteFrame(frm Frame) error
+}
+
 func (f Type) String() string {
 	switch f {
 	case TagOfDataFrame:
@@ -92,14 +99,6 @@ func (f Type) String() string {
 	default:
 		return "UnknownFrame"
 	}
-}
-
-// Shortly reduce data size for easy viewing
-func Shortly(data []byte) []byte {
-	if len(data) > debugFrameSize {
-		return data[:debugFrameSize]
-	}
-	return data
 }
 
 func init() {
