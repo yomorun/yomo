@@ -202,7 +202,7 @@ func (s *Server) handshakeWithtimeout(conn quic.Connection, stream quic.Stream, 
 // It returns true if handshake successful otherwise return false.
 // It response to client a handshakeAckFrame if the handshake is successful
 // otherwise response a goawayFrame.
-func (s *Server) handshake(conn quic.Connection, stream quic.Stream, fs frame.Readwriter) bool {
+func (s *Server) handshake(conn quic.Connection, stream quic.Stream, fs frame.ReadWriter) bool {
 	frm, err := fs.ReadFrame()
 	if err != nil {
 		if err := fs.WriteFrame(frame.NewGoawayFrame(err.Error())); err != nil {

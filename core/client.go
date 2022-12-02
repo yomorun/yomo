@@ -27,7 +27,7 @@ type Client struct {
 	clientID   string                     // id of the client
 	clientType ClientType                 // type of the connection
 	conn       quic.Connection            // quic connection
-	fs         frame.Readwriter           // yomo abstract stream
+	fs         frame.ReadWriter           // yomo abstract stream
 	state      ConnState                  // state of the connection
 	processor  func(*frame.DataFrame)     // function to invoke when data arrived
 	receiver   func(*frame.BackflowFrame) // function to invoke when data is processed

@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-// Readwriter is the interface that groups the ReadFrame and WriteFrame methods.
-type Readwriter interface {
+// ReadWriter is the interface that groups the ReadFrame and WriteFrame methods.
+type ReadWriter interface {
 	Reader
 	Writer
 }
@@ -24,7 +24,7 @@ type ErrReadUntilTimeout struct{ t Type }
 
 // Error implement error interface.
 func (err ErrReadUntilTimeout) Error() string {
-	return "yomo: frame read until timeout, tpye: " + err.t.String()
+	return "yomo: frame read until timeout, type: " + err.t.String()
 }
 
 // ReadUntil reads frame from reader, until the frame of the specified type is returned.

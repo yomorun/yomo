@@ -16,7 +16,7 @@ type FrameStream struct {
 }
 
 // NewFrameStream creates a new FrameStream.
-func NewFrameStream(s io.ReadWriter) frame.Readwriter {
+func NewFrameStream(s io.ReadWriter) frame.ReadWriter {
 	return &FrameStream{
 		stream: s,
 		mu:     sync.Mutex{},
