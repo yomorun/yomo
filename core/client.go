@@ -292,7 +292,7 @@ func (c *Client) reconnect(ctx context.Context, addr string) {
 	}
 }
 
-// RemoteAddr returns the address of the client.
+// RemoteAddr returns the remote address of the client connected to.
 func (c *Client) RemoteAddr() string { return c.addr }
 
 // SetObserveDataTags set the data tag list that will be observed.
