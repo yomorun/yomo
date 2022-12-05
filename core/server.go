@@ -9,6 +9,7 @@ import (
 	"os"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/core/auth"
@@ -163,6 +164,10 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 				}
 				defer stream.Close()
 
+				if ok := s.handshakeWithTimeout(conn, stream, 10*time.Second); !ok {
+					return
+				}
+
 				logger.Infof("%s❤️3/ [stream:%d] created, connID=%s", ServerLogPrefix, stream.StreamID(), connID)
 				// process frames on stream
 				c := newContext(conn, stream)
@@ -172,6 +177,57 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 			}
 		}(sctx, conn)
 	}
+}
+
+// handshakeWithTimeout call handshake with a timeout.
+func (s *Server) handshakeWithTimeout(conn quic.Connection, stream quic.Stream, timeout time.Duration) bool {
+	ch := make(chan bool)
+
+	fs := NewFrameStream(stream)
+
+	go func() {
+		ch <- s.handshake(conn, stream, fs)
+	}()
+
+	select {
+	case <-time.After(timeout):
+		return false
+	case ok := <-ch:
+		return ok
+	}
+}
+
+// handshake accepts a handshakeFrame from client.
+// the first frame from client must be handshakeFrame,
+// It returns true if handshake successful otherwise return false.
+// It response to client a handshakeAckFrame if the handshake is successful
+// otherwise response a goawayFrame.
+func (s *Server) handshake(conn quic.Connection, stream quic.Stream, fs frame.ReadWriter) bool {
+	frm, err := fs.ReadFrame()
+	if err != nil {
+		if err := fs.WriteFrame(frame.NewGoawayFrame(err.Error())); err != nil {
+			logger.Errorf("%s⛔️ write to client[%s] GoawayFrame error:%v", ServerLogPrefix, conn.RemoteAddr().String(), err)
+		}
+		return false
+	}
+
+	if frm.Type() != frame.TagOfHandshakeFrame {
+		if err := fs.WriteFrame(frame.NewGoawayFrame("handshake failed")); err != nil {
+			logger.Errorf("%s⛔️ reads first frame from client[%s] is not handshakeFrame, type :%v", ServerLogPrefix, conn.RemoteAddr().String(), frm.Type())
+		}
+		return false
+	}
+
+	c := newContext(conn, stream).WithFrame(frm)
+
+	if err := s.handleHandshakeFrame(c); err != nil {
+		if err := fs.WriteFrame(frame.NewGoawayFrame(err.Error())); err != nil {
+			logger.Errorf("%s⛔️ write to client[%s] GoawayFrame error:%v", ServerLogPrefix, conn.RemoteAddr().String(), err)
+		}
+		return false
+	}
+
+	return true
 }
 
 // Close will shutdown the server.
@@ -261,19 +317,7 @@ func (s *Server) mainFrameHandler(c *Context) error {
 
 	switch frameType {
 	case frame.TagOfHandshakeFrame:
-		if err := s.handleHandshakeFrame(c); err != nil {
-			logger.Errorf("%shandleHandshakeFrame err: %s", ServerLogPrefix, err)
-			// close connections early to avoid resource consumption
-			if c.Stream != nil {
-				goawayFrame := frame.NewGoawayFrame(err.Error())
-				if _, err := c.Stream.Write(goawayFrame.Encode()); err != nil {
-					logger.Errorf("%s⛔️ write to client[%s] GoawayFrame error:%v", ServerLogPrefix, c.ConnID, err)
-					return err
-				}
-			}
-		}
-	// case frame.TagOfPingFrame:
-	// 	s.handlePingFrame(mainStream, connection, f.(*frame.PingFrame))
+		logger.Errorf("%sreceive a handshakeFrame, ingonre it", ServerLogPrefix)
 	case frame.TagOfDataFrame:
 		if err := s.handleDataFrame(c); err != nil {
 			c.CloseWithError(yerr.ErrorCodeData, fmt.Sprintf("handleDataFrame err: %v", err))
@@ -358,15 +402,18 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	case ClientTypeUpstreamZipper:
 		conn = newConnection(f.Name, f.ClientID, clientType, nil, stream, f.ObserveDataTags)
 	default:
-		// TODO: There is no need to Remove .
-		// unknown client type
+		// TODO: There is no need to Remove,
+		// unknown client type is not be add to connector.
 		s.connector.Remove(connID)
 		err := fmt.Errorf("illegal ClientType: %#x", f.ClientType)
 		c.CloseWithError(yerr.ErrorCodeUnknownClient, err.Error())
 		return err
 	}
 
-	// TODO: maybe add twice.
+	if _, err := stream.Write(frame.NewHandshakeAckFrame().Encode()); err != nil {
+		logger.Debugf("%s🔑 write to <%s> [%s](%s) AckFrame error:%v", ServerLogPrefix, clientType, f.Name, connID, err)
+	}
+
 	s.connector.Add(connID, conn)
 	logger.Printf("%s❤️  <%s> [%s][%s](%s) is connected!", ServerLogPrefix, clientType, f.Name, clientID, connID)
 	return nil

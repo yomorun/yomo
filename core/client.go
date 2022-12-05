@@ -27,7 +27,7 @@ type Client struct {
 	clientID   string                     // id of the client
 	clientType ClientType                 // type of the connection
 	conn       quic.Connection            // quic connection
-	fs         *FrameStream               // yomo abstract stream
+	fs         frame.ReadWriter           // yomo abstract stream
 	state      ConnState                  // state of the connection
 	processor  func(*frame.DataFrame)     // function to invoke when data arrived
 	receiver   func(*frame.BackflowFrame) // function to invoke when data is processed
@@ -108,7 +108,12 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 		c.opts.credential.Name(),
 		c.opts.credential.Payload(),
 	)
-	if _, err := c.fs.WriteFrame(handshake); err != nil {
+	if err := c.fs.WriteFrame(handshake); err != nil {
+		c.state = ConnStateDisconnected
+		return err
+	}
+
+	if _, err := frame.ReadUntil(c.fs, frame.TagOfHandshakeAckFrame, 10*time.Second); err != nil {
 		c.state = ConnStateDisconnected
 		return err
 	}
@@ -234,13 +239,13 @@ func (c *Client) close() error {
 
 // WriteFrame writes a frame to the connection, gurantee threadsafe.
 func (c *Client) WriteFrame(frm frame.Frame) error {
-	c.logger.Debugf("%s[%s](%s)@%s WriteFrame() will write frame: %s", ClientLogPrefix, c.name, c.localAddr, c.state, frm.Type())
+	c.logger.Debugf("%s[%s](%s)@%s WriteFrame() will write frame: %s", ClientLogPrefix, c.name, c.localAddr, c.State(), frm.Type())
 
 	if c.state != ConnStateConnected {
 		return errors.New("client connection isn't connected")
 	}
 
-	if _, err := c.fs.WriteFrame(frm); err != nil {
+	if err := c.fs.WriteFrame(frm); err != nil {
 		return err
 	}
 
