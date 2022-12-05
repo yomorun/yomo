@@ -222,7 +222,7 @@ func TestHandShake(t *testing.T) {
 				clientNameConfigInServer: "sfn-1",
 			},
 			handshakeTimes: 1,
-			wantResp:       []byte{},
+			wantResp:       frame.NewHandshakeAckFrame().Encode(),
 			wantAddConn:    true,
 			wantConnName:   "sfn-1",
 		},
@@ -237,9 +237,13 @@ func TestHandShake(t *testing.T) {
 				clientNameConfigInServer: "sfn-1",
 			},
 			handshakeTimes: 2,
-			wantResp:       frame.NewGoawayFrame("SFN[sfn-1] is already linked to another connection").Encode(),
-			wantAddConn:    true,
-			wantConnName:   "sfn-1",
+			wantResp: composeFrametoBytes(
+				frame.NewHandshakeAckFrame(), // first handshake.
+				frame.NewGoawayFrame("SFN[sfn-1] is already linked to another connection"), // second handshake, write to old connection.
+				frame.NewHandshakeAckFrame(), // second handshake, write to new connection.
+			),
+			wantAddConn:  true,
+			wantConnName: "sfn-1",
 		},
 		{
 			name: "test upstream zipper: handshake success",
@@ -252,7 +256,7 @@ func TestHandShake(t *testing.T) {
 				clientNameConfigInServer: "zipper-1",
 			},
 			handshakeTimes: 1,
-			wantResp:       []byte{},
+			wantResp:       frame.NewHandshakeAckFrame().Encode(),
 			wantAddConn:    true,
 			wantConnName:   "zipper-1",
 		},
@@ -261,7 +265,7 @@ func TestHandShake(t *testing.T) {
 			args: args{
 				clientID:                 "mock-client-id",
 				token:                    "token-for-test", // equal `tokenAuth` token for passing auth
-				clientType:               0x7b,
+				clientType:               0x7b,             // the unknown clientType
 				stream:                   newStreamAssert([]byte{}),
 				clientName:               "zipper-1",
 				clientNameConfigInServer: "zipper-1",
@@ -362,4 +366,14 @@ func (s *streamAssert) Close() error {
 
 func (s *streamAssert) writeEqual(t *testing.T, expected []byte, msgAndArgs ...interface{}) {
 	assert.Equal(t, expected, s.w.Bytes(), msgAndArgs...)
+}
+
+// composeFrametoBytes compose frame.Encode to one byte list.
+// It is a helper function for testing.
+func composeFrametoBytes(frms ...frame.Frame) []byte {
+	result := []byte{}
+	for _, f := range frms {
+		result = append(result, f.Encode()...)
+	}
+	return result
 }

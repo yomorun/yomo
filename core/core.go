@@ -2,12 +2,7 @@ package core
 
 import (
 	"math/rand"
-	"sync"
 	"time"
-)
-
-var (
-	once sync.Once
 )
 
 // ConnState represents the state of the connection.

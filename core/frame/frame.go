@@ -3,7 +3,70 @@ package frame
 import (
 	"os"
 	"strconv"
+	"time"
 )
+
+// ReadWriter is the interface that groups the ReadFrame and WriteFrame methods.
+type ReadWriter interface {
+	Reader
+	Writer
+}
+
+// Reader reads frame from underlying stream.
+type Reader interface {
+	// ReadFrame reads frame, if error, the error returned is not empty
+	// and frame returned is nil.
+	ReadFrame() (Frame, error)
+}
+
+// ErrReadUntilTimeout be returned when call ReadUntil timeout.
+type ErrReadUntilTimeout struct{ t Type }
+
+// Error implement error interface.
+func (err ErrReadUntilTimeout) Error() string {
+	return "yomo: frame read until timeout, type: " + err.t.String()
+}
+
+// ReadUntil reads frame from reader, until the frame of the specified type is returned.
+// It returns ErrReadUntilTimeout error if frame not be returned after timeout duration.
+func ReadUntil(reader Reader, t Type, timeout time.Duration) (Frame, error) {
+	var (
+		errch = make(chan error)
+		frmch = make(chan Frame)
+	)
+
+	go func() {
+		for {
+			f, err := reader.ReadFrame()
+			if err != nil {
+				errch <- err
+				return
+			}
+			if f.Type() == t {
+				frmch <- f
+				return
+			}
+		}
+	}()
+
+	for {
+		select {
+		case <-time.After(timeout):
+			return nil, ErrReadUntilTimeout{t: t}
+		case err := <-errch:
+			return nil, err
+		case frm := <-frmch:
+			return frm, nil
+		}
+	}
+}
+
+// Writer is the interface that wraps the WriteFrame method.
+
+// Writer writes Frame from frm to the underlying data stream.
+type Writer interface {
+	WriteFrame(frm Frame) error
+}
 
 // debugFrameSize print frame data size on debug mode
 var debugFrameSize = 16
@@ -45,6 +108,8 @@ const (
 	TagOfGoawayFrame   Type = 0x30
 	TagOfGoawayCode    Type = 0x01
 	TagOfGoawayMessage Type = 0x02
+	// TagOfHandshakeAckFrame
+	TagOfHandshakeAckFrame Type = 0x29
 )
 
 // Type represents the type of frame.
@@ -57,13 +122,6 @@ type Frame interface {
 
 	// Encode the frame into []byte.
 	Encode() []byte
-}
-
-// Writer is the interface that wraps the WriteFrame method.
-
-// Writer writes Frame from frm to the underlying data stream.
-type Writer interface {
-	WriteFrame(frm Frame) error
 }
 
 func (f Type) String() string {
@@ -96,6 +154,8 @@ func (f Type) String() string {
 		return "HandshakeName"
 	case TagOfHandshakeType:
 		return "HandshakeType"
+	case TagOfHandshakeAckFrame:
+		return "TagOfHandshakeAckFrame"
 	default:
 		return "UnknownFrame"
 	}
