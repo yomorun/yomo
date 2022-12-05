@@ -494,9 +494,7 @@ func (s *Server) dispatchToDownstreams(c *Context) {
 	conn := s.connector.Get(c.connID)
 	if conn == nil {
 		logger.Debugf("%sdispatchToDownstreams: s.connector.Get(%s) is nil", ServerLogPrefix, c.connID)
-	}
-
-	if conn.ClientType() == ClientTypeSource {
+	} else if conn.ClientType() == ClientTypeSource {
 		f := c.Frame.(*frame.DataFrame)
 		if f.IsBroadcast() {
 			if f.GetMetaFrame().Metadata() == nil {
