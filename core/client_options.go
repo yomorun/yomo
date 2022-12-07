@@ -7,9 +7,9 @@ import (
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/core/log"
 	"github.com/yomorun/yomo/pkg/logger"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
+	"golang.org/x/exp/slog"
 )
 
 // clientOptions are the options for YoMo client.
@@ -18,7 +18,7 @@ type clientOptions struct {
 	quicConfig      *quic.Config
 	tlsConfig       *tls.Config
 	credential      *auth.Credential
-	logger          log.Logger
+	logger          slog.Logger
 }
 
 func defaultClientOption() *clientOptions {
@@ -82,7 +82,7 @@ func WithClientQuicConfig(qc *quic.Config) ClientOption {
 }
 
 // WithLogger sets logger for the client.
-func WithLogger(logger log.Logger) ClientOption {
+func WithLogger(logger slog.Logger) ClientOption {
 	return func(o *clientOptions) {
 		o.logger = logger
 	}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"strings"
 	"sync"
@@ -12,9 +13,9 @@ import (
 
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/core/log"
 	"github.com/yomorun/yomo/core/yerr"
 	"github.com/yomorun/yomo/pkg/id"
+	"golang.org/x/exp/slog"
 )
 
 // ClientOption YoMo client options
@@ -37,7 +38,7 @@ type Client struct {
 	mu         sync.Mutex
 	opts       *clientOptions
 	localAddr  string // client local addr, it will be changed on reconnect
-	logger     log.Logger
+	syslog     slog.Logger
 	errc       chan error
 }
 
