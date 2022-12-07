@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"strings"
 	"sync"
@@ -38,7 +37,7 @@ type Client struct {
 	mu         sync.Mutex
 	opts       *clientOptions
 	localAddr  string // client local addr, it will be changed on reconnect
-	syslog     slog.Logger
+	log        *slog.Logger
 	errc       chan error
 }
 
@@ -49,15 +48,18 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 	for _, o := range opts {
 		o(option)
 	}
+	clientID := id.New()
+
+	log := slog.With("component", "client", "type", connType, "client_id", clientID, "client_name", appName)
 
 	return &Client{
 		name:       appName,
-		clientID:   id.New(),
+		clientID:   clientID,
 		clientType: connType,
 		state:      ConnStateReady,
 		opts:       option,
 		errc:       make(chan error),
-		logger:     option.logger,
+		log:        log,
 	}
 }
 
@@ -122,12 +124,14 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	c.state = ConnStateConnected
 	c.localAddr = c.conn.LocalAddr().String()
 
-	c.logger.Printf("%s❤️  [%s][%s](%s) is connected to YoMo-Zipper %s", ClientLogPrefix, c.name, c.clientID, c.localAddr, addr)
+	c.log = slog.With("local_addr", c.localAddr, "reomote", c.RemoteAddr())
+
+	c.log.Debug("connected to YoMo-Zipper")
 
 	// receiving frames
 	go func() {
 		closeConn, closeClient, err := c.handleFrame()
-		c.logger.Debugf("%shandleFrame: %v, %v, %T, %v", ClientLogPrefix, closeConn, closeClient, err, err)
+		c.log.Debug("connected to YoMo-Zipper", "close_conn", closeConn, "close_client", closeClient, "error", err)
 
 		c.mu.Lock()
 		defer c.mu.Unlock()
@@ -165,7 +169,7 @@ func (c *Client) handleFrame() (bool, bool, error) {
 			if err == io.EOF {
 				return true, false, err
 			} else if strings.HasPrefix(err.Error(), "unknown frame type") {
-				c.logger.Warnf("%s%v", ClientLogPrefix, err)
+				c.log.Warn("unknown frame type", "error", err)
 				continue
 			} else if e, ok := err.(*quic.IdleTimeoutError); ok {
 				return false, false, e
@@ -180,7 +184,7 @@ func (c *Client) handleFrame() (bool, bool, error) {
 		// read frame
 		// first, get frame type
 		frameType := f.Type()
-		c.logger.Debugf("%shandleFrame: %v", ClientLogPrefix, frameType)
+		c.log.Debug("handleFrame", "frame_type", frameType)
 		switch frameType {
 		case frame.TagOfRejectedFrame:
 			if v, ok := f.(*frame.RejectedFrame); ok {
@@ -193,7 +197,7 @@ func (c *Client) handleFrame() (bool, bool, error) {
 		case frame.TagOfDataFrame: // DataFrame carries user's data
 			if v, ok := f.(*frame.DataFrame); ok {
 				if c.processor == nil {
-					c.logger.Warnf("%sprocessor is nil", ClientLogPrefix)
+					c.log.Warn("processor is nil")
 				} else {
 					c.processor(v)
 				}
@@ -201,13 +205,13 @@ func (c *Client) handleFrame() (bool, bool, error) {
 		case frame.TagOfBackflowFrame:
 			if v, ok := f.(*frame.BackflowFrame); ok {
 				if c.receiver == nil {
-					c.logger.Warnf("%sreceiver is nil", ClientLogPrefix)
+					c.log.Warn("receiver is nil")
 				} else {
 					c.receiver(v)
 				}
 			}
 		default:
-			c.logger.Warnf("%sunknown or unsupported frame %#x", ClientLogPrefix, frameType)
+			c.log.Warn("unknown or unsupported frame", "frame_type", frameType.String())
 		}
 	}
 }
@@ -229,7 +233,7 @@ func (c *Client) Close() error {
 }
 
 func (c *Client) close() error {
-	c.logger.Printf("%s💔 close the connection, name:%s, id:%s, addr:%s", ClientLogPrefix, c.name, c.clientID, c.addr)
+	c.log.Debug("close the connection")
 
 	// close error channel so that close handler function will be called
 	close(c.errc)
@@ -240,7 +244,7 @@ func (c *Client) close() error {
 
 // WriteFrame writes a frame to the connection, gurantee threadsafe.
 func (c *Client) WriteFrame(frm frame.Frame) error {
-	c.logger.Debugf("%s[%s](%s)@%s WriteFrame() will write frame: %s", ClientLogPrefix, c.name, c.localAddr, c.State(), frm.Type())
+	c.log.Debug("close the connection", "client_state", c.State(), "frame_type", frm.Type().String())
 
 	if c.state != ConnStateConnected {
 		return errors.New("client connection isn't connected")
@@ -256,13 +260,13 @@ func (c *Client) WriteFrame(frm frame.Frame) error {
 // SetDataFrameObserver sets the data frame handler.
 func (c *Client) SetDataFrameObserver(fn func(*frame.DataFrame)) {
 	c.processor = fn
-	c.logger.Debugf("%sSetDataFrameObserver(%v)", ClientLogPrefix, c.processor)
+	c.log.Debug("SetDataFrameObserver", "processor", c.processor)
 }
 
 // SetBackflowFrameObserver sets the backflow frame handler.
 func (c *Client) SetBackflowFrameObserver(fn func(*frame.BackflowFrame)) {
 	c.receiver = fn
-	c.logger.Debugf("%sSetBackflowFrameObserver(%v)", ClientLogPrefix, c.receiver)
+	c.log.Debug("SetBackflowFrameObserver", "receiver", c.receiver)
 }
 
 // reconnect the connection between client and server.
@@ -273,7 +277,7 @@ func (c *Client) reconnect(ctx context.Context, addr string) {
 	for {
 		select {
 		case <-ctx.Done():
-			c.logger.Debugf("%s[%s](%s) context.Done()", ClientLogPrefix, c.name, c.localAddr)
+			c.log.Debug("context.Done", "receiver", "error", ctx.Err())
 			return
 		case err, ok := <-c.errc:
 			if c.errorfn != nil && err != nil {
@@ -288,10 +292,10 @@ func (c *Client) reconnect(ctx context.Context, addr string) {
 			state := c.state
 			c.mu.Unlock()
 			if state == ConnStateDisconnected {
-				c.logger.Printf("%s[%s][%s](%s) is reconnecting to YoMo-Zipper %s...", ClientLogPrefix, c.name, c.clientID, c.localAddr, addr)
+				c.log.Debug("reconnecting to YoMo-Zipper")
 				err := c.connect(ctx, addr)
 				if err != nil {
-					c.logger.Errorf("%s[%s][%s](%s) reconnect error:%v", ClientLogPrefix, c.name, c.clientID, c.localAddr, err)
+					c.log.Error("reconnecting to YoMo-Zipper", err)
 				}
 			}
 		}
@@ -308,8 +312,8 @@ func (c *Client) SetObserveDataTags(tag ...frame.Tag) {
 }
 
 // Logger get client's logger instance, you can customize this using `yomo.WithLogger`
-func (c *Client) Logger() log.Logger {
-	return c.logger
+func (c *Client) Logger() *slog.Logger {
+	return c.log
 }
 
 // SetErrorHandler set error handler
