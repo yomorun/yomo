@@ -37,7 +37,7 @@ func Error(msg string, err error, keyvals ...interface{}) {
 }
 
 type Config struct {
-	DebugMode   bool   `env:"YOMO_LOG_DEBUG" envDefault:"true"`
+	DebugMode   bool   `env:"YOMO_LOG_DEBUG" envDefault:"false"`
 	Level       string `env:"YOMO_LOG_LEVEL" envDefault:"info"`
 	Output      string `env:"YOMO_LOG_OUTPUT"`
 	ErrorOutput string `env:"YOMO_LOG_ERROR_OUTPUT"`

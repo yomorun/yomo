@@ -35,6 +35,7 @@ type mockConnectorArgs struct {
 // for preparing dataFrame testing.
 func buildMockConnector(router router.Router, metadataBuilder metadata.Builder, args []mockConnectorArgs) Connector {
 	logger := ylog.Default()
+
 	connector := newConnector(logger)
 
 	for _, arg := range args {
@@ -140,6 +141,7 @@ func TestHandleDataFrame(t *testing.T) {
 			connID: sourceConnID,
 			Stream: sourceStream,
 			Frame:  dataFrame,
+			log:    server.log,
 		}
 
 		err := server.handleDataFrame(c)
@@ -170,6 +172,7 @@ func TestHandleDataFrame(t *testing.T) {
 			connID: zipperConnID,
 			Stream: zipperStream,
 			Frame:  dataFrame,
+			log:    server.log,
 		}
 
 		err := server.handleDataFrame(c)
@@ -283,7 +286,7 @@ func TestHandShake(t *testing.T) {
 	logger := ylog.Default()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := &Server{connector: newConnector(logger)}
+			server := &Server{connector: newConnector(logger), log: logger, opts: defaultServerOptions()}
 
 			server.ConfigRouter(router.Default([]config.App{{Name: tt.args.clientNameConfigInServer}}))
 
@@ -305,6 +308,7 @@ func TestHandShake(t *testing.T) {
 				connID: clientID,
 				Stream: stream,
 				Frame:  frame.NewHandshakeFrame(clientName, clientID, clientType, []frame.Tag{frame.Tag(1)}, "token", token),
+				log:    server.log,
 			}
 
 			for n := 0; n < tt.handshakeTimes; n++ {

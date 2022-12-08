@@ -111,7 +111,6 @@ func (c *Context) CloseWithError(code yerr.ErrorCode, msg string) {
 	if c.Conn != nil {
 		c.Conn.CloseWithError(quic.ApplicationErrorCode(code), msg)
 	}
-	c.Clean()
 }
 
 // ConnID get quic connection id

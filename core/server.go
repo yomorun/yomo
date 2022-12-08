@@ -38,7 +38,7 @@ type Server struct {
 	counterOfDataFrame      int64
 	downstreams             map[string]frame.Writer
 	mu                      sync.Mutex
-	opts                    serverOptions
+	opts                    *serverOptions
 	beforeHandlers          []FrameHandler
 	afterHandlers           []FrameHandler
 	connectionCloseHandlers []ConnectionHandler
@@ -63,6 +63,7 @@ func NewServer(name string, opts ...ServerOption) *Server {
 		downstreams: make(map[string]frame.Writer),
 		wg:          new(sync.WaitGroup),
 		log:         logger,
+		opts:        options,
 	}
 
 	return s
@@ -164,9 +165,10 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 
 				s.log.Info("stream created", "stream_id", stream.StreamID(), "conn_id", connID)
 
-				defer yctx.Clean()
 				s.handleConnection(yctx)
 				yctx.log.Info("stream handleConnection DONE")
+
+				yctx.Clean()
 			}
 		}(sctx, conn)
 	}
