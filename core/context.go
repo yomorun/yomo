@@ -46,7 +46,8 @@ func newContext(conn quic.Connection, stream quic.Stream, logger *slog.Logger) (
 
 const clientInfoKey = "client_info"
 
-type clientInfo struct {
+// ClientInfo holds client info, you can use `*Context.ClientInfo()` to get it after handshake.
+type ClientInfo struct {
 	clientID   string
 	clientType byte
 	clientName string
@@ -54,12 +55,12 @@ type clientInfo struct {
 }
 
 // ClientInfo get client info from context.
-func (c *Context) ClientInfo() *clientInfo {
+func (c *Context) ClientInfo() *ClientInfo {
 	val, ok := c.Get(clientInfoKey)
 	if !ok {
-		return &clientInfo{}
+		return &ClientInfo{}
 	}
-	return val.(*clientInfo)
+	return val.(*ClientInfo)
 }
 
 // WithFrame sets a frame to context.
@@ -72,7 +73,7 @@ func (c *Context) WithFrame(f frame.Frame) *Context {
 			"client_name", handshakeFrame.Name,
 			"auth_name", handshakeFrame.AuthName(),
 		)
-		c.Set(clientInfoKey, &clientInfo{
+		c.Set(clientInfoKey, &ClientInfo{
 			clientID:   handshakeFrame.ClientID,
 			clientType: handshakeFrame.ClientType,
 			clientName: handshakeFrame.Name,

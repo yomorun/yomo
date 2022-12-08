@@ -1,3 +1,4 @@
+// package provides handler that supports spliting log stream to common log stream and error log stream.
 package ylog
 
 import (
@@ -9,6 +10,7 @@ import (
 	"golang.org/x/exp/slog"
 )
 
+// handler supports spliting log stream to common log stream and error log stream.
 type handler struct {
 	slog.Handler
 
@@ -50,6 +52,7 @@ func (buf *asyncBuffer) Reset() {
 	buf.underlying.Reset()
 }
 
+// NewHandlerFromConfig creates a slog.Handler from conf
 func NewHandlerFromConfig(conf Config) slog.Handler {
 	buf := newAsyncBuffer(256)
 

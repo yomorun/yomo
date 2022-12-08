@@ -1,3 +1,12 @@
+// package ylog provides a slog.Logger instance for logging.
+// ylog also provides a default slog.Logger, the default logger is build from environment.
+//
+// ylog allows to call log api directly, like:
+//
+//	ylog.Debug("test", "name", "yomo")
+//	ylog.Info("test", "name", "yomo")
+//	ylog.Warn("test", "name", "yomo")
+//	ylog.Error("test", "name", "yomo")
 package ylog
 
 import (
@@ -16,32 +25,42 @@ var defaultLogger = Default()
 // SetDefault set global logger.
 func SetDefault(logger *slog.Logger) { defaultLogger = logger }
 
-// Debug logs a message at DebugLevel
+// Debug logs a message at debug level.
 func Debug(msg string, keyvals ...interface{}) {
 	defaultLogger.Debug(msg, keyvals...)
 }
 
-// Info logs a message at InfoLevel
+// Info logs a message at info level.
 func Info(msg string, keyvals ...interface{}) {
 	defaultLogger.Info(msg, keyvals...)
 }
 
-// Warn logs a message at WarnLevel
+// Warn logs a message at warn level.
 func Warn(msg string, keyvals ...interface{}) {
 	defaultLogger.Warn(msg, keyvals...)
 }
 
-// Error logs a message at ErrorLevel
+// Error logs a message at error level.
 func Error(msg string, err error, keyvals ...interface{}) {
 	defaultLogger.Error(msg, err, keyvals...)
 }
 
+// Config is the config of slog, the config is from environment.
 type Config struct {
-	DebugMode   bool   `env:"YOMO_LOG_DEBUG" envDefault:"false"`
-	Level       string `env:"YOMO_LOG_LEVEL" envDefault:"info"`
-	Output      string `env:"YOMO_LOG_OUTPUT"`
+	// DebugMode indicates if logger log code line.
+	DebugMode bool `env:"YOMO_LOG_DEBUG_MODE" envDefault:"false"`
+
+	// the log level, It's one of `debug`, `info`, `warn`, `error`
+	Level string `env:"YOMO_LOG_LEVEL" envDefault:"info"`
+
+	// log output file path, It's stdout if not set.
+	Output string `env:"YOMO_LOG_OUTPUT"`
+
+	// error log output file path, It's stderr if not set.
 	ErrorOutput string `env:"YOMO_LOG_ERROR_OUTPUT"`
-	Format      string `env:"YOMO_LOG_FORMAT" envDefault:"text"`
+
+	// text or json.
+	Format string `env:"YOMO_LOG_FORMAT" envDefault:"text"`
 }
 
 // DebugFrameSize is use for log dataFrame,
@@ -59,6 +78,7 @@ func init() {
 	}
 }
 
+// Default returns a slog.Logger according to enviroment.
 func Default() *slog.Logger {
 	var conf Config
 	if err := env.Parse(&conf); err != nil {
@@ -67,6 +87,7 @@ func Default() *slog.Logger {
 	return NewFromConfig(conf)
 }
 
+// NewFromConfig returns a slog.Logger according to conf.
 func NewFromConfig(conf Config) *slog.Logger {
 	return slog.New(NewHandlerFromConfig(conf))
 }
