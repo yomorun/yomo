@@ -12,15 +12,46 @@ import (
 type handler struct {
 	slog.Handler
 
-	mu  sync.Mutex
-	buf *bytes.Buffer
+	buf *asyncBuffer
 
 	writer    io.Writer
 	errWriter io.Writer
 }
 
+type asyncBuffer struct {
+	sync.Mutex
+	underlying *bytes.Buffer
+}
+
+func newAsyncBuffer(cap int) *asyncBuffer {
+	return &asyncBuffer{
+		underlying: bytes.NewBuffer(make([]byte, cap)),
+	}
+}
+
+func (buf *asyncBuffer) Write(b []byte) (int, error) {
+	buf.Lock()
+	defer buf.Unlock()
+
+	return buf.underlying.Write(b)
+}
+
+func (buf *asyncBuffer) Read(p []byte) (int, error) {
+	buf.Lock()
+	defer buf.Unlock()
+
+	return buf.underlying.Read(p)
+}
+
+func (buf *asyncBuffer) Reset() {
+	buf.Lock()
+	defer buf.Unlock()
+
+	buf.underlying.Reset()
+}
+
 func NewHandlerFromConfig(conf Config) slog.Handler {
-	buf := bytes.NewBuffer(make([]byte, 256))
+	buf := newAsyncBuffer(256)
 
 	h := bufferedSlogHandler(buf, conf.Format, conf.DebugMode)
 
@@ -44,8 +75,6 @@ func (h *handler) Handle(r slog.Record) error {
 		return err
 	}
 
-	h.mu.Lock()
-	defer h.mu.Unlock()
 	if r.Level == slog.ErrorLevel {
 		_, err = io.Copy(h.errWriter, h.buf)
 	}
@@ -70,7 +99,7 @@ func (h *handler) WithGroup(name string) slog.Handler {
 	}
 }
 
-func bufferedSlogHandler(buf *bytes.Buffer, format string, debugMode bool) slog.Handler {
+func bufferedSlogHandler(buf io.Writer, format string, debugMode bool) slog.Handler {
 	opt := slog.HandlerOptions{
 		AddSource: debugMode,
 	}
