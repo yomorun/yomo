@@ -10,6 +10,7 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/router"
+	"github.com/yomorun/yomo/core/ylog"
 	yauth "github.com/yomorun/yomo/pkg/auth"
 	"github.com/yomorun/yomo/pkg/config"
 )
@@ -33,7 +34,8 @@ type mockConnectorArgs struct {
 // buildMockConnector build a mock connector according to `args`
 // for preparing dataFrame testing.
 func buildMockConnector(router router.Router, metadataBuilder metadata.Builder, args []mockConnectorArgs) Connector {
-	connector := newConnector()
+	logger := ylog.Default()
+	connector := newConnector(logger)
 
 	for _, arg := range args {
 
@@ -55,6 +57,7 @@ func buildMockConnector(router router.Router, metadataBuilder metadata.Builder, 
 			metadata,
 			arg.stream,
 			handshakeFrame.ObserveDataTags,
+			logger,
 		)
 
 		route := router.Route(conn.Metadata())
@@ -277,9 +280,10 @@ func TestHandShake(t *testing.T) {
 		},
 	}
 
+	logger := ylog.Default()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := &Server{connector: newConnector()}
+			server := &Server{connector: newConnector(logger)}
 
 			server.ConfigRouter(router.Default([]config.App{{Name: tt.args.clientNameConfigInServer}}))
 

@@ -62,7 +62,7 @@ type streamFunction struct {
 // Deprecated: use yomo.WithObserveDataTags instead
 func (s *streamFunction) SetObserveDataTags(tag ...frame.Tag) {
 	s.client.SetObserveDataTags(tag...)
-	s.client.Logger().Debugf("%sSetObserveDataTag(%v)", streamFunctionLogPrefix, s.observeDataTags)
+	s.client.Logger().Debug("%sSetObserveDataTag(%v)", streamFunctionLogPrefix, s.observeDataTags)
 }
 
 // SetHandler set the handler function, which accept the raw bytes data and return the tag & response.

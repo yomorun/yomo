@@ -6,7 +6,7 @@ import (
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/core/log"
+	"golang.org/x/exp/slog"
 )
 
 const (
@@ -27,7 +27,7 @@ type Options struct {
 	ClientOptions        []core.ClientOption
 	QuicConfig           *quic.Config
 	TLSConfig            *tls.Config
-	Logger               log.Logger
+	Logger               slog.Logger
 }
 
 // WithZipperAddr return a new options with ZipperAddr set to addr.
@@ -112,7 +112,7 @@ func WithObserveDataTags(tags ...frame.Tag) Option {
 }
 
 // WithLogger sets the client logger
-func WithLogger(logger log.Logger) Option {
+func WithLogger(logger slog.Logger) Option {
 	return func(o *Options) {
 		o.ClientOptions = append(
 			o.ClientOptions,

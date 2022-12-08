@@ -12,8 +12,8 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/router"
+	"github.com/yomorun/yomo/core/ylog"
 	"github.com/yomorun/yomo/pkg/config"
-	"github.com/yomorun/yomo/pkg/logger"
 )
 
 const testaddr = "127.0.0.1:19999"
@@ -64,7 +64,7 @@ func TestFrameRoundTrip(t *testing.T) {
 		WithObserveDataTags(obversedTag),
 		WithClientQuicConfig(DefalutQuicConfig),
 		WithClientTLSConfig(nil),
-		WithLogger(logger.Default()),
+		WithClientLogger(ylog.Default()),
 	)
 
 	source.SetBackflowFrameObserver(func(bf *frame.BackflowFrame) {
