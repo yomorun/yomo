@@ -121,7 +121,7 @@ func TestHandleDataFrame(t *testing.T) {
 	})
 	defer connector.Clean()
 
-	server := &Server{connector: connector}
+	server := &Server{connector: connector, log: ylog.Default()}
 
 	server.ConfigRouter(routers)
 	server.ConfigMetadataBuilder(metadataBuilder)

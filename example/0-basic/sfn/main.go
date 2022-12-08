@@ -2,11 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/pkg/logger"
 )
 
 type noiseData struct {
@@ -32,12 +32,12 @@ func main() {
 	// start
 	err := sfn.Connect()
 	if err != nil {
-		logger.Errorf("[sfn1] connect err=%v", err)
+		fmt.Printf("[sfn1] connect err=%v\n", err)
 		os.Exit(1)
 	}
 	// set the error handler function when server error occurs
 	sfn.SetErrorHandler(func(err error) {
-		logger.Errorf("[sfn1] receive server error: %v", err)
+		fmt.Printf("[sfn1] receive server error: %v\n", err)
 		sfn.Close()
 		os.Exit(1)
 	})
@@ -49,10 +49,10 @@ func handler(data []byte) (frame.Tag, []byte) {
 	var model noiseData
 	err := json.Unmarshal(data, &model)
 	if err != nil {
-		logger.Errorf("[sfn] json.Marshal err=%v", err)
+		fmt.Printf("[sfn] json.Marshal err=%v\n", err)
 		os.Exit(-2)
 	} else {
-		logger.Printf(">> [sfn] got tag=0x33, data=%+v", model)
+		fmt.Printf(">> [sfn] got tag=0x33, data=%+v\n", model)
 	}
 	return 0x0, nil
 }

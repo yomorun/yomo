@@ -31,7 +31,7 @@ type connector struct {
 }
 
 func newConnector(logger *slog.Logger) Connector {
-	return &connector{conns: sync.Map{}}
+	return &connector{conns: sync.Map{}, log: logger}
 }
 
 // Add a connection.

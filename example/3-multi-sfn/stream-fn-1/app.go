@@ -5,12 +5,12 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"os"
 	"time"
 
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/pkg/logger"
 )
 
 // NoiseData represents the structure of data
@@ -34,7 +34,7 @@ func main() {
 
 	err := sfn.Connect()
 	if err != nil {
-		logger.Errorf("[fn1] connect err=%v", err)
+		fmt.Printf("[fn1] connect err=%v", err)
 		os.Exit(1)
 	}
 
@@ -45,7 +45,7 @@ func handler(data []byte) (frame.Tag, []byte) {
 	var mold noiseData
 	err := json.Unmarshal(data, &mold)
 	if err != nil {
-		logger.Errorf("[fn1] y3.ToObject err=%v", err)
+		fmt.Printf("[fn1] y3.ToObject err=%v", err)
 		return 0x0, nil
 	}
 	mold.Noise = mold.Noise / 10
@@ -53,7 +53,7 @@ func handler(data []byte) (frame.Tag, []byte) {
 	// Print every value and return noise value to downstream.
 	result, err := printExtract(context.Background(), &mold)
 	if err != nil {
-		logger.Errorf("[fn1] to downstream err=%v", err)
+		fmt.Printf("[fn1] to downstream err=%v", err)
 		return 0x0, nil
 	}
 
@@ -64,7 +64,7 @@ func handler(data []byte) (frame.Tag, []byte) {
 // Print every value and return noise value to downstream.
 var printExtract = func(_ context.Context, value *noiseData) (float32, error) {
 	rightNow := time.Now().UnixNano() / int64(time.Millisecond)
-	logger.Printf("✅ [%s] %d > value: %f ⚡️=%dms", value.From, value.Time, value.Noise, rightNow-value.Time)
+	fmt.Printf("✅ [%s] %d > value: %f ⚡️=%dms", value.From, value.Time, value.Noise, rightNow-value.Time)
 
 	return value.Noise, nil
 }
