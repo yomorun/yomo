@@ -290,7 +290,7 @@ func TestHandShake(t *testing.T) {
 
 			server.ConfigRouter(router.Default([]config.App{{Name: tt.args.clientNameConfigInServer}}))
 
-			server.opts.Auths = map[string]auth.Authentication{
+			server.opts.auths = map[string]auth.Authentication{
 				tokenAuth.Name(): tokenAuth,
 			}
 

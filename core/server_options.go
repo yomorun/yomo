@@ -21,11 +21,11 @@ type ServerOption func(*serverOptions)
 
 // ServerOptions are the options for YoMo server.
 type serverOptions struct {
-	QuicConfig  *quic.Config
-	TLSConfig   *tls.Config
-	Addr        string
-	Auths       map[string]auth.Authentication
-	Conn        net.PacketConn
+	quicConfig  *quic.Config
+	tLSConfig   *tls.Config
+	addr        string
+	auths       map[string]auth.Authentication
+	conn        net.PacketConn
 	logger      *slog.Logger
 	alpnHandler func(proto string) error
 }
@@ -34,11 +34,11 @@ func defaultServerOptions() *serverOptions {
 	logger := ylog.Default()
 
 	return &serverOptions{
-		QuicConfig: DefalutQuicConfig,
-		TLSConfig:  pkgtls.MustCreateClientTLSConfig(),
-		Addr:       DefaultListenAddr,
-		Auths:      map[string]auth.Authentication{},
-		Conn:       nil,
+		quicConfig: DefalutQuicConfig,
+		tLSConfig:  pkgtls.MustCreateClientTLSConfig(),
+		addr:       DefaultListenAddr,
+		auths:      map[string]auth.Authentication{},
+		conn:       nil,
 		logger:     logger,
 		alpnHandler: func(proto string) error {
 			logger.Info("client alpn proto", "component", "server", "proto", proto)
@@ -50,7 +50,7 @@ func defaultServerOptions() *serverOptions {
 // WithAddr sets the server address.
 func WithAddr(addr string) ServerOption {
 	return func(o *serverOptions) {
-		o.Addr = addr
+		o.addr = addr
 	}
 }
 
@@ -59,10 +59,10 @@ func WithAuth(name string, args ...string) ServerOption {
 	return func(o *serverOptions) {
 		if a, ok := auth.GetAuth(name); ok {
 			a.Init(args...)
-			if o.Auths == nil {
-				o.Auths = make(map[string]auth.Authentication)
+			if o.auths == nil {
+				o.auths = make(map[string]auth.Authentication)
 			}
-			o.Auths[a.Name()] = a
+			o.auths[a.Name()] = a
 		}
 	}
 }
@@ -70,21 +70,21 @@ func WithAuth(name string, args ...string) ServerOption {
 // WithServerTLSConfig sets the TLS configuration for the server.
 func WithServerTLSConfig(tc *tls.Config) ServerOption {
 	return func(o *serverOptions) {
-		o.TLSConfig = tc
+		o.tLSConfig = tc
 	}
 }
 
 // WithServerQuicConfig sets the QUIC configuration for the server.
 func WithServerQuicConfig(qc *quic.Config) ServerOption {
 	return func(o *serverOptions) {
-		o.QuicConfig = qc
+		o.quicConfig = qc
 	}
 }
 
 // WithConn sets the connection for the server.
 func WithConn(conn net.PacketConn) ServerOption {
 	return func(o *serverOptions) {
-		o.Conn = conn
+		o.conn = conn
 	}
 }
 

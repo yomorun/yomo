@@ -100,7 +100,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 	}
 
 	// listen the address
-	listener, err := newListener(conn, s.opts.TLSConfig, s.opts.QuicConfig, s.log)
+	listener, err := newListener(conn, s.opts.tLSConfig, s.opts.quicConfig, s.log)
 	if err != nil {
 		s.log.Error("listener.Listen error", err)
 		return err
@@ -349,7 +349,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	// credential
 	c.log.Debug("GOT HandshakeFrame", "client_type", f.ClientType, "client_id", clientID, "auth_name", authName(f.AuthName()))
 	// authenticate
-	authed := auth.Authenticate(s.opts.Auths, f)
+	authed := auth.Authenticate(s.opts.auths, f)
 	c.log.Debug("authenticated", "authed", authed)
 	if !authed {
 		err := fmt.Errorf("handshake authentication fails, client credential name is %s", authName(f.AuthName()))
@@ -608,11 +608,11 @@ func (s *Server) SetConnectionCloseHandlers(handlers ...ConnectionHandler) {
 }
 
 func (s *Server) authNames() []string {
-	if len(s.opts.Auths) == 0 {
+	if len(s.opts.auths) == 0 {
 		return []string{"none"}
 	}
 	result := []string{}
-	for _, auth := range s.opts.Auths {
+	for _, auth := range s.opts.auths {
 		result = append(result, auth.Name())
 	}
 	return result
