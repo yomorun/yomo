@@ -2,7 +2,6 @@ package core
 
 import (
 	"crypto/tls"
-	"net"
 
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/core/auth"
@@ -25,7 +24,6 @@ type serverOptions struct {
 	tLSConfig   *tls.Config
 	addr        string
 	auths       map[string]auth.Authentication
-	conn        net.PacketConn
 	logger      *slog.Logger
 	alpnHandler func(proto string) error
 }
@@ -38,7 +36,6 @@ func defaultServerOptions() *serverOptions {
 		tLSConfig:  pkgtls.MustCreateClientTLSConfig(),
 		addr:       DefaultListenAddr,
 		auths:      map[string]auth.Authentication{},
-		conn:       nil,
 		logger:     logger,
 		alpnHandler: func(proto string) error {
 			logger.Info("client alpn proto", "component", "server", "proto", proto)
@@ -78,13 +75,6 @@ func WithServerTLSConfig(tc *tls.Config) ServerOption {
 func WithServerQuicConfig(qc *quic.Config) ServerOption {
 	return func(o *serverOptions) {
 		o.quicConfig = qc
-	}
-}
-
-// WithConn sets the connection for the server.
-func WithConn(conn net.PacketConn) ServerOption {
-	return func(o *serverOptions) {
-		o.conn = conn
 	}
 }
 
