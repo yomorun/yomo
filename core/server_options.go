@@ -6,7 +6,6 @@ import (
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/ylog"
-	pkgtls "github.com/yomorun/yomo/pkg/tls"
 	"golang.org/x/exp/slog"
 )
 
@@ -33,7 +32,7 @@ func defaultServerOptions() *serverOptions {
 
 	return &serverOptions{
 		quicConfig: DefalutQuicConfig,
-		tLSConfig:  pkgtls.MustCreateClientTLSConfig(),
+		tLSConfig:  nil,
 		addr:       DefaultListenAddr,
 		auths:      map[string]auth.Authentication{},
 		logger:     logger,
