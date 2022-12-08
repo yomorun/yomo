@@ -20,7 +20,7 @@ type ServerOption func(*serverOptions)
 // ServerOptions are the options for YoMo server.
 type serverOptions struct {
 	quicConfig  *quic.Config
-	tLSConfig   *tls.Config
+	tlsConfig   *tls.Config
 	addr        string
 	auths       map[string]auth.Authentication
 	logger      *slog.Logger
@@ -32,7 +32,7 @@ func defaultServerOptions() *serverOptions {
 
 	return &serverOptions{
 		quicConfig: DefalutQuicConfig,
-		tLSConfig:  nil,
+		tlsConfig:  nil,
 		addr:       DefaultListenAddr,
 		auths:      map[string]auth.Authentication{},
 		logger:     logger,
@@ -66,7 +66,7 @@ func WithAuth(name string, args ...string) ServerOption {
 // WithServerTLSConfig sets the TLS configuration for the server.
 func WithServerTLSConfig(tc *tls.Config) ServerOption {
 	return func(o *serverOptions) {
-		o.tLSConfig = tc
+		o.tlsConfig = tc
 	}
 }
 

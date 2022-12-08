@@ -100,7 +100,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 	}
 
 	// listen the address
-	listener, err := newListener(conn, s.opts.tLSConfig, s.opts.quicConfig, s.log)
+	listener, err := newListener(conn, s.opts.tlsConfig, s.opts.quicConfig, s.log)
 	if err != nil {
 		s.log.Error("listener.Listen error", err)
 		return err
