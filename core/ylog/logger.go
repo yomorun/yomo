@@ -13,6 +13,9 @@ import (
 
 var defaultLogger = Default()
 
+// SetDefault set global logger.
+func SetDefault(logger *slog.Logger) { defaultLogger = logger }
+
 // Debug logs a message at DebugLevel
 func Debug(msg string, keyvals ...interface{}) {
 	defaultLogger.Debug(msg, keyvals...)
@@ -35,7 +38,7 @@ func Error(msg string, err error, keyvals ...interface{}) {
 
 type Config struct {
 	DebugMode   bool   `env:"YOMO_LOG_DEBUG" envDefault:"true"`
-	Level       string `env:"YOMO_LOG_LEVEL" envDefault:"debug"`
+	Level       string `env:"YOMO_LOG_LEVEL" envDefault:"info"`
 	Output      string `env:"YOMO_LOG_OUTPUT"`
 	ErrorOutput string `env:"YOMO_LOG_ERROR_OUTPUT"`
 	Format      string `env:"YOMO_LOG_FORMAT" envDefault:"text"`

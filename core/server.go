@@ -229,6 +229,9 @@ func (s *Server) handshake(conn quic.Connection, stream quic.Stream, fs frame.Re
 	return c, true
 }
 
+// Logger returns the logger of server.
+func (s *Server) Logger() *slog.Logger { return s.log }
+
 // Close will shutdown the server.
 func (s *Server) Close() error {
 	// listener

@@ -112,11 +112,11 @@ func WithObserveDataTags(tags ...frame.Tag) Option {
 }
 
 // WithLogger sets the client logger
-func WithLogger(logger slog.Logger) Option {
+func WithLogger(logger *slog.Logger) Option {
 	return func(o *Options) {
 		o.ClientOptions = append(
 			o.ClientOptions,
-			core.WithLogger(logger),
+			core.WithClientLogger(logger),
 		)
 	}
 }
