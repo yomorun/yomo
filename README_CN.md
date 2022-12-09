@@ -2,7 +2,7 @@
   <img width="200px" height="200px" src="https://blog.yomo.run/static/images/logo.png" />
 </p>
 
-# YoMo ![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg)
+# YoMo ![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg) [![codecov](https://codecov.io/gh/yomorun/yomo/branch/master/graph/badge.svg?token=MHCE5TZWKM)](https://codecov.io/gh/yomorun/yomo)[![Discord](https://img.shields.io/discord/770589787404369930.svg?label=discord&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/RMtNhx7vds)
 
 YoMo 是为边缘计算打造的低时延流式 Serverless 开发框架，基于 [QUIC Transport](https://quicwg.org/) 协议通讯，以 [Functional Reactive Programming](https://en.wikipedia.org/wiki/Functional_reactive_programming) 为编程范式，简化构建可靠、安全的低时延计算应用的复杂度，挖掘5G潜力，释放实时计算价值。
 
