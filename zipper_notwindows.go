@@ -4,7 +4,6 @@
 package yomo
 
 import (
-	"fmt"
 	"os"
 	"os/signal"
 	"runtime"
