@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"math"
 	"os"
 	"sync"
@@ -10,7 +11,6 @@ import (
 
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/pkg/logger"
 )
 
 // ThresholdAverageValue is the threshold of the average value after a sliding window.
@@ -31,9 +31,9 @@ var slidingAvg = func(i interface{}) error {
 			total += value.(float32)
 		}
 		avg := total / float32(len(values))
-		logger.Printf("🧩 average value in last %d ms: %f!", SlidingWindowInMS, avg)
+		fmt.Printf("🧩 average value in last %d ms: %f!", SlidingWindowInMS, avg)
 		if avg >= ThresholdAverageValue {
-			logger.Printf("❗❗  average value in last %d ms: %f reaches the threshold %d!", SlidingWindowInMS, avg, ThresholdAverageValue)
+			fmt.Printf("❗❗  average value in last %d ms: %f reaches the threshold %d!", SlidingWindowInMS, avg, ThresholdAverageValue)
 		}
 	}
 	return nil
@@ -55,7 +55,7 @@ func main() {
 
 	err := sfn.Connect()
 	if err != nil {
-		logger.Errorf("[fn3] connect err=%v", err)
+		fmt.Printf("[fn3] connect err=%v", err)
 		os.Exit(1)
 	}
 
@@ -66,7 +66,7 @@ func main() {
 
 func handler(data []byte) (frame.Tag, []byte) {
 	v := Float32frombytes(data)
-	logger.Printf("✅ [fn3] observe <- %v", v)
+	fmt.Printf("✅ [fn3] observe <- %v", v)
 	observe <- v
 
 	return 0x16, nil // no more processing, return nil
@@ -107,7 +107,7 @@ func SlidingWindowWithTime(observe <-chan float32, windowTimeInMS uint32, slideT
 			if len(availableItems) != 0 {
 				err := handler(availableItems)
 				if err != nil {
-					logger.Errorf("[fn3] SlidingWindowWithTime err=%v", err)
+					fmt.Printf("[fn3] SlidingWindowWithTime err=%v", err)
 					return
 				}
 			}
