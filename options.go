@@ -15,77 +15,68 @@ const (
 )
 
 // Option is a function that applies a YoMo-Client option.
-type Option func(o *Options)
+type Option func(o *options)
 
 // Options are the options for YoMo
-type Options struct {
-	ZipperAddr string // target Zipper endpoint address
-	// ZipperListenAddr     string // Zipper endpoint address
-	ZipperWorkflowConfig string // Zipper workflow file
-	MeshConfigURL        string // meshConfigURL is the URL of edge-mesh config
-	ServerOptions        []core.ServerOption
-	ClientOptions        []core.ClientOption
-	QuicConfig           *quic.Config
-	TLSConfig            *tls.Config
-	Logger               slog.Logger
+type options struct {
+	zipperAddr    string // target Zipper endpoint address
+	meshConfigURL string // meshConfigURL is the URL of edge-mesh config
+	serverOptions []core.ServerOption
+	clientOptions []core.ClientOption
+	quicConfig    *quic.Config
+	tlsConfig     *tls.Config
+
+	// TODO: WithWorkflowConfig
+	// zipperWorkflowConfig string // Zipper workflow file
 }
 
 // WithZipperAddr return a new options with ZipperAddr set to addr.
 func WithZipperAddr(addr string) Option {
-	return func(o *Options) {
-		o.ZipperAddr = addr
+	return func(o *options) {
+		o.zipperAddr = addr
 	}
 }
 
-// // WithZipperListenAddr return a new options with ZipperListenAddr set to addr.
-// func WithZipperListenAddr(addr string) Option {
-// 	return func(o *options) {
-// 		o.ZipperListenAddr = addr
-// 	}
-// }
-
-// TODO: WithWorkflowConfig
-
 // WithMeshConfigURL sets the initial edge-mesh config URL for the YoMo-Zipper.
 func WithMeshConfigURL(url string) Option {
-	return func(o *Options) {
-		o.MeshConfigURL = url
+	return func(o *options) {
+		o.meshConfigURL = url
 	}
 }
 
 // WithTLSConfig sets the TLS configuration for the client.
 func WithTLSConfig(tc *tls.Config) Option {
-	return func(o *Options) {
-		o.TLSConfig = tc
+	return func(o *options) {
+		o.tlsConfig = tc
 	}
 }
 
 // WithQuicConfig sets the QUIC configuration for the client.
 func WithQuicConfig(qc *quic.Config) Option {
-	return func(o *Options) {
-		o.QuicConfig = qc
+	return func(o *options) {
+		o.quicConfig = qc
 	}
 }
 
 // WithClientOptions returns a new options with opts.
 func WithClientOptions(opts ...core.ClientOption) Option {
-	return func(o *Options) {
-		o.ClientOptions = opts
+	return func(o *options) {
+		o.clientOptions = opts
 	}
 }
 
 // WithServerOptions returns a new options with opts.
 func WithServerOptions(opts ...core.ServerOption) Option {
-	return func(o *Options) {
-		o.ServerOptions = opts
+	return func(o *options) {
+		o.serverOptions = opts
 	}
 }
 
 // WithAuth sets the server authentication method (used by server)
 func WithAuth(name string, args ...string) Option {
-	return func(o *Options) {
-		o.ServerOptions = append(
-			o.ServerOptions,
+	return func(o *options) {
+		o.serverOptions = append(
+			o.serverOptions,
 			core.WithAuth(name, args...),
 		)
 	}
@@ -93,9 +84,9 @@ func WithAuth(name string, args ...string) Option {
 
 // WithCredential sets the client credential method (used by client)
 func WithCredential(payload string) Option {
-	return func(o *Options) {
-		o.ClientOptions = append(
-			o.ClientOptions,
+	return func(o *options) {
+		o.clientOptions = append(
+			o.clientOptions,
 			core.WithCredential(payload),
 		)
 	}
@@ -103,9 +94,9 @@ func WithCredential(payload string) Option {
 
 // WithObserveDataTags sets client data tag list.
 func WithObserveDataTags(tags ...frame.Tag) Option {
-	return func(o *Options) {
-		o.ClientOptions = append(
-			o.ClientOptions,
+	return func(o *options) {
+		o.clientOptions = append(
+			o.clientOptions,
 			core.WithObserveDataTags(tags...),
 		)
 	}
@@ -113,24 +104,24 @@ func WithObserveDataTags(tags ...frame.Tag) Option {
 
 // WithLogger sets the client logger
 func WithLogger(logger *slog.Logger) Option {
-	return func(o *Options) {
-		o.ClientOptions = append(
-			o.ClientOptions,
+	return func(o *options) {
+		o.clientOptions = append(
+			o.clientOptions,
 			core.WithClientLogger(logger),
 		)
 	}
 }
 
-// NewOptions creates a new options for YoMo-Client.
-func NewOptions(opts ...Option) *Options {
-	options := &Options{}
+// newOptions creates a new options for YoMo-Client.
+func newOptions(opts ...Option) *options {
+	options := &options{}
 
 	for _, o := range opts {
 		o(options)
 	}
 
-	if options.ZipperAddr == "" {
-		options.ZipperAddr = DefaultZipperAddr
+	if options.zipperAddr == "" {
+		options.zipperAddr = DefaultZipperAddr
 	}
 
 	return options

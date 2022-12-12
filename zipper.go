@@ -67,9 +67,9 @@ var _ Zipper = &zipper{}
 
 // NewZipperWithOptions create a zipper instance.
 func NewZipperWithOptions(name string, opts ...Option) Zipper {
-	options := NewOptions(opts...)
+	options := newOptions(opts...)
 	zipper := createZipperServer(name, options, nil)
-	zipper.ConfigMesh(options.MeshConfigURL)
+	zipper.ConfigMesh(options.meshConfigURL)
 
 	return zipper
 }
@@ -83,8 +83,8 @@ func NewZipper(conf string) (Zipper, error) {
 	// listening address
 	listenAddr := fmt.Sprintf("%s:%d", config.Host, config.Port)
 
-	options := NewOptions()
-	options.ZipperAddr = listenAddr
+	options := newOptions()
+	options.zipperAddr = listenAddr
 	zipper := createZipperServer(config.Name, options, config)
 	// zipper workflow
 	err = zipper.configWorkflow(config)
@@ -94,25 +94,25 @@ func NewZipper(conf string) (Zipper, error) {
 
 // NewDownstreamZipper create a zipper descriptor for downstream zipper.
 func NewDownstreamZipper(name string, opts ...Option) Zipper {
-	options := NewOptions(opts...)
-	client := core.NewClient(name, core.ClientTypeUpstreamZipper, options.ClientOptions...)
+	options := newOptions(opts...)
+	client := core.NewClient(name, core.ClientTypeUpstreamZipper, options.clientOptions...)
 
 	return &zipper{
 		name:   name,
-		addr:   options.ZipperAddr,
+		addr:   options.zipperAddr,
 		client: client,
 	}
 }
 
 /*************** Server ONLY ***************/
 // createZipperServer create a zipper instance as server.
-func createZipperServer(name string, options *Options, cfg *config.WorkflowConfig) *zipper {
+func createZipperServer(name string, options *options, cfg *config.WorkflowConfig) *zipper {
 	// create underlying QUIC server
-	srv := core.NewServer(name, options.ServerOptions...)
+	srv := core.NewServer(name, options.serverOptions...)
 	z := &zipper{
 		server: srv,
 		name:   name,
-		addr:   options.ZipperAddr,
+		addr:   options.zipperAddr,
 		wfc:    cfg,
 	}
 	// initialize
@@ -263,11 +263,11 @@ func (z *zipper) Stats() int {
 }
 
 func (z *zipper) InitOptions(opts ...Option) {
-	options := &Options{ZipperAddr: z.addr}
+	options := &options{zipperAddr: z.addr}
 	for _, o := range opts {
 		o(options)
 	}
-	srv := core.NewServer(z.name, options.ServerOptions...)
+	srv := core.NewServer(z.name, options.serverOptions...)
 	z.server = srv
 	if z.wfc != nil {
 		z.configWorkflow(z.wfc)
