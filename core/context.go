@@ -8,7 +8,7 @@ import (
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/yerr"
-	"github.com/yomorun/yomo/pkg/logger"
+	"golang.org/x/exp/slog"
 )
 
 var ctxPool sync.Pool
@@ -26,9 +26,11 @@ type Context struct {
 	Keys map[string]interface{}
 
 	mu sync.RWMutex
+
+	logger *slog.Logger
 }
 
-func newContext(conn quic.Connection, stream quic.Stream) (ctx *Context) {
+func newContext(conn quic.Connection, stream quic.Stream, logger *slog.Logger) (ctx *Context) {
 	v := ctxPool.Get()
 	if v == nil {
 		ctx = new(Context)
@@ -38,18 +40,54 @@ func newContext(conn quic.Connection, stream quic.Stream) (ctx *Context) {
 	ctx.Conn = conn
 	ctx.Stream = stream
 	ctx.connID = conn.RemoteAddr().String()
+	ctx.logger = logger.With("conn_id", conn.RemoteAddr().String(), "stream_id", stream.StreamID())
 	return
+}
+
+const clientInfoKey = "client_info"
+
+// ClientInfo holds client info, you can use `*Context.ClientInfo()` to get it after handshake.
+type ClientInfo struct {
+	clientID   string
+	clientType byte
+	clientName string
+	authName   string
+}
+
+// ClientInfo get client info from context.
+func (c *Context) ClientInfo() *ClientInfo {
+	val, ok := c.Get(clientInfoKey)
+	if !ok {
+		return &ClientInfo{}
+	}
+	return val.(*ClientInfo)
 }
 
 // WithFrame sets a frame to context.
 func (c *Context) WithFrame(f frame.Frame) *Context {
+	if f.Type() == frame.TagOfHandshakeFrame {
+		handshakeFrame := f.(*frame.HandshakeFrame)
+		c.logger.With(
+			"client_id", handshakeFrame.ClientID,
+			"client_type", ClientType(handshakeFrame.ClientType).String(),
+			"client_name", handshakeFrame.Name,
+			"auth_name", handshakeFrame.AuthName(),
+		)
+		c.Set(clientInfoKey, &ClientInfo{
+			clientID:   handshakeFrame.ClientID,
+			clientType: handshakeFrame.ClientType,
+			clientName: handshakeFrame.Name,
+			authName:   handshakeFrame.AuthName(),
+		})
+	}
+	c.logger.With("frame_type", f.Type().String())
 	c.Frame = f
 	return c
 }
 
 // Clean the context.
 func (c *Context) Clean() {
-	logger.Debugf("%sconn[%s] context clean", ServerLogPrefix, c.connID)
+	c.logger.Debug("conn context clean", "conn_id", c.connID)
 	c.reset()
 	ctxPool.Put(c)
 }
@@ -59,6 +97,7 @@ func (c *Context) reset() {
 	c.connID = ""
 	c.Stream = nil
 	c.Frame = nil
+	c.logger = nil
 	for k := range c.Keys {
 		delete(c.Keys, k)
 	}
@@ -66,14 +105,13 @@ func (c *Context) reset() {
 
 // CloseWithError closes the stream and cleans the context.
 func (c *Context) CloseWithError(code yerr.ErrorCode, msg string) {
-	logger.Debugf("%sconn[%s] context close, errCode=%#x, msg=%s", ServerLogPrefix, c.connID, code, msg)
+	c.logger.Debug("conn context close, ", "err_code", code, "err_msg", msg)
 	if c.Stream != nil {
 		c.Stream.Close()
 	}
 	if c.Conn != nil {
 		c.Conn.CloseWithError(quic.ApplicationErrorCode(code), msg)
 	}
-	c.Clean()
 }
 
 // ConnID get quic connection id

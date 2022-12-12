@@ -10,6 +10,7 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/router"
+	"github.com/yomorun/yomo/core/ylog"
 	yauth "github.com/yomorun/yomo/pkg/auth"
 	"github.com/yomorun/yomo/pkg/config"
 )
@@ -33,7 +34,9 @@ type mockConnectorArgs struct {
 // buildMockConnector build a mock connector according to `args`
 // for preparing dataFrame testing.
 func buildMockConnector(router router.Router, metadataBuilder metadata.Builder, args []mockConnectorArgs) Connector {
-	connector := newConnector()
+	logger := ylog.Default()
+
+	connector := newConnector(logger)
 
 	for _, arg := range args {
 
@@ -55,6 +58,7 @@ func buildMockConnector(router router.Router, metadataBuilder metadata.Builder, 
 			metadata,
 			arg.stream,
 			handshakeFrame.ObserveDataTags,
+			logger,
 		)
 
 		route := router.Route(conn.Metadata())
@@ -118,7 +122,7 @@ func TestHandleDataFrame(t *testing.T) {
 	})
 	defer connector.Clean()
 
-	server := &Server{connector: connector}
+	server := &Server{connector: connector, logger: ylog.Default()}
 
 	server.ConfigRouter(routers)
 	server.ConfigMetadataBuilder(metadataBuilder)
@@ -137,6 +141,7 @@ func TestHandleDataFrame(t *testing.T) {
 			connID: sourceConnID,
 			Stream: sourceStream,
 			Frame:  dataFrame,
+			logger: server.logger,
 		}
 
 		err := server.handleDataFrame(c)
@@ -167,6 +172,7 @@ func TestHandleDataFrame(t *testing.T) {
 			connID: zipperConnID,
 			Stream: zipperStream,
 			Frame:  dataFrame,
+			logger: server.logger,
 		}
 
 		err := server.handleDataFrame(c)
@@ -277,13 +283,14 @@ func TestHandShake(t *testing.T) {
 		},
 	}
 
+	logger := ylog.Default()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := &Server{connector: newConnector()}
+			server := &Server{connector: newConnector(logger), logger: logger, opts: defaultServerOptions()}
 
 			server.ConfigRouter(router.Default([]config.App{{Name: tt.args.clientNameConfigInServer}}))
 
-			server.opts.Auths = map[string]auth.Authentication{
+			server.opts.auths = map[string]auth.Authentication{
 				tokenAuth.Name(): tokenAuth,
 			}
 
@@ -301,6 +308,7 @@ func TestHandShake(t *testing.T) {
 				connID: clientID,
 				Stream: stream,
 				Frame:  frame.NewHandshakeFrame(clientName, clientID, clientType, []frame.Tag{frame.Tag(1)}, "token", token),
+				logger: server.logger,
 			}
 
 			for n := 0; n < tt.handshakeTimes; n++ {

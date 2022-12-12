@@ -1,9 +1,9 @@
 package frame
 
 import (
-	"os"
-	"strconv"
 	"time"
+
+	"github.com/yomorun/yomo/core/ylog"
 )
 
 // ReadWriter is the interface that groups the ReadFrame and WriteFrame methods.
@@ -69,7 +69,7 @@ type Writer interface {
 }
 
 // debugFrameSize print frame data size on debug mode
-var debugFrameSize = 16
+var debugFrameSize = ylog.DebugFrameSize
 
 // Kinds of frames transferable within YoMo
 const (
@@ -158,13 +158,5 @@ func (f Type) String() string {
 		return "TagOfHandshakeAckFrame"
 	default:
 		return "UnknownFrame"
-	}
-}
-
-func init() {
-	if envFrameSize := os.Getenv("YOMO_DEBUG_FRAME_SIZE"); envFrameSize != "" {
-		if val, err := strconv.Atoi(envFrameSize); err == nil {
-			debugFrameSize = val
-		}
 	}
 }

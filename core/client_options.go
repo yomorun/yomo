@@ -7,9 +7,9 @@ import (
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/core/log"
-	"github.com/yomorun/yomo/pkg/logger"
+	"github.com/yomorun/yomo/core/ylog"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
+	"golang.org/x/exp/slog"
 )
 
 // clientOptions are the options for YoMo client.
@@ -18,11 +18,11 @@ type clientOptions struct {
 	quicConfig      *quic.Config
 	tlsConfig       *tls.Config
 	credential      *auth.Credential
-	logger          log.Logger
+	logger          *slog.Logger
 }
 
 func defaultClientOption() *clientOptions {
-	logger := logger.Default()
+	logger := ylog.Default()
 
 	defalutQuicConfig := &quic.Config{
 		Versions:                       []quic.VersionNumber{quic.Version2},
@@ -45,7 +45,7 @@ func defaultClientOption() *clientOptions {
 	}
 
 	if opts.credential != nil {
-		logger.Printf("%suse credential: [%s]", ClientLogPrefix, opts.credential.Name())
+		logger.Debug("use credential", "component", "client", "credential_name", opts.credential.Name())
 	}
 
 	return opts
@@ -81,8 +81,8 @@ func WithClientQuicConfig(qc *quic.Config) ClientOption {
 	}
 }
 
-// WithLogger sets logger for the client.
-func WithLogger(logger log.Logger) ClientOption {
+// WithClientLogger sets logger for the client.
+func WithClientLogger(logger *slog.Logger) ClientOption {
 	return func(o *clientOptions) {
 		o.logger = logger
 	}
