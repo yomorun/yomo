@@ -1,4 +1,4 @@
-// package ylog provides a slog.Logger instance for logging.
+// Package ylog provides a slog.Logger instance for logging.
 // ylog also provides a default slog.Logger, the default logger is build from environment.
 //
 // ylog allows to call log api directly, like:
