@@ -21,7 +21,7 @@ func (z *zipper) init() {
 	go func() {
 		c := make(chan os.Signal, 1)
 		signal.Notify(c, syscall.SIGTERM, syscall.SIGUSR2, syscall.SIGUSR1, syscall.SIGINT)
-		ylog.Debug("%sListening SIGUSR1, SIGUSR2, SIGTERM/SIGINT...")
+		ylog.Info("Listening SIGUSR1, SIGUSR2, SIGTERM/SIGINT...")
 		for p1 := range c {
 			ylog.Debug("Received signal", "signal", p1)
 			if p1 == syscall.SIGTERM || p1 == syscall.SIGINT {
@@ -29,11 +29,10 @@ func (z *zipper) init() {
 				// waiting for the server to finish processing the current request
 				z.Close()
 				os.Exit(0)
-				// close(sgnl)
 			} else if p1 == syscall.SIGUSR2 {
 				var m runtime.MemStats
 				runtime.ReadMemStats(&m)
-				fmt.Printf("\tNumGC = %v\n", m.NumGC)
+				ylog.Debug("runtime stats", "gc_nums", m.NumGC)
 			} else if p1 == syscall.SIGUSR1 {
 				ylog.Debug("zipper stats", "zipper_stats", z.Stats())
 			}

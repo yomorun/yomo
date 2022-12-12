@@ -260,13 +260,13 @@ func (c *Client) WriteFrame(frm frame.Frame) error {
 // SetDataFrameObserver sets the data frame handler.
 func (c *Client) SetDataFrameObserver(fn func(*frame.DataFrame)) {
 	c.processor = fn
-	c.logger.Debug("SetDataFrameObserver", "processor", c.processor)
+	c.logger.Debug("SetDataFrameObserver")
 }
 
 // SetBackflowFrameObserver sets the backflow frame handler.
 func (c *Client) SetBackflowFrameObserver(fn func(*frame.BackflowFrame)) {
 	c.receiver = fn
-	c.logger.Debug("SetBackflowFrameObserver", "receiver", c.receiver)
+	c.logger.Debug("SetBackflowFrameObserver")
 }
 
 // reconnect the connection between client and server.
@@ -277,7 +277,7 @@ func (c *Client) reconnect(ctx context.Context, addr string) {
 	for {
 		select {
 		case <-ctx.Done():
-			c.logger.Debug("context.Done", "receiver", "error", ctx.Err())
+			c.logger.Debug("context.Done", "error", ctx.Err())
 			return
 		case err, ok := <-c.errc:
 			if c.errorfn != nil && err != nil {

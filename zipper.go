@@ -88,6 +88,7 @@ func NewZipper(conf string) (Zipper, error) {
 	zipper := createZipperServer(config.Name, options, config)
 	// zipper workflow
 	err = zipper.configWorkflow(config)
+	zipper.server.Logger().Info("Using config file", "file_path", conf)
 
 	return zipper, err
 }
