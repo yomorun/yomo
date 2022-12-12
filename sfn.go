@@ -80,7 +80,7 @@ func (s *streamFunction) Connect() error {
 	s.client.Logger().Debug("Connect")
 	// notify underlying network operations, when data with tag we observed arrived, invoke the func
 	s.client.SetDataFrameObserver(func(data *frame.DataFrame) {
-		s.client.Logger().Info("receive DataFrame", "data_frame", data.String())
+		s.client.Logger().Debug("receive DataFrame", "data_frame", data.String())
 		s.onDataFrame(data.GetCarriage(), data.GetMetaFrame())
 	})
 
@@ -137,7 +137,7 @@ func (s *streamFunction) Close() error {
 
 // when DataFrame we observed arrived, invoke the user's function
 func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
-	s.client.Logger().Info("onDataFrame")
+	s.client.Logger().Debug("onDataFrame")
 
 	if s.fn != nil {
 		go func() {
