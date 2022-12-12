@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -67,7 +68,7 @@ func (c *Context) ClientInfo() *ClientInfo {
 func (c *Context) WithFrame(f frame.Frame) *Context {
 	if f.Type() == frame.TagOfHandshakeFrame {
 		handshakeFrame := f.(*frame.HandshakeFrame)
-		c.logger.With(
+		c.logger = c.logger.With(
 			"client_id", handshakeFrame.ClientID,
 			"client_type", ClientType(handshakeFrame.ClientType).String(),
 			"client_name", handshakeFrame.Name,
@@ -80,7 +81,7 @@ func (c *Context) WithFrame(f frame.Frame) *Context {
 			authName:   handshakeFrame.AuthName(),
 		})
 	}
-	c.logger.With("frame_type", f.Type().String())
+	c.logger = c.logger.With("frame_type", f.Type().String())
 	c.Frame = f
 	return c
 }
