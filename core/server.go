@@ -75,7 +75,7 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 		addr = DefaultListenAddr
 	}
 
-	s.logger.With("addr", addr)
+	s.logger = s.logger.With("addr", addr)
 
 	udpAddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
@@ -107,7 +107,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 	}
 	s.listener = listener
 
-	s.logger.Info("Listening", err, "pid", os.Getpid(), "listener_version", listener.Versions(), "auth_name", s.authNames())
+	s.logger.Info("Listening", "pid", os.Getpid(), "quic", listener.Versions(), "auth_name", s.authNames())
 
 	for {
 		// create a new connection when new yomo-client connected
@@ -159,6 +159,13 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 				defer stream.Close()
 
 				yctx, ok := s.handshakeWithTimeout(conn, stream, 10*time.Second)
+
+				defer func() {
+					if yctx != nil {
+						yctx.Clean()
+					}
+				}()
+
 				if !ok {
 					return
 				}
@@ -167,8 +174,6 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 
 				s.handleConnection(yctx)
 				yctx.logger.Info("stream handleConnection DONE")
-
-				yctx.Clean()
 			}
 		}(sctx, conn)
 	}
@@ -350,7 +355,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	c.logger.Debug("GOT HandshakeFrame", "client_type", f.ClientType, "client_id", clientID, "auth_name", authName(f.AuthName()))
 	// authenticate
 	authed := auth.Authenticate(s.opts.auths, f)
-	c.logger.Debug("authenticated", "authed", authed)
+	c.logger.Debug("authenticate", "authed", authed)
 	if !authed {
 		err := fmt.Errorf("handshake authentication fails, client credential name is %s", authName(f.AuthName()))
 		// return err
@@ -519,7 +524,7 @@ func (s *Server) Downstreams() map[string]frame.Writer {
 func (s *Server) ConfigRouter(router router.Router) {
 	s.mu.Lock()
 	s.router = router
-	s.logger.Debug("config route", "router", router)
+	s.logger.Debug("config route")
 	s.mu.Unlock()
 }
 
@@ -527,7 +532,7 @@ func (s *Server) ConfigRouter(router router.Router) {
 func (s *Server) ConfigMetadataBuilder(builder metadata.Builder) {
 	s.mu.Lock()
 	s.metadataBuilder = builder
-	s.logger.Debug("config metadataBuilder", "metadataBuilder", builder)
+	s.logger.Debug("config metadataBuilder")
 	s.mu.Unlock()
 }
 
@@ -535,7 +540,7 @@ func (s *Server) ConfigMetadataBuilder(builder metadata.Builder) {
 func (s *Server) ConfigAlpnHandler(h func(string) error) {
 	s.mu.Lock()
 	s.opts.alpnHandler = h
-	s.logger.Debug("config alpnHandler", "alpnHandler", h)
+	s.logger.Debug("config alpnHandler")
 	s.mu.Unlock()
 }
 

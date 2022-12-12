@@ -48,6 +48,7 @@ func newConnection(
 	observed []frame.Tag,
 	logger *slog.Logger,
 ) Connection {
+	logger.Debug("new connecton")
 	return &connection{
 		name:       name,
 		clientID:   clientID,
