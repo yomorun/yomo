@@ -10,12 +10,9 @@ import (
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/router"
+	"github.com/yomorun/yomo/core/ylog"
 	"github.com/yomorun/yomo/pkg/config"
-	"github.com/yomorun/yomo/pkg/logger"
-)
-
-const (
-	zipperLogPrefix = "\033[33m[yomo:zipper]\033[0m "
+	"golang.org/x/exp/slog"
 )
 
 // Zipper is the orchestrator of yomo. There are two types of zipper:
@@ -81,7 +78,6 @@ func NewZipperWithOptions(name string, opts ...Option) Zipper {
 func NewZipper(conf string) (Zipper, error) {
 	config, err := config.ParseWorkflowConfig(conf)
 	if err != nil {
-		logger.Errorf("%s[ERR] %v", zipperLogPrefix, err)
 		return nil, err
 	}
 	// listening address
@@ -124,14 +120,22 @@ func createZipperServer(name string, options *Options, cfg *config.WorkflowConfi
 	return z
 }
 
+func (z *zipper) Logger() *slog.Logger {
+	logger := z.server.Logger()
+	if logger == nil {
+		return ylog.Default()
+	}
+
+	return logger
+}
+
 // ConfigWorkflow will read workflows from config files and register them to zipper.
 func (z *zipper) ConfigWorkflow(conf string) error {
 	config, err := config.ParseWorkflowConfig(conf)
 	if err != nil {
-		logger.Errorf("%s[ERR] %v", zipperLogPrefix, err)
 		return err
 	}
-	logger.Debugf("%sConfigWorkflow config=%+v", zipperLogPrefix, config)
+	z.Logger().Debug("ConfigWorkflow", "work_flow", config)
 	return z.configWorkflow(config)
 }
 
@@ -147,7 +151,7 @@ func (z *zipper) ConfigMesh(url string) error {
 		return nil
 	}
 
-	logger.Printf("%sDownloading mesh config...", zipperLogPrefix)
+	z.Logger().Debug("Downloading mesh config...")
 	// download mesh conf
 	res, err := http.Get(url)
 	if err != nil {
@@ -159,11 +163,10 @@ func (z *zipper) ConfigMesh(url string) error {
 	var configs []config.MeshZipper
 	err = decoder.Decode(&configs)
 	if err != nil {
-		logger.Errorf("%s✅ downloaded the Mesh config with err=%v", zipperLogPrefix, err)
+		z.Logger().Error("download Mesh config", err)
 		return err
 	}
-
-	logger.Printf("%s✅ Successfully downloaded the Mesh config. ", zipperLogPrefix)
+	z.Logger().Debug("download Mesh config successfully")
 
 	if len(configs) == 0 {
 		return nil
@@ -186,7 +189,7 @@ func (z *zipper) ConfigMesh(url string) error {
 
 // ListenAndServe will start zipper service.
 func (z *zipper) ListenAndServe() error {
-	logger.Debugf("%sCreating Zipper Server ...", zipperLogPrefix)
+	z.Logger().Debug("Creating Zipper Server")
 	// check downstream zippers
 	for _, ds := range z.downstreamZippers {
 		if dsZipper, ok := ds.(*zipper); ok {
@@ -201,10 +204,9 @@ func (z *zipper) ListenAndServe() error {
 
 // AddDownstreamZipper will add downstream zipper.
 func (z *zipper) AddDownstreamZipper(downstream Zipper) error {
-	logger.Debugf("%sAddDownstreamZipper: %v", zipperLogPrefix, downstream)
 	z.downstreamZippers = append(z.downstreamZippers, downstream)
 	z.hasDownstreams = true
-	logger.Debugf("%scurrent downstreams: %d", zipperLogPrefix, len(z.downstreamZippers))
+	z.Logger().Debug("add downstreams", "zipper", downstream.Addr(), "add_num_after", len(z.downstreamZippers))
 	return nil
 }
 
@@ -231,16 +233,12 @@ func (z *zipper) Addr() string {
 // Close will close a connection. If zipper is Server, close the server. If zipper is Client, close the client.
 func (z *zipper) Close() error {
 	if z.server != nil {
-		logger.Debugf("%sserver close()", zipperLogPrefix)
 		if err := z.server.Close(); err != nil {
-			logger.Errorf("%sserver close(): %v", zipperLogPrefix, err)
 			return err
 		}
 	}
 	if z.client != nil {
-		logger.Debugf("%sclient close()", zipperLogPrefix)
 		if err := z.client.Close(); err != nil {
-			logger.Errorf("%sclient close(): %v", zipperLogPrefix, err)
 			return err
 		}
 	}
