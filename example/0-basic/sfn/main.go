@@ -6,7 +6,7 @@ import (
 
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/core/ylog"
+	"golang.org/x/exp/slog"
 )
 
 type noiseData struct {
@@ -32,12 +32,12 @@ func main() {
 	// start
 	err := sfn.Connect()
 	if err != nil {
-		ylog.Error("[sfn1] connect", err)
+		slog.Error("[sfn1] connect", err)
 		os.Exit(1)
 	}
 	// set the error handler function when server error occurs
 	sfn.SetErrorHandler(func(err error) {
-		ylog.Error("[sfn1] receive server error", err)
+		slog.Error("[sfn1] receive server error", err)
 		sfn.Close()
 		os.Exit(1)
 	})
@@ -49,10 +49,10 @@ func handler(data []byte) (frame.Tag, []byte) {
 	var model noiseData
 	err := json.Unmarshal(data, &model)
 	if err != nil {
-		ylog.Error("[sfn] json.Marshal error", err)
+		slog.Error("[sfn] json.Marshal error", err)
 		os.Exit(-2)
 	} else {
-		ylog.Info("[sfn]", "got", 0x33, "data", model)
+		slog.Info("[sfn]", "got", 0x33, "data", model)
 	}
 	return 0x0, nil
 }
