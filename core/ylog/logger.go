@@ -103,7 +103,7 @@ func parseToWriter(path string, defaultWriter io.Writer) (io.Writer, error) {
 		return os.Stderr, nil
 	default:
 		if path != "" {
-			return os.Open(path)
+			return os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		}
 		return defaultWriter, nil
 	}
