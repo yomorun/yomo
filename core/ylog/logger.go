@@ -118,16 +118,16 @@ func mustParseToWriter(path string, defaultWriter io.Writer) io.Writer {
 }
 
 func parseToSlogLevel(stringLevel string) slog.Level {
-	var level = slog.DebugLevel
+	var level = slog.LevelDebug
 	switch strings.ToLower(stringLevel) {
 	case "debug":
-		level = slog.DebugLevel
+		level = slog.LevelDebug
 	case "info":
-		level = slog.InfoLevel
+		level = slog.LevelInfo
 	case "warn":
-		level = slog.WarnLevel
+		level = slog.LevelWarn
 	case "error":
-		level = slog.ErrorLevel
+		level = slog.LevelError
 	}
 
 	return level

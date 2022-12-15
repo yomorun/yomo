@@ -83,7 +83,7 @@ func (h *handler) Handle(r slog.Record) error {
 		return err
 	}
 
-	if r.Level == slog.ErrorLevel {
+	if r.Level == slog.LevelError {
 		_, err = io.Copy(h.errWriter, h.buf)
 	} else {
 		_, err = io.Copy(h.writer, h.buf)
@@ -117,7 +117,7 @@ func bufferedSlogHandler(buf io.Writer, format string, level slog.Level, verbose
 		Level:     level,
 	}
 	if disableTime {
-		opt.ReplaceAttr = func(a slog.Attr) slog.Attr {
+		opt.ReplaceAttr = func(groups []string, a slog.Attr) slog.Attr {
 			if a.Key == "time" {
 				return slog.Attr{}
 			}
