@@ -29,10 +29,10 @@ type StreamFunction interface {
 // NewStreamFunction create a stream function.
 func NewStreamFunction(name string, opts ...Option) StreamFunction {
 	options := newOptions(opts...)
-	client := core.NewClient(name, core.ClientTypeStreamFunction, options.clientOptions...)
+	client := core.NewClient(name, core.ClientTypeStreamFunction, options.ClientOptions...)
 	sfn := &streamFunction{
 		name:            name,
-		zipperEndpoint:  options.zipperAddr,
+		zipperEndpoint:  options.ZipperAddr,
 		client:          client,
 		observeDataTags: make([]frame.Tag, 0),
 	}

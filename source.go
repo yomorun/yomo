@@ -41,11 +41,11 @@ var _ Source = &yomoSource{}
 // NewSource create a yomo-source
 func NewSource(name string, opts ...Option) Source {
 	options := newOptions(opts...)
-	client := core.NewClient(name, core.ClientTypeSource, options.clientOptions...)
+	client := core.NewClient(name, core.ClientTypeSource, options.ClientOptions...)
 
 	return &yomoSource{
 		name:           name,
-		zipperEndpoint: options.zipperAddr,
+		zipperEndpoint: options.ZipperAddr,
 		client:         client,
 	}
 }
