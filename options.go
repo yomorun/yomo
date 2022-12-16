@@ -112,8 +112,8 @@ func WithLogger(logger *slog.Logger) Option {
 	}
 }
 
-// newOptions creates a new options for YoMo-Client.
-func newOptions(opts ...Option) *Options {
+// NewOptions creates a new options for YoMo-Client.
+func NewOptions(opts ...Option) *Options {
 	options := &Options{}
 
 	for _, o := range opts {

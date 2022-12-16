@@ -67,7 +67,7 @@ var _ Zipper = &zipper{}
 
 // NewZipperWithOptions create a zipper instance.
 func NewZipperWithOptions(name string, opts ...Option) Zipper {
-	options := newOptions(opts...)
+	options := NewOptions(opts...)
 	zipper := createZipperServer(name, options, nil)
 	zipper.ConfigMesh(options.MeshConfigURL)
 
@@ -83,7 +83,7 @@ func NewZipper(conf string) (Zipper, error) {
 	// listening address
 	listenAddr := fmt.Sprintf("%s:%d", config.Host, config.Port)
 
-	options := newOptions()
+	options := NewOptions()
 	options.ZipperAddr = listenAddr
 	zipper := createZipperServer(config.Name, options, config)
 	// zipper workflow
@@ -95,7 +95,7 @@ func NewZipper(conf string) (Zipper, error) {
 
 // NewDownstreamZipper create a zipper descriptor for downstream zipper.
 func NewDownstreamZipper(name string, opts ...Option) Zipper {
-	options := newOptions(opts...)
+	options := NewOptions(opts...)
 	client := core.NewClient(name, core.ClientTypeUpstreamZipper, options.ClientOptions...)
 
 	return &zipper{
