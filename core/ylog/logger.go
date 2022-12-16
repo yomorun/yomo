@@ -1,4 +1,4 @@
-// package ylog provides a slog.Logger instance for logging.
+// Package ylog provides a slog.Logger instance for logging.
 // ylog also provides a default slog.Logger, the default logger is build from environment.
 //
 // ylog allows to call log api directly, like:
@@ -103,7 +103,7 @@ func parseToWriter(path string, defaultWriter io.Writer) (io.Writer, error) {
 		return os.Stderr, nil
 	default:
 		if path != "" {
-			return os.Open(path)
+			return os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		}
 		return defaultWriter, nil
 	}
@@ -118,16 +118,16 @@ func mustParseToWriter(path string, defaultWriter io.Writer) io.Writer {
 }
 
 func parseToSlogLevel(stringLevel string) slog.Level {
-	var level = slog.DebugLevel
+	var level = slog.LevelDebug
 	switch strings.ToLower(stringLevel) {
 	case "debug":
-		level = slog.DebugLevel
+		level = slog.LevelDebug
 	case "info":
-		level = slog.InfoLevel
+		level = slog.LevelInfo
 	case "warn":
-		level = slog.WarnLevel
+		level = slog.LevelWarn
 	case "error":
-		level = slog.ErrorLevel
+		level = slog.LevelError
 	}
 
 	return level
