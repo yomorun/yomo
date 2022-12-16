@@ -233,7 +233,7 @@ func (c *Client) Close() error {
 }
 
 func (c *Client) close() error {
-	c.logger.Debug("close the connection")
+	c.logger.Info("close the connection")
 
 	// close error channel so that close handler function will be called
 	close(c.errc)
@@ -292,7 +292,7 @@ func (c *Client) reconnect(ctx context.Context, addr string) {
 			state := c.state
 			c.mu.Unlock()
 			if state == ConnStateDisconnected {
-				c.logger.Debug("reconnecting to YoMo-Zipper")
+				c.logger.Info("reconnecting to YoMo-Zipper")
 				err := c.connect(ctx, addr)
 				if err != nil {
 					c.logger.Error("reconnecting to YoMo-Zipper", err)
