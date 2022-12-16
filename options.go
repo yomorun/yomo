@@ -107,7 +107,7 @@ func WithLogger(logger *slog.Logger) Option {
 	return func(o *options) {
 		o.clientOptions = append(
 			o.clientOptions,
-			core.WithClientLogger(logger),
+			core.WithLogger(logger),
 		)
 	}
 }
