@@ -42,11 +42,11 @@ func TestReadUntil(t *testing.T) {
 			name: "read until success",
 			fields: fields{
 				frames:    []Frame{NewDataFrame(), NewHandshakeAckFrame()},
-				intervals: time.Microsecond,
+				intervals: time.Millisecond,
 			},
 			args: args{
 				t:       TagOfHandshakeAckFrame,
-				timeout: time.Millisecond,
+				timeout: time.Second,
 			},
 			wantErr:   nil,
 			wantFrame: NewHandshakeAckFrame(),
