@@ -30,6 +30,7 @@ func (err ErrReadUntilTimeout) Error() string {
 
 // ReadUntil reads frame from reader, until the frame of the specified type is returned.
 // It returns ErrReadUntilTimeout error if frame not be returned after timeout duration.
+// If read a goawayFrame, use goawayFrame.message as error and return it.
 func ReadUntil(reader Reader, t Type, timeout time.Duration) (Frame, error) {
 	var (
 		errch = make(chan error)
