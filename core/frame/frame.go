@@ -1,6 +1,7 @@
 package frame
 
 import (
+	"errors"
 	"time"
 
 	"github.com/yomorun/yomo/core/ylog"
@@ -42,6 +43,10 @@ func ReadUntil(reader Reader, t Type, timeout time.Duration) (Frame, error) {
 				errch <- err
 				return
 			}
+			if f.Type() == TagOfGoawayFrame {
+				errch <- errors.New(f.(*GoawayFrame).message)
+				return
+			}
 			if f.Type() == t {
 				frmch <- f
 				return
@@ -49,15 +54,13 @@ func ReadUntil(reader Reader, t Type, timeout time.Duration) (Frame, error) {
 		}
 	}()
 
-	for {
-		select {
-		case <-time.After(timeout):
-			return nil, ErrReadUntilTimeout{t: t}
-		case err := <-errch:
-			return nil, err
-		case frm := <-frmch:
-			return frm, nil
-		}
+	select {
+	case <-time.After(timeout):
+		return nil, ErrReadUntilTimeout{t: t}
+	case err := <-errch:
+		return nil, err
+	case frm := <-frmch:
+		return frm, nil
 	}
 }
 
