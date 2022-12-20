@@ -10,7 +10,6 @@ import (
 
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/pkg/logger"
 )
 
 // ThresholdSingleValue is the threshold of a single value.
@@ -42,7 +41,7 @@ func main() {
 
 	err := sfn.Connect()
 	if err != nil {
-		logger.Errorf("[fn2] connect err=%v", err)
+		fmt.Printf("[fn2] connect err=%v", err)
 		os.Exit(1)
 	}
 
@@ -53,7 +52,7 @@ func handler(data []byte) (frame.Tag, []byte) {
 	v := Float32frombytes(data)
 	result, err := computePeek(context.Background(), v)
 	if err != nil {
-		logger.Errorf("[fn2] computePeek err=%v", err)
+		fmt.Printf("[fn2] computePeek err=%v", err)
 		return 0x0, nil
 	}
 

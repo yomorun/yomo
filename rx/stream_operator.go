@@ -10,7 +10,7 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/reactivex/rxgo/v2"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/pkg/logger"
+	"github.com/yomorun/yomo/core/ylog"
 )
 
 // Of creates an item from a value.
@@ -790,7 +790,7 @@ func (s *StreamImpl) PipeBackToZipper(dataTag frame.Tag) Stream {
 
 				buf, ok := (item.V).([]byte)
 				if !ok {
-					logger.Errorf("[PipeBackToZipper] the data is not a []byte, won't send pass it to next.")
+					ylog.Error("[PipeBackToZipper] the data is not a []byte, won't send pass it to next.", errors.New("item.V is not []byte type"))
 					continue
 				}
 

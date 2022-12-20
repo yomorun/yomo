@@ -7,10 +7,6 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 )
 
-const (
-	sourceLogPrefix = "\033[32m[yomo:source]\033[0m "
-)
-
 // Source is responsible for sending data to yomo.
 type Source interface {
 	// Close will close the connection to YoMo-Zipper.
@@ -71,10 +67,10 @@ func (s *yomoSource) SetDataTag(tag frame.Tag) {
 // Close will close the connection to YoMo-Zipper.
 func (s *yomoSource) Close() error {
 	if err := s.client.Close(); err != nil {
-		s.client.Logger().Errorf("%sClose(): %v", sourceLogPrefix, err)
+		s.client.Logger().Error("Close error", err)
 		return err
 	}
-	s.client.Logger().Debugf("%s is closed", sourceLogPrefix)
+	s.client.Logger().Debug("source is closed")
 	return nil
 }
 
@@ -89,7 +85,7 @@ func (s *yomoSource) Connect() error {
 
 	err := s.client.Connect(context.Background(), s.zipperEndpoint)
 	if err != nil {
-		s.client.Logger().Errorf("%sConnect() error: %s", sourceLogPrefix, err)
+		s.client.Logger().Error("Connect error", err)
 	}
 	return err
 }
@@ -99,7 +95,7 @@ func (s *yomoSource) WriteWithTag(tag frame.Tag, data []byte) error {
 	f := frame.NewDataFrame()
 	f.SetCarriage(tag, data)
 	f.SetSourceID(s.client.ClientID())
-	s.client.Logger().Debugf("%sWriteWithTag: %v", sourceLogPrefix, f)
+	s.client.Logger().Debug("WriteWithTag", "data_frame", f.String())
 	return s.client.WriteFrame(f)
 }
 
@@ -111,7 +107,7 @@ func (s *yomoSource) SetErrorHandler(fn func(err error)) {
 // [Experimental] SetReceiveHandler set the observe handler function
 func (s *yomoSource) SetReceiveHandler(fn func(frame.Tag, []byte)) {
 	s.fn = fn
-	s.client.Logger().Debugf("%sSetReceiveHandler(%v)", sourceLogPrefix, s.fn)
+	s.client.Logger().Debug("SetReceiveHandler")
 }
 
 // Broadcast Write the data to all downstream
@@ -120,6 +116,6 @@ func (s *yomoSource) Broadcast(data []byte) error {
 	f.SetCarriage(s.tag, data)
 	f.SetSourceID(s.client.ClientID())
 	f.SetBroadcast(true)
-	s.client.Logger().Debugf("%sBroadcast: %v", sourceLogPrefix, f)
+	s.client.Logger().Debug("Broadcast", "data_frame", f.String())
 	return s.client.WriteFrame(f)
 }
