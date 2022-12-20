@@ -210,16 +210,17 @@ func (s *Server) handshakeWithTimeout(conn quic.Connection, stream quic.Stream, 
 // It returns a context for this stream handler.
 func (s *Server) handshake(conn quic.Connection, stream quic.Stream, fs frame.ReadWriter) (*Context, bool) {
 	frm, err := fs.ReadFrame()
+
 	if err != nil {
 		if err := fs.WriteFrame(frame.NewGoawayFrame(err.Error())); err != nil {
-			s.logger.Error("write to client GoawayFrame error", err, "remote_addr", conn.RemoteAddr().String())
+			s.logger.Error("write to client GoawayFrame error", err)
 		}
 		return nil, false
 	}
 
 	if frm.Type() != frame.TagOfHandshakeFrame {
 		if err := fs.WriteFrame(frame.NewGoawayFrame("handshake failed")); err != nil {
-			s.logger.Error("first frame is not handshakeFrame", err, "remote_addr", conn.RemoteAddr().String(), "frame_type", frm.Type().String())
+			s.logger.Error("first frame is not handshakeFrame", err)
 		}
 		return nil, false
 	}
@@ -228,7 +229,7 @@ func (s *Server) handshake(conn quic.Connection, stream quic.Stream, fs frame.Re
 
 	if err := s.handleHandshakeFrame(c); err != nil {
 		if err := fs.WriteFrame(frame.NewGoawayFrame(err.Error())); err != nil {
-			c.logger.Error("write to client GoawayFrame error", err, "remote_addr", conn.RemoteAddr().String())
+			s.logger.Error("write to client GoawayFrame error", err)
 		}
 		return nil, false
 	}

@@ -80,7 +80,6 @@ func (c *Context) WithFrame(f frame.Frame) *Context {
 			authName:   handshakeFrame.AuthName(),
 		})
 	}
-	c.logger = c.logger.With("frame_type", f.Type().String())
 	c.Frame = f
 	return c
 }
