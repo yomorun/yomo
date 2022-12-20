@@ -211,27 +211,29 @@ func (s *Server) handshakeWithTimeout(conn quic.Connection, stream quic.Stream, 
 func (s *Server) handshake(conn quic.Connection, stream quic.Stream, fs frame.ReadWriter) (*Context, bool) {
 	frm, err := fs.ReadFrame()
 
+	c := newContext(conn, stream, s.logger).WithFrame(frm)
+
 	if err != nil {
 		if err := fs.WriteFrame(frame.NewGoawayFrame(err.Error())); err != nil {
 			s.logger.Error("write to client GoawayFrame error", err)
 		}
-		return nil, false
+		return c, false
 	}
 
 	if frm.Type() != frame.TagOfHandshakeFrame {
+		c.logger.Info("client not do handshake right off")
 		if err := fs.WriteFrame(frame.NewGoawayFrame("handshake failed")); err != nil {
-			s.logger.Error("first frame is not handshakeFrame", err)
+			s.logger.Error("write to client GoawayFrame error", err)
 		}
-		return nil, false
+		return c, false
 	}
 
-	c := newContext(conn, stream, s.logger).WithFrame(frm)
-
 	if err := s.handleHandshakeFrame(c); err != nil {
+		c.logger.Info("handshake failed", "error", err)
 		if err := fs.WriteFrame(frame.NewGoawayFrame(err.Error())); err != nil {
 			s.logger.Error("write to client GoawayFrame error", err)
 		}
-		return nil, false
+		return c, false
 	}
 
 	return c, true
