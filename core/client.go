@@ -124,7 +124,7 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	c.state = ConnStateConnected
 	c.localAddr = c.conn.LocalAddr().String()
 
-	c.logger = slog.With("local_addr", c.localAddr, "reomote", c.RemoteAddr())
+	c.logger = slog.With("local_addr", c.localAddr, "remote_addr", c.RemoteAddr())
 
 	c.logger.Debug("connected to YoMo-Zipper")
 
