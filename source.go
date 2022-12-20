@@ -40,12 +40,12 @@ var _ Source = &yomoSource{}
 
 // NewSource create a yomo-source
 func NewSource(name string, opts ...Option) Source {
-	options := newOptions(opts...)
-	client := core.NewClient(name, core.ClientTypeSource, options.clientOptions...)
+	options := NewOptions(opts...)
+	client := core.NewClient(name, core.ClientTypeSource, options.ClientOptions...)
 
 	return &yomoSource{
 		name:           name,
-		zipperEndpoint: options.zipperAddr,
+		zipperEndpoint: options.ZipperAddr,
 		client:         client,
 	}
 }
@@ -107,7 +107,7 @@ func (s *yomoSource) SetErrorHandler(fn func(err error)) {
 // [Experimental] SetReceiveHandler set the observe handler function
 func (s *yomoSource) SetReceiveHandler(fn func(frame.Tag, []byte)) {
 	s.fn = fn
-	s.client.Logger().Debug("SetReceiveHandler", "receive_handler", s.fn)
+	s.client.Logger().Debug("SetReceiveHandler")
 }
 
 // Broadcast Write the data to all downstream

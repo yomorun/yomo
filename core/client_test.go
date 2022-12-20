@@ -64,7 +64,7 @@ func TestFrameRoundTrip(t *testing.T) {
 		WithObserveDataTags(obversedTag),
 		WithClientQuicConfig(DefalutQuicConfig),
 		WithClientTLSConfig(nil),
-		WithClientLogger(ylog.Default()),
+		WithLogger(ylog.Default()),
 	)
 
 	source.SetBackflowFrameObserver(func(bf *frame.BackflowFrame) {
