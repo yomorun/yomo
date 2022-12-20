@@ -110,11 +110,6 @@ func Test_AuditTime(t *testing.T) {
 	})
 }
 
-type testStruct struct {
-	ID   uint32 `y3:"0x11"`
-	Name string `y3:"0x12"`
-}
-
 func Test_SlidingWindowWithCount(t *testing.T) {
 	t.Run("window size = 1, slide size = 1, handler does nothing", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())

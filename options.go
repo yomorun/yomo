@@ -6,7 +6,7 @@ import (
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/core/log"
+	"golang.org/x/exp/slog"
 )
 
 const (
@@ -19,15 +19,15 @@ type Option func(o *Options)
 
 // Options are the options for YoMo
 type Options struct {
-	ZipperAddr string // target Zipper endpoint address
-	// ZipperListenAddr     string // Zipper endpoint address
-	ZipperWorkflowConfig string // Zipper workflow file
-	MeshConfigURL        string // meshConfigURL is the URL of edge-mesh config
-	ServerOptions        []core.ServerOption
-	ClientOptions        []core.ClientOption
-	QuicConfig           *quic.Config
-	TLSConfig            *tls.Config
-	Logger               log.Logger
+	ZipperAddr    string // target Zipper endpoint address
+	MeshConfigURL string // meshConfigURL is the URL of edge-mesh config
+	ServerOptions []core.ServerOption
+	ClientOptions []core.ClientOption
+	QuicConfig    *quic.Config
+	TLSConfig     *tls.Config
+
+	// TODO: WithWorkflowConfig
+	// zipperWorkflowConfig string // Zipper workflow file
 }
 
 // WithZipperAddr return a new options with ZipperAddr set to addr.
@@ -36,15 +36,6 @@ func WithZipperAddr(addr string) Option {
 		o.ZipperAddr = addr
 	}
 }
-
-// // WithZipperListenAddr return a new options with ZipperListenAddr set to addr.
-// func WithZipperListenAddr(addr string) Option {
-// 	return func(o *options) {
-// 		o.ZipperListenAddr = addr
-// 	}
-// }
-
-// TODO: WithWorkflowConfig
 
 // WithMeshConfigURL sets the initial edge-mesh config URL for the YoMo-Zipper.
 func WithMeshConfigURL(url string) Option {
@@ -112,7 +103,7 @@ func WithObserveDataTags(tags ...frame.Tag) Option {
 }
 
 // WithLogger sets the client logger
-func WithLogger(logger log.Logger) Option {
+func WithLogger(logger *slog.Logger) Option {
 	return func(o *Options) {
 		o.ClientOptions = append(
 			o.ClientOptions,

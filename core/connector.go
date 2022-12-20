@@ -4,7 +4,7 @@ import (
 	"sync"
 
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/pkg/logger"
+	"golang.org/x/exp/slog"
 )
 
 var _ Connector = &connector{}
@@ -26,22 +26,23 @@ type Connector interface {
 }
 
 type connector struct {
-	conns sync.Map
+	conns  sync.Map
+	logger *slog.Logger
 }
 
-func newConnector() Connector {
-	return &connector{conns: sync.Map{}}
+func newConnector(logger *slog.Logger) Connector {
+	return &connector{conns: sync.Map{}, logger: logger}
 }
 
 // Add a connection.
 func (c *connector) Add(connID string, conn Connection) {
-	logger.Debugf("%sconnector add: connID=%s", ServerLogPrefix, connID)
+	c.logger.Debug("connector add connection", "conn_id", connID)
 	c.conns.Store(connID, conn)
 }
 
 // Remove a connection.
 func (c *connector) Remove(connID string) {
-	logger.Debugf("%sconnector remove: connID=%s", ServerLogPrefix, connID)
+	c.logger.Debug("connector remove connection", "conn_id", connID)
 	c.conns.Delete(connID)
 }
 

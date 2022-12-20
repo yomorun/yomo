@@ -1,9 +1,10 @@
 package frame
 
 import (
-	"os"
-	"strconv"
+	"errors"
 	"time"
+
+	"github.com/yomorun/yomo/core/ylog"
 )
 
 // ReadWriter is the interface that groups the ReadFrame and WriteFrame methods.
@@ -29,6 +30,7 @@ func (err ErrReadUntilTimeout) Error() string {
 
 // ReadUntil reads frame from reader, until the frame of the specified type is returned.
 // It returns ErrReadUntilTimeout error if frame not be returned after timeout duration.
+// If read a goawayFrame, use goawayFrame.message as error and return it.
 func ReadUntil(reader Reader, t Type, timeout time.Duration) (Frame, error) {
 	var (
 		errch = make(chan error)
@@ -42,6 +44,10 @@ func ReadUntil(reader Reader, t Type, timeout time.Duration) (Frame, error) {
 				errch <- err
 				return
 			}
+			if f.Type() == TagOfGoawayFrame {
+				errch <- errors.New(f.(*GoawayFrame).message)
+				return
+			}
 			if f.Type() == t {
 				frmch <- f
 				return
@@ -49,15 +55,13 @@ func ReadUntil(reader Reader, t Type, timeout time.Duration) (Frame, error) {
 		}
 	}()
 
-	for {
-		select {
-		case <-time.After(timeout):
-			return nil, ErrReadUntilTimeout{t: t}
-		case err := <-errch:
-			return nil, err
-		case frm := <-frmch:
-			return frm, nil
-		}
+	select {
+	case <-time.After(timeout):
+		return nil, ErrReadUntilTimeout{t: t}
+	case err := <-errch:
+		return nil, err
+	case frm := <-frmch:
+		return frm, nil
 	}
 }
 
@@ -69,7 +73,7 @@ type Writer interface {
 }
 
 // debugFrameSize print frame data size on debug mode
-var debugFrameSize = 16
+var debugFrameSize = ylog.DebugFrameSize
 
 // Kinds of frames transferable within YoMo
 const (
@@ -158,13 +162,5 @@ func (f Type) String() string {
 		return "TagOfHandshakeAckFrame"
 	default:
 		return "UnknownFrame"
-	}
-}
-
-func init() {
-	if envFrameSize := os.Getenv("YOMO_DEBUG_FRAME_SIZE"); envFrameSize != "" {
-		if val, err := strconv.Atoi(envFrameSize); err == nil {
-			debugFrameSize = val
-		}
 	}
 }

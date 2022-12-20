@@ -28,7 +28,7 @@ func TestReadUntil(t *testing.T) {
 		{
 			name: "read until timeout",
 			fields: fields{
-				frames:    []Frame{NewGoawayFrame("goaway"), NewHandshakeAckFrame()},
+				frames:    []Frame{NewDataFrame(), NewHandshakeAckFrame()},
 				intervals: time.Second,
 			},
 			args: args{
@@ -41,12 +41,12 @@ func TestReadUntil(t *testing.T) {
 		{
 			name: "read until success",
 			fields: fields{
-				frames:    []Frame{NewGoawayFrame("goaway"), NewHandshakeAckFrame()},
-				intervals: time.Microsecond,
+				frames:    []Frame{NewDataFrame(), NewHandshakeAckFrame()},
+				intervals: time.Millisecond,
 			},
 			args: args{
 				t:       TagOfHandshakeAckFrame,
-				timeout: time.Millisecond,
+				timeout: time.Second,
 			},
 			wantErr:   nil,
 			wantFrame: NewHandshakeAckFrame(),
