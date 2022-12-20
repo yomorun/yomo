@@ -50,7 +50,7 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 	}
 	clientID := id.New()
 
-	logger := slog.With("component", "client", "type", connType.String(), "client_id", clientID, "client_name", appName)
+	logger := option.logger.With("component", "client", "client_type", connType.String(), "client_id", clientID, "client_name", appName)
 
 	return &Client{
 		name:       appName,
@@ -123,8 +123,6 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 
 	c.state = ConnStateConnected
 	c.localAddr = c.conn.LocalAddr().String()
-
-	c.logger = slog.With("local_addr", c.localAddr, "remote_addr", c.RemoteAddr())
 
 	c.logger.Debug("connected to YoMo-Zipper")
 
@@ -211,7 +209,7 @@ func (c *Client) handleFrame() (bool, bool, error) {
 				}
 			}
 		default:
-			c.logger.Warn("unknown or unsupported frame", "frame_type", frameType.String())
+			c.logger.Warn("unknown or unsupported frame", "frame_type", frameType)
 		}
 	}
 }

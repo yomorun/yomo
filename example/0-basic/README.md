@@ -44,7 +44,7 @@ yomo serve -c ./workflow.yaml
 
 time=2022-12-12T18:12:15.735+08:00 level=INFO msg="Using config file" component=server name=Service file_path=../workflow.yaml
 time=2022-12-12T18:12:15.735+08:00 level=INFO msg="Listening SIGUSR1, SIGUSR2, SIGTERM/SIGINT..."
-time=2022-12-12T18:12:15.738+08:00 level=INFO msg=Listening component=server name=Service local_addr=127.0.0.1:9000 pid=25220 quic="[v2 v1 draft-29]" auth_name=[none]
+time=2022-12-12T18:12:15.738+08:00 level=INFO msg=Listening component=server name=Service pid=25220 quic="[v2 v1 draft-29]" auth_name=[none]
 ```
 
 ### Run [stream-function](https://docs.yomo.run/stream-fn)

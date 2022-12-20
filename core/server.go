@@ -634,7 +634,7 @@ func authName(name string) string {
 
 func (s *Server) doConnectionCloseHandlers(qconn quic.Connection) {
 	defer s.wg.Done()
-	s.logger.Debug("quic connection closed", "remote_addr", qconn.RemoteAddr())
+	s.logger.Debug("quic connection closed")
 	for _, h := range s.connectionCloseHandlers {
 		h(qconn)
 	}
