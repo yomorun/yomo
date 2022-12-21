@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/rx"
 )
 
@@ -35,6 +36,6 @@ func Handler(rxstream rx.Stream) rx.Stream {
 	return stream
 }
 
-func DataTags() []byte {
-	return []byte{0x33}
+func DataTags() []frame.Tag {
+	return []frame.Tag{0x33}
 }
