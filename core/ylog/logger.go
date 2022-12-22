@@ -18,6 +18,7 @@ import (
 
 	"github.com/caarlos0/env/v6"
 	"golang.org/x/exp/slog"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var defaultLogger = Default()
@@ -103,7 +104,7 @@ func parseToWriter(path string, defaultWriter io.Writer) (io.Writer, error) {
 		return os.Stderr, nil
 	default:
 		if path != "" {
-			return os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			return &lumberjack.Logger{Filename: path, MaxSize: 1024, MaxBackups: 30, MaxAge: 7}, nil
 		}
 		return defaultWriter, nil
 	}
