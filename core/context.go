@@ -48,10 +48,14 @@ const clientInfoKey = "client_info"
 
 // ClientInfo holds client info, you can use `*Context.ClientInfo()` to get it after handshake.
 type ClientInfo struct {
-	clientID   string
-	clientType byte
-	clientName string
-	authName   string
+	// ID is client id from handshake.
+	ID string
+	// Type is client type from handshake.
+	Type byte
+	// Type is client type from handshake.
+	Name string
+	// AuthName is client authName from handshake.
+	AuthName string
 }
 
 // ClientInfo get client info from context.
@@ -74,10 +78,10 @@ func (c *Context) WithFrame(f frame.Frame) *Context {
 			"auth_name", handshakeFrame.AuthName(),
 		)
 		c.Set(clientInfoKey, &ClientInfo{
-			clientID:   handshakeFrame.ClientID,
-			clientType: handshakeFrame.ClientType,
-			clientName: handshakeFrame.Name,
-			authName:   handshakeFrame.AuthName(),
+			ID:       handshakeFrame.ClientID,
+			Type:     handshakeFrame.ClientType,
+			Name:     handshakeFrame.Name,
+			AuthName: handshakeFrame.AuthName(),
 		})
 	}
 	c.Frame = f
