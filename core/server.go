@@ -163,7 +163,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 
 				for _, handler := range s.startHandlers {
 					if err := handler(yctx); err != nil {
-						yctx.logger.Error("startHandlers error", err)
+						yctx.Logger.Error("startHandlers error", err)
 						yctx.CloseWithError(yerr.ErrorCodeStartHandler, err.Error())
 						return
 					}
@@ -182,7 +182,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 				s.logger.Info("stream created", "stream_id", stream.StreamID(), "conn_id", connID)
 
 				s.handleConnection(yctx)
-				yctx.logger.Info("stream handleConnection DONE")
+				yctx.Logger.Info("stream handleConnection DONE")
 			}
 		}(sctx, conn)
 	}
@@ -230,7 +230,7 @@ func (s *Server) handshake(conn quic.Connection, stream quic.Stream, fs frame.Re
 	}
 
 	if frm.Type() != frame.TagOfHandshakeFrame {
-		c.logger.Info("client not do handshake right off")
+		c.Logger.Info("client not do handshake right off")
 		if err := fs.WriteFrame(frame.NewGoawayFrame("handshake failed")); err != nil {
 			s.logger.Error("write to client GoawayFrame error", err)
 		}
@@ -238,7 +238,7 @@ func (s *Server) handshake(conn quic.Connection, stream quic.Stream, fs frame.Re
 	}
 
 	if err := s.handleHandshakeFrame(c); err != nil {
-		c.logger.Info("handshake failed", "error", err)
+		c.Logger.Info("handshake failed", "error", err)
 		if err := fs.WriteFrame(frame.NewGoawayFrame(err.Error())); err != nil {
 			s.logger.Error("write to client GoawayFrame error", err)
 		}
@@ -270,7 +270,7 @@ func (s *Server) Close() error {
 }
 
 // handleConnection handles streams on a connection,
-// use c.logger in this function scope for more complete logger information.
+// use c.Logger in this function scope for more complete logger information.
 func (s *Server) handleConnection(c *Context) {
 	fs := NewFrameStream(c.Stream)
 	// check update for stream
@@ -281,27 +281,27 @@ func (s *Server) handleConnection(c *Context) {
 			if e, ok := err.(*quic.ApplicationError); ok {
 				if yerr.Is(e.ErrorCode, yerr.ErrorCodeClientAbort) {
 					// client abort
-					c.logger.Info("client close the connection")
+					c.Logger.Info("client close the connection")
 					break
 				} else {
 					ye := yerr.New(yerr.Parse(e.ErrorCode), err)
-					c.logger.Error("read frame error", ye)
+					c.Logger.Error("read frame error", ye)
 				}
 			} else if err == io.EOF {
-				c.logger.Info("connection EOF")
+				c.Logger.Info("connection EOF")
 				break
 			}
 			if errors.Is(err, net.ErrClosed) {
 				// if client close the connection, net.ErrClosed will be raise
 				// by quic-go IdleTimeoutError after connection's KeepAlive config.
-				c.logger.Warn("connection error", "error", net.ErrClosed)
+				c.Logger.Warn("connection error", "error", net.ErrClosed)
 				c.CloseWithError(yerr.ErrorCodeClosed, "net.ErrClosed")
 				break
 			}
 			// any error occurred, we should close the stream
 			// after this, conn.AcceptStream() will raise the error
 			c.CloseWithError(yerr.ErrorCodeUnknown, err.Error())
-			c.logger.Warn("connection close")
+			c.Logger.Warn("connection close")
 			break
 		}
 
@@ -311,21 +311,21 @@ func (s *Server) handleConnection(c *Context) {
 		// before frame handlers
 		for _, handler := range s.beforeHandlers {
 			if err := handler(c); err != nil {
-				c.logger.Error("beforeFrameHandler error", err)
+				c.Logger.Error("beforeFrameHandler error", err)
 				c.CloseWithError(yerr.ErrorCodeBeforeHandler, err.Error())
 				return
 			}
 		}
 		// main handler
 		if err := s.mainFrameHandler(c); err != nil {
-			c.logger.Error("mainFrameHandler error", err)
+			c.Logger.Error("mainFrameHandler error", err)
 			c.CloseWithError(yerr.ErrorCodeMainHandler, err.Error())
 			return
 		}
 		// after frame handler
 		for _, handler := range s.afterHandlers {
 			if err := handler(c); err != nil {
-				c.logger.Error("afterFrameHandler error", err)
+				c.Logger.Error("afterFrameHandler error", err)
 				c.CloseWithError(yerr.ErrorCodeAfterHandler, err.Error())
 				return
 			}
@@ -338,7 +338,7 @@ func (s *Server) mainFrameHandler(c *Context) error {
 
 	switch frameType {
 	case frame.TagOfHandshakeFrame:
-		c.logger.Warn("receive a handshakeFrame, ingonre it")
+		c.Logger.Warn("receive a handshakeFrame, ingonre it")
 	case frame.TagOfDataFrame:
 		if err := s.handleDataFrame(c); err != nil {
 			c.CloseWithError(yerr.ErrorCodeData, fmt.Sprintf("handleDataFrame err: %v", err))
@@ -349,7 +349,7 @@ func (s *Server) mainFrameHandler(c *Context) error {
 			s.handleBackflowFrame(c)
 		}
 	default:
-		c.logger.Warn("unexpected frame", "unexpected_frame_type", frameType)
+		c.Logger.Warn("unexpected frame", "unexpected_frame_type", frameType)
 	}
 	return nil
 }
@@ -364,17 +364,17 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	clientType := ClientType(f.ClientType)
 	stream := c.Stream
 	// credential
-	c.logger.Debug("GOT HandshakeFrame", "client_type", f.ClientType, "client_id", clientID, "auth_name", authName(f.AuthName()))
+	c.Logger.Debug("GOT HandshakeFrame", "client_type", f.ClientType, "client_id", clientID, "auth_name", authName(f.AuthName()))
 	// authenticate
 	authed := auth.Authenticate(s.opts.auths, f)
-	c.logger.Debug("authenticate", "authed", authed)
+	c.Logger.Debug("authenticate", "authed", authed)
 	if !authed {
 		err := fmt.Errorf("handshake authentication fails, client credential name is %s", authName(f.AuthName()))
 		// return err
-		c.logger.Debug("authenticated", "authed", authed)
+		c.Logger.Debug("authenticated", "authed", authed)
 		rejectedFrame := frame.NewRejectedFrame(err.Error())
 		if _, err = stream.Write(rejectedFrame.Encode()); err != nil {
-			c.logger.Error("write to RejectedFrame failed", err, "authed", authed)
+			c.Logger.Error("write to RejectedFrame failed", err, "authed", authed)
 			return err
 		}
 		return nil
@@ -389,7 +389,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 		if err != nil {
 			return err
 		}
-		conn = newConnection(f.Name, f.ClientID, clientType, metadata, stream, f.ObserveDataTags, c.logger)
+		conn = newConnection(f.Name, f.ClientID, clientType, metadata, stream, f.ObserveDataTags, c.Logger)
 
 		if clientType == ClientTypeStreamFunction {
 			// route
@@ -402,10 +402,10 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 				if e, ok := err.(yerr.DuplicateNameError); ok {
 					existsConnID := e.ConnID()
 					if conn := s.connector.Get(existsConnID); conn != nil {
-						c.logger.Debug("write GoawayFrame", "error", e.Error(), "exists_conn_id", existsConnID)
+						c.Logger.Debug("write GoawayFrame", "error", e.Error(), "exists_conn_id", existsConnID)
 						goawayFrame := frame.NewGoawayFrame(e.Error())
 						if err := conn.Write(goawayFrame); err != nil {
-							c.logger.Error("write GoawayFrame failed", err)
+							c.Logger.Error("write GoawayFrame failed", err)
 							return err
 						}
 					}
@@ -415,7 +415,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 			}
 		}
 	case ClientTypeUpstreamZipper:
-		conn = newConnection(f.Name, f.ClientID, clientType, nil, stream, f.ObserveDataTags, c.logger)
+		conn = newConnection(f.Name, f.ClientID, clientType, nil, stream, f.ObserveDataTags, c.Logger)
 	default:
 		// TODO: There is no need to Remove,
 		// unknown client type is not be add to connector.
@@ -426,11 +426,11 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	}
 
 	if _, err := stream.Write(frame.NewHandshakeAckFrame().Encode()); err != nil {
-		c.logger.Error("write handshakeAckFrame error", err)
+		c.Logger.Error("write handshakeAckFrame error", err)
 	}
 
 	s.connector.Add(connID, conn)
-	c.logger.Info("client is connected!")
+	c.Logger.Info("client is connected!")
 	return nil
 }
 
@@ -447,7 +447,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 	fromID := c.ConnID()
 	from := s.connector.Get(fromID)
 	if from == nil {
-		c.logger.Warn("handleDataFrame connector cannot find", "from_conn_id", fromID)
+		c.Logger.Warn("handleDataFrame connector cannot find", "from_conn_id", fromID)
 		return fmt.Errorf("handleDataFrame connector cannot find %s", fromID)
 	}
 
@@ -465,7 +465,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 	// route
 	route := s.router.Route(metadata)
 	if route == nil {
-		c.logger.Warn("handleDataFrame route is nil")
+		c.Logger.Warn("handleDataFrame route is nil")
 		return fmt.Errorf("handleDataFrame route is nil")
 	}
 
@@ -474,12 +474,12 @@ func (s *Server) handleDataFrame(c *Context) error {
 	for _, toID := range connIDs {
 		conn := s.connector.Get(toID)
 		if conn == nil {
-			c.logger.Error("Can't find forward conn", errors.New("conn is nil"), "forward_conn_id", toID)
+			c.Logger.Error("Can't find forward conn", errors.New("conn is nil"), "forward_conn_id", toID)
 			continue
 		}
 
 		to := conn.Name()
-		c.logger.Info(
+		c.Logger.Info(
 			"handleDataFrame",
 			"from_conn_name", from.Name(),
 			"from_conn_id", fromID,
@@ -490,7 +490,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 
 		// write data frame to stream
 		if err := conn.Write(f); err != nil {
-			c.logger.Error("handleDataFrame conn.Write", err)
+			c.Logger.Error("handleDataFrame conn.Write", err)
 		}
 	}
 
@@ -507,9 +507,9 @@ func (s *Server) handleBackflowFrame(c *Context) error {
 	sourceConns := s.connector.GetSourceConns(sourceID, tag)
 	for _, source := range sourceConns {
 		if source != nil {
-			c.logger.Info("handleBackflowFrame", "source_conn_id", sourceID, "back_flow_frame", f.String())
+			c.Logger.Info("handleBackflowFrame", "source_conn_id", sourceID, "back_flow_frame", f.String())
 			if err := source.Write(bf); err != nil {
-				c.logger.Error("handleBackflowFrame conn.Write", err)
+				c.Logger.Error("handleBackflowFrame conn.Write", err)
 				return err
 			}
 		}
@@ -568,7 +568,7 @@ func (s *Server) AddDownstreamServer(addr string, c frame.Writer) {
 func (s *Server) dispatchToDownstreams(c *Context) {
 	conn := s.connector.Get(c.connID)
 	if conn == nil {
-		c.logger.Debug("dispatchToDownstreams failed")
+		c.Logger.Debug("dispatchToDownstreams failed")
 	} else if conn.ClientType() == ClientTypeSource {
 		f := c.Frame.(*frame.DataFrame)
 		if f.IsBroadcast() {
@@ -576,11 +576,11 @@ func (s *Server) dispatchToDownstreams(c *Context) {
 				f.GetMetaFrame().SetMetadata(conn.Metadata().Encode())
 			}
 			for addr, ds := range s.downstreams {
-				c.logger.Info("dispatching to", "dispatch_addr", addr, "tid", f.TransactionID())
+				c.Logger.Info("dispatching to", "dispatch_addr", addr, "tid", f.TransactionID())
 				ds.WriteFrame(f)
 			}
 		} else {
-			c.logger.Info("do not broadcast", "tid", f.TransactionID())
+			c.Logger.Info("do not broadcast", "tid", f.TransactionID())
 		}
 	}
 }

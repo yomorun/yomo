@@ -27,7 +27,7 @@ type Context struct {
 
 	mu sync.RWMutex
 
-	logger *slog.Logger
+	Logger *slog.Logger
 }
 
 func newContext(conn quic.Connection, stream quic.Stream, logger *slog.Logger) (ctx *Context) {
@@ -40,7 +40,7 @@ func newContext(conn quic.Connection, stream quic.Stream, logger *slog.Logger) (
 	ctx.Conn = conn
 	ctx.Stream = stream
 	ctx.connID = conn.RemoteAddr().String()
-	ctx.logger = logger.With("conn_id", conn.RemoteAddr().String(), "stream_id", stream.StreamID())
+	ctx.Logger = logger.With("conn_id", conn.RemoteAddr().String(), "stream_id", stream.StreamID())
 	return
 }
 
@@ -67,7 +67,7 @@ func (c *Context) ClientInfo() *ClientInfo {
 func (c *Context) WithFrame(f frame.Frame) *Context {
 	if f.Type() == frame.TagOfHandshakeFrame {
 		handshakeFrame := f.(*frame.HandshakeFrame)
-		c.logger = c.logger.With(
+		c.Logger = c.Logger.With(
 			"client_id", handshakeFrame.ClientID,
 			"client_type", ClientType(handshakeFrame.ClientType).String(),
 			"client_name", handshakeFrame.Name,
@@ -86,7 +86,7 @@ func (c *Context) WithFrame(f frame.Frame) *Context {
 
 // Clean the context.
 func (c *Context) Clean() {
-	c.logger.Debug("conn context clean", "conn_id", c.connID)
+	c.Logger.Debug("conn context clean", "conn_id", c.connID)
 	c.reset()
 	ctxPool.Put(c)
 }
@@ -96,7 +96,7 @@ func (c *Context) reset() {
 	c.connID = ""
 	c.Stream = nil
 	c.Frame = nil
-	c.logger = nil
+	c.Logger = nil
 	for k := range c.Keys {
 		delete(c.Keys, k)
 	}
@@ -104,7 +104,7 @@ func (c *Context) reset() {
 
 // CloseWithError closes the stream and cleans the context.
 func (c *Context) CloseWithError(code yerr.ErrorCode, msg string) {
-	c.logger.Debug("conn context close, ", "err_code", code, "err_msg", msg)
+	c.Logger.Debug("conn context close, ", "err_code", code, "err_msg", msg)
 	if c.Stream != nil {
 		c.Stream.Close()
 	}
