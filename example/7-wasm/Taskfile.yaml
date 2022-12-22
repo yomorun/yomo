@@ -4,9 +4,6 @@ version: '3'
 
 output: "prefixed"
 
-vars:
-  ExeName: yomo{{exeExt}}
-
 tasks:
   run:
     desc: run
@@ -19,13 +16,6 @@ tasks:
     desc: clean
     cmds:
       - rm -rf ./bin
-
-  build:
-    desc: build yomo cli tools
-    cmds:
-      - go build -v -o ./bin/{{.ExeName}} -ldflags "-s -w -X {{.Module}}/cli.Version={{.Version}} -X {{.Module}}/cli.Date={{.Date}}" ../../cmd/yomo/main.go
-    method: none
-    silent: true
 
   source:
     desc: run source
@@ -43,15 +33,13 @@ tasks:
   sfn:
     desc: run sfn
     dir: sfn
-    deps: [build]
     cmds:
-      - "../bin/yomo{{exeExt}} run sfn.wasm"
+      - "yomo run sfn.wasm"
 
   zipper:
     desc: run zipper
-    deps: [build]
     cmds:
-      - "./bin/yomo{{exeExt}} serve -c workflow.yaml"
+      - "yomo serve -c workflow.yaml"
     env:
       YOMO_LOG_LEVEL: error
       YOMO_ADDR: "localhost:9000"
