@@ -39,6 +39,7 @@ type Server struct {
 	downstreams             map[string]frame.Writer
 	mu                      sync.Mutex
 	opts                    *serverOptions
+	startHandlers           []FrameHandler
 	beforeHandlers          []FrameHandler
 	afterHandlers           []FrameHandler
 	connectionCloseHandlers []ConnectionHandler
@@ -159,6 +160,14 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 				defer stream.Close()
 
 				yctx, ok := s.handshakeWithTimeout(conn, stream, 10*time.Second)
+
+				for _, handler := range s.startHandlers {
+					if err := handler(yctx); err != nil {
+						yctx.logger.Error("startHandlers error", err)
+						yctx.CloseWithError(yerr.ErrorCodeStartHandler, err.Error())
+						return
+					}
+				}
 
 				defer func() {
 					if yctx != nil {
@@ -598,6 +607,12 @@ func (s *Server) validateMetadataBuilder() error {
 // Connector returns the connector of server.
 func (s *Server) Connector() Connector {
 	return s.connector
+}
+
+// SetStartHandlers sets a function for operating connection,
+// this function executes after handshake successful.
+func (s *Server) SetStartHandlers(handlers ...FrameHandler) {
+	s.startHandlers = append(s.beforeHandlers, handlers...)
 }
 
 // SetBeforeHandlers set the before handlers of server.

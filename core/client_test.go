@@ -50,6 +50,12 @@ func TestFrameRoundTrip(t *testing.T) {
 	server.ConfigMetadataBuilder(metadata.DefaultBuilder())
 	server.ConfigRouter(router.Default([]config.App{{Name: "sfn-1"}}))
 
+	// test server hooks
+	ht := &hookTester{t}
+	server.SetStartHandlers(ht.startHandler)
+	server.SetBeforeHandlers(ht.beforeHandler)
+	server.SetAfterHandlers(ht.afterHandler)
+
 	w := newMockFrameWriter()
 	server.AddDownstreamServer("mockAddr", w)
 
@@ -112,6 +118,32 @@ func TestFrameRoundTrip(t *testing.T) {
 
 	assert.NoError(t, source.Close(), "source client.Close() should not return error")
 	assert.NoError(t, sfn.Close(), "sfn client.Close() should not return error")
+}
+
+type hookTester struct {
+	t *testing.T
+}
+
+func (a *hookTester) startHandler(ctx *Context) error {
+	ctx.Set("start", "yes")
+	return nil
+}
+
+func (a *hookTester) beforeHandler(ctx *Context) error {
+	ctx.Set("before", "ok")
+	return nil
+}
+
+func (a *hookTester) afterHandler(ctx *Context) error {
+	v, ok := ctx.Get("start")
+	assert.True(a.t, ok)
+	assert.Equal(a.t, v, "yes")
+
+	v, ok = ctx.Get("before")
+	assert.True(a.t, ok)
+	assert.Equal(a.t, v, "ok")
+
+	return nil
 }
 
 // mockFrameWriter mock a FrameWriter
