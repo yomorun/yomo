@@ -612,7 +612,7 @@ func (s *Server) Connector() Connector {
 // SetStartHandlers sets a function for operating connection,
 // this function executes after handshake successful.
 func (s *Server) SetStartHandlers(handlers ...FrameHandler) {
-	s.startHandlers = append(s.beforeHandlers, handlers...)
+	s.startHandlers = append(s.startHandlers, handlers...)
 }
 
 // SetBeforeHandlers set the before handlers of server.
