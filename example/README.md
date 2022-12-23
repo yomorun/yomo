@@ -1,5 +1,17 @@
 # Examples
 
+## Prerequisite
+
+### Install Task 
+
+[Install Task](https://taskfile.dev/#/installation)
+
+### Install YoMo CLI 
+
+```bash
+$ task -t ../Taskfile.yml cli:install
+```
+
 All examples can be run by [Task](https://taskfile.dev), following the [Install Task](https://taskfile.dev/#/installation), execute `task -l` in this directory will list all the examples.
 
 ```bash
