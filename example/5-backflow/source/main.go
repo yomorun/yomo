@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"math/rand"
 	"os"
 	"strconv"
@@ -24,7 +24,7 @@ func main() {
 	)
 	err := source.Connect()
 	if err != nil {
-		fmt.Printf("[source] ❌ Emit the data to YoMo-Zipper failure with err: %v", err)
+		log.Printf("[source] ❌ Emit the data to YoMo-Zipper failure with err: %v", err)
 		return
 	}
 
@@ -33,17 +33,17 @@ func main() {
 	source.SetDataTag(0x33)
 	// set the error handler function when server error occurs
 	source.SetErrorHandler(func(err error) {
-		fmt.Printf("[source] receive server error: %v", err)
+		log.Printf("[source] receive server error: %v", err)
 		os.Exit(1)
 	})
 	// set receive handler for the observe datatags
 	source.SetReceiveHandler(func(tag frame.Tag, data []byte) {
-		fmt.Printf("[source] ♻️  receive backflow: tag=%#v, data=%s", tag, data)
+		log.Printf("[source] ♻️  receive backflow: tag=%#v, data=%s", tag, data)
 	})
 
 	// generate mock data and send it to YoMo-Zipper in every 100 ms.
 	err = generateAndSendData(source)
-	fmt.Printf("[source] >>>> ERR >>>> %v", err)
+	log.Printf("[source] >>>> ERR >>>> %v", err)
 	os.Exit(0)
 }
 
@@ -55,12 +55,12 @@ func generateAndSendData(stream yomo.Source) error {
 		// send data via QUIC stream.
 		_, err := stream.Write(data)
 		if err != nil {
-			fmt.Printf("[source] ❌ Emit %.2f to YoMo-Zipper failure with err: %v", noise, err)
+			log.Printf("[source] ❌ Emit %.2f to YoMo-Zipper failure with err: %v", noise, err)
 			time.Sleep(500 * time.Millisecond)
 			continue
 
 		} else {
-			fmt.Printf("[source] ✅ Emit %.2f to YoMo-Zipper", noise)
+			log.Printf("[source] ✅ Emit %.2f to YoMo-Zipper", noise)
 		}
 
 		time.Sleep(1000 * time.Millisecond)

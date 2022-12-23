@@ -572,8 +572,6 @@ func (s *Server) dispatchToDownstreams(c *Context) {
 				c.logger.Info("dispatching to", "dispatch_addr", addr, "tid", f.TransactionID())
 				ds.WriteFrame(f)
 			}
-		} else {
-			c.logger.Info("do not broadcast", "tid", f.TransactionID())
 		}
 	}
 }
