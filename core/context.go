@@ -52,7 +52,7 @@ type ClientInfo struct {
 	ID string
 	// Type is client type from handshake.
 	Type byte
-	// Type is client type from handshake.
+	// Name is client name from handshake.
 	Name string
 	// AuthName is client authName from handshake.
 	AuthName string
