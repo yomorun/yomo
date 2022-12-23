@@ -64,6 +64,8 @@ const (
 	ErrorCodeUnknownClient ErrorCode = 0xCD
 	// ErrorCodeDuplicateName unknown client error
 	ErrorCodeDuplicateName ErrorCode = 0xC6
+	// ErrorCodeStartHandler start handler
+	ErrorCodeStartHandler ErrorCode = 0xC8
 )
 
 var errCodeStringMap = map[ErrorCode]string{
@@ -79,6 +81,7 @@ var errCodeStringMap = map[ErrorCode]string{
 	ErrorCodeData:          "DataFrame",
 	ErrorCodeUnknownClient: "UnknownClient",
 	ErrorCodeDuplicateName: "DuplicateName",
+	ErrorCodeStartHandler:  "StartHandler",
 }
 
 func (e ErrorCode) String() string {

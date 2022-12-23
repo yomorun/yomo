@@ -141,7 +141,7 @@ func TestHandleDataFrame(t *testing.T) {
 			connID: sourceConnID,
 			Stream: sourceStream,
 			Frame:  dataFrame,
-			logger: server.logger,
+			Logger: server.logger,
 		}
 
 		err := server.handleDataFrame(c)
@@ -172,7 +172,7 @@ func TestHandleDataFrame(t *testing.T) {
 			connID: zipperConnID,
 			Stream: zipperStream,
 			Frame:  dataFrame,
-			logger: server.logger,
+			Logger: server.logger,
 		}
 
 		err := server.handleDataFrame(c)
@@ -308,7 +308,7 @@ func TestHandShake(t *testing.T) {
 				connID: clientID,
 				Stream: stream,
 				Frame:  frame.NewHandshakeFrame(clientName, clientID, clientType, []frame.Tag{frame.Tag(1)}, "token", token),
-				logger: server.logger,
+				Logger: server.logger,
 			}
 
 			for n := 0; n < tt.handshakeTimes; n++ {
