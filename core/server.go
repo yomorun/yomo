@@ -211,7 +211,7 @@ func (s *Server) handshakeWithTimeout(conn quic.Connection, stream quic.Stream, 
 func (s *Server) handshake(conn quic.Connection, stream quic.Stream, fs frame.ReadWriter) (*Context, bool) {
 	frm, err := fs.ReadFrame()
 
-	c := newContext(conn, stream, s.logger).WithFrame(frm)
+	c := newContext(conn, stream, s.logger)
 
 	if err != nil {
 		if err := fs.WriteFrame(frame.NewGoawayFrame(err.Error())); err != nil {
@@ -219,6 +219,8 @@ func (s *Server) handshake(conn quic.Connection, stream quic.Stream, fs frame.Re
 		}
 		return c, false
 	}
+
+	c = c.WithFrame(frm)
 
 	if frm.Type() != frame.TagOfHandshakeFrame {
 		c.logger.Info("client not do handshake right off")
