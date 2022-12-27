@@ -52,6 +52,10 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 
 	logger := option.logger.With("component", "client", "client_type", connType.String(), "client_id", clientID, "client_name", appName)
 
+	if option.credential != nil {
+		logger.Info("use credential", "credential_name", option.credential.Name())
+	}
+
 	return &Client{
 		name:       appName,
 		clientID:   clientID,
