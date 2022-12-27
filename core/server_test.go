@@ -203,7 +203,7 @@ func TestHandShake(t *testing.T) {
 		wantConnName   string
 	}{
 		{
-			name: "test source: auth failed and return RejectFrame",
+			name: "test source: auth failed and return GoawayFrame",
 			args: args{
 				clientID:                 "mock-client-id",
 				token:                    "token-mock",
@@ -213,7 +213,7 @@ func TestHandShake(t *testing.T) {
 				clientNameConfigInServer: "source-mock",
 			},
 			handshakeTimes: 1,
-			wantResp:       frame.NewRejectedFrame("handshake authentication fails, client credential name is token").Encode(),
+			wantResp:       frame.NewGoawayFrame("handshake authentication fails, client credential name is token").Encode(),
 			wantAddConn:    false,
 			wantConnName:   "",
 		},
