@@ -1,8 +1,8 @@
-import { Reader, Writer } from "https://deno.land/std@0.170.0/io/types.d.ts";
+import { Reader, Writer } from "https://deno.land/std/io/types.d.ts";
 import {
   readVarnum,
   varnumBytes,
-} from "https://deno.land/std@0.170.0/encoding/binary.ts";
+} from "https://deno.land/std/encoding/binary.ts";
 
 export class Request {
   data: Uint8Array;
