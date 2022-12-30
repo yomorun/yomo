@@ -16,7 +16,7 @@ https://deno.land/#installation
 - Start YoMo zipper
 
   ```sh
-  yomo serve -c workflow.yaml
+  yomo serve -c ../uppercase.yaml
   ```
 
 - Start the JS/TS serverless function

@@ -58,7 +58,7 @@ serverless function runtime.
 - Start YoMo zipper
 
   ```sh
-  yomo serve -c workflow.yaml
+  yomo serve -c ../uppercase.yaml
   ```
 
 - Start wasm serverless function

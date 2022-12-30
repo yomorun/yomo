@@ -1,8 +1,8 @@
-import { Reader, Writer } from "https://deno.land/std@0.161.0/io/types.d.ts";
+import { Reader, Writer } from "https://deno.land/std@0.170.0/io/types.d.ts";
 import {
   readVarnum,
   varnumBytes,
-} from "https://deno.land/std@0.161.0/encoding/binary.ts";
+} from "https://deno.land/std@0.170.0/encoding/binary.ts";
 
 export class Request {
   data: Uint8Array;
@@ -72,7 +72,7 @@ export async function run(
     }
 
     const req = new Request(buf);
-    const res = handler(req);
+    const res = await handler(req);
 
     await conn.write(numberToBytes(res.tag));
     await writeData(conn, res.data);
