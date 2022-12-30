@@ -1,9 +1,5 @@
-import * as log from "https://deno.land/std@0.170.0/log/mod.ts";
-import {
-  Request,
-  Response,
-  run,
-} from "https://deno.land/x/yomo@v1.10.1/mod.ts";
+import * as log from "https://deno.land/std/log/mod.ts";
+import { Request, Response, run } from "https://deno.land/x/yomo/mod.ts";
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
