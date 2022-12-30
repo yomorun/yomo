@@ -16,7 +16,7 @@ https://deno.land/#installation
 - Start YoMo zipper
 
   ```sh
-  yomo serve -c ../uppercase.yaml
+  yomo serve -c ../uppercase/workflow.yaml
   ```
 
 - Start the JS/TS serverless function
@@ -28,7 +28,7 @@ https://deno.land/#installation
 - Start Source & Sink
 
   ```sh
-  cd source
+  cd ../uppercase/source
 
   go run main.go
   ```

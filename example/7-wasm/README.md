@@ -58,7 +58,7 @@ serverless function runtime.
 - Start YoMo zipper
 
   ```sh
-  yomo serve -c ../uppercase.yaml
+  yomo serve -c ../uppercase/workflow.yaml
   ```
 
 - Start wasm serverless function
@@ -74,7 +74,7 @@ serverless function runtime.
 - Start Source & Sink
 
   ```sh
-  cd source
+  cd ../uppercase/source
   go run main.go
   ```
 
