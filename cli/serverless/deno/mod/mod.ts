@@ -3,6 +3,8 @@ import {
   readVarnum,
   varnumBytes,
 } from "https://deno.land/std/encoding/binary.ts";
+import { loadSync } from "https://deno.land/std/dotenv/mod.ts";
+import { join } from "https://deno.land/std/path/mod.ts";
 
 export class Request {
   data: Uint8Array;
@@ -51,8 +53,22 @@ export async function run(
   handler: (req: Request) => Response,
 ) {
   let sock = "./sfn.sock";
+  let env = null;
   if (Deno.args.length > 0) {
     sock = Deno.args[0];
+    if (Deno.args.length > 1) {
+      env = Deno.args[1];
+    }
+  }
+
+  if (env != null) {
+    loadSync({
+      envPath: env,
+      defaultsPath: null,
+      examplePath: null,
+      export: true,
+      allowEmptyValues: true,
+    });
   }
 
   const conn = await Deno.connect({
