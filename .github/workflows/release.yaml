@@ -123,8 +123,9 @@ jobs:
         run: echo "name=version::$(cat ./cli/VERSION)" >> $GITHUB_OUTPUT
       - name: publish binaries to github
         uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
         with:
+          prerelease: true
+          tag_name: ${{ steps.tag.outputs.version }}
           files: ${{ env.ARTIFACT_DIR }}/*.tar.gz
       - name: Dispatch release notification
         uses: peter-evans/repository-dispatch@v2
