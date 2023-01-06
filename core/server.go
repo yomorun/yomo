@@ -374,9 +374,9 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 		err := fmt.Errorf("handshake authentication fails, client credential name is %s", authName(f.AuthName()))
 		// return err
 		c.Logger.Debug("authenticated", "authed", authed)
-		rejectedFrame := frame.NewRejectedFrame(err.Error())
-		if _, err = stream.Write(rejectedFrame.Encode()); err != nil {
-			c.Logger.Error("write to RejectedFrame failed", err, "authed", authed)
+		goawayFrame := frame.NewGoawayFrame(err.Error())
+		if _, err = stream.Write(goawayFrame.Encode()); err != nil {
+			c.Logger.Error("write to GoawayFrame failed", err, "authed", authed)
 			return err
 		}
 		return nil

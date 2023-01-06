@@ -44,10 +44,6 @@ func defaultClientOption() *clientOptions {
 		logger:          logger,
 	}
 
-	if opts.credential != nil {
-		logger.Info("use credential", "component", "client", "credential_name", opts.credential.Name())
-	}
-
 	return opts
 }
 
