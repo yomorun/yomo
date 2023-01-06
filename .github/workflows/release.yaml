@@ -2,7 +2,8 @@ name: release
 
 on:
   push:
-    branches: [ fix/cli-build ]
+    tags:
+      - "v*.*.*"
   workflow_dispatch:
     inputs:
       logLevel:
@@ -122,6 +123,7 @@ jobs:
         run: echo "name=version::$(cat ./cli/VERSION)" >> $GITHUB_OUTPUT
       - name: publish binaries to github
         uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           files: ${{ env.ARTIFACT_DIR }}/*.tar.gz
       - name: Dispatch release notification
