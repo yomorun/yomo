@@ -45,6 +45,7 @@ var serveCmd = &cobra.Command{
 		zipper, err := yomo.NewZipper(config)
 		if err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
+			return
 		}
 		// auth
 		auth := v.GetString("auth")
@@ -63,6 +64,7 @@ var serveCmd = &cobra.Command{
 		err = zipper.ConfigMesh(meshConfURL)
 		if err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
+			return
 		}
 
 		log.InfoStatusEvent(os.Stdout, "Running YoMo-Zipper...")
@@ -77,7 +79,7 @@ var serveCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(serveCmd)
 
-	serveCmd.Flags().StringVarP(&config, "config", "c", "workflow.yaml", "Workflow config file")
+	serveCmd.Flags().StringVarP(&config, "config", "c", "", "Workflow config file")
 	serveCmd.Flags().StringVarP(&meshConfURL, "mesh-config", "m", "", "The URL of mesh config")
 	// auth string
 	serveCmd.Flags().StringP("auth", "a", "", "authentication name and arguments, eg: `token:yomo`")
