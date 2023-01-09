@@ -11,6 +11,19 @@ on:
         required: true
         default: 'warning'
 jobs:
+  bina-for-curl-download:
+    name: Make bina.json
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+      - name: Genetate bina.json
+        run: cd ./cli && make bina
+      - name: upload artifacts
+        uses: actions/upload-artifact@master
+        with:
+          name: yomo-artifact
+          path: ./cli/bin/bina.json
   build-linux-amd64:
     name: Build Linux x86-64 binary
     runs-on: ubuntu-latest
@@ -100,9 +113,30 @@ jobs:
         with:
           name: yomo-artifact
           path: ./cli/bin/**/*.tar.gz
+  build-darwin-arm64:
+    name: Build MacOS arm64 binary
+    runs-on: ubuntu-latest
+    env:
+      GOVER: 1.19
+    steps:
+      - name: Set up Go ${{ env.GOVER }}
+        uses: actions/setup-go@v3
+        with:
+          go-version: ${{ env.GOVER }}
+      - name: Check out code
+        uses: actions/checkout@v3
+      - name: Run go mod tidy
+        run: go mod tidy
+      - name: build & archive binaries
+        run: cd ./cli && make archive-release-darwin-arm64
+      - name: upload artifacts
+        uses: actions/upload-artifact@master
+        with:
+          name: yomo-artifact
+          path: ./cli/bin/**/*.tar.gz
   publish:
     name: Publish binaries
-    needs: [build-linux-amd64, build-linux-arm64, build-darwin-amd64, build-windows-amd64]
+    needs: [bina-for-curl-download, build-linux-amd64, build-linux-arm64, build-darwin-amd64, build-windows-amd64, build-darwin-arm64]
     env:
       ARTIFACT_DIR: ./release
     runs-on: ubuntu-latest
