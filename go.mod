@@ -20,7 +20,7 @@ require (
 	github.com/yomorun/y3 v1.0.5
 	golang.org/x/exp v0.0.0-20221212164502-fae10dda9338
 	golang.org/x/mod v0.7.0
-	golang.org/x/tools v0.4.0
+	golang.org/x/tools v0.5.0
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -52,9 +52,9 @@ require (
 	github.com/teivah/onecontext v1.3.0 // indirect
 	go.uber.org/goleak v1.1.11 // indirect
 	golang.org/x/crypto v0.1.0 // indirect
-	golang.org/x/net v0.3.0 // indirect
-	golang.org/x/sys v0.3.0 // indirect
-	golang.org/x/text v0.5.0 // indirect
+	golang.org/x/net v0.5.0 // indirect
+	golang.org/x/sys v0.4.0 // indirect
+	golang.org/x/text v0.6.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
