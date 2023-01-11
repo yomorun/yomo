@@ -160,7 +160,7 @@ jobs:
         with:
           prerelease: true
           tag_name: ${{ steps.tag.outputs.version }}
-          files: ${{ env.ARTIFACT_DIR }}/*.tar.gz
+          files: ${{ env.ARTIFACT_DIR }}/*
       - name: Dispatch release notification
         uses: peter-evans/repository-dispatch@v2
         with:
