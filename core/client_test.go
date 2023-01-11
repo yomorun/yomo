@@ -53,8 +53,7 @@ func TestFrameRoundTrip(t *testing.T) {
 	// test server hooks
 	ht := &hookTester{t}
 	server.SetStartHandlers(ht.startHandler)
-	server.SetBeforeHandlers(ht.beforeHandler)
-	server.SetAfterHandlers(ht.afterHandler)
+	server.AddFrameHandlers(ht.one(), ht.two())
 
 	w := newMockFrameWriter()
 	server.AddDownstreamServer("mockAddr", w)
@@ -129,21 +128,46 @@ func (a *hookTester) startHandler(ctx *Context) error {
 	return nil
 }
 
-func (a *hookTester) beforeHandler(ctx *Context) error {
-	ctx.Set("before", "ok")
-	return nil
+func (a *hookTester) one() FrameMiddleware {
+	return func(next FrameHandler) FrameHandler {
+		return func(c *Context) error {
+			c.Set("before", "ok")
+			if err := next(c); err != nil {
+				assert.Fail(a.t, "test FrameMiddleware assert after should bot be error, err = %v", err)
+				return err
+			}
+
+			v, ok := c.Get("after")
+			assert.True(a.t, ok)
+			assert.Equal(a.t, v, "ok")
+
+			return nil
+		}
+	}
 }
 
-func (a *hookTester) afterHandler(ctx *Context) error {
-	v, ok := ctx.Get("start")
-	assert.True(a.t, ok)
-	assert.Equal(a.t, v, "yes")
+func (a *hookTester) two() FrameMiddleware {
+	return func(next FrameHandler) FrameHandler {
+		return func(c *Context) error {
 
-	v, ok = ctx.Get("before")
-	assert.True(a.t, ok)
-	assert.Equal(a.t, v, "ok")
+			v, ok := c.Get("start")
+			assert.True(a.t, ok)
+			assert.Equal(a.t, v, "yes")
 
-	return nil
+			v, ok = c.Get("before")
+			assert.True(a.t, ok)
+			assert.Equal(a.t, v, "ok")
+
+			if err := next(c); err != nil {
+				assert.Fail(a.t, "test FrameMiddleware assert after should bot be error, err = %v", err)
+				return err
+			}
+
+			c.Set("after", "ok")
+
+			return nil
+		}
+	}
 }
 
 // mockFrameWriter mock a FrameWriter

@@ -26,6 +26,9 @@ import (
 // FrameHandler is the handler for frame.
 type FrameHandler func(c *Context) error
 
+// FrameMiddleware decorates FrameHandler.
+type FrameMiddleware func(FrameHandler) FrameHandler
+
 // ConnectionHandler is the handler for quic connection
 type ConnectionHandler func(conn quic.Connection)
 
@@ -40,8 +43,7 @@ type Server struct {
 	mu                      sync.Mutex
 	opts                    *serverOptions
 	startHandlers           []FrameHandler
-	beforeHandlers          []FrameHandler
-	afterHandlers           []FrameHandler
+	frameHandler            FrameHandler
 	connectionCloseHandlers []ConnectionHandler
 	listener                Listener
 	wg                      *sync.WaitGroup
@@ -310,27 +312,10 @@ func (s *Server) handleConnection(c *Context) {
 		// add frame to context
 		c := c.WithFrame(f)
 
-		// before frame handlers
-		for _, handler := range s.beforeHandlers {
-			if err := handler(c); err != nil {
-				c.Logger.Error("beforeFrameHandler error", err)
-				c.CloseWithError(yerr.ErrorCodeBeforeHandler, err.Error())
-				return
-			}
-		}
 		// main handler
-		if err := s.mainFrameHandler(c); err != nil {
-			c.Logger.Error("mainFrameHandler error", err)
+		if err := s.frameHandler(c); err != nil {
 			c.CloseWithError(yerr.ErrorCodeMainHandler, err.Error())
 			return
-		}
-		// after frame handler
-		for _, handler := range s.afterHandlers {
-			if err := handler(c); err != nil {
-				c.Logger.Error("afterFrameHandler error", err)
-				c.CloseWithError(yerr.ErrorCodeAfterHandler, err.Error())
-				return
-			}
 		}
 	}
 }
@@ -435,12 +420,6 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 	c.Logger.Info("client is connected!")
 	return nil
 }
-
-// will reuse quic-go's keep-alive feature
-// func (s *Server) handlePingFrame(stream quic.Stream, conn quic.Connection, f *frame.PingFrame) error {
-// 	logger.Infof("%s------> GOT ❤️ PingFrame : %# x", ServerLogPrefix, f)
-// 	return nil
-// }
 
 func (s *Server) handleDataFrame(c *Context) error {
 	// counter +1
@@ -615,14 +594,18 @@ func (s *Server) SetStartHandlers(handlers ...FrameHandler) {
 	s.startHandlers = append(s.startHandlers, handlers...)
 }
 
-// SetBeforeHandlers set the before handlers of server.
-func (s *Server) SetBeforeHandlers(handlers ...FrameHandler) {
-	s.beforeHandlers = append(s.beforeHandlers, handlers...)
-}
-
-// SetAfterHandlers set the after handlers of server.
-func (s *Server) SetAfterHandlers(handlers ...FrameHandler) {
-	s.afterHandlers = append(s.afterHandlers, handlers...)
+// AddFrameHandlers adds handler to server,
+// middlewares executes from left to right.
+func (s *Server) AddFrameHandlers(middlewares ...FrameMiddleware) {
+	s.frameHandler = func(c *Context) error {
+		next := s.mainFrameHandler
+		for i := len(middlewares) - 1; i >= 0; i-- {
+			if err := middlewares[i](next); err != nil {
+				next = middlewares[i](next)
+			}
+		}
+		return next(c)
+	}
 }
 
 // SetConnectionCloseHandlers set the connection close handlers of server.

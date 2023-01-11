@@ -46,12 +46,8 @@ const (
 	ErrorCodeUnknown ErrorCode = 0xC0
 	// ErrorCodeClosed net closed
 	ErrorCodeClosed ErrorCode = 0xC1
-	// ErrorCodeBeforeHandler befor handler
-	ErrorCodeBeforeHandler ErrorCode = 0xC2
 	// ErrorCodeMainHandler main handler
 	ErrorCodeMainHandler ErrorCode = 0xC3
-	// ErrorCodeAfterHandler after handler
-	ErrorCodeAfterHandler ErrorCode = 0xC4
 	// ErrorCodeHandshake handshake frame
 	ErrorCodeHandshake ErrorCode = 0xC5
 	// ErrorCodeRejected server rejected
@@ -72,9 +68,7 @@ var errCodeStringMap = map[ErrorCode]string{
 	ErrorCodeClientAbort:   "ClientAbort",
 	ErrorCodeUnknown:       "UnknownError",
 	ErrorCodeClosed:        "NetClosed",
-	ErrorCodeBeforeHandler: "BeforeHandler",
 	ErrorCodeMainHandler:   "MainHandler",
-	ErrorCodeAfterHandler:  "AfterHandler",
 	ErrorCodeHandshake:     "Handshake",
 	ErrorCodeRejected:      "Rejected",
 	ErrorCodeGoaway:        "Goaway",
