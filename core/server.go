@@ -594,9 +594,10 @@ func (s *Server) SetStartHandlers(handlers ...FrameHandler) {
 	s.startHandlers = append(s.startHandlers, handlers...)
 }
 
-// AddFrameHandlers adds handler to server,
-// middlewares executes from left to right.
-func (s *Server) AddFrameHandlers(middlewares ...FrameMiddleware) {
+// AddFrameMiddleware adds middleware to server,
+// The middleware stack flows in a stack-like manner,
+// allowing you to perform actions frame then filter and manipulate the response frame.
+func (s *Server) AddFrameMiddleware(middlewares ...FrameMiddleware) {
 	s.frameHandler = func(c *Context) error {
 		next := s.mainFrameHandler
 		for i := len(middlewares) - 1; i >= 0; i-- {

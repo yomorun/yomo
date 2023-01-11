@@ -53,7 +53,7 @@ func TestFrameRoundTrip(t *testing.T) {
 	// test server hooks
 	ht := &hookTester{t}
 	server.SetStartHandlers(ht.startHandler)
-	server.AddFrameHandlers(ht.one(), ht.two())
+	server.AddFrameMiddleware(ht.one(), ht.two())
 
 	w := newMockFrameWriter()
 	server.AddDownstreamServer("mockAddr", w)
