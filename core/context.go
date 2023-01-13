@@ -82,20 +82,13 @@ func (c *Context) Get(key string) (any, bool) {
 var _ context.Context = &Context{}
 
 // Done returns nil (chan which will wait forever) when c.Stream.Context() has no Context.
-func (c *Context) Done() <-chan struct{} {
-	if c.Stream.Context() == nil {
-		return nil
-	}
-	return c.Stream.Context().Done()
-}
+func (c *Context) Done() <-chan struct{} { return c.Stream.Context().Done() }
 
 // Deadline returns that there is no deadline (ok==false) when c.Stream has no Context.
-func (c *Context) Deadline() (deadline time.Time, ok bool) {
-	if c.Stream.Context() == nil {
-		return
-	}
-	return c.Stream.Context().Deadline()
-}
+func (c *Context) Deadline() (deadline time.Time, ok bool) { return c.Stream.Context().Deadline() }
+
+// Err returns nil when c.Request has no Context.
+func (c *Context) Err() error { return c.Stream.Context().Err() }
 
 // Value returns the value associated with this context for key, or nil
 // if no value is associated with key. Successive calls to Value with
@@ -106,18 +99,7 @@ func (c *Context) Value(key any) any {
 			return val
 		}
 	}
-	if c.Stream.Context() == nil {
-		return nil
-	}
 	return c.Stream.Context().Value(key)
-}
-
-// Err returns nil when c.Request has no Context.
-func (c *Context) Err() error {
-	if c.Stream.Context() == nil {
-		return nil
-	}
-	return c.Stream.Context().Err()
 }
 
 // newContext returns a yomo context,
@@ -238,6 +220,7 @@ type ContextWriterCloser interface {
 	// It must not be called after calling CancelWrite.
 	io.Closer
 	// Context returns a context that is cancelled when the stream is closed.
+	// According to quic.go implement, Context can't be nil.
 	Context() context.Context
 }
 
