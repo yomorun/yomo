@@ -113,6 +113,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 	for {
 		// create a new connection when new yomo-client connected
 		sctx, cancel := context.WithCancel(ctx)
+		// TODO: integrate cancel to Context
 		defer cancel()
 
 		conn, err := s.listener.Accept(sctx)

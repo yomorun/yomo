@@ -2,6 +2,7 @@ package core
 
 import (
 	"bytes"
+	"context"
 	"sync"
 	"testing"
 
@@ -205,7 +206,7 @@ func TestHandShake(t *testing.T) {
 		{
 			name: "test source: auth failed and return GoawayFrame",
 			args: args{
-				clientID:                 "mock-client-id",
+				clientID:                 "127.0.0.1:1111",
 				token:                    "token-mock",
 				clientType:               byte(ClientTypeSource),
 				stream:                   newStreamAssert([]byte{}),
@@ -220,7 +221,7 @@ func TestHandShake(t *testing.T) {
 		{
 			name: "test sfn: handshake success",
 			args: args{
-				clientID:                 "mock-client-id",
+				clientID:                 "127.0.0.1:1111",
 				token:                    "token-for-test", // equal `tokenAuth` token for passing auth
 				clientType:               byte(ClientTypeStreamFunction),
 				stream:                   newStreamAssert([]byte{}),
@@ -235,7 +236,7 @@ func TestHandShake(t *testing.T) {
 		{
 			name: "test sfn: duplicate name and return GowayFrame",
 			args: args{
-				clientID:                 "mock-client-id",
+				clientID:                 "127.0.0.1:1111",
 				token:                    "token-for-test", // equal `tokenAuth` token for passing auth
 				clientType:               byte(ClientTypeStreamFunction),
 				stream:                   newStreamAssert([]byte{}),
@@ -254,7 +255,7 @@ func TestHandShake(t *testing.T) {
 		{
 			name: "test upstream zipper: handshake success",
 			args: args{
-				clientID:                 "mock-client-id",
+				clientID:                 "127.0.0.1:1111",
 				token:                    "token-for-test", // equal `tokenAuth` token for passing auth
 				clientType:               byte(ClientTypeUpstreamZipper),
 				stream:                   newStreamAssert([]byte{}),
@@ -269,7 +270,7 @@ func TestHandShake(t *testing.T) {
 		{
 			name: "test unknown client: handshake failed",
 			args: args{
-				clientID:                 "mock-client-id",
+				clientID:                 "127.0.0.1:1111",
 				token:                    "token-for-test", // equal `tokenAuth` token for passing auth
 				clientType:               0x7b,             // the unknown clientType
 				stream:                   newStreamAssert([]byte{}),
@@ -304,12 +305,13 @@ func TestHandShake(t *testing.T) {
 				clientName = tt.args.clientName
 			)
 
-			c := &Context{
-				connID: clientID,
-				Stream: stream,
-				Frame:  frame.NewHandshakeFrame(clientName, clientID, clientType, []frame.Tag{frame.Tag(1)}, "token", token),
-				Logger: server.logger,
-			}
+			c := newContext(
+				&mockConn{baseCtx: context.Background(), connID: clientID},
+				stream,
+				server.logger,
+			).WithFrame(
+				frame.NewHandshakeFrame(clientName, clientID, clientType, []frame.Tag{frame.Tag(1)}, "token", token),
+			)
 
 			for n := 0; n < tt.handshakeTimes; n++ {
 				// TODO: this function should not return an error,
@@ -350,6 +352,8 @@ func newStreamAssert(initdata []byte) *streamAssert {
 
 	return &streamAssert{w: w, r: r}
 }
+
+func (s *streamAssert) Context() context.Context { return context.TODO() }
 
 func (s *streamAssert) Read(p []byte) (n int, err error) {
 	s.mu.Lock()
