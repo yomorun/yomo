@@ -206,7 +206,7 @@ func (c *Context) reset() {
 	}
 }
 
-// QuicConnectionCloser represents a quic.Connection that can be close,
+// QuicConnCloser represents a quic.Connection that can be close,
 // the quic.Connection don't accept stream in Context scope.
 type QuicConnCloser interface {
 	// LocalAddr returns the local address.
