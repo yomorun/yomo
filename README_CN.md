@@ -23,19 +23,19 @@ For english, check: [Github](https://github.com/yomorun/yomo)
 #### Binary (推荐)
 
 ```bash
-$ curl -fsSL "https://bina.egoist.sh/yomorun/cli?name=yomo" | sh
+$ curl -fsSL https://get.yomo.run | sh
 ```
 
 #### 或者也通过以下方式安装 YoMo CLI
 
 ```bash
-$ go install github.com/yomorun/cli/yomo@latest
+$ go install github.com/yomorun/yomo/cmd/yomo@latest
 ```
 
 或者也可以将 CLI 安装在不同的目录：
 
 ```sh
-$ env GOBIN=/bin go install github.com/yomorun/cli/yomo@latest
+$ env GOBIN=/bin go install github.com/yomorun/yomo/cmd/yomo@latest
 ```
 
 #### 验证 CLI 是否成功安装
