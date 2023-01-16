@@ -99,6 +99,7 @@ func (c *Context) Value(key any) any {
 			return val
 		}
 	}
+	// There always returns nil, because quic.Stream.Context is not be allowed modify.
 	return c.Stream.Context().Value(key)
 }
 
