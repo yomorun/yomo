@@ -40,6 +40,8 @@ func newContext(conn quic.Connection, stream quic.Stream, mb metadata.Builder, l
 	} else {
 		ctx = v.(*Context)
 	}
+
+	ctx.mb = mb
 	ctx.Conn = conn
 	ctx.Stream = stream
 	ctx.connID = conn.RemoteAddr().String()
@@ -108,6 +110,7 @@ func (c *Context) reset() {
 	c.Stream = nil
 	c.Frame = nil
 	c.Logger = nil
+	c.mb = nil
 	for k := range c.Keys {
 		delete(c.Keys, k)
 	}
