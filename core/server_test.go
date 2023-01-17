@@ -308,10 +308,18 @@ func TestHandShake(t *testing.T) {
 			c := newContext(
 				&mockConn{baseCtx: context.Background(), connID: clientID},
 				stream,
+				server.metadataBuilder,
 				server.logger,
-			).WithFrame(
+			)
+
+			err := c.WithFrame(
 				frame.NewHandshakeFrame(clientName, clientID, clientType, []frame.Tag{frame.Tag(1)}, "token", token),
 			)
+
+			if err != nil {
+				assert.NoError(t, err)
+				return
+			}
 
 			for n := 0; n < tt.handshakeTimes; n++ {
 				// TODO: this function should not return an error,

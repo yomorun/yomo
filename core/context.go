@@ -9,6 +9,7 @@ import (
 
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/yerr"
 	"golang.org/x/exp/slog"
 )
@@ -35,26 +36,13 @@ type Context struct {
 	// It is Lazy initialized.
 	Keys map[string]any
 
+	metadataBuilder metadata.Builder
+
 	Logger *slog.Logger
 }
 
-// ClientInfoKey is the key that a Context returns ClientInfo for
-const ClientInfoKey = "_yomo/clientinfo"
-
-// ClientInfo holds client info,
-// Using `*Context.ClientInfo()` to get it after handshake.
-type ClientInfo struct {
-	// ID is client id from handshake.
-	ID string
-	// Type is client type from handshake.
-	Type byte
-	// Name is client name from handshake.
-	Name string
-	// AuthName is client authName from handshake.
-	AuthName string
-	// Metadata is client metadata built from metadata.Builder.
-	Metadata []byte
-}
+// ConnectionInfoKey is the key that a Context returns ClientInfo for
+const ConnectionInfoKey = "_yomo/connectioninfo"
 
 // Set is used to store a new key/value pair exclusively for this context.
 // It also lazy initializes  c.Keys if it was not used previously.
@@ -106,7 +94,7 @@ func (c *Context) Value(key any) any {
 // newContext returns a yomo context,
 // The context implements standard library `context.Context` interface,
 // The lifecycle of Context is equal to stream's taht be passed in.
-func newContext(conn QuicConnCloser, stream ContextWriterCloser, logger *slog.Logger) (ctx *Context) {
+func newContext(conn QuicConnCloser, stream ContextWriterCloser, mb metadata.Builder, logger *slog.Logger) (ctx *Context) {
 	v := ctxPool.Get()
 	if v == nil {
 		ctx = new(Context)
@@ -117,54 +105,54 @@ func newContext(conn QuicConnCloser, stream ContextWriterCloser, logger *slog.Lo
 	ctx.Conn = conn
 	ctx.Stream = stream
 	ctx.connID = conn.RemoteAddr().String()
+	ctx.metadataBuilder = mb
 	ctx.Logger = logger.With("conn_id", conn.RemoteAddr().String())
 	return
 }
 
-// ClientInfo get client info from Context.
-func (c *Context) ClientInfo() (*ClientInfo, bool) {
+// ConnectionInfo get connection info from Context.
+func (c *Context) ConnectionInfo() (ConnectionInfo, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	v, ok := c.Keys[ClientInfoKey]
+	v, ok := c.Keys[ConnectionInfoKey]
 	if ok {
-		return v.(*ClientInfo), true
+		return v.(ConnectionInfo), true
 	}
 	return nil, false
 }
 
 // WithFrame sets a frame to context.
-func (c *Context) WithFrame(f frame.Frame) *Context {
+func (c *Context) WithFrame(f frame.Frame) error {
 	switch f.Type() {
 	// It represents new client coming if the frame is handshakeFrame,
 	// Store client info to logger and context.
 	case frame.TagOfHandshakeFrame:
 		handshakeFrame := f.(*frame.HandshakeFrame)
-		c.Set(ClientInfoKey, &ClientInfo{
-			ID:       handshakeFrame.ClientID,
-			Type:     handshakeFrame.ClientType,
-			Name:     handshakeFrame.Name,
-			AuthName: handshakeFrame.AuthName(),
+
+		md, err := c.metadataBuilder.Build(handshakeFrame)
+		if err != nil {
+			return err
+		}
+
+		c.Set(ConnectionInfoKey, &connection{
+			name:       handshakeFrame.Name,
+			clientType: ClientType(handshakeFrame.ClientType),
+			metadata:   md,
+			clientID:   handshakeFrame.ClientID,
 		})
+
 		c.Logger = c.Logger.With(
 			"client_id", handshakeFrame.ClientID,
 			"client_type", ClientType(handshakeFrame.ClientType).String(),
 			"client_name", handshakeFrame.Name,
 			"auth_name", handshakeFrame.AuthName(),
 		)
-	// Append dataFrame's metadata to context.
-	case frame.TagOfDataFrame:
-		dataFrame := f.(*frame.DataFrame)
-		clientInfo, ok := c.ClientInfo()
-		if ok {
-			clientInfo.Metadata = dataFrame.GetMetaFrame().Metadata()
-			c.Set(ClientInfoKey, clientInfo)
-		}
 	}
 
 	c.Frame = f
 
-	return c
+	return nil
 }
 
 // Clean cleans the Context,
@@ -183,6 +171,7 @@ func (c *Context) reset() {
 	c.connID = ""
 	c.Stream = nil
 	c.Frame = nil
+	c.metadataBuilder = nil
 	c.Logger = nil
 	for k := range c.Keys {
 		delete(c.Keys, k)

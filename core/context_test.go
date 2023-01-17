@@ -11,6 +11,7 @@ import (
 	"github.com/lucas-clemente/quic-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/yerr"
 	"github.com/yomorun/yomo/core/ylog"
 	"golang.org/x/exp/slog"
@@ -33,52 +34,51 @@ func TestContext(t *testing.T) {
 		DisableTime: true,
 	}))
 
-	c := newContext(&mockConn{baseCtx: sctx, connID: "101.102.103.104:0"}, stream, logger)
+	c := newContext(&mockConn{baseCtx: sctx, connID: "101.102.103.104:0"}, stream, metadata.DefaultBuilder(), logger)
 
-	clientInfo := &ClientInfo{
-		ID:       "xxxxx",
-		Type:     byte(ClientTypeSource),
-		Name:     "yomo",
-		AuthName: "token",
-		Metadata: nil,
+	connInfo := &connection{
+		clientID:   "xxxxx",
+		clientType: ClientTypeSource,
+		name:       "yomo",
+		metadata:   &metadata.Default{},
 	}
 
 	handshakeFrame := frame.NewHandshakeFrame(
-		clientInfo.Name,
-		clientInfo.ID,
-		clientInfo.Type,
+		connInfo.name,
+		connInfo.clientID,
+		byte(connInfo.clientType),
 		[]frame.Tag{frame.Tag('a')},
-		clientInfo.AuthName,
+		"token",
 		"key|value",
 	)
 
-	c = c.WithFrame(handshakeFrame)
+	if err := c.WithFrame(handshakeFrame); err != nil {
+		assert.NoError(t, err)
+		return
+	}
 
 	c.Logger.Debug("hello")
 	logdata, err := os.ReadFile(logpath)
 	assert.NoError(t, err)
 	assert.Equal(t, string(logdata), "level=DEBUG msg=hello conn_id=101.102.103.104:0 client_id=xxxxx client_type=Source client_name=yomo auth_name=token\n")
 
-	ctxCientInfo, ok := c.ClientInfo()
+	ctxConnInfo, ok := c.ConnectionInfo()
 	assert.True(t, ok)
-	assert.Equal(t, ctxCientInfo, clientInfo)
+	assert.Equal(t, ctxConnInfo, connInfo)
 
 	metadata := []byte("moc-metadata")
 
 	dataFrame := frame.NewDataFrame()
 	dataFrame.GetMetaFrame().SetMetadata(metadata)
 
-	c = c.WithFrame(dataFrame)
+	if err := c.WithFrame(dataFrame); err != nil {
+		assert.NoError(t, err)
+		return
+	}
 
-	ctxCientInfo, ok = c.ClientInfo()
+	ctxConnInfo, ok = c.ConnectionInfo()
 	assert.True(t, ok)
-	assert.Equal(t, ctxCientInfo, &ClientInfo{
-		ID:       clientInfo.ID,
-		Type:     clientInfo.Type,
-		Name:     clientInfo.Name,
-		AuthName: clientInfo.AuthName,
-		Metadata: metadata,
-	})
+	assert.Equal(t, ctxConnInfo, connInfo)
 
 	c.Logger.Debug("logtwice")
 	logdata, err = os.ReadFile(logpath)
@@ -107,6 +107,8 @@ func TestContextErr(t *testing.T) {
 		DisableTime: true,
 	}))
 
+	mb := metadata.DefaultBuilder()
+
 	t.Run("Clean Context", func(t *testing.T) {
 		var assertAfterClean = func(t *testing.T, c *Context) {
 			assert.Nil(t, c.Conn)
@@ -115,24 +117,24 @@ func TestContextErr(t *testing.T) {
 			assert.Equal(t, c.connID, "")
 			assert.Contains(t, []any{map[string]any(nil), map[string]any{}}, c.Keys)
 		}
-		c := newContext(&mockConn{baseCtx: sctx, connID: "101.102.103.104:0"}, stream, logger)
+		c := newContext(&mockConn{baseCtx: sctx, connID: "101.102.103.104:0"}, stream, mb, logger)
 		c.Clean()
 		assertAfterClean(t, c)
 
 		// new twice
-		c = newContext(&mockConn{baseCtx: sctx, connID: "101.102.103.104:0"}, stream, logger)
+		c = newContext(&mockConn{baseCtx: sctx, connID: "101.102.103.104:0"}, stream, mb, logger)
 		c.Set("a", "b")
 		c.Clean()
 		assertAfterClean(t, c)
 	})
 
 	t.Run("normal Context", func(t *testing.T) {
-		c := newContext(&mockConn{baseCtx: sctx, connID: "101.102.103.104:0"}, stream, logger)
+		c := newContext(&mockConn{baseCtx: sctx, connID: "101.102.103.104:0"}, stream, mb, logger)
 		assert.NoError(t, c.Err())
 	})
 
 	t.Run("Close Context", func(t *testing.T) {
-		c := newContext(&mockConn{baseCtx: sctx, connID: "101.102.103.104:0"}, stream, logger)
+		c := newContext(&mockConn{baseCtx: sctx, connID: "101.102.103.104:0"}, stream, mb, logger)
 		c.CloseWithError(yerr.ErrorCodeClosed, "closed")
 
 		cancel()

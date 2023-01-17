@@ -9,11 +9,9 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-// Connection wraps the specific io connections (typically quic.Connection) to transfer y3 frames
-type Connection interface {
-	io.Closer
-
-	// Name returns the name of the connection, which is set by clients
+// ConnectionInfo holds connection informations.
+type ConnectionInfo interface {
+	// Name returns the name of the connection, which is set by clients.
 	Name() string
 	// ClientID connection client ID
 	ClientID() string
@@ -21,8 +19,18 @@ type Connection interface {
 	ClientType() ClientType
 	// Metadata returns the extra info of the application
 	Metadata() metadata.Metadata
-	// Write should goroutine-safely send y3 frames to peer side
-	Write(f frame.Frame) error
+}
+
+// Connection wraps the specific io connections (typically quic.Connection) to transfer y3 frames
+type Connection interface {
+	io.Closer
+
+	ConnectionInfo
+
+	// Write writes frame to underlying stream.
+	// Write should goroutine-safely send y3 frames to peer side.
+	frame.Writer
+
 	// ObserveDataTags observed data tags
 	ObserveDataTags() []frame.Tag
 }
@@ -82,13 +90,12 @@ func (c *connection) ClientType() ClientType {
 	return c.clientType
 }
 
-// Metadata returns the extra info of the application
+// Metadata returns the extra info of the application.
 func (c *connection) Metadata() metadata.Metadata {
 	return c.metadata
 }
 
-// Write should goroutine-safely send y3 frames to peer side
-func (c *connection) Write(f frame.Frame) error {
+func (c *connection) WriteFrame(f frame.Frame) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.closed {

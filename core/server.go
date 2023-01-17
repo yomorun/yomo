@@ -221,7 +221,7 @@ func (s *Server) handshakeWithTimeout(conn quic.Connection, stream quic.Stream, 
 func (s *Server) handshake(conn quic.Connection, stream quic.Stream, fs frame.ReadWriter) (*Context, bool) {
 	frm, err := fs.ReadFrame()
 
-	c := newContext(conn, stream, s.logger)
+	c := newContext(conn, stream, s.metadataBuilder, s.logger)
 
 	if err != nil {
 		if err := fs.WriteFrame(frame.NewGoawayFrame(err.Error())); err != nil {
@@ -230,7 +230,12 @@ func (s *Server) handshake(conn quic.Connection, stream quic.Stream, fs frame.Re
 		return c, false
 	}
 
-	c = c.WithFrame(frm)
+	if err := c.WithFrame(frm); err != nil {
+		if err := fs.WriteFrame(frame.NewGoawayFrame(err.Error())); err != nil {
+			s.logger.Error("write to client GoawayFrame error", err)
+		}
+		return c, false
+	}
 
 	if frm.Type() != frame.TagOfHandshakeFrame {
 		c.Logger.Info("client not do handshake right off")
@@ -309,7 +314,9 @@ func (s *Server) handleConnection(c *Context) {
 		}
 
 		// add frame to context
-		c := c.WithFrame(f)
+		if err := c.WithFrame(f); err != nil {
+			c.CloseWithError(yerr.ErrorCodeGoaway, err.Error())
+		}
 
 		// before frame handlers
 		for _, handler := range s.beforeHandlers {
@@ -407,7 +414,7 @@ func (s *Server) handleHandshakeFrame(c *Context) error {
 					if conn := s.connector.Get(existsConnID); conn != nil {
 						c.Logger.Debug("write GoawayFrame", "error", e.Error(), "exists_conn_id", existsConnID)
 						goawayFrame := frame.NewGoawayFrame(e.Error())
-						if err := conn.Write(goawayFrame); err != nil {
+						if err := conn.WriteFrame(goawayFrame); err != nil {
 							c.Logger.Error("write GoawayFrame failed", err)
 							return err
 						}
@@ -492,7 +499,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 		)
 
 		// write data frame to stream
-		if err := conn.Write(f); err != nil {
+		if err := conn.WriteFrame(f); err != nil {
 			c.Logger.Error("handleDataFrame conn.Write", err)
 		}
 	}
@@ -511,7 +518,7 @@ func (s *Server) handleBackflowFrame(c *Context) error {
 	for _, source := range sourceConns {
 		if source != nil {
 			c.Logger.Info("handleBackflowFrame", "source_conn_id", sourceID, "back_flow_frame", f.String())
-			if err := source.Write(bf); err != nil {
+			if err := source.WriteFrame(bf); err != nil {
 				c.Logger.Error("handleBackflowFrame conn.Write", err)
 				return err
 			}
