@@ -220,7 +220,7 @@ func (s *Server) handshakeWithTimeout(conn quic.Connection, stream quic.Stream, 
 func (s *Server) handshake(conn quic.Connection, stream quic.Stream, fs frame.ReadWriter) (*Context, bool) {
 	frm, err := fs.ReadFrame()
 
-	c := newContext(conn, stream, s.logger)
+	c := newContext(conn, stream, s.metadataBuilder, s.logger)
 
 	if err != nil {
 		if err := fs.WriteFrame(frame.NewGoawayFrame(err.Error())); err != nil {

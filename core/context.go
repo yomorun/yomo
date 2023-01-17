@@ -7,6 +7,7 @@ import (
 
 	"github.com/lucas-clemente/quic-go"
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/yerr"
 	"golang.org/x/exp/slog"
 )
@@ -27,10 +28,12 @@ type Context struct {
 
 	mu sync.RWMutex
 
+	mb metadata.Builder
+
 	Logger *slog.Logger
 }
 
-func newContext(conn quic.Connection, stream quic.Stream, logger *slog.Logger) (ctx *Context) {
+func newContext(conn quic.Connection, stream quic.Stream, mb metadata.Builder, logger *slog.Logger) (ctx *Context) {
 	v := ctxPool.Get()
 	if v == nil {
 		ctx = new(Context)
@@ -56,6 +59,8 @@ type ClientInfo struct {
 	Name string
 	// AuthName is client authName from handshake.
 	AuthName string
+	// MetadataFunc is function to build and return client metadata.
+	MetadataFunc func() (metadata.Metadata, error)
 }
 
 // ClientInfo get client info from context.
@@ -77,11 +82,13 @@ func (c *Context) WithFrame(f frame.Frame) *Context {
 			"client_name", handshakeFrame.Name,
 			"auth_name", handshakeFrame.AuthName(),
 		)
+
 		c.Set(clientInfoKey, &ClientInfo{
-			ID:       handshakeFrame.ClientID,
-			Type:     handshakeFrame.ClientType,
-			Name:     handshakeFrame.Name,
-			AuthName: handshakeFrame.AuthName(),
+			ID:           handshakeFrame.ClientID,
+			Type:         handshakeFrame.ClientType,
+			Name:         handshakeFrame.Name,
+			AuthName:     handshakeFrame.AuthName(),
+			MetadataFunc: func() (metadata.Metadata, error) { return c.mb.Build(handshakeFrame) },
 		})
 	}
 	c.Frame = f
