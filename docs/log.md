@@ -34,4 +34,10 @@ sfn  := yomo.NewStreamFunction (
 - `YOMO_LOG_ERROR_OUTPUT` When an error occurs, output the message to the specified file, the default is stderr
 
 - `YOMO_DEBUG_FRAME_SIZE` Set the output size in debug mode `Frame`, the default is 16 bytes
-- - `YOMO_LOG_VERBOSE` enable or disable the debug mode of logger, logger outputs the source code position of the log statement if enable it, Do not enable it in production, default is false
+- `YOMO_LOG_VERBOSE` enable or disable the debug mode of logger, logger outputs the source code position of the log statement if enable it, Do not enable it in production, default is false
+- `YOMO_LOG_FORMAT` Format supports text and json, The default is text
+- `YOMO_LOG_MAX_SIZE` MaxSize is the maximum size in megabytes of the log file before it gets rotated. It defaults to 100 megabytes
+- `YOMO_LOG_MAX_BACKUPS` MaxBackups is the maximum number of old log files to retain. The default is to retain all old log files (though MaxAge may still cause them to get deleted.)
+- `YOMO_LOG_MAX_AGE` MaxAge is the maximum number of days to retain old log files based on the timestamp encoded in their filename. The default is not to remove old log files based on age
+- `YOMO_LOG_LOCAL_TIME` LocalTime determines if the time used for formatting the timestamps in backup files is the computer's local time. The default is to use UTC time
+- `YOMO_LOG_COMPRESS` Compress determines if the rotated log files should be compressed using gzip. The default is not to perform compression

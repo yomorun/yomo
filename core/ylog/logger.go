@@ -51,17 +51,41 @@ type Config struct {
 	// Verbose indicates if logger log code line, use false for production.
 	Verbose bool `env:"YOMO_LOG_VERBOSE" envDefault:"false"`
 
-	// the log level, It can be one of `debug`, `info`, `warn`, `error`
+	// Level can be one of `debug`, `info`, `warn`, `error`
 	Level string `env:"YOMO_LOG_LEVEL" envDefault:"info"`
 
-	// log output file path, It's stdout if not set.
+	// Output is the filename of log file,
+	// The default is stdout.
 	Output string `env:"YOMO_LOG_OUTPUT"`
 
-	// error log output file path, It's stderr if not set.
+	// ErrorOutput is the filename of errlog file,
+	// The default is stderr.
 	ErrorOutput string `env:"YOMO_LOG_ERROR_OUTPUT"`
 
-	// log format, support text and json.
+	// Format supports text and json,
+	// The default is text.
 	Format string `env:"YOMO_LOG_FORMAT" envDefault:"text"`
+
+	// MaxSize is the maximum size in megabytes of the log file before it gets rotated.
+	// It defaults to 100 megabytes.
+	MaxSize int `env:"YOMO_LOG_MAX_SIZE"`
+
+	// MaxBackups is the maximum number of old log files to retain.
+	// The default is to retain all old log files (though MaxAge may still cause them to get deleted.)
+	MaxBackups int `env:"YOMO_LOG_MAX_BACKUPS"`
+
+	// MaxAge is the maximum number of days to retain old log files based on the timestamp encoded in their filename.
+	// Note that a day is defined as 24 hours and may not exactly correspond to calendar days due to daylight savings, leap seconds, etc.
+	// The default is not to remove old log files based on age.
+	MaxAge int `env:"YOMO_LOG_MAX_AGE"`
+
+	// LocalTime determines if the time used for formatting the timestamps in backup files is the computer's local time.
+	// The default is to use UTC time.
+	LocalTime bool `env:"YOMO_LOG_LOCAL_TIME"`
+
+	// Compress determines if the rotated log files should be compressed using gzip.
+	// The default is not to perform compression.
+	Compress bool `env:"YOMO_LOG_COMPRESS"`
 
 	// DisableTime disable time key, It's a pravited field, Just for testing.
 	DisableTime bool
@@ -96,26 +120,25 @@ func NewFromConfig(conf Config) *slog.Logger {
 	return slog.New(NewHandlerFromConfig(conf))
 }
 
-func parseToWriter(path string, defaultWriter io.Writer) (io.Writer, error) {
+func parseToWriter(conf Config, path string, defaultWriter io.Writer) io.Writer {
 	switch strings.ToLower(path) {
 	case "stdout":
-		return os.Stdout, nil
+		return os.Stdout
 	case "stderr":
-		return os.Stderr, nil
+		return os.Stderr
 	default:
 		if path != "" {
-			return &lumberjack.Logger{Filename: path, MaxSize: 1024, MaxBackups: 30, MaxAge: 7}, nil
+			return &lumberjack.Logger{
+				Filename:   path,
+				MaxSize:    conf.MaxSize,
+				MaxAge:     conf.MaxAge,
+				MaxBackups: conf.MaxBackups,
+				LocalTime:  conf.LocalTime,
+				Compress:   conf.Compress,
+			}
 		}
-		return defaultWriter, nil
+		return defaultWriter
 	}
-}
-
-func mustParseToWriter(path string, defaultWriter io.Writer) io.Writer {
-	w, err := parseToWriter(path, defaultWriter)
-	if err != nil {
-		panic(err)
-	}
-	return w
 }
 
 func parseToSlogLevel(stringLevel string) slog.Level {
