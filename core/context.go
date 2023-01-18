@@ -94,19 +94,19 @@ func (c *Context) Value(key any) any {
 // newContext returns a yomo context,
 // The context implements standard library `context.Context` interface,
 // The lifecycle of Context is equal to stream's taht be passed in.
-func newContext(conn QuicConnCloser, stream ContextWriterCloser, mb metadata.Builder, logger *slog.Logger) (ctx *Context) {
+func newContext(conn QuicConnCloser, stream ContextWriterCloser, mb metadata.Builder, logger *slog.Logger) (c *Context) {
 	v := ctxPool.Get()
 	if v == nil {
-		ctx = new(Context)
+		c = new(Context)
 	} else {
-		ctx = v.(*Context)
+		c = v.(*Context)
 	}
 
-	ctx.Conn = conn
-	ctx.Stream = stream
-	ctx.connID = conn.RemoteAddr().String()
-	ctx.metadataBuilder = mb
-	ctx.Logger = logger.With("conn_id", conn.RemoteAddr().String())
+	c.Conn = conn
+	c.Stream = stream
+	c.connID = conn.RemoteAddr().String()
+	c.metadataBuilder = mb
+	c.Logger = logger.With("conn_id", conn.RemoteAddr().String())
 	return
 }
 
