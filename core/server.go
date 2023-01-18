@@ -111,12 +111,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 	s.logger.Info("Listening", "pid", os.Getpid(), "quic", listener.Versions(), "auth_name", s.authNames())
 
 	for {
-		// create a new connection when new yomo-client connected
-		sctx, cancel := context.WithCancel(ctx)
-		// TODO: integrate cancel to Context
-		defer cancel()
-
-		conn, err := s.listener.Accept(sctx)
+		conn, err := s.listener.Accept(ctx)
 		if err != nil {
 			s.logger.Error("listener accept connections error", err)
 			return err
@@ -133,7 +128,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		connID := GetConnID(conn)
 		s.logger.Info(" new connection", "conn_id", connID)
 
-		go func(ctx context.Context, qconn quic.Connection) {
+		go func(qconn quic.Connection) {
 			// connection close handlers on client connect timeout
 			defer s.doConnectionCloseHandlers(qconn)
 			for {
@@ -185,7 +180,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 				s.handleConnection(yctx)
 				yctx.Logger.Info("stream handleConnection DONE")
 			}
-		}(sctx, conn)
+		}(conn)
 	}
 }
 
