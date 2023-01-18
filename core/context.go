@@ -216,7 +216,7 @@ type ContextWriterCloser interface {
 
 // CloseWithError closes the stream and cleans the context.
 func (c *Context) CloseWithError(code yerr.ErrorCode, msg string) {
-	c.Logger.Debug("conn context close, ", "err_code", code, "err_msg", msg)
+	c.Logger.Debug("conn context close", "err_code", code, "err_msg", msg)
 
 	if c.Stream != nil {
 		c.Stream.Close()

@@ -126,7 +126,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		// defer s.doConnectionCloseHandlers(conn)
 		s.wg.Add(1)
 		connID := GetConnID(conn)
-		s.logger.Info(" new connection", "conn_id", connID)
+		s.logger.Info("new connection", "conn_id", connID)
 
 		go func(qconn quic.Connection) {
 			// connection close handlers on client connect timeout
