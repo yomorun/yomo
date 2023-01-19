@@ -42,7 +42,6 @@ archive-release-linux-amd64:
 	rm -rf bin/yomo
 	GOARCH=amd64 GOOS=linux $(GO) build -o bin/yomo -ldflags "-s -w ${GO_LDFLAGS}" ../cmd/yomo/main.go
 	tar -C ./bin -czf bin/yomo-${VER}-x86_64-Linux.tar.gz yomo
-	make bina
 
 archive-release-linux-arm64:
 	rm -rf bin/yomo
@@ -67,7 +66,9 @@ build-w-sym:
 	GOARCH=amd64 GOOS=linux $(GO) build -o bin/yomo -ldflags "${GO_LDFLAGS}" -gcflags=-l ../cmd/yomo/main.go
 
 bina:
-	@echo ${bina_json} > ./bin/bina.json
+	mkdir -p bin
+	rm -rf bin/bina.json
+	@echo ${bina_json} > bin/bina.json
 
 cli_version:
 	@echo ${VER} > ./VERSION
