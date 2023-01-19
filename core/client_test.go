@@ -139,7 +139,7 @@ func (a *hookTester) afterHandler(ctx *Context) error {
 	assert.True(a.t, ok)
 	assert.Equal(a.t, v, "yes")
 
-	v, ok = ctx.Get("before")
+	v = ctx.Value("before")
 	assert.True(a.t, ok)
 	assert.Equal(a.t, v, "ok")
 
