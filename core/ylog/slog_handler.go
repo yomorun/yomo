@@ -68,8 +68,8 @@ func NewHandlerFromConfig(conf Config) slog.Handler {
 	return &handler{
 		Handler:   h,
 		buf:       buf,
-		writer:    mustParseToWriter(conf.Output, os.Stdout),
-		errWriter: mustParseToWriter(conf.ErrorOutput, os.Stderr),
+		writer:    parseToWriter(conf, conf.Output, os.Stdout),
+		errWriter: parseToWriter(conf, conf.ErrorOutput, os.Stderr),
 	}
 }
 

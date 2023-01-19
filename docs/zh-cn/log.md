@@ -33,3 +33,9 @@ sfn := yomo.NewStreamFunction(
 - `YOMO_LOG_ERROR_OUTPUT` 设置发生错误时，将消息输出到指定文件，默认输出到 stderr
 - `YOMO_DEBUG_FRAME_SIZE`  设置调试模式下输出`Frame`大小，默认 16 个字节                   
 - `YOMO_LOG_VERBOSE` 设置是否打开 log 的 debug 模式，debug 模式下，日志会输出打印日志的代码行数，不建议在生产环境打开，默认是 false
+- `YOMO_LOG_FORMAT` 日志格式，可选 json 和 text，默认为 test
+- `YOMO_LOG_MAX_SIZE` 单个日志文件的最大值，单位是 mb，默认为 100
+- `YOMO_LOG_MAX_BACKUPS` 最多存放日志文件数量，默认是永远不删除日志文件
+- `YOMO_LOG_MAX_AGE` 日志最多可以存放几天，默认永远不删除日志文件
+- `YOMO_LOG_LOCAL_TIME` 是否使用时间戳作为 backup 日志的文件名字，默认使用
+- `YOMO_LOG_COMPRESS` 是否对 backup 日志文件使用 gzip压缩，默认不使用
