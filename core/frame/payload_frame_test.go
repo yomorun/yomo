@@ -11,6 +11,7 @@ func TestPayloadFrameEncode(t *testing.T) {
 		Tag(0x13),
 		[]byte("yomo"),
 	}
+	f.SetCarriage([]byte("yomo"))
 	assert.Equal(t, []byte{0x80 | byte(TagOfPayloadFrame), 0x9, 0x1, 0x1, 0x13, 0x2, 0x04, 0x79, 0x6F, 0x6D, 0x6F}, f.Encode())
 }
 
