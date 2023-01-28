@@ -1,11 +1,11 @@
 [package]
 name = "yomo"
-version = "0.1.0"
+version = "0.1.3"
 edition = "2021"
-description = "The [YoMo](https://github.com/yomorun/yomo) Rust WebAssembly development sdk."
+description = "YoMo Rust development sdk."
 license = "Apache-2.0"
 authors = ["YoMo Contributors"]
-repository = "https://github.com/yomorun/yomo/cli/serverless/wasm/rust-crate"
+repository = "https://github.com/yomorun/yomo/tree/master/cli/serverless/wasm/rust-crate"
 
 [lib]
 proc_macro = true

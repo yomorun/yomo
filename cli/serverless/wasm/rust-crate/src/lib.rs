@@ -1,3 +1,7 @@
+//! # YoMo Rust development sdk
+//!
+//! This crate is designed for developers to implementing their own YoMo applications with Rust language.
+
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 use syn::{parse_macro_input, parse_quote, ItemFn};
