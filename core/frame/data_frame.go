@@ -150,7 +150,7 @@ func DecodeToDataFrame(buf []byte) (*DataFrame, error) {
 		return nil, err
 	}
 
-	data := NewDataFrame()
+	data := newDataFrame()
 
 	if metaBlock, ok := packet.NodePackets[byte(TagOfMetaFrame)]; ok {
 		err := DecodeToMetaFrame(metaBlock.GetRawBytes(), data.metaFrame)
