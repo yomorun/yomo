@@ -7,7 +7,7 @@ import (
 )
 
 func TestMetaFrameEncode(t *testing.T) {
-	m := NewMetaFrame()
+	m := &MetaFrame{tid: randString()}
 	m.SetBroadcast(true)
 	tidbuf := []byte(m.tid)
 	result := []byte{0x80 | byte(TagOfMetaFrame), byte(1 + 1 + len(tidbuf) + 2 + 3), byte(TagOfTransactionID), byte(len(tidbuf))}
@@ -19,7 +19,8 @@ func TestMetaFrameEncode(t *testing.T) {
 
 func TestMetaFrameDecode(t *testing.T) {
 	buf := []byte{0x80 | byte(TagOfMetaFrame), 0x0C, byte(TagOfTransactionID), 0x04, 0x31, 0x32, 0x33, 0x34, byte(TagOfSourceID), 0x01, 0x31, byte(TagOfBroadcast), 0x01, 0x01}
-	meta, err := DecodeToMetaFrame(buf)
+	meta := &MetaFrame{}
+	err := DecodeToMetaFrame(buf, meta)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "1234", meta.TransactionID())
 	assert.EqualValues(t, "1", meta.SourceID())

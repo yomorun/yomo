@@ -45,3 +45,18 @@ func TestDataFrameDecode(t *testing.T) {
 	assert.EqualValues(t, []byte("yomo"), data.GetCarriage())
 	assert.EqualValues(t, true, data.IsBroadcast())
 }
+
+func TestDataFramePool(t *testing.T) {
+	prev := NewDataFrame()
+	prev.SetCarriage(Tag(0x15), []byte("yomo"))
+	prev.SetBroadcast(true)
+
+	prev.Clean()
+	assert.Equal(t, "", prev.GetMetaFrame().TransactionID())
+
+	curr := NewDataFrame()
+	assert.Equal(t, prev, curr)
+
+	// prev and curr has same point.
+	assert.Equal(t, curr.GetMetaFrame().TransactionID(), prev.GetMetaFrame().TransactionID())
+}

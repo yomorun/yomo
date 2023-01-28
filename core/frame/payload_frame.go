@@ -15,13 +15,6 @@ type PayloadFrame struct {
 	Carriage []byte
 }
 
-// NewPayloadFrame creates a new PayloadFrame with a given TagID of user's data
-func NewPayloadFrame(tag Tag) *PayloadFrame {
-	return &PayloadFrame{
-		Tag: tag,
-	}
-}
-
 // SetCarriage sets the user's raw data
 func (m *PayloadFrame) SetCarriage(buf []byte) *PayloadFrame {
 	m.Carriage = buf
@@ -44,18 +37,17 @@ func (m *PayloadFrame) Encode() []byte {
 }
 
 // DecodeToPayloadFrame decodes Y3 encoded bytes to PayloadFrame
-func DecodeToPayloadFrame(buf []byte) (*PayloadFrame, error) {
+func DecodeToPayloadFrame(buf []byte, payload *PayloadFrame) error {
 	nodeBlock := y3.NodePacket{}
 	_, err := y3.DecodeToNodePacket(buf, &nodeBlock)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	payload := &PayloadFrame{}
 	if p, ok := nodeBlock.PrimitivePackets[byte(TagOfPayloadDataTag)]; ok {
 		tag, err := p.ToUInt32()
 		if err != nil {
-			return nil, err
+			return err
 		}
 		payload.Tag = Tag(tag)
 	}
@@ -64,5 +56,5 @@ func DecodeToPayloadFrame(buf []byte) (*PayloadFrame, error) {
 		payload.Carriage = p.GetValBuf()
 	}
 
-	return payload, nil
+	return nil
 }

@@ -150,6 +150,11 @@ func (c *Context) WithFrame(f frame.Frame) error {
 		)
 	}
 
+	// release dataFrame in the next frame handler.
+	if c.Frame != nil && c.Frame.Type() == frame.TagOfDataFrame {
+		c.Frame.(*frame.DataFrame).Clean()
+	}
+
 	c.Frame = f
 
 	return nil
