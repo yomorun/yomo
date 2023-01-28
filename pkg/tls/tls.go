@@ -10,73 +10,86 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
-	"io/ioutil"
 	"math/big"
 	"net"
 	"os"
+	"strings"
 	"time"
 )
 
-var isDev bool
-
 // CreateServerTLSConfig creates server tls config.
 func CreateServerTLSConfig(host string) (*tls.Config, error) {
-	// development mode
-	if isDev {
-		tc, err := developmentTLSConfig(host)
-		if err != nil {
-			return nil, err
-		}
-		return tc, nil
-	}
-	// production mode
 	// ca pool
 	pool, err := getCACertPool()
 	if err != nil {
 		return nil, err
 	}
+
 	// server certificate
 	tlsCert, err := getCertAndKey()
 	if err != nil {
 		return nil, err
 	}
 
+	if tlsCert == nil {
+		tlsCert, err = generateCertificate(host)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	clientAuth := tls.NoClientCert
+	if verifyPeer() {
+		clientAuth = tls.RequireAndVerifyClientCert
+	}
+
 	return &tls.Config{
 		Certificates: []tls.Certificate{*tlsCert},
 		ClientCAs:    pool,
-		ClientAuth:   tls.RequireAndVerifyClientCert,
+		ClientAuth:   clientAuth,
 		NextProtos:   []string{"yomo"},
 	}, nil
 }
 
+// MustCreateClientTLSConfig creates client tls config, It is panic If error here.
+func MustCreateClientTLSConfig() *tls.Config {
+	conf, err := CreateClientTLSConfig()
+	if err != nil {
+		panic(err)
+	}
+	return conf
+}
+
 // CreateClientTLSConfig creates client tls config.
 func CreateClientTLSConfig() (*tls.Config, error) {
-	// development mode
-	if isDev {
-		return &tls.Config{
-			InsecureSkipVerify: true,
-			NextProtos:         []string{"yomo"},
-			ClientSessionCache: tls.NewLRUClientSessionCache(64),
-		}, nil
-	}
-	// production mode
+	// ca pool
 	pool, err := getCACertPool()
 	if err != nil {
 		return nil, err
 	}
 
+	// client certificate
 	tlsCert, err := getCertAndKey()
 	if err != nil {
 		return nil, err
 	}
 
+	certificates := []tls.Certificate{}
+	if tlsCert != nil {
+		certificates = append(certificates, *tlsCert)
+	}
+
 	return &tls.Config{
-		InsecureSkipVerify: false,
-		Certificates:       []tls.Certificate{*tlsCert},
+		InsecureSkipVerify: !verifyPeer(),
+		Certificates:       certificates,
 		RootCAs:            pool,
 		NextProtos:         []string{"yomo"},
 		ClientSessionCache: tls.NewLRUClientSessionCache(0),
 	}, nil
+}
+
+func verifyPeer() bool {
+	return strings.ToLower(os.Getenv("YOMO_TLS_VERIFY_PEER")) == "true"
 }
 
 func getCACertPool() (*x509.CertPool, error) {
@@ -85,10 +98,10 @@ func getCACertPool() (*x509.CertPool, error) {
 
 	caCertPath := os.Getenv("YOMO_TLS_CACERT_FILE")
 	if len(caCertPath) == 0 {
-		return nil, errors.New("tls: must provide CA certificate on production mode, you can configure this via environment variables: `YOMO_TLS_CACERT_FILE`")
+		return nil, nil
 	}
 
-	caCert, err = ioutil.ReadFile(caCertPath)
+	caCert, err = os.ReadFile(caCertPath)
 	if err != nil {
 		return nil, err
 	}
@@ -112,16 +125,16 @@ func getCertAndKey() (*tls.Certificate, error) {
 	certPath := os.Getenv("YOMO_TLS_CERT_FILE")
 	keyPath := os.Getenv("YOMO_TLS_KEY_FILE")
 	if len(certPath) == 0 || len(keyPath) == 0 {
-		return nil, errors.New("tls: must provide certificate on production mode, you can configure this via environment variables: `YOMO_TLS_CERT_FILE` and `YOMO_TLS_KEY_FILE`")
+		return nil, nil
 	}
 
 	// certificate
-	cert, err = ioutil.ReadFile(certPath)
+	cert, err = os.ReadFile(certPath)
 	if err != nil {
 		return nil, err
 	}
 	// private key
-	key, err = ioutil.ReadFile(keyPath)
+	key, err = os.ReadFile(keyPath)
 	if err != nil {
 		return nil, err
 	}
@@ -138,29 +151,10 @@ func getCertAndKey() (*tls.Certificate, error) {
 	return &tlsCert, nil
 }
 
-// IsDev development mode
-func IsDev() bool {
-	return isDev
-}
-
-// developmentTLSConfig Setup a bare-bones TLS config for the server
-func developmentTLSConfig(host ...string) (*tls.Config, error) {
-	tlsCert, err := generateCertificate(host...)
-	if err != nil {
-		return nil, err
-	}
-
-	return &tls.Config{
-		Certificates:       []tls.Certificate{tlsCert},
-		ClientSessionCache: tls.NewLRUClientSessionCache(1),
-		NextProtos:         []string{"yomo"},
-	}, nil
-}
-
-func generateCertificate(host ...string) (tls.Certificate, error) {
+func generateCertificate(host ...string) (*tls.Certificate, error) {
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		return tls.Certificate{}, err
+		return nil, err
 	}
 
 	notBefore := time.Now()
@@ -169,18 +163,16 @@ func generateCertificate(host ...string) (tls.Certificate, error) {
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
-		return tls.Certificate{}, err
+		return nil, err
 	}
 
 	template := x509.Certificate{
-		SerialNumber: serialNumber,
-		Subject: pkix.Name{
-			Organization: []string{"YoMo"},
-		},
-		NotBefore: notBefore,
-		NotAfter:  notAfter,
-
-		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		SerialNumber:          serialNumber,
+		Subject:               pkix.Name{Organization: []string{"YoMo"}},
+		NotBefore:             notBefore,
+		NotAfter:              notAfter,
+		IsCA:                  true,
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
 		DNSNames:              []string{"localhost"},
@@ -194,36 +186,29 @@ func generateCertificate(host ...string) (tls.Certificate, error) {
 		}
 	}
 
-	template.IsCA = true
-	template.KeyUsage |= x509.KeyUsageCertSign
-
 	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
 	if err != nil {
-		return tls.Certificate{}, err
+		return nil, err
 	}
 
 	// create public key
 	certOut := bytes.NewBuffer(nil)
 	err = pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
 	if err != nil {
-		return tls.Certificate{}, err
+		return nil, err
 	}
 
 	// create private key
 	keyOut := bytes.NewBuffer(nil)
 	b, err := x509.MarshalECPrivateKey(priv)
 	if err != nil {
-		return tls.Certificate{}, err
+		return nil, err
 	}
 	err = pem.Encode(keyOut, &pem.Block{Type: "EC PRIVATE KEY", Bytes: b})
 	if err != nil {
-		return tls.Certificate{}, err
+		return nil, err
 	}
 
-	return tls.X509KeyPair(certOut.Bytes(), keyOut.Bytes())
-}
-
-func init() {
-	env := os.Getenv("YOMO_ENV")
-	isDev = len(env) == 0 || env != "production"
+	cert, err := tls.X509KeyPair(certOut.Bytes(), keyOut.Bytes())
+	return &cert, err
 }

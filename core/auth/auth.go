@@ -1,6 +1,8 @@
 package auth
 
-import "strings"
+import (
+	"strings"
+)
 
 var (
 	auths = make(map[string]Authentication)
@@ -56,4 +58,34 @@ func (c *Credential) Payload() string {
 // Name client credential name
 func (c *Credential) Name() string {
 	return c.name
+}
+
+// Object is the object to be authenticated,
+// The Object usually be pass to `Authenticate` function to be authed.
+type Object interface {
+	// AuthName returns the auth name, the name will be used to find the auth way.
+	AuthName() string
+
+	// AuthPayload returns the auth payload be passed to `auth.Authenticate`.
+	AuthPayload() string
+}
+
+// Authenticate finds an authentication way in `auths` and authenticates the Object.
+//
+// If `auths` is nil or empty, It returns true, It think that authentication is not required.
+func Authenticate(auths map[string]Authentication, obj Object) bool {
+	if auths == nil || len(auths) <= 0 {
+		return true
+	}
+
+	if obj == nil {
+		return false
+	}
+
+	auth, ok := auths[obj.AuthName()]
+	if !ok {
+		return false
+	}
+
+	return auth.Authenticate(obj.AuthPayload())
 }

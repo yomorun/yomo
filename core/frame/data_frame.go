@@ -1,6 +1,8 @@
 package frame
 
 import (
+	"fmt"
+
 	"github.com/yomorun/y3"
 )
 
@@ -9,6 +11,16 @@ import (
 type DataFrame struct {
 	metaFrame    *MetaFrame
 	payloadFrame *PayloadFrame
+}
+
+// String method implements fmt %v
+func (d DataFrame) String() string {
+	data := d.GetCarriage()
+	length := len(data)
+	if length > debugFrameSize {
+		data = data[:debugFrameSize]
+	}
+	return fmt.Sprintf("tid=%s | tag=%#x | source=%s | data[%d]=%# x", d.metaFrame.tid, d.Tag(), d.SourceID(), length, data)
 }
 
 // NewDataFrame create `DataFrame` with a transactionID string,
@@ -26,12 +38,12 @@ func (d *DataFrame) Type() Type {
 }
 
 // Tag return the tag of carriage data.
-func (d *DataFrame) Tag() byte {
+func (d *DataFrame) Tag() Tag {
 	return d.payloadFrame.Tag
 }
 
 // SetCarriage set user's raw data in `DataFrame`
-func (d *DataFrame) SetCarriage(tag byte, carriage []byte) {
+func (d *DataFrame) SetCarriage(tag Tag, carriage []byte) {
 	d.payloadFrame = NewPayloadFrame(tag).SetCarriage(carriage)
 }
 
@@ -56,7 +68,7 @@ func (d *DataFrame) GetMetaFrame() *MetaFrame {
 }
 
 // GetDataTag return the Tag of user's data
-func (d *DataFrame) GetDataTag() byte {
+func (d *DataFrame) GetDataTag() Tag {
 	return d.payloadFrame.Tag
 }
 

@@ -1,44 +1,56 @@
-package yomo
+// Package router providers a default implement of `router` and `Route`.
+package router
 
 import (
 	"fmt"
 	"sync"
 
-	"github.com/yomorun/yomo/core"
+	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/yerr"
 	"github.com/yomorun/yomo/pkg/config"
 )
 
-type router struct {
-	r *route
+// DefaultRouter providers a default implement of `router`,
+// It route the data according to obversed tag or connID.
+type DefaultRouter struct {
+	r *defaultRoute
 }
 
-func newRouter(functions []config.App) core.Router {
-	return &router{r: newRoute(functions)}
+// Default return the DefaultRouter.
+func Default(functions []config.App) Router {
+	return &DefaultRouter{r: newRoute(functions)}
 }
 
-func (r *router) Route(metadata core.Metadata) core.Route {
+// Route get route from metadata.
+func (r *DefaultRouter) Route(metadata metadata.Metadata) Route {
 	return r.r
 }
 
-func (r *router) Clean() {
-	r.r = nil
-}
+// Clean clean router.
+func (r *DefaultRouter) Clean() {
+	r.r.mu.Lock()
+	defer r.r.mu.Unlock()
 
-type route struct {
-	functions []config.App
-	data      map[byte]map[string]string
-	mu        sync.RWMutex
-}
-
-func newRoute(functions []config.App) *route {
-	return &route{
-		functions: functions,
-		data:      make(map[byte]map[string]string),
+	for key := range r.r.data {
+		delete(r.r.data, key)
 	}
 }
 
-func (r *route) Add(connID string, name string, observeDataTags []byte) (err error) {
+type defaultRoute struct {
+	functions []config.App
+	data      map[frame.Tag]map[string]string
+	mu        sync.RWMutex
+}
+
+func newRoute(functions []config.App) *defaultRoute {
+	return &defaultRoute{
+		functions: functions,
+		data:      make(map[frame.Tag]map[string]string),
+	}
+}
+
+func (r *defaultRoute) Add(connID string, name string, observeDataTags []frame.Tag) (err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -76,7 +88,7 @@ LOOP:
 	return err
 }
 
-func (r *route) Remove(connID string) error {
+func (r *defaultRoute) Remove(connID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -87,7 +99,7 @@ func (r *route) Remove(connID string) error {
 	return nil
 }
 
-func (r *route) GetForwardRoutes(tag byte) []string {
+func (r *defaultRoute) GetForwardRoutes(tag frame.Tag) []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 

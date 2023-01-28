@@ -1,12 +1,79 @@
 package frame
 
 import (
-	"os"
-	"strconv"
+	"errors"
+	"time"
+
+	"github.com/yomorun/yomo/core/ylog"
 )
 
+// ReadWriter is the interface that groups the ReadFrame and WriteFrame methods.
+type ReadWriter interface {
+	Reader
+	Writer
+}
+
+// Reader reads frame from underlying stream.
+type Reader interface {
+	// ReadFrame reads frame, if error, the error returned is not empty
+	// and frame returned is nil.
+	ReadFrame() (Frame, error)
+}
+
+// ErrReadUntilTimeout be returned when call ReadUntil timeout.
+type ErrReadUntilTimeout struct{ t Type }
+
+// Error implement error interface.
+func (err ErrReadUntilTimeout) Error() string {
+	return "yomo: frame read until timeout, type: " + err.t.String()
+}
+
+// ReadUntil reads frame from reader, until the frame of the specified type is returned.
+// It returns ErrReadUntilTimeout error if frame not be returned after timeout duration.
+// If read a goawayFrame, use goawayFrame.message as error and return it.
+func ReadUntil(reader Reader, t Type, timeout time.Duration) (Frame, error) {
+	var (
+		errch = make(chan error)
+		frmch = make(chan Frame)
+	)
+
+	go func() {
+		for {
+			f, err := reader.ReadFrame()
+			if err != nil {
+				errch <- err
+				return
+			}
+			if f.Type() == TagOfGoawayFrame {
+				errch <- errors.New(f.(*GoawayFrame).message)
+				return
+			}
+			if f.Type() == t {
+				frmch <- f
+				return
+			}
+		}
+	}()
+
+	select {
+	case <-time.After(timeout):
+		return nil, ErrReadUntilTimeout{t: t}
+	case err := <-errch:
+		return nil, err
+	case frm := <-frmch:
+		return frm, nil
+	}
+}
+
+// Writer is the interface that wraps the WriteFrame method.
+
+// Writer writes Frame from frm to the underlying data stream.
+type Writer interface {
+	WriteFrame(frm Frame) error
+}
+
 // debugFrameSize print frame data size on debug mode
-var debugFrameSize = 16
+var debugFrameSize = ylog.DebugFrameSize
 
 // Kinds of frames transferable within YoMo
 const (
@@ -19,8 +86,12 @@ const (
 	TagOfSourceID      Type = 0x02
 	TagOfBroadcast     Type = 0x04
 	// PayloadFrame of DataFrame
-	TagOfPayloadFrame  Type = 0x2E
-	TagOfBackflowFrame Type = 0x2D
+	TagOfPayloadFrame     Type = 0x2E
+	TagOfPayloadDataTag   Type = 0x01
+	TagOfPayloadCarriage  Type = 0x02
+	TagOfBackflowFrame    Type = 0x2D
+	TagOfBackflowDataTag  Type = 0x01
+	TagOfBackflowCarriage Type = 0x02
 
 	TagOfTokenFrame Type = 0x3E
 	// HandshakeFrame
@@ -41,6 +112,8 @@ const (
 	TagOfGoawayFrame   Type = 0x30
 	TagOfGoawayCode    Type = 0x01
 	TagOfGoawayMessage Type = 0x02
+	// TagOfHandshakeAckFrame
+	TagOfHandshakeAckFrame Type = 0x29
 )
 
 // Type represents the type of frame.
@@ -85,23 +158,9 @@ func (f Type) String() string {
 		return "HandshakeName"
 	case TagOfHandshakeType:
 		return "HandshakeType"
+	case TagOfHandshakeAckFrame:
+		return "TagOfHandshakeAckFrame"
 	default:
 		return "UnknownFrame"
-	}
-}
-
-// Shortly reduce data size for easy viewing
-func Shortly(data []byte) []byte {
-	if len(data) > debugFrameSize {
-		return data[:debugFrameSize]
-	}
-	return data
-}
-
-func init() {
-	if envFrameSize := os.Getenv("YOMO_DEBUG_FRAME_SIZE"); envFrameSize != "" {
-		if val, err := strconv.Atoi(envFrameSize); err == nil {
-			debugFrameSize = val
-		}
 	}
 }

@@ -5,7 +5,7 @@ import (
 
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/pkg/logger"
+	"github.com/yomorun/yomo/core/ylog"
 )
 
 // Runtime is the Stream Serverless Runtime for RxStream.
@@ -24,7 +24,7 @@ func NewRuntime(sfn yomo.StreamFunction) *Runtime {
 }
 
 // RawByteHandler is the Handler for RawBytes.
-func (r *Runtime) RawByteHandler(req []byte) (byte, []byte) {
+func (r *Runtime) RawByteHandler(req []byte) (frame.Tag, []byte) {
 	go func() {
 		r.rawBytesChan <- req
 	}()
@@ -32,22 +32,22 @@ func (r *Runtime) RawByteHandler(req []byte) (byte, []byte) {
 	// observe the data from RxStream.
 	for item := range r.stream.Observe() {
 		if item.Error() {
-			logger.Errorf("[Rx Handler] Handler got an error, err=%v", item.E)
+			ylog.Error("[Rx Handler] Handler got an error", item.E)
 			continue
 		}
 
 		if item.V == nil {
-			logger.Warnf("[Rx Handler] the returned data is nil.")
+			ylog.Warn("[Rx Handler] the returned data is nil.")
 			continue
 		}
 
 		res, ok := (item.V).(frame.PayloadFrame)
 		if !ok {
-			logger.Warnf("[Rx Handler] the data is not a frame.PayloadFrame, won't send it to YoMo-Zipper.")
+			ylog.Warn("[Rx Handler] the data is not a frame.PayloadFrame, won't send it to YoMo-Zipper.")
 			continue
 		}
 
-		logger.Infof("[RawByteHandler] Send data with [tag=%#x] to YoMo-Zipper.", res.Tag)
+		ylog.Info("[RawByteHandler] Send data to YoMo-Zipper.", "tag", res.Tag)
 		return res.Tag, res.Carriage
 	}
 
@@ -63,22 +63,22 @@ func (r *Runtime) PipeHandler(in <-chan []byte, out chan<- *frame.PayloadFrame) 
 			r.rawBytesChan <- req
 		case item := <-r.stream.Observe():
 			if item.Error() {
-				logger.Errorf("[rx PipeHandler] Handler got an error, err=%v", item.E)
+				ylog.Error("[rx PipeHandler] Handler got an error", item.E)
 				continue
 			}
 
 			if item.V == nil {
-				logger.Warnf("[rx PipeHandler] the returned data is nil.")
+				ylog.Warn("[rx PipeHandler] the returned data is nil.")
 				continue
 			}
 
 			res, ok := (item.V).(frame.PayloadFrame)
 			if !ok {
-				logger.Warnf("[rx PipeHandler] the data is not a frame.PayloadFrame, won't send it to YoMo-Zipper.")
+				ylog.Warn("[rx PipeHandler] the data is not a frame.PayloadFrame, won't send it to YoMo-Zipper.")
 				continue
 			}
 
-			logger.Infof("[rx PipeHandler] Send data with [tag=%#x] to YoMo-Zipper.", res.Tag)
+			ylog.Info("[rx PipeHandler] Send data with [tag=%#x] to YoMo-Zipper.", res.Tag)
 			out <- &res
 		}
 	}

@@ -2,6 +2,7 @@ package golang
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -16,6 +17,7 @@ import (
 	"github.com/yomorun/yomo/cli/serverless"
 	"github.com/yomorun/yomo/pkg/file"
 	"github.com/yomorun/yomo/pkg/log"
+	"golang.org/x/mod/modfile"
 	"golang.org/x/tools/go/ast/astutil"
 	"golang.org/x/tools/imports"
 )
@@ -143,10 +145,29 @@ func (s *GolangServerless) Build(clean bool) error {
 		}
 		// go.mod
 		log.WarningStatusEvent(os.Stdout, "Use custom go.mod: %s", mfile)
+		modContent := file.GetBinContents(mfile)
+		if len(modContent) == 0 {
+			return errors.New("go.mod is empty")
+		}
+		f, err := modfile.Parse("go.mod", modContent, nil)
+		if err != nil {
+			return err
+		}
+		for _, r := range f.Replace {
+			if strings.HasPrefix(r.New.Path, ".") {
+				abs, err := filepath.Abs(r.New.Path)
+				if err != nil {
+					return err
+				}
+				modContent = bytes.Replace(modContent, []byte(r.New.Path), []byte(abs), 1)
+			}
+		}
+		// fmt.Println(string(modContent))
+		// wirte to temp go.mod
 		tempMod := filepath.Join(s.tempDir, "go.mod")
-		file.Copy(mfile, tempMod)
-		// source := file.GetContents(tempMod)
-		// log.InfoStatusEvent(os.Stdout, "go.mod: %s", source)
+		if err := file.PutContents(tempMod, modContent); err != nil {
+			return fmt.Errorf("write go.mod err %s", err)
+		}
 		// mod download
 		cmd := exec.Command("go", "mod", "tidy")
 		cmd.Env = env

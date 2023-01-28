@@ -7,15 +7,11 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 )
 
-const (
-	streamFunctionLogPrefix = "\033[31m[yomo:sfn]\033[0m "
-)
-
 // StreamFunction defines serverless streaming functions.
 type StreamFunction interface {
 	// SetObserveDataTags set the data tag list that will be observed
 	// Deprecated: use yomo.WithObserveDataTags instead
-	SetObserveDataTags(tag ...byte)
+	SetObserveDataTags(tag ...frame.Tag)
 	// SetHandler set the handler function, which accept the raw bytes data and return the tag & response
 	SetHandler(fn core.AsyncHandler) error
 	// SetErrorHandler set the error handler function when server error occurs
@@ -27,7 +23,7 @@ type StreamFunction interface {
 	// Close will close the connection
 	Close() error
 	// Send a data to zipper.
-	Write(tag byte, carriage []byte) error
+	Write(tag frame.Tag, carriage []byte) error
 }
 
 // NewStreamFunction create a stream function.
@@ -38,7 +34,7 @@ func NewStreamFunction(name string, opts ...Option) StreamFunction {
 		name:            name,
 		zipperEndpoint:  options.ZipperAddr,
 		client:          client,
-		observeDataTags: make([]byte, 0),
+		observeDataTags: make([]frame.Tag, 0),
 	}
 
 	return sfn
@@ -51,7 +47,7 @@ type streamFunction struct {
 	name            string
 	zipperEndpoint  string
 	client          *core.Client
-	observeDataTags []byte            // tag list that will be observed
+	observeDataTags []frame.Tag       // tag list that will be observed
 	fn              core.AsyncHandler // user's function which will be invoked when data arrived
 	pfn             core.PipeHandler
 	pIn             chan []byte
@@ -60,31 +56,31 @@ type streamFunction struct {
 
 // SetObserveDataTags set the data tag list that will be observed.
 // Deprecated: use yomo.WithObserveDataTags instead
-func (s *streamFunction) SetObserveDataTags(tag ...byte) {
+func (s *streamFunction) SetObserveDataTags(tag ...frame.Tag) {
 	s.client.SetObserveDataTags(tag...)
-	s.client.Logger().Debugf("%sSetObserveDataTag(%v)", streamFunctionLogPrefix, s.observeDataTags)
+	s.client.Logger().Debug("sSetObserveDataTag", "tags", s.observeDataTags)
 }
 
 // SetHandler set the handler function, which accept the raw bytes data and return the tag & response.
 func (s *streamFunction) SetHandler(fn core.AsyncHandler) error {
 	s.fn = fn
-	s.client.Logger().Debugf("%sSetHandler(%v)", streamFunctionLogPrefix, s.fn)
+	s.client.Logger().Debug("SetHandler")
 	return nil
 }
 
 func (s *streamFunction) SetPipeHandler(fn core.PipeHandler) error {
 	s.pfn = fn
-	s.client.Logger().Debugf("%sSetHandler(%v)", streamFunctionLogPrefix, s.pfn)
+	s.client.Logger().Debug("SetPipeHandler")
 	return nil
 }
 
 // Connect create a connection to the zipper, when data arrvied, the data will be passed to the
 // handler which setted by SetHandler method.
 func (s *streamFunction) Connect() error {
-	s.client.Logger().Debugf("%s Connect()", streamFunctionLogPrefix)
+	s.client.Logger().Debug("Connect")
 	// notify underlying network operations, when data with tag we observed arrived, invoke the func
 	s.client.SetDataFrameObserver(func(data *frame.DataFrame) {
-		s.client.Logger().Debugf("%sreceive DataFrame, tag=%# x, carraige=%# x", streamFunctionLogPrefix, data.Tag(), data.GetCarriage())
+		s.client.Logger().Debug("receive DataFrame", "data_frame", data.String())
 		s.onDataFrame(data.GetCarriage(), data.GetMetaFrame())
 	})
 
@@ -102,7 +98,7 @@ func (s *streamFunction) Connect() error {
 			for {
 				data := <-s.pOut
 				if data != nil {
-					s.client.Logger().Debugf("%spipe fn send: tag=%#x, data=%# x", streamFunctionLogPrefix, data.Tag, data.Carriage)
+					s.client.Logger().Debug("pipe fn send", "payload_frame", data)
 					frame := frame.NewDataFrame()
 					// todo: frame.SetTransactionID
 					frame.SetCarriage(data.Tag, data.Carriage)
@@ -114,7 +110,7 @@ func (s *streamFunction) Connect() error {
 
 	err := s.client.Connect(context.Background(), s.zipperEndpoint)
 	if err != nil {
-		s.client.Logger().Errorf("%sConnect() error: %s", streamFunctionLogPrefix, err)
+		s.client.Logger().Error("Connect error", err)
 	}
 	return err
 }
@@ -131,7 +127,7 @@ func (s *streamFunction) Close() error {
 
 	if s.client != nil {
 		if err := s.client.Close(); err != nil {
-			s.client.Logger().Errorf("%sClose(): %v", err)
+			s.client.Logger().Error("Close error", err)
 			return err
 		}
 	}
@@ -141,17 +137,14 @@ func (s *streamFunction) Close() error {
 
 // when DataFrame we observed arrived, invoke the user's function
 func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
-	s.client.Logger().Infof("%sonDataFrame ->[%s]", streamFunctionLogPrefix, s.name)
+	s.client.Logger().Debug("onDataFrame")
 
 	if s.fn != nil {
 		go func() {
-			s.client.Logger().Debugf("%sexecute-start fn: data[%d]=%# x", streamFunctionLogPrefix, len(data), frame.Shortly(data))
 			// invoke serverless
 			tag, resp := s.fn(data)
-			s.client.Logger().Debugf("%sexecute-done fn: tag=%#x, resp[%d]=%# x", streamFunctionLogPrefix, tag, len(resp), frame.Shortly(resp))
 			// if resp is not nil, means the user's function has returned something, we should send it to the zipper
 			if len(resp) != 0 {
-				s.client.Logger().Debugf("%sstart WriteFrame(): tag=%#x, data[%d]=%# x", streamFunctionLogPrefix, tag, len(resp), frame.Shortly(resp))
 				// build a DataFrame
 				// TODO: seems we should implement a DeepCopy() of MetaFrame in the future
 				frame := frame.NewDataFrame()
@@ -160,19 +153,20 @@ func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
 				// reuse sourceID
 				frame.SetSourceID(metaFrame.SourceID())
 				frame.SetCarriage(tag, resp)
+				s.client.Logger().Debug("start WriteFrame()", "resp", resp)
 				s.client.WriteFrame(frame)
 			}
 		}()
 	} else if s.pfn != nil {
-		s.client.Logger().Debugf("%spipe fn receive: data[%d]=%# x", streamFunctionLogPrefix, len(data), data)
+		s.client.Logger().Debug("pipe fn receive", "data_len", len(data), "data", data)
 		s.pIn <- data
 	} else {
-		s.client.Logger().Warnf("%sStreamFunction is nil", streamFunctionLogPrefix)
+		s.client.Logger().Warn("StreamFunction is nil")
 	}
 }
 
 // Send a DataFrame to zipper.
-func (s *streamFunction) Write(tag byte, carriage []byte) error {
+func (s *streamFunction) Write(tag frame.Tag, carriage []byte) error {
 	frame := frame.NewDataFrame()
 	frame.SetCarriage(tag, carriage)
 	return s.client.WriteFrame(frame)

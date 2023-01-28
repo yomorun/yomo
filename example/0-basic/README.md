@@ -15,7 +15,7 @@ Install YoMo CLI
 ### Binary (Recommended)
 
 ```bash
-$ curl -fsSL "https://bina.egoist.sh/yomorun/cli?name=yomo" | sh
+$ curl -fsSL https://get.yomo.run | sh
 
   ==> Resolved version latest to v1.0.0
   ==> Downloading asset for darwin amd64
@@ -26,7 +26,7 @@ $ curl -fsSL "https://bina.egoist.sh/yomorun/cli?name=yomo" | sh
 ### Or build from source
 
 ```bash
-$ go install github.com/yomorun/cli/yomo@latest
+$ go install github.com/yomorun/yomo/cmd/yomo@latest
 $ yomo version
 YoMo CLI Version: v1.0.0
 ```
@@ -42,11 +42,9 @@ YoMo CLI Version: v1.0.0
 ```bash
 yomo serve -c ./workflow.yaml
 
-Using config file: ./workflow.yaml
-2021/11/11 16:09:54 [yomo:zipper] [AddWorkflow] 0, Noise
-ℹ️   Running YoMo-Zipper...
-2021/11/11 16:09:54 [yomo:zipper] Listening SIGTERM/SIGINT...
-2021/11/11 16:09:54 [core:server] ✅ (name:Service) Listening on: 127.0.0.1:9000, QUIC: [v1 draft-29]
+time=2022-12-12T18:12:15.735+08:00 level=INFO msg="Using config file" component=server name=Service file_path=../workflow.yaml
+time=2022-12-12T18:12:15.735+08:00 level=INFO msg="Listening SIGUSR1, SIGUSR2, SIGTERM/SIGINT..."
+time=2022-12-12T18:12:15.738+08:00 level=INFO msg=Listening component=server name=Service pid=25220 quic="[v2 v1 draft-29]" auth_name=[none]
 ```
 
 ### Run [stream-function](https://docs.yomo.run/stream-fn)
@@ -63,11 +61,13 @@ go run ./sfn/main.go
 ```bash
 go run ./source/main.go
 
-2021/11/11 16:12:01 [core:client] use credential: [None]
-2021/11/11 16:12:01 [core:client] ❤️  [yomo-source] is connected to YoMo-Zipper localhost:9000
-2021/11/11 16:12:01 [source] ✅ Emit {192.13399 1636618321242 localhost} to YoMo-Zipper
-2021/11/11 16:12:01 [source] ✅ Emit {132.86566 1636618321547 localhost} to YoMo-Zipper
-2021/11/11 16:12:01 [source] ✅ Emit {199.17604 1636618321851 localhost} to YoMo-Zipper
+time=2022-12-12T17:56:27.156+08:00 level=INFO msg="use credential" component=client credential_name=none
+time=2022-12-12T17:56:27.161+08:00 level=INFO msg="[source] ✅ Emit to YoMo-Zipper" data="{62.31009 1670838987160 localhost}"
+time=2022-12-12T17:56:28.162+08:00 level=INFO msg="[source] ✅ Emit to YoMo-Zipper" data="{58.455963 1670838988161 localhost}"
+time=2022-12-12T17:56:29.163+08:00 level=INFO msg="[source] ✅ Emit to YoMo-Zipper" data="{158.80386 1670838989162 localhost}"
+time=2022-12-12T17:56:30.164+08:00 level=INFO msg="[source] ✅ Emit to YoMo-Zipper" data="{190.63675 1670838990164 localhost}"
+time=2022-12-12T17:56:31.166+08:00 level=INFO msg="[source] ✅ Emit to YoMo-Zipper" data="{147.77885 1670838991166 localhost}"
+time=2022-12-12T17:56:32.168+08:00 level=INFO msg="[source] ✅ Emit to YoMo-Zipper" data="{83.59812 1670838992168 localhost}"
 ```
 
 ### Results
@@ -77,7 +77,11 @@ go run ./source/main.go
 The terminal of `stream-function` will print the real-time sound value.
 
 ```bash
-2021/11/11 16:12:01 >> [sfn] got tag=0x33, data={ 0x1.80449ap+07  0x17d0e0dbd5a 0x6c 0x6f 0x63 0x61 0x6c 0x68 0x6f 0x73 0x74}
-2021/11/11 16:12:01 >> [sfn] got tag=0x33, data={ 0x1.09bb38p+07  0x17d0e0dbe8b 0x6c 0x6f 0x63 0x61 0x6c 0x68 0x6f 0x73 0x74}
-2021/11/11 16:12:01 >> [sfn] got tag=0x33, data={ 0x1.8e5a22p+07  0x17d0e0dbfbb 0x6c 0x6f 0x63 0x61 0x6c 0x68 0x6f 0x73 0x74}
+time=2022-12-12T18:02:08.408+08:00 level=INFO msg="use credential" component=client credential_name=none
+time=2022-12-12T18:02:13.895+08:00 level=INFO msg=[sfn] got=51 data="{98.02577 1670839333894 localhost}"
+time=2022-12-12T18:02:14.900+08:00 level=INFO msg=[sfn] got=51 data="{71.31387 1670839334895 localhost}"
+time=2022-12-12T18:02:15.898+08:00 level=INFO msg=[sfn] got=51 data="{157.18372 1670839335896 localhost}"
+time=2022-12-12T18:02:16.900+08:00 level=INFO msg=[sfn] got=51 data="{13.951344 1670839336898 localhost}"
+time=2022-12-12T18:02:17.902+08:00 level=INFO msg=[sfn] got=51 data="{99.50129 1670839337899 localhost}"
+time=2022-12-12T18:02:18.904+08:00 level=INFO msg=[sfn] got=51 data="{124.94903 1670839338901 localhost}"
 ```

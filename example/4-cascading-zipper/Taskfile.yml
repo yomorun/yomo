@@ -4,6 +4,9 @@ version: "3"
 
 output: "prefixed"
 
+env:
+  YOMO_LOG_LEVEL: error
+
 tasks:
   run:
     desc: run

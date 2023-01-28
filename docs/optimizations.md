@@ -18,7 +18,7 @@ You can read it in the [README.md](https://github.com/yomorun/yomo/blob/master/s
 
 By default, we use the `development` development mode and do not perform mutual `TLS` authentication between the server and the client. In a production environment, it is **strongly recommended** you modify the following environment variables:
 
-- `YOMO_ENV`, Set the value to `production`
+- `YOMO_TLS_VERIFY_PEER`, Set the value to `true`
 - `YOMO_TLS_CACERT_FILE`, CA certificate
 - `YOMO_TLS_CERT_FILE`, Certificate
 - `YOMO_TLS_KEY_FILE`, Private Key

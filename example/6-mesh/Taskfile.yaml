@@ -4,6 +4,9 @@ version: '3'
 
 output: "prefixed"
 
+env:
+  YOMO_LOG_LEVEL: error
+
 vars:
   ExeName: yomo{{exeExt}}
 
@@ -118,8 +121,8 @@ tasks:
     deps: [stream-fn-build]
     dir: "stream-fn"
     cmds:
-      - "cp ./stream-fn{{exeExt}} ./stream-fn-us{{exeExt}}"
-      - "./stream-fn-us{{exeExt}}"
+      - "cp ./bin/stream-fn{{exeExt}} ./bin/stream-fn-us{{exeExt}}"
+      - "./bin/stream-fn-us{{exeExt}}"
     env:
       PORT: 9000
       REGION: "💖 US 💖"
@@ -130,8 +133,8 @@ tasks:
     deps: [stream-fn-build]
     dir: "stream-fn"
     cmds:
-      - "cp ./stream-fn{{exeExt}} ./stream-fn-eu{{exeExt}}"
-      - "./stream-fn-eu{{exeExt}}"
+      - "cp ./bin/stream-fn{{exeExt}} ./bin/stream-fn-eu{{exeExt}}"
+      - "./bin/stream-fn-eu{{exeExt}}"
     env:
       PORT: 9800
       REGION: "💙 EU 💙"
@@ -141,7 +144,7 @@ tasks:
     desc: build stream function
     dir: "stream-fn"
     cmds:
-      - "go build -o ./stream-fn{{exeExt}} app.go"
+      - "go build -o ./bin/stream-fn{{exeExt}} app.go"
     silent: false
 
   stream-fn-db-us:
@@ -149,8 +152,8 @@ tasks:
     deps: [stream-fn-db-build]
     dir: "stream-fn-db"
     cmds:
-      - "cp ./stream-fn-db{{exeExt}} ./stream-fn-db-us{{exeExt}}"
-      - "./stream-fn-db-us{{exeExt}}"
+      - "cp ./bin/stream-fn-db{{exeExt}} ./bin/stream-fn-db-us{{exeExt}}"
+      - "./bin/stream-fn-db-us{{exeExt}}"
     env:
       PORT: 9001
     silent: false
@@ -160,8 +163,8 @@ tasks:
     deps: [stream-fn-db-build]
     dir: "stream-fn-db"
     cmds:
-      - "cp ./stream-fn-db{{exeExt}} ./stream-fn-db-eu{{exeExt}}"
-      - "./stream-fn-db-eu{{exeExt}}"
+      - "cp ./bin/stream-fn-db{{exeExt}} ./bin/stream-fn-db-eu{{exeExt}}"
+      - "./bin/stream-fn-db-eu{{exeExt}}"
     env:
       PORT: 9801
     silent: false
@@ -170,5 +173,5 @@ tasks:
     desc: build output stream-fn-db
     dir: "stream-fn-db"
     cmds:
-      - "go build -o stream-fn-db{{exeExt}} app.go"
+      - "go build -o ./bin/stream-fn-db{{exeExt}} app.go"
     silent: false

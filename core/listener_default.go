@@ -6,20 +6,20 @@ import (
 	"time"
 
 	"github.com/lucas-clemente/quic-go"
-	"github.com/yomorun/yomo/pkg/logger"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
+	"golang.org/x/exp/slog"
 )
 
 var _ Listener = (*defaultListener)(nil)
 
 type defaultListener struct {
-	conf *quic.Config
 	quic.Listener
+	conf *quic.Config
 }
 
 // DefalutQuicConfig be used when `quicConfig` is nil.
 var DefalutQuicConfig = &quic.Config{
-	Versions:                       []quic.VersionNumber{quic.Version1, quic.VersionDraft29},
+	Versions:                       []quic.VersionNumber{quic.Version2, quic.Version1, quic.VersionDraft29},
 	MaxIdleTimeout:                 time.Second * 5,
 	KeepAlivePeriod:                time.Second * 2,
 	MaxIncomingStreams:             1000,
@@ -30,11 +30,11 @@ var DefalutQuicConfig = &quic.Config{
 	// DisablePathMTUDiscovery:        true,
 }
 
-func newListener(conn net.PacketConn, tlsConfig *tls.Config, quicConfig *quic.Config) (*defaultListener, error) {
+func newListener(conn net.PacketConn, tlsConfig *tls.Config, quicConfig *quic.Config, logger *slog.Logger) (*defaultListener, error) {
 	if tlsConfig == nil {
 		tc, err := pkgtls.CreateServerTLSConfig(conn.LocalAddr().String())
 		if err != nil {
-			logger.Errorf("%sCreateServerTLSConfig: %v", ServerLogPrefix, err)
+			logger.Error("CreateServerTLSConfig error", err)
 			return &defaultListener{}, err
 		}
 		tlsConfig = tc
@@ -46,7 +46,7 @@ func newListener(conn net.PacketConn, tlsConfig *tls.Config, quicConfig *quic.Co
 
 	quicListener, err := quic.Listen(conn, tlsConfig, quicConfig)
 	if err != nil {
-		logger.Errorf("%squic Listen: %v", ServerLogPrefix, err)
+		logger.Error("quic Listen error", err)
 		return &defaultListener{}, err
 	}
 

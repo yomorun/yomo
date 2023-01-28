@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/rx"
 )
 
@@ -21,7 +22,7 @@ var echo = func(_ context.Context, i interface{}) (interface{}, error) {
 	value.From = value.From + ">SFN"
 	value.Noise = value.Noise / 10
 	rightNow := time.Now().UnixNano() / int64(time.Millisecond)
-	fmt.Println(fmt.Sprintf("[stream-fn] from=%s, Timestamp=%d, value=%f (⚡️=%dms)", value.From, value.Time, value.Noise, rightNow-value.Time))
+	fmt.Printf("[stream-fn] from=%s, Timestamp=%d, value=%f (⚡️=%dms)\n", value.From, value.Time, value.Noise, rightNow-value.Time)
 	// return value.Noise, nil
 	return value, nil
 }
@@ -38,6 +39,6 @@ func Handler(rxstream rx.Stream) rx.Stream {
 	return stream
 }
 
-func DataTags() []byte {
-	return []byte{0x33}
+func DataTags() []frame.Tag {
+	return []frame.Tag{0x33}
 }

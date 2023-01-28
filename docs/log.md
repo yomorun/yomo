@@ -1,36 +1,17 @@
 ## Application Log 
 
-### Log
+Applications can use loggers to record log messages.
 
-Applications can use loggers to record log messages, we define a logging interface`logger`
+yomo suggests using [slog](https://pkg.go.dev/golang.org/x/exp/slog) to output **structured log**
 
-```go
-// Logger is the interface for logger.
-type Logger interface {
-	// SetLevel sets the logger level
-	SetLevel(Level)
-	// SetEncoding sets the logger's encoding
-	SetEncoding(encoding string)
-	// Printf logs a message wihout level
-	Printf(template string, args ...interface{})
-	// Debugf logs a message at DebugLevel
-	Debugf(template string, args ...interface{})
-	// Infof logs a message at InfoLevel
-	Infof(template string, args ...interface{})
-	// Warnf logs a message at WarnLevel
-	Warnf(template string, args ...interface{})
-	// Errorf logs a message at ErrorLevel
-	Errorf(template string, args ...interface{})
-	// Output file path to write log message
-	Output(file string)
-	// ErrorOutput file path to write error message
-	ErrorOutput(file string)
-}
-```
+Structured logging is the ability to output logs with machine-readable structure, typically key-value pairs or json, in addition to a human-readable message.
 
-More detailed instructions can be found in the documentation:`core/log/logger.go`
+More detailed instructions can be found in the documentation:`core/ylog/logger.go`
 
-We provide a default implementation of the logger, you can directly refer to the `github.com/yomorun/yomo/pkg/logger` package to use, if the default implementation can not meet your requirements, you can implement the above interface, and then use the `yomo.WithLogger ` option , for example:
+Yomo provide a default implementation of the logger, The default loads config from environment.
+
+If the default implementation can not meet your requirements,
+you can import `slog` directly, you can also implement interface to `slog.Handler`, and then use the `yomo.WithLogger ` option , for example:
 
 ```go
 sfn  := yomo.NewStreamFunction (
@@ -40,32 +21,23 @@ sfn  := yomo.NewStreamFunction (
 )
 ```
 
-#### Methods:
-
-- `Printf` Output log messages regardless of log level settings
-- `Debugf` Output debug messages
-- `Infof` Output information message
-- `Warnf` Output warning message
-- `Errorf` Output error message
-
-**Example of use:**
-
-```go
-import "github.com/yomorun/yomo/pkg/logger"
-...
-logger.Infof("%s doesn't grow on trees. ","Money")
-```
-
 #### Environment Variables
 
-- `YOMO_LOG_LEVEL`   Set the log level, default:  `error` , optional values are as follows:
+- `YOMO_LOG_LEVEL`   Set the log level, default:  `info` , optional values are as follows:
   - debug
   - info
   - warn
   - error
   
-- `YOMO_LOG_OUTPUT` Set the log output file, the default is not output
+- `YOMO_LOG_OUTPUT` Set the log output file, the default is stdout
 
-- `YOMO_LOG_ERROR_OUTPUT` When an error occurs, output the message to the specified file, the default is not output
+- `YOMO_LOG_ERROR_OUTPUT` When an error occurs, output the message to the specified file, the default is stderr
 
 - `YOMO_DEBUG_FRAME_SIZE` Set the output size in debug mode `Frame`, the default is 16 bytes
+- `YOMO_LOG_VERBOSE` enable or disable the debug mode of logger, logger outputs the source code position of the log statement if enable it, Do not enable it in production, default is false
+- `YOMO_LOG_FORMAT` Format supports text and json, The default is text
+- `YOMO_LOG_MAX_SIZE` MaxSize is the maximum size in megabytes of the log file before it gets rotated. It defaults to 100 megabytes
+- `YOMO_LOG_MAX_BACKUPS` MaxBackups is the maximum number of old log files to retain. The default is to retain all old log files (though MaxAge may still cause them to get deleted.)
+- `YOMO_LOG_MAX_AGE` MaxAge is the maximum number of days to retain old log files based on the timestamp encoded in their filename. The default is not to remove old log files based on age
+- `YOMO_LOG_LOCAL_TIME` LocalTime determines if the time used for formatting the timestamps in backup files is the computer's local time. The default is to use UTC time
+- `YOMO_LOG_COMPRESS` Compress determines if the rotated log files should be compressed using gzip. The default is not to perform compression

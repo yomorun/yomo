@@ -3,13 +3,13 @@
 #include <stdlib.h>
 
 __attribute__((import_module("env"), import_name("yomo_observe_datatag")))
-extern void observe_datatag(uint8_t tag);
+extern void observe_datatag(uint32_t tag);
 
 __attribute__((import_module("env"), import_name("yomo_load_input")))
 extern void load_input(char *pointer);
 
 __attribute__((import_module("env"), import_name("yomo_dump_output")))
-extern void dump_output(uint8_t tag, const char *pointer, size_t length);
+extern void dump_output(uint32_t tag, const char *pointer, size_t length);
 
 void yomo_init() {
     observe_datatag(0x33);

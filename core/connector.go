@@ -3,7 +3,8 @@ package core
 import (
 	"sync"
 
-	"github.com/yomorun/yomo/pkg/logger"
+	"github.com/yomorun/yomo/core/frame"
+	"golang.org/x/exp/slog"
 )
 
 var _ Connector = &connector{}
@@ -18,35 +19,35 @@ type Connector interface {
 	Get(connID string) Connection
 	// GetSnapshot gets the snapshot of all connections.
 	GetSnapshot() map[string]string
-	// GetSourceConns gets the connections by source observe tags.
-	GetSourceConns(sourceID string, tags byte) []Connection
+	// GetSourceConns gets the connections by source observe tag.
+	GetSourceConns(sourceID string, tag frame.Tag) []Connection
 	// Clean the connector.
 	Clean()
 }
 
 type connector struct {
-	conns sync.Map
+	conns  sync.Map
+	logger *slog.Logger
 }
 
-func newConnector() Connector {
-	return &connector{conns: sync.Map{}}
+func newConnector(logger *slog.Logger) Connector {
+	return &connector{conns: sync.Map{}, logger: logger}
 }
 
 // Add a connection.
 func (c *connector) Add(connID string, conn Connection) {
-	logger.Debugf("%sconnector add: connID=%s", ServerLogPrefix, connID)
+	c.logger.Debug("connector add connection", "conn_id", connID)
 	c.conns.Store(connID, conn)
 }
 
 // Remove a connection.
 func (c *connector) Remove(connID string) {
-	logger.Debugf("%sconnector remove: connID=%s", ServerLogPrefix, connID)
+	c.logger.Debug("connector remove connection", "conn_id", connID)
 	c.conns.Delete(connID)
 }
 
 // Get a connection by connection id.
 func (c *connector) Get(connID string) Connection {
-	logger.Debugf("%sconnector get connection: connID=%s", ServerLogPrefix, connID)
 	if conn, ok := c.conns.Load(connID); ok {
 		return conn.(Connection)
 	}
@@ -54,7 +55,7 @@ func (c *connector) Get(connID string) Connection {
 }
 
 // GetSourceConns gets the source connection by tag.
-func (c *connector) GetSourceConns(sourceID string, tag byte) []Connection {
+func (c *connector) GetSourceConns(sourceID string, tag frame.Tag) []Connection {
 	conns := make([]Connection, 0)
 
 	c.conns.Range(func(key interface{}, val interface{}) bool {
@@ -84,5 +85,8 @@ func (c *connector) GetSnapshot() map[string]string {
 
 // Clean the connector.
 func (c *connector) Clean() {
-	c.conns = sync.Map{}
+	c.conns.Range(func(key, value any) bool {
+		c.conns.Delete(key)
+		return true
+	})
 }

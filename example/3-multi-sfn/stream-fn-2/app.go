@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"fmt"
+	"log"
 	"math"
 	"os"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/pkg/logger"
+	"github.com/yomorun/yomo/core/frame"
 )
 
 // ThresholdSingleValue is the threshold of a single value.
@@ -17,11 +17,11 @@ const ThresholdSingleValue = 16
 
 // Print every value and alert for value greater than ThresholdSingleValue
 var computePeek = func(_ context.Context, value float32) (float32, error) {
-	fmt.Printf("✅ receive noise value: %f\n", value)
+	log.Printf("✅ receive noise value: %f\n", value)
 
 	// Compute peek value, if greater than ThresholdSingleValue, alert
 	if value >= ThresholdSingleValue {
-		fmt.Printf("❗ value: %f reaches the threshold %d! 𝚫=%f", value, ThresholdSingleValue, value-ThresholdSingleValue)
+		log.Printf("❗ value: %f reaches the threshold %d! 𝚫=%f", value, ThresholdSingleValue, value-ThresholdSingleValue)
 	}
 
 	return value, nil
@@ -41,18 +41,18 @@ func main() {
 
 	err := sfn.Connect()
 	if err != nil {
-		logger.Errorf("[fn2] connect err=%v", err)
+		log.Printf("[fn2] connect err=%v", err)
 		os.Exit(1)
 	}
 
 	select {}
 }
 
-func handler(data []byte) (byte, []byte) {
+func handler(data []byte) (frame.Tag, []byte) {
 	v := Float32frombytes(data)
 	result, err := computePeek(context.Background(), v)
 	if err != nil {
-		logger.Errorf("[fn2] computePeek err=%v", err)
+		log.Printf("[fn2] computePeek err=%v", err)
 		return 0x0, nil
 	}
 

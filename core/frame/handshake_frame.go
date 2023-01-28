@@ -1,6 +1,8 @@
 package frame
 
 import (
+	"encoding/binary"
+
 	"github.com/yomorun/y3"
 )
 
@@ -13,14 +15,14 @@ type HandshakeFrame struct {
 	// ClientType represents client type (source or sfn)
 	ClientType byte
 	// ObserveDataTags are the client data tag list.
-	ObserveDataTags []byte
+	ObserveDataTags []Tag
 	// auth
 	authName    string
 	authPayload string
 }
 
 // NewHandshakeFrame creates a new HandshakeFrame.
-func NewHandshakeFrame(name string, clientID string, clientType byte, observeDataTags []byte, authName string, authPayload string) *HandshakeFrame {
+func NewHandshakeFrame(name string, clientID string, clientType byte, observeDataTags []Tag, authName string, authPayload string) *HandshakeFrame {
 	return &HandshakeFrame{
 		Name:            name,
 		ClientID:        clientID,
@@ -49,7 +51,11 @@ func (h *HandshakeFrame) Encode() []byte {
 	typeBlock.SetBytesValue([]byte{h.ClientType})
 	// observe data tags
 	observeDataTagsBlock := y3.NewPrimitivePacketEncoder(byte(TagOfHandshakeObserveDataTags))
-	observeDataTagsBlock.SetBytesValue(h.ObserveDataTags)
+	buf := make([]byte, 4)
+	for _, v := range h.ObserveDataTags {
+		binary.LittleEndian.PutUint32(buf, uint32(v))
+		observeDataTagsBlock.AddBytes(buf)
+	}
 	// auth
 	authNameBlock := y3.NewPrimitivePacketEncoder(byte(TagOfHandshakeAuthName))
 	authNameBlock.SetStringValue(h.authName)
@@ -99,7 +105,12 @@ func DecodeToHandshakeFrame(buf []byte) (*HandshakeFrame, error) {
 	}
 	// observe data tag list
 	if observeDataTagsBlock, ok := node.PrimitivePackets[byte(TagOfHandshakeObserveDataTags)]; ok {
-		handshake.ObserveDataTags = observeDataTagsBlock.ToBytes()
+		buf := observeDataTagsBlock.GetValBuf()
+		length := len(buf) / 4
+		for i := 0; i < length; i++ {
+			pos := i * 4
+			handshake.ObserveDataTags = append(handshake.ObserveDataTags, Tag(binary.LittleEndian.Uint32(buf[pos:pos+4])))
+		}
 	}
 	// auth
 	if authNameBlock, ok := node.PrimitivePackets[byte(TagOfHandshakeAuthName)]; ok {

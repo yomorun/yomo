@@ -4,8 +4,8 @@ version: "3"
 
 output: prefixed
 
-vars:
-  ExeName: yomo{{exeExt}}
+env:
+  YOMO_LOG_LEVEL: error
 
 tasks:
   default:
@@ -21,12 +21,10 @@ tasks:
 
   zipper:
     desc: "run zipper"
-    deps: [build]
     cmds:
-      - "./bin/{{.ExeName}} serve -c ./zipper/workflow.yaml"
+      - "yomo serve -c ./zipper/workflow.yaml"
     silent: false
     env:
-      YOMO_LOG_LEVEL: error
       YOMO_AUTH: token:1234
 
   source:
@@ -48,26 +46,17 @@ tasks:
 
   sfn-rx:
     desc: "run rx stream application"
-    deps: [build]
     dir: "sfn-rx"
     cmds:
-      - "../bin/{{.ExeName}} run app.go"
+      - "yomo run app.go"
     silent: false
 
   sfn-db:
     desc: run output stream-fn-db
-    deps: [build]
     dir: "sfn-db"
     cmds:
-      - "../bin/{{.ExeName}} run app.go"
+      - "yomo run app.go"
     silent: false
-
-  build:
-    desc: build yomo cli tools
-    cmds:
-      - go build -v -o ./bin/{{.ExeName}} -ldflags "-s -w -X {{.Module}}/cli.Version={{.Version}} -X {{.Module}}/cli.Date={{.Date}}" ../../cmd/yomo/main.go
-    method: none
-    silent: true
 
   clean:
     desc: "cli clean"

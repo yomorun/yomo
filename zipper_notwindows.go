@@ -4,13 +4,12 @@
 package yomo
 
 import (
-	"fmt"
 	"os"
 	"os/signal"
 	"runtime"
 	"syscall"
 
-	"github.com/yomorun/yomo/pkg/logger"
+	"github.com/yomorun/yomo/core/ylog"
 )
 
 // initialize when zipper running as server. support inspection:
@@ -21,21 +20,20 @@ func (z *zipper) init() {
 	go func() {
 		c := make(chan os.Signal, 1)
 		signal.Notify(c, syscall.SIGTERM, syscall.SIGUSR2, syscall.SIGUSR1, syscall.SIGINT)
-		logger.Printf("%sListening SIGUSR1, SIGUSR2, SIGTERM/SIGINT...", zipperLogPrefix)
+		ylog.Info("Listening SIGUSR1, SIGUSR2, SIGTERM/SIGINT...")
 		for p1 := range c {
-			logger.Printf("Received signal: %s", p1)
+			ylog.Debug("Received signal", "signal", p1)
 			if p1 == syscall.SIGTERM || p1 == syscall.SIGINT {
-				logger.Printf("graceful shutting down ... %s", p1)
+				ylog.Debug("graceful shutting down ...", "sign", p1)
 				// waiting for the server to finish processing the current request
 				z.Close()
 				os.Exit(0)
-				// close(sgnl)
 			} else if p1 == syscall.SIGUSR2 {
 				var m runtime.MemStats
 				runtime.ReadMemStats(&m)
-				fmt.Printf("\tNumGC = %v\n", m.NumGC)
+				ylog.Debug("runtime stats", "gc_nums", m.NumGC)
 			} else if p1 == syscall.SIGUSR1 {
-				logger.Printf("print zipper stats(): %d", z.Stats())
+				ylog.Debug("zipper stats", "zipper_stats", z.Stats())
 			}
 		}
 	}()

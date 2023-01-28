@@ -1,8 +1,10 @@
-import { Reader, Writer } from "https://deno.land/std@0.155.0/io/types.d.ts";
+import { Reader, Writer } from "https://deno.land/std/io/types.d.ts";
 import {
-  putVarnum,
   readVarnum,
-} from "https://deno.land/std@0.155.0/encoding/binary.ts";
+  varnumBytes,
+} from "https://deno.land/std/encoding/binary.ts";
+import { loadSync } from "https://deno.land/std/dotenv/mod.ts";
+import { join } from "https://deno.land/std/path/mod.ts";
 
 export class Request {
   data: Uint8Array;
@@ -22,11 +24,17 @@ export class Response {
   }
 }
 
+const VARNUM_OPTIONS = {
+  "dataType": "uint32",
+  "endian": "little",
+};
+
+function numberToBytes(val: number): Uint8Array {
+  return varnumBytes(val, VARNUM_OPTIONS);
+}
+
 async function readData(reader: Reader): Promise<Uint8Array | null> {
-  const length = await readVarnum(reader, {
-    "dataType": "uint32",
-    "endian": "little",
-  });
+  const length = await readVarnum(reader, VARNUM_OPTIONS);
   const buf = new Uint8Array(length);
   const n = await reader.read(buf);
   if (n == null || n !== length) {
@@ -36,12 +44,7 @@ async function readData(reader: Reader): Promise<Uint8Array | null> {
 }
 
 async function writeData(writer: Writer, data: Uint8Array) {
-  const length = new Uint8Array(4);
-  putVarnum(length, data.length, {
-    "dataType": "uint32",
-    "endian": "little",
-  });
-  await writer.write(length);
+  await writer.write(numberToBytes(data.length));
   await writer.write(data);
 }
 
@@ -50,8 +53,22 @@ export async function run(
   handler: (req: Request) => Response,
 ) {
   let sock = "./sfn.sock";
+  let env = null;
   if (Deno.args.length > 0) {
     sock = Deno.args[0];
+    if (Deno.args.length > 1) {
+      env = Deno.args[1];
+    }
+  }
+
+  if (env != null) {
+    loadSync({
+      envPath: env,
+      defaultsPath: null,
+      examplePath: null,
+      export: true,
+      allowEmptyValues: true,
+    });
   }
 
   const conn = await Deno.connect({
@@ -59,7 +76,11 @@ export async function run(
     transport: "unix",
   });
 
-  await writeData(conn, Uint8Array.from(observed));
+  await conn.write(numberToBytes(observed.length));
+  for (const tag of observed) {
+    await conn.write(numberToBytes(tag));
+  }
+
   for (;;) {
     const buf = await readData(conn);
     if (buf == null) {
@@ -67,9 +88,9 @@ export async function run(
     }
 
     const req = new Request(buf);
-    const res = handler(req);
+    const res = await handler(req);
 
-    conn.write(Uint8Array.from([res.tag]));
+    await conn.write(numberToBytes(res.tag));
     await writeData(conn, res.data);
   }
 

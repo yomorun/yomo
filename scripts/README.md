@@ -2,7 +2,7 @@
 
 TLS is supported by YoMo. In order to run YoMo services with TLS encryption, it's not necessary to change any code or recompile the program; instead, the only thing you need to do is to add 4 environment variables when starting the service:
 
-- `YOMO_ENV` ( = production )
+- `YOMO_TLS_VERIFY_PEER`
 - `YOMO_TLS_CACERT_FILE`
 - `YOMO_TLS_CERT_FILE`
 - `YOMO_TLS_KEY_FILE`
@@ -51,7 +51,7 @@ sudo echo '127.0.0.1 yomo-app.dev' | sudo tee -a /etc/hosts
 ## 3. Run YoMo Zipper (Server) with TLS encryption
 
 ```bash
-YOMO_ENV=production \
+YOMO_TLS_VERIFY_PEER=true \
 YOMO_TLS_CACERT_FILE=tls/ca.crt \
 YOMO_TLS_CERT_FILE=tls/server.crt \
 YOMO_TLS_KEY_FILE=tls/server.key \
@@ -61,7 +61,7 @@ yomo serve -c ../example/0-basic/workflow.yaml
 ## 4. Run YoMo Stream Function (Client) with TLS encryption
 
 ```bash
-YOMO_ENV=production \
+YOMO_TLS_VERIFY_PEER=true \
 YOMO_TLS_CACERT_FILE=tls/ca.crt \
 YOMO_TLS_CERT_FILE=tls/client_sfn.crt \
 YOMO_TLS_KEY_FILE=tls/client_sfn.key \
@@ -72,7 +72,7 @@ go run ../example/0-basic/sfn/main.go
 ## 5. Run YoMo Source (Client) with TLS encryption
 
 ```bash
-YOMO_ENV=production \
+YOMO_TLS_VERIFY_PEER=true \
 YOMO_TLS_CACERT_FILE=tls/ca.crt \
 YOMO_TLS_CERT_FILE=tls/client_source.crt \
 YOMO_TLS_KEY_FILE=tls/client_source.key \

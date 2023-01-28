@@ -1,11 +1,12 @@
 package main
 
 import (
+	"log"
 	"os"
 	"strconv"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/pkg/logger"
+	"github.com/yomorun/yomo/core/frame"
 )
 
 type noiseData struct {
@@ -31,12 +32,12 @@ func main() {
 	// start
 	err := sfn.Connect()
 	if err != nil {
-		logger.Errorf("[sfn-1] connect err=%v", err)
+		log.Printf("[sfn-1] connect err=%v", err)
 		os.Exit(1)
 	}
 	// set the error handler function when server error occurs
 	sfn.SetErrorHandler(func(err error) {
-		logger.Errorf("[sfn-1] receive server error: %v", err)
+		log.Printf("[sfn-1] receive server error: %v", err)
 		sfn.Close()
 		os.Exit(1)
 	})
@@ -44,16 +45,16 @@ func main() {
 	select {}
 }
 
-func handler(data []byte) (byte, []byte) {
+func handler(data []byte) (frame.Tag, []byte) {
 	// got
 	noise, err := strconv.ParseFloat(string(data), 10)
 	if err != nil {
-		logger.Errorf("[sfn-1] got err=%v", err)
+		log.Printf("[sfn-1] got err=%v", err)
 		return 0x0, nil
 	}
 	// result
 	result := int(noise)
-	logger.Printf("[sfn-1] got: tag=0x33, data=%v, return: tag=0x34, data=%v", noise, result)
+	log.Printf("[sfn-1] got: tag=0x33, data=%v, return: tag=0x34, data=%v", noise, result)
 
 	return 0x34, []byte(strconv.Itoa(result))
 }

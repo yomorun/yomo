@@ -1,5 +1,5 @@
 extern "C" {
-    fn yomo_observe_datatag(tag: u8);
+    fn yomo_observe_datatag(tag: u32);
     fn yomo_load_input(pointer: *mut u8);
     fn yomo_dump_output(tag: u8, pointer: *const u8, length: usize);
 }

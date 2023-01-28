@@ -7,14 +7,17 @@ import (
 )
 
 // MainFuncRxTmpl the rxstream serverless of the main function template
+//
 //go:embed templates/main_rx.tmpl
 var MainFuncRxTmpl []byte
 
 // MainFuncRawBytesTmpl the raw bytes serverless of the main function template
+//
 //go:embed templates/main_raw_bytes.tmpl
 var MainFuncRawBytesTmpl []byte
 
 // PartialsTmpl partials template, used for rendering the partials
+//
 //go:embed templates/partials.tmpl
 var PartialsTmpl []byte
 

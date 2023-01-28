@@ -8,7 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/yomorun/yomo/pkg/logger"
+	"github.com/yomorun/yomo/core/ylog"
 )
 
 // initialize when zipper running as server. support inspection:
@@ -17,11 +17,11 @@ func (z *zipper) init() {
 	go func() {
 		c := make(chan os.Signal, 1)
 		signal.Notify(c, syscall.SIGTERM, syscall.SIGINT)
-		logger.Printf("%sListening SIGTERM/SIGINT...", zipperLogPrefix)
+		ylog.Info("Listening SIGTERM/SIGINT...")
 		for p1 := range c {
-			logger.Printf("Received signal: %s", p1)
+			ylog.Debug("Received signal", "signal", p1)
 			if p1 == syscall.SIGTERM || p1 == syscall.SIGINT {
-				logger.Printf("graceful shutting down ... %s", p1)
+				ylog.Debug("graceful shutting down ...", "sign", p1)
 				os.Exit(0)
 			}
 		}
