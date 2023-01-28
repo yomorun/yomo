@@ -9,9 +9,6 @@ import (
 
 // dataFramePool provides a syncPool for dataFrame.
 // Because that dataFrame is the most frequently allocated object.
-//
-// Different clients send data of different capacities, There maybe need to give client
-// its own syncPool.
 var dataFramePool sync.Pool
 
 // DataFrame defines the data structure carried with user's data
