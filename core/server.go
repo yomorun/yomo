@@ -335,6 +335,11 @@ func (s *Server) handleConnection(c *Context) {
 				return
 			}
 		}
+
+		// release dataFrame.
+		if c.Frame.Type() == frame.TagOfDataFrame {
+			c.Frame.(*frame.DataFrame).Clean()
+		}
 	}
 }
 
