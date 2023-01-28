@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"math/rand"
 	"os"
 	"time"
 
@@ -55,7 +56,7 @@ func generateAndSendData(stream yomo.Source) error {
 	for {
 		// generate random data.
 		data := noiseData{
-			Noise: float32(i),
+			Noise: rand.New(rand.NewSource(time.Now().UnixNano())).Float32() * 200,
 			Time:  time.Now().UnixNano() / int64(time.Millisecond),
 			From:  "localhost",
 		}
@@ -69,7 +70,10 @@ func generateAndSendData(stream yomo.Source) error {
 		// send data via QUIC stream.
 		_, err = stream.Write(sendingBuf)
 		i++
-
+		if i > 6 {
+			stream.Close()
+			return nil
+		}
 		if err != nil {
 			logger.Error("[source] ❌ Emit to YoMo-Zipper failure with err", err, "data", data)
 			time.Sleep(500 * time.Millisecond)

@@ -11,7 +11,7 @@ import (
 // Because that dataFrame is the most frequently allocated object.
 //
 // Different clients send data of different capacities, There maybe need to give client
-// its own syncool.
+// its own syncPool.
 var dataFramePool sync.Pool
 
 // DataFrame defines the data structure carried with user's data
@@ -53,8 +53,7 @@ func newDataFrame() (data *DataFrame) {
 }
 
 // Clean cleans DataFrame.
-// The DataFrame be cleaned is not available, Do not use DataFrame
-// after Clean() called.
+// The DataFrame be cleaned is not available, Do not use DataFrame after Clean() called.
 func (d *DataFrame) Clean() {
 	// reset metadataFrame
 	d.metaFrame.tid = ""
