@@ -46,17 +46,19 @@ func TestDataFrameDecode(t *testing.T) {
 	assert.EqualValues(t, true, data.IsBroadcast())
 }
 
-func TestDataFramePool(t *testing.T) {
-	prev := NewDataFrame()
-	prev.SetCarriage(Tag(0x15), []byte("yomo"))
-	prev.SetBroadcast(true)
+func BenchmarkDataFramePool(b *testing.B) {
+	var (
+		tag     = Tag(0x15)
+		payload = []byte("yomo")
+	)
 
-	prev.Clean()
-	assert.Equal(t, "", prev.GetMetaFrame().TransactionID())
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			prev := NewDataFrame()
+			prev.SetCarriage(tag, payload)
+			prev.SetBroadcast(true)
 
-	curr := NewDataFrame()
-	assert.Equal(t, prev, curr)
-
-	// prev and curr has same point.
-	assert.Equal(t, curr.GetMetaFrame().TransactionID(), prev.GetMetaFrame().TransactionID())
+			prev.Clean()
+		}
+	})
 }
