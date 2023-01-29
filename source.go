@@ -93,6 +93,7 @@ func (s *yomoSource) Connect() error {
 // WriteWithTag will write data with specified tag, default transactionID is epoch time.
 func (s *yomoSource) WriteWithTag(tag frame.Tag, data []byte) error {
 	f := frame.NewDataFrame()
+	defer f.Clean()
 	f.SetCarriage(tag, data)
 	f.SetSourceID(s.client.ClientID())
 	s.client.Logger().Debug("WriteWithTag", "data_frame", f.String())
@@ -113,6 +114,7 @@ func (s *yomoSource) SetReceiveHandler(fn func(frame.Tag, []byte)) {
 // Broadcast Write the data to all downstream
 func (s *yomoSource) Broadcast(data []byte) error {
 	f := frame.NewDataFrame()
+	defer f.Clean()
 	f.SetCarriage(s.tag, data)
 	f.SetSourceID(s.client.ClientID())
 	f.SetBroadcast(true)
