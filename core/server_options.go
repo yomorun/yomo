@@ -3,7 +3,7 @@ package core
 import (
 	"crypto/tls"
 
-	"github.com/lucas-clemente/quic-go"
+	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/ylog"
 	"golang.org/x/exp/slog"

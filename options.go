@@ -3,7 +3,7 @@ package yomo
 import (
 	"crypto/tls"
 
-	"github.com/lucas-clemente/quic-go"
+	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
 	"golang.org/x/exp/slog"

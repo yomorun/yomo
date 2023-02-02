@@ -3,11 +3,14 @@ package core
 import (
 	"bytes"
 	"context"
+	"path/filepath"
+	"runtime"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/lucas-clemente/quic-go"
+	"github.com/quic-go/quic-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
@@ -168,3 +171,91 @@ func (w *mockFrameWriter) assertEqual(t *testing.T, frm frame.Frame) {
 
 	assert.Equal(t, w.buf.Bytes(), frm.Encode())
 }
+func BenchmarkDataFramePool(b *testing.B) {
+	var (
+		tag     = frame.Tag(0x15)
+		payload = []byte("yomo")
+	)
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			prev := frame.NewDataFrame()
+			prev.SetCarriage(tag, payload)
+			prev.SetBroadcast(true)
+
+			// prev.Clean() // master 分支上未包含此方法
+		}
+	})
+}
+
+// go test -benchmem -run=^$ -bench ^Benchmark$ github.com/yomorun/yomo/core -v -cover -count=1
+func Benchmark(t *testing.B) {
+	runtime.GOMAXPROCS(1)
+
+	t.Setenv("YOMO_LOG_OUTPUT", filepath.Join(t.TempDir(), "output.log"))
+	t.Setenv("YOMO_LOG_ERROR_OUTPUT", filepath.Join(t.TempDir(), "erroutput.log"))
+
+	var (
+		obversedTag = frame.Tag(1)
+		payload     = []byte("hello data frame")
+	)
+
+	i := 1024
+	t.RunParallel(func(p *testing.PB) {
+		for p.Next() {
+			i++
+			source := createTestSource(t, strconv.Itoa(i), obversedTag, payload)
+
+			for j := 0; j < 10000; j++ {
+				dataFrame := frame.NewDataFrame()
+				dataFrame.SetSourceID(source.clientID)
+				dataFrame.SetCarriage(obversedTag, []byte(strconv.Itoa(i)))
+				dataFrame.SetBroadcast(true)
+
+				source.WriteFrame(dataFrame)
+				// dataFrame.Clean()
+			}
+			source.Close()
+		}
+	})
+}
+
+func createTestSource(t *testing.B, name string, obversedTag frame.Tag, payload []byte) *Client {
+	source := NewClient(
+		name,
+		ClientTypeSource,
+		WithObserveDataTags(obversedTag),
+		WithClientQuicConfig(DefalutQuicConfig),
+		WithLogger(ylog.Default()),
+	)
+
+	source.SetBackflowFrameObserver(func(bf *frame.BackflowFrame) {})
+
+	err := source.Connect(context.TODO(), "127.0.0.1:9000")
+	assert.NoError(t, err, "source connect must be success")
+	assert.Equal(t, ConnStateConnected, source.State(), "source state should be ConnStateConnected")
+
+	return source
+}
+
+// var wg sync.WaitGroup
+
+// for i := 0; i < 100; i++ {
+// 	wg.Add(1)
+// 	go func(i int) {
+// 		defer wg.Done()
+// 		source := createTestSource(t, strconv.Itoa(i), obversedTag, payload)
+// 		syncMap.Store(source, struct{}{})
+
+// 		for j := 0; j < 10000; j++ {
+// 			dataFrame := frame.NewDataFrame()
+// 			dataFrame.SetSourceID(source.clientID)
+// 			dataFrame.SetCarriage(obversedTag, []byte(strconv.Itoa(i)))
+// 			dataFrame.SetBroadcast(true)
+
+// 			source.WriteFrame(dataFrame)
+// 			dataFrame.Clean()
+// 		}
+// 	}(i)
+// }
+// wg.Wait()
