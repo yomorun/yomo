@@ -5,7 +5,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/lucas-clemente/quic-go"
+	"github.com/quic-go/quic-go"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
 	"golang.org/x/exp/slog"
 )

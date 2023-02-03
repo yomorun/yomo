@@ -1,7 +1,7 @@
 package core
 
 import (
-	"github.com/lucas-clemente/quic-go"
+	"github.com/quic-go/quic-go"
 )
 
 // A Listener for incoming connections
