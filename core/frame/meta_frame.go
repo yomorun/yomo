@@ -17,13 +17,13 @@ type MetaFrame struct {
 	broadcast bool
 }
 
-// NewMetaFrame creates a new MetaFrame instance.
-func NewMetaFrame() *MetaFrame {
+// randString genetates a random string.
+func randString() string {
 	tid, err := gonanoid.New()
 	if err != nil {
-		tid = strconv.FormatInt(time.Now().Unix(), 10) // todo: UnixMicro since go 1.17
+		tid = strconv.FormatInt(time.Now().UnixMicro(), 10)
 	}
-	return &MetaFrame{tid: tid}
+	return tid
 }
 
 // SetTransactionID set the transaction ID.
@@ -95,20 +95,19 @@ func (m *MetaFrame) Encode() []byte {
 }
 
 // DecodeToMetaFrame decode a MetaFrame instance from given buffer.
-func DecodeToMetaFrame(buf []byte) (*MetaFrame, error) {
+func DecodeToMetaFrame(buf []byte, meta *MetaFrame) error {
 	nodeBlock := y3.NodePacket{}
 	_, err := y3.DecodeToNodePacket(buf, &nodeBlock)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	meta := &MetaFrame{}
 	for k, v := range nodeBlock.PrimitivePackets {
 		switch k {
 		case byte(TagOfTransactionID):
 			val, err := v.ToUTF8String()
 			if err != nil {
-				return nil, err
+				return err
 			}
 			meta.tid = val
 		case byte(TagOfMetadata):
@@ -116,17 +115,17 @@ func DecodeToMetaFrame(buf []byte) (*MetaFrame, error) {
 		case byte(TagOfSourceID):
 			sourceID, err := v.ToUTF8String()
 			if err != nil {
-				return nil, err
+				return err
 			}
 			meta.sourceID = sourceID
 		case byte(TagOfBroadcast):
 			broadcast, err := v.ToBool()
 			if err != nil {
-				return nil, err
+				return err
 			}
 			meta.broadcast = broadcast
 		}
 	}
 
-	return meta, nil
+	return nil
 }

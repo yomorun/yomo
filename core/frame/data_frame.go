@@ -2,9 +2,14 @@ package frame
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/yomorun/y3"
 )
+
+// dataFramePool provides a syncPool for dataFrame.
+// Because that dataFrame is the most frequently allocated object.
+var dataFramePool sync.Pool
 
 // DataFrame defines the data structure carried with user's data
 // transferring within YoMo
@@ -25,11 +30,39 @@ func (d DataFrame) String() string {
 
 // NewDataFrame create `DataFrame` with a transactionID string,
 // consider change transactionID to UUID type later
-func NewDataFrame() *DataFrame {
-	data := &DataFrame{
-		metaFrame: NewMetaFrame(),
+func NewDataFrame() (data *DataFrame) {
+	data = newDataFrame()
+	data.metaFrame.tid = randString()
+	return
+}
+
+func newDataFrame() (data *DataFrame) {
+	v := dataFramePool.Get()
+	if v == nil {
+		data = new(DataFrame)
+		data.metaFrame = new(MetaFrame)
+		data.payloadFrame = new(PayloadFrame)
+	} else {
+		data = v.(*DataFrame)
 	}
-	return data
+
+	return
+}
+
+// Clean cleans DataFrame.
+// The DataFrame be cleaned is not available, Do not use DataFrame after Clean() called.
+func (d *DataFrame) Clean() {
+	// reset metadataFrame
+	d.metaFrame.tid = ""
+	d.metaFrame.metadata = d.metaFrame.metadata[:0]
+	d.metaFrame.sourceID = ""
+	d.metaFrame.broadcast = false
+
+	// reset payloadFrame
+	d.payloadFrame.Tag = Tag(0)
+	d.payloadFrame.Carriage = d.payloadFrame.Carriage[:0]
+
+	dataFramePool.Put(d)
 }
 
 // Type gets the type of Frame.
@@ -44,7 +77,10 @@ func (d *DataFrame) Tag() Tag {
 
 // SetCarriage set user's raw data in `DataFrame`
 func (d *DataFrame) SetCarriage(tag Tag, carriage []byte) {
-	d.payloadFrame = NewPayloadFrame(tag).SetCarriage(carriage)
+	d.payloadFrame = &PayloadFrame{
+		Tag:      tag,
+		Carriage: carriage,
+	}
 }
 
 // GetCarriage return user's raw data in `DataFrame`
@@ -111,22 +147,20 @@ func DecodeToDataFrame(buf []byte) (*DataFrame, error) {
 		return nil, err
 	}
 
-	data := &DataFrame{}
+	data := newDataFrame()
 
 	if metaBlock, ok := packet.NodePackets[byte(TagOfMetaFrame)]; ok {
-		meta, err := DecodeToMetaFrame(metaBlock.GetRawBytes())
+		err := DecodeToMetaFrame(metaBlock.GetRawBytes(), data.metaFrame)
 		if err != nil {
 			return nil, err
 		}
-		data.metaFrame = meta
 	}
 
 	if payloadBlock, ok := packet.NodePackets[byte(TagOfPayloadFrame)]; ok {
-		payload, err := DecodeToPayloadFrame(payloadBlock.GetRawBytes())
+		err := DecodeToPayloadFrame(payloadBlock.GetRawBytes(), data.payloadFrame)
 		if err != nil {
 			return nil, err
 		}
-		data.payloadFrame = payload
 	}
 
 	return data, nil

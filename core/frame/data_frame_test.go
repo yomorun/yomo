@@ -45,3 +45,20 @@ func TestDataFrameDecode(t *testing.T) {
 	assert.EqualValues(t, []byte("yomo"), data.GetCarriage())
 	assert.EqualValues(t, true, data.IsBroadcast())
 }
+
+func BenchmarkDataFramePool(b *testing.B) {
+	var (
+		tag     = Tag(0x15)
+		payload = []byte("yomo")
+	)
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			prev := NewDataFrame()
+			prev.SetCarriage(tag, payload)
+			prev.SetBroadcast(true)
+
+			prev.Clean()
+		}
+	})
+}

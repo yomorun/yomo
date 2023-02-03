@@ -203,6 +203,7 @@ func (c *Client) handleFrame() (bool, bool, error) {
 				} else {
 					c.processor(v)
 				}
+				v.Clean()
 			}
 		case frame.TagOfBackflowFrame:
 			if v, ok := f.(*frame.BackflowFrame); ok {

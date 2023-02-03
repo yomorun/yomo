@@ -65,6 +65,7 @@ func newConnection(
 		metadata:   metadata,
 		stream:     stream,
 		closed:     false,
+		logger:     logger,
 	}
 }
 
