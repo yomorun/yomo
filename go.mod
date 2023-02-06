@@ -8,7 +8,7 @@ require (
 	github.com/caarlos0/env/v6 v6.10.1
 	github.com/cenkalti/backoff/v4 v4.1.3
 	github.com/fatih/color v1.13.0
-	github.com/joho/godotenv v1.4.0
+	github.com/joho/godotenv v1.5.1
 	github.com/matoous/go-nanoid/v2 v2.0.0
 	github.com/quic-go/quic-go v0.32.0
 	github.com/reactivex/rxgo/v2 v2.5.0
