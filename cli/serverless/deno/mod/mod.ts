@@ -1,4 +1,4 @@
-import { Reader, Writer } from "https://deno.land/std/io/types.d.ts";
+import { Reader, Writer } from "https://deno.land/std/types.d.ts";
 import {
   readVarnum,
   varnumBytes,
