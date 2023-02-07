@@ -72,8 +72,6 @@ export async function run(
   if (env != null) {
     loadSync({
       envPath: env,
-      defaultsPath: undefined,
-      examplePath: undefined,
       export: true,
       allowEmptyValues: true,
     });
