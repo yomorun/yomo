@@ -18,16 +18,16 @@ If an application can be deployed anywhere close to their end users, solve the p
 
 ## 🌶 Features
 
-|     | **Features**|
-| --- | ----------------------------------------------------------------------------------|
-| ⚡️  | **Low-latency** Guaranteed by implementing atop QUIC [QUIC](https://datatracker.ietf.org/wg/quic/documents/) |
-| 🔐  | **Security** TLS v1.3 on every data packet by design |
-| 📱  | **5G/WiFi-6** Reliable networking in Cellular/Wireless |
-| 🌎  | **Geo-Distributed Edge Mesh** Edge-Mesh Native architecture makes your services close to end users |
-| 📸  | **Event-First** Architecture leverages serverless service to be event driven and elastic  |
-| 🦖  | **Streaming Serverless** Write only a few lines of code to build applications and microservices |
-| 🚀  | **Y3** a [faster than real-time codec](https://github.com/yomorun/y3-codec-golang) |
-| 📨  | **Reactive** stream processing based on [Rx](http://reactivex.io/documentation/operators.html) |
+|     | **Features**                                                                                                 |
+| --- | ------------------------------------------------------------------------------------------------------------ |
+| ⚡️   | **Low-latency** Guaranteed by implementing atop QUIC [QUIC](https://datatracker.ietf.org/wg/quic/documents/) |
+| 🔐   | **Security** TLS v1.3 on every data packet by design                                                         |
+| 📱   | **5G/WiFi-6** Reliable networking in Cellular/Wireless                                                       |
+| 🌎   | **Geo-Distributed Edge Mesh** Edge-Mesh Native architecture makes your services close to end users           |
+| 📸   | **Event-First** Architecture leverages serverless service to be event driven and elastic                     |
+| 🦖   | **Streaming Serverless** Write only a few lines of code to build applications and microservices              |
+| 🚀   | **Y3** a [faster than real-time codec](https://github.com/yomorun/y3-codec-golang)                           |
+| 📨   | **Reactive** stream processing based on [Rx](http://reactivex.io/documentation/operators.html)               |
 
 ## 🚀 Getting Started
 
@@ -91,7 +91,7 @@ var echo = func(_ context.Context, i interface{}) (interface{}, error) {
 	value := i.(*NoiseData)
 	value.Noise = value.Noise / 10
 	rightNow := time.Now().UnixNano() / int64(time.Millisecond)
-	fmt.Println(fmt.Sprintf("[%s] %d > value: %f ⚡️=%dms", value.From, value.Time, value.Noise, rightNow-value.Time))
+	fmt.Printf("[%s] %d > value: %f ⚡️=%dms\n", value.From, value.Time, value.Noise,rightNow-value.Time)
 	return value.Noise, nil
 }
 
@@ -101,7 +101,9 @@ func Handler(rxstream rx.Stream) rx.Stream {
 		Unmarshal(json.Unmarshal, func() interface{} { return &NoiseData{} }).
 		Debounce(50).
 		Map(echo).
-		StdOut()
+		StdOut().
+		Marshal(json.Marshal).
+		PipeBackToZipper(0x34)
 
 	return stream
 }

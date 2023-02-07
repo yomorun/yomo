@@ -47,7 +47,7 @@ func (r *Runtime) RawByteHandler(req []byte) (frame.Tag, []byte) {
 			continue
 		}
 
-		ylog.Info("[RawByteHandler] Send data to YoMo-Zipper.", "tag", res.Tag)
+		ylog.Debug("[RawByteHandler] Send data to YoMo-Zipper.", "tag", res.Tag)
 		return res.Tag, res.Carriage
 	}
 
