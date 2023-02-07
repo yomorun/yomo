@@ -12,9 +12,15 @@ import (
 
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/pkg/file"
 )
 
 func listen(path string) (*net.UnixListener, error) {
+	err := file.Remove(path)
+	if err != nil {
+		return nil, err
+	}
+
 	addr, err := net.ResolveUnixAddr("unix", path)
 	if err != nil {
 		return nil, err
@@ -107,7 +113,7 @@ func startSfn(name string, zipperAddr string, credential string, observed []fram
 
 	sfn.SetErrorHandler(
 		func(err error) {
-			log.Printf("[flow][%s] error handler: %T %v\n", zipperAddr, err, err)
+			log.Printf("[deno][%s] error handler: %T %v\n", zipperAddr, err, err)
 		},
 	)
 
