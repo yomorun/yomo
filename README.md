@@ -91,7 +91,7 @@ var echo = func(_ context.Context, i interface{}) (interface{}, error) {
 	value := i.(*NoiseData)
 	value.Noise = value.Noise / 10
 	rightNow := time.Now().UnixNano() / int64(time.Millisecond)
-	fmt.Printf("[%s] %d > value: %f ⚡️=%dms\n", value.From, value.Time, value.Noise,rightNow-value.Time)
+	fmt.Printf("[%s] %d > value: %f ⚡️=%dms\n", value.From, value.Time, value.Noise, rightNow-value.Time)
 	return value.Noise, nil
 }
 
