@@ -1,10 +1,10 @@
-import { Reader, Writer } from "https://deno.land/std/io/types.d.ts";
+import { Reader, Writer } from "https://deno.land/std/types.d.ts";
 import {
   readVarnum,
   varnumBytes,
+  VarnumOptions,
 } from "https://deno.land/std/encoding/binary.ts";
 import { loadSync } from "https://deno.land/std/dotenv/mod.ts";
-import { join } from "https://deno.land/std/path/mod.ts";
 
 export class Request {
   data: Uint8Array;
@@ -24,7 +24,7 @@ export class Response {
   }
 }
 
-const VARNUM_OPTIONS = {
+const VARNUM_OPTIONS: VarnumOptions = {
   "dataType": "uint32",
   "endian": "little",
 };
@@ -34,7 +34,15 @@ function numberToBytes(val: number): Uint8Array {
 }
 
 async function readData(reader: Reader): Promise<Uint8Array | null> {
-  const length = await readVarnum(reader, VARNUM_OPTIONS);
+  let length = 0;
+  try {
+    length = await readVarnum(reader, VARNUM_OPTIONS);
+  } catch (e) {
+    if (e instanceof Deno.errors.UnexpectedEof) {
+      return null;
+    }
+    throw e;
+  }
   const buf = new Uint8Array(length);
   const n = await reader.read(buf);
   if (n == null || n !== length) {
@@ -50,7 +58,7 @@ async function writeData(writer: Writer, data: Uint8Array) {
 
 export async function run(
   observed: [number],
-  handler: (req: Request) => Response,
+  handler: (req: Request) => Promise<Response>,
 ) {
   let sock = "./sfn.sock";
   let env = null;
@@ -64,14 +72,14 @@ export async function run(
   if (env != null) {
     loadSync({
       envPath: env,
-      defaultsPath: null,
-      examplePath: null,
+      defaultsPath: "",
+      examplePath: "",
       export: true,
       allowEmptyValues: true,
     });
   }
 
-  const conn = await Deno.connect({
+  const conn: Deno.UnixConn = await Deno.connect({
     path: sock,
     transport: "unix",
   });

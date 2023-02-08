@@ -2,9 +2,11 @@
 package deno
 
 import (
+	"os"
 	"sync"
 
 	"github.com/yomorun/yomo/cli/serverless"
+	"github.com/yomorun/yomo/pkg/log"
 )
 
 // denoServerless will start deno program to run serverless functions.
@@ -36,7 +38,10 @@ func (s *denoServerless) Run(verbose bool) error {
 	for _, v := range s.zipperAddrs {
 		wg.Add(1)
 		go func(zipperAddr string) {
-			run(s.name, zipperAddr, s.credential, s.fileName, "./"+s.name+".sock")
+			err := run(s.name, zipperAddr, s.credential, s.fileName, "./"+s.name+".sock")
+			if err != nil {
+				log.FailureStatusEvent(os.Stderr, "%v", err)
+			}
 			wg.Done()
 		}(v)
 	}

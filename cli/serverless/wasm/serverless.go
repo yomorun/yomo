@@ -3,11 +3,13 @@ package wasm
 
 import (
 	"log"
+	"os"
 	"sync"
 
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/cli/serverless"
 	"github.com/yomorun/yomo/core/frame"
+	pkglog "github.com/yomorun/yomo/pkg/log"
 )
 
 // wasmServerless will run serverless functions from the given compiled WebAssembly files.
@@ -57,13 +59,13 @@ func (s *wasmServerless) Run(verbose bool) error {
 			yomo.WithCredential(s.credential),
 		)
 
-		var ch chan struct{}
+		var ch chan error
 
 		sfn.SetHandler(
 			func(req []byte) (frame.Tag, []byte) {
 				tag, res, err := s.runtime.RunHandler(req)
 				if err != nil {
-					ch <- struct{}{}
+					ch <- err
 				}
 
 				return tag, res
@@ -72,7 +74,7 @@ func (s *wasmServerless) Run(verbose bool) error {
 
 		sfn.SetErrorHandler(
 			func(err error) {
-				log.Printf("[flow][%s] error handler: %T %v\n", addr, err, err)
+				log.Printf("[wasm][%s] error handler: %T %v\n", addr, err, err)
 			},
 		)
 
@@ -85,7 +87,10 @@ func (s *wasmServerless) Run(verbose bool) error {
 
 		wg.Add(1)
 		go func() {
-			<-ch
+			err := <-ch
+			if err != nil {
+				pkglog.FailureStatusEvent(os.Stderr, "%v", err)
+			}
 			wg.Done()
 		}()
 	}
