@@ -21,10 +21,7 @@ var ctxPool sync.Pool
 // And stores clientInfo and serverInfo according to client and server.
 // Context's lifecycle equal to stream.
 type Context struct {
-	// connID is Conn.RemoteAddr().String().
-	connID string
-	// Conn is the connection of client.
-	Conn QuicConnCloser
+	conn Connection
 	// Stream is the long-lived connection between client and server.
 	Stream ContextWriterCloser
 	// Frame receives from client.
@@ -94,19 +91,16 @@ func (c *Context) Value(key any) any {
 // newContext returns a yomo context,
 // The context implements standard library `context.Context` interface,
 // The lifecycle of Context is equal to stream's taht be passed in.
-func newContext(conn QuicConnCloser, stream ContextWriterCloser, mb metadata.Builder, logger *slog.Logger) (c *Context) {
+func newContext(conn Connection, stream ContextWriterCloser, mb metadata.Builder, logger *slog.Logger) (c *Context) {
 	v := ctxPool.Get()
 	if v == nil {
 		c = new(Context)
 	} else {
 		c = v.(*Context)
 	}
-
-	c.Conn = conn
+	c.conn = conn
 	c.Stream = stream
-	c.connID = conn.RemoteAddr().String()
 	c.metadataBuilder = mb
-	c.Logger = logger.With("conn_id", conn.RemoteAddr().String())
 	return
 }
 
@@ -127,8 +121,8 @@ func (c *Context) WithFrame(f frame.Frame) error {
 	switch f.Type() {
 	// It represents new client coming if the frame is handshakeFrame,
 	// Store client info to logger and context.
-	case frame.TagOfHandshakeFrame:
-		handshakeFrame := f.(*frame.HandshakeFrame)
+	case frame.TagOfConnectionFrame:
+		handshakeFrame := f.(*frame.ConnectionFrame)
 
 		md, err := c.metadataBuilder.Build(handshakeFrame)
 		if err != nil {
@@ -146,7 +140,6 @@ func (c *Context) WithFrame(f frame.Frame) error {
 			"client_id", handshakeFrame.ClientID,
 			"client_type", ClientType(handshakeFrame.ClientType).String(),
 			"client_name", handshakeFrame.Name,
-			"auth_name", handshakeFrame.AuthName(),
 		)
 	}
 
@@ -160,15 +153,14 @@ func (c *Context) WithFrame(f frame.Frame) error {
 //
 // Warining: do not use any Context api after Clean, It maybe cause an error.
 func (c *Context) Clean() {
-	c.Logger.Debug("conn context clean", "conn_id", c.connID)
+	c.Logger.Debug("conn context clean", "conn_id", c.ConnID())
 
 	c.reset()
 	ctxPool.Put(c)
 }
 
 func (c *Context) reset() {
-	c.Conn = nil
-	c.connID = ""
+	c.conn = nil
 	c.Stream = nil
 	c.Frame = nil
 	c.metadataBuilder = nil
@@ -222,10 +214,10 @@ func (c *Context) CloseWithError(code yerr.ErrorCode, msg string) {
 		c.Stream.Close()
 	}
 
-	if c.Conn != nil {
-		c.Conn.CloseWithError(quic.ApplicationErrorCode(code), msg)
+	if c.conn != nil {
+		c.conn.Close()
 	}
 }
 
 // ConnID get quic connection id
-func (c *Context) ConnID() string { return c.connID }
+func (c *Context) ConnID() string { return c.conn.ClientID() }

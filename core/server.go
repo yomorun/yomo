@@ -44,7 +44,6 @@ type Server struct {
 	afterHandlers           []FrameHandler
 	connectionCloseHandlers []ConnectionHandler
 	listener                Listener
-	wg                      *sync.WaitGroup
 	logger                  *slog.Logger
 }
 
@@ -62,7 +61,6 @@ func NewServer(name string, opts ...ServerOption) *Server {
 		name:        name,
 		connector:   newConnector(logger),
 		downstreams: make(map[string]frame.Writer),
-		wg:          new(sync.WaitGroup),
 		logger:      logger,
 		opts:        options,
 	}
@@ -122,133 +120,46 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 			continue
 		}
 
-		// connection close handlers on server shutdown
-		// defer s.doConnectionCloseHandlers(conn)
-		s.wg.Add(1)
-		connID := GetConnID(conn)
-		s.logger.Info("new connection", "conn_id", connID)
+		stream0, err := conn.AcceptStream(ctx)
+		if err != nil {
+			continue
+		}
 
+		controlStream := NewControlStream(conn, stream0, s.logger, s.metadataBuilder)
+
+		// handshake accepts a handshakeFrame from client.
+		// the first frame from client must be handshakeFrame,
+		// It returns true if handshake successful otherwise return false.
+		// It response to client a handshakeAckFrame if the handshake is successful
+		// otherwise response a goawayFrame.
+		// It returns a context for this stream handler.
+		err = controlStream.Handshake(5*time.Second, s.handleHandshakeFrame1)
+		if err != nil {
+			continue
+		}
+
+		// TODO: aop for accepting new connection.
 		go func(qconn quic.Connection) {
-			// connection close handlers on client connect timeout
+			defer controlStream.Wait()
 			defer s.doConnectionCloseHandlers(qconn)
-			for {
-				s.logger.Debug("waiting for new stream")
-				stream, err := qconn.AcceptStream(ctx)
-				if err != nil {
-					// if client close the connection, then we should close the connection
-					// @CC: when Source close the connection, it won't affect connectors
-					name := "-"
-					clientID := "-"
-					if conn := s.connector.Get(connID); conn != nil {
-						// connector
-						s.connector.Remove(connID)
-						route := s.router.Route(conn.Metadata())
-						if route != nil {
-							route.Remove(connID)
-						}
-						name = conn.Name()
-						clientID = conn.ClientID()
-						conn.Close()
-					}
-					s.logger.Debug("close the connection", "client_name", name, "client_id", clientID, "conn_id", connID, "error", err)
-					break
-				}
-				defer stream.Close()
 
-				yctx, ok := s.handshakeWithTimeout(conn, stream, 10*time.Second)
-
-				for _, handler := range s.startHandlers {
-					if err := handler(yctx); err != nil {
-						yctx.Logger.Error("startHandlers error", err)
-						yctx.CloseWithError(yerr.ErrorCodeStartHandler, err.Error())
-						return
-					}
-				}
-
-				defer func() {
-					if yctx != nil {
-						yctx.Clean()
-					}
-				}()
-
-				if !ok {
-					return
-				}
-
-				s.logger.Info("stream created", "stream_id", stream.StreamID(), "conn_id", connID)
-
-				s.handleConnection(yctx)
-				yctx.Logger.Info("stream handleConnection DONE")
+			select {
+			case <-ctx.Done():
+			case err := <-s.runConn(controlStream):
+				s.logger.Error("Serve error with exit", err)
 			}
 		}(conn)
 	}
 }
 
-// handshakeWithTimeout call handshake with a timeout.
-func (s *Server) handshakeWithTimeout(conn quic.Connection, stream quic.Stream, timeout time.Duration) (*Context, bool) {
-	type result struct {
-		ok   bool
-		yctx *Context
-	}
-	ch := make(chan result)
-
-	fs := NewFrameStream(stream)
+func (s *Server) runConn(controlStream *ControlStream) <-chan error {
+	errch := make(chan error)
 
 	go func() {
-		ok, yctx := s.handshake(conn, stream, fs)
-		ch <- result{yctx, ok}
+		errch <- controlStream.runConn(s.connector, s.handleConnection)
 	}()
 
-	select {
-	case <-time.After(timeout):
-		return nil, false
-	case r := <-ch:
-		return r.yctx, r.ok
-	}
-}
-
-// handshake accepts a handshakeFrame from client.
-// the first frame from client must be handshakeFrame,
-// It returns true if handshake successful otherwise return false.
-// It response to client a handshakeAckFrame if the handshake is successful
-// otherwise response a goawayFrame.
-// It returns a context for this stream handler.
-func (s *Server) handshake(conn quic.Connection, stream quic.Stream, fs frame.ReadWriter) (*Context, bool) {
-	frm, err := fs.ReadFrame()
-
-	c := newContext(conn, stream, s.metadataBuilder, s.logger)
-
-	if err != nil {
-		if err := fs.WriteFrame(frame.NewGoawayFrame(err.Error())); err != nil {
-			s.logger.Error("write to client GoawayFrame error", err)
-		}
-		return c, false
-	}
-
-	if err := c.WithFrame(frm); err != nil {
-		if err := fs.WriteFrame(frame.NewGoawayFrame(err.Error())); err != nil {
-			s.logger.Error("write to client GoawayFrame error", err)
-		}
-		return c, false
-	}
-
-	if frm.Type() != frame.TagOfHandshakeFrame {
-		c.Logger.Info("client not do handshake right off")
-		if err := fs.WriteFrame(frame.NewGoawayFrame("handshake failed")); err != nil {
-			s.logger.Error("write to client GoawayFrame error", err)
-		}
-		return c, false
-	}
-
-	if err := s.handleHandshakeFrame(c); err != nil {
-		c.Logger.Info("handshake failed", "error", err)
-		if err := fs.WriteFrame(frame.NewGoawayFrame(err.Error())); err != nil {
-			s.logger.Error("write to client GoawayFrame error", err)
-		}
-		return c, false
-	}
-
-	return c, true
+	return errch
 }
 
 // Logger returns the logger of server.
@@ -268,7 +179,6 @@ func (s *Server) Close() error {
 	if s.connector != nil {
 		s.connector.Clean()
 	}
-	s.wg.Wait()
 	return nil
 }
 
@@ -364,91 +274,36 @@ func (s *Server) mainFrameHandler(c *Context) error {
 	return nil
 }
 
-// handle HandShakeFrame
-func (s *Server) handleHandshakeFrame(c *Context) error {
-	f := c.Frame.(*frame.HandshakeFrame)
+func (s *Server) Authenticate(stream0 quic.Stream, f *frame.HandshakeFrame) error {
+	if ok := auth.Authenticate(s.opts.auths, f); !ok {
+		err := fmt.Errorf("Handshake failed, client credential name is %s", authName(f.AuthName()))
 
-	// basic info
-	connID := c.ConnID()
-	clientID := f.ClientID
-	clientType := ClientType(f.ClientType)
-	stream := c.Stream
-	// credential
-	c.Logger.Debug("GOT HandshakeFrame", "client_type", f.ClientType, "client_id", clientID, "auth_name", authName(f.AuthName()))
-	// authenticate
-	authed := auth.Authenticate(s.opts.auths, f)
-	c.Logger.Debug("authenticate", "authed", authed)
-	if !authed {
-		err := fmt.Errorf("handshake authentication fails, client credential name is %s", authName(f.AuthName()))
-		// return err
-		c.Logger.Debug("authenticated", "authed", authed)
 		goawayFrame := frame.NewGoawayFrame(err.Error())
-		if _, err = stream.Write(goawayFrame.Encode()); err != nil {
-			c.Logger.Error("write to GoawayFrame failed", err, "authed", authed)
+		if _, err = stream0.Write(goawayFrame.Encode()); err != nil {
+			s.logger.Error("write GoawayFrame failed", err)
 			return err
 		}
-		return nil
-	}
 
-	// client type
-	var conn Connection
-	switch clientType {
-	case ClientTypeSource, ClientTypeStreamFunction:
-		// metadata
-		metadata, err := s.metadataBuilder.Build(f)
-		if err != nil {
-			return err
-		}
-		conn = newConnection(f.Name, f.ClientID, clientType, metadata, stream, f.ObserveDataTags, c.Logger)
-
-		if clientType == ClientTypeStreamFunction {
-			// route
-			route := s.router.Route(metadata)
-			if route == nil {
-				return errors.New("handleHandshakeFrame route is nil")
-			}
-			if err := route.Add(connID, f.Name, f.ObserveDataTags); err != nil {
-				// duplicate name
-				if e, ok := err.(yerr.DuplicateNameError); ok {
-					existsConnID := e.ConnID()
-					if conn := s.connector.Get(existsConnID); conn != nil {
-						c.Logger.Debug("write GoawayFrame", "error", e.Error(), "exists_conn_id", existsConnID)
-						goawayFrame := frame.NewGoawayFrame(e.Error())
-						if err := conn.WriteFrame(goawayFrame); err != nil {
-							c.Logger.Error("write GoawayFrame failed", err)
-							return err
-						}
-					}
-				} else {
-					return err
-				}
-			}
-		}
-	case ClientTypeUpstreamZipper:
-		conn = newConnection(f.Name, f.ClientID, clientType, nil, stream, f.ObserveDataTags, c.Logger)
-	default:
-		// TODO: There is no need to Remove,
-		// unknown client type is not be add to connector.
-		s.connector.Remove(connID)
-		err := fmt.Errorf("illegal ClientType: %#x", f.ClientType)
-		c.CloseWithError(yerr.ErrorCodeUnknownClient, err.Error())
 		return err
 	}
 
-	if _, err := stream.Write(frame.NewHandshakeAckFrame().Encode()); err != nil {
-		c.Logger.Error("write handshakeAckFrame error", err)
-	}
+	s.logger.Debug("Handshake success")
 
-	s.connector.Add(connID, conn)
-	c.Logger.Info("client is connected!")
 	return nil
+
 }
 
-// will reuse quic-go's keep-alive feature
-// func (s *Server) handlePingFrame(stream quic.Stream, conn quic.Connection, f *frame.PingFrame) error {
-// 	logger.Infof("%s------> GOT ❤️ PingFrame : %# x", ServerLogPrefix, f)
-// 	return nil
-// }
+func (s *Server) handleHandshakeFrame1(f *frame.HandshakeFrame) (bool, error) {
+	ok := auth.Authenticate(s.opts.auths, f)
+
+	if ok {
+		s.logger.Debug("Authentication succeeded")
+	} else {
+		s.logger.Warn("Authentication failed", "credential", f.AuthName())
+	}
+
+	return ok, nil
+}
 
 func (s *Server) handleDataFrame(c *Context) error {
 	// counter +1
@@ -576,7 +431,7 @@ func (s *Server) AddDownstreamServer(addr string, c frame.Writer) {
 
 // dispatch every DataFrames to all downstreams
 func (s *Server) dispatchToDownstreams(c *Context) {
-	conn := s.connector.Get(c.connID)
+	conn := s.connector.Get(c.ConnID())
 	if conn == nil {
 		c.Logger.Debug("dispatchToDownstreams failed")
 	} else if conn.ClientType() == ClientTypeSource {
@@ -658,7 +513,6 @@ func authName(name string) string {
 }
 
 func (s *Server) doConnectionCloseHandlers(qconn quic.Connection) {
-	defer s.wg.Done()
 	s.logger.Debug("quic connection closed")
 	for _, h := range s.connectionCloseHandlers {
 		h(qconn)

@@ -99,19 +99,16 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	c.conn = conn
 
 	// quic stream
-	stream, err := conn.OpenStreamSync(ctx)
+	stream0, err := conn.OpenStreamSync(ctx)
 	if err != nil {
 		c.state = ConnStateDisconnected
 		return err
 	}
-	c.fs = NewFrameStream(stream)
+
+	controlStream := NewFrameStream(stream0)
 
 	// send handshake
 	handshake := frame.NewHandshakeFrame(
-		c.name,
-		c.clientID,
-		byte(c.clientType),
-		c.opts.observeDataTags,
 		c.opts.credential.Name(),
 		c.opts.credential.Payload(),
 	)
@@ -120,7 +117,7 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 		return err
 	}
 
-	if _, err := frame.ReadUntil(c.fs, frame.TagOfHandshakeAckFrame, 10*time.Second); err != nil {
+	if _, err := frame.ReadUntil(controlStream, frame.TagOfHandshakeAckFrame, 10*time.Second); err != nil {
 		c.state = ConnStateDisconnected
 		return err
 	}
@@ -132,6 +129,13 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 
 	// receiving frames
 	go func() {
+		stream, err := conn.AcceptStream(ctx)
+		if err != nil {
+			c.logger.Error("Failed to accept data stream", err)
+			return
+		}
+		c.fs = NewFrameStream(stream)
+
 		closeConn, closeClient, err := c.handleFrame()
 		c.logger.Debug("connected to YoMo-Zipper", "close_conn", closeConn, "close_client", closeClient, "error", err)
 
@@ -159,7 +163,23 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 		}
 	}()
 
-	return nil
+	return c.acquireDataStream(controlStream)
+}
+
+func (c *Client) acquireDataStream(controlStream frame.ReadWriter) error {
+	err := controlStream.WriteFrame(&frame.ConnectionFrame{
+		Name:            c.name,
+		ClientID:        c.clientID,
+		ClientType:      byte(c.clientType),
+		ObserveDataTags: c.opts.observeDataTags,
+		Metadata:        []byte{},
+	})
+
+	if err != nil {
+		c.state = ConnStateDisconnected
+	}
+
+	return err
 }
 
 // handleFrame handles the logic when receiving frame from server.
