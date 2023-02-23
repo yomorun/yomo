@@ -220,6 +220,15 @@ func (s *Server) handleConnection(c *Context) {
 		fs.WriteFrame(frame.NewGoawayFrame(err.Error()))
 	}
 
+	// start frame handlers
+	for _, handler := range s.startHandlers {
+		if err := handler(c); err != nil {
+			c.Logger.Error("startHandlers error", err)
+			c.CloseWithError(yerr.ErrorCodeStartHandler, err.Error())
+			return
+		}
+	}
+
 	defer s.connClose(c)
 
 	// check update for stream

@@ -106,6 +106,10 @@ func newContext(conn Connection, stream ContextWriterCloser, mb metadata.Builder
 		Metadata:        conn.Metadata().Encode(),
 	}
 
+	c.conn = conn
+	c.Stream = stream
+	c.metadataBuilder = mb
+
 	md, err := c.metadataBuilder.Build(connectionFrame)
 
 	c.Set(ConnectionInfoKey, &connection{
@@ -114,10 +118,6 @@ func newContext(conn Connection, stream ContextWriterCloser, mb metadata.Builder
 		metadata:   md,
 		clientID:   connectionFrame.ClientID,
 	})
-
-	c.conn = conn
-	c.Stream = stream
-	c.metadataBuilder = mb
 
 	c.Logger = logger.With(
 		"client_id", connectionFrame.ClientID,
