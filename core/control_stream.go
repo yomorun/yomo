@@ -133,7 +133,10 @@ func (cs *ControlStream) runConn(connector Connector, runConnFunc func(c *Contex
 			go func() {
 				defer cs.group.Done()
 
-				c := newContext(conn, stream, cs.metadataBuilder, cs.logger)
+				c, err := newContext(conn, stream, cs.metadataBuilder, cs.logger)
+				if err != nil {
+					c.conn.WriteFrame(frame.NewGoawayFrame(err.Error()))
+				}
 				defer c.Clean()
 
 				runConnFunc(c)

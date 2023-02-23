@@ -91,17 +91,40 @@ func (c *Context) Value(key any) any {
 // newContext returns a yomo context,
 // The context implements standard library `context.Context` interface,
 // The lifecycle of Context is equal to stream's taht be passed in.
-func newContext(conn Connection, stream ContextWriterCloser, mb metadata.Builder, logger *slog.Logger) (c *Context) {
+func newContext(conn Connection, stream ContextWriterCloser, mb metadata.Builder, logger *slog.Logger) (c *Context, err error) {
 	v := ctxPool.Get()
 	if v == nil {
 		c = new(Context)
 	} else {
 		c = v.(*Context)
 	}
+	connectionFrame := &frame.ConnectionFrame{
+		Name:            conn.Name(),
+		ClientID:        conn.ClientID(),
+		ClientType:      byte(conn.ClientType()),
+		ObserveDataTags: conn.ObserveDataTags(),
+		Metadata:        conn.Metadata().Encode(),
+	}
+
+	md, err := c.metadataBuilder.Build(connectionFrame)
+
+	c.Set(ConnectionInfoKey, &connection{
+		name:       connectionFrame.Name,
+		clientType: ClientType(connectionFrame.ClientType),
+		metadata:   md,
+		clientID:   connectionFrame.ClientID,
+	})
+
 	c.conn = conn
 	c.Stream = stream
 	c.metadataBuilder = mb
-	c.Logger = logger
+
+	c.Logger = logger.With(
+		"client_id", connectionFrame.ClientID,
+		"client_type", ClientType(connectionFrame.ClientType).String(),
+		"client_name", connectionFrame.Name,
+	)
+
 	return
 }
 
@@ -119,31 +142,6 @@ func (c *Context) ConnectionInfo() (ConnectionInfo, bool) {
 
 // WithFrame sets a frame to context.
 func (c *Context) WithFrame(f frame.Frame) error {
-	switch f.Type() {
-	// It represents new client coming if the frame is handshakeFrame,
-	// Store client info to logger and context.
-	case frame.TagOfConnectionFrame:
-		handshakeFrame := f.(*frame.ConnectionFrame)
-
-		md, err := c.metadataBuilder.Build(handshakeFrame)
-		if err != nil {
-			return err
-		}
-
-		c.Set(ConnectionInfoKey, &connection{
-			name:       handshakeFrame.Name,
-			clientType: ClientType(handshakeFrame.ClientType),
-			metadata:   md,
-			clientID:   handshakeFrame.ClientID,
-		})
-
-		c.Logger = c.Logger.With(
-			"client_id", handshakeFrame.ClientID,
-			"client_type", ClientType(handshakeFrame.ClientType).String(),
-			"client_name", handshakeFrame.Name,
-		)
-	}
-
 	c.Frame = f
 
 	return nil
