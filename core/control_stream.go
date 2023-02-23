@@ -117,7 +117,7 @@ func (cs *ControlStream) runConn(connector Connector, runConnFunc func(c *Contex
 			if err != nil {
 				return err
 			}
-			// TODO: other frame
+			// TODO: maybe other frame?
 			stream.Write(frame.NewHandshakeAckFrame().Encode())
 
 			metadata, err := cs.metadataBuilder.Build(ff)
@@ -126,15 +126,12 @@ func (cs *ControlStream) runConn(connector Connector, runConnFunc func(c *Contex
 			}
 
 			// TODO: Connection and Context is almost identical.
-			// TODO: conn should has ability to let other object to known if It is alive.
-			// TODO: connector should scan conn to gc dead conn.
 			conn := newConnection(ff.Name, ff.ClientID, ClientType(ff.ClientType), metadata, stream, ff.ObserveDataTags, cs.logger)
 			connector.Add(conn.ClientID(), conn)
 			cs.group.Add(1)
 
 			go func() {
 				defer cs.group.Done()
-				// TODO: runConn function should accept a sign for exit.
 
 				c := newContext(conn, stream, cs.metadataBuilder, cs.logger)
 				defer c.Clean()
@@ -142,21 +139,7 @@ func (cs *ControlStream) runConn(connector Connector, runConnFunc func(c *Contex
 				runConnFunc(c)
 			}()
 
-		case frame.TagOfAcceptedFrame:
-			ff := f.(*frame.ConnectionCloseFrame)
-
-			conn := connector.Get(ff.ClientID)
-
-			message := frame.NewHandshakeAckFrame()
-
-			if err := conn.WriteFrame(message); err != nil {
-				cs.logger.Warn("WriteFrame failed", "client_id", ff.ClientID)
-				continue
-			}
-			// TODO: There should check if the conn is closed before call runConn.
-			conn.Close()
-
-			connector.Remove(conn.ClientID())
+			// TODO: close connection should be controled by controlStream
 		}
 	}
 

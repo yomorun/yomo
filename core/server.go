@@ -133,7 +133,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		// It response to client a handshakeAckFrame if the handshake is successful
 		// otherwise response a goawayFrame.
 		// It returns a context for this stream handler.
-		err = controlStream.Handshake(5*time.Second, s.handleHandshakeFrame1)
+		err = controlStream.Handshake(5*time.Second, s.handleHandshakeFrame)
 		if err != nil {
 			continue
 		}
@@ -219,6 +219,8 @@ func (s *Server) handleConnection(c *Context) {
 	if err := s.handRoute(c); err != nil {
 		fs.WriteFrame(frame.NewGoawayFrame(err.Error()))
 	}
+
+	defer s.connClose(c)
 
 	// check update for stream
 	for {
@@ -327,7 +329,7 @@ func (s *Server) Authenticate(stream0 quic.Stream, f *frame.HandshakeFrame) erro
 
 }
 
-func (s *Server) handleHandshakeFrame1(f *frame.HandshakeFrame) (bool, error) {
+func (s *Server) handleHandshakeFrame(f *frame.HandshakeFrame) (bool, error) {
 	ok := auth.Authenticate(s.opts.auths, f)
 
 	if ok {
@@ -551,4 +553,9 @@ func (s *Server) doConnectionCloseHandlers(qconn quic.Connection) {
 	for _, h := range s.connectionCloseHandlers {
 		h(qconn)
 	}
+}
+
+func (s *Server) connClose(c *Context) {
+	s.router.Route(c.conn.Metadata()).Remove(c.ConnID())
+	s.connector.Remove(c.ConnID())
 }
