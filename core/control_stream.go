@@ -120,6 +120,7 @@ func (cs *ControlStream) runConn(
 			if err != nil {
 				return err
 			}
+			stream.Write([]byte{0})
 
 			metadata, err := cs.metadataBuilder.Build(ff)
 			if err != nil {

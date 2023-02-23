@@ -138,6 +138,8 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 			continue
 		}
 
+		s.logger.Debug("Handshake success")
+
 		// TODO: aop for accepting new connection.
 		go func(qconn quic.Connection) {
 			defer controlStream.Wait()

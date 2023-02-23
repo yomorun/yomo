@@ -153,8 +153,6 @@ func (c *Context) WithFrame(f frame.Frame) error {
 //
 // Warining: do not use any Context api after Clean, It maybe cause an error.
 func (c *Context) Clean() {
-	c.Logger.Debug("conn context clean", "conn_id", c.ConnID())
-
 	c.reset()
 	ctxPool.Put(c)
 }

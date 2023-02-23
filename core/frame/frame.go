@@ -95,13 +95,13 @@ const (
 
 	TagOfTokenFrame Type = 0x3E
 	// HandshakeFrame
-	TagOfHandshakeFrame           Type = 0x3D
-	TagOfHandshakeName            Type = 0x01
-	TagOfHandshakeType            Type = 0x02
-	TagOfHandshakeID              Type = 0x03
-	TagOfHandshakeAuthName        Type = 0x04
-	TagOfHandshakeAuthPayload     Type = 0x05
-	TagOfHandshakeObserveDataTags Type = 0x06
+	TagOfHandshakeFrame            Type = 0x3D
+	TagOfConnectionName            Type = 0x01
+	TagOfConnectionType            Type = 0x02
+	TagOfConnectionID              Type = 0x03
+	TagOfHandshakeAuthName         Type = 0x04
+	TagOfHandshakeAuthPayload      Type = 0x05
+	TagOfConnectionObserveDataTags Type = 0x06
 
 	TagOfPingFrame       Type = 0x3C
 	TagOfPongFrame       Type = 0x3B
@@ -157,9 +157,9 @@ func (f Type) String() string {
 		return "PayloadFrame"
 	// case TagOfTransactionID:
 	// 	return "TransactionID"
-	case TagOfHandshakeName:
+	case TagOfConnectionName:
 		return "HandshakeName"
-	case TagOfHandshakeType:
+	case TagOfConnectionType:
 		return "HandshakeType"
 	case TagOfHandshakeAckFrame:
 		return "TagOfHandshakeAckFrame"
