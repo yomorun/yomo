@@ -184,10 +184,42 @@ func (s *Server) Close() error {
 	return nil
 }
 
+func (s *Server) handRoute(c *Context) error {
+	if c.conn.ClientType() == ClientTypeStreamFunction {
+		// route
+		route := s.router.Route(c.conn.Metadata())
+		if route == nil {
+			return errors.New("handleHandshakeFrame route is nil")
+		}
+		if err := route.Add(c.ConnID(), c.conn.Name(), c.conn.ObserveDataTags()); err != nil {
+			// duplicate name
+			if e, ok := err.(yerr.DuplicateNameError); ok {
+				existsConnID := e.ConnID()
+				if conn := s.connector.Get(existsConnID); conn != nil {
+					c.Logger.Debug("write GoawayFrame", "error", e.Error(), "exists_conn_id", existsConnID)
+					goawayFrame := frame.NewGoawayFrame(e.Error())
+					if err := conn.WriteFrame(goawayFrame); err != nil {
+						c.Logger.Error("write GoawayFrame failed", err)
+						return err
+					}
+				}
+			} else {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // handleConnection handles streams on a connection,
 // use c.Logger in this function scope for more complete logger information.
 func (s *Server) handleConnection(c *Context) {
 	fs := NewFrameStream(c.Stream)
+
+	if err := s.handRoute(c); err != nil {
+		fs.WriteFrame(frame.NewGoawayFrame(err.Error()))
+	}
+
 	// check update for stream
 	for {
 		f, err := fs.ReadFrame()

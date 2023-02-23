@@ -103,10 +103,7 @@ func (cs *ControlStream) handshakeAck() error {
 
 }
 
-func (cs *ControlStream) runConn(
-	connector Connector,
-	runConnFunc func(c *Context),
-) error {
+func (cs *ControlStream) runConn(connector Connector, runConnFunc func(c *Context)) error {
 	for {
 		f, err := ParseFrame(cs.stream)
 		if err != nil {
@@ -120,7 +117,8 @@ func (cs *ControlStream) runConn(
 			if err != nil {
 				return err
 			}
-			stream.Write([]byte{0})
+			// TODO: other frame
+			stream.Write(frame.NewHandshakeAckFrame().Encode())
 
 			metadata, err := cs.metadataBuilder.Build(ff)
 			if err != nil {

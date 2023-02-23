@@ -101,6 +101,7 @@ func newContext(conn Connection, stream ContextWriterCloser, mb metadata.Builder
 	c.conn = conn
 	c.Stream = stream
 	c.metadataBuilder = mb
+	c.Logger = logger
 	return
 }
 
