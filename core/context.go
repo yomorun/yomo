@@ -217,4 +217,9 @@ func (c *Context) CloseWithError(code yerr.ErrorCode, msg string) {
 }
 
 // ConnID get quic connection id
-func (c *Context) ConnID() string { return c.conn.ClientID() }
+func (c *Context) ConnID() string {
+	if c.conn == nil {
+		return ""
+	}
+	return c.conn.ClientID()
+}

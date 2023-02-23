@@ -2,13 +2,10 @@ package core
 
 import (
 	"context"
-	"net"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 
-	"github.com/quic-go/quic-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
@@ -34,37 +31,27 @@ func TestContext(t *testing.T) {
 		DisableTime: true,
 	}))
 
-	c := newContext(&mockConn{baseCtx: sctx, connID: "101.102.103.104:0"}, stream, metadata.DefaultBuilder(), logger)
-
 	connInfo := &connection{
+		stream:     stream,
 		clientID:   "xxxxx",
 		clientType: ClientTypeSource,
 		name:       "yomo",
 		metadata:   &metadata.Default{},
 	}
-
-	handshakeFrame := frame.NewHandshakeFrame(
-		connInfo.name,
-		connInfo.clientID,
-		byte(connInfo.clientType),
-		[]frame.Tag{frame.Tag('a')},
-		"token",
-		"key|value",
-	)
-
-	if err := c.WithFrame(handshakeFrame); err != nil {
-		assert.NoError(t, err)
-		return
-	}
+	c, err := newContext(connInfo, stream, metadata.DefaultBuilder(), logger)
+	assert.NoError(t, err)
 
 	c.Logger.Debug("hello")
 	logdata, err := os.ReadFile(logpath)
 	assert.NoError(t, err)
-	assert.Equal(t, string(logdata), "level=DEBUG msg=hello conn_id=101.102.103.104:0 client_id=xxxxx client_type=Source client_name=yomo auth_name=token\n")
+	assert.Equal(t, string(logdata), "level=DEBUG msg=hello client_id=xxxxx client_type=Source client_name=yomo\n")
 
 	ctxConnInfo, ok := c.ConnectionInfo()
 	assert.True(t, ok)
-	assert.Equal(t, ctxConnInfo, connInfo)
+	assert.Equal(t, ctxConnInfo.Name(), connInfo.Name())
+	assert.Equal(t, ctxConnInfo.ClientID(), connInfo.ClientID())
+	assert.Equal(t, ctxConnInfo.ClientType(), connInfo.ClientType())
+	assert.Equal(t, ctxConnInfo.Metadata(), connInfo.Metadata())
 
 	metadata := []byte("moc-metadata")
 
@@ -78,12 +65,15 @@ func TestContext(t *testing.T) {
 
 	ctxConnInfo, ok = c.ConnectionInfo()
 	assert.True(t, ok)
-	assert.Equal(t, ctxConnInfo, connInfo)
+	assert.Equal(t, ctxConnInfo.Name(), connInfo.Name())
+	assert.Equal(t, ctxConnInfo.ClientID(), connInfo.ClientID())
+	assert.Equal(t, ctxConnInfo.ClientType(), connInfo.ClientType())
+	assert.Equal(t, ctxConnInfo.Metadata(), connInfo.Metadata())
 
 	c.Logger.Debug("logtwice")
 	logdata, err = os.ReadFile(logpath)
 	assert.NoError(t, err)
-	assert.Equal(t, string(logdata), "level=DEBUG msg=hello conn_id=101.102.103.104:0 client_id=xxxxx client_type=Source client_name=yomo auth_name=token\nlevel=DEBUG msg=logtwice conn_id=101.102.103.104:0 client_id=xxxxx client_type=Source client_name=yomo auth_name=token\n")
+	assert.Equal(t, string(logdata), "level=DEBUG msg=hello client_id=xxxxx client_type=Source client_name=yomo\nlevel=DEBUG msg=logtwice client_id=xxxxx client_type=Source client_name=yomo\n")
 
 	os.Remove(logpath)
 }
@@ -109,32 +99,45 @@ func TestContextErr(t *testing.T) {
 
 	mb := metadata.DefaultBuilder()
 
+	connInfo := &connection{
+		stream:     stream,
+		clientID:   "xxxxx",
+		clientType: ClientTypeSource,
+		name:       "yomo",
+		metadata:   &metadata.Default{},
+	}
+
 	t.Run("Clean Context", func(t *testing.T) {
 		var assertAfterClean = func(t *testing.T, c *Context) {
-			assert.Nil(t, c.Conn)
+			assert.Nil(t, c.conn)
 			assert.Nil(t, c.Stream)
 			assert.Nil(t, c.Frame)
-			assert.Equal(t, c.connID, "")
+			assert.Equal(t, c.ConnID(), "")
 			assert.Contains(t, []any{map[string]any(nil), map[string]any{}}, c.Keys)
 		}
-		c := newContext(&mockConn{baseCtx: sctx, connID: "101.102.103.104:0"}, stream, mb, logger)
+		c, err := newContext(connInfo, stream, mb, logger)
+		assert.NoError(t, err)
 		c.Clean()
 		assertAfterClean(t, c)
 
 		// new twice
-		c = newContext(&mockConn{baseCtx: sctx, connID: "101.102.103.104:0"}, stream, mb, logger)
+		c, err = newContext(connInfo, stream, mb, logger)
+		assert.NoError(t, err)
+		c.Clean()
 		c.Set("a", "b")
 		c.Clean()
 		assertAfterClean(t, c)
 	})
 
 	t.Run("normal Context", func(t *testing.T) {
-		c := newContext(&mockConn{baseCtx: sctx, connID: "101.102.103.104:0"}, stream, mb, logger)
+		c, err := newContext(connInfo, stream, mb, logger)
+		assert.NoError(t, err)
 		assert.NoError(t, c.Err())
 	})
 
 	t.Run("Close Context", func(t *testing.T) {
-		c := newContext(&mockConn{baseCtx: sctx, connID: "101.102.103.104:0"}, stream, mb, logger)
+		c, err := newContext(connInfo, stream, mb, logger)
+		assert.NoError(t, err)
 		c.CloseWithError(yerr.ErrorCodeClosed, "closed")
 
 		cancel()
@@ -158,35 +161,35 @@ func (c *mockReaderCloser) Write(p []byte) (n int, err error) { return c.file.Wr
 func (c *mockReaderCloser) Close() error                      { return c.file.Close() }
 func (c *mockReaderCloser) Context() context.Context          { return c.ctx }
 
-var _ QuicConnCloser = &mockConn{}
+// var _ QuicConnCloser = &mockConn{}
 
-type mockConn struct {
-	mu sync.Mutex
+// type mockConn struct {
+// 	mu sync.Mutex
 
-	errorCode quic.ApplicationErrorCode
-	msg       string
+// 	errorCode quic.ApplicationErrorCode
+// 	msg       string
 
-	connID  string
-	baseCtx context.Context
-}
+// 	connID  string
+// 	baseCtx context.Context
+// }
 
-// CloseWithError implements QuicConnCloser
-func (c *mockConn) CloseWithError(code quic.ApplicationErrorCode, msg string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+// // CloseWithError implements QuicConnCloser
+// func (c *mockConn) CloseWithError(code quic.ApplicationErrorCode, msg string) error {
+// 	c.mu.Lock()
+// 	defer c.mu.Unlock()
 
-	c.errorCode = code
-	c.msg = msg
-	return nil
-}
-func (c *mockConn) Context() context.Context { return c.baseCtx }
-func (c *mockConn) LocalAddr() net.Addr      { return &net.UDPAddr{IP: net.IPv4('a', 'b', 'c', 'd')} }
-func (c *mockConn) RemoteAddr() net.Addr     { return mustResolveIPAddr(c.connID) }
+// 	c.errorCode = code
+// 	c.msg = msg
+// 	return nil
+// }
+// func (c *mockConn) Context() context.Context { return c.baseCtx }
+// func (c *mockConn) LocalAddr() net.Addr      { return &net.UDPAddr{IP: net.IPv4('a', 'b', 'c', 'd')} }
+// func (c *mockConn) RemoteAddr() net.Addr     { return mustResolveIPAddr(c.connID) }
 
-func mustResolveIPAddr(connID string) net.Addr {
-	addr, err := net.ResolveUDPAddr("udp", connID)
-	if err != nil {
-		panic(err)
-	}
-	return addr
-}
+// func mustResolveIPAddr(connID string) net.Addr {
+// 	addr, err := net.ResolveUDPAddr("udp", connID)
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// 	return addr
+// }
