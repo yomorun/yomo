@@ -103,7 +103,9 @@ func newContext(conn Connection, stream ContextWriterCloser, mb metadata.Builder
 		ClientID:        conn.ClientID(),
 		ClientType:      byte(conn.ClientType()),
 		ObserveDataTags: conn.ObserveDataTags(),
-		Metadata:        conn.Metadata().Encode(),
+	}
+	if conn.Metadata() != nil {
+		connectionFrame.Metadata = conn.Metadata().Encode()
 	}
 
 	c.conn = conn
