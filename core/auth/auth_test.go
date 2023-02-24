@@ -31,7 +31,7 @@ func TestAuthenticate(t *testing.T) {
 			name: "auths is nil",
 			args: args{
 				auths: nil,
-				obj:   frame.NewHandshakeFrame("", "", byte(1), []frame.Tag{}, "mock", "mock_payload"),
+				obj:   frame.NewHandshakeFrame("mock", "mock_payload"),
 			},
 			want: true,
 		},
@@ -47,7 +47,7 @@ func TestAuthenticate(t *testing.T) {
 			name: "auth obj not found",
 			args: args{
 				auths: map[string]Authentication{"mock": mockAuth{authed: true}},
-				obj:   frame.NewHandshakeFrame("", "", byte(1), []frame.Tag{}, "mock_not_match", "mock_payload"),
+				obj:   frame.NewHandshakeFrame("mock_not_match", "mock_payload"),
 			},
 			want: false,
 		},
@@ -55,7 +55,7 @@ func TestAuthenticate(t *testing.T) {
 			name: "auth success",
 			args: args{
 				auths: map[string]Authentication{"mock": mockAuth{authed: true}},
-				obj:   frame.NewHandshakeFrame("", "", byte(1), []frame.Tag{}, "mock", "mock_payload"),
+				obj:   frame.NewHandshakeFrame("mock", "mock_payload"),
 			},
 			want: true,
 		},
@@ -63,7 +63,7 @@ func TestAuthenticate(t *testing.T) {
 			name: "auth failed",
 			args: args{
 				auths: map[string]Authentication{"mock": mockAuth{authed: false}},
-				obj:   frame.NewHandshakeFrame("", "", byte(1), []frame.Tag{}, "mock", "mock_payload"),
+				obj:   frame.NewHandshakeFrame("mock", "mock_payload"),
 			},
 			want: false,
 		},
