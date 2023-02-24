@@ -6,6 +6,7 @@ import (
 	"github.com/yomorun/y3"
 )
 
+// ConnectionFrame is frame that client accquires new stream from server.
 type ConnectionFrame struct {
 	// Name is the name of connection.
 	Name string
@@ -24,6 +25,7 @@ func (f *ConnectionFrame) Type() Type {
 	return TagOfConnectionFrame
 }
 
+// Encode returns bytes from IO transmission.
 func (h *ConnectionFrame) Encode() []byte {
 	// name
 	nameBlock := y3.NewPrimitivePacketEncoder(byte(TagOfConnectionName))
@@ -51,6 +53,7 @@ func (h *ConnectionFrame) Encode() []byte {
 	return connection.Encode()
 }
 
+// DecodeToConnectionFrame decodes ConnectionFrame from bytes.
 func DecodeToConnectionFrame(buf []byte) (*ConnectionFrame, error) {
 	node := y3.NodePacket{}
 	_, err := y3.DecodeToNodePacket(buf, &node)

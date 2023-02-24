@@ -319,6 +319,7 @@ func (s *Server) mainFrameHandler(c *Context) error {
 	return nil
 }
 
+// Authenticate auths new stream according to HandshakeFrame.
 func (s *Server) Authenticate(stream0 quic.Stream, f *frame.HandshakeFrame) error {
 	if ok := auth.Authenticate(s.opts.auths, f); !ok {
 		err := fmt.Errorf("Handshake failed, client credential name is %s", authName(f.AuthName()))

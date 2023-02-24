@@ -13,10 +13,15 @@ import (
 )
 
 var (
+	// ErrFirstFrameIsNotHandshake be returned when the first frame accepted by control stream is not handshakeFrame.
 	ErrFirstFrameIsNotHandshake = errors.New("the client didn't handshake immediately on connection")
-	ErrHandshakeReadTimeout     = errors.New("the client handshake timeout")
+
+	// ErrHandshakeReadTimeout be returned if server don't receive handshake ack.
+	ErrHandshakeReadTimeout = errors.New("the client handshake timeout")
 )
 
+// ControlStream is the stream to control other dataStream.
+// ControlStream always the first stream between server and client.
 type ControlStream struct {
 	conn            quic.Connection
 	group           sync.WaitGroup
@@ -25,6 +30,7 @@ type ControlStream struct {
 	metadataBuilder metadata.Builder
 }
 
+// NewControlStream returns ControlStream.
 func NewControlStream(
 	conn quic.Connection,
 	stream quic.Stream,
@@ -39,6 +45,7 @@ func NewControlStream(
 	}
 }
 
+// Handshake handshakes between client and server.
 func (cs *ControlStream) Handshake(timeout time.Duration, handshakeFunc func(*frame.HandshakeFrame) (bool, error)) error {
 	errch := make(chan error)
 
@@ -148,4 +155,5 @@ func (cs *ControlStream) runConn(connector Connector, runConnFunc func(c *Contex
 
 }
 
+// Wait waits all dataStream down.
 func (cs *ControlStream) Wait() { cs.group.Wait() }
