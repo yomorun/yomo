@@ -160,36 +160,3 @@ func (c *mockReaderCloser) Read(p []byte) (n int, err error)  { return c.file.Re
 func (c *mockReaderCloser) Write(p []byte) (n int, err error) { return c.file.Write(p) }
 func (c *mockReaderCloser) Close() error                      { return c.file.Close() }
 func (c *mockReaderCloser) Context() context.Context          { return c.ctx }
-
-// var _ QuicConnCloser = &mockConn{}
-
-// type mockConn struct {
-// 	mu sync.Mutex
-
-// 	errorCode quic.ApplicationErrorCode
-// 	msg       string
-
-// 	connID  string
-// 	baseCtx context.Context
-// }
-
-// // CloseWithError implements QuicConnCloser
-// func (c *mockConn) CloseWithError(code quic.ApplicationErrorCode, msg string) error {
-// 	c.mu.Lock()
-// 	defer c.mu.Unlock()
-
-// 	c.errorCode = code
-// 	c.msg = msg
-// 	return nil
-// }
-// func (c *mockConn) Context() context.Context { return c.baseCtx }
-// func (c *mockConn) LocalAddr() net.Addr      { return &net.UDPAddr{IP: net.IPv4('a', 'b', 'c', 'd')} }
-// func (c *mockConn) RemoteAddr() net.Addr     { return mustResolveIPAddr(c.connID) }
-
-// func mustResolveIPAddr(connID string) net.Addr {
-// 	addr, err := net.ResolveUDPAddr("udp", connID)
-// 	if err != nil {
-// 		panic(err)
-// 	}
-// 	return addr
-// }
