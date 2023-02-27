@@ -127,12 +127,10 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 
 		controlStream := NewControlStream(conn, stream0, s.logger, s.metadataBuilder)
 
-		// handshake accepts a handshakeFrame from client.
-		// the first frame from client must be handshakeFrame,
-		// It returns true if handshake successful otherwise return false.
-		// It response to client a handshakeAckFrame if the handshake is successful
-		// otherwise response a goawayFrame.
-		// It returns a context for this stream handler.
+		// handshake accepts a handshakeFrame from client. The first frame from client must be
+		// handshakeFrame, It returns true if handshake successful otherwise return false.
+		// It response to client a handshakeAckFrame if the handshake is successful otherwise
+		// response a goawayFrame. It returns a context for this stream handler.
 		err = controlStream.Handshake(5*time.Second, s.handleHandshakeFrame)
 		if err != nil {
 			continue
@@ -140,7 +138,6 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 
 		s.logger.Debug("Handshake success")
 
-		// TODO: aop for accepting new connection.
 		go func(qconn quic.Connection) {
 			defer controlStream.Wait()
 			defer s.doConnectionCloseHandlers(qconn)
