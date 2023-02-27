@@ -95,13 +95,17 @@ const (
 
 	TagOfTokenFrame Type = 0x3E
 	// HandshakeFrame
-	TagOfHandshakeFrame            Type = 0x3D
+	TagOfHandshakeFrame       Type = 0x3D
+	TagOfHandshakeAuthName    Type = 0x04
+	TagOfHandshakeAuthPayload Type = 0x05
+
+	// TagOfConnectionFrame
+	TagOfConnectionFrame           Type = 0x31
 	TagOfConnectionName            Type = 0x01
 	TagOfConnectionType            Type = 0x02
 	TagOfConnectionID              Type = 0x03
-	TagOfHandshakeAuthName         Type = 0x04
-	TagOfHandshakeAuthPayload      Type = 0x05
 	TagOfConnectionObserveDataTags Type = 0x06
+	TagOfConnectionMetadata        Type = 0x07
 
 	TagOfPingFrame       Type = 0x3C
 	TagOfPongFrame       Type = 0x3B
@@ -114,9 +118,6 @@ const (
 	TagOfGoawayMessage Type = 0x02
 	// TagOfHandshakeAckFrame
 	TagOfHandshakeAckFrame Type = 0x29
-
-	// TagOfConnectionFrame
-	TagOfConnectionFrame Type = 0x31
 )
 
 // Type represents the type of frame.

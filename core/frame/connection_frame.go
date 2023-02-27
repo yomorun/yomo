@@ -43,12 +43,16 @@ func (h *ConnectionFrame) Encode() []byte {
 		binary.LittleEndian.PutUint32(buf, uint32(v))
 		observeDataTagsBlock.AddBytes(buf)
 	}
+	// metadata
+	metadataBlock := y3.NewPrimitivePacketEncoder(byte(TagOfConnectionMetadata))
+	metadataBlock.SetBytesValue(h.Metadata)
 	// connection frame
 	connection := y3.NewNodePacketEncoder(byte(h.Type()))
 	connection.AddPrimitivePacket(nameBlock)
 	connection.AddPrimitivePacket(idBlock)
 	connection.AddPrimitivePacket(typeBlock)
 	connection.AddPrimitivePacket(observeDataTagsBlock)
+	connection.AddPrimitivePacket(metadataBlock)
 
 	return connection.Encode()
 }
@@ -91,6 +95,11 @@ func DecodeToConnectionFrame(buf []byte) (*ConnectionFrame, error) {
 			pos := i * 4
 			connection.ObserveDataTags = append(connection.ObserveDataTags, Tag(binary.LittleEndian.Uint32(buf[pos:pos+4])))
 		}
+	}
+	// metadata
+	if typeBlock, ok := node.PrimitivePackets[byte(TagOfConnectionMetadata)]; ok {
+		metadata := typeBlock.ToBytes()
+		connection.Metadata = metadata
 	}
 
 	return connection, nil
