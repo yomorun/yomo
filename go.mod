@@ -16,7 +16,7 @@ require (
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.13.0
-	github.com/stretchr/testify v1.8.1
+	github.com/stretchr/testify v1.8.2
 	github.com/yomorun/y3 v1.0.5
 	golang.org/x/exp v0.0.0-20221212164502-fae10dda9338
 	golang.org/x/mod v0.8.0
