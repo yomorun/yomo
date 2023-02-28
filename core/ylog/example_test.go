@@ -37,6 +37,6 @@ func Example() {
 
 	// Output:
 	// level=WARN msg=warn hello=yomo syslog.eee=fff
-	// level=ERROR msg=error hello=yomo syslog.eee=fff syslog.err=EOF
-	// {"level":"ERROR","msg":"sys error","syslog":{"ggg":"hhh","err":"use of closed network connection"}}
+	// level=ERROR msg=error hello=yomo syslog.err=EOF syslog.eee=fff
+	// {"level":"ERROR","msg":"sys error","syslog":{"err":"use of closed network connection","ggg":"hhh"}}
 }
