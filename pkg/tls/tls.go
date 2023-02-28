@@ -1,3 +1,4 @@
+// Package tls provides tls config for yomo.
 package tls
 
 import (
