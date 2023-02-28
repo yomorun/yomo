@@ -1,4 +1,4 @@
-// Package provides handler that supports spliting log stream to common log stream and error log stream.
+// Package ylog provides handler that supports spliting log stream to common log stream and error log stream.
 package ylog
 
 import (

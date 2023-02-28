@@ -1,3 +1,4 @@
+// Package auth provides token based authentication
 package auth
 
 import (

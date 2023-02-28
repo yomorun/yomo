@@ -1,3 +1,4 @@
+// Package frame provides the definition of frame.
 package frame
 
 import "github.com/yomorun/y3"

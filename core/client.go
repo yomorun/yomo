@@ -1,3 +1,4 @@
+// Package core provides the core functions of YoMo.
 package core
 
 import (
