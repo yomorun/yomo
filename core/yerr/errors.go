@@ -1,3 +1,4 @@
+// Package yerr describes yomo errors
 package yerr
 
 import (

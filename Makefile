@@ -18,3 +18,6 @@ build:
 
 unittest:
 	$(GO) test -v -race -covermode=atomic $(go list ./... | grep -v /example)
+
+coverage:
+	$(GO) test -v -race -coverprofile=coverage.txt -covermode=atomic $(VETPACKAGES)

@@ -1,3 +1,4 @@
+// Package id provides id generation
 package id
 
 import (

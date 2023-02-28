@@ -1,3 +1,4 @@
+// Package config provides configurations for cascading zippers.
 package config
 
 // MeshZipper describes mesh configurations.

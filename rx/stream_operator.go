@@ -790,7 +790,7 @@ func (s *StreamImpl) PipeBackToZipper(dataTag frame.Tag) Stream {
 
 				buf, ok := (item.V).([]byte)
 				if !ok {
-					ylog.Error("[PipeBackToZipper] the data is not a []byte, won't send pass it to next.", errors.New("item.V is not []byte type"))
+					ylog.Warn("[PipeBackToZipper] the data is not a []byte, won't send pass it to next.")
 					continue
 				}
 

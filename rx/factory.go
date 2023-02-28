@@ -1,3 +1,4 @@
+// Package rx provides the Rx interfaces.
 package rx
 
 import (

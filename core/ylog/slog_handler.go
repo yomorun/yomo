@@ -1,8 +1,9 @@
-// Package provides handler that supports spliting log stream to common log stream and error log stream.
+// Package ylog provides handler that supports spliting log stream to common log stream and error log stream.
 package ylog
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"os"
 	"strings"
@@ -73,12 +74,12 @@ func NewHandlerFromConfig(conf Config) slog.Handler {
 	}
 }
 
-func (h *handler) Enabled(level slog.Level) bool {
-	return h.Handler.Enabled(level)
+func (h *handler) Enabled(ctx context.Context, level slog.Level) bool {
+	return h.Handler.Enabled(ctx, level)
 }
 
-func (h *handler) Handle(r slog.Record) error {
-	err := h.Handler.Handle(r)
+func (h *handler) Handle(ctx context.Context, r slog.Record) error {
+	err := h.Handler.Handle(ctx, r)
 	if err != nil {
 		return err
 	}

@@ -1,3 +1,4 @@
+// Package yomo test main.s
 package yomo
 
 import (

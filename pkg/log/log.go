@@ -1,3 +1,4 @@
+// Package log provides logging utilities.
 package log
 
 import (
@@ -39,7 +40,7 @@ var (
 
 var logAsJSON bool
 
-// EnableJSONLogging enables JSON logging.
+// EnableJSONFormat enables JSON logging.
 func EnableJSONFormat() {
 	logAsJSON = true
 }

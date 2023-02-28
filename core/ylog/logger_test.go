@@ -43,7 +43,7 @@ func TestLogger(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.FileExists(t, errOutput)
-	assert.Equal(t, "level=ERROR msg=error hello=yomo err=EOF\n", string(errlog))
+	assert.Equal(t, "level=ERROR msg=error err=EOF hello=yomo\n", string(errlog))
 
 	os.Remove(output)
 	os.Remove(errOutput)
