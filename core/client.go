@@ -192,6 +192,9 @@ func (c *Client) acquireDataStream(controlStream frame.ReadWriter) error {
 }
 
 // handleFrame handles the logic when receiving frame from server.
+// handleFrame returns if connection and client should be closed after handle frame,
+// It's will reconnect if connection is closed, It's will exit program if client is closed.
+// The Goaway logic is always close client.
 func (c *Client) handleFrame() (bool, bool, error) {
 	for {
 		// this will block until a frame is received
@@ -276,8 +279,6 @@ func (c *Client) close() error {
 
 // WriteFrame writes a frame to the connection, gurantee threadsafe.
 func (c *Client) WriteFrame(frm frame.Frame) error {
-	c.logger.Debug("close the connection", "client_state", c.State(), "frame_type", frm.Type().String())
-
 	if c.state != ConnStateConnected {
 		return errors.New("client connection isn't connected")
 	}
