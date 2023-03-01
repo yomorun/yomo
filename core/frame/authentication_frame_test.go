@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestHandshakeFrameEncode(t *testing.T) {
+func TestAuthenticationFrame(t *testing.T) {
 	m := NewAuthenticationFrame("token", "a")
 	assert.Equal(t, []byte{
 		0x80 | byte(TagOfAuthenticationFrame), 0xa,
@@ -16,8 +16,8 @@ func TestHandshakeFrameEncode(t *testing.T) {
 		m.Encode(),
 	)
 
-	Handshake, err := DecodeToAuthenticationFrame(m.Encode())
+	authenticate, err := DecodeToAuthenticationFrame(m.Encode())
 	assert.NoError(t, err)
-	assert.EqualValues(t, "token", Handshake.AuthName())
-	assert.EqualValues(t, "a", Handshake.AuthPayload())
+	assert.EqualValues(t, "token", authenticate.AuthName())
+	assert.EqualValues(t, "a", authenticate.AuthPayload())
 }
