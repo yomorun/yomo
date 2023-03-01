@@ -94,10 +94,11 @@ const (
 	TagOfBackflowCarriage Type = 0x02
 
 	TagOfTokenFrame Type = 0x3E
-	// HandshakeFrame
-	TagOfHandshakeFrame       Type = 0x3D
-	TagOfHandshakeAuthName    Type = 0x04
-	TagOfHandshakeAuthPayload Type = 0x05
+
+	// AuthenticationFrame
+	TagOfAuthenticationFrame   Type = 0x3D
+	TagOfAuthenticationName    Type = 0x04
+	TagOfAuthenticationPayload Type = 0x05
 
 	// TagOfConnectionFrame
 	TagOfConnectionFrame           Type = 0x31
@@ -138,8 +139,8 @@ func (f Type) String() string {
 		return "DataFrame"
 	case TagOfTokenFrame:
 		return "TokenFrame"
-	case TagOfHandshakeFrame:
-		return "HandshakeFrame"
+	case TagOfAuthenticationFrame:
+		return "AuthenticationFrame"
 	case TagOfPingFrame:
 		return "PingFrame"
 	case TagOfPongFrame:
@@ -156,8 +157,6 @@ func (f Type) String() string {
 		return "MetaFrame"
 	case TagOfPayloadFrame:
 		return "PayloadFrame"
-	// case TagOfTransactionID:
-	// 	return "TransactionID"
 	case TagOfConnectionName:
 		return "HandshakeName"
 	case TagOfConnectionType:
