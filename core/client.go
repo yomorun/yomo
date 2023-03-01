@@ -108,17 +108,17 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 
 	controlStream := NewFrameStream(stream0)
 
-	// send handshake
-	handshake := frame.NewHandshakeFrame(
+	// send authentication
+	authentication := frame.NewAuthenticationFrame(
 		c.opts.credential.Name(),
 		c.opts.credential.Payload(),
 	)
-	if err := controlStream.WriteFrame(handshake); err != nil {
+	if err := controlStream.WriteFrame(authentication); err != nil {
 		c.state = ConnStateDisconnected
 		return err
 	}
 
-	c.logger.Debug("Writed handshakeFrame")
+	c.logger.Debug("AuthenticationFrame be Writed")
 
 	if _, err := frame.ReadUntil(controlStream, frame.TagOfHandshakeAckFrame, 10*time.Second); err != nil {
 		c.state = ConnStateDisconnected
@@ -176,13 +176,13 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 }
 
 func (c *Client) acquireDataStream(controlStream frame.ReadWriter) error {
-	err := controlStream.WriteFrame(&frame.ConnectionFrame{
-		Name:            c.name,
-		ClientID:        c.clientID,
-		ClientType:      byte(c.clientType),
-		ObserveDataTags: c.opts.observeDataTags,
-		Metadata:        []byte{},
-	})
+	err := controlStream.WriteFrame(frame.NewHandshakeFrame(
+		c.name,
+		c.clientID,
+		byte(c.clientType),
+		c.opts.observeDataTags,
+		[]byte{}, // The stream does not require metadata currently.
+	))
 
 	if err != nil {
 		c.state = ConnStateDisconnected

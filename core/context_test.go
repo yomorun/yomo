@@ -46,7 +46,7 @@ func TestContext(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, string(logdata), "level=DEBUG msg=hello client_id=xxxxx client_type=Source client_name=yomo\n")
 
-	ctxConnInfo, ok := c.ConnectionInfo()
+	ctxConnInfo, ok := c.StreamInfo()
 	assert.True(t, ok)
 	assert.Equal(t, ctxConnInfo.Name(), connInfo.Name())
 	assert.Equal(t, ctxConnInfo.ClientID(), connInfo.ClientID())
@@ -63,7 +63,7 @@ func TestContext(t *testing.T) {
 		return
 	}
 
-	ctxConnInfo, ok = c.ConnectionInfo()
+	ctxConnInfo, ok = c.StreamInfo()
 	assert.True(t, ok)
 	assert.Equal(t, ctxConnInfo.Name(), connInfo.Name())
 	assert.Equal(t, ctxConnInfo.ClientID(), connInfo.ClientID())

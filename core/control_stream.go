@@ -13,15 +13,15 @@ import (
 )
 
 var (
-	// ErrFirstFrameIsNotHandshake be returned when the first frame accepted by control stream is not handshakeFrame.
-	ErrFirstFrameIsNotHandshake = errors.New("the client didn't handshake immediately on connection")
+	// ErrFirstFrameIsNotAuthentication be returned if the first frame accepted by control stream is not AuthenticationFrame.
+	ErrFirstFrameIsNotAuthentication = errors.New("yomo: client didn't authenticate immediately on connection")
 
-	// ErrHandshakeReadTimeout be returned if server don't receive handshake ack.
-	ErrHandshakeReadTimeout = errors.New("the client handshake timeout")
+	// ErrAuthenticateTimeout be returned if server don't receive authentication ack.
+	ErrAuthenticateTimeout = errors.New("yomo: client authenticate timeout")
 )
 
 // ControlStream is the stream to control other dataStream.
-// ControlStream always the first stream between server and client.
+// ControlStream always the first stream established between server and client.
 type ControlStream struct {
 	conn            quic.Connection
 	group           sync.WaitGroup
@@ -45,8 +45,8 @@ func NewControlStream(
 	}
 }
 
-// Handshake handshakes between client and server.
-func (cs *ControlStream) Handshake(timeout time.Duration, handshakeFunc func(*frame.HandshakeFrame) (bool, error)) error {
+// Auth authenticates client in authFunc
+func (cs *ControlStream) Auth(timeout time.Duration, authFunc func(*frame.AuthenticationFrame) (bool, error)) error {
 	errch := make(chan error)
 
 	go func() {
@@ -59,20 +59,20 @@ func (cs *ControlStream) Handshake(timeout time.Duration, handshakeFunc func(*fr
 			return
 		}
 
-		f, ok := first.(*frame.HandshakeFrame)
+		f, ok := first.(*frame.AuthenticationFrame)
 		if !ok {
-			gerr = ErrFirstFrameIsNotHandshake
+			gerr = ErrFirstFrameIsNotAuthentication
 			return
 		}
 
-		ok, err = handshakeFunc(f)
+		ok, err = authFunc(f)
 		if err != nil {
 			gerr = cs.handshakeFailed(err)
 			return
 		}
 
 		if !ok {
-			errhandshake := fmt.Errorf("handshake authentication failed, client credential name is %s", f.AuthName())
+			errhandshake := fmt.Errorf("yomo: authentication failed, client credential name is %s", f.AuthName())
 			gerr = cs.handshakeFailed(errhandshake)
 			return
 		}
@@ -82,7 +82,7 @@ func (cs *ControlStream) Handshake(timeout time.Duration, handshakeFunc func(*fr
 
 	select {
 	case <-time.After(timeout):
-		return ErrHandshakeReadTimeout
+		return ErrAuthenticateTimeout
 	case err := <-errch:
 		return err
 	}
@@ -118,8 +118,8 @@ func (cs *ControlStream) runConn(connector Connector, runConnFunc func(c *Contex
 		}
 
 		switch f.Type() {
-		case frame.TagOfConnectionFrame:
-			ff := f.(*frame.ConnectionFrame)
+		case frame.TagOfHandshakeFrame:
+			ff := f.(*frame.HandshakeFrame)
 			stream, err := cs.conn.OpenStream()
 			if err != nil {
 				return err
@@ -133,7 +133,7 @@ func (cs *ControlStream) runConn(connector Connector, runConnFunc func(c *Contex
 			}
 
 			// TODO: Connection and Context is almost identical.
-			conn := newConnection(ff.Name, ff.ClientID, ClientType(ff.ClientType), metadata, stream, ff.ObserveDataTags, cs.logger)
+			conn := newConnection(ff.Name(), ff.ID(), ClientType(ff.StreamType()), metadata, stream, ff.ObserveDataTags(), cs.logger)
 			connector.Add(conn.ClientID(), conn)
 			cs.group.Add(1)
 

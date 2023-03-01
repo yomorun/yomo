@@ -127,11 +127,13 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 
 		controlStream := NewControlStream(conn, stream0, s.logger, s.metadataBuilder)
 
-		// handshake accepts a handshakeFrame from client. The first frame from client must be
-		// handshakeFrame, It returns true if handshake successful otherwise return false.
-		// It response to client a handshakeAckFrame if the handshake is successful otherwise
+		// Auth accepts a AuthenticationFrame from client. The first frame from client must be
+		// AuthenticationFrame, It returns true if auth successful otherwise return false.
+
+		// TODO: amend code comment
+		// It response to client a handshakeAckFrame if the auth is successful otherwise
 		// response a goawayFrame. It returns a context for this stream handler.
-		err = controlStream.Handshake(5*time.Second, s.handleHandshakeFrame)
+		err = controlStream.Auth(5*time.Second, s.handleAuthFrame)
 		if err != nil {
 			continue
 		}
@@ -317,9 +319,9 @@ func (s *Server) mainFrameHandler(c *Context) error {
 }
 
 // Authenticate auths new stream according to HandshakeFrame.
-func (s *Server) Authenticate(stream0 quic.Stream, f *frame.HandshakeFrame) error {
+func (s *Server) Authenticate(stream0 quic.Stream, f *frame.AuthenticationFrame) error {
 	if ok := auth.Authenticate(s.opts.auths, f); !ok {
-		err := fmt.Errorf("Handshake failed, client credential name is %s", authName(f.AuthName()))
+		err := fmt.Errorf("authenticate failed, client credential name is %s", authName(f.AuthName()))
 
 		goawayFrame := frame.NewGoawayFrame(err.Error())
 		if _, err = stream0.Write(goawayFrame.Encode()); err != nil {
@@ -336,7 +338,7 @@ func (s *Server) Authenticate(stream0 quic.Stream, f *frame.HandshakeFrame) erro
 
 }
 
-func (s *Server) handleHandshakeFrame(f *frame.HandshakeFrame) (bool, error) {
+func (s *Server) handleAuthFrame(f *frame.AuthenticationFrame) (bool, error) {
 	ok := auth.Authenticate(s.opts.auths, f)
 
 	if ok {

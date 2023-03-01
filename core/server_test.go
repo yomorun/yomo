@@ -40,23 +40,23 @@ func buildMockConnector(router router.Router, metadataBuilder metadata.Builder, 
 
 	for _, arg := range args {
 
-		connectionFrame := &frame.ConnectionFrame{
-			Name:            arg.name,
-			ClientID:        arg.clientID,
-			ClientType:      arg.clientType,
-			ObserveDataTags: []frame.Tag{arg.obversedTag},
-			Metadata:        []byte{},
-		}
+		handshakeFrame := frame.NewHandshakeFrame(
+			arg.name,
+			arg.clientID,
+			arg.clientType,
+			[]frame.Tag{arg.obversedTag},
+			[]byte{},
+		)
 
-		metadata, _ := metadataBuilder.Build(connectionFrame)
+		metadata, _ := metadataBuilder.Build(handshakeFrame)
 
 		conn := newConnection(
-			connectionFrame.Name,
-			connectionFrame.ClientID,
-			ClientType(connectionFrame.ClientType),
+			handshakeFrame.Name(),
+			handshakeFrame.ID(),
+			ClientType(handshakeFrame.StreamType()),
 			metadata,
 			arg.stream,
-			connectionFrame.ObserveDataTags,
+			handshakeFrame.ObserveDataTags(),
 			logger,
 		)
 

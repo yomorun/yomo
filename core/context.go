@@ -38,8 +38,8 @@ type Context struct {
 	Logger *slog.Logger
 }
 
-// ConnectionInfoKey is the key that a Context returns ClientInfo for
-const ConnectionInfoKey = "_yomo/connectioninfo"
+// StreamInfoKey is the key that a Context returns StreamInfo
+const StreamInfoKey = "_yomo/streaminfo"
 
 // Set is used to store a new key/value pair exclusively for this context.
 // It also lazy initializes  c.Keys if it was not used previously.
@@ -98,44 +98,44 @@ func newContext(conn Connection, stream ContextWriterCloser, mb metadata.Builder
 	} else {
 		c = v.(*Context)
 	}
-	connectionFrame := &frame.ConnectionFrame{
-		Name:            conn.Name(),
-		ClientID:        conn.ClientID(),
-		ClientType:      byte(conn.ClientType()),
-		ObserveDataTags: conn.ObserveDataTags(),
-	}
+
+	connmd := []byte{}
 	if conn.Metadata() != nil {
-		connectionFrame.Metadata = conn.Metadata().Encode()
+		connmd = conn.Metadata().Encode()
 	}
+
+	handshake := frame.NewHandshakeFrame(
+		conn.Name(),
+		conn.ClientID(),
+		byte(conn.ClientType()),
+		conn.ObserveDataTags(),
+		connmd,
+	)
 
 	c.conn = conn
 	c.Stream = stream
 	c.metadataBuilder = mb
 
-	md, err := c.metadataBuilder.Build(connectionFrame)
+	// TODO: how md inhject to handshake
+	_, err = c.metadataBuilder.Build(handshake)
 
-	c.Set(ConnectionInfoKey, &connection{
-		name:       connectionFrame.Name,
-		clientType: ClientType(connectionFrame.ClientType),
-		metadata:   md,
-		clientID:   connectionFrame.ClientID,
-	})
+	c.Set(StreamInfoKey, handshake)
 
 	c.Logger = logger.With(
-		"client_id", connectionFrame.ClientID,
-		"client_type", ClientType(connectionFrame.ClientType).String(),
-		"client_name", connectionFrame.Name,
+		"stream_id", handshake.ID,
+		"stream_type", ClientType(handshake.StreamType()).String(),
+		"stream_name", handshake.Name,
 	)
 
 	return
 }
 
-// ConnectionInfo get connection info from Context.
-func (c *Context) ConnectionInfo() (ConnectionInfo, bool) {
+// StreamInfo get dataStream info from Context.
+func (c *Context) StreamInfo() (ConnectionInfo, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	v, ok := c.Keys[ConnectionInfoKey]
+	v, ok := c.Keys[StreamInfoKey]
 	if ok {
 		return v.(ConnectionInfo), true
 	}
