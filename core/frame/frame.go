@@ -100,13 +100,13 @@ const (
 	TagOfAuthenticationName    Type = 0x04
 	TagOfAuthenticationPayload Type = 0x05
 
-	// TagOfConnectionFrame
-	TagOfConnectionFrame           Type = 0x31
-	TagOfConnectionName            Type = 0x01
-	TagOfConnectionType            Type = 0x02
-	TagOfConnectionID              Type = 0x03
-	TagOfConnectionObserveDataTags Type = 0x06
-	TagOfConnectionMetadata        Type = 0x07
+	// HandshakeFrame
+	TagOfHandshakeFrame           Type = 0x31
+	TagOfHandshakeName            Type = 0x01
+	TagOfHandshakeStreamType      Type = 0x02
+	TagOfHandshakeID              Type = 0x03
+	TagOfHandshakeObserveDataTags Type = 0x06
+	TagOfHandshakeMetadata        Type = 0x07
 
 	TagOfPingFrame       Type = 0x3C
 	TagOfPongFrame       Type = 0x3B
@@ -157,14 +157,10 @@ func (f Type) String() string {
 		return "MetaFrame"
 	case TagOfPayloadFrame:
 		return "PayloadFrame"
-	case TagOfConnectionName:
-		return "HandshakeName"
-	case TagOfConnectionType:
-		return "HandshakeType"
 	case TagOfHandshakeAckFrame:
-		return "TagOfHandshakeAckFrame"
-	case TagOfConnectionFrame:
-		return "TagOfConnectionFrame"
+		return "HandshakeAckFrame"
+	case TagOfHandshakeFrame:
+		return "HandshakeFrame"
 	default:
 		return "UnknownFrame"
 	}

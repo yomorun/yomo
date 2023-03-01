@@ -6,17 +6,17 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestConnectionFrame(t *testing.T) {
-	f := &ConnectionFrame{
+func TestHandshakeFrame(t *testing.T) {
+	f := &HandshakeFrame{
 		Name:            "yomo",
-		ClientID:        "asdfghjkl",
-		ClientType:      0x5F,
+		ID:              "asdfghjkl",
+		StreamType:      0x5F,
 		ObserveDataTags: []Tag{'a', 'b', 'c'},
 		Metadata:        []byte{'d', 'e', 'f'},
 	}
 
 	buf := f.Encode()
-	got, err := DecodeToConnectionFrame(buf)
+	got, err := DecodeToHandshakeFrame(buf)
 
 	assert.NoError(t, err)
 	assert.Equal(t, f, got)
