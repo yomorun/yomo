@@ -100,6 +100,11 @@ const (
 	TagOfAuthenticationName    Type = 0x04
 	TagOfAuthenticationPayload Type = 0x05
 
+	//AuthenticationAckFrame
+	TagOfAuthenticationAckFrame  Type = 1
+	TagOfAuthenticationAckOk     Type = 2
+	TagOfAuthenticationAckReason Type = 3
+
 	// HandshakeFrame
 	TagOfHandshakeFrame           Type = 0x31
 	TagOfHandshakeName            Type = 0x01
@@ -107,6 +112,9 @@ const (
 	TagOfHandshakeID              Type = 0x03
 	TagOfHandshakeObserveDataTags Type = 0x06
 	TagOfHandshakeMetadata        Type = 0x07
+
+	// TagOfHandshakeAckFrame
+	TagOfHandshakeAckFrame Type = 0x29
 
 	TagOfPingFrame       Type = 0x3C
 	TagOfPongFrame       Type = 0x3B
@@ -117,8 +125,6 @@ const (
 	TagOfGoawayFrame   Type = 0x30
 	TagOfGoawayCode    Type = 0x01
 	TagOfGoawayMessage Type = 0x02
-	// TagOfHandshakeAckFrame
-	TagOfHandshakeAckFrame Type = 0x29
 )
 
 // Type represents the type of frame.
@@ -141,6 +147,8 @@ func (f Type) String() string {
 		return "TokenFrame"
 	case TagOfAuthenticationFrame:
 		return "AuthenticationFrame"
+	case TagOfAuthenticationAckFrame:
+		return "AuthenticationAckFrame"
 	case TagOfPingFrame:
 		return "PingFrame"
 	case TagOfPongFrame:
