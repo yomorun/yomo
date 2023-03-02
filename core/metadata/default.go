@@ -29,7 +29,7 @@ func DefaultBuilder() Builder {
 	}
 }
 
-func (builder *defaultBuilder) Build(f *frame.HandshakeFrame) (Metadata, error) {
+func (builder *defaultBuilder) Build(f *frame.AuthenticationFrame) (Metadata, error) {
 	return builder.m, nil
 }
 

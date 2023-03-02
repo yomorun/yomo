@@ -125,7 +125,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 			continue
 		}
 
-		controlStream := NewControlStream(conn, stream0, s.logger, s.metadataBuilder)
+		controlStream := NewControlStream(conn, stream0, s.logger)
 
 		// Auth accepts a AuthenticationFrame from client. The first frame from client must be
 		// AuthenticationFrame, It returns true if auth successful otherwise return false.
@@ -342,7 +342,7 @@ func (s *Server) handleAuthFrame(f *frame.AuthenticationFrame) (bool, error) {
 	ok := auth.Authenticate(s.opts.auths, f)
 
 	if ok {
-		s.logger.Debug("Authentication succeeded")
+		s.logger.Debug("Successful authentication")
 	} else {
 		s.logger.Warn("Authentication failed", "credential", f.AuthName())
 	}

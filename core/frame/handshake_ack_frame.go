@@ -2,8 +2,9 @@ package frame
 
 import "github.com/yomorun/y3"
 
-// HandshakeAckFrame is a Y3 encoded bytes,
-// It used to ack handshake.
+// HandshakeAckFrame is used to ack handshake, It is always that the first frame
+// is HandshakeAckFrame after client acquire a new stream.
+// HandshakeAckFrame is a Y3 encoded bytes.
 type HandshakeAckFrame struct{}
 
 // NewHandshakeAckFrame returns a HandshakeAckFrame.

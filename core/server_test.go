@@ -48,13 +48,11 @@ func buildMockConnector(router router.Router, metadataBuilder metadata.Builder, 
 			[]byte{},
 		)
 
-		metadata, _ := metadataBuilder.Build(handshakeFrame)
-
 		conn := newConnection(
 			handshakeFrame.Name(),
 			handshakeFrame.ID(),
 			ClientType(handshakeFrame.StreamType()),
-			metadata,
+			nil,
 			arg.stream,
 			handshakeFrame.ObserveDataTags(),
 			logger,

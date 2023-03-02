@@ -8,7 +8,7 @@ import (
 
 // HandshakeFrame is the frame that client accquires new dataStream from server,
 // It includes some of the information necessary to create a new dataStream.
-// Based on this information, the server can create dataStream。
+// Server creates dataStream based on this information.
 type HandshakeFrame struct {
 	name            string
 	id              string

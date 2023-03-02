@@ -116,9 +116,6 @@ func newContext(conn Connection, stream ContextWriterCloser, mb metadata.Builder
 	c.Stream = stream
 	c.metadataBuilder = mb
 
-	// TODO: how md inhject to handshake
-	_, err = c.metadataBuilder.Build(handshake)
-
 	c.Set(StreamInfoKey, handshake)
 
 	c.Logger = logger.With(

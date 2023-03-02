@@ -20,8 +20,10 @@ var (
 	ErrAuthenticateTimeout = errors.New("yomo: client authenticate timeout")
 )
 
-// ControlStream is the stream to control other dataStream.
-// ControlStream always the first stream established between server and client.
+// ControlStream is the stream to control other DataStream.
+// One Connection has many DataStream and only one ControlStream, ControlStream authenticates
+// Connection and recevies HandshakeFrame and CloseStreamFrame to create DataStream and close
+// stream. the ControlStream always the first stream established between server and client.
 type ControlStream struct {
 	conn            quic.Connection
 	group           sync.WaitGroup
@@ -31,17 +33,11 @@ type ControlStream struct {
 }
 
 // NewControlStream returns ControlStream.
-func NewControlStream(
-	conn quic.Connection,
-	stream quic.Stream,
-	logger *slog.Logger,
-	metadataBuilder metadata.Builder,
-) *ControlStream {
+func NewControlStream(conn quic.Connection, stream quic.Stream, logger *slog.Logger) *ControlStream {
 	return &ControlStream{
-		conn:            conn,
-		stream:          stream,
-		logger:          logger,
-		metadataBuilder: metadataBuilder,
+		conn:   conn,
+		stream: stream,
+		logger: logger,
 	}
 }
 
@@ -117,23 +113,15 @@ func (cs *ControlStream) runConn(connector Connector, runConnFunc func(c *Contex
 			return err
 		}
 
-		switch f.Type() {
-		case frame.TagOfHandshakeFrame:
-			ff := f.(*frame.HandshakeFrame)
+		switch ff := f.(type) {
+		case *frame.HandshakeFrame:
 			stream, err := cs.conn.OpenStream()
 			if err != nil {
 				return err
 			}
-			// TODO: maybe other frame?
 			stream.Write(frame.NewHandshakeAckFrame().Encode())
 
-			metadata, err := cs.metadataBuilder.Build(ff)
-			if err != nil {
-				return err
-			}
-
-			// TODO: Connection and Context is almost identical.
-			conn := newConnection(ff.Name(), ff.ID(), ClientType(ff.StreamType()), metadata, stream, ff.ObserveDataTags(), cs.logger)
+			conn := newConnection(ff.Name(), ff.ID(), ClientType(ff.StreamType()), nil, stream, ff.ObserveDataTags(), cs.logger)
 			connector.Add(conn.ClientID(), conn)
 			cs.group.Add(1)
 
