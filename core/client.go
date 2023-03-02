@@ -117,10 +117,9 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 		c.state = ConnStateDisconnected
 		return err
 	}
-
 	c.logger.Debug("AuthenticationFrame be Writed")
 
-	if _, err := frame.ReadUntil(controlStream, frame.TagOfHandshakeAckFrame, 10*time.Second); err != nil {
+	if err := c.authenticationAck(controlStream); err != nil {
 		c.state = ConnStateDisconnected
 		return err
 	}
@@ -171,6 +170,25 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 			c.close()
 		}
 	}()
+
+	return nil
+}
+
+// authenticationAck waits authentication ack, ack maybe ok or not ok.
+func (c *Client) authenticationAck(controlStream frame.Reader) error {
+	f, err := controlStream.ReadFrame()
+	if err != nil {
+		return err
+	}
+
+	ff, ok := f.(*frame.AuthenticationAckFrame)
+	if !ok {
+		return fmt.Errorf("yomo: read unexcept frame during waiting authentication ack, frame readed: %s", f.Type().String())
+	}
+
+	if !ff.OK() {
+		return errors.New(ff.Reason())
+	}
 
 	return nil
 }

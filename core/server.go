@@ -9,7 +9,6 @@ import (
 	"os"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/auth"
@@ -120,44 +119,40 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 			continue
 		}
 
-		stream0, err := conn.AcceptStream(ctx)
+		controlStream, err := conn.AcceptStream(ctx)
 		if err != nil {
 			continue
 		}
-
-		controlStream := NewControlStream(conn, stream0, s.logger)
+		streamGroup := NewStreamGroup(conn, controlStream, s.logger)
 
 		// Auth accepts a AuthenticationFrame from client. The first frame from client must be
 		// AuthenticationFrame, It returns true if auth successful otherwise return false.
-
-		// TODO: amend code comment
-		// It response to client a handshakeAckFrame if the auth is successful otherwise
-		// response a goawayFrame. It returns a context for this stream handler.
-		err = controlStream.Auth(5*time.Second, s.handleAuthFrame)
+		// It response to client a AuthenticationAckFrame.
+		err = streamGroup.Auth(s.handleAuthFrame)
 		if err != nil {
+			s.logger.Warn("Authentication failed", "error", err)
 			continue
 		}
-
-		s.logger.Debug("Handshake success")
+		s.logger.Debug("Authentication success")
 
 		go func(qconn quic.Connection) {
-			defer controlStream.Wait()
+			defer streamGroup.Wait()
 			defer s.doConnectionCloseHandlers(qconn)
 
 			select {
 			case <-ctx.Done():
-			case err := <-s.runConn(controlStream):
+			case err := <-s.runWithStreamGroup(streamGroup):
 				s.logger.Error("Serve error with exit", err)
 			}
 		}(conn)
 	}
 }
 
-func (s *Server) runConn(controlStream *ControlStream) <-chan error {
+func (s *Server) runWithStreamGroup(group *StreamGroup) <-chan error {
 	errch := make(chan error)
 
 	go func() {
-		errch <- controlStream.runConn(s.connector, s.handleConnection)
+		errch <- group.run(s.connector, s.metadataBuilder, s.handleConnection)
 	}()
 
 	return errch

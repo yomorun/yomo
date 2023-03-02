@@ -1,9 +1,6 @@
 package frame
 
 import (
-	"errors"
-	"time"
-
 	"github.com/yomorun/yomo/core/ylog"
 )
 
@@ -20,54 +17,8 @@ type Reader interface {
 	ReadFrame() (Frame, error)
 }
 
-// ErrReadUntilTimeout be returned when call ReadUntil timeout.
-type ErrReadUntilTimeout struct{ t Type }
-
-// Error implement error interface.
-func (err ErrReadUntilTimeout) Error() string {
-	return "yomo: frame read until timeout, type: " + err.t.String()
-}
-
-// ReadUntil reads frame from reader, until the frame of the specified type is returned.
-// It returns ErrReadUntilTimeout error if frame not be returned after timeout duration.
-// If read a goawayFrame, use goawayFrame.message as error and return it.
-func ReadUntil(reader Reader, t Type, timeout time.Duration) (Frame, error) {
-	var (
-		errch = make(chan error)
-		frmch = make(chan Frame)
-	)
-
-	go func() {
-		for {
-			f, err := reader.ReadFrame()
-			if err != nil {
-				errch <- err
-				return
-			}
-			if f.Type() == TagOfGoawayFrame {
-				errch <- errors.New(f.(*GoawayFrame).message)
-				return
-			}
-			if f.Type() == t {
-				frmch <- f
-				return
-			}
-		}
-	}()
-
-	select {
-	case <-time.After(timeout):
-		return nil, ErrReadUntilTimeout{t: t}
-	case err := <-errch:
-		return nil, err
-	case frm := <-frmch:
-		return frm, nil
-	}
-}
-
-// Writer is the interface that wraps the WriteFrame method.
-
-// Writer writes Frame from frm to the underlying data stream.
+// Writer is the interface that wraps the WriteFrame method, It writes
+// frm to the underlying data stream.
 type Writer interface {
 	WriteFrame(frm Frame) error
 }
