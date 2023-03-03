@@ -76,3 +76,10 @@ func WithServerQuicConfig(qc *quic.Config) ServerOption {
 		o.quicConfig = qc
 	}
 }
+
+// WithServerLogger sets logger for the server.
+func WithServerLogger(logger *slog.Logger) ServerOption {
+	return func(o *serverOptions) {
+		o.logger = logger
+	}
+}

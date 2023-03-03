@@ -18,6 +18,11 @@ import (
 
 const testaddr = "127.0.0.1:19999"
 
+var nullLogger = ylog.NewFromConfig(ylog.Config{
+	Output:      "/dev/null",
+	ErrorOutput: "/dev/null",
+})
+
 func TestClientDialNothing(t *testing.T) {
 	ctx := context.Background()
 
@@ -46,6 +51,7 @@ func TestFrameRoundTrip(t *testing.T) {
 		WithAuth("token", "auth-token"),
 		WithServerQuicConfig(DefalutQuicConfig),
 		WithServerTLSConfig(nil),
+		WithServerLogger(nullLogger),
 	)
 	server.ConfigMetadataBuilder(metadata.DefaultBuilder())
 	server.ConfigRouter(router.Default([]config.App{{Name: "sfn-1"}}))
@@ -70,7 +76,7 @@ func TestFrameRoundTrip(t *testing.T) {
 		WithObserveDataTags(obversedTag),
 		WithClientQuicConfig(DefalutQuicConfig),
 		WithClientTLSConfig(nil),
-		WithLogger(ylog.Default()),
+		WithLogger(nullLogger),
 	)
 
 	source.SetBackflowFrameObserver(func(bf *frame.BackflowFrame) {
@@ -81,7 +87,13 @@ func TestFrameRoundTrip(t *testing.T) {
 	assert.NoError(t, err, "source connect must be success")
 	assert.Equal(t, ConnStateConnected, source.State(), "source state should be ConnStateConnected")
 
-	sfn := NewClient("sfn-1", ClientTypeStreamFunction, WithCredential("token:auth-token"), WithObserveDataTags(obversedTag))
+	sfn := NewClient(
+		"sfn-1",
+		ClientTypeStreamFunction,
+		WithCredential("token:auth-token"),
+		WithObserveDataTags(obversedTag),
+		WithLogger(nullLogger),
+	)
 
 	sfn.SetDataFrameObserver(func(bf *frame.DataFrame) {
 		assert.Equal(t, string(payload), string(bf.GetCarriage()))
