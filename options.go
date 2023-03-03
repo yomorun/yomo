@@ -1,9 +1,6 @@
 package yomo
 
 import (
-	"crypto/tls"
-
-	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
 	"golang.org/x/exp/slog"
@@ -23,8 +20,6 @@ type Options struct {
 	MeshConfigURL string // meshConfigURL is the URL of edge-mesh config
 	ServerOptions []core.ServerOption
 	ClientOptions []core.ClientOption
-	QuicConfig    *quic.Config
-	TLSConfig     *tls.Config
 
 	// TODO: WithWorkflowConfig
 	// zipperWorkflowConfig string // Zipper workflow file
@@ -41,20 +36,6 @@ func WithZipperAddr(addr string) Option {
 func WithMeshConfigURL(url string) Option {
 	return func(o *Options) {
 		o.MeshConfigURL = url
-	}
-}
-
-// WithTLSConfig sets the TLS configuration for the client.
-func WithTLSConfig(tc *tls.Config) Option {
-	return func(o *Options) {
-		o.TLSConfig = tc
-	}
-}
-
-// WithQuicConfig sets the QUIC configuration for the client.
-func WithQuicConfig(qc *quic.Config) Option {
-	return func(o *Options) {
-		o.QuicConfig = qc
 	}
 }
 
