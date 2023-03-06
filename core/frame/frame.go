@@ -51,10 +51,15 @@ const (
 	TagOfAuthenticationName    Type = 0x04
 	TagOfAuthenticationPayload Type = 0x05
 
-	//AuthenticationAckFrame
+	// AuthenticationAckFrame
 	TagOfAuthenticationAckFrame  Type = 1
 	TagOfAuthenticationAckOk     Type = 2
 	TagOfAuthenticationAckReason Type = 3
+
+	// CloseStreamFrame
+	TagOfCloseStreamFrame  Type = 4
+	TagOfCloseStreamID     Type = 5
+	TagOfCloseStreamReason Type = 6
 
 	// HandshakeFrame
 	TagOfHandshakeFrame           Type = 0x31
@@ -120,6 +125,8 @@ func (f Type) String() string {
 		return "HandshakeAckFrame"
 	case TagOfHandshakeFrame:
 		return "HandshakeFrame"
+	case TagOfCloseStreamFrame:
+		return "CloseStreamFrame"
 	default:
 		return "UnknownFrame"
 	}

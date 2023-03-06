@@ -15,6 +15,6 @@ func TestAuthenticationAckFrame(t *testing.T) {
 	got, err := DecodeToAuthenticationAckFrame(bytes)
 	assert.Equal(t, f, got)
 	assert.NoError(t, err)
-	assert.EqualValues(t, false, f.ok)
-	assert.EqualValues(t, "aabbcc", f.reason)
+	assert.EqualValues(t, false, f.OK())
+	assert.EqualValues(t, "aabbcc", f.Reason())
 }
