@@ -10,24 +10,21 @@ import (
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
-	"github.com/yomorun/yomo/core/yerr"
 	"golang.org/x/exp/slog"
 )
 
 var ctxPool sync.Pool
 
 // Context for YoMo Server.
-// Context be generated after a client coming,
-// And stores clientInfo and serverInfo according to client and server.
-// Context's lifecycle equal to stream.
+// Context be generated after a dataStream coming, And stores some infomation
+// from dataStream, the infomation cantains StreamInfo,
+// Context's lifecycle is equal to stream's.
 type Context struct {
-	conn Connection
-	// Stream is the long-lived connection between client and server.
-	Stream ContextWriterCloser
+	DataStream DataStream
 	// Frame receives from client.
 	Frame frame.Frame
 
-	// mu protected
+	// mu protects Keys read write.
 	mu sync.RWMutex
 	// Keys stores the key/value pairs in context.
 	// It is Lazy initialized.
@@ -67,13 +64,13 @@ func (c *Context) Get(key string) (any, bool) {
 var _ context.Context = &Context{}
 
 // Done returns nil (chan which will wait forever) when c.Stream.Context() has no Context.
-func (c *Context) Done() <-chan struct{} { return c.Stream.Context().Done() }
+func (c *Context) Done() <-chan struct{} { return c.DataStream.Context().Done() }
 
 // Deadline returns that there is no deadline (ok==false) when c.Stream has no Context.
-func (c *Context) Deadline() (deadline time.Time, ok bool) { return c.Stream.Context().Deadline() }
+func (c *Context) Deadline() (deadline time.Time, ok bool) { return c.DataStream.Context().Deadline() }
 
 // Err returns nil when c.Request has no Context.
-func (c *Context) Err() error { return c.Stream.Context().Err() }
+func (c *Context) Err() error { return c.DataStream.Context().Err() }
 
 // Value returns the value associated with this context for key, or nil
 // if no value is associated with key. Successive calls to Value with
@@ -85,13 +82,13 @@ func (c *Context) Value(key any) any {
 		}
 	}
 	// There always returns nil, because quic.Stream.Context is not be allowed modify.
-	return c.Stream.Context().Value(key)
+	return c.DataStream.Context().Value(key)
 }
 
 // newContext returns a yomo context,
 // The context implements standard library `context.Context` interface,
 // The lifecycle of Context is equal to stream's taht be passed in.
-func newContext(conn Connection, stream ContextWriterCloser, mb metadata.Builder, logger *slog.Logger) (c *Context, err error) {
+func newContext(dataStream DataStream, mb metadata.Builder, logger *slog.Logger) (c *Context, err error) {
 	v := ctxPool.Get()
 	if v == nil {
 		c = new(Context)
@@ -99,42 +96,27 @@ func newContext(conn Connection, stream ContextWriterCloser, mb metadata.Builder
 		c = v.(*Context)
 	}
 
-	connmd := []byte{}
-	if conn.Metadata() != nil {
-		connmd = conn.Metadata().Encode()
-	}
+	streamInfo := dataStream.StreamInfo()
 
-	handshake := frame.NewHandshakeFrame(
-		conn.Name(),
-		conn.ClientID(),
-		byte(conn.ClientType()),
-		conn.ObserveDataTags(),
-		connmd,
-	)
-
-	c.conn = conn
-	c.Stream = stream
-	c.metadataBuilder = mb
-
-	c.Set(StreamInfoKey, handshake)
+	c.Set(StreamInfoKey, streamInfo)
 
 	c.Logger = logger.With(
-		"stream_id", handshake.ID,
-		"stream_type", ClientType(handshake.StreamType()).String(),
-		"stream_name", handshake.Name,
+		"stream_id", streamInfo.ID(),
+		"stream_name", streamInfo.Name(),
+		"stream_type", streamInfo.StreamType().String(),
 	)
 
 	return
 }
 
 // StreamInfo get dataStream info from Context.
-func (c *Context) StreamInfo() (ConnectionInfo, bool) {
+func (c *Context) StreamInfo() (StreamInfo, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	v, ok := c.Keys[StreamInfoKey]
 	if ok {
-		return v.(ConnectionInfo), true
+		return v.(StreamInfo), true
 	}
 	return nil, false
 }
@@ -156,8 +138,7 @@ func (c *Context) Clean() {
 }
 
 func (c *Context) reset() {
-	c.conn = nil
-	c.Stream = nil
+	c.DataStream = nil
 	c.Frame = nil
 	c.metadataBuilder = nil
 	c.Logger = nil
@@ -202,23 +183,10 @@ type ContextWriterCloser interface {
 	Context() context.Context
 }
 
-// CloseWithError closes the stream and cleans the context.
-func (c *Context) CloseWithError(code yerr.ErrorCode, msg string) {
-	c.Logger.Debug("conn context close", "err_code", code, "err_msg", msg)
-
-	if c.Stream != nil {
-		c.Stream.Close()
-	}
-
-	if c.conn != nil {
-		c.conn.Close()
-	}
-}
-
-// ConnID get quic connection id
+// StreamID gets dataStream ID.
 func (c *Context) ConnID() string {
-	if c.conn == nil {
+	if c.DataStream == nil {
 		return ""
 	}
-	return c.conn.ClientID()
+	return c.DataStream.StreamInfo().ID()
 }

@@ -9,84 +9,113 @@ import (
 
 var _ Connector = &connector{}
 
-// Connector is a interface to manage the connections and applications.
+// Connector manages DataStream.
+// Connector supports getting and setting stream from one place.
 type Connector interface {
-	// Add a connection.
-	Add(connID string, conn Connection)
-	// Remove a connection.
-	Remove(connID string)
-	// Get a connection by connection id.
-	Get(connID string) Connection
-	// GetSnapshot gets the snapshot of all connections.
+	// Add adds DataStream to Connector,
+	// If the id is the same twice, the new stream replaces the old stream.
+	Add(streamID string, stream DataStream)
+
+	// Remove removes DataStream in streamID.
+	// If Connector don't have a stream holds streamID, The Connector do nothing.
+	Remove(streamID string)
+
+	// Get gets DataStream in streamID.
+	// If can't get a stream by stream, There will return nil and false.
+	Get(streamID string) (DataStream, bool)
+
+	// GetSnapshot gets the snapshot of all stream.
+	// The map key is streamID, value is stream name, This function usually be used to
+	// sniff the status of Connector.
 	GetSnapshot() map[string]string
-	// GetSourceConns gets the connections by source observe tag.
-	GetSourceConns(sourceID string, tag frame.Tag) []Connection
-	// Clean the connector.
+
+	// GetSourceConns gets the stream by source observe tag.
+	GetSourceConns(sourceID string, tag frame.Tag) []DataStream
+
+	// Clean cleans all stream of Connector and reset Connector to initial status.
+	// TODO: add atomic.Bool to manage whether Connector is closed and rename to Close().
 	Clean()
 }
 
 type connector struct {
-	conns  sync.Map
-	logger *slog.Logger
+	streams sync.Map
+	logger  *slog.Logger
 }
 
-func newConnector(logger *slog.Logger) Connector {
-	return &connector{conns: sync.Map{}, logger: logger}
+// newConnector returns an initial Connector.
+func newConnector(logger *slog.Logger) Connector { return &connector{logger: logger} }
+
+func (c *connector) Add(streamID string, stream DataStream) {
+	c.streams.Store(streamID, stream)
+
+	c.logger.Debug("Connector add stream", "stream_id", streamID)
 }
 
-// Add a connection.
-func (c *connector) Add(connID string, conn Connection) {
-	c.logger.Debug("connector add connection", "conn_id", connID)
-	c.conns.Store(connID, conn)
+func (c *connector) Remove(streamID string) {
+	c.streams.Delete(streamID)
+
+	c.logger.Debug("Connector remove stream", "stream_id", streamID)
 }
 
-// Remove a connection.
-func (c *connector) Remove(connID string) {
-	c.logger.Debug("connector remove connection", "conn_id", connID)
-	c.conns.Delete(connID)
-}
+func (c *connector) Get(streamID string) (DataStream, bool) {
+	v, ok := c.streams.Load(streamID)
 
-// Get a connection by connection id.
-func (c *connector) Get(connID string) Connection {
-	if conn, ok := c.conns.Load(connID); ok {
-		return conn.(Connection)
+	if !ok {
+		return nil, false
 	}
-	return nil
+	stream, ok := v.(DataStream)
+	if !ok {
+		return nil, false
+	}
+
+	return stream, true
 }
 
 // GetSourceConns gets the source connection by tag.
-func (c *connector) GetSourceConns(sourceID string, tag frame.Tag) []Connection {
-	conns := make([]Connection, 0)
+func (c *connector) GetSourceConns(sourceID string, tag frame.Tag) []DataStream {
+	streams := make([]DataStream, 0)
 
-	c.conns.Range(func(key interface{}, val interface{}) bool {
-		conn := val.(Connection)
-		for _, v := range conn.ObserveDataTags() {
-			if v == tag && conn.ClientType() == ClientTypeSource && conn.ClientID() == sourceID {
-				conns = append(conns, conn)
+	c.streams.Range(func(key interface{}, val interface{}) bool {
+		stream, ok := val.(DataStream)
+		if ok {
+			return true
+		}
+		for _, v := range stream.ObserveDataTags() {
+			if v == tag &&
+				stream.StreamInfo().StreamType() == StreamTypeSource &&
+				stream.StreamInfo().ID() == sourceID {
+				streams = append(streams, stream)
 			}
 		}
 		return true
 	})
 
-	return conns
+	return streams
 }
 
-// GetSnapshot gets the snapshot of all connections.
 func (c *connector) GetSnapshot() map[string]string {
 	result := make(map[string]string)
-	c.conns.Range(func(key interface{}, val interface{}) bool {
-		connID := key.(string)
-		conn := val.(Connection)
-		result[connID] = conn.Name()
+
+	c.streams.Range(func(key interface{}, val interface{}) bool {
+		streamID, ok := key.(string)
+		if !ok {
+			return true
+		}
+		stream, ok := val.(DataStream)
+		if !ok {
+			return true
+		}
+		result[streamID] = stream.StreamInfo().Name()
 		return true
 	})
+
 	return result
 }
 
-// Clean the connector.
 func (c *connector) Clean() {
-	c.conns.Range(func(key, value any) bool {
-		c.conns.Delete(key)
+	c.logger = nil
+	c.streams.Range(func(key, value any) bool {
+		c.streams.Delete(key)
 		return true
 	})
 }

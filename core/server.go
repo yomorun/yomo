@@ -179,20 +179,22 @@ func (s *Server) Close() error {
 }
 
 func (s *Server) handRoute(c *Context) error {
-	if c.conn.ClientType() == ClientTypeStreamFunction {
+	streamInfo := c.DataStream.StreamInfo()
+
+	if streamInfo.StreamType() == StreamTypeStreamFunction {
 		// route
-		route := s.router.Route(c.conn.Metadata())
+		route := s.router.Route(streamInfo.Metadata())
 		if route == nil {
 			return errors.New("handleHandshakeFrame route is nil")
 		}
-		if err := route.Add(c.ConnID(), c.conn.Name(), c.conn.ObserveDataTags()); err != nil {
+		if err := route.Add(c.ConnID(), streamInfo.Name(), c.DataStream.ObserveDataTags()); err != nil {
 			// duplicate name
 			if e, ok := err.(yerr.DuplicateNameError); ok {
 				existsConnID := e.ConnID()
-				if conn := s.connector.Get(existsConnID); conn != nil {
+				if stream, ok := s.connector.Get(existsConnID); !ok {
 					c.Logger.Debug("write GoawayFrame", "error", e.Error(), "exists_conn_id", existsConnID)
 					goawayFrame := frame.NewGoawayFrame(e.Error())
-					if err := conn.WriteFrame(goawayFrame); err != nil {
+					if err := stream.WriteFrame(goawayFrame); err != nil {
 						c.Logger.Error("write GoawayFrame failed", err)
 						return err
 					}
@@ -208,7 +210,7 @@ func (s *Server) handRoute(c *Context) error {
 // handleConnection handles streams on a connection,
 // use c.Logger in this function scope for more complete logger information.
 func (s *Server) handleConnection(c *Context) {
-	fs := NewFrameStream(c.Stream)
+	fs := c.DataStream
 
 	if err := s.handRoute(c); err != nil {
 		fs.WriteFrame(frame.NewGoawayFrame(err.Error()))
@@ -218,7 +220,8 @@ func (s *Server) handleConnection(c *Context) {
 	for _, handler := range s.startHandlers {
 		if err := handler(c); err != nil {
 			c.Logger.Error("startHandlers error", err)
-			c.CloseWithError(yerr.ErrorCodeStartHandler, err.Error())
+			// TODO: close in controlStream.
+			c.DataStream.Close() // c.CloseWithError(yerr.ErrorCodeStartHandler, err.Error())
 			return
 		}
 	}
@@ -227,7 +230,7 @@ func (s *Server) handleConnection(c *Context) {
 
 	// check update for stream
 	for {
-		f, err := fs.ReadFrame()
+		f, err := c.DataStream.ReadFrame()
 		if err != nil {
 			// if client close connection, will get ApplicationError with code = 0x00
 			if e, ok := err.(*quic.ApplicationError); ok {
@@ -247,7 +250,8 @@ func (s *Server) handleConnection(c *Context) {
 				// if client close the connection, net.ErrClosed will be raise
 				// by quic-go IdleTimeoutError after connection's KeepAlive config.
 				c.Logger.Warn("connection error", "error", net.ErrClosed)
-				c.CloseWithError(yerr.ErrorCodeClosed, "net.ErrClosed")
+				// TODO: close in controlStream.
+				c.DataStream.Close() // c.CloseWithError(yerr.ErrorCodeClosed, "net.ErrClosed")
 				break
 			}
 			// any error occurred, we should close the stream
@@ -350,8 +354,8 @@ func (s *Server) handleDataFrame(c *Context) error {
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
 	// currentIssuer := f.GetIssuer()
 	fromID := c.ConnID()
-	from := s.connector.Get(fromID)
-	if from == nil {
+	from, ok := s.connector.Get(fromID)
+	if !ok {
 		c.Logger.Warn("handleDataFrame connector cannot find", "from_conn_id", fromID)
 		return fmt.Errorf("handleDataFrame connector cannot find %s", fromID)
 	}
@@ -364,7 +368,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 	}
 	metadata := m
 	if metadata == nil {
-		metadata = from.Metadata()
+		metadata = from.StreamInfo().Metadata()
 	}
 
 	// route
@@ -377,16 +381,16 @@ func (s *Server) handleDataFrame(c *Context) error {
 	// get stream function connection ids from route
 	connIDs := route.GetForwardRoutes(f.GetDataTag())
 	for _, toID := range connIDs {
-		conn := s.connector.Get(toID)
-		if conn == nil {
+		conn, ok := s.connector.Get(toID)
+		if !ok {
 			c.Logger.Error("Can't find forward conn", errors.New("conn is nil"), "forward_conn_id", toID)
 			continue
 		}
 
-		to := conn.Name()
+		to := conn.StreamInfo().Name()
 		c.Logger.Info(
 			"handleDataFrame",
-			"from_conn_name", from.Name(),
+			"from_conn_name", from.StreamInfo().Name(),
 			"from_conn_id", fromID,
 			"to_conn_name", to,
 			"to_conn_id", toID,
@@ -471,14 +475,17 @@ func (s *Server) AddDownstreamServer(addr string, c frame.Writer) {
 
 // dispatch every DataFrames to all downstreams
 func (s *Server) dispatchToDownstreams(c *Context) {
-	conn := s.connector.Get(c.ConnID())
-	if conn == nil {
+	stream, ok := s.connector.Get(c.ConnID())
+	if !ok {
 		c.Logger.Debug("dispatchToDownstreams failed")
-	} else if conn.ClientType() == ClientTypeSource {
+		return
+	}
+	streamInfo := stream.StreamInfo()
+	if streamInfo.StreamType() == StreamTypeSource {
 		f := c.Frame.(*frame.DataFrame)
 		if f.IsBroadcast() {
 			if f.GetMetaFrame().Metadata() == nil {
-				f.GetMetaFrame().SetMetadata(conn.Metadata().Encode())
+				f.GetMetaFrame().SetMetadata(streamInfo.Metadata().Encode())
 			}
 			for addr, ds := range s.downstreams {
 				c.Logger.Info("dispatching to", "dispatch_addr", addr, "tid", f.TransactionID())
@@ -560,6 +567,7 @@ func (s *Server) doConnectionCloseHandlers(qconn quic.Connection) {
 }
 
 func (s *Server) connClose(c *Context) {
-	s.router.Route(c.conn.Metadata()).Remove(c.ConnID())
+	info := c.DataStream.StreamInfo()
+	s.router.Route(info.Metadata()).Remove(c.ConnID())
 	s.connector.Remove(c.ConnID())
 }

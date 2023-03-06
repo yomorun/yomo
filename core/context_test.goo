@@ -31,20 +31,20 @@ func TestContext(t *testing.T) {
 		DisableTime: true,
 	}))
 
-	connInfo := &connection{
+	streamInfo := &streamInfo{
 		stream:     stream,
 		clientID:   "xxxxx",
 		clientType: ClientTypeSource,
 		name:       "yomo",
 		metadata:   &metadata.Default{},
 	}
-	c, err := newContext(connInfo, stream, metadata.DefaultBuilder(), logger)
+	c, err := newContext(stream, metadata.DefaultBuilder(), logger)
 	assert.NoError(t, err)
 
 	c.Logger.Debug("hello")
 	logdata, err := os.ReadFile(logpath)
 	assert.NoError(t, err)
-	assert.Equal(t, string(logdata), "level=DEBUG msg=hello client_id=xxxxx client_type=Source client_name=yomo\n")
+	assert.Equal(t, string(logdata), "msg=hello stream_id=xxxxx stream_type=Source stream_name=yomo\n")
 
 	ctxConnInfo, ok := c.StreamInfo()
 	assert.True(t, ok)

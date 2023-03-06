@@ -98,16 +98,24 @@ func (g *StreamGroup) run(connector Connector, mb metadata.Builder, contextFunc 
 			}
 			stream.Write(frame.NewHandshakeAckFrame().Encode())
 
-			conn := newConnection(ff.Name(), ff.ID(), ClientType(ff.StreamType()), &metadata.Default{}, stream, ff.ObserveDataTags(), g.logger)
-			connector.Add(conn.ClientID(), conn)
+			dataStream := newDataStream(
+				ff.Name(),
+				ff.ID(),
+				StreamType(ff.StreamType()),
+				&metadata.Default{},
+				stream,
+				ff.ObserveDataTags(),
+				g.logger,
+			)
+			connector.Add(dataStream.StreamInfo().ID(), dataStream)
 			g.group.Add(1)
 
 			go func() {
 				defer g.group.Done()
 
-				c, err := newContext(conn, stream, mb, g.logger)
+				c, err := newContext(dataStream, mb, g.logger)
 				if err != nil {
-					c.conn.WriteFrame(frame.NewGoawayFrame(err.Error()))
+					c.DataStream.WriteFrame(frame.NewGoawayFrame(err.Error()))
 				}
 				defer c.Clean()
 

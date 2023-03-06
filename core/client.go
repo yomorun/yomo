@@ -26,7 +26,7 @@ type ClientOption func(*clientOptions)
 type Client struct {
 	name       string                     // name of the client
 	clientID   string                     // id of the client
-	clientType ClientType                 // type of the connection
+	streamType StreamType                 // type of the dataStream
 	conn       quic.Connection            // quic connection
 	fs         frame.ReadWriter           // yomo abstract stream
 	state      ConnState                  // state of the connection
@@ -43,7 +43,7 @@ type Client struct {
 }
 
 // NewClient creates a new YoMo-Client.
-func NewClient(appName string, connType ClientType, opts ...ClientOption) *Client {
+func NewClient(appName string, connType StreamType, opts ...ClientOption) *Client {
 	option := defaultClientOption()
 
 	for _, o := range opts {
@@ -60,7 +60,7 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 	return &Client{
 		name:       appName,
 		clientID:   clientID,
-		clientType: connType,
+		streamType: connType,
 		state:      ConnStateReady,
 		opts:       option,
 		errc:       make(chan error),
@@ -197,7 +197,7 @@ func (c *Client) acquireDataStream(controlStream frame.ReadWriter) error {
 	err := controlStream.WriteFrame(frame.NewHandshakeFrame(
 		c.name,
 		c.clientID,
-		byte(c.clientType),
+		byte(c.streamType),
 		c.opts.observeDataTags,
 		[]byte{}, // The stream does not require metadata currently.
 	))
