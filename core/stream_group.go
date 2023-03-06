@@ -98,7 +98,7 @@ func (g *StreamGroup) run(connector Connector, mb metadata.Builder, contextFunc 
 			}
 			stream.Write(frame.NewHandshakeAckFrame().Encode())
 
-			conn := newConnection(ff.Name(), ff.ID(), ClientType(ff.StreamType()), nil, stream, ff.ObserveDataTags(), g.logger)
+			conn := newConnection(ff.Name(), ff.ID(), ClientType(ff.StreamType()), &metadata.Default{}, stream, ff.ObserveDataTags(), g.logger)
 			connector.Add(conn.ClientID(), conn)
 			g.group.Add(1)
 

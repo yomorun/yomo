@@ -18,10 +18,7 @@ import (
 
 const testaddr = "127.0.0.1:19999"
 
-var nullLogger = ylog.NewFromConfig(ylog.Config{
-	Output:      "/dev/null",
-	ErrorOutput: "/dev/null",
-})
+var discardingLogger = ylog.NewFromConfig(ylog.Config{Output: "/dev/null", ErrorOutput: "/dev/null"})
 
 func TestClientDialNothing(t *testing.T) {
 	ctx := context.Background()
@@ -51,7 +48,7 @@ func TestFrameRoundTrip(t *testing.T) {
 		WithAuth("token", "auth-token"),
 		WithServerQuicConfig(DefalutQuicConfig),
 		WithServerTLSConfig(nil),
-		WithServerLogger(nullLogger),
+		WithServerLogger(discardingLogger),
 	)
 	server.ConfigMetadataBuilder(metadata.DefaultBuilder())
 	server.ConfigRouter(router.Default([]config.App{{Name: "sfn-1"}}))
@@ -76,7 +73,7 @@ func TestFrameRoundTrip(t *testing.T) {
 		WithObserveDataTags(obversedTag),
 		WithClientQuicConfig(DefalutQuicConfig),
 		WithClientTLSConfig(nil),
-		WithLogger(nullLogger),
+		WithLogger(discardingLogger),
 	)
 
 	source.SetBackflowFrameObserver(func(bf *frame.BackflowFrame) {
@@ -92,7 +89,7 @@ func TestFrameRoundTrip(t *testing.T) {
 		ClientTypeStreamFunction,
 		WithCredential("token:auth-token"),
 		WithObserveDataTags(obversedTag),
-		WithLogger(nullLogger),
+		WithLogger(discardingLogger),
 	)
 
 	sfn.SetDataFrameObserver(func(bf *frame.DataFrame) {
