@@ -82,8 +82,8 @@ func (c *connector) GetSourceConns(sourceID string, tag frame.Tag) []DataStream 
 		}
 		for _, v := range stream.ObserveDataTags() {
 			if v == tag &&
-				stream.StreamInfo().StreamType() == StreamTypeSource &&
-				stream.StreamInfo().ID() == sourceID {
+				stream.StreamType() == StreamTypeSource &&
+				stream.ID() == sourceID {
 				streams = append(streams, stream)
 			}
 		}
@@ -105,7 +105,7 @@ func (c *connector) GetSnapshot() map[string]string {
 		if !ok {
 			return true
 		}
-		result[streamID] = stream.StreamInfo().Name()
+		result[streamID] = stream.Name()
 		return true
 	})
 

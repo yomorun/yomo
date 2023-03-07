@@ -179,15 +179,14 @@ func (s *Server) Close() error {
 }
 
 func (s *Server) handRoute(c *Context) error {
-	streamInfo := c.DataStream.StreamInfo()
 
-	if streamInfo.StreamType() == StreamTypeStreamFunction {
+	if c.DataStream.StreamType() == StreamTypeStreamFunction {
 		// route
-		route := s.router.Route(streamInfo.Metadata())
+		route := s.router.Route(c.DataStream.Metadata())
 		if route == nil {
 			return errors.New("handleHandshakeFrame route is nil")
 		}
-		if err := route.Add(c.ConnID(), streamInfo.Name(), c.DataStream.ObserveDataTags()); err != nil {
+		if err := route.Add(c.ConnID(), c.DataStream.Name(), c.DataStream.ObserveDataTags()); err != nil {
 			// duplicate name
 			if e, ok := err.(yerr.DuplicateNameError); ok {
 				existsConnID := e.ConnID()
@@ -368,7 +367,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 	}
 	metadata := m
 	if metadata == nil {
-		metadata = from.StreamInfo().Metadata()
+		metadata = from.Metadata()
 	}
 
 	// route
@@ -387,10 +386,10 @@ func (s *Server) handleDataFrame(c *Context) error {
 			continue
 		}
 
-		to := conn.StreamInfo().Name()
+		to := conn.Name()
 		c.Logger.Info(
 			"handleDataFrame",
-			"from_conn_name", from.StreamInfo().Name(),
+			"from_conn_name", from.Name(),
 			"from_conn_id", fromID,
 			"to_conn_name", to,
 			"to_conn_id", toID,
@@ -480,12 +479,12 @@ func (s *Server) dispatchToDownstreams(c *Context) {
 		c.Logger.Debug("dispatchToDownstreams failed")
 		return
 	}
-	streamInfo := stream.StreamInfo()
-	if streamInfo.StreamType() == StreamTypeSource {
+
+	if stream.StreamType() == StreamTypeSource {
 		f := c.Frame.(*frame.DataFrame)
 		if f.IsBroadcast() {
 			if f.GetMetaFrame().Metadata() == nil {
-				f.GetMetaFrame().SetMetadata(streamInfo.Metadata().Encode())
+				f.GetMetaFrame().SetMetadata(stream.Metadata().Encode())
 			}
 			for addr, ds := range s.downstreams {
 				c.Logger.Info("dispatching to", "dispatch_addr", addr, "tid", f.TransactionID())
@@ -567,7 +566,6 @@ func (s *Server) doConnectionCloseHandlers(qconn quic.Connection) {
 }
 
 func (s *Server) connClose(c *Context) {
-	info := c.DataStream.StreamInfo()
-	s.router.Route(info.Metadata()).Remove(c.ConnID())
+	s.router.Route(c.DataStream.Metadata()).Remove(c.ConnID())
 	s.connector.Remove(c.ConnID())
 }

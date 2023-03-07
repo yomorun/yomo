@@ -107,7 +107,7 @@ func (g *StreamGroup) run(connector Connector, mb metadata.Builder, contextFunc 
 				ff.ObserveDataTags(),
 				g.logger,
 			)
-			connector.Add(dataStream.StreamInfo().ID(), dataStream)
+			connector.Add(dataStream.ID(), dataStream)
 			g.group.Add(1)
 
 			go func() {

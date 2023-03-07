@@ -17,8 +17,7 @@ var ctxPool sync.Pool
 
 // Context for YoMo Server.
 // Context be generated after a dataStream coming, And stores some infomation
-// from dataStream, the infomation cantains StreamInfo,
-// Context's lifecycle is equal to stream's.
+// from dataStream, Context's lifecycle is equal to stream's.
 type Context struct {
 	DataStream DataStream
 	// Frame receives from client.
@@ -34,9 +33,6 @@ type Context struct {
 
 	Logger *slog.Logger
 }
-
-// StreamInfoKey is the key that a Context returns StreamInfo
-const StreamInfoKey = "_yomo/streaminfo"
 
 // Set is used to store a new key/value pair exclusively for this context.
 // It also lazy initializes  c.Keys if it was not used previously.
@@ -96,32 +92,17 @@ func newContext(dataStream DataStream, mb metadata.Builder, logger *slog.Logger)
 		c = v.(*Context)
 	}
 
-	streamInfo := dataStream.StreamInfo()
-
-	c.Set(StreamInfoKey, streamInfo)
-
 	c.Logger = logger.With(
-		"stream_id", streamInfo.ID(),
-		"stream_name", streamInfo.Name(),
-		"stream_type", streamInfo.StreamType().String(),
+		"stream_id", dataStream.ID(),
+		"stream_name", dataStream.Name(),
+		"stream_type", dataStream.StreamType().String(),
 	)
 
 	return
 }
 
-// StreamInfo get dataStream info from Context.
-func (c *Context) StreamInfo() (StreamInfo, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	v, ok := c.Keys[StreamInfoKey]
-	if ok {
-		return v.(StreamInfo), true
-	}
-	return nil, false
-}
-
 // WithFrame sets a frame to context.
+// TODO: delete frame from context.
 func (c *Context) WithFrame(f frame.Frame) error {
 	c.Frame = f
 
@@ -188,5 +169,5 @@ func (c *Context) ConnID() string {
 	if c.DataStream == nil {
 		return ""
 	}
-	return c.DataStream.StreamInfo().ID()
+	return c.DataStream.ID()
 }
