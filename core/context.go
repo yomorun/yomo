@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/yerr"
 	"golang.org/x/exp/slog"
 )
@@ -27,10 +26,9 @@ type Context struct {
 	mu sync.RWMutex
 	// Keys stores the key/value pairs in context.
 	// It is Lazy initialized.
-	Keys            map[string]any
-	metadataBuilder metadata.Builder
-	controlStream   frame.ReadWriter // Context don't have ability to close controlStream.
-	Logger          *slog.Logger
+	Keys          map[string]any
+	controlStream frame.ReadWriter // Context don't have ability to close controlStream.
+	Logger        *slog.Logger
 }
 
 // Set is used to store a new key/value pair exclusively for this context.
@@ -83,7 +81,7 @@ func (c *Context) Value(key any) any {
 // newContext returns a yomo context,
 // The context implements standard library `context.Context` interface,
 // The lifecycle of Context is equal to stream's taht be passed in.
-func newContext(controlStream frame.ReadWriter, dataStream DataStream, mb metadata.Builder, logger *slog.Logger) (c *Context, err error) {
+func newContext(controlStream frame.ReadWriter, dataStream DataStream, logger *slog.Logger) (c *Context, err error) {
 	v := ctxPool.Get()
 	if v == nil {
 		c = new(Context)
@@ -98,7 +96,6 @@ func newContext(controlStream frame.ReadWriter, dataStream DataStream, mb metada
 	)
 
 	c.DataStream = dataStream
-	c.metadataBuilder = mb
 	c.controlStream = controlStream
 	c.Logger = logger
 
@@ -148,7 +145,6 @@ func (c *Context) reset() {
 	c.controlStream = nil
 	c.DataStream = nil
 	c.Frame = nil
-	c.metadataBuilder = nil
 	c.Logger = nil
 	for k := range c.Keys {
 		delete(c.Keys, k)

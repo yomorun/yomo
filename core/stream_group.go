@@ -79,7 +79,7 @@ func (g *StreamGroup) handshakeAck() error {
 	return g.controlStream.WriteFrame(ack)
 }
 
-func (g *StreamGroup) run(connector Connector, mb metadata.Builder, contextFunc func(c *Context)) error {
+func (g *StreamGroup) run(connector Connector, contextFunc func(c *Context)) error {
 	for {
 		f, err := g.controlStream.ReadFrame()
 		if err != nil {
@@ -109,7 +109,7 @@ func (g *StreamGroup) run(connector Connector, mb metadata.Builder, contextFunc 
 			go func() {
 				defer g.group.Done()
 
-				c, err := newContext(g.controlStream, dataStream, mb, g.logger)
+				c, err := newContext(g.controlStream, dataStream, g.logger)
 				if err != nil {
 					c.DataStream.WriteFrame(frame.NewGoawayFrame(err.Error()))
 				}
