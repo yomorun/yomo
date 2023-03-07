@@ -122,7 +122,9 @@ func (g *StreamGroup) run(connector Connector, mb metadata.Builder, contextFunc 
 				contextFunc(c)
 			}()
 
-			// TODO: close connection should be controled by controlStream
+		case *frame.CloseStreamFrame:
+			ff.Reason()
+			ff.StreamID()
 		}
 	}
 
