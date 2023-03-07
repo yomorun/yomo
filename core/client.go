@@ -211,8 +211,9 @@ func (c *Client) acquireDataStream(controlStream frame.ReadWriter) error {
 
 // handleFrame handles the logic when receiving frame from server.
 // handleFrame returns if connection and client should be closed after handle frame,
-// It's will reconnect if connection is closed, It's will exit program if client is closed.
-// The Goaway logic is always close client.
+// handleFrame returns two boolean, the first indicates whether to close connection (or client), second
+// close stream, It's will reconnect if connection (or client) is closed,
+// It's will exit program if client is closed. The Goaway logic is always close client.
 func (c *Client) handleFrame() (bool, bool, error) {
 	for {
 		// this will block until a frame is received
@@ -245,6 +246,10 @@ func (c *Client) handleFrame() (bool, bool, error) {
 		case frame.TagOfGoawayFrame:
 			if v, ok := f.(*frame.GoawayFrame); ok {
 				return true, true, errors.New(v.Message())
+			}
+		case frame.TagOfCloseStreamFrame:
+			if v, ok := f.(*frame.CloseStreamFrame); ok {
+				return true, v.StreamID() == c.clientID, errors.New(v.Reason())
 			}
 		case frame.TagOfDataFrame: // DataFrame carries user's data
 			if v, ok := f.(*frame.DataFrame); ok {
