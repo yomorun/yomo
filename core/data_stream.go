@@ -6,7 +6,6 @@ import (
 	"io"
 	"sync"
 
-	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
 	"golang.org/x/exp/slog"
@@ -15,7 +14,8 @@ import (
 // ErrStreamClosed be returned if dataStream has be closed.
 var ErrStreamClosed = errors.New("yomo: dataStream closed")
 
-// DataStream wraps the specific io streams (typically quic.Stream) to transfer y3 frames.
+// DataStream wraps the specific io streams (typically quic.Stream) to transfer frames.
+// DataStream be used to read and write frames, and be managed by Connector.
 type DataStream interface {
 	// Context returns context.Context to manages DataStream lifecycle.
 	Context() context.Context
@@ -55,7 +55,7 @@ type dataStream struct {
 	// mu protects closed and the read and write of the stream .
 	mu     sync.Mutex
 	closed bool
-	stream quic.Stream
+	stream ContextReadWriteCloser
 
 	logger *slog.Logger
 }
@@ -79,7 +79,7 @@ func newDataStream(
 	id string,
 	streamType StreamType,
 	metadata metadata.Metadata,
-	stream quic.Stream,
+	stream ContextReadWriteCloser,
 	observed []frame.Tag,
 	logger *slog.Logger,
 ) DataStream {
@@ -162,4 +162,14 @@ func (c StreamType) String() string {
 	default:
 		return "None"
 	}
+}
+
+// ContextReadWriteCloser is a ReadWriteCloser holded a Context.
+// It is equal to quic.Stream basically.
+//
+// This interface usual be used to make mocking quic.Stream easily.
+type ContextReadWriteCloser interface {
+	io.ReadWriteCloser
+
+	Context() context.Context
 }

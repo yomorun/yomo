@@ -11,11 +11,11 @@ type Metadata interface {
 }
 
 // Builder is the builder of Metadata.
-// the metadata usually be built from `AuthenticationFrame`,
+// the metadata usually be built from `HandshakeFrame`,
 // and It can be decode as byte array for io transmission.
 type Builder interface {
 	// Build returns an Metadata instance according to the handshake frame passed in.
-	Build(f *frame.AuthenticationFrame) (Metadata, error)
+	Build(f *frame.HandshakeFrame) (Metadata, error)
 	// Decode is the deserialize method
 	Decode(buf []byte) (Metadata, error)
 }

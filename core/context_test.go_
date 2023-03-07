@@ -15,7 +15,7 @@ import (
 )
 
 func TestContext(t *testing.T) {
-	sctx := context.Background()
+	sctx := context.TODO()
 
 	file, err := os.OpenFile(filepath.Join(t.TempDir(), "mock-quic-stream"), os.O_CREATE, os.ModeAppend)
 	if err != nil {
@@ -38,8 +38,7 @@ func TestContext(t *testing.T) {
 		name:       "yomo",
 		metadata:   &metadata.Default{},
 	}
-	c, err := newContext(stream, metadata.DefaultBuilder(), logger)
-	assert.NoError(t, err)
+	c := newContext(stream, metadata.DefaultBuilder(), logger)
 
 	c.Logger.Debug("hello")
 	logdata, err := os.ReadFile(logpath)
@@ -149,7 +148,7 @@ func TestContextErr(t *testing.T) {
 	})
 }
 
-var _ ContextWriterCloser = &mockReaderCloser{}
+var _ ContextReadWriteCloser = &mockReaderCloser{}
 
 type mockReaderCloser struct {
 	ctx  context.Context

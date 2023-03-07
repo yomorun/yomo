@@ -80,8 +80,8 @@ func (c *Context) Value(key any) any {
 
 // newContext returns a yomo context,
 // The context implements standard library `context.Context` interface,
-// The lifecycle of Context is equal to stream's taht be passed in.
-func newContext(controlStream frame.ReadWriter, dataStream DataStream, logger *slog.Logger) (c *Context, err error) {
+// The lifecycle of Context is equal to stream's that be passed in.
+func newContext(controlStream frame.ReadWriter, dataStream DataStream, logger *slog.Logger) (c *Context) {
 	v := ctxPool.Get()
 	if v == nil {
 		c = new(Context)

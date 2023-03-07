@@ -152,7 +152,7 @@ func (s *Server) runWithStreamGroup(group *StreamGroup) <-chan error {
 	errch := make(chan error)
 
 	go func() {
-		errch <- group.run(s.connector, s.handleConnection)
+		errch <- group.Run(s.connector, s.metadataBuilder, s.handleConnection)
 	}()
 
 	return errch

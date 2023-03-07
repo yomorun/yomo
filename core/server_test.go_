@@ -147,16 +147,16 @@ func TestHandleDataFrame(t *testing.T) {
 		assert.Equal(t, server.StatsCounter(), int64(1))
 
 		// sfn-1 obverse tag 1
-		sfnStream1.writeEqual(t, dataFrame.Encode())
+		assert.Equal(t, sfnStream1.Bytes(), dataFrame.Encode())
 
 		// sfn-2 do not obverse tag 1
-		sfnStream2.writeEqual(t, []byte{})
+		assert.Equal(t, sfnStream2.Bytes(), []byte{})
 
 		t.Run("test response with BackflowFrame", func(t *testing.T) {
 			err = server.handleBackflowFrame(c)
 			assert.NoError(t, err)
 
-			sourceStream.writeEqual(t, frame.NewBackflowFrame(tag, payload).Encode())
+			assert.Equal(t, sourceStream.Bytes(), frame.NewBackflowFrame(tag, payload).Encode())
 		})
 	})
 
@@ -177,42 +177,42 @@ func TestHandleDataFrame(t *testing.T) {
 
 		assert.Equal(t, server.StatsCounter(), int64(2))
 
-		sfnStream2.writeEqual(t, dataFrame.Encode())
+		assert.Equal(t, sfnStream2.Bytes(), dataFrame.Encode())
 	})
 
 }
 
-// streamAssert implements `io.ReadWriteCloser`,
+// streamRecord implements `io.ReadWriteCloser`,
 // It init from a byte array from test Read, `writeEqual` assert Write result.
-type streamAssert struct {
+type streamRecord struct {
 	mu sync.Mutex
 	r  *bytes.Buffer
 	w  *bytes.Buffer
 }
 
-func newStreamAssert(initdata []byte) *streamAssert {
+func newStreamAssert(initdata []byte) *streamRecord {
 	w := bytes.NewBuffer(initdata)
 	r := bytes.NewBuffer([]byte{})
 
-	return &streamAssert{w: w, r: r}
+	return &streamRecord{w: w, r: r}
 }
 
-func (s *streamAssert) Context() context.Context { return context.TODO() }
+func (s *streamRecord) Context() context.Context { return context.TODO() }
 
-func (s *streamAssert) Read(p []byte) (n int, err error) {
+func (s *streamRecord) Read(p []byte) (n int, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	return s.r.Read(p)
 }
-func (s *streamAssert) Write(p []byte) (n int, err error) {
+func (s *streamRecord) Write(p []byte) (n int, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	return s.w.Write(p)
 }
 
-func (s *streamAssert) Close() error {
+func (s *streamRecord) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -220,6 +220,4 @@ func (s *streamAssert) Close() error {
 	return err
 }
 
-func (s *streamAssert) writeEqual(t *testing.T, expected []byte, msgAndArgs ...interface{}) {
-	assert.Equal(t, expected, s.w.Bytes(), msgAndArgs...)
-}
+func (s *streamRecord) Bytes() []byte { return s.w.Bytes() }

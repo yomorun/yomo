@@ -1,7 +1,6 @@
 package core
 
 import (
-	"errors"
 	"fmt"
 	"sync"
 
@@ -10,14 +9,6 @@ import (
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/yerr"
 	"golang.org/x/exp/slog"
-)
-
-var (
-	// ErrFirstFrameIsNotAuthentication be returned if the first frame accepted by control stream is not AuthenticationFrame.
-	ErrFirstFrameIsNotAuthentication = errors.New("yomo: client didn't authenticate immediately on connection")
-
-	// ErrAuthenticateTimeout be returned if server don't receive authentication ack.
-	ErrAuthenticateTimeout = errors.New("yomo: client authenticate timeout")
 )
 
 // StreamGroup is the group of stream includes ControlStream amd DataStream.
@@ -79,7 +70,11 @@ func (g *StreamGroup) handshakeAck() error {
 	return g.controlStream.WriteFrame(ack)
 }
 
-func (g *StreamGroup) run(connector Connector, contextFunc func(c *Context)) error {
+// Run run contextFunc with connector.
+// Run continus read HandshakeFrame and CloseStreamFrame from controlStream to create DataStream
+// or close DataStream. Adding new dataStream to connector and handle it in contextFunc if create one,
+// Removing from connector and close it if close a dataStream.
+func (g *StreamGroup) Run(connector Connector, mb metadata.Builder, contextFunc func(c *Context)) error {
 	for {
 		f, err := g.controlStream.ReadFrame()
 		if err != nil {
@@ -94,11 +89,17 @@ func (g *StreamGroup) run(connector Connector, contextFunc func(c *Context)) err
 			}
 			stream.Write(frame.NewHandshakeAckFrame().Encode())
 
+			md, err := mb.Build(ff)
+			if err != nil {
+				g.logger.Warn("Build Metadata Failed", "error", err)
+				continue
+			}
+
 			dataStream := newDataStream(
 				ff.Name(),
 				ff.ID(),
 				StreamType(ff.StreamType()),
-				&metadata.Default{},
+				md,
 				stream,
 				ff.ObserveDataTags(),
 				g.logger,
@@ -109,18 +110,38 @@ func (g *StreamGroup) run(connector Connector, contextFunc func(c *Context)) err
 			go func() {
 				defer g.group.Done()
 
-				c, err := newContext(g.controlStream, dataStream, g.logger)
-				if err != nil {
-					c.DataStream.WriteFrame(frame.NewGoawayFrame(err.Error()))
-				}
+				c := newContext(g.controlStream, dataStream, g.logger)
 				defer c.Clean()
 
 				contextFunc(c)
 			}()
 
 		case *frame.CloseStreamFrame:
-			ff.Reason()
-			ff.StreamID()
+			stream, ok := connector.Get(ff.StreamID())
+			if !ok {
+				continue
+			}
+
+			if err := stream.Close(); err != nil {
+				g.logger.Error(
+					"Close Stream Error",
+					err,
+					"stream_name", stream.Name(),
+					"stream_type", stream.StreamType().String(),
+					"stream_id", stream.ID(),
+					"close_reason", ff.Reason(),
+				)
+			}
+
+			g.logger.Debug(
+				"Client Close Stream",
+				"stream_name", stream.Name(),
+				"stream_type", stream.StreamType().String(),
+				"stream_id", stream.ID(),
+				"close_reason", ff.Reason(),
+			)
+
+			connector.Remove(ff.StreamID())
 		}
 	}
 
