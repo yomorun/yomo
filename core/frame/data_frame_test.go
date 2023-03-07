@@ -37,6 +37,7 @@ func TestDataFrameDecode(t *testing.T) {
 		0x80 | byte(TagOfPayloadFrame), 0x09,
 		0x01, 0x1, 0x15, 0x02, 0x04, 0x79, 0x6F, 0x6D, 0x6F}
 	data, err := DecodeToDataFrame(buf)
+	defer data.Clean()
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 0x15, data.Tag())

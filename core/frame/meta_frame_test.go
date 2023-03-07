@@ -25,5 +25,4 @@ func TestMetaFrameDecode(t *testing.T) {
 	assert.EqualValues(t, "1234", meta.TransactionID())
 	assert.EqualValues(t, "1", meta.SourceID())
 	assert.EqualValues(t, true, meta.IsBroadcast())
-	t.Logf("%# x", buf)
 }
