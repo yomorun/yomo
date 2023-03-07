@@ -27,12 +27,12 @@ var (
 type StreamGroup struct {
 	conn          quic.Connection
 	group         sync.WaitGroup
-	controlStream quic.Stream
+	controlStream frame.ReadWriter
 	logger        *slog.Logger
 }
 
 // NewStreamGroup returns StreamGroup.
-func NewStreamGroup(conn quic.Connection, controlStream quic.Stream, logger *slog.Logger) *StreamGroup {
+func NewStreamGroup(conn quic.Connection, controlStream frame.ReadWriter, logger *slog.Logger) *StreamGroup {
 	return &StreamGroup{
 		conn:          conn,
 		controlStream: controlStream,
@@ -42,7 +42,7 @@ func NewStreamGroup(conn quic.Connection, controlStream quic.Stream, logger *slo
 
 // Auth authenticates client in authFunc.
 func (g *StreamGroup) Auth(authFunc func(*frame.AuthenticationFrame) (bool, error)) error {
-	first, err := ParseFrame(g.controlStream)
+	first, err := g.controlStream.ReadFrame()
 	if err != nil {
 		return err
 	}
@@ -64,7 +64,7 @@ func (g *StreamGroup) Auth(authFunc func(*frame.AuthenticationFrame) (bool, erro
 func (g *StreamGroup) handshakeFailed(se error) error {
 	ack := frame.NewAuthenticationAckFrame(false, se.Error())
 
-	_, err := g.controlStream.Write(ack.Encode())
+	err := g.controlStream.WriteFrame(ack)
 	if err != nil {
 		return err
 	}
@@ -76,16 +76,12 @@ func (g *StreamGroup) handshakeFailed(se error) error {
 
 func (g *StreamGroup) handshakeAck() error {
 	ack := frame.NewAuthenticationAckFrame(true, "")
-
-	_, err := g.controlStream.Write(ack.Encode())
-
-	return err
-
+	return g.controlStream.WriteFrame(ack)
 }
 
 func (g *StreamGroup) run(connector Connector, mb metadata.Builder, contextFunc func(c *Context)) error {
 	for {
-		f, err := ParseFrame(g.controlStream)
+		f, err := g.controlStream.ReadFrame()
 		if err != nil {
 			return err
 		}
@@ -113,7 +109,7 @@ func (g *StreamGroup) run(connector Connector, mb metadata.Builder, contextFunc 
 			go func() {
 				defer g.group.Done()
 
-				c, err := newContext(dataStream, mb, g.logger)
+				c, err := newContext(g.controlStream, dataStream, mb, g.logger)
 				if err != nil {
 					c.DataStream.WriteFrame(frame.NewGoawayFrame(err.Error()))
 				}

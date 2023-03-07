@@ -2,14 +2,12 @@ package core
 
 import (
 	"context"
-	"io"
-	"net"
 	"sync"
 	"time"
 
-	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
+	"github.com/yomorun/yomo/core/yerr"
 	"golang.org/x/exp/slog"
 )
 
@@ -19,7 +17,9 @@ var ctxPool sync.Pool
 // Context be generated after a dataStream coming, And stores some infomation
 // from dataStream, Context's lifecycle is equal to stream's.
 type Context struct {
+	// DataStream is the stream be used to read and write frame.
 	DataStream DataStream
+
 	// Frame receives from client.
 	Frame frame.Frame
 
@@ -27,11 +27,10 @@ type Context struct {
 	mu sync.RWMutex
 	// Keys stores the key/value pairs in context.
 	// It is Lazy initialized.
-	Keys map[string]any
-
+	Keys            map[string]any
 	metadataBuilder metadata.Builder
-
-	Logger *slog.Logger
+	controlStream   frame.ReadWriter // Context don't have ability to close controlStream.
+	Logger          *slog.Logger
 }
 
 // Set is used to store a new key/value pair exclusively for this context.
@@ -84,7 +83,7 @@ func (c *Context) Value(key any) any {
 // newContext returns a yomo context,
 // The context implements standard library `context.Context` interface,
 // The lifecycle of Context is equal to stream's taht be passed in.
-func newContext(dataStream DataStream, mb metadata.Builder, logger *slog.Logger) (c *Context, err error) {
+func newContext(controlStream frame.ReadWriter, dataStream DataStream, mb metadata.Builder, logger *slog.Logger) (c *Context, err error) {
 	v := ctxPool.Get()
 	if v == nil {
 		c = new(Context)
@@ -98,15 +97,42 @@ func newContext(dataStream DataStream, mb metadata.Builder, logger *slog.Logger)
 		"stream_type", dataStream.StreamType().String(),
 	)
 
+	c.DataStream = dataStream
+	c.metadataBuilder = mb
+	c.controlStream = controlStream
+	c.Logger = logger
+
 	return
 }
 
 // WithFrame sets a frame to context.
-// TODO: delete frame from context.
+//
+// TODO: delete frame from context due to different lifecycle between stream and stream.
 func (c *Context) WithFrame(f frame.Frame) error {
 	c.Frame = f
 
 	return nil
+}
+
+// CloseWithError close dataStream in se error,
+// It tells controlStream which dataStream should be closed and close dataStream with
+// returning error message to client side stream.
+//
+// TODO: ycode is not be transmitted.
+func (c *Context) CloseWithError(ycode yerr.ErrorCode, errString string) {
+	c.Logger.Warn("Stream Close With error", "err_code", ycode.String(), "error", errString)
+
+	f := frame.NewCloseStreamFrame(c.DataStream.ID(), errString)
+
+	err := c.controlStream.WriteFrame(f)
+	if err != nil {
+		c.Logger.Error("Write frame error", err, "frame_type", f.Type().String())
+	}
+
+	err = c.DataStream.Close()
+	if err != nil {
+		c.Logger.Error("Close DataStream error", err)
+	}
 }
 
 // Clean cleans the Context,
@@ -119,6 +145,7 @@ func (c *Context) Clean() {
 }
 
 func (c *Context) reset() {
+	c.controlStream = nil
 	c.DataStream = nil
 	c.Frame = nil
 	c.metadataBuilder = nil
@@ -128,44 +155,8 @@ func (c *Context) reset() {
 	}
 }
 
-// QuicConnCloser represents a quic.Connection that can be close,
-// the quic.Connection don't accept stream in Context scope.
-type QuicConnCloser interface {
-	// LocalAddr returns the local address.
-	LocalAddr() net.Addr
-	// RemoteAddr returns the address of the peer.
-	RemoteAddr() net.Addr
-	// CloseWithError closes the connection with an error.
-	// The error string will be sent to the peer.
-	CloseWithError(quic.ApplicationErrorCode, string) error
-	// Context returns a context that is cancelled when the connection is closed.
-	Context() context.Context
-}
-
-// ContextWriterCloser is a writer that holds a Context.
-type ContextWriterCloser interface {
-	// TODO: DELETE the Reader.
-	io.Reader
-	// Write writes data to the stream.
-	// Write can be made to time out and return a net.Error with Timeout() == true
-	// after a fixed time limit; see SetDeadline and SetWriteDeadline.
-	// If the stream was canceled by the peer, the error implements the StreamError
-	// interface, and Canceled() == true.
-	// If the connection was closed due to a timeout, the error satisfies
-	// the net.Error interface, and Timeout() will be true.
-	io.Writer
-	// Close closes the write-direction of the stream, peer don't known the closing.
-	// Future calls to Write are not permitted after calling Close.
-	// It must not be called concurrently with Write.
-	// It must not be called after calling CancelWrite.
-	io.Closer
-	// Context returns a context that is cancelled when the stream is closed.
-	// According to quic.go implement, Context can't be nil.
-	Context() context.Context
-}
-
 // StreamID gets dataStream ID.
-func (c *Context) ConnID() string {
+func (c *Context) StreamID() string {
 	if c.DataStream == nil {
 		return ""
 	}

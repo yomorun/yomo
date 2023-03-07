@@ -94,6 +94,8 @@ func newDataStream(
 		logger:     logger,
 	}
 }
+
+// DataStream implements.
 func (s *dataStream) Context() context.Context     { return s.stream.Context() }
 func (s *dataStream) ID() string                   { return s.id }
 func (s *dataStream) Name() string                 { return s.name }

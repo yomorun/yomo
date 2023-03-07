@@ -123,7 +123,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		if err != nil {
 			continue
 		}
-		streamGroup := NewStreamGroup(conn, controlStream, s.logger)
+		streamGroup := NewStreamGroup(conn, NewFrameStream(controlStream), s.logger)
 
 		// Auth accepts a AuthenticationFrame from client. The first frame from client must be
 		// AuthenticationFrame, It returns true if auth successful otherwise return false.
@@ -186,7 +186,7 @@ func (s *Server) handRoute(c *Context) error {
 		if route == nil {
 			return errors.New("handleHandshakeFrame route is nil")
 		}
-		if err := route.Add(c.ConnID(), c.DataStream.Name(), c.DataStream.ObserveDataTags()); err != nil {
+		if err := route.Add(c.StreamID(), c.DataStream.Name(), c.DataStream.ObserveDataTags()); err != nil {
 			// duplicate name
 			if e, ok := err.(yerr.DuplicateNameError); ok {
 				existsConnID := e.ConnID()
@@ -333,7 +333,6 @@ func (s *Server) Authenticate(stream0 quic.Stream, f *frame.AuthenticationFrame)
 	s.logger.Debug("Handshake success")
 
 	return nil
-
 }
 
 func (s *Server) handleAuthFrame(f *frame.AuthenticationFrame) (bool, error) {
@@ -352,7 +351,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 	// counter +1
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
 	// currentIssuer := f.GetIssuer()
-	fromID := c.ConnID()
+	fromID := c.StreamID()
 	from, ok := s.connector.Get(fromID)
 	if !ok {
 		c.Logger.Warn("handleDataFrame connector cannot find", "from_conn_id", fromID)
@@ -474,7 +473,7 @@ func (s *Server) AddDownstreamServer(addr string, c frame.Writer) {
 
 // dispatch every DataFrames to all downstreams
 func (s *Server) dispatchToDownstreams(c *Context) {
-	stream, ok := s.connector.Get(c.ConnID())
+	stream, ok := s.connector.Get(c.StreamID())
 	if !ok {
 		c.Logger.Debug("dispatchToDownstreams failed")
 		return
@@ -566,6 +565,6 @@ func (s *Server) doConnectionCloseHandlers(qconn quic.Connection) {
 }
 
 func (s *Server) connClose(c *Context) {
-	s.router.Route(c.DataStream.Metadata()).Remove(c.ConnID())
-	s.connector.Remove(c.ConnID())
+	s.router.Route(c.DataStream.Metadata()).Remove(c.StreamID())
+	s.connector.Remove(c.StreamID())
 }
