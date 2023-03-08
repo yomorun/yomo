@@ -22,8 +22,10 @@ type StreamFunction interface {
 	Connect() error
 	// Close will close the connection
 	Close() error
-	// Send a data to zipper.
+	// Write sends a data to zipper.
 	Write(tag frame.Tag, carriage []byte) error
+	// WriteWithOption sends a data to zipper with options.
+	WriteWithOption(tag frame.Tag, data []byte, options ...StreamFunctionWriteOption) error
 }
 
 // NewStreamFunction create a stream function.
@@ -52,6 +54,27 @@ type streamFunction struct {
 	pfn             core.PipeHandler
 	pIn             chan []byte
 	pOut            chan *frame.PayloadFrame
+}
+
+// WriteWithOption implements StreamFunction
+func (s *streamFunction) WriteWithOption(tag frame.Tag, data []byte, options ...StreamFunctionWriteOption) error {
+	opts := &writeOptions{}
+
+	for _, o := range options {
+		o(opts)
+	}
+
+	f := frame.NewDataFrame()
+	defer f.Clean()
+
+	f.SetCarriage(tag, data)
+
+	if opts.metadata != nil {
+		f.GetMetaFrame().SetMetadata(opts.metadata)
+	}
+
+	s.client.Logger().Debug("StreamFunction WriteWithOption", "data_frame", f.String())
+	return s.client.WriteFrame(f)
 }
 
 // SetObserveDataTags set the data tag list that will be observed.

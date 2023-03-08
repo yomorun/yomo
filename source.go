@@ -25,6 +25,8 @@ type Source interface {
 	SetReceiveHandler(fn func(tag frame.Tag, data []byte))
 	// Write the data to all downstream
 	Broadcast(data []byte) error
+	// WriteWithOption writes the data to directed downstream with options.
+	WriteWithOption(data []byte, options ...SourceWriteOption) error
 }
 
 // YoMo-Source
@@ -119,5 +121,36 @@ func (s *yomoSource) Broadcast(data []byte) error {
 	f.SetSourceID(s.client.ClientID())
 	f.SetBroadcast(true)
 	s.client.Logger().Debug("Broadcast", "data_frame", f.String())
+	return s.client.WriteFrame(f)
+}
+
+// WriteWithOption implements Source.
+func (s *yomoSource) WriteWithOption(data []byte, options ...SourceWriteOption) error {
+	opts := &writeOptions{}
+
+	for _, o := range options {
+		o(opts)
+	}
+
+	f := frame.NewDataFrame()
+	defer f.Clean()
+
+	tag := s.tag
+	if opts.withTag {
+		tag = opts.tag
+	}
+	f.SetCarriage(tag, data)
+
+	if opts.metadata != nil {
+		f.GetMetaFrame().SetMetadata(opts.metadata)
+	}
+
+	if opts.broadcast {
+		f.SetBroadcast(true)
+	}
+
+	f.SetSourceID(s.client.ClientID())
+
+	s.client.Logger().Debug("Source WriteWithOption", "data_frame", f.String())
 	return s.client.WriteFrame(f)
 }

@@ -126,3 +126,45 @@ func NewOptions(opts ...Option) *Options {
 
 	return options
 }
+
+type writeOptions struct {
+	withTag   bool
+	tag       frame.Tag
+	metadata  []byte
+	broadcast bool
+}
+
+// SourceWriteOption is option to react Source Write.
+type SourceWriteOption func(*writeOptions)
+
+// WithWriteTag makes Source writing data with frame.Tag specified.
+func WithSourceWriteTag(tag frame.Tag) SourceWriteOption {
+	return func(o *writeOptions) {
+		o.withTag = true
+		o.tag = tag
+	}
+}
+
+// WithSourceWriteMetadata makes Source writing data with metadata.
+func WithSourceWriteMetadata(metadata []byte) SourceWriteOption {
+	return func(o *writeOptions) {
+		o.metadata = metadata
+	}
+}
+
+// WithSourceWriteBroadcast makes Source writing data with broadcast.
+func WithSourceWriteBroadcast() SourceWriteOption {
+	return func(o *writeOptions) {
+		o.broadcast = true
+	}
+}
+
+// StreamFunctionWriteOption is option to react StreamFunction Write.
+type StreamFunctionWriteOption func(*writeOptions)
+
+// WithStreamFunctionWriteMetadata makes StreamFunction writing data with metadata.
+func WithStreamFunctionWriteMetadata(metadata []byte) StreamFunctionWriteOption {
+	return func(o *writeOptions) {
+		o.metadata = metadata
+	}
+}
