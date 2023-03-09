@@ -141,6 +141,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 
 			select {
 			case <-ctx.Done():
+				return
 			case err := <-s.runWithStreamGroup(streamGroup):
 				s.logger.Error("Serve error with exit", err)
 			}
@@ -179,7 +180,6 @@ func (s *Server) Close() error {
 }
 
 func (s *Server) handRoute(c *Context) error {
-
 	if c.DataStream.StreamType() == StreamTypeStreamFunction {
 		// route
 		route := s.router.Route(c.DataStream.Metadata())
@@ -190,13 +190,14 @@ func (s *Server) handRoute(c *Context) error {
 			// duplicate name
 			if e, ok := err.(yerr.DuplicateNameError); ok {
 				existsConnID := e.ConnID()
-				if stream, ok := s.connector.Get(existsConnID); !ok {
+				if stream, ok := s.connector.Get(existsConnID); ok {
 					c.Logger.Debug("write GoawayFrame", "error", e.Error(), "exists_conn_id", existsConnID)
 					goawayFrame := frame.NewGoawayFrame(e.Error())
 					if err := stream.WriteFrame(goawayFrame); err != nil {
 						c.Logger.Error("write GoawayFrame failed", err)
 						return err
 					}
+					s.connector.Remove(existsConnID)
 				}
 			} else {
 				return err
@@ -219,8 +220,7 @@ func (s *Server) handleConnection(c *Context) {
 	for _, handler := range s.startHandlers {
 		if err := handler(c); err != nil {
 			c.Logger.Error("startHandlers error", err)
-			// TODO: close in controlStream.
-			c.DataStream.Close() // c.CloseWithError(yerr.ErrorCodeStartHandler, err.Error())
+			c.CloseWithError(yerr.ErrorCodeStartHandler, err.Error())
 			return
 		}
 	}
@@ -249,8 +249,7 @@ func (s *Server) handleConnection(c *Context) {
 				// if client close the connection, net.ErrClosed will be raise
 				// by quic-go IdleTimeoutError after connection's KeepAlive config.
 				c.Logger.Warn("connection error", "error", net.ErrClosed)
-				// TODO: close in controlStream.
-				c.DataStream.Close() // c.CloseWithError(yerr.ErrorCodeClosed, "net.ErrClosed")
+				c.CloseWithError(yerr.ErrorCodeClosed, "net.ErrClosed")
 				break
 			}
 			// any error occurred, we should close the stream
@@ -558,7 +557,7 @@ func authName(name string) string {
 }
 
 func (s *Server) doConnectionCloseHandlers(qconn quic.Connection) {
-	s.logger.Debug("quic connection closed")
+	s.logger.Debug("QUIC Connection Closed")
 	for _, h := range s.connectionCloseHandlers {
 		h(qconn)
 	}

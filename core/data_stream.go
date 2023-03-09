@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
-	"sync"
+	"sync/atomic"
 
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
@@ -52,9 +52,7 @@ type dataStream struct {
 	metadata   metadata.Metadata
 	observed   []frame.Tag // observed data tags
 
-	// mu protects closed and the read and write of the stream .
-	mu     sync.Mutex
-	closed bool
+	closed atomic.Bool
 	stream ContextReadWriteCloser
 
 	logger *slog.Logger
@@ -63,13 +61,10 @@ type dataStream struct {
 // Close close DataStream, Reading and Writing to
 // stream will return ErrStreamClosed if stream has be closed.
 func (s *dataStream) Close() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if !s.closed {
-		return nil
+	if s.closed.Load() {
+		return ErrStreamClosed
 	}
-	s.closed = true
+	s.closed.Store(true)
 	return s.stream.Close()
 }
 
@@ -106,10 +101,7 @@ func (s *dataStream) ObserveDataTags() []frame.Tag { return s.observed }
 // WriteFrame write Frame to stream, if stream is closed, WriteFrame
 // return stream closed error.
 func (s *dataStream) WriteFrame(frm frame.Frame) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.closed {
+	if s.closed.Load() {
 		return ErrStreamClosed
 	}
 	_, err := s.stream.Write(frm.Encode())
@@ -119,10 +111,7 @@ func (s *dataStream) WriteFrame(frm frame.Frame) error {
 // ReadFrame read Frame from stream, if stream is closed, ReadFrame
 // return stream closed error.
 func (s *dataStream) ReadFrame() (frame.Frame, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.closed {
+	if s.closed.Load() {
 		return nil, ErrStreamClosed
 	}
 	return ParseFrame(s.stream)

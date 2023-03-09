@@ -71,7 +71,6 @@ func (c *connector) Get(streamID string) (DataStream, bool) {
 	return stream, true
 }
 
-// GetSourceConns gets the source connection by tag.
 func (c *connector) GetSourceConns(sourceID string, tag frame.Tag) []DataStream {
 	streams := make([]DataStream, 0)
 

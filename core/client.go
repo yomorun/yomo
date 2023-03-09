@@ -239,6 +239,8 @@ func (c *Client) handleFrame() (bool, bool, error) {
 		frameType := f.Type()
 		c.logger.Debug("handleFrame", "frame_type", frameType)
 		switch frameType {
+		case frame.TagOfHandshakeAckFrame:
+			continue
 		case frame.TagOfRejectedFrame:
 			if v, ok := f.(*frame.RejectedFrame); ok {
 				return true, true, errors.New(v.Message())

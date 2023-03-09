@@ -46,13 +46,13 @@ func (g *StreamGroup) Auth(authFunc func(*frame.AuthenticationFrame) (bool, erro
 		return err
 	}
 	if !ok {
-		errhandshake := fmt.Errorf("yomo: authentication failed, client credential name is %s", f.AuthName())
-		return g.handshakeFailed(errhandshake)
+		errAuth := fmt.Errorf("yomo: authentication failed, client credential name is %s", f.AuthName())
+		return g.authFailed(errAuth)
 	}
-	return g.handshakeAck()
+	return g.authAck()
 }
 
-func (g *StreamGroup) handshakeFailed(se error) error {
+func (g *StreamGroup) authFailed(se error) error {
 	ack := frame.NewAuthenticationAckFrame(false, se.Error())
 
 	err := g.controlStream.WriteFrame(ack)
@@ -65,7 +65,7 @@ func (g *StreamGroup) handshakeFailed(se error) error {
 	return err
 }
 
-func (g *StreamGroup) handshakeAck() error {
+func (g *StreamGroup) authAck() error {
 	ack := frame.NewAuthenticationAckFrame(true, "")
 	return g.controlStream.WriteFrame(ack)
 }
