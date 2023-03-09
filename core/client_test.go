@@ -23,7 +23,7 @@ var discardingLogger = ylog.NewFromConfig(ylog.Config{Output: "/dev/null", Error
 func TestClientDialNothing(t *testing.T) {
 	ctx := context.Background()
 
-	client := NewClient("source", ClientTypeSource)
+	client := NewClient("source", StreamTypeSource)
 
 	assert.Equal(t, ConnStateReady, client.State(), "client state should be ConnStateReady")
 
@@ -68,7 +68,7 @@ func TestFrameRoundTrip(t *testing.T) {
 
 	source := NewClient(
 		"source",
-		ClientTypeSource,
+		StreamTypeSource,
 		WithCredential("token:auth-token"),
 		WithObserveDataTags(obversedTag),
 		WithClientQuicConfig(DefalutQuicConfig),
@@ -86,7 +86,7 @@ func TestFrameRoundTrip(t *testing.T) {
 
 	sfn := NewClient(
 		"sfn-1",
-		ClientTypeStreamFunction,
+		StreamTypeSource,
 		WithCredential("token:auth-token"),
 		WithObserveDataTags(obversedTag),
 		WithLogger(discardingLogger),
@@ -122,9 +122,7 @@ func TestFrameRoundTrip(t *testing.T) {
 
 	w.assertEqual(t, dataFrame)
 
-	// TODO: closing server many times is blocking.
 	assert.NoError(t, server.Close(), "server.Close() should not return error")
-
 	assert.NoError(t, source.Close(), "source client.Close() should not return error")
 	assert.NoError(t, sfn.Close(), "sfn client.Close() should not return error")
 }

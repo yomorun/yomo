@@ -112,7 +112,6 @@ func (c *connector) GetSnapshot() map[string]string {
 }
 
 func (c *connector) Clean() {
-	c.logger = nil
 	c.streams.Range(func(key, value any) bool {
 		c.streams.Delete(key)
 		return true
