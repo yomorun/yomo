@@ -75,10 +75,8 @@ func (c *connector) GetSourceConns(sourceID string, tag frame.Tag) []DataStream 
 	streams := make([]DataStream, 0)
 
 	c.streams.Range(func(key interface{}, val interface{}) bool {
-		stream, ok := val.(DataStream)
-		if ok {
-			return true
-		}
+		stream := val.(DataStream)
+
 		for _, v := range stream.ObserveDataTags() {
 			if v == tag &&
 				stream.StreamType() == StreamTypeSource &&

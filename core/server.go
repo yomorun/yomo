@@ -123,17 +123,20 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		if err != nil {
 			continue
 		}
-		streamGroup := NewStreamGroup(conn, NewFrameStream(controlStream), s.logger)
+
+		logger := s.logger.With("client_addr", conn.RemoteAddr())
+
+		streamGroup := NewStreamGroup(conn, NewFrameStream(controlStream), logger)
 
 		// Auth accepts a AuthenticationFrame from client. The first frame from client must be
 		// AuthenticationFrame, It returns true if auth successful otherwise return false.
 		// It response to client a AuthenticationAckFrame.
 		err = streamGroup.Auth(s.handleAuthFrame)
 		if err != nil {
-			s.logger.Warn("Authentication failed", "error", err)
+			logger.Warn("Authentication Failed", "error", err)
 			continue
 		}
-		s.logger.Debug("Authentication success")
+		logger.Debug("Authentication Success")
 
 		go func(qconn quic.Connection) {
 			defer streamGroup.Wait()
@@ -143,7 +146,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 			case <-ctx.Done():
 				return
 			case err := <-s.runWithStreamGroup(streamGroup):
-				s.logger.Error("Serve error with exit", err)
+				logger.Error("Client Close", err)
 			}
 		}(conn)
 	}
@@ -190,8 +193,16 @@ func (s *Server) handRoute(c *Context) error {
 			// duplicate name
 			if e, ok := err.(yerr.DuplicateNameError); ok {
 				existsConnID := e.ConnID()
+
+				c.Logger.Debug(
+					"StreamFunction Duplicate Name",
+					"error", e.Error(),
+					"sfn_name", c.DataStream.Name(),
+					"old_stream_id", existsConnID,
+					"current_stream_id", c.StreamID(),
+				)
+
 				if stream, ok := s.connector.Get(existsConnID); ok {
-					c.Logger.Debug("write GoawayFrame", "error", e.Error(), "exists_conn_id", existsConnID)
 					goawayFrame := frame.NewGoawayFrame(e.Error())
 					if err := stream.WriteFrame(goawayFrame); err != nil {
 						c.Logger.Error("write GoawayFrame failed", err)
@@ -377,6 +388,13 @@ func (s *Server) handleDataFrame(c *Context) error {
 
 	// get stream function connection ids from route
 	connIDs := route.GetForwardRoutes(f.GetDataTag())
+
+	c.Logger.Debug(
+		"Data Routing Status",
+		"sfn_stream_ids", connIDs,
+		"connector", s.connector.GetSnapshot(),
+	)
+
 	for _, toID := range connIDs {
 		conn, ok := s.connector.Get(toID)
 		if !ok {

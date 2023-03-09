@@ -138,7 +138,6 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 		c.logger.Error("Failed to accept data stream", err)
 		return err
 	}
-	c.logger.Debug("DataStream ready")
 
 	c.fs = NewFrameStream(datsStream)
 
@@ -237,9 +236,9 @@ func (c *Client) handleFrame() (bool, bool, error) {
 		// read frame
 		// first, get frame type
 		frameType := f.Type()
-		c.logger.Debug("handleFrame", "frame_type", frameType)
 		switch frameType {
 		case frame.TagOfHandshakeAckFrame:
+			c.logger.Debug("DataStream ready")
 			continue
 		case frame.TagOfRejectedFrame:
 			if v, ok := f.(*frame.RejectedFrame); ok {
