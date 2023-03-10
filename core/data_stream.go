@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"sync"
 	"sync/atomic"
 
 	"github.com/yomorun/yomo/core/frame"
@@ -50,9 +51,11 @@ type dataStream struct {
 	id         string
 	streamType StreamType
 	metadata   metadata.Metadata
-	observed   []frame.Tag // observed data tags
+	observed   []frame.Tag
 
 	closed atomic.Bool
+	// mu protected stream write and close.
+	mu     sync.Mutex
 	stream ContextReadWriteCloser
 
 	logger *slog.Logger
@@ -65,6 +68,9 @@ func (s *dataStream) Close() error {
 		return ErrStreamClosed
 	}
 	s.closed.Store(true)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.stream.Close()
 }
 
@@ -104,6 +110,9 @@ func (s *dataStream) WriteFrame(frm frame.Frame) error {
 	if s.closed.Load() {
 		return ErrStreamClosed
 	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	_, err := s.stream.Write(frm.Encode())
 	return err
 }

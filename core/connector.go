@@ -59,14 +59,11 @@ func (c *connector) Remove(streamID string) {
 
 func (c *connector) Get(streamID string) (DataStream, bool) {
 	v, ok := c.streams.Load(streamID)
+	if !ok {
+		return nil, false
+	}
 
-	if !ok {
-		return nil, false
-	}
-	stream, ok := v.(DataStream)
-	if !ok {
-		return nil, false
-	}
+	stream := v.(DataStream)
 
 	return stream, true
 }
@@ -94,14 +91,10 @@ func (c *connector) GetSnapshot() map[string]string {
 	result := make(map[string]string)
 
 	c.streams.Range(func(key interface{}, val interface{}) bool {
-		streamID, ok := key.(string)
-		if !ok {
-			return true
-		}
-		stream, ok := val.(DataStream)
-		if !ok {
-			return true
-		}
+		var (
+			streamID = key.(string)
+			stream   = val.(DataStream)
+		)
 		result[streamID] = stream.Name()
 		return true
 	})

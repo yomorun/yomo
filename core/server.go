@@ -131,7 +131,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		// Auth accepts a AuthenticationFrame from client. The first frame from client must be
 		// AuthenticationFrame, It returns true if auth successful otherwise return false.
 		// It response to client a AuthenticationAckFrame.
-		err = streamGroup.Auth(s.handleAuthFrame)
+		err = streamGroup.Auth(s.handleAuthenticationFrame)
 		if err != nil {
 			logger.Warn("Authentication Failed", "error", err)
 			continue
@@ -221,10 +221,9 @@ func (s *Server) handRoute(c *Context) error {
 // handleConnection handles streams on a connection,
 // use c.Logger in this function scope for more complete logger information.
 func (s *Server) handleConnection(c *Context) {
-	fs := c.DataStream
-
 	if err := s.handRoute(c); err != nil {
-		fs.WriteFrame(frame.NewGoawayFrame(err.Error()))
+		c.CloseWithError(yerr.ErrorCodeStartHandler, err.Error())
+		return
 	}
 
 	// start frame handlers
@@ -309,8 +308,6 @@ func (s *Server) mainFrameHandler(c *Context) error {
 	frameType := c.Frame.Type()
 
 	switch frameType {
-	case frame.TagOfHandshakeFrame:
-		c.Logger.Warn("receive a handshakeFrame, ingonre it")
 	case frame.TagOfDataFrame:
 		if err := s.handleDataFrame(c); err != nil {
 			c.CloseWithError(yerr.ErrorCodeData, fmt.Sprintf("handleDataFrame err: %v", err))
@@ -321,31 +318,12 @@ func (s *Server) mainFrameHandler(c *Context) error {
 			s.handleBackflowFrame(c)
 		}
 	default:
-		c.Logger.Warn("unexpected frame", "unexpected_frame_type", frameType)
+		c.Logger.Warn("unexpected frame", "unexpected_frame_type", frameType.String())
 	}
 	return nil
 }
 
-// Authenticate auths new stream according to HandshakeFrame.
-func (s *Server) Authenticate(stream0 quic.Stream, f *frame.AuthenticationFrame) error {
-	if ok := auth.Authenticate(s.opts.auths, f); !ok {
-		err := fmt.Errorf("authenticate failed, client credential name is %s", authName(f.AuthName()))
-
-		goawayFrame := frame.NewGoawayFrame(err.Error())
-		if _, err = stream0.Write(goawayFrame.Encode()); err != nil {
-			s.logger.Error("write GoawayFrame failed", err)
-			return err
-		}
-
-		return err
-	}
-
-	s.logger.Debug("Handshake success")
-
-	return nil
-}
-
-func (s *Server) handleAuthFrame(f *frame.AuthenticationFrame) (bool, error) {
+func (s *Server) handleAuthenticationFrame(f *frame.AuthenticationFrame) (bool, error) {
 	ok := auth.Authenticate(s.opts.auths, f)
 
 	if ok {
@@ -360,7 +338,7 @@ func (s *Server) handleAuthFrame(f *frame.AuthenticationFrame) (bool, error) {
 func (s *Server) handleDataFrame(c *Context) error {
 	// counter +1
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
-	// currentIssuer := f.GetIssuer()
+
 	fromID := c.StreamID()
 	from, ok := s.connector.Get(fromID)
 	if !ok {
@@ -529,11 +507,6 @@ func (s *Server) validateMetadataBuilder() error {
 	return nil
 }
 
-// Connector returns the connector of server.
-func (s *Server) Connector() Connector {
-	return s.connector
-}
-
 // SetStartHandlers sets a function for operating connection,
 // this function executes after handshake successful.
 func (s *Server) SetStartHandlers(handlers ...FrameHandler) {
@@ -564,14 +537,6 @@ func (s *Server) authNames() []string {
 		result = append(result, auth.Name())
 	}
 	return result
-}
-
-func authName(name string) string {
-	if name == "" {
-		return "empty"
-	}
-
-	return name
 }
 
 func (s *Server) doConnectionCloseHandlers(qconn quic.Connection) {

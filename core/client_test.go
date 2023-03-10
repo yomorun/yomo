@@ -88,17 +88,15 @@ func TestFrameRoundTrip(t *testing.T) {
 	assert.Equal(t, ConnStateConnected, source.State(), "source state should be ConnStateConnected")
 
 	sfn := createTestStreamFunction("sfn-1", obversedTag)
-
-	sfn.SetDataFrameObserver(func(bf *frame.DataFrame) {
-		assert.Equal(t, string(payload), string(bf.GetCarriage()))
-	})
-
 	err = sfn.Connect(ctx, testaddr)
 	assert.NoError(t, err, "sfn connect must be success")
 	assert.Equal(t, ConnStateConnected, sfn.State(), "sfn state should be ConnStateConnected")
 
 	// add a same name sfn to zipper.
 	sameNameSfn := createTestStreamFunction("sfn-1", obversedTag)
+	sameNameSfn.SetDataFrameObserver(func(bf *frame.DataFrame) {
+		assert.Equal(t, string(payload), string(bf.GetCarriage()))
+	})
 	err = sameNameSfn.Connect(ctx, testaddr)
 	assert.Equal(t, err, nil)
 	assert.Equal(t, ConnStateConnected, sameNameSfn.State(), "sfn state should be ConnStateConnected")

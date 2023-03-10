@@ -153,8 +153,5 @@ func (c *Context) reset() {
 
 // StreamID gets dataStream ID.
 func (c *Context) StreamID() string {
-	if c.DataStream == nil {
-		return ""
-	}
 	return c.DataStream.ID()
 }

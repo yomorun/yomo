@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -83,7 +84,7 @@ func (g *StreamGroup) Run(connector Connector, mb metadata.Builder, contextFunc 
 
 		switch ff := f.(type) {
 		case *frame.HandshakeFrame:
-			stream, err := g.conn.OpenStream()
+			stream, err := g.conn.OpenStreamSync(context.Background())
 			if err != nil {
 				return err
 			}
