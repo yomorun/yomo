@@ -31,7 +31,7 @@ type ConnectionHandler func(conn quic.Connection)
 // Server is the underlining server of Zipper
 type Server struct {
 	name                    string
-	connector               Connector
+	connector               *Connector
 	router                  router.Router
 	metadataBuilder         metadata.Builder
 	counterOfDataFrame      int64
@@ -58,7 +58,6 @@ func NewServer(name string, opts ...ServerOption) *Server {
 
 	s := &Server{
 		name:        name,
-		connector:   newConnector(logger),
 		downstreams: make(map[string]frame.Writer),
 		logger:      logger,
 		opts:        options,
@@ -96,6 +95,8 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 	if err := s.validateRouter(); err != nil {
 		return err
 	}
+
+	s.connector = NewConnector(ctx, s.logger)
 
 	// listen the address
 	listener, err := newListener(conn, s.opts.tlsConfig, s.opts.quicConfig, s.logger)
@@ -177,7 +178,7 @@ func (s *Server) Close() error {
 	}
 	// connector
 	if s.connector != nil {
-		s.connector.Clean()
+		s.connector.Close()
 	}
 	return nil
 }
@@ -202,12 +203,12 @@ func (s *Server) handRoute(c *Context) error {
 					"current_stream_id", c.StreamID(),
 				)
 
-				if stream, ok := s.connector.Get(existsConnID); ok {
-					goawayFrame := frame.NewGoawayFrame(e.Error())
-					if err := stream.WriteFrame(goawayFrame); err != nil {
-						c.Logger.Error("write GoawayFrame failed", err)
-						return err
-					}
+				stream, ok, err := s.connector.Get(existsConnID)
+				if err != nil {
+					return err
+				}
+				if ok {
+					stream.CloseWithError(e)
 					s.connector.Remove(existsConnID)
 				}
 			} else {
@@ -340,7 +341,10 @@ func (s *Server) handleDataFrame(c *Context) error {
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
 
 	fromID := c.StreamID()
-	from, ok := s.connector.Get(fromID)
+	from, ok, err := s.connector.Get(fromID)
+	if err != nil {
+		return err
+	}
 	if !ok {
 		c.Logger.Warn("handleDataFrame connector cannot find", "from_conn_id", fromID)
 		return fmt.Errorf("handleDataFrame connector cannot find %s", fromID)
@@ -374,7 +378,10 @@ func (s *Server) handleDataFrame(c *Context) error {
 	)
 
 	for _, toID := range connIDs {
-		conn, ok := s.connector.Get(toID)
+		conn, ok, err := s.connector.Get(toID)
+		if err != nil {
+			continue
+		}
 		if !ok {
 			c.Logger.Error("Can't find forward conn", errors.New("conn is nil"), "forward_conn_id", toID)
 			continue
@@ -406,7 +413,10 @@ func (s *Server) handleBackflowFrame(c *Context) error {
 	sourceID := f.SourceID()
 	// write to source with BackflowFrame
 	bf := frame.NewBackflowFrame(tag, carriage)
-	sourceConns := s.connector.GetSourceConns(sourceID, tag)
+	sourceConns, err := s.connector.GetSourceConns(sourceID, tag)
+	if err != nil {
+		return err
+	}
 	for _, source := range sourceConns {
 		if source != nil {
 			c.Logger.Info("handleBackflowFrame", "source_conn_id", sourceID, "back_flow_frame", f.String())
@@ -468,7 +478,11 @@ func (s *Server) AddDownstreamServer(addr string, c frame.Writer) {
 
 // dispatch every DataFrames to all downstreams
 func (s *Server) dispatchToDownstreams(c *Context) {
-	stream, ok := s.connector.Get(c.StreamID())
+	stream, ok, err := s.connector.Get(c.StreamID())
+	if err != nil {
+		c.Logger.Error("Connector Get Error", err)
+		return
+	}
 	if !ok {
 		c.Logger.Debug("dispatchToDownstreams failed")
 		return

@@ -34,11 +34,16 @@ type DataStream interface {
 	Metadata() metadata.Metadata
 
 	// Close close DataStream,
-	// reading or writing stream returns stream close error if stream is closed,.
+	// reading or writing stream returns stream close error if stream is closed.
 	io.Closer
+
+	// CloseWithError close DataStream with an error,
+	// reading or writing stream returns stream close error if stream is closed.
+	CloseWithError(error) error
 
 	// ReadWriter writes or reads frame to underlying stream.
 	// Writing and Reading are both goroutine-safely handle frames to peer side.
+	// ReadWriter returns stream closed error if stream is closed.
 	frame.ReadWriter
 
 	// ObserveDataTags observed data tags.
@@ -55,23 +60,11 @@ type dataStream struct {
 
 	closed atomic.Bool
 	// mu protected stream write and close.
-	mu     sync.Mutex
-	stream ContextReadWriteCloser
+	mu            sync.Mutex
+	stream        ContextReadWriteCloser
+	controlStream frame.Writer
 
 	logger *slog.Logger
-}
-
-// Close close DataStream, Reading and Writing to
-// stream will return ErrStreamClosed if stream has be closed.
-func (s *dataStream) Close() error {
-	if s.closed.Load() {
-		return ErrStreamClosed
-	}
-	s.closed.Store(true)
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.stream.Close()
 }
 
 // newDataStream constructures dataStream.
@@ -83,16 +76,18 @@ func newDataStream(
 	stream ContextReadWriteCloser,
 	observed []frame.Tag,
 	logger *slog.Logger,
+	controlStream frame.Writer,
 ) DataStream {
 	logger.Debug("new data stream")
 	return &dataStream{
-		name:       name,
-		id:         id,
-		streamType: streamType,
-		metadata:   metadata,
-		stream:     stream,
-		observed:   observed,
-		logger:     logger,
+		name:          name,
+		id:            id,
+		streamType:    streamType,
+		metadata:      metadata,
+		stream:        stream,
+		observed:      observed,
+		controlStream: controlStream,
+		logger:        logger,
 	}
 }
 
@@ -104,8 +99,6 @@ func (s *dataStream) Metadata() metadata.Metadata  { return s.metadata }
 func (s *dataStream) StreamType() StreamType       { return s.streamType }
 func (s *dataStream) ObserveDataTags() []frame.Tag { return s.observed }
 
-// WriteFrame write Frame to stream, if stream is closed, WriteFrame
-// return stream closed error.
 func (s *dataStream) WriteFrame(frm frame.Frame) error {
 	if s.closed.Load() {
 		return ErrStreamClosed
@@ -117,13 +110,29 @@ func (s *dataStream) WriteFrame(frm frame.Frame) error {
 	return err
 }
 
-// ReadFrame read Frame from stream, if stream is closed, ReadFrame
-// return stream closed error.
 func (s *dataStream) ReadFrame() (frame.Frame, error) {
 	if s.closed.Load() {
 		return nil, ErrStreamClosed
 	}
 	return ParseFrame(s.stream)
+}
+
+func (s *dataStream) Close() error {
+	return s.CloseWithError(errors.New("close data stream without error"))
+}
+
+func (s *dataStream) CloseWithError(err error) error {
+	if s.closed.Load() {
+		return ErrStreamClosed
+	}
+	s.closed.Store(true)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.controlStream.WriteFrame(frame.NewCloseStreamFrame(s.id, err.Error()))
+
+	return s.stream.Close()
 }
 
 const (

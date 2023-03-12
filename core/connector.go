@@ -1,74 +1,96 @@
 package core
 
 import (
+	"context"
+	"errors"
 	"sync"
 
 	"github.com/yomorun/yomo/core/frame"
 	"golang.org/x/exp/slog"
 )
 
-var _ Connector = &connector{}
+// ErrConnectorClosed be returned if connector has be closed.
+var ErrConnectorClosed = errors.New("yomo: connector closed")
 
 // Connector manages DataStream.
 // Connector supports getting and setting stream from one place.
-type Connector interface {
-	// Add adds DataStream to Connector,
-	// If the id is the same twice, the new stream replaces the old stream.
-	Add(streamID string, stream DataStream)
+type Connector struct {
+	// ctx and ctxCancel manage the lifescyle of Connector.
+	ctx       context.Context
+	ctxCancel context.CancelFunc
 
-	// Remove removes DataStream in streamID.
-	// If Connector don't have a stream holds streamID, The Connector do nothing.
-	Remove(streamID string)
-
-	// Get gets DataStream in streamID.
-	// If can't get a stream by stream, There will return nil and false.
-	Get(streamID string) (DataStream, bool)
-
-	// GetSnapshot gets the snapshot of all stream.
-	// The map key is streamID, value is stream name, This function usually be used to
-	// sniff the status of Connector.
-	GetSnapshot() map[string]string
-
-	// GetSourceConns gets the stream by source observe tag.
-	GetSourceConns(sourceID string, tag frame.Tag) []DataStream
-
-	// Clean cleans all stream of Connector and reset Connector to initial status.
-	// TODO: add atomic.Bool to manage whether Connector is closed and rename to Close().
-	Clean()
-}
-
-type connector struct {
 	streams sync.Map
 	logger  *slog.Logger
 }
 
-// newConnector returns an initial Connector.
-func newConnector(logger *slog.Logger) Connector { return &connector{logger: logger} }
+// NewConnector returns an initial Connector.
+func NewConnector(ctx context.Context, logger *slog.Logger) *Connector {
+	ctx, ctxCancel := context.WithCancel(ctx)
 
-func (c *connector) Add(streamID string, stream DataStream) {
+	return &Connector{
+		ctx:       ctx,
+		ctxCancel: ctxCancel,
+		logger:    logger,
+	}
+}
+
+// Add adds DataStream to Connector,
+// If the id is the same twice, the new stream replaces the old stream.
+func (c *Connector) Add(streamID string, stream DataStream) error {
+	select {
+	case <-c.ctx.Done():
+		return ErrConnectorClosed
+	default:
+	}
+
 	c.streams.Store(streamID, stream)
 
 	c.logger.Debug("Connector add stream", "stream_id", streamID)
+	return nil
 }
 
-func (c *connector) Remove(streamID string) {
+// Remove removes DataStream in streamID.
+// If Connector don't have a stream holds streamID, The Connector do nothing.
+func (c *Connector) Remove(streamID string) error {
+	select {
+	case <-c.ctx.Done():
+		return ErrConnectorClosed
+	default:
+	}
+
 	c.streams.Delete(streamID)
-
 	c.logger.Debug("Connector remove stream", "stream_id", streamID)
+
+	return nil
 }
 
-func (c *connector) Get(streamID string) (DataStream, bool) {
+// Get gets DataStream in streamID.
+// If can't get a stream by stream, There will return nil and false.
+func (c *Connector) Get(streamID string) (DataStream, bool, error) {
+	select {
+	case <-c.ctx.Done():
+		return nil, false, ErrConnectorClosed
+	default:
+	}
+
 	v, ok := c.streams.Load(streamID)
 	if !ok {
-		return nil, false
+		return nil, false, nil
 	}
 
 	stream := v.(DataStream)
 
-	return stream, true
+	return stream, true, nil
 }
 
-func (c *connector) GetSourceConns(sourceID string, tag frame.Tag) []DataStream {
+// GetSourceConns gets the stream by source observe tag.
+func (c *Connector) GetSourceConns(sourceID string, tag frame.Tag) ([]DataStream, error) {
+	select {
+	case <-c.ctx.Done():
+		return []DataStream{}, ErrConnectorClosed
+	default:
+	}
+
 	streams := make([]DataStream, 0)
 
 	c.streams.Range(func(key interface{}, val interface{}) bool {
@@ -84,10 +106,13 @@ func (c *connector) GetSourceConns(sourceID string, tag frame.Tag) []DataStream 
 		return true
 	})
 
-	return streams
+	return streams, nil
 }
 
-func (c *connector) GetSnapshot() map[string]string {
+// GetSnapshot gets the snapshot of all stream.
+// The map key is streamID, value is stream name, This function usually be used to
+// sniff the status of Connector.
+func (c *Connector) GetSnapshot() map[string]string {
 	result := make(map[string]string)
 
 	c.streams.Range(func(key interface{}, val interface{}) bool {
@@ -102,7 +127,10 @@ func (c *connector) GetSnapshot() map[string]string {
 	return result
 }
 
-func (c *connector) Clean() {
+// Close cleans all stream of Connector and reset Connector to closed status.
+func (c *Connector) Close() {
+	c.ctxCancel()
+
 	c.streams.Range(func(key, value any) bool {
 		c.streams.Delete(key)
 		return true

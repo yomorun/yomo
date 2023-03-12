@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -126,7 +127,7 @@ func (c *Context) CloseWithError(ycode yerr.ErrorCode, errString string) {
 		c.Logger.Error("Write frame error", err, "frame_type", f.Type().String())
 	}
 
-	err = c.DataStream.Close()
+	err = c.DataStream.CloseWithError(errors.New(errString))
 	if err != nil {
 		c.Logger.Error("Close DataStream error", err)
 	}

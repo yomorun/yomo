@@ -25,11 +25,12 @@ type StreamGroup struct {
 
 // NewStreamGroup returns StreamGroup.
 func NewStreamGroup(conn quic.Connection, controlStream frame.ReadWriter, logger *slog.Logger) *StreamGroup {
-	return &StreamGroup{
+	group := &StreamGroup{
 		conn:          conn,
 		controlStream: controlStream,
 		logger:        logger,
 	}
+	return group
 }
 
 // Auth authenticates client in authFunc.
@@ -75,7 +76,7 @@ func (g *StreamGroup) authAck() error {
 // Run continus read HandshakeFrame and CloseStreamFrame from controlStream to create DataStream
 // or close DataStream. Adding new dataStream to connector and handle it in contextFunc if create one,
 // Removing from connector and close it if close a dataStream.
-func (g *StreamGroup) Run(connector Connector, mb metadata.Builder, contextFunc func(c *Context)) error {
+func (g *StreamGroup) Run(connector *Connector, mb metadata.Builder, contextFunc func(c *Context)) error {
 	for {
 		f, err := g.controlStream.ReadFrame()
 		if err != nil {
@@ -83,6 +84,7 @@ func (g *StreamGroup) Run(connector Connector, mb metadata.Builder, contextFunc 
 		}
 
 		switch ff := f.(type) {
+		// client requests a new stream.
 		case *frame.HandshakeFrame:
 			stream, err := g.conn.OpenStreamSync(context.Background())
 			if err != nil {
@@ -104,6 +106,7 @@ func (g *StreamGroup) Run(connector Connector, mb metadata.Builder, contextFunc 
 				stream,
 				ff.ObserveDataTags(),
 				g.logger,
+				g.controlStream,
 			)
 			connector.Add(dataStream.ID(), dataStream)
 			g.group.Add(1)
@@ -116,13 +119,15 @@ func (g *StreamGroup) Run(connector Connector, mb metadata.Builder, contextFunc 
 
 				contextFunc(c)
 			}()
-
+		// client requests to close an exist stream.
 		case *frame.CloseStreamFrame:
-			stream, ok := connector.Get(ff.StreamID())
+			stream, ok, err := connector.Get(ff.StreamID())
+			if err != nil {
+				g.logger.Error("Connector Get Error", err, "stream_id", ff.StreamID())
+			}
 			if !ok {
 				continue
 			}
-
 			if err := stream.Close(); err != nil {
 				g.logger.Error(
 					"Close Stream Error",
@@ -133,7 +138,6 @@ func (g *StreamGroup) Run(connector Connector, mb metadata.Builder, contextFunc 
 					"close_reason", ff.Reason(),
 				)
 			}
-
 			g.logger.Debug(
 				"Client Close Stream",
 				"stream_name", stream.Name(),
@@ -141,11 +145,9 @@ func (g *StreamGroup) Run(connector Connector, mb metadata.Builder, contextFunc 
 				"stream_id", stream.ID(),
 				"close_reason", ff.Reason(),
 			)
-
 			connector.Remove(ff.StreamID())
 		}
 	}
-
 }
 
 // Wait waits all dataStream down.
