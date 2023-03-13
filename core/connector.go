@@ -9,7 +9,7 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-// ErrConnectorClosed be returned if connector has be closed.
+// ErrConnectorClosed will be returned if the connector has been closed.
 var ErrConnectorClosed = errors.New("yomo: connector closed")
 
 // Connector manages DataStream.

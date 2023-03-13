@@ -24,22 +24,23 @@ type ClientOption func(*clientOptions)
 // Client is the abstraction of a YoMo-Client. a YoMo-Client can be
 // Source, Upstream Zipper or StreamFunction.
 type Client struct {
-	name       string                     // name of the client
-	clientID   string                     // id of the client
-	streamType StreamType                 // type of the dataStream
-	conn       quic.Connection            // quic connection
-	fs         frame.ReadWriter           // yomo abstract stream
-	state      ConnState                  // state of the connection
-	processor  func(*frame.DataFrame)     // function to invoke when data arrived
-	receiver   func(*frame.BackflowFrame) // function to invoke when data is processed
-	errorfn    func(error)                // function to invoke when error occured
-	closefn    func()                     // function to invoke when client closed
-	addr       string                     // the address of server connected to
-	mu         sync.Mutex
-	opts       *clientOptions
-	localAddr  string // client local addr, it will be changed on reconnect
-	logger     *slog.Logger
-	errc       chan error
+	name          string                     // name of the client
+	clientID      string                     // id of the client
+	streamType    StreamType                 // type of the dataStream
+	conn          quic.Connection            // quic connection
+	controlStream frame.Reader               // controlStream
+	fs            frame.ReadWriter           // yomo abstract stream
+	state         ConnState                  // state of the connection
+	processor     func(*frame.DataFrame)     // function to invoke when data arrived
+	receiver      func(*frame.BackflowFrame) // function to invoke when data is processed
+	errorfn       func(error)                // function to invoke when error occured
+	closefn       func()                     // function to invoke when client closed
+	addr          string                     // the address of server connected to
+	mu            sync.Mutex
+	opts          *clientOptions
+	localAddr     string // client local addr, it will be changed on reconnect
+	logger        *slog.Logger
+	errc          chan error
 }
 
 // NewClient creates a new YoMo-Client.
@@ -131,6 +132,7 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	}
 
 	c.state = ConnStateConnected
+	c.controlStream = controlStream
 	c.localAddr = c.conn.LocalAddr().String()
 
 	datsStream, err := conn.AcceptStream(ctx)
@@ -143,6 +145,7 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 
 	// receiving frames
 	go func() {
+		fmt.Println("client_id", c.clientID)
 		closeConn, closeClient, err := c.handleFrame()
 		c.logger.Debug("connected to YoMo-Zipper", "close_conn", closeConn, "close_client", closeClient, "error", err)
 
@@ -214,12 +217,14 @@ func (c *Client) acquireDataStream(controlStream frame.ReadWriter) error {
 // close stream, It's will reconnect if connection (or client) is closed,
 // It's will exit program if client is closed. The Goaway logic is always close client.
 func (c *Client) handleFrame() (bool, bool, error) {
+	errch := c.closeStream(c.controlStream)
 	for {
 		// this will block until a frame is received
 		f, err := c.fs.ReadFrame()
+		fmt.Println("zzzzzz 1", c.clientID, c.streamType, f, err)
 		if err != nil {
 			if err == io.EOF {
-				return true, false, err
+				return true, true, <-errch
 			} else if strings.HasPrefix(err.Error(), "unknown frame type") {
 				c.logger.Warn("unknown frame type", "error", err)
 				continue
@@ -240,18 +245,6 @@ func (c *Client) handleFrame() (bool, bool, error) {
 		case frame.TagOfHandshakeAckFrame:
 			c.logger.Debug("DataStream ready")
 			continue
-		case frame.TagOfRejectedFrame:
-			if v, ok := f.(*frame.RejectedFrame); ok {
-				return true, true, errors.New(v.Message())
-			}
-		case frame.TagOfGoawayFrame:
-			if v, ok := f.(*frame.GoawayFrame); ok {
-				return true, true, errors.New(v.Message())
-			}
-		case frame.TagOfCloseStreamFrame:
-			if v, ok := f.(*frame.CloseStreamFrame); ok {
-				return true, v.StreamID() == c.clientID, errors.New(v.Reason())
-			}
 		case frame.TagOfDataFrame: // DataFrame carries user's data
 			if v, ok := f.(*frame.DataFrame); ok {
 				if c.processor == nil {
@@ -273,6 +266,30 @@ func (c *Client) handleFrame() (bool, bool, error) {
 			c.logger.Warn("unknown or unsupported frame", "frame_type", frameType)
 		}
 	}
+
+}
+
+func (c *Client) closeStream(controlStream frame.Reader) chan error {
+	errch := make(chan error)
+	go func() {
+		for {
+			f, err := controlStream.ReadFrame()
+			if err != nil {
+				errch <- err
+				return
+			}
+			ff, ok := f.(*frame.CloseStreamFrame)
+			if !ok {
+				errch <- fmt.Errorf("read frame %+s, want close frame", f.Type().String())
+				return
+			}
+			if ff.StreamID() == c.clientID {
+				errch <- errors.New(ff.Reason())
+				return
+			}
+		}
+	}()
+	return errch
 }
 
 // Close the client.
