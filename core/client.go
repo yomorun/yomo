@@ -145,7 +145,6 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 
 	// receiving frames
 	go func() {
-		fmt.Println("client_id", c.clientID)
 		closeConn, closeClient, err := c.handleFrame()
 		c.logger.Debug("connected to YoMo-Zipper", "close_conn", closeConn, "close_client", closeClient, "error", err)
 
@@ -221,7 +220,6 @@ func (c *Client) handleFrame() (bool, bool, error) {
 	for {
 		// this will block until a frame is received
 		f, err := c.fs.ReadFrame()
-		fmt.Println("zzzzzz 1", c.clientID, c.streamType, f, err)
 		if err != nil {
 			if err == io.EOF {
 				return true, true, <-errch
