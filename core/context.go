@@ -27,9 +27,8 @@ type Context struct {
 	mu sync.RWMutex
 	// Keys stores the key/value pairs in context.
 	// It is Lazy initialized.
-	Keys          map[string]any
-	controlStream frame.ReadWriter // Context don't have ability to close controlStream.
-	Logger        *slog.Logger
+	Keys   map[string]any
+	Logger *slog.Logger
 }
 
 // Set is used to store a new key/value pair exclusively for this context.
@@ -82,7 +81,7 @@ func (c *Context) Value(key any) any {
 // newContext returns a yomo context,
 // The context implements standard library `context.Context` interface,
 // The lifecycle of Context is equal to stream's that be passed in.
-func newContext(controlStream frame.ReadWriter, dataStream DataStream, logger *slog.Logger) (c *Context) {
+func newContext(dataStream DataStream, logger *slog.Logger) (c *Context) {
 	v := ctxPool.Get()
 	if v == nil {
 		c = new(Context)
@@ -97,7 +96,6 @@ func newContext(controlStream frame.ReadWriter, dataStream DataStream, logger *s
 	)
 
 	c.DataStream = dataStream
-	c.controlStream = controlStream
 	c.Logger = logger
 
 	return
@@ -120,17 +118,11 @@ func (c *Context) WithFrame(f frame.Frame) error {
 func (c *Context) CloseWithError(ycode yerr.ErrorCode, errString string) {
 	c.Logger.Warn("Stream Close With error", "err_code", ycode.String(), "error", errString)
 
-	f := frame.NewCloseStreamFrame(c.DataStream.ID(), errString)
-
-	err := c.controlStream.WriteFrame(f)
-	if err != nil {
-		c.Logger.Error("Write frame error", err, "frame_type", f.Type().String())
+	err := c.DataStream.CloseWithError(errors.New(errString))
+	if err == nil {
+		return
 	}
-
-	err = c.DataStream.CloseWithError(errors.New(errString))
-	if err != nil {
-		c.Logger.Error("Close DataStream error", err)
-	}
+	c.Logger.Error("Close DataStream error", err)
 }
 
 // Clean cleans the Context,
@@ -143,7 +135,6 @@ func (c *Context) Clean() {
 }
 
 func (c *Context) reset() {
-	c.controlStream = nil
 	c.DataStream = nil
 	c.Frame = nil
 	c.Logger = nil

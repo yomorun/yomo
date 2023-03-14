@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
 	"golang.org/x/exp/slog"
@@ -38,7 +39,8 @@ type DataStream interface {
 	io.Closer
 
 	// CloseWithError close DataStream with an error,
-	// reading or writing stream returns stream close error if stream is closed.
+	// reading or writing stream returns stream closed error if stream has been closed.
+	// you should returns the stream handle function after calling CloseWithError.
 	CloseWithError(error) error
 
 	// ReadWriter writes or reads frame to underlying stream.
@@ -51,6 +53,7 @@ type DataStream interface {
 	ObserveDataTags() []frame.Tag
 }
 
+// TODO: dataStream sync.Pool wrap.
 type dataStream struct {
 	name       string
 	id         string
@@ -61,7 +64,7 @@ type dataStream struct {
 	closed atomic.Bool
 	// mu protected stream write and close.
 	mu            sync.Mutex
-	stream        ContextReadWriteCloser
+	stream        quic.Stream
 	controlStream frame.Writer
 
 	logger *slog.Logger
@@ -73,7 +76,7 @@ func newDataStream(
 	id string,
 	streamType StreamType,
 	metadata metadata.Metadata,
-	stream ContextReadWriteCloser,
+	stream quic.Stream,
 	observed []frame.Tag,
 	logger *slog.Logger,
 	controlStream frame.Writer,
@@ -130,7 +133,13 @@ func (s *dataStream) CloseWithError(err error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.controlStream.WriteFrame(frame.NewCloseStreamFrame(s.id, err.Error()))
+	// notice client side the stream has been closed.
+	// client side stream will receive remote io.EOF error after calling `stream.Close()`.
+	closeFrame := frame.NewCloseStreamFrame(s.id, err.Error())
+	err = s.controlStream.WriteFrame(closeFrame)
+	if err != nil {
+		s.logger.Debug("Write Close Frame Error", "error", err)
+	}
 
 	return s.stream.Close()
 }
@@ -169,14 +178,4 @@ func (c StreamType) String() string {
 	default:
 		return "None"
 	}
-}
-
-// ContextReadWriteCloser is a ReadWriteCloser holded a Context.
-// It is equal to quic.Stream basically.
-//
-// This interface usual be used to make mocking quic.Stream easily.
-type ContextReadWriteCloser interface {
-	io.ReadWriteCloser
-
-	Context() context.Context
 }
