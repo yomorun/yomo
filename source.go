@@ -41,7 +41,7 @@ var _ Source = &yomoSource{}
 // NewSource create a yomo-source
 func NewSource(name string, opts ...Option) Source {
 	options := NewOptions(opts...)
-	client := core.NewClient(name, core.StreamTypeSource, options.ClientOptions...)
+	client := core.NewClient(name, core.ClientTypeSource, options.ClientOptions...)
 
 	return &yomoSource{
 		name:           name,

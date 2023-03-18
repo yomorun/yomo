@@ -24,27 +24,28 @@ type ClientOption func(*clientOptions)
 // Client is the abstraction of a YoMo-Client. a YoMo-Client can be
 // Source, Upstream Zipper or StreamFunction.
 type Client struct {
-	name          string                     // name of the client
-	clientID      string                     // id of the client
-	streamType    StreamType                 // type of the dataStream
-	conn          quic.Connection            // quic connection
-	controlStream frame.Reader               // controlStream
-	fs            frame.ReadWriter           // yomo abstract stream
-	state         ConnState                  // state of the connection
-	processor     func(*frame.DataFrame)     // function to invoke when data arrived
-	receiver      func(*frame.BackflowFrame) // function to invoke when data is processed
-	errorfn       func(error)                // function to invoke when error occured
-	closefn       func()                     // function to invoke when client closed
-	addr          string                     // the address of server connected to
-	mu            sync.Mutex
-	opts          *clientOptions
-	localAddr     string // client local addr, it will be changed on reconnect
-	logger        *slog.Logger
-	errc          chan error
+	name       string                     // name of the client
+	clientID   string                     // id of the client
+	clientType ClientType                 // type of the connection
+	conn       quic.Connection            // quic connection
+	fs         frame.ReadWriter           // yomo abstract stream
+	state      ConnState                  // state of the connection
+	processor  func(*frame.DataFrame)     // function to invoke when data arrived
+	receiver   func(*frame.BackflowFrame) // function to invoke when data is processed
+	errorfn    func(error)                // function to invoke when error occured
+	closefn    func()                     // function to invoke when client closed
+	addr       string                     // the address of server connected to
+	mu         sync.Mutex
+	opts       *clientOptions
+	localAddr  string // client local addr, it will be changed on reconnect
+	logger     *slog.Logger
+	errc       chan error
+
+	controlStream frame.ReadWriter // control stream to control fs
 }
 
 // NewClient creates a new YoMo-Client.
-func NewClient(appName string, connType StreamType, opts ...ClientOption) *Client {
+func NewClient(appName string, connType ClientType, opts ...ClientOption) *Client {
 	option := defaultClientOption()
 
 	for _, o := range opts {
@@ -61,7 +62,7 @@ func NewClient(appName string, connType StreamType, opts ...ClientOption) *Clien
 	return &Client{
 		name:       appName,
 		clientID:   clientID,
-		streamType: connType,
+		clientType: connType,
 		state:      ConnStateReady,
 		opts:       option,
 		errc:       make(chan error),
@@ -198,7 +199,7 @@ func (c *Client) acquireDataStream(controlStream frame.ReadWriter) error {
 	err := controlStream.WriteFrame(frame.NewHandshakeFrame(
 		c.name,
 		c.clientID,
-		byte(c.streamType),
+		byte(c.clientType),
 		c.opts.observeDataTags,
 		[]byte{}, // The stream does not require metadata currently.
 	))

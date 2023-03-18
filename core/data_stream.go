@@ -149,7 +149,7 @@ const (
 	// "None" stream is not supposed to be in the yomo system.
 	StreamTypeNone StreamType = 0xFF
 
-	// ClientTypeSource is stream type "Source".
+	// StreamTypeSource is stream type "Source".
 	// "Source" type stream sends data to "Stream Function" stream generally.
 	StreamTypeSource StreamType = 0x5F
 

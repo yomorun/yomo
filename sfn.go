@@ -29,7 +29,7 @@ type StreamFunction interface {
 // NewStreamFunction create a stream function.
 func NewStreamFunction(name string, opts ...Option) StreamFunction {
 	options := NewOptions(opts...)
-	client := core.NewClient(name, core.StreamTypeStreamFunction, options.ClientOptions...)
+	client := core.NewClient(name, core.ClientTypeStreamFunction, options.ClientOptions...)
 	sfn := &streamFunction{
 		name:            name,
 		zipperEndpoint:  options.ZipperAddr,

@@ -83,3 +83,17 @@ func WithLogger(logger *slog.Logger) ClientOption {
 		o.logger = logger
 	}
 }
+
+// ClientType is equal to StreamType.
+type ClientType = StreamType
+
+const (
+	// ClientTypeSource is equal to StreamTypeSource.
+	ClientTypeSource ClientType = StreamTypeSource
+
+	// ClientTypeUpstreamZipper is equal to StreamTypeUpstreamZipper.
+	ClientTypeUpstreamZipper ClientType = StreamTypeUpstreamZipper
+
+	// ClientTypeStreamFunction is equal to StreamTypeStreamFunction.
+	ClientTypeStreamFunction ClientType = StreamTypeStreamFunction
+)
