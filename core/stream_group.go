@@ -114,7 +114,7 @@ func (g *StreamGroup) Run(connector *Connector, mb metadata.Builder, contextFunc
 			go func() {
 				defer g.group.Done()
 
-				c := newContext(g.controlStream, dataStream, g.logger)
+				c := newContext(dataStream, g.logger)
 				defer c.Clean()
 
 				contextFunc(c)
