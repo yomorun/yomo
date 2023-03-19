@@ -41,7 +41,7 @@ type Client struct {
 	logger     *slog.Logger
 	errc       chan error
 
-	controlStream frame.ReadWriter // control stream to control fs
+	controlStream frame.ReadWriter // controlStream to control dataStream
 }
 
 // NewClient creates a new YoMo-Client.
@@ -136,17 +136,17 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	c.controlStream = controlStream
 	c.localAddr = c.conn.LocalAddr().String()
 
-	datsStream, err := conn.AcceptStream(ctx)
+	stream, err := conn.AcceptStream(ctx)
 	if err != nil {
 		c.logger.Error("Failed to accept data stream", err)
 		return err
 	}
 
-	c.fs = NewFrameStream(datsStream)
+	c.fs = NewFrameStream(stream)
 
 	// receiving frames
 	go func() {
-		closeConn, closeClient, err := c.handleFrame()
+		closeConn, closeClient, err := c.handleFrame(stream)
 		c.logger.Debug("connected to YoMo-Zipper", "close_conn", closeConn, "close_client", closeClient, "error", err)
 
 		c.mu.Lock()
@@ -159,7 +159,7 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 		c.state = ConnStateDisconnected
 		c.errc <- err
 
-		datsStream.Close()
+		stream.Close()
 		if closeConn {
 			code := yerr.ErrorCodeClientAbort
 			if e, ok := err.(yerr.YomoError); ok {
@@ -216,14 +216,15 @@ func (c *Client) acquireDataStream(controlStream frame.ReadWriter) error {
 // handleFrame returns two boolean, the first indicates whether to close connection (or client), second
 // close stream, It's will reconnect if connection (or client) is closed,
 // It's will exit program if client is closed. The Goaway logic is always close client.
-func (c *Client) handleFrame() (bool, bool, error) {
-	errch := c.closeStream(c.controlStream)
+func (c *Client) handleFrame(stream quic.Stream) (closeConn bool, closeClient bool, err error) {
+	c.closeStream(c.controlStream, stream)
 	for {
 		// this will block until a frame is received
 		f, err := c.fs.ReadFrame()
 		if err != nil {
+			// The closure of the stream must be accompanied by error reception
 			if err == io.EOF {
-				return true, true, <-errch
+				return true, false, err
 			} else if strings.HasPrefix(err.Error(), "unknown frame type") {
 				c.logger.Warn("unknown frame type", "error", err)
 				continue
@@ -242,7 +243,6 @@ func (c *Client) handleFrame() (bool, bool, error) {
 		frameType := f.Type()
 		switch frameType {
 		case frame.TagOfHandshakeAckFrame:
-			c.logger.Debug("DataStream ready")
 			continue
 		case frame.TagOfDataFrame: // DataFrame carries user's data
 			if v, ok := f.(*frame.DataFrame); ok {
@@ -268,27 +268,27 @@ func (c *Client) handleFrame() (bool, bool, error) {
 
 }
 
-func (c *Client) closeStream(controlStream frame.Reader) chan error {
-	errch := make(chan error)
+func (c *Client) closeStream(controlStream frame.Reader, dataStream quic.Stream) {
 	go func() {
+
 		for {
 			f, err := controlStream.ReadFrame()
 			if err != nil {
-				errch <- err
+				c.logger.Error("client control stream read error", err)
 				return
 			}
 			ff, ok := f.(*frame.CloseStreamFrame)
 			if !ok {
-				errch <- fmt.Errorf("read frame %+s, want close frame", f.Type().String())
 				return
 			}
 			if ff.StreamID() == c.clientID {
-				errch <- errors.New(ff.Reason())
+				dataStream.Close()
+				// server reject the client
+				c.conn.CloseWithError(yerr.ErrorCodeRejected.To(), ff.Reason())
 				return
 			}
 		}
 	}()
-	return errch
 }
 
 // Close the client.
@@ -298,6 +298,10 @@ func (c *Client) Close() error {
 
 	if c.state == ConnStateClosed {
 		return nil
+	}
+
+	if c.controlStream != nil {
+		c.controlStream.WriteFrame(frame.NewCloseStreamFrame(c.ClientID(), "client ask to close"))
 	}
 
 	if c.conn != nil {

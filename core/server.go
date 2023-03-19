@@ -183,7 +183,7 @@ func (s *Server) Close() error {
 	return nil
 }
 
-func (s *Server) handRoute(c *Context) error {
+func (s *Server) handleRoute(c *Context) error {
 	if c.DataStream.StreamType() == StreamTypeStreamFunction {
 		// route
 		route := s.router.Route(c.DataStream.Metadata())
@@ -208,7 +208,7 @@ func (s *Server) handRoute(c *Context) error {
 					return err
 				}
 				if ok {
-					stream.CloseWithError(e)
+					stream.CloseWithError(e.Error())
 					s.connector.Remove(existsConnID)
 				}
 			} else {
@@ -222,8 +222,8 @@ func (s *Server) handRoute(c *Context) error {
 // handleConnection handles streams on a connection,
 // use c.Logger in this function scope for more complete logger information.
 func (s *Server) handleConnection(c *Context) {
-	if err := s.handRoute(c); err != nil {
-		c.CloseWithError(yerr.ErrorCodeStartHandler, err.Error())
+	if err := s.handleRoute(c); err != nil {
+		c.CloseWithError(yerr.ErrorCodeRejected, err.Error())
 		return
 	}
 

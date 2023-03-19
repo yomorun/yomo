@@ -54,7 +54,7 @@ func TestFrameRoundTrip(t *testing.T) {
 		WithServerLogger(discardingLogger),
 	)
 	server.ConfigMetadataBuilder(metadata.DefaultBuilder())
-	server.ConfigRouter(router.Default([]config.App{{Name: "sfn-1"}}))
+	server.ConfigRouter(router.Default([]config.App{{Name: "sfn-1"}, {Name: "close-early-sfn"}}))
 
 	// test server hooks
 	ht := &hookTester{t}
@@ -86,6 +86,16 @@ func TestFrameRoundTrip(t *testing.T) {
 	err := source.Connect(ctx, testaddr)
 	assert.NoError(t, err, "source connect must be success")
 	assert.Equal(t, ConnStateConnected, source.State(), "source state should be ConnStateConnected")
+
+	closeEarlySfn := createTestStreamFunction("close-early-sfn", obversedTag)
+	closeEarlySfn.Connect(ctx, testaddr)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, ConnStateConnected, closeEarlySfn.State(), "closeEarlySfn state should be ConnStateConnected")
+
+	// test close early.
+	closeEarlySfn.Close()
+	assert.Equal(t, err, nil)
+	assert.Equal(t, ConnStateClosed, closeEarlySfn.State(), "closeEarlySfn state should be ConnStateConnected")
 
 	sfn := createTestStreamFunction("sfn-1", obversedTag)
 	err = sfn.Connect(ctx, testaddr)
@@ -156,7 +166,7 @@ func (a *hookTester) afterHandler(ctx *Context) error {
 
 func createTestStreamFunction(name string, obversedTag frame.Tag) *Client {
 	return NewClient(
-		"sfn-1",
+		name,
 		StreamTypeStreamFunction,
 		WithCredential("token:auth-token"),
 		WithObserveDataTags(obversedTag),

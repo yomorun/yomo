@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
 
@@ -118,7 +117,7 @@ func (c *Context) WithFrame(f frame.Frame) error {
 func (c *Context) CloseWithError(ycode yerr.ErrorCode, errString string) {
 	c.Logger.Warn("Stream Close With error", "err_code", ycode.String(), "error", errString)
 
-	err := c.DataStream.CloseWithError(errors.New(errString))
+	err := c.DataStream.CloseWithError(errString)
 	if err == nil {
 		return
 	}

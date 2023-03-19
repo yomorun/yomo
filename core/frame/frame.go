@@ -52,14 +52,14 @@ const (
 	TagOfAuthenticationPayload Type = 0x05
 
 	// AuthenticationAckFrame
-	TagOfAuthenticationAckFrame  Type = 1
-	TagOfAuthenticationAckOk     Type = 2
-	TagOfAuthenticationAckReason Type = 3
+	TagOfAuthenticationAckFrame  Type = 0x11
+	TagOfAuthenticationAckOk     Type = 0x12
+	TagOfAuthenticationAckReason Type = 0x13
 
 	// CloseStreamFrame
-	TagOfCloseStreamFrame  Type = 4
-	TagOfCloseStreamID     Type = 5
-	TagOfCloseStreamReason Type = 6
+	TagOfCloseStreamFrame  Type = 0x14
+	TagOfCloseStreamID     Type = 0x15
+	TagOfCloseStreamReason Type = 0x16
 
 	// HandshakeFrame
 	TagOfHandshakeFrame           Type = 0x31

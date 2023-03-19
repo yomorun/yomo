@@ -34,14 +34,15 @@ type DataStream interface {
 	// Metadata returns the extra info of the application
 	Metadata() metadata.Metadata
 
-	// Close close DataStream,
-	// reading or writing stream returns stream close error if stream is closed.
+	// Close real close DataStream,
+	// The controlStream calls this function, If you want close a dataStream, to use
+	// the CloseWithError api.
 	io.Closer
 
-	// CloseWithError close DataStream with an error,
-	// reading or writing stream returns stream closed error if stream has been closed.
-	// you should returns the stream handle function after calling CloseWithError.
-	CloseWithError(error) error
+	// CloseWithError close DataStream with an error string,
+	// This function do not real close the underlying stream, It notices controlStream to
+	// close itself, The controlStream must close underlying stream after receive CloseStreamFrame.
+	CloseWithError(string) error
 
 	// ReadWriter writes or reads frame to underlying stream.
 	// Writing and Reading are both goroutine-safely handle frames to peer side.
@@ -121,10 +122,10 @@ func (s *dataStream) ReadFrame() (frame.Frame, error) {
 }
 
 func (s *dataStream) Close() error {
-	return s.CloseWithError(errors.New("close data stream without error"))
+	return s.stream.Close()
 }
 
-func (s *dataStream) CloseWithError(err error) error {
+func (s *dataStream) CloseWithError(errString string) error {
 	if s.closed.Load() {
 		return ErrStreamClosed
 	}
@@ -133,15 +134,9 @@ func (s *dataStream) CloseWithError(err error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// notice client side the stream has been closed.
-	// client side stream will receive remote io.EOF error after calling `stream.Close()`.
-	closeFrame := frame.NewCloseStreamFrame(s.id, err.Error())
-	err = s.controlStream.WriteFrame(closeFrame)
-	if err != nil {
-		s.logger.Debug("Write Close Frame Error", "error", err)
-	}
-
-	return s.stream.Close()
+	// Only notice client-side controlStream the stream has been closed.
+	// The controlStream reads closeStreamFrame and to close dataStream.
+	return s.controlStream.WriteFrame(frame.NewCloseStreamFrame(s.id, errString))
 }
 
 const (
@@ -163,7 +158,7 @@ const (
 	StreamTypeStreamFunction StreamType = 0x5D
 )
 
-// ClientType represents the stream type.
+// StreamType represents the stream type.
 type StreamType byte
 
 // String returns string for StreamType.
