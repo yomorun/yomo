@@ -12,8 +12,7 @@ import (
 // ErrConnectorClosed will be returned if the connector has been closed.
 var ErrConnectorClosed = errors.New("yomo: connector closed")
 
-// Connector manages DataStream.
-// Connector supports getting and setting stream from one place.
+// The Connector class manages data streams and provides a centralized way to get and set streams.
 type Connector struct {
 	// ctx and ctxCancel manage the lifescyle of Connector.
 	ctx       context.Context
@@ -35,7 +34,7 @@ func NewConnector(ctx context.Context, logger *slog.Logger) *Connector {
 }
 
 // Add adds DataStream to Connector,
-// If the id is the same twice, the new stream replaces the old stream.
+// If the streamID is the same twice, the new stream will replace the old stream.
 func (c *Connector) Add(streamID string, stream DataStream) error {
 	select {
 	case <-c.ctx.Done():
@@ -49,8 +48,8 @@ func (c *Connector) Add(streamID string, stream DataStream) error {
 	return nil
 }
 
-// Remove removes DataStream in streamID.
-// If Connector don't have a stream holds streamID, The Connector do nothing.
+// Remove removes the DataStream with the specified streamID.
+// If the Connector does not have a stream with the given streamID, no action is taken.
 func (c *Connector) Remove(streamID string) error {
 	select {
 	case <-c.ctx.Done():
@@ -64,8 +63,8 @@ func (c *Connector) Remove(streamID string) error {
 	return nil
 }
 
-// Get gets DataStream in streamID.
-// If can't get a stream by stream, There will return nil and false.
+// Get retrieves the DataStream with the specified streamID.
+// If the Connector does not have a stream with the given streamID, return nil and false.
 func (c *Connector) Get(streamID string) (DataStream, bool, error) {
 	select {
 	case <-c.ctx.Done():
@@ -83,7 +82,7 @@ func (c *Connector) Get(streamID string) (DataStream, bool, error) {
 	return stream, true, nil
 }
 
-// GetSourceConns gets the stream by source observe tag.
+// GetSourceConns gets the streams with the specified source observe tag.
 func (c *Connector) GetSourceConns(sourceID string, tag frame.Tag) ([]DataStream, error) {
 	select {
 	case <-c.ctx.Done():
@@ -109,9 +108,9 @@ func (c *Connector) GetSourceConns(sourceID string, tag frame.Tag) ([]DataStream
 	return streams, nil
 }
 
-// GetSnapshot gets the snapshot of all stream.
-// The map key is streamID, value is stream name, This function usually be used to
-// sniff the status of Connector.
+// GetSnapshot returnsa snapshot of all streams.
+// The resulting map uses streamID as the key and stream name as the value.
+// This function is typically used to monitor the status of the Connector.
 func (c *Connector) GetSnapshot() map[string]string {
 	result := make(map[string]string)
 
@@ -128,6 +127,7 @@ func (c *Connector) GetSnapshot() map[string]string {
 }
 
 // Close cleans all stream of Connector and reset Connector to closed status.
+// The Connector can't be use after close.
 func (c *Connector) Close() {
 	c.ctxCancel()
 

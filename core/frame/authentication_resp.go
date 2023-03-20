@@ -2,34 +2,34 @@ package frame
 
 import "github.com/yomorun/y3"
 
-// AuthenticationAckFrame is used to ack Authentication.
-// HandshakeAckFrame is a Y3 encoded bytes.
-type AuthenticationAckFrame struct {
+// AuthenticationRespFrame is the response of Authentication.
+// AuthenticationRespFrame is a Y3 encoded bytes.
+type AuthenticationRespFrame struct {
 	ok     bool
 	reason string
 }
 
 // OK returns if Authentication is success.
-func (f *AuthenticationAckFrame) OK() bool { return f.ok }
+func (f *AuthenticationRespFrame) OK() bool { return f.ok }
 
-// Reason returns the reason for Authentication.
-func (f *AuthenticationAckFrame) Reason() string { return f.reason }
+// Reason returns the failed reason of Authentication.
+func (f *AuthenticationRespFrame) Reason() string { return f.reason }
 
-// NewAuthenticationAckFrame returns a AuthenticationAckFrame.
-func NewAuthenticationAckFrame(ok bool, reason string) *AuthenticationAckFrame {
-	return &AuthenticationAckFrame{
+// NewAuthenticationRespFrame returns a AuthenticationRespFrame.
+func NewAuthenticationRespFrame(ok bool, reason string) *AuthenticationRespFrame {
+	return &AuthenticationRespFrame{
 		ok:     ok,
 		reason: reason,
 	}
 }
 
-// Type gets the type of the AuthenticationAckFrame.
-func (f *AuthenticationAckFrame) Type() Type {
+// Type gets the type of the AuthenticationRespFrame.
+func (f *AuthenticationRespFrame) Type() Type {
 	return TagOfAuthenticationAckFrame
 }
 
-// Encode encodes AuthenticationAckFrame to Y3 encoded bytes.
-func (f *AuthenticationAckFrame) Encode() []byte {
+// Encode encodes AuthenticationRespFrame to Y3 encoded bytes.
+func (f *AuthenticationRespFrame) Encode() []byte {
 	// ok
 	okBlock := y3.NewPrimitivePacketEncoder(byte(TagOfAuthenticationAckOk))
 	okBlock.SetBoolValue(f.ok)
@@ -44,15 +44,15 @@ func (f *AuthenticationAckFrame) Encode() []byte {
 	return ack.Encode()
 }
 
-// DecodeToAuthenticationAckFrame decodes Y3 encoded bytes to AuthenticationAckFrame.
-func DecodeToAuthenticationAckFrame(buf []byte) (*AuthenticationAckFrame, error) {
+// DecodeToAuthenticationRespFrame decodes Y3 encoded bytes to AuthenticationRespFrame.
+func DecodeToAuthenticationRespFrame(buf []byte) (*AuthenticationRespFrame, error) {
 	node := y3.NodePacket{}
 	_, err := y3.DecodeToNodePacket(buf, &node)
 	if err != nil {
 		return nil, err
 	}
 
-	f := &AuthenticationAckFrame{}
+	f := &AuthenticationRespFrame{}
 
 	// ok
 	if okBlock, ok := node.PrimitivePackets[byte(TagOfAuthenticationAckOk)]; ok {

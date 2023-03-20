@@ -12,26 +12,26 @@ import (
 
 var ctxPool sync.Pool
 
-// Context for YoMo Server.
+// Context is context for stream handling.
 // Context be generated after a dataStream coming, And stores some infomation
 // from dataStream, Context's lifecycle is equal to stream's.
 type Context struct {
-	// DataStream is the stream be used to read and write frame.
+	// DataStream is the stream used for reading and writing frames.
 	DataStream DataStream
 
 	// Frame receives from client.
 	Frame frame.Frame
 
-	// mu protects Keys read write.
+	// mu is used to protect Keys from concurrent read and write operations.
 	mu sync.RWMutex
-	// Keys stores the key/value pairs in context.
-	// It is Lazy initialized.
-	Keys   map[string]any
+	// Keys stores the key/value pairs in context, It is Lazy initialized.
+	Keys map[string]any
+	// Using Logger to log in stream handler scope.
 	Logger *slog.Logger
 }
 
 // Set is used to store a new key/value pair exclusively for this context.
-// It also lazy initializes  c.Keys if it was not used previously.
+// It also lazy initializes c.Keys if it was not used previously.
 func (c *Context) Set(key string, value any) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

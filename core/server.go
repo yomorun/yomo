@@ -132,7 +132,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		// Auth accepts a AuthenticationFrame from client. The first frame from client must be
 		// AuthenticationFrame, It returns true if auth successful otherwise return false.
 		// It response to client a AuthenticationAckFrame.
-		err = streamGroup.Auth(s.handleAuthenticationFrame)
+		err = streamGroup.VerifyAuthentication(s.handleAuthenticationFrame)
 		if err != nil {
 			logger.Warn("Authentication Failed", "error", err)
 			continue

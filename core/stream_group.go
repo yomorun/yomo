@@ -33,8 +33,8 @@ func NewStreamGroup(conn quic.Connection, controlStream frame.ReadWriter, logger
 	return group
 }
 
-// Auth authenticates client in authFunc.
-func (g *StreamGroup) Auth(authFunc func(*frame.AuthenticationFrame) (bool, error)) error {
+// VerifyAuthentication verify Authentication from client in verifyFunc.
+func (g *StreamGroup) VerifyAuthentication(verifyFunc func(*frame.AuthenticationFrame) (bool, error)) error {
 	first, err := g.controlStream.ReadFrame()
 	if err != nil {
 		return err
@@ -43,7 +43,7 @@ func (g *StreamGroup) Auth(authFunc func(*frame.AuthenticationFrame) (bool, erro
 	if !ok {
 		return err
 	}
-	ok, err = authFunc(f)
+	ok, err = verifyFunc(f)
 	if err != nil {
 		return err
 	}
@@ -51,13 +51,13 @@ func (g *StreamGroup) Auth(authFunc func(*frame.AuthenticationFrame) (bool, erro
 		errAuth := fmt.Errorf("yomo: authentication failed, client credential name is %s", f.AuthName())
 		return g.authFailed(errAuth)
 	}
-	return g.authAck()
+	return g.authOK()
 }
 
 func (g *StreamGroup) authFailed(se error) error {
-	ack := frame.NewAuthenticationAckFrame(false, se.Error())
+	resp := frame.NewAuthenticationRespFrame(false, se.Error())
 
-	err := g.controlStream.WriteFrame(ack)
+	err := g.controlStream.WriteFrame(resp)
 	if err != nil {
 		return err
 	}
@@ -67,15 +67,14 @@ func (g *StreamGroup) authFailed(se error) error {
 	return err
 }
 
-func (g *StreamGroup) authAck() error {
-	ack := frame.NewAuthenticationAckFrame(true, "")
-	return g.controlStream.WriteFrame(ack)
+func (g *StreamGroup) authOK() error {
+	return g.controlStream.WriteFrame(frame.NewAuthenticationRespFrame(true, ""))
 }
 
 // Run run contextFunc with connector.
 // Run continus read HandshakeFrame and CloseStreamFrame from controlStream to create DataStream
 // or close DataStream. Adding new dataStream to connector and handle it in contextFunc if create one,
-// Removing from connector and close it if close a dataStream.
+// Removing from connector and close it if closing a dataStream.
 func (g *StreamGroup) Run(connector *Connector, mb metadata.Builder, contextFunc func(c *Context)) error {
 	for {
 		f, err := g.controlStream.ReadFrame()

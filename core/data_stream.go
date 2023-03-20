@@ -122,6 +122,8 @@ func (s *dataStream) ReadFrame() (frame.Frame, error) {
 }
 
 func (s *dataStream) Close() error {
+	// Close the stream truly,
+	// This function should be called after controlStream receive a closeStreamFrame.
 	return s.stream.Close()
 }
 

@@ -41,7 +41,7 @@ type Client struct {
 	logger     *slog.Logger
 	errc       chan error
 
-	controlStream frame.ReadWriter // controlStream to control dataStream
+	controlStream frame.ReadWriter // controlStream controls dataStream
 }
 
 // NewClient creates a new YoMo-Client.
@@ -119,15 +119,15 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 		c.state = ConnStateDisconnected
 		return err
 	}
-	c.logger.Debug("AuthenticationFrame be Writed")
+	c.logger.Debug("AuthenticationFrame be Writen")
 
-	if err := c.authenticationAck(controlStream); err != nil {
+	if err := c.waitAuthenticationResp(controlStream); err != nil {
 		c.state = ConnStateDisconnected
 		return err
 	}
-	c.logger.Debug("Receive handshakeAckFrame")
+	c.logger.Debug("Receive AuthenticationRespFrame")
 
-	if err := c.acquireDataStream(controlStream); err != nil {
+	if err := c.openDataStream(controlStream); err != nil {
 		c.state = ConnStateDisconnected
 		return err
 	}
@@ -176,16 +176,16 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	return nil
 }
 
-// authenticationAck waits authentication ack, ack maybe ok or not ok.
-func (c *Client) authenticationAck(controlStream frame.Reader) error {
+// waitAuthenticationResp waits authentication response, response maybe ok or not ok.
+func (c *Client) waitAuthenticationResp(controlStream frame.Reader) error {
 	f, err := controlStream.ReadFrame()
 	if err != nil {
 		return err
 	}
 
-	ff, ok := f.(*frame.AuthenticationAckFrame)
+	ff, ok := f.(*frame.AuthenticationRespFrame)
 	if !ok {
-		return fmt.Errorf("yomo: read unexcept frame during waiting authentication ack, frame readed: %s", f.Type().String())
+		return fmt.Errorf("yomo: read unexcept frame during waiting authentication resp, frame readed: %s", f.Type().String())
 	}
 
 	if !ff.OK() {
@@ -195,7 +195,7 @@ func (c *Client) authenticationAck(controlStream frame.Reader) error {
 	return nil
 }
 
-func (c *Client) acquireDataStream(controlStream frame.ReadWriter) error {
+func (c *Client) openDataStream(controlStream frame.ReadWriter) error {
 	err := controlStream.WriteFrame(frame.NewHandshakeFrame(
 		c.name,
 		c.clientID,
