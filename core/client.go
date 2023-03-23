@@ -251,7 +251,6 @@ func (c *Client) handleFrame(stream quic.Stream) (closeConn bool, closeClient bo
 				} else {
 					c.processor(v)
 				}
-				v.Clean()
 			}
 		case frame.TagOfBackflowFrame:
 			if v, ok := f.(*frame.BackflowFrame); ok {
