@@ -47,23 +47,19 @@ func (r *wazeroRuntime) Init(wasmFile string) error {
 	if err != nil {
 		return fmt.Errorf("read wasm file %s: %v", wasmBytes, err)
 	}
-
-	_, err = r.NewHostModuleBuilder("env").
-		NewFunctionBuilder().WithFunc(r.observeDataTag).Export(WasmFuncObserveDataTag).
-		Instantiate(r.ctx)
-	if err != nil {
-		return fmt.Errorf("wazero.HostFunc: %v", err)
-	}
-
-	_, err = r.NewHostModuleBuilder("env").
-		NewFunctionBuilder().WithFunc(r.loadInput).Export(WasmFuncLoadInput).
-		Instantiate(r.ctx)
-	if err != nil {
-		return fmt.Errorf("wazero.HostFunc: %v", err)
-	}
-
-	_, err = r.NewHostModuleBuilder("env").
-		NewFunctionBuilder().WithFunc(r.dumpOutput).Export(WasmFuncDumpOutput).
+	builder := r.NewHostModuleBuilder("env")
+	_, err = builder.NewFunctionBuilder().
+		// observeDataTag
+		WithFunc(r.observeDataTag).
+		Export(WasmFuncObserveDataTag).
+		// loadInput
+		NewFunctionBuilder().
+		WithFunc(r.loadInput).
+		Export(WasmFuncLoadInput).
+		// dumpOutput
+		NewFunctionBuilder().
+		WithFunc(r.dumpOutput).
+		Export(WasmFuncDumpOutput).
 		Instantiate(r.ctx)
 	if err != nil {
 		return fmt.Errorf("wazero.HostFunc: %v", err)
