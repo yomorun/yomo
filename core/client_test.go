@@ -3,11 +3,11 @@ package core
 import (
 	"bytes"
 	"context"
+	"net"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/quic-go/quic-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
@@ -27,14 +27,9 @@ func TestClientDialNothing(t *testing.T) {
 	ctx := context.Background()
 
 	client := NewClient("source", StreamTypeSource, WithLogger(discardingLogger))
-
-	assert.Equal(t, ConnStateReady, client.State(), "client state should be ConnStateReady")
-
 	err := client.Connect(ctx, testaddr)
 
-	assert.Equal(t, ConnStateDisconnected, client.State(), "client state should be ConnStateDisconnected")
-
-	qerr := &quic.IdleTimeoutError{}
+	qerr := net.ErrClosed
 	assert.ErrorAs(t, err, &qerr, "dial must timeout")
 }
 
@@ -62,8 +57,8 @@ func TestFrameRoundTrip(t *testing.T) {
 	server.SetBeforeHandlers(ht.beforeHandler)
 	server.SetAfterHandlers(ht.afterHandler)
 
-	w := newMockFrameWriter()
-	server.AddDownstreamServer("mockAddr", w)
+	recorder := newFrameWriterRecorder()
+	server.AddDownstreamServer("mockAddr", recorder)
 
 	go func() {
 		server.ListenAndServe(ctx, testaddr)
@@ -85,22 +80,17 @@ func TestFrameRoundTrip(t *testing.T) {
 
 	err := source.Connect(ctx, testaddr)
 	assert.NoError(t, err, "source connect must be success")
-	assert.Equal(t, ConnStateConnected, source.State(), "source state should be ConnStateConnected")
-
 	closeEarlySfn := createTestStreamFunction("close-early-sfn", obversedTag)
 	closeEarlySfn.Connect(ctx, testaddr)
 	assert.Equal(t, err, nil)
-	assert.Equal(t, ConnStateConnected, closeEarlySfn.State(), "closeEarlySfn state should be ConnStateConnected")
 
 	// test close early.
 	closeEarlySfn.Close()
 	assert.Equal(t, err, nil)
-	assert.Equal(t, ConnStateClosed, closeEarlySfn.State(), "closeEarlySfn state should be ConnStateConnected")
 
 	sfn := createTestStreamFunction("sfn-1", obversedTag)
 	err = sfn.Connect(ctx, testaddr)
 	assert.NoError(t, err, "sfn connect must be success")
-	assert.Equal(t, ConnStateConnected, sfn.State(), "sfn state should be ConnStateConnected")
 
 	// add a same name sfn to zipper.
 	sameNameSfn := createTestStreamFunction("sfn-1", obversedTag)
@@ -109,10 +99,13 @@ func TestFrameRoundTrip(t *testing.T) {
 	})
 	err = sameNameSfn.Connect(ctx, testaddr)
 	assert.Equal(t, err, nil)
-	assert.Equal(t, ConnStateConnected, sameNameSfn.State(), "sfn state should be ConnStateConnected")
 
-	time.Sleep(time.Second)
-	assert.Equal(t, ConnStateClosed, sfn.State(), "sfn state should be ConnStateClosed after connecting same name")
+	err = sfn.Wait()
+	if err == nil {
+		assert.FailNow(t, "sfn-1 should wait an error")
+		return
+	}
+	assert.Equal(t, err.Error(), "SFN[sfn-1] is already linked to another connection")
 
 	stats := server.StatsFunctions()
 	nameList := []string{}
@@ -126,12 +119,13 @@ func TestFrameRoundTrip(t *testing.T) {
 	dataFrame.SetCarriage(obversedTag, payload)
 	dataFrame.SetBroadcast(true)
 
+	dataFrameEncoded := dataFrame.Encode()
+
 	err = source.WriteFrame(dataFrame)
 	assert.NoError(t, err, "source write dataFrame must be success")
 
 	time.Sleep(time.Second)
-
-	w.assertEqual(t, dataFrame)
+	assert.Equal(t, recorder.frameBytes(), dataFrameEncoded)
 
 	assert.NoError(t, source.Close(), "source client.Close() should not return error")
 	assert.NoError(t, sfn.Close(), "sfn client.Close() should not return error")
@@ -174,15 +168,17 @@ func createTestStreamFunction(name string, obversedTag frame.Tag) *Client {
 	)
 }
 
-// mockFrameWriter mock a FrameWriter
-type mockFrameWriter struct {
+// frameWriterRecorder frames be writen.
+type frameWriterRecorder struct {
 	mu  sync.Mutex
 	buf *bytes.Buffer
 }
 
-func newMockFrameWriter() *mockFrameWriter { return &mockFrameWriter{buf: bytes.NewBuffer([]byte{})} }
+func newFrameWriterRecorder() *frameWriterRecorder {
+	return &frameWriterRecorder{buf: bytes.NewBuffer([]byte{})}
+}
 
-func (w *mockFrameWriter) WriteFrame(frm frame.Frame) error {
+func (w *frameWriterRecorder) WriteFrame(frm frame.Frame) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -190,9 +186,10 @@ func (w *mockFrameWriter) WriteFrame(frm frame.Frame) error {
 	return err
 }
 
-func (w *mockFrameWriter) assertEqual(t *testing.T, frm frame.Frame) {
+func (w *frameWriterRecorder) frameBytes() []byte {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	assert.Equal(t, w.buf.Bytes(), frm.Encode())
+	bytes := w.buf.Bytes()
+	return bytes
 }
