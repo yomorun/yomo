@@ -12,7 +12,7 @@ pub fn build(b: *std.build.Builder) void {
     const mode = b.standardReleaseOptions();
 
     // const exe = b.addExecutable("sfn", "src/main.zig");
-    const lib = b.addSharedLibrary("add", "src/main.zig", b.version(1, 0, 0));
+    const lib = b.addSharedLibrary("sfn", "src/main.zig", b.version(1, 0, 0));
     // exe.setTarget(target);
     lib.setTarget(.{ .cpu_arch = .wasm32, .os_tag = .wasi });
     lib.setBuildMode(mode);
