@@ -9,7 +9,6 @@ import (
 	"os"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/auth"
@@ -32,7 +31,7 @@ type ConnectionHandler func(conn quic.Connection)
 // Server is the underlining server of Zipper
 type Server struct {
 	name                    string
-	connector               Connector
+	connector               *Connector
 	router                  router.Router
 	metadataBuilder         metadata.Builder
 	counterOfDataFrame      int64
@@ -44,7 +43,6 @@ type Server struct {
 	afterHandlers           []FrameHandler
 	connectionCloseHandlers []ConnectionHandler
 	listener                Listener
-	wg                      *sync.WaitGroup
 	logger                  *slog.Logger
 }
 
@@ -60,9 +58,7 @@ func NewServer(name string, opts ...ServerOption) *Server {
 
 	s := &Server{
 		name:        name,
-		connector:   newConnector(logger),
 		downstreams: make(map[string]frame.Writer),
-		wg:          new(sync.WaitGroup),
 		logger:      logger,
 		opts:        options,
 	}
@@ -100,6 +96,8 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		return err
 	}
 
+	s.connector = NewConnector(ctx, s.logger)
+
 	// listen the address
 	listener, err := newListener(conn, s.opts.tlsConfig, s.opts.quicConfig, s.logger)
 	if err != nil {
@@ -122,133 +120,47 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 			continue
 		}
 
-		// connection close handlers on server shutdown
-		// defer s.doConnectionCloseHandlers(conn)
-		s.wg.Add(1)
-		connID := GetConnID(conn)
-		s.logger.Info("new connection", "conn_id", connID)
+		controlStream, err := conn.AcceptStream(ctx)
+		if err != nil {
+			continue
+		}
+
+		logger := s.logger.With("client_addr", conn.RemoteAddr())
+
+		streamGroup := NewStreamGroup(conn, NewFrameStream(controlStream), logger)
+
+		// Auth accepts a AuthenticationFrame from client. The first frame from client must be
+		// AuthenticationFrame, It returns true if auth successful otherwise return false.
+		// It response to client a AuthenticationAckFrame.
+		err = streamGroup.VerifyAuthentication(s.handleAuthenticationFrame)
+		if err != nil {
+			logger.Warn("Authentication Failed", "error", err)
+			continue
+		}
+		logger.Debug("Authentication Success")
 
 		go func(qconn quic.Connection) {
-			// connection close handlers on client connect timeout
+			defer streamGroup.Wait()
 			defer s.doConnectionCloseHandlers(qconn)
-			for {
-				s.logger.Debug("waiting for new stream")
-				stream, err := qconn.AcceptStream(ctx)
-				if err != nil {
-					// if client close the connection, then we should close the connection
-					// @CC: when Source close the connection, it won't affect connectors
-					name := "-"
-					clientID := "-"
-					if conn := s.connector.Get(connID); conn != nil {
-						// connector
-						s.connector.Remove(connID)
-						route := s.router.Route(conn.Metadata())
-						if route != nil {
-							route.Remove(connID)
-						}
-						name = conn.Name()
-						clientID = conn.ClientID()
-						conn.Close()
-					}
-					s.logger.Debug("close the connection", "client_name", name, "client_id", clientID, "conn_id", connID, "error", err)
-					break
-				}
-				defer stream.Close()
 
-				yctx, ok := s.handshakeWithTimeout(conn, stream, 10*time.Second)
-
-				for _, handler := range s.startHandlers {
-					if err := handler(yctx); err != nil {
-						yctx.Logger.Error("startHandlers error", err)
-						yctx.CloseWithError(yerr.ErrorCodeStartHandler, err.Error())
-						return
-					}
-				}
-
-				defer func() {
-					if yctx != nil {
-						yctx.Clean()
-					}
-				}()
-
-				if !ok {
-					return
-				}
-
-				s.logger.Info("stream created", "stream_id", stream.StreamID(), "conn_id", connID)
-
-				s.handleConnection(yctx)
-				yctx.Logger.Info("stream handleConnection DONE")
+			select {
+			case <-ctx.Done():
+				return
+			case err := <-s.runWithStreamGroup(streamGroup):
+				logger.Error("Client Close", err)
 			}
 		}(conn)
 	}
 }
 
-// handshakeWithTimeout call handshake with a timeout.
-func (s *Server) handshakeWithTimeout(conn quic.Connection, stream quic.Stream, timeout time.Duration) (*Context, bool) {
-	type result struct {
-		ok   bool
-		yctx *Context
-	}
-	ch := make(chan result)
-
-	fs := NewFrameStream(stream)
+func (s *Server) runWithStreamGroup(group *StreamGroup) <-chan error {
+	errch := make(chan error)
 
 	go func() {
-		ok, yctx := s.handshake(conn, stream, fs)
-		ch <- result{yctx, ok}
+		errch <- group.Run(s.connector, s.metadataBuilder, s.handleConnection)
 	}()
 
-	select {
-	case <-time.After(timeout):
-		return nil, false
-	case r := <-ch:
-		return r.yctx, r.ok
-	}
-}
-
-// handshake accepts a handshakeFrame from client.
-// the first frame from client must be handshakeFrame,
-// It returns true if handshake successful otherwise return false.
-// It response to client a handshakeAckFrame if the handshake is successful
-// otherwise response a goawayFrame.
-// It returns a context for this stream handler.
-func (s *Server) handshake(conn quic.Connection, stream quic.Stream, fs frame.ReadWriter) (*Context, bool) {
-	frm, err := fs.ReadFrame()
-
-	c := newContext(conn, stream, s.metadataBuilder, s.logger)
-
-	if err != nil {
-		if err := fs.WriteFrame(frame.NewGoawayFrame(err.Error())); err != nil {
-			s.logger.Error("write to client GoawayFrame error", err)
-		}
-		return c, false
-	}
-
-	if err := c.WithFrame(frm); err != nil {
-		if err := fs.WriteFrame(frame.NewGoawayFrame(err.Error())); err != nil {
-			s.logger.Error("write to client GoawayFrame error", err)
-		}
-		return c, false
-	}
-
-	if frm.Type() != frame.TagOfHandshakeFrame {
-		c.Logger.Info("client not do handshake right off")
-		if err := fs.WriteFrame(frame.NewGoawayFrame("handshake failed")); err != nil {
-			s.logger.Error("write to client GoawayFrame error", err)
-		}
-		return c, false
-	}
-
-	if err := s.handleHandshakeFrame(c); err != nil {
-		c.Logger.Info("handshake failed", "error", err)
-		if err := fs.WriteFrame(frame.NewGoawayFrame(err.Error())); err != nil {
-			s.logger.Error("write to client GoawayFrame error", err)
-		}
-		return c, false
-	}
-
-	return c, true
+	return errch
 }
 
 // Logger returns the logger of server.
@@ -266,19 +178,69 @@ func (s *Server) Close() error {
 	}
 	// connector
 	if s.connector != nil {
-		s.connector.Clean()
+		s.connector.Close()
 	}
-	s.wg.Wait()
+	return nil
+}
+
+func (s *Server) handleRoute(c *Context) error {
+	if c.DataStream.StreamType() == StreamTypeStreamFunction {
+		// route
+		route := s.router.Route(c.DataStream.Metadata())
+		if route == nil {
+			return errors.New("handleHandshakeFrame route is nil")
+		}
+		if err := route.Add(c.StreamID(), c.DataStream.Name(), c.DataStream.ObserveDataTags()); err != nil {
+			// duplicate name
+			if e, ok := err.(yerr.DuplicateNameError); ok {
+				existsConnID := e.ConnID()
+
+				c.Logger.Debug(
+					"StreamFunction Duplicate Name",
+					"error", e.Error(),
+					"sfn_name", c.DataStream.Name(),
+					"old_stream_id", existsConnID,
+					"current_stream_id", c.StreamID(),
+				)
+
+				stream, ok, err := s.connector.Get(existsConnID)
+				if err != nil {
+					return err
+				}
+				if ok {
+					stream.CloseWithError(e.Error())
+					s.connector.Remove(existsConnID)
+				}
+			} else {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
 // handleConnection handles streams on a connection,
 // use c.Logger in this function scope for more complete logger information.
 func (s *Server) handleConnection(c *Context) {
-	fs := NewFrameStream(c.Stream)
+	if err := s.handleRoute(c); err != nil {
+		c.CloseWithError(yerr.ErrorCodeRejected, err.Error())
+		return
+	}
+
+	// start frame handlers
+	for _, handler := range s.startHandlers {
+		if err := handler(c); err != nil {
+			c.Logger.Error("startHandlers error", err)
+			c.CloseWithError(yerr.ErrorCodeStartHandler, err.Error())
+			return
+		}
+	}
+
+	defer s.connClose(c)
+
 	// check update for stream
 	for {
-		f, err := fs.ReadFrame()
+		f, err := c.DataStream.ReadFrame()
 		if err != nil {
 			// if client close connection, will get ApplicationError with code = 0x00
 			if e, ok := err.(*quic.ApplicationError); ok {
@@ -335,11 +297,6 @@ func (s *Server) handleConnection(c *Context) {
 				return
 			}
 		}
-
-		// release dataFrame.
-		if c.Frame.Type() == frame.TagOfDataFrame {
-			c.Frame.(*frame.DataFrame).Clean()
-		}
 	}
 }
 
@@ -347,8 +304,6 @@ func (s *Server) mainFrameHandler(c *Context) error {
 	frameType := c.Frame.Type()
 
 	switch frameType {
-	case frame.TagOfHandshakeFrame:
-		c.Logger.Warn("receive a handshakeFrame, ingonre it")
 	case frame.TagOfDataFrame:
 		if err := s.handleDataFrame(c); err != nil {
 			c.CloseWithError(yerr.ErrorCodeData, fmt.Sprintf("handleDataFrame err: %v", err))
@@ -359,104 +314,33 @@ func (s *Server) mainFrameHandler(c *Context) error {
 			s.handleBackflowFrame(c)
 		}
 	default:
-		c.Logger.Warn("unexpected frame", "unexpected_frame_type", frameType)
+		c.Logger.Warn("unexpected frame", "unexpected_frame_type", frameType.String())
 	}
 	return nil
 }
 
-// handle HandShakeFrame
-func (s *Server) handleHandshakeFrame(c *Context) error {
-	f := c.Frame.(*frame.HandshakeFrame)
+func (s *Server) handleAuthenticationFrame(f *frame.AuthenticationFrame) (bool, error) {
+	ok := auth.Authenticate(s.opts.auths, f)
 
-	// basic info
-	connID := c.ConnID()
-	clientID := f.ClientID
-	clientType := ClientType(f.ClientType)
-	stream := c.Stream
-	// credential
-	c.Logger.Debug("GOT HandshakeFrame", "client_type", f.ClientType, "client_id", clientID, "auth_name", authName(f.AuthName()))
-	// authenticate
-	authed := auth.Authenticate(s.opts.auths, f)
-	c.Logger.Debug("authenticate", "authed", authed)
-	if !authed {
-		err := fmt.Errorf("handshake authentication fails, client credential name is %s", authName(f.AuthName()))
-		// return err
-		c.Logger.Debug("authenticated", "authed", authed)
-		goawayFrame := frame.NewGoawayFrame(err.Error())
-		if _, err = stream.Write(goawayFrame.Encode()); err != nil {
-			c.Logger.Error("write to GoawayFrame failed", err, "authed", authed)
-			return err
-		}
-		return nil
+	if ok {
+		s.logger.Debug("Successful authentication")
+	} else {
+		s.logger.Warn("Authentication failed", "credential", f.AuthName())
 	}
 
-	// client type
-	var conn Connection
-	switch clientType {
-	case ClientTypeSource, ClientTypeStreamFunction:
-		// metadata
-		metadata, err := s.metadataBuilder.Build(f)
-		if err != nil {
-			return err
-		}
-		conn = newConnection(f.Name, f.ClientID, clientType, metadata, stream, f.ObserveDataTags, c.Logger)
-
-		if clientType == ClientTypeStreamFunction {
-			// route
-			route := s.router.Route(metadata)
-			if route == nil {
-				return errors.New("handleHandshakeFrame route is nil")
-			}
-			if err := route.Add(connID, f.Name, f.ObserveDataTags); err != nil {
-				// duplicate name
-				if e, ok := err.(yerr.DuplicateNameError); ok {
-					existsConnID := e.ConnID()
-					if conn := s.connector.Get(existsConnID); conn != nil {
-						c.Logger.Debug("write GoawayFrame", "error", e.Error(), "exists_conn_id", existsConnID)
-						goawayFrame := frame.NewGoawayFrame(e.Error())
-						if err := conn.WriteFrame(goawayFrame); err != nil {
-							c.Logger.Error("write GoawayFrame failed", err)
-							return err
-						}
-					}
-				} else {
-					return err
-				}
-			}
-		}
-	case ClientTypeUpstreamZipper:
-		conn = newConnection(f.Name, f.ClientID, clientType, nil, stream, f.ObserveDataTags, c.Logger)
-	default:
-		// TODO: There is no need to Remove,
-		// unknown client type is not be add to connector.
-		s.connector.Remove(connID)
-		err := fmt.Errorf("illegal ClientType: %#x", f.ClientType)
-		c.CloseWithError(yerr.ErrorCodeUnknownClient, err.Error())
-		return err
-	}
-
-	if _, err := stream.Write(frame.NewHandshakeAckFrame().Encode()); err != nil {
-		c.Logger.Error("write handshakeAckFrame error", err)
-	}
-
-	s.connector.Add(connID, conn)
-	c.Logger.Info("client is connected!")
-	return nil
+	return ok, nil
 }
-
-// will reuse quic-go's keep-alive feature
-// func (s *Server) handlePingFrame(stream quic.Stream, conn quic.Connection, f *frame.PingFrame) error {
-// 	logger.Infof("%s------> GOT ❤️ PingFrame : %# x", ServerLogPrefix, f)
-// 	return nil
-// }
 
 func (s *Server) handleDataFrame(c *Context) error {
 	// counter +1
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
-	// currentIssuer := f.GetIssuer()
-	fromID := c.ConnID()
-	from := s.connector.Get(fromID)
-	if from == nil {
+
+	fromID := c.StreamID()
+	from, ok, err := s.connector.Get(fromID)
+	if err != nil {
+		return err
+	}
+	if !ok {
 		c.Logger.Warn("handleDataFrame connector cannot find", "from_conn_id", fromID)
 		return fmt.Errorf("handleDataFrame connector cannot find %s", fromID)
 	}
@@ -481,9 +365,19 @@ func (s *Server) handleDataFrame(c *Context) error {
 
 	// get stream function connection ids from route
 	connIDs := route.GetForwardRoutes(f.GetDataTag())
+
+	c.Logger.Debug(
+		"Data Routing Status",
+		"sfn_stream_ids", connIDs,
+		"connector", s.connector.GetSnapshot(),
+	)
+
 	for _, toID := range connIDs {
-		conn := s.connector.Get(toID)
-		if conn == nil {
+		conn, ok, err := s.connector.Get(toID)
+		if err != nil {
+			continue
+		}
+		if !ok {
 			c.Logger.Error("Can't find forward conn", errors.New("conn is nil"), "forward_conn_id", toID)
 			continue
 		}
@@ -514,7 +408,10 @@ func (s *Server) handleBackflowFrame(c *Context) error {
 	sourceID := f.SourceID()
 	// write to source with BackflowFrame
 	bf := frame.NewBackflowFrame(tag, carriage)
-	sourceConns := s.connector.GetSourceConns(sourceID, tag)
+	sourceConns, err := s.connector.GetSourceConns(sourceID, tag)
+	if err != nil {
+		return err
+	}
 	for _, source := range sourceConns {
 		if source != nil {
 			c.Logger.Info("handleBackflowFrame", "source_conn_id", sourceID, "back_flow_frame", f.String())
@@ -576,14 +473,21 @@ func (s *Server) AddDownstreamServer(addr string, c frame.Writer) {
 
 // dispatch every DataFrames to all downstreams
 func (s *Server) dispatchToDownstreams(c *Context) {
-	conn := s.connector.Get(c.connID)
-	if conn == nil {
+	stream, ok, err := s.connector.Get(c.StreamID())
+	if err != nil {
+		c.Logger.Error("Connector Get Error", err)
+		return
+	}
+	if !ok {
 		c.Logger.Debug("dispatchToDownstreams failed")
-	} else if conn.ClientType() == ClientTypeSource {
+		return
+	}
+
+	if stream.StreamType() == StreamTypeSource {
 		f := c.Frame.(*frame.DataFrame)
 		if f.IsBroadcast() {
 			if f.GetMetaFrame().Metadata() == nil {
-				f.GetMetaFrame().SetMetadata(conn.Metadata().Encode())
+				f.GetMetaFrame().SetMetadata(stream.Metadata().Encode())
 			}
 			for addr, ds := range s.downstreams {
 				c.Logger.Info("dispatching to", "dispatch_addr", addr, "tid", f.TransactionID())
@@ -610,11 +514,6 @@ func (s *Server) validateMetadataBuilder() error {
 		return errors.New("server's metadataBuilder is nil")
 	}
 	return nil
-}
-
-// Connector returns the connector of server.
-func (s *Server) Connector() Connector {
-	return s.connector
 }
 
 // SetStartHandlers sets a function for operating connection,
@@ -649,18 +548,14 @@ func (s *Server) authNames() []string {
 	return result
 }
 
-func authName(name string) string {
-	if name == "" {
-		return "empty"
-	}
-
-	return name
-}
-
 func (s *Server) doConnectionCloseHandlers(qconn quic.Connection) {
-	defer s.wg.Done()
-	s.logger.Debug("quic connection closed")
+	s.logger.Debug("QUIC Connection Closed")
 	for _, h := range s.connectionCloseHandlers {
 		h(qconn)
 	}
+}
+
+func (s *Server) connClose(c *Context) {
+	s.router.Route(c.DataStream.Metadata()).Remove(c.StreamID())
+	s.connector.Remove(c.StreamID())
 }

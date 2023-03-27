@@ -40,6 +40,8 @@ type Client struct {
 	localAddr  string // client local addr, it will be changed on reconnect
 	logger     *slog.Logger
 	errc       chan error
+
+	controlStream frame.ReadWriter // controlStream controls dataStream
 }
 
 // NewClient creates a new YoMo-Client.
@@ -100,40 +102,51 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	c.conn = conn
 
 	// quic stream
-	stream, err := conn.OpenStreamSync(ctx)
+	stream0, err := conn.OpenStreamSync(ctx)
 	if err != nil {
 		c.state = ConnStateDisconnected
 		return err
 	}
-	c.fs = NewFrameStream(stream)
 
-	// send handshake
-	handshake := frame.NewHandshakeFrame(
-		c.name,
-		c.clientID,
-		byte(c.clientType),
-		c.opts.observeDataTags,
+	controlStream := NewFrameStream(stream0)
+
+	// send authentication
+	authentication := frame.NewAuthenticationFrame(
 		c.opts.credential.Name(),
 		c.opts.credential.Payload(),
 	)
-	if err := c.fs.WriteFrame(handshake); err != nil {
+	if err := controlStream.WriteFrame(authentication); err != nil {
 		c.state = ConnStateDisconnected
 		return err
 	}
+	c.logger.Debug("AuthenticationFrame be Writen")
 
-	if _, err := frame.ReadUntil(c.fs, frame.TagOfHandshakeAckFrame, 10*time.Second); err != nil {
+	if err := c.waitAuthenticationResp(controlStream); err != nil {
+		c.state = ConnStateDisconnected
+		return err
+	}
+	c.logger.Debug("Receive AuthenticationRespFrame")
+
+	if err := c.openDataStream(controlStream); err != nil {
 		c.state = ConnStateDisconnected
 		return err
 	}
 
 	c.state = ConnStateConnected
+	c.controlStream = controlStream
 	c.localAddr = c.conn.LocalAddr().String()
 
-	c.logger.Debug("connected to YoMo-Zipper")
+	stream, err := conn.AcceptStream(ctx)
+	if err != nil {
+		c.logger.Error("Failed to accept data stream", err)
+		return err
+	}
+
+	c.fs = NewFrameStream(stream)
 
 	// receiving frames
 	go func() {
-		closeConn, closeClient, err := c.handleFrame()
+		closeConn, closeClient, err := c.handleFrame(stream)
 		c.logger.Debug("connected to YoMo-Zipper", "close_conn", closeConn, "close_client", closeClient, "error", err)
 
 		c.mu.Lock()
@@ -163,12 +176,53 @@ func (c *Client) connect(ctx context.Context, addr string) error {
 	return nil
 }
 
+// waitAuthenticationResp waits authentication response, response maybe ok or not ok.
+func (c *Client) waitAuthenticationResp(controlStream frame.Reader) error {
+	f, err := controlStream.ReadFrame()
+	if err != nil {
+		return err
+	}
+
+	ff, ok := f.(*frame.AuthenticationRespFrame)
+	if !ok {
+		return fmt.Errorf("yomo: read unexcept frame during waiting authentication resp, frame readed: %s", f.Type().String())
+	}
+
+	if !ff.OK() {
+		return errors.New(ff.Reason())
+	}
+
+	return nil
+}
+
+func (c *Client) openDataStream(controlStream frame.ReadWriter) error {
+	err := controlStream.WriteFrame(frame.NewHandshakeFrame(
+		c.name,
+		c.clientID,
+		byte(c.clientType),
+		c.opts.observeDataTags,
+		[]byte{}, // The stream does not require metadata currently.
+	))
+
+	if err != nil {
+		c.state = ConnStateDisconnected
+	}
+
+	return err
+}
+
 // handleFrame handles the logic when receiving frame from server.
-func (c *Client) handleFrame() (bool, bool, error) {
+// handleFrame returns if connection and client should be closed after handle frame,
+// handleFrame returns two boolean, the first indicates whether to close connection (or client), second
+// close stream, It's will reconnect if connection (or client) is closed,
+// It's will exit program if client is closed. The Goaway logic is always close client.
+func (c *Client) handleFrame(stream quic.Stream) (closeConn bool, closeClient bool, err error) {
+	c.closeStream(c.controlStream, stream)
 	for {
 		// this will block until a frame is received
 		f, err := c.fs.ReadFrame()
 		if err != nil {
+			// The closure of the stream must be accompanied by error reception
 			if err == io.EOF {
 				return true, false, err
 			} else if strings.HasPrefix(err.Error(), "unknown frame type") {
@@ -187,16 +241,9 @@ func (c *Client) handleFrame() (bool, bool, error) {
 		// read frame
 		// first, get frame type
 		frameType := f.Type()
-		c.logger.Debug("handleFrame", "frame_type", frameType)
 		switch frameType {
-		case frame.TagOfRejectedFrame:
-			if v, ok := f.(*frame.RejectedFrame); ok {
-				return true, true, errors.New(v.Message())
-			}
-		case frame.TagOfGoawayFrame:
-			if v, ok := f.(*frame.GoawayFrame); ok {
-				return true, true, errors.New(v.Message())
-			}
+		case frame.TagOfHandshakeAckFrame:
+			continue
 		case frame.TagOfDataFrame: // DataFrame carries user's data
 			if v, ok := f.(*frame.DataFrame); ok {
 				if c.processor == nil {
@@ -204,7 +251,6 @@ func (c *Client) handleFrame() (bool, bool, error) {
 				} else {
 					c.processor(v)
 				}
-				v.Clean()
 			}
 		case frame.TagOfBackflowFrame:
 			if v, ok := f.(*frame.BackflowFrame); ok {
@@ -218,6 +264,30 @@ func (c *Client) handleFrame() (bool, bool, error) {
 			c.logger.Warn("unknown or unsupported frame", "frame_type", frameType)
 		}
 	}
+
+}
+
+func (c *Client) closeStream(controlStream frame.Reader, dataStream quic.Stream) {
+	go func() {
+
+		for {
+			f, err := controlStream.ReadFrame()
+			if err != nil {
+				c.logger.Error("client control stream read error", err)
+				return
+			}
+			ff, ok := f.(*frame.CloseStreamFrame)
+			if !ok {
+				return
+			}
+			if ff.StreamID() == c.clientID {
+				dataStream.Close()
+				// server reject the client
+				c.conn.CloseWithError(yerr.ErrorCodeRejected.To(), ff.Reason())
+				return
+			}
+		}
+	}()
 }
 
 // Close the client.
@@ -227,6 +297,10 @@ func (c *Client) Close() error {
 
 	if c.state == ConnStateClosed {
 		return nil
+	}
+
+	if c.controlStream != nil {
+		c.controlStream.WriteFrame(frame.NewCloseStreamFrame(c.ClientID(), "client ask to close"))
 	}
 
 	if c.conn != nil {
@@ -248,8 +322,6 @@ func (c *Client) close() error {
 
 // WriteFrame writes a frame to the connection, gurantee threadsafe.
 func (c *Client) WriteFrame(frm frame.Frame) error {
-	c.logger.Debug("close the connection", "client_state", c.State(), "frame_type", frm.Type().String())
-
 	if c.state != ConnStateConnected {
 		return errors.New("client connection isn't connected")
 	}

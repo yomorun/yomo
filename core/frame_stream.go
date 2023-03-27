@@ -8,22 +8,18 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 )
 
-// FrameStream is the QUIC Stream with the minimum unit Frame.
+// FrameStream is the frame.ReadWriter that goroutinue read write safely.
 type FrameStream struct {
-	// Stream is a QUIC stream.
 	stream io.ReadWriter
 	mu     sync.Mutex
 }
 
 // NewFrameStream creates a new FrameStream.
 func NewFrameStream(s io.ReadWriter) frame.ReadWriter {
-	return &FrameStream{
-		stream: s,
-		mu:     sync.Mutex{},
-	}
+	return &FrameStream{stream: s}
 }
 
-// ReadFrame reads next frame from QUIC stream.
+// ReadFrame reads next frame from underlying stream.
 func (fs *FrameStream) ReadFrame() (frame.Frame, error) {
 	if fs.stream == nil {
 		return nil, errors.New("core.ReadStream: stream can not be nil")

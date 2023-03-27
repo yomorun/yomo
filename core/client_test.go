@@ -18,10 +18,15 @@ import (
 
 const testaddr = "127.0.0.1:19999"
 
+var discardingLogger = ylog.NewFromConfig(ylog.Config{Output: "/dev/null", ErrorOutput: "/dev/null"})
+
+// debugLogger be used to debug unittest.
+// var debugLogger = ylog.NewFromConfig(ylog.Config{Verbose: true, Level: "debug"})
+
 func TestClientDialNothing(t *testing.T) {
 	ctx := context.Background()
 
-	client := NewClient("source", ClientTypeSource)
+	client := NewClient("source", StreamTypeSource, WithLogger(discardingLogger))
 
 	assert.Equal(t, ConnStateReady, client.State(), "client state should be ConnStateReady")
 
@@ -46,9 +51,10 @@ func TestFrameRoundTrip(t *testing.T) {
 		WithAuth("token", "auth-token"),
 		WithServerQuicConfig(DefalutQuicConfig),
 		WithServerTLSConfig(nil),
+		WithServerLogger(discardingLogger),
 	)
 	server.ConfigMetadataBuilder(metadata.DefaultBuilder())
-	server.ConfigRouter(router.Default([]config.App{{Name: "sfn-1"}}))
+	server.ConfigRouter(router.Default([]config.App{{Name: "sfn-1"}, {Name: "close-early-sfn"}}))
 
 	// test server hooks
 	ht := &hookTester{t}
@@ -65,12 +71,12 @@ func TestFrameRoundTrip(t *testing.T) {
 
 	source := NewClient(
 		"source",
-		ClientTypeSource,
+		StreamTypeSource,
 		WithCredential("token:auth-token"),
 		WithObserveDataTags(obversedTag),
 		WithClientQuicConfig(DefalutQuicConfig),
 		WithClientTLSConfig(nil),
-		WithLogger(ylog.Default()),
+		WithLogger(discardingLogger),
 	)
 
 	source.SetBackflowFrameObserver(func(bf *frame.BackflowFrame) {
@@ -81,18 +87,32 @@ func TestFrameRoundTrip(t *testing.T) {
 	assert.NoError(t, err, "source connect must be success")
 	assert.Equal(t, ConnStateConnected, source.State(), "source state should be ConnStateConnected")
 
-	sfn := NewClient("sfn-1", ClientTypeStreamFunction, WithCredential("token:auth-token"), WithObserveDataTags(obversedTag))
+	closeEarlySfn := createTestStreamFunction("close-early-sfn", obversedTag)
+	closeEarlySfn.Connect(ctx, testaddr)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, ConnStateConnected, closeEarlySfn.State(), "closeEarlySfn state should be ConnStateConnected")
 
-	sfn.SetDataFrameObserver(func(bf *frame.DataFrame) {
-		assert.Equal(t, string(payload), string(bf.GetCarriage()))
-	})
+	// test close early.
+	closeEarlySfn.Close()
+	assert.Equal(t, err, nil)
+	assert.Equal(t, ConnStateClosed, closeEarlySfn.State(), "closeEarlySfn state should be ConnStateConnected")
 
+	sfn := createTestStreamFunction("sfn-1", obversedTag)
 	err = sfn.Connect(ctx, testaddr)
 	assert.NoError(t, err, "sfn connect must be success")
 	assert.Equal(t, ConnStateConnected, sfn.State(), "sfn state should be ConnStateConnected")
 
-	// wait source and sfn handshake successful (not elegant).
+	// add a same name sfn to zipper.
+	sameNameSfn := createTestStreamFunction("sfn-1", obversedTag)
+	sameNameSfn.SetDataFrameObserver(func(bf *frame.DataFrame) {
+		assert.Equal(t, string(payload), string(bf.GetCarriage()))
+	})
+	err = sameNameSfn.Connect(ctx, testaddr)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, ConnStateConnected, sameNameSfn.State(), "sfn state should be ConnStateConnected")
+
 	time.Sleep(time.Second)
+	assert.Equal(t, ConnStateClosed, sfn.State(), "sfn state should be ConnStateClosed after connecting same name")
 
 	stats := server.StatsFunctions()
 	nameList := []string{}
@@ -113,11 +133,9 @@ func TestFrameRoundTrip(t *testing.T) {
 
 	w.assertEqual(t, dataFrame)
 
-	// TODO: closing server many times is blocking.
-	assert.NoError(t, server.Close(), "server.Close() should not return error")
-
 	assert.NoError(t, source.Close(), "source client.Close() should not return error")
 	assert.NoError(t, sfn.Close(), "sfn client.Close() should not return error")
+	assert.NoError(t, server.Close(), "server.Close() should not return error")
 }
 
 type hookTester struct {
@@ -144,6 +162,16 @@ func (a *hookTester) afterHandler(ctx *Context) error {
 	assert.Equal(a.t, v, "ok")
 
 	return nil
+}
+
+func createTestStreamFunction(name string, obversedTag frame.Tag) *Client {
+	return NewClient(
+		name,
+		StreamTypeStreamFunction,
+		WithCredential("token:auth-token"),
+		WithObserveDataTags(obversedTag),
+		WithLogger(discardingLogger),
+	)
 }
 
 // mockFrameWriter mock a FrameWriter

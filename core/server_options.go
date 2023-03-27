@@ -30,17 +30,18 @@ type serverOptions struct {
 func defaultServerOptions() *serverOptions {
 	logger := ylog.Default()
 
-	return &serverOptions{
+	opts := &serverOptions{
 		quicConfig: DefalutQuicConfig,
 		tlsConfig:  nil,
 		addr:       DefaultListenAddr,
 		auths:      map[string]auth.Authentication{},
 		logger:     logger,
-		alpnHandler: func(proto string) error {
-			logger.Info("client alpn proto", "component", "server", "proto", proto)
-			return nil
-		},
 	}
+	opts.alpnHandler = func(proto string) error {
+		opts.logger.Info("client alpn proto", "component", "server", "proto", proto)
+		return nil
+	}
+	return opts
 }
 
 // WithAddr sets the server address.
@@ -74,5 +75,12 @@ func WithServerTLSConfig(tc *tls.Config) ServerOption {
 func WithServerQuicConfig(qc *quic.Config) ServerOption {
 	return func(o *serverOptions) {
 		o.quicConfig = qc
+	}
+}
+
+// WithServerLogger sets logger for the server.
+func WithServerLogger(logger *slog.Logger) ServerOption {
+	return func(o *serverOptions) {
+		o.logger = logger
 	}
 }

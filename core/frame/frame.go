@@ -1,9 +1,6 @@
 package frame
 
 import (
-	"errors"
-	"time"
-
 	"github.com/yomorun/yomo/core/ylog"
 )
 
@@ -20,54 +17,8 @@ type Reader interface {
 	ReadFrame() (Frame, error)
 }
 
-// ErrReadUntilTimeout be returned when call ReadUntil timeout.
-type ErrReadUntilTimeout struct{ t Type }
-
-// Error implement error interface.
-func (err ErrReadUntilTimeout) Error() string {
-	return "yomo: frame read until timeout, type: " + err.t.String()
-}
-
-// ReadUntil reads frame from reader, until the frame of the specified type is returned.
-// It returns ErrReadUntilTimeout error if frame not be returned after timeout duration.
-// If read a goawayFrame, use goawayFrame.message as error and return it.
-func ReadUntil(reader Reader, t Type, timeout time.Duration) (Frame, error) {
-	var (
-		errch = make(chan error)
-		frmch = make(chan Frame)
-	)
-
-	go func() {
-		for {
-			f, err := reader.ReadFrame()
-			if err != nil {
-				errch <- err
-				return
-			}
-			if f.Type() == TagOfGoawayFrame {
-				errch <- errors.New(f.(*GoawayFrame).message)
-				return
-			}
-			if f.Type() == t {
-				frmch <- f
-				return
-			}
-		}
-	}()
-
-	select {
-	case <-time.After(timeout):
-		return nil, ErrReadUntilTimeout{t: t}
-	case err := <-errch:
-		return nil, err
-	case frm := <-frmch:
-		return frm, nil
-	}
-}
-
-// Writer is the interface that wraps the WriteFrame method.
-
-// Writer writes Frame from frm to the underlying data stream.
+// Writer is the interface that wraps the WriteFrame method, It writes
+// frm to the underlying data stream.
 type Writer interface {
 	WriteFrame(frm Frame) error
 }
@@ -94,14 +45,32 @@ const (
 	TagOfBackflowCarriage Type = 0x02
 
 	TagOfTokenFrame Type = 0x3E
+
+	// AuthenticationFrame
+	TagOfAuthenticationFrame   Type = 0x3D
+	TagOfAuthenticationName    Type = 0x04
+	TagOfAuthenticationPayload Type = 0x05
+
+	// AuthenticationAckFrame
+	TagOfAuthenticationAckFrame  Type = 0x11
+	TagOfAuthenticationAckOk     Type = 0x12
+	TagOfAuthenticationAckReason Type = 0x13
+
+	// CloseStreamFrame
+	TagOfCloseStreamFrame  Type = 0x14
+	TagOfCloseStreamID     Type = 0x15
+	TagOfCloseStreamReason Type = 0x16
+
 	// HandshakeFrame
-	TagOfHandshakeFrame           Type = 0x3D
+	TagOfHandshakeFrame           Type = 0x31
 	TagOfHandshakeName            Type = 0x01
-	TagOfHandshakeType            Type = 0x02
+	TagOfHandshakeStreamType      Type = 0x02
 	TagOfHandshakeID              Type = 0x03
-	TagOfHandshakeAuthName        Type = 0x04
-	TagOfHandshakeAuthPayload     Type = 0x05
 	TagOfHandshakeObserveDataTags Type = 0x06
+	TagOfHandshakeMetadata        Type = 0x07
+
+	// TagOfHandshakeAckFrame
+	TagOfHandshakeAckFrame Type = 0x29
 
 	TagOfPingFrame       Type = 0x3C
 	TagOfPongFrame       Type = 0x3B
@@ -112,8 +81,6 @@ const (
 	TagOfGoawayFrame   Type = 0x30
 	TagOfGoawayCode    Type = 0x01
 	TagOfGoawayMessage Type = 0x02
-	// TagOfHandshakeAckFrame
-	TagOfHandshakeAckFrame Type = 0x29
 )
 
 // Type represents the type of frame.
@@ -134,8 +101,10 @@ func (f Type) String() string {
 		return "DataFrame"
 	case TagOfTokenFrame:
 		return "TokenFrame"
-	case TagOfHandshakeFrame:
-		return "HandshakeFrame"
+	case TagOfAuthenticationFrame:
+		return "AuthenticationFrame"
+	case TagOfAuthenticationAckFrame:
+		return "AuthenticationAckFrame"
 	case TagOfPingFrame:
 		return "PingFrame"
 	case TagOfPongFrame:
@@ -152,14 +121,12 @@ func (f Type) String() string {
 		return "MetaFrame"
 	case TagOfPayloadFrame:
 		return "PayloadFrame"
-	// case TagOfTransactionID:
-	// 	return "TransactionID"
-	case TagOfHandshakeName:
-		return "HandshakeName"
-	case TagOfHandshakeType:
-		return "HandshakeType"
 	case TagOfHandshakeAckFrame:
-		return "TagOfHandshakeAckFrame"
+		return "HandshakeAckFrame"
+	case TagOfHandshakeFrame:
+		return "HandshakeFrame"
+	case TagOfCloseStreamFrame:
+		return "CloseStreamFrame"
 	default:
 		return "UnknownFrame"
 	}
