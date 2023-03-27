@@ -10,6 +10,7 @@ import (
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
+	"github.com/tetratelabs/wazero/sys"
 	"github.com/yomorun/yomo/core/frame"
 )
 
@@ -18,6 +19,7 @@ type wazeroRuntime struct {
 	conf   wazero.ModuleConfig
 	ctx    context.Context
 	module api.Module
+	cache  wazero.CompilationCache
 
 	observed  []frame.Tag
 	input     []byte
@@ -27,17 +29,23 @@ type wazeroRuntime struct {
 
 func newWazeroRuntime() (*wazeroRuntime, error) {
 	ctx := context.Background()
-	r := wazero.NewRuntime(ctx)
+	cache := wazero.NewCompilationCache()
+	runConfig := wazero.NewRuntimeConfig().
+		WithCompilationCache(cache)
+	r := wazero.NewRuntimeWithConfig(ctx, runConfig)
 	// Instantiate WASI, which implements host functions needed for TinyGo to implement `panic`.
 	wasi_snapshot_preview1.MustInstantiate(ctx, r)
 	config := wazero.NewModuleConfig().
-		WithStartFunctions().
+		// WithStartFunctions().
+		WithStdin(os.Stdin).
 		WithStdout(os.Stdout).
 		WithStderr(os.Stderr)
+
 	return &wazeroRuntime{
 		Runtime: r,
 		conf:    config,
 		ctx:     ctx,
+		cache:   cache,
 	}, nil
 }
 
@@ -74,7 +82,11 @@ func (r *wazeroRuntime) Init(wasmFile string) error {
 	init := module.ExportedFunction(WasmFuncInit)
 
 	if _, err := init.Call(r.ctx); err != nil {
-		return fmt.Errorf("init.Call %s: %v", WasmFuncInit, err)
+		if exitErr, ok := err.(*sys.ExitError); ok && exitErr.ExitCode() != 0 {
+			return fmt.Errorf("init.Call %s: %v", WasmFuncInit, err)
+		} else if !ok {
+			return fmt.Errorf("init.Call %s: %v", WasmFuncInit, err)
+		}
 	}
 
 	return nil
@@ -95,7 +107,11 @@ func (r *wazeroRuntime) RunHandler(data []byte) (frame.Tag, []byte, error) {
 	// run handler
 	handler := r.module.ExportedFunction(WasmFuncHandler)
 	if _, err := handler.Call(r.ctx, uint64(len(data))); err != nil {
-		return 0, nil, fmt.Errorf("handler.Call: %v", err)
+		if exitErr, ok := err.(*sys.ExitError); ok && exitErr.ExitCode() != 0 {
+			return 0, nil, fmt.Errorf("handler.Call: %v", err)
+		} else if !ok {
+			return 0, nil, fmt.Errorf("handler.Call: %v", err)
+		}
 	}
 
 	return r.outputTag, r.output, nil
@@ -103,6 +119,7 @@ func (r *wazeroRuntime) RunHandler(data []byte) (frame.Tag, []byte, error) {
 
 // Close releases all the resources related to the runtime
 func (r *wazeroRuntime) Close() error {
+	r.cache.Close(r.ctx)
 	return r.Runtime.Close(r.ctx)
 }
 
