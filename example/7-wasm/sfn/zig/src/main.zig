@@ -4,7 +4,7 @@ extern fn yomo_observe_datatag(tag: u32) void;
 extern fn yomo_load_input(pointer: *const u8) void;
 extern fn yomo_dump_output(tag: u32, pointer: *const u8, length: usize) void;
 
-pub fn main() anyerror!void {
+pub fn main() !void {
     std.log.info("yomo wasm sfn on zig", .{});
 }
 

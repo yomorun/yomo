@@ -11,11 +11,13 @@ pub fn build(b: *std.build.Builder) void {
     // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall.
     const mode = b.standardReleaseOptions();
 
-    const exe = b.addExecutable("sfn", "src/main.zig");
+    // const exe = b.addExecutable("sfn", "src/main.zig");
+    const lib = b.addSharedLibrary("sfn", "src/main.zig", b.version(1, 0, 0));
     // exe.setTarget(target);
-    exe.setTarget(.{ .cpu_arch = .wasm32, .os_tag = .wasi });
-    exe.setBuildMode(mode);
-    exe.install();
+    lib.setTarget(.{ .cpu_arch = .wasm32, .os_tag = .wasi });
+    lib.setBuildMode(mode);
+    lib.rdynamic = true;
+    lib.install();
 
     // const run_cmd = exe.run();
     // run_cmd.step.dependOn(b.getInstallStep());
