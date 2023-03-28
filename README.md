@@ -44,103 +44,90 @@ curl -fsSL https://get.yomo.run | sh
 Verify if the CLI was installed successfully
 
 ```bash
-$ yomo version
-
-YoMo CLI Version: v1.1.1
-Runtime Version: v1.8.1
+yomo version
 ```
 
-### 2. Create your stream function
+### 2. Write your first stream function with Rust and WebAssembly
 
-```bash
-$ yomo init yomo-app-demo
+In this demo, we will create a rust project observing a data stream and uppercase every string received, 
+then create send them to next process unit with another data stream:
 
-⌛  Initializing the Stream Function...
-✅  Congratulations! You have initialized the stream function successfully.
-ℹ️   You can enjoy the YoMo Stream Function via the command: 
-ℹ️   	DEV: 	yomo dev -n Noise yomo-app-demo/app.go
-ℹ️   	PROD: 	First run source application, eg: go run example/source/main.go
-		Second: yomo run -n yomo-app-demo yomo-app-demo/app.go
+```rust
+#[yomo::init]
+fn init() -> anyhow::Result<Vec<u32>> {
+    // return observe datatags
+    Ok(vec![0x33])
+}
 
-$ cd yomo-app-demo
+#[yomo::handler]
+fn handler(input: &[u8]) -> anyhow::Result<(u32, Vec<u8>)> {
+    println!("wasm rust sfn received {} bytes", input.len());
 
+    // parse input from bytes
+    let input = String::from_utf8(input.to_vec())?;
+
+    // your app logic goes here
+    let output = input.to_uppercase();
+
+    // return the datatag and output bytes
+    Ok((0x34, output.into_bytes()))
+}
 ```
 
-CLI will automatically create the `app.go`:
-
-```go
-package main
-
-import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"time"
-
-	"github.com/yomorun/yomo/rx"
-)
-
-// NoiseData represents the structure of data
-type NoiseData struct {
-	Noise float32 `json:"noise"` // Noise value
-	Time  int64   `json:"time"`  // Timestamp (ms)
-	From  string  `json:"from"`  // Source IP
-}
-
-var echo = func(_ context.Context, i interface{}) (interface{}, error) {
-	value := i.(*NoiseData)
-	value.Noise = value.Noise / 10
-	rightNow := time.Now().UnixNano() / int64(time.Millisecond)
-	fmt.Printf("[%s] %d > value: %f ⚡️=%dms\n", value.From, value.Time, value.Noise, rightNow-value.Time)
-	return value.Noise, nil
-}
-
-// Handler will handle data in Rx way
-func Handler(rxstream rx.Stream) rx.Stream {
-	stream := rxstream.
-		Unmarshal(json.Unmarshal, func() interface{} { return &NoiseData{} }).
-		Debounce(50).
-		Map(echo).
-		StdOut().
-		Marshal(json.Marshal).
-		PipeBackToZipper(0x34)
-
-	return stream
-}
-
-func DataTags() []byte {
-	return []byte{0x33}
-}
-
-```
+The full project can be found at [example/7-wasm/rust](example/7-wasm/rust).
 
 ### 3. Build and run
 
-1. Run `yomo dev` from the terminal. you will see the following message:
+Let's start the `YoMo Zipper` service, which is a service that processes data from the `YoMo Source` and coordinates the `YoMo Stream Function` to process a specific data stream:
 
-```sh
-$ yomo dev
-
-ℹ️  YoMo Stream Function file: app.go
-⌛  Create YoMo Stream Function instance...
-⌛  YoMo Stream Function building...
-✅  Success! YoMo Stream Function build.
-ℹ️   YoMo Stream Function is running...
-2021/11/16 10:02:43 [core:client]  has connected to yomo-app-demo (dev.yomo.run:9140)
-[localhost] 1637028164050 > value: 6.575044 ⚡️=9ms
-[StdOut]:  6.5750437
-[localhost] 1637028164151 > value: 10.076103 ⚡️=5ms
-[StdOut]:  10.076103
-[localhost] 1637028164251 > value: 15.560066 ⚡️=8ms
-[StdOut]:  15.560066
-[localhost] 1637028164352 > value: 15.330824 ⚡️=2ms
-[StdOut]:  15.330824
-[localhost] 1637028164453 > value: 10.859857 ⚡️=7ms
-[StdOut]:  10.859857
+```bash
+yomo serve -c example/uppercase/workflow.yaml
 ```
 
-Congratulations! You have done your first YoMo Stream Function.
+Then, start the WebAssembly Stream Function, get ready to process data:
 
+```bash
+cd example/7-wasm/sfn/rust
+rustup target add wasm32-wasi
+cargo build --release --target wasm32-wasi
+YOMO_SFN_NAME=upper bin/yomo run example/7-wasm/sfn/rust/target/wasm32-wasi/release/sfn.wasm
+```
+
+Finally, let's try send data:
+
+```bash
+$ go run example/uppercase/source/main.go
+
+time=2023-03-28T09:41:13.782+08:00 level=INFO msg="use credential" component=client client_type=Source client_id=9bqB-J8I3l-6YHkuhB11I client_name=source credential_name=none
+time=2023-03-28T09:41:13.786+08:00 level=INFO msg="use credential" component=client client_type="Stream Function" client_id=jS-GCGUBMRW1yTnyU6Yke client_name=sink credential_name=none
+2023/03/28 09:41:13 [send] [0] Hello, YoMo!
+2023/03/28 09:41:13 [recv] [0] HELLO, YOMO!
+2023/03/28 09:41:14 [send] [1] Hello, YoMo!
+2023/03/28 09:41:14 [recv] [1] HELLO, YOMO!
+2023/03/28 09:41:15 [send] [2] Hello, YoMo!
+2023/03/28 09:41:15 [recv] [2] HELLO, YOMO!
+2023/03/28 09:41:16 [send] [3] Hello, YoMo!
+2023/03/28 09:41:16 [recv] [3] HELLO, YOMO!
+2023/03/28 09:41:17 [send] [4] Hello, YoMo!
+2023/03/28 09:41:17 [recv] [4] HELLO, YOMO!
+2023/03/28 09:41:18 [send] [5] Hello, YoMo!
+2023/03/28 09:41:18 [recv] [5] HELLO, YOMO!
+```
+
+It works!
+
+There are many other examples that can help reduce the learning curve:
+
+- [0-basic](./example/0-basic/): Write Stream Function in pure golang.
+- [1-pipeline](./example/1-pipeline/): Unix Pipeline over Cloud.
+- [2-iopipe](./example/2-iopipe/): Unix Pipeline over Cloud.
+- [3-multi-sfn](./example/3-multi-sfn/): Write programs that do one thing and do it well. Write programs to work together. -- [Doug Mcllroy](https://en.wikipedia.org/wiki/Unix_philosophy)
+- [4-cascading-zipper](./example/4-cascading-zipper/): Flexible adjustment of sfn deployment and run locations.
+- [5-backflow](./example/5-backflow/)
+- [6-mesh](./example/6-mesh/): Demonstrate how to put your serverless closer to end-user.
+- [7-wasm](./example/7-wasm/): Implement Stream Function by WebAssembly in `c`, `go`, `rust` and even [zig](https://ziglang.org).
+- [8-deno](./example/8-deno/): Demonstrate how to write Stream Function with TypeScript and [deno](https://deno.com).
+- [9-cli](./example/9-cli/): Implement Stream Function in [Rx](https://reactivex.io/) way.
 
 ## 🧩 Interop
 

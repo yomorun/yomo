@@ -31,7 +31,7 @@ jobs:
       GOVER: 1.19
     steps:
       - name: Set up Go ${{ env.GOVER }}
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v4
         with:
           go-version: ${{ env.GOVER }}
       - name: Check out code
@@ -52,7 +52,7 @@ jobs:
       GOVER: 1.19
     steps:
       - name: Set up Go ${{ env.GOVER }}
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v4
         with:
           go-version: ${{ env.GOVER }}
       - name: Check out code
@@ -77,7 +77,7 @@ jobs:
       GOVER: 1.19
     steps:
       - name: Set up Go ${{ env.GOVER }}
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v4
         with:
           go-version: ${{ env.GOVER }}
       - name: Check out code
@@ -98,7 +98,7 @@ jobs:
       GOVER: 1.19
     steps:
       - name: Set up Go ${{ env.GOVER }}
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v4
         with:
           go-version: ${{ env.GOVER }}
       - name: Check out code

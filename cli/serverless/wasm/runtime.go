@@ -34,7 +34,9 @@ type Runtime interface {
 // NewRuntime returns a specific wasm runtime instance according to the type parameter
 func NewRuntime(runtimeType string) (Runtime, error) {
 	switch runtimeType {
-	case "", "wasmtime":
+	case "", "wazero":
+		return newWazeroRuntime()
+	case "wasmtime":
 		return newWasmtimeRuntime()
 	case "wasmedge":
 		return newWasmEdgeRuntime()
