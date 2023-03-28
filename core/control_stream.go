@@ -11,24 +11,34 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 )
 
+// ControlStream defines the interface for controlling a stream.
 type ControlStream interface {
+	// CloseStream notices the peer control stream to close data stream with the given streamID and error message.
 	CloseStream(streamID string, errString string) error
+	// ReceiveStreamClose receive from the peer control stream to close data stream according to streamID and error message.
 	ReceiveStreamClose() (streamID string, errString string, err error)
-
+	// CloseWithError closes the control stream.
 	CloseWithError(code uint64, errString string) error
 }
 
+// ServerControlStream defines the interface of server side control stream.
 type ServerControlStream interface {
 	ControlStream
 
+	// VerifyAuthentication verify the Authentication from client side.
 	VerifyAuthentication(verifyFunc func(auth.Object) (bool, error)) error
+	// AcceptStream accepts data stream from the request of client.
 	AcceptStream(context.Context) (DataStream, error)
 }
 
+// ClientControlStream defines the interface of client side control stream.
 type ClientControlStream interface {
 	ControlStream
 
+	// Authenticate provides auth credential,
+	// the credential will be sent to ServerControlStream to Authenticate the client.
 	Authenticate(*auth.Credential) error
+	// OpenStream request ServerControlStream to create a new data stream.
 	OpenStream(context.Context, *frame.HandshakeFrame) (DataStream, error)
 }
 
@@ -39,6 +49,7 @@ type serverControlStream struct {
 	stream frame.ReadWriter
 }
 
+// NewServerControlStream returns ServerControlStream from quic Connection and the first stream form the Connection.
 func NewServerControlStream(qconn quic.Connection, stream frame.ReadWriter) ServerControlStream {
 	return &serverControlStream{
 		qconn:  qconn,
@@ -120,6 +131,7 @@ type clientControlStream struct {
 	stream frame.ReadWriter
 }
 
+// OpenClientControlStream opens ClientControlStream from addr.
 func OpenClientControlStream(
 	ctx context.Context, addr string,
 	tlsConfig *tls.Config, quicConfig *quic.Config,
@@ -136,6 +148,7 @@ func OpenClientControlStream(
 	return NewClientControlStream(qconn, NewFrameStream(stream)), nil
 }
 
+// NewClientControlStream returns ClientControlStream from quic Connection and the first stream form the Connection.
 func NewClientControlStream(qconn quic.Connection, stream frame.ReadWriter) ClientControlStream {
 	return &clientControlStream{
 		qconn:  qconn,
