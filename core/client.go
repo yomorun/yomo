@@ -65,6 +65,7 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 	}
 }
 
+// Connect connect client to server.
 func (c *Client) Connect(ctx context.Context, addr string) error {
 	controlStream, dataStream, err := c.openStream(ctx, addr)
 	if err != nil {
@@ -104,6 +105,7 @@ func (c *Client) runBackground(ctx context.Context, addr string, controlStream C
 	}
 }
 
+// WriteFrame write frame to client.
 func (c *Client) WriteFrame(f frame.Frame) error {
 	c.writeFrameChan <- f
 	return nil
@@ -124,6 +126,7 @@ func (c *Client) cleanStream(controlStream ClientControlStream, err error) {
 	controlStream.CloseWithError(0, errString)
 }
 
+// Close close the client.
 func (c *Client) Close() error {
 	// break runBackgroud() for-loop.
 	c.ctxCancel()
@@ -212,6 +215,7 @@ func (c *Client) processStream(controlStream ClientControlStream, dataStream Dat
 	}
 }
 
+// Wait waits client error returning.
 func (c *Client) Wait() error {
 	err := <-c.shutdownChan
 	return err
