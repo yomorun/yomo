@@ -59,7 +59,7 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 		logger:         logger,
 		errorfn:        func(err error) { logger.Error("client err", err) },
 		writeFrameChan: make(chan frame.Frame),
-		shutdownChan:   make(chan error),
+		shutdownChan:   make(chan error, 1),
 		ctx:            ctx,
 		ctxCancel:      ctxCancel,
 	}
