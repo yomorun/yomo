@@ -33,3 +33,4 @@ zig-cache/
 Cargo.lock
 target
 coverage.txt
+*.o

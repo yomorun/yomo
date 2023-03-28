@@ -1,6 +1,6 @@
-# Implementing YoMo Stream Function using WebAssembly
+# Implemente YoMo Stream Function by WebAssembly
 
-Now YoMo is capable of running compiled [WebAssembly](https://webassembly.org)
+YoMo is capable of running compiled [WebAssembly](https://webassembly.org)
 serverless functions, which means developers can use their familiar programming
 languages other than Go to implement YoMo applications.
 
@@ -8,11 +8,20 @@ languages other than Go to implement YoMo applications.
 feedback is highly welcomed and there may be changes in the future stable
 releases._
 
-## Install wasm runtime
+## WASM/WASI Runtimes
 
-YoMo has integrated [Wasmtime](https://wasmtime.dev) and
-[WasmEdge](https://wasmedge.org). You can choose one of them as your wasm
-serverless function runtime.
+Currently, YoMo support three popular wasm runtimes:
+
+- [wazero](https://wazero.io)
+- [Wasmtime](https://wasmtime.dev)
+- [WasmEdge](https://wasmedge.org)
+
+By default, wasm stream functions are served by [wazero](https://wazero.io), 
+which is a zero dependency WebAssembly runtime written in Go.
+
+Also, YoMo integrated [Wasmtime](https://wasmtime.dev) and
+[WasmEdge](https://wasmedge.org). Developers can choose your favorite one as the runtime. 
+But both Wasmtime and WasmEdge need to install their requirements:
 
 - Wasmtime
 
