@@ -6,5 +6,5 @@ package wasm
 import "errors"
 
 func newWasmtimeRuntime() (Runtime, error) {
-	return nil, errors.New("this cli version doesn't support Wasmtime, please rebuild cli: TAGS=wastime make build")
+	return nil, errors.New("this cli version doesn't support Wasmtime, please rebuild cli: TAGS=wasmtime make build")
 }
