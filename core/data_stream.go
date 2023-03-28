@@ -49,7 +49,8 @@ type dataStream struct {
 	observed   []frame.Tag
 
 	closed atomic.Bool
-	// mu protected stream write and close.
+	// mu protected stream write and close
+	// because of quic stream write and close is not goroutinue-safely.
 	mu            sync.Mutex
 	stream        quic.Stream
 	controlStream ControlStream
@@ -103,6 +104,9 @@ func (s *dataStream) ReadFrame() (frame.Frame, error) {
 }
 
 func (s *dataStream) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	// Close the stream truly,
 	// This function should be called after controlStream receive a closeStreamFrame.
 	return s.stream.Close()
