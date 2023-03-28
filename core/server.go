@@ -159,7 +159,7 @@ func (s *Server) runWithStreamGroup(group *StreamGroup) <-chan error {
 	errch := make(chan error)
 
 	go func() {
-		errch <- group.Run(s.handleConnection)
+		errch <- group.Run(s.handleStreamContext)
 	}()
 
 	return errch
@@ -187,8 +187,12 @@ func (s *Server) Close() error {
 
 func (s *Server) handleRoute(c *Context) error {
 	if c.DataStream.StreamType() == StreamTypeStreamFunction {
+		md, err := s.metadataBuilder.Decode(c.DataStream.Metadata())
+		if err != nil {
+			return err
+		}
 		// route
-		route := s.router.Route(s.getContextMetadata(c))
+		route := s.router.Route(md)
 		if route == nil {
 			return errors.New("handleHandshakeFrame route is nil")
 		}
@@ -221,33 +225,9 @@ func (s *Server) handleRoute(c *Context) error {
 	return nil
 }
 
-// setContextMetadata decode byte and set to context.
-func (s *Server) setContextMetadata(c *Context) error {
-	m, err := s.metadataBuilder.Decode(c.DataStream.Metadata())
-	if err != nil {
-		return err
-	}
-	c.Set("context-metadada", m)
-	return nil
-}
-
-// getContextMetadata decode byte and set to context.
-func (s *Server) getContextMetadata(c *Context) metadata.Metadata {
-	m, ok := c.Get("context-metadada")
-	if ok {
-		return m.(metadata.Metadata)
-	}
-	return nil
-}
-
-// handleConnection handles streams on a connection,
+// handleStreamContext handles data streams,
 // use c.Logger in this function scope for more complete logger information.
-func (s *Server) handleConnection(c *Context) {
-	if err := s.setContextMetadata(c); err != nil {
-		c.CloseWithError(yerr.ErrorCodeRejected, err.Error())
-		return
-	}
-
+func (s *Server) handleStreamContext(c *Context) {
 	// handle route.
 	if err := s.handleRoute(c); err != nil {
 		c.CloseWithError(yerr.ErrorCodeRejected, err.Error())
@@ -583,5 +563,6 @@ func (s *Server) doConnectionCloseHandlers(qconn quic.Connection) {
 }
 
 func (s *Server) cleanRoute(c *Context) {
-	s.router.Route(s.getContextMetadata(c)).Remove(c.StreamID())
+	md, _ := s.metadataBuilder.Decode(c.DataStream.Metadata())
+	s.router.Route(md).Remove(c.StreamID())
 }
