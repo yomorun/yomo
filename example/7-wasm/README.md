@@ -1,4 +1,4 @@
-# Implemente YoMo Stream Function by WebAssembly
+# Implement YoMo Stream Function by WebAssembly
 
 YoMo is capable of running compiled [WebAssembly](https://webassembly.org)
 serverless functions, which means developers can use their familiar programming
