@@ -297,9 +297,7 @@ func (s *Server) handleConnection(c *Context) {
 		}
 
 		// add frame to context
-		if err := c.WithFrame(f); err != nil {
-			c.CloseWithError(yerr.ErrorCodeGoaway, err.Error())
-		}
+		c.WithFrame(f)
 
 		// before frame handlers
 		for _, handler := range s.beforeHandlers {

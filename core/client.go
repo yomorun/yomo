@@ -82,11 +82,10 @@ func (c *Client) runBackground(ctx context.Context, addr string, controlStream C
 
 	go c.processStream(controlStream, dataStream, reconnection)
 
-	defer c.cleanStream(controlStream, ctx.Err())
 	for {
 		select {
 		case <-c.ctx.Done():
-			c.cleanStream(controlStream, errors.New("yomo: client closed"))
+			c.cleanStream(controlStream, nil)
 			return
 		case <-ctx.Done():
 			c.cleanStream(controlStream, ctx.Err())
@@ -111,18 +110,18 @@ func (c *Client) WriteFrame(f frame.Frame) error {
 }
 
 func (c *Client) cleanStream(controlStream ClientControlStream, err error) {
-	if err == nil {
-		return
+	errString := ""
+	if err != nil {
+		errString = err.Error()
+		c.logger.Error("client cancel with error", err)
 	}
-
-	c.logger.Error("client shutdown with error", err)
 
 	// controlStream is nil represents that client is not connected.
 	if controlStream == nil {
 		return
 	}
 
-	controlStream.CloseWithError(0, err.Error())
+	controlStream.CloseWithError(0, errString)
 }
 
 func (c *Client) Close() error {
@@ -234,8 +233,13 @@ type readResult struct {
 func (c *Client) readFrame(dataStream DataStream) chan readResult {
 	readChan := make(chan readResult)
 	go func() {
-		f, err := dataStream.ReadFrame()
-		readChan <- readResult{f, err}
+		for {
+			f, err := dataStream.ReadFrame()
+			readChan <- readResult{f, err}
+			if err != nil {
+				return
+			}
+		}
 	}()
 
 	return readChan

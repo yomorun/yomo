@@ -103,10 +103,8 @@ func newContext(dataStream DataStream, logger *slog.Logger) (c *Context) {
 // WithFrame sets a frame to context.
 //
 // TODO: delete frame from context due to different lifecycle between stream and stream.
-func (c *Context) WithFrame(f frame.Frame) error {
+func (c *Context) WithFrame(f frame.Frame) {
 	c.Frame = f
-
-	return nil
 }
 
 // CloseWithError close dataStream in se error,
