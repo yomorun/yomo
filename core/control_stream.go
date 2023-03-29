@@ -107,7 +107,7 @@ func (ss *serverControlStream) VerifyAuthentication(verifyFunc func(auth.Object)
 	}
 	received, ok := first.(*frame.AuthenticationFrame)
 	if !ok {
-		return fmt.Errorf("yomo: read unexcept frame while waiting for authentication, frame read: %s", received.Type().String())
+		return fmt.Errorf("yomo: read unexpected frame while waiting for authentication, frame read: %s", received.Type().String())
 	}
 	ok, err = verifyFunc(received)
 	if err != nil {
