@@ -19,7 +19,7 @@ func (f *HandshakeAckFrame) Type() Type {
 	return TagOfHandshakeAckFrame
 }
 
-// Type gets the type of the HandshakeAckFrame.
+// StreamID returns the id of stream be acked.
 func (f *HandshakeAckFrame) StreamID() string {
 	return f.streamID
 }
