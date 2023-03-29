@@ -5,6 +5,7 @@
 *.so
 *.dylib
 *.yomo
+*.a
 
 # Test binary, built with `go test -c`
 *.test
@@ -29,6 +30,7 @@ scripts/tls/
 .vscode/
 release/cli
 zig-cache/
+zig-out/
 *.wasm
 Cargo.lock
 target
