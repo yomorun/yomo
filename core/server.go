@@ -120,19 +120,19 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 			continue
 		}
 
-		controlStream, err := conn.AcceptStream(ctx)
+		logger := s.logger.With("client_addr", conn.RemoteAddr())
+
+		stream0, err := conn.AcceptStream(ctx)
 		if err != nil {
 			continue
 		}
 
-		logger := s.logger.With("client_addr", conn.RemoteAddr())
-
-		streamGroup := NewStreamGroup(conn, NewFrameStream(controlStream), logger)
+		controlStream := NewServerControlStream(conn, NewFrameStream(stream0))
 
 		// Auth accepts a AuthenticationFrame from client. The first frame from client must be
 		// AuthenticationFrame, It returns true if auth successful otherwise return false.
 		// It response to client a AuthenticationAckFrame.
-		err = streamGroup.VerifyAuthentication(s.handleAuthenticationFrame)
+		err = controlStream.VerifyAuthentication(s.handleAuthenticationFrame)
 		if err != nil {
 			logger.Warn("Authentication Failed", "error", err)
 			continue
@@ -140,6 +140,8 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		logger.Debug("Authentication Success")
 
 		go func(qconn quic.Connection) {
+			streamGroup := NewStreamGroup(ctx, controlStream, s.connector, logger)
+
 			defer streamGroup.Wait()
 			defer s.doConnectionCloseHandlers(qconn)
 
@@ -157,7 +159,7 @@ func (s *Server) runWithStreamGroup(group *StreamGroup) <-chan error {
 	errch := make(chan error)
 
 	go func() {
-		errch <- group.Run(s.connector, s.metadataBuilder, s.handleConnection)
+		errch <- group.Run(s.handleStreamContext)
 	}()
 
 	return errch
@@ -168,6 +170,10 @@ func (s *Server) Logger() *slog.Logger { return s.logger }
 
 // Close will shutdown the server.
 func (s *Server) Close() error {
+	// connector
+	if s.connector != nil {
+		s.connector.Close()
+	}
 	// listener
 	if s.listener != nil {
 		s.listener.Close()
@@ -176,17 +182,17 @@ func (s *Server) Close() error {
 	if s.router != nil {
 		s.router.Clean()
 	}
-	// connector
-	if s.connector != nil {
-		s.connector.Close()
-	}
 	return nil
 }
 
 func (s *Server) handleRoute(c *Context) error {
 	if c.DataStream.StreamType() == StreamTypeStreamFunction {
+		md, err := s.metadataBuilder.Decode(c.DataStream.Metadata())
+		if err != nil {
+			return err
+		}
 		// route
-		route := s.router.Route(c.DataStream.Metadata())
+		route := s.router.Route(md)
 		if route == nil {
 			return errors.New("handleHandshakeFrame route is nil")
 		}
@@ -219,13 +225,15 @@ func (s *Server) handleRoute(c *Context) error {
 	return nil
 }
 
-// handleConnection handles streams on a connection,
+// handleStreamContext handles data streams,
 // use c.Logger in this function scope for more complete logger information.
-func (s *Server) handleConnection(c *Context) {
+func (s *Server) handleStreamContext(c *Context) {
+	// handle route.
 	if err := s.handleRoute(c); err != nil {
 		c.CloseWithError(yerr.ErrorCodeRejected, err.Error())
 		return
 	}
+	defer s.cleanRoute(c)
 
 	// start frame handlers
 	for _, handler := range s.startHandlers {
@@ -235,8 +243,6 @@ func (s *Server) handleConnection(c *Context) {
 			return
 		}
 	}
-
-	defer s.connClose(c)
 
 	// check update for stream
 	for {
@@ -248,10 +254,9 @@ func (s *Server) handleConnection(c *Context) {
 					// client abort
 					c.Logger.Info("client close the connection")
 					break
-				} else {
-					ye := yerr.New(yerr.Parse(e.ErrorCode), err)
-					c.Logger.Error("read frame error", ye)
 				}
+				ye := yerr.New(yerr.Parse(e.ErrorCode), err)
+				c.Logger.Error("read frame error", ye)
 			} else if err == io.EOF {
 				c.Logger.Info("connection EOF")
 				break
@@ -271,9 +276,7 @@ func (s *Server) handleConnection(c *Context) {
 		}
 
 		// add frame to context
-		if err := c.WithFrame(f); err != nil {
-			c.CloseWithError(yerr.ErrorCodeGoaway, err.Error())
-		}
+		c.WithFrame(f)
 
 		// before frame handlers
 		for _, handler := range s.beforeHandlers {
@@ -319,7 +322,7 @@ func (s *Server) mainFrameHandler(c *Context) error {
 	return nil
 }
 
-func (s *Server) handleAuthenticationFrame(f *frame.AuthenticationFrame) (bool, error) {
+func (s *Server) handleAuthenticationFrame(f auth.Object) (bool, error) {
 	ok := auth.Authenticate(s.opts.auths, f)
 
 	if ok {
@@ -351,13 +354,16 @@ func (s *Server) handleDataFrame(c *Context) error {
 	if err != nil {
 		return err
 	}
-	metadata := m
-	if metadata == nil {
-		metadata = from.Metadata()
+
+	if m == nil {
+		m, err = s.metadataBuilder.Decode(from.Metadata())
+		if err != nil {
+			return err
+		}
 	}
 
 	// route
-	route := s.router.Route(metadata)
+	route := s.router.Route(m)
 	if route == nil {
 		c.Logger.Warn("handleDataFrame route is nil")
 		return fmt.Errorf("handleDataFrame route is nil")
@@ -487,7 +493,7 @@ func (s *Server) dispatchToDownstreams(c *Context) {
 		f := c.Frame.(*frame.DataFrame)
 		if f.IsBroadcast() {
 			if f.GetMetaFrame().Metadata() == nil {
-				f.GetMetaFrame().SetMetadata(stream.Metadata().Encode())
+				f.GetMetaFrame().SetMetadata(stream.Metadata())
 			}
 			for addr, ds := range s.downstreams {
 				c.Logger.Info("dispatching to", "dispatch_addr", addr, "tid", f.TransactionID())
@@ -555,7 +561,7 @@ func (s *Server) doConnectionCloseHandlers(qconn quic.Connection) {
 	}
 }
 
-func (s *Server) connClose(c *Context) {
-	s.router.Route(c.DataStream.Metadata()).Remove(c.StreamID())
-	s.connector.Remove(c.StreamID())
+func (s *Server) cleanRoute(c *Context) {
+	md, _ := s.metadataBuilder.Decode(c.DataStream.Metadata())
+	s.router.Route(md).Remove(c.StreamID())
 }

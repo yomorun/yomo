@@ -103,7 +103,6 @@ func (s *streamFunction) Connect() error {
 					// todo: frame.SetTransactionID
 					frame.SetCarriage(data.Tag, data.Carriage)
 					s.client.WriteFrame(frame)
-					frame.Clean()
 				}
 			}
 		}()
@@ -156,7 +155,6 @@ func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
 				frame.SetCarriage(tag, resp)
 				s.client.Logger().Debug("start WriteFrame()", "resp", resp)
 				s.client.WriteFrame(frame)
-				frame.Clean()
 			}
 		}()
 	} else if s.pfn != nil {
@@ -170,7 +168,6 @@ func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
 // Send a DataFrame to zipper.
 func (s *streamFunction) Write(tag frame.Tag, carriage []byte) error {
 	frame := frame.NewDataFrame()
-	defer frame.Clean()
 	frame.SetCarriage(tag, carriage)
 	return s.client.WriteFrame(frame)
 }

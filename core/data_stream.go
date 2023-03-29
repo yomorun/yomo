@@ -2,53 +2,39 @@ package core
 
 import (
 	"context"
-	"errors"
 	"io"
 	"sync"
 	"sync/atomic"
 
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/core/metadata"
-	"golang.org/x/exp/slog"
 )
-
-// ErrStreamClosed be returned if dataStream has be closed.
-var ErrStreamClosed = errors.New("yomo: dataStream closed")
 
 // DataStream wraps the specific io streams (typically quic.Stream) to transfer frames.
 // DataStream be used to read and write frames, and be managed by Connector.
 type DataStream interface {
 	// Context returns context.Context to manages DataStream lifecycle.
 	Context() context.Context
-
 	// Name returns the name of the stream, which is set by clients.
 	Name() string
-
 	// ID represents the dataStream ID, the ID is an unique string.
 	ID() string
-
 	// StreamType represents dataStream type (Source | SFN | UpstreamZipper).
 	StreamType() StreamType
-
 	// Metadata returns the extra info of the application
-	Metadata() metadata.Metadata
-
+	Metadata() []byte
 	// Close real close DataStream,
 	// The controlStream calls this function, If you want close a dataStream, to use
 	// the CloseWithError api.
 	io.Closer
-
 	// CloseWithError close DataStream with an error string,
 	// This function do not real close the underlying stream, It notices controlStream to
 	// close itself, The controlStream must close underlying stream after receive CloseStreamFrame.
 	CloseWithError(string) error
-
 	// ReadWriter writes or reads frame to underlying stream.
 	// Writing and Reading are both goroutine-safely handle frames to peer side.
 	// ReadWriter returns stream closed error if stream is closed.
 	frame.ReadWriter
-
 	// ObserveDataTags observed data tags.
 	// TODO: There maybe a sorted list, we can find tag quickly.
 	ObserveDataTags() []frame.Tag
@@ -59,16 +45,15 @@ type dataStream struct {
 	name       string
 	id         string
 	streamType StreamType
-	metadata   metadata.Metadata
+	metadata   []byte
 	observed   []frame.Tag
 
 	closed atomic.Bool
-	// mu protected stream write and close.
+	// mu protected stream write and close
+	// because of quic stream write and close is not goroutinue-safely.
 	mu            sync.Mutex
 	stream        quic.Stream
-	controlStream frame.Writer
-
-	logger *slog.Logger
+	controlStream ControlStream
 }
 
 // newDataStream constructures dataStream.
@@ -76,13 +61,11 @@ func newDataStream(
 	name string,
 	id string,
 	streamType StreamType,
-	metadata metadata.Metadata,
+	metadata []byte,
 	stream quic.Stream,
 	observed []frame.Tag,
-	logger *slog.Logger,
-	controlStream frame.Writer,
+	controlStream ControlStream,
 ) DataStream {
-	logger.Debug("new data stream")
 	return &dataStream{
 		name:          name,
 		id:            id,
@@ -91,7 +74,6 @@ func newDataStream(
 		stream:        stream,
 		observed:      observed,
 		controlStream: controlStream,
-		logger:        logger,
 	}
 }
 
@@ -99,13 +81,13 @@ func newDataStream(
 func (s *dataStream) Context() context.Context     { return s.stream.Context() }
 func (s *dataStream) ID() string                   { return s.id }
 func (s *dataStream) Name() string                 { return s.name }
-func (s *dataStream) Metadata() metadata.Metadata  { return s.metadata }
+func (s *dataStream) Metadata() []byte             { return s.metadata }
 func (s *dataStream) StreamType() StreamType       { return s.streamType }
 func (s *dataStream) ObserveDataTags() []frame.Tag { return s.observed }
 
 func (s *dataStream) WriteFrame(frm frame.Frame) error {
 	if s.closed.Load() {
-		return ErrStreamClosed
+		return io.EOF
 	}
 
 	s.mu.Lock()
@@ -116,12 +98,15 @@ func (s *dataStream) WriteFrame(frm frame.Frame) error {
 
 func (s *dataStream) ReadFrame() (frame.Frame, error) {
 	if s.closed.Load() {
-		return nil, ErrStreamClosed
+		return nil, io.EOF
 	}
 	return ParseFrame(s.stream)
 }
 
 func (s *dataStream) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	// Close the stream truly,
 	// This function should be called after controlStream receive a closeStreamFrame.
 	return s.stream.Close()
@@ -129,7 +114,7 @@ func (s *dataStream) Close() error {
 
 func (s *dataStream) CloseWithError(errString string) error {
 	if s.closed.Load() {
-		return ErrStreamClosed
+		return nil
 	}
 	s.closed.Store(true)
 
@@ -138,7 +123,7 @@ func (s *dataStream) CloseWithError(errString string) error {
 
 	// Only notice client-side controlStream the stream has been closed.
 	// The controlStream reads closeStreamFrame and to close dataStream.
-	return s.controlStream.WriteFrame(frame.NewCloseStreamFrame(s.id, errString))
+	return s.controlStream.CloseStream(s.id, errString)
 }
 
 const (
