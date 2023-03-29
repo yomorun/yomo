@@ -46,7 +46,7 @@ func (h *HandshakeFrame) ObserveDataTags() []Tag { return h.observeDataTags }
 func (h *HandshakeFrame) Metadata() []byte { return h.metadata }
 
 // Type returns the type of HandshakeFrame.
-func (f *HandshakeFrame) Type() Type { return TagOfHandshakeFrame }
+func (h *HandshakeFrame) Type() Type { return TagOfHandshakeFrame }
 
 // Encode encodes HandshakeFrame to bytes in Y3 codec.
 func (h *HandshakeFrame) Encode() []byte {

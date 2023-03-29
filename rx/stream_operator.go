@@ -941,15 +941,14 @@ func (s *StreamImpl) SlidingWindowWithTime(windowTimeInMS uint32, slideTimeInMS 
 				}
 				if item.Error() {
 					continue
-				} else {
-					mutex.Lock()
-					// buffer data
-					buf = append(buf, slidingWithTimeItem{
-						timestamp: time.Now(),
-						data:      item.V,
-					})
-					mutex.Unlock()
 				}
+				mutex.Lock()
+				// buffer data
+				buf = append(buf, slidingWithTimeItem{
+					timestamp: time.Now(),
+					data:      item.V,
+				})
+				mutex.Unlock()
 				// immediately send the original item to downstream
 				Of(item.V).SendContext(ctx, next)
 			}

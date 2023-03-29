@@ -254,10 +254,9 @@ func (s *Server) handleStreamContext(c *Context) {
 					// client abort
 					c.Logger.Info("client close the connection")
 					break
-				} else {
-					ye := yerr.New(yerr.Parse(e.ErrorCode), err)
-					c.Logger.Error("read frame error", ye)
 				}
+				ye := yerr.New(yerr.Parse(e.ErrorCode), err)
+				c.Logger.Error("read frame error", ye)
 			} else if err == io.EOF {
 				c.Logger.Info("connection EOF")
 				break

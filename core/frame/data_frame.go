@@ -50,9 +50,9 @@ func newDataFrame() (data *DataFrame) {
 }
 
 // Clean cleans DataFrame.
-// Note that if the client is calling WriteFrame(), it will automatically invoke Clean(),
-// so there is no need to call Clean() separately.
-// The DataFrame be cleaned is not available, Do not use DataFrame after Clean() called.
+// Note that:
+// 1/ if the client is calling WriteFrame(), it will automatically invoke Clean(), so there is no need to call Clean() separately.
+// 2/ The DataFrame will be unavailable after cleaned, do not access DataFrame after Clean() called.
 func (d *DataFrame) Clean() {
 	// reset metadataFrame
 	d.metaFrame.tid = ""

@@ -1,3 +1,4 @@
+// Package core defines the core interfaces of yomo.
 package core
 
 import (
@@ -13,9 +14,9 @@ import (
 
 // ControlStream defines the interface for controlling a stream.
 type ControlStream interface {
-	// CloseStream notices the peer control stream to close data stream with the given streamID and error message.
+	// CloseStream notifies the peer's control stream to close the data stream with the given streamID and error message.
 	CloseStream(streamID string, errString string) error
-	// ReceiveStreamClose receive from the peer control stream to close data stream according to streamID and error message.
+	// ReceiveStreamClose is received from the peer's control stream to close the data stream according to streamID and error message.
 	ReceiveStreamClose() (streamID string, errString string, err error)
 	// CloseWithError closes the control stream.
 	CloseWithError(code uint64, errString string) error
@@ -35,10 +36,9 @@ type ServerControlStream interface {
 type ClientControlStream interface {
 	ControlStream
 
-	// Authenticate provides auth credential,
-	// the credential will be sent to ServerControlStream to Authenticate the client.
+	// Authenticate with credential, the credential will be sent to ServerControlStream to authenticate the client.
 	Authenticate(*auth.Credential) error
-	// OpenStream request ServerControlStream to create a new data stream.
+	// OpenStream request a ServerControlStream to create a new data stream.
 	OpenStream(context.Context, *frame.HandshakeFrame) (DataStream, error)
 }
 
@@ -49,7 +49,7 @@ type serverControlStream struct {
 	stream frame.ReadWriter
 }
 
-// NewServerControlStream returns ServerControlStream from quic Connection and the first stream form the Connection.
+// NewServerControlStream returns ServerControlStream from quic Connection and the first stream of this Connection.
 func NewServerControlStream(qconn quic.Connection, stream frame.ReadWriter) ServerControlStream {
 	return &serverControlStream{
 		qconn:  qconn,
@@ -107,7 +107,7 @@ func (ss *serverControlStream) VerifyAuthentication(verifyFunc func(auth.Object)
 	}
 	received, ok := first.(*frame.AuthenticationFrame)
 	if !ok {
-		return fmt.Errorf("yomo: read unexcept frame during waiting authentication, frame readed: %s", received.Type().String())
+		return fmt.Errorf("yomo: read unexcept frame while waiting for authentication, frame read: %s", received.Type().String())
 	}
 	ok, err = verifyFunc(received)
 	if err != nil {
