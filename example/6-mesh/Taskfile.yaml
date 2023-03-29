@@ -22,8 +22,8 @@ tasks:
     desc: clean
     cmds:
       - rm -rf ./bin
-      - rm -rf ./stream-fn/stream-fn*
-      - rm -rf ./stream-fn-db/stream-fn-db*
+      - rm -rf ./stream-fn/bin
+      - rm -rf ./stream-fn-db/bin
 
   build:
     desc: build yomo cli tools

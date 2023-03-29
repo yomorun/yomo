@@ -62,4 +62,6 @@ tasks:
     desc: "cli clean"
     cmds:
       - rm -rf ./bin
+      - rm -rf ./sfn-db/sl.*
+      - rm -rf ./sfn-rx/sl.*
     silent: true
