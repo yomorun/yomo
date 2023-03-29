@@ -70,7 +70,8 @@ const (
 	TagOfHandshakeMetadata        Type = 0x07
 
 	// TagOfHandshakeAckFrame
-	TagOfHandshakeAckFrame Type = 0x29
+	TagOfHandshakeAckFrame    Type = 0x29
+	TagOfHandshakeAckStreamID Type = 0x28
 
 	TagOfPingFrame       Type = 0x3C
 	TagOfPongFrame       Type = 0x3B
