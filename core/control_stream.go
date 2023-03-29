@@ -77,7 +77,7 @@ func (ss *serverControlStream) AcceptStream(context.Context) (DataStream, error)
 		if err != nil {
 			return nil, err
 		}
-		_, err = stream.Write(frame.NewHandshakeAckFrame().Encode())
+		_, err = stream.Write(frame.NewHandshakeAckFrame(ff.ID()).Encode())
 		if err != nil {
 			return nil, err
 		}
@@ -193,9 +193,13 @@ func dataStreamAcked(stream DataStream) error {
 		return err
 	}
 
-	_, ok := first.(*frame.HandshakeAckFrame)
+	f, ok := first.(*frame.HandshakeAckFrame)
 	if !ok {
 		return fmt.Errorf("yomo: data stream read first frame should be HandshakeAckFrame, but got %s", first.Type().String())
+	}
+
+	if f.StreamID() != stream.ID() {
+		return fmt.Errorf("yomo: data stream ack exception, stream id did not match")
 	}
 
 	return nil
