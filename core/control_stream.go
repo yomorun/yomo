@@ -6,18 +6,28 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
+	"sync"
 
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/frame"
 )
 
+// ErrHandshakeRejected be returned when a stream be rejected after sending a handshake.
+// It contains the streamID and the error. It is used in AcceptStream scope.
+type ErrHandshakeRejected struct {
+	Reason   string
+	StreamID string
+}
+
+// Error returns a error string for the implementation of the error interface.
+func (e *ErrHandshakeRejected) Error() string {
+	return fmt.Sprintf("yomo: handshake be rejected, streamID=%s, reason=%s", e.StreamID, e.Reason)
+}
+
 // ControlStream defines the interface for controlling a stream.
 type ControlStream interface {
-	// CloseStream notifies the peer's control stream to close the data stream with the given streamID and error message.
-	CloseStream(streamID string, errString string) error
-	// ReceiveStreamClose is received from the peer's control stream to close the data stream according to streamID and error message.
-	ReceiveStreamClose() (streamID string, errString string, err error)
 	// CloseWithError closes the control stream.
 	CloseWithError(code uint64, errString string) error
 }
@@ -28,72 +38,99 @@ type ServerControlStream interface {
 
 	// VerifyAuthentication verify the Authentication from client side.
 	VerifyAuthentication(verifyFunc func(auth.Object) (bool, error)) error
-	// AcceptStream accepts data stream from the request of client.
-	AcceptStream(context.Context) (DataStream, error)
+
+	// HandshakeWithFunc reveives a HandshakeFrame from control stream and handle it in the function be passed in.
+	// if handler returns nil, There will return a DataStream and nil,
+	// if handler returns an error, There will return a nil and the error,
+	HandshakeWithFunc(context.Context, func(*frame.HandshakeFrame) error) (DataStream, error)
 }
 
-// ClientControlStream defines the interface of client side control stream.
+// ClientControlStream is an interface that defines the methods for a client-side control stream.
 type ClientControlStream interface {
 	ControlStream
 
-	// Authenticate with credential, the credential will be sent to ServerControlStream to authenticate the client.
+	// Authenticate sends the provided credential to the server's control stream to authenticate the client.
 	Authenticate(*auth.Credential) error
-	// OpenStream request a ServerControlStream to create a new data stream.
-	OpenStream(context.Context, *frame.HandshakeFrame) (DataStream, error)
+
+	// SendHandshake sends a HandshakeFrame to the server's control stream to request a new data stream.
+	// If the handshake is successful, a DataStream will be returned by the AcceptStream() method.
+	SendHandshake(*frame.HandshakeFrame) error
+
+	// AcceptStream accepts a DataStream from the server if SendHandshake() has been called before.
+	// This method should be executed in a for-loop.
+	// If the handshake is rejected, an ErrHandshakeRejected error will be returned. This error does not represent
+	// a network error and the for-loop can continue.
+	AcceptStream(context.Context) (DataStream, error)
 }
 
 var _ ServerControlStream = &serverControlStream{}
 
 type serverControlStream struct {
-	qconn  quic.Connection
-	stream frame.ReadWriter
+	qconn              quic.Connection
+	stream             frame.ReadWriter
+	handshakeFrameChan chan *frame.HandshakeFrame
 }
 
 // NewServerControlStream returns ServerControlStream from quic Connection and the first stream of this Connection.
 func NewServerControlStream(qconn quic.Connection, stream frame.ReadWriter) ServerControlStream {
-	return &serverControlStream{
-		qconn:  qconn,
-		stream: stream,
+	controlStream := &serverControlStream{
+		qconn:              qconn,
+		stream:             stream,
+		handshakeFrameChan: make(chan *frame.HandshakeFrame),
+	}
+
+	go controlStream.continusReadFrame()
+
+	return controlStream
+}
+
+func (ss *serverControlStream) continusReadFrame() {
+	defer func() {
+		close(ss.handshakeFrameChan)
+	}()
+	for {
+		f, err := ss.stream.ReadFrame()
+		if err != nil {
+			ss.qconn.CloseWithError(0, err.Error())
+			return
+		}
+		switch ff := f.(type) {
+		case *frame.HandshakeFrame:
+			ss.handshakeFrameChan <- ff
+		default:
+			ss.qconn.CloseWithError(0, fmt.Sprintf("yomo: server control stream read unexcepted frame %s", f.Type().String()))
+		}
 	}
 }
 
-func (ss *serverControlStream) ReceiveStreamClose() (streamID string, errReason string, err error) {
-	return receiveStreamClose(ss.stream)
-}
-
-func (ss *serverControlStream) CloseStream(streamID string, errString string) error {
-	return closeStream(ss.stream, streamID, errString)
-}
-
-func (ss *serverControlStream) AcceptStream(context.Context) (DataStream, error) {
-	f, err := ss.stream.ReadFrame()
+func (ss *serverControlStream) HandshakeWithFunc(ctx context.Context, handshakeFunc func(*frame.HandshakeFrame) error) (DataStream, error) {
+	ff, ok := <-ss.handshakeFrameChan
+	if !ok {
+		return nil, io.EOF
+	}
+	err := handshakeFunc(ff)
 	if err != nil {
+		ss.stream.WriteFrame(frame.NewHandshakeRejectFrame(ff.ID(), err.Error()))
 		return nil, err
 	}
 
-	switch ff := f.(type) {
-	case *frame.HandshakeFrame:
-		stream, err := ss.qconn.OpenStreamSync(context.Background())
-		if err != nil {
-			return nil, err
-		}
-		_, err = stream.Write(frame.NewHandshakeAckFrame(ff.ID()).Encode())
-		if err != nil {
-			return nil, err
-		}
-		dataStream := newDataStream(
-			ff.Name(),
-			ff.ID(),
-			StreamType(ff.StreamType()),
-			ff.Metadata(),
-			stream,
-			ff.ObserveDataTags(),
-			ss,
-		)
-		return dataStream, nil
-	default:
-		return nil, fmt.Errorf("yomo: control stream read unexpected frame %s", f.Type())
+	stream, err := ss.qconn.OpenStreamSync(ctx)
+	if err != nil {
+		return nil, err
 	}
+	_, err = stream.Write(frame.NewHandshakeAckFrame(ff.ID()).Encode())
+	if err != nil {
+		return nil, err
+	}
+	dataStream := newDataStream(
+		ff.Name(),
+		ff.ID(),
+		StreamType(ff.StreamType()),
+		ff.Metadata(),
+		stream,
+		ff.ObserveDataTags(),
+	)
+	return dataStream, nil
 }
 
 func (ss *serverControlStream) CloseWithError(code uint64, errString string) error {
@@ -129,6 +166,11 @@ var _ ClientControlStream = &clientControlStream{}
 type clientControlStream struct {
 	qconn  quic.Connection
 	stream frame.ReadWriter
+	// mu protect handshakeFrames
+	mu                       sync.Mutex
+	handshakeFrames          map[string]*frame.HandshakeFrame
+	handshakeRejectFrameChan chan *frame.HandshakeRejectFrame
+	acceptStreamResultChan   chan acceptStreamResult
 }
 
 // OpenClientControlStream opens ClientControlStream from addr.
@@ -140,28 +182,47 @@ func OpenClientControlStream(
 	if err != nil {
 		return nil, err
 	}
-	stream, err := qconn.OpenStream()
+	stream0, err := qconn.OpenStream()
 	if err != nil {
 		return nil, err
 	}
 
-	return NewClientControlStream(qconn, NewFrameStream(stream)), nil
+	return NewClientControlStream(ctx, qconn, NewFrameStream(stream0)), nil
 }
 
 // NewClientControlStream returns ClientControlStream from quic Connection and the first stream form the Connection.
-func NewClientControlStream(qconn quic.Connection, stream frame.ReadWriter) ClientControlStream {
-	return &clientControlStream{
-		qconn:  qconn,
-		stream: stream,
+func NewClientControlStream(ctx context.Context, qconn quic.Connection, stream frame.ReadWriter) ClientControlStream {
+	controlStream := &clientControlStream{
+		qconn:                    qconn,
+		stream:                   stream,
+		handshakeFrames:          make(map[string]*frame.HandshakeFrame),
+		handshakeRejectFrameChan: make(chan *frame.HandshakeRejectFrame),
+		acceptStreamResultChan:   make(chan acceptStreamResult),
 	}
+
+	go controlStream.continusReadFrame()
+	go controlStream.continusAcceptStream(ctx)
+
+	return controlStream
 }
 
-func (cs *clientControlStream) ReceiveStreamClose() (streamID string, errReason string, err error) {
-	return receiveStreamClose(cs.stream)
-}
-
-func (cs *clientControlStream) CloseStream(streamID string, errString string) error {
-	return closeStream(cs.stream, streamID, errString)
+func (cs *clientControlStream) continusReadFrame() {
+	defer func() {
+		close(cs.handshakeRejectFrameChan)
+	}()
+	for {
+		f, err := cs.stream.ReadFrame()
+		if err != nil {
+			cs.qconn.CloseWithError(0, err.Error())
+			return
+		}
+		switch ff := f.(type) {
+		case *frame.HandshakeRejectFrame:
+			cs.handshakeRejectFrameChan <- ff
+		default:
+			cs.qconn.CloseWithError(0, fmt.Sprintf("yomo: server control stream read unexcepted frame %s", f.Type().String()))
+		}
+	}
 }
 
 func (cs *clientControlStream) Authenticate(cred *auth.Credential) error {
@@ -186,26 +247,22 @@ func (cs *clientControlStream) Authenticate(cred *auth.Credential) error {
 	return nil
 }
 
-// dataStreamAcked drain HandshakeAckFrame from stream.
-func dataStreamAcked(stream DataStream) error {
+// ackDataStream drain HandshakeAckFrame from the Reader and return streamID and error.
+func ackDataStream(stream frame.Reader) (string, error) {
 	first, err := stream.ReadFrame()
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	f, ok := first.(*frame.HandshakeAckFrame)
 	if !ok {
-		return fmt.Errorf("yomo: data stream read first frame should be HandshakeAckFrame, but got %s", first.Type().String())
+		return "", fmt.Errorf("yomo: data stream read first frame should be HandshakeAckFrame, but got %s", first.Type().String())
 	}
 
-	if f.StreamID() != stream.ID() {
-		return fmt.Errorf("yomo: data stream ack exception, stream id did not match")
-	}
-
-	return nil
+	return f.StreamID(), nil
 }
 
-func (cs *clientControlStream) OpenStream(ctx context.Context, hf *frame.HandshakeFrame) (DataStream, error) {
+func (cs *clientControlStream) SendHandshake(hf *frame.HandshakeFrame) error {
 	err := cs.stream.WriteFrame(frame.NewHandshakeFrame(
 		hf.Name(),
 		hf.ID(),
@@ -215,50 +272,86 @@ func (cs *clientControlStream) OpenStream(ctx context.Context, hf *frame.Handsha
 	))
 
 	if err != nil {
-		return nil, err
+		return err
 	}
 
+	cs.mu.Lock()
+	cs.handshakeFrames[hf.ID()] = hf
+	cs.mu.Unlock()
+
+	return nil
+}
+
+func (cs *clientControlStream) AcceptStream(ctx context.Context) (DataStream, error) {
+	select {
+	case reject := <-cs.handshakeRejectFrameChan:
+		cs.mu.Lock()
+		delete(cs.handshakeFrames, reject.StreamID())
+		cs.mu.Unlock()
+
+		return nil, &ErrHandshakeRejected{
+			Reason:   reject.Reason(),
+			StreamID: reject.StreamID(),
+		}
+	case result := <-cs.acceptStreamResultChan:
+		if err := result.err; err != nil {
+			return nil, err
+		}
+
+		cs.mu.Lock()
+		delete(cs.handshakeFrames, result.stream.ID())
+		cs.mu.Unlock()
+
+		return result.stream, nil
+	}
+}
+
+type acceptStreamResult struct {
+	stream DataStream
+	err    error
+}
+
+func (cs *clientControlStream) continusAcceptStream(ctx context.Context) {
+	for {
+		dataStream, err := cs.acceptStream(ctx)
+		cs.acceptStreamResultChan <- acceptStreamResult{dataStream, err}
+		if err != nil {
+			return
+		}
+	}
+}
+
+func (cs *clientControlStream) acceptStream(ctx context.Context) (DataStream, error) {
 	quicStream, err := cs.qconn.AcceptStream(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	dataStream := newDataStream(
-		hf.Name(),
-		hf.ID(),
-		StreamType(hf.StreamType()),
-		hf.Metadata(),
-		quicStream,
-		hf.ObserveDataTags(),
-		cs,
-	)
-
-	if err := dataStreamAcked(dataStream); err != nil {
+	streamID, err := ackDataStream(NewFrameStream(quicStream))
+	if err != nil {
 		return nil, err
 	}
 
-	return dataStream, nil
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	f, ok := cs.handshakeFrames[streamID]
+	if !ok {
+		return nil, errors.New("yomo: client control stream accept stream without send handshake")
+	}
+
+	return newDataStream(
+		f.Name(),
+		f.ID(),
+		StreamType(f.StreamType()),
+		f.Metadata(),
+		quicStream,
+		f.ObserveDataTags(),
+	), nil
 }
 
 func (cs *clientControlStream) CloseWithError(code uint64, errString string) error {
 	return closeWithError(cs.qconn, code, errString)
-}
-
-func closeStream(controlStream frame.Writer, streamID string, errString string) error {
-	f := frame.NewCloseStreamFrame(streamID, errString)
-	return controlStream.WriteFrame(f)
-}
-
-func receiveStreamClose(controlStream frame.Reader) (streamID string, errString string, err error) {
-	f, err := controlStream.ReadFrame()
-	if err != nil {
-		return "", "", err
-	}
-	ff, ok := f.(*frame.CloseStreamFrame)
-	if !ok {
-		return "", "", errors.New("yomo: control stream only transmit close stream frame")
-	}
-	return ff.StreamID(), ff.Reason(), nil
 }
 
 func closeWithError(qconn quic.Connection, code uint64, errString string) error {

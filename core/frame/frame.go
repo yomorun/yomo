@@ -51,15 +51,10 @@ const (
 	TagOfAuthenticationName    Type = 0x04
 	TagOfAuthenticationPayload Type = 0x05
 
-	// AuthenticationAckFrame
-	TagOfAuthenticationAckFrame  Type = 0x11
-	TagOfAuthenticationAckOk     Type = 0x12
-	TagOfAuthenticationAckReason Type = 0x13
-
-	// CloseStreamFrame
-	TagOfCloseStreamFrame  Type = 0x14
-	TagOfCloseStreamID     Type = 0x15
-	TagOfCloseStreamReason Type = 0x16
+	// AuthenticationRespFrame
+	TagOfAuthenticationRespFrame  Type = 0x11
+	TagOfAuthenticationRespOk     Type = 0x12
+	TagOfAuthenticationRespReason Type = 0x13
 
 	// HandshakeFrame
 	TagOfHandshakeFrame           Type = 0x31
@@ -68,6 +63,11 @@ const (
 	TagOfHandshakeID              Type = 0x03
 	TagOfHandshakeObserveDataTags Type = 0x06
 	TagOfHandshakeMetadata        Type = 0x07
+
+	// HandshakeRejectFrame
+	TagOfHandshakeRejectFrame    Type = 0x14
+	TagOfHandshakeRejectStreamID Type = 0x15
+	TagOfHandshakeRejectReason   Type = 0x16
 
 	// TagOfHandshakeAckFrame
 	TagOfHandshakeAckFrame    Type = 0x29
@@ -104,8 +104,8 @@ func (f Type) String() string {
 		return "TokenFrame"
 	case TagOfAuthenticationFrame:
 		return "AuthenticationFrame"
-	case TagOfAuthenticationAckFrame:
-		return "AuthenticationAckFrame"
+	case TagOfAuthenticationRespFrame:
+		return "AuthenticationRespFrame"
 	case TagOfPingFrame:
 		return "PingFrame"
 	case TagOfPongFrame:
@@ -126,8 +126,8 @@ func (f Type) String() string {
 		return "HandshakeAckFrame"
 	case TagOfHandshakeFrame:
 		return "HandshakeFrame"
-	case TagOfCloseStreamFrame:
-		return "CloseStreamFrame"
+	case TagOfHandshakeRejectFrame:
+		return "HandshakeRejectFrame"
 	default:
 		return "UnknownFrame"
 	}

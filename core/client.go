@@ -3,7 +3,7 @@ package core
 
 import (
 	"context"
-	"errors"
+	"io"
 	"time"
 
 	"github.com/yomorun/yomo/core/frame"
@@ -31,7 +31,6 @@ type Client struct {
 	ctxCancel context.CancelFunc
 
 	writeFrameChan chan frame.Frame
-	shutdownChan   chan error
 }
 
 // NewClient creates a new YoMo-Client.
@@ -59,7 +58,6 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 		logger:         logger,
 		errorfn:        func(err error) { logger.Error("client err", err) },
 		writeFrameChan: make(chan frame.Frame),
-		shutdownChan:   make(chan error, 1),
 		ctx:            ctx,
 		ctxCancel:      ctxCancel,
 	}
@@ -131,12 +129,6 @@ func (c *Client) Close() error {
 	// break runBackgroud() for-loop.
 	c.ctxCancel()
 
-	// non-blocking to return Wait().
-	select {
-	case c.shutdownChan <- nil:
-	default:
-	}
-
 	return nil
 }
 
@@ -174,29 +166,25 @@ func (c *Client) openDataStream(ctx context.Context, controlStream ClientControl
 		c.opts.observeDataTags,
 		[]byte{}, // The stream does not require metadata currently.
 	)
-	dataStream, err := controlStream.OpenStream(ctx, handshakeFrame)
+
+	err := controlStream.SendHandshake(handshakeFrame)
 	if err != nil {
 		return nil, err
 	}
 
-	return dataStream, nil
+	return controlStream.AcceptStream(ctx)
 }
 
 func (c *Client) processStream(controlStream ClientControlStream, dataStream DataStream, reconnection chan<- struct{}) {
 	defer dataStream.Close()
 
-	var (
-		controlStreamErrChan = c.receivingStreamClose(controlStream, dataStream)
-		readFrameChan        = c.readFrame(dataStream)
-	)
+	readFrameChan := c.readFrame(dataStream)
+
 	for {
 		select {
-		case err := <-controlStreamErrChan:
-			c.shutdownWithError(err)
 		case result := <-readFrameChan:
 			if err := result.err; err != nil {
-				c.errorfn(err)
-				reconnection <- struct{}{}
+				c.handleFrameError(err, reconnection)
 				return
 			}
 			c.handleFrame(result.frame)
@@ -206,27 +194,29 @@ func (c *Client) processStream(controlStream ClientControlStream, dataStream Dat
 			if d, ok := f.(*frame.DataFrame); ok {
 				d.Clean()
 			}
-			if err != nil {
-				c.errorfn(err)
-				reconnection <- struct{}{}
-				return
-			}
+			c.handleFrameError(err, reconnection)
 		}
 	}
 }
 
-// Wait waits client error returning.
-func (c *Client) Wait() error {
-	err := <-c.shutdownChan
-	return err
+func (c *Client) handleFrameError(err error, reconnection chan<- struct{}) {
+	if err == nil {
+		return
+	}
+	// exit client program if stream be closed.
+	if err == io.EOF {
+		c.ctxCancel()
+		return
+	}
+
+	// reconnect to server if stream executes error, the error is mostly network error.
+	c.errorfn(err)
+	reconnection <- struct{}{}
 }
 
-func (c *Client) shutdownWithError(err error) {
-	// non-blocking shutdown client.
-	select {
-	case c.shutdownChan <- err:
-	default:
-	}
+// Wait waits client error returning.
+func (c *Client) Wait() {
+	<-c.ctx.Done()
 }
 
 type readResult struct {
@@ -266,29 +256,6 @@ func (c *Client) handleFrame(f frame.Frame) {
 	default:
 		c.logger.Warn("client data stream receive unexcepted frame", "frame_type", f)
 	}
-}
-
-func (c *Client) receivingStreamClose(controlStream ControlStream, dataStream DataStream) chan error {
-	closeStreamChan := make(chan error)
-
-	go func() {
-		for {
-			streamID, reason, err := controlStream.ReceiveStreamClose()
-			if err != nil {
-				closeStreamChan <- err
-				return
-			}
-			if streamID == c.clientID {
-				c.ctxCancel()
-				dataStream.Close()
-				closeStreamChan <- errors.New(reason)
-				controlStream.CloseWithError(0, reason)
-				return
-			}
-		}
-	}()
-
-	return closeStreamChan
 }
 
 // SetDataFrameObserver sets the data frame handler.

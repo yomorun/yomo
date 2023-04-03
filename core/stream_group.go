@@ -2,8 +2,13 @@ package core
 
 import (
 	"context"
+	"errors"
 	"sync"
 
+	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/metadata"
+	"github.com/yomorun/yomo/core/router"
+	"github.com/yomorun/yomo/core/yerr"
 	"golang.org/x/exp/slog"
 )
 
@@ -15,6 +20,8 @@ type StreamGroup struct {
 	ctx           context.Context
 	controlStream ServerControlStream
 	connector     *Connector
+	mb            metadata.Builder
+	router        router.Router
 	logger        *slog.Logger
 	group         sync.WaitGroup
 }
@@ -30,12 +37,60 @@ func NewStreamGroup(ctx context.Context, controlStream ServerControlStream, conn
 	return group
 }
 
+func (g *StreamGroup) handleRoute(hf *frame.HandshakeFrame, md metadata.Metadata) (router.Route, error) {
+	if hf.StreamType() != byte(StreamTypeStreamFunction) {
+		return nil, nil
+	}
+	// route
+	route := g.router.Route(md)
+	if route == nil {
+		return nil, errors.New("yomo: can't find route in handshake metadata")
+	}
+	err := route.Add(hf.ID(), hf.Name(), hf.ObserveDataTags())
+	if err == nil {
+		return route, nil
+	}
+	// duplicate name
+	if e, ok := err.(yerr.DuplicateNameError); ok {
+		existsConnID := e.ConnID()
+		stream, ok, err := g.connector.Get(existsConnID)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			stream.Close()
+			g.connector.Remove(existsConnID)
+		}
+	}
+	return nil, err
+}
+
+// makeHandshakeFunc creates a function that will handle a HandshakeFrame.
+// It takes metadata and route parameters, which will be assigned after the returned function is executed.
+func (g *StreamGroup) makeHandshakeFunc(md metadata.Metadata, route router.Route) func(hf *frame.HandshakeFrame) error {
+	return func(hf *frame.HandshakeFrame) (err error) {
+		md, err = g.mb.Build(hf)
+		if err != nil {
+			return
+		}
+		route, err = g.handleRoute(hf, md)
+		return err
+	}
+}
+
 // Run run contextFunc with connector.
 // Run continus Accepts DataStream and create a Context to run with contextFunc.
-// TODO: run in aop model, like setMetadata -> handleRoute -> before -> handle -> after.
+// TODO: run in aop model, like before -> handle -> after.
 func (g *StreamGroup) Run(contextFunc func(c *Context)) error {
 	for {
-		dataStream, err := g.controlStream.AcceptStream(g.ctx)
+		var (
+			mb    metadata.Metadata
+			route router.Route
+		)
+
+		handshakeFunc := g.makeHandshakeFunc(mb, route)
+
+		dataStream, err := g.controlStream.HandshakeWithFunc(g.ctx, handshakeFunc)
 		if err != nil {
 			return err
 		}
@@ -43,18 +98,21 @@ func (g *StreamGroup) Run(contextFunc func(c *Context)) error {
 		g.group.Add(1)
 		g.connector.Add(dataStream.ID(), dataStream)
 
-		go func() {
-			defer func() {
-				g.group.Done()
-				g.connector.Remove(dataStream.ID())
-			}()
-
-			c := newContext(dataStream, g.logger)
-			defer c.Clean()
-
-			contextFunc(c)
-		}()
+		go g.handleContextFunc(mb, route, dataStream, contextFunc)
 	}
+}
+
+func (g *StreamGroup) handleContextFunc(mb metadata.Metadata, route router.Route, dataStream DataStream, contextFunc func(c *Context)) {
+	defer func() {
+		route.Remove(dataStream.ID())
+		g.connector.Remove(dataStream.ID())
+		g.group.Done()
+	}()
+
+	c := newContext(dataStream, mb, route, g.logger)
+	defer c.Clean()
+
+	contextFunc(c)
 }
 
 // Wait waits all dataStream down.

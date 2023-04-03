@@ -25,16 +25,16 @@ func NewAuthenticationRespFrame(ok bool, reason string) *AuthenticationRespFrame
 
 // Type gets the type of the AuthenticationRespFrame.
 func (f *AuthenticationRespFrame) Type() Type {
-	return TagOfAuthenticationAckFrame
+	return TagOfAuthenticationRespFrame
 }
 
 // Encode encodes AuthenticationRespFrame to Y3 encoded bytes.
 func (f *AuthenticationRespFrame) Encode() []byte {
 	// ok
-	okBlock := y3.NewPrimitivePacketEncoder(byte(TagOfAuthenticationAckOk))
+	okBlock := y3.NewPrimitivePacketEncoder(byte(TagOfAuthenticationRespOk))
 	okBlock.SetBoolValue(f.ok)
 	// reason
-	reasonBlock := y3.NewPrimitivePacketEncoder(byte(TagOfAuthenticationAckReason))
+	reasonBlock := y3.NewPrimitivePacketEncoder(byte(TagOfAuthenticationRespReason))
 	reasonBlock.SetStringValue(f.reason)
 	// frame
 	ack := y3.NewNodePacketEncoder(byte(f.Type()))
@@ -55,7 +55,7 @@ func DecodeToAuthenticationRespFrame(buf []byte) (*AuthenticationRespFrame, erro
 	f := &AuthenticationRespFrame{}
 
 	// ok
-	if okBlock, ok := node.PrimitivePackets[byte(TagOfAuthenticationAckOk)]; ok {
+	if okBlock, ok := node.PrimitivePackets[byte(TagOfAuthenticationRespOk)]; ok {
 		ok, err := okBlock.ToBool()
 		if err != nil {
 			return nil, err
@@ -63,7 +63,7 @@ func DecodeToAuthenticationRespFrame(buf []byte) (*AuthenticationRespFrame, erro
 		f.ok = ok
 	}
 	// reason
-	if reasonBlock, ok := node.PrimitivePackets[byte(TagOfAuthenticationAckReason)]; ok {
+	if reasonBlock, ok := node.PrimitivePackets[byte(TagOfAuthenticationRespReason)]; ok {
 		reason, err := reasonBlock.ToUTF8String()
 		if err != nil {
 			return nil, err

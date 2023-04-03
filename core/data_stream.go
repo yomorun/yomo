@@ -30,10 +30,6 @@ type DataStream interface {
 	// CloseWithError close DataStream with an error string,
 	// This function do not real close the underlying stream, It notices controlStream to
 	// close itself, The controlStream must close underlying stream after receive CloseStreamFrame.
-	CloseWithError(string) error
-	// ReadWriter writes or reads frame to underlying stream.
-	// Writing and Reading are both goroutine-safely handle frames to peer side.
-	// ReadWriter returns stream closed error if stream is closed.
 	frame.ReadWriter
 	// ObserveDataTags observed data tags.
 	// TODO: There maybe a sorted list, we can find tag quickly.
@@ -51,9 +47,8 @@ type dataStream struct {
 	closed atomic.Bool
 	// mu protected stream write and close
 	// because of quic stream write and close is not goroutinue-safely.
-	mu            sync.Mutex
-	stream        quic.Stream
-	controlStream ControlStream
+	mu     sync.Mutex
+	stream quic.Stream
 }
 
 // newDataStream constructures dataStream.
@@ -64,16 +59,14 @@ func newDataStream(
 	metadata []byte,
 	stream quic.Stream,
 	observed []frame.Tag,
-	controlStream ControlStream,
 ) DataStream {
 	return &dataStream{
-		name:          name,
-		id:            id,
-		streamType:    streamType,
-		metadata:      metadata,
-		stream:        stream,
-		observed:      observed,
-		controlStream: controlStream,
+		name:       name,
+		id:         id,
+		streamType: streamType,
+		metadata:   metadata,
+		stream:     stream,
+		observed:   observed,
 	}
 }
 
@@ -107,23 +100,7 @@ func (s *dataStream) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Close the stream truly,
-	// This function should be called after controlStream receive a closeStreamFrame.
 	return s.stream.Close()
-}
-
-func (s *dataStream) CloseWithError(errString string) error {
-	if s.closed.Load() {
-		return nil
-	}
-	s.closed.Store(true)
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// Only notice client-side controlStream the stream has been closed.
-	// The controlStream reads closeStreamFrame and to close dataStream.
-	return s.controlStream.CloseStream(s.id, errString)
 }
 
 const (

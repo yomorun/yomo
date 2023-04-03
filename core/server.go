@@ -185,56 +185,9 @@ func (s *Server) Close() error {
 	return nil
 }
 
-func (s *Server) handleRoute(c *Context) error {
-	if c.DataStream.StreamType() == StreamTypeStreamFunction {
-		md, err := s.metadataBuilder.Decode(c.DataStream.Metadata())
-		if err != nil {
-			return err
-		}
-		// route
-		route := s.router.Route(md)
-		if route == nil {
-			return errors.New("handleHandshakeFrame route is nil")
-		}
-		if err := route.Add(c.StreamID(), c.DataStream.Name(), c.DataStream.ObserveDataTags()); err != nil {
-			// duplicate name
-			if e, ok := err.(yerr.DuplicateNameError); ok {
-				existsConnID := e.ConnID()
-
-				c.Logger.Debug(
-					"StreamFunction Duplicate Name",
-					"error", e.Error(),
-					"sfn_name", c.DataStream.Name(),
-					"old_stream_id", existsConnID,
-					"current_stream_id", c.StreamID(),
-				)
-
-				stream, ok, err := s.connector.Get(existsConnID)
-				if err != nil {
-					return err
-				}
-				if ok {
-					stream.CloseWithError(e.Error())
-					s.connector.Remove(existsConnID)
-				}
-			} else {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 // handleStreamContext handles data streams,
 // use c.Logger in this function scope for more complete logger information.
 func (s *Server) handleStreamContext(c *Context) {
-	// handle route.
-	if err := s.handleRoute(c); err != nil {
-		c.CloseWithError(yerr.ErrorCodeRejected, err.Error())
-		return
-	}
-	defer s.cleanRoute(c)
-
 	// start frame handlers
 	for _, handler := range s.startHandlers {
 		if err := handler(c); err != nil {
@@ -258,6 +211,7 @@ func (s *Server) handleStreamContext(c *Context) {
 				ye := yerr.New(yerr.Parse(e.ErrorCode), err)
 				c.Logger.Error("read frame error", ye)
 			} else if err == io.EOF {
+				c.DataStream.Close()
 				c.Logger.Info("connection EOF")
 				break
 			}
@@ -559,9 +513,4 @@ func (s *Server) doConnectionCloseHandlers(qconn quic.Connection) {
 	for _, h := range s.connectionCloseHandlers {
 		h(qconn)
 	}
-}
-
-func (s *Server) cleanRoute(c *Context) {
-	md, _ := s.metadataBuilder.Decode(c.DataStream.Metadata())
-	s.router.Route(md).Remove(c.StreamID())
 }

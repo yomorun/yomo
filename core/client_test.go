@@ -98,13 +98,6 @@ func TestFrameRoundTrip(t *testing.T) {
 		assert.Equal(t, string(payload), string(bf.GetCarriage()))
 	})
 	err = sameNameSfn.Connect(ctx, testaddr)
-	assert.Equal(t, err, nil)
-
-	err = sfn.Wait()
-	if err == nil {
-		assert.FailNow(t, "sfn-1 should wait an error")
-		return
-	}
 	assert.Equal(t, err.Error(), "SFN[sfn-1] is already linked to another connection")
 
 	stats := server.StatsFunctions()
