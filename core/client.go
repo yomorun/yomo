@@ -167,7 +167,7 @@ func (c *Client) openDataStream(ctx context.Context, controlStream ClientControl
 		[]byte{}, // The stream does not require metadata currently.
 	)
 
-	err := controlStream.SendHandshake(handshakeFrame)
+	err := controlStream.RequestStream(handshakeFrame)
 	if err != nil {
 		return nil, err
 	}

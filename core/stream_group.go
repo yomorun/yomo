@@ -27,11 +27,20 @@ type StreamGroup struct {
 }
 
 // NewStreamGroup returns StreamGroup.
-func NewStreamGroup(ctx context.Context, controlStream ServerControlStream, connector *Connector, logger *slog.Logger) *StreamGroup {
+func NewStreamGroup(
+	ctx context.Context,
+	controlStream ServerControlStream,
+	connector *Connector,
+	mb metadata.Builder,
+	router router.Router,
+	logger *slog.Logger,
+) *StreamGroup {
 	group := &StreamGroup{
 		ctx:           ctx,
 		controlStream: controlStream,
 		connector:     connector,
+		mb:            mb,
+		router:        router,
 		logger:        logger,
 	}
 	return group
@@ -65,16 +74,28 @@ func (g *StreamGroup) handleRoute(hf *frame.HandshakeFrame, md metadata.Metadata
 	return nil, err
 }
 
+type handshakeResult struct {
+	route router.Route
+	md    metadata.Metadata
+}
+
 // makeHandshakeFunc creates a function that will handle a HandshakeFrame.
 // It takes metadata and route parameters, which will be assigned after the returned function is executed.
-func (g *StreamGroup) makeHandshakeFunc(md metadata.Metadata, route router.Route) func(hf *frame.HandshakeFrame) error {
+func (g *StreamGroup) makeHandshakeFunc(result *handshakeResult) func(hf *frame.HandshakeFrame) error {
 	return func(hf *frame.HandshakeFrame) (err error) {
-		md, err = g.mb.Build(hf)
+		md, err := g.mb.Build(hf)
 		if err != nil {
 			return
 		}
-		route, err = g.handleRoute(hf, md)
-		return err
+		result.md = md
+
+		route, err := g.handleRoute(hf, md)
+		if err != nil {
+			return
+		}
+		result.route = route
+
+		return nil
 	}
 }
 
@@ -83,14 +104,11 @@ func (g *StreamGroup) makeHandshakeFunc(md metadata.Metadata, route router.Route
 // TODO: run in aop model, like before -> handle -> after.
 func (g *StreamGroup) Run(contextFunc func(c *Context)) error {
 	for {
-		var (
-			mb    metadata.Metadata
-			route router.Route
-		)
+		var routeResult handshakeResult
 
-		handshakeFunc := g.makeHandshakeFunc(mb, route)
+		handshakeFunc := g.makeHandshakeFunc(&routeResult)
 
-		dataStream, err := g.controlStream.HandshakeWithFunc(g.ctx, handshakeFunc)
+		dataStream, err := g.controlStream.OpenStream(g.ctx, handshakeFunc)
 		if err != nil {
 			return err
 		}
@@ -98,13 +116,16 @@ func (g *StreamGroup) Run(contextFunc func(c *Context)) error {
 		g.group.Add(1)
 		g.connector.Add(dataStream.ID(), dataStream)
 
-		go g.handleContextFunc(mb, route, dataStream, contextFunc)
+		go g.handleContextFunc(routeResult.md, routeResult.route, dataStream, contextFunc)
 	}
 }
 
 func (g *StreamGroup) handleContextFunc(mb metadata.Metadata, route router.Route, dataStream DataStream, contextFunc func(c *Context)) {
 	defer func() {
-		route.Remove(dataStream.ID())
+		// source route is always nil.
+		if route != nil {
+			route.Remove(dataStream.ID())
+		}
 		g.connector.Remove(dataStream.ID())
 		g.group.Done()
 	}()

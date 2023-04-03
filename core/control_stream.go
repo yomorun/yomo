@@ -39,10 +39,10 @@ type ServerControlStream interface {
 	// VerifyAuthentication verify the Authentication from client side.
 	VerifyAuthentication(verifyFunc func(auth.Object) (bool, error)) error
 
-	// HandshakeWithFunc reveives a HandshakeFrame from control stream and handle it in the function be passed in.
+	// OpenStream reveives a HandshakeFrame from control stream and handle it in the function be passed in.
 	// if handler returns nil, There will return a DataStream and nil,
 	// if handler returns an error, There will return a nil and the error,
-	HandshakeWithFunc(context.Context, func(*frame.HandshakeFrame) error) (DataStream, error)
+	OpenStream(context.Context, func(*frame.HandshakeFrame) error) (DataStream, error)
 }
 
 // ClientControlStream is an interface that defines the methods for a client-side control stream.
@@ -52,9 +52,9 @@ type ClientControlStream interface {
 	// Authenticate sends the provided credential to the server's control stream to authenticate the client.
 	Authenticate(*auth.Credential) error
 
-	// SendHandshake sends a HandshakeFrame to the server's control stream to request a new data stream.
+	// RequestStream sends a HandshakeFrame to the server's control stream to request a new data stream.
 	// If the handshake is successful, a DataStream will be returned by the AcceptStream() method.
-	SendHandshake(*frame.HandshakeFrame) error
+	RequestStream(*frame.HandshakeFrame) error
 
 	// AcceptStream accepts a DataStream from the server if SendHandshake() has been called before.
 	// This method should be executed in a for-loop.
@@ -79,8 +79,6 @@ func NewServerControlStream(qconn quic.Connection, stream frame.ReadWriter) Serv
 		handshakeFrameChan: make(chan *frame.HandshakeFrame),
 	}
 
-	go controlStream.continusReadFrame()
-
 	return controlStream
 }
 
@@ -99,11 +97,12 @@ func (ss *serverControlStream) continusReadFrame() {
 			ss.handshakeFrameChan <- ff
 		default:
 			ss.qconn.CloseWithError(0, fmt.Sprintf("yomo: server control stream read unexcepted frame %s", f.Type().String()))
+			return
 		}
 	}
 }
 
-func (ss *serverControlStream) HandshakeWithFunc(ctx context.Context, handshakeFunc func(*frame.HandshakeFrame) error) (DataStream, error) {
+func (ss *serverControlStream) OpenStream(ctx context.Context, handshakeFunc func(*frame.HandshakeFrame) error) (DataStream, error) {
 	ff, ok := <-ss.handshakeFrameChan
 	if !ok {
 		return nil, io.EOF
@@ -158,12 +157,20 @@ func (ss *serverControlStream) VerifyAuthentication(verifyFunc func(auth.Object)
 			),
 		)
 	}
-	return ss.stream.WriteFrame(frame.NewAuthenticationRespFrame(true, ""))
+	if err := ss.stream.WriteFrame(frame.NewAuthenticationRespFrame(true, "")); err != nil {
+		return err
+	}
+
+	// create a goroutinue to continus read frame after verify authentication successful.
+	go ss.continusReadFrame()
+
+	return nil
 }
 
 var _ ClientControlStream = &clientControlStream{}
 
 type clientControlStream struct {
+	ctx    context.Context
 	qconn  quic.Connection
 	stream frame.ReadWriter
 	// mu protect handshakeFrames
@@ -193,15 +200,13 @@ func OpenClientControlStream(
 // NewClientControlStream returns ClientControlStream from quic Connection and the first stream form the Connection.
 func NewClientControlStream(ctx context.Context, qconn quic.Connection, stream frame.ReadWriter) ClientControlStream {
 	controlStream := &clientControlStream{
+		ctx:                      ctx,
 		qconn:                    qconn,
 		stream:                   stream,
 		handshakeFrames:          make(map[string]*frame.HandshakeFrame),
 		handshakeRejectFrameChan: make(chan *frame.HandshakeRejectFrame),
 		acceptStreamResultChan:   make(chan acceptStreamResult),
 	}
-
-	go controlStream.continusReadFrame()
-	go controlStream.continusAcceptStream(ctx)
 
 	return controlStream
 }
@@ -244,6 +249,12 @@ func (cs *clientControlStream) Authenticate(cred *auth.Credential) error {
 	if !resp.OK() {
 		return errors.New(resp.Reason())
 	}
+
+	// create a goroutinue to continus read frame from server.
+	go cs.continusReadFrame()
+	// create an other goroutinue to continus accept stream from server.
+	go cs.continusAcceptStream(cs.ctx)
+
 	return nil
 }
 
@@ -262,14 +273,8 @@ func ackDataStream(stream frame.Reader) (string, error) {
 	return f.StreamID(), nil
 }
 
-func (cs *clientControlStream) SendHandshake(hf *frame.HandshakeFrame) error {
-	err := cs.stream.WriteFrame(frame.NewHandshakeFrame(
-		hf.Name(),
-		hf.ID(),
-		hf.StreamType(),
-		hf.ObserveDataTags(),
-		hf.Metadata(),
-	))
+func (cs *clientControlStream) RequestStream(hf *frame.HandshakeFrame) error {
+	err := cs.stream.WriteFrame(hf)
 
 	if err != nil {
 		return err

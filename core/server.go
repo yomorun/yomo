@@ -140,7 +140,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		logger.Debug("Authentication Success")
 
 		go func(qconn quic.Connection) {
-			streamGroup := NewStreamGroup(ctx, controlStream, s.connector, logger)
+			streamGroup := NewStreamGroup(ctx, controlStream, s.connector, s.metadataBuilder, s.router, logger)
 
 			defer streamGroup.Wait()
 			defer s.doConnectionCloseHandlers(qconn)
@@ -149,7 +149,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 			case <-ctx.Done():
 				return
 			case err := <-s.runWithStreamGroup(streamGroup):
-				logger.Error("Client Close", err)
+				logger.Error("client closed", err)
 			}
 		}(conn)
 	}
