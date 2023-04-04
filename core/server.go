@@ -127,7 +127,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 			continue
 		}
 
-		controlStream := NewServerControlStream(conn, NewFrameStream(stream0))
+		controlStream := NewServerControlStream(conn, NewFrameStream(stream0), s.logger)
 
 		// Auth accepts a AuthenticationFrame from client. The first frame from client must be
 		// AuthenticationFrame, It returns true if auth successful otherwise return false.
@@ -211,7 +211,7 @@ func (s *Server) handleStreamContext(c *Context) {
 				ye := yerr.New(yerr.Parse(e.ErrorCode), err)
 				c.Logger.Error("read frame error", ye)
 			} else if err == io.EOF {
-				c.DataStream.Close()
+				c.CloseWithError(yerr.ErrorCodeClosed, "data stream closed")
 				c.Logger.Info("connection EOF")
 				break
 			}
@@ -368,7 +368,7 @@ func (s *Server) handleBackflowFrame(c *Context) error {
 	sourceID := f.SourceID()
 	// write to source with BackflowFrame
 	bf := frame.NewBackflowFrame(tag, carriage)
-	sourceConns, err := s.connector.GetSourceConns(sourceID, tag)
+	sourceConns, err := s.connector.GetSourceStreams(sourceID, tag)
 	if err != nil {
 		return err
 	}

@@ -133,7 +133,7 @@ func (c *Client) Close() error {
 }
 
 func (c *Client) openControlStream(ctx context.Context, addr string) (ClientControlStream, error) {
-	controlStream, err := OpenClientControlStream(ctx, addr, c.opts.tlsConfig, c.opts.quicConfig)
+	controlStream, err := OpenClientControlStream(ctx, addr, c.opts.tlsConfig, c.opts.quicConfig, c.logger)
 	if err != nil {
 		return nil, err
 	}
@@ -203,6 +203,9 @@ func (c *Client) handleFrameError(err error, reconnection chan<- struct{}) {
 	if err == nil {
 		return
 	}
+
+	c.errorfn(err)
+
 	// exit client program if stream be closed.
 	if err == io.EOF {
 		c.ctxCancel()
@@ -210,7 +213,6 @@ func (c *Client) handleFrameError(err error, reconnection chan<- struct{}) {
 	}
 
 	// reconnect to server if stream executes error, the error is mostly network error.
-	c.errorfn(err)
 	reconnection <- struct{}{}
 }
 

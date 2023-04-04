@@ -33,6 +33,8 @@ func ParseFrame(stream io.Reader) (frame.Frame, error) {
 		return frame.DecodeToHandshakeAckFrame(buf)
 	case 0x80 | byte(frame.TagOfAuthenticationFrame):
 		return frame.DecodeToAuthenticationFrame(buf)
+	case 0x80 | byte(frame.TagOfHandshakeRejectedFrame):
+		return frame.DecodeToHandshakeRejectedFrame(buf)
 	case 0x80 | byte(frame.TagOfAuthenticationRespFrame):
 		return frame.DecodeToAuthenticationRespFrame(buf)
 	default:

@@ -64,10 +64,10 @@ const (
 	TagOfHandshakeObserveDataTags Type = 0x06
 	TagOfHandshakeMetadata        Type = 0x07
 
-	// HandshakeRejectFrame
-	TagOfHandshakeRejectFrame    Type = 0x14
-	TagOfHandshakeRejectStreamID Type = 0x15
-	TagOfHandshakeRejectReason   Type = 0x16
+	// HandshakeRejectedFrame
+	TagOfHandshakeRejectedFrame    Type = 0x14
+	TagOfHandshakeRejectedStreamID Type = 0x15
+	TagOfHandshakeRejectedReason   Type = 0x16
 
 	// TagOfHandshakeAckFrame
 	TagOfHandshakeAckFrame    Type = 0x29
@@ -126,7 +126,7 @@ func (f Type) String() string {
 		return "HandshakeAckFrame"
 	case TagOfHandshakeFrame:
 		return "HandshakeFrame"
-	case TagOfHandshakeRejectFrame:
+	case TagOfHandshakeRejectedFrame:
 		return "HandshakeRejectFrame"
 	default:
 		return "UnknownFrame"

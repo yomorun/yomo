@@ -64,6 +64,10 @@ func TestFrameRoundTrip(t *testing.T) {
 		server.ListenAndServe(ctx, testaddr)
 	}()
 
+	illegalource := NewClient("source", StreamTypeSource, WithCredential("token:error-token"), WithLogger(discardingLogger))
+	err := illegalource.Connect(ctx, testaddr)
+	assert.Equal(t, "yomo: authentication failed, client credential name is token", err.Error())
+
 	source := NewClient(
 		"source",
 		StreamTypeSource,
@@ -78,15 +82,15 @@ func TestFrameRoundTrip(t *testing.T) {
 		assert.Equal(t, string(payload), string(bf.GetCarriage()))
 	})
 
-	err := source.Connect(ctx, testaddr)
+	err = source.Connect(ctx, testaddr)
 	assert.NoError(t, err, "source connect must be success")
 	closeEarlySfn := createTestStreamFunction("close-early-sfn", obversedTag)
 	closeEarlySfn.Connect(ctx, testaddr)
-	assert.Equal(t, err, nil)
+	assert.Equal(t, nil, err)
 
 	// test close early.
 	closeEarlySfn.Close()
-	assert.Equal(t, err, nil)
+	assert.Equal(t, nil, err)
 
 	sfn := createTestStreamFunction("sfn-1", obversedTag)
 	err = sfn.Connect(ctx, testaddr)
@@ -98,7 +102,13 @@ func TestFrameRoundTrip(t *testing.T) {
 		assert.Equal(t, string(payload), string(bf.GetCarriage()))
 	})
 	err = sameNameSfn.Connect(ctx, testaddr)
-	assert.Equal(t, err.Error(), "SFN[sfn-1] is already linked to another connection")
+	assert.NoError(t, err, "sfn connect should replace the old sfn stream")
+
+	exited := CheckClientExited(sfn, time.Second)
+	assert.True(t, exited, "the old sfn stream should exited")
+
+	exited = CheckClientExited(sameNameSfn, time.Second)
+	assert.False(t, exited, "the old sfn stream should exited")
 
 	stats := server.StatsFunctions()
 	nameList := []string{}
@@ -123,6 +133,21 @@ func TestFrameRoundTrip(t *testing.T) {
 	assert.NoError(t, source.Close(), "source client.Close() should not return error")
 	assert.NoError(t, sfn.Close(), "sfn client.Close() should not return error")
 	assert.NoError(t, server.Close(), "server.Close() should not return error")
+}
+
+func CheckClientExited(client *Client, tim time.Duration) bool {
+	done := make(chan struct{})
+	go func() {
+		client.Wait()
+		done <- struct{}{}
+	}()
+
+	select {
+	case <-done:
+		return true
+	case <-time.After(tim):
+		return false
+	}
 }
 
 type hookTester struct {

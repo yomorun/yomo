@@ -12,6 +12,8 @@ import (
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/ylog"
+	"golang.org/x/exp/slog"
 )
 
 // ErrHandshakeRejected be returned when a stream be rejected after sending a handshake.
@@ -69,20 +71,25 @@ type serverControlStream struct {
 	qconn              quic.Connection
 	stream             frame.ReadWriter
 	handshakeFrameChan chan *frame.HandshakeFrame
+	logger             *slog.Logger
 }
 
 // NewServerControlStream returns ServerControlStream from quic Connection and the first stream of this Connection.
-func NewServerControlStream(qconn quic.Connection, stream frame.ReadWriter) ServerControlStream {
+func NewServerControlStream(qconn quic.Connection, stream frame.ReadWriter, logger *slog.Logger) ServerControlStream {
+	if logger == nil {
+		logger = ylog.Default()
+	}
 	controlStream := &serverControlStream{
 		qconn:              qconn,
 		stream:             stream,
-		handshakeFrameChan: make(chan *frame.HandshakeFrame),
+		handshakeFrameChan: make(chan *frame.HandshakeFrame, 10),
+		logger:             logger,
 	}
 
 	return controlStream
 }
 
-func (ss *serverControlStream) continusReadFrame() {
+func (ss *serverControlStream) readFrameLoop() {
 	defer func() {
 		close(ss.handshakeFrameChan)
 	}()
@@ -96,8 +103,7 @@ func (ss *serverControlStream) continusReadFrame() {
 		case *frame.HandshakeFrame:
 			ss.handshakeFrameChan <- ff
 		default:
-			ss.qconn.CloseWithError(0, fmt.Sprintf("yomo: server control stream read unexcepted frame %s", f.Type().String()))
-			return
+			ss.logger.Debug("server control stream read unexcepted frame", "frame_type", f.Type().String())
 		}
 	}
 }
@@ -109,7 +115,7 @@ func (ss *serverControlStream) OpenStream(ctx context.Context, handshakeFunc fun
 	}
 	err := handshakeFunc(ff)
 	if err != nil {
-		ss.stream.WriteFrame(frame.NewHandshakeRejectFrame(ff.ID(), err.Error()))
+		ss.stream.WriteFrame(frame.NewHandshakeRejectedFrame(ff.ID(), err.Error()))
 		return nil, err
 	}
 
@@ -162,7 +168,7 @@ func (ss *serverControlStream) VerifyAuthentication(verifyFunc func(auth.Object)
 	}
 
 	// create a goroutinue to continus read frame after verify authentication successful.
-	go ss.continusReadFrame()
+	go ss.readFrameLoop()
 
 	return nil
 }
@@ -174,16 +180,18 @@ type clientControlStream struct {
 	qconn  quic.Connection
 	stream frame.ReadWriter
 	// mu protect handshakeFrames
-	mu                       sync.Mutex
-	handshakeFrames          map[string]*frame.HandshakeFrame
-	handshakeRejectFrameChan chan *frame.HandshakeRejectFrame
-	acceptStreamResultChan   chan acceptStreamResult
+	mu                         sync.Mutex
+	handshakeFrames            map[string]*frame.HandshakeFrame
+	handshakeRejectedFrameChan chan *frame.HandshakeRejectedFrame
+	acceptStreamResultChan     chan acceptStreamResult
+	logger                     *slog.Logger
 }
 
 // OpenClientControlStream opens ClientControlStream from addr.
 func OpenClientControlStream(
 	ctx context.Context, addr string,
 	tlsConfig *tls.Config, quicConfig *quic.Config,
+	logger *slog.Logger,
 ) (ClientControlStream, error) {
 	qconn, err := quic.DialAddrContext(ctx, addr, tlsConfig, quicConfig)
 	if err != nil {
@@ -194,26 +202,30 @@ func OpenClientControlStream(
 		return nil, err
 	}
 
-	return NewClientControlStream(ctx, qconn, NewFrameStream(stream0)), nil
+	return NewClientControlStream(ctx, qconn, NewFrameStream(stream0), logger), nil
 }
 
 // NewClientControlStream returns ClientControlStream from quic Connection and the first stream form the Connection.
-func NewClientControlStream(ctx context.Context, qconn quic.Connection, stream frame.ReadWriter) ClientControlStream {
+func NewClientControlStream(ctx context.Context, qconn quic.Connection, stream frame.ReadWriter, logger *slog.Logger) ClientControlStream {
+	if logger == nil {
+		logger = ylog.Default()
+	}
 	controlStream := &clientControlStream{
-		ctx:                      ctx,
-		qconn:                    qconn,
-		stream:                   stream,
-		handshakeFrames:          make(map[string]*frame.HandshakeFrame),
-		handshakeRejectFrameChan: make(chan *frame.HandshakeRejectFrame),
-		acceptStreamResultChan:   make(chan acceptStreamResult),
+		ctx:                        ctx,
+		qconn:                      qconn,
+		stream:                     stream,
+		handshakeFrames:            make(map[string]*frame.HandshakeFrame),
+		handshakeRejectedFrameChan: make(chan *frame.HandshakeRejectedFrame, 10),
+		acceptStreamResultChan:     make(chan acceptStreamResult, 10),
+		logger:                     logger,
 	}
 
 	return controlStream
 }
 
-func (cs *clientControlStream) continusReadFrame() {
+func (cs *clientControlStream) readFrameLoop() {
 	defer func() {
-		close(cs.handshakeRejectFrameChan)
+		close(cs.handshakeRejectedFrameChan)
 	}()
 	for {
 		f, err := cs.stream.ReadFrame()
@@ -222,10 +234,10 @@ func (cs *clientControlStream) continusReadFrame() {
 			return
 		}
 		switch ff := f.(type) {
-		case *frame.HandshakeRejectFrame:
-			cs.handshakeRejectFrameChan <- ff
+		case *frame.HandshakeRejectedFrame:
+			cs.handshakeRejectedFrameChan <- ff
 		default:
-			cs.qconn.CloseWithError(0, fmt.Sprintf("yomo: server control stream read unexcepted frame %s", f.Type().String()))
+			cs.logger.Debug("client control stream read unexcepted frame", "frame_type", f.Type().String())
 		}
 	}
 }
@@ -251,7 +263,7 @@ func (cs *clientControlStream) Authenticate(cred *auth.Credential) error {
 	}
 
 	// create a goroutinue to continus read frame from server.
-	go cs.continusReadFrame()
+	go cs.readFrameLoop()
 	// create an other goroutinue to continus accept stream from server.
 	go cs.continusAcceptStream(cs.ctx)
 
@@ -289,7 +301,7 @@ func (cs *clientControlStream) RequestStream(hf *frame.HandshakeFrame) error {
 
 func (cs *clientControlStream) AcceptStream(ctx context.Context) (DataStream, error) {
 	select {
-	case reject := <-cs.handshakeRejectFrameChan:
+	case reject := <-cs.handshakeRejectedFrameChan:
 		cs.mu.Lock()
 		delete(cs.handshakeFrames, reject.StreamID())
 		cs.mu.Unlock()

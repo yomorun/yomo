@@ -50,7 +50,7 @@ func (g *StreamGroup) handleRoute(hf *frame.HandshakeFrame, md metadata.Metadata
 	if hf.StreamType() != byte(StreamTypeStreamFunction) {
 		return nil, nil
 	}
-	// route
+	// route for sfn.
 	route := g.router.Route(md)
 	if route == nil {
 		return nil, errors.New("yomo: can't find route in handshake metadata")
@@ -59,19 +59,19 @@ func (g *StreamGroup) handleRoute(hf *frame.HandshakeFrame, md metadata.Metadata
 	if err == nil {
 		return route, nil
 	}
-	// duplicate name
-	if e, ok := err.(yerr.DuplicateNameError); ok {
-		existsConnID := e.ConnID()
-		stream, ok, err := g.connector.Get(existsConnID)
+	// If there is a stream with the same name as the new stream, replace the old stream with the new one.
+	if e := new(yerr.DuplicateNameError); errors.As(err, e) {
+		existsStreamID := e.StreamID()
+		stream, ok, err := g.connector.Get(existsStreamID)
 		if err != nil {
 			return nil, err
 		}
 		if ok {
 			stream.Close()
-			g.connector.Remove(existsConnID)
+			g.connector.Remove(existsStreamID)
 		}
 	}
-	return nil, err
+	return route, nil
 }
 
 type handshakeResult struct {
@@ -83,6 +83,13 @@ type handshakeResult struct {
 // It takes metadata and route parameters, which will be assigned after the returned function is executed.
 func (g *StreamGroup) makeHandshakeFunc(result *handshakeResult) func(hf *frame.HandshakeFrame) error {
 	return func(hf *frame.HandshakeFrame) (err error) {
+		_, ok, err := g.connector.Get(hf.ID())
+		if err != nil {
+			return
+		}
+		if ok {
+			return errors.New("yomo: stream id is not allowed to be a duplicate")
+		}
 		md, err := g.mb.Build(hf)
 		if err != nil {
 			return

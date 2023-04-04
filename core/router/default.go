@@ -69,7 +69,7 @@ LOOP:
 	for _, conns := range r.data {
 		for connID, n := range conns {
 			if n == name {
-				err = yerr.NewDuplicateNameError(connID, fmt.Errorf("SFN[%s] is already linked to another connection", name))
+				err = yerr.NewDuplicateNameError(connID, fmt.Errorf("SFN[%s] is already linked to another stream", name))
 				delete(conns, connID)
 				break LOOP
 			}

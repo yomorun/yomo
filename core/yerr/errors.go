@@ -110,15 +110,15 @@ func (e ErrorCode) To() quic.ApplicationErrorCode {
 
 // DuplicateNameError duplicate name(sfn)
 type DuplicateNameError struct {
-	connID string
-	err    error
+	streamID string
+	err      error
 }
 
 // NewDuplicateNameError create a duplicate name error
-func NewDuplicateNameError(connID string, err error) DuplicateNameError {
+func NewDuplicateNameError(streamID string, err error) DuplicateNameError {
 	return DuplicateNameError{
-		connID: connID,
-		err:    err,
+		streamID: streamID,
+		err:      err,
 	}
 }
 
@@ -132,7 +132,7 @@ func (e DuplicateNameError) ErrorCode() ErrorCode {
 	return ErrorCodeDuplicateName
 }
 
-// ConnID duplicate connection ID
-func (e DuplicateNameError) ConnID() string {
-	return e.connID
+// ConnID duplicate stream ID
+func (e DuplicateNameError) StreamID() string {
+	return e.streamID
 }
