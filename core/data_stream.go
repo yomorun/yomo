@@ -21,15 +21,11 @@ type DataStream interface {
 	ID() string
 	// StreamType represents dataStream type (Source | SFN | UpstreamZipper).
 	StreamType() StreamType
-	// Metadata returns the extra info of the application
+	// Metadata returns the extra info of the application.
 	Metadata() []byte
-	// Close real close DataStream,
-	// The controlStream calls this function, If you want close a dataStream, to use
-	// the CloseWithError api.
+	// Close actually close the DataStream.
 	io.Closer
-	// CloseWithError close DataStream with an error string,
-	// This function do not real close the underlying stream, It notices controlStream to
-	// close itself, The controlStream must close underlying stream after receive CloseStreamFrame.
+	// ReadWriter read write frame.
 	frame.ReadWriter
 	// ObserveDataTags observed data tags.
 	// TODO: There maybe a sorted list, we can find tag quickly.
