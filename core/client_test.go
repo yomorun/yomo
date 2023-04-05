@@ -64,8 +64,8 @@ func TestFrameRoundTrip(t *testing.T) {
 		server.ListenAndServe(ctx, testaddr)
 	}()
 
-	illegalource := NewClient("source", StreamTypeSource, WithCredential("token:error-token"), WithLogger(discardingLogger))
-	err := illegalource.Connect(ctx, testaddr)
+	illegalTokenSource := NewClient("source", StreamTypeSource, WithCredential("token:error-token"), WithLogger(discardingLogger))
+	err := illegalTokenSource.Connect(ctx, testaddr)
 	assert.Equal(t, "yomo: authentication failed, client credential name is token", err.Error())
 
 	source := NewClient(
@@ -104,11 +104,11 @@ func TestFrameRoundTrip(t *testing.T) {
 	err = sameNameSfn.Connect(ctx, testaddr)
 	assert.NoError(t, err, "sfn connect should replace the old sfn stream")
 
-	exited := CheckClientExited(sfn, time.Second)
+	exited := checkClientExited(sfn, time.Second)
 	assert.True(t, exited, "the old sfn stream should exited")
 
-	exited = CheckClientExited(sameNameSfn, time.Second)
-	assert.False(t, exited, "the old sfn stream should exited")
+	exited = checkClientExited(sameNameSfn, time.Second)
+	assert.False(t, exited, "the new sfn stream should not exited")
 
 	stats := server.StatsFunctions()
 	nameList := []string{}
@@ -135,7 +135,7 @@ func TestFrameRoundTrip(t *testing.T) {
 	assert.NoError(t, server.Close(), "server.Close() should not return error")
 }
 
-func CheckClientExited(client *Client, tim time.Duration) bool {
+func checkClientExited(client *Client, tim time.Duration) bool {
 	done := make(chan struct{})
 	go func() {
 		client.Wait()

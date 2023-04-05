@@ -199,6 +199,10 @@ func (c *Client) processStream(controlStream ClientControlStream, dataStream Dat
 	}
 }
 
+// handleFrameError handles errors that occur during frame reading and writing by performing the following actions:
+// Sending the error to the error function (errorfn).
+// Closing the client if the data stream has been closed.
+// Always attempting to reconnect if an error is encountered.
 func (c *Client) handleFrameError(err error, reconnection chan<- struct{}) {
 	if err == nil {
 		return
@@ -206,13 +210,14 @@ func (c *Client) handleFrameError(err error, reconnection chan<- struct{}) {
 
 	c.errorfn(err)
 
-	// exit client program if stream be closed.
+	// exit client program if stream has be closed.
 	if err == io.EOF {
 		c.ctxCancel()
 		return
 	}
 
-	// reconnect to server if stream executes error, the error is mostly network error.
+	// always attempting to reconnect if an error is encountered,
+	// the error is mostly network error.
 	reconnection <- struct{}{}
 }
 
