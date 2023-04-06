@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/router"
 	"github.com/yomorun/yomo/core/yerr"
 	"golang.org/x/exp/slog"
@@ -24,8 +23,6 @@ type Context struct {
 	// Frame receives from client.
 	Frame frame.Frame
 
-	// Metadata is be built from handshake.
-	Metadata metadata.Metadata
 	// Route is the route from handshake.
 	Route router.Route
 	// mu is used to protect Keys from concurrent read and write operations.
@@ -86,7 +83,7 @@ func (c *Context) Value(key any) any {
 // newContext returns a yomo context,
 // The context implements standard library `context.Context` interface,
 // The lifecycle of Context is equal to stream's that be passed in.
-func newContext(dataStream DataStream, md metadata.Metadata, route router.Route, logger *slog.Logger) (c *Context) {
+func newContext(dataStream DataStream, route router.Route, logger *slog.Logger) (c *Context) {
 	v := ctxPool.Get()
 	if v == nil {
 		c = new(Context)
@@ -101,7 +98,6 @@ func newContext(dataStream DataStream, md metadata.Metadata, route router.Route,
 	)
 
 	c.DataStream = dataStream
-	c.Metadata = md
 	c.Route = route
 	c.Logger = logger
 
@@ -141,7 +137,6 @@ func (c *Context) Clean() {
 
 func (c *Context) reset() {
 	c.DataStream = nil
-	c.Metadata = nil
 	c.Route = nil
 	c.Frame = nil
 	c.Logger = nil

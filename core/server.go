@@ -309,7 +309,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 		return err
 	}
 
-	md := frameMetadata.Merge(c.Metadata)
+	md := frameMetadata.Merge(c.DataStream.Metadata())
 
 	// route
 	route := s.router.Route(md)

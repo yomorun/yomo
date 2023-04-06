@@ -82,7 +82,7 @@ type handshakeResult struct {
 }
 
 // makeHandshakeFunc creates a function that will handle a HandshakeFrame.
-// It takes metadata and route parameters, which will be assigned after the returned function is executed.
+// It takes route parameter, which will be assigned after the returned function is executed.
 func (g *StreamGroup) makeHandshakeFunc(result *handshakeResult) func(hf *frame.HandshakeFrame) (metadata.Metadata, error) {
 	return func(hf *frame.HandshakeFrame) (md metadata.Metadata, err error) {
 		_, ok, err := g.connector.Get(hf.ID())
@@ -96,6 +96,9 @@ func (g *StreamGroup) makeHandshakeFunc(result *handshakeResult) func(hf *frame.
 		if err != nil {
 			return
 		}
+
+		md = md.Merge(g.baseMetadata)
+
 		route, err := g.handleRoute(hf, md)
 		if err != nil {
 			return
@@ -137,10 +140,7 @@ func (g *StreamGroup) handleContextFunc(route router.Route, dataStream DataStrea
 		g.group.Done()
 	}()
 
-	mb := dataStream.Metadata()
-	mb = mb.Merge(g.baseMetadata)
-
-	c := newContext(dataStream, mb, route, g.logger)
+	c := newContext(dataStream, route, g.logger)
 	defer c.Clean()
 
 	contextFunc(c)

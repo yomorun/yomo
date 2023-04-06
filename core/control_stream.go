@@ -44,6 +44,7 @@ type ControlStream interface {
 }
 
 // HandshakeFunc is used by server control stream to handle handshake.
+// The returned metadata will be set for the DataStream that is being opened.
 type HandshakeFunc func(*frame.HandshakeFrame) (metadata.Metadata, error)
 
 // VerifyAuthenticationFunc is used by server control stream to verify authentication.
@@ -54,6 +55,8 @@ type ServerControlStream interface {
 	ControlStream
 
 	// VerifyAuthentication verify the Authentication from client side.
+	// The returned metadata is connection-level metadata that will be merged with
+	// the handshake metadata and set for the data stream.
 	VerifyAuthentication(verifyFunc VerifyAuthenticationFunc) (metadata.Metadata, error)
 
 	// OpenStream reveives a HandshakeFrame from control stream and handle it in the function be passed in.
@@ -377,6 +380,9 @@ func (cs *clientControlStream) acceptStream(ctx context.Context) (DataStream, er
 		return nil, errors.New("yomo: client control stream accept stream without send handshake")
 	}
 
+	// Unlike server-side data streams,
+	// client-side data streams do not merge connection-level metadata and stream-level metadata.
+	// Instead, they only contain stream-level metadata.
 	md, err := cs.metadataDecoder.Decode(f.Metadata())
 	if err != nil {
 		return nil, err

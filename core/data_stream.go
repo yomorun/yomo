@@ -23,6 +23,7 @@ type DataStream interface {
 	// StreamType represents dataStream type (Source | SFN | UpstreamZipper).
 	StreamType() StreamType
 	// Metadata returns the extra info of the application.
+	// The metadata is a merged set of data from both the handshake and authentication processes.
 	Metadata() metadata.Metadata
 	// Close actually close the DataStream.
 	io.Closer
