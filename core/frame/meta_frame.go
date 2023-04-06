@@ -80,7 +80,7 @@ func (m *MetaFrame) Encode() []byte {
 	meta.AddPrimitivePacket(sourceID)
 
 	// metadata
-	if m.metadata != nil {
+	if m.metadata != nil || len(m.metadata) == 0 {
 		metadata := y3.NewPrimitivePacketEncoder(byte(TagOfMetadata))
 		metadata.SetBytesValue(m.metadata)
 		meta.AddPrimitivePacket(metadata)

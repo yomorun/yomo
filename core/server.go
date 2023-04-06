@@ -33,7 +33,7 @@ type Server struct {
 	name                    string
 	connector               *Connector
 	router                  router.Router
-	metadataBuilder         metadata.Builder
+	metadataDecoder         metadata.Decoder
 	counterOfDataFrame      int64
 	downstreams             map[string]frame.Writer
 	mu                      sync.Mutex
@@ -88,7 +88,7 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 
 // Serve the server with a net.PacketConn.
 func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
-	if err := s.validateMetadataBuilder(); err != nil {
+	if err := s.validateMetadataDecoder(); err != nil {
 		return err
 	}
 
@@ -132,7 +132,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		// Auth accepts a AuthenticationFrame from client. The first frame from client must be
 		// AuthenticationFrame, It returns true if auth successful otherwise return false.
 		// It response to client a AuthenticationAckFrame.
-		err = controlStream.VerifyAuthentication(s.handleAuthenticationFrame)
+		md, err := controlStream.VerifyAuthentication(s.handleAuthenticationFrame)
 		if err != nil {
 			logger.Error("Authentication Failed", err)
 			continue
@@ -140,7 +140,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		logger.Debug("Authentication Success")
 
 		go func(qconn quic.Connection) {
-			streamGroup := NewStreamGroup(ctx, controlStream, s.connector, s.metadataBuilder, s.router, logger)
+			streamGroup := NewStreamGroup(ctx, md, controlStream, s.connector, s.metadataDecoder, s.router, logger)
 
 			defer streamGroup.Wait()
 			defer s.doConnectionCloseHandlers(qconn)
@@ -276,8 +276,8 @@ func (s *Server) mainFrameHandler(c *Context) error {
 	return nil
 }
 
-func (s *Server) handleAuthenticationFrame(f auth.Object) (bool, error) {
-	ok := auth.Authenticate(s.opts.auths, f)
+func (s *Server) handleAuthenticationFrame(f auth.Object) (metadata.Metadata, bool, error) {
+	md, ok := auth.Authenticate(s.opts.auths, f)
 
 	if ok {
 		s.logger.Debug("Successful authentication")
@@ -285,7 +285,7 @@ func (s *Server) handleAuthenticationFrame(f auth.Object) (bool, error) {
 		s.logger.Warn("Authentication failed", "credential", f.AuthName())
 	}
 
-	return ok, nil
+	return md, ok, nil
 }
 
 func (s *Server) handleDataFrame(c *Context) error {
@@ -304,20 +304,15 @@ func (s *Server) handleDataFrame(c *Context) error {
 
 	f := c.Frame.(*frame.DataFrame)
 
-	m, err := s.metadataBuilder.Decode(f.GetMetaFrame().Metadata())
+	frameMetadata, err := s.metadataDecoder.Decode(f.GetMetaFrame().Metadata())
 	if err != nil {
 		return err
 	}
 
-	if m == nil {
-		m, err = s.metadataBuilder.Decode(from.Metadata())
-		if err != nil {
-			return err
-		}
-	}
+	md := frameMetadata.Merge(c.Metadata)
 
 	// route
-	route := s.router.Route(m)
+	route := s.router.Route(md)
 	if route == nil {
 		c.Logger.Warn("handleDataFrame route is nil")
 		return fmt.Errorf("handleDataFrame route is nil")
@@ -407,11 +402,11 @@ func (s *Server) ConfigRouter(router router.Router) {
 	s.mu.Unlock()
 }
 
-// ConfigMetadataBuilder is used to set metadataBuilder by zipper
-func (s *Server) ConfigMetadataBuilder(builder metadata.Builder) {
+// ConfigMetadataDecoder is used to set Decoder by zipper.
+func (s *Server) ConfigMetadataDecoder(decoder metadata.Decoder) {
 	s.mu.Lock()
-	s.metadataBuilder = builder
-	s.logger.Debug("config metadataBuilder")
+	s.metadataDecoder = decoder
+	s.logger.Debug("config metadataDecoder")
 	s.mu.Unlock()
 }
 
@@ -446,8 +441,12 @@ func (s *Server) dispatchToDownstreams(c *Context) {
 	if stream.StreamType() == StreamTypeSource {
 		f := c.Frame.(*frame.DataFrame)
 		if f.IsBroadcast() {
-			if f.GetMetaFrame().Metadata() == nil {
-				f.GetMetaFrame().SetMetadata(stream.Metadata())
+			if f.GetMetaFrame().Metadata() == nil || len(f.GetMetaFrame().Metadata()) == 0 {
+				byteMd, err := stream.Metadata().Encode()
+				if err != nil {
+					c.Logger.Error("dispatching error", err)
+				}
+				f.GetMetaFrame().SetMetadata(byteMd)
 			}
 			for addr, ds := range s.downstreams {
 				c.Logger.Info("dispatching to", "dispatch_addr", addr, "tid", f.TransactionID())
@@ -469,9 +468,9 @@ func (s *Server) validateRouter() error {
 	return nil
 }
 
-func (s *Server) validateMetadataBuilder() error {
-	if s.metadataBuilder == nil {
-		return errors.New("server's metadataBuilder is nil")
+func (s *Server) validateMetadataDecoder() error {
+	if s.metadataDecoder == nil {
+		return errors.New("server's metadataDecoder is nil")
 	}
 	return nil
 }

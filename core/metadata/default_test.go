@@ -7,15 +7,18 @@ import (
 )
 
 func TestMetadata(t *testing.T) {
-	builder := DefaultBuilder()
+	encoder := DefaultDecoder()
 
-	m, err := builder.Build(nil)
-
+	md, err := encoder.Decode([]byte{})
 	assert.NoError(t, err)
-	assert.Equal(t, []uint8([]byte(nil)), m.Encode())
 
-	de, err := builder.Decode([]byte{})
-
+	got, err := md.Encode()
 	assert.NoError(t, err)
-	assert.Equal(t, m, de)
+	assert.Equal(t, []byte{}, got)
+
+	md = md.Merge(&Default{}, &Default{})
+
+	got, err = md.Encode()
+	assert.NoError(t, err)
+	assert.Equal(t, []byte{}, got)
 }

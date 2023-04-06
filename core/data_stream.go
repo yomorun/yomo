@@ -8,6 +8,7 @@ import (
 
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/metadata"
 )
 
 // DataStream wraps the specific io streams (typically quic.Stream) to transfer frames.
@@ -22,7 +23,7 @@ type DataStream interface {
 	// StreamType represents dataStream type (Source | SFN | UpstreamZipper).
 	StreamType() StreamType
 	// Metadata returns the extra info of the application.
-	Metadata() []byte
+	Metadata() metadata.Metadata
 	// Close actually close the DataStream.
 	io.Closer
 	// ReadWriter read write frame.
@@ -37,7 +38,7 @@ type dataStream struct {
 	name       string
 	id         string
 	streamType StreamType
-	metadata   []byte
+	metadata   metadata.Metadata
 	observed   []frame.Tag
 
 	closed atomic.Bool
@@ -52,7 +53,7 @@ func newDataStream(
 	name string,
 	id string,
 	streamType StreamType,
-	metadata []byte,
+	metadata metadata.Metadata,
 	stream quic.Stream,
 	observed []frame.Tag,
 ) DataStream {
@@ -70,7 +71,7 @@ func newDataStream(
 func (s *dataStream) Context() context.Context     { return s.stream.Context() }
 func (s *dataStream) ID() string                   { return s.id }
 func (s *dataStream) Name() string                 { return s.name }
-func (s *dataStream) Metadata() []byte             { return s.metadata }
+func (s *dataStream) Metadata() metadata.Metadata  { return s.metadata }
 func (s *dataStream) StreamType() StreamType       { return s.streamType }
 func (s *dataStream) ObserveDataTags() []frame.Tag { return s.observed }
 

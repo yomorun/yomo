@@ -1,38 +1,22 @@
-// Package metadata provides a default implements of `Metadata`.
+// Package metadata provides a default implements of `Metadata` and `Encoder`.
 package metadata
-
-import (
-	"github.com/yomorun/yomo/core/frame"
-)
 
 var _ Metadata = &Default{}
 
-// Default returns an implement of `Metadata`,
-// the default `Metadata` do not store anything.
+// Default returns an implement of `Metadata`, the default `Metadata` do not store anything.
 type Default struct{}
 
-// Encode returns nil, It indicates the application do not have metadata.
-func (m *Default) Encode() []byte {
-	return nil
-}
+// Merge do nothing.
+func (m *Default) Merge(other ...Metadata) Metadata { return m }
 
-type defaultBuilder struct {
+// Encode returns empty byte slice.
+func (m *Default) Encode() ([]byte, error) { return []byte{}, nil }
+
+type defaultEncoder struct {
 	m *Default
 }
 
-// DefaultBuilder returns an implement of `Builder`,
-// the default builder only return default `Metadata`, the default `Metadata`
-// do not store anything.
-func DefaultBuilder() Builder {
-	return &defaultBuilder{
-		m: &Default{},
-	}
-}
+// DefaultCodec returns the implement of `Codec`, Codec do nothing.
+func DefaultDecoder() Decoder { return &defaultEncoder{&Default{}} }
 
-func (builder *defaultBuilder) Build(f *frame.HandshakeFrame) (Metadata, error) {
-	return builder.m, nil
-}
-
-func (builder *defaultBuilder) Decode(buf []byte) (Metadata, error) {
-	return builder.m, nil
-}
+func (encoder *defaultEncoder) Decode([]byte) (Metadata, error) { return encoder.m, nil }

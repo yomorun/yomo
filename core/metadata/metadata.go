@@ -1,21 +1,22 @@
-// Package metadata defines `Metadata` and the `Builder`.
+// Package metadata defines `Metadata` and the `Decoder`.
 package metadata
 
-import "github.com/yomorun/yomo/core/frame"
-
-// Metadata is used for storing extra info of the application.
+// Metadata is an interface used to store additional information about the application.
+//
+//	There are three types of metadata in yomo:
+//	 1. Metadata from `Authentication.Authenticate()`, This means that the metadata is built in the control stream.
+//	 2. Metadata from the data stream.
+//	 3. Metadata in DataFrame.
 type Metadata interface {
-	// Encode is the serialize method,
-	// That represents the Metadata can be transmited.
-	Encode() []byte
+	// Encode encodes the metadata into a byte slice.
+	Encode() ([]byte, error)
+	// Merge defines the method for merging metadata from other sources into the existing metadata.
+	Merge(...Metadata) Metadata
 }
 
-// Builder is the builder of Metadata.
-// the metadata usually be built from `HandshakeFrame`,
-// and It can be decode as byte array for io transmission.
-type Builder interface {
-	// Build returns an Metadata instance according to the handshake frame passed in.
-	Build(f *frame.HandshakeFrame) (Metadata, error)
-	// Decode is the deserialize method
-	Decode(buf []byte) (Metadata, error)
+// Decoder is an interface that defines methods for decoding metadata.
+// Implementations of this interface can be used to decode metadata to its binary representation.
+type Decoder interface {
+	// Decode decodes the given byte slice into metadata.
+	Decode([]byte) (Metadata, error)
 }

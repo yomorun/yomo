@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/pkg/id"
 	"golang.org/x/exp/slog"
 )
@@ -138,7 +139,7 @@ func (c *Client) Close() error {
 }
 
 func (c *Client) openControlStream(ctx context.Context, addr string) (ClientControlStream, error) {
-	controlStream, err := OpenClientControlStream(ctx, addr, c.opts.tlsConfig, c.opts.quicConfig, c.logger)
+	controlStream, err := OpenClientControlStream(ctx, addr, c.opts.tlsConfig, c.opts.quicConfig, metadata.DefaultDecoder(), c.logger)
 	if err != nil {
 		return controlStream, err
 	}
