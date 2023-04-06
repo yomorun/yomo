@@ -132,7 +132,7 @@ func (e DuplicateNameError) ErrorCode() ErrorCode {
 	return ErrorCodeDuplicateName
 }
 
-// ConnID duplicate stream ID
+// StreamID duplicate stream ID
 func (e DuplicateNameError) StreamID() string {
 	return e.streamID
 }

@@ -1,3 +1,4 @@
+// Package frame defines frames for yomo.
 package frame
 
 import (
