@@ -23,10 +23,18 @@ type ErrHandshakeRejected struct {
 	StreamID string
 }
 
-// Error returns a error string for the implementation of the error interface.
-func (e *ErrHandshakeRejected) Error() string {
+// Error returns a string that represents the ErrHandshakeRejected error for the implementation of the error interface.
+func (e ErrHandshakeRejected) Error() string {
 	return fmt.Sprintf("yomo: handshake be rejected, streamID=%s, reason=%s", e.StreamID, e.Reason)
 }
+
+// ErrAuthenticateFailed be returned when client control stream authenticate failed.
+type ErrAuthenticateFailed struct {
+	ReasonFromeServer string
+}
+
+// Error returns a string that represents the ErrAuthenticateFailed error for the implementation of the error interface.
+func (e ErrAuthenticateFailed) Error() string { return e.ReasonFromeServer }
 
 // ControlStream defines the interface for controlling a stream.
 type ControlStream interface {
@@ -167,7 +175,7 @@ func (ss *serverControlStream) VerifyAuthentication(verifyFunc func(auth.Object)
 		return err
 	}
 
-	// create a goroutinue to continus read frame after verify authentication successful.
+	// create a goroutinue to continuous read frame after verify authentication successful.
 	go ss.readFrameLoop()
 
 	return nil
@@ -259,13 +267,13 @@ func (cs *clientControlStream) Authenticate(cred *auth.Credential) error {
 		)
 	}
 	if !resp.OK() {
-		return errors.New(resp.Reason())
+		return &ErrAuthenticateFailed{resp.Reason()}
 	}
 
-	// create a goroutinue to continus read frame from server.
+	// create a goroutinue to continuous read frame from server.
 	go cs.readFrameLoop()
-	// create an other goroutinue to continus accept stream from server.
-	go cs.continusAcceptStream(cs.ctx)
+	// create an other goroutinue to continuous accept stream from server.
+	go cs.acceptStreamLoop(cs.ctx)
 
 	return nil
 }
@@ -306,7 +314,7 @@ func (cs *clientControlStream) AcceptStream(ctx context.Context) (DataStream, er
 		delete(cs.handshakeFrames, reject.StreamID())
 		cs.mu.Unlock()
 
-		return nil, &ErrHandshakeRejected{
+		return nil, ErrHandshakeRejected{
 			Reason:   reject.Reason(),
 			StreamID: reject.StreamID(),
 		}
@@ -328,7 +336,7 @@ type acceptStreamResult struct {
 	err    error
 }
 
-func (cs *clientControlStream) continusAcceptStream(ctx context.Context) {
+func (cs *clientControlStream) acceptStreamLoop(ctx context.Context) {
 	for {
 		dataStream, err := cs.acceptStream(ctx)
 		cs.acceptStreamResultChan <- acceptStreamResult{dataStream, err}

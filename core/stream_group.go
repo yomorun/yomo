@@ -90,7 +90,7 @@ func (g *StreamGroup) makeHandshakeFunc(result *handshakeResult) func(hf *frame.
 		if ok {
 			return errors.New("yomo: stream id is not allowed to be a duplicate")
 		}
-		md, err := g.mb.Build(hf)
+		md, err := g.mb.Decode(hf.Metadata())
 		if err != nil {
 			return
 		}
@@ -107,7 +107,7 @@ func (g *StreamGroup) makeHandshakeFunc(result *handshakeResult) func(hf *frame.
 }
 
 // Run run contextFunc with connector.
-// Run continus Accepts DataStream and create a Context to run with contextFunc.
+// Run continuous Accepts DataStream and create a Context to run with contextFunc.
 // TODO: run in aop model, like before -> handle -> after.
 func (g *StreamGroup) Run(contextFunc func(c *Context)) error {
 	for {

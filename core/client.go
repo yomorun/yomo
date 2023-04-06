@@ -3,6 +3,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"io"
 	"time"
 
@@ -94,6 +95,10 @@ func (c *Client) runBackground(ctx context.Context, addr string, controlStream C
 			var err error
 			controlStream, dataStream, err = c.openStream(ctx, addr)
 			if err != nil {
+				if errors.As(err, new(ErrAuthenticateFailed)) {
+					c.cleanStream(controlStream, err)
+					return
+				}
 				c.logger.Error("client reconnect error", err)
 				time.Sleep(time.Second)
 				goto RECONNECT
@@ -135,11 +140,11 @@ func (c *Client) Close() error {
 func (c *Client) openControlStream(ctx context.Context, addr string) (ClientControlStream, error) {
 	controlStream, err := OpenClientControlStream(ctx, addr, c.opts.tlsConfig, c.opts.quicConfig, c.logger)
 	if err != nil {
-		return nil, err
+		return controlStream, err
 	}
 
 	if err := controlStream.Authenticate(c.opts.credential); err != nil {
-		return nil, err
+		return controlStream, err
 	}
 
 	return controlStream, nil
@@ -148,11 +153,11 @@ func (c *Client) openControlStream(ctx context.Context, addr string) (ClientCont
 func (c *Client) openStream(ctx context.Context, addr string) (ClientControlStream, DataStream, error) {
 	controlStream, err := c.openControlStream(ctx, addr)
 	if err != nil {
-		return nil, nil, err
+		return controlStream, nil, err
 	}
 	dataStream, err := c.openDataStream(ctx, controlStream)
 	if err != nil {
-		return nil, nil, err
+		return controlStream, dataStream, err
 	}
 
 	return controlStream, dataStream, nil

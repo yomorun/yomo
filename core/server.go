@@ -134,7 +134,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		// It response to client a AuthenticationAckFrame.
 		err = controlStream.VerifyAuthentication(s.handleAuthenticationFrame)
 		if err != nil {
-			logger.Warn("Authentication Failed", "error", err)
+			logger.Error("Authentication Failed", err)
 			continue
 		}
 		logger.Debug("Authentication Success")
