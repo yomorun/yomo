@@ -16,7 +16,7 @@ type defaultEncoder struct {
 	m *Default
 }
 
-// DefaultCodec returns the implement of `Codec`, Codec do nothing.
+// DefaultDecoder returns the implement of `Codec`, Codec do nothing.
 func DefaultDecoder() Decoder { return &defaultEncoder{&Default{}} }
 
 func (encoder *defaultEncoder) Decode([]byte) (Metadata, error) { return encoder.m, nil }
