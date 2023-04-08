@@ -12,10 +12,11 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-// StreamGroup is the group of stream includes ControlStream amd DataStream.
-// One Connection has many DataStream and only one ControlStream, ControlStream authenticates
-// Connection and recevies HandshakeFrame and CloseStreamFrame to create DataStream or close
-// stream. the ControlStream always the first stream established between server and client.
+// StreamGroup is a group of streams includes ControlStream amd DataStream.
+// A single Connection can have multiple DataStreams, but only one ControlStream.
+// The ControlStream receives HandshakeFrames to create DataStreams, while
+// the DataStreams receive and broadcast DataFrames to other DataStreams.
+// the ControlStream is always the first stream established between server and client.
 type StreamGroup struct {
 	ctx           context.Context
 	controlStream ServerControlStream
@@ -26,7 +27,7 @@ type StreamGroup struct {
 	group         sync.WaitGroup
 }
 
-// NewStreamGroup returns StreamGroup.
+// NewStreamGroup returns the StreamGroup.
 func NewStreamGroup(
 	ctx context.Context,
 	controlStream ServerControlStream,
