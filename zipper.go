@@ -88,7 +88,7 @@ func NewZipper(conf string) (Zipper, error) {
 	zipper := createZipperServer(config.Name, options, config)
 	// zipper workflow
 	err = zipper.configWorkflow(config)
-	zipper.server.Logger().Info("Using config file", "file_path", conf)
+	zipper.server.Logger().Info("using config file", "file_path", conf)
 
 	return zipper, err
 }
@@ -136,7 +136,7 @@ func (z *zipper) ConfigWorkflow(conf string) error {
 	if err != nil {
 		return err
 	}
-	z.Logger().Debug("ConfigWorkflow", "work_flow", config)
+	z.Logger().Debug("config work flow", "work_flow", config)
 	return z.configWorkflow(config)
 }
 
@@ -152,7 +152,7 @@ func (z *zipper) ConfigMesh(url string) error {
 		return nil
 	}
 
-	z.Logger().Debug("Downloading mesh config...")
+	z.Logger().Debug("downloading mesh config...")
 	// download mesh conf
 	res, err := http.Get(url)
 	if err != nil {
@@ -164,10 +164,10 @@ func (z *zipper) ConfigMesh(url string) error {
 	var configs []config.MeshZipper
 	err = decoder.Decode(&configs)
 	if err != nil {
-		z.Logger().Error("download Mesh config", err)
+		z.Logger().Error("download mesh config", err)
 		return err
 	}
-	z.Logger().Debug("download Mesh config successfully")
+	z.Logger().Debug("download mesh config successfully")
 
 	if len(configs) == 0 {
 		return nil
@@ -190,7 +190,7 @@ func (z *zipper) ConfigMesh(url string) error {
 
 // ListenAndServe will start zipper service.
 func (z *zipper) ListenAndServe() error {
-	z.Logger().Debug("Creating Zipper Server")
+	z.Logger().Debug("creating zipper server")
 	// check downstream zippers
 	for _, ds := range z.downstreamZippers {
 		if dsZipper, ok := ds.(*zipper); ok {

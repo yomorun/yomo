@@ -13,7 +13,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/caarlos0/env/v6"
@@ -89,21 +88,6 @@ type Config struct {
 
 	// DisableTime disable time key, It's a pravited field, Just for testing.
 	DisableTime bool
-}
-
-// DebugFrameSize is use for log dataFrame,
-// It means that only logs the first DebugFrameSize bytes if the data is large than DebugFrameSize bytes.
-//
-// DebugFrameSize is default to 16,
-// if env `YOMO_DEBUG_FRAME_SIZE` is setted and It's an int number, Set the env value to DebugFrameSize.
-var DebugFrameSize = 16
-
-func init() {
-	if e := os.Getenv("YOMO_DEBUG_FRAME_SIZE"); e != "" {
-		if val, err := strconv.Atoi(e); err == nil {
-			DebugFrameSize = val
-		}
-	}
 }
 
 // Default returns a slog.Logger according to enviroment.

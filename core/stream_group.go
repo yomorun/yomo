@@ -46,6 +46,8 @@ func NewStreamGroup(
 		router:          router,
 		logger:          logger,
 	}
+	logger.Info("connection connected")
+
 	return group
 }
 
@@ -72,6 +74,7 @@ func (g *StreamGroup) handleRoute(hf *frame.HandshakeFrame, md metadata.Metadata
 		if ok {
 			stream.Close()
 			g.connector.Remove(existsStreamID)
+			g.logger.Debug("connector remove stream", "stream_id", stream.ID(), "stream_type", stream.StreamType().String(), "stream_name", stream.Name())
 		}
 	}
 	return route, nil
@@ -118,29 +121,31 @@ func (g *StreamGroup) Run(contextFunc func(c *Context)) error {
 
 		handshakeFunc := g.makeHandshakeFunc(&routeResult)
 
-		dataStream, err := g.controlStream.OpenStream(g.ctx, handshakeFunc)
+		stream, err := g.controlStream.OpenStream(g.ctx, handshakeFunc)
 		if err != nil {
 			return err
 		}
 
 		g.group.Add(1)
-		g.connector.Add(dataStream.ID(), dataStream)
+		g.connector.Add(stream.ID(), stream)
+		g.logger.Debug("connector add stream", "stream_id", stream.ID(), "stream_type", stream.StreamType().String(), "stream_name", stream.Name())
 
-		go g.handleContextFunc(routeResult.route, dataStream, contextFunc)
+		go g.handleContextFunc(routeResult.route, stream, contextFunc)
 	}
 }
 
-func (g *StreamGroup) handleContextFunc(route router.Route, dataStream DataStream, contextFunc func(c *Context)) {
+func (g *StreamGroup) handleContextFunc(route router.Route, stream DataStream, contextFunc func(c *Context)) {
 	defer func() {
 		// source route is always nil.
 		if route != nil {
-			route.Remove(dataStream.ID())
+			route.Remove(stream.ID())
 		}
-		g.connector.Remove(dataStream.ID())
+		g.connector.Remove(stream.ID())
+		g.logger.Debug("connector remove stream", "stream_id", stream.ID(), "stream_type", stream.StreamType().String(), "stream_name", stream.Name())
 		g.group.Done()
 	}()
 
-	c := newContext(dataStream, route, g.logger)
+	c := newContext(stream, route, g.logger)
 	defer c.Clean()
 
 	contextFunc(c)

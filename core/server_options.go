@@ -38,7 +38,7 @@ func defaultServerOptions() *serverOptions {
 		logger:     logger,
 	}
 	opts.alpnHandler = func(proto string) error {
-		opts.logger.Info("client alpn proto", "component", "server", "proto", proto)
+		opts.logger.Info("client alpn proto", "component", "zipper", "proto", proto)
 		return nil
 	}
 	return opts

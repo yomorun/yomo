@@ -58,29 +58,29 @@ type streamFunction struct {
 // Deprecated: use yomo.WithObserveDataTags instead
 func (s *streamFunction) SetObserveDataTags(tag ...frame.Tag) {
 	s.client.SetObserveDataTags(tag...)
-	s.client.Logger().Debug("sSetObserveDataTag", "tags", s.observeDataTags)
+	s.client.Logger().Debug("set sfn observe data tasg", "tags", s.observeDataTags)
 }
 
 // SetHandler set the handler function, which accept the raw bytes data and return the tag & response.
 func (s *streamFunction) SetHandler(fn core.AsyncHandler) error {
 	s.fn = fn
-	s.client.Logger().Debug("SetHandler")
+	s.client.Logger().Debug("set async handler")
 	return nil
 }
 
 func (s *streamFunction) SetPipeHandler(fn core.PipeHandler) error {
 	s.pfn = fn
-	s.client.Logger().Debug("SetPipeHandler")
+	s.client.Logger().Debug("set pipe handler")
 	return nil
 }
 
 // Connect create a connection to the zipper, when data arrvied, the data will be passed to the
 // handler which setted by SetHandler method.
 func (s *streamFunction) Connect() error {
-	s.client.Logger().Debug("Connect")
+	s.client.Logger().Debug("sfn connecting to zipper ...")
 	// notify underlying network operations, when data with tag we observed arrived, invoke the func
 	s.client.SetDataFrameObserver(func(data *frame.DataFrame) {
-		s.client.Logger().Debug("receive DataFrame", "data_frame", data.String())
+		s.client.Logger().Debug("received data frame", "data_frame", data.String())
 		s.onDataFrame(data.GetCarriage(), data.GetMetaFrame())
 	})
 
@@ -110,7 +110,7 @@ func (s *streamFunction) Connect() error {
 
 	err := s.client.Connect(context.Background(), s.zipperEndpoint)
 	if err != nil {
-		s.client.Logger().Error("Connect error", err)
+		s.client.Logger().Error("sfn failed to connect to the zipper", err)
 	}
 	return err
 }
@@ -127,7 +127,7 @@ func (s *streamFunction) Close() error {
 
 	if s.client != nil {
 		if err := s.client.Close(); err != nil {
-			s.client.Logger().Error("Close error", err)
+			s.client.Logger().Error("failed to close sfn", err)
 			return err
 		}
 	}
@@ -137,8 +137,6 @@ func (s *streamFunction) Close() error {
 
 // when DataFrame we observed arrived, invoke the user's function
 func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
-	s.client.Logger().Debug("onDataFrame")
-
 	if s.fn != nil {
 		go func() {
 			// invoke serverless
@@ -153,15 +151,14 @@ func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
 				// reuse sourceID
 				frame.SetSourceID(metaFrame.SourceID())
 				frame.SetCarriage(tag, resp)
-				s.client.Logger().Debug("start WriteFrame()", "resp", resp)
 				s.client.WriteFrame(frame)
 			}
 		}()
 	} else if s.pfn != nil {
-		s.client.Logger().Debug("pipe fn receive", "data_len", len(data), "data", data)
+		s.client.Logger().Debug("pipe sfn receive", "data_len", len(data), "data", data)
 		s.pIn <- data
 	} else {
-		s.client.Logger().Warn("StreamFunction is nil")
+		s.client.Logger().Warn("sfn does not have a handler")
 	}
 }
 

@@ -121,7 +121,7 @@ func (ss *serverControlStream) readFrameLoop() {
 		case *frame.HandshakeFrame:
 			ss.handshakeFrameChan <- ff
 		default:
-			ss.logger.Debug("server control stream read unexcepted frame", "frame_type", f.Type().String())
+			ss.logger.Debug("control stream read unexcepted frame", "frame_type", f.Type().String())
 		}
 	}
 }
@@ -260,7 +260,7 @@ func (cs *clientControlStream) readFrameLoop() {
 		case *frame.HandshakeRejectedFrame:
 			cs.handshakeRejectedFrameChan <- ff
 		default:
-			cs.logger.Debug("client control stream read unexcepted frame", "frame_type", f.Type().String())
+			cs.logger.Debug("control stream read unexcepted frame", "frame_type", f.Type().String())
 		}
 	}
 }

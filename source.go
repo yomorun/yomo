@@ -67,10 +67,10 @@ func (s *yomoSource) SetDataTag(tag frame.Tag) {
 // Close will close the connection to YoMo-Zipper.
 func (s *yomoSource) Close() error {
 	if err := s.client.Close(); err != nil {
-		s.client.Logger().Error("Close error", err)
+		s.client.Logger().Error("failed to close the source", err)
 		return err
 	}
-	s.client.Logger().Debug("source is closed")
+	s.client.Logger().Debug("the source is closed")
 	return nil
 }
 
@@ -85,7 +85,7 @@ func (s *yomoSource) Connect() error {
 
 	err := s.client.Connect(context.Background(), s.zipperEndpoint)
 	if err != nil {
-		s.client.Logger().Error("Connect error", err)
+		s.client.Logger().Error("the source failed to connect to the zipper", err)
 	}
 	return err
 }
@@ -95,7 +95,7 @@ func (s *yomoSource) WriteWithTag(tag frame.Tag, data []byte) error {
 	f := frame.NewDataFrame()
 	f.SetCarriage(tag, data)
 	f.SetSourceID(s.client.ClientID())
-	s.client.Logger().Debug("WriteWithTag", "data_frame", f.String())
+	s.client.Logger().Debug("source write with tag", "data_frame", f.String())
 	return s.client.WriteFrame(f)
 }
 
@@ -107,7 +107,7 @@ func (s *yomoSource) SetErrorHandler(fn func(err error)) {
 // [Experimental] SetReceiveHandler set the observe handler function
 func (s *yomoSource) SetReceiveHandler(fn func(frame.Tag, []byte)) {
 	s.fn = fn
-	s.client.Logger().Debug("SetReceiveHandler")
+	s.client.Logger().Info("receive hander set for the source")
 }
 
 // Broadcast Write the data to all downstream
@@ -116,6 +116,6 @@ func (s *yomoSource) Broadcast(data []byte) error {
 	f.SetCarriage(s.tag, data)
 	f.SetSourceID(s.client.ClientID())
 	f.SetBroadcast(true)
-	s.client.Logger().Debug("Broadcast", "data_frame", f.String())
+	s.client.Logger().Debug("broadcast", "data_frame", f.String())
 	return s.client.WriteFrame(f)
 }

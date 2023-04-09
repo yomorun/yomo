@@ -117,13 +117,13 @@ func (c *Context) WithFrame(f frame.Frame) {
 //
 // TODO: ycode is not be transmitted.
 func (c *Context) CloseWithError(ycode yerr.ErrorCode, errString string) {
-	c.Logger.Warn("Stream Close With error", "err_code", ycode.String(), "error", errString)
+	c.Logger.Warn("data stream be closed", "err_code", ycode.String(), "error", errString)
 
 	err := c.DataStream.Close()
 	if err == nil {
 		return
 	}
-	c.Logger.Error("Close DataStream error", err)
+	c.Logger.Error("data stream close failed", err)
 }
 
 // Clean cleans the Context,
