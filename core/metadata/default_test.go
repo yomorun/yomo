@@ -16,7 +16,7 @@ func TestMetadata(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, []byte{}, got)
 
-	md = md.Merge(&Default{}, &Default{})
+	md = md.Merge(&Default{})
 
 	got, err = md.Encode()
 	assert.NoError(t, err)

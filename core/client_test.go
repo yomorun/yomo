@@ -118,6 +118,7 @@ func TestFrameRoundTrip(t *testing.T) {
 	assert.ElementsMatch(t, nameList, []string{"source", "sfn-1"})
 
 	dataFrame := frame.NewDataFrame()
+	dataFrame.GetMetaFrame().SetMetadata([]byte{'a'})
 	dataFrame.SetSourceID(source.clientID)
 	dataFrame.SetCarriage(obversedTag, payload)
 	dataFrame.SetBroadcast(true)
