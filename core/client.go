@@ -78,7 +78,7 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 	return nil
 }
 
-func (c *Client) runBackground(ctx context.Context, addr string, controlStream ClientControlStream, dataStream DataStream) {
+func (c *Client) runBackground(ctx context.Context, addr string, controlStream *ClientControlStream, dataStream DataStream) {
 	reconnection := make(chan struct{})
 
 	go c.processStream(controlStream, dataStream, reconnection)
@@ -115,7 +115,7 @@ func (c *Client) WriteFrame(f frame.Frame) error {
 	return nil
 }
 
-func (c *Client) cleanStream(controlStream ClientControlStream, err error) {
+func (c *Client) cleanStream(controlStream *ClientControlStream, err error) {
 	errString := ""
 	if err != nil {
 		errString = err.Error()
@@ -138,7 +138,7 @@ func (c *Client) Close() error {
 	return nil
 }
 
-func (c *Client) openControlStream(ctx context.Context, addr string) (ClientControlStream, error) {
+func (c *Client) openControlStream(ctx context.Context, addr string) (*ClientControlStream, error) {
 	controlStream, err := OpenClientControlStream(ctx, addr, c.opts.tlsConfig, c.opts.quicConfig, metadata.DefaultDecoder(), c.logger)
 	if err != nil {
 		return controlStream, err
@@ -151,7 +151,7 @@ func (c *Client) openControlStream(ctx context.Context, addr string) (ClientCont
 	return controlStream, nil
 }
 
-func (c *Client) openStream(ctx context.Context, addr string) (ClientControlStream, DataStream, error) {
+func (c *Client) openStream(ctx context.Context, addr string) (*ClientControlStream, DataStream, error) {
 	controlStream, err := c.openControlStream(ctx, addr)
 	if err != nil {
 		return controlStream, nil, err
@@ -164,7 +164,7 @@ func (c *Client) openStream(ctx context.Context, addr string) (ClientControlStre
 	return controlStream, dataStream, nil
 }
 
-func (c *Client) openDataStream(ctx context.Context, controlStream ClientControlStream) (DataStream, error) {
+func (c *Client) openDataStream(ctx context.Context, controlStream *ClientControlStream) (DataStream, error) {
 	handshakeFrame := frame.NewHandshakeFrame(
 		c.name,
 		c.clientID,
@@ -181,7 +181,7 @@ func (c *Client) openDataStream(ctx context.Context, controlStream ClientControl
 	return controlStream.AcceptStream(ctx)
 }
 
-func (c *Client) processStream(controlStream ClientControlStream, dataStream DataStream, reconnection chan<- struct{}) {
+func (c *Client) processStream(controlStream *ClientControlStream, dataStream DataStream, reconnection chan<- struct{}) {
 	defer dataStream.Close()
 
 	readFrameChan := c.readFrame(dataStream)

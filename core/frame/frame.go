@@ -48,7 +48,7 @@ const (
 	TagOfTokenFrame Type = 0x3E
 
 	// AuthenticationFrame
-	TagOfAuthenticationFrame   Type = 0x3D
+	TagOfAuthenticationFrame   Type = 0x03
 	TagOfAuthenticationName    Type = 0x04
 	TagOfAuthenticationPayload Type = 0x05
 

@@ -37,12 +37,6 @@ type ErrAuthenticateFailed struct {
 // Error returns a string that represents the ErrAuthenticateFailed error for the implementation of the error interface.
 func (e ErrAuthenticateFailed) Error() string { return e.ReasonFromeServer }
 
-// ControlStream defines the interface for controlling a stream.
-type ControlStream interface {
-	// CloseWithError closes the control stream.
-	CloseWithError(code uint64, errString string) error
-}
-
 // HandshakeFunc is used by server control stream to handle handshake.
 // The returned metadata will be set for the DataStream that is being opened.
 type HandshakeFunc func(*frame.HandshakeFrame) (metadata.Metadata, error)
@@ -50,42 +44,8 @@ type HandshakeFunc func(*frame.HandshakeFrame) (metadata.Metadata, error)
 // VerifyAuthenticationFunc is used by server control stream to verify authentication.
 type VerifyAuthenticationFunc func(auth.Object) (metadata.Metadata, bool, error)
 
-// ServerControlStream defines the interface of server side control stream.
-type ServerControlStream interface {
-	ControlStream
-
-	// VerifyAuthentication verify the Authentication from client side.
-	// The returned metadata is connection-level metadata that will be merged with
-	// the handshake metadata and set for the data stream.
-	VerifyAuthentication(verifyFunc VerifyAuthenticationFunc) (metadata.Metadata, error)
-
-	// OpenStream reveives a HandshakeFrame from control stream and handle it in the function be passed in.
-	// if handler returns nil, There will return a DataStream and nil,
-	// if handler returns an error, There will return a nil and the error,
-	OpenStream(context.Context, HandshakeFunc) (DataStream, error)
-}
-
-// ClientControlStream is an interface that defines the methods for a client-side control stream.
-type ClientControlStream interface {
-	ControlStream
-
-	// Authenticate sends the provided credential to the server's control stream to authenticate the client.
-	Authenticate(*auth.Credential) error
-
-	// RequestStream sends a HandshakeFrame to the server's control stream to request a new data stream.
-	// If the handshake is successful, a DataStream will be returned by the AcceptStream() method.
-	RequestStream(*frame.HandshakeFrame) error
-
-	// AcceptStream accepts a DataStream from the server if SendHandshake() has been called before.
-	// This method should be executed in a for-loop.
-	// If the handshake is rejected, an ErrHandshakeRejected error will be returned. This error does not represent
-	// a network error and the for-loop can continue.
-	AcceptStream(context.Context) (DataStream, error)
-}
-
-var _ ServerControlStream = &serverControlStream{}
-
-type serverControlStream struct {
+// ServerControlStream defines the struct of server-side control stream.
+type ServerControlStream struct {
 	qconn              quic.Connection
 	stream             frame.ReadWriter
 	handshakeFrameChan chan *frame.HandshakeFrame
@@ -93,11 +53,11 @@ type serverControlStream struct {
 }
 
 // NewServerControlStream returns ServerControlStream from quic Connection and the first stream of this Connection.
-func NewServerControlStream(qconn quic.Connection, stream frame.ReadWriter, logger *slog.Logger) ServerControlStream {
+func NewServerControlStream(qconn quic.Connection, stream frame.ReadWriter, logger *slog.Logger) *ServerControlStream {
 	if logger == nil {
 		logger = ylog.Default()
 	}
-	controlStream := &serverControlStream{
+	controlStream := &ServerControlStream{
 		qconn:              qconn,
 		stream:             stream,
 		handshakeFrameChan: make(chan *frame.HandshakeFrame, 10),
@@ -107,7 +67,7 @@ func NewServerControlStream(qconn quic.Connection, stream frame.ReadWriter, logg
 	return controlStream
 }
 
-func (ss *serverControlStream) readFrameLoop() {
+func (ss *ServerControlStream) readFrameLoop() {
 	defer func() {
 		close(ss.handshakeFrameChan)
 	}()
@@ -126,7 +86,10 @@ func (ss *serverControlStream) readFrameLoop() {
 	}
 }
 
-func (ss *serverControlStream) OpenStream(ctx context.Context, handshakeFunc HandshakeFunc) (DataStream, error) {
+// OpenStream reveives a HandshakeFrame from control stream and handle it in the function be passed in.
+// if handler returns nil, There will return a DataStream and nil,
+// if handler returns an error, There will return a nil and the error.
+func (ss *ServerControlStream) OpenStream(ctx context.Context, handshakeFunc HandshakeFunc) (DataStream, error) {
 	ff, ok := <-ss.handshakeFrameChan
 	if !ok {
 		return nil, io.EOF
@@ -156,11 +119,13 @@ func (ss *serverControlStream) OpenStream(ctx context.Context, handshakeFunc Han
 	return dataStream, nil
 }
 
-func (ss *serverControlStream) CloseWithError(code uint64, errString string) error {
+// CloseWithError closes the server-side control stream.
+func (ss *ServerControlStream) CloseWithError(code uint64, errString string) error {
 	return closeWithError(ss.qconn, code, errString)
 }
 
-func (ss *serverControlStream) VerifyAuthentication(verifyFunc VerifyAuthenticationFunc) (metadata.Metadata, error) {
+// VerifyAuthentication verify the Authentication from client side.
+func (ss *ServerControlStream) VerifyAuthentication(verifyFunc VerifyAuthenticationFunc) (metadata.Metadata, error) {
 	first, err := ss.stream.ReadFrame()
 	if err != nil {
 		return nil, err
@@ -191,9 +156,8 @@ func (ss *serverControlStream) VerifyAuthentication(verifyFunc VerifyAuthenticat
 	return md, nil
 }
 
-var _ ClientControlStream = &clientControlStream{}
-
-type clientControlStream struct {
+// ClientControlStream is the struct that defines the methods for client-side control stream.
+type ClientControlStream struct {
 	ctx             context.Context
 	qconn           quic.Connection
 	stream          frame.ReadWriter
@@ -212,7 +176,8 @@ func OpenClientControlStream(
 	tlsConfig *tls.Config, quicConfig *quic.Config,
 	metadataDecoder metadata.Decoder,
 	logger *slog.Logger,
-) (ClientControlStream, error) {
+) (*ClientControlStream, error) {
+
 	qconn, err := quic.DialAddrContext(ctx, addr, tlsConfig, quicConfig)
 	if err != nil {
 		return nil, err
@@ -228,11 +193,9 @@ func OpenClientControlStream(
 // NewClientControlStream returns ClientControlStream from quic Connection and the first stream form the Connection.
 func NewClientControlStream(
 	ctx context.Context, qconn quic.Connection,
-	stream frame.ReadWriter, metadataDecoder metadata.Decoder, logger *slog.Logger) ClientControlStream {
-	if logger == nil {
-		logger = ylog.Default()
-	}
-	controlStream := &clientControlStream{
+	stream frame.ReadWriter, metadataDecoder metadata.Decoder, logger *slog.Logger) *ClientControlStream {
+
+	controlStream := &ClientControlStream{
 		ctx:                        ctx,
 		qconn:                      qconn,
 		stream:                     stream,
@@ -246,7 +209,7 @@ func NewClientControlStream(
 	return controlStream
 }
 
-func (cs *clientControlStream) readFrameLoop() {
+func (cs *ClientControlStream) readFrameLoop() {
 	defer func() {
 		close(cs.handshakeRejectedFrameChan)
 	}()
@@ -265,7 +228,9 @@ func (cs *clientControlStream) readFrameLoop() {
 	}
 }
 
-func (cs *clientControlStream) Authenticate(cred *auth.Credential) error {
+// Authenticate sends the provided credential to the server's control stream to authenticate the client.
+
+func (cs *ClientControlStream) Authenticate(cred *auth.Credential) error {
 	if err := cs.stream.WriteFrame(
 		frame.NewAuthenticationFrame(cred.Name(), cred.Payload())); err != nil {
 		return err
@@ -308,7 +273,9 @@ func ackDataStream(stream frame.Reader) (string, error) {
 	return f.StreamID(), nil
 }
 
-func (cs *clientControlStream) RequestStream(hf *frame.HandshakeFrame) error {
+// RequestStream sends a HandshakeFrame to the server's control stream to request a new data stream.
+// If the handshake is successful, a DataStream will be returned by the AcceptStream() method.
+func (cs *ClientControlStream) RequestStream(hf *frame.HandshakeFrame) error {
 	err := cs.stream.WriteFrame(hf)
 
 	if err != nil {
@@ -322,7 +289,11 @@ func (cs *clientControlStream) RequestStream(hf *frame.HandshakeFrame) error {
 	return nil
 }
 
-func (cs *clientControlStream) AcceptStream(ctx context.Context) (DataStream, error) {
+// AcceptStream accepts a DataStream from the server if SendHandshake() has been called before.
+// This method should be executed in a for-loop.
+// If the handshake is rejected, an ErrHandshakeRejected error will be returned. This error does not represent
+// a network error and the for-loop can continue.
+func (cs *ClientControlStream) AcceptStream(ctx context.Context) (DataStream, error) {
 	select {
 	case reject := <-cs.handshakeRejectedFrameChan:
 		cs.mu.Lock()
@@ -351,7 +322,7 @@ type acceptStreamResult struct {
 	err    error
 }
 
-func (cs *clientControlStream) acceptStreamLoop(ctx context.Context) {
+func (cs *ClientControlStream) acceptStreamLoop(ctx context.Context) {
 	for {
 		dataStream, err := cs.acceptStream(ctx)
 		cs.acceptStreamResultChan <- acceptStreamResult{dataStream, err}
@@ -361,7 +332,7 @@ func (cs *clientControlStream) acceptStreamLoop(ctx context.Context) {
 	}
 }
 
-func (cs *clientControlStream) acceptStream(ctx context.Context) (DataStream, error) {
+func (cs *ClientControlStream) acceptStream(ctx context.Context) (DataStream, error) {
 	quicStream, err := cs.qconn.AcceptStream(ctx)
 	if err != nil {
 		return nil, err
@@ -398,7 +369,7 @@ func (cs *clientControlStream) acceptStream(ctx context.Context) (DataStream, er
 	), nil
 }
 
-func (cs *clientControlStream) CloseWithError(code uint64, errString string) error {
+func (cs *ClientControlStream) CloseWithError(code uint64, errString string) error {
 	return closeWithError(cs.qconn, code, errString)
 }
 
