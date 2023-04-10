@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net"
 	"sync"
 	"testing"
@@ -118,7 +119,7 @@ func TestFrameRoundTrip(t *testing.T) {
 	assert.ElementsMatch(t, nameList, []string{"source", "sfn-1"})
 
 	dataFrame := frame.NewDataFrame()
-	dataFrame.GetMetaFrame().SetMetadata([]byte{'a'})
+	dataFrame.GetMetaFrame().SetMetadata([]byte("the-metadata"))
 	dataFrame.SetSourceID(source.clientID)
 	dataFrame.SetCarriage(obversedTag, payload)
 	dataFrame.SetBroadcast(true)
@@ -200,6 +201,11 @@ func newFrameWriterRecorder() *frameWriterRecorder {
 func (w *frameWriterRecorder) WriteFrame(frm frame.Frame) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+
+	if frm.Type() == frame.TagOfDataFrame {
+		f := frm.(*frame.DataFrame)
+		fmt.Println("----------", f.GetMetaFrame().Metadata())
+	}
 
 	_, err := w.buf.Write(frm.Encode())
 	return err
