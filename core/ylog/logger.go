@@ -126,7 +126,7 @@ func parseToWriter(conf Config, path string, defaultWriter io.Writer) io.Writer 
 }
 
 func parseToSlogLevel(stringLevel string) slog.Level {
-	var level = slog.LevelDebug
+	level := slog.LevelDebug
 	switch strings.ToLower(stringLevel) {
 	case "debug":
 		level = slog.LevelDebug
