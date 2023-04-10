@@ -19,7 +19,7 @@ import (
 // the ControlStream is always the first stream established between server and client.
 type StreamGroup struct {
 	ctx           context.Context
-	controlStream ServerControlStream
+	controlStream *ServerControlStream
 	connector     *Connector
 	mb            metadata.Builder
 	router        router.Router
@@ -30,7 +30,7 @@ type StreamGroup struct {
 // NewStreamGroup returns the StreamGroup.
 func NewStreamGroup(
 	ctx context.Context,
-	controlStream ServerControlStream,
+	controlStream *ServerControlStream,
 	connector *Connector,
 	mb metadata.Builder,
 	router router.Router,
