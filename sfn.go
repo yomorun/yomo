@@ -109,9 +109,6 @@ func (s *streamFunction) Connect() error {
 	}
 
 	err := s.client.Connect(context.Background(), s.zipperEndpoint)
-	if err != nil {
-		s.client.Logger().Error("sfn failed to connect to the zipper", err)
-	}
 	return err
 }
 
