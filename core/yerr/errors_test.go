@@ -51,5 +51,5 @@ func TestDuplicateName(t *testing.T) {
 
 	assert.Equal(t, err.Error(), se.Error())
 	assert.Equal(t, ErrorCodeDuplicateName, se.ErrorCode())
-	assert.Equal(t, connID, se.ConnID())
+	assert.Equal(t, connID, se.StreamID())
 }

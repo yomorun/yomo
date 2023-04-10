@@ -82,8 +82,8 @@ func (c *Connector) Get(streamID string) (DataStream, bool, error) {
 	return stream, true, nil
 }
 
-// GetSourceConns gets the streams with the specified source observe tag.
-func (c *Connector) GetSourceConns(sourceID string, tag frame.Tag) ([]DataStream, error) {
+// GetSourceStreams gets the streams with the specified source observe tag.
+func (c *Connector) GetSourceStreams(sourceID string, tag frame.Tag) ([]DataStream, error) {
 	select {
 	case <-c.ctx.Done():
 		return []DataStream{}, ErrConnectorClosed

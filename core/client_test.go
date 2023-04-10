@@ -64,6 +64,10 @@ func TestFrameRoundTrip(t *testing.T) {
 		server.ListenAndServe(ctx, testaddr)
 	}()
 
+	illegalTokenSource := NewClient("source", StreamTypeSource, WithCredential("token:error-token"), WithLogger(discardingLogger))
+	err := illegalTokenSource.Connect(ctx, testaddr)
+	assert.Equal(t, "yomo: authentication failed, client credential name is token", err.Error())
+
 	source := NewClient(
 		"source",
 		StreamTypeSource,
@@ -78,15 +82,15 @@ func TestFrameRoundTrip(t *testing.T) {
 		assert.Equal(t, string(payload), string(bf.GetCarriage()))
 	})
 
-	err := source.Connect(ctx, testaddr)
+	err = source.Connect(ctx, testaddr)
 	assert.NoError(t, err, "source connect must be success")
 	closeEarlySfn := createTestStreamFunction("close-early-sfn", obversedTag)
 	closeEarlySfn.Connect(ctx, testaddr)
-	assert.Equal(t, err, nil)
+	assert.Equal(t, nil, err)
 
 	// test close early.
 	closeEarlySfn.Close()
-	assert.Equal(t, err, nil)
+	assert.Equal(t, nil, err)
 
 	sfn := createTestStreamFunction("sfn-1", obversedTag)
 	err = sfn.Connect(ctx, testaddr)
@@ -98,14 +102,13 @@ func TestFrameRoundTrip(t *testing.T) {
 		assert.Equal(t, string(payload), string(bf.GetCarriage()))
 	})
 	err = sameNameSfn.Connect(ctx, testaddr)
-	assert.Equal(t, err, nil)
+	assert.NoError(t, err, "sfn connect should replace the old sfn stream")
 
-	err = sfn.Wait()
-	if err == nil {
-		assert.FailNow(t, "sfn-1 should wait an error")
-		return
-	}
-	assert.Equal(t, err.Error(), "SFN[sfn-1] is already linked to another connection")
+	exited := checkClientExited(sfn, time.Second)
+	assert.True(t, exited, "the old sfn stream should exited")
+
+	exited = checkClientExited(sameNameSfn, time.Second)
+	assert.False(t, exited, "the new sfn stream should not exited")
 
 	stats := server.StatsFunctions()
 	nameList := []string{}
@@ -130,6 +133,21 @@ func TestFrameRoundTrip(t *testing.T) {
 	assert.NoError(t, source.Close(), "source client.Close() should not return error")
 	assert.NoError(t, sfn.Close(), "sfn client.Close() should not return error")
 	assert.NoError(t, server.Close(), "server.Close() should not return error")
+}
+
+func checkClientExited(client *Client, tim time.Duration) bool {
+	done := make(chan struct{})
+	go func() {
+		client.Wait()
+		done <- struct{}{}
+	}()
+
+	select {
+	case <-done:
+		return true
+	case <-time.After(tim):
+		return false
+	}
 }
 
 type hookTester struct {

@@ -26,7 +26,7 @@ func TestRouter(t *testing.T) {
 	assert.EqualError(t, err, "SFN[sfn-2] does not exist in config functions")
 
 	err = route.Add("conn-3", "sfn-1", []frame.Tag{frame.Tag(1)})
-	assert.EqualError(t, err, "SFN[sfn-1] is already linked to another connection")
+	assert.EqualError(t, err, "SFN[sfn-1] is already linked to another stream")
 
 	err = route.Remove("conn-1")
 	assert.NoError(t, err)

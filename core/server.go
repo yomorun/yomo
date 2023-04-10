@@ -127,20 +127,20 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 			continue
 		}
 
-		controlStream := NewServerControlStream(conn, NewFrameStream(stream0))
+		controlStream := NewServerControlStream(conn, NewFrameStream(stream0), s.logger)
 
 		// Auth accepts a AuthenticationFrame from client. The first frame from client must be
 		// AuthenticationFrame, It returns true if auth successful otherwise return false.
 		// It response to client a AuthenticationAckFrame.
 		err = controlStream.VerifyAuthentication(s.handleAuthenticationFrame)
 		if err != nil {
-			logger.Warn("Authentication Failed", "error", err)
+			logger.Error("Authentication Failed", err)
 			continue
 		}
 		logger.Debug("Authentication Success")
 
 		go func(qconn quic.Connection) {
-			streamGroup := NewStreamGroup(ctx, controlStream, s.connector, logger)
+			streamGroup := NewStreamGroup(ctx, controlStream, s.connector, s.metadataBuilder, s.router, logger)
 
 			defer streamGroup.Wait()
 			defer s.doConnectionCloseHandlers(qconn)
@@ -149,7 +149,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 			case <-ctx.Done():
 				return
 			case err := <-s.runWithStreamGroup(streamGroup):
-				logger.Error("Client Close", err)
+				logger.Error("client closed", err)
 			}
 		}(conn)
 	}
@@ -185,56 +185,9 @@ func (s *Server) Close() error {
 	return nil
 }
 
-func (s *Server) handleRoute(c *Context) error {
-	if c.DataStream.StreamType() == StreamTypeStreamFunction {
-		md, err := s.metadataBuilder.Decode(c.DataStream.Metadata())
-		if err != nil {
-			return err
-		}
-		// route
-		route := s.router.Route(md)
-		if route == nil {
-			return errors.New("handleHandshakeFrame route is nil")
-		}
-		if err := route.Add(c.StreamID(), c.DataStream.Name(), c.DataStream.ObserveDataTags()); err != nil {
-			// duplicate name
-			if e, ok := err.(yerr.DuplicateNameError); ok {
-				existsConnID := e.ConnID()
-
-				c.Logger.Debug(
-					"StreamFunction Duplicate Name",
-					"error", e.Error(),
-					"sfn_name", c.DataStream.Name(),
-					"old_stream_id", existsConnID,
-					"current_stream_id", c.StreamID(),
-				)
-
-				stream, ok, err := s.connector.Get(existsConnID)
-				if err != nil {
-					return err
-				}
-				if ok {
-					stream.CloseWithError(e.Error())
-					s.connector.Remove(existsConnID)
-				}
-			} else {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 // handleStreamContext handles data streams,
 // use c.Logger in this function scope for more complete logger information.
 func (s *Server) handleStreamContext(c *Context) {
-	// handle route.
-	if err := s.handleRoute(c); err != nil {
-		c.CloseWithError(yerr.ErrorCodeRejected, err.Error())
-		return
-	}
-	defer s.cleanRoute(c)
-
 	// start frame handlers
 	for _, handler := range s.startHandlers {
 		if err := handler(c); err != nil {
@@ -258,6 +211,7 @@ func (s *Server) handleStreamContext(c *Context) {
 				ye := yerr.New(yerr.Parse(e.ErrorCode), err)
 				c.Logger.Error("read frame error", ye)
 			} else if err == io.EOF {
+				c.CloseWithError(yerr.ErrorCodeClosed, "data stream closed")
 				c.Logger.Info("connection EOF")
 				break
 			}
@@ -414,7 +368,7 @@ func (s *Server) handleBackflowFrame(c *Context) error {
 	sourceID := f.SourceID()
 	// write to source with BackflowFrame
 	bf := frame.NewBackflowFrame(tag, carriage)
-	sourceConns, err := s.connector.GetSourceConns(sourceID, tag)
+	sourceConns, err := s.connector.GetSourceStreams(sourceID, tag)
 	if err != nil {
 		return err
 	}
@@ -559,9 +513,4 @@ func (s *Server) doConnectionCloseHandlers(qconn quic.Connection) {
 	for _, h := range s.connectionCloseHandlers {
 		h(qconn)
 	}
-}
-
-func (s *Server) cleanRoute(c *Context) {
-	md, _ := s.metadataBuilder.Decode(c.DataStream.Metadata())
-	s.router.Route(md).Remove(c.StreamID())
 }
