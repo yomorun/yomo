@@ -12,8 +12,8 @@ package metadata
 type Metadata interface {
 	// Encode encodes the metadata into a byte slice.
 	Encode() ([]byte, error)
-	// Merge defines the method for merging metadata from other sources into the existing metadata.
-	Merge(...Metadata) Metadata
+	// Merge defines the method for merging metadata from other source into the existing metadata.
+	Merge(Metadata) Metadata
 }
 
 // Decoder is an interface that defines methods for decoding metadata.

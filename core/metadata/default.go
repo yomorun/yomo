@@ -7,7 +7,7 @@ var _ Metadata = &Default{}
 type Default struct{}
 
 // Merge do nothing.
-func (m *Default) Merge(other ...Metadata) Metadata { return m }
+func (m *Default) Merge(other Metadata) Metadata { return m }
 
 // Encode returns empty byte slice.
 func (m *Default) Encode() ([]byte, error) { return []byte{}, nil }
