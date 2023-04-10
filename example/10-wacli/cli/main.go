@@ -2,14 +2,13 @@ package main
 
 import (
 	"log"
-	"strings"
 
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/core/frame"
 )
 
 func main() {
-	cllose, err := run("sfn.wasm")
+	cllose, err := run("../sfn/sfn.wasm")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -34,7 +33,7 @@ func run(wasmFile string) (func() error, error) {
 	name := "upper"
 	addr := "localhost:9000"
 	tags := runtime.GetObserveDataTags()
-	tags = []frame.Tag{0x33}
+	// tags = []frame.Tag{0x33}
 	sfn := yomo.NewStreamFunction(
 		name,
 		yomo.WithZipperAddr(addr),
@@ -68,11 +67,4 @@ func run(wasmFile string) (func() error, error) {
 		return nil, err
 	}
 	return sfn.Close, nil
-}
-
-func handler(data []byte) (frame.Tag, []byte) {
-	output := strings.ToUpper(string(data))
-	res := []byte(output)
-	tag := frame.Tag(0x34)
-	return tag, res
 }
