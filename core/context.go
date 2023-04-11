@@ -115,9 +115,9 @@ func (c *Context) WithFrame(f frame.Frame) {
 // It tells controlStream which dataStream should be closed and close dataStream with
 // returning error message to client side stream.
 //
-// TODO: ycode is not be transmitted.
+// TODO: ycode was not transmitted.
 func (c *Context) CloseWithError(ycode yerr.ErrorCode, errString string) {
-	c.Logger.Warn("data stream be closed", "err_code", ycode.String(), "error", errString)
+	c.Logger.Warn("data stream closed", "err_code", ycode.String(), "error", errString)
 
 	err := c.DataStream.Close()
 	if err == nil {

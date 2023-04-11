@@ -267,7 +267,7 @@ func (c *Client) handleFrame(f frame.Frame) {
 			c.receiver(ff)
 		}
 	default:
-		c.logger.Warn("data stream receive unexcepted frame", "frame_type", f.Type().String())
+		c.logger.Warn("data stream received unexpected frame", "frame_type", f.Type().String())
 	}
 }
 

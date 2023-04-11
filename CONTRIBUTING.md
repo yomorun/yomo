@@ -21,7 +21,7 @@ Consult the Table of Contents below, and jump to the desired section.
 
 There are some channels where you can get answers from the community or the maintainers of this project:
 
-- WeChat's channels are used by the community
+- Discord is used by the community
 
 Please avoid opening GitHub issues for general questions or help, as those should be reserved for actual bug reports. The YoMo community is welcoming and more than willing to assist you on those channels!
 
