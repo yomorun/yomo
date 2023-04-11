@@ -14,8 +14,10 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@heroicons/react": "^2.0.17",
     "@vercel/analytics": "^0.1.11",
     "@vercel/og": "^0.5.1",
+    "cobe": "^0.6.3",
     "focus-visible": "^5.2.0",
     "intersection-observer": "^0.12.2",
     "next": "^13.3.0",

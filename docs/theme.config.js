@@ -77,7 +77,6 @@ const themeConfig = {
       <>
         {/* Favicons, meta */}
         <link rel="icon" href="/favicon.ico" />
-        <link rel="manifest" href="/favicon/site.webmanifest" />
         <link rel="mask-icon" href="/favicon/safari-pinned-tab.svg" color="#000000" />
         <meta httpEquiv="Content-Language" content="en-US" />
         <meta name="msapplication-TileColor" content="#ffffff" />
