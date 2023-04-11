@@ -18,12 +18,12 @@ type noiseData struct {
 
 func main() {
 	// connect to YoMo-Zipper.
-	opts := []yomo.Option{yomo.WithZipperAddr("localhost:9000")}
+	opts := []yomo.Option{}
 	if credential := os.Getenv("YOMO_CREDENTIAL"); credential != "" {
 		opts = append(opts, yomo.WithCredential(credential))
 	}
 
-	source := yomo.NewSource("yomo-source", opts...)
+	source := yomo.NewSource("yomo-source", "localhost:9000", opts...)
 	defer source.Close()
 
 	err := source.Connect()

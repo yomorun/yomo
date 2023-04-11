@@ -10,7 +10,7 @@ import (
 func main() {
 	zipper := yomo.NewZipperWithOptions(
 		"zipper-2",
-		yomo.WithZipperAddr("localhost:9002"),
+		"localhost:9002",
 		yomo.WithAuth("token", "z2"),
 	)
 	defer zipper.Close()

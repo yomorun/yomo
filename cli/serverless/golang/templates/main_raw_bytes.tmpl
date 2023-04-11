@@ -26,7 +26,7 @@ func main() {
 func runSFN(name string, addr string, credential string) (closeFn func() error, err error) {
 	sfn := yomo.NewStreamFunction(
         name,
-		yomo.WithZipperAddr(addr),
+		addr,
 		yomo.WithObserveDataTags(DataTags()...),
 		yomo.WithCredential(credential),
 	)

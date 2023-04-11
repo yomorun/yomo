@@ -54,7 +54,7 @@ func (s *wasmServerless) Run(verbose bool) error {
 	for _, addr := range s.zipperAddrs {
 		sfn := yomo.NewStreamFunction(
 			s.name,
-			yomo.WithZipperAddr(addr),
+			addr,
 			yomo.WithObserveDataTags(s.observed...),
 			yomo.WithCredential(s.credential),
 		)

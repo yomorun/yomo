@@ -13,9 +13,6 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-// ClientOption YoMo client options
-type ClientOption func(*clientOptions)
-
 // Client is the abstraction of a YoMo-Client. a YoMo-Client can be
 // Source, Upstream Zipper or StreamFunction.
 type Client struct {

@@ -51,7 +51,7 @@ func main() {
 	addr := fmt.Sprintf("%s:%d", "localhost", getPort())
 	sfn := yomo.NewStreamFunction(
 		"Noise",
-		yomo.WithZipperAddr(addr),
+		addr,
 		yomo.WithObserveDataTags(DataTags()...),
 	)
 	defer sfn.Close()

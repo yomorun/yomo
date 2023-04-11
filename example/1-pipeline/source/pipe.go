@@ -19,7 +19,7 @@ func main() {
 	}
 
 	// init yomo-source
-	client := yomo.NewSource("source-pipe", yomo.WithZipperAddr("localhost:9000"))
+	client := yomo.NewSource("source-pipe", "localhost:9000")
 	defer client.Close()
 
 	// connect to yomo-zipper

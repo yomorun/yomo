@@ -18,7 +18,7 @@ func main() {
 	// add Downstream Zipper
 	zipper.AddDownstreamZipper(yomo.NewDownstreamZipper(
 		"zipper-2",
-		yomo.WithZipperAddr("localhost:9002"),
+		"localhost:9002",
 		yomo.WithCredential("token:z2"),
 	))
 

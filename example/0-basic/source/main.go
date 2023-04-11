@@ -27,7 +27,7 @@ func main() {
 	}
 	source := yomo.NewSource(
 		"yomo-source",
-		yomo.WithZipperAddr(addr),
+		addr,
 		yomo.WithLogger(logger),
 	)
 	err := source.Connect()

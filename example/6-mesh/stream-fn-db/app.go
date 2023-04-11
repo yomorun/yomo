@@ -40,7 +40,7 @@ func main() {
 	addr := fmt.Sprintf("%s:%d", "localhost", getPort())
 	sfn := yomo.NewStreamFunction(
 		"MockDB",
-		yomo.WithZipperAddr(addr),
+		addr,
 		yomo.WithObserveDataTags(DataTags()...),
 	)
 	defer sfn.Close()

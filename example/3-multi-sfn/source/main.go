@@ -20,7 +20,7 @@ func main() {
 	// connect to YoMo-Zipper.
 	source := yomo.NewSource(
 		"yomo-source",
-		yomo.WithZipperAddr("localhost:9000"),
+		"localhost:9000",
 	)
 	err := source.Connect()
 	if err != nil {

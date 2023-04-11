@@ -12,6 +12,9 @@ import (
 	"golang.org/x/exp/slog"
 )
 
+// ClientOption YoMo client options
+type ClientOption func(*clientOptions)
+
 // clientOptions are the options for YoMo client.
 type clientOptions struct {
 	observeDataTags []frame.Tag

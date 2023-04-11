@@ -29,24 +29,24 @@ type Source interface {
 
 // YoMo-Source
 type yomoSource struct {
-	name           string
-	zipperEndpoint string
-	client         *core.Client
-	tag            frame.Tag
-	fn             func(frame.Tag, []byte)
+	name       string
+	zipperAddr string
+	client     *core.Client
+	tag        frame.Tag
+	fn         func(frame.Tag, []byte)
 }
 
 var _ Source = &yomoSource{}
 
 // NewSource create a yomo-source
-func NewSource(name string, opts ...Option) Source {
+func NewSource(name, zipperAddr string, opts ...Option) Source {
 	options := NewOptions(opts...)
 	client := core.NewClient(name, core.ClientTypeSource, options.ClientOptions...)
 
 	return &yomoSource{
-		name:           name,
-		zipperEndpoint: options.ZipperAddr,
-		client:         client,
+		name:       name,
+		zipperAddr: zipperAddr,
+		client:     client,
 	}
 }
 
@@ -83,7 +83,7 @@ func (s *yomoSource) Connect() error {
 		}
 	})
 
-	err := s.client.Connect(context.Background(), s.zipperEndpoint)
+	err := s.client.Connect(context.Background(), s.zipperAddr)
 	return err
 }
 

@@ -32,7 +32,7 @@ var computePeek = func(_ context.Context, value float32) (float32, error) {
 func main() {
 	sfn := yomo.NewStreamFunction(
 		"Noise-2",
-		yomo.WithZipperAddr("localhost:9000"),
+		"localhost:9000",
 		yomo.WithObserveDataTags(0x14),
 	)
 	defer sfn.Close()

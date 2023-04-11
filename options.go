@@ -6,30 +6,17 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-const (
-	// DefaultZipperAddr is the default address of downstream zipper.
-	DefaultZipperAddr = "localhost:9000"
-)
-
 // Option is a function that applies a YoMo-Client option.
 type Option func(o *Options)
 
 // Options are the options for YoMo
 type Options struct {
-	ZipperAddr    string // target Zipper endpoint address
 	MeshConfigURL string // meshConfigURL is the URL of edge-mesh config
 	ServerOptions []core.ServerOption
 	ClientOptions []core.ClientOption
 
 	// TODO: WithWorkflowConfig
 	// zipperWorkflowConfig string // Zipper workflow file
-}
-
-// WithZipperAddr return a new options with ZipperAddr set to addr.
-func WithZipperAddr(addr string) Option {
-	return func(o *Options) {
-		o.ZipperAddr = addr
-	}
 }
 
 // WithMeshConfigURL sets the initial edge-mesh config URL for the YoMo-Zipper.
@@ -99,10 +86,6 @@ func NewOptions(opts ...Option) *Options {
 
 	for _, o := range opts {
 		o(options)
-	}
-
-	if options.ZipperAddr == "" {
-		options.ZipperAddr = DefaultZipperAddr
 	}
 
 	return options

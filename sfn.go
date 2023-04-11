@@ -27,12 +27,12 @@ type StreamFunction interface {
 }
 
 // NewStreamFunction create a stream function.
-func NewStreamFunction(name string, opts ...Option) StreamFunction {
+func NewStreamFunction(name, zipperAddr string, opts ...Option) StreamFunction {
 	options := NewOptions(opts...)
 	client := core.NewClient(name, core.ClientTypeStreamFunction, options.ClientOptions...)
 	sfn := &streamFunction{
 		name:            name,
-		zipperEndpoint:  options.ZipperAddr,
+		zipperAddr:      zipperAddr,
 		client:          client,
 		observeDataTags: make([]frame.Tag, 0),
 	}
@@ -45,7 +45,7 @@ var _ StreamFunction = &streamFunction{}
 // streamFunction implements StreamFunction interface.
 type streamFunction struct {
 	name            string
-	zipperEndpoint  string
+	zipperAddr      string
 	client          *core.Client
 	observeDataTags []frame.Tag       // tag list that will be observed
 	fn              core.AsyncHandler // user's function which will be invoked when data arrived
@@ -108,7 +108,7 @@ func (s *streamFunction) Connect() error {
 		}()
 	}
 
-	err := s.client.Connect(context.Background(), s.zipperEndpoint)
+	err := s.client.Connect(context.Background(), s.zipperAddr)
 	return err
 }
 
