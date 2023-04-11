@@ -142,7 +142,7 @@ func (z *zipper) ConfigWorkflow(conf string) error {
 
 func (z *zipper) configWorkflow(config *config.WorkflowConfig) error {
 	z.wfc = config
-	z.server.ConfigMetadataBuilder(metadata.DefaultBuilder())
+	z.server.ConfigMetadataDecoder(metadata.DefaultDecoder())
 	z.server.ConfigRouter(router.Default(config.Functions))
 	return nil
 }

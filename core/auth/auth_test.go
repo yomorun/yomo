@@ -5,15 +5,18 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/metadata"
 )
 
 // mockAuth implement `Authentication` interface,
 // Authenticate returns true if authed is true, false to false.
 type mockAuth struct{ authed bool }
 
-func (auth mockAuth) Init(args ...string)              {}
-func (auth mockAuth) Authenticate(payload string) bool { return auth.authed }
-func (auth mockAuth) Name() string                     { return "mock" }
+func (auth mockAuth) Init(args ...string) {}
+func (auth mockAuth) Authenticate(payload string) (metadata.Metadata, bool) {
+	return &metadata.Default{}, auth.authed
+}
+func (auth mockAuth) Name() string { return "mock" }
 
 func TestRegister(t *testing.T) {
 	expected := mockAuth{}
@@ -78,7 +81,7 @@ func TestAuthenticate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := Authenticate(tt.args.auths, tt.args.obj)
+			_, got := Authenticate(tt.args.auths, tt.args.obj)
 			assert.Equal(t, tt.want, got)
 		})
 	}

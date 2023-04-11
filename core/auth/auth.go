@@ -3,6 +3,8 @@ package auth
 
 import (
 	"strings"
+
+	"github.com/yomorun/yomo/core/metadata"
 )
 
 var (
@@ -14,7 +16,7 @@ type Authentication interface {
 	// Init authentication initialize arguments
 	Init(args ...string)
 	// Authenticate authentication client's credential
-	Authenticate(payload string) bool
+	Authenticate(payload string) (metadata.Metadata, bool)
 	// Name authentication name
 	Name() string
 }
@@ -74,18 +76,18 @@ type Object interface {
 // Authenticate finds an authentication way in `auths` and authenticates the Object.
 //
 // If `auths` is nil or empty, It returns true, It think that authentication is not required.
-func Authenticate(auths map[string]Authentication, obj Object) bool {
+func Authenticate(auths map[string]Authentication, obj Object) (metadata.Metadata, bool) {
 	if auths == nil || len(auths) <= 0 {
-		return true
+		return &metadata.Default{}, true
 	}
 
 	if obj == nil {
-		return false
+		return &metadata.Default{}, false
 	}
 
 	auth, ok := auths[obj.AuthName()]
 	if !ok {
-		return false
+		return &metadata.Default{}, false
 	}
 
 	return auth.Authenticate(obj.AuthPayload())

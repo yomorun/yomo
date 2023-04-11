@@ -3,6 +3,7 @@ package auth
 
 import (
 	"github.com/yomorun/yomo/core/auth"
+	"github.com/yomorun/yomo/core/metadata"
 )
 
 var _ auth.Authentication = (*TokenAuth)(nil)
@@ -25,8 +26,8 @@ func (a *TokenAuth) Init(args ...string) {
 }
 
 // Authenticate authentication client's credential
-func (a *TokenAuth) Authenticate(payload string) bool {
-	return a.token == payload
+func (a *TokenAuth) Authenticate(payload string) (metadata.Metadata, bool) {
+	return &metadata.Default{}, a.token == payload
 }
 
 // Name authentication name
