@@ -149,7 +149,6 @@ func (ss *ServerControlStream) VerifyAuthentication(verifyFunc func(auth.Object)
 }
 
 // ClientControlStream is the struct that defines the methods for client-side control stream.
-
 type ClientControlStream struct {
 	ctx    context.Context
 	qconn  quic.Connection
