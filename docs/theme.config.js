@@ -46,10 +46,11 @@ const themeConfig = {
   logo: () => {
     return (
       <>
-        <Logo height={24} />
+        <img src={"/yomo-logo.png"} style={{width:'48px', height: '48px'}} />
+        {/* <Logo height={24} /> */}
         <span
           className="mx-2 font-extrabold hidden md:inline select-none"
-          title="Allegro Cloud"
+          title="YoMo"
         >
           YoMo
         </span>
@@ -75,7 +76,7 @@ const themeConfig = {
     return (
       <>
         {/* Favicons, meta */}
-        <link rel="icon" type="image/svg+xml" href="/favicon/favicon.svg" />
+        <link rel="icon" href="/favicon.ico" />
         <link rel="manifest" href="/favicon/site.webmanifest" />
         <link rel="mask-icon" href="/favicon/safari-pinned-tab.svg" color="#000000" />
         <meta httpEquiv="Content-Language" content="en-US" />
@@ -107,7 +108,7 @@ const themeConfig = {
             className="inline-flex items-center no-underline text-current font-semibold"
           >
             <span>
-              <Logo height={20} />
+              <Logo height={24} />
             </span>
           </a>
           <a href={`https://vercel.com/?utm_source=yomorun&utm_campaign=oss`} target="_blank" rel="noopener"><img src="/vercel.svg" /></a>
