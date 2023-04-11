@@ -110,7 +110,7 @@ func (s *yomoSource) SetReceiveHandler(fn func(frame.Tag, []byte)) {
 	s.client.Logger().Debug("SetReceiveHandler")
 }
 
-// Broadcast Write the data to all downstream
+// Broadcast write the data to all downstreams.
 func (s *yomoSource) Broadcast(data []byte) error {
 	f := frame.NewDataFrame()
 	f.SetCarriage(s.tag, data)
