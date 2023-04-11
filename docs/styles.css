@@ -17,6 +17,7 @@ html {
 }
 
 body {
+  font-family: 'Exo 2', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   background: linear-gradient(
       to bottom,
       rgba(255, 255, 255, 0) 0%,

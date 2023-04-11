@@ -88,6 +88,9 @@ const themeConfig = {
         <meta property="og:title" content={ogTitle} />
         <meta property="og:description" content={ogDescription} />
         <meta property="og:image" content={ogImage} />
+        <link rel="preconnect" href="https://fonts.googleapis.com"></link>
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="crossorigin"></link>
+        <link href="https://fonts.googleapis.com/css2?family=Exo+2&display=swap" rel="stylesheet"></link>
         <meta name="msvalidate.01" content="" />
         <meta name="google-site-verification" content="" />
       </>
