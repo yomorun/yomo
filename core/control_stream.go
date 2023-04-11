@@ -157,7 +157,6 @@ func (ss *ServerControlStream) VerifyAuthentication(verifyFunc VerifyAuthenticat
 }
 
 // ClientControlStream is the struct that defines the methods for client-side control stream.
-
 type ClientControlStream struct {
 	ctx             context.Context
 	qconn           quic.Connection
@@ -230,7 +229,6 @@ func (cs *ClientControlStream) readFrameLoop() {
 }
 
 // Authenticate sends the provided credential to the server's control stream to authenticate the client.
-
 func (cs *ClientControlStream) Authenticate(cred *auth.Credential) error {
 	if err := cs.stream.WriteFrame(
 		frame.NewAuthenticationFrame(cred.Name(), cred.Payload())); err != nil {
@@ -370,6 +368,7 @@ func (cs *ClientControlStream) acceptStream(ctx context.Context) (DataStream, er
 	), nil
 }
 
+// CloseWithError closes the client-side control stream.
 func (cs *ClientControlStream) CloseWithError(code uint64, errString string) error {
 	return closeWithError(cs.qconn, code, errString)
 }
