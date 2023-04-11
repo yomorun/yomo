@@ -81,14 +81,14 @@ func (ss *ServerControlStream) readFrameLoop() {
 		case *frame.HandshakeFrame:
 			ss.handshakeFrameChan <- ff
 		default:
-			ss.logger.Debug("server control stream read unexcepted frame", "frame_type", f.Type().String())
+			ss.logger.Debug("control stream read unexpected frame", "frame_type", f.Type().String())
 		}
 	}
 }
 
-// OpenStream reveives a HandshakeFrame from control stream and handle it in the function be passed in.
-// if handler returns nil, There will return a DataStream and nil,
-// if handler returns an error, There will return a nil and the error.
+// OpenStream reveives a HandshakeFrame from control stream and handle it in the function passed in.
+// if handler returns nil, will return a DataStream and nil,
+// if handler returns an error, will return nil and the error.
 func (ss *ServerControlStream) OpenStream(ctx context.Context, handshakeFunc HandshakeFunc) (DataStream, error) {
 	ff, ok := <-ss.handshakeFrameChan
 	if !ok {
@@ -223,7 +223,7 @@ func (cs *ClientControlStream) readFrameLoop() {
 		case *frame.HandshakeRejectedFrame:
 			cs.handshakeRejectedFrameChan <- ff
 		default:
-			cs.logger.Debug("client control stream read unexcepted frame", "frame_type", f.Type().String())
+			cs.logger.Debug("control stream read unexcepted frame", "frame_type", f.Type().String())
 		}
 	}
 }

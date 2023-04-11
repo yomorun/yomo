@@ -34,7 +34,7 @@ func newListener(conn net.PacketConn, tlsConfig *tls.Config, quicConfig *quic.Co
 	if tlsConfig == nil {
 		tc, err := pkgtls.CreateServerTLSConfig(conn.LocalAddr().String())
 		if err != nil {
-			logger.Error("CreateServerTLSConfig error", err)
+			logger.Error("generate server tls config failed", err)
 			return &defaultListener{}, err
 		}
 		tlsConfig = tc
@@ -46,7 +46,6 @@ func newListener(conn net.PacketConn, tlsConfig *tls.Config, quicConfig *quic.Co
 
 	quicListener, err := quic.Listen(conn, tlsConfig, quicConfig)
 	if err != nil {
-		logger.Error("quic Listen error", err)
 		return &defaultListener{}, err
 	}
 

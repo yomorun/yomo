@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	"github.com/yomorun/yomo/core/frame"
-	"golang.org/x/exp/slog"
 )
 
 // ErrConnectorClosed will be returned if the connector has been closed.
@@ -19,17 +18,15 @@ type Connector struct {
 	ctxCancel context.CancelFunc
 
 	streams sync.Map
-	logger  *slog.Logger
 }
 
 // NewConnector returns an initial Connector.
-func NewConnector(ctx context.Context, logger *slog.Logger) *Connector {
+func NewConnector(ctx context.Context) *Connector {
 	ctx, ctxCancel := context.WithCancel(ctx)
 
 	return &Connector{
 		ctx:       ctx,
 		ctxCancel: ctxCancel,
-		logger:    logger,
 	}
 }
 
@@ -44,7 +41,6 @@ func (c *Connector) Add(streamID string, stream DataStream) error {
 
 	c.streams.Store(streamID, stream)
 
-	c.logger.Debug("Connector add stream", "stream_id", streamID)
 	return nil
 }
 
@@ -58,7 +54,6 @@ func (c *Connector) Remove(streamID string) error {
 	}
 
 	c.streams.Delete(streamID)
-	c.logger.Debug("Connector remove stream", "stream_id", streamID)
 
 	return nil
 }

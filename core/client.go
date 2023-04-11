@@ -44,7 +44,7 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 	}
 	clientID := id.New()
 
-	logger := option.logger.With("component", "client", "client_type", connType.String(), "client_id", clientID, "client_name", appName)
+	logger := option.logger.With("component", connType.String(), "client_id", clientID, "client_name", appName)
 
 	if option.credential != nil {
 		logger.Info("use credential", "credential_name", option.credential.Name())
@@ -67,11 +67,14 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 
 // Connect connect client to server.
 func (c *Client) Connect(ctx context.Context, addr string) error {
+	c.logger = c.logger.With("zipper_addr", addr)
+
 	controlStream, dataStream, err := c.openStream(ctx, addr)
 	if err != nil {
-		c.logger.Error("connect error", err)
+		c.logger.Error("can not connect to zipper", err)
 		return err
 	}
+	c.logger.Info("connected to zipper")
 
 	go c.runBackground(ctx, addr, controlStream, dataStream)
 
@@ -100,7 +103,7 @@ func (c *Client) runBackground(ctx context.Context, addr string, controlStream *
 					c.cleanStream(controlStream, err)
 					return
 				}
-				c.logger.Error("client reconnect error", err)
+				c.logger.Error("reconnect error", err)
 				time.Sleep(time.Second)
 				goto RECONNECT
 			}
@@ -119,7 +122,7 @@ func (c *Client) cleanStream(controlStream *ClientControlStream, err error) {
 	errString := ""
 	if err != nil {
 		errString = err.Error()
-		c.logger.Error("client cancel with error", err)
+		c.logger.Error("client exit", err)
 	}
 
 	// controlStream is nil represents that client is not connected.
@@ -256,31 +259,29 @@ func (c *Client) handleFrame(f frame.Frame) {
 	switch ff := f.(type) {
 	case *frame.DataFrame:
 		if c.processor == nil {
-			c.logger.Warn("client processor has not been set")
+			c.logger.Warn("the processor has not been set")
 		} else {
 			c.processor(ff)
 		}
 	case *frame.BackflowFrame:
 		if c.receiver == nil {
-			c.logger.Warn("client receiver has not been set")
+			c.logger.Warn("the receiver has not been set")
 		} else {
 			c.receiver(ff)
 		}
 	default:
-		c.logger.Warn("client data stream receive unexcepted frame", "frame_type", f)
+		c.logger.Warn("data stream received unexpected frame", "frame_type", f.Type().String())
 	}
 }
 
 // SetDataFrameObserver sets the data frame handler.
 func (c *Client) SetDataFrameObserver(fn func(*frame.DataFrame)) {
 	c.processor = fn
-	c.logger.Debug("SetDataFrameObserver")
 }
 
 // SetBackflowFrameObserver sets the backflow frame handler.
 func (c *Client) SetBackflowFrameObserver(fn func(*frame.BackflowFrame)) {
 	c.receiver = fn
-	c.logger.Debug("SetBackflowFrameObserver")
 }
 
 // SetObserveDataTags set the data tag list that will be observed.
@@ -297,6 +298,7 @@ func (c *Client) Logger() *slog.Logger {
 // SetErrorHandler set error handler
 func (c *Client) SetErrorHandler(fn func(err error)) {
 	c.errorfn = fn
+	c.logger.Debug("the error handler has been set")
 }
 
 // ClientID return the client ID
