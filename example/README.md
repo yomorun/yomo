@@ -64,7 +64,7 @@ can run each example directly by `task example-basic`, `task example-cascading-z
    ```go
    source := yomo.NewSource(
      "yomo-source",
-     yomo.WithZipperAddr(addr),
+     "127.0.0.1:9000",
      // set observe data tags, 0x34, 0x35 is sfn return data tags
      yomo.WithObserveDataTags(0x34, 0x35), 
    )

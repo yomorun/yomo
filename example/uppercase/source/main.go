@@ -14,7 +14,7 @@ func main() {
 
 	source := yomo.NewSource(
 		"source",
-		yomo.WithZipperAddr(addr),
+		addr,
 	)
 	source.SetDataTag(0x33)
 	if err := source.Connect(); err != nil {
@@ -24,7 +24,7 @@ func main() {
 
 	sink := yomo.NewStreamFunction(
 		"sink",
-		yomo.WithZipperAddr(addr),
+		addr,
 		yomo.WithObserveDataTags(0x34),
 	)
 	sink.SetHandler(

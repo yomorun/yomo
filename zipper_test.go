@@ -8,7 +8,7 @@ import (
 )
 
 func TestZipperRun(t *testing.T) {
-	zipper := NewZipperWithOptions("zipper", WithZipperAddr("localhost:9001"))
+	zipper := NewZipperWithOptions("zipper", "localhost:9001")
 	time.Sleep(time.Second)
 	assert.NotNil(t, zipper)
 	err := zipper.Close()

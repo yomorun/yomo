@@ -7,7 +7,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	zipper := NewZipperWithOptions("test-zipper")
+	zipper := NewZipperWithOptions("test-zipper", "localhost:9000")
 	defer zipper.Close()
 	zipper.ConfigWorkflow("test/workflow.yaml")
 	go zipper.ListenAndServe()

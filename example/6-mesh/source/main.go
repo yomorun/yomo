@@ -23,7 +23,7 @@ var region = os.Getenv("REGION")
 func main() {
 	// connect to YoMo-Zipper.
 	addr := fmt.Sprintf("%s:%d", "localhost", getPort())
-	source := yomo.NewSource("yomo-source", yomo.WithZipperAddr(addr))
+	source := yomo.NewSource("yomo-source", addr)
 	err := source.Connect()
 	if err != nil {
 		log.Printf("❌ Emit the data to YoMo-Zipper failure with err: %v", err)

@@ -88,7 +88,7 @@ func runDeno(jsPath string, socketPath string, errCh chan<- error) {
 func startSfn(name string, zipperAddr string, credential string, observed []frame.Tag, conn net.Conn, errCh chan<- error) (yomo.StreamFunction, error) {
 	sfn := yomo.NewStreamFunction(
 		name,
-		yomo.WithZipperAddr(zipperAddr),
+		zipperAddr,
 		yomo.WithObserveDataTags(observed...),
 		yomo.WithCredential(credential),
 	)

@@ -11,7 +11,7 @@ import (
 func main() {
 	sfn := yomo.NewStreamFunction(
 		"echo-sfn",
-		yomo.WithZipperAddr("localhost:9002"),
+		"localhost:9002",
 		yomo.WithObserveDataTags(0x33),
 		yomo.WithCredential("token:z2"),
 	)

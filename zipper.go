@@ -66,9 +66,9 @@ type zipper struct {
 var _ Zipper = &zipper{}
 
 // NewZipperWithOptions create a zipper instance.
-func NewZipperWithOptions(name string, opts ...Option) Zipper {
+func NewZipperWithOptions(name, addr string, opts ...Option) Zipper {
 	options := NewOptions(opts...)
-	zipper := createZipperServer(name, options, nil)
+	zipper := createZipperServer(name, addr, options, nil)
 	zipper.ConfigMesh(options.MeshConfigURL)
 
 	return zipper
@@ -84,8 +84,7 @@ func NewZipper(conf string) (Zipper, error) {
 	listenAddr := fmt.Sprintf("%s:%d", config.Host, config.Port)
 
 	options := NewOptions()
-	options.ZipperAddr = listenAddr
-	zipper := createZipperServer(config.Name, options, config)
+	zipper := createZipperServer(config.Name, listenAddr, options, config)
 	// zipper workflow
 	err = zipper.configWorkflow(config)
 	zipper.server.Logger().Info("using config file", "file_path", conf)
@@ -94,26 +93,26 @@ func NewZipper(conf string) (Zipper, error) {
 }
 
 // NewDownstreamZipper create a zipper descriptor for downstream zipper.
-func NewDownstreamZipper(name string, opts ...Option) Zipper {
+func NewDownstreamZipper(name, addr string, opts ...Option) Zipper {
 	options := NewOptions(opts...)
 	client := core.NewClient(name, core.ClientTypeUpstreamZipper, options.ClientOptions...)
 
 	return &zipper{
 		name:   name,
-		addr:   options.ZipperAddr,
+		addr:   addr,
 		client: client,
 	}
 }
 
 /*************** Server ONLY ***************/
 // createZipperServer create a zipper instance as server.
-func createZipperServer(name string, options *Options, cfg *config.WorkflowConfig) *zipper {
+func createZipperServer(name, addr string, options *Options, cfg *config.WorkflowConfig) *zipper {
 	// create underlying QUIC server
 	srv := core.NewServer(name, options.ServerOptions...)
 	z := &zipper{
 		server: srv,
 		name:   name,
-		addr:   options.ZipperAddr,
+		addr:   addr,
 		wfc:    cfg,
 	}
 	// initialize
@@ -178,11 +177,11 @@ func (z *zipper) ConfigMesh(url string) error {
 			continue
 		}
 		addr := fmt.Sprintf("%s:%d", downstream.Host, downstream.Port)
-		opts := []Option{WithZipperAddr(addr)}
+		opts := []Option{}
 		if downstream.Credential != "" {
 			opts = append(opts, WithCredential(downstream.Credential))
 		}
-		z.AddDownstreamZipper(NewDownstreamZipper(downstream.Name, opts...))
+		z.AddDownstreamZipper(NewDownstreamZipper(downstream.Name, addr, opts...))
 	}
 
 	return nil
@@ -264,7 +263,7 @@ func (z *zipper) Stats() int {
 }
 
 func (z *zipper) InitOptions(opts ...Option) {
-	options := &Options{ZipperAddr: z.addr}
+	options := &Options{}
 	for _, o := range opts {
 		o(options)
 	}

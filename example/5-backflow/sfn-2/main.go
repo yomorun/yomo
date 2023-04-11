@@ -16,7 +16,7 @@ func main() {
 	}
 	sfn := yomo.NewStreamFunction(
 		"sfn-2",
-		yomo.WithZipperAddr(addr),
+		addr,
 		yomo.WithObserveDataTags(0x34),
 	)
 	defer sfn.Close()
