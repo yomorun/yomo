@@ -12,7 +12,6 @@ import (
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
 	"golang.org/x/exp/slog"
 )
@@ -36,13 +35,6 @@ type ErrAuthenticateFailed struct {
 
 // Error returns a string that represents the ErrAuthenticateFailed error for the implementation of the error interface.
 func (e ErrAuthenticateFailed) Error() string { return e.ReasonFromeServer }
-
-// HandshakeFunc is used by server control stream to handle handshake.
-// The returned metadata will be set for the DataStream that is being opened.
-type HandshakeFunc func(*frame.HandshakeFrame) (metadata.Metadata, error)
-
-// VerifyAuthenticationFunc is used by server control stream to verify authentication.
-type VerifyAuthenticationFunc func(auth.Object) (metadata.Metadata, bool, error)
 
 // ServerControlStream defines the struct of server-side control stream.
 type ServerControlStream struct {
@@ -89,12 +81,12 @@ func (ss *ServerControlStream) readFrameLoop() {
 // OpenStream reveives a HandshakeFrame from control stream and handle it in the function be passed in.
 // if handler returns nil, There will return a DataStream and nil,
 // if handler returns an error, There will return a nil and the error.
-func (ss *ServerControlStream) OpenStream(ctx context.Context, handshakeFunc HandshakeFunc) (DataStream, error) {
+func (ss *ServerControlStream) OpenStream(ctx context.Context, handshakeFunc func(*frame.HandshakeFrame) error) (DataStream, error) {
 	ff, ok := <-ss.handshakeFrameChan
 	if !ok {
 		return nil, io.EOF
 	}
-	md, err := handshakeFunc(ff)
+	err := handshakeFunc(ff)
 	if err != nil {
 		ss.stream.WriteFrame(frame.NewHandshakeRejectedFrame(ff.ID(), err.Error()))
 		return nil, err
@@ -112,7 +104,7 @@ func (ss *ServerControlStream) OpenStream(ctx context.Context, handshakeFunc Han
 		ff.Name(),
 		ff.ID(),
 		StreamType(ff.StreamType()),
-		md,
+		ff.Metadata(),
 		stream,
 		ff.ObserveDataTags(),
 	)
@@ -125,21 +117,21 @@ func (ss *ServerControlStream) CloseWithError(code uint64, errString string) err
 }
 
 // VerifyAuthentication verify the Authentication from client side.
-func (ss *ServerControlStream) VerifyAuthentication(verifyFunc VerifyAuthenticationFunc) (metadata.Metadata, error) {
+func (ss *ServerControlStream) VerifyAuthentication(verifyFunc func(auth.Object) (bool, error)) error {
 	first, err := ss.stream.ReadFrame()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	received, ok := first.(*frame.AuthenticationFrame)
 	if !ok {
-		return nil, fmt.Errorf("yomo: read unexcept frame while waiting for authentication, frame read: %s", received.Type().String())
+		return fmt.Errorf("yomo: read unexpected frame while waiting for authentication, frame read: %s", received.Type().String())
 	}
-	md, ok, err := verifyFunc(received)
+	ok, err = verifyFunc(received)
 	if err != nil {
-		return md, err
+		return err
 	}
 	if !ok {
-		return md, ss.stream.WriteFrame(
+		return ss.stream.WriteFrame(
 			frame.NewAuthenticationRespFrame(
 				false,
 				fmt.Sprintf("yomo: authentication failed, client credential name is %s", received.AuthName()),
@@ -147,21 +139,21 @@ func (ss *ServerControlStream) VerifyAuthentication(verifyFunc VerifyAuthenticat
 		)
 	}
 	if err := ss.stream.WriteFrame(frame.NewAuthenticationRespFrame(true, "")); err != nil {
-		return md, err
+		return err
 	}
 
 	// create a goroutinue to continuous read frame after verify authentication successful.
 	go ss.readFrameLoop()
 
-	return md, nil
+	return nil
 }
 
 // ClientControlStream is the struct that defines the methods for client-side control stream.
+
 type ClientControlStream struct {
-	ctx             context.Context
-	qconn           quic.Connection
-	stream          frame.ReadWriter
-	metadataDecoder metadata.Decoder
+	ctx    context.Context
+	qconn  quic.Connection
+	stream frame.ReadWriter
 	// mu protect handshakeFrames
 	mu                         sync.Mutex
 	handshakeFrames            map[string]*frame.HandshakeFrame
@@ -174,10 +166,8 @@ type ClientControlStream struct {
 func OpenClientControlStream(
 	ctx context.Context, addr string,
 	tlsConfig *tls.Config, quicConfig *quic.Config,
-	metadataDecoder metadata.Decoder,
 	logger *slog.Logger,
 ) (*ClientControlStream, error) {
-
 	qconn, err := quic.DialAddrContext(ctx, addr, tlsConfig, quicConfig)
 	if err != nil {
 		return nil, err
@@ -187,19 +177,18 @@ func OpenClientControlStream(
 		return nil, err
 	}
 
-	return NewClientControlStream(ctx, qconn, NewFrameStream(stream0), metadataDecoder, logger), nil
+	return NewClientControlStream(ctx, qconn, NewFrameStream(stream0), logger), nil
 }
 
 // NewClientControlStream returns ClientControlStream from quic Connection and the first stream form the Connection.
-func NewClientControlStream(
-	ctx context.Context, qconn quic.Connection,
-	stream frame.ReadWriter, metadataDecoder metadata.Decoder, logger *slog.Logger) *ClientControlStream {
-
+func NewClientControlStream(ctx context.Context, qconn quic.Connection, stream frame.ReadWriter, logger *slog.Logger) *ClientControlStream {
+	if logger == nil {
+		logger = ylog.Default()
+	}
 	controlStream := &ClientControlStream{
 		ctx:                        ctx,
 		qconn:                      qconn,
 		stream:                     stream,
-		metadataDecoder:            metadataDecoder,
 		handshakeFrames:            make(map[string]*frame.HandshakeFrame),
 		handshakeRejectedFrameChan: make(chan *frame.HandshakeRejectedFrame, 10),
 		acceptStreamResultChan:     make(chan acceptStreamResult, 10),
@@ -229,7 +218,6 @@ func (cs *ClientControlStream) readFrameLoop() {
 }
 
 // Authenticate sends the provided credential to the server's control stream to authenticate the client.
-
 func (cs *ClientControlStream) Authenticate(cred *auth.Credential) error {
 	if err := cs.stream.WriteFrame(
 		frame.NewAuthenticationFrame(cred.Name(), cred.Payload())); err != nil {
@@ -351,24 +339,17 @@ func (cs *ClientControlStream) acceptStream(ctx context.Context) (DataStream, er
 		return nil, errors.New("yomo: client control stream accept stream without send handshake")
 	}
 
-	// Unlike server-side data streams,
-	// client-side data streams do not merge connection-level metadata and stream-level metadata.
-	// Instead, they only contain stream-level metadata.
-	md, err := cs.metadataDecoder.Decode(f.Metadata())
-	if err != nil {
-		return nil, err
-	}
-
 	return newDataStream(
 		f.Name(),
 		f.ID(),
 		StreamType(f.StreamType()),
-		md,
+		f.Metadata(),
 		quicStream,
 		f.ObserveDataTags(),
 	), nil
 }
 
+// CloseWithError closes the client-side control stream.
 func (cs *ClientControlStream) CloseWithError(code uint64, errString string) error {
 	return closeWithError(cs.qconn, code, errString)
 }
