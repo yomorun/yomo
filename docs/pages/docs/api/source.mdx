@@ -1,0 +1,24 @@
+# YoMo Source
+
+Source generate data to [Zipper][zipper].
+
+## yomo.NewSource(source_name, zipper_addr, option)
+
+Create `Source` instance.
+
+- `source_name`: The name of this source instance.
+- `zipper_addr`: The endpoint of the [Zipper][zipper] connect to.
+- `option`: The [SourceOption][sourceOption].
+
+## Class: Source
+
+### source.Connect()
+
+Start connect to [Zipper][zipper].
+
+### source.Close()
+
+Disconnect from [Zipper][zipper].
+
+[zipper]: ./zipper
+[sourceOption]: ./source_option

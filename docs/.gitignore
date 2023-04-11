@@ -1,0 +1,13 @@
+*.log
+.DS_Store
+node_modules
+dist
+
+.env
+
+__presence.next
+out
+next-env.d.ts
+tsconfig.json
+.next
+public/
