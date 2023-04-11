@@ -8,5 +8,4 @@ dist
 __presence.next
 out
 next-env.d.ts
-tsconfig.json
 .next
