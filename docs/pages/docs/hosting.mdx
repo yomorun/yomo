@@ -1,0 +1,62 @@
+---
+title: Linux Server Tuning for QUIC and YoMo
+---
+
+## Tuning
+
+Add This to `/etc/sysctrl.conf`
+
+```shell
+#
+# UDP - QUIC
+#
+# Default & Maximum Socket Receive Buffer
+net.core.rmem_default = 25165824
+net.core.rmem_max = 33554432
+# Default & Maximum Socket Send Buffer
+net.core.wmem_default = 25165824
+net.core.wmem_max = 33554432
+# Increase the maximum total buffer-space allocatable
+# This is measured in units of pages (4096 bytes)
+net.ipv4.udp_mem = 65536 131072 262144
+# Increase the read-buffer space allocatable
+net.ipv4.udp_rmem_min = 16384
+# Increase the write-buffer-space allocatable
+net.ipv4.udp_wmem_min = 16384
+# others
+net.core.optmem_max = 20480
+fs.file-max = 51200
+```
+
+then, execute:
+
+```bash
+sudo sysctl -p
+```
+
+## Explanation
+
+UDP buffers are controlled by 7 sysctl parameters. Individual buffer sizes are controlled by:
+
+- `net.core.wmem_default, net.core.wmem_max` – default and max socket send buffer size in bytes. Each socket gets `wmem_default` send buffer size by default, and can request up to `wmem_max` with [setsockopt](http://man7.org/linux/man-pages/man2/setsockopt.2.html) option `SO_SNDBUF`.
+- `net.core.rmem_default, net.core.rmem_max` – default and max socket receive buffer size in bytes. Each socket gets `rmem_default` reveive buffer size by default, and can request up to `rmem_max` with [setsockopt](http://man7.org/linux/man-pages/man2/setsockopt.2.html) option `SO_RCVBUF`.
+
+Global system parameters are:
+
+- `net.ipv4.udp_mem = "min pressure max"` – these are numbers of **PAGES** (4KB) available for all UDP sockets in the system. min, pressure and max controls how memory is managed, but main point is that max is maximum size in PAGES for all UDP bufers in system. These values are set on boot time (if sysctls are not explicitly set) according to available RAM size.
+- `net.ipv4.udp_rmem_min, net.ipv4.udp_wmem` – minimal size for receive/send buffers (in bytes), guaranteed for each socket, even if buffer size of all UDP sockets exceeds pressure parameter in `net.ipv4.udp_mem`
+
+## Observing UDP statistics
+
+```bash
+$ watch -n1 "cat /proc/net/snmp | grep -w Udp|column -t"
+```
+
+Will see:
+
+```bash
+Every 1.0s: cat /proc/net/snmp | grep -w Udp|column -t
+
+Udp:  InDatagrams  NoPorts  InErrors  OutDatagrams  RcvbufErrors  SndbufErrors  InCsumErrors  IgnoredMulti  MemErrors
+Udp:  11136538     2551     2         11192042      0             0             2             0             0
+```
