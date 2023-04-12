@@ -52,43 +52,10 @@ const FEATURES: Features = [
   },
 ];
 
-type FeatureProps = {
-  feature: Feature;
-  // include feature description
-  detailed?: boolean;
-};
-
-function Feature(props: FeatureProps) {
-  const { feature, detailed = false } = props;
-  const { Icon, name, description } = feature;
-
-  return (
-    <div className="p-10 bg-white shadow-lg rounded-xl dark:bg-opacity-5 ">
-      <div>
-        <Icon
-          className="h-8 w-8 dark:text-white rounded-full p-1.5 dark:bg-white dark:bg-opacity-10 bg-black bg-opacity-5 text-black"
-          aria-hidden="true"
-        />
-      </div>
-      <div className="mt-4">
-        <h3 className="text-lg font-medium dark:text-white">{name}</h3>
-        <p className="mt-2 text-base font-medium text-gray-500 dark:text-gray-400">
-          {description}
-        </p>
-      </div>
-    </div>
-  );
-}
-
 export default function FeatureList() {
   return (
     <div className="grid grid-cols-1 mt-12 gap-x-6 gap-y-12 sm:grid-cols-2 lg:mt-16 lg:grid-cols-3 lg:gap-x-8 lg:gap-y-12">
       {FEATURES.map((feature) => (
-        // <Feature
-        //   key={feature.name.split(" ").join("-")}
-        //   feature={feature}
-        //   detailed
-        // />
         <div className="p-10 bg-white shadow-lg rounded-xl dark:bg-opacity-5" key={feature.name.split(" ").join("-")}>
           <div>
             <feature.Icon
