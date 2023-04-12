@@ -3,7 +3,6 @@ package exec
 import (
 	"fmt"
 	"os"
-
 	"os/exec"
 
 	"github.com/yomorun/yomo/cli/serverless"
@@ -13,7 +12,7 @@ import (
 
 // ExecServerless defines executable file implementation of Serverless interface.
 type ExecServerless struct {
-	target string
+	output string
 }
 
 // Init initializes the serverless
@@ -21,7 +20,7 @@ func (s *ExecServerless) Init(opts *serverless.Options) error {
 	if !file.Exists(opts.Filename) {
 		return fmt.Errorf("the file %s doesn't exist", opts.Filename)
 	}
-	s.target = opts.Filename
+	s.output = opts.Filename
 
 	return nil
 }
@@ -33,8 +32,8 @@ func (s *ExecServerless) Build(clean bool) error {
 
 // Run compiles and runs the serverless
 func (s *ExecServerless) Run(verbose bool) error {
-	log.InfoStatusEvent(os.Stdout, "Run: %s", s.target)
-	cmd := exec.Command(s.target)
+	log.InfoStatusEvent(os.Stdout, "Run: %s", s.output)
+	cmd := exec.Command(s.output)
 	if verbose {
 		cmd.Env = []string{"YOMO_LOG_LEVEL=debug"}
 	}

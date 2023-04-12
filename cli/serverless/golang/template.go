@@ -24,6 +24,12 @@ var PartialsTmpl []byte
 //go:embed templates/init.tmpl
 var InitFuncTmpl []byte
 
+//go:embed templates/init_raw.tmpl
+var InitRawFuncTmpl []byte
+
+//go:embed templates/wasm_main_raw.tmpl
+var WasmMainFuncRawTmpl []byte
+
 // Context defines context for the template
 type Context struct {
 	// Name of the servcie

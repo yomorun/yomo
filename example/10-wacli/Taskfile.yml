@@ -1,0 +1,61 @@
+
+# https://taskfile.dev
+
+version: "3"
+
+output: "prefixed"
+
+tasks:
+  run:
+    desc: run
+    deps: [zipper, source, sfn]
+    cmds:
+      - echo 'basic example run'
+
+  # example cleanup
+  clean:
+    desc: clean
+    cmds:
+      - rm -rf ./bin
+      - rm -rf ./sfn/*.wasm
+
+  build:
+    desc: build source, sfn and zipper
+    deps: [source-build, sfn-build]
+    cmds:
+      - echo 'building done'
+
+  source-build:
+    desc: build source
+    dir: source
+    cmds:
+      - "go build -o source{{exeExt}} main.go"
+
+  sfn-build:
+    desc: build sfn
+    dir: sfn
+    cmds:
+      - "yomo build -m go.mod -t wasm app.go"
+
+  source:
+    desc: run source
+    deps: [source-build]
+    dir: source
+    cmds:
+      - "./source{{exeExt}}"
+    env:
+      YOMO_LOG_LEVEL: error
+
+  sfn:
+    desc: run sfn
+    deps: [sfn-build]
+    dir: sfn
+    cmds:
+      - "yomo run sl.wasm"
+    env:
+      YOMO_LOG_LEVEL: error
+
+  zipper:
+    desc: run zipper
+    cmds:
+      - "yomo serve -c workflow.yaml"
