@@ -21,5 +21,5 @@ module.exports = withNextra({
       },
     ];
   },
-  reactStrictMode: true,
+  reactStrictMode: false,
 });

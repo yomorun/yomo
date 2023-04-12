@@ -15,12 +15,5 @@
       "typesetting": "article",
       "layout": "full"
     }
-  },
-  "about": {
-    "type": "page",
-    "title": "About",
-    "theme": {
-      "typesetting": "article"
-    }
   }
 }
