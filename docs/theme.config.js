@@ -46,7 +46,7 @@ const themeConfig = {
   logo: () => {
     return (
       <>
-        <img src={"/yomo-logo.png"} style={{width:'48px', height: '48px'}} />
+        <img src={"/yomo-logo.png"} style={{ width: '48px', height: '48px' }} />
         {/* <Logo height={24} /> */}
         <span
           className="mx-2 font-extrabold hidden md:inline select-none"
@@ -63,7 +63,7 @@ const themeConfig = {
     const titleSuffix = "Tutorials";
     const description = "Edge Infra for geo-distributed applications"
 
-    const imageUrl = new URL("https://yomo.run/api/og"); // TODO
+    const imageUrl = new URL("https://yomo.dev/api/og"); // TODO
 
     if (!/\/index\.+/.test(route)) {
       imageUrl.searchParams.set("title", title || titleSuffix);
