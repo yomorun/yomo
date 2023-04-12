@@ -27,7 +27,7 @@ const FEATURES: Features = [
   {
     name: "Geo-distributed",// Architecture",
     description: `Your code close to your users.`,
-    link: "/docs/geo-distributed",
+    link: "/docs/concept-geo-distributed",
     Icon: GlobeAltIcon,
   },
   {
