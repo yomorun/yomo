@@ -29,7 +29,7 @@ tasks:
     desc: build source
     dir: source
     cmds:
-      - "go build -o source{{exeExt}} main.go"
+      - "go build -o ../bin/source{{exeExt}} main.go"
 
   sfn-build:
     desc: build sfn
@@ -40,11 +40,8 @@ tasks:
   source:
     desc: run source
     deps: [source-build]
-    dir: source
     cmds:
-      - "./source{{exeExt}}"
-    env:
-      YOMO_LOG_LEVEL: error
+      - "./bin/source{{exeExt}}"
 
   sfn:
     desc: run sfn
@@ -52,10 +49,10 @@ tasks:
     dir: sfn
     cmds:
       - "yomo run sl.wasm"
-    env:
-      YOMO_LOG_LEVEL: error
 
   zipper:
     desc: run zipper
     cmds:
       - "yomo serve -c workflow.yaml"
+    env:
+      YOMO_LOG_LEVEL: error

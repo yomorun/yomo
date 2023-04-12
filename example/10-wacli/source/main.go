@@ -36,7 +36,7 @@ func main() {
 	)
 	sink.SetHandler(
 		func(data []byte) (frame.Tag, []byte) {
-			log.Printf("[recv] %s", string(data))
+			log.Printf("[source] received tag[%#x] %s\n", 0x34, string(data))
 			return 0, nil
 		},
 	)
@@ -62,19 +62,16 @@ func generateAndSendData(stream yomo.Source) error {
 		if err != nil {
 			log.Fatal("json.Marshal error", err)
 		}
-
 		// send data via QUIC stream.
 		_, err = stream.Write(sendingBuf)
 
 		if err != nil {
-			log.Print("[source] ❌ Emit to YoMo-Zipper failure with err", err, "data", data)
+			log.Println("[source] ❌ Emit to YoMo-Zipper failure with err ", err, " data", data)
 			time.Sleep(500 * time.Millisecond)
 			continue
-
-		} else {
-			log.Print("[source] ✅ Emit to YoMo-Zipper", "data", data)
 		}
 
+		log.Println("[source] ✅ Emit to YoMo-Zipper", " data", data)
 		time.Sleep(1000 * time.Millisecond)
 	}
 }

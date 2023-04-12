@@ -26,5 +26,8 @@ func yomoHandler(inputLength int) {
 	// handler
 	tag, output := Handler(input)
   // dump output data
+  if output == nil {
+    return
+  }
 	yomoDumpOutput(uint32(tag), &output[0], len(output))
 }
