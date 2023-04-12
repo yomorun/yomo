@@ -1,7 +1,15 @@
 {
   "index": "Getting Started",
+  "---Concept": {
+    "type": "separator",
+    "title": "Concept"
+  },
+  "concept-geo-distributed": "Geo-distributed Arch",
+  "concept-pub-sub": "Pub-sub Model",
+  "concept-multi-sfn": "Serverless Workflow",
+  "concept-zipper-cascading": "Cascading Zippers",
   "api": "API",
-  "---" : {
+  "---Hosting": {
     "type": "separator",
     "title": "Hosting"
   }

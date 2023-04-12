@@ -1,4 +1,8 @@
-const withNextra = require("nextra")({
+import { remarkMermaid } from 'remark-mermaid-nextra';
+import nextra from 'nextra';
+
+//const withNextra = require("nextra")
+const withNextra = nextra({
   theme: "nextra-theme-docs",
   themeConfig: "./theme.config.js",
   staticImage: true,
@@ -6,9 +10,12 @@ const withNextra = require("nextra")({
     codeblocks: false,
   },
   defaultShowCopyCode: true,
+  mdxOptions: {
+    remarkPlugins: [remarkMermaid]
+  },
 });
 
-module.exports = withNextra({
+export default withNextra({
   images: {
     unoptimized: true,
   },
@@ -21,5 +28,5 @@ module.exports = withNextra({
       },
     ];
   },
-  reactStrictMode: true,
+  reactStrictMode: false,
 });
