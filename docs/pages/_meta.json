@@ -1,0 +1,26 @@
+{
+  "index": {
+    "type": "page",
+    "title": "YoMo",
+    "display": "hidden"
+  },
+  "docs": {
+    "type": "page",
+    "title": "Documentation"
+  },
+  "showcase": {
+    "type": "page",
+    "title": "Showcase",
+    "theme": {
+      "typesetting": "article",
+      "layout": "full"
+    }
+  },
+  "about": {
+    "type": "page",
+    "title": "About",
+    "theme": {
+      "typesetting": "article"
+    }
+  }
+}

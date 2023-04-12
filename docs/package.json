@@ -1,0 +1,43 @@
+{
+  "name": "yomo-docs",
+  "version": "0.0.0",
+  "description": "https://yomo.run/docs",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "dev": "next",
+    "debug": "NODE_OPTIONS='--inspect' next",
+    "start": "next start",
+    "build": "next build",
+    "sitemap": "next-sitemap",
+    "export": "next build && next-sitemap && next export"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@heroicons/react": "^2.0.17",
+    "@vercel/analytics": "^0.1.11",
+    "@vercel/og": "^0.5.1",
+    "cobe": "^0.6.3",
+    "focus-visible": "^5.2.0",
+    "intersection-observer": "^0.12.2",
+    "next": "^13.3.0",
+    "nextra": "^2.3.0",
+    "nextra-theme-docs": "^2.3.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-intersection-observer": "^9.4.3"
+  },
+  "devDependencies": {
+    "@next/env": "^13.3.0",
+    "@types/node": "18.15.11",
+    "autoprefixer": "^10.4.14",
+    "next-sitemap": "^4.0.7",
+    "postcss": "^8.4.21",
+    "tailwindcss": "^3.3.1",
+    "typescript": "5.0.4"
+  },
+  "prettier": {
+    "embeddedLanguageFormatting": "off",
+    "htmlWhitespaceSensitivity": "strict"
+  }
+}

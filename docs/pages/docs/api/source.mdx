@@ -1,0 +1,57 @@
+# YoMo Source
+
+Source generate data to [Zipper][zipper].
+
+## func yomo.NewSource
+
+```go
+yomo.NewSource(source_name string, zipper_addr string, opts ...Option) Source
+```
+
+Create `Source` instance.
+
+- `source_name`: The name of this source instance.
+- `zipper_addr`: The endpoint of the [Zipper][zipper] connect to.
+- `option`: The [SourceOption][sourceOption].
+
+## type Source
+
+### source.Connect() error
+
+Start connect to [Zipper][zipper].
+
+### source.Close() error
+
+Disconnect from [Zipper][zipper].
+
+### source.SetDataTag(tag Tag)
+
+Set the data tag.
+
+- `tag`: The [tag][tag] of data.
+
+### source.Write(data []byte) (int, error)
+
+Write data to direct Zipper with tag specified in [SetDataTag](#sourcesetdatatagtag-frametag).
+
+### source.WriteWithTag(tag Tag, data []byte) error
+
+Write data to direct Zipper with specified [tag][tag].
+
+The default transactionID is epoch time.
+
+### source.Broadcast(data []byte) error
+
+Write the data to all downstreams.
+
+### source.SetErrorHandler(fn func(err error))
+
+Set the error handler function when server error occurs.
+
+### source.SetReceiveHandler(fn func(Tag, []byte))
+
+Set the observe handler function.
+
+[zipper]: ./zipper
+[sourceOption]: ./source_option
+[tag]: ./tag

@@ -21,7 +21,6 @@ bin/
 # git commitzen
 node_modules/
 package-lock.json
-package.json
 
 *.log
 
