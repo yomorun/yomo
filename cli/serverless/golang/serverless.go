@@ -205,7 +205,7 @@ func (s *GolangServerless) Build(clean bool) error {
 	// build
 	goos := runtime.GOOS
 	dir, _ := filepath.Split(s.opts.Filename)
-	sl, _ := filepath.Abs(dir + "sl.yomo")
+	sl, _ := filepath.Abs(dir + "sfn.yomo")
 
 	// clean build
 	if clean {
@@ -215,11 +215,11 @@ func (s *GolangServerless) Build(clean bool) error {
 	}
 	// fmt.Printf("goos=%s\n", goos)
 	if goos == "windows" {
-		sl, _ = filepath.Abs(dir + "sl.exe")
+		sl, _ = filepath.Abs(dir + "sfn.exe")
 	}
 	// build target
 	if s.isWasm() {
-		sl, _ = filepath.Abs(dir + "sl.wasm")
+		sl, _ = filepath.Abs(dir + "sfn.wasm")
 	}
 	s.output = sl
 	// go build
