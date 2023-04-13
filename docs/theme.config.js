@@ -31,7 +31,7 @@ const themeConfig = {
     content: "feedback",
   },
   chat: {
-    link: 'https://discord.gg/Ugam5qAvHy',
+    link: "https://discord.gg/Ugam5qAvHy",
   },
   navbar: {
     // extraContent: (
@@ -41,12 +41,11 @@ const themeConfig = {
     //   </>
     // ),
   },
-  nextThemes: {
-  },
+  nextThemes: {},
   logo: () => {
     return (
       <>
-        <img src={"/yomo-logo.png"} style={{ width: '48px', height: '48px' }} />
+        <img src={"/yomo-logo.png"} style={{ width: "48px", height: "48px" }} />
         {/* <Logo height={24} /> */}
         <span
           className="mx-2 font-extrabold hidden md:inline select-none"
@@ -61,7 +60,7 @@ const themeConfig = {
     const { route } = useRouter();
     const { frontMatter, title } = useConfig();
     const titleSuffix = "Tutorials";
-    const description = "Edge Infra for geo-distributed applications"
+    const description = "Edge Infra for geo-distributed applications";
 
     const imageUrl = new URL("https://yomo.dev/api/og"); // TODO
 
@@ -77,7 +76,11 @@ const themeConfig = {
       <>
         {/* Favicons, meta */}
         <link rel="icon" href="/favicon.ico" />
-        <link rel="mask-icon" href="/favicon/safari-pinned-tab.svg" color="#000000" />
+        <link
+          rel="mask-icon"
+          href="/favicon/safari-pinned-tab.svg"
+          color="#000000"
+        />
         <meta httpEquiv="Content-Language" content="en-US" />
         <meta name="msapplication-TileColor" content="#ffffff" />
         <meta name="apple-mobile-web-app-title" content="SWR" />
@@ -89,7 +92,11 @@ const themeConfig = {
         <meta property="og:description" content={ogDescription} />
         <meta property="og:image" content={ogImage} />
         <link rel="preconnect" href="https://fonts.googleapis.com"></link>
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="crossorigin"></link>
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossOrigin="crossorigin"
+        ></link>
         <meta name="msvalidate.01" content="" />
         <meta name="google-site-verification" content="" />
       </>
@@ -98,18 +105,23 @@ const themeConfig = {
   footer: {
     text: () => {
       return (
-        <div>
+        <div className="w-full flex justify-between items-center">
           <a
             href={`https://allegrocloud.io/?utm_source=YoMo-doc`}
             target="_blank"
             rel="noopener"
-            className="inline-flex items-center no-underline text-current font-semibold"
           >
             <span>
               <Logo height={24} />
             </span>
           </a>
-          <a href={`https://vercel.com/?utm_source=yomorun&utm_campaign=oss`} target="_blank" rel="noopener"><img src="/vercel.svg" /></a>
+          <a
+            href={`https://vercel.com/?utm_source=yomorun&utm_campaign=oss`}
+            target="_blank"
+            rel="noopener"
+          >
+            <img src="/vercel.svg" />
+          </a>
         </div>
       );
     },
