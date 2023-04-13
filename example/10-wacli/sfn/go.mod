@@ -1,6 +1,6 @@
 module yomo.run/example-wacli-sfn
 
-go 1.20
+go 1.19
 
 replace github.com/yomorun/yomo => ../../../
 
