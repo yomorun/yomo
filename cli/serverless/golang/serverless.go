@@ -75,10 +75,10 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 	} else {
 		// wasm
 		if isWasm {
-			mainFunc = WasmMainFuncRawTmpl
+			mainFunc = WasmMainFuncTmpl
 		} else { // native
-			MainFuncRawBytesTmpl = append(MainFuncRawBytesTmpl, PartialsTmpl...)
-			mainFuncTmpl = string(MainFuncRawBytesTmpl)
+			MainFuncTmpl = append(MainFuncTmpl, PartialsTmpl...)
+			mainFuncTmpl = string(MainFuncTmpl)
 			mainFunc, err = RenderTmpl(mainFuncTmpl, &ctx)
 			if err != nil {
 				return fmt.Errorf("Init: %s", err)

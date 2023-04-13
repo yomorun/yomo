@@ -29,7 +29,7 @@ import (
 
 var (
 	name string
-	raw  bool
+	rx   bool
 )
 
 // initCmd represents the init command
@@ -51,9 +51,9 @@ var initCmd = &cobra.Command{
 		name = strings.ReplaceAll(name, " ", "_")
 		// create app.go
 		fname := filepath.Join(name, "app.go")
-		contentTmpl := golang.InitFuncTmpl
-		if raw {
-			contentTmpl = golang.InitRawFuncTmpl
+		contentTmpl := golang.InitTmpl
+		if rx {
+			contentTmpl = golang.InitRxTmpl
 		}
 		if err := file.PutContents(fname, contentTmpl); err != nil {
 			log.FailureStatusEvent(os.Stdout, "Write stream function into app.go file failure with the error: %v", err)
@@ -78,5 +78,5 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 
 	initCmd.Flags().StringVarP(&name, "name", "n", "", "The name of Stream Function")
-	initCmd.Flags().BoolVarP(&raw, "raw", "r", false, "Use raw data Handler")
+	initCmd.Flags().BoolVarP(&rx, "rx", "r", false, "Use RxStream Handler")
 }
