@@ -20,7 +20,7 @@ func waitSignalForShotdownServer(server *core.Server) {
 	for p1 := range c {
 		ylog.Debug("Received signal", "signal", p1)
 		if p1 == syscall.SIGTERM || p1 == syscall.SIGINT {
-			// server.Close()
+			server.Close()
 			ylog.Debug("graceful shutting down ...", "sign", p1)
 			os.Exit(0)
 		}
