@@ -47,71 +47,59 @@ Verify if the CLI was installed successfully
 yomo version
 ```
 
-### 2. Write your first stream function with Rust and WebAssembly
+### 2. Init your first stream function, in WebAssembly way
 
-In this demo, we will create a rust project observing a data stream and uppercase every string received, 
-then create send them to next process unit with another data stream:
-
-```rust
-#[yomo::init]
-fn init() -> anyhow::Result<Vec<u32>> {
-    // return observe datatags
-    Ok(vec![0x33])
-}
-
-#[yomo::handler]
-fn handler(input: &[u8]) -> anyhow::Result<(u32, Vec<u8>)> {
-    println!("wasm rust sfn received {} bytes", input.len());
-
-    // parse input from bytes
-    let input = String::from_utf8(input.to_vec())?;
-
-    // your app logic goes here
-    let output = input.to_uppercase();
-
-    // return the datatag and output bytes
-    Ok((0x34, output.into_bytes()))
-}
-```
-
-The full project can be found at [example/7-wasm/rust](example/7-wasm/rust).
-
-### 3. Build and run
-
-Let's start the `YoMo Zipper` service, which is a service that processes data from the `YoMo Source` and coordinates the `YoMo Stream Function` to process a specific data stream:
+In this demo, we will create a go project observing a data stream and count bytes received.
 
 ```bash
-yomo serve -c example/uppercase/workflow.yaml
+yomo init try-yomo
 ```
 
-Then, start the WebAssembly Stream Function, get ready to process data:
+The yomo CLI will generate codes in folder `try-yomo`.
+
+### 3. Build
+
+Let's compile this StreamFunction to WebAssembly:
 
 ```bash
-cd example/7-wasm/sfn/rust
-rustup target add wasm32-wasi
-cargo build --release --target wasm32-wasi
-YOMO_SFN_NAME=upper bin/yomo run example/7-wasm/sfn/rust/target/wasm32-wasi/release/sfn.wasm
+$ yomo build --target wasm app.go
+
+ℹ️ YoMo Stream Function file: app.go
+⌛ YoMo Stream Function building...
+✅ Success! YoMo Stream Function build.
 ```
 
-Finally, let's try send data:
+Note: Implement StreamFunction in Rust, Zig and C can be found at [example/7-wasm/sfn](example/7-wasm/sfn).
+
+### 4. Run
+
+There is an public test Zipper service `dev.yomo.run:9140` which is provided by our community, 
+you can test your StreamFunction quickly by connecting to it.
 
 ```bash
-$ go run example/uppercase/source/main.go
+$ yomo run -z dev.yomo.run:9140 -n yomo-app-demo sfn.wasm
 
-time=2023-03-28T09:41:13.782+08:00 level=INFO msg="use credential" component=client client_type=Source client_id=9bqB-J8I3l-6YHkuhB11I client_name=source credential_name=none
-time=2023-03-28T09:41:13.786+08:00 level=INFO msg="use credential" component=client client_type="Stream Function" client_id=jS-GCGUBMRW1yTnyU6Yke client_name=sink credential_name=none
-2023/03/28 09:41:13 [send] [0] Hello, YoMo!
-2023/03/28 09:41:13 [recv] [0] HELLO, YOMO!
-2023/03/28 09:41:14 [send] [1] Hello, YoMo!
-2023/03/28 09:41:14 [recv] [1] HELLO, YOMO!
-2023/03/28 09:41:15 [send] [2] Hello, YoMo!
-2023/03/28 09:41:15 [recv] [2] HELLO, YOMO!
-2023/03/28 09:41:16 [send] [3] Hello, YoMo!
-2023/03/28 09:41:16 [recv] [3] HELLO, YOMO!
-2023/03/28 09:41:17 [send] [4] Hello, YoMo!
-2023/03/28 09:41:17 [recv] [4] HELLO, YOMO!
-2023/03/28 09:41:18 [send] [5] Hello, YoMo!
-2023/03/28 09:41:18 [recv] [5] HELLO, YOMO!
+ℹ️ YoMo Stream Function file: sfn.wasm
+⌛  Create YoMo Stream Function instance...
+ℹ️ Starting YoMo Stream Function instance with executable file: sfn.wasm. Zipper: [dev.yomo.run:9140].
+ℹ️ YoMo Stream Function is running...
+time=2023-04-14T00:05:25.073+08:00 level=INFO msg="use credential" component="Stream Function" client_id=7IwpRofCpPp-AcVV2qUFc client_name=yomo-app-demo credential_name=none
+time=2023-04-14T00:05:26.297+08:00 level=INFO msg="connected to zipper" component="Stream Function" client_id=7IwpRofCpPp-AcVV2qUFc client_name=yomo-app-demo zipper_addr=dev.yomo.run:9140
+sfn received 57 bytes
+sfn received 59 bytes
+sfn received 59 bytes
+sfn received 59 bytes
+sfn received 58 bytes
+sfn received 59 bytes
+sfn received 58 bytes
+sfn received 59 bytes
+sfn received 58 bytes
+sfn received 60 bytes
+sfn received 59 bytes
+sfn received 59 bytes
+sfn received 59 bytes
+sfn received 59 bytes
+^C
 ```
 
 It works!
