@@ -48,7 +48,7 @@ tasks:
     deps: [sfn-build]
     dir: sfn
     cmds:
-      - "yomo run sl.wasm"
+      - "yomo run sfn.wasm"
 
   zipper:
     desc: run zipper
