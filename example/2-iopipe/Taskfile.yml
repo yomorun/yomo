@@ -30,4 +30,4 @@ tasks:
   clean:
     desc: clean
     cmds:
-      - "rm -rf ./serverless/sl.*"
+      - "rm -rf ./serverless/sfn.*"

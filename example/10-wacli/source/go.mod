@@ -1,17 +1,17 @@
-module yomo.run/example-pipe
+module yomo.run/example-wacli
 
 go 1.19
 
-replace github.com/yomorun/yomo => ../../
+replace github.com/yomorun/yomo => ../../../
 
-require github.com/yomorun/yomo v0.0.0
+require github.com/yomorun/yomo v1.11.0
 
 require (
 	github.com/caarlos0/env/v6 v6.10.1 // indirect
 	github.com/go-task/slim-sprig v0.0.0-20210107165309-348f09dbbbc0 // indirect
 	github.com/golang/mock v1.6.0 // indirect
 	github.com/google/pprof v0.0.0-20230222194610-99052d3372e7 // indirect
-	github.com/kr/pretty v0.3.0 // indirect
+	github.com/kr/pretty v0.3.1 // indirect
 	github.com/matoous/go-nanoid/v2 v2.0.0 // indirect
 	github.com/onsi/ginkgo/v2 v2.8.3 // indirect
 	github.com/quic-go/qtls-go1-19 v0.2.1 // indirect

@@ -16,4 +16,6 @@ type Options struct {
 	Runtime string
 	// use environment variables
 	UseEnv bool
+	// build target: native or wasm
+	Target string
 }

@@ -40,7 +40,7 @@ var runCmd = &cobra.Command{
 	Long:  "Run a YoMo Stream Function",
 	Run: func(cmd *cobra.Command, args []string) {
 		loadViperValue(cmd, runViper, &opts.Filename, "file-name")
-		loadViperValue(cmd, runViper, &url, "url")
+		loadViperValue(cmd, runViper, &url, "zipper")
 		loadViperValue(cmd, runViper, &opts.Name, "name")
 		loadViperValue(cmd, runViper, &opts.ModFile, "modfile")
 		loadViperValue(cmd, runViper, &opts.Credential, "credential")
@@ -103,8 +103,8 @@ var runCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(runCmd)
 
-	runCmd.Flags().StringVarP(&opts.Filename, "file-name", "f", "app.go", "Stream function file")
-	runCmd.Flags().StringVarP(&url, "url", "u", "localhost:9000", "YoMo-Zipper endpoint addr")
+	runCmd.Flags().StringVarP(&opts.Filename, "file-name", "f", "app.go", "Stream Function file")
+	runCmd.Flags().StringVarP(&url, "zipper", "z", "localhost:9000", "YoMo-Zipper endpoint addr")
 	runCmd.Flags().StringVarP(&opts.Name, "name", "n", "", "yomo stream function name. It should match the specific service name in YoMo-Zipper config (workflow.yaml)")
 	runCmd.Flags().StringVarP(&opts.ModFile, "modfile", "m", "", "custom go.mod")
 	runCmd.Flags().StringVarP(&opts.Credential, "credential", "d", "", "client credential payload, eg: `token:dBbBiRE7`")

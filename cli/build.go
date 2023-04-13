@@ -78,6 +78,7 @@ func init() {
 	// buildCmd.Flags().StringVarP(&opts.Name, "name", "n", "", "yomo stream function app name (required). It should match the specific service name in YoMo-Zipper config (workflow.yaml)")
 	buildCmd.Flags().StringVarP(&opts.ModFile, "modfile", "m", "", "custom go.mod")
 	// buildCmd.Flags().StringVarP(&opts.Credential, "credential", "d", "", "client credential payload, eg: `token:dBbBiRE7`")
+	buildCmd.Flags().StringVarP(&opts.Target, "target", "t", "", "Build target: native or wasm")
 
 	buildViper = bindViper(buildCmd)
 }

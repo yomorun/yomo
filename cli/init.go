@@ -16,8 +16,10 @@ limitations under the License.
 package cli
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/yomorun/yomo/cli/serverless/golang"
@@ -27,6 +29,7 @@ import (
 
 var (
 	name string
+	rx   bool
 )
 
 // initCmd represents the init command
@@ -45,16 +48,21 @@ var initCmd = &cobra.Command{
 		}
 
 		log.PendingStatusEvent(os.Stdout, "Initializing the Stream Function...")
+		name = strings.ReplaceAll(name, " ", "_")
 		// create app.go
 		fname := filepath.Join(name, "app.go")
-		if err := file.PutContents(fname, golang.InitFuncTmpl); err != nil {
+		contentTmpl := golang.InitTmpl
+		if rx {
+			contentTmpl = golang.InitRxTmpl
+		}
+		if err := file.PutContents(fname, contentTmpl); err != nil {
 			log.FailureStatusEvent(os.Stdout, "Write stream function into app.go file failure with the error: %v", err)
 			return
 		}
 
 		// create .env
 		fname = filepath.Join(name, ".env")
-		if err := file.PutContents(fname, []byte("YOMO_SFN_NAME=yomo-app-demo\n")); err != nil {
+		if err := file.PutContents(fname, []byte(fmt.Sprintf("YOMO_SFN_NAME=%s\n", name))); err != nil {
 			log.FailureStatusEvent(os.Stdout, "Write stream function .env file failure with the error: %v", err)
 			return
 		}
@@ -70,4 +78,5 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 
 	initCmd.Flags().StringVarP(&name, "name", "n", "", "The name of Stream Function")
+	initCmd.Flags().BoolVarP(&rx, "rx", "r", false, "Use RxStream Handler")
 }

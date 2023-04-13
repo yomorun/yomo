@@ -1,0 +1,33 @@
+// tinygo required main function
+func main() {}
+
+//export yomo_observe_datatag
+func yomoObserveDataTag(tag uint32)
+
+//export yomo_load_input
+func yomoLoadInput(pointer *byte)
+
+//export yomo_dump_output
+func yomoDumpOutput(tag uint32, pointer *byte, length int)
+
+//export yomo_init
+func yomoInit() {
+	dataTags := DataTags()
+	for _, tag := range dataTags {
+		yomoObserveDataTag(uint32(tag))
+	}
+}
+
+//export yomo_handler
+func yomoHandler(inputLength int) {
+	// load input data
+	input := make([]byte, inputLength)
+	yomoLoadInput(&input[0])
+	// handler
+	tag, output := Handler(input)
+  // dump output data
+  if output == nil {
+    return
+  }
+	yomoDumpOutput(uint32(tag), &output[0], len(output))
+}
