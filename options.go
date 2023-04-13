@@ -82,7 +82,7 @@ func WithUptreamOption(opts ...UpstreamZipperOption) ZipperOption {
 	}
 }
 
-// WithMeshConfig
+// WithMeshConfigProvider provides MeshConfigProvider for Zipper.
 func WithMeshConfigProvider(provider MeshConfigProvider) ZipperOption {
 	return func(o *zipperOptions) {
 		o.meshConfigProvider = provider

@@ -89,7 +89,7 @@ func NewZipper(name string, functions []config.App, options ...ZipperOption) (Zi
 	return server, nil
 }
 
-// ParseMeshConfig
+// ParseMeshConfig parses mesh config from url.
 func ParseMeshConfig(omitName, url string, opts ...core.ClientOption) (map[string]*core.Client, error) {
 	if url == "" {
 		return map[string]*core.Client{}, nil
