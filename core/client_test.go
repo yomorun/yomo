@@ -3,7 +3,6 @@ package core
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"net"
 	"sync"
 	"testing"
@@ -43,7 +42,6 @@ func TestFrameRoundTrip(t *testing.T) {
 	)
 
 	server := NewServer("zipper",
-		WithAddr(testaddr),
 		WithAuth("token", "auth-token"),
 		WithServerQuicConfig(DefalutQuicConfig),
 		WithServerTLSConfig(nil),
@@ -58,7 +56,7 @@ func TestFrameRoundTrip(t *testing.T) {
 	server.SetBeforeHandlers(ht.beforeHandler)
 	server.SetAfterHandlers(ht.afterHandler)
 
-	recorder := newFrameWriterRecorder()
+	recorder := newFrameWriterRecorder("mockClient")
 	server.AddDownstreamServer("mockAddr", recorder)
 
 	go func() {
@@ -190,22 +188,22 @@ func createTestStreamFunction(name string, obversedTag frame.Tag) *Client {
 
 // frameWriterRecorder frames be writen.
 type frameWriterRecorder struct {
-	mu  sync.Mutex
-	buf *bytes.Buffer
+	name string
+	mu   sync.Mutex
+	buf  *bytes.Buffer
 }
 
-func newFrameWriterRecorder() *frameWriterRecorder {
-	return &frameWriterRecorder{buf: bytes.NewBuffer([]byte{})}
+func newFrameWriterRecorder(name string) *frameWriterRecorder {
+	return &frameWriterRecorder{name: name, buf: bytes.NewBuffer([]byte{})}
 }
+
+func (w *frameWriterRecorder) Name() string                              { return w.name }
+func (w *frameWriterRecorder) Close() error                              { return nil }
+func (w *frameWriterRecorder) Connect(_ context.Context, _ string) error { return nil }
 
 func (w *frameWriterRecorder) WriteFrame(frm frame.Frame) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-
-	if frm.Type() == frame.TagOfDataFrame {
-		f := frm.(*frame.DataFrame)
-		fmt.Println("----------", f.GetMetaFrame().Metadata())
-	}
 
 	_, err := w.buf.Write(frm.Encode())
 	return err

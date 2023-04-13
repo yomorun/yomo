@@ -35,7 +35,7 @@ type Server struct {
 	router                  router.Router
 	metadataDecoder         metadata.Decoder
 	counterOfDataFrame      int64
-	downstreams             map[string]frame.Writer
+	downstreams             map[string]FrameWriterConnection
 	mu                      sync.Mutex
 	opts                    *serverOptions
 	startHandlers           []FrameHandler
@@ -58,7 +58,7 @@ func NewServer(name string, opts ...ServerOption) *Server {
 
 	s := &Server{
 		name:        name,
-		downstreams: make(map[string]frame.Writer),
+		downstreams: make(map[string]FrameWriterConnection),
 		logger:      logger,
 		opts:        options,
 	}
@@ -68,10 +68,6 @@ func NewServer(name string, opts ...ServerOption) *Server {
 
 // ListenAndServe starts the server.
 func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
-	if addr == "" {
-		addr = DefaultListenAddr
-	}
-
 	udpAddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
 		return err
@@ -79,6 +75,15 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	conn, err := net.ListenUDP("udp", udpAddr)
 	if err != nil {
 		return err
+	}
+
+	s.logger = s.logger.With("zipper_addr", addr)
+
+	// connect to all downstreams.
+	for addr, client := range s.downstreams {
+		if err := client.Connect(ctx, addr); err != nil {
+			return err
+		}
 	}
 
 	return s.Serve(ctx, conn)
@@ -104,13 +109,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 	}
 	s.listener = listener
 
-	s.logger.Info(
-		"zipper is up and running",
-		"pid", os.Getpid(),
-		"quic", listener.Versions(),
-		"auth_name", s.authNames(),
-		"zipper_addr", s.opts.addr,
-	)
+	s.logger.Info("zipper is up and running", "pid", os.Getpid(), "quic", listener.Versions(), "auth_name", s.authNames())
 
 	for {
 		conn, err := s.listener.Accept(ctx)
@@ -175,6 +174,10 @@ func (s *Server) Logger() *slog.Logger { return s.logger }
 
 // Close will shutdown the server.
 func (s *Server) Close() error {
+	// downstreams
+	for _, ds := range s.downstreams {
+		ds.Close()
+	}
 	// connector
 	if s.connector != nil {
 		s.connector.Close()
@@ -379,12 +382,19 @@ func (s *Server) StatsFunctions() map[string]string {
 
 // StatsCounter returns how many DataFrames pass through server.
 func (s *Server) StatsCounter() int64 {
-	return s.counterOfDataFrame
+	return atomic.LoadInt64(&s.counterOfDataFrame)
 }
 
 // Downstreams return all the downstream servers.
-func (s *Server) Downstreams() map[string]frame.Writer {
-	return s.downstreams
+func (s *Server) Downstreams() map[string]string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	snapshotOfDownstream := make(map[string]string, len(s.downstreams))
+	for addr, client := range s.downstreams {
+		snapshotOfDownstream[addr] = client.Name()
+	}
+	return snapshotOfDownstream
 }
 
 // ConfigRouter is used to set router by zipper
@@ -413,7 +423,7 @@ func (s *Server) ConfigAlpnHandler(h func(string) error) {
 
 // AddDownstreamServer add a downstream server to this server. all the DataFrames will be
 // dispatch to all the downstreams.
-func (s *Server) AddDownstreamServer(addr string, c frame.Writer) {
+func (s *Server) AddDownstreamServer(addr string, c FrameWriterConnection) {
 	s.mu.Lock()
 	s.downstreams[addr] = c
 	s.mu.Unlock()
@@ -486,6 +496,9 @@ func (s *Server) authNames() []string {
 	}
 	return result
 }
+
+// Name returns the name of server.
+func (s *Server) Name() string { return s.name }
 
 func (s *Server) doConnectionCloseHandlers(qconn quic.Connection) {
 	for _, h := range s.connectionCloseHandlers {

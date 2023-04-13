@@ -2,91 +2,108 @@ package yomo
 
 import (
 	"github.com/yomorun/yomo/core"
-	"github.com/yomorun/yomo/core/frame"
-	"golang.org/x/exp/slog"
+	"github.com/yomorun/yomo/pkg/config"
 )
 
-// Option is a function that applies a YoMo-Client option.
-type Option func(o *Options)
+type (
+	// SourceOption is option for the Source.
+	SourceOption = core.ClientOption
 
-// Options are the options for YoMo
-type Options struct {
-	MeshConfigURL string // meshConfigURL is the URL of edge-mesh config
-	ServerOptions []core.ServerOption
-	ClientOptions []core.ClientOption
+	// SfnOption is option for the SFN.
+	SfnOption = core.ClientOption
 
-	// TODO: WithWorkflowConfig
-	// zipperWorkflowConfig string // Zipper workflow file
+	// UpstreamZipperOption is option for the upstream Zipper.
+	UpstreamZipperOption = core.ClientOption
+
+	// DownstreamZipperOption is option for the downstream Zipper.
+	DownstreamZipperOption = core.ServerOption
+)
+
+var (
+	// WithObserveDataTags sets the list of data tags for the Source or SFN.
+	WithObserveDataTags = core.WithObserveDataTags
+
+	// WithCredential sets the credential method for the Source or SFN.
+	WithCredential = core.WithCredential
+
+	// WithClientTLSConfig sets tls config for the Source or SFN.
+	WithClientTLSConfig = core.WithClientTLSConfig
+
+	// WithClientQuicConfig sets quic config for the Source or SFN.
+	WithClientQuicConfig = core.WithClientQuicConfig
+
+	// WithLogger sets logger for the Source or SFN.
+	WithLogger = core.WithLogger
+)
+
+var (
+	// WithAuth sets the zipper authentication method.
+	WithAuth = core.WithAuth
+
+	// WithServerTLSConfig sets the TLS configuration for the zipper.
+	WithServerTLSConfig = core.WithServerTLSConfig
+
+	// WithServerQuicConfig sets the QUIC configuration for the zipper.
+	WithServerQuicConfig = core.WithServerQuicConfig
+
+	// WithServerLogger sets logger for the zipper.
+	WithServerLogger = core.WithServerLogger
+)
+
+type zipperOptions struct {
+	// TODO: meshConfigURL implements MeshConfigProvider interface.
+	meshConfigURL          string
+	meshConfigProvider     MeshConfigProvider
+	downstreamZipperOption []core.ServerOption
+	UpstreamZipperOption   []UpstreamZipperOption
 }
 
-// WithMeshConfigURL sets the initial edge-mesh config URL for the YoMo-Zipper.
-func WithMeshConfigURL(url string) Option {
-	return func(o *Options) {
-		o.MeshConfigURL = url
+// ZipperOption is option for the Zipper.
+type ZipperOption func(*zipperOptions)
+
+// WithMeshConfigURL sets mesh config url for Zipper.
+func WithMeshConfigURL(url string) ZipperOption {
+	return func(o *zipperOptions) {
+		o.meshConfigURL = url
 	}
 }
 
-// WithClientOptions returns a new options with opts.
-func WithClientOptions(opts ...core.ClientOption) Option {
-	return func(o *Options) {
-		o.ClientOptions = opts
+// WithDownstreamOption provides downstream zipper options for Zipper.
+func WithDownstreamOption(opts ...DownstreamZipperOption) ZipperOption {
+	return func(o *zipperOptions) {
+		o.downstreamZipperOption = opts
 	}
 }
 
-// WithServerOptions returns a new options with opts.
-func WithServerOptions(opts ...core.ServerOption) Option {
-	return func(o *Options) {
-		o.ServerOptions = opts
+// WithUptreamOption provides upstream zipper options for Zipper.
+func WithUptreamOption(opts ...UpstreamZipperOption) ZipperOption {
+	return func(o *zipperOptions) {
+		o.UpstreamZipperOption = opts
 	}
 }
 
-// WithAuth sets the server authentication method (used by server)
-func WithAuth(name string, args ...string) Option {
-	return func(o *Options) {
-		o.ServerOptions = append(
-			o.ServerOptions,
-			core.WithAuth(name, args...),
-		)
+// WithMeshConfig
+func WithMeshConfigProvider(provider MeshConfigProvider) ZipperOption {
+	return func(o *zipperOptions) {
+		o.meshConfigProvider = provider
 	}
 }
 
-// WithCredential sets the client credential method (used by client)
-func WithCredential(payload string) Option {
-	return func(o *Options) {
-		o.ClientOptions = append(
-			o.ClientOptions,
-			core.WithCredential(payload),
-		)
-	}
+// MeshConfigProvider provides the config of mesh zipper.
+type MeshConfigProvider interface {
+	// Provide returns the config of mesh zipper.
+	Provide() []config.MeshZipper
 }
 
-// WithObserveDataTags sets client data tag list.
-func WithObserveDataTags(tags ...frame.Tag) Option {
-	return func(o *Options) {
-		o.ClientOptions = append(
-			o.ClientOptions,
-			core.WithObserveDataTags(tags...),
-		)
-	}
+type defaultMeshConfigProvider struct {
+	confs []config.MeshZipper
 }
 
-// WithLogger sets the client logger
-func WithLogger(logger *slog.Logger) Option {
-	return func(o *Options) {
-		o.ClientOptions = append(
-			o.ClientOptions,
-			core.WithLogger(logger),
-		)
-	}
+func (p *defaultMeshConfigProvider) Provide() []config.MeshZipper {
+	return p.confs
 }
 
-// NewOptions creates a new options for YoMo-Client.
-func NewOptions(opts ...Option) *Options {
-	options := &Options{}
-
-	for _, o := range opts {
-		o(options)
-	}
-
-	return options
+// DefaultMeshConfigProvider returns the config of mesh zipper.
+func DefaultMeshConfigProvider(confs ...config.MeshZipper) MeshConfigProvider {
+	return &defaultMeshConfigProvider{confs}
 }

@@ -27,9 +27,8 @@ type StreamFunction interface {
 }
 
 // NewStreamFunction create a stream function.
-func NewStreamFunction(name, zipperAddr string, opts ...Option) StreamFunction {
-	options := NewOptions(opts...)
-	client := core.NewClient(name, core.ClientTypeStreamFunction, options.ClientOptions...)
+func NewStreamFunction(name, zipperAddr string, opts ...SfnOption) StreamFunction {
+	client := core.NewClient(name, core.ClientTypeStreamFunction, opts...)
 	sfn := &streamFunction{
 		name:            name,
 		zipperAddr:      zipperAddr,

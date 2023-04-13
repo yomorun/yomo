@@ -16,12 +16,15 @@ limitations under the License.
 package cli
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/yomorun/yomo"
+	pkgconfig "github.com/yomorun/yomo/pkg/config"
 	"github.com/yomorun/yomo/pkg/log"
 )
 
@@ -38,16 +41,16 @@ var serveCmd = &cobra.Command{
 			log.FailureStatusEvent(os.Stdout, "Please input the file name of workflow config")
 			return
 		}
-		// printYoMoServerConf(conf)
 
-		// endpoint := fmt.Sprintf("%s:%d", conf.Host, conf.Port)
-
-		zipper, err := yomo.NewZipper(config)
+		// parse workflow config.
+		wfg, err := pkgconfig.ParseWorkflowConfig(config)
 		if err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
 			return
 		}
+
 		// auth
+		var serverOption []yomo.DownstreamZipperOption
 		auth := v.GetString("auth")
 		if len(auth) > 0 {
 			idx := strings.Index(auth, ":")
@@ -56,19 +59,18 @@ var serveCmd = &cobra.Command{
 				idx++
 				args := auth[idx:]
 				authArgs := strings.Split(args, ",")
-				// log.InfoStatusEvent(os.Stdout, "authName=%s, authArgs=%s, idx=%d", authName, authArgs, idx)
-				zipper.InitOptions(yomo.WithAuth(authName, authArgs...))
+				serverOption = append(serverOption, yomo.WithAuth(authName, authArgs...))
 			}
 		}
-		// mesh
-		err = zipper.ConfigMesh(meshConfURL)
+
+		zipper, err := yomo.NewZipper(wfg.Name, wfg.Functions, yomo.WithDownstreamOption(serverOption...))
 		if err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
 			return
 		}
 
 		log.InfoStatusEvent(os.Stdout, "Running YoMo-Zipper...")
-		err = zipper.ListenAndServe()
+		err = zipper.ListenAndServe(context.Background(), fmt.Sprintf("%s:%d", wfg.Host, wfg.Port))
 		if err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
 			return

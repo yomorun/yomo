@@ -4,13 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/router"
-	"github.com/yomorun/yomo/core/ylog"
 	"github.com/yomorun/yomo/pkg/config"
 	"golang.org/x/exp/slog"
 )
@@ -18,144 +16,89 @@ import (
 // Zipper is the orchestrator of yomo. There are two types of zipper:
 // one is Upstream Zipper, which is used to connect to multiple downstream zippers,
 // another one is Downstream Zipper (will call it as Zipper directly), which is used
-// to connected by `Upstream Zipper`, `Source` and `Stream Function`
+// to connected by `Upstream Zipper`, `Source` and `Stream Function`.
 type Zipper interface {
-	// ConfigWorkflow will register workflows from config files to zipper.
-	ConfigWorkflow(conf string) error
-
-	// ConfigMesh will register edge-mesh config URL
-	ConfigMesh(url string) error
+	// Logger returns the logger of zipper.
+	Logger() *slog.Logger
 
 	// ListenAndServe start zipper as server.
-	ListenAndServe() error
-
-	// AddDownstreamZipper will add downstream zipper.
-	AddDownstreamZipper(downstream Zipper) error
-
-	// Addr returns the listen address of zipper.
-	Addr() string
-
-	// Stats return insight data
-	Stats() int
+	ListenAndServe(context.Context, string) error
 
 	// Close will close the zipper.
 	Close() error
-
-	// InitOptions initialize options
-	InitOptions(opts ...Option)
-
-	// ReadConfigFile(conf string) error
-	// AddWorkflow(wf ...core.Workflow) error
-	// ConfigDownstream(opts ...interface{}) error
-	// Connect() error
-	// RemoveDownstreamZipper(downstream Zipper) error
-	// ListenAddr() string
 }
 
-// zipper is the implementation of Zipper interface.
-type zipper struct {
-	name              string
-	addr              string
-	hasDownstreams    bool
-	server            *core.Server
-	client            *core.Client
-	downstreamZippers []Zipper
-	wfc               *config.WorkflowConfig
-}
-
-var _ Zipper = &zipper{}
-
-// NewZipperWithOptions create a zipper instance.
-func NewZipperWithOptions(name, addr string, opts ...Option) Zipper {
-	options := NewOptions(opts...)
-	zipper := createZipperServer(name, addr, options, nil)
-	zipper.ConfigMesh(options.MeshConfigURL)
-
-	return zipper
-}
-
-// NewZipper create a zipper instance from config files.
-func NewZipper(conf string) (Zipper, error) {
-	config, err := config.ParseWorkflowConfig(conf)
-	if err != nil {
-		return nil, err
-	}
-	// listening address
-	listenAddr := fmt.Sprintf("%s:%d", config.Host, config.Port)
-
-	options := NewOptions()
-	zipper := createZipperServer(config.Name, listenAddr, options, config)
-	// zipper workflow
-	err = zipper.configWorkflow(config)
-	zipper.server.Logger().Info("using config file", "file_path", conf)
-
-	return zipper, err
-}
-
-// NewDownstreamZipper create a zipper descriptor for downstream zipper.
-func NewDownstreamZipper(name, addr string, opts ...Option) Zipper {
-	options := NewOptions(opts...)
-	client := core.NewClient(name, core.ClientTypeUpstreamZipper, options.ClientOptions...)
-
-	return &zipper{
-		name:   name,
-		addr:   addr,
-		client: client,
-	}
-}
-
-/*************** Server ONLY ***************/
-// createZipperServer create a zipper instance as server.
-func createZipperServer(name, addr string, options *Options, cfg *config.WorkflowConfig) *zipper {
-	// create underlying QUIC server
-	srv := core.NewServer(name, options.ServerOptions...)
-	z := &zipper{
-		server: srv,
-		name:   name,
-		addr:   addr,
-		wfc:    cfg,
-	}
-	// initialize
-	z.init()
-	return z
-}
-
-func (z *zipper) Logger() *slog.Logger {
-	logger := z.server.Logger()
-	if logger == nil {
-		return ylog.Default()
-	}
-
-	return logger
-}
-
-// ConfigWorkflow will read workflows from config files and register them to zipper.
-func (z *zipper) ConfigWorkflow(conf string) error {
-	config, err := config.ParseWorkflowConfig(conf)
+// RunZipper run a zipper from workflow file and mesh config url.
+func RunZipper(ctx context.Context, confPath, meshConfigURL string) error {
+	conf, err := config.ParseWorkflowConfig(confPath)
 	if err != nil {
 		return err
 	}
-	z.Logger().Debug("config work flow", "work_flow", config)
-	return z.configWorkflow(config)
+	// listening address
+	listenAddr := fmt.Sprintf("%s:%d", conf.Host, conf.Port)
+
+	zipper, err := NewZipper(conf.Name, conf.Workflow.Functions)
+	if err != nil {
+		return err
+	}
+	zipper.Logger().Info("using config file", "file_path", conf)
+
+	return zipper.ListenAndServe(ctx, listenAddr)
 }
 
-func (z *zipper) configWorkflow(config *config.WorkflowConfig) error {
-	z.wfc = config
-	z.server.ConfigMetadataDecoder(metadata.DefaultDecoder())
-	z.server.ConfigRouter(router.Default(config.Functions))
-	return nil
-}
-
-func (z *zipper) ConfigMesh(url string) error {
-	if url == "" {
-		return nil
+// NewZipper returns a zipper from options.
+func NewZipper(name string, functions []config.App, options ...ZipperOption) (Zipper, error) {
+	opts := zipperOptions{}
+	for _, o := range options {
+		o(&opts)
 	}
 
-	z.Logger().Debug("downloading mesh config...")
+	server := core.NewServer(name, opts.downstreamZipperOption...)
+
+	// add downstreams to server.
+	downstreamMap := make(map[string]*core.Client)
+	if url := opts.meshConfigURL; url != "" {
+		server.Logger().Debug("downdown mesh config successfully", "mesh_config_url", url)
+		var err error
+		downstreamMap, err = ParseMeshConfig(name, url, opts.UpstreamZipperOption...)
+		if err != nil {
+			return nil, err
+		}
+	}
+	// meshConfig will cover the configs from meshConfigURL.
+	if provider := opts.meshConfigProvider; provider != nil {
+		if meshConfig := provider.Provide(); len(meshConfig) != 0 {
+			for _, conf := range meshConfig {
+				addr := fmt.Sprintf("%s:%d", conf.Host, conf.Port)
+				downstreamMap[addr] = core.NewClient(conf.Name, core.ClientTypeUpstreamZipper, core.WithCredential(conf.Credential))
+			}
+		}
+	}
+
+	for addr, downstream := range downstreamMap {
+		server.Logger().Debug("mesh config", "downstream_addr", addr, "downstream_name", downstream.Name())
+		server.AddDownstreamServer(addr, downstream)
+	}
+
+	server.ConfigMetadataDecoder(metadata.DefaultDecoder())
+	server.ConfigRouter(router.Default(functions))
+
+	// watch signal.
+	go waitSignalForShotdownServer(server)
+
+	return server, nil
+}
+
+// ParseMeshConfig
+func ParseMeshConfig(omitName, url string, opts ...core.ClientOption) (map[string]*core.Client, error) {
+	if url == "" {
+		return map[string]*core.Client{}, nil
+	}
+
 	// download mesh conf
 	res, err := http.Get(url)
 	if err != nil {
-		return err
+		return map[string]*core.Client{}, nil
 	}
 	defer res.Body.Close()
 
@@ -163,113 +106,39 @@ func (z *zipper) ConfigMesh(url string) error {
 	var configs []config.MeshZipper
 	err = decoder.Decode(&configs)
 	if err != nil {
-		z.Logger().Error("download mesh config", err)
-		return err
+		return map[string]*core.Client{}, nil
 	}
-	z.Logger().Debug("download mesh config successfully")
 
 	if len(configs) == 0 {
-		return nil
+		return map[string]*core.Client{}, nil
 	}
 
-	for _, downstream := range configs {
-		if downstream.Name == z.name {
+	downstreamMap := make(map[string]*core.Client, len(configs)-1)
+	for _, conf := range configs {
+		if conf.Name == omitName {
 			continue
 		}
-		addr := fmt.Sprintf("%s:%d", downstream.Host, downstream.Port)
-		opts := []Option{}
-		if downstream.Credential != "" {
-			opts = append(opts, WithCredential(downstream.Credential))
+		addr := fmt.Sprintf("%s:%d", conf.Host, conf.Port)
+		opts := []core.ClientOption{}
+		if conf.Credential != "" {
+			opts = append(opts, WithCredential(conf.Credential))
 		}
-		z.AddDownstreamZipper(NewDownstreamZipper(downstream.Name, addr, opts...))
+		downStream := core.NewClient(conf.Name, core.ClientTypeUpstreamZipper, opts...)
+
+		downstreamMap[addr] = downStream
 	}
 
-	return nil
+	return downstreamMap, nil
 }
 
-// ListenAndServe will start zipper service.
-func (z *zipper) ListenAndServe() error {
-	z.Logger().Debug("creating zipper server")
-	// check downstream zippers
-	for _, ds := range z.downstreamZippers {
-		if dsZipper, ok := ds.(*zipper); ok {
-			go func(dsZipper *zipper) {
-				dsZipper.client.Connect(context.Background(), dsZipper.addr)
-				z.server.AddDownstreamServer(dsZipper.addr, dsZipper.client)
-			}(dsZipper)
-		}
-	}
-	return z.server.ListenAndServe(context.Background(), z.addr)
-}
+func statsToLogger(server *core.Server) {
+	logger := server.Logger()
 
-// AddDownstreamZipper will add downstream zipper.
-func (z *zipper) AddDownstreamZipper(downstream Zipper) error {
-	z.downstreamZippers = append(z.downstreamZippers, downstream)
-	z.hasDownstreams = true
-	z.Logger().Debug("add downstreams", "zipper", downstream.Addr(), "add_num_after", len(z.downstreamZippers))
-	return nil
-}
-
-// RemoveDownstreamZipper remove downstream zipper.
-func (z *zipper) RemoveDownstreamZipper(downstream Zipper) error {
-	index := -1
-	for i, v := range z.downstreamZippers {
-		if v.Addr() == downstream.Addr() {
-			index = i
-			break
-		}
-	}
-
-	// remove from slice
-	z.downstreamZippers = append(z.downstreamZippers[:index], z.downstreamZippers[index+1:]...)
-	return nil
-}
-
-// Addr returns listen address of zipper.
-func (z *zipper) Addr() string {
-	return z.addr
-}
-
-// Close will close a connection. If zipper is Server, close the server. If zipper is Client, close the client.
-func (z *zipper) Close() error {
-	if z.server != nil {
-		if err := z.server.Close(); err != nil {
-			return err
-		}
-	}
-	if z.client != nil {
-		if err := z.client.Close(); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// Stats inspects current server.
-func (z *zipper) Stats() int {
-	log.Printf("[%s] all connections: %d", z.name, len(z.server.StatsFunctions()))
-	for connID, name := range z.server.StatsFunctions() {
-		log.Printf("[%s] -> ConnID=%s, Name=%s", z.name, connID, name)
-	}
-
-	log.Printf("[%s] all downstream zippers connected: %d", z.name, len(z.server.Downstreams()))
-	for k, v := range z.server.Downstreams() {
-		log.Printf("[%s] |> [%s] %v", z.name, k, v)
-	}
-
-	log.Printf("[%s] total DataFrames received: %d", z.name, z.server.StatsCounter())
-
-	return len(z.server.StatsFunctions())
-}
-
-func (z *zipper) InitOptions(opts ...Option) {
-	options := &Options{}
-	for _, o := range opts {
-		o(options)
-	}
-	srv := core.NewServer(z.name, options.ServerOptions...)
-	z.server = srv
-	if z.wfc != nil {
-		z.configWorkflow(z.wfc)
-	}
+	logger.Info(
+		"stats",
+		"zipper_name", server.Name(),
+		"connector", server.StatsFunctions(),
+		"downstreams", server.Downstreams(),
+		"data_frame_received_num", server.StatsCounter(),
+	)
 }

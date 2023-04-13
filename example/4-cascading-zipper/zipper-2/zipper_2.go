@@ -1,30 +1,35 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"os"
 
 	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/pkg/config"
 )
 
 func main() {
-	zipper := yomo.NewZipperWithOptions(
-		"zipper-2",
-		"localhost:9002",
-		yomo.WithAuth("token", "z2"),
+	conf, err := config.ParseWorkflowConfig("zipper_2_wf.yaml")
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	zipper, err := yomo.NewZipper(
+		conf.Name,
+		conf.Functions,
+		yomo.WithDownstreamOption(yomo.WithAuth("token", "z2")),
 	)
+	if err != nil {
+		log.Fatalln(err)
+	}
 	defer zipper.Close()
 
-	zipper.ConfigWorkflow("zipper_2_wf.yaml")
+	addr := fmt.Sprintf("%s:%d", conf.Host, conf.Port)
 
 	// start zipper service
 	log.Printf("Server has started!, pid: %d", os.Getpid())
-	go func() {
-		err := zipper.ListenAndServe()
-		if err != nil {
-			log.Println(err)
-			os.Exit(1)
-		}
-	}()
-	select {}
+
+	log.Fatalln(zipper.ListenAndServe(context.Background(), addr))
 }

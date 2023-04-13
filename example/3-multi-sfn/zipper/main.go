@@ -1,23 +1,16 @@
 package main
 
 import (
+	"context"
+	"log"
 	"os"
 
 	"github.com/yomorun/yomo"
 )
 
 func main() {
-	// zipper initialize
-	zipper := yomo.NewZipperWithOptions(
-		"Zipper",
-		"localhost:9000",
-	)
-	defer zipper.Close()
-	// configurate zipper workflow
-	zipper.ConfigWorkflow(os.Getenv("YOMO_ZIPPER_WORKFLOW"))
-	// zipper serve
-	err := zipper.ListenAndServe()
+	err := yomo.RunZipper(context.Background(), os.Getenv("YOMO_ZIPPER_WORKFLOW"), "")
 	if err != nil {
-		panic(err)
+		log.Fatalln(err)
 	}
 }

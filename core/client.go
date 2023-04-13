@@ -298,7 +298,16 @@ func (c *Client) SetErrorHandler(fn func(err error)) {
 	c.logger.Debug("the error handler has been set")
 }
 
-// ClientID return the client ID
-func (c *Client) ClientID() string {
-	return c.clientID
+// ClientID returns the ID of client.
+func (c *Client) ClientID() string { return c.clientID }
+
+// Name returns the name of client.
+func (c *Client) Name() string { return c.name }
+
+// FrameWriterConnection represents a frame writer that can connect to an addr.
+type FrameWriterConnection interface {
+	frame.Writer
+	Name() string
+	Close() error
+	Connect(context.Context, string) error
 }
