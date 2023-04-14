@@ -39,9 +39,8 @@ type yomoSource struct {
 var _ Source = &yomoSource{}
 
 // NewSource create a yomo-source
-func NewSource(name, zipperAddr string, opts ...Option) Source {
-	options := NewOptions(opts...)
-	client := core.NewClient(name, core.ClientTypeSource, options.ClientOptions...)
+func NewSource(name, zipperAddr string, opts ...SourceOption) Source {
+	client := core.NewClient(name, core.ClientTypeSource, opts...)
 
 	return &yomoSource{
 		name:       name,

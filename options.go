@@ -2,11 +2,34 @@ package yomo
 
 import (
 	"github.com/yomorun/yomo/core"
-	"github.com/yomorun/yomo/core/frame"
-	"golang.org/x/exp/slog"
 )
 
-// Option is a function that applies a YoMo-Client option.
+type (
+	// SourceOption is option for the Source.
+	SourceOption = core.ClientOption
+
+	// SfnOption is option for the SFN.
+	SfnOption = core.ClientOption
+)
+
+var (
+	// WithObserveDataTags sets the list of data tags for the Source or SFN.
+	WithObserveDataTags = core.WithObserveDataTags
+
+	// WithCredential sets the credential method for the Source or SFN.
+	WithCredential = core.WithCredential
+
+	// WithClientTLSConfig sets tls config for the Source or SFN.
+	WithClientTLSConfig = core.WithClientTLSConfig
+
+	// WithClientQuicConfig sets quic config for the Source or SFN.
+	WithClientQuicConfig = core.WithClientQuicConfig
+
+	// WithLogger sets logger for the Source or SFN.
+	WithLogger = core.WithLogger
+)
+
+// Option is a function that applies a Zipper option.
 type Option func(o *Options)
 
 // Options are the options for YoMo
@@ -46,36 +69,6 @@ func WithAuth(name string, args ...string) Option {
 		o.ServerOptions = append(
 			o.ServerOptions,
 			core.WithAuth(name, args...),
-		)
-	}
-}
-
-// WithCredential sets the client credential method (used by client)
-func WithCredential(payload string) Option {
-	return func(o *Options) {
-		o.ClientOptions = append(
-			o.ClientOptions,
-			core.WithCredential(payload),
-		)
-	}
-}
-
-// WithObserveDataTags sets client data tag list.
-func WithObserveDataTags(tags ...frame.Tag) Option {
-	return func(o *Options) {
-		o.ClientOptions = append(
-			o.ClientOptions,
-			core.WithObserveDataTags(tags...),
-		)
-	}
-}
-
-// WithLogger sets the client logger
-func WithLogger(logger *slog.Logger) Option {
-	return func(o *Options) {
-		o.ClientOptions = append(
-			o.ClientOptions,
-			core.WithLogger(logger),
 		)
 	}
 }
