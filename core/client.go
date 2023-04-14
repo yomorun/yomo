@@ -71,6 +71,7 @@ connect:
 	if err != nil {
 		if c.opts.connectUntilSucceed {
 			c.logger.Error("failed to connect to zipper, trying to reconect", err)
+			time.Sleep(time.Second)
 			goto connect
 		}
 		c.logger.Error("can not connect to zipper", err)
