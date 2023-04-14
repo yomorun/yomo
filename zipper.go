@@ -95,7 +95,9 @@ func NewZipper(conf string) (Zipper, error) {
 // NewDownstreamZipper create a zipper descriptor for downstream zipper.
 func NewDownstreamZipper(name, addr string, opts ...Option) Zipper {
 	options := NewOptions(opts...)
-	client := core.NewClient(name, core.ClientTypeUpstreamZipper, options.ClientOptions...)
+	// upstreamZipper always try to connect to downstreamZipper.
+	clientOption := append(options.ClientOptions, core.WithConnectUntilSucceed(), core.WithNonBlockWrite())
+	client := core.NewClient(name, core.ClientTypeUpstreamZipper, clientOption...)
 
 	return &zipper{
 		name:   name,

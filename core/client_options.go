@@ -17,11 +17,13 @@ type ClientOption func(*clientOptions)
 
 // clientOptions are the options for YoMo client.
 type clientOptions struct {
-	observeDataTags []frame.Tag
-	quicConfig      *quic.Config
-	tlsConfig       *tls.Config
-	credential      *auth.Credential
-	logger          *slog.Logger
+	observeDataTags     []frame.Tag
+	quicConfig          *quic.Config
+	tlsConfig           *tls.Config
+	credential          *auth.Credential
+	connectUntilSucceed bool
+	nonBlockWrite       bool
+	logger              *slog.Logger
 }
 
 func defaultClientOption() *clientOptions {
@@ -77,6 +79,20 @@ func WithClientTLSConfig(tc *tls.Config) ClientOption {
 func WithClientQuicConfig(qc *quic.Config) ClientOption {
 	return func(o *clientOptions) {
 		o.quicConfig = qc
+	}
+}
+
+// WithConnectUntilSucceed makes client Connect until seccssed.
+func WithConnectUntilSucceed() ClientOption {
+	return func(o *clientOptions) {
+		o.connectUntilSucceed = true
+	}
+}
+
+// WithNonBlockWrite makes client WriteFrame non-blocking.
+func WithNonBlockWrite() ClientOption {
+	return func(o *clientOptions) {
+		o.nonBlockWrite = true
 	}
 }
 

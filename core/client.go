@@ -66,8 +66,13 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 func (c *Client) Connect(ctx context.Context, addr string) error {
 	c.logger = c.logger.With("zipper_addr", addr)
 
+connect:
 	controlStream, dataStream, err := c.openStream(ctx, addr)
 	if err != nil {
+		if c.opts.connectUntilSucceed {
+			c.logger.Error("failed to connect to zipper, trying to reconect", err)
+			goto connect
+		}
 		c.logger.Error("can not connect to zipper", err)
 		return err
 	}
@@ -92,7 +97,7 @@ func (c *Client) runBackground(ctx context.Context, addr string, controlStream *
 			c.cleanStream(controlStream, ctx.Err())
 			return
 		case <-reconnection:
-		RECONNECT:
+		reconnect:
 			var err error
 			controlStream, dataStream, err = c.openStream(ctx, addr)
 			if err != nil {
@@ -102,7 +107,7 @@ func (c *Client) runBackground(ctx context.Context, addr string, controlStream *
 				}
 				c.logger.Error("reconnect error", err)
 				time.Sleep(time.Second)
-				goto RECONNECT
+				goto reconnect
 			}
 			go c.processStream(controlStream, dataStream, reconnection)
 		}
@@ -111,8 +116,28 @@ func (c *Client) runBackground(ctx context.Context, addr string, controlStream *
 
 // WriteFrame write frame to client.
 func (c *Client) WriteFrame(f frame.Frame) error {
+	if c.opts.nonBlockWrite {
+		return c.nonBlockWriteFrame(f)
+	}
+	return c.blockWriteFrame(f)
+}
+
+// blockWriteFrame writes frames in block mode, guaranteeing that frames are not lost.
+func (c *Client) blockWriteFrame(f frame.Frame) error {
 	c.writeFrameChan <- f
 	return nil
+}
+
+// nonBlockWriteFrame writes frames in non-blocking mode, without guaranteeing that frames will not be lost.
+func (c *Client) nonBlockWriteFrame(f frame.Frame) error {
+	select {
+	case c.writeFrameChan <- f:
+		return nil
+	default:
+		err := errors.New("yomo: client has lost connection")
+		c.logger.Debug("failed to write frame", "frame_type", f.Type().String(), "error", err)
+		return err
+	}
 }
 
 func (c *Client) cleanStream(controlStream *ClientControlStream, err error) {
