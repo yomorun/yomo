@@ -93,9 +93,8 @@ func NewZipper(conf string) (Zipper, error) {
 }
 
 // NewDownstreamZipper create a zipper descriptor for downstream zipper.
-func NewDownstreamZipper(name, addr string, opts ...Option) Zipper {
-	options := NewOptions(opts...)
-	client := core.NewClient(name, core.ClientTypeUpstreamZipper, options.ClientOptions...)
+func NewDownstreamZipper(name, addr string, opts ...core.ClientOption) Zipper {
+	client := core.NewClient(name, core.ClientTypeUpstreamZipper, opts...)
 
 	return &zipper{
 		name:   name,
@@ -177,9 +176,9 @@ func (z *zipper) ConfigMesh(url string) error {
 			continue
 		}
 		addr := fmt.Sprintf("%s:%d", downstream.Host, downstream.Port)
-		opts := []Option{}
+		opts := []core.ClientOption{}
 		if downstream.Credential != "" {
-			opts = append(opts, WithCredential(downstream.Credential))
+			opts = append(opts, core.WithCredential(downstream.Credential))
 		}
 		z.AddDownstreamZipper(NewDownstreamZipper(downstream.Name, addr, opts...))
 	}
