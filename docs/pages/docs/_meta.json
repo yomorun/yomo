@@ -8,7 +8,12 @@
   "concept-pub-sub": "Pub-sub Model",
   "concept-multi-sfn": "Serverless Workflow",
   "concept-zipper-cascading": "Cascading Zippers",
+  "---Reference": {
+    "type": "separator",
+    "title": "Reference"
+  },
   "api": "API",
+  "zipper": "zipper",
   "---Hosting": {
     "type": "separator",
     "title": "Hosting"
