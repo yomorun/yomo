@@ -222,10 +222,6 @@ func (c *Client) processStream(controlStream *ClientControlStream, dataStream Da
 			c.handleFrame(result.frame)
 		case f := <-c.writeFrameChan:
 			err := dataStream.WriteFrame(f)
-			// restore DataFrame.
-			if d, ok := f.(*frame.DataFrame); ok {
-				d.Clean()
-			}
 			c.handleFrameError(err, reconnection)
 		}
 	}

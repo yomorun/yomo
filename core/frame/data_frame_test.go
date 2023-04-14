@@ -37,7 +37,6 @@ func TestDataFrameDecode(t *testing.T) {
 		0x80 | byte(TagOfPayloadFrame), 0x09,
 		0x01, 0x1, 0x15, 0x02, 0x04, 0x79, 0x6F, 0x6D, 0x6F}
 	data, err := DecodeToDataFrame(buf)
-	defer data.Clean()
 	assert.NoError(t, err)
 
 	assert.EqualValues(t, 0x15, data.Tag())
@@ -45,21 +44,4 @@ func TestDataFrameDecode(t *testing.T) {
 	assert.EqualValues(t, userDataTag, data.GetDataTag())
 	assert.EqualValues(t, []byte("yomo"), data.GetCarriage())
 	assert.EqualValues(t, true, data.IsBroadcast())
-}
-
-func BenchmarkDataFramePool(b *testing.B) {
-	var (
-		tag     = Tag(0x15)
-		payload = []byte("yomo")
-	)
-
-	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
-			prev := NewDataFrame()
-			prev.SetCarriage(tag, payload)
-			prev.SetBroadcast(true)
-
-			prev.Clean()
-		}
-	})
 }
