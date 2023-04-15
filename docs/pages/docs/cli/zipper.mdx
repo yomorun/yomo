@@ -1,5 +1,5 @@
 ---
-title: Zipper
+title: Zipper Service
 ---
 
 # Zipper
@@ -19,6 +19,8 @@ sequenceDiagram
 ```
 
 Zipper expose a QUIC endpoint, as the QUIC server, while [Source][source] and [StreamFunction][sfn] are all QUIC clients.
+
+## Zipper Cascading and Mesh Network
 
 YoMo is designed as a decentralized system, Zippers can be connected to each other, and the data will be forwarded to downstram Zippers when needed. By this, we can build a large scale system, but developers do not need to care about the network topology, the data will be delivered to the nearest [StreamFunction](sfn), when needed, the data can be delivered to all other nodes:
 
@@ -78,5 +80,5 @@ downstreams:
       port: 9000
 ```
 
-[source]: /docs/api/source
-[sfn]: /docs/api/sfn
+[source]: ../api/source
+[sfn]: ../api/sfn

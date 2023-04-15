@@ -1,0 +1,39 @@
+---
+title: Manage StreamFunction
+---
+
+# yomo init
+
+Generate a StreamFunction project.
+
+## Usage
+
+```bash
+yomo init [flags] project-name
+```
+
+## Flags
+
+- `-r` or `--rx`: Generate a StreamFunction project in Rx.
+- `-n` or `--name`: Set the name of the StreamFunction project.
+
+# yomo run
+
+Start a StreamFunction service.
+
+## Usage
+
+```bash
+yomo run [flags] serverless
+```
+
+## Flags
+
+- `-d` or `--credential`: Set the credential when connecting to [Zipper][zipper].
+- `-m` or `--modfile`: Set the path of custom `go.mod` file.
+- `-n` or `--name`: Set the name of the StreamFunction service, it should match the specific name in [Zipper][zipper] config file.
+- `-r` or `--runtime`: Set the runtime of the StreamFunction service, default is WebAssebly by `wazero`, also support `wasmtime`, `wasmedge` and `Deno`
+- `-z` or `--zipper`: Set the address of [Zipper][zipper] to connect.
+
+
+[zipper]: ./zipper
