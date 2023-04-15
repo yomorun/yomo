@@ -3,7 +3,7 @@ name: release
 on:
   push:
     tags:
-      - "v*.*.*"
+      - "v*"
   workflow_dispatch:
     inputs:
       logLevel:
@@ -11,139 +11,45 @@ on:
         required: true
         default: 'warning'
 jobs:
-  bina-for-curl-download:
-    name: Make bina.json
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v3
-      - name: Genetate bina.json
-        run: cd ./cli && make bina
-      - name: upload artifacts
-        uses: actions/upload-artifact@master
-        with:
-          name: yomo-artifact
-          path: ./cli/bin/bina.json
-  build-linux-amd64:
-    name: Build Linux x86-64 binary
+  build:
+    name: Build and release
     runs-on: ubuntu-latest
     env:
-      GOVER: 1.19
+      ACTIONS_ALLOW_UNSECURE_COMMANDS: true
+
     steps:
-      - name: Set up Go ${{ env.GOVER }}
+      - name: Check out
+        uses: actions/checkout@v3
+
+      - name: Setup Go
         uses: actions/setup-go@v4
         with:
-          go-version: ${{ env.GOVER }}
-      - name: Check out code
-        uses: actions/checkout@v3
-      - name: Run go mod tidy
-        run: go mod tidy
-      - name: build & archive binaries
-        run: cd ./cli && make archive-release-linux-amd64
-      - name: upload artifacts
-        uses: actions/upload-artifact@master
-        with:
-          name: yomo-artifact
-          path: ./cli/bin/**/*.tar.gz
-  build-linux-arm64:
-    name: Build Linux arm64 binary
-    runs-on: [self-hosted, Linux, ARM64]
-    env:
-      GOVER: 1.19
-    steps:
-      - name: Set up Go ${{ env.GOVER }}
-        uses: actions/setup-go@v4
-        with:
-          go-version: ${{ env.GOVER }}
-      - name: Check out code
-        uses: actions/checkout@v3
-      - name: Run go mod tidy
-        run: go mod tidy
-      - name: build & archive binaries
+          go-version: 1.19
+
+      - name: Run build script
+        env:
+          PLATFORMS: 'darwin/amd64,darwin/arm64,windows/amd64,windows/arm64,linux/amd64,linux/arm64,freebsd/amd64,freebsd/arm64'
         run: |
-          sudo apt-get update && sudo apt-get -y upgrade
-          sudo apt-get install -y make
-          sudo apt-get install -y gcc
-          cd ./cli && make archive-release-linux-arm64
-      - name: upload artifacts
-        uses: actions/upload-artifact@master
-        with:
-          name: yomo-artifact
-          path: ./cli/bin/**/*.tar.gz
-  build-darwin-amd64:
-    name: Build MacOS x86-64 binary
-    runs-on: macos-latest
-    env:
-      GOVER: 1.19
-    steps:
-      - name: Set up Go ${{ env.GOVER }}
-        uses: actions/setup-go@v4
-        with:
-          go-version: ${{ env.GOVER }}
-      - name: Check out code
-        uses: actions/checkout@v3
-      - name: Run go mod tidy
-        run: go mod tidy
-      - name: build & archive binaries
-        run: cd ./cli && make archive-release-darwin-amd64
-      - name: upload artifacts
-        uses: actions/upload-artifact@master
-        with:
-          name: yomo-artifact
-          path: ./cli/bin/**/*.tar.gz
-  build-windows-amd64:
-    name: Build Windows x86-64 binary
-    runs-on: windows-latest
-    env:
-      GOVER: 1.19
-    steps:
-      - name: Set up Go ${{ env.GOVER }}
-        uses: actions/setup-go@v4
-        with:
-          go-version: ${{ env.GOVER }}
-      - name: Check out code
-        uses: actions/checkout@v3
-      - name: Run go mod tidy
-        run: go mod tidy
-      - name: build & archive binaries
+          bash ./build.sh
+
+      - name: Generate hashes
         run: |
-          cd ./cli && make archive-release-windows-amd64
-      - name: upload artifacts
-        uses: actions/upload-artifact@master
-        with:
-          name: yomo-artifact
-          path: ./cli/bin/**/*.tar.gz
-  publish:
-    name: Publish binaries
-    needs: [bina-for-curl-download, build-linux-amd64, build-linux-arm64, build-darwin-amd64, build-windows-amd64]
-    env:
-      ARTIFACT_DIR: ./release
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v3
-      - name: download artifacts
-        uses: actions/download-artifact@master
-        with:
-          name: yomo-artifact
-          path: ${{ env.ARTIFACT_DIR }}
-      - name: lists artifacts
-        run: ls -l ${{ env.ARTIFACT_DIR }}
-      - name: build version
-        run: cd ./cli && make cli_version
-      - name: Get version
-        id: tag
-        run: echo "name=version::$(cat ./cli/VERSION)" >> $GITHUB_OUTPUT
-      - name: publish binaries to github
+          cd ./build
+          for f in $(find . -type f); do
+            sha256sum $f | sudo tee -a hashes.txt
+          done
+
+      - name: Upload
         uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
         with:
-          prerelease: true
-          tag_name: ${{ steps.tag.outputs.version }}
-          files: ${{ env.ARTIFACT_DIR }}/*
-      - name: Dispatch release notification
-        uses: peter-evans/repository-dispatch@v2
-        with:
-          token: ${{ secrets.YOMO_BOT_TOKEN }}
-          repository: yomorun/get.yomo.run
-          event-type: cli-released
-          client-payload: '{"version": "${{ steps.tag.outputs.version }}"}'
+          files: |
+            ./build/yomo-amd64-darwin.zip
+            ./build/yomo-arm64-darwin.zip
+            ./build/yomo-windows.zip
+            ./build/yomo-windows.zip
+            ./build/yomo-amd64-linux.zip
+            ./build/yomo-arm64-linux.zip
+            ./build/yomo-amd64-freebsd.zip
+            ./build/yomo-arm64-freebsd.zip
+            ./build/hashes.txt
