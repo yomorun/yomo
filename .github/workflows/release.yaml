@@ -46,8 +46,8 @@ jobs:
           files: |
             ./build/yomo-amd64-darwin.zip
             ./build/yomo-arm64-darwin.zip
-            ./build/yomo-windows.zip
-            ./build/yomo-windows.zip
+            ./build/yomo-amd64-windows.zip
+            ./build/yomo-arm64-windows.zip
             ./build/yomo-amd64-linux.zip
             ./build/yomo-arm64-linux.zip
             ./build/yomo-amd64-freebsd.zip
