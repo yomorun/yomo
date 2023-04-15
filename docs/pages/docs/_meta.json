@@ -12,8 +12,9 @@
     "type": "separator",
     "title": "Reference"
   },
+  "cli": "CLI",
+  "zipper": "Zipper",
   "api": "API",
-  "zipper": "zipper",
   "---Hosting": {
     "type": "separator",
     "title": "Hosting"
