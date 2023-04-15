@@ -1,0 +1,10 @@
+---
+title: API Tag
+---
+
+# Tag
+
+Tag is an `uint32` value that can be used to specific different types of data.
+YoMo defined data format flows across from [Source] to [StreamFunction] with [Y3 Codec](https://github.com/yomorun/y3), 
+which is a [TLV](https://en.wikipedia.org/wiki/Type-length-value) format, 
+the `Tag-Length-Value` format provide the ability to parsing data with low CPU consumption.

@@ -1,18 +1,32 @@
+---
+title: API Source
+---
+
 # YoMo Source
 
-Source generate data to [Zipper][zipper].
+Source generates data to [Zipper][zipper].
 
 ## func yomo.NewSource
 
 ```go
-yomo.NewSource(source_name string, zipper_addr string, opts ...Option) Source
+yomo.NewSource(name string, zipperAddr string, opts ...SourceOption) Source
 ```
 
 Create `Source` instance.
 
-- `source_name`: The name of this source instance.
-- `zipper_addr`: The endpoint of the [Zipper][zipper] connect to.
-- `option`: The [SourceOption][sourceOption].
+- `name`: The name of this source instance.
+- `zipperAddr`: The endpoint of the [Zipper][zipper] to connect to.
+- `opts`: The [SourceOption][sourceOption] when create instance.
+
+example:
+
+```go
+source := yomo.NewSource(
+	"websocket-source",
+	"localhost:9000",
+	yomo.WithCredential("token:123456abcdefg"),
+)
+```
 
 ## type Source
 
@@ -28,30 +42,76 @@ Disconnect from [Zipper][zipper].
 
 Set the data tag.
 
-- `tag`: The [tag][tag] of data.
+- `tag`: The [Tag][tag] of data.
 
 ### source.Write(data []byte) (int, error)
 
 Write data to direct Zipper with tag specified in [SetDataTag](#sourcesetdatatagtag-frametag).
 
+- `data`: The data to write.
+
 ### source.WriteWithTag(tag Tag, data []byte) error
 
-Write data to direct Zipper with specified [tag][tag].
+Write data to direct Zipper with specified [Tag][tag].
 
 The default transactionID is epoch time.
+
+- `tag`: The [Tag][tag] of data.
+- `data`: The data to write.
 
 ### source.Broadcast(data []byte) error
 
 Write the data to all downstreams.
 
+- `data`: The data to broadcast to all downstream [Zippers][zipper].
+
 ### source.SetErrorHandler(fn func(err error))
 
 Set the error handler function when server error occurs.
 
-### source.SetReceiveHandler(fn func(Tag, []byte))
+- `fn`: The error handler function.
+    - `err`: The error.
+
+### source.SetReceiveHandler(fn func(tag Tag, data []byte))
 
 Set the observe handler function.
 
-[zipper]: ./zipper
-[sourceOption]: ./source_option
+- `fn`: The observe handler function.
+    - `tag`: The [Tag][tag] of data.
+    - `data`: The data.
+
+## type SourceOption
+
+### func WithObserveDataTags(tags ...Tag) SourceOption
+
+Set data tag list which observed by this source.
+
+- `tags`: The [Tag][tag] list.
+
+### func WithCredential(token string) SourceOption
+
+Set the credential method when this Source instance connect to [Zipper][zipper].
+
+- `token`: The token string.
+
+### func WithClientTLSConfig(tc *tls.Config) SourceOption
+
+Set TLS config for this Source instance.
+
+- `tc`: The TLS config.
+
+### func WithClientQuicConfig(qc *quic.Config) SourceOption
+
+Set QUIC config for this Source instance.
+
+- `qc`: The [QUIC config](https://pkg.go.dev/github.com/lucas-clemente/quic-go#Config).
+
+### WithLogger(logger *slog.Logger) SourceOption
+
+Set the logger for this Source instance.
+
+ - `logger`: The logger.
+
+[sourceOption]: #type-sourceoption
+[zipper]: ../zipper
 [tag]: ./tag
