@@ -2,14 +2,9 @@ package frame
 
 import (
 	"fmt"
-	"sync"
 
 	"github.com/yomorun/y3"
 )
-
-// dataFramePool provides a syncPool for dataFrame.
-// Because that dataFrame is the most frequently allocated object.
-var dataFramePool sync.Pool
 
 // DataFrame defines the data structure carried with user's data
 // transferring within YoMo
@@ -37,34 +32,11 @@ func NewDataFrame() (data *DataFrame) {
 }
 
 func newDataFrame() (data *DataFrame) {
-	v := dataFramePool.Get()
-	if v == nil {
-		data = new(DataFrame)
-		data.metaFrame = new(MetaFrame)
-		data.payloadFrame = new(PayloadFrame)
-	} else {
-		data = v.(*DataFrame)
-	}
+	data = new(DataFrame)
+	data.metaFrame = new(MetaFrame)
+	data.payloadFrame = new(PayloadFrame)
 
 	return
-}
-
-// Clean cleans DataFrame.
-// Note that:
-// 1/ if the client is calling WriteFrame(), it will automatically invoke Clean(), so there is no need to call Clean() separately.
-// 2/ The DataFrame will be unavailable after cleaned, do not access DataFrame after Clean() called.
-func (d *DataFrame) Clean() {
-	// reset metadataFrame
-	d.metaFrame.tid = ""
-	d.metaFrame.metadata = d.metaFrame.metadata[:0]
-	d.metaFrame.sourceID = ""
-	d.metaFrame.broadcast = false
-
-	// reset payloadFrame
-	d.payloadFrame.Tag = Tag(0)
-	d.payloadFrame.Carriage = d.payloadFrame.Carriage[:0]
-
-	dataFramePool.Put(d)
 }
 
 // Type gets the type of Frame.
@@ -149,9 +121,7 @@ func DecodeToDataFrame(buf []byte) (*DataFrame, error) {
 		return nil, err
 	}
 
-	data := new(DataFrame)
-	data.metaFrame = new(MetaFrame)
-	data.payloadFrame = new(PayloadFrame)
+	data := newDataFrame()
 
 	if metaBlock, ok := packet.NodePackets[byte(TagOfMetaFrame)]; ok {
 		err := DecodeToMetaFrame(metaBlock.GetRawBytes(), data.metaFrame)
