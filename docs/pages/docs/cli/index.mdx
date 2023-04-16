@@ -1,0 +1,42 @@
+---
+title: YoMo CLI
+---
+
+# YoMo CLI Overview
+
+The `yomo` command help developers manage [Zipper][zipper] service, generate [StreamFunction][sfn] project, compile [StreamFunction][sfn] and run [StreamFunction][sfn].
+
+## Install YoMo CLI
+
+To download and install the CLI, run the following command:
+
+```bash
+curl -fsSL https://get.yomo.run | sh
+```
+
+## Checking the version
+
+The `version` command displays the version of the CLI:
+
+```bash
+yomo version
+```
+
+## Usage
+
+`yomo [command] [flags]`
+
+## Available Commands
+
+- [yomo serve](./cli/zipper#usage) - Run Zipper service
+- [yomo init](./cli/sfn#init) - Initialize a StreamFunction project
+- [yomo run](./cli/sfn#run) - Run StreamFunction
+- [yomo version](#checking-the-version) - Display the version of the CLI
+
+## Global Options
+
+- `-h, --help` - Display help information
+- `-v, --verbose` - Verbose output
+
+[zipper]: ./cli/zipper
+[sfn]: ./cli/sfn
