@@ -1,5 +1,8 @@
 {
   "index": "Overview",
-  "zipper": "Zipper",
-  "sfn": "StreamFunction"
+  "zipper": "yomo serve <zipper>",
+  "sfn": "yomo init <function>",
+  "build": "yomo build <function>",
+  "run": "yomo run <serverless>",
+  "dev": "yomo dev"
 }

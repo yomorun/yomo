@@ -4,10 +4,10 @@
     "type": "separator",
     "title": "Concept"
   },
-  "concept-geo-distributed": "Geo-distributed Arch",
-  "concept-pub-sub": "Pub-sub Model",
-  "concept-multi-sfn": "Serverless Workflow",
+  "glossary": "Glossary of terms",
   "concept-zipper-cascading": "Cascading Zippers",
+  "concept-geo-distributed": "Geo-distributed Arch",
+  "concept-multi-sfn": "Serverless Workflow",
   "---Reference": {
     "type": "separator",
     "title": "Reference"
