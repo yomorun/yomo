@@ -12,15 +12,11 @@ export LC_DATE=C
 
 make_ldflags() {
     local ldflags="-s -w -X 'github.com/yomorun/yomo/cli.Version=$CLI_VERSION'"
-    echo "$ldflags"
 }
 
 build_for_platform() {
     local platform="$1"
     local ldflags="$2"
-
-    echo $platform
-    echo $ldflags
 
     local GOOS="${platform%/*}"
     local GOARCH="${platform#*/}"
