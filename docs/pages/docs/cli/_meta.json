@@ -1,8 +1,8 @@
 {
   "index": "Overview",
-  "zipper": "yomo serve <zipper>",
   "sfn": "yomo init <function>",
+  "dev": "yomo dev",
   "build": "yomo build <function>",
   "run": "yomo run <serverless>",
-  "dev": "yomo dev"
+  "zipper": "yomo serve <zipper>"
 }

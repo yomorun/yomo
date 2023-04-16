@@ -1,0 +1,139 @@
+---
+title: yomo build
+---
+
+# yomo build
+
+Build Stream Function to WebAssembly.
+
+## Usage
+
+```bash
+yomo build [flags] app.go
+```
+
+## Flags
+
+- `-m, --modfile` - Build with custom `go.mod` file
+- `-t, --target` - Build target, default is `wasm`
+
+## Example
+
+Following by [last step](./dev), we init a `accumulator-func` project, and try-run it by `yomo dev` command, now, start to build it to WebAssembly.
+
+```bash
+ᐅ yomo build -t wasm app.go
+
+ℹ️  YoMo Stream Function file: app.go
+⌛  YoMo Stream Function building...
+✅  Success! YoMo Stream Function build.
+```
+
+List the directory, will see `sfn.wasm`:
+
+```bash {5}
+ᐅ exa -Tla .
+
+drwxr-xr-x@    - cc 16 Apr 21:58 .
+.rw-r--r--@   31 cc 16 Apr 20:39 ├── .env
+.rw-r--r--@  378 cc 16 Apr 21:23 ├── app.go
+.rwxr-xr-x@ 191k cc 16 Apr 21:58 ├── sfn.wasm
+```
+
+`sfn.wasm` is the compiled Stream Function.
+
+Remember the `yomo dev` command in last step? Now you can run it again, and you will see the Stream Function is running:
+
+```bash
+ᐅ yomo dev sfn.wasm
+
+ℹ️ YoMo Stream Function file: sfn.wasm
+⌛  Create YoMo Stream Function instance...
+⌛  YoMo Stream Function building...
+✅  Success! YoMo Stream Function build.
+ℹ️  YoMo Stream Function is running...
+time=2023-04-16T22:02:47.717+08:00 level=INFO msg="use credential" component="Stream Function" client_id=avVuTuuEeOs94VHGUn7mb client_name=yomo-app-demo credential_name=none
+time=2023-04-16T22:02:48.594+08:00 level=INFO msg="connected to zipper" component="Stream Function" client_id=avVuTuuEeOs94VHGUn7mb client_name=yomo-app-demo zipper_addr=dev.yomo.run:9140
+sfn received 59 bytes: {"noise":143.39989,"time":1681653768764,"from":"localhost"}
+sfn received 58 bytes: {"noise":90.18577,"time":1681653768865,"from":"localhost"}
+sfn received 58 bytes: {"noise":42.21701,"time":1681653768966,"from":"localhost"}
+sfn received 58 bytes: {"noise":39.78166,"time":1681653769067,"from":"localhost"}
+sfn received 59 bytes: {"noise":112.37636,"time":1681653769168,"from":"localhost"}
+sfn received 60 bytes: {"noise":101.950584,"time":1681653769268,"from":"localhost"}
+```
+
+Now, we want to calculate the average noise level every time we get new data, and send the result to next processor. Let's modify the `app.go` file:
+
+```go {4,8, 12-19, 24-32, 37} filename="app.go"
+package main
+
+import (
+	"encoding/binary"
+	"fmt"
+	"math"
+
+	"github.com/tidwall/gjson"
+	"github.com/yomorun/yomo/core/frame"
+)
+
+type NoiseSensorData struct {
+	Noise float32 `json:"noise"` // Noise level
+	Time  int64   `json:"time"`  // Timestamp (ms)
+	From  string  `json:"from"`  // Source IP
+}
+
+var sum float64
+var count int
+
+// Handler will handle the raw data
+func Handler(data []byte) (frame.Tag, []byte) {
+	fmt.Printf("sfn received %d bytes: %s\n", len(data), string(data))
+	// get noise field from json string
+	noiseLevel := gjson.Get(string(data), "noise").Float()
+
+	sum += noiseLevel
+	count++
+
+	// calculate average noise level
+	avg := sum / float64(count)
+	fmt.Printf("\t⚡️avg=%f\n", avg)
+
+	// send result to next processor with data tag=0x34
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], math.Float64bits(avg))
+	return frame.Tag(0x34), buf[:]
+}
+
+func DataTags() []frame.Tag {
+	return []frame.Tag{0x33}
+}
+```
+
+Now, we can run `yomo dev sfn.wasm` again to see the execute result:
+
+```bash
+ᐅ yomo dev sfn.wasm
+
+ℹ️  YoMo Stream Function file: sfn.wasm
+⌛  Create YoMo Stream Function instance...
+⌛  YoMo Stream Function building...
+✅  Success! YoMo Stream Function build.
+ℹ️  YoMo Stream Function is running...
+time=2023-04-16T22:29:07.897+08:00 level=INFO msg="use credential" component="Stream Function" client_id=lc-GnzDJQmNyYTwgqrw-l client_name=yomo-app-demo credential_name=none
+time=2023-04-16T22:29:08.010+08:00 level=INFO msg="connected to zipper" component="Stream Function" client_id=lc-GnzDJQmNyYTwgqrw-l client_name=yomo-app-demo zipper_addr=dev.yomo.run:9140
+sfn received 58 bytes: {"noise":38.32263,"time":1681655348178,"from":"localhost"}
+        ⚡️avg=38.322630
+sfn received 59 bytes: {"noise":19.962397,"time":1681655348278,"from":"localhost"}
+        ⚡️avg=29.142513
+sfn received 58 bytes: {"noise":16.23246,"time":1681655348379,"from":"localhost"}
+        ⚡️avg=24.839162
+sfn received 58 bytes: {"noise":86.43262,"time":1681655348480,"from":"localhost"}
+        ⚡️avg=40.237527
+sfn received 58 bytes: {"noise":81.13323,"time":1681655348581,"from":"localhost"}
+        ⚡️avg=48.416667
+sfn received 59 bytes: {"noise":62.185295,"time":1681655348682,"from":"localhost"}
+        ⚡️avg=50.711439
+^C
+```
+
+But if you want to make this Stream Function connect to your own Zipper service, should check the [yomo run](./run) command.
