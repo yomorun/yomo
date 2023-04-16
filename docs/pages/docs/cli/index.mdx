@@ -16,10 +16,10 @@ curl -fsSL https://get.yomo.run | sh
 
 ## Checking the version
 
-The `--version` option displays the version of the CLI:
+The `version` command displays the version of the CLI:
 
 ```bash
-yomo --version
+yomo version
 ```
 
 ## Usage
@@ -28,15 +28,15 @@ yomo --version
 
 ## Available Commands
 
-- [yomo serve][zipper] - Run Zipper service
+- [yomo serve](./cli/zipper#usage) - Run Zipper service
 - [yomo init](./sfn#init) - Initialize a StreamFunction project
 - [yomo run](./sfn#run) - Run StreamFunction
 - [yomo version](#checking-the-version) - Display the version of the CLI
 
-## Flags
+## Global Options
 
-- `--help` or `-h` - Display help information
-- `--version` or `-v` - Verbose output
+- `-h` or `--help` - Display help information
+- `-v` or `--verbose` - Verbose output
 
 [zipper]: ./cli/zipper
 [sfn]: ./cli/sfn

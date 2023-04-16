@@ -2,9 +2,9 @@
 title: Zipper Service
 ---
 
-# Zipper
+# Zipper Service
 
-Zipper is a service that allows [Sources][source] and [StreamFunctions][sfn] connect to.
+Zipper is a service that allows [Sources][source] and [StreamFunctions][sfn] connect.
 It is responsible for forwarding data between [Source][source] and [StreamFunction][sfn].
 
 ```mermaid
@@ -22,7 +22,7 @@ Zipper expose a QUIC endpoint, as the QUIC server, while [Source][source] and [S
 
 ## Zipper Cascading and Mesh Network
 
-YoMo is designed as a decentralized system, Zippers can be connected to each other, and the data will be forwarded to downstram Zippers when needed. By this, we can build a large scale system, but developers do not need to care about the network topology, the data will be delivered to the nearest [StreamFunction](sfn), when needed, the data can be delivered to all other nodes:
+YoMo is designed as a decentralized system, Zippers can be connected to each other, and the data is forwarded to downstream Zippers when needed. Using this approach, we can build a large scale system, but developers do not need to care about the network topology; the data will be delivered to the nearest [StreamFunction](sfn), and, when needed, the data can also be delivered to  other [Zipper][zipper] nodes:
 
 ```mermaid
 sequenceDiagram
@@ -52,7 +52,7 @@ yomo serve -c config.yaml
 the `config.yaml` is a YAML file, which contains the configuration of the Zipper:
 
 ```yaml
-### basic ###
+### general ###
 name: america
 host: 0.0.0.0
 port: 9000
@@ -70,15 +70,51 @@ functions:
 ### cascading ###
 downstreams:
    - zipper-asia_pacific
-      host: 2.2.2.2
-      port: 9000
+     host: 2.2.2.2
+     port: 9000
+     auth: 'token: <CREDENTIAL>'
    - zipper-america
-      host: 3.3.3.3
-      port: 9000
+     host: 3.3.3.3
+     port: 9000
+     auth: 'token: <CREDENTIAL>'
    - zipper-europe
-      host: 4.4.4.4
-      port: 9000
+     host: 4.4.4.4
+     port: 9000
+     auth: 'token: <CREDENTIAL>'
 ```
+
+## Configuration
+
+### General Config
+
+- `name` - the name of the Zipper, it is used to identify the Zipper in the network.
+- `host` - the IP address zipper listens on, default value is `0.0.0.0`, which means listen on all network interfaces, so the [Source][source] can connect over public Internet network, while the [StreamFunction][sfn] can connect over internal network, it will be cost effective when hosting on AWS etc.
+- `port` - the port zipper listens on, default value is `9000`. Becareful, YoMo uses QUIC protocol, which is a UDP based protocol, so this port should be allow UDP ingress.
+
+### Auth Config
+
+- `auth` - provides the credential for the Zipper, it is used to authenticate the [Source][source] and [StreamFunction][sfn] when they connect to this Zipper.
+  - `type` - the type of the credential, currently only `token` is supported.
+  - `token` - the credential, it is a string.
+
+### StreamFunction Config
+
+- `functions` - the list of [StreamFunctions][sfn] that allowed to connect this Zipper.
+  - `name` - the name of the [StreamFunction][sfn], it is used to identify the [StreamFunction][sfn] in the network.
+
+### Downstreams Config
+
+- `downstreams` - the list of downstream Zippers, the data will be forwarded to these Zippers when needed.
+  - `name` - the name of the downstream Zipper, it is used to identify the Zipper in the network.
+  - `host` - the IP address of the downstream Zipper.
+  - `port` - the port of the downstream Zipper.
+  - `auth` - the credential to connect to the downstream Zipper.
+
+## Self-Hosting Zipper Service
+
+- Tutorial: Deploy YoMo Zipper Service on Ubuntu 22.04
+- Tutorial: Linux Server Tuning for QUIC
+- Tutorial: Firewall Configuration for Server
 
 [source]: ../api/source
 [sfn]: ../api/sfn
