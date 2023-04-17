@@ -14,6 +14,10 @@
   },
   "cli": "CLI",
   "api": "API",
+  "wasm-rust": "Write StreamFunction in Rust",
+  "wasm-zig": "Write StreamFunction in Zig",
+  "wasm-c": "Write StreamFunction in C",
+  "wasm-tinygo": "Compile StreamFunction to WebAssembly by Tinygo",
   "---Hosting": {
     "type": "separator",
     "title": "Hosting"

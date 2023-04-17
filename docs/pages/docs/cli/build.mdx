@@ -15,14 +15,13 @@ yomo build [flags] app.go
 ## Flags
 
 - `-m, --modfile` - Build with custom `go.mod` file
-- `-t, --target` - Build target, default is `wasm`
 
 ## Example
 
 Following by [last step](./dev), we init a `accumulator-func` project, and try-run it by `yomo dev` command, now, start to build it to WebAssembly.
 
 ```bash
-ᐅ yomo build -t wasm app.go
+ᐅ yomo build app.go
 
 ℹ️  YoMo Stream Function file: app.go
 ⌛  YoMo Stream Function building...
