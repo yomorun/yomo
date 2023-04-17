@@ -3,7 +3,6 @@ package core
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"net"
 	"sync"
 	"testing"
@@ -201,11 +200,6 @@ func newFrameWriterRecorder() *frameWriterRecorder {
 func (w *frameWriterRecorder) WriteFrame(frm frame.Frame) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-
-	if frm.Type() == frame.TagOfDataFrame {
-		f := frm.(*frame.DataFrame)
-		fmt.Println("----------", f.GetMetaFrame().Metadata())
-	}
 
 	_, err := w.buf.Write(frm.Encode())
 	return err

@@ -129,9 +129,9 @@ func (c StreamType) String() string {
 	case StreamTypeSource:
 		return "Source"
 	case StreamTypeUpstreamZipper:
-		return "Upstream Zipper"
+		return "UpstreamZipper"
 	case StreamTypeStreamFunction:
-		return "Stream Function"
+		return "StreamFunction"
 	default:
 		return "None"
 	}
