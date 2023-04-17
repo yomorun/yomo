@@ -2,9 +2,7 @@ package yomo
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
 
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/metadata"
@@ -28,16 +26,23 @@ type Zipper interface {
 	Close() error
 }
 
-// RunZipper run a zipper from workflow file and mesh config url.
-func RunZipper(ctx context.Context, confPath, meshConfigURL string) error {
-	conf, err := config.ParseWorkflowConfig(confPath)
+// RunZipper run a zipper from a config file.
+func RunZipper(ctx context.Context, configPath string) error {
+	conf, err := config.ParseConfigFile(configPath)
 	if err != nil {
 		return err
 	}
-	// listening address
+
+	// listening address.
 	listenAddr := fmt.Sprintf("%s:%d", conf.Host, conf.Port)
 
-	zipper, err := NewZipper(conf.Name, conf.Workflow.Functions)
+	//
+	serverOptions := []core.ServerOption{}
+	if conf.Auth.Type == "token" {
+		serverOptions = append(serverOptions, WithAuth("token", conf.Auth.Token))
+	}
+
+	zipper, err := NewZipper(conf.Name, conf.Functions, conf.Downstreams, WithDownstreamOption(serverOptions...))
 	if err != nil {
 		return err
 	}
@@ -46,37 +51,30 @@ func RunZipper(ctx context.Context, confPath, meshConfigURL string) error {
 	return zipper.ListenAndServe(ctx, listenAddr)
 }
 
-// NewZipper returns a zipper from options.
-func NewZipper(name string, functions []config.App, options ...ZipperOption) (Zipper, error) {
-	opts := zipperOptions{}
+// NewZipper returns a zipper.
+func NewZipper(name string, functions []config.Function, meshConfig []config.Downstream, options ...ZipperOption) (Zipper, error) {
+	opts := &zipperOptions{}
+
 	for _, o := range options {
-		o(&opts)
+		o(opts)
 	}
 
 	server := core.NewServer(name, opts.downstreamZipperOption...)
 
 	// add downstreams to server.
 	downstreamMap := make(map[string]*core.Client)
-	if url := opts.meshConfigURL; url != "" {
-		server.Logger().Debug("downdown mesh config successfully", "mesh_config_url", url)
-		var err error
-		downstreamMap, err = ParseMeshConfig(name, url, opts.UpstreamZipperOption...)
-		if err != nil {
-			return nil, err
-		}
+	for _, meshConf := range meshConfig {
+		addr := fmt.Sprintf("%s:%d", meshConf.Host, meshConf.Port)
+		downstreamMap[addr] = core.NewClient(
+			meshConf.Name,
+			core.ClientTypeUpstreamZipper,
+			core.WithCredential(meshConf.Credential),
+			core.WithNonBlockWrite(),
+			core.WithConnectUntilSucceed(),
+		)
 	}
-	// meshConfig will cover the configs from meshConfigURL.
-	if provider := opts.meshConfigProvider; provider != nil {
-		if meshConfig := provider.Provide(); len(meshConfig) != 0 {
-			for _, conf := range meshConfig {
-				addr := fmt.Sprintf("%s:%d", conf.Host, conf.Port)
-				downstreamMap[addr] = core.NewClient(conf.Name, core.ClientTypeUpstreamZipper, core.WithCredential(conf.Credential))
-			}
-		}
-	}
-
 	for addr, downstream := range downstreamMap {
-		server.Logger().Debug("mesh config", "downstream_addr", addr, "downstream_name", downstream.Name())
+		server.Logger().Debug("add downstream", "downstream_addr", addr, "downstream_name", downstream.Name())
 		server.AddDownstreamServer(addr, downstream)
 	}
 
@@ -87,48 +85,6 @@ func NewZipper(name string, functions []config.App, options ...ZipperOption) (Zi
 	go waitSignalForShotdownServer(server)
 
 	return server, nil
-}
-
-// ParseMeshConfig parses mesh config from url.
-func ParseMeshConfig(omitName, url string, opts ...core.ClientOption) (map[string]*core.Client, error) {
-	if url == "" {
-		return map[string]*core.Client{}, nil
-	}
-
-	// download mesh conf
-	res, err := http.Get(url)
-	if err != nil {
-		return map[string]*core.Client{}, nil
-	}
-	defer res.Body.Close()
-
-	decoder := json.NewDecoder(res.Body)
-	var configs []config.MeshZipper
-	err = decoder.Decode(&configs)
-	if err != nil {
-		return map[string]*core.Client{}, nil
-	}
-
-	if len(configs) == 0 {
-		return map[string]*core.Client{}, nil
-	}
-
-	downstreamMap := make(map[string]*core.Client, len(configs)-1)
-	for _, conf := range configs {
-		if conf.Name == omitName {
-			continue
-		}
-		addr := fmt.Sprintf("%s:%d", conf.Host, conf.Port)
-		opts := []core.ClientOption{}
-		if conf.Credential != "" {
-			opts = append(opts, WithCredential(conf.Credential))
-		}
-		downStream := core.NewClient(conf.Name, core.ClientTypeUpstreamZipper, opts...)
-
-		downstreamMap[addr] = downStream
-	}
-
-	return downstreamMap, nil
 }
 
 func statsToLogger(server *core.Server) {

@@ -48,7 +48,7 @@ func TestFrameRoundTrip(t *testing.T) {
 		WithServerLogger(discardingLogger),
 	)
 	server.ConfigMetadataDecoder(metadata.DefaultDecoder())
-	server.ConfigRouter(router.Default([]config.App{{Name: "sfn-1"}, {Name: "close-early-sfn"}}))
+	server.ConfigRouter(router.Default([]config.Function{{Name: "sfn-1"}, {Name: "close-early-sfn"}}))
 
 	// test server hooks
 	ht := &hookTester{t}
