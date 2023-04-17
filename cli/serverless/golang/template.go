@@ -11,10 +11,10 @@ import (
 //go:embed templates/main_rx.tmpl
 var MainFuncRxTmpl []byte
 
-// MainFuncRawBytesTmpl the raw bytes serverless of the main function template
+// MainFuncTmpl the raw bytes serverless of the main function template
 //
-//go:embed templates/main_raw_bytes.tmpl
-var MainFuncRawBytesTmpl []byte
+//go:embed templates/main.tmpl
+var MainFuncTmpl []byte
 
 // PartialsTmpl partials template, used for rendering the partials
 //
@@ -22,7 +22,13 @@ var MainFuncRawBytesTmpl []byte
 var PartialsTmpl []byte
 
 //go:embed templates/init.tmpl
-var InitFuncTmpl []byte
+var InitTmpl []byte
+
+//go:embed templates/init_rx.tmpl
+var InitRxTmpl []byte
+
+//go:embed templates/wasm_main.tmpl
+var WasmMainFuncTmpl []byte
 
 // Context defines context for the template
 type Context struct {

@@ -322,7 +322,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 	// find stream function ids from the route.
 	streamIDs := route.GetForwardRoutes(f.GetDataTag())
 
-	c.Logger.Debug("sfn routing", "sfn_stream_ids", streamIDs, "connector", s.connector.GetSnapshot())
+	c.Logger.Debug("sfn routing", "data_tag", f.GetDataTag(), "sfn_stream_ids", streamIDs, "connector", s.connector.GetSnapshot())
 
 	for _, toID := range streamIDs {
 		stream, ok, err := s.connector.Get(toID)

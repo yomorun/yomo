@@ -1,18 +1,32 @@
+---
+title: API Source
+---
+
 # YoMo Source
 
-Source generate data to [Zipper][zipper].
+Source generates data to [Zipper][zipper].
 
 ## func yomo.NewSource
 
 ```go
-yomo.NewSource(source_name string, zipper_addr string, opts ...Option) Source
+yomo.NewSource(name string, zipperAddr string, opts ...SourceOption) Source
 ```
 
 Create `Source` instance.
 
-- `source_name`: The name of this source instance.
-- `zipper_addr`: The endpoint of the [Zipper][zipper] connect to.
-- `option`: The [SourceOption][sourceOption].
+- `name`: The name of this source instance.
+- `zipperAddr`: The endpoint of the [Zipper][zipper] to connect to.
+- `opts`: The [SourceOption][sourceOption] when create instance.
+
+example:
+
+```go
+source := yomo.NewSource(
+	"websocket-source",
+	"localhost:9000",
+	yomo.WithCredential("token:123456abcdefg"),
+)
+```
 
 ## type Source
 
@@ -28,30 +42,163 @@ Disconnect from [Zipper][zipper].
 
 Set the data tag.
 
-- `tag`: The [tag][tag] of data.
+- `tag`: The [Tag][tag] of data.
 
 ### source.Write(data []byte) (int, error)
 
 Write data to direct Zipper with tag specified in [SetDataTag](#sourcesetdatatagtag-frametag).
 
+- `data`: The data to write.
+
 ### source.WriteWithTag(tag Tag, data []byte) error
 
-Write data to direct Zipper with specified [tag][tag].
+Write data to direct Zipper with specified [Tag][tag].
 
 The default transactionID is epoch time.
+
+- `tag`: The [Tag][tag] of data.
+- `data`: The data to write.
 
 ### source.Broadcast(data []byte) error
 
 Write the data to all downstreams.
 
+- `data`: The data to broadcast to all downstream [Zippers][zipper].
+
 ### source.SetErrorHandler(fn func(err error))
 
 Set the error handler function when server error occurs.
 
-### source.SetReceiveHandler(fn func(Tag, []byte))
+- `fn`: The error handler function.
+    - `err`: The error.
+
+### source.SetReceiveHandler(fn func(tag Tag, data []byte))
 
 Set the observe handler function.
 
-[zipper]: ./zipper
-[sourceOption]: ./source_option
+- `fn`: The observe handler function.
+    - `tag`: The [Tag][tag] of data.
+    - `data`: The data.
+
+## type SourceOption
+
+### func WithObserveDataTags(tags ...Tag) SourceOption
+
+Set data tag list which observed by this source.
+
+- `tags`: The [Tag][tag] list.
+
+### func WithCredential(token string) SourceOption
+
+Set the credential method when this Source instance connect to [Zipper][zipper].
+
+- `token`: The token string.
+
+### func WithClientTLSConfig(tc *tls.Config) SourceOption
+
+Set TLS config for this Source instance.
+
+- `tc`: The TLS config.
+
+### func WithClientQuicConfig(qc *quic.Config) SourceOption
+
+Set QUIC config for this Source instance.
+
+- `qc`: The [QUIC config](https://pkg.go.dev/github.com/lucas-clemente/quic-go#Config).
+
+### WithLogger(logger *slog.Logger) SourceOption
+
+Set the logger for this Source instance.
+
+ - `logger`: The logger.
+
+## Example
+
+Followed the [tutorial in `yomo run`](/docs/cli/run), let's implement ourselves application to generate the data. assume the [Zipper Service][zipper] is already listening on `localhost:9000`:
+
+```go filename="main.go"
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"math/rand"
+	"time"
+
+	"github.com/yomorun/yomo"
+)
+
+type noiseData struct {
+	Noise float32 `json:"noise"` // Noise level
+	Time  int64   `json:"time"`  // Timestamp (ms)
+	From  string  `json:"from"`  // Source identify
+}
+
+func main() {
+	// connect to YoMo-Zipper.
+	source := yomo.NewSource(
+		"yomo-source",
+		"localhost:9000",
+	)
+	err := source.Connect()
+	if err != nil {
+		panic(err)
+	}
+	defer source.Close()
+
+	source.SetDataTag(0x33)
+
+	for {
+		// generate random data.
+		data := noiseData{
+			Noise: rand.New(rand.NewSource(time.Now().UnixNano())).Float32() * 200,
+			Time:  time.Now().UnixNano() / int64(time.Millisecond),
+			From:  "my-dev-mac",
+		}
+		sendingBuf, _ := json.Marshal(&data)
+		fmt.Println("emit: ", data)
+
+		// send data to Zipper via QUIC stream.
+		source.Write(sendingBuf)
+
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+```
+
+Then we add `go.mod` by:
+
+```bash
+ᐅ go mod init emitter
+
+go: creating new go.mod: module emitter
+go: to add module requirements and sums:
+        go mod tidy
+
+ᐅ go mod tidy
+
+go: finding module for package github.com/yomorun/yomo
+go: found github.com/yomorun/yomo in github.com/yomorun/yomo v1.12.1
+go: finding module for package github.com/kr/pretty
+go: found github.com/kr/pretty in github.com/kr/pretty v0.3.1
+```
+
+Finally, we can run the application by: 
+
+```bash
+ᐅ go run main.go 
+
+time=2023-04-16T23:04:54.603+08:00 level=INFO msg="use credential" component=Source client_id=a3zcJtlYwSbwU0aK5H2zK client_name=yomo-source credential_name=none
+time=2023-04-16T23:04:54.608+08:00 level=INFO msg="connected to zipper" component=Source client_id=a3zcJtlYwSbwU0aK5H2zK client_name=yomo-source zipper_addr=localhost:9000
+emit:  {13.991055 1681657494608 my-dev-mac}
+emit:  {20.788294 1681657494810 my-dev-mac}
+emit:  {194.06801 1681657495010 my-dev-mac}
+emit:  {158.60637 1681657495211 my-dev-mac}
+^C
+```
+
+Be sure your [Zipper Service][zipper] has started and listend on `localhost:9000`.
+
+[sourceOption]: #type-sourceoption
+[zipper]: /docs/cli/zipper
 [tag]: ./tag

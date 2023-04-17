@@ -35,3 +35,4 @@ Cargo.lock
 target
 coverage.txt
 *.o
+build/

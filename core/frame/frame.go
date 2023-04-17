@@ -25,20 +25,6 @@ type Writer interface {
 	WriteFrame(frm Frame) error
 }
 
-// debugFrameSize is used for logging a dataFrame.
-// If the size of the dataFrame exceeds debugFrameSize bytes, only the first debugFrameSize bytes are logged.
-// By default, debugFrameSize is set to 16. However, if the environment variable YOMO_DEBUG_FRAME_SIZE is set
-// to an integer value, then the value of debugFrameSize is updated accordingly.
-var debugFrameSize = 16
-
-func init() {
-	if e := os.Getenv("YOMO_DEBUG_FRAME_SIZE"); e != "" {
-		if val, err := strconv.Atoi(e); err == nil {
-			debugFrameSize = val
-		}
-	}
-}
-
 // Kinds of frames transferable within YoMo
 const (
 	// DataFrame
@@ -143,5 +129,17 @@ func (f Type) String() string {
 		return "HandshakeRejectFrame"
 	default:
 		return "UnknownFrame"
+	}
+}
+
+// debugFrameSize is default to 16,
+// if env `YOMO_DEBUG_FRAME_SIZE` is setted and It's an int number, Set the env value to DebugFrameSize.
+var debugFrameSize = 16
+
+func init() {
+	if e := os.Getenv("YOMO_DEBUG_FRAME_SIZE"); e != "" {
+		if val, err := strconv.Atoi(e); err == nil {
+			debugFrameSize = val
+		}
 	}
 }

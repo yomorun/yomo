@@ -16,6 +16,7 @@ tasks:
     desc: clean
     cmds:
       - rm -rf ./bin
+      - rm -rf ../uppercase/bin
 
   source:
     desc: run source

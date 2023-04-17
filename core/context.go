@@ -91,7 +91,7 @@ func newContext(dataStream DataStream, route router.Route, logger *slog.Logger) 
 		c = v.(*Context)
 	}
 
-	c.Logger = logger.With(
+	logger = logger.With(
 		"stream_id", dataStream.ID(),
 		"stream_name", dataStream.Name(),
 		"stream_type", dataStream.StreamType().String(),

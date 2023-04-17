@@ -1,5 +1,5 @@
 {
-  "zipper": "Zipper",
   "source": "Source",
-  "sfn": "StreamFunction"
+  "sfn": "StreamFunction",
+  "tag": "Tag"
 }
