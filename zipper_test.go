@@ -8,7 +8,7 @@ import (
 )
 
 func TestZipperRun(t *testing.T) {
-	zipper, err := NewZipper("zipper", nil)
+	zipper, err := NewZipper("zipper", nil, nil)
 	assert.Nil(t, err)
 	time.Sleep(time.Second)
 	assert.NotNil(t, zipper)

@@ -2,7 +2,6 @@ package yomo
 
 import (
 	"github.com/yomorun/yomo/core"
-	"github.com/yomorun/yomo/pkg/config"
 )
 
 type (
@@ -40,33 +39,23 @@ var (
 	// WithAuth sets the zipper authentication method.
 	WithAuth = core.WithAuth
 
-	// WithServerTLSConfig sets the TLS configuration for the zipper.
-	WithServerTLSConfig = core.WithServerTLSConfig
+	// WithZipperTLSConfig sets the TLS configuration for the zipper.
+	WithZipperTLSConfig = core.WithServerTLSConfig
 
-	// WithServerQuicConfig sets the QUIC configuration for the zipper.
-	WithServerQuicConfig = core.WithServerQuicConfig
+	// WithZipperQuicConfig sets the QUIC configuration for the zipper.
+	WithZipperQuicConfig = core.WithServerQuicConfig
 
 	// WithServerLogger sets logger for the zipper.
-	WithServerLogger = core.WithServerLogger
+	WithZipperLogger = core.WithServerLogger
 )
 
 type zipperOptions struct {
-	// TODO: meshConfigURL implements MeshConfigProvider interface.
-	meshConfigURL          string
-	meshConfigProvider     MeshConfigProvider
 	downstreamZipperOption []core.ServerOption
 	UpstreamZipperOption   []UpstreamZipperOption
 }
 
 // ZipperOption is option for the Zipper.
 type ZipperOption func(*zipperOptions)
-
-// WithMeshConfigURL sets mesh config url for Zipper.
-func WithMeshConfigURL(url string) ZipperOption {
-	return func(o *zipperOptions) {
-		o.meshConfigURL = url
-	}
-}
 
 // WithDownstreamOption provides downstream zipper options for Zipper.
 func WithDownstreamOption(opts ...DownstreamZipperOption) ZipperOption {
@@ -80,30 +69,4 @@ func WithUptreamOption(opts ...UpstreamZipperOption) ZipperOption {
 	return func(o *zipperOptions) {
 		o.UpstreamZipperOption = opts
 	}
-}
-
-// WithMeshConfigProvider provides MeshConfigProvider for Zipper.
-func WithMeshConfigProvider(provider MeshConfigProvider) ZipperOption {
-	return func(o *zipperOptions) {
-		o.meshConfigProvider = provider
-	}
-}
-
-// MeshConfigProvider provides the config of mesh zipper.
-type MeshConfigProvider interface {
-	// Provide returns the config of mesh zipper.
-	Provide() []config.MeshZipper
-}
-
-type defaultMeshConfigProvider struct {
-	confs []config.MeshZipper
-}
-
-func (p *defaultMeshConfigProvider) Provide() []config.MeshZipper {
-	return p.confs
-}
-
-// DefaultMeshConfigProvider returns the config of mesh zipper.
-func DefaultMeshConfigProvider(confs ...config.MeshZipper) MeshConfigProvider {
-	return &defaultMeshConfigProvider{confs}
 }
