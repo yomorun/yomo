@@ -26,10 +26,9 @@ tasks:
   zipper:
     desc: run zipper
     cmds:
-      - "go run zipper/main.go"
+      - "yomo serve -c zipper/workflow.yaml"
     env:
       YOMO_LOG_LEVEL: error
-      YOMO_ZIPPER_WORKFLOW: ./zipper/workflow.yaml
       # set the following environment values on production mode
       # YOMO_TLS_VERIFY_PEER: true
       # YOMO_TLS_CACERT_FILE: "../../test/tls/ca.crt"

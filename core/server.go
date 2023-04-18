@@ -81,9 +81,7 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 
 	// connect to all downstreams.
 	for addr, client := range s.downstreams {
-		if err := client.Connect(ctx, addr); err != nil {
-			return err
-		}
+		go client.Connect(ctx, addr)
 	}
 
 	return s.Serve(ctx, conn)

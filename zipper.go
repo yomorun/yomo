@@ -46,7 +46,7 @@ func RunZipper(ctx context.Context, configPath string) error {
 	if err != nil {
 		return err
 	}
-	zipper.Logger().Info("using config file", "file_path", conf)
+	zipper.Logger().Info("using config file", "file_path", configPath)
 
 	return zipper.ListenAndServe(ctx, listenAddr)
 }

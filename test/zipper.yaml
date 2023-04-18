@@ -2,28 +2,28 @@
 name: america
 host: 0.0.0.0
 port: 9000
- 
+
 ### auth ###
 auth:
   type: token
   token: <CREDENTIAL>
- 
+
 ### sfn ###
 functions:
   - name: sfn-ai-stream-response
   - name: sfn-async-log-events
- 
+
 ### cascading ###
 downstreams:
-   - name: zipper-asia_pacific
-     host: 2.2.2.2
-     port: 9000
-     credential: 'token: <CREDENTIAL>'
-   - name: zipper-asia_pacific
-     host: 3.3.3.3
-     port: 9000
-     auth: 'token: <CREDENTIAL>'
-   - name: zipper-asia_pacific
-     host: 4.4.4.4
-     port: 9000
-     auth: 'token: <CREDENTIAL>'
+  - name: zipper-asia_pacific
+    host: 2.2.2.2
+    port: 9000
+    credential: "token: <CREDENTIAL>"
+  - name: zipper-asia_pacific
+    host: 3.3.3.3
+    port: 9000
+    auth: "token: <CREDENTIAL>"
+  - name: zipper-asia_pacific
+    host: 4.4.4.4
+    port: 9000
+    auth: "token: <CREDENTIAL>"
