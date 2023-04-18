@@ -8,7 +8,7 @@ import (
 	"os"
 
 	"github.com/second-state/WasmEdge-go/wasmedge"
-	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo"
 )
 
 type wasmEdgeRuntime struct {
@@ -16,9 +16,9 @@ type wasmEdgeRuntime struct {
 	conf   *wasmedge.Configure
 	module *wasmedge.Module
 
-	observed  []frame.Tag
+	observed  []yomo.Tag
 	input     []byte
-	outputTag frame.Tag
+	outputTag yomo.Tag
 	output    []byte
 }
 
@@ -94,12 +94,12 @@ func (r *wasmEdgeRuntime) Init(wasmFile string) error {
 }
 
 // GetObserveDataTags returns observed datatags of the wasm sfn
-func (r *wasmEdgeRuntime) GetObserveDataTags() []frame.Tag {
+func (r *wasmEdgeRuntime) GetObserveDataTags() []yomo.Tag {
 	return r.observed
 }
 
 // RunHandler runs the wasm application (request -> response mode)
-func (r *wasmEdgeRuntime) RunHandler(data []byte) (frame.Tag, []byte, error) {
+func (r *wasmEdgeRuntime) RunHandler(data []byte) (yomo.Tag, []byte, error) {
 	r.input = data
 	// reset output
 	r.outputTag = 0
@@ -123,7 +123,7 @@ func (r *wasmEdgeRuntime) Close() error {
 
 func (r *wasmEdgeRuntime) observeDataTag(_ any, _ *wasmedge.CallingFrame, params []any) ([]any, wasmedge.Result) {
 	tag := params[0].(int32)
-	r.observed = append(r.observed, frame.Tag(uint32(tag)))
+	r.observed = append(r.observed, yomo.Tag(uint32(tag)))
 	return nil, wasmedge.Result_Success
 }
 
@@ -140,7 +140,7 @@ func (r *wasmEdgeRuntime) dumpOutput(_ any, callframe *wasmedge.CallingFrame, pa
 	tag := params[0].(int32)
 	pointer := params[1].(int32)
 	length := params[2].(int32)
-	r.outputTag = frame.Tag(uint32(tag))
+	r.outputTag = yomo.Tag(uint32(tag))
 	mem := callframe.GetMemoryByIndex(0)
 	output, err := mem.GetData(uint(pointer), uint(length))
 	if err != nil {

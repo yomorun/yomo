@@ -4,16 +4,16 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo"
 )
 
 // Handler will handle the raw data
-func Handler(data []byte) (frame.Tag, []byte) {
+func Handler(data []byte) (yomo.Tag, []byte) {
 	fmt.Printf("sfn received %d bytes\n", len(data))
 	output := strings.ToUpper(string(data))
-	return frame.Tag(0x34), []byte(output)
+	return yomo.Tag(0x34), []byte(output)
 }
 
-func DataTags() []frame.Tag {
-	return []frame.Tag{0x33}
+func DataTags() []yomo.Tag {
+	return []yomo.Tag{0x33}
 }

@@ -8,7 +8,6 @@ import (
 
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/cli/serverless"
-	"github.com/yomorun/yomo/core/frame"
 	pkglog "github.com/yomorun/yomo/pkg/log"
 )
 
@@ -17,7 +16,7 @@ type wasmServerless struct {
 	runtime     Runtime
 	name        string
 	zipperAddrs []string
-	observed    []frame.Tag
+	observed    []yomo.Tag
 	credential  string
 }
 
@@ -62,7 +61,7 @@ func (s *wasmServerless) Run(verbose bool) error {
 		var ch chan error
 
 		sfn.SetHandler(
-			func(req []byte) (frame.Tag, []byte) {
+			func(req []byte) (yomo.Tag, []byte) {
 				tag, res, err := s.runtime.RunHandler(req)
 				if err != nil {
 					ch <- err
