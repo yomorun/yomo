@@ -15,15 +15,6 @@ type Function struct {
 	Name string `yaml:"name"`
 }
 
-// Auth is the way for the source or SFN to be authenticated by the zipper.
-type Auth struct {
-	// Type is the type of auth.
-	Type string `yaml:"type"`
-	// Token is the token of auth,
-	// if type is token, Token is the token be authenticated.
-	Token string `yaml:"token"`
-}
-
 // Config represents a yomo config.
 type Config struct {
 	// Name represents the name of the zipper.
@@ -32,8 +23,10 @@ type Config struct {
 	Host string `yaml:"host"`
 	// Port represents the listening port of the zipper.
 	Port int `yaml:"port"`
-	// Auth holds the information of the authectication.
-	Auth Auth `yaml:"auth"`
+	// Auth is the way for the source or SFN to be authenticated by the zipper.
+	// The token typed auth has two key-value pairs associated with it:
+	// a `type:token` key-value pair and a `token:<CREDENTIAL>` key-value pair.
+	Auth map[string]string `yaml:"auth"`
 	// Functions represents the apps that are supported in the yomo system.
 	Functions []Function `yaml:"functions"`
 	// Downstreams holds cascading zippers config.

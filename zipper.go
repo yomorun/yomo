@@ -36,10 +36,11 @@ func RunZipper(ctx context.Context, configPath string) error {
 	// listening address.
 	listenAddr := fmt.Sprintf("%s:%d", conf.Host, conf.Port)
 
-	//
 	serverOptions := []core.ServerOption{}
-	if conf.Auth.Type == "token" {
-		serverOptions = append(serverOptions, WithAuth("token", conf.Auth.Token))
+	if _, ok := conf.Auth["type"]; ok {
+		if tokenString, ok := conf.Auth["token"]; ok {
+			serverOptions = append(serverOptions, WithAuth("token", tokenString))
+		}
 	}
 
 	zipper, err := NewZipper(conf.Name, conf.Functions, conf.Downstreams, WithDownstreamOption(serverOptions...))
