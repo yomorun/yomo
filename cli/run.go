@@ -35,11 +35,14 @@ var runViper *viper.Viper
 
 // runCmd represents the run command
 var runCmd = &cobra.Command{
-	Use:   "run",
+	Use:   "run [flags] sfn.wasm",
 	Short: "Run a YoMo Stream Function",
 	Long:  "Run a YoMo Stream Function",
 	Run: func(cmd *cobra.Command, args []string) {
-		loadViperValue(cmd, runViper, &opts.Filename, "file-name")
+		if err := parseFileArg(args, &opts, defaultSFNCompliedFile); err != nil {
+			log.FailureStatusEvent(os.Stdout, err.Error())
+			return
+		}
 		loadViperValue(cmd, runViper, &url, "zipper")
 		loadViperValue(cmd, runViper, &opts.Name, "name")
 		loadViperValue(cmd, runViper, &opts.ModFile, "modfile")
@@ -49,10 +52,6 @@ var runCmd = &cobra.Command{
 		if opts.Name == "" {
 			log.FailureStatusEvent(os.Stdout, "YoMo Stream Function name must be set.")
 			return
-		}
-
-		if len(args) > 0 {
-			opts.Filename = args[0]
 		}
 		// Serverless
 		log.InfoStatusEvent(os.Stdout, "YoMo Stream Function file: %v", opts.Filename)
@@ -103,7 +102,6 @@ var runCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(runCmd)
 
-	runCmd.Flags().StringVarP(&opts.Filename, "file-name", "f", "app.go", "Stream Function file")
 	runCmd.Flags().StringVarP(&url, "zipper", "z", "localhost:9000", "YoMo-Zipper endpoint addr")
 	runCmd.Flags().StringVarP(&opts.Name, "name", "n", "", "yomo stream function name. It should match the specific service name in YoMo-Zipper config (workflow.yaml)")
 	runCmd.Flags().StringVarP(&opts.ModFile, "modfile", "m", "", "custom go.mod")

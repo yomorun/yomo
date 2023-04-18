@@ -28,17 +28,16 @@ var devViper *viper.Viper
 
 // devCmd represents the dev command
 var devCmd = &cobra.Command{
-	Use:                "dev",
+	Use:                "dev [flags] sfn.wasm",
 	Short:              "Dev a YoMo Stream Function",
 	Long:               "Dev a YoMo Stream Function with mocking yomo-source data from YCloud.",
 	FParseErrWhitelist: cobra.FParseErrWhitelist{UnknownFlags: true},
 	Run: func(cmd *cobra.Command, args []string) {
-		loadViperValue(cmd, devViper, &opts.Filename, "file-name")
-		loadViperValue(cmd, devViper, &opts.ModFile, "modfile")
-
-		if len(args) > 0 {
-			opts.Filename = args[0]
+		if err := parseFileArg(args, &opts, defaultSFNCompliedFile); err != nil {
+			log.FailureStatusEvent(os.Stdout, err.Error())
+			return
 		}
+		loadViperValue(cmd, devViper, &opts.ModFile, "modfile")
 		// Serverless
 		log.InfoStatusEvent(os.Stdout, "YoMo Stream Function file: %v", opts.Filename)
 		// resolve serverless
@@ -73,7 +72,6 @@ var devCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(devCmd)
 
-	devCmd.Flags().StringVarP(&opts.Filename, "file-name", "f", "app.go", "Stream function file")
 	devCmd.Flags().StringVarP(&opts.ModFile, "modfile", "m", "", "custom go.mod")
 
 	devViper = bindViper(devCmd)
