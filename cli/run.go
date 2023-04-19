@@ -26,7 +26,6 @@ import (
 
 	// serverless registrations
 	_ "github.com/yomorun/yomo/cli/serverless/deno"
-	_ "github.com/yomorun/yomo/cli/serverless/exec"
 	_ "github.com/yomorun/yomo/cli/serverless/golang"
 	_ "github.com/yomorun/yomo/cli/serverless/wasm"
 )
