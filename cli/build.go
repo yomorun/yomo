@@ -30,8 +30,7 @@ var buildViper *viper.Viper
 var buildCmd = &cobra.Command{
 	Use:   "build [flags] app.go",
 	Short: "Build the YoMo Stream Function",
-	Long:  "Build the YoMo Stream Function as binary file",
-	// Example: add [-F file | -D dir]... [-f format] profile
+	Long:  "Build the YoMo Stream Function as WebAssembly",
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := parseFileArg(args, &opts, defaultSFNSourceFile); err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())

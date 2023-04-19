@@ -29,8 +29,8 @@ var devViper *viper.Viper
 // devCmd represents the dev command
 var devCmd = &cobra.Command{
 	Use:                "dev [flags] sfn.wasm",
-	Short:              "Dev a YoMo Stream Function",
-	Long:               "Dev a YoMo Stream Function with mocking yomo-source data from YCloud.",
+	Short:              "Test a YoMo Stream Function",
+	Long:               "Test a YoMo Stream Function with public zipper and mocking data",
 	FParseErrWhitelist: cobra.FParseErrWhitelist{UnknownFlags: true},
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := parseFileArg(args, &opts, defaultSFNCompliedFile); err != nil {
