@@ -39,14 +39,14 @@ var (
 	// WithAuth sets the zipper authentication method.
 	WithAuth = core.WithAuth
 
-	// WithZipperTLSConfig sets the TLS configuration for the zipper.
-	WithZipperTLSConfig = core.WithServerTLSConfig
+	// WithServerTLSConfig sets the TLS configuration for the zipper.
+	WithServerTLSConfig = core.WithServerTLSConfig
 
-	// WithZipperQuicConfig sets the QUIC configuration for the zipper.
-	WithZipperQuicConfig = core.WithServerQuicConfig
+	// WithServerQuicConfig sets the QUIC configuration for the zipper.
+	WithServerQuicConfig = core.WithServerQuicConfig
 
 	// WithServerLogger sets logger for the zipper.
-	WithZipperLogger = core.WithServerLogger
+	WithServerLogger = core.WithServerLogger
 )
 
 type zipperOptions struct {
