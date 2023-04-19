@@ -1,0 +1,74 @@
+---
+title: Implement StreamFunction in Rust
+---
+
+import { Steps, Callout } from 'nextra-theme-docs'
+
+# Implement StreamFunction in Rust
+
+<Callout emoji="🚧" type="warning">
+This feature is currently in alpha and subject to change.
+</Callout>
+
+<Steps>
+### Install CLI
+
+```bash
+$ curl -fsSL "https://get.yomo.run" | sh
+```
+
+### Write a StreamFunction in Rust
+
+```rust
+#[yomo::init]
+fn init() -> anyhow::Result<Vec<u32>> {
+    // return observe datatags
+    Ok(vec![0x33])
+}
+
+#[yomo::handler]
+fn handler(input: &[u8]) -> anyhow::Result<(u32, Vec<u8>)> {
+    println!("wasm rust sfn received {} bytes", input.len());
+
+    // parse input from bytes
+    let input = String::from_utf8(input.to_vec())?;
+
+    // your app logic goes here
+    let output = input.to_uppercase();
+
+    // return the datatag and output bytes
+    Ok((0x34, output.into_bytes()))
+}
+```
+
+### Compile to [WASI](https://wasi.dev/)
+
+`Cargo.toml`:
+
+```toml
+[package]
+name = "yomo-sfn"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+anyhow = "1.0"
+yomo = { version = "0.1" }
+```
+
+Compile to wasm:
+
+```bash
+$ rustup target add wasm32-wasi
+$ cargo build --release --target wasm32-wasi
+```
+
+### Run Streaming Serverless Function
+
+```bash
+yomo run /path/to/sfn.wasm
+```
+</Steps>
