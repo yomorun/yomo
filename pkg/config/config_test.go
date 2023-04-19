@@ -82,7 +82,7 @@ func TestValidateConfig(t *testing.T) {
 					Functions: []Function{{}},
 				},
 			},
-			wantErrString: "config: the functions must have name value",
+			wantErrString: "config: the functions must have the name field",
 		},
 	}
 	for _, tt := range tests {

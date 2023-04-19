@@ -27,7 +27,7 @@ type Config struct {
 	// The token typed auth has two key-value pairs associated with it:
 	// a `type:token` key-value pair and a `token:<CREDENTIAL>` key-value pair.
 	Auth map[string]string `yaml:"auth"`
-	// Functions represents the apps that are supported in the yomo system.
+	// Functions represents the stream functions that zipper allowed to connect.
 	Functions []Function `yaml:"functions"`
 	// Downstreams holds cascading zippers config.
 	Downstreams []Downstream `yaml:"downstreams"`
@@ -41,14 +41,14 @@ type Downstream struct {
 	Host string `yaml:"host"`
 	// Port is the port of downstream zipper.
 	Port int `yaml:"port"`
-	// Credential is the credential that specifies how downstream will authenticate the current Zipper.
+	// Credential is the credential when connect to downstream zipper.
 	// It is in the format of 'authType:authPayload', separated by a colon.
 	// If Credential is empty, it represents that downstream will not authenticate the current Zipper.
 	Credential string `yaml:"credential"`
 }
 
 // ErrConfigExt represents the extension of config file is incorrect.
-var ErrConfigExt = errors.New(`yomo: the extension of config is incorrect, it should ".yaml|.yml"`)
+var ErrConfigExt = errors.New(`yomo: the extension of config is incorrect, it should be ".yaml|.yml"`)
 
 // ParseConfigFile parses the config from configPath. The zipper will bootstrap from this config.
 func ParseConfigFile(configPath string) (Config, error) {
@@ -89,7 +89,7 @@ func validateConfig(conf *Config) error {
 
 	for _, f := range conf.Functions {
 		if f.Name == "" {
-			return errors.New("config: the functions must have name value")
+			return errors.New("config: the functions must have the name field")
 		}
 	}
 
