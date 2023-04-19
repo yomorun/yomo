@@ -15,15 +15,15 @@ functions:
 
 ### cascading ###
 downstreams:
-  - name: zipper-asia_pacific
+  zipper-asia_pacific:
     host: 2.2.2.2
     port: 9000
     credential: "token: <CREDENTIAL>"
-  - name: zipper-asia_pacific
+  zipper-us_pacific:
     host: 3.3.3.3
     port: 9000
     auth: "token: <CREDENTIAL>"
-  - name: zipper-asia_pacific
+  zipper-eu_pacific:
     host: 4.4.4.4
     port: 9000
     auth: "token: <CREDENTIAL>"

@@ -29,14 +29,12 @@ type Config struct {
 	Auth map[string]string `yaml:"auth"`
 	// Functions represents the stream functions that zipper allowed to connect.
 	Functions []Function `yaml:"functions"`
-	// Downstreams holds cascading zippers config.
-	Downstreams []Downstream `yaml:"downstreams"`
+	// Downstreams holds cascading zippers config. the map-key is downstream name.
+	Downstreams map[string]Downstream `yaml:"downstreams"`
 }
 
 // Downstream describes a cascading zipper config.
 type Downstream struct {
-	// Name is the name of downstream zipper.
-	Name string `yaml:"name"`
 	// Host is the host of downstream zipper.
 	Host string `yaml:"host"`
 	// Port is the port of downstream zipper.

@@ -13,11 +13,11 @@ func TestParseConfigFile(t *testing.T) {
 		assert.Equal(t, ErrConfigExt, err)
 	})
 	t.Run("file not exist", func(t *testing.T) {
-		_, err := ParseConfigFile(filepath.Join(t.TempDir(), "zipper.yaml"))
+		_, err := ParseConfigFile(filepath.Join(t.TempDir(), "config.yaml"))
 		assert.Error(t, err)
 	})
 	t.Run("normal", func(t *testing.T) {
-		conf, err := ParseConfigFile("../../test/zipper.yaml")
+		conf, err := ParseConfigFile("../../test/config.yaml")
 		assert.NoError(t, err)
 
 		assert.Equal(t, "america", conf.Name)

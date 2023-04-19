@@ -7,7 +7,7 @@ auth:
 functions:
   - name: echo-sfn
 downstreams:
-   - name: Zipper-2
-     host: 127.0.0.1
-     port: 9002
-     credential: 'token:z2'
+  Zipper-2:
+    host: 127.0.0.1
+    port: 9002
+    credential: "token:z2"
