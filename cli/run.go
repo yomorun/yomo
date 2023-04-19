@@ -71,26 +71,20 @@ var runCmd = &cobra.Command{
 			return
 		}
 		if !s.Executable() {
-			log.InfoStatusEvent(os.Stdout,
-				"Starting YoMo Stream Function instance with Name: %s. Zipper: %v.",
-				opts.Name,
-				opts.ZipperAddrs,
-			)
-			// build
-			log.PendingStatusEvent(os.Stdout, "YoMo Stream Function building...")
-			if err := s.Build(true); err != nil {
-				log.FailureStatusEvent(os.Stdout, err.Error())
-				return
-			}
-			log.SuccessStatusEvent(os.Stdout, "Success! YoMo Stream Function build.")
-		} else { // executable
-			log.InfoStatusEvent(os.Stdout,
-				"Starting YoMo Stream Function instance with executable file: %s. Zipper: %v.",
+			log.FailureStatusEvent(os.Stdout,
+				"You cannot run `%s` directly. build first with the `yomo build %s` command and then run with the 'yomo run sfn.wasm' command.",
 				opts.Filename,
-				opts.ZipperAddrs,
+				opts.Filename,
 			)
+			return
 		}
 		// run
+		log.InfoStatusEvent(
+			os.Stdout,
+			"Starting YoMo Stream Function instance with executable file: %s. Zipper: %v.",
+			opts.Filename,
+			opts.ZipperAddrs,
+		)
 		log.InfoStatusEvent(os.Stdout, "YoMo Stream Function is running...")
 		if err := s.Run(verbose); err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())

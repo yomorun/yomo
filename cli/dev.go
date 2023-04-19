@@ -52,15 +52,21 @@ var devCmd = &cobra.Command{
 			log.FailureStatusEvent(os.Stdout, err.Error())
 			return
 		}
-
-		// build
-		log.PendingStatusEvent(os.Stdout, "YoMo Stream Function building...")
-		if err := s.Build(true); err != nil {
-			log.FailureStatusEvent(os.Stdout, err.Error())
+		if !s.Executable() {
+			log.FailureStatusEvent(os.Stdout,
+				"You cannot run `%s` directly. build first with the `yomo build %s` command and then run with the 'yomo run sfn.wasm' command.",
+				opts.Filename,
+				opts.Filename,
+			)
 			return
 		}
-		log.SuccessStatusEvent(os.Stdout, "Success! YoMo Stream Function build.")
 		// run
+		log.InfoStatusEvent(
+			os.Stdout,
+			"Starting YoMo Stream Function instance with executable file: %s. Zipper: %v.",
+			opts.Filename,
+			opts.ZipperAddrs,
+		)
 		log.InfoStatusEvent(os.Stdout, "YoMo Stream Function is running...")
 		if err := s.Run(verbose); err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
