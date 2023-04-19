@@ -67,7 +67,7 @@ But both Wasmtime and WasmEdge need to install their requirements:
 - Start YoMo zipper
 
   ```sh
-  yomo serve -c ../uppercase/workflow.yaml
+  yomo serve -c ../uppercase/config.yaml
   ```
 
 - Start wasm serverless function

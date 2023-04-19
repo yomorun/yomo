@@ -63,7 +63,7 @@ cd example/stream-fn-db && yomo build && ./sl.yomo
 ```
 
 ### 4. YoMo-Zipper 应用编排
-#### 编写工作流配置文件 `workflow.yaml`
+#### 编写工作流配置文件 `config.yaml`
 
 ```yaml
 name: Service
@@ -76,7 +76,7 @@ functions:
 #### 运行 YoMo-Zipper 应用程序
 
 ```shell
-yomo serve --config workflow.yaml
+yomo serve --config config.yaml
 ```
 
 ## 示例

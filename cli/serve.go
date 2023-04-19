@@ -31,7 +31,7 @@ var serveCmd = &cobra.Command{
 	Long:  "Run a YoMo-Zipper",
 	Run: func(cmd *cobra.Command, args []string) {
 		if config == "" {
-			log.FailureStatusEvent(os.Stdout, "Please input the file name of workflow config")
+			log.FailureStatusEvent(os.Stdout, "Please input the file name of config")
 			return
 		}
 
@@ -48,5 +48,5 @@ var serveCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(serveCmd)
 
-	serveCmd.Flags().StringVarP(&config, "config", "c", "", "Workflow config file")
+	serveCmd.Flags().StringVarP(&config, "config", "c", "", "config file")
 }

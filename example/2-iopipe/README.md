@@ -43,11 +43,11 @@ YoMo CLI Version: v1.0.0
 $ task run
 task: [sfn] yomo run -n counter serverless/counter.go
 task: [source] cat /dev/urandom | go run source/pipe.go
-task: [zipper] yomo serve -c workflow.yaml
-[sfn] Using config file: workflow.yaml
+task: [zipper] yomo serve -c config.yaml
+[sfn] Using config file: config.yaml
 [sfn] ℹ️   YoMo Stream Function file: serverless/counter.go
 [sfn] ⌛  Create YoMo Stream Function instance...
-[zipper] Using config file: workflow.yaml
+[zipper] Using config file: config.yaml
 [zipper] ℹ️   Running YoMo-Zipper...
 [zipper] 2022-02-20 16:35:14.140	[yomo:zipper] Listening SIGUSR1, SIGUSR2, SIGTERM/SIGINT...
 [zipper] 2022-02-20 16:35:14.148	[core:server] ✅ [example-pipeline] Listening on: [::]:9000, QUIC: [v1 draft-29], AUTH: [None]
@@ -72,7 +72,7 @@ task: [zipper] yomo serve -c workflow.yaml
 
 First, start `Zipper` process:
 
-`yomo serve -c workflow.yaml`
+`yomo serve -c config.yaml`
 
 Then, start the Streaming Function to observe data:
 

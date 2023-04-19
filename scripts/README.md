@@ -55,7 +55,7 @@ YOMO_TLS_VERIFY_PEER=true \
 YOMO_TLS_CACERT_FILE=tls/ca.crt \
 YOMO_TLS_CERT_FILE=tls/server.crt \
 YOMO_TLS_KEY_FILE=tls/server.key \
-yomo serve -c ../example/0-basic/workflow.yaml
+yomo serve -c ../example/0-basic/config.yaml
 ```
 
 ## 4. Run YoMo Stream Function (Client) with TLS encryption

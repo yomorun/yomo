@@ -105,7 +105,7 @@ func init() {
 
 	runCmd.Flags().StringVarP(&opts.Filename, "file-name", "f", "app.go", "Stream Function file")
 	runCmd.Flags().StringVarP(&url, "zipper", "z", "localhost:9000", "YoMo-Zipper endpoint addr")
-	runCmd.Flags().StringVarP(&opts.Name, "name", "n", "", "yomo stream function name. It should match the specific service name in YoMo-Zipper config (workflow.yaml)")
+	runCmd.Flags().StringVarP(&opts.Name, "name", "n", "", "yomo stream function name. It should match the specific service name in YoMo-Zipper config (config.yaml)")
 	runCmd.Flags().StringVarP(&opts.ModFile, "modfile", "m", "", "custom go.mod")
 	runCmd.Flags().StringVarP(&opts.Credential, "credential", "d", "", "client credential payload, eg: `token:dBbBiRE7`")
 	runCmd.Flags().StringVarP(&opts.Runtime, "runtime", "r", "", "serverless runtime type")
