@@ -55,9 +55,9 @@ func (s *wasmServerless) Run(verbose bool) error {
 		sfn := yomo.NewStreamFunction(
 			s.name,
 			addr,
-			yomo.WithObserveDataTags(s.observed...),
-			yomo.WithCredential(s.credential),
+			yomo.WithSfnCredential(s.credential),
 		)
+		sfn.SetObserveDataTags(s.observed...)
 
 		var ch chan error
 

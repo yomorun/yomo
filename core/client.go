@@ -64,6 +64,10 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 
 // Connect connect client to server.
 func (c *Client) Connect(ctx context.Context, addr string) error {
+	if c.streamType == StreamTypeStreamFunction && len(c.opts.observeDataTags) == 0 {
+		return errors.New("yomo: streamFunction cannot observe data because the required tag has not been set")
+	}
+
 	c.logger = c.logger.With("zipper_addr", addr)
 
 connect:
@@ -304,9 +308,8 @@ func (c *Client) SetBackflowFrameObserver(fn func(*frame.BackflowFrame)) {
 }
 
 // SetObserveDataTags set the data tag list that will be observed.
-// Deprecated: use yomo.WithObserveDataTags instead
 func (c *Client) SetObserveDataTags(tag ...frame.Tag) {
-	c.opts.observeDataTags = append(c.opts.observeDataTags, tag...)
+	c.opts.observeDataTags = tag
 }
 
 // Logger get client's logger instance, you can customize this using `yomo.WithLogger`

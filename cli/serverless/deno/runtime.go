@@ -89,9 +89,10 @@ func startSfn(name string, zipperAddr string, credential string, observed []fram
 	sfn := yomo.NewStreamFunction(
 		name,
 		zipperAddr,
-		yomo.WithObserveDataTags(observed...),
-		yomo.WithCredential(credential),
+		yomo.WithSfnCredential(credential),
 	)
+
+	sfn.SetObserveDataTags(observed...)
 
 	sfn.SetHandler(
 		func(data []byte) (frame.Tag, []byte) {

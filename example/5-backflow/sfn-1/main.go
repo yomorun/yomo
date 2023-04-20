@@ -23,8 +23,8 @@ func main() {
 	sfn := yomo.NewStreamFunction(
 		"sfn-1",
 		addr,
-		yomo.WithObserveDataTags(0x33),
 	)
+	sfn.SetObserveDataTags(0x33)
 	defer sfn.Close()
 
 	// set handler

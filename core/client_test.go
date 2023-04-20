@@ -72,7 +72,6 @@ func TestFrameRoundTrip(t *testing.T) {
 		"source",
 		StreamTypeSource,
 		WithCredential("token:auth-token"),
-		WithObserveDataTags(obversedTag),
 		WithClientQuicConfig(DefalutQuicConfig),
 		WithClientTLSConfig(nil),
 		WithLogger(discardingLogger),
@@ -178,13 +177,15 @@ func (a *hookTester) afterHandler(ctx *Context) error {
 }
 
 func createTestStreamFunction(name string, obversedTag frame.Tag) *Client {
-	return NewClient(
+	sfn := NewClient(
 		name,
 		StreamTypeStreamFunction,
 		WithCredential("token:auth-token"),
-		WithObserveDataTags(obversedTag),
 		WithLogger(discardingLogger),
 	)
+	sfn.SetObserveDataTags(obversedTag)
+
+	return sfn
 }
 
 // frameWriterRecorder frames be writen.

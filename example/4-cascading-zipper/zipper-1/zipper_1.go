@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/core"
 )
 
 func main() {
@@ -19,7 +20,7 @@ func main() {
 	zipper.AddDownstreamZipper(yomo.NewDownstreamZipper(
 		"zipper-2",
 		"localhost:9002",
-		yomo.WithCredential("token:z2"),
+		core.WithCredential("token:z2"),
 	))
 
 	// start zipper service

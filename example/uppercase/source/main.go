@@ -25,8 +25,8 @@ func main() {
 	sink := yomo.NewStreamFunction(
 		"sink",
 		addr,
-		yomo.WithObserveDataTags(0x34),
 	)
+	sink.SetObserveDataTags(0x34)
 	sink.SetHandler(
 		func(data []byte) (frame.Tag, []byte) {
 			log.Printf("[recv] %s", string(data))

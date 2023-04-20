@@ -10,7 +10,6 @@ import (
 // StreamFunction defines serverless streaming functions.
 type StreamFunction interface {
 	// SetObserveDataTags set the data tag list that will be observed
-	// Deprecated: use yomo.WithObserveDataTags instead
 	SetObserveDataTags(tag ...frame.Tag)
 	// SetHandler set the handler function, which accept the raw bytes data and return the tag & response
 	SetHandler(fn core.AsyncHandler) error
@@ -28,7 +27,11 @@ type StreamFunction interface {
 
 // NewStreamFunction create a stream function.
 func NewStreamFunction(name, zipperAddr string, opts ...SfnOption) StreamFunction {
-	client := core.NewClient(name, core.ClientTypeStreamFunction, opts...)
+	clientOpts := make([]core.ClientOption, len(opts))
+	for k, v := range opts {
+		clientOpts[k] = core.ClientOption(v)
+	}
+	client := core.NewClient(name, core.ClientTypeStreamFunction, clientOpts...)
 	sfn := &streamFunction{
 		name:            name,
 		zipperAddr:      zipperAddr,
