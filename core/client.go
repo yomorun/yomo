@@ -5,13 +5,21 @@ import (
 	"context"
 	"errors"
 	"io"
+	"sync"
 	"time"
 
+	gonanoid "github.com/matoous/go-nanoid/v2"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/pkg/id"
 	"golang.org/x/exp/slog"
 )
+
+type newStreamReq struct {
+	handshake *frame.HandshakeFrame
+	stream    DataStream
+	wg        *sync.WaitGroup
+}
 
 // Client is the abstraction of a YoMo-Client. a YoMo-Client can be
 // Source, Upstream Zipper or StreamFunction.
@@ -30,6 +38,7 @@ type Client struct {
 	ctxCancel context.CancelFunc
 
 	writeFrameChan chan frame.Frame
+	newStreamChan  chan *newStreamReq
 }
 
 // NewClient creates a new YoMo-Client.
@@ -59,6 +68,7 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 		writeFrameChan: make(chan frame.Frame),
 		ctx:            ctx,
 		ctxCancel:      ctxCancel,
+		newStreamChan:  make(chan *newStreamReq),
 	}
 }
 
@@ -96,6 +106,15 @@ func (c *Client) runBackground(ctx context.Context, addr string, controlStream *
 			return
 		case <-ctx.Done():
 			c.cleanStream(controlStream, ctx.Err())
+			return
+		case req := <-c.newStreamChan:
+			stream, err := c.openDataStream(ctx, controlStream, req.handshake)
+			if err == nil {
+				req.stream = stream
+			} else {
+				c.logger.Error("openDataStream error", err)
+			}
+			req.wg.Done()
 			return
 		case <-reconnection:
 		reconnect:
@@ -182,7 +201,7 @@ func (c *Client) openStream(ctx context.Context, addr string) (*ClientControlStr
 	if err != nil {
 		return controlStream, nil, err
 	}
-	dataStream, err := c.openDataStream(ctx, controlStream)
+	dataStream, err := c.openDataStream(ctx, controlStream, nil)
 	if err != nil {
 		return controlStream, dataStream, err
 	}
@@ -190,14 +209,16 @@ func (c *Client) openStream(ctx context.Context, addr string) (*ClientControlStr
 	return controlStream, dataStream, nil
 }
 
-func (c *Client) openDataStream(ctx context.Context, controlStream *ClientControlStream) (DataStream, error) {
-	handshakeFrame := frame.NewHandshakeFrame(
-		c.name,
-		c.clientID,
-		byte(c.streamType),
-		c.opts.observeDataTags,
-		[]byte{}, // The stream does not require metadata currently.
-	)
+func (c *Client) openDataStream(ctx context.Context, controlStream *ClientControlStream, handshakeFrame *frame.HandshakeFrame) (DataStream, error) {
+	if handshakeFrame == nil {
+		handshakeFrame = frame.NewHandshakeFrame(
+			c.name,
+			c.clientID,
+			byte(c.streamType),
+			c.opts.observeDataTags,
+			[]byte{}, // The stream does not require metadata currently.
+		)
+	}
 
 	err := controlStream.RequestStream(handshakeFrame)
 	if err != nil {
@@ -323,4 +344,29 @@ func (c *Client) SetErrorHandler(fn func(err error)) {
 // ClientID return the client ID
 func (c *Client) ClientID() string {
 	return c.clientID
+}
+
+// NewStream will create a new data stream [experimental feature]
+func (c *Client) NewStream(metadata []byte) (DataStream, error) {
+	streamID, err := gonanoid.New()
+	if err != nil {
+		return nil, err
+	}
+
+	req := &newStreamReq{
+		handshake: frame.NewHandshakeFrame(
+			c.name,
+			streamID,
+			byte(c.streamType),
+			nil,
+			metadata,
+		),
+		stream: nil,
+		wg:     &sync.WaitGroup{},
+	}
+	req.wg.Add(1)
+	c.newStreamChan <- req
+	req.wg.Wait()
+
+	return req.stream, nil
 }

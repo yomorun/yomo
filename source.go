@@ -25,6 +25,8 @@ type Source interface {
 	SetReceiveHandler(fn func(tag frame.Tag, data []byte))
 	// Write the data to all downstream
 	Broadcast(data []byte) error
+	// NewStream will create a new data stream [experimental feature]
+	NewStream(metadata []byte) (core.DataStream, error)
 }
 
 // YoMo-Source
@@ -114,4 +116,9 @@ func (s *yomoSource) Broadcast(data []byte) error {
 	f.SetBroadcast(true)
 	s.client.Logger().Debug("broadcast", "data_frame", f.String())
 	return s.client.WriteFrame(f)
+}
+
+// NewStream will create a new data stream [experimental feature]
+func (s *yomoSource) NewStream(metadata []byte) (core.DataStream, error) {
+	return s.client.NewStream(metadata)
 }
