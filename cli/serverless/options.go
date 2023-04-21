@@ -16,6 +16,4 @@ type Options struct {
 	Runtime string
 	// use environment variables
 	UseEnv bool
-	// Builder build wasm by: gojs or tinygo
-	Builder string
 }

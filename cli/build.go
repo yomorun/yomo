@@ -60,7 +60,6 @@ func init() {
 	rootCmd.AddCommand(buildCmd)
 
 	buildCmd.Flags().StringVarP(&opts.ModFile, "modfile", "m", "", "custom go.mod")
-	buildCmd.Flags().StringVarP(&opts.Builder, "builder", "b", "tinygo", "Builder: use native gojs or tinygo")
 
 	buildViper = bindViper(buildCmd)
 }

@@ -142,8 +142,6 @@ func (s *GolangServerless) Build(clean bool) error {
 	env = append(
 		env,
 		fmt.Sprintf("GO111MODULE=%s", "on"),
-		"GOOS=js",
-		"GOARCH=wasm",
 	)
 	// use custom go.mod
 	if s.opts.ModFile != "" {
@@ -208,15 +206,11 @@ func (s *GolangServerless) Build(clean bool) error {
 		}()
 	}
 	s.output = sl
-	cmd := exec.Command("go", "build", "-ldflags", "-s -w", "-o", sl, appPath)
-	// tinygo builder
-	if s.isTinyGo() {
-		tinygo, err := exec.LookPath("tinygo")
-		if err != nil {
-			return errors.New("[tinygo] command was not found. to build the wasm file, you need to install tinygo. For details, visit https://tinygo.org")
-		}
-		cmd = exec.Command(tinygo, "build", "-no-debug", "-target", "wasi", "-o", sl, appPath)
+	tinygo, err := exec.LookPath("tinygo")
+	if err != nil {
+		return errors.New("[tinygo] command was not found. to build the wasm file, you need to install tinygo. For details, visit https://tinygo.org")
 	}
+	cmd := exec.Command(tinygo, "build", "-no-debug", "-target", "wasi", "-o", sl, appPath)
 	cmd.Env = env
 	cmd.Dir = s.tempDir
 	// log.InfoStatusEvent(os.Stdout, "Build: cmd: %+v", cmd)
@@ -254,14 +248,6 @@ func generateCode(fset *token.FileSet, file *ast.File) ([]byte, error) {
 	}
 
 	return buffer.Bytes(), nil
-}
-
-// isTinyGo checks if the builder is tinygo
-func (s *GolangServerless) isTinyGo() bool {
-	if s.opts.Builder == "tinygo" {
-		return true
-	}
-	return false
 }
 
 func init() {
