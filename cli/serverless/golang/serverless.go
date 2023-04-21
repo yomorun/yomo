@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/yomorun/yomo/cli/serverless"
@@ -58,7 +57,7 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 
 	// determine: rx stream serverless or raw bytes serverless.
 	isRx := strings.Contains(string(source), "rx.Stream")
-	isWasm := s.isWasm()
+	isWasm := true
 	mainFuncTmpl := ""
 	mainFunc := []byte{}
 	var err error
@@ -72,19 +71,9 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 		if err != nil {
 			return fmt.Errorf("Init: %s", err)
 		}
-	} else {
-		// wasm
-		if isWasm {
-			mainFunc = WasmMainFuncTmpl
-		} else { // native
-			MainFuncTmpl = append(MainFuncTmpl, PartialsTmpl...)
-			mainFuncTmpl = string(MainFuncTmpl)
-			mainFunc, err = RenderTmpl(mainFuncTmpl, &ctx)
-			if err != nil {
-				return fmt.Errorf("Init: %s", err)
-			}
-		}
 	}
+	mainFunc = WasmMainFuncTmpl
+
 	source = append(source, mainFunc...)
 	// log.InfoStatusEvent(os.Stdout, "merge source elapse: %v", time.Since(now))
 	// Create the AST by parsing src
@@ -150,7 +139,10 @@ func (s *GolangServerless) Build(clean bool) error {
 	}
 	// env
 	env := os.Environ()
-	env = append(env, fmt.Sprintf("GO111MODULE=%s", "on"))
+	env = append(
+		env,
+		fmt.Sprintf("GO111MODULE=%s", "on"),
+	)
 	// use custom go.mod
 	if s.opts.ModFile != "" {
 		mfile, _ := filepath.Abs(s.opts.ModFile)
@@ -203,9 +195,9 @@ func (s *GolangServerless) Build(clean bool) error {
 		}
 	}
 	// build
-	goos := runtime.GOOS
+	// goos := runtime.GOOS
 	dir, _ := filepath.Split(s.opts.Filename)
-	sl, _ := filepath.Abs(dir + "sfn.yomo")
+	sl, _ := filepath.Abs(dir + "sfn.wasm")
 
 	// clean build
 	if clean {
@@ -213,25 +205,12 @@ func (s *GolangServerless) Build(clean bool) error {
 			file.Remove(s.tempDir)
 		}()
 	}
-	// fmt.Printf("goos=%s\n", goos)
-	if goos == "windows" {
-		sl, _ = filepath.Abs(dir + "sfn.exe")
-	}
-	// build target
-	if s.isWasm() {
-		sl, _ = filepath.Abs(dir + "sfn.wasm")
-	}
 	s.output = sl
-	// go build
-	cmd := exec.Command("go", "build", "-ldflags", "-s -w", "-o", sl, appPath)
-	// wasm build
-	if s.isWasm() {
-		tinygo, err := exec.LookPath("tinygo")
-		if err != nil {
-			return errors.New("[tinygo] command was not found. to build the wasm file, you need to install tinygo. For details, visit https://tinygo.org")
-		}
-		cmd = exec.Command(tinygo, "build", "-no-debug", "-target", "wasi", "-o", sl, appPath)
+	tinygo, err := exec.LookPath("tinygo")
+	if err != nil {
+		return errors.New("[tinygo] command was not found. to build the wasm file, you need to install tinygo. For details, visit https://tinygo.org")
 	}
+	cmd := exec.Command(tinygo, "build", "-no-debug", "-target", "wasi", "-o", sl, appPath)
 	cmd.Env = env
 	cmd.Dir = s.tempDir
 	// log.InfoStatusEvent(os.Stdout, "Build: cmd: %+v", cmd)
@@ -269,15 +248,6 @@ func generateCode(fset *token.FileSet, file *ast.File) ([]byte, error) {
 	}
 
 	return buffer.Bytes(), nil
-}
-
-// isWasm check if the target is wasm
-func (s *GolangServerless) isWasm() bool {
-	target := s.opts.Target
-	if len(target) > 0 && target == "wasm" {
-		return true
-	}
-	return false
 }
 
 func init() {

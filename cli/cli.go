@@ -13,6 +13,13 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"github.com/yomorun/yomo/cli/serverless"
+	"github.com/yomorun/yomo/pkg/file"
+)
+
+// defaultSFNFile is the default serverless file name
+const (
+	defaultSFNSourceFile   = "app.go"
+	defaultSFNCompliedFile = "sfn.wasm"
 )
 
 // GetRootPath get root path
@@ -74,4 +81,16 @@ func loadViperValue(cmd *cobra.Command, v *viper.Viper, p *string, name string) 
 	if !f.Changed {
 		*p = v.GetString(getViperName(name))
 	}
+}
+
+func parseFileArg(args []string, opts *serverless.Options, defaultFile string) error {
+	if len(args) >= 1 && args[0] != "" {
+		opts.Filename = args[0]
+	} else {
+		opts.Filename = defaultFile
+	}
+	if !file.Exists(opts.Filename) {
+		return fmt.Errorf("file %s not found", opts.Filename)
+	}
+	return nil
 }
