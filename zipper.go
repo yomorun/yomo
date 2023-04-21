@@ -36,14 +36,14 @@ func RunZipper(ctx context.Context, configPath string) error {
 	// listening address.
 	listenAddr := fmt.Sprintf("%s:%d", conf.Host, conf.Port)
 
-	serverOptions := []core.ServerOption{}
+	options := []ZipperOption{}
 	if _, ok := conf.Auth["type"]; ok {
 		if tokenString, ok := conf.Auth["token"]; ok {
-			serverOptions = append(serverOptions, WithAuth("token", tokenString))
+			options = append(options, WithAuth("token", tokenString))
 		}
 	}
 
-	zipper, err := NewZipper(conf.Name, conf.Functions, conf.Downstreams, WithDownstreamOption(serverOptions...))
+	zipper, err := NewZipper(conf.Name, conf.Functions, conf.Downstreams, options...)
 	if err != nil {
 		return err
 	}
@@ -63,18 +63,16 @@ func NewZipper(name string, functions []config.Function, meshConfig map[string]c
 	server := core.NewServer(name, opts.downstreamZipperOption...)
 
 	// add downstreams to server.
-	downstreamMap := make(map[string]*core.Client)
 	for name, meshConf := range meshConfig {
 		addr := fmt.Sprintf("%s:%d", meshConf.Host, meshConf.Port)
-		downstreamMap[addr] = core.NewClient(
-			name,
-			core.ClientTypeUpstreamZipper,
+
+		upstreamOptions := append(opts.UpstreamZipperOption,
 			core.WithCredential(meshConf.Credential),
 			core.WithNonBlockWrite(),
 			core.WithConnectUntilSucceed(),
 		)
-	}
-	for addr, downstream := range downstreamMap {
+		downstream := core.NewClient(name, core.ClientTypeUpstreamZipper, upstreamOptions...)
+
 		server.Logger().Debug("add downstream", "downstream_addr", addr, "downstream_name", downstream.Name())
 		server.AddDownstreamServer(addr, downstream)
 	}

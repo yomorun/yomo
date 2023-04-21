@@ -1,7 +1,11 @@
 package yomo
 
 import (
+	"crypto/tls"
+
+	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core"
+	"golang.org/x/exp/slog"
 )
 
 type (
@@ -13,9 +17,6 @@ type (
 
 	// UpstreamZipperOption is option for the upstream Zipper.
 	UpstreamZipperOption = core.ClientOption
-
-	// DownstreamZipperOption is option for the downstream Zipper.
-	DownstreamZipperOption = core.ServerOption
 )
 
 var (
@@ -35,20 +36,6 @@ var (
 	WithLogger = core.WithLogger
 )
 
-var (
-	// WithAuth sets the zipper authentication method.
-	WithAuth = core.WithAuth
-
-	// WithServerTLSConfig sets the TLS configuration for the zipper.
-	WithServerTLSConfig = core.WithServerTLSConfig
-
-	// WithServerQuicConfig sets the QUIC configuration for the zipper.
-	WithServerQuicConfig = core.WithServerQuicConfig
-
-	// WithServerLogger sets logger for the zipper.
-	WithServerLogger = core.WithServerLogger
-)
-
 type zipperOptions struct {
 	downstreamZipperOption []core.ServerOption
 	UpstreamZipperOption   []UpstreamZipperOption
@@ -57,16 +44,39 @@ type zipperOptions struct {
 // ZipperOption is option for the Zipper.
 type ZipperOption func(*zipperOptions)
 
-// WithDownstreamOption provides downstream zipper options for Zipper.
-func WithDownstreamOption(opts ...DownstreamZipperOption) ZipperOption {
-	return func(o *zipperOptions) {
-		o.downstreamZipperOption = opts
+var (
+	// WithAuth sets the zipper authentication method.
+	WithAuth = func(name string, args ...string) ZipperOption {
+		return func(zo *zipperOptions) {
+			zo.downstreamZipperOption = append(zo.downstreamZipperOption, core.WithAuth(name, args...))
+		}
 	}
-}
 
-// WithUptreamOption provides upstream zipper options for Zipper.
-func WithUptreamOption(opts ...UpstreamZipperOption) ZipperOption {
-	return func(o *zipperOptions) {
-		o.UpstreamZipperOption = opts
+	// WithZipperTLSConfig sets the TLS configuration for the zipper.
+	WithZipperTLSConfig = func(tc *tls.Config) ZipperOption {
+		return func(zo *zipperOptions) {
+			zo.downstreamZipperOption = append(zo.downstreamZipperOption, core.WithServerTLSConfig(tc))
+		}
 	}
-}
+
+	// WithZipperQuicConfig sets the QUIC configuration for the zipper.
+	WithZipperQuicConfig = func(qc *quic.Config) ZipperOption {
+		return func(zo *zipperOptions) {
+			zo.downstreamZipperOption = append(zo.downstreamZipperOption, core.WithServerQuicConfig(qc))
+		}
+	}
+
+	// WithZipperLogger sets logger for the zipper.
+	WithZipperLogger = func(l *slog.Logger) ZipperOption {
+		return func(zo *zipperOptions) {
+			zo.downstreamZipperOption = append(zo.downstreamZipperOption, core.WithServerLogger(l))
+		}
+	}
+
+	// WithUptreamOption provides upstream zipper options for Zipper.
+	WithUptreamOption = func(opts ...UpstreamZipperOption) ZipperOption {
+		return func(o *zipperOptions) {
+			o.UpstreamZipperOption = opts
+		}
+	}
+)
