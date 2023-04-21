@@ -1,5 +1,5 @@
 ### general ###
-name: america
+name: zipper-chn
 host: 0.0.0.0
 port: 9000
 
@@ -15,15 +15,15 @@ functions:
 
 ### cascading ###
 downstreams:
-  zipper-asia_pacific:
+  zipper-asia:
     host: 2.2.2.2
     port: 9000
     credential: "token: <CREDENTIAL>"
-  zipper-us_pacific:
+  zipper-usa:
     host: 3.3.3.3
     port: 9000
     auth: "token: <CREDENTIAL>"
-  zipper-eu_pacific:
+  zipper-deu:
     host: 4.4.4.4
     port: 9000
     auth: "token: <CREDENTIAL>"
