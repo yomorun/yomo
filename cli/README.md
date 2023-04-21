@@ -74,7 +74,7 @@ cd example/stream-fn-db && yomo build && ./sl.yomo
 
 ### 4. YoMo-Zipper
 
-#### Configure YoMo-Zipper `workflow.yaml`
+#### Configure YoMo-Zipper `config.yaml`
 
 ```yaml
 name: Service
@@ -88,7 +88,7 @@ functions:
 #### Run
 
 ```sh
-yomo serve --config workflow.yaml
+yomo serve --config config.yaml
 ```
 
 ## Example

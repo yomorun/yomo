@@ -45,7 +45,7 @@ YoMo CLI Version: v1.0.0
 
 ### Start the Zipper service:
 
-`yomo serve -c workflow.yaml`
+`yomo serve -c config.yaml`
 
 ### Start the Streaming Function to observe data:
 

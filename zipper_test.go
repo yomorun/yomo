@@ -8,10 +8,11 @@ import (
 )
 
 func TestZipperRun(t *testing.T) {
-	zipper := NewZipperWithOptions("zipper", "localhost:9001")
+	zipper, err := NewZipper("zipper", nil, nil)
+	assert.Nil(t, err)
 	time.Sleep(time.Second)
 	assert.NotNil(t, zipper)
-	err := zipper.Close()
+	err = zipper.Close()
 	time.Sleep(time.Second)
 	assert.Nil(t, err)
 }

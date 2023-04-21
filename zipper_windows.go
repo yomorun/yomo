@@ -13,17 +13,16 @@ import (
 
 // initialize when zipper running as server. support inspection:
 // - `kill -SIGTERM <pid>` graceful shutdown
-func (z *zipper) init() {
-	go func() {
-		c := make(chan os.Signal, 1)
-		signal.Notify(c, syscall.SIGTERM, syscall.SIGINT)
-		ylog.Info("Listening SIGTERM/SIGINT...")
-		for p1 := range c {
-			ylog.Debug("Received signal", "signal", p1)
-			if p1 == syscall.SIGTERM || p1 == syscall.SIGINT {
-				ylog.Debug("graceful shutting down ...", "sign", p1)
-				os.Exit(0)
-			}
+func waitSignalForShutdownServer(server *core.Server) {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, syscall.SIGTERM, syscall.SIGINT)
+	ylog.Info("Listening SIGTERM/SIGINT...")
+	for p1 := range c {
+		ylog.Debug("Received signal", "signal", p1)
+		if p1 == syscall.SIGTERM || p1 == syscall.SIGINT {
+			server.Close()
+			ylog.Debug("graceful shutting down ...", "sign", p1)
+			os.Exit(0)
 		}
-	}()
+	}
 }

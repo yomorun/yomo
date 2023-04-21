@@ -10,7 +10,7 @@ import (
 )
 
 func TestRouter(t *testing.T) {
-	router := Default([]config.App{{Name: "sfn-1"}})
+	router := Default([]config.Function{{Name: "sfn-1"}})
 
 	m := &metadata.Default{}
 

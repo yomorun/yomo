@@ -18,7 +18,7 @@ type DefaultRouter struct {
 }
 
 // Default return the DefaultRouter.
-func Default(functions []config.App) Router {
+func Default(functions []config.Function) Router {
 	return &DefaultRouter{r: newRoute(functions)}
 }
 
@@ -38,12 +38,12 @@ func (r *DefaultRouter) Clean() {
 }
 
 type defaultRoute struct {
-	functions []config.App
+	functions []config.Function
 	data      map[frame.Tag]map[string]string
 	mu        sync.RWMutex
 }
 
-func newRoute(functions []config.App) *defaultRoute {
+func newRoute(functions []config.Function) *defaultRoute {
 	return &defaultRoute{
 		functions: functions,
 		data:      make(map[frame.Tag]map[string]string),

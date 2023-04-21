@@ -1,7 +1,11 @@
 package yomo
 
 import (
+	"crypto/tls"
+
+	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core"
+	"golang.org/x/exp/slog"
 )
 
 type (
@@ -29,57 +33,50 @@ var (
 	WithLogger = core.WithLogger
 )
 
-// Option is a function that applies a Zipper option.
-type Option func(o *Options)
+// ClientOption is option for the upstream Zipper.
+type ClientOption = core.ClientOption
 
-// Options are the options for YoMo
-type Options struct {
-	MeshConfigURL string // meshConfigURL is the URL of edge-mesh config
-	ServerOptions []core.ServerOption
-	ClientOptions []core.ClientOption
-
-	// TODO: WithWorkflowConfig
-	// zipperWorkflowConfig string // Zipper workflow file
+type zipperOptions struct {
+	serverOption []core.ServerOption
+	clientOption []ClientOption
 }
 
-// WithMeshConfigURL sets the initial edge-mesh config URL for the YoMo-Zipper.
-func WithMeshConfigURL(url string) Option {
-	return func(o *Options) {
-		o.MeshConfigURL = url
-	}
-}
+// ZipperOption is option for the Zipper.
+type ZipperOption func(*zipperOptions)
 
-// WithClientOptions returns a new options with opts.
-func WithClientOptions(opts ...core.ClientOption) Option {
-	return func(o *Options) {
-		o.ClientOptions = opts
-	}
-}
-
-// WithServerOptions returns a new options with opts.
-func WithServerOptions(opts ...core.ServerOption) Option {
-	return func(o *Options) {
-		o.ServerOptions = opts
-	}
-}
-
-// WithAuth sets the server authentication method (used by server)
-func WithAuth(name string, args ...string) Option {
-	return func(o *Options) {
-		o.ServerOptions = append(
-			o.ServerOptions,
-			core.WithAuth(name, args...),
-		)
-	}
-}
-
-// NewOptions creates a new options for YoMo-Client.
-func NewOptions(opts ...Option) *Options {
-	options := &Options{}
-
-	for _, o := range opts {
-		o(options)
+var (
+	// WithAuth sets the zipper authentication method.
+	WithAuth = func(name string, args ...string) ZipperOption {
+		return func(zo *zipperOptions) {
+			zo.serverOption = append(zo.serverOption, core.WithAuth(name, args...))
+		}
 	}
 
-	return options
-}
+	// WithZipperTLSConfig sets the TLS configuration for the zipper.
+	WithZipperTLSConfig = func(tc *tls.Config) ZipperOption {
+		return func(zo *zipperOptions) {
+			zo.serverOption = append(zo.serverOption, core.WithServerTLSConfig(tc))
+		}
+	}
+
+	// WithZipperQuicConfig sets the QUIC configuration for the zipper.
+	WithZipperQuicConfig = func(qc *quic.Config) ZipperOption {
+		return func(zo *zipperOptions) {
+			zo.serverOption = append(zo.serverOption, core.WithServerQuicConfig(qc))
+		}
+	}
+
+	// WithZipperLogger sets logger for the zipper.
+	WithZipperLogger = func(l *slog.Logger) ZipperOption {
+		return func(zo *zipperOptions) {
+			zo.serverOption = append(zo.serverOption, core.WithServerLogger(l))
+		}
+	}
+
+	// WithUptreamOption provides upstream zipper options for Zipper.
+	WithUptreamOption = func(opts ...ClientOption) ZipperOption {
+		return func(o *zipperOptions) {
+			o.clientOption = opts
+		}
+	}
+)

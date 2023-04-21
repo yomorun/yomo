@@ -10,6 +10,7 @@ func TestSfnConnectToServer(t *testing.T) {
 	sfn := NewStreamFunction(
 		"test-sfn",
 		"localhost:9000",
+		WithCredential("token:<CREDENTIAL>"),
 		WithObserveDataTags(0x33),
 	)
 	defer sfn.Close()

@@ -42,7 +42,7 @@ Runtime Version: v1.8.0
 ### Run [zipper](https://docs.yomo.run/zipper)
 
 ```bash
-yomo serve -c ./workflow.yaml
+yomo serve -c ./config.yaml
 
 2022-06-13 15:46:01.477 [yomo:zipper] Listening SIGUSR1, SIGUSR2, SIGTERM/SIGINT...
 2022-06-13 15:46:01.479 [core:server] ✅ [backflow][71590] Listening on: 127.0.0.1:9000, MODE: DEVELOPMENT, QUIC: [v1 draft-29], AUTH: [none]
