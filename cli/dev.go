@@ -28,24 +28,23 @@ var devViper *viper.Viper
 
 // devCmd represents the dev command
 var devCmd = &cobra.Command{
-	Use:                "dev",
-	Short:              "Dev a YoMo Stream Function",
-	Long:               "Dev a YoMo Stream Function with mocking yomo-source data from YCloud.",
+	Use:                "dev [flags] sfn.wasm",
+	Short:              "Test a YoMo Stream Function",
+	Long:               "Test a YoMo Stream Function with public zipper and mocking data",
 	FParseErrWhitelist: cobra.FParseErrWhitelist{UnknownFlags: true},
 	Run: func(cmd *cobra.Command, args []string) {
-		loadViperValue(cmd, devViper, &opts.Filename, "file-name")
-		loadViperValue(cmd, devViper, &opts.ModFile, "modfile")
-
-		if len(args) > 0 {
-			opts.Filename = args[0]
+		if err := parseFileArg(args, &opts, defaultSFNCompliedFile); err != nil {
+			log.FailureStatusEvent(os.Stdout, err.Error())
+			return
 		}
+		loadViperValue(cmd, devViper, &opts.ModFile, "modfile")
 		// Serverless
 		log.InfoStatusEvent(os.Stdout, "YoMo Stream Function file: %v", opts.Filename)
 		// resolve serverless
 		log.PendingStatusEvent(os.Stdout, "Create YoMo Stream Function instance...")
 
 		// Connect the serverless to YoMo dev-server, it will automatically emit the mock data.
-		opts.ZipperAddrs = []string{"dev.yomo.run:9140"}
+		opts.ZipperAddrs = []string{"tap.yomo.dev:9140"}
 		opts.Name = "yomo-app-demo"
 
 		s, err := serverless.Create(&opts)
@@ -53,15 +52,21 @@ var devCmd = &cobra.Command{
 			log.FailureStatusEvent(os.Stdout, err.Error())
 			return
 		}
-
-		// build
-		log.PendingStatusEvent(os.Stdout, "YoMo Stream Function building...")
-		if err := s.Build(true); err != nil {
-			log.FailureStatusEvent(os.Stdout, err.Error())
+		if !s.Executable() {
+			log.FailureStatusEvent(os.Stdout,
+				"You cannot run `%s` directly. build first with the `yomo build %s` command and then run with the 'yomo run sfn.wasm' command.",
+				opts.Filename,
+				opts.Filename,
+			)
 			return
 		}
-		log.SuccessStatusEvent(os.Stdout, "Success! YoMo Stream Function build.")
 		// run
+		log.InfoStatusEvent(
+			os.Stdout,
+			"Starting YoMo Stream Function instance with executable file: %s. Zipper: %v.",
+			opts.Filename,
+			opts.ZipperAddrs,
+		)
 		log.InfoStatusEvent(os.Stdout, "YoMo Stream Function is running...")
 		if err := s.Run(verbose); err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
@@ -73,7 +78,6 @@ var devCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(devCmd)
 
-	devCmd.Flags().StringVarP(&opts.Filename, "file-name", "f", "app.go", "Stream function file")
 	devCmd.Flags().StringVarP(&opts.ModFile, "modfile", "m", "", "custom go.mod")
 
 	devViper = bindViper(devCmd)

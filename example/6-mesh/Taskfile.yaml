@@ -1,6 +1,6 @@
 # https://taskfile.dev
 
-version: '3'
+version: "3"
 
 output: "prefixed"
 
@@ -62,7 +62,7 @@ tasks:
     desc: "run zipper-sender-us"
     deps: [build]
     cmds:
-      - "./bin/{{.ExeName}} serve -c us/sender.yaml -m https://mesh-config.yomo.run/api/configs"
+      - "./bin/{{.ExeName}} serve -c us/sender.yaml"
     silent: false
 
   zipper-receiver-us:
@@ -76,7 +76,7 @@ tasks:
     desc: "run zipper-sender-eu"
     deps: [build]
     cmds:
-      - "./bin/{{.ExeName}} serve -c eu/sender.yaml -m https://mesh-config.yomo.run/api/configs"
+      - "./bin/{{.ExeName}} serve -c eu/sender.yaml"
     silent: false
 
   zipper-receiver-eu:

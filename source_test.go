@@ -7,7 +7,7 @@ import (
 )
 
 func TestSourceSendDataToServer(t *testing.T) {
-	source := NewSource("test-source", "localhost:9000")
+	source := NewSource("test-source", "localhost:9000", WithCredential("token:<CREDENTIAL>"))
 	defer source.Close()
 
 	// connect to server

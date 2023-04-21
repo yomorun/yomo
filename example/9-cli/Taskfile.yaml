@@ -22,7 +22,7 @@ tasks:
   zipper:
     desc: "run zipper"
     cmds:
-      - "yomo serve -c ./zipper/workflow.yaml"
+      - "yomo serve -c ./zipper/config.yaml"
     silent: false
     env:
       YOMO_AUTH: token:1234

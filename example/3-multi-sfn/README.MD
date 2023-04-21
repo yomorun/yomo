@@ -40,12 +40,12 @@ YoMo CLI Version: v1.0.0
 ```bash
 $ task run
 
-task: [zipper] yomo serve -c ./zipper/workflow.yaml
+task: [zipper] yomo serve -c ./zipper/config.yaml
 task: [sfn-3] go build -o ./bin/sfn-3 ./stream-fn-3/app.go
 task: [source-build] go build -o ./bin/source source/main.go
 task: [sfn-1] go build -o ./bin/sfn-1 ./stream-fn-1/app.go
 task: [sfn-2] go build -o ./bin/sfn-2 ./stream-fn-2/app.go
-[zipper] Using config file: ./zipper/workflow.yaml
+[zipper] Using config file: ./zipper/config.yaml
 [zipper] ℹ️   Running YoMo-Zipper...
 [zipper] 2022-02-20 17:10:03.764	[yomo:zipper] Listening SIGUSR1, SIGUSR2, SIGTERM/SIGINT...
 [zipper] 2022-02-20 17:10:03.773	[core:server] ✅ [Service] Listening on: 127.0.0.1:9000, QUIC: [v1 draft-29], AUTH: [None]
@@ -88,7 +88,7 @@ task: [source] ./bin/source
 ### Run [YoMo-Zipper](https://docs.yomo.run/zipper)
 
 ```bash
-yomo serve -c ./zipper/workflow.yaml
+yomo serve -c ./zipper/config.yaml
 
 ℹ️   Found 3 stream functions in YoMo-Zipper config
 ℹ️   Stream Function 1: Noise-1

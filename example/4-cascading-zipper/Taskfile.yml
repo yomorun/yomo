@@ -16,13 +16,13 @@ tasks:
     desc: run zipper-1
     dir: zipper-1
     cmds:
-      - "go run zipper_1.go"
+      - "yomo serve -c zipper_1_wf.yaml"
 
   zipper-2:
     desc: run zipper-2
     dir: zipper-2
     cmds:
-      - "go run zipper_2.go"
+     - "yomo serve -c zipper_2_wf.yaml"
 
   sfn:
     desc: sfn

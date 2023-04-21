@@ -92,18 +92,18 @@ $ exa -l
 
 ### Step 4. Run
 
-There is an public test Zipper service `dev.yomo.run:9140` which is provided by
+There is an public test Zipper service `tap.yomo.dev:9140` which is provided by
 our community, you can test your StreamFunction quickly by connecting to it.
 
 ```bash
-$ yomo run -z dev.yomo.run:9140 -n yomo-app-demo sfn.wasm
+$ yomo run -z tap.yomo.dev:9140 -n yomo-app-demo sfn.wasm
 
 ℹ️ YoMo Stream Function file: sfn.wasm
 ⌛  Create YoMo Stream Function instance...
-ℹ️ Starting YoMo Stream Function instance with executable file: sfn.wasm. Zipper: [dev.yomo.run:9140].
+ℹ️ Starting YoMo Stream Function instance with executable file: sfn.wasm. Zipper: [tap.yomo.dev:9140].
 ℹ️ YoMo Stream Function is running...
 time=2023-04-14T00:05:25.073+08:00 level=INFO msg="use credential" component="Stream Function" client_id=7IwpRofCpPp-AcVV2qUFc client_name=yomo-app-demo credential_name=none
-time=2023-04-14T00:05:26.297+08:00 level=INFO msg="connected to zipper" component="Stream Function" client_id=7IwpRofCpPp-AcVV2qUFc client_name=yomo-app-demo zipper_addr=dev.yomo.run:9140
+time=2023-04-14T00:05:26.297+08:00 level=INFO msg="connected to zipper" component="Stream Function" client_id=7IwpRofCpPp-AcVV2qUFc client_name=yomo-app-demo zipper_addr=tap.yomo.dev:9140
 sfn received 57 bytes
 sfn received 59 bytes
 sfn received 59 bytes
@@ -119,7 +119,7 @@ sfn received 58 bytes
 It works!
 
 > Note: `yomo dev sfn.wasm` is more convinient for development, it will connect
-> to `dev.yomo.run:9140` automatically.
+> to `tap.yomo.dev:9140` automatically.
 
 There are many other examples that can help reduce the learning curve:
 

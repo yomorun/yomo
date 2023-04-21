@@ -2,7 +2,7 @@ package serverless
 
 // Options describles the command arguments of serverless.
 type Options struct {
-	// Filename is the path to the serverless.yml file.
+	// Filename is the path to the serverless file.
 	Filename string
 	// ZipperAddrs is the addresses of the zipper server
 	ZipperAddrs []string
@@ -16,6 +16,4 @@ type Options struct {
 	Runtime string
 	// use environment variables
 	UseEnv bool
-	// build target: native or wasm
-	Target string
 }

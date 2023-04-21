@@ -9,11 +9,6 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-const (
-	// DefaultListenAddr is the default address to listen.
-	DefaultListenAddr = "0.0.0.0:9000"
-)
-
 // ServerOption is the option for server.
 type ServerOption func(*serverOptions)
 
@@ -21,7 +16,6 @@ type ServerOption func(*serverOptions)
 type serverOptions struct {
 	quicConfig  *quic.Config
 	tlsConfig   *tls.Config
-	addr        string
 	auths       map[string]auth.Authentication
 	logger      *slog.Logger
 	alpnHandler func(proto string) error
@@ -33,7 +27,6 @@ func defaultServerOptions() *serverOptions {
 	opts := &serverOptions{
 		quicConfig: DefalutQuicConfig,
 		tlsConfig:  nil,
-		addr:       DefaultListenAddr,
 		auths:      map[string]auth.Authentication{},
 		logger:     logger,
 	}
@@ -42,13 +35,6 @@ func defaultServerOptions() *serverOptions {
 		return nil
 	}
 	return opts
-}
-
-// WithAddr sets the server address.
-func WithAddr(addr string) ServerOption {
-	return func(o *serverOptions) {
-		o.addr = addr
-	}
 }
 
 // WithAuth sets the server authentication method.

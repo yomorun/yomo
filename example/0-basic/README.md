@@ -40,9 +40,9 @@ YoMo CLI Version: v1.0.0
 ### Run [zipper](https://docs.yomo.run/zipper)
 
 ```bash
-yomo serve -c ./workflow.yaml
+yomo serve -c ./config.yaml
 
-time=2022-12-12T18:12:15.735+08:00 level=INFO msg="Using config file" component=server name=Service file_path=../workflow.yaml
+time=2022-12-12T18:12:15.735+08:00 level=INFO msg="Using config file" component=server name=Service file_path=../config.yaml
 time=2022-12-12T18:12:15.735+08:00 level=INFO msg="Listening SIGUSR1, SIGUSR2, SIGTERM/SIGINT..."
 time=2022-12-12T18:12:15.738+08:00 level=INFO msg=Listening component=server name=Service pid=25220 quic="[v2 v1 draft-29]" auth_name=[none]
 ```
