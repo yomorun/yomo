@@ -81,10 +81,6 @@ func validateConfig(conf *Config) error {
 	if conf.Port == 0 {
 		return errors.New("config: the port is required")
 	}
-	if len(conf.Functions) == 0 {
-		return errors.New("config: the functions cannot be an empty")
-	}
-
 	for _, f := range conf.Functions {
 		if f.Name == "" {
 			return errors.New("config: the functions must have the name field")

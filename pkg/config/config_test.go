@@ -64,17 +64,6 @@ func TestValidateConfig(t *testing.T) {
 			wantErrString: "config: the port is required",
 		},
 		{
-			name: "functions empty",
-			args: args{
-				conf: &Config{
-					Name: "name",
-					Host: "0.0.0.0",
-					Port: 9000,
-				},
-			},
-			wantErrString: "config: the functions cannot be an empty",
-		},
-		{
 			name: "functions lack name",
 			args: args{
 				conf: &Config{
