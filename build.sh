@@ -5,7 +5,7 @@ set -e
 # Environment variable options:
 #   - PLATFORMS: Platforms to build for (e.g. "windows/amd64,linux/amd64,darwin/amd64")
 
-export CLI_VERSION=$(shell git describe --tags 2>/dev/null || git rev-parse --short HEAD)
+export CLI_VERSION=$(git describe --tags 2>/dev/null || git rev-parse --short HEAD)
 
 export LC_ALL=C
 export LC_DATE=C
