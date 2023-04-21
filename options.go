@@ -37,16 +37,16 @@ var (
 
 // Sfn Options.
 var (
-	// WithSfnCredential sets the credential method for the Source.
+	// WithSfnCredential sets the credential method for the Sfn.
 	WithSfnCredential = func(payload string) SfnOption { return SfnOption(core.WithCredential(payload)) }
 
-	// WithSfnTLSConfig sets tls config for the Source.
+	// WithSfnTLSConfig sets tls config for the Sfn.
 	WithSfnTLSConfig = func(tc *tls.Config) SourceOption { return SourceOption(core.WithClientTLSConfig(tc)) }
 
-	// WithSfnQuicConfig sets quic config for the Source.
+	// WithSfnQuicConfig sets quic config for the Sfn.
 	WithSfnQuicConfig = func(qc *quic.Config) SourceOption { return SourceOption(core.WithClientQuicConfig(qc)) }
 
-	// WithSfnLogger sets logger for the Source.
+	// WithSfnLogger sets logger for the Sfn.
 	WithSfnLogger = func(l *slog.Logger) SourceOption { return SourceOption(core.WithLogger(l)) }
 )
 
