@@ -25,14 +25,14 @@ yomo run [flags] serverless
 Follow [last tutorial: yomo build](./build#example), we created a Stream Function `accumulator-func`, and build it to WebAssebly, and we try run it by `yomo dev`, Now we will run it with `yomo run` command.
 
 ```bash
-ᐅ yomo run -z dev.yomo.run:9140 -n yomo-app-demo sfn.wasm
+ᐅ yomo run -z tap.yomo.dev:9140 -n yomo-app-demo sfn.wasm
 
 ℹ️  YoMo Stream Function file: sfn.wasm
 ⌛  Create YoMo Stream Function instance...
-ℹ️  Starting YoMo Stream Function instance with executable file: sfn.wasm. Zipper: [dev.yomo.run:9140].
+ℹ️  Starting YoMo Stream Function instance with executable file: sfn.wasm. Zipper: [tap.yomo.dev:9140].
 ℹ️  YoMo Stream Function is running...
 time=2023-04-16T22:45:54.265+08:00 level=INFO msg="use credential" component="Stream Function" client_id=jHp0g18hmjk_fL0SvH_6X client_name=yomo-app-demo credential_name=none
-time=2023-04-16T22:45:55.461+08:00 level=INFO msg="connected to zipper" component="Stream Function" client_id=jHp0g18hmjk_fL0SvH_6X client_name=yomo-app-demo zipper_addr=dev.yomo.run:9140
+time=2023-04-16T22:45:55.461+08:00 level=INFO msg="connected to zipper" component="Stream Function" client_id=jHp0g18hmjk_fL0SvH_6X client_name=yomo-app-demo zipper_addr=tap.yomo.dev:9140
 sfn received 58 bytes: {"noise":68.54317,"time":1681656355561,"from":"localhost"}
         ⚡️avg=68.543170
 sfn received 59 bytes: {"noise":105.43603,"time":1681656355663,"from":"localhost"}
