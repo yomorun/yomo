@@ -50,7 +50,7 @@ var initCmd = &cobra.Command{
 		log.PendingStatusEvent(os.Stdout, "Initializing the Stream Function...")
 		name = strings.ReplaceAll(name, " ", "_")
 		// create app.go
-		fname := filepath.Join(name, "app.go")
+		fname := filepath.Join(name, defaultSFNSourceFile)
 		contentTmpl := golang.InitTmpl
 		if rx {
 			contentTmpl = golang.InitRxTmpl

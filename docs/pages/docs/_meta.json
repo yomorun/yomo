@@ -5,15 +5,16 @@
     "title": "Concept"
   },
   "glossary": "Glossary of terms",
-  "concept-zipper-cascading": "Cascading Zippers",
-  "concept-geo-distributed": "Geo-distributed Arch",
-  "concept-multi-sfn": "Serverless Workflow",
   "---Reference": {
     "type": "separator",
     "title": "Reference"
   },
   "cli": "CLI",
   "api": "API",
+  "wasm-rust": "Write StreamFunction in Rust",
+  "wasm-zig": "Write StreamFunction in Zig",
+  "wasm-c": "Write StreamFunction in C",
+  "wasm-tinygo": "Compile StreamFunction to WebAssembly by Tinygo",
   "---Hosting": {
     "type": "separator",
     "title": "Hosting"

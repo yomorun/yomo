@@ -2,7 +2,7 @@
 title: Getting Started
 ---
 
-import { Tabs, Tab, Steps } from 'nextra-theme-docs'
+import { Steps, Callout } from 'nextra-theme-docs'
 
 # YoMo
 
@@ -14,169 +14,53 @@ an open source Streaming Serverless Framework for building low-latency geo-distr
 ### Install CLI
 
 ```bash
-$ curl -fsSL "https://get.yomo.run" | sh
+curl -fsSL "https://get.yomo.run" | sh
 ```
 
-### Write a Streaming Serverless Function in WebAssembly
+### Initialize a StreamFunction project
 
-<Tabs items={['Rust', 'Zig', 'C']}>
-  <Tab>
-  ```rust
-  #[yomo::init]
-  fn init() -> anyhow::Result<Vec<u32>> {
-      // return observe datatags
-      Ok(vec![0x33])
-  }
-
-  #[yomo::handler]
-  fn handler(input: &[u8]) -> anyhow::Result<(u32, Vec<u8>)> {
-      println!("wasm rust sfn received {} bytes", input.len());
-
-      // parse input from bytes
-      let input = String::from_utf8(input.to_vec())?;
-
-      // your app logic goes here
-      let output = input.to_uppercase();
-
-      // return the datatag and output bytes
-      Ok((0x34, output.into_bytes()))
-  }
-  ```
-  </Tab>
-  <Tab>
-  ```zig
-  const std = @import("std");
-
-  extern fn yomo_observe_datatag(tag: u32) void;
-  extern fn yomo_load_input(pointer: *const u8) void;
-  extern fn yomo_dump_output(tag: u32, pointer: *const u8, length: usize) void;
-
-  pub fn main() !void {
-      std.log.info("yomo wasm sfn on zig", .{});
-  }
-
-  export fn yomo_init() void {
-      yomo_observe_datatag(0x33);
-  }
-
-  export fn yomo_handler(input_length: usize) void {
-      std.log.info("wasm zig sfn received {d} bytes", .{input_length});
-
-      // load input data
-      const allocator = std.heap.page_allocator;
-      const input = allocator.alloc(u8, input_length) catch undefined;
-      defer allocator.free(input);
-      yomo_load_input(&input[0]);
-
-      // process app data
-      const output = std.ascii.allocUpperString(allocator, input) catch undefined;
-      defer allocator.free(output);
-
-      // dump output data
-      yomo_dump_output(0x34, &output[0], output.len);
-  }
-  ```
-  </Tab>
-  <Tab>
-  ```c
-  #include <ctype.h>
-  #include <stdio.h>
-  #include <stdlib.h>
-
-  __attribute__((import_module("env"), import_name("yomo_observe_datatag")))
-  extern void observe_datatag(uint32_t tag);
-
-  __attribute__((import_module("env"), import_name("yomo_load_input")))
-  extern void load_input(char *pointer);
-
-  __attribute__((import_module("env"), import_name("yomo_dump_output")))
-  extern void dump_output(uint32_t tag, const char *pointer, size_t length);
-
-  void yomo_init() {
-      observe_datatag(0x33);
-  }
-
-  void yomo_handler(size_t input_length) {
-      printf("wasm c sfn received %zu bytes\n", input_length);
-
-      // load input data
-      char *input = malloc(input_length);
-      load_input(input);
-
-      // process app data
-      size_t output_length = input_length;
-      char *output = malloc(output_length);
-      for (size_t i = 0; i < input_length; i++) {
-          output[i] = toupper(input[i]);
-      }
-
-      // dump output data
-      dump_output(0x34, output, output_length);
-
-      free(input);
-      free(output);
-  }
-  ```
-  </Tab>
-</Tabs>
+```bash
+yomo init stateful-function
+```
 
 ### Build to .wasm
 
+```bash {3}
+ᐅ cd stateful-function
 
-<Tabs items={['Rust', 'Zig', 'C']}>
-  <Tab>
-  `Cargo.toml`:
+ᐅ yomo build app.go
 
-  ```toml
-  [package]
-  name = "yomo-sfn"
-  version = "0.1.0"
-  edition = "2021"
-
-  [lib]
-  crate-type = ["cdylib"]
-
-  [dependencies]
-  anyhow = "1.0"
-  yomo = { version = "0.1" }
-  ```
-
-  Compile to wasm:
-
-  ```bash
-  $ rustup target add wasm32-wasi
-  $ cargo build --release --target wasm32-wasi
-  ```
-  </Tab>
-  <Tab>
-  ```bash
-  $ zig build-lib src/main.zig -target wasm32-wasi -dynamic --name sfn
-  ```
-  </Tab>
-  <Tab>
-  ```bash
-  $ export WASI_VERSION_FULL=16.0
-  $ export WASI_SDK_PATH=~/Downloads/wasi-sdk-$WASI_VERSION_FULL
-
-  $ WASI_SDK_PATH/bin/clang --target=wasm32-unknown-wasi \
-      --sysroot=$WASI_SDK_PATH/share/wasi-sysroot \
-      -nostartfiles -fvisibility=hidden -O3 \
-      -Wl,--no-entry,--export=yomo_init,--export=yomo_handler \
-      -o sfn.wasm sfn.c
-  ```
-  </Tab>
-</Tabs>
-
-### Start Zipper Service
-
-```bash
-yomo serve -c config.yml
+ᐅ exa -Tla .
+drwxr-xr-x@    - cc 16 Apr 21:58 .
+.rw-r--r--@   31 cc 16 Apr 20:39 ├── .env
+.rw-r--r--@  378 cc 16 Apr 21:23 ├── app.go
+.rwxr-xr-x@ 191k cc 16 Apr 21:58 ├── sfn.wasm
 ```
 
-### Run Streaming Serverless Function
+### Run StreamFunction with Public Zipper Test Service
 
 ```bash
-yomo run /path/to/sfn.wasm
+ᐅ yomo run sfn.wasm
+
+ℹ️ YoMo Stream Function file: app.go
+⌛  Create YoMo Stream Function instance...
+⌛  YoMo Stream Function building...
+✅  Success! YoMo Stream Function build.
+ℹ️   YoMo Stream Function is running...
+ℹ️   Run: /Users/fanweixiao/tmp/accumulator-func/sfn.yomo
+sfn received 58 bytes
+sfn received 58 bytes
+sfn received 59 bytes
+sfn received 59 bytes
+sfn received 59 bytes
+sfn received 59 bytes
+sfn received 59 bytes
+sfn received 58 bytes
+^C
 ```
+
+<Callout emoji="ℹ️" type="info">
+Press `Ctrl-C` to stop the StreamFunction.
+</Callout>
 
 </Steps>

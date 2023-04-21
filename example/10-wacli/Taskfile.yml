@@ -34,7 +34,7 @@ tasks:
     desc: build sfn
     dir: sfn
     cmds:
-      - "yomo build -m go.mod -t wasm app.go"
+      - "yomo build -m go.mod app.go"
 
   source:
     desc: run source
