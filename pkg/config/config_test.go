@@ -20,8 +20,10 @@ func TestParseConfigFile(t *testing.T) {
 		conf, err := ParseConfigFile("../../test/config.yaml")
 		assert.NoError(t, err)
 
-		assert.Equal(t, "america", conf.Name)
+		assert.Equal(t, "zipper-chn", conf.Name)
 		assert.Equal(t, "0.0.0.0", conf.Host)
+		assert.Equal(t, []Function{{Name: "sfn-ai-stream-response"}, {Name: "sfn-async-log-events"}}, conf.Functions)
+
 		assert.Equal(t, 9000, conf.Port)
 	})
 }
