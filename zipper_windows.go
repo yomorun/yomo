@@ -13,7 +13,7 @@ import (
 
 // initialize when zipper running as server. support inspection:
 // - `kill -SIGTERM <pid>` graceful shutdown
-func waitSignalForShotdownServer(server *core.Server) {
+func waitSignalForShutdownServer(server *core.Server) {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGTERM, syscall.SIGINT)
 	ylog.Info("Listening SIGTERM/SIGINT...")

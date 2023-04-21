@@ -81,7 +81,7 @@ func NewZipper(name string, functions []config.Function, meshConfig map[string]c
 	server.ConfigRouter(router.Default(functions))
 
 	// watch signal.
-	go waitSignalForShotdownServer(server)
+	go waitSignalForShutdownServer(server)
 
 	return server, nil
 }
