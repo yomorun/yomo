@@ -14,9 +14,6 @@ type (
 
 	// SfnOption is option for the SFN.
 	SfnOption = core.ClientOption
-
-	// UpstreamZipperOption is option for the upstream Zipper.
-	UpstreamZipperOption = core.ClientOption
 )
 
 var (
@@ -36,9 +33,12 @@ var (
 	WithLogger = core.WithLogger
 )
 
+// ClientOption is option for the upstream Zipper.
+type ClientOption = core.ClientOption
+
 type zipperOptions struct {
-	downstreamZipperOption []core.ServerOption
-	UpstreamZipperOption   []UpstreamZipperOption
+	serverOption []core.ServerOption
+	clientOption []ClientOption
 }
 
 // ZipperOption is option for the Zipper.
@@ -48,35 +48,35 @@ var (
 	// WithAuth sets the zipper authentication method.
 	WithAuth = func(name string, args ...string) ZipperOption {
 		return func(zo *zipperOptions) {
-			zo.downstreamZipperOption = append(zo.downstreamZipperOption, core.WithAuth(name, args...))
+			zo.serverOption = append(zo.serverOption, core.WithAuth(name, args...))
 		}
 	}
 
 	// WithZipperTLSConfig sets the TLS configuration for the zipper.
 	WithZipperTLSConfig = func(tc *tls.Config) ZipperOption {
 		return func(zo *zipperOptions) {
-			zo.downstreamZipperOption = append(zo.downstreamZipperOption, core.WithServerTLSConfig(tc))
+			zo.serverOption = append(zo.serverOption, core.WithServerTLSConfig(tc))
 		}
 	}
 
 	// WithZipperQuicConfig sets the QUIC configuration for the zipper.
 	WithZipperQuicConfig = func(qc *quic.Config) ZipperOption {
 		return func(zo *zipperOptions) {
-			zo.downstreamZipperOption = append(zo.downstreamZipperOption, core.WithServerQuicConfig(qc))
+			zo.serverOption = append(zo.serverOption, core.WithServerQuicConfig(qc))
 		}
 	}
 
 	// WithZipperLogger sets logger for the zipper.
 	WithZipperLogger = func(l *slog.Logger) ZipperOption {
 		return func(zo *zipperOptions) {
-			zo.downstreamZipperOption = append(zo.downstreamZipperOption, core.WithServerLogger(l))
+			zo.serverOption = append(zo.serverOption, core.WithServerLogger(l))
 		}
 	}
 
 	// WithUptreamOption provides upstream zipper options for Zipper.
-	WithUptreamOption = func(opts ...UpstreamZipperOption) ZipperOption {
+	WithUptreamOption = func(opts ...ClientOption) ZipperOption {
 		return func(o *zipperOptions) {
-			o.UpstreamZipperOption = opts
+			o.clientOption = opts
 		}
 	}
 )

@@ -60,18 +60,19 @@ func NewZipper(name string, functions []config.Function, meshConfig map[string]c
 		o(opts)
 	}
 
-	server := core.NewServer(name, opts.downstreamZipperOption...)
+	server := core.NewServer(name, opts.serverOption...)
 
 	// add downstreams to server.
 	for name, meshConf := range meshConfig {
 		addr := fmt.Sprintf("%s:%d", meshConf.Host, meshConf.Port)
 
-		upstreamOptions := append(opts.UpstreamZipperOption,
+		clientOptions := append(
+			opts.clientOption,
 			core.WithCredential(meshConf.Credential),
 			core.WithNonBlockWrite(),
 			core.WithConnectUntilSucceed(),
 		)
-		downstream := core.NewClient(name, core.ClientTypeUpstreamZipper, upstreamOptions...)
+		downstream := core.NewClient(name, core.ClientTypeUpstreamZipper, clientOptions...)
 
 		server.Logger().Debug("add downstream", "downstream_addr", addr, "downstream_name", downstream.Name())
 		server.AddDownstreamServer(addr, downstream)
