@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/ylog"
 )
 
