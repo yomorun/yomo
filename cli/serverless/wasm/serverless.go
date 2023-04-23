@@ -16,7 +16,7 @@ type wasmServerless struct {
 	runtime     Runtime
 	name        string
 	zipperAddrs []string
-	observed    []yomo.Tag
+	observed    []uint32
 	credential  string
 }
 
@@ -61,7 +61,7 @@ func (s *wasmServerless) Run(verbose bool) error {
 		var ch chan error
 
 		sfn.SetHandler(
-			func(req []byte) (yomo.Tag, []byte) {
+			func(req []byte) (uint32, []byte) {
 				tag, res, err := s.runtime.RunHandler(req)
 				if err != nil {
 					ch <- err

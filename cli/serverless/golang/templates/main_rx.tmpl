@@ -27,10 +27,11 @@ func runSFN(name string, addr string, credential string) (closeFn func() error, 
 	sfn := yomo.NewStreamFunction(
 		name,
 		addr,
-		yomo.WithObserveDataTags(DataTags()...),
 		yomo.WithCredential(credential),
 	)
 	closeFn = sfn.Close
+  // set observe data tags
+  sfn.SetObserveDataTags(DataTags()...)
 
 	// create a Rx runtime.
 	rt := rx.NewRuntime(sfn)

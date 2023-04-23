@@ -11,7 +11,7 @@ import (
 type StreamFunction interface {
 	// SetObserveDataTags set the data tag list that will be observed
 	// Deprecated: use yomo.WithObserveDataTags instead
-	SetObserveDataTags(tag ...Tag)
+	SetObserveDataTags(tag ...uint32)
 	// SetHandler set the handler function, which accept the raw bytes data and return the tag & response
 	SetHandler(fn core.AsyncHandler) error
 	// SetErrorHandler set the error handler function when server error occurs
@@ -23,7 +23,7 @@ type StreamFunction interface {
 	// Close will close the connection
 	Close() error
 	// Send a data to zipper.
-	Write(tag Tag, carriage []byte) error
+	Write(tag uint32, carriage []byte) error
 }
 
 // NewStreamFunction create a stream function.
@@ -33,7 +33,7 @@ func NewStreamFunction(name, zipperAddr string, opts ...SfnOption) StreamFunctio
 		name:            name,
 		zipperAddr:      zipperAddr,
 		client:          client,
-		observeDataTags: make([]Tag, 0),
+		observeDataTags: make([]uint32, 0),
 	}
 
 	return sfn
@@ -46,7 +46,7 @@ type streamFunction struct {
 	name            string
 	zipperAddr      string
 	client          *core.Client
-	observeDataTags []Tag             // tag list that will be observed
+	observeDataTags []uint32          // tag list that will be observed
 	fn              core.AsyncHandler // user's function which will be invoked when data arrived
 	pfn             core.PipeHandler
 	pIn             chan []byte
@@ -55,7 +55,7 @@ type streamFunction struct {
 
 // SetObserveDataTags set the data tag list that will be observed.
 // Deprecated: use yomo.WithObserveDataTags instead
-func (s *streamFunction) SetObserveDataTags(tag ...Tag) {
+func (s *streamFunction) SetObserveDataTags(tag ...uint32) {
 	s.client.SetObserveDataTags(tag...)
 	s.client.Logger().Debug("set sfn observe data tasg", "tags", s.observeDataTags)
 }
@@ -159,7 +159,7 @@ func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
 }
 
 // Send a DataFrame to zipper.
-func (s *streamFunction) Write(tag Tag, carriage []byte) error {
+func (s *streamFunction) Write(tag uint32, carriage []byte) error {
 	frame := frame.NewDataFrame()
 	frame.SetCarriage(tag, carriage)
 	return s.client.WriteFrame(frame)

@@ -8,7 +8,6 @@ import (
 	"os"
 
 	"github.com/bytecodealliance/wasmtime-go"
-	"github.com/yomorun/yomo"
 )
 
 type wasmtimeRuntime struct {
@@ -18,9 +17,9 @@ type wasmtimeRuntime struct {
 	init    *wasmtime.Func
 	handler *wasmtime.Func
 
-	observed  []yomo.Tag
+	observed  []uint32
 	input     []byte
-	outputTag yomo.Tag
+	outputTag uint32
 	output    []byte
 }
 
@@ -86,12 +85,12 @@ func (r *wasmtimeRuntime) Init(wasmFile string) error {
 }
 
 // GetObserveDataTags returns observed datatags of the wasm sfn
-func (r *wasmtimeRuntime) GetObserveDataTags() []yomo.Tag {
+func (r *wasmtimeRuntime) GetObserveDataTags() []uint32 {
 	return r.observed
 }
 
 // RunHandler runs the wasm application (request -> response mode)
-func (r *wasmtimeRuntime) RunHandler(data []byte) (yomo.Tag, []byte, error) {
+func (r *wasmtimeRuntime) RunHandler(data []byte) (uint32, []byte, error) {
 	r.input = data
 	// reset output
 	r.outputTag = 0
@@ -111,7 +110,7 @@ func (r *wasmtimeRuntime) Close() error {
 }
 
 func (r *wasmtimeRuntime) observeDataTag(tag int32) {
-	r.observed = append(r.observed, yomo.Tag(uint32(tag)))
+	r.observed = append(r.observed, uint32(tag))
 }
 
 func (r *wasmtimeRuntime) loadInput(pointer int32) {
@@ -119,7 +118,7 @@ func (r *wasmtimeRuntime) loadInput(pointer int32) {
 }
 
 func (r *wasmtimeRuntime) dumpOutput(tag int32, pointer int32, length int32) {
-	r.outputTag = yomo.Tag(uint32(tag))
+	r.outputTag = uint32(tag)
 	r.output = make([]byte, length)
 	copy(r.output, r.memory.UnsafeData(r.store)[pointer:pointer+length])
 }

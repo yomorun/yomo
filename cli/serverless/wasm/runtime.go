@@ -3,8 +3,6 @@ package wasm
 
 import (
 	"fmt"
-
-	"github.com/yomorun/yomo"
 )
 
 // Define wasm import/export function names
@@ -22,10 +20,10 @@ type Runtime interface {
 	Init(wasmFile string) error
 
 	// GetObserveDataTags returns observed datatags of the wasm sfn
-	GetObserveDataTags() []yomo.Tag
+	GetObserveDataTags() []uint32
 
 	// RunHandler runs the wasm application (request -> response mode)
-	RunHandler(data []byte) (yomo.Tag, []byte, error)
+	RunHandler(data []byte) (uint32, []byte, error)
 
 	// Close releases all the resources related to the runtime
 	Close() error

@@ -14,7 +14,7 @@ func yomoDumpOutput(tag uint32, pointer *byte, length int)
 func yomoInit() {
 	dataTags := DataTags()
 	for _, tag := range dataTags {
-		yomoObserveDataTag(uint32(tag))
+		yomoObserveDataTag(tag)
 	}
 }
 
@@ -29,5 +29,5 @@ func yomoHandler(inputLength int) {
   if output == nil {
     return
   }
-	yomoDumpOutput(uint32(tag), &output[0], len(output))
+	yomoDumpOutput(tag, &output[0], len(output))
 }
