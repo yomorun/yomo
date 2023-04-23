@@ -155,15 +155,15 @@ func runResponse(conn net.Conn, sfn yomo.StreamFunction, errCh chan<- error) {
 }
 
 func run(name string, zipperAddr string, credential string, jsPath string, socketPath string) error {
+	if _, err := exec.LookPath("deno"); err != nil {
+		return errors.New("[deno] command was not found. For details, visit https://deno.land")
+	}
+
 	errCh := make(chan error)
 
 	listener, err := listen(socketPath)
 	if err != nil {
 		return err
-	}
-
-	if _, err = exec.LookPath("deno"); err != nil {
-		return errors.New("[deno] command was not found. For details, visit https://deno.land")
 	}
 
 	go runDeno(jsPath, socketPath, errCh)
