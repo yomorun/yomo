@@ -11,7 +11,6 @@ import (
 	"github.com/tetratelabs/wazero/api"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 	"github.com/tetratelabs/wazero/sys"
-	"github.com/yomorun/yomo/core/frame"
 )
 
 type wazeroRuntime struct {
@@ -21,9 +20,9 @@ type wazeroRuntime struct {
 	module api.Module
 	cache  wazero.CompilationCache
 
-	observed  []frame.Tag
+	observed  []uint32
 	input     []byte
-	outputTag frame.Tag
+	outputTag uint32
 	output    []byte
 }
 
@@ -93,12 +92,12 @@ func (r *wazeroRuntime) Init(wasmFile string) error {
 }
 
 // GetObserveDataTags returns observed datatags of the wasm sfn
-func (r *wazeroRuntime) GetObserveDataTags() []frame.Tag {
+func (r *wazeroRuntime) GetObserveDataTags() []uint32 {
 	return r.observed
 }
 
 // RunHandler runs the wasm application (request -> response mode)
-func (r *wazeroRuntime) RunHandler(data []byte) (frame.Tag, []byte, error) {
+func (r *wazeroRuntime) RunHandler(data []byte) (uint32, []byte, error) {
 	r.input = data
 	// reset output
 	r.outputTag = 0
@@ -124,7 +123,7 @@ func (r *wazeroRuntime) Close() error {
 }
 
 func (r *wazeroRuntime) observeDataTag(ctx context.Context, tag int32) {
-	r.observed = append(r.observed, frame.Tag(uint32(tag)))
+	r.observed = append(r.observed, uint32(tag))
 }
 
 func (r *wazeroRuntime) loadInput(ctx context.Context, m api.Module, pointer int32) {
@@ -135,7 +134,7 @@ func (r *wazeroRuntime) loadInput(ctx context.Context, m api.Module, pointer int
 }
 
 func (r *wazeroRuntime) dumpOutput(ctx context.Context, m api.Module, tag int32, pointer int32, length int32) {
-	r.outputTag = frame.Tag(uint32(tag))
+	r.outputTag = uint32(tag)
 	r.output = make([]byte, length)
 	buf, ok := m.Memory().Read(uint32(pointer), uint32(length))
 	if !ok {
