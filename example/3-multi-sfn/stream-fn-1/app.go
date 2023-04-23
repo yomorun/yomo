@@ -26,8 +26,8 @@ func main() {
 	sfn := yomo.NewStreamFunction(
 		"Noise-1",
 		"localhost:9000",
-		yomo.WithObserveDataTags(0x10),
 	)
+	sfn.SetObserveDataTags(0x10)
 	defer sfn.Close()
 
 	sfn.SetHandler(handler)

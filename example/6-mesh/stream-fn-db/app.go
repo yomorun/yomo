@@ -41,8 +41,8 @@ func main() {
 	sfn := yomo.NewStreamFunction(
 		"MockDB",
 		addr,
-		yomo.WithObserveDataTags(DataTags()...),
 	)
+	sfn.SetObserveDataTags(DataTags()...)
 	defer sfn.Close()
 
 	// set handler

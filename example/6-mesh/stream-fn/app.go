@@ -52,8 +52,8 @@ func main() {
 	sfn := yomo.NewStreamFunction(
 		"Noise",
 		addr,
-		yomo.WithObserveDataTags(DataTags()...),
 	)
+	sfn.SetObserveDataTags(DataTags()...)
 	defer sfn.Close()
 
 	// create a Rx runtime.
