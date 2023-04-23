@@ -14,15 +14,15 @@ type Source interface {
 	// Connect to YoMo-Zipper.
 	Connect() error
 	// SetDataTag will set the tag of data when invoking Write().
-	SetDataTag(tag frame.Tag)
+	SetDataTag(tag uint32)
 	// Write the data to directed downstream.
 	Write(data []byte) (n int, err error)
 	// WriteWithTag will write data with specified tag, default transactionID is epoch time.
-	WriteWithTag(tag frame.Tag, data []byte) error
+	WriteWithTag(tag uint32, data []byte) error
 	// SetErrorHandler set the error handler function when server error occurs
 	SetErrorHandler(fn func(err error))
 	// [Experimental] SetReceiveHandler set the observe handler function
-	SetReceiveHandler(fn func(tag frame.Tag, data []byte))
+	SetReceiveHandler(fn func(tag uint32, data []byte))
 	// Write the data to all downstream
 	Broadcast(data []byte) error
 }
@@ -32,8 +32,8 @@ type yomoSource struct {
 	name       string
 	zipperAddr string
 	client     *core.Client
-	tag        frame.Tag
-	fn         func(frame.Tag, []byte)
+	tag        uint32
+	fn         func(uint32, []byte)
 }
 
 var _ Source = &yomoSource{}
@@ -64,7 +64,7 @@ func (s *yomoSource) Write(data []byte) (int, error) {
 }
 
 // SetDataTag will set the tag of data when invoking Write().
-func (s *yomoSource) SetDataTag(tag frame.Tag) {
+func (s *yomoSource) SetDataTag(tag uint32) {
 	s.tag = tag
 }
 
@@ -92,7 +92,7 @@ func (s *yomoSource) Connect() error {
 }
 
 // WriteWithTag will write data with specified tag, default transactionID is epoch time.
-func (s *yomoSource) WriteWithTag(tag frame.Tag, data []byte) error {
+func (s *yomoSource) WriteWithTag(tag uint32, data []byte) error {
 	f := frame.NewDataFrame()
 	f.SetCarriage(tag, data)
 	f.SetSourceID(s.client.ClientID())
@@ -106,7 +106,7 @@ func (s *yomoSource) SetErrorHandler(fn func(err error)) {
 }
 
 // [Experimental] SetReceiveHandler set the observe handler function
-func (s *yomoSource) SetReceiveHandler(fn func(frame.Tag, []byte)) {
+func (s *yomoSource) SetReceiveHandler(fn func(uint32, []byte)) {
 	s.fn = fn
 	s.client.Logger().Info("receive hander set for the source")
 }

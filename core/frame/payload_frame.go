@@ -5,7 +5,7 @@ import (
 )
 
 // Tag is used for data router
-type Tag uint32
+type Tag = uint32
 
 // PayloadFrame is a Y3 encoded bytes, Tag is a fixed value TYPE_ID_PAYLOAD_FRAME
 // the Len is the length of Val. Val is also a Y3 encoded PrimitivePacket, storing
@@ -24,7 +24,7 @@ func (m *PayloadFrame) SetCarriage(buf []byte) *PayloadFrame {
 // Encode to Y3 encoded bytes
 func (m *PayloadFrame) Encode() []byte {
 	tag := y3.NewPrimitivePacketEncoder(byte(TagOfPayloadDataTag))
-	tag.SetUInt32Value(uint32(m.Tag))
+	tag.SetUInt32Value(m.Tag)
 
 	carriage := y3.NewPrimitivePacketEncoder(byte(TagOfPayloadCarriage))
 	carriage.SetBytesValue(m.Carriage)
@@ -49,7 +49,7 @@ func DecodeToPayloadFrame(buf []byte, payload *PayloadFrame) error {
 		if err != nil {
 			return err
 		}
-		payload.Tag = Tag(tag)
+		payload.Tag = tag
 	}
 
 	if p, ok := nodeBlock.PrimitivePackets[byte(TagOfPayloadCarriage)]; ok {
