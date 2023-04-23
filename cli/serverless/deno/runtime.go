@@ -3,6 +3,7 @@ package deno
 
 import (
 	"encoding/binary"
+	"errors"
 	"io"
 	"log"
 	"net"
@@ -159,6 +160,10 @@ func run(name string, zipperAddr string, credential string, jsPath string, socke
 	listener, err := listen(socketPath)
 	if err != nil {
 		return err
+	}
+
+	if _, err = exec.LookPath("deno"); err != nil {
+		return errors.New("[deno] command was not found. For details, visit https://deno.land")
 	}
 
 	go runDeno(jsPath, socketPath, errCh)
