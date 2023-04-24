@@ -11,17 +11,17 @@ If you do not want to setup your zipper service but want to try YoMo quickly, yo
 ## Usage 
 
 ```bash
-yomo dev [flags] [/path/to/.go|.wasm|.ts]
+yomo dev [flags] [/path/to/wasm]
 ```
 
 ## Flags
 
-- `-f, --filename` - The StreamFunction file name, like `app.go` or `func.wasm`.
+- `-f, --filename` - The wasm file compiled from StreamFunction.
 - `-m, --modfile` - Custom the `go.mod` file.
 
 ## Example
 
-```bash
+```bash {3}
 ᐅ yomo init try_yomo && cd try_yomo
 
 ᐅ yomo dev
