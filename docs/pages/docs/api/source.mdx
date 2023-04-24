@@ -38,19 +38,7 @@ Start connect to [Zipper][zipper].
 
 Disconnect from [Zipper][zipper].
 
-### source.SetDataTag(tag Tag)
-
-Set the data tag.
-
-- `tag`: The [Tag][tag] of data.
-
-### source.Write(data []byte) (int, error)
-
-Write data to direct Zipper with tag specified in [SetDataTag](#sourcesetdatatagtag-frametag).
-
-- `data`: The data to write.
-
-### source.WriteWithTag(tag Tag, data []byte) error
+### source.Write(tag uint32, data []byte) error
 
 Write data to direct Zipper with specified [Tag][tag].
 
@@ -59,10 +47,11 @@ The default transactionID is epoch time.
 - `tag`: The [Tag][tag] of data.
 - `data`: The data to write.
 
-### source.Broadcast(data []byte) error
+### source.Broadcast(tag uint32, data []byte) error
 
 Write the data to all downstreams with specified [Tag][tag].
 
+- `tag`: The [Tag][tag] of data.
 - `data`: The data to broadcast to all downstream [Zippers][zipper].
 
 ### source.SetErrorHandler(fn func(err error))
