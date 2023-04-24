@@ -1,8 +1,8 @@
 import {
   BoltIcon,
-  GlobeAltIcon,
   CodeBracketIcon,
   CurrencyDollarIcon,
+  GlobeAltIcon,
   LockClosedIcon,
   WifiIcon,
 } from "@heroicons/react/24/outline";
@@ -27,31 +27,31 @@ const FEATURES: Features = [
   {
     name: "Geo-distributed",// Architecture",
     description: `Your code close to your users.`,
-    link: "/docs/concept-geo-distributed",
+    link: "/docs/glossary",
     Icon: GlobeAltIcon,
   },
   {
     name: "Self-hosting",// Efficiency",
     description: `Less than $100 with 10K users with global scale.`,
-    link: "/docs/hosting",
+    link: "/docs/devops_tuning",
     Icon: CurrencyDollarIcon,
   },
   {
     name: "WebAssembly",
     description: `Implement serverless function in Rust / Go / C, compile to wasm, run it everywhere.`,
-    link: "/docs/sfn-wasm",
+    link: "/docs/cli/build",
     Icon: CodeBracketIcon,
   },
   {
     name: "Security",
     description: `Every data packet encrypted by TLS v1.3.`,
-    link: "/docs/security",
+    link: "/docs/devops_tls",
     Icon: LockClosedIcon,
   },
   {
     name: "5G/WiFi-6",
     description: `Networking optimized for high-speed celluar and wireless.`,
-    link: "/docs/performance",
+    link: "/docs/api/sfn",
     Icon: WifiIcon,
   },
 ];

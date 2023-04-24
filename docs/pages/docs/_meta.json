@@ -14,9 +14,11 @@
   "wasm-rust": "Write StreamFunction in Rust",
   "wasm-zig": "Write StreamFunction in Zig",
   "wasm-c": "Write StreamFunction in C",
-  "wasm-tinygo": "Compile StreamFunction to WebAssembly by Tinygo",
   "---Hosting": {
     "type": "separator",
     "title": "Hosting"
-  }
+  },
+  "devops_tuning": "Tuning QUIC Server",
+  "devops_tls": "Self-signed TLS Certificates",
+  "devops_security": "Enhanced Security"
 }
