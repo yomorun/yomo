@@ -23,7 +23,7 @@ func main() {
 		"source",
 		addr,
 	)
-	source.SetDataTag(0x33)
+
 	if err := source.Connect(); err != nil {
 		log.Fatalln(err)
 	}
@@ -32,8 +32,8 @@ func main() {
 	sink := yomo.NewStreamFunction(
 		"sink",
 		addr,
-		yomo.WithObserveDataTags(0x34),
 	)
+	sink.SetObserveDataTags(0x34)
 	sink.SetHandler(
 		func(data []byte) (frame.Tag, []byte) {
 			log.Printf("[source] received tag[%#x] %s\n", 0x34, string(data))
@@ -63,7 +63,7 @@ func generateAndSendData(stream yomo.Source) error {
 			log.Fatal("json.Marshal error", err)
 		}
 		// send data via QUIC stream.
-		_, err = stream.Write(sendingBuf)
+		err = stream.Write(0x33, sendingBuf)
 
 		if err != nil {
 			log.Println("[source] ❌ Emit to YoMo-Zipper failure with err ", err, " data", data)

@@ -18,23 +18,33 @@ func main() {
 	}
 
 	// init yomo-source
-	client := yomo.NewSource("source-pipe", "localhost:9000")
-	defer client.Close()
+	source := yomo.NewSource("source-pipe", "localhost:9000")
+	defer source.Close()
 
 	// connect to yomo-zipper
-	err := client.Connect()
+	err := source.Connect()
 	if err != nil {
 		panic(err)
 	}
 
-	// set dataID = 0x01
-	client.SetDataTag(0x01)
-
-	written, err := io.Copy(client, os.Stdin)
+	written, err := io.Copy(&TagWriter{tag: 0x01, source: source}, os.Stdin)
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Printf("written: %d", written)
 
 	select {}
+}
+
+type TagWriter struct {
+	tag    uint32
+	source yomo.Source
+}
+
+func (w *TagWriter) Write(data []byte) (int, error) {
+	err := w.source.Write(w.tag, data)
+	if err != nil {
+		return 0, err
+	}
+	return len(data), err
 }

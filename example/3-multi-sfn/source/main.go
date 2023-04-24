@@ -28,8 +28,6 @@ func main() {
 		return
 	}
 
-	source.SetDataTag(0x10)
-
 	defer source.Close()
 
 	// generate mock data and send it to YoMo-Zipper in every 100 ms.
@@ -52,7 +50,7 @@ func generateAndSendData(source yomo.Source) {
 		}
 
 		// send data via QUIC stream.
-		_, err = source.Write(sendingBuf)
+		err = source.Write(0x10, sendingBuf)
 		if err != nil {
 			log.Printf("❌ Emit %v to YoMo-Zipper failure with err: %v", data, err)
 		} else {
