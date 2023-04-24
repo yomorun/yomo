@@ -80,7 +80,9 @@ func (s *streamFunction) Connect() error {
 	// notify underlying network operations, when data with tag we observed arrived, invoke the func
 	s.client.SetDataFrameObserver(func(data *frame.DataFrame) {
 		s.client.Logger().Debug("received data frame", "data_frame", data.String())
-		s.onDataFrame(data.GetCarriage(), data.GetMetaFrame())
+		// TODO: 直接传 PayloadFrame, 以便获取当前处理 Tag
+		// s.onDataFrame(data.GetCarriage(), data.GetMetaFrame())
+		s.onDataFrame(data)
 	})
 
 	if s.pfn != nil {
@@ -132,25 +134,31 @@ func (s *streamFunction) Close() error {
 }
 
 // when DataFrame we observed arrived, invoke the user's function
-func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
+// func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
+func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 	if s.fn != nil {
 		go func() {
+			// TODO: 增加 tag 参数
+			// writeFn 为下面的WriteFrame操作,ctx.Write 多次需要调用多次
+			hctx := core.NewHandlerContext(s.client, dataFrame)
+			s.fn(hctx)
 			// invoke serverless
-			tag, resp := s.fn(data)
-			// if resp is not nil, means the user's function has returned something, we should send it to the zipper
-			if len(resp) != 0 {
-				// build a DataFrame
-				// TODO: seems we should implement a DeepCopy() of MetaFrame in the future
-				frame := frame.NewDataFrame()
-				// reuse transactionID
-				frame.SetTransactionID(metaFrame.TransactionID())
-				// reuse sourceID
-				frame.SetSourceID(metaFrame.SourceID())
-				frame.SetCarriage(tag, resp)
-				s.client.WriteFrame(frame)
-			}
+			// tag, resp := s.fn(data)
+			// // if resp is not nil, means the user's function has returned something, we should send it to the zipper
+			// if len(resp) != 0 {
+			// 	// build a DataFrame
+			// 	// TODO: seems we should implement a DeepCopy() of MetaFrame in the future
+			// 	frame := frame.NewDataFrame()
+			// 	// reuse transactionID
+			// 	frame.SetTransactionID(metaFrame.TransactionID())
+			// 	// reuse sourceID
+			// 	frame.SetSourceID(metaFrame.SourceID())
+			// 	frame.SetCarriage(tag, resp)
+			// 	s.client.WriteFrame(frame)
+			// }
 		}()
 	} else if s.pfn != nil {
+		data := dataFrame.GetCarriage()
 		s.client.Logger().Debug("pipe sfn receive", "data_len", len(data), "data", data)
 		s.pIn <- data
 	} else {

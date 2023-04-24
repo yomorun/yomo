@@ -6,7 +6,7 @@ import (
 	"strconv"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core"
 )
 
 type noiseData struct {
@@ -45,16 +45,44 @@ func main() {
 	select {}
 }
 
-func handler(data []byte) (frame.Tag, []byte) {
+// func handler(data []byte) (frame.Tag, []byte) {
+// 	// got
+// 	noise, err := strconv.ParseFloat(string(data), 10)
+// 	if err != nil {
+// 		log.Printf("[sfn-1] got err=%v", err)
+// 		return 0x0, nil
+// 	}
+// 	// result
+// 	result := int(noise)
+// 	log.Printf("[sfn-1] got: tag=0x33, data=%v, return: tag=0x34, data=%v", noise, result)
+
+// 	return 0x34, []byte(strconv.Itoa(result))
+// }
+
+func handler(hctx *core.HandlerContext) {
 	// got
+	data := hctx.Data()
 	noise, err := strconv.ParseFloat(string(data), 10)
 	if err != nil {
 		log.Printf("[sfn-1] got err=%v", err)
-		return 0x0, nil
+		return
 	}
 	// result
 	result := int(noise)
-	log.Printf("[sfn-1] got: tag=0x33, data=%v, return: tag=0x34, data=%v", noise, result)
-
-	return 0x34, []byte(strconv.Itoa(result))
+	resultTag := uint32(0x34)
+	log.Printf(
+		"[sfn-1] got: tag=%#x, data=%v, return: tag=%#x, data=%v\n",
+		hctx.Tag(), noise,
+		resultTag,
+		result,
+	)
+	output := []byte(strconv.Itoa(result))
+	err = hctx.Write(resultTag, output)
+	if err != nil {
+		log.Printf("[sfn-1] write err=%v", err)
+		return
+	}
+	hctx.Write(resultTag, []byte("-ABC-"))
+	hctx.Write(resultTag, []byte("-def-"))
+	hctx.Write(resultTag, []byte("-G-"))
 }
