@@ -12,6 +12,7 @@ const (
 	WasmFuncLoadInput      = "yomo_load_input"
 	WasmFuncDumpOutput     = "yomo_dump_output"
 	WasmFuncHandler        = "yomo_handler"
+	WasmFuncWrite          = "yomo_write"
 )
 
 // Runtime is the abstract interface for wasm runtime
@@ -27,6 +28,8 @@ type Runtime interface {
 
 	// Close releases all the resources related to the runtime
 	Close() error
+	//
+	Outputs() (uint32, [][]byte)
 }
 
 // NewRuntime returns a specific wasm runtime instance according to the type parameter

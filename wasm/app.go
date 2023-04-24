@@ -4,61 +4,67 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/yomorun/yomo/api"
+	// "github.com/yomorun/yomo/api"
+	// "github.com/yomorun/yomo/api/tinygo"
+
+	"github.com/yomorun/yomo/serverless"
 )
 
 // tinygo required main function
-func main() {}
-
-//export yomo_observe_datatag
-func yomoObserveDataTag(tag uint32)
-
-//export yomo_load_input
-func yomoLoadInput(pointer *byte)
-
-//export yomo_dump_output
-func yomoDumpOutput(tag uint32, pointer *byte, length int)
-
-//export yomo_init
-func yomoInit() {
-	dataTags := DataTags()
-	for _, tag := range dataTags {
-		yomoObserveDataTag(uint32(tag))
-	}
-}
-
-//export yomo_handler
-func yomoHandler(inputLength int) {
-	// load input data
-	input := make([]byte, inputLength)
-	yomoLoadInput(&input[0])
-	// handler
-	ctx := api.NewContext(DataTags(), input)
-	Handler(ctx)
-	// tag, output := Handler(ctx)
-	// dump output data
-	// if output == nil {
-	// 	return
-	// }
-	// yomoDumpOutput(uint32(tag), &output[0], len(output))
+func main() {
+	// api.NewContext = tinygo.NewContext
+	serverless.NewContext = serverless.NewHandlerContext
+	serverless.DataTags = DataTags
+	serverless.Handler = Handler
 }
 
 // Handler will handle the raw data
-func Handler(ctx api.Context) error {
-	data := ctx.Data()
+// func Handler(ctx serverless.Context) {
+func Handler(data []byte) {
+	// func Handler(ctx *serverless.HandlerContext) {
+	// data := ctx.Data()
 	// cyan
 	color(36, "sfn received %d bytes: %s\n", len(data), data)
-	output := strings.ToUpper(string(data))
-	// blue
+	output := strings.ToUpper(string(data)) + "--ABC--"
+	tag := uint32(0x34)
+	// ctx.Write(tag, []byte(output))
+	result := []byte(output)
+	yomoWrite(tag, &result[0], len(result))
 	color(34, "sfn write %d bytes: %s\n", len(output), output)
-	return ctx.Write(0x34, []byte(output))
+
+	result2 := []byte("hello")
+	yomoWrite(tag, &result2[0], len(result2))
+	color(34, "sfn write %d bytes: %s\n", len(result2), result2)
+
+	result3 := []byte("world")
+	yomoWrite(tag, &result3[0], len(result3))
+	color(34, "sfn write %d bytes: %s\n", len(result3), result3)
+
+	result4 := []byte("-abcdefg-")
+	yomoWrite(tag, &result4[0], len(result4))
+	color(34, "sfn write %d bytes: %s\n", len(result4), result4)
+
+	result5 := []byte("-HIJKLMN-")
+	yomoWrite(tag, &result5[0], len(result5))
+	color(34, "sfn write %d bytes: %s\n", len(result5), result5)
+	// ctx.Write(tag, []byte("-abcdefg-"))
+	// ctx.Write(tag, []byte("-HIJklmn-"))
+	// ctx.Write(tag, []byte("-oPqRst-"))
+	// ctx.Write(tag, []byte("-uvw-"))
+	// ctx.Write(tag, []byte("-XYZ-"))
+	// blue
+	color(34, "sfn write all done.\n")
 }
 
-func DataTags() []api.Tag {
-	return []api.Tag{0x33}
+func DataTags() []uint32 {
+	return []uint32{0x33}
 }
 
 func color(color int, format string, a ...interface{}) {
 	f := fmt.Sprintf("\033[%dm%s\033[0m", color, format)
 	fmt.Printf(f, a...)
 }
+
+//export yomo_write
+//go:linkname yomoWrite
+func yomoWrite(tag uint32, pointer *byte, length int)

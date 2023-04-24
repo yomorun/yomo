@@ -5,6 +5,7 @@ import (
 
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/serverless"
 )
 
 // StreamFunction defines serverless streaming functions.
@@ -140,8 +141,8 @@ func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 		go func() {
 			// TODO: 增加 tag 参数
 			// writeFn 为下面的WriteFrame操作,ctx.Write 多次需要调用多次
-			hctx := core.NewHandlerContext(s.client, dataFrame)
-			s.fn(hctx)
+			hctx := serverless.NewHandlerContext(s.client, dataFrame)
+			s.fn(hctx.(*serverless.HandlerContext))
 			// invoke serverless
 			// tag, resp := s.fn(data)
 			// // if resp is not nil, means the user's function has returned something, we should send it to the zipper

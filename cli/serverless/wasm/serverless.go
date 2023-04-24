@@ -9,6 +9,7 @@ import (
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/cli/serverless"
 	pkglog "github.com/yomorun/yomo/pkg/log"
+	api "github.com/yomorun/yomo/serverless"
 )
 
 // wasmServerless will run serverless functions from the given compiled WebAssembly files.
@@ -60,14 +61,36 @@ func (s *wasmServerless) Run(verbose bool) error {
 
 		var ch chan error
 
-		sfn.SetHandler(
-			func(req []byte) (uint32, []byte) {
-				tag, res, err := s.runtime.RunHandler(req)
-				if err != nil {
-					ch <- err
-				}
+		// sfn.SetHandler(
+		// 	func(req []byte) (uint32, []byte) {
+		// 		tag, res, err := s.runtime.RunHandler(req)
+		// 		if err != nil {
+		// 			ch <- err
+		// 		}
 
-				return tag, res
+		// 		return tag, res
+		// 	},
+		// )
+		sfn.SetHandler(
+			func(hctx *api.HandlerContext) {
+				// s.runtime.RunHandler(hctx)
+				// req := hctx.Data()
+				// tag, res, err := s.runtime.RunHandler(req)
+				// if err != nil {
+				// 	ch <- err
+				// }
+				// s.runtime.RunHandler(req)
+				// tag, outputs := s.runtime.Outputs()
+				// outputs = append(outputs, []byte("-ABC-"))
+				// outputs = append(outputs, []byte("-def-"))
+				// outputs = append(outputs, []byte("-GGG-"))
+				// for _, output := range outputs {
+				// 	fmt.Printf("wasm serverless handler: got tag[%#x], output_tag=%#x, result=%s\n", hctx.Tag(), tag, output)
+				// 	if err := hctx.Write(tag, output); err != nil {
+				// 		fmt.Printf("wasm serverless handler: write error: %v\n", err)
+				// 		return
+				// 	}
+				// }
 			},
 		)
 

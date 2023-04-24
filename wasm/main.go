@@ -1,5 +1,4 @@
-// Package wasm provides WebAssembly serverless function runtimes.
-package wasm
+package main
 
 import (
 	"context"
@@ -11,6 +10,89 @@ import (
 	"github.com/tetratelabs/wazero/api"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 	"github.com/tetratelabs/wazero/sys"
+	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/serverless"
+)
+
+// =======================================================================
+// main
+// =======================================================================
+func main() {
+	runtime, err := newWazeroRuntime()
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	err = runtime.Init("./sfn.wasm")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	addr := "127.0.0.1:9000"
+	sfn := yomo.NewStreamFunction(
+		"noise",
+		addr,
+		yomo.WithObserveDataTags(0x33),
+	)
+
+	// sfn.SetHandler(
+	// 	func(req []byte) (uint32, []byte) {
+	// 		tag, res, err := s.runtime.RunHandler(req)
+	// 		if err != nil {
+	// 			ch <- err
+	// 		}
+
+	// 		return tag, res
+	// 	},
+	// )
+	sfn.SetHandler(
+		func(hctx *serverless.HandlerContext) {
+			runtime.RunHandler(hctx)
+			// req := hctx.Data()
+			// tag, res, err := s.runtime.RunHandler(req)
+			// if err != nil {
+			// 	ch <- err
+			// }
+			// s.runtime.RunHandler(req)
+			// tag, outputs := s.runtime.Outputs()
+			// outputs = append(outputs, []byte("-ABC-"))
+			// outputs = append(outputs, []byte("-def-"))
+			// outputs = append(outputs, []byte("-GGG-"))
+			// for _, output := range outputs {
+			// 	fmt.Printf("wasm serverless handler: got tag[%#x], output_tag=%#x, result=%s\n", hctx.Tag(), tag, output)
+			// 	if err := hctx.Write(tag, output); err != nil {
+			// 		fmt.Printf("wasm serverless handler: write error: %v\n", err)
+			// 		return
+			// 	}
+			// }
+		},
+	)
+
+	sfn.SetErrorHandler(
+		func(err error) {
+			log.Printf("[wasm][%s] error handler: %T %v\n", addr, err, err)
+		},
+	)
+
+	err = sfn.Connect()
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer sfn.Close()
+	defer runtime.Close()
+
+	select {}
+}
+
+// =======================================================================
+// wasm runtime
+// =======================================================================
+const (
+	WasmFuncInit           = "yomo_init"
+	WasmFuncObserveDataTag = "yomo_observe_datatag"
+	WasmFuncLoadInput      = "yomo_load_input"
+	WasmFuncDumpOutput     = "yomo_dump_output"
+	WasmFuncHandler        = "yomo_handler"
+	WasmFuncWrite          = "yomo_write"
 )
 
 type wazeroRuntime struct {
@@ -24,7 +106,9 @@ type wazeroRuntime struct {
 	input     []byte
 	outputTag uint32
 	output    []byte
-	outputs   [][]byte
+	//
+	outputs       [][]byte
+	serverlessCtx *serverless.HandlerContext
 }
 
 func newWazeroRuntime() (*wazeroRuntime, error) {
@@ -103,24 +187,47 @@ func (r *wazeroRuntime) GetObserveDataTags() []uint32 {
 }
 
 // RunHandler runs the wasm application (request -> response mode)
-func (r *wazeroRuntime) RunHandler(data []byte) (uint32, []byte, error) {
+// func (r *wazeroRuntime) RunHandler(data []byte) (uint32, []byte, error) {
+// 	r.input = data
+// 	// reset output
+// 	r.outputTag = 0
+// 	r.output = nil
+// 	r.outputs = nil
+
+// 	// run handler
+// 	handler := r.module.ExportedFunction(WasmFuncHandler)
+// 	if _, err := handler.Call(r.ctx, uint64(len(data))); err != nil {
+// 		if exitErr, ok := err.(*sys.ExitError); ok && exitErr.ExitCode() != 0 {
+// 			return 0, nil, fmt.Errorf("handler.Call: %v", err)
+// 		} else if !ok {
+// 			return 0, nil, fmt.Errorf("handler.Call: %v", err)
+// 		}
+// 	}
+
+//		return r.outputTag, r.output, nil
+//	}
+func (r *wazeroRuntime) RunHandler(hctx *serverless.HandlerContext) {
+	log.Println("runtime.RunHandler")
+	data := hctx.Data()
 	r.input = data
 	// reset output
 	r.outputTag = 0
 	r.output = nil
+	//
 	r.outputs = nil
+	r.serverlessCtx = hctx
 
 	// run handler
 	handler := r.module.ExportedFunction(WasmFuncHandler)
 	if _, err := handler.Call(r.ctx, uint64(len(data))); err != nil {
 		if exitErr, ok := err.(*sys.ExitError); ok && exitErr.ExitCode() != 0 {
-			return 0, nil, fmt.Errorf("handler.Call: %v", err)
+			log.Fatalf("handler.Call 0: %v\n", err)
 		} else if !ok {
-			return 0, nil, fmt.Errorf("handler.Call: %v", err)
+			log.Fatalf("handler.Call 1: %v\n", err)
 		}
 	}
 
-	return r.outputTag, r.output, nil
+	// return r.outputTag, r.output, nil
 }
 
 func (r *wazeroRuntime) Outputs() (uint32, [][]byte) {
@@ -163,4 +270,5 @@ func (r *wazeroRuntime) write(ctx context.Context, m api.Module, tag int32, poin
 	}
 	copy(output, buf)
 	r.outputs = append(r.outputs, output)
+	r.serverlessCtx.Write(uint32(tag), output)
 }
