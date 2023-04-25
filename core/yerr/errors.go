@@ -41,6 +41,8 @@ func (e *yomoError) ErrorCode() ErrorCode {
 type ErrorCode uint64
 
 const (
+	// ErrorCodeAuthenticateFailed client auth failed.
+	ErrorCodeAuthenticateFailed ErrorCode = 0xC9
 	// ErrorCodeClientAbort client abort
 	ErrorCodeClientAbort ErrorCode = 0xC7
 	// ErrorCodeUnknown unknown error
@@ -70,19 +72,20 @@ const (
 )
 
 var errCodeStringMap = map[ErrorCode]string{
-	ErrorCodeClientAbort:   "ClientAbort",
-	ErrorCodeUnknown:       "UnknownError",
-	ErrorCodeClosed:        "NetClosed",
-	ErrorCodeBeforeHandler: "BeforeHandler",
-	ErrorCodeMainHandler:   "MainHandler",
-	ErrorCodeAfterHandler:  "AfterHandler",
-	ErrorCodeHandshake:     "Handshake",
-	ErrorCodeRejected:      "Rejected",
-	ErrorCodeGoaway:        "Goaway",
-	ErrorCodeData:          "DataFrame",
-	ErrorCodeUnknownClient: "UnknownClient",
-	ErrorCodeDuplicateName: "DuplicateName",
-	ErrorCodeStartHandler:  "StartHandler",
+	ErrorCodeAuthenticateFailed: "AuthenticateFailed",
+	ErrorCodeClientAbort:        "ClientAbort",
+	ErrorCodeUnknown:            "UnknownError",
+	ErrorCodeClosed:             "NetClosed",
+	ErrorCodeBeforeHandler:      "BeforeHandler",
+	ErrorCodeMainHandler:        "MainHandler",
+	ErrorCodeAfterHandler:       "AfterHandler",
+	ErrorCodeHandshake:          "Handshake",
+	ErrorCodeRejected:           "Rejected",
+	ErrorCodeGoaway:             "Goaway",
+	ErrorCodeData:               "DataFrame",
+	ErrorCodeUnknownClient:      "UnknownClient",
+	ErrorCodeDuplicateName:      "DuplicateName",
+	ErrorCodeStartHandler:       "StartHandler",
 }
 
 func (e ErrorCode) String() string {

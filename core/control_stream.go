@@ -13,6 +13,7 @@ import (
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
+	"github.com/yomorun/yomo/core/yerr"
 	"github.com/yomorun/yomo/core/ylog"
 	"golang.org/x/exp/slog"
 )
@@ -139,14 +140,12 @@ func (ss *ServerControlStream) VerifyAuthentication(verifyFunc VerifyAuthenticat
 		return md, err
 	}
 	if !ok {
-		return md, ss.stream.WriteFrame(
-			frame.NewAuthenticationRespFrame(
-				false,
-				fmt.Sprintf("yomo: authentication failed, client credential name is %s", received.AuthName()),
-			),
+		return md, ss.CloseWithError(
+			uint64(yerr.ErrorCodeAuthenticateFailed),
+			fmt.Sprintf("yomo: authentication failed, client credential name is %s", received.AuthName()),
 		)
 	}
-	if err := ss.stream.WriteFrame(frame.NewAuthenticationRespFrame(true, "")); err != nil {
+	if err := ss.stream.WriteFrame(frame.NewAuthenticationAckFrame()); err != nil {
 		return md, err
 	}
 
@@ -236,17 +235,17 @@ func (cs *ClientControlStream) Authenticate(cred *auth.Credential) error {
 	}
 	received, err := cs.stream.ReadFrame()
 	if err != nil {
+		if qerr := new(quic.ApplicationError); errors.As(err, &qerr) && qerr.ErrorCode == yerr.ErrorCodeAuthenticateFailed.To() {
+			return &ErrAuthenticateFailed{qerr.ErrorMessage}
+		}
 		return err
 	}
-	resp, ok := received.(*frame.AuthenticationRespFrame)
+	_, ok := received.(*frame.AuthenticationAckFrame)
 	if !ok {
 		return fmt.Errorf(
 			"yomo: read unexcept frame during waiting authentication resp, frame readed: %s",
 			received.Type().String(),
 		)
-	}
-	if !resp.OK() {
-		return &ErrAuthenticateFailed{resp.Reason()}
 	}
 
 	// create a goroutinue to continuous read frame from server.
