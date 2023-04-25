@@ -1,8 +1,6 @@
 package serverless
 
 import (
-	"fmt"
-
 	"github.com/yomorun/yomo/core/frame"
 )
 
@@ -30,7 +28,6 @@ func (c *Context) Write(tag uint32, data []byte) error {
 	if data == nil {
 		return nil
 	}
-	fmt.Printf("[serverless] write data with tag[%#v] to zipper: %s\n", tag, data)
 	metaFrame := c.dataFrame.GetMetaFrame()
 	dataFrame := frame.NewDataFrame()
 	// reuse transactionID

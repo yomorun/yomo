@@ -81,8 +81,6 @@ func (s *streamFunction) Connect() error {
 	// notify underlying network operations, when data with tag we observed arrived, invoke the func
 	s.client.SetDataFrameObserver(func(data *frame.DataFrame) {
 		s.client.Logger().Debug("received data frame", "data_frame", data.String())
-		// TODO: 直接传 PayloadFrame, 以便获取当前处理 Tag
-		// s.onDataFrame(data.GetCarriage(), data.GetMetaFrame())
 		s.onDataFrame(data)
 	})
 
@@ -139,24 +137,8 @@ func (s *streamFunction) Close() error {
 func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 	if s.fn != nil {
 		go func() {
-			// TODO: 增加 tag 参数
-			// writeFn 为下面的WriteFrame操作,ctx.Write 多次需要调用多次
 			serverlessCtx := serverless.NewContext(s.client, dataFrame)
 			s.fn(serverlessCtx)
-			// invoke serverless
-			// tag, resp := s.fn(data)
-			// // if resp is not nil, means the user's function has returned something, we should send it to the zipper
-			// if len(resp) != 0 {
-			// 	// build a DataFrame
-			// 	// TODO: seems we should implement a DeepCopy() of MetaFrame in the future
-			// 	frame := frame.NewDataFrame()
-			// 	// reuse transactionID
-			// 	frame.SetTransactionID(metaFrame.TransactionID())
-			// 	// reuse sourceID
-			// 	frame.SetSourceID(metaFrame.SourceID())
-			// 	frame.SetCarriage(tag, resp)
-			// 	s.client.WriteFrame(frame)
-			// }
 		}()
 	} else if s.pfn != nil {
 		data := dataFrame.GetCarriage()
