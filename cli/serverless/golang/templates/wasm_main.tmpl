@@ -1,6 +1,8 @@
 // tinygo required main function
 func main() {}
 
+// TODO: need refactor
+
 //export yomo_observe_datatag
 func yomoObserveDataTag(tag uint32)
 
@@ -9,6 +11,9 @@ func yomoLoadInput(pointer *byte)
 
 //export yomo_dump_output
 func yomoDumpOutput(tag uint32, pointer *byte, length int)
+
+//export yomo_write
+func yomoWrite(tag uint32, pointer *byte, length int)
 
 //export yomo_init
 func yomoInit() {

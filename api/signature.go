@@ -1,4 +1,4 @@
-// // wasm API
+// api wasm application programming interface
 package api
 
 // import "github.com/yomorun/yomo/core/frame"
