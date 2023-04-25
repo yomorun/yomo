@@ -9,7 +9,7 @@ import (
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/cli/serverless"
 	pkglog "github.com/yomorun/yomo/pkg/log"
-	api "github.com/yomorun/yomo/serverless"
+	sl "github.com/yomorun/yomo/serverless"
 )
 
 // wasmServerless will run serverless functions from the given compiled WebAssembly files.
@@ -72,7 +72,7 @@ func (s *wasmServerless) Run(verbose bool) error {
 		// 	},
 		// )
 		sfn.SetHandler(
-			func(hctx *api.HandlerContext) {
+			func(ctx *sl.Context) {
 				// s.runtime.RunHandler(hctx)
 				// req := hctx.Data()
 				// tag, res, err := s.runtime.RunHandler(req)
