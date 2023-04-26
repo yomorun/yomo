@@ -3,6 +3,7 @@ package deno
 
 import (
 	"encoding/binary"
+	"errors"
 	"io"
 	"log"
 	"net"
@@ -90,9 +91,10 @@ func startSfn(name string, zipperAddr string, credential string, observed []fram
 	sfn := yomo.NewStreamFunction(
 		name,
 		zipperAddr,
-		yomo.WithObserveDataTags(observed...),
-		yomo.WithCredential(credential),
+		yomo.WithSfnCredential(credential),
 	)
+
+	sfn.SetObserveDataTags(observed...)
 
 	sfn.SetHandler(
 		func(ctx serverless.Context) {
@@ -156,6 +158,10 @@ func runResponse(conn net.Conn, sfn yomo.StreamFunction, errCh chan<- error) {
 }
 
 func run(name string, zipperAddr string, credential string, jsPath string, socketPath string) error {
+	if _, err := exec.LookPath("deno"); err != nil {
+		return errors.New("[deno] command was not found. For details, visit https://deno.land")
+	}
+
 	errCh := make(chan error)
 
 	listener, err := listen(socketPath)

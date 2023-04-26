@@ -1,6 +1,6 @@
-import React from 'react'
-import Document, { Html, Head, Main, NextScript } from 'next/document'
+import Document, { Head, Html, Main, NextScript } from 'next/document';
 import { SkipNavLink } from "nextra-theme-docs";
+import React from 'react';
 
 class MyDocument extends Document {
   render() {
@@ -24,6 +24,7 @@ class MyDocument extends Document {
           `,
             }}
           />
+          <script async src={`https://analytics.umami.is/script.js`} data-website-id={`d7fe47fa-d12e-42c4-b4ed-586bd3edf118`} />
           <link href="https://fonts.googleapis.com/css2?family=Exo+2&display=swap" rel="stylesheet"></link>
         </Head>
         <body>

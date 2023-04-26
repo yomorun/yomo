@@ -12,9 +12,9 @@ func main() {
 	sfn := yomo.NewStreamFunction(
 		"echo-sfn",
 		"localhost:9002",
-		yomo.WithObserveDataTags(0x33),
-		yomo.WithCredential("token:z2"),
+		yomo.WithSfnCredential("token:z2"),
 	)
+	sfn.SetObserveDataTags(0x33)
 	defer sfn.Close()
 
 	// set handler

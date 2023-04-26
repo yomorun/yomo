@@ -32,8 +32,8 @@ func main() {
 	sink := yomo.NewStreamFunction(
 		"sink",
 		addr,
-		yomo.WithObserveDataTags(0x34),
 	)
+	sink.SetObserveDataTags(0x34)
 	sink.SetHandler(
 		func(ctx serverless.Context) {
 			log.Printf("[source] received tag[%#x] %s\n", ctx.Tag(), string(ctx.Data()))

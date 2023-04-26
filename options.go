@@ -5,32 +5,49 @@ import (
 
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core"
+	"github.com/yomorun/yomo/core/frame"
 	"golang.org/x/exp/slog"
 )
 
 type (
 	// SourceOption is option for the Source.
-	SourceOption = core.ClientOption
+	SourceOption core.ClientOption
 
 	// SfnOption is option for the SFN.
-	SfnOption = core.ClientOption
+	SfnOption core.ClientOption
 )
 
+// SourceOption Options.
 var (
-	// WithObserveDataTags sets the list of data tags for the Source or SFN.
-	WithObserveDataTags = core.WithObserveDataTags
+	// WithObserveDataTags sets the list of data tags for the Source.
+	WithObserveDataTags = func(tags ...frame.Tag) SourceOption { return SourceOption(core.WithObserveDataTags(tags...)) }
 
-	// WithCredential sets the credential method for the Source or SFN.
-	WithCredential = core.WithCredential
+	// WithCredential sets the credential method for the Source.
+	WithCredential = func(payload string) SourceOption { return SourceOption(core.WithCredential(payload)) }
 
-	// WithClientTLSConfig sets tls config for the Source or SFN.
-	WithClientTLSConfig = core.WithClientTLSConfig
+	// WithSourceTLSConfig sets tls config for the Source.
+	WithSourceTLSConfig = func(tc *tls.Config) SourceOption { return SourceOption(core.WithClientTLSConfig(tc)) }
 
-	// WithClientQuicConfig sets quic config for the Source or SFN.
-	WithClientQuicConfig = core.WithClientQuicConfig
+	// WithSourceQuicConfig sets quic config for the Source.
+	WithSourceQuicConfig = func(qc *quic.Config) SourceOption { return SourceOption(core.WithClientQuicConfig(qc)) }
 
-	// WithLogger sets logger for the Source or SFN.
-	WithLogger = core.WithLogger
+	// WithLogger sets logger for the Source.
+	WithLogger = func(l *slog.Logger) SourceOption { return SourceOption(core.WithLogger(l)) }
+)
+
+// Sfn Options.
+var (
+	// WithSfnCredential sets the credential method for the Sfn.
+	WithSfnCredential = func(payload string) SfnOption { return SfnOption(core.WithCredential(payload)) }
+
+	// WithSfnTLSConfig sets tls config for the Sfn.
+	WithSfnTLSConfig = func(tc *tls.Config) SourceOption { return SourceOption(core.WithClientTLSConfig(tc)) }
+
+	// WithSfnQuicConfig sets quic config for the Sfn.
+	WithSfnQuicConfig = func(qc *quic.Config) SourceOption { return SourceOption(core.WithClientQuicConfig(qc)) }
+
+	// WithSfnLogger sets logger for the Sfn.
+	WithSfnLogger = func(l *slog.Logger) SourceOption { return SourceOption(core.WithLogger(l)) }
 )
 
 // ClientOption is option for the upstream Zipper.
