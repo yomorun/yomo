@@ -60,17 +60,6 @@ func (s *wasmServerless) Run(verbose bool) error {
 		sfn.SetObserveDataTags(s.observed...)
 
 		var ch chan error
-
-		// sfn.SetHandler(
-		// 	func(req []byte) (uint32, []byte) {
-		// 		tag, res, err := s.runtime.RunHandler(req)
-		// 		if err != nil {
-		// 			ch <- err
-		// 		}
-
-		// 		return tag, res
-		// 	},
-		// )
 		sfn.SetHandler(
 			func(ctx serverless.Context) {
 				err := s.runtime.RunHandler(ctx)
