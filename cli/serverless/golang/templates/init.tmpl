@@ -3,13 +3,21 @@ package main
 import (
 	"fmt"
 	"strings"
+
+	"github.com/yomorun/yomo/serverless"
 )
 
 // Handler will handle the raw data
-func Handler(data []byte) (uint32, []byte) {
-	fmt.Printf("sfn received %d bytes\n", len(data))
+func Handler(ctx serverless.Context) {
+	data := ctx.Data()
+	fmt.Printf("<< sfn received[%d Bytes]: %s\n", len(data), data)
 	output := strings.ToUpper(string(data))
-	return 0x34, []byte(output)
+	err := ctx.Write(uint32(0x34), []byte(output))
+	if err != nil {
+		fmt.Printf(">> sfn write error: %v\n", err)
+		return
+	}
+	fmt.Printf(">> sfn written[%d Bytes]: %s\n", len(output), output)
 }
 
 func DataTags() []uint32 {

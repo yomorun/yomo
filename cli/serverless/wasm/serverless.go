@@ -73,25 +73,10 @@ func (s *wasmServerless) Run(verbose bool) error {
 		// )
 		sfn.SetHandler(
 			func(ctx serverless.Context) {
-				// TODO: use ctx
-				// s.runtime.RunHandler(hctx)
-				// req := hctx.Data()
-				// tag, res, err := s.runtime.RunHandler(req)
-				// if err != nil {
-				// 	ch <- err
-				// }
-				// s.runtime.RunHandler(req)
-				// tag, outputs := s.runtime.Outputs()
-				// outputs = append(outputs, []byte("-ABC-"))
-				// outputs = append(outputs, []byte("-def-"))
-				// outputs = append(outputs, []byte("-GGG-"))
-				// for _, output := range outputs {
-				// 	fmt.Printf("wasm serverless handler: got tag[%#x], output_tag=%#x, result=%s\n", hctx.Tag(), tag, output)
-				// 	if err := hctx.Write(tag, output); err != nil {
-				// 		fmt.Printf("wasm serverless handler: write error: %v\n", err)
-				// 		return
-				// 	}
-				// }
+				err := s.runtime.RunHandler(ctx)
+				if err != nil {
+					ch <- err
+				}
 			},
 		)
 

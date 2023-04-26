@@ -2,7 +2,7 @@
 package guest
 
 import (
-	_ "unsafe"
+	"errors"
 
 	"github.com/yomorun/yomo/serverless"
 )
@@ -31,7 +31,9 @@ func (c *GuestContext) Write(tag uint32, data []byte) error {
 	if data == nil {
 		return nil
 	}
-	yomoWrite(tag, &data[0], len(data))
+	if yomoWrite(tag, &data[0], len(data)) != 0 {
+		return errors.New("yomoWrite error")
+	}
 	return nil
 }
 
@@ -41,7 +43,7 @@ func yomoObserveDataTag(tag uint32)
 
 //export yomo_write
 //go:linkname yomoWrite
-func yomoWrite(tag uint32, pointer *byte, length int)
+func yomoWrite(tag uint32, pointer *byte, length int) uint32
 
 //export yomo_context_tag
 //go:linkname yomoContextTag
@@ -56,7 +58,7 @@ func contextData(ptr uintptr, size uint32) uint32
 func yomoInit() {
 	dataTags := DataTags()
 	for _, tag := range dataTags {
-		yomoObserveDataTag(uint32(tag))
+		yomoObserveDataTag(tag)
 	}
 }
 

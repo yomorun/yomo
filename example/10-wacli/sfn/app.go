@@ -5,22 +5,22 @@ import (
 	"strconv"
 
 	"github.com/tidwall/gjson"
-	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/serverless"
 )
 
-func Handler(data []byte) (frame.Tag, []byte) {
+func Handler(ctx serverless.Context) {
 	// tingo still does not support `encding/json` for parsing json
 	// https://tinygo.org/docs/reference/lang-support/stdlib/
-	result := gjson.GetBytes(data, "noise")
+	result := gjson.GetBytes(ctx.Data(), "noise")
 	if !result.Exists() {
 		log.Println("[sfn] no noise data")
-		return 0x0, nil
+		return
 	}
 	noise := result.Float()
 	log.Printf("[sfn] got 0x33 noise=%v\n", noise)
-	return 0x34, []byte(strconv.FormatFloat(noise, 'g', 5, 64))
+	ctx.Write(0x34, []byte(strconv.FormatFloat(noise, 'g', 5, 64)))
 }
 
-func DataTags() []frame.Tag {
-	return []frame.Tag{0x33}
+func DataTags() []uint32 {
+	return []uint32{0x33}
 }

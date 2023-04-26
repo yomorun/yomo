@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/serverless"
 )
 
 type noiseData struct {
@@ -35,9 +35,8 @@ func main() {
 		yomo.WithObserveDataTags(0x34),
 	)
 	sink.SetHandler(
-		func(data []byte) (frame.Tag, []byte) {
-			log.Printf("[source] received tag[%#x] %s\n", 0x34, string(data))
-			return 0, nil
+		func(ctx serverless.Context) {
+			log.Printf("[source] received tag[%#x] %s\n", ctx.Tag(), string(ctx.Data()))
 		},
 	)
 	if err := sink.Connect(); err != nil {
