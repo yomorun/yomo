@@ -7,9 +7,9 @@ import (
 	"sync"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/cli/serverless"
+	cli "github.com/yomorun/yomo/cli/serverless"
 	pkglog "github.com/yomorun/yomo/pkg/log"
-	sl "github.com/yomorun/yomo/serverless"
+	"github.com/yomorun/yomo/serverless"
 )
 
 // wasmServerless will run serverless functions from the given compiled WebAssembly files.
@@ -22,7 +22,7 @@ type wasmServerless struct {
 }
 
 // Init initializes the serverless
-func (s *wasmServerless) Init(opts *serverless.Options) error {
+func (s *wasmServerless) Init(opts *cli.Options) error {
 	runtime, err := NewRuntime(opts.Runtime)
 	if err != nil {
 		return err
@@ -72,7 +72,8 @@ func (s *wasmServerless) Run(verbose bool) error {
 		// 	},
 		// )
 		sfn.SetHandler(
-			func(ctx *sl.Context) {
+			func(ctx serverless.Context) {
+				// TODO: use ctx
 				// s.runtime.RunHandler(hctx)
 				// req := hctx.Data()
 				// tag, res, err := s.runtime.RunHandler(req)
@@ -127,5 +128,5 @@ func (s *wasmServerless) Executable() bool {
 }
 
 func init() {
-	serverless.Register(&wasmServerless{}, ".wasm")
+	cli.Register(&wasmServerless{}, ".wasm")
 }

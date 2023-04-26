@@ -36,7 +36,7 @@ func main() {
 	)
 
 	sfn.SetHandler(
-		func(ctx *serverless.Context) {
+		func(ctx serverless.Context) {
 			runtime.RunHandler(ctx)
 		},
 	)
@@ -80,7 +80,7 @@ type wazeroRuntime struct {
 
 	observed      []uint32
 	input         []byte
-	serverlessCtx *serverless.Context
+	serverlessCtx serverless.Context
 }
 
 func newWazeroRuntime() (*wazeroRuntime, error) {
@@ -159,10 +159,10 @@ func (r *wazeroRuntime) GetObserveDataTags() []uint32 {
 }
 
 // RunHandler runs the wasm application (request -> response mode)
-func (r *wazeroRuntime) RunHandler(hctx *serverless.Context) {
-	data := hctx.Data()
+func (r *wazeroRuntime) RunHandler(ctx serverless.Context) {
+	data := ctx.Data()
 	r.input = data
-	r.serverlessCtx = hctx
+	r.serverlessCtx = ctx
 
 	// run handler
 	handler := r.module.ExportedFunction(WasmFuncHandler)
@@ -186,7 +186,6 @@ func (r *wazeroRuntime) observeDataTag(ctx context.Context, tag int32) {
 }
 
 func (r *wazeroRuntime) write(ctx context.Context, m api.Module, tag int32, pointer int32, length int32) {
-	// r.outputTag = uint32(tag)
 	output := make([]byte, length)
 	buf, ok := m.Memory().Read(uint32(pointer), uint32(length))
 	if !ok {

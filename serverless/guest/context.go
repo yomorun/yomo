@@ -1,5 +1,11 @@
-// api wasm application programming interface
-package api
+// guest wasm application programming interface for guest module
+package guest
+
+import (
+	_ "unsafe"
+
+	"github.com/yomorun/yomo/serverless"
+)
 
 var (
 
@@ -7,25 +13,21 @@ var (
 	DataTags func() []uint32 = func() []uint32 { return []uint32{0} }
 
 	// Handler is the handler function for guest
-	Handler func(ctx *Context) = func(*Context) {}
+	Handler func(ctx serverless.Context) = func(serverless.Context) {}
 	// Handler func(ctx Context, input []byte)
 )
 
-type Context struct{}
+type GuestContext struct{}
 
-func NewContext() *Context {
-	return &Context{}
-}
-
-func (c *Context) Tag() uint32 {
+func (c *GuestContext) Tag() uint32 {
 	return yomoContextTag()
 }
 
-func (c *Context) Data() []byte {
+func (c *GuestContext) Data() []byte {
 	return GetBytes(ContextData)
 }
 
-func (c *Context) Write(tag uint32, data []byte) error {
+func (c *GuestContext) Write(tag uint32, data []byte) error {
 	if data == nil {
 		return nil
 	}
@@ -61,7 +63,7 @@ func yomoInit() {
 //export yomo_handler
 //go:linkname yomoHandler
 func yomoHandler() {
-	ctx := &Context{}
+	ctx := &GuestContext{}
 	Handler(ctx)
 }
 

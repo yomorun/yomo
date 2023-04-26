@@ -5,7 +5,7 @@ import (
 
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/serverless"
+	"github.com/yomorun/yomo/core/serverless"
 )
 
 // StreamFunction defines serverless streaming functions.

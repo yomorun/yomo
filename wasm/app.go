@@ -4,19 +4,18 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/yomorun/yomo/api"
+	"github.com/yomorun/yomo/serverless"
+	"github.com/yomorun/yomo/serverless/guest"
 )
 
 // tinygo required main function
 func main() {
-	// api.NewContext = tinygo.NewContext
-	// serverless.NewContext = serverless.NewHandlerContext
-	api.DataTags = DataTags
-	api.Handler = Handler
+	guest.DataTags = DataTags
+	guest.Handler = Handler
 }
 
 // Handler will handle the raw data
-func Handler(ctx *api.Context) {
+func Handler(ctx serverless.Context) {
 	data := ctx.Data()
 	// cyan
 	color(36, "<< sfn received tag[%#x] %d bytes: %s\n", ctx.Tag(), len(data), data)

@@ -1,5 +1,5 @@
-// api wasm application programming interface
-package api
+// guest wasm application programming interface for guest module
+package guest
 
 import (
 	"unsafe"

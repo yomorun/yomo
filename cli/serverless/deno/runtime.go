@@ -95,7 +95,7 @@ func startSfn(name string, zipperAddr string, credential string, observed []fram
 	)
 
 	sfn.SetHandler(
-		func(ctx *serverless.Context) {
+		func(ctx serverless.Context) {
 			data := ctx.Data()
 			err := binary.Write(conn, binary.LittleEndian, uint32(len(data)))
 			if err != nil {
