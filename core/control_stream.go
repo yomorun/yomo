@@ -243,7 +243,7 @@ func (cs *ClientControlStream) Authenticate(cred *auth.Credential) error {
 	_, ok := received.(*frame.AuthenticationAckFrame)
 	if !ok {
 		return fmt.Errorf(
-			"yomo: read unexcept frame during waiting authentication resp, frame readed: %s",
+			"yomo: read unexpected frame during waiting authentication resp, frame read: %s",
 			received.Type().String(),
 		)
 	}
