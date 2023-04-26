@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"net"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -98,7 +99,19 @@ func TestFrameRoundTrip(t *testing.T) {
 	sameNameSfn := createTestStreamFunction("sfn-1", obversedTag)
 	sameNameSfn.SetDataFrameObserver(func(bf *frame.DataFrame) {
 		assert.Equal(t, string(payload), string(bf.GetCarriage()))
+
+		// panic test: reading array out of range.
+		arr := []int{1, 2}
+		t.Log(arr[100])
 	})
+
+	sameNameSfn.SetErrorHandler(func(err error) {
+		assert.Truef(t,
+			strings.HasPrefix(err.Error(), "yomo: stream panic: runtime error: index out of range [100] with length 2"),
+			"The ErrorHander must receive a runtime error",
+		)
+	})
+
 	err = sameNameSfn.Connect(ctx, testaddr)
 	assert.NoError(t, err, "sfn connect should replace the old sfn stream")
 
