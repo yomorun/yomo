@@ -9,6 +9,7 @@ import (
 
 // Define wasm import/export function names
 const (
+	WasmFuncStart          = "_start"
 	WasmFuncInit           = "yomo_init"
 	WasmFuncObserveDataTag = "yomo_observe_datatag"
 	WasmFuncHandler        = "yomo_handler"

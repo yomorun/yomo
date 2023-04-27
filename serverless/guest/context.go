@@ -8,13 +8,10 @@ import (
 )
 
 var (
-
 	// DataTags set handler observed data tags
 	DataTags func() []uint32 = func() []uint32 { return []uint32{0} }
-
 	// Handler is the handler function for guest
 	Handler func(ctx serverless.Context) = func(serverless.Context) {}
-	// Handler func(ctx Context, input []byte)
 )
 
 type GuestContext struct{}
