@@ -4,10 +4,10 @@ This example represents how YoMo works with cascading zippers in mesh network.
 
 ## Code structure
 
-- `source`: Mocking random data and send it to `zipper-1`. [docs.yomo.run/source](https://docs.yomo.run/source)
-- `zipper-1`: Receive the streams from `source`, and broadcast it to downstream `zipper-2` in another region. [docs.yomo.run/zipper](https://docs.yomo.run/zipper)
-- `zipper-2`: Receive the streams from upstream `zipper-1`. [docs.yomo.run/zipper](https://docs.yomo.run/zipper)
-- `sfn`: Receive the streams from `zipper-2` and print it in terminal. [docs.yomo.run/stream-function](https://docs.yomo.run/stream-fn)
+- `source`: Mocking random data and send it to `zipper-1`. [docs.yomo.run/source](https://yomo.run/docs/api/source)
+- `zipper-1`: Receive the streams from `source`, and broadcast it to downstream `zipper-2` in another region. [docs.yomo.run/zipper](https://yomo.run/docs/cli/zipper)
+- `zipper-2`: Receive the streams from upstream `zipper-1`. [docs.yomo.run/zipper](https://yomo.run/docs/cli/zipper)
+- `sfn`: Receive the streams from `zipper-2` and print it in terminal. [docs.yomo.run/stream-function](https://yomo.run/docs/api/sfn)
 
 ## Prepare
 
@@ -22,14 +22,6 @@ $ curl -fsSL https://get.yomo.run | sh
   ==> Downloading asset for darwin amd64
   ==> Installing yomo to /usr/local/bin
   ==> Installation complete
-```
-
-### Or build from source
-
-```bash
-$ go install github.com/yomorun/yomo/cmd/yomo@latest
-$ yomo version
-YoMo CLI Version: v1.0.0
 ```
 
 ## Option 1: Auto Run
@@ -76,29 +68,19 @@ task: [sfn] ./bin/sfn
 
 ## Option 2: Manual
 
-### Run [zipper-1](https://docs.yomo.run/zipper)
+### Run [zipper-1](https://yomo.run/docs/cli/zipper)
 
 ```bash
-cd zipper-1
-go run zipper_1.go
-
-ℹ️   Running YoMo-Zipper...
-2021/11/11 16:09:54 [yomo:zipper] Listening SIGUSR1, SIGUSR2, SIGTERM/SIGINT..
-2021/11/11 16:09:54 [core:server] ✅ [Zipper-1] Listening on: [::]:9001, QUIC: [v1 draft-29], AUTH: [None]
+yomo serve -c zipper_1_wf.yaml
 ```
 
-### Run [zipper-2](https://docs.yomo.run/zipper)
+### Run [zipper-2](https://yomo.run/docs/cli/zipper)
 
 ```bash
-cd zipper-2
-go run zipper_2.go
-
-ℹ️   Running YoMo-Zipper...
-2021/11/11 16:09:54 [yomo:zipper] Listening SIGUSR1, SIGUSR2, SIGTERM/SIGINT..
-2021/11/11 16:09:54 [core:server] ✅ [zipper-2] Listening on: [::]:9002, QUIC: [v1 draft-29], AUTH: [None]
+yomo serve -c zipper_2_wf.yaml
 ```
 
-### Run [stream-function](https://docs.yomo.run/stream-fn)
+### Run [stream-function](https://yomo.run/docs/api/sfn)
 
 ```bash
 go run ./sfn/sfn_echo.go
@@ -107,7 +89,7 @@ go run ./sfn/sfn_echo.go
 2021/11/11 16:11:05 [core:client] ❤️  [echo-sfn]([::]:56245) is connected to YoMo-Zipper localhost:9002
 ```
 
-### Run [yomo-source](https://docs.yomo.run/source)
+### Run [yomo-source](https://yomo.run/docs/api/source)
 
 ```bash
 go run ./source/source.go
