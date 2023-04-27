@@ -126,13 +126,11 @@ func (r *wazeroRuntime) observeDataTag(ctx context.Context, tag uint32) {
 }
 
 func (r *wazeroRuntime) write(ctx context.Context, m api.Module, tag uint32, pointer uint32, length int32) uint32 {
-	output := make([]byte, length)
-	buf, ok := m.Memory().Read(pointer, uint32(length))
+	output, ok := m.Memory().Read(pointer, uint32(length))
 	if !ok {
 		log.Printf("Memory.Read(%d, %d) out of range\n", pointer, length)
 		return 1
 	}
-	copy(output, buf)
 	if err := r.serverlessCtx.Write(tag, output); err != nil {
 		return 2
 	}
