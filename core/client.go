@@ -234,7 +234,7 @@ func (c *Client) processStream(controlStream *ClientControlStream, dataStream Da
 
 						perr := fmt.Errorf("%v", e)
 						c.logger.Error("stream panic", perr)
-						c.handleFrameError(fmt.Errorf("yomo: stream panic: %v\n%s", perr, buf), reconnection)
+						c.errorfn(fmt.Errorf("yomo: stream panic: %v\n%s", perr, buf))
 					}
 				}()
 				c.handleFrame(result.frame)

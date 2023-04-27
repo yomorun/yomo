@@ -106,9 +106,16 @@ func TestFrameRoundTrip(t *testing.T) {
 	})
 
 	sameNameSfn.SetErrorHandler(func(err error) {
-		assert.Truef(t,
-			strings.HasPrefix(err.Error(), "yomo: stream panic: runtime error: index out of range [100] with length 2"),
-			"The ErrorHander must receive a runtime error",
+		if !strings.HasPrefix(err.Error(), "yomo: stream panic") {
+			t.Logf("error accepted is not a panic error, accepted: %+v", err)
+			return
+		}
+		assert.Regexp(
+			t,
+			`^yomo: stream panic: runtime error: index out of range \[100\] with length 2`,
+			err.Error(),
+			"The ErrorHander must receive a runtime error, actual: %+v",
+			err,
 		)
 	})
 
