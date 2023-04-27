@@ -32,8 +32,9 @@ func main() {
 	sfn := yomo.NewStreamFunction(
 		"noise",
 		addr,
-		yomo.WithObserveDataTags(observed...),
 	)
+
+	sfn.SetObserveDataTags(observed...)
 
 	sfn.SetHandler(
 		func(ctx serverless.Context) {
