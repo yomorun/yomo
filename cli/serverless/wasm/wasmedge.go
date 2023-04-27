@@ -92,9 +92,12 @@ func (r *wasmEdgeRuntime) Init(wasmFile string) error {
 	}
 
 	// _start
-	_, err = r.vm.Execute(WasmFuncStart)
-	if err != nil {
-		return fmt.Errorf("vm.Execute %s: %v", WasmFuncStart, err)
+	startFunc := r.vm.GetActiveModule().FindFunction(WasmFuncStart)
+	if startFunc != nil {
+		_, err = r.vm.Execute(WasmFuncStart)
+		if err != nil {
+			return fmt.Errorf("vm.Execute %s: %v", WasmFuncStart, err)
+		}
 	}
 	// yomo init
 	_, err = r.vm.Execute(WasmFuncInit)
