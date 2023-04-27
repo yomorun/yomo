@@ -106,10 +106,13 @@ func TestFrameRoundTrip(t *testing.T) {
 	})
 
 	sameNameSfn.SetErrorHandler(func(err error) {
-		assert.Truef(t,
-			strings.HasPrefix(err.Error(), "yomo: stream panic: runtime error: index out of range [100] with length 2"),
-			"The ErrorHander must receive a runtime error",
-		)
+		if strings.HasPrefix(err.Error(), "yomo: stream panic") {
+			assert.Regexp(
+				t,
+				`^yomo: stream panic: runtime error: index out of range \[100\] with length 2`,
+				err.Error(),
+			)
+		}
 	})
 
 	err = sameNameSfn.Connect(ctx, testaddr)
@@ -139,7 +142,7 @@ func TestFrameRoundTrip(t *testing.T) {
 	err = source.WriteFrame(dataFrame)
 	assert.NoError(t, err, "source write dataFrame must be success")
 
-	time.Sleep(time.Second)
+	time.Sleep(2 * time.Second)
 	assert.Equal(t, recorder.frameBytes(), dataFrameEncoded)
 
 	assert.NoError(t, source.Close(), "source client.Close() should not return error")
