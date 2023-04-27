@@ -15,7 +15,6 @@ func TestSourceSendDataToServer(t *testing.T) {
 	assert.Nil(t, err)
 
 	// send data to server
-	n, err := source.Write([]byte("test"))
-	assert.Greater(t, n, 0, "[source.Write] expected n > 0, but got %d", n)
+	err = source.Write(0x21, []byte("test"))
 	assert.Nil(t, err)
 }

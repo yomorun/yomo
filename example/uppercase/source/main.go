@@ -16,7 +16,6 @@ func main() {
 		"source",
 		addr,
 	)
-	source.SetDataTag(0x33)
 	if err := source.Connect(); err != nil {
 		log.Fatalln(err)
 	}
@@ -41,7 +40,7 @@ func main() {
 	const HelloData = "Hello, YoMo!"
 	for i := 0; ; i++ {
 		data := fmt.Sprintf("[%d] %s", i, HelloData)
-		source.Write([]byte(data))
+		source.Write(0x33, []byte(data))
 		log.Printf("[send] %s", data)
 		time.Sleep(1 * time.Second)
 	}

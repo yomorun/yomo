@@ -30,7 +30,6 @@ func main() {
 
 	defer source.Close()
 
-	source.SetDataTag(0x33)
 	// set the error handler function when server error occurs
 	source.SetErrorHandler(func(err error) {
 		log.Printf("[source] receive server error: %v", err)
@@ -53,7 +52,7 @@ func generateAndSendData(stream yomo.Source) error {
 		noise := rand.New(rand.NewSource(time.Now().UnixNano())).Float64() * 200
 		data := []byte(strconv.FormatFloat(noise, 'f', 2, 64))
 		// send data via QUIC stream.
-		_, err := stream.Write(data)
+		err := stream.Write(0x33, data)
 		if err != nil {
 			log.Printf("[source] ❌ Emit %.2f to YoMo-Zipper failure with err: %v", noise, err)
 			time.Sleep(500 * time.Millisecond)

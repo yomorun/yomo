@@ -24,8 +24,6 @@ func main() {
 	}
 	defer source.Close()
 
-	source.SetDataTag(0x33)
-
 	// generate mock data and send it to YoMo-Zipper.
 	err = generateAndSendData(source)
 	if err != nil {
@@ -41,7 +39,7 @@ func generateAndSendData(stream yomo.Source) error {
 		data := []byte(fmt.Sprintf("%d", rnd.Uint32()))
 		// send data via QUIC stream.
 		// broadcast this message to cascading zippers using `Broadcast` method
-		err := stream.Broadcast(data)
+		err := stream.Broadcast(0x33, data)
 		if err != nil {
 			log.Printf("[source] ❌ Emit %v to YoMo-Zipper failure with err: %v", data, err)
 			time.Sleep(500 * time.Millisecond)

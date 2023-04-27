@@ -32,7 +32,6 @@ func main() {
 		return
 	}
 
-	source.SetDataTag(0x33)
 	// set the error handler function when server error occurs
 	source.SetErrorHandler(func(err error) {
 		log.Printf("[source] error handler: %v", err)
@@ -54,7 +53,7 @@ func generateAndSendData(stream yomo.Source) {
 		sendingBuf, _ := json.Marshal(data)
 
 		// send data via QUIC stream.
-		_, err := stream.Write(sendingBuf)
+		err := stream.Write(0x33, sendingBuf)
 		// using the following code, zipper will broadcast this message to cascading zippers.
 		// make sure to configure the downstream zippers using mesh-config flag,
 		// see the mesh example for more details.
