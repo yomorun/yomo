@@ -14,6 +14,11 @@ tasks:
     silent: true
 
   run:
+    cmds:
+      - task: sfn-rx-build
+      - task: sfn-db-build
+      - task: start
+  start:
     desc: CLI example
     deps: [zipper, source, sfn-rx, sfn-db]
     cmds:
@@ -44,24 +49,34 @@ tasks:
       - echo "source built."
     silent: false
 
+  sfn-rx-build:
+    dir: sfn-rx
+    cmds:
+      - "yomo build app.go"
+
+  sfn-db-build:
+    dir: sfn-db
+    cmds:
+      - "yomo build app.go"
+
   sfn-rx:
     desc: "run rx stream application"
     dir: "sfn-rx"
     cmds:
-      - "yomo run app.go"
+      - "yomo run sfn.wasm"
     silent: false
 
   sfn-db:
     desc: run output stream-fn-db
     dir: "sfn-db"
     cmds:
-      - "yomo run app.go"
+      - "yomo run sfn.wasm"
     silent: false
 
   clean:
     desc: "cli clean"
     cmds:
       - rm -rf ./bin
-      - rm -rf ./sfn-db/sfn.*
-      - rm -rf ./sfn-rx/sfn.*
+      - rm -rf ./sfn-db/sfn.wasm
+      - rm -rf ./sfn-rx/sfn.wasm
     silent: true

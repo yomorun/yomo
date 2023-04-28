@@ -1,13 +1,12 @@
 package main
 
 import (
-	"context"
-	"encoding/json"
+	"encoding/binary"
 	"fmt"
-	"time"
+	"math"
 
+	"github.com/tidwall/gjson"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/rx"
 )
 
 // NoiseData represents the structure of data
@@ -17,28 +16,28 @@ type NoiseData struct {
 	From  string  `json:"from"`  // Source IP
 }
 
-var echo = func(_ context.Context, i interface{}) (interface{}, error) {
-	value := i.(*NoiseData)
-	value.From = value.From + ">SFN"
-	value.Noise = value.Noise / 10
-	rightNow := time.Now().UnixNano() / int64(time.Millisecond)
-	fmt.Printf("[stream-fn] from=%s, Timestamp=%d, value=%f (⚡️=%dms)\n", value.From, value.Time, value.Noise, rightNow-value.Time)
-	// return value.Noise, nil
-	return value, nil
-}
+var sum float64
+var count int
 
 // Handler will handle data in Rx way
-func Handler(rxstream rx.Stream) rx.Stream {
-	stream := rxstream.
-		Unmarshal(json.Unmarshal, func() interface{} { return &NoiseData{} }).
-		// Debounce(50).
-		Map(echo).
-		Marshal(json.Marshal).
-		PipeBackToZipper(0x34)
+func Handler(data []byte) (uint32, []byte) {
+	fmt.Printf("sfn received %d bytes: %s\n", len(data), string(data))
+	// get noise field from json string
+	noiseLevel := gjson.Get(string(data), "noise").Float()
 
-	return stream
+	sum += noiseLevel
+	count++
+
+	// calculate average noise level
+	avg := sum / float64(count)
+	fmt.Printf("\t⚡️avg=%f\n", avg)
+
+	// send result to next processor with data tag=0x34
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], math.Float64bits(avg))
+	return frame.Tag(0x34), buf[:]
 }
 
-func DataTags() []frame.Tag {
-	return []frame.Tag{0x33}
+func DataTags() []uint32 {
+	return []uint32{0x33}
 }
