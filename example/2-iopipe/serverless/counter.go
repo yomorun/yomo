@@ -2,12 +2,10 @@ package main
 
 import (
 	"log"
-
-	"github.com/yomorun/yomo/core/frame"
 )
 
 // Handler counts how many bytes received
-func Handler(data []byte) (frame.Tag, []byte) {
+func Handler(data []byte) (uint32, []byte) {
 	log.Printf("Got: %d", len(data))
 
 	// return 0, nil will tell zipper end the workflow.
@@ -15,6 +13,6 @@ func Handler(data []byte) (frame.Tag, []byte) {
 }
 
 // DataTags describes the type of data this serverless function observed.
-func DataTags() []frame.Tag {
-	return []frame.Tag{0x01}
+func DataTags() []uint32 {
+	return []uint32{0x01}
 }
