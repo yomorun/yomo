@@ -35,7 +35,7 @@ func newWazeroRuntime() (*wazeroRuntime, error) {
 	// Instantiate WASI, which implements host functions needed for TinyGo to implement `panic`.
 	wasi_snapshot_preview1.MustInstantiate(ctx, r)
 	config := wazero.NewModuleConfig().
-		// WithStartFunctions().
+		WithSysWalltime().
 		WithStdin(os.Stdin).
 		WithStdout(os.Stdout).
 		WithStderr(os.Stderr)
