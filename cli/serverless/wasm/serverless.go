@@ -35,7 +35,7 @@ func (s *wasmServerless) Init(opts *serverless.Options) error {
 	s.runtime = runtime
 	s.name = opts.Name
 	s.zipperAddrs = opts.ZipperAddrs
-	s.observed = runtime.GetObserveDataTags()
+	// s.observed = runtime.GetObserveDataTags()
 	s.credential = opts.Credential
 
 	return nil
@@ -44,6 +44,33 @@ func (s *wasmServerless) Init(opts *serverless.Options) error {
 // Build is an empty implementation
 func (s *wasmServerless) Build(clean bool) error {
 	return nil
+}
+
+func wasmHandler(sfn yomo.StreamFunction, runtime Runtime, errCh chan error) func(req []byte) (uint32, []byte) {
+	// instance, err := runtime.Instance()
+	// if err != nil {
+	// 	errCh <- err
+	// 	return func(req []byte) (uint32, []byte) {
+	// 		return 0, nil
+	// 	}
+	// }
+	// set sfn observe datatags
+	// sfn.SetObserveDataTags(instance.GetObserveDataTags()...)
+	// TODO: how to get observed tags in the instance? At this point, no instance has been created
+	sfn.SetObserveDataTags(0x01)
+	return func(req []byte) (uint32, []byte) {
+		instance, err := runtime.Instance()
+		if err != nil {
+			errCh <- err
+			return 0, nil
+		}
+		defer instance.Close()
+		tag, res, err := instance.RunHandler(req)
+		if err != nil {
+			errCh <- err
+		}
+		return tag, res
+	}
 }
 
 // Run the wasm serverless function
@@ -56,20 +83,11 @@ func (s *wasmServerless) Run(verbose bool) error {
 			addr,
 			yomo.WithSfnCredential(s.credential),
 		)
-		sfn.SetObserveDataTags(s.observed...)
+		// sfn.SetObserveDataTags(s.observed...)
 
 		var ch chan error
-
-		sfn.SetHandler(
-			func(req []byte) (uint32, []byte) {
-				tag, res, err := s.runtime.RunHandler(req)
-				if err != nil {
-					ch <- err
-				}
-
-				return tag, res
-			},
-		)
+		// run wasm handler
+		sfn.SetHandler(wasmHandler(sfn, s.runtime, ch))
 
 		sfn.SetErrorHandler(
 			func(err error) {
