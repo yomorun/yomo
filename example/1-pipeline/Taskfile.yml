@@ -7,7 +7,20 @@ output: "prefixed"
 tasks:
   run:
     desc: run
+    cmds:
+      - task: sfn-build
+      - task: start
+
+  start:
+    desc: start
     deps: [zipper, sfn, source]
+
+
+  sfn-build:
+    desc: sfn-build
+    dir: serverless
+    cmds:
+      - "yomo build serverless/rand.go"
 
   zipper:
     desc: zipper
@@ -18,8 +31,9 @@ tasks:
 
   sfn:
     desc: sfn
+    dir: serverless
     cmds:
-      - "yomo build serverless/rand.go && yomo run serverless/sfn.wasm -n rand"
+      - "yomo run sfn.wasm -n rand -m go.mod"
 
   source:
     desc: source
