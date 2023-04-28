@@ -20,7 +20,7 @@ tasks:
     desc: sfn
     cmds:
       # - "yomo run -n rand serverless/rand.go" # use latest yomo
-      - "yomo run -m go.mod -n rand serverless/rand.go" # use custom go.mod for development
+      - "yomo build serverless/rand.go && yomo run sfn.wasm" # use custom go.mod for development
 
   source:
     desc: source
