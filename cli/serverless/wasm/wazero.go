@@ -15,12 +15,11 @@ import (
 
 type wazeroRuntime struct {
 	wazero.Runtime
-	conf        wazero.ModuleConfig
-	ctx         context.Context
-	cache       wazero.CompilationCache
-	hostModule  wazero.CompiledModule
-	guestModule wazero.CompiledModule
-	observed    []uint32
+	conf       wazero.ModuleConfig
+	runConf    wazero.RuntimeConfig
+	ctx        context.Context
+	observed   []uint32
+	guestBytes []byte
 }
 
 type wazeroInstance struct {
@@ -29,28 +28,38 @@ type wazeroInstance struct {
 	outputTag uint32
 	output    []byte
 	module    api.Module
+	runtime   wazero.Runtime
 }
 
 func newWazeroRuntime() (*wazeroRuntime, error) {
 	ctx := context.Background()
 	cache := wazero.NewCompilationCache()
 	runConfig := wazero.NewRuntimeConfig().
-		WithCompilationCache(cache)
-	r := wazero.NewRuntimeWithConfig(ctx, runConfig)
-	// Instantiate WASI, which implements host functions needed for TinyGo to implement `panic`.
-	wasi_snapshot_preview1.MustInstantiate(ctx, r)
-	config := wazero.NewModuleConfig().
-		WithSysWalltime().
-		WithStdin(os.Stdin).
-		WithStdout(os.Stdout).
-		WithStderr(os.Stderr)
+		WithCompilationCache(cache).
+		WithCloseOnContextDone(true)
+	config := newModuleConfig()
+	r := newRuntime(ctx, runConfig)
 
 	return &wazeroRuntime{
 		Runtime: r,
 		conf:    config,
+		runConf: runConfig,
 		ctx:     ctx,
-		cache:   cache,
 	}, nil
+}
+
+func newModuleConfig() wazero.ModuleConfig {
+	return wazero.NewModuleConfig().
+		WithSysWalltime().
+		WithStdin(os.Stdin).
+		WithStdout(os.Stdout).
+		WithStderr(os.Stderr)
+}
+
+func newRuntime(ctx context.Context, runConfig wazero.RuntimeConfig) wazero.Runtime {
+	r := wazero.NewRuntimeWithConfig(ctx, runConfig)
+	wasi_snapshot_preview1.MustInstantiate(ctx, r)
+	return r
 }
 
 // Init loads the wasm file, and initialize the runtime environment
@@ -59,12 +68,14 @@ func (r *wazeroRuntime) Init(wasmFile string) error {
 	if err != nil {
 		return fmt.Errorf("read wasm file %s: %v", wasmBytes, err)
 	}
+	r.guestBytes = wasmBytes
 	// only used to compile host module
 	i := &wazeroInstance{ctx: r.ctx}
 	// host module
 	builder := r.NewHostModuleBuilder("env")
-	hostModule, err := builder.NewFunctionBuilder().
+	_, err = builder.
 		// observeDataTag
+		NewFunctionBuilder().
 		WithFunc(r.observeDataTag).
 		Export(WasmFuncObserveDataTag).
 		// loadInput
@@ -75,27 +86,22 @@ func (r *wazeroRuntime) Init(wasmFile string) error {
 		NewFunctionBuilder().
 		WithFunc(i.dumpOutput).
 		Export(WasmFuncDumpOutput).
-		// Instantiate(i.ctx)
-		Compile(r.ctx)
-	r.hostModule = hostModule
-	// guest module
-	// module, err := r.InstantiateWithConfig(r.ctx, wasmBytes, r.conf)
-	guestModule, err := r.CompileModule(r.ctx, wasmBytes)
-	if err != nil {
-		return fmt.Errorf("wazero.Module: %v", err)
-	}
-	r.guestModule = guestModule
-
-	// host module
-	_, err = r.InstantiateModule(i.ctx, r.hostModule, wazero.NewModuleConfig())
+		Instantiate(i.ctx)
 	if err != nil {
 		return fmt.Errorf("wazero.hostModule: %v", err)
 	}
 	// guest module
-	module, err := r.InstantiateModule(i.ctx, r.guestModule, r.conf)
+	guestModule, err := r.CompileModule(r.ctx, wasmBytes)
 	if err != nil {
-		return fmt.Errorf("wazero.guestModule[%s]: %v", r.guestModule.Name(), err)
+		return fmt.Errorf("wazero.compile: %v", err)
 	}
+	defer guestModule.Close(r.ctx)
+	// guest
+	module, err := r.InstantiateModule(i.ctx, guestModule, r.conf)
+	if err != nil {
+		return fmt.Errorf("wazero.guestModule: %v", err)
+	}
+	defer module.Close(i.ctx)
 	// yomo init
 	// WARN: this instance is only used to get observed tags,
 	// running sfn handler must use runtime.instance
@@ -112,8 +118,6 @@ func (r *wazeroRuntime) Init(wasmFile string) error {
 }
 
 func (r *wazeroRuntime) Close() error {
-	r.hostModule.Close(r.ctx)
-	r.guestModule.Close(r.ctx)
 	return r.Runtime.Close(r.ctx)
 }
 
@@ -129,15 +133,41 @@ func (r *wazeroRuntime) observeDataTag(ctx context.Context, tag int32) {
 // ================================================================================
 
 // Instance returns the wasm module instance
-func (r *wazeroRuntime) Instance() (Instance, error) {
+func (r *wazeroRuntime) Instance(ctx context.Context) (Instance, error) {
+	// new runtime
+	runtime := newRuntime(ctx, r.runConf)
 	// instance
-	i := &wazeroInstance{ctx: r.ctx}
-	// guest module
-	module, err := r.InstantiateModule(i.ctx, r.guestModule, r.conf)
+	i := &wazeroInstance{ctx: ctx}
+	// host module
+	builder := runtime.NewHostModuleBuilder("env")
+	_, err := builder.
+		// observeDataTag
+		NewFunctionBuilder().
+		WithFunc(r.observeDataTag).
+		Export(WasmFuncObserveDataTag).
+		// loadInput
+		NewFunctionBuilder().
+		WithFunc(i.loadInput).
+		Export(WasmFuncLoadInput).
+		// dumpOutput
+		NewFunctionBuilder().
+		WithFunc(i.dumpOutput).
+		Export(WasmFuncDumpOutput).
+		Instantiate(i.ctx)
 	if err != nil {
-		return nil, fmt.Errorf("wazero.guestModule: %v", err)
+		return nil, fmt.Errorf("instance.hostModule: %v", err)
+	}
+	// guest module
+	guestModule, err := runtime.CompileModule(i.ctx, r.guestBytes)
+	if err != nil {
+		return nil, fmt.Errorf("instance.compile: %v", err)
+	}
+	module, err := runtime.InstantiateModule(i.ctx, guestModule, newModuleConfig())
+	if err != nil {
+		return nil, fmt.Errorf("instance.guestMmodule: %v", err)
 	}
 	i.module = module
+	i.runtime = runtime
 	return i, nil
 }
 
@@ -163,7 +193,8 @@ func (i *wazeroInstance) RunHandler(data []byte) (uint32, []byte, error) {
 
 // Close releases all the resources related to the runtime
 func (i *wazeroInstance) Close() error {
-	return i.module.Close(i.ctx)
+	i.module.Close(i.ctx)
+	return i.runtime.Close(i.ctx)
 }
 
 func (i *wazeroInstance) loadInput(ctx context.Context, m api.Module, pointer int32) {

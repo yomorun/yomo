@@ -2,6 +2,7 @@
 package wasm
 
 import (
+	"context"
 	"log"
 	"os"
 	"sync"
@@ -48,7 +49,7 @@ func (s *wasmServerless) Build(clean bool) error {
 
 func wasmHandler(runtime Runtime, errCh chan error) func(req []byte) (uint32, []byte) {
 	return func(req []byte) (uint32, []byte) {
-		instance, err := runtime.Instance()
+		instance, err := runtime.Instance(context.Background())
 		if err != nil {
 			log.Printf("[wasm] instance error: %v\n", err)
 			errCh <- err

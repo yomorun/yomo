@@ -2,6 +2,7 @@
 package wasm
 
 import (
+	"context"
 	"fmt"
 )
 
@@ -29,7 +30,7 @@ type Runtime interface {
 	// GetObserveDataTags returns observed datatags of the wasm sfn
 	GetObserveDataTags() []uint32
 	// Instance returns the wasm module instance
-	Instance() (Instance, error)
+	Instance(ctx context.Context) (Instance, error)
 	// Close releases all the resources related to the runtime
 	Close() error
 }
