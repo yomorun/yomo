@@ -304,7 +304,7 @@ func (s *Server) handleAuthenticationFrame(f auth.Object) (metadata.Metadata, bo
 	md, ok := auth.Authenticate(s.opts.auths, f)
 
 	if ok {
-		s.logger.Debug("authentication successful")
+		s.logger.Debug("authentication successful", "credential", f.AuthName())
 	} else {
 		s.logger.Warn("authentication failed", "credential", f.AuthName())
 	}
