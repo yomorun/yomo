@@ -135,7 +135,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 			continue
 		}
 
-		logger := s.logger.With("remote_addr", conn.RemoteAddr(), "local_addr", conn.LocalAddr())
+		logger := s.logger.With("remote_addr", conn.RemoteAddr().String(), "local_addr", conn.LocalAddr().String())
 
 		stream0, err := conn.AcceptStream(ctx)
 		if err != nil {
