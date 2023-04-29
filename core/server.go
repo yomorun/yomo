@@ -135,7 +135,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 			continue
 		}
 
-		logger := s.logger.With("remote_addr", conn.RemoteAddr(), "local_addr", conn.LocalAddr())
+		logger := s.logger.With("remote_addr", conn.RemoteAddr().String(), "local_addr", conn.LocalAddr().String())
 
 		stream0, err := conn.AcceptStream(ctx)
 		if err != nil {
@@ -304,7 +304,7 @@ func (s *Server) handleAuthenticationFrame(f auth.Object) (metadata.Metadata, bo
 	md, ok := auth.Authenticate(s.opts.auths, f)
 
 	if ok {
-		s.logger.Debug("authentication successful")
+		s.logger.Debug("authentication successful", "credential", f.AuthName())
 	} else {
 		s.logger.Warn("authentication failed", "credential", f.AuthName())
 	}
