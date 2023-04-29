@@ -35,7 +35,7 @@ func (s *wasmServerless) Init(opts *serverless.Options) error {
 	s.runtime = runtime
 	s.name = opts.Name
 	s.zipperAddrs = opts.ZipperAddrs
-	// s.observed = runtime.GetObserveDataTags()
+	s.observed = runtime.GetObserveDataTags()
 	s.credential = opts.Credential
 
 	return nil
@@ -46,27 +46,18 @@ func (s *wasmServerless) Build(clean bool) error {
 	return nil
 }
 
-func wasmHandler(sfn yomo.StreamFunction, runtime Runtime, errCh chan error) func(req []byte) (uint32, []byte) {
-	// instance, err := runtime.Instance()
-	// if err != nil {
-	// 	errCh <- err
-	// 	return func(req []byte) (uint32, []byte) {
-	// 		return 0, nil
-	// 	}
-	// }
-	// set sfn observe datatags
-	// sfn.SetObserveDataTags(instance.GetObserveDataTags()...)
-	// TODO: how to get observed tags in the instance? At this point, no instance has been created
-	sfn.SetObserveDataTags(0x01)
+func wasmHandler(runtime Runtime, errCh chan error) func(req []byte) (uint32, []byte) {
 	return func(req []byte) (uint32, []byte) {
 		instance, err := runtime.Instance()
 		if err != nil {
+			log.Printf("[wasm] instance error: %v\n", err)
 			errCh <- err
 			return 0, nil
 		}
 		defer instance.Close()
 		tag, res, err := instance.RunHandler(req)
 		if err != nil {
+			log.Printf("[wasm] run handler error: %v\n", err)
 			errCh <- err
 		}
 		return tag, res
@@ -83,11 +74,11 @@ func (s *wasmServerless) Run(verbose bool) error {
 			addr,
 			yomo.WithSfnCredential(s.credential),
 		)
-		// sfn.SetObserveDataTags(s.observed...)
+		sfn.SetObserveDataTags(s.observed...)
 
 		var ch chan error
 		// run wasm handler
-		sfn.SetHandler(wasmHandler(sfn, s.runtime, ch))
+		sfn.SetHandler(wasmHandler(s.runtime, ch))
 
 		sfn.SetErrorHandler(
 			func(err error) {

@@ -16,8 +16,6 @@ const (
 
 // Instance is the wasm module instance interface
 type Instance interface {
-	// GetObserveDataTags returns observed datatags of the wasm sfn
-	GetObserveDataTags() []uint32
 	// RunHandler runs the wasm application (request -> response mode)
 	RunHandler(data []byte) (uint32, []byte, error)
 	// Close releases all the resources related to the instance
@@ -28,6 +26,8 @@ type Instance interface {
 type Runtime interface {
 	// Init loads the wasm file, and initialize the runtime environment
 	Init(wasmFile string) error
+	// GetObserveDataTags returns observed datatags of the wasm sfn
+	GetObserveDataTags() []uint32
 	// Instance returns the wasm module instance
 	Instance() (Instance, error)
 	// Close releases all the resources related to the runtime
