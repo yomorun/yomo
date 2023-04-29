@@ -140,10 +140,9 @@ func (ss *ServerControlStream) VerifyAuthentication(verifyFunc VerifyAuthenticat
 		return md, err
 	}
 	if !ok {
-		return md, ss.CloseWithError(
-			uint64(yerr.ErrorCodeAuthenticateFailed),
-			fmt.Sprintf("yomo: authentication failed, client credential name is %s", received.AuthName()),
-		)
+		errString := fmt.Sprintf("yomo: authentication failed, client credential name is %s", received.AuthName())
+		ss.CloseWithError(uint64(yerr.ErrorCodeAuthenticateFailed), errString)
+		return md, errors.New(errString)
 	}
 	if err := ss.stream.WriteFrame(frame.NewAuthenticationAckFrame()); err != nil {
 		return md, err
