@@ -19,13 +19,13 @@ tasks:
   sfn-build:
     desc: sfn build
     cmds:
-      - "yomo build -m go.mod serverless/counter.go" 
+      # - "yomo build -n counter serverless/counter.go" # use latest yomo
+      - "yomo build -m go.mod serverless/counter.go" # use custom go.mod for development
   sfn:
     desc: run sfn
     deps: [sfn-build]
     cmds:
-      # - "yomo run -n counter serverless/sfn.wasm" # use latest yomo
-      - "yomo run -n counter serverless/sfn.wasm" # use custom go.mod for development
+      - "yomo run -n counter serverless/sfn.wasm" 
 
   source:
     desc: source
