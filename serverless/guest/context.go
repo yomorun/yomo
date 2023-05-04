@@ -3,6 +3,7 @@ package guest
 
 import (
 	"errors"
+	_ "unsafe"
 
 	"github.com/yomorun/yomo/serverless"
 )
