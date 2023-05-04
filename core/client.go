@@ -4,9 +4,8 @@ package core
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
-	"runtime"
+	"net"
 	"time"
 
 	"github.com/yomorun/yomo/core/frame"
@@ -75,8 +74,10 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 connect:
 	controlStream, dataStream, err := c.openStream(ctx, addr)
 	if err != nil {
-		if c.opts.connectUntilSucceed {
-			c.logger.Error("failed to connect to zipper, trying to reconect", err)
+		// If `connectUntilSucceed` is set to true,
+		// only attempt to reconnect when there is a network timeout.
+		if nerr, ok := err.(net.Error); ok && nerr.Timeout() && c.opts.connectUntilSucceed {
+			c.logger.Error("failed to connect to zipper, trying to reconnect", err)
 			time.Sleep(time.Second)
 			goto connect
 		}
@@ -265,7 +266,10 @@ func (c *Client) handleFrameError(err error, reconnection chan<- struct{}) {
 
 	// always attempting to reconnect if an error is encountered,
 	// the error is mostly network error.
-	reconnection <- struct{}{}
+	select {
+	case reconnection <- struct{}{}:
+	default:
+	}
 }
 
 // Wait waits client error returning.
