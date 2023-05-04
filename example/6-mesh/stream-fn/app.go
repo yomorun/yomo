@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/rx"
 )
 
@@ -81,8 +80,8 @@ func main() {
 }
 
 // DataTags observe tag list
-func DataTags() []frame.Tag {
-	return []frame.Tag{0x10}
+func DataTags() []uint32 {
+	return []uint32{0x10}
 }
 
 func getPort() int {
