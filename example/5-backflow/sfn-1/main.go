@@ -45,21 +45,7 @@ func main() {
 	select {}
 }
 
-// func handler(data []byte) (frame.Tag, []byte) {
-// 	// got
-// 	noise, err := strconv.ParseFloat(string(data), 10)
-// 	if err != nil {
-// 		log.Printf("[sfn-1] got err=%v", err)
-// 		return 0x0, nil
-// 	}
-// 	// result
-// 	result := int(noise)
-// 	log.Printf("[sfn-1] got: tag=0x33, data=%v, return: tag=0x34, data=%v", noise, result)
-
-// 	return 0x34, []byte(strconv.Itoa(result))
-// }
-
-func handler(ctx *serverless.Context) {
+func handler(ctx serverless.Context) {
 	// got
 	data := ctx.Data()
 	noise, err := strconv.ParseFloat(string(data), 10)
@@ -78,11 +64,4 @@ func handler(ctx *serverless.Context) {
 	)
 	output := []byte(strconv.Itoa(result))
 	err = ctx.Write(resultTag, output)
-	if err != nil {
-		log.Printf("[sfn-1] write err=%v", err)
-		return
-	}
-	ctx.Write(resultTag, []byte("-ABC-"))
-	ctx.Write(resultTag, []byte("-def-"))
-	ctx.Write(resultTag, []byte("-G-"))
 }
