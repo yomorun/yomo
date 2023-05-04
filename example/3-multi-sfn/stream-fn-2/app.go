@@ -9,7 +9,7 @@ import (
 	"os"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/serverless"
 )
 
 // ThresholdSingleValue is the threshold of a single value.
@@ -48,15 +48,16 @@ func main() {
 	select {}
 }
 
-func handler(data []byte) (frame.Tag, []byte) {
+func handler(ctx serverless.Context) {
+	data := ctx.Data()
 	v := Float32frombytes(data)
 	result, err := computePeek(context.Background(), v)
 	if err != nil {
 		log.Printf("[fn2] computePeek err=%v", err)
-		return 0x0, nil
+		return
 	}
 
-	return 0x15, float32ToByte(result)
+	ctx.Write(0x15, float32ToByte(result))
 }
 
 func Float32frombytes(bytes []byte) float32 {
