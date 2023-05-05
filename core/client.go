@@ -75,7 +75,7 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 connect:
 	controlStream, dataStream, err := c.openStream(ctx, addr)
 	if err != nil {
-		if c.opts.connectUntilSucceed {
+		if c.opts.connectUntilSucceed && !errors.As(err, new(ErrAuthenticateFailed)) {
 			c.logger.Error("failed to connect to zipper, trying to reconnect", err)
 			time.Sleep(time.Second)
 			goto connect

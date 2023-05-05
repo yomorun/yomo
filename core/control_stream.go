@@ -231,6 +231,7 @@ func (cs *ClientControlStream) readFrameLoop() {
 }
 
 // Authenticate sends the provided credential to the server's control stream to authenticate the client.
+// There will return `ErrAuthenticateFailed` if authenticate failed.
 func (cs *ClientControlStream) Authenticate(cred *auth.Credential) error {
 	if err := cs.stream.WriteFrame(
 		frame.NewAuthenticationFrame(cred.Name(), cred.Payload())); err != nil {
