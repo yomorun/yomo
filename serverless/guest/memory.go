@@ -14,23 +14,7 @@ var (
 	ReadBufSize = uint32(2048)
 )
 
-func GetString(fn func(ptr uintptr, size uint32) (len uint32)) (result string) {
-	size := fn(ReadBufPtr, ReadBufSize)
-	if size == 0 {
-		return
-	}
-	if size > 0 && size <= ReadBufSize {
-		return string(ReadBuf[:size]) // string will copy the buffer.
-	}
-
-	// Otherwise, allocate a new string
-	buf := make([]byte, size)
-	ptr := uintptr(unsafe.Pointer(&buf[0]))
-	_ = fn(ptr, size)
-	s := unsafe.Slice((*byte)(unsafe.Pointer(ptr)), size)
-	return *(*string)(unsafe.Pointer(&s))
-}
-
+// GetBytes returns a byte slice of the given size
 func GetBytes(fn func(ptr uintptr, size uint32) (len uint32)) (result []byte) {
 	size := fn(ReadBufPtr, ReadBufSize)
 	if size == 0 {
