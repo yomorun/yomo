@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/serverless"
 )
 
 func main() {
@@ -28,9 +28,9 @@ func main() {
 	)
 	sink.SetObserveDataTags(0x34)
 	sink.SetHandler(
-		func(data []byte) (frame.Tag, []byte) {
+		func(ctx serverless.Context) {
+			data := ctx.Data()
 			log.Printf("[recv] %s", string(data))
-			return 0, nil
 		},
 	)
 	if err := sink.Connect(); err != nil {
