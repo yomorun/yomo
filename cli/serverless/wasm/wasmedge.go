@@ -117,7 +117,6 @@ func (r *wasmEdgeRuntime) GetObserveDataTags() []uint32 {
 func (r *wasmEdgeRuntime) RunHandler(ctx serverless.Context) error {
 	r.serverlessCtx = ctx
 	// Run the handler function. Given the pointer to the input data.
-	fmt.Printf("WasmEdge RunHandler: %#x\n", ctx.Tag())
 	if _, err := r.vm.Execute(WasmFuncHandler); err != nil {
 		return fmt.Errorf("vm.Execute %s: %v", WasmFuncHandler, err)
 	}
