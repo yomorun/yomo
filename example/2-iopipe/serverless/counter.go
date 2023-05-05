@@ -8,7 +8,7 @@ import (
 
 // Handler counts how many bytes received
 func Handler(ctx serverless.Context) {
-	log.Printf("Got: %d", len(ctx.Data()))
+	log.Printf("Got[%#x]: %d\n", ctx.Tag(), len(ctx.Data()))
 }
 
 // DataTags describes the type of data this serverless function observed.
