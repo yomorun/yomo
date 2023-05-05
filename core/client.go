@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"runtime"
 	"time"
 
@@ -76,9 +75,7 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 connect:
 	controlStream, dataStream, err := c.openStream(ctx, addr)
 	if err != nil {
-		// If `connectUntilSucceed` is set to true,
-		// only attempt to reconnect when there is a network timeout.
-		if nerr, ok := err.(net.Error); ok && nerr.Timeout() && c.opts.connectUntilSucceed {
+		if c.opts.connectUntilSucceed {
 			c.logger.Error("failed to connect to zipper, trying to reconnect", err)
 			time.Sleep(time.Second)
 			goto connect
