@@ -19,6 +19,7 @@ type wasmServerless struct {
 	zipperAddrs []string
 	observed    []uint32
 	credential  string
+	mu          *sync.Mutex
 }
 
 // Init initializes the serverless
@@ -38,6 +39,7 @@ func (s *wasmServerless) Init(opts *cli.Options) error {
 	s.zipperAddrs = opts.ZipperAddrs
 	s.observed = runtime.GetObserveDataTags()
 	s.credential = opts.Credential
+	s.mu = new(sync.Mutex)
 
 	return nil
 }
@@ -62,6 +64,8 @@ func (s *wasmServerless) Run(verbose bool) error {
 		var ch chan error
 		sfn.SetHandler(
 			func(ctx serverless.Context) {
+				s.mu.Lock()
+				defer s.mu.Unlock()
 				err := s.runtime.RunHandler(ctx)
 				if err != nil {
 					ch <- err

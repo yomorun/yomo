@@ -27,6 +27,7 @@ type wazeroRuntime struct {
 
 func newWazeroRuntime() (*wazeroRuntime, error) {
 	ctx := context.Background()
+
 	cache := wazero.NewCompilationCache()
 	runConfig := wazero.NewRuntimeConfig().
 		WithCompilationCache(cache)
@@ -34,7 +35,7 @@ func newWazeroRuntime() (*wazeroRuntime, error) {
 	// Instantiate WASI, which implements host functions needed for TinyGo to implement `panic`.
 	wasi_snapshot_preview1.MustInstantiate(ctx, r)
 	config := wazero.NewModuleConfig().
-		// WithStartFunctions().
+		WithSysWalltime().
 		WithStdin(os.Stdin).
 		WithStdout(os.Stdout).
 		WithStderr(os.Stderr)
@@ -54,8 +55,9 @@ func (r *wazeroRuntime) Init(wasmFile string) error {
 		return fmt.Errorf("read wasm file %s: %v", wasmBytes, err)
 	}
 	builder := r.NewHostModuleBuilder("env")
-	_, err = builder.NewFunctionBuilder().
+	_, err = builder.
 		// observeDataTag
+		NewFunctionBuilder().
 		WithFunc(r.observeDataTag).
 		Export(WasmFuncObserveDataTag).
 		// write
@@ -102,6 +104,12 @@ func (r *wazeroRuntime) GetObserveDataTags() []uint32 {
 
 // RunHandler runs the wasm application (request -> response mode)
 func (r *wazeroRuntime) RunHandler(ctx serverless.Context) error {
+	// context
+	select {
+	case <-r.ctx.Done():
+		return r.ctx.Err()
+	default:
+	}
 	r.serverlessCtx = ctx
 	// run handler
 	handler := r.module.ExportedFunction(WasmFuncHandler)
