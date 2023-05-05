@@ -131,10 +131,14 @@ func (ss *ServerControlStream) VerifyAuthentication(verifyFunc VerifyAuthenticat
 	if err != nil {
 		return nil, err
 	}
+
 	received, ok := first.(*frame.AuthenticationFrame)
 	if !ok {
-		return nil, fmt.Errorf("yomo: read unexcept frame while waiting for authentication, frame read: %s", received.Type().String())
+		errString := fmt.Sprintf("yomo: read unexcepted frame while waiting for authentication, frame read: %s", received.Type().String())
+		ss.CloseWithError(uint64(yerr.ErrorCodeAuthenticateFailed), errString)
+		return nil, errors.New(errString)
 	}
+
 	md, ok, err := verifyFunc(received)
 	if err != nil {
 		return md, err

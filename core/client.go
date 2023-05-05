@@ -274,7 +274,7 @@ func (c *Client) handleFrameError(err error, reconnection chan<- struct{}) {
 	}
 }
 
-// Wait waits client error returning.
+// Wait waits client returning.
 func (c *Client) Wait() {
 	<-c.ctx.Done()
 }
