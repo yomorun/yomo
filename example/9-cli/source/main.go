@@ -30,7 +30,7 @@ func main() {
 	defer source.Close()
 
 	sink := yomo.NewStreamFunction(
-		"sink",
+		"Sink",
 		addr,
 	)
 	sink.SetObserveDataTags(0x34)
