@@ -143,7 +143,10 @@ func (r *wazeroRuntime) write(ctx context.Context, m api.Module, tag uint32, poi
 		log.Printf("Memory.Read(%d, %d) out of range\n", pointer, length)
 		return 1
 	}
-	if err := r.serverlessCtx.Write(tag, output); err != nil {
+	buf := make([]byte, length)
+	copy(buf, output)
+
+	if err := r.serverlessCtx.Write(tag, buf); err != nil {
 		return 2
 	}
 	return 0
@@ -161,7 +164,10 @@ func (r *wazeroRuntime) contextData(ctx context.Context, m api.Module, pointer u
 	} else if dataLen == 0 {
 		return
 	}
-	m.Memory().Write(pointer, data)
+	if ok := m.Memory().Write(pointer, data); !ok {
+		log.Printf("Memory.Write(%d, %d) out of range\n", pointer, dataLen)
+		return 0
+	}
 	return
 }
 

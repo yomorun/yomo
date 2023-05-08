@@ -168,7 +168,9 @@ func (r *wasmEdgeRuntime) write(_ any, callframe *wasmedge.CallingFrame, params 
 	if err != nil {
 		return []any{1}, wasmedge.Result_Fail
 	}
-	if err := r.serverlessCtx.Write(uint32(tag), output); err != nil {
+	buf := make([]byte, length)
+	copy(buf, output)
+	if err := r.serverlessCtx.Write(uint32(tag), buf); err != nil {
 		return []any{2}, wasmedge.Result_Fail
 	}
 	return []any{0}, wasmedge.Result_Success

@@ -140,7 +140,9 @@ func (r *wasmtimeRuntime) write(tag int32, pointer int32, length int32) int32 {
 	if len(output) == 0 {
 		return 0
 	}
-	if err := r.serverlessCtx.Write(uint32(tag), output); err != nil {
+	buf := make([]byte, length)
+	copy(buf, output)
+	if err := r.serverlessCtx.Write(uint32(tag), buf); err != nil {
 		return 2
 	}
 	return 0
