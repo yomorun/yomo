@@ -72,6 +72,10 @@ func (r *wazeroRuntime) Init(wasmFile string) error {
 		NewFunctionBuilder().
 		WithFunc(r.contextData).
 		Export(WasmFuncContextData).
+		// context data size
+		NewFunctionBuilder().
+		WithFunc(r.contextDataSize).
+		Export(WasmFuncContextDataSize).
 		// Instantiate
 		Instantiate(r.ctx)
 	if err != nil {
@@ -159,4 +163,8 @@ func (r *wazeroRuntime) contextData(ctx context.Context, m api.Module, pointer u
 	}
 	m.Memory().Write(pointer, data)
 	return
+}
+
+func (r *wazeroRuntime) contextDataSize(ctx context.Context, m api.Module) uint32 {
+	return uint32(len(r.serverlessCtx.Data()))
 }

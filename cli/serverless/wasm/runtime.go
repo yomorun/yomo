@@ -9,13 +9,14 @@ import (
 
 // Define wasm import/export function names
 const (
-	WasmFuncStart          = "_start"
-	WasmFuncInit           = "yomo_init"
-	WasmFuncObserveDataTag = "yomo_observe_datatag"
-	WasmFuncHandler        = "yomo_handler"
-	WasmFuncWrite          = "yomo_write"
-	WasmFuncContextTag     = "yomo_context_tag"
-	WasmFuncContextData    = "yomo_context_data"
+	WasmFuncStart           = "_start"
+	WasmFuncInit            = "yomo_init"
+	WasmFuncObserveDataTag  = "yomo_observe_datatag"
+	WasmFuncHandler         = "yomo_handler"
+	WasmFuncWrite           = "yomo_write"
+	WasmFuncContextTag      = "yomo_context_tag"
+	WasmFuncContextData     = "yomo_context_data"
+	WasmFuncContextDataSize = "yomo_context_data_size"
 )
 
 // Runtime is the abstract interface for wasm runtime
