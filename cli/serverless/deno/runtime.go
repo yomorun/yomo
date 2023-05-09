@@ -98,8 +98,15 @@ func startSfn(name string, zipperAddr string, credential string, observed []fram
 
 	sfn.SetHandler(
 		func(ctx serverless.Context) {
+			tag := ctx.Tag()
+			err := binary.Write(conn, binary.LittleEndian, tag)
+			if err != nil {
+				errCh <- err
+				return
+			}
+
 			data := ctx.Data()
-			err := binary.Write(conn, binary.LittleEndian, uint32(len(data)))
+			err = binary.Write(conn, binary.LittleEndian, uint32(len(data)))
 			if err != nil {
 				errCh <- err
 				return
@@ -110,8 +117,6 @@ func startSfn(name string, zipperAddr string, credential string, observed []fram
 				errCh <- err
 				return
 			}
-
-			return
 		},
 	)
 

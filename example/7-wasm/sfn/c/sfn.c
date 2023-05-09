@@ -27,7 +27,7 @@ void yomo_handler() {
     size_t length = get_input_size();
     char *input = malloc(length);
     load_input(input, length);
-    printf("wasm c sfn received %zu bytes[%#x]\n", length, tag);
+    printf("wasm c sfn received %zu bytes with tag[%#x]\n", length, tag);
 
     // process app data
     char *output = malloc(length);

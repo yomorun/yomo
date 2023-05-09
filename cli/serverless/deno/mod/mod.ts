@@ -6,21 +6,20 @@ import {
 } from "https://deno.land/std/encoding/binary.ts";
 import { loadSync } from "https://deno.land/std/dotenv/mod.ts";
 
-export class Request {
-  data: Uint8Array;
-
-  constructor(data: Uint8Array) {
-    this.data = data;
-  }
-}
-
-export class Response {
+export class Context {
   tag: number;
-  data: Uint8Array;
+  input: Uint8Array;
+  private writer: Writer;
 
-  constructor(tag: number, data: Uint8Array) {
+  constructor(tag: number, input: Uint8Array, writer: Writer) {
     this.tag = tag;
-    this.data = data;
+    this.input = input;
+    this.writer = writer;
+  }
+
+  async write(tag: number, data: Uint8Array) {
+    await this.writer.write(numberToBytes(tag));
+    await writeData(this.writer, data);
   }
 }
 
@@ -33,15 +32,21 @@ function numberToBytes(val: number): Uint8Array {
   return varnumBytes(val, VARNUM_OPTIONS);
 }
 
-async function readData(reader: Reader): Promise<Uint8Array | null> {
-  let length = 0;
+async function readNumber(reader: Reader): Promise<number | null> {
   try {
-    length = await readVarnum(reader, VARNUM_OPTIONS);
+    return await readVarnum(reader, VARNUM_OPTIONS);
   } catch (e) {
     if (e instanceof Deno.errors.UnexpectedEof) {
       return null;
     }
     throw e;
+  }
+}
+
+async function readData(reader: Reader): Promise<Uint8Array | null> {
+  const length = await readNumber(reader);
+  if (length == null) {
+    return null;
   }
   const buf = new Uint8Array(length);
   const n = await reader.read(buf);
@@ -58,7 +63,7 @@ async function writeData(writer: Writer, data: Uint8Array) {
 
 export async function run(
   observed: [number],
-  handler: (req: Request) => Promise<Response>,
+  handler: (ctx: Context) => Promise<void>,
 ) {
   let sock = "./sfn.sock";
   let env = null;
@@ -90,16 +95,18 @@ export async function run(
   }
 
   for (;;) {
-    const buf = await readData(conn);
-    if (buf == null) {
+    const tag = await readNumber(conn);
+    if (tag == null) {
       break;
     }
 
-    const req = new Request(buf);
-    const res = await handler(req);
+    const data = await readData(conn);
+    if (data == null) {
+      break;
+    }
 
-    await conn.write(numberToBytes(res.tag));
-    await writeData(conn, res.data);
+    const ctx = new Context(tag, data, conn);
+    await handler(ctx);
   }
 
   conn.close();
