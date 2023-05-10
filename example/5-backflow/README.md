@@ -1,13 +1,13 @@
 # Backflow example
 
-This example represents how [source](https://docs.yomo.run/source) receives stream functions processed results.
+This example represents how [source](https://yomo.run/docs/api/source) receives stream functions processed results.
 
 ## Code structure
 
-+ `source`: Mocking data of a Sound Sensor. [docs.yomo.run/source](https://docs.yomo.run/source)
-+ `sfn-1`: Convert the noise value to `int` type in real-time. [docs.yomo.run/stream-function](https://docs.yomo.run/stream-fn)
-+ `sfn-2`: Calculate 10 times the noise value in real-time. [docs.yomo.run/stream-function](https://docs.yomo.run/stream-fn)
-+ `zipper`: Orchestrate a workflow that receives the data from `source`, stream computing in `stream-fn` [docs.yomo.run/zipper](https://docs.yomo.run/zipper)
++ `source`: Mocking data of a Sound Sensor. [docs.yomo.run/source](https://yomo.run/docs/api/source)
++ `sfn-1`: Convert the noise value to `int` type in real-time. [docs.yomo.run/stream-function](https://yomo.run/docs/api/sfn)
++ `sfn-2`: Calculate 10 times the noise value in real-time. [docs.yomo.run/stream-function](https://yomo.run/docs/api/sfn)
++ `zipper`: Orchestrate a workflow that receives the data from `source`, stream computing in `stream-fn` [docs.yomo.run/zipper](https://yomo.run/docs/cli/zipper)
 
 ## Prepare
 
@@ -39,7 +39,7 @@ Runtime Version: v1.8.0
 
 ## Option 2: Manual
 
-### Run [zipper](https://docs.yomo.run/zipper)
+### Run [zipper](https://yomo.run/docs/cli/zipper)
 
 ```bash
 yomo serve -c ./config.yaml
@@ -48,7 +48,7 @@ yomo serve -c ./config.yaml
 2022-06-13 15:46:01.479 [core:server] ✅ [backflow][71590] Listening on: 127.0.0.1:9000, MODE: DEVELOPMENT, QUIC: [v1 draft-29], AUTH: [none]
 ```
 
-### Run [sfn-1](https://docs.yomo.run/stream-fn)
+### Run [sfn-1](https://yomo.run/docs/api/sfn)
 
 ```bash
 go run ./sfn-1/main.go
@@ -56,7 +56,7 @@ go run ./sfn-1/main.go
 2022-06-13 15:53:17.486 [core:client] use credential: [none]
 2022-06-13 15:53:17.496 [core:client] ❤️  [sfn-1][e6KHnVWboNz0x8Ffhvq-e]([::]:56117) is connected to YoMo-Zipper localhost:9000
 ```
-### Run [sfn-2](https://docs.yomo.run/stream-fn)
+### Run [sfn-2](https://yomo.run/docs/api/sfn)
 ```bash
 go run ./sfn-2/main.go
 
@@ -64,7 +64,7 @@ go run ./sfn-2/main.go
 2022-06-13 15:53:17.496 [core:client] ❤️  [sfn-2][e6KHnVWboNz0x8Ffhvq-e]([::]:56117) is connected to YoMo-Zipper localhost:9000
 ```
 
-### Run [yomo-source](https://docs.yomo.run/source)
+### Run [yomo-source](https://yomo.run/docs/api/source)
 
 ```bash
 go run ./source/main.go

@@ -38,7 +38,6 @@ func main() {
 
 	defer source.Close()
 
-	source.SetDataTag(0x33)
 	// set the error handler function when server error occurs
 	source.SetErrorHandler(func(err error) {
 		logger.Error("[source] receive server error", err)
@@ -68,7 +67,7 @@ func generateAndSendData(stream yomo.Source) error {
 		}
 
 		// send data via QUIC stream.
-		_, err = stream.Write(sendingBuf)
+		err = stream.Write(0x33, sendingBuf)
 		i++
 		if i > 6 {
 			stream.Close()

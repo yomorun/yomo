@@ -2,7 +2,7 @@
 
 In Unix-like computer operating systems, a [pipeline](<https://en.wikipedia.org/wiki/Pipeline_(Unix)>) is a mechanism for inter-process communication using message passing. A pipeline is a set of processes chained together by their standard streams, so that the output text of each process (stdout) is passed directly as input (stdin) to the next one. The second process is started as the first process is still executing, and they are executed concurrently. The concept of pipelines was championed by Douglas McIlroy at Unix's ancestral home of Bell Labs, during the development of Unix, shaping its [toolbox philosophy](https://en.wikipedia.org/wiki/Unix_philosophy)
 
-![yomo example 1: unix pipeline](https://docs.yomo.run/1.5/the-linux-programming-interface.png)
+![yomo example 1: unix pipeline](https://yomo.run/1.5/the-linux-programming-interface.png)
 
 Dennis Ritchie, the creator of the Unix operating system, introduced the concept of a pipeline to process data.
 
@@ -27,14 +27,6 @@ $ curl -fsSL https://get.yomo.run | sh
   ==> Downloading asset for darwin amd64
   ==> Installing yomo to /usr/local/bin
   ==> Installation complete
-```
-
-### Or build from source
-
-```bash
-$ go install github.com/yomorun/yomo/cmd/yomo@latest
-$ yomo version
-YoMo CLI Version: v1.0.0
 ```
 
 ## Option 1: Auto Run

@@ -4,7 +4,9 @@ package core
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"runtime"
 	"time"
 
 	"github.com/yomorun/yomo/core/frame"
@@ -223,7 +225,20 @@ func (c *Client) processStream(controlStream *ClientControlStream, dataStream Da
 				c.handleFrameError(err, reconnection)
 				return
 			}
-			c.handleFrame(result.frame)
+			func() {
+				defer func() {
+					if e := recover(); e != nil {
+						const size = 64 << 10
+						buf := make([]byte, size)
+						buf = buf[:runtime.Stack(buf, false)]
+
+						perr := fmt.Errorf("%v", e)
+						c.logger.Error("stream panic", perr)
+						c.errorfn(fmt.Errorf("yomo: stream panic: %v\n%s", perr, buf))
+					}
+				}()
+				c.handleFrame(result.frame)
+			}()
 		case f := <-c.writeFrameChan:
 			err := dataStream.WriteFrame(f)
 			c.handleFrameError(err, reconnection)

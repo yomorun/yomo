@@ -50,10 +50,8 @@ const (
 	TagOfAuthenticationName    Type = 0x04
 	TagOfAuthenticationPayload Type = 0x05
 
-	// AuthenticationRespFrame
-	TagOfAuthenticationRespFrame  Type = 0x11
-	TagOfAuthenticationRespOk     Type = 0x12
-	TagOfAuthenticationRespReason Type = 0x13
+	// AuthenticationAckFrame
+	TagOfAuthenticationAckFrame Type = 0x11
 
 	// HandshakeFrame
 	TagOfHandshakeFrame           Type = 0x31
@@ -103,8 +101,8 @@ func (f Type) String() string {
 		return "TokenFrame"
 	case TagOfAuthenticationFrame:
 		return "AuthenticationFrame"
-	case TagOfAuthenticationRespFrame:
-		return "AuthenticationRespFrame"
+	case TagOfAuthenticationAckFrame:
+		return "AuthenticationAckFrame"
 	case TagOfPingFrame:
 		return "PingFrame"
 	case TagOfPongFrame:

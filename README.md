@@ -5,11 +5,11 @@
 # YoMo ![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg) [![codecov](https://codecov.io/gh/yomorun/yomo/branch/master/graph/badge.svg?token=MHCE5TZWKM)](https://codecov.io/gh/yomorun/yomo) [![Discord](https://img.shields.io/discord/770589787404369930.svg?label=discord&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/RMtNhx7vds)
 
 YoMo is an open-source Streaming Serverless Framework for building Low-latency
-Edge Computing applications. Built atop QUIC Transport Protocol and Functional
-Reactive Programming interface, it makes real-time data processing reliable,
-secure, and easy.
+Geo-Distributed System. Built atop QUIC Transport Protocol and Functional
+Reactive Programming interface, it makes real-time collaborative applications
+reliable, secure, and easy.
 
-Official Website: 🦖[https://yomo.run](https://yomo.run)
+Read the docs: 🦖[https://yomo.run](https://yomo.run/docs)
 
 💚 We care about: **The Demand For Real-Time Digital User Experiences**
 
@@ -71,7 +71,7 @@ This Stream Function is written in Go, before compiling to WebAssembly, you need
 to install [tinygo](https://tinygo.org/getting-started/install/) first.
 
 ```bash
-$ yomo build --target wasm app.go
+$ yomo build app.go
 
 ℹ️ YoMo Stream Function file: app.go
 ⌛ YoMo Stream Function building...
@@ -96,7 +96,7 @@ There is an public test Zipper service `tap.yomo.dev:9140` which is provided by
 our community, you can test your StreamFunction quickly by connecting to it.
 
 ```bash
-$ yomo run -z tap.yomo.dev:9140 -n yomo-app-demo sfn.wasm
+$ yomo dev sfn.wasm
 
 ℹ️ YoMo Stream Function file: sfn.wasm
 ⌛  Create YoMo Stream Function instance...
@@ -119,7 +119,8 @@ sfn received 58 bytes
 It works!
 
 > Note: `yomo dev sfn.wasm` is more convinient for development, it will connect
-> to `tap.yomo.dev:9140` automatically.
+> to `tap.yomo.dev:9140` automatically. It's a shortcut of
+> `yomo run -z tap.yomo.dev:9140 -n yomo-app-demo`.
 
 There are many other examples that can help reduce the learning curve:
 
@@ -140,6 +141,8 @@ There are many other examples that can help reduce the learning curve:
   TypeScript and [deno](https://deno.com).
 - [9-cli](./example/9-cli/): Implement Stream Function in
   [Rx](https://reactivex.io/) way.
+
+Read more about YoMo at [yomo.run/docs](https://yomo.run/docs).
 
 ## 🧩 Interop
 
@@ -165,22 +168,21 @@ There are many other examples that can help reduce the learning curve:
 
 ## 🗺 Location Insensitive Deployment
 
-![yomo-flow-arch](https://docs.yomo.run/yomo-flow-arch.jpg)
+![yomo-flow-arch](https://yomo.run/yomo-flow-arch.jpg)
 
 ## 📚 Documentation
 
-- `YoMo-Source`: [docs.yomo.run/source](https://docs.yomo.run/source)
+- `YoMo-Source`: [docs.yomo.run/source](https://yomo.run/docs/api/source)
 - `YoMo-Stream-Function`:
-  [docs.yomo.run/stream-function](https://docs.yomo.run/stream-fn)
-- `YoMo-Zipper`: [docs.yomo.run/zipper](https://docs.yomo.run/zipper)
-- `Stream Processing in Rx way`: [Rx](https://docs.yomo.run/rx)
+  [docs.yomo.run/stream-function](https://yomo.run/docs/api/sfn)
+- `YoMo-Zipper`: [docs.yomo.run/zipper](https://yomo.run/docs/cli/zipper)
 - `Faster than real-time codec`: [Y3](https://github.com/yomorun/y3-codec)
 
 [YoMo](https://yomo.run) ❤️
 [Vercel](https://vercel.com/?utm_source=yomorun&utm_campaign=oss), our
 documentation website is
 
-[![Vercel Logo](https://docs.yomo.run/vercel.svg)](https://vercel.com/?utm_source=yomorun&utm_campaign=oss)
+[![Vercel Logo](https://yomo.run/vercel.svg)](https://vercel.com/?utm_source=yomorun&utm_campaign=oss)
 
 ## 🎯 Focuses on computings out of data center
 

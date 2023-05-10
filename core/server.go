@@ -22,6 +22,9 @@ import (
 	_ "github.com/yomorun/yomo/pkg/auth"
 )
 
+// ErrServerClosed is returned by the Server's Serve and ListenAndServe methods after a call to Shutdown or Close.
+var ErrServerClosed = errors.New("yomo: Server closed")
+
 // FrameHandler is the handler for frame.
 type FrameHandler func(c *Context) error
 
@@ -30,6 +33,8 @@ type ConnectionHandler func(conn quic.Connection)
 
 // Server is the underlining server of Zipper
 type Server struct {
+	ctx                     context.Context
+	ctxCancel               context.CancelFunc
 	name                    string
 	connector               *Connector
 	router                  router.Router
@@ -56,7 +61,11 @@ func NewServer(name string, opts ...ServerOption) *Server {
 
 	logger := options.logger.With("component", "zipper", "zipper_name", name)
 
+	ctx, ctxCancel := context.WithCancel(context.Background())
+
 	s := &Server{
+		ctx:         ctx,
+		ctxCancel:   ctxCancel,
 		name:        name,
 		downstreams: make(map[string]FrameWriterConnection),
 		logger:      logger,
@@ -109,9 +118,14 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 
 	s.logger.Info("zipper is up and running", "pid", os.Getpid(), "quic", listener.Versions(), "auth_name", s.authNames())
 
+	defer s.close(s.connector, s.listener, s.router)
+
 	for {
-		conn, err := s.listener.Accept(ctx)
+		conn, err := s.listener.Accept(s.ctx)
 		if err != nil {
+			if err == s.ctx.Err() {
+				return ErrServerClosed
+			}
 			s.logger.Error("accepted an error when accepting a connection", err)
 			return err
 		}
@@ -121,7 +135,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 			continue
 		}
 
-		logger := s.logger.With("remote_addr", conn.RemoteAddr(), "local_addr", conn.LocalAddr())
+		logger := s.logger.With("remote_addr", conn.RemoteAddr().String(), "local_addr", conn.LocalAddr().String())
 
 		stream0, err := conn.AcceptStream(ctx)
 		if err != nil {
@@ -172,7 +186,11 @@ func (s *Server) Logger() *slog.Logger { return s.logger }
 
 // Close will shutdown the server.
 func (s *Server) Close() error {
-	// downstreams
+	s.ctxCancel()
+	return nil
+}
+
+func (s *Server) close(connector *Connector, listener Listener, router router.Router) error {
 	for _, ds := range s.downstreams {
 		ds.Close()
 	}
@@ -286,7 +304,7 @@ func (s *Server) handleAuthenticationFrame(f auth.Object) (metadata.Metadata, bo
 	md, ok := auth.Authenticate(s.opts.auths, f)
 
 	if ok {
-		s.logger.Debug("authentication successful")
+		s.logger.Debug("authentication successful", "credential", f.AuthName())
 	} else {
 		s.logger.Warn("authentication failed", "credential", f.AuthName())
 	}

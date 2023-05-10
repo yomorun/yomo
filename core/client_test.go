@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"net"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -98,7 +99,22 @@ func TestFrameRoundTrip(t *testing.T) {
 	sameNameSfn := createTestStreamFunction("sfn-1", obversedTag)
 	sameNameSfn.SetDataFrameObserver(func(bf *frame.DataFrame) {
 		assert.Equal(t, string(payload), string(bf.GetCarriage()))
+
+		// panic test: reading array out of range.
+		arr := []int{1, 2}
+		t.Log(arr[100])
 	})
+
+	sameNameSfn.SetErrorHandler(func(err error) {
+		if strings.HasPrefix(err.Error(), "yomo: stream panic") {
+			assert.Regexp(
+				t,
+				`^yomo: stream panic: runtime error: index out of range \[100\] with length 2`,
+				err.Error(),
+			)
+		}
+	})
+
 	err = sameNameSfn.Connect(ctx, testaddr)
 	assert.NoError(t, err, "sfn connect should replace the old sfn stream")
 
@@ -126,7 +142,7 @@ func TestFrameRoundTrip(t *testing.T) {
 	err = source.WriteFrame(dataFrame)
 	assert.NoError(t, err, "source write dataFrame must be success")
 
-	time.Sleep(time.Second)
+	time.Sleep(2 * time.Second)
 	assert.Equal(t, recorder.frameBytes(), dataFrameEncoded)
 
 	assert.NoError(t, source.Close(), "source client.Close() should not return error")

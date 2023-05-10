@@ -13,18 +13,14 @@ type Source interface {
 	Close() error
 	// Connect to YoMo-Zipper.
 	Connect() error
-	// SetDataTag will set the tag of data when invoking Write().
-	SetDataTag(tag uint32)
 	// Write the data to directed downstream.
-	Write(data []byte) (n int, err error)
-	// WriteWithTag will write data with specified tag, default transactionID is epoch time.
-	WriteWithTag(tag uint32, data []byte) error
+	Write(tag uint32, data []byte) error
+	// Broadcast broadcast the data to all downstream.
+	Broadcast(tag uint32, data []byte) error
 	// SetErrorHandler set the error handler function when server error occurs
 	SetErrorHandler(fn func(err error))
 	// [Experimental] SetReceiveHandler set the observe handler function
 	SetReceiveHandler(fn func(tag uint32, data []byte))
-	// Write the data to all downstream
-	Broadcast(data []byte) error
 }
 
 // YoMo-Source
@@ -32,7 +28,6 @@ type yomoSource struct {
 	name       string
 	zipperAddr string
 	client     *core.Client
-	tag        uint32
 	fn         func(uint32, []byte)
 }
 
@@ -52,20 +47,6 @@ func NewSource(name, zipperAddr string, opts ...SourceOption) Source {
 		zipperAddr: zipperAddr,
 		client:     client,
 	}
-}
-
-// Write the data to downstream.
-func (s *yomoSource) Write(data []byte) (int, error) {
-	err := s.WriteWithTag(s.tag, data)
-	if err != nil {
-		return 0, err
-	}
-	return len(data), nil
-}
-
-// SetDataTag will set the tag of data when invoking Write().
-func (s *yomoSource) SetDataTag(tag uint32) {
-	s.tag = tag
 }
 
 // Close will close the connection to YoMo-Zipper.
@@ -91,8 +72,8 @@ func (s *yomoSource) Connect() error {
 	return err
 }
 
-// WriteWithTag will write data with specified tag, default transactionID is epoch time.
-func (s *yomoSource) WriteWithTag(tag uint32, data []byte) error {
+// Write writes data with specified tag.
+func (s *yomoSource) Write(tag uint32, data []byte) error {
 	f := frame.NewDataFrame()
 	f.SetCarriage(tag, data)
 	f.SetSourceID(s.client.ClientID())
@@ -112,9 +93,9 @@ func (s *yomoSource) SetReceiveHandler(fn func(uint32, []byte)) {
 }
 
 // Broadcast write the data to all downstreams.
-func (s *yomoSource) Broadcast(data []byte) error {
+func (s *yomoSource) Broadcast(tag uint32, data []byte) error {
 	f := frame.NewDataFrame()
-	f.SetCarriage(s.tag, data)
+	f.SetCarriage(tag, data)
 	f.SetSourceID(s.client.ClientID())
 	f.SetBroadcast(true)
 	s.client.Logger().Debug("broadcast", "data_frame", f.String())

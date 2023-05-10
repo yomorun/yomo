@@ -23,7 +23,6 @@ func main() {
 		"source",
 		addr,
 	)
-	source.SetDataTag(0x33)
 	if err := source.Connect(); err != nil {
 		log.Fatalln(err)
 	}
@@ -44,7 +43,11 @@ func main() {
 	}
 	defer sink.Close()
 
-	// send data
+	// set the error handler function when server error occurs
+	source.SetErrorHandler(func(err error) {
+		log.Printf("[source] error handler: %v", err)
+	})
+	// generate mock data and send it to YoMo-Zipper in every 100 ms.
 	generateAndSendData(source)
 }
 
@@ -57,20 +60,21 @@ func generateAndSendData(stream yomo.Source) error {
 			From:  "localhost",
 		}
 
-		sendingBuf, err := json.Marshal(&data)
-		if err != nil {
-			log.Fatal("json.Marshal error", err)
-		}
+		// encode data via JSON codec.
+		sendingBuf, _ := json.Marshal(data)
+
 		// send data via QUIC stream.
-		_, err = stream.Write(sendingBuf)
-
+		err := stream.Write(0x33, sendingBuf)
+		// using the following code, zipper will broadcast this message to cascading zippers.
+		// make sure to configure the downstream zippers using mesh-config flag,
+		// see the mesh example for more details.
+		// err := stream.Broadcast(0x33, sendingBuf)
 		if err != nil {
-			log.Println("[source] ❌ Emit to YoMo-Zipper failure with err ", err, " data", data)
-			time.Sleep(500 * time.Millisecond)
-			continue
+			log.Printf("[source] ❌ Emit %v to YoMo-Zipper failure with err: %v", data, err)
+		} else {
+			log.Printf("[source] ✅ Emit %v to YoMo-Zipper", data)
 		}
 
-		log.Println("[source] ✅ Emit to YoMo-Zipper", " data", data)
-		time.Sleep(1000 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 	}
 }

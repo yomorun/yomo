@@ -63,7 +63,7 @@ func NewZipper(name string, functions []config.Function, meshConfig map[string]c
 	server := core.NewServer(name, opts.serverOption...)
 
 	// add downstreams to server.
-	for name, meshConf := range meshConfig {
+	for _, meshConf := range meshConfig {
 		addr := fmt.Sprintf("%s:%d", meshConf.Host, meshConf.Port)
 
 		clientOptions := append(

@@ -2,7 +2,7 @@
 
 In Unix-like computer operating systems, a [pipeline](<https://en.wikipedia.org/wiki/Pipeline_(Unix)>) is a mechanism for inter-process communication using message passing. A pipeline is a set of processes chained together by their standard streams, so that the output text of each process (stdout) is passed directly as input (stdin) to the next one. The second process is started as the first process is still executing, and they are executed concurrently. The concept of pipelines was championed by Douglas McIlroy at Unix's ancestral home of Bell Labs, during the development of Unix, shaping its [toolbox philosophy](https://en.wikipedia.org/wiki/Unix_philosophy)
 
-![yomo example 1: unix pipeline](https://docs.yomo.run/1.5/the-linux-programming-interface.png)
+![yomo example 1: unix pipeline](https://yomo.run/1.5/the-linux-programming-interface.png)
 
 Dennis Ritchie, the creator of the Unix operating system, introduced the concept of a pipeline to process data.
 
@@ -51,14 +51,14 @@ YoMo CLI Version: v1.0.0
 
 `yomo run -n rand serverless/rand.go`
 
-![yomo example 1: unix pipeline, build streaming function](https://docs.yomo.run/1.5/2-sfn1.png)
+![yomo example 1: unix pipeline, build streaming function](https://yomo.run/1.5/2-sfn1.png)
 
 after few seconds, build is success, you should see the following:
 
-![yomo example 1: unix pipeline, build streaming function](https://docs.yomo.run/1.5/2-sfn2.png)
+![yomo example 1: unix pipeline, build streaming function](https://yomo.run/1.5/2-sfn2.png)
 
 ### Start the Source to generate random data and send to Zipper:
 
 `cat /dev/urandom | go run source/pipe.go`
 
-![yomo example 1: unix pipeline, start source to emit data](https://docs.yomo.run/1.5/3-source.png)
+![yomo example 1: unix pipeline, start source to emit data](https://yomo.run/1.5/3-source.png)

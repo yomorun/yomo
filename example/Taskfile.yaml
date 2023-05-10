@@ -33,7 +33,7 @@ includes:
     taskfile: ./8-deno/Taskfile.yaml
     dir: ./8-deno
   cli:
-    taskfile: ./9-cli/Taskfile.yaml
+    taskfile: ./9-cli/Taskfile.yml
     dir: ./9-cli
 
 tasks:
