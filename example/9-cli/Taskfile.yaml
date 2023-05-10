@@ -10,9 +10,8 @@ tasks:
     deps: [clean]
     cmds:
       - echo '9-cli example run'
-      - task: zipper
-      - task: sfn
-      - task: source
+      - task: sfn-build
+      - task: start
 
   # example cleanup
   clean:
@@ -21,11 +20,11 @@ tasks:
       - rm -rf ./bin
       - rm -rf ./sfn/*.wasm
 
-  # build:
-  #   desc: build source, sfn
-  #   deps: [source-build, sfn-build]
-  #   cmds:
-  #     - echo 'building done'
+  start:
+    desc: Start
+    deps: [zipper, sfn, source]
+    cmds:
+      - echo 'start done'
 
   source-build:
     desc: build source
@@ -44,6 +43,8 @@ tasks:
   source:
     desc: run source
     deps: [source-build]
+    env:
+      YOMO_LOG_LEVEL: error
     cmds:
       - "./bin/source{{exeExt}}"
 
@@ -51,12 +52,15 @@ tasks:
     desc: run sfn
     dir: sfn
     cmds:
-      - task: sfn-build
-      - "yomo run sfn.wasm &"
+      - "yomo run sfn.wasm"
+    env:
+      YOMO_LOG_LEVEL: error
+    preconditions:
+      - test -f sfn.wasm
 
   zipper:
     desc: run zipper
     cmds:
-      - "yomo serve -c config.yaml &"
+      - "yomo serve -c config.yaml"
     env:
       YOMO_LOG_LEVEL: error
