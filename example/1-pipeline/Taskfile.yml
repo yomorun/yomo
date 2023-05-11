@@ -30,7 +30,6 @@ tasks:
 
   sfn:
     desc: run sfn
-    deps: [sfn-build]
     cmds:
       - "yomo run -m go.mod -n rand serverless/sfn.wasm"
 
