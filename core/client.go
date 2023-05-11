@@ -75,8 +75,8 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 connect:
 	controlStream, dataStream, err := c.openStream(ctx, addr)
 	if err != nil {
-		if c.opts.connectUntilSucceed {
-			c.logger.Error("failed to connect to zipper, trying to reconect", err)
+		if c.opts.connectUntilSucceed && !errors.As(err, new(ErrAuthenticateFailed)) {
+			c.logger.Error("failed to connect to zipper, trying to reconnect", err)
 			time.Sleep(time.Second)
 			goto connect
 		}
@@ -265,10 +265,13 @@ func (c *Client) handleFrameError(err error, reconnection chan<- struct{}) {
 
 	// always attempting to reconnect if an error is encountered,
 	// the error is mostly network error.
-	reconnection <- struct{}{}
+	select {
+	case reconnection <- struct{}{}:
+	default:
+	}
 }
 
-// Wait waits client error returning.
+// Wait waits client returning.
 func (c *Client) Wait() {
 	<-c.ctx.Done()
 }
