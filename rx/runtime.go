@@ -6,6 +6,7 @@ import (
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/ylog"
+	"github.com/yomorun/yomo/serverless"
 )
 
 // Runtime is the Stream Serverless Runtime for RxStream.
@@ -24,9 +25,9 @@ func NewRuntime(sfn yomo.StreamFunction) *Runtime {
 }
 
 // RawByteHandler is the Handler for RawBytes.
-func (r *Runtime) RawByteHandler(req []byte) (frame.Tag, []byte) {
+func (r *Runtime) RawByteHandler(ctx serverless.Context) {
 	go func() {
-		r.rawBytesChan <- req
+		r.rawBytesChan <- ctx.Data()
 	}()
 
 	// observe the data from RxStream.
@@ -48,11 +49,8 @@ func (r *Runtime) RawByteHandler(req []byte) (frame.Tag, []byte) {
 		}
 
 		ylog.Debug("[RawByteHandler] Send data to YoMo-Zipper.", "tag", res.Tag)
-		return res.Tag, res.Carriage
+		ctx.Write(res.Tag, res.Carriage)
 	}
-
-	// return empty data by default, the new data from RxStream will be returned in `Pipe` function.
-	return 0x0, nil
 }
 
 // PipeHandler processes data sequentially.

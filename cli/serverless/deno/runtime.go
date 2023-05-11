@@ -14,6 +14,7 @@ import (
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/file"
+	"github.com/yomorun/yomo/serverless"
 )
 
 func listen(path string) (*net.UnixListener, error) {
@@ -96,20 +97,26 @@ func startSfn(name string, zipperAddr string, credential string, observed []fram
 	sfn.SetObserveDataTags(observed...)
 
 	sfn.SetHandler(
-		func(data []byte) (frame.Tag, []byte) {
-			err := binary.Write(conn, binary.LittleEndian, uint32(len(data)))
+		func(ctx serverless.Context) {
+			tag := ctx.Tag()
+			err := binary.Write(conn, binary.LittleEndian, tag)
 			if err != nil {
 				errCh <- err
-				return 0, nil
+				return
+			}
+
+			data := ctx.Data()
+			err = binary.Write(conn, binary.LittleEndian, uint32(len(data)))
+			if err != nil {
+				errCh <- err
+				return
 			}
 
 			_, err = conn.Write(data)
 			if err != nil {
 				errCh <- err
-				return 0, nil
+				return
 			}
-
-			return 0, nil
 		},
 	)
 

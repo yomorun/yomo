@@ -3,15 +3,20 @@ package wasm
 
 import (
 	"fmt"
+
+	"github.com/yomorun/yomo/serverless"
 )
 
 // Define wasm import/export function names
 const (
-	WasmFuncInit           = "yomo_init"
-	WasmFuncObserveDataTag = "yomo_observe_datatag"
-	WasmFuncLoadInput      = "yomo_load_input"
-	WasmFuncDumpOutput     = "yomo_dump_output"
-	WasmFuncHandler        = "yomo_handler"
+	WasmFuncStart           = "_start"
+	WasmFuncInit            = "yomo_init"
+	WasmFuncObserveDataTag  = "yomo_observe_datatag"
+	WasmFuncHandler         = "yomo_handler"
+	WasmFuncWrite           = "yomo_write"
+	WasmFuncContextTag      = "yomo_context_tag"
+	WasmFuncContextData     = "yomo_context_data"
+	WasmFuncContextDataSize = "yomo_context_data_size"
 )
 
 // Runtime is the abstract interface for wasm runtime
@@ -23,7 +28,7 @@ type Runtime interface {
 	GetObserveDataTags() []uint32
 
 	// RunHandler runs the wasm application (request -> response mode)
-	RunHandler(data []byte) (uint32, []byte, error)
+	RunHandler(ctx serverless.Context) error
 
 	// Close releases all the resources related to the runtime
 	Close() error

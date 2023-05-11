@@ -1,0 +1,19 @@
+[package]
+name = "yomo_derive"
+version = "0.2.0"
+edition = "2021"
+description = "YoMo Rust development sdk (macros)."
+license = "Apache-2.0"
+authors = ["YoMo Contributors"]
+repository = "https://github.com/yomorun/yomo/tree/master/cli/serverless/wasm/rust-crate/yomo_derive"
+
+[features]
+default = []
+
+[lib]
+name = "yomo_derive"
+proc_macro = true
+
+[dependencies]
+quote = "1.0"
+syn = { version = "1.0", features = ["full"] }

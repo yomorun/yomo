@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/second-state/WasmEdge-go/wasmedge"
+	"github.com/yomorun/yomo/serverless"
 )
 
 type wasmEdgeRuntime struct {
@@ -15,10 +16,8 @@ type wasmEdgeRuntime struct {
 	conf   *wasmedge.Configure
 	module *wasmedge.Module
 
-	observed  []uint32
-	input     []byte
-	outputTag uint32
-	output    []byte
+	observed      []uint32
+	serverlessCtx serverless.Context
 }
 
 func newWasmEdgeRuntime() (*wasmEdgeRuntime, error) {
@@ -40,29 +39,37 @@ func newWasmEdgeRuntime() (*wasmEdgeRuntime, error) {
 // Init loads the wasm file, and initialize the runtime environment
 func (r *wasmEdgeRuntime) Init(wasmFile string) error {
 	r.module = wasmedge.NewModule("env")
-
+	// observeDataTag
 	observeDataTagFunc := wasmedge.NewFunction(wasmedge.NewFunctionType(
 		[]wasmedge.ValType{
 			wasmedge.ValType_I32,
 		},
 		[]wasmedge.ValType{}), r.observeDataTag, nil, 0)
 	r.module.AddFunction(WasmFuncObserveDataTag, observeDataTagFunc)
-
-	loadInputFunc := wasmedge.NewFunction(wasmedge.NewFunctionType(
-		[]wasmedge.ValType{
-			wasmedge.ValType_I32,
-		},
-		[]wasmedge.ValType{}), r.loadInput, nil, 0)
-	r.module.AddFunction(WasmFuncLoadInput, loadInputFunc)
-
-	dumpOutputFunc := wasmedge.NewFunction(wasmedge.NewFunctionType(
+	// write
+	writeFunc := wasmedge.NewFunction(wasmedge.NewFunctionType(
 		[]wasmedge.ValType{
 			wasmedge.ValType_I32,
 			wasmedge.ValType_I32,
 			wasmedge.ValType_I32,
 		},
-		[]wasmedge.ValType{}), r.dumpOutput, nil, 0)
-	r.module.AddFunction(WasmFuncDumpOutput, dumpOutputFunc)
+		[]wasmedge.ValType{wasmedge.ValType_I32},
+	),
+		r.write, nil, 0)
+	r.module.AddFunction(WasmFuncWrite, writeFunc)
+	// context tag
+	contextTagFunc := wasmedge.NewFunction(wasmedge.NewFunctionType(
+		[]wasmedge.ValType{},
+		[]wasmedge.ValType{wasmedge.ValType_I32}), r.contextTag, nil, 0)
+	r.module.AddFunction(WasmFuncContextTag, contextTagFunc)
+	// context data
+	contextDataFunc := wasmedge.NewFunction(wasmedge.NewFunctionType(
+		[]wasmedge.ValType{
+			wasmedge.ValType_I32,
+			wasmedge.ValType_I32,
+		},
+		[]wasmedge.ValType{wasmedge.ValType_I32}), r.contextData, nil, 0)
+	r.module.AddFunction(WasmFuncContextData, contextDataFunc)
 
 	err := r.vm.RegisterModule(r.module)
 	if err != nil {
@@ -84,6 +91,15 @@ func (r *wasmEdgeRuntime) Init(wasmFile string) error {
 		return fmt.Errorf("vm.Instantiate: %v", err)
 	}
 
+	// _start
+	startFunc := r.vm.GetActiveModule().FindFunction(WasmFuncStart)
+	if startFunc != nil {
+		_, err = r.vm.Execute(WasmFuncStart)
+		if err != nil {
+			return fmt.Errorf("vm.Execute %s: %v", WasmFuncStart, err)
+		}
+	}
+	// yomo init
 	_, err = r.vm.Execute(WasmFuncInit)
 	if err != nil {
 		return fmt.Errorf("vm.Execute %s: %v", WasmFuncInit, err)
@@ -98,18 +114,14 @@ func (r *wasmEdgeRuntime) GetObserveDataTags() []uint32 {
 }
 
 // RunHandler runs the wasm application (request -> response mode)
-func (r *wasmEdgeRuntime) RunHandler(data []byte) (uint32, []byte, error) {
-	r.input = data
-	// reset output
-	r.outputTag = 0
-	r.output = nil
-
+func (r *wasmEdgeRuntime) RunHandler(ctx serverless.Context) error {
+	r.serverlessCtx = ctx
 	// Run the handler function. Given the pointer to the input data.
-	if _, err := r.vm.Execute(WasmFuncHandler, int32(len(data))); err != nil {
-		return 0, nil, fmt.Errorf("vm.Execute %s: %v", WasmFuncHandler, err)
+	if _, err := r.vm.Execute(WasmFuncHandler); err != nil {
+		return fmt.Errorf("vm.Execute %s: %v", WasmFuncHandler, err)
 	}
 
-	return r.outputTag, r.output, nil
+	return nil
 }
 
 // Close releases all the resources related to the runtime
@@ -126,25 +138,40 @@ func (r *wasmEdgeRuntime) observeDataTag(_ any, _ *wasmedge.CallingFrame, params
 	return nil, wasmedge.Result_Success
 }
 
-func (r *wasmEdgeRuntime) loadInput(_ any, callframe *wasmedge.CallingFrame, params []any) ([]any, wasmedge.Result) {
-	pointer := params[0].(int32)
-	mem := callframe.GetMemoryByIndex(0)
-	if err := mem.SetData(r.input, uint(pointer), uint(len(r.input))); err != nil {
-		return nil, wasmedge.Result_Fail
-	}
-	return nil, wasmedge.Result_Success
+func (r *wasmEdgeRuntime) contextTag(_ any, callframe *wasmedge.CallingFrame, params []any) ([]any, wasmedge.Result) {
+	return []any{r.serverlessCtx.Tag()}, wasmedge.Result_Success
 }
 
-func (r *wasmEdgeRuntime) dumpOutput(_ any, callframe *wasmedge.CallingFrame, params []any) ([]any, wasmedge.Result) {
+func (r *wasmEdgeRuntime) contextData(_ any, callframe *wasmedge.CallingFrame, params []any) ([]any, wasmedge.Result) {
+	data := r.serverlessCtx.Data()
+	dataLen := int32(len(data))
+	limit := params[1].(int32)
+	if dataLen > limit {
+		return []any{dataLen}, wasmedge.Result_Success
+	} else if dataLen == 0 {
+		return []any{dataLen}, wasmedge.Result_Success
+	}
+	pointer := params[0].(int32)
+	mem := callframe.GetMemoryByIndex(0)
+	if err := mem.SetData(data, uint(pointer), uint(dataLen)); err != nil {
+		return []any{0}, wasmedge.Result_Fail
+	}
+	return []any{dataLen}, wasmedge.Result_Success
+}
+
+func (r *wasmEdgeRuntime) write(_ any, callframe *wasmedge.CallingFrame, params []any) ([]any, wasmedge.Result) {
 	tag := params[0].(int32)
 	pointer := params[1].(int32)
 	length := params[2].(int32)
-	r.outputTag = uint32(tag)
 	mem := callframe.GetMemoryByIndex(0)
 	output, err := mem.GetData(uint(pointer), uint(length))
 	if err != nil {
-		return nil, wasmedge.Result_Fail
+		return []any{1}, wasmedge.Result_Fail
 	}
-	r.output = output
-	return nil, wasmedge.Result_Success
+	buf := make([]byte, length)
+	copy(buf, output)
+	if err := r.serverlessCtx.Write(uint32(tag), buf); err != nil {
+		return []any{2}, wasmedge.Result_Fail
+	}
+	return []any{0}, wasmedge.Result_Success
 }

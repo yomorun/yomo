@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/serverless"
 )
 
 // NoiseData represents the structure of data
@@ -41,12 +41,13 @@ func main() {
 	select {}
 }
 
-func handler(data []byte) (frame.Tag, []byte) {
+func handler(ctx serverless.Context) {
+	data := ctx.Data()
 	var mold noiseData
 	err := json.Unmarshal(data, &mold)
 	if err != nil {
 		log.Printf("[fn1] y3.ToObject err=%v", err)
-		return 0x0, nil
+		return
 	}
 	mold.Noise = mold.Noise / 10
 
@@ -54,11 +55,11 @@ func handler(data []byte) (frame.Tag, []byte) {
 	result, err := printExtract(context.Background(), &mold)
 	if err != nil {
 		log.Printf("[fn1] to downstream err=%v", err)
-		return 0x0, nil
+		return
 	}
 
 	// transfer result to downstream
-	return 0x14, float32ToByte(result)
+	ctx.Write(0x14, float32ToByte(result))
 }
 
 // Print every value and return noise value to downstream.

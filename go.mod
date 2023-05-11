@@ -7,7 +7,7 @@ require (
 	github.com/bytecodealliance/wasmtime-go v1.0.0
 	github.com/caarlos0/env/v6 v6.10.1
 	github.com/cenkalti/backoff/v4 v4.1.3
-	github.com/fatih/color v1.13.0
+	github.com/fatih/color v1.15.0
 	github.com/joho/godotenv v1.4.0
 	github.com/matoous/go-nanoid/v2 v2.0.0
 	github.com/quic-go/quic-go v0.34.0
@@ -17,7 +17,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.13.0
 	github.com/stretchr/testify v1.8.2
-	github.com/tetratelabs/wazero v1.0.3
+	github.com/tetratelabs/wazero v1.1.0
 	github.com/yomorun/y3 v1.0.5
 	golang.org/x/exp v0.0.0-20230224173230-c95f2b4c22f2
 	golang.org/x/mod v0.10.0
@@ -37,7 +37,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/magiconair/properties v1.8.6 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
-	github.com/mattn/go-isatty v0.0.16 // indirect
+	github.com/mattn/go-isatty v0.0.17 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/onsi/ginkgo/v2 v2.8.3 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect

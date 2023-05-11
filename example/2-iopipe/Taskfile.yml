@@ -16,11 +16,16 @@ tasks:
     env:
       YOMO_LOG_LEVEL: error
 
-  sfn:
+  sfn-build:
     desc: sfn
     cmds:
+      - "yomo build -m go.mod serverless/counter.go" 
+  sfn:
+    desc: sfn
+    deps: [sfn-build]
+    cmds:
       # - "yomo run -n counter serverless/counter.go" # use latest yomo
-      - "yomo run -m go.mod -n counter serverless/counter.go" # use custom go.mod for development
+      - "yomo run -n counter serverless/sfn.wasm" # use custom go.mod for development
 
   source:
     desc: source

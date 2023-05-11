@@ -8,4 +8,4 @@ crate-type = ["cdylib"]
 
 [dependencies]
 anyhow = "1.0"
-yomo = { version = "0.1" }
+yomo = "0.2"
