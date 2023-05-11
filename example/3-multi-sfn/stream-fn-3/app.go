@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/serverless"
 )
 
 // ThresholdAverageValue is the threshold of the average value after a sliding window.
@@ -39,9 +39,7 @@ var slidingAvg = func(i interface{}) error {
 	return nil
 }
 
-var (
-	observe = make(chan float32, 1)
-)
+var observe = make(chan float32, 1)
 
 func main() {
 	sfn := yomo.NewStreamFunction(
@@ -64,12 +62,11 @@ func main() {
 	select {}
 }
 
-func handler(data []byte) (frame.Tag, []byte) {
+func handler(ctx serverless.Context) {
+	data := ctx.Data()
 	v := Float32frombytes(data)
 	log.Printf("✅ [fn3] observe <- %v", v)
 	observe <- v
-
-	return 0x16, nil // no more processing, return nil
 }
 
 // Handler defines a function that handle the input value.

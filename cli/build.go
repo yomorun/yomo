@@ -34,7 +34,8 @@ var buildCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := parseFileArg(args, &opts, defaultSFNSourceFile); err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
-			return
+			os.Exit(127)
+			// return
 		}
 		loadViperValue(cmd, buildViper, &opts.ModFile, "modfile")
 		// use environment variable to override flags
@@ -44,13 +45,15 @@ var buildCmd = &cobra.Command{
 		s, err := serverless.Create(&opts)
 		if err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
-			return
+			os.Exit(127)
+			// return
 		}
 		// build
 		log.PendingStatusEvent(os.Stdout, "YoMo Stream Function building...")
 		if err := s.Build(true); err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
-			return
+			os.Exit(127)
+			// return
 		}
 		log.SuccessStatusEvent(os.Stdout, "Success! YoMo Stream Function build.")
 	},

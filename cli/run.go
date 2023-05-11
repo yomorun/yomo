@@ -78,10 +78,15 @@ var runCmd = &cobra.Command{
 			return
 		}
 		// run
+		wasmRuntime := opts.Runtime
+		if wasmRuntime == "" {
+			wasmRuntime = "wazero"
+		}
 		log.InfoStatusEvent(
 			os.Stdout,
-			"Starting YoMo Stream Function instance with executable file: %s. Zipper: %v.",
+			"Starting YoMo Stream Function instance with executable file: %s. WasmRuntime: %s. Zipper: %v.",
 			opts.Filename,
+			wasmRuntime,
 			opts.ZipperAddrs,
 		)
 		log.InfoStatusEvent(os.Stdout, "YoMo Stream Function is running...")

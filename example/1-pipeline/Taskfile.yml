@@ -15,13 +15,6 @@ tasks:
     desc: start
     deps: [zipper, sfn, source]
 
-
-  sfn-build:
-    desc: sfn-build
-    dir: serverless
-    cmds:
-      - "yomo build serverless/rand.go"
-
   zipper:
     desc: zipper
     cmds:
@@ -29,11 +22,17 @@ tasks:
     env:
       YOMO_LOG_LEVEL: error
 
-  sfn:
-    desc: sfn
-    dir: serverless
+  sfn-build:
+    desc: sfn build
     cmds:
-      - "yomo run sfn.wasm -n rand -m go.mod"
+      # - "yomo build serverless/rand.go" # use latest yomo
+      - "yomo build -m go.mod serverless/rand.go" # use custom go.mod for development
+
+  sfn:
+    desc: run sfn
+    deps: [sfn-build]
+    cmds:
+      - "yomo run -m go.mod -n rand serverless/sfn.wasm"
 
   source:
     desc: source

@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/serverless"
 	"golang.org/x/exp/slog"
 )
 
@@ -45,14 +45,13 @@ func main() {
 	select {}
 }
 
-func handler(data []byte) (frame.Tag, []byte) {
+func handler(ctx serverless.Context) {
 	var model noiseData
-	err := json.Unmarshal(data, &model)
+	err := json.Unmarshal(ctx.Data(), &model)
 	if err != nil {
 		slog.Error("[sfn] json.Marshal error", err)
 		os.Exit(-2)
 	} else {
 		slog.Info("[sfn]", "got", 0x33, "data", model)
 	}
-	return 0x0, nil
 }

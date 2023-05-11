@@ -6,7 +6,7 @@ import (
 	"strconv"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/serverless"
 )
 
 func main() {
@@ -39,16 +39,17 @@ func main() {
 	select {}
 }
 
-func handler(data []byte) (frame.Tag, []byte) {
+func handler(ctx serverless.Context) {
 	// got
+	data := ctx.Data()
 	noise, err := strconv.Atoi(string(data))
 	if err != nil {
 		log.Printf("[sfn-2] got err=%v", err)
-		return 0x0, nil
+		return
 	}
 	// result
 	result := noise * 10
 	log.Printf("[sfn-2] got: tag=0x34, data=%v, return: tag=0x35, data=%v", noise, result)
 
-	return 0x35, []byte(strconv.Itoa(result))
+	ctx.Write(0x35, []byte(strconv.Itoa(result)))
 }

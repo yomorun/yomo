@@ -2,14 +2,13 @@ package main
 
 import (
 	"log"
+
+	"github.com/yomorun/yomo/serverless"
 )
 
 // Handler counts how many bytes received
-func Handler(data []byte) (uint32, []byte) {
-	log.Printf("Got: %d", len(data))
-
-	// return 0, nil will tell zipper end the workflow.
-	return 0, nil
+func Handler(ctx serverless.Context) {
+	log.Printf("Got[%#x]: %d\n", ctx.Tag(), len(ctx.Data()))
 }
 
 // DataTags describes the type of data this serverless function observed.

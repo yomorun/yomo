@@ -2,81 +2,65 @@
 
 version: "3"
 
-output: prefixed
-
-env:
-  YOMO_LOG_LEVEL: error
+output: "prefixed"
 
 tasks:
-  default:
-    cmds:
-      - task -l
-    silent: true
-
   run:
+    desc: run
+    deps: [clean]
     cmds:
-      - task: sfn-rx-build
-      - task: sfn-db-build
+      - echo '9-cli example run'
+      - task: sfn-build
       - task: start
-  start:
-    desc: CLI example
-    deps: [zipper, source, sfn-rx, sfn-db]
-    cmds:
-      - echo "CLI example"
 
-  zipper:
-    desc: "run zipper"
-    cmds:
-      - "yomo serve -c ./zipper/config.yaml"
-    silent: false
-    env:
-      YOMO_AUTH: token:1234
-
-  source:
-    desc: run source application
-    deps: [source-build]
-    cmds:
-      - "./bin/source{{exeExt}}"
-    silent: false
-    env:
-      YOMO_CREDENTIAL: token:1234
-
-  source-build:
-    desc: build source application
-    cmds:
-      - echo "source building..."
-      - "go build -o ./bin/source{{exeExt}} ./source/main.go"
-      - echo "source built."
-    silent: false
-
-  sfn-rx-build:
-    dir: sfn-rx
-    cmds:
-      - "yomo build app.go"
-
-  sfn-db-build:
-    dir: sfn-db
-    cmds:
-      - "yomo build app.go"
-
-  sfn-rx:
-    desc: "run rx stream application"
-    dir: "sfn-rx"
-    cmds:
-      - "yomo run sfn.wasm"
-    silent: false
-
-  sfn-db:
-    desc: run output stream-fn-db
-    dir: "sfn-db"
-    cmds:
-      - "yomo run sfn.wasm"
-    silent: false
-
+  # example cleanup
   clean:
-    desc: "cli clean"
+    desc: clean
     cmds:
       - rm -rf ./bin
-      - rm -rf ./sfn-db/sfn.wasm
-      - rm -rf ./sfn-rx/sfn.wasm
-    silent: true
+      - rm -rf ./sfn/*.wasm
+
+  start:
+    desc: Start
+    deps: [zipper, sfn, source]
+    cmds:
+      - echo 'start done'
+
+  source-build:
+    desc: build source
+    dir: source
+    cmds:
+      - "go build -o ../bin/source{{exeExt}} main.go"
+
+  sfn-build:
+    desc: build sfn
+    dir: sfn
+    cmds:
+      - "yomo build -m go.mod app.go"
+    status:
+      - test -f sfn/sfn.wasm
+
+  source:
+    desc: run source
+    deps: [source-build]
+    env:
+      YOMO_LOG_LEVEL: error
+    cmds:
+      - "./bin/source{{exeExt}}"
+
+  sfn:
+    desc: run sfn
+    dir: sfn
+    cmds:
+      - "yomo run sfn.wasm"
+    env:
+      YOMO_LOG_LEVEL: error
+    preconditions:
+      - test -f sfn.wasm
+
+  zipper:
+    desc: run zipper
+    cmds:
+      - "yomo serve -c config.yaml"
+    env:
+      YOMO_LOG_LEVEL: error

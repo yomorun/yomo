@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"log"
 	"math/rand"
-	"os"
 	"time"
 
 	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/serverless"
 )
 
 type noiseData struct {
@@ -17,20 +17,31 @@ type noiseData struct {
 }
 
 func main() {
-	// connect to YoMo-Zipper.
-	opts := []yomo.SourceOption{}
-	if credential := os.Getenv("YOMO_CREDENTIAL"); credential != "" {
-		opts = append(opts, yomo.WithCredential(credential))
-	}
+	addr := "localhost:9000"
 
-	source := yomo.NewSource("yomo-source", "localhost:9000", opts...)
+	source := yomo.NewSource(
+		"source",
+		addr,
+	)
+	if err := source.Connect(); err != nil {
+		log.Fatalln(err)
+	}
 	defer source.Close()
 
-	err := source.Connect()
-	if err != nil {
-		log.Printf("[source] ❌ Emit the data to YoMo-Zipper failure with err: %v", err)
-		return
+	sink := yomo.NewStreamFunction(
+		"Sink",
+		addr,
+	)
+	sink.SetObserveDataTags(0x34)
+	sink.SetHandler(
+		func(ctx serverless.Context) {
+			log.Printf("[source] received tag[%#x] %s\n", ctx.Tag(), string(ctx.Data()))
+		},
+	)
+	if err := sink.Connect(); err != nil {
+		log.Fatalln(err)
 	}
+	defer sink.Close()
 
 	// set the error handler function when server error occurs
 	source.SetErrorHandler(func(err error) {
@@ -40,7 +51,7 @@ func main() {
 	generateAndSendData(source)
 }
 
-func generateAndSendData(stream yomo.Source) {
+func generateAndSendData(stream yomo.Source) error {
 	for {
 		// generate random data.
 		data := noiseData{
@@ -57,7 +68,7 @@ func generateAndSendData(stream yomo.Source) {
 		// using the following code, zipper will broadcast this message to cascading zippers.
 		// make sure to configure the downstream zippers using mesh-config flag,
 		// see the mesh example for more details.
-		// err := stream.Broadcast(sendingBuf)
+		// err := stream.Broadcast(0x33, sendingBuf)
 		if err != nil {
 			log.Printf("[source] ❌ Emit %v to YoMo-Zipper failure with err: %v", data, err)
 		} else {

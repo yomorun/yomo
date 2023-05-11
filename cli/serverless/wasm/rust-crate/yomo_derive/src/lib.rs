@@ -1,4 +1,4 @@
-//! # YoMo Rust development sdk
+//! # YoMo Rust development sdk (macros)
 //!
 //! This crate is designed for developers to implementing their own YoMo applications with Rust language.
 
@@ -42,8 +42,6 @@ pub fn init(_args: TokenStream, input: TokenStream) -> TokenStream {
     let mut ts = quote! {
         extern "C" {
             fn yomo_observe_datatag(tag: u32);
-            fn yomo_load_input(pointer: *mut u8);
-            fn yomo_dump_output(tag: u32, pointer: *const u8, length: usize);
         }
     };
 
@@ -58,10 +56,11 @@ pub fn init(_args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```
 /// #[yomo::handler]
-/// fn handler(input: &[u8]) -> anyhow::Result<(u32, Vec<u8>)> {
-///     let input = String::from_utf8(input.to_vec())?;
-///     let output = input.to_uppercase();
-///     Ok((0x34, output.into_bytes()));
+/// fn handler(ctx: yomo::Context) -> anyhow::Result<()> {
+///     let input = ctx.load_input();
+///     let output = String::from_utf8(input)?.to_uppercase();
+///     ctx.dump_output(0x34, output.into_bytes());
+///     Ok(())
 /// }
 /// ```
 #[proc_macro_attribute]
@@ -71,22 +70,13 @@ pub fn handler(_args: TokenStream, input: TokenStream) -> TokenStream {
 
     let func: ItemFn = parse_quote! {
         #[no_mangle]
-        pub extern "C" fn yomo_handler(input_length: usize) {
-            let mut input = Vec::with_capacity(input_length);
-            unsafe {
-                yomo_load_input(input.as_mut_ptr());
-                input.set_len(input_length);
-            }
+        pub extern "C" fn yomo_handler() {
+            let ctx = yomo::Context{};
 
             #derive_input
 
-            match #fn_name(&input) {
-                Ok((tag, output)) => {
-                    unsafe {
-                        yomo_dump_output(tag, output.as_ptr(), output.len());
-                    }
-                }
-                Err(e) => eprintln!("sfn handler error: {}", e), // todo: export error
+            if let Err(e) = #fn_name(ctx) {
+                eprintln!("sfn handler error: {}", e); // todo: export error
             }
         }
     };

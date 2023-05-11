@@ -86,6 +86,8 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 	// Add import packages
 	astutil.AddNamedImport(fset, astf, "", "github.com/yomorun/yomo")
 	astutil.AddNamedImport(fset, astf, "", "github.com/joho/godotenv")
+	// wasm guest import
+	astutil.AddNamedImport(fset, astf, "", "github.com/yomorun/yomo/serverless/guest")
 	// log.InfoStatusEvent(os.Stdout, "import elapse: %v", time.Since(now))
 	// Generate the code
 	code, err := generateCode(fset, astf)

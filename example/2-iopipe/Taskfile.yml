@@ -7,7 +7,7 @@ output: "prefixed"
 tasks:
   run:
     desc: run
-    cmds: 
+    cmds:
       - task: sfn-build
       - task: start
 
@@ -30,9 +30,10 @@ tasks:
 
   sfn:
     desc: sfn
+    deps: [sfn-build]
     cmds:
       # - "yomo run -n counter serverless/counter.go" # use latest yomo
-      - "yomo run serverless/sfn.wasm -n counter" # use custom go.mod for development
+      - "yomo run -n counter serverless/sfn.wasm" # use custom go.mod for development
 
   source:
     desc: source
