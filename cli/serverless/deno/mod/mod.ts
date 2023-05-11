@@ -107,6 +107,9 @@ export async function run(
 
     const ctx = new Context(tag, data, conn);
     await handler(ctx);
+
+    await conn.write(numberToBytes(0)); // tag
+    await conn.write(numberToBytes(0)); // length
   }
 
   conn.close();

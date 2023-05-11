@@ -117,6 +117,34 @@ func startSfn(name string, zipperAddr string, credential string, observed []fram
 				errCh <- err
 				return
 			}
+
+			var length uint32
+			for {
+				err := binary.Read(conn, binary.LittleEndian, &tag)
+				if err != nil {
+					errCh <- err
+					return
+				}
+
+				err = binary.Read(conn, binary.LittleEndian, &length)
+				if err != nil {
+					errCh <- err
+					return
+				}
+
+				if tag == 0 && length == 0 {
+					break
+				}
+
+				data := make([]byte, length)
+				_, err = io.ReadFull(conn, data)
+				if err != nil {
+					errCh <- err
+					return
+				}
+
+				ctx.Write(tag, data)
+			}
 		},
 	)
 
@@ -132,34 +160,6 @@ func startSfn(name string, zipperAddr string, credential string, observed []fram
 	}
 
 	return sfn, nil
-}
-
-func runResponse(conn net.Conn, sfn yomo.StreamFunction, errCh chan<- error) {
-	var tag frame.Tag
-	var length uint32
-
-	for {
-		err := binary.Read(conn, binary.LittleEndian, &tag)
-		if err != nil {
-			errCh <- err
-			return
-		}
-
-		err = binary.Read(conn, binary.LittleEndian, &length)
-		if err != nil {
-			errCh <- err
-			return
-		}
-
-		data := make([]byte, length)
-		_, err = io.ReadFull(conn, data)
-		if err != nil {
-			errCh <- err
-			return
-		}
-
-		sfn.Write(tag, data)
-	}
 }
 
 func run(name string, zipperAddr string, credential string, jsPath string, socketPath string) error {
@@ -187,8 +187,6 @@ func run(name string, zipperAddr string, credential string, jsPath string, socke
 		return err
 	}
 	defer sfn.Close()
-
-	go runResponse(conn, sfn, errCh)
 
 	err = <-errCh
 	return err

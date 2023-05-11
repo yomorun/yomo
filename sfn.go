@@ -23,8 +23,6 @@ type StreamFunction interface {
 	Connect() error
 	// Close will close the connection
 	Close() error
-	// Send a data to zipper.
-	Write(tag uint32, carriage []byte) error
 }
 
 // NewStreamFunction create a stream function.
@@ -151,13 +149,6 @@ func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 	} else {
 		s.client.Logger().Warn("sfn does not have a handler")
 	}
-}
-
-// Send a DataFrame to zipper.
-func (s *streamFunction) Write(tag uint32, carriage []byte) error {
-	frame := frame.NewDataFrame()
-	frame.SetCarriage(tag, carriage)
-	return s.client.WriteFrame(frame)
 }
 
 // SetErrorHandler set the error handler function when server error occurs
