@@ -31,8 +31,7 @@ tasks:
   sfn:
     desc: sfn
     cmds:
-      # - "yomo run -n counter serverless/counter.go" # use latest yomo
-      - "yomo run -n counter serverless/sfn.wasm" # use custom go.mod for development
+      - "yomo run -n counter serverless/sfn.wasm" 
 
   source:
     desc: source

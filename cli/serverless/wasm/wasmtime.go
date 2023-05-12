@@ -66,6 +66,10 @@ func (r *wasmtimeRuntime) Init(wasmFile string) error {
 	if err := r.linker.FuncWrap("env", WasmFuncContextData, r.contextData); err != nil {
 		return fmt.Errorf("linker.FuncWrap: %s %v", WasmFuncContextData, err)
 	}
+	// context data size
+	if err := r.linker.FuncWrap("env", WasmFuncContextDataSize, r.contextDataSize); err != nil {
+		return fmt.Errorf("linker.FuncWrap: %s %v", WasmFuncContextDataSize, err)
+	}
 	// write
 	if err := r.linker.FuncWrap("env", WasmFuncWrite, r.write); err != nil {
 		return fmt.Errorf("linker.FuncWrap: %s %v", WasmFuncWrite, err)
@@ -133,6 +137,10 @@ func (r *wasmtimeRuntime) contextData(pointer int32, limit int32) (dataLen int32
 	}
 	copy(r.memory.UnsafeData(r.store)[pointer:pointer+int32(len(data))], data)
 	return
+}
+
+func (r *wasmtimeRuntime) contextDataSize() int32 {
+	return int32(len(r.serverlessCtx.Data()))
 }
 
 func (r *wasmtimeRuntime) write(tag int32, pointer int32, length int32) int32 {
