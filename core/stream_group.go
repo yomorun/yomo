@@ -74,7 +74,7 @@ func (g *StreamGroup) handleRoute(hf *frame.HandshakeFrame, md metadata.Metadata
 		}
 		if ok {
 			stream.Close()
-			g.connector.Remove(existsStreamID)
+			g.connector.Delete(existsStreamID)
 			g.logger.Debug("connector remove stream", "stream_id", stream.ID(), "stream_type", stream.StreamType().String(), "stream_name", stream.Name())
 		}
 	}
@@ -128,7 +128,7 @@ func (g *StreamGroup) Run(contextFunc func(c *Context)) error {
 		}
 
 		g.group.Add(1)
-		g.connector.Add(stream.ID(), stream)
+		g.connector.Store(stream.ID(), stream)
 		g.logger.Debug("connector add stream", "stream_id", stream.ID(), "stream_type", stream.StreamType().String(), "stream_name", stream.Name())
 
 		go g.handleContextFunc(routeResult.route, stream, contextFunc)
@@ -141,7 +141,7 @@ func (g *StreamGroup) handleContextFunc(route router.Route, stream DataStream, c
 		if route != nil {
 			route.Remove(stream.ID())
 		}
-		g.connector.Remove(stream.ID())
+		g.connector.Delete(stream.ID())
 		g.logger.Debug("connector remove stream", "stream_id", stream.ID(), "stream_type", stream.StreamType().String(), "stream_name", stream.Name())
 		g.group.Done()
 	}()

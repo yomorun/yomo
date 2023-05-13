@@ -338,7 +338,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 	// find stream function ids from the route.
 	streamIDs := route.GetForwardRoutes(f.GetDataTag())
 
-	c.Logger.Debug("sfn routing", "data_tag", f.GetDataTag(), "sfn_stream_ids", streamIDs, "connector", s.connector.GetSnapshot())
+	c.Logger.Debug("sfn routing", "data_tag", f.GetDataTag(), "sfn_stream_ids", streamIDs, "connector", s.connector.Snapshot())
 
 	for _, toID := range streamIDs {
 		stream, ok, err := s.connector.Get(toID)
@@ -375,7 +375,7 @@ func (s *Server) handleBackflowFrame(c *Context) error {
 	sourceID := f.SourceID()
 	// write to source with BackflowFrame
 	bf := frame.NewBackflowFrame(tag, carriage)
-	sourceStreams, err := s.connector.GetSourceStreams(sourceID, tag)
+	sourceStreams, err := s.connector.Find(sourceIDTagFindStreamFunc(sourceID, tag))
 	if err != nil {
 		return err
 	}
@@ -391,9 +391,23 @@ func (s *Server) handleBackflowFrame(c *Context) error {
 	return nil
 }
 
+// sourceIDTagFindStreamFunc creates a FindStreamFunc that finds a source type stream matching the specified sourceID and tag.
+func sourceIDTagFindStreamFunc(sourceID string, tag frame.Tag) FindStreamFunc {
+	return func(stream StreamInfo) bool {
+		for _, v := range stream.ObserveDataTags() {
+			if v == tag &&
+				stream.StreamType() == StreamTypeSource &&
+				stream.ID() == sourceID {
+				return true
+			}
+		}
+		return false
+	}
+}
+
 // StatsFunctions returns the sfn stats of server.
 func (s *Server) StatsFunctions() map[string]string {
-	return s.connector.GetSnapshot()
+	return s.connector.Snapshot()
 }
 
 // StatsCounter returns how many DataFrames pass through server.
