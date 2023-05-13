@@ -15,7 +15,7 @@ var ctxPool sync.Pool
 
 // Context is context for stream handling.
 // Context be generated after a dataStream coming, And stores some infomation
-// from dataStream, Context's lifecycle is equal to stream's.
+// from dataStream, The lifecycle of the Context should be equal to the lifecycle of the Stream.
 type Context struct {
 	// DataStream is the stream used for reading and writing frames.
 	DataStream DataStream
@@ -71,12 +71,15 @@ func (c *Context) Err() error { return c.DataStream.Context().Err() }
 // if no value is associated with key. Successive calls to Value with
 // the same key returns the same result.
 func (c *Context) Value(key any) any {
+	c.mu.Lock()
 	if keyAsString, ok := key.(string); ok {
 		if val, exists := c.Keys[keyAsString]; exists {
 			return val
 		}
 	}
-	// There always returns nil, because quic.Stream.Context is not be allowed modify.
+	c.mu.Unlock()
+
+	// this will not take effect forever.
 	return c.DataStream.Context().Value(key)
 }
 
@@ -105,8 +108,6 @@ func newContext(dataStream DataStream, route router.Route, logger *slog.Logger) 
 }
 
 // WithFrame sets a frame to context.
-//
-// TODO: delete frame from context due to different lifecycle between stream and stream.
 func (c *Context) WithFrame(f frame.Frame) {
 	c.Frame = f
 }
@@ -126,11 +127,10 @@ func (c *Context) CloseWithError(ycode yerr.ErrorCode, errString string) {
 	c.Logger.Error("data stream close failed", err)
 }
 
-// Clean cleans the Context,
-// Context is not available after called Clean,
+// Release release the Context, The Context released is not available
 //
 // Warining: do not use any Context api after Clean, It maybe cause an error.
-func (c *Context) Clean() {
+func (c *Context) Release() {
 	c.reset()
 	ctxPool.Put(c)
 }
@@ -143,9 +143,4 @@ func (c *Context) reset() {
 	for k := range c.Keys {
 		delete(c.Keys, k)
 	}
-}
-
-// StreamID gets dataStream ID.
-func (c *Context) StreamID() string {
-	return c.DataStream.ID()
 }
