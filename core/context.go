@@ -127,9 +127,10 @@ func (c *Context) CloseWithError(ycode yerr.ErrorCode, errString string) {
 	c.Logger.Error("data stream close failed", err)
 }
 
-// Release release the Context, The Context released is not available
+// Release release the Context, The Context released is not available.
 //
-// Warining: do not use any Context api after Clean, It maybe cause an error.
+// Warning: do not use any Context api after Release, It maybe cause an error.
+// TODO: use a state to keep context safe.
 func (c *Context) Release() {
 	c.reset()
 	ctxPool.Put(c)
