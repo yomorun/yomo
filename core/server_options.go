@@ -13,12 +13,12 @@ import (
 type ServerOption func(*serverOptions)
 
 // ServerOptions are the options for YoMo server.
+// TODO: quic alpn function.
 type serverOptions struct {
-	quicConfig  *quic.Config
-	tlsConfig   *tls.Config
-	auths       map[string]auth.Authentication
-	logger      *slog.Logger
-	alpnHandler func(proto string) error
+	quicConfig *quic.Config
+	tlsConfig  *tls.Config
+	auths      map[string]auth.Authentication
+	logger     *slog.Logger
 }
 
 func defaultServerOptions() *serverOptions {
@@ -29,10 +29,6 @@ func defaultServerOptions() *serverOptions {
 		tlsConfig:  nil,
 		auths:      map[string]auth.Authentication{},
 		logger:     logger,
-	}
-	opts.alpnHandler = func(proto string) error {
-		opts.logger.Info("client alpn proto", "component", "zipper", "proto", proto)
-		return nil
 	}
 	return opts
 }

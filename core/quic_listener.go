@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"crypto/tls"
 	"net"
 	"time"
@@ -10,11 +11,22 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-var _ Listener = (*defaultListener)(nil)
+// quicListener implements Listener interface.
+type quicListener struct {
+	underlying quic.Listener
+}
 
-type defaultListener struct {
-	quic.Listener
-	conf *quic.Config
+var _ Listener = (*quicListener)(nil)
+
+func (ql *quicListener) Addr() net.Addr { return ql.underlying.Addr() }
+func (ql *quicListener) Close() error   { return ql.underlying.Close() }
+func (ql *quicListener) Accept(ctx context.Context) (Connection, error) {
+	qconn, err := ql.underlying.Accept(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return &QuicConnection{qconn}, nil
 }
 
 // DefalutQuicConfig be used when `quicConfig` is nil.
@@ -30,12 +42,13 @@ var DefalutQuicConfig = &quic.Config{
 	// DisablePathMTUDiscovery:        true,
 }
 
-func newListener(conn net.PacketConn, tlsConfig *tls.Config, quicConfig *quic.Config, logger *slog.Logger) (*defaultListener, error) {
+// NewQuicListener returns quic Listener.
+func NewQuicListener(conn net.PacketConn, tlsConfig *tls.Config, quicConfig *quic.Config, logger *slog.Logger) (Listener, error) {
 	if tlsConfig == nil {
 		tc, err := pkgtls.CreateServerTLSConfig(conn.LocalAddr().String())
 		if err != nil {
 			logger.Error("generate server tls config failed", err)
-			return &defaultListener{}, err
+			return &quicListener{}, err
 		}
 		tlsConfig = tc
 	}
@@ -44,20 +57,10 @@ func newListener(conn net.PacketConn, tlsConfig *tls.Config, quicConfig *quic.Co
 		quicConfig = DefalutQuicConfig
 	}
 
-	quicListener, err := quic.Listen(conn, tlsConfig, quicConfig)
+	ql, err := quic.Listen(conn, tlsConfig, quicConfig)
 	if err != nil {
-		return &defaultListener{}, err
+		return &quicListener{ql}, err
 	}
 
-	return &defaultListener{conf: quicConfig, Listener: quicListener}, nil
-}
-
-func (l *defaultListener) Name() string { return "QUIC-Server" }
-
-func (l *defaultListener) Versions() []string {
-	versions := make([]string, len(l.conf.Versions))
-	for k, v := range l.conf.Versions {
-		versions[k] = v.String()
-	}
-	return versions
+	return &quicListener{ql}, nil
 }
