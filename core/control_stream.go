@@ -116,6 +116,7 @@ func (ss *ServerControlStream) OpenStream(ctx context.Context, handshakeFunc Han
 		md,
 		stream,
 		ff.ObserveDataTags(),
+		ParseFrame,
 	)
 	return dataStream, nil
 }
@@ -368,6 +369,7 @@ func (cs *ClientControlStream) acceptStream(ctx context.Context) (DataStream, er
 		md,
 		quicStream,
 		f.ObserveDataTags(),
+		ParseFrame,
 	), nil
 }
 

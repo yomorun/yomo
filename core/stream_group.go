@@ -147,7 +147,7 @@ func (g *StreamGroup) handleContextFunc(route router.Route, stream DataStream, c
 	}()
 
 	c := newContext(stream, route, g.logger)
-	defer c.Clean()
+	defer c.Release()
 
 	contextFunc(c)
 }
