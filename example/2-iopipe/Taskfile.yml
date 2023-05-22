@@ -7,7 +7,13 @@ output: "prefixed"
 tasks:
   run:
     desc: run
-    deps: [sfn, zipper, source]
+    cmds:
+      - task: sfn-build
+      - task: start
+
+  start:
+    desc: start
+    deps: [zipper, sfn, source]
 
   zipper:
     desc: zipper
@@ -17,15 +23,15 @@ tasks:
       YOMO_LOG_LEVEL: error
 
   sfn-build:
-    desc: sfn
+    desc: sfn build
     cmds:
-      - "yomo build -m go.mod serverless/counter.go" 
+      - task: clean
+      - "yomo build -m go.mod serverless/counter.go"
+
   sfn:
     desc: sfn
-    deps: [sfn-build]
     cmds:
-      # - "yomo run -n counter serverless/counter.go" # use latest yomo
-      - "yomo run -n counter serverless/sfn.wasm" # use custom go.mod for development
+      - "yomo run -n counter serverless/sfn.wasm" 
 
   source:
     desc: source
@@ -35,4 +41,4 @@ tasks:
   clean:
     desc: clean
     cmds:
-      - "rm -rf ./serverless/sfn.*"
+      - "rm -rf ./serverless/sfn.wasm"
