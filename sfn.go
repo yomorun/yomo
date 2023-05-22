@@ -6,6 +6,7 @@ import (
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/serverless"
+	"github.com/yomorun/yomo/pkg/id"
 )
 
 // StreamFunction defines serverless streaming functions.
@@ -82,7 +83,7 @@ func (s *streamFunction) Connect() error {
 	s.client.Logger().Debug("sfn connecting to zipper ...")
 	// notify underlying network operations, when data with tag we observed arrived, invoke the func
 	s.client.SetDataFrameObserver(func(data *frame.DataFrame) {
-		s.client.Logger().Debug("received data frame", "data_frame", data.String())
+		s.client.Logger().Debug("received data frame")
 		s.onDataFrame(data)
 	})
 
@@ -101,9 +102,15 @@ func (s *streamFunction) Connect() error {
 				data := <-s.pOut
 				if data != nil {
 					s.client.Logger().Debug("pipe fn send", "payload_frame", data)
-					frame := frame.NewDataFrame()
-					// todo: frame.SetTransactionID
-					frame.SetCarriage(data.Tag, data.Carriage)
+
+					frame := &frame.DataFrame{
+						Meta: &frame.MetaFrame{TID: id.New()},
+						Payload: &frame.PayloadFrame{
+							Tag:      data.Tag,
+							Carriage: data.Carriage,
+						},
+					}
+
 					s.client.WriteFrame(frame)
 				}
 			}
@@ -143,7 +150,7 @@ func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 			s.fn(serverlessCtx)
 		}()
 	} else if s.pfn != nil {
-		data := dataFrame.GetCarriage()
+		data := dataFrame.Payload.Carriage
 		s.client.Logger().Debug("pipe sfn receive", "data_len", len(data), "data", data)
 		s.pIn <- data
 	} else {

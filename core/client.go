@@ -11,6 +11,7 @@ import (
 
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
+	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 	"github.com/yomorun/yomo/pkg/id"
 	"golang.org/x/exp/slog"
 )
@@ -171,7 +172,13 @@ func (c *Client) Close() error {
 }
 
 func (c *Client) openControlStream(ctx context.Context, addr string) (*ClientControlStream, error) {
-	controlStream, err := OpenClientControlStream(ctx, addr, c.opts.tlsConfig, c.opts.quicConfig, metadata.DefaultDecoder(), c.logger)
+	controlStream, err := OpenClientControlStream(
+		ctx, addr,
+		c.opts.tlsConfig, c.opts.quicConfig,
+		metadata.DefaultDecoder(),
+		y3codec.Codec(), y3codec.PacketReader(),
+		c.logger,
+	)
 	if err != nil {
 		return controlStream, err
 	}
@@ -197,13 +204,12 @@ func (c *Client) openStream(ctx context.Context, addr string) (*ClientControlStr
 }
 
 func (c *Client) openDataStream(ctx context.Context, controlStream *ClientControlStream) (DataStream, error) {
-	handshakeFrame := frame.NewHandshakeFrame(
-		c.name,
-		c.clientID,
-		byte(c.streamType),
-		c.opts.observeDataTags,
-		[]byte{}, // The stream does not require metadata currently.
-	)
+	handshakeFrame := &frame.HandshakeFrame{
+		Name:            c.name,
+		ID:              c.clientID,
+		StreamType:      byte(c.streamType),
+		ObserveDataTags: c.opts.observeDataTags,
+	}
 
 	err := controlStream.RequestStream(handshakeFrame)
 	if err != nil {

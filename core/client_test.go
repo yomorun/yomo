@@ -15,6 +15,7 @@ import (
 	"github.com/yomorun/yomo/core/router"
 	"github.com/yomorun/yomo/core/ylog"
 	"github.com/yomorun/yomo/pkg/config"
+	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 )
 
 const testaddr = "127.0.0.1:19999"
@@ -78,7 +79,7 @@ func TestFrameRoundTrip(t *testing.T) {
 	)
 
 	source.SetBackflowFrameObserver(func(bf *frame.BackflowFrame) {
-		assert.Equal(t, string(payload), string(bf.GetCarriage()))
+		assert.Equal(t, string(payload), string(bf.Carriage))
 	})
 
 	err = source.Connect(ctx, testaddr)
@@ -98,7 +99,7 @@ func TestFrameRoundTrip(t *testing.T) {
 	// add a same name sfn to zipper.
 	sameNameSfn := createTestStreamFunction("sfn-1", obversedTag)
 	sameNameSfn.SetDataFrameObserver(func(bf *frame.DataFrame) {
-		assert.Equal(t, string(payload), string(bf.GetCarriage()))
+		assert.Equal(t, string(payload), string(bf.Payload.Carriage))
 
 		// panic test: reading array out of range.
 		arr := []int{1, 2}
@@ -131,13 +132,18 @@ func TestFrameRoundTrip(t *testing.T) {
 	}
 	assert.ElementsMatch(t, nameList, []string{"source", "sfn-1"})
 
-	dataFrame := frame.NewDataFrame()
-	dataFrame.GetMetaFrame().SetMetadata([]byte("the-metadata"))
-	dataFrame.SetSourceID(source.clientID)
-	dataFrame.SetCarriage(obversedTag, payload)
-	dataFrame.SetBroadcast(true)
-
-	dataFrameEncoded := dataFrame.Encode()
+	dataFrame := &frame.DataFrame{
+		Meta: &frame.MetaFrame{
+			Metadata:  []byte("the-metadata"),
+			SourceID:  source.clientID,
+			Broadcast: true,
+		},
+		Payload: &frame.PayloadFrame{
+			Tag:      obversedTag,
+			Carriage: payload,
+		},
+	}
+	dataFrameEncoded, _ := y3codec.Codec().Encode(dataFrame)
 
 	err = source.WriteFrame(dataFrame)
 	assert.NoError(t, err, "source write dataFrame must be success")
@@ -205,24 +211,33 @@ func createTestStreamFunction(name string, obversedTag frame.Tag) *Client {
 
 // frameWriterRecorder frames be writen.
 type frameWriterRecorder struct {
-	name string
-	mu   sync.Mutex
-	buf  *bytes.Buffer
+	name         string
+	codec        frame.Codec
+	packetReader frame.PacketReader
+	mu           sync.Mutex
+	buf          *bytes.Buffer
 }
 
 func newFrameWriterRecorder(name string) *frameWriterRecorder {
-	return &frameWriterRecorder{name: name, buf: bytes.NewBuffer([]byte{})}
+	return &frameWriterRecorder{
+		name:         name,
+		codec:        y3codec.Codec(),
+		packetReader: y3codec.PacketReader(),
+		buf:          new(bytes.Buffer),
+	}
 }
 
 func (w *frameWriterRecorder) Name() string                              { return w.name }
 func (w *frameWriterRecorder) Close() error                              { return nil }
 func (w *frameWriterRecorder) Connect(_ context.Context, _ string) error { return nil }
 
-func (w *frameWriterRecorder) WriteFrame(frm frame.Frame) error {
+func (w *frameWriterRecorder) WriteFrame(f frame.Frame) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	_, err := w.buf.Write(frm.Encode())
+	b, _ := w.codec.Encode(f)
+	_, err := w.buf.Write(b)
+
 	return err
 }
 

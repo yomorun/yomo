@@ -21,13 +21,13 @@ import (
 // ErrHandshakeRejected be returned when a stream be rejected after sending a handshake.
 // It contains the streamID and the error. It is used in AcceptStream scope.
 type ErrHandshakeRejected struct {
-	Reason   string
+	Message  string
 	StreamID string
 }
 
 // Error returns a string that represents the ErrHandshakeRejected error for the implementation of the error interface.
 func (e ErrHandshakeRejected) Error() string {
-	return fmt.Sprintf("yomo: handshake be rejected, streamID=%s, reason=%s", e.StreamID, e.Reason)
+	return fmt.Sprintf("yomo: handshake be rejected, streamID=%s, message=%s", e.StreamID, e.Message)
 }
 
 // ErrAuthenticateFailed be returned when client control stream authenticate failed.
@@ -43,25 +43,33 @@ func (e ErrAuthenticateFailed) Error() string { return e.ReasonFromeServer }
 type HandshakeFunc func(*frame.HandshakeFrame) (metadata.Metadata, error)
 
 // VerifyAuthenticationFunc is used by server control stream to verify authentication.
-type VerifyAuthenticationFunc func(auth.Object) (metadata.Metadata, bool, error)
+type VerifyAuthenticationFunc func(*frame.AuthenticationFrame) (metadata.Metadata, bool, error)
 
 // ServerControlStream defines the struct of server-side control stream.
 type ServerControlStream struct {
 	conn               Connection
-	stream             frame.ReadWriter
+	stream             frame.ReadWriteCloser
 	handshakeFrameChan chan *frame.HandshakeFrame
+	codec              frame.Codec
+	packetReader       frame.PacketReader
 	logger             *slog.Logger
 }
 
 // NewServerControlStream returns ServerControlStream from quic Connection and the first stream of this Connection.
-func NewServerControlStream(conn Connection, stream frame.ReadWriter, logger *slog.Logger) *ServerControlStream {
+func NewServerControlStream(
+	conn Connection, stream ContextReadWriteCloser,
+	codec frame.Codec, packetReader frame.PacketReader,
+	logger *slog.Logger,
+) *ServerControlStream {
 	if logger == nil {
 		logger = ylog.Default()
 	}
 	controlStream := &ServerControlStream{
 		conn:               conn,
-		stream:             stream,
+		stream:             NewFrameStream(stream, codec, packetReader),
 		handshakeFrameChan: make(chan *frame.HandshakeFrame, 10),
+		codec:              codec,
+		packetReader:       packetReader,
 		logger:             logger,
 	}
 
@@ -97,7 +105,10 @@ func (ss *ServerControlStream) OpenStream(ctx context.Context, handshakeFunc Han
 	}
 	md, err := handshakeFunc(ff)
 	if err != nil {
-		ss.stream.WriteFrame(frame.NewHandshakeRejectedFrame(ff.ID(), err.Error()))
+		ss.stream.WriteFrame(&frame.HandshakeRejectedFrame{
+			ID:      ff.ID,
+			Message: err.Error(),
+		})
 		return nil, err
 	}
 
@@ -105,18 +116,23 @@ func (ss *ServerControlStream) OpenStream(ctx context.Context, handshakeFunc Han
 	if err != nil {
 		return nil, err
 	}
-	_, err = stream.Write(frame.NewHandshakeAckFrame(ff.ID()).Encode())
+	b, err := ss.codec.Encode(&frame.HandshakeAckFrame{
+		StreamID: ff.ID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	_, err = stream.Write(b)
 	if err != nil {
 		return nil, err
 	}
 	dataStream := newDataStream(
-		ff.Name(),
-		ff.ID(),
-		StreamType(ff.StreamType()),
+		ff.Name,
+		ff.ID,
+		StreamType(ff.StreamType),
 		md,
-		stream,
-		ff.ObserveDataTags(),
-		ParseFrame,
+		ff.ObserveDataTags,
+		NewFrameStream(stream, ss.codec, ss.packetReader),
 	)
 	return dataStream, nil
 }
@@ -145,11 +161,11 @@ func (ss *ServerControlStream) VerifyAuthentication(verifyFunc VerifyAuthenticat
 		return md, err
 	}
 	if !ok {
-		errString := fmt.Sprintf("authentication failed: client credential name is %s", received.AuthName())
+		errString := fmt.Sprintf("authentication failed: client credential name is %s", received.AuthName)
 		ss.CloseWithError(errString)
 		return md, errors.New(errString)
 	}
-	if err := ss.stream.WriteFrame(frame.NewAuthenticationAckFrame()); err != nil {
+	if err := ss.stream.WriteFrame(&frame.AuthenticationAckFrame{}); err != nil {
 		return md, err
 	}
 
@@ -163,11 +179,17 @@ func (ss *ServerControlStream) VerifyAuthentication(verifyFunc VerifyAuthenticat
 type ClientControlStream struct {
 	ctx             context.Context
 	conn            Connection
-	stream          frame.ReadWriter
+	stream          frame.ReadWriteCloser
 	metadataDecoder metadata.Decoder
+
+	// encode and decode the frame
+	codec        frame.Codec
+	packetReader frame.PacketReader
+
 	// mu protect handshakeFrames
-	mu                         sync.Mutex
-	handshakeFrames            map[string]*frame.HandshakeFrame
+	mu              sync.Mutex
+	handshakeFrames map[string]*frame.HandshakeFrame
+
 	handshakeRejectedFrameChan chan *frame.HandshakeRejectedFrame
 	acceptStreamResultChan     chan acceptStreamResult
 	logger                     *slog.Logger
@@ -178,6 +200,7 @@ func OpenClientControlStream(
 	ctx context.Context, addr string,
 	tlsConfig *tls.Config, quicConfig *quic.Config,
 	metadataDecoder metadata.Decoder,
+	codec frame.Codec, packetReader frame.PacketReader,
 	logger *slog.Logger,
 ) (*ClientControlStream, error) {
 
@@ -190,18 +213,21 @@ func OpenClientControlStream(
 		return nil, err
 	}
 
-	return NewClientControlStream(ctx, &QuicConnection{conn}, NewFrameStream(stream0), metadataDecoder, logger), nil
+	return NewClientControlStream(ctx, &QuicConnection{conn}, stream0, codec, packetReader, metadataDecoder, logger), nil
 }
 
 // NewClientControlStream returns ClientControlStream from quic Connection and the first stream form the Connection.
 func NewClientControlStream(
-	ctx context.Context, conn Connection,
-	stream frame.ReadWriter, metadataDecoder metadata.Decoder, logger *slog.Logger) *ClientControlStream {
+	ctx context.Context, conn Connection, stream ContextReadWriteCloser,
+	codec frame.Codec, packetReader frame.PacketReader,
+	metadataDecoder metadata.Decoder, logger *slog.Logger) *ClientControlStream {
 
 	controlStream := &ClientControlStream{
 		ctx:                        ctx,
 		conn:                       conn,
-		stream:                     stream,
+		stream:                     NewFrameStream(stream, codec, packetReader),
+		codec:                      codec,
+		packetReader:               packetReader,
 		metadataDecoder:            metadataDecoder,
 		handshakeFrames:            make(map[string]*frame.HandshakeFrame),
 		handshakeRejectedFrameChan: make(chan *frame.HandshakeRejectedFrame, 10),
@@ -234,8 +260,11 @@ func (cs *ClientControlStream) readFrameLoop() {
 // Authenticate sends the provided credential to the server's control stream to authenticate the client.
 // There will return `ErrAuthenticateFailed` if authenticate failed.
 func (cs *ClientControlStream) Authenticate(cred *auth.Credential) error {
-	if err := cs.stream.WriteFrame(
-		frame.NewAuthenticationFrame(cred.Name(), cred.Payload())); err != nil {
+	af := &frame.AuthenticationFrame{
+		AuthName:    cred.Name(),
+		AuthPayload: cred.Payload(),
+	}
+	if err := cs.stream.WriteFrame(af); err != nil {
 		return err
 	}
 	received, err := cs.stream.ReadFrame()
@@ -273,7 +302,7 @@ func ackDataStream(stream frame.Reader) (string, error) {
 		return "", fmt.Errorf("yomo: data stream read first frame should be HandshakeAckFrame, but got %s", first.Type().String())
 	}
 
-	return f.StreamID(), nil
+	return f.StreamID, nil
 }
 
 // RequestStream sends a HandshakeFrame to the server's control stream to request a new data stream.
@@ -286,7 +315,7 @@ func (cs *ClientControlStream) RequestStream(hf *frame.HandshakeFrame) error {
 	}
 
 	cs.mu.Lock()
-	cs.handshakeFrames[hf.ID()] = hf
+	cs.handshakeFrames[hf.ID] = hf
 	cs.mu.Unlock()
 
 	return nil
@@ -300,12 +329,12 @@ func (cs *ClientControlStream) AcceptStream(ctx context.Context) (DataStream, er
 	select {
 	case reject := <-cs.handshakeRejectedFrameChan:
 		cs.mu.Lock()
-		delete(cs.handshakeFrames, reject.StreamID())
+		delete(cs.handshakeFrames, reject.ID)
 		cs.mu.Unlock()
 
 		return nil, ErrHandshakeRejected{
-			Reason:   reject.Reason(),
-			StreamID: reject.StreamID(),
+			Message:  reject.Message,
+			StreamID: reject.ID,
 		}
 	case result := <-cs.acceptStreamResultChan:
 		if err := result.err; err != nil {
@@ -341,7 +370,9 @@ func (cs *ClientControlStream) acceptStream(ctx context.Context) (DataStream, er
 		return nil, err
 	}
 
-	streamID, err := ackDataStream(NewFrameStream(quicStream))
+	fs := NewFrameStream(quicStream, cs.codec, cs.packetReader)
+
+	streamID, err := ackDataStream(fs)
 	if err != nil {
 		return nil, err
 	}
@@ -357,23 +388,16 @@ func (cs *ClientControlStream) acceptStream(ctx context.Context) (DataStream, er
 	// Unlike server-side data streams,
 	// client-side data streams do not merge connection-level metadata and stream-level metadata.
 	// Instead, they only contain stream-level metadata.
-	md, err := cs.metadataDecoder.Decode(f.Metadata())
+	md, err := cs.metadataDecoder.Decode(f.Metadata)
 	if err != nil {
 		return nil, err
 	}
 
-	return newDataStream(
-		f.Name(),
-		f.ID(),
-		StreamType(f.StreamType()),
-		md,
-		quicStream,
-		f.ObserveDataTags(),
-		ParseFrame,
-	), nil
+	return newDataStream(f.Name, f.ID, StreamType(f.StreamType), md, f.ObserveDataTags, fs), nil
 }
 
 // CloseWithError closes the client-side control stream.
 func (cs *ClientControlStream) CloseWithError(errString string) error {
+	cs.stream.Close()
 	return cs.conn.CloseWithError(errString)
 }

@@ -18,12 +18,12 @@ func NewContext(writer frame.Writer, dataFrame *frame.DataFrame) *Context {
 
 // Tag returns the tag of the data frame
 func (c *Context) Tag() uint32 {
-	return c.dataFrame.Tag()
+	return c.dataFrame.Payload.Tag
 }
 
 // Data returns the data of the data frame
 func (c *Context) Data() []byte {
-	return c.dataFrame.GetCarriage()
+	return c.dataFrame.Payload.Carriage
 }
 
 // Write writes the data
@@ -31,12 +31,18 @@ func (c *Context) Write(tag uint32, data []byte) error {
 	if data == nil {
 		return nil
 	}
-	metaFrame := c.dataFrame.GetMetaFrame()
-	dataFrame := frame.NewDataFrame()
-	// reuse transactionID
-	dataFrame.SetTransactionID(metaFrame.TransactionID())
-	// reuse sourceID
-	dataFrame.SetSourceID(metaFrame.SourceID())
-	dataFrame.SetCarriage(tag, data)
+	metaFrame := c.dataFrame.Meta
+
+	dataFrame := &frame.DataFrame{
+		Meta: &frame.MetaFrame{
+			TID:      metaFrame.TID,      // reuse TID
+			SourceID: metaFrame.SourceID, // reuse sourceID
+		},
+		Payload: &frame.PayloadFrame{
+			Tag:      tag,
+			Carriage: data,
+		},
+	}
+
 	return c.writer.WriteFrame(dataFrame)
 }

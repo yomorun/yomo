@@ -20,6 +20,7 @@ import (
 
 	// authentication implements, Currently, only token authentication is implemented
 	_ "github.com/yomorun/yomo/pkg/auth"
+	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 )
 
 // ErrServerClosed is returned by the Server's Serve and ListenAndServe methods after a call to Shutdown or Close.
@@ -39,6 +40,8 @@ type Server struct {
 	connector               *Connector
 	router                  router.Router
 	metadataDecoder         metadata.Decoder
+	codec                   frame.Codec
+	packetReader            frame.PacketReader
 	counterOfDataFrame      int64
 	downstreams             map[string]FrameWriterConnection
 	mu                      sync.Mutex
@@ -64,12 +67,14 @@ func NewServer(name string, opts ...ServerOption) *Server {
 	ctx, ctxCancel := context.WithCancel(context.Background())
 
 	s := &Server{
-		ctx:         ctx,
-		ctxCancel:   ctxCancel,
-		name:        name,
-		downstreams: make(map[string]FrameWriterConnection),
-		logger:      logger,
-		opts:        options,
+		ctx:          ctx,
+		ctxCancel:    ctxCancel,
+		name:         name,
+		downstreams:  make(map[string]FrameWriterConnection),
+		logger:       logger,
+		codec:        y3codec.Codec(),
+		packetReader: y3codec.PacketReader(),
+		opts:         options,
 	}
 
 	return s
@@ -136,7 +141,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 			continue
 		}
 
-		controlStream := NewServerControlStream(conn, NewFrameStream(stream0), logger)
+		controlStream := NewServerControlStream(conn, stream0, s.codec, s.packetReader, logger)
 
 		// Auth accepts a AuthenticationFrame from client. The first frame from client must be
 		// AuthenticationFrame, It returns true if auth successful otherwise return false.
@@ -278,7 +283,7 @@ func (s *Server) mainFrameHandler(c *Context) error {
 	frameType := c.Frame.Type()
 
 	switch frameType {
-	case frame.TagOfDataFrame:
+	case frame.TypeDataFrame:
 		if err := s.handleDataFrame(c); err != nil {
 			c.CloseWithError(fmt.Sprintf("handle dataFrame err: %v", err))
 		} else {
@@ -293,13 +298,13 @@ func (s *Server) mainFrameHandler(c *Context) error {
 	return nil
 }
 
-func (s *Server) handleAuthenticationFrame(f auth.Object) (metadata.Metadata, bool, error) {
+func (s *Server) handleAuthenticationFrame(f *frame.AuthenticationFrame) (metadata.Metadata, bool, error) {
 	md, ok := auth.Authenticate(s.opts.auths, f)
 
 	if ok {
-		s.logger.Debug("authentication successful", "credential", f.AuthName())
+		s.logger.Debug("authentication successful", "credential", f.AuthName)
 	} else {
-		s.logger.Warn("authentication failed", "credential", f.AuthName())
+		s.logger.Warn("authentication failed", "credential", f.AuthName)
 	}
 
 	return md, ok, nil
@@ -313,7 +318,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 
 	f := c.Frame.(*frame.DataFrame)
 
-	frameMetadata, err := s.metadataDecoder.Decode(f.GetMetaFrame().Metadata())
+	frameMetadata, err := s.metadataDecoder.Decode(f.Meta.Metadata)
 	if err != nil {
 		return err
 	}
@@ -329,9 +334,9 @@ func (s *Server) handleDataFrame(c *Context) error {
 	}
 
 	// find stream function ids from the route.
-	streamIDs := route.GetForwardRoutes(f.GetDataTag())
+	streamIDs := route.GetForwardRoutes(f.Payload.Tag)
 
-	c.Logger.Debug("sfn routing", "data_tag", f.GetDataTag(), "sfn_stream_ids", streamIDs, "connector", s.connector.Snapshot())
+	c.Logger.Debug("sfn routing", "data_tag", f.Payload.Tag, "sfn_stream_ids", streamIDs, "connector", s.connector.Snapshot())
 
 	for _, toID := range streamIDs {
 		stream, ok, err := s.connector.Get(toID)
@@ -349,7 +354,6 @@ func (s *Server) handleDataFrame(c *Context) error {
 			"from_stream_id", from.ID(),
 			"to_stream_name", stream.Name(),
 			"to_stream_id", toID,
-			"data_frame", f.String(),
 		)
 
 		// write data frame to stream
@@ -363,18 +367,19 @@ func (s *Server) handleDataFrame(c *Context) error {
 
 func (s *Server) handleBackflowFrame(c *Context) error {
 	f := c.Frame.(*frame.DataFrame)
-	tag := f.GetDataTag()
-	carriage := f.GetCarriage()
-	sourceID := f.SourceID()
+	sourceID := f.Meta.SourceID
 	// write to source with BackflowFrame
-	bf := frame.NewBackflowFrame(tag, carriage)
-	sourceStreams, err := s.connector.Find(sourceIDTagFindStreamFunc(sourceID, tag))
+	bf := &frame.BackflowFrame{
+		Tag:      f.Payload.Tag,
+		Carriage: f.Payload.Carriage,
+	}
+	sourceStreams, err := s.connector.Find(sourceIDTagFindStreamFunc(sourceID, f.Payload.Tag))
 	if err != nil {
 		return err
 	}
 	for _, source := range sourceStreams {
 		if source != nil {
-			c.Logger.Info("backflow to source", "source_conn_id", sourceID, "back_flow_frame", f.String())
+			c.Logger.Info("backflow to source", "source_conn_id", sourceID)
 			if err := source.WriteFrame(bf); err != nil {
 				c.Logger.Error("failed to write frame for backflow to the source", err)
 				return err
@@ -450,16 +455,22 @@ func (s *Server) dispatchToDownstreams(c *Context) {
 
 	if stream.StreamType() == StreamTypeSource {
 		f := c.Frame.(*frame.DataFrame)
-		if f.IsBroadcast() {
-			if f.GetMetaFrame().Metadata() == nil || len(f.GetMetaFrame().Metadata()) == 0 {
+
+		var (
+			broadcast = f.Meta.Broadcast
+			fmd       = f.Meta.Metadata
+			tid       = f.Meta.TID
+		)
+		if broadcast {
+			if len(fmd) == 0 {
 				byteMd, err := stream.Metadata().Encode()
 				if err != nil {
 					c.Logger.Error("failed to dispatch to downstream", err)
 				}
-				f.GetMetaFrame().SetMetadata(byteMd)
+				f.Meta.Metadata = byteMd
 			}
 			for streamID, ds := range s.downstreams {
-				c.Logger.Info("dispatching to downstream", "dispatch_stream_id", streamID, "tid", f.TransactionID())
+				c.Logger.Info("dispatching to downstream", "dispatch_stream_id", streamID, "tid", tid)
 				ds.WriteFrame(f)
 			}
 		}

@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"io"
-	"sync"
 
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
@@ -28,15 +27,9 @@ type StreamInfo interface {
 // DataStream wraps the specific io stream (typically quic.Stream) to transfer frames.
 // DataStream be used to read and write frames, and be managed by Connector.
 type DataStream interface {
-	// Context manages the lifecycle of DataStream.
 	Context() context.Context
-	// Close actually close the DataStream.
-	// if the stream be closed, The Writer() and Reader() will return io.EOF.
-	io.Closer
-	// ReadWriter read write frame.
-	frame.ReadWriter
-	// StreamInfo is the information of DataStream.
 	StreamInfo
+	frame.ReadWriteCloser
 }
 
 type dataStream struct {
@@ -46,11 +39,7 @@ type dataStream struct {
 	metadata   metadata.Metadata
 	observed   []frame.Tag
 
-	// mu protected stream write and close
-	// because of stream write and close is not goroutinue-safely.
-	mu            sync.Mutex
-	stream        ContextReadWriteCloser
-	frameReadFunc FrameReadFunc
+	stream *FrameStream
 }
 
 // newDataStream constructures dataStream.
@@ -59,64 +48,29 @@ func newDataStream(
 	id string,
 	streamType StreamType,
 	metadata metadata.Metadata,
-	stream ContextReadWriteCloser,
 	observed []frame.Tag,
-	frameReadFunc FrameReadFunc,
+	stream *FrameStream,
 ) DataStream {
 	return &dataStream{
-		name:          name,
-		id:            id,
-		streamType:    streamType,
-		metadata:      metadata,
-		stream:        stream,
-		observed:      observed,
-		frameReadFunc: frameReadFunc,
+		name:       name,
+		id:         id,
+		streamType: streamType,
+		metadata:   metadata,
+		observed:   observed,
+		stream:     stream,
 	}
 }
 
 // DataStream implements.
-func (s *dataStream) Context() context.Context     { return s.stream.Context() }
-func (s *dataStream) ID() string                   { return s.id }
-func (s *dataStream) Name() string                 { return s.name }
-func (s *dataStream) Metadata() metadata.Metadata  { return s.metadata }
-func (s *dataStream) StreamType() StreamType       { return s.streamType }
-func (s *dataStream) ObserveDataTags() []frame.Tag { return s.observed }
-
-func (s *dataStream) WriteFrame(frm frame.Frame) error {
-	select {
-	case <-s.stream.Context().Done():
-		return io.EOF
-	default:
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	_, err := s.stream.Write(frm.Encode())
-	return err
-}
-
-func (s *dataStream) ReadFrame() (frame.Frame, error) {
-	select {
-	case <-s.stream.Context().Done():
-		return nil, io.EOF
-	default:
-	}
-
-	return s.frameReadFunc(s.stream)
-}
-
-func (s *dataStream) Close() error {
-	select {
-	case <-s.stream.Context().Done():
-		return nil
-	default:
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	return s.stream.Close()
-}
+func (s *dataStream) Context() context.Context        { return s.stream.Context() }
+func (s *dataStream) ID() string                      { return s.id }
+func (s *dataStream) Name() string                    { return s.name }
+func (s *dataStream) Metadata() metadata.Metadata     { return s.metadata }
+func (s *dataStream) StreamType() StreamType          { return s.streamType }
+func (s *dataStream) ObserveDataTags() []frame.Tag    { return s.observed }
+func (s *dataStream) WriteFrame(f frame.Frame) error  { return s.stream.WriteFrame(f) }
+func (s *dataStream) ReadFrame() (frame.Frame, error) { return s.stream.ReadFrame() }
+func (s *dataStream) Close() error                    { return s.stream.Close() }
 
 const (
 	// StreamTypeSource is stream type "Source".

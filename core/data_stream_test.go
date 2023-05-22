@@ -25,7 +25,10 @@ func TestDataStream(t *testing.T) {
 	// Create a stream that initializes the read buffer with a string that has been split by spaces.
 	mockStream := newMemByteStream(readBytes)
 
-	stream := newDataStream(name, id, styp, md, mockStream, observed, byteFrameReadFunc)
+	// create frame stream.
+	frameStream := NewFrameStream(mockStream, &byteCodec{}, &bytePacketReader{})
+
+	stream := newDataStream(name, id, styp, md, observed, frameStream)
 
 	t.Run("StreamInfo", func(t *testing.T) {
 		assert.Equal(t, id, stream.ID())
@@ -47,7 +50,11 @@ func TestDataStream(t *testing.T) {
 				}
 				return
 			}
-			gots = append(gots, f.Encode()...)
+
+			b, err := frameStream.codec.Encode(f)
+			assert.NoError(t, err)
+
+			gots = append(gots, b...)
 		}
 		assert.Equal(t, readBytes, gots)
 	})
@@ -56,7 +63,7 @@ func TestDataStream(t *testing.T) {
 		dataWrited := []byte("ggghhhiiigggkkklll")
 
 		for _, w := range dataWrited {
-			err := stream.WriteFrame(&byteFrame{w})
+			err := stream.WriteFrame(byteFrame(w))
 			assert.NoError(t, err)
 		}
 
@@ -75,7 +82,7 @@ func TestDataStream(t *testing.T) {
 		assert.ErrorIs(t, err, io.EOF)
 		assert.Nil(t, f)
 
-		err = stream.WriteFrame(&byteFrame{'a'})
+		err = stream.WriteFrame(byteFrame('a'))
 		assert.ErrorIs(t, err, io.EOF)
 
 		select {
@@ -94,24 +101,46 @@ func TestStreamTypeString(t *testing.T) {
 }
 
 // byteFrame implements frame.Frame interface for unittest.
-type byteFrame struct {
-	byt byte
+func byteFrame(byt byte) *frame.DataFrame {
+	return &frame.DataFrame{
+		Meta:    new(frame.MetaFrame),
+		Payload: &frame.PayloadFrame{Carriage: []byte{byt}},
+	}
 }
 
-const byteFrameType = frame.Type(112)
+type byteCodec struct{}
 
-func (f *byteFrame) Type() frame.Type { return byteFrameType }
-func (f *byteFrame) Encode() []byte   { return []byte{f.byt} }
+var _ frame.Codec = &byteCodec{}
 
-// byteFrameReadFunc reads stream to byteFrame one by one.
-func byteFrameReadFunc(stream io.Reader) (frame.Frame, error) {
+// Decode implements frame.Codec
+func (*byteCodec) Decode(data []byte, f frame.Frame) error {
+	df, ok := f.(*frame.DataFrame)
+	if !ok {
+		return nil
+	}
+	df.Payload.Carriage = data
+
+	return nil
+}
+
+// Encode implements frame.Codec
+func (*byteCodec) Encode(f frame.Frame) ([]byte, error) {
+	return f.(*frame.DataFrame).Payload.Carriage, nil
+}
+
+type bytePacketReader struct{}
+
+// ReadPacket implements frame.PacketReader
+func (*bytePacketReader) ReadPacket(stream io.Reader) (frame.Type, []byte, error) {
 	var b [1]byte
 	_, err := stream.Read(b[:])
 	if err != nil {
-		return nil, err
+		return frame.TypeDataFrame, nil, err
 	}
-	return &byteFrame{b[0]}, nil
+	return frame.TypeDataFrame, []byte{b[0]}, nil
 }
+
+var _ frame.PacketReader = &bytePacketReader{}
 
 type memByteStream struct {
 	ctx      context.Context
