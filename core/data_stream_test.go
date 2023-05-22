@@ -14,12 +14,12 @@ import (
 
 func TestDataStream(t *testing.T) {
 	var (
-		readBytes                   = []byte("aaabbbcccdddeeefff")
-		name                        = "test-data-stream"
-		id                          = "123456"
-		styp                        = StreamTypeStreamFunction
-		md        metadata.Metadata = nil
-		observed                    = []uint32{1, 2, 3}
+		readBytes = []byte("aaabbbcccdddeeefff")
+		name      = "test-data-stream"
+		id        = "123456"
+		styp      = StreamTypeStreamFunction
+		observed  = []uint32{1, 2, 3}
+		md        metadata.Metadata
 	)
 
 	// Create a stream that initializes the read buffer with a string that has been split by spaces.
