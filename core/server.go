@@ -31,7 +31,7 @@ type FrameHandler func(c *Context) error
 // ConnectionHandler is the handler for quic connection
 type ConnectionHandler func(conn quic.Connection)
 
-// Server is the underlining server of Zipper
+// Server is the underlying server of Zipper
 type Server struct {
 	ctx                     context.Context
 	ctxCancel               context.CancelFunc
@@ -109,16 +109,16 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 	s.connector = NewConnector(ctx)
 
 	// listen the address
-	listener, err := newListener(conn, s.opts.tlsConfig, s.opts.quicConfig, s.logger)
+	listener, err := NewQuicListener(conn, s.opts.tlsConfig, s.opts.quicConfig, s.logger)
 	if err != nil {
 		s.logger.Error("failed to listen on quic", err)
 		return err
 	}
 	s.listener = listener
 
-	s.logger.Info("zipper is up and running", "pid", os.Getpid(), "quic", listener.Versions(), "auth_name", s.authNames())
+	s.logger.Info("zipper is up and running", "pid", os.Getpid(), "quic", s.opts.quicConfig.Versions, "auth_name", s.authNames())
 
-	defer s.close(s.connector, s.listener, s.router)
+	defer closeServer(s.downstreams, s.connector, s.listener, s.router)
 
 	for {
 		conn, err := s.listener.Accept(s.ctx)
@@ -129,13 +129,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 			s.logger.Error("accepted an error when accepting a connection", err)
 			return err
 		}
-		err = s.opts.alpnHandler(conn.ConnectionState().TLS.NegotiatedProtocol)
-		if err != nil {
-			conn.CloseWithError(quic.ApplicationErrorCode(yerr.ErrorCodeRejected), err.Error())
-			continue
-		}
-
-		logger := s.logger.With("remote_addr", conn.RemoteAddr().String(), "local_addr", conn.LocalAddr().String())
+		logger := s.logger.With("remote_addr", conn.RemoteAddr(), "local_addr", conn.LocalAddr())
 
 		stream0, err := conn.AcceptStream(ctx)
 		if err != nil {
@@ -152,11 +146,10 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 			continue
 		}
 
-		go func(qconn quic.Connection) {
+		go func(conn Connection) {
 			streamGroup := NewStreamGroup(ctx, md, controlStream, s.connector, s.metadataDecoder, s.router, logger)
 
 			defer streamGroup.Wait()
-			defer s.doConnectionCloseHandlers(qconn)
 			defer logger.Debug("quic connection closed")
 
 			select {
@@ -190,21 +183,21 @@ func (s *Server) Close() error {
 	return nil
 }
 
-func (s *Server) close(connector *Connector, listener Listener, router router.Router) error {
-	for _, ds := range s.downstreams {
+func closeServer(downstreams map[string]FrameWriterConnection, connector *Connector, listener Listener, router router.Router) error {
+	for _, ds := range downstreams {
 		ds.Close()
 	}
 	// connector
-	if s.connector != nil {
-		s.connector.Close()
+	if connector != nil {
+		connector.Close()
 	}
 	// listener
-	if s.listener != nil {
-		s.listener.Close()
+	if listener != nil {
+		listener.Close()
 	}
 	// router
-	if s.router != nil {
-		s.router.Clean()
+	if router != nil {
+		router.Clean()
 	}
 	return nil
 }
@@ -216,7 +209,7 @@ func (s *Server) handleStreamContext(c *Context) {
 	for _, handler := range s.startHandlers {
 		if err := handler(c); err != nil {
 			c.Logger.Error("encountered an error in the start handler", err)
-			c.CloseWithError(yerr.ErrorCodeStartHandler, err.Error())
+			c.CloseWithError(err.Error())
 			return
 		}
 	}
@@ -235,7 +228,7 @@ func (s *Server) handleStreamContext(c *Context) {
 				ye := yerr.New(yerr.Parse(e.ErrorCode), err)
 				c.Logger.Error("read frame error", ye)
 			} else if err == io.EOF {
-				c.CloseWithError(yerr.ErrorCodeClosed, "data stream has been closed")
+				c.CloseWithError("data stream has been closed")
 				c.Logger.Info("data stream has been closed")
 				break
 			}
@@ -243,12 +236,12 @@ func (s *Server) handleStreamContext(c *Context) {
 				// if client close the connection, net.ErrClosed will be raise
 				// by quic-go IdleTimeoutError after connection's KeepAlive config.
 				c.Logger.Debug("data stream network error", "error", net.ErrClosed)
-				c.CloseWithError(yerr.ErrorCodeClosed, net.ErrClosed.Error())
+				c.CloseWithError(net.ErrClosed.Error())
 				break
 			}
 			// any error occurred, we should close the stream
 			// after this, conn.AcceptStream() will raise the error
-			c.CloseWithError(yerr.ErrorCodeUnknown, err.Error())
+			c.CloseWithError(err.Error())
 			c.Logger.Debug("connection closed")
 			break
 		}
@@ -260,21 +253,21 @@ func (s *Server) handleStreamContext(c *Context) {
 		for _, handler := range s.beforeHandlers {
 			if err := handler(c); err != nil {
 				c.Logger.Error("encountered an error in the before handler", err)
-				c.CloseWithError(yerr.ErrorCodeBeforeHandler, err.Error())
+				c.CloseWithError(err.Error())
 				return
 			}
 		}
 		// main handler
 		if err := s.mainFrameHandler(c); err != nil {
 			c.Logger.Error("encountered an error in the main handler", err)
-			c.CloseWithError(yerr.ErrorCodeMainHandler, err.Error())
+			c.CloseWithError(err.Error())
 			return
 		}
 		// after frame handler
 		for _, handler := range s.afterHandlers {
 			if err := handler(c); err != nil {
 				c.Logger.Error("encountered an error in the after handler", err)
-				c.CloseWithError(yerr.ErrorCodeAfterHandler, err.Error())
+				c.CloseWithError(err.Error())
 				return
 			}
 		}
@@ -287,7 +280,7 @@ func (s *Server) mainFrameHandler(c *Context) error {
 	switch frameType {
 	case frame.TagOfDataFrame:
 		if err := s.handleDataFrame(c); err != nil {
-			c.CloseWithError(yerr.ErrorCodeData, fmt.Sprintf("handle dataFrame err: %v", err))
+			c.CloseWithError(fmt.Sprintf("handle dataFrame err: %v", err))
 		} else {
 			s.dispatchToDownstreams(c)
 
@@ -443,14 +436,6 @@ func (s *Server) ConfigMetadataDecoder(decoder metadata.Decoder) {
 	s.mu.Unlock()
 }
 
-// ConfigAlpnHandler is used to set alpnHandler by zipper
-func (s *Server) ConfigAlpnHandler(h func(string) error) {
-	s.mu.Lock()
-	s.opts.alpnHandler = h
-	s.logger.Debug("config alpn handler")
-	s.mu.Unlock()
-}
-
 // AddDownstreamServer add a downstream server to this server. all the DataFrames will be
 // dispatch to all the downstreams.
 func (s *Server) AddDownstreamServer(addr string, c FrameWriterConnection) {
@@ -529,9 +514,3 @@ func (s *Server) authNames() []string {
 
 // Name returns the name of server.
 func (s *Server) Name() string { return s.name }
-
-func (s *Server) doConnectionCloseHandlers(qconn quic.Connection) {
-	for _, h := range s.connectionCloseHandlers {
-		h(qconn)
-	}
-}

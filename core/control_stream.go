@@ -7,13 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
-	"github.com/yomorun/yomo/core/yerr"
 	"github.com/yomorun/yomo/core/ylog"
 	"golang.org/x/exp/slog"
 )
@@ -47,19 +47,19 @@ type VerifyAuthenticationFunc func(auth.Object) (metadata.Metadata, bool, error)
 
 // ServerControlStream defines the struct of server-side control stream.
 type ServerControlStream struct {
-	qconn              quic.Connection
+	conn               Connection
 	stream             frame.ReadWriter
 	handshakeFrameChan chan *frame.HandshakeFrame
 	logger             *slog.Logger
 }
 
 // NewServerControlStream returns ServerControlStream from quic Connection and the first stream of this Connection.
-func NewServerControlStream(qconn quic.Connection, stream frame.ReadWriter, logger *slog.Logger) *ServerControlStream {
+func NewServerControlStream(conn Connection, stream frame.ReadWriter, logger *slog.Logger) *ServerControlStream {
 	if logger == nil {
 		logger = ylog.Default()
 	}
 	controlStream := &ServerControlStream{
-		qconn:              qconn,
+		conn:               conn,
 		stream:             stream,
 		handshakeFrameChan: make(chan *frame.HandshakeFrame, 10),
 		logger:             logger,
@@ -75,7 +75,7 @@ func (ss *ServerControlStream) readFrameLoop() {
 	for {
 		f, err := ss.stream.ReadFrame()
 		if err != nil {
-			ss.qconn.CloseWithError(0, err.Error())
+			ss.conn.CloseWithError(err.Error())
 			return
 		}
 		switch ff := f.(type) {
@@ -101,7 +101,7 @@ func (ss *ServerControlStream) OpenStream(ctx context.Context, handshakeFunc Han
 		return nil, err
 	}
 
-	stream, err := ss.qconn.OpenStreamSync(ctx)
+	stream, err := ss.conn.OpenStream()
 	if err != nil {
 		return nil, err
 	}
@@ -122,8 +122,8 @@ func (ss *ServerControlStream) OpenStream(ctx context.Context, handshakeFunc Han
 }
 
 // CloseWithError closes the server-side control stream.
-func (ss *ServerControlStream) CloseWithError(code uint64, errString string) error {
-	return closeWithError(ss.qconn, code, errString)
+func (ss *ServerControlStream) CloseWithError(errString string) error {
+	return ss.conn.CloseWithError(errString)
 }
 
 // VerifyAuthentication verify the Authentication from client side.
@@ -135,8 +135,8 @@ func (ss *ServerControlStream) VerifyAuthentication(verifyFunc VerifyAuthenticat
 
 	received, ok := first.(*frame.AuthenticationFrame)
 	if !ok {
-		errString := fmt.Sprintf("yomo: read unexcepted frame while waiting for authentication, frame read: %s", received.Type().String())
-		ss.CloseWithError(uint64(yerr.ErrorCodeAuthenticateFailed), errString)
+		errString := fmt.Sprintf("authentication failed: read unexcepted frame, frame read: %s", received.Type().String())
+		ss.CloseWithError(errString)
 		return nil, errors.New(errString)
 	}
 
@@ -145,8 +145,8 @@ func (ss *ServerControlStream) VerifyAuthentication(verifyFunc VerifyAuthenticat
 		return md, err
 	}
 	if !ok {
-		errString := fmt.Sprintf("yomo: authentication failed, client credential name is %s", received.AuthName())
-		ss.CloseWithError(uint64(yerr.ErrorCodeAuthenticateFailed), errString)
+		errString := fmt.Sprintf("authentication failed: client credential name is %s", received.AuthName())
+		ss.CloseWithError(errString)
 		return md, errors.New(errString)
 	}
 	if err := ss.stream.WriteFrame(frame.NewAuthenticationAckFrame()); err != nil {
@@ -162,7 +162,7 @@ func (ss *ServerControlStream) VerifyAuthentication(verifyFunc VerifyAuthenticat
 // ClientControlStream is the struct that defines the methods for client-side control stream.
 type ClientControlStream struct {
 	ctx             context.Context
-	qconn           quic.Connection
+	conn            Connection
 	stream          frame.ReadWriter
 	metadataDecoder metadata.Decoder
 	// mu protect handshakeFrames
@@ -181,26 +181,26 @@ func OpenClientControlStream(
 	logger *slog.Logger,
 ) (*ClientControlStream, error) {
 
-	qconn, err := quic.DialAddrContext(ctx, addr, tlsConfig, quicConfig)
+	conn, err := quic.DialAddrContext(ctx, addr, tlsConfig, quicConfig)
 	if err != nil {
 		return nil, err
 	}
-	stream0, err := qconn.OpenStream()
+	stream0, err := conn.OpenStream()
 	if err != nil {
 		return nil, err
 	}
 
-	return NewClientControlStream(ctx, qconn, NewFrameStream(stream0), metadataDecoder, logger), nil
+	return NewClientControlStream(ctx, &QuicConnection{conn}, NewFrameStream(stream0), metadataDecoder, logger), nil
 }
 
 // NewClientControlStream returns ClientControlStream from quic Connection and the first stream form the Connection.
 func NewClientControlStream(
-	ctx context.Context, qconn quic.Connection,
+	ctx context.Context, conn Connection,
 	stream frame.ReadWriter, metadataDecoder metadata.Decoder, logger *slog.Logger) *ClientControlStream {
 
 	controlStream := &ClientControlStream{
 		ctx:                        ctx,
-		qconn:                      qconn,
+		conn:                       conn,
 		stream:                     stream,
 		metadataDecoder:            metadataDecoder,
 		handshakeFrames:            make(map[string]*frame.HandshakeFrame),
@@ -219,7 +219,7 @@ func (cs *ClientControlStream) readFrameLoop() {
 	for {
 		f, err := cs.stream.ReadFrame()
 		if err != nil {
-			cs.qconn.CloseWithError(0, err.Error())
+			cs.conn.CloseWithError(err.Error())
 			return
 		}
 		switch ff := f.(type) {
@@ -240,7 +240,7 @@ func (cs *ClientControlStream) Authenticate(cred *auth.Credential) error {
 	}
 	received, err := cs.stream.ReadFrame()
 	if err != nil {
-		if qerr := new(quic.ApplicationError); errors.As(err, &qerr) && qerr.ErrorCode == yerr.ErrorCodeAuthenticateFailed.To() {
+		if qerr := new(quic.ApplicationError); errors.As(err, &qerr) && strings.HasPrefix(qerr.ErrorMessage, "authentication failed") {
 			return &ErrAuthenticateFailed{qerr.ErrorMessage}
 		}
 		return err
@@ -336,7 +336,7 @@ func (cs *ClientControlStream) acceptStreamLoop(ctx context.Context) {
 }
 
 func (cs *ClientControlStream) acceptStream(ctx context.Context) (DataStream, error) {
-	quicStream, err := cs.qconn.AcceptStream(ctx)
+	quicStream, err := cs.conn.AcceptStream(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -374,13 +374,6 @@ func (cs *ClientControlStream) acceptStream(ctx context.Context) (DataStream, er
 }
 
 // CloseWithError closes the client-side control stream.
-func (cs *ClientControlStream) CloseWithError(code uint64, errString string) error {
-	return closeWithError(cs.qconn, code, errString)
-}
-
-func closeWithError(qconn quic.Connection, code uint64, errString string) error {
-	return qconn.CloseWithError(
-		quic.ApplicationErrorCode(code),
-		errString,
-	)
+func (cs *ClientControlStream) CloseWithError(errString string) error {
+	return cs.conn.CloseWithError(errString)
 }

@@ -159,7 +159,7 @@ func (c *Client) cleanStream(controlStream *ClientControlStream, err error) {
 		return
 	}
 
-	controlStream.CloseWithError(0, errString)
+	controlStream.CloseWithError(errString)
 }
 
 // Close close the client.

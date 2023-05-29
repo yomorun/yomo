@@ -66,7 +66,7 @@ func TestFrameRoundTrip(t *testing.T) {
 
 	illegalTokenSource := NewClient("source", StreamTypeSource, WithCredential("token:error-token"), WithLogger(discardingLogger))
 	err := illegalTokenSource.Connect(ctx, testaddr)
-	assert.Equal(t, "yomo: authentication failed, client credential name is token", err.Error())
+	assert.Equal(t, "authentication failed: client credential name is token", err.Error())
 
 	source := NewClient(
 		"source",

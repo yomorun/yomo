@@ -7,22 +7,19 @@ import (
 
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/router"
-	"github.com/yomorun/yomo/core/yerr"
 	"golang.org/x/exp/slog"
 )
 
 var ctxPool sync.Pool
 
 // Context is context for stream handling.
-// Context be generated after a dataStream coming, And stores some infomation
+// Context be generated after a dataStream coming, And stores some information
 // from dataStream, The lifecycle of the Context should be equal to the lifecycle of the Stream.
 type Context struct {
 	// DataStream is the stream used for reading and writing frames.
 	DataStream DataStream
-
 	// Frame receives from client.
 	Frame frame.Frame
-
 	// Route is the route from handshake.
 	Route router.Route
 	// mu is used to protect Keys from concurrent read and write operations.
@@ -113,13 +110,9 @@ func (c *Context) WithFrame(f frame.Frame) {
 	c.Frame = f
 }
 
-// CloseWithError close dataStream in se error,
-// It tells controlStream which dataStream should be closed and close dataStream with
-// returning error message to client side stream.
-//
-// TODO: ycode was not transmitted.
-func (c *Context) CloseWithError(ycode yerr.ErrorCode, errString string) {
-	c.Logger.Warn("data stream closed", "err_code", ycode.String(), "error", errString)
+// CloseWithError close dataStream with an error string.
+func (c *Context) CloseWithError(errString string) {
+	c.Logger.Debug("data stream closed", "error", errString)
 
 	err := c.DataStream.Close()
 	if err == nil {

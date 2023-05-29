@@ -20,9 +20,9 @@ type Reader interface {
 }
 
 // Writer is the interface that wraps the WriteFrame method, It writes
-// frm to the underlying data stream.
+// frame to the underlying data stream.
 type Writer interface {
-	WriteFrame(frm Frame) error
+	WriteFrame(Frame) error
 }
 
 // Kinds of frames transferable within YoMo
