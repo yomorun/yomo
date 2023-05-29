@@ -43,10 +43,7 @@ type AuthenticationFrame struct {
 	AuthPayload string
 }
 
-func (f *AuthenticationFrame) Type() Type {
-	return TypeAuthenticationFrame
-
-}
+func (f *AuthenticationFrame) Type() Type { return TypeAuthenticationFrame }
 
 // AuthenticationAckFrame is used to confirm that the client is authorized to access the requested DataStream from
 // ControlStream, AuthenticationAckFrame is transmit on ControlStream.
@@ -201,18 +198,24 @@ func NewFrame(f Type) (Frame, error) {
 	return nil, fmt.Errorf("frame: cannot new a frame from %c", f)
 }
 
+// PacketReader reads packet from the io.Reader.
+// It returns frameType, the data of the packet and an error if read failed.
 type PacketReader interface {
 	ReadPacket(io.Reader) (Type, []byte, error)
 }
 
+// Codec encodes and decodes byte array to frame.
 type Codec interface {
+	// Decode decodes byte array to frame.
 	Decode([]byte, Frame) error
+	// Encode encodes frame to byte array.
 	Encode(Frame) ([]byte, error)
 }
 
 // Tag tags data and be used for data routing.
 type Tag = uint32
 
+// ReadWriteCloser is the interface that groups the ReadFrame, WriteFrame and Close methods.
 type ReadWriteCloser interface {
 	Reader
 	Writer
