@@ -3,8 +3,6 @@ package core
 import (
 	"context"
 	"net"
-
-	"github.com/quic-go/quic-go"
 )
 
 // A Listener for incoming connections
@@ -30,31 +28,4 @@ type Connection interface {
 	AcceptStream(context.Context) (ContextReadWriteCloser, error)
 	// CloseWithError closes the connection with an error.
 	CloseWithError(string) error
-}
-
-// QuicConnection implements Connection interface.
-type QuicConnection struct {
-	conn quic.Connection
-}
-
-const YomoCloseErrorCode = quic.ApplicationErrorCode(0x13)
-
-func (qc *QuicConnection) LocalAddr() string {
-	return qc.conn.LocalAddr().String()
-}
-
-func (qc *QuicConnection) RemoteAddr() string {
-	return qc.conn.RemoteAddr().String()
-}
-
-func (qc *QuicConnection) OpenStream() (ContextReadWriteCloser, error) {
-	return qc.conn.OpenStream()
-}
-
-func (qc *QuicConnection) AcceptStream(ctx context.Context) (ContextReadWriteCloser, error) {
-	return qc.conn.AcceptStream(ctx)
-}
-
-func (qc *QuicConnection) CloseWithError(errString string) error {
-	return qc.conn.CloseWithError(YomoCloseErrorCode, errString)
 }

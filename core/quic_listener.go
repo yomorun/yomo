@@ -64,3 +64,37 @@ func NewQuicListener(conn net.PacketConn, tlsConfig *tls.Config, quicConfig *qui
 
 	return &quicListener{ql}, nil
 }
+
+// QuicConnection implements Connection interface.
+type QuicConnection struct {
+	conn quic.Connection
+}
+
+// YomoCloseErrorCode is the error code for close quic Connection for yomo.
+// If the Connection implemented by quic is closed, the quic ApplicationErrorCode is always 0x13.
+const YomoCloseErrorCode = quic.ApplicationErrorCode(0x13)
+
+// LocalAddr returns the local address.
+func (qc *QuicConnection) LocalAddr() string {
+	return qc.conn.LocalAddr().String()
+}
+
+// RemoteAddr returns the address of the peer.
+func (qc *QuicConnection) RemoteAddr() string {
+	return qc.conn.RemoteAddr().String()
+}
+
+// OpenStream opens a new bidirectional QUIC stream.
+func (qc *QuicConnection) OpenStream() (ContextReadWriteCloser, error) {
+	return qc.conn.OpenStream()
+}
+
+// AcceptStream returns the next stream opened by the peer, blocking until one is available.
+func (qc *QuicConnection) AcceptStream(ctx context.Context) (ContextReadWriteCloser, error) {
+	return qc.conn.AcceptStream(ctx)
+}
+
+// CloseWithError closes the connection with an error string.
+func (qc *QuicConnection) CloseWithError(errString string) error {
+	return qc.conn.CloseWithError(YomoCloseErrorCode, errString)
+}

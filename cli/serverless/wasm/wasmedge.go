@@ -70,6 +70,11 @@ func (r *wasmEdgeRuntime) Init(wasmFile string) error {
 		},
 		[]wasmedge.ValType{wasmedge.ValType_I32}), r.contextData, nil, 0)
 	r.module.AddFunction(WasmFuncContextData, contextDataFunc)
+	// context data size
+	contextDataSizeFunc := wasmedge.NewFunction(wasmedge.NewFunctionType(
+		[]wasmedge.ValType{},
+		[]wasmedge.ValType{wasmedge.ValType_I32}), r.contextDataSize, nil, 0)
+	r.module.AddFunction(WasmFuncContextDataSize, contextDataSizeFunc)
 
 	err := r.vm.RegisterModule(r.module)
 	if err != nil {
@@ -156,6 +161,11 @@ func (r *wasmEdgeRuntime) contextData(_ any, callframe *wasmedge.CallingFrame, p
 	if err := mem.SetData(data, uint(pointer), uint(dataLen)); err != nil {
 		return []any{0}, wasmedge.Result_Fail
 	}
+	return []any{dataLen}, wasmedge.Result_Success
+}
+
+func (r *wasmEdgeRuntime) contextDataSize(_ any, callframe *wasmedge.CallingFrame, params []any) ([]any, wasmedge.Result) {
+	dataLen := len(r.serverlessCtx.Data())
 	return []any{dataLen}, wasmedge.Result_Success
 }
 

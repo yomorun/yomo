@@ -9,7 +9,7 @@ import (
 // ErrConnectorClosed will be returned if the Connector has been closed.
 var ErrConnectorClosed = errors.New("yomo: connector closed")
 
-// Connector manages data streams and provides a centralized way to get and set streams.
+// Connector manages data streams and provides a centralized way for getting and setting streams.
 type Connector struct {
 	// ctx and ctxCancel manage the lifescyle of Connector.
 	ctx       context.Context
@@ -79,7 +79,7 @@ func (c *Connector) Get(streamID string) (DataStream, bool, error) {
 	return stream, true, nil
 }
 
-// FindStreamFunc be used to find stream in Connector.
+// FindStreamFunc is used to search for a specific stream within the Connector.
 type FindStreamFunc func(StreamInfo) bool
 
 // Find searches a stream collection using the specified find function.

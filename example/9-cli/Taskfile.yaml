@@ -4,7 +4,7 @@ version: "3"
 
 output: "prefixed"
 
-tasks:  
+tasks:
   run:
     desc: run
     deps: [clean]
