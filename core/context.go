@@ -74,6 +74,7 @@ func (c *Context) Value(key any) any {
 	c.mu.Lock()
 	if keyAsString, ok := key.(string); ok {
 		if val, exists := c.Keys[keyAsString]; exists {
+			c.mu.Unlock()
 			return val
 		}
 	}
@@ -130,7 +131,7 @@ func (c *Context) CloseWithError(ycode yerr.ErrorCode, errString string) {
 // Release release the Context, The Context released is not available.
 //
 // Warning: do not use any Context api after Release, It maybe cause an error.
-// TODO: use a state to keep context safe.
+// TODO: use a state to ensure safe access and release of the context.
 func (c *Context) Release() {
 	c.reset()
 	ctxPool.Put(c)

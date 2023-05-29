@@ -4,19 +4,18 @@ import (
 	"context"
 	"errors"
 	"sync"
-
-	"github.com/yomorun/yomo/core/frame"
 )
 
-// ErrConnectorClosed will be returned if the connector has been closed.
+// ErrConnectorClosed will be returned if the Connector has been closed.
 var ErrConnectorClosed = errors.New("yomo: connector closed")
 
-// The Connector class manages data streams and provides a centralized way to get and set streams.
+// Connector manages data streams and provides a centralized way for getting and setting streams.
 type Connector struct {
 	// ctx and ctxCancel manage the lifescyle of Connector.
 	ctx       context.Context
 	ctxCancel context.CancelFunc
 
+	// streams stores data streams.
 	streams sync.Map
 }
 
@@ -30,9 +29,10 @@ func NewConnector(ctx context.Context) *Connector {
 	}
 }
 
-// Add adds DataStream to Connector,
+// Store stores DataStream to Connector,
 // If the streamID is the same twice, the new stream will replace the old stream.
-func (c *Connector) Add(streamID string, stream DataStream) error {
+// If Connector be closed, The function will return ErrConnectorClosed.
+func (c *Connector) Store(streamID string, stream DataStream) error {
 	select {
 	case <-c.ctx.Done():
 		return ErrConnectorClosed
@@ -44,9 +44,10 @@ func (c *Connector) Add(streamID string, stream DataStream) error {
 	return nil
 }
 
-// Remove removes the DataStream with the specified streamID.
+// Delete deletes the DataStream with the specified streamID.
 // If the Connector does not have a stream with the given streamID, no action is taken.
-func (c *Connector) Remove(streamID string) error {
+// If Connector be closed, The function will return ErrConnectorClosed.
+func (c *Connector) Delete(streamID string) error {
 	select {
 	case <-c.ctx.Done():
 		return ErrConnectorClosed
@@ -60,6 +61,7 @@ func (c *Connector) Remove(streamID string) error {
 
 // Get retrieves the DataStream with the specified streamID.
 // If the Connector does not have a stream with the given streamID, return nil and false.
+// If Connector be closed, The function will return ErrConnectorClosed.
 func (c *Connector) Get(streamID string) (DataStream, bool, error) {
 	select {
 	case <-c.ctx.Done():
@@ -77,8 +79,12 @@ func (c *Connector) Get(streamID string) (DataStream, bool, error) {
 	return stream, true, nil
 }
 
-// GetSourceStreams gets the streams with the specified source observe tag.
-func (c *Connector) GetSourceStreams(sourceID string, tag frame.Tag) ([]DataStream, error) {
+// FindStreamFunc is used to search for a specific stream within the Connector.
+type FindStreamFunc func(StreamInfo) bool
+
+// Find searches a stream collection using the specified find function.
+// If Connector be closed, The function will return ErrConnectorClosed.
+func (c *Connector) Find(findFunc FindStreamFunc) ([]DataStream, error) {
 	select {
 	case <-c.ctx.Done():
 		return []DataStream{}, ErrConnectorClosed
@@ -86,16 +92,11 @@ func (c *Connector) GetSourceStreams(sourceID string, tag frame.Tag) ([]DataStre
 	}
 
 	streams := make([]DataStream, 0)
-
 	c.streams.Range(func(key interface{}, val interface{}) bool {
 		stream := val.(DataStream)
 
-		for _, v := range stream.ObserveDataTags() {
-			if v == tag &&
-				stream.StreamType() == StreamTypeSource &&
-				stream.ID() == sourceID {
-				streams = append(streams, stream)
-			}
+		if findFunc(stream) {
+			streams = append(streams, stream)
 		}
 		return true
 	})
@@ -103,10 +104,10 @@ func (c *Connector) GetSourceStreams(sourceID string, tag frame.Tag) ([]DataStre
 	return streams, nil
 }
 
-// GetSnapshot returnsa snapshot of all streams.
-// The resulting map uses streamID as the key and stream name as the value.
+// Snapshot returns a map that contains a snapshot of all streams.
+// The resulting map uses the streamID as the key and the stream name as the value.
 // This function is typically used to monitor the status of the Connector.
-func (c *Connector) GetSnapshot() map[string]string {
+func (c *Connector) Snapshot() map[string]string {
 	result := make(map[string]string)
 
 	c.streams.Range(func(key interface{}, val interface{}) bool {
@@ -121,13 +122,22 @@ func (c *Connector) GetSnapshot() map[string]string {
 	return result
 }
 
-// Close cleans all stream of Connector and reset Connector to closed status.
-// The Connector can't be use after close.
-func (c *Connector) Close() {
+// Close closes all streams in the Connector and resets the Connector to a closed state.
+// After closing, the Connector cannot be used anymore.
+// Calling close multiple times has no effect.
+func (c *Connector) Close() error {
+	select {
+	case <-c.ctx.Done():
+		return ErrConnectorClosed
+	default:
+	}
+
 	c.ctxCancel()
 
 	c.streams.Range(func(key, value any) bool {
 		c.streams.Delete(key)
 		return true
 	})
+
+	return nil
 }
