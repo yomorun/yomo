@@ -71,6 +71,7 @@ func (c *Context) Value(key any) any {
 	c.mu.Lock()
 	if keyAsString, ok := key.(string); ok {
 		if val, exists := c.Keys[keyAsString]; exists {
+			c.mu.Unlock()
 			return val
 		}
 	}
