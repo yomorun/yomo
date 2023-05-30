@@ -51,14 +51,14 @@ type ServerControlStream struct {
 	stream             frame.ReadWriteCloser
 	handshakeFrameChan chan *frame.HandshakeFrame
 	codec              frame.Codec
-	packetReader       frame.PacketReader
+	packetReader       frame.PacketReadWriter
 	logger             *slog.Logger
 }
 
 // NewServerControlStream returns ServerControlStream from quic Connection and the first stream of this Connection.
 func NewServerControlStream(
 	conn Connection, stream ContextReadWriteCloser,
-	codec frame.Codec, packetReader frame.PacketReader,
+	codec frame.Codec, packetReader frame.PacketReadWriter,
 	logger *slog.Logger,
 ) *ServerControlStream {
 	if logger == nil {
@@ -184,7 +184,7 @@ type ClientControlStream struct {
 
 	// encode and decode the frame
 	codec        frame.Codec
-	packetReader frame.PacketReader
+	packetReader frame.PacketReadWriter
 
 	// mu protect handshakeFrames
 	mu              sync.Mutex
@@ -200,7 +200,7 @@ func OpenClientControlStream(
 	ctx context.Context, addr string,
 	tlsConfig *tls.Config, quicConfig *quic.Config,
 	metadataDecoder metadata.Decoder,
-	codec frame.Codec, packetReader frame.PacketReader,
+	codec frame.Codec, packetReader frame.PacketReadWriter,
 	logger *slog.Logger,
 ) (*ClientControlStream, error) {
 
@@ -219,7 +219,7 @@ func OpenClientControlStream(
 // NewClientControlStream returns ClientControlStream from quic Connection and the first stream form the Connection.
 func NewClientControlStream(
 	ctx context.Context, conn Connection, stream ContextReadWriteCloser,
-	codec frame.Codec, packetReader frame.PacketReader,
+	codec frame.Codec, packetReader frame.PacketReadWriter,
 	metadataDecoder metadata.Decoder, logger *slog.Logger) *ClientControlStream {
 
 	controlStream := &ClientControlStream{

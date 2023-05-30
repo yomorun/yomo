@@ -176,7 +176,7 @@ func (c *Client) openControlStream(ctx context.Context, addr string) (*ClientCon
 		ctx, addr,
 		c.opts.tlsConfig, c.opts.quicConfig,
 		metadata.DefaultDecoder(),
-		y3codec.Codec(), y3codec.PacketReader(),
+		y3codec.Codec(), y3codec.PacketReadWriter(),
 		c.logger,
 	)
 	if err != nil {

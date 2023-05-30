@@ -41,7 +41,7 @@ type Server struct {
 	router                  router.Router
 	metadataDecoder         metadata.Decoder
 	codec                   frame.Codec
-	packetReader            frame.PacketReader
+	packetReadWriter        frame.PacketReadWriter
 	counterOfDataFrame      int64
 	downstreams             map[string]FrameWriterConnection
 	mu                      sync.Mutex
@@ -67,14 +67,14 @@ func NewServer(name string, opts ...ServerOption) *Server {
 	ctx, ctxCancel := context.WithCancel(context.Background())
 
 	s := &Server{
-		ctx:          ctx,
-		ctxCancel:    ctxCancel,
-		name:         name,
-		downstreams:  make(map[string]FrameWriterConnection),
-		logger:       logger,
-		codec:        y3codec.Codec(),
-		packetReader: y3codec.PacketReader(),
-		opts:         options,
+		ctx:              ctx,
+		ctxCancel:        ctxCancel,
+		name:             name,
+		downstreams:      make(map[string]FrameWriterConnection),
+		logger:           logger,
+		codec:            y3codec.Codec(),
+		packetReadWriter: y3codec.PacketReadWriter(),
+		opts:             options,
 	}
 
 	return s
@@ -141,7 +141,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 			continue
 		}
 
-		controlStream := NewServerControlStream(conn, stream0, s.codec, s.packetReader, logger)
+		controlStream := NewServerControlStream(conn, stream0, s.codec, s.packetReadWriter, logger)
 
 		// Auth accepts a AuthenticationFrame from client. The first frame from client must be
 		// AuthenticationFrame, It returns true if auth successful otherwise return false.

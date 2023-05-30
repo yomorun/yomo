@@ -26,7 +26,7 @@ func TestDataStream(t *testing.T) {
 	mockStream := newMemByteStream(readBytes)
 
 	// create frame stream.
-	frameStream := NewFrameStream(mockStream, &byteCodec{}, &bytePacketReader{})
+	frameStream := NewFrameStream(mockStream, &byteCodec{}, &bytePacketReadWriter{})
 
 	stream := newDataStream(name, id, styp, md, observed, frameStream)
 
@@ -128,10 +128,16 @@ func (*byteCodec) Encode(f frame.Frame) ([]byte, error) {
 	return f.(*frame.DataFrame).Payload.Carriage, nil
 }
 
-type bytePacketReader struct{}
+type bytePacketReadWriter struct{}
 
-// ReadPacket implements frame.PacketReader
-func (*bytePacketReader) ReadPacket(stream io.Reader) (frame.Type, []byte, error) {
+// WritePacket implements frame.PacketReadWriter
+func (*bytePacketReadWriter) WritePacket(stream io.Writer, ftyp frame.Type, data []byte) error {
+	_, err := stream.Write(data)
+	return err
+}
+
+// ReadPacket implements frame.PacketReadWriter
+func (*bytePacketReadWriter) ReadPacket(stream io.Reader) (frame.Type, []byte, error) {
 	var b [1]byte
 	_, err := stream.Read(b[:])
 	if err != nil {
@@ -140,7 +146,7 @@ func (*bytePacketReader) ReadPacket(stream io.Reader) (frame.Type, []byte, error
 	return frame.TypeDataFrame, []byte{b[0]}, nil
 }
 
-var _ frame.PacketReader = &bytePacketReader{}
+var _ frame.PacketReadWriter = &bytePacketReadWriter{}
 
 type memByteStream struct {
 	ctx      context.Context

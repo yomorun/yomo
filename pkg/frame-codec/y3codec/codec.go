@@ -1,4 +1,4 @@
-// Package y3codec provides the y3 implement of frame.PacketReader/frame.Codec.
+// Package y3codec provides the y3 implement of frame.PacketReadWriter/frame.Codec.
 package y3codec
 
 import (
@@ -12,19 +12,24 @@ import (
 // ErrUnknownFrame is returned when unknown frame is received.
 var ErrUnknownFrame = errors.New("y3codec: unknown frame")
 
-type packetReader struct{}
+type packetReadWriter struct{}
 
-// PacketReader returns the y3 implement of frame.PacketReader.
-func PacketReader() frame.PacketReader {
-	return &packetReader{}
+// PacketReadWriter returns the y3 implement of frame.PacketReadWriter.
+func PacketReadWriter() frame.PacketReadWriter {
+	return &packetReadWriter{}
 }
 
-func (pr *packetReader) ReadPacket(stream io.Reader) (frame.Type, []byte, error) {
+func (pr *packetReadWriter) ReadPacket(stream io.Reader) (frame.Type, []byte, error) {
 	buf, err := y3.ReadPacket(stream)
 	if err != nil {
 		return 0, nil, err
 	}
 	return frame.Type(buf[0] & 0x7F), buf, nil
+}
+
+func (pr *packetReadWriter) WritePacket(stream io.Writer, ftyp frame.Type, data []byte) error {
+	_, err := stream.Write(data)
+	return err
 }
 
 type y3codec struct{}

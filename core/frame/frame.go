@@ -209,10 +209,11 @@ func NewFrame(f Type) (Frame, error) {
 	return nil, fmt.Errorf("frame: cannot new a frame from %c", f)
 }
 
-// PacketReader reads packet from the io.Reader.
+// PacketReadWriter reads packet from the io.Reader and writes packet to the io.Writer.
 // It returns frameType, the data of the packet and an error if read failed.
-type PacketReader interface {
+type PacketReadWriter interface {
 	ReadPacket(io.Reader) (Type, []byte, error)
+	WritePacket(io.Writer, Type, []byte) error
 }
 
 // Codec encodes and decodes byte array to frame.

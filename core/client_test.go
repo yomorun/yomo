@@ -213,7 +213,7 @@ func createTestStreamFunction(name string, obversedTag frame.Tag) *Client {
 type frameWriterRecorder struct {
 	name         string
 	codec        frame.Codec
-	packetReader frame.PacketReader
+	packetReader frame.PacketReadWriter
 	mu           sync.Mutex
 	buf          *bytes.Buffer
 }
@@ -222,7 +222,7 @@ func newFrameWriterRecorder(name string) *frameWriterRecorder {
 	return &frameWriterRecorder{
 		name:         name,
 		codec:        y3codec.Codec(),
-		packetReader: y3codec.PacketReader(),
+		packetReader: y3codec.PacketReadWriter(),
 		buf:          new(bytes.Buffer),
 	}
 }

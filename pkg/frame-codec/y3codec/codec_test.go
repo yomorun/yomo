@@ -10,7 +10,7 @@ import (
 )
 
 func TestReadPacket(t *testing.T) {
-	reader := PacketReader()
+	prw := PacketReadWriter()
 	codec := Codec()
 
 	hf := &frame.HandshakeFrame{
@@ -25,15 +25,18 @@ func TestReadPacket(t *testing.T) {
 
 	stream := bytes.NewBuffer(b)
 
-	ft, bb, err := reader.ReadPacket(stream)
+	ft, bb, err := prw.ReadPacket(stream)
 	assert.NoError(t, err)
 	assert.Equal(t, b, bb)
 	assert.Equal(t, frame.TypeHandshakeFrame, ft)
 
-	ft, bb, err = reader.ReadPacket(stream)
+	ft, bb, err = prw.ReadPacket(stream)
 	assert.Equal(t, io.EOF, err)
 	assert.Equal(t, []byte(nil), bb)
 	assert.Equal(t, frame.Type(0x0), ft)
+
+	err = prw.WritePacket(stream, frame.TypeHandshakeFrame, nil)
+	assert.NoError(t, err)
 }
 
 func TestCodec(t *testing.T) {

@@ -11,7 +11,7 @@ import (
 // FrameStream is the frame.ReadWriter that goroutinue read write safely.
 type FrameStream struct {
 	codec        frame.Codec
-	packetReader frame.PacketReader
+	packetReader frame.PacketReadWriter
 
 	// mu protected stream write and close
 	// because of stream write and close is not goroutinue-safely.
@@ -21,7 +21,7 @@ type FrameStream struct {
 
 // NewFrameStream creates a new FrameStream.
 func NewFrameStream(
-	stream ContextReadWriteCloser, codec frame.Codec, packetReader frame.PacketReader,
+	stream ContextReadWriteCloser, codec frame.Codec, packetReader frame.PacketReadWriter,
 ) *FrameStream {
 	return &FrameStream{
 		underlying:   stream,
@@ -76,8 +76,7 @@ func (fs *FrameStream) WriteFrame(f frame.Frame) error {
 		return err
 	}
 
-	_, err = fs.underlying.Write(b)
-	return err
+	return fs.packetReader.WritePacket(fs.underlying, f.Type(), b)
 }
 
 // Close closes the FrameStream and returns an error if any.
