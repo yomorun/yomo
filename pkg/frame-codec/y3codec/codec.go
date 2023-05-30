@@ -1,3 +1,4 @@
+// Package y3codec provides the y3 implement of frame.PacketReader/frame.Codec.
 package y3codec
 
 import (
@@ -8,11 +9,15 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 )
 
+// ErrUnknownFrame is returned when unknown frame is received.
 var ErrUnknownFrame = errors.New("y3codec: unknown frame")
 
 type packetReader struct{}
 
-func PacketReader() frame.PacketReader { return &packetReader{} }
+// PacketReader returns the y3 implement of frame.PacketReader.
+func PacketReader() frame.PacketReader {
+	return &packetReader{}
+}
 
 func (pr *packetReader) ReadPacket(stream io.Reader) (frame.Type, []byte, error) {
 	buf, err := y3.ReadPacket(stream)
@@ -24,6 +29,7 @@ func (pr *packetReader) ReadPacket(stream io.Reader) (frame.Type, []byte, error)
 
 type y3codec struct{}
 
+// Codec returns the y3 implement of frame.Codec.
 func Codec() frame.Codec { return &y3codec{} }
 
 func (c *y3codec) Encode(f frame.Frame) ([]byte, error) {

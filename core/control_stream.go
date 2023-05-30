@@ -327,6 +327,10 @@ func (cs *ClientControlStream) RequestStream(hf *frame.HandshakeFrame) error {
 // a network error and the for-loop can continue.
 func (cs *ClientControlStream) AcceptStream(ctx context.Context) (DataStream, error) {
 	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-cs.ctx.Done():
+		return nil, cs.ctx.Err()
 	case reject := <-cs.handshakeRejectedFrameChan:
 		cs.mu.Lock()
 		delete(cs.handshakeFrames, reject.ID)

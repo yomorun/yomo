@@ -43,6 +43,7 @@ type AuthenticationFrame struct {
 	AuthPayload string
 }
 
+// Type returns the type of AuthenticationFrame.
 func (f *AuthenticationFrame) Type() Type { return TypeAuthenticationFrame }
 
 // AuthenticationAckFrame is used to confirm that the client is authorized to access the requested DataStream from
@@ -50,6 +51,7 @@ func (f *AuthenticationFrame) Type() Type { return TypeAuthenticationFrame }
 // If the client-side receives this frame, it indicates that authentication was successful.
 type AuthenticationAckFrame struct{}
 
+// Type returns the type of AuthenticationAckFrame.
 func (f *AuthenticationAckFrame) Type() Type { return TypeAuthenticationAckFrame }
 
 // DataFrame carrys taged data to transmit accross DataStream.
@@ -60,6 +62,7 @@ type DataFrame struct {
 	Payload *PayloadFrame
 }
 
+// Type returns the type of DataFrame.
 func (f *DataFrame) Type() Type { return TypeDataFrame }
 
 // MetaFrame is used to describe a DataFrame, It is a part of DataFrame.
@@ -74,6 +77,7 @@ type MetaFrame struct {
 	Broadcast bool
 }
 
+// Type returns the type of MetaFrame.
 func (f *MetaFrame) Type() Type { return TypePayloadFrame }
 
 // PayloadFrame is used to carry taged data for DataFrame. It is a part of DataFrame.
@@ -84,6 +88,7 @@ type PayloadFrame struct {
 	Carriage []byte
 }
 
+// Type returns the type of PayloadFrame.
 func (f *PayloadFrame) Type() Type { return TypePayloadFrame }
 
 // HandshakeFrame is the frame that client accquires new dataStream from server,
@@ -102,6 +107,7 @@ type HandshakeFrame struct {
 	Metadata []byte
 }
 
+// Type returns the type of HandshakeFrame.
 func (f *HandshakeFrame) Type() Type { return TypeHandshakeFrame }
 
 // HandshakeAckFrame is used to ack handshake, If handshake successful, The server will
@@ -111,6 +117,7 @@ type HandshakeAckFrame struct {
 	StreamID string
 }
 
+// Type returns the type of HandshakeAckFrame.
 func (f *HandshakeAckFrame) Type() Type { return TypeHandshakeAckFrame }
 
 // HandshakeRejectedFrame be used to reject a Handshake. It transmits on ControlStream.
@@ -121,6 +128,7 @@ type HandshakeRejectedFrame struct {
 	Message string
 }
 
+// Type returns the type of HandshakeRejectedFrame.
 func (f *HandshakeRejectedFrame) Type() Type { return TypeHandshakeRejectedFrame }
 
 // The BackflowFrame is used to receive the processed result of a DataStream with StreamFunction type
@@ -132,6 +140,7 @@ type BackflowFrame struct {
 	Carriage []byte
 }
 
+// Type returns the type of BackflowFrame.
 func (f *BackflowFrame) Type() Type { return TypeBackflowFrame }
 
 // RejectedFrame is is used to reject a ControlStream reqeust.
@@ -142,6 +151,7 @@ type RejectedFrame struct {
 	Message string
 }
 
+// Type returns the type of RejectedFrame.
 func (f *RejectedFrame) Type() Type { return TypeRejectedFrame }
 
 const (
@@ -190,6 +200,7 @@ var frameTypeNewFuncMap = map[Type]func() Frame{
 	TypeBackflowFrame:          func() Frame { return new(BackflowFrame) },
 }
 
+// NewFrame creates a new frame from Type.
 func NewFrame(f Type) (Frame, error) {
 	newFunc, ok := frameTypeNewFuncMap[f]
 	if ok {
@@ -222,8 +233,8 @@ type ReadWriteCloser interface {
 	Close() error
 }
 
-// FrameReadWriter is the interface that groups the ReadFrame and WriteFrame methods.
-type FrameReadWriter interface {
+// ReadWriter is the interface that groups the ReadFrame and WriteFrame methods.
+type ReadWriter interface {
 	Reader
 	Writer
 }
@@ -231,6 +242,7 @@ type FrameReadWriter interface {
 // Writer is the interface that wraps the WriteFrame method, It writes
 // frame to the underlying data stream.
 type Writer interface {
+	// WriteFrame writes frame to underlying stream.
 	WriteFrame(Frame) error
 }
 

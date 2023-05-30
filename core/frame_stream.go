@@ -30,6 +30,7 @@ func NewFrameStream(
 	}
 }
 
+// Context returns the context of the FrameStream.
 func (fs *FrameStream) Context() context.Context {
 	return fs.underlying.Context()
 }
@@ -79,6 +80,7 @@ func (fs *FrameStream) WriteFrame(f frame.Frame) error {
 	return err
 }
 
+// Close closes the FrameStream and returns an error if any.
 func (fs *FrameStream) Close() error {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
