@@ -51,14 +51,14 @@ type ServerControlStream struct {
 	stream             frame.ReadWriteCloser
 	handshakeFrameChan chan *frame.HandshakeFrame
 	codec              frame.Codec
-	packetReader       frame.PacketReadWriter
+	packetReadWriter   frame.PacketReadWriter
 	logger             *slog.Logger
 }
 
 // NewServerControlStream returns ServerControlStream from quic Connection and the first stream of this Connection.
 func NewServerControlStream(
 	conn Connection, stream ContextReadWriteCloser,
-	codec frame.Codec, packetReader frame.PacketReadWriter,
+	codec frame.Codec, packetReadWriter frame.PacketReadWriter,
 	logger *slog.Logger,
 ) *ServerControlStream {
 	if logger == nil {
@@ -66,10 +66,10 @@ func NewServerControlStream(
 	}
 	controlStream := &ServerControlStream{
 		conn:               conn,
-		stream:             NewFrameStream(stream, codec, packetReader),
+		stream:             NewFrameStream(stream, codec, packetReadWriter),
 		handshakeFrameChan: make(chan *frame.HandshakeFrame, 10),
 		codec:              codec,
-		packetReader:       packetReader,
+		packetReadWriter:   packetReadWriter,
 		logger:             logger,
 	}
 
@@ -132,7 +132,7 @@ func (ss *ServerControlStream) OpenStream(ctx context.Context, handshakeFunc Han
 		StreamType(ff.StreamType),
 		md,
 		ff.ObserveDataTags,
-		NewFrameStream(stream, ss.codec, ss.packetReader),
+		NewFrameStream(stream, ss.codec, ss.packetReadWriter),
 	)
 	return dataStream, nil
 }
@@ -183,8 +183,8 @@ type ClientControlStream struct {
 	metadataDecoder metadata.Decoder
 
 	// encode and decode the frame
-	codec        frame.Codec
-	packetReader frame.PacketReadWriter
+	codec            frame.Codec
+	packetReadWriter frame.PacketReadWriter
 
 	// mu protect handshakeFrames
 	mu              sync.Mutex
@@ -200,7 +200,7 @@ func OpenClientControlStream(
 	ctx context.Context, addr string,
 	tlsConfig *tls.Config, quicConfig *quic.Config,
 	metadataDecoder metadata.Decoder,
-	codec frame.Codec, packetReader frame.PacketReadWriter,
+	codec frame.Codec, packetReadWriter frame.PacketReadWriter,
 	logger *slog.Logger,
 ) (*ClientControlStream, error) {
 
@@ -213,21 +213,21 @@ func OpenClientControlStream(
 		return nil, err
 	}
 
-	return NewClientControlStream(ctx, &QuicConnection{conn}, stream0, codec, packetReader, metadataDecoder, logger), nil
+	return NewClientControlStream(ctx, &QuicConnection{conn}, stream0, codec, packetReadWriter, metadataDecoder, logger), nil
 }
 
 // NewClientControlStream returns ClientControlStream from quic Connection and the first stream form the Connection.
 func NewClientControlStream(
 	ctx context.Context, conn Connection, stream ContextReadWriteCloser,
-	codec frame.Codec, packetReader frame.PacketReadWriter,
+	codec frame.Codec, packetReadWriter frame.PacketReadWriter,
 	metadataDecoder metadata.Decoder, logger *slog.Logger) *ClientControlStream {
 
 	controlStream := &ClientControlStream{
 		ctx:                        ctx,
 		conn:                       conn,
-		stream:                     NewFrameStream(stream, codec, packetReader),
+		stream:                     NewFrameStream(stream, codec, packetReadWriter),
 		codec:                      codec,
-		packetReader:               packetReader,
+		packetReadWriter:           packetReadWriter,
 		metadataDecoder:            metadataDecoder,
 		handshakeFrames:            make(map[string]*frame.HandshakeFrame),
 		handshakeRejectedFrameChan: make(chan *frame.HandshakeRejectedFrame, 10),
@@ -374,7 +374,7 @@ func (cs *ClientControlStream) acceptStream(ctx context.Context) (DataStream, er
 		return nil, err
 	}
 
-	fs := NewFrameStream(quicStream, cs.codec, cs.packetReader)
+	fs := NewFrameStream(quicStream, cs.codec, cs.packetReadWriter)
 
 	streamID, err := ackDataStream(fs)
 	if err != nil {
