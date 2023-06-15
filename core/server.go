@@ -52,6 +52,7 @@ type Server struct {
 	connectionCloseHandlers []ConnectionHandler
 	listener                Listener
 	logger                  *slog.Logger
+	broker                  *Broker
 }
 
 // NewServer create a Server instance.
@@ -75,6 +76,7 @@ func NewServer(name string, opts ...ServerOption) *Server {
 		codec:            y3codec.Codec(),
 		packetReadWriter: y3codec.PacketReadWriter(),
 		opts:             options,
+		broker:           NewStreamBroker(ctx),
 	}
 
 	return s
@@ -141,7 +143,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 			continue
 		}
 
-		controlStream := NewServerControlStream(conn, stream0, s.codec, s.packetReadWriter, logger)
+		controlStream := NewServerControlStream(conn, stream0, s.codec, s.packetReadWriter, s.broker, logger)
 
 		// Auth accepts a AuthenticationFrame from client. The first frame from client must be
 		// AuthenticationFrame, It returns true if auth successful otherwise return false.
@@ -150,6 +152,9 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		if err != nil {
 			continue
 		}
+
+		// controlStream accepts streams and prepare to link to next peer.
+		go s.broker.AcceptStream(controlStream, s.codec, s.packetReadWriter)
 
 		go func(conn Connection) {
 			streamGroup := NewStreamGroup(ctx, md, controlStream, s.connector, s.metadataDecoder, s.router, logger)
@@ -169,12 +174,15 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 func (s *Server) runWithStreamGroup(group *StreamGroup, logger *slog.Logger) <-chan struct{} {
 	done := make(chan struct{})
 
+	// run with data stream.
 	go func() {
 		if err := group.Run(s.handleStreamContext); err != nil {
 			logger.Error("connection closed", err)
 		}
 		done <- struct{}{}
 	}()
+
+	// run with pure stream.
 
 	return done
 }

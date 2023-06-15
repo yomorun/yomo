@@ -9,7 +9,7 @@ import (
 // Frame is the minimum unit required for Yomo to run.
 // Yomo transmits various instructions and data through the frame, which can be transmitted on the IO stream.
 //
-//	Yomo needs 9 type frame to run up, them cantain:
+//	Yomo needs 10 type frame to run up, them cantain:
 //		1. AuthenticationFrame
 //		2. AuthenticationAckFrame
 //		3. DataFrame
@@ -19,6 +19,7 @@ import (
 //		7. HandshakeAckFrame
 //		8. RejectedFrame
 //		9. BackflowFrame
+//	   10. ObserveFrame
 //	 Read frame comments to understand the role of the frame.
 //
 //		If you want to transmit the frame on the IO stream, you must have `ReadFunc` and `WriteFunc` for reading and writing frames.
@@ -49,7 +50,10 @@ func (f *AuthenticationFrame) Type() Type { return TypeAuthenticationFrame }
 // AuthenticationAckFrame is used to confirm that the client is authorized to access the requested DataStream from
 // ControlStream, AuthenticationAckFrame is transmit on ControlStream.
 // If the client-side receives this frame, it indicates that authentication was successful.
-type AuthenticationAckFrame struct{}
+type AuthenticationAckFrame struct {
+	// ID is the ID of the ControlStream. It is assigned by the server.
+	ID string
+}
 
 // Type returns the type of AuthenticationAckFrame.
 func (f *AuthenticationAckFrame) Type() Type { return TypeAuthenticationAckFrame }
@@ -110,6 +114,16 @@ type HandshakeFrame struct {
 // Type returns the type of HandshakeFrame.
 func (f *HandshakeFrame) Type() Type { return TypeHandshakeFrame }
 
+// ObserveFrame is used to open a new peer stream and make connection observe a peer stream.
+// Each peer stream has a tag that identifies which connection can observe it.
+type ObserveFrame struct {
+	// Tag is used to identify the controlStream observer associated with a particular peer stream.
+	Tag string
+}
+
+// Type returns the type of ObserveFrame.
+func (f *ObserveFrame) Type() Type { return TypeObserveFrame }
+
 // HandshakeAckFrame is used to ack handshake, If handshake successful, The server will
 // send HandshakeAckFrame to the new DataStream, That means the new DataStream receive first frame
 // must be HandshakeAckFrame.
@@ -159,11 +173,12 @@ const (
 	TypeAuthenticationAckFrame Type = 0x11 // TypeAuthenticationAckFrame is the type of AuthenticationAckFrame.
 	TypeDataFrame              Type = 0x3F // TypeDataFrame is the type of DataFrame.
 	TypePayloadFrame           Type = 0x2E // TypePayloadFrame is the type of PayloadFrame.
-	TypeHandshakeFrame         Type = 0x31 // TypeHandshakeFrame is the type of PayloadFrame.
+	TypeHandshakeFrame         Type = 0x31 // TypeHandshakeFrame is the type of HandshakeFrame.
 	TypeHandshakeRejectedFrame Type = 0x14 // TypeHandshakeRejectedFrame is the type of HandshakeRejectedFrame.
 	TypeHandshakeAckFrame      Type = 0x29 // TypeHandshakeAckFrame is the type of HandshakeAckFrame.
 	TypeRejectedFrame          Type = 0x39 // TypeRejectedFrame is the type of RejectedFrame.
 	TypeBackflowFrame          Type = 0x2D // TypeBackflowFrame is the type of BackflowFrame.
+	TypeObserveFrame           Type = 0x2F // TypeObserveFrame is the type of ObserveFrame.
 )
 
 var frameTypeStringMap = map[Type]string{
@@ -176,6 +191,7 @@ var frameTypeStringMap = map[Type]string{
 	TypeHandshakeAckFrame:      "HandshakeAckFrame",
 	TypeRejectedFrame:          "RejectedFrame",
 	TypeBackflowFrame:          "BackflowFrame",
+	TypeObserveFrame:           "ObserveFrame",
 }
 
 // String returns a human-readable string which represents the frame type.

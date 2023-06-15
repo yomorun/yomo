@@ -15,6 +15,7 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
+	"github.com/yomorun/yomo/pkg/id"
 	"golang.org/x/exp/slog"
 )
 
@@ -47,7 +48,9 @@ type VerifyAuthenticationFunc func(*frame.AuthenticationFrame) (metadata.Metadat
 
 // ServerControlStream defines the struct of server-side control stream.
 type ServerControlStream struct {
+	id                 string
 	conn               Connection
+	broker             *Broker
 	stream             frame.ReadWriteCloser
 	handshakeFrameChan chan *frame.HandshakeFrame
 	codec              frame.Codec
@@ -59,13 +62,17 @@ type ServerControlStream struct {
 func NewServerControlStream(
 	conn Connection, stream ContextReadWriteCloser,
 	codec frame.Codec, packetReadWriter frame.PacketReadWriter,
+	broker *Broker,
 	logger *slog.Logger,
 ) *ServerControlStream {
 	if logger == nil {
 		logger = ylog.Default()
 	}
+
 	controlStream := &ServerControlStream{
+		id:                 id.New(),
 		conn:               conn,
+		broker:             broker,
 		stream:             NewFrameStream(stream, codec, packetReadWriter),
 		handshakeFrameChan: make(chan *frame.HandshakeFrame, 10),
 		codec:              codec,
@@ -89,6 +96,8 @@ func (ss *ServerControlStream) readFrameLoop() {
 		switch ff := f.(type) {
 		case *frame.HandshakeFrame:
 			ss.handshakeFrameChan <- ff
+		case *frame.ObserveFrame:
+			ss.broker.Observe(ff.Tag, ss)
 		default:
 			ss.logger.Debug("control stream read unexpected frame", "frame_type", f.Type().String())
 		}
@@ -137,6 +146,16 @@ func (ss *ServerControlStream) OpenStream(ctx context.Context, handshakeFunc Han
 	return dataStream, nil
 }
 
+func (ss *ServerControlStream) ID() string { return ss.id }
+
+func (ss *ServerControlStream) AcceptUniStream(ctx context.Context) (io.Reader, error) {
+	return ss.conn.AcceptUniStream(ctx)
+}
+
+func (ss *ServerControlStream) OpenUniStream() (io.Writer, error) {
+	return ss.conn.OpenUniStream()
+}
+
 // CloseWithError closes the server-side control stream.
 func (ss *ServerControlStream) CloseWithError(errString string) error {
 	return ss.conn.CloseWithError(errString)
@@ -165,7 +184,7 @@ func (ss *ServerControlStream) VerifyAuthentication(verifyFunc VerifyAuthenticat
 		ss.CloseWithError(errString)
 		return md, errors.New(errString)
 	}
-	if err := ss.stream.WriteFrame(&frame.AuthenticationAckFrame{}); err != nil {
+	if err := ss.stream.WriteFrame(&frame.AuthenticationAckFrame{ID: ss.id}); err != nil {
 		return md, err
 	}
 
@@ -186,6 +205,9 @@ type ClientControlStream struct {
 	codec            frame.Codec
 	packetReadWriter frame.PacketReadWriter
 
+	// id is he connectionID be assigned by server.
+	id string
+
 	// mu protect handshakeFrames
 	mu              sync.Mutex
 	handshakeFrames map[string]*frame.HandshakeFrame
@@ -193,6 +215,21 @@ type ClientControlStream struct {
 	handshakeRejectedFrameChan chan *frame.HandshakeRejectedFrame
 	acceptStreamResultChan     chan acceptStreamResult
 	logger                     *slog.Logger
+}
+
+func (cs *ClientControlStream) RequestObserve(tag string) error {
+	f := &frame.ObserveFrame{
+		Tag: tag,
+	}
+	return cs.stream.WriteFrame(f)
+}
+
+func (cs *ClientControlStream) OpenUniStream() (io.Writer, error) {
+	return cs.conn.OpenUniStream()
+}
+
+func (cs *ClientControlStream) AcceptUniStream(ctx context.Context) (io.Reader, error) {
+	return cs.conn.AcceptUniStream(ctx)
 }
 
 // OpenClientControlStream opens ClientControlStream from addr.
@@ -213,7 +250,25 @@ func OpenClientControlStream(
 		return nil, err
 	}
 
-	return NewClientControlStream(ctx, &QuicConnection{conn}, stream0, codec, packetReadWriter, metadataDecoder, logger), nil
+	fs := NewFrameStream(stream0, codec, packetReadWriter)
+
+	f, err := fs.ReadFrame()
+	if err != nil {
+		return nil, err
+	}
+
+	id := ""
+	switch f.Type() {
+	case frame.TypeAuthenticationAckFrame:
+		id = f.(*frame.AuthenticationAckFrame).ID
+	default:
+		return nil, fmt.Errorf("unexpected frame type: %s", f.Type().String())
+	}
+
+	cs := NewClientControlStream(ctx, &QuicConnection{conn}, stream0, codec, packetReadWriter, metadataDecoder, logger)
+	cs.id = id
+
+	return cs, nil
 }
 
 // NewClientControlStream returns ClientControlStream from quic Connection and the first stream form the Connection.
@@ -256,6 +311,8 @@ func (cs *ClientControlStream) readFrameLoop() {
 		}
 	}
 }
+
+func (cs *ClientControlStream) ID() string { return cs.id }
 
 // Authenticate sends the provided credential to the server's control stream to authenticate the client.
 // There will return `ErrAuthenticateFailed` if authenticate failed.
@@ -303,6 +360,14 @@ func ackDataStream(stream frame.Reader) (string, error) {
 	}
 
 	return f.StreamID, nil
+}
+
+// Observe tells server that the client wants to observe specified tag.
+func (cs *ClientControlStream) Observe(tag string) error {
+	f := &frame.ObserveFrame{
+		Tag: tag,
+	}
+	return cs.stream.WriteFrame(f)
 }
 
 // RequestStream sends a HandshakeFrame to the server's control stream to request a new data stream.

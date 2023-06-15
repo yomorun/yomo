@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"crypto/tls"
+	"io"
 	"net"
 	"time"
 
@@ -92,6 +93,16 @@ func (qc *QuicConnection) OpenStream() (ContextReadWriteCloser, error) {
 // AcceptStream returns the next stream opened by the peer, blocking until one is available.
 func (qc *QuicConnection) AcceptStream(ctx context.Context) (ContextReadWriteCloser, error) {
 	return qc.conn.AcceptStream(ctx)
+}
+
+// OpenUniStream opens a new unbidirectional QUIC stream.
+func (qc *QuicConnection) OpenUniStream() (io.WriteCloser, error) {
+	return qc.conn.OpenUniStream()
+}
+
+// AcceptUniStream returns the next stream opened by the peer, blocking until one is available.
+func (qc *QuicConnection) AcceptUniStream(ctx context.Context) (io.Reader, error) {
+	return qc.conn.AcceptUniStream(ctx)
 }
 
 // CloseWithError closes the connection with an error string.

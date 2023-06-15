@@ -128,6 +128,16 @@ func TestCodec(t *testing.T) {
 			},
 		},
 		{
+			name: "ObserveFrame",
+			args: args{
+				newF: new(frame.ObserveFrame),
+				dataF: &frame.ObserveFrame{
+					Tag: "abc",
+				},
+				data: []byte{0xaf, 0x5, 0x1, 0x3, 0x61, 0x62, 0x63},
+			},
+		},
+		{
 			name: "HandshakeRejectedFrame",
 			args: args{
 				newF: new(frame.HandshakeRejectedFrame),
