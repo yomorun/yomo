@@ -11,6 +11,7 @@ import (
 	"github.com/tetratelabs/wazero/api"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 	"github.com/tetratelabs/wazero/sys"
+	host "github.com/yomorun/yomo/cli/serverless/wasm/wazero"
 	"github.com/yomorun/yomo/serverless"
 )
 
@@ -57,7 +58,7 @@ func (r *wazeroRuntime) Init(wasmFile string) error {
 		return fmt.Errorf("read wasm file %s: %v", wasmBytes, err)
 	}
 	builder := r.NewHostModuleBuilder("env")
-	_, err = builder.
+	builder.
 		// observeDataTag
 		NewFunctionBuilder().
 		WithGoFunction(api.GoFunc(r.observeDataTag), []api.ValueType{i32}, []api.ValueType{}).
@@ -77,9 +78,12 @@ func (r *wazeroRuntime) Init(wasmFile string) error {
 		// context data size
 		NewFunctionBuilder().
 		WithGoFunction(api.GoFunc(r.contextDataSize), []api.ValueType{}, []api.ValueType{i32}).
-		Export(WasmFuncContextDataSize).
-		// Instantiate
-		Instantiate(r.ctx)
+		Export(WasmFuncContextDataSize)
+	// http
+	host.ExportHTTPHostFuncs(builder)
+
+	// Instantiate
+	_, err = builder.Instantiate(r.ctx)
 	if err != nil {
 		return fmt.Errorf("wazero.HostFunc: %v", err)
 	}
