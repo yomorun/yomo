@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 
+	_ "unsafe"
+
 	"github.com/yomorun/yomo/serverless"
 )
 
