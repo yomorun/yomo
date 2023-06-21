@@ -217,6 +217,7 @@ type ClientControlStream struct {
 	logger                     *slog.Logger
 }
 
+// RequestObserve requests server to observe a tag.
 func (cs *ClientControlStream) RequestObserve(tag string) error {
 	f := &frame.ObserveFrame{
 		Tag: tag,
@@ -224,10 +225,20 @@ func (cs *ClientControlStream) RequestObserve(tag string) error {
 	return cs.stream.WriteFrame(f)
 }
 
+// ID returns the ID of controlStream which is assigned by server.
+func (cs *ClientControlStream) ID() string { return cs.id }
+
+// Peer returns the Peer that work for creating writer stream and observing stream.
+func (cs *ClientControlStream) Peer() *Peer {
+	return NewPeer(cs, cs.codec, cs.packetReadWriter)
+}
+
+// OpenUniStream opens a Writer.
 func (cs *ClientControlStream) OpenUniStream() (io.Writer, error) {
 	return cs.conn.OpenUniStream()
 }
 
+// AcceptUniStream accepts a Reader.
 func (cs *ClientControlStream) AcceptUniStream(ctx context.Context) (io.Reader, error) {
 	return cs.conn.AcceptUniStream(ctx)
 }
@@ -311,8 +322,6 @@ func (cs *ClientControlStream) readFrameLoop() {
 		}
 	}
 }
-
-func (cs *ClientControlStream) ID() string { return cs.id }
 
 // Authenticate sends the provided credential to the server's control stream to authenticate the client.
 // There will return `ErrAuthenticateFailed` if authenticate failed.

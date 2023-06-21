@@ -2,6 +2,7 @@ package yomo
 
 import (
 	"context"
+	"io"
 
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
@@ -22,6 +23,10 @@ type Source interface {
 	SetErrorHandler(fn func(err error))
 	// [Experimental] SetReceiveHandler set the observe handler function
 	SetReceiveHandler(fn func(tag uint32, data []byte))
+	// SetStreamTag set the stream tag that can be observed in sfn.
+	SetStreamTag(string)
+	// WriteFrom creates a stream and writes the reader to it, the reader will be brokered to sfn
+	WriteFrom(io.Reader) (int64, error)
 }
 
 // YoMo-Source
@@ -30,6 +35,16 @@ type yomoSource struct {
 	zipperAddr string
 	client     *core.Client
 	fn         func(uint32, []byte)
+}
+
+// SetStreamTag implements Source.
+func (s *yomoSource) SetStreamTag(tag string) {
+	s.client.SetStreamTag(tag)
+}
+
+// WriteFrom implements Source.
+func (s *yomoSource) WriteFrom(r io.Reader) (int64, error) {
+	return s.client.WriteFrom(r)
 }
 
 var _ Source = &yomoSource{}

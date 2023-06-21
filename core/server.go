@@ -76,7 +76,7 @@ func NewServer(name string, opts ...ServerOption) *Server {
 		codec:            y3codec.Codec(),
 		packetReadWriter: y3codec.PacketReadWriter(),
 		opts:             options,
-		broker:           NewStreamBroker(ctx),
+		broker:           NewStreamBroker(ctx, logger),
 	}
 
 	return s

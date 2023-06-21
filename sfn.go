@@ -2,6 +2,7 @@ package yomo
 
 import (
 	"context"
+	"io"
 
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
@@ -24,6 +25,10 @@ type StreamFunction interface {
 	Connect() error
 	// Close will close the connection
 	Close() error
+	// SetObverseTag sets the tag of stream that from source
+	SetObverseTag(string)
+	// SetObserveHander sets the handler that handles the stream from source.
+	SetObserveHander(func(io.Reader, io.Writer))
 }
 
 // NewStreamFunction create a stream function.
@@ -55,6 +60,14 @@ type streamFunction struct {
 	pfn             core.PipeHandler
 	pIn             chan []byte
 	pOut            chan *frame.PayloadFrame
+}
+
+func (s *streamFunction) SetObverseTag(tag string) {
+	s.client.SetObverseTag(tag)
+}
+
+func (s *streamFunction) SetObserveHander(fn func(io.Reader, io.Writer)) {
+	s.client.SetObserveHander(fn)
 }
 
 // SetObserveDataTags set the data tag list that will be observed.

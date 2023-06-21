@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"os"
 	"sync"
 
 	"github.com/yomorun/yomo/core/frame"
@@ -31,10 +30,10 @@ func NewPeer(conn UniStreamOpenAccepter, codec frame.Codec, packetReadWriter fra
 	return peer
 }
 
-// SetObverseTag sets a tag for other peer can obverse the stream in Observers handler.
+// SetWriterTag sets a tag for other peer can observe the writer stream in Observers handler.
 // If this function is not called, writing to the writer in the ObserverHandler will not do anything.
 // Note That multiple calling this function will have no effect.
-func (p *Peer) SetObverseTag(tag string) {
+func (p *Peer) SetWriterTag(tag string) {
 	p.once.Do(func() {
 		p.tag = tag
 	})
@@ -42,7 +41,7 @@ func (p *Peer) SetObverseTag(tag string) {
 
 // Open opens a writer with the given tag, which other peers can observe.
 // The returned writer can be used to write to the stream associated with the given tag.
-func (p *Peer) Open(ctx context.Context, tag string) (io.Writer, error) {
+func (p *Peer) Open(tag string) (io.Writer, error) {
 	w, err := p.conn.OpenUniStream()
 	if err != nil {
 		return nil, err
@@ -81,7 +80,7 @@ func (p *Peer) observing(observer Observer) error {
 			return err
 		}
 		var w io.Writer
-		// tag
+		// discard writer if there is no tag.
 		if p.tag != "" {
 			w, err = p.conn.OpenUniStream()
 			if err != nil {
@@ -102,7 +101,7 @@ func (p *Peer) observing(observer Observer) error {
 type UniStreamOpenAccepter interface {
 	UniStreamOpener
 	UniStreamAccepter
-	// RequestObserve requests server to observe stream be taged in the specified tag.
+	// RequestObserve requests server to observe stream be tagged in the specified tag.
 	RequestObserve(tag string) error
 }
 
@@ -112,6 +111,12 @@ type Observer interface {
 	// The `r` parameter is used to read data from the tagged stream, and the `w` parameter is used to write data to a new peer stream.
 	Handle(r io.Reader, w io.Writer)
 }
+
+// ObserveHandleFunc handles tagged streams.
+type ObserveHandleFunc func(r io.Reader, w io.Writer)
+
+// Flush calls FlushFunc itself.
+func (f ObserveHandleFunc) Handle(r io.Reader, w io.Writer) { f(r, w) }
 
 // UniStreamOpener opens uniStream.
 type UniStreamOpener interface {
@@ -129,26 +134,26 @@ type UniStreamAccepter interface {
 	AcceptUniStream(context.Context) (io.Reader, error)
 }
 
-// Broker is responsible for accepting streams and docking them to taged connection.
+// Broker is responsible for accepting streams and docking them to tagged connection.
 type Broker struct {
 	ctx          context.Context
 	ctxCancel    context.CancelFunc
 	readerChan   chan tagedReader
-	obverserChan chan tagedStreamOpenner
+	observerChan chan tagedStreamOpenner
 	logger       *slog.Logger
 }
 
 // NewStreamBroker creates a new broker.
-// The broker is responsible for accepting streams and docking them to taged peer.
-func NewStreamBroker(ctx context.Context) *Broker {
+// The broker is responsible for accepting streams and docking them to tagged peer.
+func NewStreamBroker(ctx context.Context, logger *slog.Logger) *Broker {
 	ctx, ctxCancel := context.WithCancel(ctx)
 
 	broker := &Broker{
 		ctx:          ctx,
 		ctxCancel:    ctxCancel,
 		readerChan:   make(chan tagedReader),
-		obverserChan: make(chan tagedStreamOpenner),
-		logger:       slog.New(slog.NewJSONHandler(os.Stdout)),
+		observerChan: make(chan tagedStreamOpenner),
+		logger:       logger,
 	}
 
 	go broker.run()
@@ -186,8 +191,8 @@ func (b *Broker) Observe(tag string, opener UniStreamOpener) {
 		tag:    tag,
 		opener: opener,
 	}
-	b.logger.Debug("accept an obverser", "tag", tag, "opener_id", opener.ID())
-	b.obverserChan <- item
+	b.logger.Debug("accept an observer", "tag", tag, "opener_id", opener.ID())
+	b.observerChan <- item
 }
 
 func (b *Broker) run() {
@@ -201,7 +206,7 @@ func (b *Broker) run() {
 		case <-b.ctx.Done():
 			b.logger.Debug("broker is closed")
 			return
-		case o := <-b.obverserChan:
+		case o := <-b.observerChan:
 			m, ok := observers[o.tag]
 			if !ok {
 				observers[o.tag] = map[string]UniStreamOpener{
@@ -240,6 +245,7 @@ func (b *Broker) run() {
 	}
 }
 
+// fillWriter fill the observe tag to the writer.
 func fillWriter(r io.Writer, tag string, codec frame.Codec, packetReadWriter frame.PacketReadWriter) error {
 	f := &frame.ObserveFrame{
 		Tag: tag,

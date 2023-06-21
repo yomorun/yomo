@@ -33,6 +33,15 @@ type Client struct {
 	ctxCancel context.CancelFunc
 
 	writeFrameChan chan frame.Frame
+
+	// peer request and response
+	peerReqChan  chan struct{}
+	peerRespChan chan *Peer
+
+	// peer runtime use.
+	writerTag      string
+	observeTag     string
+	observeHandler func(io.Reader, io.Writer)
 }
 
 // NewClient creates a new YoMo-Client.
@@ -60,6 +69,8 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 		logger:         logger,
 		errorfn:        func(err error) { logger.Error("client err", err) },
 		writeFrameChan: make(chan frame.Frame),
+		peerReqChan:    make(chan struct{}),
+		peerRespChan:   make(chan *Peer),
 		ctx:            ctx,
 		ctxCancel:      ctxCancel,
 	}
@@ -136,13 +147,68 @@ func (c *Client) blockWriteFrame(f frame.Frame) error {
 	return nil
 }
 
+// ErrReconnecting is returned when client is reconnecting.
+var ErrReconnecting = errors.New("yomo: client is reconnecting")
+
+func (c *Client) acquirePeer() (*Peer, error) {
+	// request a peer.
+	c.peerReqChan <- struct{}{}
+
+	// wait a peer.
+	peer := <-c.peerRespChan
+
+	return peer, nil
+}
+
+func (c *Client) SetStreamTag(tag string) {
+	c.writerTag = tag
+}
+
+// WriteFrom writes Reader to client.
+func (c *Client) WriteFrom(r io.Reader) (int64, error) {
+	peer, err := c.acquirePeer()
+	if err != nil {
+		return 0, err
+	}
+	w, err := peer.Open(c.writerTag)
+	if err != nil {
+		return 0, err
+	}
+	n, err := io.Copy(w, r)
+	if err != nil {
+		if err == io.EOF {
+			c.logger.Debug("write to stream finished")
+			return n, nil
+		}
+		return n, err
+	}
+	return n, nil
+}
+
+func (c *Client) SetObverseTag(tag string) {
+	c.observeTag = tag
+}
+
+func (c *Client) SetObserveHander(fn func(io.Reader, io.Writer)) {
+	c.observeHandler = fn
+}
+
+func (c *Client) Observe() error {
+	peer, err := c.acquirePeer()
+	if err != nil {
+		return err
+	}
+
+	return peer.Observe(c.observeTag, ObserveHandleFunc(c.observeHandler))
+}
+
 // nonBlockWriteFrame writes frames in non-blocking mode, without guaranteeing that frames will not be lost.
 func (c *Client) nonBlockWriteFrame(f frame.Frame) error {
 	select {
 	case c.writeFrameChan <- f:
 		return nil
 	default:
-		err := errors.New("yomo: client has lost connection")
+		err := ErrReconnecting
 		c.logger.Debug("failed to write frame", "frame_type", f.Type().String(), "error", err)
 		return err
 	}
@@ -226,6 +292,8 @@ func (c *Client) processStream(controlStream *ClientControlStream, dataStream Da
 
 	for {
 		select {
+		case <-c.peerReqChan:
+			c.peerRespChan <- controlStream.Peer()
 		case result := <-readFrameChan:
 			if err := result.err; err != nil {
 				c.handleFrameError(err, reconnection)
