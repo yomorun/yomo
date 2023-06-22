@@ -252,7 +252,7 @@ func OpenClientControlStream(
 	logger *slog.Logger,
 ) (*ClientControlStream, error) {
 
-	conn, err := quic.DialAddrContext(ctx, addr, tlsConfig, quicConfig)
+	conn, err := quic.DialAddr(ctx, addr, tlsConfig, quicConfig)
 	if err != nil {
 		return nil, err
 	}

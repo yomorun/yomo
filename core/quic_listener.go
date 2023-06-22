@@ -14,7 +14,7 @@ import (
 
 // quicListener implements Listener interface.
 type quicListener struct {
-	underlying quic.Listener
+	underlying *quic.Listener
 }
 
 var _ Listener = (*quicListener)(nil)
