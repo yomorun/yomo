@@ -32,3 +32,28 @@ func GetBytes(fn func(ptr uintptr, size uint32) (len uint32)) (result []byte) {
 	_ = fn(ptr, size)
 	return buf
 }
+
+// bufferPtrSize returns the memory position and size of the buffer
+func bufferToPtrSize(buff []byte) (uintptr, uint32) {
+	ptr := &buff[0]
+	unsafePtr := uintptr(unsafe.Pointer(ptr))
+	return unsafePtr, uint32(len(buff))
+}
+
+// readBufferFromMemory returns a buffer
+func readBufferFromMemory(bufferPosition *uint32, length uint32) []byte {
+	buf := make([]byte, length)
+	ptr := uintptr(unsafe.Pointer(bufferPosition))
+	for i := 0; i < int(length); i++ {
+		s := *(*int32)(unsafe.Pointer(ptr + uintptr(i)))
+		buf[i] = byte(s)
+	}
+	return buf
+}
+
+//export yomo_alloc
+func alloc(size uint32) uintptr {
+	buf := make([]byte, size)
+	ptr := &buf[0]
+	return uintptr(unsafe.Pointer(ptr))
+}
