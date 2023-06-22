@@ -57,7 +57,7 @@ func (g *GuestHTTP) send(req *serverless.HTTPRequest) (*serverless.HTTPResponse,
 	var respPtr *uint32
 	var respSize uint32
 	if errCode := httpSend(reqPtr, reqSize, &respPtr, &respSize); errCode != 0 {
-		err := fmt.Errorf("http request error: %d\n", errCode)
+		err := fmt.Errorf("http request error: %d", errCode)
 		log.Printf("[GuestHTTP] Send: %s\n", err)
 		return nil, err
 	}
