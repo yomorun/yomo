@@ -53,7 +53,7 @@ func NewStreamGroup(
 }
 
 func (g *StreamGroup) handleRoute(hf *frame.HandshakeFrame, md metadata.Metadata) (router.Route, error) {
-	if hf.StreamType() != byte(StreamTypeStreamFunction) {
+	if hf.StreamType != byte(StreamTypeStreamFunction) {
 		return nil, nil
 	}
 	// route for sfn.
@@ -61,7 +61,7 @@ func (g *StreamGroup) handleRoute(hf *frame.HandshakeFrame, md metadata.Metadata
 	if route == nil {
 		return nil, errors.New("yomo: can't find route in handshake metadata")
 	}
-	err := route.Add(hf.ID(), hf.Name(), hf.ObserveDataTags())
+	err := route.Add(hf.ID, hf.Name, hf.ObserveDataTags)
 	if err == nil {
 		return route, nil
 	}
@@ -89,14 +89,14 @@ type handshakeResult struct {
 // It takes route parameter, which will be assigned after the returned function is executed.
 func (g *StreamGroup) makeHandshakeFunc(result *handshakeResult) func(hf *frame.HandshakeFrame) (metadata.Metadata, error) {
 	return func(hf *frame.HandshakeFrame) (md metadata.Metadata, err error) {
-		_, ok, err := g.connector.Get(hf.ID())
+		_, ok, err := g.connector.Get(hf.ID)
 		if err != nil {
 			return
 		}
 		if ok {
 			return nil, errors.New("yomo: stream id is not allowed to be a duplicate")
 		}
-		md, err = g.metadataDecoder.Decode(hf.Metadata())
+		md, err = g.metadataDecoder.Decode(hf.Metadata)
 		if err != nil {
 			return
 		}

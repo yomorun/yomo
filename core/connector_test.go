@@ -118,5 +118,5 @@ func TestConnector(t *testing.T) {
 // mockDataStream returns a data stream that only includes an ID and a name.
 // This function is used for unit testing purposes.
 func mockDataStream(id, name string) DataStream {
-	return newDataStream(name, id, StreamType(0), nil, nil, []frame.Tag{0}, nil)
+	return newDataStream(name, id, StreamType(0), nil, []frame.Tag{0}, nil)
 }

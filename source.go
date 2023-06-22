@@ -5,6 +5,7 @@ import (
 
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/pkg/id"
 )
 
 // Source is responsible for sending data to yomo.
@@ -64,7 +65,7 @@ func (s *yomoSource) Connect() error {
 	// set backflowframe handler
 	s.client.SetBackflowFrameObserver(func(frm *frame.BackflowFrame) {
 		if s.fn != nil {
-			s.fn(frm.GetDataTag(), frm.GetCarriage())
+			s.fn(frm.Tag, frm.Carriage)
 		}
 	})
 
@@ -74,10 +75,11 @@ func (s *yomoSource) Connect() error {
 
 // Write writes data with specified tag.
 func (s *yomoSource) Write(tag uint32, data []byte) error {
-	f := frame.NewDataFrame()
-	f.SetCarriage(tag, data)
-	f.SetSourceID(s.client.ClientID())
-	s.client.Logger().Debug("source write with tag", "data_frame", f.String())
+	f := &frame.DataFrame{
+		Meta:    &frame.MetaFrame{TID: id.New(), SourceID: s.client.ClientID()},
+		Payload: &frame.PayloadFrame{Tag: tag, Carriage: data},
+	}
+	s.client.Logger().Debug("source write", "tag", tag, "data", data)
 	return s.client.WriteFrame(f)
 }
 
@@ -94,10 +96,11 @@ func (s *yomoSource) SetReceiveHandler(fn func(uint32, []byte)) {
 
 // Broadcast write the data to all downstreams.
 func (s *yomoSource) Broadcast(tag uint32, data []byte) error {
-	f := frame.NewDataFrame()
-	f.SetCarriage(tag, data)
-	f.SetSourceID(s.client.ClientID())
-	f.SetBroadcast(true)
-	s.client.Logger().Debug("broadcast", "data_frame", f.String())
+	f := &frame.DataFrame{
+		Meta:    &frame.MetaFrame{TID: id.New(), SourceID: s.client.ClientID(), Broadcast: true},
+		Payload: &frame.PayloadFrame{Tag: tag, Carriage: data},
+	}
+
+	s.client.Logger().Debug("broadcast", "tag", tag, "data", data)
 	return s.client.WriteFrame(f)
 }

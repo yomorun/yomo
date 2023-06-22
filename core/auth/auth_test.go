@@ -31,7 +31,7 @@ func TestRegister(t *testing.T) {
 func TestAuthenticate(t *testing.T) {
 	type args struct {
 		auths map[string]Authentication
-		obj   Object
+		obj   *frame.AuthenticationFrame
 	}
 	tests := []struct {
 		name string
@@ -42,7 +42,7 @@ func TestAuthenticate(t *testing.T) {
 			name: "auths is nil",
 			args: args{
 				auths: nil,
-				obj:   frame.NewAuthenticationFrame("mock", "mock_payload"),
+				obj:   &frame.AuthenticationFrame{AuthName: "mock", AuthPayload: "mock_payload"},
 			},
 			want: true,
 		},
@@ -58,7 +58,7 @@ func TestAuthenticate(t *testing.T) {
 			name: "auth obj not found",
 			args: args{
 				auths: map[string]Authentication{"mock": mockAuth{authed: true}},
-				obj:   frame.NewAuthenticationFrame("mock_not_match", "mock_payload"),
+				obj:   &frame.AuthenticationFrame{AuthName: "mock_not_match", AuthPayload: "mock_payload"},
 			},
 			want: false,
 		},
@@ -66,7 +66,7 @@ func TestAuthenticate(t *testing.T) {
 			name: "auth success",
 			args: args{
 				auths: map[string]Authentication{"mock": mockAuth{authed: true}},
-				obj:   frame.NewAuthenticationFrame("mock", "mock_payload"),
+				obj:   &frame.AuthenticationFrame{AuthName: "mock", AuthPayload: "mock_payload"},
 			},
 			want: true,
 		},
@@ -74,7 +74,7 @@ func TestAuthenticate(t *testing.T) {
 			name: "auth failed",
 			args: args{
 				auths: map[string]Authentication{"mock": mockAuth{authed: false}},
-				obj:   frame.NewAuthenticationFrame("mock", "mock_payload"),
+				obj:   &frame.AuthenticationFrame{AuthName: "mock", AuthPayload: "mock_payload"},
 			},
 			want: false,
 		},
