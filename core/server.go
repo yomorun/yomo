@@ -76,7 +76,7 @@ func NewServer(name string, opts ...ServerOption) *Server {
 		codec:            y3codec.Codec(),
 		packetReadWriter: y3codec.PacketReadWriter(),
 		opts:             options,
-		broker:           NewStreamBroker(ctx, logger),
+		broker:           NewBroker(ctx, logger),
 	}
 
 	return s
@@ -125,7 +125,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 
 	s.logger.Info("zipper is up and running", "pid", os.Getpid(), "quic", s.opts.quicConfig.Versions, "auth_name", s.authNames())
 
-	defer closeServer(s.downstreams, s.connector, s.listener, s.router)
+	defer closeServer(s.downstreams, s.connector, s.listener, s.router, s.broker)
 
 	for {
 		conn, err := s.listener.Accept(s.ctx)
@@ -196,7 +196,13 @@ func (s *Server) Close() error {
 	return nil
 }
 
-func closeServer(downstreams map[string]FrameWriterConnection, connector *Connector, listener Listener, router router.Router) error {
+func closeServer(
+	downstreams map[string]FrameWriterConnection,
+	connector *Connector,
+	listener Listener,
+	router router.Router,
+	broker *Broker,
+) error {
 	for _, ds := range downstreams {
 		ds.Close()
 	}
@@ -212,6 +218,9 @@ func closeServer(downstreams map[string]FrameWriterConnection, connector *Connec
 	if router != nil {
 		router.Clean()
 	}
+	// broker
+	broker.Close()
+
 	return nil
 }
 
