@@ -56,7 +56,7 @@ func (p *Peer) Open(tag string) (io.Writer, error) {
 		return nil, err
 	}
 
-	_, err = w.Write(b)
+	err = p.packetReadWriter.WritePacket(w, f.Type(), b)
 
 	return w, err
 }
@@ -172,7 +172,7 @@ func (b *Broker) AcceptStream(accepter UniStreamAccepter, codec frame.Codec, pac
 		r, err := accepter.AcceptUniStream(b.ctx)
 		if err != nil {
 			b.logger.Debug("failed to accept a uniStream", "error", err)
-			continue
+			break
 		}
 		tag, err := drainReader(r, codec, packetReadWriter)
 		if err != nil {
@@ -227,7 +227,7 @@ func (b *Broker) run() {
 				w, err := opener.OpenUniStream()
 				if err != nil {
 					b.logger.Debug("failed to accept a uniStream", "error", err)
-					continue
+					break
 				}
 				ws = append(ws, w)
 			}
@@ -267,13 +267,16 @@ func drainReader(r io.Reader, codec frame.Codec, packetReadWriter frame.PacketRe
 		return "", errors.New("read unexpected frame")
 	}
 
-	f := new(frame.ObserveFrame)
+	f, err := frame.NewFrame(ft)
+	if err != nil {
+		return "", err
+	}
 
 	if err := codec.Decode(b, f); err != nil {
 		return "", err
 	}
 
-	return f.Tag, nil
+	return f.(*frame.ObserveFrame).Tag, nil
 }
 
 type tagedReader struct {

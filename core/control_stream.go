@@ -261,23 +261,7 @@ func OpenClientControlStream(
 		return nil, err
 	}
 
-	fs := NewFrameStream(stream0, codec, packetReadWriter)
-
-	f, err := fs.ReadFrame()
-	if err != nil {
-		return nil, err
-	}
-
-	id := ""
-	switch f.Type() {
-	case frame.TypeAuthenticationAckFrame:
-		id = f.(*frame.AuthenticationAckFrame).ID
-	default:
-		return nil, fmt.Errorf("unexpected frame type: %s", f.Type().String())
-	}
-
 	cs := NewClientControlStream(ctx, &QuicConnection{conn}, stream0, codec, packetReadWriter, metadataDecoder, logger)
-	cs.id = id
 
 	return cs, nil
 }
@@ -340,13 +324,14 @@ func (cs *ClientControlStream) Authenticate(cred *auth.Credential) error {
 		}
 		return err
 	}
-	_, ok := received.(*frame.AuthenticationAckFrame)
+	f, ok := received.(*frame.AuthenticationAckFrame)
 	if !ok {
 		return fmt.Errorf(
 			"yomo: read unexpected frame during waiting authentication resp, frame read: %s",
 			received.Type().String(),
 		)
 	}
+	cs.id = f.ID
 
 	// create a goroutinue to continuous read frame from server.
 	go cs.readFrameLoop()

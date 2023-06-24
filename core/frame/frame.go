@@ -210,6 +210,7 @@ var frameTypeNewFuncMap = map[Type]func() Frame{
 	TypeDataFrame:              func() Frame { return &DataFrame{Meta: new(MetaFrame), Payload: new(PayloadFrame)} },
 	TypePayloadFrame:           func() Frame { return new(PayloadFrame) },
 	TypeHandshakeFrame:         func() Frame { return new(HandshakeFrame) },
+	TypeObserveFrame:           func() Frame { return new(ObserveFrame) },
 	TypeHandshakeRejectedFrame: func() Frame { return new(HandshakeAckFrame) },
 	TypeHandshakeAckFrame:      func() Frame { return new(HandshakeAckFrame) },
 	TypeRejectedFrame:          func() Frame { return new(RejectedFrame) },
@@ -217,12 +218,12 @@ var frameTypeNewFuncMap = map[Type]func() Frame{
 }
 
 // NewFrame creates a new frame from Type.
-func NewFrame(f Type) (Frame, error) {
-	newFunc, ok := frameTypeNewFuncMap[f]
+func NewFrame(t Type) (Frame, error) {
+	newFunc, ok := frameTypeNewFuncMap[t]
 	if ok {
 		return newFunc(), nil
 	}
-	return nil, fmt.Errorf("frame: cannot new a frame from %c", f)
+	return nil, fmt.Errorf("frame: cannot new a frame from %d", int64(t))
 }
 
 // PacketReadWriter reads packet from the io.Reader and writes packet to the io.Writer.

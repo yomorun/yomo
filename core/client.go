@@ -193,13 +193,20 @@ func (c *Client) SetObserveHander(fn func(io.Reader, io.Writer)) {
 	c.observeHandler = fn
 }
 
-func (c *Client) Observe() error {
+func (c *Client) Observe() {
+	if c.observeTag == "" {
+		c.logger.Warn("observe tag not set")
+		return
+	}
 	peer, err := c.acquirePeer()
 	if err != nil {
-		return err
+		c.logger.Error("failed to acquire peer", err)
+		return
 	}
 
-	return peer.Observe(c.observeTag, ObserveHandleFunc(c.observeHandler))
+	if err := peer.Observe(c.observeTag, ObserveHandleFunc(c.observeHandler)); err != nil {
+		c.logger.Error("failed to observe streams", err, "tag", c.observeTag)
+	}
 }
 
 // nonBlockWriteFrame writes frames in non-blocking mode, without guaranteeing that frames will not be lost.

@@ -131,6 +131,9 @@ func (s *streamFunction) Connect() error {
 	}
 
 	err := s.client.Connect(context.Background(), s.zipperAddr)
+
+	go s.client.Observe()
+
 	return err
 }
 
