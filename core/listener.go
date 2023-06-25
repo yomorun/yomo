@@ -30,7 +30,7 @@ type Connection interface {
 	// OpenUniStream opens a new unbidirectional QUIC stream.
 	OpenUniStream() (io.WriteCloser, error)
 	// AcceptUniStream returns the next unidirectional stream opened by the peer, blocking until one is available.
-	AcceptUniStream(context.Context) (io.Reader, error)
+	AcceptUniStream(context.Context) (io.ReadCloser, error)
 	// CloseWithError closes the connection with an error.
 	CloseWithError(string) error
 }

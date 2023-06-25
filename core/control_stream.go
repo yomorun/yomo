@@ -148,7 +148,7 @@ func (ss *ServerControlStream) OpenStream(ctx context.Context, handshakeFunc Han
 
 func (ss *ServerControlStream) ID() string { return ss.id }
 
-func (ss *ServerControlStream) AcceptUniStream(ctx context.Context) (io.Reader, error) {
+func (ss *ServerControlStream) AcceptUniStream(ctx context.Context) (io.ReadCloser, error) {
 	return ss.conn.AcceptUniStream(ctx)
 }
 
@@ -239,7 +239,7 @@ func (cs *ClientControlStream) OpenUniStream() (io.Writer, error) {
 }
 
 // AcceptUniStream accepts a Reader.
-func (cs *ClientControlStream) AcceptUniStream(ctx context.Context) (io.Reader, error) {
+func (cs *ClientControlStream) AcceptUniStream(ctx context.Context) (io.ReadCloser, error) {
 	return cs.conn.AcceptUniStream(ctx)
 }
 

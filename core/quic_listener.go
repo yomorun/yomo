@@ -100,9 +100,29 @@ func (qc *QuicConnection) OpenUniStream() (io.WriteCloser, error) {
 	return qc.conn.OpenUniStream()
 }
 
+// YomoCloseReaderStreamErrorCode is the error code for close quic Reader for yomo.
+const YomoCloseReaderStreamErrorCode = quic.StreamErrorCode(0x13)
+
+type quicReadCloser struct {
+	underlying quic.ReceiveStream
+}
+
+func (rc *quicReadCloser) Read(p []byte) (n int, err error) {
+	return rc.underlying.Read(p)
+}
+
+func (rc *quicReadCloser) Close() error {
+	rc.underlying.CancelRead(YomoCloseReaderStreamErrorCode)
+	return nil
+}
+
 // AcceptUniStream returns the next stream opened by the peer, blocking until one is available.
-func (qc *QuicConnection) AcceptUniStream(ctx context.Context) (io.Reader, error) {
-	return qc.conn.AcceptUniStream(ctx)
+func (qc *QuicConnection) AcceptUniStream(ctx context.Context) (io.ReadCloser, error) {
+	stream, err := qc.conn.AcceptUniStream(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &quicReadCloser{stream}, nil
 }
 
 // CloseWithError closes the connection with an error string.

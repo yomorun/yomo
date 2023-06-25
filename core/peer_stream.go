@@ -17,13 +17,13 @@ type Peer struct {
 	// the tag of the writer in the ObserveHandler
 	observeHandlerWriterTag string
 
-	conn             UniStreamOpenAccepter
+	conn             UniStreamPeerConnection
 	codec            frame.Codec
 	packetReadWriter frame.PacketReadWriter
 }
 
 // NewPeer returns a new peer.
-func NewPeer(conn UniStreamOpenAccepter, codec frame.Codec, packetReadWriter frame.PacketReadWriter) *Peer {
+func NewPeer(conn UniStreamPeerConnection, codec frame.Codec, packetReadWriter frame.PacketReadWriter) *Peer {
 	peer := &Peer{
 		conn:             conn,
 		codec:            codec,
@@ -95,7 +95,7 @@ type Broker struct {
 	ctxCancel    context.CancelFunc
 	readerChan   chan tagedReader
 	readEOFChan  chan string // if read EOF, send to this chan
-	observerChan chan tagedStreamOpenner
+	observerChan chan tagedConnection
 	logger       *slog.Logger
 }
 
@@ -109,7 +109,7 @@ func NewBroker(ctx context.Context, logger *slog.Logger) *Broker {
 		ctxCancel:    ctxCancel,
 		readerChan:   make(chan tagedReader),
 		readEOFChan:  make(chan string),
-		observerChan: make(chan tagedStreamOpenner),
+		observerChan: make(chan tagedConnection),
 		logger:       logger,
 	}
 
@@ -118,16 +118,16 @@ func NewBroker(ctx context.Context, logger *slog.Logger) *Broker {
 	return broker
 }
 
-// AcceptStream accepts a uniStream from accepter and retrives the tag from the reader accepted.
+// AcceptStream accepts a uniStream from conn and retrives the tag from the reader accepted.
 // It will block until the accepter receive an error.
-func (b *Broker) AcceptStream(accepter UniStreamAccepter, codec frame.Codec, packetReadWriter frame.PacketReadWriter) {
+func (b *Broker) AcceptStream(conn UniStreamConnection, codec frame.Codec, packetReadWriter frame.PacketReadWriter) {
 	for {
 		select {
 		case <-b.ctx.Done():
 			return
 		default:
 		}
-		r, err := accepter.AcceptUniStream(b.ctx)
+		r, err := conn.AcceptUniStream(b.ctx)
 		if err != nil {
 			b.logger.Debug("failed to accept a uniStream", "error", err)
 			break
@@ -141,15 +141,15 @@ func (b *Broker) AcceptStream(accepter UniStreamAccepter, codec frame.Codec, pac
 	}
 }
 
-// Observe makes the opener observe the given tag.
-// If an opener observes a tag, it will be notified to open a new stream to dock with
+// Observe makes the conn observe the given tag.
+// If an conn observes a tag, it will be notified to open a new stream to dock with
 // the tagged stream when it arrives.
-func (b *Broker) Observe(tag string, opener UniStreamOpener) {
-	item := tagedStreamOpenner{
-		tag:    tag,
-		opener: opener,
+func (b *Broker) Observe(tag string, conn UniStreamConnection) {
+	item := tagedConnection{
+		tag:  tag,
+		conn: conn,
 	}
-	b.logger.Debug("accept an observer", "tag", tag, "opener_id", opener.ID())
+	b.logger.Debug("accept an observer", "tag", tag, "conn_id", conn.ID())
 	b.observerChan <- item
 }
 
@@ -165,12 +165,12 @@ func (b *Broker) run() {
 		// The keys in observers are tags that are used to identify the observers.
 		// The values in observers are maps where the keys are observer IDs and the values are the observers themselves.
 		// The value maps ensure that each ID has only one corresponding observer.
-		observers = make(map[string]map[string]UniStreamOpener)
+		observers = make(map[string]map[string]UniStreamConnection)
 
 		// readers stores readers. The key is the tag and the value is the reader.
 		// Using a map means that each tag only has one corresponding reader and
 		// new stream cannot cover the old stream in same tag.
-		readers = make(map[string]io.Reader)
+		readers = make(map[string]io.ReadCloser)
 	)
 	for {
 		select {
@@ -181,7 +181,7 @@ func (b *Broker) run() {
 			// if the writer opener is already registered, observe the writer directly.
 			r, ok := readers[o.tag]
 			if ok {
-				w, err := o.opener.OpenUniStream()
+				w, err := o.conn.OpenUniStream()
 				if err != nil {
 					b.logger.Debug("failed to accept a uniStream", "error", err)
 					continue
@@ -193,11 +193,11 @@ func (b *Broker) run() {
 			// store the observer and waiting the writer be registered.
 			m, ok := observers[o.tag]
 			if !ok {
-				observers[o.tag] = map[string]UniStreamOpener{
-					o.opener.ID(): o.opener,
+				observers[o.tag] = map[string]UniStreamConnection{
+					o.conn.ID(): o.conn,
 				}
 			} else {
-				m[o.opener.ID()] = o.opener
+				m[o.conn.ID()] = o.conn
 			}
 		case r := <-b.readerChan:
 			// if there donot have any observers,
@@ -205,10 +205,12 @@ func (b *Broker) run() {
 			vv, ok := observers[r.tag]
 			if !ok {
 				_, ok := readers[r.tag]
-				// if there donot has an old writer, store it.
 				if !ok {
+					// if there donot has an old writer, store it.
 					readers[r.tag] = r.r
 				} else {
+					// if there has an old writer, close the new comming.
+					r.r.Close()
 					b.logger.Warn("duplicate writer", "tag", r.tag)
 				}
 				continue
@@ -294,36 +296,31 @@ type ObserveHandleFunc func(r io.Reader, w io.Writer)
 // Handle calls ObserveHandleFunc itself.
 func (f ObserveHandleFunc) Handle(r io.Reader, w io.Writer) { f(r, w) }
 
-// UniStreamOpenAccepter opens and accepts uniStream.
-type UniStreamOpenAccepter interface {
-	UniStreamOpener
-	UniStreamAccepter
+// UniStreamConnection opens and accepts uniStream.
+type UniStreamConnection interface {
+	// ID returns the ID of the connection.
+	ID() string
+	// OpenUniStream opens uniStream.
+	OpenUniStream() (io.Writer, error)
+	// AcceptUniStream accepts uniStream.
+	AcceptUniStream(context.Context) (io.ReadCloser, error)
+}
+
+// UniStreamPeerConnection opens and accepts uniStreams,
+// Adding a new method for requesting observe a tag. just work for peer side.
+type UniStreamPeerConnection interface {
+	// basic connection.
+	UniStreamConnection
 	// RequestObserve requests server to observe stream be tagged in the specified tag.
 	RequestObserve(tag string) error
 }
 
-// UniStreamOpener opens uniStream.
-type UniStreamOpener interface {
-	// ID returns the ID of the opener.
-	ID() string
-	// OpenUniStream is the open function.
-	OpenUniStream() (io.Writer, error)
-}
-
-// UniStreamAccepter accepts uniStream.
-type UniStreamAccepter interface {
-	// ID returns the ID of the accepter.
-	ID() string
-	// AcceptUniStream is the accept function.
-	AcceptUniStream(context.Context) (io.Reader, error)
-}
-
 type tagedReader struct {
 	tag string
-	r   io.Reader
+	r   io.ReadCloser
 }
 
-type tagedStreamOpenner struct {
-	tag    string
-	opener UniStreamOpener
+type tagedConnection struct {
+	tag  string
+	conn UniStreamConnection
 }
