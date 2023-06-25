@@ -185,7 +185,7 @@ func (c *Client) WriteFrom(r io.Reader) (int64, error) {
 	return n, nil
 }
 
-func (c *Client) SetObverseTag(tag string) {
+func (c *Client) SetObserveTag(tag string) {
 	c.observeTag = tag
 }
 

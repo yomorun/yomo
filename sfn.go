@@ -25,8 +25,8 @@ type StreamFunction interface {
 	Connect() error
 	// Close will close the connection
 	Close() error
-	// SetObverseTag sets the tag of stream that from source
-	SetObverseTag(string)
+	// SetObserveTag sets the tag of stream that from source
+	SetObserveTag(string)
 	// SetObserveHander sets the handler that handles the stream from source.
 	SetObserveHander(func(io.Reader, io.Writer))
 }
@@ -62,8 +62,8 @@ type streamFunction struct {
 	pOut            chan *frame.PayloadFrame
 }
 
-func (s *streamFunction) SetObverseTag(tag string) {
-	s.client.SetObverseTag(tag)
+func (s *streamFunction) SetObserveTag(tag string) {
+	s.client.SetObserveTag(tag)
 }
 
 func (s *streamFunction) SetObserveHander(fn func(io.Reader, io.Writer)) {
