@@ -76,7 +76,7 @@ func NewServer(name string, opts ...ServerOption) *Server {
 		codec:            y3codec.Codec(),
 		packetReadWriter: y3codec.PacketReadWriter(),
 		opts:             options,
-		broker:           NewBroker(ctx, logger),
+		broker:           NewBroker(ctx, DrainObserveReader(y3codec.Codec(), y3codec.PacketReadWriter()), logger),
 	}
 
 	return s
@@ -154,7 +154,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		}
 
 		// controlStream accepts streams and prepare to link to next peer.
-		go s.broker.AcceptStream(controlStream, s.codec, s.packetReadWriter)
+		go s.broker.AcceptStream(controlStream)
 
 		go func(conn Connection) {
 			streamGroup := NewStreamGroup(ctx, md, controlStream, s.connector, s.metadataDecoder, s.router, logger)

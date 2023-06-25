@@ -2,11 +2,9 @@ package core
 
 import (
 	"context"
-	"errors"
 	"io"
 	"sync"
 
-	"github.com/yomorun/yomo/core/frame"
 	"golang.org/x/exp/slog"
 )
 
@@ -17,17 +15,15 @@ type Peer struct {
 	// the tag of the writer in the ObserveHandler
 	observeHandlerWriterTag string
 
-	conn             UniStreamPeerConnection
-	codec            frame.Codec
-	packetReadWriter frame.PacketReadWriter
+	conn           UniStreamPeerConnection
+	fillWriterFunc func(string, io.Writer) error
 }
 
 // NewPeer returns a new peer.
-func NewPeer(conn UniStreamPeerConnection, codec frame.Codec, packetReadWriter frame.PacketReadWriter) *Peer {
+func NewPeer(conn UniStreamPeerConnection, fillWriterFunc func(string, io.Writer) error) *Peer {
 	peer := &Peer{
-		conn:             conn,
-		codec:            codec,
-		packetReadWriter: packetReadWriter,
+		conn:           conn,
+		fillWriterFunc: fillWriterFunc,
 	}
 
 	return peer
@@ -50,7 +46,7 @@ func (p *Peer) Open(tag string) (io.Writer, error) {
 		return nil, err
 	}
 
-	return w, fillWriter(w, tag, p.codec, p.packetReadWriter)
+	return w, p.fillWriterFunc(tag, w)
 }
 
 // Observe observes tagged streams and handles them in an observer.
@@ -78,7 +74,7 @@ func (p *Peer) observing(observer Observer) error {
 			if err != nil {
 				return err
 			}
-			err = fillWriter(w, p.observeHandlerWriterTag, p.codec, p.packetReadWriter)
+			err = p.fillWriterFunc(p.observeHandlerWriterTag, w)
 			if err != nil {
 				return err
 			}
@@ -91,26 +87,28 @@ func (p *Peer) observing(observer Observer) error {
 
 // Broker accepts streams from Peer and docks them to another Peer.
 type Broker struct {
-	ctx          context.Context
-	ctxCancel    context.CancelFunc
-	readerChan   chan tagedReader
-	readEOFChan  chan string // if read EOF, send to this chan
-	observerChan chan tagedConnection
-	logger       *slog.Logger
+	ctx             context.Context
+	ctxCancel       context.CancelFunc
+	readerChan      chan tagedReader
+	readEOFChan     chan string // if read EOF, send to this chan
+	observerChan    chan tagedConnection
+	logger          *slog.Logger
+	drainReaderFunc func(io.Reader) (string, error)
 }
 
 // NewBroker creates a new broker.
 // The broker accepts streams from Peer and docks them to another Peer.
-func NewBroker(ctx context.Context, logger *slog.Logger) *Broker {
+func NewBroker(ctx context.Context, drainReaderFunc func(io.Reader) (string, error), logger *slog.Logger) *Broker {
 	ctx, ctxCancel := context.WithCancel(ctx)
 
 	broker := &Broker{
-		ctx:          ctx,
-		ctxCancel:    ctxCancel,
-		readerChan:   make(chan tagedReader),
-		readEOFChan:  make(chan string),
-		observerChan: make(chan tagedConnection),
-		logger:       logger,
+		ctx:             ctx,
+		ctxCancel:       ctxCancel,
+		readerChan:      make(chan tagedReader),
+		readEOFChan:     make(chan string),
+		observerChan:    make(chan tagedConnection),
+		logger:          logger,
+		drainReaderFunc: drainReaderFunc,
 	}
 
 	go broker.run()
@@ -120,7 +118,7 @@ func NewBroker(ctx context.Context, logger *slog.Logger) *Broker {
 
 // AcceptStream accepts a uniStream from conn and retrives the tag from the reader accepted.
 // It will block until the accepter receive an error.
-func (b *Broker) AcceptStream(conn UniStreamConnection, codec frame.Codec, packetReadWriter frame.PacketReadWriter) {
+func (b *Broker) AcceptStream(conn UniStreamConnection) {
 	for {
 		select {
 		case <-b.ctx.Done():
@@ -132,7 +130,7 @@ func (b *Broker) AcceptStream(conn UniStreamConnection, codec frame.Codec, packe
 			b.logger.Debug("failed to accept a uniStream", "error", err)
 			break
 		}
-		tag, err := drainReader(r, codec, packetReadWriter)
+		tag, err := b.drainReaderFunc(r)
 		if err != nil {
 			b.logger.Debug("ack peer stream failed", "error", err)
 			continue
@@ -247,40 +245,6 @@ func (b *Broker) copyWithLog(tag string, dst io.Writer, src io.Reader, logger *s
 			logger.Debug("failed to write a uniStream", "error", err)
 		}
 	}
-}
-
-// fillWriter fill the observe tag to the writer.
-func fillWriter(w io.Writer, tag string, codec frame.Codec, packetReadWriter frame.PacketReadWriter) error {
-	f := &frame.ObserveFrame{
-		Tag: tag,
-	}
-	b, err := codec.Encode(f)
-	if err != nil {
-		return err
-	}
-	return packetReadWriter.WritePacket(w, f.Type(), b)
-}
-
-// drainReader drains tag from the reader and returns the tag.
-func drainReader(r io.Reader, codec frame.Codec, packetReadWriter frame.PacketReadWriter) (tag string, err error) {
-	ft, b, err := packetReadWriter.ReadPacket(r)
-	if err != nil {
-		return "", err
-	}
-	if ft != frame.TypeObserveFrame {
-		return "", errors.New("read unexpected frame")
-	}
-
-	f, err := frame.NewFrame(ft)
-	if err != nil {
-		return "", err
-	}
-
-	if err := codec.Decode(b, f); err != nil {
-		return "", err
-	}
-
-	return f.(*frame.ObserveFrame).Tag, nil
 }
 
 // Observer is responsible for handling tagged streams.

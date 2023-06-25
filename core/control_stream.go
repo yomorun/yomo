@@ -230,7 +230,7 @@ func (cs *ClientControlStream) ID() string { return cs.id }
 
 // Peer returns the Peer that work for creating writer stream and observing stream.
 func (cs *ClientControlStream) Peer() *Peer {
-	return NewPeer(cs, cs.codec, cs.packetReadWriter)
+	return NewPeer(cs, FillObserveWriter(cs.codec, cs.packetReadWriter))
 }
 
 // OpenUniStream opens a Writer.
@@ -463,4 +463,42 @@ func (cs *ClientControlStream) acceptStream(ctx context.Context) (DataStream, er
 func (cs *ClientControlStream) CloseWithError(errString string) error {
 	cs.stream.Close()
 	return cs.conn.CloseWithError(errString)
+}
+
+// FillObserveWriter fill the observe tag to the writer.
+func FillObserveWriter(codec frame.Codec, packetReadWriter frame.PacketReadWriter) func(string, io.Writer) error {
+	return func(tag string, w io.Writer) error {
+		f := &frame.ObserveFrame{
+			Tag: tag,
+		}
+		b, err := codec.Encode(f)
+		if err != nil {
+			return err
+		}
+		return packetReadWriter.WritePacket(w, f.Type(), b)
+	}
+}
+
+// DrainObserveReader drains tag from the reader and returns the tag.
+func DrainObserveReader(codec frame.Codec, packetReadWriter frame.PacketReadWriter) func(io.Reader) (string, error) {
+	return func(r io.Reader) (tag string, err error) {
+		ft, b, err := packetReadWriter.ReadPacket(r)
+		if err != nil {
+			return "", err
+		}
+		if ft != frame.TypeObserveFrame {
+			return "", errors.New("read unexpected frame")
+		}
+
+		f, err := frame.NewFrame(ft)
+		if err != nil {
+			return "", err
+		}
+
+		if err := codec.Decode(b, f); err != nil {
+			return "", err
+		}
+
+		return f.(*frame.ObserveFrame).Tag, nil
+	}
 }
