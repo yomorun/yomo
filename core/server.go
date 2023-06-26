@@ -154,7 +154,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		}
 
 		// controlStream accepts streams and prepare to link to next peer.
-		go s.broker.AcceptStream(controlStream)
+		go s.broker.AcceptingStream(controlStream)
 
 		go func(conn Connection) {
 			streamGroup := NewStreamGroup(ctx, md, controlStream, s.connector, s.metadataDecoder, s.router, logger)

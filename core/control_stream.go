@@ -152,7 +152,7 @@ func (ss *ServerControlStream) AcceptUniStream(ctx context.Context) (io.ReadClos
 	return ss.conn.AcceptUniStream(ctx)
 }
 
-func (ss *ServerControlStream) OpenUniStream() (io.Writer, error) {
+func (ss *ServerControlStream) OpenUniStream() (io.WriteCloser, error) {
 	return ss.conn.OpenUniStream()
 }
 
@@ -234,7 +234,7 @@ func (cs *ClientControlStream) Peer() *Peer {
 }
 
 // OpenUniStream opens a Writer.
-func (cs *ClientControlStream) OpenUniStream() (io.Writer, error) {
+func (cs *ClientControlStream) OpenUniStream() (io.WriteCloser, error) {
 	return cs.conn.OpenUniStream()
 }
 

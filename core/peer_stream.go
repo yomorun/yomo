@@ -40,7 +40,7 @@ func (p *Peer) SetObserveHandlerWriterTag(tag string) {
 
 // Open opens a writer with the given tag, which other peers can observe.
 // The returned writer can be used to write to the stream associated with the given tag.
-func (p *Peer) Open(tag string) (io.Writer, error) {
+func (p *Peer) Open(tag string) (io.WriteCloser, error) {
 	w, err := p.conn.OpenUniStream()
 	if err != nil {
 		return nil, err
@@ -89,9 +89,9 @@ func (p *Peer) observing(observer Observer) error {
 type Broker struct {
 	ctx             context.Context
 	ctxCancel       context.CancelFunc
-	readerChan      chan tagedReader
+	readerChan      chan taggedReader
 	readEOFChan     chan string // if read EOF, send to this chan
-	observerChan    chan tagedConnection
+	observerChan    chan taggedConnection
 	logger          *slog.Logger
 	drainReaderFunc func(io.Reader) (string, error)
 }
@@ -104,9 +104,9 @@ func NewBroker(ctx context.Context, drainReaderFunc func(io.Reader) (string, err
 	broker := &Broker{
 		ctx:             ctx,
 		ctxCancel:       ctxCancel,
-		readerChan:      make(chan tagedReader),
+		readerChan:      make(chan taggedReader),
 		readEOFChan:     make(chan string),
-		observerChan:    make(chan tagedConnection),
+		observerChan:    make(chan taggedConnection),
 		logger:          logger,
 		drainReaderFunc: drainReaderFunc,
 	}
@@ -116,9 +116,9 @@ func NewBroker(ctx context.Context, drainReaderFunc func(io.Reader) (string, err
 	return broker
 }
 
-// AcceptStream accepts a uniStream from conn and retrives the tag from the reader accepted.
+// AcceptingStream continusly accepts uniStreams from conn and retrives the tag from the reader accepted.
 // It will block until the accepter receive an error.
-func (b *Broker) AcceptStream(conn UniStreamConnection) {
+func (b *Broker) AcceptingStream(conn UniStreamConnection) {
 	for {
 		select {
 		case <-b.ctx.Done():
@@ -135,7 +135,7 @@ func (b *Broker) AcceptStream(conn UniStreamConnection) {
 			b.logger.Debug("ack peer stream failed", "error", err)
 			continue
 		}
-		b.readerChan <- tagedReader{r: r, tag: tag}
+		b.readerChan <- taggedReader{r: r, tag: tag}
 	}
 }
 
@@ -143,7 +143,7 @@ func (b *Broker) AcceptStream(conn UniStreamConnection) {
 // If an conn observes a tag, it will be notified to open a new stream to dock with
 // the tagged stream when it arrives.
 func (b *Broker) Observe(tag string, conn UniStreamConnection) {
-	item := tagedConnection{
+	item := taggedConnection{
 		tag:  tag,
 		conn: conn,
 	}
@@ -209,7 +209,7 @@ func (b *Broker) run() {
 				} else {
 					// if there has an old writer, close the new comming.
 					r.r.Close()
-					b.logger.Warn("duplicate writer", "tag", r.tag)
+					b.logger.Warn("duplicate writer, close current writer", "tag", r.tag)
 				}
 				continue
 			}
@@ -265,7 +265,7 @@ type UniStreamConnection interface {
 	// ID returns the ID of the connection.
 	ID() string
 	// OpenUniStream opens uniStream.
-	OpenUniStream() (io.Writer, error)
+	OpenUniStream() (io.WriteCloser, error)
 	// AcceptUniStream accepts uniStream.
 	AcceptUniStream(context.Context) (io.ReadCloser, error)
 }
@@ -279,12 +279,12 @@ type UniStreamPeerConnection interface {
 	RequestObserve(tag string) error
 }
 
-type tagedReader struct {
+type taggedReader struct {
 	tag string
 	r   io.ReadCloser
 }
 
-type tagedConnection struct {
+type taggedConnection struct {
 	tag  string
 	conn UniStreamConnection
 }

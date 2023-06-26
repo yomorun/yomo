@@ -58,7 +58,7 @@ type AuthenticationAckFrame struct {
 // Type returns the type of AuthenticationAckFrame.
 func (f *AuthenticationAckFrame) Type() Type { return TypeAuthenticationAckFrame }
 
-// DataFrame carrys taged data to transmit accross DataStream.
+// DataFrame carrys tagged data to transmit accross DataStream.
 type DataFrame struct {
 	// Meta.
 	Meta *MetaFrame
@@ -84,7 +84,7 @@ type MetaFrame struct {
 // Type returns the type of MetaFrame.
 func (f *MetaFrame) Type() Type { return TypePayloadFrame }
 
-// PayloadFrame is used to carry taged data for DataFrame. It is a part of DataFrame.
+// PayloadFrame is used to carry tagged data for DataFrame. It is a part of DataFrame.
 type PayloadFrame struct {
 	// Tag is used for data router.
 	Tag Tag
