@@ -182,8 +182,6 @@ func (s *Server) runWithStreamGroup(group *StreamGroup, logger *slog.Logger) <-c
 		done <- struct{}{}
 	}()
 
-	// run with pure stream.
-
 	return done
 }
 

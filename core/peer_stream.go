@@ -15,15 +15,15 @@ type Peer struct {
 	// the tag of the writer in the ObserveHandler
 	observeHandlerWriterTag string
 
-	conn           UniStreamPeerConnection
-	fillWriterFunc func(string, io.Writer) error
+	conn          UniStreamPeerConnection
+	tagWriterFunc func(string, io.Writer) error
 }
 
 // NewPeer returns a new peer.
-func NewPeer(conn UniStreamPeerConnection, fillWriterFunc func(string, io.Writer) error) *Peer {
+func NewPeer(conn UniStreamPeerConnection, tagWriterFunc func(string, io.Writer) error) *Peer {
 	peer := &Peer{
-		conn:           conn,
-		fillWriterFunc: fillWriterFunc,
+		conn:          conn,
+		tagWriterFunc: tagWriterFunc,
 	}
 
 	return peer
@@ -46,7 +46,7 @@ func (p *Peer) Open(tag string) (io.Writer, error) {
 		return nil, err
 	}
 
-	return w, p.fillWriterFunc(tag, w)
+	return w, p.tagWriterFunc(tag, w)
 }
 
 // Observe observes tagged streams and handles them in an observer.
@@ -74,7 +74,7 @@ func (p *Peer) observing(observer Observer) error {
 			if err != nil {
 				return err
 			}
-			err = p.fillWriterFunc(p.observeHandlerWriterTag, w)
+			err = p.tagWriterFunc(p.observeHandlerWriterTag, w)
 			if err != nil {
 				return err
 			}
