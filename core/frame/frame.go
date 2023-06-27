@@ -9,7 +9,7 @@ import (
 // Frame is the minimum unit required for Yomo to run.
 // Yomo transmits various instructions and data through the frame, which can be transmitted on the IO stream.
 //
-//	Yomo needs 10 type frame to run up, them cantain:
+//	Yomo needs 11 type frame to run up, them cantain:
 //		1. AuthenticationFrame
 //		2. AuthenticationAckFrame
 //		3. DataFrame
@@ -20,6 +20,7 @@ import (
 //		8. RejectedFrame
 //		9. BackflowFrame
 //	   10. ObserveFrame
+//	   11. OpenStreamFrame
 //	 Read frame comments to understand the role of the frame.
 //
 //		If you want to transmit the frame on the IO stream, you must have `ReadFunc` and `WriteFunc` for reading and writing frames.
@@ -133,8 +134,8 @@ type OpenStreamFrame struct {
 	Tag string
 }
 
-// Type returns the type of ObserveFrame.
-func (f *OpenStreamFrame) Type() Type { return TypeObserveFrame }
+// Type returns the type of OpenStreamFrame.
+func (f *OpenStreamFrame) Type() Type { return TypeOpenStreamFrame }
 
 // HandshakeAckFrame is used to ack handshake, If handshake successful, The server will
 // send HandshakeAckFrame to the new DataStream, That means the new DataStream receive first frame

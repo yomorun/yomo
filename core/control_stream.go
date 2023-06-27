@@ -234,7 +234,6 @@ func (cs *ClientControlStream) Peer() *Peer {
 		cs,
 		cs.logger,
 		FillObserveWriter(cs.codec, cs.packetReadWriter),
-		DrainOpenedReader(cs.codec, cs.packetReadWriter),
 	)
 }
 

@@ -16,17 +16,13 @@ type Peer struct {
 	// the tag of the writer in the ObserveHandler
 	observeHandlerWriterTag string
 
-	conn            UniStreamPeerConnection
-	logger          *slog.Logger
-	fillWriterFunc  func(string, string, io.Writer) error
-	drainReaderFunc func(io.Reader) (string, string, error)
+	conn           UniStreamPeerConnection
+	logger         *slog.Logger
+	fillWriterFunc func(string, string, io.Writer) error
 }
 
 // NewPeer returns a new peer.
-func NewPeer(conn UniStreamPeerConnection, logger *slog.Logger,
-	fillWriterFunc func(string, string, io.Writer) error,
-	drainReaderFunc func(io.Reader) (string, string, error),
-) *Peer {
+func NewPeer(conn UniStreamPeerConnection, logger *slog.Logger, fillWriterFunc func(string, string, io.Writer) error) *Peer {
 	peer := &Peer{
 		conn:           conn,
 		logger:         logger,
@@ -76,11 +72,6 @@ func (p *Peer) observing(observer Observer) error {
 	for {
 		// accept and pure the reader.
 		r, err := p.conn.AcceptUniStream(context.Background())
-		if err != nil {
-			return err
-		}
-		// TODO: whether the user needs to know the id ?
-		_, _, err = p.drainReaderFunc(r)
 		if err != nil {
 			return err
 		}
@@ -199,14 +190,15 @@ func (b *Broker) run() {
 			// if the writer opener is already registered, observe the writer directly.
 			rm, ok := readers[o.tag]
 			if ok {
-				for _, r := range rm {
+				for rid, r := range rm {
 					w, err := o.conn.OpenUniStream()
 					if err != nil {
 						b.logger.Debug("failed to accept a uniStream", "error", err)
 						continue
 					}
 					go b.copyWithLog(o.tag, w, r, b.logger)
-					continue
+					// delete the reader that has been observed.
+					delete(rm, rid)
 				}
 			}
 			// if the writer opener is empty,
