@@ -5,10 +5,10 @@ import (
 	frame "github.com/yomorun/yomo/core/frame"
 )
 
-// encodeObverseFrame encodes ObserveFrame to bytes in Y3 codec.
-func encodeObverseFrame(f *frame.ObserveFrame) ([]byte, error) {
+// encodeObserveFrame encodes ObserveFrame to bytes in Y3 codec.
+func encodeObserveFrame(f *frame.ObserveFrame) ([]byte, error) {
 	// tag
-	tagBlock := y3.NewPrimitivePacketEncoder(tagObverseTag)
+	tagBlock := y3.NewPrimitivePacketEncoder(tagObserveTag)
 	tagBlock.SetStringValue(f.Tag)
 
 	// frame
@@ -26,7 +26,7 @@ func decodeObserveFrame(data []byte, f *frame.ObserveFrame) error {
 		return err
 	}
 	// tag
-	if tagBlock, ok := node.PrimitivePackets[tagObverseTag]; ok {
+	if tagBlock, ok := node.PrimitivePackets[tagObserveTag]; ok {
 		tag, err := tagBlock.ToUTF8String()
 		if err != nil {
 			return err
@@ -38,5 +38,5 @@ func decodeObserveFrame(data []byte, f *frame.ObserveFrame) error {
 }
 
 var (
-	tagObverseTag byte = 0x01
+	tagObserveTag byte = 0x01
 )
