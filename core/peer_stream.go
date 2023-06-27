@@ -16,13 +16,15 @@ type Peer struct {
 	observeHandlerWriterTag string
 
 	conn          UniStreamPeerConnection
+	logger        *slog.Logger
 	tagWriterFunc func(string, io.Writer) error
 }
 
 // NewPeer returns a new peer.
-func NewPeer(conn UniStreamPeerConnection, tagWriterFunc func(string, io.Writer) error) *Peer {
+func NewPeer(conn UniStreamPeerConnection, logger *slog.Logger, tagWriterFunc func(string, io.Writer) error) *Peer {
 	peer := &Peer{
 		conn:          conn,
+		logger:        logger,
 		tagWriterFunc: tagWriterFunc,
 	}
 
@@ -45,6 +47,8 @@ func (p *Peer) Open(tag string) (io.WriteCloser, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	p.logger.Debug("peer opens a writer", "tag", tag)
 
 	return w, p.tagWriterFunc(tag, w)
 }
@@ -116,27 +120,28 @@ func NewBroker(ctx context.Context, drainReaderFunc func(io.Reader) (string, err
 	return broker
 }
 
-// AcceptingStream continusly accepts uniStreams from conn and retrives the tag from the reader accepted.
-// It will block until the accepter receive an error.
-func (b *Broker) AcceptingStream(conn UniStreamConnection) {
-	for {
-		select {
-		case <-b.ctx.Done():
-			return
-		default:
+// AccepStream continusly accepts uniStreams from conn and retrives the tag from the reader accepted.
+func (b *Broker) AccepStream(conn UniStreamConnection) {
+	go func() {
+		for {
+			select {
+			case <-b.ctx.Done():
+				return
+			default:
+			}
+			r, err := conn.AcceptUniStream(b.ctx)
+			if err != nil {
+				b.logger.Debug("failed to accept a uniStream", "error", err)
+				break
+			}
+			tag, err := b.drainReaderFunc(r)
+			if err != nil {
+				b.logger.Debug("ack peer stream failed", "error", err)
+				continue
+			}
+			b.readerChan <- taggedReader{r: r, tag: tag}
 		}
-		r, err := conn.AcceptUniStream(b.ctx)
-		if err != nil {
-			b.logger.Debug("failed to accept a uniStream", "error", err)
-			break
-		}
-		tag, err := b.drainReaderFunc(r)
-		if err != nil {
-			b.logger.Debug("ack peer stream failed", "error", err)
-			continue
-		}
-		b.readerChan <- taggedReader{r: r, tag: tag}
-	}
+	}()
 }
 
 // Observe makes the conn observe the given tag.

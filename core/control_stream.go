@@ -230,7 +230,7 @@ func (cs *ClientControlStream) ID() string { return cs.id }
 
 // Peer returns the Peer that work for creating writer stream and observing stream.
 func (cs *ClientControlStream) Peer() *Peer {
-	return NewPeer(cs, FillObserveWriter(cs.codec, cs.packetReadWriter))
+	return NewPeer(cs, cs.logger, FillObserveWriter(cs.codec, cs.packetReadWriter))
 }
 
 // OpenUniStream opens a Writer.
