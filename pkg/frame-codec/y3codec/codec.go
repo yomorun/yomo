@@ -49,6 +49,8 @@ func (c *y3codec) Encode(f frame.Frame) ([]byte, error) {
 		return encodeHandshakeFrame(ff)
 	case *frame.ObserveFrame:
 		return encodeObserveFrame(ff)
+	case *frame.OpenStreamFrame:
+		return encodeOpenStreamFrame(ff)
 	case *frame.HandshakeRejectedFrame:
 		return encodeHandshakeRejectedFrame(ff)
 	case *frame.HandshakeAckFrame:
@@ -74,6 +76,8 @@ func (c *y3codec) Decode(data []byte, f frame.Frame) error {
 		return decodeHandshakeFrame(data, ff)
 	case *frame.ObserveFrame:
 		return decodeObserveFrame(data, ff)
+	case *frame.OpenStreamFrame:
+		return decodeOpenStreamFrame(data, ff)
 	case *frame.HandshakeRejectedFrame:
 		return decodeHandshakeRejectedFrame(data, ff)
 	case *frame.HandshakeAckFrame:
