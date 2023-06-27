@@ -4,10 +4,19 @@
 package wasm
 
 import (
+	"bytes"
+	"encoding/binary"
+	"encoding/json"
 	"fmt"
+	"io"
+	"log"
+	"net/http"
 	"os"
+	"time"
 
 	"github.com/bytecodealliance/wasmtime-go"
+	wasmhttp "github.com/yomorun/yomo/cli/serverless/wasm/http"
+
 	"github.com/yomorun/yomo/serverless"
 )
 
@@ -73,6 +82,10 @@ func (r *wasmtimeRuntime) Init(wasmFile string) error {
 	// write
 	if err := r.linker.FuncWrap("env", WasmFuncWrite, r.write); err != nil {
 		return fmt.Errorf("linker.FuncWrap: %s %v", WasmFuncWrite, err)
+	}
+	// http
+	if err := r.linker.FuncWrap("env", wasmhttp.WasmFuncHTTPSend, r.httpSend); err != nil {
+		return fmt.Errorf("linker.FuncWrap: %s %v", wasmhttp.WasmFuncHTTPSend, err)
 	}
 	// instantiate
 	instance, err := r.linker.Instantiate(r.store, module)
@@ -153,5 +166,93 @@ func (r *wasmtimeRuntime) write(tag int32, pointer int32, length int32) int32 {
 	if err := r.serverlessCtx.Write(uint32(tag), buf); err != nil {
 		return 2
 	}
+	return 0
+}
+
+// httpSend sends a HTTP request and returns the response
+func (r *wasmtimeRuntime) httpSend(
+	caller *wasmtime.Caller,
+	reqPtr int32,
+	reqSize int32,
+	respPtr int32,
+	respSize int32,
+) int32 {
+	if r.memory == nil {
+		log.Printf("[HTTP] Send: memory is nil\n")
+		return 1
+	}
+	// request
+	reqBuf := r.memory.UnsafeData(r.store)[reqPtr : reqPtr+reqSize]
+	var req serverless.HTTPRequest
+	if err := json.Unmarshal(reqBuf, &req); err != nil {
+		log.Printf("[HTTP] Send: unmarshal request error: %s\n", err)
+		return 2
+	}
+	// create http client
+	timeout := wasmhttp.DefaultHTTPTimeout
+	if req.Timeout > 0 {
+		timeout = time.Duration(req.Timeout * 1e6)
+	}
+
+	client := &http.Client{Timeout: timeout}
+	// create http request
+	reqBody := bytes.NewReader(req.Body)
+	request, err := http.NewRequest(req.Method, req.URL, reqBody)
+	if err != nil {
+		log.Printf("[HTTP] Send: create http request error: %s\n", err)
+		return 3
+	}
+	// set headers
+	for k, v := range req.Header {
+		request.Header.Set(k, v)
+	}
+	// send http request
+	response, err := client.Do(request)
+	if err != nil {
+		log.Printf("[HTTP] Send: http request error: %s\n", err)
+		return 4
+	}
+	defer response.Body.Close()
+	// response
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		log.Printf("[HTTP] Send: read response body error: %s\n", err)
+		return 5
+	}
+	resp := serverless.HTTPResponse{
+		Status:     response.Status,
+		StatusCode: response.StatusCode,
+		Header:     make(map[string]string),
+		Body:       body,
+	}
+	// response headers
+	for k, v := range response.Header {
+		if len(v) > 0 {
+			resp.Header[k] = v[0]
+		}
+	}
+	// marshal response
+	respBuf, err := json.Marshal(resp)
+	if err != nil {
+		log.Printf("[HTTP] Send: marshal response error: %s\n", err)
+		return 6
+	}
+	// write response
+	allocFn := caller.GetExport("yomo_alloc")
+	if allocFn == nil {
+		log.Printf("[HTTP] Send: yomo_alloc not found\n")
+		return 8
+	}
+	allocResult, err := allocFn.Func().Call(r.store, len(respBuf))
+	if err != nil {
+		log.Printf("[HTTP] Send: yomo_alloc error: %s\n", err)
+		return 7
+	}
+	allocPtr32 := allocResult.(int32)
+	allocPtr := int(allocPtr32)
+	dataLen := len(respBuf)
+	binary.LittleEndian.PutUint32(r.memory.UnsafeData(r.store)[respPtr:], uint32(allocPtr))
+	binary.LittleEndian.PutUint32(r.memory.UnsafeData(r.store)[respSize:], uint32(len(respBuf)))
+	copy(r.memory.UnsafeData(r.store)[allocPtr:allocPtr+dataLen], respBuf)
 	return 0
 }

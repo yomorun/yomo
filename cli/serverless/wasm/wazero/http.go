@@ -15,10 +15,6 @@ import (
 	"github.com/yomorun/yomo/serverless"
 )
 
-const DefaultHTTPTimeout = 10 * time.Second
-
-type Request struct{}
-
 func ExportHTTPHostFuncs(builder wazero.HostModuleBuilder) {
 	builder.
 		// get
@@ -55,7 +51,7 @@ func Send(ctx context.Context, m api.Module, stack []uint64) {
 	}
 	// create http client
 	// 10 seconds timeout
-	timeout := DefaultHTTPTimeout
+	timeout := wasmhttp.DefaultHTTPTimeout
 	if req.Timeout > 0 {
 		timeout = time.Duration(req.Timeout * 1e6)
 	}
