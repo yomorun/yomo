@@ -5,6 +5,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/yomorun/yomo/pkg/id"
 	"golang.org/x/exp/slog"
 )
 
@@ -15,17 +16,21 @@ type Peer struct {
 	// the tag of the writer in the ObserveHandler
 	observeHandlerWriterTag string
 
-	conn          UniStreamPeerConnection
-	logger        *slog.Logger
-	tagWriterFunc func(string, io.Writer) error
+	conn            UniStreamPeerConnection
+	logger          *slog.Logger
+	fillWriterFunc  func(string, string, io.Writer) error
+	drainReaderFunc func(io.Reader) (string, string, error)
 }
 
 // NewPeer returns a new peer.
-func NewPeer(conn UniStreamPeerConnection, logger *slog.Logger, tagWriterFunc func(string, io.Writer) error) *Peer {
+func NewPeer(conn UniStreamPeerConnection, logger *slog.Logger,
+	fillWriterFunc func(string, string, io.Writer) error,
+	drainReaderFunc func(io.Reader) (string, string, error),
+) *Peer {
 	peer := &Peer{
-		conn:          conn,
-		logger:        logger,
-		tagWriterFunc: tagWriterFunc,
+		conn:           conn,
+		logger:         logger,
+		fillWriterFunc: fillWriterFunc,
 	}
 
 	return peer
@@ -50,7 +55,9 @@ func (p *Peer) Open(tag string) (io.WriteCloser, error) {
 
 	p.logger.Debug("peer opens a writer", "tag", tag)
 
-	return w, p.tagWriterFunc(tag, w)
+	id := id.New()
+
+	return w, p.fillWriterFunc(id, tag, w)
 }
 
 // Observe observes tagged streams and handles them in an observer.
@@ -67,24 +74,30 @@ func (p *Peer) Observe(tag string, observer Observer) error {
 
 func (p *Peer) observing(observer Observer) error {
 	for {
+		// accept and pure the reader.
 		r, err := p.conn.AcceptUniStream(context.Background())
 		if err != nil {
 			return err
 		}
+		// TODO: whether the user needs to know the id ?
+		_, _, err = p.drainReaderFunc(r)
+		if err != nil {
+			return err
+		}
+
+		// open and pure the writer if observeHandlerWriterTag is not empty.
 		var w io.Writer
-		// discard writer if there is no tag.
 		if p.observeHandlerWriterTag != "" {
 			w, err = p.Open(p.observeHandlerWriterTag)
 			if err != nil {
 				return err
 			}
-			err = p.tagWriterFunc(p.observeHandlerWriterTag, w)
-			if err != nil {
-				return err
-			}
 		} else {
+			// discard writer if there is no tag.
 			w = io.Discard
 		}
+
+		// dispatch the reader and writer to the observer.
 		observer.Handle(r, w)
 	}
 }
@@ -97,12 +110,12 @@ type Broker struct {
 	readEOFChan     chan string // if read EOF, send to this chan
 	observerChan    chan taggedConnection
 	logger          *slog.Logger
-	drainReaderFunc func(io.Reader) (string, error)
+	drainReaderFunc func(io.Reader) (string, string, error)
 }
 
 // NewBroker creates a new broker.
 // The broker accepts streams from Peer and docks them to another Peer.
-func NewBroker(ctx context.Context, drainReaderFunc func(io.Reader) (string, error), logger *slog.Logger) *Broker {
+func NewBroker(ctx context.Context, drainReaderFunc func(io.Reader) (string, string, error), logger *slog.Logger) *Broker {
 	ctx, ctxCancel := context.WithCancel(ctx)
 
 	broker := &Broker{
@@ -134,12 +147,12 @@ func (b *Broker) AccepStream(conn UniStreamConnection) {
 				b.logger.Debug("failed to accept a uniStream", "error", err)
 				break
 			}
-			tag, err := b.drainReaderFunc(r)
+			id, tag, err := b.drainReaderFunc(r)
 			if err != nil {
 				b.logger.Debug("ack peer stream failed", "error", err)
 				continue
 			}
-			b.readerChan <- taggedReader{r: r, tag: tag}
+			b.readerChan <- taggedReader{id: id, r: r, tag: tag}
 		}
 	}()
 }
@@ -170,10 +183,12 @@ func (b *Broker) run() {
 		// The value maps ensure that each ID has only one corresponding observer.
 		observers = make(map[string]map[string]UniStreamConnection)
 
-		// readers stores readers. The key is the tag and the value is the reader.
+		// readers stores readers.
+		// The key is reader tag,
+		// The value is a map where the keys are the id and the value is the reader.
 		// Using a map means that each tag only has one corresponding reader and
 		// new stream cannot cover the old stream in same tag.
-		readers = make(map[string]io.ReadCloser)
+		readers = make(map[string]map[string]io.ReadCloser)
 	)
 	for {
 		select {
@@ -182,17 +197,19 @@ func (b *Broker) run() {
 			return
 		case o := <-b.observerChan:
 			// if the writer opener is already registered, observe the writer directly.
-			r, ok := readers[o.tag]
+			rm, ok := readers[o.tag]
 			if ok {
-				w, err := o.conn.OpenUniStream()
-				if err != nil {
-					b.logger.Debug("failed to accept a uniStream", "error", err)
+				for _, r := range rm {
+					w, err := o.conn.OpenUniStream()
+					if err != nil {
+						b.logger.Debug("failed to accept a uniStream", "error", err)
+						continue
+					}
+					go b.copyWithLog(o.tag, w, r, b.logger)
 					continue
 				}
-				go b.copyWithLog(o.tag, w, r, b.logger)
-				continue
 			}
-			// if the writer opener is not registered,
+			// if the writer opener is empty,
 			// store the observer and waiting the writer be registered.
 			m, ok := observers[o.tag]
 			if !ok {
@@ -207,20 +224,19 @@ func (b *Broker) run() {
 			// store the reader for waiting comming observer to observe it.
 			vv, ok := observers[r.tag]
 			if !ok {
-				_, ok := readers[r.tag]
-				if !ok {
-					// if there donot has an old writer, store it.
-					readers[r.tag] = r.r
+				rm, ok := readers[r.tag]
+				if ok {
+					rm[r.id] = r.r
 				} else {
-					// if there has an old writer, close the new comming.
-					r.r.Close()
-					b.logger.Warn("duplicate writer, close current writer", "tag", r.tag)
+					// if there donot has an old writer, store it.
+					readers[r.tag] = map[string]io.ReadCloser{
+						r.id: r.r,
+					}
 				}
 				continue
 			}
 
-			// if there has observers, copy the writer to them.
-			ws := make([]io.Writer, 0)
+			// if there has observers, copy the writer to them one-to-one.
 			for _, opener := range vv {
 				w, err := opener.OpenUniStream()
 				if err != nil {
@@ -231,9 +247,8 @@ func (b *Broker) run() {
 				// one observer can only observe once.
 				delete(vv, opener.ID())
 
-				ws = append(ws, w)
+				go b.copyWithLog(r.tag, w, r.r, b.logger)
 			}
-			go b.copyWithLog(r.tag, io.MultiWriter(ws...), r.r, b.logger)
 		case tag := <-b.readEOFChan:
 			delete(readers, tag)
 		}
@@ -285,6 +300,7 @@ type UniStreamPeerConnection interface {
 }
 
 type taggedReader struct {
+	id  string
 	tag string
 	r   io.ReadCloser
 }

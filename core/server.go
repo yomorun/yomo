@@ -76,7 +76,7 @@ func NewServer(name string, opts ...ServerOption) *Server {
 		codec:            y3codec.Codec(),
 		packetReadWriter: y3codec.PacketReadWriter(),
 		opts:             options,
-		broker:           NewBroker(ctx, DrainObserveReader(y3codec.Codec(), y3codec.PacketReadWriter()), logger),
+		broker:           NewBroker(ctx, DrainOpenedReader(y3codec.Codec(), y3codec.PacketReadWriter()), logger),
 	}
 
 	return s

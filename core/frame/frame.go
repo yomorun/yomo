@@ -124,6 +124,18 @@ type ObserveFrame struct {
 // Type returns the type of ObserveFrame.
 func (f *ObserveFrame) Type() Type { return TypeObserveFrame }
 
+// OpenStreamFrame is used to open a new peer stream and tells which connection can observe it.
+// Each peer stream opens a stream that has a identifier.
+type OpenStreamFrame struct {
+	// ID is the identifier that be used to identify the stream be opened by peer.
+	ID string
+	// Tag is used to identify the controlStream observer associated with a particular peer stream.
+	Tag string
+}
+
+// Type returns the type of ObserveFrame.
+func (f *OpenStreamFrame) Type() Type { return TypeObserveFrame }
+
 // HandshakeAckFrame is used to ack handshake, If handshake successful, The server will
 // send HandshakeAckFrame to the new DataStream, That means the new DataStream receive first frame
 // must be HandshakeAckFrame.
@@ -179,6 +191,7 @@ const (
 	TypeRejectedFrame          Type = 0x39 // TypeRejectedFrame is the type of RejectedFrame.
 	TypeBackflowFrame          Type = 0x2D // TypeBackflowFrame is the type of BackflowFrame.
 	TypeObserveFrame           Type = 0x2F // TypeObserveFrame is the type of ObserveFrame.
+	TypeOpenStreamFrame        Type = 0x30 // TypeOpenStreamFrame is the type of OpenStreamFrame
 )
 
 var frameTypeStringMap = map[Type]string{
@@ -192,6 +205,7 @@ var frameTypeStringMap = map[Type]string{
 	TypeRejectedFrame:          "RejectedFrame",
 	TypeBackflowFrame:          "BackflowFrame",
 	TypeObserveFrame:           "ObserveFrame",
+	TypeOpenStreamFrame:        "OpenStreamFrame",
 }
 
 // String returns a human-readable string which represents the frame type.
@@ -211,6 +225,7 @@ var frameTypeNewFuncMap = map[Type]func() Frame{
 	TypePayloadFrame:           func() Frame { return new(PayloadFrame) },
 	TypeHandshakeFrame:         func() Frame { return new(HandshakeFrame) },
 	TypeObserveFrame:           func() Frame { return new(ObserveFrame) },
+	TypeOpenStreamFrame:        func() Frame { return new(OpenStreamFrame) },
 	TypeHandshakeRejectedFrame: func() Frame { return new(HandshakeAckFrame) },
 	TypeHandshakeAckFrame:      func() Frame { return new(HandshakeAckFrame) },
 	TypeRejectedFrame:          func() Frame { return new(RejectedFrame) },

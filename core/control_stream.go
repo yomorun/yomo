@@ -230,7 +230,12 @@ func (cs *ClientControlStream) ID() string { return cs.id }
 
 // Peer returns the Peer that work for creating writer stream and observing stream.
 func (cs *ClientControlStream) Peer() *Peer {
-	return NewPeer(cs, cs.logger, FillObserveWriter(cs.codec, cs.packetReadWriter))
+	return NewPeer(
+		cs,
+		cs.logger,
+		FillObserveWriter(cs.codec, cs.packetReadWriter),
+		DrainOpenedReader(cs.codec, cs.packetReadWriter),
+	)
 }
 
 // OpenUniStream opens a Writer.
@@ -466,9 +471,10 @@ func (cs *ClientControlStream) CloseWithError(errString string) error {
 }
 
 // FillObserveWriter fill the observe tag to the writer.
-func FillObserveWriter(codec frame.Codec, packetReadWriter frame.PacketReadWriter) func(string, io.Writer) error {
-	return func(tag string, w io.Writer) error {
-		f := &frame.ObserveFrame{
+func FillObserveWriter(codec frame.Codec, packetReadWriter frame.PacketReadWriter) func(string, string, io.Writer) error {
+	return func(id, tag string, w io.Writer) error {
+		f := &frame.OpenStreamFrame{
+			ID:  id,
 			Tag: tag,
 		}
 		b, err := codec.Encode(f)
@@ -479,26 +485,27 @@ func FillObserveWriter(codec frame.Codec, packetReadWriter frame.PacketReadWrite
 	}
 }
 
-// DrainObserveReader drains tag from the reader and returns the tag.
-func DrainObserveReader(codec frame.Codec, packetReadWriter frame.PacketReadWriter) func(io.Reader) (string, error) {
-	return func(r io.Reader) (tag string, err error) {
+// DrainOpenedReader drains id and tag from the reader and returns the id and tag.
+func DrainOpenedReader(codec frame.Codec, packetReadWriter frame.PacketReadWriter) func(io.Reader) (string, string, error) {
+	return func(r io.Reader) (id string, tag string, err error) {
 		ft, b, err := packetReadWriter.ReadPacket(r)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
-		if ft != frame.TypeObserveFrame {
-			return "", errors.New("read unexpected frame")
+		if ft != frame.TypeOpenStreamFrame {
+			return "", "", errors.New("read unexpected frame")
 		}
 
 		f, err := frame.NewFrame(ft)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 
 		if err := codec.Decode(b, f); err != nil {
-			return "", err
+			return "", "", err
 		}
+		ff := f.(*frame.OpenStreamFrame)
 
-		return f.(*frame.ObserveFrame).Tag, nil
+		return ff.ID, ff.Tag, nil
 	}
 }
