@@ -4,10 +4,13 @@
 package wasm
 
 import (
+	"encoding/binary"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/second-state/WasmEdge-go/wasmedge"
+	wasmhttp "github.com/yomorun/yomo/cli/serverless/wasm/http"
 	"github.com/yomorun/yomo/serverless"
 )
 
@@ -75,6 +78,19 @@ func (r *wasmEdgeRuntime) Init(wasmFile string) error {
 		[]wasmedge.ValType{},
 		[]wasmedge.ValType{wasmedge.ValType_I32}), r.contextDataSize, nil, 0)
 	r.module.AddFunction(WasmFuncContextDataSize, contextDataSizeFunc)
+	// http
+	httpSendFunc := wasmedge.NewFunction(
+		wasmedge.NewFunctionType(
+			[]wasmedge.ValType{
+				wasmedge.ValType_I32,
+				wasmedge.ValType_I32,
+				wasmedge.ValType_I32,
+				wasmedge.ValType_I32,
+			},
+			[]wasmedge.ValType{wasmedge.ValType_I32},
+		),
+		r.httpSend, nil, 0)
+	r.module.AddFunction(wasmhttp.WasmFuncHTTPSend, httpSendFunc)
 
 	err := r.vm.RegisterModule(r.module)
 	if err != nil {
@@ -137,17 +153,29 @@ func (r *wasmEdgeRuntime) Close() error {
 	return nil
 }
 
-func (r *wasmEdgeRuntime) observeDataTag(_ any, _ *wasmedge.CallingFrame, params []any) ([]any, wasmedge.Result) {
+func (r *wasmEdgeRuntime) observeDataTag(
+	_ any,
+	_ *wasmedge.CallingFrame,
+	params []any,
+) ([]any, wasmedge.Result) {
 	tag := params[0].(int32)
 	r.observed = append(r.observed, uint32(tag))
 	return nil, wasmedge.Result_Success
 }
 
-func (r *wasmEdgeRuntime) contextTag(_ any, callframe *wasmedge.CallingFrame, params []any) ([]any, wasmedge.Result) {
+func (r *wasmEdgeRuntime) contextTag(
+	_ any,
+	callframe *wasmedge.CallingFrame,
+	params []any,
+) ([]any, wasmedge.Result) {
 	return []any{r.serverlessCtx.Tag()}, wasmedge.Result_Success
 }
 
-func (r *wasmEdgeRuntime) contextData(_ any, callframe *wasmedge.CallingFrame, params []any) ([]any, wasmedge.Result) {
+func (r *wasmEdgeRuntime) contextData(
+	_ any,
+	callframe *wasmedge.CallingFrame,
+	params []any,
+) ([]any, wasmedge.Result) {
 	data := r.serverlessCtx.Data()
 	dataLen := int32(len(data))
 	limit := params[1].(int32)
@@ -164,12 +192,20 @@ func (r *wasmEdgeRuntime) contextData(_ any, callframe *wasmedge.CallingFrame, p
 	return []any{dataLen}, wasmedge.Result_Success
 }
 
-func (r *wasmEdgeRuntime) contextDataSize(_ any, callframe *wasmedge.CallingFrame, params []any) ([]any, wasmedge.Result) {
+func (r *wasmEdgeRuntime) contextDataSize(
+	_ any,
+	callframe *wasmedge.CallingFrame,
+	params []any,
+) ([]any, wasmedge.Result) {
 	dataLen := len(r.serverlessCtx.Data())
 	return []any{dataLen}, wasmedge.Result_Success
 }
 
-func (r *wasmEdgeRuntime) write(_ any, callframe *wasmedge.CallingFrame, params []any) ([]any, wasmedge.Result) {
+func (r *wasmEdgeRuntime) write(
+	_ any,
+	callframe *wasmedge.CallingFrame,
+	params []any,
+) ([]any, wasmedge.Result) {
 	tag := params[0].(int32)
 	pointer := params[1].(int32)
 	length := params[2].(int32)
@@ -182,6 +218,59 @@ func (r *wasmEdgeRuntime) write(_ any, callframe *wasmedge.CallingFrame, params 
 	copy(buf, output)
 	if err := r.serverlessCtx.Write(uint32(tag), buf); err != nil {
 		return []any{2}, wasmedge.Result_Fail
+	}
+	return []any{0}, wasmedge.Result_Success
+}
+
+// httpSend sends http request
+func (r *wasmEdgeRuntime) httpSend(
+	_ any,
+	callframe *wasmedge.CallingFrame,
+	params []any,
+) ([]any, wasmedge.Result) {
+	reqPtr := params[0].(int32)
+	reqSize := params[1].(int32)
+	mem := callframe.GetMemoryByIndex(0)
+	reqBuf, err := mem.GetData(uint(reqPtr), uint(reqSize))
+	if err != nil {
+		return []any{1}, wasmedge.Result_Fail
+	}
+	respBuf, err := wasmhttp.Do(reqBuf)
+	if err != nil {
+		return []any{2}, wasmedge.Result_Fail
+	}
+	respPtr := params[2].(int32)
+	respSize := params[3].(int32)
+	// write response
+	allocFn := r.vm.GetActiveModule().FindFunction("yomo_alloc")
+	if allocFn == nil {
+		log.Printf("[HTTP] Send: yomo_alloc not found\n")
+		return []any{8}, wasmedge.Result_Fail
+	}
+
+	// alloc memory
+	dataLen := len(respBuf)
+	allocResult, err := r.vm.Execute("yomo_alloc", int32(dataLen))
+	if err != nil {
+		log.Printf("[HTTP] Send: yomo_alloc error: %s\n", err)
+		return []any{7}, wasmedge.Result_Fail
+	}
+	allocPtr := int32(allocResult[0].(int32))
+	// set response pointer
+	allocPtrBuf := make([]byte, 4)
+	binary.LittleEndian.PutUint32(allocPtrBuf, uint32(allocPtr))
+	if err := mem.SetData(allocPtrBuf, uint(respPtr), 4); err != nil {
+		return []any{4}, wasmedge.Result_Fail
+	}
+	// set response size
+	allocSizeBuf := make([]byte, 4)
+	binary.LittleEndian.PutUint32(allocSizeBuf, uint32(dataLen))
+	if err := mem.SetData(allocSizeBuf, uint(respSize), 4); err != nil {
+		return []any{5}, wasmedge.Result_Fail
+	}
+	// set response data
+	if err := mem.SetData(respBuf, uint(allocPtr), uint(dataLen)); err != nil {
+		return []any{3}, wasmedge.Result_Fail
 	}
 	return []any{0}, wasmedge.Result_Success
 }
