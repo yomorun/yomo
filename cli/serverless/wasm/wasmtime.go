@@ -4,15 +4,10 @@
 package wasm
 
 import (
-	"bytes"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
-	"time"
 
 	"github.com/bytecodealliance/wasmtime-go/v9"
 	wasmhttp "github.com/yomorun/yomo/cli/serverless/wasm/http"
@@ -183,70 +178,21 @@ func (r *wasmtimeRuntime) httpSend(
 	}
 	// request
 	reqBuf := r.memory.UnsafeData(r.store)[reqPtr : reqPtr+reqSize]
-	var req serverless.HTTPRequest
-	if err := json.Unmarshal(reqBuf, &req); err != nil {
-		log.Printf("[HTTP] Send: unmarshal request error: %s\n", err)
+	respBuf, err := wasmhttp.Do(reqBuf)
+	if err != nil {
+		log.Printf("[HTTP] Send: %s\n", err)
 		return 2
-	}
-	// create http client
-	timeout := wasmhttp.DefaultHTTPTimeout
-	if req.Timeout > 0 {
-		timeout = time.Duration(req.Timeout * 1e6)
-	}
-
-	client := &http.Client{Timeout: timeout}
-	// create http request
-	reqBody := bytes.NewReader(req.Body)
-	request, err := http.NewRequest(req.Method, req.URL, reqBody)
-	if err != nil {
-		log.Printf("[HTTP] Send: create http request error: %s\n", err)
-		return 3
-	}
-	// set headers
-	for k, v := range req.Header {
-		request.Header.Set(k, v)
-	}
-	// send http request
-	response, err := client.Do(request)
-	if err != nil {
-		log.Printf("[HTTP] Send: http request error: %s\n", err)
-		return 4
-	}
-	defer response.Body.Close()
-	// response
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		log.Printf("[HTTP] Send: read response body error: %s\n", err)
-		return 5
-	}
-	resp := serverless.HTTPResponse{
-		Status:     response.Status,
-		StatusCode: response.StatusCode,
-		Header:     make(map[string]string),
-		Body:       body,
-	}
-	// response headers
-	for k, v := range response.Header {
-		if len(v) > 0 {
-			resp.Header[k] = v[0]
-		}
-	}
-	// marshal response
-	respBuf, err := json.Marshal(resp)
-	if err != nil {
-		log.Printf("[HTTP] Send: marshal response error: %s\n", err)
-		return 6
 	}
 	// write response
 	allocFn := caller.GetExport("yomo_alloc")
 	if allocFn == nil {
 		log.Printf("[HTTP] Send: yomo_alloc not found\n")
-		return 8
+		return 3
 	}
 	allocResult, err := allocFn.Func().Call(r.store, len(respBuf))
 	if err != nil {
 		log.Printf("[HTTP] Send: yomo_alloc error: %s\n", err)
-		return 7
+		return 4
 	}
 	allocPtr32 := allocResult.(int32)
 	allocPtr := int(allocPtr32)

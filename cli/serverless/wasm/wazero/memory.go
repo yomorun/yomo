@@ -18,7 +18,7 @@ func allocateBuffer(
 	bufLen := len(buf)
 	memResults, err := m.ExportedFunction("yomo_alloc").Call(ctx, uint64(bufLen))
 	if err != nil {
-		return err
+		return fmt.Errorf("call yomo_alloc error: %s", err)
 	}
 	allocPtr := uint32(memResults[0])
 	if !m.Memory().WriteUint32Le(bufPtr, allocPtr) {

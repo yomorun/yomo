@@ -237,6 +237,7 @@ func (r *wasmEdgeRuntime) httpSend(
 	}
 	respBuf, err := wasmhttp.Do(reqBuf)
 	if err != nil {
+		log.Printf("[HTTP] Send: %s\n", err)
 		return []any{2}, wasmedge.Result_Fail
 	}
 	respPtr := params[2].(int32)
@@ -245,32 +246,34 @@ func (r *wasmEdgeRuntime) httpSend(
 	allocFn := r.vm.GetActiveModule().FindFunction("yomo_alloc")
 	if allocFn == nil {
 		log.Printf("[HTTP] Send: yomo_alloc not found\n")
-		return []any{8}, wasmedge.Result_Fail
+		return []any{3}, wasmedge.Result_Fail
 	}
-
 	// alloc memory
 	dataLen := len(respBuf)
 	allocResult, err := r.vm.Execute("yomo_alloc", int32(dataLen))
 	if err != nil {
 		log.Printf("[HTTP] Send: yomo_alloc error: %s\n", err)
-		return []any{7}, wasmedge.Result_Fail
+		return []any{4}, wasmedge.Result_Fail
 	}
 	allocPtr := int32(allocResult[0].(int32))
 	// set response pointer
 	allocPtrBuf := make([]byte, 4)
 	binary.LittleEndian.PutUint32(allocPtrBuf, uint32(allocPtr))
 	if err := mem.SetData(allocPtrBuf, uint(respPtr), 4); err != nil {
-		return []any{4}, wasmedge.Result_Fail
+		log.Printf("[HTTP] Send: set response pointer error: %s\n", err)
+		return []any{5}, wasmedge.Result_Fail
 	}
 	// set response size
 	allocSizeBuf := make([]byte, 4)
 	binary.LittleEndian.PutUint32(allocSizeBuf, uint32(dataLen))
 	if err := mem.SetData(allocSizeBuf, uint(respSize), 4); err != nil {
+		log.Printf("[HTTP] Send: set response size error: %s\n", err)
 		return []any{5}, wasmedge.Result_Fail
 	}
 	// set response data
 	if err := mem.SetData(respBuf, uint(allocPtr), uint(dataLen)); err != nil {
-		return []any{3}, wasmedge.Result_Fail
+		log.Printf("[HTTP] Send: set response data error: %s\n", err)
+		return []any{5}, wasmedge.Result_Fail
 	}
 	return []any{0}, wasmedge.Result_Success
 }

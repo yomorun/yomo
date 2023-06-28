@@ -22,7 +22,7 @@ const (
 func Do(reqBuf []byte) ([]byte, error) {
 	var req serverless.HTTPRequest
 	if err := json.Unmarshal(reqBuf, &req); err != nil {
-		return nil, fmt.Errorf("[HTTP] DoRequest: unmarshal request error: %s", err)
+		return nil, fmt.Errorf("unmarshal request error: %s", err)
 	}
 	// create http client
 	timeout := DefaultHTTPTimeout
@@ -35,7 +35,7 @@ func Do(reqBuf []byte) ([]byte, error) {
 	reqBody := bytes.NewReader(req.Body)
 	request, err := http.NewRequest(req.Method, req.URL, reqBody)
 	if err != nil {
-		return nil, fmt.Errorf("[HTTP] DoRequest: create http request error: %s", err)
+		return nil, fmt.Errorf("create http request error: %s", err)
 	}
 	// set headers
 	for k, v := range req.Header {
@@ -44,13 +44,13 @@ func Do(reqBuf []byte) ([]byte, error) {
 	// send http request
 	response, err := client.Do(request)
 	if err != nil {
-		return nil, fmt.Errorf("[HTTP] DoRequest: http request error: %s", err)
+		return nil, fmt.Errorf("do http request error: %s", err)
 	}
 	defer response.Body.Close()
 	// response
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		return nil, fmt.Errorf("[HTTP] DoRequest: read response body error: %s", err)
+		return nil, fmt.Errorf("read response body error: %s", err)
 	}
 	resp := serverless.HTTPResponse{
 		Status:     response.Status,
@@ -67,7 +67,7 @@ func Do(reqBuf []byte) ([]byte, error) {
 	// marshal response
 	respBuf, err := json.Marshal(resp)
 	if err != nil {
-		return nil, fmt.Errorf("[HTTP] DoRequest: marshal response error: %s", err)
+		return nil, fmt.Errorf("marshal response error: %s", err)
 	}
 
 	return respBuf, nil
