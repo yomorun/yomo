@@ -14,7 +14,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/bytecodealliance/wasmtime-go"
+	"github.com/bytecodealliance/wasmtime-go/v9"
 	wasmhttp "github.com/yomorun/yomo/cli/serverless/wasm/http"
 
 	"github.com/yomorun/yomo/serverless"
