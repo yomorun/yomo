@@ -4,10 +4,14 @@
 package wasm
 
 import (
+	"encoding/binary"
 	"fmt"
+	"log"
 	"os"
 
-	"github.com/bytecodealliance/wasmtime-go"
+	"github.com/bytecodealliance/wasmtime-go/v9"
+	wasmhttp "github.com/yomorun/yomo/cli/serverless/wasm/http"
+
 	"github.com/yomorun/yomo/serverless"
 )
 
@@ -73,6 +77,10 @@ func (r *wasmtimeRuntime) Init(wasmFile string) error {
 	// write
 	if err := r.linker.FuncWrap("env", WasmFuncWrite, r.write); err != nil {
 		return fmt.Errorf("linker.FuncWrap: %s %v", WasmFuncWrite, err)
+	}
+	// http
+	if err := r.linker.FuncWrap("env", wasmhttp.WasmFuncHTTPSend, r.httpSend); err != nil {
+		return fmt.Errorf("linker.FuncWrap: %s %v", wasmhttp.WasmFuncHTTPSend, err)
 	}
 	// instantiate
 	instance, err := r.linker.Instantiate(r.store, module)
@@ -153,5 +161,44 @@ func (r *wasmtimeRuntime) write(tag int32, pointer int32, length int32) int32 {
 	if err := r.serverlessCtx.Write(uint32(tag), buf); err != nil {
 		return 2
 	}
+	return 0
+}
+
+// httpSend sends a HTTP request and returns the response
+func (r *wasmtimeRuntime) httpSend(
+	caller *wasmtime.Caller,
+	reqPtr int32,
+	reqSize int32,
+	respPtr int32,
+	respSize int32,
+) int32 {
+	if r.memory == nil {
+		log.Printf("[HTTP] Send: memory is nil\n")
+		return 1
+	}
+	// request
+	reqBuf := r.memory.UnsafeData(r.store)[reqPtr : reqPtr+reqSize]
+	respBuf, err := wasmhttp.Do(reqBuf)
+	if err != nil {
+		log.Printf("[HTTP] Send: %s\n", err)
+		return 2
+	}
+	// write response
+	allocFn := caller.GetExport("yomo_alloc")
+	if allocFn == nil {
+		log.Printf("[HTTP] Send: yomo_alloc not found\n")
+		return 3
+	}
+	allocResult, err := allocFn.Func().Call(r.store, len(respBuf))
+	if err != nil {
+		log.Printf("[HTTP] Send: yomo_alloc error: %s\n", err)
+		return 4
+	}
+	allocPtr32 := allocResult.(int32)
+	allocPtr := int(allocPtr32)
+	dataLen := len(respBuf)
+	binary.LittleEndian.PutUint32(r.memory.UnsafeData(r.store)[respPtr:], uint32(allocPtr))
+	binary.LittleEndian.PutUint32(r.memory.UnsafeData(r.store)[respSize:], uint32(len(respBuf)))
+	copy(r.memory.UnsafeData(r.store)[allocPtr:allocPtr+dataLen], respBuf)
 	return 0
 }

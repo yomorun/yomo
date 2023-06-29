@@ -4,7 +4,7 @@ go 1.19
 
 require (
 	github.com/briandowns/spinner v1.22.0
-	github.com/bytecodealliance/wasmtime-go v1.0.0
+	github.com/bytecodealliance/wasmtime-go/v9 v9.0.0
 	github.com/caarlos0/env/v6 v6.10.1
 	github.com/cenkalti/backoff/v4 v4.1.3
 	github.com/fatih/color v1.15.0
@@ -12,12 +12,12 @@ require (
 	github.com/matoous/go-nanoid/v2 v2.0.0
 	github.com/quic-go/quic-go v0.35.1
 	github.com/reactivex/rxgo/v2 v2.5.0
-	github.com/second-state/WasmEdge-go v0.12.0
+	github.com/second-state/WasmEdge-go v0.12.1
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.16.0
 	github.com/stretchr/testify v1.8.4
-	github.com/tetratelabs/wazero v1.1.0
+	github.com/tetratelabs/wazero v1.2.1
 	github.com/yomorun/y3 v1.0.5
 	golang.org/x/exp v0.0.0-20230224173230-c95f2b4c22f2
 	golang.org/x/mod v0.11.0
