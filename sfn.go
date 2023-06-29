@@ -5,6 +5,8 @@ import (
 
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/serverless"
+	"github.com/yomorun/yomo/pkg/id"
 )
 
 // StreamFunction defines serverless streaming functions.
@@ -22,8 +24,6 @@ type StreamFunction interface {
 	Connect() error
 	// Close will close the connection
 	Close() error
-	// Send a data to zipper.
-	Write(tag uint32, carriage []byte) error
 }
 
 // NewStreamFunction create a stream function.
@@ -83,8 +83,8 @@ func (s *streamFunction) Connect() error {
 	s.client.Logger().Debug("sfn connecting to zipper ...")
 	// notify underlying network operations, when data with tag we observed arrived, invoke the func
 	s.client.SetDataFrameObserver(func(data *frame.DataFrame) {
-		s.client.Logger().Debug("received data frame", "data_frame", data.String())
-		s.onDataFrame(data.GetCarriage(), data.GetMetaFrame())
+		s.client.Logger().Debug("received data frame")
+		s.onDataFrame(data)
 	})
 
 	if s.pfn != nil {
@@ -102,9 +102,15 @@ func (s *streamFunction) Connect() error {
 				data := <-s.pOut
 				if data != nil {
 					s.client.Logger().Debug("pipe fn send", "payload_frame", data)
-					frame := frame.NewDataFrame()
-					// todo: frame.SetTransactionID
-					frame.SetCarriage(data.Tag, data.Carriage)
+
+					frame := &frame.DataFrame{
+						Meta: &frame.MetaFrame{TID: id.New()},
+						Payload: &frame.PayloadFrame{
+							Tag:      data.Tag,
+							Carriage: data.Carriage,
+						},
+					}
+
 					s.client.WriteFrame(frame)
 				}
 			}
@@ -127,7 +133,7 @@ func (s *streamFunction) Close() error {
 
 	if s.client != nil {
 		if err := s.client.Close(); err != nil {
-			s.client.Logger().Error("failed to close sfn", err)
+			s.client.Logger().Error("failed to close sfn", "err", err)
 			return err
 		}
 	}
@@ -136,37 +142,20 @@ func (s *streamFunction) Close() error {
 }
 
 // when DataFrame we observed arrived, invoke the user's function
-func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
+// func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
+func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 	if s.fn != nil {
 		go func() {
-			// invoke serverless
-			tag, resp := s.fn(data)
-			// if resp is not nil, means the user's function has returned something, we should send it to the zipper
-			if len(resp) != 0 {
-				// build a DataFrame
-				// TODO: seems we should implement a DeepCopy() of MetaFrame in the future
-				frame := frame.NewDataFrame()
-				// reuse transactionID
-				frame.SetTransactionID(metaFrame.TransactionID())
-				// reuse sourceID
-				frame.SetSourceID(metaFrame.SourceID())
-				frame.SetCarriage(tag, resp)
-				s.client.WriteFrame(frame)
-			}
+			serverlessCtx := serverless.NewContext(s.client, dataFrame)
+			s.fn(serverlessCtx)
 		}()
 	} else if s.pfn != nil {
+		data := dataFrame.Payload.Carriage
 		s.client.Logger().Debug("pipe sfn receive", "data_len", len(data), "data", data)
 		s.pIn <- data
 	} else {
 		s.client.Logger().Warn("sfn does not have a handler")
 	}
-}
-
-// Send a DataFrame to zipper.
-func (s *streamFunction) Write(tag uint32, carriage []byte) error {
-	frame := frame.NewDataFrame()
-	frame.SetCarriage(tag, carriage)
-	return s.client.WriteFrame(frame)
 }
 
 // SetErrorHandler set the error handler function when server error occurs

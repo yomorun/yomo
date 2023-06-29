@@ -69,8 +69,8 @@ var initCmd = &cobra.Command{
 
 		log.SuccessStatusEvent(os.Stdout, "Congratulations! You have initialized the stream function successfully.")
 		log.InfoStatusEvent(os.Stdout, "You can enjoy the YoMo Stream Function via the command: ")
-		log.InfoStatusEvent(os.Stdout, "\tDEV: \tcd %s && yomo dev", name)
-		log.InfoStatusEvent(os.Stdout, "\tPROD: \tFirst run source application, eg: go run example/source/main.go\r\n\t\tSecond: cd %s && yomo run", name)
+		log.InfoStatusEvent(os.Stdout, "\tStep 1: cd %s && yomo build", name)
+		log.InfoStatusEvent(os.Stdout, "\tStep 2: yomo run sfn.wasm")
 	},
 }
 

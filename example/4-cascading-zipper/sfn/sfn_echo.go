@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/serverless"
 )
 
 func main() {
@@ -30,8 +30,7 @@ func main() {
 	select {}
 }
 
-func handler(data []byte) (frame.Tag, []byte) {
-	val := string(data)
+func handler(ctx serverless.Context) {
+	val := string(ctx.Data())
 	log.Printf(">> [sfn] got tag=0x33, data=%s", val)
-	return 0x0, nil
 }

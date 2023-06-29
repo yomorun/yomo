@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/serverless"
 	"golang.org/x/exp/slog"
 )
 
@@ -37,7 +37,7 @@ func main() {
 	}
 	// set the error handler function when server error occurs
 	sfn.SetErrorHandler(func(err error) {
-		slog.Error("[sfn1] receive server error", err)
+		slog.Error("[sfn1] receive server error", "err", err)
 		sfn.Close()
 		os.Exit(1)
 	})
@@ -45,14 +45,13 @@ func main() {
 	select {}
 }
 
-func handler(data []byte) (frame.Tag, []byte) {
+func handler(ctx serverless.Context) {
 	var model noiseData
-	err := json.Unmarshal(data, &model)
+	err := json.Unmarshal(ctx.Data(), &model)
 	if err != nil {
-		slog.Error("[sfn] json.Marshal error", err)
+		slog.Error("[sfn] json.Marshal error", "err", err)
 		os.Exit(-2)
 	} else {
 		slog.Info("[sfn]", "got", 0x33, "data", model)
 	}
-	return 0x0, nil
 }

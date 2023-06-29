@@ -3,34 +3,40 @@
 #include <stdlib.h>
 
 __attribute__((import_module("env"), import_name("yomo_observe_datatag")))
-extern void observe_datatag(uint32_t tag);
+extern void observe(uint32_t tag);
 
-__attribute__((import_module("env"), import_name("yomo_load_input")))
-extern void load_input(char *pointer);
+__attribute__((import_module("env"), import_name("yomo_context_tag")))
+extern uint32_t get_tag();
 
-__attribute__((import_module("env"), import_name("yomo_dump_output")))
-extern void dump_output(uint32_t tag, const char *pointer, size_t length);
+__attribute__((import_module("env"), import_name("yomo_context_data_size")))
+extern size_t get_input_size();
+
+__attribute__((import_module("env"), import_name("yomo_context_data")))
+extern size_t load_input(char *pointer, size_t length);
+
+__attribute__((import_module("env"), import_name("yomo_write")))
+extern int32_t dump_output(uint32_t tag, const char *pointer, size_t length);
 
 void yomo_init() {
-    observe_datatag(0x33);
+    observe(0x33);
 }
 
-void yomo_handler(size_t input_length) {
-    printf("wasm c sfn received %zu bytes\n", input_length);
-
-    // load input data
-    char *input = malloc(input_length);
-    load_input(input);
+void yomo_handler() {
+    // load input tag & data
+    uint32_t tag = get_tag();
+    size_t length = get_input_size();
+    char *input = malloc(length);
+    load_input(input, length);
+    printf("wasm c sfn received %zu bytes with tag[%#x]\n", length, tag);
 
     // process app data
-    size_t output_length = input_length;
-    char *output = malloc(output_length);
-    for (size_t i = 0; i < input_length; i++) {
+    char *output = malloc(length);
+    for (size_t i = 0; i < length; i++) {
         output[i] = toupper(input[i]);
     }
 
     // dump output data
-    dump_output(0x34, output, output_length);
+    dump_output(0x34, output, length);
 
     free(input);
     free(output);

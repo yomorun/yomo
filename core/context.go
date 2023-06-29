@@ -7,22 +7,19 @@ import (
 
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/router"
-	"github.com/yomorun/yomo/core/yerr"
 	"golang.org/x/exp/slog"
 )
 
 var ctxPool sync.Pool
 
 // Context is context for stream handling.
-// Context be generated after a dataStream coming, And stores some infomation
-// from dataStream, Context's lifecycle is equal to stream's.
+// Context be generated after a dataStream coming, And stores some information
+// from dataStream, The lifecycle of the Context should be equal to the lifecycle of the Stream.
 type Context struct {
 	// DataStream is the stream used for reading and writing frames.
 	DataStream DataStream
-
 	// Frame receives from client.
 	Frame frame.Frame
-
 	// Route is the route from handshake.
 	Route router.Route
 	// mu is used to protect Keys from concurrent read and write operations.
@@ -71,12 +68,16 @@ func (c *Context) Err() error { return c.DataStream.Context().Err() }
 // if no value is associated with key. Successive calls to Value with
 // the same key returns the same result.
 func (c *Context) Value(key any) any {
+	c.mu.Lock()
 	if keyAsString, ok := key.(string); ok {
 		if val, exists := c.Keys[keyAsString]; exists {
+			c.mu.Unlock()
 			return val
 		}
 	}
-	// There always returns nil, because quic.Stream.Context is not be allowed modify.
+	c.mu.Unlock()
+
+	// this will not take effect forever.
 	return c.DataStream.Context().Value(key)
 }
 
@@ -105,32 +106,26 @@ func newContext(dataStream DataStream, route router.Route, logger *slog.Logger) 
 }
 
 // WithFrame sets a frame to context.
-//
-// TODO: delete frame from context due to different lifecycle between stream and stream.
 func (c *Context) WithFrame(f frame.Frame) {
 	c.Frame = f
 }
 
-// CloseWithError close dataStream in se error,
-// It tells controlStream which dataStream should be closed and close dataStream with
-// returning error message to client side stream.
-//
-// TODO: ycode was not transmitted.
-func (c *Context) CloseWithError(ycode yerr.ErrorCode, errString string) {
-	c.Logger.Warn("data stream closed", "err_code", ycode.String(), "error", errString)
+// CloseWithError close dataStream with an error string.
+func (c *Context) CloseWithError(errString string) {
+	c.Logger.Debug("data stream closed", "error", errString)
 
 	err := c.DataStream.Close()
 	if err == nil {
 		return
 	}
-	c.Logger.Error("data stream close failed", err)
+	c.Logger.Error("data stream close failed", "err", err)
 }
 
-// Clean cleans the Context,
-// Context is not available after called Clean,
+// Release release the Context, The Context released is not available.
 //
-// Warining: do not use any Context api after Clean, It maybe cause an error.
-func (c *Context) Clean() {
+// Warning: do not use any Context api after Release, It maybe cause an error.
+// TODO: use a state to ensure safe access and release of the context.
+func (c *Context) Release() {
 	c.reset()
 	ctxPool.Put(c)
 }
@@ -143,9 +138,4 @@ func (c *Context) reset() {
 	for k := range c.Keys {
 		delete(c.Keys, k)
 	}
-}
-
-// StreamID gets dataStream ID.
-func (c *Context) StreamID() string {
-	return c.DataStream.ID()
 }

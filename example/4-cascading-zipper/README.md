@@ -30,40 +30,25 @@ $ curl -fsSL https://get.yomo.run | sh
 
 ```bash
 $ task run
-
-task: [zipper-2] go run zipper_2.go
-task: [zipper-1] go run zipper_1.go
-task: [sfn-build] go build -o ./bin/sfn sfn/sfn_echo.go
+task: [zipper-2] yomo serve -c zipper_2.yaml
+task: [zipper-1] yomo serve -c zipper_1.yaml
 task: [source-build] go build -o ./bin/source source/source.go
+task: [sfn-build] go build -o ./bin/sfn sfn/sfn_echo.go
+[zipper-2] ℹ️   Running YoMo-Zipper...
+[zipper-1] ℹ️   Running YoMo-Zipper...
 task: [source] ./bin/source
 task: [sfn] ./bin/sfn
-[zipper-1] 2022-02-20 17:24:29.822	[core:client] use credential: [None]
-[zipper-1] 2022-02-20 17:24:29.822	Server has started!, pid: 49449
-[zipper-1] 2022-02-20 17:24:29.823	[yomo:zipper] Listening SIGUSR1, SIGUSR2, SIGTERM/SIGINT...
-[zipper-1] 2022-02-20 17:24:29.824	[core:server] ✅ [Zipper-1] Listening on: [::]:9001, QUIC: [v1 draft-29], AUTH: [None]
-[zipper-2] 2022-02-20 17:24:29.912	Server has started!, pid: 49450
-[zipper-2] 2022-02-20 17:24:29.912	[yomo:zipper] Listening SIGUSR1, SIGUSR2, SIGTERM/SIGINT...
-[zipper-2] 2022-02-20 17:24:29.914	[core:server] ✅ [zipper-2] Listening on: 127.0.0.1:9002, QUIC: [v1 draft-29], AUTH: [None]
-[zipper-1] 2022-02-20 17:24:30.032	[core:client] ❤️  [zipper-2]([::]:58661) is connected to YoMo-Zipper localhost:9002
-[zipper-2] 2022-02-20 17:24:30.032	[core:server] ❤️  <Upstream Zipper> [::zipper-2](127.0.0.1:58661) is connected!
-[source] 2022-02-20 17:24:30.229	[core:client] use credential: [None]
-[source] 2022-02-20 17:24:30.234	[core:client] ❤️  [yomo-source]([::]:64006) is connected to YoMo-Zipper localhost:9001
-[source] 2022-02-20 17:24:30.234	[source] ✅ Emit 2437998737 to YoMo-Zipper
-[zipper-1] 2022-02-20 17:24:30.234	[core:server] ❤️  <Source> [::yomo-source](127.0.0.1:64006) is connected!
-[sfn] 2022-02-20 17:24:30.549	[core:client] use credential: [None]
-[sfn] 2022-02-20 17:24:30.554	[core:client] ❤️  [echo-sfn]([::]:62720) is connected to YoMo-Zipper localhost:9002
-[zipper-2] 2022-02-20 17:24:30.555	[core:server] ❤️  <Stream Function> [::echo-sfn](127.0.0.1:62720) is connected!
-[source] 2022-02-20 17:24:31.235	[source] ✅ Emit 432890138 to YoMo-Zipper
-[sfn] 2022-02-20 17:24:31.238	>> [sfn] got tag=0x33, data=432890138
-[source] 2022-02-20 17:24:32.235	[source] ✅ Emit 1245807400 to YoMo-Zipper
-[sfn] 2022-02-20 17:24:32.240	>> [sfn] got tag=0x33, data=1245807400
-[source] 2022-02-20 17:24:33.236	[source] ✅ Emit 3329942892 to YoMo-Zipper
-[sfn] 2022-02-20 17:24:33.239	>> [sfn] got tag=0x33, data=3329942892
-[source] 2022-02-20 17:24:34.236	[source] ✅ Emit 2733970616 to YoMo-Zipper
-[sfn] 2022-02-20 17:24:34.239	>> [sfn] got tag=0x33, data=2733970616
-[source] 2022-02-20 17:24:35.238	[source] ✅ Emit 3313499294 to YoMo-Zipper
-[sfn] 2022-02-20 17:24:35.243	>> [sfn] got tag=0x33, data=3313499294
-
+[source] 2023/05/06 12:38:34 [source] ✅ Emit 3058996128 to YoMo-Zipper
+[source] 2023/05/06 12:38:35 [source] ✅ Emit 970774474 to YoMo-Zipper
+[sfn] 2023/05/06 12:38:35 >> [sfn] got tag=0x33, data=970774474
+[source] 2023/05/06 12:38:36 [source] ✅ Emit 2422839449 to YoMo-Zipper
+[sfn] 2023/05/06 12:38:36 >> [sfn] got tag=0x33, data=2422839449
+[source] 2023/05/06 12:38:37 [source] ✅ Emit 1599851864 to YoMo-Zipper
+[sfn] 2023/05/06 12:38:37 >> [sfn] got tag=0x33, data=1599851864
+[source] 2023/05/06 12:38:38 [source] ✅ Emit 3745279519 to YoMo-Zipper
+[sfn] 2023/05/06 12:38:38 >> [sfn] got tag=0x33, data=3745279519
+[source] 2023/05/06 12:38:39 [source] ✅ Emit 1411262925 to YoMo-Zipper
+[sfn] 2023/05/06 12:38:39 >> [sfn] got tag=0x33, data=1411262925
 ```
 
 ## Option 2: Manual
@@ -71,13 +56,22 @@ task: [sfn] ./bin/sfn
 ### Run [zipper-1](https://yomo.run/docs/cli/zipper)
 
 ```bash
-yomo serve -c zipper_1_wf.yaml
+yomo serve -c zipper_1.yaml
+
+ℹ️   Running YoMo-Zipper...
+2021/11/11 16:09:54 [yomo:zipper] Listening SIGUSR1, SIGUSR2, SIGTERM/SIGINT..
+2021/11/11 16:09:54 [core:server] ✅ [Zipper-1] Listening on: [::]:9001, QUIC: [v1 draft-29], AUTH: [None]
 ```
 
 ### Run [zipper-2](https://yomo.run/docs/cli/zipper)
 
 ```bash
-yomo serve -c zipper_2_wf.yaml
+yomo serve -c zipper_2.yaml
+cd zipper-2
+
+ℹ️   Running YoMo-Zipper...
+2021/11/11 16:09:54 [yomo:zipper] Listening SIGUSR1, SIGUSR2, SIGTERM/SIGINT..
+2021/11/11 16:09:54 [core:server] ✅ [zipper-2] Listening on: [::]:9002, QUIC: [v1 draft-29], AUTH: [None]
 ```
 
 ### Run [stream-function](https://yomo.run/docs/api/sfn)

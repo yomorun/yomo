@@ -7,8 +7,9 @@ import (
 	"sync"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/cli/serverless"
+	cli "github.com/yomorun/yomo/cli/serverless"
 	pkglog "github.com/yomorun/yomo/pkg/log"
+	"github.com/yomorun/yomo/serverless"
 )
 
 // wasmServerless will run serverless functions from the given compiled WebAssembly files.
@@ -18,10 +19,11 @@ type wasmServerless struct {
 	zipperAddrs []string
 	observed    []uint32
 	credential  string
+	mu          *sync.Mutex
 }
 
 // Init initializes the serverless
-func (s *wasmServerless) Init(opts *serverless.Options) error {
+func (s *wasmServerless) Init(opts *cli.Options) error {
 	runtime, err := NewRuntime(opts.Runtime)
 	if err != nil {
 		return err
@@ -37,6 +39,7 @@ func (s *wasmServerless) Init(opts *serverless.Options) error {
 	s.zipperAddrs = opts.ZipperAddrs
 	s.observed = runtime.GetObserveDataTags()
 	s.credential = opts.Credential
+	s.mu = new(sync.Mutex)
 
 	return nil
 }
@@ -59,15 +62,14 @@ func (s *wasmServerless) Run(verbose bool) error {
 		sfn.SetObserveDataTags(s.observed...)
 
 		var ch chan error
-
 		sfn.SetHandler(
-			func(req []byte) (uint32, []byte) {
-				tag, res, err := s.runtime.RunHandler(req)
+			func(ctx serverless.Context) {
+				s.mu.Lock()
+				defer s.mu.Unlock()
+				err := s.runtime.RunHandler(ctx)
 				if err != nil {
 					ch <- err
 				}
-
-				return tag, res
 			},
 		)
 
@@ -104,5 +106,5 @@ func (s *wasmServerless) Executable() bool {
 }
 
 func init() {
-	serverless.Register(&wasmServerless{}, ".wasm")
+	cli.Register(&wasmServerless{}, ".wasm")
 }

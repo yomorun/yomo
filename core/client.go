@@ -11,6 +11,7 @@ import (
 
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
+	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 	"github.com/yomorun/yomo/pkg/id"
 	"golang.org/x/exp/slog"
 )
@@ -57,7 +58,7 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 		streamType:     connType,
 		opts:           option,
 		logger:         logger,
-		errorfn:        func(err error) { logger.Error("client err", err) },
+		errorfn:        func(err error) { logger.Error("client err", "err", err) },
 		writeFrameChan: make(chan frame.Frame),
 		ctx:            ctx,
 		ctxCancel:      ctxCancel,
@@ -75,12 +76,12 @@ func (c *Client) Connect(ctx context.Context, addr string) error {
 connect:
 	controlStream, dataStream, err := c.openStream(ctx, addr)
 	if err != nil {
-		if c.opts.connectUntilSucceed {
-			c.logger.Error("failed to connect to zipper, trying to reconect", err)
+		if c.opts.connectUntilSucceed && !errors.As(err, new(ErrAuthenticateFailed)) {
+			c.logger.Error("failed to connect to zipper, trying to reconnect", "err", err)
 			time.Sleep(time.Second)
 			goto connect
 		}
-		c.logger.Error("can not connect to zipper", err)
+		c.logger.Error("can not connect to zipper", "error", err)
 		return err
 	}
 	c.logger.Info("connected to zipper")
@@ -112,7 +113,7 @@ func (c *Client) runBackground(ctx context.Context, addr string, controlStream *
 					c.cleanStream(controlStream, err)
 					return
 				}
-				c.logger.Error("reconnect error", err)
+				c.logger.Error("reconnect error", "err", err)
 				time.Sleep(time.Second)
 				goto reconnect
 			}
@@ -151,7 +152,7 @@ func (c *Client) cleanStream(controlStream *ClientControlStream, err error) {
 	errString := ""
 	if err != nil {
 		errString = err.Error()
-		c.logger.Error("client exit", err)
+		c.logger.Error("client exit", "err", err)
 	}
 
 	// controlStream is nil represents that client is not connected.
@@ -159,7 +160,7 @@ func (c *Client) cleanStream(controlStream *ClientControlStream, err error) {
 		return
 	}
 
-	controlStream.CloseWithError(0, errString)
+	controlStream.CloseWithError(errString)
 }
 
 // Close close the client.
@@ -171,7 +172,13 @@ func (c *Client) Close() error {
 }
 
 func (c *Client) openControlStream(ctx context.Context, addr string) (*ClientControlStream, error) {
-	controlStream, err := OpenClientControlStream(ctx, addr, c.opts.tlsConfig, c.opts.quicConfig, metadata.DefaultDecoder(), c.logger)
+	controlStream, err := OpenClientControlStream(
+		ctx, addr,
+		c.opts.tlsConfig, c.opts.quicConfig,
+		metadata.DefaultDecoder(),
+		y3codec.Codec(), y3codec.PacketReadWriter(),
+		c.logger,
+	)
 	if err != nil {
 		return controlStream, err
 	}
@@ -197,13 +204,12 @@ func (c *Client) openStream(ctx context.Context, addr string) (*ClientControlStr
 }
 
 func (c *Client) openDataStream(ctx context.Context, controlStream *ClientControlStream) (DataStream, error) {
-	handshakeFrame := frame.NewHandshakeFrame(
-		c.name,
-		c.clientID,
-		byte(c.streamType),
-		c.opts.observeDataTags,
-		[]byte{}, // The stream does not require metadata currently.
-	)
+	handshakeFrame := &frame.HandshakeFrame{
+		Name:            c.name,
+		ID:              c.clientID,
+		StreamType:      byte(c.streamType),
+		ObserveDataTags: c.opts.observeDataTags,
+	}
 
 	err := controlStream.RequestStream(handshakeFrame)
 	if err != nil {
@@ -233,7 +239,7 @@ func (c *Client) processStream(controlStream *ClientControlStream, dataStream Da
 						buf = buf[:runtime.Stack(buf, false)]
 
 						perr := fmt.Errorf("%v", e)
-						c.logger.Error("stream panic", perr)
+						c.logger.Error("stream panic", "err", perr)
 						c.errorfn(fmt.Errorf("yomo: stream panic: %v\n%s", perr, buf))
 					}
 				}()
@@ -265,10 +271,13 @@ func (c *Client) handleFrameError(err error, reconnection chan<- struct{}) {
 
 	// always attempting to reconnect if an error is encountered,
 	// the error is mostly network error.
-	reconnection <- struct{}{}
+	select {
+	case reconnection <- struct{}{}:
+	default:
+	}
 }
 
-// Wait waits client error returning.
+// Wait waits client returning.
 func (c *Client) Wait() {
 	<-c.ctx.Done()
 }

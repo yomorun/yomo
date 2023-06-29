@@ -6,7 +6,7 @@ import (
 	"strconv"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/serverless"
 )
 
 type noiseData struct {
@@ -45,16 +45,23 @@ func main() {
 	select {}
 }
 
-func handler(data []byte) (frame.Tag, []byte) {
+func handler(ctx serverless.Context) {
 	// got
+	data := ctx.Data()
 	noise, err := strconv.ParseFloat(string(data), 10)
 	if err != nil {
 		log.Printf("[sfn-1] got err=%v", err)
-		return 0x0, nil
+		return
 	}
 	// result
 	result := int(noise)
-	log.Printf("[sfn-1] got: tag=0x33, data=%v, return: tag=0x34, data=%v", noise, result)
-
-	return 0x34, []byte(strconv.Itoa(result))
+	resultTag := uint32(0x34)
+	log.Printf(
+		"[sfn-1] got: tag=%#x, data=%v, return: tag=%#x, data=%v\n",
+		ctx.Tag(), noise,
+		resultTag,
+		result,
+	)
+	output := []byte(strconv.Itoa(result))
+	err = ctx.Write(resultTag, output)
 }

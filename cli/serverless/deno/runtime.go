@@ -14,6 +14,7 @@ import (
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/file"
+	"github.com/yomorun/yomo/serverless"
 )
 
 func listen(path string) (*net.UnixListener, error) {
@@ -96,20 +97,54 @@ func startSfn(name string, zipperAddr string, credential string, observed []fram
 	sfn.SetObserveDataTags(observed...)
 
 	sfn.SetHandler(
-		func(data []byte) (frame.Tag, []byte) {
-			err := binary.Write(conn, binary.LittleEndian, uint32(len(data)))
+		func(ctx serverless.Context) {
+			tag := ctx.Tag()
+			err := binary.Write(conn, binary.LittleEndian, tag)
 			if err != nil {
 				errCh <- err
-				return 0, nil
+				return
+			}
+
+			data := ctx.Data()
+			err = binary.Write(conn, binary.LittleEndian, uint32(len(data)))
+			if err != nil {
+				errCh <- err
+				return
 			}
 
 			_, err = conn.Write(data)
 			if err != nil {
 				errCh <- err
-				return 0, nil
+				return
 			}
 
-			return 0, nil
+			var length uint32
+			for {
+				err := binary.Read(conn, binary.LittleEndian, &tag)
+				if err != nil {
+					errCh <- err
+					return
+				}
+
+				err = binary.Read(conn, binary.LittleEndian, &length)
+				if err != nil {
+					errCh <- err
+					return
+				}
+
+				if tag == 0 && length == 0 {
+					break
+				}
+
+				data := make([]byte, length)
+				_, err = io.ReadFull(conn, data)
+				if err != nil {
+					errCh <- err
+					return
+				}
+
+				ctx.Write(tag, data)
+			}
 		},
 	)
 
@@ -125,34 +160,6 @@ func startSfn(name string, zipperAddr string, credential string, observed []fram
 	}
 
 	return sfn, nil
-}
-
-func runResponse(conn net.Conn, sfn yomo.StreamFunction, errCh chan<- error) {
-	var tag frame.Tag
-	var length uint32
-
-	for {
-		err := binary.Read(conn, binary.LittleEndian, &tag)
-		if err != nil {
-			errCh <- err
-			return
-		}
-
-		err = binary.Read(conn, binary.LittleEndian, &length)
-		if err != nil {
-			errCh <- err
-			return
-		}
-
-		data := make([]byte, length)
-		_, err = io.ReadFull(conn, data)
-		if err != nil {
-			errCh <- err
-			return
-		}
-
-		sfn.Write(tag, data)
-	}
 }
 
 func run(name string, zipperAddr string, credential string, jsPath string, socketPath string) error {
@@ -180,8 +187,6 @@ func run(name string, zipperAddr string, credential string, jsPath string, socke
 		return err
 	}
 	defer sfn.Close()
-
-	go runResponse(conn, sfn, errCh)
 
 	err = <-errCh
 	return err

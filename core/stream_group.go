@@ -53,7 +53,7 @@ func NewStreamGroup(
 }
 
 func (g *StreamGroup) handleRoute(hf *frame.HandshakeFrame, md metadata.Metadata) (router.Route, error) {
-	if hf.StreamType() != byte(StreamTypeStreamFunction) {
+	if hf.StreamType != byte(StreamTypeStreamFunction) {
 		return nil, nil
 	}
 	// route for sfn.
@@ -61,7 +61,7 @@ func (g *StreamGroup) handleRoute(hf *frame.HandshakeFrame, md metadata.Metadata
 	if route == nil {
 		return nil, errors.New("yomo: can't find route in handshake metadata")
 	}
-	err := route.Add(hf.ID(), hf.Name(), hf.ObserveDataTags())
+	err := route.Add(hf.ID, hf.Name, hf.ObserveDataTags)
 	if err == nil {
 		return route, nil
 	}
@@ -74,7 +74,7 @@ func (g *StreamGroup) handleRoute(hf *frame.HandshakeFrame, md metadata.Metadata
 		}
 		if ok {
 			stream.Close()
-			g.connector.Remove(existsStreamID)
+			g.connector.Delete(existsStreamID)
 			g.logger.Debug("connector remove stream", "stream_id", stream.ID(), "stream_type", stream.StreamType().String(), "stream_name", stream.Name())
 		}
 	}
@@ -89,14 +89,14 @@ type handshakeResult struct {
 // It takes route parameter, which will be assigned after the returned function is executed.
 func (g *StreamGroup) makeHandshakeFunc(result *handshakeResult) func(hf *frame.HandshakeFrame) (metadata.Metadata, error) {
 	return func(hf *frame.HandshakeFrame) (md metadata.Metadata, err error) {
-		_, ok, err := g.connector.Get(hf.ID())
+		_, ok, err := g.connector.Get(hf.ID)
 		if err != nil {
 			return
 		}
 		if ok {
 			return nil, errors.New("yomo: stream id is not allowed to be a duplicate")
 		}
-		md, err = g.metadataDecoder.Decode(hf.Metadata())
+		md, err = g.metadataDecoder.Decode(hf.Metadata)
 		if err != nil {
 			return
 		}
@@ -128,7 +128,7 @@ func (g *StreamGroup) Run(contextFunc func(c *Context)) error {
 		}
 
 		g.group.Add(1)
-		g.connector.Add(stream.ID(), stream)
+		g.connector.Store(stream.ID(), stream)
 		g.logger.Debug("connector add stream", "stream_id", stream.ID(), "stream_type", stream.StreamType().String(), "stream_name", stream.Name())
 
 		go g.handleContextFunc(routeResult.route, stream, contextFunc)
@@ -141,13 +141,13 @@ func (g *StreamGroup) handleContextFunc(route router.Route, stream DataStream, c
 		if route != nil {
 			route.Remove(stream.ID())
 		}
-		g.connector.Remove(stream.ID())
+		g.connector.Delete(stream.ID())
 		g.logger.Debug("connector remove stream", "stream_id", stream.ID(), "stream_type", stream.StreamType().String(), "stream_name", stream.Name())
 		g.group.Done()
 	}()
 
 	c := newContext(stream, route, g.logger)
-	defer c.Clean()
+	defer c.Release()
 
 	contextFunc(c)
 }

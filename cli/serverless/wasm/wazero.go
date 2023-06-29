@@ -11,7 +11,11 @@ import (
 	"github.com/tetratelabs/wazero/api"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 	"github.com/tetratelabs/wazero/sys"
+	host "github.com/yomorun/yomo/cli/serverless/wasm/wazero"
+	"github.com/yomorun/yomo/serverless"
 )
+
+const i32 = api.ValueTypeI32
 
 type wazeroRuntime struct {
 	wazero.Runtime
@@ -20,14 +24,13 @@ type wazeroRuntime struct {
 	module api.Module
 	cache  wazero.CompilationCache
 
-	observed  []uint32
-	input     []byte
-	outputTag uint32
-	output    []byte
+	observed      []uint32
+	serverlessCtx serverless.Context
 }
 
 func newWazeroRuntime() (*wazeroRuntime, error) {
 	ctx := context.Background()
+
 	cache := wazero.NewCompilationCache()
 	runConfig := wazero.NewRuntimeConfig().
 		WithCompilationCache(cache)
@@ -55,19 +58,32 @@ func (r *wazeroRuntime) Init(wasmFile string) error {
 		return fmt.Errorf("read wasm file %s: %v", wasmBytes, err)
 	}
 	builder := r.NewHostModuleBuilder("env")
-	_, err = builder.NewFunctionBuilder().
+	builder.
 		// observeDataTag
-		WithFunc(r.observeDataTag).
+		NewFunctionBuilder().
+		WithGoFunction(api.GoFunc(r.observeDataTag), []api.ValueType{i32}, []api.ValueType{}).
 		Export(WasmFuncObserveDataTag).
-		// loadInput
+		// write
 		NewFunctionBuilder().
-		WithFunc(r.loadInput).
-		Export(WasmFuncLoadInput).
-		// dumpOutput
+		WithGoModuleFunction(api.GoModuleFunc(r.write), []api.ValueType{i32, i32, i32}, []api.ValueType{i32}).
+		Export(WasmFuncWrite).
+		// context tag
 		NewFunctionBuilder().
-		WithFunc(r.dumpOutput).
-		Export(WasmFuncDumpOutput).
-		Instantiate(r.ctx)
+		WithGoFunction(api.GoFunc(r.contextTag), []api.ValueType{}, []api.ValueType{i32}).
+		Export(WasmFuncContextTag).
+		// context data
+		NewFunctionBuilder().
+		WithGoModuleFunction(api.GoModuleFunc(r.contextData), []api.ValueType{i32, i32}, []api.ValueType{i32}).
+		Export(WasmFuncContextData).
+		// context data size
+		NewFunctionBuilder().
+		WithGoFunction(api.GoFunc(r.contextDataSize), []api.ValueType{}, []api.ValueType{i32}).
+		Export(WasmFuncContextDataSize)
+	// http
+	host.ExportHTTPHostFuncs(builder)
+
+	// Instantiate
+	_, err = builder.Instantiate(r.ctx)
 	if err != nil {
 		return fmt.Errorf("wazero.HostFunc: %v", err)
 	}
@@ -97,23 +113,24 @@ func (r *wazeroRuntime) GetObserveDataTags() []uint32 {
 }
 
 // RunHandler runs the wasm application (request -> response mode)
-func (r *wazeroRuntime) RunHandler(data []byte) (uint32, []byte, error) {
-	r.input = data
-	// reset output
-	r.outputTag = 0
-	r.output = nil
-
+func (r *wazeroRuntime) RunHandler(ctx serverless.Context) error {
+	// context
+	select {
+	case <-r.ctx.Done():
+		return r.ctx.Err()
+	default:
+	}
+	r.serverlessCtx = ctx
 	// run handler
 	handler := r.module.ExportedFunction(WasmFuncHandler)
-	if _, err := handler.Call(r.ctx, uint64(len(data))); err != nil {
+	if _, err := handler.Call(r.ctx); err != nil {
 		if exitErr, ok := err.(*sys.ExitError); ok && exitErr.ExitCode() != 0 {
-			return 0, nil, fmt.Errorf("handler.Call: %v", err)
+			return fmt.Errorf("handler.Call: %v", err)
 		} else if !ok {
-			return 0, nil, fmt.Errorf("handler.Call: %v", err)
+			return fmt.Errorf("handler.Call: %v", err)
 		}
 	}
-
-	return r.outputTag, r.output, nil
+	return nil
 }
 
 // Close releases all the resources related to the runtime
@@ -122,23 +139,55 @@ func (r *wazeroRuntime) Close() error {
 	return r.Runtime.Close(r.ctx)
 }
 
-func (r *wazeroRuntime) observeDataTag(ctx context.Context, tag int32) {
-	r.observed = append(r.observed, uint32(tag))
+func (r *wazeroRuntime) observeDataTag(ctx context.Context, stack []uint64) {
+	tag := uint32(stack[0])
+	r.observed = append(r.observed, tag)
 }
 
-func (r *wazeroRuntime) loadInput(ctx context.Context, m api.Module, pointer int32) {
-	if !m.Memory().Write(uint32(pointer), r.input) {
-		log.Panicf("Memory.Write(%d, %d) out of range of memory size %d",
-			pointer, len(r.input), m.Memory().Size())
-	}
-}
-
-func (r *wazeroRuntime) dumpOutput(ctx context.Context, m api.Module, tag int32, pointer int32, length int32) {
-	r.outputTag = uint32(tag)
-	r.output = make([]byte, length)
-	buf, ok := m.Memory().Read(uint32(pointer), uint32(length))
+func (r *wazeroRuntime) write(ctx context.Context, m api.Module, stack []uint64) {
+	tag := uint32(stack[0])
+	pointer := uint32(stack[1])
+	length := uint32(stack[2])
+	output, ok := m.Memory().Read(pointer, length)
 	if !ok {
-		log.Panicf("Memory.Read(%d, %d) out of range", pointer, length)
+		log.Printf("Memory.Read(%d, %d) out of range\n", pointer, length)
+		stack[0] = 1
+		return
 	}
-	copy(r.output, buf)
+	buf := make([]byte, length)
+	copy(buf, output)
+
+	if err := r.serverlessCtx.Write(tag, buf); err != nil {
+		stack[0] = 2
+		return
+	}
+	stack[0] = 0
+}
+
+func (r *wazeroRuntime) contextTag(ctx context.Context, stack []uint64) {
+	stack[0] = uint64(r.serverlessCtx.Tag())
+}
+
+func (r *wazeroRuntime) contextData(ctx context.Context, m api.Module, stack []uint64) {
+	pointer := uint32(stack[0])
+	limit := uint32(stack[1])
+	data := r.serverlessCtx.Data()
+	dataLen := uint32(len(data))
+	if dataLen > limit {
+		stack[0] = uint64(dataLen)
+		return
+	} else if dataLen == 0 {
+		stack[0] = 0
+		return
+	}
+	if ok := m.Memory().Write(pointer, data); !ok {
+		log.Printf("Memory.Write(%d, %d) out of range\n", pointer, dataLen)
+		stack[0] = 0
+		return
+	}
+	stack[0] = uint64(dataLen)
+}
+
+func (r *wazeroRuntime) contextDataSize(ctx context.Context, stack []uint64) {
+	stack[0] = uint64(len(r.serverlessCtx.Data()))
 }
