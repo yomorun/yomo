@@ -113,7 +113,7 @@ func (h *handler) WithGroup(name string) slog.Handler {
 }
 
 func bufferedSlogHandler(buf io.Writer, format string, level slog.Level, verbose, disableTime bool) slog.Handler {
-	opt := slog.HandlerOptions{
+	opt := &slog.HandlerOptions{
 		AddSource: verbose,
 		Level:     level,
 	}
@@ -128,9 +128,9 @@ func bufferedSlogHandler(buf io.Writer, format string, level slog.Level, verbose
 
 	var h slog.Handler
 	if strings.ToLower(format) == "json" {
-		h = opt.NewJSONHandler(buf)
+		h = slog.NewJSONHandler(buf, opt)
 	} else {
-		h = opt.NewTextHandler(buf)
+		h = slog.NewTextHandler(buf, opt)
 	}
 
 	return h

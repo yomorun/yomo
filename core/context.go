@@ -118,7 +118,7 @@ func (c *Context) CloseWithError(errString string) {
 	if err == nil {
 		return
 	}
-	c.Logger.Error("data stream close failed", err)
+	c.Logger.Error("data stream close failed", "err", err)
 }
 
 // Release release the Context, The Context released is not available.

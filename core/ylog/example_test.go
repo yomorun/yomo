@@ -21,7 +21,7 @@ func Example() {
 	ylog.Debug("debug", "aaa", "bbb")
 	ylog.Info("info", "ccc", "ddd")
 	ylog.Warn("warn", "eee", "fff")
-	ylog.Error("error", io.EOF, "eee", "fff")
+	ylog.Error("error", "err", io.EOF, "eee", "fff")
 
 	// json format logger
 	sysLogger := ylog.NewFromConfig(ylog.Config{
@@ -33,7 +33,7 @@ func Example() {
 
 	sysLogger = sysLogger.WithGroup("syslog")
 
-	sysLogger.Error("sys error", net.ErrClosed, "ggg", "hhh")
+	sysLogger.Error("sys error", "err", net.ErrClosed, "ggg", "hhh")
 
 	// Output:
 	// level=WARN msg=warn hello=yomo syslog.eee=fff

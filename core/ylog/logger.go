@@ -41,8 +41,9 @@ func Warn(msg string, keyvals ...interface{}) {
 }
 
 // Error logs a message at error level.
-func Error(msg string, err error, keyvals ...interface{}) {
-	defaultLogger.Error(msg, err, keyvals...)
+func Error(msg string, keyvals ...interface{}) {
+	defaultLogger.Error(msg, keyvals...)
+
 }
 
 // Config is the config of slog, the config is from environment.

@@ -11,7 +11,7 @@ import (
 )
 
 // custom logger
-var logger = slog.New(slog.NewTextHandler(os.Stdout))
+var logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 type noiseData struct {
 	Noise float32 `json:"noise"` // Noise value
@@ -32,7 +32,7 @@ func main() {
 	)
 	err := source.Connect()
 	if err != nil {
-		logger.Error("[source] ❌ Emit the data to YoMo-Zipper failure with err", err)
+		logger.Error("[source] ❌ Emit the data to YoMo-Zipper failure with err", "err", err)
 		return
 	}
 
@@ -40,13 +40,13 @@ func main() {
 
 	// set the error handler function when server error occurs
 	source.SetErrorHandler(func(err error) {
-		logger.Error("[source] receive server error", err)
+		logger.Error("[source] receive server error", "err", err)
 		os.Exit(1)
 	})
 
 	// generate mock data and send it to YoMo-Zipper in every 100 ms.
 	err = generateAndSendData(source)
-	logger.Error("[source] >>>> ERR", err)
+	logger.Error("[source] >>>> ERR", "err", err)
 	os.Exit(0)
 }
 
@@ -62,7 +62,7 @@ func generateAndSendData(stream yomo.Source) error {
 
 		sendingBuf, err := json.Marshal(&data)
 		if err != nil {
-			logger.Error("json.Marshal error", err)
+			logger.Error("json.Marshal error", "err", err)
 			os.Exit(-1)
 		}
 
@@ -74,7 +74,7 @@ func generateAndSendData(stream yomo.Source) error {
 			return nil
 		}
 		if err != nil {
-			logger.Error("[source] ❌ Emit to YoMo-Zipper failure with err", err, "data", data)
+			logger.Error("[source] ❌ Emit to YoMo-Zipper failure with err", "err", err, "data", data)
 			time.Sleep(500 * time.Millisecond)
 			continue
 

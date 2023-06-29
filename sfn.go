@@ -133,7 +133,7 @@ func (s *streamFunction) Close() error {
 
 	if s.client != nil {
 		if err := s.client.Close(); err != nil {
-			s.client.Logger().Error("failed to close sfn", err)
+			s.client.Logger().Error("failed to close sfn", "err", err)
 			return err
 		}
 	}

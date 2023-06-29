@@ -116,7 +116,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 	// listen the address
 	listener, err := NewQuicListener(conn, s.opts.tlsConfig, s.opts.quicConfig, s.logger)
 	if err != nil {
-		s.logger.Error("failed to listen on quic", err)
+		s.logger.Error("failed to listen on quic", "err", err)
 		return err
 	}
 	s.listener = listener
@@ -131,7 +131,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 			if err == s.ctx.Err() {
 				return ErrServerClosed
 			}
-			s.logger.Error("accepted an error when accepting a connection", err)
+			s.logger.Error("accepted an error when accepting a connection", "err", err)
 			return err
 		}
 		logger := s.logger.With("remote_addr", conn.RemoteAddr(), "local_addr", conn.LocalAddr())
@@ -171,7 +171,7 @@ func (s *Server) runWithStreamGroup(group *StreamGroup, logger *slog.Logger) <-c
 
 	go func() {
 		if err := group.Run(s.handleStreamContext); err != nil {
-			logger.Error("connection closed", err)
+			logger.Error("connection closed", "err", err)
 		}
 		done <- struct{}{}
 	}()
@@ -213,7 +213,7 @@ func (s *Server) handleStreamContext(c *Context) {
 	// start frame handlers
 	for _, handler := range s.startHandlers {
 		if err := handler(c); err != nil {
-			c.Logger.Error("encountered an error in the start handler", err)
+			c.Logger.Error("encountered an error in the start handler", "err", err)
 			c.CloseWithError(err.Error())
 			return
 		}
@@ -231,7 +231,7 @@ func (s *Server) handleStreamContext(c *Context) {
 					break
 				}
 				ye := yerr.New(yerr.Parse(e.ErrorCode), err)
-				c.Logger.Error("read frame error", ye)
+				c.Logger.Error("read frame error", "err", ye)
 			} else if err == io.EOF {
 				c.CloseWithError("data stream has been closed")
 				c.Logger.Info("data stream has been closed")
@@ -240,7 +240,7 @@ func (s *Server) handleStreamContext(c *Context) {
 			if errors.Is(err, net.ErrClosed) {
 				// if client close the connection, net.ErrClosed will be raise
 				// by quic-go IdleTimeoutError after connection's KeepAlive config.
-				c.Logger.Debug("data stream network error", "error", net.ErrClosed)
+				c.Logger.Debug("data stream network error", "err", net.ErrClosed)
 				c.CloseWithError(net.ErrClosed.Error())
 				break
 			}
@@ -257,21 +257,21 @@ func (s *Server) handleStreamContext(c *Context) {
 		// before frame handlers
 		for _, handler := range s.beforeHandlers {
 			if err := handler(c); err != nil {
-				c.Logger.Error("encountered an error in the before handler", err)
+				c.Logger.Error("encountered an error in the before handler", "err", err)
 				c.CloseWithError(err.Error())
 				return
 			}
 		}
 		// main handler
 		if err := s.mainFrameHandler(c); err != nil {
-			c.Logger.Error("encountered an error in the main handler", err)
+			c.Logger.Error("encountered an error in the main handler", "err", err)
 			c.CloseWithError(err.Error())
 			return
 		}
 		// after frame handler
 		for _, handler := range s.afterHandlers {
 			if err := handler(c); err != nil {
-				c.Logger.Error("encountered an error in the after handler", err)
+				c.Logger.Error("encountered an error in the after handler", "err", err)
 				c.CloseWithError(err.Error())
 				return
 			}
@@ -344,7 +344,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 			continue
 		}
 		if !ok {
-			c.Logger.Error("can't find forward stream", errors.New("route sfn error"), "forward_stream_id", toID)
+			c.Logger.Error("can't find forward stream", "err", "route sfn error", "forward_stream_id", toID)
 			continue
 		}
 
@@ -358,7 +358,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 
 		// write data frame to stream
 		if err := stream.WriteFrame(f); err != nil {
-			c.Logger.Error("failed to write frame for routing data", err)
+			c.Logger.Error("failed to write frame for routing data", "err", err)
 		}
 	}
 
@@ -381,7 +381,7 @@ func (s *Server) handleBackflowFrame(c *Context) error {
 		if source != nil {
 			c.Logger.Info("backflow to source", "source_conn_id", sourceID)
 			if err := source.WriteFrame(bf); err != nil {
-				c.Logger.Error("failed to write frame for backflow to the source", err)
+				c.Logger.Error("failed to write frame for backflow to the source", "err", err)
 				return err
 			}
 		}
@@ -465,7 +465,7 @@ func (s *Server) dispatchToDownstreams(c *Context) {
 			if len(fmd) == 0 {
 				byteMd, err := stream.Metadata().Encode()
 				if err != nil {
-					c.Logger.Error("failed to dispatch to downstream", err)
+					c.Logger.Error("failed to dispatch to downstream", "err", err)
 				}
 				f.Meta.Metadata = byteMd
 			}
