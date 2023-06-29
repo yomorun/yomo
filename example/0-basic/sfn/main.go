@@ -37,7 +37,7 @@ func main() {
 	}
 	// set the error handler function when server error occurs
 	sfn.SetErrorHandler(func(err error) {
-		slog.Error("[sfn1] receive server error", err)
+		slog.Error("[sfn1] receive server error", "err", err)
 		sfn.Close()
 		os.Exit(1)
 	})
@@ -49,7 +49,7 @@ func handler(ctx serverless.Context) {
 	var model noiseData
 	err := json.Unmarshal(ctx.Data(), &model)
 	if err != nil {
-		slog.Error("[sfn] json.Marshal error", err)
+		slog.Error("[sfn] json.Marshal error", "err", err)
 		os.Exit(-2)
 	} else {
 		slog.Info("[sfn]", "got", 0x33, "data", model)

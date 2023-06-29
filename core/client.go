@@ -58,7 +58,7 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 		streamType:     connType,
 		opts:           option,
 		logger:         logger,
-		errorfn:        func(err error) { logger.Error("client err", err) },
+		errorfn:        func(err error) { logger.Error("client err", "err", err) },
 		writeFrameChan: make(chan frame.Frame),
 		ctx:            ctx,
 		ctxCancel:      ctxCancel,
@@ -77,11 +77,11 @@ connect:
 	controlStream, dataStream, err := c.openStream(ctx, addr)
 	if err != nil {
 		if c.opts.connectUntilSucceed && !errors.As(err, new(ErrAuthenticateFailed)) {
-			c.logger.Error("failed to connect to zipper, trying to reconnect", err)
+			c.logger.Error("failed to connect to zipper, trying to reconnect", "err", err)
 			time.Sleep(time.Second)
 			goto connect
 		}
-		c.logger.Error("can not connect to zipper", err)
+		c.logger.Error("can not connect to zipper", "error", err)
 		return err
 	}
 	c.logger.Info("connected to zipper")
@@ -113,7 +113,7 @@ func (c *Client) runBackground(ctx context.Context, addr string, controlStream *
 					c.cleanStream(controlStream, err)
 					return
 				}
-				c.logger.Error("reconnect error", err)
+				c.logger.Error("reconnect error", "err", err)
 				time.Sleep(time.Second)
 				goto reconnect
 			}
@@ -152,7 +152,7 @@ func (c *Client) cleanStream(controlStream *ClientControlStream, err error) {
 	errString := ""
 	if err != nil {
 		errString = err.Error()
-		c.logger.Error("client exit", err)
+		c.logger.Error("client exit", "err", err)
 	}
 
 	// controlStream is nil represents that client is not connected.
@@ -239,7 +239,7 @@ func (c *Client) processStream(controlStream *ClientControlStream, dataStream Da
 						buf = buf[:runtime.Stack(buf, false)]
 
 						perr := fmt.Errorf("%v", e)
-						c.logger.Error("stream panic", perr)
+						c.logger.Error("stream panic", "err", perr)
 						c.errorfn(fmt.Errorf("yomo: stream panic: %v\n%s", perr, buf))
 					}
 				}()

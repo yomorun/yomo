@@ -31,7 +31,7 @@ func TestLogger(t *testing.T) {
 	logger.Info("some info", "hello", "yomo")
 	logger.Warn("some waring", "hello", "yomo")
 
-	logger.Error("error", io.EOF, "hello", "yomo")
+	logger.Error("error", "err", io.EOF, "hello", "yomo")
 
 	log, err := os.ReadFile(output)
 

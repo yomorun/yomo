@@ -47,7 +47,7 @@ func NewQuicListener(conn net.PacketConn, tlsConfig *tls.Config, quicConfig *qui
 	if tlsConfig == nil {
 		tc, err := pkgtls.CreateServerTLSConfig(conn.LocalAddr().String())
 		if err != nil {
-			logger.Error("generate server tls config failed", err)
+			logger.Error("generate server tls config failed", "err", err)
 			return &quicListener{}, err
 		}
 		tlsConfig = tc
