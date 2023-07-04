@@ -28,7 +28,7 @@ type StreamFunction interface {
 	// SetObserveTag sets the tag of stream that from source
 	SetObserveTag(string)
 	// SetObserveHander sets the handler that handles the stream from source.
-	SetObserveHander(func(io.Reader, io.Writer))
+	SetObserveHander(func(io.Reader))
 }
 
 // NewStreamFunction create a stream function.
@@ -66,7 +66,7 @@ func (s *streamFunction) SetObserveTag(tag string) {
 	s.client.SetObserveTag(tag)
 }
 
-func (s *streamFunction) SetObserveHander(fn func(io.Reader, io.Writer)) {
+func (s *streamFunction) SetObserveHander(fn func(io.Reader)) {
 	s.client.SetObserveHander(fn)
 }
 

@@ -41,7 +41,7 @@ type Client struct {
 	// peer runtime use.
 	writerTag      string
 	observeTag     string
-	observeHandler func(io.Reader, io.Writer)
+	observeHandler func(io.Reader)
 }
 
 // NewClient creates a new YoMo-Client.
@@ -189,7 +189,7 @@ func (c *Client) SetObserveTag(tag string) {
 	c.observeTag = tag
 }
 
-func (c *Client) SetObserveHander(fn func(io.Reader, io.Writer)) {
+func (c *Client) SetObserveHander(fn func(io.Reader)) {
 	c.observeHandler = fn
 }
 
@@ -204,7 +204,9 @@ func (c *Client) Observe() {
 		return
 	}
 
-	if err := peer.Observe(c.observeTag, ObserveHandleFunc(c.observeHandler)); err != nil {
+	if err := peer.Observe(c.observeTag, ObserveHandleFunc(func(opener WriterOpener, r io.Reader) {
+		c.observeHandler(r)
+	})); err != nil {
 		c.logger.Error("failed to observe streams", err, "tag", c.observeTag)
 	}
 }

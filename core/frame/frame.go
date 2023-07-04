@@ -33,7 +33,7 @@ type Frame interface {
 type Type byte
 
 // AuthenticationFrame is used to authenticate the client,
-// Once the connection is established, the client immediately, sends information to the server,
+// Once the connection is established, the client immediately sends information to the server,
 // server gets the way to authenticate according to AuthName and use AuthPayload to do a authentication.
 // AuthenticationFrame is transmit on ControlStream.
 //

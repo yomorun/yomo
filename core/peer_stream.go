@@ -3,42 +3,34 @@ package core
 import (
 	"context"
 	"io"
-	"sync"
 
-	"github.com/yomorun/yomo/pkg/id"
 	"golang.org/x/exp/slog"
 )
 
 // Peer represents a peer in a network that can open a writer and observe tagged streams,
 // and handle them in an observer.
 type Peer struct {
-	once sync.Once
-	// the tag of the writer in the ObserveHandler
-	observeHandlerWriterTag string
-
 	conn           UniStreamPeerConnection
 	logger         *slog.Logger
 	fillWriterFunc func(string, string, io.Writer) error
+	idGenerator    func() string
 }
 
 // NewPeer returns a new peer.
-func NewPeer(conn UniStreamPeerConnection, logger *slog.Logger, fillWriterFunc func(string, string, io.Writer) error) *Peer {
+func NewPeer(
+	conn UniStreamPeerConnection,
+	logger *slog.Logger,
+	fillWriterFunc func(string, string, io.Writer) error,
+	idGenerator func() string,
+) *Peer {
 	peer := &Peer{
 		conn:           conn,
 		logger:         logger,
 		fillWriterFunc: fillWriterFunc,
+		idGenerator:    idGenerator,
 	}
 
 	return peer
-}
-
-// SetObserveHandlerWriterTag sets a tag for other peer can observe the writer stream in Observers handler.
-// If this function is not called, writing to the writer in the ObserverHandler will not do anything.
-// Note That multiple calling this function will have no effect.
-func (p *Peer) SetObserveHandlerWriterTag(tag string) {
-	p.once.Do(func() {
-		p.observeHandlerWriterTag = tag
-	})
 }
 
 // Open opens a writer with the given tag, which other peers can observe.
@@ -51,7 +43,7 @@ func (p *Peer) Open(tag string) (io.WriteCloser, error) {
 
 	p.logger.Debug("peer opens a writer", "tag", tag)
 
-	id := id.New()
+	id := p.idGenerator()
 
 	return w, p.fillWriterFunc(id, tag, w)
 }
@@ -76,20 +68,8 @@ func (p *Peer) observing(observer Observer) error {
 			return err
 		}
 
-		// open and pure the writer if observeHandlerWriterTag is not empty.
-		var w io.Writer
-		if p.observeHandlerWriterTag != "" {
-			w, err = p.Open(p.observeHandlerWriterTag)
-			if err != nil {
-				return err
-			}
-		} else {
-			// discard writer if there is no tag.
-			w = io.Discard
-		}
-
 		// dispatch the reader and writer to the observer.
-		observer.Handle(r, w)
+		go observer.Handle(p, r)
 	}
 }
 
@@ -259,18 +239,24 @@ func (b *Broker) copyWithLog(tag string, dst io.Writer, src io.Reader, logger *s
 	}
 }
 
+// WriterOpener opens WriteCloser in specified tag.
+type WriterOpener interface {
+	// Open opens WriteCloser.
+	Open(tag string) (io.WriteCloser, error)
+}
+
 // Observer is responsible for handling tagged streams.
 type Observer interface {
 	// Handle is the function responsible for handling tagged streams and writing to a new peer stream.
-	// The `r` parameter is used to read data from the tagged stream, and the `w` parameter is used to write data to a new peer stream.
-	Handle(r io.Reader, w io.Writer)
+	// Reading data from Reader and Using WriterOpener to open writer.
+	Handle(WriterOpener, io.Reader)
 }
 
 // ObserveHandleFunc handles tagged streams.
-type ObserveHandleFunc func(r io.Reader, w io.Writer)
+type ObserveHandleFunc func(opener WriterOpener, r io.Reader)
 
 // Handle calls ObserveHandleFunc itself.
-func (f ObserveHandleFunc) Handle(r io.Reader, w io.Writer) { f(r, w) }
+func (f ObserveHandleFunc) Handle(opener WriterOpener, r io.Reader) { f(opener, r) }
 
 // UniStreamConnection opens and accepts uniStream.
 type UniStreamConnection interface {

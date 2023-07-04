@@ -234,6 +234,7 @@ func (cs *ClientControlStream) Peer() *Peer {
 		cs,
 		cs.logger,
 		FillObserveWriter(cs.codec, cs.packetReadWriter),
+		id.New,
 	)
 }
 
