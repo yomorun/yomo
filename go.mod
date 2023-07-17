@@ -10,7 +10,7 @@ require (
 	github.com/fatih/color v1.15.0
 	github.com/joho/godotenv v1.4.0
 	github.com/matoous/go-nanoid/v2 v2.0.0
-	github.com/quic-go/quic-go v0.36.0
+	github.com/quic-go/quic-go v0.36.2
 	github.com/reactivex/rxgo/v2 v2.5.0
 	github.com/second-state/WasmEdge-go v0.12.1
 	github.com/spf13/cobra v1.7.0
