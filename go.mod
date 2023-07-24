@@ -17,7 +17,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.16.0
 	github.com/stretchr/testify v1.8.4
-	github.com/tetratelabs/wazero v1.2.1
+	github.com/tetratelabs/wazero v1.3.1
 	github.com/yomorun/y3 v1.0.5
 	golang.org/x/exp v0.0.0-20230626212559-97b1e661b5df
 	golang.org/x/mod v0.11.0
