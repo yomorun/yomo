@@ -1,6 +1,6 @@
 module app
 
-go 1.19
+go 1.20
 
 replace github.com/yomorun/yomo => ../../../../
 

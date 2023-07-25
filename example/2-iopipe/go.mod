@@ -1,6 +1,6 @@
 module yomo.run/example-2-iopipe
 
-go 1.19
+go 1.20
 
 replace github.com/yomorun/yomo => ../../
 
