@@ -30,7 +30,7 @@ func defaultClientOption() *clientOptions {
 	logger := ylog.Default()
 
 	defalutQuicConfig := &quic.Config{
-		Versions:                       []quic.VersionNumber{quic.VersionDraft29, quic.Version1, quic.Version2},
+		Versions:                       []quic.VersionNumber{quic.Version1, quic.Version2},
 		MaxIdleTimeout:                 time.Second * 40,
 		KeepAlivePeriod:                time.Second * 20,
 		MaxIncomingStreams:             1000,
