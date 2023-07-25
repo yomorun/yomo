@@ -31,7 +31,7 @@ func (ql *quicListener) Accept(ctx context.Context) (Connection, error) {
 
 // DefalutQuicConfig be used when `quicConfig` is nil.
 var DefalutQuicConfig = &quic.Config{
-	Versions:                       []quic.VersionNumber{quic.VersionDraft29, quic.Version1, quic.Version2},
+	Versions:                       []quic.VersionNumber{quic.Version1, quic.Version2},
 	MaxIdleTimeout:                 time.Second * 5,
 	KeepAlivePeriod:                time.Second * 2,
 	MaxIncomingStreams:             1000,
