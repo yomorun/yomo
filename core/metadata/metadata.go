@@ -8,6 +8,9 @@ type M map[string]string
 
 func New(data []byte) (M, error) {
 	m := M{}
+	if len(data) == 0 {
+		return m, nil
+	}
 	return m, msgpack.Unmarshal(data, &m)
 }
 
@@ -50,5 +53,8 @@ func (m M) Clone() M {
 }
 
 func (m M) Encode() ([]byte, error) {
+	if len(m) == 0 {
+		return nil, nil
+	}
 	return msgpack.Marshal(m)
 }

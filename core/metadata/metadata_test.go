@@ -80,7 +80,7 @@ func Test(t *testing.T) {
 		assert.Equal(t, "", got)
 	})
 
-	t.Run("Encode Decode", func(t *testing.T) {
+	t.Run("Encode", func(t *testing.T) {
 		b, err := md.Encode()
 		assert.NoError(t, err)
 
@@ -88,5 +88,14 @@ func Test(t *testing.T) {
 		assert.NoError(t, err)
 
 		assert.Equal(t, md, md2)
+		t.Run("nil", func(t *testing.T) {
+			md2, err := New(nil)
+			assert.NoError(t, err)
+			assert.Equal(t, M{}, md2)
+
+			b, err := md2.Encode()
+			assert.NoError(t, err)
+			assert.Equal(t, []byte(nil), b)
+		})
 	})
 }
