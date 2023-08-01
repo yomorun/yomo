@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/yomorun/yomo/core"
-	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/router"
 	"github.com/yomorun/yomo/pkg/config"
 	"golang.org/x/exp/slog"
@@ -78,7 +77,6 @@ func NewZipper(name string, functions []config.Function, meshConfig map[string]c
 		server.AddDownstreamServer(addr, downstream)
 	}
 
-	server.ConfigMetadataDecoder(metadata.DefaultDecoder())
 	server.ConfigRouter(router.Default(functions))
 
 	// watch signal.

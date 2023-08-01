@@ -40,10 +40,10 @@ func (e ErrAuthenticateFailed) Error() string { return e.ReasonFromeServer }
 
 // HandshakeFunc is used by server control stream to handle handshake.
 // The returned metadata will be set for the DataStream that is being opened.
-type HandshakeFunc func(*frame.HandshakeFrame) (metadata.Metadata, error)
+type HandshakeFunc func(*frame.HandshakeFrame) (metadata.M, error)
 
 // VerifyAuthenticationFunc is used by server control stream to verify authentication.
-type VerifyAuthenticationFunc func(*frame.AuthenticationFrame) (metadata.Metadata, bool, error)
+type VerifyAuthenticationFunc func(*frame.AuthenticationFrame) (metadata.M, bool, error)
 
 // ServerControlStream defines the struct of server-side control stream.
 type ServerControlStream struct {
@@ -143,7 +143,7 @@ func (ss *ServerControlStream) CloseWithError(errString string) error {
 }
 
 // VerifyAuthentication verify the Authentication from client side.
-func (ss *ServerControlStream) VerifyAuthentication(verifyFunc VerifyAuthenticationFunc) (metadata.Metadata, error) {
+func (ss *ServerControlStream) VerifyAuthentication(verifyFunc VerifyAuthenticationFunc) (metadata.M, error) {
 	first, err := ss.stream.ReadFrame()
 	if err != nil {
 		return nil, err
@@ -177,10 +177,9 @@ func (ss *ServerControlStream) VerifyAuthentication(verifyFunc VerifyAuthenticat
 
 // ClientControlStream is the struct that defines the methods for client-side control stream.
 type ClientControlStream struct {
-	ctx             context.Context
-	conn            Connection
-	stream          frame.ReadWriteCloser
-	metadataDecoder metadata.Decoder
+	ctx    context.Context
+	conn   Connection
+	stream frame.ReadWriteCloser
 
 	// encode and decode the frame
 	codec            frame.Codec
@@ -199,7 +198,6 @@ type ClientControlStream struct {
 func OpenClientControlStream(
 	ctx context.Context, addr string,
 	tlsConfig *tls.Config, quicConfig *quic.Config,
-	metadataDecoder metadata.Decoder,
 	codec frame.Codec, packetReadWriter frame.PacketReadWriter,
 	logger *slog.Logger,
 ) (*ClientControlStream, error) {
@@ -213,14 +211,13 @@ func OpenClientControlStream(
 		return nil, err
 	}
 
-	return NewClientControlStream(ctx, &QuicConnection{conn}, stream0, codec, packetReadWriter, metadataDecoder, logger), nil
+	return NewClientControlStream(ctx, &QuicConnection{conn}, stream0, codec, packetReadWriter, logger), nil
 }
 
 // NewClientControlStream returns ClientControlStream from quic Connection and the first stream form the Connection.
 func NewClientControlStream(
 	ctx context.Context, conn Connection, stream ContextReadWriteCloser,
-	codec frame.Codec, packetReadWriter frame.PacketReadWriter,
-	metadataDecoder metadata.Decoder, logger *slog.Logger) *ClientControlStream {
+	codec frame.Codec, packetReadWriter frame.PacketReadWriter, logger *slog.Logger) *ClientControlStream {
 
 	controlStream := &ClientControlStream{
 		ctx:                        ctx,
@@ -228,7 +225,6 @@ func NewClientControlStream(
 		stream:                     NewFrameStream(stream, codec, packetReadWriter),
 		codec:                      codec,
 		packetReadWriter:           packetReadWriter,
-		metadataDecoder:            metadataDecoder,
 		handshakeFrames:            make(map[string]*frame.HandshakeFrame),
 		handshakeRejectedFrameChan: make(chan *frame.HandshakeRejectedFrame, 10),
 		acceptStreamResultChan:     make(chan acceptStreamResult, 10),
@@ -392,7 +388,7 @@ func (cs *ClientControlStream) acceptStream(ctx context.Context) (DataStream, er
 	// Unlike server-side data streams,
 	// client-side data streams do not merge connection-level metadata and stream-level metadata.
 	// Instead, they only contain stream-level metadata.
-	md, err := cs.metadataDecoder.Decode(f.Metadata)
+	md, err := metadata.New(f.Metadata)
 	if err != nil {
 		return nil, err
 	}

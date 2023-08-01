@@ -11,7 +11,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/router"
 	"github.com/yomorun/yomo/core/ylog"
 	"github.com/yomorun/yomo/pkg/config"
@@ -49,7 +48,6 @@ func TestFrameRoundTrip(t *testing.T) {
 		WithServerTLSConfig(nil),
 		WithServerLogger(discardingLogger),
 	)
-	server.ConfigMetadataDecoder(metadata.DefaultDecoder())
 	server.ConfigRouter(router.Default([]config.Function{{Name: "sfn-1"}, {Name: "close-early-sfn"}}))
 
 	// test server hooks

@@ -18,41 +18,38 @@ import (
 // the DataStreams receive and broadcast DataFrames to other DataStreams.
 // the ControlStream is always the first stream established between server and client.
 type StreamGroup struct {
-	ctx             context.Context
-	baseMetadata    metadata.Metadata
-	controlStream   *ServerControlStream
-	connector       *Connector
-	metadataDecoder metadata.Decoder
-	router          router.Router
-	logger          *slog.Logger
-	group           sync.WaitGroup
+	ctx           context.Context
+	baseMetadata  metadata.M
+	controlStream *ServerControlStream
+	connector     *Connector
+	router        router.Router
+	logger        *slog.Logger
+	group         sync.WaitGroup
 }
 
 // NewStreamGroup returns the StreamGroup.
 func NewStreamGroup(
 	ctx context.Context,
-	baseMetadata metadata.Metadata,
+	baseMetadata metadata.M,
 	controlStream *ServerControlStream,
 	connector *Connector,
-	metadataDecoder metadata.Decoder,
 	router router.Router,
 	logger *slog.Logger,
 ) *StreamGroup {
 	group := &StreamGroup{
-		ctx:             ctx,
-		baseMetadata:    baseMetadata,
-		controlStream:   controlStream,
-		connector:       connector,
-		metadataDecoder: metadataDecoder,
-		router:          router,
-		logger:          logger,
+		ctx:           ctx,
+		baseMetadata:  baseMetadata,
+		controlStream: controlStream,
+		connector:     connector,
+		router:        router,
+		logger:        logger,
 	}
 	logger.Info("connection connected")
 
 	return group
 }
 
-func (g *StreamGroup) handleRoute(hf *frame.HandshakeFrame, md metadata.Metadata) (router.Route, error) {
+func (g *StreamGroup) handleRoute(hf *frame.HandshakeFrame, md metadata.M) (router.Route, error) {
 	if hf.StreamType != byte(StreamTypeStreamFunction) {
 		return nil, nil
 	}
@@ -87,29 +84,34 @@ type handshakeResult struct {
 
 // makeHandshakeFunc creates a function that will handle a HandshakeFrame.
 // It takes route parameter, which will be assigned after the returned function is executed.
-func (g *StreamGroup) makeHandshakeFunc(result *handshakeResult) func(hf *frame.HandshakeFrame) (metadata.Metadata, error) {
-	return func(hf *frame.HandshakeFrame) (md metadata.Metadata, err error) {
+func (g *StreamGroup) makeHandshakeFunc(result *handshakeResult) func(hf *frame.HandshakeFrame) (metadata.M, error) {
+	return func(hf *frame.HandshakeFrame) (metadata.M, error) {
 		_, ok, err := g.connector.Get(hf.ID)
 		if err != nil {
-			return
+			return metadata.M{}, err
 		}
 		if ok {
-			return nil, errors.New("yomo: stream id is not allowed to be a duplicate")
-		}
-		md, err = g.metadataDecoder.Decode(hf.Metadata)
-		if err != nil {
-			return
+			return metadata.M{}, errors.New("yomo: stream id is not allowed to be a duplicate")
 		}
 
-		md = md.Merge(g.baseMetadata)
+		md, err := metadata.New(hf.Metadata)
+		if err != nil {
+			return metadata.M{}, err
+		}
+
+		// merge base metadata
+		g.baseMetadata.Range(func(k, v string) bool {
+			md.Set(k, v)
+			return true
+		})
 
 		route, err := g.handleRoute(hf, md)
 		if err != nil {
-			return
+			return metadata.M{}, err
 		}
 		result.route = route
 
-		return
+		return metadata.M{}, err
 	}
 }
 

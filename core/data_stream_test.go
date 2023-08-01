@@ -19,7 +19,7 @@ func TestDataStream(t *testing.T) {
 		id        = "123456"
 		styp      = StreamTypeStreamFunction
 		observed  = []uint32{1, 2, 3}
-		md        metadata.Metadata
+		md        metadata.M
 	)
 
 	// Create a stream that initializes the read buffer with a string that has been split by spaces.

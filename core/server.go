@@ -39,7 +39,6 @@ type Server struct {
 	name                    string
 	connector               *Connector
 	router                  router.Router
-	metadataDecoder         metadata.Decoder
 	codec                   frame.Codec
 	packetReadWriter        frame.PacketReadWriter
 	counterOfDataFrame      int64
@@ -103,10 +102,6 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 
 // Serve the server with a net.PacketConn.
 func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
-	if err := s.validateMetadataDecoder(); err != nil {
-		return err
-	}
-
 	if err := s.validateRouter(); err != nil {
 		return err
 	}
@@ -152,7 +147,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		}
 
 		go func(conn Connection) {
-			streamGroup := NewStreamGroup(ctx, md, controlStream, s.connector, s.metadataDecoder, s.router, logger)
+			streamGroup := NewStreamGroup(ctx, md, controlStream, s.connector, s.router, logger)
 
 			defer streamGroup.Wait()
 			defer logger.Debug("quic connection closed")
@@ -298,7 +293,7 @@ func (s *Server) mainFrameHandler(c *Context) error {
 	return nil
 }
 
-func (s *Server) handleAuthenticationFrame(f *frame.AuthenticationFrame) (metadata.Metadata, bool, error) {
+func (s *Server) handleAuthenticationFrame(f *frame.AuthenticationFrame) (metadata.M, bool, error) {
 	md, ok := auth.Authenticate(s.opts.auths, f)
 
 	if ok {
@@ -318,15 +313,19 @@ func (s *Server) handleDataFrame(c *Context) error {
 
 	f := c.Frame.(*frame.DataFrame)
 
-	frameMetadata, err := s.metadataDecoder.Decode(f.Meta.Metadata)
+	fmd, err := metadata.New(f.Meta.Metadata)
 	if err != nil {
 		return err
 	}
 
-	md := frameMetadata.Merge(c.DataStream.Metadata())
+	// merge data stream metadata.
+	c.DataStream.Metadata().Range(func(k, v string) bool {
+		fmd.Set(k, v)
+		return true
+	})
 
 	// route
-	route := s.router.Route(md)
+	route := s.router.Route(fmd)
 	if route == nil {
 		errString := "can't find sfn route"
 		c.Logger.Warn(errString)
@@ -433,14 +432,6 @@ func (s *Server) ConfigRouter(router router.Router) {
 	s.mu.Unlock()
 }
 
-// ConfigMetadataDecoder is used to set Decoder by zipper.
-func (s *Server) ConfigMetadataDecoder(decoder metadata.Decoder) {
-	s.mu.Lock()
-	s.metadataDecoder = decoder
-	s.logger.Debug("config metadata decoder")
-	s.mu.Unlock()
-}
-
 // AddDownstreamServer add a downstream server to this server. all the DataFrames will be
 // dispatch to all the downstreams.
 func (s *Server) AddDownstreamServer(addr string, c FrameWriterConnection) {
@@ -480,13 +471,6 @@ func (s *Server) dispatchToDownstreams(c *Context) {
 func (s *Server) validateRouter() error {
 	if s.router == nil {
 		return errors.New("server's router is nil")
-	}
-	return nil
-}
-
-func (s *Server) validateMetadataDecoder() error {
-	if s.metadataDecoder == nil {
-		return errors.New("server's metadataDecoder is nil")
 	}
 	return nil
 }
