@@ -460,6 +460,7 @@ func (s *Server) dispatchToDownstreams(c *Context) {
 			broadcast = f.Meta.Broadcast
 			fmd       = f.Meta.Metadata
 			tid       = f.Meta.TID
+			sid       = f.Meta.SID
 		)
 		if broadcast {
 			if len(fmd) == 0 {
@@ -470,7 +471,7 @@ func (s *Server) dispatchToDownstreams(c *Context) {
 				f.Meta.Metadata = byteMd
 			}
 			for streamID, ds := range s.downstreams {
-				c.Logger.Info("dispatching to downstream", "dispatch_stream_id", streamID, "tid", tid)
+				c.Logger.Info("dispatching to downstream", "dispatch_stream_id", streamID, "tid", tid, "sid", sid)
 				ds.WriteFrame(f)
 			}
 		}

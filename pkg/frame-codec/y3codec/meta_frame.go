@@ -8,11 +8,14 @@ import (
 // encodeMetaFrame returns Y3 encoded bytes of MetaFrame.
 func encodeMetaFrame(f *frame.MetaFrame) ([]byte, error) {
 	meta := y3.NewNodePacketEncoder(tagMetaFrame)
-	// transaction ID
-	transactionID := y3.NewPrimitivePacketEncoder(byte(tagTransactionID))
-	transactionID.SetStringValue(f.TID)
-	meta.AddPrimitivePacket(transactionID)
-
+	// TID
+	tid := y3.NewPrimitivePacketEncoder(byte(tagTID))
+	tid.SetStringValue(f.TID)
+	meta.AddPrimitivePacket(tid)
+	// SID
+	sid := y3.NewPrimitivePacketEncoder(byte(tagSID))
+	sid.SetStringValue(f.SID)
+	meta.AddPrimitivePacket(sid)
 	// source ID
 	sourceID := y3.NewPrimitivePacketEncoder(byte(tagSourceID))
 	sourceID.SetStringValue(f.SourceID)
@@ -43,12 +46,18 @@ func decodeMetaFrame(data []byte, f *frame.MetaFrame) error {
 
 	for k, v := range nodeBlock.PrimitivePackets {
 		switch k {
-		case byte(tagTransactionID):
+		case byte(tagTID):
 			val, err := v.ToUTF8String()
 			if err != nil {
 				return err
 			}
 			f.TID = val
+		case byte(tagSID):
+			val, err := v.ToUTF8String()
+			if err != nil {
+				return err
+			}
+			f.SID = val
 		case byte(tagMetadata):
 			f.Metadata = v.ToBytes()
 		case byte(tagSourceID):
@@ -70,9 +79,10 @@ func decodeMetaFrame(data []byte, f *frame.MetaFrame) error {
 }
 
 var (
-	tagMetaFrame     byte = 0x2F
-	tagMetadata      byte = 0x03
-	tagTransactionID byte = 0x01
-	tagSourceID      byte = 0x02
-	tagBroadcast     byte = 0x04
+	tagMetaFrame byte = 0x2F
+	tagMetadata  byte = 0x03
+	tagTID       byte = 0x01
+	tagSourceID  byte = 0x02
+	tagBroadcast byte = 0x04
+	tagSID       byte = 0x05
 )

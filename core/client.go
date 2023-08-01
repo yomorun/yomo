@@ -13,20 +13,23 @@ import (
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 	"github.com/yomorun/yomo/pkg/id"
+	"github.com/yomorun/yomo/pkg/trace"
+	oteltrace "go.opentelemetry.io/otel/trace"
 	"golang.org/x/exp/slog"
 )
 
 // Client is the abstraction of a YoMo-Client. a YoMo-Client can be
 // Source, Upstream Zipper or StreamFunction.
 type Client struct {
-	name       string                     // name of the client
-	clientID   string                     // id of the client
-	streamType StreamType                 // type of the dataStream
-	processor  func(*frame.DataFrame)     // function to invoke when data arrived
-	receiver   func(*frame.BackflowFrame) // function to invoke when data is processed
-	errorfn    func(error)                // function to invoke when error occured
-	opts       *clientOptions
-	logger     *slog.Logger
+	name           string                     // name of the client
+	clientID       string                     // id of the client
+	streamType     StreamType                 // type of the dataStream
+	processor      func(*frame.DataFrame)     // function to invoke when data arrived
+	receiver       func(*frame.BackflowFrame) // function to invoke when data is processed
+	errorfn        func(error)                // function to invoke when error occured
+	opts           *clientOptions
+	logger         *slog.Logger
+	tracerProvider oteltrace.TracerProvider
 
 	// ctx and ctxCancel manage the lifecycle of client.
 	ctx       context.Context
@@ -58,6 +61,7 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 		streamType:     connType,
 		opts:           option,
 		logger:         logger,
+		tracerProvider: option.tracerProvider,
 		errorfn:        func(err error) { logger.Error("client err", "err", err) },
 		writeFrameChan: make(chan frame.Frame),
 		ctx:            ctx,
@@ -124,6 +128,20 @@ func (c *Client) runBackground(ctx context.Context, addr string, controlStream *
 
 // WriteFrame write frame to client.
 func (c *Client) WriteFrame(f frame.Frame) error {
+	if c.tracerProvider != nil {
+		// trace for dataframe
+		if f.Type() == frame.TypeDataFrame {
+			dataFrame, ok := f.(*frame.DataFrame)
+			if ok {
+				span, err := trace.NewSpan(c.tracerProvider, c.streamType.String(), c.name, dataFrame.Meta.TID, dataFrame.Meta.SID)
+				if err != nil {
+					c.logger.Error("trace error", "err", err)
+				} else {
+					defer span.End()
+				}
+			}
+		}
+	}
 	if c.opts.nonBlockWrite {
 		return c.nonBlockWriteFrame(f)
 	}

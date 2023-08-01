@@ -104,7 +104,8 @@ func (s *streamFunction) Connect() error {
 					s.client.Logger().Debug("pipe fn send", "payload_frame", data)
 
 					frame := &frame.DataFrame{
-						Meta: &frame.MetaFrame{TID: id.New()},
+						// TODO: TID need to set from source
+						Meta: &frame.MetaFrame{SID: id.New()},
 						Payload: &frame.PayloadFrame{
 							Tag:      data.Tag,
 							Carriage: data.Carriage,

@@ -67,8 +67,10 @@ func (f *DataFrame) Type() Type { return TypeDataFrame }
 
 // MetaFrame is used to describe a DataFrame, It is a part of DataFrame.
 type MetaFrame struct {
-	// TID trace a DataFrame.
+	// TID the ID of tracer
 	TID string
+	// SID the ID of the DataFrame
+	SID string
 	// Metadata stores additional data beyond the Payload.
 	Metadata []byte
 	// SourceID records who sent this DataFrame.
