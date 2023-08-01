@@ -23,7 +23,7 @@ func Default(functions []config.Function) Router {
 }
 
 // Route get route from metadata.
-func (r *DefaultRouter) Route(metadata metadata.Metadata) Route {
+func (r *DefaultRouter) Route(metadata metadata.M) Route {
 	return r.r
 }
 

@@ -17,7 +17,7 @@ type Authentication interface {
 	// Init authentication initialize arguments
 	Init(args ...string)
 	// Authenticate authentication client's credential
-	Authenticate(payload string) (metadata.Metadata, bool)
+	Authenticate(payload string) (metadata.M, bool)
 	// Name authentication name
 	Name() string
 }
@@ -67,18 +67,18 @@ func (c *Credential) Name() string {
 // Authenticate finds an authentication way in `auths` and authenticates the Object.
 //
 // If `auths` is nil or empty, It returns true, It think that authentication is not required.
-func Authenticate(auths map[string]Authentication, obj *frame.AuthenticationFrame) (metadata.Metadata, bool) {
+func Authenticate(auths map[string]Authentication, obj *frame.AuthenticationFrame) (metadata.M, bool) {
 	if auths == nil || len(auths) <= 0 {
-		return &metadata.Default{}, true
+		return metadata.M{}, true
 	}
 
 	if obj == nil {
-		return &metadata.Default{}, false
+		return metadata.M{}, false
 	}
 
 	auth, ok := auths[obj.AuthName]
 	if !ok {
-		return &metadata.Default{}, false
+		return metadata.M{}, false
 	}
 
 	return auth.Authenticate(obj.AuthPayload)
