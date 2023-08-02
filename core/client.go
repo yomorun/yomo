@@ -13,7 +13,6 @@ import (
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 	"github.com/yomorun/yomo/pkg/id"
-	"github.com/yomorun/yomo/pkg/trace"
 	oteltrace "go.opentelemetry.io/otel/trace"
 	"golang.org/x/exp/slog"
 )
@@ -128,20 +127,6 @@ func (c *Client) runBackground(ctx context.Context, addr string, controlStream *
 
 // WriteFrame write frame to client.
 func (c *Client) WriteFrame(f frame.Frame) error {
-	if c.tracerProvider != nil {
-		// trace for dataframe
-		if f.Type() == frame.TypeDataFrame {
-			dataFrame, ok := f.(*frame.DataFrame)
-			if ok {
-				span, err := trace.NewSpan(c.tracerProvider, c.streamType.String(), c.name, dataFrame.Meta.TID, dataFrame.Meta.SID)
-				if err != nil {
-					c.logger.Error("trace error", "err", err)
-				} else {
-					defer span.End()
-				}
-			}
-		}
-	}
 	if c.opts.nonBlockWrite {
 		return c.nonBlockWriteFrame(f)
 	}
@@ -377,4 +362,9 @@ type FrameWriterConnection interface {
 	Name() string
 	Close() error
 	Connect(context.Context, string) error
+}
+
+// TracerProvider returns the tracer provider of client.
+func (c *Client) TracerProvider() oteltrace.TracerProvider {
+	return c.tracerProvider
 }

@@ -72,12 +72,12 @@ func NewTracerProviderWithJaeger(service string) (*tracesdk.TracerProvider, func
 
 // NewSpan creates a new span of OpenTelemetry.
 func NewSpan(tp trace.TracerProvider, tracerName string, spanName string, traceID string, spanID string) (trace.Span, error) {
-	return NewSpanWithAttrs(tp, traceID, spanID, tracerName, spanName, false)
+	return NewSpanWithAttrs(tp, tracerName, spanName, traceID, spanID, false)
 }
 
 // NewTraceSpan creates a new span of OpenTelemetry from remote parent tracing.
 func NewRemoteSpan(tp trace.TracerProvider, tracerName string, spanName string, traceID string, spanID string) (trace.Span, error) {
-	return NewSpanWithAttrs(tp, traceID, spanID, tracerName, spanName, true)
+	return NewSpanWithAttrs(tp, tracerName, spanName, traceID, spanID, true)
 }
 
 // NewSpanWithAttrs creates a new span of OpenTelemetry with attributes.
@@ -111,7 +111,7 @@ func NewSpanWithAttrs(tp trace.TracerProvider, tracerName string, spanName strin
 		SpanID:  sid,
 		Remote:  remote,
 	}
-	ctx = trace.ContextWithSpanContext(ctx, trace.NewSpanContext(scc))
+	ctx = trace.ContextWithRemoteSpanContext(ctx, trace.NewSpanContext(scc))
 	tr := tp.Tracer(tracerName)
 	_, span := tr.Start(ctx, spanName)
 	return span, nil

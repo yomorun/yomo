@@ -6,6 +6,7 @@ import (
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/id"
+	"github.com/yomorun/yomo/pkg/trace"
 )
 
 // Source is responsible for sending data to yomo.
@@ -76,8 +77,19 @@ func (s *yomoSource) Connect() error {
 // Write writes data with specified tag.
 func (s *yomoSource) Write(tag uint32, data []byte) error {
 	f := &frame.DataFrame{
-		Meta:    &frame.MetaFrame{TID: id.New(), SID: id.New(), SourceID: s.client.ClientID()},
+		Meta:    &frame.MetaFrame{TID: id.TID(), SID: id.SID(), SourceID: s.client.ClientID()},
 		Payload: &frame.PayloadFrame{Tag: tag, Carriage: data},
+	}
+	// trace
+	tp := s.client.TracerProvider()
+	if tp != nil {
+		s.client.Logger().Debug("source trace", "tid", f.Meta.TID, "sid", f.Meta.SID)
+		span, err := trace.NewSpan(tp, core.StreamTypeSource.String(), s.name, f.Meta.TID, f.Meta.SID)
+		if err != nil {
+			s.client.Logger().Error("source trace error", "err", err)
+		} else {
+			defer span.End()
+		}
 	}
 	s.client.Logger().Debug("source write", "tag", tag, "data", data)
 	return s.client.WriteFrame(f)
@@ -97,10 +109,20 @@ func (s *yomoSource) SetReceiveHandler(fn func(uint32, []byte)) {
 // Broadcast write the data to all downstreams.
 func (s *yomoSource) Broadcast(tag uint32, data []byte) error {
 	f := &frame.DataFrame{
-		Meta:    &frame.MetaFrame{TID: id.New(), SID: id.New(), SourceID: s.client.ClientID(), Broadcast: true},
+		Meta:    &frame.MetaFrame{TID: id.TID(), SID: id.SID(), SourceID: s.client.ClientID(), Broadcast: true},
 		Payload: &frame.PayloadFrame{Tag: tag, Carriage: data},
 	}
-
+	// trace
+	tp := s.client.TracerProvider()
+	if tp != nil {
+		s.client.Logger().Debug("source trace", "tid", f.Meta.TID, "sid", f.Meta.SID)
+		span, err := trace.NewSpan(tp, core.StreamTypeSource.String(), s.name, f.Meta.TID, f.Meta.SID)
+		if err != nil {
+			s.client.Logger().Error("source trace error", "err", err)
+		} else {
+			defer span.End()
+		}
+	}
 	s.client.Logger().Debug("broadcast", "tag", tag, "data", data)
 	return s.client.WriteFrame(f)
 }

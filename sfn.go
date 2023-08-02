@@ -7,6 +7,7 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/serverless"
 	"github.com/yomorun/yomo/pkg/id"
+	"github.com/yomorun/yomo/pkg/trace"
 )
 
 // StreamFunction defines serverless streaming functions.
@@ -147,6 +148,20 @@ func (s *streamFunction) Close() error {
 func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 	if s.fn != nil {
 		go func() {
+			// sfn use new SID for each data frame
+			dataFrame.Meta.SID = id.SID()
+			// trace
+			tp := s.client.TracerProvider()
+			if tp != nil {
+				s.client.Logger().Debug("sfn trace", "tid", dataFrame.Meta.TID, "sid", dataFrame.Meta.SID)
+				span, err := trace.NewSpan(tp, core.StreamTypeStreamFunction.String(), s.name, dataFrame.Meta.TID, dataFrame.Meta.SID)
+				if err != nil {
+					s.client.Logger().Error("sfn trace error", "err", err)
+				} else {
+					defer span.End()
+				}
+			}
+			// process
 			serverlessCtx := serverless.NewContext(s.client, dataFrame)
 			s.fn(serverlessCtx)
 		}()

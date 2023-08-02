@@ -2,7 +2,6 @@ package serverless
 
 import (
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/pkg/id"
 )
 
 // Context sfn handler context
@@ -39,7 +38,7 @@ func (c *Context) Write(tag uint32, data []byte) error {
 	dataFrame := &frame.DataFrame{
 		Meta: &frame.MetaFrame{
 			TID:      metaFrame.TID,      // reuse TID
-			SID:      id.New(),           // generate new SFN SID
+			SID:      metaFrame.SID,      // use new SFN SID
 			SourceID: metaFrame.SourceID, // reuse sourceID
 		},
 		Payload: &frame.PayloadFrame{
