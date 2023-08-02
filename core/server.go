@@ -313,7 +313,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 
 	f := c.Frame.(*frame.DataFrame)
 
-	fmd, err := metadata.New(f.Meta.Metadata)
+	fmd, err := metadata.Decode(f.Meta.Metadata)
 	if err != nil {
 		return err
 	}

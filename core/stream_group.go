@@ -94,7 +94,7 @@ func (g *StreamGroup) makeHandshakeFunc(result *handshakeResult) func(hf *frame.
 			return metadata.M{}, errors.New("yomo: stream id is not allowed to be a duplicate")
 		}
 
-		md, err := metadata.New(hf.Metadata)
+		md, err := metadata.Decode(hf.Metadata)
 		if err != nil {
 			return metadata.M{}, err
 		}

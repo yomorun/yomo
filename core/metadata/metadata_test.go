@@ -7,7 +7,7 @@ import (
 )
 
 func Test(t *testing.T) {
-	var md = M{"aaa": "bbb"}
+	var md = New(M{"aaa": "bbb"})
 
 	t.Run("Get", func(t *testing.T) {
 		got, ok := md.Get("aaa")
@@ -73,23 +73,16 @@ func Test(t *testing.T) {
 		assert.Equal(t, md4, md5)
 	})
 
-	t.Run("Delete", func(t *testing.T) {
-		md.Delete("aaa")
-		got, ok := md.Get("aaa")
-		assert.False(t, ok)
-		assert.Equal(t, "", got)
-	})
-
-	t.Run("Encode", func(t *testing.T) {
+	t.Run("Encode Decode", func(t *testing.T) {
 		b, err := md.Encode()
 		assert.NoError(t, err)
 
-		md2, err := New(b)
+		md2, err := Decode(b)
 		assert.NoError(t, err)
 
 		assert.Equal(t, md, md2)
 		t.Run("nil", func(t *testing.T) {
-			md2, err := New(nil)
+			md2, err := Decode(nil)
 			assert.NoError(t, err)
 			assert.Equal(t, M{}, md2)
 

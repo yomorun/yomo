@@ -388,7 +388,7 @@ func (cs *ClientControlStream) acceptStream(ctx context.Context) (DataStream, er
 	// Unlike server-side data streams,
 	// client-side data streams do not merge connection-level metadata and stream-level metadata.
 	// Instead, they only contain stream-level metadata.
-	md, err := metadata.New(f.Metadata)
+	md, err := metadata.Decode(f.Metadata)
 	if err != nil {
 		return nil, err
 	}

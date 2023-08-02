@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/router"
 	"github.com/yomorun/yomo/core/ylog"
 	"github.com/yomorun/yomo/pkg/config"
@@ -130,9 +131,11 @@ func TestFrameRoundTrip(t *testing.T) {
 	}
 	assert.ElementsMatch(t, nameList, []string{"source", "sfn-1"})
 
+	md, _ := metadata.New(metadata.M{"foo": "bar"}).Encode()
+
 	dataFrame := &frame.DataFrame{
 		Meta: &frame.MetaFrame{
-			Metadata:  []byte("the-metadata"),
+			Metadata:  md,
 			SourceID:  source.clientID,
 			Broadcast: true,
 		},
