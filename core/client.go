@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"runtime"
 	"time"
 
@@ -366,5 +367,11 @@ type FrameWriterConnection interface {
 
 // TracerProvider returns the tracer provider of client.
 func (c *Client) TracerProvider() oteltrace.TracerProvider {
+	if c.tracerProvider == nil {
+		return nil
+	}
+	if reflect.ValueOf(c.tracerProvider).IsNil() {
+		return nil
+	}
 	return c.tracerProvider
 }
