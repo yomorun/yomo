@@ -76,23 +76,7 @@ func (s *yomoSource) Connect() error {
 
 // Write writes data with specified tag.
 func (s *yomoSource) Write(tag uint32, data []byte) error {
-	f := &frame.DataFrame{
-		Meta:    &frame.MetaFrame{TID: id.TID(), SID: id.SID(), SourceID: s.client.ClientID()},
-		Payload: &frame.PayloadFrame{Tag: tag, Carriage: data},
-	}
-	// trace
-	tp := s.client.TracerProvider()
-	if tp != nil {
-		s.client.Logger().Debug("source trace", "tid", f.Meta.TID, "sid", f.Meta.SID)
-		span, err := trace.NewSpan(tp, core.StreamTypeSource.String(), s.name, f.Meta.TID, f.Meta.SID)
-		if err != nil {
-			s.client.Logger().Error("source trace error", "err", err)
-		} else {
-			defer span.End()
-		}
-	}
-	s.client.Logger().Debug("source write", "tag", tag, "data", data)
-	return s.client.WriteFrame(f)
+	return s.write(tag, data, false)
 }
 
 // SetErrorHandler set the error handler function when server error occurs
@@ -108,21 +92,39 @@ func (s *yomoSource) SetReceiveHandler(fn func(uint32, []byte)) {
 
 // Broadcast write the data to all downstreams.
 func (s *yomoSource) Broadcast(tag uint32, data []byte) error {
-	f := &frame.DataFrame{
-		Meta:    &frame.MetaFrame{TID: id.TID(), SID: id.SID(), SourceID: s.client.ClientID(), Broadcast: true},
-		Payload: &frame.PayloadFrame{Tag: tag, Carriage: data},
-	}
+	return s.write(tag, data, true)
+}
+
+func (s *yomoSource) write(tag uint32, data []byte, broadcast bool) error {
+	var tid, sid string
 	// trace
 	tp := s.client.TracerProvider()
 	if tp != nil {
-		s.client.Logger().Debug("source trace", "tid", f.Meta.TID, "sid", f.Meta.SID)
-		span, err := trace.NewSpan(tp, core.StreamTypeSource.String(), s.name, f.Meta.TID, f.Meta.SID)
+		span, err := trace.NewSpan(tp, core.StreamTypeSource.String(), s.name, "", "")
 		if err != nil {
 			s.client.Logger().Error("source trace error", "err", err)
 		} else {
 			defer span.End()
+			tid = span.SpanContext().TraceID().String()
+			sid = span.SpanContext().SpanID().String()
 		}
 	}
-	s.client.Logger().Debug("broadcast", "tag", tag, "data", data)
+	if tid == "" {
+		s.client.Logger().Debug("source create new tid")
+		tid = id.TID()
+	}
+	if sid == "" {
+		s.client.Logger().Debug("source create new sid")
+		sid = id.SID()
+	}
+	if tp != nil {
+		s.client.Logger().Debug("source trace", "tid", tid, "sid", sid, "broadcast", broadcast)
+	}
+	// write frame
+	f := &frame.DataFrame{
+		Meta:    &frame.MetaFrame{TID: tid, SID: sid, SourceID: s.client.ClientID(), Broadcast: true},
+		Payload: &frame.PayloadFrame{Tag: tag, Carriage: data},
+	}
+	s.client.Logger().Debug("source write", "tag", tag, "data", data, "broadcast", broadcast)
 	return s.client.WriteFrame(f)
 }

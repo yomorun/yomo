@@ -8,6 +8,7 @@ import (
 	"github.com/yomorun/yomo/core/serverless"
 	"github.com/yomorun/yomo/pkg/id"
 	"github.com/yomorun/yomo/pkg/trace"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 // StreamFunction defines serverless streaming functions.
@@ -147,24 +148,38 @@ func (s *streamFunction) Close() error {
 // func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
 func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 	if s.fn != nil {
-		go func() {
-			// sfn use new SID for each data frame
-			dataFrame.Meta.SID = id.SID()
+		tp := s.client.TracerProvider()
+		go func(tp oteltrace.TracerProvider) {
+			var tid, sid string
 			// trace
-			tp := s.client.TracerProvider()
 			if tp != nil {
-				s.client.Logger().Debug("sfn trace", "tid", dataFrame.Meta.TID, "sid", dataFrame.Meta.SID)
+				// create span
 				span, err := trace.NewSpan(tp, core.StreamTypeStreamFunction.String(), s.name, dataFrame.Meta.TID, dataFrame.Meta.SID)
 				if err != nil {
 					s.client.Logger().Error("sfn trace error", "err", err)
 				} else {
 					defer span.End()
+					tid = span.SpanContext().TraceID().String()
+					sid = span.SpanContext().SpanID().String()
 				}
 			}
-			// process
+			if tid == "" {
+				s.client.Logger().Debug("sfn create new tid")
+				tid = id.TID()
+			}
+			if sid == "" {
+				s.client.Logger().Debug("sfn create new sid")
+				sid = id.SID()
+			}
+			// reallocate data frame with new TID and SID
+			dataFrame.Meta.TID = tid
+			dataFrame.Meta.SID = sid
+			if tp != nil {
+				s.client.Logger().Debug("sfn trace", "tid", dataFrame.Meta.TID, "sid", dataFrame.Meta.SID)
+			}
 			serverlessCtx := serverless.NewContext(s.client, dataFrame)
 			s.fn(serverlessCtx)
-		}()
+		}(tp)
 	} else if s.pfn != nil {
 		data := dataFrame.Payload.Carriage
 		s.client.Logger().Debug("pipe sfn receive", "data_len", len(data), "data", data)

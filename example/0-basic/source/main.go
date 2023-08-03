@@ -51,7 +51,7 @@ func main() {
 }
 
 func generateAndSendData(stream yomo.Source) error {
-	var i = 0
+	i := 0
 	for {
 		// generate random data.
 		data := noiseData{

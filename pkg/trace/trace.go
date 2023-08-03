@@ -111,8 +111,13 @@ func NewSpanWithAttrs(tp trace.TracerProvider, tracerName string, spanName strin
 		SpanID:  sid,
 		Remote:  remote,
 	}
-	ctx = trace.ContextWithRemoteSpanContext(ctx, trace.NewSpanContext(scc))
+	ctx = trace.ContextWithSpanContext(ctx, trace.NewSpanContext(scc))
 	tr := tp.Tracer(tracerName)
 	_, span := tr.Start(ctx, spanName)
+	if len(attrs) > 0 {
+		for k, v := range attrs[0] {
+			span.SetAttributes(attribute.Key(k).String(v))
+		}
+	}
 	return span, nil
 }
