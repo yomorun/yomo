@@ -52,7 +52,7 @@ tasks:
 
   sfn:
     desc: run stream functions
-    deps: [sfn-1, sfn-2, sfn-3]
+    deps: [sfn-1, sfn-2, sfn-3, sfn-4]
 
   sfn-1:
     desc: run stream functions 1
@@ -77,6 +77,15 @@ tasks:
     cmds:
       - "go build -o ./bin/sfn-3{{exeExt}} ./stream-fn-3/app.go"
       - "./bin/sfn-3{{exeExt}}"
+    env:
+      YOMO_LOG_LEVEL: debug
+      YOMO_TRACE_JAEGER_ENDPOINT: 'http://localhost:14268/api/traces'
+
+  sfn-4:
+    desc: run stream functions 4
+    cmds:
+      - "go build -o ./bin/sfn-4{{exeExt}} ./stream-fn-4/app.go"
+      - "./bin/sfn-4{{exeExt}}"
     env:
       YOMO_LOG_LEVEL: debug
       YOMO_TRACE_JAEGER_ENDPOINT: 'http://localhost:14268/api/traces'

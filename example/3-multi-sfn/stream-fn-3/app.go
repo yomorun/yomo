@@ -75,8 +75,9 @@ func handler(ctx serverless.Context) {
 	data := ctx.Data()
 	v := Float32frombytes(data)
 	log.Printf("✅ [fn3] observe <- %v", v)
-	observe <- v
-	ctx.Write(0x16, data)
+	go func() {
+		observe <- v
+	}()
 }
 
 // Handler defines a function that handle the input value.
