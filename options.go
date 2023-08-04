@@ -103,4 +103,11 @@ var (
 			o.clientOption = opts
 		}
 	}
+
+	// WithZipperTracerProvider sets tracer provider for the zipper.
+	WithZipperTracerProvider = func(tp trace.TracerProvider) ZipperOption {
+		return func(o *zipperOptions) {
+			o.serverOption = append(o.serverOption, core.WithServerTracerProvider(tp))
+		}
+	}
 )

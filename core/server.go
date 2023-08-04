@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"reflect"
 	"sync"
 	"sync/atomic"
 
@@ -21,6 +22,9 @@ import (
 	// authentication implements, Currently, only token authentication is implemented
 	_ "github.com/yomorun/yomo/pkg/auth"
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
+	"github.com/yomorun/yomo/pkg/id"
+	"github.com/yomorun/yomo/pkg/trace"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 // ErrServerClosed is returned by the Server's Serve and ListenAndServe methods after a call to Shutdown or Close.
@@ -52,6 +56,7 @@ type Server struct {
 	connectionCloseHandlers []ConnectionHandler
 	listener                Listener
 	logger                  *slog.Logger
+	tracerProvider          oteltrace.TracerProvider
 }
 
 // NewServer create a Server instance.
@@ -72,6 +77,7 @@ func NewServer(name string, opts ...ServerOption) *Server {
 		name:             name,
 		downstreams:      make(map[string]FrameWriterConnection),
 		logger:           logger,
+		tracerProvider:   options.tracerProvider,
 		codec:            y3codec.Codec(),
 		packetReadWriter: y3codec.PacketReadWriter(),
 		opts:             options,
@@ -317,6 +323,33 @@ func (s *Server) handleDataFrame(c *Context) error {
 	from := c.DataStream
 
 	f := c.Frame.(*frame.DataFrame)
+	// trace
+	var tid, sid string
+	tp := s.TracerProvider()
+	if tp != nil {
+		span, err := trace.NewSpan(tp, "zipper", "handle DataFrame", f.Meta.TID, f.Meta.SID)
+		if err != nil {
+			s.logger.Error("zipper trace error", "err", err)
+		} else {
+			defer span.End()
+			tid = span.SpanContext().TraceID().String()
+			sid = span.SpanContext().SpanID().String()
+		}
+		if tid == "" {
+			s.logger.Debug("zipper create new tid")
+			tid = id.TID()
+		}
+		if sid == "" {
+			s.logger.Debug("zipper create new sid")
+			sid = id.SID()
+		}
+		// reallocate data frame with new TID and SID
+		f.Meta.TID = tid
+		f.Meta.SID = sid
+		if tp != nil {
+			s.logger.Debug("zipper trace", "tid", f.Meta.TID, "sid", f.Meta.SID)
+		}
+	}
 
 	frameMetadata, err := s.metadataDecoder.Decode(f.Meta.Metadata)
 	if err != nil {
@@ -526,3 +559,14 @@ func (s *Server) authNames() []string {
 
 // Name returns the name of server.
 func (s *Server) Name() string { return s.name }
+
+// TracerProvider returns the tracer provider of server.
+func (s *Server) TracerProvider() oteltrace.TracerProvider {
+	if s.tracerProvider == nil {
+		return nil
+	}
+	if reflect.ValueOf(s.tracerProvider).IsNil() {
+		return nil
+	}
+	return s.tracerProvider
+}
