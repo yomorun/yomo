@@ -42,19 +42,19 @@ func (r *Runtime) RawByteHandler(ctx serverless.Context) {
 			continue
 		}
 
-		res, ok := (item.V).(frame.PayloadFrame)
+		res, ok := (item.V).(frame.DataFrame)
 		if !ok {
 			ylog.Warn("[Rx Handler] the data is not a frame.PayloadFrame, won't send it to YoMo-Zipper.")
 			continue
 		}
 
 		ylog.Debug("[RawByteHandler] Send data to YoMo-Zipper.", "tag", res.Tag)
-		ctx.Write(res.Tag, res.Carriage)
+		ctx.Write(res.Tag, res.Payload)
 	}
 }
 
 // PipeHandler processes data sequentially.
-func (r *Runtime) PipeHandler(in <-chan []byte, out chan<- *frame.PayloadFrame) {
+func (r *Runtime) PipeHandler(in <-chan []byte, out chan<- *frame.DataFrame) {
 	for {
 		select {
 		case req := <-in:
@@ -70,9 +70,9 @@ func (r *Runtime) PipeHandler(in <-chan []byte, out chan<- *frame.PayloadFrame) 
 				continue
 			}
 
-			res, ok := (item.V).(frame.PayloadFrame)
+			res, ok := (item.V).(frame.DataFrame)
 			if !ok {
-				ylog.Warn("[rx PipeHandler] the data is not a frame.PayloadFrame, won't send it to YoMo-Zipper.")
+				ylog.Warn("[rx PipeHandler] the data is not a frame.DataFrame, won't send it to YoMo-Zipper.")
 				continue
 			}
 

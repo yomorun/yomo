@@ -54,7 +54,7 @@ type streamFunction struct {
 	fn              core.AsyncHandler // user's function which will be invoked when data arrived
 	pfn             core.PipeHandler
 	pIn             chan []byte
-	pOut            chan *frame.PayloadFrame
+	pOut            chan *frame.DataFrame
 }
 
 // SetObserveDataTags set the data tag list that will be observed.
@@ -89,7 +89,7 @@ func (s *streamFunction) Connect() error {
 
 	if s.pfn != nil {
 		s.pIn = make(chan []byte)
-		s.pOut = make(chan *frame.PayloadFrame)
+		s.pOut = make(chan *frame.DataFrame)
 
 		// handle user's pipe function
 		go func() {
@@ -103,12 +103,12 @@ func (s *streamFunction) Connect() error {
 				if data != nil {
 					s.client.Logger().Debug("pipe fn send", "payload_frame", data)
 
+					md, _ := core.NewDefaultMetadata(s.client.ClientID(), false, id.New()).Encode()
+
 					frame := &frame.DataFrame{
-						Meta: &frame.MetaFrame{TID: id.New()},
-						Payload: &frame.PayloadFrame{
-							Tag:      data.Tag,
-							Carriage: data.Carriage,
-						},
+						Tag:      data.Tag,
+						Metadata: md,
+						Payload:  data.Payload,
 					}
 
 					s.client.WriteFrame(frame)
@@ -150,7 +150,7 @@ func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 			s.fn(serverlessCtx)
 		}()
 	} else if s.pfn != nil {
-		data := dataFrame.Payload.Carriage
+		data := dataFrame.Payload
 		s.client.Logger().Debug("pipe sfn receive", "data_len", len(data), "data", data)
 		s.pIn <- data
 	} else {

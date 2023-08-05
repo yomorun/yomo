@@ -247,7 +247,10 @@ func (s *Server) handleStreamContext(c *Context) {
 		}
 
 		// add frame to context
-		c.WithFrame(f)
+		if err := c.WithFrame(f); err != nil {
+			c.CloseWithError(err.Error())
+			break
+		}
 
 		// before frame handlers
 		for _, handler := range s.beforeHandlers {
@@ -311,21 +314,8 @@ func (s *Server) handleDataFrame(c *Context) error {
 
 	from := c.DataStream
 
-	f := c.Frame.(*frame.DataFrame)
-
-	fmd, err := metadata.Decode(f.Meta.Metadata)
-	if err != nil {
-		return err
-	}
-
-	// merge data stream metadata.
-	c.DataStream.Metadata().Range(func(k, v string) bool {
-		fmd.Set(k, v)
-		return true
-	})
-
 	// route
-	route := s.router.Route(fmd)
+	route := s.router.Route(c.FrameMetadata)
 	if route == nil {
 		errString := "can't find sfn route"
 		c.Logger.Warn(errString)
@@ -333,9 +323,9 @@ func (s *Server) handleDataFrame(c *Context) error {
 	}
 
 	// find stream function ids from the route.
-	streamIDs := route.GetForwardRoutes(f.Payload.Tag)
+	streamIDs := route.GetForwardRoutes(c.Frame.Tag)
 
-	c.Logger.Debug("sfn routing", "data_tag", f.Payload.Tag, "sfn_stream_ids", streamIDs, "connector", s.connector.Snapshot())
+	c.Logger.Debug("sfn routing", "data_tag", c.Frame.Tag, "sfn_stream_ids", streamIDs, "connector", s.connector.Snapshot())
 
 	for _, toID := range streamIDs {
 		stream, ok, err := s.connector.Get(toID)
@@ -356,7 +346,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 		)
 
 		// write data frame to stream
-		if err := stream.WriteFrame(f); err != nil {
+		if err := stream.WriteFrame(c.Frame); err != nil {
 			c.Logger.Error("failed to write frame for routing data", "err", err)
 		}
 	}
@@ -365,14 +355,13 @@ func (s *Server) handleDataFrame(c *Context) error {
 }
 
 func (s *Server) handleBackflowFrame(c *Context) error {
-	f := c.Frame.(*frame.DataFrame)
-	sourceID := f.Meta.SourceID
+	sourceID := GetSourceIDFromMetadata(c.FrameMetadata)
 	// write to source with BackflowFrame
 	bf := &frame.BackflowFrame{
-		Tag:      f.Payload.Tag,
-		Carriage: f.Payload.Carriage,
+		Tag:      c.Frame.Tag,
+		Carriage: c.Frame.Payload,
 	}
-	sourceStreams, err := s.connector.Find(sourceIDTagFindStreamFunc(sourceID, f.Payload.Tag))
+	sourceStreams, err := s.connector.Find(sourceIDTagFindStreamFunc(sourceID, c.Frame.Tag))
 	if err != nil {
 		return err
 	}
@@ -442,27 +431,22 @@ func (s *Server) AddDownstreamServer(addr string, c FrameWriterConnection) {
 
 // dispatch every DataFrames to all downstreams
 func (s *Server) dispatchToDownstreams(c *Context) {
-	stream := c.DataStream
-
-	if stream.StreamType() == StreamTypeSource {
-		f := c.Frame.(*frame.DataFrame)
-
+	if c.DataStream.StreamType() == StreamTypeSource {
 		var (
-			broadcast = f.Meta.Broadcast
-			fmd       = f.Meta.Metadata
-			tid       = f.Meta.TID
+			broadcast = GetBroadcastFromMetadata(c.FrameMetadata)
+			tid       = GetTIDFromMetadata(c.FrameMetadata)
 		)
 		if broadcast {
-			if len(fmd) == 0 {
-				byteMd, err := stream.Metadata().Encode()
-				if err != nil {
-					c.Logger.Error("failed to dispatch to downstream", "err", err)
-				}
-				f.Meta.Metadata = byteMd
+			mdBytes, err := c.FrameMetadata.Encode()
+			if err != nil {
+				c.Logger.Error("failed to dispatch to downstream", "err", err)
+				return
 			}
+			c.Frame.Metadata = mdBytes
+
 			for streamID, ds := range s.downstreams {
 				c.Logger.Info("dispatching to downstream", "dispatch_stream_id", streamID, "tid", tid)
-				ds.WriteFrame(f)
+				ds.WriteFrame(c.Frame)
 			}
 		}
 	}

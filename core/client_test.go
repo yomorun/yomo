@@ -98,7 +98,7 @@ func TestFrameRoundTrip(t *testing.T) {
 	// add a same name sfn to zipper.
 	sameNameSfn := createTestStreamFunction("sfn-1", obversedTag)
 	sameNameSfn.SetDataFrameObserver(func(bf *frame.DataFrame) {
-		assert.Equal(t, string(payload), string(bf.Payload.Carriage))
+		assert.Equal(t, string(payload), string(bf.Payload))
 
 		// panic test: reading array out of range.
 		arr := []int{1, 2}
@@ -131,18 +131,17 @@ func TestFrameRoundTrip(t *testing.T) {
 	}
 	assert.ElementsMatch(t, nameList, []string{"source", "sfn-1"})
 
-	md, _ := metadata.New(metadata.M{"foo": "bar"}).Encode()
+	md, _ := metadata.New(
+		NewDefaultMetadata(source.clientID, true, "tid"),
+		metadata.M{
+			"foo": "bar",
+		},
+	).Encode()
 
 	dataFrame := &frame.DataFrame{
-		Meta: &frame.MetaFrame{
-			Metadata:  md,
-			SourceID:  source.clientID,
-			Broadcast: true,
-		},
-		Payload: &frame.PayloadFrame{
-			Tag:      obversedTag,
-			Carriage: payload,
-		},
+		Tag:      obversedTag,
+		Metadata: md,
+		Payload:  payload,
 	}
 	dataFrameEncoded, _ := y3codec.Codec().Encode(dataFrame)
 
