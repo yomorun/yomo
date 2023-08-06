@@ -10,6 +10,7 @@ func encodeDataFrame(f *frame.DataFrame) ([]byte, error) {
 	// tag
 	tagBlock := y3.NewPrimitivePacketEncoder(tagDataFrameTag)
 	tagBlock.SetUInt32Value(f.Tag)
+
 	// metadata
 	metadataBlock := y3.NewPrimitivePacketEncoder(tagDataFramesMetadata)
 	metadataBlock.SetBytesValue(f.Metadata)
