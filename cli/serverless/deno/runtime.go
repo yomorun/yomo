@@ -97,7 +97,7 @@ func startSfn(name string, zipperAddr string, credential string, observed []fram
 	sfn.SetObserveDataTags(observed...)
 
 	sfn.SetHandler(
-		func(ctx serverless.Context) {
+		yomo.AsyncHandleFunc(func(ctx serverless.Context) {
 			tag := ctx.Tag()
 			err := binary.Write(conn, binary.LittleEndian, tag)
 			if err != nil {
@@ -145,7 +145,7 @@ func startSfn(name string, zipperAddr string, credential string, observed []fram
 
 				ctx.Write(tag, data)
 			}
-		},
+		}),
 	)
 
 	sfn.SetErrorHandler(

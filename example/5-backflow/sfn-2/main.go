@@ -22,7 +22,7 @@ func main() {
 	defer sfn.Close()
 
 	// set handler
-	sfn.SetHandler(handler)
+	sfn.SetHandler(yomo.AsyncHandleFunc(handler))
 	// start
 	err := sfn.Connect()
 	if err != nil {

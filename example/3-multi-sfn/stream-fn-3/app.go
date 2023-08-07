@@ -49,7 +49,7 @@ func main() {
 	sfn.SetObserveDataTags(0x15)
 	defer sfn.Close()
 
-	sfn.SetHandler(handler)
+	sfn.SetHandler(yomo.AsyncHandleFunc(handler))
 
 	err := sfn.Connect()
 	if err != nil {

@@ -15,11 +15,11 @@ type StreamFunction interface {
 	// Deprecated: use yomo.WithObserveDataTags instead
 	SetObserveDataTags(tag ...uint32)
 	// SetHandler set the handler function, which accept the raw bytes data and return the tag & response
-	SetHandler(fn core.AsyncHandler) error
+	SetHandler(fn AsyncHandler) error
 	// SetErrorHandler set the error handler function when server error occurs
 	SetErrorHandler(fn func(err error))
 	// SetPipeHandler set the pipe handler function
-	SetPipeHandler(fn core.PipeHandler) error
+	SetPipeHandler(fn PipeHandler) error
 	// Connect create a connection to the zipper
 	Connect() error
 	// Close will close the connection
@@ -50,9 +50,9 @@ type streamFunction struct {
 	name            string
 	zipperAddr      string
 	client          *core.Client
-	observeDataTags []uint32          // tag list that will be observed
-	fn              core.AsyncHandler // user's function which will be invoked when data arrived
-	pfn             core.PipeHandler
+	observeDataTags []uint32     // tag list that will be observed
+	asyncHandler    AsyncHandler // user's function which will be invoked when data arrived
+	pipeHandler     PipeHandler
 	pIn             chan []byte
 	pOut            chan *frame.DataFrame
 }
@@ -65,14 +65,15 @@ func (s *streamFunction) SetObserveDataTags(tag ...uint32) {
 }
 
 // SetHandler set the handler function, which accept the raw bytes data and return the tag & response.
-func (s *streamFunction) SetHandler(fn core.AsyncHandler) error {
-	s.fn = fn
+func (s *streamFunction) SetHandler(h AsyncHandler) error {
+	s.asyncHandler = h
 	s.client.Logger().Debug("set async handler")
 	return nil
 }
 
-func (s *streamFunction) SetPipeHandler(fn core.PipeHandler) error {
-	s.pfn = fn
+// SetPipeHandler set the pipe handler function.
+func (s *streamFunction) SetPipeHandler(h PipeHandler) error {
+	s.pipeHandler = h
 	s.client.Logger().Debug("set pipe handler")
 	return nil
 }
@@ -81,19 +82,32 @@ func (s *streamFunction) SetPipeHandler(fn core.PipeHandler) error {
 // handler which setted by SetHandler method.
 func (s *streamFunction) Connect() error {
 	s.client.Logger().Debug("sfn connecting to zipper ...")
+
+	if s.asyncHandler != nil {
+		if err := s.asyncHandler.Init(); err != nil {
+			s.client.Logger().Debug("failed to init async handler", "err", err)
+			return err
+		}
+	}
 	// notify underlying network operations, when data with tag we observed arrived, invoke the func
 	s.client.SetDataFrameObserver(func(data *frame.DataFrame) {
 		s.client.Logger().Debug("received data frame")
 		s.onDataFrame(data)
 	})
 
-	if s.pfn != nil {
+	if s.pipeHandler != nil {
+		// init pipe handler
+		if err := s.pipeHandler.Init(); err != nil {
+			s.client.Logger().Debug("failed to init pipe handler", "err", err)
+			return err
+		}
+
 		s.pIn = make(chan []byte)
 		s.pOut = make(chan *frame.DataFrame)
 
 		// handle user's pipe function
 		go func() {
-			s.pfn(s.pIn, s.pOut)
+			s.pipeHandler.Handle(s.pIn, s.pOut)
 		}()
 
 		// send user's pipe function outputs to zipper
@@ -144,12 +158,12 @@ func (s *streamFunction) Close() error {
 // when DataFrame we observed arrived, invoke the user's function
 // func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
 func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
-	if s.fn != nil {
+	if s.asyncHandler != nil {
 		go func() {
 			serverlessCtx := serverless.NewContext(s.client, dataFrame)
-			s.fn(serverlessCtx)
+			s.asyncHandler.Handle(serverlessCtx)
 		}()
-	} else if s.pfn != nil {
+	} else if s.pipeHandler != nil {
 		data := dataFrame.Payload
 		s.client.Logger().Debug("pipe sfn receive", "data_len", len(data), "data", data)
 		s.pIn <- data

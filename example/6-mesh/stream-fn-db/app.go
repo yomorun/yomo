@@ -44,7 +44,7 @@ func main() {
 	defer sfn.Close()
 
 	// set handler
-	sfn.SetHandler(Handler)
+	sfn.SetHandler(yomo.AsyncHandleFunc(Handler))
 
 	// set error handler
 	sfn.SetErrorHandler(func(err error) {

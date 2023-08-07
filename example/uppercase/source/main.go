@@ -27,10 +27,10 @@ func main() {
 	)
 	sink.SetObserveDataTags(0x34)
 	sink.SetHandler(
-		func(ctx serverless.Context) {
+		yomo.AsyncHandleFunc(func(ctx serverless.Context) {
 			data := ctx.Data()
 			log.Printf("[recv] %s", string(data))
-		},
+		}),
 	)
 	if err := sink.Connect(); err != nil {
 		log.Fatalln(err)

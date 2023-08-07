@@ -59,7 +59,7 @@ func main() {
 	rt := rx.NewRuntime(sfn)
 
 	// set handler
-	sfn.SetHandler(rt.RawByteHandler)
+	sfn.SetHandler(yomo.AsyncHandleFunc(rt.RawByteHandler))
 
 	// set error handler
 	sfn.SetErrorHandler(func(err error) {

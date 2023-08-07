@@ -63,14 +63,14 @@ func (s *wasmServerless) Run(verbose bool) error {
 
 		var ch chan error
 		sfn.SetHandler(
-			func(ctx serverless.Context) {
+			yomo.AsyncHandleFunc(func(ctx serverless.Context) {
 				s.mu.Lock()
 				defer s.mu.Unlock()
 				err := s.runtime.RunHandler(ctx)
 				if err != nil {
 					ch <- err
 				}
-			},
+			}),
 		)
 
 		sfn.SetErrorHandler(
