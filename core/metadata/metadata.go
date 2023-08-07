@@ -1,10 +1,11 @@
+// Package metadata defines Metadata of the DataFrame.
 package metadata
 
 import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-// Metadata stores additional information about the application.
+// M stores additional information about the application.
 //
 //	There are three types of metadata in yomo:
 //	 1. Metadata from `Authentication.Authenticate()`, This is connection-level metadata.
