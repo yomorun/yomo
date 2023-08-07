@@ -12,7 +12,7 @@ import (
 )
 
 // DefaultRouter providers a default implement of `router`,
-// It route the data according to obversed tag or connID.
+// It route the data according to observed tag or connID.
 type DefaultRouter struct {
 	r *defaultRoute
 }

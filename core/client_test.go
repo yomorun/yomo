@@ -39,7 +39,7 @@ func TestFrameRoundTrip(t *testing.T) {
 	ctx := context.Background()
 
 	var (
-		obversedTag = frame.Tag(1)
+		observedTag = frame.Tag(1)
 		backflowTag = frame.Tag(2)
 		payload     = []byte("hello data frame")
 		backflow    = []byte("hello backflow frame")
@@ -90,7 +90,7 @@ func TestFrameRoundTrip(t *testing.T) {
 
 	err = source.Connect(ctx, testaddr)
 	assert.NoError(t, err, "source connect must be success")
-	closeEarlySfn := createTestStreamFunction("close-early-sfn", obversedTag)
+	closeEarlySfn := createTestStreamFunction("close-early-sfn", observedTag)
 	closeEarlySfn.Connect(ctx, testaddr)
 	assert.Equal(t, nil, err)
 
@@ -98,12 +98,12 @@ func TestFrameRoundTrip(t *testing.T) {
 	closeEarlySfn.Close()
 	assert.Equal(t, nil, err)
 
-	sfn := createTestStreamFunction("sfn-1", obversedTag)
+	sfn := createTestStreamFunction("sfn-1", observedTag)
 	err = sfn.Connect(ctx, testaddr)
 	assert.NoError(t, err, "sfn connect must be success")
 
 	// add a same name sfn to zipper.
-	sameNameSfn := createTestStreamFunction("sfn-1", obversedTag)
+	sameNameSfn := createTestStreamFunction("sfn-1", observedTag)
 	sameNameSfn.SetDataFrameObserver(func(bf *frame.DataFrame) {
 		assert.Equal(t, string(payload), string(bf.Payload))
 
@@ -152,7 +152,7 @@ func TestFrameRoundTrip(t *testing.T) {
 	mdBytes, _ = md.Encode()
 
 	dataFrame := &frame.DataFrame{
-		Tag:      obversedTag,
+		Tag:      observedTag,
 		Metadata: mdBytes,
 		Payload:  payload,
 	}
@@ -214,14 +214,14 @@ func (a *hookTester) afterHandler(ctx *Context) error {
 	return nil
 }
 
-func createTestStreamFunction(name string, obversedTag frame.Tag) *Client {
+func createTestStreamFunction(name string, observedTag frame.Tag) *Client {
 	sfn := NewClient(
 		name,
 		StreamTypeStreamFunction,
 		WithCredential("token:auth-token"),
 		WithLogger(discardingLogger),
 	)
-	sfn.SetObserveDataTags(obversedTag)
+	sfn.SetObserveDataTags(observedTag)
 
 	return sfn
 }
