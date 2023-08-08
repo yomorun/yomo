@@ -794,9 +794,9 @@ func (s *StreamImpl) PipeBackToZipper(dataTag frame.Tag) Stream {
 					continue
 				}
 
-				data := frame.PayloadFrame{
-					Tag:      dataTag,
-					Carriage: buf,
+				data := frame.DataFrame{
+					Tag:     dataTag,
+					Payload: buf,
 				}
 
 				if !Of(data).SendContext(ctx, next) {

@@ -9,4 +9,4 @@ import (
 type AsyncHandler func(ctx serverless.Context)
 
 // PipeHandler is the bidirectional stream mode (blocking).
-type PipeHandler func(in <-chan []byte, out chan<- *frame.PayloadFrame)
+type PipeHandler func(in <-chan []byte, out chan<- *frame.DataFrame)

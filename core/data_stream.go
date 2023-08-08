@@ -18,7 +18,7 @@ type StreamInfo interface {
 	StreamType() StreamType
 	// Metadata returns the extra info of the application.
 	// The metadata is a merged set of data from both the handshake and authentication processes.
-	Metadata() metadata.Metadata
+	Metadata() metadata.M
 	// ObserveDataTags observed data tags.
 	// TODO: There maybe a sorted list, we can find tag quickly.
 	ObserveDataTags() []frame.Tag
@@ -36,7 +36,7 @@ type dataStream struct {
 	name       string
 	id         string
 	streamType StreamType
-	metadata   metadata.Metadata
+	metadata   metadata.M
 	observed   []frame.Tag
 
 	stream *FrameStream
@@ -47,7 +47,7 @@ func newDataStream(
 	name string,
 	id string,
 	streamType StreamType,
-	metadata metadata.Metadata,
+	metadata metadata.M,
 	observed []frame.Tag,
 	stream *FrameStream,
 ) DataStream {
@@ -65,7 +65,7 @@ func newDataStream(
 func (s *dataStream) Context() context.Context        { return s.stream.Context() }
 func (s *dataStream) ID() string                      { return s.id }
 func (s *dataStream) Name() string                    { return s.name }
-func (s *dataStream) Metadata() metadata.Metadata     { return s.metadata }
+func (s *dataStream) Metadata() metadata.M            { return s.metadata }
 func (s *dataStream) StreamType() StreamType          { return s.streamType }
 func (s *dataStream) ObserveDataTags() []frame.Tag    { return s.observed }
 func (s *dataStream) WriteFrame(f frame.Frame) error  { return s.stream.WriteFrame(f) }

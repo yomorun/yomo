@@ -10,7 +10,7 @@ require (
 	github.com/fatih/color v1.15.0
 	github.com/joho/godotenv v1.4.0
 	github.com/matoous/go-nanoid/v2 v2.0.0
-	github.com/quic-go/quic-go v0.37.0
+	github.com/quic-go/quic-go v0.37.3
 	github.com/reactivex/rxgo/v2 v2.5.0
 	github.com/second-state/WasmEdge-go v0.13.0
 	github.com/spf13/cobra v1.7.0
@@ -18,6 +18,7 @@ require (
 	github.com/spf13/viper v1.16.0
 	github.com/stretchr/testify v1.8.4
 	github.com/tetratelabs/wazero v1.3.1
+	github.com/vmihailenco/msgpack/v5 v5.3.5
 	github.com/yomorun/y3 v1.0.5
 	go.opentelemetry.io/otel v1.16.0
 	go.opentelemetry.io/otel/exporters/jaeger v1.16.0
@@ -25,7 +26,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.16.0
 	golang.org/x/exp v0.0.0-20230626212559-97b1e661b5df
 	golang.org/x/mod v0.12.0
-	golang.org/x/tools v0.11.0
+	golang.org/x/tools v0.12.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -48,20 +49,21 @@ require (
 	github.com/onsi/ginkgo/v2 v2.11.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.8 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/quic-go/qtls-go1-20 v0.3.0 // indirect
+	github.com/quic-go/qtls-go1-20 v0.3.1 // indirect
 	github.com/spf13/afero v1.9.5 // indirect
 	github.com/spf13/cast v1.5.1 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/stretchr/objx v0.5.0 // indirect
 	github.com/subosito/gotenv v1.4.2 // indirect
 	github.com/teivah/onecontext v1.3.0 // indirect
+	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	go.opentelemetry.io/otel/metric v1.16.0 // indirect
 	go.uber.org/goleak v1.1.11 // indirect
-	golang.org/x/crypto v0.11.0 // indirect
-	golang.org/x/net v0.12.0 // indirect
-	golang.org/x/sys v0.10.0 // indirect
-	golang.org/x/term v0.10.0 // indirect
-	golang.org/x/text v0.11.0 // indirect
+	golang.org/x/crypto v0.12.0 // indirect
+	golang.org/x/net v0.14.0 // indirect
+	golang.org/x/sys v0.11.0 // indirect
+	golang.org/x/term v0.11.0 // indirect
+	golang.org/x/text v0.12.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 )

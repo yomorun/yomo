@@ -120,10 +120,15 @@ func (s *yomoSource) write(tag uint32, data []byte, broadcast bool) error {
 	if tp != nil {
 		s.client.Logger().Debug("source trace", "tid", tid, "sid", sid, "broadcast", broadcast)
 	}
-	// write frame
+	// metadata
+	md, err := core.NewDefaultMetadata(s.client.ClientID(), false, tid, sid).Encode()
+	if err != nil {
+		return err
+	}
 	f := &frame.DataFrame{
-		Meta:    &frame.MetaFrame{TID: tid, SID: sid, SourceID: s.client.ClientID(), Broadcast: true},
-		Payload: &frame.PayloadFrame{Tag: tag, Carriage: data},
+		Tag:      tag,
+		Metadata: md,
+		Payload:  data,
 	}
 	s.client.Logger().Debug("source write", "tag", tag, "data", data, "broadcast", broadcast)
 	return s.client.WriteFrame(f)

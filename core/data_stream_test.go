@@ -19,7 +19,7 @@ func TestDataStream(t *testing.T) {
 		id        = "123456"
 		styp      = StreamTypeStreamFunction
 		observed  = []uint32{1, 2, 3}
-		md        metadata.Metadata
+		md        metadata.M
 	)
 
 	// Create a stream that initializes the read buffer with a string that has been split by spaces.
@@ -103,8 +103,7 @@ func TestStreamTypeString(t *testing.T) {
 // byteFrame implements frame.Frame interface for unittest.
 func byteFrame(byt byte) *frame.DataFrame {
 	return &frame.DataFrame{
-		Meta:    new(frame.MetaFrame),
-		Payload: &frame.PayloadFrame{Carriage: []byte{byt}},
+		Payload: []byte{byt},
 	}
 }
 
@@ -118,14 +117,14 @@ func (*byteCodec) Decode(data []byte, f frame.Frame) error {
 	if !ok {
 		return nil
 	}
-	df.Payload.Carriage = data
+	df.Payload = data
 
 	return nil
 }
 
 // Encode implements frame.Codec
 func (*byteCodec) Encode(f frame.Frame) ([]byte, error) {
-	return f.(*frame.DataFrame).Payload.Carriage, nil
+	return f.(*frame.DataFrame).Payload, nil
 }
 
 type bytePacketReadWriter struct{}

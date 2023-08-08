@@ -43,7 +43,6 @@ type Server struct {
 	name                    string
 	connector               *Connector
 	router                  router.Router
-	metadataDecoder         metadata.Decoder
 	codec                   frame.Codec
 	packetReadWriter        frame.PacketReadWriter
 	counterOfDataFrame      int64
@@ -109,10 +108,6 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 
 // Serve the server with a net.PacketConn.
 func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
-	if err := s.validateMetadataDecoder(); err != nil {
-		return err
-	}
-
 	if err := s.validateRouter(); err != nil {
 		return err
 	}
@@ -158,7 +153,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		}
 
 		go func(conn Connection) {
-			streamGroup := NewStreamGroup(ctx, md, controlStream, s.connector, s.metadataDecoder, s.router, logger)
+			streamGroup := NewStreamGroup(ctx, md, controlStream, s.connector, s.router, logger)
 
 			defer streamGroup.Wait()
 			defer logger.Debug("quic connection closed")
@@ -258,7 +253,10 @@ func (s *Server) handleStreamContext(c *Context) {
 		}
 
 		// add frame to context
-		c.WithFrame(f)
+		if err := c.WithFrame(f); err != nil {
+			c.CloseWithError(err.Error())
+			break
+		}
 
 		// before frame handlers
 		for _, handler := range s.beforeHandlers {
@@ -304,7 +302,7 @@ func (s *Server) mainFrameHandler(c *Context) error {
 	return nil
 }
 
-func (s *Server) handleAuthenticationFrame(f *frame.AuthenticationFrame) (metadata.Metadata, bool, error) {
+func (s *Server) handleAuthenticationFrame(f *frame.AuthenticationFrame) (metadata.M, bool, error) {
 	md, ok := auth.Authenticate(s.opts.auths, f)
 
 	if ok {
@@ -321,13 +319,11 @@ func (s *Server) handleDataFrame(c *Context) error {
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
 
 	from := c.DataStream
-
-	f := c.Frame.(*frame.DataFrame)
 	// trace
 	var tid, sid string
 	tp := s.TracerProvider()
 	if tp != nil {
-		span, err := trace.NewSpan(tp, "zipper", "handle DataFrame", f.Meta.TID, f.Meta.SID)
+		span, err := trace.NewSpan(tp, "zipper", "handle DataFrame", c.Frame.Metadata.TID, c.Frame.Metadata.SID)
 		if err != nil {
 			s.logger.Error("zipper trace error", "err", err)
 		} else {
@@ -344,22 +340,14 @@ func (s *Server) handleDataFrame(c *Context) error {
 			sid = id.SID()
 		}
 		// reallocate data frame with new TID and SID
-		f.Meta.TID = tid
-		f.Meta.SID = sid
+		c.Frame.Metadata.TID = tid
+		c.Frame.Metadata.SID = sid
 		if tp != nil {
-			s.logger.Debug("zipper trace", "tid", f.Meta.TID, "sid", f.Meta.SID)
+			s.logger.Debug("zipper trace", "tid", c.Frame.Metadata.TID, "sid", c.Frame.Metadata.SID)
 		}
 	}
-
-	frameMetadata, err := s.metadataDecoder.Decode(f.Meta.Metadata)
-	if err != nil {
-		return err
-	}
-
-	md := frameMetadata.Merge(c.DataStream.Metadata())
-
 	// route
-	route := s.router.Route(md)
+	route := s.router.Route(c.FrameMetadata)
 	if route == nil {
 		errString := "can't find sfn route"
 		c.Logger.Warn(errString)
@@ -367,9 +355,9 @@ func (s *Server) handleDataFrame(c *Context) error {
 	}
 
 	// find stream function ids from the route.
-	streamIDs := route.GetForwardRoutes(f.Payload.Tag)
+	streamIDs := route.GetForwardRoutes(c.Frame.Tag)
 
-	c.Logger.Debug("sfn routing", "data_tag", f.Payload.Tag, "sfn_stream_ids", streamIDs, "connector", s.connector.Snapshot())
+	c.Logger.Debug("sfn routing", "data_tag", c.Frame.Tag, "sfn_stream_ids", streamIDs, "connector", s.connector.Snapshot())
 
 	for _, toID := range streamIDs {
 		stream, ok, err := s.connector.Get(toID)
@@ -390,7 +378,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 		)
 
 		// write data frame to stream
-		if err := stream.WriteFrame(f); err != nil {
+		if err := stream.WriteFrame(c.Frame); err != nil {
 			c.Logger.Error("failed to write frame for routing data", "err", err)
 		}
 	}
@@ -399,14 +387,13 @@ func (s *Server) handleDataFrame(c *Context) error {
 }
 
 func (s *Server) handleBackflowFrame(c *Context) error {
-	f := c.Frame.(*frame.DataFrame)
-	sourceID := f.Meta.SourceID
+	sourceID := GetSourceIDFromMetadata(c.FrameMetadata)
 	// write to source with BackflowFrame
 	bf := &frame.BackflowFrame{
-		Tag:      f.Payload.Tag,
-		Carriage: f.Payload.Carriage,
+		Tag:      c.Frame.Tag,
+		Carriage: c.Frame.Payload,
 	}
-	sourceStreams, err := s.connector.Find(sourceIDTagFindStreamFunc(sourceID, f.Payload.Tag))
+	sourceStreams, err := s.connector.Find(sourceIDTagFindStreamFunc(sourceID, c.Frame.Tag))
 	if err != nil {
 		return err
 	}
@@ -466,14 +453,6 @@ func (s *Server) ConfigRouter(router router.Router) {
 	s.mu.Unlock()
 }
 
-// ConfigMetadataDecoder is used to set Decoder by zipper.
-func (s *Server) ConfigMetadataDecoder(decoder metadata.Decoder) {
-	s.mu.Lock()
-	s.metadataDecoder = decoder
-	s.logger.Debug("config metadata decoder")
-	s.mu.Unlock()
-}
-
 // AddDownstreamServer add a downstream server to this server. all the DataFrames will be
 // dispatch to all the downstreams.
 func (s *Server) AddDownstreamServer(addr string, c FrameWriterConnection) {
@@ -484,28 +463,23 @@ func (s *Server) AddDownstreamServer(addr string, c FrameWriterConnection) {
 
 // dispatch every DataFrames to all downstreams
 func (s *Server) dispatchToDownstreams(c *Context) {
-	stream := c.DataStream
-
-	if stream.StreamType() == StreamTypeSource {
-		f := c.Frame.(*frame.DataFrame)
-
+	if c.DataStream.StreamType() == StreamTypeSource {
 		var (
-			broadcast = f.Meta.Broadcast
-			fmd       = f.Meta.Metadata
-			tid       = f.Meta.TID
-			sid       = f.Meta.SID
+			broadcast = GetBroadcastFromMetadata(c.FrameMetadata)
+			tid       = GetTIDFromMetadata(c.FrameMetadata)
+			sid       = GetSIDFromMetadata(c.FrameMetadata)
 		)
 		if broadcast {
-			if len(fmd) == 0 {
-				byteMd, err := stream.Metadata().Encode()
-				if err != nil {
-					c.Logger.Error("failed to dispatch to downstream", "err", err)
-				}
-				f.Meta.Metadata = byteMd
+			mdBytes, err := c.FrameMetadata.Encode()
+			if err != nil {
+				c.Logger.Error("failed to dispatch to downstream", "err", err)
+				return
 			}
+			c.Frame.Metadata = mdBytes
+
 			for streamID, ds := range s.downstreams {
 				c.Logger.Info("dispatching to downstream", "dispatch_stream_id", streamID, "tid", tid, "sid", sid)
-				ds.WriteFrame(f)
+				ds.WriteFrame(c.Frame)
 			}
 		}
 	}
@@ -514,13 +488,6 @@ func (s *Server) dispatchToDownstreams(c *Context) {
 func (s *Server) validateRouter() error {
 	if s.router == nil {
 		return errors.New("server's router is nil")
-	}
-	return nil
-}
-
-func (s *Server) validateMetadataDecoder() error {
-	if s.metadataDecoder == nil {
-		return errors.New("server's metadataDecoder is nil")
 	}
 	return nil
 }
