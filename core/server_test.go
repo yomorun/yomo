@@ -35,12 +35,12 @@ type mockStreamInfo struct {
 	name       string
 	id         string
 	streamType StreamType
-	metadata   metadata.Metadata
+	metadata   metadata.M
 	observed   []frame.Tag
 }
 
 func (s *mockStreamInfo) ID() string                   { return s.id }
 func (s *mockStreamInfo) Name() string                 { return s.name }
-func (s *mockStreamInfo) Metadata() metadata.Metadata  { return s.metadata }
+func (s *mockStreamInfo) Metadata() metadata.M         { return s.metadata }
 func (s *mockStreamInfo) StreamType() StreamType       { return s.streamType }
 func (s *mockStreamInfo) ObserveDataTags() []frame.Tag { return s.observed }

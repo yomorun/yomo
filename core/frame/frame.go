@@ -9,19 +9,16 @@ import (
 // Frame is the minimum unit required for Yomo to run.
 // Yomo transmits various instructions and data through the frame, which can be transmitted on the IO stream.
 //
-//	Yomo needs 9 type frame to run up, them cantain:
+//	Yomo needs 8 type frame to run up, them cantain:
 //		1. AuthenticationFrame
 //		2. AuthenticationAckFrame
 //		3. DataFrame
-//		4. PayloadFrame
-//		5. HandshakeFrame
-//		6. HandshakeRejectedFrame
-//		7. HandshakeAckFrame
-//		8. RejectedFrame
-//		9. BackflowFrame
+//		4. HandshakeFrame
+//		5. HandshakeRejectedFrame
+//		6. HandshakeAckFrame
+//		7. RejectedFrame
+//		8. BackflowFrame
 //	 Read frame comments to understand the role of the frame.
-//
-//		If you want to transmit the frame on the IO stream, you must have `ReadFunc` and `WriteFunc` for reading and writing frames.
 type Frame interface {
 	// Type returns the type of frame.
 	Type() Type
@@ -56,40 +53,17 @@ func (f *AuthenticationAckFrame) Type() Type { return TypeAuthenticationAckFrame
 
 // DataFrame carrys taged data to transmit accross DataStream.
 type DataFrame struct {
-	// Meta.
-	Meta *MetaFrame
-	// Payload.
-	Payload *PayloadFrame
+	// Metadata stores additional data beyond the Payload,
+	// it is an map[string]string{} that be encoded in msgpack.
+	Metadata []byte
+	// Tag is used for data router.
+	Tag Tag
+	// Payload is the data to transmit.
+	Payload []byte
 }
 
 // Type returns the type of DataFrame.
 func (f *DataFrame) Type() Type { return TypeDataFrame }
-
-// MetaFrame is used to describe a DataFrame, It is a part of DataFrame.
-type MetaFrame struct {
-	// TID trace a DataFrame.
-	TID string
-	// Metadata stores additional data beyond the Payload.
-	Metadata []byte
-	// SourceID records who sent this DataFrame.
-	SourceID string
-	// Broadcast indicates that this DataFrame should be broadcast to cascading mesh nodes.
-	Broadcast bool
-}
-
-// Type returns the type of MetaFrame.
-func (f *MetaFrame) Type() Type { return TypePayloadFrame }
-
-// PayloadFrame is used to carry taged data for DataFrame. It is a part of DataFrame.
-type PayloadFrame struct {
-	// Tag is used for data router.
-	Tag Tag
-	// Carriage is the data to transmit.
-	Carriage []byte
-}
-
-// Type returns the type of PayloadFrame.
-func (f *PayloadFrame) Type() Type { return TypePayloadFrame }
 
 // HandshakeFrame is the frame that client accquires new dataStream from server,
 // It includes some of the information necessary to create a new DataStream.
@@ -158,7 +132,6 @@ const (
 	TypeAuthenticationFrame    Type = 0x03 // TypeAuthenticationFrame is the type of AuthenticationFrame.
 	TypeAuthenticationAckFrame Type = 0x11 // TypeAuthenticationAckFrame is the type of AuthenticationAckFrame.
 	TypeDataFrame              Type = 0x3F // TypeDataFrame is the type of DataFrame.
-	TypePayloadFrame           Type = 0x2E // TypePayloadFrame is the type of PayloadFrame.
 	TypeHandshakeFrame         Type = 0x31 // TypeHandshakeFrame is the type of PayloadFrame.
 	TypeHandshakeRejectedFrame Type = 0x14 // TypeHandshakeRejectedFrame is the type of HandshakeRejectedFrame.
 	TypeHandshakeAckFrame      Type = 0x29 // TypeHandshakeAckFrame is the type of HandshakeAckFrame.
@@ -170,7 +143,6 @@ var frameTypeStringMap = map[Type]string{
 	TypeAuthenticationFrame:    "AuthenticationFrame",
 	TypeAuthenticationAckFrame: "AuthenticationAckFrame",
 	TypeDataFrame:              "DataFrame",
-	TypePayloadFrame:           "PayloadFrame",
 	TypeHandshakeFrame:         "HandshakeFrame",
 	TypeHandshakeRejectedFrame: "HandshakeRejectedFrame",
 	TypeHandshakeAckFrame:      "HandshakeAckFrame",
@@ -191,8 +163,7 @@ func (f Type) String() string {
 var frameTypeNewFuncMap = map[Type]func() Frame{
 	TypeAuthenticationFrame:    func() Frame { return new(AuthenticationFrame) },
 	TypeAuthenticationAckFrame: func() Frame { return new(AuthenticationAckFrame) },
-	TypeDataFrame:              func() Frame { return &DataFrame{Meta: new(MetaFrame), Payload: new(PayloadFrame)} },
-	TypePayloadFrame:           func() Frame { return new(PayloadFrame) },
+	TypeDataFrame:              func() Frame { return new(DataFrame) },
 	TypeHandshakeFrame:         func() Frame { return new(HandshakeFrame) },
 	TypeHandshakeRejectedFrame: func() Frame { return new(HandshakeAckFrame) },
 	TypeHandshakeAckFrame:      func() Frame { return new(HandshakeAckFrame) },

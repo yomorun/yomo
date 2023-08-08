@@ -2,10 +2,12 @@ package core
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/router"
 	"golang.org/x/exp/slog"
 )
@@ -19,7 +21,9 @@ type Context struct {
 	// DataStream is the stream used for reading and writing frames.
 	DataStream DataStream
 	// Frame receives from client.
-	Frame frame.Frame
+	Frame *frame.DataFrame
+	// FrameMetadata is the merged metadata from the frame.
+	FrameMetadata metadata.M
 	// Route is the route from handshake.
 	Route router.Route
 	// mu is used to protect Keys from concurrent read and write operations.
@@ -106,8 +110,27 @@ func newContext(dataStream DataStream, route router.Route, logger *slog.Logger) 
 }
 
 // WithFrame sets a frame to context.
-func (c *Context) WithFrame(f frame.Frame) {
-	c.Frame = f
+func (c *Context) WithFrame(f frame.Frame) error {
+	df, ok := f.(*frame.DataFrame)
+	if !ok {
+		return errors.New("data stream only transmit data frame")
+	}
+
+	fmd, err := metadata.Decode(df.Metadata)
+	if err != nil {
+		return err
+	}
+
+	// merge data stream metadata.
+	c.DataStream.Metadata().Range(func(k, v string) bool {
+		fmd.Set(k, v)
+		return true
+	})
+
+	c.Frame = df
+	c.FrameMetadata = fmd
+
+	return nil
 }
 
 // CloseWithError close dataStream with an error string.
@@ -134,6 +157,7 @@ func (c *Context) reset() {
 	c.DataStream = nil
 	c.Route = nil
 	c.Frame = nil
+	c.FrameMetadata = nil
 	c.Logger = nil
 	for k := range c.Keys {
 		delete(c.Keys, k)

@@ -75,9 +75,14 @@ func (s *yomoSource) Connect() error {
 
 // Write writes data with specified tag.
 func (s *yomoSource) Write(tag uint32, data []byte) error {
+	md, err := core.NewDefaultMetadata(s.client.ClientID(), false, id.New()).Encode()
+	if err != nil {
+		return err
+	}
 	f := &frame.DataFrame{
-		Meta:    &frame.MetaFrame{TID: id.New(), SourceID: s.client.ClientID()},
-		Payload: &frame.PayloadFrame{Tag: tag, Carriage: data},
+		Tag:      tag,
+		Metadata: md,
+		Payload:  data,
 	}
 	s.client.Logger().Debug("source write", "tag", tag, "data", data)
 	return s.client.WriteFrame(f)
@@ -96,9 +101,14 @@ func (s *yomoSource) SetReceiveHandler(fn func(uint32, []byte)) {
 
 // Broadcast write the data to all downstreams.
 func (s *yomoSource) Broadcast(tag uint32, data []byte) error {
+	md, err := core.NewDefaultMetadata(s.client.ClientID(), true, id.New()).Encode()
+	if err != nil {
+		return err
+	}
 	f := &frame.DataFrame{
-		Meta:    &frame.MetaFrame{TID: id.New(), SourceID: s.client.ClientID(), Broadcast: true},
-		Payload: &frame.PayloadFrame{Tag: tag, Carriage: data},
+		Tag:      tag,
+		Metadata: md,
+		Payload:  data,
 	}
 
 	s.client.Logger().Debug("broadcast", "tag", tag, "data", data)

@@ -7,14 +7,23 @@ import (
 
 // encodeDataFrame returns Y3 encoded bytes of DataFrame.
 func encodeDataFrame(f *frame.DataFrame) ([]byte, error) {
-	data := y3.NewNodePacketEncoder(byte(f.Type()))
-	// MetaFrame
-	mb, _ := encodeMetaFrame(f.Meta)
-	data.AddBytes(mb)
+	// tag
+	tagBlock := y3.NewPrimitivePacketEncoder(tagDataFrameTag)
+	tagBlock.SetUInt32Value(f.Tag)
 
-	// PayloadFrame
-	pd, _ := encodePayloadFrame(f.Payload)
-	data.AddBytes(pd)
+	// metadata
+	metadataBlock := y3.NewPrimitivePacketEncoder(tagDataFramesMetadata)
+	metadataBlock.SetBytesValue(f.Metadata)
+
+	// payload
+	payloadBlock := y3.NewPrimitivePacketEncoder(tagDataFramePayload)
+	payloadBlock.SetBytesValue(f.Payload)
+
+	// data frame
+	data := y3.NewNodePacketEncoder(byte(f.Type()))
+	data.AddPrimitivePacket(tagBlock)
+	data.AddPrimitivePacket(metadataBlock)
+	data.AddPrimitivePacket(payloadBlock)
 
 	return data.Encode(), nil
 }
@@ -27,30 +36,32 @@ func decodeDataFrame(data []byte, f *frame.DataFrame) error {
 		return err
 	}
 
-	if metaBlock, ok := packet.NodePackets[tagMetaFrame]; ok {
-		if f.Meta == nil {
-			f.Meta = new(frame.MetaFrame)
-		}
-		err := decodeMetaFrame(metaBlock.GetRawBytes(), f.Meta)
+	// tag
+	if tagBlock, ok := packet.PrimitivePackets[byte(tagDataFrameTag)]; ok {
+		tag, err := tagBlock.ToUInt32()
 		if err != nil {
 			return err
 		}
+		f.Tag = tag
 	}
 
-	if payloadBlock, ok := packet.NodePackets[byte(frame.TypePayloadFrame)]; ok {
-		if f.Payload == nil {
-			f.Payload = new(frame.PayloadFrame)
-		}
-		err := decodeToPayloadFrame(payloadBlock.GetRawBytes(), f.Payload)
-		if err != nil {
-			return err
-		}
+	// metadata
+	if metadataBlock, ok := packet.PrimitivePackets[byte(tagDataFramesMetadata)]; ok {
+		metadata := metadataBlock.ToBytes()
+		f.Metadata = metadata
+	}
+
+	// payload
+	if payloadBlock, ok := packet.PrimitivePackets[byte(tagDataFramePayload)]; ok {
+		payload := payloadBlock.ToBytes()
+		f.Payload = payload
 	}
 
 	return nil
 }
 
 var (
-	tagPayloadDataTag  byte = 0x01
-	tagPayloadCarriage byte = 0x02
+	tagDataFrameTag       byte = 0x01
+	tagDataFramePayload   byte = 0x02
+	tagDataFramesMetadata byte = 0x03
 )

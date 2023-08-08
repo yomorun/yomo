@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 	"github.com/yomorun/yomo/pkg/id"
 	"golang.org/x/exp/slog"
@@ -175,7 +174,6 @@ func (c *Client) openControlStream(ctx context.Context, addr string) (*ClientCon
 	controlStream, err := OpenClientControlStream(
 		ctx, addr,
 		c.opts.tlsConfig, c.opts.quicConfig,
-		metadata.DefaultDecoder(),
 		y3codec.Codec(), y3codec.PacketReadWriter(),
 		c.logger,
 	)

@@ -9,7 +9,7 @@ import (
 // Router is the interface to manage the routes for applications.
 type Router interface {
 	// Route gets the route
-	Route(metadata metadata.Metadata) Route
+	Route(metadata metadata.M) Route
 	// Clean the routes.
 	Clean()
 }

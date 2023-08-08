@@ -13,8 +13,8 @@ import (
 type mockAuth struct{ authed bool }
 
 func (auth mockAuth) Init(args ...string) {}
-func (auth mockAuth) Authenticate(payload string) (metadata.Metadata, bool) {
-	return &metadata.Default{}, auth.authed
+func (auth mockAuth) Authenticate(payload string) (metadata.M, bool) {
+	return metadata.M{}, auth.authed
 }
 func (auth mockAuth) Name() string { return "mock" }
 
