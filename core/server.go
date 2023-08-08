@@ -225,6 +225,10 @@ func (s *Server) handleStreamContext(c *Context) {
 					c.Logger.Info("client close the connection")
 					break
 				}
+				// server close itself
+				if yerr.Is(e.ErrorCode, yerr.ErrorCode(YomoCloseErrorCode)) {
+					break
+				}
 				ye := yerr.New(yerr.Parse(e.ErrorCode), err)
 				c.Logger.Error("read frame error", "err", ye)
 			} else if err == io.EOF {

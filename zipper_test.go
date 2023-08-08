@@ -5,10 +5,21 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/yomorun/yomo/core"
+	"github.com/yomorun/yomo/core/ylog"
 )
 
 func TestZipperRun(t *testing.T) {
-	zipper, err := NewZipper("zipper", nil, nil)
+	zipper, err := NewZipper(
+		"zipper",
+		nil,
+		nil,
+		// WithAuth("token", "<CREDENTIAL>"),
+		WithUptreamOption(core.ClientOption(WithCredential("token:<CREDENTIAL>"))),
+		WithZipperLogger(ylog.Default()),
+		WithZipperQuicConfig(core.DefalutQuicConfig),
+		WithZipperTLSConfig(nil),
+	)
 	assert.Nil(t, err)
 	time.Sleep(time.Second)
 	assert.NotNil(t, zipper)

@@ -117,13 +117,7 @@ func (s *streamFunction) Connect() error {
 				if data != nil {
 					s.client.Logger().Debug("pipe fn send", "payload_frame", data)
 
-					md, _ := core.NewDefaultMetadata(s.client.ClientID(), false, id.New()).Encode()
-
-					frame := &frame.DataFrame{
-						Tag:      data.Tag,
-						Metadata: md,
-						Payload:  data.Payload,
-					}
+					frame, _ := buildDadaFrame(s.client.ClientID(), false, id.New(), data.Tag, data.Payload)
 
 					s.client.WriteFrame(frame)
 				}

@@ -75,15 +75,11 @@ func (s *yomoSource) Connect() error {
 
 // Write writes data with specified tag.
 func (s *yomoSource) Write(tag uint32, data []byte) error {
-	md, err := core.NewDefaultMetadata(s.client.ClientID(), false, id.New()).Encode()
+	f, err := buildDadaFrame(s.client.ClientID(), false, id.New(), tag, data)
 	if err != nil {
 		return err
 	}
-	f := &frame.DataFrame{
-		Tag:      tag,
-		Metadata: md,
-		Payload:  data,
-	}
+
 	s.client.Logger().Debug("source write", "tag", tag, "data", data)
 	return s.client.WriteFrame(f)
 }
@@ -96,21 +92,29 @@ func (s *yomoSource) SetErrorHandler(fn func(err error)) {
 // [Experimental] SetReceiveHandler set the observe handler function
 func (s *yomoSource) SetReceiveHandler(fn func(uint32, []byte)) {
 	s.fn = fn
-	s.client.Logger().Info("receive hander set for the source")
+	s.client.Logger().Info("source sets receive handler")
 }
 
 // Broadcast write the data to all downstreams.
 func (s *yomoSource) Broadcast(tag uint32, data []byte) error {
-	md, err := core.NewDefaultMetadata(s.client.ClientID(), true, id.New()).Encode()
+	f, err := buildDadaFrame(s.client.ClientID(), true, id.New(), tag, data)
 	if err != nil {
 		return err
+	}
+
+	s.client.Logger().Debug("broadcast", "tag", tag, "data", data)
+	return s.client.WriteFrame(f)
+}
+
+func buildDadaFrame(clientID string, broadcast bool, tid string, tag uint32, data []byte) (*frame.DataFrame, error) {
+	md, err := core.NewDefaultMetadata(clientID, broadcast, tid).Encode()
+	if err != nil {
+		return nil, err
 	}
 	f := &frame.DataFrame{
 		Tag:      tag,
 		Metadata: md,
 		Payload:  data,
 	}
-
-	s.client.Logger().Debug("broadcast", "tag", tag, "data", data)
-	return s.client.WriteFrame(f)
+	return f, nil
 }

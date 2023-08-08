@@ -41,13 +41,13 @@ var (
 	WithSfnCredential = func(payload string) SfnOption { return SfnOption(core.WithCredential(payload)) }
 
 	// WithSfnTLSConfig sets tls config for the Sfn.
-	WithSfnTLSConfig = func(tc *tls.Config) SourceOption { return SourceOption(core.WithClientTLSConfig(tc)) }
+	WithSfnTLSConfig = func(tc *tls.Config) SfnOption { return SfnOption(core.WithClientTLSConfig(tc)) }
 
 	// WithSfnQuicConfig sets quic config for the Sfn.
-	WithSfnQuicConfig = func(qc *quic.Config) SourceOption { return SourceOption(core.WithClientQuicConfig(qc)) }
+	WithSfnQuicConfig = func(qc *quic.Config) SfnOption { return SfnOption(core.WithClientQuicConfig(qc)) }
 
 	// WithSfnLogger sets logger for the Sfn.
-	WithSfnLogger = func(l *slog.Logger) SourceOption { return SourceOption(core.WithLogger(l)) }
+	WithSfnLogger = func(l *slog.Logger) SfnOption { return SfnOption(core.WithLogger(l)) }
 )
 
 // ClientOption is option for the upstream Zipper.
