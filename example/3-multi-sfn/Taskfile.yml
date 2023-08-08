@@ -34,6 +34,15 @@ tasks:
       # YOMO_TLS_CACERT_FILE: "../../test/tls/ca.crt"
       # YOMO_TLS_CERT_FILE: "../../test/tls/server.crt"
       # YOMO_TLS_KEY_FILE: "../../test/tls/server.key"
+      #
+  zipper-trace:
+    desc: run zipper
+    dir: zipper
+    cmds:
+      - "go run main.go"
+    env:
+      YOMO_LOG_LEVEL: error
+      YOMO_TRACE_JAEGER_ENDPOINT: 'http://localhost:14268/api/traces'
 
   source-build:
     desc: build source

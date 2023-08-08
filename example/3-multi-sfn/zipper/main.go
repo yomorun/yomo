@@ -11,7 +11,7 @@ import (
 
 func main() {
 	// trace
-	tp, shutdown, err := trace.NewTracerProviderWithJaeger("zipper")
+	tp, shutdown, err := trace.NewTracerProviderWithJaeger("yomo-zipper")
 	if err == nil {
 		log.Println("[zipper] 🛰 trace enabled")
 	}
