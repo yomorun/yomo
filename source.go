@@ -121,7 +121,7 @@ func (s *yomoSource) write(tag uint32, data []byte, broadcast bool) error {
 		s.client.Logger().Debug("source trace", "tid", tid, "sid", sid, "broadcast", broadcast)
 	}
 	// metadata
-	md, err := core.NewDefaultMetadata(s.client.ClientID(), false, tid, sid).Encode()
+	md, err := core.NewDefaultMetadata(s.client.ClientID(), broadcast, tid, sid).Encode()
 	if err != nil {
 		return err
 	}
