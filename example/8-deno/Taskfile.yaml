@@ -29,6 +29,7 @@ tasks:
     desc: build source
     cmds:
       - "go build -o ../uppercase/bin/source{{exeExt}} ../uppercase/source/main.go"
+    internal: true
 
   sfn:
     desc: run sfn
