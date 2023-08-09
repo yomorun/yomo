@@ -48,6 +48,7 @@ tasks:
     desc: build source
     cmds:
       - "go build -o ./bin/source{{exeExt}} source/main.go"
+    internal: true
 
   source:
     desc: run source
