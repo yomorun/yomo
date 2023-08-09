@@ -22,16 +22,19 @@ tasks:
     deps: [source-build, sfn-build]
     cmds:
       - echo 'building done'
+    internal: true
 
   source-build:
     desc: build source
     cmds:
       - "go build -o ./bin/source{{exeExt}} source/main.go"
+    internal: true
 
   sfn-build:
     desc: build sfn
     cmds:
       - "go build -o ./bin/sfn{{exeExt}} sfn/main.go"
+    internal: true
 
   source:
     desc: run source
