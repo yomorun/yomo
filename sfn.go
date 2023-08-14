@@ -2,6 +2,7 @@ package yomo
 
 import (
 	"context"
+	"errors"
 
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
@@ -20,6 +21,8 @@ type StreamFunction interface {
 	SetErrorHandler(fn func(err error))
 	// SetPipeHandler set the pipe handler function
 	SetPipeHandler(fn PipeHandler) error
+	// Init initialize the stream function, It should be called after SetHandler and be called before Connect.
+	Init(args ...string) error
 	// Connect create a connection to the zipper
 	Connect() error
 	// Close will close the connection
@@ -57,6 +60,23 @@ type streamFunction struct {
 	pOut            chan *frame.DataFrame
 }
 
+// Init initialize the stream function, It should be called after SetHandler and be called before Connect.
+func (s *streamFunction) Init(args ...string) error {
+	if s.asyncHandler != nil {
+		if err := s.asyncHandler.Init(args...); err != nil {
+			return err
+		}
+	}
+
+	if s.pipeHandler != nil {
+		if err := s.pipeHandler.Init(args...); err != nil {
+			return err
+		}
+	}
+
+	return errors.New("sfn: init before set handler")
+}
+
 // SetObserveDataTags set the data tag list that will be observed.
 // Deprecated: use yomo.WithObserveDataTags instead
 func (s *streamFunction) SetObserveDataTags(tag ...uint32) {
@@ -83,12 +103,6 @@ func (s *streamFunction) SetPipeHandler(h PipeHandler) error {
 func (s *streamFunction) Connect() error {
 	s.client.Logger().Debug("sfn connecting to zipper ...")
 
-	if s.asyncHandler != nil {
-		if err := s.asyncHandler.Init(); err != nil {
-			s.client.Logger().Debug("failed to init async handler", "err", err)
-			return err
-		}
-	}
 	// notify underlying network operations, when data with tag we observed arrived, invoke the func
 	s.client.SetDataFrameObserver(func(data *frame.DataFrame) {
 		s.client.Logger().Debug("received data frame")
@@ -96,12 +110,6 @@ func (s *streamFunction) Connect() error {
 	})
 
 	if s.pipeHandler != nil {
-		// init pipe handler
-		if err := s.pipeHandler.Init(); err != nil {
-			s.client.Logger().Debug("failed to init pipe handler", "err", err)
-			return err
-		}
-
 		s.pIn = make(chan []byte)
 		s.pOut = make(chan *frame.DataFrame)
 

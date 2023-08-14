@@ -11,7 +11,7 @@ import (
 type AsyncHandler interface {
 	// Init initializes the handler.
 	// The init function may return an error if initialization fails.
-	Init() error
+	Init(args ...string) error
 	// Handle handles the observed messages.
 	Handle(ctx serverless.Context)
 }
@@ -21,7 +21,7 @@ type AsyncHandler interface {
 type AsyncHandleFunc func(ctx serverless.Context)
 
 // Init does nothing.
-func (f AsyncHandleFunc) Init() error {
+func (f AsyncHandleFunc) Init(args ...string) error {
 	return nil
 }
 
@@ -34,7 +34,7 @@ func (f AsyncHandleFunc) Handle(ctx serverless.Context) {
 type PipeHandler interface {
 	// Init initializes the handler.
 	// The init function may return an error if initialization fails.
-	Init() error
+	Init(args ...string) error
 	// Handle processes the observed messages, It receives messages from in and responds to out.
 	Handle(in <-chan []byte, out chan<- *frame.DataFrame)
 }
@@ -44,7 +44,7 @@ type PipeHandler interface {
 type PipeHandleFunc func(in <-chan []byte, out chan<- *frame.DataFrame)
 
 // Init does nothing.
-func (f PipeHandleFunc) Init() error {
+func (f PipeHandleFunc) Init(args ...string) error {
 	return nil
 }
 
