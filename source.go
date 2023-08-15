@@ -6,6 +6,7 @@ import (
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/id"
+	"github.com/yomorun/yomo/pkg/trace"
 )
 
 // Source is responsible for sending data to yomo.
@@ -75,17 +76,7 @@ func (s *yomoSource) Connect() error {
 
 // Write writes data with specified tag.
 func (s *yomoSource) Write(tag uint32, data []byte) error {
-	md, err := core.NewDefaultMetadata(s.client.ClientID(), false, id.New()).Encode()
-	if err != nil {
-		return err
-	}
-	f := &frame.DataFrame{
-		Tag:      tag,
-		Metadata: md,
-		Payload:  data,
-	}
-	s.client.Logger().Debug("source write", "tag", tag, "data", data)
-	return s.client.WriteFrame(f)
+	return s.write(tag, data, false)
 }
 
 // SetErrorHandler set the error handler function when server error occurs
@@ -101,7 +92,36 @@ func (s *yomoSource) SetReceiveHandler(fn func(uint32, []byte)) {
 
 // Broadcast write the data to all downstreams.
 func (s *yomoSource) Broadcast(tag uint32, data []byte) error {
-	md, err := core.NewDefaultMetadata(s.client.ClientID(), true, id.New()).Encode()
+	return s.write(tag, data, true)
+}
+
+func (s *yomoSource) write(tag uint32, data []byte, broadcast bool) error {
+	var tid, sid string
+	// trace
+	tp := s.client.TracerProvider()
+	if tp != nil {
+		span, err := trace.NewSpan(tp, core.StreamTypeSource.String(), s.name, "", "")
+		if err != nil {
+			s.client.Logger().Error("source trace error", "err", err)
+		} else {
+			defer span.End()
+			tid = span.SpanContext().TraceID().String()
+			sid = span.SpanContext().SpanID().String()
+		}
+	}
+	if tid == "" {
+		s.client.Logger().Debug("source create new tid")
+		tid = id.TID()
+	}
+	if sid == "" {
+		s.client.Logger().Debug("source create new sid")
+		sid = id.SID()
+	}
+	if tp != nil {
+		s.client.Logger().Debug("source trace", "tid", tid, "sid", sid, "broadcast", broadcast)
+	}
+	// metadata
+	md, err := core.NewDefaultMetadata(s.client.ClientID(), broadcast, tid, sid).Encode()
 	if err != nil {
 		return err
 	}
@@ -110,7 +130,6 @@ func (s *yomoSource) Broadcast(tag uint32, data []byte) error {
 		Metadata: md,
 		Payload:  data,
 	}
-
-	s.client.Logger().Debug("broadcast", "tag", tag, "data", data)
+	s.client.Logger().Debug("source write", "tag", tag, "data", data, "broadcast", broadcast)
 	return s.client.WriteFrame(f)
 }

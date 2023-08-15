@@ -6,6 +6,7 @@ import (
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/exp/slog"
 )
 
@@ -33,6 +34,9 @@ var (
 
 	// WithLogger sets logger for the Source.
 	WithLogger = func(l *slog.Logger) SourceOption { return SourceOption(core.WithLogger(l)) }
+
+	// WithTracerProvider sets tracer provider for the Source.
+	WithTracerProvider = func(tp trace.TracerProvider) SourceOption { return SourceOption(core.WithTracerProvider(tp)) }
 )
 
 // Sfn Options.
@@ -41,13 +45,16 @@ var (
 	WithSfnCredential = func(payload string) SfnOption { return SfnOption(core.WithCredential(payload)) }
 
 	// WithSfnTLSConfig sets tls config for the Sfn.
-	WithSfnTLSConfig = func(tc *tls.Config) SourceOption { return SourceOption(core.WithClientTLSConfig(tc)) }
+	WithSfnTLSConfig = func(tc *tls.Config) SfnOption { return SfnOption(core.WithClientTLSConfig(tc)) }
 
 	// WithSfnQuicConfig sets quic config for the Sfn.
-	WithSfnQuicConfig = func(qc *quic.Config) SourceOption { return SourceOption(core.WithClientQuicConfig(qc)) }
+	WithSfnQuicConfig = func(qc *quic.Config) SfnOption { return SfnOption(core.WithClientQuicConfig(qc)) }
 
 	// WithSfnLogger sets logger for the Sfn.
-	WithSfnLogger = func(l *slog.Logger) SourceOption { return SourceOption(core.WithLogger(l)) }
+	WithSfnLogger = func(l *slog.Logger) SfnOption { return SfnOption(core.WithLogger(l)) }
+
+	// WithSfnTracerProvider sets tracer provider for the Sfn.
+	WithSfnTracerProvider = func(tp trace.TracerProvider) SfnOption { return SfnOption(core.WithTracerProvider(tp)) }
 )
 
 // ClientOption is option for the upstream Zipper.
@@ -94,6 +101,13 @@ var (
 	WithUptreamOption = func(opts ...ClientOption) ZipperOption {
 		return func(o *zipperOptions) {
 			o.clientOption = opts
+		}
+	}
+
+	// WithZipperTracerProvider sets tracer provider for the zipper.
+	WithZipperTracerProvider = func(tp trace.TracerProvider) ZipperOption {
+		return func(o *zipperOptions) {
+			o.serverOption = append(o.serverOption, core.WithServerTracerProvider(tp))
 		}
 	}
 )

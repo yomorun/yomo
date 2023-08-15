@@ -9,6 +9,7 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/ylog"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/exp/slog"
 )
 
@@ -24,6 +25,7 @@ type clientOptions struct {
 	connectUntilSucceed bool
 	nonBlockWrite       bool
 	logger              *slog.Logger
+	tracerProvider      trace.TracerProvider
 }
 
 func defaultClientOption() *clientOptions {
@@ -100,6 +102,12 @@ func WithNonBlockWrite() ClientOption {
 func WithLogger(logger *slog.Logger) ClientOption {
 	return func(o *clientOptions) {
 		o.logger = logger
+	}
+}
+
+func WithTracerProvider(tp trace.TracerProvider) ClientOption {
+	return func(o *clientOptions) {
+		o.tracerProvider = tp
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/pkg/trace"
 	"github.com/yomorun/yomo/serverless"
 )
 
@@ -42,16 +43,24 @@ var slidingAvg = func(i interface{}) error {
 var observe = make(chan float32, 1)
 
 func main() {
+	// trace
+	tp, shutdown, err := trace.NewTracerProviderWithJaeger("yomo-sfn")
+	if err == nil {
+		log.Println("[fn3] 🛰 trace enabled")
+	}
+	defer shutdown(context.Background())
+	// sfn
 	sfn := yomo.NewStreamFunction(
 		"Noise-3",
 		"localhost:9000",
+		yomo.WithSfnTracerProvider(tp),
 	)
 	sfn.SetObserveDataTags(0x15)
 	defer sfn.Close()
 
 	sfn.SetHandler(handler)
 
-	err := sfn.Connect()
+	err = sfn.Connect()
 	if err != nil {
 		log.Printf("[fn3] connect err=%v", err)
 		os.Exit(1)
@@ -66,7 +75,9 @@ func handler(ctx serverless.Context) {
 	data := ctx.Data()
 	v := Float32frombytes(data)
 	log.Printf("✅ [fn3] observe <- %v", v)
-	observe <- v
+	go func() {
+		observe <- v
+	}()
 }
 
 // Handler defines a function that handle the input value.
