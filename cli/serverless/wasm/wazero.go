@@ -41,7 +41,8 @@ func newWazeroRuntime() (*wazeroRuntime, error) {
 		WithSysWalltime().
 		WithStdin(os.Stdin).
 		WithStdout(os.Stdout).
-		WithStderr(os.Stderr)
+		WithStderr(os.Stderr).
+		WithFSConfig(wazero.NewFSConfig().WithDirMount(".", "."))
 
 	return &wazeroRuntime{
 		Runtime: r,
