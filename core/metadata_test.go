@@ -13,4 +13,10 @@ func TestMetadata(t *testing.T) {
 	assert.Equal(t, true, GetBroadcastFromMetadata(md))
 	assert.Equal(t, "xxxxxxx", GetTIDFromMetadata(md))
 	assert.Equal(t, "sssssss", GetSIDFromMetadata(md))
+
+	SetTIDToMetadata(md, "ccccccc")
+	assert.Equal(t, "ccccccc", GetTIDFromMetadata(md))
+
+	SetSIDToMetadata(md, "aaaaaaa")
+	assert.Equal(t, "aaaaaaa", GetSIDFromMetadata(md))
 }

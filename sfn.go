@@ -134,8 +134,8 @@ func (s *streamFunction) Connect() error {
 						sid = id.SID()
 					}
 					// reallocate metadata with new TID and SID
-					md.Set(metadata.TIDKey, tid)
-					md.Set(metadata.SIDKey, sid)
+					core.SetTIDToMetadata(md, tid)
+					core.SetSIDToMetadata(md, sid)
 					newMetadata, err := md.Encode()
 					if err != nil {
 						s.client.Logger().Error("sfn encode metadata error", "err", err)
@@ -215,8 +215,8 @@ func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 				sid = id.SID()
 			}
 			// reallocate metadata with new TID and SID
-			md.Set(metadata.TIDKey, tid)
-			md.Set(metadata.SIDKey, sid)
+			core.SetTIDToMetadata(md, tid)
+			core.SetSIDToMetadata(md, sid)
 			newMetadata, err := md.Encode()
 			if err != nil {
 				s.client.Logger().Error("sfn encode metadata error", "err", err)

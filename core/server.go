@@ -342,8 +342,8 @@ func (s *Server) handleDataFrame(c *Context) error {
 		sid = id.SID()
 	}
 	// reallocate metadata with new TID and SID
-	c.FrameMetadata.Set(metadata.TIDKey, tid)
-	c.FrameMetadata.Set(metadata.SIDKey, sid)
+	SetTIDToMetadata(c.FrameMetadata, tid)
+	SetSIDToMetadata(c.FrameMetadata, sid)
 	md, err := c.FrameMetadata.Encode()
 	if err != nil {
 		s.logger.Error("encode metadata error", "err", err)

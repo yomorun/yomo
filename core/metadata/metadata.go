@@ -5,13 +5,6 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-const (
-	SourceIDKey  = "yomo-source-id"
-	BroadcastKey = "yomo-broadcast"
-	TIDKey       = "yomo-tid"
-	SIDKey       = "yomo-sid"
-)
-
 // M stores additional information about the application.
 //
 //	There are three types of metadata in yomo:
