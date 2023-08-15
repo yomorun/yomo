@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"reflect"
 	"sync"
 	"sync/atomic"
 
@@ -21,6 +22,9 @@ import (
 	// authentication implements, Currently, only token authentication is implemented
 	_ "github.com/yomorun/yomo/pkg/auth"
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
+	"github.com/yomorun/yomo/pkg/id"
+	"github.com/yomorun/yomo/pkg/trace"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 // ErrServerClosed is returned by the Server's Serve and ListenAndServe methods after a call to Shutdown or Close.
@@ -51,6 +55,7 @@ type Server struct {
 	connectionCloseHandlers []ConnectionHandler
 	listener                Listener
 	logger                  *slog.Logger
+	tracerProvider          oteltrace.TracerProvider
 }
 
 // NewServer create a Server instance.
@@ -71,6 +76,7 @@ func NewServer(name string, opts ...ServerOption) *Server {
 		name:             name,
 		downstreams:      make(map[string]FrameWriterConnection),
 		logger:           logger,
+		tracerProvider:   options.tracerProvider,
 		codec:            y3codec.Codec(),
 		packetReadWriter: y3codec.PacketReadWriter(),
 		opts:             options,
@@ -317,7 +323,40 @@ func (s *Server) handleDataFrame(c *Context) error {
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
 
 	from := c.DataStream
-
+	// trace
+	tid := GetTIDFromMetadata(c.FrameMetadata)
+	sid := GetSIDFromMetadata(c.FrameMetadata)
+	tp := s.TracerProvider()
+	if tp != nil {
+		span, err := trace.NewSpan(tp, "zipper", "handle DataFrame", tid, sid)
+		if err != nil {
+			s.logger.Error("zipper trace error", "err", err)
+		} else {
+			defer span.End()
+			tid = span.SpanContext().TraceID().String()
+			sid = span.SpanContext().SpanID().String()
+		}
+	}
+	if tid == "" {
+		s.logger.Debug("zipper create new tid")
+		tid = id.TID()
+	}
+	if sid == "" {
+		s.logger.Debug("zipper create new sid")
+		sid = id.SID()
+	}
+	// reallocate metadata with new TID and SID
+	SetTIDToMetadata(c.FrameMetadata, tid)
+	SetSIDToMetadata(c.FrameMetadata, sid)
+	md, err := c.FrameMetadata.Encode()
+	if err != nil {
+		s.logger.Error("encode metadata error", "err", err)
+		return err
+	}
+	c.Frame.Metadata = md
+	if tp != nil {
+		s.logger.Debug("zipper trace", "tid", tid, "sid", sid, "frome_stream_name", from.Name())
+	}
 	// route
 	route := s.router.Route(c.FrameMetadata)
 	if route == nil {
@@ -439,6 +478,7 @@ func (s *Server) dispatchToDownstreams(c *Context) {
 		var (
 			broadcast = GetBroadcastFromMetadata(c.FrameMetadata)
 			tid       = GetTIDFromMetadata(c.FrameMetadata)
+			sid       = GetSIDFromMetadata(c.FrameMetadata)
 		)
 		if broadcast {
 			mdBytes, err := c.FrameMetadata.Encode()
@@ -449,7 +489,7 @@ func (s *Server) dispatchToDownstreams(c *Context) {
 			c.Frame.Metadata = mdBytes
 
 			for streamID, ds := range s.downstreams {
-				c.Logger.Info("dispatching to downstream", "dispatch_stream_id", streamID, "tid", tid)
+				c.Logger.Info("dispatching to downstream", "dispatch_stream_id", streamID, "tid", tid, "sid", sid)
 				ds.WriteFrame(c.Frame)
 			}
 		}
@@ -497,3 +537,14 @@ func (s *Server) authNames() []string {
 
 // Name returns the name of server.
 func (s *Server) Name() string { return s.name }
+
+// TracerProvider returns the tracer provider of server.
+func (s *Server) TracerProvider() oteltrace.TracerProvider {
+	if s.tracerProvider == nil {
+		return nil
+	}
+	if reflect.ValueOf(s.tracerProvider).IsNil() {
+		return nil
+	}
+	return s.tracerProvider
+}

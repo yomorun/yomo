@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/pkg/trace"
 	"github.com/yomorun/yomo/serverless"
 )
 
@@ -23,16 +24,24 @@ type noiseData struct {
 // main will observe data with SeqID=0x10, and tranform to SeqID=0x14 with Noise value
 // to downstream sfn.
 func main() {
+	// trace
+	tp, shutdown, err := trace.NewTracerProviderWithJaeger("yomo-sfn")
+	if err == nil {
+		log.Println("[fn1] 🛰 trace enabled")
+	}
+	defer shutdown(context.Background())
+	// sfn
 	sfn := yomo.NewStreamFunction(
 		"Noise-1",
 		"localhost:9000",
+		yomo.WithSfnTracerProvider(tp),
 	)
 	sfn.SetObserveDataTags(0x10)
 	defer sfn.Close()
 
 	sfn.SetHandler(yomo.AsyncHandleFunc(handler))
 
-	err := sfn.Connect()
+	err = sfn.Connect()
 	if err != nil {
 		log.Printf("[fn1] connect err=%v", err)
 		os.Exit(1)

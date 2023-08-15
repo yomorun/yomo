@@ -1,6 +1,8 @@
 package serverless
 
-import "github.com/yomorun/yomo/core/frame"
+import (
+	"github.com/yomorun/yomo/core/frame"
+)
 
 // Context sfn handler context
 type Context struct {

@@ -6,8 +6,11 @@ import (
 
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/serverless"
 	"github.com/yomorun/yomo/pkg/id"
+	"github.com/yomorun/yomo/pkg/trace"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 // StreamFunction defines serverless streaming functions.
@@ -124,8 +127,51 @@ func (s *streamFunction) Connect() error {
 				data := <-s.pOut
 				if data != nil {
 					s.client.Logger().Debug("pipe fn send", "payload_frame", data)
-
-					frame, _ := buildDadaFrame(s.client.ClientID(), false, id.New(), data.Tag, data.Payload)
+					md, err := metadata.Decode(data.Metadata)
+					if err != nil {
+						s.client.Logger().Error("sfn decode metadata error", "err", err)
+						break
+					}
+					tid := core.GetTIDFromMetadata(md)
+					sid := core.GetSIDFromMetadata(md)
+					// trace
+					tp := s.client.TracerProvider()
+					if tp != nil {
+						// create span
+						span, err := trace.NewSpan(tp, core.StreamTypeStreamFunction.String(), s.name, tid, sid)
+						if err != nil {
+							s.client.Logger().Error("sfn trace error", "err", err)
+						} else {
+							defer span.End()
+							tid = span.SpanContext().TraceID().String()
+							sid = span.SpanContext().SpanID().String()
+						}
+					}
+					if tid == "" {
+						s.client.Logger().Debug("sfn create new tid")
+						tid = id.TID()
+					}
+					if sid == "" {
+						s.client.Logger().Debug("sfn create new sid")
+						sid = id.SID()
+					}
+					// reallocate metadata with new TID and SID
+					core.SetTIDToMetadata(md, tid)
+					core.SetSIDToMetadata(md, sid)
+					newMetadata, err := md.Encode()
+					if err != nil {
+						s.client.Logger().Error("sfn encode metadata error", "err", err)
+						break
+					}
+					data.Metadata = newMetadata
+					if tp != nil {
+						s.client.Logger().Debug("sfn trace", "tid", tid, "sid", sid)
+					}
+					frame := &frame.DataFrame{
+						Tag:      data.Tag,
+						Metadata: data.Metadata,
+						Payload:  data.Payload,
+					}
 
 					s.client.WriteFrame(frame)
 				}
@@ -161,10 +207,50 @@ func (s *streamFunction) Close() error {
 // func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
 func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 	if s.asyncHandler != nil {
-		go func() {
+		tp := s.client.TracerProvider()
+		go func(tp oteltrace.TracerProvider) {
+			md, err := metadata.Decode(dataFrame.Metadata)
+			if err != nil {
+				s.client.Logger().Error("sfn decode metadata error", "err", err)
+				return
+			}
+			tid := core.GetTIDFromMetadata(md)
+			sid := core.GetSIDFromMetadata(md)
+			// trace
+			if tp != nil {
+				// create span
+				span, err := trace.NewSpan(tp, core.StreamTypeStreamFunction.String(), s.name, tid, sid)
+				if err != nil {
+					s.client.Logger().Error("sfn trace error", "err", err)
+				} else {
+					defer span.End()
+					tid = span.SpanContext().TraceID().String()
+					sid = span.SpanContext().SpanID().String()
+				}
+			}
+			if tid == "" {
+				s.client.Logger().Debug("sfn create new tid")
+				tid = id.TID()
+			}
+			if sid == "" {
+				s.client.Logger().Debug("sfn create new sid")
+				sid = id.SID()
+			}
+			// reallocate metadata with new TID and SID
+			core.SetTIDToMetadata(md, tid)
+			core.SetSIDToMetadata(md, sid)
+			newMetadata, err := md.Encode()
+			if err != nil {
+				s.client.Logger().Error("sfn encode metadata error", "err", err)
+				return
+			}
+			dataFrame.Metadata = newMetadata
+			if tp != nil {
+				s.client.Logger().Debug("sfn trace", "tid", tid, "sid", sid)
+			}
 			serverlessCtx := serverless.NewContext(s.client, dataFrame)
 			s.asyncHandler.Handle(serverlessCtx)
-		}()
+		}(tp)
 	} else if s.pipeHandler != nil {
 		data := dataFrame.Payload
 		s.client.Logger().Debug("pipe sfn receive", "data_len", len(data), "data", data)

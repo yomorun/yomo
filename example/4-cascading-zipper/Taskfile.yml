@@ -12,6 +12,7 @@ tasks:
     desc: run
     deps: [sfn, source, zipper-1, zipper-2]
 
+
   zipper-1:
     desc: run zipper-1
     cmds:
@@ -43,8 +44,10 @@ tasks:
     desc: build source
     cmds:
       - "go build -o ./bin/source{{exeExt}} source/source.go"
+    internal: true
 
   sfn-build:
     desc: build sfn
     cmds:
       - "go build -o ./bin/sfn{{exeExt}} sfn/sfn_echo.go"
+    internal: true

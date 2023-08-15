@@ -8,33 +8,43 @@ includes:
   basic:
     taskfile: ./0-basic/Taskfile.yml
     dir: ./0-basic
+    internal: true
   pipeline:
     taskfile: ./1-pipeline/Taskfile.yml
     dir: ./1-pipeline
+    internal: true
   iopipe:
     taskfile: ./2-iopipe/Taskfile.yml
     dir: ./2-iopipe
+    internal: true
   multi-sfn:
     taskfile: ./3-multi-sfn/Taskfile.yml
     dir: ./3-multi-sfn
+    internal: true
   cascading-zipper:
     taskfile: ./4-cascading-zipper/Taskfile.yml
     dir: ./4-cascading-zipper
+    internal: true
   backflow:
     taskfile: ./5-backflow/Taskfile.yml
     dir: ./5-backflow
+    internal: true
   mesh:
     taskfile: ./6-mesh/Taskfile.yaml
     dir: ./6-mesh
+    internal: true
   wasm:
     taskfile: ./7-wasm/Taskfile.yaml
     dir: ./7-wasm
+    internal: true
   deno:
     taskfile: ./8-deno/Taskfile.yaml
     dir: ./8-deno
+    internal: true
   cli:
     taskfile: ./9-cli/Taskfile.yaml
     dir: ./9-cli
+    internal: true
 
 tasks:
   example-basic:

@@ -35,6 +35,7 @@ tasks:
     desc: build source
     cmds:
       - "go build -o ./bin/source{{exeExt}} source/main.go"
+    internal: true
 
   sfn-1:
     desc: run sfn-1
@@ -48,6 +49,7 @@ tasks:
     desc: build sfn-1
     cmds:
       - "go build -o ./bin/sfn-1{{exeExt}} sfn-1/main.go"
+    internal: true
 
   sfn-2:
     desc: run sfn-2
@@ -61,6 +63,7 @@ tasks:
     desc: build sfn-2
     cmds:
       - "go build -o ./bin/sfn-2{{exeExt}} sfn-2/main.go"
+    internal: true
 
   zipper:
     desc: run zipper

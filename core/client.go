@@ -6,26 +6,29 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"runtime"
 	"time"
 
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 	"github.com/yomorun/yomo/pkg/id"
+	oteltrace "go.opentelemetry.io/otel/trace"
 	"golang.org/x/exp/slog"
 )
 
 // Client is the abstraction of a YoMo-Client. a YoMo-Client can be
 // Source, Upstream Zipper or StreamFunction.
 type Client struct {
-	name       string                     // name of the client
-	clientID   string                     // id of the client
-	streamType StreamType                 // type of the dataStream
-	processor  func(*frame.DataFrame)     // function to invoke when data arrived
-	receiver   func(*frame.BackflowFrame) // function to invoke when data is processed
-	errorfn    func(error)                // function to invoke when error occured
-	opts       *clientOptions
-	logger     *slog.Logger
+	name           string                     // name of the client
+	clientID       string                     // id of the client
+	streamType     StreamType                 // type of the dataStream
+	processor      func(*frame.DataFrame)     // function to invoke when data arrived
+	receiver       func(*frame.BackflowFrame) // function to invoke when data is processed
+	errorfn        func(error)                // function to invoke when error occured
+	opts           *clientOptions
+	logger         *slog.Logger
+	tracerProvider oteltrace.TracerProvider
 
 	// ctx and ctxCancel manage the lifecycle of client.
 	ctx       context.Context
@@ -57,6 +60,7 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 		streamType:     connType,
 		opts:           option,
 		logger:         logger,
+		tracerProvider: option.tracerProvider,
 		errorfn:        func(err error) { logger.Error("client err", "err", err) },
 		writeFrameChan: make(chan frame.Frame),
 		ctx:            ctx,
@@ -357,4 +361,15 @@ type FrameWriterConnection interface {
 	Name() string
 	Close() error
 	Connect(context.Context, string) error
+}
+
+// TracerProvider returns the tracer provider of client.
+func (c *Client) TracerProvider() oteltrace.TracerProvider {
+	if c.tracerProvider == nil {
+		return nil
+	}
+	if reflect.ValueOf(c.tracerProvider).IsNil() {
+		return nil
+	}
+	return c.tracerProvider
 }

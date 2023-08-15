@@ -25,12 +25,14 @@ tasks:
     deps: [zipper, sfn, source]
     cmds:
       - echo 'start done'
+    internal: true
 
   source-build:
     desc: build source
     dir: source
     cmds:
       - "go build -o ../bin/source{{exeExt}} main.go"
+    internal: true
 
   sfn-build:
     desc: build sfn
@@ -39,6 +41,7 @@ tasks:
       - "yomo build -m go.mod app.go"
     status:
       - test -f sfn/sfn.wasm
+    internal: true
 
   source:
     desc: run source
