@@ -41,13 +41,13 @@ tasks:
       - "yomo build -m go.mod app.go"
     status:
       - test -f sfn/sfn.wasm
-    internal: true
 
   source:
     desc: run source
     deps: [source-build]
     env:
       YOMO_LOG_LEVEL: error
+      YOMO_TRACE_JAEGER_ENDPOINT: 'http://localhost:14268/api/traces'
     cmds:
       - "./bin/source{{exeExt}}"
 
@@ -67,3 +67,4 @@ tasks:
       - "yomo serve -c config.yaml"
     env:
       YOMO_LOG_LEVEL: error
+      YOMO_TRACE_JAEGER_ENDPOINT: 'http://localhost:14268/api/traces'

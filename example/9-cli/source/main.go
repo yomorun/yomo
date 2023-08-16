@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"math/rand"
 	"time"
 
 	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/pkg/trace"
 	"github.com/yomorun/yomo/serverless"
 )
 
@@ -17,11 +19,18 @@ type noiseData struct {
 }
 
 func main() {
-	addr := "localhost:9000"
+	// trace
+	tp, shutdown, err := trace.NewTracerProviderWithJaeger("yomo-source")
+	if err == nil {
+		log.Println("[source] 🛰 trace enabled")
+	}
+	defer shutdown(context.Background())
 
+	addr := "localhost:9000"
 	source := yomo.NewSource(
 		"source",
 		addr,
+		yomo.WithTracerProvider(tp),
 	)
 	if err := source.Connect(); err != nil {
 		log.Fatalln(err)
@@ -31,6 +40,7 @@ func main() {
 	sink := yomo.NewStreamFunction(
 		"Sink",
 		addr,
+		yomo.WithSfnTracerProvider(tp),
 	)
 	sink.SetObserveDataTags(0x34)
 	sink.SetHandler(
