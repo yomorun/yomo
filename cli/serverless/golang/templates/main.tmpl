@@ -37,11 +37,9 @@ func runSFN(name string, addr string, credential string) (closeFn func() error, 
 		yomo.WithTracerProvider(tp),
 	)
 	closeFn = sfn.Close
-  // set observe data tags
-  sfn.SetObserveDataTags(DataTags()...)
 
-  // set observe data tags
-  sfn.SetObserveDataTags(DataTags()...)
+	// set observe data tags
+	sfn.SetObserveDataTags(DataTags()...)
 
 	// set handler
 	sfn.SetHandler(Handler)
@@ -49,7 +47,7 @@ func runSFN(name string, addr string, credential string) (closeFn func() error, 
 	// set error handler
 	sfn.SetErrorHandler(func(err error) {
 		log.Printf("[sfn][%s] error handler: %T %v\n", addr, err, err)
-		})
+	})
 
 	// start
 	err = sfn.Connect()
