@@ -24,17 +24,22 @@ func main() {
 }
 
 func runSFN(name string, addr string, credential string) (closeFn func() error, err error) {
+	// trace
+	tp, shutdown, err := trace.NewTracerProviderWithJaeger("yomo-sfn")
+	if err == nil {
+		log.Println("[sfn] 🛰 trace enabled")
+	}
+	defer shutdown(context.Background())
 	sfn := yomo.NewStreamFunction(
-        name,
+    name,
 		addr,
 		yomo.WithCredential(credential),
+		yomo.WithTracerProvider(tp),
 	)
 	closeFn = sfn.Close
-  // set observe data tags
-  sfn.SetObserveDataTags(DataTags()...)
 
-  	// set observe data tags
-  	sfn.SetObserveDataTags(DataTags()...)
+	// set observe data tags
+	sfn.SetObserveDataTags(DataTags()...)
 
 	// set handler
 	sfn.SetHandler(Handler)

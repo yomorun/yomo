@@ -319,18 +319,29 @@ func (s *Server) handleDataFrame(c *Context) error {
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
 
 	from := c.DataStream
-	// trace
 	tid := GetTIDFromMetadata(c.FrameMetadata)
 	sid := GetSIDFromMetadata(c.FrameMetadata)
+	parentTraced := GetTracedFromMetadata(c.FrameMetadata)
+	traced := false
+	// trace
 	tp := s.TracerProvider()
 	if tp != nil {
-		span, err := trace.NewSpan(tp, "zipper", "handle DataFrame", tid, sid)
+		// create span
+		var span oteltrace.Span
+		var err error
+		// set parent span, if not traced, use empty string
+		if parentTraced {
+			span, err = trace.NewSpan(tp, "zipper", "handle DataFrame", tid, sid)
+		} else {
+			span, err = trace.NewSpan(tp, "zipper", "handle DataFrame", "", "")
+		}
 		if err != nil {
 			s.logger.Error("zipper trace error", "err", err)
 		} else {
 			defer span.End()
 			tid = span.SpanContext().TraceID().String()
 			sid = span.SpanContext().SpanID().String()
+			traced = true
 		}
 	}
 	if tid == "" {
@@ -344,15 +355,14 @@ func (s *Server) handleDataFrame(c *Context) error {
 	// reallocate metadata with new TID and SID
 	SetTIDToMetadata(c.FrameMetadata, tid)
 	SetSIDToMetadata(c.FrameMetadata, sid)
+	SetTracedToMetadata(c.FrameMetadata, traced || parentTraced)
 	md, err := c.FrameMetadata.Encode()
 	if err != nil {
 		s.logger.Error("encode metadata error", "err", err)
 		return err
 	}
 	c.Frame.Metadata = md
-	if tp != nil {
-		s.logger.Debug("zipper trace", "tid", tid, "sid", sid, "frome_stream_name", from.Name())
-	}
+	s.logger.Debug("zipper metadata", "tid", tid, "sid", sid, "parentTraced", parentTraced, "traced", traced, "frome_stream_name", from.Name())
 	// route
 	route := s.router.Route(c.FrameMetadata)
 	if route == nil {

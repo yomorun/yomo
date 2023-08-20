@@ -99,6 +99,7 @@ func (s *yomoSource) write(tag uint32, data []byte, broadcast bool) error {
 	var tid, sid string
 	// trace
 	tp := s.client.TracerProvider()
+	traced := false
 	if tp != nil {
 		span, err := trace.NewSpan(tp, core.StreamTypeSource.String(), s.name, "", "")
 		if err != nil {
@@ -107,6 +108,7 @@ func (s *yomoSource) write(tag uint32, data []byte, broadcast bool) error {
 			defer span.End()
 			tid = span.SpanContext().TraceID().String()
 			sid = span.SpanContext().SpanID().String()
+			traced = true
 		}
 	}
 	if tid == "" {
@@ -117,11 +119,9 @@ func (s *yomoSource) write(tag uint32, data []byte, broadcast bool) error {
 		s.client.Logger().Debug("source create new sid")
 		sid = id.SID()
 	}
-	if tp != nil {
-		s.client.Logger().Debug("source trace", "tid", tid, "sid", sid, "broadcast", broadcast)
-	}
+	s.client.Logger().Debug("source metadata", "tid", tid, "sid", sid, "broadcast", broadcast, "traced", traced)
 	// metadata
-	md, err := core.NewDefaultMetadata(s.client.ClientID(), broadcast, tid, sid).Encode()
+	md, err := core.NewDefaultMetadata(s.client.ClientID(), broadcast, tid, sid, traced).Encode()
 	if err != nil {
 		return err
 	}

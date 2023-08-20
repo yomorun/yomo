@@ -17,11 +17,14 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 	"github.com/yomorun/yomo"
+	pkgconfig "github.com/yomorun/yomo/pkg/config"
 	"github.com/yomorun/yomo/pkg/log"
+	"github.com/yomorun/yomo/pkg/trace"
 )
 
 // serveCmd represents the serve command
@@ -36,8 +39,37 @@ var serveCmd = &cobra.Command{
 		}
 
 		log.InfoStatusEvent(os.Stdout, "Running YoMo-Zipper...")
+		// config
+		conf, err := pkgconfig.ParseConfigFile(config)
+		if err != nil {
+			log.FailureStatusEvent(os.Stdout, err.Error())
+			return
+		}
+		ctx := context.Background()
+		// trace
+		tp, shutdown, err := trace.NewTracerProviderWithJaeger("yomo-zipper")
+		if err == nil {
+			log.InfoStatusEvent(os.Stdout, "[zipper] 🛰 trace enabled")
+		}
+		defer shutdown(ctx)
+		// listening address.
+		listenAddr := fmt.Sprintf("%s:%d", conf.Host, conf.Port)
 
-		err := yomo.RunZipper(context.Background(), config)
+		options := []yomo.ZipperOption{yomo.WithZipperTracerProvider(tp)}
+		if _, ok := conf.Auth["type"]; ok {
+			if tokenString, ok := conf.Auth["token"]; ok {
+				options = append(options, yomo.WithAuth("token", tokenString))
+			}
+		}
+
+		zipper, err := yomo.NewZipper(conf.Name, conf.Functions, conf.Downstreams, options...)
+		if err != nil {
+			log.FailureStatusEvent(os.Stdout, err.Error())
+			return
+		}
+		zipper.Logger().Info("using config file", "file_path", config)
+
+		err = zipper.ListenAndServe(ctx, listenAddr)
 		if err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
 			return

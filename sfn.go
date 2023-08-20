@@ -112,39 +112,48 @@ func (s *streamFunction) Connect() error {
 					}
 					tid := core.GetTIDFromMetadata(md)
 					sid := core.GetSIDFromMetadata(md)
+					parentTraced := core.GetTracedFromMetadata(md)
+					traced := false
 					// trace
 					tp := s.client.TracerProvider()
 					if tp != nil {
 						// create span
-						span, err := trace.NewSpan(tp, core.StreamTypeStreamFunction.String(), s.name, tid, sid)
+						var span oteltrace.Span
+						var err error
+						// set parent span, if not traced, use empty string
+						if parentTraced {
+							span, err = trace.NewSpan(tp, core.StreamTypeStreamFunction.String(), s.name, tid, sid)
+						} else {
+							span, err = trace.NewSpan(tp, core.StreamTypeStreamFunction.String(), s.name, "", "")
+						}
 						if err != nil {
 							s.client.Logger().Error("sfn trace error", "err", err)
 						} else {
 							defer span.End()
 							tid = span.SpanContext().TraceID().String()
 							sid = span.SpanContext().SpanID().String()
+							traced = true
 						}
 					}
 					if tid == "" {
 						s.client.Logger().Debug("sfn create new tid")
 						tid = id.TID()
 					}
-					if sid == "" {
+					if sid == "" || !traced {
 						s.client.Logger().Debug("sfn create new sid")
 						sid = id.SID()
 					}
 					// reallocate metadata with new TID and SID
 					core.SetTIDToMetadata(md, tid)
 					core.SetSIDToMetadata(md, sid)
+					core.SetTracedToMetadata(md, traced)
 					newMetadata, err := md.Encode()
 					if err != nil {
 						s.client.Logger().Error("sfn encode metadata error", "err", err)
 						break
 					}
 					data.Metadata = newMetadata
-					if tp != nil {
-						s.client.Logger().Debug("sfn trace", "tid", tid, "sid", sid)
-					}
+					s.client.Logger().Debug("sfn metadata", "tid", tid, "sid", sid, "parentTraced", parentTraced, "traced", traced)
 					frame := &frame.DataFrame{
 						Tag:      data.Tag,
 						Metadata: data.Metadata,
@@ -186,7 +195,7 @@ func (s *streamFunction) Close() error {
 func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 	if s.fn != nil {
 		tp := s.client.TracerProvider()
-		go func(tp oteltrace.TracerProvider) {
+		go func(tp oteltrace.TracerProvider, dataFrame *frame.DataFrame) {
 			md, err := metadata.Decode(dataFrame.Metadata)
 			if err != nil {
 				s.client.Logger().Error("sfn decode metadata error", "err", err)
@@ -194,41 +203,50 @@ func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 			}
 			tid := core.GetTIDFromMetadata(md)
 			sid := core.GetSIDFromMetadata(md)
+			parentTraced := core.GetTracedFromMetadata(md)
+			traced := false
 			// trace
 			if tp != nil {
 				// create span
-				span, err := trace.NewSpan(tp, core.StreamTypeStreamFunction.String(), s.name, tid, sid)
+				var span oteltrace.Span
+				var err error
+				// set parent span, if not traced, use empty string
+				if parentTraced {
+					span, err = trace.NewSpan(tp, core.StreamTypeStreamFunction.String(), s.name, tid, sid)
+				} else {
+					span, err = trace.NewSpan(tp, core.StreamTypeStreamFunction.String(), s.name, "", "")
+				}
 				if err != nil {
 					s.client.Logger().Error("sfn trace error", "err", err)
 				} else {
 					defer span.End()
 					tid = span.SpanContext().TraceID().String()
 					sid = span.SpanContext().SpanID().String()
+					traced = true
 				}
 			}
 			if tid == "" {
 				s.client.Logger().Debug("sfn create new tid")
 				tid = id.TID()
 			}
-			if sid == "" {
+			if sid == "" || !traced {
 				s.client.Logger().Debug("sfn create new sid")
 				sid = id.SID()
 			}
 			// reallocate metadata with new TID and SID
 			core.SetTIDToMetadata(md, tid)
 			core.SetSIDToMetadata(md, sid)
+			core.SetTracedToMetadata(md, traced)
 			newMetadata, err := md.Encode()
 			if err != nil {
 				s.client.Logger().Error("sfn encode metadata error", "err", err)
 				return
 			}
 			dataFrame.Metadata = newMetadata
-			if tp != nil {
-				s.client.Logger().Debug("sfn trace", "tid", tid, "sid", sid)
-			}
+			s.client.Logger().Debug("sfn metadata", "tid", tid, "sid", sid, "parentTraced", parentTraced, "traced", traced)
 			serverlessCtx := serverless.NewContext(s.client, dataFrame)
 			s.fn(serverlessCtx)
-		}(tp)
+		}(tp, dataFrame)
 	} else if s.pfn != nil {
 		data := dataFrame.Payload
 		s.client.Logger().Debug("pipe sfn receive", "data_len", len(data), "data", data)

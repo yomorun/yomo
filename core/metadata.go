@@ -7,19 +7,25 @@ const (
 	MetadataBroadcastKey = "yomo-broadcast"
 	MetadataTIDKey       = "yomo-tid"
 	MetadataSIDKey       = "yomo-sid"
+	MetaTraced           = "yomo-traced"
 )
 
 // NewDefaultMetadata returns a default metadata.
-func NewDefaultMetadata(sourceID string, broadcast bool, tid string, sid string) metadata.M {
+func NewDefaultMetadata(sourceID string, broadcast bool, tid string, sid string, traced bool) metadata.M {
 	broadcastString := "false"
 	if broadcast {
 		broadcastString = "true"
+	}
+	tracedString := "false"
+	if traced {
+		tracedString = "true"
 	}
 	return metadata.M{
 		MetadataSourceIDKey:  sourceID,
 		MetadataBroadcastKey: broadcastString,
 		MetadataTIDKey:       tid,
 		MetadataSIDKey:       sid,
+		MetaTraced:           tracedString,
 	}
 }
 
@@ -47,6 +53,12 @@ func GetSIDFromMetadata(m metadata.M) string {
 	return sid
 }
 
+// GetTracedFromMetadata gets traced from metadata.
+func GetTracedFromMetadata(m metadata.M) bool {
+	traced, _ := m.Get(MetaTraced)
+	return traced == "true"
+}
+
 // SetTIDToMetadata sets tid to metadata.
 func SetTIDToMetadata(m metadata.M, tid string) {
 	m.Set(MetadataTIDKey, tid)
@@ -55,4 +67,13 @@ func SetTIDToMetadata(m metadata.M, tid string) {
 // SetSIDToMetadata sets sid to metadata.
 func SetSIDToMetadata(m metadata.M, sid string) {
 	m.Set(MetadataSIDKey, sid)
+}
+
+// SetTracedToMetadata sets traced to metadata.
+func SetTracedToMetadata(m metadata.M, traced bool) {
+	tracedString := "false"
+	if traced {
+		tracedString = "true"
+	}
+	m.Set(MetaTraced, tracedString)
 }
