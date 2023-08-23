@@ -59,7 +59,7 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 	isRx := strings.Contains(string(source), "rx.Stream")
 	isWasm := true
 	mainFuncTmpl := ""
-	mainFunc := []byte{}
+	mainFunc := WasmMainFuncTmpl
 	var err error
 	if isRx {
 		if isWasm {
@@ -72,7 +72,6 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 			return fmt.Errorf("Init: %s", err)
 		}
 	}
-	mainFunc = WasmMainFuncTmpl
 
 	source = append(source, mainFunc...)
 	// log.InfoStatusEvent(os.Stdout, "merge source elapse: %v", time.Since(now))
@@ -220,7 +219,7 @@ func (s *GolangServerless) Build(clean bool) error {
 	// log.InfoStatusEvent(os.Stdout, "source: %s", source)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		err = fmt.Errorf("Build: failure %s", out)
+		err = fmt.Errorf("Build: failure, tinygo %s", out)
 		return err
 	}
 	return nil
