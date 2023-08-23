@@ -59,7 +59,7 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 	isRx := strings.Contains(string(source), "rx.Stream")
 	isWasm := true
 	mainFuncTmpl := ""
-	mainFunc := []byte{}
+	mainFunc := WasmMainFuncTmpl
 	var err error
 	if isRx {
 		if isWasm {
@@ -72,7 +72,6 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 			return fmt.Errorf("Init: %s", err)
 		}
 	}
-	mainFunc = WasmMainFuncTmpl
 
 	source = append(source, mainFunc...)
 	// log.InfoStatusEvent(os.Stdout, "merge source elapse: %v", time.Since(now))
