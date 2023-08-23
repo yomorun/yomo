@@ -220,7 +220,7 @@ func (s *GolangServerless) Build(clean bool) error {
 	// log.InfoStatusEvent(os.Stdout, "source: %s", source)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		err = fmt.Errorf("Build: failure %s", out)
+		err = fmt.Errorf("Build: failure, tinygo %s", out)
 		return err
 	}
 	return nil
