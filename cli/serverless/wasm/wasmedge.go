@@ -5,6 +5,7 @@ package wasm
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -150,6 +151,18 @@ func (r *wasmEdgeRuntime) Close() error {
 	r.module.Release()
 	r.vm.Release()
 	r.conf.Release()
+	return nil
+}
+
+// RunInitFn runs the init function of the wasm sfn
+func (r *wasmEdgeRuntime) RunInitFn() error {
+	result, err := r.vm.Execute(WasmFuncInitFn)
+	if err != nil {
+		return fmt.Errorf("vm.Execute %s: %v", WasmFuncInitFn, err)
+	}
+	if result[0].(int32) != 0 {
+		return errors.New("sfn initialization failed")
+	}
 	return nil
 }
 

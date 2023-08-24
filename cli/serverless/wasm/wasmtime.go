@@ -5,6 +5,7 @@ package wasm
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -21,6 +22,7 @@ type wasmtimeRuntime struct {
 	memory  *wasmtime.Memory
 	init    *wasmtime.Func
 	handler *wasmtime.Func
+	initfn  *wasmtime.Func
 
 	observed      []uint32
 	serverlessCtx serverless.Context
@@ -99,6 +101,7 @@ func (r *wasmtimeRuntime) Init(wasmFile string) error {
 	// yomo init and handler
 	r.init = instance.GetFunc(r.store, WasmFuncInit)
 	r.handler = instance.GetFunc(r.store, WasmFuncHandler)
+	r.initfn = instance.GetFunc(r.store, WasmFuncInitFn)
 
 	if _, err := r.init.Call(r.store); err != nil {
 		return fmt.Errorf("init.Call %s: %v", WasmFuncInit, err)
@@ -124,6 +127,18 @@ func (r *wasmtimeRuntime) RunHandler(ctx serverless.Context) error {
 
 // Close releases all the resources related to the runtime
 func (r *wasmtimeRuntime) Close() error {
+	return nil
+}
+
+// RunInitFn runs the init function of the wasm sfn
+func (r *wasmtimeRuntime) RunInitFn() error {
+	result, err := r.initfn.Call(r.store)
+	if err != nil {
+		return fmt.Errorf("initfn.Call: %v", err)
+	}
+	if result.(int32) != 0 {
+		return errors.New("sfn initialization failed")
+	}
 	return nil
 }
 
