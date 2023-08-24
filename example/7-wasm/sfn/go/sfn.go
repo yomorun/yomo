@@ -14,6 +14,12 @@ func main() {
 	guest.Init = Init
 }
 
+// Init will initialize the stream function
+func Init() error {
+	fmt.Println("wasm go sfn init")
+	return nil
+}
+
 func Handler(ctx serverless.Context) {
 	// load input data
 	tag := ctx.Tag()
@@ -29,9 +35,4 @@ func Handler(ctx serverless.Context) {
 
 func DataTags() []uint32 {
 	return []uint32{0x33}
-}
-
-func Init() error {
-	fmt.Println("wasm go sfn init")
-	return nil
 }

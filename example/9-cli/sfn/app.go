@@ -8,6 +8,11 @@ import (
 	"github.com/yomorun/yomo/serverless"
 )
 
+func Init() error {
+	log.Println("[sfn] init")
+	return nil
+}
+
 func Handler(ctx serverless.Context) {
 	// tingo still does not support `encding/json` for parsing json
 	// https://tinygo.org/docs/reference/lang-support/stdlib/

@@ -25,8 +25,8 @@ func main() {
 
 func runSFN(name string, addr string, credential string) (closeFn func() error, err error) {
 	// trace
-	tp, shutdown, err := trace.NewTracerProviderWithJaeger("yomo-sfn")
-	if err == nil {
+	tp, shutdown, e := trace.NewTracerProviderWithJaeger("yomo-sfn")
+	if e == nil {
 		log.Println("[sfn] 🛰 trace enabled")
 	}
 	defer shutdown(context.Background())
@@ -37,6 +37,12 @@ func runSFN(name string, addr string, credential string) (closeFn func() error, 
 		yomo.WithTracerProvider(tp),
 	)
 	closeFn = sfn.Close
+
+	// init
+	err = sfn.Init()
+	if err != nil {
+		return 
+	}
 
 	// set observe data tags
 	sfn.SetObserveDataTags(DataTags()...)
