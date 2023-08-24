@@ -11,6 +11,7 @@ import (
 func main() {
 	guest.DataTags = DataTags
 	guest.Handler = Handler
+	guest.Init = Init
 }
 
 func Handler(ctx serverless.Context) {
@@ -28,4 +29,9 @@ func Handler(ctx serverless.Context) {
 
 func DataTags() []uint32 {
 	return []uint32{0x33}
+}
+
+func Init() error {
+	fmt.Println("wasm go sfn init")
+	return nil
 }

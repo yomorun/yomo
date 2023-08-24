@@ -27,6 +27,8 @@ type StreamFunction interface {
 	Connect() error
 	// Close will close the connection
 	Close() error
+	// Init will initialize the stream function
+	Init(fn func() error) error
 }
 
 // NewStreamFunction create a stream function.
@@ -259,4 +261,9 @@ func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 // SetErrorHandler set the error handler function when server error occurs
 func (s *streamFunction) SetErrorHandler(fn func(err error)) {
 	s.client.SetErrorHandler(fn)
+}
+
+// Init will initialize the stream function
+func (s *streamFunction) Init(fn func() error) error {
+	return fn()
 }

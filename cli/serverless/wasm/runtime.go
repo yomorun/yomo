@@ -11,6 +11,7 @@ import (
 const (
 	WasmFuncStart           = "_start"
 	WasmFuncInit            = "yomo_init"
+	WasmFuncInitFn          = "yomo_init_fn"
 	WasmFuncObserveDataTag  = "yomo_observe_datatag"
 	WasmFuncHandler         = "yomo_handler"
 	WasmFuncWrite           = "yomo_write"
@@ -26,6 +27,9 @@ type Runtime interface {
 
 	// GetObserveDataTags returns observed datatags of the wasm sfn
 	GetObserveDataTags() []uint32
+
+	// RunInitFn runs the init function of the wasm sfn
+	RunInitFn() error
 
 	// RunHandler runs the wasm application (request -> response mode)
 	RunHandler(ctx serverless.Context) error

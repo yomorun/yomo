@@ -68,6 +68,14 @@ func (s *wasmServerless) Run(verbose bool) error {
 			yomo.WithSfnCredential(s.credential),
 			yomo.WithSfnTracerProvider(tp),
 		)
+		// init
+		err := sfn.Init(func() error {
+			return s.runtime.RunInitFn()
+		})
+		if err != nil {
+			return err
+		}
+		// set observe data tags
 		sfn.SetObserveDataTags(s.observed...)
 
 		var ch chan error
@@ -88,7 +96,7 @@ func (s *wasmServerless) Run(verbose bool) error {
 			},
 		)
 
-		err := sfn.Connect()
+		err = sfn.Connect()
 		if err != nil {
 			return err
 		}

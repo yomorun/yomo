@@ -3,6 +3,7 @@ package wasm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -191,4 +192,21 @@ func (r *wazeroRuntime) contextData(ctx context.Context, m api.Module, stack []u
 
 func (r *wazeroRuntime) contextDataSize(ctx context.Context, stack []uint64) {
 	stack[0] = uint64(len(r.serverlessCtx.Data()))
+}
+
+// RunInitFn runs the init function of the wasm sfn
+func (r *wazeroRuntime) RunInitFn() error {
+	initfn := r.module.ExportedFunction(WasmFuncInitFn)
+	result, err := initfn.Call(r.ctx)
+	if err != nil {
+		if exitErr, ok := err.(*sys.ExitError); ok && exitErr.ExitCode() != 0 {
+			return fmt.Errorf("initfn.Call: %v", err)
+		} else if !ok {
+			return fmt.Errorf("initfn.Call: %v", err)
+		}
+	}
+	if result[0] != 0 {
+		return errors.New("sfn initialization failed")
+	}
+	return nil
 }

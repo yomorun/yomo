@@ -13,6 +13,8 @@ var (
 	DataTags func() []uint32 = func() []uint32 { return []uint32{0} }
 	// Handler is the handler function for guest
 	Handler func(ctx serverless.Context) = func(serverless.Context) {}
+	// Init is the init function for guest
+	Init func() error = func() error { return nil }
 )
 
 type GuestContext struct{}
@@ -54,6 +56,7 @@ func contextData(ptr uintptr, size uint32) uint32
 //export yomo_init
 //go:linkname yomoInit
 func yomoInit() {
+	// set observe data tags
 	dataTags := DataTags()
 	for _, tag := range dataTags {
 		yomoObserveDataTag(tag)
@@ -65,6 +68,17 @@ func yomoInit() {
 func yomoHandler() {
 	ctx := &GuestContext{}
 	Handler(ctx)
+}
+
+//export yomo_init_fn
+//go:linkname yomoInitFn
+func yomoInitFn() uint32 {
+	// init
+	if err := Init(); err != nil {
+		print("yomoInit error: ", err)
+		return 1
+	}
+	return 0
 }
 
 func ContextData(ptr uintptr, size uint32) uint32 {
