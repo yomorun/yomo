@@ -2,8 +2,10 @@ package core
 
 import (
 	"context"
+	"errors"
 	"io"
 
+	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
 )
@@ -27,6 +29,7 @@ type StreamInfo interface {
 // DataStream wraps the specific io stream (typically quic.Stream) to transfer frames.
 // DataStream be used to read and write frames, and be managed by Connector.
 type DataStream interface {
+	Conn() Connection
 	Context() context.Context
 	StreamInfo
 	frame.ReadWriteCloser
@@ -38,8 +41,8 @@ type dataStream struct {
 	streamType StreamType
 	metadata   metadata.M
 	observed   []frame.Tag
-
-	stream *FrameStream
+	conn       Connection
+	stream     *FrameStream
 }
 
 // newDataStream constructures dataStream.
@@ -49,6 +52,7 @@ func newDataStream(
 	streamType StreamType,
 	metadata metadata.M,
 	observed []frame.Tag,
+	conn Connection,
 	stream *FrameStream,
 ) DataStream {
 	return &dataStream{
@@ -57,20 +61,32 @@ func newDataStream(
 		streamType: streamType,
 		metadata:   metadata,
 		observed:   observed,
+		conn:       conn,
 		stream:     stream,
 	}
 }
 
 // DataStream implements.
-func (s *dataStream) Context() context.Context        { return s.stream.Context() }
-func (s *dataStream) ID() string                      { return s.id }
-func (s *dataStream) Name() string                    { return s.name }
-func (s *dataStream) Metadata() metadata.M            { return s.metadata }
-func (s *dataStream) StreamType() StreamType          { return s.streamType }
-func (s *dataStream) ObserveDataTags() []frame.Tag    { return s.observed }
-func (s *dataStream) WriteFrame(f frame.Frame) error  { return s.stream.WriteFrame(f) }
-func (s *dataStream) ReadFrame() (frame.Frame, error) { return s.stream.ReadFrame() }
-func (s *dataStream) Close() error                    { return s.stream.Close() }
+func (s *dataStream) Context() context.Context       { return s.stream.Context() }
+func (s *dataStream) ID() string                     { return s.id }
+func (s *dataStream) Name() string                   { return s.name }
+func (s *dataStream) Metadata() metadata.M           { return s.metadata }
+func (s *dataStream) StreamType() StreamType         { return s.streamType }
+func (s *dataStream) ObserveDataTags() []frame.Tag   { return s.observed }
+func (s *dataStream) WriteFrame(f frame.Frame) error { return s.stream.WriteFrame(f) }
+func (s *dataStream) Close() error                   { return s.stream.Close() }
+func (s *dataStream) Conn() Connection               { return s.conn }
+
+func (s *dataStream) ReadFrame() (frame.Frame, error) {
+	f, err := s.stream.ReadFrame()
+
+	// yomo close conn in same code on top of quic.
+	if qerr := new(quic.ApplicationError); errors.As(err, &qerr) && qerr.ErrorCode == YomoCloseErrorCode {
+		return f, errors.New(qerr.ErrorMessage)
+	}
+
+	return f, err
+}
 
 const (
 	// StreamTypeSource is stream type "Source".

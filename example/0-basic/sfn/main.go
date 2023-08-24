@@ -32,7 +32,7 @@ func main() {
 	// start
 	err := sfn.Connect()
 	if err != nil {
-		slog.Error("[sfn] connect", err)
+		slog.Error("[sfn] connect", "err", err)
 		os.Exit(1)
 	}
 	// set the error handler function when server error occurs

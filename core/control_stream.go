@@ -132,6 +132,7 @@ func (ss *ServerControlStream) OpenStream(ctx context.Context, handshakeFunc Han
 		StreamType(ff.StreamType),
 		md,
 		ff.ObserveDataTags,
+		ss.conn,
 		NewFrameStream(stream, ss.codec, ss.packetReadWriter),
 	)
 	return dataStream, nil
@@ -393,7 +394,7 @@ func (cs *ClientControlStream) acceptStream(ctx context.Context) (DataStream, er
 		return nil, err
 	}
 
-	return newDataStream(f.Name, f.ID, StreamType(f.StreamType), md, f.ObserveDataTags, fs), nil
+	return newDataStream(f.Name, f.ID, StreamType(f.StreamType), md, f.ObserveDataTags, cs.conn, fs), nil
 }
 
 // CloseWithError closes the client-side control stream.
