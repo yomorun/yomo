@@ -39,10 +39,9 @@ func runSFN(name string, addr string, credential string) (closeFn func() error, 
 	closeFn = sfn.Close
 
 	// init
-	err = sfn.Init()
-	if err != nil {
-		return 
-	}
+	sfn.Init(func() error {
+		return nil
+	})
 
 	// set observe data tags
 	sfn.SetObserveDataTags(DataTags()...)
