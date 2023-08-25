@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"reflect"
 	"runtime"
 	"time"
@@ -266,12 +265,6 @@ func (c *Client) handleFrameError(err error, reconnection chan<- struct{}) {
 	}
 
 	c.errorfn(err)
-
-	// exit client program if stream has be closed.
-	if err == io.EOF {
-		c.ctxCancel()
-		return
-	}
 
 	// always attempting to reconnect if an error is encountered,
 	// the error is mostly network error.
