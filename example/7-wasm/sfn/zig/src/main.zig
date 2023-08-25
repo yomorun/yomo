@@ -15,6 +15,11 @@ export fn yomo_init() void {
     yomo_observe_datatag(0x33);
 }
 
+export fn yomo_init_fn() u32 {
+    std.log.info("wasm zig sfn init", .{});
+    return 0;
+}
+
 export fn yomo_handler() void {
     // load input data
     const tag = yomo_context_tag();
