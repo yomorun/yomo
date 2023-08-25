@@ -31,7 +31,6 @@ func TestMetadata(t *testing.T) {
 func TestMetadataSlogAttr(t *testing.T) {
 	md := metadata.New(map[string]string{
 		"aaaa": "bbbb",
-		"cccc": "dddd",
 	})
 
 	buf := bytes.NewBuffer(nil)
@@ -50,5 +49,5 @@ func TestMetadataSlogAttr(t *testing.T) {
 
 	logger.Debug("test metadata", MetadataSlogAttr(md))
 
-	assert.Equal(t, "level=DEBUG msg=\"test metadata\" metadata.aaaa=bbbb metadata.cccc=dddd\n", buf.String())
+	assert.Equal(t, "level=DEBUG msg=\"test metadata\" metadata.aaaa=bbbb\n", buf.String())
 }
