@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"reflect"
 	"runtime"
 	"time"
@@ -248,8 +247,10 @@ func (c *Client) processStream(controlStream *ClientControlStream, dataStream Da
 				c.handleFrame(result.frame)
 			}()
 		case f := <-c.writeFrameChan:
-			err := dataStream.WriteFrame(f)
-			c.handleFrameError(err, reconnection)
+			if err := dataStream.WriteFrame(f); err != nil {
+				c.handleFrameError(err, reconnection)
+				return
+			}
 		}
 	}
 }
@@ -264,12 +265,6 @@ func (c *Client) handleFrameError(err error, reconnection chan<- struct{}) {
 	}
 
 	c.errorfn(err)
-
-	// exit client program if stream has be closed.
-	if err == io.EOF {
-		c.ctxCancel()
-		return
-	}
 
 	// always attempting to reconnect if an error is encountered,
 	// the error is mostly network error.
