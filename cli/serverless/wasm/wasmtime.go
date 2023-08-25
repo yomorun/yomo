@@ -132,6 +132,10 @@ func (r *wasmtimeRuntime) Close() error {
 
 // RunInitFn runs the init function of the wasm sfn
 func (r *wasmtimeRuntime) RunInitFn() error {
+	if r.initfn == nil {
+		fmt.Println("initfn not used")
+		return nil
+	}
 	result, err := r.initfn.Call(r.store)
 	if err != nil {
 		return fmt.Errorf("initfn.Call: %v", err)

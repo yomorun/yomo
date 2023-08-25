@@ -156,6 +156,12 @@ func (r *wasmEdgeRuntime) Close() error {
 
 // RunInitFn runs the init function of the wasm sfn
 func (r *wasmEdgeRuntime) RunInitFn() error {
+	// initfn
+	initfn := r.vm.GetActiveModule().FindFunction(WasmFuncInitFn)
+	if initfn == nil {
+		fmt.Println("initfn not used")
+		return nil
+	}
 	result, err := r.vm.Execute(WasmFuncInitFn)
 	if err != nil {
 		return fmt.Errorf("vm.Execute %s: %v", WasmFuncInitFn, err)

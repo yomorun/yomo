@@ -144,6 +144,10 @@ func (r *wazeroRuntime) Close() error {
 // RunInitFn runs the init function of the wasm sfn
 func (r *wazeroRuntime) RunInitFn() error {
 	initfn := r.module.ExportedFunction(WasmFuncInitFn)
+	if initfn == nil {
+		fmt.Println("initfn not used")
+		return nil
+	}
 	result, err := initfn.Call(r.ctx)
 	if err != nil {
 		if exitErr, ok := err.(*sys.ExitError); ok && exitErr.ExitCode() != 0 {
