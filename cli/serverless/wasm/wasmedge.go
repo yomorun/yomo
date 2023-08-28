@@ -121,10 +121,14 @@ func (r *wasmEdgeRuntime) Init(wasmFile string) error {
 			return fmt.Errorf("vm.Execute %s: %v", WasmFuncStart, err)
 		}
 	}
-	// yomo init
-	_, err = r.vm.Execute(WasmFuncInit)
+	// yomo observe data tags
+	observeDataTagsFunc := r.vm.GetActiveModule().FindFunction(WasmFuncObserveDataTags)
+	if observeDataTagsFunc == nil {
+		return fmt.Errorf("%s function not found", WasmFuncObserveDataTags)
+	}
+	_, err = r.vm.Execute(WasmFuncObserveDataTags)
 	if err != nil {
-		return fmt.Errorf("vm.Execute %s: %v", WasmFuncInit, err)
+		return fmt.Errorf("vm.Execute %s: %v", WasmFuncObserveDataTags, err)
 	}
 
 	return nil
@@ -154,17 +158,17 @@ func (r *wasmEdgeRuntime) Close() error {
 	return nil
 }
 
-// RunInitFn runs the init function of the wasm sfn
-func (r *wasmEdgeRuntime) RunInitFn() error {
-	// initfn
-	initfn := r.vm.GetActiveModule().FindFunction(WasmFuncInitFn)
-	if initfn == nil {
-		fmt.Println("initfn not used")
+// RunInit runs the init function of the wasm sfn
+func (r *wasmEdgeRuntime) RunInit() error {
+	// init
+	initFunc := r.vm.GetActiveModule().FindFunction(WasmFuncInit)
+	if initFunc == nil {
+		fmt.Println("init function not used")
 		return nil
 	}
-	result, err := r.vm.Execute(WasmFuncInitFn)
+	result, err := r.vm.Execute(WasmFuncInit)
 	if err != nil {
-		return fmt.Errorf("vm.Execute %s: %v", WasmFuncInitFn, err)
+		return fmt.Errorf("vm.Execute %s: %v", WasmFuncInit, err)
 	}
 	if result[0].(int32) != 0 {
 		return errors.New("sfn initialization failed")

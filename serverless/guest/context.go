@@ -53,9 +53,9 @@ func yomoContextTag() uint32
 //go:linkname contextData
 func contextData(ptr uintptr, size uint32) uint32
 
-//export yomo_init
-//go:linkname yomoInit
-func yomoInit() {
+//export yomo_observe_datatags
+//go:linkname yomoObserveDataTags
+func yomoObserveDataTags() {
 	// set observe data tags
 	dataTags := DataTags()
 	for _, tag := range dataTags {
@@ -70,9 +70,9 @@ func yomoHandler() {
 	Handler(ctx)
 }
 
-//export yomo_init_fn
-//go:linkname yomoInitFn
-func yomoInitFn() uint32 {
+//export yomo_init
+//go:linkname yomoInit
+func yomoInit() uint32 {
 	// init
 	if err := Init(); err != nil {
 		print("yomoInit error: ", err)

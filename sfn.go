@@ -15,7 +15,6 @@ import (
 // StreamFunction defines serverless streaming functions.
 type StreamFunction interface {
 	// SetObserveDataTags set the data tag list that will be observed
-	// Deprecated: use yomo.WithObserveDataTags instead
 	SetObserveDataTags(tag ...uint32)
 	// SetHandler set the handler function, which accept the raw bytes data and return the tag & response
 	SetHandler(fn core.AsyncHandler) error

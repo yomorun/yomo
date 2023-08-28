@@ -11,13 +11,13 @@ pub fn main() !void {
     std.log.info("yomo wasm sfn on zig", .{});
 }
 
-export fn yomo_init() void {
-    yomo_observe_datatag(0x33);
-}
-
-export fn yomo_init_fn() u32 {
+export fn yomo_init() u32 {
     std.log.info("wasm zig sfn init", .{});
     return 0;
+}
+
+export fn yomo_observe_datatags() void {
+    yomo_observe_datatag(0x33);
 }
 
 export fn yomo_handler() void {

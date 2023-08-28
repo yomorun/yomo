@@ -21,12 +21,12 @@ load_input(char *pointer, size_t length);
 __attribute__((import_module("env"), import_name("yomo_write"))) extern int32_t
 dump_output(uint32_t tag, const char *pointer, size_t length);
 
-void yomo_init() { observe(0x33); }
-
-uint32_t yomo_init_fn() {
+uint32_t yomo_init() {
   printf("wasm c sfn init\n");
   return 0;
 }
+
+void yomo_observe_datatags() { observe(0x33); }
 
 void yomo_handler() {
   // load input tag & data

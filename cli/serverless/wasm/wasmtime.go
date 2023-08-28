@@ -17,12 +17,12 @@ import (
 )
 
 type wasmtimeRuntime struct {
-	linker  *wasmtime.Linker
-	store   *wasmtime.Store
-	memory  *wasmtime.Memory
-	init    *wasmtime.Func
-	handler *wasmtime.Func
-	initfn  *wasmtime.Func
+	linker          *wasmtime.Linker
+	store           *wasmtime.Store
+	memory          *wasmtime.Memory
+	init            *wasmtime.Func
+	observeDataTags *wasmtime.Func
+	handler         *wasmtime.Func
 
 	observed      []uint32
 	serverlessCtx serverless.Context
@@ -100,11 +100,14 @@ func (r *wasmtimeRuntime) Init(wasmFile string) error {
 	}
 	// yomo init and handler
 	r.init = instance.GetFunc(r.store, WasmFuncInit)
+	r.observeDataTags = instance.GetFunc(r.store, WasmFuncObserveDataTags)
 	r.handler = instance.GetFunc(r.store, WasmFuncHandler)
-	r.initfn = instance.GetFunc(r.store, WasmFuncInitFn)
 
-	if _, err := r.init.Call(r.store); err != nil {
-		return fmt.Errorf("init.Call %s: %v", WasmFuncInit, err)
+	if r.observeDataTags == nil {
+		return fmt.Errorf("%s function not found", WasmFuncObserveDataTags)
+	}
+	if _, err := r.observeDataTags.Call(r.store); err != nil {
+		return fmt.Errorf("init.Call %s: %v", WasmFuncObserveDataTags, err)
 	}
 
 	return nil
@@ -130,15 +133,15 @@ func (r *wasmtimeRuntime) Close() error {
 	return nil
 }
 
-// RunInitFn runs the init function of the wasm sfn
-func (r *wasmtimeRuntime) RunInitFn() error {
-	if r.initfn == nil {
-		fmt.Println("initfn not used")
+// RunInitruns the init function of the wasm sfn
+func (r *wasmtimeRuntime) RunInit() error {
+	if r.init == nil {
+		fmt.Println("init function not used")
 		return nil
 	}
-	result, err := r.initfn.Call(r.store)
+	result, err := r.init.Call(r.store)
 	if err != nil {
-		return fmt.Errorf("initfn.Call: %v", err)
+		return fmt.Errorf("init.Call: %v", err)
 	}
 	if result.(int32) != 0 {
 		return errors.New("sfn initialization failed")

@@ -70,7 +70,7 @@ func (s *wasmServerless) Run(verbose bool) error {
 		)
 		// init
 		err := sfn.Init(func() error {
-			return s.runtime.RunInitFn()
+			return s.runtime.RunInit()
 		})
 		if err != nil {
 			return err

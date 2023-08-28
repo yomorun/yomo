@@ -14,7 +14,7 @@ export WASI_SDK_PATH=~/Downloads/wasi-sdk-$WASI_VERSION_FULL
 $WASI_SDK_PATH/bin/clang --target=wasm32-wasi \
     --sysroot=$WASI_SDK_PATH/share/wasi-sysroot \
     -nostartfiles -fvisibility=hidden -O3 \
-    -Wl,--no-entry,--export=yomo_init,--export=yomo_handler \
+    -Wl,--no-entry,--export=yomo_init,--export=yomo_handler,--export=yomo_observe_datatags \
     -o sfn.wasm sfn.c
 
 cp sfn.wasm ..

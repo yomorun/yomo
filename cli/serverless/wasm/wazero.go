@@ -96,13 +96,15 @@ func (r *wazeroRuntime) Init(wasmFile string) error {
 	}
 	r.module = module
 
-	init := module.ExportedFunction(WasmFuncInit)
-
-	if _, err := init.Call(r.ctx); err != nil {
+	observeDataTagsFunc := module.ExportedFunction(WasmFuncObserveDataTags)
+	if observeDataTagsFunc == nil {
+		return fmt.Errorf("%s function not found", WasmFuncObserveDataTags)
+	}
+	if _, err := observeDataTagsFunc.Call(r.ctx); err != nil {
 		if exitErr, ok := err.(*sys.ExitError); ok && exitErr.ExitCode() != 0 {
-			return fmt.Errorf("init.Call %s: %v", WasmFuncInit, err)
+			return fmt.Errorf("observeDataTags.Call %s: %v", WasmFuncInit, err)
 		} else if !ok {
-			return fmt.Errorf("init.Call %s: %v", WasmFuncInit, err)
+			return fmt.Errorf("observeDataTags.Call %s: %v", WasmFuncInit, err)
 		}
 	}
 
@@ -141,19 +143,19 @@ func (r *wazeroRuntime) Close() error {
 	return r.Runtime.Close(r.ctx)
 }
 
-// RunInitFn runs the init function of the wasm sfn
-func (r *wazeroRuntime) RunInitFn() error {
-	initfn := r.module.ExportedFunction(WasmFuncInitFn)
-	if initfn == nil {
-		fmt.Println("initfn not used")
+// RunInit runs the init function of the wasm sfn
+func (r *wazeroRuntime) RunInit() error {
+	initFunc := r.module.ExportedFunction(WasmFuncInit)
+	if initFunc == nil {
+		fmt.Println("init function not used")
 		return nil
 	}
-	result, err := initfn.Call(r.ctx)
+	result, err := initFunc.Call(r.ctx)
 	if err != nil {
 		if exitErr, ok := err.(*sys.ExitError); ok && exitErr.ExitCode() != 0 {
-			return fmt.Errorf("initfn.Call: %v", err)
+			return fmt.Errorf("init.Call: %v", err)
 		} else if !ok {
-			return fmt.Errorf("initfn.Call: %v", err)
+			return fmt.Errorf("init.Call: %v", err)
 		}
 	}
 	if result[0] != 0 {
