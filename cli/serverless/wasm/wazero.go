@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
@@ -44,6 +45,13 @@ func newWazeroRuntime() (*wazeroRuntime, error) {
 		WithStdout(os.Stdout).
 		WithStderr(os.Stderr).
 		WithFSConfig(wazero.NewFSConfig().WithDirMount(".", "."))
+	// set env to wazero config
+	for _, env := range os.Environ() {
+		kv := strings.SplitN(env, "=", 2)
+		if len(kv) == 2 {
+			config = config.WithEnv(kv[0], kv[1])
+		}
+	}
 
 	return &wazeroRuntime{
 		Runtime: r,
