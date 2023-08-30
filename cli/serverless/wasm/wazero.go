@@ -110,9 +110,9 @@ func (r *wazeroRuntime) Init(wasmFile string) error {
 	}
 	if _, err := observeDataTagsFunc.Call(r.ctx); err != nil {
 		if exitErr, ok := err.(*sys.ExitError); ok && exitErr.ExitCode() != 0 {
-			return fmt.Errorf("observeDataTags.Call %s: %v", WasmFuncInit, err)
+			return fmt.Errorf("%s.Call: %v", WasmFuncObserveDataTags, err)
 		} else if !ok {
-			return fmt.Errorf("observeDataTags.Call %s: %v", WasmFuncInit, err)
+			return fmt.Errorf("%s.Call: %v", WasmFuncObserveDataTags, err)
 		}
 	}
 

@@ -107,7 +107,7 @@ func (r *wasmtimeRuntime) Init(wasmFile string) error {
 		return fmt.Errorf("%s function not found", WasmFuncObserveDataTags)
 	}
 	if _, err := r.observeDataTags.Call(r.store); err != nil {
-		return fmt.Errorf("init.Call %s: %v", WasmFuncObserveDataTags, err)
+		return fmt.Errorf("%s.Call: %v", WasmFuncObserveDataTags, err)
 	}
 
 	return nil
