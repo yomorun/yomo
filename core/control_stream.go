@@ -322,7 +322,7 @@ func (cs *ClientControlStream) RequestStream(hf *frame.HandshakeFrame) error {
 // ErrControllerClosed return is the controller is closed.
 var ErrControllerClosed = errors.New("yomo: client controller closed")
 
-// AcceptStream accepts a DataStream from the server if SendHandshake() has been called before.
+// AcceptStream accepts a DataStream from the server if RequestStream() has been called before.
 // This method should be executed in a for-loop.
 // If the handshake is rejected, an ErrHandshakeRejected error will be returned. This error does not represent
 // a network error and the for-loop can continue.
@@ -331,6 +331,8 @@ func (cs *ClientControlStream) AcceptStream(ctx context.Context) (DataStream, er
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-cs.ctx.Done():
+		// cs.conn.CloseWithError() triggers cs.ctx.Done(),
+		// if the connection closed, there will return ErrControllerClosed.
 		return nil, ErrControllerClosed
 	case reject, ok := <-cs.handshakeRejectedFrameChan:
 		if !ok {
