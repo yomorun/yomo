@@ -7,6 +7,12 @@ import (
 	"github.com/yomorun/yomo/serverless"
 )
 
+// Init will initialize the stream function
+func Init() error {
+	fmt.Println("sfn init")
+	return nil
+}
+
 // Handler will handle the raw data
 func Handler(ctx serverless.Context) {
 	data := ctx.Data()
