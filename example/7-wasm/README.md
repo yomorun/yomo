@@ -126,6 +126,7 @@ serverless function. Now we will elaborate on our wasm development design.
      config file.
 
    - `yomo_observe_datatags: [] -> []`
+
 	   set the data tag list that will be observed.
 
    - `yomo_handler: [] -> []`
