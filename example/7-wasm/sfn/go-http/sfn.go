@@ -11,6 +11,12 @@ import (
 func main() {
 	guest.DataTags = DataTags
 	guest.Handler = Handler
+	guest.Init = Init
+}
+
+func Init() error {
+	fmt.Println("[SFN] init")
+	return nil
 }
 
 func Handler(ctx serverless.Context) {

@@ -105,7 +105,7 @@ func (ss *ServerControlStream) OpenStream(ctx context.Context, handshakeFunc Han
 	}
 	md, err := handshakeFunc(ff)
 	if err != nil {
-		ss.stream.WriteFrame(&frame.HandshakeRejectedFrame{
+		_ = ss.stream.WriteFrame(&frame.HandshakeRejectedFrame{
 			ID:      ff.ID,
 			Message: err.Error(),
 		})
@@ -212,7 +212,7 @@ func OpenClientControlStream(
 		return nil, err
 	}
 
-	return NewClientControlStream(ctx, &QuicConnection{conn}, stream0, codec, packetReadWriter, logger), nil
+	return NewClientControlStream(conn.Context(), &QuicConnection{conn}, stream0, codec, packetReadWriter, logger), nil
 }
 
 // NewClientControlStream returns ClientControlStream from quic Connection and the first stream form the Connection.
@@ -249,7 +249,9 @@ func (cs *ClientControlStream) readFrameLoop() {
 		case *frame.HandshakeRejectedFrame:
 			cs.handshakeRejectedFrameChan <- ff
 		default:
-			cs.logger.Debug("control stream read unexcepted frame", "frame_type", f.Type().String())
+			cs.logger.Warn("control stream read unexcepted frame", "frame_type", f.Type().String())
+			_ = cs.conn.CloseWithError("client read unexcepted frame")
+			return
 		}
 	}
 }
@@ -318,7 +320,10 @@ func (cs *ClientControlStream) RequestStream(hf *frame.HandshakeFrame) error {
 	return nil
 }
 
-// AcceptStream accepts a DataStream from the server if SendHandshake() has been called before.
+// ErrControllerClosed return is the controller is closed.
+var ErrControllerClosed = errors.New("yomo: client controller closed")
+
+// AcceptStream accepts a DataStream from the server if RequestStream() has been called before.
 // This method should be executed in a for-loop.
 // If the handshake is rejected, an ErrHandshakeRejected error will be returned. This error does not represent
 // a network error and the for-loop can continue.
@@ -327,8 +332,13 @@ func (cs *ClientControlStream) AcceptStream(ctx context.Context) (DataStream, er
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-cs.ctx.Done():
-		return nil, cs.ctx.Err()
-	case reject := <-cs.handshakeRejectedFrameChan:
+		// cs.conn.CloseWithError() triggers cs.ctx.Done(),
+		// if the connection closed, there will return ErrControllerClosed.
+		return nil, ErrControllerClosed
+	case reject, ok := <-cs.handshakeRejectedFrameChan:
+		if !ok {
+			return nil, ErrControllerClosed
+		}
 		cs.mu.Lock()
 		delete(cs.handshakeFrames, reject.ID)
 		cs.mu.Unlock()
@@ -337,7 +347,10 @@ func (cs *ClientControlStream) AcceptStream(ctx context.Context) (DataStream, er
 			Message:  reject.Message,
 			StreamID: reject.ID,
 		}
-	case result := <-cs.acceptStreamResultChan:
+	case result, ok := <-cs.acceptStreamResultChan:
+		if !ok {
+			return nil, ErrControllerClosed
+		}
 		if err := result.err; err != nil {
 			return nil, err
 		}

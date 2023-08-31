@@ -165,7 +165,7 @@ var frameTypeNewFuncMap = map[Type]func() Frame{
 	TypeAuthenticationAckFrame: func() Frame { return new(AuthenticationAckFrame) },
 	TypeDataFrame:              func() Frame { return new(DataFrame) },
 	TypeHandshakeFrame:         func() Frame { return new(HandshakeFrame) },
-	TypeHandshakeRejectedFrame: func() Frame { return new(HandshakeAckFrame) },
+	TypeHandshakeRejectedFrame: func() Frame { return new(HandshakeRejectedFrame) },
 	TypeHandshakeAckFrame:      func() Frame { return new(HandshakeAckFrame) },
 	TypeRejectedFrame:          func() Frame { return new(RejectedFrame) },
 	TypeBackflowFrame:          func() Frame { return new(BackflowFrame) },

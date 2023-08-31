@@ -30,7 +30,9 @@ type Context struct {
 	mu sync.RWMutex
 	// Keys stores the key/value pairs in context, It is Lazy initialized.
 	Keys map[string]any
-	// Using Logger to log in stream handler scope.
+	// StreamLogger is stream-level logger.
+	StreamLogger *slog.Logger
+	// Using Logger to log in stream handler scope, Logger is frame-level logger.
 	Logger *slog.Logger
 }
 
@@ -104,6 +106,7 @@ func newContext(dataStream DataStream, route router.Route, logger *slog.Logger) 
 
 	c.DataStream = dataStream
 	c.Route = route
+	c.StreamLogger = logger
 	c.Logger = logger
 
 	return
@@ -120,6 +123,8 @@ func (c *Context) WithFrame(f frame.Frame) error {
 	if err != nil {
 		return err
 	}
+
+	c.Logger = c.StreamLogger.With(MetadataSlogAttr(fmd))
 
 	// merge data stream metadata.
 	c.DataStream.Metadata().Range(func(k, v string) bool {
@@ -158,6 +163,7 @@ func (c *Context) reset() {
 	c.Route = nil
 	c.Frame = nil
 	c.FrameMetadata = nil
+	c.StreamLogger = nil
 	c.Logger = nil
 	for k := range c.Keys {
 		delete(c.Keys, k)

@@ -120,10 +120,14 @@ serverless function. Now we will elaborate on our wasm development design.
 
 2. Export functions
 
-   - `yomo_init: [] -> []`
+   - `yomo_init: [] -> [I32]`
 
      You can do the initialization tasks in this function, such as loading a
      config file.
+
+   - `yomo_observe_datatags: [] -> []`
+
+	   Set the data tag list that will be observed.
 
    - `yomo_handler: [] -> []`
 

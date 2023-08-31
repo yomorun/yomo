@@ -26,16 +26,17 @@ build_for_platform() {
         return 1
     fi
     echo "Building $GOOS/$GOARCH"
-    local output="build/yomo"
+    local output="yomo"
     if [[ "$GOOS" = "windows" ]]; then
         output="$output.exe"
     fi
-    # compress to .zip file
-    local binfile="build/yomo-$GOARCH-$GOOS.zip"
+    # compress to .tar.gz file
+    local binfile="build/yomo-$GOARCH-$GOOS.tar.gz"
     local exit_val=0
-    GOOS=$GOOS GOARCH=$GOARCH go build -o "$output" -ldflags "$ldflags" -trimpath ./cmd/yomo/main.go || exit_val=$?
+    CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH go build -o "build/$output" -ldflags "$ldflags" -trimpath ./cmd/yomo/main.go || exit_val=$?
     # compress compiled binary to .zip
-    zip -r -j "$binfile" "$output"
+    # zip -r -j "$binfile" "$output"
+    tar -C build -czvf "$binfile" "$output"
     rm -rf $output
     if [[ "$exit_val" -ne 0 ]]; then
         echo "Error: failed to build $GOOS/$GOARCH" >&2

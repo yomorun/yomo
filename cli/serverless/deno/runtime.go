@@ -103,6 +103,11 @@ func startSfn(name string, zipperAddr string, credential string, observed []fram
 		yomo.WithSfnTracerProvider(tp),
 	)
 
+	// init
+	sfn.Init(func() error {
+		return nil
+	})
+
 	sfn.SetObserveDataTags(observed...)
 
 	sfn.SetHandler(

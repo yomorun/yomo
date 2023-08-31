@@ -11,6 +11,13 @@ import (
 func main() {
 	guest.DataTags = DataTags
 	guest.Handler = Handler
+	guest.Init = Init
+}
+
+// Init will initialize the stream function
+func Init() error {
+	fmt.Println("wasm go sfn init")
+	return nil
 }
 
 func Handler(ctx serverless.Context) {
