@@ -1,7 +1,12 @@
 #[yomo::init]
-fn init() -> anyhow::Result<Vec<u32>> {
-    // return observe datatags
-    Ok(vec![0x33])
+fn init() -> anyhow::Result<()> {
+    println!("wasm rust sfn init");
+    Ok(())
+}
+
+#[yomo::observe_datatags]
+fn observe_datatags() -> Vec<u32> {
+    vec![0x33]
 }
 
 #[yomo::handler]
