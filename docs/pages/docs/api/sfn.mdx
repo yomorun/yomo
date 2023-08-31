@@ -36,11 +36,56 @@ Set the data [Tag][tag] list that will be observed from [Zipper][zipper].
 
 - `tags`: The data [Tag][tag] list.
 
+### sfn.Init(fn)
+
+<Callout emoji="ℹ️" type="info">
+This feature is introduced in version 1.14
+</Callout>
+
+Set the fn as `initializer` for this serverless, It's **Optional**, if setted, the `fn` will be invoked only once at the first time this serverless start.
+
+- `fn`: The initializer handler with `func () error` signature.
+
+```go {8-10}
+sfn := NewStreamFunction(
+	"test-sfn",
+	"localhost:9000",
+)
+defer sfn.Close()
+
+// Init fn, load the 7b model to GPU momery when this serverless start.
+err := sfn.Init(func() error {
+  return LoadModelToMemory('llama-2-7b-chat', 'tokenizer.model')
+})
+
+// handle every data to be predicted
+sfn.SetHandler(...)
+
+sfn.Connect()
+```
+
 ### sfn.SetHandler(fn AsyncHandler) error
 
 Set the handler function in [async mode](#type-asynchandler), which accept the raw bytes data from [Zipper][zipper], and return the raw bytes data to [Zipper][zipper].
 
 - `fn`: The handler function of [AsyncHandler](#type-asynchandler).
+
+```go {9-12}
+sfn := yomo.NewStreamFunction(
+  "my-fn",
+  "localhost:9000",
+)
+defer sfn.Close()
+
+sfn.SetObserveDataTags(0x10)
+
+sfn.SetHandler(func (ctx serverless.Context) {
+  data := ctx.Data()
+  log.Printf("✅ [my-fn] received <- %v", string(data))
+})
+
+err = sfn.Connect()
+```
 
 ### sfn.SetPipeHandler(fn PipeHandler) error
 
