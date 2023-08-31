@@ -99,7 +99,31 @@ Set QUIC config for this Source instance.
 
 Set the logger for this Source instance.
 
- - `logger`: The logger.
+- `logger`: The logger.
+
+### WithTracerProvider(tp *tracesdk.TracerProvider) SourceOption
+
+Set the tracer provider for this Source instance.
+
+- `tp`: The tracer provider.
+
+```go
+// trace
+tp, shutdown, err := trace.NewTracerProviderWithJaeger("yomo-source")
+if err == nil {
+	log.Println("[source] 🛰 trace enabled")
+}
+defer shutdown(context.Background())
+
+// source
+source := yomo.NewSource(
+	"source",
+	"localhost:9000",
+	yomo.WithTracerProvider(tp),  // use trace provider
+)
+```
+
+More about [YoMo Observability](/docs/opentracing).
 
 ## Example
 
