@@ -8,7 +8,6 @@ import (
 	"io"
 	"reflect"
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/yomorun/yomo/core/frame"
@@ -269,7 +268,13 @@ func (c *Client) handleFrameError(err error, reconnection chan<- struct{}) {
 	c.errorfn(err)
 
 	// exit client program if stream has be closed.
-	if err == io.EOF || strings.HasSuffix(err.Error(), "is already linked to another stream") {
+	if err == io.EOF {
+		c.ctxCancel()
+		return
+	}
+
+	// If client accepts close signal from server, then exit client program.
+	if se := new(ErrControllSignal); errors.As(err, &se) {
 		c.ctxCancel()
 		return
 	}

@@ -132,8 +132,9 @@ func (ss *ServerControlStream) OpenStream(ctx context.Context, handshakeFunc Han
 		StreamType(ff.StreamType),
 		md,
 		ff.ObserveDataTags,
-		ss.conn,
 		NewFrameStream(stream, ss.codec, ss.packetReadWriter),
+		ss,
+		nil,
 	)
 	return dataStream, nil
 }
@@ -141,6 +142,16 @@ func (ss *ServerControlStream) OpenStream(ctx context.Context, handshakeFunc Han
 // CloseWithError closes the server-side control stream.
 func (ss *ServerControlStream) CloseWithError(errString string) error {
 	return ss.conn.CloseWithError(errString)
+}
+
+// Goaway tells client-side connection that the connection goaway and closes it.
+func (ss *ServerControlStream) Goaway(errString string) error {
+	// send GoawayFrame to client.
+	_ = ss.stream.WriteFrame(&frame.GoawayFrame{
+		Message: errString,
+	})
+	// close the connection.
+	return ss.CloseWithError(errString)
 }
 
 // VerifyAuthentication verify the Authentication from client side.
@@ -193,6 +204,7 @@ type ClientControlStream struct {
 	handshakeRejectedFrameChan chan *frame.HandshakeRejectedFrame
 	acceptStreamResultChan     chan acceptStreamResult
 	logger                     *slog.Logger
+	signalChan                 chan frame.Frame
 }
 
 // OpenClientControlStream opens ClientControlStream from addr.
@@ -230,6 +242,7 @@ func NewClientControlStream(
 		handshakeRejectedFrameChan: make(chan *frame.HandshakeRejectedFrame, 10),
 		acceptStreamResultChan:     make(chan acceptStreamResult, 10),
 		logger:                     logger,
+		signalChan:                 make(chan frame.Frame, 1),
 	}
 
 	return controlStream
@@ -246,8 +259,24 @@ func (cs *ClientControlStream) readFrameLoop() {
 			return
 		}
 		switch ff := f.(type) {
+
+		// stream level control signal.
 		case *frame.HandshakeRejectedFrame:
 			cs.handshakeRejectedFrameChan <- ff
+
+		// connection level control signal.
+		case *frame.RejectedFrame:
+			select {
+			case cs.signalChan <- f:
+				return
+			default:
+			}
+		case *frame.GoawayFrame:
+			select {
+			case cs.signalChan <- f:
+				return
+			default:
+			}
 		default:
 			cs.logger.Warn("control stream read unexcepted frame", "frame_type", f.Type().String())
 			_ = cs.conn.CloseWithError("client read unexcepted frame")
@@ -407,7 +436,7 @@ func (cs *ClientControlStream) acceptStream(ctx context.Context) (DataStream, er
 		return nil, err
 	}
 
-	return newDataStream(f.Name, f.ID, StreamType(f.StreamType), md, f.ObserveDataTags, cs.conn, fs), nil
+	return newDataStream(f.Name, f.ID, StreamType(f.StreamType), md, f.ObserveDataTags, fs, nil, cs.signalChan), nil
 }
 
 // CloseWithError closes the client-side control stream.
