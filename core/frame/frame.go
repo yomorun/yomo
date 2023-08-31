@@ -9,7 +9,7 @@ import (
 // Frame is the minimum unit required for Yomo to run.
 // Yomo transmits various instructions and data through the frame, which can be transmitted on the IO stream.
 //
-//	Yomo needs 8 type frame to run up, them cantain:
+//	Yomo needs 9 type frame to run up, them cantain:
 //		1. AuthenticationFrame
 //		2. AuthenticationAckFrame
 //		3. DataFrame
@@ -18,6 +18,7 @@ import (
 //		6. HandshakeAckFrame
 //		7. RejectedFrame
 //		8. BackflowFrame
+//		9. GoawayFrame
 //	 Read frame comments to understand the role of the frame.
 type Frame interface {
 	// Type returns the type of frame.
@@ -128,6 +129,17 @@ type RejectedFrame struct {
 // Type returns the type of RejectedFrame.
 func (f *RejectedFrame) Type() Type { return TypeRejectedFrame }
 
+// GoawayFrame is is used by server to evict a connection.
+type GoawayFrame struct {
+	// Code is the code goaway.
+	Code uint64
+	// Message contains the reason why the connection be evicted.
+	Message string
+}
+
+// Type returns the type of GoawayFrame.
+func (f *GoawayFrame) Type() Type { return TypeGoawayFrame }
+
 const (
 	TypeAuthenticationFrame    Type = 0x03 // TypeAuthenticationFrame is the type of AuthenticationFrame.
 	TypeAuthenticationAckFrame Type = 0x11 // TypeAuthenticationAckFrame is the type of AuthenticationAckFrame.
@@ -137,6 +149,7 @@ const (
 	TypeHandshakeAckFrame      Type = 0x29 // TypeHandshakeAckFrame is the type of HandshakeAckFrame.
 	TypeRejectedFrame          Type = 0x39 // TypeRejectedFrame is the type of RejectedFrame.
 	TypeBackflowFrame          Type = 0x2D // TypeBackflowFrame is the type of BackflowFrame.
+	TypeGoawayFrame            Type = 0x2E // TypeGoawayFrame is the type of GoawayFrame.
 )
 
 var frameTypeStringMap = map[Type]string{
@@ -148,6 +161,7 @@ var frameTypeStringMap = map[Type]string{
 	TypeHandshakeAckFrame:      "HandshakeAckFrame",
 	TypeRejectedFrame:          "RejectedFrame",
 	TypeBackflowFrame:          "BackflowFrame",
+	TypeGoawayFrame:            "GoawayFrame",
 }
 
 // String returns a human-readable string which represents the frame type.
@@ -169,6 +183,7 @@ var frameTypeNewFuncMap = map[Type]func() Frame{
 	TypeHandshakeAckFrame:      func() Frame { return new(HandshakeAckFrame) },
 	TypeRejectedFrame:          func() Frame { return new(RejectedFrame) },
 	TypeBackflowFrame:          func() Frame { return new(BackflowFrame) },
+	TypeGoawayFrame:            func() Frame { return new(GoawayFrame) },
 }
 
 // NewFrame creates a new frame from Type.
