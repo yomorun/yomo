@@ -6,14 +6,15 @@ use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 use syn::{parse_macro_input, parse_quote, ItemFn};
 
-/// You can do the initialization tasks in this function. The observed datatags should be returned.
+/// You can do the initialization tasks in this function.
 ///
 /// # Examples
 ///
 /// ```
 /// #[yomo::init]
-/// fn init() -> anyhow::Result<Vec<u32>> {
-///     Ok(vec![0x33])
+/// fn init() -> anyhow::Result<()> {
+///     println!("wasm rust sfn init");
+///     Ok(())
 /// }
 /// ```
 #[proc_macro_attribute]
@@ -23,18 +24,46 @@ pub fn init(_args: TokenStream, input: TokenStream) -> TokenStream {
 
     let func: ItemFn = parse_quote! {
         #[no_mangle]
-        pub extern "C" fn yomo_init() {
+        pub extern "C" fn yomo_init() -> u32 {
             #derive_input
 
-            match #fn_name() {
-                Ok(tags) => {
-                    for tag in tags {
-                        unsafe {
-                            yomo_observe_datatag(tag);
-                        }
-                    }
+            if let Err(e) = #fn_name() {
+                eprintln!("sfn init error: {}", e);
+                return 1;
+            }
+
+            0
+        }
+    };
+
+    func.to_token_stream().into()
+}
+
+/// Return the observed datatags of this serverless function.
+///
+/// # Examples
+///
+/// ```
+/// #[yomo::observe_datatags]
+/// fn observe_datatags() -> Vec<u32> {
+///     vec![0x33]
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn observe_datatags(_args: TokenStream, input: TokenStream) -> TokenStream {
+    let derive_input = &parse_macro_input!(input as ItemFn);
+    let fn_name = &derive_input.sig.ident;
+
+    let func: ItemFn = parse_quote! {
+        #[no_mangle]
+        pub extern "C" fn yomo_observe_datatags() {
+            #derive_input
+
+            let tags = #fn_name();
+            for tag in tags {
+                unsafe {
+                    yomo_observe_datatag(tag);
                 }
-                Err(e) => eprintln!("sfn init error: {}", e), // todo: export error
             }
         }
     };
@@ -76,7 +105,7 @@ pub fn handler(_args: TokenStream, input: TokenStream) -> TokenStream {
             #derive_input
 
             if let Err(e) = #fn_name(ctx) {
-                eprintln!("sfn handler error: {}", e); // todo: export error
+                eprintln!("sfn handler error: {}", e);
             }
         }
     };

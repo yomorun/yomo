@@ -37,4 +37,4 @@ impl Context {
     }
 }
 
-pub use yomo_derive::{handler, init};
+pub use yomo_derive::{handler, init, observe_datatags};
