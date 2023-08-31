@@ -1,6 +1,6 @@
 module yomo.run/example-cli-source
 
-go 1.20
+go 1.21
 
 replace github.com/yomorun/yomo => ../../../
 
