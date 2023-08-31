@@ -1,6 +1,6 @@
 module yomo.run/example-pipe
 
-go 1.21
+go 1.20
 
 replace github.com/yomorun/yomo => ../../
 
