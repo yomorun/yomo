@@ -1,0 +1,35 @@
+---
+title: Tracing the Data Processing Streamline by Jaeger
+---
+
+import { Steps } from 'nextra-theme-docs'
+
+# Guide: Tracing the Data Processing Streamline by Jaeger
+
+YoMo support distributed tracing by [OpenTelemetry](https://opentelemetry.io), with first-class support for Jaeger by default (other supports can be changed by modifying the TracerProvider in the source code). To enable distributed tracing, follow the steps below:
+
+<Steps>
+
+### Install Jaeger
+
+Follow the [Jaeger Official Guide](https://www.jaegertracing.io/docs/getting-started/) to install Jaeger.
+
+### Enable Distributed Tracing in YoMo
+
+#### StreamFunction Tracing
+
+```bash
+YOMO_TRACE_JAEGER_ENDPOINT=http://localhost:14268/api/traces yomo run sfn.wasm
+```
+
+#### Zipper Tracing
+
+```bash
+YOMO_TRACE_JAEGER_ENDPOINT=http://localhost:14268/api/traces yomo serve -c config.yaml
+```
+
+### Dashboard
+
+Open Jaeger UI in the browser (default is: http://localhost:16686), select services, click the list items to view the SFN trace, you will see the dashboard like this:
+
+</Steps>
