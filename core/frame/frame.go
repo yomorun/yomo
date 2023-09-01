@@ -120,8 +120,6 @@ func (f *BackflowFrame) Type() Type { return TypeBackflowFrame }
 
 // RejectedFrame is is used to reject a ControlStream reqeust.
 type RejectedFrame struct {
-	// Code is the code rejected.
-	Code uint64
 	// Message contains the reason why the reqeust be rejected.
 	Message string
 }
@@ -131,8 +129,6 @@ func (f *RejectedFrame) Type() Type { return TypeRejectedFrame }
 
 // GoawayFrame is is used by server to evict a connection.
 type GoawayFrame struct {
-	// Code is the code goaway.
-	Code uint64
 	// Message contains the reason why the connection be evicted.
 	Message string
 }
