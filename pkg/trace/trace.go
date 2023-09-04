@@ -1,3 +1,4 @@
+// Package trace provides open tracing.
 package trace
 
 import (
@@ -58,7 +59,7 @@ func NewTracerProviderWithJaeger(service string) (*tracesdk.TracerProvider, func
 		ctx, cancel := context.WithTimeout(ctx, time.Second*5)
 		defer cancel()
 		if err := tp.Shutdown(ctx); err != nil {
-			log.Printf("[trace] shutdonw err: %v\n", err)
+			log.Printf("[trace] shutdown err: %v\n", err)
 		}
 	}
 	// Register our TracerProvider as the global so any imported
@@ -75,19 +76,19 @@ func NewSpan(tp trace.TracerProvider, tracerName string, spanName string, traceI
 	return NewSpanWithAttrs(tp, tracerName, spanName, traceID, spanID, false)
 }
 
-// NewTraceSpan creates a new span of OpenTelemetry from remote parent tracing.
+// NewRemoteSpan creates a new span of OpenTelemetry from remote parent tracing.
 func NewRemoteSpan(tp trace.TracerProvider, tracerName string, spanName string, traceID string, spanID string) (trace.Span, error) {
 	return NewSpanWithAttrs(tp, tracerName, spanName, traceID, spanID, true)
 }
 
 // NewSpanWithAttrs creates a new span of OpenTelemetry with attributes.
-func NewSpanWithAttrs(tp trace.TracerProvider, tracerName string, spanName string, traceID string, spandID string, remote bool, attrs ...map[string]string) (trace.Span, error) {
+func NewSpanWithAttrs(tp trace.TracerProvider, tracerName string, spanName string, traceID string, spanID string, remote bool, attrs ...map[string]string) (trace.Span, error) {
 	if tp == nil {
 		return nil, errors.New("tracer provider is nil")
 	}
 	ctx := context.Background()
 	// root span
-	if traceID == "" && spandID == "" {
+	if traceID == "" && spanID == "" {
 		tr := tp.Tracer(tracerName)
 		_, span := tr.Start(ctx, spanName)
 		if len(attrs) > 0 {
@@ -102,7 +103,7 @@ func NewSpanWithAttrs(tp trace.TracerProvider, tracerName string, spanName strin
 	if err != nil {
 		return nil, err
 	}
-	sid, err := trace.SpanIDFromHex(spandID)
+	sid, err := trace.SpanIDFromHex(spanID)
 	if err != nil {
 		return nil, err
 	}

@@ -17,16 +17,20 @@ var (
 	Init func() error = func() error { return nil }
 )
 
+// GuestContext is the context for guest
 type GuestContext struct{}
 
+// Tag returns the tag of the context
 func (c *GuestContext) Tag() uint32 {
 	return yomoContextTag()
 }
 
+// Data returns the data of the context
 func (c *GuestContext) Data() []byte {
 	return GetBytes(ContextData)
 }
 
+// Write writes data to the context
 func (c *GuestContext) Write(tag uint32, data []byte) error {
 	if data == nil {
 		return nil
@@ -81,6 +85,7 @@ func yomoInit() uint32 {
 	return 0
 }
 
+// ContextData returns the data of the context
 func ContextData(ptr uintptr, size uint32) uint32 {
 	return contextData(ptr, size)
 }

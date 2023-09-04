@@ -1,4 +1,4 @@
-// Package ylog provides handler that supports spliting log stream to common log stream and error log stream.
+// Package ylog provides handler that supports splitting log stream to common log stream and error log stream.
 package ylog
 
 import (
@@ -12,7 +12,7 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-// handler supports spliting log stream to common log stream and error log stream.
+// handler supports splitting log stream to common log stream and error log stream.
 type handler struct {
 	slog.Handler
 
