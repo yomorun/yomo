@@ -6,7 +6,13 @@ import (
 	"github.com/yomorun/yomo/serverless"
 )
 
-// Handler counts how many bytes received
+// Init is called once when serverless function is started.
+func Init() error {
+	log.Println("Init counter function")
+	return nil
+}
+
+// Handler counts how many bytes received.
 func Handler(ctx serverless.Context) {
 	log.Printf("Got[%#x]: %d\n", ctx.Tag(), len(ctx.Data()))
 }
