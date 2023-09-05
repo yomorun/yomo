@@ -15,8 +15,7 @@ import (
 var ctxPool sync.Pool
 
 // Context is context for stream handling.
-// Context be generated after a dataStream coming, And stores some information
-// from dataStream, The lifecycle of the Context should be equal to the lifecycle of the Stream.
+// Context is generated subsequent to the arrival of a dataStream and retains pertinent information derived from the dataStream. The lifespan of the Context should align with the lifespan of the Stream.
 type Context struct {
 	// DataStream is the stream used for reading and writing frames.
 	DataStream DataStream
@@ -50,7 +49,7 @@ func (c *Context) Set(key string, value any) {
 }
 
 // Get returns the value for the given key, ie: (value, true).
-// If the value does not exist it returns (nil, false)
+// Returns (nil, false) if the value does not exist.
 func (c *Context) Get(key string) (any, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -70,9 +69,8 @@ func (c *Context) Deadline() (deadline time.Time, ok bool) { return c.DataStream
 // Err returns nil when c.Request has no Context.
 func (c *Context) Err() error { return c.DataStream.Context().Err() }
 
-// Value returns the value associated with this context for key, or nil
-// if no value is associated with key. Successive calls to Value with
-// the same key returns the same result.
+// Value retrieves the value associated with the specified key within the context.
+// If no value is found, it returns nil. Subsequent invocations of "Value" with the same key yield identical outcomes.
 func (c *Context) Value(key any) any {
 	c.mu.Lock()
 	if keyAsString, ok := key.(string); ok {
@@ -87,9 +85,10 @@ func (c *Context) Value(key any) any {
 	return c.DataStream.Context().Value(key)
 }
 
-// newContext returns a yomo context,
-// The context implements standard library `context.Context` interface,
-// The lifecycle of Context is equal to stream's that be passed in.
+// newContext returns a new YoMo context that implements the standard library `context.Context` interface.
+// The YoMo context is used to manage the lifecycle of a stream and provides a way to pass data and metadata between stream processing functions.
+// The lifecycle of the context is equal to the lifecycle of the stream that it is associated with.
+// The context can be used to manage timeouts, cancellations, and other aspects of stream processing.
 func newContext(dataStream DataStream, route router.Route, logger *slog.Logger) (c *Context) {
 	v := ctxPool.Get()
 	if v == nil {
@@ -112,7 +111,13 @@ func newContext(dataStream DataStream, route router.Route, logger *slog.Logger) 
 	return
 }
 
-// WithFrame sets a frame to context.
+// WithFrame sets the current frame of the YoMo context to the given data frame.
+// It extracts the metadata from the data frame and sets it as attributes on the context logger.
+// It also merges the metadata from the data stream with the metadata from the data frame.
+// This allows downstream processing functions to access the metadata from both the data stream and the current data frame.
+// If the given frame is not a data frame, it returns an error.
+// If there is an error decoding the metadata from the data frame, it returns that error.
+// Otherwise, it sets the current frame and frame metadata on the context and returns nil.
 func (c *Context) WithFrame(f frame.Frame) error {
 	df, ok := f.(*frame.DataFrame)
 	if !ok {
@@ -149,7 +154,7 @@ func (c *Context) CloseWithError(errString string) {
 	c.Logger.Error("data stream close failed", "err", err)
 }
 
-// Release release the Context, The Context released is not available.
+// Release release the Context, the Context which has been released will not be available.
 //
 // Warning: do not use any Context api after Release, It maybe cause an error.
 // TODO: use a state to ensure safe access and release of the context.
