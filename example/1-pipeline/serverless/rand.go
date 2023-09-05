@@ -7,6 +7,12 @@ import (
 	"github.com/yomorun/yomo/serverless"
 )
 
+// Init is called once when serverless function is started.
+func Init() error {
+	log.Println("Init rand function")
+	return nil
+}
+
 // Handler will handle the raw data.
 func Handler(ctx serverless.Context) {
 	data := ctx.Data()
