@@ -28,7 +28,7 @@ func TestDataStream(t *testing.T) {
 	// create frame stream.
 	frameStream := NewFrameStream(mockStream, &byteCodec{}, &bytePacketReadWriter{})
 
-	stream := newDataStream(name, id, styp, md, observed, frameStream)
+	stream := newDataStream(name, id, styp, md, observed, frameStream, nil, nil)
 
 	t.Run("StreamInfo", func(t *testing.T) {
 		assert.Equal(t, id, stream.ID())

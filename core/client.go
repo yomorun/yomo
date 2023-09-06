@@ -273,6 +273,12 @@ func (c *Client) handleFrameError(err error, reconnection chan<- struct{}) {
 		return
 	}
 
+	// If client accepts close signal from server, then exit client program.
+	if se := new(ErrControllSignal); errors.As(err, &se) {
+		c.ctxCancel()
+		return
+	}
+
 	// always attempting to reconnect if an error is encountered,
 	// the error is mostly network error.
 	select {

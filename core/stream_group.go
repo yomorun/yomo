@@ -70,7 +70,8 @@ func (g *StreamGroup) handleRoute(hf *frame.HandshakeFrame, md metadata.M) (rout
 			return nil, err
 		}
 		if ok {
-			stream.Close()
+			// if same name sfn here, close the old connection.
+			stream.(*dataStream).serverController.Goaway(e.Error())
 			g.connector.Delete(existsStreamID)
 			g.logger.Debug("connector remove stream", "stream_id", stream.ID(), "stream_type", stream.StreamType().String(), "stream_name", stream.Name())
 		}

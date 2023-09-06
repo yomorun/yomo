@@ -5,10 +5,10 @@ import (
 	frame "github.com/yomorun/yomo/core/frame"
 )
 
-// encodeRejectedFrame encodes RejectedFrame to Y3 encoded bytes.
-func encodeRejectedFrame(f *frame.RejectedFrame) ([]byte, error) {
+// encodeGoawayFrame encodes GoawayFrame to Y3 encoded bytes.
+func encodeGoawayFrame(f *frame.GoawayFrame) ([]byte, error) {
 	// message
-	messageBlock := y3.NewPrimitivePacketEncoder(byte(tagRejectedMessage))
+	messageBlock := y3.NewPrimitivePacketEncoder(byte(tagGoawayMessage))
 	messageBlock.SetStringValue(f.Message)
 	// frame
 	ff := y3.NewNodePacketEncoder(byte(f.Type()))
@@ -17,15 +17,16 @@ func encodeRejectedFrame(f *frame.RejectedFrame) ([]byte, error) {
 	return ff.Encode(), nil
 }
 
-// decodeRejectedFrame decodes Y3 encoded bytes to RejectedFrame.
-func decodeRejectedFrame(data []byte, f *frame.RejectedFrame) error {
+// decodeGoawayFrame decodes Y3 encoded bytes to GoawayFrame.
+func decodeGoawayFrame(data []byte, f *frame.GoawayFrame) error {
 	node := y3.NodePacket{}
 	_, err := y3.DecodeToNodePacket(data, &node)
 	if err != nil {
 		return err
 	}
+
 	// message
-	if messageBlock, ok := node.PrimitivePackets[tagRejectedMessage]; ok {
+	if messageBlock, ok := node.PrimitivePackets[tagGoawayMessage]; ok {
 		message, err := messageBlock.ToUTF8String()
 		if err != nil {
 			return err
@@ -37,5 +38,5 @@ func decodeRejectedFrame(data []byte, f *frame.RejectedFrame) error {
 }
 
 var (
-	tagRejectedMessage byte = 0x01
+	tagGoawayMessage byte = 0x01
 )
