@@ -10,10 +10,12 @@ import (
 	"github.com/yomorun/yomo/serverless"
 )
 
+// HTTP is the interface for HTTP request, but it is not implemented in the server side
 func (c *GuestContext) HTTP() serverless.HTTP {
 	return &GuestHTTP{}
 }
 
+// GuestHTTP is the http client for guest
 type GuestHTTP struct{}
 
 // Send send http request and return http response

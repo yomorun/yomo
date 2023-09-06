@@ -28,7 +28,6 @@ tasks:
     cmds:
       # - "yomo build serverless/rand.go" # use latest yomo
       - "yomo build -m go.mod serverless/rand.go" # use custom go.mod for development
-    internal: true
 
   sfn:
     desc: run sfn

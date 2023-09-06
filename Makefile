@@ -13,7 +13,7 @@ vet:
 
 .PHONY: lint
 lint:
-	revive -exclude example/... -exclude cli/... -exclude vendor/... -formatter friendly ./...
+	revive -exclude example/... -exclude cli/... -exclude vendor/... -exclude TEST -formatter friendly ./...
 
 .PHONY: build
 build:

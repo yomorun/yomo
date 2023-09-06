@@ -1,3 +1,4 @@
+// Package serverless defines serverless handler context
 package serverless
 
 // Context sfn handler context

@@ -7,19 +7,19 @@ import (
 )
 
 // Frame is the minimum unit required for Yomo to run.
-// Yomo transmits various instructions and data through the frame, which can be transmitted on the IO stream.
+// Yomo transmits various instructions and data through the frames.
 //
-//	Yomo needs 9 type frame to run up, them cantain:
-//		1. AuthenticationFrame
-//		2. AuthenticationAckFrame
-//		3. DataFrame
-//		4. HandshakeFrame
-//		5. HandshakeRejectedFrame
-//		6. HandshakeAckFrame
-//		7. RejectedFrame
-//		8. BackflowFrame
-//		9. GoawayFrame
-//	 Read frame comments to understand the role of the frame.
+// following frame types are supported by Yomo:
+//  1. AuthenticationFrame
+//  2. AuthenticationAckFrame
+//  3. DataFrame
+//  4. HandshakeFrame
+//  5. HandshakeRejectedFrame
+//  6. HandshakeAckFrame
+//  7. RejectedFrame
+//  8. BackflowFrame
+//
+// Read frame comments to understand the role of the frame.
 type Frame interface {
 	// Type returns the type of frame.
 	Type() Type
@@ -29,7 +29,7 @@ type Frame interface {
 type Type byte
 
 // AuthenticationFrame is used to authenticate the client,
-// Once the connection is established, the client immediately, sends information to the server,
+// once the connection is established, the client immediately, sends information to the server,
 // server gets the way to authenticate according to AuthName and use AuthPayload to do a authentication.
 // AuthenticationFrame is transmit on ControlStream.
 //
@@ -52,7 +52,7 @@ type AuthenticationAckFrame struct{}
 // Type returns the type of AuthenticationAckFrame.
 func (f *AuthenticationAckFrame) Type() Type { return TypeAuthenticationAckFrame }
 
-// DataFrame carrys taged data to transmit accross DataStream.
+// DataFrame carries tagged data to transmit across DataStream.
 type DataFrame struct {
 	// Metadata stores additional data beyond the Payload,
 	// it is an map[string]string{} that be encoded in msgpack.
@@ -66,9 +66,9 @@ type DataFrame struct {
 // Type returns the type of DataFrame.
 func (f *DataFrame) Type() Type { return TypeDataFrame }
 
-// HandshakeFrame is the frame that client accquires new dataStream from server,
-// It includes some of the information necessary to create a new DataStream.
-// The server creates DataStream based on this information.
+// The HandshakeFrame is the frame through which the client obtains a new data stream from the server.
+// It include essential details required for the creation of a fresh DataStream.
+// The server then generates the DataStream utilizing this provided information.
 type HandshakeFrame struct {
 	// Name is the name of the dataStream that will be created.
 	Name string
@@ -86,8 +86,7 @@ type HandshakeFrame struct {
 func (f *HandshakeFrame) Type() Type { return TypeHandshakeFrame }
 
 // HandshakeAckFrame is used to ack handshake, If handshake successful, The server will
-// send HandshakeAckFrame to the new DataStream, That means the new DataStream receive first frame
-// must be HandshakeAckFrame.
+// send HandshakeAckFrame to the new DataStream, That means the initial frame received by the new DataStream must be the HandshakeAckFrame.
 type HandshakeAckFrame struct {
 	StreamID string
 }
@@ -95,7 +94,7 @@ type HandshakeAckFrame struct {
 // Type returns the type of HandshakeAckFrame.
 func (f *HandshakeAckFrame) Type() Type { return TypeHandshakeAckFrame }
 
-// HandshakeRejectedFrame be used to reject a Handshake. It transmits on ControlStream.
+// HandshakeRejectedFrame is employed to reject a handshake. It is transmitted over the ControlStream
 type HandshakeRejectedFrame struct {
 	// ID is the ID of DataStream be rejected.
 	ID string
@@ -118,9 +117,9 @@ type BackflowFrame struct {
 // Type returns the type of BackflowFrame.
 func (f *BackflowFrame) Type() Type { return TypeBackflowFrame }
 
-// RejectedFrame is is used to reject a ControlStream reqeust.
+// RejectedFrame is used to reject a ControlStream request.
 type RejectedFrame struct {
-	// Message contains the reason why the reqeust be rejected.
+	// Message encapsulates the rationale behind the rejection of the request.
 	Message string
 }
 
@@ -167,7 +166,7 @@ func (f Type) String() string {
 	if ok {
 		return frameString
 	}
-	return "UnkonwnFrame"
+	return "UnknownFrame"
 }
 
 var frameTypeNewFuncMap = map[Type]func() Frame{
@@ -191,8 +190,8 @@ func NewFrame(f Type) (Frame, error) {
 	return nil, fmt.Errorf("frame: cannot new a frame from %c", f)
 }
 
-// PacketReadWriter reads packet from the io.Reader and writes packet to the io.Writer.
-// It returns frameType, the data of the packet and an error if read failed.
+// PacketReadWriter reads packets from the io.Reader and writes packets to the io.Writer.
+// If read failed, return the frameType, the data of the packet and an error.
 type PacketReadWriter interface {
 	ReadPacket(io.Reader) (Type, []byte, error)
 	WritePacket(io.Writer, Type, []byte) error
@@ -206,7 +205,7 @@ type Codec interface {
 	Encode(Frame) ([]byte, error)
 }
 
-// Tag tags data and be used for data routing.
+// Tag tags data and can be used for data routing.
 type Tag = uint32
 
 // ReadWriteCloser is the interface that groups the ReadFrame, WriteFrame and Close methods.
@@ -222,7 +221,7 @@ type ReadWriter interface {
 	Writer
 }
 
-// Writer is the interface that wraps the WriteFrame method, It writes
+// Writer is the interface that wraps the WriteFrame method, it writes
 // frame to the underlying data stream.
 type Writer interface {
 	// WriteFrame writes frame to underlying stream.
@@ -231,7 +230,7 @@ type Writer interface {
 
 // Reader reads frame from underlying stream.
 type Reader interface {
-	// ReadFrame reads frame, if error, the error returned is not empty
-	// and frame returned is nil.
+	// ReadFrame reads a frame, if an error occurs, the returned error will not be empty,
+	// and the returned frame will be nil.
 	ReadFrame() (Frame, error)
 }

@@ -31,7 +31,7 @@ type clientOptions struct {
 func defaultClientOption() *clientOptions {
 	logger := ylog.Default()
 
-	defalutQuicConfig := &quic.Config{
+	defaultQuicConfig := &quic.Config{
 		Versions:                       []quic.VersionNumber{quic.Version1, quic.Version2},
 		MaxIdleTimeout:                 time.Second * 40,
 		KeepAlivePeriod:                time.Second * 20,
@@ -45,7 +45,7 @@ func defaultClientOption() *clientOptions {
 
 	opts := &clientOptions{
 		observeDataTags: make([]frame.Tag, 0),
-		quicConfig:      defalutQuicConfig,
+		quicConfig:      defaultQuicConfig,
 		tlsConfig:       pkgtls.MustCreateClientTLSConfig(),
 		credential:      auth.NewCredential(""),
 		logger:          logger,
@@ -84,7 +84,7 @@ func WithClientQuicConfig(qc *quic.Config) ClientOption {
 	}
 }
 
-// WithConnectUntilSucceed makes client Connect until seccssed.
+// WithConnectUntilSucceed makes client Connect until success.
 func WithConnectUntilSucceed() ClientOption {
 	return func(o *clientOptions) {
 		o.connectUntilSucceed = true
@@ -105,6 +105,7 @@ func WithLogger(logger *slog.Logger) ClientOption {
 	}
 }
 
+// WithTracerProvider sets tracer provider for the client.
 func WithTracerProvider(tp trace.TracerProvider) ClientOption {
 	return func(o *clientOptions) {
 		o.tracerProvider = tp

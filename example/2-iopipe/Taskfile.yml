@@ -28,7 +28,6 @@ tasks:
     cmds:
       - task: clean
       - "yomo build -m go.mod serverless/counter.go"
-    internal: true
 
   sfn:
     desc: sfn
