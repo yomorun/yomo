@@ -16,6 +16,8 @@ import (
 type StreamFunction interface {
 	// SetObserveDataTags set the data tag list that will be observed
 	SetObserveDataTags(tag ...uint32)
+	// Init will initialize the stream function
+	Init(fn func() error) error
 	// SetHandler set the handler function, which accept the raw bytes data and return the tag & response
 	SetHandler(fn core.AsyncHandler) error
 	// SetErrorHandler set the error handler function when server error occurs
@@ -26,8 +28,8 @@ type StreamFunction interface {
 	Connect() error
 	// Close will close the connection
 	Close() error
-	// Init will initialize the stream function
-	Init(fn func() error) error
+	// Wait waits sfn to finish.
+	Wait()
 }
 
 // NewStreamFunction create a stream function.
@@ -189,6 +191,11 @@ func (s *streamFunction) Close() error {
 	}
 
 	return nil
+}
+
+// Wait waits sfn to finish.
+func (s *streamFunction) Wait() {
+	s.client.Wait()
 }
 
 // when DataFrame we observed arrived, invoke the user's function

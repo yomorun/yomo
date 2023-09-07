@@ -63,6 +63,8 @@ func (g *StreamGroup) handleRoute(hf *frame.HandshakeFrame, md metadata.M) (rout
 		return route, nil
 	}
 	// If there is a stream with the same name as the new stream, replace the old stream with the new one.
+	// The DuplicateNameError is not an error within the current stream scope.
+	// The route returns this error only to close the previously running StreamFunction with the same name.
 	if e := new(yerr.DuplicateNameError); errors.As(err, e) {
 		existsStreamID := e.StreamID()
 		stream, ok, err := g.connector.Get(existsStreamID)
@@ -75,8 +77,9 @@ func (g *StreamGroup) handleRoute(hf *frame.HandshakeFrame, md metadata.M) (rout
 			g.connector.Delete(existsStreamID)
 			g.logger.Debug("connector remove stream", "stream_id", stream.ID(), "stream_type", stream.StreamType().String(), "stream_name", stream.Name())
 		}
+		return route, nil
 	}
-	return route, nil
+	return route, err
 }
 
 type handshakeResult struct {

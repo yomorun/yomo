@@ -32,7 +32,7 @@ type Client struct {
 
 	// ctx and ctxCancel manage the lifecycle of client.
 	ctx       context.Context
-	ctxCancel context.CancelFunc
+	ctxCancel context.CancelCauseFunc
 
 	writeFrameChan chan frame.Frame
 }
@@ -52,7 +52,7 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 		logger.Info("use credential", "credential_name", option.credential.Name())
 	}
 
-	ctx, ctxCancel := context.WithCancel(context.Background())
+	ctx, ctxCancel := context.WithCancelCause(context.Background())
 
 	return &Client{
 		name:           appName,
@@ -102,7 +102,7 @@ func (c *Client) runBackground(ctx context.Context, addr string, controlStream *
 	for {
 		select {
 		case <-c.ctx.Done():
-			c.cleanStream(controlStream, nil)
+			c.cleanStream(controlStream, c.ctx.Err())
 			return
 		case <-ctx.Done():
 			c.cleanStream(controlStream, ctx.Err())
@@ -135,13 +135,19 @@ func (c *Client) WriteFrame(f frame.Frame) error {
 
 // blockWriteFrame writes frames in block mode, guaranteeing that frames are not lost.
 func (c *Client) blockWriteFrame(f frame.Frame) error {
-	c.writeFrameChan <- f
+	select {
+	case <-c.ctx.Done():
+		return c.ctx.Err()
+	case c.writeFrameChan <- f:
+	}
 	return nil
 }
 
 // nonBlockWriteFrame writes frames in non-blocking mode, without guaranteeing that frames will not be lost.
 func (c *Client) nonBlockWriteFrame(f frame.Frame) error {
 	select {
+	case <-c.ctx.Done():
+		return c.ctx.Err()
 	case c.writeFrameChan <- f:
 		return nil
 	default:
@@ -169,7 +175,7 @@ func (c *Client) cleanStream(controlStream *ClientControlStream, err error) {
 // Close close the client.
 func (c *Client) Close() error {
 	// break runBackgroud() for-loop.
-	c.ctxCancel()
+	c.ctxCancel(fmt.Errorf("%s: local shutdown", c.streamType.String()))
 
 	return nil
 }
@@ -269,13 +275,13 @@ func (c *Client) handleFrameError(err error, reconnection chan<- struct{}) {
 
 	// exit client program if stream has be closed.
 	if err == io.EOF {
-		c.ctxCancel()
+		c.ctxCancel(fmt.Errorf("%s: remote shutdown", c.streamType.String()))
 		return
 	}
 
 	// If client accepts close signal from server, then exit client program.
 	if se := new(ErrControllSignal); errors.As(err, &se) {
-		c.ctxCancel()
+		c.ctxCancel(fmt.Errorf("%s: remote shutdown", c.streamType.String()))
 		return
 	}
 

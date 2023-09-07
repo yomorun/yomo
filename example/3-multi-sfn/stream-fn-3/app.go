@@ -68,7 +68,7 @@ func main() {
 
 	go SlidingWindowWithTime(observe, SlidingWindowInMS, SlidingTimeInMS, slidingAvg)
 
-	select {}
+	sfn.Wait()
 }
 
 func handler(ctx serverless.Context) {

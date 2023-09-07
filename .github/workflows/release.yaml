@@ -44,12 +44,12 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            ./build/yomo-amd64-darwin.zip
-            ./build/yomo-arm64-darwin.zip
-            ./build/yomo-amd64-windows.zip
-            ./build/yomo-arm64-windows.zip
-            ./build/yomo-amd64-linux.zip
-            ./build/yomo-arm64-linux.zip
-            ./build/yomo-amd64-freebsd.zip
-            ./build/yomo-arm64-freebsd.zip
+            ./build/yomo-amd64-darwin.tar.gz
+            ./build/yomo-arm64-darwin.tar.gz
+            ./build/yomo-amd64-windows.tar.gz
+            ./build/yomo-arm64-windows.tar.gz
+            ./build/yomo-amd64-linux.tar.gz
+            ./build/yomo-arm64-linux.tar.gz
+            ./build/yomo-amd64-freebsd.tar.gz
+            ./build/yomo-arm64-freebsd.tar.gz
             ./build/hashes.txt
