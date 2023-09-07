@@ -76,7 +76,7 @@ func main() {
 	// pipe rx stream and rx handler.
 	rt.Pipe(Handler)
 
-	select {}
+	sfn.Wait()
 }
 
 // DataTags observe tag list

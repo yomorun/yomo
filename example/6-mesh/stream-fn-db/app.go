@@ -58,7 +58,7 @@ func main() {
 		return
 	}
 
-	select {}
+	sfn.Wait()
 }
 
 func getPort() int {
