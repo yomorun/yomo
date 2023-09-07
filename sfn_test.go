@@ -23,10 +23,8 @@ func TestStreamFunction(t *testing.T) {
 	)
 	sfn.SetObserveDataTags(0x21)
 
-	exit := make(chan struct{})
 	time.AfterFunc(time.Second, func() {
 		sfn.Close()
-		close(exit)
 	})
 
 	// set error handler
@@ -44,7 +42,7 @@ func TestStreamFunction(t *testing.T) {
 	err := sfn.Connect()
 	assert.Nil(t, err)
 
-	<-exit
+	sfn.Wait()
 }
 
 func TestSfnInit(t *testing.T) {
