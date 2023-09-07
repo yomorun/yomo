@@ -8,7 +8,7 @@ import (
 
 func TestSfnConnectToServer(t *testing.T) {
 	sfn := NewStreamFunction(
-		"test-sfn",
+		"sfn-ai-stream-response",
 		"localhost:9000",
 		WithSfnCredential("token:<CREDENTIAL>"),
 	)
