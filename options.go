@@ -97,8 +97,8 @@ var (
 		}
 	}
 
-	// WithUptreamOption provides upstream zipper options for Zipper.
-	WithUptreamOption = func(opts ...ClientOption) ZipperOption {
+	// WithUpstreamOption provides upstream zipper options for Zipper.
+	WithUpstreamOption = func(opts ...ClientOption) ZipperOption {
 		return func(o *zipperOptions) {
 			o.clientOption = opts
 		}
