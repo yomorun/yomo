@@ -2,25 +2,47 @@ package yomo
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/yomorun/yomo/core"
+	"github.com/yomorun/yomo/core/ylog"
+	"github.com/yomorun/yomo/serverless"
 )
 
-func TestSfnConnectToServer(t *testing.T) {
+func TestStreamFunction(t *testing.T) {
+	t.Parallel()
+
 	sfn := NewStreamFunction(
-		"sfn-ai-stream-response",
+		"sfn-async-log-events",
 		"localhost:9000",
 		WithSfnCredential("token:<CREDENTIAL>"),
+		WithSfnLogger(ylog.Default()),
+		WithSfnQuicConfig(core.DefalutQuicConfig),
+		WithSfnTLSConfig(nil),
 	)
-	sfn.SetObserveDataTags(0x33)
-	defer sfn.Close()
+	sfn.SetObserveDataTags(0x21)
+
+	time.AfterFunc(time.Second, func() {
+		sfn.Close()
+	})
+
+	// set error handler
+	sfn.SetErrorHandler(func(err error) {})
 
 	// set handler
-	sfn.SetHandler(nil)
+	sfn.SetHandler(func(ctx serverless.Context) {
+		t.Logf("unittest sfn receive <- (%d)", len(ctx.Data()))
+		assert.Equal(t, uint32(0x21), ctx.Tag())
+		assert.Equal(t, []byte("test"), ctx.Data())
+		ctx.Write(0x22, []byte("backflow"))
+	})
 
 	// connect to server
 	err := sfn.Connect()
 	assert.Nil(t, err)
+
+	sfn.Wait()
 }
 
 func TestSfnInit(t *testing.T) {
