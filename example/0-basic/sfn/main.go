@@ -38,11 +38,9 @@ func main() {
 	// set the error handler function when server error occurs
 	sfn.SetErrorHandler(func(err error) {
 		slog.Error("[sfn] receive server error", "err", err)
-		sfn.Close()
-		os.Exit(1)
 	})
 
-	select {}
+	sfn.Wait()
 }
 
 func handler(ctx serverless.Context) {

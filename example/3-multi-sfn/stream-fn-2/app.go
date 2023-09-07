@@ -54,7 +54,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	select {}
+	sfn.Wait()
 }
 
 func handler(ctx serverless.Context) {
