@@ -9,3 +9,4 @@ __presence.next
 out
 next-env.d.ts
 .next
+.vercel

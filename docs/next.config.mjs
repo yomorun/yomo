@@ -1,5 +1,5 @@
-import { remarkMermaid } from 'remark-mermaid-nextra';
 import nextra from 'nextra';
+import { remarkMermaid } from 'remark-mermaid-nextra';
 
 //const withNextra = require("nextra")
 const withNextra = nextra({
@@ -22,8 +22,8 @@ export default withNextra({
   redirects: () => {
     return [
       {
-        source: "/cc",
-        destination: "/docs/cc",
+        source: "/prscd",
+        destination: "/prscd.html",
         statusCode: 301,
       },
     ];
