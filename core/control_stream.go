@@ -27,16 +27,16 @@ type ErrHandshakeRejected struct {
 
 // Error returns a string that represents the ErrHandshakeRejected error for the implementation of the error interface.
 func (e ErrHandshakeRejected) Error() string {
-	return fmt.Sprintf("yomo: handshake be rejected, streamID=%s, message=%s", e.StreamID, e.Message)
+	return fmt.Sprintf("yomo: handshake rejected, streamID=%s, message=%s", e.StreamID, e.Message)
 }
 
 // ErrAuthenticateFailed be returned when client control stream authenticate failed.
 type ErrAuthenticateFailed struct {
-	ReasonFromeServer string
+	ReasonFromServer string
 }
 
 // Error returns a string that represents the ErrAuthenticateFailed error for the implementation of the error interface.
-func (e ErrAuthenticateFailed) Error() string { return e.ReasonFromeServer }
+func (e ErrAuthenticateFailed) Error() string { return e.ReasonFromServer }
 
 // HandshakeFunc is used by server control stream to handle handshake.
 // The returned metadata will be set for the DataStream that is being opened.
@@ -95,7 +95,7 @@ func (ss *ServerControlStream) readFrameLoop() {
 	}
 }
 
-// OpenStream reveives a HandshakeFrame from control stream and handle it in the function passed in.
+// OpenStream receives a HandshakeFrame from control stream and handle it in the function passed in.
 // if handler returns nil, will return a DataStream and nil,
 // if handler returns an error, will return nil and the error.
 func (ss *ServerControlStream) OpenStream(ctx context.Context, handshakeFunc HandshakeFunc) (DataStream, error) {
@@ -163,7 +163,7 @@ func (ss *ServerControlStream) VerifyAuthentication(verifyFunc VerifyAuthenticat
 
 	received, ok := first.(*frame.AuthenticationFrame)
 	if !ok {
-		errString := fmt.Sprintf("authentication failed: read unexcepted frame, frame read: %s", received.Type().String())
+		errString := fmt.Sprintf("authentication failed: read unexpected frame, frame read: %s", received.Type().String())
 		ss.CloseWithError(errString)
 		return nil, errors.New(errString)
 	}
@@ -181,7 +181,7 @@ func (ss *ServerControlStream) VerifyAuthentication(verifyFunc VerifyAuthenticat
 		return md, err
 	}
 
-	// create a goroutinue to continuous read frame after verify authentication successful.
+	// create a goroutine to continuous read frame after verify authentication successful.
 	go ss.readFrameLoop()
 
 	return md, nil
@@ -278,8 +278,8 @@ func (cs *ClientControlStream) readFrameLoop() {
 			default:
 			}
 		default:
-			cs.logger.Warn("control stream read unexcepted frame", "frame_type", f.Type().String())
-			_ = cs.conn.CloseWithError("client read unexcepted frame")
+			cs.logger.Warn("control stream read unexpected frame", "frame_type", f.Type().String())
+			_ = cs.conn.CloseWithError("client read unexpected frame")
 			return
 		}
 	}
@@ -310,9 +310,9 @@ func (cs *ClientControlStream) Authenticate(cred *auth.Credential) error {
 		)
 	}
 
-	// create a goroutinue to continuous read frame from server.
+	// create a goroutine to continuous read frame from server.
 	go cs.readFrameLoop()
-	// create an other goroutinue to continuous accept stream from server.
+	// create an other goroutine to continuous accept stream from server.
 	go cs.acceptStreamLoop(cs.ctx)
 
 	return nil
