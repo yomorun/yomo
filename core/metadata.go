@@ -6,29 +6,23 @@ import (
 )
 
 const (
-	MetadataSourceIDKey  = "yomo-source-id"
-	MetadataBroadcastKey = "yomo-broadcast"
-	MetadataTIDKey       = "yomo-tid"
-	MetadataSIDKey       = "yomo-sid"
-	MetaTraced           = "yomo-traced"
+	MetadataSourceIDKey = "yomo-source-id"
+	MetadataTIDKey      = "yomo-tid"
+	MetadataSIDKey      = "yomo-sid"
+	MetaTraced          = "yomo-traced"
 )
 
 // NewDefaultMetadata returns a default metadata.
-func NewDefaultMetadata(sourceID string, broadcast bool, tid string, sid string, traced bool) metadata.M {
-	broadcastString := "false"
-	if broadcast {
-		broadcastString = "true"
-	}
+func NewDefaultMetadata(sourceID string, tid string, sid string, traced bool) metadata.M {
 	tracedString := "false"
 	if traced {
 		tracedString = "true"
 	}
 	return metadata.M{
-		MetadataSourceIDKey:  sourceID,
-		MetadataBroadcastKey: broadcastString,
-		MetadataTIDKey:       tid,
-		MetadataSIDKey:       sid,
-		MetaTraced:           tracedString,
+		MetadataSourceIDKey: sourceID,
+		MetadataTIDKey:      tid,
+		MetadataSIDKey:      sid,
+		MetaTraced:          tracedString,
 	}
 }
 
@@ -36,12 +30,6 @@ func NewDefaultMetadata(sourceID string, broadcast bool, tid string, sid string,
 func GetSourceIDFromMetadata(m metadata.M) string {
 	sourceID, _ := m.Get(MetadataSourceIDKey)
 	return sourceID
-}
-
-// GetBroadcastFromMetadata gets broadcast from metadata.
-func GetBroadcastFromMetadata(m metadata.M) bool {
-	broadcast, _ := m.Get(MetadataBroadcastKey)
-	return broadcast == "true"
 }
 
 // GetTIDFromMetadata gets TID from metadata.

@@ -49,7 +49,7 @@ can run each example directly by `task example-basic`, `task example-cascading-z
 
 ## Cascading zippers
 
-- [4-cascading-zipper](https://github.com/yomorun/yomo/tree/master/example/4-cascading-zipper): [source](https://yomo.run/docs/api/source) connect to [zipper-1](https://yomo.run/docs/cli/zipper), then [zipper-1](https://yomo.run/docs/cli/zipper) will broadcast the streams to the zippers in other regions.
+- [4-cascading-zipper](https://github.com/yomorun/yomo/tree/master/example/4-cascading-zipper): [source](https://yomo.run/docs/api/source) connect to [zipper-1](https://yomo.run/docs/cli/zipper), then [zipper-1](https://yomo.run/docs/cli/zipper) will write the streams to the zippers in other regions.
 
 ## Backflow 
 

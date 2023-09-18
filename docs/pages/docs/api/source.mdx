@@ -47,13 +47,6 @@ The default transactionID is epoch time.
 - `tag`: The [Tag][tag] of data.
 - `data`: The data to write.
 
-### source.Broadcast(tag uint32, data []byte) error
-
-Write the data to all downstreams with specified [Tag][tag].
-
-- `tag`: The [Tag][tag] of data.
-- `data`: The data to broadcast to all downstream [Zippers][zipper].
-
 ### source.SetErrorHandler(fn func(err error))
 
 Set the error handler function when server error occurs.

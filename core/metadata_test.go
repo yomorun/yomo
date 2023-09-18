@@ -10,10 +10,9 @@ import (
 )
 
 func TestMetadata(t *testing.T) {
-	md := NewDefaultMetadata("source", true, "xxxxxxx", "sssssss", true)
+	md := NewDefaultMetadata("source", "xxxxxxx", "sssssss", true)
 
 	assert.Equal(t, "source", GetSourceIDFromMetadata(md))
-	assert.Equal(t, true, GetBroadcastFromMetadata(md))
 	assert.Equal(t, "xxxxxxx", GetTIDFromMetadata(md))
 	assert.Equal(t, "sssssss", GetSIDFromMetadata(md))
 	assert.Equal(t, true, GetTracedFromMetadata(md))

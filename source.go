@@ -17,8 +17,6 @@ type Source interface {
 	Connect() error
 	// Write the data to directed downstream.
 	Write(tag uint32, data []byte) error
-	// Broadcast broadcast the data to all downstream.
-	Broadcast(tag uint32, data []byte) error
 	// SetErrorHandler set the error handler function when server error occurs
 	SetErrorHandler(fn func(err error))
 	// [Experimental] SetReceiveHandler set the observe handler function
@@ -76,26 +74,6 @@ func (s *yomoSource) Connect() error {
 
 // Write writes data with specified tag.
 func (s *yomoSource) Write(tag uint32, data []byte) error {
-	return s.write(tag, data, false)
-}
-
-// SetErrorHandler set the error handler function when server error occurs
-func (s *yomoSource) SetErrorHandler(fn func(err error)) {
-	s.client.SetErrorHandler(fn)
-}
-
-// [Experimental] SetReceiveHandler set the observe handler function
-func (s *yomoSource) SetReceiveHandler(fn func(uint32, []byte)) {
-	s.fn = fn
-	s.client.Logger().Info("receive hander set for the source")
-}
-
-// Broadcast write the data to all downstreams.
-func (s *yomoSource) Broadcast(tag uint32, data []byte) error {
-	return s.write(tag, data, true)
-}
-
-func (s *yomoSource) write(tag uint32, data []byte, broadcast bool) error {
 	var tid, sid string
 	// trace
 	tp := s.client.TracerProvider()
@@ -119,9 +97,9 @@ func (s *yomoSource) write(tag uint32, data []byte, broadcast bool) error {
 		s.client.Logger().Debug("source create new sid")
 		sid = id.SID()
 	}
-	s.client.Logger().Debug("source metadata", "tid", tid, "sid", sid, "broadcast", broadcast, "traced", traced)
+	s.client.Logger().Debug("source metadata", "tid", tid, "sid", sid, "traced", traced)
 	// metadata
-	md, err := core.NewDefaultMetadata(s.client.ClientID(), broadcast, tid, sid, traced).Encode()
+	md, err := core.NewDefaultMetadata(s.client.ClientID(), tid, sid, traced).Encode()
 	if err != nil {
 		return err
 	}
@@ -130,6 +108,17 @@ func (s *yomoSource) write(tag uint32, data []byte, broadcast bool) error {
 		Metadata: md,
 		Payload:  data,
 	}
-	s.client.Logger().Debug("source write", "tag", tag, "data", data, "broadcast", broadcast)
+	s.client.Logger().Debug("source write", "tag", tag, "data", data)
 	return s.client.WriteFrame(f)
+}
+
+// SetErrorHandler set the error handler function when server error occurs
+func (s *yomoSource) SetErrorHandler(fn func(err error)) {
+	s.client.SetErrorHandler(fn)
+}
+
+// [Experimental] SetReceiveHandler set the observe handler function
+func (s *yomoSource) SetReceiveHandler(fn func(uint32, []byte)) {
+	s.fn = fn
+	s.client.Logger().Info("receive hander set for the source")
 }

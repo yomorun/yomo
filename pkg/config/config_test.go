@@ -22,7 +22,7 @@ func TestParseConfigFile(t *testing.T) {
 
 		assert.Equal(t, "zipper-chn", conf.Name)
 		assert.Equal(t, "0.0.0.0", conf.Host)
-		assert.Equal(t, []Function{{Name: "sfn-ai-stream-response"}, {Name: "sfn-async-log-events"}}, conf.Functions)
+		assert.Equal(t, []Function{{Name: "sfn-ai-stream-response"}, {Name: "sfn-async-log-events"}, {Name: "sfn-test"}}, conf.Functions)
 
 		assert.Equal(t, 9000, conf.Port)
 	})

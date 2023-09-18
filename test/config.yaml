@@ -12,6 +12,7 @@ auth:
 functions:
   - name: sfn-ai-stream-response
   - name: sfn-async-log-events
+  - name: sfn-test
 
 ### cascading ###
 downstreams:

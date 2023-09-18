@@ -75,10 +75,6 @@ func generateAndSendData(stream yomo.Source) error {
 
 		// send data via QUIC stream.
 		err := stream.Write(0x33, sendingBuf)
-		// using the following code, zipper will broadcast this message to cascading zippers.
-		// make sure to configure the downstream zippers using mesh-config flag,
-		// see the mesh example for more details.
-		// err := stream.Broadcast(0x33, sendingBuf)
 		if err != nil {
 			log.Printf("[source] ❌ Emit %v to YoMo-Zipper failure with err: %v", data, err)
 		} else {
