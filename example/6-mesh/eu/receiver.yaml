@@ -1,5 +1,3 @@
 name: Zipper-Receiver-EU
 host: localhost
 port: 9801
-functions:
-  - name: MockDB

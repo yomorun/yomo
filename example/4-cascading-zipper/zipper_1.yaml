@@ -4,8 +4,6 @@ port: 9001
 auth:
   type: token
   token: z1
-functions:
-  - name: echo-sfn
 downstreams:
   Zipper-2:
     host: 127.0.0.1

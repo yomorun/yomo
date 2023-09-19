@@ -8,12 +8,6 @@ auth:
   type: token
   token: <CREDENTIAL>
 
-### sfn ###
-functions:
-  - name: sfn-ai-stream-response
-  - name: sfn-async-log-events
-  - name: sfn-test
-
 ### cascading ###
 downstreams:
   zipper-asia:

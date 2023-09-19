@@ -19,7 +19,7 @@ tasks:
   zipper:
     desc: zipper
     cmds:
-      - "yomo serve -c config.yaml"
+      - "yomo serve -c ../config.yaml"
     env:
       YOMO_LOG_LEVEL: error
 

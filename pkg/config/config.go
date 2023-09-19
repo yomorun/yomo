@@ -27,8 +27,6 @@ type Config struct {
 	// The token typed auth has two key-value pairs associated with it:
 	// a `type:token` key-value pair and a `token:<CREDENTIAL>` key-value pair.
 	Auth map[string]string `yaml:"auth"`
-	// Functions represents the stream functions that zipper allowed to connect.
-	Functions []Function `yaml:"functions"`
 	// Downstreams holds cascading zippers config. the map-key is downstream name.
 	Downstreams map[string]Downstream `yaml:"downstreams"`
 }
@@ -80,11 +78,6 @@ func validateConfig(conf *Config) error {
 	}
 	if conf.Port == 0 {
 		return errors.New("config: the port is required")
-	}
-	for _, f := range conf.Functions {
-		if f.Name == "" {
-			return errors.New("config: the functions must have the name field")
-		}
 	}
 
 	return nil
