@@ -24,7 +24,7 @@ var clientTypeStringMap = map[ClientType]string{
 	ClientTypeStreamFunction: "StreamFunction",
 }
 
-// String returns string for StreamType.
+// String returns string for ClientType.
 func (c ClientType) String() string {
 	str, ok := clientTypeStringMap[c]
 	if !ok {

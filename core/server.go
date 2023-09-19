@@ -481,6 +481,7 @@ func (s *Server) AddDownstreamServer(addr string, c FrameWriterConnection) {
 // dispatch every DataFrames to all downstreams
 func (s *Server) dispatchToDownstreams(c *Context) {
 	if c.DataStream.ClientType() == ClientTypeUpstreamZipper {
+		c.Logger.Warn("ignored client", "client_type", c.DataStream.ClientType().String())
 		// loop protection
 		return
 	}

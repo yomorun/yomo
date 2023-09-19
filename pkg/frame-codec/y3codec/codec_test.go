@@ -16,7 +16,7 @@ func TestReadPacket(t *testing.T) {
 	hf := &frame.HandshakeFrame{
 		Name:            "a",
 		ID:              "b",
-		StreamType:      0x10,
+		ClientType:      0x10,
 		ObserveDataTags: []uint32{1, 2, 3},
 		Metadata:        []byte{'c'},
 	}
@@ -118,7 +118,7 @@ func TestCodec(t *testing.T) {
 				dataF: &frame.HandshakeFrame{
 					Name:            "the-name",
 					ID:              "the-id",
-					StreamType:      104,
+					ClientType:      104,
 					ObserveDataTags: []uint32{'a', 'b', 'c'},
 					Metadata:        []byte{'d', 'e', 'f'},
 				},
@@ -151,7 +151,8 @@ func TestCodec(t *testing.T) {
 				dataF: &frame.RejectedFrame{
 					Message: "rejected error",
 				},
-				data: []byte{0xb9, 0x10, 0x1, 0xe, 0x72, 0x65, 0x6a, 0x65, 0x63, 0x74, 0x65,
+				data: []byte{
+					0xb9, 0x10, 0x1, 0xe, 0x72, 0x65, 0x6a, 0x65, 0x63, 0x74, 0x65,
 					0x64, 0x20, 0x65, 0x72, 0x72, 0x6f, 0x72,
 				},
 			},
@@ -163,7 +164,8 @@ func TestCodec(t *testing.T) {
 				dataF: &frame.GoawayFrame{
 					Message: "goaway error",
 				},
-				data: []byte{0xae, 0xe, 0x1, 0xc, 0x67, 0x6f, 0x61, 0x77, 0x61, 0x79, 0x20,
+				data: []byte{
+					0xae, 0xe, 0x1, 0xc, 0x67, 0x6f, 0x61, 0x77, 0x61, 0x79, 0x20,
 					0x65, 0x72, 0x72, 0x6f, 0x72,
 				},
 			},
