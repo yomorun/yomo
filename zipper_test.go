@@ -13,7 +13,6 @@ func TestZipperRun(t *testing.T) {
 	zipper, err := NewZipper(
 		"zipper",
 		nil,
-		nil,
 		// WithAuth("token", "<CREDENTIAL>"),
 		WithUpstreamOption(core.ClientOption(WithCredential("token:<CREDENTIAL>"))),
 		WithZipperLogger(ylog.Default()),
