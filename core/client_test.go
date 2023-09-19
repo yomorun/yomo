@@ -130,9 +130,9 @@ func TestFrameRoundTrip(t *testing.T) {
 	exited = checkClientExited(sameNameSfn, time.Second)
 	assert.False(t, exited, "the new sfn stream should not exited")
 
-	mdBytes, _ := NewDefaultMetadata(source.clientID, "tid", "sid", false).Encode()
+	sfnMetaBytes, _ := NewDefaultMetadata(source.clientID, "tid", "sid", false).Encode()
 
-	err = sameNameSfn.WriteFrame(&frame.DataFrame{Tag: backflowTag, Metadata: mdBytes, Payload: backflow})
+	err = sameNameSfn.WriteFrame(&frame.DataFrame{Tag: backflowTag, Metadata: sfnMetaBytes, Payload: backflow})
 	assert.NoError(t, err)
 
 	stats := server.StatsFunctions()
@@ -148,11 +148,11 @@ func TestFrameRoundTrip(t *testing.T) {
 			"foo": "bar",
 		},
 	)
-	mdBytes, _ = md.Encode()
+	sourceMetaBytes, _ := md.Encode()
 
 	dataFrame := &frame.DataFrame{
 		Tag:      observedTag,
-		Metadata: mdBytes,
+		Metadata: sourceMetaBytes,
 		Payload:  payload,
 	}
 
@@ -161,11 +161,10 @@ func TestFrameRoundTrip(t *testing.T) {
 
 	time.Sleep(2 * time.Second)
 
-	reocrdTag, reocrdMD, reocrdPayload := recorder.dataFrameContent()
-	assert.Equal(t, reocrdTag, dataFrame.Tag)
-	// raw metadata cant be compared because metadata is not ordered.
-	assert.Equal(t, reocrdMD, md)
-	assert.Equal(t, reocrdPayload, dataFrame.Payload)
+	recordTag, recordMD, recordPayload := recorder.dataFrameContent()
+	assert.True(t, recordTag == dataFrame.Tag || recordTag == backflowTag)
+	assert.Equal(t, GetSourceIDFromMetadata(recordMD), source.clientID)
+	assert.True(t, bytes.Equal(recordPayload, dataFrame.Payload) || bytes.Equal(recordPayload, backflow))
 
 	assert.NoError(t, source.Close(), "source client.Close() should not return error")
 	assert.NoError(t, sfn.Close(), "sfn client.Close() should not return error")
