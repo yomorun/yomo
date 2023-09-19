@@ -480,22 +480,25 @@ func (s *Server) AddDownstreamServer(addr string, c FrameWriterConnection) {
 
 // dispatch every DataFrames to all downstreams
 func (s *Server) dispatchToDownstreams(c *Context) {
-	if c.DataStream.StreamType() == StreamTypeSource {
-		var (
-			tid = GetTIDFromMetadata(c.FrameMetadata)
-			sid = GetSIDFromMetadata(c.FrameMetadata)
-		)
-		mdBytes, err := c.FrameMetadata.Encode()
-		if err != nil {
-			c.Logger.Error("failed to dispatch to downstream", "err", err)
-			return
-		}
-		c.Frame.Metadata = mdBytes
+	if c.DataStream.StreamType() == StreamTypeUpstreamZipper {
+		// loop protection
+		return
+	}
 
-		for streamID, ds := range s.downstreams {
-			c.Logger.Info("dispatching to downstream", "dispatch_stream_id", streamID, "tid", tid, "sid", sid)
-			ds.WriteFrame(c.Frame)
-		}
+	var (
+		tid = GetTIDFromMetadata(c.FrameMetadata)
+		sid = GetSIDFromMetadata(c.FrameMetadata)
+	)
+	mdBytes, err := c.FrameMetadata.Encode()
+	if err != nil {
+		c.Logger.Error("failed to dispatch to downstream", "err", err)
+		return
+	}
+	c.Frame.Metadata = mdBytes
+
+	for streamID, ds := range s.downstreams {
+		c.Logger.Info("dispatching to downstream", "dispatch_stream_id", streamID, "tid", tid, "sid", sid)
+		ds.WriteFrame(c.Frame)
 	}
 }
 
