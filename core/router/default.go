@@ -8,7 +8,6 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/yerr"
-	"github.com/yomorun/yomo/pkg/config"
 )
 
 // DefaultRouter providers a default implement of `router`,
@@ -18,8 +17,8 @@ type DefaultRouter struct {
 }
 
 // Default return the DefaultRouter.
-func Default(functions []config.Function) Router {
-	return &DefaultRouter{r: newRoute(functions)}
+func Default() Router {
+	return &DefaultRouter{r: newRoute()}
 }
 
 // Route get route from metadata.
@@ -38,32 +37,20 @@ func (r *DefaultRouter) Clean() {
 }
 
 type defaultRoute struct {
-	functions []config.Function
-	data      map[frame.Tag]map[string]string
-	mu        sync.RWMutex
+	data map[frame.Tag]map[string]string
+	mu   sync.RWMutex
 }
 
-func newRoute(functions []config.Function) *defaultRoute {
+func newRoute() *defaultRoute {
 	return &defaultRoute{
-		functions: functions,
-		data:      make(map[frame.Tag]map[string]string),
+		data: make(map[frame.Tag]map[string]string),
+		mu:   sync.RWMutex{},
 	}
 }
 
 func (r *defaultRoute) Add(connID string, name string, observeDataTags []frame.Tag) (err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-
-	ok := false
-	for _, v := range r.functions {
-		if v.Name == name {
-			ok = true
-			break
-		}
-	}
-	if !ok {
-		return fmt.Errorf("SFN[%s] does not exist in config functions", name)
-	}
 
 LOOP:
 	for _, conns := range r.data {

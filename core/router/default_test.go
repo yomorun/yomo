@@ -6,11 +6,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
-	"github.com/yomorun/yomo/pkg/config"
 )
 
 func TestRouter(t *testing.T) {
-	router := Default([]config.Function{{Name: "sfn-1"}})
+	router := Default()
 
 	m := metadata.M{}
 

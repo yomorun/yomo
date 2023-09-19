@@ -1,8 +1,6 @@
 name: Zipper-Sender-US
 host: localhost
 port: 9000
-functions:
-  - name: Noise
 downstreams:
   Zipper-Receiver-US:
     host: localhost

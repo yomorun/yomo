@@ -41,7 +41,7 @@ tasks:
   zipper:
     desc: run zipper
     cmds:
-      - "yomo serve -c ../uppercase/config.yaml"
+      - "yomo serve -c ../config.yaml"
     env:
       YOMO_LOG_LEVEL: error
       YOMO_ADDR: "localhost:9000"

@@ -1,6 +1,0 @@
-name: backflow
-host: localhost
-port: 9000
-functions:
-  - name: sfn-1
-  - name: sfn-2

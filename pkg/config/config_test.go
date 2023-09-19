@@ -22,7 +22,6 @@ func TestParseConfigFile(t *testing.T) {
 
 		assert.Equal(t, "zipper-chn", conf.Name)
 		assert.Equal(t, "0.0.0.0", conf.Host)
-		assert.Equal(t, []Function{{Name: "sfn-ai-stream-response"}, {Name: "sfn-async-log-events"}, {Name: "sfn-test"}}, conf.Functions)
 
 		assert.Equal(t, 9000, conf.Port)
 	})
@@ -62,18 +61,6 @@ func TestValidateConfig(t *testing.T) {
 				},
 			},
 			wantErrString: "config: the port is required",
-		},
-		{
-			name: "functions lack name",
-			args: args{
-				conf: &Config{
-					Name:      "name",
-					Host:      "0.0.0.0",
-					Port:      9000,
-					Functions: []Function{{}},
-				},
-			},
-			wantErrString: "config: the functions must have the name field",
 		},
 	}
 	for _, tt := range tests {

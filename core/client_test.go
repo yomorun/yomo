@@ -14,7 +14,6 @@ import (
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/router"
 	"github.com/yomorun/yomo/core/ylog"
-	"github.com/yomorun/yomo/pkg/config"
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 )
 
@@ -51,7 +50,7 @@ func TestFrameRoundTrip(t *testing.T) {
 		WithServerTLSConfig(nil),
 		WithServerLogger(discardingLogger),
 	)
-	server.ConfigRouter(router.Default([]config.Function{{Name: "sfn-1"}, {Name: "close-early-sfn"}}))
+	server.ConfigRouter(router.Default())
 
 	// test server hooks
 	ht := &hookTester{t}
