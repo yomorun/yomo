@@ -5,7 +5,7 @@ This example represents how YoMo works with cascading zippers in mesh network.
 ## Code structure
 
 - `source`: Mocking random data and send it to `zipper-1`. [docs.yomo.run/source](https://yomo.run/docs/api/source)
-- `zipper-1`: Receive the streams from `source`, and broadcast it to downstream `zipper-2` in another region. [docs.yomo.run/zipper](https://yomo.run/docs/cli/zipper)
+- `zipper-1`: Receive the streams from `source`, and write it to downstream `zipper-2` in another region. [docs.yomo.run/zipper](https://yomo.run/docs/cli/zipper)
 - `zipper-2`: Receive the streams from upstream `zipper-1`. [docs.yomo.run/zipper](https://yomo.run/docs/cli/zipper)
 - `sfn`: Receive the streams from `zipper-2` and print it in terminal. [docs.yomo.run/stream-function](https://yomo.run/docs/api/sfn)
 
