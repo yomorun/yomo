@@ -27,7 +27,7 @@ var discardingLogger = ylog.NewFromConfig(ylog.Config{Output: "/dev/null", Error
 func TestClientDialNothing(t *testing.T) {
 	ctx := context.Background()
 
-	client := NewClient("source", StreamTypeSource, WithLogger(discardingLogger))
+	client := NewClient("source", ClientTypeSource, WithLogger(discardingLogger))
 	err := client.Connect(ctx, testaddr)
 
 	qerr := net.ErrClosed
@@ -67,13 +67,13 @@ func TestFrameRoundTrip(t *testing.T) {
 		server.ListenAndServe(ctx, testaddr)
 	}()
 
-	illegalTokenSource := NewClient("source", StreamTypeSource, WithCredential("token:error-token"), WithLogger(discardingLogger))
+	illegalTokenSource := NewClient("source", ClientTypeSource, WithCredential("token:error-token"), WithLogger(discardingLogger))
 	err := illegalTokenSource.Connect(ctx, testaddr)
 	assert.Equal(t, "authentication failed: client credential name is token", err.Error())
 
 	source := NewClient(
 		"source",
-		StreamTypeSource,
+		ClientTypeSource,
 		WithCredential("token:auth-token"),
 		WithClientQuicConfig(DefalutQuicConfig),
 		WithClientTLSConfig(nil),
@@ -216,7 +216,7 @@ func (a *hookTester) afterHandler(ctx *Context) error {
 func createTestStreamFunction(name string, observedTag frame.Tag) *Client {
 	sfn := NewClient(
 		name,
-		StreamTypeStreamFunction,
+		ClientTypeStreamFunction,
 		WithCredential("token:auth-token"),
 		WithLogger(discardingLogger),
 	)

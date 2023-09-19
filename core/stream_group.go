@@ -50,7 +50,7 @@ func NewStreamGroup(
 }
 
 func (g *StreamGroup) handleRoute(hf *frame.HandshakeFrame, md metadata.M) (router.Route, error) {
-	if hf.StreamType != byte(StreamTypeStreamFunction) {
+	if hf.ClientType != byte(ClientTypeStreamFunction) {
 		return nil, nil
 	}
 	// route for sfn.
@@ -75,7 +75,7 @@ func (g *StreamGroup) handleRoute(hf *frame.HandshakeFrame, md metadata.M) (rout
 			// if same name sfn here, close the old connection.
 			stream.(*dataStream).serverController.Goaway(e.Error())
 			g.connector.Delete(existsStreamID)
-			g.logger.Debug("connector remove stream", "stream_id", stream.ID(), "stream_type", stream.StreamType().String(), "stream_name", stream.Name())
+			g.logger.Debug("connector remove stream", "stream_id", stream.ID(), "stream_type", stream.ClientType().String(), "stream_name", stream.Name())
 		}
 		return route, nil
 	}
@@ -135,7 +135,7 @@ func (g *StreamGroup) Run(contextFunc func(c *Context)) error {
 
 		g.group.Add(1)
 		g.connector.Store(stream.ID(), stream)
-		g.logger.Debug("connector add stream", "stream_id", stream.ID(), "stream_type", stream.StreamType().String(), "stream_name", stream.Name())
+		g.logger.Debug("connector add stream", "stream_id", stream.ID(), "stream_type", stream.ClientType().String(), "stream_name", stream.Name())
 
 		go g.handleContextFunc(routeResult.route, stream, contextFunc)
 	}
@@ -148,7 +148,7 @@ func (g *StreamGroup) handleContextFunc(route router.Route, stream DataStream, c
 			route.Remove(stream.ID())
 		}
 		g.connector.Delete(stream.ID())
-		g.logger.Debug("connector remove stream", "stream_id", stream.ID(), "stream_type", stream.StreamType().String(), "stream_name", stream.Name())
+		g.logger.Debug("connector remove stream", "stream_id", stream.ID(), "stream_type", stream.ClientType().String(), "stream_name", stream.Name())
 		g.group.Done()
 	}()
 

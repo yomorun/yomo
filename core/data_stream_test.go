@@ -17,7 +17,7 @@ func TestDataStream(t *testing.T) {
 		readBytes = []byte("aaabbbcccdddeeefff")
 		name      = "test-data-stream"
 		id        = "123456"
-		styp      = StreamTypeStreamFunction
+		styp      = ClientTypeStreamFunction
 		observed  = []uint32{1, 2, 3}
 		md        metadata.M
 	)
@@ -33,7 +33,7 @@ func TestDataStream(t *testing.T) {
 	t.Run("StreamInfo", func(t *testing.T) {
 		assert.Equal(t, id, stream.ID())
 		assert.Equal(t, name, stream.Name())
-		assert.Equal(t, styp, stream.StreamType())
+		assert.Equal(t, styp, stream.ClientType())
 		assert.Equal(t, md, stream.Metadata())
 		assert.Equal(t, observed, stream.ObserveDataTags())
 	})
@@ -93,11 +93,11 @@ func TestDataStream(t *testing.T) {
 	})
 }
 
-func TestStreamTypeString(t *testing.T) {
-	assert.Equal(t, StreamTypeSource.String(), "Source")
-	assert.Equal(t, StreamTypeStreamFunction.String(), "StreamFunction")
-	assert.Equal(t, StreamTypeUpstreamZipper.String(), "UpstreamZipper")
-	assert.Equal(t, StreamType(0).String(), "Unknown")
+func TestClientTypeString(t *testing.T) {
+	assert.Equal(t, ClientTypeSource.String(), "Source")
+	assert.Equal(t, ClientTypeStreamFunction.String(), "StreamFunction")
+	assert.Equal(t, ClientTypeUpstreamZipper.String(), "UpstreamZipper")
+	assert.Equal(t, ClientType(0).String(), "Unknown")
 }
 
 // byteFrame implements frame.Frame interface for unittest.

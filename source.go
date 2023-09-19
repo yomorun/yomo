@@ -79,7 +79,7 @@ func (s *yomoSource) Write(tag uint32, data []byte) error {
 	tp := s.client.TracerProvider()
 	traced := false
 	if tp != nil {
-		span, err := trace.NewSpan(tp, core.StreamTypeSource.String(), s.name, "", "")
+		span, err := trace.NewSpan(tp, core.ClientTypeSource.String(), s.name, "", "")
 		if err != nil {
 			s.client.Logger().Error("source trace error", "err", err)
 		} else {
