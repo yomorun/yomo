@@ -4,9 +4,9 @@ This example represents how YoMo works with the mock data of the sound sensor.
 
 ## Code structure
 
-+ `source`: Mocking data of a Sound Sensor. [docs.yomo.run/source](https://yomo.run/docs/api/source)
-+ `sfn`: Detecting noise pollution in real-time. [docs.yomo.run/stream-function](https://yomo.run/docs/api/sfn)
-+ `zipper`: Orchestrate a workflow that receives the data from `source`, stream computing in `stream-fn` [docs.yomo.run/zipper](https://yomo.run/docs/cli/zipper)
+- `source`: Mocking data of a Sound Sensor. [docs.yomo.run/source](https://yomo.run/docs/api/source)
+- `sfn`: Detecting noise pollution in real-time. [docs.yomo.run/stream-function](https://yomo.run/docs/api/sfn)
+- `zipper`: Orchestrate a workflow that receives the data from `source`, stream computing in `stream-fn` [docs.yomo.run/zipper](https://yomo.run/docs/cli/zipper)
 
 ## Prepare
 
@@ -40,7 +40,7 @@ YoMo CLI Version: v1.0.0
 ### Run [zipper](https://yomo.run/docs/cli/zipper)
 
 ```bash
-yomo serve -c ./config.yaml
+yomo serve -c ../config.yaml
 
 time=2022-12-12T18:12:15.735+08:00 level=INFO msg="Using config file" component=server name=Service file_path=../config.yaml
 time=2022-12-12T18:12:15.735+08:00 level=INFO msg="Listening SIGUSR1, SIGUSR2, SIGTERM/SIGINT..."
