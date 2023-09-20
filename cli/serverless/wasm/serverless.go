@@ -16,12 +16,12 @@ import (
 
 // wasmServerless will run serverless functions from the given compiled WebAssembly files.
 type wasmServerless struct {
-	runtime     Runtime
-	name        string
-	zipperAddrs []string
-	observed    []uint32
-	credential  string
-	mu          *sync.Mutex
+	runtime    Runtime
+	name       string
+	zipperAddr string
+	observed   []uint32
+	credential string
+	mu         *sync.Mutex
 }
 
 // Init initializes the serverless
@@ -38,7 +38,7 @@ func (s *wasmServerless) Init(opts *cli.Options) error {
 
 	s.runtime = runtime
 	s.name = opts.Name
-	s.zipperAddrs = opts.ZipperAddrs
+	s.zipperAddr = opts.ZipperAddr
 	s.observed = runtime.GetObserveDataTags()
 	s.credential = opts.Credential
 	s.mu = new(sync.Mutex)
@@ -53,7 +53,6 @@ func (s *wasmServerless) Build(clean bool) error {
 
 // Run the wasm serverless function
 func (s *wasmServerless) Run(verbose bool) error {
-	var wg sync.WaitGroup
 	// trace
 	tp, shutdown, err := trace.NewTracerProviderWithJaeger("yomo-sfn")
 	if err == nil {
@@ -61,59 +60,48 @@ func (s *wasmServerless) Run(verbose bool) error {
 	}
 	defer shutdown(context.Background())
 
-	for _, addr := range s.zipperAddrs {
-		sfn := yomo.NewStreamFunction(
-			s.name,
-			addr,
-			yomo.WithSfnCredential(s.credential),
-			yomo.WithSfnTracerProvider(tp),
-		)
-		// init
-		err := sfn.Init(func() error {
-			return s.runtime.RunInit()
-		})
-		if err != nil {
-			return err
-		}
-		// set observe data tags
-		sfn.SetObserveDataTags(s.observed...)
+	sfn := yomo.NewStreamFunction(
+		s.name,
+		s.zipperAddr,
+		yomo.WithSfnCredential(s.credential),
+		yomo.WithSfnTracerProvider(tp),
+	)
+	// init
+	err = sfn.Init(func() error {
+		return s.runtime.RunInit()
+	})
+	if err != nil {
+		return err
+	}
+	// set observe data tags
+	sfn.SetObserveDataTags(s.observed...)
 
-		var ch chan error
-		sfn.SetHandler(
-			func(ctx serverless.Context) {
-				s.mu.Lock()
-				defer s.mu.Unlock()
-				err := s.runtime.RunHandler(ctx)
-				if err != nil {
-					ch <- err
-				}
-			},
-		)
-
-		sfn.SetErrorHandler(
-			func(err error) {
-				log.Printf("[wasm][%s] error handler: %T %v\n", addr, err, err)
-			},
-		)
-
-		err = sfn.Connect()
-		if err != nil {
-			return err
-		}
-		defer sfn.Close()
-		defer s.runtime.Close()
-
-		wg.Add(1)
-		go func() {
-			err := <-ch
+	sfn.SetHandler(
+		func(ctx serverless.Context) {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			err := s.runtime.RunHandler(ctx)
 			if err != nil {
 				pkglog.FailureStatusEvent(os.Stderr, "%v", err)
 			}
-			wg.Done()
-		}()
-	}
+		},
+	)
 
-	wg.Wait()
+	sfn.SetErrorHandler(
+		func(err error) {
+			log.Printf("[wasm] error handler: %T %v\n", err, err)
+		},
+	)
+
+	err = sfn.Connect()
+	if err != nil {
+		return err
+	}
+	defer sfn.Close()
+	defer s.runtime.Close()
+
+	sfn.Wait()
+
 	return nil
 }
 

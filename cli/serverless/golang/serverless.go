@@ -49,10 +49,10 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 
 	// append main function
 	ctx := Context{
-		Name:        s.opts.Name,
-		ZipperAddrs: s.opts.ZipperAddrs,
-		Credential:  s.opts.Credential,
-		UseEnv:      s.opts.UseEnv,
+		Name:       s.opts.Name,
+		ZipperAddr: s.opts.ZipperAddr,
+		Credential: s.opts.Credential,
+		UseEnv:     s.opts.UseEnv,
 	}
 
 	// determine: rx stream serverless or raw bytes serverless.

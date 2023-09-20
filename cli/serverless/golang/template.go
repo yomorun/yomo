@@ -34,8 +34,8 @@ var WasmMainFuncTmpl []byte
 type Context struct {
 	// Name of the servcie
 	Name string
-	// ZipperAddrs is the addresses of the zipper server
-	ZipperAddrs []string
+	// ZipperAddrs is the address of the zipper server
+	ZipperAddr string
 	// Client credential
 	Credential string
 	// use environment variables
