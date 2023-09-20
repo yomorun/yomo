@@ -96,8 +96,6 @@ func (c *connection) CloseWithError(errString string) error {
 	return c.conn.CloseWithError(YomoCloseErrorCode, errString)
 }
 
-var _ Connection = &connection{}
-
 // YomoCloseErrorCode is the error code for close quic Connection for yomo.
 // If the Connection implemented by quic is closed, the quic ApplicationErrorCode is always 0x13.
 const YomoCloseErrorCode = quic.ApplicationErrorCode(0x13)

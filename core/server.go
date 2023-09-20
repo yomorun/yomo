@@ -146,7 +146,6 @@ func (s *Server) handshake(qconn quic.Connection, fs *FrameStream) (bool, router
 func (s *Server) handleConnection(qconn quic.Connection, fs *FrameStream, logger *slog.Logger) {
 	ok, route, conn := s.handshake(qconn, fs)
 
-	fmt.Println("ok", ok, "route", route, "conn", conn)
 	if !ok {
 		logger.Info("handshake failed")
 		return
@@ -169,7 +168,9 @@ func (s *Server) handleContext(c *Context) {
 
 func (s *Server) handleFrames(c *Context) {
 	defer func() {
-		_ = c.Route.Remove(c.Connection.ID())
+		if c.Connection.ClientType() == ClientTypeStreamFunction {
+			_ = c.Route.Remove(c.Connection.ID())
+		}
 		_ = s.connector.Reove(c.Connection.ID())
 	}()
 	for {
