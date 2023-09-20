@@ -4,13 +4,9 @@ This example represents how YoMo works with the mock data of the sound sensor.
 
 ## Code structure
 
-- `source`: Mocking data of a Sound Sensor.
-  [docs.yomo.run/source](https://yomo.run/docs/api/source)
-- `sfn`: Detecting noise pollution in real-time.
-  [docs.yomo.run/stream-function](https://yomo.run/docs/api/sfn)
-- `zipper`: Orchestrate a workflow that receives the data from `source`, stream
-  computing in `stream-fn`
-  [docs.yomo.run/zipper](https://yomo.run/docs/cli/zipper)
+- `source`: Mocking data of a Sound Sensor. [docs.yomo.run/source](https://yomo.run/docs/api/source)
+- `sfn`: Detecting noise pollution in real-time. [docs.yomo.run/stream-function](https://yomo.run/docs/api/sfn)
+- `zipper`: Orchestrate a workflow that receives the data from `source`, stream computing in `stream-fn` [docs.yomo.run/zipper](https://yomo.run/docs/cli/zipper)
 
 ## Prepare
 

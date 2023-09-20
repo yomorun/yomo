@@ -4,18 +4,11 @@ This example represents how YoMo works with multiple stream functions.
 
 ## Code structure
 
-- `source`: Mocking data of a Sound Sensor.
-  [docs.yomo.run/source](https://yomo.run/docs/api/source)
-- `stream-fn-1`: Calculate the sound value in real-time.
-  [docs.yomo.run/stream-function](https://yomo.run/docs/api/sfn)
-- `stream-fn-2`: Print the warning message when the noise value reaches the
-  threshold. [docs.yomo.run/stream-function](https://yomo.run/docs/api/sfn)
-- `stream-fn-3`: The raw stream is immutable, `stream-fn-3` can still observe
-  the raw data and calculate the average value in a sliding window.
-  [docs.yomo.run/stream-function](https://yomo.run/docs/api/sfn)
-- `zipper`: Orchestrate a workflow that receives the data from `source`, stream
-  computing in `stream-fn-1`, `stream-fn-2` and `stream-fn-3`
-  [docs.yomo.run/zipper](https://yomo.run/docs/cli/zipper)
+- `source`: Mocking data of a Sound Sensor. [docs.yomo.run/source](https://yomo.run/docs/api/source)
+- `stream-fn-1`: Calculate the sound value in real-time. [docs.yomo.run/stream-function](https://yomo.run/docs/api/sfn)
+- `stream-fn-2`: Print the warning message when the noise value reaches the threshold. [docs.yomo.run/stream-function](https://yomo.run/docs/api/sfn)
+- `stream-fn-3`: The raw stream is immutable, `stream-fn-3` can still observe the raw data and calculate the average value in a sliding window. [docs.yomo.run/stream-function](https://yomo.run/docs/api/sfn)
+- `zipper`: Orchestrate a workflow that receives the data from `source`, stream computing in `stream-fn-1`, `stream-fn-2` and `stream-fn-3` [docs.yomo.run/zipper](https://yomo.run/docs/cli/zipper)
 
 ## Prepare
 
@@ -156,8 +149,7 @@ The terminal of `stream-fn-1` will print the real-time noise value.
 [localhost] 1621491061246 > value: 16.458117 ⚡️=1ms
 ```
 
-The terminal of `stream-fn-2` will show the warning when the value reaches the
-threshold.
+The terminal of `stream-fn-2` will show the warning when the value reaches the threshold.
 
 ```bash
 receive noise value: 15.714272
@@ -169,8 +161,7 @@ receive noise value: 18.712460
 ❗ value: 16.458117 reaches the threshold 16! 𝚫=0.458117
 ```
 
-The terminal of `stream-fn-3` will show the average value in a sliding window
-10s.
+The terminal of `stream-fn-3` will show the average value in a sliding window 10s.
 
 ```bash
 [StdOut]:  15.714272
