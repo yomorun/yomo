@@ -88,6 +88,15 @@ type RejectedFrame struct {
 // Type returns the type of RejectedFrame.
 func (f *RejectedFrame) Type() Type { return TypeRejectedFrame }
 
+// GoawayFrame is is used by server to evict a connection.
+type GoawayFrame struct {
+	// Message contains the reason why the connection be evicted.
+	Message string
+}
+
+// Type returns the type of GoawayFrame.
+func (f *GoawayFrame) Type() Type { return TypeGoawayFrame }
+
 const (
 	TypeDataFrame         Type = 0x3F // TypeDataFrame is the type of DataFrame.
 	TypeHandshakeFrame    Type = 0x31 // TypeHandshakeFrame is the type of PayloadFrame.
@@ -103,6 +112,7 @@ var frameTypeStringMap = map[Type]string{
 	TypeHandshakeAckFrame: "HandshakeAckFrame",
 	TypeRejectedFrame:     "RejectedFrame",
 	TypeBackflowFrame:     "BackflowFrame",
+	TypeGoawayFrame:       "GoawayFrame",
 }
 
 // String returns a human-readable string which represents the frame type.
@@ -121,6 +131,7 @@ var frameTypeNewFuncMap = map[Type]func() Frame{
 	TypeHandshakeAckFrame: func() Frame { return new(HandshakeAckFrame) },
 	TypeRejectedFrame:     func() Frame { return new(RejectedFrame) },
 	TypeBackflowFrame:     func() Frame { return new(BackflowFrame) },
+	TypeGoawayFrame:       func() Frame { return new(GoawayFrame) },
 }
 
 // NewFrame creates a new frame from Type.

@@ -118,6 +118,19 @@ func TestCodec(t *testing.T) {
 			},
 		},
 		{
+			name: "GoawayFrame",
+			args: args{
+				newF: new(frame.GoawayFrame),
+				dataF: &frame.GoawayFrame{
+					Message: "goaway error",
+				},
+				data: []byte{
+					0xae, 0xe, 0x1, 0xc, 0x67, 0x6f, 0x61, 0x77, 0x61, 0x79, 0x20,
+					0x65, 0x72, 0x72, 0x6f, 0x72,
+				},
+			},
+		},
+		{
 			name: "error",
 			args: args{
 				newF:      nil,
