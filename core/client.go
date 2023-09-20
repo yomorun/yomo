@@ -231,7 +231,7 @@ func (c *Client) Close() error {
 
 // handleFrameError handles errors that occur during frame reading and writing by performing the following actions:
 // Sending the error to the error function (errorfn).
-// Closing the client if the data stream has been closed.
+// Closing the client if the connecion has been closed.
 // Always attempting to reconnect if an error is encountered.
 func (c *Client) handleFrameError(err error, reconnection chan<- struct{}) {
 	if err == nil {
@@ -293,7 +293,7 @@ func (c *Client) handleFrame(f frame.Frame) {
 	case *frame.BackflowFrame:
 		c.receiver(ff)
 	default:
-		c.logger.Warn("data stream received unexpected frame", "frame_type", f.Type().String())
+		c.logger.Warn("received unexpected frame", "frame_type", f.Type().String())
 	}
 }
 

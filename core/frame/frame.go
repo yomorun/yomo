@@ -39,7 +39,7 @@ type DataFrame struct {
 // Type returns the type of DataFrame.
 func (f *DataFrame) Type() Type { return TypeDataFrame }
 
-// The HandshakeFrame is the frame through which the client obtains a new data stream from the server.
+// The HandshakeFrame is the frame through which the client obtains a new connection from the server.
 // It include essential details required for the creation of a fresh DataStream.
 // The server then generates the DataStream utilizing this provided information.
 type HandshakeFrame struct {
@@ -164,7 +164,7 @@ type ReadWriter interface {
 }
 
 // Writer is the interface that wraps the WriteFrame method, it writes
-// frame to the underlying data stream.
+// frame to the underlying connection.
 type Writer interface {
 	// WriteFrame writes frame to underlying stream.
 	WriteFrame(Frame) error

@@ -114,15 +114,15 @@ func newContext(conn Connection, route router.Route, logger *slog.Logger) (c *Co
 
 // WithFrame sets the current frame of the YoMo context to the given frame.
 // It extracts the metadata from the data frame and sets it as attributes on the context logger.
-// It also merges the metadata from the data stream with the metadata from the data frame.
-// This allows downstream processing functions to access the metadata from both the data stream and the current data frame.
+// It also merges the metadata from the connection with the metadata from the data frame.
+// This allows downstream processing functions to access the metadata from both the connection and the current data frame.
 // If the given frame is not a data frame, it returns an error.
 // If there is an error decoding the metadata from the data frame, it returns that error.
 // Otherwise, it sets the current frame and frame metadata on the context and returns nil.
 func (c *Context) WithFrame(f frame.Frame) error {
 	df, ok := f.(*frame.DataFrame)
 	if !ok {
-		return errors.New("data stream only transmit data frame")
+		return errors.New("connection only transmit data frame")
 	}
 
 	fmd, err := metadata.Decode(df.Metadata)
@@ -132,7 +132,7 @@ func (c *Context) WithFrame(f frame.Frame) error {
 
 	c.Logger = c.BaseLogger.With(MetadataSlogAttr(fmd))
 
-	// merge data stream metadata.
+	// merge connection metadata.
 	c.Connection.Metadata().Range(func(k, v string) bool {
 		fmd.Set(k, v)
 		return true
@@ -146,13 +146,13 @@ func (c *Context) WithFrame(f frame.Frame) error {
 
 // CloseWithError close dataStream with an error string.
 func (c *Context) CloseWithError(errString string) {
-	c.Logger.Debug("data stream closed", "error", errString)
+	c.Logger.Debug("connection closed", "error", errString)
 
-	err := c.Connection.Close()
+	err := c.Connection.CloseWithError(errString)
 	if err == nil {
 		return
 	}
-	c.Logger.Error("data stream close failed", "err", err)
+	c.Logger.Error("connection close failed", "err", err)
 }
 
 // Release release the Context, the Context which has been released will not be available.
