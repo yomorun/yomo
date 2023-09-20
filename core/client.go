@@ -22,7 +22,7 @@ import (
 type Client struct {
 	name           string                     // name of the client
 	clientID       string                     // id of the client
-	streamType     StreamType                 // type of the dataStream
+	clientType     ClientType                 // type of the client
 	processor      func(*frame.DataFrame)     // function to invoke when data arrived
 	receiver       func(*frame.BackflowFrame) // function to invoke when data is processed
 	errorfn        func(error)                // function to invoke when error occured
@@ -38,7 +38,7 @@ type Client struct {
 }
 
 // NewClient creates a new YoMo-Client.
-func NewClient(appName string, connType ClientType, opts ...ClientOption) *Client {
+func NewClient(appName string, clientType ClientType, opts ...ClientOption) *Client {
 	option := defaultClientOption()
 
 	for _, o := range opts {
@@ -46,7 +46,7 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 	}
 	clientID := id.New()
 
-	logger := option.logger.With("component", connType.String(), "client_id", clientID, "client_name", appName)
+	logger := option.logger.With("component", clientType.String(), "client_id", clientID, "client_name", appName)
 
 	if option.credential != nil {
 		logger.Info("use credential", "credential_name", option.credential.Name())
@@ -57,7 +57,7 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 	return &Client{
 		name:           appName,
 		clientID:       clientID,
-		streamType:     connType,
+		clientType:     clientType,
 		opts:           option,
 		logger:         logger,
 		tracerProvider: option.tracerProvider,
@@ -70,7 +70,7 @@ func NewClient(appName string, connType ClientType, opts ...ClientOption) *Clien
 
 // Connect connect client to server.
 func (c *Client) Connect(ctx context.Context, addr string) error {
-	if c.streamType == StreamTypeStreamFunction && len(c.opts.observeDataTags) == 0 {
+	if c.clientType == ClientTypeStreamFunction && len(c.opts.observeDataTags) == 0 {
 		return errors.New("yomo: streamFunction cannot observe data because the required tag has not been set")
 	}
 
@@ -175,7 +175,7 @@ func (c *Client) cleanStream(controlStream *ClientControlStream, err error) {
 // Close close the client.
 func (c *Client) Close() error {
 	// break runBackgroud() for-loop.
-	c.ctxCancel(fmt.Errorf("%s: local shutdown", c.streamType.String()))
+	c.ctxCancel(fmt.Errorf("%s: local shutdown", c.clientType.String()))
 
 	return nil
 }
@@ -215,7 +215,7 @@ func (c *Client) openDataStream(ctx context.Context, controlStream *ClientContro
 	handshakeFrame := &frame.HandshakeFrame{
 		Name:            c.name,
 		ID:              c.clientID,
-		StreamType:      byte(c.streamType),
+		ClientType:      byte(c.clientType),
 		ObserveDataTags: c.opts.observeDataTags,
 	}
 
@@ -275,13 +275,13 @@ func (c *Client) handleFrameError(err error, reconnection chan<- struct{}) {
 
 	// exit client program if stream has be closed.
 	if err == io.EOF {
-		c.ctxCancel(fmt.Errorf("%s: remote shutdown", c.streamType.String()))
+		c.ctxCancel(fmt.Errorf("%s: remote shutdown", c.clientType.String()))
 		return
 	}
 
 	// If client accepts close signal from server, then exit client program.
 	if se := new(ErrControllSignal); errors.As(err, &se) {
-		c.ctxCancel(fmt.Errorf("%s: remote shutdown", c.streamType.String()))
+		c.ctxCancel(fmt.Errorf("%s: remote shutdown", c.clientType.String()))
 		return
 	}
 

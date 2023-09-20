@@ -431,7 +431,7 @@ func sourceIDTagFindStreamFunc(sourceID string, tag frame.Tag) FindStreamFunc {
 	return func(stream StreamInfo) bool {
 		for _, v := range stream.ObserveDataTags() {
 			if v == tag &&
-				stream.StreamType() == StreamTypeSource &&
+				stream.ClientType() == ClientTypeSource &&
 				stream.ID() == sourceID {
 				return true
 			}
@@ -480,7 +480,8 @@ func (s *Server) AddDownstreamServer(addr string, c FrameWriterConnection) {
 
 // dispatch every DataFrames to all downstreams
 func (s *Server) dispatchToDownstreams(c *Context) {
-	if c.DataStream.StreamType() == StreamTypeUpstreamZipper {
+	if c.DataStream.ClientType() == ClientTypeUpstreamZipper {
+		c.Logger.Warn("ignored client", "client_type", c.DataStream.ClientType().String())
 		// loop protection
 		return
 	}
