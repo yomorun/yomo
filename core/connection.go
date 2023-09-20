@@ -14,8 +14,8 @@ type ConnectionInfo interface {
 	Name() string
 	// ID represents the connection ID, the ID is an unique string.
 	ID() string
-	// StreamType represents connection type (Source | SFN | UpstreamZipper).
-	StreamType() StreamType
+	// ClientType represents connection type (Source | SFN | UpstreamZipper).
+	ClientType() ClientType
 	// Metadata returns the extra info of the application.
 	Metadata() metadata.M
 	// ObserveDataTags observed data tags.
@@ -35,7 +35,7 @@ type Connection interface {
 type connection struct {
 	name            string
 	id              string
-	streamType      StreamType
+	clientType      ClientType
 	metadata        metadata.M
 	observeDataTags []uint32
 	conn            quic.Connection
@@ -43,12 +43,12 @@ type connection struct {
 }
 
 func newConnection(
-	name string, id string, streamType StreamType, md metadata.M, tags []uint32,
+	name string, id string, clientType ClientType, md metadata.M, tags []uint32,
 	conn quic.Connection, fs *FrameStream) *connection {
 	return &connection{
 		name:            name,
 		id:              id,
-		streamType:      streamType,
+		clientType:      clientType,
 		metadata:        md,
 		observeDataTags: tags,
 		conn:            conn,
@@ -84,8 +84,8 @@ func (c *connection) ReadFrame() (frame.Frame, error) {
 	return c.fs.ReadFrame()
 }
 
-func (c *connection) StreamType() StreamType {
-	return c.streamType
+func (c *connection) ClientType() ClientType {
+	return c.clientType
 }
 
 func (c *connection) WriteFrame(f frame.Frame) error {

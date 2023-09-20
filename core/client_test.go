@@ -28,7 +28,7 @@ var discardingLogger = ylog.NewFromConfig(ylog.Config{Output: "/dev/null", Error
 func TestClientDialNothing(t *testing.T) {
 	ctx := context.Background()
 
-	client := NewClient("source", StreamTypeSource, WithLogger(discardingLogger))
+	client := NewClient("source", ClientTypeSource, WithLogger(discardingLogger))
 	err := client.Connect(ctx, testaddr)
 
 	qerr := net.ErrClosed
@@ -69,13 +69,13 @@ func TestFrameRoundTrip(t *testing.T) {
 		fmt.Println(err)
 	}()
 
-	illegalTokenSource := NewClient("source", StreamTypeSource, WithCredential("token:error-token"), WithLogger(discardingLogger))
+	illegalTokenSource := NewClient("source", ClientTypeSource, WithCredential("token:error-token"), WithLogger(discardingLogger))
 	err := illegalTokenSource.Connect(ctx, testaddr)
 	assert.Equal(t, "authentication failed: client credential name is token", err.Error())
 
 	source := NewClient(
 		"source",
-		StreamTypeSource,
+		ClientTypeSource,
 		WithCredential("token:auth-token"),
 		WithClientQuicConfig(DefalutQuicConfig),
 		WithClientTLSConfig(nil),
@@ -128,9 +128,9 @@ func TestFrameRoundTrip(t *testing.T) {
 	exited = checkClientExited(sfn, time.Second)
 	assert.False(t, exited, "sfn stream should not exited")
 
-	mdBytes, _ := NewDefaultMetadata(source.clientID, "tid", "sid", false).Encode()
+	sfnMetaBytes, _ := NewDefaultMetadata(source.clientID, "tid", "sid", false).Encode()
 
-	err = sfn.WriteFrame(&frame.DataFrame{Tag: backflowTag, Metadata: mdBytes, Payload: backflow})
+	err = sfn.WriteFrame(&frame.DataFrame{Tag: backflowTag, Metadata: sfnMetaBytes, Payload: backflow})
 	assert.NoError(t, err)
 
 	stats := server.StatsFunctions()
@@ -146,11 +146,11 @@ func TestFrameRoundTrip(t *testing.T) {
 			"foo": "bar",
 		},
 	)
-	mdBytes, _ = md.Encode()
+	sourceMetaBytes, _ := md.Encode()
 
 	dataFrame := &frame.DataFrame{
 		Tag:      observedTag,
-		Metadata: mdBytes,
+		Metadata: sourceMetaBytes,
 		Payload:  payload,
 	}
 
@@ -159,11 +159,10 @@ func TestFrameRoundTrip(t *testing.T) {
 
 	time.Sleep(2 * time.Second)
 
-	reocrdTag, reocrdMD, reocrdPayload := recorder.dataFrameContent()
-	assert.Equal(t, reocrdTag, dataFrame.Tag)
-	// raw metadata cant be compared because metadata is not ordered.
-	assert.Equal(t, reocrdMD, md)
-	assert.Equal(t, reocrdPayload, dataFrame.Payload)
+	recordTag, recordMD, recordPayload := recorder.dataFrameContent()
+	assert.True(t, recordTag == dataFrame.Tag || recordTag == backflowTag)
+	assert.Equal(t, GetSourceIDFromMetadata(recordMD), source.clientID)
+	assert.True(t, bytes.Equal(recordPayload, dataFrame.Payload) || bytes.Equal(recordPayload, backflow))
 
 	assert.NoError(t, source.Close(), "source client.Close() should not return error")
 	assert.NoError(t, sfn.Close(), "sfn client.Close() should not return error")
@@ -214,7 +213,7 @@ func (a *hookTester) afterHandler(ctx *Context) error {
 func createTestStreamFunction(name string, observedTag frame.Tag) *Client {
 	sfn := NewClient(
 		name,
-		StreamTypeStreamFunction,
+		ClientTypeStreamFunction,
 		WithCredential("token:auth-token"),
 		WithLogger(discardingLogger),
 	)

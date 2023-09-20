@@ -210,7 +210,7 @@ func (s *Server) handleFrames(c *Context) {
 }
 
 func (s *Server) handleRoute(hf *frame.HandshakeFrame, md metadata.M) (router.Route, error) {
-	if hf.StreamType != byte(StreamTypeStreamFunction) {
+	if hf.ClientType != byte(ClientTypeStreamFunction) {
 		return nil, nil
 	}
 	route := s.router.Route(md)
@@ -233,7 +233,7 @@ func (s *Server) handleHandshakeFrame(qconn quic.Connection, fs *FrameStream, hf
 	}
 	s.logger.Info("authentication successful", "credential", hf.AuthName)
 
-	conn := newConnection(hf.Name, hf.ID, StreamType(hf.StreamType), md, hf.ObserveDataTags, qconn, fs)
+	conn := newConnection(hf.Name, hf.ID, ClientType(hf.ClientType), md, hf.ObserveDataTags, qconn, fs)
 
 	return conn, s.connector.Store(hf.ID, conn)
 }
@@ -459,7 +459,7 @@ func sourceIDTagFindConnectionFunc(sourceID string, tag frame.Tag) FindConnectio
 	return func(conn ConnectionInfo) bool {
 		for _, v := range conn.ObserveDataTags() {
 			if v == tag &&
-				conn.StreamType() == StreamTypeSource &&
+				conn.ClientType() == ClientTypeSource &&
 				conn.ID() == sourceID {
 				return true
 			}
@@ -509,7 +509,8 @@ func (s *Server) AddDownstreamServer(addr string, c FrameWriterConnection) {
 // dispatch every DataFrames to all downstreams
 func (s *Server) dispatchToDownstreams(c *Context) {
 	dataFrame := c.Frame.(*frame.DataFrame)
-	if c.Connection.StreamType() == StreamTypeUpstreamZipper {
+	if c.Connection.ClientType() == ClientTypeUpstreamZipper {
+		c.Logger.Warn("ignored client", "client_type", c.Connection.ClientType().String())
 		// loop protection
 		return
 	}

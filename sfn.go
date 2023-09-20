@@ -125,9 +125,9 @@ func (s *streamFunction) Connect() error {
 						var err error
 						// set parent span, if not traced, use empty string
 						if parentTraced {
-							span, err = trace.NewSpan(tp, core.StreamTypeStreamFunction.String(), s.name, tid, sid)
+							span, err = trace.NewSpan(tp, core.ClientTypeStreamFunction.String(), s.name, tid, sid)
 						} else {
-							span, err = trace.NewSpan(tp, core.StreamTypeStreamFunction.String(), s.name, "", "")
+							span, err = trace.NewSpan(tp, core.ClientTypeStreamFunction.String(), s.name, "", "")
 						}
 						if err != nil {
 							s.client.Logger().Error("sfn trace error", "err", err)
@@ -220,9 +220,9 @@ func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 				var err error
 				// set parent span, if not traced, use empty string
 				if parentTraced {
-					span, err = trace.NewSpan(tp, core.StreamTypeStreamFunction.String(), s.name, tid, sid)
+					span, err = trace.NewSpan(tp, core.ClientTypeStreamFunction.String(), s.name, tid, sid)
 				} else {
-					span, err = trace.NewSpan(tp, core.StreamTypeStreamFunction.String(), s.name, "", "")
+					span, err = trace.NewSpan(tp, core.ClientTypeStreamFunction.String(), s.name, "", "")
 				}
 				if err != nil {
 					s.client.Logger().Error("sfn trace error", "err", err)

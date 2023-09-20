@@ -101,7 +101,7 @@ func newContext(conn Connection, route router.Route, logger *slog.Logger) (c *Co
 	logger = logger.With(
 		"conn_id", conn.ID(),
 		"conn_name", conn.Name(),
-		"conn_type", conn.StreamType().String(),
+		"conn_type", conn.ClientType().String(),
 	)
 
 	c.Connection = conn

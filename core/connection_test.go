@@ -35,7 +35,7 @@ func TestConnection(t *testing.T) {
 	t.Run("ConnectionInfo", func(t *testing.T) {
 		assert.Equal(t, id, connection.ID())
 		assert.Equal(t, name, connection.Name())
-		assert.Equal(t, styp, connection.StreamType())
+		assert.Equal(t, styp, connection.ClientType())
 		assert.Equal(t, md, connection.Metadata())
 		assert.Equal(t, observed, connection.ObserveDataTags())
 	})
@@ -95,11 +95,11 @@ func TestConnection(t *testing.T) {
 	})
 }
 
-func TestStreamTypeString(t *testing.T) {
-	assert.Equal(t, StreamTypeSource.String(), "Source")
-	assert.Equal(t, StreamTypeStreamFunction.String(), "StreamFunction")
-	assert.Equal(t, StreamTypeUpstreamZipper.String(), "UpstreamZipper")
-	assert.Equal(t, StreamType(0).String(), "Unknown")
+func TestClientTypeString(t *testing.T) {
+	assert.Equal(t, ClientTypeSource.String(), "Source")
+	assert.Equal(t, ClientTypeStreamFunction.String(), "StreamFunction")
+	assert.Equal(t, ClientTypeUpstreamZipper.String(), "UpstreamZipper")
+	assert.Equal(t, ClientType(0).String(), "Unknown")
 }
 
 // byteFrame implements frame.Frame interface for unittest.
