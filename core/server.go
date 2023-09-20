@@ -172,6 +172,7 @@ func (s *Server) handleFrames(c *Context) {
 			_ = c.Route.Remove(c.Connection.ID())
 		}
 		_ = s.connector.Remove(c.Connection.ID())
+		c.Release()
 	}()
 	for {
 		f, err := c.Connection.ReadFrame()
