@@ -25,16 +25,21 @@ func encodeHandshakeFrame(f *frame.HandshakeFrame) ([]byte, error) {
 		binary.LittleEndian.PutUint32(buf, uint32(v))
 		observeDataTagsBlock.AddBytes(buf)
 	}
-	// metadata
-	metadataBlock := y3.NewPrimitivePacketEncoder(tagHandshakeMetadata)
-	metadataBlock.SetBytesValue(f.Metadata)
+	// auth name
+	authNameBlock := y3.NewPrimitivePacketEncoder(tagAuthenticationName)
+	authNameBlock.SetStringValue(f.AuthName)
+	// auth payload
+	authPayloadBlock := y3.NewPrimitivePacketEncoder(tagAuthenticationPayload)
+	authPayloadBlock.SetStringValue(f.AuthPayload)
+
 	// handshake frame
 	handshake := y3.NewNodePacketEncoder(byte(f.Type()))
 	handshake.AddPrimitivePacket(nameBlock)
 	handshake.AddPrimitivePacket(idBlock)
 	handshake.AddPrimitivePacket(typeBlock)
 	handshake.AddPrimitivePacket(observeDataTagsBlock)
-	handshake.AddPrimitivePacket(metadataBlock)
+	handshake.AddPrimitivePacket(authNameBlock)
+	handshake.AddPrimitivePacket(authPayloadBlock)
 
 	return handshake.Encode(), nil
 }
@@ -77,10 +82,21 @@ func decodeHandshakeFrame(data []byte, f *frame.HandshakeFrame) error {
 			f.ObserveDataTags = append(f.ObserveDataTags, frame.Tag(binary.LittleEndian.Uint32(buf[pos:pos+4])))
 		}
 	}
-	// metadata
-	if typeBlock, ok := node.PrimitivePackets[byte(tagHandshakeMetadata)]; ok {
-		metadata := typeBlock.ToBytes()
-		f.Metadata = metadata
+	// auth
+	if authNameBlock, ok := node.PrimitivePackets[tagAuthenticationName]; ok {
+		authName, err := authNameBlock.ToUTF8String()
+		if err != nil {
+			return err
+		}
+		f.AuthName = authName
+	}
+	// payload
+	if authPayloadBlock, ok := node.PrimitivePackets[tagAuthenticationPayload]; ok {
+		authPayload, err := authPayloadBlock.ToUTF8String()
+		if err != nil {
+			return err
+		}
+		f.AuthPayload = authPayload
 	}
 
 	return nil
@@ -90,6 +106,7 @@ var (
 	tagHandshakeName            byte = 0x01
 	tagHandshakeStreamType      byte = 0x02
 	tagHandshakeID              byte = 0x03
+	tagAuthenticationName       byte = 0x04
+	tagAuthenticationPayload    byte = 0x05
 	tagHandshakeObserveDataTags byte = 0x06
-	tagHandshakeMetadata        byte = 0x07
 )

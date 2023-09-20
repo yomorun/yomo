@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net"
 	"strings"
 	"sync"
@@ -64,7 +65,8 @@ func TestFrameRoundTrip(t *testing.T) {
 	assert.Equal(t, map[string]string{"mockAddr": "mockClient"}, server.Downstreams())
 
 	go func() {
-		server.ListenAndServe(ctx, testaddr)
+		err := server.ListenAndServe(ctx, testaddr)
+		fmt.Println(err)
 	}()
 
 	illegalTokenSource := NewClient("source", StreamTypeSource, WithCredential("token:error-token"), WithLogger(discardingLogger))
@@ -97,13 +99,12 @@ func TestFrameRoundTrip(t *testing.T) {
 	closeEarlySfn.Close()
 	assert.Equal(t, nil, err)
 
-	sfn := createTestStreamFunction("sfn-1", observedTag)
-	err = sfn.Connect(ctx, testaddr)
-	assert.NoError(t, err, "sfn connect must be success")
+	exited := checkClientExited(closeEarlySfn, time.Second)
+	assert.True(t, exited, "close-early-sfn should exited")
 
-	// add a same name sfn to zipper.
-	sameNameSfn := createTestStreamFunction("sfn-1", observedTag)
-	sameNameSfn.SetDataFrameObserver(func(bf *frame.DataFrame) {
+	// sfn to zipper.
+	sfn := createTestStreamFunction("sfn-1", observedTag)
+	sfn.SetDataFrameObserver(func(bf *frame.DataFrame) {
 		assert.Equal(t, string(payload), string(bf.Payload))
 
 		// panic test: reading array out of range.
@@ -111,7 +112,7 @@ func TestFrameRoundTrip(t *testing.T) {
 		t.Log(arr[100])
 	})
 
-	sameNameSfn.SetErrorHandler(func(err error) {
+	sfn.SetErrorHandler(func(err error) {
 		if strings.HasPrefix(err.Error(), "yomo: stream panic") {
 			assert.Regexp(
 				t,
@@ -121,18 +122,15 @@ func TestFrameRoundTrip(t *testing.T) {
 		}
 	})
 
-	err = sameNameSfn.Connect(ctx, testaddr)
+	err = sfn.Connect(ctx, testaddr)
 	assert.NoError(t, err, "sfn connect should replace the old sfn stream")
 
-	exited := checkClientExited(sfn, time.Second)
-	assert.True(t, exited, "the old sfn stream should exited")
-
-	exited = checkClientExited(sameNameSfn, time.Second)
-	assert.False(t, exited, "the new sfn stream should not exited")
+	exited = checkClientExited(sfn, time.Second)
+	assert.False(t, exited, "sfn stream should not exited")
 
 	mdBytes, _ := NewDefaultMetadata(source.clientID, "tid", "sid", false).Encode()
 
-	err = sameNameSfn.WriteFrame(&frame.DataFrame{Tag: backflowTag, Metadata: mdBytes, Payload: backflow})
+	err = sfn.WriteFrame(&frame.DataFrame{Tag: backflowTag, Metadata: mdBytes, Payload: backflow})
 	assert.NoError(t, err)
 
 	stats := server.StatsFunctions()

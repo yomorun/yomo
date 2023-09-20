@@ -39,24 +39,16 @@ func Codec() frame.Codec { return &y3codec{} }
 
 func (c *y3codec) Encode(f frame.Frame) ([]byte, error) {
 	switch ff := f.(type) {
-	case *frame.AuthenticationFrame:
-		return encodeAuthenticationFrame(ff)
-	case *frame.AuthenticationAckFrame:
-		return encodeAuthenticationAckFrame(ff)
 	case *frame.RejectedFrame:
 		return encodeRejectedFrame(ff)
 	case *frame.HandshakeFrame:
 		return encodeHandshakeFrame(ff)
-	case *frame.HandshakeRejectedFrame:
-		return encodeHandshakeRejectedFrame(ff)
 	case *frame.HandshakeAckFrame:
 		return encodeHandshakeAckFrame(ff)
 	case *frame.DataFrame:
 		return encodeDataFrame(ff)
 	case *frame.BackflowFrame:
 		return encodeBackflowFrame(ff)
-	case *frame.GoawayFrame:
-		return encodeGoawayFrame(ff)
 	default:
 		return nil, ErrUnknownFrame
 	}
@@ -64,24 +56,16 @@ func (c *y3codec) Encode(f frame.Frame) ([]byte, error) {
 
 func (c *y3codec) Decode(data []byte, f frame.Frame) error {
 	switch ff := f.(type) {
-	case *frame.AuthenticationFrame:
-		return decodeAuthenticationFrame(data, ff)
-	case *frame.AuthenticationAckFrame:
-		return decodeAuthenticationAckFrame(data, ff)
 	case *frame.RejectedFrame:
 		return decodeRejectedFrame(data, ff)
 	case *frame.HandshakeFrame:
 		return decodeHandshakeFrame(data, ff)
-	case *frame.HandshakeRejectedFrame:
-		return decodeHandshakeRejectedFrame(data, ff)
 	case *frame.HandshakeAckFrame:
 		return decodeHandshakeAckFrame(data, ff)
 	case *frame.DataFrame:
 		return decodeDataFrame(data, ff)
 	case *frame.BackflowFrame:
 		return decodeBackflowFrame(data, ff)
-	case *frame.GoawayFrame:
-		return decodeGoawayFrame(data, ff)
 	default:
 		return ErrUnknownFrame
 	}

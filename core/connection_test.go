@@ -6,42 +6,44 @@ import (
 	"io"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/quic-go/quic-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
 )
 
-func TestDataStream(t *testing.T) {
+func TestConnection(t *testing.T) {
 	var (
 		readBytes = []byte("aaabbbcccdddeeefff")
-		name      = "test-data-stream"
+		name      = "test-data-connection"
 		id        = "123456"
-		styp      = StreamTypeStreamFunction
+		styp      = ClientTypeStreamFunction
 		observed  = []uint32{1, 2, 3}
 		md        metadata.M
 	)
 
-	// Create a stream that initializes the read buffer with a string that has been split by spaces.
+	// Create a connection that initializes the read buffer with a string that has been split by spaces.
 	mockStream := newMemByteStream(readBytes)
 
-	// create frame stream.
-	frameStream := NewFrameStream(mockStream, &byteCodec{}, &bytePacketReadWriter{})
+	// create frame connection.
+	fs := NewFrameStream(mockStream, &byteCodec{}, &bytePacketReadWriter{})
 
-	stream := newDataStream(name, id, styp, md, observed, frameStream, nil, nil)
+	connection := newConnection(name, id, styp, md, observed, nil, fs)
 
-	t.Run("StreamInfo", func(t *testing.T) {
-		assert.Equal(t, id, stream.ID())
-		assert.Equal(t, name, stream.Name())
-		assert.Equal(t, styp, stream.StreamType())
-		assert.Equal(t, md, stream.Metadata())
-		assert.Equal(t, observed, stream.ObserveDataTags())
+	t.Run("ConnectionInfo", func(t *testing.T) {
+		assert.Equal(t, id, connection.ID())
+		assert.Equal(t, name, connection.Name())
+		assert.Equal(t, styp, connection.StreamType())
+		assert.Equal(t, md, connection.Metadata())
+		assert.Equal(t, observed, connection.ObserveDataTags())
 	})
 
-	t.Run("data stream read", func(t *testing.T) {
+	t.Run("connection read", func(t *testing.T) {
 		gots := []byte{}
 		for i := 0; i < len(readBytes)+1; i++ {
-			f, err := stream.ReadFrame()
+			f, err := connection.ReadFrame()
 			if err != nil {
 				if i == len(readBytes) {
 					assert.Equal(t, io.EOF, err)
@@ -51,7 +53,7 @@ func TestDataStream(t *testing.T) {
 				return
 			}
 
-			b, err := frameStream.codec.Encode(f)
+			b, err := fs.codec.Encode(f)
 			assert.NoError(t, err)
 
 			gots = append(gots, b...)
@@ -59,34 +61,34 @@ func TestDataStream(t *testing.T) {
 		assert.Equal(t, readBytes, gots)
 	})
 
-	t.Run("data stream write", func(t *testing.T) {
+	t.Run("connection write", func(t *testing.T) {
 		dataWrited := []byte("ggghhhiiigggkkklll")
 
 		for _, w := range dataWrited {
-			err := stream.WriteFrame(byteFrame(w))
+			err := connection.WriteFrame(byteFrame(w))
 			assert.NoError(t, err)
 		}
 
 		assert.Equal(t, string(mockStream.GetReadBytes()), string(dataWrited))
 	})
 
-	t.Run("data stream close", func(t *testing.T) {
-		err := stream.Close()
+	t.Run("connection close", func(t *testing.T) {
+		err := connection.Close()
 		assert.NoError(t, err)
 
 		// close twice.
-		err = stream.Close()
+		err = connection.Close()
 		assert.NoError(t, err)
 
-		f, err := stream.ReadFrame()
+		f, err := connection.ReadFrame()
 		assert.ErrorIs(t, err, io.EOF)
 		assert.Nil(t, f)
 
-		err = stream.WriteFrame(byteFrame('a'))
+		err = connection.WriteFrame(byteFrame('a'))
 		assert.ErrorIs(t, err, io.EOF)
 
 		select {
-		case <-stream.Context().Done():
+		case <-connection.Context().Done():
 		default:
 			assert.Fail(t, "stream.Context().Done() should be done")
 		}
@@ -153,6 +155,31 @@ type memByteStream struct {
 	readBuf  *bytes.Buffer
 	writeBuf *bytes.Buffer
 	mutex    sync.Mutex
+}
+
+// CancelRead implements quic.Stream.
+func (*memByteStream) CancelRead(quic.StreamErrorCode) {
+	panic("unimplemented")
+}
+
+func (*memByteStream) CancelWrite(quic.StreamErrorCode) {
+	panic("unimplemented")
+}
+
+func (*memByteStream) SetDeadline(t time.Time) error {
+	panic("unimplemented")
+}
+
+func (*memByteStream) SetReadDeadline(t time.Time) error {
+	panic("unimplemented")
+}
+
+func (*memByteStream) SetWriteDeadline(t time.Time) error {
+	panic("unimplemented")
+}
+
+func (*memByteStream) StreamID() quic.StreamID {
+	panic("unimplemented")
 }
 
 func newMemByteStream(readInitBytes []byte) *memByteStream {

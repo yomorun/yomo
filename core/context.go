@@ -15,12 +15,13 @@ import (
 var ctxPool sync.Pool
 
 // Context is context for stream handling.
-// Context is generated subsequent to the arrival of a dataStream and retains pertinent information derived from the dataStream. The lifespan of the Context should align with the lifespan of the Stream.
+// Context is generated subsequent to the arrival of a dataStream and retains pertinent information derived from the dataStream.
+// The lifespan of the Context should align with the lifespan of the Stream.
 type Context struct {
-	// DataStream is the stream used for reading and writing frames.
-	DataStream DataStream
+	// Connection is the connection used for reading and writing frames.
+	Connection Connection
 	// Frame receives from client.
-	Frame *frame.DataFrame
+	Frame frame.Frame
 	// FrameMetadata is the merged metadata from the frame.
 	FrameMetadata metadata.M
 	// Route is the route from handshake.
@@ -29,8 +30,8 @@ type Context struct {
 	mu sync.RWMutex
 	// Keys stores the key/value pairs in context, It is Lazy initialized.
 	Keys map[string]any
-	// StreamLogger is stream-level logger.
-	StreamLogger *slog.Logger
+	// BaseLogger is the base logger.
+	BaseLogger *slog.Logger
 	// Using Logger to log in stream handler scope, Logger is frame-level logger.
 	Logger *slog.Logger
 }
@@ -60,14 +61,14 @@ func (c *Context) Get(key string) (any, bool) {
 
 var _ context.Context = &Context{}
 
-// Done returns nil (chan which will wait forever) when c.Stream.Context() has no Context.
-func (c *Context) Done() <-chan struct{} { return c.DataStream.Context().Done() }
+// Done returns nil (chan which will wait forever) when c.Connection.Context() has no Context.
+func (c *Context) Done() <-chan struct{} { return c.Connection.Context().Done() }
 
-// Deadline returns that there is no deadline (ok==false) when c.Stream has no Context.
-func (c *Context) Deadline() (deadline time.Time, ok bool) { return c.DataStream.Context().Deadline() }
+// Deadline returns that there is no deadline (ok==false) when c.Connection has no Context.
+func (c *Context) Deadline() (deadline time.Time, ok bool) { return c.Connection.Context().Deadline() }
 
 // Err returns nil when c.Request has no Context.
-func (c *Context) Err() error { return c.DataStream.Context().Err() }
+func (c *Context) Err() error { return c.Connection.Context().Err() }
 
 // Value retrieves the value associated with the specified key within the context.
 // If no value is found, it returns nil. Subsequent invocations of "Value" with the same key yield identical outcomes.
@@ -82,14 +83,14 @@ func (c *Context) Value(key any) any {
 	c.mu.Unlock()
 
 	// this will not take effect forever.
-	return c.DataStream.Context().Value(key)
+	return c.Connection.Context().Value(key)
 }
 
 // newContext returns a new YoMo context that implements the standard library `context.Context` interface.
-// The YoMo context is used to manage the lifecycle of a stream and provides a way to pass data and metadata between stream processing functions.
-// The lifecycle of the context is equal to the lifecycle of the stream that it is associated with.
+// The YoMo context is used to manage the lifecycle of a connection and provides a way to pass data and metadata between stream processing functions.
+// The lifecycle of the context is equal to the lifecycle of the connection that it is associated with.
 // The context can be used to manage timeouts, cancellations, and other aspects of stream processing.
-func newContext(dataStream DataStream, route router.Route, logger *slog.Logger) (c *Context) {
+func newContext(conn Connection, route router.Route, logger *slog.Logger) (c *Context) {
 	v := ctxPool.Get()
 	if v == nil {
 		c = new(Context)
@@ -98,20 +99,20 @@ func newContext(dataStream DataStream, route router.Route, logger *slog.Logger) 
 	}
 
 	logger = logger.With(
-		"stream_id", dataStream.ID(),
-		"stream_name", dataStream.Name(),
-		"stream_type", dataStream.StreamType().String(),
+		"conn_id", conn.ID(),
+		"conn_name", conn.Name(),
+		"conn_type", conn.StreamType().String(),
 	)
 
-	c.DataStream = dataStream
+	c.Connection = conn
 	c.Route = route
-	c.StreamLogger = logger
+	c.BaseLogger = logger
 	c.Logger = logger
 
 	return
 }
 
-// WithFrame sets the current frame of the YoMo context to the given data frame.
+// WithFrame sets the current frame of the YoMo context to the given frame.
 // It extracts the metadata from the data frame and sets it as attributes on the context logger.
 // It also merges the metadata from the data stream with the metadata from the data frame.
 // This allows downstream processing functions to access the metadata from both the data stream and the current data frame.
@@ -129,10 +130,10 @@ func (c *Context) WithFrame(f frame.Frame) error {
 		return err
 	}
 
-	c.Logger = c.StreamLogger.With(MetadataSlogAttr(fmd))
+	c.Logger = c.BaseLogger.With(MetadataSlogAttr(fmd))
 
 	// merge data stream metadata.
-	c.DataStream.Metadata().Range(func(k, v string) bool {
+	c.Connection.Metadata().Range(func(k, v string) bool {
 		fmd.Set(k, v)
 		return true
 	})
@@ -147,7 +148,7 @@ func (c *Context) WithFrame(f frame.Frame) error {
 func (c *Context) CloseWithError(errString string) {
 	c.Logger.Debug("data stream closed", "error", errString)
 
-	err := c.DataStream.Close()
+	err := c.Connection.Close()
 	if err == nil {
 		return
 	}
@@ -157,18 +158,17 @@ func (c *Context) CloseWithError(errString string) {
 // Release release the Context, the Context which has been released will not be available.
 //
 // Warning: do not use any Context api after Release, It maybe cause an error.
-// TODO: use a state to ensure safe access and release of the context.
 func (c *Context) Release() {
 	c.reset()
 	ctxPool.Put(c)
 }
 
 func (c *Context) reset() {
-	c.DataStream = nil
+	c.Connection = nil
 	c.Route = nil
 	c.Frame = nil
 	c.FrameMetadata = nil
-	c.StreamLogger = nil
+	c.BaseLogger = nil
 	c.Logger = nil
 	for k := range c.Keys {
 		delete(c.Keys, k)

@@ -18,7 +18,6 @@ func TestReadPacket(t *testing.T) {
 		ID:              "b",
 		StreamType:      0x10,
 		ObserveDataTags: []uint32{1, 2, 3},
-		Metadata:        []byte{'c'},
 	}
 	b, err := codec.Encode(hf)
 	assert.NoError(t, err)
@@ -52,29 +51,6 @@ func TestCodec(t *testing.T) {
 		args args
 	}{
 		{
-			name: "AuthenticationFrame",
-			args: args{
-				newF: new(frame.AuthenticationFrame),
-				dataF: &frame.AuthenticationFrame{
-					AuthName:    "token",
-					AuthPayload: "a",
-				},
-				data: []byte{
-					0x80 | byte(frame.TypeAuthenticationFrame), 0xa,
-					byte(tagAuthenticationName), 0x05, 0x74, 0x6f, 0x6b, 0x65, 0x6e,
-					byte(tagAuthenticationPayload), 0x01, 0x61,
-				},
-			},
-		},
-		{
-			name: "AuthenticationAckFrame",
-			args: args{
-				newF:  new(frame.AuthenticationAckFrame),
-				dataF: &frame.AuthenticationAckFrame{},
-				data:  []byte{0x91, 0x0},
-			},
-		},
-		{
 			name: "BackflowFrame",
 			args: args{
 				newF:  new(frame.BackflowFrame),
@@ -101,17 +77,6 @@ func TestCodec(t *testing.T) {
 			},
 		},
 		{
-			name: "HandshakeAckFrame",
-			args: args{
-				newF:  new(frame.HandshakeAckFrame),
-				dataF: &frame.HandshakeAckFrame{StreamID: "mock-stream-id"},
-				data: []byte{
-					0xa9, 0x10, 0x28, 0xe, 0x6d, 0x6f, 0x63, 0x6b, 0x2d, 0x73, 0x74,
-					0x72, 0x65, 0x61, 0x6d, 0x2d, 0x69, 0x64,
-				},
-			},
-		},
-		{
 			name: "HandshakeFrame",
 			args: args{
 				newF: new(frame.HandshakeFrame),
@@ -120,27 +85,14 @@ func TestCodec(t *testing.T) {
 					ID:              "the-id",
 					StreamType:      104,
 					ObserveDataTags: []uint32{'a', 'b', 'c'},
-					Metadata:        []byte{'d', 'e', 'f'},
+					AuthName:        "ddddd",
+					AuthPayload:     "eeeee",
 				},
 				data: []byte{
 					0xb1, 0x28, 0x1, 0x8, 0x74, 0x68, 0x65, 0x2d, 0x6e, 0x61, 0x6d,
 					0x65, 0x3, 0x6, 0x74, 0x68, 0x65, 0x2d, 0x69, 0x64, 0x2, 0x1, 0x68, 0x6, 0xc,
 					0x61, 0x0, 0x0, 0x0, 0x62, 0x0, 0x0, 0x0, 0x63, 0x0, 0x0, 0x0, 0x7, 0x3, 0x64,
 					0x65, 0x66,
-				},
-			},
-		},
-		{
-			name: "HandshakeRejectedFrame",
-			args: args{
-				newF: new(frame.HandshakeRejectedFrame),
-				dataF: &frame.HandshakeRejectedFrame{
-					ID:      "hello",
-					Message: "yomo",
-				},
-				data: []byte{
-					0x94, 0xd, 0x15, 0x5, 0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x16, 0x4, 0x79, 0x6f,
-					0x6d, 0x6f,
 				},
 			},
 		},
@@ -153,18 +105,6 @@ func TestCodec(t *testing.T) {
 				},
 				data: []byte{0xb9, 0x10, 0x1, 0xe, 0x72, 0x65, 0x6a, 0x65, 0x63, 0x74, 0x65,
 					0x64, 0x20, 0x65, 0x72, 0x72, 0x6f, 0x72,
-				},
-			},
-		},
-		{
-			name: "GoawayFrame",
-			args: args{
-				newF: new(frame.GoawayFrame),
-				dataF: &frame.GoawayFrame{
-					Message: "goaway error",
-				},
-				data: []byte{0xae, 0xe, 0x1, 0xc, 0x67, 0x6f, 0x61, 0x77, 0x61, 0x79, 0x20,
-					0x65, 0x72, 0x72, 0x6f, 0x72,
 				},
 			},
 		},
