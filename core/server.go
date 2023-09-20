@@ -171,7 +171,7 @@ func (s *Server) handleFrames(c *Context) {
 		if c.Connection.ClientType() == ClientTypeStreamFunction {
 			_ = c.Route.Remove(c.Connection.ID())
 		}
-		_ = s.connector.Reove(c.Connection.ID())
+		_ = s.connector.Remove(c.Connection.ID())
 	}()
 	for {
 		f, err := c.Connection.ReadFrame()

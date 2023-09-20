@@ -44,10 +44,10 @@ func (c *Connector) Store(connID string, conn Connection) error {
 	return nil
 }
 
-// Reove removes the conntion with the specified connID.
+// Remove removes the conntion with the specified connID.
 // If the Connector does not have a conntion with the given connID, no action is taken.
 // If Connector be closed, The function will return ErrConnectorClosed.
-func (c *Connector) Reove(connID string) error {
+func (c *Connector) Remove(connID string) error {
 	select {
 	case <-c.ctx.Done():
 		return ErrConnectorClosed

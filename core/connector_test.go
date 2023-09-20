@@ -29,12 +29,12 @@ func TestConnector(t *testing.T) {
 		assert.Equal(t, gotStream, conn2)
 	})
 
-	t.Run("Store Reove and Get", func(t *testing.T) {
+	t.Run("Store Remove and Get", func(t *testing.T) {
 		conn1 := mockConn(connID, "name-1")
 		err := connector.Store(connID, conn1)
 		assert.NoError(t, err)
 
-		err = connector.Reove(connID)
+		err = connector.Remove(connID)
 		assert.NoError(t, err)
 
 		gotStream, ok, err := connector.Get(connID)
@@ -99,7 +99,7 @@ func TestConnector(t *testing.T) {
 		})
 
 		t.Run("Delete", func(t *testing.T) {
-			err = connector.Reove(connID)
+			err = connector.Remove(connID)
 			assert.ErrorIs(t, err, ErrConnectorClosed)
 		})
 
