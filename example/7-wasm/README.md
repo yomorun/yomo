@@ -67,7 +67,7 @@ runtime. But both Wasmtime and WasmEdge need to install their requirements:
 - Start YoMo zipper
 
   ```sh
-  yomo serve -c ../uppercase/config.yaml
+  yomo serve -c ../config.yaml
   ```
 
 - Start wasm serverless function
@@ -127,7 +127,7 @@ serverless function. Now we will elaborate on our wasm development design.
 
    - `yomo_observe_datatags: [] -> []`
 
-	   Set the data tag list that will be observed.
+     Set the data tag list that will be observed.
 
    - `yomo_handler: [] -> []`
 

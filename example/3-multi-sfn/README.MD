@@ -4,11 +4,18 @@ This example represents how YoMo works with multiple stream functions.
 
 ## Code structure
 
-- `source`: Mocking data of a Sound Sensor. [docs.yomo.run/source](https://yomo.run/docs/api/source)
-- `stream-fn-1`: Calculate the sound value in real-time. [docs.yomo.run/stream-function](https://yomo.run/docs/api/sfn)
-- `stream-fn-2`: Print the warning message when the noise value reaches the threshold. [docs.yomo.run/stream-function](https://yomo.run/docs/api/sfn)
-- `stream-fn-3`: The raw stream is immutable, `stream-fn-3` can still observe the raw data and calculate the average value in a sliding window. [docs.yomo.run/stream-function](https://yomo.run/docs/api/sfn)
-- `zipper`: Orchestrate a workflow that receives the data from `source`, stream computing in `stream-fn-1`, `stream-fn-2` and `stream-fn-3` [docs.yomo.run/zipper](https://yomo.run/docs/cli/zipper)
+- `source`: Mocking data of a Sound Sensor.
+  [docs.yomo.run/source](https://yomo.run/docs/api/source)
+- `stream-fn-1`: Calculate the sound value in real-time.
+  [docs.yomo.run/stream-function](https://yomo.run/docs/api/sfn)
+- `stream-fn-2`: Print the warning message when the noise value reaches the
+  threshold. [docs.yomo.run/stream-function](https://yomo.run/docs/api/sfn)
+- `stream-fn-3`: The raw stream is immutable, `stream-fn-3` can still observe
+  the raw data and calculate the average value in a sliding window.
+  [docs.yomo.run/stream-function](https://yomo.run/docs/api/sfn)
+- `zipper`: Orchestrate a workflow that receives the data from `source`, stream
+  computing in `stream-fn-1`, `stream-fn-2` and `stream-fn-3`
+  [docs.yomo.run/zipper](https://yomo.run/docs/cli/zipper)
 
 ## Prepare
 
@@ -40,12 +47,12 @@ YoMo CLI Version: v1.0.0
 ```bash
 $ task run
 
-task: [zipper] yomo serve -c ./zipper/config.yaml
+task: [zipper] yomo serve -c ../config.yaml
 task: [sfn-3] go build -o ./bin/sfn-3 ./stream-fn-3/app.go
 task: [source-build] go build -o ./bin/source source/main.go
 task: [sfn-1] go build -o ./bin/sfn-1 ./stream-fn-1/app.go
 task: [sfn-2] go build -o ./bin/sfn-2 ./stream-fn-2/app.go
-[zipper] Using config file: ./zipper/config.yaml
+[zipper] Using config file: ../config.yaml
 [zipper] ℹ️   Running YoMo-Zipper...
 [zipper] 2022-02-20 17:10:03.764	[yomo:zipper] Listening SIGUSR1, SIGUSR2, SIGTERM/SIGINT...
 [zipper] 2022-02-20 17:10:03.773	[core:server] ✅ [Service] Listening on: 127.0.0.1:9000, QUIC: [v1 draft-29], AUTH: [None]
@@ -88,7 +95,7 @@ task: [source] ./bin/source
 ### Run [YoMo-Zipper](https://yomo.run/docs/cli/zipper)
 
 ```bash
-yomo serve -c ./zipper/config.yaml
+yomo serve -c ../config.yaml
 
 ℹ️   Found 3 stream functions in YoMo-Zipper config
 ℹ️   Stream Function 1: Noise-1
@@ -149,7 +156,8 @@ The terminal of `stream-fn-1` will print the real-time noise value.
 [localhost] 1621491061246 > value: 16.458117 ⚡️=1ms
 ```
 
-The terminal of `stream-fn-2` will show the warning when the value reaches the threshold.
+The terminal of `stream-fn-2` will show the warning when the value reaches the
+threshold.
 
 ```bash
 receive noise value: 15.714272
@@ -161,7 +169,8 @@ receive noise value: 18.712460
 ❗ value: 16.458117 reaches the threshold 16! 𝚫=0.458117
 ```
 
-The terminal of `stream-fn-3` will show the average value in a sliding window 10s.
+The terminal of `stream-fn-3` will show the average value in a sliding window
+10s.
 
 ```bash
 [StdOut]:  15.714272
