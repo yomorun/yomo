@@ -158,6 +158,7 @@ func (c *Client) runBackground(ctx context.Context, addr string, conn quic.Conne
 				time.Sleep(time.Second)
 				goto reconnect
 			}
+			fs = cr.fs
 			go c.handleReadFrames(fs, reconnection)
 		}
 	}
