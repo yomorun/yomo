@@ -5,6 +5,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/frame"
 )
 
@@ -16,12 +17,12 @@ type FrameStream struct {
 	// mu protected stream write and close
 	// because of stream write and close is not goroutinue-safely.
 	mu         sync.Mutex
-	underlying ContextReadWriteCloser
+	underlying quic.Stream
 }
 
 // NewFrameStream creates a new FrameStream.
 func NewFrameStream(
-	stream ContextReadWriteCloser, codec frame.Codec, packetReadWriter frame.PacketReadWriter,
+	stream quic.Stream, codec frame.Codec, packetReadWriter frame.PacketReadWriter,
 ) *FrameStream {
 	return &FrameStream{
 		underlying:       stream,

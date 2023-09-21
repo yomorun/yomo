@@ -10,14 +10,11 @@ import (
 // Yomo transmits various instructions and data through the frames.
 //
 // following frame types are supported by Yomo:
-//  1. AuthenticationFrame
-//  2. AuthenticationAckFrame
+//  1. HandshakeFrame
+//  2. HandshakeAckFrame
 //  3. DataFrame
-//  4. HandshakeFrame
-//  5. HandshakeRejectedFrame
-//  6. HandshakeAckFrame
-//  7. RejectedFrame
-//  8. BackflowFrame
+//  4. BackflowFrame
+//  5. RejectedFrame
 //
 // Read frame comments to understand the role of the frame.
 type Frame interface {
@@ -27,30 +24,6 @@ type Frame interface {
 
 // Type defined The type of frame.
 type Type byte
-
-// AuthenticationFrame is used to authenticate the client,
-// once the connection is established, the client immediately, sends information to the server,
-// server gets the way to authenticate according to AuthName and use AuthPayload to do a authentication.
-// AuthenticationFrame is transmit on ControlStream.
-//
-// Reading the `auth.Authentication` interface will help you understand how AuthName and AuthPayload work.
-type AuthenticationFrame struct {
-	// AuthName.
-	AuthName string
-	// AuthPayload.
-	AuthPayload string
-}
-
-// Type returns the type of AuthenticationFrame.
-func (f *AuthenticationFrame) Type() Type { return TypeAuthenticationFrame }
-
-// AuthenticationAckFrame is used to confirm that the client is authorized to access the requested DataStream from
-// ControlStream, AuthenticationAckFrame is transmit on ControlStream.
-// If the client-side receives this frame, it indicates that authentication was successful.
-type AuthenticationAckFrame struct{}
-
-// Type returns the type of AuthenticationAckFrame.
-func (f *AuthenticationAckFrame) Type() Type { return TypeAuthenticationAckFrame }
 
 // DataFrame carries tagged data to transmit across DataStream.
 type DataFrame struct {
@@ -66,7 +39,7 @@ type DataFrame struct {
 // Type returns the type of DataFrame.
 func (f *DataFrame) Type() Type { return TypeDataFrame }
 
-// The HandshakeFrame is the frame through which the client obtains a new data stream from the server.
+// The HandshakeFrame is the frame through which the client obtains a new connection from the server.
 // It include essential details required for the creation of a fresh DataStream.
 // The server then generates the DataStream utilizing this provided information.
 type HandshakeFrame struct {
@@ -78,32 +51,21 @@ type HandshakeFrame struct {
 	ClientType byte
 	// ObserveDataTags is the ObserveDataTags of the dataStream that will be created.
 	ObserveDataTags []Tag
-	// Metadata is the Metadata of the dataStream that will be created.
-	Metadata []byte
+	// AuthName.
+	AuthName string
+	// AuthPayload.
+	AuthPayload string
 }
 
 // Type returns the type of HandshakeFrame.
 func (f *HandshakeFrame) Type() Type { return TypeHandshakeFrame }
 
 // HandshakeAckFrame is used to ack handshake, If handshake successful, The server will
-// send HandshakeAckFrame to the new DataStream, That means the initial frame received by the new DataStream must be the HandshakeAckFrame.
-type HandshakeAckFrame struct {
-	StreamID string
-}
+// send HandshakeAckFrame to the client.
+type HandshakeAckFrame struct{}
 
 // Type returns the type of HandshakeAckFrame.
 func (f *HandshakeAckFrame) Type() Type { return TypeHandshakeAckFrame }
-
-// HandshakeRejectedFrame is employed to reject a handshake. It is transmitted over the ControlStream
-type HandshakeRejectedFrame struct {
-	// ID is the ID of DataStream be rejected.
-	ID string
-	// Message contains the reason why the handshake was not successful.
-	Message string
-}
-
-// Type returns the type of HandshakeRejectedFrame.
-func (f *HandshakeRejectedFrame) Type() Type { return TypeHandshakeRejectedFrame }
 
 // The BackflowFrame is used to receive the processed result of a DataStream with StreamFunction type
 // and forward it to a DataStream with StreamSource type.
@@ -136,27 +98,21 @@ type GoawayFrame struct {
 func (f *GoawayFrame) Type() Type { return TypeGoawayFrame }
 
 const (
-	TypeAuthenticationFrame    Type = 0x03 // TypeAuthenticationFrame is the type of AuthenticationFrame.
-	TypeAuthenticationAckFrame Type = 0x11 // TypeAuthenticationAckFrame is the type of AuthenticationAckFrame.
-	TypeDataFrame              Type = 0x3F // TypeDataFrame is the type of DataFrame.
-	TypeHandshakeFrame         Type = 0x31 // TypeHandshakeFrame is the type of PayloadFrame.
-	TypeHandshakeRejectedFrame Type = 0x14 // TypeHandshakeRejectedFrame is the type of HandshakeRejectedFrame.
-	TypeHandshakeAckFrame      Type = 0x29 // TypeHandshakeAckFrame is the type of HandshakeAckFrame.
-	TypeRejectedFrame          Type = 0x39 // TypeRejectedFrame is the type of RejectedFrame.
-	TypeBackflowFrame          Type = 0x2D // TypeBackflowFrame is the type of BackflowFrame.
-	TypeGoawayFrame            Type = 0x2E // TypeGoawayFrame is the type of GoawayFrame.
+	TypeDataFrame         Type = 0x3F // TypeDataFrame is the type of DataFrame.
+	TypeHandshakeFrame    Type = 0x31 // TypeHandshakeFrame is the type of PayloadFrame.
+	TypeHandshakeAckFrame Type = 0x29 // TypeHandshakeAckFrame is the type of HandshakeAckFrame.
+	TypeRejectedFrame     Type = 0x39 // TypeRejectedFrame is the type of RejectedFrame.
+	TypeBackflowFrame     Type = 0x2D // TypeBackflowFrame is the type of BackflowFrame.
+	TypeGoawayFrame       Type = 0x2E // TypeGoawayFrame is the type of GoawayFrame.
 )
 
 var frameTypeStringMap = map[Type]string{
-	TypeAuthenticationFrame:    "AuthenticationFrame",
-	TypeAuthenticationAckFrame: "AuthenticationAckFrame",
-	TypeDataFrame:              "DataFrame",
-	TypeHandshakeFrame:         "HandshakeFrame",
-	TypeHandshakeRejectedFrame: "HandshakeRejectedFrame",
-	TypeHandshakeAckFrame:      "HandshakeAckFrame",
-	TypeRejectedFrame:          "RejectedFrame",
-	TypeBackflowFrame:          "BackflowFrame",
-	TypeGoawayFrame:            "GoawayFrame",
+	TypeDataFrame:         "DataFrame",
+	TypeHandshakeFrame:    "HandshakeFrame",
+	TypeHandshakeAckFrame: "HandshakeAckFrame",
+	TypeRejectedFrame:     "RejectedFrame",
+	TypeBackflowFrame:     "BackflowFrame",
+	TypeGoawayFrame:       "GoawayFrame",
 }
 
 // String returns a human-readable string which represents the frame type.
@@ -170,15 +126,12 @@ func (f Type) String() string {
 }
 
 var frameTypeNewFuncMap = map[Type]func() Frame{
-	TypeAuthenticationFrame:    func() Frame { return new(AuthenticationFrame) },
-	TypeAuthenticationAckFrame: func() Frame { return new(AuthenticationAckFrame) },
-	TypeDataFrame:              func() Frame { return new(DataFrame) },
-	TypeHandshakeFrame:         func() Frame { return new(HandshakeFrame) },
-	TypeHandshakeRejectedFrame: func() Frame { return new(HandshakeRejectedFrame) },
-	TypeHandshakeAckFrame:      func() Frame { return new(HandshakeAckFrame) },
-	TypeRejectedFrame:          func() Frame { return new(RejectedFrame) },
-	TypeBackflowFrame:          func() Frame { return new(BackflowFrame) },
-	TypeGoawayFrame:            func() Frame { return new(GoawayFrame) },
+	TypeDataFrame:         func() Frame { return new(DataFrame) },
+	TypeHandshakeFrame:    func() Frame { return new(HandshakeFrame) },
+	TypeHandshakeAckFrame: func() Frame { return new(HandshakeAckFrame) },
+	TypeRejectedFrame:     func() Frame { return new(RejectedFrame) },
+	TypeBackflowFrame:     func() Frame { return new(BackflowFrame) },
+	TypeGoawayFrame:       func() Frame { return new(GoawayFrame) },
 }
 
 // NewFrame creates a new frame from Type.
@@ -222,7 +175,7 @@ type ReadWriter interface {
 }
 
 // Writer is the interface that wraps the WriteFrame method, it writes
-// frame to the underlying data stream.
+// frame to the underlying connection.
 type Writer interface {
 	// WriteFrame writes frame to underlying stream.
 	WriteFrame(Frame) error
