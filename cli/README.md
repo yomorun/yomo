@@ -24,93 +24,50 @@ env GOBIN=/bin go install github.com/yomorun/yomo/cmd/yomo@latest
 
 ## Getting Started
 
-### 1. Source
-
-#### Write a source app
-
-See [example/source/main.go](example/source/main.go)
-
-#### Run
-
-```sh
-go run main.go
-```
-
-### 2. Stream Function
-
-#### Init
-
-Create a stream function
-
-```sh
-yomo init [Name]
-```
-
-#### Run
-
-```sh
-cd [Name] && yomo run
-```
-OR in Production
-```sh
-cd [Name] && yomo build && ./sl.yomo
-```
-
-### 3. Stream Function to store data in DB
-
-#### Write a stream function
-
-See [example/stream-fn-db/app.go](example/stream-fn-db/app.go)
-
-#### Run
-
-```sh
-cd example/stream-fn-db && yomo run
-```
-OR in Production
-```sh
-cd example/stream-fn-db && yomo build && ./sl.yomo
-```
-
-### 4. YoMo-Zipper
+### 1. YoMo-Zipper
 
 #### Configure YoMo-Zipper `config.yaml`
 
-```yaml
-name: Service
-host: localhost
-port: 9000
+See [../example/config.yaml](../example/config.yaml)
+
+#### Run
+
+```sh
+yomo serve --config ../example/config.yaml
+```
+
+### 2. Source
+
+#### Write a source app
+
+See [../example/9-cli/source/main.go](../example/9-cli/source/main.go)
+
+#### Run
+
+```sh
+cd ../example/9-cli/source
+
+go run main.go
+```
+
+### 3. Stream Function
+
+#### Write the serverless function
+
+See [../example/9-cli/sfn/main.go](../example/9-cli/sfn/main.go)
+
+#### Build
+
+Build the app.go to a WebAssembly file.
+
+```sh
+cd ../example/9-cli/sfn
+
+yomo build
 ```
 
 #### Run
 
 ```sh
-yomo serve --config config.yaml
-```
-
-## Example
-
-### Prerequisites
-[Installing task](https://taskfile.dev/#/installation)
-
-### Simple Example
-
-#### Run
-
-```sh
-task example
-```
-
-### Edge-Mesh
-
-#### Run US Node
-
-```sh
-task example-mesh-us
-```
-
-#### Run EU Node
-
-```sh
-task example-mesh-eu
+yomo run sfn.wasm
 ```
