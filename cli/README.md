@@ -80,9 +80,6 @@ cd example/stream-fn-db && yomo build && ./sl.yomo
 name: Service
 host: localhost
 port: 9000
-functions:
-  - name: Noise
-  - name: MockDB
 ```
 
 #### Run
