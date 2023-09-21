@@ -219,7 +219,7 @@ func (s *Server) handleRoute(hf *frame.HandshakeFrame, md metadata.M) (router.Ro
 	if route == nil {
 		return nil, errors.New("yomo: can't find route in handshake metadata")
 	}
-	err := route.Add(hf.ID, hf.Name, hf.ObserveDataTags)
+	err := route.Add(hf.ID, hf.ObserveDataTags)
 	if err != nil {
 		return nil, err
 	}

@@ -15,17 +15,23 @@ func TestRouter(t *testing.T) {
 
 	route := router.Route(m)
 
-	err := route.Add("conn-1", "sfn-1", []frame.Tag{frame.Tag(1)})
+	err := route.Add("conn-1", []frame.Tag{frame.Tag(1)})
+	assert.NoError(t, err)
+
+	err = route.Add("conn-2", []frame.Tag{frame.Tag(1)})
+	assert.NoError(t, err)
+
+	err = route.Add("conn-3", []frame.Tag{frame.Tag(1)})
 	assert.NoError(t, err)
 
 	ids := route.GetForwardRoutes(frame.Tag(1))
-	assert.Equal(t, []string{"conn-1"}, ids)
+	assert.Equal(t, []string{"conn-1", "conn-2", "conn-3"}, ids)
 
 	err = route.Remove("conn-1")
 	assert.NoError(t, err)
 
 	ids = route.GetForwardRoutes(frame.Tag(1))
-	assert.Equal(t, []string(nil), ids)
+	assert.Equal(t, []string{"conn-2", "conn-3"}, ids)
 
 	router.Clean()
 
