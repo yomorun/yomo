@@ -10,6 +10,7 @@ import (
 	"github.com/yomorun/yomo/pkg/id"
 	"github.com/yomorun/yomo/pkg/trace"
 	oteltrace "go.opentelemetry.io/otel/trace"
+	"golang.org/x/exp/slog"
 )
 
 // StreamFunction defines serverless streaming functions.
@@ -113,50 +114,17 @@ func (s *streamFunction) Connect() error {
 						s.client.Logger().Error("sfn decode metadata error", "err", err)
 						break
 					}
-					tid := core.GetTIDFromMetadata(md)
-					sid := core.GetSIDFromMetadata(md)
-					parentTraced := core.GetTracedFromMetadata(md)
-					traced := false
-					// trace
-					tp := s.client.TracerProvider()
-					if tp != nil {
-						// create span
-						var span oteltrace.Span
-						var err error
-						// set parent span, if not traced, use empty string
-						if parentTraced {
-							span, err = trace.NewSpan(tp, core.ClientTypeStreamFunction.String(), s.name, tid, sid)
-						} else {
-							span, err = trace.NewSpan(tp, core.ClientTypeStreamFunction.String(), s.name, "", "")
-						}
-						if err != nil {
-							s.client.Logger().Error("sfn trace error", "err", err)
-						} else {
-							defer span.End()
-							tid = span.SpanContext().TraceID().String()
-							sid = span.SpanContext().SpanID().String()
-							traced = true
-						}
-					}
-					if tid == "" {
-						s.client.Logger().Debug("sfn create new tid")
-						tid = id.TID()
-					}
-					if sid == "" || !traced {
-						s.client.Logger().Debug("sfn create new sid")
-						sid = id.SID()
-					}
-					// reallocate metadata with new TID and SID
-					core.SetTIDToMetadata(md, tid)
-					core.SetSIDToMetadata(md, sid)
-					core.SetTracedToMetadata(md, traced)
-					newMetadata, err := md.Encode()
+
+					newMd, deferFunc := ExtendTraceMetadata(md, s.client.ClientID(), s.client.Name(), s.client.TracerProvider(), s.client.Logger())
+					defer deferFunc()
+
+					newMetadata, err := newMd.Encode()
 					if err != nil {
 						s.client.Logger().Error("sfn encode metadata error", "err", err)
 						break
 					}
 					data.Metadata = newMetadata
-					s.client.Logger().Debug("sfn metadata", "tid", tid, "sid", sid, "parentTraced", parentTraced, "traced", traced)
+
 					frame := &frame.DataFrame{
 						Tag:      data.Tag,
 						Metadata: data.Metadata,
@@ -209,49 +177,17 @@ func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 				s.client.Logger().Error("sfn decode metadata error", "err", err)
 				return
 			}
-			tid := core.GetTIDFromMetadata(md)
-			sid := core.GetSIDFromMetadata(md)
-			parentTraced := core.GetTracedFromMetadata(md)
-			traced := false
-			// trace
-			if tp != nil {
-				// create span
-				var span oteltrace.Span
-				var err error
-				// set parent span, if not traced, use empty string
-				if parentTraced {
-					span, err = trace.NewSpan(tp, core.ClientTypeStreamFunction.String(), s.name, tid, sid)
-				} else {
-					span, err = trace.NewSpan(tp, core.ClientTypeStreamFunction.String(), s.name, "", "")
-				}
-				if err != nil {
-					s.client.Logger().Error("sfn trace error", "err", err)
-				} else {
-					defer span.End()
-					tid = span.SpanContext().TraceID().String()
-					sid = span.SpanContext().SpanID().String()
-					traced = true
-				}
-			}
-			if tid == "" {
-				s.client.Logger().Debug("sfn create new tid")
-				tid = id.TID()
-			}
-			if sid == "" || !traced {
-				s.client.Logger().Debug("sfn create new sid")
-				sid = id.SID()
-			}
-			// reallocate metadata with new TID and SID
-			core.SetTIDToMetadata(md, tid)
-			core.SetSIDToMetadata(md, sid)
-			core.SetTracedToMetadata(md, traced)
-			newMetadata, err := md.Encode()
+
+			newMd, deferFunc := ExtendTraceMetadata(md, s.client.ClientID(), s.client.Name(), s.client.TracerProvider(), s.client.Logger())
+			defer deferFunc()
+
+			newMetadata, err := newMd.Encode()
 			if err != nil {
 				s.client.Logger().Error("sfn encode metadata error", "err", err)
 				return
 			}
 			dataFrame.Metadata = newMetadata
-			s.client.Logger().Debug("sfn metadata", "tid", tid, "sid", sid, "parentTraced", parentTraced, "traced", traced)
+
 			serverlessCtx := serverless.NewContext(s.client, dataFrame)
 			s.fn(serverlessCtx)
 		}(tp, dataFrame)
@@ -272,4 +208,49 @@ func (s *streamFunction) SetErrorHandler(fn func(err error)) {
 // Init will initialize the stream function
 func (s *streamFunction) Init(fn func() error) error {
 	return fn()
+}
+
+// ExtendTraceMetadata extends source trace metadata.
+func ExtendTraceMetadata(md metadata.M, clientID, name string, tp oteltrace.TracerProvider, logger *slog.Logger) (metadata.M, func()) {
+	deferFunc := func() {}
+	tid := core.GetTIDFromMetadata(md)
+	sid := core.GetSIDFromMetadata(md)
+	parentTraced := core.GetTracedFromMetadata(md)
+	traced := false
+	// trace
+	if tp != nil {
+		// create span
+		var span oteltrace.Span
+		var err error
+		// set parent span, if not traced, use empty string
+		if parentTraced {
+			span, err = trace.NewSpan(tp, core.ClientTypeStreamFunction.String(), name, tid, sid)
+		} else {
+			span, err = trace.NewSpan(tp, core.ClientTypeStreamFunction.String(), name, "", "")
+		}
+		if err != nil {
+			logger.Error("sfn trace error", "err", err)
+		} else {
+			deferFunc = func() { span.End() }
+			tid = span.SpanContext().TraceID().String()
+			sid = span.SpanContext().SpanID().String()
+			traced = true
+		}
+	}
+	if tid == "" {
+		logger.Debug("sfn create new tid")
+		tid = id.TID()
+	}
+	if sid == "" || !traced {
+		logger.Debug("sfn create new sid")
+		sid = id.SID()
+	}
+	// reallocate metadata with new TID and SID
+	core.SetTIDToMetadata(md, tid)
+	core.SetSIDToMetadata(md, sid)
+	core.SetTracedToMetadata(md, traced)
+
+	logger.Debug("sfn metadata", "tid", tid, "sid", sid, "parentTraced", parentTraced, "traced", traced)
+
+	return md, deferFunc
 }
