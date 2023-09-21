@@ -333,6 +333,7 @@ func (c *Client) Name() string { return c.name }
 // FrameWriterConnection represents a frame writer that can connect to an addr.
 type FrameWriterConnection interface {
 	frame.Writer
+	ClientID() string
 	Name() string
 	Close() error
 	Connect(context.Context, string) error

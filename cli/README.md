@@ -54,7 +54,7 @@ go run main.go
 
 #### Write the serverless function
 
-See [../example/9-cli/sfn/main.go](../example/9-cli/sfn/main.go)
+See [../example/9-cli/sfn/app.go](../example/9-cli/sfn/app.go)
 
 #### Build
 

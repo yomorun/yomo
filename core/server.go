@@ -95,8 +95,6 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 		return err
 	}
 
-	s.logger = s.logger.With("zipper_addr", addr)
-
 	// connect to all downstreams.
 	for addr, client := range s.downstreams {
 		go client.Connect(ctx, addr)
@@ -145,11 +143,13 @@ func (s *Server) handshake(qconn quic.Connection, fs *FrameStream) (bool, router
 
 func (s *Server) handleConnection(qconn quic.Connection, fs *FrameStream, logger *slog.Logger) {
 	ok, route, conn := s.handshake(qconn, fs)
-
 	if !ok {
-		logger.Info("handshake failed")
+		logger.Error("handshake failed")
 		return
 	}
+
+	logger = logger.With("conn_id", conn.ID())
+	logger.Info("client connected", "remote_addr", qconn.RemoteAddr().String(), "client_type", conn.ClientType().String(), "name", conn.Name())
 
 	c := newContext(conn, route, logger)
 
@@ -233,7 +233,6 @@ func (s *Server) handleHandshakeFrame(qconn quic.Connection, fs *FrameStream, hf
 		s.logger.Warn("authentication failed", "credential", hf.AuthName)
 		return nil, fmt.Errorf("authentication failed: client credential name is %s", hf.AuthName)
 	}
-	s.logger.Info("authentication successful", "credential", hf.AuthName)
 
 	conn := newConnection(hf.Name, hf.ID, ClientType(hf.ClientType), md, hf.ObserveDataTags, qconn, fs)
 
@@ -265,7 +264,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 	}
 	s.listener = listener
 
-	s.logger.Info("zipper is up and running", "pid", os.Getpid(), "quic", s.opts.quicConfig.Versions, "auth_name", s.authNames())
+	s.logger.Info("zipper is up and running", "zipper_addr", s.listener.Addr().String(), "pid", os.Getpid(), "quic", s.opts.quicConfig.Versions, "auth_name", s.authNames())
 
 	defer closeServer(s.downstreams, s.connector, s.listener, s.router)
 
@@ -278,7 +277,6 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 			s.logger.Error("accepted an error when accepting a connection", "err", err)
 			return err
 		}
-		logger := s.logger.With("remote_addr", qconn.RemoteAddr().String(), "local_addr", conn.LocalAddr().String())
 
 		stream, err := qconn.AcceptStream(ctx)
 		if err != nil {
@@ -287,7 +285,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 
 		fs := NewFrameStream(stream, y3codec.Codec(), y3codec.PacketReadWriter())
 
-		go s.handleConnection(qconn, fs, logger)
+		go s.handleConnection(qconn, fs, s.logger)
 	}
 }
 
@@ -402,7 +400,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 	// find stream function ids from the route.
 	streamIDs := route.GetForwardRoutes(dataFrame.Tag)
 
-	c.Logger.Debug("sfn routing", "data_tag", dataFrame.Tag, "sfn_stream_ids", streamIDs, "connector", s.connector.Snapshot())
+	c.Logger.Debug("sfn routing", "tid", tid, "sid", sid, "tag", dataFrame.Tag, "sfn_stream_ids", streamIDs, "connector", s.connector.Snapshot())
 
 	for _, toID := range streamIDs {
 		stream, ok, err := s.connector.Get(toID)
@@ -414,13 +412,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 			continue
 		}
 
-		c.Logger.Info(
-			"routing data frame",
-			"from_stream_name", from.Name(),
-			"from_stream_id", from.ID(),
-			"to_stream_name", stream.Name(),
-			"to_stream_id", toID,
-		)
+		c.Logger.Info("routing data frame", "tid", tid, "sid", sid, "tag", dataFrame.Tag, "data_length", len(dataFrame.Payload), "to", toID)
 
 		// write data frame to stream
 		if err := stream.WriteFrame(dataFrame); err != nil {
@@ -487,7 +479,7 @@ func (s *Server) Downstreams() map[string]string {
 
 	snapshotOfDownstream := make(map[string]string, len(s.downstreams))
 	for addr, client := range s.downstreams {
-		snapshotOfDownstream[addr] = client.Name()
+		snapshotOfDownstream[addr] = client.ClientID()
 	}
 	return snapshotOfDownstream
 }
@@ -512,7 +504,7 @@ func (s *Server) AddDownstreamServer(addr string, c FrameWriterConnection) {
 func (s *Server) dispatchToDownstreams(c *Context) {
 	dataFrame := c.Frame.(*frame.DataFrame)
 	if c.Connection.ClientType() == ClientTypeUpstreamZipper {
-		c.Logger.Warn("ignored client", "client_type", c.Connection.ClientType().String())
+		c.Logger.Debug("ignored client", "client_type", c.Connection.ClientType().String())
 		// loop protection
 		return
 	}
@@ -528,8 +520,8 @@ func (s *Server) dispatchToDownstreams(c *Context) {
 	}
 	dataFrame.Metadata = mdBytes
 
-	for streamID, ds := range s.downstreams {
-		c.Logger.Info("dispatching to downstream", "dispatch_stream_id", streamID, "tid", tid, "sid", sid)
+	for _, ds := range s.downstreams {
+		c.Logger.Info("dispatching to downstream", "tid", tid, "sid", sid, "tag", dataFrame.Tag, "data_length", len(dataFrame.Payload), "downstream_id", ds.ClientID())
 		_ = ds.WriteFrame(dataFrame)
 	}
 }

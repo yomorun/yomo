@@ -16,6 +16,7 @@ import (
 	"github.com/yomorun/yomo/core/router"
 	"github.com/yomorun/yomo/core/ylog"
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
+	"github.com/yomorun/yomo/pkg/id"
 )
 
 const testaddr = "127.0.0.1:19999"
@@ -224,6 +225,7 @@ func createTestStreamFunction(name string, observedTag frame.Tag) *Client {
 
 // frameWriterRecorder frames be writen.
 type frameWriterRecorder struct {
+	id           string
 	name         string
 	codec        frame.Codec
 	packetReader frame.PacketReadWriter
@@ -233,6 +235,7 @@ type frameWriterRecorder struct {
 
 func newFrameWriterRecorder(name string) *frameWriterRecorder {
 	return &frameWriterRecorder{
+		id:           id.New(),
 		name:         name,
 		codec:        y3codec.Codec(),
 		packetReader: y3codec.PacketReadWriter(),
@@ -240,6 +243,7 @@ func newFrameWriterRecorder(name string) *frameWriterRecorder {
 	}
 }
 
+func (w *frameWriterRecorder) ClientID() string                          { return w.id }
 func (w *frameWriterRecorder) Name() string                              { return w.name }
 func (w *frameWriterRecorder) Close() error                              { return nil }
 func (w *frameWriterRecorder) Connect(_ context.Context, _ string) error { return nil }
