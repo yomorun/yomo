@@ -2,12 +2,10 @@
 package router
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
-	"github.com/yomorun/yomo/core/yerr"
 )
 
 // DefaultRouter providers a default implement of `router`,
@@ -37,39 +35,32 @@ func (r *DefaultRouter) Clean() {
 }
 
 type defaultRoute struct {
-	data map[frame.Tag]map[string]string
-	mu   sync.RWMutex
+	// mu protects data.
+	mu sync.RWMutex
+
+	// data stores tag and connID connection.
+	// The key is frame tag, The value is connID connection.
+	data map[frame.Tag]map[string]struct{}
 }
 
 func newRoute() *defaultRoute {
 	return &defaultRoute{
-		data: make(map[frame.Tag]map[string]string),
+		data: make(map[frame.Tag]map[string]struct{}),
 		mu:   sync.RWMutex{},
 	}
 }
 
-func (r *defaultRoute) Add(connID string, name string, observeDataTags []frame.Tag) (err error) {
+func (r *defaultRoute) Add(connID string, observeDataTags []frame.Tag) (err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-
-LOOP:
-	for _, conns := range r.data {
-		for connID, n := range conns {
-			if n == name {
-				err = yerr.NewDuplicateNameError(connID, fmt.Errorf("SFN[%s] is already linked to another stream", name))
-				delete(conns, connID)
-				break LOOP
-			}
-		}
-	}
 
 	for _, tag := range observeDataTags {
 		conns := r.data[tag]
 		if conns == nil {
-			conns = make(map[string]string)
+			conns = map[string]struct{}{}
 			r.data[tag] = conns
 		}
-		r.data[tag][connID] = name
+		r.data[tag][connID] = struct{}{}
 	}
 
 	return err
