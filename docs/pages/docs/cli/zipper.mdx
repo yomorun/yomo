@@ -25,11 +25,6 @@ auth:
   type: token
   token: <CREDENTIAL>
 
-### sfn ###
-functions:
-  - name: sfn-ai-stream-response
-  - name: sfn-async-log-events
-
 ### cascading ###
 downstreams:
    - zipper-asia_pacific
@@ -59,11 +54,6 @@ downstreams:
 - `auth` - provides the credential for the Zipper, it is used to authenticate the [Source][source] and [StreamFunction][sfn] when they connect to this Zipper.
   - `type` - the type of the credential, currently only `token` is supported.
   - `token` - the credential, it is a string.
-
-### StreamFunction Config
-
-- `functions` - the list of [StreamFunctions][sfn] that allowed to connect this Zipper.
-  - `name` - the name of the [StreamFunction][sfn], it is used to identify the [StreamFunction][sfn] in the network.
 
 ### Downstreams Config
 
