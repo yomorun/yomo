@@ -91,7 +91,7 @@ func runDeno(jsPath string, socketPath string, errCh chan<- error) {
 
 func startSfn(name string, zipperAddr string, credential string, observed []frame.Tag, conn net.Conn, errCh chan<- error) (yomo.StreamFunction, error) {
 	// trace
-	tp, shutdown, err := trace.NewTracerProviderWithJaeger("yomo-sfn")
+	tp, shutdown, err := trace.NewTracerProvider("yomo-sfn")
 	if err == nil {
 		log.Println("[sfn] 🛰 trace enabled")
 	}

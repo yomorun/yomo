@@ -47,7 +47,7 @@ var serveCmd = &cobra.Command{
 		}
 		ctx := context.Background()
 		// trace
-		tp, shutdown, err := trace.NewTracerProviderWithJaeger("yomo-zipper")
+		tp, shutdown, err := trace.NewTracerProvider("yomo-zipper")
 		if err == nil {
 			log.InfoStatusEvent(os.Stdout, "[zipper] 🛰 trace enabled")
 		}
