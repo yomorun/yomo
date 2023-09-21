@@ -44,7 +44,7 @@ var devCmd = &cobra.Command{
 		log.PendingStatusEvent(os.Stdout, "Create YoMo Stream Function instance...")
 
 		// Connect the serverless to YoMo dev-server, it will automatically emit the mock data.
-		opts.ZipperAddrs = []string{"tap.yomo.dev:9140"}
+		opts.ZipperAddr = "tap.yomo.dev:9140"
 		opts.Name = "yomo-app-demo"
 
 		s, err := serverless.Create(&opts)
@@ -65,7 +65,7 @@ var devCmd = &cobra.Command{
 			os.Stdout,
 			"Starting YoMo Stream Function instance with executable file: %s. Zipper: %v.",
 			opts.Filename,
-			opts.ZipperAddrs,
+			opts.ZipperAddr,
 		)
 		log.InfoStatusEvent(os.Stdout, "YoMo Stream Function is running...")
 		if err := s.Run(verbose); err != nil {

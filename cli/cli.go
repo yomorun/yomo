@@ -32,29 +32,23 @@ func GetRootPath() string {
 }
 
 func parseURL(url string, opts *serverless.Options) error {
+	url = strings.TrimSpace(url)
 	if url == "" {
 		url = "localhost:9000"
 	}
-	addrs := strings.Split(url, ",")
-	for _, addr := range addrs {
-		addr = strings.TrimSpace(addr)
-		if len(addr) == 0 {
-			continue
-		}
-		splits := strings.Split(addr, ":")
-		l := len(splits)
-		if l == 1 {
-			opts.ZipperAddrs = append(opts.ZipperAddrs, splits[0]+":9000")
-		} else if l == 2 {
-			port, err := strconv.Atoi(splits[1])
-			if err != nil {
-				return fmt.Errorf("%s: invalid port: %s", addr, splits[1])
-			}
-			opts.ZipperAddrs = append(opts.ZipperAddrs, fmt.Sprintf("%s:%d", splits[0], port))
-		} else {
-			return fmt.Errorf(`the format of url "%s" is incorrect, it should be "host:port", f.e. localhost:9000`, addr)
-		}
+
+	splits := strings.Split(url, ":")
+	if len(splits) != 2 {
+		return fmt.Errorf(`the format of url "%s" is incorrect, it should be "host:port", e.g. localhost:9000`, url)
 	}
+
+	port, err := strconv.Atoi(splits[1])
+	if err != nil {
+		return fmt.Errorf("%s: invalid port: %s", url, splits[1])
+	}
+
+	opts.ZipperAddr = fmt.Sprintf("%s:%d", splits[0], port)
+
 	return nil
 }
 
