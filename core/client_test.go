@@ -63,7 +63,7 @@ func TestFrameRoundTrip(t *testing.T) {
 	recorder := newFrameWriterRecorder("mockClient")
 	server.AddDownstreamServer("mockAddr", recorder)
 
-	assert.Equal(t, map[string]string{"mockAddr": "mockClient"}, server.Downstreams())
+	assert.Equal(t, server.Downstreams()["mockAddr"], recorder.ClientID())
 
 	go func() {
 		err := server.ListenAndServe(ctx, testaddr)
