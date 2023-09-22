@@ -98,12 +98,6 @@ func newContext(conn Connection, route router.Route, logger *slog.Logger) (c *Co
 		c = v.(*Context)
 	}
 
-	logger = logger.With(
-		"conn_id", conn.ID(),
-		"conn_name", conn.Name(),
-		"conn_type", conn.ClientType().String(),
-	)
-
 	c.Connection = conn
 	c.Route = route
 	c.BaseLogger = logger
@@ -129,8 +123,6 @@ func (c *Context) WithFrame(f frame.Frame) error {
 	if err != nil {
 		return err
 	}
-
-	c.Logger = c.BaseLogger.With(MetadataSlogAttr(fmd))
 
 	// merge connection metadata.
 	c.Connection.Metadata().Range(func(k, v string) bool {

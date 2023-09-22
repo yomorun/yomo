@@ -25,7 +25,7 @@ func TestRouter(t *testing.T) {
 	assert.NoError(t, err)
 
 	ids := route.GetForwardRoutes(frame.Tag(1))
-	assert.Equal(t, []string{"conn-1", "conn-2", "conn-3"}, ids)
+	assert.ElementsMatch(t, []string{"conn-1", "conn-2", "conn-3"}, ids)
 
 	err = route.Remove("conn-1")
 	assert.NoError(t, err)
