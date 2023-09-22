@@ -2,13 +2,13 @@ package core
 
 import (
 	"crypto/tls"
+	"log/slog"
 	"time"
 
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/ylog"
 	oteltrace "go.opentelemetry.io/otel/trace"
-	"golang.org/x/exp/slog"
 )
 
 // DefalutQuicConfig be used when `quicConfig` is nil.

@@ -2,6 +2,7 @@ package core
 
 import (
 	"crypto/tls"
+	"log/slog"
 	"time"
 
 	"github.com/quic-go/quic-go"
@@ -10,7 +11,6 @@ import (
 	"github.com/yomorun/yomo/core/ylog"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
 	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/exp/slog"
 )
 
 // ClientOption YoMo client options

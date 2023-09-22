@@ -2,12 +2,12 @@ package yomo
 
 import (
 	"crypto/tls"
+	"log/slog"
 
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
 	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/exp/slog"
 )
 
 type (

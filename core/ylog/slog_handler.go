@@ -5,11 +5,12 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"log/slog"
 	"os"
 	"strings"
 	"sync"
 
-	"golang.org/x/exp/slog"
+	"github.com/lmittmann/tint"
 )
 
 // handler supports splitting log stream to common log stream and error log stream.
@@ -113,25 +114,24 @@ func (h *handler) WithGroup(name string) slog.Handler {
 }
 
 func bufferedSlogHandler(buf io.Writer, format string, level slog.Level, verbose, disableTime bool) slog.Handler {
-	opt := &slog.HandlerOptions{
-		AddSource: verbose,
-		Level:     level,
-	}
-	if disableTime {
-		opt.ReplaceAttr = func(groups []string, a slog.Attr) slog.Attr {
-			if a.Key == "time" {
-				return slog.Attr{}
-			}
-			return a
+	replaceAttr := func(groups []string, a slog.Attr) slog.Attr {
+		if disableTime && a.Key == "time" && len(groups) == 0 {
+			return slog.Attr{}
 		}
+		return a
 	}
 
-	var h slog.Handler
 	if strings.ToLower(format) == "json" {
-		h = slog.NewJSONHandler(buf, opt)
-	} else {
-		h = slog.NewTextHandler(buf, opt)
+		return slog.NewJSONHandler(buf, &slog.HandlerOptions{
+			AddSource:   verbose,
+			Level:       level,
+			ReplaceAttr: replaceAttr,
+		})
 	}
 
-	return h
+	return tint.NewHandler(buf, &tint.Options{
+		AddSource:   verbose,
+		Level:       level,
+		ReplaceAttr: replaceAttr,
+	})
 }

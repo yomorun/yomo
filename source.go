@@ -2,6 +2,7 @@ package yomo
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
@@ -9,7 +10,6 @@ import (
 	"github.com/yomorun/yomo/pkg/id"
 	"github.com/yomorun/yomo/pkg/trace"
 	oteltrace "go.opentelemetry.io/otel/trace"
-	"golang.org/x/exp/slog"
 )
 
 // Source is responsible for sending data to yomo.

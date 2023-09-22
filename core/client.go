@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"reflect"
 	"runtime"
 	"time"
@@ -15,7 +16,6 @@ import (
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 	"github.com/yomorun/yomo/pkg/id"
 	oteltrace "go.opentelemetry.io/otel/trace"
-	"golang.org/x/exp/slog"
 )
 
 // Client is the abstraction of a YoMo-Client. a YoMo-Client can be

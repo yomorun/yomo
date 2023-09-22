@@ -3,13 +3,13 @@ package core
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/router"
-	"golang.org/x/exp/slog"
 )
 
 var ctxPool sync.Pool

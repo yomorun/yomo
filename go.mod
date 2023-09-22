@@ -1,6 +1,8 @@
 module github.com/yomorun/yomo
 
-go 1.20
+go 1.21
+
+toolchain go1.21.1
 
 require (
 	github.com/briandowns/spinner v1.22.0
@@ -9,6 +11,7 @@ require (
 	github.com/cenkalti/backoff/v4 v4.1.3
 	github.com/fatih/color v1.15.0
 	github.com/joho/godotenv v1.4.0
+	github.com/lmittmann/tint v1.0.2
 	github.com/matoous/go-nanoid/v2 v2.0.0
 	github.com/quic-go/quic-go v0.38.1
 	github.com/reactivex/rxgo/v2 v2.5.0
