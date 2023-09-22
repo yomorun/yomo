@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"sync"
 	"time"
@@ -14,9 +13,9 @@ import (
 
 var ctxPool sync.Pool
 
-// Context is context for stream handling.
-// Context is generated subsequent to the arrival of a dataStream and retains pertinent information derived from the dataStream.
-// The lifespan of the Context should align with the lifespan of the Stream.
+// Context is context for connection handling.
+// Context is generated subsequent to the arrival of a connection and retains pertinent information derived from the connection.
+// The lifespan of the Context should align with the lifespan of the connection.
 type Context struct {
 	// Connection is the connection used for reading and writing frames.
 	Connection Connection
@@ -32,7 +31,7 @@ type Context struct {
 	Keys map[string]any
 	// BaseLogger is the base logger.
 	BaseLogger *slog.Logger
-	// Using Logger to log in stream handler scope, Logger is frame-level logger.
+	// Using Logger to log in connection handler scope, Logger is frame-level logger.
 	Logger *slog.Logger
 }
 
@@ -87,9 +86,9 @@ func (c *Context) Value(key any) any {
 }
 
 // newContext returns a new YoMo context that implements the standard library `context.Context` interface.
-// The YoMo context is used to manage the lifecycle of a connection and provides a way to pass data and metadata between stream processing functions.
-// The lifecycle of the context is equal to the lifecycle of the connection that it is associated with.
-// The context can be used to manage timeouts, cancellations, and other aspects of stream processing.
+// The YoMo context is used to manage the lifecycle of a connection and provides a way to pass data and metadata
+// between connection processing functions. The lifecycle of the context is equal to the lifecycle of the connection
+// that it is associated with. The context can be used to manage timeouts, cancellations, and other aspects of connection processing.
 func newContext(conn Connection, route router.Route, logger *slog.Logger) (c *Context) {
 	v := ctxPool.Get()
 	if v == nil {
@@ -116,7 +115,7 @@ func newContext(conn Connection, route router.Route, logger *slog.Logger) (c *Co
 func (c *Context) WithFrame(f frame.Frame) error {
 	df, ok := f.(*frame.DataFrame)
 	if !ok {
-		return errors.New("connection only transmit data frame")
+		return nil
 	}
 
 	fmd, err := metadata.Decode(df.Metadata)
@@ -138,7 +137,7 @@ func (c *Context) WithFrame(f frame.Frame) error {
 
 // CloseWithError close dataStream with an error string.
 func (c *Context) CloseWithError(errString string) {
-	c.Logger.Debug("connection closed", "error", errString)
+	c.Logger.Debug("connection closed", "err", errString)
 
 	err := c.Connection.CloseWithError(errString)
 	if err == nil {
