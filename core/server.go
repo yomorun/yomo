@@ -399,13 +399,13 @@ func (s *Server) handleDataFrame(c *Context) error {
 	}
 
 	// find stream function ids from the route.
-	streamIDs := route.GetForwardRoutes(dataFrame.Tag)
-	if len(streamIDs) == 0 {
+	connIDs := route.GetForwardRoutes(dataFrame.Tag)
+	if len(connIDs) == 0 {
 		c.Logger.Info("no observed", "tag", dataFrame.Tag, "data_length", data_length)
 	}
-	c.Logger.Debug("connector snapshot", "tag", dataFrame.Tag, "sfn_stream_ids", streamIDs, "connector", s.connector.Snapshot())
+	c.Logger.Debug("connector snapshot", "tag", dataFrame.Tag, "sfn_conn_ids", connIDs, "connector", s.connector.Snapshot())
 
-	for _, toID := range streamIDs {
+	for _, toID := range connIDs {
 		stream, ok, err := s.connector.Get(toID)
 		if err != nil {
 			continue
