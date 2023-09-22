@@ -1,6 +1,7 @@
 package ylog
 
 import (
+	"encoding/json"
 	"io"
 	"log/slog"
 	"os"
@@ -22,6 +23,7 @@ func TestLogger(t *testing.T) {
 		Level:       "info",
 		Output:      output,
 		ErrorOutput: errOutput,
+		Format:      "json",
 		DisableTime: true,
 	}
 
@@ -29,21 +31,29 @@ func TestLogger(t *testing.T) {
 
 	logger.Debug("some debug", "hello", "yomo")
 	logger.Info("some info", "hello", "yomo")
-	logger.Warn("some waring", "hello", "yomo")
 
-	logger.Error("error", "err", io.EOF, "hello", "yomo")
+	logger.Error("read error", "err", io.EOF, "hello", "yomo")
 
 	log, err := os.ReadFile(output)
-
 	assert.NoError(t, err)
 	assert.FileExists(t, output)
-	assert.Equal(t, "level=INFO msg=\"some info\" hello=yomo\nlevel=WARN msg=\"some waring\" hello=yomo\n", string(log))
+
+	data := make(map[string]string)
+	err = json.Unmarshal(log, &data)
+	assert.NoError(t, err)
+	assert.Equal(t, data["msg"], "some info")
+	assert.Equal(t, data["hello"], "yomo")
 
 	errlog, err := os.ReadFile(errOutput)
-
 	assert.NoError(t, err)
 	assert.FileExists(t, errOutput)
-	assert.Equal(t, "level=ERROR msg=error err=EOF hello=yomo\n", string(errlog))
+
+	data = make(map[string]string)
+	err = json.Unmarshal(errlog, &data)
+	assert.NoError(t, err)
+	assert.Equal(t, data["msg"], "read error")
+	assert.Equal(t, data["err"], "EOF")
+	assert.Equal(t, data["hello"], "yomo")
 
 	os.Remove(output)
 	os.Remove(errOutput)

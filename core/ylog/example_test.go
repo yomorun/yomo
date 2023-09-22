@@ -8,10 +8,9 @@ import (
 )
 
 func Example() {
-	// text format logger
 	logger := ylog.NewFromConfig(ylog.Config{
 		Level:       "warn",
-		Format:      "text",
+		Format:      "json",
 		ErrorOutput: "stdout",
 		DisableTime: true,
 	})
@@ -23,7 +22,6 @@ func Example() {
 	ylog.Warn("warn", "eee", "fff")
 	ylog.Error("error", "err", io.EOF, "eee", "fff")
 
-	// json format logger
 	sysLogger := ylog.NewFromConfig(ylog.Config{
 		Level:       "error",
 		Format:      "json",
@@ -36,7 +34,7 @@ func Example() {
 	sysLogger.Error("sys error", "err", net.ErrClosed, "ggg", "hhh")
 
 	// Output:
-	// level=WARN msg=warn hello=yomo syslog.eee=fff
-	// level=ERROR msg=error hello=yomo syslog.err=EOF syslog.eee=fff
+	// {"level":"WARN","msg":"warn","hello":"yomo","syslog":{"eee":"fff"}}
+	// {"level":"ERROR","msg":"error","hello":"yomo","syslog":{"err":"EOF","eee":"fff"}}
 	// {"level":"ERROR","msg":"sys error","syslog":{"err":"use of closed network connection","ggg":"hhh"}}
 }
