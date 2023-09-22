@@ -7,12 +7,11 @@ import (
 
 // M stores additional information about the application.
 //
-//	There are three types of metadata in yomo:
+//	There are two types of metadata in yomo:
 //	 1. Metadata from `Authentication.Authenticate()`, This is connection-level metadata.
-//	 2. Metadata from the handshake, This is stream-level metadata.
-//	 3. Metadata from the DataFrame, This is frame-level metadata.
+//	 2. Metadata from the DataFrame, This is frame-level metadata.
 //
-// the main responsibility of Metadata is to route messages to stream functions.
+// the main responsibility of Metadata is to route messages to connection handler.
 type M map[string]string
 
 // New creates an M from a given key-values map.

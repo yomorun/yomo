@@ -138,10 +138,10 @@ func (c *Client) runBackground(ctx context.Context, addr string, conn quic.Conne
 	for {
 		select {
 		case <-c.ctx.Done():
-			fs.underlying.Close()
+			fs.Close()
 			return
 		case <-ctx.Done():
-			fs.underlying.Close()
+			fs.Close()
 			return
 		case f := <-c.writeFrameChan:
 			if err := fs.WriteFrame(f); err != nil {

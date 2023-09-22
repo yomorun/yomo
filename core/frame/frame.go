@@ -15,6 +15,7 @@ import (
 //  3. DataFrame
 //  4. BackflowFrame
 //  5. RejectedFrame
+//  6. GoawayFrame
 //
 // Read frame comments to understand the role of the frame.
 type Frame interface {
@@ -25,7 +26,7 @@ type Frame interface {
 // Type defined The type of frame.
 type Type byte
 
-// DataFrame carries tagged data to transmit across DataStream.
+// DataFrame carries tagged data to transmit across connection.
 type DataFrame struct {
 	// Metadata stores additional data beyond the Payload,
 	// it is an map[string]string{} that be encoded in msgpack.
@@ -40,8 +41,8 @@ type DataFrame struct {
 func (f *DataFrame) Type() Type { return TypeDataFrame }
 
 // The HandshakeFrame is the frame through which the client obtains a new connection from the server.
-// It include essential details required for the creation of a fresh DataStream.
-// The server then generates the DataStream utilizing this provided information.
+// It includes essential details required for the creation of a fresh connection.
+// The server then generates the connection utilizing this provided information.
 type HandshakeFrame struct {
 	// Name is the name of the dataStream that will be created.
 	Name string
@@ -51,9 +52,9 @@ type HandshakeFrame struct {
 	ClientType byte
 	// ObserveDataTags is the ObserveDataTags of the dataStream that will be created.
 	ObserveDataTags []Tag
-	// AuthName.
+	// AuthName is the authentication name.
 	AuthName string
-	// AuthPayload.
+	// AuthPayload is the authentication payload.
 	AuthPayload string
 }
 
@@ -67,8 +68,8 @@ type HandshakeAckFrame struct{}
 // Type returns the type of HandshakeAckFrame.
 func (f *HandshakeAckFrame) Type() Type { return TypeHandshakeAckFrame }
 
-// The BackflowFrame is used to receive the processed result of a DataStream with StreamFunction type
-// and forward it to a DataStream with StreamSource type.
+// The BackflowFrame is used to receive the processed result of a connection with StreamFunction type
+// and forward it to a connection with StreamSource type.
 type BackflowFrame struct {
 	// Tag is used for data router.
 	Tag Tag
@@ -79,7 +80,7 @@ type BackflowFrame struct {
 // Type returns the type of BackflowFrame.
 func (f *BackflowFrame) Type() Type { return TypeBackflowFrame }
 
-// RejectedFrame is used to reject a ControlStream request.
+// RejectedFrame is used to reject a client request.
 type RejectedFrame struct {
 	// Message encapsulates the rationale behind the rejection of the request.
 	Message string
@@ -99,7 +100,7 @@ func (f *GoawayFrame) Type() Type { return TypeGoawayFrame }
 
 const (
 	TypeDataFrame         Type = 0x3F // TypeDataFrame is the type of DataFrame.
-	TypeHandshakeFrame    Type = 0x31 // TypeHandshakeFrame is the type of PayloadFrame.
+	TypeHandshakeFrame    Type = 0x31 // TypeHandshakeFrame is the type of HandshakeFrame.
 	TypeHandshakeAckFrame Type = 0x29 // TypeHandshakeAckFrame is the type of HandshakeAckFrame.
 	TypeRejectedFrame     Type = 0x39 // TypeRejectedFrame is the type of RejectedFrame.
 	TypeBackflowFrame     Type = 0x2D // TypeBackflowFrame is the type of BackflowFrame.

@@ -30,7 +30,7 @@ func NewConnector(ctx context.Context) *Connector {
 }
 
 // Store stores Connection to Connector,
-// If the connID is the same twice, the new conntion will replace the old conntion.
+// If the connID is the same twice, the new connection will replace the old connection.
 // If Connector be closed, The function will return ErrConnectorClosed.
 func (c *Connector) Store(connID string, conn Connection) error {
 	select {
@@ -44,8 +44,8 @@ func (c *Connector) Store(connID string, conn Connection) error {
 	return nil
 }
 
-// Remove removes the conntion with the specified connID.
-// If the Connector does not have a conntion with the given connID, no action is taken.
+// Remove removes the connection with the specified connID.
+// If the Connector does not have a connection with the given connID, no action is taken.
 // If Connector be closed, The function will return ErrConnectorClosed.
 func (c *Connector) Remove(connID string) error {
 	select {
@@ -60,7 +60,7 @@ func (c *Connector) Remove(connID string) error {
 }
 
 // Get retrieves the Connection with the specified connID.
-// If the Connector does not have a conntion with the given connID, return nil and false.
+// If the Connector does not have a connection with the given connID, return nil and false.
 // If Connector be closed, The function will return ErrConnectorClosed.
 func (c *Connector) Get(connID string) (Connection, bool, error) {
 	select {
