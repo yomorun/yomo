@@ -148,8 +148,8 @@ func (s *Server) handleConnection(qconn quic.Connection, fs *FrameStream, logger
 		return
 	}
 
-	logger = logger.With("conn_id", conn.ID())
-	logger.Info("client connected", "remote_addr", qconn.RemoteAddr().String(), "client_type", conn.ClientType().String(), "name", conn.Name())
+	logger = logger.With("conn_id", conn.ID(), "conn_name", conn.Name())
+	logger.Info("client connected", "remote_addr", qconn.RemoteAddr().String(), "client_type", conn.ClientType().String())
 
 	c := newContext(conn, route, logger)
 
@@ -340,6 +340,7 @@ func (s *Server) mainFrameHandler(c *Context) error {
 
 func (s *Server) handleDataFrame(c *Context) error {
 	dataFrame := c.Frame.(*frame.DataFrame)
+	data_length := len(dataFrame.Payload)
 
 	// counter +1
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
@@ -399,8 +400,10 @@ func (s *Server) handleDataFrame(c *Context) error {
 
 	// find stream function ids from the route.
 	streamIDs := route.GetForwardRoutes(dataFrame.Tag)
-
-	c.Logger.Debug("sfn routing", "tid", tid, "sid", sid, "tag", dataFrame.Tag, "sfn_stream_ids", streamIDs, "connector", s.connector.Snapshot())
+	if len(streamIDs) == 0 {
+		c.Logger.Info("no observed", "tag", dataFrame.Tag, "data_length", data_length)
+	}
+	c.Logger.Debug("connector snapshot", "tag", dataFrame.Tag, "sfn_stream_ids", streamIDs, "connector", s.connector.Snapshot())
 
 	for _, toID := range streamIDs {
 		stream, ok, err := s.connector.Get(toID)
@@ -412,7 +415,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 			continue
 		}
 
-		c.Logger.Info("routing data frame", "tid", tid, "sid", sid, "tag", dataFrame.Tag, "data_length", len(dataFrame.Payload), "to", toID)
+		c.Logger.Info("data routing", "tid", tid, "sid", sid, "tag", dataFrame.Tag, "data_length", data_length, "to_id", toID, "to_name", stream.Name())
 
 		// write data frame to stream
 		if err := stream.WriteFrame(dataFrame); err != nil {
