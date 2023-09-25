@@ -10,10 +10,16 @@ const (
 	MetadataTIDKey      = "yomo-tid"
 	MetadataSIDKey      = "yomo-sid"
 	MetaTraced          = "yomo-traced"
+	MetaStreamed        = "yomo-streamed"
 )
 
 // NewDefaultMetadata returns a default metadata.
-func NewDefaultMetadata(sourceID string, tid string, sid string, traced bool) metadata.M {
+func NewDefaultMetadata(sourceID string, tid string, sid string, traced bool, streamed bool) metadata.M {
+	// streamed
+	streamedString := "false"
+	if streamed {
+		streamedString = "true"
+	}
 	tracedString := "false"
 	if traced {
 		tracedString = "true"
@@ -23,6 +29,7 @@ func NewDefaultMetadata(sourceID string, tid string, sid string, traced bool) me
 		MetadataTIDKey:      tid,
 		MetadataSIDKey:      sid,
 		MetaTraced:          tracedString,
+		MetaStreamed:        streamedString,
 	}
 }
 
@@ -50,6 +57,12 @@ func GetTracedFromMetadata(m metadata.M) bool {
 	return traced == "true"
 }
 
+// GetStreamedFromMetadata gets streamed from metadata.
+func GetStreamedFromMetadata(m metadata.M) bool {
+	streamed, _ := m.Get(MetaStreamed)
+	return streamed == "true"
+}
+
 // SetTIDToMetadata sets tid to metadata.
 func SetTIDToMetadata(m metadata.M, tid string) {
 	m.Set(MetadataTIDKey, tid)
@@ -67,6 +80,15 @@ func SetTracedToMetadata(m metadata.M, traced bool) {
 		tracedString = "true"
 	}
 	m.Set(MetaTraced, tracedString)
+}
+
+// SetStreamedToMetadata sets streamed to metadata.
+func SetStreamedToMetadata(m metadata.M, streamed bool) {
+	streamedString := "false"
+	if streamed {
+		streamedString = "true"
+	}
+	m.Set(MetaStreamed, streamedString)
 }
 
 // MetadataSlogAttr returns slog.Attr from metadata.

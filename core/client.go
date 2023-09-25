@@ -8,7 +8,9 @@ import (
 	"io"
 	"reflect"
 	"runtime"
+	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/frame"
@@ -36,6 +38,11 @@ type Client struct {
 	ctxCancel context.CancelCauseFunc
 
 	writeFrameChan chan frame.Frame
+
+	// quic connection
+	conn quic.Connection
+	// frame stream
+	fs *FrameStream
 }
 
 // NewClient creates a new YoMo-Client.
@@ -159,6 +166,7 @@ func (c *Client) runBackground(ctx context.Context, addr string, conn quic.Conne
 				goto reconnect
 			}
 			fs = cr.fs
+			c.setConnection(&cr.conn)
 			go c.handleReadFrames(fs, reconnection)
 		}
 	}
@@ -184,6 +192,9 @@ connect:
 		return result.err
 	}
 	c.logger.Info("connected to zipper")
+
+	c.setConnection(&result.conn)
+	c.setFrameStream(result.fs)
 
 	go c.runBackground(ctx, addr, result.conn, result.fs)
 
@@ -356,4 +367,49 @@ type ErrAuthenticateFailed struct {
 }
 
 // Error returns a string that represents the ErrAuthenticateFailed error for the implementation of the error interface.
-func (e ErrAuthenticateFailed) Error() string { return e.ReasonFromServer }
+func (e ErrAuthenticateFailed) Error() string {
+	return e.ReasonFromServer
+}
+
+// RequestStream request a stream from server.
+func (c *Client) RequestStream() (quic.Stream, error) {
+	// request data stream
+	c.logger.Debug("client request data stream")
+	dataStream, err := c.Connection().OpenStreamSync(c.ctx)
+	if err != nil {
+		if err == io.EOF {
+			c.logger.Info("client request data stream EOF")
+			dataStream.Close()
+			return nil, err
+		}
+		c.logger.Error("client request data stream error", "err", err)
+		c.errorfn(err)
+		return nil, err
+	}
+	c.logger.Debug("client write stream frame success", "stream_id", dataStream.StreamID())
+	return dataStream, nil
+}
+
+// Connection returns the connection of client.
+func (c *Client) Connection() quic.Connection {
+	conn := (*quic.Connection)(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&c.conn))))
+	if conn != nil {
+		return *conn
+	}
+	return nil
+}
+
+// setConnection set the connection of client.
+func (c *Client) setConnection(conn *quic.Connection) {
+	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&c.conn)), unsafe.Pointer(conn))
+}
+
+// FrameStream returns the FrameStream of client.
+func (c *Client) FrameStream() *FrameStream {
+	return (*FrameStream)(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&c.fs))))
+}
+
+// setFrameStream set the FrameStream of client.
+func (c *Client) setFrameStream(fs *FrameStream) {
+	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&c.fs)), unsafe.Pointer(fs))
+}

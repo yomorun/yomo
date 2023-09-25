@@ -12,7 +12,7 @@ func encodeDataFrame(f *frame.DataFrame) ([]byte, error) {
 	tagBlock.SetUInt32Value(f.Tag)
 
 	// metadata
-	metadataBlock := y3.NewPrimitivePacketEncoder(tagDataFramesMetadata)
+	metadataBlock := y3.NewPrimitivePacketEncoder(tagDataFrameMetadata)
 	metadataBlock.SetBytesValue(f.Metadata)
 
 	// payload
@@ -46,7 +46,7 @@ func decodeDataFrame(data []byte, f *frame.DataFrame) error {
 	}
 
 	// metadata
-	if metadataBlock, ok := packet.PrimitivePackets[byte(tagDataFramesMetadata)]; ok {
+	if metadataBlock, ok := packet.PrimitivePackets[byte(tagDataFrameMetadata)]; ok {
 		metadata := metadataBlock.ToBytes()
 		f.Metadata = metadata
 	}
@@ -61,7 +61,7 @@ func decodeDataFrame(data []byte, f *frame.DataFrame) error {
 }
 
 var (
-	tagDataFrameTag       byte = 0x01
-	tagDataFramePayload   byte = 0x02
-	tagDataFramesMetadata byte = 0x03
+	tagDataFrameTag      byte = 0x01
+	tagDataFramePayload  byte = 0x02
+	tagDataFrameMetadata byte = 0x03
 )

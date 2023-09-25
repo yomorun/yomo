@@ -87,3 +87,10 @@ func (fs *FrameStream) Close() error {
 
 	return fs.underlying.Close()
 }
+
+// Codec returns the codec of the FrameStream.
+func (fs *FrameStream) Codec() frame.Codec {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	return fs.codec
+}

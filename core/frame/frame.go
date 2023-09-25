@@ -16,6 +16,7 @@ import (
 //  4. BackflowFrame
 //  5. RejectedFrame
 //  6. GoawayFrame
+//  7. StreamFrame
 //
 // Read frame comments to understand the role of the frame.
 type Frame interface {
@@ -98,6 +99,16 @@ type GoawayFrame struct {
 // Type returns the type of GoawayFrame.
 func (f *GoawayFrame) Type() Type { return TypeGoawayFrame }
 
+// StreamFrame is used to transmit data across DataStream.
+type StreamFrame struct {
+	ClientID  string
+	StreamID  int64
+	ChunkSize uint
+}
+
+// Type returns the type of StreamFrame.
+func (f *StreamFrame) Type() Type { return TypeStreamFrame }
+
 const (
 	TypeDataFrame         Type = 0x3F // TypeDataFrame is the type of DataFrame.
 	TypeHandshakeFrame    Type = 0x31 // TypeHandshakeFrame is the type of HandshakeFrame.
@@ -105,6 +116,7 @@ const (
 	TypeRejectedFrame     Type = 0x39 // TypeRejectedFrame is the type of RejectedFrame.
 	TypeBackflowFrame     Type = 0x2D // TypeBackflowFrame is the type of BackflowFrame.
 	TypeGoawayFrame       Type = 0x2E // TypeGoawayFrame is the type of GoawayFrame.
+	TypeStreamFrame       Type = 0x2F // TypeStreamFrame is the type of StreamFrame.
 )
 
 var frameTypeStringMap = map[Type]string{
@@ -114,6 +126,7 @@ var frameTypeStringMap = map[Type]string{
 	TypeRejectedFrame:     "RejectedFrame",
 	TypeBackflowFrame:     "BackflowFrame",
 	TypeGoawayFrame:       "GoawayFrame",
+	TypeStreamFrame:       "StreamFrame",
 }
 
 // String returns a human-readable string which represents the frame type.
@@ -133,6 +146,7 @@ var frameTypeNewFuncMap = map[Type]func() Frame{
 	TypeRejectedFrame:     func() Frame { return new(RejectedFrame) },
 	TypeBackflowFrame:     func() Frame { return new(BackflowFrame) },
 	TypeGoawayFrame:       func() Frame { return new(GoawayFrame) },
+	TypeStreamFrame:       func() Frame { return new(StreamFrame) },
 }
 
 // NewFrame creates a new frame from Type.
