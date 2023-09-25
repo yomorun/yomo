@@ -2,7 +2,11 @@
 package serverless
 
 import (
+	"io"
+
+	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/metadata"
 )
 
 // Context sfn handler context
@@ -42,4 +46,20 @@ func (c *Context) Write(tag uint32, data []byte) error {
 	}
 
 	return c.writer.WriteFrame(dataFrame)
+}
+
+// Streamed returns whether the data is streamed.
+func (c *Context) Streamed() bool {
+	m, err := metadata.Decode(c.dataFrame.Metadata)
+	if err != nil {
+		return false
+	}
+	streamed := core.GetStreamedFromMetadata(m)
+	return streamed
+}
+
+// Stream returns the stream.
+func (c *Context) Stream() io.Reader {
+	// TODO: read stream from zipper
+	return nil
 }

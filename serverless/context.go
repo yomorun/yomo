@@ -1,6 +1,8 @@
 // Package serverless defines serverless handler context
 package serverless
 
+import "io"
+
 // Context sfn handler context
 type Context interface {
 	// Data incoming data
@@ -11,6 +13,10 @@ type Context interface {
 	Write(tag uint32, data []byte) error
 	// HTTP http interface
 	HTTP() HTTP
+	// Streamed returns whether the data is streamed
+	Streamed() bool
+	// Stream returns the stream
+	Stream() io.Reader
 }
 
 // HTTP http interface

@@ -141,8 +141,24 @@ func (s *yomoSource) Pipe(tag uint32, reader io.Reader) error {
 		Metadata: mdBytes,
 		Payload:  data,
 	}
+	err = s.client.WriteFrame(f)
+	if err != nil {
+		s.client.Logger().Error("source write frame error", "err", err)
+		return err
+	}
 	s.client.Logger().Debug("source pipe stream", "tag", tag, "stream_id", dataStream.StreamID())
-	return s.client.WriteFrame(f)
+	// pipe stream
+	buf := make([]byte, 1024)
+	_, err = io.CopyBuffer(dataStream, reader, buf)
+	if err != nil {
+		if err == io.EOF {
+			s.client.Logger().Info("source pipe stream done", "stream_id", dataStream.StreamID)
+			return err
+		}
+		s.client.Logger().Error("source pipe stream error", "err", err)
+		return err
+	}
+	return nil
 }
 
 // TraceMetadata generates source trace metadata.
