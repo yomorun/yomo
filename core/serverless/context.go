@@ -7,6 +7,8 @@ import (
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
+	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
+	"golang.org/x/exp/slog"
 )
 
 // Context sfn handler context
@@ -60,6 +62,14 @@ func (c *Context) Streamed() bool {
 
 // Stream returns the stream.
 func (c *Context) Stream() io.Reader {
+	var streamFrame frame.StreamFrame
+	// TODO: codec need to be get from context
+	err := y3codec.Codec().Decode(c.Data(), &streamFrame)
+	if err != nil {
+		slog.Error("[context] StreamFrame decode error", "err", err)
+		return nil
+	}
+	slog.Info("[context] got stream", "stream_frame", streamFrame)
 	// TODO: read stream from zipper
 	return nil
 }

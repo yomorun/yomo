@@ -103,7 +103,7 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	return s.Serve(ctx, conn)
 }
 
-func (s *Server) handshake(qconn quic.Connection, fs *FrameStream) (bool, router.Route, Connection) {
+func (s *Server) handshake(qconn quic.Connection, fs *FrameStream) (*frame.HandshakeFrame, error) {
 	var gerr error
 
 	defer func() {
@@ -117,44 +117,48 @@ func (s *Server) handshake(qconn quic.Connection, fs *FrameStream) (bool, router
 	first, err := fs.ReadFrame()
 	if err != nil {
 		gerr = err
-		return false, nil, nil
+		return nil, err
 	}
 
 	switch first.Type() {
 	case frame.TypeHandshakeFrame:
-		hf := first.(*frame.HandshakeFrame)
+		return first.(*frame.HandshakeFrame), nil
 
-		conn, err := s.handleHandshakeFrame(qconn, fs, hf)
-		if err != nil {
-			gerr = err
-			return false, nil, conn
-		}
-
-		route, err := s.handleRoute(hf, conn.Metadata())
-		if err != nil {
-			gerr = err
-		}
-		return true, route, conn
+		// conn, err := s.handleHandshakeFrame(qconn, fs, hf)
+		// if err != nil {
+		// 	gerr = err
+		// 	return nil, conn, err
+		// }
+		//
+		// route, err := s.handleRoute(hf, conn.Metadata())
+		// if err != nil {
+		// 	gerr = err
+		// 	return nil, conn, err
+		// }
+		// return true, route, conn
+		// return route, conn, nil
 	default:
 		gerr = fmt.Errorf("yomo: handshake read unexpected frame, read: %s", first.Type().String())
-		return false, nil, nil
+		return nil, gerr
 	}
 }
 
-func (s *Server) handleConnection(qconn quic.Connection, fs *FrameStream, logger *slog.Logger) {
-	ok, route, conn := s.handshake(qconn, fs)
-	if !ok {
-		logger.Error("handshake failed")
-		return
-	}
+// func (s *Server)
 
-	logger = logger.With("conn_id", conn.ID(), "conn_name", conn.Name())
-	logger.Info("client connected", "remote_addr", qconn.RemoteAddr().String(), "client_type", conn.ClientType().String())
-
-	c := newContext(conn, route, logger)
-
-	s.handleContext(c)
-}
+// func (s *Server) handleStream(qconn quic.Connection, fs *FrameStream, logger *slog.Logger) {
+// 	route, conn, err := s.handshake(qconn, fs)
+// 	if err != nil {
+// 		logger.error("handshake failed", "err", err)
+// 		return
+// 	}
+//
+// 	logger = logger.with("conn_id", conn.id(), "conn_name", conn.name())
+// 	logger.info("client connected", "remote_addr", qconn.remoteaddr().string(), "client_type", conn.clienttype().string())
+//
+// 	c := newContext(conn, route, logger)
+//
+// 	s.handleContext(c)
+// }
 
 func (s *Server) handleContext(c *Context) {
 	for _, h := range s.startHandlers {
@@ -208,7 +212,6 @@ func (s *Server) handleFrames(c *Context) {
 			}
 		}
 	}
-
 }
 
 func (s *Server) handleRoute(hf *frame.HandshakeFrame, md metadata.M) (router.Route, error) {
@@ -226,7 +229,7 @@ func (s *Server) handleRoute(hf *frame.HandshakeFrame, md metadata.M) (router.Ro
 	return route, nil
 }
 
-func (s *Server) handleHandshakeFrame(qconn quic.Connection, fs *FrameStream, hf *frame.HandshakeFrame) (Connection, error) {
+func (s *Server) NewConnection(qconn quic.Connection, fs *FrameStream, hf *frame.HandshakeFrame) (Connection, error) {
 	md, ok := auth.Authenticate(s.opts.auths, hf)
 
 	if !ok {
@@ -277,15 +280,66 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 			s.logger.Error("accepted an error when accepting a connection", "err", err)
 			return err
 		}
+		// handle connection
+		go s.handleConnection(ctx, qconn)
+		// go func(qconn quic.Connection) {
+		// 	// process multiple streams
+		// 	for {
+		// 		stream, err := qconn.AcceptStream(ctx)
+		// 		if err != nil {
+		// 			s.logger.Error("failed to accept stream", "err", err)
+		// 			continue
+		// 		}
+		// 		s.logger.Info("accept new stream", "remote_addr", qconn.RemoteAddr().String(), "stream_id", stream.StreamID())
+		//
+		// 		fs := NewFrameStream(stream, y3codec.Codec(), y3codec.PacketReadWriter())
+		//
+		// 		go s.handleStream(qconn, fs, s.logger)
+		// 	}
+		// }(qconn)
+	}
+}
 
+func (s *Server) handleConnection(ctx context.Context, qconn quic.Connection) {
+	for {
+		// first stream
 		stream, err := qconn.AcceptStream(ctx)
 		if err != nil {
+			s.logger.Error("failed to accept stream", "err", err)
 			continue
 		}
-
+		s.logger.Info("accept new stream", "remote_addr", qconn.RemoteAddr().String(), "stream_id", stream.StreamID())
+		// handshake for connection
 		fs := NewFrameStream(stream, y3codec.Codec(), y3codec.PacketReadWriter())
-
-		go s.handleConnection(qconn, fs, s.logger)
+		// handshake if strream is the first stream
+		if stream.StreamID() == 0 {
+			// handshake
+			hf, err := s.handshake(qconn, fs)
+			if err != nil {
+				s.logger.Error("handshake failed", "err", err)
+				return
+			}
+			// connection
+			conn, err := s.NewConnection(qconn, fs, hf)
+			if err != nil {
+				s.logger.Error("failed to create connection", "err", err)
+				return
+			}
+			// route
+			route, err := s.handleRoute(hf, conn.Metadata())
+			if err != nil {
+				s.logger.Error("failed to handle route", "err", err)
+				return
+			}
+			logger := s.logger.With("conn_id", conn.ID(), "conn_name", conn.Name())
+			logger.Info("client connected", "remote_addr", qconn.RemoteAddr().String(), "client_type", conn.ClientType().String())
+			// context
+			c := newContext(conn, route, logger)
+			s.handleContext(c)
+		} else { // data stream
+			// TODO: handle data stream
+			s.logger.Info("!!!process data stream!!!", "remote_addr", qconn.RemoteAddr().String(), "stream_id", stream.StreamID())
+		}
 	}
 }
 
@@ -389,7 +443,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 		return err
 	}
 	dataFrame.Metadata = md
-	s.logger.Debug("zipper metadata", "tid", tid, "sid", sid, "parentTraced", parentTraced, "traced", traced, "frome_stream_name", from.Name())
+	s.logger.Debug("zipper metadata", "tid", tid, "sid", sid, "parentTraced", parentTraced, "traced", traced, "from_name", from.Name())
 	// route
 	route := s.router.Route(c.FrameMetadata)
 	if route == nil {

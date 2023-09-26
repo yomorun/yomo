@@ -117,6 +117,7 @@ func (s *yomoSource) Pipe(tag uint32, reader io.Reader) error {
 	if err != nil {
 		return err
 	}
+	defer dataStream.Close()
 	// metadata
 	mdBytes, err := md.Encode()
 	// metadata

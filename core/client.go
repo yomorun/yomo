@@ -191,6 +191,7 @@ connect:
 		c.logger.Error("can not connect to zipper", "err", result.err)
 		return result.err
 	}
+	c.logger = c.logger.With("local_addr", result.conn.LocalAddr().String())
 	c.logger.Info("connected to zipper")
 
 	c.setConnection(&result.conn)
