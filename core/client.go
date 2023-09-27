@@ -376,7 +376,7 @@ func (e ErrAuthenticateFailed) Error() string {
 func (c *Client) RequestStream() (quic.Stream, error) {
 	// request data stream
 	c.logger.Debug("client request data stream")
-	dataStream, err := c.Connection().OpenStreamSync(c.ctx)
+	dataStream, err := c.Connection().OpenStream()
 	if err != nil {
 		if err == io.EOF {
 			c.logger.Info("client request data stream EOF")

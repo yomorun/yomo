@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"reflect"
@@ -18,6 +19,7 @@ import (
 	"golang.org/x/exp/slog"
 
 	// authentication implements, Currently, only token authentication is implemented
+
 	_ "github.com/yomorun/yomo/pkg/auth"
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 	"github.com/yomorun/yomo/pkg/id"
@@ -301,44 +303,126 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 }
 
 func (s *Server) handleConnection(ctx context.Context, qconn quic.Connection) {
+	// first stream
+	stream, err := qconn.AcceptStream(ctx)
+	if err != nil {
+		s.logger.Error("failed to accept stream", "err", err)
+		return
+	}
+	s.logger.Info("accept new stream", "remote_addr", qconn.RemoteAddr().String(), "stream_id", stream.StreamID())
+	// handshake for connection
+	fs := NewFrameStream(stream, y3codec.Codec(), y3codec.PacketReadWriter())
+	// handshake if strream is the first stream
+	// if stream.StreamID() == 0 {
+	// handshake
+	hf, err := s.handshake(qconn, fs)
+	if err != nil {
+		s.logger.Error("handshake failed", "err", err)
+		return
+	}
+	// connection
+	conn, err := s.NewConnection(qconn, fs, hf)
+	if err != nil {
+		s.logger.Error("failed to create connection", "err", err)
+		return
+	}
+	// route
+	// TODO: 在这里添加的连接 ID, 目前连接 id 使用的 client_id
+	route, err := s.handleRoute(hf, conn.Metadata())
+	if err != nil {
+		s.logger.Error("failed to handle route", "err", err)
+		return
+	}
+	logger := s.logger.With("conn_id", conn.ID(), "conn_name", conn.Name())
+	logger.Info("client connected", "remote_addr", qconn.RemoteAddr().String(), "client_type", conn.ClientType().String())
+	// context
+	c := newContext(conn, route, logger)
+	s.handleContext(c)
+	// }
+	// else {
+	// TODO: conn_id is constant key
+	ctx = context.WithValue(ctx, "client_id", conn.ID())
+	go s.handleStream(ctx, qconn)
+}
+
+// handleStream handles the stream.
+func (s *Server) handleStream(ctx context.Context, qconn quic.Connection) {
 	for {
-		// first stream
 		stream, err := qconn.AcceptStream(ctx)
 		if err != nil {
-			s.logger.Error("failed to accept stream", "err", err)
+			s.logger.Warn("failed to accept data stream", "err", err)
 			continue
 		}
-		s.logger.Info("accept new stream", "remote_addr", qconn.RemoteAddr().String(), "stream_id", stream.StreamID())
-		// handshake for connection
 		fs := NewFrameStream(stream, y3codec.Codec(), y3codec.PacketReadWriter())
-		// handshake if strream is the first stream
-		if stream.StreamID() == 0 {
-			// handshake
-			hf, err := s.handshake(qconn, fs)
-			if err != nil {
-				s.logger.Error("handshake failed", "err", err)
-				return
-			}
-			// connection
-			conn, err := s.NewConnection(qconn, fs, hf)
-			if err != nil {
-				s.logger.Error("failed to create connection", "err", err)
-				return
-			}
+		f, err := fs.ReadFrame()
+		if err != nil {
+			s.logger.Warn("failed to read data stream", "err", err)
+			continue
+		}
+		// clientID, ok := ctx.Value("client_id").(string)
+		// if !ok {
+		// 	s.logger.Warn("failed to get client_id from context")
+		// 	continue
+		// }
+
+		switch f.Type() {
+		case frame.TypeStreamFrame:
+			streamFrame := f.(*frame.StreamFrame)
+			tag := streamFrame.Tag
+			s.logger.Info(
+				"!!!handle data stream!!!",
+				"remote_addr", qconn.RemoteAddr().String(),
+				"stream_id", stream.StreamID(),
+				"conn_id", streamFrame.ClientID,
+				"tag", tag,
+			)
 			// route
-			route, err := s.handleRoute(hf, conn.Metadata())
-			if err != nil {
-				s.logger.Error("failed to handle route", "err", err)
-				return
+			// route := s.router.Route(c.FrameMetadata)
+			// TODO: 开源版本没有使用 metadata
+			route := s.router.Route(nil)
+			if route == nil {
+				errString := "can't find sfn route"
+				s.logger.Warn(errString)
+				continue
 			}
-			logger := s.logger.With("conn_id", conn.ID(), "conn_name", conn.Name())
-			logger.Info("client connected", "remote_addr", qconn.RemoteAddr().String(), "client_type", conn.ClientType().String())
-			// context
-			c := newContext(conn, route, logger)
-			s.handleContext(c)
-		} else { // data stream
-			// TODO: handle data stream
-			s.logger.Info("!!!process data stream!!!", "remote_addr", qconn.RemoteAddr().String(), "stream_id", stream.StreamID())
+			// TODO: find sfn ids from the route.
+			// TODO: 这里 source 的数据流, 这里没有 tag 信息,如何找到监控这个 source 的 sfn?
+			connIDs := route.GetForwardRoutes(tag)
+			if len(connIDs) == 0 {
+				s.logger.Warn("no observed", "tag", tag)
+				continue
+			}
+			// TODO: 将 source 流转发到 sfn
+			for _, toID := range connIDs {
+				// TODO: 这里的 to 是 sfn 的主 stream, 如何找到 sfn 的 data stream?
+				// 或者说, 由服务端直接创建?
+				to, ok, err := s.connector.Get(toID)
+				if err != nil {
+					continue
+				}
+				if !ok {
+					s.logger.Error("can't find forward stream", "err", "route sfn error", "forward_conn_id", toID)
+					continue
+				}
+				// TODO: pipe data stream to sfn
+				s.logger.Info("!!!pipe stream to sfn", "tag", tag, "to_id", toID, "to_name", to.Name())
+				buf, err := io.ReadAll(stream)
+				if err != nil {
+					s.logger.Warn("failed to read data stream", "err", err)
+					continue
+				}
+				s.logger.Info("!!!process data stream!!!",
+					"remote_addr", qconn.RemoteAddr().String(),
+					"stream_id", stream.StreamID(),
+					"conn_id", streamFrame.ClientID,
+					"stream_len", len(buf),
+					"stream_buf", string(buf),
+					"tag", tag,
+					"err", err,
+				)
+			}
+		default:
+			s.logger.Warn("!!!unexpected frame!!!", "unexpected_frame_type", f.Type().String())
 		}
 	}
 }
@@ -404,6 +488,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 	sid := GetSIDFromMetadata(c.FrameMetadata)
 	parentTraced := GetTracedFromMetadata(c.FrameMetadata)
 	traced := false
+	streamed := GetStreamedFromMetadata(c.FrameMetadata)
 	// trace
 	tp := s.TracerProvider()
 	if tp != nil {
@@ -437,6 +522,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 	SetTIDToMetadata(c.FrameMetadata, tid)
 	SetSIDToMetadata(c.FrameMetadata, sid)
 	SetTracedToMetadata(c.FrameMetadata, traced || parentTraced)
+	SetStreamedToMetadata(c.FrameMetadata, streamed)
 	md, err := c.FrameMetadata.Encode()
 	if err != nil {
 		s.logger.Error("encode metadata error", "err", err)

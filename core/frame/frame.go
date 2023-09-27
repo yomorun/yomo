@@ -104,6 +104,7 @@ type StreamFrame struct {
 	ClientID  string
 	StreamID  int64
 	ChunkSize uint
+	Tag       Tag
 }
 
 // Type returns the type of StreamFrame.

@@ -130,6 +130,7 @@ func (s *yomoSource) Pipe(tag uint32, reader io.Reader) error {
 		StreamID: int64(dataStream.StreamID()),
 		// TODO: make ChunkSize configurable or 0 for auto
 		ChunkSize: 1024,
+		Tag:       tag,
 	}
 	data, err := s.client.FrameStream().Codec().Encode(streamFrame)
 	if err != nil {
@@ -142,9 +143,16 @@ func (s *yomoSource) Pipe(tag uint32, reader io.Reader) error {
 		Metadata: mdBytes,
 		Payload:  data,
 	}
+	// TODO: 主流写入创建流结果信息
 	err = s.client.WriteFrame(f)
 	if err != nil {
 		s.client.Logger().Error("source write frame error", "err", err)
+		return err
+	}
+	// TODO: 数据流写入必要信息
+	_, err = dataStream.Write(data)
+	if err != nil {
+		s.client.Logger().Error("source write stream frame error", "err", err)
 		return err
 	}
 	s.client.Logger().Debug("source pipe stream", "tag", tag, "stream_id", dataStream.StreamID())
