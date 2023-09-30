@@ -1,6 +1,7 @@
 package golang
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -49,18 +50,21 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 
 	// append main function
 	ctx := Context{
-		Name:       s.opts.Name,
-		ZipperAddr: s.opts.ZipperAddr,
-		Credential: s.opts.Credential,
-		UseEnv:     s.opts.UseEnv,
+		Name:         s.opts.Name,
+		ZipperAddr:   s.opts.ZipperAddr,
+		Credential:   s.opts.Credential,
+		UseEnv:       s.opts.UseEnv,
+		WithInitFunc: containsInitWithoutComment(source),
 	}
 
 	// determine: rx stream serverless or raw bytes serverless.
 	isRx := strings.Contains(string(source), "rx.Stream")
 	isWasm := true
 	mainFuncTmpl := ""
-	mainFunc := WasmMainFuncTmpl
-	var err error
+	mainFunc, err := RenderTmpl(string(WasmMainFuncTmpl), &ctx)
+	if err != nil {
+		return fmt.Errorf("Init: %s", err)
+	}
 	if isRx {
 		if isWasm {
 			return errors.New("wasm does not support rx.Stream")
@@ -249,6 +253,18 @@ func generateCode(fset *token.FileSet, file *ast.File) ([]byte, error) {
 	}
 
 	return buffer.Bytes(), nil
+}
+
+func containsInitWithoutComment(source []byte) bool {
+	scanner := bufio.NewScanner(bytes.NewReader(source))
+	for scanner.Scan() {
+		line := strings.TrimLeft(scanner.Text(), " ")
+
+		if strings.Contains(line, "Init()") && !strings.HasPrefix(line, "//") {
+			return true
+		}
+	}
+	return false
 }
 
 func init() {
