@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/auth"
@@ -37,24 +38,23 @@ type ConnectionHandler func(conn quic.Connection)
 
 // Server is the underlying server of Zipper
 type Server struct {
-	ctx                     context.Context
-	ctxCancel               context.CancelFunc
-	name                    string
-	connector               *Connector
-	router                  router.Router
-	codec                   frame.Codec
-	packetReadWriter        frame.PacketReadWriter
-	counterOfDataFrame      int64
-	downstreams             map[string]FrameWriterConnection
-	mu                      sync.Mutex
-	opts                    *serverOptions
-	startHandlers           []FrameHandler
-	beforeHandlers          []FrameHandler
-	afterHandlers           []FrameHandler
-	connectionCloseHandlers []ConnectionHandler
-	listener                *quic.Listener
-	logger                  *slog.Logger
-	tracerProvider          oteltrace.TracerProvider
+	ctx                context.Context
+	ctxCancel          context.CancelFunc
+	name               string
+	connector          *Connector
+	router             router.Router
+	codec              frame.Codec
+	packetReadWriter   frame.PacketReadWriter
+	counterOfDataFrame int64
+	downstreams        map[string]FrameWriterConnection
+	mu                 sync.Mutex
+	opts               *serverOptions
+	startHandlers      []FrameHandler
+	beforeHandlers     []FrameHandler
+	afterHandlers      []FrameHandler
+	listener           *Listener
+	logger             *slog.Logger
+	tracerProvider     oteltrace.TracerProvider
 }
 
 // NewServer create a Server instance.
@@ -103,53 +103,53 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	return s.Serve(ctx, conn)
 }
 
-func (s *Server) handshake(qconn quic.Connection, fs *FrameStream) (bool, router.Route, Connection) {
+func (s *Server) handshake(fconn *FrameConnection) (bool, router.Route, Connection) {
 	var gerr error
 
 	defer func() {
 		if gerr == nil {
-			_ = fs.WriteFrame(&frame.HandshakeAckFrame{})
+			_ = fconn.WriteFrame(&frame.HandshakeAckFrame{})
 		} else {
-			_ = fs.WriteFrame(&frame.RejectedFrame{Message: gerr.Error()})
+			_ = fconn.WriteFrame(&frame.RejectedFrame{Message: gerr.Error()})
 		}
 	}()
 
-	first, err := fs.ReadFrame()
-	if err != nil {
-		gerr = err
+	select {
+	case <-time.After(time.Second):
+		gerr = errors.New("yomo: handshake timeout")
 		return false, nil, nil
-	}
+	case first := <-fconn.ReadFrame():
+		switch first.Type() {
+		case frame.TypeHandshakeFrame:
+			hf := first.(*frame.HandshakeFrame)
 
-	switch first.Type() {
-	case frame.TypeHandshakeFrame:
-		hf := first.(*frame.HandshakeFrame)
+			conn, err := s.handleHandshakeFrame(fconn, hf)
+			if err != nil {
+				gerr = err
+				return false, nil, conn
+			}
 
-		conn, err := s.handleHandshakeFrame(qconn, fs, hf)
-		if err != nil {
-			gerr = err
-			return false, nil, conn
+			route, err := s.handleRoute(hf, conn.Metadata())
+			if err != nil {
+				gerr = err
+			}
+			return true, route, conn
+		default:
+			gerr = fmt.Errorf("yomo: handshake read unexpected frame, read: %s", first.Type().String())
+			return false, nil, nil
 		}
-
-		route, err := s.handleRoute(hf, conn.Metadata())
-		if err != nil {
-			gerr = err
-		}
-		return true, route, conn
-	default:
-		gerr = fmt.Errorf("yomo: handshake read unexpected frame, read: %s", first.Type().String())
-		return false, nil, nil
 	}
 }
 
-func (s *Server) handleConnection(qconn quic.Connection, fs *FrameStream, logger *slog.Logger) {
-	ok, route, conn := s.handshake(qconn, fs)
+func (s *Server) handleConnection(fconn *FrameConnection, logger *slog.Logger) {
+	ok, route, conn := s.handshake(fconn)
 	if !ok {
 		logger.Error("handshake failed")
 		return
 	}
 
 	logger = logger.With("conn_id", conn.ID(), "conn_name", conn.Name())
-	logger.Info("client connected", "remote_addr", qconn.RemoteAddr().String(), "client_type", conn.ClientType().String())
+	logger.Info("client connected", "remote_addr", fconn.RemoteAddr().String(), "client_type", conn.ClientType().String())
 
 	c := newContext(conn, route, logger)
 
@@ -175,36 +175,35 @@ func (s *Server) handleFrames(c *Context) {
 		c.Release()
 	}()
 	for {
-		f, err := c.Connection.ReadFrame()
-		if err != nil {
-			c.Logger.Info("failed to read frame", "err", err)
+		select {
+		case <-c.Connection.FrameConn().Context().Done():
 			return
-		}
-
-		if err := c.WithFrame(f); err != nil {
-			c.CloseWithError(err.Error())
-			return
-		}
-
-		for _, h := range s.beforeHandlers {
-			if err := h(c); err != nil {
+		case f := <-c.Connection.FrameConn().ReadFrame():
+			if err := c.WithFrame(f); err != nil {
 				c.CloseWithError(err.Error())
 				return
 			}
-		}
 
-		switch f.Type() {
-		case frame.TypeDataFrame:
-			if err := s.mainFrameHandler(c); err != nil {
-				c.Logger.Info("failed to handle data frame", "err", err)
-				return
+			for _, h := range s.beforeHandlers {
+				if err := h(c); err != nil {
+					c.CloseWithError(err.Error())
+					return
+				}
 			}
-		}
 
-		for _, h := range s.afterHandlers {
-			if err := h(c); err != nil {
-				c.CloseWithError(err.Error())
-				return
+			switch f.Type() {
+			case frame.TypeDataFrame:
+				if err := s.mainFrameHandler(c); err != nil {
+					c.Logger.Info("failed to handle data frame", "err", err)
+					return
+				}
+			}
+
+			for _, h := range s.afterHandlers {
+				if err := h(c); err != nil {
+					c.CloseWithError(err.Error())
+					return
+				}
 			}
 		}
 	}
@@ -226,7 +225,7 @@ func (s *Server) handleRoute(hf *frame.HandshakeFrame, md metadata.M) (router.Ro
 	return route, nil
 }
 
-func (s *Server) handleHandshakeFrame(qconn quic.Connection, fs *FrameStream, hf *frame.HandshakeFrame) (Connection, error) {
+func (s *Server) handleHandshakeFrame(fconn *FrameConnection, hf *frame.HandshakeFrame) (Connection, error) {
 	md, ok := auth.Authenticate(s.opts.auths, hf)
 
 	if !ok {
@@ -234,7 +233,7 @@ func (s *Server) handleHandshakeFrame(qconn quic.Connection, fs *FrameStream, hf
 		return nil, fmt.Errorf("authentication failed: client credential name is %s", hf.AuthName)
 	}
 
-	conn := newConnection(hf.Name, hf.ID, ClientType(hf.ClientType), md, hf.ObserveDataTags, qconn, fs)
+	conn := newConnection(hf.Name, hf.ID, ClientType(hf.ClientType), md, hf.ObserveDataTags, fconn)
 
 	return conn, s.connector.Store(hf.ID, conn)
 }
@@ -257,19 +256,19 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 	}
 
 	// listen the address
-	listener, err := quic.Listen(conn, tlsConfig, s.opts.quicConfig)
+	listener, err := Listen(conn, tlsConfig, s.opts.quicConfig, y3codec.Codec(), y3codec.PacketReadWriter())
 	if err != nil {
 		s.logger.Error("failed to listen on quic", "err", err)
 		return err
 	}
 	s.listener = listener
 
-	s.logger.Info("zipper is up and running", "zipper_addr", s.listener.Addr().String(), "pid", os.Getpid(), "quic", s.opts.quicConfig.Versions, "auth_name", s.authNames())
+	s.logger.Info("zipper is up and running", "zipper_addr", conn.LocalAddr().String(), "pid", os.Getpid(), "quic", s.opts.quicConfig.Versions, "auth_name", s.authNames())
 
 	defer closeServer(s.downstreams, s.connector, s.listener, s.router)
 
 	for {
-		qconn, err := s.listener.Accept(s.ctx)
+		fconn, err := s.listener.Accept(s.ctx)
 		if err != nil {
 			if err == s.ctx.Err() {
 				return ErrServerClosed
@@ -278,14 +277,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 			return err
 		}
 
-		stream, err := qconn.AcceptStream(ctx)
-		if err != nil {
-			continue
-		}
-
-		fs := NewFrameStream(stream, y3codec.Codec(), y3codec.PacketReadWriter())
-
-		go s.handleConnection(qconn, fs, s.logger)
+		go s.handleConnection(fconn, s.logger)
 	}
 }
 
@@ -300,7 +292,7 @@ func (s *Server) Close() error {
 	return nil
 }
 
-func closeServer(downstreams map[string]FrameWriterConnection, connector *Connector, listener *quic.Listener, router router.Router) error {
+func closeServer(downstreams map[string]FrameWriterConnection, connector *Connector, listener *Listener, router router.Router) error {
 	for _, ds := range downstreams {
 		ds.Close()
 	}
@@ -418,7 +410,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 		c.Logger.Info("data routing", "tid", tid, "sid", sid, "tag", dataFrame.Tag, "data_length", data_length, "to_id", toID, "to_name", stream.Name())
 
 		// write data frame to stream
-		if err := stream.WriteFrame(dataFrame); err != nil {
+		if err := stream.FrameConn().WriteFrame(dataFrame); err != nil {
 			c.Logger.Error("failed to write frame for routing data", "err", err)
 		}
 	}
@@ -442,7 +434,7 @@ func (s *Server) handleBackflowFrame(c *Context) error {
 	for _, source := range sourceStreams {
 		if source != nil {
 			c.Logger.Info("backflow to source", "source_conn_id", sourceID)
-			if err := source.WriteFrame(bf); err != nil {
+			if err := source.FrameConn().WriteFrame(bf); err != nil {
 				c.Logger.Error("failed to write frame for backflow to the source", "err", err)
 				return err
 			}
@@ -550,11 +542,6 @@ func (s *Server) SetBeforeHandlers(handlers ...FrameHandler) {
 // SetAfterHandlers set the after handlers of server.
 func (s *Server) SetAfterHandlers(handlers ...FrameHandler) {
 	s.afterHandlers = append(s.afterHandlers, handlers...)
-}
-
-// SetConnectionCloseHandlers set the connection close handlers of server.
-func (s *Server) SetConnectionCloseHandlers(handlers ...ConnectionHandler) {
-	s.connectionCloseHandlers = append(s.connectionCloseHandlers, handlers...)
 }
 
 func (s *Server) authNames() []string {
