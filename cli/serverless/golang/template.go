@@ -40,6 +40,8 @@ type Context struct {
 	Credential string
 	// use environment variables
 	UseEnv bool
+	// WithInitFunc determines whether to work with init function
+	WithInitFunc bool
 }
 
 // RenderTmpl renders the template with the given context
