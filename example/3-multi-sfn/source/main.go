@@ -20,7 +20,7 @@ type noiseData struct {
 
 func main() {
 	// trace
-	tp, shutdown, err := trace.NewTracerProviderWithJaeger("yomo-source")
+	tp, shutdown, err := trace.NewTracerProvider("yomo-source")
 	if err == nil {
 		log.Println("[source] 🛰 trace enabled")
 	}

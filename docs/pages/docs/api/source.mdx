@@ -102,7 +102,7 @@ Set the tracer provider for this Source instance.
 
 ```go
 // trace
-tp, shutdown, err := trace.NewTracerProviderWithJaeger("yomo-source")
+tp, shutdown, err := trace.NewTracerProvider("yomo-source")
 if err == nil {
 	log.Println("[source] 🛰 trace enabled")
 }

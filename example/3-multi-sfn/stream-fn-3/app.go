@@ -44,7 +44,7 @@ var observe = make(chan float32, 1)
 
 func main() {
 	// trace
-	tp, shutdown, err := trace.NewTracerProviderWithJaeger("yomo-sfn")
+	tp, shutdown, err := trace.NewTracerProvider("yomo-sfn")
 	if err == nil {
 		log.Println("[fn3] 🛰 trace enabled")
 	}
