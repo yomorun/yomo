@@ -305,8 +305,11 @@ func (c *Client) handleFrame(f frame.Frame) {
 		c.processor(ff)
 	case *frame.BackflowFrame:
 		c.receiver(ff)
+	case *frame.StreamFrame:
+		// TODO: handle stream frame
+		c.logger.Debug("receive stream frame", "stream_id", ff.StreamID, "conn_id", ff.ClientID, "tag", ff.Tag)
 	default:
-		c.logger.Warn("received unexpected frame", "frame_type", f.Type().String())
+		c.logger.Error("received unexpected frame", "frame_type", f.Type().String())
 	}
 }
 
@@ -372,6 +375,7 @@ func (e ErrAuthenticateFailed) Error() string {
 	return e.ReasonFromServer
 }
 
+/*
 // RequestStream request a stream from server.
 func (c *Client) RequestStream() (quic.Stream, error) {
 	// request data stream
@@ -389,6 +393,77 @@ func (c *Client) RequestStream() (quic.Stream, error) {
 	}
 	c.logger.Debug("client write stream frame success", "stream_id", dataStream.StreamID())
 	return dataStream, nil
+}
+*/
+
+// PipeStream pipe a stream to server.
+func (c *Client) PipeStream(ctx context.Context, dataStreamID string, stream io.Reader) error {
+	c.logger.Debug("client pipe stream -- start")
+	// for {
+	qconn := c.Connection()
+STREAM:
+	dataStream, err := qconn.AcceptStream(ctx)
+	if err != nil {
+		c.logger.Error("client accept data stream error", "err", err)
+		// c.errorfn(err)
+		return err
+	}
+	// close data stream
+	defer dataStream.Close()
+	c.logger.Debug("client accept stream success", "stream_id", dataStream.StreamID())
+	// read stream frame
+	fs := NewFrameStream(dataStream, y3codec.Codec(), y3codec.PacketReadWriter())
+	f, err := fs.ReadFrame()
+	if err != nil {
+		c.logger.Warn("failed to read data stream", "err", err)
+		return err
+	}
+	c.logger.Debug("client read stream frame success", "stream_id", dataStream.StreamID())
+	switch f.Type() {
+	case frame.TypeStreamFrame:
+		streamFrame := f.(*frame.StreamFrame)
+		// if stream id is same, pipe stream
+		if streamFrame.ID != dataStreamID {
+			c.logger.Debug(
+				"stream id is not same, continue",
+				"stream_id", dataStream.StreamID(),
+				"datastream_id", dataStreamID,
+				"received_id", streamFrame.ID,
+				"client_id", streamFrame.ClientID,
+				"tag", streamFrame.Tag,
+			)
+			goto STREAM
+		}
+		c.logger.Info(
+			"!!!pipe stream is ready!!!",
+			"remote_addr", qconn.RemoteAddr().String(),
+			"datastream_id", streamFrame.ID,
+			"stream_id", dataStream.StreamID(),
+			"client_id", streamFrame.ClientID,
+			"id", streamFrame.ID,
+			"tag", streamFrame.Tag,
+		)
+		// pipe stream
+		n, err := io.Copy(dataStream, stream)
+		if err != nil {
+			c.logger.Error("!!!pipe stream error!!!", "err", err)
+			return err
+		}
+		c.logger.Info("!!!pipe stream success!!!",
+			"remote_addr", qconn.RemoteAddr().String(),
+			"id", streamFrame.ID,
+			"stream_id", dataStream.StreamID(),
+			"client_id", streamFrame.ClientID,
+			"tag", streamFrame.Tag,
+			"n", n,
+		)
+	default:
+		c.logger.Error("!!!unexpected frame!!!", "unexpected_frame_type", f.Type().String())
+		return errors.New("unexpected frame")
+	}
+	// }
+	c.logger.Debug("client pipe stream -- end")
+	return nil
 }
 
 // Connection returns the connection of client.

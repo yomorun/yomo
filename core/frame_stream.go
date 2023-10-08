@@ -36,6 +36,11 @@ func (fs *FrameStream) Context() context.Context {
 	return fs.underlying.Context()
 }
 
+// ReadStream reads the underlying stream.
+func (fs *FrameStream) ReadStream() (quic.Stream, error) {
+	return fs.underlying, nil
+}
+
 // ReadFrame reads next frame from underlying stream.
 func (fs *FrameStream) ReadFrame() (frame.Frame, error) {
 	select {

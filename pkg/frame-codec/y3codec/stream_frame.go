@@ -7,19 +7,24 @@ import (
 
 // encodeStreamFrame Streamframe to Y3 encoded bytes
 func encodeStreamFrame(f *frame.StreamFrame) ([]byte, error) {
-	clientID := y3.NewPrimitivePacketEncoder(tagStreamClientID)
+	// id
+	id := y3.NewPrimitivePacketEncoder(tagStreamFrameID)
+	id.SetStringValue(f.ID)
+	// client id
+	clientID := y3.NewPrimitivePacketEncoder(tagStreamFrameClientID)
 	clientID.SetStringValue(f.ClientID)
-
-	streamID := y3.NewPrimitivePacketEncoder(tagStreamID)
+	// stream id
+	streamID := y3.NewPrimitivePacketEncoder(tagStreamFrameStreamID)
 	streamID.SetInt64Value(f.StreamID)
-
-	chunkSize := y3.NewPrimitivePacketEncoder(tagStreamChunkSize)
+	// chunk size
+	chunkSize := y3.NewPrimitivePacketEncoder(tagStreamFrameChunkSize)
 	chunkSize.SetUInt32Value(uint32(f.ChunkSize))
-
-	tag := y3.NewPrimitivePacketEncoder(tagStreamTag)
+	// tag
+	tag := y3.NewPrimitivePacketEncoder(tagStreamFrameTag)
 	tag.SetUInt32Value(f.Tag)
-
+	// encode
 	node := y3.NewNodePacketEncoder(byte(f.Type()))
+	node.AddPrimitivePacket(id)
 	node.AddPrimitivePacket(clientID)
 	node.AddPrimitivePacket(streamID)
 	node.AddPrimitivePacket(chunkSize)
@@ -35,8 +40,16 @@ func decodeStreamFrame(data []byte, f *frame.StreamFrame) error {
 	if err != nil {
 		return err
 	}
+	// id
+	if p, ok := nodeBlock.PrimitivePackets[tagStreamFrameID]; ok {
+		id, err := p.ToUTF8String()
+		if err != nil {
+			return err
+		}
+		f.ID = id
+	}
 	// client id
-	if p, ok := nodeBlock.PrimitivePackets[tagStreamClientID]; ok {
+	if p, ok := nodeBlock.PrimitivePackets[tagStreamFrameClientID]; ok {
 		clientID, err := p.ToUTF8String()
 		if err != nil {
 			return err
@@ -44,7 +57,7 @@ func decodeStreamFrame(data []byte, f *frame.StreamFrame) error {
 		f.ClientID = clientID
 	}
 	// stream id
-	if p, ok := nodeBlock.PrimitivePackets[tagStreamID]; ok {
+	if p, ok := nodeBlock.PrimitivePackets[tagStreamFrameStreamID]; ok {
 		steamID, err := p.ToInt64()
 		if err != nil {
 			return err
@@ -52,16 +65,15 @@ func decodeStreamFrame(data []byte, f *frame.StreamFrame) error {
 		f.StreamID = steamID
 	}
 	// chunk size
-	if p, ok := nodeBlock.PrimitivePackets[tagStreamChunkSize]; ok {
+	if p, ok := nodeBlock.PrimitivePackets[tagStreamFrameChunkSize]; ok {
 		chunkSize, err := p.ToInt32()
 		if err != nil {
 			return err
 		}
 		f.ChunkSize = uint(chunkSize)
 	}
-
 	// tag
-	if p, ok := nodeBlock.PrimitivePackets[byte(tagStreamTag)]; ok {
+	if p, ok := nodeBlock.PrimitivePackets[byte(tagStreamFrameTag)]; ok {
 		tag, err := p.ToUInt32()
 		if err != nil {
 			return err
@@ -73,8 +85,9 @@ func decodeStreamFrame(data []byte, f *frame.StreamFrame) error {
 }
 
 var (
-	tagStreamClientID  byte = 0x01
-	tagStreamID        byte = 0x02
-	tagStreamChunkSize byte = 0x03
-	tagStreamTag       byte = 0x04
+	tagStreamFrameID        byte = 0x01
+	tagStreamFrameClientID  byte = 0x02
+	tagStreamFrameStreamID  byte = 0x03
+	tagStreamFrameChunkSize byte = 0x04
+	tagStreamFrameTag       byte = 0x05
 )

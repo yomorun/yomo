@@ -112,62 +112,28 @@ func (s *yomoSource) SetReceiveHandler(fn func(uint32, []byte)) {
 func (s *yomoSource) Pipe(tag uint32, reader io.Reader) error {
 	md, deferFunc := TraceMetadata(s.client.ClientID(), s.name, true, s.client.TracerProvider(), s.client.Logger())
 	defer deferFunc()
-	// request server to create a stream
-	dataStream, err := s.client.RequestStream()
-	if err != nil {
-		return err
-	}
-	defer dataStream.Close()
 	// metadata
 	mdBytes, err := md.Encode()
 	// metadata
 	if err != nil {
 		return err
 	}
-	// stream frame encode
-	streamFrame := &frame.StreamFrame{
-		ClientID: s.client.ClientID(),
-		StreamID: int64(dataStream.StreamID()),
-		// TODO: make ChunkSize configurable or 0 for auto
-		ChunkSize: 1024,
-		Tag:       tag,
-	}
-	data, err := s.client.FrameStream().Codec().Encode(streamFrame)
-	if err != nil {
-		s.client.Logger().Error("client codec encode stream frame error", "err", err)
-		return err
-	}
-	// write dataframe with streamID
+	// write dataframe with data stream id
+	dataStreamID := id.New()
 	f := &frame.DataFrame{
 		Tag:      tag,
 		Metadata: mdBytes,
-		Payload:  data,
+		Payload:  []byte(dataStreamID),
 	}
-	// TODO: 主流写入创建流结果信息
+	// write dataframe to main stream
 	err = s.client.WriteFrame(f)
 	if err != nil {
 		s.client.Logger().Error("source write frame error", "err", err)
 		return err
 	}
-	// TODO: 数据流写入必要信息
-	_, err = dataStream.Write(data)
-	if err != nil {
-		s.client.Logger().Error("source write stream frame error", "err", err)
-		return err
-	}
-	s.client.Logger().Debug("source pipe stream", "tag", tag, "stream_id", dataStream.StreamID())
-	// pipe stream
-	buf := make([]byte, 1024)
-	_, err = io.CopyBuffer(dataStream, reader, buf)
-	if err != nil {
-		if err == io.EOF {
-			s.client.Logger().Info("source pipe stream done", "stream_id", dataStream.StreamID)
-			return err
-		}
-		s.client.Logger().Error("source pipe stream error", "err", err)
-		return err
-	}
-	return nil
+	s.client.Logger().Debug("source write stream frame", "tag", tag)
+	s.client.Logger().Debug("source pipe stream...", "tag", tag)
+	return s.client.PipeStream(context.Background(), dataStreamID, reader)
 }
 
 // TraceMetadata generates source trace metadata.

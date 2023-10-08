@@ -30,6 +30,8 @@ type Connection interface {
 	frame.ReadWriteCloser
 	// CloseWithError closes the connection with an error string.
 	CloseWithError(string) error
+	// QuicConnection returns raw quic connection.
+	QuicConnection() quic.Connection
 }
 
 type connection struct {
@@ -44,7 +46,8 @@ type connection struct {
 
 func newConnection(
 	name string, id string, clientType ClientType, md metadata.M, tags []uint32,
-	conn quic.Connection, fs *FrameStream) *connection {
+	conn quic.Connection, fs *FrameStream,
+) *connection {
 	return &connection{
 		name:            name,
 		id:              id,
@@ -94,6 +97,10 @@ func (c *connection) WriteFrame(f frame.Frame) error {
 
 func (c *connection) CloseWithError(errString string) error {
 	return c.conn.CloseWithError(YomoCloseErrorCode, errString)
+}
+
+func (c *connection) QuicConnection() quic.Connection {
+	return c.conn
 }
 
 // YomoCloseErrorCode is the error code for close quic Connection for yomo.

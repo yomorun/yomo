@@ -53,6 +53,8 @@ func (c *y3codec) Encode(f frame.Frame) ([]byte, error) {
 		return encodeGoawayFrame(ff)
 	case *frame.StreamFrame:
 		return encodeStreamFrame(ff)
+	case *frame.RequestStreamFrame:
+		return encodeRequestStreamFrame(ff)
 	default:
 		return nil, ErrUnknownFrame
 	}
@@ -74,6 +76,8 @@ func (c *y3codec) Decode(data []byte, f frame.Frame) error {
 		return decodeGoawayFrame(data, ff)
 	case *frame.StreamFrame:
 		return decodeStreamFrame(data, ff)
+	case *frame.RequestStreamFrame:
+		return decodeRequestStreamFrame(data, ff)
 	default:
 		return ErrUnknownFrame
 	}

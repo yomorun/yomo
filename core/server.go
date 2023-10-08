@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -284,21 +285,6 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		}
 		// handle connection
 		go s.handleConnection(ctx, qconn)
-		// go func(qconn quic.Connection) {
-		// 	// process multiple streams
-		// 	for {
-		// 		stream, err := qconn.AcceptStream(ctx)
-		// 		if err != nil {
-		// 			s.logger.Error("failed to accept stream", "err", err)
-		// 			continue
-		// 		}
-		// 		s.logger.Info("accept new stream", "remote_addr", qconn.RemoteAddr().String(), "stream_id", stream.StreamID())
-		//
-		// 		fs := NewFrameStream(stream, y3codec.Codec(), y3codec.PacketReadWriter())
-		//
-		// 		go s.handleStream(qconn, fs, s.logger)
-		// 	}
-		// }(qconn)
 	}
 }
 
@@ -312,8 +298,6 @@ func (s *Server) handleConnection(ctx context.Context, qconn quic.Connection) {
 	s.logger.Info("accept new stream", "remote_addr", qconn.RemoteAddr().String(), "stream_id", stream.StreamID())
 	// handshake for connection
 	fs := NewFrameStream(stream, y3codec.Codec(), y3codec.PacketReadWriter())
-	// handshake if strream is the first stream
-	// if stream.StreamID() == 0 {
 	// handshake
 	hf, err := s.handshake(qconn, fs)
 	if err != nil {
@@ -327,7 +311,6 @@ func (s *Server) handleConnection(ctx context.Context, qconn quic.Connection) {
 		return
 	}
 	// route
-	// TODO: 在这里添加的连接 ID, 目前连接 id 使用的 client_id
 	route, err := s.handleRoute(hf, conn.Metadata())
 	if err != nil {
 		s.logger.Error("failed to handle route", "err", err)
@@ -338,93 +321,6 @@ func (s *Server) handleConnection(ctx context.Context, qconn quic.Connection) {
 	// context
 	c := newContext(conn, route, logger)
 	s.handleContext(c)
-	// }
-	// else {
-	// TODO: conn_id is constant key
-	ctx = context.WithValue(ctx, "client_id", conn.ID())
-	go s.handleStream(ctx, qconn)
-}
-
-// handleStream handles the stream.
-func (s *Server) handleStream(ctx context.Context, qconn quic.Connection) {
-	for {
-		stream, err := qconn.AcceptStream(ctx)
-		if err != nil {
-			s.logger.Warn("failed to accept data stream", "err", err)
-			continue
-		}
-		fs := NewFrameStream(stream, y3codec.Codec(), y3codec.PacketReadWriter())
-		f, err := fs.ReadFrame()
-		if err != nil {
-			s.logger.Warn("failed to read data stream", "err", err)
-			continue
-		}
-		// clientID, ok := ctx.Value("client_id").(string)
-		// if !ok {
-		// 	s.logger.Warn("failed to get client_id from context")
-		// 	continue
-		// }
-
-		switch f.Type() {
-		case frame.TypeStreamFrame:
-			streamFrame := f.(*frame.StreamFrame)
-			tag := streamFrame.Tag
-			s.logger.Info(
-				"!!!handle data stream!!!",
-				"remote_addr", qconn.RemoteAddr().String(),
-				"stream_id", stream.StreamID(),
-				"conn_id", streamFrame.ClientID,
-				"tag", tag,
-			)
-			// route
-			// route := s.router.Route(c.FrameMetadata)
-			// TODO: 开源版本没有使用 metadata
-			route := s.router.Route(nil)
-			if route == nil {
-				errString := "can't find sfn route"
-				s.logger.Warn(errString)
-				continue
-			}
-			// TODO: find sfn ids from the route.
-			// TODO: 这里 source 的数据流, 这里没有 tag 信息,如何找到监控这个 source 的 sfn?
-			connIDs := route.GetForwardRoutes(tag)
-			if len(connIDs) == 0 {
-				s.logger.Warn("no observed", "tag", tag)
-				continue
-			}
-			// TODO: 将 source 流转发到 sfn
-			for _, toID := range connIDs {
-				// TODO: 这里的 to 是 sfn 的主 stream, 如何找到 sfn 的 data stream?
-				// 或者说, 由服务端直接创建?
-				to, ok, err := s.connector.Get(toID)
-				if err != nil {
-					continue
-				}
-				if !ok {
-					s.logger.Error("can't find forward stream", "err", "route sfn error", "forward_conn_id", toID)
-					continue
-				}
-				// TODO: pipe data stream to sfn
-				s.logger.Info("!!!pipe stream to sfn", "tag", tag, "to_id", toID, "to_name", to.Name())
-				buf, err := io.ReadAll(stream)
-				if err != nil {
-					s.logger.Warn("failed to read data stream", "err", err)
-					continue
-				}
-				s.logger.Info("!!!process data stream!!!",
-					"remote_addr", qconn.RemoteAddr().String(),
-					"stream_id", stream.StreamID(),
-					"conn_id", streamFrame.ClientID,
-					"stream_len", len(buf),
-					"stream_buf", string(buf),
-					"tag", tag,
-					"err", err,
-				)
-			}
-		default:
-			s.logger.Warn("!!!unexpected frame!!!", "unexpected_frame_type", f.Type().String())
-		}
-	}
 }
 
 // Logger returns the logger of server.
@@ -527,6 +423,64 @@ func (s *Server) handleDataFrame(c *Context) error {
 	if err != nil {
 		s.logger.Error("encode metadata error", "err", err)
 		return err
+	}
+	// create stream if streamed
+	if streamed {
+		// create stream
+		dataStream, err := from.QuicConnection().OpenStream()
+		if err != nil {
+			s.logger.Error("failed to create stream", "err", err)
+			return err
+		}
+		defer dataStream.Close()
+		dataStreamID := string(dataFrame.Payload)
+		s.logger.Debug("zipper create data stream", "datastream_id", dataStreamID, "client_id", from.ID())
+		streamFrame := &frame.StreamFrame{
+			ID:        dataStreamID,
+			ClientID:  from.ID(),
+			StreamID:  int64(dataStream.StreamID()),
+			ChunkSize: 32 * 1024, // TODO: get from config
+			Tag:       dataFrame.Tag,
+		}
+		// write stream frame to from
+		err = from.WriteFrame(streamFrame)
+		if err != nil {
+			s.logger.Error("failed to write stream frame to main stream", "err", err)
+			return err
+		}
+		// write stream frame to dataStream
+		fs := NewFrameStream(dataStream, y3codec.Codec(), y3codec.PacketReadWriter())
+		err = fs.WriteFrame(streamFrame)
+		if err != nil {
+			s.logger.Error("failed to write stream frame to data stream", "err", err)
+			return err
+		}
+		s.logger.Info("zipper created stream", "id", streamFrame.ID, "stream_id", streamFrame.StreamID, "client_id", streamFrame.ClientID)
+		// TODO: transfer data stream to sfn stream
+		// go func(dataStream quic.Stream, streamFrame *frame.StreamFrame) {
+		// buf, err := io.ReadAll(dataStream)
+		// TEST: test data stream
+		bufSize := int(streamFrame.ChunkSize)
+		buf := make([]byte, bufSize)
+		received := bytes.NewBuffer(nil)
+		for {
+			n, err := dataStream.Read(buf)
+			s.logger.Debug("!!!zipper received bytes!!!", "n", n, "err", err)
+			if err != nil {
+				// BUG: a complete read cannot be guaranteed, why?
+				if err == io.EOF {
+					s.logger.Debug("zipper received data stream done", "client_id", streamFrame.ClientID, "stream_id", streamFrame.StreamID)
+				} else {
+					s.logger.Error("failed to read data stream", "err", err)
+				}
+				break
+				// return
+			}
+			received.Write(buf[:n])
+		}
+		l := received.Len()
+		s.logger.Debug("!!!zipper receive completed!!!", "len", l, "buf", string(received.Bytes()[l-1000:]))
+		// }(dataStream, streamFrame)
 	}
 	dataFrame.Metadata = md
 	s.logger.Debug("zipper metadata", "tid", tid, "sid", sid, "parentTraced", parentTraced, "traced", traced, "from_name", from.Name())

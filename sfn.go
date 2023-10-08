@@ -188,28 +188,31 @@ func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 			}
 			dataFrame.Metadata = newMetadata
 			// TODO: 判断是否是 stream frame
+			// TODO: 根据 MD 判断是否是 stream frame, 如果是调用 client.AcceptStream() 获取数据流, 持久监控这个数据流
 			if core.GetStreamedFromMetadata(newMd) {
-				var streamFrame frame.StreamFrame
-				err = s.client.FrameStream().Codec().Decode(dataFrame.Payload, &streamFrame)
-				if err != nil {
-					slog.Error("sfn StreamFrame decode error", "err", err)
-					return
-				}
-				slog.Info("sfn got stream", "stream_frame", streamFrame)
-				s.client.Logger().Debug("sfn receive stream frame", "source_id", streamFrame.ClientID, "stream_id", streamFrame.StreamID)
+				s.client.Logger().Debug("sfn receive stream frame")
+				/*
+					var streamFrame frame.StreamFrame
+					err = s.client.FrameStream().Codec().Decode(dataFrame.Payload, &streamFrame)
+					if err != nil {
+						slog.Error("sfn StreamFrame decode error", "err", err)
+						return
+					}
+					slog.Info("sfn got stream", "stream_frame", streamFrame)
+					s.client.Logger().Debug("sfn receive stream frame", "source_id", streamFrame.ClientID, "stream_id", streamFrame.StreamID)
 
-				// TODO: 创建一个流实例,对应 source 的 stream
-				sfnStream, err := s.client.RequestStream()
-				if err != nil {
-					s.client.Logger().Error("sfn request stream error", "err", err)
-					return
-				}
-				s.client.Logger().Debug("sfn create stream", "source_id", streamFrame.ClientID, "stream_id", sfnStream.StreamID())
+					// TODO: 创建一个流实例,对应 source 的 stream
+					sfnStream, err := s.client.RequestStream()
+					if err != nil {
+						s.client.Logger().Error("sfn request stream error", "err", err)
+						return
+					}
+					s.client.Logger().Debug("sfn create stream", "source_id", streamFrame.ClientID, "stream_id", sfnStream.StreamID())
 
-				// TODO: 将 zipper 上关联的 source stream 与 sfn stream 关联起来
-				// sourceStream := s.client.GetStream(streamFrame.StreamID)
-				// io.Copy(sfnStream, sourceStream)
-
+					// TODO: 将 zipper 上关联的 source stream 与 sfn stream 关联起来
+					// sourceStream := s.client.GetStream(streamFrame.StreamID)
+					// io.Copy(sfnStream, sourceStream)
+				*/
 			}
 			serverlessCtx := serverless.NewContext(s.client, dataFrame)
 			s.fn(serverlessCtx)
