@@ -463,18 +463,21 @@ func (s *Server) handleDataFrame(c *Context) error {
 		bufSize := int(streamFrame.ChunkSize)
 		buf := make([]byte, bufSize)
 		received := bytes.NewBuffer(nil)
+		done := false
 		for {
+			if done {
+				break
+			}
 			n, err := dataStream.Read(buf)
 			s.logger.Debug("!!!zipper received bytes!!!", "n", n, "err", err)
 			if err != nil {
-				// BUG: a complete read cannot be guaranteed, why?
 				if err == io.EOF {
 					s.logger.Debug("zipper received data stream done", "client_id", streamFrame.ClientID, "stream_id", streamFrame.StreamID)
+					done = true
 				} else {
 					s.logger.Error("failed to read data stream", "err", err)
+					return err
 				}
-				break
-				// return
 			}
 			received.Write(buf[:n])
 		}
