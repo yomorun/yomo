@@ -54,7 +54,7 @@ func (s *wasmServerless) Build(clean bool) error {
 // Run the wasm serverless function
 func (s *wasmServerless) Run(verbose bool) error {
 	// trace
-	tp, shutdown, err := trace.NewTracerProviderWithJaeger("yomo-sfn")
+	tp, shutdown, err := trace.NewTracerProvider("yomo-sfn")
 	if err == nil {
 		pkglog.InfoStatusEvent(os.Stdout, "[sfn] 🛰 trace enabled")
 	}

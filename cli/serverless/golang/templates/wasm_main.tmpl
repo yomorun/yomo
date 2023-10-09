@@ -2,5 +2,7 @@
 func main() {
 	guest.DataTags = DataTags
 	guest.Handler = Handler
+	{{if .WithInitFunc}}
 	guest.Init = Init
+	{{end}}
 }

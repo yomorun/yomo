@@ -4,6 +4,8 @@ version: "3"
 
 output: "prefixed"
 
+env:
+
 tasks:
   run:
     desc: run
@@ -47,7 +49,7 @@ tasks:
     deps: [source-build]
     env:
       YOMO_LOG_LEVEL: error
-      YOMO_TRACE_JAEGER_ENDPOINT: "http://localhost:14268/api/traces"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4318
     cmds:
       - "./bin/source{{exeExt}}"
 
@@ -58,6 +60,7 @@ tasks:
       - "yomo run sfn.wasm"
     env:
       YOMO_LOG_LEVEL: error
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4318
     preconditions:
       - test -f sfn.wasm
 
@@ -67,4 +70,4 @@ tasks:
       - "yomo serve -c ../config.yaml"
     env:
       YOMO_LOG_LEVEL: error
-      YOMO_TRACE_JAEGER_ENDPOINT: "http://localhost:14268/api/traces"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4318

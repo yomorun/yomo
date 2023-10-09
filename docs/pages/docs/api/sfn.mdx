@@ -118,6 +118,10 @@ Write data to [Zipper][zipper].
 
 Close the connection to [Zipper][zipper].
 
+### sfn.Wait()
+
+Wait until the function fulfilled.
+
 ## type SfnOption
 
 ### func WithObserveDataTags(tags ...Tag) SfnOption
@@ -157,7 +161,7 @@ Set the tracer provider for this Source instance.
 - `tp`: The tracer provider.
 
 ```go
-tp, shutdown, err := trace.NewTracerProviderWithJaeger("yomo-sfn")
+tp, shutdown, err := trace.NewTracerProvider("yomo-sfn")
 if err == nil {
 	log.Println("[sfn] 🛰 trace enabled")
 }

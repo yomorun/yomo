@@ -6,7 +6,7 @@ import { Steps } from 'nextra-theme-docs'
 
 # Guide: Tracing the Data Processing Streamline by Jaeger
 
-YoMo support distributed tracing by [OpenTelemetry](https://opentelemetry.io), with first-class support for Jaeger by default (other supports can be changed by modifying the TracerProvider in the source code). To enable distributed tracing, follow the steps below:
+YoMo support distributed tracing by [OpenTelemetry](https://opentelemetry.io), the default is [OTLP HTTP](https://opentelemetry.io/docs/specs/otlp/#otlphttp) exporter.
 
 <Steps>
 
@@ -19,14 +19,16 @@ Follow the [Jaeger Official Guide](https://www.jaegertracing.io/docs/getting-sta
 #### StreamFunction Tracing
 
 ```bash
-YOMO_TRACE_JAEGER_ENDPOINT=http://localhost:14268/api/traces yomo run sfn.wasm
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 yomo run sfn.wasm
 ```
 
 #### Zipper Tracing
 
 ```bash
-YOMO_TRACE_JAEGER_ENDPOINT=http://localhost:14268/api/traces yomo serve -c config.yaml
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 yomo serve -c config.yaml
 ```
+
+See the [configuration options](https://opentelemetry.io/docs/specs/otel/protocol/exporter/#configuration-options) for more details.
 
 ### Dashboard
 

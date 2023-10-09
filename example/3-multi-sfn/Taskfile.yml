@@ -34,8 +34,7 @@ tasks:
       # YOMO_TLS_CACERT_FILE: "../../test/tls/ca.crt"
       # YOMO_TLS_CERT_FILE: "../../test/tls/server.crt"
       # YOMO_TLS_KEY_FILE: "../../test/tls/server.key"
-      #
-      YOMO_TRACE_JAEGER_ENDPOINT: "http://localhost:14268/api/traces"
+      OTEL_EXPORTER_OTLP_ENDPOINT:
 
   source-build:
     desc: build source
@@ -51,7 +50,7 @@ tasks:
       - "./bin/source{{exeExt}}"
     env:
       YOMO_LOG_LEVEL: debug
-      YOMO_TRACE_JAEGER_ENDPOINT: "http://localhost:14268/api/traces"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4318
 
   sfn:
     desc: run stream functions
@@ -64,7 +63,7 @@ tasks:
       - "./bin/sfn-1{{exeExt}}"
     env:
       YOMO_LOG_LEVEL: debug
-      YOMO_TRACE_JAEGER_ENDPOINT: "http://localhost:14268/api/traces"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4318
 
   sfn-2:
     desc: run stream functions 2
@@ -73,7 +72,7 @@ tasks:
       - "./bin/sfn-2{{exeExt}}"
     env:
       YOMO_LOG_LEVEL: debug
-      YOMO_TRACE_JAEGER_ENDPOINT: "http://localhost:14268/api/traces"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4318
 
   sfn-3:
     desc: run stream functions 3
@@ -82,7 +81,7 @@ tasks:
       - "./bin/sfn-3{{exeExt}}"
     env:
       YOMO_LOG_LEVEL: debug
-      YOMO_TRACE_JAEGER_ENDPOINT: "http://localhost:14268/api/traces"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4318
 
   sfn-4:
     desc: run stream functions 4
@@ -91,4 +90,4 @@ tasks:
       - "./bin/sfn-4{{exeExt}}"
     env:
       YOMO_LOG_LEVEL: debug
-      YOMO_TRACE_JAEGER_ENDPOINT: "http://localhost:14268/api/traces"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4318
