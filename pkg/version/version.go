@@ -14,7 +14,7 @@ type Version struct {
 	Patch int
 }
 
-// Parse parses a string into a Version.The string format must follow the `Major.Minor.Patch`
+// Parse parses a string into a Version. The string format must follow the `Major.Minor.Patch`
 // formatting, and the Major, Minor, and Patch components must be numeric. If they are not,
 // a parse error will be returned.
 func Parse(str string) (*Version, error) {

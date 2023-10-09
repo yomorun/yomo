@@ -57,7 +57,7 @@ type HandshakeFrame struct {
 	// AuthPayload is the authentication payload.
 	AuthPayload string
 	// Version is used by the source/sfn to communicate their version to the server.
-	// The version format should follow `https://semver.org`. otherwise, the handshake
+	// The Version format must follow the `Major.Minor.Patch`. otherwise, the handshake
 	// will fail. The client‘s MAJOR and MINOR versions should equal to server's,
 	// otherwise, the zipper will be considered has break-change, the handshake will fail.
 	Version string
