@@ -44,18 +44,23 @@ func (f *DataFrame) Type() Type { return TypeDataFrame }
 // It includes essential details required for the creation of a fresh connection.
 // The server then generates the connection utilizing this provided information.
 type HandshakeFrame struct {
-	// Name is the name of the dataStream that will be created.
+	// Name is the name of the connection that will be created.
 	Name string
-	// ID is the ID of the dataStream that will be created.
+	// ID is the ID of the connection that will be created.
 	ID string
 	// ClientType is the type of client.
 	ClientType byte
-	// ObserveDataTags is the ObserveDataTags of the dataStream that will be created.
+	// ObserveDataTags is the ObserveDataTags of the connection that will be created.
 	ObserveDataTags []Tag
 	// AuthName is the authentication name.
 	AuthName string
 	// AuthPayload is the authentication payload.
 	AuthPayload string
+	// Version is used by the source/sfn to communicate their version to the server.
+	// The version format should follow `https://semver.org`. otherwise, the handshake
+	// will fail. The client‘s MAJOR and MINOR versions should equal to server's,
+	// otherwise, the zipper will be considered has break-change, the handshake will fail.
+	Version string
 }
 
 // Type returns the type of HandshakeFrame.

@@ -135,7 +135,7 @@ func (c *Context) WithFrame(f frame.Frame) error {
 	return nil
 }
 
-// CloseWithError close dataStream with an error string.
+// CloseWithError close connection with an error string.
 func (c *Context) CloseWithError(errString string) {
 	c.Logger.Debug("connection closed", "err", errString)
 

@@ -23,6 +23,7 @@ import (
 	"github.com/yomorun/yomo/pkg/id"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
 	"github.com/yomorun/yomo/pkg/trace"
+	"github.com/yomorun/yomo/pkg/version"
 	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
@@ -103,7 +104,7 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	return s.Serve(ctx, conn)
 }
 
-func (s *Server) handshake(qconn quic.Connection, fs *FrameStream) (bool, router.Route, Connection) {
+func (s *Server) handshake(qconn quic.Connection, fs *FrameStream) (error, router.Route, Connection) {
 	var gerr error
 
 	defer func() {
@@ -117,7 +118,7 @@ func (s *Server) handshake(qconn quic.Connection, fs *FrameStream) (bool, router
 	first, err := fs.ReadFrame()
 	if err != nil {
 		gerr = err
-		return false, nil, nil
+		return gerr, nil, nil
 	}
 
 	switch first.Type() {
@@ -127,24 +128,24 @@ func (s *Server) handshake(qconn quic.Connection, fs *FrameStream) (bool, router
 		conn, err := s.handleHandshakeFrame(qconn, fs, hf)
 		if err != nil {
 			gerr = err
-			return false, nil, conn
+			return gerr, nil, conn
 		}
 
 		route, err := s.handleRoute(hf, conn.Metadata())
 		if err != nil {
 			gerr = err
 		}
-		return true, route, conn
+		return gerr, route, conn
 	default:
 		gerr = fmt.Errorf("yomo: handshake read unexpected frame, read: %s", first.Type().String())
-		return false, nil, nil
+		return gerr, nil, nil
 	}
 }
 
 func (s *Server) handleConnection(qconn quic.Connection, fs *FrameStream, logger *slog.Logger) {
-	ok, route, conn := s.handshake(qconn, fs)
-	if !ok {
-		logger.Error("handshake failed")
+	err, route, conn := s.handshake(qconn, fs)
+	if err != nil {
+		logger.Error("handshake failed", "err", err)
 		return
 	}
 
@@ -227,6 +228,7 @@ func (s *Server) handleRoute(hf *frame.HandshakeFrame, md metadata.M) (router.Ro
 }
 
 func (s *Server) handleHandshakeFrame(qconn quic.Connection, fs *FrameStream, hf *frame.HandshakeFrame) (Connection, error) {
+	// 1. authentication
 	md, ok := auth.Authenticate(s.opts.auths, hf)
 
 	if !ok {
@@ -234,9 +236,33 @@ func (s *Server) handleHandshakeFrame(qconn quic.Connection, fs *FrameStream, hf
 		return nil, fmt.Errorf("authentication failed: client credential name is %s", hf.AuthName)
 	}
 
+	// 2. version negotiation
+	if err := negotiateVersion(hf.Version, Version); err != nil {
+		return nil, err
+	}
+
 	conn := newConnection(hf.Name, hf.ID, ClientType(hf.ClientType), md, hf.ObserveDataTags, qconn, fs)
 
 	return conn, s.connector.Store(hf.ID, conn)
+}
+
+func negotiateVersion(cVersion, sVersion string) error {
+	cv, err := version.Parse(cVersion)
+	if err != nil {
+		return err
+	}
+
+	sv, err := version.Parse(sVersion)
+	if err != nil {
+		return err
+	}
+
+	// If the Major and Minor versions are equal, the server can serve the client.
+	if cv.Major == sv.Major && cv.Minor == sv.Minor {
+		return nil
+	}
+
+	return fmt.Errorf("yomo: version negotiation failed, client=%s, server=%s", cVersion, sVersion)
 }
 
 // Serve the server with a net.PacketConn.

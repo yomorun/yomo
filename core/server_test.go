@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -44,3 +45,46 @@ func (s *mockConnectionInfo) Name() string                 { return s.name }
 func (s *mockConnectionInfo) Metadata() metadata.M         { return s.metadata }
 func (s *mockConnectionInfo) ClientType() ClientType       { return s.clientType }
 func (s *mockConnectionInfo) ObserveDataTags() []frame.Tag { return s.observed }
+
+func Test_negotiateVersion(t *testing.T) {
+	type args struct {
+		cVersion string
+		sVersion string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		wantErr error
+	}{
+		{
+			name: "ok",
+			args: args{
+				cVersion: "1.16.3",
+				sVersion: "1.16.3",
+			},
+			wantErr: nil,
+		},
+		{
+			name: "client empty version",
+			args: args{
+				cVersion: "",
+				sVersion: "1.16.3",
+			},
+			wantErr: errors.New("invalid semantic version, params="),
+		},
+		{
+			name: "not ok",
+			args: args{
+				cVersion: "1.15.0",
+				sVersion: "1.16.3",
+			},
+			wantErr: errors.New("yomo: version negotiation failed, client=1.15.0, server=1.16.3"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := negotiateVersion(tt.args.cVersion, tt.args.sVersion)
+			assert.Equal(t, tt.wantErr, err)
+		})
+	}
+}

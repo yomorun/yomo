@@ -105,6 +105,7 @@ func (c *Client) connect(ctx context.Context, addr string) *connectResult {
 		ObserveDataTags: c.opts.observeDataTags,
 		AuthName:        c.opts.credential.Name(),
 		AuthPayload:     c.opts.credential.Payload(),
+		Version:         Version,
 	}
 
 	if err := fs.WriteFrame(hf); err != nil {
