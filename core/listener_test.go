@@ -51,7 +51,7 @@ func TestFrameConnection(t *testing.T) {
 }
 
 func runListener(t *testing.T) error {
-	listener, err := ListenAddr(testHost, pkgtls.MustCreateServerTLSConfig(testHost), DefalutQuicConfig, y3codec.Codec(), y3codec.PacketReadWriter())
+	listener, err := ListenAddr(testHost, y3codec.Codec(), y3codec.PacketReadWriter(), pkgtls.MustCreateServerTLSConfig(testHost), DefalutQuicConfig)
 	if err != nil {
 		return err
 	}

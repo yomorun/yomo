@@ -252,7 +252,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 	}
 
 	// listen the address
-	listener, err := Listen(conn, tlsConfig, s.opts.quicConfig, y3codec.Codec(), y3codec.PacketReadWriter())
+	listener, err := Listen(conn, y3codec.Codec(), y3codec.PacketReadWriter(), tlsConfig, s.opts.quicConfig)
 	if err != nil {
 		s.logger.Error("failed to listen on quic", "err", err)
 		return err

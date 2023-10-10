@@ -196,8 +196,8 @@ type Listener struct {
 // Listen returns a Listener.
 func Listen(
 	conn net.PacketConn,
-	tlsConfig *tls.Config, quicConfig *quic.Config,
 	codec frame.Codec, prw frame.PacketReadWriter,
+	tlsConfig *tls.Config, quicConfig *quic.Config,
 ) (*Listener, error) {
 	ql, err := quic.Listen(conn, tlsConfig, quicConfig)
 	if err != nil {
@@ -216,8 +216,8 @@ func Listen(
 // ListenAddr listens an address and returns a new Listener.
 func ListenAddr(
 	addr string,
-	tlsConfig *tls.Config, quicConfig *quic.Config,
 	codec frame.Codec, prw frame.PacketReadWriter,
+	tlsConfig *tls.Config, quicConfig *quic.Config,
 ) (*Listener, error) {
 	udpAddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
@@ -228,7 +228,7 @@ func ListenAddr(
 		return nil, err
 	}
 
-	return Listen(conn, tlsConfig, quicConfig, codec, prw)
+	return Listen(conn, codec, prw, tlsConfig, quicConfig)
 }
 
 // Accept accepts FrameConns.
