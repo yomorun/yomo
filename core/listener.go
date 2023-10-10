@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"io"
 	"net"
 
@@ -96,6 +97,22 @@ func (p *FrameConnection) CloseWithError(errString string) error {
 
 	_ = p.stream.Close()
 	return p.conn.CloseWithError(YomoCloseErrorCode, errString)
+}
+
+func IsConnectionClosed(err error) bool {
+	// stream return io.EOF if the connection be closed.
+	if err == io.EOF {
+		return true
+	}
+	// connection receives `YomoCloseErrorCode` if called `CloseWithError()`.
+	if se := new(quic.ApplicationError); errors.Is(err, se) || se.ErrorCode == YomoCloseErrorCode {
+		return true
+	}
+	// context cancel with this error.
+	if se := new(ErrConnectionClosed); errors.Is(err, se) {
+		return true
+	}
+	return false
 }
 
 func (p *FrameConnection) framing() {

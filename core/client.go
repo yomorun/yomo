@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"reflect"
 	"runtime"
 	"time"
@@ -219,7 +218,7 @@ func (c *Client) handleFrameError(err error, reconnection chan<- struct{}) {
 	c.errorfn(err)
 
 	// exit client program if stream has be closed.
-	if err == io.EOF {
+	if IsConnectionClosed(err) {
 		c.ctxCancel(fmt.Errorf("%s: remote shutdown", c.clientType.String()))
 		return
 	}
