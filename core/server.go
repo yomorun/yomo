@@ -424,67 +424,6 @@ func (s *Server) handleDataFrame(c *Context) error {
 		s.logger.Error("encode metadata error", "err", err)
 		return err
 	}
-	// create stream if streamed
-	if streamed {
-		// create stream
-		dataStream, err := from.QuicConnection().OpenStream()
-		if err != nil {
-			s.logger.Error("failed to create stream", "err", err)
-			return err
-		}
-		defer dataStream.Close()
-		dataStreamID := string(dataFrame.Payload)
-		s.logger.Debug("zipper create data stream", "datastream_id", dataStreamID, "client_id", from.ID())
-		streamFrame := &frame.StreamFrame{
-			ID:        dataStreamID,
-			ClientID:  from.ID(),
-			StreamID:  int64(dataStream.StreamID()),
-			ChunkSize: 32 * 1024, // TODO: get from config
-			Tag:       dataFrame.Tag,
-		}
-		// write stream frame to from
-		err = from.WriteFrame(streamFrame)
-		if err != nil {
-			s.logger.Error("failed to write stream frame to main stream", "err", err)
-			return err
-		}
-		// write stream frame to dataStream
-		fs := NewFrameStream(dataStream, y3codec.Codec(), y3codec.PacketReadWriter())
-		err = fs.WriteFrame(streamFrame)
-		if err != nil {
-			s.logger.Error("failed to write stream frame to data stream", "err", err)
-			return err
-		}
-		s.logger.Info("zipper created stream", "id", streamFrame.ID, "stream_id", streamFrame.StreamID, "client_id", streamFrame.ClientID)
-		// TODO: transfer data stream to sfn stream
-		// go func(dataStream quic.Stream, streamFrame *frame.StreamFrame) {
-		// buf, err := io.ReadAll(dataStream)
-		// TEST: test data stream
-		bufSize := int(streamFrame.ChunkSize)
-		buf := make([]byte, bufSize)
-		received := bytes.NewBuffer(nil)
-		done := false
-		for {
-			if done {
-				break
-			}
-			n, err := dataStream.Read(buf)
-			s.logger.Debug("!!!zipper received bytes!!!", "n", n, "err", err)
-			if err != nil {
-				if err == io.EOF {
-					s.logger.Debug("zipper received data stream done", "client_id", streamFrame.ClientID, "stream_id", streamFrame.StreamID)
-					done = true
-				} else {
-					s.logger.Error("failed to read data stream", "err", err)
-					return err
-				}
-			}
-			received.Write(buf[:n])
-		}
-		l := received.Len()
-		s.logger.Debug("!!!zipper receive completed!!!", "len", l, "buf", string(received.Bytes()[l-1000:]))
-		// }(dataStream, streamFrame)
-	}
 	dataFrame.Metadata = md
 	s.logger.Debug("zipper metadata", "tid", tid, "sid", sid, "parentTraced", parentTraced, "traced", traced, "from_name", from.Name())
 	// route
@@ -503,7 +442,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 	c.Logger.Debug("connector snapshot", "tag", dataFrame.Tag, "sfn_conn_ids", connIDs, "connector", s.connector.Snapshot())
 
 	for _, toID := range connIDs {
-		stream, ok, err := s.connector.Get(toID)
+		to, ok, err := s.connector.Get(toID)
 		if err != nil {
 			continue
 		}
@@ -512,15 +451,149 @@ func (s *Server) handleDataFrame(c *Context) error {
 			continue
 		}
 
-		c.Logger.Info("data routing", "tid", tid, "sid", sid, "tag", dataFrame.Tag, "data_length", data_length, "to_id", toID, "to_name", stream.Name())
+		c.Logger.Info("data routing", "tid", tid, "sid", sid, "tag", dataFrame.Tag, "data_length", data_length, "to_id", toID, "to_name", to.Name())
 
 		// write data frame to stream
-		if err := stream.WriteFrame(dataFrame); err != nil {
+		if err := to.WriteFrame(dataFrame); err != nil {
 			c.Logger.Error("failed to write frame for routing data", "err", err)
 		}
 	}
 
+	// data stream
+	if streamed {
+		if err := s.handleDataStream(c, connIDs); err != nil {
+			return err
+		}
+	}
+
 	return nil
+}
+
+func (s *Server) handleDataStream(c *Context, connIDs []string) error {
+	dataFrame := c.Frame.(*frame.DataFrame)
+	// create stream for source
+	sourceStream, err := s.openDataStream(c.Connection, dataFrame)
+	if err != nil {
+		return err
+	}
+	defer sourceStream.Close()
+	// forward source stream to sfn
+	go func(c *Context, sourceStream quic.Stream, connIDs []string) {
+		from := c.Connection
+		if len(connIDs) > 0 {
+			for _, toID := range connIDs {
+				to, ok, err := s.connector.Get(toID)
+				if err != nil {
+					continue
+				}
+				if !ok {
+					c.Logger.Error("can't find forward stream", "err", "route sfn error", "forward_stream_id", toID)
+					continue
+				}
+				c.Logger.Info(
+					"data stream routing",
+					// "tag", dataFrame.Tag,
+					"from_id", from.ID(),
+					"from", from.Name(),
+					"to_id", toID,
+					"to_name", to.Name(),
+				)
+				// create stream for sfn
+				sfnStream, err := s.openDataStream(to, dataFrame)
+				if err != nil {
+					continue
+				}
+				defer sfnStream.Close()
+				// forward source stream to sfn
+				_, err = io.Copy(sfnStream, sourceStream)
+				if err != nil {
+					c.Logger.Error(
+						"failed to forward source stream to sfn",
+						"err", err,
+						"from_id", from.ID(),
+						"from_name", from.Name(),
+						"to_id", toID,
+						"to_name", to.Name(),
+					)
+					continue
+				}
+				c.Logger.Info("forward source stream to sfn", "from_id", from.ID(), "from_name", from.Name(), "to_id", toID, "to_name", to.Name())
+			}
+		} else {
+			c.Logger.Warn("!!!can't find forward stream, ignored!!!")
+			// io.Copy(io.Discard, sourceStream)
+			// TEST: test data stream
+			bufSize := 32 * 1024
+			buf := make([]byte, bufSize)
+			received := bytes.NewBuffer(nil)
+			done := false
+			for {
+				if done {
+					break
+				}
+				n, err := sourceStream.Read(buf)
+				// s.logger.Debug("!!!zipper received bytes!!!", "n", n, "err", err)
+				if err != nil {
+					if err == io.EOF {
+						s.logger.Debug("zipper received data stream done", "stream_id", sourceStream.StreamID)
+						done = true
+					} else {
+						s.logger.Error("failed to read data stream", "err", err)
+						// return err
+						return
+					}
+				}
+				received.Write(buf[:n])
+			}
+			l := received.Len()
+			s.logger.Debug("!!!zipper receive completed!!!", "len", l, "buf", string(received.Bytes()[l-1000:]))
+		}
+	}(c, sourceStream, connIDs)
+
+	// TODO: test servier receive data stream
+	// go func(sourceStream quic.Stream, streamFrame *frame.StreamFrame) {
+	/*
+		go func(sourceStream quic.Stream) {
+			// buf, err := io.ReadAll(dataStream)
+			// TEST: test data stream
+			// bufSize := int(streamFrame.ChunkSize)
+		}(sourceStream)
+	*/
+	return nil
+}
+
+// openDataStream creates a quic stream for data stream.
+func (s *Server) openDataStream(conn Connection, dataFrame *frame.DataFrame) (quic.Stream, error) {
+	// open data stream
+	dataStream, err := conn.QuicConnection().OpenStream()
+	if err != nil {
+		s.logger.Error("failed to create data stream", "err", err)
+		return nil, err
+	}
+	dataStreamID := string(dataFrame.Payload)
+	s.logger.Debug("creating data stream", "datastream_id", dataStreamID, "client_id", conn.ID())
+	streamFrame := &frame.StreamFrame{
+		ID:        dataStreamID,
+		ClientID:  conn.ID(),
+		StreamID:  int64(dataStream.StreamID()),
+		ChunkSize: 32 * 1024, // TODO: get from config
+		Tag:       dataFrame.Tag,
+	}
+	// write stream frame to from
+	err = conn.WriteFrame(streamFrame)
+	if err != nil {
+		s.logger.Error("failed to write stream frame to main stream", "err", err)
+		return nil, err
+	}
+	// write stream frame to dataStream
+	fs := NewFrameStream(dataStream, y3codec.Codec(), y3codec.PacketReadWriter())
+	err = fs.WriteFrame(streamFrame)
+	if err != nil {
+		s.logger.Error("failed to write stream frame to data stream", "err", err)
+		return nil, err
+	}
+	s.logger.Info("created data stream", "id", streamFrame.ID, "stream_id", streamFrame.StreamID, "client_id", streamFrame.ClientID)
+	return dataStream, nil
 }
 
 func (s *Server) handleBackflowFrame(c *Context) error {
