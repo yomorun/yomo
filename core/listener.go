@@ -11,7 +11,8 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 )
 
-type FrameConnection struct {
+// FrameConn is a connection that transmit data in frame formatting.
+type FrameConn struct {
 	ctx       context.Context
 	ctxCancel context.CancelCauseFunc
 	frameCh   chan frame.Frame
@@ -22,12 +23,13 @@ type FrameConnection struct {
 	prw       frame.PacketReadWriter
 }
 
+// DialAddr dials address and returns a new FrameConn.
 func DialAddr(
 	ctx context.Context,
 	addr string,
 	codec frame.Codec, prw frame.PacketReadWriter,
 	tlsConfig *tls.Config, quicConfig *quic.Config,
-) (*FrameConnection, error) {
+) (*FrameConn, error) {
 	qconn, err := quic.DialAddr(ctx, addr, tlsConfig, quicConfig)
 	if err != nil {
 		return nil, err
@@ -38,16 +40,16 @@ func DialAddr(
 		return nil, err
 	}
 
-	return newFrameConnection(qconn, stream, codec, prw), nil
+	return newFrameConn(qconn, stream, codec, prw), nil
 }
 
-func newFrameConnection(
+func newFrameConn(
 	qconn quic.Connection, stream quic.Stream,
 	codec frame.Codec, prw frame.PacketReadWriter,
-) *FrameConnection {
+) *FrameConn {
 	ctx, ctxCancel := context.WithCancelCause(context.Background())
 
-	conn := &FrameConnection{
+	conn := &FrameConn{
 		ctx:       ctx,
 		ctxCancel: ctxCancel,
 		frameCh:   make(chan frame.Frame),
@@ -68,23 +70,31 @@ func newFrameConnection(
 // If the Connection implemented by quic is closed, the quic ApplicationErrorCode is always 0x13.
 const YomoCloseErrorCode = quic.ApplicationErrorCode(0x13)
 
-func (p *FrameConnection) Context() context.Context {
+// Context returns FrameConn.Context.
+// The Context be used to manage the lifecycle of connection.
+func (p *FrameConn) Context() context.Context {
 	return p.ctx
 }
 
-func (p *FrameConnection) RemoteAddr() net.Addr {
+// RemoteAddr returns the remote address of connection.
+func (p *FrameConn) RemoteAddr() net.Addr {
 	return p.conn.RemoteAddr()
 }
 
+// ErrConnectionClosed be returned when connection.
+// if connecton be closed, the stream and connection will all receive this error.
 type ErrConnectionClosed struct {
 	Message string
 }
 
+// Error implements error interface and return the reason why connection be closed.
 func (e *ErrConnectionClosed) Error() string {
 	return e.Message
 }
 
-func (p *FrameConnection) CloseWithError(errString string) error {
+// CloseWithError closes connection with an error message.
+// if connection be closed, the connection is unavailable.
+func (p *FrameConn) CloseWithError(errString string) error {
 	select {
 	case <-p.ctx.Done():
 		return nil
@@ -92,45 +102,26 @@ func (p *FrameConnection) CloseWithError(errString string) error {
 	}
 	p.ctxCancel(&ErrConnectionClosed{errString})
 
-	close(p.frameCh)
-	close(p.streamCh)
-
-	_ = p.stream.Close()
+	// _ = p.stream.Close()
 	return p.conn.CloseWithError(YomoCloseErrorCode, errString)
 }
 
-func IsConnectionClosed(err error) bool {
-	// stream return io.EOF if the connection be closed.
-	if err == io.EOF {
-		return true
-	}
-	// connection receives `YomoCloseErrorCode` if called `CloseWithError()`.
-	if se := new(quic.ApplicationError); errors.Is(err, se) || se.ErrorCode == YomoCloseErrorCode {
-		return true
-	}
-	// context cancel with this error.
-	if se := new(ErrConnectionClosed); errors.Is(err, se) {
-		return true
-	}
-	return false
-}
-
-func (p *FrameConnection) framing() {
+func (p *FrameConn) framing() {
 	for {
 		fType, b, err := p.prw.ReadPacket(p.stream)
 		if err != nil {
-			p.ctxCancel(err)
+			p.ctxCancel(convertErrorToConnectionClosed(err))
 			return
 		}
 
 		f, err := frame.NewFrame(fType)
 		if err != nil {
-			p.ctxCancel(err)
+			p.ctxCancel(convertErrorToConnectionClosed(err))
 			return
 		}
 
 		if err := p.codec.Decode(b, f); err != nil {
-			p.ctxCancel(err)
+			p.ctxCancel(convertErrorToConnectionClosed(err))
 			return
 		}
 
@@ -138,26 +129,36 @@ func (p *FrameConnection) framing() {
 	}
 }
 
-func (p *FrameConnection) ReadFrame() <-chan frame.Frame {
+func convertErrorToConnectionClosed(err error) error {
+	if se := new(quic.ApplicationError); errors.As(err, &se) {
+		return &ErrConnectionClosed{se.ErrorMessage}
+	}
+	return err
+}
+
+// ReadFrame returns a channel that can retrive frames from it.
+func (p *FrameConn) ReadFrame() <-chan frame.Frame {
 	return p.frameCh
 }
 
-func (p *FrameConnection) streaming() {
+func (p *FrameConn) streaming() {
 	for {
 		reader, err := p.conn.AcceptUniStream(p.ctx)
 		if err != nil {
-			p.ctxCancel(err)
+			p.ctxCancel(convertErrorToConnectionClosed(err))
 			return
 		}
 		p.streamCh <- reader
 	}
 }
 
-func (p *FrameConnection) AcceptStream() <-chan io.Reader {
+// ReadFrame returns a channel that can retrive streams from it.
+func (p *FrameConn) AcceptStream() <-chan io.Reader {
 	return p.streamCh
 }
 
-func (p *FrameConnection) WriteFrame(f frame.Frame) error {
+// WriteFrame writes a frame to connection.
+func (p *FrameConn) WriteFrame(f frame.Frame) error {
 	select {
 	case <-p.ctx.Done():
 		return p.ctx.Err()
@@ -172,7 +173,8 @@ func (p *FrameConnection) WriteFrame(f frame.Frame) error {
 	return p.prw.WritePacket(p.stream, f.Type(), b)
 }
 
-func (p *FrameConnection) OpenStream() (io.WriteCloser, error) {
+// OpenStream opens a stream from connection.
+func (p *FrameConn) OpenStream() (io.WriteCloser, error) {
 	select {
 	case <-p.ctx.Done():
 		return nil, p.ctx.Err()
@@ -182,12 +184,14 @@ func (p *FrameConnection) OpenStream() (io.WriteCloser, error) {
 	return p.conn.OpenUniStream()
 }
 
+// Listener listens a net.PacketConn and accepts connections.
 type Listener struct {
 	underlying *quic.Listener
 	codec      frame.Codec
 	prw        frame.PacketReadWriter
 }
 
+// Listen returns a Listener.
 func Listen(
 	conn net.PacketConn,
 	tlsConfig *tls.Config, quicConfig *quic.Config,
@@ -207,6 +211,7 @@ func Listen(
 	return listener, err
 }
 
+// ListenAddr listens an address and returns a new Listener.
 func ListenAddr(
 	addr string,
 	tlsConfig *tls.Config, quicConfig *quic.Config,
@@ -224,7 +229,8 @@ func ListenAddr(
 	return Listen(conn, tlsConfig, quicConfig, codec, prw)
 }
 
-func (listener *Listener) Accept(ctx context.Context) (*FrameConnection, error) {
+// Accept accepts FrameConns.
+func (listener *Listener) Accept(ctx context.Context) (*FrameConn, error) {
 	qconn, err := listener.underlying.Accept(ctx)
 	if err != nil {
 		return nil, err
@@ -234,9 +240,11 @@ func (listener *Listener) Accept(ctx context.Context) (*FrameConnection, error) 
 		return nil, err
 	}
 
-	return newFrameConnection(qconn, stream, listener.codec, listener.prw), nil
+	return newFrameConn(qconn, stream, listener.codec, listener.prw), nil
 }
 
+// Close closes listener.
+// If listener be closed, all connection receive code=0, message="" errors.
 func (listener *Listener) Close() error {
 	return listener.underlying.Close()
 }

@@ -11,7 +11,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
@@ -32,9 +31,6 @@ var ErrServerClosed = errors.New("yomo: Server closed")
 
 // FrameHandler is the handler for frame.
 type FrameHandler func(c *Context) error
-
-// ConnectionHandler is the handler for quic connection
-type ConnectionHandler func(conn quic.Connection)
 
 // Server is the underlying server of Zipper
 type Server struct {
@@ -103,7 +99,7 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	return s.Serve(ctx, conn)
 }
 
-func (s *Server) handshake(fconn *FrameConnection) (bool, router.Route, Connection) {
+func (s *Server) handshake(fconn *FrameConn) (bool, router.Route, Connection) {
 	var gerr error
 
 	defer func() {
@@ -141,7 +137,7 @@ func (s *Server) handshake(fconn *FrameConnection) (bool, router.Route, Connecti
 	}
 }
 
-func (s *Server) handleConnection(fconn *FrameConnection, logger *slog.Logger) {
+func (s *Server) handleConnection(fconn *FrameConn, logger *slog.Logger) {
 	ok, route, conn := s.handshake(fconn)
 	if !ok {
 		logger.Error("handshake failed")
@@ -225,7 +221,7 @@ func (s *Server) handleRoute(hf *frame.HandshakeFrame, md metadata.M) (router.Ro
 	return route, nil
 }
 
-func (s *Server) handleHandshakeFrame(fconn *FrameConnection, hf *frame.HandshakeFrame) (Connection, error) {
+func (s *Server) handleHandshakeFrame(fconn *FrameConn, hf *frame.HandshakeFrame) (Connection, error) {
 	md, ok := auth.Authenticate(s.opts.auths, hf)
 
 	if !ok {

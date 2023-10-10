@@ -69,7 +69,7 @@ func NewClient(appName string, clientType ClientType, opts ...ClientOption) *Cli
 	}
 }
 
-func (c *Client) connect(ctx context.Context, addr string) (*FrameConnection, error) {
+func (c *Client) connect(ctx context.Context, addr string) (*FrameConn, error) {
 	conn, err := DialAddr(ctx, addr, y3codec.Codec(), y3codec.PacketReadWriter(), c.opts.tlsConfig, c.opts.quicConfig)
 	if err != nil {
 		return conn, err
@@ -106,7 +106,7 @@ func (c *Client) connect(ctx context.Context, addr string) (*FrameConnection, er
 
 }
 
-func (c *Client) runBackground(ctx context.Context, addr string, conn *FrameConnection) {
+func (c *Client) runBackground(ctx context.Context, addr string, conn *FrameConn) {
 	reconnection := make(chan struct{})
 
 	go c.handleReadFrames(conn, reconnection)
@@ -218,8 +218,8 @@ func (c *Client) handleFrameError(err error, reconnection chan<- struct{}) {
 	c.errorfn(err)
 
 	// exit client program if stream has be closed.
-	if IsConnectionClosed(err) {
-		c.ctxCancel(fmt.Errorf("%s: remote shutdown", c.clientType.String()))
+	if se := new(ErrConnectionClosed); errors.As(err, &se) {
+		c.ctxCancel(fmt.Errorf("%s: shutdown with error=%s", c.clientType.String(), se.Error()))
 		return
 	}
 
@@ -236,7 +236,7 @@ func (c *Client) Wait() {
 	<-c.ctx.Done()
 }
 
-func (c *Client) handleReadFrames(fconn *FrameConnection, reconnection chan struct{}) {
+func (c *Client) handleReadFrames(fconn *FrameConn, reconnection chan struct{}) {
 	for {
 		select {
 		case <-fconn.Context().Done():

@@ -23,7 +23,7 @@ type ConnectionInfo interface {
 // Connection be used to read and write frames, and be managed by Connector.
 type Connection interface {
 	ConnectionInfo
-	FrameConn() *FrameConnection
+	FrameConn() *FrameConn
 }
 
 type connection struct {
@@ -32,12 +32,12 @@ type connection struct {
 	clientType      ClientType
 	metadata        metadata.M
 	observeDataTags []uint32
-	fconn           *FrameConnection
+	fconn           *FrameConn
 }
 
 func newConnection(
 	name string, id string, clientType ClientType, md metadata.M, tags []uint32,
-	fconn *FrameConnection) *connection {
+	fconn *FrameConn) *connection {
 	return &connection{
 		name:            name,
 		id:              id,
@@ -68,6 +68,6 @@ func (c *connection) ClientType() ClientType {
 	return c.clientType
 }
 
-func (c *connection) FrameConn() *FrameConnection {
+func (c *connection) FrameConn() *FrameConn {
 	return c.fconn
 }
