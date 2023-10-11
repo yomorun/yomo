@@ -178,7 +178,7 @@ func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 				return
 			}
 
-			newMd, deferFunc := ExtendTraceMetadata(md, s.client.ClientID(), s.client.Name(), s.client.TracerProvider(), s.client.Logger())
+			newMd, deferFunc := ExtendTraceMetadata(md, s.client.ClientID(), s.client.Name(), tp, s.client.Logger())
 			defer deferFunc()
 
 			newMetadata, err := newMd.Encode()
@@ -189,10 +189,6 @@ func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 			dataFrame.Metadata = newMetadata
 			serverlessCtx := serverless.NewContext(s.client, dataFrame)
 			s.fn(serverlessCtx)
-			// streamed := core.GetStreamedFromMetadata(newMd)
-			// if streamed {
-			// 	s.requestStream(context.Background(), dataFrame)
-			// }
 		}(tp, dataFrame)
 	} else if s.pfn != nil {
 		data := dataFrame.Payload

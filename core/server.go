@@ -550,15 +550,6 @@ func (s *Server) handleDataStream(c *Context, connIDs []string) error {
 		}
 	}(c, sourceStream, connIDs)
 
-	// TODO: test servier receive data stream
-	// go func(sourceStream quic.Stream, streamFrame *frame.StreamFrame) {
-	/*
-		go func(sourceStream quic.Stream) {
-			// buf, err := io.ReadAll(dataStream)
-			// TEST: test data stream
-			// bufSize := int(streamFrame.ChunkSize)
-		}(sourceStream)
-	*/
 	return nil
 }
 

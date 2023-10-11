@@ -117,9 +117,7 @@ func (c *Context) requestStream(ctx context.Context) (quic.Stream, error) {
 	client.Logger().Debug("sfn receive data stream -- start")
 	// process data stream
 STREAM:
-	// fmt.Printf("client: %+v\n", client)
 	qconn := client.Connection()
-	// fmt.Printf("quic connection: %+v\n", qconn)
 	dataStream, err := qconn.AcceptStream(ctx)
 	if err != nil {
 		client.Logger().Error("sfn request stream error", "err", err)

@@ -10,7 +10,6 @@ import (
 	"runtime"
 	"sync/atomic"
 	"time"
-	"unsafe"
 
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/frame"
@@ -39,10 +38,10 @@ type Client struct {
 
 	writeFrameChan chan frame.Frame
 
-	// quic connection
-	conn quic.Connection
-	// frame stream
-	fs *FrameStream
+	// conn quic.Connection
+	conn atomic.Pointer[quic.Connection]
+	// fs frame stream
+	fs atomic.Pointer[FrameStream]
 }
 
 // NewClient creates a new YoMo-Client.
@@ -399,9 +398,9 @@ func (c *Client) RequestStream() (quic.Stream, error) {
 // PipeStream pipe a stream to server.
 func (c *Client) PipeStream(ctx context.Context, dataStreamID string, stream io.Reader) error {
 	c.logger.Debug("client pipe stream -- start")
-	// for {
-	qconn := c.Connection()
 STREAM:
+	qconn := c.Connection()
+	c.logger.Info("client quic connection", "qconn=nil", qconn == nil)
 	dataStream, err := qconn.AcceptStream(ctx)
 	if err != nil {
 		c.logger.Error("client accept data stream error", "err", err)
@@ -461,14 +460,13 @@ STREAM:
 		c.logger.Error("!!!unexpected frame!!!", "unexpected_frame_type", f.Type().String())
 		return errors.New("unexpected frame")
 	}
-	// }
 	c.logger.Debug("client pipe stream -- end")
 	return nil
 }
 
 // Connection returns the connection of client.
 func (c *Client) Connection() quic.Connection {
-	conn := (*quic.Connection)(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&c.conn))))
+	conn := c.conn.Load()
 	if conn != nil {
 		return *conn
 	}
@@ -477,15 +475,15 @@ func (c *Client) Connection() quic.Connection {
 
 // setConnection set the connection of client.
 func (c *Client) setConnection(conn *quic.Connection) {
-	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&c.conn)), unsafe.Pointer(conn))
+	c.conn.Store(conn)
 }
 
 // FrameStream returns the FrameStream of client.
 func (c *Client) FrameStream() *FrameStream {
-	return (*FrameStream)(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&c.fs))))
+	return c.fs.Load()
 }
 
 // setFrameStream set the FrameStream of client.
 func (c *Client) setFrameStream(fs *FrameStream) {
-	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&c.fs)), unsafe.Pointer(fs))
+	c.fs.Store(fs)
 }
