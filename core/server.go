@@ -363,7 +363,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 			span, err = trace.NewSpan(tp, "zipper", "handle DataFrame", "", "")
 		}
 		if err != nil {
-			s.logger.Error("zipper trace error", "err", err)
+			c.Logger.Error("zipper trace error", "err", err)
 		} else {
 			defer span.End()
 			tid = span.SpanContext().TraceID().String()
@@ -372,11 +372,11 @@ func (s *Server) handleDataFrame(c *Context) error {
 		}
 	}
 	if tid == "" {
-		s.logger.Debug("zipper create new tid")
+		c.Logger.Debug("zipper create new tid")
 		tid = id.TID()
 	}
 	if sid == "" {
-		s.logger.Debug("zipper create new sid")
+		c.Logger.Debug("zipper create new sid")
 		sid = id.SID()
 	}
 	// reallocate metadata with new TID and SID
@@ -385,11 +385,11 @@ func (s *Server) handleDataFrame(c *Context) error {
 	SetTracedToMetadata(c.FrameMetadata, traced || parentTraced)
 	md, err := c.FrameMetadata.Encode()
 	if err != nil {
-		s.logger.Error("encode metadata error", "err", err)
+		c.Logger.Error("encode metadata error", "err", err)
 		return err
 	}
 	dataFrame.Metadata = md
-	s.logger.Debug("zipper metadata", "tid", tid, "sid", sid, "parentTraced", parentTraced, "traced", traced, "frome_stream_name", from.Name())
+	c.Logger.Debug("zipper metadata", "tid", tid, "sid", sid, "parentTraced", parentTraced, "traced", traced, "frome_stream_name", from.Name())
 	// route
 	route := s.router.Route(c.FrameMetadata)
 	if route == nil {

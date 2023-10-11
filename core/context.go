@@ -132,6 +132,9 @@ func (c *Context) WithFrame(f frame.Frame) error {
 	c.Frame = df
 	c.FrameMetadata = fmd
 
+	// log with tid
+	c.Logger = c.BaseLogger.With("tid", GetTIDFromMetadata(fmd))
+
 	return nil
 }
 
