@@ -2,7 +2,6 @@ package core
 
 import (
 	"github.com/yomorun/yomo/core/metadata"
-	"golang.org/x/exp/slog"
 )
 
 const (
@@ -67,18 +66,4 @@ func SetTracedToMetadata(m metadata.M, traced bool) {
 		tracedString = "true"
 	}
 	m.Set(MetaTraced, tracedString)
-}
-
-// MetadataSlogAttr returns slog.Attr from metadata.
-func MetadataSlogAttr(md metadata.M) slog.Attr {
-	kvStrings := make([]any, len(md)*2)
-	i := 0
-	for k, v := range md {
-		kvStrings[i] = k
-		i++
-		kvStrings[i] = v
-		i++
-	}
-
-	return slog.Group("metadata", kvStrings...)
 }

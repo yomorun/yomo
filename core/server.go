@@ -524,7 +524,11 @@ func (s *Server) dispatchToDownstreams(c *Context) {
 	dataFrame.Metadata = mdBytes
 
 	for _, ds := range s.downstreams {
-		c.Logger.Info("dispatching to downstream", "tid", tid, "sid", sid, "tag", dataFrame.Tag, "data_length", len(dataFrame.Payload), "downstream_id", ds.ClientID())
+		c.Logger.Info(
+			"dispatching to downstream",
+			"tid", tid, "sid", sid, "tag", dataFrame.Tag, "data_length", len(dataFrame.Payload),
+			"downstream_id", ds.ClientID(), "downstream_name", ds.Name(),
+		)
 		_ = ds.WriteFrame(dataFrame)
 	}
 }
