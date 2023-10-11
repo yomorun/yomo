@@ -142,7 +142,7 @@ func TestFrameRoundTrip(t *testing.T) {
 	err = sfn.WriteFrame(dataFrame)
 	assert.NoError(t, err)
 
-	assertDataFrame(t, dataFrame.Tag, sfnMd, dataFrame.Payload, recorder)
+	assertDownstreamDataFrame(t, dataFrame.Tag, sfnMd, dataFrame.Payload, recorder)
 
 	stats := server.StatsFunctions()
 	nameList := []string{}
@@ -168,7 +168,7 @@ func TestFrameRoundTrip(t *testing.T) {
 	err = source.WriteFrame(dataFrame)
 	assert.NoError(t, err, "source write dataFrame must be success")
 
-	assertDataFrame(t, dataFrame.Tag, md, dataFrame.Payload, recorder)
+	assertDownstreamDataFrame(t, dataFrame.Tag, md, dataFrame.Payload, recorder)
 
 	assert.NoError(t, source.Close(), "source client.Close() should not return error")
 	assert.NoError(t, sfn.Close(), "sfn client.Close() should not return error")
@@ -275,7 +275,7 @@ func (w *frameWriterRecorder) ReadFrameContent() (frame.Tag, metadata.M, []byte)
 	return dataFrame.Tag, md, dataFrame.Payload
 }
 
-func assertDataFrame(t *testing.T, tag uint32, md metadata.M, payload []byte, recorder *frameWriterRecorder) {
+func assertDownstreamDataFrame(t *testing.T, tag uint32, md metadata.M, payload []byte, recorder *frameWriterRecorder) {
 	// wait for the downstream to finish writing.
 	time.Sleep(time.Second)
 
