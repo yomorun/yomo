@@ -1,7 +1,6 @@
 package core
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -501,6 +500,7 @@ func (s *Server) handleDataStream(c *Context, connIDs []string) error {
 				// create stream for sfn
 				sfnStream, err := s.openDataStream(to, dataFrame)
 				if err != nil {
+					fallback(sourceStream)
 					continue
 				}
 				defer sfnStream.Close()
@@ -515,42 +515,37 @@ func (s *Server) handleDataStream(c *Context, connIDs []string) error {
 						"to_id", toID,
 						"to_name", to.Name(),
 					)
+					fallback(sourceStream)
 					continue
 				}
 				c.Logger.Info("forward source stream to sfn", "from_id", from.ID(), "from_name", from.Name(), "to_id", toID, "to_name", to.Name())
 			}
 		} else {
-			c.Logger.Warn("!!!can't find forward stream, ignored!!!")
-			// io.Copy(io.Discard, sourceStream)
+			c.Logger.Warn("!!!no connections available, ignored!!!")
+			fallback(sourceStream)
 			// TEST: test data stream
-			bufSize := 32 * 1024
-			buf := make([]byte, bufSize)
-			received := bytes.NewBuffer(nil)
-			done := false
-			for {
-				if done {
-					break
-				}
-				n, err := sourceStream.Read(buf)
-				// s.logger.Debug("!!!zipper received bytes!!!", "n", n, "err", err)
+			/*
+				buf, err := io.ReadAll(sourceStream)
 				if err != nil {
-					if err == io.EOF {
-						s.logger.Debug("zipper received data stream done", "stream_id", sourceStream.StreamID)
-						done = true
-					} else {
-						s.logger.Error("failed to read data stream", "err", err)
-						// return err
-						return
-					}
+					c.Logger.Error("failed to read data stream", "err", err)
+					return
 				}
-				received.Write(buf[:n])
-			}
-			l := received.Len()
-			s.logger.Debug("!!!zipper receive completed!!!", "len", l, "buf", string(received.Bytes()[l-1000:]))
+				bufString := string(buf)
+				l := len(buf)
+				if l > 1000 {
+					bufString = string(buf[l-1000:])
+				}
+				c.Logger.Debug("!!!zipper receive completed!!!", "len", l, "buf", bufString)
+			*/
 		}
 	}(c, sourceStream, connIDs)
 
 	return nil
+}
+
+// fallback is used to discard the data stream.
+func fallback(reader io.Reader) {
+	io.Copy(io.Discard, reader)
 }
 
 // openDataStream creates a quic stream for data stream.
@@ -583,7 +578,7 @@ func (s *Server) openDataStream(conn Connection, dataFrame *frame.DataFrame) (qu
 		s.logger.Error("failed to write stream frame to data stream", "err", err)
 		return nil, err
 	}
-	s.logger.Info("created data stream", "id", streamFrame.ID, "stream_id", streamFrame.StreamID, "client_id", streamFrame.ClientID)
+	s.logger.Info("created data stream", "datastream_id", streamFrame.ID, "stream_id", streamFrame.StreamID, "client_id", streamFrame.ClientID)
 	return dataStream, nil
 }
 

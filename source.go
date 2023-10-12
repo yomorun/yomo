@@ -2,7 +2,9 @@ package yomo
 
 import (
 	"context"
+	"errors"
 	"io"
+	"time"
 
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
@@ -110,6 +112,8 @@ func (s *yomoSource) SetReceiveHandler(fn func(uint32, []byte)) {
 
 // Pipe pipe the stream data to zipper.
 func (s *yomoSource) Pipe(tag uint32, reader io.Reader) error {
+	// NOTE: this is a simple implementation, we will improve it later.
+PIPE:
 	md, deferFunc := TraceMetadata(s.client.ClientID(), s.name, true, s.client.TracerProvider(), s.client.Logger())
 	defer deferFunc()
 	// metadata
@@ -133,7 +137,18 @@ func (s *yomoSource) Pipe(tag uint32, reader io.Reader) error {
 	}
 	s.client.Logger().Debug("source write stream frame", "tag", tag)
 	s.client.Logger().Debug("source pipe stream...", "tag", tag)
-	return s.client.PipeStream(context.Background(), dataStreamID, reader)
+	err = s.client.PipeStream(dataStreamID, reader)
+	if err != nil {
+		// process reconnect
+		if errors.As(err, new(core.ErrAuthenticateFailed)) {
+			return err
+		}
+		s.client.Logger().Error("source pipe stream error", "err", err)
+		time.Sleep(core.DefaultReconnectInterval)
+		goto PIPE
+	}
+
+	return nil
 }
 
 // TraceMetadata generates source trace metadata.

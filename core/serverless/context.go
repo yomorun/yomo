@@ -3,6 +3,7 @@ package serverless
 
 import (
 	"context"
+	"fmt"
 	"io"
 
 	"github.com/quic-go/quic-go"
@@ -35,10 +36,11 @@ func NewContext(client *core.Client, dataFrame *frame.DataFrame) *Context {
 	}
 	// stream
 	if c.streamed {
-		stream, err := c.requestStream(context.Background())
+		stream, err := c.readStream(context.Background())
 		if err == nil {
-			c.client.Logger().Info("[context] request stream success")
 			c.stream = stream
+		} else {
+			c.client.Logger().Error("context read stream error", "err", err)
 		}
 	}
 	return c
@@ -76,54 +78,24 @@ func (c *Context) Streamed() bool {
 
 // Stream returns the stream.
 func (c *Context) Stream() io.Reader {
-	// TODO: need to improvement
 	defer c.stream.Close()
 	return c.stream
-	/*
-		// TEST: test data stream
-		dataStream := c.stream
-		defer dataStream.Close()
-		bufSize := 32 * 1024
-		buf := make([]byte, bufSize)
-		received := bytes.NewBuffer(nil)
-		done := false
-		for {
-			if done {
-				break
-			}
-			n, err := dataStream.Read(buf)
-			// c.client.Logger().Debug("!!!context received bytes!!!", "n", n, "err", err)
-			if err != nil {
-				if err == io.EOF {
-					c.client.Logger().Debug("context received data stream done")
-					done = true
-				} else {
-					c.client.Logger().Error("failed to read data stream", "err", err)
-					break
-				}
-			}
-			received.Write(buf[:n])
-		}
-		l := received.Len()
-		c.client.Logger().Debug("!!!context receive completed!!!", "len", l, "buf", string(received.Bytes()[l-1000:]))
-
-		return nil
-	*/
 }
 
-func (c *Context) requestStream(ctx context.Context) (quic.Stream, error) {
+func (c *Context) readStream(ctx context.Context) (quic.Stream, error) {
 	client := c.client
 	dataFrame := c.dataFrame
-	client.Logger().Debug("sfn receive data stream -- start")
+	dataStreamID := string(dataFrame.Payload)
+	client.Logger().Debug(fmt.Sprintf("context receive stream[%s] -- start", dataStreamID))
 	// process data stream
 STREAM:
 	qconn := client.Connection()
 	dataStream, err := qconn.AcceptStream(ctx)
 	if err != nil {
-		client.Logger().Error("sfn request stream error", "err", err)
+		client.Logger().Error("context request stream error", "err", err)
 		return nil, err
 	}
-	client.Logger().Debug("sfn accept stream success", "stream_id", dataStream.StreamID())
+	client.Logger().Debug("context accept stream success", "stream_id", dataStream.StreamID())
 	// read stream frame
 	fs := core.NewFrameStream(dataStream, y3codec.Codec(), y3codec.PacketReadWriter())
 	f, err := fs.ReadFrame()
@@ -131,8 +103,6 @@ STREAM:
 		client.Logger().Warn("failed to read data stream", "err", err)
 		return nil, err
 	}
-	// raw data stream id
-	dataStreamID := string(dataFrame.Payload)
 	switch f.Type() {
 	case frame.TypeStreamFrame:
 		streamFrame := f.(*frame.StreamFrame)
@@ -154,13 +124,12 @@ STREAM:
 			"datastream_id", streamFrame.ID,
 			"stream_id", dataStream.StreamID(),
 			"client_id", streamFrame.ClientID,
-			"id", streamFrame.ID,
 			"tag", streamFrame.Tag,
 		)
 	default:
 		client.Logger().Error("!!!unexpected frame!!!", "unexpected_frame_type", f.Type().String())
 	}
-	client.Logger().Debug("sfn receive data stream -- end")
+	client.Logger().Debug(fmt.Sprintf("context receive stream[%s] -- end", dataStreamID))
 
 	return dataStream, nil
 }

@@ -8,6 +8,7 @@ import (
 	"io"
 	"reflect"
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -17,6 +18,11 @@ import (
 	"github.com/yomorun/yomo/pkg/id"
 	oteltrace "go.opentelemetry.io/otel/trace"
 	"golang.org/x/exp/slog"
+)
+
+const (
+	// DefaultReconnectInterval is the default interval of reconnecting to zipper.
+	DefaultReconnectInterval = 1 * time.Second
 )
 
 // Client is the abstraction of a YoMo-Client. a YoMo-Client can be
@@ -42,6 +48,8 @@ type Client struct {
 	conn atomic.Pointer[quic.Connection]
 	// fs frame stream
 	fs atomic.Pointer[FrameStream]
+	// data streams
+	dataStreams sync.Map
 }
 
 // NewClient creates a new YoMo-Client.
@@ -161,7 +169,7 @@ func (c *Client) runBackground(ctx context.Context, addr string, conn quic.Conne
 					return
 				}
 				c.logger.Error("reconnect to zipper error", "err", cr.err)
-				time.Sleep(time.Second)
+				time.Sleep(DefaultReconnectInterval)
 				goto reconnect
 			}
 			fs = cr.fs
@@ -374,94 +382,108 @@ func (e ErrAuthenticateFailed) Error() string {
 	return e.ReasonFromServer
 }
 
-/*
-// RequestStream request a stream from server.
-func (c *Client) RequestStream() (quic.Stream, error) {
-	// request data stream
-	c.logger.Debug("client request data stream")
-	dataStream, err := c.Connection().OpenStream()
-	if err != nil {
-		if err == io.EOF {
-			c.logger.Info("client request data stream EOF")
-			dataStream.Close()
-			return nil, err
-		}
-		c.logger.Error("client request data stream error", "err", err)
-		c.errorfn(err)
-		return nil, err
-	}
-	c.logger.Debug("client write stream frame success", "stream_id", dataStream.StreamID())
-	return dataStream, nil
-}
-*/
-
-// PipeStream pipe a stream to server.
-func (c *Client) PipeStream(ctx context.Context, dataStreamID string, stream io.Reader) error {
-	c.logger.Debug("client pipe stream -- start")
+// readStream read stream from client.
+func (c *Client) readStream() error {
 STREAM:
-	qconn := c.Connection()
-	c.logger.Info("client quic connection", "qconn=nil", qconn == nil)
-	dataStream, err := qconn.AcceptStream(ctx)
-	if err != nil {
-		c.logger.Error("client accept data stream error", "err", err)
-		// c.errorfn(err)
-		return err
-	}
-	// close data stream
-	defer dataStream.Close()
-	c.logger.Debug("client accept stream success", "stream_id", dataStream.StreamID())
-	// read stream frame
-	fs := NewFrameStream(dataStream, y3codec.Codec(), y3codec.PacketReadWriter())
-	f, err := fs.ReadFrame()
-	if err != nil {
-		c.logger.Warn("failed to read data stream", "err", err)
-		return err
-	}
-	c.logger.Debug("client read stream frame success", "stream_id", dataStream.StreamID())
-	switch f.Type() {
-	case frame.TypeStreamFrame:
-		streamFrame := f.(*frame.StreamFrame)
-		// if stream id is same, pipe stream
-		if streamFrame.ID != dataStreamID {
-			c.logger.Debug(
-				"stream id is not same, continue",
+	select {
+	case <-c.ctx.Done():
+		return c.ctx.Err()
+	default:
+		qconn := c.Connection()
+		dataStream, err := qconn.AcceptStream(c.ctx)
+		if err != nil {
+			c.logger.Error("client accept stream error", "err", err)
+			return err
+		}
+		// close data stream
+		defer dataStream.Close()
+		c.logger.Debug("client accept stream success", "stream_id", dataStream.StreamID())
+		// read stream frame
+		fs := NewFrameStream(dataStream, y3codec.Codec(), y3codec.PacketReadWriter())
+		f, err := fs.ReadFrame()
+		if err != nil {
+			c.logger.Warn("failed to read data stream", "err", err)
+			return err
+		}
+		c.logger.Debug("client read stream frame success", "stream_id", dataStream.StreamID())
+		switch f.Type() {
+		case frame.TypeStreamFrame:
+			streamFrame := f.(*frame.StreamFrame)
+			// lookfor data stream
+			reader, ok := c.dataStreams.Load(streamFrame.ID)
+			if !ok {
+				c.logger.Debug(
+					"data stream is not found",
+					"stream_id", dataStream.StreamID(),
+					"datastream_id", streamFrame.ID,
+					// "datastream_id", dataStreamID,
+					// "received_id", streamFrame.ID,
+					"client_id", streamFrame.ClientID,
+					"tag", streamFrame.Tag,
+				)
+				goto STREAM
+			}
+			// clean data stream
+			defer c.dataStreams.Delete(streamFrame.ID)
+			// if found, pipe stream
+			c.logger.Info(
+				"!!!pipe stream is ready!!!",
+				"remote_addr", qconn.RemoteAddr().String(),
+				"datastream_id", streamFrame.ID,
 				"stream_id", dataStream.StreamID(),
-				"datastream_id", dataStreamID,
-				"received_id", streamFrame.ID,
 				"client_id", streamFrame.ClientID,
 				"tag", streamFrame.Tag,
 			)
-			goto STREAM
+			// pipe stream
+			stream := reader.(io.Reader)
+			// TEST: read source stream
+			// buf, err := io.ReadAll(stream)
+			// if err != nil {
+			// 	c.logger.Error("!!!pipe stream error!!!", "err", err)
+			// 	return
+			// }
+			// bufString := string(buf)
+			// l := len(bufString)
+			// if l > 1000 {
+			// 	bufString = bufString[l-1000:]
+			// }
+			// c.logger.Info("!!!pipe stream success!!!",
+			// 	"remote_addr", qconn.RemoteAddr().String(),
+			// 	"datastream_id", streamFrame.ID,
+			// 	"stream_id", dataStream.StreamID(),
+			// 	"client_id", streamFrame.ClientID,
+			// 	"tag", streamFrame.Tag,
+			// 	"buf", bufString,
+			// 	"len", len(buf),
+			// )
+			n, err := io.Copy(dataStream, stream)
+			if err != nil {
+				c.logger.Error("!!!pipe stream error!!!", "err", err)
+				return err
+			}
+			c.logger.Info("!!!pipe stream success!!!",
+				"remote_addr", qconn.RemoteAddr().String(),
+				"id", streamFrame.ID,
+				"stream_id", dataStream.StreamID(),
+				"client_id", streamFrame.ClientID,
+				"tag", streamFrame.Tag,
+				"n", n,
+			)
+		default:
+			c.logger.Error("!!!unexpected frame!!!", "unexpected_frame_type", f.Type().String())
+			return errors.New("unexpected frame")
 		}
-		c.logger.Info(
-			"!!!pipe stream is ready!!!",
-			"remote_addr", qconn.RemoteAddr().String(),
-			"datastream_id", streamFrame.ID,
-			"stream_id", dataStream.StreamID(),
-			"client_id", streamFrame.ClientID,
-			"id", streamFrame.ID,
-			"tag", streamFrame.Tag,
-		)
-		// pipe stream
-		n, err := io.Copy(dataStream, stream)
-		if err != nil {
-			c.logger.Error("!!!pipe stream error!!!", "err", err)
-			return err
-		}
-		c.logger.Info("!!!pipe stream success!!!",
-			"remote_addr", qconn.RemoteAddr().String(),
-			"id", streamFrame.ID,
-			"stream_id", dataStream.StreamID(),
-			"client_id", streamFrame.ClientID,
-			"tag", streamFrame.Tag,
-			"n", n,
-		)
-	default:
-		c.logger.Error("!!!unexpected frame!!!", "unexpected_frame_type", f.Type().String())
-		return errors.New("unexpected frame")
 	}
-	c.logger.Debug("client pipe stream -- end")
 	return nil
+}
+
+// PipeStream pipe a stream to server.
+func (c *Client) PipeStream(dataStreamID string, stream io.Reader) error {
+	c.logger.Debug(fmt.Sprintf("client pipe stream[%s] -- start", dataStreamID))
+	c.dataStreams.Store(dataStreamID, stream)
+	err := c.readStream()
+	c.logger.Debug(fmt.Sprintf("client pipe stream[%s] -- end", dataStreamID))
+	return err
 }
 
 // Connection returns the connection of client.
