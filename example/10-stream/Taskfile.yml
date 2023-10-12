@@ -1,0 +1,59 @@
+# https://taskfile.dev
+
+version: "3"
+
+output: "prefixed"
+
+env:
+  YOMO_LOG_LEVEL: debug
+
+tasks:
+  run:
+    desc: run
+    deps: [zipper, source, sfn]
+    cmds:
+      - echo 'stream example run'
+
+  # example cleanup
+  clean:
+    desc: clean
+    cmds:
+      - rm -rf ./bin
+
+  build:
+    desc: build source, sfn and zipper
+    deps: [source-build, sfn-build]
+    cmds:
+      - echo 'building done'
+    internal: true
+
+  source-build:
+    desc: build source
+    cmds:
+      - "go build -o ./bin/source{{exeExt}} source/main.go"
+    internal: true
+
+  sfn-build:
+    desc: build sfn
+    cmds:
+      - "go build -o ./bin/sfn{{exeExt}} sfn/main.go"
+    internal: true
+
+  source:
+    desc: run source
+    deps: [source-build]
+    cmds:
+      - "./bin/source{{exeExt}}"
+    env:
+      YOMO_LOG_LEVEL: debug
+
+  sfn:
+    desc: run sfn
+    deps: [sfn-build]
+    cmds:
+      - "./bin/sfn{{exeExt}}"
+
+  zipper:
+    desc: run zipper
+    cmds:
+      - "yomo serve -c config.yaml"

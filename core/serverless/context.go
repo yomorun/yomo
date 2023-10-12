@@ -92,24 +92,27 @@ STREAM:
 	qconn := client.Connection()
 	dataStream, err := qconn.AcceptStream(ctx)
 	if err != nil {
-		client.Logger().Error("context request stream error", "err", err)
+		client.Logger().Error("context request stream error", "err", err, "datastream_id", dataStreamID)
 		return nil, err
 	}
-	client.Logger().Debug("context accept stream success", "stream_id", dataStream.StreamID())
+	client.DataStreams().Store(dataStreamID, dataStream)
+	client.Logger().Debug("context accept stream success", "datastream_id", dataStreamID, "stream_id", dataStream.StreamID())
 	// read stream frame
 	fs := core.NewFrameStream(dataStream, y3codec.Codec(), y3codec.PacketReadWriter())
 	f, err := fs.ReadFrame()
 	if err != nil {
-		client.Logger().Warn("failed to read data stream", "err", err)
+		client.Logger().Warn("failed to read data stream", "err", err, "datastream_id", dataStreamID)
 		return nil, err
 	}
 	switch f.Type() {
 	case frame.TypeStreamFrame:
 		streamFrame := f.(*frame.StreamFrame)
-		// if stream id is same, pipe stream
-		if streamFrame.ID != dataStreamID {
+		// lookup data stream
+		// if streamFrame.ID != dataStreamID {
+		reader, ok := client.DataStreams().Load(dataStreamID)
+		if !ok {
 			client.Logger().Debug(
-				"stream id is not same, continue",
+				"data strem is not found, continue",
 				"stream_id", dataStream.StreamID(),
 				"datastream_id", dataStreamID,
 				"received_id", streamFrame.ID,
@@ -118,6 +121,7 @@ STREAM:
 			)
 			goto STREAM
 		}
+		defer client.DataStreams().Delete(dataStreamID)
 		client.Logger().Info(
 			"!!!sfn stream is ready!!!",
 			"remote_addr", qconn.RemoteAddr().String(),
@@ -126,6 +130,7 @@ STREAM:
 			"client_id", streamFrame.ClientID,
 			"tag", streamFrame.Tag,
 		)
+		return reader.(quic.Stream), nil
 	default:
 		client.Logger().Error("!!!unexpected frame!!!", "unexpected_frame_type", f.Type().String())
 	}

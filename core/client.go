@@ -481,6 +481,7 @@ STREAM:
 func (c *Client) PipeStream(dataStreamID string, stream io.Reader) error {
 	c.logger.Debug(fmt.Sprintf("client pipe stream[%s] -- start", dataStreamID))
 	c.dataStreams.Store(dataStreamID, stream)
+	// process all data streams
 	err := c.readStream()
 	c.logger.Debug(fmt.Sprintf("client pipe stream[%s] -- end", dataStreamID))
 	return err
@@ -508,4 +509,9 @@ func (c *Client) FrameStream() *FrameStream {
 // setFrameStream set the FrameStream of client.
 func (c *Client) setFrameStream(fs *FrameStream) {
 	c.fs.Store(fs)
+}
+
+// DataStreams returns the data streams of client.
+func (c *Client) DataStreams() *sync.Map {
+	return &c.dataStreams
 }
