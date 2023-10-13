@@ -63,7 +63,7 @@ func SourceMetadata(
 	if tp != nil {
 		span, err := trace.NewSpan(tp, "Source", spanName, "", "")
 		if err != nil {
-			logger.Error("trace error", "tracer_name", "Source", "span_name", spanName, "err", err)
+			logger.Debug("trace error", "tracer_name", "Source", "span_name", spanName, "err", err)
 		} else {
 			endFn = func() { span.End() }
 			traceID = span.SpanContext().TraceID().String()
@@ -113,7 +113,7 @@ func ExtendTraceMetadata(
 			span, err = trace.NewSpan(tp, string(tracerName), spanName, "", "")
 		}
 		if err != nil {
-			logger.Error("trace error", "tracer_name", tracerName, "span_name", spanName, "err", err)
+			logger.Debug("trace error", "tracer_name", tracerName, "span_name", spanName, "err", err)
 		} else {
 			endFn = func() { span.End() }
 			traceID = span.SpanContext().TraceID().String()
