@@ -5,11 +5,7 @@ import (
 
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/pkg/id"
-	"github.com/yomorun/yomo/pkg/trace"
-	oteltrace "go.opentelemetry.io/otel/trace"
-	"golang.org/x/exp/slog"
 )
 
 // Source is responsible for sending data to yomo.
@@ -77,7 +73,7 @@ func (s *yomoSource) Connect() error {
 
 // Write writes data with specified tag.
 func (s *yomoSource) Write(tag uint32, data []byte) error {
-	md, deferFunc := TraceMetadata(s.client.ClientID(), s.name, s.client.TracerProvider(), s.client.Logger())
+	md, deferFunc := core.SourceMetadata(s.client.ClientID(), id.New(), s.name, s.client.TracerProvider(), s.client.Logger())
 	defer deferFunc()
 
 	mdBytes, err := md.Encode()
@@ -103,36 +99,4 @@ func (s *yomoSource) SetErrorHandler(fn func(err error)) {
 func (s *yomoSource) SetReceiveHandler(fn func(uint32, []byte)) {
 	s.fn = fn
 	s.client.Logger().Info("receive hander set for the source")
-}
-
-// TraceMetadata generates source trace metadata.
-func TraceMetadata(clientID, name string, tp oteltrace.TracerProvider, logger *slog.Logger) (metadata.M, func()) {
-	deferFunc := func() {}
-	var tid, sid string
-	// trace
-	traced := false
-	if tp != nil {
-		span, err := trace.NewSpan(tp, core.ClientTypeSource.String(), name, "", "")
-		if err != nil {
-			logger.Error("source trace error", "err", err)
-		} else {
-			deferFunc = func() { span.End() }
-			tid = span.SpanContext().TraceID().String()
-			sid = span.SpanContext().SpanID().String()
-			traced = true
-		}
-	}
-	if tid == "" {
-		logger.Debug("source create new tid")
-		tid = id.TID()
-	}
-	if sid == "" {
-		logger.Debug("source create new sid")
-		sid = id.SID()
-	}
-	logger.Debug("source metadata", "tid", tid, "sid", sid, "traced", traced)
-
-	md := core.NewDefaultMetadata(clientID, tid, sid, traced)
-
-	return md, deferFunc
 }

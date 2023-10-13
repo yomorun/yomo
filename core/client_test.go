@@ -129,7 +129,7 @@ func TestFrameRoundTrip(t *testing.T) {
 	exited = checkClientExited(sfn, time.Second)
 	assert.False(t, exited, "sfn stream should not exited")
 
-	sfnMetaBytes, _ := NewDefaultMetadata(source.clientID, "tid", "sid", false).Encode()
+	sfnMetaBytes, _ := NewMetadata(source.clientID, "tid", "trace-id", "span-id", false).Encode()
 
 	err = sfn.WriteFrame(&frame.DataFrame{Tag: backflowTag, Metadata: sfnMetaBytes, Payload: backflow})
 	assert.NoError(t, err)
@@ -142,7 +142,7 @@ func TestFrameRoundTrip(t *testing.T) {
 	assert.ElementsMatch(t, nameList, []string{"source", "sfn-1"})
 
 	md := metadata.New(
-		NewDefaultMetadata(source.clientID, "tid", "sid", false),
+		NewMetadata(source.clientID, "tid", "trace-id", "span-id", false),
 		metadata.M{
 			"foo": "bar",
 		},
