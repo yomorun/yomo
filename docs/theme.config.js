@@ -115,6 +115,7 @@ const themeConfig = {
               <Logo height={24} />
             </span>
           </a>
+          <span>ALLEGRO MESH HK LIMITED, FLAT/RM A 12/F ZJ 300, 300 LOCKHART ROAD, WAN CHAI, HONG KONG. Yu Cao (yona@yomo.run)</span>
           <a
             href={`https://vercel.com/?utm_source=yomorun&utm_campaign=oss`}
             target="_blank"
