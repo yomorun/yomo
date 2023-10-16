@@ -154,7 +154,7 @@ func SfnTraceMetadata(md metadata.M, sfnName string, tp oteltrace.TracerProvider
 
 // ZipperTraceMetadata extends metadata for Zipper.
 func ZipperTraceMetadata(md metadata.M, tp oteltrace.TracerProvider, logger *slog.Logger) (metadata.M, func()) {
-	return ExtendTraceMetadata(md, "Zipper", "handle DataFrame", tp, logger)
+	return ExtendTraceMetadata(md, "Zipper", "zipper endpoint", tp, logger)
 }
 
 func tracedString(traced bool) string {
