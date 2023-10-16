@@ -104,7 +104,7 @@ type StreamFrame struct {
 	ID        string
 	ClientID  string
 	StreamID  int64
-	ChunkSize uint
+	ChunkSize int64
 	Tag       Tag
 }
 

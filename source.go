@@ -132,18 +132,18 @@ PIPE:
 	// write dataframe to main stream
 	err = s.client.WriteFrame(f)
 	if err != nil {
-		s.client.Logger().Error("source write frame error", "err", err)
+		s.client.Logger().Error("source write frame error", "err", err, "datastream_id", dataStreamID)
 		return err
 	}
-	s.client.Logger().Debug("source write stream frame", "tag", tag)
-	s.client.Logger().Debug("source pipe stream...", "tag", tag)
+	s.client.Logger().Debug("source write stream frame", "tag", tag, "datastream_id", dataStreamID)
+	s.client.Logger().Debug("source pipe stream...", "tag", tag, "datastream_id", dataStreamID)
 	err = s.client.PipeStream(dataStreamID, reader)
 	if err != nil {
 		// process reconnect
 		if errors.As(err, new(core.ErrAuthenticateFailed)) {
 			return err
 		}
-		s.client.Logger().Error("source pipe stream error", "err", err)
+		s.client.Logger().Error("source pipe stream error", "err", err, "datastream_id", dataStreamID)
 		time.Sleep(core.DefaultReconnectInterval)
 		goto PIPE
 	}

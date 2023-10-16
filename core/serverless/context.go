@@ -122,11 +122,12 @@ STREAM:
 			goto STREAM
 		}
 		defer client.DataStreams().Delete(dataStreamID)
-		client.Logger().Info(
-			"!!!sfn stream is ready!!!",
+		client.Logger().Debug(
+			"data stream is ready",
 			"remote_addr", qconn.RemoteAddr().String(),
 			"datastream_id", streamFrame.ID,
 			"stream_id", dataStream.StreamID(),
+			"stream_chunk_szie", streamFrame.ChunkSize,
 			"client_id", streamFrame.ClientID,
 			"tag", streamFrame.Tag,
 		)

@@ -56,10 +56,15 @@ var serveCmd = &cobra.Command{
 		listenAddr := fmt.Sprintf("%s:%d", conf.Host, conf.Port)
 
 		options := []yomo.ZipperOption{yomo.WithZipperTracerProvider(tp)}
+		// auth
 		if _, ok := conf.Auth["type"]; ok {
 			if tokenString, ok := conf.Auth["token"]; ok {
 				options = append(options, yomo.WithAuth("token", tokenString))
 			}
+		}
+		// stream
+		if conf.Stream != nil {
+			options = append(options, yomo.WithZipperStreamChunkSize(conf.Stream.ChunkSize))
 		}
 
 		zipper, err := yomo.NewZipper(conf.Name, conf.Downstreams, options...)

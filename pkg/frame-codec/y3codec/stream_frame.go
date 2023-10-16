@@ -18,7 +18,7 @@ func encodeStreamFrame(f *frame.StreamFrame) ([]byte, error) {
 	streamID.SetInt64Value(f.StreamID)
 	// chunk size
 	chunkSize := y3.NewPrimitivePacketEncoder(tagStreamFrameChunkSize)
-	chunkSize.SetUInt32Value(uint32(f.ChunkSize))
+	chunkSize.SetInt64Value(f.ChunkSize)
 	// tag
 	tag := y3.NewPrimitivePacketEncoder(tagStreamFrameTag)
 	tag.SetUInt32Value(f.Tag)
@@ -66,11 +66,11 @@ func decodeStreamFrame(data []byte, f *frame.StreamFrame) error {
 	}
 	// chunk size
 	if p, ok := nodeBlock.PrimitivePackets[tagStreamFrameChunkSize]; ok {
-		chunkSize, err := p.ToInt32()
+		chunkSize, err := p.ToInt64()
 		if err != nil {
 			return err
 		}
-		f.ChunkSize = uint(chunkSize)
+		f.ChunkSize = chunkSize
 	}
 	// tag
 	if p, ok := nodeBlock.PrimitivePackets[byte(tagStreamFrameTag)]; ok {

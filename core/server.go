@@ -505,7 +505,8 @@ func (s *Server) handleDataStream(c *Context, connIDs []string) error {
 				}
 				defer sfnStream.Close()
 				// forward source stream to sfn
-				_, err = io.Copy(sfnStream, sourceStream)
+				buf := make([]byte, s.opts.streamChunkSize)
+				_, err = io.CopyBuffer(sfnStream, sourceStream, buf)
 				if err != nil {
 					c.Logger.Error(
 						"failed to forward source stream to sfn",
@@ -521,7 +522,7 @@ func (s *Server) handleDataStream(c *Context, connIDs []string) error {
 				c.Logger.Info("forward source stream to sfn", "from_id", from.ID(), "from_name", from.Name(), "to_id", toID, "to_name", to.Name())
 			}
 		} else {
-			c.Logger.Warn("!!!no connections available, ignored!!!")
+			c.Logger.Warn("no connections available, ignored")
 			fallback(sourceStream)
 			// TEST: test data stream
 			/*
@@ -562,7 +563,7 @@ func (s *Server) openDataStream(conn Connection, dataFrame *frame.DataFrame) (qu
 		ID:        dataStreamID,
 		ClientID:  conn.ID(),
 		StreamID:  int64(dataStream.StreamID()),
-		ChunkSize: 32 * 1024, // TODO: get from config
+		ChunkSize: s.opts.streamChunkSize,
 		Tag:       dataFrame.Tag,
 	}
 	// write stream frame to from
@@ -578,7 +579,13 @@ func (s *Server) openDataStream(conn Connection, dataFrame *frame.DataFrame) (qu
 		s.logger.Error("failed to write stream frame to data stream", "err", err)
 		return nil, err
 	}
-	s.logger.Info("created data stream", "datastream_id", streamFrame.ID, "stream_id", streamFrame.StreamID, "client_id", streamFrame.ClientID)
+	s.logger.Info(
+		"created data stream",
+		"datastream_id", streamFrame.ID,
+		"stream_id", streamFrame.StreamID,
+		"stream_chunk_size", streamFrame.ChunkSize,
+		"client_id", streamFrame.ClientID,
+	)
 	return dataStream, nil
 }
 

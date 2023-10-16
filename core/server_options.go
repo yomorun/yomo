@@ -11,6 +11,11 @@ import (
 	"golang.org/x/exp/slog"
 )
 
+const (
+	// DefaultStreamChunkSize is the default stream chunk size.
+	DefaultStreamChunkSize int64 = 32 * 1024
+)
+
 // DefalutQuicConfig be used when `quicConfig` is nil.
 var DefalutQuicConfig = &quic.Config{
 	Versions:                       []quic.VersionNumber{quic.Version1, quic.Version2},
@@ -30,21 +35,23 @@ type ServerOption func(*serverOptions)
 // ServerOptions are the options for YoMo server.
 // TODO: quic alpn function.
 type serverOptions struct {
-	quicConfig     *quic.Config
-	tlsConfig      *tls.Config
-	auths          map[string]auth.Authentication
-	logger         *slog.Logger
-	tracerProvider oteltrace.TracerProvider
+	quicConfig      *quic.Config
+	tlsConfig       *tls.Config
+	auths           map[string]auth.Authentication
+	logger          *slog.Logger
+	tracerProvider  oteltrace.TracerProvider
+	streamChunkSize int64
 }
 
 func defaultServerOptions() *serverOptions {
 	logger := ylog.Default()
 
 	opts := &serverOptions{
-		quicConfig: DefalutQuicConfig,
-		tlsConfig:  nil,
-		auths:      map[string]auth.Authentication{},
-		logger:     logger,
+		quicConfig:      DefalutQuicConfig,
+		tlsConfig:       nil,
+		auths:           map[string]auth.Authentication{},
+		logger:          logger,
+		streamChunkSize: DefaultStreamChunkSize,
 	}
 	return opts
 }
@@ -87,5 +94,16 @@ func WithServerLogger(logger *slog.Logger) ServerOption {
 func WithServerTracerProvider(tp oteltrace.TracerProvider) ServerOption {
 	return func(o *serverOptions) {
 		o.tracerProvider = tp
+	}
+}
+
+// WithServerStreamChunkSize sets stream chunk size for the server.
+func WithServerStreamChunkSize(size int64) ServerOption {
+	return func(o *serverOptions) {
+		if size > 0 {
+			o.streamChunkSize = size
+		} else {
+			o.streamChunkSize = DefaultStreamChunkSize
+		}
 	}
 }

@@ -416,6 +416,7 @@ STREAM:
 					"data stream is not found",
 					"stream_id", dataStream.StreamID(),
 					"datastream_id", streamFrame.ID,
+					"stream_chunk_size", streamFrame.ChunkSize,
 					// "datastream_id", dataStreamID,
 					// "received_id", streamFrame.ID,
 					"client_id", streamFrame.ClientID,
@@ -426,11 +427,12 @@ STREAM:
 			// clean data stream
 			defer c.dataStreams.Delete(streamFrame.ID)
 			// if found, pipe stream
-			c.logger.Info(
-				"!!!pipe stream is ready!!!",
+			c.logger.Debug(
+				"client pipe stream is ready",
 				"remote_addr", qconn.RemoteAddr().String(),
 				"datastream_id", streamFrame.ID,
 				"stream_id", dataStream.StreamID(),
+				"stream_chunk_size", streamFrame.ChunkSize,
 				"client_id", streamFrame.ClientID,
 				"tag", streamFrame.Tag,
 			)
@@ -456,15 +458,17 @@ STREAM:
 			// 	"buf", bufString,
 			// 	"len", len(buf),
 			// )
-			n, err := io.Copy(dataStream, stream)
+			buf := make([]byte, streamFrame.ChunkSize)
+			n, err := io.CopyBuffer(dataStream, stream, buf)
 			if err != nil {
-				c.logger.Error("!!!pipe stream error!!!", "err", err)
+				c.logger.Error("client pipe stream error", "err", err)
 				return err
 			}
-			c.logger.Info("!!!pipe stream success!!!",
+			c.logger.Info("client pipe stream success",
 				"remote_addr", qconn.RemoteAddr().String(),
 				"id", streamFrame.ID,
 				"stream_id", dataStream.StreamID(),
+				"stream_chunk_size", streamFrame.ChunkSize,
 				"client_id", streamFrame.ClientID,
 				"tag", streamFrame.Tag,
 				"n", n,

@@ -1,5 +1,6 @@
 name: Service
 host: localhost
 port: 9000
-functions:
-  - name: sfn-stream
+# data stream config
+stream:
+  chunksize: 524288

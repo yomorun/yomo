@@ -110,4 +110,11 @@ var (
 			o.serverOption = append(o.serverOption, core.WithServerTracerProvider(tp))
 		}
 	}
+
+	// WithZipperStreamChunkSize sets the chunk size for the zipper.
+	WithZipperStreamChunkSize = func(size int64) ZipperOption {
+		return func(o *zipperOptions) {
+			o.serverOption = append(o.serverOption, core.WithServerStreamChunkSize(size))
+		}
+	}
 )

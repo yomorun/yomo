@@ -29,6 +29,13 @@ type Config struct {
 	Auth map[string]string `yaml:"auth"`
 	// Downstreams holds cascading zippers config. the map-key is downstream name.
 	Downstreams map[string]Downstream `yaml:"downstreams"`
+
+	Stream *DataStream `yaml:"stream"`
+}
+
+// DataStream represents the data stream config.
+type DataStream struct {
+	ChunkSize int64 `yaml:"chunksize"`
 }
 
 // Downstream describes a cascading zipper config.
