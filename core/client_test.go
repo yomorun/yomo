@@ -59,10 +59,10 @@ func TestFrameRoundTrip(t *testing.T) {
 	server.SetBeforeHandlers(ht.beforeHandler)
 	server.SetAfterHandlers(ht.afterHandler)
 
-	recorder := newFrameWriterRecorder("mockID", "mockClient")
+	recorder := newFrameWriterRecorder("mockID", "mockClientLocal", "mockClientRemote")
 	server.AddDownstreamServer(recorder)
 
-	assert.Equal(t, server.Downstreams()["mockID"], recorder.ClientID())
+	assert.Equal(t, server.Downstreams()["mockID"], recorder.ID())
 
 	go func() {
 		err := server.ListenAndServe(ctx, testaddr)
@@ -227,25 +227,28 @@ func createTestStreamFunction(name string, zipperAddr string, observedTag frame.
 // frameWriterRecorder frames be writen.
 type frameWriterRecorder struct {
 	id           string
-	name         string
+	localName    string
+	remoteName   string
 	codec        frame.Codec
 	packetReader frame.PacketReadWriter
 	mu           sync.Mutex
 	buf          *bytes.Buffer
 }
 
-func newFrameWriterRecorder(id, name string) *frameWriterRecorder {
+func newFrameWriterRecorder(id, localName, remoteName string) *frameWriterRecorder {
 	return &frameWriterRecorder{
 		id:           id,
-		name:         name,
+		localName:    localName,
+		remoteName:   remoteName,
 		codec:        y3codec.Codec(),
 		packetReader: y3codec.PacketReadWriter(),
 		buf:          new(bytes.Buffer),
 	}
 }
 
-func (w *frameWriterRecorder) ClientID() string                { return w.id }
-func (w *frameWriterRecorder) Name() string                    { return w.name }
+func (w *frameWriterRecorder) ID() string                      { return w.id }
+func (w *frameWriterRecorder) LocalName() string               { return w.localName }
+func (w *frameWriterRecorder) RemoteName() string              { return w.remoteName }
 func (w *frameWriterRecorder) Close() error                    { return nil }
 func (w *frameWriterRecorder) Connect(_ context.Context) error { return nil }
 
