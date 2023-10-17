@@ -21,6 +21,7 @@ import (
 // Client is the abstraction of a YoMo-Client. a YoMo-Client can be
 // Source, Upstream Zipper or StreamFunction.
 type Client struct {
+	zipperAddr     string
 	name           string                     // name of the client
 	clientID       string                     // id of the client
 	clientType     ClientType                 // type of the client
@@ -39,7 +40,7 @@ type Client struct {
 }
 
 // NewClient creates a new YoMo-Client.
-func NewClient(appName string, clientType ClientType, opts ...ClientOption) *Client {
+func NewClient(appName, zipperAddr string, clientType ClientType, opts ...ClientOption) *Client {
 	option := defaultClientOption()
 
 	for _, o := range opts {
@@ -47,7 +48,7 @@ func NewClient(appName string, clientType ClientType, opts ...ClientOption) *Cli
 	}
 	clientID := id.New()
 
-	logger := option.logger.With("component", clientType.String(), "client_id", clientID, "client_name", appName)
+	logger := option.logger.With("component", clientType.String(), "client_id", clientID, "client_name", appName, "zipper_addr", zipperAddr)
 
 	if option.credential != nil {
 		logger.Info("use credential", "credential_name", option.credential.Name())
@@ -56,6 +57,7 @@ func NewClient(appName string, clientType ClientType, opts ...ClientOption) *Cli
 	ctx, ctxCancel := context.WithCancelCause(context.Background())
 
 	return &Client{
+		zipperAddr:     zipperAddr,
 		name:           appName,
 		clientID:       clientID,
 		processor:      func(df *frame.DataFrame) { logger.Warn("the processor has not been set") },
@@ -85,8 +87,8 @@ func newConnectResult(conn quic.Connection, fs *FrameStream, err error) *connect
 	}
 }
 
-func (c *Client) connect(ctx context.Context, addr string) *connectResult {
-	conn, err := quic.DialAddr(ctx, addr, c.opts.tlsConfig, c.opts.quicConfig)
+func (c *Client) connect(ctx context.Context) *connectResult {
+	conn, err := quic.DialAddr(ctx, c.zipperAddr, c.opts.tlsConfig, c.opts.quicConfig)
 	if err != nil {
 		return newConnectResult(conn, nil, err)
 	}
@@ -130,7 +132,7 @@ func (c *Client) connect(ctx context.Context, addr string) *connectResult {
 	}
 }
 
-func (c *Client) runBackground(ctx context.Context, addr string, conn quic.Connection, fs *FrameStream) {
+func (c *Client) runBackground(ctx context.Context, conn quic.Connection, fs *FrameStream) {
 	reconnection := make(chan struct{})
 
 	go c.handleReadFrames(fs, reconnection)
@@ -149,7 +151,7 @@ func (c *Client) runBackground(ctx context.Context, addr string, conn quic.Conne
 			}
 		case <-reconnection:
 		reconnect:
-			cr := c.connect(ctx, addr)
+			cr := c.connect(ctx)
 			if err := cr.err; err != nil {
 				if errors.As(err, new(ErrAuthenticateFailed)) {
 					return
@@ -165,15 +167,13 @@ func (c *Client) runBackground(ctx context.Context, addr string, conn quic.Conne
 }
 
 // Connect connect client to server.
-func (c *Client) Connect(ctx context.Context, addr string) error {
+func (c *Client) Connect(ctx context.Context) error {
 	if c.clientType == ClientTypeStreamFunction && len(c.opts.observeDataTags) == 0 {
 		return errors.New("yomo: streamFunction cannot observe data because the required tag has not been set")
 	}
 
-	c.logger = c.logger.With("zipper_addr", addr)
-
 connect:
-	result := c.connect(ctx, addr)
+	result := c.connect(ctx)
 	if result.err != nil {
 		if c.opts.connectUntilSucceed {
 			c.logger.Error("failed to connect to zipper, trying to reconnect", "err", result.err)
@@ -185,7 +185,7 @@ connect:
 	}
 	c.logger.Info("connected to zipper")
 
-	go c.runBackground(ctx, addr, result.conn, result.fs)
+	go c.runBackground(ctx, result.conn, result.fs)
 
 	return nil
 }
@@ -336,7 +336,7 @@ type FrameWriterConnection interface {
 	ClientID() string
 	Name() string
 	Close() error
-	Connect(context.Context, string) error
+	Connect(context.Context) error
 }
 
 // TracerProvider returns the tracer provider of client.

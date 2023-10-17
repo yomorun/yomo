@@ -96,8 +96,8 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	}
 
 	// connect to all downstreams.
-	for addr, client := range s.downstreams {
-		go client.Connect(ctx, addr)
+	for _, client := range s.downstreams {
+		go client.Connect(ctx)
 	}
 
 	return s.Serve(ctx, conn)
@@ -497,9 +497,9 @@ func (s *Server) ConfigRouter(router router.Router) {
 
 // AddDownstreamServer add a downstream server to this server. all the DataFrames will be
 // dispatch to all the downstreams.
-func (s *Server) AddDownstreamServer(addr string, c FrameWriterConnection) {
+func (s *Server) AddDownstreamServer(c FrameWriterConnection) {
 	s.mu.Lock()
-	s.downstreams[addr] = c
+	s.downstreams[c.ClientID()] = c
 	s.mu.Unlock()
 }
 

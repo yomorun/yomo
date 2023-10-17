@@ -43,7 +43,7 @@ func NewSource(name, zipperAddr string, opts ...SourceOption) Source {
 		clientOpts[k] = core.ClientOption(v)
 	}
 
-	client := core.NewClient(name, core.ClientTypeSource, clientOpts...)
+	client := core.NewClient(name, zipperAddr, core.ClientTypeSource, clientOpts...)
 
 	return &yomoSource{
 		name:       name,
@@ -71,7 +71,7 @@ func (s *yomoSource) Connect() error {
 		}
 	})
 
-	err := s.client.Connect(context.Background(), s.zipperAddr)
+	err := s.client.Connect(context.Background())
 	return err
 }
 

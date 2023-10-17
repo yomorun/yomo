@@ -39,7 +39,9 @@ func NewStreamFunction(name, zipperAddr string, opts ...SfnOption) StreamFunctio
 	for k, v := range opts {
 		clientOpts[k] = core.ClientOption(v)
 	}
-	client := core.NewClient(name, core.ClientTypeStreamFunction, clientOpts...)
+
+	client := core.NewClient(name, zipperAddr, core.ClientTypeStreamFunction, clientOpts...)
+
 	sfn := &streamFunction{
 		name:            name,
 		zipperAddr:      zipperAddr,
@@ -137,7 +139,7 @@ func (s *streamFunction) Connect() error {
 		}()
 	}
 
-	err := s.client.Connect(context.Background(), s.zipperAddr)
+	err := s.client.Connect(context.Background())
 	return err
 }
 
