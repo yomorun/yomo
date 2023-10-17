@@ -4,3 +4,10 @@ port: 9000
 # data stream config
 stream:
   chunksize: 524288
+
+downstreams:
+  zipper-2:
+    host: 127.0.0.1
+    port: 9002
+    credential: "token:z2"
+

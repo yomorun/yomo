@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -47,7 +48,7 @@ type Server struct {
 	codec                   frame.Codec
 	packetReadWriter        frame.PacketReadWriter
 	counterOfDataFrame      int64
-	downstreams             map[string]FrameWriterConnection
+	downstreams             map[string]*Client
 	mu                      sync.Mutex
 	opts                    *serverOptions
 	startHandlers           []FrameHandler
@@ -75,7 +76,7 @@ func NewServer(name string, opts ...ServerOption) *Server {
 		ctx:              ctx,
 		ctxCancel:        ctxCancel,
 		name:             name,
-		downstreams:      make(map[string]FrameWriterConnection),
+		downstreams:      make(map[string]*Client),
 		logger:           logger,
 		tracerProvider:   options.tracerProvider,
 		codec:            y3codec.Codec(),
@@ -333,7 +334,7 @@ func (s *Server) Close() error {
 	return nil
 }
 
-func closeServer(downstreams map[string]FrameWriterConnection, connector *Connector, listener *quic.Listener, router router.Router) error {
+func closeServer(downstreams map[string]*Client, connector *Connector, listener *quic.Listener, router router.Router) error {
 	for _, ds := range downstreams {
 		ds.Close()
 	}
@@ -470,23 +471,35 @@ func (s *Server) handleDataFrame(c *Context) error {
 
 func (s *Server) handleDataStream(c *Context, connIDs []string) error {
 	dataFrame := c.Frame.(*frame.DataFrame)
+	dataStreamID := string(dataFrame.Payload)
 	// create stream for source
 	sourceStream, err := s.openDataStream(c.Connection, dataFrame)
 	if err != nil {
 		return err
 	}
 	defer sourceStream.Close()
+	// forward writer
+	forwardBuf := bytes.NewBuffer(nil)
+	writer := io.MultiWriter(forwardBuf)
 	// forward source stream to sfn
-	go func(c *Context, sourceStream quic.Stream, connIDs []string) {
+	dispatchToSFN := func(c *Context, sourceStream quic.Stream, connIDs []string, writer io.Writer) {
 		from := c.Connection
-		if len(connIDs) > 0 {
+		conns := len(connIDs)
+		if conns > 0 {
 			for _, toID := range connIDs {
 				to, ok, err := s.connector.Get(toID)
 				if err != nil {
 					continue
 				}
 				if !ok {
-					c.Logger.Error("can't find forward stream", "err", "route sfn error", "forward_stream_id", toID)
+					c.Logger.Error(
+						"can't find forward stream",
+						"err", "route sfn error",
+						"from_id", from.ID(),
+						"from", from.Name(),
+						"to_id", toID,
+						"to_name", to.Name(),
+					)
 					continue
 				}
 				c.Logger.Info(
@@ -500,46 +513,75 @@ func (s *Server) handleDataStream(c *Context, connIDs []string) error {
 				// create stream for sfn
 				sfnStream, err := s.openDataStream(to, dataFrame)
 				if err != nil {
-					fallback(sourceStream)
-					continue
-				}
-				defer sfnStream.Close()
-				// forward source stream to sfn
-				buf := make([]byte, s.opts.streamChunkSize)
-				_, err = io.CopyBuffer(sfnStream, sourceStream, buf)
-				if err != nil {
+					// fallback(sourceStream)
 					c.Logger.Error(
-						"failed to forward source stream to sfn",
+						"failed to create data stream for sfn",
 						"err", err,
 						"from_id", from.ID(),
-						"from_name", from.Name(),
+						"from", from.Name(),
 						"to_id", toID,
 						"to_name", to.Name(),
 					)
-					fallback(sourceStream)
 					continue
 				}
-				c.Logger.Info("forward source stream to sfn", "from_id", from.ID(), "from_name", from.Name(), "to_id", toID, "to_name", to.Name())
+				defer sfnStream.Close()
+				writer = io.MultiWriter(writer, sfnStream)
 			}
 		} else {
 			c.Logger.Warn("no connections available, ignored")
-			fallback(sourceStream)
-			// TEST: test data stream
-			/*
-				buf, err := io.ReadAll(sourceStream)
-				if err != nil {
-					c.Logger.Error("failed to read data stream", "err", err)
-					return
-				}
-				bufString := string(buf)
-				l := len(buf)
-				if l > 1000 {
-					bufString = string(buf[l-1000:])
-				}
-				c.Logger.Debug("!!!zipper receive completed!!!", "len", l, "buf", bufString)
-			*/
+			// fallback(sourceStream)
 		}
-	}(c, sourceStream, connIDs)
+		// write datastream to writers(sfn/downstream buffer)
+		buf := make([]byte, s.opts.streamChunkSize)
+		_, err = io.CopyBuffer(writer, sourceStream, buf)
+		if err != nil {
+			c.Logger.Error(
+				"failed to forward source stream to sfn",
+				"err", err,
+				"from_id", from.ID(),
+				"from_name", from.Name(),
+				// "to_id", toID,
+				// "to_name", to.Name(),
+			)
+			fallback(sourceStream)
+			// continue
+		}
+		c.Logger.Info(
+			"forward source stream to sfn",
+			"from_id", from.ID(),
+			"from_name", from.Name(),
+			// "to_id", toID,
+			// "to_name", to.Name(),
+		)
+	}
+	// }(c, sourceStream, connIDs, writer)
+	dispatchToSFN(c, sourceStream, connIDs, writer)
+	// INFO: dispatch to downstreams
+	if len(s.downstreams) > 0 {
+		for _, ds := range s.downstreams {
+			c.Logger.Info(
+				"dispatching datastream to downstream",
+				"downstream_name", ds.Name(),
+				"datastream_id", dataStreamID,
+			)
+			// PERF: need to optimize
+			duplicatedBuf := bytes.NewBuffer(nil)
+			buf := make([]byte, s.opts.streamChunkSize)
+			_, err := io.CopyBuffer(duplicatedBuf, forwardBuf, buf)
+			if err != nil {
+				c.Logger.Error("failed to copy buf",
+					"err", err,
+					"dispatching datastream to downstream",
+					"downstream_name", ds.Name(),
+					"datastream_id", dataStreamID,
+				)
+				continue
+			}
+			go ds.PipeStream(dataStreamID, duplicatedBuf)
+		}
+	} else {
+		fallback(forwardBuf)
+	}
 
 	return nil
 }
@@ -660,7 +702,7 @@ func (s *Server) ConfigRouter(router router.Router) {
 
 // AddDownstreamServer add a downstream server to this server. all the DataFrames will be
 // dispatch to all the downstreams.
-func (s *Server) AddDownstreamServer(addr string, c FrameWriterConnection) {
+func (s *Server) AddDownstreamServer(addr string, c *Client) {
 	s.mu.Lock()
 	s.downstreams[addr] = c
 	s.mu.Unlock()
@@ -678,6 +720,7 @@ func (s *Server) dispatchToDownstreams(c *Context) {
 	var (
 		tid = GetTIDFromMetadata(c.FrameMetadata)
 		sid = GetSIDFromMetadata(c.FrameMetadata)
+		// streamd = GetStreamedFromMetadata(c.FrameMetadata)
 	)
 	mdBytes, err := c.FrameMetadata.Encode()
 	if err != nil {
@@ -687,7 +730,7 @@ func (s *Server) dispatchToDownstreams(c *Context) {
 	dataFrame.Metadata = mdBytes
 
 	for _, ds := range s.downstreams {
-		c.Logger.Info("dispatching to downstream", "tid", tid, "sid", sid, "tag", dataFrame.Tag, "data_length", len(dataFrame.Payload), "downstream_id", ds.ClientID())
+		c.Logger.Info("dispatching dataframe to downstream", "tid", tid, "sid", sid, "tag", dataFrame.Tag, "data_length", len(dataFrame.Payload), "downstream_id", ds.ClientID())
 		_ = ds.WriteFrame(dataFrame)
 	}
 }
