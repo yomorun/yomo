@@ -149,7 +149,7 @@ func (s *Server) handleConnection(qconn quic.Connection, fs *FrameStream, logger
 	}
 
 	logger = logger.With("conn_id", conn.ID(), "conn_name", conn.Name())
-	logger.Info("client connected", "remote_addr", qconn.RemoteAddr().String(), "client_type", conn.ClientType().String())
+	logger.Info("new client connected", "remote_addr", qconn.RemoteAddr().String(), "client_type", conn.ClientType().String())
 
 	c := newContext(conn, route, logger)
 

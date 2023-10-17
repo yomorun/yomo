@@ -2,6 +2,7 @@ package yomo
 
 import (
 	"context"
+	"errors"
 
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
@@ -42,6 +43,13 @@ func NewStreamFunction(name, zipperAddr string, opts ...SfnOption) StreamFunctio
 
 	client := core.NewClient(name, zipperAddr, core.ClientTypeStreamFunction, clientOpts...)
 
+	client.Logger = client.Logger.With(
+		"component", core.ClientTypeStreamFunction.String(),
+		"sfn_id", client.ClientID(),
+		"sfn_name", client.Name(),
+		"zipper_addr", zipperAddr,
+	)
+
 	sfn := &streamFunction{
 		name:            name,
 		zipperAddr:      zipperAddr,
@@ -69,30 +77,35 @@ type streamFunction struct {
 // SetObserveDataTags set the data tag list that will be observed.
 // Deprecated: use yomo.WithObserveDataTags instead
 func (s *streamFunction) SetObserveDataTags(tag ...uint32) {
+	s.observeDataTags = tag
 	s.client.SetObserveDataTags(tag...)
-	s.client.Logger().Debug("set sfn observe data tasg", "tags", s.observeDataTags)
+	s.client.Logger.Debug("set sfn observe data tasg", "tags", s.observeDataTags)
 }
 
 // SetHandler set the handler function, which accept the raw bytes data and return the tag & response.
 func (s *streamFunction) SetHandler(fn core.AsyncHandler) error {
 	s.fn = fn
-	s.client.Logger().Debug("set async handler")
+	s.client.Logger.Debug("set async handler")
 	return nil
 }
 
 func (s *streamFunction) SetPipeHandler(fn core.PipeHandler) error {
 	s.pfn = fn
-	s.client.Logger().Debug("set pipe handler")
+	s.client.Logger.Debug("set pipe handler")
 	return nil
 }
 
 // Connect create a connection to the zipper, when data arrvied, the data will be passed to the
 // handler which setted by SetHandler method.
 func (s *streamFunction) Connect() error {
-	s.client.Logger().Debug("sfn connecting to zipper ...")
+	if len(s.observeDataTags) == 0 {
+		return errors.New("streamFunction cannot observe data because the required tag has not been set")
+	}
+
+	s.client.Logger.Debug("sfn connecting to zipper ...")
 	// notify underlying network operations, when data with tag we observed arrived, invoke the func
 	s.client.SetDataFrameObserver(func(data *frame.DataFrame) {
-		s.client.Logger().Debug("received data frame")
+		s.client.Logger.Debug("received data frame")
 		s.onDataFrame(data)
 	})
 
@@ -110,19 +123,19 @@ func (s *streamFunction) Connect() error {
 			for {
 				data := <-s.pOut
 				if data != nil {
-					s.client.Logger().Debug("pipe fn send", "payload_frame", data)
+					s.client.Logger.Debug("pipe fn send", "payload_frame", data)
 					md, err := metadata.Decode(data.Metadata)
 					if err != nil {
-						s.client.Logger().Error("sfn decode metadata error", "err", err)
+						s.client.Logger.Error("sfn decode metadata error", "err", err)
 						break
 					}
 
-					newMd, deferFunc := ExtendTraceMetadata(md, s.client.ClientID(), s.client.Name(), s.client.TracerProvider(), s.client.Logger())
+					newMd, deferFunc := ExtendTraceMetadata(md, s.client.ClientID(), s.client.Name(), s.client.TracerProvider(), s.client.Logger)
 					defer deferFunc()
 
 					newMetadata, err := newMd.Encode()
 					if err != nil {
-						s.client.Logger().Error("sfn encode metadata error", "err", err)
+						s.client.Logger.Error("sfn encode metadata error", "err", err)
 						break
 					}
 					data.Metadata = newMetadata
@@ -155,7 +168,7 @@ func (s *streamFunction) Close() error {
 
 	if s.client != nil {
 		if err := s.client.Close(); err != nil {
-			s.client.Logger().Error("failed to close sfn", "err", err)
+			s.client.Logger.Error("failed to close sfn", "err", err)
 			return err
 		}
 	}
@@ -176,16 +189,16 @@ func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 		go func(tp oteltrace.TracerProvider, dataFrame *frame.DataFrame) {
 			md, err := metadata.Decode(dataFrame.Metadata)
 			if err != nil {
-				s.client.Logger().Error("sfn decode metadata error", "err", err)
+				s.client.Logger.Error("sfn decode metadata error", "err", err)
 				return
 			}
 
-			newMd, deferFunc := ExtendTraceMetadata(md, s.client.ClientID(), s.client.Name(), s.client.TracerProvider(), s.client.Logger())
+			newMd, deferFunc := ExtendTraceMetadata(md, s.client.ClientID(), s.client.Name(), s.client.TracerProvider(), s.client.Logger)
 			defer deferFunc()
 
 			newMetadata, err := newMd.Encode()
 			if err != nil {
-				s.client.Logger().Error("sfn encode metadata error", "err", err)
+				s.client.Logger.Error("sfn encode metadata error", "err", err)
 				return
 			}
 			dataFrame.Metadata = newMetadata
@@ -195,10 +208,10 @@ func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 		}(tp, dataFrame)
 	} else if s.pfn != nil {
 		data := dataFrame.Payload
-		s.client.Logger().Debug("pipe sfn receive", "data_len", len(data), "data", data)
+		s.client.Logger.Debug("pipe sfn receive", "data_len", len(data), "data", data)
 		s.pIn <- data
 	} else {
-		s.client.Logger().Warn("sfn does not have a handler")
+		s.client.Logger.Warn("sfn does not have a handler")
 	}
 }
 

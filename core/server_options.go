@@ -27,8 +27,7 @@ var DefalutQuicConfig = &quic.Config{
 // ServerOption is the option for server.
 type ServerOption func(*serverOptions)
 
-// ServerOptions are the options for YoMo server.
-// TODO: quic alpn function.
+// serverOptions are the options for YoMo server.
 type serverOptions struct {
 	quicConfig     *quic.Config
 	tlsConfig      *tls.Config
