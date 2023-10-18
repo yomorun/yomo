@@ -390,6 +390,11 @@ STREAM:
 		return c.ctx.Err()
 	default:
 		qconn := c.Connection()
+		if qconn == nil {
+			err := errors.New("quic connection is nil")
+			c.logger.Error(err.Error())
+			return err
+		}
 		dataStream, err := qconn.AcceptStream(c.ctx)
 		if err != nil {
 			c.logger.Error("client accept stream error", "err", err)
