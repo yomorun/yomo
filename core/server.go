@@ -586,12 +586,14 @@ func (s *Server) handleDataStream(c *Context, connIDs []string) error {
 			)
 			go func(c *Context, dsClient *Client, dataStreamID string, stream io.Reader) {
 				if err := dsClient.PipeStream(dataStreamID, duplicatedBuf); err != nil {
-					c.Logger.Error(
-						"failed to dispatch datastream to downstream",
-						"err", err,
-						"downstream_name", dsClient.Name(),
-						"datastream_id", dataStreamID,
-					)
+					if c != nil && c.Logger != nil {
+						c.Logger.Error(
+							"failed to dispatch datastream to downstream",
+							"err", err,
+							"downstream_name", dsClient.Name(),
+							"datastream_id", dataStreamID,
+						)
+					}
 				}
 			}(c, ds, dataStreamID, duplicatedBuf)
 		}

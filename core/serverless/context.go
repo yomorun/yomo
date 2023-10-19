@@ -3,6 +3,7 @@ package serverless
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -89,53 +90,63 @@ func (c *Context) readStream(ctx context.Context) (quic.Stream, error) {
 	client.Logger().Debug(fmt.Sprintf("context receive stream[%s] -- start", dataStreamID))
 	// process data stream
 STREAM:
-	qconn := client.Connection()
-	dataStream, err := qconn.AcceptStream(ctx)
-	if err != nil {
-		client.Logger().Error("context request stream error", "err", err, "datastream_id", dataStreamID)
-		return nil, err
-	}
-	client.DataStreams().Store(dataStreamID, dataStream)
-	client.Logger().Debug("context accept stream success", "datastream_id", dataStreamID, "stream_id", dataStream.StreamID())
-	// read stream frame
-	fs := core.NewFrameStream(dataStream, y3codec.Codec(), y3codec.PacketReadWriter())
-	f, err := fs.ReadFrame()
-	if err != nil {
-		client.Logger().Warn("failed to read data stream", "err", err, "datastream_id", dataStreamID)
-		return nil, err
-	}
-	switch f.Type() {
-	case frame.TypeStreamFrame:
-		streamFrame := f.(*frame.StreamFrame)
-		// lookup data stream
-		// if streamFrame.ID != dataStreamID {
-		reader, ok := client.DataStreams().Load(dataStreamID)
-		if !ok {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+		qconn := client.Connection()
+		if qconn == nil {
+			err := errors.New("quic connection is nil")
+			client.Logger().Error(err.Error())
+			return nil, err
+		}
+		dataStream, err := qconn.AcceptStream(ctx)
+		if err != nil {
+			client.Logger().Error("context request stream error", "err", err, "datastream_id", dataStreamID)
+			return nil, err
+		}
+		client.DataStreams().Store(dataStreamID, dataStream)
+		client.Logger().Debug("context accept stream success", "datastream_id", dataStreamID, "stream_id", dataStream.StreamID())
+		// read stream frame
+		fs := core.NewFrameStream(dataStream, y3codec.Codec(), y3codec.PacketReadWriter())
+		f, err := fs.ReadFrame()
+		if err != nil {
+			client.Logger().Warn("failed to read data stream", "err", err, "datastream_id", dataStreamID)
+			return nil, err
+		}
+		switch f.Type() {
+		case frame.TypeStreamFrame:
+			streamFrame := f.(*frame.StreamFrame)
+			// lookup data stream
+			// if streamFrame.ID != dataStreamID {
+			reader, ok := client.DataStreams().Load(dataStreamID)
+			if !ok {
+				client.Logger().Debug(
+					"data strem is not found, continue",
+					"stream_id", dataStream.StreamID(),
+					"datastream_id", dataStreamID,
+					"received_id", streamFrame.ID,
+					"client_id", streamFrame.ClientID,
+					"tag", streamFrame.Tag,
+				)
+				goto STREAM
+			}
+			defer client.DataStreams().Delete(dataStreamID)
 			client.Logger().Debug(
-				"data strem is not found, continue",
+				"data stream is ready",
+				"remote_addr", qconn.RemoteAddr().String(),
+				"datastream_id", streamFrame.ID,
 				"stream_id", dataStream.StreamID(),
-				"datastream_id", dataStreamID,
-				"received_id", streamFrame.ID,
+				"stream_chunk_szie", streamFrame.ChunkSize,
 				"client_id", streamFrame.ClientID,
 				"tag", streamFrame.Tag,
 			)
-			goto STREAM
+			return reader.(quic.Stream), nil
+		default:
+			client.Logger().Error("!!!unexpected frame!!!", "unexpected_frame_type", f.Type().String())
 		}
-		defer client.DataStreams().Delete(dataStreamID)
-		client.Logger().Debug(
-			"data stream is ready",
-			"remote_addr", qconn.RemoteAddr().String(),
-			"datastream_id", streamFrame.ID,
-			"stream_id", dataStream.StreamID(),
-			"stream_chunk_szie", streamFrame.ChunkSize,
-			"client_id", streamFrame.ClientID,
-			"tag", streamFrame.Tag,
-		)
-		return reader.(quic.Stream), nil
-	default:
-		client.Logger().Error("!!!unexpected frame!!!", "unexpected_frame_type", f.Type().String())
-	}
-	client.Logger().Debug(fmt.Sprintf("context receive stream[%s] -- end", dataStreamID))
+		client.Logger().Debug(fmt.Sprintf("context receive stream[%s] -- end", dataStreamID))
 
-	return dataStream, nil
+		return dataStream, nil
+	}
 }
