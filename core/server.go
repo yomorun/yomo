@@ -45,7 +45,7 @@ type Server struct {
 	codec                   frame.Codec
 	packetReadWriter        frame.PacketReadWriter
 	counterOfDataFrame      int64
-	downstreams             map[string]FrameWriterConnection
+	downstreams             map[string]Downstream
 	mu                      sync.Mutex
 	opts                    *serverOptions
 	startHandlers           []FrameHandler
@@ -73,7 +73,7 @@ func NewServer(name string, opts ...ServerOption) *Server {
 		ctx:              ctx,
 		ctxCancel:        ctxCancel,
 		name:             name,
-		downstreams:      make(map[string]FrameWriterConnection),
+		downstreams:      make(map[string]Downstream),
 		logger:           logger,
 		tracerProvider:   options.tracerProvider,
 		codec:            y3codec.Codec(),
@@ -96,8 +96,8 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	}
 
 	// connect to all downstreams.
-	for addr, client := range s.downstreams {
-		go client.Connect(ctx, addr)
+	for _, client := range s.downstreams {
+		go client.Connect(ctx)
 	}
 
 	return s.Serve(ctx, conn)
@@ -149,7 +149,7 @@ func (s *Server) handleConnection(qconn quic.Connection, fs *FrameStream, logger
 	}
 
 	logger = logger.With("conn_id", conn.ID(), "conn_name", conn.Name())
-	logger.Info("client connected", "remote_addr", qconn.RemoteAddr().String(), "client_type", conn.ClientType().String())
+	logger.Info("new client connected", "remote_addr", qconn.RemoteAddr().String(), "client_type", conn.ClientType().String())
 
 	c := newContext(conn, route, logger)
 
@@ -300,7 +300,7 @@ func (s *Server) Close() error {
 	return nil
 }
 
-func closeServer(downstreams map[string]FrameWriterConnection, connector *Connector, listener *quic.Listener, router router.Router) error {
+func closeServer(downstreams map[string]Downstream, connector *Connector, listener *quic.Listener, router router.Router) error {
 	for _, ds := range downstreams {
 		ds.Close()
 	}
@@ -482,7 +482,7 @@ func (s *Server) Downstreams() map[string]string {
 
 	snapshotOfDownstream := make(map[string]string, len(s.downstreams))
 	for addr, client := range s.downstreams {
-		snapshotOfDownstream[addr] = client.ClientID()
+		snapshotOfDownstream[addr] = client.ID()
 	}
 	return snapshotOfDownstream
 }
@@ -497,9 +497,9 @@ func (s *Server) ConfigRouter(router router.Router) {
 
 // AddDownstreamServer add a downstream server to this server. all the DataFrames will be
 // dispatch to all the downstreams.
-func (s *Server) AddDownstreamServer(addr string, c FrameWriterConnection) {
+func (s *Server) AddDownstreamServer(c Downstream) {
 	s.mu.Lock()
-	s.downstreams[addr] = c
+	s.downstreams[c.ID()] = c
 	s.mu.Unlock()
 }
 
@@ -524,7 +524,11 @@ func (s *Server) dispatchToDownstreams(c *Context) {
 	dataFrame.Metadata = mdBytes
 
 	for _, ds := range s.downstreams {
-		c.Logger.Info("dispatching to downstream", "tid", tid, "sid", sid, "tag", dataFrame.Tag, "data_length", len(dataFrame.Payload), "downstream_id", ds.ClientID())
+		c.Logger.Info(
+			"dispatching to downstream",
+			"tid", tid, "sid", sid, "tag", dataFrame.Tag, "data_length", len(dataFrame.Payload),
+			"downstream_id", ds.ID(), "downstream_name", ds.LocalName(),
+		)
 		_ = ds.WriteFrame(dataFrame)
 	}
 }
