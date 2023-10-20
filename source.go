@@ -39,7 +39,14 @@ func NewSource(name, zipperAddr string, opts ...SourceOption) Source {
 		clientOpts[k] = core.ClientOption(v)
 	}
 
-	client := core.NewClient(name, core.ClientTypeSource, clientOpts...)
+	client := core.NewClient(name, zipperAddr, core.ClientTypeSource, clientOpts...)
+
+	client.Logger = client.Logger.With(
+		"component", core.ClientTypeSource.String(),
+		"source_id", client.ClientID(),
+		"source_name", client.Name(),
+		"zipper_addr", zipperAddr,
+	)
 
 	return &yomoSource{
 		name:       name,
@@ -51,10 +58,10 @@ func NewSource(name, zipperAddr string, opts ...SourceOption) Source {
 // Close will close the connection to YoMo-Zipper.
 func (s *yomoSource) Close() error {
 	if err := s.client.Close(); err != nil {
-		s.client.Logger().Error("failed to close the source", "err", err)
+		s.client.Logger.Error("failed to close the source", "err", err)
 		return err
 	}
-	s.client.Logger().Debug("the source is closed")
+	s.client.Logger.Debug("the source is closed")
 	return nil
 }
 
@@ -67,13 +74,13 @@ func (s *yomoSource) Connect() error {
 		}
 	})
 
-	err := s.client.Connect(context.Background(), s.zipperAddr)
+	err := s.client.Connect(context.Background())
 	return err
 }
 
 // Write writes data with specified tag.
 func (s *yomoSource) Write(tag uint32, data []byte) error {
-	md, deferFunc := core.SourceMetadata(s.client.ClientID(), id.New(), s.name, s.client.TracerProvider(), s.client.Logger())
+	md, deferFunc := core.SourceMetadata(s.client.ClientID(), id.New(), s.name, s.client.TracerProvider(), s.client.Logger)
 	defer deferFunc()
 
 	mdBytes, err := md.Encode()
@@ -86,7 +93,7 @@ func (s *yomoSource) Write(tag uint32, data []byte) error {
 		Metadata: mdBytes,
 		Payload:  data,
 	}
-	s.client.Logger().Debug("source write", "tag", tag, "data", data)
+	s.client.Logger.Debug("source write", "tag", tag, "data", data)
 	return s.client.WriteFrame(f)
 }
 
@@ -98,5 +105,5 @@ func (s *yomoSource) SetErrorHandler(fn func(err error)) {
 // [Experimental] SetReceiveHandler set the observe handler function
 func (s *yomoSource) SetReceiveHandler(fn func(uint32, []byte)) {
 	s.fn = fn
-	s.client.Logger().Info("receive hander set for the source")
+	s.client.Logger.Info("receive hander set for the source")
 }
