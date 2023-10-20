@@ -39,8 +39,8 @@ func TestFrameRoundTrip(t *testing.T) {
 	ctx := context.Background()
 
 	var (
-		observedTag = frame.Tag(1)
-		backflowTag = frame.Tag(2)
+		observedTag = frame.Tag(0x13)
+		backflowTag = frame.Tag(0x14)
 		payload     = []byte("hello data frame")
 		backflow    = []byte("hello backflow frame")
 	)
@@ -129,10 +129,20 @@ func TestFrameRoundTrip(t *testing.T) {
 	exited = checkClientExited(sfn, time.Second)
 	assert.False(t, exited, "sfn stream should not exited")
 
-	sfnMetaBytes, _ := NewDefaultMetadata(source.clientID, "tid", "sid", false).Encode()
+	sfnMd := NewDefaultMetadata(source.clientID, "sfn-tid", "sfn-sid", false)
 
-	err = sfn.WriteFrame(&frame.DataFrame{Tag: backflowTag, Metadata: sfnMetaBytes, Payload: backflow})
+	sfnMetaBytes, _ := sfnMd.Encode()
+
+	dataFrame := &frame.DataFrame{
+		Tag:      backflowTag,
+		Metadata: sfnMetaBytes,
+		Payload:  backflow,
+	}
+
+	err = sfn.WriteFrame(dataFrame)
 	assert.NoError(t, err)
+
+	assertDownstreamDataFrame(t, dataFrame.Tag, sfnMd, dataFrame.Payload, recorder)
 
 	stats := server.StatsFunctions()
 	nameList := []string{}
@@ -149,7 +159,7 @@ func TestFrameRoundTrip(t *testing.T) {
 	)
 	sourceMetaBytes, _ := md.Encode()
 
-	dataFrame := &frame.DataFrame{
+	dataFrame = &frame.DataFrame{
 		Tag:      observedTag,
 		Metadata: sourceMetaBytes,
 		Payload:  payload,
@@ -158,12 +168,7 @@ func TestFrameRoundTrip(t *testing.T) {
 	err = source.WriteFrame(dataFrame)
 	assert.NoError(t, err, "source write dataFrame must be success")
 
-	time.Sleep(2 * time.Second)
-
-	recordTag, recordMD, recordPayload := recorder.dataFrameContent()
-	assert.True(t, recordTag == dataFrame.Tag || recordTag == backflowTag)
-	assert.Equal(t, GetSourceIDFromMetadata(recordMD), source.clientID)
-	assert.True(t, bytes.Equal(recordPayload, dataFrame.Payload) || bytes.Equal(recordPayload, backflow))
+	assertDownstreamDataFrame(t, dataFrame.Tag, md, dataFrame.Payload, recorder)
 
 	assert.NoError(t, source.Close(), "source client.Close() should not return error")
 	assert.NoError(t, sfn.Close(), "sfn client.Close() should not return error")
@@ -257,17 +262,29 @@ func (w *frameWriterRecorder) WriteFrame(f frame.Frame) error {
 	defer w.mu.Unlock()
 
 	b, _ := w.codec.Encode(f)
-	_, err := w.buf.Write(b)
+	err := w.packetReader.WritePacket(w.buf, f.Type(), b)
 
 	return err
 }
 
-func (w *frameWriterRecorder) dataFrameContent() (frame.Tag, metadata.M, []byte) {
+func (w *frameWriterRecorder) ReadFrameContent() (frame.Tag, metadata.M, []byte) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	dataFrame := new(frame.DataFrame)
-	y3codec.Codec().Decode(w.buf.Bytes(), dataFrame)
+
+	_, bytes, _ := w.packetReader.ReadPacket(w.buf)
+	w.codec.Decode(bytes, dataFrame)
 	md, _ := metadata.Decode(dataFrame.Metadata)
 	return dataFrame.Tag, md, dataFrame.Payload
+}
+
+func assertDownstreamDataFrame(t *testing.T, tag uint32, md metadata.M, payload []byte, recorder *frameWriterRecorder) {
+	// wait for the downstream to finish writing.
+	time.Sleep(time.Second)
+
+	recordTag, recordMD, recordPayload := recorder.ReadFrameContent()
+	assert.Equal(t, recordTag, tag)
+	assert.Equal(t, recordMD, md)
+	assert.Equal(t, recordPayload, payload)
 }
