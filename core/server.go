@@ -20,9 +20,7 @@ import (
 	// authentication implements, Currently, only token authentication is implemented
 	_ "github.com/yomorun/yomo/pkg/auth"
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
-	"github.com/yomorun/yomo/pkg/id"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
-	"github.com/yomorun/yomo/pkg/trace"
 	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
@@ -345,51 +343,18 @@ func (s *Server) handleDataFrame(c *Context) error {
 	// counter +1
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
 
-	from := c.Connection
-	tid := GetTIDFromMetadata(c.FrameMetadata)
-	sid := GetSIDFromMetadata(c.FrameMetadata)
-	parentTraced := GetTracedFromMetadata(c.FrameMetadata)
-	traced := false
-	// trace
-	tp := s.TracerProvider()
-	if tp != nil {
-		// create span
-		var span oteltrace.Span
-		var err error
-		// set parent span, if not traced, use empty string
-		if parentTraced {
-			span, err = trace.NewSpan(tp, "zipper", "handle DataFrame", tid, sid)
-		} else {
-			span, err = trace.NewSpan(tp, "zipper", "handle DataFrame", "", "")
-		}
-		if err != nil {
-			s.logger.Error("zipper trace error", "err", err)
-		} else {
-			defer span.End()
-			tid = span.SpanContext().TraceID().String()
-			sid = span.SpanContext().SpanID().String()
-			traced = true
-		}
-	}
-	if tid == "" {
-		s.logger.Debug("zipper create new tid")
-		tid = id.TID()
-	}
-	if sid == "" {
-		s.logger.Debug("zipper create new sid")
-		sid = id.SID()
-	}
-	// reallocate metadata with new TID and SID
-	SetTIDToMetadata(c.FrameMetadata, tid)
-	SetSIDToMetadata(c.FrameMetadata, sid)
-	SetTracedToMetadata(c.FrameMetadata, traced || parentTraced)
-	md, err := c.FrameMetadata.Encode()
+	md, endFn := ZipperTraceMetadata(c.FrameMetadata, s.TracerProvider(), c.Logger)
+	defer endFn()
+
+	c.FrameMetadata = md
+
+	mdBytes, err := c.FrameMetadata.Encode()
 	if err != nil {
-		s.logger.Error("encode metadata error", "err", err)
+		c.Logger.Error("encode metadata error", "err", err)
 		return err
 	}
-	dataFrame.Metadata = md
-	s.logger.Debug("zipper metadata", "tid", tid, "sid", sid, "parentTraced", parentTraced, "traced", traced, "frome_stream_name", from.Name())
+	dataFrame.Metadata = mdBytes
+
 	// route
 	route := s.router.Route(c.FrameMetadata)
 	if route == nil {
@@ -415,7 +380,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 			continue
 		}
 
-		c.Logger.Info("data routing", "tid", tid, "sid", sid, "tag", dataFrame.Tag, "data_length", data_length, "to_id", toID, "to_name", stream.Name())
+		c.Logger.Info("data routing", "tag", dataFrame.Tag, "data_length", data_length, "to_id", toID, "to_name", stream.Name())
 
 		// write data frame to stream
 		if err := stream.WriteFrame(dataFrame); err != nil {
@@ -512,10 +477,6 @@ func (s *Server) dispatchToDownstreams(c *Context) {
 		return
 	}
 
-	var (
-		tid = GetTIDFromMetadata(c.FrameMetadata)
-		sid = GetSIDFromMetadata(c.FrameMetadata)
-	)
 	mdBytes, err := c.FrameMetadata.Encode()
 	if err != nil {
 		c.Logger.Error("failed to dispatch to downstream", "err", err)
@@ -526,9 +487,9 @@ func (s *Server) dispatchToDownstreams(c *Context) {
 	for _, ds := range s.downstreams {
 		c.Logger.Info(
 			"dispatching to downstream",
-			"tid", tid, "sid", sid, "tag", dataFrame.Tag, "data_length", len(dataFrame.Payload),
-			"downstream_id", ds.ID(), "downstream_name", ds.LocalName(),
-		)
+			"tag", dataFrame.Tag, "data_length", len(dataFrame.Payload),
+			"downstream_id", ds.ID(), "downstream_name", ds.LocalName())
+
 		_ = ds.WriteFrame(dataFrame)
 	}
 }
