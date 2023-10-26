@@ -29,11 +29,13 @@ type ServerOption func(*serverOptions)
 
 // serverOptions are the options for YoMo server.
 type serverOptions struct {
-	quicConfig     *quic.Config
-	tlsConfig      *tls.Config
-	auths          map[string]auth.Authentication
-	logger         *slog.Logger
-	tracerProvider oteltrace.TracerProvider
+	quicConfig       *quic.Config
+	tlsConfig        *tls.Config
+	auths            map[string]auth.Authentication
+	logger           *slog.Logger
+	tracerProvider   oteltrace.TracerProvider
+	connMiddlewares  []ConnMiddleware
+	frameMiddlewares []FrameMiddleware
 }
 
 func defaultServerOptions() *serverOptions {
@@ -86,5 +88,19 @@ func WithServerLogger(logger *slog.Logger) ServerOption {
 func WithServerTracerProvider(tp oteltrace.TracerProvider) ServerOption {
 	return func(o *serverOptions) {
 		o.tracerProvider = tp
+	}
+}
+
+// WithFrameMiddleware sets frame middleware for the client.
+func WithFrameMiddleware(mws ...FrameMiddleware) ServerOption {
+	return func(o *serverOptions) {
+		o.frameMiddlewares = mws
+	}
+}
+
+// WithConnMiddleware sets conn middleware for the client.
+func WithConnMiddleware(mws ...ConnMiddleware) ServerOption {
+	return func(o *serverOptions) {
+		o.connMiddlewares = mws
 	}
 }

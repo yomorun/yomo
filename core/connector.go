@@ -32,7 +32,7 @@ func NewConnector(ctx context.Context) *Connector {
 // Store stores Connection to Connector,
 // If the connID is the same twice, the new connection will replace the old connection.
 // If Connector be closed, The function will return ErrConnectorClosed.
-func (c *Connector) Store(connID string, conn Connection) error {
+func (c *Connector) Store(connID string, conn *Connection) error {
 	select {
 	case <-c.ctx.Done():
 		return ErrConnectorClosed
@@ -62,7 +62,7 @@ func (c *Connector) Remove(connID string) error {
 // Get retrieves the Connection with the specified connID.
 // If the Connector does not have a connection with the given connID, return nil and false.
 // If Connector be closed, The function will return ErrConnectorClosed.
-func (c *Connector) Get(connID string) (Connection, bool, error) {
+func (c *Connector) Get(connID string) (*Connection, bool, error) {
 	select {
 	case <-c.ctx.Done():
 		return nil, false, ErrConnectorClosed
@@ -74,9 +74,7 @@ func (c *Connector) Get(connID string) (Connection, bool, error) {
 		return nil, false, nil
 	}
 
-	connection := v.(Connection)
-
-	return connection, true, nil
+	return v.(*Connection), true, nil
 }
 
 // FindConnectionFunc is used to search for a specific connection within the Connector.
@@ -84,19 +82,19 @@ type FindConnectionFunc func(ConnectionInfo) bool
 
 // Find searches a stream collection using the specified find function.
 // If Connector be closed, The function will return ErrConnectorClosed.
-func (c *Connector) Find(findFunc FindConnectionFunc) ([]Connection, error) {
+func (c *Connector) Find(findFunc FindConnectionFunc) ([]*Connection, error) {
 	select {
 	case <-c.ctx.Done():
-		return []Connection{}, ErrConnectorClosed
+		return []*Connection{}, ErrConnectorClosed
 	default:
 	}
 
-	connections := make([]Connection, 0)
+	connections := make([]*Connection, 0)
 	c.connections.Range(func(key interface{}, val interface{}) bool {
-		stream := val.(Connection)
+		conn := val.(*Connection)
 
-		if findFunc(stream) {
-			connections = append(connections, stream)
+		if findFunc(conn) {
+			connections = append(connections, conn)
 		}
 		return true
 	})
@@ -112,10 +110,10 @@ func (c *Connector) Snapshot() map[string]string {
 
 	c.connections.Range(func(key interface{}, val interface{}) bool {
 		var (
-			streamID = key.(string)
-			stream   = val.(Connection)
+			connID = key.(string)
+			conn   = val.(*Connection)
 		)
-		result[streamID] = stream.Name()
+		result[connID] = conn.Name()
 		return true
 	})
 

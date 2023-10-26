@@ -6,6 +6,7 @@ import (
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
+	"golang.org/x/exp/slog"
 )
 
 // ConnectionInfo holds the information of connection.
@@ -24,15 +25,7 @@ type ConnectionInfo interface {
 
 // Connection wraps conneciton and stream to transfer frames.
 // Connection be used to read and write frames, and be managed by Connector.
-type Connection interface {
-	Context() context.Context
-	ConnectionInfo
-	frame.ReadWriteCloser
-	// CloseWithError closes the connection with an error string.
-	CloseWithError(string) error
-}
-
-type connection struct {
+type Connection struct {
 	name            string
 	id              string
 	clientType      ClientType
@@ -40,12 +33,19 @@ type connection struct {
 	observeDataTags []uint32
 	conn            quic.Connection
 	fs              *FrameStream
+	Logger          *slog.Logger
 }
 
 func newConnection(
 	name string, id string, clientType ClientType, md metadata.M, tags []uint32,
-	conn quic.Connection, fs *FrameStream) *connection {
-	return &connection{
+	conn quic.Connection, fs *FrameStream, logger *slog.Logger) *Connection {
+
+	logger = logger.With("conn_id", id, "conn_name", name)
+	if conn != nil {
+		logger.Info("new client connected", "remote_addr", conn.RemoteAddr().String(), "client_type", clientType.String())
+	}
+
+	return &Connection{
 		name:            name,
 		id:              id,
 		clientType:      clientType,
@@ -53,46 +53,47 @@ func newConnection(
 		observeDataTags: tags,
 		conn:            conn,
 		fs:              fs,
+		Logger:          logger,
 	}
 }
 
-func (c *connection) Close() error {
+func (c *Connection) Close() error {
 	return c.fs.Close()
 }
 
-func (c *connection) Context() context.Context {
+func (c *Connection) Context() context.Context {
 	return c.fs.Context()
 }
 
-func (c *connection) ID() string {
+func (c *Connection) ID() string {
 	return c.id
 }
 
-func (c *connection) Metadata() metadata.M {
+func (c *Connection) Metadata() metadata.M {
 	return c.metadata
 }
 
-func (c *connection) Name() string {
+func (c *Connection) Name() string {
 	return c.name
 }
 
-func (c *connection) ObserveDataTags() []uint32 {
+func (c *Connection) ObserveDataTags() []uint32 {
 	return c.observeDataTags
 }
 
-func (c *connection) ReadFrame() (frame.Frame, error) {
+func (c *Connection) ReadFrame() (frame.Frame, error) {
 	return c.fs.ReadFrame()
 }
 
-func (c *connection) ClientType() ClientType {
+func (c *Connection) ClientType() ClientType {
 	return c.clientType
 }
 
-func (c *connection) WriteFrame(f frame.Frame) error {
+func (c *Connection) WriteFrame(f frame.Frame) error {
 	return c.fs.WriteFrame(f)
 }
 
-func (c *connection) CloseWithError(errString string) error {
+func (c *Connection) CloseWithError(errString string) error {
 	return c.conn.CloseWithError(YomoCloseErrorCode, errString)
 }
 

@@ -110,4 +110,18 @@ var (
 			o.serverOption = append(o.serverOption, core.WithServerTracerProvider(tp))
 		}
 	}
+
+	// WithConnMiddleware sets conn middleware for the zipper.
+	WithConnMiddleware = func(mw ...core.ConnMiddleware) ZipperOption {
+		return func(o *zipperOptions) {
+			o.serverOption = append(o.serverOption, core.WithConnMiddleware(mw...))
+		}
+	}
+
+	// WithFrameMiddleware sets frame middleware for the zipper.
+	WithFrameMiddleware = func(mw ...core.FrameMiddleware) ZipperOption {
+		return func(o *zipperOptions) {
+			o.serverOption = append(o.serverOption, core.WithFrameMiddleware(mw...))
+		}
+	}
 )

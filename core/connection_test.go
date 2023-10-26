@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
+	"golang.org/x/exp/slog"
 )
 
 func TestConnection(t *testing.T) {
@@ -30,7 +31,7 @@ func TestConnection(t *testing.T) {
 	// create frame connection.
 	fs := NewFrameStream(mockStream, &byteCodec{}, &bytePacketReadWriter{})
 
-	connection := newConnection(name, id, styp, md, observed, nil, fs)
+	connection := newConnection(name, id, styp, md, observed, nil, fs, slog.Default())
 
 	t.Run("ConnectionInfo", func(t *testing.T) {
 		assert.Equal(t, id, connection.ID())
