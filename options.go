@@ -119,7 +119,7 @@ var (
 	}
 
 	// WithFrameMiddleware sets frame middleware for the zipper.
-	WithFrameMiddleware = func(mw ...core.FrameMiddleware) ZipperOption {
+	WithZipperFrameMiddleware = func(mw ...core.FrameMiddleware) ZipperOption {
 		return func(o *zipperOptions) {
 			o.serverOption = append(o.serverOption, core.WithFrameMiddleware(mw...))
 		}
