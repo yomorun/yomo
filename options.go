@@ -112,7 +112,7 @@ var (
 	}
 
 	// WithConnMiddleware sets conn middleware for the zipper.
-	WithConnMiddleware = func(mw ...core.ConnMiddleware) ZipperOption {
+	WithZipperConnMiddleware = func(mw ...core.ConnMiddleware) ZipperOption {
 		return func(o *zipperOptions) {
 			o.serverOption = append(o.serverOption, core.WithConnMiddleware(mw...))
 		}
