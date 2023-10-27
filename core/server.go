@@ -105,11 +105,7 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 
 	// connect to all downstreams.
 	for _, client := range s.downstreams {
-		go func() {
-			if err := client.Connect(ctx); err != nil {
-				s.logger.Error("failed to connect downstream", "downstream_name", client.LocalName(), "err", err)
-			}
-		}()
+		go client.Connect(ctx)
 	}
 
 	return s.Serve(ctx, conn)
