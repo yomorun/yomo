@@ -101,6 +101,6 @@ func WithFrameMiddleware(mws ...FrameMiddleware) ServerOption {
 // WithConnMiddleware sets conn middleware for the client.
 func WithConnMiddleware(mws ...ConnMiddleware) ServerOption {
 	return func(o *serverOptions) {
-		o.connMiddlewares = mws
+		o.connMiddlewares = append(o.connMiddlewares, mws...)
 	}
 }
