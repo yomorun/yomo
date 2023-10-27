@@ -9,7 +9,6 @@ import (
 	"reflect"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/frame"
@@ -21,6 +20,7 @@ import (
 	_ "github.com/yomorun/yomo/pkg/auth"
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 	"github.com/yomorun/yomo/pkg/id"
+	"github.com/yomorun/yomo/pkg/listener/yquic"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
 	"github.com/yomorun/yomo/pkg/trace"
 	oteltrace "go.opentelemetry.io/otel/trace"
@@ -48,7 +48,7 @@ type Server struct {
 	startHandlers      []FrameHandler
 	beforeHandlers     []FrameHandler
 	afterHandlers      []FrameHandler
-	listener           *Listener
+	listener           Listener
 	logger             *slog.Logger
 	tracerProvider     oteltrace.TracerProvider
 }
@@ -99,7 +99,7 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	return s.Serve(ctx, conn)
 }
 
-func (s *Server) handshake(fconn *FrameConn) (bool, router.Route, Connection) {
+func (s *Server) handshake(fconn FrameConn) (bool, router.Route, Connection) {
 	var gerr error
 
 	defer func() {
@@ -110,34 +110,33 @@ func (s *Server) handshake(fconn *FrameConn) (bool, router.Route, Connection) {
 		}
 	}()
 
-	select {
-	case <-time.After(time.Second):
-		gerr = errors.New("yomo: handshake timeout")
+	first, err := fconn.ReadFrame()
+	if err != nil {
+		gerr = err
 		return false, nil, nil
-	case first := <-fconn.ReadFrame():
-		switch first.Type() {
-		case frame.TypeHandshakeFrame:
-			hf := first.(*frame.HandshakeFrame)
+	}
+	switch first.Type() {
+	case frame.TypeHandshakeFrame:
+		hf := first.(*frame.HandshakeFrame)
 
-			conn, err := s.handleHandshakeFrame(fconn, hf)
-			if err != nil {
-				gerr = err
-				return false, nil, conn
-			}
-
-			route, err := s.handleRoute(hf, conn.Metadata())
-			if err != nil {
-				gerr = err
-			}
-			return true, route, conn
-		default:
-			gerr = fmt.Errorf("yomo: handshake read unexpected frame, read: %s", first.Type().String())
-			return false, nil, nil
+		conn, err := s.handleHandshakeFrame(fconn, hf)
+		if err != nil {
+			gerr = err
+			return false, nil, conn
 		}
+
+		route, err := s.handleRoute(hf, conn.Metadata())
+		if err != nil {
+			gerr = err
+		}
+		return true, route, conn
+	default:
+		gerr = fmt.Errorf("yomo: handshake read unexpected frame, read: %s", first.Type().String())
+		return false, nil, nil
 	}
 }
 
-func (s *Server) handleConnection(fconn *FrameConn, logger *slog.Logger) {
+func (s *Server) handleConnection(fconn FrameConn, logger *slog.Logger) {
 	ok, route, conn := s.handshake(fconn)
 	if !ok {
 		logger.Error("handshake failed")
@@ -171,35 +170,34 @@ func (s *Server) handleFrames(c *Context) {
 		c.Release()
 	}()
 	for {
-		select {
-		case <-c.Connection.FrameConn().Context().Done():
+		f, err := c.Connection.FrameConn().ReadFrame()
+		if err != nil {
+			c.CloseWithError(err.Error())
 			return
-		case f := <-c.Connection.FrameConn().ReadFrame():
-			if err := c.WithFrame(f); err != nil {
+		}
+
+		for _, h := range s.beforeHandlers {
+			if err := h(c); err != nil {
 				c.CloseWithError(err.Error())
 				return
 			}
+		}
 
-			for _, h := range s.beforeHandlers {
-				if err := h(c); err != nil {
-					c.CloseWithError(err.Error())
-					return
-				}
+		switch f.Type() {
+		case frame.TypeDataFrame:
+			if err := s.mainFrameHandler(c); err != nil {
+				c.Logger.Info("failed to handle data frame", "err", err)
+				return
 			}
+		default:
+			c.Logger.Info("unexpected frame type", "type", f.Type().String())
+			return
+		}
 
-			switch f.Type() {
-			case frame.TypeDataFrame:
-				if err := s.mainFrameHandler(c); err != nil {
-					c.Logger.Info("failed to handle data frame", "err", err)
-					return
-				}
-			}
-
-			for _, h := range s.afterHandlers {
-				if err := h(c); err != nil {
-					c.CloseWithError(err.Error())
-					return
-				}
+		for _, h := range s.afterHandlers {
+			if err := h(c); err != nil {
+				c.CloseWithError(err.Error())
+				return
 			}
 		}
 	}
@@ -221,7 +219,7 @@ func (s *Server) handleRoute(hf *frame.HandshakeFrame, md metadata.M) (router.Ro
 	return route, nil
 }
 
-func (s *Server) handleHandshakeFrame(fconn *FrameConn, hf *frame.HandshakeFrame) (Connection, error) {
+func (s *Server) handleHandshakeFrame(fconn FrameConn, hf *frame.HandshakeFrame) (Connection, error) {
 	md, ok := auth.Authenticate(s.opts.auths, hf)
 
 	if !ok {
@@ -252,7 +250,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 	}
 
 	// listen the address
-	listener, err := Listen(conn, y3codec.Codec(), y3codec.PacketReadWriter(), tlsConfig, s.opts.quicConfig)
+	listener, err := yquic.Listen(conn, y3codec.Codec(), y3codec.PacketReadWriter(), tlsConfig, s.opts.quicConfig)
 	if err != nil {
 		s.logger.Error("failed to listen on quic", "err", err)
 		return err

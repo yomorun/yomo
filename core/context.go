@@ -61,7 +61,7 @@ func (c *Context) Get(key string) (any, bool) {
 var _ context.Context = &Context{}
 
 // Done returns nil (chan which will wait forever) when c.Connection.Context() has no Context.
-func (c *Context) Done() <-chan struct{} { return c.Connection.FrameConn().ctx.Done() }
+func (c *Context) Done() <-chan struct{} { return c.Connection.FrameConn().Context().Done() }
 
 // Deadline returns that there is no deadline (ok==false) when c.Connection has no Context.
 func (c *Context) Deadline() (deadline time.Time, ok bool) {

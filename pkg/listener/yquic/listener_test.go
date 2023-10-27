@@ -1,8 +1,7 @@
-package core
+package yquic
 
 import (
 	"context"
-	"io"
 	"testing"
 	"time"
 
@@ -27,31 +26,28 @@ func TestFrameConnection(t *testing.T) {
 		}
 	}()
 
-	fconn, err := DialAddr(context.TODO(), testHost, y3codec.Codec(), y3codec.PacketReadWriter(), pkgtls.MustCreateClientTLSConfig(), defaultClientOption().quicConfig)
+	fconn, err := DialAddr(context.TODO(), testHost,
+		y3codec.Codec(), y3codec.PacketReadWriter(),
+		pkgtls.MustCreateClientTLSConfig(), nil,
+	)
 	assert.NoError(t, err)
 
 	err = fconn.WriteFrame(&frame.HandshakeAckFrame{})
 	assert.NoError(t, err)
 
 	for {
-		select {
-		case f := <-fconn.ReadFrame():
-			assert.Equal(t, frame.TypeHandshakeFrame, f.Type())
-			hf := f.(*frame.HandshakeFrame)
-			assert.Equal(t, handshakeName, hf.Name)
-		case stream := <-fconn.AcceptStream():
-			rd, err := io.ReadAll(stream)
-			assert.NoError(t, err)
-			assert.Equal(t, streamContent, string(rd))
-		case <-fconn.Context().Done():
-			assert.Equal(t, &ErrConnectionClosed{CloseMessage}, context.Cause(fconn.Context()))
+		f, err := fconn.ReadFrame()
+		if err != nil {
+			assert.Equal(t, &ErrConnClosed{CloseMessage}, context.Cause(fconn.Context()))
 			return
 		}
+		hf := f.(*frame.HandshakeFrame)
+		assert.Equal(t, handshakeName, hf.Name)
 	}
 }
 
 func runListener(t *testing.T) error {
-	listener, err := ListenAddr(testHost, y3codec.Codec(), y3codec.PacketReadWriter(), pkgtls.MustCreateServerTLSConfig(testHost), DefalutQuicConfig)
+	listener, err := ListenAddr(testHost, y3codec.Codec(), y3codec.PacketReadWriter(), pkgtls.MustCreateServerTLSConfig(testHost), nil)
 	if err != nil {
 		return err
 	}
@@ -65,19 +61,13 @@ func runListener(t *testing.T) error {
 		return err
 	}
 
-	f := <-fconn.ReadFrame()
+	f, err := fconn.ReadFrame()
+	assert.NoError(t, err)
 	assert.Equal(t, f.Type(), frame.TypeHandshakeAckFrame)
 
 	if err := fconn.WriteFrame(&frame.HandshakeFrame{Name: handshakeName}); err != nil {
 		return err
 	}
-
-	stream, err := fconn.OpenStream()
-	if err != nil {
-		return err
-	}
-	_, _ = stream.Write([]byte(streamContent))
-	_ = stream.Close()
 
 	time.AfterFunc(time.Second, func() {
 		err := fconn.CloseWithError(CloseMessage)
@@ -87,11 +77,8 @@ func runListener(t *testing.T) error {
 		err = fconn.CloseWithError(CloseMessage)
 		assert.NoError(t, err)
 
-		_, err = fconn.OpenStream()
-		assert.Equal(t, &ErrConnectionClosed{CloseMessage}, err)
-
 		err = fconn.WriteFrame(&frame.DataFrame{Payload: []byte("aaaa")})
-		assert.Equal(t, &ErrConnectionClosed{CloseMessage}, err)
+		assert.Equal(t, &ErrConnClosed{CloseMessage}, err)
 	})
 
 	return nil
