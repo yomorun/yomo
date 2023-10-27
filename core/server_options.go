@@ -94,7 +94,7 @@ func WithServerTracerProvider(tp oteltrace.TracerProvider) ServerOption {
 // WithFrameMiddleware sets frame middleware for the client.
 func WithFrameMiddleware(mws ...FrameMiddleware) ServerOption {
 	return func(o *serverOptions) {
-		o.connMiddlewares = append(o.connMiddlewares, mws...)
+		o.frameMiddlewares = append(o.frameMiddlewares, mws...)
 	}
 }
 
