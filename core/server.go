@@ -209,7 +209,11 @@ func (s *Server) handleHandshakeFrame(qconn quic.Connection, fs *FrameStream, hf
 	md, ok := auth.Authenticate(s.opts.auths, hf)
 
 	if !ok {
-		s.logger.Warn("authentication failed", "credential", hf.AuthName)
+		s.logger.Warn(
+			"authentication failed",
+			"client_type", ClientType(hf.ClientType).String(), "client_name", hf.Name,
+			"credential", hf.AuthName,
+		)
 		return nil, fmt.Errorf("authentication failed: client credential name is %s", hf.AuthName)
 	}
 
