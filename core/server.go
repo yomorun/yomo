@@ -175,6 +175,11 @@ func (s *Server) handleFrames(c *Context) {
 			return
 		}
 
+		if err := c.WithFrame(f); err != nil {
+			c.CloseWithError(err.Error())
+			return
+		}
+
 		for _, h := range s.beforeHandlers {
 			if err := h(c); err != nil {
 				c.CloseWithError(err.Error())
