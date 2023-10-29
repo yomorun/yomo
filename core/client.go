@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/listener"
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 	"github.com/yomorun/yomo/pkg/id"
+	"github.com/yomorun/yomo/pkg/listener/yquic"
 	oteltrace "go.opentelemetry.io/otel/trace"
 	"golang.org/x/exp/slog"
 )
@@ -69,8 +71,8 @@ func NewClient(appName string, clientType ClientType, opts ...ClientOption) *Cli
 	}
 }
 
-func (c *Client) connect(ctx context.Context, addr string) (*FrameConn, error) {
-	conn, err := DialAddr(ctx, addr, y3codec.Codec(), y3codec.PacketReadWriter(), c.opts.tlsConfig, c.opts.quicConfig)
+func (c *Client) connect(ctx context.Context, addr string) (listener.FrameConn, error) {
+	conn, err := yquic.DialAddr(ctx, addr, y3codec.Codec(), y3codec.PacketReadWriter(), c.opts.tlsConfig, c.opts.quicConfig)
 	if err != nil {
 		return conn, err
 	}
@@ -88,25 +90,23 @@ func (c *Client) connect(ctx context.Context, addr string) (*FrameConn, error) {
 		return conn, err
 	}
 
-	select {
-	case <-time.After(time.Second):
-		return conn, errors.New("yomo: handshake timeout")
-	case received := <-conn.ReadFrame():
-		switch received.Type() {
-		case frame.TypeRejectedFrame:
-			return conn, ErrAuthenticateFailed{received.(*frame.RejectedFrame).Message}
-		case frame.TypeHandshakeAckFrame:
-			return conn, nil
-		default:
-			return conn, ErrAuthenticateFailed{
-				fmt.Sprintf("authentication failed: read unexcepted frame, frame read: %s", received.Type().String()),
-			}
+	received, err := conn.ReadFrame()
+	if err != nil {
+		return nil, err
+	}
+	switch received.Type() {
+	case frame.TypeRejectedFrame:
+		return conn, ErrAuthenticateFailed{received.(*frame.RejectedFrame).Message}
+	case frame.TypeHandshakeAckFrame:
+		return conn, nil
+	default:
+		return conn, ErrAuthenticateFailed{
+			fmt.Sprintf("authentication failed: read unexcepted frame, frame read: %s", received.Type().String()),
 		}
 	}
-
 }
 
-func (c *Client) runBackground(ctx context.Context, addr string, conn *FrameConn) {
+func (c *Client) runBackground(ctx context.Context, addr string, conn listener.FrameConn) {
 	reconnection := make(chan struct{})
 
 	go c.handleReadFrames(conn, reconnection)
@@ -218,7 +218,7 @@ func (c *Client) handleFrameError(err error, reconnection chan<- struct{}) {
 	c.errorfn(err)
 
 	// exit client program if stream has be closed.
-	if se := new(ErrConnectionClosed); errors.As(err, &se) {
+	if se := new(yquic.ErrConnClosed); errors.As(err, &se) {
 		c.ctxCancel(fmt.Errorf("%s: shutdown with error=%s", c.clientType.String(), se.Error()))
 		return
 	}
@@ -236,28 +236,27 @@ func (c *Client) Wait() {
 	<-c.ctx.Done()
 }
 
-func (c *Client) handleReadFrames(fconn *FrameConn, reconnection chan struct{}) {
+func (c *Client) handleReadFrames(fconn listener.FrameConn, reconnection chan struct{}) {
 	for {
-		select {
-		case <-fconn.Context().Done():
-			c.handleFrameError(fconn.Context().Err(), reconnection)
+		f, err := fconn.ReadFrame()
+		if err != nil {
+			c.handleFrameError(err, reconnection)
 			return
-		case f := <-fconn.ReadFrame():
-			func() {
-				defer func() {
-					if e := recover(); e != nil {
-						const size = 64 << 10
-						buf := make([]byte, size)
-						buf = buf[:runtime.Stack(buf, false)]
-
-						perr := fmt.Errorf("%v", e)
-						c.logger.Error("stream panic", "err", perr)
-						c.errorfn(fmt.Errorf("yomo: stream panic: %v\n%s", perr, buf))
-					}
-				}()
-				c.handleFrame(f)
-			}()
 		}
+		func() {
+			defer func() {
+				if e := recover(); e != nil {
+					const size = 64 << 10
+					buf := make([]byte, size)
+					buf = buf[:runtime.Stack(buf, false)]
+
+					perr := fmt.Errorf("%v", e)
+					c.logger.Error("stream panic", "err", perr)
+					c.errorfn(fmt.Errorf("yomo: stream panic: %v\n%s", perr, buf))
+				}
+			}()
+			c.handleFrame(f)
+		}()
 	}
 }
 

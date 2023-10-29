@@ -2,6 +2,7 @@ package core
 
 import (
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/listener"
 	"github.com/yomorun/yomo/core/metadata"
 )
 
@@ -23,7 +24,7 @@ type ConnectionInfo interface {
 // Connection be used to read and write frames, and be managed by Connector.
 type Connection interface {
 	ConnectionInfo
-	FrameConn() FrameConn
+	FrameConn() listener.FrameConn
 }
 
 type connection struct {
@@ -32,12 +33,12 @@ type connection struct {
 	clientType      ClientType
 	metadata        metadata.M
 	observeDataTags []uint32
-	fconn           FrameConn
+	fconn           listener.FrameConn
 }
 
 func newConnection(
 	name string, id string, clientType ClientType, md metadata.M, tags []uint32,
-	fconn FrameConn) *connection {
+	fconn listener.FrameConn) *connection {
 	return &connection{
 		name:            name,
 		id:              id,
@@ -68,6 +69,6 @@ func (c *connection) ClientType() ClientType {
 	return c.clientType
 }
 
-func (c *connection) FrameConn() FrameConn {
+func (c *connection) FrameConn() listener.FrameConn {
 	return c.fconn
 }

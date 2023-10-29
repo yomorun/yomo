@@ -5,10 +5,11 @@ import (
 	"crypto/tls"
 	"errors"
 	"net"
+	"time"
 
 	"github.com/quic-go/quic-go"
-	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/listener"
 )
 
 // ErrConnClosed is returned when the connection is closed.
@@ -128,6 +129,9 @@ func (p *FrameConn) framing() {
 
 func convertErrorToConnectionClosed(err error) error {
 	if se := new(quic.ApplicationError); errors.As(err, &se) {
+		if se.ErrorCode == 0 && se.ErrorMessage == "" {
+			return &ErrConnClosed{"yomo: listener closed"}
+		}
 		return &ErrConnClosed{se.ErrorMessage}
 	}
 	return err
@@ -135,6 +139,8 @@ func convertErrorToConnectionClosed(err error) error {
 
 func (p *FrameConn) ReadFrame() (frame.Frame, error) {
 	select {
+	case <-time.After(time.Second):
+		return nil, errors.New("yomo: read frame timeout")
 	case <-p.ctx.Done():
 		return nil, context.Cause(p.ctx)
 	case <-p.frameCh:
@@ -203,7 +209,7 @@ func ListenAddr(
 }
 
 // Accept accepts FrameConns.
-func (listener *Listener) Accept(ctx context.Context) (core.FrameConn, error) {
+func (listener *Listener) Accept(ctx context.Context) (listener.FrameConn, error) {
 	qconn, err := listener.underlying.Accept(ctx)
 	if err != nil {
 		return nil, err

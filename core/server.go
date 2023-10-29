@@ -12,6 +12,7 @@ import (
 
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/listener"
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/router"
 	"golang.org/x/exp/slog"
@@ -48,7 +49,7 @@ type Server struct {
 	startHandlers      []FrameHandler
 	beforeHandlers     []FrameHandler
 	afterHandlers      []FrameHandler
-	listener           Listener
+	listener           listener.Listener
 	logger             *slog.Logger
 	tracerProvider     oteltrace.TracerProvider
 }
@@ -99,7 +100,7 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	return s.Serve(ctx, conn)
 }
 
-func (s *Server) handshake(fconn FrameConn) (bool, router.Route, Connection) {
+func (s *Server) handshake(fconn listener.FrameConn) (bool, router.Route, Connection) {
 	var gerr error
 
 	defer func() {
@@ -136,7 +137,7 @@ func (s *Server) handshake(fconn FrameConn) (bool, router.Route, Connection) {
 	}
 }
 
-func (s *Server) handleConnection(fconn FrameConn, logger *slog.Logger) {
+func (s *Server) handleConnection(fconn listener.FrameConn, logger *slog.Logger) {
 	ok, route, conn := s.handshake(fconn)
 	if !ok {
 		logger.Error("handshake failed")
@@ -219,7 +220,7 @@ func (s *Server) handleRoute(hf *frame.HandshakeFrame, md metadata.M) (router.Ro
 	return route, nil
 }
 
-func (s *Server) handleHandshakeFrame(fconn FrameConn, hf *frame.HandshakeFrame) (Connection, error) {
+func (s *Server) handleHandshakeFrame(fconn listener.FrameConn, hf *frame.HandshakeFrame) (Connection, error) {
 	md, ok := auth.Authenticate(s.opts.auths, hf)
 
 	if !ok {
@@ -286,7 +287,7 @@ func (s *Server) Close() error {
 	return nil
 }
 
-func closeServer(downstreams map[string]FrameWriterConnection, connector *Connector, listener *Listener, router router.Router) error {
+func closeServer(downstreams map[string]FrameWriterConnection, connector *Connector, listener listener.Listener, router router.Router) error {
 	for _, ds := range downstreams {
 		ds.Close()
 	}
