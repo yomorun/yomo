@@ -66,14 +66,12 @@ func NewZipper(name string, meshConfig map[string]config.Downstream, options ...
 	for downstreamName, meshConf := range meshConfig {
 		addr := fmt.Sprintf("%s:%d", meshConf.Host, meshConf.Port)
 
-		dsLogger := server.Logger().With("downstream_name", downstreamName, "downstream_addr", addr)
-
 		clientOptions := append(
 			opts.clientOption,
 			core.WithCredential(meshConf.Credential),
 			core.WithNonBlockWrite(),
 			core.WithConnectUntilSucceed(),
-			core.WithLogger(dsLogger),
+			core.WithLogger(server.Logger().With("downstream_name", downstreamName, "downstream_addr", addr)),
 		)
 
 		downstream := &downstream{

@@ -431,8 +431,8 @@ func (s *Server) Downstreams() map[string]string {
 	defer s.mu.Unlock()
 
 	snapshotOfDownstream := make(map[string]string, len(s.downstreams))
-	for addr, client := range s.downstreams {
-		snapshotOfDownstream[addr] = client.ID()
+	for _, client := range s.downstreams {
+		snapshotOfDownstream[client.LocalName()] = client.ID()
 	}
 	return snapshotOfDownstream
 }
