@@ -8,7 +8,7 @@ import (
 
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/core/listener"
+	ynet "github.com/yomorun/yomo/core/net"
 )
 
 // ErrConnClosed is returned when the connection is closed.
@@ -210,7 +210,7 @@ func ListenAddr(
 }
 
 // Accept accepts FrameConns.
-func (listener *Listener) Accept(ctx context.Context) (listener.FrameConn, error) {
+func (listener *Listener) Accept(ctx context.Context) (ynet.FrameConn, error) {
 	qconn, err := listener.underlying.Accept(ctx)
 	if err != nil {
 		return nil, err

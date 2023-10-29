@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/core/listener"
+	ynet "github.com/yomorun/yomo/core/net"
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 	"github.com/yomorun/yomo/pkg/id"
-	"github.com/yomorun/yomo/pkg/listener/yquic"
+	yquic "github.com/yomorun/yomo/pkg/netimpl/quic"
 	oteltrace "go.opentelemetry.io/otel/trace"
 	"golang.org/x/exp/slog"
 )
@@ -69,7 +69,7 @@ func NewClient(appName, zipperAddr string, clientType ClientType, opts ...Client
 	}
 }
 
-func (c *Client) connect(ctx context.Context, addr string) (listener.FrameConn, error) {
+func (c *Client) connect(ctx context.Context, addr string) (ynet.FrameConn, error) {
 	conn, err := yquic.DialAddr(ctx, addr, y3codec.Codec(), y3codec.PacketReadWriter(), c.opts.tlsConfig, c.opts.quicConfig)
 	if err != nil {
 		return conn, err
@@ -104,7 +104,7 @@ func (c *Client) connect(ctx context.Context, addr string) (listener.FrameConn, 
 	}
 }
 
-func (c *Client) runBackground(ctx context.Context, conn listener.FrameConn) {
+func (c *Client) runBackground(ctx context.Context, conn ynet.FrameConn) {
 	reconnection := make(chan struct{})
 
 	go c.handleReadFrames(conn, reconnection)
@@ -228,7 +228,7 @@ func (c *Client) Wait() {
 	<-c.ctx.Done()
 }
 
-func (c *Client) handleReadFrames(fconn listener.FrameConn, reconnection chan struct{}) {
+func (c *Client) handleReadFrames(fconn ynet.FrameConn, reconnection chan struct{}) {
 	for {
 		f, err := fconn.ReadFrame()
 		if err != nil {
