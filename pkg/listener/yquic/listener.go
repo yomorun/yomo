@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"net"
-	"time"
 
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/frame"
@@ -80,18 +79,22 @@ func newFrameConn(
 // If the Connection implemented by quic is closed, the quic ApplicationErrorCode is always 0x13.
 const YomoCloseErrorCode = quic.ApplicationErrorCode(0x13)
 
+// Context returns the context of the connection.
 func (p *FrameConn) Context() context.Context {
 	return p.ctx
 }
 
+// RemoteAddr returns the remote address of connection.
 func (p *FrameConn) RemoteAddr() net.Addr {
 	return p.conn.RemoteAddr()
 }
 
+// LocalAddr returns the local address of connection.
 func (p *FrameConn) LocalAddr() net.Addr {
 	return p.conn.LocalAddr()
 }
 
+// CloseWithError closes the connection.
 func (p *FrameConn) CloseWithError(errString string) error {
 	select {
 	case <-p.ctx.Done():
@@ -122,7 +125,6 @@ func (p *FrameConn) framing() {
 			p.ctxCancel(convertErrorToConnectionClosed(err))
 			return
 		}
-
 		p.frameCh <- f
 	}
 }
@@ -137,30 +139,29 @@ func convertErrorToConnectionClosed(err error) error {
 	return err
 }
 
+// ReadFrame reads a frame. it usually be called in a for-loop.
 func (p *FrameConn) ReadFrame() (frame.Frame, error) {
 	select {
-	case <-time.After(time.Second):
-		return nil, errors.New("yomo: read frame timeout")
 	case <-p.ctx.Done():
 		return nil, context.Cause(p.ctx)
-	case <-p.frameCh:
-		return <-p.frameCh, nil
+	case ff := <-p.frameCh:
+		return ff, nil
 	}
 }
 
+// WriteFrame writes a frame to connection.
 func (p *FrameConn) WriteFrame(f frame.Frame) error {
 	select {
 	case <-p.ctx.Done():
 		return context.Cause(p.ctx)
 	default:
-	}
+		b, err := p.codec.Encode(f)
+		if err != nil {
+			return err
+		}
 
-	b, err := p.codec.Encode(f)
-	if err != nil {
-		return err
+		return p.prw.WritePacket(p.stream, f.Type(), b)
 	}
-
-	return p.prw.WritePacket(p.stream, f.Type(), b)
 }
 
 // Listener listens a net.PacketConn and accepts connections.

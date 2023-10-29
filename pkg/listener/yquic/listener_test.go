@@ -38,7 +38,7 @@ func TestFrameConnection(t *testing.T) {
 	for {
 		f, err := fconn.ReadFrame()
 		if err != nil {
-			assert.Equal(t, &ErrConnClosed{"yomo: listener closed"}, err)
+			assert.Equal(t, &ErrConnClosed{CloseMessage}, err)
 			return
 		}
 		hf := f.(*frame.HandshakeFrame)
