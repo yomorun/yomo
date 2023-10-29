@@ -21,6 +21,7 @@ import (
 // Client is the abstraction of a YoMo-Client. a YoMo-Client can be
 // Source, Upstream Zipper or StreamFunction.
 type Client struct {
+	zipperAddr     string
 	name           string                     // name of the client
 	clientID       string                     // id of the client
 	clientType     ClientType                 // type of the client
@@ -28,7 +29,7 @@ type Client struct {
 	receiver       func(*frame.BackflowFrame) // function to invoke when data is processed
 	errorfn        func(error)                // function to invoke when error occured
 	opts           *clientOptions
-	logger         *slog.Logger
+	Logger         *slog.Logger
 	tracerProvider oteltrace.TracerProvider
 
 	// ctx and ctxCancel manage the lifecycle of client.
@@ -39,7 +40,7 @@ type Client struct {
 }
 
 // NewClient creates a new YoMo-Client.
-func NewClient(appName string, clientType ClientType, opts ...ClientOption) *Client {
+func NewClient(appName, zipperAddr string, clientType ClientType, opts ...ClientOption) *Client {
 	option := defaultClientOption()
 
 	for _, o := range opts {
@@ -47,22 +48,19 @@ func NewClient(appName string, clientType ClientType, opts ...ClientOption) *Cli
 	}
 	clientID := id.New()
 
-	logger := option.logger.With("component", clientType.String(), "client_id", clientID, "client_name", appName)
-
-	if option.credential != nil {
-		logger.Info("use credential", "credential_name", option.credential.Name())
-	}
+	logger := option.logger
 
 	ctx, ctxCancel := context.WithCancelCause(context.Background())
 
 	return &Client{
+		zipperAddr:     zipperAddr,
 		name:           appName,
 		clientID:       clientID,
 		processor:      func(df *frame.DataFrame) { logger.Warn("the processor has not been set") },
 		receiver:       func(bf *frame.BackflowFrame) { logger.Warn("the receiver has not been set") },
 		clientType:     clientType,
 		opts:           option,
-		logger:         logger,
+		Logger:         logger,
 		tracerProvider: option.tracerProvider,
 		errorfn:        func(err error) { logger.Error("client err", "err", err) },
 		writeFrameChan: make(chan frame.Frame),
@@ -106,7 +104,7 @@ func (c *Client) connect(ctx context.Context, addr string) (listener.FrameConn, 
 	}
 }
 
-func (c *Client) runBackground(ctx context.Context, addr string, conn listener.FrameConn) {
+func (c *Client) runBackground(ctx context.Context, conn listener.FrameConn) {
 	reconnection := make(chan struct{})
 
 	go c.handleReadFrames(conn, reconnection)
@@ -126,12 +124,12 @@ func (c *Client) runBackground(ctx context.Context, addr string, conn listener.F
 			}
 		case <-reconnection:
 		reconnect:
-			conn, err = c.connect(ctx, addr)
+			conn, err = c.connect(ctx, c.zipperAddr)
 			if err != nil {
 				if errors.As(err, new(ErrAuthenticateFailed)) {
 					return
 				}
-				c.logger.Error("reconnect to zipper error", "err", err)
+				c.Logger.Error("reconnect to zipper error", "err", err)
 				time.Sleep(time.Second)
 				goto reconnect
 			}
@@ -141,27 +139,21 @@ func (c *Client) runBackground(ctx context.Context, addr string, conn listener.F
 }
 
 // Connect connect client to server.
-func (c *Client) Connect(ctx context.Context, addr string) error {
-	if c.clientType == ClientTypeStreamFunction && len(c.opts.observeDataTags) == 0 {
-		return errors.New("yomo: streamFunction cannot observe data because the required tag has not been set")
-	}
-
-	c.logger = c.logger.With("zipper_addr", addr)
-
+func (c *Client) Connect(ctx context.Context) error {
 connect:
-	fconn, err := c.connect(ctx, addr)
+	fconn, err := c.connect(ctx, c.zipperAddr)
 	if err != nil {
 		if c.opts.connectUntilSucceed {
-			c.logger.Error("failed to connect to zipper, trying to reconnect", "err", err)
+			c.Logger.Error("failed to connect to zipper, trying to reconnect", "err", err)
 			time.Sleep(time.Second)
 			goto connect
 		}
-		c.logger.Error("can not connect to zipper", "err", err)
+		c.Logger.Error("can not connect to zipper", "err", err)
 		return err
 	}
-	c.logger.Info("connected to zipper")
+	c.Logger.Info("connected to zipper")
 
-	go c.runBackground(ctx, addr, fconn)
+	go c.runBackground(ctx, fconn)
 
 	return nil
 }
@@ -193,7 +185,7 @@ func (c *Client) nonBlockWriteFrame(f frame.Frame) error {
 		return nil
 	default:
 		err := errors.New("yomo: client has lost connection")
-		c.logger.Debug("failed to write frame", "frame_type", f.Type().String(), "error", err)
+		c.Logger.Debug("failed to write frame", "frame_type", f.Type().String(), "error", err)
 		return err
 	}
 }
@@ -251,7 +243,7 @@ func (c *Client) handleReadFrames(fconn listener.FrameConn, reconnection chan st
 					buf = buf[:runtime.Stack(buf, false)]
 
 					perr := fmt.Errorf("%v", e)
-					c.logger.Error("stream panic", "err", perr)
+					c.Logger.Error("stream panic", "err", perr)
 					c.errorfn(fmt.Errorf("yomo: stream panic: %v\n%s", perr, buf))
 				}
 			}()
@@ -263,14 +255,14 @@ func (c *Client) handleReadFrames(fconn listener.FrameConn, reconnection chan st
 func (c *Client) handleFrame(f frame.Frame) {
 	switch ff := f.(type) {
 	case *frame.RejectedFrame:
-		c.logger.Error("rejected error", "err", ff.Message)
+		c.Logger.Error("rejected error", "err", ff.Message)
 		_ = c.Close()
 	case *frame.DataFrame:
 		c.processor(ff)
 	case *frame.BackflowFrame:
 		c.receiver(ff)
 	default:
-		c.logger.Warn("received unexpected frame", "frame_type", f.Type().String())
+		c.Logger.Warn("received unexpected frame", "frame_type", f.Type().String())
 	}
 }
 
@@ -289,15 +281,10 @@ func (c *Client) SetObserveDataTags(tag ...frame.Tag) {
 	c.opts.observeDataTags = tag
 }
 
-// Logger get client's logger instance, you can customize this using `yomo.WithLogger`
-func (c *Client) Logger() *slog.Logger {
-	return c.logger
-}
-
 // SetErrorHandler set error handler
 func (c *Client) SetErrorHandler(fn func(err error)) {
 	c.errorfn = fn
-	c.logger.Debug("the error handler has been set")
+	c.Logger.Debug("the error handler has been set")
 }
 
 // ClientID returns the ID of client.
@@ -306,13 +293,14 @@ func (c *Client) ClientID() string { return c.clientID }
 // Name returns the name of client.
 func (c *Client) Name() string { return c.name }
 
-// FrameWriterConnection represents a frame writer that can connect to an addr.
-type FrameWriterConnection interface {
+// Downstream represents a frame writer that can connect to an addr.
+type Downstream interface {
 	frame.Writer
-	ClientID() string
-	Name() string
+	ID() string
+	LocalName() string
+	RemoteName() string
 	Close() error
-	Connect(context.Context, string) error
+	Connect(context.Context) error
 }
 
 // TracerProvider returns the tracer provider of client.
