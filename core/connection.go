@@ -23,8 +23,8 @@ type ConnectionInfo interface {
 	ObserveDataTags() []frame.Tag
 }
 
-// Connection wraps conneciton and stream to transfer frames.
-// Connection be used to read and write frames, and be managed by Connector.
+// Connection wraps connection and stream for transmitting frames, it can be
+// used for reading and writing frames, and is managed by the Connector.
 type Connection struct {
 	name            string
 	id              string
@@ -57,42 +57,52 @@ func newConnection(
 	}
 }
 
+// Close closes the connection.
 func (c *Connection) Close() error {
 	return c.fs.Close()
 }
 
+// Context returns the context of the connection.
 func (c *Connection) Context() context.Context {
 	return c.fs.Context()
 }
 
+// ID returns the connection ID.
 func (c *Connection) ID() string {
 	return c.id
 }
 
+// Metadata returns the extra info of the application.
 func (c *Connection) Metadata() metadata.M {
 	return c.metadata
 }
 
+// Name returns the name of the connection
 func (c *Connection) Name() string {
 	return c.name
 }
 
+// ObserveDataTags returns the observed data tags.
 func (c *Connection) ObserveDataTags() []uint32 {
 	return c.observeDataTags
 }
 
+// ReadFrame reads a frame from the connection.
 func (c *Connection) ReadFrame() (frame.Frame, error) {
 	return c.fs.ReadFrame()
 }
 
+// ClientType returns the client type of the connection.
 func (c *Connection) ClientType() ClientType {
 	return c.clientType
 }
 
+// WriteFrame writes a frame to the connection.
 func (c *Connection) WriteFrame(f frame.Frame) error {
 	return c.fs.WriteFrame(f)
 }
 
+// CloseWithError closes the connection with error.
 func (c *Connection) CloseWithError(errString string) error {
 	return c.conn.CloseWithError(YomoCloseErrorCode, errString)
 }
