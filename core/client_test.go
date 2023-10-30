@@ -45,24 +45,23 @@ func TestFrameRoundTrip(t *testing.T) {
 		backflow    = []byte("hello backflow frame")
 	)
 
+	// test server hooks
+	ht := &hookTester{t: t}
+
 	server := NewServer("zipper",
 		WithAuth("token", "auth-token"),
 		WithServerQuicConfig(DefalutQuicConfig),
 		WithServerTLSConfig(nil),
 		WithServerLogger(discardingLogger),
+		WithConnMiddleware(ht.connMiddleware),
+		WithFrameMiddleware(ht.frameMiddleware),
 	)
 	server.ConfigRouter(router.Default())
-
-	// test server hooks
-	ht := &hookTester{t}
-	server.SetStartHandlers(ht.startHandler)
-	server.SetBeforeHandlers(ht.beforeHandler)
-	server.SetAfterHandlers(ht.afterHandler)
 
 	recorder := newFrameWriterRecorder("mockID", "mockClientLocal", "mockClientRemote")
 	server.AddDownstreamServer(recorder)
 
-	assert.Equal(t, server.Downstreams()["mockID"], recorder.ID())
+	assert.Equal(t, server.Downstreams()["mockClientLocal"], recorder.ID())
 
 	go func() {
 		err := server.ListenAndServe(ctx, testaddr)
@@ -191,29 +190,36 @@ func checkClientExited(client *Client, tim time.Duration) bool {
 }
 
 type hookTester struct {
-	t *testing.T
+	mu        sync.Mutex
+	connNames []string
+	t         *testing.T
 }
 
-func (a *hookTester) startHandler(ctx *Context) error {
-	ctx.Set("start", "yes")
-	return nil
+func (a *hookTester) connMiddleware(next ConnHandler) ConnHandler {
+	return func(c *Connection, r router.Route) {
+		a.mu.Lock()
+		if a.connNames == nil {
+			a.connNames = make([]string, 0)
+		}
+		a.connNames = append(a.connNames, c.Name())
+		a.mu.Unlock()
+
+		next(c, r)
+
+		a.mu.Lock()
+		assert.Contains(a.t, a.connNames, c.Name())
+		a.mu.Unlock()
+	}
 }
 
-func (a *hookTester) beforeHandler(ctx *Context) error {
-	ctx.Set("before", "ok")
-	return nil
-}
-
-func (a *hookTester) afterHandler(ctx *Context) error {
-	v, ok := ctx.Get("start")
-	assert.True(a.t, ok)
-	assert.Equal(a.t, v, "yes")
-
-	v = ctx.Value("before")
-	assert.True(a.t, ok)
-	assert.Equal(a.t, v, "ok")
-
-	return nil
+func (a *hookTester) frameMiddleware(next FrameHandler) FrameHandler {
+	return func(c *Context) {
+		c.Set("a", "b")
+		next(c)
+		v, ok := c.Get("a")
+		assert.True(a.t, ok)
+		assert.Equal(a.t, "b", v)
+	}
 }
 
 func createTestStreamFunction(name string, zipperAddr string, observedTag frame.Tag) *Client {
