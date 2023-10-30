@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/core/metadata"
+	"github.com/yomorun/yomo/core/ylog"
 )
 
 func TestConnection(t *testing.T) {
@@ -16,7 +17,7 @@ func TestConnection(t *testing.T) {
 		md       metadata.M
 	)
 
-	connection := newConnection(name, id, styp, md, observed, nil)
+	connection := newConnection(name, id, styp, md, observed, nil, ylog.Default())
 
 	t.Run("ConnectionInfo", func(t *testing.T) {
 		assert.Equal(t, id, connection.ID())

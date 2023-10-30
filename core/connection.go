@@ -4,6 +4,7 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
 	ynet "github.com/yomorun/yomo/core/net"
+	"golang.org/x/exp/slog"
 )
 
 // ConnectionInfo holds the information of connection.
@@ -20,55 +21,63 @@ type ConnectionInfo interface {
 	ObserveDataTags() []frame.Tag
 }
 
-// Connection wraps conneciton and stream to transfer frames.
-// Connection be used to read and write frames, and be managed by Connector.
-type Connection interface {
-	ConnectionInfo
-	FrameConn() ynet.FrameConn
-}
-
-type connection struct {
+// Connection wraps connection and stream for transmitting frames, it can be
+// used for reading and writing frames, and is managed by the Connector.
+type Connection struct {
 	name            string
 	id              string
 	clientType      ClientType
 	metadata        metadata.M
 	observeDataTags []uint32
 	fconn           ynet.FrameConn
+	Logger          *slog.Logger
 }
 
 func newConnection(
 	name string, id string, clientType ClientType, md metadata.M, tags []uint32,
-	fconn ynet.FrameConn) *connection {
-	return &connection{
+	fconn ynet.FrameConn, logger *slog.Logger,
+) *Connection {
+
+	logger = logger.With("conn_id", id, "conn_name", name)
+	if fconn != nil {
+		logger.Info("new client connected", "remote_addr", fconn.RemoteAddr().String(), "client_type", clientType.String())
+	}
+
+	return &Connection{
 		name:            name,
 		id:              id,
 		clientType:      clientType,
 		metadata:        md,
 		observeDataTags: tags,
 		fconn:           fconn,
+		Logger:          logger,
 	}
 }
 
-func (c *connection) ID() string {
+// ID returns the connection ID.
+func (c *Connection) ID() string {
 	return c.id
 }
 
-func (c *connection) Metadata() metadata.M {
+// Metadata returns the extra info of the application.
+func (c *Connection) Metadata() metadata.M {
 	return c.metadata
 }
 
-func (c *connection) Name() string {
+// Name returns the name of the connection
+func (c *Connection) Name() string {
 	return c.name
 }
 
-func (c *connection) ObserveDataTags() []uint32 {
+// ObserveDataTags returns the observed data tags.
+func (c *Connection) ObserveDataTags() []uint32 {
 	return c.observeDataTags
 }
 
-func (c *connection) ClientType() ClientType {
+func (c *Connection) ClientType() ClientType {
 	return c.clientType
 }
 
-func (c *connection) FrameConn() ynet.FrameConn {
+func (c *Connection) FrameConn() ynet.FrameConn {
 	return c.fconn
 }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/ylog"
 )
 
 func TestConnector(t *testing.T) {
@@ -37,10 +38,9 @@ func TestConnector(t *testing.T) {
 		err = connector.Remove(connID)
 		assert.NoError(t, err)
 
-		gotStream, ok, err := connector.Get(connID)
+		_, ok, err := connector.Get(connID)
 		assert.NoError(t, err)
 		assert.False(t, ok)
-		assert.Equal(t, gotStream, nil)
 	})
 
 	t.Run("Find", func(t *testing.T) {
@@ -92,9 +92,8 @@ func TestConnector(t *testing.T) {
 
 		t.Run("Get", func(t *testing.T) {
 			conn1 := mockConn("id-1", "name-1")
-			gotStream, ok, err := connector.Get(conn1.ID())
+			_, ok, err := connector.Get(conn1.ID())
 			assert.False(t, ok)
-			assert.Equal(t, gotStream, nil)
 			assert.ErrorIs(t, err, ErrConnectorClosed)
 		})
 
@@ -117,6 +116,6 @@ func TestConnector(t *testing.T) {
 
 // mockConn returns a connection that only includes an ID and a name.
 // This function is used for unit testing purposes.
-func mockConn(id, name string) Connection {
-	return newConnection(name, id, ClientType(0), nil, []frame.Tag{0}, nil)
+func mockConn(id, name string) *Connection {
+	return newConnection(name, id, ClientType(0), nil, []frame.Tag{0}, nil, ylog.Default())
 }

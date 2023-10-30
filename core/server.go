@@ -28,8 +28,19 @@ import (
 // ErrServerClosed is returned by the Server's Serve and ListenAndServe methods after a call to Shutdown or Close.
 var ErrServerClosed = errors.New("yomo: Server closed")
 
-// FrameHandler is the handler for frame.
-type FrameHandler func(c *Context) error
+type (
+	// FrameHandler handles a frame.
+	FrameHandler func(*Context)
+	// FrameMiddleware is a middleware for frame handler.
+	FrameMiddleware func(FrameHandler) FrameHandler
+)
+
+type (
+	// ConnHandler handles a connection and route.
+	ConnHandler func(*Connection, router.Route)
+	// ConnMiddleware is a middleware for connection handler.
+	ConnMiddleware func(ConnHandler) ConnHandler
+)
 
 // Server is the underlying server of Zipper
 type Server struct {
@@ -44,9 +55,8 @@ type Server struct {
 	downstreams        map[string]Downstream
 	mu                 sync.Mutex
 	opts               *serverOptions
-	startHandlers      []FrameHandler
-	beforeHandlers     []FrameHandler
-	afterHandlers      []FrameHandler
+	frameHandler       FrameHandler
+	connHandler        ConnHandler
 	listener           ynet.Listener
 	logger             *slog.Logger
 	tracerProvider     oteltrace.TracerProvider
@@ -76,6 +86,10 @@ func NewServer(name string, opts ...ServerOption) *Server {
 		opts:             options,
 	}
 
+	// work with middleware.
+	s.connHandler = composeConnHandler(s.handleConnRoute, s.opts.connMiddlewares...)
+	s.frameHandler = composeFrameHandler(s.handleFrame, s.opts.frameMiddlewares...)
+
 	return s
 }
 
@@ -98,7 +112,48 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	return s.Serve(ctx, conn)
 }
 
-func (s *Server) handshake(fconn ynet.FrameConn) (bool, router.Route, Connection) {
+// Serve the server with a net.PacketConn.
+func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
+	if err := s.validateRouter(); err != nil {
+		return err
+	}
+
+	s.connector = NewConnector(ctx)
+
+	tlsConfig := s.opts.tlsConfig
+	if tlsConfig == nil {
+		tlsConfig = pkgtls.MustCreateServerTLSConfig(conn.LocalAddr().String())
+	}
+
+	// listen the address
+	listener, err := yquic.Listen(conn, y3codec.Codec(), y3codec.PacketReadWriter(), tlsConfig, s.opts.quicConfig)
+	if err != nil {
+		s.logger.Error("failed to listen on quic", "err", err)
+		return err
+	}
+	s.listener = listener
+
+	s.logger.Info(
+		"zipper is up and running",
+		"zipper_addr", conn.LocalAddr().String(), "pid", os.Getpid(), "quic", s.opts.quicConfig.Versions, "auth_name", s.authNames())
+
+	defer closeServer(s.downstreams, s.connector, s.listener, s.router)
+
+	for {
+		fconn, err := s.listener.Accept(s.ctx)
+		if err != nil {
+			if err == s.ctx.Err() {
+				return ErrServerClosed
+			}
+			s.logger.Error("accepted an error when accepting a connection", "err", err)
+			return err
+		}
+
+		go s.handleFrameConn(fconn, s.logger)
+	}
+}
+
+func (s *Server) handshake(fconn ynet.FrameConn) (bool, router.Route, *Connection) {
 	var gerr error
 
 	defer func() {
@@ -124,7 +179,7 @@ func (s *Server) handshake(fconn ynet.FrameConn) (bool, router.Route, Connection
 			return false, nil, conn
 		}
 
-		route, err := s.handleRoute(hf, conn.Metadata())
+		route, err := s.addSfnToRoute(hf, conn.Metadata())
 		if err != nil {
 			gerr = err
 		}
@@ -135,80 +190,64 @@ func (s *Server) handshake(fconn ynet.FrameConn) (bool, router.Route, Connection
 	}
 }
 
-func (s *Server) handleConnection(fconn ynet.FrameConn, logger *slog.Logger) {
+func (s *Server) handleConnRoute(conn *Connection, route router.Route) {
+	for {
+		f, err := conn.FrameConn().ReadFrame()
+		if err != nil {
+			conn.Logger.Info("failed to read frame", "err", err)
+			return
+		}
+		switch f.Type() {
+		case frame.TypeDataFrame:
+			c, err := newContext(conn, route, f.(*frame.DataFrame))
+			if err != nil {
+				conn.Logger.Info("failed to new context", "err", err)
+				return
+			}
+
+			s.frameHandler(c) // s.handleFrame(c) with middlewares
+
+			c.Release()
+		default:
+			conn.Logger.Info("unexpected frame", "type", f.Type().String())
+			return
+		}
+	}
+}
+
+func (s *Server) handleFrameConn(fconn ynet.FrameConn, logger *slog.Logger) {
 	ok, route, conn := s.handshake(fconn)
 	if !ok {
 		logger.Error("handshake failed")
 		return
 	}
 
-	logger = logger.With("conn_id", conn.ID(), "conn_name", conn.Name())
-	logger.Info("new client connected", "remote_addr", fconn.RemoteAddr().String(), "client_type", conn.ClientType().String())
+	s.connHandler(conn, route) // s.handleConn(conn) with middlewares
 
-	c := newContext(conn, route, logger)
-
-	s.handleContext(c)
+	if conn.ClientType() == ClientTypeStreamFunction {
+		_ = route.Remove(conn.ID())
+	}
+	_ = s.connector.Remove(conn.ID())
 }
 
-func (s *Server) handleContext(c *Context) {
-	for _, h := range s.startHandlers {
-		if err := h(c); err != nil {
-			c.CloseWithError(err.Error())
-		}
+func (s *Server) handleHandshakeFrame(fconn ynet.FrameConn, hf *frame.HandshakeFrame) (*Connection, error) {
+	md, ok := auth.Authenticate(s.opts.auths, hf)
+
+	if !ok {
+		s.logger.Warn(
+			"authentication failed",
+			"client_type", ClientType(hf.ClientType).String(), "client_name", hf.Name,
+			"credential", hf.AuthName,
+		)
+		return nil, fmt.Errorf("authentication failed: client credential name is %s", hf.AuthName)
 	}
 
-	go s.handleFrames(c)
+	conn := newConnection(hf.Name, hf.ID, ClientType(hf.ClientType), md, hf.ObserveDataTags, fconn, s.logger)
+
+	return conn, s.connector.Store(hf.ID, conn)
 }
 
-func (s *Server) handleFrames(c *Context) {
-	defer func() {
-		if c.Connection.ClientType() == ClientTypeStreamFunction {
-			_ = c.Route.Remove(c.Connection.ID())
-		}
-		_ = s.connector.Remove(c.Connection.ID())
-		c.Release()
-	}()
-	for {
-		f, err := c.Connection.FrameConn().ReadFrame()
-		if err != nil {
-			c.CloseWithError(err.Error())
-			return
-		}
-
-		if err := c.WithFrame(f); err != nil {
-			c.CloseWithError(err.Error())
-			return
-		}
-
-		for _, h := range s.beforeHandlers {
-			if err := h(c); err != nil {
-				c.CloseWithError(err.Error())
-				return
-			}
-		}
-
-		switch f.Type() {
-		case frame.TypeDataFrame:
-			if err := s.mainFrameHandler(c); err != nil {
-				c.Logger.Info("failed to handle data frame", "err", err)
-				return
-			}
-		default:
-			c.Logger.Info("unexpected frame type", "type", f.Type().String())
-			return
-		}
-
-		for _, h := range s.afterHandlers {
-			if err := h(c); err != nil {
-				c.CloseWithError(err.Error())
-				return
-			}
-		}
-	}
-
-}
-
-func (s *Server) handleRoute(hf *frame.HandshakeFrame, md metadata.M) (router.Route, error) {
+func (s *Server) addSfnToRoute(hf *frame.HandshakeFrame, md metadata.M) (router.Route, error) {
 	if hf.ClientType != byte(ClientTypeStreamFunction) {
 		return nil, nil
 	}
@@ -223,113 +262,28 @@ func (s *Server) handleRoute(hf *frame.HandshakeFrame, md metadata.M) (router.Ro
 	return route, nil
 }
 
-func (s *Server) handleHandshakeFrame(fconn ynet.FrameConn, hf *frame.HandshakeFrame) (Connection, error) {
-	md, ok := auth.Authenticate(s.opts.auths, hf)
-
-	if !ok {
-		s.logger.Warn("authentication failed", "credential", hf.AuthName)
-		return nil, fmt.Errorf("authentication failed: client credential name is %s", hf.AuthName)
+func (s *Server) handleFrame(c *Context) {
+	// routing data frame.
+	if err := s.routingDataFrame(c); err != nil {
+		c.CloseWithError(fmt.Sprintf("handle dataFrame err: %v", err))
+		return
 	}
 
-	conn := newConnection(hf.Name, hf.ID, ClientType(hf.ClientType), md, hf.ObserveDataTags, fconn)
-
-	return conn, s.connector.Store(hf.ID, conn)
-}
-
-// Serve the server with a net.PacketConn.
-func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
-	if err := s.validateRouter(); err != nil {
-		return err
+	// dispatch to downstream.
+	if err := s.dispatchToDownstreams(c); err != nil {
+		c.CloseWithError(fmt.Sprintf("dispatch to downstream err: %v", err))
+		return
 	}
 
-	s.connector = NewConnector(ctx)
-
-	tlsConfig := s.opts.tlsConfig
-	if tlsConfig == nil {
-		tc, err := pkgtls.CreateServerTLSConfig(conn.LocalAddr().String())
-		if err != nil {
-			return err
-		}
-		tlsConfig = tc
-	}
-
-	// listen the address
-	listener, err := yquic.Listen(conn, y3codec.Codec(), y3codec.PacketReadWriter(), tlsConfig, s.opts.quicConfig)
-	if err != nil {
-		s.logger.Error("failed to listen on quic", "err", err)
-		return err
-	}
-	s.listener = listener
-
-	s.logger.Info("zipper is up and running", "zipper_addr", conn.LocalAddr().String(), "pid", os.Getpid(), "quic", s.opts.quicConfig.Versions, "auth_name", s.authNames())
-
-	defer closeServer(s.downstreams, s.connector, s.listener, s.router)
-
-	for {
-		fconn, err := s.listener.Accept(s.ctx)
-		if err != nil {
-			if err == s.ctx.Err() {
-				return ErrServerClosed
-			}
-			s.logger.Error("accepted an error when accepting a connection", "err", err)
-			return err
-		}
-
-		go s.handleConnection(fconn, s.logger)
+	// observe datatags backflow.
+	if err := s.handleBackflowFrame(c); err != nil {
+		c.CloseWithError(fmt.Sprintf("handle backflow err: %v", err))
+		return
 	}
 }
 
-// Logger returns the logger of server.
-func (s *Server) Logger() *slog.Logger {
-	return s.logger
-}
-
-// Close will shutdown the server.
-func (s *Server) Close() error {
-	s.ctxCancel()
-	return nil
-}
-
-func closeServer(downstreams map[string]Downstream, connector *Connector, listener ynet.Listener, router router.Router) error {
-	for _, ds := range downstreams {
-		ds.Close()
-	}
-	// connector
-	if connector != nil {
-		connector.Close()
-	}
-	// listener
-	if listener != nil {
-		listener.Close()
-	}
-	// router
-	if router != nil {
-		router.Clean()
-	}
-	return nil
-}
-
-func (s *Server) mainFrameHandler(c *Context) error {
-	frameType := c.Frame.Type()
-
-	switch frameType {
-	case frame.TypeDataFrame:
-		if err := s.handleDataFrame(c); err != nil {
-			c.CloseWithError(fmt.Sprintf("handle dataFrame err: %v", err))
-		} else {
-			s.dispatchToDownstreams(c)
-
-			// observe datatags backflow
-			s.handleBackflowFrame(c)
-		}
-	default:
-		c.Logger.Warn("unexpected frame", "unexpected_frame_type", frameType.String())
-	}
-	return nil
-}
-
-func (s *Server) handleDataFrame(c *Context) error {
-	dataFrame := c.Frame.(*frame.DataFrame)
+func (s *Server) routingDataFrame(c *Context) error {
+	dataFrame := c.Frame
 	data_length := len(dataFrame.Payload)
 
 	// counter +1
@@ -384,7 +338,7 @@ func (s *Server) handleDataFrame(c *Context) error {
 }
 
 func (s *Server) handleBackflowFrame(c *Context) error {
-	dataFrame := c.Frame.(*frame.DataFrame)
+	dataFrame := c.Frame
 
 	sourceID := GetSourceIDFromMetadata(c.FrameMetadata)
 	// write to source with BackflowFrame
@@ -392,18 +346,65 @@ func (s *Server) handleBackflowFrame(c *Context) error {
 		Tag:      dataFrame.Tag,
 		Carriage: dataFrame.Payload,
 	}
-	sourceStreams, err := s.connector.Find(sourceIDTagFindConnectionFunc(sourceID, dataFrame.Tag))
+	sources, err := s.connector.Find(sourceIDTagFindConnectionFunc(sourceID, dataFrame.Tag))
 	if err != nil {
 		return err
 	}
-	for _, source := range sourceStreams {
-		if source != nil {
+	for _, s := range sources {
+		if s != nil {
 			c.Logger.Info("backflow to source", "source_conn_id", sourceID)
-			if err := source.FrameConn().WriteFrame(bf); err != nil {
+			if err := s.FrameConn().WriteFrame(bf); err != nil {
 				c.Logger.Error("failed to write frame for backflow to the source", "err", err)
 				return err
 			}
 		}
+	}
+	return nil
+}
+
+// dispatch every DataFrames to all downstreams
+func (s *Server) dispatchToDownstreams(c *Context) error {
+	dataFrame := c.Frame
+	if c.Connection.ClientType() == ClientTypeUpstreamZipper {
+		c.Logger.Debug("ignored client", "client_type", c.Connection.ClientType().String())
+		// loop protection
+		return nil
+	}
+
+	mdBytes, err := c.FrameMetadata.Encode()
+	if err != nil {
+		c.Logger.Error("failed to dispatch to downstream", "err", err)
+		return err
+	}
+	dataFrame.Metadata = mdBytes
+
+	for _, ds := range s.downstreams {
+		c.Logger.Info(
+			"dispatching to downstream",
+			"tag", dataFrame.Tag, "data_length", len(dataFrame.Payload),
+			"downstream_id", ds.ID(), "downstream_name", ds.LocalName())
+
+		_ = ds.WriteFrame(dataFrame)
+	}
+
+	return nil
+}
+
+func closeServer(downstreams map[string]Downstream, connector *Connector, listener ynet.Listener, router router.Router) error {
+	for _, ds := range downstreams {
+		ds.Close()
+	}
+	// connector
+	if connector != nil {
+		connector.Close()
+	}
+	// listener
+	if listener != nil {
+		listener.Close()
+	}
+	// router
+	if router != nil {
+		router.Clean()
 	}
 	return nil
 }
@@ -438,8 +439,8 @@ func (s *Server) Downstreams() map[string]string {
 	defer s.mu.Unlock()
 
 	snapshotOfDownstream := make(map[string]string, len(s.downstreams))
-	for addr, client := range s.downstreams {
-		snapshotOfDownstream[addr] = client.ID()
+	for _, client := range s.downstreams {
+		snapshotOfDownstream[client.LocalName()] = client.ID()
 	}
 	return snapshotOfDownstream
 }
@@ -460,30 +461,15 @@ func (s *Server) AddDownstreamServer(c Downstream) {
 	s.mu.Unlock()
 }
 
-// dispatch every DataFrames to all downstreams
-func (s *Server) dispatchToDownstreams(c *Context) {
-	dataFrame := c.Frame.(*frame.DataFrame)
-	if c.Connection.ClientType() == ClientTypeUpstreamZipper {
-		c.Logger.Debug("ignored client", "client_type", c.Connection.ClientType().String())
-		// loop protection
-		return
-	}
+// Logger returns the logger of server.
+func (s *Server) Logger() *slog.Logger {
+	return s.logger
+}
 
-	mdBytes, err := c.FrameMetadata.Encode()
-	if err != nil {
-		c.Logger.Error("failed to dispatch to downstream", "err", err)
-		return
-	}
-	dataFrame.Metadata = mdBytes
-
-	for _, ds := range s.downstreams {
-		c.Logger.Info(
-			"dispatching to downstream",
-			"tag", dataFrame.Tag, "data_length", len(dataFrame.Payload),
-			"downstream_id", ds.ID(), "downstream_name", ds.LocalName())
-
-		_ = ds.WriteFrame(dataFrame)
-	}
+// Close will shutdown the server.
+func (s *Server) Close() error {
+	s.ctxCancel()
+	return nil
 }
 
 func (s *Server) validateRouter() error {
@@ -491,22 +477,6 @@ func (s *Server) validateRouter() error {
 		return errors.New("server's router is nil")
 	}
 	return nil
-}
-
-// SetStartHandlers sets a function for operating connection,
-// this function executes after handshake successful.
-func (s *Server) SetStartHandlers(handlers ...FrameHandler) {
-	s.startHandlers = append(s.startHandlers, handlers...)
-}
-
-// SetBeforeHandlers set the before handlers of server.
-func (s *Server) SetBeforeHandlers(handlers ...FrameHandler) {
-	s.beforeHandlers = append(s.beforeHandlers, handlers...)
-}
-
-// SetAfterHandlers set the after handlers of server.
-func (s *Server) SetAfterHandlers(handlers ...FrameHandler) {
-	s.afterHandlers = append(s.afterHandlers, handlers...)
 }
 
 func (s *Server) authNames() []string {
@@ -532,4 +502,18 @@ func (s *Server) TracerProvider() oteltrace.TracerProvider {
 		return nil
 	}
 	return s.tracerProvider
+}
+
+func composeFrameHandler(handler FrameHandler, middlewares ...FrameMiddleware) FrameHandler {
+	for i := len(middlewares) - 1; i >= 0; i-- {
+		handler = middlewares[i](handler)
+	}
+	return handler
+}
+
+func composeConnHandler(handler ConnHandler, middlewares ...ConnMiddleware) ConnHandler {
+	for i := len(middlewares) - 1; i >= 0; i-- {
+		handler = middlewares[i](handler)
+	}
+	return handler
 }

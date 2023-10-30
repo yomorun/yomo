@@ -13,14 +13,13 @@ import (
 
 var ctxPool sync.Pool
 
-// Context is context for connection handling.
-// Context is generated subsequent to the arrival of a connection and retains pertinent information derived from the connection.
-// The lifespan of the Context should align with the lifespan of the connection.
+// Context is context for frame handling.
+// The lifespan of the Context should align with the lifespan of the frame.
 type Context struct {
 	// Connection is the connection used for reading and writing frames.
-	Connection Connection
+	Connection *Connection
 	// Frame receives from client.
-	Frame frame.Frame
+	Frame *frame.DataFrame
 	// FrameMetadata is the merged metadata from the frame.
 	FrameMetadata metadata.M
 	// Route is the route from handshake.
@@ -29,8 +28,6 @@ type Context struct {
 	mu sync.RWMutex
 	// Keys stores the key/value pairs in context, It is Lazy initialized.
 	Keys map[string]any
-	// BaseLogger is the base logger.
-	BaseLogger *slog.Logger
 	// Using Logger to log in connection handler scope, Logger is frame-level logger.
 	Logger *slog.Logger
 }
@@ -91,7 +88,18 @@ func (c *Context) Value(key any) any {
 // The YoMo context is used to manage the lifecycle of a connection and provides a way to pass data and metadata
 // between connection processing functions. The lifecycle of the context is equal to the lifecycle of the connection
 // that it is associated with. The context can be used to manage timeouts, cancellations, and other aspects of connection processing.
-func newContext(conn Connection, route router.Route, logger *slog.Logger) (c *Context) {
+func newContext(conn *Connection, route router.Route, df *frame.DataFrame) (c *Context, err error) {
+	fmd, err := metadata.Decode(df.Metadata)
+	if err != nil {
+		return nil, err
+	}
+
+	// merge connection metadata.
+	conn.Metadata().Range(func(k, v string) bool {
+		fmd.Set(k, v)
+		return true
+	})
+
 	v := ctxPool.Get()
 	if v == nil {
 		c = new(Context)
@@ -99,45 +107,16 @@ func newContext(conn Connection, route router.Route, logger *slog.Logger) (c *Co
 		c = v.(*Context)
 	}
 
-	c.Connection = conn
-	c.Route = route
-	c.BaseLogger = logger
-	c.Logger = logger
-
-	return
-}
-
-// WithFrame sets the current frame of the YoMo context to the given frame.
-// It extracts the metadata from the data frame and sets it as attributes on the context logger.
-// It also merges the metadata from the connection with the metadata from the data frame.
-// This allows downstream processing functions to access the metadata from both the connection and the current data frame.
-// If the given frame is not a data frame, it returns an error.
-// If there is an error decoding the metadata from the data frame, it returns that error.
-// Otherwise, it sets the current frame and frame metadata on the context and returns nil.
-func (c *Context) WithFrame(f frame.Frame) error {
-	df, ok := f.(*frame.DataFrame)
-	if !ok {
-		return nil
-	}
-
-	fmd, err := metadata.Decode(df.Metadata)
-	if err != nil {
-		return err
-	}
-
-	// merge connection metadata.
-	c.Connection.Metadata().Range(func(k, v string) bool {
-		fmd.Set(k, v)
-		return true
-	})
-
 	c.Frame = df
 	c.FrameMetadata = fmd
 
-	// log with tid
-	c.Logger = c.BaseLogger.With("tid", GetTIDFromMetadata(fmd))
+	c.Connection = conn
+	c.Route = route
 
-	return nil
+	// log with tid
+	c.Logger = c.Connection.Logger.With("tid", GetTIDFromMetadata(fmd))
+
+	return
 }
 
 // CloseWithError close dataStream with an error string.
@@ -164,7 +143,6 @@ func (c *Context) reset() {
 	c.Route = nil
 	c.Frame = nil
 	c.FrameMetadata = nil
-	c.BaseLogger = nil
 	c.Logger = nil
 	for k := range c.Keys {
 		delete(c.Keys, k)
