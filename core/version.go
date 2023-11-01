@@ -1,4 +1,4 @@
 package core
 
 // Version is the current yomo version.
-const Version = "1.16.3"
+const Version = "1.17.0"
