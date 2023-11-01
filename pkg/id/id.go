@@ -19,8 +19,8 @@ func New(l ...int) string {
 	return tid
 }
 
-// TID generate trace id.
-func TID() string {
+// NewTraceID returns a trace id.
+func NewTraceID() string {
 	bytes := make([]byte, 16)
 	if _, err := rand.Read(bytes); err != nil {
 		return ""
@@ -28,8 +28,8 @@ func TID() string {
 	return hex.EncodeToString(bytes)
 }
 
-// SID generate span id.
-func SID() string {
+// NewSpanID returns a span id.
+func NewSpanID() string {
 	bytes := make([]byte, 8)
 	if _, err := rand.Read(bytes); err != nil {
 		return ""

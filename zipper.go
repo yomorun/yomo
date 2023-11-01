@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/yomorun/yomo/core"
+	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/router"
 	"github.com/yomorun/yomo/pkg/config"
 	"golang.org/x/exp/slog"
@@ -70,11 +71,17 @@ func NewZipper(name string, meshConfig map[string]config.Downstream, options ...
 			core.WithCredential(meshConf.Credential),
 			core.WithNonBlockWrite(),
 			core.WithConnectUntilSucceed(),
+			core.WithLogger(server.Logger().With("downstream_name", downstreamName, "downstream_addr", addr)),
 		)
-		downstream := core.NewClient(name, core.ClientTypeUpstreamZipper, clientOptions...)
 
-		server.Logger().Info("add downstream", "name", downstreamName, "addr", addr, "downstream_id", downstream.ClientID())
-		server.AddDownstreamServer(addr, downstream)
+		downstream := &downstream{
+			localName: downstreamName,
+			client:    core.NewClient(name, addr, core.ClientTypeUpstreamZipper, clientOptions...),
+		}
+
+		server.Logger().Info("add downstream", "downstream_id", downstream.ID(), "downstream_name", downstream.LocalName(), "downstream_addr", addr)
+
+		server.AddDownstreamServer(downstream)
 	}
 
 	server.ConfigRouter(router.Default())
@@ -96,3 +103,15 @@ func statsToLogger(server *core.Server) {
 		"data_frame_received_num", server.StatsCounter(),
 	)
 }
+
+type downstream struct {
+	localName string
+	client    *core.Client
+}
+
+func (d *downstream) Close() error                      { return d.client.Close() }
+func (d *downstream) Connect(ctx context.Context) error { return d.client.Connect(ctx) }
+func (d *downstream) ID() string                        { return d.client.ClientID() }
+func (d *downstream) LocalName() string                 { return d.localName }
+func (d *downstream) RemoteName() string                { return d.client.Name() }
+func (d *downstream) WriteFrame(f frame.Frame) error    { return d.client.WriteFrame(f) }

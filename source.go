@@ -5,11 +5,7 @@ import (
 
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/pkg/id"
-	"github.com/yomorun/yomo/pkg/trace"
-	oteltrace "go.opentelemetry.io/otel/trace"
-	"golang.org/x/exp/slog"
 )
 
 // Source is responsible for sending data to yomo.
@@ -43,7 +39,14 @@ func NewSource(name, zipperAddr string, opts ...SourceOption) Source {
 		clientOpts[k] = core.ClientOption(v)
 	}
 
-	client := core.NewClient(name, core.ClientTypeSource, clientOpts...)
+	client := core.NewClient(name, zipperAddr, core.ClientTypeSource, clientOpts...)
+
+	client.Logger = client.Logger.With(
+		"component", core.ClientTypeSource.String(),
+		"source_id", client.ClientID(),
+		"source_name", client.Name(),
+		"zipper_addr", zipperAddr,
+	)
 
 	return &yomoSource{
 		name:       name,
@@ -55,10 +58,10 @@ func NewSource(name, zipperAddr string, opts ...SourceOption) Source {
 // Close will close the connection to YoMo-Zipper.
 func (s *yomoSource) Close() error {
 	if err := s.client.Close(); err != nil {
-		s.client.Logger().Error("failed to close the source", "err", err)
+		s.client.Logger.Error("failed to close the source", "err", err)
 		return err
 	}
-	s.client.Logger().Debug("the source is closed")
+	s.client.Logger.Debug("the source is closed")
 	return nil
 }
 
@@ -71,13 +74,13 @@ func (s *yomoSource) Connect() error {
 		}
 	})
 
-	err := s.client.Connect(context.Background(), s.zipperAddr)
+	err := s.client.Connect(context.Background())
 	return err
 }
 
 // Write writes data with specified tag.
 func (s *yomoSource) Write(tag uint32, data []byte) error {
-	md, deferFunc := TraceMetadata(s.client.ClientID(), s.name, s.client.TracerProvider(), s.client.Logger())
+	md, deferFunc := core.SourceMetadata(s.client.ClientID(), id.New(), s.name, s.client.TracerProvider(), s.client.Logger)
 	defer deferFunc()
 
 	mdBytes, err := md.Encode()
@@ -90,7 +93,7 @@ func (s *yomoSource) Write(tag uint32, data []byte) error {
 		Metadata: mdBytes,
 		Payload:  data,
 	}
-	s.client.Logger().Debug("source write", "tag", tag, "data", data)
+	s.client.Logger.Debug("source write", "tag", tag, "data", data)
 	return s.client.WriteFrame(f)
 }
 
@@ -102,37 +105,5 @@ func (s *yomoSource) SetErrorHandler(fn func(err error)) {
 // [Experimental] SetReceiveHandler set the observe handler function
 func (s *yomoSource) SetReceiveHandler(fn func(uint32, []byte)) {
 	s.fn = fn
-	s.client.Logger().Info("receive hander set for the source")
-}
-
-// TraceMetadata generates source trace metadata.
-func TraceMetadata(clientID, name string, tp oteltrace.TracerProvider, logger *slog.Logger) (metadata.M, func()) {
-	deferFunc := func() {}
-	var tid, sid string
-	// trace
-	traced := false
-	if tp != nil {
-		span, err := trace.NewSpan(tp, core.ClientTypeSource.String(), name, "", "")
-		if err != nil {
-			logger.Error("source trace error", "err", err)
-		} else {
-			deferFunc = func() { span.End() }
-			tid = span.SpanContext().TraceID().String()
-			sid = span.SpanContext().SpanID().String()
-			traced = true
-		}
-	}
-	if tid == "" {
-		logger.Debug("source create new tid")
-		tid = id.TID()
-	}
-	if sid == "" {
-		logger.Debug("source create new sid")
-		sid = id.SID()
-	}
-	logger.Debug("source metadata", "tid", tid, "sid", sid, "traced", traced)
-
-	md := core.NewDefaultMetadata(clientID, tid, sid, traced)
-
-	return md, deferFunc
+	s.client.Logger.Info("receive hander set for the source")
 }
