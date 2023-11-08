@@ -3,7 +3,6 @@ package core
 import (
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
-	ynet "github.com/yomorun/yomo/core/net"
 	"golang.org/x/exp/slog"
 )
 
@@ -29,13 +28,13 @@ type Connection struct {
 	clientType      ClientType
 	metadata        metadata.M
 	observeDataTags []uint32
-	fconn           ynet.FrameConn
+	fconn           frame.Conn
 	Logger          *slog.Logger
 }
 
 func newConnection(
 	name string, id string, clientType ClientType, md metadata.M, tags []uint32,
-	fconn ynet.FrameConn, logger *slog.Logger,
+	fconn frame.Conn, logger *slog.Logger,
 ) *Connection {
 
 	logger = logger.With("conn_id", id, "conn_name", name)
@@ -78,6 +77,6 @@ func (c *Connection) ClientType() ClientType {
 	return c.clientType
 }
 
-func (c *Connection) FrameConn() ynet.FrameConn {
+func (c *Connection) FrameConn() frame.Conn {
 	return c.fconn
 }
