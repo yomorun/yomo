@@ -115,7 +115,7 @@ func (c *Client) runBackground(ctx context.Context, conn frame.Conn) {
 			conn.CloseWithError("yomo: client closed")
 			return
 		case <-ctx.Done():
-			conn.CloseWithError("yomo: client closed")
+			conn.CloseWithError("yomo: parent context canceled")
 			return
 		case f := <-c.writeFrameChan:
 			if err := conn.WriteFrame(f); err != nil {
