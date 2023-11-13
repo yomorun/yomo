@@ -6,12 +6,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/core"
+	"github.com/yomorun/yomo/core/router"
 	"github.com/yomorun/yomo/core/ylog"
 )
 
 func TestZipperRun(t *testing.T) {
 	zipper, err := NewZipper(
 		"zipper",
+		router.Default(),
 		nil,
 		// WithAuth("token", "<CREDENTIAL>"),
 		WithUpstreamOption(core.ClientOption(WithCredential("token:<CREDENTIAL>"))),
