@@ -38,9 +38,6 @@ func newConnection(
 ) *Connection {
 
 	logger = logger.With("conn_id", id, "conn_name", name)
-	if fconn != nil {
-		logger.Info("new client connected", "remote_addr", fconn.RemoteAddr().String(), "client_type", clientType.String())
-	}
 
 	return &Connection{
 		name:            name,

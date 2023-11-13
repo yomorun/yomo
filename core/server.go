@@ -190,6 +190,8 @@ func (s *Server) handshake(fconn frame.Conn) (bool, router.Route, *Connection) {
 }
 
 func (s *Server) handleConnRoute(conn *Connection, route router.Route) {
+	conn.Logger.Info("new client connected", "client_type", conn.ClientType().String())
+
 	for {
 		f, err := conn.FrameConn().ReadFrame()
 		if err != nil {
