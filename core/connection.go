@@ -1,9 +1,6 @@
 package core
 
 import (
-	"context"
-
-	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
 	"golang.org/x/exp/slog"
@@ -31,19 +28,16 @@ type Connection struct {
 	clientType      ClientType
 	metadata        metadata.M
 	observeDataTags []uint32
-	conn            quic.Connection
-	fs              *FrameStream
+	fconn           frame.Conn
 	Logger          *slog.Logger
 }
 
 func newConnection(
 	name string, id string, clientType ClientType, md metadata.M, tags []uint32,
-	conn quic.Connection, fs *FrameStream, logger *slog.Logger) *Connection {
+	fconn frame.Conn, logger *slog.Logger,
+) *Connection {
 
 	logger = logger.With("conn_id", id, "conn_name", name)
-	if conn != nil {
-		logger.Info("new client connected", "remote_addr", conn.RemoteAddr().String(), "client_type", clientType.String())
-	}
 
 	return &Connection{
 		name:            name,
@@ -51,20 +45,9 @@ func newConnection(
 		clientType:      clientType,
 		metadata:        md,
 		observeDataTags: tags,
-		conn:            conn,
-		fs:              fs,
+		fconn:           fconn,
 		Logger:          logger,
 	}
-}
-
-// Close closes the connection.
-func (c *Connection) Close() error {
-	return c.fs.Close()
-}
-
-// Context returns the context of the connection.
-func (c *Connection) Context() context.Context {
-	return c.fs.Context()
 }
 
 // ID returns the connection ID.
@@ -87,26 +70,10 @@ func (c *Connection) ObserveDataTags() []uint32 {
 	return c.observeDataTags
 }
 
-// ReadFrame reads a frame from the connection.
-func (c *Connection) ReadFrame() (frame.Frame, error) {
-	return c.fs.ReadFrame()
-}
-
-// ClientType returns the client type of the connection.
 func (c *Connection) ClientType() ClientType {
 	return c.clientType
 }
 
-// WriteFrame writes a frame to the connection.
-func (c *Connection) WriteFrame(f frame.Frame) error {
-	return c.fs.WriteFrame(f)
+func (c *Connection) FrameConn() frame.Conn {
+	return c.fconn
 }
-
-// CloseWithError closes the connection with error.
-func (c *Connection) CloseWithError(errString string) error {
-	return c.conn.CloseWithError(YomoCloseErrorCode, errString)
-}
-
-// YomoCloseErrorCode is the error code for close quic Connection for yomo.
-// If the Connection implemented by quic is closed, the quic ApplicationErrorCode is always 0x13.
-const YomoCloseErrorCode = quic.ApplicationErrorCode(0x13)

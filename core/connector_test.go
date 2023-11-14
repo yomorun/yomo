@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/core/frame"
-	"golang.org/x/exp/slog"
+	"github.com/yomorun/yomo/core/ylog"
 )
 
 func TestConnector(t *testing.T) {
@@ -117,5 +117,5 @@ func TestConnector(t *testing.T) {
 // mockConn returns a connection that only includes an ID and a name.
 // This function is used for unit testing purposes.
 func mockConn(id, name string) *Connection {
-	return newConnection(name, id, ClientType(0), nil, []frame.Tag{0}, nil, nil, slog.Default())
+	return newConnection(name, id, ClientType(0), nil, []frame.Tag{0}, nil, ylog.Default())
 }

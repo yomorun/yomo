@@ -52,6 +52,15 @@ func CreateServerTLSConfig(host string) (*tls.Config, error) {
 	}, nil
 }
 
+// MustCreateServerTLSConfig creates server tls config, It is panic If error here.
+func MustCreateServerTLSConfig(host string) *tls.Config {
+	conf, err := CreateServerTLSConfig(host)
+	if err != nil {
+		panic(err)
+	}
+	return conf
+}
+
 // MustCreateClientTLSConfig creates client tls config, It is panic If error here.
 func MustCreateClientTLSConfig() *tls.Config {
 	conf, err := CreateClientTLSConfig()
