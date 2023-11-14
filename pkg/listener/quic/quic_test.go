@@ -2,6 +2,7 @@ package yquic
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -38,6 +39,8 @@ func TestFrameConnection(t *testing.T) {
 	for {
 		f, err := fconn.ReadFrame()
 		if err != nil {
+			se := new(ErrConnClosed)
+			assert.True(t, errors.As(err, &se))
 			assert.Equal(t, &ErrConnClosed{CloseMessage}, err)
 			return
 		}
@@ -79,6 +82,8 @@ func runListener(t *testing.T) error {
 
 		err = fconn.WriteFrame(&frame.DataFrame{Payload: []byte("aaaa")})
 		assert.Equal(t, &ErrConnClosed{CloseMessage}, err)
+
+		t.Log("close connection done")
 	})
 
 	return nil
