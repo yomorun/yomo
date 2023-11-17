@@ -240,7 +240,7 @@ func (s *Server) handleHandshakeFrame(fconn frame.Conn, hf *frame.HandshakeFrame
 			"client_type", ClientType(hf.ClientType).String(), "client_name", hf.Name,
 			"credential", hf.AuthName,
 		)
-		return nil, fmt.Errorf("authentication failed: client credential name is %s", hf.AuthName)
+		return nil, fmt.Errorf("authentication failed: client credential type is %s", hf.AuthName)
 	}
 
 	conn := newConnection(hf.Name, hf.ID, ClientType(hf.ClientType), md, hf.ObserveDataTags, fconn, s.logger)
