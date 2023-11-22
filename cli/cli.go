@@ -19,7 +19,7 @@ import (
 // defaultSFNFile is the default serverless file name
 const (
 	defaultSFNSourceFile     = "app.go"
-	defaultSFNSTestourceFile = "app_test.go"
+	defaultSFNTestSourceFile = "app_test.go"
 	defaultSFNCompliedFile   = "sfn.wasm"
 )
 

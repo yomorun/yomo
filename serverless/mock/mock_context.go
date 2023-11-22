@@ -7,6 +7,7 @@ import (
 	"github.com/yomorun/yomo/serverless/guest"
 )
 
+// DataAndTag is a pair of data and tag.
 type DataAndTag struct {
 	Data []byte
 	Tag  uint32
@@ -52,6 +53,7 @@ func (c *MockContext) Write(tag uint32, data []byte) error {
 	return nil
 }
 
+// RecordWritten returns the data records be written with `ctx.Write`.
 func (c *MockContext) RecordWritten() []DataAndTag {
 	c.mu.Lock()
 	defer c.mu.Unlock()

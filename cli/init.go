@@ -61,7 +61,7 @@ var initCmd = &cobra.Command{
 		}
 
 		// create app_test.go
-		testName := filepath.Join(name, defaultSFNSTestourceFile)
+		testName := filepath.Join(name, defaultSFNTestSourceFile)
 		if err := file.PutContents(testName, golang.InitTestTmpl); err != nil {
 			log.FailureStatusEvent(os.Stdout, "Write unittest tmpl into app_test.go file failure with the error: %v", err)
 			return
