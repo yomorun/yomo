@@ -24,6 +24,9 @@ var PartialsTmpl []byte
 //go:embed templates/init.tmpl
 var InitTmpl []byte
 
+//go:embed templates/init_test.tmpl
+var InitTestTmpl []byte
+
 //go:embed templates/init_rx.tmpl
 var InitRxTmpl []byte
 

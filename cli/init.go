@@ -60,6 +60,13 @@ var initCmd = &cobra.Command{
 			return
 		}
 
+		// create app_test.go
+		testName := filepath.Join(name, defaultSFNSTestourceFile)
+		if err := file.PutContents(testName, golang.InitTestTmpl); err != nil {
+			log.FailureStatusEvent(os.Stdout, "Write unittest tmpl into app_test.go file failure with the error: %v", err)
+			return
+		}
+
 		// create .env
 		fname = filepath.Join(name, ".env")
 		if err := file.PutContents(fname, []byte(fmt.Sprintf("YOMO_SFN_NAME=%s\n", name))); err != nil {

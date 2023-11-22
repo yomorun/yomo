@@ -18,8 +18,9 @@ import (
 
 // defaultSFNFile is the default serverless file name
 const (
-	defaultSFNSourceFile   = "app.go"
-	defaultSFNCompliedFile = "sfn.wasm"
+	defaultSFNSourceFile     = "app.go"
+	defaultSFNSTestourceFile = "app_test.go"
+	defaultSFNCompliedFile   = "sfn.wasm"
 )
 
 // GetRootPath get root path
