@@ -10,17 +10,6 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 )
 
-// ErrConnClosed is returned when the connection is closed.
-// If the connection is closed, both the stream and the connection will receive this error.
-type ErrConnClosed struct {
-	Message string
-}
-
-// Error implements the error interface and returns the reason why the connection was closed.
-func (e *ErrConnClosed) Error() string {
-	return e.Message
-}
-
 // FrameConn is an implements of FrameConn,
 // It transmits frames upon the first stream from a QUIC connection.
 type FrameConn struct {
@@ -69,14 +58,8 @@ func newFrameConn(
 		prw:       prw,
 	}
 
-	go conn.framing()
-
 	return conn
 }
-
-// YomoCloseErrorCode is the error code for close quic Connection for yomo.
-// If the Connection implemented by quic is closed, the quic ApplicationErrorCode is always 0x13.
-const YomoCloseErrorCode = quic.ApplicationErrorCode(0x13)
 
 // Context returns the context of the connection.
 func (p *FrameConn) Context() context.Context {
@@ -94,47 +77,35 @@ func (p *FrameConn) LocalAddr() net.Addr {
 }
 
 // CloseWithError closes the connection.
+// After calling CloseWithError, ReadFrame and WriteFrame will return frame.ErrConnClosed error.
 func (p *FrameConn) CloseWithError(errString string) error {
 	select {
 	case <-p.ctx.Done():
 		return nil
 	default:
+		p.ctxCancel(frame.NewErrConnClosed(errString))
 	}
-	p.ctxCancel(&ErrConnClosed{errString})
 
 	// _ = p.stream.Close()
+
+	// After closing the quic connection, the stream will receive
+	// an quic.ApplicationError which error code is 0x13 (YomoCloseErrorCode).
+	// If ReadFrame and WriteFrame encounter this error, that means the connection is closed.
 	return p.conn.CloseWithError(YomoCloseErrorCode, errString)
 }
 
-func (p *FrameConn) framing() {
-	for {
-		fType, b, err := p.prw.ReadPacket(p.stream)
-		if err != nil {
-			p.ctxCancel(convertErrorToConnectionClosed(err))
-			return
-		}
-
-		f, err := frame.NewFrame(fType)
-		if err != nil {
-			p.ctxCancel(convertErrorToConnectionClosed(err))
-			return
-		}
-
-		if err := p.codec.Decode(b, f); err != nil {
-			p.ctxCancel(convertErrorToConnectionClosed(err))
-			return
-		}
-		p.frameCh <- f
-	}
-}
-
-func convertErrorToConnectionClosed(err error) error {
+func handleError(err error) error {
 	if se := new(quic.ApplicationError); errors.As(err, &se) {
+		// If the error code is 0, it means the listener is be closed.
 		if se.ErrorCode == 0 && se.ErrorMessage == "" {
-			return &ErrConnClosed{"yomo: listener closed"}
+			return frame.NewErrConnClosed("yomo: listener closed")
 		}
-		return &ErrConnClosed{se.ErrorMessage}
+		// If the error code is 0x13 (YomoCloseErrorCode), it means the connection is closed by remote or local.
+		if se.ErrorCode == YomoCloseErrorCode {
+			return frame.NewErrConnClosed(se.ErrorMessage)
+		}
 	}
+	// Other errors are all unexcepted error, return it directly.
 	return err
 }
 
@@ -143,8 +114,19 @@ func (p *FrameConn) ReadFrame() (frame.Frame, error) {
 	select {
 	case <-p.ctx.Done():
 		return nil, context.Cause(p.ctx)
-	case ff := <-p.frameCh:
-		return ff, nil
+	default:
+		fType, b, err := p.prw.ReadPacket(p.stream)
+		if err != nil {
+			return nil, handleError(err)
+		}
+		f, err := frame.NewFrame(fType)
+		if err != nil {
+			return nil, err
+		}
+		if err := p.codec.Decode(b, f); err != nil {
+			return nil, err
+		}
+		return f, nil
 	}
 }
 
@@ -156,10 +138,10 @@ func (p *FrameConn) WriteFrame(f frame.Frame) error {
 	default:
 		b, err := p.codec.Encode(f)
 		if err != nil {
-			return &ErrConnClosed{err.Error()}
+			return err
 		}
 		if err := p.prw.WritePacket(p.stream, f.Type(), b); err != nil {
-			return &ErrConnClosed{err.Error()}
+			return handleError(err)
 		}
 		return nil
 	}
@@ -229,3 +211,7 @@ func (listener *Listener) Accept(ctx context.Context) (frame.Conn, error) {
 func (listener *Listener) Close() error {
 	return listener.underlying.Close()
 }
+
+// YomoCloseErrorCode is the error code for close quic Connection for yomo.
+// If the Connection implemented by quic is closed, the quic ApplicationErrorCode is always 0x13.
+const YomoCloseErrorCode = quic.ApplicationErrorCode(0x13)

@@ -61,7 +61,6 @@ func NewClient(appName, zipperAddr string, clientType ClientType, opts ...Client
 		opts:           option,
 		Logger:         logger,
 		tracerProvider: option.tracerProvider,
-		errorfn:        func(err error) { logger.Error("client err", "err", err) },
 		writeFrameChan: make(chan frame.Frame),
 		ctx:            ctx,
 		ctxCancel:      ctxCancel,
@@ -119,7 +118,7 @@ func (c *Client) runBackground(ctx context.Context, conn frame.Conn) {
 			return
 		case f := <-c.writeFrameChan:
 			if err := conn.WriteFrame(f); err != nil {
-				c.handleFrameError(err, reconnection)
+				c.handleFrameError("write frame failed", err, reconnection)
 			}
 		case <-reconnection:
 		reconnect:
@@ -203,20 +202,24 @@ func (c *Client) Close() error {
 // Sending the error to the error function (errorfn).
 // Closing the client if the connecion has been closed.
 // Always attempting to reconnect if an error is encountered.
-func (c *Client) handleFrameError(err error, reconnection chan<- struct{}) {
+func (c *Client) handleFrameError(errSource string, err error, reconnection chan<- struct{}) {
 	if err == nil {
 		return
 	}
 
-	c.errorfn(err)
+	if c.errorfn != nil {
+		c.errorfn(err)
+	} else {
+		c.Logger.Error(errSource, "err", err)
+	}
 
-	// exit client program if stream has be closed.
-	if se := new(yquic.ErrConnClosed); errors.As(err, &se) {
+	// Exit client program if the connection has be closed.
+	if se := new(frame.ErrConnClosed); errors.As(err, &se) {
 		c.ctxCancel(fmt.Errorf("%s: shutdown with error=%s", c.clientType.String(), se.Error()))
 		return
 	}
 
-	// always attempting to reconnect if an error is encountered,
+	// Always attempting to reconnect if an error is encountered,
 	// the error is mostly network error.
 	select {
 	case reconnection <- struct{}{}:
@@ -233,7 +236,7 @@ func (c *Client) handleReadFrames(fconn frame.Conn, reconnection chan struct{}) 
 	for {
 		f, err := fconn.ReadFrame()
 		if err != nil {
-			c.handleFrameError(err, reconnection)
+			c.handleFrameError("read frame failed", err, reconnection)
 			return
 		}
 		func() {
