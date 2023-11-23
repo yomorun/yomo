@@ -156,10 +156,12 @@ func (p *FrameConn) WriteFrame(f frame.Frame) error {
 	default:
 		b, err := p.codec.Encode(f)
 		if err != nil {
-			return err
+			return &ErrConnClosed{err.Error()}
 		}
-
-		return p.prw.WritePacket(p.stream, f.Type(), b)
+		if err := p.prw.WritePacket(p.stream, f.Type(), b); err != nil {
+			return &ErrConnClosed{err.Error()}
+		}
+		return nil
 	}
 }
 
