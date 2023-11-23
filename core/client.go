@@ -131,6 +131,8 @@ func (c *Client) runBackground(ctx context.Context, conn frame.Conn) {
 				c.Logger.Error("reconnect to zipper error", "err", err)
 				time.Sleep(time.Second)
 				goto reconnect
+			} else {
+				c.Logger.Info("reconnected to zipper")
 			}
 			go c.handleReadFrames(conn, reconnection)
 		}
