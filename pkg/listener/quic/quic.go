@@ -13,13 +13,11 @@ import (
 // FrameConn is an implements of FrameConn,
 // It transmits frames upon the first stream from a QUIC connection.
 type FrameConn struct {
-	ctx       context.Context
-	ctxCancel context.CancelCauseFunc
-	frameCh   chan frame.Frame
-	conn      quic.Connection
-	stream    quic.Stream
-	codec     frame.Codec
-	prw       frame.PacketReadWriter
+	frameCh chan frame.Frame
+	conn    quic.Connection
+	stream  quic.Stream
+	codec   frame.Codec
+	prw     frame.PacketReadWriter
 }
 
 // DialAddr dials the given address and returns a new FrameConn.
@@ -46,16 +44,13 @@ func newFrameConn(
 	qconn quic.Connection, stream quic.Stream,
 	codec frame.Codec, prw frame.PacketReadWriter,
 ) *FrameConn {
-	ctx, ctxCancel := context.WithCancelCause(context.Background())
 
 	conn := &FrameConn{
-		ctx:       ctx,
-		ctxCancel: ctxCancel,
-		frameCh:   make(chan frame.Frame),
-		conn:      qconn,
-		stream:    stream,
-		codec:     codec,
-		prw:       prw,
+		frameCh: make(chan frame.Frame),
+		conn:    qconn,
+		stream:  stream,
+		codec:   codec,
+		prw:     prw,
 	}
 
 	return conn
@@ -63,7 +58,7 @@ func newFrameConn(
 
 // Context returns the context of the connection.
 func (p *FrameConn) Context() context.Context {
-	return p.ctx
+	return p.conn.Context()
 }
 
 // RemoteAddr returns the remote address of connection.
@@ -79,13 +74,6 @@ func (p *FrameConn) LocalAddr() net.Addr {
 // CloseWithError closes the connection.
 // After calling CloseWithError, ReadFrame and WriteFrame will return frame.ErrConnClosed error.
 func (p *FrameConn) CloseWithError(errString string) error {
-	select {
-	case <-p.ctx.Done():
-		return nil
-	default:
-		p.ctxCancel(frame.NewErrConnClosed(errString))
-	}
-
 	// _ = p.stream.Close()
 
 	// After closing the quic connection, the stream will receive
@@ -111,40 +99,30 @@ func handleError(err error) error {
 
 // ReadFrame reads a frame. it usually be called in a for-loop.
 func (p *FrameConn) ReadFrame() (frame.Frame, error) {
-	select {
-	case <-p.ctx.Done():
-		return nil, context.Cause(p.ctx)
-	default:
-		fType, b, err := p.prw.ReadPacket(p.stream)
-		if err != nil {
-			return nil, handleError(err)
-		}
-		f, err := frame.NewFrame(fType)
-		if err != nil {
-			return nil, err
-		}
-		if err := p.codec.Decode(b, f); err != nil {
-			return nil, err
-		}
-		return f, nil
+	fType, b, err := p.prw.ReadPacket(p.stream)
+	if err != nil {
+		return nil, handleError(err)
 	}
+	f, err := frame.NewFrame(fType)
+	if err != nil {
+		return nil, err
+	}
+	if err := p.codec.Decode(b, f); err != nil {
+		return nil, err
+	}
+	return f, nil
 }
 
 // WriteFrame writes a frame to connection.
 func (p *FrameConn) WriteFrame(f frame.Frame) error {
-	select {
-	case <-p.ctx.Done():
-		return context.Cause(p.ctx)
-	default:
-		b, err := p.codec.Encode(f)
-		if err != nil {
-			return err
-		}
-		if err := p.prw.WritePacket(p.stream, f.Type(), b); err != nil {
-			return handleError(err)
-		}
-		return nil
+	b, err := p.codec.Encode(f)
+	if err != nil {
+		return err
 	}
+	if err := p.prw.WritePacket(p.stream, f.Type(), b); err != nil {
+		return handleError(err)
+	}
+	return nil
 }
 
 // Listener listens a net.PacketConn and accepts connections.
