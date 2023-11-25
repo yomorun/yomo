@@ -97,7 +97,7 @@ CONNECT:
 
 func (c *Client) runBackground(ctx context.Context, conn frame.Conn) {
 	for {
-		conn, err := c.connect(c.ctx, c.zipperAddr)
+		conn, err := c.connect(ctx, c.zipperAddr)
 		if err != nil {
 			if errors.As(err, new(ErrAuthenticateFailed)) {
 				return
@@ -117,7 +117,9 @@ func (c *Client) runBackground(ctx context.Context, conn frame.Conn) {
 			}
 			// Exit client program if the connection has be closed.
 			if se := new(frame.ErrConnClosed); errors.As(err, &se) {
-				c.ctxCancel(fmt.Errorf("%s: shutdown with error=%s", c.clientType.String(), se.Error()))
+				if se.Remote {
+					c.ctxCancel(fmt.Errorf("%s: remote shutdown with error=%s", c.clientType.String(), se.ErrorMessage))
+				}
 				return
 			}
 		}
@@ -208,7 +210,11 @@ func (c *Client) handleConn(ctx context.Context, conn frame.Conn) error {
 	go func() {
 		for {
 			f, err := conn.ReadFrame()
-			c.rdCh <- readOut{err, f}
+			if err != nil {
+				c.rdCh <- readOut{err: err}
+				return
+			}
+			c.rdCh <- readOut{frame: f}
 		}
 	}()
 

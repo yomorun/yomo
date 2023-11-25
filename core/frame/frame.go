@@ -202,17 +202,19 @@ type Conn interface {
 // ErrConnClosed is returned when the connection be closed by remote or local.
 // The ReadFrame() and WriteFrame() should return this error after calling CloseWithError().
 type ErrConnClosed struct {
-	Message string
+	Remote       bool
+	ErrorMessage string
 }
 
 // Error implements the error interface and returns the reason why the connection was closed.
 func (e *ErrConnClosed) Error() string {
-	return e.Message
+	return e.ErrorMessage
 }
 
 // NewErrConnClosed returns an ErrConnClosed.
-func NewErrConnClosed(msg string) *ErrConnClosed {
+func NewErrConnClosed(remote bool, errMsg string) *ErrConnClosed {
 	return &ErrConnClosed{
-		Message: msg,
+		Remote:       remote,
+		ErrorMessage: errMsg,
 	}
 }

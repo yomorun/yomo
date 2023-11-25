@@ -86,11 +86,11 @@ func handleError(err error) error {
 	if se := new(quic.ApplicationError); errors.As(err, &se) {
 		// If the error code is 0, it means the listener is be closed.
 		if se.ErrorCode == 0 && se.ErrorMessage == "" {
-			return frame.NewErrConnClosed("yomo: listener closed")
+			return frame.NewErrConnClosed(true, "yomo: listener closed")
 		}
 		// If the error code is 0x13 (YomoCloseErrorCode), it means the connection is closed by remote or local.
 		if se.ErrorCode == YomoCloseErrorCode {
-			return frame.NewErrConnClosed(se.ErrorMessage)
+			return frame.NewErrConnClosed(se.Remote, se.ErrorMessage)
 		}
 	}
 	// Other errors are all unexcepted error, return it directly.
