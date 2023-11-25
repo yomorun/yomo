@@ -208,7 +208,10 @@ type ErrConnClosed struct {
 
 // Error implements the error interface and returns the reason why the connection was closed.
 func (e *ErrConnClosed) Error() string {
-	return e.ErrorMessage
+	if e.Remote {
+		return fmt.Sprintf("remote conn closed: %s", e.ErrorMessage)
+	}
+	return fmt.Sprintf("local conn closed: %s", e.ErrorMessage)
 }
 
 // NewErrConnClosed returns an ErrConnClosed.

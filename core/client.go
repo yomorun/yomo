@@ -118,7 +118,7 @@ func (c *Client) runBackground(ctx context.Context, conn frame.Conn) {
 			// Exit client program if the connection has be closed.
 			if se := new(frame.ErrConnClosed); errors.As(err, &se) {
 				if se.Remote {
-					c.ctxCancel(fmt.Errorf("%s: remote shutdown with error=%s", c.clientType.String(), se.ErrorMessage))
+					c.ctxCancel(fmt.Errorf("%s: shutdown with error=%s", c.clientType.String(), se.ErrorMessage))
 				}
 				return
 			}
@@ -196,7 +196,7 @@ func (c *Client) nonBlockWriteFrame(f frame.Frame) error {
 // Close close the client.
 func (c *Client) Close() error {
 	// break runBackgroud() for-loop.
-	c.ctxCancel(fmt.Errorf("%s: local shutdown", c.clientType.String()))
+	c.ctxCancel(fmt.Errorf("%s: shutdown", c.clientType.String()))
 
 	return nil
 }
