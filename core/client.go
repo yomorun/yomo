@@ -221,13 +221,9 @@ func (c *Client) handleConn(ctx context.Context, conn frame.Conn) error {
 	for {
 		select {
 		case <-ctx.Done():
-			se := errors.New("yomo: parent context done")
-			conn.CloseWithError(se.Error())
-			return se
+			conn.CloseWithError("yomo: parent context done")
 		case <-c.ctx.Done():
-			se := context.Cause(c.ctx)
-			conn.CloseWithError(se.Error())
-			return se
+			conn.CloseWithError(context.Cause(c.ctx).Error())
 		case f := <-c.wrCh:
 			if err := conn.WriteFrame(f); err != nil {
 				return err
