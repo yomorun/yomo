@@ -96,8 +96,25 @@ CONNECT:
 }
 
 func (c *Client) runBackground(ctx context.Context, conn frame.Conn) {
+	if err := c.handleConn(ctx, conn); err != nil {
+		if c.errorfn != nil {
+			c.errorfn(err)
+		} else {
+			c.Logger.Error("handle frame failed", "err", err)
+		}
+		// Exit client program if the connection has be closed.
+		if se := new(frame.ErrConnClosed); errors.As(err, &se) {
+			if se.Remote {
+				c.ctxCancel(fmt.Errorf("%s: shutdown with error=%s", c.clientType.String(), se.ErrorMessage))
+			}
+			return
+		}
+	}
+
+	// try reconnect to zipper.
+	var err error
 	for {
-		conn, err := c.connect(ctx, c.zipperAddr)
+		conn, err = c.connect(ctx, c.zipperAddr)
 		if err != nil {
 			if errors.As(err, new(ErrAuthenticateFailed)) {
 				return
