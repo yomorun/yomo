@@ -223,7 +223,7 @@ func (s *Server) handleFrameConn(fconn frame.Conn, logger *slog.Logger) {
 		return
 	}
 
-	s.connHandler(conn, route) // s.handleConn(conn) with middlewares
+	s.connHandler(conn, route) // s.handleConnRoute(conn, route) with middlewares
 
 	if conn.ClientType() == ClientTypeStreamFunction {
 		_ = route.Remove(conn.ID())

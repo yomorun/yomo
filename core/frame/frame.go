@@ -198,3 +198,26 @@ type Conn interface {
 	// It will be unavailable if the connection is closed. the error message should be written to the conn.Context().
 	CloseWithError(string) error
 }
+
+// ErrConnClosed is returned when the connection be closed by remote or local.
+// The ReadFrame() and WriteFrame() should return this error after calling CloseWithError().
+type ErrConnClosed struct {
+	Remote       bool
+	ErrorMessage string
+}
+
+// Error implements the error interface and returns the reason why the connection was closed.
+func (e *ErrConnClosed) Error() string {
+	if e.Remote {
+		return fmt.Sprintf("remote conn closed: %s", e.ErrorMessage)
+	}
+	return fmt.Sprintf("local conn closed: %s", e.ErrorMessage)
+}
+
+// NewErrConnClosed returns an ErrConnClosed.
+func NewErrConnClosed(remote bool, errMsg string) *ErrConnClosed {
+	return &ErrConnClosed{
+		Remote:       remote,
+		ErrorMessage: errMsg,
+	}
+}

@@ -39,9 +39,9 @@ func TestFrameConnection(t *testing.T) {
 	for {
 		f, err := fconn.ReadFrame()
 		if err != nil {
-			se := new(ErrConnClosed)
+			se := new(frame.ErrConnClosed)
 			assert.True(t, errors.As(err, &se))
-			assert.Equal(t, &ErrConnClosed{CloseMessage}, err)
+			assert.Equal(t, frame.NewErrConnClosed(true, CloseMessage), err)
 			return
 		}
 		hf := f.(*frame.HandshakeFrame)
@@ -54,10 +54,6 @@ func runListener(t *testing.T) error {
 	if err != nil {
 		return err
 	}
-
-	time.AfterFunc(3*time.Second, func() {
-		listener.Close()
-	})
 
 	fconn, err := listener.Accept(context.TODO())
 	if err != nil {
@@ -81,7 +77,7 @@ func runListener(t *testing.T) error {
 		assert.NoError(t, err)
 
 		err = fconn.WriteFrame(&frame.DataFrame{Payload: []byte("aaaa")})
-		assert.Equal(t, &ErrConnClosed{CloseMessage}, err)
+		assert.Equal(t, frame.NewErrConnClosed(false, CloseMessage), err)
 
 		t.Log("close connection done")
 	})
