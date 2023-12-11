@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/serverless"
 )
 
 func main() {
@@ -17,11 +17,7 @@ func main() {
 	if v := os.Getenv("YOMO_ADDR"); v != "" {
 		addr = v
 	}
-	source := yomo.NewSource(
-		"yomo-source",
-		addr,
-		yomo.WithObserveDataTags(0x34, 0x35),
-	)
+	source := yomo.NewSource("yomo-source", addr)
 	err := source.Connect()
 	if err != nil {
 		log.Printf("[source] ❌ Emit the data to YoMo-Zipper failure with err: %v", err)
@@ -35,10 +31,18 @@ func main() {
 		log.Printf("[source] receive server error: %v", err)
 		os.Exit(1)
 	})
-	// set receive handler for the observe datatags
-	source.SetReceiveHandler(func(tag frame.Tag, data []byte) {
-		log.Printf("[source] ♻️  receive backflow: tag=%#v, data=%s", tag, data)
+
+	// If you want receive data from source side, you should create a sfn to do that.
+	backflow := yomo.NewStreamFunction("backflow", addr)
+	backflow.SetObserveDataTags(0x34, 0x35)
+	backflow.SetHandler(func(ctx serverless.Context) {
+		log.Printf("[backflow] ♻️  receive backflow: tag=%#v, data=%s", ctx.Tag(), ctx.Data())
 	})
+	err = backflow.Connect()
+	if err != nil {
+		log.Printf("[backflow] ❌ Connect to YoMo-Zipper failure with err: %v", err)
+		return
+	}
 
 	// generate mock data and send it to YoMo-Zipper in every 100 ms.
 	err = generateAndSendData(source)

@@ -54,13 +54,6 @@ func defaultClientOption() *clientOptions {
 	return opts
 }
 
-// WithObserveDataTags sets data tag list for the client.
-func WithObserveDataTags(tags ...frame.Tag) ClientOption {
-	return func(o *clientOptions) {
-		o.observeDataTags = tags
-	}
-}
-
 // WithCredential sets the client credential method (used by client).
 func WithCredential(payload string) ClientOption {
 	return func(o *clientOptions) {
