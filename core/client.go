@@ -5,15 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"reflect"
 	"runtime"
 	"time"
 
-	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 	"github.com/yomorun/yomo/pkg/id"
+	yquic "github.com/yomorun/yomo/pkg/listener/quic"
 	oteltrace "go.opentelemetry.io/otel/trace"
 	"golang.org/x/exp/slog"
 )
@@ -36,7 +35,13 @@ type Client struct {
 	ctx       context.Context
 	ctxCancel context.CancelCauseFunc
 
-	writeFrameChan chan frame.Frame
+	wrCh chan frame.Frame
+	rdCh chan readOut
+}
+
+type readOut struct {
+	err   error
+	frame frame.Frame
 }
 
 // NewClient creates a new YoMo-Client.
@@ -62,42 +67,86 @@ func NewClient(appName, zipperAddr string, clientType ClientType, opts ...Client
 		opts:           option,
 		Logger:         logger,
 		tracerProvider: option.tracerProvider,
-		errorfn:        func(err error) { logger.Error("client err", "err", err) },
-		writeFrameChan: make(chan frame.Frame),
 		ctx:            ctx,
 		ctxCancel:      ctxCancel,
+
+		wrCh: make(chan frame.Frame),
+		rdCh: make(chan readOut),
 	}
 }
 
-type connectResult struct {
-	conn quic.Connection
-	fs   *FrameStream
-	err  error
-}
-
-func newConnectResult(conn quic.Connection, fs *FrameStream, err error) *connectResult {
-	return &connectResult{
-		conn: conn,
-		fs:   fs,
-		err:  err,
-	}
-}
-
-func (c *Client) connect(ctx context.Context) *connectResult {
-	conn, err := quic.DialAddr(ctx, c.zipperAddr, c.opts.tlsConfig, c.opts.quicConfig)
+// Connect connect client to server.
+func (c *Client) Connect(ctx context.Context) error {
+CONNECT:
+	fconn, err := c.connect(ctx, c.zipperAddr)
 	if err != nil {
-		return newConnectResult(conn, nil, err)
+		if c.opts.connectUntilSucceed {
+			c.Logger.Error("failed to connect to zipper, trying to reconnect", "err", err)
+			time.Sleep(time.Second)
+			goto CONNECT
+		}
+		c.Logger.Error("can not connect to zipper", "err", err)
+		return err
+	}
+	c.Logger.Info("connected to zipper")
+
+	go c.runBackground(ctx, fconn)
+
+	return nil
+}
+
+func (c *Client) runBackground(ctx context.Context, conn frame.Conn) {
+	if err := c.handleConn(ctx, conn); err != nil {
+		if c.errorfn != nil {
+			c.errorfn(err)
+		} else {
+			c.Logger.Error("handle frame failed", "err", err)
+		}
+		// Exit client program if the connection has be closed.
+		if se := new(frame.ErrConnClosed); errors.As(err, &se) {
+			if se.Remote {
+				c.ctxCancel(fmt.Errorf("%s: shutdown with error=%s", c.clientType.String(), se.ErrorMessage))
+			}
+			return
+		}
 	}
 
-	stream, err := conn.OpenStream()
+	// try reconnect to zipper.
+	var err error
+	for {
+		conn, err = c.connect(ctx, c.zipperAddr)
+		if err != nil {
+			if errors.As(err, new(ErrAuthenticateFailed)) {
+				return
+			}
+			c.Logger.Error("reconnect to zipper error", "err", err)
+			time.Sleep(time.Second)
+			continue
+		} else {
+			c.Logger.Info("reconnected to zipper")
+		}
+
+		if err := c.handleConn(ctx, conn); err != nil {
+			if c.errorfn != nil {
+				c.errorfn(err)
+			} else {
+				c.Logger.Error("handle frame failed", "err", err)
+			}
+			// Exit client program if the connection has be closed.
+			if se := new(frame.ErrConnClosed); errors.As(err, &se) {
+				if se.Remote {
+					c.ctxCancel(fmt.Errorf("%s: shutdown with error=%s", c.clientType.String(), se.ErrorMessage))
+				}
+				return
+			}
+		}
+	}
+}
+
+func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
+	conn, err := yquic.DialAddr(ctx, addr, y3codec.Codec(), y3codec.PacketReadWriter(), c.opts.tlsConfig, c.opts.quicConfig)
 	if err != nil {
-		return newConnectResult(conn, nil, err)
-	}
-
-	fs := NewFrameStream(stream, y3codec.Codec(), y3codec.PacketReadWriter())
-
-	if credential := c.opts.credential; credential != nil {
-		c.Logger.Info("use credential", "credential_name", credential.Name())
+		return conn, err
 	}
 
 	hf := &frame.HandshakeFrame{
@@ -110,81 +159,24 @@ func (c *Client) connect(ctx context.Context) *connectResult {
 		Version:         Version,
 	}
 
-	if err := fs.WriteFrame(hf); err != nil {
-		return newConnectResult(conn, nil, err)
+	if err := conn.WriteFrame(hf); err != nil {
+		return conn, err
 	}
 
-	received, err := fs.ReadFrame()
+	received, err := conn.ReadFrame()
 	if err != nil {
-		return newConnectResult(conn, nil, err)
+		return nil, err
 	}
-
 	switch received.Type() {
 	case frame.TypeRejectedFrame:
-		se := ErrAuthenticateFailed{received.(*frame.RejectedFrame).Message}
-		return newConnectResult(conn, fs, se)
+		return conn, ErrAuthenticateFailed{received.(*frame.RejectedFrame).Message}
 	case frame.TypeHandshakeAckFrame:
-		return newConnectResult(conn, fs, nil)
+		return conn, nil
 	default:
-		se := ErrAuthenticateFailed{
+		return conn, ErrAuthenticateFailed{
 			fmt.Sprintf("authentication failed: read unexcepted frame, frame read: %s", received.Type().String()),
 		}
-		return newConnectResult(conn, fs, se)
 	}
-}
-
-func (c *Client) runBackground(ctx context.Context, conn quic.Connection, fs *FrameStream) {
-	reconnection := make(chan struct{})
-
-	go c.handleReadFrames(fs, reconnection)
-
-	for {
-		select {
-		case <-c.ctx.Done():
-			fs.Close()
-			return
-		case <-ctx.Done():
-			fs.Close()
-			return
-		case f := <-c.writeFrameChan:
-			if err := fs.WriteFrame(f); err != nil {
-				c.handleFrameError(err, reconnection)
-			}
-		case <-reconnection:
-		reconnect:
-			cr := c.connect(ctx)
-			if err := cr.err; err != nil {
-				if errors.As(err, new(ErrAuthenticateFailed)) {
-					return
-				}
-				c.Logger.Error("reconnect to zipper error", "err", cr.err)
-				time.Sleep(time.Second)
-				goto reconnect
-			}
-			fs = cr.fs
-			go c.handleReadFrames(fs, reconnection)
-		}
-	}
-}
-
-// Connect connect client to server.
-func (c *Client) Connect(ctx context.Context) error {
-connect:
-	result := c.connect(ctx)
-	if result.err != nil {
-		if c.opts.connectUntilSucceed {
-			c.Logger.Error("failed to connect to zipper, trying to reconnect", "err", result.err)
-			time.Sleep(time.Second)
-			goto connect
-		}
-		c.Logger.Error("can not connect to zipper", "err", result.err)
-		return result.err
-	}
-	c.Logger.Info("connected to zipper")
-
-	go c.runBackground(ctx, result.conn, result.fs)
-
-	return nil
 }
 
 // WriteFrame write frame to client.
@@ -200,7 +192,7 @@ func (c *Client) blockWriteFrame(f frame.Frame) error {
 	select {
 	case <-c.ctx.Done():
 		return c.ctx.Err()
-	case c.writeFrameChan <- f:
+	case c.wrCh <- f:
 	}
 	return nil
 }
@@ -210,7 +202,7 @@ func (c *Client) nonBlockWriteFrame(f frame.Frame) error {
 	select {
 	case <-c.ctx.Done():
 		return c.ctx.Err()
-	case c.writeFrameChan <- f:
+	case c.wrCh <- f:
 		return nil
 	default:
 		err := errors.New("yomo: client has lost connection")
@@ -222,34 +214,9 @@ func (c *Client) nonBlockWriteFrame(f frame.Frame) error {
 // Close close the client.
 func (c *Client) Close() error {
 	// break runBackgroud() for-loop.
-	c.ctxCancel(fmt.Errorf("%s: local shutdown", c.clientType.String()))
+	c.ctxCancel(fmt.Errorf("%s: shutdown", c.clientType.String()))
 
 	return nil
-}
-
-// handleFrameError handles errors that occur during frame reading and writing by performing the following actions:
-// Sending the error to the error function (errorfn).
-// Closing the client if the connecion has been closed.
-// Always attempting to reconnect if an error is encountered.
-func (c *Client) handleFrameError(err error, reconnection chan<- struct{}) {
-	if err == nil {
-		return
-	}
-
-	c.errorfn(err)
-
-	// exit client program if stream has be closed.
-	if err == io.EOF {
-		c.ctxCancel(fmt.Errorf("%s: remote shutdown", c.clientType.String()))
-		return
-	}
-
-	// always attempting to reconnect if an error is encountered,
-	// the error is mostly network error.
-	select {
-	case reconnection <- struct{}{}:
-	default:
-	}
 }
 
 // Wait waits client returning.
@@ -257,27 +224,47 @@ func (c *Client) Wait() {
 	<-c.ctx.Done()
 }
 
-func (c *Client) handleReadFrames(fs *FrameStream, reconnection chan struct{}) {
-	for {
-		f, err := fs.ReadFrame()
-		if err != nil {
-			c.handleFrameError(err, reconnection)
-			return
+func (c *Client) handleConn(ctx context.Context, conn frame.Conn) error {
+	go func() {
+		for {
+			f, err := conn.ReadFrame()
+			if err != nil {
+				c.rdCh <- readOut{err: err}
+				return
+			}
+			c.rdCh <- readOut{frame: f}
 		}
-		func() {
-			defer func() {
-				if e := recover(); e != nil {
-					const size = 64 << 10
-					buf := make([]byte, size)
-					buf = buf[:runtime.Stack(buf, false)]
+	}()
 
-					perr := fmt.Errorf("%v", e)
-					c.Logger.Error("stream panic", "err", perr)
-					c.errorfn(fmt.Errorf("yomo: stream panic: %v\n%s", perr, buf))
-				}
+	for {
+		select {
+		case <-ctx.Done():
+			conn.CloseWithError("yomo: parent context done")
+		case <-c.ctx.Done():
+			conn.CloseWithError(context.Cause(c.ctx).Error())
+		case f := <-c.wrCh:
+			if err := conn.WriteFrame(f); err != nil {
+				return err
+			}
+		case out := <-c.rdCh:
+			if err := out.err; err != nil {
+				return err
+			}
+			func() {
+				defer func() {
+					if e := recover(); e != nil {
+						const size = 64 << 10
+						buf := make([]byte, size)
+						buf = buf[:runtime.Stack(buf, false)]
+
+						perr := fmt.Errorf("%v", e)
+						c.Logger.Error("stream panic", "err", perr)
+						c.errorfn(fmt.Errorf("yomo: stream panic: %v\n%s", perr, buf))
+					}
+				}()
+				c.handleFrame(out.frame)
 			}()
-			c.handleFrame(f)
-		}()
+		}
 	}
 }
 

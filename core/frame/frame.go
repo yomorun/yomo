@@ -2,8 +2,10 @@
 package frame
 
 import (
+	"context"
 	"fmt"
 	"io"
+	"net"
 )
 
 // Frame is the minimum unit required for Yomo to run.
@@ -167,29 +169,60 @@ type Codec interface {
 // Tag tags data and can be used for data routing.
 type Tag = uint32
 
-// ReadWriteCloser is the interface that groups the ReadFrame, WriteFrame and Close methods.
-type ReadWriteCloser interface {
-	Reader
-	Writer
-	Close() error
-}
-
-// ReadWriter is the interface that groups the ReadFrame and WriteFrame methods.
-type ReadWriter interface {
-	Reader
-	Writer
-}
-
 // Writer is the interface that wraps the WriteFrame method, it writes
 // frame to the underlying connection.
 type Writer interface {
-	// WriteFrame writes frame to underlying stream.
+	// WriteFrame writes frame to underlying connection.
 	WriteFrame(Frame) error
 }
 
-// Reader reads frame from underlying stream.
-type Reader interface {
-	// ReadFrame reads a frame, if an error occurs, the returned error will not be empty,
-	// and the returned frame will be nil.
+// Listener accepts Conns.
+type Listener interface {
+	// Accept accepts Conns.
+	Accept(context.Context) (Conn, error)
+	// Close closes listener,
+	// If listener be closed, all Conn accepted will be unavailable.
+	Close() error
+}
+
+// Conn is a connection that transmits data in frame format.
+type Conn interface {
+	// Context returns Conn.Context.
+	// The Context can be used to manage the lifecycle of connection and
+	// retrieve error using `context.Cause(conn.Context())` after calling `CloseWithError()`.
+	Context() context.Context
+	// WriteFrame writes a frame to connection.
+	WriteFrame(Frame) error
+	// ReadFrame returns a channel from which frames can be received.
 	ReadFrame() (Frame, error)
+	// RemoteAddr returns the remote address of connection.
+	RemoteAddr() net.Addr
+	// LocalAddr returns the local address of connection.
+	LocalAddr() net.Addr
+	// CloseWithError closes the connection with an error message.
+	// It will be unavailable if the connection is closed. the error message should be written to the conn.Context().
+	CloseWithError(string) error
+}
+
+// ErrConnClosed is returned when the connection be closed by remote or local.
+// The ReadFrame() and WriteFrame() should return this error after calling CloseWithError().
+type ErrConnClosed struct {
+	Remote       bool
+	ErrorMessage string
+}
+
+// Error implements the error interface and returns the reason why the connection was closed.
+func (e *ErrConnClosed) Error() string {
+	if e.Remote {
+		return fmt.Sprintf("remote conn closed: %s", e.ErrorMessage)
+	}
+	return fmt.Sprintf("local conn closed: %s", e.ErrorMessage)
+}
+
+// NewErrConnClosed returns an ErrConnClosed.
+func NewErrConnClosed(remote bool, errMsg string) *ErrConnClosed {
+	return &ErrConnClosed{
+		Remote:       remote,
+		ErrorMessage: errMsg,
+	}
 }

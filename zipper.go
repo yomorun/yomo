@@ -43,7 +43,7 @@ func RunZipper(ctx context.Context, configPath string) error {
 		}
 	}
 
-	zipper, err := NewZipper(conf.Name, conf.Downstreams, options...)
+	zipper, err := NewZipper(conf.Name, router.Default(), conf.Downstreams, options...)
 	if err != nil {
 		return err
 	}
@@ -53,7 +53,7 @@ func RunZipper(ctx context.Context, configPath string) error {
 }
 
 // NewZipper returns a zipper.
-func NewZipper(name string, meshConfig map[string]config.Downstream, options ...ZipperOption) (Zipper, error) {
+func NewZipper(name string, router router.Router, meshConfig map[string]config.Downstream, options ...ZipperOption) (Zipper, error) {
 	opts := &zipperOptions{}
 
 	for _, o := range options {
@@ -66,13 +66,13 @@ func NewZipper(name string, meshConfig map[string]config.Downstream, options ...
 	for downstreamName, meshConf := range meshConfig {
 		addr := fmt.Sprintf("%s:%d", meshConf.Host, meshConf.Port)
 
-		clientOptions := append(
-			opts.clientOption,
+		clientOptions := []core.ClientOption{
 			core.WithCredential(meshConf.Credential),
 			core.WithNonBlockWrite(),
 			core.WithConnectUntilSucceed(),
 			core.WithLogger(server.Logger().With("downstream_name", downstreamName, "downstream_addr", addr)),
-		)
+		}
+		clientOptions = append(clientOptions, opts.clientOption...)
 
 		downstream := &downstream{
 			localName: downstreamName,
@@ -84,7 +84,7 @@ func NewZipper(name string, meshConfig map[string]config.Downstream, options ...
 		server.AddDownstreamServer(downstream)
 	}
 
-	server.ConfigRouter(router.Default())
+	server.ConfigRouter(router)
 
 	// watch signal.
 	go waitSignalForShutdownServer(server)

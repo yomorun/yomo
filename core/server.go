@@ -10,7 +10,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
@@ -20,6 +19,7 @@ import (
 	// authentication implements, Currently, only token authentication is implemented
 	_ "github.com/yomorun/yomo/pkg/auth"
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
+	yquic "github.com/yomorun/yomo/pkg/listener/quic"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
 	"github.com/yomorun/yomo/pkg/version"
 	oteltrace "go.opentelemetry.io/otel/trace"
@@ -57,7 +57,7 @@ type Server struct {
 	opts               *serverOptions
 	frameHandler       FrameHandler
 	connHandler        ConnHandler
-	listener           *quic.Listener
+	listener           frame.Listener
 	logger             *slog.Logger
 	tracerProvider     oteltrace.TracerProvider
 }
@@ -112,28 +112,83 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	return s.Serve(ctx, conn)
 }
 
-func (s *Server) handshake(qconn quic.Connection, fs *FrameStream) (router.Route, *Connection, error) {
+// Serve the server with a net.PacketConn.
+func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
+	if err := s.validateRouter(); err != nil {
+		return err
+	}
+
+	s.connector = NewConnector(ctx)
+
+	tlsConfig := s.opts.tlsConfig
+	if tlsConfig == nil {
+		tlsConfig = pkgtls.MustCreateServerTLSConfig(conn.LocalAddr().String())
+	}
+
+	// listen the address
+	listener, err := yquic.Listen(conn, y3codec.Codec(), y3codec.PacketReadWriter(), tlsConfig, s.opts.quicConfig)
+	if err != nil {
+		s.logger.Error("failed to listen on quic", "err", err)
+		return err
+	}
+	s.listener = listener
+
+	s.logger.Info(
+		"zipper is up and running",
+		"zipper_addr", conn.LocalAddr().String(), "pid", os.Getpid(), "quic", s.opts.quicConfig.Versions, "auth_name", s.authNames())
+
+	defer closeServer(s.downstreams, s.connector, s.listener, s.router)
+
+	for {
+		fconn, err := s.listener.Accept(s.ctx)
+		if err != nil {
+			if err == s.ctx.Err() {
+				return ErrServerClosed
+			}
+			s.logger.Error("accepted an error when accepting a connection", "err", err)
+			return err
+		}
+
+		go s.handleFrameConn(fconn, s.logger)
+	}
+}
+
+func (s *Server) handleFrameConn(fconn frame.Conn, logger *slog.Logger) {
+	route, conn, err := s.handshake(fconn)
+	if err != nil {
+		logger.Error("handshake failed", "err", err)
+		return
+	}
+
+	s.connHandler(conn, route) // s.handleConnRoute(conn, route) with middlewares
+
+	if conn.ClientType() == ClientTypeStreamFunction {
+		_ = route.Remove(conn.ID())
+	}
+	_ = s.connector.Remove(conn.ID())
+}
+
+func (s *Server) handshake(fconn frame.Conn) (router.Route, *Connection, error) {
 	var gerr error
 
 	defer func() {
 		if gerr == nil {
-			_ = fs.WriteFrame(&frame.HandshakeAckFrame{})
+			_ = fconn.WriteFrame(&frame.HandshakeAckFrame{})
 		} else {
-			_ = fs.WriteFrame(&frame.RejectedFrame{Message: gerr.Error()})
+			_ = fconn.WriteFrame(&frame.RejectedFrame{Message: gerr.Error()})
 		}
 	}()
 
-	first, err := fs.ReadFrame()
+	first, err := fconn.ReadFrame()
 	if err != nil {
 		gerr = err
 		return nil, nil, gerr
 	}
-
 	switch first.Type() {
 	case frame.TypeHandshakeFrame:
 		hf := first.(*frame.HandshakeFrame)
 
-		conn, err := s.handleHandshakeFrame(qconn, fs, hf)
+		conn, err := s.handleHandshakeFrame(fconn, hf)
 		if err != nil {
 			gerr = err
 			return nil, conn, gerr
@@ -151,14 +206,10 @@ func (s *Server) handshake(qconn quic.Connection, fs *FrameStream) (router.Route
 }
 
 func (s *Server) handleConnRoute(conn *Connection, route router.Route) {
-	defer func() {
-		if conn.ClientType() == ClientTypeStreamFunction {
-			_ = route.Remove(conn.ID())
-		}
-		_ = s.connector.Remove(conn.ID())
-	}()
+	conn.Logger.Info("new client connected", "client_type", conn.ClientType().String())
+
 	for {
-		f, err := conn.ReadFrame()
+		f, err := conn.FrameConn().ReadFrame()
 		if err != nil {
 			conn.Logger.Info("failed to read frame", "err", err)
 			return
@@ -170,9 +221,10 @@ func (s *Server) handleConnRoute(conn *Connection, route router.Route) {
 				conn.Logger.Info("failed to new context", "err", err)
 				return
 			}
-			defer c.Release()
 
-			s.frameHandler(c)
+			s.frameHandler(c) // s.handleFrame(c) with middlewares
+
+			c.Release()
 		default:
 			conn.Logger.Info("unexpected frame", "type", f.Type().String())
 			return
@@ -180,14 +232,27 @@ func (s *Server) handleConnRoute(conn *Connection, route router.Route) {
 	}
 }
 
-func (s *Server) handleQuicConnection(qconn quic.Connection, fs *FrameStream, logger *slog.Logger) {
-	route, conn, err := s.handshake(qconn, fs)
-	if err != nil {
-		logger.Error("handshake failed", "err", err)
-		return
+func (s *Server) handleHandshakeFrame(fconn frame.Conn, hf *frame.HandshakeFrame) (*Connection, error) {
+	// 1. authentication
+	md, ok := auth.Authenticate(s.opts.auths, hf)
+
+	if !ok {
+		s.logger.Warn(
+			"authentication failed",
+			"client_type", ClientType(hf.ClientType).String(), "client_name", hf.Name,
+			"credential", hf.AuthName,
+		)
+		return nil, fmt.Errorf("authentication failed: client credential type is %s", hf.AuthName)
 	}
 
-	s.connHandler(conn, route)
+	// 2. version negotiation
+	if err := negotiateVersion(hf.Version, Version); err != nil {
+		return nil, err
+	}
+
+	conn := newConnection(hf.Name, hf.ID, ClientType(hf.ClientType), md, hf.ObserveDataTags, fconn, s.logger)
+
+	return conn, s.connector.Store(hf.ID, conn)
 }
 
 func (s *Server) addSfnToRoute(hf *frame.HandshakeFrame, md metadata.M) (router.Route, error) {
@@ -203,29 +268,6 @@ func (s *Server) addSfnToRoute(hf *frame.HandshakeFrame, md metadata.M) (router.
 		return nil, err
 	}
 	return route, nil
-}
-
-func (s *Server) handleHandshakeFrame(qconn quic.Connection, fs *FrameStream, hf *frame.HandshakeFrame) (*Connection, error) {
-	// 1. authentication
-	md, ok := auth.Authenticate(s.opts.auths, hf)
-
-	if !ok {
-		s.logger.Warn(
-			"authentication failed",
-			"client_type", ClientType(hf.ClientType).String(), "client_name", hf.Name,
-			"credential", hf.AuthName,
-		)
-		return nil, fmt.Errorf("authentication failed: client credential name is %s", hf.AuthName)
-	}
-
-	// 2. version negotiation
-	if err := negotiateVersion(hf.Version, Version); err != nil {
-		return nil, err
-	}
-
-	conn := newConnection(hf.Name, hf.ID, ClientType(hf.ClientType), md, hf.ObserveDataTags, qconn, fs, s.logger)
-
-	return conn, s.connector.Store(hf.ID, conn)
 }
 
 func negotiateVersion(cVersion, sVersion string) error {
@@ -245,86 +287,6 @@ func negotiateVersion(cVersion, sVersion string) error {
 	}
 
 	return fmt.Errorf("yomo: version negotiation failed, client=%s, server=%s", cVersion, sVersion)
-}
-
-// Serve the server with a net.PacketConn.
-func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
-	if err := s.validateRouter(); err != nil {
-		return err
-	}
-
-	s.connector = NewConnector(ctx)
-
-	tlsConfig := s.opts.tlsConfig
-	if tlsConfig == nil {
-		tc, err := pkgtls.CreateServerTLSConfig(conn.LocalAddr().String())
-		if err != nil {
-			return err
-		}
-		tlsConfig = tc
-	}
-
-	// listen the address
-	listener, err := quic.Listen(conn, tlsConfig, s.opts.quicConfig)
-	if err != nil {
-		s.logger.Error("failed to listen on quic", "err", err)
-		return err
-	}
-	s.listener = listener
-
-	s.logger.Info("zipper is up and running", "zipper_addr", s.listener.Addr().String(), "pid", os.Getpid(), "quic", s.opts.quicConfig.Versions, "auth_name", s.authNames())
-
-	defer closeServer(s.downstreams, s.connector, s.listener, s.router)
-
-	for {
-		qconn, err := s.listener.Accept(s.ctx)
-		if err != nil {
-			if err == s.ctx.Err() {
-				return ErrServerClosed
-			}
-			s.logger.Error("accepted an error when accepting a connection", "err", err)
-			return err
-		}
-
-		stream, err := qconn.AcceptStream(ctx)
-		if err != nil {
-			continue
-		}
-
-		fs := NewFrameStream(stream, y3codec.Codec(), y3codec.PacketReadWriter())
-
-		go s.handleQuicConnection(qconn, fs, s.logger)
-	}
-}
-
-// Logger returns the logger of server.
-func (s *Server) Logger() *slog.Logger {
-	return s.logger
-}
-
-// Close will shutdown the server.
-func (s *Server) Close() error {
-	s.ctxCancel()
-	return nil
-}
-
-func closeServer(downstreams map[string]Downstream, connector *Connector, listener *quic.Listener, router router.Router) error {
-	for _, ds := range downstreams {
-		ds.Close()
-	}
-	// connector
-	if connector != nil {
-		connector.Close()
-	}
-	// listener
-	if listener != nil {
-		listener.Close()
-	}
-	// router
-	if router != nil {
-		router.Clean()
-	}
-	return nil
 }
 
 func (s *Server) handleFrame(c *Context) {
@@ -394,7 +356,7 @@ func (s *Server) routingDataFrame(c *Context) error {
 		c.Logger.Info("data routing", "tag", dataFrame.Tag, "data_length", data_length, "to_id", toID, "to_name", stream.Name())
 
 		// write data frame to stream
-		if err := stream.WriteFrame(dataFrame); err != nil {
+		if err := stream.FrameConn().WriteFrame(dataFrame); err != nil {
 			c.Logger.Error("failed to write frame for routing data", "err", err)
 		}
 	}
@@ -418,11 +380,58 @@ func (s *Server) handleBackflowFrame(c *Context) error {
 	for _, s := range sources {
 		if s != nil {
 			c.Logger.Info("backflow to source", "source_conn_id", sourceID)
-			if err := s.WriteFrame(bf); err != nil {
+			if err := s.FrameConn().WriteFrame(bf); err != nil {
 				c.Logger.Error("failed to write frame for backflow to the source", "err", err)
 				return err
 			}
 		}
+	}
+	return nil
+}
+
+// dispatch every DataFrames to all downstreams
+func (s *Server) dispatchToDownstreams(c *Context) error {
+	dataFrame := c.Frame
+	if c.Connection.ClientType() == ClientTypeUpstreamZipper {
+		c.Logger.Debug("ignored client", "client_type", c.Connection.ClientType().String())
+		// loop protection
+		return nil
+	}
+
+	mdBytes, err := c.FrameMetadata.Encode()
+	if err != nil {
+		c.Logger.Error("failed to dispatch to downstream", "err", err)
+		return err
+	}
+	dataFrame.Metadata = mdBytes
+
+	for _, ds := range s.downstreams {
+		c.Logger.Info(
+			"dispatching to downstream",
+			"tag", dataFrame.Tag, "data_length", len(dataFrame.Payload),
+			"downstream_id", ds.ID(), "downstream_name", ds.LocalName())
+
+		_ = ds.WriteFrame(dataFrame)
+	}
+
+	return nil
+}
+
+func closeServer(downstreams map[string]Downstream, connector *Connector, listener frame.Listener, router router.Router) error {
+	for _, ds := range downstreams {
+		ds.Close()
+	}
+	// connector
+	if connector != nil {
+		connector.Close()
+	}
+	// listener
+	if listener != nil {
+		listener.Close()
+	}
+	// router
+	if router != nil {
+		router.Clean()
 	}
 	return nil
 }
@@ -479,31 +488,14 @@ func (s *Server) AddDownstreamServer(c Downstream) {
 	s.mu.Unlock()
 }
 
-// dispatch every DataFrames to all downstreams
-func (s *Server) dispatchToDownstreams(c *Context) error {
-	dataFrame := c.Frame
-	if c.Connection.ClientType() == ClientTypeUpstreamZipper {
-		c.Logger.Debug("ignored client", "client_type", c.Connection.ClientType().String())
-		// loop protection
-		return nil
-	}
+// Logger returns the logger of server.
+func (s *Server) Logger() *slog.Logger {
+	return s.logger
+}
 
-	mdBytes, err := c.FrameMetadata.Encode()
-	if err != nil {
-		c.Logger.Error("failed to dispatch to downstream", "err", err)
-		return err
-	}
-	dataFrame.Metadata = mdBytes
-
-	for _, ds := range s.downstreams {
-		c.Logger.Info(
-			"dispatching to downstream",
-			"tag", dataFrame.Tag, "data_length", len(dataFrame.Payload),
-			"downstream_id", ds.ID(), "downstream_name", ds.LocalName())
-
-		_ = ds.WriteFrame(dataFrame)
-	}
-
+// Close will shutdown the server.
+func (s *Server) Close() error {
+	s.ctxCancel()
 	return nil
 }
 

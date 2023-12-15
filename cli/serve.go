@@ -22,6 +22,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/core/router"
 	pkgconfig "github.com/yomorun/yomo/pkg/config"
 	"github.com/yomorun/yomo/pkg/log"
 	"github.com/yomorun/yomo/pkg/trace"
@@ -62,7 +63,7 @@ var serveCmd = &cobra.Command{
 			}
 		}
 
-		zipper, err := yomo.NewZipper(conf.Name, conf.Downstreams, options...)
+		zipper, err := yomo.NewZipper(conf.Name, router.Default(), conf.Downstreams, options...)
 		if err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
 			return
