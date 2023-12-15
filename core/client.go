@@ -80,6 +80,9 @@ func (c *Client) Connect(ctx context.Context) error {
 CONNECT:
 	fconn, err := c.connect(ctx, c.zipperAddr)
 	if err != nil {
+		if errors.As(err, new(ErrAuthenticateFailed)) {
+			return err
+		}
 		if c.opts.connectUntilSucceed {
 			c.Logger.Error("failed to connect to zipper, trying to reconnect", "err", err)
 			time.Sleep(time.Second)

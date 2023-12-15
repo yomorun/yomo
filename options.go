@@ -35,6 +35,9 @@ var (
 	// WithLogger sets logger for the Source.
 	WithLogger = func(l *slog.Logger) SourceOption { return SourceOption(core.WithLogger(l)) }
 
+	// WithSourceConnectUntilSucceed makes source Connect until success.
+	WithSourceConnectUntilSucceed = func() SourceOption { return SourceOption(core.WithConnectUntilSucceed()) }
+
 	// WithTracerProvider sets tracer provider for the Source.
 	WithTracerProvider = func(tp trace.TracerProvider) SourceOption { return SourceOption(core.WithTracerProvider(tp)) }
 )
@@ -52,6 +55,9 @@ var (
 
 	// WithSfnLogger sets logger for the Sfn.
 	WithSfnLogger = func(l *slog.Logger) SfnOption { return SfnOption(core.WithLogger(l)) }
+
+	// WithSfnConnectUntilSucceed makes sfn Connect until success.
+	WithSfnConnectUntilSucceed = func() SfnOption { return SfnOption(core.WithConnectUntilSucceed()) }
 
 	// WithSfnTracerProvider sets tracer provider for the Sfn.
 	WithSfnTracerProvider = func(tp trace.TracerProvider) SfnOption { return SfnOption(core.WithTracerProvider(tp)) }
