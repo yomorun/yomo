@@ -51,17 +51,6 @@ func TestCodec(t *testing.T) {
 		args args
 	}{
 		{
-			name: "BackflowFrame",
-			args: args{
-				newF:  new(frame.BackflowFrame),
-				dataF: &frame.BackflowFrame{Tag: 0x10, Carriage: []byte("hello backflow")},
-				data: []byte{
-					0xad, 0x13, 0x1, 0x1, 0x10, 0x2, 0xe, 0x68, 0x65, 0x6c,
-					0x6c, 0x6f, 0x20, 0x62, 0x61, 0x63, 0x6b, 0x66, 0x6c, 0x6f, 0x77,
-				},
-			},
-		},
-		{
 			name: "DataFrame",
 			args: args{
 				newF: new(frame.DataFrame),

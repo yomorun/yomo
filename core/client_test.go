@@ -39,10 +39,10 @@ func TestFrameRoundTrip(t *testing.T) {
 	ctx := context.Background()
 
 	var (
-		observedTag = frame.Tag(0x13)
-		backflowTag = frame.Tag(0x14)
-		payload     = []byte("hello data frame")
-		backflow    = []byte("hello backflow frame")
+		sourceToSfn1Tag     = frame.Tag(0x13)
+		Sfn1ToSfn2Tag       = frame.Tag(0x14)
+		sourceToSfn1Payload = []byte("source -> sfn1")
+		Sfn1ToSfn2Payload   = []byte("sfn1 -> sfn2")
 	)
 
 	// test server hooks
@@ -80,18 +80,13 @@ func TestFrameRoundTrip(t *testing.T) {
 		WithClientQuicConfig(DefalutQuicConfig),
 		WithClientTLSConfig(nil),
 		WithLogger(discardingLogger),
-		WithObserveDataTags(backflowTag),
 		WithConnectUntilSucceed(),
 		WithNonBlockWrite(),
 	)
 
-	source.SetBackflowFrameObserver(func(bf *frame.BackflowFrame) {
-		assert.Equal(t, string(backflow), string(bf.Carriage))
-	})
-
 	err = source.Connect(ctx)
 	assert.NoError(t, err, "source connect must be success")
-	closeEarlySfn := createTestStreamFunction("close-early-sfn", testaddr, observedTag)
+	closeEarlySfn := createTestStreamFunction("close-early-sfn", testaddr, 0x15)
 	closeEarlySfn.Connect(ctx)
 	assert.Equal(t, nil, err)
 
@@ -103,16 +98,17 @@ func TestFrameRoundTrip(t *testing.T) {
 	assert.True(t, exited, "close-early-sfn should exited")
 
 	// sfn to zipper.
-	sfn := createTestStreamFunction("sfn-1", testaddr, observedTag)
-	sfn.SetDataFrameObserver(func(bf *frame.DataFrame) {
-		assert.Equal(t, string(payload), string(bf.Payload))
+	sfn1 := createTestStreamFunction("sfn-1", testaddr, sourceToSfn1Tag)
+	sfn1.SetDataFrameObserver(func(bf *frame.DataFrame) {
+		assert.Equal(t, sourceToSfn1Tag, bf.Tag)
+		assert.Equal(t, string(sourceToSfn1Payload), string(bf.Payload))
 
 		// panic test: reading array out of range.
 		arr := []int{1, 2}
 		t.Log(arr[100])
 	})
 
-	sfn.SetErrorHandler(func(err error) {
+	sfn1.SetErrorHandler(func(err error) {
 		if strings.HasPrefix(err.Error(), "yomo: stream panic") {
 			assert.Regexp(
 				t,
@@ -121,11 +117,22 @@ func TestFrameRoundTrip(t *testing.T) {
 			)
 		}
 	})
+	err = sfn1.Connect(ctx)
+	assert.NoError(t, err, "sfn-1 connect should succeed")
 
-	err = sfn.Connect(ctx)
-	assert.NoError(t, err, "sfn connect should replace the old sfn stream")
+	exited = checkClientExited(sfn1, time.Second)
+	assert.False(t, exited, "sfn stream should not exited")
 
-	exited = checkClientExited(sfn, time.Second)
+	sfn2 := createTestStreamFunction("sfn-2", testaddr, Sfn1ToSfn2Tag)
+	sfn2.SetDataFrameObserver(func(bf *frame.DataFrame) {
+		assert.Equal(t, Sfn1ToSfn2Tag, bf.Tag)
+		assert.Equal(t, string(Sfn1ToSfn2Payload), string(bf.Payload))
+	})
+
+	err = sfn2.Connect(ctx)
+	assert.NoError(t, err, "sfn-2 connect should succeed")
+
+	exited = checkClientExited(sfn2, time.Second)
 	assert.False(t, exited, "sfn stream should not exited")
 
 	sfnMd := NewMetadata(source.clientID, "tid", "trace-id", "span-id", false)
@@ -133,12 +140,12 @@ func TestFrameRoundTrip(t *testing.T) {
 	sfnMetaBytes, _ := sfnMd.Encode()
 
 	dataFrame := &frame.DataFrame{
-		Tag:      backflowTag,
+		Tag:      sourceToSfn1Tag,
 		Metadata: sfnMetaBytes,
-		Payload:  backflow,
+		Payload:  sourceToSfn1Payload,
 	}
 
-	err = sfn.WriteFrame(dataFrame)
+	err = sfn1.WriteFrame(dataFrame)
 	assert.NoError(t, err)
 
 	assertDownstreamDataFrame(t, dataFrame.Tag, sfnMd, dataFrame.Payload, recorder)
@@ -148,7 +155,7 @@ func TestFrameRoundTrip(t *testing.T) {
 	for _, name := range stats {
 		nameList = append(nameList, name)
 	}
-	assert.ElementsMatch(t, nameList, []string{"source", "sfn-1"})
+	assert.ElementsMatch(t, nameList, []string{"source", "sfn-1", "sfn-2"})
 
 	md := metadata.New(
 		NewMetadata(source.clientID, "tid", "trace-id", "span-id", false),
@@ -159,9 +166,9 @@ func TestFrameRoundTrip(t *testing.T) {
 	sourceMetaBytes, _ := md.Encode()
 
 	dataFrame = &frame.DataFrame{
-		Tag:      observedTag,
+		Tag:      Sfn1ToSfn2Tag,
 		Metadata: sourceMetaBytes,
-		Payload:  payload,
+		Payload:  Sfn1ToSfn2Payload,
 	}
 
 	err = source.WriteFrame(dataFrame)
@@ -170,7 +177,8 @@ func TestFrameRoundTrip(t *testing.T) {
 	assertDownstreamDataFrame(t, dataFrame.Tag, md, dataFrame.Payload, recorder)
 
 	assert.NoError(t, source.Close(), "source client.Close() should not return error")
-	assert.NoError(t, sfn.Close(), "sfn client.Close() should not return error")
+	assert.NoError(t, sfn1.Close(), "sfn-1 client.Close() should not return error")
+	assert.NoError(t, sfn2.Close(), "sfn-2 client.Close() should not return error")
 	assert.NoError(t, server.Close(), "server.Close() should not return error")
 }
 

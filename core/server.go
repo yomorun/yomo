@@ -275,12 +275,6 @@ func (s *Server) handleFrame(c *Context) {
 		c.CloseWithError(fmt.Sprintf("dispatch to downstream err: %v", err))
 		return
 	}
-
-	// observe datatags backflow.
-	if err := s.handleBackflowFrame(c); err != nil {
-		c.CloseWithError(fmt.Sprintf("handle backflow err: %v", err))
-		return
-	}
 }
 
 func (s *Server) routingDataFrame(c *Context) error {
@@ -318,48 +312,29 @@ func (s *Server) routingDataFrame(c *Context) error {
 	c.Logger.Debug("connector snapshot", "tag", dataFrame.Tag, "sfn_conn_ids", connIDs, "connector", s.connector.Snapshot())
 
 	for _, toID := range connIDs {
-		stream, ok, err := s.connector.Get(toID)
+		conn, ok, err := s.connector.Get(toID)
 		if err != nil {
 			continue
 		}
 		if !ok {
-			c.Logger.Error("can't find forward stream", "err", "route sfn error", "forward_stream_id", toID)
+			c.Logger.Error("can't find forward conn", "to_id", toID, "to_name", conn.Name())
 			continue
 		}
 
-		c.Logger.Info("data routing", "tag", dataFrame.Tag, "data_length", data_length, "to_id", toID, "to_name", stream.Name())
-
-		// write data frame to stream
-		if err := stream.FrameConn().WriteFrame(dataFrame); err != nil {
-			c.Logger.Error("failed to write frame for routing data", "err", err)
+		// write data frame to conn
+		if err := conn.FrameConn().WriteFrame(dataFrame); err != nil {
+			c.Logger.Error(
+				"failed to route data", "err", err,
+				"tag", dataFrame.Tag, "data_length", data_length, "to_id", toID, "to_name", conn.Name(),
+			)
+		} else {
+			c.Logger.Info(
+				"data routing",
+				"tag", dataFrame.Tag, "data_length", data_length, "to_id", toID, "to_name", conn.Name(),
+			)
 		}
 	}
 
-	return nil
-}
-
-func (s *Server) handleBackflowFrame(c *Context) error {
-	dataFrame := c.Frame
-
-	sourceID := GetSourceIDFromMetadata(c.FrameMetadata)
-	// write to source with BackflowFrame
-	bf := &frame.BackflowFrame{
-		Tag:      dataFrame.Tag,
-		Carriage: dataFrame.Payload,
-	}
-	sources, err := s.connector.Find(sourceIDTagFindConnectionFunc(sourceID, dataFrame.Tag))
-	if err != nil {
-		return err
-	}
-	for _, s := range sources {
-		if s != nil {
-			c.Logger.Info("backflow to source", "source_conn_id", sourceID)
-			if err := s.FrameConn().WriteFrame(bf); err != nil {
-				c.Logger.Error("failed to write frame for backflow to the source", "err", err)
-				return err
-			}
-		}
-	}
 	return nil
 }
 
@@ -380,12 +355,21 @@ func (s *Server) dispatchToDownstreams(c *Context) error {
 	dataFrame.Metadata = mdBytes
 
 	for _, ds := range s.downstreams {
-		c.Logger.Info(
-			"dispatching to downstream",
-			"tag", dataFrame.Tag, "data_length", len(dataFrame.Payload),
-			"downstream_id", ds.ID(), "downstream_name", ds.LocalName())
 
-		_ = ds.WriteFrame(dataFrame)
+		if err = ds.WriteFrame(dataFrame); err != nil {
+			c.Logger.Error(
+				"failed to dispatch to downstream",
+				"err", err,
+				"tag", dataFrame.Tag, "data_length", len(dataFrame.Payload),
+				"downstream_id", ds.ID(), "downstream_name", ds.LocalName(),
+			)
+		} else {
+			c.Logger.Info(
+				"dispatching to downstream",
+				"tag", dataFrame.Tag, "data_length", len(dataFrame.Payload),
+				"downstream_id", ds.ID(), "downstream_name", ds.LocalName(),
+			)
+		}
 	}
 
 	return nil

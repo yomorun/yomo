@@ -5,7 +5,6 @@ import (
 
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core"
-	"github.com/yomorun/yomo/core/frame"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/exp/slog"
 )
@@ -20,9 +19,6 @@ type (
 
 // SourceOption Options.
 var (
-	// WithObserveDataTags sets the list of data tags for the Source.
-	WithObserveDataTags = func(tags ...frame.Tag) SourceOption { return SourceOption(core.WithObserveDataTags(tags...)) }
-
 	// WithCredential sets the credential method for the Source.
 	WithCredential = func(payload string) SourceOption { return SourceOption(core.WithCredential(payload)) }
 
