@@ -6,7 +6,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/core"
-	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/ylog"
 	"github.com/yomorun/yomo/serverless"
 )
@@ -20,7 +19,6 @@ func TestSource(t *testing.T) {
 		"localhost:9000",
 		WithCredential("token:<CREDENTIAL>"),
 		WithLogger(ylog.Default()),
-		WithObserveDataTags(0x22),
 		WithSourceQuicConfig(core.DefalutQuicConfig),
 		WithSourceTLSConfig(nil),
 	)
@@ -33,12 +31,6 @@ func TestSource(t *testing.T) {
 
 	// error handler
 	source.SetErrorHandler(func(err error) {})
-
-	// receiver handler
-	source.SetReceiveHandler(func(tag frame.Tag, data []byte) {
-		assert.Equal(t, uint32(0x22), tag)
-		assert.Equal(t, []byte("backflow"), data)
-	})
 
 	// sfn
 	sfn := NewStreamFunction(

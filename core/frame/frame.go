@@ -15,9 +15,8 @@ import (
 //  1. HandshakeFrame
 //  2. HandshakeAckFrame
 //  3. DataFrame
-//  4. BackflowFrame
-//  5. RejectedFrame
-//  6. GoawayFrame
+//  4. RejectedFrame
+//  5. GoawayFrame
 //
 // Read frame comments to understand the role of the frame.
 type Frame interface {
@@ -70,18 +69,6 @@ type HandshakeAckFrame struct{}
 // Type returns the type of HandshakeAckFrame.
 func (f *HandshakeAckFrame) Type() Type { return TypeHandshakeAckFrame }
 
-// The BackflowFrame is used to receive the processed result of a connection with StreamFunction type
-// and forward it to a connection with StreamSource type.
-type BackflowFrame struct {
-	// Tag is used for data router.
-	Tag Tag
-	// Carriage is the data to transmit.
-	Carriage []byte
-}
-
-// Type returns the type of BackflowFrame.
-func (f *BackflowFrame) Type() Type { return TypeBackflowFrame }
-
 // RejectedFrame is used to reject a client request.
 type RejectedFrame struct {
 	// Message encapsulates the rationale behind the rejection of the request.
@@ -105,7 +92,6 @@ const (
 	TypeHandshakeFrame    Type = 0x31 // TypeHandshakeFrame is the type of HandshakeFrame.
 	TypeHandshakeAckFrame Type = 0x29 // TypeHandshakeAckFrame is the type of HandshakeAckFrame.
 	TypeRejectedFrame     Type = 0x39 // TypeRejectedFrame is the type of RejectedFrame.
-	TypeBackflowFrame     Type = 0x2D // TypeBackflowFrame is the type of BackflowFrame.
 	TypeGoawayFrame       Type = 0x2E // TypeGoawayFrame is the type of GoawayFrame.
 )
 
@@ -114,7 +100,6 @@ var frameTypeStringMap = map[Type]string{
 	TypeHandshakeFrame:    "HandshakeFrame",
 	TypeHandshakeAckFrame: "HandshakeAckFrame",
 	TypeRejectedFrame:     "RejectedFrame",
-	TypeBackflowFrame:     "BackflowFrame",
 	TypeGoawayFrame:       "GoawayFrame",
 }
 
@@ -133,7 +118,6 @@ var frameTypeNewFuncMap = map[Type]func() Frame{
 	TypeHandshakeFrame:    func() Frame { return new(HandshakeFrame) },
 	TypeHandshakeAckFrame: func() Frame { return new(HandshakeAckFrame) },
 	TypeRejectedFrame:     func() Frame { return new(RejectedFrame) },
-	TypeBackflowFrame:     func() Frame { return new(BackflowFrame) },
 	TypeGoawayFrame:       func() Frame { return new(GoawayFrame) },
 }
 

@@ -21,12 +21,11 @@ import (
 // Source, Upstream Zipper or StreamFunction.
 type Client struct {
 	zipperAddr     string
-	name           string                     // name of the client
-	clientID       string                     // id of the client
-	clientType     ClientType                 // type of the client
-	processor      func(*frame.DataFrame)     // function to invoke when data arrived
-	receiver       func(*frame.BackflowFrame) // function to invoke when data is processed
-	errorfn        func(error)                // function to invoke when error occured
+	name           string                 // name of the client
+	clientID       string                 // id of the client
+	clientType     ClientType             // type of the client
+	processor      func(*frame.DataFrame) // function to invoke when data arrived
+	errorfn        func(error)            // function to invoke when error occured
 	opts           *clientOptions
 	Logger         *slog.Logger
 	tracerProvider oteltrace.TracerProvider
@@ -62,7 +61,6 @@ func NewClient(appName, zipperAddr string, clientType ClientType, opts ...Client
 		name:           appName,
 		clientID:       clientID,
 		processor:      func(df *frame.DataFrame) { logger.Warn("the processor has not been set") },
-		receiver:       func(bf *frame.BackflowFrame) { logger.Warn("the receiver has not been set") },
 		clientType:     clientType,
 		opts:           option,
 		Logger:         logger,
@@ -206,10 +204,8 @@ func (c *Client) nonBlockWriteFrame(f frame.Frame) error {
 		return c.ctx.Err()
 	case c.wrCh <- f:
 		return nil
-	default:
-		err := errors.New("yomo: client has lost connection")
-		c.Logger.Debug("failed to write frame", "frame_type", f.Type().String(), "error", err)
-		return err
+	case <-time.After(time.Second):
+		return errors.New("yomo: non-block write frame timeout")
 	}
 }
 
@@ -277,8 +273,6 @@ func (c *Client) handleFrame(f frame.Frame) {
 		_ = c.Close()
 	case *frame.DataFrame:
 		c.processor(ff)
-	case *frame.BackflowFrame:
-		c.receiver(ff)
 	default:
 		c.Logger.Warn("received unexpected frame", "frame_type", f.Type().String())
 	}
@@ -287,11 +281,6 @@ func (c *Client) handleFrame(f frame.Frame) {
 // SetDataFrameObserver sets the data frame handler.
 func (c *Client) SetDataFrameObserver(fn func(*frame.DataFrame)) {
 	c.processor = fn
-}
-
-// SetBackflowFrameObserver sets the backflow frame handler.
-func (c *Client) SetBackflowFrameObserver(fn func(*frame.BackflowFrame)) {
-	c.receiver = fn
 }
 
 // SetObserveDataTags set the data tag list that will be observed.

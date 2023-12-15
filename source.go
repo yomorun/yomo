@@ -18,8 +18,6 @@ type Source interface {
 	Write(tag uint32, data []byte) error
 	// SetErrorHandler set the error handler function when server error occurs
 	SetErrorHandler(fn func(err error))
-	// [Experimental] SetReceiveHandler set the observe handler function
-	SetReceiveHandler(fn func(tag uint32, data []byte))
 }
 
 // YoMo-Source
@@ -27,7 +25,6 @@ type yomoSource struct {
 	name       string
 	zipperAddr string
 	client     *core.Client
-	fn         func(uint32, []byte)
 }
 
 var _ Source = &yomoSource{}
@@ -67,15 +64,7 @@ func (s *yomoSource) Close() error {
 
 // Connect to YoMo-Zipper.
 func (s *yomoSource) Connect() error {
-	// set backflowframe handler
-	s.client.SetBackflowFrameObserver(func(frm *frame.BackflowFrame) {
-		if s.fn != nil {
-			s.fn(frm.Tag, frm.Carriage)
-		}
-	})
-
-	err := s.client.Connect(context.Background())
-	return err
+	return s.client.Connect(context.Background())
 }
 
 // Write writes data with specified tag.
@@ -100,10 +89,4 @@ func (s *yomoSource) Write(tag uint32, data []byte) error {
 // SetErrorHandler set the error handler function when server error occurs
 func (s *yomoSource) SetErrorHandler(fn func(err error)) {
 	s.client.SetErrorHandler(fn)
-}
-
-// [Experimental] SetReceiveHandler set the observe handler function
-func (s *yomoSource) SetReceiveHandler(fn func(uint32, []byte)) {
-	s.fn = fn
-	s.client.Logger.Info("receive hander set for the source")
 }
