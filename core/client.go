@@ -83,7 +83,7 @@ CONNECT:
 		if errors.As(err, new(ErrAuthenticateFailed)) {
 			return err
 		}
-		if c.opts.connectUntilSucceed {
+		if c.opts.reconnect {
 			c.Logger.Error("failed to connect to zipper, trying to reconnect", "err", err)
 			time.Sleep(time.Second)
 			goto CONNECT

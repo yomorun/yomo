@@ -81,7 +81,7 @@ func TestFrameRoundTrip(t *testing.T) {
 		WithClientTLSConfig(nil),
 		WithLogger(discardingLogger),
 		WithObserveDataTags(backflowTag),
-		WithConnectUntilSucceed(),
+		WithReConnect(),
 		WithNonBlockWrite(),
 	)
 
