@@ -21,6 +21,7 @@ import (
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 	yquic "github.com/yomorun/yomo/pkg/listener/quic"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
+	"github.com/yomorun/yomo/pkg/version"
 	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
@@ -152,7 +153,22 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 	}
 }
 
-func (s *Server) handshake(fconn frame.Conn) (bool, router.Route, *Connection) {
+func (s *Server) handleFrameConn(fconn frame.Conn, logger *slog.Logger) {
+	route, conn, err := s.handshake(fconn)
+	if err != nil {
+		logger.Error("handshake failed", "err", err)
+		return
+	}
+
+	s.connHandler(conn, route) // s.handleConnRoute(conn, route) with middlewares
+
+	if conn.ClientType() == ClientTypeStreamFunction {
+		_ = route.Remove(conn.ID())
+	}
+	_ = s.connector.Remove(conn.ID())
+}
+
+func (s *Server) handshake(fconn frame.Conn) (router.Route, *Connection, error) {
 	var gerr error
 
 	defer func() {
@@ -166,7 +182,7 @@ func (s *Server) handshake(fconn frame.Conn) (bool, router.Route, *Connection) {
 	first, err := fconn.ReadFrame()
 	if err != nil {
 		gerr = err
-		return false, nil, nil
+		return nil, nil, gerr
 	}
 	switch first.Type() {
 	case frame.TypeHandshakeFrame:
@@ -175,17 +191,17 @@ func (s *Server) handshake(fconn frame.Conn) (bool, router.Route, *Connection) {
 		conn, err := s.handleHandshakeFrame(fconn, hf)
 		if err != nil {
 			gerr = err
-			return false, nil, conn
+			return nil, conn, gerr
 		}
 
 		route, err := s.addSfnToRoute(hf, conn.Metadata())
 		if err != nil {
 			gerr = err
 		}
-		return true, route, conn
+		return route, conn, gerr
 	default:
 		gerr = fmt.Errorf("yomo: handshake read unexpected frame, read: %s", first.Type().String())
-		return false, nil, nil
+		return nil, nil, gerr
 	}
 }
 
@@ -216,22 +232,8 @@ func (s *Server) handleConnRoute(conn *Connection, route router.Route) {
 	}
 }
 
-func (s *Server) handleFrameConn(fconn frame.Conn, logger *slog.Logger) {
-	ok, route, conn := s.handshake(fconn)
-	if !ok {
-		logger.Error("handshake failed")
-		return
-	}
-
-	s.connHandler(conn, route) // s.handleConnRoute(conn, route) with middlewares
-
-	if conn.ClientType() == ClientTypeStreamFunction {
-		_ = route.Remove(conn.ID())
-	}
-	_ = s.connector.Remove(conn.ID())
-}
-
 func (s *Server) handleHandshakeFrame(fconn frame.Conn, hf *frame.HandshakeFrame) (*Connection, error) {
+	// 1. authentication
 	md, ok := auth.Authenticate(s.opts.auths, hf)
 
 	if !ok {
@@ -241,6 +243,11 @@ func (s *Server) handleHandshakeFrame(fconn frame.Conn, hf *frame.HandshakeFrame
 			"credential", hf.AuthName,
 		)
 		return nil, fmt.Errorf("authentication failed: client credential type is %s", hf.AuthName)
+	}
+
+	// 2. version negotiation
+	if err := negotiateVersion(hf.Version, Version); err != nil {
+		return nil, err
 	}
 
 	conn := newConnection(hf.Name, hf.ID, ClientType(hf.ClientType), md, hf.ObserveDataTags, fconn, s.logger)
@@ -261,6 +268,25 @@ func (s *Server) addSfnToRoute(hf *frame.HandshakeFrame, md metadata.M) (router.
 		return nil, err
 	}
 	return route, nil
+}
+
+func negotiateVersion(cVersion, sVersion string) error {
+	cv, err := version.Parse(cVersion)
+	if err != nil {
+		return err
+	}
+
+	sv, err := version.Parse(sVersion)
+	if err != nil {
+		return err
+	}
+
+	// If the Major and Minor versions are equal, the server can serve the client.
+	if cv.Major == sv.Major && cv.Minor == sv.Minor {
+		return nil
+	}
+
+	return fmt.Errorf("yomo: version negotiation failed, client=%s, server=%s", cVersion, sVersion)
 }
 
 func (s *Server) handleFrame(c *Context) {

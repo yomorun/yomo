@@ -157,6 +157,7 @@ func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
 		ObserveDataTags: c.opts.observeDataTags,
 		AuthName:        c.opts.credential.Name(),
 		AuthPayload:     c.opts.credential.Payload(),
+		Version:         Version,
 	}
 
 	if err := conn.WriteFrame(hf); err != nil {

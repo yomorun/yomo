@@ -119,7 +119,7 @@ func newContext(conn *Connection, route router.Route, df *frame.DataFrame) (c *C
 	return
 }
 
-// CloseWithError close dataStream with an error string.
+// CloseWithError close connection with an error string.
 func (c *Context) CloseWithError(errString string) {
 	c.Logger.Debug("connection closed", "err", errString)
 
