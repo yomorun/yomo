@@ -80,7 +80,7 @@ func TestFrameRoundTrip(t *testing.T) {
 		WithClientQuicConfig(DefalutQuicConfig),
 		WithClientTLSConfig(nil),
 		WithLogger(discardingLogger),
-		WithConnectUntilSucceed(),
+		WithReConnect(),
 		WithNonBlockWrite(),
 	)
 

@@ -29,6 +29,7 @@ func main() {
 		"yomo-source",
 		addr,
 		yomo.WithLogger(logger),
+		yomo.WithSourceReConnect(),
 	)
 	err := source.Connect()
 	if err != nil {

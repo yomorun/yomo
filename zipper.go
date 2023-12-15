@@ -69,7 +69,7 @@ func NewZipper(name string, router router.Router, meshConfig map[string]config.D
 		clientOptions := []core.ClientOption{
 			core.WithCredential(meshConf.Credential),
 			core.WithNonBlockWrite(),
-			core.WithConnectUntilSucceed(),
+			core.WithReConnect(),
 			core.WithLogger(server.Logger().With("downstream_name", downstreamName, "downstream_addr", addr)),
 		}
 		clientOptions = append(clientOptions, opts.clientOption...)
