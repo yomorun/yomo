@@ -18,7 +18,7 @@ func TestStreamFunction(t *testing.T) {
 		"localhost:9000",
 		WithSfnCredential("token:<CREDENTIAL>"),
 		WithSfnLogger(ylog.Default()),
-		WithSfnQuicConfig(core.DefalutQuicConfig),
+		WithSfnQuicConfig(core.DefaultClientQuicConfig),
 		WithSfnTLSConfig(nil),
 	)
 	sfn.SetObserveDataTags(0x21)

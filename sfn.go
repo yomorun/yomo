@@ -72,7 +72,6 @@ type streamFunction struct {
 }
 
 // SetObserveDataTags set the data tag list that will be observed.
-// Deprecated: use yomo.WithObserveDataTags instead
 func (s *streamFunction) SetObserveDataTags(tag ...uint32) {
 	s.observeDataTags = tag
 	s.client.SetObserveDataTags(tag...)

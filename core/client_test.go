@@ -50,7 +50,7 @@ func TestFrameRoundTrip(t *testing.T) {
 
 	server := NewServer("zipper",
 		WithAuth("token", "auth-token"),
-		WithServerQuicConfig(DefalutQuicConfig),
+		WithServerQuicConfig(DefaultQuicConfig),
 		WithServerTLSConfig(nil),
 		WithServerLogger(discardingLogger),
 		WithConnMiddleware(ht.connMiddleware),
@@ -77,7 +77,7 @@ func TestFrameRoundTrip(t *testing.T) {
 		testaddr,
 		ClientTypeSource,
 		WithCredential("token:auth-token"),
-		WithClientQuicConfig(DefalutQuicConfig),
+		WithClientQuicConfig(DefaultClientQuicConfig),
 		WithClientTLSConfig(nil),
 		WithLogger(discardingLogger),
 		WithReConnect(),

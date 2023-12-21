@@ -19,7 +19,7 @@ func TestSource(t *testing.T) {
 		"localhost:9000",
 		WithCredential("token:<CREDENTIAL>"),
 		WithLogger(ylog.Default()),
-		WithSourceQuicConfig(core.DefalutQuicConfig),
+		WithSourceQuicConfig(core.DefaultClientQuicConfig),
 		WithSourceTLSConfig(nil),
 	)
 
