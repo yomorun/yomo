@@ -23,6 +23,7 @@ node_modules/
 package-lock.json
 
 *.log
+*.qlog
 
 # tls generated files
 scripts/tls/
