@@ -10,7 +10,7 @@ require (
 	github.com/fatih/color v1.16.0
 	github.com/joho/godotenv v1.5.1
 	github.com/matoous/go-nanoid/v2 v2.0.0
-	github.com/quic-go/quic-go v0.40.0
+	github.com/quic-go/quic-go v0.40.1
 	github.com/reactivex/rxgo/v2 v2.5.0
 	github.com/second-state/WasmEdge-go v0.13.4
 	github.com/spf13/cobra v1.8.0
@@ -27,7 +27,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.21.0
 	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa
 	golang.org/x/mod v0.14.0
-	golang.org/x/tools v0.15.0
+	golang.org/x/tools v0.16.1
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -35,6 +35,7 @@ require (
 require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
+	github.com/francoispqt/gojay v1.2.13 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/go-logr/logr v1.3.0 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -68,7 +69,7 @@ require (
 	go.uber.org/mock v0.3.0 // indirect
 	go.uber.org/multierr v1.9.0 // indirect
 	golang.org/x/crypto v0.17.0 // indirect
-	golang.org/x/net v0.18.0 // indirect
+	golang.org/x/net v0.19.0 // indirect
 	golang.org/x/sys v0.15.0 // indirect
 	golang.org/x/term v0.15.0 // indirect
 	golang.org/x/text v0.14.0 // indirect

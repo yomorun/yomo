@@ -18,7 +18,7 @@ func TestZipperRun(t *testing.T) {
 		// WithAuth("token", "<CREDENTIAL>"),
 		WithUpstreamOption(core.ClientOption(WithCredential("token:<CREDENTIAL>"))),
 		WithZipperLogger(ylog.Default()),
-		WithZipperQuicConfig(core.DefalutQuicConfig),
+		WithZipperQuicConfig(core.DefaultQuicConfig),
 		WithZipperTLSConfig(nil),
 	)
 	assert.Nil(t, err)

@@ -11,8 +11,8 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-// DefalutQuicConfig be used when `quicConfig` is nil.
-var DefalutQuicConfig = &quic.Config{
+// DefaultQuicConfig be used when `quicConfig` is nil.
+var DefaultQuicConfig = &quic.Config{
 	Versions:                       []quic.VersionNumber{quic.Version1, quic.Version2},
 	MaxIdleTimeout:                 time.Second * 5,
 	KeepAlivePeriod:                time.Second * 2,
@@ -42,7 +42,7 @@ func defaultServerOptions() *serverOptions {
 	logger := ylog.Default()
 
 	opts := &serverOptions{
-		quicConfig: DefalutQuicConfig,
+		quicConfig: DefaultQuicConfig,
 		tlsConfig:  nil,
 		auths:      map[string]auth.Authentication{},
 		logger:     logger,

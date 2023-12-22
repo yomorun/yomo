@@ -50,6 +50,11 @@ func NewClient(appName, zipperAddr string, clientType ClientType, opts ...Client
 	for _, o := range opts {
 		o(option)
 	}
+
+	if qlogTraceEnabled() && option.quicConfig != nil {
+		option.quicConfig.Tracer = qlogTracer
+	}
+
 	clientID := id.New()
 
 	logger := option.logger
