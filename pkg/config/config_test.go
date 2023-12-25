@@ -20,7 +20,7 @@ func TestParseConfigFile(t *testing.T) {
 		conf, err := ParseConfigFile("../../test/config.yaml")
 		assert.NoError(t, err)
 
-		assert.Equal(t, "zipper-chn", conf.Name)
+		assert.Equal(t, "zipper-sgp", conf.Name)
 		assert.Equal(t, "0.0.0.0", conf.Host)
 
 		assert.Equal(t, 9000, conf.Port)
