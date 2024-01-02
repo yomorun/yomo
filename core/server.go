@@ -306,7 +306,7 @@ func negotiateVersion(cVersion, sVersion string) (bool, error) {
 		return false, fmt.Errorf("yomo: version negotiation failed, client=%s, server=%s", cVersion, sVersion)
 	}
 
-	// If the Minor or Patch versions is not equal, just gave client a warning message.
+	// If the Minor or Patch versions is not equal, just give client a warning message.
 	if cv.Minor != sv.Minor || cv.Patch != sv.Patch {
 		return true, fmt.Errorf("yomo: client version does not match the server, client=%s, server=%s", cVersion, sVersion)
 	}
