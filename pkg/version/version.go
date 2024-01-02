@@ -2,6 +2,7 @@
 package version
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -18,6 +19,9 @@ type Version struct {
 // formatting, and the Major, Minor, and Patch components must be numeric. If they are not,
 // a parse error will be returned.
 func Parse(str string) (*Version, error) {
+	if str == "" {
+		return nil, errors.New("empty version string")
+	}
 	vs := strings.Split(str, ".")
 	if len(vs) != 3 {
 		return nil, fmt.Errorf("invalid semantic version, params=%s", str)

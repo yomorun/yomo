@@ -171,13 +171,20 @@ func (s *Server) handleFrameConn(fconn frame.Conn, logger *slog.Logger) {
 }
 
 func (s *Server) handshake(fconn frame.Conn) (*Connection, error) {
-	var gerr error
+	var (
+		ackmsg string
+		gerr   error
+	)
 
 	defer func() {
 		if gerr == nil {
-			_ = fconn.WriteFrame(&frame.HandshakeAckFrame{})
+			_ = fconn.WriteFrame(&frame.HandshakeAckFrame{
+				Message: ackmsg,
+			})
 		} else {
-			_ = fconn.WriteFrame(&frame.RejectedFrame{Message: gerr.Error()})
+			_ = fconn.WriteFrame(&frame.RejectedFrame{
+				Message: gerr.Error(),
+			})
 		}
 	}()
 
@@ -189,17 +196,30 @@ func (s *Server) handshake(fconn frame.Conn) (*Connection, error) {
 	switch first.Type() {
 	case frame.TypeHandshakeFrame:
 		hf := first.(*frame.HandshakeFrame)
+		// handleHandshakeFrame returns (ok, metadata, error)
+		// if ok == false, the creation of connection will be aborted, and the error is
+		// the reason of the abort.
+		// if ok == true, the creation of connection will be continued. the error will be
+		// the a waining message for ack if the error is not nil.
+		ok, md, err := s.handleHandshakeFrame(hf)
+		if ok {
+			if err != nil {
+				ackmsg = err.Error()
+			}
+			conn, err := s.createConnection(hf, md, fconn)
+			if err != nil {
+				gerr = err
+				return nil, gerr
+			}
 
-		conn, err := s.handleHandshakeFrame(fconn, hf)
-		if err != nil {
-			gerr = err
-			return conn, gerr
+			if err := s.addSfnToRoute(hf, conn.Metadata()); err != nil {
+				gerr = err
+				return nil, gerr
+			}
+			return conn, nil
 		}
-
-		if err := s.addSfnToRoute(hf, conn.Metadata()); err != nil {
-			gerr = err
-		}
-		return conn, gerr
+		gerr = err
+		return nil, err
 	default:
 		gerr = fmt.Errorf("yomo: handshake read unexpected frame, read: %s", first.Type().String())
 		return nil, gerr
@@ -233,7 +253,7 @@ func (s *Server) handleConn(conn *Connection) {
 	}
 }
 
-func (s *Server) handleHandshakeFrame(fconn frame.Conn, hf *frame.HandshakeFrame) (*Connection, error) {
+func (s *Server) handleHandshakeFrame(hf *frame.HandshakeFrame) (bool, metadata.M, error) {
 	// 1. authentication
 	md, ok := auth.Authenticate(s.opts.auths, hf)
 
@@ -243,14 +263,16 @@ func (s *Server) handleHandshakeFrame(fconn frame.Conn, hf *frame.HandshakeFrame
 			"client_type", ClientType(hf.ClientType).String(), "client_name", hf.Name,
 			"credential", hf.AuthName,
 		)
-		return nil, fmt.Errorf("authentication failed: client credential type is %s", hf.AuthName)
+		return false, nil, fmt.Errorf("authentication failed: client credential type is %s", hf.AuthName)
 	}
 
 	// 2. version negotiation
-	if err := negotiateVersion(hf.Version, Version); err != nil {
-		return nil, err
-	}
+	ok, err := negotiateVersion(hf.Version, Version)
 
+	return ok, md, err
+}
+
+func (s *Server) createConnection(hf *frame.HandshakeFrame, md metadata.M, fconn frame.Conn) (*Connection, error) {
 	conn := newConnection(hf.Name, hf.ID, ClientType(hf.ClientType), md, hf.ObserveDataTags, fconn, s.logger)
 
 	return conn, s.connector.Store(hf.ID, conn)
@@ -268,23 +290,28 @@ func (s *Server) addSfnToRoute(hf *frame.HandshakeFrame, md metadata.M) error {
 	})
 }
 
-func negotiateVersion(cVersion, sVersion string) error {
+func negotiateVersion(cVersion, sVersion string) (bool, error) {
 	cv, err := version.Parse(cVersion)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	sv, err := version.Parse(sVersion)
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	// If the Major and Minor versions are equal, the server can serve the client.
-	if cv.Major == sv.Major && cv.Minor == sv.Minor {
-		return nil
+	// If the Major versions is not equal, the server cannot serve the client.
+	if cv.Major != sv.Major {
+		return false, fmt.Errorf("yomo: version negotiation failed, client=%s, server=%s", cVersion, sVersion)
 	}
 
-	return fmt.Errorf("yomo: version negotiation failed, client=%s, server=%s", cVersion, sVersion)
+	// If the Minor or Patch versions is not equal, just gave client a warning message.
+	if cv.Minor != sv.Minor || cv.Patch != sv.Patch {
+		return true, fmt.Errorf("yomo: client version does not match the server, client=%s, server=%s", cVersion, sVersion)
+	}
+
+	return true, nil
 }
 
 func (s *Server) handleFrame(c *Context) {

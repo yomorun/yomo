@@ -54,6 +54,7 @@ func Test_negotiateVersion(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
+		wantOk  bool
 		wantErr error
 	}{
 		{
@@ -62,6 +63,7 @@ func Test_negotiateVersion(t *testing.T) {
 				cVersion: "1.16.3",
 				sVersion: "1.16.3",
 			},
+			wantOk:  true,
 			wantErr: nil,
 		},
 		{
@@ -70,20 +72,32 @@ func Test_negotiateVersion(t *testing.T) {
 				cVersion: "",
 				sVersion: "1.16.3",
 			},
-			wantErr: errors.New("invalid semantic version, params="),
+			wantOk:  false,
+			wantErr: errors.New("empty version string"),
 		},
 		{
-			name: "not ok",
+			name: "ok with error",
 			args: args{
 				cVersion: "1.15.0",
 				sVersion: "1.16.3",
 			},
-			wantErr: errors.New("yomo: version negotiation failed, client=1.15.0, server=1.16.3"),
+			wantOk:  true,
+			wantErr: errors.New("yomo: client version does not match the server, client=1.15.0, server=1.16.3"),
+		},
+		{
+			name: "not ok",
+			args: args{
+				cVersion: "2.16.3",
+				sVersion: "1.16.3",
+			},
+			wantOk:  false,
+			wantErr: errors.New("yomo: version negotiation failed, client=2.16.3, server=1.16.3"),
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := negotiateVersion(tt.args.cVersion, tt.args.sVersion)
+			ok, err := negotiateVersion(tt.args.cVersion, tt.args.sVersion)
+			assert.Equal(t, tt.wantOk, ok)
 			assert.Equal(t, tt.wantErr, err)
 		})
 	}

@@ -18,6 +18,14 @@ func TestParse(t *testing.T) {
 		wantErr error
 	}{
 		{
+			name: "empty",
+			args: args{
+				str: "",
+			},
+			want:    nil,
+			wantErr: errors.New("empty version string"),
+		},
+		{
 			name: "ok",
 			args: args{
 				str: "1.16.3",

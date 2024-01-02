@@ -59,7 +59,7 @@ type HandshakeFrame struct {
 	AuthPayload string
 	// Version is used by the source/sfn to communicate their version to the server.
 	// The Version format must follow the `Major.Minor.Patch`. otherwise, the handshake
-	// will fail. The client‘s MAJOR and MINOR versions should equal to server's,
+	// will fail. The client‘s MAJOR version should equal to server's,
 	// otherwise, the zipper will be considered has break-change, the handshake will fail.
 	Version string
 }
@@ -69,7 +69,10 @@ func (f *HandshakeFrame) Type() Type { return TypeHandshakeFrame }
 
 // HandshakeAckFrame is used to ack handshake, If handshake successful, The server will
 // send HandshakeAckFrame to the client.
-type HandshakeAckFrame struct{}
+type HandshakeAckFrame struct {
+	// Message is the message that will be sent to the client after handshake.
+	Message string
+}
 
 // Type returns the type of HandshakeAckFrame.
 func (f *HandshakeAckFrame) Type() Type { return TypeHandshakeAckFrame }

@@ -8,7 +8,7 @@ import (
 // encodeRejectedFrame encodes RejectedFrame to Y3 encoded bytes.
 func encodeRejectedFrame(f *frame.RejectedFrame) ([]byte, error) {
 	// message
-	messageBlock := y3.NewPrimitivePacketEncoder(byte(tagRejectedMessage))
+	messageBlock := y3.NewPrimitivePacketEncoder(tagRejectedMessage)
 	messageBlock.SetStringValue(f.Message)
 	// frame
 	ff := y3.NewNodePacketEncoder(byte(f.Type()))

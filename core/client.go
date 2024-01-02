@@ -177,6 +177,10 @@ func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
 	case frame.TypeRejectedFrame:
 		return conn, ErrAuthenticateFailed{received.(*frame.RejectedFrame).Message}
 	case frame.TypeHandshakeAckFrame:
+		ackmsg := received.(*frame.HandshakeAckFrame).Message
+		if ackmsg != "" {
+			c.Logger.Warn("handshake ok with a message", "message", ackmsg)
+		}
 		return conn, nil
 	default:
 		return conn, ErrAuthenticateFailed{
