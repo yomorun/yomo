@@ -5,10 +5,10 @@ import (
 	"github.com/yomorun/yomo/core/metadata"
 )
 
-// Router routes data that is written by source/sfn according to ConnInfo.
+// Router routes data that is written by source/sfn according to RouteParams.
 // Users should define their own rule that tells zipper how to route data.
 type Router interface {
-	// Add adds the route info to the router.
+	// Add adds the route rule to the router.
 	Add(*RouteParams) error
 	// Get gets the ID of connections from the router.
 	Get(*RouteParams) (connIDs []string)
