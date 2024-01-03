@@ -69,10 +69,7 @@ func (f *HandshakeFrame) Type() Type { return TypeHandshakeFrame }
 
 // HandshakeAckFrame is used to ack handshake, If handshake successful, The server will
 // send HandshakeAckFrame to the client.
-type HandshakeAckFrame struct {
-	// Message is the message that will be sent to the client after handshake.
-	Message string
-}
+type HandshakeAckFrame struct{}
 
 // Type returns the type of HandshakeAckFrame.
 func (f *HandshakeAckFrame) Type() Type { return TypeHandshakeAckFrame }

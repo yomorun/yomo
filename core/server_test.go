@@ -52,53 +52,47 @@ func Test_negotiateVersion(t *testing.T) {
 		sVersion string
 	}
 	tests := []struct {
-		name    string
-		args    args
-		wantOk  bool
-		wantErr error
+		name         string
+		args         args
+		wantErr      error
+		frameWritten frame.Frame
 	}{
 		{
 			name: "ok",
 			args: args{
-				cVersion: "1.16.3",
-				sVersion: "1.16.3",
+				cVersion: "2024-01-03",
+				sVersion: "2024-01-03",
 			},
-			wantOk:  true,
-			wantErr: nil,
-		},
-		{
-			name: "client empty version",
-			args: args{
-				cVersion: "",
-				sVersion: "1.16.3",
-			},
-			wantOk:  false,
-			wantErr: errors.New("empty version string"),
-		},
-		{
-			name: "ok with error",
-			args: args{
-				cVersion: "1.15.0",
-				sVersion: "1.16.3",
-			},
-			wantOk:  true,
-			wantErr: errors.New("yomo: client version does not match the server, client=1.15.0, server=1.16.3"),
+			wantErr:      nil,
+			frameWritten: &frame.HandshakeAckFrame{},
 		},
 		{
 			name: "not ok",
 			args: args{
-				cVersion: "2.16.3",
-				sVersion: "1.16.3",
+				cVersion: "2024-01-03",
+				sVersion: "2024-02-03",
 			},
-			wantOk:  false,
-			wantErr: errors.New("yomo: version negotiation failed, client=2.16.3, server=1.16.3"),
+			wantErr: errors.New("version negotiation failed: client=2024-01-03, server=2024-02-03"),
+			frameWritten: &frame.RejectedFrame{
+				Message: "version negotiation failed: client=2024-01-03, server=2024-02-03",
+			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ok, err := negotiateVersion(tt.args.cVersion, tt.args.sVersion)
-			assert.Equal(t, tt.wantOk, ok)
+			w := &mockFrameWriter{}
+			err := defaultVersionNegotiateFunc(w, tt.args.cVersion, tt.args.sVersion)
 			assert.Equal(t, tt.wantErr, err)
+			assert.Equal(t, tt.frameWritten, w.f)
 		})
 	}
+}
+
+type mockFrameWriter struct {
+	f frame.Frame
+}
+
+func (m *mockFrameWriter) WriteFrame(f frame.Frame) error {
+	m.f = f
+	return nil
 }

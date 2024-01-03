@@ -21,7 +21,6 @@ import (
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 	yquic "github.com/yomorun/yomo/pkg/listener/quic"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
-	"github.com/yomorun/yomo/pkg/version"
 	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
@@ -44,22 +43,23 @@ type (
 
 // Server is the underlying server of Zipper
 type Server struct {
-	ctx                context.Context
-	ctxCancel          context.CancelFunc
-	name               string
-	connector          *Connector
-	router             router.Router
-	codec              frame.Codec
-	packetReadWriter   frame.PacketReadWriter
-	counterOfDataFrame int64
-	downstreams        map[string]Downstream
-	mu                 sync.Mutex
-	opts               *serverOptions
-	frameHandler       FrameHandler
-	connHandler        ConnHandler
-	listener           frame.Listener
-	logger             *slog.Logger
-	tracerProvider     oteltrace.TracerProvider
+	ctx                  context.Context
+	ctxCancel            context.CancelFunc
+	name                 string
+	connector            *Connector
+	router               router.Router
+	codec                frame.Codec
+	packetReadWriter     frame.PacketReadWriter
+	counterOfDataFrame   int64
+	downstreams          map[string]Downstream
+	mu                   sync.Mutex
+	opts                 *serverOptions
+	frameHandler         FrameHandler
+	connHandler          ConnHandler
+	listener             frame.Listener
+	logger               *slog.Logger
+	tracerProvider       oteltrace.TracerProvider
+	versionNegotiateFunc func(w frame.Writer, cVersion string, sVersion string) error
 }
 
 // NewServer create a Server instance.
@@ -75,15 +75,16 @@ func NewServer(name string, opts ...ServerOption) *Server {
 	ctx, ctxCancel := context.WithCancel(context.Background())
 
 	s := &Server{
-		ctx:              ctx,
-		ctxCancel:        ctxCancel,
-		name:             name,
-		downstreams:      make(map[string]Downstream),
-		logger:           logger,
-		tracerProvider:   options.tracerProvider,
-		codec:            y3codec.Codec(),
-		packetReadWriter: y3codec.PacketReadWriter(),
-		opts:             options,
+		ctx:                  ctx,
+		ctxCancel:            ctxCancel,
+		name:                 name,
+		downstreams:          make(map[string]Downstream),
+		logger:               logger,
+		tracerProvider:       options.tracerProvider,
+		codec:                y3codec.Codec(),
+		packetReadWriter:     y3codec.PacketReadWriter(),
+		opts:                 options,
+		versionNegotiateFunc: defaultVersionNegotiateFunc,
 	}
 
 	// work with middleware.
@@ -160,7 +161,7 @@ func (s *Server) handleFrameConn(fconn frame.Conn, logger *slog.Logger) {
 		return
 	}
 
-	s.connHandler(conn) // s.handleConnRoute(conn) with middlewares
+	s.connHandler(conn) // s.handleConn(conn) with middlewares
 
 	if conn.ClientType() == ClientTypeStreamFunction {
 		_ = s.router.Remove(&router.RouteParams{
@@ -170,56 +171,54 @@ func (s *Server) handleFrameConn(fconn frame.Conn, logger *slog.Logger) {
 	_ = s.connector.Remove(conn.ID())
 }
 
-func (s *Server) handshake(fconn frame.Conn) (*Connection, error) {
-	var (
-		ackmsg string
-		gerr   error
-	)
+func (s *Server) complateHandshake(w frame.Writer, err error) {
+	if err != nil {
+		_ = w.WriteFrame(&frame.RejectedFrame{
+			Message: err.Error(),
+		})
+	} else {
+		_ = w.WriteFrame(&frame.HandshakeAckFrame{})
+	}
+}
 
-	defer func() {
-		if gerr == nil {
-			_ = fconn.WriteFrame(&frame.HandshakeAckFrame{
-				Message: ackmsg,
-			})
-		} else {
-			_ = fconn.WriteFrame(&frame.RejectedFrame{
-				Message: gerr.Error(),
-			})
-		}
-	}()
+func (s *Server) handshake(fconn frame.Conn) (*Connection, error) {
+	var gerr error
+	defer s.complateHandshake(fconn, gerr)
 
 	first, err := fconn.ReadFrame()
 	if err != nil {
-		gerr = err
-		return nil, gerr
+		return nil, err
 	}
+
 	switch first.Type() {
 	case frame.TypeHandshakeFrame:
 		hf := first.(*frame.HandshakeFrame)
-		// handleHandshakeFrame returns (ok, metadata, error)
-		// if ok == false, the creation of connection will be aborted, and the error is
-		// the reason of the abort.
-		// if ok == true, the creation of connection will be continued. the error will be
-		// the a waining message for ack if the error is not nil.
-		ok, md, err := s.handleHandshakeFrame(hf)
-		if ok {
-			if err != nil {
-				ackmsg = err.Error()
-			}
-			conn, err := s.createConnection(hf, md, fconn)
-			if err != nil {
-				gerr = err
-				return nil, gerr
-			}
 
-			if err := s.addSfnToRoute(hf, conn.Metadata()); err != nil {
-				gerr = err
-				return nil, gerr
-			}
-			return conn, nil
+		// 1. version negotiation
+		if err := s.versionNegotiateFunc(fconn, hf.Version, Version); err != nil {
+			return nil, err
 		}
-		gerr = err
-		return nil, err
+
+		// 2. authentication
+		md, err := s.authenticate(hf)
+		if err != nil {
+			gerr = err
+			return nil, err
+		}
+
+		// 3. create connection
+		conn, err := s.createConnection(hf, md, fconn)
+		if err != nil {
+			gerr = err
+			return nil, err
+		}
+
+		// 4. add route rules
+		if err := s.addSfnRouteRule(hf, conn.Metadata()); err != nil {
+			gerr = err
+			return nil, err
+		}
+		return conn, nil
 	default:
 		gerr = fmt.Errorf("yomo: handshake read unexpected frame, read: %s", first.Type().String())
 		return nil, gerr
@@ -253,32 +252,44 @@ func (s *Server) handleConn(conn *Connection) {
 	}
 }
 
-func (s *Server) handleHandshakeFrame(hf *frame.HandshakeFrame) (bool, metadata.M, error) {
-	// 1. authentication
+func (s *Server) authenticate(hf *frame.HandshakeFrame) (metadata.M, error) {
 	md, ok := auth.Authenticate(s.opts.auths, hf)
-
 	if !ok {
 		s.logger.Warn(
 			"authentication failed",
-			"client_type", ClientType(hf.ClientType).String(), "client_name", hf.Name,
+			"client_type", ClientType(hf.ClientType).String(),
+			"client_name", hf.Name,
 			"credential", hf.AuthName,
 		)
-		return false, nil, fmt.Errorf("authentication failed: client credential type is %s", hf.AuthName)
+		return nil, fmt.Errorf("authentication failed: client credential type is %s", hf.AuthName)
 	}
 
-	// 2. version negotiation
-	ok, err := negotiateVersion(hf.Version, Version)
+	return md, nil
+}
 
-	return ok, md, err
+func (s *Server) rejectHandshake(w frame.Writer, errString string) error {
+	if err := w.WriteFrame(&frame.RejectedFrame{Message: errString}); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (s *Server) createConnection(hf *frame.HandshakeFrame, md metadata.M, fconn frame.Conn) (*Connection, error) {
-	conn := newConnection(hf.Name, hf.ID, ClientType(hf.ClientType), md, hf.ObserveDataTags, fconn, s.logger)
+	conn := newConnection(
+		hf.Name,
+		hf.ID,
+		ClientType(hf.ClientType),
+		md,
+		hf.ObserveDataTags,
+		fconn,
+		s.logger,
+	)
 
 	return conn, s.connector.Store(hf.ID, conn)
 }
 
-func (s *Server) addSfnToRoute(hf *frame.HandshakeFrame, md metadata.M) error {
+func (s *Server) addSfnRouteRule(hf *frame.HandshakeFrame, md metadata.M) error {
 	if hf.ClientType != byte(ClientTypeStreamFunction) {
 		return nil
 	}
@@ -290,28 +301,14 @@ func (s *Server) addSfnToRoute(hf *frame.HandshakeFrame, md metadata.M) error {
 	})
 }
 
-func negotiateVersion(cVersion, sVersion string) (bool, error) {
-	cv, err := version.Parse(cVersion)
-	if err != nil {
-		return false, err
+func defaultVersionNegotiateFunc(w frame.Writer, cVersion, sVersion string) error {
+	if cVersion != sVersion {
+		err := fmt.Errorf("version negotiation failed: client=%s, server=%s", cVersion, sVersion)
+		_ = w.WriteFrame(&frame.RejectedFrame{Message: err.Error()})
+		return err
 	}
-
-	sv, err := version.Parse(sVersion)
-	if err != nil {
-		return false, err
-	}
-
-	// If the Major versions is not equal, the server cannot serve the client.
-	if cv.Major != sv.Major {
-		return false, fmt.Errorf("yomo: version negotiation failed, client=%s, server=%s", cVersion, sVersion)
-	}
-
-	// If the Minor or Patch versions is not equal, just give client a warning message.
-	if cv.Minor != sv.Minor || cv.Patch != sv.Patch {
-		return true, fmt.Errorf("yomo: client version does not match the server, client=%s, server=%s", cVersion, sVersion)
-	}
-
-	return true, nil
+	_ = w.WriteFrame(&frame.HandshakeAckFrame{})
+	return nil
 }
 
 func (s *Server) handleFrame(c *Context) {
@@ -480,6 +477,13 @@ func (s *Server) ConfigRouter(router router.Router) {
 	s.mu.Lock()
 	s.router = router
 	s.logger.Debug("config route")
+	s.mu.Unlock()
+}
+
+// SetVersionNegotiateFunc set the version negotiate function.
+func (s *Server) SetVersionNegotiateFunc(fn func(w frame.Writer, cVersion string, sVersion string) error) {
+	s.mu.Lock()
+	s.versionNegotiateFunc = fn
 	s.mu.Unlock()
 }
 
