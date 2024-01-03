@@ -64,7 +64,7 @@ func Test_negotiateVersion(t *testing.T) {
 				sVersion: "2024-01-03",
 			},
 			wantErr:      nil,
-			frameWritten: &frame.HandshakeAckFrame{},
+			frameWritten: nil,
 		},
 		{
 			name: "not ok",

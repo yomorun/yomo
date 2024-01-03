@@ -158,6 +158,9 @@ func (s *Server) handleFrameConn(fconn frame.Conn, logger *slog.Logger) {
 		return
 	}
 
+	// ack handshake
+	_ = fconn.WriteFrame(&frame.HandshakeAckFrame{})
+
 	s.connHandler(conn) // s.handleConn(conn) with middlewares
 
 	if conn.ClientType() == ClientTypeStreamFunction {
@@ -168,20 +171,15 @@ func (s *Server) handleFrameConn(fconn frame.Conn, logger *slog.Logger) {
 	_ = s.connector.Remove(conn.ID())
 }
 
-func (s *Server) complateHandshake(w frame.Writer, err error) {
+func (s *Server) rejectHandshake(w frame.Writer, err error) error {
 	if err != nil {
-		_ = w.WriteFrame(&frame.RejectedFrame{
-			Message: err.Error(),
-		})
-	} else {
-		_ = w.WriteFrame(&frame.HandshakeAckFrame{})
+		_ = w.WriteFrame(&frame.RejectedFrame{Message: err.Error()})
 	}
+
+	return err
 }
 
 func (s *Server) handshake(fconn frame.Conn) (*Connection, error) {
-	var gerr error
-	defer s.complateHandshake(fconn, gerr)
-
 	first, err := fconn.ReadFrame()
 	if err != nil {
 		return nil, err
@@ -189,6 +187,7 @@ func (s *Server) handshake(fconn frame.Conn) (*Connection, error) {
 
 	switch first.Type() {
 	case frame.TypeHandshakeFrame:
+
 		hf := first.(*frame.HandshakeFrame)
 
 		// 1. version negotiation
@@ -199,26 +198,23 @@ func (s *Server) handshake(fconn frame.Conn) (*Connection, error) {
 		// 2. authentication
 		md, err := s.authenticate(hf)
 		if err != nil {
-			gerr = err
-			return nil, err
+			return nil, s.rejectHandshake(fconn, err)
 		}
 
 		// 3. create connection
 		conn, err := s.createConnection(hf, md, fconn)
 		if err != nil {
-			gerr = err
-			return nil, err
+			return nil, s.rejectHandshake(fconn, err)
 		}
 
 		// 4. add route rules
 		if err := s.addSfnRouteRule(hf, conn.Metadata()); err != nil {
-			gerr = err
-			return nil, err
+			return nil, s.rejectHandshake(fconn, err)
 		}
 		return conn, nil
 	default:
-		gerr = fmt.Errorf("yomo: handshake read unexpected frame, read: %s", first.Type().String())
-		return nil, gerr
+		err = fmt.Errorf("yomo: handshake read unexpected frame, read: %s", first.Type().String())
+		return nil, s.rejectHandshake(fconn, err)
 	}
 }
 
@@ -264,14 +260,6 @@ func (s *Server) authenticate(hf *frame.HandshakeFrame) (metadata.M, error) {
 	return md, nil
 }
 
-func (s *Server) rejectHandshake(w frame.Writer, errString string) error {
-	if err := w.WriteFrame(&frame.RejectedFrame{Message: errString}); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (s *Server) createConnection(hf *frame.HandshakeFrame, md metadata.M, fconn frame.Conn) (*Connection, error) {
 	conn := newConnection(
 		hf.Name,
@@ -304,7 +292,6 @@ func defaultVersionNegotiateFunc(w frame.Writer, cVersion, sVersion string) erro
 		_ = w.WriteFrame(&frame.RejectedFrame{Message: err.Error()})
 		return err
 	}
-	_ = w.WriteFrame(&frame.HandshakeAckFrame{})
 	return nil
 }
 
@@ -478,6 +465,8 @@ func (s *Server) ConfigRouter(router router.Router) {
 }
 
 // ConfigVersionNegotiateFunc set the version negotiate function.
+// Use w to response to client, and return the error in version negotiation for ending handshake.
+// Notice: do not response HandshakeAckFrame to client, if version negotiation is ok, just return nil.
 func (s *Server) ConfigVersionNegotiateFunc(fn func(w frame.Writer, cVersion string, sVersion string) error) {
 	s.mu.Lock()
 	s.versionNegotiateFunc = fn
