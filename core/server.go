@@ -78,6 +78,7 @@ func NewServer(name string, opts ...ServerOption) *Server {
 		ctx:                  ctx,
 		ctxCancel:            ctxCancel,
 		name:                 name,
+		router:               router.Default(),
 		downstreams:          make(map[string]Downstream),
 		logger:               logger,
 		tracerProvider:       options.tracerProvider,
@@ -115,10 +116,6 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 
 // Serve the server with a net.PacketConn.
 func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
-	if err := s.validateRouter(); err != nil {
-		return err
-	}
-
 	s.connector = NewConnector(ctx)
 
 	tlsConfig := s.opts.tlsConfig
@@ -480,8 +477,8 @@ func (s *Server) ConfigRouter(router router.Router) {
 	s.mu.Unlock()
 }
 
-// SetVersionNegotiateFunc set the version negotiate function.
-func (s *Server) SetVersionNegotiateFunc(fn func(w frame.Writer, cVersion string, sVersion string) error) {
+// ConfigVersionNegotiateFunc set the version negotiate function.
+func (s *Server) ConfigVersionNegotiateFunc(fn func(w frame.Writer, cVersion string, sVersion string) error) {
 	s.mu.Lock()
 	s.versionNegotiateFunc = fn
 	s.mu.Unlock()
@@ -503,13 +500,6 @@ func (s *Server) Logger() *slog.Logger {
 // Close will shutdown the server.
 func (s *Server) Close() error {
 	s.ctxCancel()
-	return nil
-}
-
-func (s *Server) validateRouter() error {
-	if s.router == nil {
-		return errors.New("server's router is nil")
-	}
 	return nil
 }
 
