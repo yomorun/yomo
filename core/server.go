@@ -41,6 +41,11 @@ type (
 	ConnMiddleware func(ConnHandler) ConnHandler
 )
 
+// VersionNegotiateFunc is the version negotiate function.
+// Use w to respond to client, and return the error in version negotiate process for ending handshake.
+// Notice: do not respond HandshakeAckFrame to client, if version negotiation is ok, just return nil.
+type VersionNegotiateFunc func(w frame.Writer, cVersion string, sVersion string) error
+
 // Server is the underlying server of Zipper
 type Server struct {
 	ctx                  context.Context
@@ -59,7 +64,7 @@ type Server struct {
 	listener             frame.Listener
 	logger               *slog.Logger
 	tracerProvider       oteltrace.TracerProvider
-	versionNegotiateFunc func(w frame.Writer, cVersion string, sVersion string) error
+	versionNegotiateFunc VersionNegotiateFunc
 }
 
 // NewServer create a Server instance.
@@ -85,7 +90,7 @@ func NewServer(name string, opts ...ServerOption) *Server {
 		codec:                y3codec.Codec(),
 		packetReadWriter:     y3codec.PacketReadWriter(),
 		opts:                 options,
-		versionNegotiateFunc: defaultVersionNegotiateFunc,
+		versionNegotiateFunc: DefaultVersionNegotiateFunc,
 	}
 
 	// work with middleware.
@@ -286,7 +291,9 @@ func (s *Server) addSfnRouteRule(hf *frame.HandshakeFrame, md metadata.M) error 
 	})
 }
 
-func defaultVersionNegotiateFunc(w frame.Writer, cVersion, sVersion string) error {
+// DefaultVersionNegotiateFunc is default version negotiate function.
+// if cVersion != sVersion, return error and respond RejectedFrame.
+func DefaultVersionNegotiateFunc(w frame.Writer, cVersion, sVersion string) error {
 	if cVersion != sVersion {
 		err := fmt.Errorf("version negotiation failed: client=%s, server=%s", cVersion, sVersion)
 		_ = w.WriteFrame(&frame.RejectedFrame{Message: err.Error()})
@@ -458,6 +465,9 @@ func (s *Server) Downstreams() map[string]string {
 
 // ConfigRouter is used to set router by zipper
 func (s *Server) ConfigRouter(router router.Router) {
+	if router == nil {
+		return
+	}
 	s.mu.Lock()
 	s.router = router
 	s.logger.Debug("config route")
@@ -465,9 +475,10 @@ func (s *Server) ConfigRouter(router router.Router) {
 }
 
 // ConfigVersionNegotiateFunc set the version negotiate function.
-// Use w to response to client, and return the error in version negotiation for ending handshake.
-// Notice: do not response HandshakeAckFrame to client, if version negotiation is ok, just return nil.
-func (s *Server) ConfigVersionNegotiateFunc(fn func(w frame.Writer, cVersion string, sVersion string) error) {
+func (s *Server) ConfigVersionNegotiateFunc(fn VersionNegotiateFunc) {
+	if fn == nil {
+		return
+	}
 	s.mu.Lock()
 	s.versionNegotiateFunc = fn
 	s.mu.Unlock()

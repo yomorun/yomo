@@ -81,7 +81,7 @@ func Test_negotiateVersion(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := &mockFrameWriter{}
-			err := defaultVersionNegotiateFunc(w, tt.args.cVersion, tt.args.sVersion)
+			err := DefaultVersionNegotiateFunc(w, tt.args.cVersion, tt.args.sVersion)
 			assert.Equal(t, tt.wantErr, err)
 			assert.Equal(t, tt.frameWritten, w.f)
 		})
