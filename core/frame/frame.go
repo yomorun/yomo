@@ -17,7 +17,6 @@ import (
 //  3. DataFrame
 //  4. RejectedFrame
 //  5. GoawayFrame
-//  6. ConnectToFrame
 //
 // Read frame comments to understand the role of the frame.
 type Frame interface {
@@ -90,22 +89,12 @@ type GoawayFrame struct {
 // Type returns the type of GoawayFrame.
 func (f *GoawayFrame) Type() Type { return TypeGoawayFrame }
 
-// ConnectToFrame is is used by server notify client to connect to a new endpoint.
-type ConnectToFrame struct {
-	// Endpoint is the new endpoint that will be connected by client.
-	Endpoint string
-}
-
-// Type returns the type of ConnectToFrame.
-func (f *ConnectToFrame) Type() Type { return TypeConnectToFrame }
-
 const (
 	TypeDataFrame         Type = 0x3F // TypeDataFrame is the type of DataFrame.
 	TypeHandshakeFrame    Type = 0x31 // TypeHandshakeFrame is the type of HandshakeFrame.
 	TypeHandshakeAckFrame Type = 0x29 // TypeHandshakeAckFrame is the type of HandshakeAckFrame.
 	TypeRejectedFrame     Type = 0x39 // TypeRejectedFrame is the type of RejectedFrame.
 	TypeGoawayFrame       Type = 0x2E // TypeGoawayFrame is the type of GoawayFrame.
-	TypeConnectToFrame    Type = 0x3E // TypeConnectToFrame is the type of ConnectToFrame.
 )
 
 var frameTypeStringMap = map[Type]string{
@@ -114,7 +103,6 @@ var frameTypeStringMap = map[Type]string{
 	TypeHandshakeAckFrame: "HandshakeAckFrame",
 	TypeRejectedFrame:     "RejectedFrame",
 	TypeGoawayFrame:       "GoawayFrame",
-	TypeConnectToFrame:    "ConnectToFrame",
 }
 
 // String returns a human-readable string which represents the frame type.
@@ -133,7 +121,6 @@ var frameTypeNewFuncMap = map[Type]func() Frame{
 	TypeHandshakeAckFrame: func() Frame { return new(HandshakeAckFrame) },
 	TypeRejectedFrame:     func() Frame { return new(RejectedFrame) },
 	TypeGoawayFrame:       func() Frame { return new(GoawayFrame) },
-	TypeConnectToFrame:    func() Frame { return new(ConnectToFrame) },
 }
 
 // NewFrame creates a new frame from Type.
