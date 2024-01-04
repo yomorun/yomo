@@ -57,10 +57,7 @@ type HandshakeFrame struct {
 	AuthName string
 	// AuthPayload is the authentication payload.
 	AuthPayload string
-	// Version is used by the source/sfn to communicate their version to the server.
-	// The Version format must follow the `Major.Minor.Patch`. otherwise, the handshake
-	// will fail. The client‘s MAJOR version should equal to server's,
-	// otherwise, the zipper will be considered has break-change, the handshake will fail.
+	// Version is used by the source/sfn to communicate their spec version to the server.
 	Version string
 }
 

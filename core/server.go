@@ -43,7 +43,7 @@ type (
 
 // VersionNegotiateFunc is the version negotiate function.
 // Use w to respond to client, and return the error in version negotiate process for ending handshake.
-// Notice: do not respond HandshakeAckFrame to client, if version negotiation is ok, just return nil.
+// NOTICE: do not respond HandshakeAckFrame to client in this function, just return nil if version negotiation is ok.
 type VersionNegotiateFunc func(w frame.Writer, cVersion string, sVersion string) error
 
 // Server is the underlying server of Zipper
