@@ -90,7 +90,7 @@ type GoawayFrame struct {
 // Type returns the type of GoawayFrame.
 func (f *GoawayFrame) Type() Type { return TypeGoawayFrame }
 
-// ConnectToFrame is is used by server notify client to connect to a new endpoint.
+// ConnectToFrame is is used by server to notify client to connect a new endpoint.
 type ConnectToFrame struct {
 	// Endpoint is the new endpoint that will be connected by client.
 	Endpoint string
