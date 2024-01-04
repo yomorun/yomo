@@ -16,7 +16,7 @@ the `config.yaml` is a YAML file, which contains the configuration of the Zipper
 
 ```yaml filename="config.yaml"
 ### general ###
-name: america
+name: zipper-sgp
 host: 0.0.0.0
 port: 9000
 
@@ -25,20 +25,24 @@ auth:
   type: token
   token: <CREDENTIAL>
 
-### cascading ###
-downstreams:
-   - zipper-asia_pacific
-     host: 2.2.2.2
-     port: 9000
-     credential: 'token: <CREDENTIAL>'
-   - zipper-america
-     host: 3.3.3.3
-     port: 9000
-     credential: 'token: <CREDENTIAL>'
-   - zipper-europe
-     host: 4.4.4.4
-     port: 9000
-     credential: 'token: <CREDENTIAL>'
+### cascading mesh ###
+mesh:
+  zipper-sgp:
+    host: 1.1.1.1
+    port: 9000
+    credential: "token: <CREDENTIAL>"
+  zipper-aus:
+    host: 2.2.2.2
+    port: 9000
+    credential: "token: <CREDENTIAL>"
+  zipper-usa:
+    host: 3.3.3.3
+    port: 9000
+    auth: "token: <CREDENTIAL>"
+  zipper-deu:
+    host: 4.4.4.4
+    port: 9000
+    auth: "token: <CREDENTIAL>"
 ```
 
 ## Configuration
@@ -55,13 +59,13 @@ downstreams:
   - `type` - the type of the credential, currently only `token` is supported.
   - `token` - the credential, it is a string.
 
-### Downstreams Config
+### Mesh Config
 
-- `downstreams` - the list of downstream Zippers, the data will be forwarded to these Zippers when needed.
-  - `name` - the name of the downstream Zipper, it is used to identify the Zipper in the network.
-  - `host` - the IP address of the downstream Zipper.
-  - `port` - the port of the downstream Zipper.
-  - `credential` - the credential to connect to the downstream Zipper.
+- `mesh` - the list of mesh Zippers, the data will be transmitted between these Zippers when needed.
+  - `name` - the name of the mesh Zipper, it is used to identify the Zipper in the network.
+  - `host` - the IP address of the mesh Zipper.
+  - `port` - the port of the mesh Zipper.
+  - `credential` - the credential to connect to the mesh Zipper.
 
 ## Self-Hosting Zipper Service
 
