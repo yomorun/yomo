@@ -164,9 +164,7 @@ func (s *Server) handleFrameConn(fconn frame.Conn, logger *slog.Logger) {
 	s.connHandler(conn) // s.handleConn(conn) with middlewares
 
 	if conn.ClientType() == ClientTypeStreamFunction {
-		_ = s.router.Remove(&router.RouteParams{
-			ID: conn.ID(),
-		})
+		s.router.Remove(conn.ID())
 	}
 	_ = s.connector.Remove(conn.ID())
 }
@@ -296,12 +294,7 @@ func (s *Server) addSfnRouteRule(hf *frame.HandshakeFrame, md metadata.M) error 
 	if hf.ClientType != byte(ClientTypeStreamFunction) {
 		return nil
 	}
-	return s.router.Add(&router.RouteParams{
-		Name:            hf.Name,
-		ID:              hf.ID,
-		Metadata:        md,
-		ObserveDataTags: hf.ObserveDataTags,
-	})
+	return s.router.Add(hf.ID, hf.ObserveDataTags, md)
 }
 
 func (s *Server) handleFrame(c *Context) {
@@ -338,9 +331,7 @@ func (s *Server) routingDataFrame(c *Context) error {
 	dataFrame.Metadata = mdBytes
 
 	// find stream function ids from the router.
-	connIDs := s.router.Get(&router.RouteParams{
-		ObserveDataTags: []uint32{dataFrame.Tag},
-	})
+	connIDs := s.router.Route(dataFrame.Tag, md)
 	if len(connIDs) == 0 {
 		c.Logger.Info("no observed", "tag", dataFrame.Tag, "data_length", data_length)
 	}
