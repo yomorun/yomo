@@ -120,6 +120,19 @@ func TestCodec(t *testing.T) {
 			},
 		},
 		{
+			name: "ConnectToFrame",
+			args: args{
+				newF: new(frame.ConnectToFrame),
+				dataF: &frame.ConnectToFrame{
+					Endpoint: "11.11.11.11:8080",
+				},
+				data: []byte{
+					0xbe, 0x12, 0x1, 0x10, 0x31, 0x31, 0x2e, 0x31, 0x31, 0x2e,
+					0x31, 0x31, 0x2e, 0x31, 0x31, 0x3a, 0x38, 0x30, 0x38, 0x30,
+				},
+			},
+		},
+		{
 			name: "error",
 			args: args{
 				newF:      nil,
