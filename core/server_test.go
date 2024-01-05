@@ -32,6 +32,72 @@ func TestMakeSourceTagFindConnectionFunc(t *testing.T) {
 	})
 }
 
+func TestRejectHandshake(t *testing.T) {
+	type args struct {
+		err error
+	}
+	tests := []struct {
+		name    string
+		args    args
+		wantErr error
+	}{
+		{
+			name: "nil error",
+			args: args{
+				err: nil,
+			},
+			wantErr: nil,
+		},
+		{
+			name: "error",
+			args: args{
+				err: errors.New("some error"),
+			},
+			wantErr: errors.New("some error"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := &mockFrameWriter{}
+			err := rejectHandshake(w, tt.args.err)
+			assert.Equal(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestConnectToNewEndpoint(t *testing.T) {
+	type args struct {
+		err *ErrConnectTo
+	}
+	tests := []struct {
+		name    string
+		args    args
+		wantErr error
+	}{
+		{
+			name: "nil error",
+			args: args{
+				err: nil,
+			},
+			wantErr: nil,
+		},
+		{
+			name: "error",
+			args: args{
+				err: &ErrConnectTo{Endpoint: "11.11.11.11:8000"},
+			},
+			wantErr: &ErrConnectTo{Endpoint: "11.11.11.11:8000"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := &mockFrameWriter{}
+			err := connectToNewEndpoint(w, tt.args.err)
+			assert.Equal(t, err, tt.wantErr)
+		})
+	}
+}
+
 type mockConnectionInfo struct {
 	name       string
 	id         string
@@ -45,54 +111,3 @@ func (s *mockConnectionInfo) Name() string                 { return s.name }
 func (s *mockConnectionInfo) Metadata() metadata.M         { return s.metadata }
 func (s *mockConnectionInfo) ClientType() ClientType       { return s.clientType }
 func (s *mockConnectionInfo) ObserveDataTags() []frame.Tag { return s.observed }
-
-func Test_negotiateVersion(t *testing.T) {
-	type args struct {
-		cVersion string
-		sVersion string
-	}
-	tests := []struct {
-		name         string
-		args         args
-		wantErr      error
-		frameWritten frame.Frame
-	}{
-		{
-			name: "ok",
-			args: args{
-				cVersion: "2024-01-03",
-				sVersion: "2024-01-03",
-			},
-			wantErr:      nil,
-			frameWritten: nil,
-		},
-		{
-			name: "not ok",
-			args: args{
-				cVersion: "2024-01-03",
-				sVersion: "2024-02-03",
-			},
-			wantErr: errors.New("version negotiation failed: client=2024-01-03, server=2024-02-03"),
-			frameWritten: &frame.RejectedFrame{
-				Message: "version negotiation failed: client=2024-01-03, server=2024-02-03",
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			w := &mockFrameWriter{}
-			err := DefaultVersionNegotiateFunc(w, tt.args.cVersion, tt.args.sVersion)
-			assert.Equal(t, tt.wantErr, err)
-			assert.Equal(t, tt.frameWritten, w.f)
-		})
-	}
-}
-
-type mockFrameWriter struct {
-	f frame.Frame
-}
-
-func (m *mockFrameWriter) WriteFrame(f frame.Frame) error {
-	m.f = f
-	return nil
-}
