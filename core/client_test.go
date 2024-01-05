@@ -57,6 +57,7 @@ func TestFrameRoundTrip(t *testing.T) {
 		WithFrameMiddleware(ht.frameMiddleware),
 	)
 	server.ConfigRouter(router.Default())
+	server.ConfigVersionNegotiateFunc(DefaultVersionNegotiateFunc)
 
 	recorder := newFrameWriterRecorder("mockID", "mockClientLocal", "mockClientRemote")
 	server.AddDownstreamServer(recorder)

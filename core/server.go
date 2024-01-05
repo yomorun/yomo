@@ -41,11 +41,6 @@ type (
 	ConnMiddleware func(ConnHandler) ConnHandler
 )
 
-// VersionNegotiateFunc is the version negotiate function.
-// Use w to respond to client, and return the error in version negotiate process for ending handshake.
-// NOTICE: do not respond HandshakeAckFrame to client in this function, just return nil if version negotiation is ok.
-type VersionNegotiateFunc func(w frame.Writer, cVersion string, sVersion string) error
-
 // Server is the underlying server of Zipper
 type Server struct {
 	ctx                  context.Context
@@ -176,10 +171,25 @@ func (s *Server) handleFrameConn(fconn frame.Conn, logger *slog.Logger) {
 	_ = s.connector.Remove(conn.ID())
 }
 
-func (s *Server) rejectHandshake(w frame.Writer, err error) error {
+func rejectHandshake(w frame.Writer, err error) error {
 	if err != nil {
-		_ = w.WriteFrame(&frame.RejectedFrame{Message: err.Error()})
+		rf := &frame.RejectedFrame{
+			Message: err.Error(),
+		}
+		_ = w.WriteFrame(rf)
 	}
+
+	return err
+}
+
+func connectToNewEndpoint(w frame.Writer, err *ErrConnectTo) error {
+	if err == nil {
+		return nil
+	}
+	cf := &frame.ConnectToFrame{
+		Endpoint: err.Endpoint,
+	}
+	_ = w.WriteFrame(cf)
 
 	return err
 }
@@ -196,30 +206,33 @@ func (s *Server) handshake(fconn frame.Conn) (*Connection, error) {
 		hf := first.(*frame.HandshakeFrame)
 
 		// 1. version negotiation
-		if err := s.versionNegotiateFunc(fconn, hf.Version, Version); err != nil {
-			return nil, err
+		if err := s.versionNegotiateFunc(hf.Version, Version); err != nil {
+			if se := new(ErrConnectTo); errors.As(err, &se) {
+				return nil, connectToNewEndpoint(fconn, se)
+			}
+			return nil, rejectHandshake(fconn, err)
 		}
 
 		// 2. authentication
 		md, err := s.authenticate(hf)
 		if err != nil {
-			return nil, s.rejectHandshake(fconn, err)
+			return nil, rejectHandshake(fconn, err)
 		}
 
 		// 3. create connection
 		conn, err := s.createConnection(hf, md, fconn)
 		if err != nil {
-			return nil, s.rejectHandshake(fconn, err)
+			return nil, rejectHandshake(fconn, err)
 		}
 
 		// 4. add route rules
 		if err := s.addSfnRouteRule(hf, conn.Metadata()); err != nil {
-			return nil, s.rejectHandshake(fconn, err)
+			return nil, rejectHandshake(fconn, err)
 		}
 		return conn, nil
 	default:
 		err = fmt.Errorf("yomo: handshake read unexpected frame, read: %s", first.Type().String())
-		return nil, s.rejectHandshake(fconn, err)
+		return nil, rejectHandshake(fconn, err)
 	}
 }
 
@@ -289,17 +302,6 @@ func (s *Server) addSfnRouteRule(hf *frame.HandshakeFrame, md metadata.M) error 
 		Metadata:        md,
 		ObserveDataTags: hf.ObserveDataTags,
 	})
-}
-
-// DefaultVersionNegotiateFunc is default version negotiate function.
-// if cVersion != sVersion, return error and respond RejectedFrame.
-func DefaultVersionNegotiateFunc(w frame.Writer, cVersion, sVersion string) error {
-	if cVersion != sVersion {
-		err := fmt.Errorf("version negotiation failed: client=%s, server=%s", cVersion, sVersion)
-		_ = w.WriteFrame(&frame.RejectedFrame{Message: err.Error()})
-		return err
-	}
-	return nil
 }
 
 func (s *Server) handleFrame(c *Context) {
