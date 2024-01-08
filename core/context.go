@@ -7,7 +7,6 @@ import (
 
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
-	"github.com/yomorun/yomo/core/router"
 	"golang.org/x/exp/slog"
 )
 
@@ -22,8 +21,6 @@ type Context struct {
 	Frame *frame.DataFrame
 	// FrameMetadata is the merged metadata from the frame.
 	FrameMetadata metadata.M
-	// Route is the route from handshake.
-	Route router.Route
 	// mu is used to protect Keys from concurrent read and write operations.
 	mu sync.RWMutex
 	// Keys stores the key/value pairs in context, It is Lazy initialized.
@@ -88,7 +85,7 @@ func (c *Context) Value(key any) any {
 // The YoMo context is used to manage the lifecycle of a connection and provides a way to pass data and metadata
 // between connection processing functions. The lifecycle of the context is equal to the lifecycle of the connection
 // that it is associated with. The context can be used to manage timeouts, cancellations, and other aspects of connection processing.
-func newContext(conn *Connection, route router.Route, df *frame.DataFrame) (c *Context, err error) {
+func newContext(conn *Connection, df *frame.DataFrame) (c *Context, err error) {
 	fmd, err := metadata.Decode(df.Metadata)
 	if err != nil {
 		return nil, err
@@ -111,7 +108,6 @@ func newContext(conn *Connection, route router.Route, df *frame.DataFrame) (c *C
 	c.FrameMetadata = fmd
 
 	c.Connection = conn
-	c.Route = route
 
 	// log with tid
 	c.Logger = c.Connection.Logger.With("tid", GetTIDFromMetadata(fmd))
@@ -140,7 +136,6 @@ func (c *Context) Release() {
 
 func (c *Context) reset() {
 	c.Connection = nil
-	c.Route = nil
 	c.Frame = nil
 	c.FrameMetadata = nil
 	c.Logger = nil

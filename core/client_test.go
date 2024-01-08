@@ -204,7 +204,7 @@ type hookTester struct {
 }
 
 func (a *hookTester) connMiddleware(next ConnHandler) ConnHandler {
-	return func(c *Connection, r router.Route) {
+	return func(c *Connection) {
 		a.mu.Lock()
 		if a.connNames == nil {
 			a.connNames = make([]string, 0)
@@ -212,7 +212,7 @@ func (a *hookTester) connMiddleware(next ConnHandler) ConnHandler {
 		a.connNames = append(a.connNames, c.Name())
 		a.mu.Unlock()
 
-		next(c, r)
+		next(c)
 
 		a.mu.Lock()
 		assert.Contains(a.t, a.connNames, c.Name())

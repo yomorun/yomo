@@ -36,8 +36,8 @@ type (
 )
 
 type (
-	// ConnHandler handles a connection and route.
-	ConnHandler func(*Connection, router.Route)
+	// ConnHandler handles a connection.
+	ConnHandler func(*Connection)
 	// ConnMiddleware is a middleware for connection handler.
 	ConnMiddleware func(ConnHandler) ConnHandler
 )
@@ -87,7 +87,7 @@ func NewServer(name string, opts ...ServerOption) *Server {
 	}
 
 	// work with middleware.
-	s.connHandler = composeConnHandler(s.handleConnRoute, s.opts.connMiddlewares...)
+	s.connHandler = composeConnHandler(s.handleConn, s.opts.connMiddlewares...)
 	s.frameHandler = composeFrameHandler(s.handleFrame, s.opts.frameMiddlewares...)
 
 	return s
@@ -154,21 +154,21 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 }
 
 func (s *Server) handleFrameConn(fconn frame.Conn, logger *slog.Logger) {
-	route, conn, err := s.handshake(fconn)
+	conn, err := s.handshake(fconn)
 	if err != nil {
 		logger.Error("handshake failed", "err", err)
 		return
 	}
 
-	s.connHandler(conn, route) // s.handleConnRoute(conn, route) with middlewares
+	s.connHandler(conn) // s.handleConnRoute(conn) with middlewares
 
 	if conn.ClientType() == ClientTypeStreamFunction {
-		_ = route.Remove(conn.ID())
+		s.router.Remove(conn.ID())
 	}
 	_ = s.connector.Remove(conn.ID())
 }
 
-func (s *Server) handshake(fconn frame.Conn) (router.Route, *Connection, error) {
+func (s *Server) handshake(fconn frame.Conn) (*Connection, error) {
 	var gerr error
 
 	defer func() {
@@ -182,7 +182,7 @@ func (s *Server) handshake(fconn frame.Conn) (router.Route, *Connection, error) 
 	first, err := fconn.ReadFrame()
 	if err != nil {
 		gerr = err
-		return nil, nil, gerr
+		return nil, gerr
 	}
 	switch first.Type() {
 	case frame.TypeHandshakeFrame:
@@ -191,21 +191,20 @@ func (s *Server) handshake(fconn frame.Conn) (router.Route, *Connection, error) 
 		conn, err := s.handleHandshakeFrame(fconn, hf)
 		if err != nil {
 			gerr = err
-			return nil, conn, gerr
+			return conn, gerr
 		}
 
-		route, err := s.addSfnToRoute(hf, conn.Metadata())
-		if err != nil {
+		if err := s.addSfnToRoute(hf, conn.Metadata()); err != nil {
 			gerr = err
 		}
-		return route, conn, gerr
+		return conn, gerr
 	default:
 		gerr = fmt.Errorf("yomo: handshake read unexpected frame, read: %s", first.Type().String())
-		return nil, nil, gerr
+		return nil, gerr
 	}
 }
 
-func (s *Server) handleConnRoute(conn *Connection, route router.Route) {
+func (s *Server) handleConn(conn *Connection) {
 	conn.Logger.Info("new client connected", "client_type", conn.ClientType().String())
 
 	for {
@@ -216,7 +215,7 @@ func (s *Server) handleConnRoute(conn *Connection, route router.Route) {
 		}
 		switch f.Type() {
 		case frame.TypeDataFrame:
-			c, err := newContext(conn, route, f.(*frame.DataFrame))
+			c, err := newContext(conn, f.(*frame.DataFrame))
 			if err != nil {
 				conn.Logger.Info("failed to new context", "err", err)
 				return
@@ -255,19 +254,11 @@ func (s *Server) handleHandshakeFrame(fconn frame.Conn, hf *frame.HandshakeFrame
 	return conn, s.connector.Store(hf.ID, conn)
 }
 
-func (s *Server) addSfnToRoute(hf *frame.HandshakeFrame, md metadata.M) (router.Route, error) {
+func (s *Server) addSfnToRoute(hf *frame.HandshakeFrame, md metadata.M) error {
 	if hf.ClientType != byte(ClientTypeStreamFunction) {
-		return nil, nil
+		return nil
 	}
-	route := s.router.Route(md)
-	if route == nil {
-		return nil, errors.New("yomo: can't find route in handshake metadata")
-	}
-	err := route.Add(hf.ID, hf.ObserveDataTags)
-	if err != nil {
-		return nil, err
-	}
-	return route, nil
+	return s.router.Add(hf.ID, hf.ObserveDataTags, md)
 }
 
 func negotiateVersion(cVersion, sVersion string) error {
@@ -322,16 +313,8 @@ func (s *Server) routingDataFrame(c *Context) error {
 	}
 	dataFrame.Metadata = mdBytes
 
-	// route
-	route := s.router.Route(c.FrameMetadata)
-	if route == nil {
-		errString := "can't find sfn route"
-		c.Logger.Warn(errString)
-		return errors.New(errString)
-	}
-
-	// find stream function ids from the route.
-	connIDs := route.GetForwardRoutes(dataFrame.Tag)
+	// find stream function ids from the router.
+	connIDs := s.router.Route(dataFrame.Tag, md)
 	if len(connIDs) == 0 {
 		c.Logger.Info("no observed", "tag", dataFrame.Tag, "data_length", data_length)
 	}
@@ -415,7 +398,7 @@ func closeServer(downstreams map[string]Downstream, connector *Connector, listen
 	}
 	// router
 	if router != nil {
-		router.Clean()
+		router.Release()
 	}
 	return nil
 }
