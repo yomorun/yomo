@@ -1,7 +1,11 @@
 name: Zipper-Sender-EU
 host: localhost
 port: 9800
-downstreams:
+
+mesh:
+  Zipper-Sender-EU:
+    host: localhost
+    port: 9800
   Zipper-Receiver-US:
     host: localhost
     port: 9001

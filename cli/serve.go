@@ -63,7 +63,7 @@ var serveCmd = &cobra.Command{
 			}
 		}
 
-		zipper, err := yomo.NewZipper(conf.Name, router.Default(), nil, conf.Downstreams, options...)
+		zipper, err := yomo.NewZipper(conf.Name, router.Default(), nil, conf.Mesh, options...)
 		if err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
 			return
