@@ -43,7 +43,7 @@ func RunZipper(ctx context.Context, configPath string) error {
 		}
 	}
 
-	zipper, err := NewZipper(conf.Name, router.Default(), conf.Mesh, options...)
+	zipper, err := NewZipper(conf.Name, router.Default(), core.DefaultVersionNegotiateFunc, conf.Mesh, options...)
 	if err != nil {
 		return err
 	}
@@ -53,7 +53,10 @@ func RunZipper(ctx context.Context, configPath string) error {
 }
 
 // NewZipper returns a zipper.
-func NewZipper(name string, router router.Router, meshConfig map[string]config.Mesh, options ...ZipperOption) (Zipper, error) {
+func NewZipper(
+	name string, router router.Router, vgfn core.VersionNegotiateFunc,
+	meshConfig map[string]config.Mesh, options ...ZipperOption,
+) (Zipper, error) {
 	opts := &zipperOptions{}
 
 	for _, o := range options {
@@ -88,6 +91,8 @@ func NewZipper(name string, router router.Router, meshConfig map[string]config.M
 	}
 
 	server.ConfigRouter(router)
+
+	server.ConfigVersionNegotiateFunc(vgfn)
 
 	// watch signal.
 	go waitSignalForShutdownServer(server)

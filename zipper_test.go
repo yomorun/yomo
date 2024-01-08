@@ -8,13 +8,15 @@ import (
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/router"
 	"github.com/yomorun/yomo/core/ylog"
+	"github.com/yomorun/yomo/pkg/config"
 )
 
 func TestZipperRun(t *testing.T) {
 	zipper, err := NewZipper(
 		"zipper",
 		router.Default(),
-		nil,
+		core.DefaultVersionNegotiateFunc,
+		map[string]config.Mesh{},
 		// WithAuth("token", "<CREDENTIAL>"),
 		WithUpstreamOption(core.ClientOption(WithCredential("token:<CREDENTIAL>"))),
 		WithZipperLogger(ylog.Default()),

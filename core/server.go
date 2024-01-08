@@ -21,7 +21,6 @@ import (
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 	yquic "github.com/yomorun/yomo/pkg/listener/quic"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
-	"github.com/yomorun/yomo/pkg/version"
 	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
@@ -44,22 +43,23 @@ type (
 
 // Server is the underlying server of Zipper
 type Server struct {
-	ctx                context.Context
-	ctxCancel          context.CancelFunc
-	name               string
-	connector          *Connector
-	router             router.Router
-	codec              frame.Codec
-	packetReadWriter   frame.PacketReadWriter
-	counterOfDataFrame int64
-	downstreams        map[string]Downstream
-	mu                 sync.Mutex
-	opts               *serverOptions
-	frameHandler       FrameHandler
-	connHandler        ConnHandler
-	listener           frame.Listener
-	logger             *slog.Logger
-	tracerProvider     oteltrace.TracerProvider
+	ctx                  context.Context
+	ctxCancel            context.CancelFunc
+	name                 string
+	connector            *Connector
+	router               router.Router
+	codec                frame.Codec
+	packetReadWriter     frame.PacketReadWriter
+	counterOfDataFrame   int64
+	downstreams          map[string]Downstream
+	mu                   sync.Mutex
+	opts                 *serverOptions
+	frameHandler         FrameHandler
+	connHandler          ConnHandler
+	listener             frame.Listener
+	logger               *slog.Logger
+	tracerProvider       oteltrace.TracerProvider
+	versionNegotiateFunc VersionNegotiateFunc
 }
 
 // NewServer create a Server instance.
@@ -75,15 +75,17 @@ func NewServer(name string, opts ...ServerOption) *Server {
 	ctx, ctxCancel := context.WithCancel(context.Background())
 
 	s := &Server{
-		ctx:              ctx,
-		ctxCancel:        ctxCancel,
-		name:             name,
-		downstreams:      make(map[string]Downstream),
-		logger:           logger,
-		tracerProvider:   options.tracerProvider,
-		codec:            y3codec.Codec(),
-		packetReadWriter: y3codec.PacketReadWriter(),
-		opts:             options,
+		ctx:                  ctx,
+		ctxCancel:            ctxCancel,
+		name:                 name,
+		router:               router.Default(),
+		downstreams:          make(map[string]Downstream),
+		logger:               logger,
+		tracerProvider:       options.tracerProvider,
+		codec:                y3codec.Codec(),
+		packetReadWriter:     y3codec.PacketReadWriter(),
+		opts:                 options,
+		versionNegotiateFunc: DefaultVersionNegotiateFunc,
 	}
 
 	// work with middleware.
@@ -114,10 +116,6 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 
 // Serve the server with a net.PacketConn.
 func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
-	if err := s.validateRouter(); err != nil {
-		return err
-	}
-
 	s.connector = NewConnector(ctx)
 
 	tlsConfig := s.opts.tlsConfig
@@ -160,7 +158,10 @@ func (s *Server) handleFrameConn(fconn frame.Conn, logger *slog.Logger) {
 		return
 	}
 
-	s.connHandler(conn) // s.handleConnRoute(conn) with middlewares
+	// ack handshake
+	_ = fconn.WriteFrame(&frame.HandshakeAckFrame{})
+
+	s.connHandler(conn) // s.handleConn(conn) with middlewares
 
 	if conn.ClientType() == ClientTypeStreamFunction {
 		s.router.Remove(conn.ID())
@@ -168,39 +169,68 @@ func (s *Server) handleFrameConn(fconn frame.Conn, logger *slog.Logger) {
 	_ = s.connector.Remove(conn.ID())
 }
 
-func (s *Server) handshake(fconn frame.Conn) (*Connection, error) {
-	var gerr error
-
-	defer func() {
-		if gerr == nil {
-			_ = fconn.WriteFrame(&frame.HandshakeAckFrame{})
-		} else {
-			_ = fconn.WriteFrame(&frame.RejectedFrame{Message: gerr.Error()})
+func rejectHandshake(w frame.Writer, err error) error {
+	if err != nil {
+		rf := &frame.RejectedFrame{
+			Message: err.Error(),
 		}
-	}()
+		_ = w.WriteFrame(rf)
+	}
 
+	return err
+}
+
+func connectToNewEndpoint(w frame.Writer, err *ErrConnectTo) error {
+	if err == nil {
+		return nil
+	}
+	cf := &frame.ConnectToFrame{
+		Endpoint: err.Endpoint,
+	}
+	_ = w.WriteFrame(cf)
+
+	return err
+}
+
+func (s *Server) handshake(fconn frame.Conn) (*Connection, error) {
 	first, err := fconn.ReadFrame()
 	if err != nil {
-		gerr = err
-		return nil, gerr
+		return nil, err
 	}
+
 	switch first.Type() {
 	case frame.TypeHandshakeFrame:
+
 		hf := first.(*frame.HandshakeFrame)
 
-		conn, err := s.handleHandshakeFrame(fconn, hf)
-		if err != nil {
-			gerr = err
-			return conn, gerr
+		// 1. version negotiation
+		if err := s.versionNegotiateFunc(hf.Version, Version); err != nil {
+			if se := new(ErrConnectTo); errors.As(err, &se) {
+				return nil, connectToNewEndpoint(fconn, se)
+			}
+			return nil, rejectHandshake(fconn, err)
 		}
 
-		if err := s.addSfnToRoute(hf, conn.Metadata()); err != nil {
-			gerr = err
+		// 2. authentication
+		md, err := s.authenticate(hf)
+		if err != nil {
+			return nil, rejectHandshake(fconn, err)
 		}
-		return conn, gerr
+
+		// 3. create connection
+		conn, err := s.createConnection(hf, md, fconn)
+		if err != nil {
+			return nil, rejectHandshake(fconn, err)
+		}
+
+		// 4. add route rules
+		if err := s.addSfnRouteRule(hf, conn.Metadata()); err != nil {
+			return nil, rejectHandshake(fconn, err)
+		}
+		return conn, nil
 	default:
-		gerr = fmt.Errorf("yomo: handshake read unexpected frame, read: %s", first.Type().String())
-		return nil, gerr
+		err = fmt.Errorf("yomo: handshake read unexpected frame, read: %s", first.Type().String())
+		return nil, rejectHandshake(fconn, err)
 	}
 }
 
@@ -231,53 +261,40 @@ func (s *Server) handleConn(conn *Connection) {
 	}
 }
 
-func (s *Server) handleHandshakeFrame(fconn frame.Conn, hf *frame.HandshakeFrame) (*Connection, error) {
-	// 1. authentication
+func (s *Server) authenticate(hf *frame.HandshakeFrame) (metadata.M, error) {
 	md, ok := auth.Authenticate(s.opts.auths, hf)
-
 	if !ok {
 		s.logger.Warn(
 			"authentication failed",
-			"client_type", ClientType(hf.ClientType).String(), "client_name", hf.Name,
+			"client_type", ClientType(hf.ClientType).String(),
+			"client_name", hf.Name,
 			"credential", hf.AuthName,
 		)
 		return nil, fmt.Errorf("authentication failed: client credential type is %s", hf.AuthName)
 	}
 
-	// 2. version negotiation
-	if err := negotiateVersion(hf.Version, Version); err != nil {
-		return nil, err
-	}
+	return md, nil
+}
 
-	conn := newConnection(hf.Name, hf.ID, ClientType(hf.ClientType), md, hf.ObserveDataTags, fconn, s.logger)
+func (s *Server) createConnection(hf *frame.HandshakeFrame, md metadata.M, fconn frame.Conn) (*Connection, error) {
+	conn := newConnection(
+		hf.Name,
+		hf.ID,
+		ClientType(hf.ClientType),
+		md,
+		hf.ObserveDataTags,
+		fconn,
+		s.logger,
+	)
 
 	return conn, s.connector.Store(hf.ID, conn)
 }
 
-func (s *Server) addSfnToRoute(hf *frame.HandshakeFrame, md metadata.M) error {
+func (s *Server) addSfnRouteRule(hf *frame.HandshakeFrame, md metadata.M) error {
 	if hf.ClientType != byte(ClientTypeStreamFunction) {
 		return nil
 	}
 	return s.router.Add(hf.ID, hf.ObserveDataTags, md)
-}
-
-func negotiateVersion(cVersion, sVersion string) error {
-	cv, err := version.Parse(cVersion)
-	if err != nil {
-		return err
-	}
-
-	sv, err := version.Parse(sVersion)
-	if err != nil {
-		return err
-	}
-
-	// If the Major and Minor versions are equal, the server can serve the client.
-	if cv.Major == sv.Major && cv.Minor == sv.Minor {
-		return nil
-	}
-
-	return fmt.Errorf("yomo: version negotiation failed, client=%s, server=%s", cVersion, sVersion)
 }
 
 func (s *Server) handleFrame(c *Context) {
@@ -441,9 +458,22 @@ func (s *Server) Downstreams() map[string]string {
 
 // ConfigRouter is used to set router by zipper
 func (s *Server) ConfigRouter(router router.Router) {
+	if router == nil {
+		return
+	}
 	s.mu.Lock()
 	s.router = router
 	s.logger.Debug("config route")
+	s.mu.Unlock()
+}
+
+// ConfigVersionNegotiateFunc set the version negotiate function.
+func (s *Server) ConfigVersionNegotiateFunc(fn VersionNegotiateFunc) {
+	if fn == nil {
+		return
+	}
+	s.mu.Lock()
+	s.versionNegotiateFunc = fn
 	s.mu.Unlock()
 }
 
@@ -463,13 +493,6 @@ func (s *Server) Logger() *slog.Logger {
 // Close will shutdown the server.
 func (s *Server) Close() error {
 	s.ctxCancel()
-	return nil
-}
-
-func (s *Server) validateRouter() error {
-	if s.router == nil {
-		return errors.New("server's router is nil")
-	}
 	return nil
 }
 
