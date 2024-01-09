@@ -20,8 +20,7 @@ import (
 
 const (
 	testaddr     = "127.0.0.1:19999"
-	delayaddr    = "127.0.0.1:19998"
-	redirectAddr = "127.0.0.1:19997"
+	redirectAddr = "127.0.0.1:19998"
 )
 
 var discardingLogger = ylog.NewFromConfig(ylog.Config{Output: "/dev/null", ErrorOutput: "/dev/null"})
