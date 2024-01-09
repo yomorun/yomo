@@ -18,7 +18,11 @@ import (
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 )
 
-const testaddr = "127.0.0.1:19999"
+const (
+	testaddr     = "127.0.0.1:19999"
+	delayaddr    = "127.0.0.1:19998"
+	redirectAddr = "127.0.0.1:19997"
+)
 
 var discardingLogger = ylog.NewFromConfig(ylog.Config{Output: "/dev/null", ErrorOutput: "/dev/null"})
 
@@ -35,7 +39,31 @@ func TestClientDialNothing(t *testing.T) {
 	assert.ErrorAs(t, err, &qerr, "dial must timeout")
 }
 
+func TestConnectTo(t *testing.T) {
+	t.Parallel()
+	connectToEndpoint := "127.0.0.1:19996"
+	go func() {
+		srv := NewServer("zipper", WithServerLogger(discardingLogger))
+		srv.ConfigVersionNegotiateFunc(func(cVersion, sVersion string) error {
+			return &ErrConnectTo{connectToEndpoint}
+		})
+		srv.ListenAndServe(context.TODO(), redirectAddr)
+	}()
+
+	source := NewClient(
+		"source",
+		redirectAddr,
+		ClientTypeSource,
+		WithLogger(discardingLogger),
+	)
+
+	_ = source.Connect(context.TODO())
+
+	assert.Equal(t, source.zipperAddr, connectToEndpoint)
+}
+
 func TestFrameRoundTrip(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	var (
@@ -81,7 +109,6 @@ func TestFrameRoundTrip(t *testing.T) {
 		WithClientQuicConfig(DefaultClientQuicConfig),
 		WithClientTLSConfig(nil),
 		WithLogger(discardingLogger),
-		WithReConnect(),
 		WithNonBlockWrite(),
 	)
 

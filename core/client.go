@@ -34,6 +34,7 @@ type Client struct {
 	ctx       context.Context
 	ctxCancel context.CancelCauseFunc
 
+	done chan struct{}
 	wrCh chan frame.Frame
 	rdCh chan readOut
 }
@@ -73,6 +74,7 @@ func NewClient(appName, zipperAddr string, clientType ClientType, opts ...Client
 		ctx:            ctx,
 		ctxCancel:      ctxCancel,
 
+		done: make(chan struct{}),
 		wrCh: make(chan frame.Frame),
 		rdCh: make(chan readOut),
 	}
@@ -82,27 +84,66 @@ func NewClient(appName, zipperAddr string, clientType ClientType, opts ...Client
 func (c *Client) Connect(ctx context.Context) error {
 CONNECT:
 	fconn, err := c.connect(ctx, c.zipperAddr)
+	reconnect, err := c.handleConnectResult(err, c.opts.reconnect)
 	if err != nil {
-		if errors.As(err, new(ErrAuthenticateFailed)) {
-			return err
-		}
-		if c.opts.reconnect {
-			c.Logger.Error("failed to connect to zipper, trying to reconnect", "err", err)
-			time.Sleep(time.Second)
-			goto CONNECT
-		}
-		c.Logger.Error("can not connect to zipper", "err", err)
 		return err
 	}
-	c.Logger.Info("connected to zipper")
-
-	go c.runBackground(ctx, fconn)
+	if reconnect {
+		goto CONNECT
+	}
+	go c.runBackground(fconn)
 
 	return nil
 }
 
-func (c *Client) runBackground(ctx context.Context, conn frame.Conn) {
-	if err := c.handleConn(ctx, conn); err != nil {
+func (c *Client) handleConnectResult(err error, alwaysReconnect bool) (reconnect bool, se error) {
+	if err == nil {
+		c.Logger.Info("connected to zipper")
+		return false, nil
+	}
+	if e := new(ErrRejected); errors.As(err, &e) {
+		c.Logger.Info("handshake be rejected", "err", e.Message)
+		return false, err
+	}
+	if e := new(ErrConnectTo); errors.As(err, &e) {
+		c.zipperAddr = e.Endpoint
+		c.Logger.Info("connect to new endpoint", "endpoint", e.Endpoint)
+		return true, nil
+	}
+	if alwaysReconnect {
+		c.Logger.Error("failed to connect to zipper, trying to reconnect", "err", err)
+		time.Sleep(time.Second)
+		return true, nil
+	}
+	c.Logger.Error("cannot connect to zipper", "err", err)
+	return false, err
+}
+
+func (c *Client) runBackground(conn frame.Conn) {
+	if closed := c.handleConn(conn); closed {
+		return
+	}
+
+	// try reconnect to zipper.
+	var err error
+	for {
+		conn, err = c.connect(c.ctx, c.zipperAddr)
+		reconnect, err := c.handleConnectResult(err, true)
+		if err != nil {
+			return
+		}
+		if reconnect {
+			time.Sleep(time.Second)
+			continue
+		}
+		if closed := c.handleConn(conn); closed {
+			return
+		}
+	}
+}
+
+func (c *Client) handleConn(conn frame.Conn) (closed bool) {
+	if err := c.serveConn(conn); err != nil {
 		if c.errorfn != nil {
 			c.errorfn(err)
 		} else {
@@ -113,40 +154,10 @@ func (c *Client) runBackground(ctx context.Context, conn frame.Conn) {
 			if se.Remote {
 				c.ctxCancel(fmt.Errorf("%s: shutdown with error=%s", c.clientType.String(), se.ErrorMessage))
 			}
-			return
+			return true
 		}
 	}
-
-	// try reconnect to zipper.
-	var err error
-	for {
-		conn, err = c.connect(ctx, c.zipperAddr)
-		if err != nil {
-			if errors.As(err, new(ErrAuthenticateFailed)) {
-				return
-			}
-			c.Logger.Error("reconnect to zipper error", "err", err)
-			time.Sleep(time.Second)
-			continue
-		} else {
-			c.Logger.Info("reconnected to zipper")
-		}
-
-		if err := c.handleConn(ctx, conn); err != nil {
-			if c.errorfn != nil {
-				c.errorfn(err)
-			} else {
-				c.Logger.Error("handle frame failed", "err", err)
-			}
-			// Exit client program if the connection has be closed.
-			if se := new(frame.ErrConnClosed); errors.As(err, &se) {
-				if se.Remote {
-					c.ctxCancel(fmt.Errorf("%s: shutdown with error=%s", c.clientType.String(), se.ErrorMessage))
-				}
-				return
-			}
-		}
-	}
+	return false
 }
 
 func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
@@ -173,15 +184,25 @@ func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	switch received.Type() {
-	case frame.TypeRejectedFrame:
-		return conn, ErrAuthenticateFailed{received.(*frame.RejectedFrame).Message}
 	case frame.TypeHandshakeAckFrame:
 		return conn, nil
+	case frame.TypeRejectedFrame:
+		err := &ErrRejected{Message: received.(*frame.RejectedFrame).Message}
+		_ = conn.CloseWithError(err.Error())
+		return nil, err
+	case frame.TypeConnectToFrame:
+		ff := received.(*frame.ConnectToFrame)
+		err := &ErrConnectTo{Endpoint: ff.Endpoint}
+		_ = conn.CloseWithError(err.Error())
+		return nil, err
 	default:
-		return conn, ErrAuthenticateFailed{
-			fmt.Sprintf("authentication failed: read unexcepted frame, frame read: %s", received.Type().String()),
+		err := &ErrRejected{
+			Message: fmt.Sprintf("handshake failed: read unexcepted frame, frame read: %s", received.Type().String()),
 		}
+		_ = conn.CloseWithError(err.Error())
+		return nil, err
 	}
 }
 
@@ -225,10 +246,10 @@ func (c *Client) Close() error {
 
 // Wait waits client returning.
 func (c *Client) Wait() {
-	<-c.ctx.Done()
+	<-c.done
 }
 
-func (c *Client) handleConn(ctx context.Context, conn frame.Conn) error {
+func (c *Client) serveConn(conn frame.Conn) error {
 	go func() {
 		for {
 			f, err := conn.ReadFrame()
@@ -242,10 +263,9 @@ func (c *Client) handleConn(ctx context.Context, conn frame.Conn) error {
 
 	for {
 		select {
-		case <-ctx.Done():
-			conn.CloseWithError("yomo: parent context done")
 		case <-c.ctx.Done():
 			conn.CloseWithError(context.Cause(c.ctx).Error())
+			c.done <- struct{}{}
 		case f := <-c.wrCh:
 			if err := conn.WriteFrame(f); err != nil {
 				return err
@@ -274,6 +294,9 @@ func (c *Client) handleConn(ctx context.Context, conn frame.Conn) error {
 
 func (c *Client) handleFrame(f frame.Frame) {
 	switch ff := f.(type) {
+	case *frame.GoawayFrame:
+		c.Logger.Error("goaway error", "err", ff.Message)
+		_ = c.Close()
 	case *frame.RejectedFrame:
 		c.Logger.Error("rejected error", "err", ff.Message)
 		_ = c.Close()
@@ -326,11 +349,3 @@ func (c *Client) TracerProvider() oteltrace.TracerProvider {
 	}
 	return c.tracerProvider
 }
-
-// ErrAuthenticateFailed be returned when client control stream authenticate failed.
-type ErrAuthenticateFailed struct {
-	ReasonFromServer string
-}
-
-// Error returns a string that represents the ErrAuthenticateFailed error for the implementation of the error interface.
-func (e ErrAuthenticateFailed) Error() string { return e.ReasonFromServer }
