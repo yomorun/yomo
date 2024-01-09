@@ -1,5 +1,5 @@
 ### general ###
-name: zipper-chn
+name: zipper-sgp
 host: 0.0.0.0
 port: 9000
 
@@ -8,9 +8,13 @@ auth:
   type: token
   token: <CREDENTIAL>
 
-### cascading ###
-downstreams:
-  zipper-asia:
+### cascading mesh ###
+mesh:
+  zipper-sgp:
+    host: 1.1.1.1
+    port: 9000
+    credential: "token: <CREDENTIAL>"
+  zipper-aus:
     host: 2.2.2.2
     port: 9000
     credential: "token: <CREDENTIAL>"

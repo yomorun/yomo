@@ -16,7 +16,7 @@ func TestZipperRun(t *testing.T) {
 		"zipper",
 		router.Default(),
 		core.DefaultVersionNegotiateFunc,
-		map[string]config.Downstream{},
+		map[string]config.Mesh{},
 		// WithAuth("token", "<CREDENTIAL>"),
 		WithUpstreamOption(core.ClientOption(WithCredential("token:<CREDENTIAL>"))),
 		WithZipperLogger(ylog.Default()),

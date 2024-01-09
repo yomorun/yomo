@@ -27,19 +27,19 @@ type Config struct {
 	// The token typed auth has two key-value pairs associated with it:
 	// a `type:token` key-value pair and a `token:<CREDENTIAL>` key-value pair.
 	Auth map[string]string `yaml:"auth"`
-	// Downstreams holds cascading zippers config. the map-key is downstream name.
-	Downstreams map[string]Downstream `yaml:"downstreams"`
+	// Mesh holds all cascading zippers config. the map-key is mesh name.
+	Mesh map[string]Mesh `yaml:"mesh"`
 }
 
-// Downstream describes a cascading zipper config.
-type Downstream struct {
-	// Host is the host of downstream zipper.
+// Mesh describes a cascading zipper config.
+type Mesh struct {
+	// Host is the host of mesh zipper.
 	Host string `yaml:"host"`
-	// Port is the port of downstream zipper.
+	// Port is the port of mesh zipper.
 	Port int `yaml:"port"`
-	// Credential is the credential when connect to downstream zipper.
+	// Credential is the credential when connect to mesh zipper.
 	// It is in the format of 'authType:authPayload', separated by a colon.
-	// If Credential is empty, it represents that downstream will not authenticate the current Zipper.
+	// If Credential is empty, it represents that mesh will not authenticate the current Zipper.
 	Credential string `yaml:"credential"`
 }
 

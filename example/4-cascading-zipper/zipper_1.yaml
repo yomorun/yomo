@@ -4,7 +4,12 @@ port: 9001
 auth:
   type: token
   token: z1
-downstreams:
+
+mesh:
+  zipper-1:
+    host: 127.0.0.1
+    port: 9001
+    credential: "token:z1"
   zipper-2:
     host: 127.0.0.1
     port: 9002
