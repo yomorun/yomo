@@ -86,6 +86,31 @@ func (s *yomoSource) Write(tag uint32, data []byte) error {
 	return s.client.WriteFrame(f)
 }
 
+// WritePayload writes `yomo.Payload` with specified tag.
+func (s *yomoSource) WritePayload(tag uint32, payload *Payload) error {
+	if payload == nil {
+		return nil
+	}
+	md, deferFunc := core.SourceMetadata(s.client.ClientID(), id.New(), s.name, s.client.TracerProvider(), s.client.Logger)
+	defer deferFunc()
+
+	if payload.Target == "" {
+		md.Set(core.MetadataTargetKey, payload.Target)
+	}
+
+	mdBytes, err := md.Encode()
+	if err != nil {
+		return err
+	}
+	f := &frame.DataFrame{
+		Tag:      tag,
+		Metadata: mdBytes,
+		Payload:  payload.Data,
+	}
+	s.client.Logger.Debug("source write payload", "tag", tag, "data", payload.Data)
+	return s.client.WriteFrame(f)
+}
+
 // SetErrorHandler set the error handler function when server error occurs
 func (s *yomoSource) SetErrorHandler(fn func(err error)) {
 	s.client.SetErrorHandler(fn)
