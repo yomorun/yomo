@@ -5,6 +5,7 @@ import (
 
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/payload"
 	"github.com/yomorun/yomo/pkg/id"
 )
 
@@ -87,7 +88,7 @@ func (s *yomoSource) Write(tag uint32, data []byte) error {
 }
 
 // WritePayload writes `yomo.Payload` with specified tag.
-func (s *yomoSource) WritePayload(tag uint32, payload *Payload) error {
+func (s *yomoSource) WritePayload(tag uint32, payload *payload.Payload) error {
 	if payload == nil {
 		return nil
 	}

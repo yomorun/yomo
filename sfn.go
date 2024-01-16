@@ -192,14 +192,7 @@ func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 			newMd, endFn := core.SfnTraceMetadata(md, s.client.Name(), s.client.TracerProvider(), s.client.Logger)
 			defer endFn()
 
-			newMetadata, err := newMd.Encode()
-			if err != nil {
-				s.client.Logger.Error("sfn encode metadata error", "err", err)
-				return
-			}
-			dataFrame.Metadata = newMetadata
-
-			serverlessCtx := serverless.NewContext(s.client, dataFrame)
+			serverlessCtx := serverless.NewContext(s.client, dataFrame.Tag, newMd, dataFrame.Payload)
 			s.fn(serverlessCtx)
 		}(tp, dataFrame)
 	} else if s.pfn != nil {

@@ -1,4 +1,5 @@
-package yomo
+// Package payload defines payload that will be write to zipper.
+package payload
 
 // Payload is used to send data to zipper.
 // Target is the target clientID of sfn.
@@ -9,8 +10,8 @@ type Payload struct {
 	Target string
 }
 
-// NewPayload returns a new Payload from data.
-func NewPayload(data []byte) *Payload {
+// New returns a new Payload from data.
+func New(data []byte) *Payload {
 	return &Payload{
 		Data: data,
 	}
