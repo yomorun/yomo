@@ -95,8 +95,11 @@ func (s *yomoSource) WritePayload(tag uint32, payload *payload.Payload) error {
 	md, deferFunc := core.SourceMetadata(s.client.ClientID(), id.New(), s.name, s.client.TracerProvider(), s.client.Logger)
 	defer deferFunc()
 
-	if payload.Target == "" {
+	if payload.Target != "" {
 		md.Set(core.MetadataTargetKey, payload.Target)
+	}
+	if payload.TID != "" {
+		md.Set(core.MetadataTIDKey, payload.TID)
 	}
 
 	mdBytes, err := md.Encode()

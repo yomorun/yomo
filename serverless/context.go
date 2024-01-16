@@ -13,6 +13,8 @@ type Context interface {
 	Write(tag uint32, data []byte) error
 	// HTTP http interface
 	HTTP() HTTP
+	// TID get current transaction id
+	TID() string
 	// WritePayload write payload to zipper.
 	WritePayload(tag uint32, payload *payload.Payload) error
 }

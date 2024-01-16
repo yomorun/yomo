@@ -64,6 +64,9 @@ func (c *Context) WritePayload(tag uint32, payload *payload.Payload) error {
 	if payload.Target != "" {
 		c.md.Set(core.MetadataTargetKey, payload.Target)
 	}
+	if payload.TID != "" {
+		c.md.Set(core.MetadataTIDKey, payload.TID)
+	}
 	mdBytes, err := c.md.Encode()
 	if err != nil {
 		return err

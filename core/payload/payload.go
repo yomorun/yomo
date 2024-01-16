@@ -8,6 +8,8 @@ type Payload struct {
 	Data []byte
 	// Target is the target clientID of sfn.
 	Target string
+	// TID is the TID of the payload.
+	TID string
 }
 
 // New returns a new Payload from data.
@@ -20,5 +22,11 @@ func New(data []byte) *Payload {
 // WithTarget returns a new Payload with target.
 func (p *Payload) WithTarget(target string) *Payload {
 	p.Target = target
+	return p
+}
+
+// WithTID returns a new Payload with target.
+func (p *Payload) WithTID(TID string) *Payload {
+	p.TID = TID
 	return p
 }

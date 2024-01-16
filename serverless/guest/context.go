@@ -47,6 +47,11 @@ func (c *GuestContext) WritePayload(tag uint32, payload *payload.Payload) error 
 	panic("not implemented")
 }
 
+// TODO: implement TID
+func (c *GuestContext) TID() string {
+	panic("not implemented")
+}
+
 //export yomo_observe_datatag
 //go:linkname yomoObserveDataTag
 func yomoObserveDataTag(tag uint32)
