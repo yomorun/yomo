@@ -21,11 +21,12 @@ import (
 // Source, Upstream Zipper or StreamFunction.
 type Client struct {
 	zipperAddr     string
-	name           string                 // name of the client
-	clientID       string                 // id of the client
-	clientType     ClientType             // type of the client
-	processor      func(*frame.DataFrame) // function to invoke when data arrived
-	errorfn        func(error)            // function to invoke when error occured
+	name           string
+	clientID       string
+	wantTarget     string
+	clientType     ClientType
+	processor      func(*frame.DataFrame)
+	errorfn        func(error)
 	opts           *clientOptions
 	Logger         *slog.Logger
 	tracerProvider oteltrace.TracerProvider
@@ -78,6 +79,10 @@ func NewClient(appName, zipperAddr string, clientType ClientType, opts ...Client
 		wrCh: make(chan frame.Frame),
 		rdCh: make(chan readOut),
 	}
+}
+
+func (c *Client) SetWantTarget(target string) {
+	c.wantTarget = target
 }
 
 // Connect connect client to server.
@@ -174,6 +179,7 @@ func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
 		AuthName:        c.opts.credential.Name(),
 		AuthPayload:     c.opts.credential.Payload(),
 		Version:         Version,
+		WantTarget:      c.wantTarget,
 	}
 
 	if err := conn.WriteFrame(hf); err != nil {

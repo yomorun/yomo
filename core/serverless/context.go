@@ -36,6 +36,11 @@ func (c *Context) Data() []byte {
 	return c.data
 }
 
+func (c *Context) TID() string {
+	tid, _ := c.md.Get(core.MetadataTIDKey)
+	return tid
+}
+
 // Write writes the data
 func (c *Context) Write(tag uint32, data []byte) error {
 	if data == nil {

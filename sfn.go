@@ -13,6 +13,11 @@ import (
 
 // StreamFunction defines serverless streaming functions.
 type StreamFunction interface {
+	// ClientID returns the id of the source.
+	ClientID() string
+	// SetWantTarget set the target clientID that will be observed.
+	// This function should be called before Connect().
+	SetWantTarget(string)
 	// SetObserveDataTags set the data tag list that will be observed
 	SetObserveDataTags(tag ...uint32)
 	// Init will initialize the stream function
@@ -69,6 +74,14 @@ type streamFunction struct {
 	pfn             core.PipeHandler
 	pIn             chan []byte
 	pOut            chan *frame.DataFrame
+}
+
+func (s *streamFunction) ClientID() string {
+	return s.client.ClientID()
+}
+
+func (s *streamFunction) SetWantTarget(target string) {
+	s.client.SetWantTarget(target)
 }
 
 // SetObserveDataTags set the data tag list that will be observed.

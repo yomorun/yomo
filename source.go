@@ -11,12 +11,19 @@ import (
 
 // Source is responsible for sending data to yomo.
 type Source interface {
+	// ClientID returns the id of the source.
+	ClientID() string
+	// SetWantTarget set the target clientID that will be observed.
+	// This function should be called before Connect().
+	SetWantTarget(string)
 	// Close will close the connection to YoMo-Zipper.
 	Close() error
 	// Connect to YoMo-Zipper.
 	Connect() error
 	// Write the data to directed downstream.
 	Write(tag uint32, data []byte) error
+	// WritePayload writes the payload to directed downstream.
+	WritePayload(tag uint32, payload *payload.Payload) error
 	// SetErrorHandler set the error handler function when server error occurs
 	SetErrorHandler(fn func(err error))
 }
@@ -51,6 +58,14 @@ func NewSource(name, zipperAddr string, opts ...SourceOption) Source {
 		zipperAddr: zipperAddr,
 		client:     client,
 	}
+}
+
+func (s *yomoSource) ClientID() string {
+	return s.client.ClientID()
+}
+
+func (s *yomoSource) SetWantTarget(target string) {
+	s.client.SetWantTarget(target)
 }
 
 // Close will close the connection to YoMo-Zipper.
