@@ -15,6 +15,8 @@ import (
 type StreamFunction interface {
 	// ClientID returns the id of the source.
 	ClientID() string
+	// SetClientID sets clientID to source.
+	SetClientID(string)
 	// SetWantTarget set the target clientID that will be observed.
 	// This function should be called before Connect().
 	SetWantTarget(string)
@@ -74,6 +76,10 @@ type streamFunction struct {
 	pfn             core.PipeHandler
 	pIn             chan []byte
 	pOut            chan *frame.DataFrame
+}
+
+func (s *streamFunction) SetClientID(clientID string) {
+	s.client.SetClientID(clientID)
 }
 
 func (s *streamFunction) ClientID() string {

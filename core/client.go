@@ -81,6 +81,10 @@ func NewClient(appName, zipperAddr string, clientType ClientType, opts ...Client
 	}
 }
 
+func (c *Client) SetClientID(clientID string) {
+	c.clientID = clientID
+}
+
 func (c *Client) SetWantTarget(target string) {
 	c.wantTarget = target
 }

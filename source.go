@@ -13,6 +13,8 @@ import (
 type Source interface {
 	// ClientID returns the id of the source.
 	ClientID() string
+	// SetClientID sets clientID to source.
+	SetClientID(string)
 	// SetWantTarget set the target clientID that will be observed.
 	// This function should be called before Connect().
 	SetWantTarget(string)
@@ -62,6 +64,10 @@ func NewSource(name, zipperAddr string, opts ...SourceOption) Source {
 
 func (s *yomoSource) ClientID() string {
 	return s.client.ClientID()
+}
+
+func (s *yomoSource) SetClientID(clientID string) {
+	s.client.SetClientID(clientID)
 }
 
 func (s *yomoSource) SetWantTarget(target string) {
