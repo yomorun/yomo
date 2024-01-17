@@ -23,7 +23,6 @@ type Client struct {
 	zipperAddr     string
 	name           string
 	clientID       string
-	wantTarget     string
 	clientType     ClientType
 	processor      func(*frame.DataFrame)
 	errorfn        func(error)
@@ -83,10 +82,6 @@ func NewClient(appName, zipperAddr string, clientType ClientType, opts ...Client
 
 func (c *Client) SetClientID(clientID string) {
 	c.clientID = clientID
-}
-
-func (c *Client) SetWantTarget(target string) {
-	c.wantTarget = target
 }
 
 // Connect connect client to server.
@@ -183,7 +178,6 @@ func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
 		AuthName:        c.opts.credential.Name(),
 		AuthPayload:     c.opts.credential.Payload(),
 		Version:         Version,
-		WantTarget:      c.wantTarget,
 	}
 
 	if err := conn.WriteFrame(hf); err != nil {

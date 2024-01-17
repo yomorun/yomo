@@ -60,8 +60,6 @@ type HandshakeFrame struct {
 	AuthPayload string
 	// Version is used by the source/sfn to communicate their spec version to the server.
 	Version string
-	// WantTarget is a connection ID that the client wants to accepts data from.
-	WantTarget string
 }
 
 // Type returns the type of HandshakeFrame.

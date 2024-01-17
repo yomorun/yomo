@@ -34,9 +34,15 @@ func NewMockContext(data []byte, tag uint32) *MockContext {
 func (c *MockContext) Data() []byte {
 	return c.data
 }
+
 func (c *MockContext) Tag() uint32 {
 	return c.tag
 }
+
+func (c *MockContext) TID() string {
+	return "mock-tid"
+}
+
 func (m *MockContext) HTTP() serverless.HTTP {
 	return &guest.GuestHTTP{}
 }

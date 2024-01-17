@@ -70,6 +70,7 @@ var _ StreamFunction = &streamFunction{}
 type streamFunction struct {
 	name            string
 	zipperAddr      string
+	wantTarget      string
 	client          *core.Client
 	observeDataTags []uint32          // tag list that will be observed
 	fn              core.AsyncHandler // user's function which will be invoked when data arrived
@@ -87,7 +88,7 @@ func (s *streamFunction) ClientID() string {
 }
 
 func (s *streamFunction) SetWantTarget(target string) {
-	s.client.SetWantTarget(target)
+	s.wantTarget = target
 }
 
 // SetObserveDataTags set the data tag list that will be observed.
@@ -210,6 +211,8 @@ func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 
 			newMd, endFn := core.SfnTraceMetadata(md, s.client.Name(), s.client.TracerProvider(), s.client.Logger)
 			defer endFn()
+
+			newMd.Set(core.MetadataTargetKey, s.wantTarget)
 
 			serverlessCtx := serverless.NewContext(s.client, dataFrame.Tag, newMd, dataFrame.Payload)
 			s.fn(serverlessCtx)

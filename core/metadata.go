@@ -19,8 +19,7 @@ const (
 	MetaTracedKey      = "yomo-traced"
 
 	// the keys for target system working.
-	MetadataTargetKey     = "yomo-target"
-	MetadataWantTargetKey = "yomo-want-target"
+	MetadataTargetKey = "yomo-target"
 )
 
 // NewMetadata returns metadata for yomo working.

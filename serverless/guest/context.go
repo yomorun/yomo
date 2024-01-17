@@ -5,7 +5,6 @@ import (
 	"errors"
 	_ "unsafe"
 
-	"github.com/yomorun/yomo/core/payload"
 	"github.com/yomorun/yomo/serverless"
 )
 
@@ -40,11 +39,6 @@ func (c *GuestContext) Write(tag uint32, data []byte) error {
 		return errors.New("yomoWrite error")
 	}
 	return nil
-}
-
-// TODO: implement WritePayload
-func (c *GuestContext) WritePayload(tag uint32, payload *payload.Payload) error {
-	panic("not implemented")
 }
 
 // TODO: implement TID

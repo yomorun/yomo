@@ -15,9 +15,6 @@ type Source interface {
 	ClientID() string
 	// SetClientID sets clientID to source.
 	SetClientID(string)
-	// SetWantTarget set the target clientID that will be observed.
-	// This function should be called before Connect().
-	SetWantTarget(string)
 	// Close will close the connection to YoMo-Zipper.
 	Close() error
 	// Connect to YoMo-Zipper.
@@ -35,6 +32,7 @@ type yomoSource struct {
 	name       string
 	zipperAddr string
 	client     *core.Client
+	wantTarget string
 }
 
 var _ Source = &yomoSource{}
@@ -68,10 +66,6 @@ func (s *yomoSource) ClientID() string {
 
 func (s *yomoSource) SetClientID(clientID string) {
 	s.client.SetClientID(clientID)
-}
-
-func (s *yomoSource) SetWantTarget(target string) {
-	s.client.SetWantTarget(target)
 }
 
 // Close will close the connection to YoMo-Zipper.
