@@ -11,10 +11,6 @@ import (
 
 // Source is responsible for sending data to yomo.
 type Source interface {
-	// ClientID returns the id of the source.
-	ClientID() string
-	// SetClientID sets clientID to source.
-	SetClientID(string)
 	// Close will close the connection to YoMo-Zipper.
 	Close() error
 	// Connect to YoMo-Zipper.
@@ -60,14 +56,6 @@ func NewSource(name, zipperAddr string, opts ...SourceOption) Source {
 	}
 }
 
-func (s *yomoSource) ClientID() string {
-	return s.client.ClientID()
-}
-
-func (s *yomoSource) SetClientID(clientID string) {
-	s.client.SetClientID(clientID)
-}
-
 // Close will close the connection to YoMo-Zipper.
 func (s *yomoSource) Close() error {
 	if err := s.client.Close(); err != nil {
@@ -111,10 +99,10 @@ func (s *yomoSource) WritePayload(tag uint32, payload *payload.Payload) error {
 	defer deferFunc()
 
 	if payload.Target != "" {
-		md.Set(core.MetadataTargetKey, payload.Target)
+		core.SetMetadataTarget(md, payload.Target)
 	}
 	if payload.TID != "" {
-		md.Set(core.MetadataTIDKey, payload.TID)
+		core.SetMetadataTID(md, payload.TID)
 	}
 
 	mdBytes, err := md.Encode()

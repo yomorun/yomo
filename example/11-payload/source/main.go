@@ -29,7 +29,7 @@ func main() {
 	sfn.SetHandler(func(ctx serverless.Context) {
 		fmt.Printf("[sfn] Receive data: %s, tid: %s\n", string(ctx.Data()), ctx.TID())
 	})
-	sfn.SetClientID("the-receiver-id")
+	sfn.SetWantedTarget("the-receiver-id")
 	defer sfn.Close()
 
 	err = sfn.Connect()

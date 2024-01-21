@@ -13,13 +13,9 @@ import (
 
 // StreamFunction defines serverless streaming functions.
 type StreamFunction interface {
-	// ClientID returns the id of the source.
-	ClientID() string
-	// SetClientID sets clientID to source.
-	SetClientID(string)
-	// SetWantTarget set the target clientID that will be observed.
-	// This function should be called before Connect().
-	SetWantTarget(string)
+	// SetWantedTarget set the target string that accepts the data carrying the same target.
+	// This function is optional and it should be called before Connect().
+	SetWantedTarget(string)
 	// SetObserveDataTags set the data tag list that will be observed
 	SetObserveDataTags(tag ...uint32)
 	// Init will initialize the stream function
@@ -70,7 +66,6 @@ var _ StreamFunction = &streamFunction{}
 type streamFunction struct {
 	name            string
 	zipperAddr      string
-	wantTarget      string
 	client          *core.Client
 	observeDataTags []uint32          // tag list that will be observed
 	fn              core.AsyncHandler // user's function which will be invoked when data arrived
@@ -79,16 +74,8 @@ type streamFunction struct {
 	pOut            chan *frame.DataFrame
 }
 
-func (s *streamFunction) SetClientID(clientID string) {
-	s.client.SetClientID(clientID)
-}
-
-func (s *streamFunction) ClientID() string {
-	return s.client.ClientID()
-}
-
-func (s *streamFunction) SetWantTarget(target string) {
-	s.wantTarget = target
+func (s *streamFunction) SetWantedTarget(target string) {
+	s.client.SetWantedTarget(target)
 }
 
 // SetObserveDataTags set the data tag list that will be observed.
@@ -211,8 +198,6 @@ func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 
 			newMd, endFn := core.SfnTraceMetadata(md, s.client.Name(), s.client.TracerProvider(), s.client.Logger)
 			defer endFn()
-
-			newMd.Set(core.MetadataTargetKey, s.wantTarget)
 
 			serverlessCtx := serverless.NewContext(s.client, dataFrame.Tag, newMd, dataFrame.Payload)
 			s.fn(serverlessCtx)

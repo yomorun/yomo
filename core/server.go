@@ -277,6 +277,9 @@ func (s *Server) authenticate(hf *frame.HandshakeFrame) (metadata.M, error) {
 }
 
 func (s *Server) createConnection(hf *frame.HandshakeFrame, md metadata.M, fconn frame.Conn) (*Connection, error) {
+	if hf.WantedTarget != "" {
+		md.Set(metadata.MetadataWantedTargetKey, hf.WantedTarget)
+	}
 	conn := newConnection(
 		hf.Name,
 		hf.ID,

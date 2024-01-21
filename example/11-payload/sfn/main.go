@@ -15,14 +15,14 @@ func main() {
 	}
 
 	sfn := yomo.NewStreamFunction("yomo-handler", addr)
-	sfn.SetWantTarget("the-receiver-id")
+	sfn.SetWantedTarget("the-receiver-id")
 	sfn.SetObserveDataTags(0x01)
 	sfn.SetHandler(func(ctx serverless.Context) {
 		fmt.Printf("[sfn] Receive data: %s, tid: %s\n", string(ctx.Data()), ctx.TID())
 		ctx.Write(0x02, ctx.Data())
 
 	})
-	sfn.SetClientID("the-handler-id")
+	sfn.SetWantedTarget("the-handler-id")
 	defer sfn.Close()
 
 	err := sfn.Connect()
