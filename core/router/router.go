@@ -66,12 +66,12 @@ func (r *defaultRouter) Route(dataTag uint32, md metadata.M) []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	target, tok := md.Get(metadata.TargetKey)
+	target, existed := md.Get(metadata.TargetKey)
 
 	var connID []string
 	if conns, ok := r.data[dataTag]; ok {
 		for k := range conns {
-			if tok {
+			if existed {
 				if wt, ok := r.targets[k]; ok && wt == target {
 					connID = append(connID, k)
 				}
