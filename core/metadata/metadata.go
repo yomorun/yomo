@@ -80,17 +80,18 @@ func (m M) Encode() ([]byte, error) {
 	return msgpack.Marshal(m)
 }
 
+// yomo reserved keys.
 const (
 	// the keys for yomo working.
-	MetadataSourceIDKey = "yomo-source-id"
-	MetadataTIDKey      = "yomo-tid"
+	SourceIDKey = "yomo-source-id"
+	TIDKey      = "yomo-tid"
 
 	// the keys for tracing.
-	MetadataTraceIDKey = "yomo-trace-id"
-	MetadataSpanIDKey  = "yomo-span-id"
-	MetaTracedKey      = "yomo-traced"
+	TraceIDKey = "yomo-trace-id"
+	SpanIDKey  = "yomo-span-id"
+	TracedKey  = "yomo-traced"
 
 	// the keys for target system working.
-	MetadataTargetKey       = "yomo-target"
-	MetadataWantedTargetKey = "yomo-wanted-target"
+	TargetKey       = "yomo-target"
+	WantedTargetKey = "yomo-wanted-target"
 )

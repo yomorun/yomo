@@ -36,7 +36,7 @@ func (c *Context) Data() []byte {
 }
 
 func (c *Context) TID() string {
-	tid, _ := c.md.Get(metadata.MetadataTIDKey)
+	tid, _ := c.md.Get(metadata.TIDKey)
 	return tid
 }
 
@@ -65,10 +65,10 @@ func (c *Context) WritePayload(tag uint32, payload *payload.Payload) error {
 		return nil
 	}
 	if payload.Target != "" {
-		c.md.Set(metadata.MetadataTargetKey, payload.Target)
+		c.md.Set(metadata.TargetKey, payload.Target)
 	}
 	if payload.TID != "" {
-		c.md.Set(metadata.MetadataTIDKey, payload.TID)
+		c.md.Set(metadata.TIDKey, payload.TID)
 	}
 
 	mdBytes, err := c.md.Encode()

@@ -2,7 +2,6 @@
 package router
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/yomorun/yomo/core/frame"
@@ -46,7 +45,7 @@ func (r *defaultRouter) Add(connID string, observeDataTags []uint32, md metadata
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	target, ok := md.Get(metadata.MetadataWantedTargetKey)
+	target, ok := md.Get(metadata.WantedTargetKey)
 	if ok {
 		r.targets[connID] = target
 	}
@@ -67,12 +66,11 @@ func (r *defaultRouter) Route(dataTag uint32, md metadata.M) []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	target, tok := md.Get(metadata.MetadataTargetKey)
+	target, tok := md.Get(metadata.TargetKey)
 
 	var connID []string
 	if conns, ok := r.data[dataTag]; ok {
 		for k := range conns {
-			fmt.Println("--->", k, tok, target, r.targets[k])
 			if tok {
 				if wt, ok := r.targets[k]; ok && wt == target {
 					connID = append(connID, k)
