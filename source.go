@@ -28,7 +28,6 @@ type yomoSource struct {
 	name       string
 	zipperAddr string
 	client     *core.Client
-	wantTarget string
 }
 
 var _ Source = &yomoSource{}
@@ -121,4 +120,11 @@ func (s *yomoSource) WritePayload(tag uint32, payload *payload.Payload) error {
 // SetErrorHandler set the error handler function when server error occurs
 func (s *yomoSource) SetErrorHandler(fn func(err error)) {
 	s.client.SetErrorHandler(fn)
+}
+
+// NewPayload returns a new `yomo.Payload` from data.
+func NewPayload(data []byte) *payload.Payload {
+	return &payload.Payload{
+		Data: data,
+	}
 }
