@@ -53,5 +53,8 @@ func TestSource(t *testing.T) {
 	err = source.Write(0x21, []byte("test"))
 	assert.Nil(t, err)
 
+	err = source.WritePayload(0x21, NewPayload([]byte("test")))
+	assert.Nil(t, err)
+
 	<-exit
 }
