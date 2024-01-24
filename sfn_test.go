@@ -35,10 +35,36 @@ func TestStreamFunction(t *testing.T) {
 		t.Logf("unittest sfn receive <- (%d)", len(ctx.Data()))
 		assert.Equal(t, uint32(0x21), ctx.Tag())
 		assert.Equal(t, []byte("test"), ctx.Data())
-		ctx.Write(0x22, []byte("backflow"))
+		ctx.Write(0x23, []byte("backflow"))
 	})
 
 	// connect to server
+	err := sfn.Connect()
+	assert.Nil(t, err)
+
+	sfn.Wait()
+}
+
+func TestSfnWantedTarget(t *testing.T) {
+	t.Parallel()
+
+	sfn := NewStreamFunction("sfn-handler", "localhost:9000", WithSfnCredential("token:<CREDENTIAL>"))
+	sfn.SetObserveDataTags(0x22)
+	sfn.SetWantedTarget("handler")
+
+	time.AfterFunc(time.Second, func() {
+		sfn.Close()
+	})
+
+	// set handler
+	sfn.SetHandler(func(ctx serverless.Context) {
+		assert.Equal(t, uint32(0x22), ctx.Tag())
+		assert.Equal(t, []byte("hello handler"), ctx.Data())
+		assert.Equal(t, "hello handler", ctx.TID())
+
+		ctx.WritePayload(0x25, NewPayload([]byte("hello handler")).WithTID(ctx.TID()))
+	})
+
 	err := sfn.Connect()
 	assert.Nil(t, err)
 
