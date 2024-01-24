@@ -25,7 +25,7 @@ func (p *Payload) WithTarget(target string) *Payload {
 	return p
 }
 
-// WithTID returns a new Payload with target.
+// WithTID returns a new Payload with TID.
 func (p *Payload) WithTID(TID string) *Payload {
 	p.TID = TID
 	return p
