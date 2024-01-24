@@ -4,10 +4,16 @@ import (
 	"testing"
 	"time"
 
+	gonanoid "github.com/matoous/go-nanoid/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/ylog"
 	"github.com/yomorun/yomo/serverless"
+)
+
+var (
+	mockTID          = gonanoid.Must(16)
+	mockTargetString = "targetString"
 )
 
 func TestStreamFunction(t *testing.T) {
@@ -35,7 +41,12 @@ func TestStreamFunction(t *testing.T) {
 		t.Logf("unittest sfn receive <- (%d)", len(ctx.Data()))
 		assert.Equal(t, uint32(0x21), ctx.Tag())
 		assert.Equal(t, []byte("test"), ctx.Data())
-		ctx.Write(0x23, []byte("backflow"))
+
+		err := ctx.WritePayload(0x22,
+			NewPayload([]byte("message from sfn")).WithTID(mockTID).WithTarget(mockTargetString),
+		)
+		assert.Nil(t, err)
+
 	})
 
 	// connect to server
@@ -50,7 +61,7 @@ func TestSfnWantedTarget(t *testing.T) {
 
 	sfn := NewStreamFunction("sfn-handler", "localhost:9000", WithSfnCredential("token:<CREDENTIAL>"))
 	sfn.SetObserveDataTags(0x22)
-	sfn.SetWantedTarget("handler")
+	sfn.SetWantedTarget(mockTargetString)
 
 	time.AfterFunc(time.Second, func() {
 		sfn.Close()
@@ -58,11 +69,10 @@ func TestSfnWantedTarget(t *testing.T) {
 
 	// set handler
 	sfn.SetHandler(func(ctx serverless.Context) {
+		t.Logf("unittest handler sfn receive <- (%d)", len(ctx.Data()))
 		assert.Equal(t, uint32(0x22), ctx.Tag())
-		assert.Equal(t, []byte("hello handler"), ctx.Data())
-		assert.Equal(t, "hello handler", ctx.TID())
-
-		ctx.WritePayload(0x25, NewPayload([]byte("hello handler")).WithTID(ctx.TID()))
+		assert.Contains(t, []string{"message from source", "message from sfn"}, string(ctx.Data()))
+		assert.Equal(t, mockTID, ctx.TID())
 	})
 
 	err := sfn.Connect()
