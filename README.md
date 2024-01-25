@@ -92,7 +92,7 @@ $ exa -l
 
 ### Step 4. Run
 
-There is an public test Zipper service `tap.yomo.dev:9140` which is provided by
+There is a public test Zipper service `tap.yomo.dev:9140` which is provided by
 our community, you can test your StreamFunction quickly by connecting to it.
 
 ```bash
