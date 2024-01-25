@@ -1,0 +1,19 @@
+name: ai-zipper
+host: 0.0.0.0
+port: 9000
+
+ai:
+  azure-openai:
+    api_key:
+    api_endpoint:
+    http:
+      host: http://localhost:8000/
+      port: 8000
+
+  openai:
+    api_key:
+    api_endpoint:
+
+  huggingface:
+    model:
+
