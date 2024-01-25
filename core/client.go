@@ -56,8 +56,6 @@ func NewClient(appName, zipperAddr string, clientType ClientType, opts ...Client
 		option.quicConfig.Tracer = qlogTracer
 	}
 
-	clientID := id.New()
-
 	logger := option.logger
 
 	ctx, ctxCancel := context.WithCancelCause(context.Background())
@@ -65,7 +63,6 @@ func NewClient(appName, zipperAddr string, clientType ClientType, opts ...Client
 	return &Client{
 		zipperAddr:     zipperAddr,
 		name:           appName,
-		clientID:       clientID,
 		processor:      func(df *frame.DataFrame) { logger.Warn("the processor has not been set") },
 		clientType:     clientType,
 		opts:           option,
@@ -165,6 +162,9 @@ func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
 	if err != nil {
 		return conn, err
 	}
+
+	// refresh client id in order to avoid id conflicts on the server-side
+	c.clientID = id.New()
 
 	hf := &frame.HandshakeFrame{
 		Name:            c.name,
