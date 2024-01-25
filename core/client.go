@@ -23,6 +23,7 @@ type Client struct {
 	zipperAddr     string
 	name           string                 // name of the client
 	clientID       string                 // id of the client
+	reconnCounter  uint                   // counter for reconnection
 	clientType     ClientType             // type of the client
 	processor      func(*frame.DataFrame) // function to invoke when data arrived
 	errorfn        func(error)            // function to invoke when error occured
@@ -56,6 +57,8 @@ func NewClient(appName, zipperAddr string, clientType ClientType, opts ...Client
 		option.quicConfig.Tracer = qlogTracer
 	}
 
+	clientID := id.New()
+
 	logger := option.logger
 
 	ctx, ctxCancel := context.WithCancelCause(context.Background())
@@ -63,6 +66,7 @@ func NewClient(appName, zipperAddr string, clientType ClientType, opts ...Client
 	return &Client{
 		zipperAddr:     zipperAddr,
 		name:           appName,
+		clientID:       clientID,
 		processor:      func(df *frame.DataFrame) { logger.Warn("the processor has not been set") },
 		clientType:     clientType,
 		opts:           option,
@@ -164,11 +168,12 @@ func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
 	}
 
 	// refresh client id in order to avoid id conflicts on the server-side
-	c.clientID = id.New()
+	clientID := fmt.Sprintf("%s-%d", c.clientID, c.reconnCounter)
+	c.reconnCounter++
 
 	hf := &frame.HandshakeFrame{
 		Name:            c.name,
-		ID:              c.clientID,
+		ID:              clientID,
 		ClientType:      byte(c.clientType),
 		ObserveDataTags: c.opts.observeDataTags,
 		AuthName:        c.opts.credential.Name(),
