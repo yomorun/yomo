@@ -21,12 +21,13 @@ import (
 // Source, Upstream Zipper or StreamFunction.
 type Client struct {
 	zipperAddr     string
-	name           string
-	clientID       string
+	name           string                 // name of the client
+	clientID       string                 // id of the client
+	reconnCounter  uint                   // counter for reconnection
+	clientType     ClientType             // type of the client
+	processor      func(*frame.DataFrame) // function to invoke when data arrived
+	errorfn        func(error)            // function to invoke when error occured
 	wantedTarget   string
-	clientType     ClientType
-	processor      func(*frame.DataFrame)
-	errorfn        func(error)
 	opts           *clientOptions
 	Logger         *slog.Logger
 	tracerProvider oteltrace.TracerProvider
@@ -172,9 +173,13 @@ func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
 		return conn, err
 	}
 
+	// refresh client id in order to avoid id conflicts on the server-side
+	clientID := fmt.Sprintf("%s-%d", c.clientID, c.reconnCounter)
+	c.reconnCounter++
+
 	hf := &frame.HandshakeFrame{
 		Name:            c.name,
-		ID:              c.clientID,
+		ID:              clientID,
 		ClientType:      byte(c.clientType),
 		ObserveDataTags: c.opts.observeDataTags,
 		AuthName:        c.opts.credential.Name(),
