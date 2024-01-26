@@ -4,7 +4,6 @@ package serverless
 import (
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
-	"github.com/yomorun/yomo/core/payload"
 )
 
 // Context sfn handler context
@@ -60,15 +59,13 @@ func (c *Context) Write(tag uint32, data []byte) error {
 	return c.writer.WriteFrame(dataFrame)
 }
 
-func (c *Context) WritePayload(tag uint32, payload *payload.Payload) error {
-	if payload.Data == nil {
+func (c *Context) WriteWithTarget(tag uint32, data []byte, target string) error {
+	if data == nil {
 		return nil
 	}
-	if payload.Target != "" {
-		c.md.Set(metadata.TargetKey, payload.Target)
-	}
-	if payload.TID != "" {
-		c.md.Set(metadata.TIDKey, payload.TID)
+
+	if target != "" {
+		c.md.Set(metadata.TargetKey, target)
 	}
 
 	mdBytes, err := c.md.Encode()
@@ -79,7 +76,7 @@ func (c *Context) WritePayload(tag uint32, payload *payload.Payload) error {
 	dataFrame := &frame.DataFrame{
 		Tag:      tag,
 		Metadata: mdBytes,
-		Payload:  payload.Data,
+		Payload:  data,
 	}
 
 	return c.writer.WriteFrame(dataFrame)

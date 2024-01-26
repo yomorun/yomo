@@ -39,9 +39,7 @@ func TestSource(t *testing.T) {
 	err = source.Write(0x21, []byte("test"))
 	assert.Nil(t, err)
 
-	err = source.WritePayload(0x22,
-		NewPayload([]byte("message from source")).WithTID(mockTID).WithTarget(mockTargetString),
-	)
+	err = source.WriteWithTarget(0x22, []byte("message from source"), mockTargetString)
 	assert.Nil(t, err)
 
 	<-exit

@@ -5,7 +5,6 @@ import (
 
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/core/payload"
 	"github.com/yomorun/yomo/pkg/id"
 )
 
@@ -17,8 +16,8 @@ type Source interface {
 	Connect() error
 	// Write the data to directed downstream.
 	Write(tag uint32, data []byte) error
-	// WritePayload writes the payload to directed downstream.
-	WritePayload(tag uint32, payload *payload.Payload) error
+	// WriteWithTarget writes data to sfn instance with specified target.
+	WriteWithTarget(tag uint32, data []byte, target string) error
 	// SetErrorHandler set the error handler function when server error occurs
 	SetErrorHandler(fn func(err error))
 }
@@ -90,18 +89,15 @@ func (s *yomoSource) Write(tag uint32, data []byte) error {
 }
 
 // WritePayload writes `yomo.Payload` with specified tag.
-func (s *yomoSource) WritePayload(tag uint32, payload *payload.Payload) error {
-	if payload == nil {
+func (s *yomoSource) WriteWithTarget(tag uint32, data []byte, target string) error {
+	if data == nil {
 		return nil
 	}
 	md, deferFunc := core.SourceMetadata(s.client.ClientID(), id.New(), s.name, s.client.TracerProvider(), s.client.Logger)
 	defer deferFunc()
 
-	if payload.Target != "" {
-		core.SetMetadataTarget(md, payload.Target)
-	}
-	if payload.TID != "" {
-		core.SetMetadataTID(md, payload.TID)
+	if target != "" {
+		core.SetMetadataTarget(md, target)
 	}
 
 	mdBytes, err := md.Encode()
@@ -111,20 +107,13 @@ func (s *yomoSource) WritePayload(tag uint32, payload *payload.Payload) error {
 	f := &frame.DataFrame{
 		Tag:      tag,
 		Metadata: mdBytes,
-		Payload:  payload.Data,
+		Payload:  data,
 	}
-	s.client.Logger.Debug("source write payload", "tag", tag, "data", payload.Data)
+	s.client.Logger.Debug("source write with target", "tag", tag, "data", data, "target", target)
 	return s.client.WriteFrame(f)
 }
 
 // SetErrorHandler set the error handler function when server error occurs
 func (s *yomoSource) SetErrorHandler(fn func(err error)) {
 	s.client.SetErrorHandler(fn)
-}
-
-// NewPayload returns a new `yomo.Payload` from data.
-func NewPayload(data []byte) *payload.Payload {
-	return &payload.Payload{
-		Data: data,
-	}
 }

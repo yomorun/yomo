@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	gonanoid "github.com/matoous/go-nanoid/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/ylog"
@@ -12,7 +11,6 @@ import (
 )
 
 var (
-	mockTID          = gonanoid.Must(16)
 	mockTargetString = "targetString"
 )
 
@@ -42,9 +40,7 @@ func TestStreamFunction(t *testing.T) {
 		assert.Equal(t, uint32(0x21), ctx.Tag())
 		assert.Equal(t, []byte("test"), ctx.Data())
 
-		err := ctx.WritePayload(0x22,
-			NewPayload([]byte("message from sfn")).WithTID(mockTID).WithTarget(mockTargetString),
-		)
+		err := ctx.WriteWithTarget(0x22, []byte("message from sfn"), mockTargetString)
 		assert.Nil(t, err)
 
 	})
@@ -72,7 +68,6 @@ func TestSfnWantedTarget(t *testing.T) {
 		t.Logf("unittest handler sfn receive <- (%d)", len(ctx.Data()))
 		assert.Equal(t, uint32(0x22), ctx.Tag())
 		assert.Contains(t, []string{"message from source", "message from sfn"}, string(ctx.Data()))
-		assert.Equal(t, mockTID, ctx.TID())
 	})
 
 	err := sfn.Connect()
