@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"sync"
 
 	"golang.org/x/exp/slog"
 
+	_ "github.com/joho/godotenv/autoload"
 	"github.com/yomorun/yomo/core/ai"
 )
 
@@ -77,6 +79,13 @@ func NewAzureOpenAIProvider(apiKey string, apiEndpoint string) *AzureOpenAIProvi
 	}
 }
 
+func New() *AzureOpenAIProvider {
+	return &AzureOpenAIProvider{
+		APIKey:      os.Getenv("AZURE_OPENAI_API_KEY"),
+		APIEndpoint: os.Getenv("AZURE_OPENAI_API_ENDPOINT"),
+	}
+}
+
 func (p *AzureOpenAIProvider) Name() string {
 	return "azopenai"
 }
@@ -97,6 +106,9 @@ func (p *AzureOpenAIProvider) GetChatCompletions(appID string, tag uint32, userP
 	if err != nil {
 		return nil, err
 	}
+	slog.Info("request url", "url", p.APIEndpoint)
+	slog.Info("request api key", "api-key", p.APIKey)
+	slog.Info("request body", "body", string(jsonBody))
 
 	req, err := http.NewRequest("POST", p.APIEndpoint, bytes.NewBuffer(jsonBody))
 	if err != nil {
@@ -191,5 +203,7 @@ func (p *AzureOpenAIProvider) ListToolCalls(appID string, tag uint32) ([]ai.Tool
 
 func init() {
 	tools = make(map[string]map[uint32][]ai.ToolCall)
-	ai.RegisterProvider(NewAzureOpenAIProvider("api-key", "api-endpoint"))
+	// ai.RegisterProvider(NewAzureOpenAIProvider("api-key", "api-endpoint"))
+	// TODO: for test
+	ai.RegisterProvider(New())
 }

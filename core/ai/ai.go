@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -9,7 +10,10 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-var ErrNotExistsProvider = errors.New("not exists AI provider")
+var (
+	ErrNotExistsProvider     = errors.New("not exists AI provider")
+	ErrNotImplementedService = errors.New("not implemented AI service")
+)
 
 // AIService provides an interface to the AI API
 type AIService interface {
@@ -75,6 +79,12 @@ func GetDefaultProvider() (AIProvider, error) {
 }
 
 // ======================= AIServer =======================
+type ChatCompletionsRequest struct {
+	AppID  string `json:"app_id"`
+	Tag    uint32 `json:"tag"`
+	Prompt string `json:"prompt"`
+}
+
 type AIServer struct {
 	Name string
 	AIService
@@ -97,9 +107,29 @@ func (a *AIServer) Serve() error {
 	})
 
 	pattern = fmt.Sprintf("/%s/chat/completions", a.Name)
+
 	handler.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+		// TODO: need to returns json
+		var req ChatCompletionsRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(err.Error()))
+			return
+		}
+		resp, err := a.GetChatCompletions(req.AppID, req.Tag, req.Prompt)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+			return
+		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(pattern))
+		err = json.NewEncoder(w).Encode(resp)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
 	})
 
 	httpServer := http.Server{
@@ -146,4 +176,16 @@ func ListToolCalls(appID string, tag uint32) ([]ToolCall, error) {
 		return nil, err
 	}
 	return provider.ListToolCalls(appID, tag)
+}
+
+func GetChatCompletions(appID string, tag uint32, prompt string) (*ChatCompletionsResponse, error) {
+	provider, err := GetDefaultProvider()
+	if err != nil {
+		return nil, err
+	}
+	service, ok := provider.(AIService)
+	if !ok {
+		return nil, ErrNotImplementedService
+	}
+	return service.GetChatCompletions(appID, tag, prompt)
 }

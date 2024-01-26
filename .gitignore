@@ -37,3 +37,4 @@ target
 coverage.txt
 *.o
 build/
+example/10-ai/.env

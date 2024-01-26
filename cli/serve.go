@@ -22,11 +22,20 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/core/ai"
 	"github.com/yomorun/yomo/core/router"
 	pkgconfig "github.com/yomorun/yomo/pkg/config"
 	"github.com/yomorun/yomo/pkg/log"
 	"github.com/yomorun/yomo/pkg/trace"
+
+	// TODO: need dynamic load
+	_ "github.com/yomorun/yomo/pkg/ai/azopenai"
 )
+
+// TEST: need delete
+type Msg struct {
+	CityName string `json:"city_name" jsonschema:"description=The name of the city to be queried"`
+}
 
 // serveCmd represents the serve command
 var serveCmd = &cobra.Command{
@@ -69,6 +78,26 @@ var serveCmd = &cobra.Command{
 			return
 		}
 		zipper.Logger().Info("using config file", "file_path", config)
+
+		// TODO: AI Server
+		go func() {
+			// "{\"name\":\"get-weather\",\"description\":\"Get the current weather for `city_name`\",\"parameters\":{\"type\":\"object\",\"properties\":{\"city_name\":{\"type\":\"string\",\"description\":\"The name of the city to be queried\"}},\"required\":[\"city_name\"]}}"
+			appID := "appID"
+			name := "get-weather"
+			tag := uint32(0x60)
+			description := "Get the current weather for `city_name`"
+			err := ai.RegisterFunctionCaller(appID, tag, name, description, &Msg{})
+			if err != nil {
+				log.FailureStatusEvent(os.Stdout, err.Error())
+				return
+			}
+			err = ai.Serve()
+			if err != nil {
+				log.FailureStatusEvent(os.Stdout, err.Error())
+				return
+			}
+			fmt.Println("AI Server is running...")
+		}()
 
 		err = zipper.ListenAndServe(ctx, listenAddr)
 		if err != nil {
