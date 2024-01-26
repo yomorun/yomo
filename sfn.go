@@ -13,7 +13,7 @@ import (
 
 // StreamFunction defines serverless streaming functions.
 type StreamFunction interface {
-	// SetWantedTarget set the target string that accepts the data carrying the same target.
+	// SetWantedTarget sets target for sfn that to receive data carrying the same target.
 	// This function is optional and it should be called before Connect().
 	SetWantedTarget(string)
 	// SetObserveDataTags set the data tag list that will be observed

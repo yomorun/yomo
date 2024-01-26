@@ -25,6 +25,7 @@ type defaultRouter struct {
 	// mu protects data.
 	mu sync.RWMutex
 
+	// targets stores the mapping between connID and the target string that conn wanted.
 	targets map[string]string
 
 	// data stores tag and connID connection.

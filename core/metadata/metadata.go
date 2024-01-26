@@ -80,7 +80,7 @@ func (m M) Encode() ([]byte, error) {
 	return msgpack.Marshal(m)
 }
 
-// yomo reserved keys.
+// yomo reserved metadata keys.
 const (
 	// the keys for yomo working.
 	SourceIDKey = "yomo-source-id"

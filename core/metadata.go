@@ -19,12 +19,6 @@ func NewMetadata(sourceID, tid string, traceID string, spanID string, traced boo
 	}
 }
 
-// GetSourceIDFromMetadata gets sourceID from metadata.
-func GetSourceIDFromMetadata(m metadata.M) string {
-	sourceID, _ := m.Get(metadata.SourceIDKey)
-	return sourceID
-}
-
 // GetTIDFromMetadata gets TID from metadata.
 func GetTIDFromMetadata(m metadata.M) string {
 	tid, _ := m.Get(metadata.TIDKey)
@@ -40,11 +34,6 @@ func GetTracedFromMetadata(m metadata.M) bool {
 // SetMetadataTarget sets target in metadata.
 func SetMetadataTarget(m metadata.M, target string) {
 	m.Set(metadata.TargetKey, target)
-}
-
-// SetMetadataTID sets TID in metadata.
-func SetMetadataTID(m metadata.M, tid string) {
-	m.Set(metadata.TIDKey, tid)
 }
 
 // SourceMetadata generates source metadata with trace information.
