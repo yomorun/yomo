@@ -2,13 +2,19 @@ name: ai-zipper
 host: 0.0.0.0
 port: 9000
 
+auth:
+  type: token
+  token: <CREDENTIAL>
+
 # ai:
 #   azure-openai:
 #     api_key:
 #     api_endpoint:
 #     http:
-#       host: http://localhost:8000/
+#       host: http://localhost
 #       port: 8000
+#       endpoints:
+#         chat_completions: /chat/completions
 #
 #   openai:
 #     api_key:

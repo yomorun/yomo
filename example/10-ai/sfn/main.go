@@ -65,9 +65,9 @@ func main() {
 
 	description := serverless.Description()
 	slog.Info("[sfn] description", "description", description)
-	// TODO: 如何获取 appID?
+	// TODO: how to get ppID?
 	appID := "appID"
-	// TODO: 注册 AI Function
+	// TODO: register AI Function
 	err = ai.RegisterFunctionCaller(appID, tag, name, Description(), InputSchema())
 	if err != nil {
 		slog.Error("[sfn] register ai function caller", "err", err)
