@@ -1,20 +1,26 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
+	"net/http"
 	"os"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/core/ai"
 	"golang.org/x/exp/slog"
 
 	// TODO: need dynamic load
-	_ "github.com/yomorun/yomo/pkg/ai/azopenai"
+	// _ "github.com/yomorun/yomo/pkg/ai/azopenai"
+	"github.com/yomorun/yomo/core/ai"
 )
 
 var (
 	addr        = "localhost:9000"
-	tag  uint32 = 0x60
+	appID       = "appID"
+	name        = "get-weather"
+	tag         = uint32(0x60)
+	description = "Get the current weather for `city_name`"
 )
 
 // TEST: need delete
@@ -50,35 +56,60 @@ func main() {
 
 func requestInvokeAIFunction(source yomo.Source) error {
 	prompt := "What's the weather like in San Francisco, Melbourne, and Paris?"
-	// register ai function
-	err := ai.RegisterFunctionCaller("appID", tag, "chatCompletionFunction", "chatCompletionFunction", &Msg{})
-	if err != nil {
-		slog.Error("[source] ❌ Register AI function failure with err", "err", err)
-		return err
-	}
+	/*
+		// register ai function
+		err := ai.RegisterFunctionCaller(appID, tag, name, description, &Msg{})
+		if err != nil {
+			slog.Error("[source] ❌ Register AI function failure with err", "err", err)
+			return err
+		}
+		// invoke ai api
+		resp, err := ai.GetChatCompletions(appID, tag, prompt)
+		if err != nil {
+			slog.Error("[source] ❌ Invoke AI function failure with err", "err", err)
+			return err
+		}
+		functions, _ := json.Marshal(resp.Functions)
+		slog.Info("[source] ✅ Invoke AI function", "functions", string(functions))
+	*/
+
 	// invoke ai api
-	resp, err := ai.GetChatCompletions("appID", tag, prompt)
+	api := "http://localhost:8000/azopenai/chat/completions"
+	// cred:=source.()
+	req, _ := json.Marshal(ai.ChatCompletionsRequest{
+		AppID:  appID,
+		Tag:    tag,
+		Prompt: prompt,
+	})
+	resp, err := http.Post(api, "application/json", bytes.NewBuffer(req))
 	if err != nil {
 		slog.Error("[source] ❌ Invoke AI function failure with err", "err", err)
 		return err
 	}
-	slog.Info("[source] ✅ Invoke AI function", "resp", resp)
-	msg := Msg{
-		CityName: "San Francisco",
-	}
-	data, err := json.Marshal(msg)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		slog.Error("[source] ❌ Marshal data failure with err", "err", err)
+		slog.Error("[source] ❌ ReadAll data failure with err", "err", err)
 		return err
 	}
 	// send data to YoMo-Zipper
-	err = source.Write(tag, data)
+	var chatCompletionsResponse ai.ChatCompletionsResponse
+	err = json.Unmarshal(body, &chatCompletionsResponse)
 	if err != nil {
-		slog.Error("[source] ❌ Emit to YoMo-Zipper failure with err", "err", err, "data", data)
+		slog.Error("[source] ❌ Unmarshal data failure with err", "err", err)
 		return err
-
-	} else {
-		slog.Info("[source] ✅ Emit to YoMo-Zipper", "data", string(data))
 	}
+	for _, fd := range chatCompletionsResponse.Functions {
+		slog.Info("[source] 🅰️ Invoke AI function", "functions", fd.Name, "arguments", fd.Arguments)
+		err := source.Write(tag, []byte(fd.Arguments))
+		if err != nil {
+			slog.Error("[source] ❌ Emit to YoMo-Zipper failure with err", "err", err)
+			return err
+
+		} else {
+			slog.Info("[source] ✅ Emit to YoMo-Zipper")
+		}
+	}
+
 	return nil
 }

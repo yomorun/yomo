@@ -82,16 +82,16 @@ var serveCmd = &cobra.Command{
 		// TODO: AI Server
 		go func() {
 			// "{\"name\":\"get-weather\",\"description\":\"Get the current weather for `city_name`\",\"parameters\":{\"type\":\"object\",\"properties\":{\"city_name\":{\"type\":\"string\",\"description\":\"The name of the city to be queried\"}},\"required\":[\"city_name\"]}}"
-			appID := "appID"
-			name := "get-weather"
-			tag := uint32(0x60)
-			description := "Get the current weather for `city_name`"
-			err := ai.RegisterFunctionCaller(appID, tag, name, description, &Msg{})
-			if err != nil {
-				log.FailureStatusEvent(os.Stdout, err.Error())
-				return
-			}
-			err = ai.Serve()
+			// appID := "appID"
+			// name := "get-weather"
+			// tag := uint32(0x60)
+			// description := "Get the current weather for `city_name`"
+			// err := ai.RegisterFunctionCaller(appID, tag, name, description, &Msg{})
+			// if err != nil {
+			// 	log.FailureStatusEvent(os.Stdout, err.Error())
+			// 	return
+			// }
+			err := ai.Serve()
 			if err != nil {
 				log.FailureStatusEvent(os.Stdout, err.Error())
 				return

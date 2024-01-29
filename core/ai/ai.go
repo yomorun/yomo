@@ -79,11 +79,6 @@ func GetDefaultProvider() (AIProvider, error) {
 }
 
 // ======================= AIServer =======================
-type ChatCompletionsRequest struct {
-	AppID  string `json:"app_id"`
-	Tag    uint32 `json:"tag"`
-	Prompt string `json:"prompt"`
-}
 
 type AIServer struct {
 	Name string
@@ -98,6 +93,8 @@ func NewAIServer(name string, service AIService) *AIServer {
 }
 
 func (a *AIServer) Serve() error {
+	// TODO: need to connect to zipper with credentials
+	// returns error if not connected
 	handler := http.NewServeMux()
 
 	pattern := fmt.Sprintf("/%s", a.Name)
@@ -116,6 +113,7 @@ func (a *AIServer) Serve() error {
 			w.Write([]byte(err.Error()))
 			return
 		}
+		// ai function
 		resp, err := a.GetChatCompletions(req.AppID, req.Tag, req.Prompt)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -130,6 +128,11 @@ func (a *AIServer) Serve() error {
 			return
 		}
 		w.WriteHeader(http.StatusOK)
+		// TODO: need to invoke sfn with credentials
+		// for _, fn := range resp.Functions {
+		// 	// TODO: invoke source send data to zipper
+		// 	source.Write(req.Tag, []byte(fn.Arguments))
+		// }
 	})
 
 	httpServer := http.Server{

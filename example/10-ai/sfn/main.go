@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
+	"math/rand"
 	"os"
 
 	"github.com/yomorun/yomo"
@@ -14,9 +16,10 @@ import (
 )
 
 var (
-	name        = "get-weather"
-	addr        = "localhost:9000"
-	tag  uint32 = 0x60
+	name           = "get-weather"
+	addr           = "localhost:9000"
+	tag     uint32 = 0x60
+	sinkTag uint32 = 0x61
 )
 
 type Msg struct {
@@ -86,5 +89,10 @@ func handler(ctx serverless.Context) {
 		os.Exit(-2)
 	} else {
 		slog.Info("[sfn]", "got", 0x60, "data", msg)
+		data := fmt.Sprintf("[%s] temperature: %d°C", msg.CityName, rand.Intn(40))
+		err = ctx.Write(sinkTag, []byte(data))
+		if err == nil {
+			slog.Info("[sfn] write", "tag", sinkTag, "data", data)
+		}
 	}
 }

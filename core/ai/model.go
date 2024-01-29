@@ -1,5 +1,13 @@
 package ai
 
+type ChatCompletionsRequest struct {
+	// TODO: replace app_id with credential
+	Credential string `json:"credential"`
+	AppID      string `json:"app_id"`
+	Tag        uint32 `json:"tag"`
+	Prompt     string `json:"prompt"`
+}
+
 type ChatCompletionsResponse struct {
 	Functions []*FunctionDefinition
 	Content   string

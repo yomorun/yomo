@@ -185,6 +185,13 @@ func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
 		return conn, err
 	}
 
+	// TODO: process ai function schema if client is sfn and implement ai function caller
+	// if c.clientType == ClientTypeStreamFunction {
+	// 	if c.opts.aiFunction != nil {
+	// 		// register ai function
+	// 	}
+	// }
+
 	received, err := conn.ReadFrame()
 	if err != nil {
 		return nil, err
