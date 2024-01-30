@@ -114,7 +114,10 @@ type AIRegisterFunctionFrame struct {
 func (f *AIRegisterFunctionFrame) Type() Type { return TypeAIRegisterFunctionFrame }
 
 // AIRegisterFunctionAckFrame is used to ack AIRegisterFunctionFrame.
-type AIRegisterFunctionAckFrame struct{}
+type AIRegisterFunctionAckFrame struct {
+	AppID string
+	Tag   uint32
+}
 
 // Type returns the type of AIRegisterFunctionAckFrame.
 func (f *AIRegisterFunctionAckFrame) Type() Type { return TypeAIRegisterFunctionAckFrame }

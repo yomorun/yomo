@@ -3,12 +3,15 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
 	"runtime"
 	"time"
 
+	"github.com/invopop/jsonschema"
+	"github.com/yomorun/yomo/core/ai"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 	"github.com/yomorun/yomo/pkg/id"
@@ -185,13 +188,6 @@ func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
 		return conn, err
 	}
 
-	// TODO: process ai function schema if client is sfn and implement ai function caller
-	// if c.clientType == ClientTypeStreamFunction {
-	// 	if c.opts.aiFunction != nil {
-	// 		// register ai function
-	// 	}
-	// }
-
 	received, err := conn.ReadFrame()
 	if err != nil {
 		return nil, err
@@ -199,6 +195,10 @@ func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
 
 	switch received.Type() {
 	case frame.TypeHandshakeAckFrame:
+		// check ai function definition
+		if err := c.writeAIRegisterFunctionFrame(conn, received.(*frame.HandshakeAckFrame)); err != nil {
+			return nil, err
+		}
 		return conn, nil
 	case frame.TypeRejectedFrame:
 		err := &ErrRejected{Message: received.(*frame.RejectedFrame).Message}
@@ -208,14 +208,83 @@ func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
 		ff := received.(*frame.ConnectToFrame)
 		err := &ErrConnectTo{Endpoint: ff.Endpoint}
 		_ = conn.CloseWithError(err.Error())
-		return nil, err
-	default:
-		err := &ErrRejected{
-			Message: fmt.Sprintf("handshake failed: read unexcepted frame, frame read: %s", received.Type().String()),
-		}
-		_ = conn.CloseWithError(err.Error())
-		return nil, err
+	case frame.TypeAIRegisterFunctionAckFrame:
+		ff := received.(*frame.AIRegisterFunctionAckFrame)
+		c.Logger.Info("register ai function success", "app_id", ff.AppID, "tag", ff.Tag)
 	}
+	// other frame type
+	err = &ErrRejected{
+		Message: fmt.Sprintf("handshake failed: read unexcepted frame, frame read: %s", received.Type().String()),
+	}
+	_ = conn.CloseWithError(err.Error())
+	return nil, err
+}
+
+func (c *Client) writeAIRegisterFunctionFrame(conn *yquic.FrameConn, handshakeAckFrame *frame.HandshakeAckFrame) error {
+	// register ai function
+	if c.clientType == ClientTypeStreamFunction {
+		functionDefinition, err := c.parseAIFunctionDefinition()
+		if err != nil {
+			c.Logger.Error("parse ai function definition error", "err", err)
+			return err
+		}
+		for _, tag := range c.opts.observeDataTags {
+			registerFunctionFrame := &frame.AIRegisterFunctionFrame{
+				AppID:      handshakeAckFrame.AppID,
+				Tag:        tag,
+				Definition: functionDefinition,
+			}
+			// TODO: unregister ai function if function definition is nil
+			if err := conn.WriteFrame(registerFunctionFrame); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (c *Client) parseAIFunctionDefinition() ([]byte, error) {
+	if c.opts.aiFunctionDescription == "" {
+		return nil, nil
+	}
+	// parse ai function definition
+	function := &ai.FunctionDefinition{
+		Name:        c.name,
+		Description: c.opts.aiFunctionDescription,
+	}
+	inputModel := c.opts.aiFunctionInputModel
+	if inputModel != nil {
+		functionParameters, err := parseAIFunctionParameters(inputModel)
+		if err != nil {
+			return nil, fmt.Errorf("parse function parameters error: %s", err.Error())
+		}
+		function.Parameters = functionParameters
+	}
+	buf, err := json.Marshal(function)
+	if err != nil {
+		return nil, fmt.Errorf("marshal function definition error: %s", err.Error())
+	}
+	return buf, nil
+}
+
+func parseAIFunctionParameters(inputModel any) (*ai.FunctionParameters, error) {
+	schema := jsonschema.Reflect(inputModel)
+	for _, m := range schema.Definitions {
+		functionParameters := &ai.FunctionParameters{
+			Type:       m.Type,
+			Required:   m.Required,
+			Properties: make(map[string]*ai.ParameterProperty),
+		}
+
+		for pair := m.Properties.Oldest(); pair != nil; pair = pair.Next() {
+			functionParameters.Properties[pair.Key] = &ai.ParameterProperty{
+				Type:        pair.Value.Type,
+				Description: pair.Value.Description,
+			}
+		}
+		return functionParameters, nil
+	}
+	return nil, errors.New("invalid function definition")
 }
 
 // WriteFrame write frame to client.

@@ -23,7 +23,7 @@ type AIService interface {
 // AIProvider
 type AIProvider interface {
 	Name() string
-	RegisterFunction(appID string, tag uint32, functionDefinition string) error
+	RegisterFunction(appID string, tag uint32, functionDefinition []byte) error
 	UnregisterFunction(appID string, tag uint32) error
 	ListToolCalls(appID string, tag uint32) ([]ToolCall, error)
 }
@@ -157,7 +157,7 @@ func Serve() error {
 	return nil
 }
 
-func RegisterFunction(appID string, tag uint32, functionDefinition string) error {
+func RegisterFunction(appID string, tag uint32, functionDefinition []byte) error {
 	provider, err := GetDefaultProvider()
 	if err != nil {
 		return err

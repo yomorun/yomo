@@ -41,7 +41,7 @@ func RegisterFunctionCaller(
 	fd.Parameters = functionParameters
 	functionDefinition, err := json.Marshal(fd)
 	slog.Info("function definition", "schema", string(functionDefinition))
-	return RegisterFunction(appID, tag, string(functionDefinition))
+	return RegisterFunction(appID, tag, functionDefinition)
 }
 
 func parseFunctionParameters(inputSchema any) (*FunctionParameters, error) {

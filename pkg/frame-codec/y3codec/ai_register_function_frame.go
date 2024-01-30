@@ -5,18 +5,58 @@ import (
 	frame "github.com/yomorun/yomo/core/frame"
 )
 
-// encodeAIRegisterFunctionAckFrame encodes AIRegisterFunctionAckFrame to bytes in Y3 codec.
-func encodeAIRegisterFunctionAckFrame(f *frame.AIRegisterFunctionAckFrame) ([]byte, error) {
+// encodeAIRegisterFunctionFrame encodes AIRegisterFunctionFrame to bytes in Y3 codec.
+func encodeAIRegisterFunctionFrame(f *frame.AIRegisterFunctionFrame) ([]byte, error) {
+	// app id
+	appIDBlock := y3.NewPrimitivePacketEncoder(tagAIRegisterFunctionAppID)
+	appIDBlock.SetStringValue(f.AppID)
+	// tag
+	tagBlock := y3.NewPrimitivePacketEncoder(tagAIRegisterFunctionTag)
+	tagBlock.SetUInt32Value(f.Tag)
+	// definition
+	definitionBlock := y3.NewPrimitivePacketEncoder(tagAIRegisterFunctionDefinition)
+	definitionBlock.SetBytesValue(f.Definition)
+	// frame
 	encoder := y3.NewNodePacketEncoder(byte(f.Type()))
+	encoder.AddPrimitivePacket(appIDBlock)
+	encoder.AddPrimitivePacket(tagBlock)
+	encoder.AddPrimitivePacket(definitionBlock)
+
 	return encoder.Encode(), nil
 }
 
-// decodeAIRegisterFunctionAckFrame decodes bytes to AIRegisterFunctionAckFrame in Y3 codec.
-func decodeAIRegisterFunctionAckFrame(data []byte, f *frame.AIRegisterFunctionAckFrame) error {
+// decodeAIRegisterFunctionFrame decodes bytes to AIRegisterFunctionFrame in Y3 codec.
+func decodeAIRegisterFunctionFrame(data []byte, f *frame.AIRegisterFunctionFrame) error {
 	node := y3.NodePacket{}
 	_, err := y3.DecodeToNodePacket(data, &node)
 	if err != nil {
 		return err
 	}
+	// app id
+	if appIDBlock, ok := node.PrimitivePackets[byte(tagAIRegisterFunctionAppID)]; ok {
+		appID, err := appIDBlock.ToUTF8String()
+		if err != nil {
+			return err
+		}
+		f.AppID = appID
+	}
+	// tag
+	if tagBlock, ok := node.PrimitivePackets[byte(tagAIRegisterFunctionTag)]; ok {
+		tag, err := tagBlock.ToUInt32()
+		if err != nil {
+			return err
+		}
+		f.Tag = tag
+	}
+	// definition
+	if definitionBlock, ok := node.PrimitivePackets[byte(tagAIRegisterFunctionDefinition)]; ok {
+		f.Definition = definitionBlock.ToBytes()
+	}
 	return nil
 }
+
+const (
+	tagAIRegisterFunctionAppID      byte = 0x01
+	tagAIRegisterFunctionTag        byte = 0x02
+	tagAIRegisterFunctionDefinition byte = 0x03
+)

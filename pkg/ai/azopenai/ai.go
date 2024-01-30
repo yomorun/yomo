@@ -157,7 +157,7 @@ func (p *AzureOpenAIProvider) GetChatCompletions(appID string, tag uint32, userP
 }
 
 // RegisterFunction register function
-func (p *AzureOpenAIProvider) RegisterFunction(appID string, tag uint32, functionDefinition string) error {
+func (p *AzureOpenAIProvider) RegisterFunction(appID string, tag uint32, functionDefinition []byte) error {
 	mu.Lock()
 	defer mu.Unlock()
 	appTools := tools[appID]
@@ -165,7 +165,7 @@ func (p *AzureOpenAIProvider) RegisterFunction(appID string, tag uint32, functio
 		appTools = make(map[uint32][]ai.ToolCall)
 	}
 	fd := ai.FunctionDefinition{}
-	err := json.Unmarshal([]byte(functionDefinition), &fd)
+	err := json.Unmarshal(functionDefinition, &fd)
 	if err != nil {
 		slog.Error("unmarshal function definition", "error", err)
 		return err

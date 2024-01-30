@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/yomorun/yomo/core/ai"
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
@@ -159,7 +160,8 @@ func (s *Server) handleFrameConn(fconn frame.Conn, logger *slog.Logger) {
 	}
 
 	// ack handshake
-	_ = fconn.WriteFrame(&frame.HandshakeAckFrame{})
+	appID, _ := conn.Metadata().Get(MetadataAppIDKey)
+	_ = fconn.WriteFrame(&frame.HandshakeAckFrame{AppID: appID})
 
 	s.connHandler(conn) // s.handleConn(conn) with middlewares
 
@@ -254,6 +256,20 @@ func (s *Server) handleConn(conn *Connection) {
 			s.frameHandler(c) // s.handleFrame(c) with middlewares
 
 			c.Release()
+		case frame.TypeAIRegisterFunctionFrame:
+			ff := f.(*frame.AIRegisterFunctionFrame)
+			err := conn.fconn.WriteFrame(&frame.AIRegisterFunctionAckFrame{AppID: ff.AppID, Tag: ff.Tag})
+			if err != nil {
+				conn.Logger.Error("failed to write ai RegisterFunctionAckFrame", "app_id", ff.AppID, "tag", ff.Tag, "err", err)
+				return
+			}
+			// register ai function
+			err = ai.RegisterFunction(ff.AppID, ff.Tag, ff.Definition)
+			if err != nil {
+				conn.Logger.Error("failed to register ai function", "app_id", ff.AppID, "tag", ff.Tag, "err", err)
+				return
+			}
+			conn.Logger.Info("register ai function success", "app_id", ff.AppID, "tag", ff.Tag)
 		default:
 			conn.Logger.Info("unexpected frame", "type", f.Type().String())
 			return
@@ -381,7 +397,6 @@ func (s *Server) dispatchToDownstreams(c *Context) error {
 	dataFrame.Metadata = mdBytes
 
 	for _, ds := range s.downstreams {
-
 		if err = ds.WriteFrame(dataFrame); err != nil {
 			c.Logger.Error(
 				"failed to dispatch to downstream",

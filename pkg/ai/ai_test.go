@@ -22,9 +22,9 @@ func TestAIServer(t *testing.T) {
 func TestGetChatCompletions(t *testing.T) {
 	go ai.Serve()
 	functionDefinition := `{"name":"get_current_weather","description":"Get the current weather in a given location","parameters":{"type":"object","properties":{"location":{"type":"string","description":"The city and state, e.g. San Francisco, CA"}},"required":["location"]}}`
-	err := ai.RegisterFunction("test", 1, functionDefinition)
+	err := ai.RegisterFunction("test", 1, []byte(functionDefinition))
 	functionDefinition2 := `{"name":"get_weather","description":"Get the current weather in a given location","parameters":{"type":"object","properties":{"location":{"type":"string","description":"The city and state, e.g. San Francisco, CA"}},"required":["location"]}}`
-	err = ai.RegisterFunction("test", 1, functionDefinition2)
+	err = ai.RegisterFunction("test", 1, []byte(functionDefinition2))
 	assert.NoError(t, err)
 	tools, err := ai.ListToolCalls("test", 1)
 	assert.NoError(t, err)

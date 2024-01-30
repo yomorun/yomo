@@ -184,7 +184,7 @@ func TestCodec(t *testing.T) {
 			args: args{
 				newF:  new(frame.AIRegisterFunctionAckFrame),
 				dataF: &frame.AIRegisterFunctionAckFrame{},
-				data:  []byte{0x91, 0x0},
+				data:  []byte{0x91, 0x5, 0x1, 0x0, 0x2, 0x1, 0x0},
 			},
 		},
 		{
