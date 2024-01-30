@@ -5,4 +5,7 @@ func main() {
 	{{if .WithInitFunc}}
 	guest.Init = Init
 	{{end}}
+	{{if .WithWantedTarget}}
+	guest.WantedTarget = WantedTarget
+	{{end}}
 }

@@ -35,7 +35,7 @@ func TestContainsInitWithoutComment(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := containsInitWithoutComment(tt.args.source); got != tt.want {
+			if got := containsStringWithoutComment(tt.args.source, "Init()"); got != tt.want {
 				t.Errorf("containInitFunc() = %v, want %v", got, tt.want)
 			}
 		})

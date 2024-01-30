@@ -32,11 +32,6 @@ type GolangServerless struct {
 
 // Init initializes the serverless
 func (s *GolangServerless) Init(opts *serverless.Options) error {
-	// now := time.Now()
-	// msg := "Init: serverless function..."
-	// initSpinning := log.Spinner(os.Stdout, msg)
-	// defer initSpinning(log.Failure)
-
 	s.opts = opts
 	if !file.Exists(s.opts.Filename) {
 		return fmt.Errorf("the file %s doesn't exist", s.opts.Filename)
@@ -50,11 +45,12 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 
 	// append main function
 	ctx := Context{
-		Name:         s.opts.Name,
-		ZipperAddr:   s.opts.ZipperAddr,
-		Credential:   s.opts.Credential,
-		UseEnv:       s.opts.UseEnv,
-		WithInitFunc: containsInitWithoutComment(source),
+		Name:             s.opts.Name,
+		ZipperAddr:       s.opts.ZipperAddr,
+		Credential:       s.opts.Credential,
+		UseEnv:           s.opts.UseEnv,
+		WithInitFunc:     containsStringWithoutComment(source, "Init()"),
+		WithWantedTarget: containsStringWithoutComment(source, "WantedTarget()"),
 	}
 
 	// determine: rx stream serverless or raw bytes serverless.
@@ -78,9 +74,6 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 	}
 
 	source = append(source, mainFunc...)
-	// log.InfoStatusEvent(os.Stdout, "merge source elapse: %v", time.Since(now))
-	// Create the AST by parsing src
-	// fmt.Println(string(source))
 	fset := token.NewFileSet()
 	astf, err := parser.ParseFile(fset, "", source, parser.ParseComments)
 	if err != nil {
@@ -91,7 +84,6 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 	astutil.AddNamedImport(fset, astf, "", "github.com/joho/godotenv")
 	// wasm guest import
 	astutil.AddNamedImport(fset, astf, "", "github.com/yomorun/yomo/serverless/guest")
-	// log.InfoStatusEvent(os.Stdout, "import elapse: %v", time.Since(now))
 	// Generate the code
 	code, err := generateCode(fset, astf)
 	if err != nil {
@@ -109,11 +101,9 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 	if err != nil {
 		return fmt.Errorf("Init: imports %s", err)
 	}
-	// log.InfoStatusEvent(os.Stdout, "fix import elapse: %v", time.Since(now))
 	if err := file.PutContents(tempFile, fixedSource); err != nil {
 		return fmt.Errorf("Init: write file err %s", err)
 	}
-	// log.InfoStatusEvent(os.Stdout, "final write file elapse: %v", time.Since(now))
 	// mod
 	name := strings.ReplaceAll(opts.Name, " ", "_")
 	if name == "" {
@@ -173,7 +163,6 @@ func (s *GolangServerless) Build(clean bool) error {
 				modContent = bytes.Replace(modContent, []byte(r.New.Path), []byte(abs), 1)
 			}
 		}
-		// fmt.Println(string(modContent))
 		// wirte to temp go.mod
 		tempMod := filepath.Join(s.tempDir, "go.mod")
 		if err := file.PutContents(tempMod, modContent); err != nil {
@@ -200,7 +189,6 @@ func (s *GolangServerless) Build(clean bool) error {
 		}
 	}
 	// build
-	// goos := runtime.GOOS
 	dir, _ := filepath.Split(s.opts.Filename)
 	sl, _ := filepath.Abs(dir + "sfn.wasm")
 
@@ -218,9 +206,6 @@ func (s *GolangServerless) Build(clean bool) error {
 	cmd := exec.Command(tinygo, "build", "-no-debug", "-target", "wasi", "-o", sl, appPath)
 	cmd.Env = env
 	cmd.Dir = s.tempDir
-	// log.InfoStatusEvent(os.Stdout, "Build: cmd: %+v", cmd)
-	// source := file.GetContents(s.source)
-	// log.InfoStatusEvent(os.Stdout, "source: %s", source)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		err = fmt.Errorf("Build: failure, tinygo %s", out)
@@ -255,12 +240,12 @@ func generateCode(fset *token.FileSet, file *ast.File) ([]byte, error) {
 	return buffer.Bytes(), nil
 }
 
-func containsInitWithoutComment(source []byte) bool {
+func containsStringWithoutComment(source []byte, str string) bool {
 	scanner := bufio.NewScanner(bytes.NewReader(source))
 	for scanner.Scan() {
 		line := strings.TrimLeft(scanner.Text(), " ")
 
-		if strings.Contains(line, "Init()") && !strings.HasPrefix(line, "//") {
+		if strings.Contains(line, str) && !strings.HasPrefix(line, "//") {
 			return true
 		}
 	}

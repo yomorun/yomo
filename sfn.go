@@ -75,6 +75,10 @@ type streamFunction struct {
 }
 
 func (s *streamFunction) SetWantedTarget(target string) {
+	if target == "" {
+		s.client.Logger.Warn("set sfn wanted target to an empty string, skip it")
+		return
+	}
 	s.client.SetWantedTarget(target)
 }
 
