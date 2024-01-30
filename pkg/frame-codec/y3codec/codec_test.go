@@ -92,7 +92,7 @@ func TestCodec(t *testing.T) {
 			args: args{
 				newF:  new(frame.HandshakeAckFrame),
 				dataF: &frame.HandshakeAckFrame{},
-				data:  []byte{0xa9, 0x0},
+				data:  []byte{0xa9, 0x2, 0x1, 0x0},
 			},
 		},
 		{

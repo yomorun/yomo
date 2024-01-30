@@ -17,6 +17,7 @@ const (
 	MetadataTraceIDKey = "yomo-trace-id"
 	MetadataSpanIDKey  = "yomo-span-id"
 	MetaTracedKey      = "yomo-traced"
+	MetadataAppIDKey   = "app_id"
 )
 
 // NewMetadata returns metadata for yomo working.
