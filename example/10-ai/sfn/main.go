@@ -7,12 +7,8 @@ import (
 	"os"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/core/ai"
 	"github.com/yomorun/yomo/serverless"
 	"golang.org/x/exp/slog"
-
-	// TODO: need dynamic load
-	_ "github.com/yomorun/yomo/pkg/ai/azopenai"
 )
 
 var (
@@ -38,21 +34,13 @@ func InputSchema() any {
 // ================== AI End ==================
 
 func main() {
-	sfn := yomo.NewStreamFunction(name, addr)
+	sfn := yomo.NewStreamFunction(
+		name,
+		addr,
+		yomo.WithSfnAIFunctionDefinition(Description(), InputSchema()),
+	)
 	sfn.SetObserveDataTags(tag)
 	defer sfn.Close()
-
-	// TODO: 检查是实现 AI FunctionCaller
-	// ai function caller
-	// if llmfn, ok := any(sfn).(llm.LLMFunctionCaller); ok {
-	// 	// sfn.SetAppID(appID)
-	// 	llmfn.SetDescription("get weather")
-	// 	llmfn.SetModel(&UserModel{})
-	// 	if err := llm.Register(llmfn); err != nil {
-	// 		slog.Error("llm register", "error", err)
-	// 		return
-	// 	}
-	// }
 
 	// set handler
 	sfn.SetHandler(handler)
@@ -63,16 +51,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	description := serverless.Description()
-	slog.Info("[sfn] description", "description", description)
-	// TODO: how to get ppID?
-	appID := "appID"
-	// TODO: register AI Function
-	err = ai.RegisterFunctionCaller(appID, tag, name, Description(), InputSchema())
-	if err != nil {
-		slog.Error("[sfn] register ai function caller", "err", err)
-		os.Exit(-1)
-	}
 	// set the error handler function when server error occurs
 	sfn.SetErrorHandler(func(err error) {
 		slog.Error("[sfn] receive server error", "err", err)

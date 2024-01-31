@@ -139,6 +139,7 @@ func (a *AIServer) Serve() error {
 		Addr:    ":8000", // TODO: read from config
 		Handler: handler,
 	}
+	slog.Info("AI Server is running", "addr", httpServer.Addr, "ai_provider", a.Name)
 	return httpServer.ListenAndServe()
 }
 
@@ -162,6 +163,7 @@ func RegisterFunction(appID string, tag uint32, functionDefinition []byte) error
 	if err != nil {
 		return err
 	}
+	slog.Debug("register function", "appID", appID, "tag", tag, "function", string(functionDefinition))
 	return provider.RegisterFunction(appID, tag, functionDefinition)
 }
 

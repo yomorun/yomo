@@ -17,7 +17,7 @@ import (
 
 var (
 	addr        = "localhost:9000"
-	appID       = "appID"
+	appID       = ""
 	name        = "get-weather"
 	tag         = uint32(0x60)
 	description = "Get the current weather for `city_name`"
@@ -81,6 +81,8 @@ func requestInvokeAIFunction(source yomo.Source) error {
 		Tag:    tag,
 		Prompt: prompt,
 	})
+	// TODO: add bearer token, it's credential
+	// req.Header.Set("Authorization", "Bearer "+cred)
 	resp, err := http.Post(api, "application/json", bytes.NewBuffer(req))
 	if err != nil {
 		slog.Error("[source] ❌ Invoke AI function failure with err", "err", err)
@@ -92,6 +94,7 @@ func requestInvokeAIFunction(source yomo.Source) error {
 		slog.Error("[source] ❌ ReadAll data failure with err", "err", err)
 		return err
 	}
+	slog.Info("[source] ✅ Invoke AI function", "body", string(body))
 	// send data to YoMo-Zipper
 	var chatCompletionsResponse ai.ChatCompletionsResponse
 	err = json.Unmarshal(body, &chatCompletionsResponse)

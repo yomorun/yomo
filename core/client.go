@@ -208,9 +208,6 @@ func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
 		ff := received.(*frame.ConnectToFrame)
 		err := &ErrConnectTo{Endpoint: ff.Endpoint}
 		_ = conn.CloseWithError(err.Error())
-	case frame.TypeAIRegisterFunctionAckFrame:
-		ff := received.(*frame.AIRegisterFunctionAckFrame)
-		c.Logger.Info("register ai function success", "app_id", ff.AppID, "tag", ff.Tag)
 	}
 	// other frame type
 	err = &ErrRejected{
@@ -227,6 +224,10 @@ func (c *Client) writeAIRegisterFunctionFrame(conn *yquic.FrameConn, handshakeAc
 		if err != nil {
 			c.Logger.Error("parse ai function definition error", "err", err)
 			return err
+		}
+		// not exist ai function definition
+		if functionDefinition == nil {
+			return nil
 		}
 		for _, tag := range c.opts.observeDataTags {
 			registerFunctionFrame := &frame.AIRegisterFunctionFrame{
@@ -383,6 +384,8 @@ func (c *Client) handleFrame(f frame.Frame) {
 		_ = c.Close()
 	case *frame.DataFrame:
 		c.processor(ff)
+	case *frame.AIRegisterFunctionAckFrame:
+		c.Logger.Info("register ai function success", "app_id", ff.AppID, "tag", ff.Tag)
 	default:
 		c.Logger.Warn("received unexpected frame", "frame_type", f.Type().String())
 	}
