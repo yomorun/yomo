@@ -106,9 +106,9 @@ func (p *AzureOpenAIProvider) GetChatCompletions(appID string, tag uint32, userP
 	if err != nil {
 		return nil, err
 	}
-	slog.Info("request url", "url", p.APIEndpoint)
-	slog.Info("request api key", "api-key", p.APIKey)
-	slog.Info("request body", "body", string(jsonBody))
+	// slog.Info("request url", "url", p.APIEndpoint)
+	// slog.Info("request api key", "api-key", p.APIKey)
+	// slog.Info("request body", "body", string(jsonBody))
 
 	req, err := http.NewRequest("POST", p.APIEndpoint, bytes.NewBuffer(jsonBody))
 	if err != nil {

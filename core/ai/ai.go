@@ -126,6 +126,7 @@ func (a *AIServer) Serve() error {
 			w.Write([]byte(err.Error()))
 			return
 		}
+		// TODO: new source and send data to zipper
 		w.WriteHeader(http.StatusOK)
 		// TODO: need to invoke sfn with credentials
 		// for _, fn := range resp.Functions {

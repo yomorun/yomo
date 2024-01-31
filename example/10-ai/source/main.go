@@ -58,7 +58,6 @@ func requestInvokeAIFunction(source yomo.Source) error {
 	prompt := "What's the weather like in San Francisco, Melbourne, and Paris?"
 	// invoke ai api
 	api := "http://localhost:8000/azopenai/chat/completions"
-	// cred:=source.()
 	req, _ := json.Marshal(ai.ChatCompletionsRequest{
 		AppID:  appID,
 		Tag:    tag,
@@ -76,6 +75,10 @@ func requestInvokeAIFunction(source yomo.Source) error {
 	if err != nil {
 		slog.Error("[source] ❌ ReadAll data failure with err", "err", err)
 		return err
+	}
+	if resp.StatusCode != http.StatusOK {
+		slog.Warn("[source] ⛔️Invoke AI function failure", "body", string(body))
+		return nil
 	}
 	slog.Info("[source] ✅ Invoke AI function", "body", string(body))
 	// send data to YoMo-Zipper
