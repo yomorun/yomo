@@ -104,7 +104,6 @@ func (a *AIServer) Serve() error {
 	})
 
 	pattern = fmt.Sprintf("/%s/chat/completions", a.Name)
-
 	handler.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 		// TODO: need to returns json
 		var req ChatCompletionsRequest

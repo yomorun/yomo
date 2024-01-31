@@ -56,23 +56,6 @@ func main() {
 
 func requestInvokeAIFunction(source yomo.Source) error {
 	prompt := "What's the weather like in San Francisco, Melbourne, and Paris?"
-	/*
-		// register ai function
-		err := ai.RegisterFunctionCaller(appID, tag, name, description, &Msg{})
-		if err != nil {
-			slog.Error("[source] ❌ Register AI function failure with err", "err", err)
-			return err
-		}
-		// invoke ai api
-		resp, err := ai.GetChatCompletions(appID, tag, prompt)
-		if err != nil {
-			slog.Error("[source] ❌ Invoke AI function failure with err", "err", err)
-			return err
-		}
-		functions, _ := json.Marshal(resp.Functions)
-		slog.Info("[source] ✅ Invoke AI function", "functions", string(functions))
-	*/
-
 	// invoke ai api
 	api := "http://localhost:8000/azopenai/chat/completions"
 	// cred:=source.()
