@@ -27,6 +27,7 @@ type wazeroRuntime struct {
 	cache  wazero.CompilationCache
 
 	observed      []uint32
+	wanted        string
 	serverlessCtx serverless.Context
 }
 
@@ -73,10 +74,18 @@ func (r *wazeroRuntime) Init(wasmFile string) error {
 		NewFunctionBuilder().
 		WithGoFunction(api.GoFunc(r.observeDataTag), []api.ValueType{i32}, []api.ValueType{}).
 		Export(WasmFuncObserveDataTag).
+		// wanted target
+		NewFunctionBuilder().
+		WithGoModuleFunction(api.GoModuleFunc(r.wantedTarget), []api.ValueType{i32, i32}, []api.ValueType{}).
+		Export(WasmFuncGetWantedTarget).
 		// write
 		NewFunctionBuilder().
 		WithGoModuleFunction(api.GoModuleFunc(r.write), []api.ValueType{i32, i32, i32}, []api.ValueType{i32}).
 		Export(WasmFuncWrite).
+		// write with target
+		NewFunctionBuilder().
+		WithGoModuleFunction(api.GoModuleFunc(r.writeWithTarget), []api.ValueType{i32, i32, i32, i32, i32}, []api.ValueType{i32}).
+		Export(WasmFuncWriteWithTarget).
 		// context tag
 		NewFunctionBuilder().
 		WithGoFunction(api.GoFunc(r.contextTag), []api.ValueType{}, []api.ValueType{i32}).
@@ -116,12 +125,29 @@ func (r *wazeroRuntime) Init(wasmFile string) error {
 		}
 	}
 
+	wantedTargetFunc := module.ExportedFunction(WasmFuncWantedTarget)
+	if wantedTargetFunc == nil {
+		return fmt.Errorf("%s function not found", WasmFuncWantedTarget)
+	}
+	if _, err := wantedTargetFunc.Call(r.ctx); err != nil {
+		if exitErr, ok := err.(*sys.ExitError); ok && exitErr.ExitCode() != 0 {
+			return fmt.Errorf("%s.Call: %v", WasmFuncWantedTarget, err)
+		} else if !ok {
+			return fmt.Errorf("%s.Call: %v", WasmFuncWantedTarget, err)
+		}
+	}
+
 	return nil
 }
 
 // GetObserveDataTags returns observed datatags of the wasm sfn
 func (r *wazeroRuntime) GetObserveDataTags() []uint32 {
 	return r.observed
+}
+
+// GetWantedTarget returns observed datatags of the wasm sfn
+func (r *wazeroRuntime) GetWantedTarget() string {
+	return r.wanted
 }
 
 // RunHandler runs the wasm application (request -> response mode)
@@ -177,6 +203,22 @@ func (r *wazeroRuntime) observeDataTag(ctx context.Context, stack []uint64) {
 	r.observed = append(r.observed, tag)
 }
 
+func (r *wazeroRuntime) wantedTarget(ctx context.Context, m api.Module, stack []uint64) {
+	pointer := uint32(stack[0])
+	length := uint32(stack[1])
+
+	output, ok := m.Memory().Read(pointer, length)
+	if !ok {
+		log.Printf("Memory.Read(%d, %d) out of range\n", pointer, length)
+		stack[0] = 1
+		return
+	}
+	buf := make([]byte, length)
+	copy(buf, output)
+
+	r.wanted = string(buf)
+}
+
 func (r *wazeroRuntime) write(ctx context.Context, m api.Module, stack []uint64) {
 	tag := uint32(stack[0])
 	pointer := uint32(stack[1])
@@ -191,6 +233,39 @@ func (r *wazeroRuntime) write(ctx context.Context, m api.Module, stack []uint64)
 	copy(buf, output)
 
 	if err := r.serverlessCtx.Write(tag, buf); err != nil {
+		stack[0] = 2
+		return
+	}
+	stack[0] = 0
+}
+func (r *wazeroRuntime) writeWithTarget(ctx context.Context, m api.Module, stack []uint64) {
+	tag := uint32(stack[0])
+
+	pointer := uint32(stack[1])
+	length := uint32(stack[2])
+
+	targetPoint := uint32(stack[3])
+	targetLength := uint32(stack[4])
+
+	output, ok := m.Memory().Read(pointer, length)
+	if !ok {
+		log.Printf("Memory.Read(%d, %d) out of range\n", pointer, length)
+		stack[0] = 1
+		return
+	}
+	buf := make([]byte, length)
+	copy(buf, output)
+
+	toutput, ok := m.Memory().Read(targetPoint, targetLength)
+	if !ok {
+		log.Printf("Memory.Read(%d, %d) out of range\n", targetPoint, targetLength)
+		stack[0] = 1
+		return
+	}
+	tbuf := make([]byte, targetLength)
+	copy(tbuf, toutput)
+
+	if err := r.serverlessCtx.WriteWithTarget(tag, tbuf, string(tbuf)); err != nil {
 		stack[0] = 2
 		return
 	}

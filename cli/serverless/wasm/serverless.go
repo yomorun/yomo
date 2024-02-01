@@ -16,12 +16,13 @@ import (
 
 // wasmServerless will run serverless functions from the given compiled WebAssembly files.
 type wasmServerless struct {
-	runtime    Runtime
-	name       string
-	zipperAddr string
-	observed   []uint32
-	credential string
-	mu         *sync.Mutex
+	runtime      Runtime
+	name         string
+	zipperAddr   string
+	observed     []uint32
+	wantedTarget string
+	credential   string
+	mu           sync.Mutex
 }
 
 // Init initializes the serverless
@@ -40,8 +41,8 @@ func (s *wasmServerless) Init(opts *cli.Options) error {
 	s.name = opts.Name
 	s.zipperAddr = opts.ZipperAddr
 	s.observed = runtime.GetObserveDataTags()
+	s.wantedTarget = runtime.GetWantedTarget()
 	s.credential = opts.Credential
-	s.mu = new(sync.Mutex)
 
 	return nil
 }
@@ -75,6 +76,9 @@ func (s *wasmServerless) Run(verbose bool) error {
 	}
 	// set observe data tags
 	sfn.SetObserveDataTags(s.observed...)
+
+	// set wanted target
+	sfn.SetWantedTarget(s.wantedTarget)
 
 	sfn.SetHandler(
 		func(ctx serverless.Context) {
