@@ -23,10 +23,12 @@ type Msg struct {
 }
 
 // ================== AI Required ==================
+// Description returns the description of this AI function.
 func Description() string {
 	return "Get the current weather for `city_name`"
 }
 
+// InputSchema returns the input schema of this AI function.
 func InputSchema() any {
 	return &Msg{}
 }

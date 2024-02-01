@@ -32,11 +32,6 @@ import (
 	_ "github.com/yomorun/yomo/pkg/ai/azopenai"
 )
 
-// TEST: need delete
-type Msg struct {
-	CityName string `json:"city_name" jsonschema:"description=The name of the city to be queried"`
-}
-
 // serveCmd represents the serve command
 var serveCmd = &cobra.Command{
 	Use:   "serve",
