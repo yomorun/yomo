@@ -53,7 +53,8 @@ func (c *GuestContext) WriteWithTarget(tag uint32, data []byte, target string) e
 	if target == "" {
 		return c.Write(tag, data)
 	}
-	if yomoWriteWithTarget(tag, &data[0], len(data), &target, len(target)) != 0 {
+	targetBytes := []byte(target)
+	if yomoWriteWithTarget(tag, &data[0], len(data), &targetBytes[0], len(targetBytes)) != 0 {
 		return errors.New("yomoWriteWithTarget error")
 	}
 	return nil
@@ -69,7 +70,7 @@ func yomoWrite(tag uint32, pointer *byte, length int) uint32
 
 //export yomo_write_with_target
 //go:linkname yomoWriteWithTarget
-func yomoWriteWithTarget(tag uint32, pointer *byte, length int, targetPointer *string, targetLength int) uint32
+func yomoWriteWithTarget(tag uint32, pointer *byte, length int, targetPointer *byte, targetLength int) uint32
 
 //export yomo_context_tag
 //go:linkname yomoContextTag
