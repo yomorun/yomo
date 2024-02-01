@@ -97,6 +97,9 @@ func yomoGetWantedTarget(ptr uintptr, size uint32)
 //go:linkname yomoWantedTarget
 func yomoWantedTarget() {
 	target := WantedTarget()
+	if target == "" {
+		return
+	}
 	yomoGetWantedTarget(bufferToPtrSize([]byte(target)))
 }
 
