@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"sync"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core"
@@ -17,6 +19,8 @@ import (
 var (
 	ErrNotExistsProvider     = errors.New("not exists AI provider")
 	ErrNotImplementedService = errors.New("not implemented AI service")
+	ErrConfigNotFound        = errors.New("ai config not found")
+	ErrConfigFormatError     = errors.New("ai config format error")
 )
 
 // AIService provides an interface to the AI API
@@ -87,16 +91,18 @@ func GetDefaultProvider() (AIProvider, error) {
 type AIServer struct {
 	Name string
 	AIService
+	Config
 	Source yomo.Source
 }
 
-func NewAIServer(name string, service AIService) (*AIServer, error) {
+func NewAIServer(name string, config Config, service AIService) (*AIServer, error) {
 	source := yomo.NewSource(
 		name,
 		"localhost:9000",
 		yomo.WithSourceReConnect(),
+		yomo.WithCredential(config.Server.Credential),
 	)
-	// TODO: need to create early
+	// create ai source
 	err := source.Connect()
 	if err != nil {
 		slog.Error("source connect failure", "err", err.Error())
@@ -105,13 +111,13 @@ func NewAIServer(name string, service AIService) (*AIServer, error) {
 	return &AIServer{
 		Name:      name,
 		AIService: service,
-		Source:    source,
+		Config:    config,
+		// TODO: shuold be pools of source, for maintain multiple applications
+		Source: source,
 	}, nil
 }
 
 func (a *AIServer) Serve() error {
-	// TODO: need to connect to zipper with credentials
-	// returns error if not connected
 	handler := http.NewServeMux()
 
 	pattern := fmt.Sprintf("/%s", a.Name)
@@ -162,7 +168,7 @@ func (a *AIServer) Serve() error {
 	})
 
 	httpServer := http.Server{
-		Addr:    ":8000", // TODO: read from config
+		Addr:    a.Config.Server.Addr,
 		Handler: handler,
 	}
 	slog.Info("AI Server is running", "addr", httpServer.Addr, "ai_provider", a.Name)
@@ -170,14 +176,22 @@ func (a *AIServer) Serve() error {
 }
 
 // ======================= Packge Functions =======================
-func Serve() error {
-	// TODO: maybe multiple providers, now only one
-	provider, err := GetDefaultProvider()
+func Serve(conf map[string]any) error {
+	config, err := parseConfig(conf)
 	if err != nil {
+		slog.Error("parse config", "err", err.Error())
 		return err
 	}
+	provider := GetProvider(config.Server.Provider)
+	if provider == nil {
+		return ErrNotExistsProvider
+	}
+	// provider, err := GetDefaultProvider()
+	// if err != nil {
+	// 	return err
+	// }
 	if aiService, ok := provider.(AIService); ok {
-		aiServer, err := NewAIServer(provider.Name(), aiService)
+		aiServer, err := NewAIServer(provider.Name(), config, aiService)
 		if err != nil {
 			return err
 		}
@@ -250,4 +264,86 @@ func ConnMiddleware(next core.ConnHandler) core.ConnHandler {
 		next(conn)
 		// }
 	}
+}
+
+// server:
+//   host: http://localhost
+//   port: 8000
+//   endpoints:
+//     chat_completions: /chat/completions
+//   credential: token:<CREDENTIAL>
+//   provider: azopenai
+//
+// providers:
+//   azopenai:
+//     api_key:
+//     api_endpoint:
+//
+//   openai:
+//     api_key:
+//     api_endpoint:
+//
+//   huggingface:
+//     model:
+
+// Config is the configuration of AI bridge
+type Config struct {
+	Server    Server              `yaml:"server"`
+	Providers map[string]Provider `yaml:"providers"`
+}
+
+// Server is the configuration of AI server
+type Server struct {
+	Addr       string            `yaml:"addr"`
+	Endpoints  map[string]string `yaml:"endpoints"`
+	Credential string            `yaml:"credential"`
+	Provider   string            `yaml:"provider"`
+}
+
+// Provider is the configuration of AI provider
+type Provider = map[string]string
+
+// map[ai:
+//	map[providers:
+//		map[azopenai:
+//			map[api_endpoint:<nil>
+//					api_key:<nil>]
+//				huggingface:map[model:<nil>]
+//				openai:map[api_endpoint:<nil> api_key:<nil>]]
+//	server:map[
+//		credential:token:<CREDENTIAL>
+//		endpoints:map[chat_completions:/chat/completions]
+//		host:http://localhost
+//		port:8000
+//		provider:azopenai]]]
+
+// parseConfig parses the config from conf
+func parseConfig(conf map[string]any) (config Config, err error) {
+	section, ok := conf["ai"]
+	if !ok {
+		err = ErrConfigNotFound
+		return
+	}
+	aiConfig, ok := section.(map[string]any)
+	if !ok {
+		err = ErrConfigFormatError
+		return
+	}
+	data, e := yaml.Marshal(aiConfig)
+	if e != nil {
+		err = e
+		slog.Error("marshal ai config", "err", err.Error())
+		return
+	}
+	err = yaml.Unmarshal(data, &config)
+	if err != nil {
+		slog.Error("unmarshal ai config", "err", err.Error())
+		return
+	}
+	// defaults values
+	if config.Server.Addr == "" {
+		config.Server.Addr = ":8000"
+	}
+	slog.Info("parse config", "config", config)
+	return
 }

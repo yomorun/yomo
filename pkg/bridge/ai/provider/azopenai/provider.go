@@ -206,6 +206,6 @@ func (p *AzureOpenAIProvider) ListToolCalls(appID string, tag uint32) ([]ai.Tool
 func init() {
 	tools = make(map[string]map[uint32][]ai.ToolCall)
 	// ai.RegisterProvider(NewAzureOpenAIProvider("api-key", "api-endpoint"))
-	// TODO: for test
+	// TEST: for test
 	bridgeai.RegisterProvider(New())
 }

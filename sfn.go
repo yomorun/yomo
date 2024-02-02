@@ -94,7 +94,6 @@ func (s *streamFunction) SetPipeHandler(fn core.PipeHandler) error {
 // Connect create a connection to the zipper, when data arrvied, the data will be passed to the
 // handler which setted by SetHandler method.
 func (s *streamFunction) Connect() error {
-	// TODO: register function to AI
 	if len(s.observeDataTags) == 0 {
 		return errors.New("streamFunction cannot observe data because the required tag has not been set")
 	}

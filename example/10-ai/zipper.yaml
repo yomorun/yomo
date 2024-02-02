@@ -9,8 +9,7 @@ port: 9000
 bridge:
   ai:
     server:
-      host: http://localhost
-      port: 8000
+      addr: localhost:8000
       endpoints:
         chat_completions: /chat/completions
       credential: token:<CREDENTIAL>

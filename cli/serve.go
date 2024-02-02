@@ -81,9 +81,11 @@ var serveCmd = &cobra.Command{
 		}
 		zipper.Logger().Info("using config file", "file_path", config)
 
-		// TODO: AI Server
+		// AI Server
 		go func() {
-			err := ai.Serve()
+			bridgeConf := conf.Bridge
+			// log.InfoStatusEvent(os.Stdout, "bridge_type=%T bridge_config=%v", bridgeConf, bridgeConf)
+			err := ai.Serve(bridgeConf)
 			if err != nil {
 				log.FailureStatusEvent(os.Stdout, err.Error())
 				return
