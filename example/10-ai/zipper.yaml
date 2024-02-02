@@ -6,25 +6,25 @@ port: 9000
 #   type: token
 #   token: <CREDENTIAL>
 
-# bridge:
-#   ai:
-#     server:
-#       host: http://localhost
-#       port: 8000
-#       endpoints:
-#         chat_completions: /chat/completions
-#       credential: token:<CREDENTIAL>
-#
-#     providers:
-#       azopenai:
-#         api_key:
-#         api_endpoint:
-#         http:
-#
-#       openai:
-#         api_key:
-#         api_endpoint:
-#
-#       huggingface:
-#         model:
-#
+bridge:
+  ai:
+    server:
+      host: http://localhost
+      port: 8000
+      endpoints:
+        chat_completions: /chat/completions
+      credential: token:<CREDENTIAL>
+      provider: azopenai
+
+    providers:
+      azopenai:
+        api_key:
+        api_endpoint:
+
+      openai:
+        api_key:
+        api_endpoint:
+
+      huggingface:
+        model:
+
