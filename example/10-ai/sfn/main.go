@@ -68,11 +68,11 @@ func handler(ctx serverless.Context) {
 		slog.Error("[sfn] json.Marshal error", "err", err)
 		os.Exit(-2)
 	} else {
-		slog.Info("[sfn]", "got", 0x60, "data", msg)
+		slog.Info("[sfn] << receive", "tag", tag, "data", msg)
 		data := fmt.Sprintf("[%s] temperature: %d°C", msg.CityName, rand.Intn(40))
 		err = ctx.Write(sinkTag, []byte(data))
 		if err == nil {
-			slog.Info("[sfn] write", "tag", sinkTag, "data", data)
+			slog.Info("[sfn] >> write", "tag", sinkTag, "data", data)
 		}
 	}
 }

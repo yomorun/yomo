@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/invopop/jsonschema"
-	"github.com/yomorun/yomo/core/ai"
+	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 	"github.com/yomorun/yomo/pkg/id"

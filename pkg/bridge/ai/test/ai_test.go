@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/yomorun/yomo/core/ai"
-	_ "github.com/yomorun/yomo/pkg/ai/azopenai"
+	"github.com/yomorun/yomo/pkg/bridge/ai"
+	_ "github.com/yomorun/yomo/pkg/bridge/ai/provider/azopenai"
 )
 
 func TestAIServer(t *testing.T) {

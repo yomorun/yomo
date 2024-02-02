@@ -7,6 +7,10 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/ai"
+	"github.com/yomorun/yomo/core"
+	"github.com/yomorun/yomo/core/frame"
 	"golang.org/x/exp/slog"
 )
 
@@ -17,7 +21,7 @@ var (
 
 // AIService provides an interface to the AI API
 type AIService interface {
-	GetChatCompletions(appID string, tag uint32, prompt string) (*ChatCompletionsResponse, error)
+	GetChatCompletions(appID string, tag uint32, prompt string) (*ai.ChatCompletionsResponse, error)
 }
 
 // AIProvider
@@ -25,7 +29,7 @@ type AIProvider interface {
 	Name() string
 	RegisterFunction(appID string, tag uint32, functionDefinition []byte) error
 	UnregisterFunction(appID string, tag uint32) error
-	ListToolCalls(appID string, tag uint32) ([]ToolCall, error)
+	ListToolCalls(appID string, tag uint32) ([]ai.ToolCall, error)
 }
 
 // ======================= AIProvider =======================
@@ -83,13 +87,26 @@ func GetDefaultProvider() (AIProvider, error) {
 type AIServer struct {
 	Name string
 	AIService
+	Source yomo.Source
 }
 
-func NewAIServer(name string, service AIService) *AIServer {
+func NewAIServer(name string, service AIService) (*AIServer, error) {
+	source := yomo.NewSource(
+		name,
+		"localhost:9000",
+		yomo.WithSourceReConnect(),
+	)
+	// TODO: need to create early
+	err := source.Connect()
+	if err != nil {
+		slog.Error("source connect failure", "err", err.Error())
+		return nil, err
+	}
 	return &AIServer{
 		Name:      name,
 		AIService: service,
-	}
+		Source:    source,
+	}, nil
 }
 
 func (a *AIServer) Serve() error {
@@ -106,8 +123,10 @@ func (a *AIServer) Serve() error {
 	pattern = fmt.Sprintf("/%s/chat/completions", a.Name)
 	handler.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 		// TODO: need to returns json
-		var req ChatCompletionsRequest
+		log := slog.With("path", pattern, "method", r.Method)
+		var req ai.ChatCompletionsRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			log.Error("decode request", "err", err.Error())
 			w.WriteHeader(http.StatusBadRequest)
 			w.Write([]byte(err.Error()))
 			return
@@ -115,6 +134,7 @@ func (a *AIServer) Serve() error {
 		// ai function
 		resp, err := a.GetChatCompletions(req.AppID, req.Tag, req.Prompt)
 		if err != nil {
+			log.Error("invoke service", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(err.Error()))
 			return
@@ -122,17 +142,23 @@ func (a *AIServer) Serve() error {
 		w.WriteHeader(http.StatusOK)
 		err = json.NewEncoder(w).Encode(resp)
 		if err != nil {
+			log.Error("encode response", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(err.Error()))
 			return
 		}
-		// TODO: new source and send data to zipper
 		w.WriteHeader(http.StatusOK)
-		// TODO: need to invoke sfn with credentials
-		// for _, fn := range resp.Functions {
-		// 	// TODO: invoke source send data to zipper
-		// 	source.Write(req.Tag, []byte(fn.Arguments))
-		// }
+		for _, fn := range resp.Functions {
+			log := slog.With("function", fn.Name, "arguments", fn.Arguments)
+			log.Info("send data to zipper")
+			err := a.Source.Write(req.Tag, []byte(fn.Arguments))
+			if err != nil {
+				log.Error("send data to zipper", "err", err.Error())
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(err.Error()))
+				return
+			}
+		}
 	})
 
 	httpServer := http.Server{
@@ -151,7 +177,10 @@ func Serve() error {
 		return err
 	}
 	if aiService, ok := provider.(AIService); ok {
-		aiServer := NewAIServer(provider.Name(), aiService)
+		aiServer, err := NewAIServer(provider.Name(), aiService)
+		if err != nil {
+			return err
+		}
 		return aiServer.Serve()
 	}
 	slog.Warn("not exists AI service")
@@ -175,7 +204,7 @@ func UnregisterFunction(appID string, tag uint32) error {
 	return provider.UnregisterFunction(appID, tag)
 }
 
-func ListToolCalls(appID string, tag uint32) ([]ToolCall, error) {
+func ListToolCalls(appID string, tag uint32) ([]ai.ToolCall, error) {
 	provider, err := GetDefaultProvider()
 	if err != nil {
 		return nil, err
@@ -183,7 +212,7 @@ func ListToolCalls(appID string, tag uint32) ([]ToolCall, error) {
 	return provider.ListToolCalls(appID, tag)
 }
 
-func GetChatCompletions(appID string, tag uint32, prompt string) (*ChatCompletionsResponse, error) {
+func GetChatCompletions(appID string, tag uint32, prompt string) (*ai.ChatCompletionsResponse, error) {
 	provider, err := GetDefaultProvider()
 	if err != nil {
 		return nil, err
@@ -193,4 +222,32 @@ func GetChatCompletions(appID string, tag uint32, prompt string) (*ChatCompletio
 		return nil, ErrNotImplementedService
 	}
 	return service.GetChatCompletions(appID, tag, prompt)
+}
+
+// ConnMiddleware returns a ConnMiddleware that can be used to intercept the connection.
+func ConnMiddleware(next core.ConnHandler) core.ConnHandler {
+	return func(conn *core.Connection) {
+		// for {
+		f, err := conn.FrameConn().ReadFrame()
+		if err != nil {
+			conn.Logger.Info("failed to read frame", "err", err)
+			return
+		}
+		if ff, ok := f.(*frame.AIRegisterFunctionFrame); ok {
+			err := conn.FrameConn().WriteFrame(&frame.AIRegisterFunctionAckFrame{AppID: ff.AppID, Tag: ff.Tag})
+			if err != nil {
+				conn.Logger.Error("failed to write ai RegisterFunctionAckFrame", "app_id", ff.AppID, "tag", ff.Tag, "err", err)
+				return
+			}
+			// register ai function
+			err = RegisterFunction(ff.AppID, ff.Tag, ff.Definition)
+			if err != nil {
+				conn.Logger.Error("failed to register ai function", "app_id", ff.AppID, "tag", ff.Tag, "err", err)
+				return
+			}
+			conn.Logger.Info("register ai function success", "app_id", ff.AppID, "tag", ff.Tag, "definition", string(ff.Definition))
+		}
+		next(conn)
+		// }
+	}
 }

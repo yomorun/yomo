@@ -10,16 +10,14 @@ import (
 	"github.com/yomorun/yomo"
 	"golang.org/x/exp/slog"
 
-	"github.com/yomorun/yomo/core/ai"
+	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/serverless"
 )
 
 var (
-	addr        = "localhost:9000"
-	name        = "get-weather"
-	tag         = uint32(0x60)
-	description = "Get the current weather for `city_name`"
-	api         = "http://localhost:8000/azopenai/chat/completions"
+	addr = "localhost:9000"
+	tag  = uint32(0x60)
+	api  = "http://localhost:8000/azopenai/chat/completions"
 )
 
 func main() {
@@ -58,12 +56,17 @@ func main() {
 func requestInvokeAIFunction(source yomo.Source) error {
 	prompt := "What's the weather like in San Francisco, Melbourne, and Paris?"
 	// invoke ai api
-	req, _ := json.Marshal(ai.ChatCompletionsRequest{
+	req, err := json.Marshal(ai.ChatCompletionsRequest{
 		Tag:    tag,
 		Prompt: prompt,
 	})
+	if err != nil {
+		slog.Error("[source] ❌ Marshal data failure with err", "err", err)
+		return err
+	}
 	// TODO: add bearer token, it's credential
 	// req.Header.Set("Authorization", "Bearer "+cred)
+	// resp, err := http.Post(api, "application/json", strings.NewReader(req))
 	resp, err := http.Post(api, "application/json", bytes.NewBuffer(req))
 	if err != nil {
 		slog.Error("[source] ❌ Invoke AI function failure with err", "err", err)
@@ -76,28 +79,13 @@ func requestInvokeAIFunction(source yomo.Source) error {
 		return err
 	}
 	if resp.StatusCode != http.StatusOK {
-		slog.Warn("[source] ⛔️Invoke AI function failure", "body", string(body))
+		slog.Warn("[source] ⛔️Invoke AI function failure",
+			"status", resp.StatusCode,
+			"body", string(body),
+		)
 		return nil
 	}
-	slog.Info("[source] ✅ Invoke AI function", "body", string(body))
-	// send data to YoMo-Zipper
-	var chatCompletionsResponse ai.ChatCompletionsResponse
-	err = json.Unmarshal(body, &chatCompletionsResponse)
-	if err != nil {
-		slog.Error("[source] ❌ Unmarshal data failure with err", "err", err)
-		return err
-	}
-	for _, fd := range chatCompletionsResponse.Functions {
-		slog.Info("[source] 🅰️ Invoke AI function", "functions", fd.Name, "arguments", fd.Arguments)
-		err := source.Write(tag, []byte(fd.Arguments))
-		if err != nil {
-			slog.Error("[source] ❌ Emit to YoMo-Zipper failure with err", "err", err)
-			return err
-
-		} else {
-			slog.Info("[source] ✅ Emit to YoMo-Zipper")
-		}
-	}
+	slog.Info("[source] ✅ Invoke AI function", "prompt", prompt)
 
 	return nil
 }

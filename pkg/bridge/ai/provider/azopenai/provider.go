@@ -13,7 +13,8 @@ import (
 	"golang.org/x/exp/slog"
 
 	_ "github.com/joho/godotenv/autoload"
-	"github.com/yomorun/yomo/core/ai"
+	"github.com/yomorun/yomo/ai"
+	bridgeai "github.com/yomorun/yomo/pkg/bridge/ai"
 )
 
 var (
@@ -126,6 +127,7 @@ func (p *AzureOpenAIProvider) GetChatCompletions(appID string, tag uint32, userP
 	if err != nil {
 		return nil, err
 	}
+	// slog.Info("response body", "body", string(respBody))
 	if resp.StatusCode >= 400 {
 		// log.Println(resp.StatusCode, string(respBody))
 		// {"error":{"code":"429","message": "Requests to the ChatCompletions_Create Operation under Azure OpenAI API version 2023-12-01-preview have exceeded token rate limit of your current OpenAI S0 pricing tier. Please retry after 22 seconds. Please go here: https://aka.ms/oai/quotaincrease if you would like to further increase the default rate limit."}}
@@ -205,5 +207,5 @@ func init() {
 	tools = make(map[string]map[uint32][]ai.ToolCall)
 	// ai.RegisterProvider(NewAzureOpenAIProvider("api-key", "api-endpoint"))
 	// TODO: for test
-	ai.RegisterProvider(New())
+	bridgeai.RegisterProvider(New())
 }
