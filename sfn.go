@@ -13,6 +13,9 @@ import (
 
 // StreamFunction defines serverless streaming functions.
 type StreamFunction interface {
+	// SetWantedTarget sets target for sfn that to receive data carrying the same target.
+	// This function is optional and it should be called before Connect().
+	SetWantedTarget(string)
 	// SetObserveDataTags set the data tag list that will be observed
 	SetObserveDataTags(tag ...uint32)
 	// Init will initialize the stream function
@@ -69,6 +72,10 @@ type streamFunction struct {
 	pfn             core.PipeHandler
 	pIn             chan []byte
 	pOut            chan *frame.DataFrame
+}
+
+func (s *streamFunction) SetWantedTarget(target string) {
+	s.client.SetWantedTarget(target)
 }
 
 // SetObserveDataTags set the data tag list that will be observed.
@@ -192,14 +199,7 @@ func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 			newMd, endFn := core.SfnTraceMetadata(md, s.client.Name(), s.client.TracerProvider(), s.client.Logger)
 			defer endFn()
 
-			newMetadata, err := newMd.Encode()
-			if err != nil {
-				s.client.Logger.Error("sfn encode metadata error", "err", err)
-				return
-			}
-			dataFrame.Metadata = newMetadata
-
-			serverlessCtx := serverless.NewContext(s.client, dataFrame)
+			serverlessCtx := serverless.NewContext(s.client, dataFrame.Tag, newMd, dataFrame.Payload)
 			s.fn(serverlessCtx)
 		}(tp, dataFrame)
 	} else if s.pfn != nil {

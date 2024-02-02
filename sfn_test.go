@@ -10,6 +10,10 @@ import (
 	"github.com/yomorun/yomo/serverless"
 )
 
+var (
+	mockTargetString = "targetString"
+)
+
 func TestStreamFunction(t *testing.T) {
 	t.Parallel()
 
@@ -35,10 +39,37 @@ func TestStreamFunction(t *testing.T) {
 		t.Logf("unittest sfn receive <- (%d)", len(ctx.Data()))
 		assert.Equal(t, uint32(0x21), ctx.Tag())
 		assert.Equal(t, []byte("test"), ctx.Data())
-		ctx.Write(0x22, []byte("backflow"))
+
+		err := ctx.WriteWithTarget(0x22, []byte("message from sfn"), mockTargetString)
+		assert.Nil(t, err)
+
 	})
 
 	// connect to server
+	err := sfn.Connect()
+	assert.Nil(t, err)
+
+	sfn.Wait()
+}
+
+func TestSfnWantedTarget(t *testing.T) {
+	t.Parallel()
+
+	sfn := NewStreamFunction("sfn-handler", "localhost:9000", WithSfnCredential("token:<CREDENTIAL>"))
+	sfn.SetObserveDataTags(0x22)
+	sfn.SetWantedTarget(mockTargetString)
+
+	time.AfterFunc(time.Second, func() {
+		sfn.Close()
+	})
+
+	// set handler
+	sfn.SetHandler(func(ctx serverless.Context) {
+		t.Logf("unittest handler sfn receive <- (%d)", len(ctx.Data()))
+		assert.Equal(t, uint32(0x22), ctx.Tag())
+		assert.Contains(t, []string{"message from source", "message from sfn"}, string(ctx.Data()))
+	})
+
 	err := sfn.Connect()
 	assert.Nil(t, err)
 

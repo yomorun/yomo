@@ -34,6 +34,9 @@ func encodeHandshakeFrame(f *frame.HandshakeFrame) ([]byte, error) {
 	// version
 	versionBlock := y3.NewPrimitivePacketEncoder(tagHandshakeVersion)
 	versionBlock.SetStringValue(f.Version)
+	// wantTarget
+	wantTargetBlock := y3.NewPrimitivePacketEncoder(tagHandshakeWantedTarget)
+	wantTargetBlock.SetStringValue(f.WantedTarget)
 
 	// handshake frame
 	handshake := y3.NewNodePacketEncoder(byte(f.Type()))
@@ -44,6 +47,7 @@ func encodeHandshakeFrame(f *frame.HandshakeFrame) ([]byte, error) {
 	handshake.AddPrimitivePacket(authNameBlock)
 	handshake.AddPrimitivePacket(authPayloadBlock)
 	handshake.AddPrimitivePacket(versionBlock)
+	handshake.AddPrimitivePacket(wantTargetBlock)
 
 	return handshake.Encode(), nil
 }
@@ -110,6 +114,14 @@ func decodeHandshakeFrame(data []byte, f *frame.HandshakeFrame) error {
 		}
 		f.Version = version
 	}
+	// wantTarget
+	if wantTargetBlock, ok := node.PrimitivePackets[tagHandshakeWantedTarget]; ok {
+		wantTarget, err := wantTargetBlock.ToUTF8String()
+		if err != nil {
+			return err
+		}
+		f.WantedTarget = wantTarget
+	}
 
 	return nil
 }
@@ -122,4 +134,5 @@ const (
 	tagAuthenticationPayload    byte = 0x05
 	tagHandshakeObserveDataTags byte = 0x06
 	tagHandshakeVersion         byte = 0x07
+	tagHandshakeWantedTarget    byte = 0x08
 )

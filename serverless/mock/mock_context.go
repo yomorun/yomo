@@ -7,10 +7,13 @@ import (
 	"github.com/yomorun/yomo/serverless/guest"
 )
 
-// DataAndTag is a pair of data and tag.
-type DataAndTag struct {
-	Data []byte
-	Tag  uint32
+var _ serverless.Context = (*MockContext)(nil)
+
+// WriteRecord composes the data, tag and target.
+type WriteRecord struct {
+	Data   []byte
+	Tag    uint32
+	Target string
 }
 
 // MockContext mock context.
@@ -19,7 +22,7 @@ type MockContext struct {
 	tag  uint32
 
 	mu      sync.Mutex
-	wrSlice []DataAndTag
+	wrSlice []WriteRecord
 }
 
 // NewMockContext returns the mock context.
@@ -34,9 +37,11 @@ func NewMockContext(data []byte, tag uint32) *MockContext {
 func (c *MockContext) Data() []byte {
 	return c.data
 }
+
 func (c *MockContext) Tag() uint32 {
 	return c.tag
 }
+
 func (m *MockContext) HTTP() serverless.HTTP {
 	return &guest.GuestHTTP{}
 }
@@ -45,7 +50,7 @@ func (c *MockContext) Write(tag uint32, data []byte) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.wrSlice = append(c.wrSlice, DataAndTag{
+	c.wrSlice = append(c.wrSlice, WriteRecord{
 		Data: data,
 		Tag:  tag,
 	})
@@ -53,8 +58,21 @@ func (c *MockContext) Write(tag uint32, data []byte) error {
 	return nil
 }
 
-// RecordWritten returns the data records be written with `ctx.Write`.
-func (c *MockContext) RecordWritten() []DataAndTag {
+func (c *MockContext) WriteWithTarget(tag uint32, data []byte, target string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.wrSlice = append(c.wrSlice, WriteRecord{
+		Data:   data,
+		Tag:    tag,
+		Target: target,
+	})
+
+	return nil
+}
+
+// RecordsWritten returns the data records be written with `ctx.Write`.
+func (c *MockContext) RecordsWritten() []WriteRecord {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 

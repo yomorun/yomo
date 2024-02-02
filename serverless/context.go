@@ -7,10 +7,12 @@ type Context interface {
 	Data() []byte
 	// Tag incoming tag
 	Tag() uint32
-	// Write write data to zipper
+	// Write writes data
 	Write(tag uint32, data []byte) error
 	// HTTP http interface
 	HTTP() HTTP
+	// WriteWithTarget writes data to sfn instance with specified target
+	WriteWithTarget(tag uint32, data []byte, target string) error
 }
 
 // HTTP http interface

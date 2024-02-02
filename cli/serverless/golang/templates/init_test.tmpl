@@ -12,12 +12,12 @@ func TestHandler(t *testing.T) {
 		name string
 		ctx  *mock.MockContext
 		// want is the expected data and tag that be written by ctx.Write
-		want []mock.DataAndTag
+		want []mock.WriteRecord
 	}{
 		{
 			name: "upper",
 			ctx:  mock.NewMockContext([]byte("hello"), 0x33),
-			want: []mock.DataAndTag{
+			want: []mock.WriteRecord{
 				{Data: []byte("HELLO"), Tag: 0x34},
 			},
 		},
@@ -26,7 +26,7 @@ func TestHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			Handler(tt.ctx)
-			got := tt.ctx.RecordWritten()
+			got := tt.ctx.RecordsWritten()
 
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("TestHandler got: %v, want: %v", got, tt.want)

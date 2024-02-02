@@ -27,6 +27,7 @@ type Client struct {
 	clientType     ClientType             // type of the client
 	processor      func(*frame.DataFrame) // function to invoke when data arrived
 	errorfn        func(error)            // function to invoke when error occured
+	wantedTarget   string
 	opts           *clientOptions
 	Logger         *slog.Logger
 	tracerProvider oteltrace.TracerProvider
@@ -79,6 +80,11 @@ func NewClient(appName, zipperAddr string, clientType ClientType, opts ...Client
 		wrCh: make(chan frame.Frame),
 		rdCh: make(chan readOut),
 	}
+}
+
+// SetWantedTarget set the wanted target string.
+func (c *Client) SetWantedTarget(target string) {
+	c.wantedTarget = target
 }
 
 // Connect connect client to server.
@@ -179,6 +185,7 @@ func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
 		AuthName:        c.opts.credential.Name(),
 		AuthPayload:     c.opts.credential.Payload(),
 		Version:         Version,
+		WantedTarget:    c.wantedTarget,
 	}
 
 	if err := conn.WriteFrame(hf); err != nil {
