@@ -85,13 +85,13 @@ var serveCmd = &cobra.Command{
 		go func() {
 			bridgeConf := conf.Bridge
 			// log.InfoStatusEvent(os.Stdout, "bridge_type=%T bridge_config=%v", bridgeConf, bridgeConf)
-			err := ai.Serve(bridgeConf)
+			err := ai.Serve(bridgeConf, listenAddr)
 			if err != nil {
 				log.FailureStatusEvent(os.Stdout, err.Error())
 				return
 			}
 		}()
-
+		// TODO: add error channe for receiving error
 		err = zipper.ListenAndServe(ctx, listenAddr)
 		if err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())

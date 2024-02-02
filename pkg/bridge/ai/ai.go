@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"sync"
 
@@ -15,6 +16,8 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 	"golang.org/x/exp/slog"
 )
+
+const DefaultZipperAddr = "localhost:9000"
 
 var (
 	ErrNotExistsProvider     = errors.New("not exists AI provider")
@@ -95,10 +98,10 @@ type AIServer struct {
 	Source yomo.Source
 }
 
-func NewAIServer(name string, config Config, service AIService) (*AIServer, error) {
+func NewAIServer(name string, config Config, service AIService, zipperAddr string) (*AIServer, error) {
 	source := yomo.NewSource(
 		name,
-		"localhost:9000",
+		zipperAddr,
 		yomo.WithSourceReConnect(),
 		yomo.WithCredential(config.Server.Credential),
 	)
@@ -176,12 +179,14 @@ func (a *AIServer) Serve() error {
 }
 
 // ======================= Packge Functions =======================
-func Serve(conf map[string]any) error {
+func Serve(conf map[string]any, zipperListenAddr string) error {
+	// parse ai config
 	config, err := parseConfig(conf)
 	if err != nil {
 		slog.Error("parse config", "err", err.Error())
 		return err
 	}
+	zipperAddr := parseZipperAddr(zipperListenAddr)
 	provider := GetProvider(config.Server.Provider)
 	if provider == nil {
 		return ErrNotExistsProvider
@@ -191,7 +196,7 @@ func Serve(conf map[string]any) error {
 	// 	return err
 	// }
 	if aiService, ok := provider.(AIService); ok {
-		aiServer, err := NewAIServer(provider.Name(), config, aiService)
+		aiServer, err := NewAIServer(provider.Name(), config, aiService, zipperAddr)
 		if err != nil {
 			return err
 		}
@@ -346,4 +351,58 @@ func parseConfig(conf map[string]any) (config Config, err error) {
 	}
 	slog.Info("parse config", "config", config)
 	return
+}
+
+// parseZipperAddr parses the zipper address from zipper listen address
+func parseZipperAddr(addr string) string {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		slog.Error("invalid zipper address, return default",
+			"addr", addr,
+			"default", DefaultZipperAddr,
+			"err", err.Error(),
+		)
+		return DefaultZipperAddr
+	}
+	if host == "localhost" {
+		return addr
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		slog.Error("invalid zipper address, return default",
+			"addr", addr,
+			"default", DefaultZipperAddr,
+		)
+		return DefaultZipperAddr
+	}
+	if !ip.IsUnspecified() {
+		addr = ip.String() + ":" + port
+		// slog.Info("parse zipper address", "addr", addr)
+		return addr
+	}
+	localIP, err := getLocalIP()
+	if err != nil {
+		slog.Error("get local ip, return default",
+			"default", DefaultZipperAddr,
+			"err", err.Error(),
+		)
+		return DefaultZipperAddr
+	}
+	return localIP + ":" + port
+}
+
+func getLocalIP() (string, error) {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return "", err
+	}
+	for _, addr := range addrs {
+		ipnet, ok := addr.(*net.IPNet)
+		ip := ipnet.IP
+		if !ok || ip.IsUnspecified() || ip.To4() == nil || ip.To16() == nil {
+			continue
+		}
+		return ip.String(), nil
+	}
+	return "", errors.New("not found local ip")
 }
