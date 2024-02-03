@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 
+	"github.com/robfig/cron/v3"
+
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/serverless"
+	"github.com/yomorun/yomo/pkg/id"
 	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
@@ -26,6 +29,13 @@ type StreamFunction interface {
 	SetErrorHandler(fn func(err error))
 	// SetPipeHandler set the pipe handler function
 	SetPipeHandler(fn core.PipeHandler) error
+	// SetCronHandler set the cron handler function.
+	//  Examples:
+	//  sfn.SetCronHandler("0 30 * * * *", func(ctx serverless.CronContext) {})
+	//  sfn.SetCronHandler("@hourly",      func(ctx serverless.CronContext) {})
+	//  sfn.SetCronHandler("@every 1h30m", func(ctx serverless.CronContext) {})
+	// more spec style see: https://pkg.go.dev/github.com/robfig/cron#hdr-Usage
+	SetCronHandler(spec string, fn core.CronHandler) error
 	// Connect create a connection to the zipper
 	Connect() error
 	// Close will close the connection
@@ -71,6 +81,9 @@ type streamFunction struct {
 	fn              core.AsyncHandler // user's function which will be invoked when data arrived
 	pfn             core.PipeHandler
 	pIn             chan []byte
+	cronSpec        string
+	cronFn          core.CronHandler
+	cron            *cron.Cron
 	pOut            chan *frame.DataFrame
 }
 
@@ -92,6 +105,13 @@ func (s *streamFunction) SetHandler(fn core.AsyncHandler) error {
 	return nil
 }
 
+func (s *streamFunction) SetCronHandler(cronSpec string, fn core.CronHandler) error {
+	s.cronSpec = cronSpec
+	s.cronFn = fn
+	s.client.Logger.Debug("set cron handler")
+	return nil
+}
+
 func (s *streamFunction) SetPipeHandler(fn core.PipeHandler) error {
 	s.pfn = fn
 	s.client.Logger.Debug("set pipe handler")
@@ -101,7 +121,26 @@ func (s *streamFunction) SetPipeHandler(fn core.PipeHandler) error {
 // Connect create a connection to the zipper, when data arrvied, the data will be passed to the
 // handler which setted by SetHandler method.
 func (s *streamFunction) Connect() error {
-	if len(s.observeDataTags) == 0 {
+	hasCron := s.cronFn != nil && s.cronSpec != ""
+	if hasCron {
+		s.cron = cron.New()
+		s.cron.AddFunc(s.cronSpec, func() {
+			md, deferFunc := core.InitialSfnMetadata(
+				s.client.ClientID(),
+				id.New(),
+				s.name,
+				s.client.TracerProvider(),
+				s.client.Logger,
+			)
+			defer deferFunc()
+
+			cronCtx := serverless.NewCronContext(s.client, md)
+			s.cronFn(cronCtx)
+		})
+		s.cron.Start()
+	}
+
+	if len(s.observeDataTags) == 0 && !hasCron {
 		return errors.New("streamFunction cannot observe data because the required tag has not been set")
 	}
 
@@ -167,6 +206,10 @@ func (s *streamFunction) Close() error {
 
 	if s.pOut != nil {
 		close(s.pOut)
+	}
+
+	if s.cron != nil {
+		s.cron.Stop()
 	}
 
 	if s.client != nil {

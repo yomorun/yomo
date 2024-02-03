@@ -5,6 +5,8 @@ import (
 	"github.com/yomorun/yomo/serverless"
 )
 
+type CronHandler func(ctx serverless.CronContext)
+
 // AsyncHandler is the request-response mode (asnyc)
 type AsyncHandler func(ctx serverless.Context)
 
