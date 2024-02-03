@@ -36,27 +36,29 @@ func SetMetadataTarget(m metadata.M, target string) {
 	m.Set(metadata.TargetKey, target)
 }
 
-// SourceMetadata generates initial source metadata with trace information.
+// InitialSourceMetadata generates initial source metadata with trace information.
+// the span name typically corresponds to the source's name.
 func InitialSourceMetadata(
 	sourceID, tid string,
-	tracerName string,
+	spanName string,
 	tp oteltrace.TracerProvider, logger *slog.Logger,
 ) (metadata.M, func()) {
-	return initialMetadata(sourceID, tid, "Source", tracerName, tp, logger)
+	return initialMetadata(sourceID, tid, "Source", spanName, tp, logger)
 }
 
 // InitialSfnMetadata generates initial sfn metadata with trace information.
+// the span name typically corresponds to the sfn's name.
 func InitialSfnMetadata(
 	sourceID, tid string,
-	tracerName string,
+	spanName string,
 	tp oteltrace.TracerProvider, logger *slog.Logger,
 ) (metadata.M, func()) {
-	return initialMetadata(sourceID, tid, "StreamFunction", tracerName, tp, logger)
+	return initialMetadata(sourceID, tid, "StreamFunction", spanName, tp, logger)
 }
 
 // initialMetadata builds a metadata with trace information.
 // the tracer name is `Source` or `StreamFunction`.
-// span name typically corresponds to the source or sfn name.
+// span name typically corresponds to the source's name or sfn's name.
 func initialMetadata(
 	sourceID, tid string,
 	tracerName string,

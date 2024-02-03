@@ -7,15 +7,19 @@ import (
 
 // CronContext sfn cron handler context
 type CronContext struct {
-	writer frame.Writer
-	md     metadata.M
+	writer  frame.Writer
+	md      metadata.M
+	mdBytes []byte
 }
 
 // NewCronContext creates a new serverless CronContext
 func NewCronContext(writer frame.Writer, md metadata.M) *CronContext {
+	mdBytes, _ := md.Encode()
+
 	return &CronContext{
-		writer: writer,
-		md:     md,
+		writer:  writer,
+		md:      md,
+		mdBytes: mdBytes,
 	}
 }
 
@@ -25,14 +29,9 @@ func (c *CronContext) Write(tag uint32, data []byte) error {
 		return nil
 	}
 
-	mdBytes, err := c.md.Encode()
-	if err != nil {
-		return err
-	}
-
 	dataFrame := &frame.DataFrame{
 		Tag:      tag,
-		Metadata: mdBytes,
+		Metadata: c.mdBytes,
 		Payload:  data,
 	}
 
