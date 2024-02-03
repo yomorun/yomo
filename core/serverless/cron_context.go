@@ -44,9 +44,11 @@ func (c *CronContext) WriteWithTarget(tag uint32, data []byte, target string) er
 		return nil
 	}
 
-	if target != "" {
-		c.md.Set(metadata.TargetKey, target)
+	if target == "" {
+		return c.Write(tag, data)
 	}
+
+	c.md.Set(metadata.TargetKey, target)
 
 	mdBytes, err := c.md.Encode()
 	if err != nil {
