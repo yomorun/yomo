@@ -67,7 +67,11 @@ func TestSfnWantedTarget(t *testing.T) {
 	sfn.SetHandler(func(ctx serverless.Context) {
 		t.Logf("unittest handler sfn receive <- (%d)", len(ctx.Data()))
 		assert.Equal(t, uint32(0x22), ctx.Tag())
-		assert.Contains(t, []string{"message from source", "message from sfn"}, string(ctx.Data()))
+		assert.Contains(t, []string{
+			"message from source",
+			"message from sfn",
+			"message from cron sfn",
+		}, string(ctx.Data()))
 	})
 
 	err := sfn.Connect()
@@ -88,4 +92,26 @@ func TestSfnInit(t *testing.T) {
 	})
 	assert.Nil(t, err)
 	assert.Equal(t, int64(1), total)
+}
+
+func TestSfnCron(t *testing.T) {
+	t.Parallel()
+
+	sfn := NewStreamFunction("sfn-cron", "localhost:9000", WithSfnCredential("token:<CREDENTIAL>"))
+
+	time.AfterFunc(time.Second, func() {
+		sfn.Close()
+	})
+
+	// set cron handler
+	sfn.SetCronHandler("@every 200ms", func(ctx serverless.CronContext) {
+		t.Log("unittest cron sfn, time reached")
+		ctx.Write(0x22, []byte("message from cron sfn"))
+		ctx.WriteWithTarget(0x22, []byte("message from cron sfn"), mockTargetString)
+	})
+
+	err := sfn.Connect()
+	assert.Nil(t, err)
+
+	sfn.Wait()
 }

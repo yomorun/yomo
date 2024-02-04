@@ -71,7 +71,7 @@ func (s *yomoSource) Connect() error {
 
 // Write writes data with specified tag.
 func (s *yomoSource) Write(tag uint32, data []byte) error {
-	md, deferFunc := core.SourceMetadata(s.client.ClientID(), id.New(), s.name, s.client.TracerProvider(), s.client.Logger)
+	md, deferFunc := core.InitialSourceMetadata(s.client.ClientID(), id.New(), s.name, s.client.TracerProvider(), s.client.Logger)
 	defer deferFunc()
 
 	mdBytes, err := md.Encode()
@@ -93,7 +93,7 @@ func (s *yomoSource) WriteWithTarget(tag uint32, data []byte, target string) err
 	if data == nil {
 		return nil
 	}
-	md, deferFunc := core.SourceMetadata(s.client.ClientID(), id.New(), s.name, s.client.TracerProvider(), s.client.Logger)
+	md, deferFunc := core.InitialSourceMetadata(s.client.ClientID(), id.New(), s.name, s.client.TracerProvider(), s.client.Logger)
 	defer deferFunc()
 
 	if target != "" {
