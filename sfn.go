@@ -119,7 +119,7 @@ func (s *streamFunction) SetPipeHandler(fn core.PipeHandler) error {
 }
 
 // Connect create a connection to the zipper, when data arrvied, the data will be passed to the
-// handler which setted by SetHandler method.
+// handler set by SetHandler method.
 func (s *streamFunction) Connect() error {
 	hasCron := s.cronFn != nil && s.cronSpec != ""
 	if hasCron {
