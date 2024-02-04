@@ -10,15 +10,14 @@ import (
 	"os"
 	"sync"
 
-	"golang.org/x/exp/slog"
-
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/yomorun/yomo/ai"
 	bridgeai "github.com/yomorun/yomo/pkg/bridge/ai"
 )
 
 var (
-	tools             map[string]map[uint32][]ai.ToolCall
+	// tools is the map of appID to tag to tool call
+	tools             map[string]map[uint32]ai.ToolCall
 	mu                sync.Mutex
 	ErrNoFunctionCall = errors.New("no function call")
 )
@@ -91,16 +90,23 @@ func (p *AzureOpenAIProvider) Name() string {
 	return "azopenai"
 }
 
-func (p *AzureOpenAIProvider) GetChatCompletions(appID string, tag uint32, userPrompt string) (*ai.ChatCompletionsResponse, error) {
+func (p *AzureOpenAIProvider) GetChatCompletions(appID string, userPrompt string) (*ai.ChatCompletionsResponse, error) {
+	mapTools, err := p.ListToolCalls(appID)
+	if err != nil {
+		return nil, err
+	}
+	if len(mapTools) == 0 {
+		return &ai.ChatCompletionsResponse{Content: "no toolcalls"}, ErrNoFunctionCall
+	}
 	// messages
 	messages := []ReqMessage{
 		{Role: "system", Content: `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. If you don't know the answer, stop the conversation by saying "no func call".`},
 		{Role: "user", Content: userPrompt},
 	}
 	// tools
-	tools, err := p.ListToolCalls(appID, tag)
-	if err != nil {
-		return nil, err
+	tools := make([]ai.ToolCall, 0, len(mapTools))
+	for _, v := range mapTools {
+		tools = append(tools, v)
 	}
 	body := ReqBody{Messages: messages, Tools: tools}
 	jsonBody, err := json.Marshal(body)
@@ -152,59 +158,70 @@ func (p *AzureOpenAIProvider) GetChatCompletions(appID string, tag uint32, userP
 		return result, ErrNoFunctionCall
 	}
 	// functions may be more than one
+	// slog.Info("tool calls", "calls", calls, "mapTools", mapTools)
 	for _, call := range calls {
-		result.Functions = append(result.Functions, call.Function)
+		for tag, tool := range mapTools {
+			if tool.Equal(&call) {
+				if result.Functions == nil {
+					result.Functions = make(map[uint32][]*ai.FunctionDefinition)
+				}
+				result.Functions[tag] = append(result.Functions[tag], call.Function)
+			}
+		}
 	}
 	return result, nil
 }
 
 // RegisterFunction register function
-func (p *AzureOpenAIProvider) RegisterFunction(appID string, tag uint32, functionDefinition []byte) error {
+func (p *AzureOpenAIProvider) RegisterFunction(appID string, tag uint32, functionDefinition *ai.FunctionDefinition) error {
 	mu.Lock()
 	defer mu.Unlock()
 	appTools := tools[appID]
 	if appTools == nil {
-		appTools = make(map[uint32][]ai.ToolCall)
+		appTools = make(map[uint32]ai.ToolCall)
 	}
-	fd := ai.FunctionDefinition{}
-	err := json.Unmarshal(functionDefinition, &fd)
-	if err != nil {
-		slog.Error("unmarshal function definition", "error", err)
-		return err
+	appTools[tag] = ai.ToolCall{
+		Type:     "function",
+		Function: functionDefinition,
 	}
-	appTools[tag] = append(
-		appTools[tag],
-		ai.ToolCall{
-			Type:     "function",
-			Function: &fd,
-		},
-	)
 	tools[appID] = appTools
 	return nil
 }
 
 // UnregisterFunction unregister function
-func (p *AzureOpenAIProvider) UnregisterFunction(appID string, tag uint32) error {
+func (p *AzureOpenAIProvider) UnregisterFunction(appID string, name string) error {
 	mu.Lock()
 	defer mu.Unlock()
 	appTools := tools[appID]
 	if appTools != nil {
-		delete(appTools, tag)
+		// delete(appTools, tag)
+		tags := make([]uint32, 0)
+		for tag, tool := range appTools {
+			if tool.Function.Name == name {
+				tags = append(tags, tag)
+			}
+		}
+		// delete function
+		for _, tag := range tags {
+			delete(appTools, tag)
+		}
+		// reset appTools
+		tools[appID] = appTools
 	}
 	return nil
 }
 
 // ListToolCalls list tool calls
-func (p *AzureOpenAIProvider) ListToolCalls(appID string, tag uint32) ([]ai.ToolCall, error) {
+func (p *AzureOpenAIProvider) ListToolCalls(appID string) (map[uint32]ai.ToolCall, error) {
 	appTools, ok := tools[appID]
 	if !ok {
 		return nil, nil
 	}
-	return appTools[tag], nil
+	return appTools, nil
 }
 
 func init() {
-	tools = make(map[string]map[uint32][]ai.ToolCall)
+	tools = make(map[string]map[uint32]ai.ToolCall)
 	// ai.RegisterProvider(NewAzureOpenAIProvider("api-key", "api-endpoint"))
 	// TEST: for test
 	bridgeai.RegisterProvider(New())

@@ -10,12 +10,16 @@ func encodeAIRegisterFunctionAckFrame(f *frame.AIRegisterFunctionAckFrame) ([]by
 	// app id
 	appIDBlock := y3.NewPrimitivePacketEncoder(tagAIRegisterFunctionAckAppID)
 	appIDBlock.SetStringValue(f.AppID)
+	// name
+	nameBlock := y3.NewPrimitivePacketEncoder(tagAIRegisterFunctionAckName)
+	nameBlock.SetStringValue(f.Name)
 	// tag
 	tagBlock := y3.NewPrimitivePacketEncoder(tagAIRegisterFunctionAckTag)
 	tagBlock.SetUInt32Value(f.Tag)
 	// encoder
 	encoder := y3.NewNodePacketEncoder(byte(f.Type()))
 	encoder.AddPrimitivePacket(appIDBlock)
+	encoder.AddPrimitivePacket(nameBlock)
 	encoder.AddPrimitivePacket(tagBlock)
 	return encoder.Encode(), nil
 }
@@ -35,6 +39,14 @@ func decodeAIRegisterFunctionAckFrame(data []byte, f *frame.AIRegisterFunctionAc
 		}
 		f.AppID = appID
 	}
+	// name
+	if nameBlock, ok := node.PrimitivePackets[byte(tagAIRegisterFunctionAckName)]; ok {
+		name, err := nameBlock.ToUTF8String()
+		if err != nil {
+			return err
+		}
+		f.Name = name
+	}
 	// tag
 	if tagBlock, ok := node.PrimitivePackets[byte(tagAIRegisterFunctionAckTag)]; ok {
 		tag, err := tagBlock.ToUInt32()
@@ -43,10 +55,12 @@ func decodeAIRegisterFunctionAckFrame(data []byte, f *frame.AIRegisterFunctionAc
 		}
 		f.Tag = tag
 	}
+
 	return nil
 }
 
 const (
 	tagAIRegisterFunctionAckAppID byte = 0x01
-	tagAIRegisterFunctionAckTag   byte = 0x02
+	tagAIRegisterFunctionAckName  byte = 0x02
+	tagAIRegisterFunctionAckTag   byte = 0x03
 )

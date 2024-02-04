@@ -28,15 +28,15 @@ var (
 
 // AIService provides an interface to the AI API
 type AIService interface {
-	GetChatCompletions(appID string, tag uint32, prompt string) (*ai.ChatCompletionsResponse, error)
+	GetChatCompletions(appID string, prompt string) (*ai.ChatCompletionsResponse, error)
 }
 
 // AIProvider
 type AIProvider interface {
 	Name() string
-	RegisterFunction(appID string, tag uint32, functionDefinition []byte) error
-	UnregisterFunction(appID string, tag uint32) error
-	ListToolCalls(appID string, tag uint32) ([]ai.ToolCall, error)
+	RegisterFunction(appID string, tag uint32, functionDefinition *ai.FunctionDefinition) error
+	UnregisterFunction(appID string, name string) error
+	ListToolCalls(appID string) (map[uint32]ai.ToolCall, error)
 }
 
 // ======================= AIProvider =======================
@@ -103,6 +103,7 @@ func NewAIServer(name string, config Config, service AIService, zipperAddr strin
 		name,
 		zipperAddr,
 		yomo.WithSourceReConnect(),
+		// TODO: credential from request
 		yomo.WithCredential(config.Server.Credential),
 	)
 	// create ai source
@@ -141,14 +142,13 @@ func (a *AIServer) Serve() error {
 			return
 		}
 		// ai function
-		resp, err := a.GetChatCompletions(req.AppID, req.Tag, req.Prompt)
+		resp, err := a.GetChatCompletions(req.AppID, req.Prompt)
 		if err != nil {
 			log.Error("invoke service", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(err.Error()))
 			return
 		}
-		w.WriteHeader(http.StatusOK)
 		err = json.NewEncoder(w).Encode(resp)
 		if err != nil {
 			log.Error("encode response", "err", err.Error())
@@ -157,15 +157,17 @@ func (a *AIServer) Serve() error {
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		for _, fn := range resp.Functions {
-			log := slog.With("function", fn.Name, "arguments", fn.Arguments)
-			log.Info("send data to zipper")
-			err := a.Source.Write(req.Tag, []byte(fn.Arguments))
-			if err != nil {
-				log.Error("send data to zipper", "err", err.Error())
-				w.WriteHeader(http.StatusInternalServerError)
-				w.Write([]byte(err.Error()))
-				return
+		for tag, fns := range resp.Functions {
+			for _, fn := range fns {
+				log := slog.With("tag", tag, "function", fn.Name, "arguments", fn.Arguments)
+				log.Info("send data to zipper")
+				err := a.Source.Write(tag, []byte(fn.Arguments))
+				if err != nil {
+					log.Error("send data to zipper", "err", err.Error())
+					w.WriteHeader(http.StatusInternalServerError)
+					w.Write([]byte(err.Error()))
+					return
+				}
 			}
 		}
 	})
@@ -211,63 +213,80 @@ func RegisterFunction(appID string, tag uint32, functionDefinition []byte) error
 	if err != nil {
 		return err
 	}
-	slog.Debug("register function", "appID", appID, "tag", tag, "function", string(functionDefinition))
-	return provider.RegisterFunction(appID, tag, functionDefinition)
+	fd := ai.FunctionDefinition{}
+	err = json.Unmarshal(functionDefinition, &fd)
+	if err != nil {
+		slog.Error("unmarshal function definition", "error", err)
+		return err
+	}
+	slog.Debug("register function", "appID", appID, "name", fd.Name, "tag", tag, "function", string(functionDefinition))
+	return provider.RegisterFunction(appID, tag, &fd)
 }
 
-func UnregisterFunction(appID string, tag uint32) error {
+func UnregisterFunction(appID string, name string) error {
 	provider, err := GetDefaultProvider()
 	if err != nil {
 		return err
 	}
-	return provider.UnregisterFunction(appID, tag)
+	return provider.UnregisterFunction(appID, name)
 }
 
-func ListToolCalls(appID string, tag uint32) ([]ai.ToolCall, error) {
+func ListToolCalls(appID string) (map[uint32]ai.ToolCall, error) {
 	provider, err := GetDefaultProvider()
 	if err != nil {
 		return nil, err
 	}
-	return provider.ListToolCalls(appID, tag)
+	return provider.ListToolCalls(appID)
 }
 
-func GetChatCompletions(appID string, tag uint32, prompt string) (*ai.ChatCompletionsResponse, error) {
-	provider, err := GetDefaultProvider()
-	if err != nil {
-		return nil, err
-	}
-	service, ok := provider.(AIService)
-	if !ok {
-		return nil, ErrNotImplementedService
-	}
-	return service.GetChatCompletions(appID, tag, prompt)
-}
+// func GetChatCompletions(appID string, prompt string) (*ai.ChatCompletionsResponse, error) {
+// 	provider, err := GetDefaultProvider()
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	service, ok := provider.(AIService)
+// 	if !ok {
+// 		return nil, ErrNotImplementedService
+// 	}
+// 	return service.GetChatCompletions(appID, prompt)
+// }
 
 // ConnMiddleware returns a ConnMiddleware that can be used to intercept the connection.
 func ConnMiddleware(next core.ConnHandler) core.ConnHandler {
 	return func(conn *core.Connection) {
-		// for {
-		f, err := conn.FrameConn().ReadFrame()
-		if err != nil {
-			conn.Logger.Info("failed to read frame", "err", err)
+		// check sfn type and is ai function
+		if conn.ClientType() != core.ClientTypeStreamFunction {
+			next(conn)
 			return
 		}
-		if ff, ok := f.(*frame.AIRegisterFunctionFrame); ok {
-			err := conn.FrameConn().WriteFrame(&frame.AIRegisterFunctionAckFrame{AppID: ff.AppID, Tag: ff.Tag})
+		for {
+			f, err := conn.FrameConn().ReadFrame()
+			// unregister ai function on any error
 			if err != nil {
-				conn.Logger.Error("failed to write ai RegisterFunctionAckFrame", "app_id", ff.AppID, "tag", ff.Tag, "err", err)
+				conn.Logger.Error("failed to read frame on ai middleware", "err", err)
+				conn.Logger.Info("error type", "type", fmt.Sprintf("%T", err))
+				appID, _ := conn.Metadata().Get(core.MetadataAppIDKey)
+				name := conn.Name()
+				conn.Logger.Info("unregister ai function", "app_id", appID, "name", name)
+				UnregisterFunction(appID, name)
 				return
 			}
-			// register ai function
-			err = RegisterFunction(ff.AppID, ff.Tag, ff.Definition)
-			if err != nil {
-				conn.Logger.Error("failed to register ai function", "app_id", ff.AppID, "tag", ff.Tag, "err", err)
-				return
+			if ff, ok := f.(*frame.AIRegisterFunctionFrame); ok {
+				err := conn.FrameConn().WriteFrame(&frame.AIRegisterFunctionAckFrame{AppID: ff.AppID, Tag: ff.Tag})
+				if err != nil {
+					conn.Logger.Error("failed to write ai RegisterFunctionAckFrame", "app_id", ff.AppID, "tag", ff.Tag, "err", err)
+					return
+				}
+				// register ai function
+				err = RegisterFunction(ff.AppID, ff.Tag, ff.Definition)
+				if err != nil {
+					conn.Logger.Error("failed to register ai function", "app_id", ff.AppID, "tag", ff.Tag, "err", err)
+					return
+				}
+				conn.Logger.Info("register ai function success", "app_id", ff.AppID, "tag", ff.Tag, "definition", string(ff.Definition))
 			}
-			conn.Logger.Info("register ai function success", "app_id", ff.AppID, "tag", ff.Tag, "definition", string(ff.Definition))
+			next(conn)
 		}
-		next(conn)
-		// }
 	}
 }
 

@@ -232,10 +232,10 @@ func (c *Client) writeAIRegisterFunctionFrame(conn *yquic.FrameConn, handshakeAc
 		for _, tag := range c.opts.observeDataTags {
 			registerFunctionFrame := &frame.AIRegisterFunctionFrame{
 				AppID:      handshakeAckFrame.AppID,
+				Name:       c.name,
 				Tag:        tag,
 				Definition: functionDefinition,
 			}
-			// TODO: unregister ai function if function definition is nil
 			if err := conn.WriteFrame(registerFunctionFrame); err != nil {
 				return err
 			}

@@ -9,7 +9,7 @@ type ChatCompletionsRequest struct {
 }
 
 type ChatCompletionsResponse struct {
-	Functions []*FunctionDefinition
+	Functions map[uint32][]*FunctionDefinition // key is the tag of yomo
 	Content   string
 }
 
@@ -18,6 +18,15 @@ type ToolCall struct {
 	ID       string              `json:"id,omitempty"` // present in Response only
 	Type     string              `json:"type"`
 	Function *FunctionDefinition `json:"function"`
+}
+
+// Equal compares two ToolCall function
+// return true if type and function name are same
+func (t *ToolCall) Equal(tool *ToolCall) bool {
+	if t.Type == tool.Type && t.Function.Name == tool.Function.Name {
+		return true
+	}
+	return false
 }
 
 // FunctionDefinition is the function definition

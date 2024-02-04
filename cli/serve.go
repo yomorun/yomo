@@ -85,6 +85,7 @@ var serveCmd = &cobra.Command{
 		go func() {
 			bridgeConf := conf.Bridge
 			// log.InfoStatusEvent(os.Stdout, "bridge_type=%T bridge_config=%v", bridgeConf, bridgeConf)
+			// ai.RegisterProvider(azopenai.NewAzureOpenAIProvider(apiKey, apiEndpoint))
 			err := ai.Serve(bridgeConf, listenAddr)
 			if err != nil {
 				log.FailureStatusEvent(os.Stdout, err.Error())

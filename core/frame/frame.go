@@ -106,8 +106,9 @@ func (f *ConnectToFrame) Type() Type { return TypeConnectToFrame }
 // AIRegisterFunctionFrame is used to register AI function.
 type AIRegisterFunctionFrame struct {
 	AppID      string
+	Name       string // Name is the name of the AI function.
 	Tag        uint32
-	Definition []byte
+	Definition []byte // Definition is the definition of the AI function.
 }
 
 // Type returns the type of AIRegisterFunctionFrame.
@@ -116,6 +117,7 @@ func (f *AIRegisterFunctionFrame) Type() Type { return TypeAIRegisterFunctionFra
 // AIRegisterFunctionAckFrame is used to ack AIRegisterFunctionFrame.
 type AIRegisterFunctionAckFrame struct {
 	AppID string
+	Name  string
 	Tag   uint32
 }
 
