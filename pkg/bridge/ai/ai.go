@@ -132,13 +132,15 @@ func (a *AIServer) Serve() error {
 
 	pattern = fmt.Sprintf("/%s/chat/completions", a.Name)
 	handler.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
-		// TODO: need to returns json
 		log := slog.With("path", pattern, "method", r.Method)
 		var req ai.ChatCompletionsRequest
+		// set json response
+		w.Header().Set("Content-Type", "application/json")
+
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			log.Error("decode request", "err", err.Error())
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(err.Error()))
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
 		}
 		// ai function
@@ -146,14 +148,14 @@ func (a *AIServer) Serve() error {
 		if err != nil {
 			log.Error("invoke service", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error()))
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
 		}
 		err = json.NewEncoder(w).Encode(resp)
 		if err != nil {
 			log.Error("encode response", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error()))
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
 		}
 		w.WriteHeader(http.StatusOK)
@@ -165,7 +167,7 @@ func (a *AIServer) Serve() error {
 				if err != nil {
 					log.Error("send data to zipper", "err", err.Error())
 					w.WriteHeader(http.StatusInternalServerError)
-					w.Write([]byte(err.Error()))
+					json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 					return
 				}
 			}

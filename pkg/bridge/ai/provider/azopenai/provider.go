@@ -169,6 +169,10 @@ func (p *AzureOpenAIProvider) GetChatCompletions(appID string, userPrompt string
 			}
 		}
 	}
+	// sfn maybe disconnected, so we need to check if there is any function call
+	if len(result.Functions) == 0 {
+		return nil, ErrNoFunctionCall
+	}
 	return result, nil
 }
 
