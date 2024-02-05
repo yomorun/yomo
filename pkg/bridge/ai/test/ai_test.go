@@ -45,8 +45,7 @@ func startAIServer() error {
 			Endpoints: map[string]string{
 				"chat_completions": "/chat/completions",
 			},
-			Credential: "",
-			Provider:   "azopenai",
+			Provider: "azopenai",
 		},
 		Providers: map[string]ai.Provider{},
 	}
