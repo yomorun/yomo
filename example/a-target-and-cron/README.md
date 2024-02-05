@@ -2,13 +2,13 @@
 
 ### Steps to run the example
 
-1. Start Zipper Server
+#### 1. Start Zipper Server
 
 ```bash
 yomo serve -c ../config.yaml
 ```
 
-2. Start `sfn-1-executor`
+#### 2. Start `sfn-1-executor`
 
 This stateful serverless function will emit data every 2 seconds.
 
@@ -16,7 +16,7 @@ This stateful serverless function will emit data every 2 seconds.
 go run sfn-1-executor/main.go
 ```
 
-3. Start two instances of `sfn-2-sink` to consume the data
+#### 3. Start two instances of `sfn-2-sink` to consume the data
 
 First one start with `USERID=alice`, this instance will consume the data with `target` property set to `alice`.
 
