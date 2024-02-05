@@ -15,19 +15,21 @@ import (
 )
 
 var (
-	addr    = "localhost:9000"
-	tag     = uint32(0x60)
-	sinkTag = uint32(0x61)
-	api     = "http://localhost:8000/azopenai/chat/completions"
+	addr       = "localhost:9000"
+	sinkTag    = uint32(0x61)
+	api        = "http://localhost:8000/azopenai/chat/completions"
+	credential = "token:Happy New Year"
 )
 
 func main() {
 	// sink
-	sink := yomo.NewStreamFunction("sink", addr)
+	sink := yomo.NewStreamFunction("sink", addr, yomo.WithSfnCredential(credential))
 	sink.SetObserveDataTags(sinkTag)
 	sink.SetHandler(func(ctx serverless.Context) {
 		slog.Info("[sink] receive data", "data", string(ctx.Data()))
 	})
+	// TODO: set wanted target
+	// sink.SetWantedTarget("peer_id")
 	err := sink.Connect()
 	if err != nil {
 		slog.Error("[sink] connect", "err", err)
@@ -43,18 +45,22 @@ func main() {
 func requestInvokeAIFunction() error {
 	prompt := "What's the weather like in San Francisco, Melbourne, and Paris?"
 	// invoke ai api
-	req, err := json.Marshal(ai.ChatCompletionsRequest{
-		Tag:    tag,
+	userReq, err := json.Marshal(ai.ChatCompletionsRequest{
 		Prompt: prompt,
 	})
 	if err != nil {
 		slog.Error("[app] ❌ Marshal data failure with err", "err", err)
 		return err
 	}
-	// TODO: add bearer token, it's credential
-	// req.Header.Set("Authorization", "Bearer "+cred)
-	// resp, err := http.Post(api, "application/json", strings.NewReader(req))
-	resp, err := http.Post(api, "application/json", bytes.NewBuffer(req))
+	req, err := http.NewRequest("POST", api, bytes.NewBuffer(userReq))
+	if err != nil {
+		slog.Error("[app] ❌ NewRequest failure with err", "err", err)
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	// set credential
+	req.Header.Set("Authorization", "Bearer "+credential)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		slog.Error("[app] ❌ Invoke AI function failure with err", "err", err)
 		return err

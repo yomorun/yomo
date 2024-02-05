@@ -1,11 +1,9 @@
 package ai
 
 type ChatCompletionsRequest struct {
-	// TODO: replace app_id with credential
-	Credential string `json:"credential"`
-	AppID      string `json:"app_id"`
-	Tag        uint32 `json:"tag"`
-	Prompt     string `json:"prompt"`
+	AppID  string `json:"app_id"`  // app_id is the app id of allegro application, it's empty in the yomo
+	PeerID string `json:"peer_id"` // peer_id is the tenant id of application
+	Prompt string `json:"prompt"`  // prompt is user input text for chat completion
 }
 
 type ChatCompletionsResponse struct {

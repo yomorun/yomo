@@ -12,10 +12,11 @@ import (
 )
 
 var (
-	name           = "get-weather"
-	addr           = "localhost:9000"
-	tag     uint32 = 0x60
-	sinkTag uint32 = 0x61
+	name              = "get-weather"
+	addr              = "localhost:9000"
+	tag        uint32 = 0x60
+	sinkTag    uint32 = 0x61
+	credential        = "token:Happy New Year"
 )
 
 type Msg struct {
@@ -39,6 +40,7 @@ func main() {
 	sfn := yomo.NewStreamFunction(
 		name,
 		addr,
+		yomo.WithSfnCredential(credential),
 		yomo.WithSfnAIFunctionDefinition(Description(), InputSchema()),
 	)
 	sfn.SetObserveDataTags(tag)
@@ -46,6 +48,10 @@ func main() {
 
 	// set handler
 	sfn.SetHandler(handler)
+
+	// TODO: set wanted target
+	// sfn.SetWantedTarget("peer_id")
+
 	// start
 	err := sfn.Connect()
 	if err != nil {
@@ -70,6 +76,8 @@ func handler(ctx serverless.Context) {
 	} else {
 		slog.Info("[sfn] << receive", "tag", tag, "data", msg)
 		data := fmt.Sprintf("[%s] temperature: %d°C", msg.CityName, rand.Intn(40))
+		// TODO: write data with target
+		// err = ctx.WriteWithTarget(sinkTag, []byte(data), "peer_id")
 		err = ctx.Write(sinkTag, []byte(data))
 		if err == nil {
 			slog.Info("[sfn] >> write", "tag", sinkTag, "data", data)

@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
@@ -95,29 +95,16 @@ type AIServer struct {
 	Name string
 	AIService
 	Config
-	Source yomo.Source
+	ZipperAddr string
 }
 
 func NewAIServer(name string, config Config, service AIService, zipperAddr string) (*AIServer, error) {
-	source := yomo.NewSource(
-		name,
-		zipperAddr,
-		yomo.WithSourceReConnect(),
-		// TODO: credential from request
-		yomo.WithCredential(config.Server.Credential),
-	)
-	// create ai source
-	err := source.Connect()
-	if err != nil {
-		slog.Error("source connect failure", "err", err.Error())
-		return nil, err
-	}
+	zipperAddr = parseZipperAddr(zipperAddr)
 	return &AIServer{
-		Name:      name,
-		AIService: service,
-		Config:    config,
-		// TODO: shuold be pools of source, for maintain multiple applications
-		Source: source,
+		Name:       name,
+		AIService:  service,
+		Config:     config,
+		ZipperAddr: zipperAddr,
 	}, nil
 }
 
@@ -133,6 +120,7 @@ func (a *AIServer) Serve() error {
 	pattern = fmt.Sprintf("/%s/chat/completions", a.Name)
 	handler.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 		log := slog.With("path", pattern, "method", r.Method)
+		defer r.Body.Close()
 		var req ai.ChatCompletionsRequest
 		// set json response
 		w.Header().Set("Content-Type", "application/json")
@@ -143,7 +131,16 @@ func (a *AIServer) Serve() error {
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
 		}
-		// ai function
+		// get bearer token from request, it's yomo credential
+		credential := getBearerToken(r)
+		// invoke ai function
+		app, err := a.GetOrCreateApp(req.AppID, credential)
+		if err != nil {
+			log.Error("get or create app", "err", err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
 		resp, err := a.GetChatCompletions(req.AppID, req.Prompt)
 		if err != nil {
 			log.Error("invoke service", "err", err.Error())
@@ -163,7 +160,9 @@ func (a *AIServer) Serve() error {
 			for _, fn := range fns {
 				log := slog.With("tag", tag, "function", fn.Name, "arguments", fn.Arguments)
 				log.Info("send data to zipper")
-				err := a.Source.Write(tag, []byte(fn.Arguments))
+				// TODO: write with target
+				// err := app.Source.WriteWithTarget(tag, []byte(fn.Arguments), req.PeerID)
+				err := app.Source.Write(tag, []byte(fn.Arguments))
 				if err != nil {
 					log.Error("send data to zipper", "err", err.Error())
 					w.WriteHeader(http.StatusInternalServerError)
@@ -190,7 +189,6 @@ func Serve(conf map[string]any, zipperListenAddr string) error {
 		slog.Error("parse config", "err", err.Error())
 		return err
 	}
-	zipperAddr := parseZipperAddr(zipperListenAddr)
 	provider := GetProvider(config.Server.Provider)
 	if provider == nil {
 		return ErrNotExistsProvider
@@ -200,7 +198,7 @@ func Serve(conf map[string]any, zipperListenAddr string) error {
 	// 	return err
 	// }
 	if aiService, ok := provider.(AIService); ok {
-		aiServer, err := NewAIServer(provider.Name(), config, aiService, zipperAddr)
+		aiServer, err := NewAIServer(provider.Name(), config, aiService, zipperListenAddr)
 		if err != nil {
 			return err
 		}
@@ -320,10 +318,9 @@ type Config struct {
 
 // Server is the configuration of AI server
 type Server struct {
-	Addr       string            `yaml:"addr"`
-	Endpoints  map[string]string `yaml:"endpoints"`
-	Credential string            `yaml:"credential"`
-	Provider   string            `yaml:"provider"`
+	Addr      string            `yaml:"addr"`
+	Endpoints map[string]string `yaml:"endpoints"`
+	Provider  string            `yaml:"provider"`
 }
 
 // Provider is the configuration of AI provider
@@ -426,4 +423,18 @@ func getLocalIP() (string, error) {
 		return ip.String(), nil
 	}
 	return "", errors.New("not found local ip")
+}
+
+// getBearerToken returns the bearer token from the request
+func getBearerToken(req *http.Request) string {
+	auth := req.Header.Get("Authorization")
+	if auth == "" {
+		return ""
+	}
+	if !strings.HasPrefix(auth, "Bearer") {
+		slog.Error("invalid Authorization header", "header", auth)
+		return ""
+	}
+	token := strings.TrimPrefix(auth, "Bearer ")
+	return token
 }
