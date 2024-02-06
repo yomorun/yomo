@@ -44,6 +44,7 @@ func main() {
 
 func requestInvokeAIFunction() error {
 	prompt := "What's the weather like in San Francisco, Melbourne, and Paris?"
+	prompt = "How much is 1 USD in New Zealand currency?"
 	// invoke ai api
 	userReq, err := json.Marshal(ai.ChatCompletionsRequest{
 		PeerID: peerID,

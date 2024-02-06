@@ -64,9 +64,9 @@ func handler(ctx serverless.Context) {
 	// read all the target currency exchange rates from usd.json
 	rate := getRates(msg.Target)
 	if rate == 0 {
-		err = ctx.Write(0x60, []byte("can not understand the target currency"))
+		err = ctx.WriteWithTarget(0x61, []byte("can not understand the target currency"), "user-1")
 	} else {
-		err = ctx.Write(0x60, []byte(fmt.Sprintf("The exchange rate of %s to USD is %f", msg.Target, rate)))
+		err = ctx.WriteWithTarget(0x61, []byte(fmt.Sprintf("The exchange rate of %s to USD is %f", msg.Target, rate)), "user-1")
 	}
 
 	if err != nil {
