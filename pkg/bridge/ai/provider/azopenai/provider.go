@@ -12,7 +12,6 @@ import (
 
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/yomorun/yomo/ai"
-	bridgeai "github.com/yomorun/yomo/pkg/bridge/ai"
 )
 
 var (
@@ -228,5 +227,5 @@ func init() {
 	tools = make(map[string]map[uint32]ai.ToolCall)
 	// ai.RegisterProvider(NewAzureOpenAIProvider("api-key", "api-endpoint"))
 	// TEST: for test
-	bridgeai.RegisterProvider(New())
+	// bridgeai.RegisterProvider(New())
 }

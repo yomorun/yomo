@@ -7,8 +7,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/pkg/bridge/ai"
-	_ "github.com/yomorun/yomo/pkg/bridge/ai/provider/azopenai"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/azopenai"
 )
+
+func TestMain(m *testing.M) {
+	ai.RegisterProvider(azopenai.New())
+	m.Run()
+}
 
 func TestAIServer(t *testing.T) {
 	var err error
@@ -37,7 +42,7 @@ func TestGetChatCompletions(t *testing.T) {
 }
 
 func startAIServer() error {
-	aiConfig := ai.Config{
+	aiConfig := &ai.Config{
 		Server: ai.Server{
 			Addr: "localhost:6000",
 			Endpoints: map[string]string{

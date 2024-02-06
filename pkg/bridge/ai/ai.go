@@ -99,11 +99,11 @@ func GetDefaultProvider() (AIProvider, error) {
 type AIServer struct {
 	Name string
 	AIService
-	Config
+	*Config
 	ZipperAddr string
 }
 
-func NewAIServer(name string, config Config, service AIService, zipperAddr string) (*AIServer, error) {
+func NewAIServer(name string, config *Config, service AIService, zipperAddr string) (*AIServer, error) {
 	zipperAddr = parseZipperAddr(zipperAddr)
 	return &AIServer{
 		Name:       name,
@@ -166,9 +166,7 @@ func (a *AIServer) Serve() error {
 			for _, fn := range fns {
 				log := slog.With("tag", tag, "function", fn.Name, "arguments", fn.Arguments)
 				log.Info("send data to zipper")
-				// TODO: write with target
-				// err := app.Source.WriteWithTarget(tag, []byte(fn.Arguments), req.PeerID)
-				err := app.Source.Write(tag, []byte(fn.Arguments))
+				err := app.Source.WriteWithTarget(tag, []byte(fn.Arguments), req.PeerID)
 				if err != nil {
 					log.Error("send data to zipper", "err", err.Error())
 					w.WriteHeader(http.StatusInternalServerError)
@@ -189,7 +187,7 @@ func (a *AIServer) Serve() error {
 
 // ======================= Packge Functions =======================
 // Serve starts the AI server
-func Serve(config Config, zipperListenAddr string) error {
+func Serve(config *Config, zipperListenAddr string) error {
 	provider := GetProvider(config.Server.Provider)
 	if provider == nil {
 		return ErrNotExistsProvider
@@ -345,7 +343,7 @@ type Provider = map[string]string
 //		provider:azopenai]]]
 
 // ParseConfig parses the AI config from conf
-func ParseConfig(conf map[string]any) (config Config, err error) {
+func ParseConfig(conf map[string]any) (config *Config, err error) {
 	section, ok := conf["ai"]
 	if !ok {
 		err = ErrConfigNotFound
@@ -372,13 +370,12 @@ func ParseConfig(conf map[string]any) (config Config, err error) {
 		config.Server.Addr = ":8000"
 	}
 	// endpoints
-	slog.Info("parse config", "endpoints", config.Server.Endpoints)
 	if config.Server.Endpoints == nil {
 		config.Server.Endpoints = map[string]string{
 			"chat_completions": DefaultChatCompletionsEndpoint,
 		}
 	}
-	slog.Info("parse config", "config", config)
+	slog.Info("parse AI config success")
 	return
 }
 

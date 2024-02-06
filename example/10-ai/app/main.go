@@ -19,6 +19,7 @@ var (
 	sinkTag    = uint32(0x61)
 	api        = "http://localhost:8000/azopenai/chat/completions"
 	credential = "token:Happy New Year"
+	peerID     = "user-1"
 )
 
 func main() {
@@ -26,10 +27,9 @@ func main() {
 	sink := yomo.NewStreamFunction("sink", addr, yomo.WithSfnCredential(credential))
 	sink.SetObserveDataTags(sinkTag)
 	sink.SetHandler(func(ctx serverless.Context) {
-		slog.Info("[sink] receive data", "data", string(ctx.Data()))
+		slog.Info("[sink] receive", "tag", sinkTag, "tagget", peerID, "data", string(ctx.Data()))
 	})
-	// TODO: set wanted target
-	// sink.SetWantedTarget("peer_id")
+	sink.SetWantedTarget(peerID)
 	err := sink.Connect()
 	if err != nil {
 		slog.Error("[sink] connect", "err", err)
@@ -46,6 +46,7 @@ func requestInvokeAIFunction() error {
 	prompt := "What's the weather like in San Francisco, Melbourne, and Paris?"
 	// invoke ai api
 	userReq, err := json.Marshal(ai.ChatCompletionsRequest{
+		PeerID: peerID,
 		Prompt: prompt,
 	})
 	if err != nil {
