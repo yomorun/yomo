@@ -1,4 +1,4 @@
-package ai
+package test
 
 import (
 	"encoding/json"
