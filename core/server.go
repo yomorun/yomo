@@ -159,7 +159,7 @@ func (s *Server) handleFrameConn(fconn frame.Conn, logger *slog.Logger) {
 	}
 
 	// ack handshake
-	appID, _ := conn.Metadata().Get(MetadataAppIDKey)
+	appID, _ := conn.Metadata().Get(metadata.AppIDKey)
 	_ = fconn.WriteFrame(&frame.HandshakeAckFrame{AppID: appID})
 
 	s.connHandler(conn) // s.handleConn(conn) with middlewares
@@ -292,6 +292,9 @@ func (s *Server) authenticate(hf *frame.HandshakeFrame) (metadata.M, error) {
 }
 
 func (s *Server) createConnection(hf *frame.HandshakeFrame, md metadata.M, fconn frame.Conn) (*Connection, error) {
+	if hf.WantedTarget != "" {
+		md.Set(metadata.WantedTargetKey, hf.WantedTarget)
+	}
 	conn := newConnection(
 		hf.Name,
 		hf.ID,

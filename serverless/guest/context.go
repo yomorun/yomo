@@ -41,6 +41,11 @@ func (c *GuestContext) Write(tag uint32, data []byte) error {
 	return nil
 }
 
+// TODO: implement WritePayload
+func (c *GuestContext) WriteWithTarget(tag uint32, data []byte, target string) error {
+	panic("not implemented")
+}
+
 //export yomo_observe_datatag
 //go:linkname yomoObserveDataTag
 func yomoObserveDataTag(tag uint32)

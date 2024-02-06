@@ -14,6 +14,7 @@ import (
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/metadata"
 	"golang.org/x/exp/slog"
 )
 
@@ -268,7 +269,7 @@ func ConnMiddleware(next core.ConnHandler) core.ConnHandler {
 			if err != nil {
 				conn.Logger.Error("failed to read frame on ai middleware", "err", err)
 				conn.Logger.Info("error type", "type", fmt.Sprintf("%T", err))
-				appID, _ := conn.Metadata().Get(core.MetadataAppIDKey)
+				appID, _ := conn.Metadata().Get(metadata.AppIDKey)
 				name := conn.Name()
 				conn.Logger.Info("unregister ai function", "app_id", appID, "name", name)
 				UnregisterFunction(appID, name)

@@ -16,6 +16,8 @@ type Source interface {
 	Connect() error
 	// Write the data to directed downstream.
 	Write(tag uint32, data []byte) error
+	// WriteWithTarget writes data to sfn instance with specified target.
+	WriteWithTarget(tag uint32, data []byte, target string) error
 	// SetErrorHandler set the error handler function when server error occurs
 	SetErrorHandler(fn func(err error))
 }
@@ -69,7 +71,7 @@ func (s *yomoSource) Connect() error {
 
 // Write writes data with specified tag.
 func (s *yomoSource) Write(tag uint32, data []byte) error {
-	md, deferFunc := core.SourceMetadata(s.client.ClientID(), id.New(), s.name, s.client.TracerProvider(), s.client.Logger)
+	md, deferFunc := core.InitialSourceMetadata(s.client.ClientID(), id.New(), s.name, s.client.TracerProvider(), s.client.Logger)
 	defer deferFunc()
 
 	mdBytes, err := md.Encode()
@@ -83,6 +85,31 @@ func (s *yomoSource) Write(tag uint32, data []byte) error {
 		Payload:  data,
 	}
 	s.client.Logger.Debug("source write", "tag", tag, "data", data)
+	return s.client.WriteFrame(f)
+}
+
+// WritePayload writes `yomo.Payload` with specified tag.
+func (s *yomoSource) WriteWithTarget(tag uint32, data []byte, target string) error {
+	if data == nil {
+		return nil
+	}
+	md, deferFunc := core.InitialSourceMetadata(s.client.ClientID(), id.New(), s.name, s.client.TracerProvider(), s.client.Logger)
+	defer deferFunc()
+
+	if target != "" {
+		core.SetMetadataTarget(md, target)
+	}
+
+	mdBytes, err := md.Encode()
+	if err != nil {
+		return err
+	}
+	f := &frame.DataFrame{
+		Tag:      tag,
+		Metadata: mdBytes,
+		Payload:  data,
+	}
+	s.client.Logger.Debug("source write with target", "tag", tag, "data", data, "target", target)
 	return s.client.WriteFrame(f)
 }
 
