@@ -215,6 +215,7 @@ func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
 		ff := received.(*frame.ConnectToFrame)
 		err := &ErrConnectTo{Endpoint: ff.Endpoint}
 		_ = conn.CloseWithError(err.Error())
+		return nil, err
 	}
 	// other frame type
 	err = &ErrRejected{
