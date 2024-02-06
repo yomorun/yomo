@@ -28,8 +28,7 @@ import (
 	"github.com/yomorun/yomo/pkg/trace"
 
 	"github.com/yomorun/yomo/pkg/bridge/ai"
-	// TODO: need dynamic load
-	_ "github.com/yomorun/yomo/pkg/bridge/ai/provider/azopenai"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/azopenai"
 )
 
 // serveCmd represents the serve command
@@ -82,23 +81,54 @@ var serveCmd = &cobra.Command{
 		zipper.Logger().Info("using config file", "file_path", config)
 
 		// AI Server
+		bridgeConf := conf.Bridge
+		// parse the AI config
+		aiConfig, err := ai.ParseConfig(bridgeConf)
+		if err != nil {
+			if err == ai.ErrConfigNotFound {
+				log.InfoStatusEvent(os.Stdout, err.Error())
+			} else {
+				log.FailureStatusEvent(os.Stdout, err.Error())
+				return
+			}
+		}
+		// register the AI provider
+		registerAIProvider(aiConfig)
+		// start the AI server
 		go func() {
-			bridgeConf := conf.Bridge
-			// log.InfoStatusEvent(os.Stdout, "bridge_type=%T bridge_config=%v", bridgeConf, bridgeConf)
-			// ai.RegisterProvider(azopenai.NewAzureOpenAIProvider(apiKey, apiEndpoint))
-			err := ai.Serve(bridgeConf, listenAddr)
+			err := ai.Serve(aiConfig, listenAddr)
 			if err != nil {
 				log.FailureStatusEvent(os.Stdout, err.Error())
 				return
 			}
 		}()
-		// TODO: add error channe for receiving error
+
+		// start the zipper
 		err = zipper.ListenAndServe(ctx, listenAddr)
 		if err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
 			return
 		}
 	},
+}
+
+func registerAIProvider(aiConfig ai.Config) {
+	// register the AI provider
+	for name, provider := range aiConfig.Providers {
+		// register the Azure OpenAI provider
+		if name == "azopenai" {
+			apiKey := provider["api_key"]
+			apiEndpoint := provider["api_endpoint"]
+			if apiKey == "" || apiEndpoint == "" {
+				log.InfoStatusEvent(os.Stdout, "register Azure OpenAI provider used by New()")
+				ai.RegisterProvider(azopenai.New())
+			} else {
+				log.InfoStatusEvent(os.Stdout, "register Azure OpenAI provider used by NewAzureOpenAIProvider()")
+				ai.RegisterProvider(azopenai.NewAzureOpenAIProvider(apiKey, apiEndpoint))
+			}
+		}
+		// TODO: register other providers
+	}
 }
 
 func init() {

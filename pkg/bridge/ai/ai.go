@@ -17,13 +17,17 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-const DefaultZipperAddr = "localhost:9000"
+const (
+	DefaultZipperAddr              = "localhost:9000"
+	DefaultChatCompletionsEndpoint = "/chat/completions"
+)
 
 var (
 	ErrNotExistsProvider     = errors.New("not exists AI provider")
 	ErrNotImplementedService = errors.New("not implemented AI service")
 	ErrConfigNotFound        = errors.New("ai config not found")
 	ErrConfigFormatError     = errors.New("ai config format error")
+	ErrNotFoundEndpoint      = errors.New("not found endpoint")
 )
 
 // AIService provides an interface to the AI API
@@ -110,14 +114,15 @@ func NewAIServer(name string, config Config, service AIService, zipperAddr strin
 
 func (a *AIServer) Serve() error {
 	handler := http.NewServeMux()
-
+	// home
 	pattern := fmt.Sprintf("/%s", a.Name)
 	handler.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(fmt.Sprintf("[%s] AI Server is running", a.Name)))
 	})
-
-	pattern = fmt.Sprintf("/%s/chat/completions", a.Name)
+	// chat completions
+	// chatCompletions := a.Config.Server.Endpoints["chat_completions"]
+	pattern = fmt.Sprintf("/%s%s", a.Name, a.Config.Server.Endpoints["chat_completions"])
 	handler.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 		log := slog.With("path", pattern, "method", r.Method)
 		defer r.Body.Close()
@@ -182,13 +187,8 @@ func (a *AIServer) Serve() error {
 }
 
 // ======================= Packge Functions =======================
-func Serve(conf map[string]any, zipperListenAddr string) error {
-	// parse ai config
-	config, err := parseConfig(conf)
-	if err != nil {
-		slog.Error("parse config", "err", err.Error())
-		return err
-	}
+// Serve starts the AI server
+func Serve(config Config, zipperListenAddr string) error {
 	provider := GetProvider(config.Server.Provider)
 	if provider == nil {
 		return ErrNotExistsProvider
@@ -208,6 +208,7 @@ func Serve(conf map[string]any, zipperListenAddr string) error {
 	return nil
 }
 
+// RegisterFunction registers the AI function
 func RegisterFunction(appID string, tag uint32, functionDefinition []byte) error {
 	provider, err := GetDefaultProvider()
 	if err != nil {
@@ -223,6 +224,7 @@ func RegisterFunction(appID string, tag uint32, functionDefinition []byte) error
 	return provider.RegisterFunction(appID, tag, &fd)
 }
 
+// UnregisterFunction unregisters the AI function
 func UnregisterFunction(appID string, name string) error {
 	provider, err := GetDefaultProvider()
 	if err != nil {
@@ -231,6 +233,7 @@ func UnregisterFunction(appID string, name string) error {
 	return provider.UnregisterFunction(appID, name)
 }
 
+// ListToolCalls lists the AI tool calls
 func ListToolCalls(appID string) (map[uint32]ai.ToolCall, error) {
 	provider, err := GetDefaultProvider()
 	if err != nil {
@@ -340,8 +343,8 @@ type Provider = map[string]string
 //		port:8000
 //		provider:azopenai]]]
 
-// parseConfig parses the config from conf
-func parseConfig(conf map[string]any) (config Config, err error) {
+// ParseConfig parses the AI config from conf
+func ParseConfig(conf map[string]any) (config Config, err error) {
 	section, ok := conf["ai"]
 	if !ok {
 		err = ErrConfigNotFound
@@ -366,6 +369,13 @@ func parseConfig(conf map[string]any) (config Config, err error) {
 	// defaults values
 	if config.Server.Addr == "" {
 		config.Server.Addr = ":8000"
+	}
+	// endpoints
+	slog.Info("parse config", "endpoints", config.Server.Endpoints)
+	if config.Server.Endpoints == nil {
+		config.Server.Endpoints = map[string]string{
+			"chat_completions": DefaultChatCompletionsEndpoint,
+		}
 	}
 	slog.Info("parse config", "config", config)
 	return
