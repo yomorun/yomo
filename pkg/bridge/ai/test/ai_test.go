@@ -5,8 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/pkg/bridge/ai"
 	_ "github.com/yomorun/yomo/pkg/bridge/ai/provider/azopenai"
@@ -49,8 +47,5 @@ func startAIServer() error {
 		},
 		Providers: map[string]ai.Provider{},
 	}
-	confData, _ := yaml.Marshal(map[string]ai.Config{"ai": aiConfig})
-	var mapConf map[string]any
-	yaml.Unmarshal(confData, &mapConf)
-	return ai.Serve(mapConf, "localhost:9000")
+	return ai.Serve(aiConfig, "localhost:9000")
 }
