@@ -10,11 +10,6 @@ import (
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/azopenai"
 )
 
-func TestMain(m *testing.M) {
-	ai.RegisterProvider(azopenai.New())
-	m.Run()
-}
-
 func TestAIServer(t *testing.T) {
 	var err error
 	go func() {
@@ -24,7 +19,7 @@ func TestAIServer(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestGetChatCompletions(t *testing.T) {
+func TestAIToolCalls(t *testing.T) {
 	go startAIServer()
 	functionDefinition := `{"name":"get_current_weather","description":"Get the current weather in a given location","parameters":{"type":"object","properties":{"location":{"type":"string","description":"The city and state, e.g. San Francisco, CA"}},"required":["location"]}}`
 	err := ai.RegisterFunction("test", 1, []byte(functionDefinition))
@@ -42,6 +37,7 @@ func TestGetChatCompletions(t *testing.T) {
 }
 
 func startAIServer() error {
+	ai.RegisterProvider(azopenai.New())
 	aiConfig := &ai.Config{
 		Server: ai.Server{
 			Addr: "localhost:6000",
