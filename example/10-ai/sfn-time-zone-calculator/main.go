@@ -12,13 +12,13 @@ import (
 )
 
 type Parameter struct {
-	TimeString     string `json:"timeString" jsonschema:"description=The time string to be converted"`
+	TimeString     string `json:"timeString" jsonschema:"description=The source time string to be converted, the desired format is 'YYYY-MM-DD HH:MM:SS'"`
 	SourceTimezone string `json:"sourceTimezone" jsonschema:"description=The source timezone of the time string, in IANA Time Zone Database identifier format"`
-	TargetTimezone string `json:"targetTimezone" jsonschema:"description=The target timezone to convert the time string to, in IANA Time Zone Database identifier format"`
+	TargetTimezone string `json:"targetTimezone" jsonschema:"description=The target timezone to convert the timeString to, in IANA Time Zone Database identifier format"`
 }
 
 func Description() string {
-	return "Extract time and timezone information from the following text. The desired format for the time is 'YYYY-MM-DD HH:MM:SS', and the timezone should be specified using an IANA Time Zone Database identifier."
+	return "Extract the source time and timezone information to `timeString` and `sourceTimezone`, extract the target timezone information to `targetTimezone`. the desired `timeString` format is 'YYYY-MM-DD HH:MM:SS'. the `sourceTimezone` and `targetTimezone` are in IANA Time Zone Database identifier format. The function will convert the time from the source timezone to the target timezone and return the converted time as a string in the format 'YYYY-MM-DD HH:MM:SS'."
 }
 
 func InputSchema() any {
@@ -56,11 +56,15 @@ func main() {
 }
 
 func handler(ctx serverless.Context) {
+
+	slog.Info("[sfn] receive", "ctx.data", string(ctx.Data()))
+
+	reqID := ctx.Data()[:6]
+
 	var msg Parameter
-	err := json.Unmarshal(ctx.Data(), &msg)
+	err := json.Unmarshal(ctx.Data()[6:], &msg)
 	if err != nil {
 		slog.Error("[sfn] json.Marshal error", "err", err)
-		os.Exit(-2)
 	}
 
 	if msg.TargetTimezone == "" {
@@ -73,7 +77,9 @@ func handler(ctx serverless.Context) {
 		return
 	}
 
-	ctx.WriteWithTarget(0x61, []byte(target), "user-1")
+	slog.Info("[sfn] result", "result", target)
+
+	ctx.Write(0x61, append(reqID, []byte(target)...))
 }
 
 // ConvertTimezone converts the current time from the source timezone to the target timezone.

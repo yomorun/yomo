@@ -136,7 +136,7 @@ func (p *AzureOpenAIProvider) GetChatCompletions(appID string, userPrompt string
 	if resp.StatusCode >= 400 {
 		// log.Println(resp.StatusCode, string(respBody))
 		// {"error":{"code":"429","message": "Requests to the ChatCompletions_Create Operation under Azure OpenAI API version 2023-12-01-preview have exceeded token rate limit of your current OpenAI S0 pricing tier. Please retry after 22 seconds. Please go here: https://aka.ms/oai/quotaincrease if you would like to further increase the default rate limit."}}
-		return nil, errors.New(fmt.Sprintf("ai response status code is %d", resp.StatusCode))
+		return nil, fmt.Errorf("ai response status code is %d", resp.StatusCode)
 	}
 
 	var respBodyStruct RespBody

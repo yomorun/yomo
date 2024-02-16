@@ -45,9 +45,10 @@ func main() {
 func requestInvokeAIFunction() error {
 	prompt := "What's the weather like in San Francisco, Melbourne, and Paris?"
 	prompt = "How much is 1 USD in New Zealand currency?"
+	prompt = "tell me the time in Singapore, based on the time provided: Thursday, February 15th, 2024 7:00am to 8:00am (UTC-08:00) Pacific Time - Los Angeles?"
 	// invoke ai api
 	userReq, err := json.Marshal(ai.ChatCompletionsRequest{
-		PeerID: peerID,
+		// PeerID: peerID,
 		Prompt: prompt,
 	})
 	if err != nil {
