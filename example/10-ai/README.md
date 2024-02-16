@@ -12,6 +12,10 @@
 cd sfn-timezone-calculator && go run main.go
 ```
 
+```bash
+cd sfn-currency-exchange && go run main.go
+```
+
 ## Step 3: Invoke the LLM Function
 
 ```bash
