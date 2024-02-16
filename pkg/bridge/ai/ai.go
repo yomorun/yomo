@@ -24,11 +24,11 @@ const (
 )
 
 var (
-	ErrNotExistsProvider     = errors.New("not exists AI provider")
-	ErrNotImplementedService = errors.New("not implemented AI service")
-	ErrConfigNotFound        = errors.New("ai config not found")
-	ErrConfigFormatError     = errors.New("ai config format error")
-	ErrNotFoundEndpoint      = errors.New("not found endpoint")
+	ErrNotExistsProvider     = errors.New("llm provider does not exist")
+	ErrNotImplementedService = errors.New("llm service is not implemented")
+	ErrConfigNotFound        = errors.New("ai config was not found")
+	ErrConfigFormatError     = errors.New("ai config format is incorrect")
+	ErrNotFoundEndpoint      = errors.New("endpoint was not found")
 )
 
 // AIService provides an interface to the AI API
