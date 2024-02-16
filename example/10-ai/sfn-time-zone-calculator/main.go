@@ -55,11 +55,17 @@ func main() {
 	sfn.Wait()
 }
 
-func handler(ctx serverless.Context) {
+var lastReqID string
 
+func handler(ctx serverless.Context) {
 	slog.Info("[sfn] receive", "ctx.data", string(ctx.Data()))
 
 	reqID := ctx.Data()[:6]
+
+	// TODO: ai server can not response multiple times for the same request
+	if string(reqID) == lastReqID {
+		return
+	}
 
 	var msg Parameter
 	err := json.Unmarshal(ctx.Data()[6:], &msg)
@@ -80,6 +86,7 @@ func handler(ctx serverless.Context) {
 	slog.Info("[sfn] result", "result", target)
 
 	ctx.Write(0x61, append(reqID, []byte(target)...))
+	lastReqID = string(reqID)
 }
 
 // ConvertTimezone converts the current time from the source timezone to the target timezone.

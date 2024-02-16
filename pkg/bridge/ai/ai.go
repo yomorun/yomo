@@ -130,6 +130,11 @@ func NewAIServer(name string, config *Config, service AIService, zipperAddr stri
 	}, nil
 }
 
+type CacheItem struct {
+	ResponseWriter http.ResponseWriter
+	done           chan struct{}
+}
+
 // Serve starts a RESTful service that provides a '/call' endpoint.
 // Users submit questions to this endpoint. The service then generates a prompt based on the question and
 // registered functions. It calls the LLM service from the LLM provider to get the functions and arguments to be
@@ -138,18 +143,20 @@ func NewAIServer(name string, config *Config, service AIService, zipperAddr stri
 func (a *AIServer) Serve() error {
 	handler := http.NewServeMux()
 
-	// read the service endpoint from the config
-	pattern := fmt.Sprintf("/%s", a.Name)
-	handler.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(fmt.Sprintf("[%s] AI Server is running", a.Name)))
-	})
-	// chat completions
-	// chatCompletions := a.Config.Server.Endpoints["chat_completions"]
-	pattern = fmt.Sprintf("/%s%s", a.Name, a.Config.Server.Endpoints["chat_completions"])
+	// // read the service endpoint from the config
+	// pattern := fmt.Sprintf("/%s", a.Name)
+	// handler.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+	// 	w.WriteHeader(http.StatusOK)
+	// 	w.Write([]byte(fmt.Sprintf("[%s] AI Server is running", a.Name)))
+	// })
+	// // chat completions
+	// // chatCompletions := a.Config.Server.Endpoints["chat_completions"]
+	// pattern = fmt.Sprintf("/%s%s", a.Name, a.Config.Server.Endpoints["chat_completions"])
+
+	pattern := "/invoke"
 
 	// create a cache to store the http.ResponseWriter, the key is the reqID
-	cache := make(map[string]http.ResponseWriter)
+	cache := make(map[string]*CacheItem)
 
 	// create a sfn to handle the result of the function invocation
 	sfn := yomo.NewStreamFunction("fc-reducer", a.ZipperAddr, yomo.SfnOption(yomo.WithCredential("token:Happy New Year")))
@@ -159,15 +166,25 @@ func (a *AIServer) Serve() error {
 		buf := ctx.Data()
 		slog.Info("<<sfn", "tag", 0x61, "data", string(buf))
 		reqID := string(buf[:6])
-		w, ok := cache[reqID]
+		v, ok := cache[reqID]
 		if !ok {
 			slog.Error("reqID not found", "reqID", reqID)
 			return
 		}
-		w.WriteHeader(http.StatusOK)
-		w.Write(buf[6:])
-		w.Write([]byte("cccccccc\n"))
+
+		err := json.NewEncoder(v.ResponseWriter).Encode(map[string]string{"result": string(buf[6:])})
+		if err != nil {
+			slog.Error("encode response", "err", err.Error())
+			v.ResponseWriter.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(v.ResponseWriter).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+
+		// remove self from cache
+		delete(cache, reqID)
+		close(v.done)
 	})
+
 	err := sfn.Connect()
 	if err != nil {
 		slog.Error("[sfn-reducer] connect", "err", err)
@@ -187,7 +204,13 @@ func (a *AIServer) Serve() error {
 			return
 		}
 
-		cache[reqID] = w
+		ci := &CacheItem{
+			done:           make(chan struct{}),
+			ResponseWriter: w,
+		}
+		if _, ok := cache[reqID]; !ok {
+			cache[reqID] = ci
+		}
 		log.Info("reqID", "val", reqID)
 
 		var req ai.ChatCompletionsRequest
@@ -226,13 +249,13 @@ func (a *AIServer) Serve() error {
 
 		slog.Debug(">>llm response", "content", resp.Content)
 
-		err = json.NewEncoder(w).Encode(resp)
-		if err != nil {
-			log.Error("encode response", "err", err.Error())
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-			return
-		}
+		// err = json.NewEncoder(w).Encode(resp)
+		// if err != nil {
+		// 	log.Error("encode response", "err", err.Error())
+		// 	w.WriteHeader(http.StatusInternalServerError)
+		// 	json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		// 	return
+		// }
 
 		// w.WriteHeader(http.StatusOK)
 
@@ -251,6 +274,8 @@ func (a *AIServer) Serve() error {
 				}
 			}
 		}
+
+		<-ci.done
 	})
 
 	httpServer := http.Server{
