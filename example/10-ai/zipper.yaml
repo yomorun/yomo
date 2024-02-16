@@ -16,8 +16,8 @@ bridge:
 
     providers:
       azopenai:
-        api_key:
-        api_endpoint:
+        api_key: 8aebebe4e6654104b99f2a75d7f24e88
+        api_endpoint: https://c3y.openai.azure.com/openai/deployments/gpt35/chat/completions?api-version=2023-12-01-preview
 
       openai:
         api_key:
