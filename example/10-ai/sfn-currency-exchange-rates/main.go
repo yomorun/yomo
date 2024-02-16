@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/yomorun/yomo"
@@ -52,8 +53,12 @@ func main() {
 }
 
 func handler(ctx serverless.Context) {
+	slog.Info("[sfn] receive", "ctx.data", string(ctx.Data()))
+
+	reqID := ctx.Data()[:6]
+
 	var msg Parameter
-	err := json.Unmarshal(ctx.Data(), &msg)
+	err := json.Unmarshal(ctx.Data()[6:], &msg)
 	if err != nil {
 		slog.Error("[sfn] json.Marshal error", "err", err)
 		os.Exit(-2)
@@ -64,9 +69,11 @@ func handler(ctx serverless.Context) {
 	// read all the target currency exchange rates from usd.json
 	rate := getRates(msg.Target)
 	if rate == 0 {
-		err = ctx.WriteWithTarget(0x61, []byte("can not understand the target currency"), "user-1")
+		// err = ctx.WriteWithTarget(0x61, []byte("can not understand the target currency"), "user-1")
+		err = ctx.Write(0x61, append(reqID, []byte("can not understand the target currency")...))
 	} else {
-		err = ctx.WriteWithTarget(0x61, []byte(fmt.Sprintf("The exchange rate of %s to USD is %f", msg.Target, rate)), "user-1")
+		// err = ctx.WriteWithTarget(0x61, []byte(fmt.Sprintf("The exchange rate of %s to USD is %f", msg.Target, rate)), "user-1")
+		err = ctx.Write(0x61, append(reqID, []byte(fmt.Sprintf("The exchange rate of %s to USD is %f, compute result is %f", msg.Target, rate, msg.Amount*rate))...))
 	}
 
 	if err != nil {
@@ -75,31 +82,31 @@ func handler(ctx serverless.Context) {
 }
 
 type Rates struct {
-	Currency string  `json:"currency"`
-	Rate     float64 `json:"rate"`
+	Rates map[string]float64 `json:"rates"`
 }
 
-func getRates(targetCurrency string) float64 {
+var rates *Rates
+
+func init() {
 	file, err := os.Open("usd.json")
 	if err != nil {
 		fmt.Println(err)
-		return 0
+		os.Exit(-1)
 	}
 	defer file.Close()
 
-	rates := []Rates{}
-	decoder := json.NewDecoder(file)
-	err = decoder.Decode(&rates)
-	if err != nil {
-		fmt.Println(err)
+	byteValue, _ := io.ReadAll(file)
+
+	json.Unmarshal(byteValue, &rates)
+}
+
+func getRates(targetCurrency string) float64 {
+	if rates == nil {
 		return 0
 	}
 
-	for _, rate := range rates {
-		if rate.Currency == targetCurrency {
-			return rate.Rate
-		}
-		// fmt.Printf("Currency: %s, Rate: %f\n", rate.Currency, rate.Rate)
+	if rate, ok := rates.Rates[targetCurrency]; ok {
+		return rate
 	}
 
 	return 0

@@ -14,7 +14,7 @@ import (
 var (
 	name              = "get-weather"
 	addr              = "localhost:9000"
-	tag        uint32 = 0x60
+	tag        uint32 = 0x11
 	sinkTag    uint32 = 0x61
 	credential        = "token:Happy New Year"
 	peerID            = "user-1"
@@ -68,15 +68,19 @@ func main() {
 }
 
 func handler(ctx serverless.Context) {
+	slog.Info("[sfn] receive", "ctx.data", string(ctx.Data()))
+
+	reqID := ctx.Data()[:6]
+
 	var msg Msg
-	err := json.Unmarshal(ctx.Data(), &msg)
+	err := json.Unmarshal(ctx.Data()[6:], &msg)
 	if err != nil {
 		slog.Error("[sfn] json.Marshal error", "err", err)
 		os.Exit(-2)
 	} else {
 		slog.Info("[sfn] << receive", "tag", tag, "target", peerID, "data", msg)
 		data := fmt.Sprintf("[%s] temperature: %d°C", msg.CityName, rand.Intn(40))
-		err = ctx.WriteWithTarget(sinkTag, []byte(data), peerID)
+		err = ctx.Write(sinkTag, append(reqID, []byte(data)...))
 		if err == nil {
 			slog.Info("[sfn] >> write", "tag", sinkTag, "target", peerID, "data", data)
 		}

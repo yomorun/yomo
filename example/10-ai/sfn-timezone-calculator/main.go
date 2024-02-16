@@ -36,7 +36,7 @@ func main() {
 	)
 	defer sfn.Close()
 
-	sfn.SetObserveDataTags(0x10)
+	sfn.SetObserveDataTags(0x12)
 
 	// start
 	err := sfn.Connect()
