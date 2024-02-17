@@ -76,7 +76,7 @@ func (sip *SfnInvokeParameters) FromBytes(b []byte) {
 	sip.Arguments = string(b[6:])
 }
 
-// CreatePayload creates the payload from the given result
+// CreatePayload creates the payload for ctx.Write()
 func (sip *SfnInvokeParameters) CreatePayload(result string) (uint32, []byte) {
 	sip.Arguments = result
 	return 0x61, sip.Bytes()

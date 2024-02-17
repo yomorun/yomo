@@ -23,5 +23,13 @@ curl -X POST -H "Content-Type: application/json" -d '{"prompt":"tell me the time
 ```
 
 ```bash
-curl -X POST -H "Content-Type: application/json" -d '{"prompt":"How much is 100 US dollar in Singapore currency"}' http://127.0.0.1:8000/invoke
+curl -i -X POST -H "Content-Type: application/json" -d '{"prompt":"How much is 100 US dollar in Korea and UK currency"}' http://127.0.0.1:8000/invoke
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+Date: Sat, 17 Feb 2024 08:48:47 GMT
+Content-Length: 167
+
+data: The exchange rate of KRW to USD is 1328.576022, compute result is 132857.602200
+
+data: The exchange rate of GBP to USD is 0.795911, compute result is 79.591100
 ```
