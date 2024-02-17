@@ -12,12 +12,13 @@ import (
 
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/yomorun/yomo/ai"
+	"github.com/yomorun/yomo/core/ylog"
 )
 
 var (
-	// tools is the map of appID to tag to tool call
-	tools             map[string]map[uint32]ai.ToolCall
-	mu                sync.Mutex
+	// tools             map[uint32]ai.ToolCall
+	fns sync.Map
+	// mu                sync.Mutex
 	ErrNoFunctionCall = errors.New("no function call")
 )
 
@@ -66,11 +67,27 @@ type RespUsage struct {
 	TotalTokens      int `json:"total_tokens"`
 }
 
+// AzureOpenAIProvider is the provider for Azure OpenAI
 type AzureOpenAIProvider struct {
 	APIKey      string
 	APIEndpoint string
 }
 
+type connectedFn struct {
+	connID string
+	tag    uint32
+	tc     ai.ToolCall
+}
+
+func init() {
+	// tools = make(map[uint32]ai.ToolCall)
+	fns = sync.Map{}
+	// ai.RegisterProvider(NewAzureOpenAIProvider("api-key", "api-endpoint"))
+	// TEST: for test
+	// bridgeai.RegisterProvider(New())
+}
+
+// NewAzureOpenAIProvider creates a new AzureOpenAIProvider
 func NewAzureOpenAIProvider(apiKey string, apiEndpoint string) *AzureOpenAIProvider {
 	return &AzureOpenAIProvider{
 		APIKey:      apiKey,
@@ -78,6 +95,7 @@ func NewAzureOpenAIProvider(apiKey string, apiEndpoint string) *AzureOpenAIProvi
 	}
 }
 
+// New creates a new AzureOpenAIProvider
 func New() *AzureOpenAIProvider {
 	return &AzureOpenAIProvider{
 		APIKey:      os.Getenv("AZURE_OPENAI_API_KEY"),
@@ -85,36 +103,58 @@ func New() *AzureOpenAIProvider {
 	}
 }
 
+// Name returns the name of the provider
 func (p *AzureOpenAIProvider) Name() string {
 	return "azopenai"
 }
 
-func (p *AzureOpenAIProvider) GetChatCompletions(appID string, userPrompt string) (*ai.ChatCompletionsResponse, error) {
-	mapTools, err := p.ListToolCalls(appID)
-	if err != nil {
-		return nil, err
-	}
-	if len(mapTools) == 0 {
+// GetChatCompletions get chat completions
+func (p *AzureOpenAIProvider) GetChatCompletions(userPrompt string) (*ai.ChatCompletionsResponse, error) {
+	// mapTools, err := p.ListToolCalls(appID)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// if len(tools) == 0 {
+	// 	ylog.Error("---------------tools is empty")
+	// 	return &ai.ChatCompletionsResponse{Content: "no toolcalls"}, ErrNoFunctionCall
+	// }
+
+	var isEmpty = true
+	fns.Range(func(key, value interface{}) bool {
+		isEmpty = false
+		return false
+	})
+
+	if isEmpty {
+		ylog.Error("-----tools is empty")
 		return &ai.ChatCompletionsResponse{Content: "no toolcalls"}, ErrNoFunctionCall
 	}
+
 	// messages
 	messages := []ReqMessage{
 		{Role: "system", Content: `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. If you don't know the answer, stop the conversation by saying "no func call".`},
 		{Role: "user", Content: userPrompt},
 	}
-	// tools
-	tools := make([]ai.ToolCall, 0, len(mapTools))
-	for _, v := range mapTools {
-		tools = append(tools, v)
-	}
-	body := ReqBody{Messages: messages, Tools: tools}
+
+	// prepare tools
+	toolCalls := make([]ai.ToolCall, 0)
+	// for _, v := range tools {
+	// 	toolCalls = append(toolCalls, v)
+	// }
+	fns.Range(func(key, value interface{}) bool {
+		fn := value.(*connectedFn)
+		toolCalls = append(toolCalls, fn.tc)
+		return true
+	})
+
+	body := ReqBody{Messages: messages, Tools: toolCalls}
+
+	ylog.Debug("request", "tools", len(toolCalls), "messages", messages)
+
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
-	// slog.Info("request url", "url", p.APIEndpoint)
-	// slog.Info("request api key", "api-key", p.APIKey)
-	// slog.Info("request body", "body", string(jsonBody))
 
 	req, err := http.NewRequest("POST", p.APIEndpoint, bytes.NewBuffer(jsonBody))
 	if err != nil {
@@ -122,16 +162,21 @@ func (p *AzureOpenAIProvider) GetChatCompletions(appID string, userPrompt string
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("api-key", p.APIKey)
+
 	client := &http.Client{}
 	resp, err := client.Do(req)
+
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
+	ylog.Debug("response", "body", respBody)
+
 	// slog.Info("response body", "body", string(respBody))
 	if resp.StatusCode >= 400 {
 		// log.Println(resp.StatusCode, string(respBody))
@@ -151,23 +196,41 @@ func (p *AzureOpenAIProvider) GetChatCompletions(appID string, userPrompt string
 
 	calls := respBodyStruct.Choices[0].Message.ToolCalls
 	content := respBodyStruct.Choices[0].Message.Content
+
+	ylog.Debug("--response calls", "calls", len(calls), "content", content)
+
 	result := &ai.ChatCompletionsResponse{}
 	if len(calls) == 0 {
 		result.Content = content
 		return result, ErrNoFunctionCall
 	}
+
 	// functions may be more than one
 	// slog.Info("tool calls", "calls", calls, "mapTools", mapTools)
 	for _, call := range calls {
-		for tag, tool := range mapTools {
-			if tool.Equal(&call) {
+		fns.Range(func(key, value interface{}) bool {
+			fn := value.(*connectedFn)
+			if fn.tc.Equal(&call) {
 				if result.Functions == nil {
 					result.Functions = make(map[uint32][]*ai.FunctionDefinition)
 				}
-				result.Functions[tag] = append(result.Functions[tag], call.Function)
+				result.Functions[fn.tag] = append(result.Functions[fn.tag], call.Function)
 			}
-		}
+			return true
+		})
+		// for tag, tool := range tools {
+		// 	ylog.Debug("---compare", "the-calls-type", call.Type, "the-calls-name", call.Function.Name, "the-tool-type", tool.Type, "the-tool-name", tool.Function.Name)
+		// 	if tool.Equal(&call) {
+		// 		if result.Functions == nil {
+		// 			result.Functions = make(map[uint32][]*ai.FunctionDefinition)
+		// 		}
+		// 		result.Functions[tag] = append(result.Functions[tag], call.Function)
+		// 	}
+		// }
 	}
+
+	ylog.Debug("---result", "result_functions_count", len(result.Functions))
+
 	// sfn maybe disconnected, so we need to check if there is any function call
 	if len(result.Functions) == 0 {
 		return nil, ErrNoFunctionCall
@@ -176,56 +239,72 @@ func (p *AzureOpenAIProvider) GetChatCompletions(appID string, userPrompt string
 }
 
 // RegisterFunction register function
-func (p *AzureOpenAIProvider) RegisterFunction(appID string, tag uint32, functionDefinition *ai.FunctionDefinition) error {
-	mu.Lock()
-	defer mu.Unlock()
-	appTools := tools[appID]
-	if appTools == nil {
-		appTools = make(map[uint32]ai.ToolCall)
-	}
-	appTools[tag] = ai.ToolCall{
-		Type:     "function",
-		Function: functionDefinition,
-	}
-	tools[appID] = appTools
+func (p *AzureOpenAIProvider) RegisterFunction(tag uint32, functionDefinition *ai.FunctionDefinition, connID string) error {
+	// mu.Lock()
+	// defer mu.Unlock()
+	// // appTools := tools[appID]
+	// // if appTools == nil {
+	// // 	appTools = make(map[uint32]ai.ToolCall)
+	// // }
+	// tools[tag] = ai.ToolCall{
+	// 	Type:     "function",
+	// 	Function: functionDefinition,
+	// }
+	// // tools[appID] = tools
+
+	fns.Store(connID, &connectedFn{
+		connID: connID,
+		tag:    tag,
+		tc: ai.ToolCall{
+			Type:     "function",
+			Function: functionDefinition,
+		},
+	})
+
 	return nil
 }
 
 // UnregisterFunction unregister function
-func (p *AzureOpenAIProvider) UnregisterFunction(appID string, name string) error {
-	mu.Lock()
-	defer mu.Unlock()
-	appTools := tools[appID]
-	if appTools != nil {
-		// delete(appTools, tag)
-		tags := make([]uint32, 0)
-		for tag, tool := range appTools {
-			if tool.Function.Name == name {
-				tags = append(tags, tag)
-			}
-		}
-		// delete function
-		for _, tag := range tags {
-			delete(appTools, tag)
-		}
-		// reset appTools
-		tools[appID] = appTools
-	}
+// Be careful: a function can have multiple instances, remove the offline instance only.
+func (p *AzureOpenAIProvider) UnregisterFunction(name string, connID string) error {
+	// mu.Lock()
+	// defer mu.Unlock()
+	// // appTools := tools[appID]
+	// // if appTools != nil {
+	// // 	// delete(appTools, tag)
+	// tags := make([]uint32, 0)
+	// for tag, tool := range tools {
+	// 	if tool.Function.Name == name {
+	// 		tags = append(tags, tag)
+	// 	}
+	// }
+	// // delete function
+	// for _, tag := range tags {
+	// 	delete(tools, tag)
+	// }
+	// // 	// reset appTools
+	// // 	tools[appID] = appTools
+	// // }
+
+	fns.Delete(connID)
+
 	return nil
 }
 
 // ListToolCalls list tool calls
-func (p *AzureOpenAIProvider) ListToolCalls(appID string) (map[uint32]ai.ToolCall, error) {
-	appTools, ok := tools[appID]
-	if !ok {
-		return nil, nil
-	}
-	return appTools, nil
-}
+func (p *AzureOpenAIProvider) ListToolCalls() (map[uint32]ai.ToolCall, error) {
+	// appTools, ok := tools[appID]
+	// if !ok {
+	// 	return nil, nil
+	// }
+	// return tools, nil
 
-func init() {
-	tools = make(map[string]map[uint32]ai.ToolCall)
-	// ai.RegisterProvider(NewAzureOpenAIProvider("api-key", "api-endpoint"))
-	// TEST: for test
-	// bridgeai.RegisterProvider(New())
+	tmp := make(map[uint32]ai.ToolCall)
+	fns.Range(func(key, value interface{}) bool {
+		fn := value.(*connectedFn)
+		tmp[fn.tag] = fn.tc
+		return true
+	})
+
+	return tmp, nil
 }

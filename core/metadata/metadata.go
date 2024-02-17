@@ -95,5 +95,5 @@ const (
 	TargetKey       = "yomo-target"
 	WantedTargetKey = "yomo-wanted-target"
 
-	AppIDKey = "app_id"
+	// AppIDKey = "app_id"
 )

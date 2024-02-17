@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"sync"
 
 	"gopkg.in/yaml.v3"
 
@@ -15,9 +14,8 @@ import (
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/core/metadata"
+	"github.com/yomorun/yomo/core/ylog"
 	"github.com/yomorun/yomo/serverless"
-	"golang.org/x/exp/slog"
 )
 
 const (
@@ -36,73 +34,7 @@ var (
 // AIService provides an interface to the llm api
 type AIService interface {
 	// GetChatCompletions returns the chat completions
-	GetChatCompletions(appID string, prompt string) (*ai.ChatCompletionsResponse, error)
-}
-
-// AIProvider provides an interface to the llm providers
-type AIProvider interface {
-	// Name returns the name of the llm provider
-	Name() string
-	// RegisterFunction registers the llm function
-	RegisterFunction(appID string, tag uint32, functionDefinition *ai.FunctionDefinition) error
-	// UnregisterFunction unregister the llm function
-	UnregisterFunction(appID string, name string) error
-	// ListToolCalls lists the llm tool calls
-	ListToolCalls(appID string) (map[uint32]ai.ToolCall, error)
-}
-
-// ======================= AIProvider =======================
-var (
-	providers       sync.Map
-	defaultProvider AIProvider
-)
-
-// RegisterProvider registers the llm provider
-func RegisterProvider(provider AIProvider) {
-	if provider != nil {
-		providers.Store(provider.Name(), provider)
-	}
-}
-
-// ListProviders returns the list of llm providers
-func ListProviders() []string {
-	var names []string
-	providers.Range(func(key, value any) bool {
-		names = append(names, key.(string))
-		return true
-	})
-	return names
-}
-
-// SetDefaultProvider sets the default llm provider
-func SetDefaultProvider(name string) {
-	provider := GetProvider(name)
-	if provider != nil {
-		defaultProvider = provider
-	}
-}
-
-// GetProvider returns the llm provider by name
-func GetProvider(name string) AIProvider {
-	if provider, ok := providers.Load(name); ok {
-		return provider.(AIProvider)
-	}
-	return nil
-}
-
-// GetDefaultProvider returns the default AI provider
-func GetDefaultProvider() (AIProvider, error) {
-	if defaultProvider != nil {
-		return defaultProvider, nil
-	}
-	names := ListProviders()
-	if len(names) > 0 {
-		p := GetProvider(names[0])
-		if p != nil {
-			return p, nil
-		}
-	}
-	return nil, ErrNotExistsProvider
+	GetChatCompletions(prompt string) (*ai.ChatCompletionsResponse, error)
 }
 
 // ======================= AIServer =======================
@@ -117,6 +49,8 @@ type AIServer struct {
 	*Config
 	// ZipperAddr is the address of the zipper
 	ZipperAddr string
+	// source is the yomo Source used to send data to zipper
+	source yomo.Source
 }
 
 // NewAIServer creates a new restful service
@@ -135,7 +69,7 @@ type CacheItem struct {
 	done           chan struct{}
 }
 
-// Serve starts a RESTful service that provides a '/call' endpoint.
+// Serve starts a RESTful service that provides a '/invoke' endpoint.
 // Users submit questions to this endpoint. The service then generates a prompt based on the question and
 // registered functions. It calls the LLM service from the LLM provider to get the functions and arguments to be
 // invoked. These functions are invoked sequentially by YoMo. The result of the last function invocation is
@@ -158,23 +92,35 @@ func (a *AIServer) Serve() error {
 	// create a cache to store the http.ResponseWriter, the key is the reqID
 	cache := make(map[string]*CacheItem)
 
+	a.source = yomo.NewSource(
+		"fc-mapper",
+		a.ZipperAddr,
+		yomo.WithSourceReConnect(),
+		yomo.WithCredential("token:Happy New Year"),
+	)
+	// create ai source
+	err := a.source.Connect()
+	if err != nil {
+		return err
+	}
+
 	// create a sfn to handle the result of the function invocation
 	sfn := yomo.NewStreamFunction("fc-reducer", a.ZipperAddr, yomo.SfnOption(yomo.WithCredential("token:Happy New Year")))
 	defer sfn.Close()
 	sfn.SetObserveDataTags(0x61)
 	sfn.SetHandler(func(ctx serverless.Context) {
 		buf := ctx.Data()
-		slog.Info("<<sfn", "tag", 0x61, "data", string(buf))
+		ylog.Info("<<sfn", "tag", 0x61, "data", string(buf))
 		reqID := string(buf[:6])
 		v, ok := cache[reqID]
 		if !ok {
-			slog.Error("reqID not found", "reqID", reqID)
+			ylog.Error("reqID not found", "reqID", reqID)
 			return
 		}
 
 		err := json.NewEncoder(v.ResponseWriter).Encode(map[string]string{"result": string(buf[6:])})
 		if err != nil {
-			slog.Error("encode response", "err", err.Error())
+			ylog.Error("encode response", "err", err.Error())
 			v.ResponseWriter.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(v.ResponseWriter).Encode(map[string]string{"error": err.Error()})
 			return
@@ -185,20 +131,20 @@ func (a *AIServer) Serve() error {
 		close(v.done)
 	})
 
-	err := sfn.Connect()
+	err = sfn.Connect()
 	if err != nil {
-		slog.Error("[sfn-reducer] connect", "err", err)
+		ylog.Error("[sfn-reducer] connect", "err", err)
 		return err
 	}
 
 	// create the handler for the endpoint
 	handler.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
-		log := slog.With("path", pattern, "method", r.Method)
+		// log := ylog.With("path", pattern, "method", r.Method)
 		defer r.Body.Close()
 
 		reqID, err := gonanoid.New(6)
 		if err != nil {
-			log.Error("generate reqID", "err", err.Error())
+			ylog.Error("generate reqID", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
@@ -211,7 +157,7 @@ func (a *AIServer) Serve() error {
 		if _, ok := cache[reqID]; !ok {
 			cache[reqID] = ci
 		}
-		log.Info("reqID", "val", reqID)
+		ylog.Info("reqID", "val", reqID)
 
 		var req ai.ChatCompletionsRequest
 		// set json response
@@ -219,35 +165,35 @@ func (a *AIServer) Serve() error {
 
 		// decode the request
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			log.Error("decode request", "err", err.Error())
+			ylog.Error("decode request", "err", err.Error())
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
 		}
 
-		// get bearer token from request, it's yomo credential
-		credential := getBearerToken(r)
+		// // get bearer token from request, it's yomo credential
+		// credential := getBearerToken(r)
 
-		// invoke ai function
-		app, err := a.GetOrCreateApp(req.AppID, credential)
-		if err != nil {
-			log.Error("get or create app", "err", err.Error())
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-			return
-		}
+		// // invoke ai function
+		// app, err := a.GetOrCreateApp(req.AppID, credential)
+		// if err != nil {
+		// 	log.Error("get or create app", "err", err.Error())
+		// 	w.WriteHeader(http.StatusInternalServerError)
+		// 	json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		// 	return
+		// }
 
 		// call llm to infer the function and arguments to be invoked
-		slog.Info(">>>>llm request", "appID", req.AppID, "prompt", req.Prompt)
-		resp, err := a.GetChatCompletions(req.AppID, req.Prompt)
+		ylog.Debug(">>>>llm request", "reqID", req.ReqID, "prompt", req.Prompt)
+		resp, err := a.GetChatCompletions(req.Prompt)
 		if err != nil {
-			log.Error("invoke service", "err", err.Error())
+			ylog.Error("invoke service", "err", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
 		}
 
-		slog.Debug(">>llm response", "content", resp.Content)
+		ylog.Debug(">>llm response", "content", resp.Content)
 
 		// err = json.NewEncoder(w).Encode(resp)
 		// if err != nil {
@@ -261,13 +207,13 @@ func (a *AIServer) Serve() error {
 
 		for tag, fns := range resp.Functions {
 			for _, fn := range fns {
-				log := slog.With("tag", tag, "function", fn.Name, "arguments", fn.Arguments)
-				log.Info("invoke func", "tag", tag, "function", fn.Name, "arguments", fn.Arguments, "reqID", reqID)
+				// log := ylog.With("tag", tag, "function", fn.Name, "arguments", fn.Arguments)
+				ylog.Info("invoke func", "tag", tag, "function", fn.Name, "arguments", fn.Arguments, "reqID", reqID)
 				data := SfnInvokeParameters{ReqID: reqID, Arguments: fn.Arguments}
 				// err := app.Source.Write(tag, []byte(fn.Arguments))
-				err := app.Source.Write(tag, data.Bytes())
+				err := a.source.Write(tag, data.Bytes())
 				if err != nil {
-					log.Error("send data to zipper", "err", err.Error())
+					ylog.Error("send data to zipper", "err", err.Error())
 					w.WriteHeader(http.StatusInternalServerError)
 					json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 					return
@@ -275,6 +221,7 @@ func (a *AIServer) Serve() error {
 			}
 		}
 
+		// wait for http response generated by sfn
 		<-ci.done
 	})
 
@@ -282,7 +229,7 @@ func (a *AIServer) Serve() error {
 		Addr:    a.Config.Server.Addr,
 		Handler: handler,
 	}
-	slog.Info("AI Server is running", "addr", httpServer.Addr, "ai_provider", a.Name)
+	ylog.Info("AI Server is running", "addr", httpServer.Addr, "ai_provider", a.Name)
 	return httpServer.ListenAndServe()
 }
 
@@ -316,12 +263,12 @@ func Serve(config *Config, zipperListenAddr string) error {
 		}
 		return aiServer.Serve()
 	}
-	slog.Warn("not exists AI service")
+	ylog.Warn("not exists AI service")
 	return nil
 }
 
 // RegisterFunction registers the AI function
-func RegisterFunction(appID string, tag uint32, functionDefinition []byte) error {
+func RegisterFunction(tag uint32, functionDefinition []byte, connID string) error {
 	provider, err := GetDefaultProvider()
 	if err != nil {
 		return err
@@ -329,29 +276,29 @@ func RegisterFunction(appID string, tag uint32, functionDefinition []byte) error
 	fd := ai.FunctionDefinition{}
 	err = json.Unmarshal(functionDefinition, &fd)
 	if err != nil {
-		slog.Error("unmarshal function definition", "error", err)
+		ylog.Error("unmarshal function definition", "error", err)
 		return err
 	}
-	slog.Info("register function", "appID", appID, "name", fd.Name, "tag", tag, "function", string(functionDefinition))
-	return provider.RegisterFunction(appID, tag, &fd)
+	ylog.Info("register function", "connID", connID, "name", fd.Name, "tag", tag, "function", string(functionDefinition))
+	return provider.RegisterFunction(tag, &fd, connID)
 }
 
 // UnregisterFunction unregister the AI function
-func UnregisterFunction(appID string, name string) error {
+func UnregisterFunction(name string, connID string) error {
 	provider, err := GetDefaultProvider()
 	if err != nil {
 		return err
 	}
-	return provider.UnregisterFunction(appID, name)
+	return provider.UnregisterFunction(name, connID)
 }
 
 // ListToolCalls lists the AI tool calls
-func ListToolCalls(appID string) (map[uint32]ai.ToolCall, error) {
+func ListToolCalls() (map[uint32]ai.ToolCall, error) {
 	provider, err := GetDefaultProvider()
 	if err != nil {
 		return nil, err
 	}
-	return provider.ListToolCalls(appID)
+	return provider.ListToolCalls()
 }
 
 // func GetChatCompletions(appID string, prompt string) (*ai.ChatCompletionsResponse, error) {
@@ -380,10 +327,10 @@ func ConnMiddleware(next core.ConnHandler) core.ConnHandler {
 			if err != nil {
 				conn.Logger.Error("failed to read frame on ai middleware", "err", err)
 				conn.Logger.Info("error type", "type", fmt.Sprintf("%T", err))
-				appID, _ := conn.Metadata().Get(metadata.AppIDKey)
+				// appID, _ := conn.Metadata().Get(metadata.AppIDKey)
 				name := conn.Name()
-				conn.Logger.Info("unregister ai function", "app_id", appID, "name", name)
-				UnregisterFunction(appID, name)
+				conn.Logger.Info("unregister ai function", "name", name, "connID", conn.ID())
+				UnregisterFunction(name, conn.ID())
 				return
 			}
 			if ff, ok := f.(*frame.AIRegisterFunctionFrame); ok {
@@ -393,7 +340,7 @@ func ConnMiddleware(next core.ConnHandler) core.ConnHandler {
 					return
 				}
 				// register ai function
-				err = RegisterFunction(ff.AppID, ff.Tag, ff.Definition)
+				err = RegisterFunction(ff.Tag, ff.Definition, conn.ID())
 				if err != nil {
 					conn.Logger.Error("failed to register ai function", "app_id", ff.AppID, "tag", ff.Tag, "err", err)
 					return
@@ -470,12 +417,12 @@ func ParseConfig(conf map[string]any) (config *Config, err error) {
 	data, e := yaml.Marshal(aiConfig)
 	if e != nil {
 		err = e
-		slog.Error("marshal ai config", "err", err.Error())
+		ylog.Error("marshal ai config", "err", err.Error())
 		return
 	}
 	err = yaml.Unmarshal(data, &config)
 	if err != nil {
-		slog.Error("unmarshal ai config", "err", err.Error())
+		ylog.Error("unmarshal ai config", "err", err.Error())
 		return
 	}
 	// defaults values
@@ -488,7 +435,7 @@ func ParseConfig(conf map[string]any) (config *Config, err error) {
 			"chat_completions": DefaultChatCompletionsEndpoint,
 		}
 	}
-	slog.Info("parse AI config success")
+	ylog.Info("parse AI config success")
 	return
 }
 
@@ -496,7 +443,7 @@ func ParseConfig(conf map[string]any) (config *Config, err error) {
 func parseZipperAddr(addr string) string {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
-		slog.Error("invalid zipper address, return default",
+		ylog.Error("invalid zipper address, return default",
 			"addr", addr,
 			"default", DefaultZipperAddr,
 			"err", err.Error(),
@@ -508,7 +455,7 @@ func parseZipperAddr(addr string) string {
 	}
 	ip := net.ParseIP(host)
 	if ip == nil {
-		slog.Error("invalid zipper address, return default",
+		ylog.Error("invalid zipper address, return default",
 			"addr", addr,
 			"default", DefaultZipperAddr,
 		)
@@ -516,12 +463,12 @@ func parseZipperAddr(addr string) string {
 	}
 	if !ip.IsUnspecified() {
 		addr = ip.String() + ":" + port
-		// slog.Info("parse zipper address", "addr", addr)
+		// ylog.Info("parse zipper address", "addr", addr)
 		return addr
 	}
 	localIP, err := getLocalIP()
 	if err != nil {
-		slog.Error("get local ip, return default",
+		ylog.Error("get local ip, return default",
 			"default", DefaultZipperAddr,
 			"err", err.Error(),
 		)
@@ -553,7 +500,7 @@ func getBearerToken(req *http.Request) string {
 	// 	return ""
 	// }
 	// if !strings.HasPrefix(auth, "Bearer") {
-	// 	slog.Error("invalid Authorization header", "header", auth)
+	// 	ylog.Error("invalid Authorization header", "header", auth)
 	// 	return ""
 	// }
 	// token := strings.TrimPrefix(auth, "Bearer ")

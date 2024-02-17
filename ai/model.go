@@ -1,9 +1,10 @@
 package ai
 
 type ChatCompletionsRequest struct {
-	AppID  string `json:"app_id"`  // app_id is the app id of allegro application, it's empty in the yomo
-	PeerID string `json:"peer_id"` // peer_id is the tenant id of application
-	Prompt string `json:"prompt"`  // prompt is user input text for chat completion
+	ReqID string `json:"req_id"` // req_id is the request id of the request
+	// AppID  string `json:"app_id"`  // app_id is the app id of allegro application, it's empty in the yomo
+	// PeerID string `json:"peer_id"` // peer_id is the tenant id of application
+	Prompt string `json:"prompt"` // prompt is user input text for chat completion
 }
 
 type ChatCompletionsResponse struct {
@@ -13,7 +14,7 @@ type ChatCompletionsResponse struct {
 
 // ToolCall is the tool call in Request and Response
 type ToolCall struct {
-	ID       string              `json:"id,omitempty"` // present in Response only
+	ID       string              `json:"id,omitempty"` // ID present in Response only
 	Type     string              `json:"type"`
 	Function *FunctionDefinition `json:"function"`
 }
@@ -43,7 +44,7 @@ type FunctionParameters struct {
 	Required   []string                      `json:"required"`
 }
 
-// ParameterProperty defines the property of the parameters
+// ParameterProperty defines the property of the parameter
 type ParameterProperty struct {
 	Type        string   `json:"type"`
 	Description string   `json:"description"`

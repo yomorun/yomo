@@ -159,8 +159,8 @@ func (s *Server) handleFrameConn(fconn frame.Conn, logger *slog.Logger) {
 	}
 
 	// ack handshake
-	appID, _ := conn.Metadata().Get(metadata.AppIDKey)
-	_ = fconn.WriteFrame(&frame.HandshakeAckFrame{AppID: appID})
+	// appID, _ := conn.Metadata().Get(metadata.AppIDKey)
+	_ = fconn.WriteFrame(&frame.HandshakeAckFrame{})
 
 	s.connHandler(conn) // s.handleConn(conn) with middlewares
 
