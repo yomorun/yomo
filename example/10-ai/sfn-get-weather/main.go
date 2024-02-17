@@ -17,7 +17,6 @@ var (
 	tag        uint32 = 0x11
 	sinkTag    uint32 = 0x61
 	credential        = "token:Happy New Year"
-	peerID            = "user-1"
 )
 
 type Msg struct {
@@ -35,7 +34,7 @@ func InputSchema() any {
 	return &Msg{}
 }
 
-// ================== AI End ==================
+// ================== main ==================
 
 func main() {
 	sfn := yomo.NewStreamFunction(
@@ -50,7 +49,7 @@ func main() {
 	// set handler
 	sfn.SetHandler(handler)
 
-	sfn.SetWantedTarget(peerID)
+	// sfn.SetWantedTarget(peerID)
 
 	// start
 	err := sfn.Connect()
@@ -78,11 +77,11 @@ func handler(ctx serverless.Context) {
 		slog.Error("[sfn] json.Marshal error", "err", err)
 		os.Exit(-2)
 	} else {
-		slog.Info("[sfn] << receive", "tag", tag, "target", peerID, "data", msg)
+		slog.Info("[sfn] << receive", "tag", tag, "data", msg)
 		data := fmt.Sprintf("[%s] temperature: %d°C", msg.CityName, rand.Intn(40))
 		err = ctx.Write(sinkTag, append(reqID, []byte(data)...))
 		if err == nil {
-			slog.Info("[sfn] >> write", "tag", sinkTag, "target", peerID, "data", data)
+			slog.Info("[sfn] >> write", "tag", sinkTag, "data", data)
 		}
 	}
 }
