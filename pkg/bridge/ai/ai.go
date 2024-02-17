@@ -111,14 +111,19 @@ func (a *AIServer) Serve() error {
 	sfn.SetHandler(func(ctx serverless.Context) {
 		buf := ctx.Data()
 		ylog.Info("<<sfn", "tag", 0x61, "data", string(buf))
-		reqID := string(buf[:6])
+		call, err := ai.NewFunctionCallingInvoke(ctx)
+		if err != nil {
+			ylog.Error("NewFunctionCallingParameters", "err", err.Error())
+			return
+		}
+		reqID := call.ReqID
 		v, ok := cache[reqID]
 		if !ok {
 			ylog.Error("reqID not found", "reqID", reqID)
 			return
 		}
 
-		err := json.NewEncoder(v.ResponseWriter).Encode(map[string]string{"result": string(buf[6:])})
+		err = json.NewEncoder(v.ResponseWriter).Encode(map[string]string{"result": call.Arguments})
 		if err != nil {
 			ylog.Error("encode response", "err", err.Error())
 			v.ResponseWriter.WriteHeader(http.StatusInternalServerError)
@@ -209,7 +214,7 @@ func (a *AIServer) Serve() error {
 			for _, fn := range fns {
 				// log := ylog.With("tag", tag, "function", fn.Name, "arguments", fn.Arguments)
 				ylog.Info("invoke func", "tag", tag, "function", fn.Name, "arguments", fn.Arguments, "reqID", reqID)
-				data := SfnInvokeParameters{ReqID: reqID, Arguments: fn.Arguments}
+				data := ai.SfnInvokeParameters{ReqID: reqID, Arguments: fn.Arguments}
 				// err := app.Source.Write(tag, []byte(fn.Arguments))
 				err := a.source.Write(tag, data.Bytes())
 				if err != nil {
@@ -231,18 +236,6 @@ func (a *AIServer) Serve() error {
 	}
 	ylog.Info("AI Server is running", "addr", httpServer.Addr, "ai_provider", a.Name)
 	return httpServer.ListenAndServe()
-}
-
-// SfnInvokeParameters describes the data structure when invoking the sfn function
-type SfnInvokeParameters struct {
-	ReqID     string
-	Arguments string
-}
-
-func (sip *SfnInvokeParameters) Bytes() []byte {
-	buf1 := []byte(sip.ReqID)
-	buf2 := []byte(sip.Arguments)
-	return append(buf1, buf2...)
 }
 
 // ======================= Package Functions =======================

@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/serverless"
 	"golang.org/x/exp/slog"
 )
@@ -55,26 +56,35 @@ func main() {
 func handler(ctx serverless.Context) {
 	slog.Info("[sfn] receive", "ctx.data", string(ctx.Data()))
 
-	reqID := ctx.Data()[:6]
+	invoke, err := ai.NewFunctionCallingInvoke(ctx)
+	if err != nil {
+		slog.Error("[sfn] NewFunctionCallingParameters error", "err", err)
+		return
+	}
 
 	var msg Parameter
-	err := json.Unmarshal(ctx.Data()[6:], &msg)
+	err = json.Unmarshal([]byte(invoke.Arguments), &msg)
 	if err != nil {
 		slog.Error("[sfn] json.Marshal error", "err", err)
-		os.Exit(-2)
+		return
 	}
 
 	slog.Info("[sfn] << receive", "tag", 0x10, "data", fmt.Sprintf("target currency: %s, amount: %f", msg.Target, msg.Amount))
 
 	// read all the target currency exchange rates from usd.json
 	rate := getRates(msg.Target)
+	result := ""
 	if rate == 0 {
 		// err = ctx.WriteWithTarget(0x61, []byte("can not understand the target currency"), "user-1")
-		err = ctx.Write(0x61, append(reqID, []byte("can not understand the target currency")...))
+		result = fmt.Sprintf("can not understand the target currency, target currency is %s", msg.Target)
+		// err = ctx.Write(0x61, append(reqID, []byte("can not understand the target currency")...))
 	} else {
 		// err = ctx.WriteWithTarget(0x61, []byte(fmt.Sprintf("The exchange rate of %s to USD is %f", msg.Target, rate)), "user-1")
-		err = ctx.Write(0x61, append(reqID, []byte(fmt.Sprintf("The exchange rate of %s to USD is %f, compute result is %f", msg.Target, rate, msg.Amount*rate))...))
+		result = fmt.Sprintf("The exchange rate of %s to USD is %f, compute result is %f", msg.Target, rate, msg.Amount*rate)
+		// err = ctx.Write(0x61, append(reqID, []byte(fmt.Sprintf("The exchange rate of %s to USD is %f, compute result is %f", msg.Target, rate, msg.Amount*rate))...))
 	}
+
+	err = ctx.Write(invoke.CreatePayload(result))
 
 	if err != nil {
 		slog.Error("[sfn] >> write error", "err", err)
