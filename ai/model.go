@@ -1,11 +1,5 @@
 package ai
 
-import (
-	"fmt"
-
-	"github.com/yomorun/yomo/serverless"
-)
-
 type ChatCompletionsRequest struct {
 	ReqID string `json:"req_id"` // req_id is the request id of the request
 	// AppID  string `json:"app_id"`  // app_id is the app id of allegro application, it's empty in the yomo
@@ -55,48 +49,4 @@ type ParameterProperty struct {
 	Type        string   `json:"type"`
 	Description string   `json:"description"`
 	Enum        []string `json:"enum,omitempty"`
-}
-
-// SfnInvokeParameters describes the data structure when invoking the sfn function
-type SfnInvokeParameters struct {
-	ReqID     string // ReqID is the request id of the restful request
-	Arguments string // Arguments is the arguments of the function calling
-}
-
-// Bytes returns the byte slice of SfnInvokeParameters
-func (sip *SfnInvokeParameters) Bytes() []byte {
-	buf1 := []byte(sip.ReqID)
-	buf2 := []byte(sip.Arguments)
-	return append(buf1, buf2...)
-}
-
-// FromBytes fills the SfnInvokeParameters from the given byte slice
-func (sip *SfnInvokeParameters) FromBytes(b []byte) {
-	sip.ReqID = string(b[:6])
-	sip.Arguments = string(b[6:])
-}
-
-// CreatePayload creates the payload for ctx.Write()
-func (sip *SfnInvokeParameters) CreatePayload(result string) (uint32, []byte) {
-	sip.Arguments = result
-	return 0x61, sip.Bytes()
-}
-
-// NewFunctionCallingInvoke creates a new SfnInvokeParameters from the given context
-func NewFunctionCallingInvoke(ctx serverless.Context) (*SfnInvokeParameters, error) {
-	if ctx == nil {
-		return nil, fmt.Errorf("ai: ctx is nil")
-	}
-
-	if ctx.Data() == nil {
-		return nil, fmt.Errorf("ai: ctx.Data() is nil")
-	}
-
-	if len(ctx.Data()) < 6 {
-		return nil, fmt.Errorf("ai: ctx.Data() is too short")
-	}
-
-	sip := &SfnInvokeParameters{}
-	sip.FromBytes(ctx.Data())
-	return sip, nil
 }
