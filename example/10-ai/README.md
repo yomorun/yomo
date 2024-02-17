@@ -19,7 +19,13 @@ cd sfn-currency-converter && go run main.go
 ## Step 3: Invoke the LLM Function
 
 ```bash
-curl -X POST -H "Content-Type: application/json" -d '{"prompt":"tell me the time in Singapore, based on the time provided: Thursday, February 15th, 2024 7:00am to 8:00am (UTC-08:00) Pacific Time - Los Angeles?"}' http://127.0.0.1:8000/invoke
+curl -i -X POST -H "Content-Type: application/json" -d '{"prompt":"tell me the time in Singapore, based on the time provided: Thursday, February 15th, 2024 7:00am to 8:00am (UTC-08:00) Pacific Time"}' http://127.0.0.1:8000/invoke
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+Date: Sat, 17 Feb 2024 08:58:22 GMT
+Content-Length: 27
+
+data: 2024-02-15 23:00:00
 ```
 
 ```bash

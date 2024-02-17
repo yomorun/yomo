@@ -112,7 +112,7 @@ func (a *AIServer) Serve() error {
 	sfn.SetObserveDataTags(0x61)
 	sfn.SetHandler(func(ctx serverless.Context) {
 		buf := ctx.Data()
-		ylog.Info("<<sfn", "tag", 0x61, "data", string(buf))
+		ylog.Debug("<<fc-reducer", "tag", 0x61, "data", string(buf))
 		call, err := ai.NewFunctionCallingInvoke(ctx)
 		if err != nil {
 			ylog.Error("NewFunctionCallingParameters", "err", err.Error())

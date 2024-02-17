@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/serverless"
 )
 
@@ -60,17 +61,19 @@ var lastReqID string
 func handler(ctx serverless.Context) {
 	slog.Info("[sfn] receive", "ctx.data", string(ctx.Data()))
 
-	reqID := ctx.Data()[:6]
-
-	// TODO: ai server can not response multiple times for the same request
-	if string(reqID) == lastReqID {
+	invoke, err := ai.NewFunctionCallingInvoke(ctx)
+	if err != nil {
+		slog.Error("[sfn] NewFunctionCallingParameters error", "err", err)
 		return
 	}
 
+	reqID := invoke.ReqID
+
 	var msg Parameter
-	err := json.Unmarshal(ctx.Data()[6:], &msg)
+	err = json.Unmarshal([]byte(invoke.Arguments), &msg)
 	if err != nil {
 		slog.Error("[sfn] json.Marshal error", "err", err)
+		return
 	}
 
 	if msg.TargetTimezone == "" {
@@ -85,7 +88,7 @@ func handler(ctx serverless.Context) {
 
 	slog.Info("[sfn] result", "result", target)
 
-	ctx.Write(0x61, append(reqID, []byte(target)...))
+	ctx.Write(invoke.CreatePayload(target))
 	lastReqID = string(reqID)
 }
 
