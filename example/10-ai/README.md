@@ -23,5 +23,5 @@ curl -X POST -H "Content-Type: application/json" -d '{"prompt":"tell me the time
 ```
 
 ```bash
-curl -X POST -H "Content-Type: application/json" -d '{"prompt":"How much is 100 US dollar in China currency"}' http://127.0.0.1:8000/invoke
+curl -X POST -H "Content-Type: application/json" -d '{"prompt":"How much is 100 US dollar in Singapore currency"}' http://127.0.0.1:8000/invoke
 ```
