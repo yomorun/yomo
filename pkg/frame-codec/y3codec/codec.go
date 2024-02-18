@@ -51,6 +51,10 @@ func (c *y3codec) Encode(f frame.Frame) ([]byte, error) {
 		return encodeGoawayFrame(ff)
 	case *frame.ConnectToFrame:
 		return encodeConnectToFrame(ff)
+	case *frame.AIRegisterFunctionFrame:
+		return encodeAIRegisterFunctionFrame(ff)
+	case *frame.AIRegisterFunctionAckFrame:
+		return encodeAIRegisterFunctionAckFrame(ff)
 	default:
 		return nil, ErrUnknownFrame
 	}
@@ -70,6 +74,10 @@ func (c *y3codec) Decode(data []byte, f frame.Frame) error {
 		return decodeGoawayFrame(data, ff)
 	case *frame.ConnectToFrame:
 		return decodeConnectToFrame(data, ff)
+	case *frame.AIRegisterFunctionFrame:
+		return decodeAIRegisterFunctionFrame(data, ff)
+	case *frame.AIRegisterFunctionAckFrame:
+		return decodeAIRegisterFunctionAckFrame(data, ff)
 	default:
 		return ErrUnknownFrame
 	}

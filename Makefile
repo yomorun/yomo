@@ -17,7 +17,7 @@ lint:
 
 .PHONY: build
 build:
-	$(GO) build -tags "$(TAGS)" -o bin/yomo -trimpath -ldflags "-s -w" ./cmd/yomo/main.go
+	$(GO) build -race -tags "$(TAGS)" -o bin/yomo -trimpath -ldflags "-s -w" ./cmd/yomo/main.go
 
 .PHONY: test
 test:

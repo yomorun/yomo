@@ -57,6 +57,11 @@ var (
 
 	// WithSfnTracerProvider sets tracer provider for the Sfn.
 	WithSfnTracerProvider = func(tp trace.TracerProvider) SfnOption { return SfnOption(core.WithTracerProvider(tp)) }
+
+	// WithSfnAIFunctionDefinition sets AI function definition for the Sfn.
+	WithSfnAIFunctionDefinition = func(description string, inputModel any) SfnOption {
+		return SfnOption(core.WithAIFunctionDefinition(description, inputModel))
+	}
 )
 
 // ClientOption is option for the upstream Zipper.

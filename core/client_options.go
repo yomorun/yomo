@@ -33,6 +33,9 @@ type clientOptions struct {
 	nonBlockWrite   bool
 	logger          *slog.Logger
 	tracerProvider  trace.TracerProvider
+	// ai function
+	aiFunctionInputModel  any
+	aiFunctionDescription string
 }
 
 // DefaultClientQuicConfig be used when the `quicConfig` of client is nil.
@@ -108,6 +111,14 @@ func WithLogger(logger *slog.Logger) ClientOption {
 func WithTracerProvider(tp trace.TracerProvider) ClientOption {
 	return func(o *clientOptions) {
 		o.tracerProvider = tp
+	}
+}
+
+// WithAIFunctionDefinition sets AI function definition for the client.
+func WithAIFunctionDefinition(description string, inputModel any) ClientOption {
+	return func(o *clientOptions) {
+		o.aiFunctionDescription = description
+		o.aiFunctionInputModel = inputModel
 	}
 }
 
