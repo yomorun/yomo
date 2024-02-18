@@ -108,7 +108,7 @@ func (p *AzureOpenAIProvider) Name() string {
 	return "azopenai"
 }
 
-// GetChatCompletions get chat completions
+// GetChatCompletions get chat completions for ai service
 func (p *AzureOpenAIProvider) GetChatCompletions(userPrompt string) (*ai.ChatCompletionsResponse, error) {
 	// mapTools, err := p.ListToolCalls(appID)
 	// if err != nil {
@@ -119,7 +119,7 @@ func (p *AzureOpenAIProvider) GetChatCompletions(userPrompt string) (*ai.ChatCom
 	// 	return &ai.ChatCompletionsResponse{Content: "no toolcalls"}, ErrNoFunctionCall
 	// }
 
-	var isEmpty = true
+	isEmpty := true
 	fns.Range(func(key, value interface{}) bool {
 		isEmpty = false
 		return false
@@ -165,7 +165,6 @@ func (p *AzureOpenAIProvider) GetChatCompletions(userPrompt string) (*ai.ChatCom
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
-
 	if err != nil {
 		return nil, err
 	}
@@ -300,11 +299,36 @@ func (p *AzureOpenAIProvider) ListToolCalls() (map[uint32]ai.ToolCall, error) {
 	// return tools, nil
 
 	tmp := make(map[uint32]ai.ToolCall)
-	fns.Range(func(key, value interface{}) bool {
+	fns.Range(func(key, value any) bool {
 		fn := value.(*connectedFn)
 		tmp[fn.tag] = fn.tc
 		return true
 	})
 
 	return tmp, nil
+}
+
+// GetOverview get overview for ai service
+func (p *AzureOpenAIProvider) GetOverview() (*ai.OverviewResponse, error) {
+	isEmpty := true
+	fns.Range(func(key, value any) bool {
+		isEmpty = false
+		return false
+	})
+
+	result := &ai.OverviewResponse{
+		Functions: make(map[uint32]*ai.FunctionDefinition),
+	}
+
+	if isEmpty {
+		return result, nil
+	}
+
+	fns.Range(func(key, value any) bool {
+		fn := value.(*connectedFn)
+		result.Functions[fn.tag] = fn.tc.Function
+		return true
+	})
+
+	return result, nil
 }

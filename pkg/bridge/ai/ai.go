@@ -35,6 +35,8 @@ var (
 
 // AIService provides an interface to the llm api
 type AIService interface {
+	// GetOverview returns the overview of the AI functions, key is the tag, value is the function definition
+	GetOverview() (*ai.OverviewResponse, error)
 	// GetChatCompletions returns the chat completions
 	GetChatCompletions(prompt string) (*ai.ChatCompletionsResponse, error)
 }
@@ -90,7 +92,23 @@ func (a *AIServer) Serve() error {
 	// // chatCompletions := a.Config.Server.Endpoints["chat_completions"]
 	// pattern = fmt.Sprintf("/%s%s", a.Name, a.Config.Server.Endpoints["chat_completions"])
 
-	pattern := "/invoke"
+	// overview
+	pattern := "/overview"
+	handler.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		resp, err := a.GetOverview()
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(resp)
+		return
+	})
+
+	// invoke
+	pattern = "/invoke"
 
 	// create a cache to store the http.ResponseWriter, the key is the reqID
 	cache := make(map[string]*CacheItem)
