@@ -56,8 +56,6 @@ func main() {
 	sfn.Wait()
 }
 
-var lastReqID string
-
 func handler(ctx serverless.Context) {
 	slog.Info("[sfn] receive", "ctx.data", string(ctx.Data()))
 
@@ -66,8 +64,6 @@ func handler(ctx serverless.Context) {
 		slog.Error("[sfn] NewFunctionCallingParameters error", "err", err)
 		return
 	}
-
-	reqID := invoke.ReqID
 
 	var msg Parameter
 	err = json.Unmarshal([]byte(invoke.Arguments), &msg)
@@ -89,7 +85,6 @@ func handler(ctx serverless.Context) {
 	slog.Info("[sfn] result", "result", target)
 
 	ctx.Write(invoke.CreatePayload(target))
-	lastReqID = string(reqID)
 }
 
 // ConvertTimezone converts the current time from the source timezone to the target timezone.
