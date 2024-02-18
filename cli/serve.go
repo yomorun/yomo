@@ -26,6 +26,9 @@ import (
 	pkgconfig "github.com/yomorun/yomo/pkg/config"
 	"github.com/yomorun/yomo/pkg/log"
 	"github.com/yomorun/yomo/pkg/trace"
+
+	"github.com/yomorun/yomo/pkg/bridge/ai"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/azopenai"
 )
 
 // serveCmd represents the serve command
@@ -62,20 +65,75 @@ var serveCmd = &cobra.Command{
 				options = append(options, yomo.WithAuth("token", tokenString))
 			}
 		}
-
-		zipper, err := yomo.NewZipper(conf.Name, router.Default(), nil, conf.Mesh, options...)
+		// check AI server config
+		// parse the AI config
+		bridgeConf := conf.Bridge
+		aiConfig, err := ai.ParseConfig(bridgeConf)
+		if err != nil {
+			if err == ai.ErrConfigNotFound {
+				log.InfoStatusEvent(os.Stdout, err.Error())
+			} else {
+				log.FailureStatusEvent(os.Stdout, err.Error())
+				return
+			}
+		}
+		if aiConfig != nil {
+			// add AI connection middleware
+			options = append(options, yomo.WithZipperConnMiddleware(ai.ConnMiddleware))
+		}
+		// new zipper
+		zipper, err := yomo.NewZipper(
+			conf.Name,
+			router.Default(),
+			nil,
+			conf.Mesh,
+			options...)
 		if err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
 			return
 		}
 		zipper.Logger().Info("using config file", "file_path", config)
 
+		// AI Server
+		if aiConfig != nil {
+			// register the AI provider
+			registerAIProvider(aiConfig)
+			// start the AI server
+			go func() {
+				err := ai.Serve(aiConfig, listenAddr)
+				if err != nil {
+					log.FailureStatusEvent(os.Stdout, err.Error())
+					return
+				}
+			}()
+		}
+
+		// start the zipper
 		err = zipper.ListenAndServe(ctx, listenAddr)
 		if err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
 			return
 		}
 	},
+}
+
+func registerAIProvider(aiConfig *ai.Config) {
+	// register the AI provider
+	for name, provider := range aiConfig.Providers {
+		// register the Azure OpenAI provider
+		if name == "azopenai" {
+			apiKey := provider["api_key"]
+			apiEndpoint := provider["api_endpoint"]
+			if apiKey == "" || apiEndpoint == "" {
+				// log.InfoStatusEvent(os.Stdout, "register Azure OpenAI provider used by New()")
+				ai.RegisterProvider(azopenai.New())
+			} else {
+				// log.InfoStatusEvent(os.Stdout, "register Azure OpenAI provider used by NewAzureOpenAIProvider()")
+				ai.RegisterProvider(azopenai.NewAzureOpenAIProvider(apiKey, apiEndpoint))
+			}
+		}
+		// TODO: register other providers
+	}
 }
 
 func init() {

@@ -94,4 +94,6 @@ const (
 	// the keys for target system working.
 	TargetKey       = "yomo-target"
 	WantedTargetKey = "yomo-wanted-target"
+
+	// AppIDKey = "app_id"
 )

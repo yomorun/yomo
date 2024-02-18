@@ -18,6 +18,8 @@ import (
 //  4. RejectedFrame
 //  5. GoawayFrame
 //  6. ConnectToFrame
+//  7. AIRegisterFunctionFrame
+//  8. AIRegisterFunctionAckFrame
 //
 // Read frame comments to understand the role of the frame.
 type Frame interface {
@@ -69,7 +71,9 @@ func (f *HandshakeFrame) Type() Type { return TypeHandshakeFrame }
 
 // HandshakeAckFrame is used to ack handshake, If handshake successful, The server will
 // send HandshakeAckFrame to the client.
-type HandshakeAckFrame struct{}
+type HandshakeAckFrame struct {
+	AppID string
+}
 
 // Type returns the type of HandshakeAckFrame.
 func (f *HandshakeAckFrame) Type() Type { return TypeHandshakeAckFrame }
@@ -101,22 +105,48 @@ type ConnectToFrame struct {
 // Type returns the type of ConnectToFrame.
 func (f *ConnectToFrame) Type() Type { return TypeConnectToFrame }
 
+// AIRegisterFunctionFrame is used to register AI function.
+type AIRegisterFunctionFrame struct {
+	AppID      string
+	Name       string // Name is the name of the AI function.
+	Tag        uint32
+	Definition []byte // Definition is the definition of the AI function.
+}
+
+// Type returns the type of AIRegisterFunctionFrame.
+func (f *AIRegisterFunctionFrame) Type() Type { return TypeAIRegisterFunctionFrame }
+
+// AIRegisterFunctionAckFrame is used to ack AIRegisterFunctionFrame.
+type AIRegisterFunctionAckFrame struct {
+	AppID string
+	Name  string
+	Tag   uint32
+}
+
+// Type returns the type of AIRegisterFunctionAckFrame.
+func (f *AIRegisterFunctionAckFrame) Type() Type { return TypeAIRegisterFunctionAckFrame }
+
 const (
-	TypeDataFrame         Type = 0x3F // TypeDataFrame is the type of DataFrame.
-	TypeHandshakeFrame    Type = 0x31 // TypeHandshakeFrame is the type of HandshakeFrame.
-	TypeHandshakeAckFrame Type = 0x29 // TypeHandshakeAckFrame is the type of HandshakeAckFrame.
-	TypeRejectedFrame     Type = 0x39 // TypeRejectedFrame is the type of RejectedFrame.
-	TypeGoawayFrame       Type = 0x2E // TypeGoawayFrame is the type of GoawayFrame.
-	TypeConnectToFrame    Type = 0x3E // TypeConnectToFrame is the type of ConnectToFrame.
+	TypeDataFrame                  Type = 0x3F // TypeDataFrame is the type of DataFrame.
+	TypeHandshakeFrame             Type = 0x31 // TypeHandshakeFrame is the type of HandshakeFrame.
+	TypeHandshakeAckFrame          Type = 0x29 // TypeHandshakeAckFrame is the type of HandshakeAckFrame.
+	TypeRejectedFrame              Type = 0x39 // TypeRejectedFrame is the type of RejectedFrame.
+	TypeGoawayFrame                Type = 0x2E // TypeGoawayFrame is the type of GoawayFrame.
+	TypeConnectToFrame             Type = 0x3E // TypeConnectToFrame is the type of ConnectToFrame.
+	TypeAIRegisterFunctionFrame    Type = 0x10 // TypeAIRegisterFunctionFrame is the type of AIRegisterFunctionFrame.
+	TypeAIRegisterFunctionAckFrame Type = 0x11 // TypeAIRegisterFunctionAckFrame is the type of AIRegisterFunctionAckFrame.
+
 )
 
 var frameTypeStringMap = map[Type]string{
-	TypeDataFrame:         "DataFrame",
-	TypeHandshakeFrame:    "HandshakeFrame",
-	TypeHandshakeAckFrame: "HandshakeAckFrame",
-	TypeRejectedFrame:     "RejectedFrame",
-	TypeGoawayFrame:       "GoawayFrame",
-	TypeConnectToFrame:    "ConnectToFrame",
+	TypeDataFrame:                  "DataFrame",
+	TypeHandshakeFrame:             "HandshakeFrame",
+	TypeHandshakeAckFrame:          "HandshakeAckFrame",
+	TypeRejectedFrame:              "RejectedFrame",
+	TypeGoawayFrame:                "GoawayFrame",
+	TypeConnectToFrame:             "ConnectToFrame",
+	TypeAIRegisterFunctionFrame:    "AIRegisterFunctionFrame",
+	TypeAIRegisterFunctionAckFrame: "AIRegisterFunctionAckFrame",
 }
 
 // String returns a human-readable string which represents the frame type.
@@ -130,12 +160,14 @@ func (f Type) String() string {
 }
 
 var frameTypeNewFuncMap = map[Type]func() Frame{
-	TypeDataFrame:         func() Frame { return new(DataFrame) },
-	TypeHandshakeFrame:    func() Frame { return new(HandshakeFrame) },
-	TypeHandshakeAckFrame: func() Frame { return new(HandshakeAckFrame) },
-	TypeRejectedFrame:     func() Frame { return new(RejectedFrame) },
-	TypeGoawayFrame:       func() Frame { return new(GoawayFrame) },
-	TypeConnectToFrame:    func() Frame { return new(ConnectToFrame) },
+	TypeDataFrame:                  func() Frame { return new(DataFrame) },
+	TypeHandshakeFrame:             func() Frame { return new(HandshakeFrame) },
+	TypeHandshakeAckFrame:          func() Frame { return new(HandshakeAckFrame) },
+	TypeRejectedFrame:              func() Frame { return new(RejectedFrame) },
+	TypeGoawayFrame:                func() Frame { return new(GoawayFrame) },
+	TypeConnectToFrame:             func() Frame { return new(ConnectToFrame) },
+	TypeAIRegisterFunctionFrame:    func() Frame { return new(AIRegisterFunctionFrame) },
+	TypeAIRegisterFunctionAckFrame: func() Frame { return new(AIRegisterFunctionAckFrame) },
 }
 
 // NewFrame creates a new frame from Type.
