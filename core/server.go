@@ -281,7 +281,7 @@ func (s *Server) createConnection(hf *frame.HandshakeFrame, md metadata.M, fconn
 		md.Set(metadata.WantedTargetKey, hf.WantedTarget)
 	}
 	conn := newConnection(
-		NextIncrID(),
+		incrID(),
 		hf.Name,
 		hf.ID,
 		ClientType(hf.ClientType),

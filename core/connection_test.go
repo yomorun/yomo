@@ -40,7 +40,7 @@ func TestClientTypeString(t *testing.T) {
 func TestNextIncrID(t *testing.T) {
 	first := uint64(0)
 	for i := 0; i < 1000; i++ {
-		got := NextIncrID()
+		got := incrID()
 		assert.True(t, got >= first)
 	}
 }

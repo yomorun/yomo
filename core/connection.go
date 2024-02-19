@@ -10,8 +10,8 @@ import (
 
 var increment uint64
 
-// NextIncrID generates next increment ID.
-func NextIncrID() uint64 {
+// incrID generates next increment ID.
+func incrID() uint64 {
 	return atomic.AddUint64(&increment, 1)
 }
 
