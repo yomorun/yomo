@@ -24,17 +24,16 @@ type Service struct {
 	zipperAddr string
 	source     yomo.Source
 	reducer    yomo.StreamFunction
-	reducerTag uint32
 	cache      map[string]*CacheItem
 	AIProvider
 }
 
-func NewService(credential string, zipperAddr string, reducerTag uint32, aiProvider AIProvider) (*Service, error) {
+func NewService(credential string, zipperAddr string, aiProvider AIProvider) (*Service, error) {
 	val, ok := services.Load(credential)
 	if ok {
 		return val.(*Service), nil
 	}
-	s, err := newService(credential, zipperAddr, reducerTag, aiProvider)
+	s, err := newService(credential, zipperAddr, aiProvider)
 	if err != nil {
 		ylog.Error("create AI service failed", "err", err)
 		return nil, err
@@ -43,11 +42,10 @@ func NewService(credential string, zipperAddr string, reducerTag uint32, aiProvi
 	return s, nil
 }
 
-func newService(credential string, zipperAddr string, reducerTag uint32, aiProvider AIProvider) (*Service, error) {
+func newService(credential string, zipperAddr string, aiProvider AIProvider) (*Service, error) {
 	s := &Service{
 		credential: credential,
 		zipperAddr: zipperAddr,
-		reducerTag: reducerTag,
 		cache:      make(map[string]*CacheItem),
 		AIProvider: aiProvider,
 	}
@@ -68,10 +66,14 @@ func newService(credential string, zipperAddr string, reducerTag uint32, aiProvi
 	return s, nil
 }
 
+// TODO: needs to be loaded
 // Release releases the resources
 func (s *Service) Release() {
 	s.source.Close()
 	s.reducer.Close()
+	// INFO: use clear on go1.21 or later
+	// clear(s.cache)
+	s.cache = map[string]*CacheItem{}
 }
 
 func (s *Service) createSource() (yomo.Source, error) {
@@ -96,16 +98,16 @@ func (s *Service) createReducer() (yomo.StreamFunction, error) {
 		yomo.WithSfnReConnect(),
 		yomo.WithSfnCredential(s.credential),
 	)
-	sfn.SetObserveDataTags(s.reducerTag)
+	sfn.SetObserveDataTags(ai.ReducerTag)
 	sfn.SetHandler(func(ctx serverless.Context) {
 		buf := ctx.Data()
-		ylog.Debug("<< ai-reducer", "tag", s.reducerTag, "data", string(buf))
-		call, err := ai.NewFunctionCallingInvoke(ctx)
+		ylog.Debug("<< ai-reducer", "tag", ai.ReducerTag, "data", string(buf))
+		invoke, err := ai.NewFunctionCallingInvoke(ctx)
 		if err != nil {
 			ylog.Error("parse function calling invoke", "err", err.Error())
 			return
 		}
-		reqID := call.ReqID
+		reqID := invoke.ReqID
 		v, ok := s.cache[reqID]
 		if !ok {
 			ylog.Error("req_id not found", "req_id", reqID)
@@ -116,7 +118,7 @@ func (s *Service) createReducer() (yomo.StreamFunction, error) {
 		v.mu.Lock()
 		defer v.mu.Unlock()
 
-		fmt.Fprintf(v.ResponseWriter, "data: %s\n\n", call.Arguments)
+		fmt.Fprintf(v.ResponseWriter, "data: %s\n\n", invoke.Arguments)
 		// flush the response
 		flusher, ok := v.ResponseWriter.(http.Flusher)
 		if ok {

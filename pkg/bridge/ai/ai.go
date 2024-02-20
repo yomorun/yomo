@@ -86,8 +86,7 @@ func (a *AIServer) Serve() error {
 	handler.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		credential := getBearerToken(r)
-		reducerTag := uint32(0x61)
-		service, err := NewService(credential, a.ZipperAddr, reducerTag, a.Provider)
+		service, err := NewService(credential, a.ZipperAddr, a.Provider)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -172,8 +171,7 @@ func (a *AIServer) Serve() error {
 		// log := ylog.With("path", pattern, "method", r.Method)
 		// get bearer token from request, it's yomo credential
 		credential := getBearerToken(r)
-		reducerTag := uint32(0x61)
-		service, err := NewService(credential, a.ZipperAddr, reducerTag, a.Provider)
+		service, err := NewService(credential, a.ZipperAddr, a.Provider)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -296,23 +294,15 @@ func (a *AIServer) Serve() error {
 // ======================= Package Functions =======================
 // Serve starts the AI server
 func Serve(config *Config, zipperListenAddr string) error {
-	provider := GetProvider(config.Server.Provider)
-	if provider == nil {
-		return ErrNotExistsProvider
+	provider, err := GetProviderAndSetDefault(config.Server.Provider)
+	if err != nil {
+		return err
 	}
-	// provider, err := GetDefaultProvider()
-	// if err != nil {
-	// 	return err
-	// }
-	// if aiService, ok := provider.(AIService); ok {
 	aiServer, err := NewAIServer(provider.Name(), config, zipperListenAddr, provider)
 	if err != nil {
 		return err
 	}
 	return aiServer.Serve()
-	// }
-	// ylog.Warn("not exists AI service")
-	// return nil
 }
 
 // // RegisterFunction registers the AI function

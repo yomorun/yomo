@@ -60,6 +60,16 @@ func GetProvider(name string) AIProvider {
 	return nil
 }
 
+// GetProviderAndSetDefault returns the llm provider by name and set it as the default provider
+func GetProviderAndSetDefault(name string) (AIProvider, error) {
+	provider := GetProvider(name)
+	if provider != nil {
+		defaultProvider = provider
+		return provider, nil
+	}
+	return nil, ErrNotExistsProvider
+}
+
 // GetDefaultProvider returns the default AI provider
 func GetDefaultProvider() (AIProvider, error) {
 	if defaultProvider != nil {

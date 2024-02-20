@@ -8,6 +8,9 @@ import (
 	"github.com/yomorun/yomo/serverless"
 )
 
+// ReducerTag is the observed tag of the reducer
+var ReducerTag uint32 = 0x61
+
 type sseDataValue struct {
 	Result    string `json:"result"`
 	Arguments string `json:"arguments"`
@@ -42,12 +45,12 @@ func (sip *SfnInvokeParameters) CreatePayload(result string) (uint32, []byte) {
 	// serialize val to json string
 	jsonStr, err := json.Marshal(val)
 	if err != nil {
-		return 0x61, []byte(fmt.Sprintf(">>>>>json.Marshal error: %v", err))
+		return ReducerTag, []byte(fmt.Sprintf(">>>>>json.Marshal error: %v", err))
 	}
 	ylog.Debug("CreatePayload", "jsonStr", string(jsonStr))
 
 	sip.Arguments = string(jsonStr)
-	return 0x61, sip.Bytes()
+	return ReducerTag, sip.Bytes()
 }
 
 // NewFunctionCallingInvoke creates a new SfnInvokeParameters from the given context

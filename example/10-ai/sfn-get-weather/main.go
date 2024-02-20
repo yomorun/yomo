@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/serverless"
 	"golang.org/x/exp/slog"
 )
@@ -15,7 +16,6 @@ var (
 	name              = "get-weather"
 	addr              = "localhost:9000"
 	tag        uint32 = 0x11
-	sinkTag    uint32 = 0x61
 	credential        = "token:Happy New Year"
 )
 
@@ -79,9 +79,9 @@ func handler(ctx serverless.Context) {
 	} else {
 		slog.Info("[sfn] << receive", "tag", tag, "data", msg)
 		data := fmt.Sprintf("[%s] temperature: %d°C", msg.CityName, rand.Intn(40))
-		err = ctx.Write(sinkTag, append(reqID, []byte(data)...))
+		err = ctx.Write(ai.ReducerTag, append(reqID, []byte(data)...))
 		if err == nil {
-			slog.Info("[sfn] >> write", "tag", sinkTag, "data", data)
+			slog.Info("[sfn] >> write", "tag", ai.ReducerTag, "data", data)
 		}
 	}
 }
