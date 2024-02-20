@@ -20,8 +20,7 @@ import (
 )
 
 const (
-	DefaultZipperAddr              = "localhost:9000"
-	DefaultChatCompletionsEndpoint = "/chat/completions"
+	DefaultZipperAddr = "localhost:9000"
 )
 
 var (
@@ -29,7 +28,9 @@ var (
 	ErrNotImplementedService = errors.New("llm service is not implemented")
 	ErrConfigNotFound        = errors.New("ai config was not found")
 	ErrConfigFormatError     = errors.New("ai config format is incorrect")
-	ErrNotFoundEndpoint      = errors.New("endpoint was not found")
+
+	// RequestTimeout is the timeout for the request, default is 5 seconds
+	RequestTimeout = 5 * time.Second
 )
 
 // ======================= AIServer =======================
@@ -57,12 +58,6 @@ func NewAIServer(name string, config *Config, zipperAddr string, provider AIProv
 	}, nil
 }
 
-//	type CacheItem struct {
-//		ResponseWriter http.ResponseWriter
-//		wg             *sync.WaitGroup
-//		mu             sync.Mutex
-//	}
-//
 // Serve starts a RESTful service that provides a '/invoke' endpoint.
 // Users submit questions to this endpoint. The service then generates a prompt based on the question and
 // registered functions. It calls the LLM service from the LLM provider to get the functions and arguments to be
@@ -70,17 +65,6 @@ func NewAIServer(name string, config *Config, zipperAddr string, provider AIProv
 // returned as the response to the user's question.
 func (a *AIServer) Serve() error {
 	handler := http.NewServeMux()
-
-	// // read the service endpoint from the config
-	// pattern := fmt.Sprintf("/%s", a.Name)
-	// handler.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
-	// 	w.WriteHeader(http.StatusOK)
-	// 	w.Write([]byte(fmt.Sprintf("[%s] AI Server is running", a.Name)))
-	// })
-	// // chat completions
-	// // chatCompletions := a.Config.Server.Endpoints["chat_completions"]
-	// pattern = fmt.Sprintf("/%s%s", a.Name, a.Config.Server.Endpoints["chat_completions"])
-
 	// overview
 	pattern := "/overview"
 	handler.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
@@ -102,7 +86,6 @@ func (a *AIServer) Serve() error {
 		json.NewEncoder(w).Encode(resp)
 		return
 	})
-
 	// invoke
 	pattern = "/invoke"
 
@@ -276,7 +259,7 @@ func (a *AIServer) Serve() error {
 			// continue if the waitGroup is done
 			ylog.Debug("all sfn-s are done", "reqID", reqID)
 			delete(service.cache, reqID)
-		case <-time.After(5 * time.Second):
+		case <-time.After(RequestTimeout):
 			// handle the timeout
 			w.WriteHeader(500)
 			json.NewEncoder(w).Encode(map[string]string{"error": "process timeout"})
@@ -418,9 +401,9 @@ type Config struct {
 
 // Server is the configuration of AI server
 type Server struct {
-	Addr      string            `yaml:"addr"`
-	Endpoints map[string]string `yaml:"endpoints"`
-	Provider  string            `yaml:"provider"`
+	Addr string `yaml:"addr"`
+	// Endpoints map[string]string `yaml:"endpoints"`
+	Provider string `yaml:"provider"`
 }
 
 // Provider is the configuration of AI provider
@@ -467,12 +450,12 @@ func ParseConfig(conf map[string]any) (config *Config, err error) {
 	if config.Server.Addr == "" {
 		config.Server.Addr = ":8000"
 	}
-	// endpoints
-	if config.Server.Endpoints == nil {
-		config.Server.Endpoints = map[string]string{
-			"chat_completions": DefaultChatCompletionsEndpoint,
-		}
-	}
+	// // endpoints
+	// if config.Server.Endpoints == nil {
+	// 	config.Server.Endpoints = map[string]string{
+	// 		"chat_completions": DefaultChatCompletionsEndpoint,
+	// 	}
+	// }
 	ylog.Info("parse AI config success")
 	return
 }

@@ -41,10 +41,7 @@ func startAIServer() error {
 	ai.RegisterProvider(azopenai.New())
 	aiConfig := &ai.Config{
 		Server: ai.Server{
-			Addr: "localhost:6000",
-			Endpoints: map[string]string{
-				"chat_completions": "/chat/completions",
-			},
+			Addr:     "localhost:6000",
 			Provider: "azopenai",
 		},
 		Providers: map[string]ai.Provider{},
