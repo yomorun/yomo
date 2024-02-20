@@ -4,14 +4,22 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
+	"github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/ylog"
 	"github.com/yomorun/yomo/serverless"
 )
 
-var services sync.Map
+var (
+	// ServiceCacheSize is the size of the service cache
+	ServiceCacheSize = 1024
+	// ServiceCacheTTL is the time to live of the service cache
+	ServiceCacheTTL = time.Minute * 30
+	services        *expirable.LRU[string, *Service]
+)
 
 type CacheItem struct {
 	ResponseWriter http.ResponseWriter
@@ -19,6 +27,7 @@ type CacheItem struct {
 	mu             sync.Mutex
 }
 
+// Service is the AI service
 type Service struct {
 	credential string
 	zipperAddr string
@@ -28,17 +37,18 @@ type Service struct {
 	AIProvider
 }
 
+// NewService creates a new AI service, if the service is already created, it will return the existing one
 func NewService(credential string, zipperAddr string, aiProvider AIProvider) (*Service, error) {
-	val, ok := services.Load(credential)
+	s, ok := services.Get(credential)
 	if ok {
-		return val.(*Service), nil
+		return s, nil
 	}
 	s, err := newService(credential, zipperAddr, aiProvider)
 	if err != nil {
 		ylog.Error("create AI service failed", "err", err)
 		return nil, err
 	}
-	services.Store(credential, s)
+	services.Add(credential, s)
 	return s, nil
 }
 
@@ -66,11 +76,15 @@ func newService(credential string, zipperAddr string, aiProvider AIProvider) (*S
 	return s, nil
 }
 
-// TODO: needs to be loaded
 // Release releases the resources
 func (s *Service) Release() {
-	s.source.Close()
-	s.reducer.Close()
+	ylog.Debug("release AI service", "credential", s.credential)
+	if s.source != nil {
+		s.source.Close()
+	}
+	if s.reducer != nil {
+		s.reducer.Close()
+	}
 	// INFO: use clear on go1.21 or later
 	// clear(s.cache)
 	s.cache = map[string]*CacheItem{}
@@ -143,4 +157,11 @@ func (s *Service) GetChatCompletions(prompt string) (*ai.ChatCompletionsResponse
 
 func (s *Service) Write(tag uint32, data []byte) error {
 	return s.source.Write(tag, data)
+}
+
+func init() {
+	onEvicted := func(k string, v *Service) {
+		v.Release()
+	}
+	services = expirable.NewLRU[string, *Service](ServiceCacheSize, onEvicted, ServiceCacheTTL)
 }
