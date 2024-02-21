@@ -47,7 +47,7 @@ func (c *Connector) Store(connID uint64, conn *Connection) error {
 
 // Remove removes the connection with the specified connID.
 // If the Connector does not have a connection with the given connID, no action is taken.
-// If Connector be closed, The function will return ErrConnectorClosed.
+// If a Connector is closed, the function returns ErrConnectorClosed.
 func (c *Connector) Remove(connID uint64) error {
 	select {
 	case <-c.ctx.Done():
