@@ -25,6 +25,7 @@ type AIProvider interface {
 var (
 	providers       sync.Map
 	defaultProvider AIProvider
+	mu              sync.Mutex
 )
 
 // RegisterProvider registers the llm provider
@@ -48,8 +49,14 @@ func ListProviders() []string {
 func SetDefaultProvider(name string) {
 	provider := GetProvider(name)
 	if provider != nil {
-		defaultProvider = provider
+		setDefaultProvider(provider)
 	}
+}
+
+func setDefaultProvider(provider AIProvider) {
+	mu.Lock()
+	defer mu.Unlock()
+	defaultProvider = provider
 }
 
 // GetProvider returns the llm provider by name
@@ -64,7 +71,7 @@ func GetProvider(name string) AIProvider {
 func GetProviderAndSetDefault(name string) (AIProvider, error) {
 	provider := GetProvider(name)
 	if provider != nil {
-		defaultProvider = provider
+		setDefaultProvider(provider)
 		return provider, nil
 	}
 	return nil, ErrNotExistsProvider
@@ -72,6 +79,8 @@ func GetProviderAndSetDefault(name string) (AIProvider, error) {
 
 // GetDefaultProvider returns the default AI provider
 func GetDefaultProvider() (AIProvider, error) {
+	mu.Lock()
+	defer mu.Unlock()
 	if defaultProvider != nil {
 		return defaultProvider, nil
 	}
