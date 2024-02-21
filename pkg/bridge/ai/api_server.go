@@ -65,9 +65,9 @@ func NewBasicAPIServer(name string, config *Config, zipperAddr string, provider 
 
 // Serve starts a RESTful service that provides a '/invoke' endpoint.
 // Users submit questions to this endpoint. The service then generates a prompt based on the question and
-// registered functions. It calls the LLM service from the LLM provider to get the functions and arguments to be
-// invoked. These functions are invoked sequentially by YoMo. The result of the last function invocation is
-// returned as the response to the user's question.
+// registered functions. It calls the completion api by llm provider to get the functions and arguments to be
+// invoked. These functions are invoked sequentially by YoMo. all the functions write their results to the
+// reducer-sfn.
 func (a *BasicAPIServer) Serve() error {
 	handler := http.NewServeMux()
 
