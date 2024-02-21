@@ -46,5 +46,5 @@ func startAIServer() error {
 		},
 		Providers: map[string]ai.Provider{},
 	}
-	return ai.Serve(aiConfig, "localhost:9000")
+	return ai.Serve(aiConfig, "localhost:9000", "")
 }
