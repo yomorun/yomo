@@ -21,13 +21,18 @@ var (
 	services        *expirable.LRU[string, *Service]
 )
 
+// CacheItem cache the http.ResponseWriter, which is used for writing response from reducer.
+// TODO: http.ResponseWriter is from the SimpleRestfulServer interface, should be decoupled
+// from here.
 type CacheItem struct {
 	ResponseWriter http.ResponseWriter
 	wg             *sync.WaitGroup
 	mu             sync.Mutex
 }
 
-// Service is the AI service
+// Service is used to invoke LLM Provider to get the functions to be executed, then, use source to
+// send arguments which returned by llm provider to target function. Finally, use reducer to aggregate
+// all the results, and write the result by the http.ResponseWriter.
 type Service struct {
 	credential string
 	zipperAddr string
