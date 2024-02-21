@@ -66,8 +66,8 @@ var serveCmd = &cobra.Command{
 				options = append(options, yomo.WithAuth("token", tokenString))
 			}
 		}
-		// check AI server config
-		// parse the AI config
+		// check llm bridge server config
+		// parse the llm bridge config
 		bridgeConf := conf.Bridge
 		aiConfig, err := ai.ParseConfig(bridgeConf)
 		if err != nil {
@@ -97,9 +97,9 @@ var serveCmd = &cobra.Command{
 
 		// AI Server
 		if aiConfig != nil {
-			// register the AI provider
+			// register the llm provider
 			registerAIProvider(aiConfig)
-			// start the AI server
+			// start the llm api server
 			go func() {
 				err := ai.Serve(aiConfig, listenAddr, fmt.Sprintf("token:%s", tokenString))
 				if err != nil {
