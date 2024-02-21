@@ -75,13 +75,9 @@ func handler(ctx serverless.Context) {
 	rate := getRates(msg.Target)
 	result := ""
 	if rate == 0 {
-		// err = ctx.WriteWithTarget(0x61, []byte("can not understand the target currency"), "user-1")
 		result = fmt.Sprintf("can not understand the target currency, target currency is %s", msg.Target)
-		// err = ctx.Write(0x61, append(reqID, []byte("can not understand the target currency")...))
 	} else {
-		// err = ctx.WriteWithTarget(0x61, []byte(fmt.Sprintf("The exchange rate of %s to USD is %f", msg.Target, rate)), "user-1")
 		result = fmt.Sprintf("%f", msg.Amount*rate)
-		// err = ctx.Write(0x61, append(reqID, []byte(fmt.Sprintf("The exchange rate of %s to USD is %f, compute result is %f", msg.Target, rate, msg.Amount*rate))...))
 	}
 
 	err = ctx.Write(invoke.CreatePayload(result))

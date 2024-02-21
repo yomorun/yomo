@@ -31,9 +31,10 @@ type CacheItem struct {
 	mu             sync.Mutex
 }
 
-// Service is used to invoke LLM Provider to get the functions to be executed, then, use source to
-// send arguments which returned by llm provider to target function. Finally, use reducer to aggregate
-// all the results, and write the result by the http.ResponseWriter.
+// Service is used to invoke LLM Provider to get the functions to be executed,
+// then, use source to send arguments which returned by llm provider to target
+// function. Finally, use reducer to aggregate all the results, and write the
+// result by the http.ResponseWriter.
 type Service struct {
 	credential string
 	zipperAddr string
