@@ -31,7 +31,7 @@ func NewConnector(ctx context.Context) *Connector {
 }
 
 // Store stores Connection to Connector,
-// If the connID is the same twice, the new connection will replace the old connection.
+// The newer connection will replaces the older one.
 // If Connector be closed, The function will return ErrConnectorClosed.
 func (c *Connector) Store(connID uint64, conn *Connection) error {
 	select {
