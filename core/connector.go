@@ -62,7 +62,7 @@ func (c *Connector) Remove(connID uint64) error {
 
 // Get retrieves the Connection with the specified id.
 // If the Connector does not have a connection with the given id, return nil and false.
-// If Connector be closed, The function will return ErrConnectorClosed.
+// If a Connector is closed, the function returns ErrConnectorClosed.
 func (c *Connector) Get(id uint64) (*Connection, bool, error) {
 	select {
 	case <-c.ctx.Done():
