@@ -24,7 +24,7 @@ var (
 
 // ======================= Interface =======================
 
-// BasicAPIServer provides restful service for user
+// BasicAPIServer provides restful service for end user
 type BasicAPIServer struct {
 	// Name is the name of the server
 	Name string
@@ -34,7 +34,7 @@ type BasicAPIServer struct {
 	ZipperAddr string
 	// Provider is the llm provider
 	Provider LLMProvider
-	// serviceCredential is the credential when using the service
+	// serviceCredential is the credential for Function Calling Service
 	serviceCredential string
 }
 
@@ -70,7 +70,8 @@ func NewBasicAPIServer(name string, config *Config, zipperAddr string, provider 
 // returned as the response to the user's question.
 func (a *BasicAPIServer) Serve() error {
 	handler := http.NewServeMux()
-	// get service instance
+
+	// create service instance when the api server starts
 	service, err := NewService(a.serviceCredential, a.ZipperAddr, a.Provider)
 	if err != nil {
 		ylog.Error("Start BasicAPIServer failed", "err", err)

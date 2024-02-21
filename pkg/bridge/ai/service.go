@@ -18,7 +18,8 @@ var (
 	ServiceCacheSize = 1024
 	// ServiceCacheTTL is the time to live of the service cache
 	ServiceCacheTTL = time.Minute * 30
-	services        *expirable.LRU[string, *Service]
+	// TODO: this cache can be removed as the BasicAPIServer only contains 1 service instance.
+	services *expirable.LRU[string, *Service]
 )
 
 // CacheItem cache the http.ResponseWriter, which is used for writing response from reducer.
