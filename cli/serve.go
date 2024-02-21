@@ -62,7 +62,7 @@ var serveCmd = &cobra.Command{
 		options := []yomo.ZipperOption{yomo.WithZipperTracerProvider(tp)}
 		tokenString := ""
 		if _, ok := conf.Auth["type"]; ok {
-			if tokenString, ok := conf.Auth["token"]; ok {
+			if tokenString, ok = conf.Auth["token"]; ok {
 				options = append(options, yomo.WithAuth("token", tokenString))
 			}
 		}
