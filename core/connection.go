@@ -64,7 +64,7 @@ func newConnection(
 	}
 }
 
-// ID returns the increment ID.
+// ID returns the connection ID.
 func (c *Connection) ID() uint64 {
 	return c.id
 }
