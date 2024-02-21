@@ -17,7 +17,7 @@ var (
 	// ServiceCacheSize is the size of the service cache
 	ServiceCacheSize = 1024
 	// ServiceCacheTTL is the time to live of the service cache
-	ServiceCacheTTL = time.Minute * 30
+	ServiceCacheTTL = time.Minute * 0 // 30
 	// TODO: this cache can be removed as the BasicAPIServer only contains 1 service instance.
 	services *expirable.LRU[string, *Service]
 )
