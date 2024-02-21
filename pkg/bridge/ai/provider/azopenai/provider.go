@@ -24,8 +24,9 @@ var (
 
 // RequestMessage is the message in Request
 type ReqMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role       string `json:"role"`
+	Content    string `json:"content"`
+	ToolCallID string `json:"tool_call_id,omitempty"`
 }
 
 // RequestBody is the request body
@@ -109,7 +110,7 @@ func (p *AzureOpenAIProvider) Name() string {
 }
 
 // GetChatCompletions get chat completions for ai service
-func (p *AzureOpenAIProvider) GetChatCompletions(userPrompt string) (*ai.ChatCompletionsResponse, error) {
+func (p *AzureOpenAIProvider) GetChatCompletions(userInstruction string) (*ai.ChatCompletionsResponse, error) {
 	// mapTools, err := p.ListToolCalls(appID)
 	// if err != nil {
 	// 	return nil, err
@@ -132,8 +133,8 @@ func (p *AzureOpenAIProvider) GetChatCompletions(userPrompt string) (*ai.ChatCom
 
 	// messages
 	messages := []ReqMessage{
-		{Role: "system", Content: `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous. If you don't know the answer, stop the conversation by saying "no func call".`},
-		{Role: "user", Content: userPrompt},
+		// {Role: "system", Content: `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous. If you don't know the answer, stop the conversation by saying "no func call".`},
+		{Role: "user", Content: userInstruction},
 	}
 
 	// prepare tools
@@ -193,6 +194,9 @@ func (p *AzureOpenAIProvider) GetChatCompletions(userPrompt string) (*ai.ChatCom
 	// usage := respBodyStruct.Usage
 	// log.Printf("Token Usage: %+v\n", usage)
 
+	choice := respBodyStruct.Choices[0]
+	ylog.Debug(">>finish_reason", "reason", choice.FinishReason)
+
 	calls := respBodyStruct.Choices[0].Message.ToolCalls
 	content := respBodyStruct.Choices[0].Message.Content
 
@@ -213,6 +217,8 @@ func (p *AzureOpenAIProvider) GetChatCompletions(userPrompt string) (*ai.ChatCom
 				if result.Functions == nil {
 					result.Functions = make(map[uint32][]*ai.FunctionDefinition)
 				}
+				// TODO: should push the `call` instead of `call.Function` as describes in
+				// https://cookbook.openai.com/examples/function_calling_with_an_openapi_spec
 				result.Functions[fn.tag] = append(result.Functions[fn.tag], call.Function)
 			}
 			return true
