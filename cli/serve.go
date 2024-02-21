@@ -60,6 +60,7 @@ var serveCmd = &cobra.Command{
 		listenAddr := fmt.Sprintf("%s:%d", conf.Host, conf.Port)
 
 		options := []yomo.ZipperOption{yomo.WithZipperTracerProvider(tp)}
+		tokenString := ""
 		if _, ok := conf.Auth["type"]; ok {
 			if tokenString, ok := conf.Auth["token"]; ok {
 				options = append(options, yomo.WithAuth("token", tokenString))
@@ -100,7 +101,7 @@ var serveCmd = &cobra.Command{
 			registerAIProvider(aiConfig)
 			// start the AI server
 			go func() {
-				err := ai.Serve(aiConfig, listenAddr)
+				err := ai.Serve(aiConfig, listenAddr, fmt.Sprintf("token:%s", tokenString))
 				if err != nil {
 					log.FailureStatusEvent(os.Stdout, err.Error())
 					return

@@ -39,11 +39,11 @@ type Service struct {
 	source     yomo.Source
 	reducer    yomo.StreamFunction
 	cache      map[string]*CacheItem
-	AIProvider
+	LLMProvider
 }
 
 // NewService creates a new AI service, if the service is already created, it will return the existing one
-func NewService(credential string, zipperAddr string, aiProvider AIProvider) (*Service, error) {
+func NewService(credential string, zipperAddr string, aiProvider LLMProvider) (*Service, error) {
 	s, ok := services.Get(credential)
 	if ok {
 		return s, nil
@@ -57,24 +57,24 @@ func NewService(credential string, zipperAddr string, aiProvider AIProvider) (*S
 	return s, nil
 }
 
-func newService(credential string, zipperAddr string, aiProvider AIProvider) (*Service, error) {
+func newService(credential string, zipperAddr string, aiProvider LLMProvider) (*Service, error) {
 	s := &Service{
-		credential: credential,
-		zipperAddr: zipperAddr,
-		cache:      make(map[string]*CacheItem),
-		AIProvider: aiProvider,
+		credential:  credential,
+		zipperAddr:  zipperAddr,
+		cache:       make(map[string]*CacheItem),
+		LLMProvider: aiProvider,
 	}
 	// source
 	source, err := s.createSource()
 	if err != nil {
-		ylog.Error("create AI source failed", "err", err)
+		ylog.Error("create fc-service source failed", "err", err)
 		return nil, err
 	}
 	s.source = source
 	// reducer
 	reducer, err := s.createReducer()
 	if err != nil {
-		ylog.Error("create AI reducer failed", "err", err)
+		ylog.Error("create fc-service reducer failed", "err", err)
 		return nil, err
 	}
 	s.reducer = reducer
@@ -96,8 +96,9 @@ func (s *Service) Release() {
 }
 
 func (s *Service) createSource() (yomo.Source, error) {
+	ylog.Debug("create fc-service source", "zipperAddr", s.zipperAddr, "credential", s.credential)
 	source := yomo.NewSource(
-		"ai-source",
+		"fc-source",
 		s.zipperAddr,
 		yomo.WithSourceReConnect(),
 		yomo.WithCredential(s.credential),
@@ -153,11 +154,11 @@ func (s *Service) createReducer() (yomo.StreamFunction, error) {
 }
 
 func (s *Service) GetOverview() (*ai.OverviewResponse, error) {
-	return s.AIProvider.GetOverview()
+	return s.LLMProvider.GetOverview()
 }
 
 func (s *Service) GetChatCompletions(prompt string) (*ai.ChatCompletionsResponse, error) {
-	return s.AIProvider.GetChatCompletions(prompt)
+	return s.LLMProvider.GetChatCompletions(prompt)
 }
 
 func (s *Service) Write(tag uint32, data []byte) error {

@@ -132,7 +132,7 @@ func (p *AzureOpenAIProvider) GetChatCompletions(userPrompt string) (*ai.ChatCom
 
 	// messages
 	messages := []ReqMessage{
-		{Role: "system", Content: `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. If you don't know the answer, stop the conversation by saying "no func call".`},
+		{Role: "system", Content: `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous. If you don't know the answer, stop the conversation by saying "no func call".`},
 		{Role: "user", Content: userPrompt},
 	}
 
@@ -290,7 +290,7 @@ func (p *AzureOpenAIProvider) UnregisterFunction(name string, connID string) err
 	return nil
 }
 
-// ListToolCalls list tool calls
+// ListToolCalls list tool functions
 func (p *AzureOpenAIProvider) ListToolCalls() (map[uint32]ai.ToolCall, error) {
 	// appTools, ok := tools[appID]
 	// if !ok {

@@ -6,8 +6,8 @@ import (
 	"github.com/yomorun/yomo/ai"
 )
 
-// AIProvider provides an interface to the llm providers
-type AIProvider interface {
+// LLMProvider provides an interface to the llm providers
+type LLMProvider interface {
 	// Name returns the name of the llm provider
 	Name() string
 	// GetOverview returns the overview of the AI functions, key is the tag, value is the function definition
@@ -24,12 +24,12 @@ type AIProvider interface {
 
 var (
 	providers       sync.Map
-	defaultProvider AIProvider
+	defaultProvider LLMProvider
 	mu              sync.Mutex
 )
 
 // RegisterProvider registers the llm provider
-func RegisterProvider(provider AIProvider) {
+func RegisterProvider(provider LLMProvider) {
 	if provider != nil {
 		providers.Store(provider.Name(), provider)
 	}
@@ -53,22 +53,22 @@ func SetDefaultProvider(name string) {
 	}
 }
 
-func setDefaultProvider(provider AIProvider) {
+func setDefaultProvider(provider LLMProvider) {
 	mu.Lock()
 	defer mu.Unlock()
 	defaultProvider = provider
 }
 
 // GetProvider returns the llm provider by name
-func GetProvider(name string) AIProvider {
+func GetProvider(name string) LLMProvider {
 	if provider, ok := providers.Load(name); ok {
-		return provider.(AIProvider)
+		return provider.(LLMProvider)
 	}
 	return nil
 }
 
 // GetProviderAndSetDefault returns the llm provider by name and set it as the default provider
-func GetProviderAndSetDefault(name string) (AIProvider, error) {
+func GetProviderAndSetDefault(name string) (LLMProvider, error) {
 	provider := GetProvider(name)
 	if provider != nil {
 		setDefaultProvider(provider)
@@ -77,8 +77,8 @@ func GetProviderAndSetDefault(name string) (AIProvider, error) {
 	return nil, ErrNotExistsProvider
 }
 
-// GetDefaultProvider returns the default AI provider
-func GetDefaultProvider() (AIProvider, error) {
+// GetDefaultProvider returns the default llm provider
+func GetDefaultProvider() (LLMProvider, error) {
 	mu.Lock()
 	defer mu.Unlock()
 	if defaultProvider != nil {
