@@ -133,7 +133,7 @@ func (p *AzureOpenAIProvider) GetChatCompletions(userInstruction string) (*ai.Ch
 
 	// messages
 	messages := []ReqMessage{
-		// {Role: "system", Content: `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous. If you don't know the answer, stop the conversation by saying "no func call".`},
+		{Role: "system", Content: `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous. If you don't know the answer, stop the conversation by saying "no func call".`},
 		{Role: "user", Content: userInstruction},
 	}
 
