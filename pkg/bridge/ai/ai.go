@@ -34,7 +34,6 @@ func RegisterFunction(tag uint32, functionDefinition []byte, connID string) erro
 		ylog.Error("unmarshal function definition", "error", err)
 		return err
 	}
-	ylog.Info("register function", "connID", connID, "name", fd.Name, "tag", tag, "function", string(functionDefinition))
 	return provider.RegisterFunction(tag, &fd, connID)
 }
 
@@ -56,18 +55,6 @@ func ListToolCalls() (map[uint32]ai.ToolCall, error) {
 	return provider.ListToolCalls()
 }
 
-// func GetChatCompletions(appID string, prompt string) (*ai.ChatCompletionsResponse, error) {
-// 	provider, err := GetDefaultProvider()
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	service, ok := provider.(AIService)
-// 	if !ok {
-// 		return nil, ErrNotImplementedService
-// 	}
-// 	return service.GetChatCompletions(appID, prompt)
-// }
-
 // ConnMiddleware returns a ConnMiddleware that can be used to intercept the connection.
 func ConnMiddleware(next core.ConnHandler) core.ConnHandler {
 	return func(conn *core.Connection) {
@@ -82,25 +69,24 @@ func ConnMiddleware(next core.ConnHandler) core.ConnHandler {
 			if err != nil {
 				conn.Logger.Error("failed to read frame on ai middleware", "err", err)
 				conn.Logger.Info("error type", "type", fmt.Sprintf("%T", err))
-				// appID, _ := conn.Metadata().Get(metadata.AppIDKey)
 				name := conn.Name()
 				conn.Logger.Info("unregister ai function", "name", name, "connID", conn.ID())
 				UnregisterFunction(name, conn.ID())
 				return
 			}
 			if ff, ok := f.(*frame.AIRegisterFunctionFrame); ok {
-				err := conn.FrameConn().WriteFrame(&frame.AIRegisterFunctionAckFrame{AppID: ff.AppID, Tag: ff.Tag})
+				err := conn.FrameConn().WriteFrame(&frame.AIRegisterFunctionAckFrame{Name: ff.Name, Tag: ff.Tag})
 				if err != nil {
-					conn.Logger.Error("failed to write ai RegisterFunctionAckFrame", "app_id", ff.AppID, "tag", ff.Tag, "err", err)
+					conn.Logger.Error("failed to write ai RegisterFunctionAckFrame", "name", ff.Name, "tag", ff.Tag, "err", err)
 					return
 				}
 				// register ai function
 				err = RegisterFunction(ff.Tag, ff.Definition, conn.ID())
 				if err != nil {
-					conn.Logger.Error("failed to register ai function", "app_id", ff.AppID, "tag", ff.Tag, "err", err)
+					conn.Logger.Error("failed to register ai function", "name", ff.Name, "tag", ff.Tag, "err", err)
 					return
 				}
-				conn.Logger.Info("register ai function success", "app_id", ff.AppID, "tag", ff.Tag, "definition", string(ff.Definition))
+				conn.Logger.Info("register ai function success", "name", ff.Name, "tag", ff.Tag, "definition", string(ff.Definition))
 			}
 			next(conn)
 		}
@@ -115,8 +101,6 @@ func ConnMiddleware(next core.ConnHandler) core.ConnHandler {
 //		server:
 //			host: http://localhost
 //			port: 8000
-//			endpoints:
-//				chat_completions: /chat/completions
 //			credential: token:<CREDENTIAL>
 //			provider: azopenai
 //

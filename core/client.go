@@ -239,7 +239,6 @@ func (c *Client) writeAIRegisterFunctionFrame(conn *yquic.FrameConn, handshakeAc
 		}
 		for _, tag := range c.opts.observeDataTags {
 			registerFunctionFrame := &frame.AIRegisterFunctionFrame{
-				AppID:      handshakeAckFrame.AppID,
 				Name:       c.name,
 				Tag:        tag,
 				Definition: functionDefinition,
@@ -393,7 +392,7 @@ func (c *Client) handleFrame(f frame.Frame) {
 	case *frame.DataFrame:
 		c.processor(ff)
 	case *frame.AIRegisterFunctionAckFrame:
-		c.Logger.Info("register ai function success", "app_id", ff.AppID, "tag", ff.Tag)
+		c.Logger.Info("register ai function success", "name", ff.Name, "tag", ff.Tag)
 	default:
 		c.Logger.Warn("received unexpected frame", "frame_type", f.Type().String())
 	}

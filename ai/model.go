@@ -7,9 +7,7 @@ type OverviewResponse struct {
 
 // ChatCompletionsRequest is the request for chat completions
 type ChatCompletionsRequest struct {
-	ReqID string `json:"req_id"` // req_id is the request id of the request
-	// AppID  string `json:"app_id"`  // app_id is the app id of allegro application, it's empty in the yomo
-	// PeerID string `json:"peer_id"` // peer_id is the tenant id of application
+	ReqID  string `json:"req_id"` // req_id is the request id of the request
 	Prompt string `json:"prompt"` // prompt is user input text for chat completion
 }
 

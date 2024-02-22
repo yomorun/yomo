@@ -71,9 +71,7 @@ func (f *HandshakeFrame) Type() Type { return TypeHandshakeFrame }
 
 // HandshakeAckFrame is used to ack handshake, If handshake successful, The server will
 // send HandshakeAckFrame to the client.
-type HandshakeAckFrame struct {
-	AppID string
-}
+type HandshakeAckFrame struct{}
 
 // Type returns the type of HandshakeAckFrame.
 func (f *HandshakeAckFrame) Type() Type { return TypeHandshakeAckFrame }
@@ -107,7 +105,6 @@ func (f *ConnectToFrame) Type() Type { return TypeConnectToFrame }
 
 // AIRegisterFunctionFrame is used to register AI function.
 type AIRegisterFunctionFrame struct {
-	AppID      string
 	Name       string // Name is the name of the AI function.
 	Tag        uint32
 	Definition []byte // Definition is the definition of the AI function.
@@ -118,9 +115,8 @@ func (f *AIRegisterFunctionFrame) Type() Type { return TypeAIRegisterFunctionFra
 
 // AIRegisterFunctionAckFrame is used to ack AIRegisterFunctionFrame.
 type AIRegisterFunctionAckFrame struct {
-	AppID string
-	Name  string
-	Tag   uint32
+	Name string
+	Tag  uint32
 }
 
 // Type returns the type of AIRegisterFunctionAckFrame.

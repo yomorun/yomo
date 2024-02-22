@@ -159,7 +159,6 @@ func (s *Server) handleFrameConn(fconn frame.Conn, logger *slog.Logger) {
 	}
 
 	// ack handshake
-	// appID, _ := conn.Metadata().Get(metadata.AppIDKey)
 	_ = fconn.WriteFrame(&frame.HandshakeAckFrame{})
 
 	s.connHandler(conn) // s.handleConn(conn) with middlewares
@@ -255,20 +254,6 @@ func (s *Server) handleConn(conn *Connection) {
 			s.frameHandler(c) // s.handleFrame(c) with middlewares
 
 			c.Release()
-		// case frame.TypeAIRegisterFunctionFrame:
-		// 	ff := f.(*frame.AIRegisterFunctionFrame)
-		// 	err := conn.fconn.WriteFrame(&frame.AIRegisterFunctionAckFrame{AppID: ff.AppID, Tag: ff.Tag})
-		// 	if err != nil {
-		// 		conn.Logger.Error("failed to write ai RegisterFunctionAckFrame", "app_id", ff.AppID, "tag", ff.Tag, "err", err)
-		// 		return
-		// 	}
-		// 	// register ai function
-		// 	err = ai.RegisterFunction(ff.AppID, ff.Tag, ff.Definition)
-		// 	if err != nil {
-		// 		conn.Logger.Error("failed to register ai function", "app_id", ff.AppID, "tag", ff.Tag, "err", err)
-		// 		return
-		// 	}
-		// 	conn.Logger.Info("register ai function success", "app_id", ff.AppID, "tag", ff.Tag)
 		default:
 			conn.Logger.Info("unexpected frame", "type", f.Type().String())
 			return

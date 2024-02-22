@@ -111,15 +111,6 @@ func (p *AzureOpenAIProvider) Name() string {
 
 // GetChatCompletions get chat completions for ai service
 func (p *AzureOpenAIProvider) GetChatCompletions(userInstruction string) (*ai.ChatCompletionsResponse, error) {
-	// mapTools, err := p.ListToolCalls(appID)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// if len(tools) == 0 {
-	// 	ylog.Error("---------------tools is empty")
-	// 	return &ai.ChatCompletionsResponse{Content: "no toolcalls"}, ErrNoFunctionCall
-	// }
-
 	isEmpty := true
 	fns.Range(func(key, value interface{}) bool {
 		isEmpty = false
@@ -245,18 +236,6 @@ func (p *AzureOpenAIProvider) GetChatCompletions(userInstruction string) (*ai.Ch
 
 // RegisterFunction register function
 func (p *AzureOpenAIProvider) RegisterFunction(tag uint32, functionDefinition *ai.FunctionDefinition, connID string) error {
-	// mu.Lock()
-	// defer mu.Unlock()
-	// // appTools := tools[appID]
-	// // if appTools == nil {
-	// // 	appTools = make(map[uint32]ai.ToolCall)
-	// // }
-	// tools[tag] = ai.ToolCall{
-	// 	Type:     "function",
-	// 	Function: functionDefinition,
-	// }
-	// // tools[appID] = tools
-
 	fns.Store(connID, &connectedFn{
 		connID: connID,
 		tag:    tag,
@@ -272,38 +251,12 @@ func (p *AzureOpenAIProvider) RegisterFunction(tag uint32, functionDefinition *a
 // UnregisterFunction unregister function
 // Be careful: a function can have multiple instances, remove the offline instance only.
 func (p *AzureOpenAIProvider) UnregisterFunction(name string, connID string) error {
-	// mu.Lock()
-	// defer mu.Unlock()
-	// // appTools := tools[appID]
-	// // if appTools != nil {
-	// // 	// delete(appTools, tag)
-	// tags := make([]uint32, 0)
-	// for tag, tool := range tools {
-	// 	if tool.Function.Name == name {
-	// 		tags = append(tags, tag)
-	// 	}
-	// }
-	// // delete function
-	// for _, tag := range tags {
-	// 	delete(tools, tag)
-	// }
-	// // 	// reset appTools
-	// // 	tools[appID] = appTools
-	// // }
-
 	fns.Delete(connID)
-
 	return nil
 }
 
 // ListToolCalls list tool functions
 func (p *AzureOpenAIProvider) ListToolCalls() (map[uint32]ai.ToolCall, error) {
-	// appTools, ok := tools[appID]
-	// if !ok {
-	// 	return nil, nil
-	// }
-	// return tools, nil
-
 	tmp := make(map[uint32]ai.ToolCall)
 	fns.Range(func(key, value any) bool {
 		fn := value.(*connectedFn)

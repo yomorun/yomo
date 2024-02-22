@@ -10,8 +10,6 @@ bridge:
   ai:
     server:
       addr: localhost:8000
-      endpoints:
-        chat_completions: /chat/completions
       provider: azopenai
 
     providers:

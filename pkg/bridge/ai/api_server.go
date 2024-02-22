@@ -17,10 +17,8 @@ const (
 	DefaultZipperAddr = "localhost:9000"
 )
 
-var (
-	// RequestTimeout is the timeout for the request, default is 5 seconds
-	RequestTimeout = 5 * time.Second
-)
+// RequestTimeout is the timeout for the request, default is 5 seconds
+var RequestTimeout = 5 * time.Second
 
 // ======================= Interface =======================
 
@@ -154,16 +152,6 @@ func (a *BasicAPIServer) Serve() error {
 
 	// POST /invoke
 	handler.HandleFunc("/invoke", func(w http.ResponseWriter, r *http.Request) {
-		// log := ylog.With("path", pattern, "method", r.Method)
-		// get bearer token from request, it's yomo credential
-		// credential := getBearerToken(r)
-		// service, err := NewService(credential, a.ZipperAddr, a.Provider)
-		// if err != nil {
-		// 	w.WriteHeader(http.StatusInternalServerError)
-		// 	json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-		// 	return
-		// }
-
 		defer r.Body.Close()
 		reqID, err := gonanoid.New(6)
 		if err != nil {
@@ -196,15 +184,6 @@ func (a *BasicAPIServer) Serve() error {
 			return
 		}
 
-		// // invoke ai function
-		// app, err := a.GetOrCreateApp(req.AppID, credential)
-		// if err != nil {
-		// 	log.Error("get or create app", "err", err.Error())
-		// 	w.WriteHeader(http.StatusInternalServerError)
-		// 	json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-		// 	return
-		// }
-
 		// call llm to infer the function and arguments to be invoked
 		ylog.Debug(">> ai request", "reqID", req.ReqID, "prompt", req.Prompt)
 		resp, err := service.GetChatCompletions(req.Prompt)
@@ -217,16 +196,6 @@ func (a *BasicAPIServer) Serve() error {
 
 		ylog.Debug(">> ai response", "content", resp.Content)
 
-		// err = json.NewEncoder(w).Encode(resp)
-		// if err != nil {
-		// 	log.Error("encode response", "err", err.Error())
-		// 	w.WriteHeader(http.StatusInternalServerError)
-		// 	json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-		// 	return
-		// }
-
-		// w.WriteHeader(http.StatusOK)
-
 		// set Event Source response
 		w.Header().Set("Content-Type", "text/event-stream")
 		// w.Header().Set("Transfer-Encoding", "chunked")
@@ -236,7 +205,6 @@ func (a *BasicAPIServer) Serve() error {
 				// log := ylog.With("tag", tag, "function", fn.Name, "arguments", fn.Arguments)
 				ylog.Info("invoke func", "tag", tag, "function", fn.Name, "arguments", fn.Arguments, "reqID", reqID)
 				data := ai.SfnInvokeParameters{ReqID: reqID, Arguments: fn.Arguments}
-				// err := app.Source.Write(tag, []byte(fn.Arguments))
 				err := service.Write(tag, data.Bytes())
 				if err != nil {
 					ylog.Error("send data to zipper", "err", err.Error())
