@@ -191,7 +191,7 @@ func (p *AzureOpenAIProvider) GetChatCompletions(userInstruction string) (*ai.Ch
 	calls := respBodyStruct.Choices[0].Message.ToolCalls
 	content := respBodyStruct.Choices[0].Message.Content
 
-	ylog.Debug("--response calls", "calls", calls, "content", content)
+	ylog.Debug("--response calls", "calls", calls)
 
 	result := &ai.ChatCompletionsResponse{}
 	if len(calls) == 0 {
@@ -205,35 +205,27 @@ func (p *AzureOpenAIProvider) GetChatCompletions(userInstruction string) (*ai.Ch
 		fns.Range(func(key, value interface{}) bool {
 			fn := value.(*connectedFn)
 			if fn.tc.Equal(&call) {
-				if result.Functions == nil {
-					result.Functions = make(map[uint32][]*ai.FunctionDefinition)
-				}
+				// if result.Functions == nil {
+				// 	result.Functions = make(map[uint32][]*ai.FunctionDefinition)
+				// }
 				// Use toolCalls because tool_id is required in the following llm request
 				if result.ToolCalls == nil {
 					result.ToolCalls = make(map[uint32][]*ai.ToolCall)
 				}
-				// TODO: should push the `call` instead of `call.Function` as describes in
+				// result.Functions[fn.tag] = append(result.Functions[fn.tag], call.Function)
+
+				// fix: should push the `call` instead of `call.Function` as describes in
 				// https://cookbook.openai.com/examples/function_calling_with_an_openapi_spec
-				result.Functions[fn.tag] = append(result.Functions[fn.tag], call.Function)
-				result.ToolCalls[fn.tag] = append(result.ToolCalls[fn.tag], &call)
+				// Create a new variable to hold the current call
+				currentCall := call
+				result.ToolCalls[fn.tag] = append(result.ToolCalls[fn.tag], &currentCall)
 			}
 			return true
 		})
-		// for tag, tool := range tools {
-		// 	ylog.Debug("---compare", "the-calls-type", call.Type, "the-calls-name", call.Function.Name, "the-tool-type", tool.Type, "the-tool-name", tool.Function.Name)
-		// 	if tool.Equal(&call) {
-		// 		if result.Functions == nil {
-		// 			result.Functions = make(map[uint32][]*ai.FunctionDefinition)
-		// 		}
-		// 		result.Functions[tag] = append(result.Functions[tag], call.Function)
-		// 	}
-		// }
 	}
 
-	ylog.Debug("---result", "result_functions_count", len(result.Functions))
-
 	// sfn maybe disconnected, so we need to check if there is any function call
-	if len(result.Functions) == 0 {
+	if len(result.ToolCalls) == 0 {
 		return nil, ErrNoFunctionCall
 	}
 	return result, nil

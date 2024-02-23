@@ -3,6 +3,7 @@ package ai
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"sync"
@@ -134,14 +135,14 @@ func (a *BasicAPIServer) Serve() error {
 			return
 		}
 
-		ylog.Debug(">> ai response", "toolCalls", resp.ToolCalls)
-		ylog.Debug(">> ai response", "contents", resp.Content)
+		ylog.Debug(">> ai response", "toolCalls", fmt.Sprintf("%+v", resp.ToolCalls))
 
 		// set Event Source response
 		w.Header().Set("Content-Type", "text/event-stream")
 		// w.Header().Set("Transfer-Encoding", "chunked")
 
 		for tag, tcs := range resp.ToolCalls {
+			ylog.Debug("+++invoke toolCalls", "tag", tag, "len(toolCalls)", len(tcs), "reqID", reqID)
 			for _, fn := range tcs {
 				// log := ylog.With("tag", tag, "function", fn.Name, "arguments", fn.Arguments)
 				ylog.Info("invoke func", "tag", tag, "toolCallID", fn.ID, "function", fn.Function.Name, "arguments", fn.Function.Arguments, "reqID", reqID)

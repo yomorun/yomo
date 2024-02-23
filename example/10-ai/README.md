@@ -33,10 +33,18 @@ data: {"result":"2024-02-16 00:00:00","arguments":"{\"sourceTimezone\": \"Americ
 ```bash
 curl -i -X POST -H "Content-Type: application/json" -d '{"prompt":"How much is 100 US dollar in Korea and UK currency"}' http://127.0.0.1:8000/invoke
 HTTP/1.1 200 OK
-Date: Sat, 17 Feb 2024 09:25:17 GMT
 Transfer-Encoding: chunked
+Connection: keep-alive
+Content-Type: text/event-stream
+Date: Fri, 23 Feb 2024 14:35:41 GMT
+Keep-Alive: timeout=4
+Proxy-Connection: keep-alive
 
-data: {"result":"79.591100","arguments":"{\"amount\": 100, \"target\": \"GBP\"}"}
+data: 133258.000000
 
-data: {"result":"132857.602200","arguments":"{\"amount\": 100, \"target\": \"KRW\"}"}
+retrievalData: based on today's exchange rate: 1332.580000, 100.000000 USD is equivalent to approximately 133258.000000 KRW
+
+data: 79.352500
+
+retrievalData: based on today's exchange rate: 0.793525, 100.000000 USD is equivalent to approximately 79.352500 GBP
 ```
