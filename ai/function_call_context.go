@@ -22,18 +22,18 @@ type FunctionCallObject struct {
 	TransID string `json:"tid,omitempty"`
 	// ReqID is the request id of the current function calling chain. Because multiple
 	// function calling invokes may be occurred in the same request chain.
-	ReqID string `json:"reqId"`
+	ReqID string `json:"req_id"`
 	// Arguments is the arguments of the function calling. This should be kept in this
 	// context for next llm request in multi-turn request scenario.
 	Arguments string `json:"arguments"`
 	// Result is the struct result of the function calling.
 	Result string `json:"result,omitempty"`
 	// RetrievalResult is the string result of the function calling.
-	RetrievalResult string `json:"retrievalResult,omitempty"`
+	RetrievalResult string `json:"retrieval_result,omitempty"`
 	// ctx is the serverless context used in sfn.
-	ToolCallID string `json:"toolCallID,omitempty"`
+	ToolCallID string `json:"tool_call_id,omitempty"`
 	// FunctionName is the name of the function
-	FunctionName string `json:"functionName,omitempty"`
+	FunctionName string `json:"function_name,omitempty"`
 	ctx          *serverless.Context
 }
 
