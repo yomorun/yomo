@@ -10,13 +10,8 @@ import (
 // ReducerTag is the observed tag of the reducer
 var ReducerTag uint32 = 0x61
 
-type sseDataValue struct {
-	Result    string `json:"result"`
-	Arguments string `json:"arguments"`
-}
-
-// FunctionCallObject describes the data structure when invoking the sfn function
-type FunctionCallObject struct {
+// FunctionCall describes the data structure when invoking the sfn function
+type FunctionCall struct {
 	// TransID is the transaction id of the function calling chain, it is used for
 	// multi-turn llm request.
 	TransID string `json:"tid,omitempty"`
@@ -38,13 +33,13 @@ type FunctionCallObject struct {
 }
 
 // Bytes serialize the []byte of FunctionCallObject
-func (fco *FunctionCallObject) Bytes() ([]byte, error) {
+func (fco *FunctionCall) Bytes() ([]byte, error) {
 	return json.Marshal(fco)
 }
 
 // FromBytes deserialize the FunctionCallObject from the given []byte
-func (fco *FunctionCallObject) FromBytes(b []byte) error {
-	var obj = &FunctionCallObject{}
+func (fco *FunctionCall) FromBytes(b []byte) error {
+	var obj = &FunctionCall{}
 	err := json.Unmarshal(b, &obj)
 	if err != nil {
 		return err
@@ -60,7 +55,7 @@ func (fco *FunctionCallObject) FromBytes(b []byte) error {
 }
 
 // Write writes the result to zipper
-func (fco *FunctionCallObject) Write(result string) error {
+func (fco *FunctionCall) Write(result string) error {
 	// tag, data := fco.CreatePayload(result)
 	fco.Result = result
 	buf, err := fco.Bytes()
@@ -71,23 +66,23 @@ func (fco *FunctionCallObject) Write(result string) error {
 }
 
 // SetRetrievalResult sets the retrieval result
-func (fco *FunctionCallObject) SetRetrievalResult(retrievalResult string) {
+func (fco *FunctionCall) SetRetrievalResult(retrievalResult string) {
 	fco.RetrievalResult = retrievalResult
 }
 
 // UnmarshalArguments deserialize Arguments to the parameter object
-func (fco *FunctionCallObject) UnmarshalArguments(v any) error {
+func (fco *FunctionCall) UnmarshalArguments(v any) error {
 	return json.Unmarshal([]byte(fco.Arguments), v)
 }
 
 // JSONString returns the JSON string of FunctionCallObject
-func (fco *FunctionCallObject) JSONString() string {
+func (fco *FunctionCall) JSONString() string {
 	b, _ := json.Marshal(fco)
 	return string(b)
 }
 
 // NewFunctionCallingInvoke creates a new unctionCallObject from the given context
-func ParseFunctionCallContext(ctx serverless.Context) (*FunctionCallObject, error) {
+func ParseFunctionCallContext(ctx serverless.Context) (*FunctionCall, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("ai: ctx is nil")
 	}
@@ -100,7 +95,7 @@ func ParseFunctionCallContext(ctx serverless.Context) (*FunctionCallObject, erro
 		return nil, fmt.Errorf("ai: ctx.Data() is too short")
 	}
 
-	fco := &FunctionCallObject{}
+	fco := &FunctionCall{}
 	fco.ctx = &ctx
 	fco.FromBytes(ctx.Data())
 	return fco, nil

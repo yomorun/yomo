@@ -146,7 +146,7 @@ func (a *BasicAPIServer) Serve() error {
 			for _, fn := range tcs {
 				// log := ylog.With("tag", tag, "function", fn.Name, "arguments", fn.Arguments)
 				ylog.Info("invoke func", "tag", tag, "toolCallID", fn.ID, "function", fn.Function.Name, "arguments", fn.Function.Arguments, "reqID", reqID)
-				data := &ai.FunctionCallObject{
+				data := &ai.FunctionCall{
 					ReqID:        reqID,
 					ToolCallID:   fn.ID,
 					Arguments:    fn.Function.Arguments,
