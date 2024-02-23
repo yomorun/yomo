@@ -19,15 +19,22 @@ cd sfn-currency-converter && go run main.go
 ## Step 3: Invoke the LLM Function
 
 ```bash
-curl -i -X POST -H "Content-Type: application/json" -d '{"prompt":"tell me the time in Singapore, based on the time provided: Thursday, February 15th, 2024 7:00am and 8:00am (UTC-08:00) Pacific Time"}' http://127.0.0.1:8000/invoke
+curl -i -X POST -H "Content-Type: application/json" -d '{"prompt":"tell me the time in Singapore, based on the time provided: Thursday, February 15th, 2024 7:00am and 8:00am (UTC-08:00) Pacific Time"}' http://127.0.0.1:8000/invokecurl -i -X POST -H "Content-Type: application/json" -d '{"prompt":"tell me the time in Singapore, based on the time provided: Thursday, February 15th, 2024 7:00am and 8:00am (UTC-08:00) Pacific Time"}' http://127.0.0.1:8000/invoke
 HTTP/1.1 200 OK
-Content-Type: text/event-stream
-Date: Sat, 17 Feb 2024 09:25:36 GMT
 Transfer-Encoding: chunked
+Connection: keep-alive
+Content-Type: text/event-stream
+Date: Fri, 23 Feb 2024 14:46:15 GMT
+Keep-Alive: timeout=4
+Proxy-Connection: keep-alive
 
-data: {"result":"2024-02-15 23:00:00","arguments":"{\"sourceTimezone\": \"America/Los_Angeles\", \"targetTimezone\": \"Asia/Singapore\", \"timeString\": \"2024-02-15 07:00:00\"}"}
+data: {"reqId":"U2y7ol","arguments":"{\"sourceTimezone\": \"America/Los_Angeles\", \"targetTimezone\": \"Asia/Singapore\", \"timeString\": \"2024-02-15 08:00:00\"}","result":"2024-02-16 00:00:00","retrievalResult":"The time in timezone Asia/Singapore is 2024-02-16 00:00:00","toolCallID":"call_WwCqQBwDD1LFad87sql3lN47","functionName":"fn-timezone-converter"}
 
-data: {"result":"2024-02-16 00:00:00","arguments":"{\"sourceTimezone\": \"America/Los_Angeles\", \"targetTimezone\": \"Asia/Singapore\", \"timeString\": \"2024-02-15 08:00:00\"}"}
+retrievalData: The time in timezone Asia/Singapore is 2024-02-16 00:00:00
+
+data: {"reqId":"U2y7ol","arguments":"{\"sourceTimezone\": \"America/Los_Angeles\", \"targetTimezone\": \"Asia/Singapore\", \"timeString\": \"2024-02-15 07:00:00\"}","result":"2024-02-15 23:00:00","retrievalResult":"The time in timezone Asia/Singapore is 2024-02-15 23:00:00","toolCallID":"call_TYl2TxgE1Mv36F2EV10RS2D5","functionName":"fn-timezone-converter"}
+
+retrievalData: The time in timezone Asia/Singapore is 2024-02-15 23:00:00
 ```
 
 ```bash
