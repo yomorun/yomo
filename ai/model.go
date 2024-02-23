@@ -5,8 +5,8 @@ type OverviewResponse struct {
 	Functions map[uint32]*FunctionDefinition // key is the tag of yomo
 }
 
-// ChatCompletionsRequest is the request for chat completions
-type ChatCompletionsRequest struct {
+// BasicAPIRequest is the request from user to BasicAPIServer
+type BasicAPIRequest struct {
 	ReqID  string `json:"req_id"` // req_id is the request id of the request
 	Prompt string `json:"prompt"` // prompt is user input text for chat completion
 }
@@ -15,6 +15,8 @@ type ChatCompletionsRequest struct {
 type ChatCompletionsResponse struct {
 	Functions map[uint32][]*FunctionDefinition // key is the tag of yomo
 	Content   string
+	// ToolCalls is the toolCalls from llm api response
+	ToolCalls map[uint32][]*ToolCall
 }
 
 // ToolCall is the tool call in Request and Response

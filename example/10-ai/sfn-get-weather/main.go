@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"math/rand"
 	"os"
@@ -19,7 +18,7 @@ var (
 	credential        = "token:Happy New Year"
 )
 
-type Msg struct {
+type Parameter struct {
 	CityName string `json:"city_name" jsonschema:"description=The name of the city to be queried"`
 }
 
@@ -31,7 +30,7 @@ func Description() string {
 
 // InputSchema returns the input schema of this AI function.
 func InputSchema() any {
-	return &Msg{}
+	return &Parameter{}
 }
 
 // ================== main ==================
@@ -69,17 +68,22 @@ func main() {
 func handler(ctx serverless.Context) {
 	slog.Info("[sfn] receive", "ctx.data", string(ctx.Data()))
 
-	reqID := ctx.Data()[:6]
+	fcCtx, err := ai.ParseFunctionCallContext(ctx)
+	if err != nil {
+		slog.Error("[sfn] NewFunctionCallingParameters error", "err", err)
+		return
+	}
 
-	var msg Msg
-	err := json.Unmarshal(ctx.Data()[6:], &msg)
+	var msg Parameter
+	err = fcCtx.UnmarshalArguments(&msg)
 	if err != nil {
 		slog.Error("[sfn] json.Marshal error", "err", err)
 		os.Exit(-2)
 	} else {
 		slog.Info("[sfn] << receive", "tag", tag, "data", msg)
 		data := fmt.Sprintf("[%s] temperature: %d°C", msg.CityName, rand.Intn(40))
-		err = ctx.Write(ai.ReducerTag, append(reqID, []byte(data)...))
+		fcCtx.SetRetrievalResult(data)
+		err = fcCtx.Write(fmt.Sprintf("%d", rand.Intn(40)))
 		if err == nil {
 			slog.Info("[sfn] >> write", "tag", ai.ReducerTag, "data", data)
 		}

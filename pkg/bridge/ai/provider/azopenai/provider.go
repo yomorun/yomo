@@ -191,7 +191,7 @@ func (p *AzureOpenAIProvider) GetChatCompletions(userInstruction string) (*ai.Ch
 	calls := respBodyStruct.Choices[0].Message.ToolCalls
 	content := respBodyStruct.Choices[0].Message.Content
 
-	ylog.Debug("--response calls", "calls", len(calls), "content", content)
+	ylog.Debug("--response calls", "calls", calls, "content", content)
 
 	result := &ai.ChatCompletionsResponse{}
 	if len(calls) == 0 {
@@ -208,9 +208,14 @@ func (p *AzureOpenAIProvider) GetChatCompletions(userInstruction string) (*ai.Ch
 				if result.Functions == nil {
 					result.Functions = make(map[uint32][]*ai.FunctionDefinition)
 				}
+				// Use toolCalls because tool_id is required in the following llm request
+				if result.ToolCalls == nil {
+					result.ToolCalls = make(map[uint32][]*ai.ToolCall)
+				}
 				// TODO: should push the `call` instead of `call.Function` as describes in
 				// https://cookbook.openai.com/examples/function_calling_with_an_openapi_spec
 				result.Functions[fn.tag] = append(result.Functions[fn.tag], call.Function)
+				result.ToolCalls[fn.tag] = append(result.ToolCalls[fn.tag], &call)
 			}
 			return true
 		})

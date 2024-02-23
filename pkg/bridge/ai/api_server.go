@@ -90,66 +90,6 @@ func (a *BasicAPIServer) Serve() error {
 		json.NewEncoder(w).Encode(resp)
 	})
 
-	// create a cache to store the http.ResponseWriter, the key is the reqID
-	// cache := make(map[string]*CacheItem)
-	//
-	// a.source = yomo.NewSource(
-	// 	"fc-mapper",
-	// 	a.ZipperAddr,
-	// 	yomo.WithSourceReConnect(),
-	// 	yomo.WithCredential("token:Happy New Year"),
-	// )
-	// // create ai source
-	// err := a.source.Connect()
-	// if err != nil {
-	// 	return err
-	// }
-
-	// create a sfn to handle the result of the function invocation
-	// sfn := yomo.NewStreamFunction("fc-reducer", a.ZipperAddr, yomo.SfnOption(yomo.WithCredential("token:Happy New Year")))
-	// defer sfn.Close()
-	// sfn.SetObserveDataTags(0x61)
-	// sfn.SetHandler(func(ctx serverless.Context) {
-	// 	buf := ctx.Data()
-	// 	ylog.Debug("<<fc-reducer", "tag", 0x61, "data", string(buf))
-	// 	call, err := ai.NewFunctionCallingInvoke(ctx)
-	// 	if err != nil {
-	// 		ylog.Error("NewFunctionCallingParameters", "err", err.Error())
-	// 		return
-	// 	}
-	// 	reqID := call.ReqID
-	// 	v, ok := cache[reqID]
-	// 	if !ok {
-	// 		ylog.Error("reqID not found", "reqID", reqID)
-	// 		return
-	// 	}
-	// 	defer v.wg.Done()
-	//
-	// 	// err = json.NewEncoder(v.ResponseWriter).Encode(map[string]string{"result": call.Arguments})
-	// 	// if err != nil {
-	// 	// 	ylog.Error("encode response", "err", err.Error())
-	// 	// 	v.ResponseWriter.WriteHeader(http.StatusInternalServerError)
-	// 	// 	json.NewEncoder(v.ResponseWriter).Encode(map[string]string{"error": err.Error()})
-	// 	// 	return
-	// 	// }
-	//
-	// 	v.mu.Lock()
-	// 	defer v.mu.Unlock()
-	//
-	// 	fmt.Fprintf(v.ResponseWriter, "data: %s\n\n", call.Arguments)
-	// 	// flush the response
-	// 	flusher, ok := v.ResponseWriter.(http.Flusher)
-	// 	if ok {
-	// 		flusher.Flush()
-	// 	}
-	// })
-	//
-	// err = sfn.Connect()
-	// if err != nil {
-	// 	ylog.Error("[sfn-reducer] connect", "err", err)
-	// 	return err
-	// }
-
 	// POST /invoke
 	handler.HandleFunc("/invoke", func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
@@ -170,7 +110,7 @@ func (a *BasicAPIServer) Serve() error {
 		}
 		ylog.Info("reqID", "val", reqID)
 
-		var req ai.ChatCompletionsRequest
+		var req ai.BasicAPIRequest
 		req.ReqID = reqID
 
 		// // set json response
@@ -194,22 +134,33 @@ func (a *BasicAPIServer) Serve() error {
 			return
 		}
 
-		ylog.Debug(">> ai response", "content", resp.Content)
+		ylog.Debug(">> ai response", "toolCalls", resp.ToolCalls)
+		ylog.Debug(">> ai response", "contents", resp.Content)
 
 		// set Event Source response
 		w.Header().Set("Content-Type", "text/event-stream")
 		// w.Header().Set("Transfer-Encoding", "chunked")
 
-		for tag, fns := range resp.Functions {
-			for _, fn := range fns {
+		for tag, tcs := range resp.ToolCalls {
+			for _, fn := range tcs {
 				// log := ylog.With("tag", tag, "function", fn.Name, "arguments", fn.Arguments)
-				ylog.Info("invoke func", "tag", tag, "function", fn.Name, "arguments", fn.Arguments, "reqID", reqID)
-				data := ai.SfnInvokeParameters{ReqID: reqID, Arguments: fn.Arguments}
-				err := service.Write(tag, data.Bytes())
+				ylog.Info("invoke func", "tag", tag, "toolCallID", fn.ID, "function", fn.Function.Name, "arguments", fn.Function.Arguments, "reqID", reqID)
+				data := &ai.FunctionCallObject{
+					ReqID:        reqID,
+					ToolCallID:   fn.ID,
+					Arguments:    fn.Function.Arguments,
+					FunctionName: fn.Function.Name,
+				}
+				buf, err := data.Bytes()
+				if err != nil {
+					ylog.Error("marshal data", "err", err.Error())
+					return
+				}
+				err = service.Write(tag, buf)
 				if err != nil {
 					ylog.Error("send data to zipper", "err", err.Error())
-					w.WriteHeader(http.StatusInternalServerError)
-					json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+					// w.WriteHeader(http.StatusInternalServerError)
+					// json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 					return
 				}
 				// wait for this request to be done
@@ -260,19 +211,3 @@ func getLocalIP() (string, error) {
 	}
 	return "", errors.New("not found local ip")
 }
-
-// // getBearerToken returns the bearer token from the request
-// func getBearerToken(req *http.Request) string {
-// 	auth := req.Header.Get("Authorization")
-// 	if auth == "" {
-// 		return ""
-// 	}
-// 	if !strings.HasPrefix(auth, "Bearer") {
-// 		ylog.Error("invalid Authorization header", "header", auth)
-// 		return ""
-// 	}
-// 	token := strings.TrimPrefix(auth, "Bearer ")
-// 	return token
-// 	// TEST: only test
-// 	// return "token:Happy New Year"
-// }

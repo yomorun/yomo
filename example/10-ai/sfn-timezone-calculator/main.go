@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -59,14 +58,14 @@ func main() {
 func handler(ctx serverless.Context) {
 	slog.Info("[sfn] receive", "ctx.data", string(ctx.Data()))
 
-	invoke, err := ai.NewFunctionCallingInvoke(ctx)
+	fcCtx, err := ai.ParseFunctionCallContext(ctx)
 	if err != nil {
 		slog.Error("[sfn] NewFunctionCallingParameters error", "err", err)
 		return
 	}
 
 	var msg Parameter
-	err = json.Unmarshal([]byte(invoke.Arguments), &msg)
+	err = fcCtx.UnmarshalArguments(&msg)
 	if err != nil {
 		slog.Error("[sfn] json.Marshal error", "err", err)
 		return
@@ -76,15 +75,17 @@ func handler(ctx serverless.Context) {
 		msg.TargetTimezone = "UTC"
 	}
 
-	target, err := ConvertTimezone(msg.TimeString, msg.SourceTimezone, msg.TargetTimezone)
+	targetTime, err := ConvertTimezone(msg.TimeString, msg.SourceTimezone, msg.TargetTimezone)
 	if err != nil {
 		slog.Error("[sfn] ConvertTimezone error", "err", err)
 		return
 	}
 
-	slog.Info("[sfn] result", "result", target)
+	slog.Info("[sfn] result", "result", targetTime)
 
-	ctx.Write(invoke.CreatePayload(target))
+	fcCtx.SetRetrievalResult(fmt.Sprintf("The time in timezone %s is %s", msg.TargetTimezone, targetTime))
+
+	fcCtx.Write(targetTime)
 }
 
 // ConvertTimezone converts the current time from the source timezone to the target timezone.

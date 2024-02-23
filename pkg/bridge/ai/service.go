@@ -124,7 +124,7 @@ func (s *Service) createReducer() (yomo.StreamFunction, error) {
 	sfn.SetHandler(func(ctx serverless.Context) {
 		buf := ctx.Data()
 		ylog.Debug("<< ai-reducer", "tag", ai.ReducerTag, "data", string(buf))
-		invoke, err := ai.NewFunctionCallingInvoke(ctx)
+		invoke, err := ai.ParseFunctionCallContext(ctx)
 		if err != nil {
 			ylog.Error("parse function calling invoke", "err", err.Error())
 			return
@@ -140,7 +140,8 @@ func (s *Service) createReducer() (yomo.StreamFunction, error) {
 		v.mu.Lock()
 		defer v.mu.Unlock()
 
-		fmt.Fprintf(v.ResponseWriter, "data: %s\n\n", invoke.Arguments)
+		fmt.Fprintf(v.ResponseWriter, "data: %s\n\n", invoke.Result)
+		fmt.Fprintf(v.ResponseWriter, "retrievalData: %s\n\n", invoke.RetrievalResult)
 		// flush the response
 		flusher, ok := v.ResponseWriter.(http.Flusher)
 		if ok {

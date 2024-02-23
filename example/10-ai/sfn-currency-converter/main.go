@@ -56,14 +56,14 @@ func main() {
 func handler(ctx serverless.Context) {
 	slog.Info("[sfn] receive", "ctx.data", string(ctx.Data()))
 
-	invoke, err := ai.NewFunctionCallingInvoke(ctx)
+	fcCtx, err := ai.ParseFunctionCallContext(ctx)
 	if err != nil {
 		slog.Error("[sfn] NewFunctionCallingParameters error", "err", err)
 		return
 	}
 
 	var msg Parameter
-	err = json.Unmarshal([]byte(invoke.Arguments), &msg)
+	err = fcCtx.UnmarshalArguments(&msg)
 	if err != nil {
 		slog.Error("[sfn] json.Marshal error", "err", err)
 		return
@@ -80,7 +80,9 @@ func handler(ctx serverless.Context) {
 		result = fmt.Sprintf("%f", msg.Amount*rate)
 	}
 
-	err = ctx.Write(invoke.CreatePayload(result))
+	// err = ctx.Write(invoke.CreatePayload(result))
+	fcCtx.SetRetrievalResult(fmt.Sprintf("based on today's exchange rate: %f, %f %s is equivalent to approximately %f %s", rate, msg.Amount, "USD", msg.Amount*rate, msg.Target))
+	err = fcCtx.Write(result)
 
 	if err != nil {
 		slog.Error("[sfn] >> write error", "err", err)
