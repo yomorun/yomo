@@ -80,6 +80,12 @@ func (fco *FunctionCallObject) UnmarshalArguments(v any) error {
 	return json.Unmarshal([]byte(fco.Arguments), v)
 }
 
+// JSONString returns the JSON string of FunctionCallObject
+func (fco *FunctionCallObject) JSONString() string {
+	b, _ := json.Marshal(fco)
+	return string(b)
+}
+
 // NewFunctionCallingInvoke creates a new unctionCallObject from the given context
 func ParseFunctionCallContext(ctx serverless.Context) (*FunctionCallObject, error) {
 	if ctx == nil {

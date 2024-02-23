@@ -36,15 +36,15 @@ HTTP/1.1 200 OK
 Transfer-Encoding: chunked
 Connection: keep-alive
 Content-Type: text/event-stream
-Date: Fri, 23 Feb 2024 14:35:41 GMT
+Date: Fri, 23 Feb 2024 14:40:13 GMT
 Keep-Alive: timeout=4
 Proxy-Connection: keep-alive
 
-data: 133258.000000
+data: {"reqId":"YlQxD7","arguments":"{\"amount\": 100, \"target\": \"KRW\"}","result":"133258.000000","retrievalResult":"based on today's exchange rate: 1332.580000, 100.000000 USD is equivalent to approximately 133258.000000 KRW","toolCallID":"call_fW5MX6GXnirT2kVhyskid7cL","functionName":"fn-exchange-rates"}
 
 retrievalData: based on today's exchange rate: 1332.580000, 100.000000 USD is equivalent to approximately 133258.000000 KRW
 
-data: 79.352500
+data: {"reqId":"YlQxD7","arguments":"{\"amount\": 100, \"target\": \"GBP\"}","result":"79.352500","retrievalResult":"based on today's exchange rate: 0.793525, 100.000000 USD is equivalent to approximately 79.352500 GBP","toolCallID":"call_hThpXYSXfi4ViMAzBJ6HLnsU","functionName":"fn-exchange-rates"}
 
 retrievalData: based on today's exchange rate: 0.793525, 100.000000 USD is equivalent to approximately 79.352500 GBP
 ```
