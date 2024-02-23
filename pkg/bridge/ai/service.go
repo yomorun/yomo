@@ -140,12 +140,14 @@ func (s *Service) createReducer() (yomo.StreamFunction, error) {
 		v.mu.Lock()
 		defer v.mu.Unlock()
 
-		// fmt.Fprintf(v.ResponseWriter, "data: %s\n\n", invoke.JSONString())
-		// fmt.Fprintf(v.ResponseWriter, "retrievalData: %s\n\n", invoke.RetrievalResult)
+		fmt.Fprintf(v.ResponseWriter, "event:result\n")
+		fmt.Fprintf(v.ResponseWriter, "data: %s\n\n", invoke.JSONString())
+		fmt.Fprintf(v.ResponseWriter, "event:retrieval_result\n")
+		fmt.Fprintf(v.ResponseWriter, "data: %s\n\n", invoke.RetrievalResult)
 
-		// one json per line, like groq.com did
-		fmt.Fprintf(v.ResponseWriter, invoke.JSONString()+"\n")
-		fmt.Fprintf(v.ResponseWriter, "{\"retrievalData\": \"%s\"}\n", invoke.RetrievalResult)
+		// // one json per line, like groq.com did
+		// fmt.Fprintf(v.ResponseWriter, invoke.JSONString()+"\n")
+		// fmt.Fprintf(v.ResponseWriter, "{\"retrievalData\": \"%s\"}\n", invoke.RetrievalResult)
 
 		// flush the response
 		flusher, ok := v.ResponseWriter.(http.Flusher)
