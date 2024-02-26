@@ -29,7 +29,11 @@ type FunctionCall struct {
 	ToolCallID string `json:"tool_call_id,omitempty"`
 	// FunctionName is the name of the function
 	FunctionName string `json:"function_name,omitempty"`
-	ctx          *serverless.Context
+	// IsOK is the flag to indicate the function calling is ok or not
+	IsOK bool `json:"is_ok"`
+	// Error is the error message
+	Error string `json:"error,omitempty"`
+	ctx   *serverless.Context
 }
 
 // Bytes serialize the []byte of FunctionCallObject
@@ -63,6 +67,12 @@ func (fco *FunctionCall) Write(result string) error {
 		return err
 	}
 	return (*fco.ctx).Write(ReducerTag, buf)
+}
+
+func (fco *FunctionCall) WriteErrors(err error) error {
+	fco.IsOK = false
+	fco.Error = err.Error()
+	return fco.Write("")
 }
 
 // SetRetrievalResult sets the retrieval result

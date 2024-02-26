@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
+	"net/http"
 	"os"
 
+	"github.com/joho/godotenv"
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/serverless"
@@ -13,8 +16,9 @@ import (
 )
 
 type Parameter struct {
-	Target string  `json:"target" jsonschema:"description=The target currency to be queried in 3-letter ISO 4217 format"`
-	Amount float64 `json:"amount" jsonschema:"description=The amount of the USD currency to be converted to the target currency"`
+	SourceCurrency string  `json:"source" jsonschema:"description=The source currency to be queried in 3-letter ISO 4217 format"`
+	TargetCurrency string  `json:"target" jsonschema:"description=The target currency to be queried in 3-letter ISO 4217 format"`
+	Amount         float64 `json:"amount" jsonschema:"description=The amount of the USD currency to be converted to the target currency"`
 }
 
 func Description() string {
@@ -69,19 +73,26 @@ func handler(ctx serverless.Context) {
 		return
 	}
 
-	slog.Info("[sfn] << receive", "tag", 0x10, "data", fmt.Sprintf("target currency: %s, amount: %f", msg.Target, msg.Amount))
+	slog.Info("[sfn] << receive", "tag", 0x10, "data", fmt.Sprintf("%+v", msg))
 
 	// read all the target currency exchange rates from usd.json
-	rate := getRates(msg.Target)
+	// rate := getRates(msg.Target)
+	rate, err := fetchRate(msg.SourceCurrency, msg.TargetCurrency, msg.Amount)
+	if err != nil {
+		slog.Error("[sfn] >> fetchRate error", "err", err)
+		fcCtx.WriteErrors(err)
+		return
+	}
+
 	result := ""
 	if rate == 0 {
-		result = fmt.Sprintf("can not understand the target currency, target currency is %s", msg.Target)
+		result = fmt.Sprintf("can not understand the target currency, target currency is %s", msg.TargetCurrency)
 	} else {
 		result = fmt.Sprintf("%f", msg.Amount*rate)
 	}
 
 	// err = ctx.Write(invoke.CreatePayload(result))
-	fcCtx.SetRetrievalResult(fmt.Sprintf("based on today's exchange rate: %f, %f %s is equivalent to approximately %f %s", rate, msg.Amount, "USD", msg.Amount*rate, msg.Target))
+	fcCtx.SetRetrievalResult(fmt.Sprintf("based on today's exchange rate: %f, %f %s is equivalent to approximately %f %s", rate, msg.Amount, msg.SourceCurrency, msg.Amount*rate, msg.TargetCurrency))
 	err = fcCtx.Write(result)
 
 	if err != nil {
@@ -89,33 +100,49 @@ func handler(ctx serverless.Context) {
 	}
 }
 
+func init() {
+	// read API_KEY from .env
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+		os.Exit(-1)
+	}
+}
+
 type Rates struct {
 	Rates map[string]float64 `json:"rates"`
 }
 
-var rates *Rates
-
-func init() {
-	file, err := os.Open("usd.json")
+func fetchRate(sourceCurrency string, targetCurrency string, amount float64) (float64, error) {
+	resp, err := http.Get(fmt.Sprintf("https://openexchangerates.org/api/latest.json?app_id=%s&base=%s&symbols=%s", os.Getenv("API_KEY"), sourceCurrency, targetCurrency))
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(-1)
+		return 0, err
 	}
-	defer file.Close()
 
-	byteValue, _ := io.ReadAll(file)
+	defer resp.Body.Close()
 
-	json.Unmarshal(byteValue, &rates)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, err
+	}
+
+	var rt *Rates
+	err = json.Unmarshal(body, &rt)
+	if err != nil {
+		return 0, err
+	}
+
+	return getRates(targetCurrency, rt)
 }
 
-func getRates(targetCurrency string) float64 {
+func getRates(targetCurrency string, rates *Rates) (float64, error) {
 	if rates == nil {
-		return 0
+		return 0, fmt.Errorf("can not get the target currency, target currency is %s", targetCurrency)
 	}
 
 	if rate, ok := rates.Rates[targetCurrency]; ok {
-		return rate
+		return rate, nil
 	}
 
-	return 0
+	return 0, fmt.Errorf("can not get the target currency, target currency is %s", targetCurrency)
 }

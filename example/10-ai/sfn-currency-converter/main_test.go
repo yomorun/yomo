@@ -2,29 +2,30 @@
 package main
 
 import (
-	"os/exec"
-	"strconv"
-	"strings"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestGetRates(t *testing.T) {
+	var rates *Rates
+	file, err := os.Open("usd.json")
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(-1)
+	}
+	defer file.Close()
+	byteValue, _ := io.ReadAll(file)
+	json.Unmarshal(byteValue, &rates)
+
 	targetCurrency := "AUD"
+	expectedRate := 1.531309
 
-	cmd := exec.Command("bash", "-c", `cat usd.json | grep "AUD" | awk -F': ' '{print $2}' | sed 's/,//'`)
-	output, err := cmd.Output()
-	assert.NoError(t, err, "can not find jq command")
-
-	outputStr := strings.TrimSpace(string(output)) // remove newline character
-	expectedRate, err := strconv.ParseFloat(outputStr, 64)
-	assert.NoError(t, err, "parse USD.json error")
-
-	actualRate := getRates(targetCurrency)
-	assert.EqualValues(t, actualRate, expectedRate)
-
-	// if actualRate != expectedResult {
-	// 	t.Errorf("Expected rate: %f, but got: %f", expectedRate, actualRate)
-	// }
+	actualRate, err := getRates(targetCurrency, rates)
+	assert.InEpsilon(t, actualRate, expectedRate, 1e-6)
+	assert.NoError(t, err, "getRates error")
 }
