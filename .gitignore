@@ -37,3 +37,4 @@ target
 coverage.txt
 *.o
 build/
+.env
