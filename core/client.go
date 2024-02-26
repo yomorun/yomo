@@ -202,7 +202,7 @@ func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
 
 	switch received.Type() {
 	case frame.TypeHandshakeAckFrame:
-		// check ai function definition
+		// check function calling definition
 		if err := c.writeAIRegisterFunctionFrame(conn, received.(*frame.HandshakeAckFrame)); err != nil {
 			return nil, err
 		}
@@ -219,7 +219,7 @@ func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
 	}
 	// other frame type
 	err = &ErrRejected{
-		Message: fmt.Sprintf("handshake failed: read unexcepted frame, frame read: %s", received.Type().String()),
+		Message: fmt.Sprintf("handshake failed: read unexpected frame, frame read: %s", received.Type().String()),
 	}
 	_ = conn.CloseWithError(err.Error())
 	return nil, err
