@@ -15,6 +15,7 @@ import (
 )
 
 const (
+	// DefaultZipperAddr is the default endpoint of the zipper
 	DefaultZipperAddr = "localhost:9000"
 )
 
@@ -78,7 +79,7 @@ func (a *BasicAPIServer) Serve() error {
 	}
 
 	// GET /overview
-	handler.HandleFunc("/overview", func(w http.ResponseWriter, r *http.Request) {
+	handler.HandleFunc("/overview", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		// credential := getBearerToken(r)
 		resp, err := service.GetOverview()

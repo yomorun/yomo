@@ -38,7 +38,7 @@ func RegisterProvider(provider LLMProvider) {
 // ListProviders returns the list of llm providers
 func ListProviders() []string {
 	var names []string
-	providers.Range(func(key, value any) bool {
+	providers.Range(func(key, _ any) bool {
 		names = append(names, key.(string))
 		return true
 	})

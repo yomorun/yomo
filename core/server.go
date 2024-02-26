@@ -316,7 +316,7 @@ func (s *Server) handleFrame(c *Context) {
 
 func (s *Server) routingDataFrame(c *Context) error {
 	dataFrame := c.Frame
-	data_length := len(dataFrame.Payload)
+	dataLength := len(dataFrame.Payload)
 
 	// counter +1
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
@@ -336,7 +336,7 @@ func (s *Server) routingDataFrame(c *Context) error {
 	// find stream function ids from the router.
 	connIDs := s.router.Route(dataFrame.Tag, md)
 	if len(connIDs) == 0 {
-		c.Logger.Info("no observed", "tag", dataFrame.Tag, "data_length", data_length)
+		c.Logger.Info("no observed", "tag", dataFrame.Tag, "data_length", dataLength)
 	}
 	c.Logger.Debug("connector snapshot", "tag", dataFrame.Tag, "sfn_conn_ids", connIDs, "connector", s.connector.Snapshot())
 
@@ -354,12 +354,12 @@ func (s *Server) routingDataFrame(c *Context) error {
 		if err := conn.FrameConn().WriteFrame(dataFrame); err != nil {
 			c.Logger.Error(
 				"failed to route data", "err", err,
-				"tag", dataFrame.Tag, "data_length", data_length, "to_id", toID, "to_name", conn.Name(),
+				"tag", dataFrame.Tag, "data_length", dataLength, "to_id", toID, "to_name", conn.Name(),
 			)
 		} else {
 			c.Logger.Info(
 				"data routing",
-				"tag", dataFrame.Tag, "data_length", data_length, "to_id", toID, "to_name", conn.Name(),
+				"tag", dataFrame.Tag, "data_length", dataLength, "to_id", toID, "to_name", conn.Name(),
 			)
 		}
 	}

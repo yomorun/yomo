@@ -163,20 +163,23 @@ func (s *Service) createReducer() (yomo.StreamFunction, error) {
 	return sfn, nil
 }
 
+// GetOverview returns the overview of the AI functions, key is the tag, value is the function definition
 func (s *Service) GetOverview() (*ai.OverviewResponse, error) {
 	return s.LLMProvider.GetOverview()
 }
 
+// GetChatCompletions returns the llm api response
 func (s *Service) GetChatCompletions(prompt string) (*ai.ChatCompletionsResponse, error) {
 	return s.LLMProvider.GetChatCompletions(prompt)
 }
 
+// Write writes the data to zipper
 func (s *Service) Write(tag uint32, data []byte) error {
 	return s.source.Write(tag, data)
 }
 
 func init() {
-	onEvicted := func(k string, v *Service) {
+	onEvicted := func(_ string, v *Service) {
 		v.Release()
 	}
 	services = expirable.NewLRU[string, *Service](ServiceCacheSize, onEvicted, ServiceCacheTTL)

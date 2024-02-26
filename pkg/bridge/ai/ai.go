@@ -1,3 +1,4 @@
+// Package ai provide LLM Function Calling features
 package ai
 
 import (
@@ -14,10 +15,14 @@ import (
 )
 
 var (
-	ErrNotExistsProvider     = errors.New("llm provider does not exist")
+	// ErrNotExistsProvider is the error when the provider does not exist
+	ErrNotExistsProvider = errors.New("llm provider does not exist")
+	// ErrNotImplementedService is the error when the service is not implemented
 	ErrNotImplementedService = errors.New("llm service is not implemented")
-	ErrConfigNotFound        = errors.New("ai config was not found")
-	ErrConfigFormatError     = errors.New("ai config format is incorrect")
+	// ErrConfigNotFound is the error when the ai config was not found
+	ErrConfigNotFound = errors.New("ai config was not found")
+	// ErrConfigFormatError is the error when the ai config format is incorrect
+	ErrConfigFormatError = errors.New("ai config format is incorrect")
 )
 
 // ======================= Package Functions =======================

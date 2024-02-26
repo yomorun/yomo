@@ -1,3 +1,4 @@
+// Package azopenai is used to provide the Azure OpenAI service
 package azopenai
 
 import (
@@ -11,32 +12,32 @@ import (
 	"sync"
 
 	_ "github.com/joho/godotenv/autoload"
+
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/ylog"
 )
 
 var (
-	// tools             map[uint32]ai.ToolCall
 	fns sync.Map
-	// mu                sync.Mutex
+	// ErrNoFunctionCall is the error when no function call
 	ErrNoFunctionCall = errors.New("no function call")
 )
 
-// RequestMessage is the message in Request
+// ReqMessage is the message in Request
 type ReqMessage struct {
 	Role       string `json:"role"`
 	Content    string `json:"content"`
 	ToolCallID string `json:"tool_call_id,omitempty"`
 }
 
-// RequestBody is the request body
+// ReqBody is the request body
 type ReqBody struct {
 	Messages []ReqMessage  `json:"messages"`
 	Tools    []ai.ToolCall `json:"tools"` // chatCompletionTool
 	// ToolChoice string    `json:"tool_choice"` // chatCompletionFunction
 }
 
-// Resp is the response body
+// RespBody is the response body
 type RespBody struct {
 	ID                string       `json:"id"`
 	Object            string       `json:"object"`
@@ -112,7 +113,7 @@ func (p *AzureOpenAIProvider) Name() string {
 // GetChatCompletions get chat completions for ai service
 func (p *AzureOpenAIProvider) GetChatCompletions(userInstruction string) (*ai.ChatCompletionsResponse, error) {
 	isEmpty := true
-	fns.Range(func(key, value interface{}) bool {
+	fns.Range(func(_, _ interface{}) bool {
 		isEmpty = false
 		return false
 	})
@@ -133,7 +134,7 @@ func (p *AzureOpenAIProvider) GetChatCompletions(userInstruction string) (*ai.Ch
 	// for _, v := range tools {
 	// 	toolCalls = append(toolCalls, v)
 	// }
-	fns.Range(func(key, value interface{}) bool {
+	fns.Range(func(_, value interface{}) bool {
 		fn := value.(*connectedFn)
 		toolCalls = append(toolCalls, fn.tc)
 		return true
@@ -247,7 +248,7 @@ func (p *AzureOpenAIProvider) RegisterFunction(tag uint32, functionDefinition *a
 
 // UnregisterFunction unregister function
 // Be careful: a function can have multiple instances, remove the offline instance only.
-func (p *AzureOpenAIProvider) UnregisterFunction(name string, connID string) error {
+func (p *AzureOpenAIProvider) UnregisterFunction(_ string, connID string) error {
 	fns.Delete(connID)
 	return nil
 }
@@ -255,7 +256,7 @@ func (p *AzureOpenAIProvider) UnregisterFunction(name string, connID string) err
 // ListToolCalls list tool functions
 func (p *AzureOpenAIProvider) ListToolCalls() (map[uint32]ai.ToolCall, error) {
 	tmp := make(map[uint32]ai.ToolCall)
-	fns.Range(func(key, value any) bool {
+	fns.Range(func(_, value any) bool {
 		fn := value.(*connectedFn)
 		tmp[fn.tag] = fn.tc
 		return true
@@ -267,7 +268,7 @@ func (p *AzureOpenAIProvider) ListToolCalls() (map[uint32]ai.ToolCall, error) {
 // GetOverview get overview for ai service
 func (p *AzureOpenAIProvider) GetOverview() (*ai.OverviewResponse, error) {
 	isEmpty := true
-	fns.Range(func(key, value any) bool {
+	fns.Range(func(_, _ any) bool {
 		isEmpty = false
 		return false
 	})
@@ -280,7 +281,7 @@ func (p *AzureOpenAIProvider) GetOverview() (*ai.OverviewResponse, error) {
 		return result, nil
 	}
 
-	fns.Range(func(key, value any) bool {
+	fns.Range(func(_, value any) bool {
 		fn := value.(*connectedFn)
 		result.Functions[fn.tag] = fn.tc.Function
 		return true

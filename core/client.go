@@ -225,7 +225,7 @@ func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
 	return nil, err
 }
 
-func (c *Client) writeAIRegisterFunctionFrame(conn *yquic.FrameConn, handshakeAckFrame *frame.HandshakeAckFrame) error {
+func (c *Client) writeAIRegisterFunctionFrame(conn *yquic.FrameConn, _ *frame.HandshakeAckFrame) error {
 	// register ai function
 	if c.clientType == ClientTypeStreamFunction {
 		functionDefinition, err := c.parseAIFunctionDefinition()

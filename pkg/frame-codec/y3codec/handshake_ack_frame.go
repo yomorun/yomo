@@ -12,7 +12,7 @@ func encodeHandshakeAckFrame(f *frame.HandshakeAckFrame) ([]byte, error) {
 }
 
 // decodeHandshakeAckFrame decodes Y3 encoded bytes to HandshakeAckFrame
-func decodeHandshakeAckFrame(data []byte, f *frame.HandshakeAckFrame) error {
+func decodeHandshakeAckFrame(data []byte, _ *frame.HandshakeAckFrame) error {
 	node := y3.NodePacket{}
 	_, err := y3.DecodeToNodePacket(data, &node)
 	if err != nil {

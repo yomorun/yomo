@@ -114,6 +114,7 @@ func WithTracerProvider(tp trace.TracerProvider) ClientOption {
 	}
 }
 
+// WithAIFunctionDefinition sets AI function definition for the client.
 func WithAIFunctionDefinition(description string, inputModel any) ClientOption {
 	return func(o *clientOptions) {
 		o.aiFunctionDescription = description

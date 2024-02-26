@@ -69,6 +69,7 @@ func (fco *FunctionCall) Write(result string) error {
 	return (*fco.ctx).Write(ReducerTag, buf)
 }
 
+// WriteErrors writes the error to reducer
 func (fco *FunctionCall) WriteErrors(err error) error {
 	fco.IsOK = false
 	fco.Error = err.Error()
@@ -91,7 +92,7 @@ func (fco *FunctionCall) JSONString() string {
 	return string(b)
 }
 
-// NewFunctionCallingInvoke creates a new unctionCallObject from the given context
+// ParseFunctionCallContext creates a new unctionCallObject from the given context
 func ParseFunctionCallContext(ctx serverless.Context) (*FunctionCall, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("ai: ctx is nil")

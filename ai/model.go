@@ -1,3 +1,4 @@
+// Package ai contains the model for LLM Function Calling features
 package ai
 
 // OverviewResponse is the response for overview
