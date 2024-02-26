@@ -140,9 +140,9 @@ func (s *Service) createReducer() (yomo.StreamFunction, error) {
 		v.mu.Lock()
 		defer v.mu.Unlock()
 
-		fmt.Fprintf(v.ResponseWriter, "event:result\n")
+		fmt.Fprintf(v.ResponseWriter, "event: result\n")
 		fmt.Fprintf(v.ResponseWriter, "data: %s\n\n", invoke.JSONString())
-		fmt.Fprintf(v.ResponseWriter, "event:retrieval_result\n")
+		fmt.Fprintf(v.ResponseWriter, "event: retrieval_result\n")
 		fmt.Fprintf(v.ResponseWriter, "data: %s\n\n", invoke.RetrievalResult)
 
 		// // one json per line, like groq.com did
@@ -169,7 +169,7 @@ func (s *Service) GetOverview() (*ai.OverviewResponse, error) {
 }
 
 // GetChatCompletions returns the llm api response
-func (s *Service) GetChatCompletions(prompt string) (*ai.ChatCompletionsResponse, error) {
+func (s *Service) GetChatCompletions(prompt string) (*ai.InvokeResponse, error) {
 	return s.LLMProvider.GetChatCompletions(prompt)
 }
 

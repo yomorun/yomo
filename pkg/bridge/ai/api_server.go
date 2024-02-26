@@ -112,7 +112,7 @@ func (a *BasicAPIServer) Serve() error {
 		}
 		ylog.Info("reqID", "val", reqID)
 
-		var req ai.BasicAPIRequest
+		var req ai.InvokeRequest
 		req.ReqID = reqID
 
 		// // set json response
@@ -152,6 +152,7 @@ func (a *BasicAPIServer) Serve() error {
 					ToolCallID:   fn.ID,
 					Arguments:    fn.Function.Arguments,
 					FunctionName: fn.Function.Name,
+					IsOK:         true,
 				}
 				buf, err := data.Bytes()
 				if err != nil {

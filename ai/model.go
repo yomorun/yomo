@@ -1,19 +1,21 @@
 // Package ai contains the model for LLM Function Calling features
 package ai
 
+import "errors"
+
 // OverviewResponse is the response for overview
 type OverviewResponse struct {
 	Functions map[uint32]*FunctionDefinition // key is the tag of yomo
 }
 
-// BasicAPIRequest is the request from user to BasicAPIServer
-type BasicAPIRequest struct {
+// InvokeRequest is the request from user to BasicAPIServer
+type InvokeRequest struct {
 	ReqID  string `json:"req_id"` // req_id is the request id of the request
 	Prompt string `json:"prompt"` // prompt is user input text for chat completion
 }
 
-// ChatCompletionsResponse is the response for chat completions
-type ChatCompletionsResponse struct {
+// InvokeResponse is the response for chat completions
+type InvokeResponse struct {
 	Functions map[uint32][]*FunctionDefinition // key is the tag of yomo
 	Content   string
 	// ToolCalls is the toolCalls from llm api response
@@ -58,3 +60,6 @@ type ParameterProperty struct {
 	Description string   `json:"description"`
 	Enum        []string `json:"enum,omitempty"`
 }
+
+// ErrNoFunctionCall is the error when no function call
+var ErrNoFunctionCall = errors.New("no function call")
