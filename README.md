@@ -5,7 +5,7 @@
 # YoMo ![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg) [![codecov](https://codecov.io/gh/yomorun/yomo/branch/master/graph/badge.svg?token=MHCE5TZWKM)](https://codecov.io/gh/yomorun/yomo) [![Discord](https://img.shields.io/discord/770589787404369930.svg?label=discord&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/RMtNhx7vds)
 
 YoMo is an open-source LLM Function Calling Framework for building Geo-distributed AI applications.
-Built atop QUIC Transport Protocol and Stateful Serverless interface, makes your AI application 
+Built atop QUIC Transport Protocol and Stateful Serverless architecture, makes your AI application 
 low-latency, reliable, secure, and easy.
 
 💚 We care about: **Customer Experience in the Age of AI**
@@ -122,19 +122,13 @@ func handler(ctx serverless.Context) {
 	fcCtx, _ := ai.ParseFunctionCallContext(ctx)
 
 	var msg Parameter
-	err = fcCtx.UnmarshalArguments(&msg)
-	if err != nil {
-		slog.Error("[sfn] json.Marshal error", "err", err)
-		return
-	}
+	fcCtx.UnmarshalArguments(&msg)
 
 	rate, _ := fetchRate(msg.SourceCurrency, msg.TargetCurrency, msg.Amount)
-  result = fmt.Sprintf("%f", msg.Amount*rate)
+  	result = fmt.Sprintf("%f", msg.Amount*rate)
 
-	fcCtx.SetRetrievalResult(fmt.Sprintf("based on today's exchange rate: %f, %f %s is equivalent to approximately %f %s",
-    rate, msg.Amount, msg.SourceCurrency, msg.Amount*rate, msg.TargetCurrency))
-
-  fcCtx.Write(result)
+	fcCtx.SetRetrievalResult(fmt.Sprintf("based on today's exchange rate: %f, %f %s is equivalent to approximately %f %s",rate, msg.Amount, msg.SourceCurrency, msg.Amount*rate, msg.TargetCurrency))
+	fcCtx.Write(result)
 }
 ```
 
@@ -161,10 +155,10 @@ Keep-Alive: timeout=4
 Proxy-Connection: keep-alive
 
 event:result
-data: {"req_id":"7YU0SY","result":"78.920600","retrieval_result":"based on today's exchange rate: 0.789206, 100.000000 USD is equivalent to approximately 78.920600 GBP","tool_call_id":"call_mgGM9fqGHTtUueokUa7uwYHT","function_name":"fn-exchange-rates","arguments":"{\"amount\": 100, \"source\": \"USD\", \"target\": \"GBP\"}","is_ok":false}
+data: {"req_id":"7YU0SY","result":"78.920600","retrieval_result":"based on today's exchange rate: 0.789206, 100.000000 USD is equivalent to approximately 78.920600 GBP","tool_call_id":"call_mgGM9fqGHTtUueokUa7uwYHT","function_name":"fn-exchange-rates","arguments":"{\"amount\": 100, \"source\": \"USD\", \"target\": \"GBP\"}"}
 
 event:result
-data: {"req_id":"7YU0SY","result":"133139.226800","retrieval_result":"based on today's exchange rate: 1331.392268, 100.000000 USD is equivalent to approximately 133139.226800 KRW","tool_call_id":"call_1IFlbtKNC5CEN13tBSM0Nson","function_name":"fn-exchange-rates","arguments":"{\"amount\": 100, \"source\": \"USD\", \"target\": \"KRW\"}","is_ok":false}
+data: {"req_id":"7YU0SY","result":"133139.226800","retrieval_result":"based on today's exchange rate: 1331.392268, 100.000000 USD is equivalent to approximately 133139.226800 KRW","tool_call_id":"call_1IFlbtKNC5CEN13tBSM0Nson","function_name":"fn-exchange-rates","arguments":"{\"amount\": 100, \"source\": \"USD\", \"target\": \"KRW\"}"}
 ```
 
 ### Full Example Code
