@@ -73,7 +73,7 @@ type AzureOpenAIProvider struct {
 }
 
 type connectedFn struct {
-	connID string
+	connID uint64
 	tag    uint32
 	tc     ai.ToolCall
 }
@@ -221,7 +221,7 @@ func (p *AzureOpenAIProvider) GetChatCompletions(userInstruction string) (*ai.In
 }
 
 // RegisterFunction register function
-func (p *AzureOpenAIProvider) RegisterFunction(tag uint32, functionDefinition *ai.FunctionDefinition, connID string) error {
+func (p *AzureOpenAIProvider) RegisterFunction(tag uint32, functionDefinition *ai.FunctionDefinition, connID uint64) error {
 	fns.Store(connID, &connectedFn{
 		connID: connID,
 		tag:    tag,
@@ -236,7 +236,7 @@ func (p *AzureOpenAIProvider) RegisterFunction(tag uint32, functionDefinition *a
 
 // UnregisterFunction unregister function
 // Be careful: a function can have multiple instances, remove the offline instance only.
-func (p *AzureOpenAIProvider) UnregisterFunction(_ string, connID string) error {
+func (p *AzureOpenAIProvider) UnregisterFunction(_ string, connID uint64) error {
 	fns.Delete(connID)
 	return nil
 }
