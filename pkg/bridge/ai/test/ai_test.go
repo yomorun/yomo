@@ -23,10 +23,10 @@ func TestAIServer(t *testing.T) {
 func TestAIToolCalls(t *testing.T) {
 	go startAIServer()
 	functionDefinition := `{"name":"get_current_weather","description":"Get the current weather in a given location","parameters":{"type":"object","properties":{"location":{"type":"string","description":"The city and state, e.g. San Francisco, CA"}},"required":["location"]}}`
-	err := ai.RegisterFunction(1, []byte(functionDefinition), "conn-id-1")
+	err := ai.RegisterFunction(1, []byte(functionDefinition), 123)
 	assert.NoError(t, err)
 	functionDefinition2 := `{"name":"get_weather","description":"Get the current weather in a given location","parameters":{"type":"object","properties":{"location":{"type":"string","description":"The city and state, e.g. San Francisco, CA"}},"required":["location"]}}`
-	err = ai.RegisterFunction(1, []byte(functionDefinition2), "conn-id-1")
+	err = ai.RegisterFunction(1, []byte(functionDefinition2), 123)
 	assert.NoError(t, err)
 	tools, err := ai.ListToolCalls()
 	assert.NoError(t, err)

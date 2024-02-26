@@ -15,9 +15,9 @@ type LLMProvider interface {
 	// GetChatCompletions returns the chat completions
 	GetChatCompletions(prompt string) (*ai.InvokeResponse, error)
 	// RegisterFunction registers the llm function
-	RegisterFunction(tag uint32, functionDefinition *ai.FunctionDefinition, connID string) error
+	RegisterFunction(tag uint32, functionDefinition *ai.FunctionDefinition, connID uint64) error
 	// UnregisterFunction unregister the llm function
-	UnregisterFunction(name, connID string) error
+	UnregisterFunction(name string, connID uint64) error
 	// ListToolCalls lists the llm tool calls
 	ListToolCalls() (map[uint32]ai.ToolCall, error)
 }

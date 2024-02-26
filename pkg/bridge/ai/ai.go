@@ -28,7 +28,7 @@ var (
 // ======================= Package Functions =======================
 
 // RegisterFunction registers the tool function
-func RegisterFunction(tag uint32, functionDefinition []byte, connID string) error {
+func RegisterFunction(tag uint32, functionDefinition []byte, connID uint64) error {
 	provider, err := GetDefaultProvider()
 	if err != nil {
 		return err
@@ -43,7 +43,7 @@ func RegisterFunction(tag uint32, functionDefinition []byte, connID string) erro
 }
 
 // UnregisterFunction unregister the tool function
-func UnregisterFunction(name string, connID string) error {
+func UnregisterFunction(name string, connID uint64) error {
 	provider, err := GetDefaultProvider()
 	if err != nil {
 		return err
