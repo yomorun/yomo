@@ -13,7 +13,7 @@ type LLMProvider interface {
 	// GetOverview returns the overview of the AI functions, key is the tag, value is the function definition
 	GetOverview() (*ai.OverviewResponse, error)
 	// GetChatCompletions returns the chat completions
-	GetChatCompletions(prompt string) (*ai.ChatCompletionsResponse, error)
+	GetChatCompletions(prompt string) (*ai.InvokeResponse, error)
 	// RegisterFunction registers the llm function
 	RegisterFunction(tag uint32, functionDefinition *ai.FunctionDefinition, connID string) error
 	// UnregisterFunction unregister the llm function

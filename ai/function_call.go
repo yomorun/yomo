@@ -55,6 +55,7 @@ func (fco *FunctionCall) FromBytes(b []byte) error {
 	fco.ToolCallID = obj.ToolCallID
 	fco.Result = obj.Result
 	fco.RetrievalResult = obj.RetrievalResult
+	fco.IsOK = obj.IsOK
 	return nil
 }
 
@@ -62,6 +63,7 @@ func (fco *FunctionCall) FromBytes(b []byte) error {
 func (fco *FunctionCall) Write(result string) error {
 	// tag, data := fco.CreatePayload(result)
 	fco.Result = result
+	fco.IsOK = true
 	buf, err := fco.Bytes()
 	if err != nil {
 		return err
@@ -78,6 +80,7 @@ func (fco *FunctionCall) WriteErrors(err error) error {
 
 // SetRetrievalResult sets the retrieval result
 func (fco *FunctionCall) SetRetrievalResult(retrievalResult string) {
+	fco.IsOK = true
 	fco.RetrievalResult = retrievalResult
 }
 
@@ -106,7 +109,9 @@ func ParseFunctionCallContext(ctx serverless.Context) (*FunctionCall, error) {
 		return nil, fmt.Errorf("ai: ctx.Data() is too short")
 	}
 
-	fco := &FunctionCall{}
+	fco := &FunctionCall{
+		IsOK: true,
+	}
 	fco.ctx = &ctx
 	fco.FromBytes(ctx.Data())
 	return fco, nil
