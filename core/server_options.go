@@ -7,6 +7,7 @@ import (
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/ylog"
+	"go.opentelemetry.io/otel"
 	oteltrace "go.opentelemetry.io/otel/trace"
 	"golang.org/x/exp/slog"
 )
@@ -42,10 +43,11 @@ func defaultServerOptions() *serverOptions {
 	logger := ylog.Default()
 
 	opts := &serverOptions{
-		quicConfig: DefaultQuicConfig,
-		tlsConfig:  nil,
-		auths:      map[string]auth.Authentication{},
-		logger:     logger,
+		quicConfig:     DefaultQuicConfig,
+		tlsConfig:      nil,
+		auths:          map[string]auth.Authentication{},
+		logger:         logger,
+		tracerProvider: otel.GetTracerProvider(),
 	}
 	return opts
 }

@@ -47,16 +47,10 @@ var serveCmd = &cobra.Command{
 			return
 		}
 		ctx := context.Background()
-		// trace
-		tp, shutdown, err := trace.NewTracerProvider("yomo-zipper")
-		if err == nil {
-			log.InfoStatusEvent(os.Stdout, "[zipper] 🛰 trace enabled")
-		}
-		defer shutdown(ctx)
 		// listening address.
 		listenAddr := fmt.Sprintf("%s:%d", conf.Host, conf.Port)
 
-		options := []yomo.ZipperOption{yomo.WithZipperTracerProvider(tp)}
+		options := []yomo.ZipperOption{yomo.WithZipperTracerProvider(trace.NewTracerProvider("yomo-zipper"))}
 		if _, ok := conf.Auth["type"]; ok {
 			if tokenString, ok := conf.Auth["token"]; ok {
 				options = append(options, yomo.WithAuth("token", tokenString))

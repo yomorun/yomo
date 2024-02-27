@@ -8,7 +8,7 @@ import (
 )
 
 func TestMetadata(t *testing.T) {
-	md := NewMetadata("source", "tid", "traceID", "spanID", true)
+	md := NewMetadata("source", "tid")
 
 	SetMetadataTarget(md, "target")
 	v, ok := md.Get(metadata.TargetKey)
@@ -16,5 +16,4 @@ func TestMetadata(t *testing.T) {
 	assert.Equal(t, "target", v)
 
 	assert.Equal(t, "tid", GetTIDFromMetadata(md))
-	assert.Equal(t, true, GetTracedFromMetadata(md))
 }

@@ -2,7 +2,6 @@
 package deno
 
 import (
-	"context"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -90,17 +89,11 @@ func runDeno(jsPath string, socketPath string, errCh chan<- error) {
 }
 
 func startSfn(name string, zipperAddr string, credential string, observed []frame.Tag, conn net.Conn, errCh chan<- error) (yomo.StreamFunction, error) {
-	// trace
-	tp, shutdown, err := trace.NewTracerProvider("yomo-sfn")
-	if err == nil {
-		log.Println("[sfn] 🛰 trace enabled")
-	}
-	defer shutdown(context.Background())
 	sfn := yomo.NewStreamFunction(
 		name,
 		zipperAddr,
 		yomo.WithSfnCredential(credential),
-		yomo.WithSfnTracerProvider(tp),
+		yomo.WithSfnTracerProvider(trace.NewTracerProvider("yomo-sfn")),
 	)
 
 	// init
@@ -168,7 +161,7 @@ func startSfn(name string, zipperAddr string, credential string, observed []fram
 		},
 	)
 
-	err = sfn.Connect()
+	err := sfn.Connect()
 	if err != nil {
 		return nil, err
 	}

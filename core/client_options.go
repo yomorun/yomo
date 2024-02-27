@@ -16,6 +16,7 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/ylog"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/exp/slog"
 )
@@ -55,6 +56,7 @@ func defaultClientOption() *clientOptions {
 		tlsConfig:       pkgtls.MustCreateClientTLSConfig(),
 		credential:      auth.NewCredential(""),
 		logger:          ylog.Default(),
+		tracerProvider:  otel.GetTracerProvider(),
 	}
 
 	return opts

@@ -21,6 +21,8 @@ import (
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 	yquic "github.com/yomorun/yomo/pkg/listener/quic"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
+	"github.com/yomorun/yomo/pkg/trace"
+	"go.opentelemetry.io/otel/attribute"
 	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
@@ -321,10 +323,15 @@ func (s *Server) routingDataFrame(c *Context) error {
 	// counter +1
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
 
-	md, endFn := ZipperTraceMetadata(c.FrameMetadata, s.TracerProvider(), c.Logger)
-	defer endFn()
-
-	c.FrameMetadata = md
+	// add trace
+	tracer := trace.NewTracer("Zipper", s.tracerProvider)
+	span := tracer.Start(c.FrameMetadata, "zipper endpoint")
+	defer tracer.End(
+		c.FrameMetadata,
+		span,
+		attribute.Key("routing_data_tag").Int(int(dataFrame.Tag)),
+		attribute.Key("routing_data_Len").Int(data_length),
+	)
 
 	mdBytes, err := c.FrameMetadata.Encode()
 	if err != nil {
@@ -334,7 +341,7 @@ func (s *Server) routingDataFrame(c *Context) error {
 	dataFrame.Metadata = mdBytes
 
 	// find stream function ids from the router.
-	connIDs := s.router.Route(dataFrame.Tag, md)
+	connIDs := s.router.Route(dataFrame.Tag, c.FrameMetadata)
 	if len(connIDs) == 0 {
 		c.Logger.Info("no observed", "tag", dataFrame.Tag, "data_length", data_length)
 	}

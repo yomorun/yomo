@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"log"
 	"os"
 
@@ -12,11 +11,7 @@ import (
 
 func main() {
 	// trace
-	tp, shutdown, err := trace.NewTracerProvider("yomo-sfn")
-	if err == nil {
-		log.Println("[fn4] 🛰 trace enabled")
-	}
-	defer shutdown(context.Background())
+	tp := trace.NewTracerProvider("yomo-sfn")
 	// sfn
 	sfn := yomo.NewStreamFunction(
 		"Noise-4",
@@ -28,7 +23,7 @@ func main() {
 
 	sfn.SetHandler(handler)
 
-	err = sfn.Connect()
+	err := sfn.Connect()
 	if err != nil {
 		log.Printf("[fn3] connect err=%v", err)
 		os.Exit(1)
