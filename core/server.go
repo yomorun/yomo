@@ -331,7 +331,7 @@ func (s *Server) routingDataFrame(c *Context) error {
 		c.FrameMetadata,
 		span,
 		attribute.Key("routing_data_tag").Int(int(dataFrame.Tag)),
-		attribute.Key("routing_data_Len").Int(data_length),
+		attribute.Key("routing_data_Len").Int(dataLength),
 	)
 
 	mdBytes, err := c.FrameMetadata.Encode()
