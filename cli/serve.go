@@ -125,12 +125,14 @@ func registerAIProvider(aiConfig *ai.Config) {
 		if name == "azopenai" {
 			apiKey := provider["api_key"]
 			apiEndpoint := provider["api_endpoint"]
+			deploymentID := provider["deployment_id"]
+			apiVersion := provider["api_version"]
 			if apiKey == "" || apiEndpoint == "" {
 				// log.InfoStatusEvent(os.Stdout, "register Azure OpenAI provider used by New()")
 				ai.RegisterProvider(azopenai.New())
 			} else {
 				// log.InfoStatusEvent(os.Stdout, "register Azure OpenAI provider used by NewAzureOpenAIProvider()")
-				ai.RegisterProvider(azopenai.NewAzureOpenAIProvider(apiKey, apiEndpoint))
+				ai.RegisterProvider(azopenai.NewAzureOpenAIProvider(apiKey, apiEndpoint, deploymentID, apiVersion))
 			}
 		}
 		// TODO: register other providers

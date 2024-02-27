@@ -68,8 +68,10 @@ type RespUsage struct {
 
 // AzureOpenAIProvider is the provider for Azure OpenAI
 type AzureOpenAIProvider struct {
-	APIKey      string
-	APIEndpoint string
+	APIKey       string
+	APIEndpoint  string
+	DeploymentID string
+	APIVersion   string
 }
 
 type connectedFn struct {
@@ -83,10 +85,12 @@ func init() {
 }
 
 // NewAzureOpenAIProvider creates a new AzureOpenAIProvider
-func NewAzureOpenAIProvider(apiKey string, apiEndpoint string) *AzureOpenAIProvider {
+func NewAzureOpenAIProvider(apiKey string, apiEndpoint string, deploymentID string, apiVersion string) *AzureOpenAIProvider {
 	return &AzureOpenAIProvider{
-		APIKey:      apiKey,
-		APIEndpoint: apiEndpoint,
+		APIKey:       apiKey,
+		APIEndpoint:  apiEndpoint,
+		DeploymentID: deploymentID,
+		APIVersion:   apiVersion,
 	}
 }
 
@@ -142,7 +146,8 @@ func (p *AzureOpenAIProvider) GetChatCompletions(userInstruction string) (*ai.In
 		return nil, err
 	}
 
-	req, err := http.NewRequest("POST", p.APIEndpoint, bytes.NewBuffer(jsonBody))
+	url := fmt.Sprintf("%s/openai/deployments/%s/chat/completions?api-version=%s", p.APIEndpoint, p.DeploymentID, p.APIVersion)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return nil, err
 	}
