@@ -22,7 +22,7 @@ import (
 var serviceName atomic.Value
 
 func init() {
-	defaultServiceName := "yomo"
+	defaultServiceName := "yomo-1"
 	serviceName.Store(defaultServiceName)
 
 	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
@@ -71,6 +71,7 @@ func NewTracer(name string, tp trace.TracerProvider) *Tracer {
 	if tp == nil {
 		tp = otel.GetTracerProvider()
 	}
+
 	return &Tracer{
 		tracer:         tp.Tracer(name),
 		tracerName:     name,
@@ -83,11 +84,6 @@ func (t *Tracer) Start(md metadata.M, operation string) trace.Span {
 	_, span := t.tracer.Start(NewContextWithMetadata(md),
 		operation,
 	)
-	return span
-}
-
-// End finish tracing span.
-func (t *Tracer) End(md metadata.M, span trace.Span, kv ...attribute.KeyValue) {
 	// use metadata to propagate the trace info.
 	if span.SpanContext().TraceID().IsValid() {
 		md.Set(metadata.TraceIDKey, span.SpanContext().TraceID().String())
@@ -96,7 +92,11 @@ func (t *Tracer) End(md metadata.M, span trace.Span, kv ...attribute.KeyValue) {
 	if span.SpanContext().SpanID().IsValid() {
 		md.Set(metadata.SpanIDKey, span.SpanContext().SpanID().String())
 	}
+	return span
+}
 
+// End finish tracing span.
+func (t *Tracer) End(md metadata.M, span trace.Span, kv ...attribute.KeyValue) {
 	for _, v := range kv {
 		span.SetAttributes(v)
 	}

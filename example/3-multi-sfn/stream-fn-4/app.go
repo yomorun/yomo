@@ -5,18 +5,14 @@ import (
 	"os"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/pkg/trace"
 	"github.com/yomorun/yomo/serverless"
 )
 
 func main() {
-	// trace
-	tp := trace.NewTracerProvider("yomo-sfn")
 	// sfn
 	sfn := yomo.NewStreamFunction(
 		"Noise-4",
 		"localhost:9000",
-		yomo.WithSfnTracerProvider(tp),
 	)
 	sfn.SetObserveDataTags(0x10)
 	defer sfn.Close()

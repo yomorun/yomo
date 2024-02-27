@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/pkg/trace"
 )
 
 type noiseData struct {
@@ -22,7 +21,6 @@ func main() {
 	source := yomo.NewSource(
 		"yomo-source",
 		"localhost:9000",
-		yomo.WithTracerProvider(trace.NewTracerProvider("yomo-source")),
 	)
 	err := source.Connect()
 	if err != nil {
