@@ -271,7 +271,7 @@ func createTestStreamFunction(name string, zipperAddr string, observedTag frame.
 	return sfn
 }
 
-// frameWriterRecorder frames be writen.
+// frameWriterRecorder frames be written.
 type frameWriterRecorder struct {
 	id           string
 	localName    string

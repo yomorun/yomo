@@ -226,7 +226,7 @@ func (s *Server) handshake(fconn frame.Conn) (*Connection, error) {
 		}
 
 		// 4. add route rules
-		if err := s.addSfnRouteRule(hf, conn.Metadata()); err != nil {
+		if err := s.addSfnRouteRule(conn.ID(), hf, conn.Metadata()); err != nil {
 			return nil, rejectHandshake(fconn, err)
 		}
 		return conn, nil
@@ -283,6 +283,7 @@ func (s *Server) createConnection(hf *frame.HandshakeFrame, md metadata.M, fconn
 		md.Set(metadata.WantedTargetKey, hf.WantedTarget)
 	}
 	conn := newConnection(
+		incrID(),
 		hf.Name,
 		hf.ID,
 		ClientType(hf.ClientType),
@@ -292,14 +293,14 @@ func (s *Server) createConnection(hf *frame.HandshakeFrame, md metadata.M, fconn
 		s.logger,
 	)
 
-	return conn, s.connector.Store(hf.ID, conn)
+	return conn, s.connector.Store(conn.ID(), conn)
 }
 
-func (s *Server) addSfnRouteRule(hf *frame.HandshakeFrame, md metadata.M) error {
+func (s *Server) addSfnRouteRule(connID uint64, hf *frame.HandshakeFrame, md metadata.M) error {
 	if hf.ClientType != byte(ClientTypeStreamFunction) {
 		return nil
 	}
-	return s.router.Add(hf.ID, hf.ObserveDataTags, md)
+	return s.router.Add(connID, hf.ObserveDataTags, md)
 }
 
 func (s *Server) handleFrame(c *Context) {
@@ -318,7 +319,7 @@ func (s *Server) handleFrame(c *Context) {
 
 func (s *Server) routingDataFrame(c *Context) error {
 	dataFrame := c.Frame
-	data_length := len(dataFrame.Payload)
+	dataLength := len(dataFrame.Payload)
 
 	// counter +1
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
@@ -343,7 +344,7 @@ func (s *Server) routingDataFrame(c *Context) error {
 	// find stream function ids from the router.
 	connIDs := s.router.Route(dataFrame.Tag, c.FrameMetadata)
 	if len(connIDs) == 0 {
-		c.Logger.Info("no observed", "tag", dataFrame.Tag, "data_length", data_length)
+		c.Logger.Info("no observed", "tag", dataFrame.Tag, "data_length", dataLength)
 	}
 	c.Logger.Debug("connector snapshot", "tag", dataFrame.Tag, "sfn_conn_ids", connIDs, "connector", s.connector.Snapshot())
 
@@ -361,12 +362,12 @@ func (s *Server) routingDataFrame(c *Context) error {
 		if err := conn.FrameConn().WriteFrame(dataFrame); err != nil {
 			c.Logger.Error(
 				"failed to route data", "err", err,
-				"tag", dataFrame.Tag, "data_length", data_length, "to_id", toID, "to_name", conn.Name(),
+				"tag", dataFrame.Tag, "data_length", dataLength, "to_id", toID, "to_name", conn.Name(),
 			)
 		} else {
 			c.Logger.Info(
 				"data routing",
-				"tag", dataFrame.Tag, "data_length", data_length, "to_id", toID, "to_name", conn.Name(),
+				"tag", dataFrame.Tag, "data_length", dataLength, "to_id", toID, "to_name", conn.Name(),
 			)
 		}
 	}
@@ -391,7 +392,6 @@ func (s *Server) dispatchToDownstreams(c *Context) error {
 	dataFrame.Metadata = mdBytes
 
 	for _, ds := range s.downstreams {
-
 		if err = ds.WriteFrame(dataFrame); err != nil {
 			c.Logger.Error(
 				"failed to dispatch to downstream",
@@ -428,20 +428,6 @@ func closeServer(downstreams map[string]Downstream, connector *Connector, listen
 		router.Release()
 	}
 	return nil
-}
-
-// sourceIDTagFindConnectionFunc creates a FindStreamFunc that finds a source type stream matching the specified sourceID and tag.
-func sourceIDTagFindConnectionFunc(sourceID string, tag frame.Tag) FindConnectionFunc {
-	return func(conn ConnectionInfo) bool {
-		for _, v := range conn.ObserveDataTags() {
-			if v == tag &&
-				conn.ClientType() == ClientTypeSource &&
-				conn.ID() == sourceID {
-				return true
-			}
-		}
-		return false
-	}
 }
 
 // StatsFunctions returns the sfn stats of server.

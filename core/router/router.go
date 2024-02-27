@@ -12,11 +12,11 @@ import (
 // Users should define their own rules that tells zipper how to route data and how to store the rules.
 type Router interface {
 	// Add adds the route rule to the router.
-	Add(connID string, observeDataTags []uint32, md metadata.M) error
+	Add(id uint64, observeDataTags []uint32, md metadata.M) error
 	// Route gets the ID list of connections from the router.
-	Route(dataTag uint32, md metadata.M) (connIDs []string)
+	Route(dataTag uint32, md metadata.M) (connIDs []uint64)
 	// Remove removes the route rule from the router.
-	Remove(connID string)
+	Remove(id uint64)
 	// Release release the router and removes all the route rules.
 	Release()
 }
@@ -26,23 +26,23 @@ type defaultRouter struct {
 	mu sync.RWMutex
 
 	// targets stores the mapping between connID and the target string that conn wanted.
-	targets map[string]string
+	targets map[uint64]string
 
 	// data stores tag and connID connection.
 	// The key is frame tag, The value is connID connection.
-	data map[frame.Tag]map[string]struct{}
+	data map[frame.Tag]map[uint64]struct{}
 }
 
 // DefaultRouter provides a default implementation of `router`,
-// It routes data according to observed tag or connID.
+// It routes data according to observed tag and metadata.
 func Default() *defaultRouter {
 	return &defaultRouter{
-		targets: make(map[string]string),
-		data:    make(map[frame.Tag]map[string]struct{}),
+		targets: make(map[uint64]string),
+		data:    make(map[frame.Tag]map[uint64]struct{}),
 	}
 }
 
-func (r *defaultRouter) Add(connID string, observeDataTags []uint32, md metadata.M) error {
+func (r *defaultRouter) Add(connID uint64, observeDataTags []uint32, md metadata.M) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -54,7 +54,7 @@ func (r *defaultRouter) Add(connID string, observeDataTags []uint32, md metadata
 	for _, tag := range observeDataTags {
 		conns := r.data[tag]
 		if conns == nil {
-			conns = map[string]struct{}{}
+			conns = map[uint64]struct{}{}
 			r.data[tag] = conns
 		}
 		r.data[tag][connID] = struct{}{}
@@ -63,13 +63,13 @@ func (r *defaultRouter) Add(connID string, observeDataTags []uint32, md metadata
 	return nil
 }
 
-func (r *defaultRouter) Route(dataTag uint32, md metadata.M) []string {
+func (r *defaultRouter) Route(dataTag uint32, md metadata.M) []uint64 {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	target, existed := md.Get(metadata.TargetKey)
 
-	var connID []string
+	var connID []uint64
 	if conns, ok := r.data[dataTag]; ok {
 		for k := range conns {
 			if existed {
@@ -85,7 +85,7 @@ func (r *defaultRouter) Route(dataTag uint32, md metadata.M) []string {
 	return connID
 }
 
-func (r *defaultRouter) Remove(connID string) {
+func (r *defaultRouter) Remove(connID uint64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
