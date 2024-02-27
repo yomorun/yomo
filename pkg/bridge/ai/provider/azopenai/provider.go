@@ -16,9 +16,7 @@ import (
 	"github.com/yomorun/yomo/core/ylog"
 )
 
-var (
-	fns sync.Map
-)
+var fns sync.Map
 
 // ReqMessage is the message in Request
 type ReqMessage struct {
@@ -84,21 +82,25 @@ func init() {
 	fns = sync.Map{}
 }
 
-// NewAzureOpenAIProvider creates a new AzureOpenAIProvider
-func NewAzureOpenAIProvider(apiKey string, apiEndpoint string, deploymentID string, apiVersion string) *AzureOpenAIProvider {
+// NewProvider creates a new AzureOpenAIProvider
+func NewProvider(apiKey string, apiEndpoint string, deploymentID string, apiVersion string) *AzureOpenAIProvider {
+	if apiKey == "" {
+		apiKey = os.Getenv("AZURE_OPENAI_API_KEY")
+	}
+	if apiEndpoint == "" {
+		apiEndpoint = os.Getenv("AZURE_OPENAI_API_ENDPOINT")
+	}
+	if deploymentID == "" {
+		deploymentID = os.Getenv("AZURE_OPENAI_DEPLOYMENT_ID")
+	}
+	if apiVersion == "" {
+		apiVersion = os.Getenv("AZURE_OPENAI_API_VERSION")
+	}
 	return &AzureOpenAIProvider{
 		APIKey:       apiKey,
 		APIEndpoint:  apiEndpoint,
 		DeploymentID: deploymentID,
 		APIVersion:   apiVersion,
-	}
-}
-
-// New creates a new AzureOpenAIProvider
-func New() *AzureOpenAIProvider {
-	return &AzureOpenAIProvider{
-		APIKey:      os.Getenv("AZURE_OPENAI_API_KEY"),
-		APIEndpoint: os.Getenv("AZURE_OPENAI_API_ENDPOINT"),
 	}
 }
 
@@ -128,9 +130,6 @@ func (p *AzureOpenAIProvider) GetChatCompletions(userInstruction string) (*ai.In
 
 	// prepare tools
 	toolCalls := make([]ai.ToolCall, 0)
-	// for _, v := range tools {
-	// 	toolCalls = append(toolCalls, v)
-	// }
 	fns.Range(func(_, value interface{}) bool {
 		fn := value.(*connectedFn)
 		toolCalls = append(toolCalls, fn.tc)
@@ -147,6 +146,7 @@ func (p *AzureOpenAIProvider) GetChatCompletions(userInstruction string) (*ai.In
 	}
 
 	url := fmt.Sprintf("%s/openai/deployments/%s/chat/completions?api-version=%s", p.APIEndpoint, p.DeploymentID, p.APIVersion)
+	ylog.Debug("chat completions request", "url", url)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return nil, err
