@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 	"runtime"
 	"time"
 
@@ -433,9 +432,6 @@ type Downstream interface {
 // TracerProvider returns the tracer provider of client.
 func (c *Client) TracerProvider() oteltrace.TracerProvider {
 	if c.tracerProvider == nil {
-		return nil
-	}
-	if reflect.ValueOf(c.tracerProvider).IsNil() {
 		return nil
 	}
 	return c.tracerProvider

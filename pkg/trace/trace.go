@@ -89,8 +89,13 @@ func (t *Tracer) Start(md metadata.M, operation string) trace.Span {
 // End finish tracing span.
 func (t *Tracer) End(md metadata.M, span trace.Span, kv ...attribute.KeyValue) {
 	// use metadata to propagate the trace info.
-	md.Set(metadata.TraceIDKey, span.SpanContext().TraceID().String())
-	md.Set(metadata.SpanIDKey, span.SpanContext().SpanID().String())
+	if span.SpanContext().TraceID().IsValid() {
+		md.Set(metadata.TraceIDKey, span.SpanContext().TraceID().String())
+	}
+
+	if span.SpanContext().SpanID().IsValid() {
+		md.Set(metadata.SpanIDKey, span.SpanContext().SpanID().String())
+	}
 
 	for _, v := range kv {
 		span.SetAttributes(v)
