@@ -21,7 +21,7 @@ bridge:
 
       openai:
         api_key:
-        api_endpoint:
+        model:
 
       gemini:
         api_key:

@@ -29,6 +29,7 @@ import (
 
 	"github.com/yomorun/yomo/pkg/bridge/ai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/azopenai"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/openai"
 )
 
 // serveCmd represents the serve command
@@ -132,6 +133,10 @@ func registerAIProvider(aiConfig *ai.Config) {
 			))
 			log.InfoStatusEvent(os.Stdout, "register [%s] AI provider", name)
 			// TODO: register other providers
+		}
+		// register the OpenAI provider
+		if name == "openai" {
+			ai.RegisterProvider(openai.NewProvider(provider["api_key"], provider["model"]))
 		}
 	}
 }

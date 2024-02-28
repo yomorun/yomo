@@ -43,7 +43,7 @@ func (fco *FunctionCall) Bytes() ([]byte, error) {
 
 // FromBytes deserialize the FunctionCallObject from the given []byte
 func (fco *FunctionCall) FromBytes(b []byte) error {
-	var obj = &FunctionCall{}
+	obj := &FunctionCall{}
 	err := json.Unmarshal(b, &obj)
 	if err != nil {
 		return err
