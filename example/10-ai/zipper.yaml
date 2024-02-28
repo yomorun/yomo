@@ -19,7 +19,7 @@ bridge:
 
       openai:
         api_key:
-        api_endpoint:
+        model:
 
       huggingface:
         model:
