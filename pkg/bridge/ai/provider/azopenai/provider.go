@@ -147,7 +147,7 @@ func (p *AzureOpenAIProvider) GetChatCompletions(userInstruction string) (*ai.In
 
 	url := fmt.Sprintf("%s/openai/deployments/%s/chat/completions?api-version=%s", p.APIEndpoint, p.DeploymentID, p.APIVersion)
 	ylog.Debug("chat completions request", "url", url)
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return nil, err
 	}
