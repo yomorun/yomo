@@ -39,7 +39,7 @@ func TestAIToolCalls(t *testing.T) {
 }
 
 func startAIServer() error {
-	ai.RegisterProvider(azopenai.New())
+	ai.RegisterProvider(azopenai.NewProvider("", "", "gpt35", "2023-12-01-preview"))
 	aiConfig := &ai.Config{
 		Server: ai.Server{
 			Addr:     "localhost:6000",

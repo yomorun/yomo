@@ -14,13 +14,14 @@ bridge:
 
     providers:
       azopenai:
-        api_key: 
         api_endpoint: 
+        deployment_id: 
+        api_key: 
+        api_version: 
 
       openai:
         api_key:
         model:
 
-      huggingface:
-        model:
-
+      gemini:
+        api_key:

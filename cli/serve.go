@@ -122,24 +122,22 @@ var serveCmd = &cobra.Command{
 func registerAIProvider(aiConfig *ai.Config) {
 	// register the AI provider
 	for name, provider := range aiConfig.Providers {
-		// register the Azure OpenAI provider
-		if name == "azopenai" {
-			apiKey := provider["api_key"]
-			apiEndpoint := provider["api_endpoint"]
-			if apiKey == "" || apiEndpoint == "" {
-				// log.InfoStatusEvent(os.Stdout, "register Azure OpenAI provider used by New()")
-				ai.RegisterProvider(azopenai.New())
-			} else {
-				// log.InfoStatusEvent(os.Stdout, "register Azure OpenAI provider used by NewAzureOpenAIProvider()")
-				ai.RegisterProvider(azopenai.NewAzureOpenAIProvider(apiKey, apiEndpoint))
-			}
+		// register LLM provider
+		switch name {
+		case "azopenai":
+			ai.RegisterProvider(azopenai.NewProvider(
+				provider["api_key"],
+				provider["api_endpoint"],
+				provider["deployment_id"],
+				provider["api_version"],
+			))
+			log.InfoStatusEvent(os.Stdout, "register [%s] AI provider", name)
+			// TODO: register other providers
 		}
 		// register the OpenAI provider
 		if name == "openai" {
 			ai.RegisterProvider(openai.NewProvider(provider["api_key"], provider["model"]))
 		}
-
-		// TODO: register other providers
 	}
 }
 
