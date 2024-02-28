@@ -5,7 +5,6 @@ import (
 
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core"
-	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/exp/slog"
 )
 
@@ -33,9 +32,6 @@ var (
 
 	// WithSourceReConnect makes source Connect until success, unless authentication fails.
 	WithSourceReConnect = func() SourceOption { return SourceOption(core.WithReConnect()) }
-
-	// WithTracerProvider sets tracer provider for the Source.
-	WithTracerProvider = func(tp trace.TracerProvider) SourceOption { return SourceOption(core.WithTracerProvider(tp)) }
 )
 
 // Sfn Options.
@@ -54,9 +50,6 @@ var (
 
 	// WithSfnReConnect makes sfn Connect until success, unless authentication fails.
 	WithSfnReConnect = func() SfnOption { return SfnOption(core.WithReConnect()) }
-
-	// WithSfnTracerProvider sets tracer provider for the Sfn.
-	WithSfnTracerProvider = func(tp trace.TracerProvider) SfnOption { return SfnOption(core.WithTracerProvider(tp)) }
 
 	// WithSfnAIFunctionDefinition sets AI function definition for the Sfn.
 	WithSfnAIFunctionDefinition = func(description string, inputModel any) SfnOption {
@@ -108,13 +101,6 @@ var (
 	WithUpstreamOption = func(opts ...ClientOption) ZipperOption {
 		return func(o *zipperOptions) {
 			o.clientOption = opts
-		}
-	}
-
-	// WithZipperTracerProvider sets tracer provider for the zipper.
-	WithZipperTracerProvider = func(tp trace.TracerProvider) ZipperOption {
-		return func(o *zipperOptions) {
-			o.serverOption = append(o.serverOption, core.WithServerTracerProvider(tp))
 		}
 	}
 

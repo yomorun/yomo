@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"reflect"
 	"sync"
 	"sync/atomic"
 
@@ -23,7 +22,6 @@ import (
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
 	"github.com/yomorun/yomo/pkg/trace"
 	"go.opentelemetry.io/otel/attribute"
-	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 // ErrServerClosed is returned by the Server's Serve and ListenAndServe methods after a call to Shutdown or Close.
@@ -60,7 +58,6 @@ type Server struct {
 	connHandler          ConnHandler
 	listener             frame.Listener
 	logger               *slog.Logger
-	tracerProvider       oteltrace.TracerProvider
 	versionNegotiateFunc VersionNegotiateFunc
 }
 
@@ -83,7 +80,6 @@ func NewServer(name string, opts ...ServerOption) *Server {
 		router:               router.Default(),
 		downstreams:          make(map[string]Downstream),
 		logger:               logger,
-		tracerProvider:       options.tracerProvider,
 		codec:                y3codec.Codec(),
 		packetReadWriter:     y3codec.PacketReadWriter(),
 		opts:                 options,
@@ -325,13 +321,13 @@ func (s *Server) routingDataFrame(c *Context) error {
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
 
 	// add trace
-	tracer := trace.NewTracer("Zipper", s.tracerProvider)
+	tracer := trace.NewTracer("Zipper")
 	span := tracer.Start(c.FrameMetadata, "zipper endpoint")
 	defer tracer.End(
 		c.FrameMetadata,
 		span,
 		attribute.Key("routing_data_tag").Int(int(dataFrame.Tag)),
-		attribute.Key("routing_data_Len").Int(dataLength),
+		attribute.Key("routing_data_len").Int(dataLength),
 	)
 
 	mdBytes, err := c.FrameMetadata.Encode()
@@ -505,17 +501,6 @@ func (s *Server) authNames() []string {
 
 // Name returns the name of server.
 func (s *Server) Name() string { return s.name }
-
-// TracerProvider returns the tracer provider of server.
-func (s *Server) TracerProvider() oteltrace.TracerProvider {
-	if s.tracerProvider == nil {
-		return nil
-	}
-	if reflect.ValueOf(s.tracerProvider).IsNil() {
-		return nil
-	}
-	return s.tracerProvider
-}
 
 func composeFrameHandler(handler FrameHandler, middlewares ...FrameMiddleware) FrameHandler {
 	for i := len(middlewares) - 1; i >= 0; i-- {

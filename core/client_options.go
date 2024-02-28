@@ -16,8 +16,6 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/ylog"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/exp/slog"
 )
 
@@ -33,7 +31,6 @@ type clientOptions struct {
 	reconnect       bool
 	nonBlockWrite   bool
 	logger          *slog.Logger
-	tracerProvider  trace.TracerProvider
 	// ai function
 	aiFunctionInputModel  any
 	aiFunctionDescription string
@@ -59,7 +56,6 @@ func defaultClientOption() *clientOptions {
 		tlsConfig:       pkgtls.MustCreateClientTLSConfig(),
 		credential:      auth.NewCredential(""),
 		logger:          ylog.Default(),
-		tracerProvider:  otel.GetTracerProvider(),
 	}
 
 	return opts
@@ -106,13 +102,6 @@ func WithNonBlockWrite() ClientOption {
 func WithLogger(logger *slog.Logger) ClientOption {
 	return func(o *clientOptions) {
 		o.logger = logger
-	}
-}
-
-// WithTracerProvider sets tracer provider for the client.
-func WithTracerProvider(tp trace.TracerProvider) ClientOption {
-	return func(o *clientOptions) {
-		o.tracerProvider = tp
 	}
 }
 

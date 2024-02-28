@@ -35,6 +35,8 @@ var _ Source = &yomoSource{}
 
 // NewSource create a yomo-source
 func NewSource(name, zipperAddr string, opts ...SourceOption) Source {
+	trace.SetTracerProvider(context.Background(), "yomo-source")
+
 	clientOpts := make([]core.ClientOption, len(opts))
 	for k, v := range opts {
 		clientOpts[k] = core.ClientOption(v)
@@ -62,6 +64,7 @@ func (s *yomoSource) Close() error {
 		s.client.Logger.Error("failed to close the source", "err", err)
 		return err
 	}
+	trace.ShutdownTracerProvider()
 	s.client.Logger.Debug("the source is closed")
 	return nil
 }
@@ -75,7 +78,7 @@ func (s *yomoSource) Connect() error {
 func (s *yomoSource) Write(tag uint32, data []byte) error {
 	md := core.NewMetadata(s.client.ClientID(), id.New())
 	// add trace
-	tracer := trace.NewTracer("Source", s.client.TracerProvider())
+	tracer := trace.NewTracer("Source")
 	span := tracer.Start(md, s.name)
 	defer tracer.End(
 		md,
@@ -105,7 +108,7 @@ func (s *yomoSource) WriteWithTarget(tag uint32, data []byte, target string) err
 	}
 	md := core.NewMetadata(s.client.ClientID(), id.New())
 	// add trace
-	tracer := trace.NewTracer("Source", s.client.TracerProvider())
+	tracer := trace.NewTracer("Source")
 	span := tracer.Start(md, s.name)
 	defer tracer.End(
 		md,

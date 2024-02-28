@@ -14,7 +14,6 @@ import (
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/file"
-	"github.com/yomorun/yomo/pkg/trace"
 	"github.com/yomorun/yomo/serverless"
 )
 
@@ -93,7 +92,6 @@ func startSfn(name string, zipperAddr string, credential string, observed []fram
 		name,
 		zipperAddr,
 		yomo.WithSfnCredential(credential),
-		yomo.WithSfnTracerProvider(trace.NewTracerProvider("yomo-sfn")),
 	)
 
 	// init

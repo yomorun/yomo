@@ -9,7 +9,6 @@ import (
 	"github.com/yomorun/yomo"
 	cli "github.com/yomorun/yomo/cli/serverless"
 	pkglog "github.com/yomorun/yomo/pkg/log"
-	"github.com/yomorun/yomo/pkg/trace"
 	"github.com/yomorun/yomo/serverless"
 )
 
@@ -56,7 +55,6 @@ func (s *wasmServerless) Run(verbose bool) error {
 		s.name,
 		s.zipperAddr,
 		yomo.WithSfnCredential(s.credential),
-		yomo.WithSfnTracerProvider(trace.NewTracerProvider("yomo-sfn")),
 	)
 	// init
 	err := sfn.Init(func() error {

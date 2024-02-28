@@ -2,9 +2,7 @@ package trace
 
 import (
 	"context"
-	"log"
 	"os"
-	"sync/atomic"
 
 	"github.com/yomorun/yomo/core/metadata"
 	"go.opentelemetry.io/otel"
@@ -19,32 +17,18 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 )
 
-var serviceName atomic.Value
-
-func init() {
-	defaultServiceName := "yomo-1"
-	serviceName.Store(defaultServiceName)
-
+// SetTracerProvider sets an OpenTelemetry TracerProvider configured to use
+// the Jaeger exporter that will send spans to the provided url. The global
+// TracerProvider will also use a Resource configured with all the information
+// about the application.
+func SetTracerProvider(ctx context.Context, service string) {
 	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 	if endpoint == "" {
 		otel.SetTracerProvider(noop.NewTracerProvider())
-	} else {
-		setTracerProvider(defaultServiceName)
+		return
 	}
-}
-
-// SetServiceName set service name for tracing.
-func SetServiceName(name string) {
-	setTracerProvider(serviceName.Load().(string))
-}
-
-// NewTracerProvider returns an OpenTelemetry TracerProvider configured to use
-// the Jaeger exporter that will send spans to the provided url. The returned
-// TracerProvider will also use a Resource configured with all the information
-// about the application.
-func NewTracerProvider(service string) *tracesdk.TracerProvider {
 	client := otlptracehttp.NewClient()
-	exp, err := otlptrace.New(context.Background(), client)
+	exp, err := otlptrace.New(ctx, client)
 	if err != nil {
 		panic("failed to create trace exporter: " + err.Error())
 	}
@@ -56,7 +40,21 @@ func NewTracerProvider(service string) *tracesdk.TracerProvider {
 			semconv.ServiceNameKey.String(service),
 		)),
 	)
-	return tp
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+}
+
+// ShutdownTracerProvider shutdown the global TracerProvider.
+func ShutdownTracerProvider() {
+	tp := otel.GetTracerProvider()
+	switch i := tp.(type) {
+	case *tracesdk.TracerProvider:
+		ctx, cancel := context.WithTimeout(context.Background(), 5)
+		defer cancel()
+		i.Shutdown(ctx)
+	case *noop.TracerProvider:
+		return
+	}
 }
 
 // Tracer is otel span tracer.
@@ -67,10 +65,8 @@ type Tracer struct {
 }
 
 // NewTracer create tracer instance.
-func NewTracer(name string, tp trace.TracerProvider) *Tracer {
-	if tp == nil {
-		tp = otel.GetTracerProvider()
-	}
+func NewTracer(name string) *Tracer {
+	tp := otel.GetTracerProvider()
 
 	return &Tracer{
 		tracer:         tp.Tracer(name),
@@ -84,7 +80,12 @@ func (t *Tracer) Start(md metadata.M, operation string) trace.Span {
 	_, span := t.tracer.Start(NewContextWithMetadata(md),
 		operation,
 	)
-	// use metadata to propagate the trace info.
+	propagateTrace(md, span)
+	return span
+}
+
+// yomo uses metadata to propagate the trace info.
+func propagateTrace(md metadata.M, span trace.Span) {
 	if span.SpanContext().TraceID().IsValid() {
 		md.Set(metadata.TraceIDKey, span.SpanContext().TraceID().String())
 	}
@@ -92,7 +93,6 @@ func (t *Tracer) Start(md metadata.M, operation string) trace.Span {
 	if span.SpanContext().SpanID().IsValid() {
 		md.Set(metadata.SpanIDKey, span.SpanContext().SpanID().String())
 	}
-	return span
 }
 
 // End finish tracing span.
@@ -132,25 +132,4 @@ func NewContextWithMetadata(md metadata.M) context.Context {
 	spanContext := trace.NewSpanContext(scc)
 
 	return trace.ContextWithSpanContext(context.Background(), spanContext)
-}
-
-func setTracerProvider(service string) {
-	client := otlptracehttp.NewClient()
-	exp, err := otlptrace.New(context.Background(), client)
-	if err != nil {
-		log.Println("init otlp client error, use noop provider, err:", err)
-		otel.SetTracerProvider(noop.NewTracerProvider())
-		return
-	}
-
-	tp := tracesdk.NewTracerProvider(
-		tracesdk.WithBatcher(exp),
-		tracesdk.WithSampler(tracesdk.AlwaysSample()),
-		tracesdk.WithResource(resource.NewWithAttributes(
-			semconv.SchemaURL,
-			semconv.ServiceNameKey.String(service),
-		)),
-	)
-	otel.SetTracerProvider(tp)
-	otel.SetTextMapPropagator(propagation.TraceContext{})
 }

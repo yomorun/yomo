@@ -8,6 +8,7 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/router"
 	"github.com/yomorun/yomo/pkg/config"
+	"github.com/yomorun/yomo/pkg/trace"
 	"golang.org/x/exp/slog"
 )
 
@@ -57,6 +58,8 @@ func NewZipper(
 	name string, router router.Router, vgfn core.VersionNegotiateFunc,
 	meshConfig map[string]config.Mesh, options ...ZipperOption,
 ) (Zipper, error) {
+	trace.SetTracerProvider(context.Background(), "yomo-zipper")
+
 	opts := &zipperOptions{}
 
 	for _, o := range options {

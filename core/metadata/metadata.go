@@ -89,7 +89,6 @@ const (
 	// the keys for tracing.
 	TraceIDKey = "yomo-trace-id"
 	SpanIDKey  = "yomo-span-id"
-	TracedKey  = "yomo-traced"
 
 	// the keys for target system working.
 	TargetKey       = "yomo-target"

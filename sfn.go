@@ -13,7 +13,6 @@ import (
 	"github.com/yomorun/yomo/pkg/id"
 	"github.com/yomorun/yomo/pkg/trace"
 	"go.opentelemetry.io/otel/attribute"
-	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 // StreamFunction defines serverless streaming functions.
@@ -48,6 +47,8 @@ type StreamFunction interface {
 
 // NewStreamFunction create a stream function.
 func NewStreamFunction(name, zipperAddr string, opts ...SfnOption) StreamFunction {
+	trace.SetTracerProvider(context.Background(), "yomo-sfn")
+
 	clientOpts := make([]core.ClientOption, len(opts))
 	for k, v := range opts {
 		clientOpts[k] = core.ClientOption(v)
@@ -129,7 +130,7 @@ func (s *streamFunction) Connect() error {
 		s.cron.AddFunc(s.cronSpec, func() {
 			md := core.NewMetadata(s.client.ClientID(), id.New())
 			// add trace
-			tracer := trace.NewTracer("StreamFunction", s.client.TracerProvider())
+			tracer := trace.NewTracer("StreamFunction")
 			span := tracer.Start(md, s.name)
 			defer tracer.End(md, span, attribute.String("sfn_handler_type", "corn_handler"))
 
@@ -172,7 +173,7 @@ func (s *streamFunction) Connect() error {
 					}
 
 					// add trace
-					tracer := trace.NewTracer("StreamFunction", s.client.TracerProvider())
+					tracer := trace.NewTracer("StreamFunction")
 					span := tracer.Start(md, s.name)
 					defer tracer.End(
 						md,
@@ -226,6 +227,8 @@ func (s *streamFunction) Close() error {
 		}
 	}
 
+	trace.ShutdownTracerProvider()
+
 	return nil
 }
 
@@ -238,8 +241,7 @@ func (s *streamFunction) Wait() {
 // func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
 func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 	if s.fn != nil {
-		tp := s.client.TracerProvider()
-		go func(tp oteltrace.TracerProvider, dataFrame *frame.DataFrame) {
+		go func(dataFrame *frame.DataFrame) {
 			md, err := metadata.Decode(dataFrame.Metadata)
 			if err != nil {
 				s.client.Logger.Error("sfn decode metadata error", "err", err)
@@ -247,7 +249,7 @@ func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 			}
 
 			// add trace
-			tracer := trace.NewTracer("StreamFunction", s.client.TracerProvider())
+			tracer := trace.NewTracer("StreamFunction")
 			span := tracer.Start(md, s.name)
 			defer tracer.End(
 				md,
@@ -259,7 +261,7 @@ func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 
 			serverlessCtx := serverless.NewContext(s.client, dataFrame.Tag, md, dataFrame.Payload)
 			s.fn(serverlessCtx)
-		}(tp, dataFrame)
+		}(dataFrame)
 	} else if s.pfn != nil {
 		data := dataFrame.Payload
 		s.client.Logger.Debug("pipe sfn receive", "data_len", len(data), "data", data)
