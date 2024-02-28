@@ -1,7 +1,6 @@
 package trace
 
 import (
-	"context"
 	"os"
 	"testing"
 	"time"
@@ -12,7 +11,7 @@ import (
 
 func TestTraceProvider(t *testing.T) {
 	os.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:43118")
-	SetTracerProvider(context.Background(), "yomo-test")
+	SetTracerProvider("yomo-test")
 
 	tracer := NewTracer("Source")
 

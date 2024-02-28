@@ -58,8 +58,6 @@ func NewZipper(
 	name string, router router.Router, vgfn core.VersionNegotiateFunc,
 	meshConfig map[string]config.Mesh, options ...ZipperOption,
 ) (Zipper, error) {
-	trace.SetTracerProvider(context.Background(), "yomo-zipper")
-
 	opts := &zipperOptions{}
 
 	for _, o := range options {
@@ -126,3 +124,7 @@ func (d *downstream) ID() string                        { return d.client.Client
 func (d *downstream) LocalName() string                 { return d.localName }
 func (d *downstream) RemoteName() string                { return d.client.Name() }
 func (d *downstream) WriteFrame(f frame.Frame) error    { return d.client.WriteFrame(f) }
+
+func init() {
+	trace.SetTracerProvider("yomo-zipper")
+}

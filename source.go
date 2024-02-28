@@ -35,8 +35,6 @@ var _ Source = &yomoSource{}
 
 // NewSource create a yomo-source
 func NewSource(name, zipperAddr string, opts ...SourceOption) Source {
-	trace.SetTracerProvider(context.Background(), "yomo-source")
-
 	clientOpts := make([]core.ClientOption, len(opts))
 	for k, v := range opts {
 		clientOpts[k] = core.ClientOption(v)
@@ -138,4 +136,8 @@ func (s *yomoSource) WriteWithTarget(tag uint32, data []byte, target string) err
 // SetErrorHandler set the error handler function when server error occurs
 func (s *yomoSource) SetErrorHandler(fn func(err error)) {
 	s.client.SetErrorHandler(fn)
+}
+
+func init() {
+	trace.SetTracerProvider("yomo-source")
 }

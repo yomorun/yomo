@@ -47,8 +47,6 @@ type StreamFunction interface {
 
 // NewStreamFunction create a stream function.
 func NewStreamFunction(name, zipperAddr string, opts ...SfnOption) StreamFunction {
-	trace.SetTracerProvider(context.Background(), "yomo-sfn")
-
 	clientOpts := make([]core.ClientOption, len(opts))
 	for k, v := range opts {
 		clientOpts[k] = core.ClientOption(v)
@@ -279,4 +277,8 @@ func (s *streamFunction) SetErrorHandler(fn func(err error)) {
 // Init will initialize the stream function
 func (s *streamFunction) Init(fn func() error) error {
 	return fn()
+}
+
+func init() {
+	trace.SetTracerProvider("yomo-sfn")
 }

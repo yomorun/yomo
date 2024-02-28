@@ -21,14 +21,14 @@ import (
 // the Jaeger exporter that will send spans to the provided url. The global
 // TracerProvider will also use a Resource configured with all the information
 // about the application.
-func SetTracerProvider(ctx context.Context, service string) {
+func SetTracerProvider(service string) {
 	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 	if endpoint == "" {
 		otel.SetTracerProvider(noop.NewTracerProvider())
 		return
 	}
 	client := otlptracehttp.NewClient()
-	exp, err := otlptrace.New(ctx, client)
+	exp, err := otlptrace.New(context.Background(), client)
 	if err != nil {
 		panic("failed to create trace exporter: " + err.Error())
 	}
