@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/yomorun/yomo/core/metadata"
+	"github.com/yomorun/yomo/core/ylog"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
@@ -17,6 +18,10 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 )
 
+func init() {
+	SetTracerProvider("yomo")
+}
+
 // SetTracerProvider sets an OpenTelemetry TracerProvider configured to use
 // the Jaeger exporter that will send spans to the provided url. The global
 // TracerProvider will also use a Resource configured with all the information
@@ -27,6 +32,8 @@ func SetTracerProvider(service string) {
 		otel.SetTracerProvider(noop.NewTracerProvider())
 		return
 	}
+	ylog.Info("enable tracing", "endpoint", endpoint)
+
 	client := otlptracehttp.NewClient()
 	exp, err := otlptrace.New(context.Background(), client)
 	if err != nil {

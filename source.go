@@ -137,7 +137,3 @@ func (s *yomoSource) WriteWithTarget(tag uint32, data []byte, target string) err
 func (s *yomoSource) SetErrorHandler(fn func(err error)) {
 	s.client.SetErrorHandler(fn)
 }
-
-func init() {
-	trace.SetTracerProvider("yomo-source")
-}

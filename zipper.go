@@ -8,7 +8,6 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/router"
 	"github.com/yomorun/yomo/pkg/config"
-	"github.com/yomorun/yomo/pkg/trace"
 	"golang.org/x/exp/slog"
 )
 
@@ -124,7 +123,3 @@ func (d *downstream) ID() string                        { return d.client.Client
 func (d *downstream) LocalName() string                 { return d.localName }
 func (d *downstream) RemoteName() string                { return d.client.Name() }
 func (d *downstream) WriteFrame(f frame.Frame) error    { return d.client.WriteFrame(f) }
-
-func init() {
-	trace.SetTracerProvider("yomo-zipper")
-}

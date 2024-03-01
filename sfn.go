@@ -278,7 +278,3 @@ func (s *streamFunction) SetErrorHandler(fn func(err error)) {
 func (s *streamFunction) Init(fn func() error) error {
 	return fn()
 }
-
-func init() {
-	trace.SetTracerProvider("yomo-sfn")
-}
