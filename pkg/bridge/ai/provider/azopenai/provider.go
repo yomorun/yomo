@@ -10,6 +10,7 @@ import (
 	"os"
 	"sync"
 
+	// automatically load .env file
 	_ "github.com/joho/godotenv/autoload"
 
 	"github.com/yomorun/yomo/ai"
@@ -76,10 +77,6 @@ type connectedFn struct {
 	connID uint64
 	tag    uint32
 	tc     ai.ToolCall
-}
-
-func init() {
-	fns = sync.Map{}
 }
 
 // NewProvider creates a new AzureOpenAIProvider
@@ -201,7 +198,7 @@ func (p *AzureOpenAIProvider) GetChatCompletions(userInstruction string) (*ai.In
 	// functions may be more than one
 	// slog.Info("tool calls", "calls", calls, "mapTools", mapTools)
 	for _, call := range calls {
-		fns.Range(func(key, value interface{}) bool {
+		fns.Range(func(_, value interface{}) bool {
 			fn := value.(*connectedFn)
 			if fn.tc.Equal(&call) {
 				// Use toolCalls because tool_id is required in the following llm request
