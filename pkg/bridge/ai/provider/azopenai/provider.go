@@ -79,10 +79,6 @@ type connectedFn struct {
 	tc     ai.ToolCall
 }
 
-func init() {
-	fns = sync.Map{}
-}
-
 // NewProvider creates a new AzureOpenAIProvider
 func NewProvider(apiKey string, apiEndpoint string, deploymentID string, apiVersion string) *AzureOpenAIProvider {
 	if apiKey == "" {
