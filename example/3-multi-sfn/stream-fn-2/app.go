@@ -9,7 +9,6 @@ import (
 	"os"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/pkg/trace"
 	"github.com/yomorun/yomo/serverless"
 )
 
@@ -31,24 +30,17 @@ var computePeek = func(_ context.Context, value float32) (float32, error) {
 // main will observe data with SeqID=0x14, and tranform to SeqID=0x15 with Noise value
 // to downstream sfn.
 func main() {
-	// trace
-	tp, shutdown, err := trace.NewTracerProvider("yomo-sfn")
-	if err == nil {
-		log.Println("[fn2] 🛰 trace enabled")
-	}
-	defer shutdown(context.Background())
 	// sfn
 	sfn := yomo.NewStreamFunction(
 		"Noise-2",
 		"localhost:9000",
-		yomo.WithSfnTracerProvider(tp),
 	)
 	sfn.SetObserveDataTags(0x14)
 	defer sfn.Close()
 
 	sfn.SetHandler(handler)
 
-	err = sfn.Connect()
+	err := sfn.Connect()
 	if err != nil {
 		log.Printf("[fn2] connect err=%v", err)
 		os.Exit(1)

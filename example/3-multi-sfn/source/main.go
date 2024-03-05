@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"log"
 	"math/rand"
@@ -9,7 +8,6 @@ import (
 	"time"
 
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/pkg/trace"
 )
 
 type noiseData struct {
@@ -19,19 +17,12 @@ type noiseData struct {
 }
 
 func main() {
-	// trace
-	tp, shutdown, err := trace.NewTracerProvider("yomo-source")
-	if err == nil {
-		log.Println("[source] 🛰 trace enabled")
-	}
-	defer shutdown(context.Background())
 	// connect to YoMo-Zipper.
 	source := yomo.NewSource(
 		"yomo-source",
 		"localhost:9000",
-		yomo.WithTracerProvider(tp),
 	)
-	err = source.Connect()
+	err := source.Connect()
 	if err != nil {
 		log.Printf("❌ Emit the data to YoMo-Zipper failure with err: %v", err)
 		return

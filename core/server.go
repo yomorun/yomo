@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"reflect"
 	"sync"
 	"sync/atomic"
 
@@ -21,7 +20,8 @@ import (
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 	yquic "github.com/yomorun/yomo/pkg/listener/quic"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
-	oteltrace "go.opentelemetry.io/otel/trace"
+	"github.com/yomorun/yomo/pkg/trace"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // ErrServerClosed is returned by the Server's Serve and ListenAndServe methods after a call to Shutdown or Close.
@@ -58,7 +58,6 @@ type Server struct {
 	connHandler          ConnHandler
 	listener             frame.Listener
 	logger               *slog.Logger
-	tracerProvider       oteltrace.TracerProvider
 	versionNegotiateFunc VersionNegotiateFunc
 }
 
@@ -81,7 +80,6 @@ func NewServer(name string, opts ...ServerOption) *Server {
 		router:               router.Default(),
 		downstreams:          make(map[string]Downstream),
 		logger:               logger,
-		tracerProvider:       options.tracerProvider,
 		codec:                y3codec.Codec(),
 		packetReadWriter:     y3codec.PacketReadWriter(),
 		opts:                 options,
@@ -322,10 +320,15 @@ func (s *Server) routingDataFrame(c *Context) error {
 	// counter +1
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
 
-	md, endFn := ZipperTraceMetadata(c.FrameMetadata, s.TracerProvider(), c.Logger)
-	defer endFn()
-
-	c.FrameMetadata = md
+	// add trace
+	tracer := trace.NewTracer("Zipper")
+	span := tracer.Start(c.FrameMetadata, "zipper endpoint")
+	defer tracer.End(
+		c.FrameMetadata,
+		span,
+		attribute.Key("routing_data_tag").Int(int(dataFrame.Tag)),
+		attribute.Key("routing_data_len").Int(dataLength),
+	)
 
 	mdBytes, err := c.FrameMetadata.Encode()
 	if err != nil {
@@ -335,7 +338,7 @@ func (s *Server) routingDataFrame(c *Context) error {
 	dataFrame.Metadata = mdBytes
 
 	// find stream function ids from the router.
-	connIDs := s.router.Route(dataFrame.Tag, md)
+	connIDs := s.router.Route(dataFrame.Tag, c.FrameMetadata)
 	if len(connIDs) == 0 {
 		c.Logger.Info("no observed", "tag", dataFrame.Tag, "data_length", dataLength)
 	}
@@ -498,17 +501,6 @@ func (s *Server) authNames() []string {
 
 // Name returns the name of server.
 func (s *Server) Name() string { return s.name }
-
-// TracerProvider returns the tracer provider of server.
-func (s *Server) TracerProvider() oteltrace.TracerProvider {
-	if s.tracerProvider == nil {
-		return nil
-	}
-	if reflect.ValueOf(s.tracerProvider).IsNil() {
-		return nil
-	}
-	return s.tracerProvider
-}
 
 func composeFrameHandler(handler FrameHandler, middlewares ...FrameMiddleware) FrameHandler {
 	for i := len(middlewares) - 1; i >= 0; i-- {

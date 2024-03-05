@@ -25,7 +25,6 @@ import (
 	"github.com/yomorun/yomo/core/router"
 	pkgconfig "github.com/yomorun/yomo/pkg/config"
 	"github.com/yomorun/yomo/pkg/log"
-	"github.com/yomorun/yomo/pkg/trace"
 
 	"github.com/yomorun/yomo/pkg/bridge/ai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/azopenai"
@@ -51,16 +50,10 @@ var serveCmd = &cobra.Command{
 			return
 		}
 		ctx := context.Background()
-		// trace
-		tp, shutdown, err := trace.NewTracerProvider("yomo-zipper")
-		if err == nil {
-			log.InfoStatusEvent(os.Stdout, "[zipper] 🛰 trace enabled")
-		}
-		defer shutdown(ctx)
 		// listening address.
 		listenAddr := fmt.Sprintf("%s:%d", conf.Host, conf.Port)
 
-		options := []yomo.ZipperOption{yomo.WithZipperTracerProvider(tp)}
+		options := []yomo.ZipperOption{}
 		tokenString := ""
 		if _, ok := conf.Auth["type"]; ok {
 			if tokenString, ok = conf.Auth["token"]; ok {

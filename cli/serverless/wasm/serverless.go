@@ -2,7 +2,6 @@
 package wasm
 
 import (
-	"context"
 	"log"
 	"os"
 	"sync"
@@ -10,7 +9,6 @@ import (
 	"github.com/yomorun/yomo"
 	cli "github.com/yomorun/yomo/cli/serverless"
 	pkglog "github.com/yomorun/yomo/pkg/log"
-	"github.com/yomorun/yomo/pkg/trace"
 	"github.com/yomorun/yomo/serverless"
 )
 
@@ -53,21 +51,13 @@ func (s *wasmServerless) Build(clean bool) error {
 
 // Run the wasm serverless function
 func (s *wasmServerless) Run(verbose bool) error {
-	// trace
-	tp, shutdown, err := trace.NewTracerProvider("yomo-sfn")
-	if err == nil {
-		pkglog.InfoStatusEvent(os.Stdout, "[sfn] 🛰 trace enabled")
-	}
-	defer shutdown(context.Background())
-
 	sfn := yomo.NewStreamFunction(
 		s.name,
 		s.zipperAddr,
 		yomo.WithSfnCredential(s.credential),
-		yomo.WithSfnTracerProvider(tp),
 	)
 	// init
-	err = sfn.Init(func() error {
+	err := sfn.Init(func() error {
 		return s.runtime.RunInit()
 	})
 	if err != nil {

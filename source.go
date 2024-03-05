@@ -6,6 +6,8 @@ import (
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/id"
+	"github.com/yomorun/yomo/pkg/trace"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // Source is responsible for sending data to yomo.
@@ -60,6 +62,7 @@ func (s *yomoSource) Close() error {
 		s.client.Logger.Error("failed to close the source", "err", err)
 		return err
 	}
+	trace.ShutdownTracerProvider()
 	s.client.Logger.Debug("the source is closed")
 	return nil
 }
@@ -71,8 +74,16 @@ func (s *yomoSource) Connect() error {
 
 // Write writes data with specified tag.
 func (s *yomoSource) Write(tag uint32, data []byte) error {
-	md, deferFunc := core.InitialSourceMetadata(s.client.ClientID(), id.New(), s.name, s.client.TracerProvider(), s.client.Logger)
-	defer deferFunc()
+	md := core.NewMetadata(s.client.ClientID(), id.New())
+	// add trace
+	tracer := trace.NewTracer("Source")
+	span := tracer.Start(md, s.name)
+	defer tracer.End(
+		md,
+		span,
+		attribute.Int("send_data_tag", int(tag)),
+		attribute.Int("send_data_len", len(data)),
+	)
 
 	mdBytes, err := md.Encode()
 	// metadata
@@ -93,8 +104,17 @@ func (s *yomoSource) WriteWithTarget(tag uint32, data []byte, target string) err
 	if data == nil {
 		return nil
 	}
-	md, deferFunc := core.InitialSourceMetadata(s.client.ClientID(), id.New(), s.name, s.client.TracerProvider(), s.client.Logger)
-	defer deferFunc()
+	md := core.NewMetadata(s.client.ClientID(), id.New())
+	// add trace
+	tracer := trace.NewTracer("Source")
+	span := tracer.Start(md, s.name)
+	defer tracer.End(
+		md,
+		span,
+		attribute.Int("send_data_tag", int(tag)),
+		attribute.String("send_data_target", target),
+		attribute.Int("send_data_len", len(data)),
+	)
 
 	if target != "" {
 		core.SetMetadataTarget(md, target)

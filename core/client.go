@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 	"runtime"
 	"time"
 
@@ -16,24 +15,22 @@ import (
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 	"github.com/yomorun/yomo/pkg/id"
 	yquic "github.com/yomorun/yomo/pkg/listener/quic"
-	oteltrace "go.opentelemetry.io/otel/trace"
 	"golang.org/x/exp/slog"
 )
 
 // Client is the abstraction of a YoMo-Client. a YoMo-Client can be
 // Source, Upstream Zipper or StreamFunction.
 type Client struct {
-	zipperAddr     string
-	name           string                 // name of the client
-	clientID       string                 // id of the client
-	reconnCounter  uint                   // counter for reconnection
-	clientType     ClientType             // type of the client
-	processor      func(*frame.DataFrame) // function to invoke when data arrived
-	errorfn        func(error)            // function to invoke when error occured
-	wantedTarget   string
-	opts           *clientOptions
-	Logger         *slog.Logger
-	tracerProvider oteltrace.TracerProvider
+	zipperAddr    string
+	name          string                 // name of the client
+	clientID      string                 // id of the client
+	reconnCounter uint                   // counter for reconnection
+	clientType    ClientType             // type of the client
+	processor     func(*frame.DataFrame) // function to invoke when data arrived
+	errorfn       func(error)            // function to invoke when error occured
+	wantedTarget  string
+	opts          *clientOptions
+	Logger        *slog.Logger
 
 	// ctx and ctxCancel manage the lifecycle of client.
 	ctx       context.Context
@@ -68,16 +65,15 @@ func NewClient(appName, zipperAddr string, clientType ClientType, opts ...Client
 	ctx, ctxCancel := context.WithCancelCause(context.Background())
 
 	return &Client{
-		zipperAddr:     zipperAddr,
-		name:           appName,
-		clientID:       clientID,
-		processor:      func(df *frame.DataFrame) { logger.Warn("the processor has not been set") },
-		clientType:     clientType,
-		opts:           option,
-		Logger:         logger,
-		tracerProvider: option.tracerProvider,
-		ctx:            ctx,
-		ctxCancel:      ctxCancel,
+		zipperAddr: zipperAddr,
+		name:       appName,
+		clientID:   clientID,
+		processor:  func(df *frame.DataFrame) { logger.Warn("the processor has not been set") },
+		clientType: clientType,
+		opts:       option,
+		Logger:     logger,
+		ctx:        ctx,
+		ctxCancel:  ctxCancel,
 
 		done: make(chan struct{}),
 		wrCh: make(chan frame.Frame),
@@ -428,15 +424,4 @@ type Downstream interface {
 	RemoteName() string
 	Close() error
 	Connect(context.Context) error
-}
-
-// TracerProvider returns the tracer provider of client.
-func (c *Client) TracerProvider() oteltrace.TracerProvider {
-	if c.tracerProvider == nil {
-		return nil
-	}
-	if reflect.ValueOf(c.tracerProvider).IsNil() {
-		return nil
-	}
-	return c.tracerProvider
 }

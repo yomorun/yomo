@@ -7,7 +7,6 @@ import (
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/ylog"
-	oteltrace "go.opentelemetry.io/otel/trace"
 	"golang.org/x/exp/slog"
 )
 
@@ -33,7 +32,6 @@ type serverOptions struct {
 	tlsConfig        *tls.Config
 	auths            map[string]auth.Authentication
 	logger           *slog.Logger
-	tracerProvider   oteltrace.TracerProvider
 	connMiddlewares  []ConnMiddleware
 	frameMiddlewares []FrameMiddleware
 }
@@ -81,13 +79,6 @@ func WithServerQuicConfig(qc *quic.Config) ServerOption {
 func WithServerLogger(logger *slog.Logger) ServerOption {
 	return func(o *serverOptions) {
 		o.logger = logger
-	}
-}
-
-// WithServerTracerProvider sets tracer provider for the server.
-func WithServerTracerProvider(tp oteltrace.TracerProvider) ServerOption {
-	return func(o *serverOptions) {
-		o.tracerProvider = tp
 	}
 }
 
