@@ -21,8 +21,8 @@ func RegisterFunction(tag uint32, functionDefinition *ai.FunctionDefinition, con
 	return defaultRegister.Load().(*register).RegisterFunction(tag, functionDefinition, connID, md)
 }
 
-func UnregisterFunction(name string, connID uint64) {
-	defaultRegister.Load().(*register).UnregisterFunction(name, connID)
+func UnregisterFunction(connID uint64, md metadata.M) {
+	defaultRegister.Load().(*register).UnregisterFunction(connID, md)
 }
 
 type connectedFn struct {
@@ -34,7 +34,7 @@ type connectedFn struct {
 type Register interface {
 	ListToolCalls(md metadata.M) (map[uint32]ai.ToolCall, error)
 	RegisterFunction(tag uint32, functionDefinition *ai.FunctionDefinition, connID uint64, md metadata.M) error
-	UnregisterFunction(name string, connID uint64)
+	UnregisterFunction(connID uint64, md metadata.M)
 }
 
 type register struct {
@@ -66,6 +66,6 @@ func (r *register) RegisterFunction(tag uint32, functionDefinition *ai.FunctionD
 	return nil
 }
 
-func (r *register) UnregisterFunction(name string, connID uint64) {
+func (r *register) UnregisterFunction(connID uint64, _ metadata.M) {
 	r.underlying.Delete(connID)
 }

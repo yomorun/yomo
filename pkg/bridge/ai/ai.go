@@ -27,9 +27,10 @@ var (
 // ConnMiddleware returns a ConnMiddleware that can be used to intercept the connection.
 func ConnMiddleware(next core.ConnHandler) core.ConnHandler {
 	return func(conn *core.Connection) {
+		connMd := conn.Metadata().Clone()
 		defer func() {
 			next(conn)
-			register.UnregisterFunction(conn.Name(), conn.ID())
+			register.UnregisterFunction(conn.ID(), connMd)
 			conn.Logger.Info("unregister ai function", "name", conn.Name(), "connID", conn.ID())
 		}()
 
@@ -57,7 +58,7 @@ func ConnMiddleware(next core.ConnHandler) core.ConnHandler {
 				conn.Logger.Error("unmarshal function definition", "error", err)
 				return
 			}
-			err = register.RegisterFunction(ff.Tag, &fd, conn.ID(), conn.Metadata().Clone())
+			err = register.RegisterFunction(ff.Tag, &fd, conn.ID(), connMd)
 			if err != nil {
 				conn.Logger.Error("failed to register ai function", "name", ff.Name, "tag", ff.Tag, "err", err)
 				return

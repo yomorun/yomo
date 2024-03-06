@@ -72,21 +72,22 @@ func NewBasicAPIServer(name string, config *Config, zipperAddr string, provider 
 // reducer-sfn.
 func (a *BasicAPIServer) Serve() error {
 	mux := http.NewServeMux()
-
 	// GET /overview
-	mux.Handle("/overview", WithContextService(http.HandlerFunc(HandleOverview), a.serviceCredential, a.ZipperAddr, a.Provider, DefaultExchangeMetadataFunc))
+	mux.HandleFunc("/overview", HandleOverview)
 	// POST /invoke
-	mux.Handle("/invoke", WithContextService(http.HandlerFunc(HandleInvoke), a.serviceCredential, a.ZipperAddr, a.Provider, DefaultExchangeMetadataFunc))
+	mux.HandleFunc("/invoke", HandleInvoke)
+
+	handler := WithContextService(mux, a.serviceCredential, a.ZipperAddr, a.Provider, DefaultExchangeMetadataFunc)
 
 	addr := a.Config.Server.Addr
 	ylog.Info("server is running", "addr", addr, "ai_provider", a.Name)
-	return http.ListenAndServe(addr, mux)
+	return http.ListenAndServe(addr, handler)
 }
 
 // WithContextService adds the service to the request context
 func WithContextService(handler http.Handler, credential string, zipperAddr string, provider LLMProvider, exFn ExchangeMetadataFunc) http.Handler {
 	// create service instance when the api server starts
-	service, err := NewService(credential, zipperAddr, provider, exFn)
+	service, err := LoadOrCreateService(credential, zipperAddr, provider, exFn)
 	if err != nil {
 		log.Fatalln("failed to create service", err)
 	}

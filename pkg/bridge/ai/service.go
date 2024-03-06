@@ -47,8 +47,8 @@ type Service struct {
 	LLMProvider
 }
 
-// NewService creates a new AI service, if the service is already created, it will return the existing one
-func NewService(credential string, zipperAddr string, aiProvider LLMProvider, exFn ExchangeMetadataFunc) (*Service, error) {
+// LoadOrCreateService loads or creates a new AI service, if the service is already created, it will return the existing one
+func LoadOrCreateService(credential string, zipperAddr string, aiProvider LLMProvider, exFn ExchangeMetadataFunc) (*Service, error) {
 	s, ok := services.Get(credential)
 	if ok {
 		return s, nil
