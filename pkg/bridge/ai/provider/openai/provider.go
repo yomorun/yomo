@@ -8,18 +8,17 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"sync"
 
 	// automatically load .env file
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/yomorun/yomo/ai"
+	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
+	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 )
 
 // APIEndpoint is the endpoint for OpenAI
 const APIEndpoint = "https://api.openai.com/v1/chat/completions"
-
-var fns sync.Map
 
 // ChatCompletionMessage describes `messages` for /chat/completions
 type ChatCompletionMessage struct {
@@ -94,16 +93,6 @@ type OpenAIProvider struct {
 	Model string
 }
 
-type connectedFn struct {
-	connID uint64
-	tag    uint32
-	tc     ai.ToolCall
-}
-
-func init() {
-	fns = sync.Map{}
-}
-
 // NewProvider creates a new OpenAIProvider
 func NewProvider(apiKey string, model string) *OpenAIProvider {
 	if apiKey == "" {
@@ -125,9 +114,12 @@ func (p *OpenAIProvider) Name() string {
 }
 
 // GetChatCompletions get chat completions for ai service
-func (p *OpenAIProvider) GetChatCompletions(userInstruction string) (*ai.InvokeResponse, error) {
-	toolCalls, ok := hasToolCalls()
-	if !ok {
+func (p *OpenAIProvider) GetChatCompletions(userInstruction string, md metadata.M) (*ai.InvokeResponse, error) {
+	tcs, err := register.ListToolCalls(md)
+	if err != nil {
+		return nil, err
+	}
+	if len(tcs) == 0 {
 		ylog.Error(ai.ErrNoFunctionCall.Error())
 		return &ai.InvokeResponse{Content: "no toolcalls"}, ai.ErrNoFunctionCall
 	}
@@ -136,6 +128,14 @@ func (p *OpenAIProvider) GetChatCompletions(userInstruction string) (*ai.InvokeR
 	messages := []ChatCompletionMessage{
 		{Role: "system", Content: `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous. If you don't know the answer, stop the conversation by saying "no func call".`},
 		{Role: "user", Content: userInstruction},
+	}
+
+	// prepare tools
+	toolCalls := make([]ai.ToolCall, len(tcs))
+	idx := 0
+	for _, tc := range tcs {
+		toolCalls[idx] = tc
+		idx++
 	}
 
 	body := ReqBody{Model: p.Model, Messages: messages, Tools: toolCalls}
@@ -198,19 +198,17 @@ func (p *OpenAIProvider) GetChatCompletions(userInstruction string) (*ai.InvokeR
 	// functions may be more than one
 	// slog.Info("tool calls", "calls", calls, "mapTools", mapTools)
 	for _, call := range calls {
-		fns.Range(func(_, value any) bool {
-			fn := value.(*connectedFn)
-			if fn.tc.Equal(&call) {
+		for tag, tc := range tcs {
+			if tc.Equal(&call) {
 				// Use toolCalls because tool_id is required in the following llm request
 				if result.ToolCalls == nil {
 					result.ToolCalls = make(map[uint32][]*ai.ToolCall)
 				}
 				// Create a new variable to hold the current call
 				currentCall := call
-				result.ToolCalls[fn.tag] = append(result.ToolCalls[fn.tag], &currentCall)
+				result.ToolCalls[tag] = append(result.ToolCalls[tag], &currentCall)
 			}
-			return true
-		})
+		}
 	}
 
 	// sfn maybe disconnected, so we need to check if there is any function call
@@ -218,67 +216,4 @@ func (p *OpenAIProvider) GetChatCompletions(userInstruction string) (*ai.InvokeR
 		return nil, ai.ErrNoFunctionCall
 	}
 	return result, nil
-}
-
-// RegisterFunction register function
-func (p *OpenAIProvider) RegisterFunction(tag uint32, functionDefinition *ai.FunctionDefinition, connID uint64) error {
-	fns.Store(connID, &connectedFn{
-		connID: connID,
-		tag:    tag,
-		tc: ai.ToolCall{
-			Type:     "function",
-			Function: functionDefinition,
-		},
-	})
-
-	return nil
-}
-
-// UnregisterFunction unregister function
-// Be careful: a function can have multiple instances, remove the offline instance only.
-func (p *OpenAIProvider) UnregisterFunction(_ string, connID uint64) error {
-	fns.Delete(connID)
-	return nil
-}
-
-// ListToolCalls list tool functions
-func (p *OpenAIProvider) ListToolCalls() (map[uint32]ai.ToolCall, error) {
-	tmp := make(map[uint32]ai.ToolCall)
-	fns.Range(func(_, value any) bool {
-		fn := value.(*connectedFn)
-		tmp[fn.tag] = fn.tc
-		return true
-	})
-
-	return tmp, nil
-}
-
-// GetOverview get overview for ai service
-func (p *OpenAIProvider) GetOverview() (*ai.OverviewResponse, error) {
-	result := &ai.OverviewResponse{
-		Functions: make(map[uint32]*ai.FunctionDefinition),
-	}
-	_, ok := hasToolCalls()
-	if !ok {
-		return result, nil
-	}
-
-	fns.Range(func(_, value any) bool {
-		fn := value.(*connectedFn)
-		result.Functions[fn.tag] = fn.tc.Function
-		return true
-	})
-
-	return result, nil
-}
-
-// hasToolCalls check if there are tool calls
-func hasToolCalls() ([]ai.ToolCall, bool) {
-	toolCalls := make([]ai.ToolCall, 0)
-	fns.Range(func(_, value any) bool {
-		fn := value.(*connectedFn)
-		toolCalls = append(toolCalls, fn.tc)
-		return true
-	})
-	return toolCalls, len(toolCalls) > 0
 }

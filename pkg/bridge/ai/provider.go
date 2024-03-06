@@ -4,22 +4,15 @@ import (
 	"sync"
 
 	"github.com/yomorun/yomo/ai"
+	"github.com/yomorun/yomo/core/metadata"
 )
 
 // LLMProvider provides an interface to the llm providers
 type LLMProvider interface {
 	// Name returns the name of the llm provider
 	Name() string
-	// GetOverview returns the overview of the AI functions, key is the tag, value is the function definition
-	GetOverview() (*ai.OverviewResponse, error)
 	// GetChatCompletions returns the chat completions
-	GetChatCompletions(prompt string) (*ai.InvokeResponse, error)
-	// RegisterFunction registers the llm function
-	RegisterFunction(tag uint32, functionDefinition *ai.FunctionDefinition, connID uint64) error
-	// UnregisterFunction unregister the llm function
-	UnregisterFunction(name string, connID uint64) error
-	// ListToolCalls lists the llm tool calls
-	ListToolCalls() (map[uint32]ai.ToolCall, error)
+	GetChatCompletions(prompt string, md metadata.M) (*ai.InvokeResponse, error)
 }
 
 var (

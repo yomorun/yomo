@@ -8,16 +8,15 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"sync"
 
 	// automatically load .env file
 	_ "github.com/joho/godotenv/autoload"
 
 	"github.com/yomorun/yomo/ai"
+	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
+	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 )
-
-var fns sync.Map
 
 // ReqMessage is the message in Request
 type ReqMessage struct {
@@ -73,12 +72,6 @@ type AzureOpenAIProvider struct {
 	APIVersion   string
 }
 
-type connectedFn struct {
-	connID uint64
-	tag    uint32
-	tc     ai.ToolCall
-}
-
 // NewProvider creates a new AzureOpenAIProvider
 func NewProvider(apiKey string, apiEndpoint string, deploymentID string, apiVersion string) *AzureOpenAIProvider {
 	if apiKey == "" {
@@ -107,15 +100,14 @@ func (p *AzureOpenAIProvider) Name() string {
 }
 
 // GetChatCompletions get chat completions for ai service
-func (p *AzureOpenAIProvider) GetChatCompletions(userInstruction string) (*ai.InvokeResponse, error) {
-	isEmpty := true
-	fns.Range(func(_, _ interface{}) bool {
-		isEmpty = false
-		return false
-	})
+func (p *AzureOpenAIProvider) GetChatCompletions(userInstruction string, md metadata.M) (*ai.InvokeResponse, error) {
+	tcs, err := register.ListToolCalls(md)
+	if err != nil {
+		return nil, err
+	}
 
-	if isEmpty {
-		ylog.Error("-----tools is empty")
+	if len(tcs) == 0 {
+		ylog.Error("tools is empty")
 		return &ai.InvokeResponse{Content: "no toolcalls"}, ai.ErrNoFunctionCall
 	}
 
@@ -126,12 +118,12 @@ func (p *AzureOpenAIProvider) GetChatCompletions(userInstruction string) (*ai.In
 	}
 
 	// prepare tools
-	toolCalls := make([]ai.ToolCall, 0)
-	fns.Range(func(_, value interface{}) bool {
-		fn := value.(*connectedFn)
-		toolCalls = append(toolCalls, fn.tc)
-		return true
-	})
+	toolCalls := make([]ai.ToolCall, len(tcs))
+	idx := 0
+	for _, tc := range tcs {
+		toolCalls[idx] = tc
+		idx++
+	}
 
 	body := ReqBody{Messages: messages, Tools: toolCalls}
 
@@ -196,11 +188,9 @@ func (p *AzureOpenAIProvider) GetChatCompletions(userInstruction string) (*ai.In
 	}
 
 	// functions may be more than one
-	// slog.Info("tool calls", "calls", calls, "mapTools", mapTools)
 	for _, call := range calls {
-		fns.Range(func(_, value interface{}) bool {
-			fn := value.(*connectedFn)
-			if fn.tc.Equal(&call) {
+		for tag, tc := range tcs {
+			if tc.Equal(&call) {
 				// Use toolCalls because tool_id is required in the following llm request
 				if result.ToolCalls == nil {
 					result.ToolCalls = make(map[uint32][]*ai.ToolCall)
@@ -209,73 +199,14 @@ func (p *AzureOpenAIProvider) GetChatCompletions(userInstruction string) (*ai.In
 				// push the `call` instead of `call.Function` as describes in
 				// https://cookbook.openai.com/examples/function_calling_with_an_openapi_spec
 				currentCall := call
-				result.ToolCalls[fn.tag] = append(result.ToolCalls[fn.tag], &currentCall)
+				result.ToolCalls[tag] = append(result.ToolCalls[tag], &currentCall)
 			}
-			return true
-		})
+		}
 	}
 
 	// sfn maybe disconnected, so we need to check if there is any function call
 	if len(result.ToolCalls) == 0 {
 		return nil, ai.ErrNoFunctionCall
 	}
-	return result, nil
-}
-
-// RegisterFunction register function
-func (p *AzureOpenAIProvider) RegisterFunction(tag uint32, functionDefinition *ai.FunctionDefinition, connID uint64) error {
-	fns.Store(connID, &connectedFn{
-		connID: connID,
-		tag:    tag,
-		tc: ai.ToolCall{
-			Type:     "function",
-			Function: functionDefinition,
-		},
-	})
-
-	return nil
-}
-
-// UnregisterFunction unregister function
-// Be careful: a function can have multiple instances, remove the offline instance only.
-func (p *AzureOpenAIProvider) UnregisterFunction(_ string, connID uint64) error {
-	fns.Delete(connID)
-	return nil
-}
-
-// ListToolCalls list tool functions
-func (p *AzureOpenAIProvider) ListToolCalls() (map[uint32]ai.ToolCall, error) {
-	tmp := make(map[uint32]ai.ToolCall)
-	fns.Range(func(_, value any) bool {
-		fn := value.(*connectedFn)
-		tmp[fn.tag] = fn.tc
-		return true
-	})
-
-	return tmp, nil
-}
-
-// GetOverview get overview for ai service
-func (p *AzureOpenAIProvider) GetOverview() (*ai.OverviewResponse, error) {
-	isEmpty := true
-	fns.Range(func(_, _ any) bool {
-		isEmpty = false
-		return false
-	})
-
-	result := &ai.OverviewResponse{
-		Functions: make(map[uint32]*ai.FunctionDefinition),
-	}
-
-	if isEmpty {
-		return result, nil
-	}
-
-	fns.Range(func(_, value any) bool {
-		fn := value.(*connectedFn)
-		result.Functions[fn.tag] = fn.tc.Function
-		return true
-	})
-
 	return result, nil
 }

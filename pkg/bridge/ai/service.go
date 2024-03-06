@@ -9,7 +9,9 @@ import (
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/ai"
+	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
+	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 	"github.com/yomorun/yomo/serverless"
 )
 
@@ -38,6 +40,7 @@ type CacheItem struct {
 type Service struct {
 	credential string
 	zipperAddr string
+	md         metadata.M
 	source     yomo.Source
 	reducer    yomo.StreamFunction
 	cache      map[string]*CacheItem
@@ -45,12 +48,12 @@ type Service struct {
 }
 
 // NewService creates a new AI service, if the service is already created, it will return the existing one
-func NewService(credential string, zipperAddr string, aiProvider LLMProvider) (*Service, error) {
+func NewService(credential string, zipperAddr string, aiProvider LLMProvider, exFn ExchangeMetadataFunc) (*Service, error) {
 	s, ok := services.Get(credential)
 	if ok {
 		return s, nil
 	}
-	s, err := newService(credential, zipperAddr, aiProvider)
+	s, err := newService(credential, zipperAddr, aiProvider, exFn)
 	if err != nil {
 		ylog.Error("create AI service failed", "err", err)
 		return nil, err
@@ -59,13 +62,31 @@ func NewService(credential string, zipperAddr string, aiProvider LLMProvider) (*
 	return s, nil
 }
 
-func newService(credential string, zipperAddr string, aiProvider LLMProvider) (*Service, error) {
+// ExchangeMetadataFunc is used to exchange metadata
+type ExchangeMetadataFunc func(credential string) (metadata.M, error)
+
+// DefaultExchangeMetadataFunc is the default ExchangeMetadataFunc, It returns an empty metadata.
+func DefaultExchangeMetadataFunc(credential string) (metadata.M, error) {
+	return metadata.M{}, nil
+}
+
+func newService(credential string, zipperAddr string, aiProvider LLMProvider, exFn ExchangeMetadataFunc) (*Service, error) {
 	s := &Service{
 		credential:  credential,
 		zipperAddr:  zipperAddr,
 		cache:       make(map[string]*CacheItem),
 		LLMProvider: aiProvider,
 	}
+	// metadata
+	if exFn == nil {
+		s.md = metadata.M{}
+	}
+	md, err := exFn(credential)
+	if err != nil {
+		ylog.Error("exchange metadata failed", "err", err)
+		return nil, err
+	}
+	s.md = md
 	// source
 	source, err := s.createSource()
 	if err != nil {
@@ -165,12 +186,22 @@ func (s *Service) createReducer() (yomo.StreamFunction, error) {
 
 // GetOverview returns the overview of the AI functions, key is the tag, value is the function definition
 func (s *Service) GetOverview() (*ai.OverviewResponse, error) {
-	return s.LLMProvider.GetOverview()
+	tcs, err := register.ListToolCalls(s.md)
+	if err != nil {
+		return &ai.OverviewResponse{}, err
+	}
+
+	functions := make(map[uint32]*ai.FunctionDefinition)
+	for tag, tc := range tcs {
+		functions[tag] = tc.Function
+	}
+
+	return &ai.OverviewResponse{Functions: functions}, nil
 }
 
 // GetChatCompletions returns the llm api response
 func (s *Service) GetChatCompletions(prompt string) (*ai.InvokeResponse, error) {
-	return s.LLMProvider.GetChatCompletions(prompt)
+	return s.LLMProvider.GetChatCompletions(prompt, s.md)
 }
 
 // Write writes the data to zipper
