@@ -28,6 +28,7 @@ import (
 
 	"github.com/yomorun/yomo/pkg/bridge/ai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/azopenai"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/gemini"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/openai"
 )
 
@@ -112,26 +113,37 @@ var serveCmd = &cobra.Command{
 	},
 }
 
-func registerAIProvider(aiConfig *ai.Config) {
-	// register the AI provider
-	for name, provider := range aiConfig.Providers {
-		// register LLM provider
-		switch name {
-		case "azopenai":
-			ai.RegisterProvider(azopenai.NewProvider(
-				provider["api_key"],
-				provider["api_endpoint"],
-				provider["deployment_id"],
-				provider["api_version"],
-			))
-			log.InfoStatusEvent(os.Stdout, "register [%s] AI provider", name)
-			// TODO: register other providers
-		}
-		// register the OpenAI provider
-		if name == "openai" {
-			ai.RegisterProvider(openai.NewProvider(provider["api_key"], provider["model"]))
-		}
-	}
+func registerAIProvider(aiConfig *ai.Config) error {
+    for name, provider := range aiConfig.Providers {
+        switch name {
+        case "azopenai":
+            err := ai.RegisterProvider(azopenai.NewProvider(
+                provider["api_key"],
+                provider["api_endpoint"],
+                provider["deployment_id"],
+                provider["api_version"],
+            ))
+            if err != nil {
+                return fmt.Errorf("failed to register azopenai provider: %w", err)
+            }
+            log.InfoStatusEvent(os.Stdout, "registered [%s] AI provider", name)
+        case "gemini":
+            err := ai.RegisterProvider(gemini.NewProvider(provider["api_key"]))
+            if err != nil {
+                return fmt.Errorf("failed to register gemini provider: %w", err)
+            }
+            log.InfoStatusEvent(os.Stdout, "registered [%s] AI provider", name)
+        case "openai":
+            err := ai.RegisterProvider(openai.NewProvider(provider["api_key"], provider["model"]))
+            if err != nil {
+                return fmt.Errorf("failed to register openai provider: %w", err)
+            }
+            log.InfoStatusEvent(os.Stdout, "registered [%s] AI provider", name)
+        default:
+            log.Warnf("unknown provider: %s", name)
+        }
+    }
+    return nil
 }
 
 func init() {
