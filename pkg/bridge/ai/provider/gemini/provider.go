@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/yomorun/yomo/ai"
+	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
 	baseProvider "github.com/yomorun/yomo/pkg/bridge/ai"
 )
@@ -40,7 +41,7 @@ func (p *GeminiProvider) Name() string {
 }
 
 // GetChatCompletions get chat completions for ai service
-func (p *GeminiProvider) GetChatCompletions(userInstruction string) (*ai.InvokeResponse, error) {
+func (p *GeminiProvider) GetChatCompletions(userInstruction string, _ metadata.M) (*ai.InvokeResponse, error) {
 	// check if there are any tool calls attached, if no, return error
 	isEmpty := true
 	fns.Range(func(_, _ interface{}) bool {

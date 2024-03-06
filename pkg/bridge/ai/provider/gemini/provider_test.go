@@ -246,7 +246,7 @@ func TestGeminiProvider_GetChatCompletions_NoFunctions(t *testing.T) {
 
 	provider := &GeminiProvider{}
 
-	result, err := provider.GetChatCompletions("test")
+	result, err := provider.GetChatCompletions("test", nil)
 
 	if !errors.Is(err, ai.ErrNoFunctionCall) {
 		t.Errorf("GetChatCompletions() error = %v, wantErr %v", err, ai.ErrNoFunctionCall)
