@@ -117,32 +117,21 @@ func registerAIProvider(aiConfig *ai.Config) error {
     for name, provider := range aiConfig.Providers {
         switch name {
         case "azopenai":
-            err := ai.RegisterProvider(azopenai.NewProvider(
+            ai.RegisterProvider(azopenai.NewProvider(
                 provider["api_key"],
                 provider["api_endpoint"],
                 provider["deployment_id"],
                 provider["api_version"],
             ))
-            if err != nil {
-                return fmt.Errorf("failed to register azopenai provider: %w", err)
-            }
-            log.InfoStatusEvent(os.Stdout, "registered [%s] AI provider", name)
         case "gemini":
-            err := ai.RegisterProvider(gemini.NewProvider(provider["api_key"]))
-            if err != nil {
-                return fmt.Errorf("failed to register gemini provider: %w", err)
-            }
-            log.InfoStatusEvent(os.Stdout, "registered [%s] AI provider", name)
+            ai.RegisterProvider(gemini.NewProvider(provider["api_key"]))
         case "openai":
-            err := ai.RegisterProvider(openai.NewProvider(provider["api_key"], provider["model"]))
-            if err != nil {
-                return fmt.Errorf("failed to register openai provider: %w", err)
-            }
-            log.InfoStatusEvent(os.Stdout, "registered [%s] AI provider", name)
+            ai.RegisterProvider(openai.NewProvider(provider["api_key"], provider["model"]))
         default:
-            log.Warnf("unknown provider: %s", name)
+            log.WarningStatusEvent(os.Stdout, "unknown provider: %s", name)
         }
     }
+    log.InfoStatusEvent(os.Stdout, "registered [%s] AI provider", name)
     return nil
 }
 
