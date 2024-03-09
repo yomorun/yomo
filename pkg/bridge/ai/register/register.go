@@ -2,27 +2,36 @@ package register
 
 import (
 	"sync"
-	"sync/atomic"
 
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/metadata"
 )
 
-var defaultRegister atomic.Value
+var (
+	// mu protects defaultRegister
+	mu              sync.Mutex
+	defaultRegister Register
+)
 
-func init()                  { SetRegister(&register{}) }
-func SetRegister(r Register) { defaultRegister.Store(r) }
+func init() {
+	SetRegister(&register{})
+}
+func SetRegister(r Register) {
+	mu.Lock()
+	defer mu.Unlock()
+	defaultRegister = r
+}
 
 func ListToolCalls(md metadata.M) (map[uint32]ai.ToolCall, error) {
-	return defaultRegister.Load().(*register).ListToolCalls(md)
+	return defaultRegister.ListToolCalls(md)
 }
 
 func RegisterFunction(tag uint32, functionDefinition *ai.FunctionDefinition, connID uint64, md metadata.M) error {
-	return defaultRegister.Load().(*register).RegisterFunction(tag, functionDefinition, connID, md)
+	return defaultRegister.RegisterFunction(tag, functionDefinition, connID, md)
 }
 
 func UnregisterFunction(connID uint64, md metadata.M) {
-	defaultRegister.Load().(*register).UnregisterFunction(connID, md)
+	defaultRegister.UnregisterFunction(connID, md)
 }
 
 type connectedFn struct {
