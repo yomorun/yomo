@@ -7,33 +7,31 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"strings"
-	"sync"
 
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
-	baseProvider "github.com/yomorun/yomo/pkg/bridge/ai"
+	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 )
-
-var fns sync.Map
-
-type connectedFn struct {
-	connID uint64
-	tag    uint32
-	fd     *FunctionDeclaration
-}
-
-func init() {
-	fns = sync.Map{}
-}
 
 // GeminiProvider is the provider for Gemini
 type GeminiProvider struct {
 	APIKey string
 }
 
-var _ = baseProvider.LLMProvider(&GeminiProvider{})
+// NewProvider creates a new GeminiProvider
+func NewProvider(apiKey string) *GeminiProvider {
+	if apiKey == "" {
+		apiKey = os.Getenv("GEMINI_API_KEY")
+	}
+	p := &GeminiProvider{
+		APIKey: apiKey,
+	}
+	apiURL := p.getApiUrl()
+	ylog.Debug("new gemini provider", "api_endpoint", apiURL)
+
+	return p
+}
 
 // Name returns the name of the provider
 func (p *GeminiProvider) Name() string {
@@ -41,21 +39,18 @@ func (p *GeminiProvider) Name() string {
 }
 
 // GetChatCompletions get chat completions for ai service
-func (p *GeminiProvider) GetChatCompletions(userInstruction string, _ metadata.M) (*ai.InvokeResponse, error) {
-	// check if there are any tool calls attached, if no, return error
-	isEmpty := true
-	fns.Range(func(_, _ interface{}) bool {
-		isEmpty = false
-		return false
-	})
-
-	if isEmpty {
-		ylog.Error("-----tools is empty")
-		return &ai.InvokeResponse{Content: "no toolCalls"}, ai.ErrNoFunctionCall
+func (p *GeminiProvider) GetChatCompletions(userInstruction string, md metadata.M) (*ai.InvokeResponse, error) {
+	tcs, err := register.ListToolCalls(md)
+	if err != nil {
+		return nil, err
+	}
+	if len(tcs) == 0 {
+		ylog.Error(ai.ErrNoFunctionCall.Error())
+		return &ai.InvokeResponse{Content: "no toolcalls"}, ai.ErrNoFunctionCall
 	}
 
 	// prepare request body
-	body := p.prepareRequestBody(userInstruction)
+	body, fds := p.prepareRequest(userInstruction, tcs)
 
 	// request API
 	jsonBody, err := json.Marshal(body)
@@ -115,83 +110,17 @@ func (p *GeminiProvider) GetChatCompletions(userInstruction string, _ metadata.M
 	}
 
 	result.ToolCalls = make(map[uint32][]*ai.ToolCall)
-	for _, call := range calls {
-		ylog.Debug("++call", "call", call.Function.Name, "call", call.Function.Arguments)
-		fns.Range(func(_, value interface{}) bool {
-			fn := value.(*connectedFn)
-			ylog.Debug("-->", "call.Function.Name", call.Function.Name, "fns.fd.Name", fn.fd.Name)
-			if call.Function.Name == fn.fd.Name {
-				ylog.Debug("-----> add function", "name", fn.fd.Name, "tag", fn.tag)
-				currentCall := call
-				result.ToolCalls[fn.tag] = append(result.ToolCalls[fn.tag], &currentCall)
+	for tag, tc := range tcs {
+		for _, fd := range fds {
+			if fd.Name == tc.Function.Name {
+				ylog.Debug("-----> add function", "name", fd.Name, "tag", tag)
+				currentCall := tc
+				result.ToolCalls[tag] = append(result.ToolCalls[tag], &currentCall)
 			}
-			return true
-		})
+		}
 	}
 
 	// messages
-	return result, nil
-}
-
-// RegisterFunction registers the llm function
-func (p *GeminiProvider) RegisterFunction(tag uint32, functionDefinition *ai.FunctionDefinition, connID uint64) error {
-	// replace "-" in functionDefinition.Name to "_" as gemini does not support "-"
-	functionDefinition.Name = strings.Replace(functionDefinition.Name, "-", "_", -1)
-
-	fns.Store(connID, &connectedFn{
-		connID: connID,
-		tag:    tag,
-		fd:     convertStandardToFunctionDeclaration(functionDefinition),
-	})
-
-	return nil
-}
-
-// UnregisterFunction unregister the llm function
-func (p *GeminiProvider) UnregisterFunction(name string, connID uint64) error {
-	fns.Delete(connID)
-	return nil
-}
-
-// ListToolCalls lists the llm tool calls
-func (p *GeminiProvider) ListToolCalls() (map[uint32]ai.ToolCall, error) {
-	result := make(map[uint32]ai.ToolCall)
-
-	tmp := make(map[uint32]*FunctionDeclaration)
-	fns.Range(func(_, value any) bool {
-		fn := value.(*connectedFn)
-		tmp[fn.tag] = fn.fd
-		result[fn.tag] = ai.ToolCall{
-			Function: convertFunctionDeclarationToStandard(fn.fd),
-		}
-		return true
-	})
-
-	return result, nil
-}
-
-// GetOverview returns the overview of the AI functions, key is the tag, value is the function definition
-func (p *GeminiProvider) GetOverview() (*ai.OverviewResponse, error) {
-	isEmpty := true
-	fns.Range(func(_, _ any) bool {
-		isEmpty = false
-		return false
-	})
-
-	result := &ai.OverviewResponse{
-		Functions: make(map[uint32]*ai.FunctionDefinition),
-	}
-
-	if isEmpty {
-		return result, nil
-	}
-
-	fns.Range(func(_, value any) bool {
-		fn := value.(*connectedFn)
-		result.Functions[fn.tag] = convertFunctionDeclarationToStandard(fn.fd)
-		return true
-	})
-
 	return result, nil
 }
 
@@ -201,7 +130,7 @@ func (p *GeminiProvider) getApiUrl() string {
 }
 
 // prepareRequestBody prepares the request body for the API
-func (p *GeminiProvider) prepareRequestBody(userInstruction string) *RequestBody {
+func (p *GeminiProvider) prepareRequest(userInstruction string, tcs map[uint32]ai.ToolCall) (*RequestBody, []*FunctionDeclaration) {
 	body := &RequestBody{}
 
 	// prepare contents
@@ -209,12 +138,12 @@ func (p *GeminiProvider) prepareRequestBody(userInstruction string) *RequestBody
 	body.Contents.Parts.Text = userInstruction
 
 	// prepare tools
-	toolCalls := make([]*FunctionDeclaration, 0)
-	fns.Range(func(_, value interface{}) bool {
-		fn := value.(*connectedFn)
-		toolCalls = append(toolCalls, fn.fd)
-		return true
-	})
+	toolCalls := make([]*FunctionDeclaration, len(tcs))
+	idx := 0
+	for _, tc := range tcs {
+		toolCalls[idx] = convertStandardToFunctionDeclaration(tc.Function)
+		idx++
+	}
 	body.Tools = make([]Tool, 0)
 	if len(toolCalls) > 0 {
 		body.Tools = append(body.Tools, Tool{
@@ -222,19 +151,5 @@ func (p *GeminiProvider) prepareRequestBody(userInstruction string) *RequestBody
 		})
 	}
 
-	return body
-}
-
-// NewProvider creates a new GeminiProvider
-func NewProvider(apiKey string) *GeminiProvider {
-	if apiKey == "" {
-		apiKey = os.Getenv("GEMINI_API_KEY")
-	}
-	p := &GeminiProvider{
-		APIKey: apiKey,
-	}
-	apiURL := p.getApiUrl()
-	ylog.Debug("new gemini provider", "api_endpoint", apiURL)
-
-	return p
+	return body, toolCalls
 }
