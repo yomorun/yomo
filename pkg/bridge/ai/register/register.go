@@ -16,20 +16,25 @@ var (
 func init() {
 	SetRegister(&register{})
 }
+
+// SetRegister sets the default register
 func SetRegister(r Register) {
 	mu.Lock()
 	defer mu.Unlock()
 	defaultRegister = r
 }
 
+// ListToolCalls returns the list of tool calls
 func ListToolCalls(md metadata.M) (map[uint32]ai.ToolCall, error) {
 	return defaultRegister.ListToolCalls(md)
 }
 
+// RegisterFunction registers a function calling function
 func RegisterFunction(tag uint32, functionDefinition *ai.FunctionDefinition, connID uint64, md metadata.M) error {
 	return defaultRegister.RegisterFunction(tag, functionDefinition, connID, md)
 }
 
+// UnregisterFunction unregisters a function calling function
 func UnregisterFunction(connID uint64, md metadata.M) {
 	defaultRegister.UnregisterFunction(connID, md)
 }
@@ -40,9 +45,13 @@ type connectedFn struct {
 	toolCalls ai.ToolCall
 }
 
+// Register provides an stateful register for registering and unregistering functions
 type Register interface {
+	// ListToolCalls returns the list of tool calls
 	ListToolCalls(md metadata.M) (map[uint32]ai.ToolCall, error)
+	// RegisterFunction registers a function calling function
 	RegisterFunction(tag uint32, functionDefinition *ai.FunctionDefinition, connID uint64, md metadata.M) error
+	// UnregisterFunction unregisters a function calling function
 	UnregisterFunction(connID uint64, md metadata.M)
 }
 
