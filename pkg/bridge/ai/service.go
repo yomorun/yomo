@@ -55,7 +55,6 @@ func LoadOrCreateService(credential string, zipperAddr string, aiProvider LLMPro
 	}
 	s, err := newService(credential, zipperAddr, aiProvider, exFn)
 	if err != nil {
-		ylog.Error("create AI service failed", "err", err)
 		return nil, err
 	}
 	services.Add(credential, s)
@@ -80,13 +79,15 @@ func newService(credential string, zipperAddr string, aiProvider LLMProvider, ex
 	// metadata
 	if exFn == nil {
 		s.md = metadata.M{}
+	} else {
+		md, err := exFn(credential)
+		if err != nil {
+			ylog.Error("exchange metadata failed", "err", err)
+			return nil, err
+		}
+		s.md = md
 	}
-	md, err := exFn(credential)
-	if err != nil {
-		ylog.Error("exchange metadata failed", "err", err)
-		return nil, err
-	}
-	s.md = md
+
 	// source
 	source, err := s.createSource()
 	if err != nil {

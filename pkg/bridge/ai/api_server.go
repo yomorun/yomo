@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"sync"
@@ -89,7 +88,10 @@ func WithContextService(handler http.Handler, credential string, zipperAddr stri
 	// create service instance when the api server starts
 	service, err := LoadOrCreateService(credential, zipperAddr, provider, exFn)
 	if err != nil {
-		log.Fatalln("failed to create service", err)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		})
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
