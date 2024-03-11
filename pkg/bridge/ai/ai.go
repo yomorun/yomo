@@ -11,89 +11,59 @@ import (
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/ylog"
+	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 	"gopkg.in/yaml.v3"
 )
 
 var (
 	// ErrNotExistsProvider is the error when the provider does not exist
 	ErrNotExistsProvider = errors.New("llm provider does not exist")
-	// ErrNotImplementedService is the error when the service is not implemented
-	ErrNotImplementedService = errors.New("llm service is not implemented")
 	// ErrConfigNotFound is the error when the ai config was not found
 	ErrConfigNotFound = errors.New("ai config was not found")
 	// ErrConfigFormatError is the error when the ai config format is incorrect
 	ErrConfigFormatError = errors.New("ai config format is incorrect")
 )
 
-// ======================= Package Functions =======================
-
-// RegisterFunction registers the tool function
-func RegisterFunction(tag uint32, functionDefinition []byte, connID uint64) error {
-	provider, err := GetDefaultProvider()
-	if err != nil {
-		return err
-	}
-	fd := ai.FunctionDefinition{}
-	err = json.Unmarshal(functionDefinition, &fd)
-	if err != nil {
-		ylog.Error("unmarshal function definition", "error", err)
-		return err
-	}
-	return provider.RegisterFunction(tag, &fd, connID)
-}
-
-// UnregisterFunction unregister the tool function
-func UnregisterFunction(name string, connID uint64) error {
-	provider, err := GetDefaultProvider()
-	if err != nil {
-		return err
-	}
-	return provider.UnregisterFunction(name, connID)
-}
-
-// ListToolCalls lists the AI tool calls
-func ListToolCalls() (map[uint32]ai.ToolCall, error) {
-	provider, err := GetDefaultProvider()
-	if err != nil {
-		return nil, err
-	}
-	return provider.ListToolCalls()
-}
-
 // ConnMiddleware returns a ConnMiddleware that can be used to intercept the connection.
 func ConnMiddleware(next core.ConnHandler) core.ConnHandler {
 	return func(conn *core.Connection) {
+		connMd := conn.Metadata().Clone()
+		defer func() {
+			next(conn)
+			register.UnregisterFunction(conn.ID(), connMd)
+			conn.Logger.Info("unregister ai function", "name", conn.Name(), "connID", conn.ID())
+		}()
+
 		// check sfn type and is ai function
 		if conn.ClientType() != core.ClientTypeStreamFunction {
-			next(conn)
 			return
 		}
-		for {
-			f, err := conn.FrameConn().ReadFrame()
-			// unregister ai function on any error
+		f, err := conn.FrameConn().ReadFrame()
+		// unregister ai function on any error
+		if err != nil {
+			conn.Logger.Error("failed to read frame on ai middleware", "err", err, "type", fmt.Sprintf("%T", err))
+			conn.Logger.Info("error type", "type", fmt.Sprintf("%T", err))
+			return
+		}
+		if ff, ok := f.(*frame.AIRegisterFunctionFrame); ok {
+			err := conn.FrameConn().WriteFrame(&frame.AIRegisterFunctionAckFrame{Name: ff.Name, Tag: ff.Tag})
 			if err != nil {
-				conn.Logger.Error("failed to read frame on ai middleware", "err", err)
-				conn.Logger.Info("error type", "type", fmt.Sprintf("%T", err))
-				name := conn.Name()
-				conn.Logger.Info("unregister ai function", "name", name, "connID", conn.ID())
-				UnregisterFunction(name, conn.ID())
+				conn.Logger.Error("failed to write ai RegisterFunctionAckFrame", "name", ff.Name, "tag", ff.Tag, "err", err)
 				return
 			}
-			if ff, ok := f.(*frame.AIRegisterFunctionFrame); ok {
-				err := conn.FrameConn().WriteFrame(&frame.AIRegisterFunctionAckFrame{Name: ff.Name, Tag: ff.Tag})
-				if err != nil {
-					conn.Logger.Error("failed to write ai RegisterFunctionAckFrame", "name", ff.Name, "tag", ff.Tag, "err", err)
-					return
-				}
-				// register ai function
-				err = RegisterFunction(ff.Tag, ff.Definition, conn.ID())
-				if err != nil {
-					conn.Logger.Error("failed to register ai function", "name", ff.Name, "tag", ff.Tag, "err", err)
-					return
-				}
-				conn.Logger.Info("register ai function success", "name", ff.Name, "tag", ff.Tag, "definition", string(ff.Definition))
+			// register ai function
+			fd := ai.FunctionDefinition{}
+			err = json.Unmarshal(ff.Definition, &fd)
+			if err != nil {
+				conn.Logger.Error("unmarshal function definition", "error", err)
+				return
 			}
-			next(conn)
+			err = register.RegisterFunction(ff.Tag, &fd, conn.ID(), connMd)
+			if err != nil {
+				conn.Logger.Error("failed to register ai function", "name", ff.Name, "tag", ff.Tag, "err", err)
+				return
+			}
+			conn.Logger.Info("register ai function success", "name", ff.Name, "tag", ff.Tag, "definition", string(ff.Definition))
 		}
 	}
 }

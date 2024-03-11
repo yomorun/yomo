@@ -114,25 +114,25 @@ var serveCmd = &cobra.Command{
 }
 
 func registerAIProvider(aiConfig *ai.Config) error {
-    for name, provider := range aiConfig.Providers {
-        switch name {
-        case "azopenai":
-            ai.RegisterProvider(azopenai.NewProvider(
-                provider["api_key"],
-                provider["api_endpoint"],
-                provider["deployment_id"],
-                provider["api_version"],
-            ))
-        case "gemini":
-            ai.RegisterProvider(gemini.NewProvider(provider["api_key"]))
-        case "openai":
-            ai.RegisterProvider(openai.NewProvider(provider["api_key"], provider["model"]))
-        default:
-            log.WarningStatusEvent(os.Stdout, "unknown provider: %s", name)
-        }
-    }
-    log.InfoStatusEvent(os.Stdout, "registered [%s] AI provider", name)
-    return nil
+	for name, provider := range aiConfig.Providers {
+		switch name {
+		case "azopenai":
+			ai.RegisterProvider(azopenai.NewProvider(
+				provider["api_key"],
+				provider["api_endpoint"],
+				provider["deployment_id"],
+				provider["api_version"],
+			))
+		case "gemini":
+			ai.RegisterProvider(gemini.NewProvider(provider["api_key"]))
+		case "openai":
+			ai.RegisterProvider(openai.NewProvider(provider["api_key"], provider["model"]))
+		default:
+			log.WarningStatusEvent(os.Stdout, "unknown provider: %s", name)
+		}
+	}
+	log.InfoStatusEvent(os.Stdout, "registered [%s] AI provider", name)
+	return nil
 }
 
 func init() {
