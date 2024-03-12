@@ -25,3 +25,11 @@ bridge:
 
       gemini:
         api_key:
+
+      cloudflare_azure:
+        endpoint: 
+        api_key: 
+        resource: 
+        deployment_id: 
+        api_version: 
+

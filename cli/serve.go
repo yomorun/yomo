@@ -28,6 +28,7 @@ import (
 
 	"github.com/yomorun/yomo/pkg/bridge/ai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/azopenai"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cfazure"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/gemini"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/openai"
 )
@@ -127,11 +128,20 @@ func registerAIProvider(aiConfig *ai.Config) error {
 			ai.RegisterProvider(gemini.NewProvider(provider["api_key"]))
 		case "openai":
 			ai.RegisterProvider(openai.NewProvider(provider["api_key"], provider["model"]))
+		case "cloudflare_azure":
+			ai.RegisterProvider(cfazure.NewProvider(
+				provider["endpoint"],
+				provider["api_key"],
+				provider["resource"],
+				provider["deployment_id"],
+				provider["api_version"],
+			))
 		default:
 			log.WarningStatusEvent(os.Stdout, "unknown provider: %s", name)
 		}
 	}
-	log.InfoStatusEvent(os.Stdout, "registered [%s] AI provider", name)
+
+	log.InfoStatusEvent(os.Stdout, "registered [%d] AI provider", len(ai.ListProviders()))
 	return nil
 }
 

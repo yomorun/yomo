@@ -57,8 +57,10 @@ bridge:
 
     providers:
       azopenai:
-        api_key: <YOUR_AZURE_OPENAI_API_KEY>
-        api_endpoint: <YOUR_AZURE_OPENAI_ENDPOINT>
+        api_endpoint: https://<RESOURCE>.openai.azure.com
+        deployment_id: <DEPLOYMENT_ID>
+        api_key: <API_KEY>
+        api_version: <API_VERSION>
 
       openai:
         api_key: <OPENAI_API_KEY>
@@ -67,8 +69,12 @@ bridge:
       gemini:
         api_key: <GEMINI_API_KEY>
 
-      huggingface:
-        model:
+      cloudflare_azure:
+        endpoint: https://gateway.ai.cloudflare.com/v1/<CF_GATEWAY_ID>/<CF_GATEWAY_NAME>
+        api_key: <AZURE_API_KEY>
+        resource: <AZURE_OPENAI_RESOURCE>
+        deployment_id: <AZURE_OPENAI_DEPLOYMENT_ID>
+        api_version: 2023-12-01-preview
 ```
 
 Start the server:
