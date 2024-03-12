@@ -2,12 +2,12 @@ package core
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
-	"golang.org/x/exp/slog"
 )
 
 var ctxPool sync.Pool

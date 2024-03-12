@@ -2,10 +2,10 @@ package yomo
 
 import (
 	"crypto/tls"
+	"log/slog"
 
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core"
-	"golang.org/x/exp/slog"
 )
 
 type (

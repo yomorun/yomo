@@ -1,11 +1,11 @@
 package core
 
 import (
+	"log/slog"
 	"sync/atomic"
 
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
-	"golang.org/x/exp/slog"
 )
 
 var increment uint64

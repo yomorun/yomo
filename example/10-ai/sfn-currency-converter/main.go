@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 
@@ -12,7 +13,6 @@ import (
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/serverless"
-	"golang.org/x/exp/slog"
 )
 
 type Parameter struct {
@@ -113,7 +113,7 @@ type Rates struct {
 	Rates map[string]float64 `json:"rates"`
 }
 
-func fetchRate(sourceCurrency string, targetCurrency string, amount float64) (float64, error) {
+func fetchRate(sourceCurrency string, targetCurrency string, _ float64) (float64, error) {
 	resp, err := http.Get(fmt.Sprintf("https://openexchangerates.org/api/latest.json?app_id=%s&base=%s&symbols=%s", os.Getenv("API_KEY"), sourceCurrency, targetCurrency))
 	if err != nil {
 		return 0, err

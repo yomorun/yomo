@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -16,7 +17,6 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/ylog"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
-	"golang.org/x/exp/slog"
 )
 
 // ClientOption YoMo client options

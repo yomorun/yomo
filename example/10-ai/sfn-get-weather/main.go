@@ -2,13 +2,13 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"os"
 
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/serverless"
-	"golang.org/x/exp/slog"
 )
 
 var (

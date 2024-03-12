@@ -2,12 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"log/slog"
 	"math/rand"
 	"os"
 	"time"
 
 	"github.com/yomorun/yomo"
-	"golang.org/x/exp/slog"
 )
 
 // custom logger
