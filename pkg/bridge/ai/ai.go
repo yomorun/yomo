@@ -70,6 +70,7 @@ func ConnMiddleware(next core.ConnHandler) core.ConnHandler {
 
 // Config is the configuration of AI bridge.
 // The configuration looks like:
+//
 // bridge:
 //
 //	ai:
@@ -77,19 +78,24 @@ func ConnMiddleware(next core.ConnHandler) core.ConnHandler {
 //			host: http://localhost
 //			port: 8000
 //			credential: token:<CREDENTIAL>
-//			provider: azopenai
-//
+//			provider: openai
 //		providers:
 //			azopenai:
-//				api_key:
-//				api_endpoint:
-//
+//				api_endpoint: https://<RESOURCE>.openai.azure.com
+//				deployment_id: <DEPLOYMENT_ID>
+//				api_key: <API_KEY>
+//				api_version: <API_VERSION>
 //			openai:
 //				api_key:
 //				api_endpoint:
-//
-//			huggingface:
-//				model:
+//			gemini:
+//				api_key:
+//			cloudflare_azure:
+//				endpoint: https://gateway.ai.cloudflare.com/v1/<CF_GATEWAY_ID>/<CF_GATEWAY_NAME>
+//				api_key: <AZURE_API_KEY>
+//				resource: <AZURE_OPENAI_RESOURCE>
+//				deployment_id: <AZURE_OPENAI_DEPLOYMENT_ID>
+//				api_version: <AZURE_OPENAI_API_VERSION>
 type Config struct {
 	Server    Server              `yaml:"server"`    // Server is the configuration of the BasicAPIServer
 	Providers map[string]Provider `yaml:"providers"` // Providers is the configuration of llm provider
