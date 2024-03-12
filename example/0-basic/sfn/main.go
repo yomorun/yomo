@@ -2,11 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"log/slog"
 	"os"
 
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/serverless"
-	"golang.org/x/exp/slog"
 )
 
 type noiseData struct {

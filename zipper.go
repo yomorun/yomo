@@ -3,12 +3,12 @@ package yomo
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/router"
 	"github.com/yomorun/yomo/pkg/config"
-	"golang.org/x/exp/slog"
 )
 
 // Zipper is the orchestrator of yomo. There are two types of zipper:

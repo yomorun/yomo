@@ -12,11 +12,11 @@ package ylog
 import (
 	"io"
 	"log"
+	"log/slog"
 	"os"
 	"strings"
 
 	"github.com/caarlos0/env/v6"
-	"golang.org/x/exp/slog"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 

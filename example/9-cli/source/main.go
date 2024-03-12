@@ -30,7 +30,6 @@ func main() {
 	sink := yomo.NewStreamFunction(
 		"Sink",
 		addr,
-		yomo.WithSfnTracerProvider(tp),
 	)
 	sink.SetObserveDataTags(0x34)
 	sink.SetHandler(
