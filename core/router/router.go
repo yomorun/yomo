@@ -100,11 +100,6 @@ func (r *defaultRouter) Release() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	for key := range r.targets {
-		delete(r.targets, key)
-	}
-
-	for key := range r.data {
-		delete(r.data, key)
-	}
+	clear(r.targets)
+	clear(r.data)
 }

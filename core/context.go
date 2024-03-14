@@ -139,7 +139,5 @@ func (c *Context) reset() {
 	c.Frame = nil
 	c.FrameMetadata = nil
 	c.Logger = nil
-	for k := range c.Keys {
-		delete(c.Keys, k)
-	}
+	clear(c.Keys)
 }
