@@ -114,9 +114,7 @@ func (s *Service) Release() {
 	if s.reducer != nil {
 		s.reducer.Close()
 	}
-	// INFO: use clear on go1.21 or later
-	// clear(s.cache)
-	s.cache = map[string]*CacheItem{}
+	clear(s.cache)
 }
 
 func (s *Service) createSource() (yomo.Source, error) {
