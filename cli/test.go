@@ -19,9 +19,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -56,21 +58,27 @@ var testPromptCmd = &cobra.Command{
 		// TODO: go run
 		for _, dir := range sfnDir {
 			// run sfn
+			log.InfoStatusEvent(os.Stdout, "--------------------------------------------------------")
 			log.InfoStatusEvent(os.Stdout, "Run AI SFN on directory: %v", dir)
 			cmd := exec.Command("go", "run", ".")
 			cmd.Dir = dir
 			cmd.Env = os.Environ()
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
+			cmd.Stdout = io.Discard
+			cmd.Stderr = io.Discard
+			cmd.SysProcAttr = &syscall.SysProcAttr{
+				Setpgid: true,
+			}
 			if err := cmd.Start(); err != nil {
 				log.FailureStatusEvent(os.Stdout, "Failed to run AI SFN on directory: %v, error: %v", dir, err)
 				continue
 			} else {
-				pid := cmd.Process.Pid
-				log.InfoStatusEvent(os.Stdout, "AI SFN pid: %v", pid)
 				defer func(cmd *exec.Cmd) {
-					cmd.Process.Release()
-					cmd.Process.Kill()
+					pgid, err := syscall.Getpgid(cmd.Process.Pid)
+					if err == nil {
+						syscall.Kill(-pgid, syscall.SIGTERM)
+					} else {
+						cmd.Process.Kill()
+					}
 				}(cmd)
 			}
 
@@ -88,6 +96,10 @@ var testPromptCmd = &cobra.Command{
 				continue
 			}
 			// invoke api endpoint
+			log.InfoStatusEvent(os.Stdout, "<< LLM API Request")
+			log.InfoStatusEvent(os.Stdout, "Messages:")
+			log.InfoStatusEvent(os.Stdout, "\tSystem: %s", systemPrompt)
+			log.InfoStatusEvent(os.Stdout, "\tUser: %s", userPrompt)
 			apiEndpoint := fmt.Sprintf("%s/invoke", aiServerAddr)
 			resp, err := http.Post(apiEndpoint, "application/json", bytes.NewBuffer(reqBuf))
 			if err != nil {
@@ -96,27 +108,40 @@ var testPromptCmd = &cobra.Command{
 			}
 			defer resp.Body.Close()
 			// response
+			// failed to invoke llm api
+			log.InfoStatusEvent(os.Stdout, ">> LLM API Response")
+			if resp.StatusCode != http.StatusOK {
+				var errorResp ai.ErrorResponse
+				err := json.NewDecoder(resp.Body).Decode(&errorResp)
+				if err != nil {
+					log.FailureStatusEvent(os.Stdout, "Failed to decode llm api response: %v", err)
+					continue
+				}
+				log.FailureStatusEvent(os.Stdout, "Failed to invoke llm api response: %s", errorResp.Error)
+				continue
+			}
+			// success to invoke llm api
 			var invokeResp ai.InvokeResponse
 			if err := json.NewDecoder(resp.Body).Decode(&invokeResp); err != nil {
 				log.FailureStatusEvent(os.Stdout, "Failed to decode llm api response: %v", err)
 				continue
 			}
-			log.InfoStatusEvent(os.Stdout, "--------------------------------------------------------")
-			log.InfoStatusEvent(os.Stdout, "Invoke llm api response")
 			for tag, tcs := range invokeResp.ToolCalls {
 				toolCallCount := len(tcs)
-				log.InfoStatusEvent(os.Stdout, "Tag: %v, ToolCalls: %v", tag, toolCallCount)
 				if toolCallCount > 0 {
-					log.InfoStatusEvent(os.Stdout, "Functions[%d]:", len(tcs))
-					for _, tc := range tcs {
-						log.InfoStatusEvent(os.Stdout, "\tname: %s, args: %v, description: %s", tc.Function.Name, tc.Function.Arguments, tc.Function.Description)
+					log.InfoStatusEvent(os.Stdout, "Tag: %v", tag)
+					log.InfoStatusEvent(os.Stdout, "Invoke functions[%d]:", toolCallCount)
+					for i, tc := range tcs {
+						log.InfoStatusEvent(os.Stdout,
+							"\t[%d] name: %s, arguments: %v",
+							i,
+							tc.Function.Name,
+							tc.Function.Arguments,
+						)
 					}
 				}
 			}
 		}
-		// for i, dir := range sfnDir {
-		// 	log.InfoStatusEvent(os.Stdout, "sfn source[%d] directory: %v", i, dir)
-		// }
 	},
 }
 

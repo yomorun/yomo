@@ -3,6 +3,11 @@ package ai
 
 import "errors"
 
+// ErrorResponse is the response for error
+type ErrorResponse struct {
+	Error string `json:"error"`
+}
+
 // OverviewResponse is the response for overview
 type OverviewResponse struct {
 	Functions map[uint32]*FunctionDefinition // key is the tag of yomo
