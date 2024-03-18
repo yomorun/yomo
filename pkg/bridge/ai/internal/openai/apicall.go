@@ -120,6 +120,7 @@ func ChatCompletion(apiEndpoint string, authHeaderKey, authHeaderValue string, b
 		PromptTokens:     respBodyStruct.Usage.PromptTokens,
 		CompletionTokens: respBodyStruct.Usage.CompletionTokens,
 	}
+	ylog.Debug("++ llm result", "token_usage", fmt.Sprintf("%v", result.TokenUsage), "finish_reason", result.FinishReason)
 
 	if len(calls) == 0 {
 		result.Content = content
@@ -127,7 +128,6 @@ func ChatCompletion(apiEndpoint string, authHeaderKey, authHeaderValue string, b
 	}
 
 	// functions may be more than one
-	// slog.Info("tool calls", "calls", calls, "mapTools", mapTools)
 	for _, call := range calls {
 		for tag, tc := range tcs {
 			if tc.Equal(&call) {

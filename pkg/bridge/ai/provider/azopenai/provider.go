@@ -10,7 +10,6 @@ import (
 
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/metadata"
-	"github.com/yomorun/yomo/core/ylog"
 	"github.com/yomorun/yomo/pkg/bridge/ai/internal/openai"
 )
 
@@ -52,18 +51,16 @@ func (p *AzureOpenAIProvider) Name() string {
 // GetChatCompletions get chat completions for ai service
 func (p *AzureOpenAIProvider) GetChatCompletions(userInstruction string, md metadata.M) (*ai.InvokeResponse, error) {
 	// messages
-	userDefinedBaseSystemMessage := `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous.`
+	systemInstruction := `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous.`
 
 	reqBody := openai.ReqBody{}
 
 	url := fmt.Sprintf("%s/openai/deployments/%s/chat/completions?api-version=%s", p.APIEndpoint, p.DeploymentID, p.APIVersion)
-	res, err := openai.ChatCompletion(url, "api-key", p.APIKey, reqBody, userDefinedBaseSystemMessage, userInstruction, nil, md)
+	res, err := openai.ChatCompletion(url, "api-key", p.APIKey, reqBody, systemInstruction, userInstruction, nil, md)
 
 	if err != nil {
 		return nil, err
 	}
-
-	ylog.Debug("+ llm result", "token_usage", fmt.Sprintf("%v", res.TokenUsage), "finish_reason", res.FinishReason)
 
 	return res, nil
 }
