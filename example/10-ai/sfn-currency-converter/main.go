@@ -22,7 +22,7 @@ type Parameter struct {
 }
 
 func Description() string {
-	return `if user asks concurrency exchange rate related questions, you should call this function. But if the source currency is other than USD (US Dollar), you should ignore calling tools.`
+	return `if user asks currency exchange rate related questions, you should call this function. But if the source currency is other than USD (US Dollar), you should ignore calling tools.`
 }
 
 func InputSchema() any {
