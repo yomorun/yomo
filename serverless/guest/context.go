@@ -30,6 +30,11 @@ func (c *GuestContext) Data() []byte {
 	return GetBytes(ContextData)
 }
 
+// Metadata returns the value of from metadata in key
+func (c *GuestContext) Metadata(key string) (string, bool) {
+	panic("not implemented")
+}
+
 // Write writes data to the context
 func (c *GuestContext) Write(tag uint32, data []byte) error {
 	if data == nil {

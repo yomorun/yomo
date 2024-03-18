@@ -42,6 +42,10 @@ func (c *MockContext) Tag() uint32 {
 	return c.tag
 }
 
+func (c *MockContext) Metadata(_ string) (string, bool) {
+	panic("not implemented")
+}
+
 func (m *MockContext) HTTP() serverless.HTTP {
 	return &guest.GuestHTTP{}
 }
