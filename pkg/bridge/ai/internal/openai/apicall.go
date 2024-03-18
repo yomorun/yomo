@@ -58,12 +58,14 @@ func ChatCompletion(apiEndpoint string, authHeaderKey, authHeaderValue string, b
 	// 2. previous tool calls
 	// Ref: Assistant Message Object in Messsages
 	// https://platform.openai.com/docs/api-reference/chat/create#chat-create-messages
-	assistantMessage := ChatCompletionMessage{
-		// Role must be "assistant"
-		Role:      "assistant",
-		ToolCalls: previousToolCalls,
+	if len(previousToolCalls) > 0 {
+		assistantMessage := ChatCompletionMessage{
+			// Role must be "assistant"
+			Role:      "assistant",
+			ToolCalls: previousToolCalls,
+		}
+		messages = append(messages, assistantMessage)
 	}
-	messages = append(messages, assistantMessage)
 
 	// 3. user instruction
 	messages = append(messages, ChatCompletionMessage{Role: "user", Content: userInstruction})
