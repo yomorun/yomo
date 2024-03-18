@@ -15,7 +15,7 @@ import (
 )
 
 // GetChatCompletions get chat completions for ai service
-func ChatCompletion(apiEndpoint string, authHeaderKey, authHeaderValue string, baseRequestbody ReqBody, baseSystemInstruction, userInstruction string, attachedMessages []ChatCompletionMessage, md metadata.M) (*ai.InvokeResponse, error) {
+func ChatCompletion(apiEndpoint string, authHeaderKey, authHeaderValue string, baseRequestbody ReqBody, baseSystemInstruction, userInstruction string, previousToolCalls []ai.ToolCall, md metadata.M) (*ai.InvokeResponse, error) {
 	tcs, err := register.ListToolCalls(md)
 	if err != nil {
 		return nil, err
@@ -34,11 +34,11 @@ func ChatCompletion(apiEndpoint string, authHeaderKey, authHeaderValue string, b
 	}
 
 	/*** messages should be constructed like this:
-	// - system messsage
-	//   - base system message (user defined)
-	//   - tool's appended instruction (inject)
-	// - [] history messages (inject last tool_call response when finish_reason is 'tools_call')
-	// - user instruction
+	- system messsage
+	  - base system message (user defined)
+	  - tool's appended instruction (inject)
+	- [] history messages (inject previous tool_call response when finish_reason is 'tools_call')
+	- user instruction
 	***/
 	systemInstructions := []string{"## Instructions\n"}
 	for _, tc := range toolCalls {
@@ -52,8 +52,20 @@ func ChatCompletion(apiEndpoint string, authHeaderKey, authHeaderValue string, b
 
 	messages := []ChatCompletionMessage{}
 
+	// 1. system prompt
 	messages = append(messages, ChatCompletionMessage{Role: "system", Content: SystemPrompt})
-	messages = append(messages, attachedMessages...)
+
+	// 2. previous tool calls
+	// Ref: Assistant Message Object in Messsages
+	// https://platform.openai.com/docs/api-reference/chat/create#chat-create-messages
+	assistantMessage := ChatCompletionMessage{
+		// Role must be "assistant"
+		Role:      "assistant",
+		ToolCalls: previousToolCalls,
+	}
+	messages = append(messages, assistantMessage)
+
+	// 3. user instruction
 	messages = append(messages, ChatCompletionMessage{Role: "user", Content: userInstruction})
 
 	baseRequestbody.Messages = messages
