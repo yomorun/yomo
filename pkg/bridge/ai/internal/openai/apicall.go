@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/metadata"
@@ -39,19 +40,19 @@ func ChatCompletion(apiEndpoint string, authHeaderKey, authHeaderValue string, b
 	// - [] history messages (inject last tool_call response when finish_reason is 'tools_call')
 	// - user instruction
 	***/
+	systemInstructions := []string{"## Instructions\n"}
+	for _, tc := range toolCalls {
+		systemInstructions = append(systemInstructions, "- ")
+		systemInstructions = append(systemInstructions, tc.Function.Description)
+		systemInstructions = append(systemInstructions, "\n")
+	}
+	systemInstructions = append(systemInstructions, "\n")
 
-	// TODO: This demostates how to construct the messages
-	// this should be read from the sfn description
-	baseSystemInstruction += `
-		
-	## Instructions
-	- if user asks concurrency exchange rate related questions, and the target currency is GBP (British Pound), you should ignore calling tools.
-	- if user asks timezone converter related questions, extract the source time to 'timeString', extract the source timezone information and 'sourceTimezone', extract the target timezone information to 'targetTimezone'. The desired 'timeString' format is 'YYYY-MM-DD HH:MM:SS'. the 'sourceTimezone' and 'targetTimezone' are in IANA Time Zone Database identifier format. The function will convert the time from the source timezone to the target timezone and return the converted time as a string in the format 'YYYY-MM-DD HH:MM:SS'. If you are not sure about the date value of 'timeString', set date value to '1900-01-01'
-	`
+	SystemPrompt := fmt.Sprintf("%s\n\n%s", baseSystemInstruction, strings.Join(systemInstructions, ""))
 
 	messages := []ChatCompletionMessage{}
 
-	messages = append(messages, ChatCompletionMessage{Role: "system", Content: baseSystemInstruction})
+	messages = append(messages, ChatCompletionMessage{Role: "system", Content: SystemPrompt})
 	messages = append(messages, attachedMessages...)
 	messages = append(messages, ChatCompletionMessage{Role: "user", Content: userInstruction})
 
