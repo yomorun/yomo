@@ -95,7 +95,7 @@ func (s *yomoSource) Write(tag uint32, data []byte) error {
 		Metadata: mdBytes,
 		Payload:  data,
 	}
-	s.client.Logger.Debug("source write", "tag", tag, "data", data)
+	s.client.Logger.Debug("source write", "tag", tag, "dataLen", len(data))
 	return s.client.WriteFrame(f)
 }
 

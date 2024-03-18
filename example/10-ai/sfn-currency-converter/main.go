@@ -18,7 +18,7 @@ import (
 type Parameter struct {
 	SourceCurrency string  `json:"source" jsonschema:"description=The source currency to be queried in 3-letter ISO 4217 format"`
 	TargetCurrency string  `json:"target" jsonschema:"description=The target currency to be queried in 3-letter ISO 4217 format"`
-	Amount         float64 `json:"amount" jsonschema:"description=The amount of the USD currency to be converted to the target currency"`
+	Amount         float64 `json:"amount" jsonschema:"description=The amount of the currency to be converted to the target currency"`
 }
 
 func Description() string {
@@ -101,11 +101,14 @@ func handler(ctx serverless.Context) {
 }
 
 func init() {
-	// read API_KEY from .env
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
-		os.Exit(-1)
+	// if API_KEY is absent in ENV, read from .env
+	if _, ok := os.LookupEnv("API_KEY"); !ok {
+		// read API_KEY from .env
+		err := godotenv.Load()
+		if err != nil {
+			log.Fatal("Error loading .env file")
+			os.Exit(-1)
+		}
 	}
 }
 

@@ -15,7 +15,7 @@ import (
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
-	"github.com/yomorun/yomo/pkg/bridge/ai/provider/azopenai"
+	"github.com/yomorun/yomo/pkg/bridge/ai/internal/openai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 )
 
@@ -63,7 +63,7 @@ func (p *CloudflareAzureProvider) GetChatCompletions(userInstruction string, md 
 	}
 
 	// messages
-	messages := []azopenai.ReqMessage{
+	messages := []openai.ChatCompletionMessage{
 		{Role: "system", Content: `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous. If you don't know the answer, stop the conversation by saying "no func call".`},
 		{Role: "user", Content: userInstruction},
 	}
@@ -76,7 +76,7 @@ func (p *CloudflareAzureProvider) GetChatCompletions(userInstruction string, md 
 		idx++
 	}
 
-	body := azopenai.ReqBody{Messages: messages, Tools: toolCalls}
+	body := openai.ReqBody{Messages: messages, Tools: toolCalls}
 
 	ylog.Debug("request", "tools", len(toolCalls), "messages", messages)
 
@@ -111,7 +111,7 @@ func (p *CloudflareAzureProvider) GetChatCompletions(userInstruction string, md 
 		return nil, fmt.Errorf("ai response status code is %d", resp.StatusCode)
 	}
 
-	var respBodyStruct azopenai.RespBody
+	var respBodyStruct openai.RespBody
 	err = json.Unmarshal(respBody, &respBodyStruct)
 	if err != nil {
 		return nil, err
