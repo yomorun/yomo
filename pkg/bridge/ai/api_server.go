@@ -97,7 +97,6 @@ func WithContextService(handler http.Handler, credential string, zipperAddr stri
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handler.ServeHTTP(w, r.WithContext(WithServiceContext(r.Context(), service)))
 	})
-
 }
 
 // HandleOverview is the handler for GET /overview
@@ -158,6 +157,13 @@ func HandleInvoke(w http.ResponseWriter, r *http.Request) {
 		ylog.Error("invoke service", "err", err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	// return the raw response
+	if req.ReturnRaw {
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(resp)
 		return
 	}
 
