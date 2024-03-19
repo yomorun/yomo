@@ -206,7 +206,7 @@ func getLocalIP() (string, error) {
 
 type serviceContextKey struct{}
 
-// WithContextService adds the service to the request context
+// WithServiceContext adds the service to the request context
 func WithServiceContext(ctx context.Context, service *Service) context.Context {
 	return context.WithValue(ctx, serviceContextKey{}, service)
 }

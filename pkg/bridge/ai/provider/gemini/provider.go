@@ -1,3 +1,4 @@
+// / Package gemini provides the Gemini AI provider
 package gemini
 
 import (

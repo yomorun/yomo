@@ -1,3 +1,4 @@
+// Package register provides a register for registering and unregistering functions
 package register
 
 import (

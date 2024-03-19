@@ -1,3 +1,4 @@
+// Package openai provides the ability to call OpenAI api
 package openai
 
 import (
