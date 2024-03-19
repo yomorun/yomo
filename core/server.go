@@ -260,15 +260,15 @@ func (s *Server) handleConn(conn *Connection) {
 }
 
 func (s *Server) authenticate(hf *frame.HandshakeFrame) (metadata.M, error) {
-	md, ok := auth.Authenticate(s.opts.auths, hf)
-	if !ok {
+	md, err := auth.Authenticate(s.opts.auths, hf)
+	if err != nil {
 		s.logger.Warn(
 			"authentication failed",
 			"client_type", ClientType(hf.ClientType).String(),
 			"client_name", hf.Name,
 			"credential", hf.AuthName,
 		)
-		return nil, fmt.Errorf("authentication failed: client credential type is %s", hf.AuthName)
+		return nil, err
 	}
 
 	return md, nil

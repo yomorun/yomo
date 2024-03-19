@@ -2,6 +2,8 @@
 package auth
 
 import (
+	"fmt"
+
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/metadata"
 )
@@ -26,8 +28,11 @@ func (a *TokenAuth) Init(args ...string) {
 }
 
 // Authenticate authentication client's credential
-func (a *TokenAuth) Authenticate(payload string) (metadata.M, bool) {
-	return metadata.M{}, a.token == payload
+func (a *TokenAuth) Authenticate(payload string) (metadata.M, error) {
+	if a.token == payload {
+		return metadata.M{}, nil
+	}
+	return metadata.M{}, fmt.Errorf("invalid token: %s", payload)
 }
 
 // Name authentication name
