@@ -10,16 +10,30 @@ type OverviewResponse struct {
 
 // InvokeRequest is the request from user to BasicAPIServer
 type InvokeRequest struct {
-	ReqID  string `json:"req_id"` // req_id is the request id of the request
-	Prompt string `json:"prompt"` // prompt is user input text for chat completion
+	ReqID  string `json:"req_id"` // ReqID is the request id of the request
+	Prompt string `json:"prompt"` // Prompt is user input text for chat completion
 }
 
 // InvokeResponse is the response for chat completions
 type InvokeResponse struct {
-	Functions map[uint32][]*FunctionDefinition // key is the tag of yomo
-	Content   string
+	// Functions is the functions from llm api response, key is the tag of yomo
+	Functions map[uint32][]*FunctionDefinition
+	// Content is the content from llm api response
+	Content string
 	// ToolCalls is the toolCalls from llm api response
 	ToolCalls map[uint32][]*ToolCall
+	// FinishReason is the finish reason from llm api response
+	FinishReason string
+	// TokenUsage is the token usage from llm api response
+	TokenUsage TokenUsage
+	// AssistantMessage is the assistant message from llm api response, only present when finish reason is "tool_calls"
+	AssistantMessage interface{}
+}
+
+// RespUsage is the token usage in Response
+type TokenUsage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
 }
 
 // ToolCall is the tool call in Request and Response

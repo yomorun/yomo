@@ -23,6 +23,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/core/router"
+	"github.com/yomorun/yomo/core/ylog"
 	pkgconfig "github.com/yomorun/yomo/pkg/config"
 	"github.com/yomorun/yomo/pkg/log"
 
@@ -44,7 +45,8 @@ var serveCmd = &cobra.Command{
 			return
 		}
 
-		log.InfoStatusEvent(os.Stdout, "Running YoMo-Zipper...")
+		// log.InfoStatusEvent(os.Stdout, "")
+		ylog.Info("Starting Zipper...")
 		// config
 		conf, err := pkgconfig.ParseConfigFile(config)
 		if err != nil {
@@ -141,7 +143,8 @@ func registerAIProvider(aiConfig *ai.Config) error {
 		}
 	}
 
-	log.InfoStatusEvent(os.Stdout, "registered [%d] AI provider", len(ai.ListProviders()))
+	// log.InfoStatusEvent(os.Stdout, "registered [%d] AI provider", len(ai.ListProviders()))
+	ylog.Info("registered AI providers", "len", len(ai.ListProviders()))
 	return nil
 }
 

@@ -135,7 +135,7 @@ func HandleInvoke(w http.ResponseWriter, r *http.Request) {
 	if _, ok := service.cache[reqID]; !ok {
 		service.cache[reqID] = ci
 	}
-	ylog.Info("reqID", "val", reqID)
+	// ylog.Info("reqID", "val", reqID)
 
 	var req ai.InvokeRequest
 	req.ReqID = reqID
