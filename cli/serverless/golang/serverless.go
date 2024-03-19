@@ -1,7 +1,6 @@
 package golang
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -32,11 +31,6 @@ type GolangServerless struct {
 
 // Init initializes the serverless
 func (s *GolangServerless) Init(opts *serverless.Options) error {
-	// now := time.Now()
-	// msg := "Init: serverless function..."
-	// initSpinning := log.Spinner(os.Stdout, msg)
-	// defer initSpinning(log.Failure)
-
 	s.opts = opts
 	if !file.Exists(s.opts.Filename) {
 		return fmt.Errorf("the file %s doesn't exist", s.opts.Filename)
@@ -48,13 +42,17 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 		return fmt.Errorf(`"%s" content is empty`, s.opts.Filename)
 	}
 
+	opt, err := ParseSrc(s.opts.Filename)
+	if err != nil {
+		return fmt.Errorf("parse source code: %s", err)
+	}
 	// append main function
 	ctx := Context{
 		Name:         s.opts.Name,
 		ZipperAddr:   s.opts.ZipperAddr,
 		Credential:   s.opts.Credential,
 		UseEnv:       s.opts.UseEnv,
-		WithInitFunc: containsInitWithoutComment(source),
+		WithInitFunc: opt.WithInit,
 	}
 
 	// determine: rx stream serverless or raw bytes serverless.
@@ -78,9 +76,6 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 	}
 
 	source = append(source, mainFunc...)
-	// log.InfoStatusEvent(os.Stdout, "merge source elapse: %v", time.Since(now))
-	// Create the AST by parsing src
-	// fmt.Println(string(source))
 	fset := token.NewFileSet()
 	astf, err := parser.ParseFile(fset, "", source, parser.ParseComments)
 	if err != nil {
@@ -91,7 +86,6 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 	astutil.AddNamedImport(fset, astf, "", "github.com/joho/godotenv")
 	// wasm guest import
 	astutil.AddNamedImport(fset, astf, "", "github.com/yomorun/yomo/serverless/guest")
-	// log.InfoStatusEvent(os.Stdout, "import elapse: %v", time.Since(now))
 	// Generate the code
 	code, err := generateCode(fset, astf)
 	if err != nil {
@@ -109,12 +103,9 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 	if err != nil {
 		return fmt.Errorf("Init: imports %s", err)
 	}
-	// log.InfoStatusEvent(os.Stdout, "fix import elapse: %v", time.Since(now))
 	if err := file.PutContents(tempFile, fixedSource); err != nil {
 		return fmt.Errorf("Init: write file err %s", err)
 	}
-	// log.InfoStatusEvent(os.Stdout, "final write file elapse: %v", time.Since(now))
-	// mod
 	name := strings.ReplaceAll(opts.Name, " ", "_")
 	if name == "" {
 		name = "yomo-sfn"
@@ -218,9 +209,6 @@ func (s *GolangServerless) Build(clean bool) error {
 	cmd := exec.Command(tinygo, "build", "-no-debug", "-target", "wasi", "-o", sl, appPath)
 	cmd.Env = env
 	cmd.Dir = s.tempDir
-	// log.InfoStatusEvent(os.Stdout, "Build: cmd: %+v", cmd)
-	// source := file.GetContents(s.source)
-	// log.InfoStatusEvent(os.Stdout, "source: %s", source)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		err = fmt.Errorf("Build: failure, tinygo %s", out)
@@ -234,7 +222,7 @@ func (s *GolangServerless) Run(verbose bool) error {
 	log.InfoStatusEvent(os.Stdout, "Run: %s", s.output)
 	cmd := exec.Command(s.output)
 	if verbose {
-		cmd.Env = []string{"YOMO_LOG_LEVEL=debug"}
+		cmd.Env = []string{"YOMO_LOG_LEVEL=debug", "YOMO_LOG_VERBOSE=true"}
 	}
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
@@ -255,16 +243,36 @@ func generateCode(fset *token.FileSet, file *ast.File) ([]byte, error) {
 	return buffer.Bytes(), nil
 }
 
-func containsInitWithoutComment(source []byte) bool {
-	scanner := bufio.NewScanner(bytes.NewReader(source))
-	for scanner.Scan() {
-		line := strings.TrimLeft(scanner.Text(), " ")
+type AppOpts struct {
+	WithInit        bool
+	WithDescription bool
+	WithInputSchema bool
+}
 
-		if strings.Contains(line, "Init()") && !strings.HasPrefix(line, "//") {
-			return true
+// ParseSrc parse app option from source code to run serverless
+func ParseSrc(appFile string) (*AppOpts, error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, appFile, nil, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, err
+	}
+
+	opts := &AppOpts{}
+
+	for _, v := range f.Decls {
+		if d, ok := v.(*ast.FuncDecl); ok {
+			switch d.Name.String() {
+			case "Init":
+				opts.WithInit = true
+			case "Description":
+				opts.WithDescription = true
+			case "InputSchema":
+				opts.WithInputSchema = true
+			}
 		}
 	}
-	return false
+
+	return opts, nil
 }
 
 func init() {
