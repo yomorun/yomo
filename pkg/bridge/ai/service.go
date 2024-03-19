@@ -222,19 +222,20 @@ func (s *Service) GetOverview() (*ai.OverviewResponse, error) {
 
 // GetChatCompletions returns the llm api response
 func (s *Service) GetChatCompletions(userInstruction string, baseSystemMessage string, reqID string) (*ai.InvokeResponse, error) {
+	chainMessage := ai.ChainMessage{}
 	// we do not support multi-turn invoke for Google Gemini
 	if s.LLMProvider.Name() == "gemini" {
-		return s.LLMProvider.GetChatCompletions(userInstruction, baseSystemMessage, nil, s.md)
-	} else {
-		return s.execute(userInstruction, baseSystemMessage, reqID)
+		return s.LLMProvider.GetChatCompletions(userInstruction, baseSystemMessage, chainMessage, s.md, true)
 	}
-}
 
-// execute multi-turn /chat/completions request
-func (s *Service) execute(userInstruction string, baseSystemMessage string, reqID string) (*ai.InvokeResponse, error) {
-	res, err := s.LLMProvider.GetChatCompletions(userInstruction, baseSystemMessage, nil, s.md)
+	res, err := s.LLMProvider.GetChatCompletions(userInstruction, baseSystemMessage, chainMessage, s.md, true)
 	if err != nil {
 		return nil, err
+	}
+
+	// if no tool_calls fired, just return the llm text result
+	if res.FinishReason != "tool_calls" {
+		return res, nil
 	}
 
 	// run llm function calls
@@ -243,20 +244,14 @@ func (s *Service) execute(userInstruction string, baseSystemMessage string, reqI
 		return nil, err
 	}
 
-	if res.FinishReason == "tool_calls" {
-		ylog.Debug(">>>> start 2nd call with", "calls", fmt.Sprintf("%+v", llmCalls))
-		res1, err := s.LLMProvider.GetChatCompletions(userInstruction, baseSystemMessage, llmCalls, s.md)
-		if err != nil {
-			return nil, err
-		}
-		return res1, nil
-	} else if res.FinishReason == "stop" {
-		ylog.Debug("[ai service] done as finish_reason is stop", "res", res)
-		// return the result
-	} else {
-		ylog.Warn("[ai service] unknown finish reason", "finish_reason", res.FinishReason)
-	}
-	return res, nil
+	ylog.Debug(">>>> start 2nd call with", "calls", fmt.Sprintf("%+v", llmCalls), "preceeding_assistant_message", fmt.Sprintf("%+v", res.AssistantMessage))
+	chainMessage.PreceedingAssistantMessage = res.AssistantMessage
+	chainMessage.ToolMessages = llmCalls
+	// do not attach toolMessage to prompt in 2nd call
+	res2, err := s.LLMProvider.GetChatCompletions(userInstruction, baseSystemMessage, chainMessage, s.md, false)
+	ylog.Debug("<<<< complete 2nd call", "res2", fmt.Sprintf("%+v", res2))
+
+	return res2, err
 }
 
 // run llm-sfn function calls

@@ -12,7 +12,7 @@ type LLMProvider interface {
 	// Name returns the name of the llm provider
 	Name() string
 	// GetChatCompletions returns the chat completions
-	GetChatCompletions(userInstruction string, baseSystemMessage string, toolMessage []ai.ToolMessage, md metadata.M) (*ai.InvokeResponse, error)
+	GetChatCompletions(userInstruction string, baseSystemMessage string, chainMessage ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error)
 }
 
 var (

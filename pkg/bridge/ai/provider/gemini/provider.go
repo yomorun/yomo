@@ -42,7 +42,11 @@ func (p *GeminiProvider) Name() string {
 }
 
 // GetChatCompletions get chat completions for ai service
-func (p *GeminiProvider) GetChatCompletions(userInstruction string, baseSystemMessage string, toolMessages []ai.ToolMessage, md metadata.M) (*ai.InvokeResponse, error) {
+func (p *GeminiProvider) GetChatCompletions(userInstruction string, baseSystemMessage string, chainMessage ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error) {
+	if !withTool {
+		ylog.Warn("Gemini call should have tool calls")
+	}
+
 	tcs, err := register.ListToolCalls(md)
 	if err != nil {
 		return nil, err

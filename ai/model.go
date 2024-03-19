@@ -26,8 +26,8 @@ type InvokeResponse struct {
 	FinishReason string
 	// TokenUsage is the token usage from llm api response
 	TokenUsage TokenUsage
-	// // AssistantMessage is the assistant message from llm api response, only present when finish reason is "tool_calls"
-	// AssistantMessage interface{}
+	// AssistantMessage is the assistant message from llm api response, only present when finish reason is "tool_calls"
+	AssistantMessage interface{}
 }
 
 // RespUsage is the token usage in Response
@@ -80,6 +80,14 @@ type ToolMessage struct {
 	Role       string `json:"role"`
 	Content    string `json:"content"`
 	ToolCallId string `json:"tool_call_id"`
+}
+
+// ChainMessage is the message for chaining llm request with preceeding `tool_calls` response
+type ChainMessage struct {
+	// PrecedingAssistantMessage is the preceding assistant message in llm response
+	PreceedingAssistantMessage interface{}
+	// ToolMessages is the tool messages aggragated from reducer-sfn by AI service
+	ToolMessages []ToolMessage
 }
 
 // ErrNoFunctionCall is the error when no function call

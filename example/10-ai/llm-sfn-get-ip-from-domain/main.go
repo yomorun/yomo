@@ -27,7 +27,7 @@ func InputSchema() any {
 
 func main() {
 	sfn := yomo.NewStreamFunction(
-		"fn-exchange-rates",
+		"fn-get-ip-from-domain",
 		"localhost:9000",
 		yomo.WithSfnCredential("token:Happy New Year"),
 		yomo.WithSfnAIFunctionDefinition(Description(), InputSchema()),
@@ -99,6 +99,8 @@ func handler(ctx serverless.Context) {
 
 	slog.Info("[sfn] get ping latency", "domain", msg.Domain, "ip", ips[0], "latency", stats.AvgRtt)
 
-	fc.SetRetrievalResult(fmt.Sprintf("domain %s has ip %s with average latency %s", msg.Domain, ips[0], stats.AvgRtt))
-	fc.Write(ips[0].String())
+	val := fmt.Sprintf("domain %s has ip %s with average latency %s", msg.Domain, ips[0], stats.AvgRtt)
+
+	fc.SetRetrievalResult(val)
+	fc.Write(val)
 }
