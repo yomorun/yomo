@@ -86,7 +86,6 @@ func handler(ctx serverless.Context) {
 	}
 
 	// get ip[0] ping latency
-	// get ip[0] ping latency
 	pinger, err := ping.NewPinger(ips[0].String())
 	if err != nil {
 		slog.Error("[sfn] could not create pinger", "err", err)
