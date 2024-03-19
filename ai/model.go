@@ -26,6 +26,8 @@ type InvokeResponse struct {
 	FinishReason string
 	// TokenUsage is the token usage from llm api response
 	TokenUsage TokenUsage
+	// AssistantMessage is the assistant message from llm api response, only present when finish reason is "tool_calls"
+	AssistantMessage interface{}
 }
 
 // RespUsage is the token usage in Response

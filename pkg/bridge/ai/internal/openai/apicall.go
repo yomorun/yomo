@@ -119,15 +119,22 @@ func ChatCompletion(apiEndpoint string, authHeaderKey, authHeaderValue string, b
 		ylog.Warn("TODO: should re-request with this response")
 	}
 
-	calls := respBodyStruct.Choices[0].Message.ToolCalls
-	content := respBodyStruct.Choices[0].Message.Content
+	responseMessage := respBodyStruct.Choices[0].Message
 
-	ylog.Debug("--response calls", "calls", calls)
+	calls := responseMessage.ToolCalls
+	content := responseMessage.Content
+
+	ylog.Debug("--response calls", "calls", len(calls))
 
 	result := &ai.InvokeResponse{}
 
 	// finish reason
 	result.FinishReason = choice.FinishReason
+
+	if result.FinishReason == "tool_calls" {
+		// assistant message
+		result.AssistantMessage = responseMessage
+	}
 
 	// record usage
 	result.TokenUsage = ai.TokenUsage{
