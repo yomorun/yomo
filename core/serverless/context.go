@@ -34,6 +34,11 @@ func (c *Context) Data() []byte {
 	return c.data
 }
 
+// Metadata returns the metadata of the data frame
+func (c *Context) Metadata(key string) (string, bool) {
+	return c.md.Get(key)
+}
+
 // Write writes the data
 func (c *Context) Write(tag uint32, data []byte) error {
 	if data == nil {
