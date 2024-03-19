@@ -84,15 +84,11 @@ func handler(ctx serverless.Context) {
 		return
 	}
 
-	result := ""
+	result := fmt.Sprintf("based on today's exchange rate: %f, %f %s is equivalent to approximately %f %s", rate, msg.Amount, msg.SourceCurrency, msg.Amount*rate, msg.TargetCurrency)
 	if rate == 0 {
-		result = fmt.Sprintf("can not understand the target currency, target currency is %s", msg.TargetCurrency)
-	} else {
-		result = fmt.Sprintf("%f", msg.Amount*rate)
+		result = fmt.Sprintf("can not understand the target currency %s", msg.TargetCurrency)
 	}
 
-	// err = ctx.Write(invoke.CreatePayload(result))
-	fcCtx.SetRetrievalResult(fmt.Sprintf("based on today's exchange rate: %f, %f %s is equivalent to approximately %f %s", rate, msg.Amount, msg.SourceCurrency, msg.Amount*rate, msg.TargetCurrency))
 	err = fcCtx.Write(result)
 
 	if err != nil {

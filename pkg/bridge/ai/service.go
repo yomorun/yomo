@@ -153,9 +153,9 @@ func (s *Service) createReducer() (yomo.StreamFunction, error) {
 			return
 		}
 
-		/******* new *********/
 		reqID := invoke.ReqID
 
+		// write parallel function calling results to cache, after all the results are written, the reducer will be done
 		c, ok := s.sfnCallCache[reqID]
 		if !ok {
 			ylog.Error("[sfn-reducer] req_id not found", "req_id", reqID)
@@ -165,7 +165,7 @@ func (s *Service) createReducer() (yomo.StreamFunction, error) {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 
-		// merge content, as multiple function calls need be merged into one assistant messages.
+		// need lock c.val as multiple handler channel will write to it
 		c.val[invoke.ToolCallID] = ai.ToolMessage{
 			Content:    invoke.Result,
 			ToolCallId: invoke.ToolCallID,
@@ -173,29 +173,6 @@ func (s *Service) createReducer() (yomo.StreamFunction, error) {
 		ylog.Debug("[sfn-reducer] generate", "ToolMessage", fmt.Sprintf("%+v", c.val))
 
 		c.wg.Done()
-
-		/********* before start ********/
-		// v, ok := s.cache[reqID]
-		// if !ok {
-		// 	ylog.Error("[sfn-reducer] req_id not found", "req_id", reqID)
-		// 	return
-		// }
-		// defer v.wg.Done()
-
-		// v.mu.Lock()
-		// defer v.mu.Unlock()
-
-		// fmt.Fprintf(v.ResponseWriter, "event: result\n")
-		// fmt.Fprintf(v.ResponseWriter, "data: %s\n\n", invoke.JSONString())
-		// fmt.Fprintf(v.ResponseWriter, "event: retrieval_result\n")
-		// fmt.Fprintf(v.ResponseWriter, "data: %s\n\n", invoke.RetrievalResult)
-
-		// // flush the response
-		// flusher, ok := v.ResponseWriter.(http.Flusher)
-		// if ok {
-		// 	flusher.Flush()
-		// }
-		/********* before end ********/
 	})
 
 	err := sfn.Connect()
