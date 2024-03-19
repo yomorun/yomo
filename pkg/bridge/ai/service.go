@@ -199,8 +199,36 @@ func (s *Service) GetOverview() (*ai.OverviewResponse, error) {
 }
 
 // GetChatCompletions returns the llm api response
-func (s *Service) GetChatCompletions(prompt string) (*ai.InvokeResponse, error) {
-	return s.LLMProvider.GetChatCompletions(prompt, s.md)
+func (s *Service) GetChatCompletions(userInstruction string) (*ai.InvokeResponse, error) {
+	// messages
+	baseSystemMessage := `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous.`
+
+	// we do not support multi-turn invoke for Google Gemini
+	if s.LLMProvider.Name() == "gemini" {
+		return s.LLMProvider.GetChatCompletions(userInstruction, baseSystemMessage, nil, s.md)
+	} else {
+		return s.execute(userInstruction)
+	}
+}
+
+func (s *Service) execute(userInstruction string) (*ai.InvokeResponse, error) {
+	// messages
+	baseSystemMessage := `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous.`
+
+	res, err := s.LLMProvider.GetChatCompletions(userInstruction, baseSystemMessage, nil, s.md)
+	if err != nil {
+		return nil, err
+	}
+
+	if res.FinishReason == "tools_call" {
+		res1, err := s.LLMProvider.GetChatCompletions(userInstruction, baseSystemMessage, res.ToolCalls[0], s.md)
+		if err != nil {
+			return nil, err
+		}
+		return res1, nil
+	}
+
+	return res, nil
 }
 
 // Write writes the data to zipper

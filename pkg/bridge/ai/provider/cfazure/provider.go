@@ -11,6 +11,7 @@ import (
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
+	bridgeai "github.com/yomorun/yomo/pkg/bridge/ai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/internal/openai"
 )
 
@@ -22,6 +23,9 @@ type CloudflareAzureProvider struct {
 	APIVersion   string
 	CfEndpoint   string
 }
+
+// check if implements ai.Provider
+var _ bridgeai.LLMProvider = &CloudflareAzureProvider{}
 
 // NewProvider creates a new AzureOpenAIProvider
 func NewProvider(cfEndpoint string, apiKey string, resource string, deploymentID string, apiVersion string) *CloudflareAzureProvider {
@@ -46,15 +50,15 @@ func (p *CloudflareAzureProvider) Name() string {
 }
 
 // GetChatCompletions get chat completions for ai service
-func (p *CloudflareAzureProvider) GetChatCompletions(userInstruction string, md metadata.M) (*ai.InvokeResponse, error) {
+func (p *CloudflareAzureProvider) GetChatCompletions(userInstruction string, baseSystemMessage string, previousToolCalls []*ai.ToolCall, md metadata.M) (*ai.InvokeResponse, error) {
 	// messages
-	userDefinedBaseSystemMessage := `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous.`
+	// userDefinedBaseSystemMessage := `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous.`
 
 	reqBody := openai.ReqBody{}
 
 	url := fmt.Sprintf("%s/azure-openai/%s/%s/chat/completions?api-version=%s", p.CfEndpoint, p.Resource, p.DeploymentID, p.APIVersion)
 
-	res, err := openai.ChatCompletion(url, "api-key", p.APIKey, reqBody, userDefinedBaseSystemMessage, userInstruction, nil, md)
+	res, err := openai.ChatCompletion(url, "api-key", p.APIKey, reqBody, baseSystemMessage, userInstruction, previousToolCalls, md)
 
 	return res, err
 }

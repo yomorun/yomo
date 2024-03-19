@@ -15,7 +15,7 @@ import (
 )
 
 // GetChatCompletions get chat completions for ai service
-func ChatCompletion(apiEndpoint string, authHeaderKey, authHeaderValue string, baseRequestbody ReqBody, baseSystemInstruction, userInstruction string, previousToolCalls []ai.ToolCall, md metadata.M) (*ai.InvokeResponse, error) {
+func ChatCompletion(apiEndpoint string, authHeaderKey, authHeaderValue string, baseRequestbody ReqBody, baseSystemInstruction, userInstruction string, previousToolCalls []*ai.ToolCall, md metadata.M) (*ai.InvokeResponse, error) {
 	tcs, err := register.ListToolCalls(md)
 	if err != nil {
 		return nil, err
@@ -151,14 +151,14 @@ func ChatCompletion(apiEndpoint string, authHeaderKey, authHeaderValue string, b
 	// functions may be more than one
 	for _, call := range calls {
 		for tag, tc := range tcs {
-			if tc.Equal(&call) {
+			if tc.Equal(call) {
 				// Use toolCalls because tool_id is required in the following llm request
 				if result.ToolCalls == nil {
 					result.ToolCalls = make(map[uint32][]*ai.ToolCall)
 				}
 				// Create a new variable to hold the current call
 				currentCall := call
-				result.ToolCalls[tag] = append(result.ToolCalls[tag], &currentCall)
+				result.ToolCalls[tag] = append(result.ToolCalls[tag], currentCall)
 			}
 		}
 	}

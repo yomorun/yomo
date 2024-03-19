@@ -11,6 +11,7 @@ import (
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
+	bridgeai "github.com/yomorun/yomo/pkg/bridge/ai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 )
 
@@ -33,13 +34,15 @@ func NewProvider(apiKey string) *GeminiProvider {
 	return p
 }
 
+var _ bridgeai.LLMProvider = &GeminiProvider{}
+
 // Name returns the name of the provider
 func (p *GeminiProvider) Name() string {
 	return "gemini"
 }
 
 // GetChatCompletions get chat completions for ai service
-func (p *GeminiProvider) GetChatCompletions(userInstruction string, md metadata.M) (*ai.InvokeResponse, error) {
+func (p *GeminiProvider) GetChatCompletions(userInstruction string, baseSystemMessage string, previousToolCalls []*ai.ToolCall, md metadata.M) (*ai.InvokeResponse, error) {
 	tcs, err := register.ListToolCalls(md)
 	if err != nil {
 		return nil, err
