@@ -15,7 +15,7 @@ import (
 )
 
 // GetChatCompletions get chat completions for ai service
-func ChatCompletion(apiEndpoint string, authHeaderKey, authHeaderValue string, baseRequestbody ReqBody, baseSystemInstruction, userInstruction string, previousToolCalls []*ai.ToolCall, md metadata.M) (*ai.InvokeResponse, error) {
+func ChatCompletion(apiEndpoint string, authHeaderKey, authHeaderValue string, baseRequestbody ReqBody, baseSystemMessage string, userInstruction string, toolMessages []ai.ToolMessage, md metadata.M) (*ai.InvokeResponse, error) {
 	tcs, err := register.ListToolCalls(md)
 	if err != nil {
 		return nil, err
@@ -48,7 +48,7 @@ func ChatCompletion(apiEndpoint string, authHeaderKey, authHeaderValue string, b
 	}
 	systemInstructions = append(systemInstructions, "\n")
 
-	SystemPrompt := fmt.Sprintf("%s\n\n%s", baseSystemInstruction, strings.Join(systemInstructions, ""))
+	SystemPrompt := fmt.Sprintf("%s\n\n%s", baseSystemMessage, strings.Join(systemInstructions, ""))
 
 	messages := []ChatCompletionMessage{}
 
@@ -56,16 +56,20 @@ func ChatCompletion(apiEndpoint string, authHeaderKey, authHeaderValue string, b
 	messages = append(messages, ChatCompletionMessage{Role: "system", Content: SystemPrompt})
 
 	// 2. previous tool calls
-	// Ref: Assistant Message Object in Messsages
+	// Ref: Tool Message Object in Messsages
+	// https://platform.openai.com/docs/guides/function-calling
 	// https://platform.openai.com/docs/api-reference/chat/create#chat-create-messages
-	if len(previousToolCalls) > 0 {
-		assistantMessage := ChatCompletionMessage{
-			// Role must be "assistant"
-			Role:      "assistant",
-			ToolCalls: previousToolCalls,
+	// if len(toolMessages) > 0 {
+	for _, tool := range toolMessages {
+		tm := ChatCompletionMessage{
+			Role:       "tool",
+			Content:    tool.Content,
+			ToolCallID: tool.ToolCallId,
 		}
-		messages = append(messages, assistantMessage)
+		ylog.Debug("======== add toolMessage", "tm", fmt.Sprintf("%+v", tm))
+		messages = append(messages, tm)
 	}
+	// }
 
 	// 3. user instruction
 	messages = append(messages, ChatCompletionMessage{Role: "user", Content: userInstruction})
@@ -131,10 +135,10 @@ func ChatCompletion(apiEndpoint string, authHeaderKey, authHeaderValue string, b
 	// finish reason
 	result.FinishReason = choice.FinishReason
 
-	if result.FinishReason == "tool_calls" {
-		// assistant message
-		result.AssistantMessage = responseMessage
-	}
+	// if result.FinishReason == "tool_calls" {
+	// 	// assistant message
+	// 	result.AssistantMessage = responseMessage
+	// }
 
 	// record usage
 	result.TokenUsage = ai.TokenUsage{

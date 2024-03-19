@@ -50,7 +50,7 @@ func (p *CloudflareAzureProvider) Name() string {
 }
 
 // GetChatCompletions get chat completions for ai service
-func (p *CloudflareAzureProvider) GetChatCompletions(userInstruction string, baseSystemMessage string, previousToolCalls []*ai.ToolCall, md metadata.M) (*ai.InvokeResponse, error) {
+func (p *CloudflareAzureProvider) GetChatCompletions(userInstruction string, baseSystemMessage string, toolMessages []ai.ToolMessage, md metadata.M) (*ai.InvokeResponse, error) {
 	// messages
 	// userDefinedBaseSystemMessage := `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous.`
 
@@ -58,7 +58,7 @@ func (p *CloudflareAzureProvider) GetChatCompletions(userInstruction string, bas
 
 	url := fmt.Sprintf("%s/azure-openai/%s/%s/chat/completions?api-version=%s", p.CfEndpoint, p.Resource, p.DeploymentID, p.APIVersion)
 
-	res, err := openai.ChatCompletion(url, "api-key", p.APIKey, reqBody, baseSystemMessage, userInstruction, previousToolCalls, md)
+	res, err := openai.ChatCompletion(url, "api-key", p.APIKey, reqBody, baseSystemMessage, userInstruction, toolMessages, md)
 
 	return res, err
 }

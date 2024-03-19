@@ -42,7 +42,7 @@ func (p *GeminiProvider) Name() string {
 }
 
 // GetChatCompletions get chat completions for ai service
-func (p *GeminiProvider) GetChatCompletions(userInstruction string, baseSystemMessage string, previousToolCalls []*ai.ToolCall, md metadata.M) (*ai.InvokeResponse, error) {
+func (p *GeminiProvider) GetChatCompletions(userInstruction string, baseSystemMessage string, toolMessages []ai.ToolMessage, md metadata.M) (*ai.InvokeResponse, error) {
 	tcs, err := register.ListToolCalls(md)
 	if err != nil {
 		return nil, err

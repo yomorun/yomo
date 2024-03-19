@@ -51,10 +51,10 @@ func (p *OpenAIProvider) Name() string {
 }
 
 // GetChatCompletions get chat completions for ai service
-func (p *OpenAIProvider) GetChatCompletions(userInstruction string, baseSystemMessage string, previousToolCalls []*ai.ToolCall, md metadata.M) (*ai.InvokeResponse, error) {
+func (p *OpenAIProvider) GetChatCompletions(userInstruction string, baseSystemMessage string, toolMessages []ai.ToolMessage, md metadata.M) (*ai.InvokeResponse, error) {
 	reqBody := openai.ReqBody{Model: p.Model}
 
-	res, err := openai.ChatCompletion(APIEndpoint, "Authorization", fmt.Sprintf("Bearer %s", p.APIKey), reqBody, baseSystemMessage, userInstruction, previousToolCalls, md)
+	res, err := openai.ChatCompletion(APIEndpoint, "Authorization", fmt.Sprintf("Bearer %s", p.APIKey), reqBody, baseSystemMessage, userInstruction, toolMessages, md)
 	if err != nil {
 		return nil, err
 	}

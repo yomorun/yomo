@@ -26,8 +26,8 @@ type InvokeResponse struct {
 	FinishReason string
 	// TokenUsage is the token usage from llm api response
 	TokenUsage TokenUsage
-	// AssistantMessage is the assistant message from llm api response, only present when finish reason is "tool_calls"
-	AssistantMessage interface{}
+	// // AssistantMessage is the assistant message from llm api response, only present when finish reason is "tool_calls"
+	// AssistantMessage interface{}
 }
 
 // RespUsage is the token usage in Response
@@ -55,7 +55,7 @@ func (t *ToolCall) Equal(tool *ToolCall) bool {
 // FunctionDefinition is the function definition
 type FunctionDefinition struct {
 	Name        string              `json:"name"`
-	Description string              `json:"description"`
+	Description string              `json:"description,omitempty"`
 	Parameters  *FunctionParameters `json:"parameters,omitempty"` // chatCompletionFunctionParameters
 	Arguments   string              `json:"arguments,omitempty"`
 }
@@ -73,6 +73,13 @@ type ParameterProperty struct {
 	Type        string   `json:"type"`
 	Description string   `json:"description"`
 	Enum        []string `json:"enum,omitempty"`
+}
+
+// ToolMessage used for OpenAI tool message
+type ToolMessage struct {
+	Role       string `json:"role"`
+	Content    string `json:"content"`
+	ToolCallId string `json:"tool_call_id"`
 }
 
 // ErrNoFunctionCall is the error when no function call

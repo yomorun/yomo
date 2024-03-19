@@ -38,12 +38,13 @@ type CacheItem struct {
 // function. Finally, use reducer to aggregate all the results, and write the
 // result by the http.ResponseWriter.
 type Service struct {
-	credential string
-	zipperAddr string
-	md         metadata.M
-	source     yomo.Source
-	reducer    yomo.StreamFunction
-	cache      map[string]*CacheItem
+	credential   string
+	zipperAddr   string
+	md           metadata.M
+	source       yomo.Source
+	reducer      yomo.StreamFunction
+	cache        map[string]*CacheItem
+	sfnCallCache map[string]*sfnAsyncCall
 	LLMProvider
 }
 
@@ -71,10 +72,11 @@ func DefaultExchangeMetadataFunc(credential string) (metadata.M, error) {
 
 func newService(credential string, zipperAddr string, aiProvider LLMProvider, exFn ExchangeMetadataFunc) (*Service, error) {
 	s := &Service{
-		credential:  credential,
-		zipperAddr:  zipperAddr,
-		cache:       make(map[string]*CacheItem),
-		LLMProvider: aiProvider,
+		credential:   credential,
+		zipperAddr:   zipperAddr,
+		cache:        make(map[string]*CacheItem),
+		LLMProvider:  aiProvider,
+		sfnCallCache: make(map[string]*sfnAsyncCall),
 	}
 	// metadata
 	if exFn == nil {
@@ -133,6 +135,7 @@ func (s *Service) createSource() (yomo.Source, error) {
 	return source, nil
 }
 
+// createReducer creates the reducer-sfn. reducer-sfn used to aggregate all the llm-sfn execute results.
 func (s *Service) createReducer() (yomo.StreamFunction, error) {
 	sfn := yomo.NewStreamFunction(
 		"ai-reducer",
@@ -143,37 +146,56 @@ func (s *Service) createReducer() (yomo.StreamFunction, error) {
 	sfn.SetObserveDataTags(ai.ReducerTag)
 	sfn.SetHandler(func(ctx serverless.Context) {
 		buf := ctx.Data()
-		ylog.Debug("<< ai-reducer", "tag", ai.ReducerTag, "data", string(buf))
+		ylog.Debug("[sfn-reducer]", "tag", ai.ReducerTag, "data", string(buf))
 		invoke, err := ai.ParseFunctionCallContext(ctx)
 		if err != nil {
-			ylog.Error("parse function calling invoke", "err", err.Error())
+			ylog.Error("[sfn-reducer] parse function calling invoke", "err", err.Error())
 			return
 		}
+
+		/******* new *********/
 		reqID := invoke.ReqID
-		v, ok := s.cache[reqID]
+
+		c, ok := s.sfnCallCache[reqID]
 		if !ok {
-			ylog.Error("req_id not found", "req_id", reqID)
+			ylog.Error("[sfn-reducer] req_id not found", "req_id", reqID)
 			return
 		}
-		defer v.wg.Done()
 
-		v.mu.Lock()
-		defer v.mu.Unlock()
+		c.mu.Lock()
+		defer c.mu.Unlock()
 
-		fmt.Fprintf(v.ResponseWriter, "event: result\n")
-		fmt.Fprintf(v.ResponseWriter, "data: %s\n\n", invoke.JSONString())
+		// merge content, as multiple function calls need be merged into one assistant messages.
+		c.val[invoke.ToolCallID] = ai.ToolMessage{
+			Content:    invoke.Result,
+			ToolCallId: invoke.ToolCallID,
+		}
+		ylog.Debug("[sfn-reducer] generate", "ToolMessage", fmt.Sprintf("%+v", c.val))
+
+		c.wg.Done()
+
+		/********* before start ********/
+		// v, ok := s.cache[reqID]
+		// if !ok {
+		// 	ylog.Error("[sfn-reducer] req_id not found", "req_id", reqID)
+		// 	return
+		// }
+		// defer v.wg.Done()
+
+		// v.mu.Lock()
+		// defer v.mu.Unlock()
+
+		// fmt.Fprintf(v.ResponseWriter, "event: result\n")
+		// fmt.Fprintf(v.ResponseWriter, "data: %s\n\n", invoke.JSONString())
 		// fmt.Fprintf(v.ResponseWriter, "event: retrieval_result\n")
 		// fmt.Fprintf(v.ResponseWriter, "data: %s\n\n", invoke.RetrievalResult)
 
-		// // one json per line, like groq.com did
-		// fmt.Fprintf(v.ResponseWriter, invoke.JSONString()+"\n")
-		// fmt.Fprintf(v.ResponseWriter, "{\"retrievalData\": \"%s\"}\n", invoke.RetrievalResult)
-
-		// flush the response
-		flusher, ok := v.ResponseWriter.(http.Flusher)
-		if ok {
-			flusher.Flush()
-		}
+		// // flush the response
+		// flusher, ok := v.ResponseWriter.(http.Flusher)
+		// if ok {
+		// 	flusher.Flush()
+		// }
+		/********* before end ********/
 	})
 
 	err := sfn.Connect()
@@ -199,36 +221,99 @@ func (s *Service) GetOverview() (*ai.OverviewResponse, error) {
 }
 
 // GetChatCompletions returns the llm api response
-func (s *Service) GetChatCompletions(userInstruction string) (*ai.InvokeResponse, error) {
-	// messages
-	baseSystemMessage := `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous.`
-
+func (s *Service) GetChatCompletions(userInstruction string, baseSystemMessage string, reqID string) (*ai.InvokeResponse, error) {
 	// we do not support multi-turn invoke for Google Gemini
 	if s.LLMProvider.Name() == "gemini" {
 		return s.LLMProvider.GetChatCompletions(userInstruction, baseSystemMessage, nil, s.md)
 	} else {
-		return s.execute(userInstruction)
+		return s.execute(userInstruction, baseSystemMessage, reqID)
 	}
 }
 
-func (s *Service) execute(userInstruction string) (*ai.InvokeResponse, error) {
-	// messages
-	baseSystemMessage := `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous.`
-
+// execute multi-turn /chat/completions request
+func (s *Service) execute(userInstruction string, baseSystemMessage string, reqID string) (*ai.InvokeResponse, error) {
 	res, err := s.LLMProvider.GetChatCompletions(userInstruction, baseSystemMessage, nil, s.md)
 	if err != nil {
 		return nil, err
 	}
 
-	if res.FinishReason == "tools_call" {
-		res1, err := s.LLMProvider.GetChatCompletions(userInstruction, baseSystemMessage, res.ToolCalls[0], s.md)
+	// run llm function calls
+	llmCalls, err := s.runFunctionCalls(res.ToolCalls, reqID)
+	if err != nil {
+		return nil, err
+	}
+
+	if res.FinishReason == "tool_calls" {
+		ylog.Debug(">>>> start 2nd call with", "calls", fmt.Sprintf("%+v", llmCalls))
+		res1, err := s.LLMProvider.GetChatCompletions(userInstruction, baseSystemMessage, llmCalls, s.md)
 		if err != nil {
 			return nil, err
 		}
 		return res1, nil
+	} else if res.FinishReason == "stop" {
+		ylog.Debug("[ai service] done as finish_reason is stop", "res", res)
+		// return the result
+	} else {
+		ylog.Warn("[ai service] unknown finish reason", "finish_reason", res.FinishReason)
+	}
+	return res, nil
+}
+
+// run llm-sfn function calls
+func (s *Service) runFunctionCalls(fns map[uint32][]*ai.ToolCall, reqID string) ([]ai.ToolMessage, error) {
+	asyncCall := &sfnAsyncCall{
+		wg:  &sync.WaitGroup{},
+		val: make(map[string]ai.ToolMessage),
+	}
+	s.sfnCallCache[reqID] = asyncCall
+
+	for tag, tcs := range fns {
+		ylog.Debug("+++invoke toolCalls", "tag", tag, "len(toolCalls)", len(tcs), "reqID", reqID)
+		for _, fn := range tcs {
+			err := s.fireLlmSfn(tag, fn, reqID)
+			if err != nil {
+				ylog.Error("send data to zipper", "err", err.Error())
+				continue
+			}
+			// wait for this request to be done
+			asyncCall.wg.Add(1)
+		}
 	}
 
-	return res, nil
+	// wait for reducer to finish, the aggregation results
+	asyncCall.wg.Wait()
+
+	arr := make([]ai.ToolMessage, 0)
+
+	for _, call := range asyncCall.val {
+		ylog.Debug("---invoke done", "id", call.ToolCallId, "content", call.Content)
+		call.Role = "tool"
+		arr = append(arr, call)
+	}
+
+	return arr, nil
+}
+
+// fireLlmSfn fires the llm-sfn function call by s.source.Write()
+func (s *Service) fireLlmSfn(tag uint32, fn *ai.ToolCall, reqID string) error {
+	ylog.Info(
+		"+invoke func",
+		"tag", tag,
+		"toolCallID", fn.ID,
+		"function", fn.Function.Name,
+		"arguments", fn.Function.Arguments,
+		"reqID", reqID)
+	data := &ai.FunctionCall{
+		ReqID:        reqID,
+		ToolCallID:   fn.ID,
+		Arguments:    fn.Function.Arguments,
+		FunctionName: fn.Function.Name,
+	}
+	buf, err := data.Bytes()
+	if err != nil {
+		ylog.Error("marshal data", "err", err.Error())
+	}
+	return s.source.Write(tag, buf)
 }
 
 // Write writes the data to zipper
@@ -241,4 +326,10 @@ func init() {
 		v.Release()
 	}
 	services = expirable.NewLRU[string, *Service](ServiceCacheSize, onEvicted, ServiceCacheTTL)
+}
+
+type sfnAsyncCall struct {
+	wg  *sync.WaitGroup
+	mu  sync.Mutex
+	val map[string]ai.ToolMessage
 }
