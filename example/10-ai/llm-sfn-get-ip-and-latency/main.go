@@ -27,7 +27,7 @@ func InputSchema() any {
 
 func main() {
 	sfn := yomo.NewStreamFunction(
-		"fn-get-ip-from-domain",
+		"fn-get-ip-and-latency",
 		"localhost:9000",
 		yomo.WithSfnCredential("token:Happy New Year"),
 		yomo.WithSfnAIFunctionDefinition(Description(), InputSchema()),
