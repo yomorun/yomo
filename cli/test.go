@@ -19,10 +19,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 	"time"
 
@@ -55,19 +55,41 @@ var testPromptCmd = &cobra.Command{
 		if len(sfnDir) == 0 {
 			sfnDir = append(sfnDir, ".")
 		}
-		// TODO: go run
 		for _, dir := range sfnDir {
 			// run sfn
 			log.InfoStatusEvent(os.Stdout, "--------------------------------------------------------")
 			log.InfoStatusEvent(os.Stdout, "Run AI SFN on directory: %v", dir)
 			cmd := exec.Command("go", "run", ".")
 			cmd.Dir = dir
-			cmd.Env = os.Environ()
-			cmd.Stdout = io.Discard
-			cmd.Stderr = io.Discard
+			env := os.Environ()
+			env = append(env, "YOMO_LOG_LEVEL=info")
+			cmd.Env = env
+			// cmd.Stdout = io.Discard
+			// cmd.Stderr = io.Discard
 			cmd.SysProcAttr = &syscall.SysProcAttr{
 				Setpgid: true,
 			}
+			outputReader, err := cmd.StdoutPipe()
+			if err != nil {
+				log.FailureStatusEvent(os.Stdout, "Failed to run AI SFN on directory: %v, error: %v", dir, err)
+				continue
+			}
+			// read outputReader
+			output := make(chan []byte)
+			defer close(output)
+			go func(output chan []byte) {
+				outputBuf := make([]byte, 1024)
+				for {
+					outputLen, err := outputReader.Read(outputBuf)
+					if err != nil {
+						break
+					}
+					if len(outputBuf[:outputLen]) > 0 {
+						output <- outputBuf[:outputLen]
+					}
+				}
+			}(output)
+			// start cmd
 			if err := cmd.Start(); err != nil {
 				log.FailureStatusEvent(os.Stdout, "Failed to run AI SFN on directory: %v, error: %v", dir, err)
 				continue
@@ -81,11 +103,25 @@ var testPromptCmd = &cobra.Command{
 					}
 				}(cmd)
 			}
-
+			// wait for the sfn to be ready
+			for {
+				select {
+				case out := <-output:
+					// log.InfoStatusEvent(os.Stdout, "AI SFN Output: %s", out)
+					if len(out) > 0 && strings.Contains(string(out), "register ai function success") {
+						log.InfoStatusEvent(os.Stdout, "Register AI function success")
+						goto REQUEST
+					}
+				case <-time.After(5 * time.Second):
+					log.FailureStatusEvent(os.Stdout, "Connect to zipper failed, please check the zipper is running or not")
+					os.Exit(1)
+				}
+			}
 			// invoke llm api
-			// TODO: need to wait for the sfn to be ready
-			time.Sleep(3000 * time.Millisecond)
 			// request
+		REQUEST:
+			apiEndpoint := fmt.Sprintf("%s/invoke", aiServerAddr)
+			log.InfoStatusEvent(os.Stdout, `Invoke LLM API "%s"`, apiEndpoint)
 			invokeReq := ai.InvokeRequest{
 				ReturnRaw: true, // return raw response
 				Prompt:    userPrompt,
@@ -96,11 +132,10 @@ var testPromptCmd = &cobra.Command{
 				continue
 			}
 			// invoke api endpoint
-			log.InfoStatusEvent(os.Stdout, "<< LLM API Request")
+			log.InfoStatusEvent(os.Stdout, ">> LLM API Request")
 			log.InfoStatusEvent(os.Stdout, "Messages:")
 			log.InfoStatusEvent(os.Stdout, "\tSystem: %s", systemPrompt)
 			log.InfoStatusEvent(os.Stdout, "\tUser: %s", userPrompt)
-			apiEndpoint := fmt.Sprintf("%s/invoke", aiServerAddr)
 			resp, err := http.Post(apiEndpoint, "application/json", bytes.NewBuffer(reqBuf))
 			if err != nil {
 				log.FailureStatusEvent(os.Stdout, "Failed to invoke llm api: %v", err)
@@ -109,7 +144,7 @@ var testPromptCmd = &cobra.Command{
 			defer resp.Body.Close()
 			// response
 			// failed to invoke llm api
-			log.InfoStatusEvent(os.Stdout, ">> LLM API Response")
+			log.InfoStatusEvent(os.Stdout, "<< LLM API Response")
 			if resp.StatusCode != http.StatusOK {
 				var errorResp ai.ErrorResponse
 				err := json.NewDecoder(resp.Body).Decode(&errorResp)
