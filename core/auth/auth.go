@@ -67,7 +67,7 @@ func (c *Credential) Name() string {
 
 // Authenticate finds an authentication way in `auths` and authenticates the Object.
 //
-// If `auths` is nil or empty, It returns true, It think that authentication is not required.
+// If `auths` is nil or empty, It returns true, means authentication is not required.
 func Authenticate(auths map[string]Authentication, hf *frame.HandshakeFrame) (metadata.M, error) {
 	if auths == nil || len(auths) <= 0 {
 		return metadata.M{}, nil
