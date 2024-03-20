@@ -13,9 +13,9 @@ func TestToken(t *testing.T) {
 
 	assert.Equal(t, "token", auth.Name())
 
-	_, authed := auth.Authenticate("mock-token")
-	assert.True(t, authed)
+	_, err := auth.Authenticate("mock-token")
+	assert.NoError(t, err)
 
-	_, authed = auth.Authenticate("other-token")
-	assert.False(t, authed)
+	_, err = auth.Authenticate("other-token")
+	assert.EqualError(t, err, "invalid token: other-token")
 }

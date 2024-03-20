@@ -2,6 +2,7 @@
 package auth
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/yomorun/yomo/core/frame"
@@ -16,8 +17,8 @@ var (
 type Authentication interface {
 	// Init authentication initialize arguments
 	Init(args ...string)
-	// Authenticate authentication client's credential
-	Authenticate(payload string) (metadata.M, bool)
+	// Authenticate the client's credential
+	Authenticate(payload string) (metadata.M, error)
 	// Name authentication name
 	Name() string
 }
@@ -64,22 +65,22 @@ func (c *Credential) Name() string {
 	return c.name
 }
 
-// Authenticate finds an authentication way in `auths` and authenticates the Object.
+// Authenticate finds the authentication strategy in `auths` and then authenticates the Object.
 //
-// If `auths` is nil or empty, It returns true, It think that authentication is not required.
-func Authenticate(auths map[string]Authentication, obj *frame.HandshakeFrame) (metadata.M, bool) {
+// If `auths` is nil or empty, It returns true, means authentication is not required.
+func Authenticate(auths map[string]Authentication, hf *frame.HandshakeFrame) (metadata.M, error) {
 	if auths == nil || len(auths) <= 0 {
-		return metadata.M{}, true
+		return metadata.M{}, nil
 	}
 
-	if obj == nil {
-		return metadata.M{}, false
+	if hf == nil {
+		return metadata.M{}, errors.New("handshake frame cannot be nil")
 	}
 
-	auth, ok := auths[obj.AuthName]
+	auth, ok := auths[hf.AuthName]
 	if !ok {
-		return metadata.M{}, false
+		return metadata.M{}, errors.New("authentication not found: " + hf.AuthName)
 	}
 
-	return auth.Authenticate(obj.AuthPayload)
+	return auth.Authenticate(hf.AuthPayload)
 }
