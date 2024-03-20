@@ -98,7 +98,7 @@ func TestFrameRoundTrip(t *testing.T) {
 
 	illegalTokenSource := NewClient("source", testaddr, ClientTypeSource, WithCredential("token:error-token"), WithLogger(discardingLogger))
 	err := illegalTokenSource.Connect(ctx)
-	assert.Equal(t, "authentication failed: client credential type is token", err.Error())
+	assert.Equal(t, "invalid token: error-token", err.Error())
 
 	source := NewClient(
 		"source",

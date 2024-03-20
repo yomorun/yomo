@@ -87,8 +87,8 @@ func TestAuthenticate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, got := Authenticate(tt.args.auths, tt.args.obj)
-			assert.Equal(t, tt.want, got)
+			_, err := Authenticate(tt.args.auths, tt.args.obj)
+			assert.Equal(t, tt.want, err == nil)
 		})
 	}
 }
