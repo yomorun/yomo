@@ -55,7 +55,7 @@ func (t *ToolCall) Equal(tool *ToolCall) bool {
 // FunctionDefinition is the function definition
 type FunctionDefinition struct {
 	Name        string              `json:"name"`
-	Description string              `json:"description"`
+	Description string              `json:"description,omitempty"`
 	Parameters  *FunctionParameters `json:"parameters,omitempty"` // chatCompletionFunctionParameters
 	Arguments   string              `json:"arguments,omitempty"`
 }
@@ -73,6 +73,21 @@ type ParameterProperty struct {
 	Type        string   `json:"type"`
 	Description string   `json:"description"`
 	Enum        []string `json:"enum,omitempty"`
+}
+
+// ToolMessage used for OpenAI tool message
+type ToolMessage struct {
+	Role       string `json:"role"`
+	Content    string `json:"content"`
+	ToolCallId string `json:"tool_call_id"`
+}
+
+// ChainMessage is the message for chaining llm request with preceeding `tool_calls` response
+type ChainMessage struct {
+	// PrecedingAssistantMessage is the preceding assistant message in llm response
+	PreceedingAssistantMessage interface{}
+	// ToolMessages is the tool messages aggragated from reducer-sfn by AI service
+	ToolMessages []ToolMessage
 }
 
 // ErrNoFunctionCall is the error when no function call

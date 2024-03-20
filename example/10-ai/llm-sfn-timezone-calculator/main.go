@@ -84,9 +84,10 @@ func handler(ctx serverless.Context) {
 
 	slog.Info("[sfn] result", "result", targetTime)
 
-	fcCtx.SetRetrievalResult(fmt.Sprintf("The time in timezone %s is %s", msg.TargetTimezone, targetTime))
+	val := fmt.Sprintf("This time in timezone %s is %s", msg.TargetTimezone, targetTime)
 
-	fcCtx.Write(targetTime)
+	// fcCtx.SetRetrievalResult(val)
+	fcCtx.Write(val)
 }
 
 // ConvertTimezone converts the current time from the source timezone to the target timezone.

@@ -11,6 +11,8 @@ import (
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
 	"github.com/yomorun/yomo/pkg/bridge/ai/internal/openai"
+
+	bridgeai "github.com/yomorun/yomo/pkg/bridge/ai"
 )
 
 // APIEndpoint is the endpoint for OpenAI
@@ -24,6 +26,9 @@ type OpenAIProvider struct {
 	// eg. "gpt-3.5-turbo-1106", "gpt-4-turbo-preview", "gpt-4-vision-preview", "gpt-4"
 	Model string
 }
+
+// check if implements ai.Provider
+var _ bridgeai.LLMProvider = &OpenAIProvider{}
 
 // NewProvider creates a new OpenAIProvider
 func NewProvider(apiKey string, model string) *OpenAIProvider {
@@ -46,13 +51,10 @@ func (p *OpenAIProvider) Name() string {
 }
 
 // GetChatCompletions get chat completions for ai service
-func (p *OpenAIProvider) GetChatCompletions(userInstruction string, md metadata.M) (*ai.InvokeResponse, error) {
-	// messages
-	userDefinedBaseSystemMessage := `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous.`
-
+func (p *OpenAIProvider) GetChatCompletions(userInstruction string, baseSystemMessage string, chainMessage ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error) {
 	reqBody := openai.ReqBody{Model: p.Model}
 
-	res, err := openai.ChatCompletion(APIEndpoint, "Authorization", fmt.Sprintf("Bearer %s", p.APIKey), reqBody, userDefinedBaseSystemMessage, userInstruction, nil, md)
+	res, err := openai.ChatCompletion(APIEndpoint, "Authorization", fmt.Sprintf("Bearer %s", p.APIKey), reqBody, baseSystemMessage, userInstruction, chainMessage, md, withTool)
 	if err != nil {
 		return nil, err
 	}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/metadata"
+	bridgeai "github.com/yomorun/yomo/pkg/bridge/ai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/internal/openai"
 )
 
@@ -20,6 +21,8 @@ type AzureOpenAIProvider struct {
 	DeploymentID string
 	APIVersion   string
 }
+
+var _ bridgeai.LLMProvider = &AzureOpenAIProvider{}
 
 // NewProvider creates a new AzureOpenAIProvider
 func NewProvider(apiKey string, apiEndpoint string, deploymentID string, apiVersion string) *AzureOpenAIProvider {
@@ -49,14 +52,14 @@ func (p *AzureOpenAIProvider) Name() string {
 }
 
 // GetChatCompletions get chat completions for ai service
-func (p *AzureOpenAIProvider) GetChatCompletions(userInstruction string, md metadata.M) (*ai.InvokeResponse, error) {
-	// messages
-	systemInstruction := `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous.`
+func (p *AzureOpenAIProvider) GetChatCompletions(userInstruction string, baseSystemMessage string, chainMessage ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error) {
+	// // messages
+	// systemInstruction := `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous.`
 
 	reqBody := openai.ReqBody{}
 
 	url := fmt.Sprintf("%s/openai/deployments/%s/chat/completions?api-version=%s", p.APIEndpoint, p.DeploymentID, p.APIVersion)
-	res, err := openai.ChatCompletion(url, "api-key", p.APIKey, reqBody, systemInstruction, userInstruction, nil, md)
+	res, err := openai.ChatCompletion(url, "api-key", p.APIKey, reqBody, baseSystemMessage, userInstruction, chainMessage, md, withTool)
 
 	if err != nil {
 		return nil, err

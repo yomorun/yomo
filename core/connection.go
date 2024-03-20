@@ -89,10 +89,12 @@ func (c *Connection) ObserveDataTags() []uint32 {
 	return c.observeDataTags
 }
 
+// ClientType returns the type of client.
 func (c *Connection) ClientType() ClientType {
 	return c.clientType
 }
 
+// FrameConn returns the frame connection.
 func (c *Connection) FrameConn() frame.Conn {
 	return c.fconn
 }

@@ -1,5 +1,6 @@
 package gemini
 
+// Response is the response of the Gemini API
 type Response struct {
 	Candidates     []Candidate    `json:"candidates"`
 	PromptFeedback PromptFeedback `json:"promptFeedback"`
