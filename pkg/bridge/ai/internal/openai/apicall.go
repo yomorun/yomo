@@ -1,3 +1,4 @@
+// Package openai provides the ability to call OpenAI api
 package openai
 
 import (
@@ -15,7 +16,7 @@ import (
 )
 
 // GetChatCompletions get chat completions for ai service
-func ChatCompletion(apiEndpoint string, authHeaderKey, authHeaderValue string, baseRequestbody ReqBody, baseSystemInstruction, userInstruction string, previousToolCalls []ai.ToolCall, md metadata.M) (*ai.InvokeResponse, error) {
+func ChatCompletion(apiEndpoint string, authHeaderKey, authHeaderValue string, baseRequestbody ReqBody, baseSystemMessage string, userInstruction string, chainMessage ai.ChainMessage, md metadata.M, ifWithTool bool) (*ai.InvokeResponse, error) {
 	tcs, err := register.ListToolCalls(md)
 	if err != nil {
 		return nil, err
@@ -41,37 +42,58 @@ func ChatCompletion(apiEndpoint string, authHeaderKey, authHeaderValue string, b
 	- user instruction
 	***/
 	systemInstructions := []string{"## Instructions\n"}
-	for _, tc := range toolCalls {
-		systemInstructions = append(systemInstructions, "- ")
-		systemInstructions = append(systemInstructions, tc.Function.Description)
+
+	// only append if there are tool calls
+	if ifWithTool {
+		for _, tc := range toolCalls {
+			systemInstructions = append(systemInstructions, "- ")
+			systemInstructions = append(systemInstructions, tc.Function.Description)
+			systemInstructions = append(systemInstructions, "\n")
+		}
 		systemInstructions = append(systemInstructions, "\n")
 	}
-	systemInstructions = append(systemInstructions, "\n")
 
-	SystemPrompt := fmt.Sprintf("%s\n\n%s", baseSystemInstruction, strings.Join(systemInstructions, ""))
+	SystemPrompt := fmt.Sprintf("%s\n\n%s", baseSystemMessage, strings.Join(systemInstructions, ""))
 
 	messages := []ChatCompletionMessage{}
 
-	// 1. system prompt
+	// 1. system message
 	messages = append(messages, ChatCompletionMessage{Role: "system", Content: SystemPrompt})
 
 	// 2. previous tool calls
-	// Ref: Assistant Message Object in Messsages
+	// Ref: Tool Message Object in Messsages
+	// https://platform.openai.com/docs/guides/function-calling
 	// https://platform.openai.com/docs/api-reference/chat/create#chat-create-messages
-	if len(previousToolCalls) > 0 {
-		assistantMessage := ChatCompletionMessage{
-			// Role must be "assistant"
-			Role:      "assistant",
-			ToolCalls: previousToolCalls,
+
+	if chainMessage.PreceedingAssistantMessage != nil {
+		// 2.1 assistant message
+		// try convert type of chainMessage.PreceedingAssistantMessage to type ChatCompletionMessage
+		assistantMessage, ok := chainMessage.PreceedingAssistantMessage.(ChatCompletionMessage)
+		if ok {
+			ylog.Debug("======== add assistantMessage", "am", fmt.Sprintf("%+v", assistantMessage))
+			messages = append(messages, assistantMessage)
 		}
-		messages = append(messages, assistantMessage)
+
+		// 2.2 tool message
+		for _, tool := range chainMessage.ToolMessages {
+			tm := ChatCompletionMessage{
+				Role:       "tool",
+				Content:    tool.Content,
+				ToolCallID: tool.ToolCallId,
+			}
+			ylog.Debug("======== add toolMessage", "tm", fmt.Sprintf("%+v", tm))
+			messages = append(messages, tm)
+		}
 	}
 
 	// 3. user instruction
 	messages = append(messages, ChatCompletionMessage{Role: "user", Content: userInstruction})
 
 	baseRequestbody.Messages = messages
-	baseRequestbody.Tools = toolCalls
+
+	if ifWithTool {
+		baseRequestbody.Tools = toolCalls
+	}
 
 	jsonBody, err := json.Marshal(baseRequestbody)
 	if err != nil {
@@ -131,17 +153,23 @@ func ChatCompletion(apiEndpoint string, authHeaderKey, authHeaderValue string, b
 	// finish reason
 	result.FinishReason = choice.FinishReason
 
-	if result.FinishReason == "tool_calls" {
-		// assistant message
-		result.AssistantMessage = responseMessage
-	}
-
 	// record usage
 	result.TokenUsage = ai.TokenUsage{
 		PromptTokens:     respBodyStruct.Usage.PromptTokens,
 		CompletionTokens: respBodyStruct.Usage.CompletionTokens,
 	}
 	ylog.Debug("++ llm result", "token_usage", fmt.Sprintf("%v", result.TokenUsage), "finish_reason", result.FinishReason)
+
+	// if llm said no function call, we should return the result
+	if result.FinishReason == "stop" {
+		result.Content = responseMessage.Content
+		return result, nil
+	}
+
+	if result.FinishReason == "tool_calls" {
+		// assistant message
+		result.AssistantMessage = responseMessage
+	}
 
 	if len(calls) == 0 {
 		result.Content = content
@@ -151,14 +179,14 @@ func ChatCompletion(apiEndpoint string, authHeaderKey, authHeaderValue string, b
 	// functions may be more than one
 	for _, call := range calls {
 		for tag, tc := range tcs {
-			if tc.Equal(&call) {
+			if tc.Equal(call) {
 				// Use toolCalls because tool_id is required in the following llm request
 				if result.ToolCalls == nil {
 					result.ToolCalls = make(map[uint32][]*ai.ToolCall)
 				}
 				// Create a new variable to hold the current call
 				currentCall := call
-				result.ToolCalls[tag] = append(result.ToolCalls[tag], &currentCall)
+				result.ToolCalls[tag] = append(result.ToolCalls[tag], currentCall)
 			}
 		}
 	}

@@ -123,8 +123,8 @@ var testPromptCmd = &cobra.Command{
 			apiEndpoint := fmt.Sprintf("%s/invoke", aiServerAddr)
 			log.InfoStatusEvent(os.Stdout, `Invoke LLM API "%s"`, apiEndpoint)
 			invokeReq := ai.InvokeRequest{
-				ReturnRaw: true, // return raw response
-				Prompt:    userPrompt,
+				IncludeCallStack: true, // include call stack
+				Prompt:           userPrompt,
 			}
 			reqBuf, err := json.Marshal(invokeReq)
 			if err != nil {
@@ -161,23 +161,48 @@ var testPromptCmd = &cobra.Command{
 				log.FailureStatusEvent(os.Stdout, "Failed to decode llm api response: %v", err)
 				continue
 			}
+			// tool calls
 			for tag, tcs := range invokeResp.ToolCalls {
 				toolCallCount := len(tcs)
 				if toolCallCount > 0 {
-					log.InfoStatusEvent(os.Stdout, "Tag: %v", tag)
 					log.InfoStatusEvent(os.Stdout, "Invoke functions[%d]:", toolCallCount)
-					for i, tc := range tcs {
-						log.InfoStatusEvent(os.Stdout,
-							"\t[%d] name: %s, arguments: %v",
-							i,
-							tc.Function.Name,
-							tc.Function.Arguments,
-						)
+					for _, tc := range tcs {
+						if invokeResp.ToolMessages == nil {
+							log.InfoStatusEvent(os.Stdout,
+								"\t[%s] tag: %d, name: %s, arguments: %s",
+								tc.ID,
+								tag,
+								tc.Function.Name,
+								tc.Function.Arguments,
+							)
+						} else {
+							log.InfoStatusEvent(os.Stdout,
+								"\t[%s] tag: %d, name: %s, arguments: %s, result: %s",
+								tc.ID,
+								tag,
+								tc.Function.Name,
+								tc.Function.Arguments,
+								getToolCallResult(tc, invokeResp.ToolMessages),
+							)
+						}
 					}
 				}
 			}
+			// finish reason
+			log.InfoStatusEvent(os.Stdout, "Finish Reason: %s", invokeResp.FinishReason)
+			log.InfoStatusEvent(os.Stdout, "Content: %s", invokeResp.Content)
 		}
 	},
+}
+
+func getToolCallResult(tc *ai.ToolCall, tms []ai.ToolMessage) string {
+	result := ""
+	for _, tm := range tms {
+		if tm.ToolCallId == tc.ID {
+			result = tm.Content
+		}
+	}
+	return result
 }
 
 func init() {
@@ -190,7 +215,7 @@ func init() {
 		&systemPrompt,
 		"system-prompt",
 		"s",
-		`You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous. If you don't know the answer, stop the conversation by saying "no func call"`,
+		`You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous.`,
 		"system prompt",
 	)
 	testPromptCmd.Flags().StringVarP(&aiServerAddr, "ai-server", "a", "http://localhost:8000", "LLM API server address")

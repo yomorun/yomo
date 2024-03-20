@@ -15,9 +15,9 @@ type OverviewResponse struct {
 
 // InvokeRequest is the request from user to BasicAPIServer
 type InvokeRequest struct {
-	ReqID     string `json:"req_id"`     // ReqID is the request id of the request
-	Prompt    string `json:"prompt"`     // Prompt is user input text for chat completion
-	ReturnRaw bool   `json:"return_raw"` // ReturnRaw is the flag to return raw response
+	ReqID            string `json:"req_id"`             // ReqID is the request id of the request
+	Prompt           string `json:"prompt"`             // Prompt is user input text for chat completion
+	IncludeCallStack bool   `json:"include_call_stack"` // IncludeCallStack is the flag to include call stack in response
 }
 
 // InvokeResponse is the response for chat completions
@@ -28,6 +28,8 @@ type InvokeResponse struct {
 	Content string
 	// ToolCalls is the toolCalls from llm api response
 	ToolCalls map[uint32][]*ToolCall
+	// ToolMessages is the tool messages from llm api response
+	ToolMessages []ToolMessage
 	// FinishReason is the finish reason from llm api response
 	FinishReason string
 	// TokenUsage is the token usage from llm api response
@@ -61,7 +63,7 @@ func (t *ToolCall) Equal(tool *ToolCall) bool {
 // FunctionDefinition is the function definition
 type FunctionDefinition struct {
 	Name        string              `json:"name"`
-	Description string              `json:"description"`
+	Description string              `json:"description,omitempty"`
 	Parameters  *FunctionParameters `json:"parameters,omitempty"` // chatCompletionFunctionParameters
 	Arguments   string              `json:"arguments,omitempty"`
 }
@@ -79,6 +81,21 @@ type ParameterProperty struct {
 	Type        string   `json:"type"`
 	Description string   `json:"description"`
 	Enum        []string `json:"enum,omitempty"`
+}
+
+// ToolMessage used for OpenAI tool message
+type ToolMessage struct {
+	Role       string `json:"role"`
+	Content    string `json:"content"`
+	ToolCallId string `json:"tool_call_id"`
+}
+
+// ChainMessage is the message for chaining llm request with preceeding `tool_calls` response
+type ChainMessage struct {
+	// PrecedingAssistantMessage is the preceding assistant message in llm response
+	PreceedingAssistantMessage interface{}
+	// ToolMessages is the tool messages aggragated from reducer-sfn by AI service
+	ToolMessages []ToolMessage
 }
 
 // ErrNoFunctionCall is the error when no function call

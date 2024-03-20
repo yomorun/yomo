@@ -83,7 +83,7 @@ func handler(ctx serverless.Context) {
 		slog.Info("[sfn] << receive", "tag", tag, "data", msg)
 		data := fmt.Sprintf("[%s] temperature: %d°C", msg.CityName, rand.Intn(40))
 		fcCtx.SetRetrievalResult(data)
-		err = fcCtx.Write(fmt.Sprintf("%d", rand.Intn(40)))
+		err = fcCtx.Write(data)
 		if err == nil {
 			slog.Info("[sfn] >> write", "tag", ai.ReducerTag, "data", data)
 		}

@@ -53,7 +53,7 @@ bridge:
   ai:
     server:
       addr: 0.0.0.0:8000 ## Restful API endpoint
-      provider: azopenai ## LLM API Service we will use
+      provider: openai ## LLM API Service we will use
 
     providers:
       azopenai:
@@ -63,8 +63,8 @@ bridge:
         api_version: <API_VERSION>
 
       openai:
-        api_key: <OPENAI_API_KEY>
-        model: <OPENAI_MODEL>
+        api_key: sk-xxxxxxxxxxxxxxxxxxxxxxxxxxx
+        model: gpt-4-1106-preview
 
       gemini:
         api_key: <GEMINI_API_KEY>
@@ -88,14 +88,12 @@ YOMO_LOG_LEVEL=debug yomo serve -c my-agent.yaml
 First, let's define what this function do and how's the parameters required, these will be combined to prompt when invoking LLM.
 
 ```golang
-func Description() string {
-	return "Get the current exchange rates"
+type Parameter struct {
+	Domain string `json:"domain" jsonschema:"description=Domain of the website,example=example.com"`
 }
 
-type Parameter struct {
-	SourceCurrency string  `json:"source" jsonschema:"description=The source currency to be queried in 3-letter ISO 4217 format"`
-	TargetCurrency string  `json:"target" jsonschema:"description=The target currency to be queried in 3-letter ISO 4217 format"`
-	Amount         float64 `json:"amount" jsonschema:"description=The amount of the USD currency to be converted to the target currency"`
+func Description() string {
+	return `if user asks ip or network latency of a domain, you should return the result of the giving domain. try your best to dissect user expressions to infer the right domain names`
 }
 
 func InputSchema() any {
@@ -103,68 +101,62 @@ func InputSchema() any {
 }
 ```
 
-Retrieve the real-time exchange rate by calling the openexchangerates.org API.:
-
-```golang
-type Rates struct {
-	Rates map[string]float64 `json:"rates"`
-}
-
-func fetchRate(sourceCurrency string, targetCurrency string, amount float64) (float64, error) {
-	resp, _ := http.Get(fmt.Sprintf("https://openexchangerates.org/api/latest.json?app_id=%s&base=%s&symbols=%s", os.Getenv("API_KEY"), sourceCurrency, targetCurrency))
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	var rt *Rates
-	_ = json.Unmarshal(body, &rt)
-
-  return rates.Rates[targetCurrency], nil
-}
-```
-
-Wrap to a Stateful Serverless Function:
+Create a Stateful Serverless Function to get the IP and Latency of a domain:
 
 ```golang
 func handler(ctx serverless.Context) {
-	fcCtx, _ := ai.ParseFunctionCallContext(ctx)
+	fc, _ := ai.ParseFunctionCallContext(ctx)
 
 	var msg Parameter
-	fcCtx.UnmarshalArguments(&msg)
+	fc.UnmarshalArguments(&msg)
 
-	rate, _ := fetchRate(msg.SourceCurrency, msg.TargetCurrency, msg.Amount)
-  	result = fmt.Sprintf("%f", msg.Amount*rate)
+// get ip of the domain
+	ips, _ := net.LookupIP(msg.Domain)
 
-	fcCtx.SetRetrievalResult(fmt.Sprintf("based on today's exchange rate: %f, %f %s is equivalent to approximately %f %s",rate, msg.Amount, msg.SourceCurrency, msg.Amount*rate, msg.TargetCurrency))
-	fcCtx.Write(result)
+	// get ip[0] ping latency
+	pinger, _ := ping.NewPinger(ips[0].String())
+
+	pinger.Count = 3
+	pinger.Run()
+	stats := pinger.Statistics()
+
+	val := fmt.Sprintf("domain %s has ip %s with average latency %s", msg.Domain, ips[0], stats.AvgRtt)
+	fc.Write(val)
 }
+
 ```
 
 Finally, let's run it
 
 ```bash
-$ API_KEY=<get_from_openexchangerates.org> go run main.go
+$ go run main.go
 
-time=2024-02-26T17:29:52.868+08:00 level=INFO msg="connected to zipper" component=StreamFunction sfn_id=GqfKopi2ECx7GIlzw6ZL3 sfn_name=fn-exchange-rates zipper_addr=localhost:9000
-time=2024-02-26T17:29:52.869+08:00 level=INFO msg="register ai function success" component=StreamFunction sfn_id=GqfKopi2ECx7GIlzw6ZL3 sfn_name=fn-exchange-rates zipper_addr=localhost:9000 name=fn-exchange-rates tag=16
+time=2024-03-19T21:43:30.583+08:00 level=INFO msg="connected to zipper" component=StreamFunction sfn_id=B0ttNSEKLSgMjXidB11K1 sfn_name=fn-get-ip-from-domain zipper_addr=localhost:9000
+time=2024-03-19T21:43:30.584+08:00 level=INFO msg="register ai function success" component=StreamFunction sfn_id=B0ttNSEKLSgMjXidB11K1 sfn_name=fn-get-ip-from-domain zipper_addr=localhost:9000 name=fn-get-ip-from-domain tag=16
 ```
 
 ### Done, let's have a try
 
 ```sh
-$ curl -i -X POST -H "Content-Type: application/json" -d '{"prompt":"How much is 100 dollar in Korea and UK currency"}' http://127.0.0.1:8000/invoke
-
+$ curl -i -X POST -H "Content-Type: application/json" -d '{"prompt":"compare nike and puma website speed"}' http://127.0.0.1:8000/invoke
 HTTP/1.1 200 OK
-Transfer-Encoding: chunked
+Content-Length: 944
 Connection: keep-alive
-Content-Type: text/event-stream
-Date: Mon, 26 Feb 2024 09:30:35 GMT
+Content-Type: application/json
+Date: Tue, 19 Mar 2024 13:30:14 GMT
 Keep-Alive: timeout=4
 Proxy-Connection: keep-alive
 
-event:result
-data: {"req_id":"7YU0SY","result":"78.920600","retrieval_result":"based on today's exchange rate: 0.789206, 100.000000 USD is equivalent to approximately 78.920600 GBP","tool_call_id":"call_mgGM9fqGHTtUueokUa7uwYHT","function_name":"fn-exchange-rates","arguments":"{\"amount\": 100, \"source\": \"USD\", \"target\": \"GBP\"}"}
-
-event:result
-data: {"req_id":"7YU0SY","result":"133139.226800","retrieval_result":"based on today's exchange rate: 1331.392268, 100.000000 USD is equivalent to approximately 133139.226800 KRW","tool_call_id":"call_1IFlbtKNC5CEN13tBSM0Nson","function_name":"fn-exchange-rates","arguments":"{\"amount\": 100, \"source\": \"USD\", \"target\": \"KRW\"}"}
+{
+  "Content": "Based on the data provided for the domains nike.com and puma.com which include IP addresses and average latencies, we can infer the following about their website speeds:
+  - Nike.com has an IP address of 13.225.183.84 with an average latency of 65.568333 milliseconds.
+  - Puma.com has an IP address of 151.101.194.132 with an average latency of 54.563666 milliseconds.
+  
+  Comparing these latencies, Puma.com is faster than Nike.com as it has a lower average latency. 
+  
+  Please be aware, however, that website speed can be influenced by many factors beyond latency, such as server processing time, content size, and delivery networks among others. To get a more comprehensive understanding of website speed, you would need to consider additional metrics and possibly conductreal-time speed tests.",
+  "FinishReason": "stop"
+}
 ```
 
 ### Full Example Code

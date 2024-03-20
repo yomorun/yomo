@@ -38,12 +38,13 @@ type CacheItem struct {
 // function. Finally, use reducer to aggregate all the results, and write the
 // result by the http.ResponseWriter.
 type Service struct {
-	credential string
-	zipperAddr string
-	md         metadata.M
-	source     yomo.Source
-	reducer    yomo.StreamFunction
-	cache      map[string]*CacheItem
+	credential   string
+	zipperAddr   string
+	md           metadata.M
+	source       yomo.Source
+	reducer      yomo.StreamFunction
+	cache        map[string]*CacheItem
+	sfnCallCache map[string]*sfnAsyncCall
 	LLMProvider
 }
 
@@ -71,10 +72,11 @@ func DefaultExchangeMetadataFunc(credential string) (metadata.M, error) {
 
 func newService(credential string, zipperAddr string, aiProvider LLMProvider, exFn ExchangeMetadataFunc) (*Service, error) {
 	s := &Service{
-		credential:  credential,
-		zipperAddr:  zipperAddr,
-		cache:       make(map[string]*CacheItem),
-		LLMProvider: aiProvider,
+		credential:   credential,
+		zipperAddr:   zipperAddr,
+		cache:        make(map[string]*CacheItem),
+		LLMProvider:  aiProvider,
+		sfnCallCache: make(map[string]*sfnAsyncCall),
 	}
 	// metadata
 	if exFn == nil {
@@ -133,6 +135,7 @@ func (s *Service) createSource() (yomo.Source, error) {
 	return source, nil
 }
 
+// createReducer creates the reducer-sfn. reducer-sfn used to aggregate all the llm-sfn execute results.
 func (s *Service) createReducer() (yomo.StreamFunction, error) {
 	sfn := yomo.NewStreamFunction(
 		"ai-reducer",
@@ -143,37 +146,33 @@ func (s *Service) createReducer() (yomo.StreamFunction, error) {
 	sfn.SetObserveDataTags(ai.ReducerTag)
 	sfn.SetHandler(func(ctx serverless.Context) {
 		buf := ctx.Data()
-		ylog.Debug("<< ai-reducer", "tag", ai.ReducerTag, "data", string(buf))
+		ylog.Debug("[sfn-reducer]", "tag", ai.ReducerTag, "data", string(buf))
 		invoke, err := ai.ParseFunctionCallContext(ctx)
 		if err != nil {
-			ylog.Error("parse function calling invoke", "err", err.Error())
+			ylog.Error("[sfn-reducer] parse function calling invoke", "err", err.Error())
 			return
 		}
+
 		reqID := invoke.ReqID
-		v, ok := s.cache[reqID]
+
+		// write parallel function calling results to cache, after all the results are written, the reducer will be done
+		c, ok := s.sfnCallCache[reqID]
 		if !ok {
-			ylog.Error("req_id not found", "req_id", reqID)
+			ylog.Error("[sfn-reducer] req_id not found", "req_id", reqID)
 			return
 		}
-		defer v.wg.Done()
 
-		v.mu.Lock()
-		defer v.mu.Unlock()
+		c.mu.Lock()
+		defer c.mu.Unlock()
 
-		fmt.Fprintf(v.ResponseWriter, "event: result\n")
-		fmt.Fprintf(v.ResponseWriter, "data: %s\n\n", invoke.JSONString())
-		// fmt.Fprintf(v.ResponseWriter, "event: retrieval_result\n")
-		// fmt.Fprintf(v.ResponseWriter, "data: %s\n\n", invoke.RetrievalResult)
-
-		// // one json per line, like groq.com did
-		// fmt.Fprintf(v.ResponseWriter, invoke.JSONString()+"\n")
-		// fmt.Fprintf(v.ResponseWriter, "{\"retrievalData\": \"%s\"}\n", invoke.RetrievalResult)
-
-		// flush the response
-		flusher, ok := v.ResponseWriter.(http.Flusher)
-		if ok {
-			flusher.Flush()
+		// need lock c.val as multiple handler channel will write to it
+		c.val[invoke.ToolCallID] = ai.ToolMessage{
+			Content:    invoke.Result,
+			ToolCallId: invoke.ToolCallID,
 		}
+		ylog.Debug("[sfn-reducer] generate", "ToolMessage", fmt.Sprintf("%+v", c.val))
+
+		c.wg.Done()
 	})
 
 	err := sfn.Connect()
@@ -199,8 +198,99 @@ func (s *Service) GetOverview() (*ai.OverviewResponse, error) {
 }
 
 // GetChatCompletions returns the llm api response
-func (s *Service) GetChatCompletions(prompt string) (*ai.InvokeResponse, error) {
-	return s.LLMProvider.GetChatCompletions(prompt, s.md)
+func (s *Service) GetChatCompletions(userInstruction string, baseSystemMessage string, reqID string, includeCallStack bool) (*ai.InvokeResponse, error) {
+	chainMessage := ai.ChainMessage{}
+	// we do not support multi-turn invoke for Google Gemini
+	if s.LLMProvider.Name() == "gemini" {
+		return s.LLMProvider.GetChatCompletions(userInstruction, baseSystemMessage, chainMessage, s.md, true)
+	}
+
+	res, err := s.LLMProvider.GetChatCompletions(userInstruction, baseSystemMessage, chainMessage, s.md, true)
+	if err != nil {
+		return nil, err
+	}
+
+	// if no tool_calls fired, just return the llm text result
+	if res.FinishReason != "tool_calls" {
+		return res, nil
+	}
+
+	// run llm function calls
+	llmCalls, err := s.runFunctionCalls(res.ToolCalls, reqID)
+	if err != nil {
+		return nil, err
+	}
+
+	ylog.Debug(">>>> start 2nd call with", "calls", fmt.Sprintf("%+v", llmCalls), "preceeding_assistant_message", fmt.Sprintf("%+v", res.AssistantMessage))
+	chainMessage.PreceedingAssistantMessage = res.AssistantMessage
+	chainMessage.ToolMessages = llmCalls
+	// do not attach toolMessage to prompt in 2nd call
+	res2, err := s.LLMProvider.GetChatCompletions(userInstruction, baseSystemMessage, chainMessage, s.md, false)
+	// INFO: call stack infomation
+	if includeCallStack {
+		res2.ToolCalls = res.ToolCalls
+		res2.ToolMessages = llmCalls
+	}
+	ylog.Debug("<<<< complete 2nd call", "res2", fmt.Sprintf("%+v", res2))
+
+	return res2, err
+}
+
+// run llm-sfn function calls
+func (s *Service) runFunctionCalls(fns map[uint32][]*ai.ToolCall, reqID string) ([]ai.ToolMessage, error) {
+	asyncCall := &sfnAsyncCall{
+		wg:  &sync.WaitGroup{},
+		val: make(map[string]ai.ToolMessage),
+	}
+	s.sfnCallCache[reqID] = asyncCall
+
+	for tag, tcs := range fns {
+		ylog.Debug("+++invoke toolCalls", "tag", tag, "len(toolCalls)", len(tcs), "reqID", reqID)
+		for _, fn := range tcs {
+			err := s.fireLlmSfn(tag, fn, reqID)
+			if err != nil {
+				ylog.Error("send data to zipper", "err", err.Error())
+				continue
+			}
+			// wait for this request to be done
+			asyncCall.wg.Add(1)
+		}
+	}
+
+	// wait for reducer to finish, the aggregation results
+	asyncCall.wg.Wait()
+
+	arr := make([]ai.ToolMessage, 0)
+
+	for _, call := range asyncCall.val {
+		ylog.Debug("---invoke done", "id", call.ToolCallId, "content", call.Content)
+		call.Role = "tool"
+		arr = append(arr, call)
+	}
+
+	return arr, nil
+}
+
+// fireLlmSfn fires the llm-sfn function call by s.source.Write()
+func (s *Service) fireLlmSfn(tag uint32, fn *ai.ToolCall, reqID string) error {
+	ylog.Info(
+		"+invoke func",
+		"tag", tag,
+		"toolCallID", fn.ID,
+		"function", fn.Function.Name,
+		"arguments", fn.Function.Arguments,
+		"reqID", reqID)
+	data := &ai.FunctionCall{
+		ReqID:        reqID,
+		ToolCallID:   fn.ID,
+		Arguments:    fn.Function.Arguments,
+		FunctionName: fn.Function.Name,
+	}
+	buf, err := data.Bytes()
+	if err != nil {
+		ylog.Error("marshal data", "err", err.Error())
+	}
+	return s.source.Write(tag, buf)
 }
 
 // Write writes the data to zipper
@@ -213,4 +303,10 @@ func init() {
 		v.Release()
 	}
 	services = expirable.NewLRU[string, *Service](ServiceCacheSize, onEvicted, ServiceCacheTTL)
+}
+
+type sfnAsyncCall struct {
+	wg  *sync.WaitGroup
+	mu  sync.Mutex
+	val map[string]ai.ToolMessage
 }
