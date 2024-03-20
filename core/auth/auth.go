@@ -17,7 +17,7 @@ var (
 type Authentication interface {
 	// Init authentication initialize arguments
 	Init(args ...string)
-	// Authenticate authentication client's credential
+	// Authenticate the client's credential
 	Authenticate(payload string) (metadata.M, error)
 	// Name authentication name
 	Name() string
