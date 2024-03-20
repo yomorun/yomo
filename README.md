@@ -110,12 +110,11 @@ func handler(ctx serverless.Context) {
 	var msg Parameter
 	fc.UnmarshalArguments(&msg)
 
-// get ip of the domain
+	// get ip of the domain
 	ips, _ := net.LookupIP(msg.Domain)
 
 	// get ip[0] ping latency
 	pinger, _ := ping.NewPinger(ips[0].String())
-
 	pinger.Count = 3
 	pinger.Run()
 	stats := pinger.Statistics()
