@@ -16,6 +16,7 @@ limitations under the License.
 package cli
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -69,26 +70,27 @@ var testPromptCmd = &cobra.Command{
 			cmd.SysProcAttr = &syscall.SysProcAttr{
 				Setpgid: true,
 			}
-			outputReader, err := cmd.StdoutPipe()
+			stdout, err := cmd.StdoutPipe()
 			if err != nil {
 				log.FailureStatusEvent(os.Stdout, "Failed to run AI SFN on directory: %v, error: %v", dir, err)
 				continue
 			}
+			defer stdout.Close()
+			outputReader := bufio.NewReader(stdout)
 			// read outputReader
-			output := make(chan []byte)
+			output := make(chan string)
 			defer close(output)
-			go func(output chan []byte) {
-				outputBuf := make([]byte, 1024)
+			go func(outputReader *bufio.Reader, output chan string) {
 				for {
-					outputLen, err := outputReader.Read(outputBuf)
+					line, err := outputReader.ReadString('\n')
 					if err != nil {
 						break
 					}
-					if len(outputBuf[:outputLen]) > 0 {
-						output <- outputBuf[:outputLen]
+					if len(line) > 0 {
+						output <- line
 					}
 				}
-			}(output)
+			}(outputReader, output)
 			// start cmd
 			if err := cmd.Start(); err != nil {
 				log.FailureStatusEvent(os.Stdout, "Failed to run AI SFN on directory: %v, error: %v", dir, err)
@@ -108,7 +110,7 @@ var testPromptCmd = &cobra.Command{
 				select {
 				case out := <-output:
 					// log.InfoStatusEvent(os.Stdout, "AI SFN Output: %s", out)
-					if len(out) > 0 && strings.Contains(string(out), "register ai function success") {
+					if len(out) > 0 && strings.Contains(out, "register ai function success") {
 						log.InfoStatusEvent(os.Stdout, "Register AI function success")
 						goto REQUEST
 					}
