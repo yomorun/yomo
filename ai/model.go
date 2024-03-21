@@ -3,6 +3,11 @@ package ai
 
 import "errors"
 
+// ErrorResponse is the response for error
+type ErrorResponse struct {
+	Error string `json:"error"`
+}
+
 // OverviewResponse is the response for overview
 type OverviewResponse struct {
 	Functions map[uint32]*FunctionDefinition // key is the tag of yomo
@@ -10,18 +15,21 @@ type OverviewResponse struct {
 
 // InvokeRequest is the request from user to BasicAPIServer
 type InvokeRequest struct {
-	ReqID  string `json:"req_id"` // ReqID is the request id of the request
-	Prompt string `json:"prompt"` // Prompt is user input text for chat completion
+	ReqID            string `json:"req_id"`             // ReqID is the request id of the request
+	Prompt           string `json:"prompt"`             // Prompt is user input text for chat completion
+	IncludeCallStack bool   `json:"include_call_stack"` // IncludeCallStack is the flag to include call stack in response
 }
 
 // InvokeResponse is the response for chat completions
 type InvokeResponse struct {
 	// Functions is the functions from llm api response, key is the tag of yomo
-	Functions map[uint32][]*FunctionDefinition
+	// Functions map[uint32][]*FunctionDefinition
 	// Content is the content from llm api response
 	Content string
 	// ToolCalls is the toolCalls from llm api response
 	ToolCalls map[uint32][]*ToolCall
+	// ToolMessages is the tool messages from llm api response
+	ToolMessages []ToolMessage
 	// FinishReason is the finish reason from llm api response
 	FinishReason string
 	// TokenUsage is the token usage from llm api response

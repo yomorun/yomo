@@ -198,7 +198,7 @@ func (s *Service) GetOverview() (*ai.OverviewResponse, error) {
 }
 
 // GetChatCompletions returns the llm api response
-func (s *Service) GetChatCompletions(userInstruction string, baseSystemMessage string, reqID string) (*ai.InvokeResponse, error) {
+func (s *Service) GetChatCompletions(userInstruction string, baseSystemMessage string, reqID string, includeCallStack bool) (*ai.InvokeResponse, error) {
 	chainMessage := ai.ChainMessage{}
 	// we do not support multi-turn invoke for Google Gemini
 	if s.LLMProvider.Name() == "gemini" {
@@ -226,6 +226,11 @@ func (s *Service) GetChatCompletions(userInstruction string, baseSystemMessage s
 	chainMessage.ToolMessages = llmCalls
 	// do not attach toolMessage to prompt in 2nd call
 	res2, err := s.LLMProvider.GetChatCompletions(userInstruction, baseSystemMessage, chainMessage, s.md, false)
+	// INFO: call stack infomation
+	if includeCallStack {
+		res2.ToolCalls = res.ToolCalls
+		res2.ToolMessages = llmCalls
+	}
 	ylog.Debug("<<<< complete 2nd call", "res2", fmt.Sprintf("%+v", res2))
 
 	return res2, err

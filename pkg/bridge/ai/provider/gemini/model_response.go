@@ -23,6 +23,7 @@ type CandidateContent struct {
 
 // Part is the element of CandidateContent
 type Part struct {
+	Text         string        `json:"text,omitempty"`
 	FunctionCall *FunctionCall `json:"functionCall"`
 }
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/yomorun/yomo"
@@ -18,7 +19,7 @@ type Parameter struct {
 }
 
 func Description() string {
-	return `if user asks timezone converter related questions, extract the source time and timezone information to "timeString" and "sourceTimezone", extract the target timezone information to "targetTimezone". the desired "timeString" format is "YYYY-MM-DD HH:MM:SS". the "sourceTimezone" and "targetTimezone" are in IANA Time Zone Database identifier format. The function will convert the time from the source timezone to the target timezone and return the converted time as a string in the format "YYYY-MM-DD HH:MM:SS". If you are not sure about the date value of "timeString", set date value to "1900-01-01"`
+	return `if user asks timezone converter related questions, extract the source time and timezone information to "timeString" and "sourceTimezone", extract the target timezone information to "targetTimezone". the desired "timeString" format is "YYYY-MM-DD HH:MM:SS". the "sourceTimezone" and "targetTimezone" are in IANA Time Zone Database identifier format. The function will convert the time from the source timezone to the target timezone and return the converted time as a string in the format "YYYY-MM-DD HH:MM:SS". If you are not sure about the date value of "timeString", you pretend date as today.`
 }
 
 func InputSchema() any {
@@ -75,6 +76,11 @@ func handler(ctx serverless.Context) {
 		msg.TargetTimezone = "UTC"
 	}
 
+	// should gurantee date will not be "YYYY-MM-DD"
+	if strings.Contains(msg.TimeString, "YYYY-MM-DD") {
+		msg.TimeString = strings.ReplaceAll(msg.TimeString, "YYYY-MM-DD", time.Now().Format("2006-01-02"))
+	}
+
 	targetTime, err := ConvertTimezone(msg.TimeString, msg.SourceTimezone, msg.TargetTimezone)
 	if err != nil {
 		slog.Error("[sfn] ConvertTimezone error", "err", err)
@@ -84,7 +90,7 @@ func handler(ctx serverless.Context) {
 
 	slog.Info("[sfn] result", "result", targetTime)
 
-	val := fmt.Sprintf("This time in timezone %s is %s", msg.TargetTimezone, targetTime)
+	val := fmt.Sprintf("This time in timezone %s is %s when %s in %s", msg.TargetTimezone, targetTime, msg.TimeString, msg.SourceTimezone)
 
 	// fcCtx.SetRetrievalResult(val)
 	fcCtx.Write(val)

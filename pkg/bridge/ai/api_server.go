@@ -97,7 +97,6 @@ func WithContextService(handler http.Handler, credential string, zipperAddr stri
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handler.ServeHTTP(w, r.WithContext(WithServiceContext(r.Context(), service)))
 	})
-
 }
 
 // HandleOverview is the handler for GET /overview
@@ -162,7 +161,7 @@ func HandleInvoke(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		// call llm to infer the function and arguments to be invoked
 		ylog.Debug(">> ai request", "reqID", req.ReqID, "prompt", req.Prompt)
-		res, err := service.GetChatCompletions(req.Prompt, baseSystemMessage, reqID)
+		res, err := service.GetChatCompletions(req.Prompt, baseSystemMessage, reqID, req.IncludeCallStack)
 		if err != nil {
 			errCh <- err
 		} else {

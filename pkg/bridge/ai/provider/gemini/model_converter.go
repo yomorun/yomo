@@ -116,16 +116,18 @@ func parseToolCallFromResponse(response *Response) []ai.ToolCall {
 	calls := make([]ai.ToolCall, 0)
 	for _, candidate := range response.Candidates {
 		fn := candidate.Content.Parts[0].FunctionCall
-		fd := &ai.FunctionDefinition{
-			Name:      fn.Name,
-			Arguments: generateJSONSchemaArguments(fn.Args),
+		if fn != nil {
+			fd := &ai.FunctionDefinition{
+				Name:      fn.Name,
+				Arguments: generateJSONSchemaArguments(fn.Args),
+			}
+			call := ai.ToolCall{
+				ID:       "cc-gemini-id",
+				Type:     "cc-function",
+				Function: fd,
+			}
+			calls = append(calls, call)
 		}
-		call := ai.ToolCall{
-			ID:       "cc-gemini-id",
-			Type:     "cc-function",
-			Function: fd,
-		}
-		calls = append(calls, call)
 	}
 	return calls
 }

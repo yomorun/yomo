@@ -113,6 +113,9 @@ func (p *GeminiProvider) GetChatCompletions(userInstruction string, baseSystemMe
 	ylog.Debug("gemini api response", "calls", len(calls))
 
 	result := &ai.InvokeResponse{}
+	result.FinishReason = response.Candidates[0].FinishReason
+	result.Content = response.Candidates[0].Content.Parts[0].Text
+
 	if len(calls) == 0 {
 		return result, ai.ErrNoFunctionCall
 	}
@@ -123,6 +126,11 @@ func (p *GeminiProvider) GetChatCompletions(userInstruction string, baseSystemMe
 			if fd.Name == tc.Function.Name {
 				ylog.Debug("-----> add function", "name", fd.Name, "tag", tag)
 				currentCall := tc
+				fn := response.Candidates[0].Content.Parts[0].FunctionCall
+				if fn != nil {
+					args, _ := json.Marshal(fn.Args)
+					currentCall.Function.Arguments = string(args)
+				}
 				result.ToolCalls[tag] = append(result.ToolCalls[tag], &currentCall)
 			}
 		}

@@ -38,7 +38,7 @@ tasks:
     dir: ../cmd/yomo
     cmds:
       - echo "{{.Name}} install..."
-      - go install -ldflags "-s -w -X {{.Module}}.Version={{.Version}} -X {{.Module}}.Date={{.Date}}"
+      - go install -race -ldflags "-s -w -X {{.Module}}.Version={{.Version}} -X {{.Module}}.Date={{.Date}}"
       - echo "{{.Name}} {{.Version}}({{.Date}}) is installed."
     silent: true
 
