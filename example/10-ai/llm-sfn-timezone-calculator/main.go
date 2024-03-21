@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/yomorun/yomo"
@@ -73,6 +74,11 @@ func handler(ctx serverless.Context) {
 
 	if msg.TargetTimezone == "" {
 		msg.TargetTimezone = "UTC"
+	}
+
+	// should gurantee date will not be "YYYY-MM-DD"
+	if strings.Contains(msg.TimeString, "YYYY-MM-DD") {
+		msg.TimeString = strings.ReplaceAll(msg.TimeString, "YYYY-MM-DD", time.Now().Format("2006-01-02"))
 	}
 
 	targetTime, err := ConvertTimezone(msg.TimeString, msg.SourceTimezone, msg.TargetTimezone)

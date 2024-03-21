@@ -59,7 +59,7 @@ var testPromptCmd = &cobra.Command{
 		for _, dir := range sfnDir {
 			// run sfn
 			log.InfoStatusEvent(os.Stdout, "--------------------------------------------------------")
-			log.InfoStatusEvent(os.Stdout, "Run AI SFN on directory: %v", dir)
+			log.InfoStatusEvent(os.Stdout, "Attaching LLM function in directory: %v", dir)
 			cmd := exec.Command("go", "run", ".")
 			cmd.Dir = dir
 			env := os.Environ()
@@ -72,7 +72,7 @@ var testPromptCmd = &cobra.Command{
 			}
 			stdout, err := cmd.StdoutPipe()
 			if err != nil {
-				log.FailureStatusEvent(os.Stdout, "Failed to run AI SFN on directory: %v, error: %v", dir, err)
+				log.FailureStatusEvent(os.Stdout, "Failed to attach LLM function in directory: %v, error: %v", dir, err)
 				continue
 			}
 			defer stdout.Close()
@@ -93,7 +93,7 @@ var testPromptCmd = &cobra.Command{
 			}(outputReader, output)
 			// start cmd
 			if err := cmd.Start(); err != nil {
-				log.FailureStatusEvent(os.Stdout, "Failed to run AI SFN on directory: %v, error: %v", dir, err)
+				log.FailureStatusEvent(os.Stdout, "Failed to run LLM function in directory: %v, error: %v", dir, err)
 				continue
 			} else {
 				defer func(cmd *exec.Cmd) {
@@ -111,7 +111,7 @@ var testPromptCmd = &cobra.Command{
 				case out := <-output:
 					// log.InfoStatusEvent(os.Stdout, "AI SFN Output: %s", out)
 					if len(out) > 0 && strings.Contains(out, "register ai function success") {
-						log.InfoStatusEvent(os.Stdout, "Register AI function success")
+						log.InfoStatusEvent(os.Stdout, "Register LLM function success")
 						goto REQUEST
 					}
 				case <-time.After(5 * time.Second):
@@ -123,7 +123,7 @@ var testPromptCmd = &cobra.Command{
 			// request
 		REQUEST:
 			apiEndpoint := fmt.Sprintf("%s/invoke", aiServerAddr)
-			log.InfoStatusEvent(os.Stdout, `Invoke LLM API "%s"`, apiEndpoint)
+			log.InfoStatusEvent(os.Stdout, `Invoking LLM API "%s"`, apiEndpoint)
 			invokeReq := ai.InvokeRequest{
 				IncludeCallStack: true, // include call stack
 				Prompt:           userPrompt,
@@ -151,23 +151,23 @@ var testPromptCmd = &cobra.Command{
 				var errorResp ai.ErrorResponse
 				err := json.NewDecoder(resp.Body).Decode(&errorResp)
 				if err != nil {
-					log.FailureStatusEvent(os.Stdout, "Failed to decode llm api response: %v", err)
+					log.FailureStatusEvent(os.Stdout, "Failed to decode LLM API response: %v", err)
 					continue
 				}
-				log.FailureStatusEvent(os.Stdout, "Failed to invoke llm api response: %s", errorResp.Error)
+				log.FailureStatusEvent(os.Stdout, "Failed to invoke LLM API response: %s", errorResp.Error)
 				continue
 			}
-			// success to invoke llm api
+			// success to invoke LLM API
 			var invokeResp ai.InvokeResponse
 			if err := json.NewDecoder(resp.Body).Decode(&invokeResp); err != nil {
-				log.FailureStatusEvent(os.Stdout, "Failed to decode llm api response: %v", err)
+				log.FailureStatusEvent(os.Stdout, "Failed to decode LLM API response: %v", err)
 				continue
 			}
 			// tool calls
 			for tag, tcs := range invokeResp.ToolCalls {
 				toolCallCount := len(tcs)
 				if toolCallCount > 0 {
-					log.InfoStatusEvent(os.Stdout, "Invoke functions[%d]:", toolCallCount)
+					log.InfoStatusEvent(os.Stdout, "Invoking functions[%d]:", toolCallCount)
 					for _, tc := range tcs {
 						if invokeResp.ToolMessages == nil {
 							log.InfoStatusEvent(os.Stdout,
@@ -179,7 +179,7 @@ var testPromptCmd = &cobra.Command{
 							)
 						} else {
 							log.InfoStatusEvent(os.Stdout,
-								"\t[%s] tag: %d, name: %s, arguments: %s, result: %s",
+								"\t[%s] tag: %d, name: %s, arguments: %s\n🌟 result: %s",
 								tc.ID,
 								tag,
 								tc.Function.Name,
@@ -192,7 +192,7 @@ var testPromptCmd = &cobra.Command{
 			}
 			// finish reason
 			log.InfoStatusEvent(os.Stdout, "Finish Reason: %s", invokeResp.FinishReason)
-			log.InfoStatusEvent(os.Stdout, "Content: %s", invokeResp.Content)
+			log.InfoStatusEvent(os.Stdout, "Final Content: \n%s🤖 ", invokeResp.Content)
 		}
 	},
 }
