@@ -1,6 +1,7 @@
 package yomo
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -23,7 +24,7 @@ func TestSource(t *testing.T) {
 	)
 
 	exit := make(chan struct{})
-	time.AfterFunc(time.Second, func() {
+	time.AfterFunc(2*time.Second, func() {
 		source.Close()
 		close(exit)
 	})
@@ -36,11 +37,17 @@ func TestSource(t *testing.T) {
 	assert.Nil(t, err)
 
 	// send data to zipper from source
+	err = source.Write(0x23, []byte("pipe test"))
+	assert.Nil(t, err)
+
+	// send data to zipper from source
 	err = source.Write(0x21, []byte("test"))
 	assert.Nil(t, err)
 
 	err = source.WriteWithTarget(0x22, []byte("message from source"), mockTargetString)
 	assert.Nil(t, err)
+
+	fmt.Println("-------------source -------------")
 
 	<-exit
 }

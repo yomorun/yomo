@@ -224,7 +224,7 @@ func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
 func (c *Client) writeAIRegisterFunctionFrame(conn *yquic.FrameConn, _ *frame.HandshakeAckFrame) error {
 	// register ai function
 	if c.clientType == ClientTypeStreamFunction {
-		functionDefinition, err := c.parseAIFunctionDefinition()
+		functionDefinition, err := parseAIFunctionDefinition(c.name, c.opts.aiFunctionDescription, c.opts.aiFunctionInputModel)
 		if err != nil {
 			c.Logger.Error("parse ai function definition error", "err", err)
 			return err
@@ -247,18 +247,17 @@ func (c *Client) writeAIRegisterFunctionFrame(conn *yquic.FrameConn, _ *frame.Ha
 	return nil
 }
 
-func (c *Client) parseAIFunctionDefinition() ([]byte, error) {
-	if c.opts.aiFunctionDescription == "" {
+func parseAIFunctionDefinition(sfnName, aiFunctionDescription string, aiFunctionInputModel any) ([]byte, error) {
+	if aiFunctionDescription == "" {
 		return nil, nil
 	}
 	// parse ai function definition
 	function := &ai.FunctionDefinition{
-		Name:        c.name,
-		Description: c.opts.aiFunctionDescription,
+		Name:        sfnName,
+		Description: aiFunctionDescription,
 	}
-	inputModel := c.opts.aiFunctionInputModel
-	if inputModel != nil {
-		functionParameters, err := parseAIFunctionParameters(inputModel)
+	if aiFunctionInputModel != nil {
+		functionParameters, err := parseAIFunctionParameters(aiFunctionInputModel)
 		if err != nil {
 			return nil, fmt.Errorf("parse function parameters error: %s", err.Error())
 		}

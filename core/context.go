@@ -1,10 +1,8 @@
 package core
 
 import (
-	"context"
 	"log/slog"
 	"sync"
-	"time"
 
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
@@ -50,35 +48,6 @@ func (c *Context) Get(key string) (any, bool) {
 
 	value, ok := c.Keys[key]
 	return value, ok
-}
-
-var _ context.Context = &Context{}
-
-// Done returns nil (chan which will wait forever) when c.Connection.Context() has no Context.
-func (c *Context) Done() <-chan struct{} { return c.Connection.FrameConn().Context().Done() }
-
-// Deadline returns that there is no deadline (ok==false) when c.Connection has no Context.
-func (c *Context) Deadline() (deadline time.Time, ok bool) {
-	return c.Connection.FrameConn().Context().Deadline()
-}
-
-// Err returns nil when c.Request has no Context.
-func (c *Context) Err() error { return c.Connection.FrameConn().Context().Err() }
-
-// Value retrieves the value associated with the specified key within the context.
-// If no value is found, it returns nil. Subsequent invocations of "Value" with the same key yield identical outcomes.
-func (c *Context) Value(key any) any {
-	c.mu.Lock()
-	if keyAsString, ok := key.(string); ok {
-		if val, exists := c.Keys[keyAsString]; exists {
-			c.mu.Unlock()
-			return val
-		}
-	}
-	c.mu.Unlock()
-
-	// this will not take effect forever.
-	return c.Connection.FrameConn().Context().Value(key)
 }
 
 // newContext returns a new YoMo context that implements the standard library `context.Context` interface.

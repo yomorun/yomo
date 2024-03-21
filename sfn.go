@@ -206,23 +206,13 @@ func (s *streamFunction) Connect() error {
 
 // Close will close the connection.
 func (s *streamFunction) Close() error {
-	if s.pIn != nil {
-		close(s.pIn)
-	}
-
-	if s.pOut != nil {
-		close(s.pOut)
-	}
-
 	if s.cron != nil {
 		s.cron.Stop()
 	}
 
-	if s.client != nil {
-		if err := s.client.Close(); err != nil {
-			s.client.Logger.Error("failed to close sfn", "err", err)
-			return err
-		}
+	if err := s.client.Close(); err != nil {
+		s.client.Logger.Error("failed to close sfn", "err", err)
+		return err
 	}
 
 	trace.ShutdownTracerProvider()
