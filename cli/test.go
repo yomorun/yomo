@@ -192,7 +192,7 @@ var testPromptCmd = &cobra.Command{
 			}
 			// finish reason
 			log.InfoStatusEvent(os.Stdout, "Finish Reason: %s", invokeResp.FinishReason)
-			log.InfoStatusEvent(os.Stdout, "Final Content: \n%s🤖 ", invokeResp.Content)
+			log.InfoStatusEvent(os.Stdout, "Final Content: \n🤖 %s", invokeResp.Content)
 		}
 	},
 }
