@@ -20,7 +20,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.18.2
 	github.com/stretchr/testify v1.9.0
-	github.com/tetratelabs/wazero v1.6.0
+	github.com/tetratelabs/wazero v1.7.0
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 	github.com/yomorun/y3 v1.0.5
 	go.opentelemetry.io/otel v1.24.0
