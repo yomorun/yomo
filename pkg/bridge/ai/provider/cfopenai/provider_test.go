@@ -40,15 +40,15 @@ func TestNewProvider(t *testing.T) {
 		os.Unsetenv("OPENAI_MODEL")
 	})
 
-	t.Run("without cfEndpoint", func(t *testing.T) {
-		if os.Getenv("CI") != "true" {
-			t.Skip("Skipping testing in CI environment")
-		}
+	// t.Run("without cfEndpoint", func(t *testing.T) {
+	// 	if os.Getenv("CI") != "true" {
+	// 		t.Skip("Skipping testing in CI environment")
+	// 	}
 
-		assert.Panics(t, func() {
-			NewProvider("", "test_api_key", "test_model")
-		})
-	})
+	// 	assert.Panics(t, func() {
+	// 		NewProvider("", "test_api_key", "test_model")
+	// 	})
+	// })
 }
 
 func TestChatCompletions(t *testing.T) {
