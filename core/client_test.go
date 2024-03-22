@@ -336,7 +336,7 @@ type testParameters struct {
 	Age  string `json:"age" jsonschema:"description=age"`
 }
 
-func Test_parseAIFunctionDefinition(t *testing.T) {
+func TestParseAIFunctionDefinition(t *testing.T) {
 	type args struct {
 		sfnName               string
 		aiFunctionDescription string

@@ -1,7 +1,6 @@
 package yomo
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -46,8 +45,6 @@ func TestSource(t *testing.T) {
 
 	err = source.WriteWithTarget(0x22, []byte("message from source"), mockTargetString)
 	assert.Nil(t, err)
-
-	fmt.Println("-------------source -------------")
 
 	<-exit
 }
