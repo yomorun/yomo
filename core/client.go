@@ -3,34 +3,34 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
+	"log/slog"
 	"runtime"
 	"time"
 
+	"github.com/invopop/jsonschema"
+	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 	"github.com/yomorun/yomo/pkg/id"
 	yquic "github.com/yomorun/yomo/pkg/listener/quic"
-	oteltrace "go.opentelemetry.io/otel/trace"
-	"golang.org/x/exp/slog"
 )
 
 // Client is the abstraction of a YoMo-Client. a YoMo-Client can be
 // Source, Upstream Zipper or StreamFunction.
 type Client struct {
-	zipperAddr     string
-	name           string                 // name of the client
-	clientID       string                 // id of the client
-	reconnCounter  uint                   // counter for reconnection
-	clientType     ClientType             // type of the client
-	processor      func(*frame.DataFrame) // function to invoke when data arrived
-	errorfn        func(error)            // function to invoke when error occured
-	wantedTarget   string
-	opts           *clientOptions
-	Logger         *slog.Logger
-	tracerProvider oteltrace.TracerProvider
+	zipperAddr    string
+	name          string                 // name of the client
+	clientID      string                 // id of the client
+	reconnCounter uint                   // counter for reconnection
+	clientType    ClientType             // type of the client
+	processor     func(*frame.DataFrame) // function to invoke when data arrived
+	errorfn       func(error)            // function to invoke when error occured
+	wantedTarget  string
+	opts          *clientOptions
+	Logger        *slog.Logger
 
 	// ctx and ctxCancel manage the lifecycle of client.
 	ctx       context.Context
@@ -65,16 +65,15 @@ func NewClient(appName, zipperAddr string, clientType ClientType, opts ...Client
 	ctx, ctxCancel := context.WithCancelCause(context.Background())
 
 	return &Client{
-		zipperAddr:     zipperAddr,
-		name:           appName,
-		clientID:       clientID,
-		processor:      func(df *frame.DataFrame) { logger.Warn("the processor has not been set") },
-		clientType:     clientType,
-		opts:           option,
-		Logger:         logger,
-		tracerProvider: option.tracerProvider,
-		ctx:            ctx,
-		ctxCancel:      ctxCancel,
+		zipperAddr: zipperAddr,
+		name:       appName,
+		clientID:   clientID,
+		processor:  func(df *frame.DataFrame) { logger.Warn("the processor has not been set") },
+		clientType: clientType,
+		opts:       option,
+		Logger:     logger,
+		ctx:        ctx,
+		ctxCancel:  ctxCancel,
 
 		done: make(chan struct{}),
 		wrCh: make(chan frame.Frame),
@@ -199,6 +198,10 @@ func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
 
 	switch received.Type() {
 	case frame.TypeHandshakeAckFrame:
+		// check function calling definition
+		if err := c.writeAIRegisterFunctionFrame(conn, received.(*frame.HandshakeAckFrame)); err != nil {
+			return nil, err
+		}
 		return conn, nil
 	case frame.TypeRejectedFrame:
 		err := &ErrRejected{Message: received.(*frame.RejectedFrame).Message}
@@ -209,13 +212,82 @@ func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
 		err := &ErrConnectTo{Endpoint: ff.Endpoint}
 		_ = conn.CloseWithError(err.Error())
 		return nil, err
-	default:
-		err := &ErrRejected{
-			Message: fmt.Sprintf("handshake failed: read unexcepted frame, frame read: %s", received.Type().String()),
-		}
-		_ = conn.CloseWithError(err.Error())
-		return nil, err
 	}
+	// other frame type
+	err = &ErrRejected{
+		Message: fmt.Sprintf("handshake failed: read unexpected frame, frame read: %s", received.Type().String()),
+	}
+	_ = conn.CloseWithError(err.Error())
+	return nil, err
+}
+
+func (c *Client) writeAIRegisterFunctionFrame(conn *yquic.FrameConn, _ *frame.HandshakeAckFrame) error {
+	// register ai function
+	if c.clientType == ClientTypeStreamFunction {
+		functionDefinition, err := parseAIFunctionDefinition(c.name, c.opts.aiFunctionDescription, c.opts.aiFunctionInputModel)
+		if err != nil {
+			c.Logger.Error("parse ai function definition error", "err", err)
+			return err
+		}
+		// not exist ai function definition
+		if functionDefinition == nil {
+			return nil
+		}
+		for _, tag := range c.opts.observeDataTags {
+			registerFunctionFrame := &frame.AIRegisterFunctionFrame{
+				Name:       c.name,
+				Tag:        tag,
+				Definition: functionDefinition,
+			}
+			if err := conn.WriteFrame(registerFunctionFrame); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func parseAIFunctionDefinition(sfnName, aiFunctionDescription string, aiFunctionInputModel any) ([]byte, error) {
+	if aiFunctionDescription == "" {
+		return nil, nil
+	}
+	// parse ai function definition
+	function := &ai.FunctionDefinition{
+		Name:        sfnName,
+		Description: aiFunctionDescription,
+	}
+	if aiFunctionInputModel != nil {
+		functionParameters, err := parseAIFunctionParameters(aiFunctionInputModel)
+		if err != nil {
+			return nil, fmt.Errorf("parse function parameters error: %s", err.Error())
+		}
+		function.Parameters = functionParameters
+	}
+	buf, err := json.Marshal(function)
+	if err != nil {
+		return nil, fmt.Errorf("marshal function definition error: %s", err.Error())
+	}
+	return buf, nil
+}
+
+func parseAIFunctionParameters(inputModel any) (*ai.FunctionParameters, error) {
+	schema := jsonschema.Reflect(inputModel)
+	for _, m := range schema.Definitions {
+		functionParameters := &ai.FunctionParameters{
+			Type:       m.Type,
+			Required:   m.Required,
+			Properties: make(map[string]*ai.ParameterProperty),
+		}
+
+		for pair := m.Properties.Oldest(); pair != nil; pair = pair.Next() {
+			functionParameters.Properties[pair.Key] = &ai.ParameterProperty{
+				Type:        pair.Value.Type,
+				Description: pair.Value.Description,
+			}
+		}
+		return functionParameters, nil
+	}
+	return nil, errors.New("invalid function definition")
 }
 
 // WriteFrame write frame to client.
@@ -314,6 +386,8 @@ func (c *Client) handleFrame(f frame.Frame) {
 		_ = c.Close()
 	case *frame.DataFrame:
 		c.processor(ff)
+	case *frame.AIRegisterFunctionAckFrame:
+		c.Logger.Info("register ai function success", "name", ff.Name, "tag", ff.Tag)
 	default:
 		c.Logger.Warn("received unexpected frame", "frame_type", f.Type().String())
 	}
@@ -349,15 +423,4 @@ type Downstream interface {
 	RemoteName() string
 	Close() error
 	Connect(context.Context) error
-}
-
-// TracerProvider returns the tracer provider of client.
-func (c *Client) TracerProvider() oteltrace.TracerProvider {
-	if c.tracerProvider == nil {
-		return nil
-	}
-	if reflect.ValueOf(c.tracerProvider).IsNil() {
-		return nil
-	}
-	return c.tracerProvider
 }

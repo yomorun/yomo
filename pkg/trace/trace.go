@@ -1,13 +1,11 @@
-// Package trace provides open tracing.
 package trace
 
 import (
 	"context"
-	"errors"
-	"log"
 	"os"
-	"time"
 
+	"github.com/yomorun/yomo/core/metadata"
+	"github.com/yomorun/yomo/core/ylog"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
@@ -17,110 +15,128 @@ import (
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
-// tracerProvider returns an OpenTelemetry TracerProvider configured to use
-// the Jaeger exporter that will send spans to the provided url. The returned
-// TracerProvider will also use a Resource configured with all the information
-// about the application.
-func tracerProvider(service string, exp tracesdk.SpanExporter) *tracesdk.TracerProvider {
-	tp := tracesdk.NewTracerProvider(
-		// Always be sure to batch in production.
-		tracesdk.WithBatcher(exp),
-		tracesdk.WithSampler(tracesdk.AlwaysSample()),
-		// tracesdk.WithSyncer(exp),
-		// Record information about this application in an Resource.
-		tracesdk.WithResource(resource.NewWithAttributes(
-			semconv.SchemaURL,
-			semconv.ServiceNameKey.String(service),
-			// attribute.String("environment", environment),
-			// attribute.Int64("ID", id),
-		)),
-	)
-	return tp
+func init() {
+	SetTracerProvider("yomo")
 }
 
-// NewTracerProvider creates a new tracer provider used by OTLP.
-func NewTracerProvider(service string) (*tracesdk.TracerProvider, func(ctx context.Context), error) {
-	// tracer provider
+// SetTracerProvider sets an OpenTelemetry TracerProvider configured to use
+// the Jaeger exporter that will send spans to the provided url. The global
+// TracerProvider will also use a Resource configured with all the information
+// about the application.
+func SetTracerProvider(service string) {
 	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 	if endpoint == "" {
-		return nil, func(context.Context) {}, errors.New("tracing disabled")
+		otel.SetTracerProvider(noop.NewTracerProvider())
+		return
 	}
-	// Create the OTLP exporter
+	ylog.Info("enable tracing", "endpoint", endpoint)
+
 	client := otlptracehttp.NewClient()
 	exp, err := otlptrace.New(context.Background(), client)
 	if err != nil {
-		return nil, func(context.Context) {}, err
+		panic("failed to create trace exporter: " + err.Error())
 	}
-	// tracer provider
-	tp := tracerProvider(service, exp)
-	// shutdown
-	shutdown := func(ctx context.Context) {
-		// Do not make the application hang when it is shutdown.
-		ctx, cancel := context.WithTimeout(ctx, time.Second*5)
-		defer cancel()
-		if err := tp.Shutdown(ctx); err != nil {
-			log.Printf("[trace] shutdown err: %v\n", err)
-		}
-	}
-	// Register our TracerProvider as the global so any imported
-	// instrumentation in the future will default to using it.
+	tp := tracesdk.NewTracerProvider(
+		tracesdk.WithBatcher(exp),
+		tracesdk.WithSampler(tracesdk.AlwaysSample()),
+		tracesdk.WithResource(resource.NewWithAttributes(
+			semconv.SchemaURL,
+			semconv.ServiceNameKey.String(service),
+		)),
+	)
 	otel.SetTracerProvider(tp)
 	otel.SetTextMapPropagator(propagation.TraceContext{})
-	// otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
-
-	return tp, shutdown, nil
 }
 
-// NewSpan creates a new span of OpenTelemetry.
-func NewSpan(tp trace.TracerProvider, tracerName string, spanName string, traceID string, spanID string) (trace.Span, error) {
-	return NewSpanWithAttrs(tp, tracerName, spanName, traceID, spanID, false)
-}
-
-// NewRemoteSpan creates a new span of OpenTelemetry from remote parent tracing.
-func NewRemoteSpan(tp trace.TracerProvider, tracerName string, spanName string, traceID string, spanID string) (trace.Span, error) {
-	return NewSpanWithAttrs(tp, tracerName, spanName, traceID, spanID, true)
-}
-
-// NewSpanWithAttrs creates a new span of OpenTelemetry with attributes.
-func NewSpanWithAttrs(tp trace.TracerProvider, tracerName string, spanName string, traceID string, spanID string, remote bool, attrs ...map[string]string) (trace.Span, error) {
-	if tp == nil {
-		return nil, errors.New("tracer provider is nil")
+// ShutdownTracerProvider shutdown the global TracerProvider.
+func ShutdownTracerProvider() {
+	tp := otel.GetTracerProvider()
+	switch i := tp.(type) {
+	case *tracesdk.TracerProvider:
+		ctx, cancel := context.WithTimeout(context.Background(), 5)
+		defer cancel()
+		i.Shutdown(ctx)
+	case *noop.TracerProvider:
+		return
 	}
-	ctx := context.Background()
-	// root span
-	if traceID == "" && spanID == "" {
-		tr := tp.Tracer(tracerName)
-		_, span := tr.Start(ctx, spanName)
-		if len(attrs) > 0 {
-			for k, v := range attrs[0] {
-				span.SetAttributes(attribute.Key(k).String(v))
-			}
-		}
-		return span, nil
+}
+
+// Tracer is otel span tracer.
+type Tracer struct {
+	tracer         trace.Tracer
+	tracerName     string
+	tracerProvider trace.TracerProvider
+}
+
+// NewTracer create tracer instance.
+func NewTracer(name string) *Tracer {
+	tp := otel.GetTracerProvider()
+
+	return &Tracer{
+		tracer:         tp.Tracer(name),
+		tracerName:     name,
+		tracerProvider: tp,
 	}
-	// child span
+}
+
+// Start start tracing span.
+func (t *Tracer) Start(md metadata.M, operation string) trace.Span {
+	_, span := t.tracer.Start(NewContextWithMetadata(md),
+		operation,
+	)
+	propagateTrace(md, span)
+	return span
+}
+
+// yomo uses metadata to propagate the trace info.
+func propagateTrace(md metadata.M, span trace.Span) {
+	if span.SpanContext().TraceID().IsValid() {
+		md.Set(metadata.TraceIDKey, span.SpanContext().TraceID().String())
+	}
+
+	if span.SpanContext().SpanID().IsValid() {
+		md.Set(metadata.SpanIDKey, span.SpanContext().SpanID().String())
+	}
+}
+
+// End finish tracing span.
+func (t *Tracer) End(md metadata.M, span trace.Span, kv ...attribute.KeyValue) {
+	for _, v := range kv {
+		span.SetAttributes(v)
+	}
+	span.End()
+}
+
+// NewContextWithMetadata create new context with metadata for tracer starting.
+// In yomo, we use metadata from dataFrame as the trace Propagator. And yomo only
+// carries traceID and spanID in metadata.
+func NewContextWithMetadata(md metadata.M) context.Context {
+	traceID, ok := md.Get(metadata.TraceIDKey)
+	if !ok {
+		return context.Background()
+	}
+	spanID, ok := md.Get(metadata.SpanIDKey)
+	if !ok {
+		return context.Background()
+	}
+
 	tid, err := trace.TraceIDFromHex(traceID)
 	if err != nil {
-		return nil, err
+		return context.Background()
 	}
 	sid, err := trace.SpanIDFromHex(spanID)
 	if err != nil {
-		return nil, err
+		return context.Background()
 	}
+
 	scc := trace.SpanContextConfig{
 		TraceID: tid,
 		SpanID:  sid,
-		Remote:  remote,
 	}
-	ctx = trace.ContextWithSpanContext(ctx, trace.NewSpanContext(scc))
-	tr := tp.Tracer(tracerName)
-	_, span := tr.Start(ctx, spanName)
-	if len(attrs) > 0 {
-		for k, v := range attrs[0] {
-			span.SetAttributes(attribute.Key(k).String(v))
-		}
-	}
-	return span, nil
+	spanContext := trace.NewSpanContext(scc)
+
+	return trace.ContextWithSpanContext(context.Background(), spanContext)
 }

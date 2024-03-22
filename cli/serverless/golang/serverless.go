@@ -1,7 +1,6 @@
 package golang
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -43,14 +42,18 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 		return fmt.Errorf(`"%s" content is empty`, s.opts.Filename)
 	}
 
+	opt, err := ParseSrc(s.opts.Filename)
+	if err != nil {
+		return fmt.Errorf("parse source code: %s", err)
+	}
 	// append main function
 	ctx := Context{
 		Name:             s.opts.Name,
 		ZipperAddr:       s.opts.ZipperAddr,
 		Credential:       s.opts.Credential,
 		UseEnv:           s.opts.UseEnv,
-		WithInitFunc:     containsStringWithoutComment(source, "Init()"),
-		WithWantedTarget: containsStringWithoutComment(source, "WantedTarget()"),
+		WithInitFunc:     opt.WithInit,
+		WithWantedTarget: opt.WithWantedTarget,
 	}
 
 	// determine: rx stream serverless or raw bytes serverless.
@@ -104,7 +107,6 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 	if err := file.PutContents(tempFile, fixedSource); err != nil {
 		return fmt.Errorf("Init: write file err %s", err)
 	}
-	// mod
 	name := strings.ReplaceAll(opts.Name, " ", "_")
 	if name == "" {
 		name = "yomo-sfn"
@@ -219,7 +221,7 @@ func (s *GolangServerless) Run(verbose bool) error {
 	log.InfoStatusEvent(os.Stdout, "Run: %s", s.output)
 	cmd := exec.Command(s.output)
 	if verbose {
-		cmd.Env = []string{"YOMO_LOG_LEVEL=debug"}
+		cmd.Env = []string{"YOMO_LOG_LEVEL=debug", "YOMO_LOG_VERBOSE=true"}
 	}
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
@@ -240,16 +242,39 @@ func generateCode(fset *token.FileSet, file *ast.File) ([]byte, error) {
 	return buffer.Bytes(), nil
 }
 
-func containsStringWithoutComment(source []byte, str string) bool {
-	scanner := bufio.NewScanner(bytes.NewReader(source))
-	for scanner.Scan() {
-		line := strings.TrimLeft(scanner.Text(), " ")
+type AppOpts struct {
+	WithInit         bool
+	WithWantedTarget bool
+	WithDescription  bool
+	WithInputSchema  bool
+}
 
-		if strings.Contains(line, str) && !strings.HasPrefix(line, "//") {
-			return true
+// ParseSrc parse app option from source code to run serverless
+func ParseSrc(appFile string) (*AppOpts, error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, appFile, nil, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, err
+	}
+
+	opts := &AppOpts{}
+
+	for _, v := range f.Decls {
+		if d, ok := v.(*ast.FuncDecl); ok {
+			switch d.Name.String() {
+			case "Init":
+				opts.WithInit = true
+			case "Description":
+				opts.WithDescription = true
+			case "InputSchema":
+				opts.WithInputSchema = true
+			case "WantedTarget":
+				opts.WithWantedTarget = true
+			}
 		}
 	}
-	return false
+
+	return opts, nil
 }
 
 func init() {

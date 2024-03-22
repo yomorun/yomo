@@ -5,11 +5,10 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"log/slog"
 	"os"
 	"strings"
 	"sync"
-
-	"golang.org/x/exp/slog"
 )
 
 // handler supports splitting log stream to common log stream and error log stream.

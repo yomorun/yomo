@@ -24,17 +24,11 @@ func main() {
 }
 
 func runSFN(name string, addr string, credential string) (closeFn func() error, err error) {
-	// trace
-	tp, shutdown, e := trace.NewTracerProvider("yomo-sfn")
-	if e == nil {
-		log.Println("[sfn] 🛰 trace enabled")
-	}
 	defer shutdown(context.Background())
 	sfn := yomo.NewStreamFunction(
 		name,
 		addr,
 		yomo.WithCredential(credential),
-		yomo.WithTracerProvider(tp),
 	)
 	closeFn = sfn.Close
 

@@ -17,11 +17,11 @@ lint:
 
 .PHONY: build
 build:
-	$(GO) build -tags "$(TAGS)" -o bin/yomo -trimpath -ldflags "-s -w" ./cmd/yomo/main.go
+	$(GO) build -race -tags "$(TAGS)" -o bin/yomo -trimpath -ldflags "-s -w" ./cmd/yomo/main.go
 
 .PHONY: test
 test:
-	$(GO) test -race -covermode=atomic $(go list ./... | grep -v /example)
+	$(GO) test -race -covermode=atomic $(VETPACKAGES)
 
 .PHONY: coverage
 coverage:

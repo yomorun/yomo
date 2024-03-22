@@ -2,12 +2,12 @@ package ylog
 
 import (
 	"io"
+	"log/slog"
 	"os"
 	"path"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"golang.org/x/exp/slog"
 )
 
 func TestLogger(t *testing.T) {

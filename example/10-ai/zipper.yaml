@@ -1,0 +1,35 @@
+name: ai-zipper
+host: 0.0.0.0
+port: 9000
+
+auth:
+  type: token
+  token: Happy New Year
+
+bridge:
+  ai:
+    server:
+      addr: localhost:8000
+      provider: azopenai
+
+    providers:
+      azopenai:
+        api_endpoint: 
+        deployment_id: 
+        api_key: 
+        api_version: 
+
+      openai:
+        api_key:
+        model:
+
+      gemini:
+        api_key:
+
+      cloudflare_azure:
+        endpoint: 
+        api_key: 
+        resource: 
+        deployment_id: 
+        api_version: 
+

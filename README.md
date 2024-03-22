@@ -4,43 +4,25 @@
 
 # YoMo ![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg) [![codecov](https://codecov.io/gh/yomorun/yomo/branch/master/graph/badge.svg?token=MHCE5TZWKM)](https://codecov.io/gh/yomorun/yomo) [![Discord](https://img.shields.io/discord/770589787404369930.svg?label=discord&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/RMtNhx7vds)
 
-YoMo is an open-source Streaming Serverless Framework for building Low-latency
-Geo-Distributed System. Built atop QUIC Transport Protocol and Functional
-Reactive Programming interface, it makes real-time collaborative applications
-reliable, secure, and easy.
+YoMo is an open-source LLM Function Calling Framework for building Geo-distributed AI applications.
+Built atop QUIC Transport Protocol and Stateful Serverless architecture, makes your AI application 
+low-latency, reliable, secure, and easy.
 
-Read the docs: 🦖[https://yomo.run](https://yomo.run/docs)
-
-💚 We care about: **The Demand For Real-Time Digital User Experiences**
-
-It’s no secret that today’s users want instant gratification, every productivity
-application is more powerful when it's collaborative. But, currently, when we
-talk about `distribution`, it represents **distribution in data center**. API is
-far away from their users from all over the world.
-
-If an application can be deployed anywhere close to their end users, solve the
-problem, this is **Geo-distributed System Architecture**:
-
-<img width="580" alt="yomo geo-distributed system" src="https://user-images.githubusercontent.com/65603/162367572-5a0417fa-e2b2-4d35-8c92-2c95d461706d.png">
+💚 We care about: **Customer Experience in the Age of AI**
 
 ## 🌶 Features
 
 |    | **Features**                                                                                                 |
 | -- | ------------------------------------------------------------------------------------------------------------ |
 | ⚡️ | **Low-latency** Guaranteed by implementing atop QUIC [QUIC](https://datatracker.ietf.org/wg/quic/documents/) |
-| 🔐  | **Security** TLS v1.3 on every data packet by design                                                         |
-| 📱  | **5G/WiFi-6** Reliable networking in Cellular/Wireless                                                       |
-| 🌎  | **Geo-Distributed Edge Mesh** Edge-Mesh Native architecture makes your services close to end users           |
-| 📸  | **Event-First** Architecture leverages serverless service to be event driven and elastic                     |
-| 🦖  | **Streaming Serverless** Write only a few lines of code to build applications and microservices              |
+| 🔐  | **Security** TLS v1.3 on every data packet by design                                                       |
+| 📸  | **Stateful Serverless** Make your GPU serverless 10x faster                    |
+| 🌎  | **Geo-Distributed Architecture** Brings AI inference closer to end users           |
 | 🚀  | **Y3** a [faster than real-time codec](https://github.com/yomorun/y3-codec-golang)                           |
-| 📨  | **Reactive** stream processing based on [Rx](http://reactivex.io/documentation/operators.html)               |
 
 ## 🚀 Getting Started
 
-### Prerequisite
-
-[Install Go](https://golang.org/doc/install)
+Let's implement a function calling with `sfn-currency-converter`:
 
 ### Step 1. Install CLI
 
@@ -54,129 +36,135 @@ Verify if the CLI was installed successfully
 yomo version
 ```
 
-### Step 2. Init your first stream function, in WebAssembly way
+### Step 2. Start the server
 
-In this demo, we will create a go project observing a data stream and count
-bytes received.
+Prepare the configuration as `my-agent.yaml`
 
-```bash
-yomo init try-yomo
+```yaml
+name: ai-zipper
+host: 0.0.0.0
+port: 9000
+
+auth:
+  type: token
+  token: SECRET_TOKEN
+
+bridge:
+  ai:
+    server:
+      addr: 0.0.0.0:8000 ## Restful API endpoint
+      provider: openai ## LLM API Service we will use
+
+    providers:
+      azopenai:
+        api_endpoint: https://<RESOURCE>.openai.azure.com
+        deployment_id: <DEPLOYMENT_ID>
+        api_key: <API_KEY>
+        api_version: <API_VERSION>
+
+      openai:
+        api_key: sk-xxxxxxxxxxxxxxxxxxxxxxxxxxx
+        model: gpt-4-1106-preview
+
+      gemini:
+        api_key: <GEMINI_API_KEY>
+
+      cloudflare_azure:
+        endpoint: https://gateway.ai.cloudflare.com/v1/<CF_GATEWAY_ID>/<CF_GATEWAY_NAME>
+        api_key: <AZURE_API_KEY>
+        resource: <AZURE_OPENAI_RESOURCE>
+        deployment_id: <AZURE_OPENAI_DEPLOYMENT_ID>
+        api_version: 2023-12-01-preview
 ```
 
-The yomo CLI will generate codes in folder `try-yomo`.
+Start the server:
 
-### Step 3. Build
-
-This Stream Function is written in Go, before compiling to WebAssembly, you need
-to install [tinygo](https://tinygo.org/getting-started/install/) first.
-
-```bash
-$ yomo build app.go
-
-ℹ️ YoMo Stream Function file: app.go
-⌛ YoMo Stream Function building...
-✅ Success! YoMo Stream Function build.
+```sh
+YOMO_LOG_LEVEL=debug yomo serve -c my-agent.yaml
 ```
 
-Now, we get the `sfn.wasm` file, only 190K bytes.
+### Step 3. Write the function
 
-```bash
-$ exa -l
-.rw-r--r--  359 fanweixiao 14 Apr 01:02 app.go
-.rwxr-xr-x 190k fanweixiao 14 Apr 01:08 sfn.wasm
+First, let's define what this function do and how's the parameters required, these will be combined to prompt when invoking LLM.
+
+```golang
+type Parameter struct {
+	Domain string `json:"domain" jsonschema:"description=Domain of the website,example=example.com"`
+}
+
+func Description() string {
+	return `if user asks ip or network latency of a domain, you should return the result of the giving domain. try your best to dissect user expressions to infer the right domain names`
+}
+
+func InputSchema() any {
+	return &Parameter{}
+}
 ```
 
-> Note: you can implement Stream Function in Rust, Zig, C or other languages can
-> be compiled to WebAssembly, more examples can be found at
-> [example/7-wasm/sfn](example/7-wasm/sfn).
+Create a Stateful Serverless Function to get the IP and Latency of a domain:
 
-### Step 4. Run
+```golang
+func handler(ctx serverless.Context) {
+	fc, _ := ai.ParseFunctionCallContext(ctx)
 
-There is a public test Zipper service `tap.yomo.dev:9140` which is provided by
-our community, you can test your StreamFunction quickly by connecting to it.
+	var msg Parameter
+	fc.UnmarshalArguments(&msg)
 
-```bash
-$ yomo dev sfn.wasm
+	// get ip of the domain
+	ips, _ := net.LookupIP(msg.Domain)
 
-ℹ️ YoMo Stream Function file: sfn.wasm
-⌛  Create YoMo Stream Function instance...
-ℹ️ Starting YoMo Stream Function instance with executable file: sfn.wasm. Zipper: [tap.yomo.dev:9140].
-ℹ️ YoMo Stream Function is running...
-time=2023-04-14T00:05:25.073+08:00 level=INFO msg="use credential" component="Stream Function" client_id=7IwpRofCpPp-AcVV2qUFc client_name=yomo-app-demo credential_name=none
-time=2023-04-14T00:05:26.297+08:00 level=INFO msg="connected to zipper" component="Stream Function" client_id=7IwpRofCpPp-AcVV2qUFc client_name=yomo-app-demo zipper_addr=tap.yomo.dev:9140
-sfn received 57 bytes
-sfn received 59 bytes
-sfn received 59 bytes
-sfn received 59 bytes
-sfn received 58 bytes
-sfn received 59 bytes
-sfn received 58 bytes
-sfn received 59 bytes
-sfn received 58 bytes
-^C
+	// get ip[0] ping latency
+	pinger, _ := ping.NewPinger(ips[0].String())
+	pinger.Count = 3
+	pinger.Run()
+	stats := pinger.Statistics()
+
+	val := fmt.Sprintf("domain %s has ip %s with average latency %s", msg.Domain, ips[0], stats.AvgRtt)
+	fc.Write(val)
+}
+
 ```
 
-It works!
+Finally, let's run it
 
-> Note: `yomo dev sfn.wasm` is more convinient for development, it will connect
-> to `tap.yomo.dev:9140` automatically. It's a shortcut of
-> `yomo run -z tap.yomo.dev:9140 -n yomo-app-demo`.
+```bash
+$ go run main.go
 
-There are many other examples that can help reduce the learning curve:
+time=2024-03-19T21:43:30.583+08:00 level=INFO msg="connected to zipper" component=StreamFunction sfn_id=B0ttNSEKLSgMjXidB11K1 sfn_name=fn-get-ip-from-domain zipper_addr=localhost:9000
+time=2024-03-19T21:43:30.584+08:00 level=INFO msg="register ai function success" component=StreamFunction sfn_id=B0ttNSEKLSgMjXidB11K1 sfn_name=fn-get-ip-from-domain zipper_addr=localhost:9000 name=fn-get-ip-from-domain tag=16
+```
 
-- [0-basic](./example/0-basic/): Write Stream Function in pure golang.
-- [1-pipeline](./example/1-pipeline/): Unix Pipeline over Cloud.
-- [2-iopipe](./example/2-iopipe/): Unix Pipeline over Cloud.
-- [3-multi-sfn](./example/3-multi-sfn/): Write programs that do one thing and do
-  it well. Write programs to work together. --
-  [Doug Mcllroy](https://en.wikipedia.org/wiki/Unix_philosophy)
-- [4-cascading-zipper](./example/4-cascading-zipper/): Flexible adjustment of
-  sfn deployment and run locations.
-- [5-backflow](./example/5-backflow/)
-- [6-mesh](./example/6-mesh/): Demonstrate how to put your serverless closer to
-  end-user.
-- [7-wasm](./example/7-wasm/): Implement Stream Function by WebAssembly in `c`,
-  `go`, `rust` and even [zig](https://ziglang.org).
-- [8-deno](./example/8-deno/): Demonstrate how to write Stream Function with
-  TypeScript and [deno](https://deno.com).
-- [9-cli](./example/9-cli/): Implement Stream Function in
-  [Rx](https://reactivex.io/) way.
+### Done, let's have a try
 
-Read more about YoMo at [yomo.run/docs](https://yomo.run/docs).
+```sh
+$ curl -i -X POST -H "Content-Type: application/json" -d '{"prompt":"compare nike and puma website speed"}' http://127.0.0.1:8000/invoke
+HTTP/1.1 200 OK
+Content-Length: 944
+Connection: keep-alive
+Content-Type: application/json
+Date: Tue, 19 Mar 2024 13:30:14 GMT
+Keep-Alive: timeout=4
+Proxy-Connection: keep-alive
 
-## 🧩 Interop
+{
+  "Content": "Based on the data provided for the domains nike.com and puma.com which include IP addresses and average latencies, we can infer the following about their website speeds:
+  - Nike.com has an IP address of 13.225.183.84 with an average latency of 65.568333 milliseconds.
+  - Puma.com has an IP address of 151.101.194.132 with an average latency of 54.563666 milliseconds.
+  
+  Comparing these latencies, Puma.com is faster than Nike.com as it has a lower average latency. 
+  
+  Please be aware, however, that website speed can be influenced by many factors beyond latency, such as server processing time, content size, and delivery networks among others. To get a more comprehensive understanding of website speed, you would need to consider additional metrics and possibly conductreal-time speed tests.",
+  "FinishReason": "stop"
+}
+```
 
-### Metaverse Workplace (Virtual Office) with YoMo
+### Full Example Code
 
-- [Frontend](https://github.com/yomorun/yomo-metaverse-workplace-nextjs)
-- [Backend](https://github.com/yomorun/yomo-vhq-backend)
-
-### Sources
-
-- [Connect EMQ X Broker to YoMo](https://github.com/yomorun/yomo-source-emqx-starter)
-- [Connect MQTT to YoMo](https://github.com/yomorun/yomo-source-mqtt-broker-starter)
-
-### Stream Functions
-
-- [Write a Stream Function with WebAssembly by WasmEdge](https://github.com/yomorun/yomo-wasmedge-tensorflow)
-
-### Output Connectors
-
-- [Connect to FaunaDB to store post-processed result the serverless way](https://github.com/yomorun/yomo-sink-faunadb-example)
-- Connect to InfluxDB to store post-processed result
-- [Connect to TDEngine to store post-processed result](https://github.com/yomorun/yomo-sink-tdengine-example)
-
-## 🗺 Location Insensitive Deployment
-
-![yomo-flow-arch](https://yomo.run/yomo-flow-arch.jpg)
+[Full LLM Function Calling Codes](./example/10-ai/)
 
 ## 📚 Documentation
 
-- `YoMo-Source`: [docs.yomo.run/source](https://yomo.run/docs/api/source)
-- `YoMo-Stream-Function`:
-  [docs.yomo.run/stream-function](https://yomo.run/docs/api/sfn)
-- `YoMo-Zipper`: [docs.yomo.run/zipper](https://yomo.run/docs/cli/zipper)
-- `Faster than real-time codec`: [Y3](https://github.com/yomorun/y3-codec)
+Read more about YoMo at [yomo.run/docs](https://yomo.run/docs).
 
 [YoMo](https://yomo.run) ❤️
 [Vercel](https://vercel.com/?utm_source=yomorun&utm_campaign=oss), our
@@ -184,27 +172,17 @@ documentation website is
 
 [![Vercel Logo](https://yomo.run/vercel.svg)](https://vercel.com/?utm_source=yomorun&utm_campaign=oss)
 
-## 🎯 Focuses on computings out of data center
+## 🎯 Focuses on Geo-distributed AI Inference Infra
 
-- IoT/IIoT/AIoT
-- Latency-sensitive applications.
-- Networking situation with packet loss or high latency.
-- Handling continuous high frequency generated data with stream-processing.
-- Building Complex systems with Streaming-Serverless architecture.
+It’s no secret that today’s users want instant AI inference, every AI 
+application is more powerful when it response quickly. But, currently, when we
+talk about `distribution`, it represents **distribution in data center**. The AI model is
+far away from their users from all over the world.
 
-## 🌟 Why YoMo
+If an application can be deployed anywhere close to their end users, solve the
+problem, this is **Geo-distributed System Architecture**:
 
-- Based on QUIC (Quick UDP Internet Connection) protocol for data transmission,
-  which uses the User Datagram Protocol (UDP) as its basis instead of the
-  Transmission Control Protocol (TCP); significantly improves the stability and
-  throughput of data transmission. Especially for cellular networks like 5G.
-- A self-developed `y3-codec` optimizes decoding performance. For more
-  information, visit [its own repository](https://github.com/yomorun/y3-codec)
-  on GitHub.
-- Based on stream computing, which improves speed and accuracy when dealing with
-  data handling and analysis; simplifies the complexity of stream-oriented
-  programming.
-- Secure-by-default from transport protocol.
+<img width="580" alt="yomo geo-distributed system" src="https://user-images.githubusercontent.com/65603/162367572-5a0417fa-e2b2-4d35-8c92-2c95d461706d.png">
 
 ## 🦸 Contributing
 
@@ -223,17 +201,6 @@ project, for example:
 - We have also adopted a
   [code of conduct](https://github.com/yomorun/yomo/blob/master/CODE_OF_CONDUCT.md)
   that we expect project participants to adhere to.
-
-## 🤹🏻‍♀️ Feedback
-
-Any questions or good ideas, please feel free to come to our
-[Discussion](https://github.com/yomorun/yomo/discussions). Any feedback would be
-greatly appreciated!
-
-## 🏄‍♂️ Best Practice in Production
-
-[Discussion #314](https://github.com/yomorun/yomo/discussions/314) Tips:
-YoMo/QUIC Server Performance Tuning
 
 ## License
 

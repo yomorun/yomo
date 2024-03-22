@@ -7,6 +7,8 @@ type Context interface {
 	Data() []byte
 	// Tag incoming tag
 	Tag() uint32
+	// Metadata incoming metadata
+	Metadata(string) (string, bool)
 	// Write writes data
 	Write(tag uint32, data []byte) error
 	// HTTP http interface

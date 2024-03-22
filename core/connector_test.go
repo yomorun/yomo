@@ -12,7 +12,7 @@ import (
 func TestConnector(t *testing.T) {
 	connector := NewConnector(context.Background())
 
-	connID := "id-1"
+	connID := uint64(32)
 
 	t.Run("Store and Get", func(t *testing.T) {
 		conn1 := mockConn(connID, "name-1")
@@ -62,17 +62,17 @@ func TestConnector(t *testing.T) {
 	})
 
 	t.Run("Snapshot", func(t *testing.T) {
-		conn1 := mockConn("id-1", "name-1")
+		conn1 := mockConn(uint64(1), "name-1")
 		err := connector.Store(conn1.ID(), conn1)
 		assert.NoError(t, err)
 
 		// store twice.
-		conn2 := mockConn("id-2", "name-2")
+		conn2 := mockConn(uint64(2), "name-2")
 		err = connector.Store(conn2.ID(), conn2)
 		assert.NoError(t, err)
 
 		got := connector.Snapshot()
-		assert.Equal(t, map[string]string{"id-1": "name-1", "id-2": "name-2"}, got)
+		assert.Equal(t, map[string]string{"1": "name-1", "2": "name-2", "32": "name-1"}, got)
 	})
 
 	t.Run("Close", func(t *testing.T) {
@@ -85,13 +85,13 @@ func TestConnector(t *testing.T) {
 		assert.ErrorIs(t, err, ErrConnectorClosed)
 
 		t.Run("Store", func(t *testing.T) {
-			conn1 := mockConn("id-1", "name-1")
+			conn1 := mockConn(uint64(1), "name-1")
 			err := connector.Store(conn1.ID(), conn1)
 			assert.ErrorIs(t, err, ErrConnectorClosed)
 		})
 
 		t.Run("Get", func(t *testing.T) {
-			conn1 := mockConn("id-1", "name-1")
+			conn1 := mockConn(uint64(1), "name-1")
 			_, ok, err := connector.Get(conn1.ID())
 			assert.False(t, ok)
 			assert.ErrorIs(t, err, ErrConnectorClosed)
@@ -116,6 +116,6 @@ func TestConnector(t *testing.T) {
 
 // mockConn returns a connection that only includes an ID and a name.
 // This function is used for unit testing purposes.
-func mockConn(id, name string) *Connection {
-	return newConnection(name, id, ClientType(0), nil, []frame.Tag{0}, nil, ylog.Default())
+func mockConn(id uint64, name string) *Connection {
+	return newConnection(id, name, "mock-id", ClientType(0), nil, []frame.Tag{0}, nil, ylog.Default())
 }

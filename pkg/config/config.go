@@ -29,6 +29,8 @@ type Config struct {
 	Auth map[string]string `yaml:"auth"`
 	// Mesh holds all cascading zippers config. the map-key is mesh name.
 	Mesh map[string]Mesh `yaml:"mesh"`
+	// Bridge is the bridge config.
+	Bridge map[string]any `yaml:"bridge"`
 }
 
 // Mesh describes a cascading zipper config.

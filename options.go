@@ -2,11 +2,10 @@ package yomo
 
 import (
 	"crypto/tls"
+	"log/slog"
 
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core"
-	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/exp/slog"
 )
 
 type (
@@ -33,9 +32,6 @@ var (
 
 	// WithSourceReConnect makes source Connect until success, unless authentication fails.
 	WithSourceReConnect = func() SourceOption { return SourceOption(core.WithReConnect()) }
-
-	// WithTracerProvider sets tracer provider for the Source.
-	WithTracerProvider = func(tp trace.TracerProvider) SourceOption { return SourceOption(core.WithTracerProvider(tp)) }
 )
 
 // Sfn Options.
@@ -55,8 +51,10 @@ var (
 	// WithSfnReConnect makes sfn Connect until success, unless authentication fails.
 	WithSfnReConnect = func() SfnOption { return SfnOption(core.WithReConnect()) }
 
-	// WithSfnTracerProvider sets tracer provider for the Sfn.
-	WithSfnTracerProvider = func(tp trace.TracerProvider) SfnOption { return SfnOption(core.WithTracerProvider(tp)) }
+	// WithSfnAIFunctionDefinition sets AI function definition for the Sfn.
+	WithSfnAIFunctionDefinition = func(description string, inputModel any) SfnOption {
+		return SfnOption(core.WithAIFunctionDefinition(description, inputModel))
+	}
 )
 
 // ClientOption is option for the upstream Zipper.
@@ -106,21 +104,14 @@ var (
 		}
 	}
 
-	// WithZipperTracerProvider sets tracer provider for the zipper.
-	WithZipperTracerProvider = func(tp trace.TracerProvider) ZipperOption {
-		return func(o *zipperOptions) {
-			o.serverOption = append(o.serverOption, core.WithServerTracerProvider(tp))
-		}
-	}
-
-	// WithConnMiddleware sets conn middleware for the zipper.
+	// WithZipperConnMiddleware sets conn middleware for the zipper.
 	WithZipperConnMiddleware = func(mw ...core.ConnMiddleware) ZipperOption {
 		return func(o *zipperOptions) {
 			o.serverOption = append(o.serverOption, core.WithConnMiddleware(mw...))
 		}
 	}
 
-	// WithFrameMiddleware sets frame middleware for the zipper.
+	// WithZipperFrameMiddleware sets frame middleware for the zipper.
 	WithZipperFrameMiddleware = func(mw ...core.FrameMiddleware) ZipperOption {
 		return func(o *zipperOptions) {
 			o.serverOption = append(o.serverOption, core.WithFrameMiddleware(mw...))

@@ -11,6 +11,7 @@ import (
 
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/ylog"
+	"github.com/yomorun/yomo/pkg/trace"
 )
 
 // initialize when zipper running as server. support inspection:
@@ -27,6 +28,7 @@ func waitSignalForShutdownServer(server *core.Server) {
 			ylog.Debug("graceful shutting down ...", "sign", p1)
 			// waiting for the server to finish processing the current request
 			server.Close()
+			trace.ShutdownTracerProvider()
 			os.Exit(0)
 		} else if p1 == syscall.SIGUSR2 {
 			var m runtime.MemStats

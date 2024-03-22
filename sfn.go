@@ -11,7 +11,8 @@ import (
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/serverless"
 	"github.com/yomorun/yomo/pkg/id"
-	oteltrace "go.opentelemetry.io/otel/trace"
+	"github.com/yomorun/yomo/pkg/trace"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // StreamFunction defines serverless streaming functions.
@@ -129,14 +130,11 @@ func (s *streamFunction) Connect() error {
 	if hasCron {
 		s.cron = cron.New()
 		s.cron.AddFunc(s.cronSpec, func() {
-			md, deferFunc := core.InitialSfnMetadata(
-				s.client.ClientID(),
-				id.New(),
-				s.name,
-				s.client.TracerProvider(),
-				s.client.Logger,
-			)
-			defer deferFunc()
+			md := core.NewMetadata(s.client.ClientID(), id.New())
+			// add trace
+			tracer := trace.NewTracer("StreamFunction")
+			span := tracer.Start(md, s.name)
+			defer tracer.End(md, span, attribute.String("sfn_handler_type", "corn_handler"))
 
 			cronCtx := serverless.NewCronContext(s.client, md)
 			s.cronFn(cronCtx)
@@ -176,15 +174,23 @@ func (s *streamFunction) Connect() error {
 						break
 					}
 
-					newMd, endFn := core.SfnTraceMetadata(md, s.client.Name(), s.client.TracerProvider(), s.client.Logger)
-					defer endFn()
+					// add trace
+					tracer := trace.NewTracer("StreamFunction")
+					span := tracer.Start(md, s.name)
+					defer tracer.End(
+						md,
+						span,
+						attribute.String("sfn_handler_type", "pipe_handler"),
+						attribute.Int("recv_data_tag", int(data.Tag)),
+						attribute.Int("recv_data_len", len(data.Payload)),
+					)
 
-					newMetadata, err := newMd.Encode()
+					rawMd, err := md.Encode()
 					if err != nil {
 						s.client.Logger.Error("sfn encode metadata error", "err", err)
 						break
 					}
-					data.Metadata = newMetadata
+					data.Metadata = rawMd
 
 					frame := &frame.DataFrame{
 						Tag:      data.Tag,
@@ -204,24 +210,15 @@ func (s *streamFunction) Connect() error {
 
 // Close will close the connection.
 func (s *streamFunction) Close() error {
-	if s.pIn != nil {
-		close(s.pIn)
-	}
-
-	if s.pOut != nil {
-		close(s.pOut)
-	}
-
 	if s.cron != nil {
 		s.cron.Stop()
 	}
 
-	if s.client != nil {
-		if err := s.client.Close(); err != nil {
-			s.client.Logger.Error("failed to close sfn", "err", err)
-			return err
-		}
-	}
+	_ = s.client.Close()
+
+	trace.ShutdownTracerProvider()
+
+	s.client.Logger.Debug("the sfn is closed")
 
 	return nil
 }
@@ -235,20 +232,27 @@ func (s *streamFunction) Wait() {
 // func (s *streamFunction) onDataFrame(data []byte, metaFrame *frame.MetaFrame) {
 func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 	if s.fn != nil {
-		tp := s.client.TracerProvider()
-		go func(tp oteltrace.TracerProvider, dataFrame *frame.DataFrame) {
+		go func(dataFrame *frame.DataFrame) {
 			md, err := metadata.Decode(dataFrame.Metadata)
 			if err != nil {
 				s.client.Logger.Error("sfn decode metadata error", "err", err)
 				return
 			}
 
-			newMd, endFn := core.SfnTraceMetadata(md, s.client.Name(), s.client.TracerProvider(), s.client.Logger)
-			defer endFn()
+			// add trace
+			tracer := trace.NewTracer("StreamFunction")
+			span := tracer.Start(md, s.name)
+			defer tracer.End(
+				md,
+				span,
+				attribute.String("sfn_handler_type", "async_handler"),
+				attribute.Int("recv_data_tag", int(dataFrame.Tag)),
+				attribute.Int("recv_data_len", len(dataFrame.Payload)),
+			)
 
-			serverlessCtx := serverless.NewContext(s.client, dataFrame.Tag, newMd, dataFrame.Payload)
+			serverlessCtx := serverless.NewContext(s.client, dataFrame.Tag, md, dataFrame.Payload)
 			s.fn(serverlessCtx)
-		}(tp, dataFrame)
+		}(dataFrame)
 	} else if s.pfn != nil {
 		data := dataFrame.Payload
 		s.client.Logger.Debug("pipe sfn receive", "data_len", len(data), "data", data)

@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"os"
-	"reflect"
 	"sync"
 	"sync/atomic"
 
@@ -14,14 +14,14 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/router"
-	"golang.org/x/exp/slog"
 
 	// authentication implements, Currently, only token authentication is implemented
 	_ "github.com/yomorun/yomo/pkg/auth"
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 	yquic "github.com/yomorun/yomo/pkg/listener/quic"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
-	oteltrace "go.opentelemetry.io/otel/trace"
+	"github.com/yomorun/yomo/pkg/trace"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // ErrServerClosed is returned by the Server's Serve and ListenAndServe methods after a call to Shutdown or Close.
@@ -58,7 +58,6 @@ type Server struct {
 	connHandler          ConnHandler
 	listener             frame.Listener
 	logger               *slog.Logger
-	tracerProvider       oteltrace.TracerProvider
 	versionNegotiateFunc VersionNegotiateFunc
 }
 
@@ -81,7 +80,6 @@ func NewServer(name string, opts ...ServerOption) *Server {
 		router:               router.Default(),
 		downstreams:          make(map[string]Downstream),
 		logger:               logger,
-		tracerProvider:       options.tracerProvider,
 		codec:                y3codec.Codec(),
 		packetReadWriter:     y3codec.PacketReadWriter(),
 		opts:                 options,
@@ -224,7 +222,7 @@ func (s *Server) handshake(fconn frame.Conn) (*Connection, error) {
 		}
 
 		// 4. add route rules
-		if err := s.addSfnRouteRule(hf, conn.Metadata()); err != nil {
+		if err := s.addSfnRouteRule(conn.ID(), hf, conn.Metadata()); err != nil {
 			return nil, rejectHandshake(fconn, err)
 		}
 		return conn, nil
@@ -262,15 +260,15 @@ func (s *Server) handleConn(conn *Connection) {
 }
 
 func (s *Server) authenticate(hf *frame.HandshakeFrame) (metadata.M, error) {
-	md, ok := auth.Authenticate(s.opts.auths, hf)
-	if !ok {
+	md, err := auth.Authenticate(s.opts.auths, hf)
+	if err != nil {
 		s.logger.Warn(
 			"authentication failed",
 			"client_type", ClientType(hf.ClientType).String(),
 			"client_name", hf.Name,
 			"credential", hf.AuthName,
 		)
-		return nil, fmt.Errorf("authentication failed: client credential type is %s", hf.AuthName)
+		return nil, err
 	}
 
 	return md, nil
@@ -281,6 +279,7 @@ func (s *Server) createConnection(hf *frame.HandshakeFrame, md metadata.M, fconn
 		md.Set(metadata.WantedTargetKey, hf.WantedTarget)
 	}
 	conn := newConnection(
+		incrID(),
 		hf.Name,
 		hf.ID,
 		ClientType(hf.ClientType),
@@ -290,14 +289,14 @@ func (s *Server) createConnection(hf *frame.HandshakeFrame, md metadata.M, fconn
 		s.logger,
 	)
 
-	return conn, s.connector.Store(hf.ID, conn)
+	return conn, s.connector.Store(conn.ID(), conn)
 }
 
-func (s *Server) addSfnRouteRule(hf *frame.HandshakeFrame, md metadata.M) error {
+func (s *Server) addSfnRouteRule(connID uint64, hf *frame.HandshakeFrame, md metadata.M) error {
 	if hf.ClientType != byte(ClientTypeStreamFunction) {
 		return nil
 	}
-	return s.router.Add(hf.ID, hf.ObserveDataTags, md)
+	return s.router.Add(connID, hf.ObserveDataTags, md)
 }
 
 func (s *Server) handleFrame(c *Context) {
@@ -316,15 +315,20 @@ func (s *Server) handleFrame(c *Context) {
 
 func (s *Server) routingDataFrame(c *Context) error {
 	dataFrame := c.Frame
-	data_length := len(dataFrame.Payload)
+	dataLength := len(dataFrame.Payload)
 
 	// counter +1
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
 
-	md, endFn := ZipperTraceMetadata(c.FrameMetadata, s.TracerProvider(), c.Logger)
-	defer endFn()
-
-	c.FrameMetadata = md
+	// add trace
+	tracer := trace.NewTracer("Zipper")
+	span := tracer.Start(c.FrameMetadata, "zipper endpoint")
+	defer tracer.End(
+		c.FrameMetadata,
+		span,
+		attribute.Key("routing_data_tag").Int(int(dataFrame.Tag)),
+		attribute.Key("routing_data_len").Int(dataLength),
+	)
 
 	mdBytes, err := c.FrameMetadata.Encode()
 	if err != nil {
@@ -334,9 +338,9 @@ func (s *Server) routingDataFrame(c *Context) error {
 	dataFrame.Metadata = mdBytes
 
 	// find stream function ids from the router.
-	connIDs := s.router.Route(dataFrame.Tag, md)
+	connIDs := s.router.Route(dataFrame.Tag, c.FrameMetadata)
 	if len(connIDs) == 0 {
-		c.Logger.Info("no observed", "tag", dataFrame.Tag, "data_length", data_length)
+		c.Logger.Info("no observed", "tag", dataFrame.Tag, "data_length", dataLength)
 	}
 	c.Logger.Debug("connector snapshot", "tag", dataFrame.Tag, "sfn_conn_ids", connIDs, "connector", s.connector.Snapshot())
 
@@ -354,12 +358,12 @@ func (s *Server) routingDataFrame(c *Context) error {
 		if err := conn.FrameConn().WriteFrame(dataFrame); err != nil {
 			c.Logger.Error(
 				"failed to route data", "err", err,
-				"tag", dataFrame.Tag, "data_length", data_length, "to_id", toID, "to_name", conn.Name(),
+				"tag", dataFrame.Tag, "data_length", dataLength, "to_id", toID, "to_name", conn.Name(),
 			)
 		} else {
 			c.Logger.Info(
 				"data routing",
-				"tag", dataFrame.Tag, "data_length", data_length, "to_id", toID, "to_name", conn.Name(),
+				"tag", dataFrame.Tag, "data_length", dataLength, "to_id", toID, "to_name", conn.Name(),
 			)
 		}
 	}
@@ -384,7 +388,6 @@ func (s *Server) dispatchToDownstreams(c *Context) error {
 	dataFrame.Metadata = mdBytes
 
 	for _, ds := range s.downstreams {
-
 		if err = ds.WriteFrame(dataFrame); err != nil {
 			c.Logger.Error(
 				"failed to dispatch to downstream",
@@ -421,20 +424,6 @@ func closeServer(downstreams map[string]Downstream, connector *Connector, listen
 		router.Release()
 	}
 	return nil
-}
-
-// sourceIDTagFindConnectionFunc creates a FindStreamFunc that finds a source type stream matching the specified sourceID and tag.
-func sourceIDTagFindConnectionFunc(sourceID string, tag frame.Tag) FindConnectionFunc {
-	return func(conn ConnectionInfo) bool {
-		for _, v := range conn.ObserveDataTags() {
-			if v == tag &&
-				conn.ClientType() == ClientTypeSource &&
-				conn.ID() == sourceID {
-				return true
-			}
-		}
-		return false
-	}
 }
 
 // StatsFunctions returns the sfn stats of server.
@@ -512,17 +501,6 @@ func (s *Server) authNames() []string {
 
 // Name returns the name of server.
 func (s *Server) Name() string { return s.name }
-
-// TracerProvider returns the tracer provider of server.
-func (s *Server) TracerProvider() oteltrace.TracerProvider {
-	if s.tracerProvider == nil {
-		return nil
-	}
-	if reflect.ValueOf(s.tracerProvider).IsNil() {
-		return nil
-	}
-	return s.tracerProvider
-}
 
 func composeFrameHandler(handler FrameHandler, middlewares ...FrameMiddleware) FrameHandler {
 	for i := len(middlewares) - 1; i >= 0; i-- {

@@ -23,7 +23,7 @@ func TestSource(t *testing.T) {
 	)
 
 	exit := make(chan struct{})
-	time.AfterFunc(time.Second, func() {
+	time.AfterFunc(2*time.Second, func() {
 		source.Close()
 		close(exit)
 	})
@@ -33,6 +33,10 @@ func TestSource(t *testing.T) {
 
 	// connect to zipper from source
 	err := source.Connect()
+	assert.Nil(t, err)
+
+	// send data to zipper from source
+	err = source.Write(0x23, []byte("pipe test"))
 	assert.Nil(t, err)
 
 	// send data to zipper from source

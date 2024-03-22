@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 )
 
@@ -30,9 +31,9 @@ func NewConnector(ctx context.Context) *Connector {
 }
 
 // Store stores Connection to Connector,
-// If the connID is the same twice, the new connection will replace the old connection.
-// If Connector be closed, The function will return ErrConnectorClosed.
-func (c *Connector) Store(connID string, conn *Connection) error {
+// The newer connection will replaces the older one.
+// If a Connector is closed, the function returns ErrConnectorClosed.
+func (c *Connector) Store(connID uint64, conn *Connection) error {
 	select {
 	case <-c.ctx.Done():
 		return ErrConnectorClosed
@@ -46,8 +47,8 @@ func (c *Connector) Store(connID string, conn *Connection) error {
 
 // Remove removes the connection with the specified connID.
 // If the Connector does not have a connection with the given connID, no action is taken.
-// If Connector be closed, The function will return ErrConnectorClosed.
-func (c *Connector) Remove(connID string) error {
+// If a Connector is closed, the function returns ErrConnectorClosed.
+func (c *Connector) Remove(connID uint64) error {
 	select {
 	case <-c.ctx.Done():
 		return ErrConnectorClosed
@@ -59,17 +60,17 @@ func (c *Connector) Remove(connID string) error {
 	return nil
 }
 
-// Get retrieves the Connection with the specified connID.
-// If the Connector does not have a connection with the given connID, return nil and false.
-// If Connector be closed, The function will return ErrConnectorClosed.
-func (c *Connector) Get(connID string) (*Connection, bool, error) {
+// Get retrieves the Connection with the specified id.
+// If the Connector does not have a connection with the given id, return nil and false.
+// If a Connector is closed, the function returns ErrConnectorClosed.
+func (c *Connector) Get(id uint64) (*Connection, bool, error) {
 	select {
 	case <-c.ctx.Done():
 		return nil, false, ErrConnectorClosed
 	default:
 	}
 
-	v, ok := c.connections.Load(connID)
+	v, ok := c.connections.Load(id)
 	if !ok {
 		return nil, false, nil
 	}
@@ -110,10 +111,11 @@ func (c *Connector) Snapshot() map[string]string {
 
 	c.connections.Range(func(key interface{}, val interface{}) bool {
 		var (
-			connID = key.(string)
-			conn   = val.(*Connection)
+			id   = key.(uint64)
+			conn = val.(*Connection)
 		)
-		result[connID] = conn.Name()
+
+		result[fmt.Sprintf("%d", id)] = conn.Name()
 		return true
 	})
 

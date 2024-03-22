@@ -1,11 +1,11 @@
 package main
 
 import (
+	"log/slog"
 	"os"
 
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/serverless"
-	"golang.org/x/exp/slog"
 )
 
 var instanceID = "bob"

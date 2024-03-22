@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,9 +14,14 @@ import (
 type mockAuth struct{ authed bool }
 
 func (auth mockAuth) Init(args ...string) {}
-func (auth mockAuth) Authenticate(payload string) (metadata.M, bool) {
-	return metadata.M{}, auth.authed
+
+func (auth mockAuth) Authenticate(payload string) (metadata.M, error) {
+	if auth.authed {
+		return metadata.M{}, nil
+	}
+	return metadata.M{}, errors.New("mock auth error")
 }
+
 func (auth mockAuth) Name() string { return "mock" }
 
 func TestRegister(t *testing.T) {
@@ -81,8 +87,8 @@ func TestAuthenticate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, got := Authenticate(tt.args.auths, tt.args.obj)
-			assert.Equal(t, tt.want, got)
+			_, err := Authenticate(tt.args.auths, tt.args.obj)
+			assert.Equal(t, tt.want, err == nil)
 		})
 	}
 }

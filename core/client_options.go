@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -16,8 +17,6 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/ylog"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
-	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/exp/slog"
 )
 
 // ClientOption YoMo client options
@@ -32,7 +31,9 @@ type clientOptions struct {
 	reconnect       bool
 	nonBlockWrite   bool
 	logger          *slog.Logger
-	tracerProvider  trace.TracerProvider
+	// ai function
+	aiFunctionInputModel  any
+	aiFunctionDescription string
 }
 
 // DefaultClientQuicConfig be used when the `quicConfig` of client is nil.
@@ -104,10 +105,11 @@ func WithLogger(logger *slog.Logger) ClientOption {
 	}
 }
 
-// WithTracerProvider sets tracer provider for the client.
-func WithTracerProvider(tp trace.TracerProvider) ClientOption {
+// WithAIFunctionDefinition sets AI function definition for the client.
+func WithAIFunctionDefinition(description string, inputModel any) ClientOption {
 	return func(o *clientOptions) {
-		o.tracerProvider = tp
+		o.aiFunctionDescription = description
+		o.aiFunctionInputModel = inputModel
 	}
 }
 

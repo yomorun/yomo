@@ -98,7 +98,7 @@ func TestFrameRoundTrip(t *testing.T) {
 
 	illegalTokenSource := NewClient("source", testaddr, ClientTypeSource, WithCredential("token:error-token"), WithLogger(discardingLogger))
 	err := illegalTokenSource.Connect(ctx)
-	assert.Equal(t, "authentication failed: client credential type is token", err.Error())
+	assert.Equal(t, "invalid token: error-token", err.Error())
 
 	source := NewClient(
 		"source",
@@ -163,7 +163,7 @@ func TestFrameRoundTrip(t *testing.T) {
 	exited = checkClientExited(sfn2, time.Second)
 	assert.False(t, exited, "sfn stream should not exited")
 
-	sfnMd := NewMetadata(source.clientID, "tid", "trace-id", "span-id", false)
+	sfnMd := NewMetadata(source.clientID, "tid")
 
 	sfnMetaBytes, _ := sfnMd.Encode()
 
@@ -186,7 +186,7 @@ func TestFrameRoundTrip(t *testing.T) {
 	assert.ElementsMatch(t, nameList, []string{"source", "sfn-1", "sfn-2"})
 
 	md := metadata.New(
-		NewMetadata(source.clientID, "tid", "trace-id", "span-id", false),
+		NewMetadata(source.clientID, "tid"),
 		metadata.M{
 			"foo": "bar",
 		},
@@ -271,7 +271,7 @@ func createTestStreamFunction(name string, zipperAddr string, observedTag frame.
 	return sfn
 }
 
-// frameWriterRecorder frames be writen.
+// frameWriterRecorder frames be written.
 type frameWriterRecorder struct {
 	id           string
 	localName    string
@@ -329,4 +329,41 @@ func assertDownstreamDataFrame(t *testing.T, tag uint32, md metadata.M, payload 
 	assert.Equal(t, recordTag, tag)
 	assert.Equal(t, recordMD, md)
 	assert.Equal(t, recordPayload, payload)
+}
+
+type testParameters struct {
+	Name string `json:"name" jsonschema:"description=name"`
+	Age  string `json:"age" jsonschema:"description=age"`
+}
+
+func TestParseAIFunctionDefinition(t *testing.T) {
+	type args struct {
+		sfnName               string
+		aiFunctionDescription string
+		aiFunctionInputModel  any
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    []byte
+		wantErr bool
+	}{
+		{
+			name: "ok",
+			args: args{
+				sfnName:               "test sfn name",
+				aiFunctionDescription: "test description",
+				aiFunctionInputModel:  &testParameters{},
+			},
+			want:    []byte(`{"name":"test sfn name","description":"test description","parameters":{"type":"object","properties":{"age":{"type":"string","description":"age"},"name":{"type":"string","description":"name"}},"required":["name","age"]}}`),
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseAIFunctionDefinition(tt.args.sfnName, tt.args.aiFunctionDescription, tt.args.aiFunctionInputModel)
+			assert.NoError(t, err)
+			assert.Equal(t, string(tt.want), string(got))
+		})
+	}
 }
