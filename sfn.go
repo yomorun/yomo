@@ -210,12 +210,11 @@ func (s *streamFunction) Close() error {
 		s.cron.Stop()
 	}
 
-	if err := s.client.Close(); err != nil {
-		s.client.Logger.Error("failed to close sfn", "err", err)
-		return err
-	}
+	_ = s.client.Close()
 
 	trace.ShutdownTracerProvider()
+
+	s.client.Logger.Debug("the sfn is closed")
 
 	return nil
 }

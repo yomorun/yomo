@@ -58,10 +58,7 @@ func NewSource(name, zipperAddr string, opts ...SourceOption) Source {
 
 // Close will close the connection to YoMo-Zipper.
 func (s *yomoSource) Close() error {
-	if err := s.client.Close(); err != nil {
-		s.client.Logger.Error("failed to close the source", "err", err)
-		return err
-	}
+	_ = s.client.Close()
 	trace.ShutdownTracerProvider()
 	s.client.Logger.Debug("the source is closed")
 	return nil
