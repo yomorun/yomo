@@ -36,10 +36,9 @@ func NewProvider(cfEndpoint, apiKey, model string) *CloudflareOpenAIProvider {
 	if model == "" {
 		model = os.Getenv("OPENAI_MODEL")
 	}
-	if cfEndpoint == "" {
-		ylog.Error("cfEndpoint is required")
-		os.Exit(-1)
-	}
+	// if cfEndpoint == "" {
+	// 	ylog.Error("cfEndpoint is required")
+	// }
 	ylog.Debug("new cloudflare openai provider", "api_key", apiKey, "model", model, "cloudflare_endpoint", cfEndpoint)
 	return &CloudflareOpenAIProvider{
 		CfEndpoint: cfEndpoint,
