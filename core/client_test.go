@@ -330,3 +330,40 @@ func assertDownstreamDataFrame(t *testing.T, tag uint32, md metadata.M, payload 
 	assert.Equal(t, recordMD, md)
 	assert.Equal(t, recordPayload, payload)
 }
+
+type testParameters struct {
+	Name string `json:"name" jsonschema:"description=name"`
+	Age  string `json:"age" jsonschema:"description=age"`
+}
+
+func TestParseAIFunctionDefinition(t *testing.T) {
+	type args struct {
+		sfnName               string
+		aiFunctionDescription string
+		aiFunctionInputModel  any
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    []byte
+		wantErr bool
+	}{
+		{
+			name: "ok",
+			args: args{
+				sfnName:               "test sfn name",
+				aiFunctionDescription: "test description",
+				aiFunctionInputModel:  &testParameters{},
+			},
+			want:    []byte(`{"name":"test sfn name","description":"test description","parameters":{"type":"object","properties":{"age":{"type":"string","description":"age"},"name":{"type":"string","description":"name"}},"required":["name","age"]}}`),
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseAIFunctionDefinition(tt.args.sfnName, tt.args.aiFunctionDescription, tt.args.aiFunctionInputModel)
+			assert.NoError(t, err)
+			assert.Equal(t, string(tt.want), string(got))
+		})
+	}
+}

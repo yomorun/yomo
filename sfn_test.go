@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/core"
+	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/ylog"
 	"github.com/yomorun/yomo/serverless"
 )
@@ -52,6 +53,34 @@ func TestStreamFunction(t *testing.T) {
 	sfn.Wait()
 }
 
+func TestPipeStreamFunction(t *testing.T) {
+	t.Parallel()
+
+	sfn := NewStreamFunction("pipe-sfn", "localhost:9000", WithSfnCredential("token:<CREDENTIAL>"))
+	sfn.SetObserveDataTags(0x23)
+
+	time.AfterFunc(time.Second, func() {
+		sfn.Close()
+	})
+
+	// set cron handler
+	sfn.SetPipeHandler(func(in <-chan []byte, out chan<- *frame.DataFrame) {
+		data := <-in
+		t.Log("unittest pipe sfn receive <-", string(data))
+		assert.Equal(t, "pipe test", string(data))
+
+		out <- &frame.DataFrame{
+			Tag:     0x22,
+			Payload: []byte("message from pip sfn"),
+		}
+	})
+
+	err := sfn.Connect()
+	assert.Nil(t, err)
+
+	sfn.Wait()
+}
+
 func TestSfnWantedTarget(t *testing.T) {
 	t.Parallel()
 
@@ -71,6 +100,7 @@ func TestSfnWantedTarget(t *testing.T) {
 			"message from source",
 			"message from sfn",
 			"message from cron sfn",
+			"message from pip sfn",
 		}, string(ctx.Data()))
 	})
 
