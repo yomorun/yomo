@@ -24,17 +24,12 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"syscall"
 	"time"
 
+	"github.com/shirou/gopsutil/v3/process"
 	"github.com/spf13/cobra"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/pkg/log"
-
-	// serverless registrations
-	_ "github.com/yomorun/yomo/cli/serverless/deno"
-	_ "github.com/yomorun/yomo/cli/serverless/golang"
-	_ "github.com/yomorun/yomo/cli/serverless/wasm"
 )
 
 var (
@@ -67,9 +62,6 @@ var testPromptCmd = &cobra.Command{
 			cmd.Env = env
 			// cmd.Stdout = io.Discard
 			// cmd.Stderr = io.Discard
-			cmd.SysProcAttr = &syscall.SysProcAttr{
-				Setpgid: true,
-			}
 			stdout, err := cmd.StdoutPipe()
 			if err != nil {
 				log.FailureStatusEvent(os.Stdout, "Failed to attach LLM function in directory: %v, error: %v", dir, err)
@@ -97,11 +89,23 @@ var testPromptCmd = &cobra.Command{
 				continue
 			} else {
 				defer func(cmd *exec.Cmd) {
-					pgid, err := syscall.Getpgid(cmd.Process.Pid)
-					if err == nil {
-						syscall.Kill(-pgid, syscall.SIGTERM)
-					} else {
-						cmd.Process.Kill()
+					p, err := process.NewProcess(int32(cmd.Process.Pid))
+					if err != nil {
+						log.FailureStatusEvent(os.Stdout, "Failed to get process: %v", err)
+						return
+					}
+					children, err := p.Children()
+					if err != nil {
+						log.FailureStatusEvent(os.Stdout, "Failed to get process children: %v", err)
+						return
+					}
+					for _, c := range children {
+						if err := c.Kill(); err != nil {
+							log.FailureStatusEvent(os.Stdout, "Failed to kill child process: %v", err)
+						}
+					}
+					if err := p.Kill(); err != nil {
+						log.FailureStatusEvent(os.Stdout, "Failed to kill process: %v", err)
 					}
 				}(cmd)
 			}
