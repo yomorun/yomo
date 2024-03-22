@@ -21,7 +21,7 @@ build:
 
 .PHONY: test
 test:
-	$(GO) test -race -covermode=atomic $(go list ./... | grep -v /example)
+	$(GO) test -race -covermode=atomic $(VETPACKAGES)
 
 .PHONY: coverage
 coverage:
