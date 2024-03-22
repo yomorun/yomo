@@ -48,3 +48,12 @@ func TestNewProvider(t *testing.T) {
 		})
 	})
 }
+
+func TestChatCompletions(t *testing.T) {
+	provider := NewProvider("test_endpoint", "test_api_key", "test_model")
+
+	resp, err := provider.GetChatCompletions("test_instruction", "test_base", ai.ChainMessage{}, metadata.M{}, false)
+
+	assert.NotNil(t, resp)
+	assert.Errorf(t, err, "no_function_call")
+}
