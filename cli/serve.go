@@ -30,6 +30,7 @@ import (
 	"github.com/yomorun/yomo/pkg/bridge/ai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/azopenai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cfazure"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cfopenai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/gemini"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/openai"
 )
@@ -137,6 +138,12 @@ func registerAIProvider(aiConfig *ai.Config) error {
 				provider["resource"],
 				provider["deployment_id"],
 				provider["api_version"],
+			))
+		case "cloudflare_openai":
+			ai.RegisterProvider(cfopenai.NewProvider(
+				provider["endpoint"],
+				provider["api_key"],
+				provider["model"],
 			))
 		default:
 			log.WarningStatusEvent(os.Stdout, "unknown provider: %s", name)
