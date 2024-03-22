@@ -45,6 +45,7 @@ type Service struct {
 	reducer      yomo.StreamFunction
 	cache        map[string]*CacheItem
 	sfnCallCache map[string]*sfnAsyncCall
+	muCallCache  sync.Mutex
 	LLMProvider
 }
 
@@ -156,7 +157,9 @@ func (s *Service) createReducer() (yomo.StreamFunction, error) {
 		reqID := invoke.ReqID
 
 		// write parallel function calling results to cache, after all the results are written, the reducer will be done
+		s.muCallCache.Lock()
 		c, ok := s.sfnCallCache[reqID]
+		s.muCallCache.Unlock()
 		if !ok {
 			ylog.Error("[sfn-reducer] req_id not found", "req_id", reqID)
 			return
@@ -242,7 +245,9 @@ func (s *Service) runFunctionCalls(fns map[uint32][]*ai.ToolCall, reqID string) 
 		wg:  &sync.WaitGroup{},
 		val: make(map[string]ai.ToolMessage),
 	}
+	s.muCallCache.Lock()
 	s.sfnCallCache[reqID] = asyncCall
+	s.muCallCache.Unlock()
 
 	for tag, tcs := range fns {
 		ylog.Debug("+++invoke toolCalls", "tag", tag, "len(toolCalls)", len(tcs), "reqID", reqID)
