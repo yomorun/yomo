@@ -2,7 +2,6 @@
 func main() {
 	guest.DataTags = DataTags
 	guest.Handler = Handler
-	{{if .WithInitFunc}}
-	guest.Init = Init
-	{{end}}
+	{{if .WithInitFunc}}guest.Init = Init{{end}}
+	{{if .WithWantedTarget}}guest.WantedTarget = WantedTarget{{end}}
 }

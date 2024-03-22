@@ -48,11 +48,12 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 	}
 	// append main function
 	ctx := Context{
-		Name:         s.opts.Name,
-		ZipperAddr:   s.opts.ZipperAddr,
-		Credential:   s.opts.Credential,
-		UseEnv:       s.opts.UseEnv,
-		WithInitFunc: opt.WithInit,
+		Name:             s.opts.Name,
+		ZipperAddr:       s.opts.ZipperAddr,
+		Credential:       s.opts.Credential,
+		UseEnv:           s.opts.UseEnv,
+		WithInitFunc:     opt.WithInit,
+		WithWantedTarget: opt.WithWantedTarget,
 	}
 
 	// determine: rx stream serverless or raw bytes serverless.
@@ -164,7 +165,6 @@ func (s *GolangServerless) Build(clean bool) error {
 				modContent = bytes.Replace(modContent, []byte(r.New.Path), []byte(abs), 1)
 			}
 		}
-		// fmt.Println(string(modContent))
 		// wirte to temp go.mod
 		tempMod := filepath.Join(s.tempDir, "go.mod")
 		if err := file.PutContents(tempMod, modContent); err != nil {
@@ -191,7 +191,6 @@ func (s *GolangServerless) Build(clean bool) error {
 		}
 	}
 	// build
-	// goos := runtime.GOOS
 	dir, _ := filepath.Split(s.opts.Filename)
 	sl, _ := filepath.Abs(dir + "sfn.wasm")
 
@@ -244,9 +243,10 @@ func generateCode(fset *token.FileSet, file *ast.File) ([]byte, error) {
 }
 
 type AppOpts struct {
-	WithInit        bool
-	WithDescription bool
-	WithInputSchema bool
+	WithInit         bool
+	WithWantedTarget bool
+	WithDescription  bool
+	WithInputSchema  bool
 }
 
 // ParseSrc parse app option from source code to run serverless
@@ -268,6 +268,8 @@ func ParseSrc(appFile string) (*AppOpts, error) {
 				opts.WithDescription = true
 			case "InputSchema":
 				opts.WithInputSchema = true
+			case "WantedTarget":
+				opts.WithWantedTarget = true
 			}
 		}
 	}

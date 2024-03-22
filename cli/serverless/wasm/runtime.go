@@ -15,8 +15,11 @@ const (
 	WasmFuncObserveDataTags = "yomo_observe_datatags"
 	// WasmFuncObserveDataTag host module should implement this function
 	WasmFuncObserveDataTag  = "yomo_observe_datatag"
+	WasmFuncGetWantedTarget = "yomo_get_wanted_target"
+	WasmFuncWantedTarget    = "yomo_wanted_target"
 	WasmFuncHandler         = "yomo_handler"
 	WasmFuncWrite           = "yomo_write"
+	WasmFuncWriteWithTarget = "yomo_write_with_target"
 	WasmFuncContextTag      = "yomo_context_tag"
 	WasmFuncContextData     = "yomo_context_data"
 	WasmFuncContextDataSize = "yomo_context_data_size"
@@ -29,6 +32,9 @@ type Runtime interface {
 
 	// GetObserveDataTags returns observed datatags of the wasm sfn
 	GetObserveDataTags() []uint32
+
+	// GetWantedTarget returns the wanted target of the wasm sfn
+	GetWantedTarget() string
 
 	// RunInit runs the init function of the wasm sfn
 	RunInit() error

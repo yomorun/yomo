@@ -39,6 +39,9 @@ func runSFN(name string, addr string, credential string) (closeFn func() error, 
 	// set observe data tags
 	sfn.SetObserveDataTags(DataTags()...)
 
+	// set wanted target
+	sfn.SetWantedTarget(WantedTarget())
+
 	// set handler
 	sfn.SetHandler(Handler)
 

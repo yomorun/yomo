@@ -45,6 +45,8 @@ type Context struct {
 	UseEnv bool
 	// WithInitFunc determines whether to work with init function
 	WithInitFunc bool
+	// WithWantedTarget determines whether to work with SetWantedTarget
+	WithWantedTarget bool
 }
 
 // RenderTmpl renders the template with the given context

@@ -9,13 +9,17 @@ import (
 )
 
 var (
-	// DataTags set handler observed data tags
+	// DataTags sets handler observed data tags
 	DataTags func() []uint32 = func() []uint32 { return []uint32{0} }
+	// WantedTarget sets handler wanted target
+	WantedTarget func() string = func() string { return "" }
 	// Handler is the handler function for guest
 	Handler func(ctx serverless.Context) = func(serverless.Context) {}
 	// Init is the init function for guest
 	Init func() error = func() error { return nil }
 )
+
+var _ serverless.Context = (*GuestContext)(nil)
 
 // GuestContext is the context for guest
 type GuestContext struct{}
@@ -46,9 +50,19 @@ func (c *GuestContext) Write(tag uint32, data []byte) error {
 	return nil
 }
 
-// TODO: implement WritePayload
+// WriteWithTarget writes data with target to the context
 func (c *GuestContext) WriteWithTarget(tag uint32, data []byte, target string) error {
-	panic("not implemented")
+	if data == nil {
+		return nil
+	}
+	if target == "" {
+		return c.Write(tag, data)
+	}
+	targetBytes := []byte(target)
+	if yomoWriteWithTarget(tag, &data[0], len(data), &targetBytes[0], len(targetBytes)) != 0 {
+		return errors.New("yomoWriteWithTarget error")
+	}
+	return nil
 }
 
 //export yomo_observe_datatag
@@ -58,6 +72,10 @@ func yomoObserveDataTag(tag uint32)
 //export yomo_write
 //go:linkname yomoWrite
 func yomoWrite(tag uint32, pointer *byte, length int) uint32
+
+//export yomo_write_with_target
+//go:linkname yomoWriteWithTarget
+func yomoWriteWithTarget(tag uint32, pointer *byte, length int, targetPointer *byte, targetLength int) uint32
 
 //export yomo_context_tag
 //go:linkname yomoContextTag
@@ -75,6 +93,20 @@ func yomoObserveDataTags() {
 	for _, tag := range dataTags {
 		yomoObserveDataTag(tag)
 	}
+}
+
+//export yomo_get_wanted_target
+//go:linkname yomoGetWantedTarget
+func yomoGetWantedTarget(ptr uintptr, size uint32)
+
+//export yomo_wanted_target
+//go:linkname yomoWantedTarget
+func yomoWantedTarget() {
+	target := WantedTarget()
+	if target == "" {
+		return
+	}
+	yomoGetWantedTarget(bufferToPtrSize([]byte(target)))
 }
 
 //export yomo_handler
