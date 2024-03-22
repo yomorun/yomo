@@ -3,8 +3,10 @@ package cfopenai
 import (
 	"os"
 	"testing"
-
+	
 	"github.com/stretchr/testify/assert"
+	"github.com/yomorun/yomo/ai"
+	"github.com/yomorun/yomo/core/metadata"
 )
 
 func TestCloudflareOpenAIProvider_Name(t *testing.T) {
