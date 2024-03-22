@@ -158,16 +158,16 @@ func HandleInvoke(w http.ResponseWriter, r *http.Request) {
 	// Make the service call in a separate goroutine, and use a channel to get the result
 	resCh := make(chan *ai.InvokeResponse, 1)
 	errCh := make(chan error, 1)
-	go func() {
+	go func(service *Service, req ai.InvokeRequest, baseSystemMessage string) {
 		// call llm to infer the function and arguments to be invoked
 		ylog.Debug(">> ai request", "reqID", req.ReqID, "prompt", req.Prompt)
-		res, err := service.GetChatCompletions(req.Prompt, baseSystemMessage, reqID, req.IncludeCallStack)
+		res, err := service.GetChatCompletions(req.Prompt, baseSystemMessage, req.ReqID, req.IncludeCallStack)
 		if err != nil {
 			errCh <- err
 		} else {
 			resCh <- res
 		}
-	}()
+	}(service, req, baseSystemMessage)
 
 	// Use a select statement to handle the result or timeout
 	select {

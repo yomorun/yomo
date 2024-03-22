@@ -52,10 +52,6 @@ func (p *GeminiProvider) GetChatCompletions(userInstruction string, baseSystemMe
 	if err != nil {
 		return nil, err
 	}
-	if len(tcs) == 0 {
-		ylog.Error(ai.ErrNoFunctionCall.Error())
-		return &ai.InvokeResponse{Content: "no toolcalls"}, ai.ErrNoFunctionCall
-	}
 
 	// prepare request body
 	body, fds := p.prepareRequest(userInstruction, tcs)
@@ -93,12 +89,11 @@ func (p *GeminiProvider) GetChatCompletions(userInstruction string, baseSystemMe
 		fmt.Println("Error reading response body:", err)
 		return nil, err
 	}
+	ylog.Debug("gemini api response", "body", string(respBody))
 
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("gemini provider api response status code is %d", resp.StatusCode)
 	}
-
-	ylog.Debug("gemini api response", "body", string(respBody))
 
 	// parse response
 	response, err := parseAPIResponseBody(respBody)
@@ -117,7 +112,7 @@ func (p *GeminiProvider) GetChatCompletions(userInstruction string, baseSystemMe
 	result.Content = response.Candidates[0].Content.Parts[0].Text
 
 	if len(calls) == 0 {
-		return result, ai.ErrNoFunctionCall
+		return result, nil
 	}
 
 	result.ToolCalls = make(map[uint32][]*ai.ToolCall)
@@ -160,7 +155,6 @@ func (p *GeminiProvider) prepareRequest(userInstruction string, tcs map[uint32]a
 		toolCalls[idx] = convertStandardToFunctionDeclaration(tc.Function)
 		idx++
 	}
-	body.Tools = make([]Tool, 0)
 	if len(toolCalls) > 0 {
 		body.Tools = append(body.Tools, Tool{
 			FunctionDeclarations: toolCalls,

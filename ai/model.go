@@ -1,8 +1,6 @@
 // Package ai contains the model for LLM Function Calling features
 package ai
 
-import "errors"
-
 // ErrorResponse is the response for error
 type ErrorResponse struct {
 	Error string `json:"error"`
@@ -97,6 +95,3 @@ type ChainMessage struct {
 	// ToolMessages is the tool messages aggragated from reducer-sfn by AI service
 	ToolMessages []ToolMessage
 }
-
-// ErrNoFunctionCall is the error when no function call
-var ErrNoFunctionCall = errors.New("no function call")
