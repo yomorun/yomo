@@ -256,11 +256,13 @@ func (s *Service) runFunctionCalls(fns map[uint32][]*ai.ToolCall, reqID string) 
 
 	arr := make([]ai.ToolMessage, 0)
 
+	asyncCall.mu.RLock()
 	for _, call := range asyncCall.val {
 		ylog.Debug("---invoke done", "id", call.ToolCallId, "content", call.Content)
 		call.Role = "tool"
 		arr = append(arr, call)
 	}
+	asyncCall.mu.RUnlock()
 
 	return arr, nil
 }
@@ -301,6 +303,6 @@ func init() {
 
 type sfnAsyncCall struct {
 	wg  *sync.WaitGroup
-	mu  sync.Mutex
+	mu  sync.RWMutex
 	val map[string]ai.ToolMessage
 }
