@@ -142,9 +142,9 @@ func ChatCompletion(
 	choice := respBodyStruct.Choices[0]
 
 	ylog.Debug(">>finish_reason", "reason", choice.FinishReason)
-	if choice.FinishReason == "tool_calls" {
-		ylog.Warn("TODO: should re-request with this response")
-	}
+	// if choice.FinishReason == "tool_calls" {
+	// 	ylog.Warn("TODO: should re-request with this response")
+	// }
 
 	responseMessage := respBodyStruct.Choices[0].Message
 
