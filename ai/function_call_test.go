@@ -28,20 +28,6 @@ var original = &FunctionCall{
 	IsOK:         false,
 }
 
-// func TestFunctionCallFromBytes(t *testing.T) {
-// 	// Create a new FunctionCall and unmarshal the bytes into it
-// 	target := &FunctionCall{}
-// 	err := target.fromBytes([]byte(jsonStr))
-
-// 	assert.NoError(t, err)
-// 	assert.Equal(t, original, target, "Original and target FunctionCall objects should be equal")
-// }
-
-// func TestFunctionCallFromBytesErrorJsonF(t *testing.T) {
-// 	err := (&FunctionCall{}).fromBytes([]byte(errJsonStr))
-// 	assert.NotNil(t, err, "Error should not be nil")
-// }
-
 func TestFunctionCallBytes(t *testing.T) {
 	// Marshal the FunctionCall into bytes
 	bytes, err := original.Bytes()
@@ -78,14 +64,6 @@ func TestFunctionCallParseCallContext(t *testing.T) {
 		_, err := ParseFunctionCallContext(ctx)
 		assert.Error(t, err)
 	})
-
-	// t.Run("ctx.Data is valid", func(t *testing.T) {
-	// 	ctx := mock.NewMockContext([]byte(jsonStr), 0)
-	// 	fco, err := ParseFunctionCallContext(ctx)
-	// 	assert.NoError(t, err)
-	// 	assert.False(t, fco.IsOK)
-	// 	assert.EqualExportedValues(t, original, fco)
-	// })
 }
 
 func TestFunctionCallUnmarshalArguments(t *testing.T) {
