@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"sync"
 	"time"
 
 	gonanoid "github.com/matoous/go-nanoid/v2"
@@ -125,14 +124,6 @@ func HandleInvoke(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
-	}
-
-	ci := &CacheItem{
-		wg:             &sync.WaitGroup{},
-		ResponseWriter: w,
-	}
-	if _, ok := service.cache[reqID]; !ok {
-		service.cache[reqID] = ci
 	}
 
 	var req ai.InvokeRequest
