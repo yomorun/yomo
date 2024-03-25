@@ -21,6 +21,7 @@ type CloudflareAzureProvider struct {
 	DeploymentID string
 	APIVersion   string
 	CfEndpoint   string
+	client       openai.ILLMClient
 }
 
 // check if implements ai.Provider
@@ -39,6 +40,7 @@ func NewProvider(cfEndpoint string, apiKey string, resource string, deploymentID
 		Resource:     resource,     // azure resource
 		DeploymentID: deploymentID, // azure deployment id
 		APIVersion:   apiVersion,   // azure api version
+		client:       &openai.OpenAIClient{},
 	}
 }
 
@@ -53,7 +55,7 @@ func (p *CloudflareAzureProvider) GetChatCompletions(userInstruction string, bas
 
 	url := fmt.Sprintf("%s/azure-openai/%s/%s/chat/completions?api-version=%s", p.CfEndpoint, p.Resource, p.DeploymentID, p.APIVersion)
 
-	res, err := openai.ChatCompletion(url, "api-key", p.APIKey, reqBody, baseSystemMessage, userInstruction, chainMessage, md, withTool)
+	res, err := p.client.ChatCompletion(url, "api-key", p.APIKey, reqBody, baseSystemMessage, userInstruction, chainMessage, md, withTool)
 
 	return res, err
 }

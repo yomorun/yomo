@@ -20,6 +20,7 @@ type AzureOpenAIProvider struct {
 	APIEndpoint  string
 	DeploymentID string
 	APIVersion   string
+	client       openai.ILLMClient
 }
 
 var _ bridgeai.LLMProvider = &AzureOpenAIProvider{}
@@ -43,6 +44,7 @@ func NewProvider(apiKey string, apiEndpoint string, deploymentID string, apiVers
 		APIEndpoint:  apiEndpoint,
 		DeploymentID: deploymentID,
 		APIVersion:   apiVersion,
+		client:       &openai.OpenAIClient{},
 	}
 }
 
@@ -53,13 +55,10 @@ func (p *AzureOpenAIProvider) Name() string {
 
 // GetChatCompletions get chat completions for ai service
 func (p *AzureOpenAIProvider) GetChatCompletions(userInstruction string, baseSystemMessage string, chainMessage ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error) {
-	// // messages
-	// systemInstruction := `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous.`
-
 	reqBody := openai.ReqBody{}
 
 	url := fmt.Sprintf("%s/openai/deployments/%s/chat/completions?api-version=%s", p.APIEndpoint, p.DeploymentID, p.APIVersion)
-	res, err := openai.ChatCompletion(url, "api-key", p.APIKey, reqBody, baseSystemMessage, userInstruction, chainMessage, md, withTool)
+	res, err := p.client.ChatCompletion(url, "api-key", p.APIKey, reqBody, baseSystemMessage, userInstruction, chainMessage, md, withTool)
 
 	if err != nil {
 		return nil, err

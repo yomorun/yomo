@@ -24,7 +24,8 @@ type OpenAIProvider struct {
 	APIKey string
 	// Model is the model for OpenAI
 	// eg. "gpt-3.5-turbo-1106", "gpt-4-turbo-preview", "gpt-4-vision-preview", "gpt-4"
-	Model string
+	Model  string
+	client openai.ILLMClient
 }
 
 // check if implements ai.Provider
@@ -42,6 +43,7 @@ func NewProvider(apiKey string, model string) *OpenAIProvider {
 	return &OpenAIProvider{
 		APIKey: apiKey,
 		Model:  model,
+		client: &openai.OpenAIClient{},
 	}
 }
 
@@ -54,7 +56,7 @@ func (p *OpenAIProvider) Name() string {
 func (p *OpenAIProvider) GetChatCompletions(userInstruction string, baseSystemMessage string, chainMessage ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error) {
 	reqBody := openai.ReqBody{Model: p.Model}
 
-	res, err := openai.ChatCompletion(APIEndpoint, "Authorization", fmt.Sprintf("Bearer %s", p.APIKey), reqBody, baseSystemMessage, userInstruction, chainMessage, md, withTool)
+	res, err := p.client.ChatCompletion(APIEndpoint, "Authorization", fmt.Sprintf("Bearer %s", p.APIKey), reqBody, baseSystemMessage, userInstruction, chainMessage, md, withTool)
 	if err != nil {
 		return nil, err
 	}

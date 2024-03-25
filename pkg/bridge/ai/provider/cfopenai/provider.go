@@ -22,7 +22,8 @@ type CloudflareOpenAIProvider struct {
 	// APIKey is the API key for OpenAI
 	APIKey string
 	// Model is the model for OpenAI
-	Model string
+	Model  string
+	client openai.ILLMClient
 }
 
 // check if implements ai.Provider
@@ -44,6 +45,7 @@ func NewProvider(cfEndpoint, apiKey, model string) *CloudflareOpenAIProvider {
 		CfEndpoint: cfEndpoint,
 		APIKey:     apiKey,
 		Model:      model,
+		client:     &openai.OpenAIClient{},
 	}
 }
 
@@ -58,7 +60,7 @@ func (p *CloudflareOpenAIProvider) GetChatCompletions(userInstruction string, ba
 
 	url := fmt.Sprintf("%s/openai/chat/completions", p.CfEndpoint)
 
-	res, err := openai.ChatCompletion(
+	res, err := p.client.ChatCompletion(
 		url,
 		"Authorization",
 		fmt.Sprintf("Bearer %s", p.APIKey),
