@@ -1,4 +1,4 @@
-// / Package gemini provides the Gemini AI provider
+// Package gemini provides the Gemini AI provider
 package gemini
 
 import (
@@ -29,7 +29,7 @@ func NewProvider(apiKey string) *GeminiProvider {
 	p := &GeminiProvider{
 		APIKey: apiKey,
 	}
-	apiURL := p.getApiUrl()
+	apiURL := p.getAPIURL()
 	ylog.Debug("new gemini provider", "api_endpoint", apiURL)
 
 	return p
@@ -43,7 +43,7 @@ func (p *GeminiProvider) Name() string {
 }
 
 // GetChatCompletions get chat completions for ai service
-func (p *GeminiProvider) GetChatCompletions(userInstruction string, baseSystemMessage string, chainMessage ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error) {
+func (p *GeminiProvider) GetChatCompletions(userInstruction string, baseSystemMessage string, _ ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error) {
 	if !withTool {
 		ylog.Warn("Gemini call should have tool calls")
 	}
@@ -54,7 +54,8 @@ func (p *GeminiProvider) GetChatCompletions(userInstruction string, baseSystemMe
 	}
 
 	// prepare request body
-	body, fds := p.prepareRequest(userInstruction, tcs)
+	prompt := fmt.Sprintf("%s\n %s", baseSystemMessage, userInstruction)
+	body, fds := p.prepareRequest(prompt, tcs)
 
 	// request API
 	jsonBody, err := json.Marshal(body)
@@ -65,7 +66,7 @@ func (p *GeminiProvider) GetChatCompletions(userInstruction string, baseSystemMe
 
 	ylog.Debug("gemini api request", "body", string(jsonBody))
 
-	req, err := http.NewRequest("POST", p.getApiUrl(), bytes.NewBuffer(jsonBody))
+	req, err := http.NewRequest("POST", p.getAPIURL(), bytes.NewBuffer(jsonBody))
 	if err != nil {
 		ylog.Error(err.Error())
 		fmt.Println("Error creating new request:", err)
@@ -135,8 +136,8 @@ func (p *GeminiProvider) GetChatCompletions(userInstruction string, baseSystemMe
 	return result, nil
 }
 
-// getApiUrl returns the gemini generateContent API url
-func (p *GeminiProvider) getApiUrl() string {
+// getAPIURL returns the gemini generateContent API url
+func (p *GeminiProvider) getAPIURL() string {
 	return fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=%s", p.APIKey)
 }
 

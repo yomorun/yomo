@@ -20,7 +20,7 @@ func TestGeminiProvider_getApiUrl(t *testing.T) {
 		APIKey: "test-api-key",
 	}
 	expected := "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=test-api-key"
-	result := provider.getApiUrl()
+	result := provider.getAPIURL()
 
 	assert.Equal(t, expected, result)
 }

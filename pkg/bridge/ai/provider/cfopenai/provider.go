@@ -15,7 +15,7 @@ import (
 	"github.com/yomorun/yomo/pkg/bridge/ai/internal/openai"
 )
 
-// CloudflareOpenaiProvider is the provider for Cloudflare OpenAI Gateway
+// CloudflareOpenAIProvider is the provider for Cloudflare OpenAI Gateway
 type CloudflareOpenAIProvider struct {
 	// CfEndpoint is the your cloudflare endpoint
 	CfEndpoint string
