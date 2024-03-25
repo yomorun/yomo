@@ -134,6 +134,7 @@ func (s *Service) createReducer() (yomo.StreamFunction, error) {
 		yomo.WithSfnCredential(s.credential),
 	)
 	sfn.SetObserveDataTags(ai.ReducerTag)
+	invokes := 0
 	sfn.SetHandler(func(ctx serverless.Context) {
 		buf := ctx.Data()
 		ylog.Debug("[sfn-reducer]", "tag", ai.ReducerTag, "data", string(buf))
@@ -163,6 +164,8 @@ func (s *Service) createReducer() (yomo.StreamFunction, error) {
 			ToolCallId: invoke.ToolCallID,
 		}
 		ylog.Debug("[sfn-reducer] generate", "ToolMessage", fmt.Sprintf("%+v", c.val))
+		invokes++
+		ylog.Warn("***sfn***", "invokes", invokes)
 
 		c.wg.Done()
 	})
@@ -238,6 +241,8 @@ func (s *Service) runFunctionCalls(fns map[uint32][]*ai.ToolCall, reqID string) 
 	s.sfnCallCache[reqID] = asyncCall
 	s.muCallCache.Unlock()
 
+	wgCount := 0
+
 	for tag, tcs := range fns {
 		ylog.Debug("+++invoke toolCalls", "tag", tag, "len(toolCalls)", len(tcs), "reqID", reqID)
 		for _, fn := range tcs {
@@ -247,9 +252,13 @@ func (s *Service) runFunctionCalls(fns map[uint32][]*ai.ToolCall, reqID string) 
 				continue
 			}
 			// wait for this request to be done
-			asyncCall.wg.Add(1)
+			wgCount++
+			// asyncCall.wg.Add(1)
+			asyncCall.wg.Add(1 * register.SfnFactor(tag))
+
 		}
 	}
+	ylog.Warn("***WaitGroup***", "count", wgCount)
 
 	// wait for reducer to finish, the aggregation results
 	asyncCall.wg.Wait()
