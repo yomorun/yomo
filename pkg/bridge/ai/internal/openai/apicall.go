@@ -16,16 +16,21 @@ import (
 )
 
 // GetChatCompletions get chat completions for ai service
-func ChatCompletion(apiEndpoint string, authHeaderKey, authHeaderValue string, baseRequestbody ReqBody, baseSystemMessage string, userInstruction string, chainMessage ai.ChainMessage, md metadata.M, ifWithTool bool) (*ai.InvokeResponse, error) {
+func ChatCompletion(
+	apiEndpoint string,
+	authHeaderKey string,
+	authHeaderValue string,
+	baseRequestbody ReqBody,
+	baseSystemMessage string,
+	userInstruction string,
+	chainMessage ai.ChainMessage,
+	md metadata.M,
+	ifWithTool bool,
+) (*ai.InvokeResponse, error) {
 	tcs, err := register.ListToolCalls(md)
 	if err != nil {
 		return nil, err
 	}
-	if len(tcs) == 0 {
-		ylog.Error(ai.ErrNoFunctionCall.Error())
-		return &ai.InvokeResponse{Content: "no toolcalls"}, ai.ErrNoFunctionCall
-	}
-
 	// prepare tools
 	toolCalls := make([]ai.ToolCall, len(tcs))
 	idx := 0
@@ -91,7 +96,7 @@ func ChatCompletion(apiEndpoint string, authHeaderKey, authHeaderValue string, b
 
 	baseRequestbody.Messages = messages
 
-	if ifWithTool {
+	if ifWithTool && len(toolCalls) > 0 {
 		baseRequestbody.Tools = toolCalls
 	}
 
@@ -152,6 +157,7 @@ func ChatCompletion(apiEndpoint string, authHeaderKey, authHeaderValue string, b
 
 	// finish reason
 	result.FinishReason = choice.FinishReason
+	result.Content = content
 
 	// record usage
 	result.TokenUsage = ai.TokenUsage{
@@ -162,7 +168,6 @@ func ChatCompletion(apiEndpoint string, authHeaderKey, authHeaderValue string, b
 
 	// if llm said no function call, we should return the result
 	if result.FinishReason == "stop" {
-		result.Content = responseMessage.Content
 		return result, nil
 	}
 
@@ -172,8 +177,7 @@ func ChatCompletion(apiEndpoint string, authHeaderKey, authHeaderValue string, b
 	}
 
 	if len(calls) == 0 {
-		result.Content = content
-		return result, ai.ErrNoFunctionCall
+		return result, nil
 	}
 
 	// functions may be more than one
@@ -191,9 +195,5 @@ func ChatCompletion(apiEndpoint string, authHeaderKey, authHeaderValue string, b
 		}
 	}
 
-	// sfn maybe disconnected, so we need to check if there is any function call
-	if len(result.ToolCalls) == 0 {
-		return nil, ai.ErrNoFunctionCall
-	}
 	return result, nil
 }
