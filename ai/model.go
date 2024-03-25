@@ -36,7 +36,7 @@ type InvokeResponse struct {
 	AssistantMessage interface{}
 }
 
-// RespUsage is the token usage in Response
+// TokenUsage is the token usage in Response
 type TokenUsage struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`

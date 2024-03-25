@@ -18,7 +18,7 @@ var jsonStrWithError = func(err string) string {
 	return fmt.Sprintf("{\"req_id\":\"yYdzyl\",\"arguments\":\"{\\n  \\\"sourceTimezone\\\": \\\"America/Los_Angeles\\\",\\n  \\\"targetTimezone\\\": \\\"Asia/Singapore\\\",\\n  \\\"timeString\\\": \\\"2024-03-25 07:00:00\\\"\\n}\",\"tool_call_id\":\"call_aZrtm5xcLs1qtP0SWo4CZi75\",\"function_name\":\"fn-timezone-converter\",\"is_ok\":true,\"error\":\"%s\"}", err)
 }
 
-var errJsonStr = "{a}"
+var errJSONStr = "{a}"
 
 var original = &FunctionCall{
 	ReqID:        "yYdzyl",
@@ -60,7 +60,7 @@ func TestFunctionCallParseCallContext(t *testing.T) {
 	})
 
 	t.Run("ctx.Data is invalid", func(t *testing.T) {
-		ctx := mock.NewMockContext([]byte(errJsonStr), 0)
+		ctx := mock.NewMockContext([]byte(errJSONStr), 0)
 		_, err := ParseFunctionCallContext(ctx)
 		assert.Error(t, err)
 	})
