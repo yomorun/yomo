@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/yomorun/yomo/ai"
 )
 
 func TestGeminiProvider_Name(t *testing.T) {
@@ -44,4 +45,24 @@ func TestNewProviderWithoutEnvVar(t *testing.T) {
 	provider := NewProvider("")
 
 	assert.NotNil(t, provider.APIKey)
+}
+
+func TestGeminiProvider_prepareRequest(t *testing.T) {
+	provider := &GeminiProvider{}
+
+	userInstruction := "test instruction"
+	tcs := map[uint32]ai.ToolCall{
+		0: {Function: &ai.FunctionDefinition{Name: "function"}},
+		1: {Function: &ai.FunctionDefinition{Name: "function"}},
+	}
+
+	body, toolCalls := provider.prepareRequest(userInstruction, tcs)
+
+	assert.Equal(t, "user", body.Contents.Role)
+	assert.Equal(t, userInstruction, body.Contents.Parts.Text)
+	assert.Equal(t, len(tcs), len(toolCalls))
+
+	for i, tc := range tcs {
+		assert.Equal(t, convertStandardToFunctionDeclaration(tc.Function), toolCalls[i])
+	}
 }
