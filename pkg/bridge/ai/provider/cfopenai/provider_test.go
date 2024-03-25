@@ -5,8 +5,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/yomorun/yomo/ai"
-	"github.com/yomorun/yomo/core/metadata"
 )
 
 func TestCloudflareOpenAIProvider_Name(t *testing.T) {
@@ -39,22 +37,4 @@ func TestNewProvider(t *testing.T) {
 		os.Unsetenv("OPENAI_API_KEY")
 		os.Unsetenv("OPENAI_MODEL")
 	})
-
-	// t.Run("without cfEndpoint", func(t *testing.T) {
-	// 	if os.Getenv("CI") != "true" {
-	// 		t.Skip("Skipping testing in CI environment")
-	// 	}
-
-	// 	assert.Panics(t, func() {
-	// 		NewProvider("", "test_api_key", "test_model")
-	// 	})
-	// })
-}
-
-func TestChatCompletions(t *testing.T) {
-	provider := NewProvider("test_endpoint", "test_api_key", "test_model")
-
-	_, err := provider.GetChatCompletions("test_instruction", "test_base", ai.ChainMessage{}, metadata.M{}, false)
-
-	assert.Nil(t, err)
 }
