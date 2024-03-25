@@ -3,7 +3,6 @@ package cfazure
 
 import (
 	"fmt"
-	"os"
 
 	// automatically load .env file
 	_ "github.com/joho/godotenv/autoload"
@@ -29,9 +28,8 @@ var _ bridgeai.LLMProvider = &CloudflareAzureProvider{}
 
 // NewProvider creates a new AzureOpenAIProvider
 func NewProvider(cfEndpoint string, apiKey string, resource string, deploymentID string, apiVersion string) *CloudflareAzureProvider {
-	if cfEndpoint == "" || apiKey == "" || resource == "" || deploymentID == "" || apiVersion == "" {
-		ylog.Error("parameters are required", "cfEndpoint", cfEndpoint, "apiKey", apiKey, "resource", resource, "deploymentID", deploymentID, "apiVersion", apiVersion)
-		os.Exit(-1)
+	if cfEndpoint == "" || apiKey == "" || resource == "" || deploymentID == "" {
+		ylog.Error("parameters are required", "cfEndpoint", cfEndpoint, "apiKey", apiKey, "resource", resource, "deploymentID", deploymentID)
 		return nil
 	}
 	ylog.Debug("CloudflareAzureProvider", "cfEndpoint", cfEndpoint, "apiKey", apiKey, "resource", resource, "deploymentID", deploymentID, "apiVersion", apiVersion)
@@ -51,9 +49,6 @@ func (p *CloudflareAzureProvider) Name() string {
 
 // GetChatCompletions get chat completions for ai service
 func (p *CloudflareAzureProvider) GetChatCompletions(userInstruction string, baseSystemMessage string, chainMessage ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error) {
-	// messages
-	// userDefinedBaseSystemMessage := `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous.`
-
 	reqBody := openai.ReqBody{}
 
 	url := fmt.Sprintf("%s/azure-openai/%s/%s/chat/completions?api-version=%s", p.CfEndpoint, p.Resource, p.DeploymentID, p.APIVersion)
