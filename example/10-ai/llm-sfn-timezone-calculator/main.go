@@ -88,11 +88,10 @@ func handler(ctx serverless.Context) {
 		return
 	}
 
-	slog.Info("[sfn] result", "result", targetTime)
+	slog.Info("[sfn]", "result", targetTime)
 
 	val := fmt.Sprintf("This time in timezone %s is %s when %s in %s", msg.TargetTimezone, targetTime, msg.TimeString, msg.SourceTimezone)
 
-	// fcCtx.SetRetrievalResult(val)
 	fcCtx.Write(val)
 }
 
