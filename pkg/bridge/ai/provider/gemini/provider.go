@@ -16,17 +16,17 @@ import (
 	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 )
 
-// GeminiProvider is the provider for Gemini
-type GeminiProvider struct {
+// Provider is the provider for Gemini
+type Provider struct {
 	APIKey string
 }
 
 // NewProvider creates a new GeminiProvider
-func NewProvider(apiKey string) *GeminiProvider {
+func NewProvider(apiKey string) *Provider {
 	if apiKey == "" {
 		apiKey = os.Getenv("GEMINI_API_KEY")
 	}
-	p := &GeminiProvider{
+	p := &Provider{
 		APIKey: apiKey,
 	}
 	apiURL := p.getAPIURL()
@@ -35,15 +35,15 @@ func NewProvider(apiKey string) *GeminiProvider {
 	return p
 }
 
-var _ bridgeai.LLMProvider = &GeminiProvider{}
+var _ bridgeai.LLMProvider = &Provider{}
 
 // Name returns the name of the provider
-func (p *GeminiProvider) Name() string {
+func (p *Provider) Name() string {
 	return "gemini"
 }
 
 // GetChatCompletions get chat completions for ai service
-func (p *GeminiProvider) GetChatCompletions(userInstruction string, baseSystemMessage string, _ ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error) {
+func (p *Provider) GetChatCompletions(userInstruction string, baseSystemMessage string, _ ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error) {
 	if !withTool {
 		ylog.Warn("Gemini call should have tool calls")
 	}
@@ -137,12 +137,12 @@ func (p *GeminiProvider) GetChatCompletions(userInstruction string, baseSystemMe
 }
 
 // getAPIURL returns the gemini generateContent API url
-func (p *GeminiProvider) getAPIURL() string {
+func (p *Provider) getAPIURL() string {
 	return fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=%s", p.APIKey)
 }
 
 // prepareRequestBody prepares the request body for the API
-func (p *GeminiProvider) prepareRequest(userInstruction string, tcs map[uint32]ai.ToolCall) (*RequestBody, []*FunctionDeclaration) {
+func (p *Provider) prepareRequest(userInstruction string, tcs map[uint32]ai.ToolCall) (*RequestBody, []*FunctionDeclaration) {
 	body := &RequestBody{}
 
 	// prepare contents

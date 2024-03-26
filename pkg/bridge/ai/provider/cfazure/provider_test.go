@@ -29,7 +29,7 @@ func TestNewProvider(t *testing.T) {
 }
 
 func TestName(t *testing.T) {
-	provider := &CloudflareAzureProvider{}
+	provider := &Provider{}
 	name := provider.Name()
 	assert.Equal(t, "cloudflare_azure", name)
 }
@@ -37,7 +37,7 @@ func TestName(t *testing.T) {
 func TestCloudflareAzureProvider_GetChatCompletions(t *testing.T) {
 	client := &mock_client.MockOpenAIClient{}
 
-	provider := &CloudflareAzureProvider{
+	provider := &Provider{
 		CfEndpoint:   "https://gateway.ai.cloudflare.com/v1/111111111111111111/ai-cc-test",
 		APIKey:       "test",
 		Resource:     "test",

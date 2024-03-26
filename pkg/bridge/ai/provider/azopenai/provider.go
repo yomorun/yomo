@@ -14,19 +14,19 @@ import (
 	"github.com/yomorun/yomo/pkg/bridge/ai/internal/oai"
 )
 
-// AzureOpenAIProvider is the provider for Azure OpenAI
-type AzureOpenAIProvider struct {
+// Provider is the provider for Azure OpenAI
+type Provider struct {
 	APIKey       string
 	APIEndpoint  string
 	DeploymentID string
 	APIVersion   string
-	client       oai.ILLMClient
+	client       oai.OpenAIRequester
 }
 
-var _ bridgeai.LLMProvider = &AzureOpenAIProvider{}
+var _ bridgeai.LLMProvider = &Provider{}
 
 // NewProvider creates a new AzureOpenAIProvider
-func NewProvider(apiKey string, apiEndpoint string, deploymentID string, apiVersion string) *AzureOpenAIProvider {
+func NewProvider(apiKey string, apiEndpoint string, deploymentID string, apiVersion string) *Provider {
 	if apiKey == "" {
 		apiKey = os.Getenv("AZURE_OPENAI_API_KEY")
 	}
@@ -39,7 +39,7 @@ func NewProvider(apiKey string, apiEndpoint string, deploymentID string, apiVers
 	if apiVersion == "" {
 		apiVersion = os.Getenv("AZURE_OPENAI_API_VERSION")
 	}
-	return &AzureOpenAIProvider{
+	return &Provider{
 		APIKey:       apiKey,
 		APIEndpoint:  apiEndpoint,
 		DeploymentID: deploymentID,
@@ -49,12 +49,12 @@ func NewProvider(apiKey string, apiEndpoint string, deploymentID string, apiVers
 }
 
 // Name returns the name of the provider
-func (p *AzureOpenAIProvider) Name() string {
+func (p *Provider) Name() string {
 	return "azopenai"
 }
 
 // GetChatCompletions get chat completions for ai service
-func (p *AzureOpenAIProvider) GetChatCompletions(userInstruction string, baseSystemMessage string, chainMessage ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error) {
+func (p *Provider) GetChatCompletions(userInstruction string, baseSystemMessage string, chainMessage ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error) {
 	reqBody := oai.ReqBody{}
 
 	url := fmt.Sprintf("%s/openai/deployments/%s/chat/completions?api-version=%s", p.APIEndpoint, p.DeploymentID, p.APIVersion)

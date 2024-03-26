@@ -5,8 +5,9 @@ import (
 	"github.com/yomorun/yomo/core/metadata"
 )
 
-// ILLMClient is the interface for OpenAI API client
-type ILLMClient interface {
+// OpenAIRequester is the interface for OpenAI API client
+type OpenAIRequester interface {
+	// ChatCompletion is the method to get chat completions
 	ChatCompletion(apiEndpoint string, authHeaderKey string, authHeaderValue string, baseRequestbody ReqBody, baseSystemMessage string, userInstruction string, chainMessage ai.ChainMessage, md metadata.M, ifWithTool bool) (*ai.InvokeResponse, error)
 }
 

@@ -22,7 +22,7 @@ type MockOpenAIClient struct {
 	IfWithTool        bool
 }
 
-var _ oai.ILLMClient = &MockOpenAIClient{}
+var _ oai.OpenAIRequester = &MockOpenAIClient{}
 
 // ChatCompletion is a mock implementation of the ChatCompletion method
 func (c *MockOpenAIClient) ChatCompletion(apiEndpoint string, authHeaderKey string, authHeaderValue string, baseRequestbody oai.ReqBody, baseSystemMessage string, userInstruction string, chainMessage ai.ChainMessage, md metadata.M, ifWithTool bool) (*ai.InvokeResponse, error) {

@@ -9,14 +9,14 @@ import (
 )
 
 func TestGeminiProvider_Name(t *testing.T) {
-	provider := &GeminiProvider{}
+	provider := &Provider{}
 	name := provider.Name()
 
 	assert.Equal(t, "gemini", name)
 }
 
 func TestGeminiProvider_getApiUrl(t *testing.T) {
-	provider := &GeminiProvider{
+	provider := &Provider{
 		APIKey: "test-api-key",
 	}
 	expected := "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=test-api-key"
@@ -48,7 +48,7 @@ func TestNewProviderWithoutEnvVar(t *testing.T) {
 }
 
 func TestGeminiProvider_prepareRequest(t *testing.T) {
-	provider := &GeminiProvider{}
+	provider := &Provider{}
 
 	userInstruction := "test instruction"
 	tcs := map[uint32]ai.ToolCall{

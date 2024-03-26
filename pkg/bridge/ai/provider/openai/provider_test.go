@@ -21,7 +21,7 @@ func TestNewProvider(t *testing.T) {
 }
 
 func TestOpenAIProvider_Name(t *testing.T) {
-	provider := &OpenAIProvider{}
+	provider := &Provider{}
 
 	name := provider.Name()
 
@@ -31,7 +31,7 @@ func TestOpenAIProvider_Name(t *testing.T) {
 func TestCloudflareOpenAIProvider_GetChatCompletions(t *testing.T) {
 	client := &mock_client.MockOpenAIClient{}
 
-	provider := &OpenAIProvider{
+	provider := &Provider{
 		APIKey: "test",
 		Model:  "test",
 		client: client,

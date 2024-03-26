@@ -10,7 +10,7 @@ import (
 )
 
 func TestCloudflareOpenAIProvider_Name(t *testing.T) {
-	provider := &CloudflareOpenAIProvider{}
+	provider := &Provider{}
 
 	name := provider.Name()
 
@@ -44,7 +44,7 @@ func TestNewProvider(t *testing.T) {
 func TestCloudflareOpenAIProvider_GetChatCompletions(t *testing.T) {
 	client := &mock_client.MockOpenAIClient{}
 
-	provider := &CloudflareOpenAIProvider{
+	provider := &Provider{
 		CfEndpoint: "https://gateway.ai.cloudflare.com/v1/111111111111111111/ai-cc-test",
 		APIKey:     "test",
 		Model:      "test",

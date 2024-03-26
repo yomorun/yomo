@@ -14,27 +14,27 @@ import (
 	"github.com/yomorun/yomo/pkg/bridge/ai/internal/oai"
 )
 
-// CloudflareAzureProvider is the provider for Azure OpenAI
-type CloudflareAzureProvider struct {
+// Provider is the provider for Azure OpenAI
+type Provider struct {
 	APIKey       string
 	Resource     string
 	DeploymentID string
 	APIVersion   string
 	CfEndpoint   string
-	client       oai.ILLMClient
+	client       oai.OpenAIRequester
 }
 
 // check if implements ai.Provider
-var _ bridgeai.LLMProvider = &CloudflareAzureProvider{}
+var _ bridgeai.LLMProvider = &Provider{}
 
 // NewProvider creates a new AzureOpenAIProvider
-func NewProvider(cfEndpoint string, apiKey string, resource string, deploymentID string, apiVersion string) *CloudflareAzureProvider {
+func NewProvider(cfEndpoint string, apiKey string, resource string, deploymentID string, apiVersion string) *Provider {
 	if cfEndpoint == "" || apiKey == "" || resource == "" || deploymentID == "" {
 		ylog.Error("parameters are required", "cfEndpoint", cfEndpoint, "apiKey", apiKey, "resource", resource, "deploymentID", deploymentID)
 		return nil
 	}
 	ylog.Debug("CloudflareAzureProvider", "cfEndpoint", cfEndpoint, "apiKey", apiKey, "resource", resource, "deploymentID", deploymentID, "apiVersion", apiVersion)
-	return &CloudflareAzureProvider{
+	return &Provider{
 		CfEndpoint:   cfEndpoint,   // https://gateway.ai.cloudflare.com/v1/111111111111111111/ai-cc-test
 		APIKey:       apiKey,       // azure api key
 		Resource:     resource,     // azure resource
@@ -45,12 +45,12 @@ func NewProvider(cfEndpoint string, apiKey string, resource string, deploymentID
 }
 
 // Name returns the name of the provider
-func (p *CloudflareAzureProvider) Name() string {
+func (p *Provider) Name() string {
 	return "cloudflare_azure"
 }
 
 // GetChatCompletions get chat completions for ai service
-func (p *CloudflareAzureProvider) GetChatCompletions(userInstruction string, baseSystemMessage string, chainMessage ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error) {
+func (p *Provider) GetChatCompletions(userInstruction string, baseSystemMessage string, chainMessage ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error) {
 	reqBody := oai.ReqBody{}
 
 	url := fmt.Sprintf("%s/azure-openai/%s/%s/chat/completions?api-version=%s", p.CfEndpoint, p.Resource, p.DeploymentID, p.APIVersion)

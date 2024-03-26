@@ -25,7 +25,7 @@ func TestNewProvider(t *testing.T) {
 }
 
 func TestAzureOpenAIProvider_Name(t *testing.T) {
-	provider := &AzureOpenAIProvider{}
+	provider := &Provider{}
 	name := provider.Name()
 
 	assert.Equal(t, "azopenai", name)
@@ -34,7 +34,7 @@ func TestAzureOpenAIProvider_Name(t *testing.T) {
 func TestAzureOpenAIProvider_GetChatCompletions(t *testing.T) {
 	client := &mock_client.MockOpenAIClient{}
 
-	provider := &AzureOpenAIProvider{
+	provider := &Provider{
 		APIKey:       "test",
 		APIEndpoint:  "https://yomo.openai.azure.com",
 		DeploymentID: "test",
