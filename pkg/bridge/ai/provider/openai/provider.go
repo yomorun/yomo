@@ -10,7 +10,7 @@ import (
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
-	"github.com/yomorun/yomo/pkg/bridge/ai/internal/openai"
+	"github.com/yomorun/yomo/pkg/bridge/ai/internal/oai"
 
 	bridgeai "github.com/yomorun/yomo/pkg/bridge/ai"
 )
@@ -25,7 +25,7 @@ type OpenAIProvider struct {
 	// Model is the model for OpenAI
 	// eg. "gpt-3.5-turbo-1106", "gpt-4-turbo-preview", "gpt-4-vision-preview", "gpt-4"
 	Model  string
-	client openai.ILLMClient
+	client oai.ILLMClient
 }
 
 // check if implements ai.Provider
@@ -43,7 +43,7 @@ func NewProvider(apiKey string, model string) *OpenAIProvider {
 	return &OpenAIProvider{
 		APIKey: apiKey,
 		Model:  model,
-		client: &openai.OpenAIClient{},
+		client: &oai.OpenAIClient{},
 	}
 }
 
@@ -54,7 +54,7 @@ func (p *OpenAIProvider) Name() string {
 
 // GetChatCompletions get chat completions for ai service
 func (p *OpenAIProvider) GetChatCompletions(userInstruction string, baseSystemMessage string, chainMessage ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error) {
-	reqBody := openai.ReqBody{Model: p.Model}
+	reqBody := oai.ReqBody{Model: p.Model}
 
 	res, err := p.client.ChatCompletion(APIEndpoint, "Authorization", fmt.Sprintf("Bearer %s", p.APIKey), reqBody, baseSystemMessage, userInstruction, chainMessage, md, withTool)
 	if err != nil {

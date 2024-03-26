@@ -12,7 +12,7 @@ import (
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
 	bridgeai "github.com/yomorun/yomo/pkg/bridge/ai"
-	"github.com/yomorun/yomo/pkg/bridge/ai/internal/openai"
+	"github.com/yomorun/yomo/pkg/bridge/ai/internal/oai"
 )
 
 // CloudflareOpenAIProvider is the provider for Cloudflare OpenAI Gateway
@@ -23,7 +23,7 @@ type CloudflareOpenAIProvider struct {
 	APIKey string
 	// Model is the model for OpenAI
 	Model  string
-	client openai.ILLMClient
+	client oai.ILLMClient
 }
 
 // check if implements ai.Provider
@@ -45,7 +45,7 @@ func NewProvider(cfEndpoint, apiKey, model string) *CloudflareOpenAIProvider {
 		CfEndpoint: cfEndpoint,
 		APIKey:     apiKey,
 		Model:      model,
-		client:     &openai.OpenAIClient{},
+		client:     &oai.OpenAIClient{},
 	}
 }
 
@@ -56,7 +56,7 @@ func (p *CloudflareOpenAIProvider) Name() string {
 
 // GetChatCompletions get chat completions for ai service
 func (p *CloudflareOpenAIProvider) GetChatCompletions(userInstruction string, baseSystemMessage string, chainMessage ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error) {
-	reqBody := openai.ReqBody{Model: p.Model}
+	reqBody := oai.ReqBody{Model: p.Model}
 
 	url := fmt.Sprintf("%s/openai/chat/completions", p.CfEndpoint)
 

@@ -1,6 +1,14 @@
-package openai
+package oai
 
-import "github.com/yomorun/yomo/ai"
+import (
+	"github.com/yomorun/yomo/ai"
+	"github.com/yomorun/yomo/core/metadata"
+)
+
+// ILLMClient is the interface for OpenAI API client
+type ILLMClient interface {
+	ChatCompletion(apiEndpoint string, authHeaderKey string, authHeaderValue string, baseRequestbody ReqBody, baseSystemMessage string, userInstruction string, chainMessage ai.ChainMessage, md metadata.M, ifWithTool bool) (*ai.InvokeResponse, error)
+}
 
 // ChatCompletionMessage describes `messages` for /chat/completions
 type ChatCompletionMessage struct {
