@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/yomorun/yomo/ai"
+	"github.com/yomorun/yomo/pkg/bridge/ai/internal/mock_client"
 )
 
 func TestCloudflareOpenAIProvider_Name(t *testing.T) {
@@ -37,4 +39,22 @@ func TestNewProvider(t *testing.T) {
 		os.Unsetenv("OPENAI_API_KEY")
 		os.Unsetenv("OPENAI_MODEL")
 	})
+}
+
+func TestCloudflareOpenAIProvider_GetChatCompletions(t *testing.T) {
+	client := &mock_client.MockOpenAIClient{}
+
+	provider := &CloudflareOpenAIProvider{
+		CfEndpoint: "https://gateway.ai.cloudflare.com/v1/111111111111111111/ai-cc-test",
+		APIKey:     "test",
+		Model:      "test",
+		client:     client,
+	}
+
+	provider.GetChatCompletions("user", "system", ai.ChainMessage{}, nil, false)
+
+	assert.Equal(t, "test", client.BaseRequestbody.Model)
+	assert.Equal(t, "user", client.UserInstruction)
+	assert.Equal(t, "system", client.BaseSystemMessage)
+	assert.Equal(t, false, client.IfWithTool)
 }
