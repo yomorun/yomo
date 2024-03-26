@@ -209,7 +209,6 @@ func (c *OpenAIClient) handleResponse(respBody []byte, tcs map[uint32]ai.ToolCal
 				// create a new variable to hold the current call
 				currentCall := call
 				result.ToolCalls[tag] = append(result.ToolCalls[tag], currentCall)
-				fmt.Println("append", currentCall.Function.Name)
 			}
 		}
 	}

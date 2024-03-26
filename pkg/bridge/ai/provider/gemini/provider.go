@@ -69,7 +69,7 @@ func (p *GeminiProvider) GetChatCompletions(userInstruction string, baseSystemMe
 	req, err := http.NewRequest("POST", p.getAPIURL(), bytes.NewBuffer(jsonBody))
 	if err != nil {
 		ylog.Error(err.Error())
-		fmt.Println("Error creating new request:", err)
+		// fmt.Println("Error creating new request:", err)
 		return nil, err
 	}
 
@@ -79,7 +79,7 @@ func (p *GeminiProvider) GetChatCompletions(userInstruction string, baseSystemMe
 	resp, err := client.Do(req)
 	if err != nil {
 		ylog.Error(err.Error())
-		fmt.Println("Error making request:", err)
+		// fmt.Println("Error making request:", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -87,7 +87,7 @@ func (p *GeminiProvider) GetChatCompletions(userInstruction string, baseSystemMe
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		ylog.Error(err.Error())
-		fmt.Println("Error reading response body:", err)
+		// fmt.Println("Error reading response body:", err)
 		return nil, err
 	}
 	ylog.Debug("gemini api response", "body", string(respBody))
