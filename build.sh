@@ -34,7 +34,7 @@ build_for_platform() {
     local binfile="build/yomo-$GOARCH-$GOOS.tar.gz"
     local exit_val=0
     CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH go build -o "build/$output" -ldflags "$ldflags" -trimpath ./cmd/yomo/main.go || exit_val=$?
-    # compress compiled binary to .zip
+    # compress compiled binary to .tar.gz
     # zip -r -j "$binfile" "$output"
     tar -C build -czvf "$binfile" "$output"
     rm -rf $output

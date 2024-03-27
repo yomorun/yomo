@@ -11,21 +11,22 @@ import (
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/metadata"
 	bridgeai "github.com/yomorun/yomo/pkg/bridge/ai"
-	"github.com/yomorun/yomo/pkg/bridge/ai/internal/openai"
+	"github.com/yomorun/yomo/pkg/bridge/ai/internal/oai"
 )
 
-// AzureOpenAIProvider is the provider for Azure OpenAI
-type AzureOpenAIProvider struct {
+// Provider is the provider for Azure OpenAI
+type Provider struct {
 	APIKey       string
 	APIEndpoint  string
 	DeploymentID string
 	APIVersion   string
+	client       oai.OpenAIRequester
 }
 
-var _ bridgeai.LLMProvider = &AzureOpenAIProvider{}
+var _ bridgeai.LLMProvider = &Provider{}
 
 // NewProvider creates a new AzureOpenAIProvider
-func NewProvider(apiKey string, apiEndpoint string, deploymentID string, apiVersion string) *AzureOpenAIProvider {
+func NewProvider(apiKey string, apiEndpoint string, deploymentID string, apiVersion string) *Provider {
 	if apiKey == "" {
 		apiKey = os.Getenv("AZURE_OPENAI_API_KEY")
 	}
@@ -38,28 +39,26 @@ func NewProvider(apiKey string, apiEndpoint string, deploymentID string, apiVers
 	if apiVersion == "" {
 		apiVersion = os.Getenv("AZURE_OPENAI_API_VERSION")
 	}
-	return &AzureOpenAIProvider{
+	return &Provider{
 		APIKey:       apiKey,
 		APIEndpoint:  apiEndpoint,
 		DeploymentID: deploymentID,
 		APIVersion:   apiVersion,
+		client:       &oai.OpenAIClient{},
 	}
 }
 
 // Name returns the name of the provider
-func (p *AzureOpenAIProvider) Name() string {
+func (p *Provider) Name() string {
 	return "azopenai"
 }
 
 // GetChatCompletions get chat completions for ai service
-func (p *AzureOpenAIProvider) GetChatCompletions(userInstruction string, baseSystemMessage string, chainMessage ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error) {
-	// // messages
-	// systemInstruction := `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous.`
-
-	reqBody := openai.ReqBody{}
+func (p *Provider) GetChatCompletions(userInstruction string, baseSystemMessage string, chainMessage ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error) {
+	reqBody := oai.ReqBody{}
 
 	url := fmt.Sprintf("%s/openai/deployments/%s/chat/completions?api-version=%s", p.APIEndpoint, p.DeploymentID, p.APIVersion)
-	res, err := openai.ChatCompletion(url, "api-key", p.APIKey, reqBody, baseSystemMessage, userInstruction, chainMessage, md, withTool)
+	res, err := p.client.ChatCompletion(url, "api-key", p.APIKey, reqBody, baseSystemMessage, userInstruction, chainMessage, md, withTool)
 
 	if err != nil {
 		return nil, err

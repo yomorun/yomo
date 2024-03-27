@@ -1,4 +1,4 @@
-// / Package gemini provides the Gemini AI provider
+// Package gemini provides the Gemini AI provider
 package gemini
 
 import (
@@ -16,34 +16,34 @@ import (
 	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 )
 
-// GeminiProvider is the provider for Gemini
-type GeminiProvider struct {
+// Provider is the provider for Gemini
+type Provider struct {
 	APIKey string
 }
 
 // NewProvider creates a new GeminiProvider
-func NewProvider(apiKey string) *GeminiProvider {
+func NewProvider(apiKey string) *Provider {
 	if apiKey == "" {
 		apiKey = os.Getenv("GEMINI_API_KEY")
 	}
-	p := &GeminiProvider{
+	p := &Provider{
 		APIKey: apiKey,
 	}
-	apiURL := p.getApiUrl()
+	apiURL := p.getAPIURL()
 	ylog.Debug("new gemini provider", "api_endpoint", apiURL)
 
 	return p
 }
 
-var _ bridgeai.LLMProvider = &GeminiProvider{}
+var _ bridgeai.LLMProvider = &Provider{}
 
 // Name returns the name of the provider
-func (p *GeminiProvider) Name() string {
+func (p *Provider) Name() string {
 	return "gemini"
 }
 
 // GetChatCompletions get chat completions for ai service
-func (p *GeminiProvider) GetChatCompletions(userInstruction string, baseSystemMessage string, chainMessage ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error) {
+func (p *Provider) GetChatCompletions(userInstruction string, baseSystemMessage string, _ ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error) {
 	if !withTool {
 		ylog.Warn("Gemini call should have tool calls")
 	}
@@ -54,7 +54,8 @@ func (p *GeminiProvider) GetChatCompletions(userInstruction string, baseSystemMe
 	}
 
 	// prepare request body
-	body, fds := p.prepareRequest(userInstruction, tcs)
+	prompt := fmt.Sprintf("%s\n %s", baseSystemMessage, userInstruction)
+	body, fds := p.prepareRequest(prompt, tcs)
 
 	// request API
 	jsonBody, err := json.Marshal(body)
@@ -65,10 +66,10 @@ func (p *GeminiProvider) GetChatCompletions(userInstruction string, baseSystemMe
 
 	ylog.Debug("gemini api request", "body", string(jsonBody))
 
-	req, err := http.NewRequest("POST", p.getApiUrl(), bytes.NewBuffer(jsonBody))
+	req, err := http.NewRequest("POST", p.getAPIURL(), bytes.NewBuffer(jsonBody))
 	if err != nil {
 		ylog.Error(err.Error())
-		fmt.Println("Error creating new request:", err)
+		// fmt.Println("Error creating new request:", err)
 		return nil, err
 	}
 
@@ -78,7 +79,7 @@ func (p *GeminiProvider) GetChatCompletions(userInstruction string, baseSystemMe
 	resp, err := client.Do(req)
 	if err != nil {
 		ylog.Error(err.Error())
-		fmt.Println("Error making request:", err)
+		// fmt.Println("Error making request:", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -86,7 +87,7 @@ func (p *GeminiProvider) GetChatCompletions(userInstruction string, baseSystemMe
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		ylog.Error(err.Error())
-		fmt.Println("Error reading response body:", err)
+		// fmt.Println("Error reading response body:", err)
 		return nil, err
 	}
 	ylog.Debug("gemini api response", "body", string(respBody))
@@ -135,13 +136,13 @@ func (p *GeminiProvider) GetChatCompletions(userInstruction string, baseSystemMe
 	return result, nil
 }
 
-// getApiUrl returns the gemini generateContent API url
-func (p *GeminiProvider) getApiUrl() string {
+// getAPIURL returns the gemini generateContent API url
+func (p *Provider) getAPIURL() string {
 	return fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=%s", p.APIKey)
 }
 
 // prepareRequestBody prepares the request body for the API
-func (p *GeminiProvider) prepareRequest(userInstruction string, tcs map[uint32]ai.ToolCall) (*RequestBody, []*FunctionDeclaration) {
+func (p *Provider) prepareRequest(userInstruction string, tcs map[uint32]ai.ToolCall) (*RequestBody, []*FunctionDeclaration) {
 	body := &RequestBody{}
 
 	// prepare contents

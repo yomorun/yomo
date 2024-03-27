@@ -3,7 +3,6 @@ package cfazure
 
 import (
 	"fmt"
-	"os"
 
 	// automatically load .env file
 	_ "github.com/joho/godotenv/autoload"
@@ -12,53 +11,51 @@ import (
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
 	bridgeai "github.com/yomorun/yomo/pkg/bridge/ai"
-	"github.com/yomorun/yomo/pkg/bridge/ai/internal/openai"
+	"github.com/yomorun/yomo/pkg/bridge/ai/internal/oai"
 )
 
-// CloudflareAzureProvider is the provider for Azure OpenAI
-type CloudflareAzureProvider struct {
+// Provider is the provider for Azure OpenAI
+type Provider struct {
 	APIKey       string
 	Resource     string
 	DeploymentID string
 	APIVersion   string
 	CfEndpoint   string
+	client       oai.OpenAIRequester
 }
 
 // check if implements ai.Provider
-var _ bridgeai.LLMProvider = &CloudflareAzureProvider{}
+var _ bridgeai.LLMProvider = &Provider{}
 
 // NewProvider creates a new AzureOpenAIProvider
-func NewProvider(cfEndpoint string, apiKey string, resource string, deploymentID string, apiVersion string) *CloudflareAzureProvider {
-	if cfEndpoint == "" || apiKey == "" || resource == "" || deploymentID == "" || apiVersion == "" {
-		ylog.Error("parameters are required", "cfEndpoint", cfEndpoint, "apiKey", apiKey, "resource", resource, "deploymentID", deploymentID, "apiVersion", apiVersion)
-		os.Exit(-1)
+func NewProvider(cfEndpoint string, apiKey string, resource string, deploymentID string, apiVersion string) *Provider {
+	if cfEndpoint == "" || apiKey == "" || resource == "" || deploymentID == "" {
+		ylog.Error("parameters are required", "cfEndpoint", cfEndpoint, "apiKey", apiKey, "resource", resource, "deploymentID", deploymentID)
 		return nil
 	}
 	ylog.Debug("CloudflareAzureProvider", "cfEndpoint", cfEndpoint, "apiKey", apiKey, "resource", resource, "deploymentID", deploymentID, "apiVersion", apiVersion)
-	return &CloudflareAzureProvider{
+	return &Provider{
 		CfEndpoint:   cfEndpoint,   // https://gateway.ai.cloudflare.com/v1/111111111111111111/ai-cc-test
 		APIKey:       apiKey,       // azure api key
 		Resource:     resource,     // azure resource
 		DeploymentID: deploymentID, // azure deployment id
 		APIVersion:   apiVersion,   // azure api version
+		client:       &oai.OpenAIClient{},
 	}
 }
 
 // Name returns the name of the provider
-func (p *CloudflareAzureProvider) Name() string {
+func (p *Provider) Name() string {
 	return "cloudflare_azure"
 }
 
 // GetChatCompletions get chat completions for ai service
-func (p *CloudflareAzureProvider) GetChatCompletions(userInstruction string, baseSystemMessage string, chainMessage ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error) {
-	// messages
-	// userDefinedBaseSystemMessage := `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous.`
-
-	reqBody := openai.ReqBody{}
+func (p *Provider) GetChatCompletions(userInstruction string, baseSystemMessage string, chainMessage ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error) {
+	reqBody := oai.ReqBody{}
 
 	url := fmt.Sprintf("%s/azure-openai/%s/%s/chat/completions?api-version=%s", p.CfEndpoint, p.Resource, p.DeploymentID, p.APIVersion)
 
-	res, err := openai.ChatCompletion(url, "api-key", p.APIKey, reqBody, baseSystemMessage, userInstruction, chainMessage, md, withTool)
+	res, err := p.client.ChatCompletion(url, "api-key", p.APIKey, reqBody, baseSystemMessage, userInstruction, chainMessage, md, withTool)
 
 	return res, err
 }

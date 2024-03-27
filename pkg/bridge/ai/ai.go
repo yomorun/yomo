@@ -118,11 +118,8 @@ type Provider = map[string]string
 //				huggingface:map[model:<nil>]
 //				openai:map[api_endpoint:<nil> api_key:<nil>]]
 //	server:map[
-//		credential:token:<CREDENTIAL>
-//		endpoints:map[chat_completions:/chat/completions]
-//		host:http://localhost
-//		port:8000
-//		provider:azopenai]]]
+//		addr: host:port
+//		provider: azopenai
 
 // ParseConfig parses the AI config from conf
 func ParseConfig(conf map[string]any) (config *Config, err error) {
@@ -151,12 +148,6 @@ func ParseConfig(conf map[string]any) (config *Config, err error) {
 	if config.Server.Addr == "" {
 		config.Server.Addr = ":8000"
 	}
-	// // endpoints
-	// if config.Server.Endpoints == nil {
-	// 	config.Server.Endpoints = map[string]string{
-	// 		"chat_completions": DefaultChatCompletionsEndpoint,
-	// 	}
-	// }
 	ylog.Info("parse AI config success")
 	return
 }

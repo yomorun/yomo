@@ -3,64 +3,66 @@ package gemini
 import (
 	"os"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/yomorun/yomo/ai"
 )
 
 func TestGeminiProvider_Name(t *testing.T) {
-	provider := &GeminiProvider{}
-
+	provider := &Provider{}
 	name := provider.Name()
 
-	if name != "gemini" {
-		t.Errorf("Name() = %v, want %v", name, "gemini")
-	}
+	assert.Equal(t, "gemini", name)
 }
 
 func TestGeminiProvider_getApiUrl(t *testing.T) {
-	provider := &GeminiProvider{
+	provider := &Provider{
 		APIKey: "test-api-key",
 	}
-
 	expected := "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=test-api-key"
+	result := provider.getAPIURL()
 
-	result := provider.getApiUrl()
-
-	if result != expected {
-		t.Errorf("getApiUrl() = %v, want %v", result, expected)
-	}
+	assert.Equal(t, expected, result)
 }
 
 func TestNewProvider(t *testing.T) {
 	apiKey := "test-api-key"
 	provider := NewProvider(apiKey)
 
-	if provider.APIKey != apiKey {
-		t.Errorf("NewProvider() = %v, want %v", provider.APIKey, apiKey)
-	}
+	assert.Equal(t, apiKey, provider.APIKey)
 }
 
 func TestNewProviderWithEnvVar(t *testing.T) {
-	// Set up
 	expectedAPIKey := "test-api-key"
 	os.Setenv("GEMINI_API_KEY", expectedAPIKey)
-
-	// Call the function under test
 	provider := NewProvider("")
 
-	// Check the result
-	if provider.APIKey != expectedAPIKey {
-		t.Errorf("NewProvider() = %v, want %v", provider.APIKey, expectedAPIKey)
-	}
+	assert.Equal(t, expectedAPIKey, provider.APIKey)
 }
 
 func TestNewProviderWithoutEnvVar(t *testing.T) {
-	// Set up
 	os.Unsetenv("GEMINI_API_KEY")
-
-	// Call the function under test
 	provider := NewProvider("")
 
-	// Check the result
-	if provider.APIKey != "" {
-		t.Errorf("NewProvider() = %v, want %v", provider.APIKey, "")
+	assert.NotNil(t, provider.APIKey)
+}
+
+func TestGeminiProvider_prepareRequest(t *testing.T) {
+	provider := &Provider{}
+
+	userInstruction := "test instruction"
+	tcs := map[uint32]ai.ToolCall{
+		0: {Function: &ai.FunctionDefinition{Name: "function"}},
+		1: {Function: &ai.FunctionDefinition{Name: "function"}},
+	}
+
+	body, toolCalls := provider.prepareRequest(userInstruction, tcs)
+
+	assert.Equal(t, "user", body.Contents.Role)
+	assert.Equal(t, userInstruction, body.Contents.Parts.Text)
+	assert.Equal(t, len(tcs), len(toolCalls))
+
+	for i, tc := range tcs {
+		assert.Equal(t, convertStandardToFunctionDeclaration(tc.Function), toolCalls[i])
 	}
 }

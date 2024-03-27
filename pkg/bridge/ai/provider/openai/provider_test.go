@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/yomorun/yomo/ai"
+	"github.com/yomorun/yomo/pkg/bridge/ai/internal/mock_client"
 )
 
 func TestNewProvider(t *testing.T) {
@@ -19,9 +21,26 @@ func TestNewProvider(t *testing.T) {
 }
 
 func TestOpenAIProvider_Name(t *testing.T) {
-	provider := &OpenAIProvider{}
+	provider := &Provider{}
 
 	name := provider.Name()
 
 	assert.Equal(t, "openai", name)
+}
+
+func TestCloudflareOpenAIProvider_GetChatCompletions(t *testing.T) {
+	client := &mock_client.MockOpenAIClient{}
+
+	provider := &Provider{
+		APIKey: "test",
+		Model:  "test",
+		client: client,
+	}
+
+	provider.GetChatCompletions("user", "system", ai.ChainMessage{}, nil, false)
+
+	assert.Equal(t, "test", client.BaseRequestbody.Model)
+	assert.Equal(t, "user", client.UserInstruction)
+	assert.Equal(t, "system", client.BaseSystemMessage)
+	assert.Equal(t, false, client.IfWithTool)
 }

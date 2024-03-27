@@ -12,24 +12,25 @@ import (
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
 	bridgeai "github.com/yomorun/yomo/pkg/bridge/ai"
-	"github.com/yomorun/yomo/pkg/bridge/ai/internal/openai"
+	"github.com/yomorun/yomo/pkg/bridge/ai/internal/oai"
 )
 
-// CloudflareOpenaiProvider is the provider for Cloudflare OpenAI Gateway
-type CloudflareOpenAIProvider struct {
+// Provider is the provider for Cloudflare OpenAI Gateway
+type Provider struct {
 	// CfEndpoint is the your cloudflare endpoint
 	CfEndpoint string
 	// APIKey is the API key for OpenAI
 	APIKey string
 	// Model is the model for OpenAI
-	Model string
+	Model  string
+	client oai.OpenAIRequester
 }
 
 // check if implements ai.Provider
-var _ bridgeai.LLMProvider = &CloudflareOpenAIProvider{}
+var _ bridgeai.LLMProvider = &Provider{}
 
 // NewProvider creates a new AzureOpenAIProvider
-func NewProvider(cfEndpoint, apiKey, model string) *CloudflareOpenAIProvider {
+func NewProvider(cfEndpoint, apiKey, model string) *Provider {
 	if apiKey == "" {
 		apiKey = os.Getenv("OPENAI_API_KEY")
 	}
@@ -40,25 +41,26 @@ func NewProvider(cfEndpoint, apiKey, model string) *CloudflareOpenAIProvider {
 	// 	ylog.Error("cfEndpoint is required")
 	// }
 	ylog.Debug("new cloudflare openai provider", "api_key", apiKey, "model", model, "cloudflare_endpoint", cfEndpoint)
-	return &CloudflareOpenAIProvider{
+	return &Provider{
 		CfEndpoint: cfEndpoint,
 		APIKey:     apiKey,
 		Model:      model,
+		client:     &oai.OpenAIClient{},
 	}
 }
 
 // Name returns the name of the provider
-func (p *CloudflareOpenAIProvider) Name() string {
+func (p *Provider) Name() string {
 	return "cloudflare_openai"
 }
 
 // GetChatCompletions get chat completions for ai service
-func (p *CloudflareOpenAIProvider) GetChatCompletions(userInstruction string, baseSystemMessage string, chainMessage ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error) {
-	reqBody := openai.ReqBody{Model: p.Model}
+func (p *Provider) GetChatCompletions(userInstruction string, baseSystemMessage string, chainMessage ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error) {
+	reqBody := oai.ReqBody{Model: p.Model}
 
 	url := fmt.Sprintf("%s/openai/chat/completions", p.CfEndpoint)
 
-	res, err := openai.ChatCompletion(
+	res, err := p.client.ChatCompletion(
 		url,
 		"Authorization",
 		fmt.Sprintf("Bearer %s", p.APIKey),
