@@ -7,7 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"os/signal"
 	"runtime"
+	"syscall"
 	"time"
 
 	"github.com/invopop/jsonschema"
@@ -39,6 +42,8 @@ type Client struct {
 	done chan struct{}
 	wrCh chan frame.Frame
 	rdCh chan readOut
+	// conn
+	conn frame.Conn
 }
 
 type readOut struct {
@@ -97,6 +102,7 @@ CONNECT:
 	if reconnect {
 		goto CONNECT
 	}
+	c.conn = fconn
 	go c.runBackground(fconn)
 
 	return nil
@@ -158,7 +164,9 @@ func (c *Client) handleConn(conn frame.Conn) (closed bool) {
 		// Exit client program if the connection has be closed.
 		if se := new(frame.ErrConnClosed); errors.As(err, &se) {
 			if se.Remote {
-				c.ctxCancel(fmt.Errorf("%s: shutdown with error=%s", c.clientType.String(), se.ErrorMessage))
+				// c.ctxCancel(fmt.Errorf("%s: shutdown with error=%s", c.clientType.String(), se.ErrorMessage))
+				c.Logger.Error("connection has been closed by remote", "err", se.ErrorMessage)
+				c.Close()
 			}
 			return true
 		}
@@ -323,14 +331,23 @@ func (c *Client) nonBlockWriteFrame(f frame.Frame) error {
 // Close close the client.
 func (c *Client) Close() error {
 	// break runBackgroud() for-loop.
-	c.ctxCancel(fmt.Errorf("%s: shutdown", c.clientType.String()))
+	msg := "***shutdown***"
+	c.Logger.Info(msg)
+	c.conn.CloseWithError(msg)
+	// c.ctxCancel(fmt.Errorf("%s: shutdown", c.clientType.String()))
 
 	return nil
 }
 
 // Wait waits client returning.
 func (c *Client) Wait() {
-	<-c.done
+	ch := make(chan os.Signal, 0)
+	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL)
+	select {
+	case s := <-ch:
+		c.Logger.Info("received system signal", "signal", s)
+	case <-c.done:
+	}
 }
 
 func (c *Client) serveConn(conn frame.Conn) error {

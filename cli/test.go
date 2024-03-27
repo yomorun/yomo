@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -55,13 +56,28 @@ var testPromptCmd = &cobra.Command{
 			// run sfn
 			log.InfoStatusEvent(os.Stdout, "--------------------------------------------------------")
 			log.InfoStatusEvent(os.Stdout, "Attaching LLM function in directory: %v", dir)
-			cmd := exec.Command("go", "run", ".")
+			// build
+			cmd := exec.Command("go", "build", "-o", "sfn.bin", ".")
 			cmd.Dir = dir
-			env := os.Environ()
-			env = append(env, "YOMO_LOG_LEVEL=info")
+			cmd.Env = os.Environ()
+			if err := cmd.Run(); err != nil {
+				log.FailureStatusEvent(os.Stdout, "Failed to build LLM function in directory: %v, error: %v", dir, err)
+				continue
+			}
+			log.InfoStatusEvent(os.Stdout, "Build LLM function success")
+			// remove sfn.bin
+			sfnBin, err := filepath.Abs(filepath.Join(dir, "sfn.bin"))
+			if err != nil {
+				log.FailureStatusEvent(os.Stdout, "Failed to get absolute path of sfn.bin: %v", err)
+				continue
+			}
+			defer os.RemoveAll(sfnBin)
+
+			// run
+			cmd = exec.Command(sfnBin)
+			cmd.Dir = dir
+			env := append(os.Environ(), "YOMO_LOG_LEVEL=info")
 			cmd.Env = env
-			// cmd.Stdout = io.Discard
-			// cmd.Stderr = io.Discard
 			stdout, err := cmd.StdoutPipe()
 			if err != nil {
 				log.FailureStatusEvent(os.Stdout, "Failed to attach LLM function in directory: %v, error: %v", dir, err)
@@ -71,8 +87,8 @@ var testPromptCmd = &cobra.Command{
 			outputReader := bufio.NewReader(stdout)
 			// read outputReader
 			output := make(chan string)
-			defer close(output)
 			go func(outputReader *bufio.Reader, output chan string) {
+				defer close(output)
 				for {
 					line, err := outputReader.ReadString('\n')
 					if err != nil {
@@ -87,28 +103,8 @@ var testPromptCmd = &cobra.Command{
 			if err := cmd.Start(); err != nil {
 				log.FailureStatusEvent(os.Stdout, "Failed to run LLM function in directory: %v, error: %v", dir, err)
 				continue
-			} else {
-				defer func(cmd *exec.Cmd) {
-					p, err := process.NewProcess(int32(cmd.Process.Pid))
-					if err != nil {
-						log.FailureStatusEvent(os.Stdout, "Failed to get process: %v", err)
-						return
-					}
-					children, err := p.Children()
-					if err != nil {
-						log.FailureStatusEvent(os.Stdout, "Failed to get process children: %v", err)
-						return
-					}
-					for _, c := range children {
-						if err := c.Kill(); err != nil {
-							log.FailureStatusEvent(os.Stdout, "Failed to kill child process: %v", err)
-						}
-					}
-					if err := p.Kill(); err != nil {
-						log.FailureStatusEvent(os.Stdout, "Failed to kill process: %v", err)
-					}
-				}(cmd)
 			}
+			log.InfoStatusEvent(os.Stdout, "Run LLM function success, pid: %v", cmd.Process.Pid)
 			// wait for the sfn to be ready
 			for {
 				select {
@@ -197,6 +193,20 @@ var testPromptCmd = &cobra.Command{
 			// finish reason
 			log.InfoStatusEvent(os.Stdout, "Finish Reason: %s", invokeResp.FinishReason)
 			log.InfoStatusEvent(os.Stdout, "Final Content: \n🤖 %s", invokeResp.Content)
+
+			// cmd process
+			p, err := process.NewProcess(int32(cmd.Process.Pid))
+			if err != nil {
+				log.FailureStatusEvent(os.Stdout, "Failed to get process: %v, pid: %v", err, p.Pid)
+				continue
+			}
+			if err := p.Terminate(); err != nil {
+				log.FailureStatusEvent(os.Stdout, "Failed to terminate process: %v, pid: %v", err, p.Pid)
+				continue
+			}
+			if err := cmd.Wait(); err != nil {
+				log.FailureStatusEvent(os.Stdout, "Failed to exit process: %v, pid: %v", err, p.Pid)
+			}
 		}
 	},
 }
