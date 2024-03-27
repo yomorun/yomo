@@ -2,7 +2,6 @@
 package register
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/yomorun/yomo/ai"
@@ -94,10 +93,10 @@ func (r *register) RegisterFunction(tag uint32, functionDefinition *ai.FunctionD
 }
 
 func (r *register) UnregisterFunction(connID uint64, _ metadata.M) {
-	fmt.Println("unregister", connID)
 	r.underlying.Delete(connID)
 }
 
+// SfnFactor returns the sfn factor
 func (r *register) SfnFactor(tag uint32) int {
 	factor := 0
 	r.underlying.Range(func(key, value any) bool {
@@ -107,6 +106,5 @@ func (r *register) SfnFactor(tag uint32) int {
 		}
 		return true
 	})
-	fmt.Println("factor", factor)
 	return factor
 }
