@@ -3,6 +3,7 @@ package yomo
 import (
 	"context"
 	"errors"
+	"os"
 
 	"github.com/robfig/cron/v3"
 
@@ -42,7 +43,7 @@ type StreamFunction interface {
 	// Close will close the connection
 	Close() error
 	// Wait waits sfn to finish.
-	Wait()
+	Wait(sig ...os.Signal)
 }
 
 // NewStreamFunction create a stream function.
@@ -224,8 +225,8 @@ func (s *streamFunction) Close() error {
 }
 
 // Wait waits sfn to finish.
-func (s *streamFunction) Wait() {
-	s.client.Wait()
+func (s *streamFunction) Wait(sig ...os.Signal) {
+	s.client.Wait(sig...)
 }
 
 // when DataFrame we observed arrived, invoke the user's function

@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"os/signal"
 	"runtime"
 	"time"
 
@@ -302,7 +304,7 @@ func (c *Client) WriteFrame(f frame.Frame) error {
 func (c *Client) blockWriteFrame(f frame.Frame) error {
 	select {
 	case <-c.ctx.Done():
-		return c.ctx.Err()
+		return context.Cause(c.ctx)
 	case c.wrCh <- f:
 	}
 	return nil
@@ -312,7 +314,7 @@ func (c *Client) blockWriteFrame(f frame.Frame) error {
 func (c *Client) nonBlockWriteFrame(f frame.Frame) error {
 	select {
 	case <-c.ctx.Done():
-		return c.ctx.Err()
+		return context.Cause(c.ctx)
 	case c.wrCh <- f:
 		return nil
 	case <-time.After(time.Second):
@@ -324,13 +326,22 @@ func (c *Client) nonBlockWriteFrame(f frame.Frame) error {
 func (c *Client) Close() error {
 	// break runBackgroud() for-loop.
 	c.ctxCancel(fmt.Errorf("%s: shutdown", c.clientType.String()))
+	<-c.done
 
 	return nil
 }
 
 // Wait waits client returning.
-func (c *Client) Wait() {
-	<-c.done
+func (c *Client) Wait(sig ...os.Signal) {
+	ch := make(chan os.Signal)
+	if len(sig) > 0 {
+		signal.Notify(ch, sig...)
+	}
+
+	select {
+	case <-ch:
+	case <-c.done:
+	}
 }
 
 func (c *Client) serveConn(conn frame.Conn) error {
@@ -348,8 +359,10 @@ func (c *Client) serveConn(conn frame.Conn) error {
 	for {
 		select {
 		case <-c.ctx.Done():
-			conn.CloseWithError(context.Cause(c.ctx).Error())
-			c.done <- struct{}{}
+			err := context.Cause(c.ctx)
+			conn.CloseWithError(err.Error())
+			close(c.done)
+			return err
 		case f := <-c.wrCh:
 			if err := conn.WriteFrame(f); err != nil {
 				return err
