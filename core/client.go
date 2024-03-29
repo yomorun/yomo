@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"syscall"
 	"time"
 
 	"github.com/invopop/jsonschema"
@@ -332,11 +333,9 @@ func (c *Client) Close() error {
 }
 
 // Wait waits client returning.
-func (c *Client) Wait(sig ...os.Signal) {
+func (c *Client) Wait() {
 	ch := make(chan os.Signal)
-	if len(sig) > 0 {
-		signal.Notify(ch, sig...)
-	}
+	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL)
 
 	select {
 	case <-ch:
