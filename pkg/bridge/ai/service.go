@@ -19,7 +19,7 @@ var (
 	ServiceCacheSize = 1024
 	// ServiceCacheTTL is the time to live of the service cache
 	ServiceCacheTTL = time.Minute * 0 // 30
-	// TODO: this cache can be removed as the BasicAPIServer only contains 1 service instance.
+	// services is the cache of Service
 	services *expirable.LRU[string, *Service]
 )
 
@@ -247,7 +247,7 @@ func (s *Service) runFunctionCalls(fns map[uint32][]*ai.ToolCall, reqID string) 
 				continue
 			}
 			// wait for this request to be done
-			asyncCall.wg.Add(1)
+			asyncCall.wg.Add(1 * register.SfnFactor(tag, s.md))
 		}
 	}
 
@@ -298,7 +298,7 @@ func init() {
 	onEvicted := func(_ string, v *Service) {
 		v.Release()
 	}
-	services = expirable.NewLRU[string, *Service](ServiceCacheSize, onEvicted, ServiceCacheTTL)
+	services = expirable.NewLRU(ServiceCacheSize, onEvicted, ServiceCacheTTL)
 }
 
 type sfnAsyncCall struct {
