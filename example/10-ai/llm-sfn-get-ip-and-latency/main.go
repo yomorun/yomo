@@ -100,6 +100,5 @@ func handler(ctx serverless.Context) {
 
 	val := fmt.Sprintf("domain %s has ip %s with average latency %s", msg.Domain, ips[0], stats.AvgRtt)
 
-	fc.SetRetrievalResult(val)
 	fc.Write(val)
 }

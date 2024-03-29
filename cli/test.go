@@ -87,10 +87,11 @@ var testPromptCmd = &cobra.Command{
 			outputReader := bufio.NewReader(stdout)
 			// read outputReader
 			output := make(chan string)
+			defer close(output)
 			go func(outputReader *bufio.Reader, output chan string) {
-				defer close(output)
 				for {
 					line, err := outputReader.ReadString('\n')
+					// log.InfoStatusEvent(os.Stdout, "LLM function output: %s", line)
 					if err != nil {
 						break
 					}
@@ -204,9 +205,7 @@ var testPromptCmd = &cobra.Command{
 				log.FailureStatusEvent(os.Stdout, "Failed to terminate process: %v, pid: %v", err, p.Pid)
 				continue
 			}
-			if err := cmd.Wait(); err != nil {
-				log.FailureStatusEvent(os.Stdout, "Failed to exit process: %v, pid: %v", err, p.Pid)
-			}
+			cmd.Wait()
 		}
 	},
 }
