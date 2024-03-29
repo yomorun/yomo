@@ -218,6 +218,9 @@ func (s *Service) GetChatCompletions(userInstruction string, baseSystemMessage s
 	chainMessage.ToolMessages = llmCalls
 	// do not attach toolMessage to prompt in 2nd call
 	res2, err := s.LLMProvider.GetChatCompletions(userInstruction, baseSystemMessage, chainMessage, s.md, false)
+	if err != nil {
+		return nil, err
+	}
 	// INFO: call stack infomation
 	if includeCallStack {
 		res2.ToolCalls = res.ToolCalls
