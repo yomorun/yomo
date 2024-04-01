@@ -16,7 +16,7 @@ require (
 	github.com/reactivex/rxgo/v2 v2.5.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/second-state/WasmEdge-go v0.13.4
-	github.com/shirou/gopsutil/v3 v3.24.2
+	github.com/shirou/gopsutil/v3 v3.24.3
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.18.2
