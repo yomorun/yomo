@@ -29,10 +29,10 @@ import (
 
 	"github.com/yomorun/yomo/pkg/bridge/ai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/azopenai"
-	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cfazure"
-	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cfopenai"
-	"github.com/yomorun/yomo/pkg/bridge/ai/provider/gemini"
-	"github.com/yomorun/yomo/pkg/bridge/ai/provider/openai"
+	// "github.com/yomorun/yomo/pkg/bridge/ai/provider/cfazure"
+	// "github.com/yomorun/yomo/pkg/bridge/ai/provider/cfopenai"
+	// "github.com/yomorun/yomo/pkg/bridge/ai/provider/gemini"
+	// "github.com/yomorun/yomo/pkg/bridge/ai/provider/openai"
 )
 
 // serveCmd represents the serve command
@@ -127,24 +127,24 @@ func registerAIProvider(aiConfig *ai.Config) error {
 				provider["deployment_id"],
 				provider["api_version"],
 			))
-		case "gemini":
-			ai.RegisterProvider(gemini.NewProvider(provider["api_key"]))
-		case "openai":
-			ai.RegisterProvider(openai.NewProvider(provider["api_key"], provider["model"]))
-		case "cloudflare_azure":
-			ai.RegisterProvider(cfazure.NewProvider(
-				provider["endpoint"],
-				provider["api_key"],
-				provider["resource"],
-				provider["deployment_id"],
-				provider["api_version"],
-			))
-		case "cloudflare_openai":
-			ai.RegisterProvider(cfopenai.NewProvider(
-				provider["endpoint"],
-				provider["api_key"],
-				provider["model"],
-			))
+		// case "gemini":
+		// 	ai.RegisterProvider(gemini.NewProvider(provider["api_key"]))
+		// case "openai":
+		// 	ai.RegisterProvider(openai.NewProvider(provider["api_key"], provider["model"]))
+		// case "cloudflare_azure":
+		// 	ai.RegisterProvider(cfazure.NewProvider(
+		// 		provider["endpoint"],
+		// 		provider["api_key"],
+		// 		provider["resource"],
+		// 		provider["deployment_id"],
+		// 		provider["api_version"],
+		// 	))
+		// case "cloudflare_openai":
+		// 	ai.RegisterProvider(cfopenai.NewProvider(
+		// 		provider["endpoint"],
+		// 		provider["api_key"],
+		// 		provider["model"],
+		// 	))
 		default:
 			log.WarningStatusEvent(os.Stdout, "unknown provider: %s", name)
 		}

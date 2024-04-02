@@ -1,14 +1,16 @@
 package oai
 
 import (
+	"context"
+
 	"github.com/yomorun/yomo/ai"
-	"github.com/yomorun/yomo/core/metadata"
 )
 
 // OpenAIRequester is the interface for OpenAI API client
 type OpenAIRequester interface {
 	// ChatCompletion is the method to get chat completions
-	ChatCompletion(apiEndpoint string, authHeaderKey string, authHeaderValue string, baseRequestbody ReqBody, baseSystemMessage string, userInstruction string, chainMessage ai.ChainMessage, md metadata.M, ifWithTool bool) (*ai.InvokeResponse, error)
+	// ChatCompletion(apiEndpoint string, authHeaderKey string, authHeaderValue string, baseRequestbody ReqBody, baseSystemMessage string, userInstruction string, chainMessage ai.ChainMessage, md metadata.M, ifWithTool bool) (*ai.InvokeResponse, error)
+	ChatCompletions(ctx context.Context, apiEndpoint string, authHeaderKey string, authHeaderValue string, ChatCompletionRequest *ai.ChatCompletionRequest) (*ai.ChatCompletionResponse, error)
 }
 
 // ChatCompletionMessage describes `messages` for /chat/completions

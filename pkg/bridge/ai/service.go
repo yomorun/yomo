@@ -2,6 +2,7 @@ package ai
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -191,35 +192,75 @@ func (s *Service) GetOverview() (*ai.OverviewResponse, error) {
 
 // GetInvoke returns the invoke response
 func (s *Service) GetInvoke(userInstruction string, baseSystemMessage string, reqID string, includeCallStack bool) (*ai.InvokeResponse, error) {
-	chainMessage := ai.ChainMessage{}
-	// we do not support multi-turn invoke for Google Gemini
-	if s.LLMProvider.Name() == "gemini" {
-		return s.LLMProvider.GetChatCompletions(userInstruction, baseSystemMessage, chainMessage, s.md, true)
+	// read tools attached to the metadata
+	tcs, err := register.ListToolCalls(s.md)
+	if err != nil {
+		return &ai.InvokeResponse{}, err
 	}
-	res, err := s.LLMProvider.GetChatCompletions(userInstruction, baseSystemMessage, chainMessage, s.md, true)
+	// prepare tools
+	toolCalls, err := prepareToolCalls(tcs)
 	if err != nil {
 		return nil, err
 	}
-
+	chainMessage := ai.ChainMessage{}
+	messages := prepareMessages(baseSystemMessage, userInstruction, chainMessage, toolCalls, true)
+	req := &ai.ChatCompletionRequest{
+		Messages: messages,
+	}
+	// with tools
+	if len(toolCalls) > 0 {
+		req.Tools = toolCalls
+	}
+	// we do not support multi-turn invoke for Google Gemini
+	// if s.LLMProvider.Name() == "gemini" {
+	// 	return s.LLMProvider.GetChatCompletions(userInstruction, baseSystemMessage, chainMessage, s.md, true)
+	// }
+	// res, err := s.LLMProvider.GetChatCompletions(userInstruction, baseSystemMessage, chainMessage, s.md, true)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	chatCompletionResponse, err := s.LLMProvider.GetChatCompletions(req)
+	if err != nil {
+		return nil, err
+	}
+	// TODO: convert ChatCompletionResponse to InvokeResponse
+	res, err := chatCompletionResponse.ConvertToInvokeResponse(tcs)
+	if err != nil {
+		return nil, err
+	}
 	// if no tool_calls fired, just return the llm text result
 	if res.FinishReason != "tool_calls" {
 		return res, nil
 	}
 
 	// run llm function calls
+	ylog.Warn(">>>> start 1st call response",
+		"res_toolcalls", fmt.Sprintf("%+v", res.ToolCalls),
+		"res_assistant_msgs", fmt.Sprintf("%+v", res.AssistantMessage))
+
 	llmCalls, err := s.runFunctionCalls(res.ToolCalls, reqID)
 	if err != nil {
 		return nil, err
 	}
 
-	ylog.Debug(">>>> start 2nd call with", "calls", fmt.Sprintf("%+v", llmCalls), "preceeding_assistant_message", fmt.Sprintf("%+v", res.AssistantMessage))
+	ylog.Warn(">>>> start 2nd call with", "calls", fmt.Sprintf("%+v", llmCalls), "preceeding_assistant_message", fmt.Sprintf("%+v", res.AssistantMessage))
 	chainMessage.PreceedingAssistantMessage = res.AssistantMessage
 	chainMessage.ToolMessages = llmCalls
 	// do not attach toolMessage to prompt in 2nd call
-	res2, err := s.LLMProvider.GetChatCompletions(userInstruction, baseSystemMessage, chainMessage, s.md, false)
+	messages2 := prepareMessages(baseSystemMessage, userInstruction, chainMessage, toolCalls, false)
+	ylog.Warn(">>>> start 2nd call", "messages2", fmt.Sprintf("%+v", messages2))
+	req2 := &ai.ChatCompletionRequest{
+		Messages: messages2,
+	}
+	chatCompletionResponse2, err := s.LLMProvider.GetChatCompletions(req2)
 	if err != nil {
 		return nil, err
 	}
+	res2, err := chatCompletionResponse2.ConvertToInvokeResponse(tcs)
+	if err != nil {
+		return nil, err
+	}
+
 	// INFO: call stack infomation
 	if includeCallStack {
 		res2.ToolCalls = res.ToolCalls
@@ -307,4 +348,73 @@ type sfnAsyncCall struct {
 	wg  *sync.WaitGroup
 	mu  sync.RWMutex
 	val map[string]ai.ToolMessage
+}
+
+// GetChatCompletions returns the llm api response
+func (s *Service) GetChatCompletions(req *ai.ChatCompletionRequest) (*ai.ChatCompletionResponse, error) {
+	// TODO: implement the GetChatCompletions
+	return nil, nil
+}
+
+func prepareToolCalls(tcs map[uint32]ai.ToolCall) ([]ai.ToolCall, error) {
+	// prepare tools
+	toolCalls := make([]ai.ToolCall, len(tcs))
+	idx := 0
+	for _, tc := range tcs {
+		toolCalls[idx] = tc
+		idx++
+	}
+	return toolCalls, nil
+}
+
+func prepareMessages(baseSystemMessage string, userInstruction string, chainMessage ai.ChainMessage, toolCalls []ai.ToolCall, withTool bool) []ai.ChatCompletionMessage {
+	systemInstructions := []string{"## Instructions\n"}
+
+	// only append if there are tool calls
+	if withTool {
+		for _, tc := range toolCalls {
+			systemInstructions = append(systemInstructions, "- ")
+			systemInstructions = append(systemInstructions, tc.Function.Description)
+			systemInstructions = append(systemInstructions, "\n")
+		}
+		systemInstructions = append(systemInstructions, "\n")
+	}
+
+	SystemPrompt := fmt.Sprintf("%s\n\n%s", baseSystemMessage, strings.Join(systemInstructions, ""))
+
+	messages := []ai.ChatCompletionMessage{}
+
+	// 1. system message
+	messages = append(messages, ai.ChatCompletionMessage{Role: "system", Content: SystemPrompt})
+
+	// 2. previous tool calls
+	// Ref: Tool Message Object in Messsages
+	// https://platform.openai.com/docs/guides/function-calling
+	// https://platform.openai.com/docs/api-reference/chat/create#chat-create-messages
+
+	if chainMessage.PreceedingAssistantMessage != nil {
+		// 2.1 assistant message
+		// try convert type of chainMessage.PreceedingAssistantMessage to type ChatCompletionMessage
+		assistantMessage, ok := chainMessage.PreceedingAssistantMessage.(ai.ChatCompletionMessage)
+		if ok {
+			ylog.Debug("======== add assistantMessage", "am", fmt.Sprintf("%+v", assistantMessage))
+			messages = append(messages, assistantMessage)
+		}
+
+		// 2.2 tool message
+		for _, tool := range chainMessage.ToolMessages {
+			tm := ai.ChatCompletionMessage{
+				Role:       "tool",
+				Content:    tool.Content,
+				ToolCallID: tool.ToolCallId,
+			}
+			ylog.Debug("======== add toolMessage", "tm", fmt.Sprintf("%+v", tm))
+			messages = append(messages, tm)
+		}
+	}
+
+	// 3. user instruction
+	messages = append(messages, ai.ChatCompletionMessage{Role: "user", Content: userInstruction})
+
+	return messages
 }

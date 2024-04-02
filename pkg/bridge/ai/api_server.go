@@ -183,6 +183,64 @@ func HandleInvoke(w http.ResponseWriter, r *http.Request) {
 // HandleChatCompletions is the handler for POST /chat/completion
 func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("chat completions"))
+	// service := FromServiceContext(r.Context())
+	// defer r.Body.Close()
+	// reqID, err := gonanoid.New(6)
+	// if err != nil {
+	// 	ylog.Error("generate reqID", "err", err.Error())
+	// 	w.WriteHeader(http.StatusInternalServerError)
+	// 	json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+	// 	return
+	// }
+	//
+	// var req ai.ChatCompletionRequest
+	// // decode the request
+	// if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	// 	ylog.Error("decode request", "err", err.Error())
+	// 	w.WriteHeader(http.StatusBadRequest)
+	// 	json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+	// 	return
+	// }
+	//
+	// w.Header().Set("Content-Type", "application/json")
+	//
+	// // Create a context with a timeout
+	// ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	// defer cancel()
+	//
+	// // TODO: systme messages should be configurable
+	// baseSystemMessage := `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous.`
+	//
+	// // Make the service call in a separate goroutine, and use a channel to get the result
+	// resCh := make(chan *ai.InvokeResponse, 1)
+	// errCh := make(chan error, 1)
+	// go func(service *Service, userMessage string, baseSystemMessage string, reqID string, includeCallStack bool) {
+	// 	// call llm to infer the function and arguments to be invoked
+	// 	ylog.Debug(">> ai request", "req_id", reqID, "user_prompt", userMessage)
+	// 	res, err := service.GetChatCompletions(userMessage, baseSystemMessage, reqID, includeCallStack)
+	// 	if err != nil {
+	// 		errCh <- err
+	// 	} else {
+	// 		resCh <- res
+	// 	}
+	// }(service, req.Messages, baseSystemMessage, reqID, false)
+	//
+	// // Use a select statement to handle the result or timeout
+	// select {
+	// case res := <-resCh:
+	// 	ylog.Debug(">> ai response response", "res", fmt.Sprintf("%+v", res))
+	// 	// write the response to the client with res
+	// 	w.WriteHeader(http.StatusOK)
+	// 	json.NewEncoder(w).Encode(res)
+	// case err := <-errCh:
+	// 	ylog.Error("invoke chat comptions", "err", err.Error())
+	// 	w.WriteHeader(http.StatusInternalServerError)
+	// 	json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+	// case <-ctx.Done():
+	// 	// The context was cancelled, which means the service call timed out
+	// 	w.WriteHeader(http.StatusRequestTimeout)
+	// 	json.NewEncoder(w).Encode(map[string]string{"error": "request timed out"})
+	// }
 }
 
 func getLocalIP() (string, error) {

@@ -63,7 +63,7 @@ type FunctionDefinition struct {
 	Name        string              `json:"name"`
 	Description string              `json:"description,omitempty"`
 	Parameters  *FunctionParameters `json:"parameters,omitempty"` // chatCompletionFunctionParameters
-	Arguments   string              `json:"arguments,omitempty"`
+	Arguments   string              `json:"arguments,omitempty"`  // not used in request
 }
 
 // FunctionParameters defines the parameters the functions accepts.
