@@ -74,6 +74,8 @@ func (a *BasicAPIServer) Serve() error {
 	mux.HandleFunc("/overview", HandleOverview)
 	// POST /invoke
 	mux.HandleFunc("/invoke", HandleInvoke)
+	// POST /chat/completions
+	mux.HandleFunc("/chat/completions", HandleChatCompletions)
 
 	handler := WithContextService(mux, a.serviceCredential, a.ZipperAddr, a.Provider, DefaultExchangeMetadataFunc)
 
@@ -152,7 +154,7 @@ func HandleInvoke(w http.ResponseWriter, r *http.Request) {
 	go func(service *Service, req ai.InvokeRequest, baseSystemMessage string) {
 		// call llm to infer the function and arguments to be invoked
 		ylog.Debug(">> ai request", "reqID", req.ReqID, "prompt", req.Prompt)
-		res, err := service.GetChatCompletions(req.Prompt, baseSystemMessage, req.ReqID, req.IncludeCallStack)
+		res, err := service.GetInvoke(req.Prompt, baseSystemMessage, req.ReqID, req.IncludeCallStack)
 		if err != nil {
 			errCh <- err
 		} else {
@@ -176,6 +178,11 @@ func HandleInvoke(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusRequestTimeout)
 		json.NewEncoder(w).Encode(map[string]string{"error": "request timed out"})
 	}
+}
+
+// HandleChatCompletions is the handler for POST /chat/completion
+func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte("chat completions"))
 }
 
 func getLocalIP() (string, error) {

@@ -189,14 +189,13 @@ func (s *Service) GetOverview() (*ai.OverviewResponse, error) {
 	return &ai.OverviewResponse{Functions: functions}, nil
 }
 
-// GetChatCompletions returns the llm api response
-func (s *Service) GetChatCompletions(userInstruction string, baseSystemMessage string, reqID string, includeCallStack bool) (*ai.InvokeResponse, error) {
+// GetInvoke returns the invoke response
+func (s *Service) GetInvoke(userInstruction string, baseSystemMessage string, reqID string, includeCallStack bool) (*ai.InvokeResponse, error) {
 	chainMessage := ai.ChainMessage{}
 	// we do not support multi-turn invoke for Google Gemini
 	if s.LLMProvider.Name() == "gemini" {
 		return s.LLMProvider.GetChatCompletions(userInstruction, baseSystemMessage, chainMessage, s.md, true)
 	}
-
 	res, err := s.LLMProvider.GetChatCompletions(userInstruction, baseSystemMessage, chainMessage, s.md, true)
 	if err != nil {
 		return nil, err
