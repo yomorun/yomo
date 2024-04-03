@@ -25,6 +25,13 @@ func SetRegister(r Register) {
 	defaultRegister = r
 }
 
+// GetRegister gets the default register
+func GetRegister() Register {
+	mu.Lock()
+	defer mu.Unlock()
+	return defaultRegister
+}
+
 // ListToolCalls returns the list of tool calls
 func ListToolCalls(md metadata.M) (map[uint32]ai.ToolCall, error) {
 	return defaultRegister.ListToolCalls(md)
