@@ -2,13 +2,13 @@
 package cfazure
 
 import (
+	"context"
 	"fmt"
 
 	// automatically load .env file
 	_ "github.com/joho/godotenv/autoload"
 
 	"github.com/yomorun/yomo/ai"
-	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
 	bridgeai "github.com/yomorun/yomo/pkg/bridge/ai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/internal/oai"
@@ -50,12 +50,10 @@ func (p *Provider) Name() string {
 }
 
 // GetChatCompletions get chat completions for ai service
-func (p *Provider) GetChatCompletions(userInstruction string, baseSystemMessage string, chainMessage ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error) {
-	reqBody := oai.ReqBody{}
-
+func (p *Provider) GetChatCompletions(req *ai.ChatCompletionRequest) (*ai.ChatCompletionResponse, error) {
 	url := fmt.Sprintf("%s/azure-openai/%s/%s/chat/completions?api-version=%s", p.CfEndpoint, p.Resource, p.DeploymentID, p.APIVersion)
 
-	res, err := p.client.ChatCompletion(url, "api-key", p.APIKey, reqBody, baseSystemMessage, userInstruction, chainMessage, md, withTool)
+	res, err := p.client.ChatCompletions(context.Background(), url, "api-key", p.APIKey, req)
 
 	return res, err
 }
