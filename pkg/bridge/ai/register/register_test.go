@@ -12,6 +12,7 @@ func TestRegister(t *testing.T) {
 	r := &register{}
 
 	SetRegister(r)
+	assert.Equal(t, r, GetRegister())
 
 	functionDefinition := &ai.FunctionDefinition{
 		Name:        "function1",
