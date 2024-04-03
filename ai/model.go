@@ -51,7 +51,7 @@ type ToolCall struct {
 
 // Equal compares two ToolCall function
 // return true if type and function name are same
-func (t *ToolCall) Equal(tool *ToolCall) bool {
+func (t ToolCall) Equal(tool ToolCall) bool {
 	if t.Type == tool.Type && t.Function.Name == tool.Function.Name {
 		return true
 	}

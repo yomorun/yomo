@@ -202,7 +202,7 @@ func (c *OpenAIClient) handleResponse(respBody []byte, tcs map[uint32]ai.ToolCal
 	// functions may be more than one
 	for _, call := range calls {
 		for tag, tc := range tcs {
-			if tc.Equal(call) {
+			if tc.Equal(*call) {
 				// use toolCalls because tool_id is required in the following llm request
 				if result.ToolCalls == nil {
 					result.ToolCalls = make(map[uint32][]*ai.ToolCall)

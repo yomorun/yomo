@@ -132,20 +132,14 @@ func (res *ChatCompletionResponse) ConvertToInvokeResponse(tcs map[uint32]ToolCa
 	// functions may be more than one
 	for _, call := range calls {
 		for tag, tc := range tcs {
-			if tc.Equal(&call) {
+			if tc.Equal(call) {
 				// use toolCalls because tool_id is required in the following llm request
 				if result.ToolCalls == nil {
 					result.ToolCalls = make(map[uint32][]*ToolCall)
 				}
 				// create a new variable to hold the current call
-				// currentCall := &call
-				currentCall := &ToolCall{
-					ID:       call.ID,
-					Type:     call.Type,
-					Function: call.Function,
-				}
-
-				result.ToolCalls[tag] = append(result.ToolCalls[tag], currentCall)
+				currentCall := call
+				result.ToolCalls[tag] = append(result.ToolCalls[tag], &currentCall)
 			}
 		}
 	}
