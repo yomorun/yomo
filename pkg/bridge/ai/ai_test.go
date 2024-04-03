@@ -250,15 +250,17 @@ func TestGetDefaultProvider(t *testing.T) {
 	provider1 := &MockLLMProvider{name: "provider1"}
 	provider2 := &MockLLMProvider{name: "provider2"}
 
-	// Register two providers
+	// Register first provider
 	RegisterProvider(provider1)
-	RegisterProvider(provider2)
 
 	// Test getting the default provider when none is set
 	// The first available provider should be returned
 	p, err := GetDefaultProvider()
 	assert.NoError(t, err)
 	assert.Equal(t, provider1, p)
+
+	// Register second provider
+	RegisterProvider(provider2)
 
 	// Set the second provider as default
 	SetDefaultProvider(provider2.Name())
@@ -294,34 +296,6 @@ func TestServiceContext(t *testing.T) {
 	assert.Nil(t, retrievedService)
 }
 
-type MockRegister struct {
-	underlying sync.Map
-}
-
-var _ register.Register = &MockRegister{}
-
-func (r *MockRegister) ListToolCalls(md metadata.M) (map[uint32]ai.ToolCall, error) {
-	result := make(map[uint32]ai.ToolCall)
-
-	r.underlying.Range(func(key, value any) bool {
-		tkey := key.(uint32)
-		fn := value.(*ai.FunctionDefinition)
-		result[tkey] = ai.ToolCall{
-			Function: fn,
-		}
-		return true
-	})
-
-	return result, nil
-}
-
-func (r *MockRegister) RegisterFunction(tag uint32, functionDefinition *ai.FunctionDefinition, connID uint64, md metadata.M) error {
-	r.underlying.Store(tag, functionDefinition)
-	return nil
-}
-
-func (r *MockRegister) UnregisterFunction(connID uint64, md metadata.M) {}
-
 func TestHandleOverview(t *testing.T) {
 	functionDefinition := &ai.FunctionDefinition{
 		Name:        "function1",
@@ -335,7 +309,7 @@ func TestHandleOverview(t *testing.T) {
 			Required: []string{"prop1"},
 		},
 	}
-	r := &MockRegister{}
+	r := register.GetRegister()
 	r.RegisterFunction(100, functionDefinition, 200, nil)
 
 	register.SetRegister(r)
