@@ -223,7 +223,7 @@ func (s *Service) GetInvoke(userInstruction string, baseSystemMessage string, re
 	if err != nil {
 		return nil, err
 	}
-	// TODO: convert ChatCompletionResponse to InvokeResponse
+	// convert ChatCompletionResponse to InvokeResponse
 	res, err := chatCompletionResponse.ConvertToInvokeResponse(tcs)
 	if err != nil {
 		return nil, err
@@ -234,7 +234,7 @@ func (s *Service) GetInvoke(userInstruction string, baseSystemMessage string, re
 	}
 
 	// run llm function calls
-	ylog.Warn(">>>> start 1st call response",
+	ylog.Debug(">>>> start 1st call response",
 		"res_toolcalls", fmt.Sprintf("%+v", res.ToolCalls),
 		"res_assistant_msgs", fmt.Sprintf("%+v", res.AssistantMessage))
 
@@ -243,12 +243,11 @@ func (s *Service) GetInvoke(userInstruction string, baseSystemMessage string, re
 		return nil, err
 	}
 
-	ylog.Warn(">>>> start 2nd call with", "calls", fmt.Sprintf("%+v", llmCalls), "preceeding_assistant_message", fmt.Sprintf("%+v", res.AssistantMessage))
+	ylog.Debug(">>>> start 2nd call with", "calls", fmt.Sprintf("%+v", llmCalls), "preceeding_assistant_message", fmt.Sprintf("%+v", res.AssistantMessage))
 	chainMessage.PreceedingAssistantMessage = res.AssistantMessage
 	chainMessage.ToolMessages = llmCalls
 	// do not attach toolMessage to prompt in 2nd call
 	messages2 := prepareMessages(baseSystemMessage, userInstruction, chainMessage, toolCalls, false)
-	ylog.Warn(">>>> start 2nd call", "messages2", fmt.Sprintf("%+v", messages2))
 	req2 := &ai.ChatCompletionRequest{
 		Messages: messages2,
 	}
@@ -269,6 +268,12 @@ func (s *Service) GetInvoke(userInstruction string, baseSystemMessage string, re
 	ylog.Debug("<<<< complete 2nd call", "res2", fmt.Sprintf("%+v", res2))
 
 	return res2, err
+}
+
+// GetChatCompletions returns the llm api response
+func (s *Service) GetChatCompletions(req *ai.ChatCompletionRequest, reqID string, includeCallStack bool) (*ai.ChatCompletionResponse, error) {
+	// TODO: reqID should be processed
+	return s.LLMProvider.GetChatCompletions(req)
 }
 
 // run llm-sfn function calls
@@ -348,12 +353,6 @@ type sfnAsyncCall struct {
 	wg  *sync.WaitGroup
 	mu  sync.RWMutex
 	val map[string]ai.ToolMessage
-}
-
-// GetChatCompletions returns the llm api response
-func (s *Service) GetChatCompletions(req *ai.ChatCompletionRequest) (*ai.ChatCompletionResponse, error) {
-	// TODO: implement the GetChatCompletions
-	return nil, nil
 }
 
 func prepareToolCalls(tcs map[uint32]ai.ToolCall) ([]ai.ToolCall, error) {
