@@ -211,14 +211,6 @@ func (s *Service) GetInvoke(userInstruction string, baseSystemMessage string, re
 	if len(toolCalls) > 0 {
 		req.Tools = toolCalls
 	}
-	// we do not support multi-turn invoke for Google Gemini
-	// if s.LLMProvider.Name() == "gemini" {
-	// 	return s.LLMProvider.GetChatCompletions(userInstruction, baseSystemMessage, chainMessage, s.md, true)
-	// }
-	// res, err := s.LLMProvider.GetChatCompletions(userInstruction, baseSystemMessage, chainMessage, s.md, true)
-	// if err != nil {
-	// 	return nil, err
-	// }
 	chatCompletionResponse, err := s.LLMProvider.GetChatCompletions(req)
 	if err != nil {
 		return nil, err

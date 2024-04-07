@@ -33,7 +33,6 @@ import (
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cfazure"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cfopenai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/openai"
-	// "github.com/yomorun/yomo/pkg/bridge/ai/provider/gemini"
 )
 
 // serveCmd represents the serve command
@@ -128,8 +127,6 @@ func registerAIProvider(aiConfig *ai.Config) error {
 				provider["deployment_id"],
 				provider["api_version"],
 			))
-		// case "gemini":
-		// 	ai.RegisterProvider(gemini.NewProvider(provider["api_key"]))
 		case "openai":
 			ai.RegisterProvider(openai.NewProvider(provider["api_key"], provider["model"]))
 		case "cloudflare_azure":
