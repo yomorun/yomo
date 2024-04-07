@@ -207,7 +207,6 @@ func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
-	// TODO: systme messages should be configurable
 	// Make the service call in a separate goroutine, and use a channel to get the result
 	resCh := make(chan *ai.ChatCompletionResponse, 1)
 	errCh := make(chan error, 1)

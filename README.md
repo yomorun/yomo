@@ -66,9 +66,6 @@ bridge:
         api_key: sk-xxxxxxxxxxxxxxxxxxxxxxxxxxx
         model: gpt-4-1106-preview
 
-      gemini:
-        api_key: <GEMINI_API_KEY>
-
       cloudflare_azure:
         endpoint: https://gateway.ai.cloudflare.com/v1/<CF_GATEWAY_ID>/<CF_GATEWAY_NAME>
         api_key: <AZURE_API_KEY>
