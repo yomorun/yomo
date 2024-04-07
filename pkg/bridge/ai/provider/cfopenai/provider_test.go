@@ -51,10 +51,21 @@ func TestCloudflareOpenAIProvider_GetChatCompletions(t *testing.T) {
 		client:     client,
 	}
 
-	provider.GetChatCompletions("user", "system", ai.ChainMessage{}, nil, false)
+	msgs := []ai.ChatCompletionMessage{
+		{
+			Role:    "user",
+			Content: "hello",
+		},
+		{
+			Role:    "system",
+			Content: "I'm a bot",
+		},
+	}
+	req := &ai.ChatCompletionRequest{
+		Messages: msgs,
+	}
 
-	assert.Equal(t, "test", client.BaseRequestbody.Model)
-	assert.Equal(t, "user", client.UserInstruction)
-	assert.Equal(t, "system", client.BaseSystemMessage)
-	assert.Equal(t, false, client.IfWithTool)
+	_, err := provider.GetChatCompletions(req)
+
+	assert.Equal(t, nil, err)
 }

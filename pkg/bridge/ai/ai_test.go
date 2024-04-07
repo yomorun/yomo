@@ -16,30 +16,26 @@ import (
 
 // MockOpenAIClient is a mock implementation of the OpenAIClient for test
 type MockOpenAIClient struct {
-	APIEndpoint       string
-	AuthHeaderKey     string
-	AuthHeaderValue   string
-	BaseRequestbody   oai.ReqBody
-	BaseSystemMessage string
-	UserInstruction   string
-	ChainMessage      ai.ChainMessage
-	Metadata          metadata.M
-	IfWithTool        bool
+	APIEndpoint     string
+	AuthHeaderKey   string
+	AuthHeaderValue string
+	Request         *ai.ChatCompletionRequest
 }
 
 var _ oai.OpenAIRequester = &MockOpenAIClient{}
 
 // ChatCompletion is a mock implementation of the ChatCompletion method
-func (c *MockOpenAIClient) ChatCompletion(apiEndpoint string, authHeaderKey string, authHeaderValue string, baseRequestbody oai.ReqBody, baseSystemMessage string, userInstruction string, chainMessage ai.ChainMessage, md metadata.M, ifWithTool bool) (*ai.InvokeResponse, error) {
+func (c *MockOpenAIClient) ChatCompletions(
+	ctx context.Context,
+	apiEndpoint string,
+	authHeaderKey string,
+	authHeaderValue string,
+	req *ai.ChatCompletionRequest,
+) (*ai.ChatCompletionResponse, error) {
 	c.APIEndpoint = apiEndpoint
 	c.AuthHeaderKey = authHeaderKey
 	c.AuthHeaderValue = authHeaderValue
-	c.BaseRequestbody = baseRequestbody
-	c.BaseSystemMessage = baseSystemMessage
-	c.UserInstruction = userInstruction
-	c.ChainMessage = chainMessage
-	c.Metadata = md
-	c.IfWithTool = ifWithTool
+	c.Request = req
 
 	return nil, nil
 }
@@ -169,7 +165,7 @@ func (m *MockLLMProvider) Name() string {
 	return m.name
 }
 
-func (m *MockLLMProvider) GetChatCompletions(userInstruction string, baseSystemMessage string, chainMessage ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error) {
+func (m *MockLLMProvider) GetChatCompletions(chatCompletionRequest *ai.ChatCompletionRequest) (*ai.ChatCompletionResponse, error) {
 	return nil, nil
 }
 
@@ -321,6 +317,8 @@ func (r *MockRegister) RegisterFunction(tag uint32, functionDefinition *ai.Funct
 }
 
 func (r *MockRegister) UnregisterFunction(connID uint64, md metadata.M) {}
+
+func (r *MockRegister) SfnFactor(tat uint32, md metadata.M) int { return 1 }
 
 func TestHandleOverview(t *testing.T) {
 	functionDefinition := &ai.FunctionDefinition{

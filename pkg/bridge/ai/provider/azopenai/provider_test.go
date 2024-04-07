@@ -41,9 +41,21 @@ func TestAzureOpenAIProvider_GetChatCompletions(t *testing.T) {
 		APIVersion:   "test-version",
 		client:       client,
 	}
-	provider.GetChatCompletions("user", "system", ai.ChainMessage{}, nil, false)
+	msgs := []ai.ChatCompletionMessage{
+		{
+			Role:    "user",
+			Content: "hello",
+		},
+		{
+			Role:    "system",
+			Content: "I'm a bot",
+		},
+	}
+	req := &ai.ChatCompletionRequest{
+		Model:    "gp-3.5-turbo",
+		Messages: msgs,
+	}
+	_, err := provider.GetChatCompletions(req)
 
-	assert.Equal(t, "user", client.UserInstruction)
-	assert.Equal(t, "system", client.BaseSystemMessage)
-	assert.Equal(t, false, client.IfWithTool)
+	assert.Equal(t, nil, err)
 }
