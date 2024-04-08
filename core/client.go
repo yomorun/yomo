@@ -106,6 +106,10 @@ CONNECT:
 }
 
 func (c *Client) handleConnectResult(err error, alwaysReconnect bool) (reconnect bool, se error) {
+	if c.ctx.Err() != nil {
+		close(c.done)
+		return false, err
+	}
 	if err == nil {
 		c.Logger.Info("connected to zipper")
 		return false, nil
@@ -334,11 +338,12 @@ func (c *Client) Close() error {
 
 // Wait waits client returning.
 func (c *Client) Wait() {
-	ch := make(chan os.Signal)
-	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL)
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
 
 	select {
-	case <-ch:
+	case s := <-ch:
+		c.ctxCancel(fmt.Errorf("%s: shutdown with signal=%s", c.clientType.String(), s))
 	case <-c.done:
 	}
 }
