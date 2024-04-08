@@ -16,12 +16,17 @@ const (
 	// ClientTypeStreamFunction is client type "Stream Function".
 	// "Stream Function" handles data from source.
 	ClientTypeStreamFunction ClientType = 0x5D
+
+	// ClientTypeAIFunction is client type "AI Function".
+	// "AI Function" handles data for function calling.
+	ClientTypeAIFunction ClientType = 0x5C
 )
 
 var clientTypeStringMap = map[ClientType]string{
 	ClientTypeSource:         "Source",
 	ClientTypeUpstreamZipper: "UpstreamZipper",
 	ClientTypeStreamFunction: "StreamFunction",
+	ClientTypeAIFunction:     "AIFunction",
 }
 
 // String returns string for ClientType.

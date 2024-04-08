@@ -61,6 +61,10 @@ func NewClient(appName, zipperAddr string, clientType ClientType, opts ...Client
 		option.quicConfig.Tracer = qlogTracer
 	}
 
+	if option.aiFunctionDescription != "" || option.aiFunctionInputModel != nil {
+		clientType = ClientTypeAIFunction
+	}
+
 	clientID := id.New()
 
 	logger := option.logger

@@ -35,14 +35,13 @@ func ConnMiddleware(next core.ConnHandler) core.ConnHandler {
 		}()
 
 		// check sfn type and is ai function
-		if conn.ClientType() != core.ClientTypeStreamFunction {
+		if conn.ClientType() != core.ClientTypeAIFunction {
 			return
 		}
 		f, err := conn.FrameConn().ReadFrame()
 		// unregister ai function on any error
 		if err != nil {
 			conn.Logger.Error("failed to read frame on ai middleware", "err", err, "type", fmt.Sprintf("%T", err))
-			conn.Logger.Info("error type", "type", fmt.Sprintf("%T", err))
 			return
 		}
 		if ff, ok := f.(*frame.AIRegisterFunctionFrame); ok {
@@ -64,6 +63,8 @@ func ConnMiddleware(next core.ConnHandler) core.ConnHandler {
 				return
 			}
 			conn.Logger.Info("register ai function success", "name", ff.Name, "tag", ff.Tag, "definition", string(ff.Definition))
+		} else {
+			conn.Logger.Error("read unexpected frame, ai function wants AIRegisterFunctionFrame", "frame_type", f.Type().String())
 		}
 	}
 }
