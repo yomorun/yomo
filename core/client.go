@@ -39,7 +39,11 @@ type Client struct {
 	ctx       context.Context
 	ctxCancel context.CancelCauseFunc
 
+	// Receiving from the done channel to guarantee the connection is closed.
 	done chan struct{}
+	// Receiving from the reConnect channel to guarantee the client has stoped to reconnect during the reconnection.
+	reConnect chan struct{}
+
 	wrCh chan frame.Frame
 	rdCh chan readOut
 }
@@ -78,9 +82,10 @@ func NewClient(appName, zipperAddr string, clientType ClientType, opts ...Client
 		ctx:        ctx,
 		ctxCancel:  ctxCancel,
 
-		done: make(chan struct{}),
-		wrCh: make(chan frame.Frame),
-		rdCh: make(chan readOut),
+		done:      make(chan struct{}),
+		reConnect: make(chan struct{}),
+		wrCh:      make(chan frame.Frame),
+		rdCh:      make(chan readOut),
 	}
 }
 
@@ -106,6 +111,10 @@ CONNECT:
 }
 
 func (c *Client) handleConnectResult(err error, alwaysReconnect bool) (reconnect bool, se error) {
+	if c.ctx.Err() != nil {
+		close(c.reConnect)
+		return false, err
+	}
 	if err == nil {
 		c.Logger.Info("connected to zipper")
 		return false, nil
@@ -327,19 +336,25 @@ func (c *Client) nonBlockWriteFrame(f frame.Frame) error {
 func (c *Client) Close() error {
 	// break runBackgroud() for-loop.
 	c.ctxCancel(fmt.Errorf("%s: shutdown", c.clientType.String()))
-	<-c.done
+
+	select {
+	case <-c.done:
+	case <-c.reConnect:
+	}
 
 	return nil
 }
 
 // Wait waits client returning.
 func (c *Client) Wait() {
-	ch := make(chan os.Signal)
-	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL)
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
 
 	select {
-	case <-ch:
+	case s := <-ch:
+		c.ctxCancel(fmt.Errorf("%s: shutdown with signal=%s", c.clientType.String(), s))
 	case <-c.done:
+	case <-c.reConnect:
 	}
 }
 
