@@ -74,8 +74,8 @@ func (a *BasicAPIServer) Serve() error {
 	mux.HandleFunc("/overview", HandleOverview)
 	// POST /invoke
 	mux.HandleFunc("/invoke", HandleInvoke)
-	// POST /chat/completions
-	mux.HandleFunc("/chat/completions", HandleChatCompletions)
+	// POST /v1/chat/completions OpenAI compatible interface
+	mux.HandleFunc("/v1/chat/completions", HandleChatCompletions)
 
 	handler := WithContextService(mux, a.serviceCredential, a.ZipperAddr, a.Provider, DefaultExchangeMetadataFunc)
 
