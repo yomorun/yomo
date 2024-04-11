@@ -221,7 +221,7 @@ func (s *Service) GetInvoke(userInstruction string, baseSystemMessage string, re
 		return nil, err
 	}
 	// if no tool_calls fired, just return the llm text result
-	if res.FinishReason != "tool_calls" {
+	if !(res.FinishReason == "tool_calls" || res.FinishReason == "gemini_tool_calls") {
 		return res, nil
 	}
 
@@ -230,6 +230,7 @@ func (s *Service) GetInvoke(userInstruction string, baseSystemMessage string, re
 		"res_toolcalls", fmt.Sprintf("%+v", res.ToolCalls),
 		"res_assistant_msgs", fmt.Sprintf("%+v", res.AssistantMessage))
 
+	ylog.Debug(">> run function calls", "reqID", reqID, "res.ToolCalls", fmt.Sprintf("%+v", res.ToolCalls))
 	llmCalls, err := s.runFunctionCalls(res.ToolCalls, reqID)
 	if err != nil {
 		return nil, err

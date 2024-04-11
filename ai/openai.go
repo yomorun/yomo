@@ -3,6 +3,7 @@ package ai
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/yomorun/yomo/core/ylog"
 )
@@ -116,11 +117,12 @@ func (res *ChatCompletionResponse) ConvertToInvokeResponse(tcs map[uint32]ToolCa
 	ylog.Debug("++ llm result", "token_usage", fmt.Sprintf("%v", result.TokenUsage), "finish_reason", result.FinishReason)
 
 	// if llm said no function call, we should return the result
-	if result.FinishReason == "stop" {
+	// gemini provider will return the finish_reason is "STOP", otherwise "stop"
+	if strings.ToLower(result.FinishReason) == "stop" {
 		return result, nil
 	}
 
-	if result.FinishReason == "tool_calls" {
+	if result.FinishReason == "tool_calls" || result.FinishReason == "gemini_tool_calls" {
 		// assistant message
 		result.AssistantMessage = responseMessage
 	}
@@ -132,17 +134,26 @@ func (res *ChatCompletionResponse) ConvertToInvokeResponse(tcs map[uint32]ToolCa
 	// functions may be more than one
 	for _, call := range calls {
 		for tag, tc := range tcs {
-			if tc.Equal(call) {
-				// use toolCalls because tool_id is required in the following llm request
-				if result.ToolCalls == nil {
-					result.ToolCalls = make(map[uint32][]*ToolCall)
+			ylog.Debug(">> compare tool call", "tag", tag, "tc", tc.Function.Name, "call", call.Function.Name)
+			// WARN: gemini process tool calls, currently function name not equal to tool call name, eg. "get-weather" != "get_weather"
+			if result.FinishReason == "gemini_tool_calls" {
+				setResposeToolCalls(result, tag, call)
+			} else {
+				if tc.Equal(call) {
+					setResposeToolCalls(result, tag, call)
 				}
-				// create a new variable to hold the current call
-				currentCall := call
-				result.ToolCalls[tag] = append(result.ToolCalls[tag], &currentCall)
 			}
 		}
 	}
 
 	return result, nil
+}
+
+func setResposeToolCalls(result *InvokeResponse, tag uint32, call ToolCall) {
+	if result.ToolCalls == nil {
+		result.ToolCalls = make(map[uint32][]*ToolCall)
+	}
+	// create a new variable to hold the current call
+	currentCall := call
+	result.ToolCalls[tag] = append(result.ToolCalls[tag], &currentCall)
 }

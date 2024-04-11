@@ -228,7 +228,7 @@ func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(res)
 	case err := <-errCh:
-		ylog.Error("invoke chat comptions", "err", err.Error())
+		ylog.Error("invoke chat completions", "err", err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 	case <-ctx.Done():
