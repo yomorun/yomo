@@ -23,6 +23,9 @@ bridge:
         api_key:
         model:
 
+      gemini:
+        api_key:
+
       cloudflare_azure:
         endpoint: 
         api_key: 

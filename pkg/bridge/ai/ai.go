@@ -88,6 +88,8 @@ func ConnMiddleware(next core.ConnHandler) core.ConnHandler {
 //			openai:
 //				api_key:
 //				api_endpoint:
+//			gemini:
+//				api_key:
 //			cloudflare_azure:
 //				endpoint: https://gateway.ai.cloudflare.com/v1/<CF_GATEWAY_ID>/<CF_GATEWAY_NAME>
 //				api_key: <AZURE_API_KEY>
