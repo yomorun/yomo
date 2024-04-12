@@ -10,10 +10,8 @@ import (
 	"os"
 
 	"github.com/yomorun/yomo/ai"
-	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
 	bridgeai "github.com/yomorun/yomo/pkg/bridge/ai"
-	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 )
 
 // Provider is the provider for Gemini
@@ -43,22 +41,9 @@ func (p *Provider) Name() string {
 }
 
 // GetChatCompletions get chat completions for ai service
-func (p *Provider) GetChatCompletions(userInstruction string, baseSystemMessage string, _ ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error) {
-	if !withTool {
-		ylog.Warn("Gemini call should have tool calls")
-	}
-
-	tcs, err := register.ListToolCalls(md)
-	if err != nil {
-		return nil, err
-	}
-
-	// prepare request body
-	prompt := fmt.Sprintf("%s\n %s", baseSystemMessage, userInstruction)
-	body, fds := p.prepareRequest(prompt, tcs)
-
+func (p *Provider) GetChatCompletions(chatCompletionRequest *ai.ChatCompletionRequest) (*ai.ChatCompletionResponse, error) {
 	// request API
-	jsonBody, err := json.Marshal(body)
+	jsonBody, err := json.Marshal(convertStandardToRequest(chatCompletionRequest))
 	if err != nil {
 		ylog.Error(err.Error())
 		return nil, err
@@ -90,7 +75,7 @@ func (p *Provider) GetChatCompletions(userInstruction string, baseSystemMessage 
 		// fmt.Println("Error reading response body:", err)
 		return nil, err
 	}
-	ylog.Debug("gemini api response", "body", string(respBody))
+	ylog.Debug("gemini api response", "status", resp.StatusCode, "body", string(respBody))
 
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("gemini provider api response status code is %d", resp.StatusCode)
@@ -103,64 +88,12 @@ func (p *Provider) GetChatCompletions(userInstruction string, baseSystemMessage 
 		return nil, err
 	}
 
-	// get all candidates as []*ai.ToolCall
-	calls := parseToolCallFromResponse(response)
-
-	ylog.Debug("gemini api response", "calls", len(calls))
-
-	result := &ai.InvokeResponse{}
-	result.FinishReason = response.Candidates[0].FinishReason
-	result.Content = response.Candidates[0].Content.Parts[0].Text
-
-	if len(calls) == 0 {
-		return result, nil
-	}
-
-	result.ToolCalls = make(map[uint32][]*ai.ToolCall)
-	for tag, tc := range tcs {
-		for _, fd := range fds {
-			if fd.Name == tc.Function.Name {
-				ylog.Debug("-----> add function", "name", fd.Name, "tag", tag)
-				currentCall := tc
-				fn := response.Candidates[0].Content.Parts[0].FunctionCall
-				if fn != nil {
-					args, _ := json.Marshal(fn.Args)
-					currentCall.Function.Arguments = string(args)
-				}
-				result.ToolCalls[tag] = append(result.ToolCalls[tag], &currentCall)
-			}
-		}
-	}
-
-	// messages
+	result := convertResponseToStandard(response)
+	ylog.Debug("gemini chat completion", "response", response, "result", result)
 	return result, nil
 }
 
 // getAPIURL returns the gemini generateContent API url
 func (p *Provider) getAPIURL() string {
 	return fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=%s", p.APIKey)
-}
-
-// prepareRequestBody prepares the request body for the API
-func (p *Provider) prepareRequest(userInstruction string, tcs map[uint32]ai.ToolCall) (*RequestBody, []*FunctionDeclaration) {
-	body := &RequestBody{}
-
-	// prepare contents
-	body.Contents.Role = "user"
-	body.Contents.Parts.Text = userInstruction
-
-	// prepare tools
-	toolCalls := make([]*FunctionDeclaration, len(tcs))
-	idx := 0
-	for _, tc := range tcs {
-		toolCalls[idx] = convertStandardToFunctionDeclaration(tc.Function)
-		idx++
-	}
-	if len(toolCalls) > 0 {
-		body.Tools = append(body.Tools, Tool{
-			FunctionDeclarations: toolCalls,
-		})
-	}
-
-	return body, toolCalls
 }

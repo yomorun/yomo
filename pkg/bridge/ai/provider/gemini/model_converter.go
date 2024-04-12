@@ -131,3 +131,75 @@ func parseToolCallFromResponse(response *Response) []ai.ToolCall {
 	}
 	return calls
 }
+
+// convertStandardToRequest converts the ChatCompletionRequest to RequestBody
+func convertStandardToRequest(req *ai.ChatCompletionRequest) *RequestBody {
+	body := &RequestBody{}
+
+	// prepare contents
+	body.Contents.Role = "user"
+	for _, msg := range req.Messages {
+		body.Contents.Parts.Text += msg.Content + "\n"
+	}
+
+	// prepare tools
+	tcs := req.Tools
+	toolCalls := make([]*FunctionDeclaration, len(tcs))
+	idx := 0
+	for _, tc := range tcs {
+		toolCalls[idx] = convertStandardToFunctionDeclaration(tc.Function)
+		idx++
+	}
+	if len(toolCalls) > 0 {
+		body.Tools = append(body.Tools, Tool{
+			FunctionDeclarations: toolCalls,
+		})
+	}
+	// return body, toolCalls
+	return body
+}
+
+// convertResponseToStandard converts the Response to ChatCompletionResponse
+func convertResponseToStandard(resp *Response) *ai.ChatCompletionResponse {
+	result := &ai.ChatCompletionResponse{Object: "chat.completion", Model: "gemini"}
+	// choices
+	choices := make([]ai.ChatCompletionChoice, 0)
+	for _, candidate := range resp.Candidates {
+		calls := make([]ai.ToolCall, 0)
+		fn := candidate.Content.Parts[0].FunctionCall
+		if fn != nil {
+			fd := &ai.FunctionDefinition{
+				Name:      fn.Name,
+				Arguments: generateJSONSchemaArguments(fn.Args),
+			}
+			call := ai.ToolCall{
+				ID:       "cc-gemini-id",
+				Type:     "cc-function",
+				Function: fd,
+			}
+			calls = append(calls, call)
+		}
+		msg := ai.ChatCompletionMessage{
+			Role:      candidate.Content.Role,
+			Content:   candidate.Content.Parts[0].Text,
+			ToolCalls: calls,
+			// ToolCallID: "cc-gemini-id",
+
+		}
+		choice := ai.ChatCompletionChoice{
+			Index:        candidate.Index,
+			Message:      msg,
+			FinishReason: candidate.FinishReason,
+		}
+		if len(calls) > 0 {
+			// WARN: currently finish_reason is always "STOP", so we set it to "gemini_tool_calls" if there are tool calls
+			choice.FinishReason = "gemini_tool_calls"
+		}
+		choices = append(choices, choice)
+	}
+	// TODO: usage
+	result.Usage = ai.Usage{}
+	result.Choices = choices
+
+	return result
+}

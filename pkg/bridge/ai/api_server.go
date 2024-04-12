@@ -74,6 +74,8 @@ func (a *BasicAPIServer) Serve() error {
 	mux.HandleFunc("/overview", HandleOverview)
 	// POST /invoke
 	mux.HandleFunc("/invoke", HandleInvoke)
+	// POST /v1/chat/completions OpenAI compatible interface
+	mux.HandleFunc("/v1/chat/completions", HandleChatCompletions)
 
 	handler := WithContextService(mux, a.serviceCredential, a.ZipperAddr, a.Provider, DefaultExchangeMetadataFunc)
 
@@ -152,7 +154,7 @@ func HandleInvoke(w http.ResponseWriter, r *http.Request) {
 	go func(service *Service, req ai.InvokeRequest, baseSystemMessage string) {
 		// call llm to infer the function and arguments to be invoked
 		ylog.Debug(">> ai request", "reqID", req.ReqID, "prompt", req.Prompt)
-		res, err := service.GetChatCompletions(req.Prompt, baseSystemMessage, req.ReqID, req.IncludeCallStack)
+		res, err := service.GetInvoke(req.Prompt, baseSystemMessage, req.ReqID, req.IncludeCallStack)
 		if err != nil {
 			errCh <- err
 		} else {
@@ -169,6 +171,64 @@ func HandleInvoke(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(res)
 	case err := <-errCh:
 		ylog.Error("invoke service", "err", err.Error())
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+	case <-ctx.Done():
+		// The context was cancelled, which means the service call timed out
+		w.WriteHeader(http.StatusRequestTimeout)
+		json.NewEncoder(w).Encode(map[string]string{"error": "request timed out"})
+	}
+}
+
+// HandleChatCompletions is the handler for POST /chat/completion
+func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
+	service := FromServiceContext(r.Context())
+	defer r.Body.Close()
+	reqID, err := gonanoid.New(6)
+	if err != nil {
+		ylog.Error("generate reqID", "err", err.Error())
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	// request
+	var req ai.ChatCompletionRequest
+	// // decode the request
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		ylog.Error("decode request", "err", err.Error())
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	//
+	// Create a context with a timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	// Make the service call in a separate goroutine, and use a channel to get the result
+	resCh := make(chan *ai.ChatCompletionResponse, 1)
+	errCh := make(chan error, 1)
+	// TODO: includeCallStack should be configurable
+	go func(service *Service, req *ai.ChatCompletionRequest, reqID string, includeCallStack bool) {
+		res, err := service.GetChatCompletions(req, reqID, includeCallStack)
+		if err != nil {
+			errCh <- err
+		} else {
+			resCh <- res
+		}
+	}(service, &req, reqID, false)
+
+	// Use a select statement to handle the result or timeout
+	select {
+	case res := <-resCh:
+		ylog.Debug(">> ai response response", "res", fmt.Sprintf("%+v", res))
+		// write the response to the client with res
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(res)
+	case err := <-errCh:
+		ylog.Error("invoke chat completions", "err", err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 	case <-ctx.Done():

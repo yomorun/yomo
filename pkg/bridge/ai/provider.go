@@ -4,7 +4,6 @@ import (
 	"sync"
 
 	"github.com/yomorun/yomo/ai"
-	"github.com/yomorun/yomo/core/metadata"
 )
 
 // LLMProvider provides an interface to the llm providers
@@ -12,7 +11,8 @@ type LLMProvider interface {
 	// Name returns the name of the llm provider
 	Name() string
 	// GetChatCompletions returns the chat completions
-	GetChatCompletions(userInstruction string, baseSystemMessage string, chainMessage ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error)
+	// GetChatCompletions(userInstruction string, baseSystemMessage string, chainMessage ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error)
+	GetChatCompletions(chatCompletionRequest *ai.ChatCompletionRequest) (*ai.ChatCompletionResponse, error)
 }
 
 var (

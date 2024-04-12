@@ -51,7 +51,7 @@ type ToolCall struct {
 
 // Equal compares two ToolCall function
 // return true if type and function name are same
-func (t *ToolCall) Equal(tool *ToolCall) bool {
+func (t ToolCall) Equal(tool ToolCall) bool {
 	if t.Type == tool.Type && t.Function.Name == tool.Function.Name {
 		return true
 	}
@@ -63,7 +63,7 @@ type FunctionDefinition struct {
 	Name        string              `json:"name"`
 	Description string              `json:"description,omitempty"`
 	Parameters  *FunctionParameters `json:"parameters,omitempty"` // chatCompletionFunctionParameters
-	Arguments   string              `json:"arguments,omitempty"`
+	Arguments   string              `json:"arguments,omitempty"`  // not used in request
 }
 
 // FunctionParameters defines the parameters the functions accepts.
