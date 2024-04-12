@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -265,6 +266,11 @@ func (s *Service) GetInvoke(userInstruction string, baseSystemMessage string, re
 
 // GetChatCompletions returns the llm api response
 func (s *Service) GetChatCompletions(req *ai.ChatCompletionRequest, reqID string, includeCallStack bool) (*ai.ChatCompletionResponse, error) {
+	// TODO: support streaming response.
+	if req.Stream {
+		return nil, errors.New("streaming response not supported")
+	}
+
 	// read tools attached to the metadata
 	tcs, err := register.ListToolCalls(s.md)
 	if err != nil {
@@ -277,18 +283,6 @@ func (s *Service) GetChatCompletions(req *ai.ChatCompletionRequest, reqID string
 	}
 	rawMessages := req.Messages
 	if len(toolCalls) > 0 {
-		// systemInstructions := []string{"## Instructions\n"}
-		// for _, tc := range toolCalls {
-		// 	systemInstructions = append(systemInstructions, "- ")
-		// 	systemInstructions = append(systemInstructions, tc.Function.Description)
-		// 	systemInstructions = append(systemInstructions, "\n")
-		// }
-		// systemInstructions = append(systemInstructions, "\n")
-		// req.Messages = append(
-		// 	req.Messages,
-		// 	ai.ChatCompletionMessage{Role: "system", Content: strings.Join(systemInstructions, "")},
-		// )
-		// used registered tool calls
 		req.Tools = toolCalls
 	}
 	ylog.Debug(" #1 first call", "request", fmt.Sprintf("%+v", req))
@@ -328,8 +322,6 @@ func (s *Service) GetChatCompletions(req *ai.ChatCompletionRequest, reqID string
 		return nil, err
 	}
 	// #2 second call
-	// assistant message
-	// req.Messages = append(req.Messages, assistantMessage)
 	req.Messages = append(rawMessages, assistantMessage)
 	// tool message
 	for _, tool := range llmCalls {
