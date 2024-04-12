@@ -136,24 +136,16 @@ func (res *ChatCompletionResponse) ConvertToInvokeResponse(tcs map[uint32]ToolCa
 		for tag, tc := range tcs {
 			ylog.Debug(">> compare tool call", "tag", tag, "tc", tc.Function.Name, "call", call.Function.Name)
 			// WARN: gemini process tool calls, currently function name not equal to tool call name, eg. "get-weather" != "get_weather"
-			if result.FinishReason == "gemini_tool_calls" {
-				setResposeToolCalls(result, tag, call)
-			} else {
-				if tc.Equal(call) {
-					setResposeToolCalls(result, tag, call)
+			if tc.Equal(call) || result.FinishReason == "gemini_tool_calls" {
+				if result.ToolCalls == nil {
+					result.ToolCalls = make(map[uint32][]*ToolCall)
 				}
+				// create a new variable to hold the current call
+				currentCall := call
+				result.ToolCalls[tag] = append(result.ToolCalls[tag], &currentCall)
 			}
 		}
 	}
 
 	return result, nil
-}
-
-func setResposeToolCalls(result *InvokeResponse, tag uint32, call ToolCall) {
-	if result.ToolCalls == nil {
-		result.ToolCalls = make(map[uint32][]*ToolCall)
-	}
-	// create a new variable to hold the current call
-	currentCall := call
-	result.ToolCalls[tag] = append(result.ToolCalls[tag], &currentCall)
 }

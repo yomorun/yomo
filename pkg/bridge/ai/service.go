@@ -265,8 +265,91 @@ func (s *Service) GetInvoke(userInstruction string, baseSystemMessage string, re
 
 // GetChatCompletions returns the llm api response
 func (s *Service) GetChatCompletions(req *ai.ChatCompletionRequest, reqID string, includeCallStack bool) (*ai.ChatCompletionResponse, error) {
-	// TODO: reqID should be processed
-	return s.LLMProvider.GetChatCompletions(req)
+	// read tools attached to the metadata
+	tcs, err := register.ListToolCalls(s.md)
+	if err != nil {
+		return nil, err
+	}
+	// prepare tools
+	toolCalls, err := prepareToolCalls(tcs)
+	if err != nil {
+		return nil, err
+	}
+	rawMessages := req.Messages
+	if len(toolCalls) > 0 {
+		// systemInstructions := []string{"## Instructions\n"}
+		// for _, tc := range toolCalls {
+		// 	systemInstructions = append(systemInstructions, "- ")
+		// 	systemInstructions = append(systemInstructions, tc.Function.Description)
+		// 	systemInstructions = append(systemInstructions, "\n")
+		// }
+		// systemInstructions = append(systemInstructions, "\n")
+		// req.Messages = append(
+		// 	req.Messages,
+		// 	ai.ChatCompletionMessage{Role: "system", Content: strings.Join(systemInstructions, "")},
+		// )
+		// used registered tool calls
+		req.Tools = toolCalls
+	}
+	ylog.Debug(" #1 first call", "request", fmt.Sprintf("%+v", req))
+	// #1 first call
+	res, err := s.LLMProvider.GetChatCompletions(req)
+	if err != nil {
+		return nil, err
+	}
+	ylog.Debug(" #1 first call", "response", fmt.Sprintf("%+v", res))
+	finishReason := res.Choices[0].FinishReason
+	if strings.ToLower(finishReason) == "stop" {
+		return res, nil
+	}
+	var assistantMessage ai.ChatCompletionMessage
+	// if no tool_calls fired, just return the llm text result
+	if finishReason == "tool_calls" || finishReason == "gemini_tool_calls" {
+		assistantMessage = res.Choices[0].Message
+	} else {
+		return res, nil
+	}
+
+	resCalls := res.Choices[0].Message.ToolCalls
+	// ready call sfns
+	fnCalls := make(map[uint32][]*ai.ToolCall)
+	// functions may be more than one
+	for _, call := range resCalls {
+		for tag, tc := range tcs {
+			if tc.Equal(call) || finishReason == "gemini_tool_calls" {
+				currentCall := call
+				fnCalls[tag] = append(fnCalls[tag], &currentCall)
+			}
+		}
+	}
+	// run llm function calls
+	llmCalls, err := s.runFunctionCalls(fnCalls, reqID)
+	if err != nil {
+		return nil, err
+	}
+	// #2 second call
+	// assistant message
+	// req.Messages = append(req.Messages, assistantMessage)
+	req.Messages = append(rawMessages, assistantMessage)
+	// tool message
+	for _, tool := range llmCalls {
+		tm := ai.ChatCompletionMessage{
+			Role:       "tool",
+			Content:    tool.Content,
+			ToolCallID: tool.ToolCallId,
+		}
+		req.Messages = append(req.Messages, tm)
+	}
+	// reset tools
+	req.Tools = nil
+
+	ylog.Debug(" #2 second call", "request", fmt.Sprintf("%+v", req))
+	res2, err := s.LLMProvider.GetChatCompletions(req)
+	if err != nil {
+		return nil, err
+	}
+	ylog.Debug(" #2 second call", "request", fmt.Sprintf("%+v", req))
+	return res2, err
 }
 
 // run llm-sfn function calls
