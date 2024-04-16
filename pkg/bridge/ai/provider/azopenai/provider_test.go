@@ -1,12 +1,13 @@
 package azopenai
 
 import (
+	"net/http"
 	"os"
 	"testing"
+	"time"
 
+	"github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
-	"github.com/yomorun/yomo/ai"
-	"github.com/yomorun/yomo/pkg/bridge/ai/internal/mock_client"
 )
 
 func TestNewProvider(t *testing.T) {
@@ -32,16 +33,17 @@ func TestAzureOpenAIProvider_Name(t *testing.T) {
 }
 
 func TestAzureOpenAIProvider_GetChatCompletions(t *testing.T) {
-	client := &mock_client.MockOpenAIClient{}
+	config := newConfig("test", "https://yomo.openai.azure.com", "test", "test-version")
+	config.HTTPClient = &http.Client{Timeout: time.Millisecond}
 
 	provider := &Provider{
 		APIKey:       "test",
 		APIEndpoint:  "https://yomo.openai.azure.com",
 		DeploymentID: "test",
 		APIVersion:   "test-version",
-		client:       client,
+		client:       openai.NewClientWithConfig(config),
 	}
-	msgs := []ai.ChatCompletionMessage{
+	msgs := []openai.ChatCompletionMessage{
 		{
 			Role:    "user",
 			Content: "hello",
@@ -51,11 +53,16 @@ func TestAzureOpenAIProvider_GetChatCompletions(t *testing.T) {
 			Content: "I'm a bot",
 		},
 	}
-	req := &ai.ChatCompletionRequest{
+	req := openai.ChatCompletionRequest{
 		Model:    "gp-3.5-turbo",
 		Messages: msgs,
 	}
+
 	_, err := provider.GetChatCompletions(req)
 
-	assert.Equal(t, nil, err)
+	wantErr := "Post \"https://yomo.openai.azure.com/openai/deployments/test/chat/completions?api-version=test-version\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+	assert.Equal(t, wantErr, err.Error())
+
+	_, err = provider.GetChatCompletionsStream(req)
+	assert.Equal(t, wantErr, err.Error())
 }

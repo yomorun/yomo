@@ -10,6 +10,7 @@ import (
 	"time"
 
 	gonanoid "github.com/matoous/go-nanoid/v2"
+	openai "github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/ylog"
 )
@@ -192,7 +193,7 @@ func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// request
-	var req ai.ChatCompletionRequest
+	var req openai.ChatCompletionRequest
 	// // decode the request
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		ylog.Error("decode request", "err", err.Error())
@@ -208,17 +209,17 @@ func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	// Make the service call in a separate goroutine, and use a channel to get the result
-	resCh := make(chan *ai.ChatCompletionResponse, 1)
+	resCh := make(chan openai.ChatCompletionResponse, 1)
 	errCh := make(chan error, 1)
 	// TODO: includeCallStack should be configurable
-	go func(service *Service, req *ai.ChatCompletionRequest, reqID string, includeCallStack bool) {
+	go func(service *Service, req openai.ChatCompletionRequest, reqID string, includeCallStack bool) {
 		res, err := service.GetChatCompletions(req, reqID, includeCallStack)
 		if err != nil {
 			errCh <- err
 		} else {
 			resCh <- res
 		}
-	}(service, &req, reqID, false)
+	}(service, req, reqID, false)
 
 	// Use a select statement to handle the result or timeout
 	select {

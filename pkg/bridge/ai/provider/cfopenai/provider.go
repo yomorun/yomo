@@ -8,11 +8,10 @@ import (
 
 	// automatically load .env file
 	_ "github.com/joho/godotenv/autoload"
+	openai "github.com/sashabaranov/go-openai"
 
-	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/ylog"
 	bridgeai "github.com/yomorun/yomo/pkg/bridge/ai"
-	"github.com/yomorun/yomo/pkg/bridge/ai/internal/oai"
 )
 
 // Provider is the provider for Cloudflare OpenAI Gateway
@@ -23,7 +22,7 @@ type Provider struct {
 	APIKey string
 	// Model is the model for OpenAI
 	Model  string
-	client oai.OpenAIRequester
+	client *openai.Client
 }
 
 // check if implements ai.Provider
@@ -37,15 +36,15 @@ func NewProvider(cfEndpoint, apiKey, model string) *Provider {
 	if model == "" {
 		model = os.Getenv("OPENAI_MODEL")
 	}
-	// if cfEndpoint == "" {
-	// 	ylog.Error("cfEndpoint is required")
-	// }
+
+	client := openai.NewClientWithConfig(newConfig(apiKey, cfEndpoint))
+
 	ylog.Debug("new cloudflare openai provider", "api_key", apiKey, "model", model, "cloudflare_endpoint", cfEndpoint)
 	return &Provider{
 		CfEndpoint: cfEndpoint,
 		APIKey:     apiKey,
 		Model:      model,
-		client:     &oai.OpenAIClient{},
+		client:     client,
 	}
 }
 
@@ -54,19 +53,23 @@ func (p *Provider) Name() string {
 	return "cloudflare_openai"
 }
 
-// GetChatCompletions get chat completions for ai service
-func (p *Provider) GetChatCompletions(req *ai.ChatCompletionRequest) (*ai.ChatCompletionResponse, error) {
+// GetChatCompletions implements ai.LLMProvider.
+func (p *Provider) GetChatCompletions(req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
 	req.Model = p.Model
 
-	url := fmt.Sprintf("%s/openai/chat/completions", p.CfEndpoint)
+	return p.client.CreateChatCompletion(context.Background(), req)
+}
 
-	res, err := p.client.ChatCompletions(
-		context.Background(),
-		url,
-		"Authorization",
-		fmt.Sprintf("Bearer %s", p.APIKey),
-		req,
-	)
+// GetChatCompletionsStream implements ai.LLMProvider.
+func (p *Provider) GetChatCompletionsStream(req openai.ChatCompletionRequest) (*openai.ChatCompletionStream, error) {
+	req.Model = p.Model
 
-	return res, err
+	return p.client.CreateChatCompletionStream(context.Background(), req)
+}
+
+func newConfig(apiKey, cfEndpoint string) openai.ClientConfig {
+	config := openai.DefaultConfig(apiKey)
+	config.BaseURL = fmt.Sprintf("%s/openai", cfEndpoint)
+
+	return config
 }

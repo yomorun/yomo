@@ -3,15 +3,13 @@ package azopenai
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	// automatically load .env file
 	_ "github.com/joho/godotenv/autoload"
+	"github.com/sashabaranov/go-openai"
 
-	"github.com/yomorun/yomo/ai"
 	bridgeai "github.com/yomorun/yomo/pkg/bridge/ai"
-	"github.com/yomorun/yomo/pkg/bridge/ai/internal/oai"
 )
 
 // Provider is the provider for Azure OpenAI
@@ -20,7 +18,7 @@ type Provider struct {
 	APIEndpoint  string
 	DeploymentID string
 	APIVersion   string
-	client       oai.OpenAIRequester
+	client       *openai.Client
 }
 
 var _ bridgeai.LLMProvider = &Provider{}
@@ -39,12 +37,17 @@ func NewProvider(apiKey string, apiEndpoint string, deploymentID string, apiVers
 	if apiVersion == "" {
 		apiVersion = os.Getenv("AZURE_OPENAI_API_VERSION")
 	}
+
+	config := newConfig(apiKey, apiEndpoint, deploymentID, apiVersion)
+
+	client := openai.NewClientWithConfig(config)
+
 	return &Provider{
 		APIKey:       apiKey,
 		APIEndpoint:  apiEndpoint,
 		DeploymentID: deploymentID,
 		APIVersion:   apiVersion,
-		client:       &oai.OpenAIClient{},
+		client:       client,
 	}
 }
 
@@ -53,23 +56,20 @@ func (p *Provider) Name() string {
 	return "azopenai"
 }
 
-// GetChatCompletions get chat completions for ai service
-// func (p *Provider) GetChatCompletions(userInstruction string, baseSystemMessage string, chainMessage ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error) {
-func (p *Provider) GetChatCompletions(req *ai.ChatCompletionRequest) (*ai.ChatCompletionResponse, error) {
-	// reqBody := oai.ReqBody{}
-	// endpoint
-	url := fmt.Sprintf("%s/openai/deployments/%s/chat/completions?api-version=%s", p.APIEndpoint, p.DeploymentID, p.APIVersion)
-	// res, err := p.client.ChatCompletion(url, "api-key", p.APIKey, reqBody, baseSystemMessage, userInstruction, chainMessage, md, withTool)
-	res, err := p.client.ChatCompletions(
-		context.Background(),
-		url,
-		"api-key",
-		p.APIKey,
-		req,
-	)
-	if err != nil {
-		return nil, err
-	}
+func newConfig(apiKey string, apiEndpoint string, deploymentID string, apiVersion string) openai.ClientConfig {
+	config := openai.DefaultAzureConfig(apiKey, apiEndpoint)
+	config.AzureModelMapperFunc = func(model string) string { return deploymentID }
+	config.APIVersion = apiVersion
 
-	return res, nil
+	return config
+}
+
+// GetChatCompletions get chat completions for ai service
+func (p *Provider) GetChatCompletions(req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+	return p.client.CreateChatCompletion(context.Background(), req)
+}
+
+// GetChatCompletionsStream implements ai.LLMProvider.
+func (p *Provider) GetChatCompletionsStream(req openai.ChatCompletionRequest) (*openai.ChatCompletionStream, error) {
+	return p.client.CreateChatCompletionStream(context.Background(), req)
 }

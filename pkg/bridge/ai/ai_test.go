@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	openai "github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/internal/oai"
@@ -158,14 +159,18 @@ type MockLLMProvider struct {
 	name string
 }
 
+func (m *MockLLMProvider) GetChatCompletions(openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+	return openai.ChatCompletionResponse{}, nil
+}
+
+func (m *MockLLMProvider) GetChatCompletionsStream(openai.ChatCompletionRequest) (*openai.ChatCompletionStream, error) {
+	return nil, nil
+}
+
 var _ LLMProvider = &MockLLMProvider{}
 
 func (m *MockLLMProvider) Name() string {
 	return m.name
-}
-
-func (m *MockLLMProvider) GetChatCompletions(chatCompletionRequest *ai.ChatCompletionRequest) (*ai.ChatCompletionResponse, error) {
-	return nil, nil
 }
 
 func TestListProviders(t *testing.T) {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/golang-lru/v2/expirable"
+	"github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/metadata"
@@ -30,12 +31,11 @@ var (
 // function. Finally, use reducer to aggregate all the results, and write the
 // result by the http.ResponseWriter.
 type Service struct {
-	credential string
-	zipperAddr string
-	md         metadata.M
-	source     yomo.Source
-	reducer    yomo.StreamFunction
-	// cache        map[string]*CacheItem
+	credential   string
+	zipperAddr   string
+	md           metadata.M
+	source       yomo.Source
+	reducer      yomo.StreamFunction
 	sfnCallCache map[string]*sfnAsyncCall
 	muCallCache  sync.Mutex
 	LLMProvider
@@ -183,7 +183,7 @@ func (s *Service) GetOverview() (*ai.OverviewResponse, error) {
 		return &ai.OverviewResponse{}, err
 	}
 
-	functions := make(map[uint32]*ai.FunctionDefinition)
+	functions := make(map[uint32]*openai.FunctionDefinition)
 	for tag, tc := range tcs {
 		functions[tag] = tc.Function
 	}
@@ -199,25 +199,25 @@ func (s *Service) GetInvoke(userInstruction string, baseSystemMessage string, re
 		return &ai.InvokeResponse{}, err
 	}
 	// prepare tools
-	toolCalls, err := prepareToolCalls(tcs)
+	tools, err := prepareToolCalls(tcs)
 	if err != nil {
 		return nil, err
 	}
 	chainMessage := ai.ChainMessage{}
-	messages := prepareMessages(baseSystemMessage, userInstruction, chainMessage, toolCalls, true)
-	req := &ai.ChatCompletionRequest{
+	messages := prepareMessages(baseSystemMessage, userInstruction, chainMessage, tools, true)
+	req := openai.ChatCompletionRequest{
 		Messages: messages,
 	}
 	// with tools
-	if len(toolCalls) > 0 {
-		req.Tools = toolCalls
+	if len(tools) > 0 {
+		req.Tools = tools
 	}
 	chatCompletionResponse, err := s.LLMProvider.GetChatCompletions(req)
 	if err != nil {
 		return nil, err
 	}
 	// convert ChatCompletionResponse to InvokeResponse
-	res, err := chatCompletionResponse.ConvertToInvokeResponse(tcs)
+	res, err := ai.ConvertToInvokeResponse(&chatCompletionResponse, tcs)
 	if err != nil {
 		return nil, err
 	}
@@ -241,15 +241,15 @@ func (s *Service) GetInvoke(userInstruction string, baseSystemMessage string, re
 	chainMessage.PreceedingAssistantMessage = res.AssistantMessage
 	chainMessage.ToolMessages = llmCalls
 	// do not attach toolMessage to prompt in 2nd call
-	messages2 := prepareMessages(baseSystemMessage, userInstruction, chainMessage, toolCalls, false)
-	req2 := &ai.ChatCompletionRequest{
+	messages2 := prepareMessages(baseSystemMessage, userInstruction, chainMessage, tools, false)
+	req2 := openai.ChatCompletionRequest{
 		Messages: messages2,
 	}
 	chatCompletionResponse2, err := s.LLMProvider.GetChatCompletions(req2)
 	if err != nil {
 		return nil, err
 	}
-	res2, err := chatCompletionResponse2.ConvertToInvokeResponse(tcs)
+	res2, err := ai.ConvertToInvokeResponse(&chatCompletionResponse2, tcs)
 	if err != nil {
 		return nil, err
 	}
@@ -265,21 +265,21 @@ func (s *Service) GetInvoke(userInstruction string, baseSystemMessage string, re
 }
 
 // GetChatCompletions returns the llm api response
-func (s *Service) GetChatCompletions(req *ai.ChatCompletionRequest, reqID string, includeCallStack bool) (*ai.ChatCompletionResponse, error) {
+func (s *Service) GetChatCompletions(req openai.ChatCompletionRequest, reqID string, includeCallStack bool) (openai.ChatCompletionResponse, error) {
 	// TODO: support streaming response.
 	if req.Stream {
-		return nil, errors.New("streaming response not supported")
+		return openai.ChatCompletionResponse{}, errors.New("streaming response not supported")
 	}
 
 	// read tools attached to the metadata
 	tcs, err := register.ListToolCalls(s.md)
 	if err != nil {
-		return nil, err
+		return openai.ChatCompletionResponse{}, err
 	}
 	// prepare tools
 	toolCalls, err := prepareToolCalls(tcs)
 	if err != nil {
-		return nil, err
+		return openai.ChatCompletionResponse{}, err
 	}
 	rawMessages := req.Messages
 	if len(toolCalls) > 0 {
@@ -289,14 +289,14 @@ func (s *Service) GetChatCompletions(req *ai.ChatCompletionRequest, reqID string
 	// #1 first call
 	res, err := s.LLMProvider.GetChatCompletions(req)
 	if err != nil {
-		return nil, err
+		return openai.ChatCompletionResponse{}, err
 	}
 	ylog.Debug(" #1 first call", "response", fmt.Sprintf("%+v", res))
 	finishReason := res.Choices[0].FinishReason
-	if strings.ToLower(finishReason) == "stop" {
+	if strings.ToLower(string(finishReason)) == "stop" {
 		return res, nil
 	}
-	var assistantMessage ai.ChatCompletionMessage
+	var assistantMessage openai.ChatCompletionMessage
 	// if no tool_calls fired, just return the llm text result
 	if finishReason == "tool_calls" || finishReason == "gemini_tool_calls" {
 		assistantMessage = res.Choices[0].Message
@@ -306,11 +306,11 @@ func (s *Service) GetChatCompletions(req *ai.ChatCompletionRequest, reqID string
 
 	resCalls := res.Choices[0].Message.ToolCalls
 	// ready call sfns
-	fnCalls := make(map[uint32][]*ai.ToolCall)
+	fnCalls := make(map[uint32][]*openai.ToolCall)
 	// functions may be more than one
 	for _, call := range resCalls {
 		for tag, tc := range tcs {
-			if tc.Equal(call) || finishReason == "gemini_tool_calls" {
+			if (tc.Function.Name == call.Function.Name && tc.Type == call.Type) || finishReason == "gemini_tool_calls" {
 				currentCall := call
 				fnCalls[tag] = append(fnCalls[tag], &currentCall)
 			}
@@ -319,13 +319,13 @@ func (s *Service) GetChatCompletions(req *ai.ChatCompletionRequest, reqID string
 	// run llm function calls
 	llmCalls, err := s.runFunctionCalls(fnCalls, reqID)
 	if err != nil {
-		return nil, err
+		return openai.ChatCompletionResponse{}, err
 	}
 	// #2 second call
 	req.Messages = append(rawMessages, assistantMessage)
 	// tool message
 	for _, tool := range llmCalls {
-		tm := ai.ChatCompletionMessage{
+		tm := openai.ChatCompletionMessage{
 			Role:       "tool",
 			Content:    tool.Content,
 			ToolCallID: tool.ToolCallId,
@@ -338,14 +338,14 @@ func (s *Service) GetChatCompletions(req *ai.ChatCompletionRequest, reqID string
 	ylog.Debug(" #2 second call", "request", fmt.Sprintf("%+v", req))
 	res2, err := s.LLMProvider.GetChatCompletions(req)
 	if err != nil {
-		return nil, err
+		return openai.ChatCompletionResponse{}, err
 	}
 	ylog.Debug(" #2 second call", "request", fmt.Sprintf("%+v", req))
 	return res2, err
 }
 
 // run llm-sfn function calls
-func (s *Service) runFunctionCalls(fns map[uint32][]*ai.ToolCall, reqID string) ([]ai.ToolMessage, error) {
+func (s *Service) runFunctionCalls(fns map[uint32][]*openai.ToolCall, reqID string) ([]ai.ToolMessage, error) {
 	asyncCall := &sfnAsyncCall{
 		wg:  &sync.WaitGroup{},
 		val: make(map[string]ai.ToolMessage),
@@ -384,7 +384,7 @@ func (s *Service) runFunctionCalls(fns map[uint32][]*ai.ToolCall, reqID string) 
 }
 
 // fireLlmSfn fires the llm-sfn function call by s.source.Write()
-func (s *Service) fireLlmSfn(tag uint32, fn *ai.ToolCall, reqID string) error {
+func (s *Service) fireLlmSfn(tag uint32, fn *openai.ToolCall, reqID string) error {
 	ylog.Info(
 		"+invoke func",
 		"tag", tag,
@@ -423,9 +423,9 @@ type sfnAsyncCall struct {
 	val map[string]ai.ToolMessage
 }
 
-func prepareToolCalls(tcs map[uint32]ai.ToolCall) ([]ai.ToolCall, error) {
+func prepareToolCalls(tcs map[uint32]openai.Tool) ([]openai.Tool, error) {
 	// prepare tools
-	toolCalls := make([]ai.ToolCall, len(tcs))
+	toolCalls := make([]openai.Tool, len(tcs))
 	idx := 0
 	for _, tc := range tcs {
 		toolCalls[idx] = tc
@@ -434,14 +434,14 @@ func prepareToolCalls(tcs map[uint32]ai.ToolCall) ([]ai.ToolCall, error) {
 	return toolCalls, nil
 }
 
-func prepareMessages(baseSystemMessage string, userInstruction string, chainMessage ai.ChainMessage, toolCalls []ai.ToolCall, withTool bool) []ai.ChatCompletionMessage {
+func prepareMessages(baseSystemMessage string, userInstruction string, chainMessage ai.ChainMessage, tools []openai.Tool, withTool bool) []openai.ChatCompletionMessage {
 	systemInstructions := []string{"## Instructions\n"}
 
 	// only append if there are tool calls
 	if withTool {
-		for _, tc := range toolCalls {
+		for _, t := range tools {
 			systemInstructions = append(systemInstructions, "- ")
-			systemInstructions = append(systemInstructions, tc.Function.Description)
+			systemInstructions = append(systemInstructions, t.Function.Description)
 			systemInstructions = append(systemInstructions, "\n")
 		}
 		systemInstructions = append(systemInstructions, "\n")
@@ -449,10 +449,10 @@ func prepareMessages(baseSystemMessage string, userInstruction string, chainMess
 
 	SystemPrompt := fmt.Sprintf("%s\n\n%s", baseSystemMessage, strings.Join(systemInstructions, ""))
 
-	messages := []ai.ChatCompletionMessage{}
+	messages := []openai.ChatCompletionMessage{}
 
 	// 1. system message
-	messages = append(messages, ai.ChatCompletionMessage{Role: "system", Content: SystemPrompt})
+	messages = append(messages, openai.ChatCompletionMessage{Role: "system", Content: SystemPrompt})
 
 	// 2. previous tool calls
 	// Ref: Tool Message Object in Messsages
@@ -462,7 +462,7 @@ func prepareMessages(baseSystemMessage string, userInstruction string, chainMess
 	if chainMessage.PreceedingAssistantMessage != nil {
 		// 2.1 assistant message
 		// try convert type of chainMessage.PreceedingAssistantMessage to type ChatCompletionMessage
-		assistantMessage, ok := chainMessage.PreceedingAssistantMessage.(ai.ChatCompletionMessage)
+		assistantMessage, ok := chainMessage.PreceedingAssistantMessage.(openai.ChatCompletionMessage)
 		if ok {
 			ylog.Debug("======== add assistantMessage", "am", fmt.Sprintf("%+v", assistantMessage))
 			messages = append(messages, assistantMessage)
@@ -470,7 +470,7 @@ func prepareMessages(baseSystemMessage string, userInstruction string, chainMess
 
 		// 2.2 tool message
 		for _, tool := range chainMessage.ToolMessages {
-			tm := ai.ChatCompletionMessage{
+			tm := openai.ChatCompletionMessage{
 				Role:       "tool",
 				Content:    tool.Content,
 				ToolCallID: tool.ToolCallId,
@@ -481,7 +481,7 @@ func prepareMessages(baseSystemMessage string, userInstruction string, chainMess
 	}
 
 	// 3. user instruction
-	messages = append(messages, ai.ChatCompletionMessage{Role: "user", Content: userInstruction})
+	messages = append(messages, openai.ChatCompletionMessage{Role: "user", Content: userInstruction})
 
 	return messages
 }

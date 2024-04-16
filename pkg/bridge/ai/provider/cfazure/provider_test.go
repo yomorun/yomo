@@ -3,9 +3,8 @@ package cfazure
 import (
 	"testing"
 
+	openai "github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
-	"github.com/yomorun/yomo/ai"
-	"github.com/yomorun/yomo/pkg/bridge/ai/internal/mock_client"
 )
 
 func TestNewProvider(t *testing.T) {
@@ -35,7 +34,8 @@ func TestName(t *testing.T) {
 }
 
 func TestCloudflareAzureProvider_GetChatCompletions(t *testing.T) {
-	client := &mock_client.MockOpenAIClient{}
+	config := newConfig("https://facker.gateway.ai.cloudflare.com/v1/111111111111111111/ai-cc-test", "test", "test", "test", "test-version")
+	client := openai.NewClientWithConfig(config)
 
 	provider := &Provider{
 		CfEndpoint:   "https://gateway.ai.cloudflare.com/v1/111111111111111111/ai-cc-test",
@@ -46,7 +46,7 @@ func TestCloudflareAzureProvider_GetChatCompletions(t *testing.T) {
 		client:       client,
 	}
 
-	msgs := []ai.ChatCompletionMessage{
+	msgs := []openai.ChatCompletionMessage{
 		{
 			Role:    "user",
 			Content: "hello",
@@ -56,11 +56,15 @@ func TestCloudflareAzureProvider_GetChatCompletions(t *testing.T) {
 			Content: "I'm a bot",
 		},
 	}
-	req := &ai.ChatCompletionRequest{
+	req := openai.ChatCompletionRequest{
 		Messages: msgs,
 	}
 
 	_, err := provider.GetChatCompletions(req)
 
-	assert.Equal(t, nil, err)
+	wantErr := "Post \"https://facker.gateway.ai.cloudflare.com/v1/111111111111111111/ai-cc-test/azure-openai/test/test/chat/completions?api-version=test-version\": dial tcp: lookup facker.gateway.ai.cloudflare.com: no such host"
+	assert.Equal(t, wantErr, err.Error())
+
+	_, err = provider.GetChatCompletionsStream(req)
+	assert.Equal(t, wantErr, err.Error())
 }
