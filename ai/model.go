@@ -42,20 +42,6 @@ type TokenUsage struct {
 	CompletionTokens int `json:"completion_tokens"`
 }
 
-// ToolCall is the tool call in Request and Response
-type ToolCall openai.ToolCall
-
-type Tool openai.Tool
-
-// Equal compares two ToolCall function
-// return true if type and function name are same
-func (t ToolCall) Equal(tool ToolCall) bool {
-	if t.Type == tool.Type && t.Function.Name == tool.Function.Name {
-		return true
-	}
-	return false
-}
-
 // FunctionDefinition is the function definition
 type FunctionDefinition = openai.FunctionDefinition
 
