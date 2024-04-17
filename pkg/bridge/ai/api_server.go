@@ -185,11 +185,11 @@ func HandleInvoke(w http.ResponseWriter, r *http.Request) {
 func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	service := FromServiceContext(r.Context())
 	defer r.Body.Close()
+
 	reqID, err := gonanoid.New(6)
 	if err != nil {
 		ylog.Error("generate reqID", "err", err.Error())
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		respondWithError(w, http.StatusInternalServerError, err)
 		return
 	}
 	// request
@@ -197,46 +197,38 @@ func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	// // decode the request
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		ylog.Error("decode request", "err", err.Error())
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		respondWithError(w, http.StatusBadRequest, err)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	//
 	// Create a context with a timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
 
 	// Make the service call in a separate goroutine, and use a channel to get the result
-	resCh := make(chan openai.ChatCompletionResponse, 1)
 	errCh := make(chan error, 1)
 	// TODO: includeCallStack should be configurable
-	go func(service *Service, req openai.ChatCompletionRequest, reqID string, includeCallStack bool) {
-		res, err := service.GetChatCompletions(req, reqID, includeCallStack)
-		if err != nil {
-			errCh <- err
-		} else {
-			resCh <- res
-		}
-	}(service, req, reqID, false)
+	go func() {
+		err := service.GetChatCompletions(req, reqID, w, false)
+		errCh <- err
+	}()
 
 	// Use a select statement to handle the result or timeout
 	select {
-	case res := <-resCh:
-		ylog.Debug(">> ai response response", "res", fmt.Sprintf("%+v", res))
-		// write the response to the client with res
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(res)
 	case err := <-errCh:
-		ylog.Error("invoke chat completions", "err", err.Error())
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		if err != nil {
+			ylog.Error("invoke chat completions", "err", err.Error())
+			respondWithError(w, http.StatusInternalServerError, err)
+		}
 	case <-ctx.Done():
 		// The context was cancelled, which means the service call timed out
-		w.WriteHeader(http.StatusRequestTimeout)
-		json.NewEncoder(w).Encode(map[string]string{"error": "request timed out"})
+		respondWithError(w, http.StatusRequestTimeout, errors.New("request timed out"))
 	}
+}
+
+func respondWithError(w http.ResponseWriter, code int, err error) {
+	w.WriteHeader(code)
+	w.Write([]byte(fmt.Sprintf(`{"error":{"code":"%d","message":"%s"}}`, code, err.Error())))
 }
 
 func getLocalIP() (string, error) {

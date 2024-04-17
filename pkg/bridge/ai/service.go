@@ -1,8 +1,10 @@
 package ai
 
 import (
-	"errors"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -264,66 +266,168 @@ func (s *Service) GetInvoke(userInstruction string, baseSystemMessage string, re
 	return res2, err
 }
 
-// GetChatCompletions returns the llm api response
-func (s *Service) GetChatCompletions(req openai.ChatCompletionRequest, reqID string, includeCallStack bool) (openai.ChatCompletionResponse, error) {
-	// TODO: support streaming response.
-	if req.Stream {
-		return openai.ChatCompletionResponse{}, errors.New("streaming response not supported")
+func addToolsToRequest(req openai.ChatCompletionRequest, tagTools map[uint32]openai.Tool) (openai.ChatCompletionRequest, error) {
+	toolCalls, err := prepareToolCalls(tagTools)
+	if err != nil {
+		return openai.ChatCompletionRequest{}, err
 	}
 
-	// read tools attached to the metadata
-	tcs, err := register.ListToolCalls(s.md)
-	if err != nil {
-		return openai.ChatCompletionResponse{}, err
-	}
-	// prepare tools
-	toolCalls, err := prepareToolCalls(tcs)
-	if err != nil {
-		return openai.ChatCompletionResponse{}, err
-	}
-	rawMessages := req.Messages
 	if len(toolCalls) > 0 {
 		req.Tools = toolCalls
 	}
+
 	ylog.Debug(" #1 first call", "request", fmt.Sprintf("%+v", req))
-	// #1 first call
-	res, err := s.LLMProvider.GetChatCompletions(req)
+
+	return req, nil
+}
+
+// GetChatCompletions returns the llm api response
+func (s *Service) GetChatCompletions(req openai.ChatCompletionRequest, reqID string, w http.ResponseWriter, includeCallStack bool) error {
+	// 1. find all hosting tool sfn
+	tagTools, err := register.ListToolCalls(s.md)
 	if err != nil {
-		return openai.ChatCompletionResponse{}, err
+		return err
 	}
-	ylog.Debug(" #1 first call", "response", fmt.Sprintf("%+v", res))
-	finishReason := res.Choices[0].FinishReason
-	if strings.ToLower(string(finishReason)) == "stop" {
-		return res, nil
+	// 2. add those tools to request
+	req, err = addToolsToRequest(req, tagTools)
+	if err != nil {
+		return err
 	}
-	var assistantMessage openai.ChatCompletionMessage
-	// if no tool_calls fired, just return the llm text result
-	if finishReason == "tool_calls" || finishReason == "gemini_tool_calls" {
-		assistantMessage = res.Choices[0].Message
-	} else {
-		return res, nil
+	// 3. return chat completions if tools is empty
+	if len(req.Tools) == 0 {
+		if req.Stream {
+			flusher := eventFlusher(w)
+			resStream, err := s.LLMProvider.GetChatCompletionsStream(req)
+			if err != nil {
+				return err
+			}
+			for {
+				streamRes, err := resStream.Recv()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					return err
+				}
+				_, _ = io.WriteString(w, "data: ")
+				_ = json.NewEncoder(w).Encode(streamRes)
+				_, _ = io.WriteString(w, "\n")
+				flusher.Flush()
+			}
+			io.WriteString(w, "data: [DONE]")
+			flusher.Flush()
+			return nil
+		} else {
+			resp, err := s.LLMProvider.GetChatCompletions(req)
+			if err != nil {
+				return err
+			}
+			w.Header().Set("Content-Type", "application/json")
+			return json.NewEncoder(w).Encode(resp)
+		}
 	}
 
-	resCalls := res.Choices[0].Message.ToolCalls
-	// ready call sfns
+	var (
+		reqMessages      = req.Messages
+		toolCallsMap     = make(map[int]openai.ToolCall)
+		toolCalls        = []openai.ToolCall{}
+		assistantMessage = openai.ChatCompletionMessage{}
+	)
+	// 4. request first chat for getting tools
+	if req.Stream {
+		flusher := eventFlusher(w)
+
+		var isFunctionCall = false
+
+		resStream, err := s.LLMProvider.GetChatCompletionsStream(req)
+		if err != nil {
+			return err
+		}
+		for {
+			streamRes, err := resStream.Recv()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return err
+			}
+			if len(streamRes.Choices) == 0 {
+				continue
+			}
+			if tc := streamRes.Choices[0].Delta.ToolCalls; len(tc) > 0 {
+				for _, t := range tc {
+					fmt.Println(t.Function.Name, t.Function.Arguments)
+					// this index should be toolCalls slice's index, the index field only appares in stream response
+					index := *t.Index
+					item, ok := toolCallsMap[index]
+					if !ok {
+						toolCallsMap[index] = openai.ToolCall{
+							Index:    &index,
+							ID:       t.ID,
+							Type:     t.Type,
+							Function: openai.FunctionCall{},
+						}
+						item = toolCallsMap[index]
+					}
+					if t.Function.Arguments != "" {
+						item.Function.Arguments += t.Function.Arguments
+					}
+					if t.Function.Name != "" {
+						item.Function.Name = t.Function.Name
+					}
+					toolCallsMap[index] = item
+				}
+				isFunctionCall = true
+			} else {
+				_, _ = io.WriteString(w, "data: ")
+				_ = json.NewEncoder(w).Encode(streamRes)
+				_, _ = io.WriteString(w, "\n")
+				flusher.Flush()
+			}
+		}
+		if !isFunctionCall {
+			io.WriteString(w, "data: [DONE]")
+			return nil
+		} else {
+			toolCalls = mapToSliceTools(toolCallsMap)
+			assistantMessage = openai.ChatCompletionMessage{Role: openai.ChatMessageRoleAssistant, ToolCalls: toolCalls}
+		}
+	} else {
+		resp, err := s.LLMProvider.GetChatCompletions(req)
+		if err != nil {
+			return err
+		}
+		toolCalls = mapToSliceTools(toolCallsMap)
+
+		ylog.Debug(" #1 first call", "response", fmt.Sprintf("%+v", resp))
+		// it is a function call
+		if resp.Choices[0].FinishReason == openai.FinishReasonToolCalls {
+			toolCalls = append(toolCalls, resp.Choices[0].Message.ToolCalls...)
+			assistantMessage = resp.Choices[0].Message
+		} else {
+			json.NewEncoder(w).Encode(resp)
+			return nil
+		}
+	}
+
+	// 5. find sfns that hit the function call
 	fnCalls := make(map[uint32][]*openai.ToolCall)
 	// functions may be more than one
-	for _, call := range resCalls {
-		for tag, tc := range tcs {
-			if (tc.Function.Name == call.Function.Name && tc.Type == call.Type) || finishReason == "gemini_tool_calls" {
+	for _, call := range toolCalls {
+		for tag, tc := range tagTools {
+			if tc.Function.Name == call.Function.Name && tc.Type == call.Type {
 				currentCall := call
 				fnCalls[tag] = append(fnCalls[tag], &currentCall)
 			}
 		}
 	}
-	// run llm function calls
+	// 6. run llm function calls
 	llmCalls, err := s.runFunctionCalls(fnCalls, reqID)
 	if err != nil {
-		return openai.ChatCompletionResponse{}, err
+		return err
 	}
-	// #2 second call
-	req.Messages = append(rawMessages, assistantMessage)
-	// tool message
+	// 7. do the second call (the second call messages are from user input, first call resopnse and sfn calls result)
+	req.Messages = append(reqMessages, assistantMessage)
 	for _, tool := range llmCalls {
 		tm := openai.ChatCompletionMessage{
 			Role:       "tool",
@@ -332,16 +436,45 @@ func (s *Service) GetChatCompletions(req openai.ChatCompletionRequest, reqID str
 		}
 		req.Messages = append(req.Messages, tm)
 	}
-	// reset tools
+	// reset tools field
 	req.Tools = nil
 
 	ylog.Debug(" #2 second call", "request", fmt.Sprintf("%+v", req))
-	res2, err := s.LLMProvider.GetChatCompletions(req)
-	if err != nil {
-		return openai.ChatCompletionResponse{}, err
+
+	if req.Stream {
+		flusher := eventFlusher(w)
+		resStream, err := s.LLMProvider.GetChatCompletionsStream(req)
+		if err != nil {
+			return err
+		}
+		for {
+			streamRes, err := resStream.Recv()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return err
+			}
+			if len(streamRes.Choices) == 0 {
+				continue
+			}
+			_, _ = io.WriteString(w, "data: ")
+			_ = json.NewEncoder(w).Encode(streamRes)
+			_, _ = io.WriteString(w, "\n")
+			flusher.Flush()
+		}
+		io.WriteString(w, "data: [DONE]")
+		flusher.Flush()
+		return nil
+	} else {
+		resp, err := s.LLMProvider.GetChatCompletions(req)
+		if err != nil {
+			return err
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		return json.NewEncoder(w).Encode(resp)
 	}
-	ylog.Debug(" #2 second call", "request", fmt.Sprintf("%+v", req))
-	return res2, err
 }
 
 // run llm-sfn function calls
@@ -484,4 +617,21 @@ func prepareMessages(baseSystemMessage string, userInstruction string, chainMess
 	messages = append(messages, openai.ChatCompletionMessage{Role: "user", Content: userInstruction})
 
 	return messages
+}
+
+func mapToSliceTools(m map[int]openai.ToolCall) []openai.ToolCall {
+	arr := make([]openai.ToolCall, len(m))
+	for k, v := range m {
+		arr[k] = v
+	}
+	return arr
+}
+
+func eventFlusher(w http.ResponseWriter) http.Flusher {
+	h := w.Header()
+	h.Set("Content-Type", "text/event-stream")
+	h.Set("Cache-Control", "no-cache, must-revalidate")
+	h.Set("x-content-type-options", "nosniff")
+	flusher := w.(http.Flusher)
+	return flusher
 }

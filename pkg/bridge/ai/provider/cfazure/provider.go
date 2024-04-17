@@ -34,7 +34,7 @@ func NewProvider(cfEndpoint string, apiKey string, resource string, deploymentID
 		return nil
 	}
 
-	config := newConfig(apiKey, cfEndpoint, resource, deploymentID, apiVersion)
+	config := newConfig(cfEndpoint, apiKey, resource, deploymentID, apiVersion)
 
 	client := openai.NewClientWithConfig(config)
 

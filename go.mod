@@ -94,4 +94,5 @@ require (
 	gopkg.in/ini.v1 v1.67.0 // indirect
 )
 
+// use this pr's code: https://github.com/sashabaranov/go-openai/pull/700
 replace github.com/sashabaranov/go-openai => ../go-openai
