@@ -189,7 +189,7 @@ func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	reqID, err := gonanoid.New(6)
 	if err != nil {
 		ylog.Error("generate reqID", "err", err.Error())
-		respondWithError(w, http.StatusInternalServerError, err)
+		RespondWithError(w, http.StatusInternalServerError, err)
 		return
 	}
 	// request
@@ -197,7 +197,7 @@ func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	// // decode the request
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		ylog.Error("decode request", "err", err.Error())
-		respondWithError(w, http.StatusBadRequest, err)
+		RespondWithError(w, http.StatusBadRequest, err)
 		return
 	}
 
@@ -218,15 +218,15 @@ func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	case err := <-errCh:
 		if err != nil {
 			ylog.Error("invoke chat completions", "err", err.Error())
-			respondWithError(w, http.StatusInternalServerError, err)
+			RespondWithError(w, http.StatusInternalServerError, err)
 		}
 	case <-ctx.Done():
 		// The context was cancelled, which means the service call timed out
-		respondWithError(w, http.StatusRequestTimeout, errors.New("request timed out"))
+		RespondWithError(w, http.StatusRequestTimeout, errors.New("request timed out"))
 	}
 }
 
-func respondWithError(w http.ResponseWriter, code int, err error) {
+func RespondWithError(w http.ResponseWriter, code int, err error) {
 	w.WriteHeader(code)
 	w.Write([]byte(fmt.Sprintf(`{"error":{"code":"%d","message":"%s"}}`, code, err.Error())))
 }
