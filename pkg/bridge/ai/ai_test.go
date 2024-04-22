@@ -160,11 +160,11 @@ type MockLLMProvider struct {
 	name string
 }
 
-func (m *MockLLMProvider) GetChatCompletions(req openai.ChatCompletionRequest, _ metadata.M) (openai.ChatCompletionResponse, error) {
+func (m *MockLLMProvider) GetChatCompletions(_ context.Context, req openai.ChatCompletionRequest, _ metadata.M) (openai.ChatCompletionResponse, error) {
 	return openai.ChatCompletionResponse{}, nil
 }
 
-func (m *MockLLMProvider) GetChatCompletionsStream(req openai.ChatCompletionRequest, _ metadata.M) (*openai.ChatCompletionStream, error) {
+func (m *MockLLMProvider) GetChatCompletionsStream(_ context.Context, req openai.ChatCompletionRequest, _ metadata.M) (*openai.ChatCompletionStream, error) {
 	return nil, nil
 }
 

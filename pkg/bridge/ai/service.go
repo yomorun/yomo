@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -194,7 +195,7 @@ func (s *Service) GetOverview() (*ai.OverviewResponse, error) {
 }
 
 // GetInvoke returns the invoke response
-func (s *Service) GetInvoke(userInstruction string, baseSystemMessage string, reqID string, includeCallStack bool) (*ai.InvokeResponse, error) {
+func (s *Service) GetInvoke(ctx context.Context, userInstruction string, baseSystemMessage string, reqID string, includeCallStack bool) (*ai.InvokeResponse, error) {
 	// read tools attached to the metadata
 	tcs, err := register.ListToolCalls(s.md)
 	if err != nil {
@@ -214,7 +215,7 @@ func (s *Service) GetInvoke(userInstruction string, baseSystemMessage string, re
 	if len(tools) > 0 {
 		req.Tools = tools
 	}
-	chatCompletionResponse, err := s.LLMProvider.GetChatCompletions(req, s.md)
+	chatCompletionResponse, err := s.LLMProvider.GetChatCompletions(ctx, req, s.md)
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +248,7 @@ func (s *Service) GetInvoke(userInstruction string, baseSystemMessage string, re
 	req2 := openai.ChatCompletionRequest{
 		Messages: messages2,
 	}
-	chatCompletionResponse2, err := s.LLMProvider.GetChatCompletions(req2, s.md)
+	chatCompletionResponse2, err := s.LLMProvider.GetChatCompletions(ctx, req2, s.md)
 	if err != nil {
 		return nil, err
 	}
@@ -282,7 +283,7 @@ func addToolsToRequest(req openai.ChatCompletionRequest, tagTools map[uint32]ope
 }
 
 // GetChatCompletions returns the llm api response
-func (s *Service) GetChatCompletions(req openai.ChatCompletionRequest, reqID string, w http.ResponseWriter, includeCallStack bool) error {
+func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, reqID string, w http.ResponseWriter, includeCallStack bool) error {
 	// 1. find all hosting tool sfn
 	tagTools, err := register.ListToolCalls(s.md)
 	if err != nil {
@@ -297,14 +298,16 @@ func (s *Service) GetChatCompletions(req openai.ChatCompletionRequest, reqID str
 	if len(req.Tools) == 0 {
 		if req.Stream {
 			flusher := eventFlusher(w)
-			resStream, err := s.LLMProvider.GetChatCompletionsStream(req, s.md)
+			resStream, err := s.LLMProvider.GetChatCompletionsStream(ctx, req, s.md)
 			if err != nil {
 				return err
 			}
 			for {
 				streamRes, err := resStream.Recv()
 				if err == io.EOF {
-					break
+					io.WriteString(w, "data: [DONE]")
+					flusher.Flush()
+					return nil
 				}
 				if err != nil {
 					return err
@@ -314,11 +317,8 @@ func (s *Service) GetChatCompletions(req openai.ChatCompletionRequest, reqID str
 				_, _ = io.WriteString(w, "\n")
 				flusher.Flush()
 			}
-			io.WriteString(w, "data: [DONE]")
-			flusher.Flush()
-			return nil
 		} else {
-			resp, err := s.LLMProvider.GetChatCompletions(req, s.md)
+			resp, err := s.LLMProvider.GetChatCompletions(ctx, req, s.md)
 			if err != nil {
 				return err
 			}
@@ -335,11 +335,11 @@ func (s *Service) GetChatCompletions(req openai.ChatCompletionRequest, reqID str
 	)
 	// 4. request first chat for getting tools
 	if req.Stream {
-		flusher := eventFlusher(w)
-
-		var isFunctionCall = false
-
-		resStream, err := s.LLMProvider.GetChatCompletionsStream(req, s.md)
+		var (
+			flusher        = eventFlusher(w)
+			isFunctionCall = false
+		)
+		resStream, err := s.LLMProvider.GetChatCompletionsStream(ctx, req, s.md)
 		if err != nil {
 			return err
 		}
@@ -356,7 +356,6 @@ func (s *Service) GetChatCompletions(req openai.ChatCompletionRequest, reqID str
 			}
 			if tc := streamRes.Choices[0].Delta.ToolCalls; len(tc) > 0 {
 				for _, t := range tc {
-					fmt.Println(t.Function.Name, t.Function.Arguments)
 					// this index should be toolCalls slice's index, the index field only appares in stream response
 					index := *t.Index
 					item, ok := toolCallsMap[index]
@@ -389,11 +388,13 @@ func (s *Service) GetChatCompletions(req openai.ChatCompletionRequest, reqID str
 			io.WriteString(w, "data: [DONE]")
 			return nil
 		} else {
-			toolCalls = mapToSliceTools(toolCallsMap)
-			assistantMessage = openai.ChatCompletionMessage{Role: openai.ChatMessageRoleAssistant, ToolCalls: toolCalls}
+			assistantMessage = openai.ChatCompletionMessage{
+				Role:      openai.ChatMessageRoleAssistant,
+				ToolCalls: mapToSliceTools(toolCallsMap),
+			}
 		}
 	} else {
-		resp, err := s.LLMProvider.GetChatCompletions(req, s.md)
+		resp, err := s.LLMProvider.GetChatCompletions(ctx, req, s.md)
 		if err != nil {
 			return err
 		}
@@ -443,14 +444,16 @@ func (s *Service) GetChatCompletions(req openai.ChatCompletionRequest, reqID str
 
 	if req.Stream {
 		flusher := eventFlusher(w)
-		resStream, err := s.LLMProvider.GetChatCompletionsStream(req, s.md)
+		resStream, err := s.LLMProvider.GetChatCompletionsStream(ctx, req, s.md)
 		if err != nil {
 			return err
 		}
 		for {
 			streamRes, err := resStream.Recv()
 			if err == io.EOF {
-				break
+				io.WriteString(w, "data: [DONE]")
+				flusher.Flush()
+				return nil
 			}
 			if err != nil {
 				return err
@@ -463,11 +466,8 @@ func (s *Service) GetChatCompletions(req openai.ChatCompletionRequest, reqID str
 			_, _ = io.WriteString(w, "\n")
 			flusher.Flush()
 		}
-		io.WriteString(w, "data: [DONE]")
-		flusher.Flush()
-		return nil
 	} else {
-		resp, err := s.LLMProvider.GetChatCompletions(req, s.md)
+		resp, err := s.LLMProvider.GetChatCompletions(ctx, req, s.md)
 		if err != nil {
 			return err
 		}

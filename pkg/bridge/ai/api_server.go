@@ -155,7 +155,7 @@ func HandleInvoke(w http.ResponseWriter, r *http.Request) {
 	go func(service *Service, req ai.InvokeRequest, baseSystemMessage string) {
 		// call llm to infer the function and arguments to be invoked
 		ylog.Debug(">> ai request", "reqID", req.ReqID, "prompt", req.Prompt)
-		res, err := service.GetInvoke(req.Prompt, baseSystemMessage, req.ReqID, req.IncludeCallStack)
+		res, err := service.GetInvoke(ctx, req.Prompt, baseSystemMessage, req.ReqID, req.IncludeCallStack)
 		if err != nil {
 			errCh <- err
 		} else {
@@ -192,37 +192,21 @@ func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		RespondWithError(w, http.StatusInternalServerError, err)
 		return
 	}
-	// request
+
 	var req openai.ChatCompletionRequest
-	// // decode the request
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		ylog.Error("decode request", "err", err.Error())
 		RespondWithError(w, http.StatusBadRequest, err)
 		return
 	}
 
-	// Create a context with a timeout
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
 
-	// Make the service call in a separate goroutine, and use a channel to get the result
-	errCh := make(chan error, 1)
-	// TODO: includeCallStack should be configurable
-	go func() {
-		err := service.GetChatCompletions(req, reqID, w, false)
-		errCh <- err
-	}()
-
-	// Use a select statement to handle the result or timeout
-	select {
-	case err := <-errCh:
-		if err != nil {
-			ylog.Error("invoke chat completions", "err", err.Error())
-			RespondWithError(w, http.StatusInternalServerError, err)
-		}
-	case <-ctx.Done():
-		// The context was cancelled, which means the service call timed out
-		RespondWithError(w, http.StatusRequestTimeout, errors.New("request timed out"))
+	if err := service.GetChatCompletions(ctx, req, reqID, w, false); err != nil {
+		ylog.Error("invoke chat completions", "err", err.Error())
+		RespondWithError(w, http.StatusBadRequest, err)
+		return
 	}
 }
 

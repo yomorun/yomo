@@ -53,15 +53,15 @@ func (p *Provider) Name() string {
 }
 
 // GetChatCompletions implements ai.LLMProvider.
-func (p *Provider) GetChatCompletions(req openai.ChatCompletionRequest, _ metadata.M) (openai.ChatCompletionResponse, error) {
+func (p *Provider) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, _ metadata.M) (openai.ChatCompletionResponse, error) {
 	req.Model = p.Model
 
-	return p.client.CreateChatCompletion(context.Background(), req)
+	return p.client.CreateChatCompletion(ctx, req)
 }
 
 // GetChatCompletionsStream implements ai.LLMProvider.
-func (p *Provider) GetChatCompletionsStream(req openai.ChatCompletionRequest, _ metadata.M) (*openai.ChatCompletionStream, error) {
+func (p *Provider) GetChatCompletionsStream(ctx context.Context, req openai.ChatCompletionRequest, _ metadata.M) (*openai.ChatCompletionStream, error) {
 	req.Model = p.Model
 
-	return p.client.CreateChatCompletionStream(context.Background(), req)
+	return p.client.CreateChatCompletionStream(ctx, req)
 }

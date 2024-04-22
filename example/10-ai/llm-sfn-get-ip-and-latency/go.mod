@@ -28,6 +28,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.9.5 // indirect
 	github.com/quic-go/quic-go v0.42.0 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
+	github.com/sashabaranov/go-openai v1.21.0 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect

@@ -1,6 +1,7 @@
 package cfazure
 
 import (
+	"context"
 	"testing"
 
 	openai "github.com/sashabaranov/go-openai"
@@ -60,11 +61,11 @@ func TestCloudflareAzureProvider_GetChatCompletions(t *testing.T) {
 		Messages: msgs,
 	}
 
-	_, err := provider.GetChatCompletions(req, nil)
+	_, err := provider.GetChatCompletions(context.TODO(), req, nil)
 
 	wantErr := "Post \"https://facker.gateway.ai.cloudflare.com/v1/111111111111111111/ai-cc-test/azure-openai/test/test/chat/completions?api-version=test-version\": dial tcp: lookup facker.gateway.ai.cloudflare.com: no such host"
 	assert.Equal(t, wantErr, err.Error())
 
-	_, err = provider.GetChatCompletionsStream(req, nil)
+	_, err = provider.GetChatCompletionsStream(context.TODO(), req, nil)
 	assert.Equal(t, wantErr, err.Error())
 }

@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"context"
 	"sync"
 
 	openai "github.com/sashabaranov/go-openai"
@@ -12,9 +13,9 @@ type LLMProvider interface {
 	// Name returns the name of the llm provider
 	Name() string
 	// GetChatCompletions returns the chat completions.
-	GetChatCompletions(openai.ChatCompletionRequest, metadata.M) (openai.ChatCompletionResponse, error)
+	GetChatCompletions(context.Context, openai.ChatCompletionRequest, metadata.M) (openai.ChatCompletionResponse, error)
 	// GetChatCompletionsStream returns the chat completions in stream.
-	GetChatCompletionsStream(openai.ChatCompletionRequest, metadata.M) (*openai.ChatCompletionStream, error)
+	GetChatCompletionsStream(context.Context, openai.ChatCompletionRequest, metadata.M) (*openai.ChatCompletionStream, error)
 }
 
 var (
