@@ -58,11 +58,11 @@ func TestAzureOpenAIProvider_GetChatCompletions(t *testing.T) {
 		Messages: msgs,
 	}
 
-	_, err := provider.GetChatCompletions(req)
+	_, err := provider.GetChatCompletions(req, nil)
 
 	wantErr := "Post \"https://yomo.openai.azure.com/openai/deployments/test/chat/completions?api-version=test-version\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
 	assert.Equal(t, wantErr, err.Error())
 
-	_, err = provider.GetChatCompletionsStream(req)
+	_, err = provider.GetChatCompletionsStream(req, nil)
 	assert.Equal(t, wantErr, err.Error())
 }

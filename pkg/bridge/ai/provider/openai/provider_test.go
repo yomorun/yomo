@@ -55,11 +55,11 @@ func TestCloudflareOpenAIProvider_GetChatCompletions(t *testing.T) {
 		Messages: msgs,
 	}
 
-	_, err := provider.GetChatCompletions(req)
+	_, err := provider.GetChatCompletions(req, nil)
 
 	wantErr := "Post \"https://api.openai.com/v1/chat/completions\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
 	assert.Equal(t, wantErr, err.Error())
 
-	_, err = provider.GetChatCompletionsStream(req)
+	_, err = provider.GetChatCompletionsStream(req, nil)
 	assert.Equal(t, wantErr, err.Error())
 }

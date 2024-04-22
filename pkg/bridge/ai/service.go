@@ -214,7 +214,7 @@ func (s *Service) GetInvoke(userInstruction string, baseSystemMessage string, re
 	if len(tools) > 0 {
 		req.Tools = tools
 	}
-	chatCompletionResponse, err := s.LLMProvider.GetChatCompletions(req)
+	chatCompletionResponse, err := s.LLMProvider.GetChatCompletions(req, s.md)
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +247,7 @@ func (s *Service) GetInvoke(userInstruction string, baseSystemMessage string, re
 	req2 := openai.ChatCompletionRequest{
 		Messages: messages2,
 	}
-	chatCompletionResponse2, err := s.LLMProvider.GetChatCompletions(req2)
+	chatCompletionResponse2, err := s.LLMProvider.GetChatCompletions(req2, s.md)
 	if err != nil {
 		return nil, err
 	}
@@ -297,7 +297,7 @@ func (s *Service) GetChatCompletions(req openai.ChatCompletionRequest, reqID str
 	if len(req.Tools) == 0 {
 		if req.Stream {
 			flusher := eventFlusher(w)
-			resStream, err := s.LLMProvider.GetChatCompletionsStream(req)
+			resStream, err := s.LLMProvider.GetChatCompletionsStream(req, s.md)
 			if err != nil {
 				return err
 			}
@@ -318,7 +318,7 @@ func (s *Service) GetChatCompletions(req openai.ChatCompletionRequest, reqID str
 			flusher.Flush()
 			return nil
 		} else {
-			resp, err := s.LLMProvider.GetChatCompletions(req)
+			resp, err := s.LLMProvider.GetChatCompletions(req, s.md)
 			if err != nil {
 				return err
 			}
@@ -339,7 +339,7 @@ func (s *Service) GetChatCompletions(req openai.ChatCompletionRequest, reqID str
 
 		var isFunctionCall = false
 
-		resStream, err := s.LLMProvider.GetChatCompletionsStream(req)
+		resStream, err := s.LLMProvider.GetChatCompletionsStream(req, s.md)
 		if err != nil {
 			return err
 		}
@@ -393,7 +393,7 @@ func (s *Service) GetChatCompletions(req openai.ChatCompletionRequest, reqID str
 			assistantMessage = openai.ChatCompletionMessage{Role: openai.ChatMessageRoleAssistant, ToolCalls: toolCalls}
 		}
 	} else {
-		resp, err := s.LLMProvider.GetChatCompletions(req)
+		resp, err := s.LLMProvider.GetChatCompletions(req, s.md)
 		if err != nil {
 			return err
 		}
@@ -443,7 +443,7 @@ func (s *Service) GetChatCompletions(req openai.ChatCompletionRequest, reqID str
 
 	if req.Stream {
 		flusher := eventFlusher(w)
-		resStream, err := s.LLMProvider.GetChatCompletionsStream(req)
+		resStream, err := s.LLMProvider.GetChatCompletionsStream(req, s.md)
 		if err != nil {
 			return err
 		}
@@ -467,7 +467,7 @@ func (s *Service) GetChatCompletions(req openai.ChatCompletionRequest, reqID str
 		flusher.Flush()
 		return nil
 	} else {
-		resp, err := s.LLMProvider.GetChatCompletions(req)
+		resp, err := s.LLMProvider.GetChatCompletions(req, s.md)
 		if err != nil {
 			return err
 		}

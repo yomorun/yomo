@@ -10,6 +10,7 @@ import (
 	_ "github.com/joho/godotenv/autoload"
 	openai "github.com/sashabaranov/go-openai"
 
+	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
 	bridgeai "github.com/yomorun/yomo/pkg/bridge/ai"
 )
@@ -54,14 +55,14 @@ func (p *Provider) Name() string {
 }
 
 // GetChatCompletions implements ai.LLMProvider.
-func (p *Provider) GetChatCompletions(req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+func (p *Provider) GetChatCompletions(req openai.ChatCompletionRequest, _ metadata.M) (openai.ChatCompletionResponse, error) {
 	req.Model = p.Model
 
 	return p.client.CreateChatCompletion(context.Background(), req)
 }
 
 // GetChatCompletionsStream implements ai.LLMProvider.
-func (p *Provider) GetChatCompletionsStream(req openai.ChatCompletionRequest) (*openai.ChatCompletionStream, error) {
+func (p *Provider) GetChatCompletionsStream(req openai.ChatCompletionRequest, _ metadata.M) (*openai.ChatCompletionStream, error) {
 	req.Model = p.Model
 
 	return p.client.CreateChatCompletionStream(context.Background(), req)

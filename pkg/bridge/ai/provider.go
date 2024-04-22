@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	openai "github.com/sashabaranov/go-openai"
+	"github.com/yomorun/yomo/core/metadata"
 )
 
 // LLMProvider provides an interface to the llm providers
@@ -11,9 +12,9 @@ type LLMProvider interface {
 	// Name returns the name of the llm provider
 	Name() string
 	// GetChatCompletions returns the chat completions.
-	GetChatCompletions(openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error)
+	GetChatCompletions(openai.ChatCompletionRequest, metadata.M) (openai.ChatCompletionResponse, error)
 	// GetChatCompletionsStream returns the chat completions in stream.
-	GetChatCompletionsStream(openai.ChatCompletionRequest) (*openai.ChatCompletionStream, error)
+	GetChatCompletionsStream(openai.ChatCompletionRequest, metadata.M) (*openai.ChatCompletionStream, error)
 }
 
 var (

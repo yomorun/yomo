@@ -10,6 +10,7 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/ai"
+	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/pkg/bridge/ai/internal/oai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 )
@@ -159,11 +160,11 @@ type MockLLMProvider struct {
 	name string
 }
 
-func (m *MockLLMProvider) GetChatCompletions(openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+func (m *MockLLMProvider) GetChatCompletions(req openai.ChatCompletionRequest, _ metadata.M) (openai.ChatCompletionResponse, error) {
 	return openai.ChatCompletionResponse{}, nil
 }
 
-func (m *MockLLMProvider) GetChatCompletionsStream(openai.ChatCompletionRequest) (*openai.ChatCompletionStream, error) {
+func (m *MockLLMProvider) GetChatCompletionsStream(req openai.ChatCompletionRequest, _ metadata.M) (*openai.ChatCompletionStream, error) {
 	return nil, nil
 }
 
