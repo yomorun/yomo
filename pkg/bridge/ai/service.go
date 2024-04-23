@@ -388,9 +388,11 @@ func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatComplet
 			io.WriteString(w, "data: [DONE]")
 			return nil
 		} else {
+			toolCalls = mapToSliceTools(toolCallsMap)
+
 			assistantMessage = openai.ChatCompletionMessage{
+				ToolCalls: toolCalls,
 				Role:      openai.ChatMessageRoleAssistant,
-				ToolCalls: mapToSliceTools(toolCallsMap),
 			}
 		}
 	} else {
