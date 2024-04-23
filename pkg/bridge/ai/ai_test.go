@@ -164,7 +164,7 @@ func (m *MockLLMProvider) GetChatCompletions(_ context.Context, req openai.ChatC
 	return openai.ChatCompletionResponse{}, nil
 }
 
-func (m *MockLLMProvider) GetChatCompletionsStream(_ context.Context, req openai.ChatCompletionRequest, _ metadata.M) (*openai.ChatCompletionStream, error) {
+func (m *MockLLMProvider) GetChatCompletionsStream(_ context.Context, req openai.ChatCompletionRequest, _ metadata.M) (ResponseRecver, error) {
 	return nil, nil
 }
 

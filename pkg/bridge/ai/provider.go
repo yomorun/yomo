@@ -15,7 +15,13 @@ type LLMProvider interface {
 	// GetChatCompletions returns the chat completions.
 	GetChatCompletions(context.Context, openai.ChatCompletionRequest, metadata.M) (openai.ChatCompletionResponse, error)
 	// GetChatCompletionsStream returns the chat completions in stream.
-	GetChatCompletionsStream(context.Context, openai.ChatCompletionRequest, metadata.M) (*openai.ChatCompletionStream, error)
+	GetChatCompletionsStream(context.Context, openai.ChatCompletionRequest, metadata.M) (ResponseRecver, error)
+}
+
+// ResponseRecver receives stream response.
+type ResponseRecver interface {
+	// Recv is the receive function.
+	Recv() (response openai.ChatCompletionStreamResponse, err error)
 }
 
 var (
