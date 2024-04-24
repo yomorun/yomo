@@ -15,7 +15,7 @@ require (
 	github.com/quic-go/quic-go v0.42.0
 	github.com/reactivex/rxgo/v2 v2.5.0
 	github.com/robfig/cron/v3 v3.0.1
-	github.com/sashabaranov/go-openai v1.21.0
+	github.com/sashabaranov/go-openai v1.23.0
 	github.com/second-state/WasmEdge-go v0.13.4
 	github.com/shirou/gopsutil/v3 v3.24.2
 	github.com/spf13/cobra v1.8.0
@@ -93,6 +93,3 @@ require (
 	google.golang.org/protobuf v1.32.0 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 )
-
-// use this pr's code: https://github.com/sashabaranov/go-openai/pull/700
-replace github.com/sashabaranov/go-openai => ../../sashabaranov/go-openai
