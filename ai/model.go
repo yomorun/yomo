@@ -95,3 +95,6 @@ type ChainMessage struct {
 	// ToolMessages is the tool messages aggragated from reducer-sfn by AI service
 	ToolMessages []ToolMessage
 }
+
+// FunctionDefinitionKey is the yomo handshake metadata key for function definition
+const FunctionDefinitionKey = "x-ai-definition"

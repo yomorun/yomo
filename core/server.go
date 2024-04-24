@@ -214,6 +214,16 @@ func (s *Server) handshake(fconn frame.Conn) (*Connection, error) {
 		if err != nil {
 			return nil, rejectHandshake(fconn, err)
 		}
+		// 2.1. decode metadata from handshake frame
+		md2, err := metadata.Decode(hf.Metadata)
+		if err != nil {
+			return nil, rejectHandshake(fconn, err)
+		}
+		// 2.2. merge metadata
+		md2.Range(func(k, v string) bool {
+			md.Set(k, v)
+			return true
+		})
 
 		// 3. create connection
 		conn, err := s.createConnection(hf, md, fconn)

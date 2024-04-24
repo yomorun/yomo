@@ -4,12 +4,10 @@ package ai
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core"
-	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/ylog"
 	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 	"gopkg.in/yaml.v3"
@@ -28,43 +26,37 @@ var (
 func ConnMiddleware(next core.ConnHandler) core.ConnHandler {
 	return func(conn *core.Connection) {
 		connMd := conn.Metadata().Clone()
+		definition, ok := connMd.Get("x-ai-definition")
+
 		defer func() {
+			// definition does not be transmitted in mesh network, It only works for handshake.
+			conn.Metadata().Set("x-ai-definition", "")
 			next(conn)
-			register.UnregisterFunction(conn.ID(), connMd)
-			conn.Logger.Info("unregister ai function", "name", conn.Name(), "connID", conn.ID())
+			if ok {
+				register.UnregisterFunction(conn.ID(), connMd)
+				conn.Logger.Info("unregister ai function", "name", conn.Name(), "connID", conn.ID())
+			}
 		}()
 
-		// check sfn type and is ai function
-		if conn.ClientType() != core.ClientTypeStreamFunction {
+		if conn.ClientType() != core.ClientTypeStreamFunction || !ok {
 			return
 		}
-		f, err := conn.FrameConn().ReadFrame()
-		// unregister ai function on any error
+
+		tag := conn.ObserveDataTags()[0]
+
+		// register ai function
+		fd := ai.FunctionDefinition{}
+		err := json.Unmarshal([]byte(definition), &fd)
 		if err != nil {
-			conn.Logger.Error("failed to read frame on ai middleware", "err", err, "type", fmt.Sprintf("%T", err))
-			conn.Logger.Info("error type", "type", fmt.Sprintf("%T", err))
+			conn.Logger.Error("unmarshal function definition", "error", err)
 			return
 		}
-		if ff, ok := f.(*frame.AIRegisterFunctionFrame); ok {
-			err := conn.FrameConn().WriteFrame(&frame.AIRegisterFunctionAckFrame{Name: ff.Name, Tag: ff.Tag})
-			if err != nil {
-				conn.Logger.Error("failed to write ai RegisterFunctionAckFrame", "name", ff.Name, "tag", ff.Tag, "err", err)
-				return
-			}
-			// register ai function
-			fd := ai.FunctionDefinition{}
-			err = json.Unmarshal(ff.Definition, &fd)
-			if err != nil {
-				conn.Logger.Error("unmarshal function definition", "error", err)
-				return
-			}
-			err = register.RegisterFunction(ff.Tag, &fd, conn.ID(), connMd)
-			if err != nil {
-				conn.Logger.Error("failed to register ai function", "name", ff.Name, "tag", ff.Tag, "err", err)
-				return
-			}
-			conn.Logger.Info("register ai function success", "name", ff.Name, "tag", ff.Tag, "definition", string(ff.Definition))
+		err = register.RegisterFunction(tag, &fd, conn.ID(), connMd)
+		if err != nil {
+			conn.Logger.Error("failed to register ai function", "name", conn.Name(), "tag", tag, "err", err)
+			return
 		}
+		conn.Logger.Info("register ai function success", "name", conn.Name(), "tag", tag, "definition", string(definition))
 	}
 }
 
