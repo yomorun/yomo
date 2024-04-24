@@ -350,7 +350,7 @@ func (s *Server) routingDataFrame(c *Context) error {
 			continue
 		}
 		if !ok {
-			c.Logger.Error("can't find forward conn", "to_id", toID, "to_name", conn.Name())
+			c.Logger.Error("can't find forward conn", "to_id", toID)
 			continue
 		}
 
