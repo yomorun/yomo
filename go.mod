@@ -1,6 +1,6 @@
 module github.com/yomorun/yomo
 
-go 1.21.0
+go 1.21
 
 require (
 	github.com/briandowns/spinner v1.23.0
@@ -95,4 +95,4 @@ require (
 )
 
 // use this pr's code: https://github.com/sashabaranov/go-openai/pull/700
-replace github.com/sashabaranov/go-openai => ../sashabaranov/go-openai
+replace github.com/sashabaranov/go-openai => ../../sashabaranov/go-openai
