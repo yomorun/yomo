@@ -95,4 +95,4 @@ require (
 )
 
 // use this pr's code: https://github.com/sashabaranov/go-openai/pull/700
-replace github.com/sashabaranov/go-openai => ../go-openai
+replace github.com/sashabaranov/go-openai => ../sashabaranov/go-openai
