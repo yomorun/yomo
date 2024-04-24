@@ -11,35 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/metadata"
-	"github.com/yomorun/yomo/pkg/bridge/ai/internal/oai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 )
-
-// MockOpenAIClient is a mock implementation of the OpenAIClient for test
-type MockOpenAIClient struct {
-	APIEndpoint     string
-	AuthHeaderKey   string
-	AuthHeaderValue string
-	Request         *ai.ChatCompletionRequest
-}
-
-var _ oai.OpenAIRequester = &MockOpenAIClient{}
-
-// ChatCompletion is a mock implementation of the ChatCompletion method
-func (c *MockOpenAIClient) ChatCompletions(
-	ctx context.Context,
-	apiEndpoint string,
-	authHeaderKey string,
-	authHeaderValue string,
-	req *ai.ChatCompletionRequest,
-) (*ai.ChatCompletionResponse, error) {
-	c.APIEndpoint = apiEndpoint
-	c.AuthHeaderKey = authHeaderKey
-	c.AuthHeaderValue = authHeaderValue
-	c.Request = req
-
-	return nil, nil
-}
 
 func TestParseZipperAddr(t *testing.T) {
 	tests := []struct {

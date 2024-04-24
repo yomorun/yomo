@@ -11,7 +11,6 @@ import (
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
 
-	"github.com/yomorun/yomo/pkg/bridge/ai"
 	bridgeai "github.com/yomorun/yomo/pkg/bridge/ai"
 )
 
@@ -61,7 +60,7 @@ func (p *Provider) GetChatCompletions(ctx context.Context, req openai.ChatComple
 }
 
 // GetChatCompletionsStream implements ai.LLMProvider.
-func (p *Provider) GetChatCompletionsStream(ctx context.Context, req openai.ChatCompletionRequest, _ metadata.M) (ai.ResponseRecver, error) {
+func (p *Provider) GetChatCompletionsStream(ctx context.Context, req openai.ChatCompletionRequest, _ metadata.M) (bridgeai.ResponseRecver, error) {
 	req.Model = p.Model
 
 	return p.client.CreateChatCompletionStream(ctx, req)
