@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/hashicorp/golang-lru/v2/expirable"
@@ -36,7 +37,8 @@ var (
 type Service struct {
 	credential   string
 	zipperAddr   string
-	md           metadata.M
+	Metadata     metadata.M
+	systemPrompt atomic.Value
 	source       yomo.Source
 	reducer      yomo.StreamFunction
 	sfnCallCache map[string]*sfnAsyncCall
@@ -68,22 +70,21 @@ func DefaultExchangeMetadataFunc(credential string) (metadata.M, error) {
 
 func newService(credential string, zipperAddr string, aiProvider LLMProvider, exFn ExchangeMetadataFunc) (*Service, error) {
 	s := &Service{
-		credential: credential,
-		zipperAddr: zipperAddr,
-		// cache:        make(map[string]*CacheItem),
+		credential:   credential,
+		zipperAddr:   zipperAddr,
 		LLMProvider:  aiProvider,
 		sfnCallCache: make(map[string]*sfnAsyncCall),
 	}
 	// metadata
 	if exFn == nil {
-		s.md = metadata.M{}
+		s.Metadata = metadata.M{}
 	} else {
 		md, err := exFn(credential)
 		if err != nil {
 			ylog.Error("exchange metadata failed", "err", err)
 			return nil, err
 		}
-		s.md = md
+		s.Metadata = md
 	}
 
 	// source
@@ -101,6 +102,11 @@ func newService(credential string, zipperAddr string, aiProvider LLMProvider, ex
 	}
 	s.reducer = reducer
 	return s, nil
+}
+
+// SetSystemPrompt sets the system prompt
+func (s *Service) SetSystemPrompt(prompt string) {
+	s.systemPrompt.Store(prompt)
 }
 
 // Release releases the resources
@@ -181,7 +187,7 @@ func (s *Service) createReducer() (yomo.StreamFunction, error) {
 
 // GetOverview returns the overview of the AI functions, key is the tag, value is the function definition
 func (s *Service) GetOverview() (*ai.OverviewResponse, error) {
-	tcs, err := register.ListToolCalls(s.md)
+	tcs, err := register.ListToolCalls(s.Metadata)
 	if err != nil {
 		return &ai.OverviewResponse{}, err
 	}
@@ -197,7 +203,7 @@ func (s *Service) GetOverview() (*ai.OverviewResponse, error) {
 // GetInvoke returns the invoke response
 func (s *Service) GetInvoke(ctx context.Context, userInstruction string, baseSystemMessage string, reqID string, includeCallStack bool) (*ai.InvokeResponse, error) {
 	// read tools attached to the metadata
-	tcs, err := register.ListToolCalls(s.md)
+	tcs, err := register.ListToolCalls(s.Metadata)
 	if err != nil {
 		return &ai.InvokeResponse{}, err
 	}
@@ -215,7 +221,7 @@ func (s *Service) GetInvoke(ctx context.Context, userInstruction string, baseSys
 	if len(tools) > 0 {
 		req.Tools = tools
 	}
-	chatCompletionResponse, err := s.LLMProvider.GetChatCompletions(ctx, req, s.md)
+	chatCompletionResponse, err := s.LLMProvider.GetChatCompletions(ctx, req, s.Metadata)
 	if err != nil {
 		return nil, err
 	}
@@ -248,7 +254,7 @@ func (s *Service) GetInvoke(ctx context.Context, userInstruction string, baseSys
 	req2 := openai.ChatCompletionRequest{
 		Messages: messages2,
 	}
-	chatCompletionResponse2, err := s.LLMProvider.GetChatCompletions(ctx, req2, s.md)
+	chatCompletionResponse2, err := s.LLMProvider.GetChatCompletions(ctx, req2, s.Metadata)
 	if err != nil {
 		return nil, err
 	}
@@ -282,10 +288,40 @@ func addToolsToRequest(req openai.ChatCompletionRequest, tagTools map[uint32]ope
 	return req, nil
 }
 
+func overWriteSystemPrompt(req openai.ChatCompletionRequest, sysPrompt string) openai.ChatCompletionRequest {
+	// do nothing if system prompt is empty
+	if sysPrompt == "" {
+		return req
+	}
+	// over write system prompt
+	isOverWrite := false
+	for i, msg := range req.Messages {
+		if msg.Role != "system" {
+			continue
+		}
+		req.Messages[i] = openai.ChatCompletionMessage{
+			Role:    msg.Role,
+			Content: sysPrompt,
+		}
+		isOverWrite = true
+	}
+	// append system prompt
+	if !isOverWrite {
+		req.Messages = append(req.Messages, openai.ChatCompletionMessage{
+			Role:    "system",
+			Content: sysPrompt,
+		})
+	}
+
+	ylog.Debug(" #1 first call after overwrite", "request", fmt.Sprintf("%+v", req))
+
+	return req
+}
+
 // GetChatCompletions returns the llm api response
 func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, reqID string, w http.ResponseWriter, includeCallStack bool) error {
 	// 1. find all hosting tool sfn
-	tagTools, err := register.ListToolCalls(s.md)
+	tagTools, err := register.ListToolCalls(s.Metadata)
 	if err != nil {
 		return err
 	}
@@ -294,11 +330,14 @@ func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatComplet
 	if err != nil {
 		return err
 	}
+	// 2.1 over write system prompt to request
+	req = overWriteSystemPrompt(req, s.systemPrompt.Load().(string))
+
 	// 3. return chat completions if tools is empty
 	if len(req.Tools) == 0 {
 		if req.Stream {
 			flusher := eventFlusher(w)
-			resStream, err := s.LLMProvider.GetChatCompletionsStream(ctx, req, s.md)
+			resStream, err := s.LLMProvider.GetChatCompletionsStream(ctx, req, s.Metadata)
 			if err != nil {
 				return err
 			}
@@ -318,7 +357,7 @@ func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatComplet
 				flusher.Flush()
 			}
 		} else {
-			resp, err := s.LLMProvider.GetChatCompletions(ctx, req, s.md)
+			resp, err := s.LLMProvider.GetChatCompletions(ctx, req, s.Metadata)
 			if err != nil {
 				return err
 			}
@@ -339,7 +378,7 @@ func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatComplet
 			flusher        = eventFlusher(w)
 			isFunctionCall = false
 		)
-		resStream, err := s.LLMProvider.GetChatCompletionsStream(ctx, req, s.md)
+		resStream, err := s.LLMProvider.GetChatCompletionsStream(ctx, req, s.Metadata)
 		if err != nil {
 			return err
 		}
@@ -396,7 +435,7 @@ func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatComplet
 			}
 		}
 	} else {
-		resp, err := s.LLMProvider.GetChatCompletions(ctx, req, s.md)
+		resp, err := s.LLMProvider.GetChatCompletions(ctx, req, s.Metadata)
 		if err != nil {
 			return err
 		}
@@ -446,7 +485,7 @@ func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatComplet
 
 	if req.Stream {
 		flusher := eventFlusher(w)
-		resStream, err := s.LLMProvider.GetChatCompletionsStream(ctx, req, s.md)
+		resStream, err := s.LLMProvider.GetChatCompletionsStream(ctx, req, s.Metadata)
 		if err != nil {
 			return err
 		}
@@ -469,7 +508,7 @@ func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatComplet
 			flusher.Flush()
 		}
 	} else {
-		resp, err := s.LLMProvider.GetChatCompletions(ctx, req, s.md)
+		resp, err := s.LLMProvider.GetChatCompletions(ctx, req, s.Metadata)
 		if err != nil {
 			return err
 		}
@@ -498,7 +537,7 @@ func (s *Service) runFunctionCalls(fns map[uint32][]*openai.ToolCall, reqID stri
 				continue
 			}
 			// wait for this request to be done
-			asyncCall.wg.Add(1 * register.SfnFactor(tag, s.md))
+			asyncCall.wg.Add(1 * register.SfnFactor(tag, s.Metadata))
 		}
 	}
 
