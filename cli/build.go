@@ -30,7 +30,7 @@ var buildViper *viper.Viper
 var buildCmd = &cobra.Command{
 	Use:   "build [flags] app.go",
 	Short: "Build the YoMo Stream Function",
-	Long:  "Build the YoMo Stream Function as WebAssembly",
+	Long:  "Build the YoMo Stream Function",
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := parseFileArg(args, &opts, defaultSFNSourceFile); err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
@@ -63,6 +63,7 @@ func init() {
 	rootCmd.AddCommand(buildCmd)
 
 	buildCmd.Flags().StringVarP(&opts.ModFile, "modfile", "m", "", "custom go.mod")
+	buildCmd.Flags().BoolVarP(&opts.WASI, "wasi", "w", false, "build with WASI target")
 
 	buildViper = bindViper(buildCmd)
 }

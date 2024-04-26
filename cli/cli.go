@@ -4,13 +4,14 @@ package cli
 
 import (
 	"fmt"
+	"log/slog"
 	"path"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"github.com/yomorun/yomo/cli/serverless"
 	"github.com/yomorun/yomo/pkg/file"
@@ -20,7 +21,8 @@ import (
 const (
 	defaultSFNSourceFile     = "app.go"
 	defaultSFNTestSourceFile = "app_test.go"
-	defaultSFNCompliedFile   = "sfn.wasm"
+	defaultSFNCompliedFile   = "sfn.yomo"
+	defaultSFNWASIFile       = "sfn.wasm"
 )
 
 // GetRootPath get root path
@@ -32,10 +34,11 @@ func GetRootPath() string {
 	return ""
 }
 
-func parseURL(url string, opts *serverless.Options) error {
-	url = strings.TrimSpace(url)
+func parseZipperAddr(opts *serverless.Options) error {
+	url := opts.ZipperAddr
 	if url == "" {
-		url = "localhost:9000"
+		opts.ZipperAddr = "localhost:9000"
+		return nil
 	}
 
 	splits := strings.Split(url, ":")
@@ -54,28 +57,43 @@ func parseURL(url string, opts *serverless.Options) error {
 }
 
 func getViperName(name string) string {
-	return "yomo_sfn_" + strings.ReplaceAll(name, "-", "_")
+	return "YOMO_SFN_" + strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
 }
 
 func bindViper(cmd *cobra.Command) *viper.Viper {
 	v := viper.New()
 
 	// bind environment variables
-	v.AllowEmptyEnv(true)
-	cmd.Flags().VisitAll(func(f *pflag.Flag) {
-		name := getViperName(f.Name)
-		v.BindEnv(name)
-		v.SetDefault(name, f.DefValue)
-	})
-
+	// v.AllowEmptyEnv(true)
+	v.SetEnvPrefix("YOMO_SFN")
+	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+	v.BindPFlags(cmd.Flags())
+	v.AutomaticEnv()
 	return v
 }
 
 func loadViperValue(cmd *cobra.Command, v *viper.Viper, p *string, name string) {
+	// loadViperValue(cmd, runViper, &opts.ZipperAddr, "url")
 	f := cmd.Flag(name)
+	slog.Info("loadViperValue",
+		"flag", f.Name,
+		"changed", f.Changed,
+		"val", f.Value.String(),
+		"default", f.DefValue,
+		"env_key", getViperName(name),
+		"env_val", v.GetString(getViperName(name)),
+	)
 	if !f.Changed {
 		*p = v.GetString(getViperName(name))
 	}
+}
+
+func loadOptionsFromViper(runViper *viper.Viper, opts *serverless.Options) {
+	opts.Name = runViper.GetString("name")
+	opts.ZipperAddr = runViper.GetString("zipper")
+	opts.Credential = runViper.GetString("credential")
+	opts.ModFile = runViper.GetString("modfile")
+	opts.Runtime = runViper.GetString("runtime")
 }
 
 func parseFileArg(args []string, opts *serverless.Options, defaultFile string) error {
@@ -84,7 +102,12 @@ func parseFileArg(args []string, opts *serverless.Options, defaultFile string) e
 	} else {
 		opts.Filename = defaultFile
 	}
-	if !file.Exists(opts.Filename) {
+	f, err := filepath.Abs(opts.Filename)
+	if err != nil {
+		return err
+	}
+	opts.Filename = f
+	if !file.Exists(f) {
 		return fmt.Errorf("file %s not found", opts.Filename)
 	}
 	return nil

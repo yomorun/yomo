@@ -235,5 +235,5 @@ func init() {
 	)
 	testPromptCmd.Flags().StringVarP(&aiServerAddr, "ai-server", "a", "http://localhost:8000", "LLM API server address")
 
-	runViper = bindViper(testPromptCmd)
+	// runViper = bindViper(testPromptCmd)
 }

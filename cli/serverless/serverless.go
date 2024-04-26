@@ -22,6 +22,7 @@ type Serverless interface {
 	// Run compiles and runs the serverless
 	Run(verbose bool) error
 
+	// Executable returns true if the serverless is executable
 	Executable() bool
 }
 
