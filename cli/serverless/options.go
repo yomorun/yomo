@@ -16,4 +16,6 @@ type Options struct {
 	Runtime string
 	// use environment variables
 	UseEnv bool
+	// WASI build with WASI target
+	WASI bool
 }

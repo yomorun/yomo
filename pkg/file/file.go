@@ -123,7 +123,7 @@ func GetBinContents(path string) []byte {
 // IsExec check is executable file
 func IsExec(filename string) bool {
 	ext := strings.ToLower(filepath.Ext(filename))
-	if ext == ".yomo" || ext == ".exe" {
+	if ext == ".yomo" || ext == ".exe" || ext == ".wasm" {
 		return true
 	}
 	return false

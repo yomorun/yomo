@@ -27,7 +27,6 @@ import (
 
 var (
 	config  string
-	url     string
 	opts    serverless.Options
 	verbose bool
 )

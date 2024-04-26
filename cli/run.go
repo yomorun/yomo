@@ -17,24 +17,24 @@ package cli
 
 import (
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
-	"github.com/yomorun/yomo/cli/serverless"
 	"github.com/yomorun/yomo/pkg/file"
 	"github.com/yomorun/yomo/pkg/log"
 
 	// serverless registrations
+	"github.com/yomorun/yomo/cli/serverless"
 	_ "github.com/yomorun/yomo/cli/serverless/deno"
+	_ "github.com/yomorun/yomo/cli/serverless/exec"
 	_ "github.com/yomorun/yomo/cli/serverless/golang"
 	_ "github.com/yomorun/yomo/cli/serverless/wasm"
+	"github.com/yomorun/yomo/cli/viper"
 )
-
-var runViper *viper.Viper
 
 // runCmd represents the run command
 var runCmd = &cobra.Command{
-	Use:   "run [flags] sfn.wasm",
+	Use:   "run [flags] sfn",
 	Short: "Run a YoMo Stream Function",
 	Long:  "Run a YoMo Stream Function",
 	Run: func(cmd *cobra.Command, args []string) {
@@ -42,16 +42,7 @@ var runCmd = &cobra.Command{
 			log.FailureStatusEvent(os.Stdout, err.Error())
 			return
 		}
-		loadViperValue(cmd, runViper, &url, "zipper")
-		loadViperValue(cmd, runViper, &opts.Name, "name")
-		loadViperValue(cmd, runViper, &opts.ModFile, "modfile")
-		loadViperValue(cmd, runViper, &opts.Credential, "credential")
-		loadViperValue(cmd, runViper, &opts.Runtime, "runtime")
-
-		if opts.Name == "" {
-			log.FailureStatusEvent(os.Stdout, "YoMo Stream Function name must be set.")
-			return
-		}
+		loadOptionsFromViper(viper.RunViper, &opts)
 		// Serverless
 		log.InfoStatusEvent(os.Stdout, "YoMo Stream Function file: %v", opts.Filename)
 		if !file.IsExec(opts.Filename) && opts.Name == "" {
@@ -60,7 +51,7 @@ var runCmd = &cobra.Command{
 		}
 		// resolve serverless
 		log.PendingStatusEvent(os.Stdout, "Create YoMo Stream Function instance...")
-		if err := parseURL(url, &opts); err != nil {
+		if err := parseZipperAddr(&opts); err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
 			return
 		}
@@ -71,25 +62,28 @@ var runCmd = &cobra.Command{
 		}
 		if !s.Executable() {
 			log.FailureStatusEvent(os.Stdout,
-				"You cannot run `%s` directly. build first with the `yomo build %s` command and then run with the 'yomo run sfn.wasm' command.",
+				"You cannot run `%s` directly. build first with the `yomo build %s` command and then run with the 'yomo run %s' command.",
+				opts.Filename,
 				opts.Filename,
 				opts.Filename,
 			)
 			return
 		}
 		// run
-		wasmRuntime := opts.Runtime
-		if wasmRuntime == "" {
-			wasmRuntime = "wazero"
+		// wasi
+		if ext := filepath.Ext(opts.Filename); ext == ".wasm" {
+			wasmRuntime := opts.Runtime
+			if wasmRuntime == "" {
+				wasmRuntime = "wazero"
+			}
+			log.InfoStatusEvent(os.Stdout, "WASM runtime: %s", wasmRuntime)
 		}
 		log.InfoStatusEvent(
 			os.Stdout,
-			"Starting YoMo Stream Function instance with executable file: %s. WasmRuntime: %s. Zipper: %v.",
-			opts.Filename,
-			wasmRuntime,
+			"Starting YoMo Stream Function instance with zipper: %v",
 			opts.ZipperAddr,
 		)
-		log.InfoStatusEvent(os.Stdout, "YoMo Stream Function is running...")
+		log.InfoStatusEvent(os.Stdout, "[%s] Stream Function is running...", opts.Name)
 		if err := s.Run(verbose); err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
 			return
@@ -100,11 +94,11 @@ var runCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(runCmd)
 
-	runCmd.Flags().StringVarP(&url, "zipper", "z", "localhost:9000", "YoMo-Zipper endpoint addr")
-	runCmd.Flags().StringVarP(&opts.Name, "name", "n", "sfn-app", "yomo stream function name.")
+	runCmd.Flags().StringVarP(&opts.ZipperAddr, "zipper", "z", "localhost:9000", "YoMo-Zipper endpoint addr")
+	runCmd.Flags().StringVarP(&opts.Name, "name", "n", "", "yomo stream function name.")
 	runCmd.Flags().StringVarP(&opts.ModFile, "modfile", "m", "", "custom go.mod")
 	runCmd.Flags().StringVarP(&opts.Credential, "credential", "d", "", "client credential payload, eg: `token:dBbBiRE7`")
 	runCmd.Flags().StringVarP(&opts.Runtime, "runtime", "r", "", "serverless runtime type")
 
-	runViper = bindViper(runCmd)
+	viper.BindPFlags(viper.RunViper, runCmd.Flags())
 }

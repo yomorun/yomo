@@ -69,7 +69,7 @@ var initCmd = &cobra.Command{
 
 		// create .env
 		fname = filepath.Join(name, ".env")
-		if err := file.PutContents(fname, []byte(fmt.Sprintf("YOMO_SFN_NAME=%s\n", name))); err != nil {
+		if err := file.PutContents(fname, []byte(fmt.Sprintf("YOMO_SFN_NAME=%s\nYOMO_SFN_ZIPPER=localhost:9000\n", name))); err != nil {
 			log.FailureStatusEvent(os.Stdout, "Write stream function .env file failure with the error: %v", err)
 			return
 		}
@@ -77,7 +77,7 @@ var initCmd = &cobra.Command{
 		log.SuccessStatusEvent(os.Stdout, "Congratulations! You have initialized the stream function successfully.")
 		log.InfoStatusEvent(os.Stdout, "You can enjoy the YoMo Stream Function via the command: ")
 		log.InfoStatusEvent(os.Stdout, "\tStep 1: cd %s && yomo build", name)
-		log.InfoStatusEvent(os.Stdout, "\tStep 2: yomo run sfn.wasm")
+		log.InfoStatusEvent(os.Stdout, "\tStep 2: yomo run sfn.yomo")
 	},
 }
 

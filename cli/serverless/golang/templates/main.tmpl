@@ -1,60 +1,63 @@
 
 // Serverless main function
 func main() {
-	addrs, err := parseZipperAddrs()
-	if err != nil {
-		log.Fatal(err)
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
 	}
-	{{if .UseEnv}} 
-	name := env("Name")
-	credential := env("Credential")
-	{{else}}
-	name := "{{.Name}}"
-	credential := "{{.Credential}}"
-	{{end}}
-	for _, addr := range addrs {
-		sfnClose, err := runSFN(name, addr, credential)
-		defer sfnClose()
-		if err != nil {
-			log.Printf("[sfn] connect to zipper[%s], %v\n", addr, err)
-			os.Exit(1)
-		}
-	}
-	select {}
 }
 
-func runSFN(name string, addr string, credential string) (closeFn func() error, err error) {
+var (
+	name       string
+	credential string
+	zipper     string
+	rootCmd    = &cobra.Command{
+		Short: "Start a YoMo Stream Function",
+		Long:  "Start a YoMo Stream Function",
+		Run: func(cmd *cobra.Command, args []string) {
+			run(cmd, args)
+		},
+	}
+)
+
+func run(_ *cobra.Command, _ []string) {
+	name := viper.GetString("name")
+	credential := viper.GetString("credential")
+	addr := viper.GetString("zipper")
+	// create a new stream function
 	sfn := yomo.NewStreamFunction(
-    name,
+		name,
 		addr,
-		yomo.WithCredential(credential),
+		yomo.WithSfnCredential(credential),
 	)
-	closeFn = sfn.Close
-
 	// init
-	sfn.Init(func() error {
-		return nil
-	})
-
+	{{if .WithInitFunc}}sfn.Init(Init){{end}}
 	// set observe data tags
 	sfn.SetObserveDataTags(DataTags()...)
-
 	// set wanted target
 	sfn.SetWantedTarget(WantedTarget())
-
 	// set handler
 	sfn.SetHandler(Handler)
-
 	// set error handler
 	sfn.SetErrorHandler(func(err error) {
 		log.Printf("[sfn][%s] error handler: %T %v\n", addr, err, err)
 	})
-
-	// start
-	err = sfn.Connect()
+	// connect to zipper
+	err := sfn.Connect()
 	if err != nil {
-		return 
+		log.Printf("[sfn] connect to zipper[%s], %v\n", addr, err)
+		os.Exit(1)
 	}
+	defer sfn.Close()
+	sfn.Wait()
+}
 
-	return 
+func init() {
+	rootCmd.Flags().StringVarP(&zipper, "zipper", "z", "localhost:9000", "YoMo-Zipper endpoint addr")
+	rootCmd.Flags().StringVarP(&name, "name", "n", "sfn-app", "yomo stream function name")
+	rootCmd.Flags().StringVarP(&credential, "credential", "d", "", "client credential payload, eg: `token:dBbBiRE7`")
+	viper.SetEnvPrefix("YOMO_SFN")
+	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+	viper.BindPFlags(rootCmd.Flags())
+	viper.AutomaticEnv()
 }
