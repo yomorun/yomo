@@ -125,8 +125,6 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 
 // Serve the server with a net.PacketConn.
 func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
-	s.connector = NewConnector(ctx)
-
 	tlsConfig := s.opts.tlsConfig
 	if tlsConfig == nil {
 		tlsConfig = pkgtls.MustCreateServerTLSConfig(conn.LocalAddr().String())
