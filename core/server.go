@@ -46,7 +46,7 @@ type Server struct {
 	ctx                  context.Context
 	ctxCancel            context.CancelFunc
 	name                 string
-	connector            *Connector
+	connector            Connector
 	router               router.Router
 	codec                frame.Codec
 	packetReadWriter     frame.PacketReadWriter
@@ -77,13 +77,24 @@ func NewServer(name string, opts ...ServerOption) *Server {
 		ctx:                  ctx,
 		ctxCancel:            ctxCancel,
 		name:                 name,
-		router:               router.Default(),
 		downstreams:          make(map[string]Downstream),
 		logger:               logger,
+		connector:            options.connector,
+		router:               options.router,
 		codec:                y3codec.Codec(),
 		packetReadWriter:     y3codec.PacketReadWriter(),
 		opts:                 options,
-		versionNegotiateFunc: DefaultVersionNegotiateFunc,
+		versionNegotiateFunc: options.versionNegotiateFunc,
+	}
+
+	if s.router == nil {
+		s.router = router.Default()
+	}
+	if s.connector == nil {
+		s.connector = NewConnector(ctx)
+	}
+	if s.versionNegotiateFunc == nil {
+		s.versionNegotiateFunc = DefaultVersionNegotiateFunc
 	}
 
 	// work with middleware.
@@ -407,7 +418,7 @@ func (s *Server) dispatchToDownstreams(c *Context) error {
 	return nil
 }
 
-func closeServer(downstreams map[string]Downstream, connector *Connector, listener frame.Listener, router router.Router) error {
+func closeServer(downstreams map[string]Downstream, connector Connector, listener frame.Listener, router router.Router) error {
 	for _, ds := range downstreams {
 		ds.Close()
 	}
@@ -446,27 +457,6 @@ func (s *Server) Downstreams() map[string]string {
 		snapshotOfDownstream[client.LocalName()] = client.ID()
 	}
 	return snapshotOfDownstream
-}
-
-// ConfigRouter is used to set router by zipper
-func (s *Server) ConfigRouter(router router.Router) {
-	if router == nil {
-		return
-	}
-	s.mu.Lock()
-	s.router = router
-	s.logger.Debug("config route")
-	s.mu.Unlock()
-}
-
-// ConfigVersionNegotiateFunc set the version negotiate function.
-func (s *Server) ConfigVersionNegotiateFunc(fn VersionNegotiateFunc) {
-	if fn == nil {
-		return
-	}
-	s.mu.Lock()
-	s.versionNegotiateFunc = fn
-	s.mu.Unlock()
 }
 
 // AddDownstreamServer add a downstream server to this server. all the DataFrames will be

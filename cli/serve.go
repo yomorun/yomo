@@ -22,7 +22,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/core/router"
 	"github.com/yomorun/yomo/core/ylog"
 	pkgconfig "github.com/yomorun/yomo/pkg/config"
 	"github.com/yomorun/yomo/pkg/log"
@@ -83,8 +82,6 @@ var serveCmd = &cobra.Command{
 		// new zipper
 		zipper, err := yomo.NewZipper(
 			conf.Name,
-			router.Default(),
-			nil,
 			conf.Mesh,
 			options...)
 		if err != nil {

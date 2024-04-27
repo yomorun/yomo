@@ -1,6 +1,7 @@
 package yomo
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -14,12 +15,13 @@ import (
 func TestZipperRun(t *testing.T) {
 	zipper, err := NewZipper(
 		"zipper",
-		router.Default(),
-		core.DefaultVersionNegotiateFunc,
 		map[string]config.Mesh{},
 		// WithAuth("token", "<CREDENTIAL>"),
 		WithUpstreamOption(core.ClientOption(WithCredential("token:<CREDENTIAL>"))),
 		WithZipperLogger(ylog.Default()),
+		WithRouter(router.Default()),
+		WithConnector(core.NewConnector(context.TODO())),
+		WithVersionNegotiateFunc(core.DefaultVersionNegotiateFunc),
 		WithZipperQuicConfig(core.DefaultQuicConfig),
 		WithZipperTLSConfig(nil),
 	)
