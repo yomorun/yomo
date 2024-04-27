@@ -43,6 +43,24 @@ func TestConnector(t *testing.T) {
 		assert.False(t, ok)
 	})
 
+	t.Run("Find", func(t *testing.T) {
+		conn1 := mockConn(connID, "name-1")
+		err := connector.Store(connID, conn1)
+		assert.NoError(t, err)
+
+		t.Run("ok", func(t *testing.T) {
+			ds, err := connector.Find(func(si ConnectionInfo) bool { return si.ID() == connID })
+			assert.NoError(t, err)
+			assert.Contains(t, ds, conn1)
+		})
+
+		t.Run("not ok", func(t *testing.T) {
+			ds, err := connector.Find(func(si ConnectionInfo) bool { return si.ID() != connID })
+			assert.NoError(t, err)
+			assert.NotContains(t, ds, conn1)
+		})
+	})
+
 	t.Run("Snapshot", func(t *testing.T) {
 		conn1 := mockConn(uint64(1), "name-1")
 		err := connector.Store(conn1.ID(), conn1)
@@ -82,6 +100,12 @@ func TestConnector(t *testing.T) {
 		t.Run("Delete", func(t *testing.T) {
 			err = connector.Remove(connID)
 			assert.ErrorIs(t, err, ErrConnectorClosed)
+		})
+
+		t.Run("Find", func(t *testing.T) {
+			ds, err := connector.Find(func(si ConnectionInfo) bool { return si.ID() == connID })
+			assert.ErrorIs(t, err, ErrConnectorClosed)
+			assert.Empty(t, ds)
 		})
 
 		t.Run("Snapshot", func(t *testing.T) {

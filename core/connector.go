@@ -10,6 +10,9 @@ import (
 // ErrConnectorClosed will be returned if the Connector has been closed.
 var ErrConnectorClosed = errors.New("yomo: connector closed")
 
+// FindConnectionFunc is used to search for a specific connection within the Connector.
+type FindConnectionFunc func(ConnectionInfo) bool
+
 type connector struct {
 	// ctx and ctxCancel manage the lifescyle of Connector.
 	ctx       context.Context
@@ -33,6 +36,9 @@ type Connector interface {
 	// If the Connector does not have a connection with the given connID, no action is taken.
 	// If a Connector is closed, the function returns ErrConnectorClosed.
 	Remove(connID uint64) error
+	// Find searches a stream collection using the specified find function.
+	// If Connector be closed, The function will return ErrConnectorClosed.
+	Find(FindConnectionFunc) ([]*Connection, error)
 	// Close closes all connections in the Connector and resets the Connector to a closed state.
 	// After closing, the Connector cannot be used anymore.
 	// Calling close multiple times has no effect.
@@ -106,6 +112,26 @@ func (c *connector) Snapshot() map[string]string {
 	})
 
 	return result
+}
+
+func (c *connector) Find(findFunc FindConnectionFunc) ([]*Connection, error) {
+	select {
+	case <-c.ctx.Done():
+		return []*Connection{}, ErrConnectorClosed
+	default:
+	}
+
+	connections := make([]*Connection, 0)
+	c.connections.Range(func(key interface{}, val interface{}) bool {
+		conn := val.(*Connection)
+
+		if findFunc(conn) {
+			connections = append(connections, conn)
+		}
+		return true
+	})
+
+	return connections, nil
 }
 
 func (c *connector) Close() error {
