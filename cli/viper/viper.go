@@ -7,7 +7,10 @@ import (
 	"github.com/spf13/viper"
 )
 
-var RunViper = viper.New()
+var (
+	RunViper = viper.New()
+	DevViper = viper.New()
+)
 
 func BindPFlags(v *viper.Viper, flags *pflag.FlagSet) {
 	// bind environment variables
