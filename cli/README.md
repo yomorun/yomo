@@ -58,7 +58,7 @@ See [../example/9-cli/sfn/app.go](../example/9-cli/sfn/app.go)
 
 #### Build
 
-Build the app.go to a WebAssembly file.
+Build the app.go, defaults to sfn.yomo binary file, with `-w` flag to generate a WebAssembly file.
 
 ```sh
 cd ../example/9-cli/sfn
@@ -69,5 +69,5 @@ yomo build
 #### Run
 
 ```sh
-yomo run sfn.wasm
+yomo run sfn.yomo
 ```

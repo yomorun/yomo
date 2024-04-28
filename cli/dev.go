@@ -57,7 +57,8 @@ var devCmd = &cobra.Command{
 		}
 		if !s.Executable() {
 			log.FailureStatusEvent(os.Stdout,
-				"You cannot run `%s` directly. build first with the `yomo build %s` command and then run with the 'yomo run sfn.wasm' command.",
+				"You cannot run `%s` directly. build first with the `yomo build %s` command and then run with the 'yomo run %s' command.",
+				opts.Filename,
 				opts.Filename,
 				opts.Filename,
 			)

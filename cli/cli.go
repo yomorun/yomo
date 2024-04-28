@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/yomorun/yomo/cli/serverless"
 	"github.com/yomorun/yomo/pkg/file"
@@ -55,29 +54,14 @@ func parseZipperAddr(opts *serverless.Options) error {
 	return nil
 }
 
-func getViperName(name string) string {
-	return "YOMO_SFN_" + strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
-}
-
-func bindViper(cmd *cobra.Command) *viper.Viper {
-	v := viper.New()
-
-	// bind environment variables
-	// v.AllowEmptyEnv(true)
-	v.SetEnvPrefix("YOMO_SFN")
-	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
-	v.BindPFlags(cmd.Flags())
-	v.AutomaticEnv()
-	return v
-}
-
-func loadOptionsFromViper(runViper *viper.Viper, opts *serverless.Options) {
-	opts.Name = runViper.GetString("name")
-	opts.ZipperAddr = runViper.GetString("zipper")
-	opts.Credential = runViper.GetString("credential")
-	opts.ModFile = runViper.GetString("modfile")
-	opts.Runtime = runViper.GetString("runtime")
-	opts.WASI = runViper.GetBool("wasi")
+// loadOptionsFromViper load options from viper, supports flags and environment variables
+func loadOptionsFromViper(v *viper.Viper, opts *serverless.Options) {
+	opts.Name = v.GetString("name")
+	opts.ZipperAddr = v.GetString("zipper")
+	opts.Credential = v.GetString("credential")
+	opts.ModFile = v.GetString("modfile")
+	opts.Runtime = v.GetString("runtime")
+	opts.WASI = v.GetBool("wasi")
 }
 
 func parseFileArg(args []string, opts *serverless.Options, defaultFiles ...string) error {
