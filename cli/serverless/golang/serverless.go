@@ -51,7 +51,6 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 		Name:             s.opts.Name,
 		ZipperAddr:       s.opts.ZipperAddr,
 		Credential:       s.opts.Credential,
-		UseEnv:           s.opts.UseEnv,
 		WithInitFunc:     opt.WithInit,
 		WithWantedTarget: opt.WithWantedTarget,
 	}
@@ -95,7 +94,7 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 	if err != nil {
 		return fmt.Errorf("Init: generate code err %s", err)
 	}
-	fmt.Println("333.code", string(code))
+	// fmt.Println("333.code", string(code))
 	// Create a temp folder.
 	tempDir, err := os.MkdirTemp("", "yomo_")
 	if err != nil {
@@ -225,7 +224,6 @@ func (s *GolangServerless) Build(clean bool) error {
 }
 
 // Run compiles and runs the serverless
-// TODO: 需要吗?
 func (s *GolangServerless) Run(verbose bool) error {
 	log.InfoStatusEvent(os.Stdout, "Run: %s", s.output)
 	cmd := exec.Command(s.output)
@@ -240,7 +238,7 @@ func (s *GolangServerless) Run(verbose bool) error {
 
 // Executable returns true if the serverless is executable
 func (s *GolangServerless) Executable() bool {
-	return false
+	return true
 }
 
 func generateCode(fset *token.FileSet, file *ast.File) ([]byte, error) {

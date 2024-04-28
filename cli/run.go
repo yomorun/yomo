@@ -38,7 +38,7 @@ var runCmd = &cobra.Command{
 	Short: "Run a YoMo Stream Function",
 	Long:  "Run a YoMo Stream Function",
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := parseFileArg(args, &opts, defaultSFNCompliedFile); err != nil {
+		if err := parseFileArg(args, &opts, defaultSFNCompliedFile, defaultSFNWASIFile, defaultSFNSourceFile); err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
 			return
 		}
@@ -68,6 +68,15 @@ var runCmd = &cobra.Command{
 				opts.Filename,
 			)
 			return
+		}
+		// build if it's go file
+		if ext := filepath.Ext(opts.Filename); ext == ".go" {
+			log.PendingStatusEvent(os.Stdout, "YoMo Stream Function building...")
+			if err := s.Build(true); err != nil {
+				log.FailureStatusEvent(os.Stdout, err.Error())
+				os.Exit(127)
+			}
+			log.SuccessStatusEvent(os.Stdout, "Success! YoMo Stream Function build.")
 		}
 		// run
 		// wasi

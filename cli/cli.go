@@ -94,21 +94,32 @@ func loadOptionsFromViper(runViper *viper.Viper, opts *serverless.Options) {
 	opts.Credential = runViper.GetString("credential")
 	opts.ModFile = runViper.GetString("modfile")
 	opts.Runtime = runViper.GetString("runtime")
+	opts.WASI = runViper.GetBool("wasi")
 }
 
-func parseFileArg(args []string, opts *serverless.Options, defaultFile string) error {
+func parseFileArg(args []string, opts *serverless.Options, defaultFiles ...string) error {
 	if len(args) >= 1 && args[0] != "" {
 		opts.Filename = args[0]
-	} else {
-		opts.Filename = defaultFile
+		return checkOptions(opts)
 	}
+	for _, f := range defaultFiles {
+		opts.Filename = f
+		err := checkOptions(opts)
+		if err == nil {
+			break
+		}
+	}
+	return nil
+}
+
+func checkOptions(opts *serverless.Options) error {
 	f, err := filepath.Abs(opts.Filename)
 	if err != nil {
 		return err
 	}
-	opts.Filename = f
 	if !file.Exists(f) {
-		return fmt.Errorf("file %s not found", opts.Filename)
+		return fmt.Errorf("file %s not found", f)
 	}
+	opts.Filename = f
 	return nil
 }

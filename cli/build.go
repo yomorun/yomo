@@ -38,8 +38,6 @@ var buildCmd = &cobra.Command{
 			// return
 		}
 		loadViperValue(cmd, buildViper, &opts.ModFile, "modfile")
-		// use environment variable to override flags
-		opts.UseEnv = true
 
 		log.InfoStatusEvent(os.Stdout, "YoMo Stream Function file: %v", opts.Filename)
 		s, err := serverless.Create(&opts)

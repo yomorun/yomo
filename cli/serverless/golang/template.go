@@ -36,8 +36,6 @@ type Context struct {
 	ZipperAddr string
 	// Client credential
 	Credential string
-	// use environment variables
-	UseEnv bool
 	// WithInitFunc determines whether to work with init function
 	WithInitFunc bool
 	// WithWantedTarget determines whether to work with SetWantedTarget
