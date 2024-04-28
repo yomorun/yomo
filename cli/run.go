@@ -20,7 +20,6 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"github.com/yomorun/yomo/pkg/file"
 	"github.com/yomorun/yomo/pkg/log"
 
 	// serverless registrations
@@ -45,7 +44,7 @@ var runCmd = &cobra.Command{
 		loadOptionsFromViper(viper.RunViper, &opts)
 		// Serverless
 		log.InfoStatusEvent(os.Stdout, "YoMo Stream Function file: %v", opts.Filename)
-		if !file.IsExec(opts.Filename) && opts.Name == "" {
+		if opts.Name == "" {
 			log.FailureStatusEvent(os.Stdout, "YoMo Stream Function's Name is empty, please set name used by `-n` flag")
 			return
 		}
@@ -104,7 +103,7 @@ func init() {
 	rootCmd.AddCommand(runCmd)
 
 	runCmd.Flags().StringVarP(&opts.ZipperAddr, "zipper", "z", "localhost:9000", "YoMo-Zipper endpoint addr")
-	runCmd.Flags().StringVarP(&opts.Name, "name", "n", "", "yomo stream function name.")
+	runCmd.Flags().StringVarP(&opts.Name, "name", "n", "app", "yomo stream function name.")
 	runCmd.Flags().StringVarP(&opts.ModFile, "modfile", "m", "", "custom go.mod")
 	runCmd.Flags().StringVarP(&opts.Credential, "credential", "d", "", "client credential payload, eg: `token:dBbBiRE7`")
 	runCmd.Flags().StringVarP(&opts.Runtime, "runtime", "r", "", "serverless runtime type")
