@@ -4,7 +4,6 @@ package cli
 
 import (
 	"fmt"
-	"log/slog"
 	"path"
 	"path/filepath"
 	"runtime"
@@ -70,22 +69,6 @@ func bindViper(cmd *cobra.Command) *viper.Viper {
 	v.BindPFlags(cmd.Flags())
 	v.AutomaticEnv()
 	return v
-}
-
-func loadViperValue(cmd *cobra.Command, v *viper.Viper, p *string, name string) {
-	// loadViperValue(cmd, runViper, &opts.ZipperAddr, "url")
-	f := cmd.Flag(name)
-	slog.Info("loadViperValue",
-		"flag", f.Name,
-		"changed", f.Changed,
-		"val", f.Value.String(),
-		"default", f.DefValue,
-		"env_key", getViperName(name),
-		"env_val", v.GetString(getViperName(name)),
-	)
-	if !f.Changed {
-		*p = v.GetString(getViperName(name))
-	}
 }
 
 func loadOptionsFromViper(runViper *viper.Viper, opts *serverless.Options) {

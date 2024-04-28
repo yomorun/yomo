@@ -8,8 +8,9 @@ import (
 )
 
 var (
-	RunViper = viper.New()
-	DevViper = viper.New()
+	RunViper   = viper.New()
+	DevViper   = viper.New()
+	BuildViper = viper.New()
 )
 
 func BindPFlags(v *viper.Viper, flags *pflag.FlagSet) {

@@ -19,12 +19,10 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"github.com/yomorun/yomo/cli/serverless"
+	"github.com/yomorun/yomo/cli/viper"
 	"github.com/yomorun/yomo/pkg/log"
 )
-
-var buildViper *viper.Viper
 
 // buildCmd represents the build command
 var buildCmd = &cobra.Command{
@@ -37,7 +35,7 @@ var buildCmd = &cobra.Command{
 			os.Exit(127)
 			// return
 		}
-		loadViperValue(cmd, buildViper, &opts.ModFile, "modfile")
+		loadOptionsFromViper(viper.BuildViper, &opts)
 
 		log.InfoStatusEvent(os.Stdout, "YoMo Stream Function file: %v", opts.Filename)
 		s, err := serverless.Create(&opts)
@@ -63,5 +61,5 @@ func init() {
 	buildCmd.Flags().StringVarP(&opts.ModFile, "modfile", "m", "", "custom go.mod")
 	buildCmd.Flags().BoolVarP(&opts.WASI, "wasi", "w", false, "build with WASI target")
 
-	buildViper = bindViper(buildCmd)
+	viper.BindPFlags(viper.BuildViper, buildCmd.Flags())
 }
