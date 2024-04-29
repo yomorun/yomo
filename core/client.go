@@ -437,7 +437,6 @@ func (c *Client) SetObserveDataTags(tags ...frame.Tag) {
 }
 
 func isReservedTag(tag frame.Tag) bool {
-	fmt.Println(tag >= 0xF000, tag <= 0xFFFF, 0xF000, tag, 0xFFFF)
 	return tag >= 0xF000 && tag <= 0xFFFF
 }
 
