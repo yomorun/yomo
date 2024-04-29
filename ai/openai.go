@@ -9,35 +9,6 @@ import (
 	"github.com/yomorun/yomo/core/ylog"
 )
 
-// ChatCompletionRequest represents a request structure for chat completion API
-type ChatCompletionRequest openai.ChatCompletionRequest
-
-// ChatCompletionMessage represents a message structure for chat completion API
-type ChatCompletionMessage openai.ChatCompletionMessage
-
-// ChatCompletionResponseFormat represents the response format for chat completion API
-type ChatCompletionResponseFormat struct {
-	Type string `json:"type,omitempty"`
-}
-
-// ChatCompletionResponseFormat represents the response format for chat completion API
-type ChatCompletionResponse openai.ChatCompletionResponse
-
-// ChatCompletionChoice represents the choice in chat completion API
-type ChatCompletionChoice struct {
-	Index        int                   `json:"index"`
-	Message      ChatCompletionMessage `json:"message"`
-	FinishReason string                `json:"finish_reason"`
-	// LogProbs     *LogProbs    `json:"logprobs,omitempty"`
-}
-
-// Usage Represents the total token usage per request to OpenAI
-type Usage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-	TotalTokens      int `json:"total_tokens"`
-}
-
 func ConvertToInvokeResponse(res *openai.ChatCompletionResponse, tcs map[uint32]openai.Tool) (*InvokeResponse, error) {
 	choice := res.Choices[0]
 	ylog.Debug(">>finish_reason", "reason", choice.FinishReason)
