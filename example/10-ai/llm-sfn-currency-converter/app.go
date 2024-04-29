@@ -4,13 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
 
-	"github.com/joho/godotenv"
-	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/serverless"
 )
@@ -29,35 +26,7 @@ func InputSchema() any {
 	return &Parameter{}
 }
 
-func main() {
-	sfn := yomo.NewStreamFunction(
-		"fn-exchange-rates",
-		"localhost:9000",
-		yomo.WithSfnCredential("token:Happy New Year"),
-		yomo.WithSfnAIFunctionDefinition(Description(), InputSchema()),
-	)
-	defer sfn.Close()
-
-	sfn.SetObserveDataTags(0x10)
-
-	// start
-	err := sfn.Connect()
-	if err != nil {
-		slog.Error("[sfn] connect", "err", err)
-		os.Exit(1)
-	}
-
-	sfn.SetHandler(handler)
-
-	// set the error handler function when server error occurs
-	sfn.SetErrorHandler(func(err error) {
-		slog.Error("[sfn] receive server error", "err", err)
-	})
-
-	sfn.Wait()
-}
-
-func handler(ctx serverless.Context) {
+func Handler(ctx serverless.Context) {
 	slog.Info("[sfn] receive", "ctx.data", string(ctx.Data()))
 
 	fcCtx, err := ai.ParseFunctionCallContext(ctx)
@@ -90,22 +59,13 @@ func handler(ctx serverless.Context) {
 	}
 
 	err = fcCtx.Write(result)
-
 	if err != nil {
 		slog.Error("[sfn] >> write error", "err", err)
 	}
 }
 
-func init() {
-	// if API_KEY is absent in ENV, read from .env
-	if _, ok := os.LookupEnv("API_KEY"); !ok {
-		// read API_KEY from .env
-		err := godotenv.Load()
-		if err != nil {
-			log.Fatal("Error loading .env file")
-			os.Exit(-1)
-		}
-	}
+func DataTags() []uint32 {
+	return []uint32{0x10}
 }
 
 type Rates struct {

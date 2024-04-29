@@ -3,11 +3,9 @@ package main
 import (
 	"fmt"
 	"log/slog"
-	"os"
 	"strings"
 	"time"
 
-	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/serverless"
 )
@@ -28,35 +26,7 @@ func InputSchema() any {
 
 const timeFormat = "2006-01-02 15:04:05"
 
-func main() {
-	sfn := yomo.NewStreamFunction(
-		"fn-timezone-converter",
-		"localhost:9000",
-		yomo.WithSfnCredential("token:Happy New Year"),
-		yomo.WithSfnAIFunctionDefinition(Description(), InputSchema()),
-	)
-	defer sfn.Close()
-
-	sfn.SetObserveDataTags(0x12)
-
-	// start
-	err := sfn.Connect()
-	if err != nil {
-		slog.Error("[sfn] connect", "err", err)
-		os.Exit(1)
-	}
-
-	sfn.SetHandler(handler)
-
-	// set the error handler function when server error occurs
-	sfn.SetErrorHandler(func(err error) {
-		slog.Error("[sfn] receive server error", "err", err)
-	})
-
-	sfn.Wait()
-}
-
-func handler(ctx serverless.Context) {
+func Handler(ctx serverless.Context) {
 	slog.Info("[sfn] receive", "ctx.data", string(ctx.Data()))
 
 	fcCtx, err := ai.ParseFunctionCallContext(ctx)
@@ -93,6 +63,10 @@ func handler(ctx serverless.Context) {
 	val := fmt.Sprintf("This time in timezone %s is %s when %s in %s", msg.TargetTimezone, targetTime, msg.TimeString, msg.SourceTimezone)
 
 	fcCtx.Write(val)
+}
+
+func DataTags() []uint32 {
+	return []uint32{0x12}
 }
 
 // ConvertTimezone converts the current time from the source timezone to the target timezone.

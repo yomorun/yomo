@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"os"
 
-	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/serverless"
 
@@ -25,35 +23,7 @@ func InputSchema() any {
 	return &Parameter{}
 }
 
-func main() {
-	sfn := yomo.NewStreamFunction(
-		"fn-get-ip-and-latency",
-		"localhost:9000",
-		yomo.WithSfnCredential("token:Happy New Year"),
-		yomo.WithSfnAIFunctionDefinition(Description(), InputSchema()),
-	)
-	defer sfn.Close()
-
-	sfn.SetObserveDataTags(0x10)
-
-	// start
-	err := sfn.Connect()
-	if err != nil {
-		slog.Error("[sfn] connect", "err", err)
-		os.Exit(1)
-	}
-
-	sfn.SetHandler(handler)
-
-	// set the error handler function when server error occurs
-	sfn.SetErrorHandler(func(err error) {
-		slog.Error("[sfn] receive server error", "err", err)
-	})
-
-	sfn.Wait()
-}
-
-func handler(ctx serverless.Context) {
+func Handler(ctx serverless.Context) {
 	fc, err := ai.ParseFunctionCallContext(ctx)
 	if err != nil {
 		slog.Error("[sfn] parse function call context", "err", err)
@@ -101,4 +71,8 @@ func handler(ctx serverless.Context) {
 	val := fmt.Sprintf("domain %s has ip %s with average latency %s", msg.Domain, ips[0], stats.AvgRtt)
 
 	fc.Write(val)
+}
+
+func DataTags() []uint32 {
+	return []uint32{0x10}
 }
