@@ -53,6 +53,8 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 		Credential:       s.opts.Credential,
 		WithInitFunc:     opt.WithInit,
 		WithWantedTarget: opt.WithWantedTarget,
+		WithDescription:  opt.WithDescription,
+		WithInputSchema:  opt.WithInputSchema,
 	}
 
 	// determine: rx stream serverless or raw bytes serverless.
@@ -226,13 +228,21 @@ func (s *GolangServerless) Build(clean bool) error {
 // Run compiles and runs the serverless
 func (s *GolangServerless) Run(verbose bool) error {
 	log.InfoStatusEvent(os.Stdout, "Run: %s", s.output)
+	dir := file.Dir(s.output)
 	cmd := exec.Command(s.output)
-	if verbose {
-		cmd.Env = []string{"YOMO_LOG_LEVEL=debug", "YOMO_LOG_VERBOSE=true"}
-	}
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
 	cmd.Args = os.Args
+	cmd.Dir = dir
+	err := serverless.LoadEnvFile(dir)
+	if err != nil {
+		return err
+	}
+	env := os.Environ()
+	if verbose {
+		cmd.Env = append(env, "YOMO_LOG_LEVEL=debug")
+	}
+	cmd.Env = env
 	return cmd.Run()
 }
 

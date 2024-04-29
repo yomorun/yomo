@@ -40,6 +40,10 @@ type Context struct {
 	WithInitFunc bool
 	// WithWantedTarget determines whether to work with SetWantedTarget
 	WithWantedTarget bool
+	// WithDescription determines whether to work with description
+	WithDescription bool
+	// WithInputSchema determines whether to work with input schema
+	WithInputSchema bool
 }
 
 // RenderTmpl renders the template with the given context

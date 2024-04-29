@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"path/filepath"
 	"sync"
+
+	"github.com/joho/godotenv"
+	"github.com/yomorun/yomo/pkg/file"
 )
 
 var (
@@ -39,6 +42,15 @@ func Register(s Serverless, exts ...string) {
 		}
 		drivers[ext] = s
 	}
+}
+
+// LoadEnvFile loads the environment variables from the file
+func LoadEnvFile(envDir string) error {
+	envFile := filepath.Join(envDir, ".env")
+	if file.Exists(envFile) {
+		return godotenv.Load(envFile)
+	}
+	return nil
 }
 
 // Create returns a new serverless instance with options.

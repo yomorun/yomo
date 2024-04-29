@@ -30,6 +30,7 @@ import (
 	"github.com/shirou/gopsutil/v3/process"
 	"github.com/spf13/cobra"
 	"github.com/yomorun/yomo/ai"
+	"github.com/yomorun/yomo/cli/serverless"
 	"github.com/yomorun/yomo/pkg/log"
 )
 
@@ -53,29 +54,28 @@ var testPromptCmd = &cobra.Command{
 			sfnDir = append(sfnDir, ".")
 		}
 		for _, dir := range sfnDir {
+			dir, err := filepath.Abs(dir)
+			if err != nil {
+				log.FailureStatusEvent(os.Stdout, "Failed to get absolute path of sfn directory: %v", err)
+				continue
+			}
 			// run sfn
 			log.InfoStatusEvent(os.Stdout, "--------------------------------------------------------")
 			log.InfoStatusEvent(os.Stdout, "Attaching LLM function in directory: %v", dir)
 			// build
-			cmd := exec.Command("go", "build", "-o", "sfn.bin", ".")
-			cmd.Dir = dir
-			cmd.Env = os.Environ()
-			if err := cmd.Run(); err != nil {
-				log.FailureStatusEvent(os.Stdout, "Failed to build LLM function in directory: %v, error: %v", dir, err)
-				continue
-			}
-			log.InfoStatusEvent(os.Stdout, "Build LLM function success")
-			// remove sfn.bin
-			sfnBin, err := filepath.Abs(filepath.Join(dir, "sfn.bin"))
-			if err != nil {
-				log.FailureStatusEvent(os.Stdout, "Failed to get absolute path of sfn.bin: %v", err)
-				continue
-			}
+			sfnSource := filepath.Join(dir, "app.go")
+			buildCmd.Run(nil, []string{sfnSource})
+			sfnBin := filepath.Join(dir, "sfn.yomo")
 			defer os.RemoveAll(sfnBin)
 
 			// run
-			cmd = exec.Command(sfnBin)
+			cmd := exec.Command(sfnBin)
 			cmd.Dir = dir
+			err = serverless.LoadEnvFile(dir)
+			if err != nil {
+				log.FailureStatusEvent(os.Stdout, "Failed to load env file in directory: %v, error: %v", dir, err)
+				continue
+			}
 			env := append(os.Environ(), "YOMO_LOG_LEVEL=info")
 			cmd.Env = env
 			stdout, err := cmd.StdoutPipe()
@@ -115,7 +115,7 @@ var testPromptCmd = &cobra.Command{
 						log.InfoStatusEvent(os.Stdout, "Register LLM function success")
 						goto REQUEST
 					}
-				case <-time.After(5 * time.Second):
+				case <-time.After(15 * time.Second):
 					log.FailureStatusEvent(os.Stdout, "Connect to zipper failed, please check the zipper is running or not")
 					os.Exit(1)
 				}

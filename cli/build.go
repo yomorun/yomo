@@ -38,12 +38,14 @@ var buildCmd = &cobra.Command{
 		loadOptionsFromViper(viper.BuildViper, &opts)
 
 		log.InfoStatusEvent(os.Stdout, "YoMo Stream Function file: %v", opts.Filename)
+		log.InfoStatusEvent(os.Stdout, "YoMo Stream Function parsing...")
 		s, err := serverless.Create(&opts)
 		if err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
 			os.Exit(127)
 			// return
 		}
+		log.InfoStatusEvent(os.Stdout, "YoMo Stream Function parse done.")
 		// build
 		log.PendingStatusEvent(os.Stdout, "YoMo Stream Function building...")
 		if err := s.Build(true); err != nil {

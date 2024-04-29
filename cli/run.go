@@ -91,7 +91,7 @@ var runCmd = &cobra.Command{
 			"Starting YoMo Stream Function instance with zipper: %v",
 			opts.ZipperAddr,
 		)
-		log.InfoStatusEvent(os.Stdout, "[%s] Stream Function is running...", opts.Name)
+		log.InfoStatusEvent(os.Stdout, "Stream Function is running...")
 		if err := s.Run(verbose); err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
 			return

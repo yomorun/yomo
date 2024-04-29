@@ -29,13 +29,18 @@ func run(_ *cobra.Command, _ []string) {
 		name,
 		addr,
 		yomo.WithSfnCredential(credential),
+		{{if and .WithDescription .WithInputSchema}}yomo.WithSfnAIFunctionDefinition(Description(), InputSchema()),{{end}}
 	)
+	{{if .WithInitFunc}}
 	// init
-	{{if .WithInitFunc}}sfn.Init(Init){{end}}
+	sfn.Init(Init)
+	{{end}}
 	// set observe data tags
 	sfn.SetObserveDataTags(DataTags()...)
+	{{if .WithWantedTarget}}
 	// set wanted target
 	sfn.SetWantedTarget(WantedTarget())
+	{{end}}
 	// create a Rx runtime.
 	rt := rx.NewRuntime(sfn)
 	// set handler
