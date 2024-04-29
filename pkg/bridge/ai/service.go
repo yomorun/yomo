@@ -86,6 +86,7 @@ func newService(credential string, zipperAddr string, aiProvider LLMProvider, ex
 		}
 		s.Metadata = md
 	}
+	s.SetSystemPrompt("")
 
 	// source
 	source, err := s.createSource()
