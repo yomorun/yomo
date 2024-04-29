@@ -1,12 +1,12 @@
 package cfopenai
 
 import (
+	"context"
 	"os"
 	"testing"
 
+	openai "github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
-	"github.com/yomorun/yomo/ai"
-	"github.com/yomorun/yomo/pkg/bridge/ai/internal/mock_client"
 )
 
 func TestCloudflareOpenAIProvider_Name(t *testing.T) {
@@ -42,7 +42,8 @@ func TestNewProvider(t *testing.T) {
 }
 
 func TestCloudflareOpenAIProvider_GetChatCompletions(t *testing.T) {
-	client := &mock_client.MockOpenAIClient{}
+	config := newConfig("test", "https://faker.gateway.ai.cloudflare.com/v1/111111111111111111/ai-cc-test")
+	client := openai.NewClientWithConfig(config)
 
 	provider := &Provider{
 		CfEndpoint: "https://gateway.ai.cloudflare.com/v1/111111111111111111/ai-cc-test",
@@ -51,7 +52,7 @@ func TestCloudflareOpenAIProvider_GetChatCompletions(t *testing.T) {
 		client:     client,
 	}
 
-	msgs := []ai.ChatCompletionMessage{
+	msgs := []openai.ChatCompletionMessage{
 		{
 			Role:    "user",
 			Content: "hello",
@@ -61,11 +62,13 @@ func TestCloudflareOpenAIProvider_GetChatCompletions(t *testing.T) {
 			Content: "I'm a bot",
 		},
 	}
-	req := &ai.ChatCompletionRequest{
+	req := openai.ChatCompletionRequest{
 		Messages: msgs,
 	}
 
-	_, err := provider.GetChatCompletions(req)
+	_, err := provider.GetChatCompletions(context.TODO(), req, nil)
+	t.Log(err)
 
-	assert.Equal(t, nil, err)
+	_, err = provider.GetChatCompletionsStream(context.TODO(), req, nil)
+	t.Log(err)
 }

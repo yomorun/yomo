@@ -31,7 +31,6 @@ import (
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/azopenai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cfazure"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cfopenai"
-	"github.com/yomorun/yomo/pkg/bridge/ai/provider/gemini"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/openai"
 )
 
@@ -127,8 +126,6 @@ func registerAIProvider(aiConfig *ai.Config) error {
 				provider["deployment_id"],
 				provider["api_version"],
 			))
-		case "gemini":
-			ai.RegisterProvider(gemini.NewProvider(provider["api_key"]))
 		case "openai":
 			ai.RegisterProvider(openai.NewProvider(provider["api_key"], provider["model"]))
 		case "cloudflare_azure":

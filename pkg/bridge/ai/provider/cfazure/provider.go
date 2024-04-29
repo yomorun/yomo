@@ -2,16 +2,18 @@
 package cfazure
 
 import (
+
+	// automatically load .env file
 	"context"
 	"fmt"
 
-	// automatically load .env file
 	_ "github.com/joho/godotenv/autoload"
+	openai "github.com/sashabaranov/go-openai"
 
-	"github.com/yomorun/yomo/ai"
+	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
+	"github.com/yomorun/yomo/pkg/bridge/ai"
 	bridgeai "github.com/yomorun/yomo/pkg/bridge/ai"
-	"github.com/yomorun/yomo/pkg/bridge/ai/internal/oai"
 )
 
 // Provider is the provider for Azure OpenAI
@@ -21,7 +23,7 @@ type Provider struct {
 	DeploymentID string
 	APIVersion   string
 	CfEndpoint   string
-	client       oai.OpenAIRequester
+	client       *openai.Client
 }
 
 // check if implements ai.Provider
@@ -33,6 +35,11 @@ func NewProvider(cfEndpoint string, apiKey string, resource string, deploymentID
 		ylog.Error("parameters are required", "cfEndpoint", cfEndpoint, "apiKey", apiKey, "resource", resource, "deploymentID", deploymentID)
 		return nil
 	}
+
+	config := newConfig(cfEndpoint, apiKey, resource, deploymentID, apiVersion)
+
+	client := openai.NewClientWithConfig(config)
+
 	ylog.Debug("CloudflareAzureProvider", "cfEndpoint", cfEndpoint, "apiKey", apiKey, "resource", resource, "deploymentID", deploymentID, "apiVersion", apiVersion)
 	return &Provider{
 		CfEndpoint:   cfEndpoint,   // https://gateway.ai.cloudflare.com/v1/111111111111111111/ai-cc-test
@@ -40,7 +47,7 @@ func NewProvider(cfEndpoint string, apiKey string, resource string, deploymentID
 		Resource:     resource,     // azure resource
 		DeploymentID: deploymentID, // azure deployment id
 		APIVersion:   apiVersion,   // azure api version
-		client:       &oai.OpenAIClient{},
+		client:       client,
 	}
 }
 
@@ -49,11 +56,22 @@ func (p *Provider) Name() string {
 	return "cloudflare_azure"
 }
 
-// GetChatCompletions get chat completions for ai service
-func (p *Provider) GetChatCompletions(req *ai.ChatCompletionRequest) (*ai.ChatCompletionResponse, error) {
-	url := fmt.Sprintf("%s/azure-openai/%s/%s/chat/completions?api-version=%s", p.CfEndpoint, p.Resource, p.DeploymentID, p.APIVersion)
+// GetChatCompletions implements ai.LLMProvider.
+func (p *Provider) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, _ metadata.M) (openai.ChatCompletionResponse, error) {
+	return p.client.CreateChatCompletion(ctx, req)
+}
 
-	res, err := p.client.ChatCompletions(context.Background(), url, "api-key", p.APIKey, req)
+// GetChatCompletionsStream implements ai.LLMProvider.
+func (p *Provider) GetChatCompletionsStream(ctx context.Context, req openai.ChatCompletionRequest, _ metadata.M) (ai.ResponseRecver, error) {
+	return p.client.CreateChatCompletionStream(ctx, req)
+}
 
-	return res, err
+func newConfig(cfEndpoint string, apiKey string, resource string, deploymentID string, apiVersion string) openai.ClientConfig {
+	baseUrl := fmt.Sprintf("%s/azure-openai/%s/%s", cfEndpoint, resource, deploymentID)
+
+	config := openai.DefaultAzureConfig(apiKey, baseUrl)
+	config.APIType = openai.APITypeCloudflareAzure
+	config.APIVersion = apiVersion
+
+	return config
 }

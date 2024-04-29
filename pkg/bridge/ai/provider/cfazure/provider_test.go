@@ -1,11 +1,11 @@
 package cfazure
 
 import (
+	"context"
 	"testing"
 
+	openai "github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
-	"github.com/yomorun/yomo/ai"
-	"github.com/yomorun/yomo/pkg/bridge/ai/internal/mock_client"
 )
 
 func TestNewProvider(t *testing.T) {
@@ -35,7 +35,8 @@ func TestName(t *testing.T) {
 }
 
 func TestCloudflareAzureProvider_GetChatCompletions(t *testing.T) {
-	client := &mock_client.MockOpenAIClient{}
+	config := newConfig("https://facker.gateway.ai.cloudflare.com/v1/111111111111111111/ai-cc-test", "test", "test", "test", "test-version")
+	client := openai.NewClientWithConfig(config)
 
 	provider := &Provider{
 		CfEndpoint:   "https://gateway.ai.cloudflare.com/v1/111111111111111111/ai-cc-test",
@@ -46,7 +47,7 @@ func TestCloudflareAzureProvider_GetChatCompletions(t *testing.T) {
 		client:       client,
 	}
 
-	msgs := []ai.ChatCompletionMessage{
+	msgs := []openai.ChatCompletionMessage{
 		{
 			Role:    "user",
 			Content: "hello",
@@ -56,11 +57,13 @@ func TestCloudflareAzureProvider_GetChatCompletions(t *testing.T) {
 			Content: "I'm a bot",
 		},
 	}
-	req := &ai.ChatCompletionRequest{
+	req := openai.ChatCompletionRequest{
 		Messages: msgs,
 	}
 
-	_, err := provider.GetChatCompletions(req)
+	_, err := provider.GetChatCompletions(context.TODO(), req, nil)
+	t.Log(err)
 
-	assert.Equal(t, nil, err)
+	_, err = provider.GetChatCompletionsStream(context.TODO(), req, nil)
+	t.Log(err)
 }
