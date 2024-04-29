@@ -426,8 +426,19 @@ func (c *Client) SetDataFrameObserver(fn func(*frame.DataFrame)) {
 }
 
 // SetObserveDataTags set the data tag list that will be observed.
-func (c *Client) SetObserveDataTags(tag ...frame.Tag) {
-	c.opts.observeDataTags = tag
+func (c *Client) SetObserveDataTags(tags ...frame.Tag) {
+	for _, tag := range tags {
+		if isReservedTag(tag) {
+			panic("[0xF000, 0xFFFF] is reserved for Yomo; please do not observe within this range")
+		}
+	}
+
+	c.opts.observeDataTags = tags
+}
+
+func isReservedTag(tag frame.Tag) bool {
+	fmt.Println(tag >= 0xF000, tag <= 0xFFFF, 0xF000, tag, 0xFFFF)
+	return tag >= 0xF000 && tag <= 0xFFFF
 }
 
 // SetErrorHandler set error handler

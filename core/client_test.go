@@ -21,6 +21,7 @@ import (
 const (
 	testaddr     = "127.0.0.1:19999"
 	redirectAddr = "127.0.0.1:19998"
+	testaddr1    = "127.0.0.1:19997"
 )
 
 var discardingLogger = ylog.NewFromConfig(ylog.Config{Output: "/dev/null", ErrorOutput: "/dev/null"})
@@ -36,6 +37,43 @@ func TestClientDialNothing(t *testing.T) {
 
 	qerr := net.ErrClosed
 	assert.ErrorAs(t, err, &qerr, "dial must timeout")
+}
+
+func TestReservedTag(t *testing.T) {
+	go func() {
+		srv := NewServer("zipper", WithServerLogger(discardingLogger))
+		srv.ListenAndServe(context.TODO(), testaddr1)
+	}()
+
+	sfn := NewClient("sfn", testaddr1, ClientTypeStreamFunction, WithLogger(discardingLogger))
+
+	assert.Panics(t, func() { sfn.SetObserveDataTags(0xF000) })
+	assert.Panics(t, func() { sfn.SetObserveDataTags(0xF001) })
+	assert.Panics(t, func() { sfn.SetObserveDataTags(0xFFFF) })
+
+	ctx, cancel := context.WithCancelCause(context.TODO())
+
+	// skip public method to test tag reserved
+	option := defaultClientOption()
+	option.observeDataTags = []uint32{0xF001}
+	sfn = &Client{
+		zipperAddr: testaddr1,
+		name:       "sfn",
+		clientID:   "sfn-client-id",
+		clientType: ClientTypeStreamFunction,
+		opts:       option,
+		Logger:     ylog.Default(),
+		ctx:        ctx,
+		ctxCancel:  cancel,
+
+		done:      make(chan struct{}),
+		reConnect: make(chan struct{}),
+		wrCh:      make(chan frame.Frame),
+		rdCh:      make(chan readOut),
+	}
+
+	err := sfn.Connect(ctx)
+	assert.EqualError(t, err, `[0xF000, 0xFFFF] is reserved for Yomo; please do not observe within this range, tag: 0xF001`)
 }
 
 func TestConnectTo(t *testing.T) {
