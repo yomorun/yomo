@@ -63,10 +63,14 @@ func ConnMiddleware(next core.ConnHandler) core.ConnHandler {
 				conn.Logger.Error("failed to register ai function", "name", ff.Name, "tag", ff.Tag, "err", err)
 				return
 			}
+			conn.Metadata().Set(MetadataKey, "1")
 			conn.Logger.Info("register ai function success", "name", ff.Name, "tag", ff.Tag, "definition", string(ff.Definition))
 		}
 	}
 }
+
+// MetadataKey tells that the function is an ai function.
+const MetadataKey = "ai"
 
 // Config is the configuration of AI bridge.
 // The configuration looks like:

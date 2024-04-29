@@ -7,7 +7,6 @@ import (
 
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/core/router"
 	"github.com/yomorun/yomo/pkg/config"
 )
 
@@ -43,7 +42,7 @@ func RunZipper(ctx context.Context, configPath string) error {
 		}
 	}
 
-	zipper, err := NewZipper(conf.Name, router.Default(), core.DefaultVersionNegotiateFunc, conf.Mesh, options...)
+	zipper, err := NewZipper(conf.Name, conf.Mesh, options...)
 	if err != nil {
 		return err
 	}
@@ -53,10 +52,7 @@ func RunZipper(ctx context.Context, configPath string) error {
 }
 
 // NewZipper returns a zipper.
-func NewZipper(
-	name string, router router.Router, vgfn core.VersionNegotiateFunc,
-	meshConfig map[string]config.Mesh, options ...ZipperOption,
-) (Zipper, error) {
+func NewZipper(name string, meshConfig map[string]config.Mesh, options ...ZipperOption) (Zipper, error) {
 	opts := &zipperOptions{}
 
 	for _, o := range options {
@@ -89,10 +85,6 @@ func NewZipper(
 
 		server.AddDownstreamServer(downstream)
 	}
-
-	server.ConfigRouter(router)
-
-	server.ConfigVersionNegotiateFunc(vgfn)
 
 	// watch signal.
 	go waitSignalForShutdownServer(server)

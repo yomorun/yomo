@@ -7,6 +7,7 @@ import (
 
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/auth"
+	"github.com/yomorun/yomo/core/router"
 	"github.com/yomorun/yomo/core/ylog"
 )
 
@@ -28,12 +29,15 @@ type ServerOption func(*serverOptions)
 
 // serverOptions are the options for YoMo server.
 type serverOptions struct {
-	quicConfig       *quic.Config
-	tlsConfig        *tls.Config
-	auths            map[string]auth.Authentication
-	logger           *slog.Logger
-	connMiddlewares  []ConnMiddleware
-	frameMiddlewares []FrameMiddleware
+	quicConfig           *quic.Config
+	tlsConfig            *tls.Config
+	auths                map[string]auth.Authentication
+	logger               *slog.Logger
+	connector            Connector
+	versionNegotiateFunc VersionNegotiateFunc
+	router               router.Router
+	connMiddlewares      []ConnMiddleware
+	frameMiddlewares     []FrameMiddleware
 }
 
 func defaultServerOptions() *serverOptions {
@@ -79,6 +83,27 @@ func WithServerQuicConfig(qc *quic.Config) ServerOption {
 func WithServerLogger(logger *slog.Logger) ServerOption {
 	return func(o *serverOptions) {
 		o.logger = logger
+	}
+}
+
+// WithRouter sets router for the server.
+func WithRouter(r router.Router) ServerOption {
+	return func(o *serverOptions) {
+		o.router = r
+	}
+}
+
+// WithConnector sets connector for the server.
+func WithConnector(c Connector) ServerOption {
+	return func(o *serverOptions) {
+		o.connector = c
+	}
+}
+
+// WithVersionNegotiateFunc sets the version negotiate function.
+func WithVersionNegotiateFunc(f VersionNegotiateFunc) ServerOption {
+	return func(o *serverOptions) {
+		o.versionNegotiateFunc = f
 	}
 }
 
