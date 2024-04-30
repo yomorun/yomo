@@ -75,6 +75,9 @@ func newService(credential string, zipperAddr string, aiProvider LLMProvider, ex
 		LLMProvider:  aiProvider,
 		sfnCallCache: make(map[string]*sfnAsyncCall),
 	}
+
+	s.SetSystemPrompt("")
+
 	// metadata
 	if exFn == nil {
 		s.Metadata = metadata.M{}
