@@ -42,21 +42,22 @@ func ConnMiddleware(next core.ConnHandler) core.ConnHandler {
 			return
 		}
 
-		tag := conn.ObserveDataTags()[0]
+		for _, tag := range conn.ObserveDataTags() {
+			// register ai function
+			fd := ai.FunctionDefinition{}
+			err := json.Unmarshal([]byte(definition), &fd)
+			if err != nil {
+				conn.Logger.Error("unmarshal function definition", "error", err)
+				return
+			}
+			err = register.RegisterFunction(tag, &fd, conn.ID(), connMd)
+			if err != nil {
+				conn.Logger.Error("failed to register ai function", "name", conn.Name(), "tag", tag, "err", err)
+				return
+			}
+			conn.Logger.Info("register ai function success", "name", conn.Name(), "tag", tag, "definition", string(definition))
+		}
 
-		// register ai function
-		fd := ai.FunctionDefinition{}
-		err := json.Unmarshal([]byte(definition), &fd)
-		if err != nil {
-			conn.Logger.Error("unmarshal function definition", "error", err)
-			return
-		}
-		err = register.RegisterFunction(tag, &fd, conn.ID(), connMd)
-		if err != nil {
-			conn.Logger.Error("failed to register ai function", "name", conn.Name(), "tag", tag, "err", err)
-			return
-		}
-		conn.Logger.Info("register ai function success", "name", conn.Name(), "tag", tag, "definition", string(definition))
 	}
 }
 
