@@ -16,7 +16,6 @@ import (
 	"github.com/invopop/jsonschema"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 	"github.com/yomorun/yomo/pkg/id"
 	yquic "github.com/yomorun/yomo/pkg/listener/quic"
@@ -249,13 +248,8 @@ func (c *Client) handshakeWithDefinition(hf *frame.HandshakeFrame) error {
 	if functionDefinition == nil {
 		return nil
 	}
-	// add definition to handshake frame
-	md := metadata.M{
-		ai.FunctionDefinitionKey: string(functionDefinition),
-	}
-	rawMd, err := md.Encode()
-	hf.Metadata = rawMd
-	return err
+	hf.FunctionDefinition = functionDefinition
+	return nil
 }
 
 func parseAIFunctionDefinition(sfnName, aiFunctionDescription string, aiFunctionInputModel any) ([]byte, error) {

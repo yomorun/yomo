@@ -26,11 +26,11 @@ var (
 func ConnMiddleware(next core.ConnHandler) core.ConnHandler {
 	return func(conn *core.Connection) {
 		connMd := conn.Metadata().Clone()
-		definition, ok := connMd.Get("x-ai-definition")
+		definition, ok := connMd.Get(ai.FunctionDefinitionKey)
 
 		defer func() {
 			// definition does not be transmitted in mesh network, It only works for handshake.
-			conn.Metadata().Set("x-ai-definition", "")
+			conn.Metadata().Set(ai.FunctionDefinitionKey, "")
 			next(conn)
 			if ok {
 				register.UnregisterFunction(conn.ID(), connMd)

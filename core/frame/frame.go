@@ -60,8 +60,8 @@ type HandshakeFrame struct {
 	AuthPayload string
 	// Version is used by the source/sfn to communicate their spec version to the server.
 	Version string
-	// Metadata stores additional data, it is an map[string]string{} that be encoded in msgpack.
-	Metadata []byte
+	// FunctionDefinition is the definition of the AI function.
+	FunctionDefinition []byte
 	// WantedTarget represents the target that accepts the data frames that carrying the same target.
 	WantedTarget string
 }

@@ -96,5 +96,5 @@ type ChainMessage struct {
 	ToolMessages []ToolMessage
 }
 
-// FunctionDefinitionKey is the yomo handshake metadata key for function definition
-const FunctionDefinitionKey = "x-ai-definition"
+// FunctionDefinitionKey is the yomo metadata key for function definition
+const FunctionDefinitionKey = "function-definition"
