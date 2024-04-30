@@ -22,7 +22,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/core/router"
 	"github.com/yomorun/yomo/core/ylog"
 	pkgconfig "github.com/yomorun/yomo/pkg/config"
 	"github.com/yomorun/yomo/pkg/log"
@@ -31,7 +30,6 @@ import (
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/azopenai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cfazure"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cfopenai"
-	"github.com/yomorun/yomo/pkg/bridge/ai/provider/gemini"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/openai"
 )
 
@@ -84,8 +82,6 @@ var serveCmd = &cobra.Command{
 		// new zipper
 		zipper, err := yomo.NewZipper(
 			conf.Name,
-			router.Default(),
-			nil,
 			conf.Mesh,
 			options...)
 		if err != nil {
@@ -127,8 +123,6 @@ func registerAIProvider(aiConfig *ai.Config) error {
 				provider["deployment_id"],
 				provider["api_version"],
 			))
-		case "gemini":
-			ai.RegisterProvider(gemini.NewProvider(provider["api_key"]))
 		case "openai":
 			ai.RegisterProvider(openai.NewProvider(provider["api_key"], provider["model"]))
 		case "cloudflare_azure":

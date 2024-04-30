@@ -3,6 +3,7 @@ package register
 import (
 	"testing"
 
+	"github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/metadata"
@@ -40,10 +41,10 @@ func TestRegister(t *testing.T) {
 	assertToolCalls(t, 0, nil, toolCalls)
 }
 
-func assertToolCalls(t *testing.T, wantTag uint32, want *ai.FunctionDefinition, toolCalls map[uint32]ai.ToolCall) {
+func assertToolCalls(t *testing.T, wantTag uint32, want *ai.FunctionDefinition, toolCalls map[uint32]openai.Tool) {
 	var (
 		tag uint32
-		got ai.ToolCall
+		got openai.Tool
 	)
 	for k, v := range toolCalls {
 		tag = k
