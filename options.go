@@ -6,6 +6,7 @@ import (
 
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core"
+	"github.com/yomorun/yomo/core/router"
 )
 
 type (
@@ -94,6 +95,26 @@ var (
 	WithZipperLogger = func(l *slog.Logger) ZipperOption {
 		return func(zo *zipperOptions) {
 			zo.serverOption = append(zo.serverOption, core.WithServerLogger(l))
+		}
+	}
+
+	// WithRouter sets router for the zipper.
+	WithRouter = func(r router.Router) ZipperOption {
+		return func(zo *zipperOptions) {
+			zo.serverOption = append(zo.serverOption, core.WithRouter(r))
+		}
+	}
+
+	// WithConnector sets connector for the zipper.
+	WithConnector = func(c core.Connector) ZipperOption {
+		return func(zo *zipperOptions) {
+			zo.serverOption = append(zo.serverOption, core.WithConnector(c))
+		}
+	}
+
+	WithVersionNegotiateFunc = func(f core.VersionNegotiateFunc) ZipperOption {
+		return func(zo *zipperOptions) {
+			zo.serverOption = append(zo.serverOption, core.WithVersionNegotiateFunc(f))
 		}
 	}
 

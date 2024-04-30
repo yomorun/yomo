@@ -27,6 +27,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sashabaranov/go-openai"
 	"github.com/shirou/gopsutil/v3/process"
 	"github.com/spf13/cobra"
 	"github.com/yomorun/yomo/ai"
@@ -210,7 +211,7 @@ var testPromptCmd = &cobra.Command{
 	},
 }
 
-func getToolCallResult(tc *ai.ToolCall, tms []ai.ToolMessage) string {
+func getToolCallResult(tc *openai.ToolCall, tms []ai.ToolMessage) string {
 	result := ""
 	for _, tm := range tms {
 		if tm.ToolCallId == tc.ID {
