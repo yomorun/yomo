@@ -42,10 +42,9 @@ func TestConnectTo(t *testing.T) {
 	t.Parallel()
 	connectToEndpoint := "127.0.0.1:19996"
 	go func() {
-		srv := NewServer("zipper", WithServerLogger(discardingLogger))
-		srv.ConfigVersionNegotiateFunc(func(cVersion, sVersion string) error {
+		srv := NewServer("zipper", WithServerLogger(discardingLogger), WithVersionNegotiateFunc(func(cVersion, sVersion string) error {
 			return &ErrConnectTo{connectToEndpoint}
-		})
+		}))
 		srv.ListenAndServe(context.TODO(), redirectAddr)
 	}()
 
@@ -58,7 +57,7 @@ func TestConnectTo(t *testing.T) {
 
 	_ = source.Connect(context.TODO())
 
-	assert.Equal(t, source.zipperAddr, connectToEndpoint)
+	assert.Equal(t, connectToEndpoint, source.zipperAddr)
 }
 
 func TestFrameRoundTrip(t *testing.T) {
@@ -80,11 +79,11 @@ func TestFrameRoundTrip(t *testing.T) {
 		WithServerQuicConfig(DefaultQuicConfig),
 		WithServerTLSConfig(nil),
 		WithServerLogger(discardingLogger),
+		WithRouter(router.Default()),
+		WithConnector(NewConnector(ctx)),
 		WithConnMiddleware(ht.connMiddleware),
 		WithFrameMiddleware(ht.frameMiddleware),
 	)
-	server.ConfigRouter(router.Default())
-	server.ConfigVersionNegotiateFunc(DefaultVersionNegotiateFunc)
 
 	recorder := newFrameWriterRecorder("mockID", "mockClientLocal", "mockClientRemote")
 	server.AddDownstreamServer(recorder)

@@ -3,14 +3,13 @@ package openai
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	// automatically load .env file
 	_ "github.com/joho/godotenv/autoload"
-	"github.com/yomorun/yomo/ai"
+	"github.com/sashabaranov/go-openai"
+	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
-	"github.com/yomorun/yomo/pkg/bridge/ai/internal/oai"
 
 	bridgeai "github.com/yomorun/yomo/pkg/bridge/ai"
 )
@@ -25,7 +24,7 @@ type Provider struct {
 	// Model is the model for OpenAI
 	// eg. "gpt-3.5-turbo-1106", "gpt-4-turbo-preview", "gpt-4-vision-preview", "gpt-4"
 	Model  string
-	client oai.OpenAIRequester
+	client *openai.Client
 }
 
 // check if implements ai.Provider
@@ -39,11 +38,12 @@ func NewProvider(apiKey string, model string) *Provider {
 	if model == "" {
 		model = os.Getenv("OPENAI_MODEL")
 	}
+
 	ylog.Debug("new openai provider", "api_endpoint", APIEndpoint, "api_key", apiKey, "model", model)
 	return &Provider{
 		APIKey: apiKey,
 		Model:  model,
-		client: &oai.OpenAIClient{},
+		client: openai.NewClient(apiKey),
 	}
 }
 
@@ -52,16 +52,16 @@ func (p *Provider) Name() string {
 	return "openai"
 }
 
-// GetChatCompletions get chat completions for ai service
-func (p *Provider) GetChatCompletions(req *ai.ChatCompletionRequest) (*ai.ChatCompletionResponse, error) {
-	// reqBody := oai.ReqBody{Model: p.Model}
+// GetChatCompletions implements ai.LLMProvider.
+func (p *Provider) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, _ metadata.M) (openai.ChatCompletionResponse, error) {
 	req.Model = p.Model
 
-	// res, err := p.client.ChatCompletion(APIEndpoint, "Authorization", fmt.Sprintf("Bearer %s", p.APIKey), reqBody, baseSystemMessage, userInstruction, chainMessage, md, withTool)
-	res, err := p.client.ChatCompletions(context.Background(), APIEndpoint, "Authorization", fmt.Sprintf("Bearer %s", p.APIKey), req)
-	if err != nil {
-		return nil, err
-	}
+	return p.client.CreateChatCompletion(ctx, req)
+}
 
-	return res, nil
+// GetChatCompletionsStream implements ai.LLMProvider.
+func (p *Provider) GetChatCompletionsStream(ctx context.Context, req openai.ChatCompletionRequest, _ metadata.M) (bridgeai.ResponseRecver, error) {
+	req.Model = p.Model
+
+	return p.client.CreateChatCompletionStream(ctx, req)
 }

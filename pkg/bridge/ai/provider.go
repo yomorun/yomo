@@ -1,18 +1,27 @@
 package ai
 
 import (
+	"context"
 	"sync"
 
-	"github.com/yomorun/yomo/ai"
+	openai "github.com/sashabaranov/go-openai"
+	"github.com/yomorun/yomo/core/metadata"
 )
 
 // LLMProvider provides an interface to the llm providers
 type LLMProvider interface {
 	// Name returns the name of the llm provider
 	Name() string
-	// GetChatCompletions returns the chat completions
-	// GetChatCompletions(userInstruction string, baseSystemMessage string, chainMessage ai.ChainMessage, md metadata.M, withTool bool) (*ai.InvokeResponse, error)
-	GetChatCompletions(chatCompletionRequest *ai.ChatCompletionRequest) (*ai.ChatCompletionResponse, error)
+	// GetChatCompletions returns the chat completions.
+	GetChatCompletions(context.Context, openai.ChatCompletionRequest, metadata.M) (openai.ChatCompletionResponse, error)
+	// GetChatCompletionsStream returns the chat completions in stream.
+	GetChatCompletionsStream(context.Context, openai.ChatCompletionRequest, metadata.M) (ResponseRecver, error)
+}
+
+// ResponseRecver receives stream response.
+type ResponseRecver interface {
+	// Recv is the receive function.
+	Recv() (response openai.ChatCompletionStreamResponse, err error)
 }
 
 var (

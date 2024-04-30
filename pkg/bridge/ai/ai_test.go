@@ -7,37 +7,12 @@ import (
 	"sync"
 	"testing"
 
+	openai "github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/ai"
-	"github.com/yomorun/yomo/pkg/bridge/ai/internal/oai"
+	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 )
-
-// MockOpenAIClient is a mock implementation of the OpenAIClient for test
-type MockOpenAIClient struct {
-	APIEndpoint     string
-	AuthHeaderKey   string
-	AuthHeaderValue string
-	Request         *ai.ChatCompletionRequest
-}
-
-var _ oai.OpenAIRequester = &MockOpenAIClient{}
-
-// ChatCompletion is a mock implementation of the ChatCompletion method
-func (c *MockOpenAIClient) ChatCompletions(
-	ctx context.Context,
-	apiEndpoint string,
-	authHeaderKey string,
-	authHeaderValue string,
-	req *ai.ChatCompletionRequest,
-) (*ai.ChatCompletionResponse, error) {
-	c.APIEndpoint = apiEndpoint
-	c.AuthHeaderKey = authHeaderKey
-	c.AuthHeaderValue = authHeaderValue
-	c.Request = req
-
-	return nil, nil
-}
 
 func TestParseZipperAddr(t *testing.T) {
 	tests := []struct {
@@ -158,14 +133,18 @@ type MockLLMProvider struct {
 	name string
 }
 
+func (m *MockLLMProvider) GetChatCompletions(_ context.Context, req openai.ChatCompletionRequest, _ metadata.M) (openai.ChatCompletionResponse, error) {
+	return openai.ChatCompletionResponse{}, nil
+}
+
+func (m *MockLLMProvider) GetChatCompletionsStream(_ context.Context, req openai.ChatCompletionRequest, _ metadata.M) (ResponseRecver, error) {
+	return nil, nil
+}
+
 var _ LLMProvider = &MockLLMProvider{}
 
 func (m *MockLLMProvider) Name() string {
 	return m.name
-}
-
-func (m *MockLLMProvider) GetChatCompletions(chatCompletionRequest *ai.ChatCompletionRequest) (*ai.ChatCompletionResponse, error) {
-	return nil, nil
 }
 
 func TestListProviders(t *testing.T) {

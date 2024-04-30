@@ -60,6 +60,9 @@ func ConnMiddleware(next core.ConnHandler) core.ConnHandler {
 	}
 }
 
+// MetadataKey tells that the function is an ai function.
+const MetadataKey = "ai"
+
 // Config is the configuration of AI bridge.
 // The configuration looks like:
 //
