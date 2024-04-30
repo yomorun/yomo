@@ -210,16 +210,6 @@ func (s *Server) handshake(fconn frame.Conn) (*Connection, error) {
 
 		hf := first.(*frame.HandshakeFrame)
 
-		// 0. check tags if reserved
-		for _, tag := range hf.ObserveDataTags {
-			if isReservedTag(tag) {
-				return nil, rejectHandshake(
-					fconn,
-					fmt.Errorf("[0xF000, 0xFFFF] is reserved for Yomo; please do not observe within this range, tag: 0x%X", tag),
-				)
-			}
-		}
-
 		// 1. version negotiation
 		if err := s.versionNegotiateFunc(hf.Version, Version); err != nil {
 			if se := new(ErrConnectTo); errors.As(err, &se) {
