@@ -8,7 +8,7 @@ import (
 )
 
 // ReducerTag is the observed tag of the reducer
-var ReducerTag uint32 = 0x61
+var ReducerTag uint32 = 0xE000
 
 // FunctionCall describes the data structure when invoking the sfn function
 type FunctionCall struct {
