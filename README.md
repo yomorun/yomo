@@ -104,7 +104,7 @@ func InputSchema() any {
 Create a Stateful Serverless Function to get the IP and Latency of a domain:
 
 ```golang
-func handler(ctx serverless.Context) {
+func Handler(ctx serverless.Context) {
 	fc, _ := ai.ParseFunctionCallContext(ctx)
 
 	var msg Parameter
@@ -128,7 +128,7 @@ func handler(ctx serverless.Context) {
 Finally, let's run it
 
 ```bash
-$ go run main.go
+$ yomo run app.go
 
 time=2024-03-19T21:43:30.583+08:00 level=INFO msg="connected to zipper" component=StreamFunction sfn_id=B0ttNSEKLSgMjXidB11K1 sfn_name=fn-get-ip-from-domain zipper_addr=localhost:9000
 time=2024-03-19T21:43:30.584+08:00 level=INFO msg="register ai function success" component=StreamFunction sfn_id=B0ttNSEKLSgMjXidB11K1 sfn_name=fn-get-ip-from-domain zipper_addr=localhost:9000 name=fn-get-ip-from-domain tag=16
