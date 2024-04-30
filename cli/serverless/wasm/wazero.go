@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
@@ -29,6 +30,7 @@ type wazeroRuntime struct {
 	observed      []uint32
 	wanted        string
 	serverlessCtx serverless.Context
+	mu            sync.Mutex
 }
 
 func newWazeroRuntime() (*wazeroRuntime, error) {
@@ -152,6 +154,8 @@ func (r *wazeroRuntime) GetWantedTarget() string {
 
 // RunHandler runs the wasm application (request -> response mode)
 func (r *wazeroRuntime) RunHandler(ctx serverless.Context) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	// context
 	select {
 	case <-r.ctx.Done():
@@ -173,6 +177,8 @@ func (r *wazeroRuntime) RunHandler(ctx serverless.Context) error {
 
 // Close releases all the resources related to the runtime
 func (r *wazeroRuntime) Close() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.cache.Close(r.ctx)
 	return r.Runtime.Close(r.ctx)
 }
@@ -238,6 +244,7 @@ func (r *wazeroRuntime) write(ctx context.Context, m api.Module, stack []uint64)
 	}
 	stack[0] = 0
 }
+
 func (r *wazeroRuntime) writeWithTarget(ctx context.Context, m api.Module, stack []uint64) {
 	tag := uint32(stack[0])
 
