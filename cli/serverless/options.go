@@ -14,6 +14,6 @@ type Options struct {
 	Credential string
 	// Runtime specifies the serverless runtime environment type
 	Runtime string
-	// use environment variables
-	UseEnv bool
+	// WASI build with WASI target
+	WASI bool
 }

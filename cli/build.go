@@ -19,35 +19,33 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"github.com/yomorun/yomo/cli/serverless"
+	"github.com/yomorun/yomo/cli/viper"
 	"github.com/yomorun/yomo/pkg/log"
 )
-
-var buildViper *viper.Viper
 
 // buildCmd represents the build command
 var buildCmd = &cobra.Command{
 	Use:   "build [flags] app.go",
 	Short: "Build the YoMo Stream Function",
-	Long:  "Build the YoMo Stream Function as WebAssembly",
+	Long:  "Build the YoMo Stream Function",
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := parseFileArg(args, &opts, defaultSFNSourceFile); err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
 			os.Exit(127)
 			// return
 		}
-		loadViperValue(cmd, buildViper, &opts.ModFile, "modfile")
-		// use environment variable to override flags
-		opts.UseEnv = true
+		loadOptionsFromViper(viper.BuildViper, &opts)
 
 		log.InfoStatusEvent(os.Stdout, "YoMo Stream Function file: %v", opts.Filename)
+		log.InfoStatusEvent(os.Stdout, "YoMo Stream Function parsing...")
 		s, err := serverless.Create(&opts)
 		if err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
 			os.Exit(127)
 			// return
 		}
+		log.InfoStatusEvent(os.Stdout, "YoMo Stream Function parse done.")
 		// build
 		log.PendingStatusEvent(os.Stdout, "YoMo Stream Function building...")
 		if err := s.Build(true); err != nil {
@@ -63,6 +61,7 @@ func init() {
 	rootCmd.AddCommand(buildCmd)
 
 	buildCmd.Flags().StringVarP(&opts.ModFile, "modfile", "m", "", "custom go.mod")
+	buildCmd.Flags().BoolVarP(&opts.WASI, "wasi", "w", false, "build with WASI target")
 
-	buildViper = bindViper(buildCmd)
+	viper.BindPFlags(viper.BuildViper, buildCmd.Flags())
 }

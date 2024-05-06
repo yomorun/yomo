@@ -51,31 +51,33 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 		Name:             s.opts.Name,
 		ZipperAddr:       s.opts.ZipperAddr,
 		Credential:       s.opts.Credential,
-		UseEnv:           s.opts.UseEnv,
 		WithInitFunc:     opt.WithInit,
 		WithWantedTarget: opt.WithWantedTarget,
+		WithDescription:  opt.WithDescription,
+		WithInputSchema:  opt.WithInputSchema,
 	}
 
 	// determine: rx stream serverless or raw bytes serverless.
 	isRx := strings.Contains(string(source), "rx.Stream")
-	isWasm := true
-	mainFuncTmpl := ""
-	mainFunc, err := RenderTmpl(string(WasmMainFuncTmpl), &ctx)
+	isWasi := opts.WASI
+	// main function template
+	mainFuncTmpl := MainFuncTmpl
+	// wasi template
+	if isWasi {
+		mainFuncTmpl = WasiMainFuncTmpl
+	}
+	// rx template
+	if isRx {
+		if isWasi {
+			return errors.New("wasi does not support rx.Stream")
+		}
+		mainFuncTmpl = MainFuncRxTmpl
+	}
+	mainFunc, err := RenderTmpl(string(mainFuncTmpl), &ctx)
 	if err != nil {
 		return fmt.Errorf("Init: %s", err)
 	}
-	if isRx {
-		if isWasm {
-			return errors.New("wasm does not support rx.Stream")
-		}
-		MainFuncRxTmpl = append(MainFuncRxTmpl, PartialsTmpl...)
-		mainFuncTmpl = string(MainFuncRxTmpl)
-		mainFunc, err = RenderTmpl(mainFuncTmpl, &ctx)
-		if err != nil {
-			return fmt.Errorf("Init: %s", err)
-		}
-	}
-
+	// merge app source code
 	source = append(source, mainFunc...)
 	fset := token.NewFileSet()
 	astf, err := parser.ParseFile(fset, "", source, parser.ParseComments)
@@ -85,13 +87,19 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 	// Add import packages
 	astutil.AddNamedImport(fset, astf, "", "github.com/yomorun/yomo")
 	astutil.AddNamedImport(fset, astf, "", "github.com/joho/godotenv")
-	// wasm guest import
-	astutil.AddNamedImport(fset, astf, "", "github.com/yomorun/yomo/serverless/guest")
+	astutil.AddNamedImport(fset, astf, "", "github.com/spf13/cobra")
+	astutil.AddNamedImport(fset, astf, "", "github.com/spf13/viper")
+
+	if isWasi {
+		// wasm guest import
+		astutil.AddNamedImport(fset, astf, "", "github.com/yomorun/yomo/serverless/guest")
+	}
 	// Generate the code
 	code, err := generateCode(fset, astf)
 	if err != nil {
 		return fmt.Errorf("Init: generate code err %s", err)
 	}
+	// fmt.Println("333.code", string(code))
 	// Create a temp folder.
 	tempDir, err := os.MkdirTemp("", "yomo_")
 	if err != nil {
@@ -114,7 +122,7 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 	cmd := exec.Command("go", "mod", "init", name)
 	cmd.Dir = tempDir
 	env := os.Environ()
-	env = append(env, fmt.Sprintf("GO111MODULE=%s", "on"))
+	// env = append(env, fmt.Sprintf("GO111MODULE=%s", "on"))
 	cmd.Env = env
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -122,7 +130,6 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 		return err
 	}
 
-	// TODO: check if is already built in temp dir by MD5
 	s.source = tempFile
 	return nil
 }
@@ -136,10 +143,6 @@ func (s *GolangServerless) Build(clean bool) error {
 	}
 	// env
 	env := os.Environ()
-	env = append(
-		env,
-		fmt.Sprintf("GO111MODULE=%s", "on"),
-	)
 	// use custom go.mod
 	if s.opts.ModFile != "" {
 		mfile, _ := filepath.Abs(s.opts.ModFile)
@@ -191,8 +194,13 @@ func (s *GolangServerless) Build(clean bool) error {
 		}
 	}
 	// build
+	// wasi
 	dir, _ := filepath.Split(s.opts.Filename)
-	sl, _ := filepath.Abs(dir + "sfn.wasm")
+	filename := "sfn.yomo"
+	if s.opts.WASI {
+		filename = "sfn.wasm"
+	}
+	sl, _ := filepath.Abs(dir + filename)
 
 	// clean build
 	if clean {
@@ -201,16 +209,20 @@ func (s *GolangServerless) Build(clean bool) error {
 		}()
 	}
 	s.output = sl
-	tinygo, err := exec.LookPath("tinygo")
-	if err != nil {
-		return errors.New("[tinygo] command was not found. to build the wasm file, you need to install tinygo. For details, visit https://tinygo.org")
+	cmd := exec.Command("go", "build", "-o", sl, appPath)
+	// wasi
+	if s.opts.WASI {
+		tinygo, err := exec.LookPath("tinygo")
+		if err != nil {
+			return errors.New("[tinygo] command was not found. to build the wasm file, you need to install tinygo. For details, visit https://tinygo.org")
+		}
+		cmd = exec.Command(tinygo, "build", "-no-debug", "-target", "wasi", "-o", sl, appPath)
 	}
-	cmd := exec.Command(tinygo, "build", "-no-debug", "-target", "wasi", "-o", sl, appPath)
 	cmd.Env = env
 	cmd.Dir = s.tempDir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		err = fmt.Errorf("Build: failure, tinygo %s", out)
+		err = fmt.Errorf("Build: failure, %s %s", cmd.String(), out)
 		return err
 	}
 	return nil
@@ -219,17 +231,27 @@ func (s *GolangServerless) Build(clean bool) error {
 // Run compiles and runs the serverless
 func (s *GolangServerless) Run(verbose bool) error {
 	log.InfoStatusEvent(os.Stdout, "Run: %s", s.output)
+	dir := file.Dir(s.output)
 	cmd := exec.Command(s.output)
-	if verbose {
-		cmd.Env = []string{"YOMO_LOG_LEVEL=debug", "YOMO_LOG_VERBOSE=true"}
-	}
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
+	cmd.Args = os.Args
+	cmd.Dir = dir
+	err := serverless.LoadEnvFile(dir)
+	if err != nil {
+		return err
+	}
+	env := os.Environ()
+	if verbose {
+		cmd.Env = append(env, "YOMO_LOG_LEVEL=debug")
+	}
+	cmd.Env = env
 	return cmd.Run()
 }
 
+// Executable returns true if the serverless is executable
 func (s *GolangServerless) Executable() bool {
-	return false
+	return true
 }
 
 func generateCode(fset *token.FileSet, file *ast.File) ([]byte, error) {

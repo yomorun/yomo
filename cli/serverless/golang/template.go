@@ -16,11 +16,6 @@ var MainFuncRxTmpl []byte
 //go:embed templates/main.tmpl
 var MainFuncTmpl []byte
 
-// PartialsTmpl partials template, used for rendering the partials
-//
-//go:embed templates/partials.tmpl
-var PartialsTmpl []byte
-
 //go:embed templates/init.tmpl
 var InitTmpl []byte
 
@@ -30,23 +25,25 @@ var InitTestTmpl []byte
 //go:embed templates/init_rx.tmpl
 var InitRxTmpl []byte
 
-//go:embed templates/wasm_main.tmpl
-var WasmMainFuncTmpl []byte
+//go:embed templates/wasi_main.tmpl
+var WasiMainFuncTmpl []byte
 
 // Context defines context for the template
 type Context struct {
 	// Name of the servcie
 	Name string
-	// ZipperAddrs is the address of the zipper server
+	// ZipperAddr is the address of the zipper server
 	ZipperAddr string
 	// Client credential
 	Credential string
-	// use environment variables
-	UseEnv bool
 	// WithInitFunc determines whether to work with init function
 	WithInitFunc bool
 	// WithWantedTarget determines whether to work with SetWantedTarget
 	WithWantedTarget bool
+	// WithDescription determines whether to work with description
+	WithDescription bool
+	// WithInputSchema determines whether to work with input schema
+	WithInputSchema bool
 }
 
 // RenderTmpl renders the template with the given context

@@ -5,12 +5,11 @@ package cli
 import (
 	"fmt"
 	"path"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 
-	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"github.com/yomorun/yomo/cli/serverless"
 	"github.com/yomorun/yomo/pkg/file"
@@ -20,7 +19,8 @@ import (
 const (
 	defaultSFNSourceFile     = "app.go"
 	defaultSFNTestSourceFile = "app_test.go"
-	defaultSFNCompliedFile   = "sfn.wasm"
+	defaultSFNCompliedFile   = "sfn.yomo"
+	defaultSFNWASIFile       = "sfn.wasm"
 )
 
 // GetRootPath get root path
@@ -32,10 +32,11 @@ func GetRootPath() string {
 	return ""
 }
 
-func parseURL(url string, opts *serverless.Options) error {
-	url = strings.TrimSpace(url)
+func parseZipperAddr(opts *serverless.Options) error {
+	url := opts.ZipperAddr
 	if url == "" {
-		url = "localhost:9000"
+		opts.ZipperAddr = "localhost:9000"
+		return nil
 	}
 
 	splits := strings.Split(url, ":")
@@ -53,39 +54,39 @@ func parseURL(url string, opts *serverless.Options) error {
 	return nil
 }
 
-func getViperName(name string) string {
-	return "yomo_sfn_" + strings.ReplaceAll(name, "-", "_")
+// loadOptionsFromViper load options from viper, supports flags and environment variables
+func loadOptionsFromViper(v *viper.Viper, opts *serverless.Options) {
+	opts.Name = v.GetString("name")
+	opts.ZipperAddr = v.GetString("zipper")
+	opts.Credential = v.GetString("credential")
+	opts.ModFile = v.GetString("modfile")
+	opts.Runtime = v.GetString("runtime")
+	opts.WASI = v.GetBool("wasi")
 }
 
-func bindViper(cmd *cobra.Command) *viper.Viper {
-	v := viper.New()
-
-	// bind environment variables
-	v.AllowEmptyEnv(true)
-	cmd.Flags().VisitAll(func(f *pflag.Flag) {
-		name := getViperName(f.Name)
-		v.BindEnv(name)
-		v.SetDefault(name, f.DefValue)
-	})
-
-	return v
-}
-
-func loadViperValue(cmd *cobra.Command, v *viper.Viper, p *string, name string) {
-	f := cmd.Flag(name)
-	if !f.Changed {
-		*p = v.GetString(getViperName(name))
-	}
-}
-
-func parseFileArg(args []string, opts *serverless.Options, defaultFile string) error {
+func parseFileArg(args []string, opts *serverless.Options, defaultFiles ...string) error {
 	if len(args) >= 1 && args[0] != "" {
 		opts.Filename = args[0]
-	} else {
-		opts.Filename = defaultFile
+		return checkOptions(opts)
 	}
-	if !file.Exists(opts.Filename) {
-		return fmt.Errorf("file %s not found", opts.Filename)
+	for _, f := range defaultFiles {
+		opts.Filename = f
+		err := checkOptions(opts)
+		if err == nil {
+			break
+		}
 	}
+	return nil
+}
+
+func checkOptions(opts *serverless.Options) error {
+	f, err := filepath.Abs(opts.Filename)
+	if err != nil {
+		return err
+	}
+	if !file.Exists(f) {
+		return fmt.Errorf("file %s not found", f)
+	}
+	opts.Filename = f
 	return nil
 }
