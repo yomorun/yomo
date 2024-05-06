@@ -34,6 +34,9 @@ func encodeHandshakeFrame(f *frame.HandshakeFrame) ([]byte, error) {
 	// version
 	versionBlock := y3.NewPrimitivePacketEncoder(tagHandshakeVersion)
 	versionBlock.SetStringValue(f.Version)
+	// function definition
+	fdBlock := y3.NewPrimitivePacketEncoder(tagHandshakeFunctionDefinition)
+	fdBlock.SetBytesValue(f.FunctionDefinition)
 	// wantTarget
 	wantTargetBlock := y3.NewPrimitivePacketEncoder(tagHandshakeWantedTarget)
 	wantTargetBlock.SetStringValue(f.WantedTarget)
@@ -47,6 +50,7 @@ func encodeHandshakeFrame(f *frame.HandshakeFrame) ([]byte, error) {
 	handshake.AddPrimitivePacket(authNameBlock)
 	handshake.AddPrimitivePacket(authPayloadBlock)
 	handshake.AddPrimitivePacket(versionBlock)
+	handshake.AddPrimitivePacket(fdBlock)
 	handshake.AddPrimitivePacket(wantTargetBlock)
 
 	return handshake.Encode(), nil
@@ -114,6 +118,11 @@ func decodeHandshakeFrame(data []byte, f *frame.HandshakeFrame) error {
 		}
 		f.Version = version
 	}
+	// function definition
+	if fdBlock, ok := node.PrimitivePackets[byte(tagHandshakeFunctionDefinition)]; ok {
+		fd := fdBlock.ToBytes()
+		f.FunctionDefinition = fd
+	}
 	// wantTarget
 	if wantTargetBlock, ok := node.PrimitivePackets[tagHandshakeWantedTarget]; ok {
 		wantTarget, err := wantTargetBlock.ToUTF8String()
@@ -127,12 +136,13 @@ func decodeHandshakeFrame(data []byte, f *frame.HandshakeFrame) error {
 }
 
 const (
-	tagHandshakeName            byte = 0x01
-	tagHandshakeClientType      byte = 0x02
-	tagHandshakeID              byte = 0x03
-	tagAuthenticationName       byte = 0x04
-	tagAuthenticationPayload    byte = 0x05
-	tagHandshakeObserveDataTags byte = 0x06
-	tagHandshakeVersion         byte = 0x07
-	tagHandshakeWantedTarget    byte = 0x08
+	tagHandshakeName               byte = 0x01
+	tagHandshakeClientType         byte = 0x02
+	tagHandshakeID                 byte = 0x03
+	tagAuthenticationName          byte = 0x04
+	tagAuthenticationPayload       byte = 0x05
+	tagHandshakeObserveDataTags    byte = 0x06
+	tagHandshakeVersion            byte = 0x07
+	tagHandshakeWantedTarget       byte = 0x08
+	tagHandshakeFunctionDefinition byte = 0x09
 )

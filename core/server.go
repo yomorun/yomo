@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
@@ -230,7 +231,12 @@ func (s *Server) handshake(fconn frame.Conn) (*Connection, error) {
 			return nil, rejectHandshake(fconn, err)
 		}
 
-		// 4. add route rules
+		// 4. store function definition to metadata
+		if hf.FunctionDefinition != nil {
+			conn.Metadata().Set(ai.FunctionDefinitionKey, string(hf.FunctionDefinition))
+		}
+
+		// 5. add route rules
 		if err := s.addSfnRouteRule(conn.ID(), hf, conn.Metadata()); err != nil {
 			return nil, rejectHandshake(fconn, err)
 		}
