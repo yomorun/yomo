@@ -199,6 +199,11 @@ func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
 		WantedTarget:    c.wantedTarget,
 	}
 
+	err = c.handshakeWithDefinition(hf)
+	if err != nil {
+		return nil, err
+	}
+
 	if err := conn.WriteFrame(hf); err != nil {
 		return conn, err
 	}
@@ -210,10 +215,6 @@ func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
 
 	switch received.Type() {
 	case frame.TypeHandshakeAckFrame:
-		// check function calling definition
-		if err := c.writeAIRegisterFunctionFrame(conn, received.(*frame.HandshakeAckFrame)); err != nil {
-			return nil, err
-		}
 		return conn, nil
 	case frame.TypeRejectedFrame:
 		err := &ErrRejected{Message: received.(*frame.RejectedFrame).Message}
@@ -233,29 +234,21 @@ func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
 	return nil, err
 }
 
-func (c *Client) writeAIRegisterFunctionFrame(conn *yquic.FrameConn, _ *frame.HandshakeAckFrame) error {
-	// register ai function
-	if c.clientType == ClientTypeStreamFunction {
-		functionDefinition, err := parseAIFunctionDefinition(c.name, c.opts.aiFunctionDescription, c.opts.aiFunctionInputModel)
-		if err != nil {
-			c.Logger.Error("parse ai function definition error", "err", err)
-			return err
-		}
-		// not exist ai function definition
-		if functionDefinition == nil {
-			return nil
-		}
-		for _, tag := range c.opts.observeDataTags {
-			registerFunctionFrame := &frame.AIRegisterFunctionFrame{
-				Name:       c.name,
-				Tag:        tag,
-				Definition: functionDefinition,
-			}
-			if err := conn.WriteFrame(registerFunctionFrame); err != nil {
-				return err
-			}
-		}
+func (c *Client) handshakeWithDefinition(hf *frame.HandshakeFrame) error {
+	if c.clientType != ClientTypeStreamFunction {
+		return nil
 	}
+	// register ai function definition
+	functionDefinition, err := parseAIFunctionDefinition(c.name, c.opts.aiFunctionDescription, c.opts.aiFunctionInputModel)
+	if err != nil {
+		c.Logger.Error("parse ai function definition error", "err", err)
+		return err
+	}
+	// ai function definition is not be found
+	if functionDefinition == nil {
+		return nil
+	}
+	hf.FunctionDefinition = functionDefinition
 	return nil
 }
 
@@ -413,8 +406,6 @@ func (c *Client) handleFrame(f frame.Frame) {
 		_ = c.Close()
 	case *frame.DataFrame:
 		c.processor(ff)
-	case *frame.AIRegisterFunctionAckFrame:
-		c.Logger.Info("register ai function success", "name", ff.Name, "tag", ff.Tag)
 	default:
 		c.Logger.Warn("received unexpected frame", "frame_type", f.Type().String())
 	}
