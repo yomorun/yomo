@@ -436,6 +436,7 @@ func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatComplet
 				ToolCalls: toolCalls,
 				Role:      openai.ChatMessageRoleAssistant,
 			}
+			flusher.Flush()
 		}
 	} else {
 		resp, err := s.LLMProvider.GetChatCompletions(ctx, req, s.Metadata)
@@ -487,7 +488,7 @@ func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatComplet
 	ylog.Debug(" #2 second call", "request", fmt.Sprintf("%+v", req))
 
 	if req.Stream {
-		flusher := eventFlusher(w)
+		flusher := w.(http.Flusher)
 		resStream, err := s.LLMProvider.GetChatCompletionsStream(ctx, req, s.Metadata)
 		if err != nil {
 			return err
@@ -523,8 +524,11 @@ func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatComplet
 
 // run llm-sfn function calls
 func (s *Service) runFunctionCalls(fns map[uint32][]*openai.ToolCall, reqID string) ([]ai.ToolMessage, error) {
+	if len(fns) == 0 {
+		return nil, nil
+	}
+
 	asyncCall := &sfnAsyncCall{
-		wg:  &sync.WaitGroup{},
 		val: make(map[string]ai.ToolMessage),
 	}
 	s.muCallCache.Lock()
@@ -595,7 +599,7 @@ func init() {
 }
 
 type sfnAsyncCall struct {
-	wg  *sync.WaitGroup
+	wg  sync.WaitGroup
 	mu  sync.RWMutex
 	val map[string]ai.ToolMessage
 }
