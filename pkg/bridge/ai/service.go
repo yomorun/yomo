@@ -333,41 +333,8 @@ func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatComplet
 	if err != nil {
 		return err
 	}
-	// 2.1 over write system prompt to request
+	// 3. over write system prompt to request
 	req = overWriteSystemPrompt(req, s.systemPrompt.Load().(string))
-
-	// 3. return chat completions if tools is empty
-	if len(req.Tools) == 0 {
-		if req.Stream {
-			flusher := eventFlusher(w)
-			resStream, err := s.LLMProvider.GetChatCompletionsStream(ctx, req, s.Metadata)
-			if err != nil {
-				return err
-			}
-			for {
-				streamRes, err := resStream.Recv()
-				if err == io.EOF {
-					io.WriteString(w, "data: [DONE]")
-					flusher.Flush()
-					return nil
-				}
-				if err != nil {
-					return err
-				}
-				_, _ = io.WriteString(w, "data: ")
-				_ = json.NewEncoder(w).Encode(streamRes)
-				_, _ = io.WriteString(w, "\n")
-				flusher.Flush()
-			}
-		} else {
-			resp, err := s.LLMProvider.GetChatCompletions(ctx, req, s.Metadata)
-			if err != nil {
-				return err
-			}
-			w.Header().Set("Content-Type", "application/json")
-			return json.NewEncoder(w).Encode(resp)
-		}
-	}
 
 	var (
 		reqMessages      = req.Messages
@@ -443,7 +410,6 @@ func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatComplet
 		if err != nil {
 			return err
 		}
-		toolCalls = mapToSliceTools(toolCallsMap)
 
 		ylog.Debug(" #1 first call", "response", fmt.Sprintf("%+v", resp))
 		// it is a function call
@@ -451,6 +417,7 @@ func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatComplet
 			toolCalls = append(toolCalls, resp.Choices[0].Message.ToolCalls...)
 			assistantMessage = resp.Choices[0].Message
 		} else {
+			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(resp)
 			return nil
 		}
