@@ -395,6 +395,7 @@ func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatComplet
 		}
 		if !isFunctionCall {
 			io.WriteString(w, "data: [DONE]")
+			flusher.Flush()
 			return nil
 		} else {
 			toolCalls = mapToSliceTools(toolCallsMap)
