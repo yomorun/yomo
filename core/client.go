@@ -297,10 +297,25 @@ func parseAIFunctionParameters(inputModel any) (*ai.FunctionParameters, error) {
 
 // WriteFrame write frame to client.
 func (c *Client) WriteFrame(f frame.Frame) error {
+	if err := c.validateFrame(f); err != nil {
+		return err
+	}
 	if c.opts.nonBlockWrite {
 		return c.nonBlockWriteFrame(f)
 	}
 	return c.blockWriteFrame(f)
+}
+
+func (c *Client) validateFrame(f frame.Frame) error {
+	// check reserved tag in DataFrame
+	if c.clientType == ClientTypeSource || c.clientType == ClientTypeStreamFunction {
+		if ff, ok := f.(*frame.DataFrame); ok {
+			if isReservedTag(ff.Tag) {
+				return ErrReservedTag
+			}
+		}
+	}
+	return nil
 }
 
 // blockWriteFrame writes frames in block mode, guaranteeing that frames are not lost.
@@ -441,4 +456,11 @@ type Downstream interface {
 	RemoteName() string
 	Close() error
 	Connect(context.Context) error
+}
+
+// ErrReservedTag is returned when write a reserved tag
+var ErrReservedTag = errors.New("[0xF000, 0xFFFF] is reserved; please do not observe within this range")
+
+func isReservedTag(tag frame.Tag) bool {
+	return tag >= 0xF000 && tag <= 0xFFFF
 }

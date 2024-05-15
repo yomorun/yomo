@@ -54,6 +54,8 @@ func TestConnectTo(t *testing.T) {
 		ClientTypeSource,
 		WithLogger(discardingLogger),
 	)
+	assert.Equal(t, "source", source.Name())
+	assert.Equal(t, source.clientID, source.ClientID())
 
 	_ = source.Connect(context.TODO())
 
@@ -197,6 +199,9 @@ func TestFrameRoundTrip(t *testing.T) {
 		Metadata: sourceMetaBytes,
 		Payload:  Sfn1ToSfn2Payload,
 	}
+
+	err = source.WriteFrame(&frame.DataFrame{Tag: 0xF001})
+	assert.Equal(t, ErrReservedTag, err)
 
 	err = source.WriteFrame(dataFrame)
 	assert.NoError(t, err, "source write dataFrame must be success")

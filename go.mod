@@ -15,7 +15,7 @@ require (
 	github.com/quic-go/quic-go v0.43.1
 	github.com/reactivex/rxgo/v2 v2.5.0
 	github.com/robfig/cron/v3 v3.0.1
-	github.com/sashabaranov/go-openai v1.23.1
+	github.com/sashabaranov/go-openai v1.24.0
 	github.com/second-state/WasmEdge-go v0.13.4
 	github.com/shirou/gopsutil/v3 v3.24.2
 	github.com/spf13/cobra v1.8.0
