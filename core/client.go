@@ -459,7 +459,7 @@ type Downstream interface {
 }
 
 // ErrReservedTag is returned when write a reserved tag
-var ErrReservedTag = errors.New("[0xF000, 0xFFFF] is reserved; please do not observe within this range")
+var ErrReservedTag = errors.New("[0xF000, 0xFFFF] is reserved; please do not write within this range")
 
 func isReservedTag(tag frame.Tag) bool {
 	return tag >= 0xF000 && tag <= 0xFFFF
