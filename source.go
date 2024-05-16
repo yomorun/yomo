@@ -101,9 +101,6 @@ func (s *yomoSource) Write(tag uint32, data []byte) error {
 
 // WritePayload writes `yomo.Payload` with specified tag.
 func (s *yomoSource) WriteWithTarget(tag uint32, data []byte, target string) error {
-	if data == nil {
-		return nil
-	}
 	if err := frame.IsReservedTag(tag); err != nil {
 		return err
 	}
