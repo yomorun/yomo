@@ -9,10 +9,10 @@ import (
 	"net/http"
 	"time"
 
-	gonanoid "github.com/matoous/go-nanoid/v2"
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/ylog"
+	"github.com/yomorun/yomo/pkg/id"
 )
 
 const (
@@ -97,7 +97,10 @@ func WithContextService(handler http.Handler, credential string, zipperAddr stri
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		handler.ServeHTTP(w, r.WithContext(WithServiceContext(r.Context(), service)))
+		transID := id.New(32)
+		ctx := WithTransIDContext(r.Context(), transID)
+		ctx = WithServiceContext(ctx, service)
+		handler.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
@@ -119,18 +122,14 @@ func HandleOverview(w http.ResponseWriter, r *http.Request) {
 
 // HandleInvoke is the handler for POST /invoke
 func HandleInvoke(w http.ResponseWriter, r *http.Request) {
-	service := FromServiceContext(r.Context())
+	var (
+		ctx     = r.Context()
+		service = FromServiceContext(ctx)
+		transID = FromTransIDContext(ctx)
+	)
 	defer r.Body.Close()
-	reqID, err := gonanoid.New(6)
-	if err != nil {
-		ylog.Error("generate reqID", "err", err.Error())
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-		return
-	}
 
 	var req ai.InvokeRequest
-	req.ReqID = reqID
 
 	// decode the request
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -154,8 +153,8 @@ func HandleInvoke(w http.ResponseWriter, r *http.Request) {
 	errCh := make(chan error, 1)
 	go func(service *Service, req ai.InvokeRequest, baseSystemMessage string) {
 		// call llm to infer the function and arguments to be invoked
-		ylog.Debug(">> ai request", "reqID", req.ReqID, "prompt", req.Prompt)
-		res, err := service.GetInvoke(ctx, req.Prompt, baseSystemMessage, req.ReqID, req.IncludeCallStack)
+		ylog.Debug(">> ai request", "transID", transID, "prompt", req.Prompt)
+		res, err := service.GetInvoke(ctx, req.Prompt, baseSystemMessage, transID, req.IncludeCallStack)
 		if err != nil {
 			errCh <- err
 		} else {
@@ -183,15 +182,12 @@ func HandleInvoke(w http.ResponseWriter, r *http.Request) {
 
 // HandleChatCompletions is the handler for POST /chat/completion
 func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
-	service := FromServiceContext(r.Context())
+	var (
+		ctx     = r.Context()
+		service = FromServiceContext(ctx)
+		transID = FromTransIDContext(ctx)
+	)
 	defer r.Body.Close()
-
-	reqID, err := gonanoid.New(6)
-	if err != nil {
-		ylog.Error("generate reqID", "err", err.Error())
-		RespondWithError(w, http.StatusInternalServerError, err)
-		return
-	}
 
 	var req openai.ChatCompletionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -203,7 +199,7 @@ func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
 
-	if err := service.GetChatCompletions(ctx, req, reqID, w, false); err != nil {
+	if err := service.GetChatCompletions(ctx, req, transID, w, false); err != nil {
 		ylog.Error("invoke chat completions", "err", err.Error())
 		RespondWithError(w, http.StatusBadRequest, err)
 		return
@@ -247,4 +243,20 @@ func FromServiceContext(ctx context.Context) *Service {
 		return nil
 	}
 	return service
+}
+
+type transIDContextKey struct{}
+
+// WithTransIDContext adds the transID to the request context
+func WithTransIDContext(ctx context.Context, transID string) context.Context {
+	return context.WithValue(ctx, transIDContextKey{}, transID)
+}
+
+// FromTransIDContext returns the transID from the request context
+func FromTransIDContext(ctx context.Context) string {
+	val, ok := ctx.Value(transIDContextKey{}).(string)
+	if !ok {
+		return ""
+	}
+	return val
 }

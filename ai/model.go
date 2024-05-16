@@ -15,7 +15,6 @@ type OverviewResponse struct {
 
 // InvokeRequest is the request from user to BasicAPIServer
 type InvokeRequest struct {
-	ReqID            string `json:"req_id"`             // ReqID is the request id of the request
 	Prompt           string `json:"prompt"`             // Prompt is user input text for chat completion
 	IncludeCallStack bool   `json:"include_call_stack"` // IncludeCallStack is the flag to include call stack in response
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
 	"github.com/yomorun/yomo/pkg/bridge/ai/register"
+	"github.com/yomorun/yomo/pkg/id"
 	"github.com/yomorun/yomo/serverless"
 )
 
@@ -164,7 +165,7 @@ func (s *Service) createReducer() (yomo.StreamFunction, error) {
 		c, ok := s.sfnCallCache[reqID]
 		s.muCallCache.Unlock()
 		if !ok {
-			ylog.Error("[sfn-reducer] req_id not found", "req_id", reqID)
+			ylog.Error("[sfn-reducer] req_id not found", "trans_id", invoke.TransID, "req_id", reqID)
 			return
 		}
 
@@ -204,7 +205,7 @@ func (s *Service) GetOverview() (*ai.OverviewResponse, error) {
 }
 
 // GetInvoke returns the invoke response
-func (s *Service) GetInvoke(ctx context.Context, userInstruction string, baseSystemMessage string, reqID string, includeCallStack bool) (*ai.InvokeResponse, error) {
+func (s *Service) GetInvoke(ctx context.Context, userInstruction string, baseSystemMessage string, transID string, includeCallStack bool) (*ai.InvokeResponse, error) {
 	// read tools attached to the metadata
 	tcs, err := register.ListToolCalls(s.Metadata)
 	if err != nil {
@@ -243,8 +244,8 @@ func (s *Service) GetInvoke(ctx context.Context, userInstruction string, baseSys
 		"res_toolcalls", fmt.Sprintf("%+v", res.ToolCalls),
 		"res_assistant_msgs", fmt.Sprintf("%+v", res.AssistantMessage))
 
-	ylog.Debug(">> run function calls", "reqID", reqID, "res.ToolCalls", fmt.Sprintf("%+v", res.ToolCalls))
-	llmCalls, err := s.runFunctionCalls(res.ToolCalls, reqID)
+	ylog.Debug(">> run function calls", "transID", transID, "res.ToolCalls", fmt.Sprintf("%+v", res.ToolCalls))
+	llmCalls, err := s.runFunctionCalls(res.ToolCalls, transID, id.New(16))
 	if err != nil {
 		return nil, err
 	}
@@ -322,7 +323,7 @@ func overWriteSystemPrompt(req openai.ChatCompletionRequest, sysPrompt string) o
 }
 
 // GetChatCompletions returns the llm api response
-func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, reqID string, w http.ResponseWriter, includeCallStack bool) error {
+func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, transID string, w http.ResponseWriter, includeCallStack bool) error {
 	// 1. find all hosting tool sfn
 	tagTools, err := register.ListToolCalls(s.Metadata)
 	if err != nil {
@@ -386,7 +387,7 @@ func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatComplet
 					toolCallsMap[index] = item
 				}
 				isFunctionCall = true
-			} else {
+			} else if streamRes.Choices[0].FinishReason != openai.FinishReasonToolCalls {
 				_, _ = io.WriteString(w, "data: ")
 				_ = json.NewEncoder(w).Encode(streamRes)
 				_, _ = io.WriteString(w, "\n")
@@ -436,7 +437,8 @@ func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatComplet
 		}
 	}
 	// 6. run llm function calls
-	llmCalls, err := s.runFunctionCalls(fnCalls, reqID)
+	reqID := id.New(16)
+	llmCalls, err := s.runFunctionCalls(fnCalls, transID, reqID)
 	if err != nil {
 		return err
 	}
@@ -471,9 +473,6 @@ func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatComplet
 			if err != nil {
 				return err
 			}
-			if len(streamRes.Choices) == 0 {
-				continue
-			}
 			_, _ = io.WriteString(w, "data: ")
 			_ = json.NewEncoder(w).Encode(streamRes)
 			_, _ = io.WriteString(w, "\n")
@@ -491,7 +490,7 @@ func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatComplet
 }
 
 // run llm-sfn function calls
-func (s *Service) runFunctionCalls(fns map[uint32][]*openai.ToolCall, reqID string) ([]ai.ToolMessage, error) {
+func (s *Service) runFunctionCalls(fns map[uint32][]*openai.ToolCall, transID, reqID string) ([]ai.ToolMessage, error) {
 	if len(fns) == 0 {
 		return nil, nil
 	}
@@ -499,14 +498,15 @@ func (s *Service) runFunctionCalls(fns map[uint32][]*openai.ToolCall, reqID stri
 	asyncCall := &sfnAsyncCall{
 		val: make(map[string]ai.ToolMessage),
 	}
+
 	s.muCallCache.Lock()
 	s.sfnCallCache[reqID] = asyncCall
 	s.muCallCache.Unlock()
 
 	for tag, tcs := range fns {
-		ylog.Debug("+++invoke toolCalls", "tag", tag, "len(toolCalls)", len(tcs), "reqID", reqID)
+		ylog.Debug("+++invoke toolCalls", "tag", tag, "len(toolCalls)", len(tcs), "transID", transID, "reqID", reqID)
 		for _, fn := range tcs {
-			err := s.fireLlmSfn(tag, fn, reqID)
+			err := s.fireLlmSfn(tag, fn, transID, reqID)
 			if err != nil {
 				ylog.Error("send data to zipper", "err", err.Error())
 				continue
@@ -533,19 +533,22 @@ func (s *Service) runFunctionCalls(fns map[uint32][]*openai.ToolCall, reqID stri
 }
 
 // fireLlmSfn fires the llm-sfn function call by s.source.Write()
-func (s *Service) fireLlmSfn(tag uint32, fn *openai.ToolCall, reqID string) error {
+func (s *Service) fireLlmSfn(tag uint32, fn *openai.ToolCall, transID, reqID string) error {
 	ylog.Info(
 		"+invoke func",
 		"tag", tag,
+		"transID", transID,
+		"reqID", reqID,
 		"toolCallID", fn.ID,
 		"function", fn.Function.Name,
 		"arguments", fn.Function.Arguments,
-		"reqID", reqID)
+	)
 	data := &ai.FunctionCall{
+		TransID:      transID,
 		ReqID:        reqID,
 		ToolCallID:   fn.ID,
-		Arguments:    fn.Function.Arguments,
 		FunctionName: fn.Function.Name,
+		Arguments:    fn.Function.Arguments,
 	}
 	buf, err := data.Bytes()
 	if err != nil {
