@@ -54,6 +54,8 @@ func TestConnectTo(t *testing.T) {
 		ClientTypeSource,
 		WithLogger(discardingLogger),
 	)
+	assert.Equal(t, "source", source.Name())
+	assert.Equal(t, source.clientID, source.ClientID())
 
 	_ = source.Connect(context.TODO())
 
