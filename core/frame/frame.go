@@ -3,6 +3,7 @@ package frame
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -172,6 +173,17 @@ type Tag = uint32
 type Writer interface {
 	// WriteFrame writes frame to underlying connection.
 	WriteFrame(Frame) error
+}
+
+// ErrReservedTag is returned when write a reserved tag.
+var ErrReservedTag = errors.New("[0xF000, 0xFFFF] is reserved; please do not write within this range")
+
+// IsReservedTag returns error when write a reserved tag.
+func IsReservedTag(tag Tag) error {
+	if tag >= 0xF000 && tag <= 0xFFFF {
+		return ErrReservedTag
+	}
+	return nil
 }
 
 // Listener accepts Conns.

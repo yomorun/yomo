@@ -71,6 +71,9 @@ func (s *yomoSource) Connect() error {
 
 // Write writes data with specified tag.
 func (s *yomoSource) Write(tag uint32, data []byte) error {
+	if err := frame.IsReservedTag(tag); err != nil {
+		return err
+	}
 	md := core.NewMetadata(s.client.ClientID(), id.New())
 	// add trace
 	tracer := trace.NewTracer("Source")
@@ -100,6 +103,9 @@ func (s *yomoSource) Write(tag uint32, data []byte) error {
 func (s *yomoSource) WriteWithTarget(tag uint32, data []byte, target string) error {
 	if data == nil {
 		return nil
+	}
+	if err := frame.IsReservedTag(tag); err != nil {
+		return err
 	}
 	md := core.NewMetadata(s.client.ClientID(), id.New())
 	// add trace

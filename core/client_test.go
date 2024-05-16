@@ -200,9 +200,6 @@ func TestFrameRoundTrip(t *testing.T) {
 		Payload:  Sfn1ToSfn2Payload,
 	}
 
-	err = source.WriteFrame(&frame.DataFrame{Tag: 0xF001})
-	assert.Equal(t, ErrReservedTag, err)
-
 	err = source.WriteFrame(dataFrame)
 	assert.NoError(t, err, "source write dataFrame must be success")
 
