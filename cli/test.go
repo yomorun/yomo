@@ -112,7 +112,7 @@ var testPromptCmd = &cobra.Command{
 				select {
 				case out := <-output:
 					// log.InfoStatusEvent(os.Stdout, "AI SFN Output: %s", out)
-					if len(out) > 0 && strings.Contains(out, "register ai function success") {
+					if len(out) > 0 && strings.Contains(out, "connected to zipper") {
 						log.InfoStatusEvent(os.Stdout, "Register LLM function success")
 						goto REQUEST
 					}
