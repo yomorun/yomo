@@ -152,7 +152,9 @@ func (s *Service) createReducer() (yomo.StreamFunction, error) {
 	sfn.SetHandler(func(ctx serverless.Context) {
 		buf := ctx.Data()
 		ylog.Debug("[sfn-reducer]", "tag", ai.ReducerTag, "data", string(buf))
-		invoke, err := ai.ParseFunctionCallContext(ctx)
+		// invoke, err := ai.ParseFunctionCallContext(ctx)
+		invoke := &ai.FunctionCall{}
+		err := ctx.ReadLLMFunctionCall(invoke)
 		if err != nil {
 			ylog.Error("[sfn-reducer] parse function calling invoke", "err", err.Error())
 			return
