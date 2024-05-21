@@ -25,7 +25,7 @@ func (c *Context) ReadLLMArguments(args any) error {
 // WriteLLMResult writes LLM function result
 func (c *Context) WriteLLMResult(result string) error {
 	if c.fnCall == nil {
-		return nil
+		return errors.New("no function call, can't write result")
 	}
 	// function call
 	c.fnCall.IsOK = true

@@ -1,6 +1,8 @@
-package mock
+package ai
 
 import (
+	"encoding/json"
+	"errors"
 	"sync"
 
 	"github.com/yomorun/yomo/serverless"
@@ -18,8 +20,9 @@ type WriteRecord struct {
 
 // MockContext mock context.
 type MockContext struct {
-	data []byte
-	tag  uint32
+	data   []byte
+	tag    uint32
+	fnCall *FunctionCall
 
 	mu      sync.Mutex
 	wrSlice []WriteRecord
@@ -73,6 +76,53 @@ func (c *MockContext) WriteWithTarget(tag uint32, data []byte, target string) er
 	})
 
 	return nil
+}
+
+func (c *MockContext) ReadLLMArguments(args any) error {
+	fnCall := &FunctionCall{}
+	err := fnCall.FromBytes(c.data)
+	if err != nil {
+		return err
+	}
+	// if success, assign the object to the given object
+	c.fnCall = fnCall
+	if len(fnCall.Arguments) == 0 && args != nil {
+		return errors.New("function arguments is empty, can't read to the given object")
+	}
+	return json.Unmarshal([]byte(fnCall.Arguments), args)
+}
+
+func (c *MockContext) WriteLLMResult(result string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.fnCall == nil {
+		return errors.New("no function call, can't write result")
+	}
+	// function call
+	c.fnCall.IsOK = true
+	c.fnCall.Result = result
+	buf, err := c.fnCall.Bytes()
+	if err != nil {
+		return err
+	}
+
+	c.wrSlice = append(c.wrSlice, WriteRecord{
+		Data: buf,
+		Tag:  ReducerTag,
+	})
+	return nil
+}
+
+func (c *MockContext) ReadLLMFunctionCall(fnCall any) error {
+	if c.data == nil {
+		return errors.New("ctx.Data() is nil")
+	}
+	fco, ok := fnCall.(*FunctionCall)
+	if !ok {
+		return errors.New("given object is not *ai.FunctionCall")
+	}
+	return fco.FromBytes(c.data)
 }
 
 // RecordsWritten returns the data records be written with `ctx.Write`.

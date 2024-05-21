@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/serverless"
 )
 
@@ -29,14 +28,8 @@ func InputSchema() any {
 func Handler(ctx serverless.Context) {
 	slog.Info("[sfn] receive", "ctx.data", string(ctx.Data()))
 
-	fcCtx, err := ai.ParseFunctionCallContext(ctx)
-	if err != nil {
-		slog.Error("[sfn] NewFunctionCallingParameters error", "err", err)
-		return
-	}
-
 	var msg Parameter
-	err = fcCtx.UnmarshalArguments(&msg)
+	err := ctx.ReadLLMArguments(&msg)
 	if err != nil {
 		slog.Error("[sfn] json.Marshal error", "err", err)
 		return
@@ -49,7 +42,6 @@ func Handler(ctx serverless.Context) {
 	rate, err := fetchRate(msg.SourceCurrency, msg.TargetCurrency, msg.Amount)
 	if err != nil {
 		slog.Error("[sfn] >> fetchRate error", "err", err)
-		fcCtx.WriteErrors(err)
 		return
 	}
 
@@ -58,7 +50,7 @@ func Handler(ctx serverless.Context) {
 		result = fmt.Sprintf("can not understand the target currency %s", msg.TargetCurrency)
 	}
 
-	err = fcCtx.Write(result)
+	err = ctx.WriteLLMResult(result)
 	if err != nil {
 		slog.Error("[sfn] >> write error", "err", err)
 	}

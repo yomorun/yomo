@@ -2,7 +2,6 @@ package ai
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"github.com/yomorun/yomo/serverless"
 )
@@ -57,51 +56,4 @@ func (fco *FunctionCall) FromBytes(b []byte) error {
 	fco.RetrievalResult = obj.RetrievalResult
 	fco.IsOK = obj.IsOK
 	return nil
-}
-
-// Write writes the result to zipper
-func (fco *FunctionCall) Write(result string) error {
-	fco.Result = result
-	fco.IsOK = true
-	buf, err := fco.Bytes()
-	if err != nil {
-		return err
-	}
-	return fco.ctx.Write(ReducerTag, buf)
-}
-
-// WriteErrors writes the error to reducer
-func (fco *FunctionCall) WriteErrors(err error) error {
-	fco.IsOK = false
-	fco.Error = err.Error()
-	return fco.Write("")
-}
-
-// UnmarshalArguments deserialize Arguments to the parameter object
-func (fco *FunctionCall) UnmarshalArguments(v any) error {
-	return json.Unmarshal([]byte(fco.Arguments), v)
-}
-
-// JSONString returns the JSON string of FunctionCallObject
-func (fco *FunctionCall) JSONString() string {
-	b, _ := json.Marshal(fco)
-	return string(b)
-}
-
-// ParseFunctionCallContext creates a new unctionCallObject from the given context
-func ParseFunctionCallContext(ctx serverless.Context) (*FunctionCall, error) {
-	if ctx == nil {
-		return nil, fmt.Errorf("ai: ctx is nil")
-	}
-
-	if ctx.Data() == nil {
-		return nil, fmt.Errorf("ai: ctx.Data() is nil")
-	}
-
-	fco := &FunctionCall{
-		IsOK: true,
-	}
-	fco.ctx = ctx
-	err := fco.FromBytes(ctx.Data())
-	return fco, err
 }
