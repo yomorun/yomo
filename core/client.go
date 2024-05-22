@@ -111,15 +111,21 @@ CONNECT:
 }
 
 func (c *Client) handleConnectResult(err error, alwaysReconnect bool) (reconnect bool, se error) {
-	if c.ctx.Err() != nil {
+	if c.errorfn != nil && err != nil {
+		c.errorfn(err)
+	}
+	select {
+	case <-c.ctx.Done():
 		close(c.reConnect)
 		return false, err
+	default:
 	}
 	if err == nil {
 		c.Logger.Info("connected to zipper")
 		return false, nil
 	}
 	if e := new(ErrRejected); errors.As(err, &e) {
+		close(c.reConnect)
 		c.Logger.Info("handshake be rejected", "err", e.Message)
 		return false, err
 	}
