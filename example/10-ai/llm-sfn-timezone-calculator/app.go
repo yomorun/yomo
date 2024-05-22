@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/serverless"
 )
 
@@ -29,14 +28,8 @@ const timeFormat = "2006-01-02 15:04:05"
 func Handler(ctx serverless.Context) {
 	slog.Info("[sfn] receive", "ctx.data", string(ctx.Data()))
 
-	fcCtx, err := ai.ParseFunctionCallContext(ctx)
-	if err != nil {
-		slog.Error("[sfn] NewFunctionCallingParameters error", "err", err)
-		return
-	}
-
 	var msg Parameter
-	err = fcCtx.UnmarshalArguments(&msg)
+	err := ctx.ReadLLMArguments(&msg)
 	if err != nil {
 		slog.Error("[sfn] json.Marshal error", "err", err)
 		return
@@ -54,7 +47,6 @@ func Handler(ctx serverless.Context) {
 	targetTime, err := ConvertTimezone(msg.TimeString, msg.SourceTimezone, msg.TargetTimezone)
 	if err != nil {
 		slog.Error("[sfn] ConvertTimezone error", "err", err)
-		fcCtx.WriteErrors(err)
 		return
 	}
 
@@ -62,7 +54,7 @@ func Handler(ctx serverless.Context) {
 
 	val := fmt.Sprintf("This time in timezone %s is %s when %s in %s", msg.TargetTimezone, targetTime, msg.TimeString, msg.SourceTimezone)
 
-	fcCtx.Write(val)
+	ctx.WriteLLMResult(val)
 }
 
 func DataTags() []uint32 {

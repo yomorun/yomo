@@ -2,6 +2,7 @@
 package serverless
 
 import (
+	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
 )
@@ -12,6 +13,7 @@ type Context struct {
 	tag    uint32
 	md     metadata.M
 	data   []byte
+	fnCall *ai.FunctionCall
 }
 
 // NewContext creates a new serverless Context

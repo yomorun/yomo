@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
-	"os"
 
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/serverless"
@@ -26,27 +25,28 @@ func InputSchema() any {
 	return &Parameter{}
 }
 
+// func Handler(aictx serverless.AIContext)
 func Handler(ctx serverless.Context) {
-	slog.Info("[sfn] receive", "ctx.data", string(ctx.Data()))
-
-	fcCtx, err := ai.ParseFunctionCallContext(ctx)
+	slog.Info("[sfn] << receive", "ctx.data", string(ctx.Data()))
+	var msg Parameter
+	err := ctx.ReadLLMArguments(&msg)
 	if err != nil {
-		slog.Error("[sfn] NewFunctionCallingParameters error", "err", err)
+		slog.Error("[sfn] ReadLLMArguments error", "err", err)
 		return
 	}
-
-	var msg Parameter
-	err = fcCtx.UnmarshalArguments(&msg)
-	if err != nil {
-		slog.Error("[sfn] json.Marshal error", "err", err)
-		os.Exit(-2)
-	} else {
-		slog.Info("[sfn] << receive", "tag", tag, "data", msg)
-		data := fmt.Sprintf("[%s] temperature: %d°C", msg.CityName, rand.Intn(40))
-		err = fcCtx.Write(data)
-		if err == nil {
-			slog.Info("[sfn] >> write", "tag", ai.ReducerTag, "data", data)
+	slog.Info("[sfn] << receive", "tag", tag, "msg", msg)
+	data := fmt.Sprintf("[%s] temperature: %d°C", msg.CityName, rand.Intn(40))
+	// helper ai function
+	err = ctx.WriteLLMResult(data)
+	if err == nil {
+		slog.Info("[sfn] >> write", "tag", ai.ReducerTag, "msg", data)
+		fnCall := &ai.FunctionCall{}
+		err = ctx.ReadLLMFunctionCall(fnCall)
+		if err != nil {
+			slog.Error("[sfn] ReadLLMFunctionCall error", "err", err)
+			return
 		}
+		slog.Info("[sfn] >> write", "tag", ai.ReducerTag, "fnCall", fnCall)
 	}
 }
 

@@ -1,4 +1,4 @@
-module cc-demo
+module llm-sfn-get-ip-and-latency
 
 go 1.22.1
 
@@ -7,7 +7,7 @@ require (
 	github.com/yomorun/yomo v1.18.4
 )
 
-replace github.com/yomorun/yomo => ../../.../../../
+replace github.com/yomorun/yomo => ../../../
 
 require (
 	github.com/caarlos0/env/v6 v6.10.1 // indirect

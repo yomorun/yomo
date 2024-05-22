@@ -15,6 +15,12 @@ type Context interface {
 	HTTP() HTTP
 	// WriteWithTarget writes data to sfn instance with specified target
 	WriteWithTarget(tag uint32, data []byte, target string) error
+	// ReadLLMArguments reads LLM function arguments
+	ReadLLMArguments(args any) error
+	// WriteLLMResult writes LLM function result
+	WriteLLMResult(result string) error
+	// ReadLLMFunctionCall reads LLM function call
+	ReadLLMFunctionCall(fnCall any) error
 }
 
 // CronContext sfn corn handler context

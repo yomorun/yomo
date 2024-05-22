@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/yomorun/yomo/serverless/mock"
 )
 
 var jsonStr = "{\"req_id\":\"yYdzyl\",\"arguments\":\"{\\n  \\\"sourceTimezone\\\": \\\"America/Los_Angeles\\\",\\n  \\\"targetTimezone\\\": \\\"Asia/Singapore\\\",\\n  \\\"timeString\\\": \\\"2024-03-25 07:00:00\\\"\\n}\",\"tool_call_id\":\"call_aZrtm5xcLs1qtP0SWo4CZi75\",\"function_name\":\"fn-timezone-converter\",\"is_ok\":false}"
@@ -41,35 +40,26 @@ func TestFunctionCallBytes(t *testing.T) {
 	assert.Equal(t, string(bytes), jsonStr, "Original and bytes should be equal")
 }
 
-func TestFunctionCallJSONString(t *testing.T) {
-	// Call JSONString
-	target := original.JSONString()
-	assert.Equal(t, jsonStr, target, "Original and target JSON strings should be equal")
-}
-
-func TestFunctionCallParseCallContext(t *testing.T) {
-	t.Run("ctx is nil", func(t *testing.T) {
-		_, err := ParseFunctionCallContext(nil)
-		assert.Error(t, err)
-	})
-
+func TestReadFunctionCall(t *testing.T) {
 	t.Run("ctx.Data is nil", func(t *testing.T) {
-		ctx := mock.NewMockContext(nil, 0)
-		_, err := ParseFunctionCallContext(ctx)
+		ctx := NewMockContext(nil, 0)
+		fnCall := &FunctionCall{}
+		err := ctx.ReadLLMFunctionCall(fnCall)
 		assert.Error(t, err)
 	})
 
 	t.Run("ctx.Data is invalid", func(t *testing.T) {
-		ctx := mock.NewMockContext([]byte(errJSONStr), 0)
-		_, err := ParseFunctionCallContext(ctx)
+		ctx := NewMockContext([]byte(errJSONStr), 0)
+		fnCall := &FunctionCall{}
+		err := ctx.ReadLLMFunctionCall(&fnCall)
 		assert.Error(t, err)
 	})
 }
 
-func TestFunctionCallUnmarshalArguments(t *testing.T) {
-	// Unmarshal the arguments into a map
+func TestReadLLMArguments(t *testing.T) {
+	ctx := NewMockContext([]byte(jsonStr), 0x10)
 	target := make(map[string]string)
-	err := original.UnmarshalArguments(&target)
+	err := ctx.ReadLLMArguments(&target)
 
 	assert.NoError(t, err)
 	assert.Equal(t, "America/Los_Angeles", target["sourceTimezone"])
@@ -77,32 +67,19 @@ func TestFunctionCallUnmarshalArguments(t *testing.T) {
 	assert.Equal(t, "2024-03-25 07:00:00", target["timeString"])
 }
 
-func TestFunctionCallWrite(t *testing.T) {
-	ctx := mock.NewMockContext([]byte(jsonStr), 0x10)
+func TestWriteLLMResult(t *testing.T) {
+	ctx := NewMockContext([]byte(jsonStr), 0x10)
 
-	fco, err := ParseFunctionCallContext(ctx)
+	// read
+	target := make(map[string]string)
+	err := ctx.ReadLLMArguments(&target)
 	assert.NoError(t, err)
 
-	// Call Write
-	err = fco.Write("test result")
+	// write
+	err = ctx.WriteLLMResult("test result")
 	assert.NoError(t, err)
 
 	res := ctx.RecordsWritten()
 	assert.Equal(t, ReducerTag, res[0].Tag)
 	assert.Equal(t, jsonStrWithResult("test result"), string(res[0].Data))
-}
-
-func TestFunctionCallWriteErrors(t *testing.T) {
-	ctx := mock.NewMockContext([]byte(jsonStr), 0x10)
-
-	fco, err := ParseFunctionCallContext(ctx)
-	assert.NoError(t, err)
-
-	// Call WriteErrors
-	err = fco.WriteErrors(fmt.Errorf("test error"))
-	assert.NoError(t, err)
-
-	res := ctx.RecordsWritten()
-	assert.Equal(t, ReducerTag, res[0].Tag)
-	assert.Equal(t, jsonStrWithError("test error"), string(res[0].Data))
 }
