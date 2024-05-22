@@ -1,4 +1,4 @@
-module cc-demo
+module llm-sfn-get-ip-and-latency
 
 go 1.22.1
 

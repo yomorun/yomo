@@ -1,4 +1,4 @@
-module timezone-calculator
+module llm-sfn-timezone-calculator
 
 go 1.21.0
 

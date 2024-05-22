@@ -1,4 +1,4 @@
-module current-converter
+module llm-sfn-currency-converter
 
 go 1.21.0
 
