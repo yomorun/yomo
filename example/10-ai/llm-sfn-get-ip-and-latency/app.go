@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"net"
 
-	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/serverless"
 
 	"github.com/go-ping/ping"
@@ -24,14 +23,8 @@ func InputSchema() any {
 }
 
 func Handler(ctx serverless.Context) {
-	fc, err := ai.ParseFunctionCallContext(ctx)
-	if err != nil {
-		slog.Error("[sfn] parse function call context", "err", err)
-		return
-	}
-
 	var msg Parameter
-	err = fc.UnmarshalArguments(&msg)
+	err := ctx.ReadLLMArguments(&msg)
 	if err != nil {
 		slog.Error("[sfn] unmarshal arguments", "err", err)
 		return
@@ -70,7 +63,7 @@ func Handler(ctx serverless.Context) {
 
 	val := fmt.Sprintf("domain %s has ip %s with average latency %s", msg.Domain, ips[0], stats.AvgRtt)
 
-	fc.Write(val)
+	ctx.WriteLLMResult(val)
 }
 
 func DataTags() []uint32 {

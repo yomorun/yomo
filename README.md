@@ -105,10 +105,8 @@ Create a Stateful Serverless Function to get the IP and Latency of a domain:
 
 ```golang
 func Handler(ctx serverless.Context) {
-	fc, _ := ai.ParseFunctionCallContext(ctx)
-
 	var msg Parameter
-	fc.UnmarshalArguments(&msg)
+	ctx.ReadLLMArguments(&msg)
 
 	// get ip of the domain
 	ips, _ := net.LookupIP(msg.Domain)
@@ -120,7 +118,7 @@ func Handler(ctx serverless.Context) {
 	stats := pinger.Statistics()
 
 	val := fmt.Sprintf("domain %s has ip %s with average latency %s", msg.Domain, ips[0], stats.AvgRtt)
-	fc.Write(val)
+	ctx.WriteLLMResult(val)
 }
 
 ```

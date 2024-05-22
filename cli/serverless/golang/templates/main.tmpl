@@ -17,6 +17,7 @@ var (
 		Run: func(cmd *cobra.Command, args []string) {
 			run(cmd, args)
 		},
+		FParseErrWhitelist: cobra.FParseErrWhitelist{UnknownFlags: true},
 	}
 )
 

@@ -36,7 +36,6 @@ func Handler(ctx serverless.Context) {
 	}
 	slog.Info("[sfn] << receive", "tag", tag, "msg", msg)
 	data := fmt.Sprintf("[%s] temperature: %d°C", msg.CityName, rand.Intn(40))
-	// err = ctx.Write(ai.ReducerTag, []byte(data))
 	// helper ai function
 	err = ctx.WriteLLMResult(data)
 	if err == nil {
@@ -49,27 +48,6 @@ func Handler(ctx serverless.Context) {
 		}
 		slog.Info("[sfn] >> write", "tag", ai.ReducerTag, "fnCall", fnCall)
 	}
-
-	//
-	// fcCtx, err := ai.ParseFunctionCallContext(ctx)
-	// if err != nil {
-	// 	slog.Error("[sfn] NewFunctionCallingParameters error", "err", err)
-	// 	return
-	// }
-	//
-	// var msg Parameter
-	// err = fcCtx.UnmarshalArguments(&msg)
-	// if err != nil {
-	// 	slog.Error("[sfn] json.Marshal error", "err", err)
-	// 	os.Exit(-2)
-	// } else {
-	// 	slog.Info("[sfn] << receive", "tag", tag, "data", msg)
-	// 	data := fmt.Sprintf("[%s] temperature: %d°C", msg.CityName, rand.Intn(40))
-	// 	err = fcCtx.Write(data)
-	// 	if err == nil {
-	// 		slog.Info("[sfn] >> write", "tag", ai.ReducerTag, "data", data)
-	// 	}
-	// }
 }
 
 func DataTags() []uint32 {

@@ -37,22 +37,27 @@ func NewMockContext(data []byte, tag uint32) *MockContext {
 	}
 }
 
+// Data incoming data.
 func (c *MockContext) Data() []byte {
 	return c.data
 }
 
+// Tag incoming tag.
 func (c *MockContext) Tag() uint32 {
 	return c.tag
 }
 
+// Metadata returns the metadata by the given key.
 func (c *MockContext) Metadata(_ string) (string, bool) {
 	panic("not implemented")
 }
 
+// HTTP returns the HTTP interface.H
 func (m *MockContext) HTTP() serverless.HTTP {
 	return &guest.GuestHTTP{}
 }
 
+// Write writes the data with the given tag.
 func (c *MockContext) Write(tag uint32, data []byte) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -65,6 +70,7 @@ func (c *MockContext) Write(tag uint32, data []byte) error {
 	return nil
 }
 
+// WriteWithTarget writes the data with the given tag and target.
 func (c *MockContext) WriteWithTarget(tag uint32, data []byte, target string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -78,6 +84,7 @@ func (c *MockContext) WriteWithTarget(tag uint32, data []byte, target string) er
 	return nil
 }
 
+// ReadLLMArguments reads LLM function arguments.
 func (c *MockContext) ReadLLMArguments(args any) error {
 	fnCall := &FunctionCall{}
 	err := fnCall.FromBytes(c.data)
@@ -92,6 +99,7 @@ func (c *MockContext) ReadLLMArguments(args any) error {
 	return json.Unmarshal([]byte(fnCall.Arguments), args)
 }
 
+// WriteLLMResult writes LLM function result.
 func (c *MockContext) WriteLLMResult(result string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -114,6 +122,7 @@ func (c *MockContext) WriteLLMResult(result string) error {
 	return nil
 }
 
+// ReadLLMFunctionCall reads LLM function call.
 func (c *MockContext) ReadLLMFunctionCall(fnCall any) error {
 	if c.data == nil {
 		return errors.New("ctx.Data() is nil")
