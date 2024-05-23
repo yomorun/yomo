@@ -37,8 +37,6 @@ func Handler(ctx serverless.Context) {
 
 	slog.Info("[sfn] << receive", "tag", 0x10, "data", fmt.Sprintf("%+v", msg))
 
-	// read all the target currency exchange rates from usd.json
-	// rate := getRates(msg.Target)
 	rate, err := fetchRate(msg.SourceCurrency, msg.TargetCurrency, msg.Amount)
 	if err != nil {
 		slog.Error("[sfn] >> fetchRate error", "err", err)
