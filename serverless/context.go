@@ -1,6 +1,8 @@
 // Package serverless defines serverless handler context
 package serverless
 
+import "github.com/yomorun/yomo/ai"
+
 // Context sfn handler context
 type Context interface {
 	// Data incoming data
@@ -20,7 +22,7 @@ type Context interface {
 	// WriteLLMResult writes LLM function result
 	WriteLLMResult(result string) error
 	// ReadLLMFunctionCall reads LLM function call
-	ReadLLMFunctionCall(fnCall any) error
+	ReadLLMFunctionCall() (*ai.FunctionCall, error)
 }
 
 // CronContext sfn corn handler context

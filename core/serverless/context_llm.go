@@ -38,13 +38,15 @@ func (c *Context) WriteLLMResult(result string) error {
 }
 
 // ReadLLMFunctionCall reads LLM function call
-func (c *Context) ReadLLMFunctionCall(fnCall any) error {
+func (c *Context) ReadLLMFunctionCall() (*ai.FunctionCall, error) {
 	if c.data == nil {
-		return errors.New("ctx.Data() is nil")
+		return nil, errors.New("ctx.Data() is nil")
 	}
-	fco, ok := fnCall.(*ai.FunctionCall)
-	if !ok {
-		return errors.New("given object is not *ai.FunctionCall")
+
+	fco := &ai.FunctionCall{}
+	if err := fco.FromBytes(c.data); err != nil {
+		return nil, errors.New("ReadLLMFunctionCall: given object is not *ai.FunctionCall")
 	}
-	return fco.FromBytes(c.data)
+
+	return fco, nil
 }
