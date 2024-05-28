@@ -2,8 +2,6 @@ package ai
 
 import (
 	"encoding/json"
-
-	"github.com/yomorun/yomo/serverless"
 )
 
 // ReducerTag is the observed tag of the reducer
@@ -32,7 +30,6 @@ type FunctionCall struct {
 	IsOK bool `json:"is_ok"`
 	// Error is the error message
 	Error string `json:"error,omitempty"`
-	ctx   serverless.Context
 }
 
 // Bytes serialize the []byte of FunctionCallObject
