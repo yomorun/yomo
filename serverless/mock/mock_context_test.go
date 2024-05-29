@@ -35,28 +35,28 @@ func TestReadFunctionCall(t *testing.T) {
 	t.Run("ctx.Data is nil", func(t *testing.T) {
 		ctx := NewMockContext(nil, 0)
 
-		_, err := ctx.ReadLLMFunctionCall()
+		_, err := ctx.LLMFunctionCall()
 		assert.Error(t, err)
 	})
 
 	t.Run("ctx.Data is invalid", func(t *testing.T) {
 		ctx := NewMockContext([]byte(errJSONStr), 0)
 
-		_, err := ctx.ReadLLMFunctionCall()
+		_, err := ctx.LLMFunctionCall()
 		assert.Error(t, err)
 	})
 
 	t.Run("params is not *ai.FunctionCall", func(t *testing.T) {
 		ctx := NewMockContext([]byte(errJSONStr), 0)
 
-		_, err := ctx.ReadLLMFunctionCall()
+		_, err := ctx.LLMFunctionCall()
 		assert.EqualError(t, err, "given object is not *ai.FunctionCall")
 	})
 
 	t.Run("ok", func(t *testing.T) {
 		ctx := NewMockContext([]byte(jsonStrWithResult("ok")), 0x91)
 
-		fnCall, err := ctx.ReadLLMFunctionCall()
+		fnCall, err := ctx.LLMFunctionCall()
 		assert.NoError(t, err)
 		assert.Equal(t, "ok", fnCall.Result)
 	})

@@ -123,8 +123,8 @@ func (c *MockContext) WriteLLMResult(result string) error {
 	return nil
 }
 
-// ReadLLMFunctionCall reads LLM function call.
-func (c *MockContext) ReadLLMFunctionCall() (*ai.FunctionCall, error) {
+// LLMFunctionCall reads LLM function call.
+func (c *MockContext) LLMFunctionCall() (*ai.FunctionCall, error) {
 	if c.data == nil {
 		return nil, errors.New("ctx.Data() is nil")
 	}

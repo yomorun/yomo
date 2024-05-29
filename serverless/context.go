@@ -21,8 +21,8 @@ type Context interface {
 	ReadLLMArguments(args any) error
 	// WriteLLMResult writes LLM function result
 	WriteLLMResult(result string) error
-	// ReadLLMFunctionCall reads LLM function call
-	ReadLLMFunctionCall() (*ai.FunctionCall, error)
+	// LLMFunctionCall reads LLM function call
+	LLMFunctionCall() (*ai.FunctionCall, error)
 }
 
 // CronContext sfn corn handler context

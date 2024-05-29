@@ -37,15 +37,15 @@ func (c *Context) WriteLLMResult(result string) error {
 	return c.Write(ai.ReducerTag, buf)
 }
 
-// ReadLLMFunctionCall reads LLM function call
-func (c *Context) ReadLLMFunctionCall() (*ai.FunctionCall, error) {
+// LLMFunctionCall reads LLM function call
+func (c *Context) LLMFunctionCall() (*ai.FunctionCall, error) {
 	if c.data == nil {
 		return nil, errors.New("ctx.Data() is nil")
 	}
 
 	fco := &ai.FunctionCall{}
 	if err := fco.FromBytes(c.data); err != nil {
-		return nil, errors.New("ReadLLMFunctionCall: given object is not *ai.FunctionCall")
+		return nil, errors.New("LLMFunctionCall: given object is not *ai.FunctionCall")
 	}
 
 	return fco, nil
