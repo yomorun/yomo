@@ -3,7 +3,6 @@ package ai
 import (
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo/core/ylog"
@@ -30,12 +29,11 @@ func ConvertToInvokeResponse(res *openai.ChatCompletionResponse, tcs map[uint32]
 	ylog.Debug("++ llm result", "token_usage", fmt.Sprintf("%v", result.TokenUsage), "finish_reason", result.FinishReason)
 
 	// if llm said no function call, we should return the result
-	// gemini provider will return the finish_reason is "STOP", otherwise "stop"
-	if strings.ToLower(result.FinishReason) == "stop" {
+	if result.FinishReason == string(openai.FinishReasonStop) {
 		return result, nil
 	}
 
-	if result.FinishReason == "tool_calls" || result.FinishReason == "gemini_tool_calls" {
+	if result.FinishReason == "tool_calls" {
 		// assistant message
 		result.AssistantMessage = responseMessage
 	}
@@ -48,8 +46,7 @@ func ConvertToInvokeResponse(res *openai.ChatCompletionResponse, tcs map[uint32]
 	for _, call := range calls {
 		for tag, tc := range tcs {
 			ylog.Debug(">> compare tool call", "tag", tag, "tc", tc.Function.Name, "call", call.Function.Name)
-			// WARN: gemini process tool calls, currently function name not equal to tool call name, eg. "get-weather" != "get_weather"
-			if (tc.Function.Name == call.Function.Name && tc.Type == call.Type) || result.FinishReason == "gemini_tool_calls" {
+			if tc.Function.Name == call.Function.Name && tc.Type == call.Type {
 				if result.ToolCalls == nil {
 					result.ToolCalls = make(map[uint32][]*openai.ToolCall)
 				}
