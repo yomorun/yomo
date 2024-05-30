@@ -3,7 +3,6 @@ package ai
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -245,7 +244,7 @@ func (s *Service) GetInvoke(ctx context.Context, userInstruction string, baseSys
 		"res_assistant_msgs", fmt.Sprintf("%+v", res.AssistantMessage))
 
 	ylog.Debug(">> run function calls", "transID", transID, "res.ToolCalls", fmt.Sprintf("%+v", res.ToolCalls))
-	llmCalls, err := s.runFunctionCalls(ctx, res.ToolCalls, transID, id.New(16))
+	llmCalls, err := s.runFunctionCalls(res.ToolCalls, transID, id.New(16))
 	if err != nil {
 		return nil, err
 	}
@@ -433,7 +432,7 @@ func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatComplet
 	}
 	// 6. run llm function calls
 	reqID := id.New(16)
-	llmCalls, err := s.runFunctionCalls(ctx, fnCalls, transID, reqID)
+	llmCalls, err := s.runFunctionCalls(fnCalls, transID, reqID)
 	if err != nil {
 		return err
 	}
@@ -485,7 +484,7 @@ func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatComplet
 }
 
 // run llm-sfn function calls
-func (s *Service) runFunctionCalls(ctx context.Context, fns map[uint32][]*openai.ToolCall, transID, reqID string) ([]ai.ToolMessage, error) {
+func (s *Service) runFunctionCalls(fns map[uint32][]*openai.ToolCall, transID, reqID string) ([]ai.ToolMessage, error) {
 	if len(fns) == 0 {
 		return nil, nil
 	}
@@ -498,6 +497,7 @@ func (s *Service) runFunctionCalls(ctx context.Context, fns map[uint32][]*openai
 	s.sfnCallCache[reqID] = asyncCall
 	s.muCallCache.Unlock()
 
+	firedToolIDs := make(map[string]struct{})
 	for tag, tcs := range fns {
 		ylog.Debug("+++invoke toolCalls", "tag", tag, "len(toolCalls)", len(tcs), "transID", transID, "reqID", reqID)
 		for _, fn := range tcs {
@@ -506,6 +506,8 @@ func (s *Service) runFunctionCalls(ctx context.Context, fns map[uint32][]*openai
 				ylog.Error("send data to zipper", "err", err.Error())
 				continue
 			}
+			// record toolIDs be fired
+			firedToolIDs[fn.ID] = struct{}{}
 			// wait for this request to be done
 			asyncCall.wg.Add(1 * register.SfnFactor(tag, s.Metadata))
 		}
@@ -519,16 +521,24 @@ func (s *Service) runFunctionCalls(ctx context.Context, fns map[uint32][]*openai
 	}()
 
 	select {
-	case <-ctx.Done():
-		return nil, errors.New("function calling timeout")
+	case <-time.After(RunFunctionTimeout):
 	case <-done:
 	}
 
 	arr := make([]ai.ToolMessage, 0)
 
 	asyncCall.mu.RLock()
-	for _, call := range asyncCall.val {
-		ylog.Debug("---invoke done", "id", call.ToolCallId, "content", call.Content)
+	for toolID := range firedToolIDs {
+		call, ok := asyncCall.val[toolID]
+		// `ok==false` represents that the toolID be fired but not receive a response.
+		if !ok {
+			arr = append(arr, ai.ToolMessage{
+				Role:       "tool",
+				ToolCallId: toolID,
+				Content:    "error occured in this function calling, you should ignore this.",
+			})
+			continue
+		}
 		call.Role = "tool"
 		arr = append(arr, call)
 	}
