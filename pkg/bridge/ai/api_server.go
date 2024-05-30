@@ -199,20 +199,10 @@ func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
 
-	errch := make(chan error)
-
-	go func() {
-		errch <- service.GetChatCompletions(ctx, req, transID, w, false)
-	}()
-
-	select {
-	case err := <-errch:
-		if err != nil {
-			ylog.Error("invoke chat completions", "err", err.Error())
-			RespondWithError(w, http.StatusBadRequest, err)
-		}
-	case <-ctx.Done():
-		RespondWithError(w, http.StatusRequestTimeout, errors.New("request timed out"))
+	if err := service.GetChatCompletions(ctx, req, transID, w, false); err != nil {
+		ylog.Error("invoke chat completions", "err", err.Error())
+		RespondWithError(w, http.StatusBadRequest, err)
+		return
 	}
 }
 
