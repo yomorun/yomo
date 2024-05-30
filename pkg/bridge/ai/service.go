@@ -213,10 +213,8 @@ func (s *Service) GetInvoke(ctx context.Context, userInstruction string, baseSys
 		return &ai.InvokeResponse{}, err
 	}
 	// prepare tools
-	tools, err := prepareToolCalls(tcs)
-	if err != nil {
-		return nil, err
-	}
+	tools := prepareToolCalls(tcs)
+
 	chainMessage := ai.ChainMessage{}
 	messages := prepareMessages(baseSystemMessage, userInstruction, chainMessage, tools, true)
 	req := openai.ChatCompletionRequest{
@@ -278,11 +276,8 @@ func (s *Service) GetInvoke(ctx context.Context, userInstruction string, baseSys
 	return res2, err
 }
 
-func addToolsToRequest(req openai.ChatCompletionRequest, tagTools map[uint32]openai.Tool) (openai.ChatCompletionRequest, error) {
-	toolCalls, err := prepareToolCalls(tagTools)
-	if err != nil {
-		return openai.ChatCompletionRequest{}, err
-	}
+func addToolsToRequest(req openai.ChatCompletionRequest, tagTools map[uint32]openai.Tool) openai.ChatCompletionRequest {
+	toolCalls := prepareToolCalls(tagTools)
 
 	if len(toolCalls) > 0 {
 		req.Tools = toolCalls
@@ -290,7 +285,7 @@ func addToolsToRequest(req openai.ChatCompletionRequest, tagTools map[uint32]ope
 
 	ylog.Debug(" #1 first call", "request", fmt.Sprintf("%+v", req))
 
-	return req, nil
+	return req
 }
 
 func overWriteSystemPrompt(req openai.ChatCompletionRequest, sysPrompt string) openai.ChatCompletionRequest {
@@ -331,10 +326,8 @@ func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatComplet
 		return err
 	}
 	// 2. add those tools to request
-	req, err = addToolsToRequest(req, tagTools)
-	if err != nil {
-		return err
-	}
+	req = addToolsToRequest(req, tagTools)
+
 	// 3. over write system prompt to request
 	req = overWriteSystemPrompt(req, s.systemPrompt.Load().(string))
 
@@ -576,7 +569,7 @@ type sfnAsyncCall struct {
 	val map[string]ai.ToolMessage
 }
 
-func prepareToolCalls(tcs map[uint32]openai.Tool) ([]openai.Tool, error) {
+func prepareToolCalls(tcs map[uint32]openai.Tool) []openai.Tool {
 	// prepare tools
 	toolCalls := make([]openai.Tool, len(tcs))
 	idx := 0
@@ -584,7 +577,7 @@ func prepareToolCalls(tcs map[uint32]openai.Tool) ([]openai.Tool, error) {
 		toolCalls[idx] = tc
 		idx++
 	}
-	return toolCalls, nil
+	return toolCalls
 }
 
 func prepareMessages(baseSystemMessage string, userInstruction string, chainMessage ai.ChainMessage, tools []openai.Tool, withTool bool) []openai.ChatCompletionMessage {
