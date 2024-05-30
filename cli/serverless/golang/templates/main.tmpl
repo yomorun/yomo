@@ -34,7 +34,10 @@ func run(_ *cobra.Command, _ []string) {
 	)
 	{{if .WithInitFunc}}
 	// init
-	sfn.Init(Init)
+	if err := sfn.Init(Init); err != nil {
+		log.Printf("[sfn] init error[%s], %v\n", addr, err)
+		os.Exit(1)
+	}
 	{{end}}
 	// set observe data tags
 	sfn.SetObserveDataTags(DataTags()...)
