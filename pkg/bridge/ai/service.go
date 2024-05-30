@@ -225,10 +225,18 @@ func (s *Service) GetInvoke(ctx context.Context, userInstruction string, baseSys
 	if len(tools) > 0 {
 		req.Tools = tools
 	}
+	var (
+		promptUsage     int
+		completionUsage int
+	)
 	chatCompletionResponse, err := s.LLMProvider.GetChatCompletions(ctx, req, s.Metadata)
 	if err != nil {
 		return nil, err
 	}
+
+	promptUsage = chatCompletionResponse.Usage.PromptTokens
+	completionUsage = chatCompletionResponse.Usage.CompletionTokens
+
 	// convert ChatCompletionResponse to InvokeResponse
 	res, err := ai.ConvertToInvokeResponse(&chatCompletionResponse, tcs)
 	if err != nil {
@@ -262,6 +270,10 @@ func (s *Service) GetInvoke(ctx context.Context, userInstruction string, baseSys
 	if err != nil {
 		return nil, err
 	}
+
+	chatCompletionResponse2.Usage.PromptTokens += promptUsage
+	chatCompletionResponse2.Usage.CompletionTokens += completionUsage
+
 	res2, err := ai.ConvertToInvokeResponse(&chatCompletionResponse2, tcs)
 	if err != nil {
 		return nil, err
@@ -338,6 +350,9 @@ func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatComplet
 	req = overWriteSystemPrompt(req, s.systemPrompt.Load().(string))
 
 	var (
+		promptUsage      = 0
+		completionUsage  = 0
+		totalUsage       = 0
 		reqMessages      = req.Messages
 		toolCallsMap     = make(map[int]openai.ToolCall)
 		toolCalls        = []openai.ToolCall{}
@@ -363,6 +378,11 @@ func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatComplet
 			}
 			if len(streamRes.Choices) == 0 {
 				continue
+			}
+			if streamRes.Usage != nil {
+				promptUsage = streamRes.Usage.PromptTokens
+				completionUsage = streamRes.Usage.CompletionTokens
+				totalUsage = streamRes.Usage.TotalTokens
 			}
 			if tc := streamRes.Choices[0].Delta.ToolCalls; len(tc) > 0 {
 				for _, t := range tc {
@@ -412,6 +432,9 @@ func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatComplet
 		if err != nil {
 			return err
 		}
+		promptUsage = resp.Usage.PromptTokens
+		completionUsage = resp.Usage.CompletionTokens
+		totalUsage = resp.Usage.CompletionTokens
 
 		ylog.Debug(" #1 first call", "response", fmt.Sprintf("%+v", resp))
 		// it is a function call
@@ -473,6 +496,11 @@ func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatComplet
 			if err != nil {
 				return err
 			}
+			if streamRes.Usage != nil {
+				streamRes.Usage.PromptTokens += promptUsage
+				streamRes.Usage.CompletionTokens += completionUsage
+				streamRes.Usage.TotalTokens += totalUsage
+			}
 			_, _ = io.WriteString(w, "data: ")
 			_ = json.NewEncoder(w).Encode(streamRes)
 			_, _ = io.WriteString(w, "\n")
@@ -483,6 +511,10 @@ func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatComplet
 		if err != nil {
 			return err
 		}
+
+		resp.Usage.PromptTokens += promptUsage
+		resp.Usage.CompletionTokens += completionUsage
+		resp.Usage.TotalTokens += totalUsage
 
 		w.Header().Set("Content-Type", "application/json")
 		return json.NewEncoder(w).Encode(resp)
