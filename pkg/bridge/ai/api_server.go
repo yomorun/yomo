@@ -20,10 +20,12 @@ const (
 	DefaultZipperAddr = "localhost:9000"
 )
 
-// RequestTimeout is the timeout for the request, default is 5 seconds
-var RequestTimeout = 5 * time.Second
-
-// ======================= Interface =======================
+var (
+	// RequestTimeout is the timeout for the request, default is 90 seconds
+	RequestTimeout = 90 * time.Second
+	//  RunFunctionTimeout is the timeout for awaiting the function response, default is 60 seconds
+	RunFunctionTimeout = 60 * time.Second
+)
 
 // BasicAPIServer provides restful service for end user
 type BasicAPIServer struct {
@@ -142,7 +144,7 @@ func HandleInvoke(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	// Create a context with a timeout of 5 seconds
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), RequestTimeout)
 	defer cancel()
 
 	// messages
@@ -196,7 +198,7 @@ func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), RequestTimeout)
 	defer cancel()
 
 	if err := service.GetChatCompletions(ctx, req, transID, w, false); err != nil {

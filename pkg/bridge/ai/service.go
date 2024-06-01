@@ -212,10 +212,8 @@ func (s *Service) GetInvoke(ctx context.Context, userInstruction string, baseSys
 		return &ai.InvokeResponse{}, err
 	}
 	// prepare tools
-	tools, err := prepareToolCalls(tcs)
-	if err != nil {
-		return nil, err
-	}
+	tools := prepareToolCalls(tcs)
+
 	chainMessage := ai.ChainMessage{}
 	messages := prepareMessages(baseSystemMessage, userInstruction, chainMessage, tools, true)
 	req := openai.ChatCompletionRequest{
@@ -289,11 +287,8 @@ func (s *Service) GetInvoke(ctx context.Context, userInstruction string, baseSys
 	return res2, err
 }
 
-func addToolsToRequest(req openai.ChatCompletionRequest, tagTools map[uint32]openai.Tool) (openai.ChatCompletionRequest, error) {
-	toolCalls, err := prepareToolCalls(tagTools)
-	if err != nil {
-		return openai.ChatCompletionRequest{}, err
-	}
+func addToolsToRequest(req openai.ChatCompletionRequest, tagTools map[uint32]openai.Tool) openai.ChatCompletionRequest {
+	toolCalls := prepareToolCalls(tagTools)
 
 	if len(toolCalls) > 0 {
 		req.Tools = toolCalls
@@ -301,7 +296,7 @@ func addToolsToRequest(req openai.ChatCompletionRequest, tagTools map[uint32]ope
 
 	ylog.Debug(" #1 first call", "request", fmt.Sprintf("%+v", req))
 
-	return req, nil
+	return req
 }
 
 func overWriteSystemPrompt(req openai.ChatCompletionRequest, sysPrompt string) openai.ChatCompletionRequest {
@@ -342,10 +337,8 @@ func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatComplet
 		return err
 	}
 	// 2. add those tools to request
-	req, err = addToolsToRequest(req, tagTools)
-	if err != nil {
-		return err
-	}
+	req = addToolsToRequest(req, tagTools)
+
 	// 3. over write system prompt to request
 	req = overWriteSystemPrompt(req, s.systemPrompt.Load().(string))
 
@@ -535,6 +528,7 @@ func (s *Service) runFunctionCalls(fns map[uint32][]*openai.ToolCall, transID, r
 	s.sfnCallCache[reqID] = asyncCall
 	s.muCallCache.Unlock()
 
+	firedToolIDs := make(map[string]struct{})
 	for tag, tcs := range fns {
 		ylog.Debug("+++invoke toolCalls", "tag", tag, "len(toolCalls)", len(tcs), "transID", transID, "reqID", reqID)
 		for _, fn := range tcs {
@@ -543,19 +537,39 @@ func (s *Service) runFunctionCalls(fns map[uint32][]*openai.ToolCall, transID, r
 				ylog.Error("send data to zipper", "err", err.Error())
 				continue
 			}
+			// record toolIDs be fired
+			firedToolIDs[fn.ID] = struct{}{}
 			// wait for this request to be done
 			asyncCall.wg.Add(1 * register.SfnFactor(tag, s.Metadata))
 		}
 	}
 
 	// wait for reducer to finish, the aggregation results
-	asyncCall.wg.Wait()
+	done := make(chan struct{}, 1)
+	go func() {
+		asyncCall.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-time.After(RunFunctionTimeout):
+	case <-done:
+	}
 
 	arr := make([]ai.ToolMessage, 0)
 
 	asyncCall.mu.RLock()
-	for _, call := range asyncCall.val {
-		ylog.Debug("---invoke done", "id", call.ToolCallId, "content", call.Content)
+	for toolID := range firedToolIDs {
+		call, ok := asyncCall.val[toolID]
+		// `ok==false` represents that the toolID be fired but not receive a response.
+		if !ok {
+			arr = append(arr, ai.ToolMessage{
+				Role:       "tool",
+				ToolCallId: toolID,
+				Content:    "error occured in this function calling, you should ignore this.",
+			})
+			continue
+		}
 		call.Role = "tool"
 		arr = append(arr, call)
 	}
@@ -607,7 +621,7 @@ type sfnAsyncCall struct {
 	val map[string]ai.ToolMessage
 }
 
-func prepareToolCalls(tcs map[uint32]openai.Tool) ([]openai.Tool, error) {
+func prepareToolCalls(tcs map[uint32]openai.Tool) []openai.Tool {
 	// prepare tools
 	toolCalls := make([]openai.Tool, len(tcs))
 	idx := 0
@@ -615,7 +629,7 @@ func prepareToolCalls(tcs map[uint32]openai.Tool) ([]openai.Tool, error) {
 		toolCalls[idx] = tc
 		idx++
 	}
-	return toolCalls, nil
+	return toolCalls
 }
 
 func prepareMessages(baseSystemMessage string, userInstruction string, chainMessage ai.ChainMessage, tools []openai.Tool, withTool bool) []openai.ChatCompletionMessage {
