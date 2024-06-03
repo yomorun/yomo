@@ -12,6 +12,7 @@ import (
 	"github.com/yomorun/yomo/core/serverless"
 	"github.com/yomorun/yomo/pkg/id"
 	"github.com/yomorun/yomo/pkg/trace"
+	yserverless "github.com/yomorun/yomo/serverless"
 	"go.opentelemetry.io/otel/attribute"
 )
 
@@ -250,6 +251,7 @@ func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 			)
 
 			serverlessCtx := serverless.NewContext(s.client, dataFrame.Tag, md, dataFrame.Payload)
+			defer patchCtxLLMFunctionCall(serverlessCtx)
 			s.fn(serverlessCtx)
 		}(dataFrame)
 	} else if s.pfn != nil {
@@ -269,4 +271,18 @@ func (s *streamFunction) SetErrorHandler(fn func(err error)) {
 // Init will initialize the stream function
 func (s *streamFunction) Init(fn func() error) error {
 	return fn()
+}
+
+var patchMessage = "this function calling do not return any message, you should ignore this."
+
+func patchCtxLLMFunctionCall(serverlessCtx yserverless.Context) {
+	fc, err := serverlessCtx.LLMFunctionCall()
+	if err != nil {
+		// it's not a LLM function call ctx
+		return
+	}
+	if !fc.IsOK {
+		// If the function call do not return any message, send this message to provider.
+		serverlessCtx.WriteLLMResult(patchMessage)
+	}
 }

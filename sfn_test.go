@@ -9,6 +9,7 @@ import (
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/ylog"
 	"github.com/yomorun/yomo/serverless"
+	"github.com/yomorun/yomo/serverless/mock"
 )
 
 var (
@@ -144,4 +145,54 @@ func TestSfnCron(t *testing.T) {
 	assert.Nil(t, err)
 
 	sfn.Wait()
+}
+
+func TestPatchCtxLLMFunctionCall(t *testing.T) {
+	type args struct {
+		serverlessCtx serverless.Context
+	}
+	tests := []struct {
+		name        string
+		args        args
+		want        string
+		wantWritten bool
+	}{
+		{
+			name: "function call ok",
+			args: args{
+				serverlessCtx: mock.NewMockContext([]byte(`{"tid":"y8P73i-xbOr4RX2wxKd6x4URrPJLq-L1","req_id":"HHZuifDG7O41bviu","arguments":"hello yomo","tool_call_id":"call_xX0uhdsGZjPqx0hpM5JjbbjG","function_name":"say_hi","is_ok":true}`), 0x21),
+			},
+			want:        "",
+			wantWritten: false,
+		},
+		{
+			name: "function call not ok",
+			args: args{
+				serverlessCtx: mock.NewMockContext([]byte(`{"tid":"y8P73i-xbOr4RX2wxKd6x4URrPJLq-L1","req_id":"HHZuifDG7O41bviu","arguments":"","tool_call_id":"call_xX0uhdsGZjPqx0hpM5JjbbjG","function_name":"say_hi","is_ok":false}`), 0x21),
+			},
+			want:        `{"tid":"y8P73i-xbOr4RX2wxKd6x4URrPJLq-L1","req_id":"HHZuifDG7O41bviu","result":"this function calling do not return any message, you should ignore this.","arguments":"","tool_call_id":"call_xX0uhdsGZjPqx0hpM5JjbbjG","function_name":"say_hi","is_ok":true}`,
+			wantWritten: true,
+		},
+
+		{
+			name: "not a function call",
+			args: args{
+				serverlessCtx: mock.NewMockContext([]byte(`hello yomo`), 0x21),
+			},
+			want:        "",
+			wantWritten: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := tt.args.serverlessCtx
+			patchCtxLLMFunctionCall(ctx)
+
+			records := ctx.(*mock.MockContext).RecordsWritten()
+			assert.Equal(t, tt.wantWritten, len(records) != 0)
+			if tt.wantWritten {
+				assert.Equal(t, tt.want, string(records[0].Data))
+			}
+		})
+	}
 }
