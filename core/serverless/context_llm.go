@@ -34,6 +34,7 @@ func (c *Context) WriteLLMResult(result string) error {
 	if err != nil {
 		return err
 	}
+	c.data = buf
 	return c.Write(ai.ReducerTag, buf)
 }
 
