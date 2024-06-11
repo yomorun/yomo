@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"text/template"
 	"time"
@@ -58,6 +59,10 @@ const (
 )
 
 func makeOllamaRequestBody(req openai.ChatCompletionRequest) (io.Reader, error) {
+	if req.Model == "" {
+		req.Model = "mistral"
+	}
+
 	if !strings.HasPrefix(req.Model, "mistral") {
 		return nil, errors.New("currently only Mistral models are supported, see https://ollama.com/library/mistral")
 	}
@@ -334,5 +339,13 @@ func (p *Provider) Name() string {
 
 // NewProvider creates a new OllamaProvider
 func NewProvider(endpoint string) *Provider {
+	if endpoint == "" {
+		v, ok := os.LookupEnv("OLLAMA_API_ENDPOINT")
+		if ok {
+			endpoint = v
+		} else {
+			endpoint = "http://localhost:11434/"
+		}
+	}
 	return &Provider{endpoint}
 }
