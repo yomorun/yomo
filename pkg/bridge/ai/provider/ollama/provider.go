@@ -35,8 +35,10 @@ type ollamaRequest struct {
 }
 
 type ollamaResponse struct {
-	Response string `json:"response"`
-	Done     bool   `json:"done"`
+	Response        string `json:"response"`
+	Done            bool   `json:"done"`
+	PromptEvalCount int    `json:"prompt_eval_count"`
+	EvalCount       int    `json:"eval_count"`
 }
 
 type templateRequest struct {
@@ -160,7 +162,6 @@ func (p *Provider) GetChatCompletions(ctx context.Context, req openai.ChatComple
 				FinishReason: openai.FinishReasonStop,
 			},
 		},
-		Usage: openai.Usage{}, // todo
 	}
 
 	urlPath, err := url.JoinPath(p.Endpoint, "api/generate")
@@ -203,6 +204,7 @@ func (p *Provider) GetChatCompletions(ctx context.Context, req openai.ChatComple
 	}
 
 	ylog.Debug("ollama chat response", "response", o.Response)
+	ylog.Debug("ollama chat usage", "prompt_tokens", o.PromptEvalCount, "completion_tokens", o.EvalCount)
 
 	if o.Response != "" {
 		res.Choices[0].Message.Content = o.Response
@@ -213,6 +215,12 @@ func (p *Provider) GetChatCompletions(ctx context.Context, req openai.ChatComple
 				res.Choices[0].FinishReason = openai.FinishReasonToolCalls
 				res.Choices[0].Message.ToolCalls = toolCalls
 			}
+		}
+
+		res.Usage = openai.Usage{
+			PromptTokens:     o.PromptEvalCount,
+			CompletionTokens: o.EvalCount,
+			TotalTokens:      o.PromptEvalCount + o.EvalCount,
 		}
 	}
 
@@ -261,8 +269,14 @@ func (s *streamResponse) Recv() (openai.ChatCompletionStreamResponse, error) {
 	s.res.Choices[0].Index++
 	s.res.Choices[0].Delta.Content = o.Response
 	if o.Done {
+		ylog.Debug("ollama chat stream usage", "prompt_tokens", o.PromptEvalCount, "completion_tokens", o.EvalCount)
+
 		s.res.Choices[0].FinishReason = openai.FinishReasonStop
-		s.res.Usage = &openai.Usage{} // todo
+		s.res.Usage = &openai.Usage{
+			PromptTokens:     o.PromptEvalCount,
+			CompletionTokens: o.EvalCount,
+			TotalTokens:      o.PromptEvalCount + o.EvalCount,
+		}
 
 		if s.withTools {
 			toolCalls := parseToolCallsFromResponse(o.Response)

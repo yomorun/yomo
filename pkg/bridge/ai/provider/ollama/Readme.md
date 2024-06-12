@@ -1,4 +1,4 @@
-# Ollama LLM inference provider
+# Ollama LLM Inference Provider
 
 Build up your YoMo AI architecture with fully open-source dependencies.
 
