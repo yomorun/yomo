@@ -24,7 +24,10 @@ func TestCallSyncer(t *testing.T) {
 	wh := newMockWriteHander()
 	defer wh.Close()
 
-	syncer := NewCallSyncer(slog.Default(), wh, wh, 0)
+	// logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	logger := slog.Default()
+
+	syncer := NewCallSyncer(logger, wh, wh, 0)
 	go wh.run()
 
 	var (
@@ -32,17 +35,16 @@ func TestCallSyncer(t *testing.T) {
 		reqID   = "mock-req-id"
 	)
 
-	time.Sleep(50 * time.Millisecond)
+	got, _ := syncer.Call(context.TODO(), transID, reqID, testdata)
 	want := wh.Result()
 
-	got, _ := syncer.Call(context.TODO(), transID, reqID, testdata)
 	assert.ElementsMatch(t, want, got)
 }
 
 type mockWriteHander struct {
 	done    chan struct{}
 	wrCh    chan *mock.MockContext
-	handler core.AsyncHandler
+	reducer core.AsyncHandler
 
 	mu   sync.Mutex
 	ctxs map[*mock.MockContext]struct{}
@@ -62,7 +64,7 @@ func (t *mockWriteHander) Write(tag uint32, data []byte) error {
 }
 
 func (t *mockWriteHander) SetHandler(fn core.AsyncHandler) error {
-	t.handler = fn
+	t.reducer = fn
 	return nil
 }
 
@@ -70,15 +72,18 @@ func (t *mockWriteHander) Close() error { return nil }
 
 func (t *mockWriteHander) run() {
 	for c := range t.wrCh {
-		t.handler(c)
-
+		// these three lines mock how handler handles the context.
 		t.mu.Lock()
 		t.ctxs[c] = struct{}{}
 		t.mu.Unlock()
+
+		t.reducer(c)
 	}
 }
 
 func (t *mockWriteHander) Result() []openai.ChatCompletionMessage {
+	time.Sleep(10 * time.Millisecond)
+
 	t.mu.Lock()
 	defer t.mu.Unlock()
 

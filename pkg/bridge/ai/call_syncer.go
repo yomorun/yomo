@@ -78,7 +78,8 @@ func (f *CallSyncer) Call(ctx context.Context, transID, reqID string, tagToolCal
 	if err := f.fire(transID, reqID, tagToolCalls); err != nil {
 		return nil, err
 	}
-	ch := make(chan []openai.ChatCompletionMessage)
+	// this channel should has a buffer of 1, otherwise dispatch() maybe blocked.
+	ch := make(chan []openai.ChatCompletionMessage, 1)
 
 	reqMsg := reqMsgCh{
 		reqID: reqID,
@@ -99,7 +100,7 @@ func (f *CallSyncer) fire(transID string, reqID string, tagToolCalls map[uint32]
 	toolIDs := make(map[string]struct{})
 
 	for tag, tools := range tagToolCalls {
-		f.logger.Debug("invoke toolCalls", "tag", tag, "len(tools)", len(tools), "transID", transID, "reqID", reqID)
+		f.logger.Debug("fire tool_calls", "tag", tag, "len(tools)", len(tools), "transID", transID, "reqID", reqID)
 
 		for _, t := range tools {
 			data := &ai.FunctionCall{
@@ -153,18 +154,18 @@ func (f *CallSyncer) dispatch(
 	response map[string]chan []openai.ChatCompletionMessage,
 ) {
 	// not fired.
-	tool, ok := requests[reqID]
+	req, ok := requests[reqID]
 	if !ok {
 		return
 	}
 
 	// deadline expired
-	if tool.deadline.Before(time.Now()) {
-		for toolID, msg := range tool.messages {
+	if req.deadline.Before(time.Now()) {
+		for toolID, msg := range req.messages {
 			if msg != nil {
 				continue
 			}
-			tool.messages[toolID] = &openai.ChatCompletionMessage{
+			req.messages[toolID] = &openai.ChatCompletionMessage{
 				ToolCallID: toolID,
 				Role:       openai.ChatMessageRoleTool,
 				Content:    "timeout in this function calling, you should ignore this. ",
@@ -174,9 +175,9 @@ func (f *CallSyncer) dispatch(
 
 	var result []openai.ChatCompletionMessage
 	i := 0
-	for _, msg := range tool.messages {
+	for _, msg := range req.messages {
 		if msg == nil {
-			f.logger.Debug("dispatch", "reqID", reqID, "fired", len(tool.messages), "received", i)
+			f.logger.Debug("dispatch", "reqID", reqID, "fired", len(req.messages), "received", i)
 			return
 		}
 		result = append(result, *msg)
@@ -194,7 +195,7 @@ func (f *CallSyncer) dispatch(
 		delete(requests, reqID)
 		delete(buffered, reqID)
 		delete(response, reqID)
-		f.logger.Debug("dispatch", "reqID", reqID, "fired", len(tool.messages), "received", i)
+		f.logger.Debug("dispatch", "reqID", reqID, "fired", len(req.messages), "received", i)
 	default:
 	}
 }
@@ -227,10 +228,14 @@ func (f *CallSyncer) background() {
 				}
 			}
 			requests[reqTools.reqID] = item
+
+			f.logger.Debug("background request recv", "reqID", reqTools.reqID, "fired", len(item.messages), "buffered", len(buffered[reqTools.reqID]))
 			f.dispatch(reqTools.reqID, requests, buffered, response)
 
 		case rc := <-f.reqMsgChCh:
 			response[rc.reqID] = rc.ch
+
+			f.logger.Debug("background response recv", "reqID", rc.reqID, "fired", len(requests[rc.reqID].messages), "buffered", len(buffered[rc.reqID]))
 			f.dispatch(rc.reqID, requests, buffered, response)
 
 		case msg := <-f.reduceCh:
@@ -249,6 +254,7 @@ func (f *CallSyncer) background() {
 			}
 			tool.messages[msg.message.ToolCallID] = &msg.message
 
+			f.logger.Debug("background buffered recv", "reqID", msg.reqID, "fired", len(requests[msg.reqID].messages), "buffered", len(buffered[msg.reqID]))
 			f.dispatch(msg.reqID, requests, buffered, response)
 		}
 	}
@@ -258,22 +264,19 @@ func handleToChan(logger *slog.Logger, reducer Reducer) <-chan reqMessage {
 	ch := make(chan reqMessage)
 
 	reducer.SetHandler(func(ctx serverless.Context) {
-		buf := ctx.Data()
-
-		logger.Debug("[sfn-reducer]", "tag", ai.ReducerTag, "data", string(buf))
 		invoke, err := ctx.LLMFunctionCall()
 		if err != nil {
-			logger.Error("[sfn-reducer] parse function calling invoke", "err", err.Error())
+			ch <- reqMessage{reqID: ""}
+			logger.Error("parse function calling invoke", "err", err.Error())
 			return
 		}
+		logger.Debug("sfn-reducer", "req_id", invoke.ReqID, "tool_call_id", invoke.ToolCallID, "result", string(invoke.Result))
 
 		message := openai.ChatCompletionMessage{
 			Role:       openai.ChatMessageRoleTool,
 			Content:    invoke.Result,
 			ToolCallID: invoke.ToolCallID,
 		}
-
-		logger.Debug("[sfn-reducer] generate", "tool_call_id", message.ToolCallID, "content", message.Content)
 
 		ch <- reqMessage{reqID: invoke.ReqID, message: message}
 	})
