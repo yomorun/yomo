@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"sync"
 	"testing"
-	"time"
 
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
@@ -82,8 +81,6 @@ func (t *mockWriteHander) run() {
 }
 
 func (t *mockWriteHander) Result() []openai.ChatCompletionMessage {
-	time.Sleep(10 * time.Millisecond)
-
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
