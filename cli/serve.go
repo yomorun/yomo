@@ -96,7 +96,7 @@ var serveCmd = &cobra.Command{
 			registerAIProvider(aiConfig)
 			// start the llm api server
 			go func() {
-				err := ai.Serve(aiConfig, listenAddr, fmt.Sprintf("token:%s", tokenString))
+				err := ai.Serve(aiConfig, listenAddr, fmt.Sprintf("token:%s", tokenString), ylog.Default())
 				if err != nil {
 					log.FailureStatusEvent(os.Stdout, err.Error())
 					return
