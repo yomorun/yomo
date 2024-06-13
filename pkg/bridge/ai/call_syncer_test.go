@@ -5,10 +5,12 @@ import (
 	"log/slog"
 	"sync"
 	"testing"
+	"time"
 
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/core"
+	"github.com/yomorun/yomo/serverless"
 	"github.com/yomorun/yomo/serverless/mock"
 )
 
@@ -19,15 +21,41 @@ var testdata = map[uint32][]*openai.ToolCall{
 	4: {{ID: "tool-call-id-4", Function: openai.FunctionCall{Name: "function-4"}}},
 }
 
+func TestTimeoutCallSyncer(t *testing.T) {
+	h := newHandler(2 * time.Hour) // h.sleep > syncer.timeout
+	flow := newMockDataFlow(h.handle)
+	defer flow.Close()
+
+	syncer := NewCallSyncer(slog.Default(), flow, flow, time.Second)
+	go flow.run()
+
+	var (
+		transID = "mock-trans-id"
+		reqID   = "mock-req-id"
+	)
+
+	want := []openai.ChatCompletionMessage{
+		{
+			Role:       openai.ChatMessageRoleTool,
+			ToolCallID: "tool-call-id",
+			Content:    "timeout in this function calling, you should ignore this.",
+		},
+	}
+
+	got, _ := syncer.Call(context.TODO(), transID, reqID, map[uint32][]*openai.ToolCall{
+		1: {{ID: "tool-call-id", Function: openai.FunctionCall{Name: "timeout-function"}}},
+	})
+
+	assert.ElementsMatch(t, want, got)
+}
+
 func TestCallSyncer(t *testing.T) {
-	wh := newMockWriteHander()
-	defer wh.Close()
+	h := newHandler(0)
+	flow := newMockDataFlow(h.handle)
+	defer flow.Close()
 
-	// logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	logger := slog.Default()
-
-	syncer := NewCallSyncer(logger, wh, wh, 0)
-	go wh.run()
+	syncer := NewCallSyncer(slog.Default(), flow, flow, 0)
+	go flow.run()
 
 	var (
 		transID = "mock-trans-id"
@@ -35,57 +63,39 @@ func TestCallSyncer(t *testing.T) {
 	)
 
 	got, _ := syncer.Call(context.TODO(), transID, reqID, testdata)
-	want := wh.Result()
 
-	assert.ElementsMatch(t, want, got)
+	assert.NotEmpty(t, got)
+	assert.ElementsMatch(t, h.result(), got)
 }
 
-type mockWriteHander struct {
-	done    chan struct{}
-	wrCh    chan *mock.MockContext
-	reducer core.AsyncHandler
-
-	mu   sync.Mutex
-	ctxs map[*mock.MockContext]struct{}
+// handler.handle implements core.AsyncHandler, it just echo the context be written.
+type handler struct {
+	sleep time.Duration
+	mu    sync.Mutex
+	ctxs  map[*mock.MockContext]struct{}
 }
 
-func newMockWriteHander() *mockWriteHander {
-	return &mockWriteHander{
-		done: make(chan struct{}),
-		wrCh: make(chan *mock.MockContext),
-		ctxs: make(map[*mock.MockContext]struct{}),
+func newHandler(sleep time.Duration) *handler {
+	return &handler{
+		sleep: sleep,
+		ctxs:  make(map[*mock.MockContext]struct{}),
 	}
 }
 
-func (t *mockWriteHander) Write(tag uint32, data []byte) error {
-	t.wrCh <- mock.NewMockContext(data, tag)
-	return nil
+func (h *handler) handle(c serverless.Context) {
+	time.Sleep(h.sleep)
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.ctxs[c.(*mock.MockContext)] = struct{}{}
 }
 
-func (t *mockWriteHander) SetHandler(fn core.AsyncHandler) error {
-	t.reducer = fn
-	return nil
-}
-
-func (t *mockWriteHander) Close() error { return nil }
-
-func (t *mockWriteHander) run() {
-	for c := range t.wrCh {
-		// these three lines mock how handler handles the context.
-		t.mu.Lock()
-		t.ctxs[c] = struct{}{}
-		t.mu.Unlock()
-
-		t.reducer(c)
-	}
-}
-
-func (t *mockWriteHander) Result() []openai.ChatCompletionMessage {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+func (h *handler) result() []openai.ChatCompletionMessage {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 
 	want := []openai.ChatCompletionMessage{}
-	for c := range t.ctxs {
+	for c := range h.ctxs {
 		invoke, _ := c.LLMFunctionCall()
 		want = append(want, openai.ChatCompletionMessage{
 			Role: openai.ChatMessageRoleTool, Content: invoke.Result, ToolCallID: invoke.ToolCallID,
@@ -93,4 +103,41 @@ func (t *mockWriteHander) Result() []openai.ChatCompletionMessage {
 	}
 
 	return want
+}
+
+// mockDataFlow mocks the data flow of ai bridge.
+// The data flow is: source -> hander -> reducer,
+// It is `Write() -> handler() -> reducer()` in this mock implementation.
+type mockDataFlow struct {
+	wrCh    chan *mock.MockContext
+	reducer core.AsyncHandler
+	handler core.AsyncHandler
+}
+
+func newMockDataFlow(handler core.AsyncHandler) *mockDataFlow {
+	return &mockDataFlow{
+		wrCh:    make(chan *mock.MockContext),
+		handler: handler,
+	}
+}
+
+func (t *mockDataFlow) Write(tag uint32, data []byte) error {
+	t.wrCh <- mock.NewMockContext(data, tag)
+	return nil
+}
+
+func (t *mockDataFlow) SetHandler(fn core.AsyncHandler) error {
+	t.reducer = fn
+	return nil
+}
+
+func (t *mockDataFlow) Close() error { return nil }
+
+// this function explains how the data flow works,
+// it receives data from the write channel, and handle with the handler, then send the result to the reducer.
+func (t *mockDataFlow) run() {
+	for c := range t.wrCh {
+		t.handler(c)
+		t.reducer(c)
+	}
 }
