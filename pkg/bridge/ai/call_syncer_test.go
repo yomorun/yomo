@@ -32,22 +32,10 @@ func TestCallSyncer(t *testing.T) {
 		reqID   = "mock-req-id"
 	)
 
-	err := syncer.Fire(transID, reqID, testdata)
-	assert.NoError(t, err)
-
-	want := []openai.ChatCompletionMessage{}
-
 	time.Sleep(50 * time.Millisecond)
-	wh.mu.Lock()
-	for c := range wh.ctxs {
-		invoke, _ := c.LLMFunctionCall()
-		want = append(want, openai.ChatCompletionMessage{
-			Role: openai.ChatMessageRoleTool, Content: invoke.Result, ToolCallID: invoke.ToolCallID,
-		})
-	}
-	wh.mu.Unlock()
+	want := wh.Result()
 
-	got, _ := syncer.WaitResult(context.TODO(), transID, reqID)
+	got, _ := syncer.Call(context.TODO(), transID, reqID, testdata)
 	assert.ElementsMatch(t, want, got)
 }
 
@@ -78,23 +66,15 @@ func (t *mockWriteHander) SetHandler(fn core.AsyncHandler) error {
 	return nil
 }
 
-func (t *mockWriteHander) Close() error {
-	close(t.done)
-	return nil
-}
+func (t *mockWriteHander) Close() error { return nil }
 
-func (t *mockWriteHander) run() error {
-	for {
-		select {
-		case <-t.done:
-			return nil
-		case c := <-t.wrCh:
-			t.handler(c)
+func (t *mockWriteHander) run() {
+	for c := range t.wrCh {
+		t.handler(c)
 
-			t.mu.Lock()
-			t.ctxs[c] = struct{}{}
-			t.mu.Unlock()
-		}
+		t.mu.Lock()
+		t.ctxs[c] = struct{}{}
+		t.mu.Unlock()
 	}
 }
 

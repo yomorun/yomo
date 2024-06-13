@@ -11,74 +11,45 @@ import (
 	"github.com/yomorun/yomo/serverless"
 )
 
-// CallSyncer fire a bunch of function callings, and wait the result of these function callings.
-// every tool call has a ID, which is used to identify the function calling, if Caller fired it,
-// The WaitResult will wait the result that all of the function callings responded.
-// Note: one tool call can only be responded once.
-type CallSyncer interface {
-	// Call(transID, reqID string, tagToolCalls map[uint32][]*openai.ToolCall) ([]openai.ChatCompletionMessage, error)
-
-	// Fire fire a bunch of function callings, it will return immediately,
-	// you should call WaitResult to wait the result of these function callings.
-	Fire(transID, reqID string, tagToolCalls map[uint32][]*openai.ToolCall) error
-
-	// WaitResult will wait the result all of the function callings responded.
-	// The result only contains the messages with role=="tool".
-	WaitResult(ctx context.Context, transID, reqID string) ([]openai.ChatCompletionMessage, error)
-
-	// Close close the CallSyncer. if close, you can't use this CallSyncer anymore.
-	Close() error
-}
-
-// TagWriter write tag and []byte.
-type (
-	TagWriter interface {
-		Write(tag uint32, data []byte) error
-		Close() error
-	}
-
-	// Reducer handle the tag and []byte.
-	Reducer interface {
-		SetHandler(fn core.AsyncHandler) error
-		Close() error
-	}
-)
-
-type callSyncer struct {
+// CallSyncer fires a bunch of function callings, and wait the result of these function callings.
+// every tool call has a toolCallID, which is used to identify the function calling,
+// Note that one tool call can only be responded once.
+type CallSyncer struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	logger *slog.Logger
 
 	// timeout is the timeout for waiting the result.
-	timeout   time.Duration
-	writer    TagWriter
-	reducer   Reducer
-	receiveCh <-chan ReqMessage
+	timeout  time.Duration
+	writer   TagWriter
+	reducer  Reducer
+	reduceCh <-chan reqMessage
 
 	// internal use
 	reqToolsCh chan reqTools
 	reqMsgChCh chan reqMsgCh
 }
 
-type ReqMessage struct {
-	ReqID   string
-	Message openai.ChatCompletionMessage
+type reqMessage struct {
+	reqID   string
+	message openai.ChatCompletionMessage
 }
 
-func NewCallSyncer(logger *slog.Logger, writer TagWriter, reducer Reducer, timeout time.Duration) CallSyncer {
+// NewCallSyncer creates a new CallSyncer.
+func NewCallSyncer(logger *slog.Logger, writer TagWriter, reducer Reducer, timeout time.Duration) *CallSyncer {
 	if timeout == 0 {
 		timeout = RunFunctionTimeout
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 
-	syncer := &callSyncer{
+	syncer := &CallSyncer{
 		ctx:        ctx,
 		cancel:     cancel,
 		logger:     logger,
 		timeout:    timeout,
 		writer:     writer,
 		reducer:    reducer,
-		receiveCh:  handleToChan(logger, reducer),
+		reduceCh:   handleToChan(logger, reducer),
 		reqToolsCh: make(chan reqTools),
 		reqMsgChCh: make(chan reqMsgCh),
 	}
@@ -100,7 +71,31 @@ type (
 	}
 )
 
-func (f *callSyncer) Fire(transID string, reqID string, tagToolCalls map[uint32][]*openai.ToolCall) error {
+// Call fires a bunch of function callings, and wait the result of these function callings.
+// The result only contains the messages with role=="tool".
+// If some function callings failed, the content will be returned as the failed reason.
+func (f *CallSyncer) Call(ctx context.Context, transID, reqID string, tagToolCalls map[uint32][]*openai.ToolCall) ([]openai.ChatCompletionMessage, error) {
+	if err := f.fire(transID, reqID, tagToolCalls); err != nil {
+		return nil, err
+	}
+	ch := make(chan []openai.ChatCompletionMessage)
+
+	reqMsg := reqMsgCh{
+		reqID: reqID,
+		ch:    ch,
+	}
+
+	f.reqMsgChCh <- reqMsg
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case res := <-ch:
+		return res, nil
+	}
+}
+
+func (f *CallSyncer) fire(transID string, reqID string, tagToolCalls map[uint32][]*openai.ToolCall) error {
 	toolIDs := make(map[string]struct{})
 
 	for tag, tools := range tagToolCalls {
@@ -129,27 +124,8 @@ func (f *callSyncer) Fire(transID string, reqID string, tagToolCalls map[uint32]
 	return nil
 }
 
-// WaitResult implements FunctionCaller.
-func (f *callSyncer) WaitResult(ctx context.Context, transID string, reqID string) ([]openai.ChatCompletionMessage, error) {
-	ch := make(chan []openai.ChatCompletionMessage)
-
-	reqMsg := reqMsgCh{
-		reqID: reqID,
-		ch:    ch,
-	}
-
-	f.reqMsgChCh <- reqMsg
-
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case res := <-ch:
-		return res, nil
-	}
-}
-
-// Close implements CallSyncer.
-func (f *callSyncer) Close() error {
+// Close close the CallSyncer. if close, you can't use this CallSyncer anymore.
+func (f *CallSyncer) Close() error {
 	f.cancel()
 
 	var err error
@@ -164,20 +140,20 @@ func (f *callSyncer) Close() error {
 	return err
 }
 
-type item struct {
+type msg struct {
 	deadline time.Time
-	// key is toolCallID
+	// key is toolCallID, value is nil or the response from the toolCall.
 	messages map[string]*openai.ChatCompletionMessage
 }
 
-func (f *callSyncer) dispatch(
+func (f *CallSyncer) dispatch(
 	reqID string,
-	reqs map[string]*item,
-	msgs map[string]map[string]openai.ChatCompletionMessage,
-	resch map[string]chan []openai.ChatCompletionMessage,
+	requests map[string]*msg,
+	buffered map[string]map[string]openai.ChatCompletionMessage,
+	response map[string]chan []openai.ChatCompletionMessage,
 ) {
 	// not fired.
-	tool, ok := reqs[reqID]
+	tool, ok := requests[reqID]
 	if !ok {
 		return
 	}
@@ -207,81 +183,79 @@ func (f *callSyncer) dispatch(
 		i++
 	}
 
-	ch, ok := resch[reqID]
+	ch, ok := response[reqID]
 	if !ok {
 		return
 	}
 
 	select {
 	case ch <- result:
-		delete(reqs, reqID)
-		delete(msgs, reqID)
-		delete(resch, reqID)
+		// complete a request-response, clean up this request according to the reqID.
+		delete(requests, reqID)
+		delete(buffered, reqID)
+		delete(response, reqID)
 		f.logger.Debug("dispatch", "reqID", reqID, "fired", len(tool.messages), "received", i)
 	default:
 	}
 }
 
-func (f *callSyncer) background() {
-	// reqs stores fire request, the key is the reqID
-	reqs := make(map[string]*item)
-	// msgs stores the messages from the reducer, the key is the reqID
-	msgs := make(map[string]map[string]openai.ChatCompletionMessage)
-	// resChs stores the result channel, the key is the reqID, the value channel will be fulled when the result comes.
-	resChs := make(map[string]chan []openai.ChatCompletionMessage)
+func (f *CallSyncer) background() {
+	// requests stores the request that be fired, the key is the reqID
+	requests := make(map[string]*msg)
+	// buffered stores the messages from the reducer, the key is the reqID
+	buffered := make(map[string]map[string]openai.ChatCompletionMessage)
+	// response stores the result channel, the key is the reqID, the value channel will be sent when the buffered is fulled.
+	response := make(map[string]chan []openai.ChatCompletionMessage)
 
 	for {
 		select {
 		case <-f.ctx.Done():
 			return
 		case reqTools := <-f.reqToolsCh:
-			item := &item{
+			item := &msg{
 				deadline: time.Now().Add(f.timeout),
 				messages: make(map[string]*openai.ChatCompletionMessage),
 			}
 			for toolID := range reqTools.toolIDs {
 				item.messages[toolID] = nil
 			}
-
-			for k, v := range msgs[reqTools.reqID] {
+			for k, v := range buffered[reqTools.reqID] {
 				item.messages[k] = &openai.ChatCompletionMessage{
 					ToolCallID: v.ToolCallID,
 					Role:       v.Role,
 					Content:    v.Content,
 				}
 			}
-			reqs[reqTools.reqID] = item
-
-			f.dispatch(reqTools.reqID, reqs, msgs, resChs)
+			requests[reqTools.reqID] = item
+			f.dispatch(reqTools.reqID, requests, buffered, response)
 
 		case rc := <-f.reqMsgChCh:
-			resChs[rc.reqID] = rc.ch
+			response[rc.reqID] = rc.ch
+			f.dispatch(rc.reqID, requests, buffered, response)
 
-			f.dispatch(rc.reqID, reqs, msgs, resChs)
-
-		case msg := <-f.receiveCh:
-			tool, ok := reqs[msg.ReqID]
+		case msg := <-f.reduceCh:
+			tool, ok := requests[msg.reqID]
 			if !ok {
-				_, ok := msgs[msg.ReqID]
+				_, ok := buffered[msg.reqID]
 				if !ok {
-					msgs[msg.ReqID] = make(map[string]openai.ChatCompletionMessage)
+					buffered[msg.reqID] = make(map[string]openai.ChatCompletionMessage)
 				}
-				msgs[msg.ReqID][msg.Message.ToolCallID] = openai.ChatCompletionMessage{
-					ToolCallID: msg.Message.ToolCallID,
-					Role:       msg.Message.Role,
-					Content:    msg.Message.Content,
+				buffered[msg.reqID][msg.message.ToolCallID] = openai.ChatCompletionMessage{
+					ToolCallID: msg.message.ToolCallID,
+					Role:       msg.message.Role,
+					Content:    msg.message.Content,
 				}
 				continue
 			}
-			tool.messages[msg.Message.ToolCallID] = &msg.Message
+			tool.messages[msg.message.ToolCallID] = &msg.message
 
-			f.dispatch(msg.ReqID, reqs, msgs, resChs)
+			f.dispatch(msg.reqID, requests, buffered, response)
 		}
 	}
 }
 
-func handleToChan(logger *slog.Logger, reducer Reducer) <-chan ReqMessage {
-	ch := make(chan ReqMessage)
+func handleToChan(logger *slog.Logger, reducer Reducer) <-chan reqMessage {
+	ch := make(chan reqMessage)
 
 	reducer.SetHandler(func(ctx serverless.Context) {
 		buf := ctx.Data()
@@ -301,8 +275,22 @@ func handleToChan(logger *slog.Logger, reducer Reducer) <-chan ReqMessage {
 
 		logger.Debug("[sfn-reducer] generate", "tool_call_id", message.ToolCallID, "content", message.Content)
 
-		ch <- ReqMessage{ReqID: invoke.ReqID, Message: message}
+		ch <- reqMessage{reqID: invoke.ReqID, message: message}
 	})
 
 	return ch
 }
+
+type (
+	// TagWriter write tag and []byte.
+	TagWriter interface {
+		Write(tag uint32, data []byte) error
+		Close() error
+	}
+
+	// Reducer handle the tag and []byte.
+	Reducer interface {
+		SetHandler(fn core.AsyncHandler) error
+		Close() error
+	}
+)

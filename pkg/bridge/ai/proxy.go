@@ -100,7 +100,7 @@ func NewCaller(credential string, zipperAddr string, provider LLMProvider, exFn 
 	}
 
 	caller := &Caller{
-		CallSyncer: callSyncer,
+		CallSyncer: *callSyncer,
 		credential: credential,
 		Metadata:   md,
 		provider:   provider,
@@ -165,11 +165,7 @@ func (c *Caller) GetInvoke(ctx context.Context, userInstruction string, baseSyst
 	ylog.Debug(">> run function calls", "transID", transID, "res.ToolCalls", fmt.Sprintf("%+v", res.ToolCalls))
 
 	reqID := id.New(16)
-	if err := c.Fire(transID, reqID, res.ToolCalls); err != nil {
-		return nil, err
-	}
-
-	llmCalls, err := c.WaitResult(ctx, transID, reqID)
+	llmCalls, err := c.Call(ctx, transID, reqID, res.ToolCalls)
 	if err != nil {
 		return nil, err
 	}
@@ -317,10 +313,7 @@ func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompleti
 
 	// 6. run llm function calls
 	reqID := id.New(16)
-	if err := c.CallSyncer.Fire(transID, reqID, fnCalls); err != nil {
-		return err
-	}
-	llmCalls, err := c.CallSyncer.WaitResult(ctx, transID, reqID)
+	llmCalls, err := c.Call(ctx, transID, reqID, fnCalls)
 	if err != nil {
 		return err
 	}
