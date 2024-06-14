@@ -27,6 +27,9 @@ func (c *Context) WriteLLMResult(result string) error {
 	if c.fnCall == nil {
 		return errors.New("no function call, can't write result")
 	}
+	if c.fnCall.IsOK && c.fnCall.Result != "" {
+		return errors.New("LLM function can only be called once")
+	}
 	// function call
 	c.fnCall.IsOK = true
 	c.fnCall.Result = result
