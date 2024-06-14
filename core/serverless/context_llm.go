@@ -9,8 +9,7 @@ import (
 
 // ReadLLMArguments reads LLM function arguments
 func (c *Context) ReadLLMArguments(args any) error {
-	fnCall := &ai.FunctionCall{}
-	err := fnCall.FromBytes(c.data)
+	fnCall, err := c.LLMFunctionCall()
 	if err != nil {
 		return err
 	}
