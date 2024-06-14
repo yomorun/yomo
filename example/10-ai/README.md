@@ -9,15 +9,15 @@
 ## Step 2: Start sfn
 
 ```bash
-cd llm-sfn-timezone-calculator && yomo run app.go
+cd llm-sfn-timezone-calculator && yomo run -m go.mod app.go
 ```
 
 ```bash
-cd llm-sfn-currency-converter && yomo run app.go
+cd llm-sfn-currency-converter && yomo run -m go.mod app.go
 ```
 
 ```bash
-cd llm-sfn-get-ip-and-latency && yomo run app.go
+cd llm-sfn-get-ip-and-latency && yomo run -m go.mod app.go
 ```
 
 
