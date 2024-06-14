@@ -26,7 +26,7 @@ func TestTimeoutCallSyncer(t *testing.T) {
 	flow := newMockDataFlow(h.handle)
 	defer flow.Close()
 
-	syncer := NewCallSyncer(slog.Default(), flow, flow, time.Second)
+	syncer := NewCallSyncer(slog.Default(), flow, flow, time.Millisecond)
 	go flow.run()
 
 	var (

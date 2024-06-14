@@ -27,6 +27,7 @@ type CallSyncer struct {
 
 	// internal use
 	resSignal chan resSignal
+	cleanCh   chan string
 }
 
 type reqMessage struct {
@@ -50,6 +51,7 @@ func NewCallSyncer(logger *slog.Logger, writer TagWriter, reducer Reducer, timeo
 		reducer:   reducer,
 		reduceCh:  handleToChan(logger, reducer),
 		resSignal: make(chan resSignal),
+		cleanCh:   make(chan string),
 	}
 
 	go syncer.background()
@@ -67,6 +69,10 @@ type resSignal struct {
 // The result only contains the messages with role=="tool".
 // If some function callings failed, the content will be returned as the failed reason.
 func (f *CallSyncer) Call(ctx context.Context, transID, reqID string, tagToolCalls map[uint32][]*openai.ToolCall) ([]openai.ChatCompletionMessage, error) {
+	defer func() {
+		f.cleanCh <- reqID
+	}()
+
 	toolIDs, err := f.fire(transID, reqID, tagToolCalls)
 	if err != nil {
 		return nil, err
@@ -158,29 +164,30 @@ func (f *CallSyncer) Close() error {
 func (f *CallSyncer) background() {
 	// buffered stores the messages from the reducer, the key is the reqID
 	buffered := make(map[string]map[string]openai.ChatCompletionMessage)
-	// response stores the result channel, the key is the reqID, the value channel will be sent when the buffered is fulled.
-	response := make(map[string]*resSignal)
+	// singnals stores the result channel, the key is the reqID, the value channel will be sent when the buffered is fulled.
+	singnals := make(map[string]resSignal)
 
 	for {
 		select {
 		case <-f.ctx.Done():
 			return
-		case sig := <-f.resSignal:
-			sig = resSignal{
-				reqID:   sig.reqID,
-				toolIDs: sig.toolIDs,
-				ch:      sig.ch,
-			}
-			response[sig.reqID] = &sig
 
+		case sig := <-f.resSignal:
+			singnals[sig.reqID] = sig
+
+			// send data buffered to the result channel, one ToolCallID has one result.
 			for _, msg := range buffered[sig.reqID] {
 				if _, ok := sig.toolIDs[msg.ToolCallID]; !ok {
 					continue
 				}
 				sig.ch <- msg
 				delete(buffered[sig.reqID], msg.ToolCallID)
-				delete(response[sig.reqID].toolIDs, msg.ToolCallID)
+				delete(singnals[sig.reqID].toolIDs, msg.ToolCallID)
 			}
+
+		case reqID := <-f.cleanCh:
+			delete(buffered, reqID)
+			delete(singnals, reqID)
 
 		case msg := <-f.reduceCh:
 			if msg.reqID == "" {
@@ -193,7 +200,8 @@ func (f *CallSyncer) background() {
 				Content:    msg.message.Content,
 			}
 
-			sig, ok := response[msg.reqID]
+			sig, ok := singnals[msg.reqID]
+			// the signal that requests a result has not been sent. so buffer the data from reducer.
 			if !ok {
 				_, ok := buffered[msg.reqID]
 				if !ok {
@@ -201,6 +209,8 @@ func (f *CallSyncer) background() {
 				}
 				buffered[msg.reqID][msg.message.ToolCallID] = result
 			} else {
+				// the signal was sent,
+				// check if the message has been sent, and if not, send the message to signal's channel.
 				if _, ok := sig.toolIDs[msg.message.ToolCallID]; ok {
 					sig.ch <- result
 				}
