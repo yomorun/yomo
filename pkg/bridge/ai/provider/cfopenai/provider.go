@@ -10,10 +10,8 @@ import (
 	_ "github.com/joho/godotenv/autoload"
 	openai "github.com/sashabaranov/go-openai"
 
-	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
-	"github.com/yomorun/yomo/pkg/bridge/ai"
-	bridgeai "github.com/yomorun/yomo/pkg/bridge/ai"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
 )
 
 // Provider is the provider for Cloudflare OpenAI Gateway
@@ -28,7 +26,7 @@ type Provider struct {
 }
 
 // check if implements ai.Provider
-var _ bridgeai.LLMProvider = &Provider{}
+var _ provider.LLMProvider = &Provider{}
 
 // NewProvider creates a new AzureOpenAIProvider
 func NewProvider(cfEndpoint, apiKey, model string) *Provider {
@@ -56,14 +54,14 @@ func (p *Provider) Name() string {
 }
 
 // GetChatCompletions implements ai.LLMProvider.
-func (p *Provider) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, _ metadata.M) (openai.ChatCompletionResponse, error) {
+func (p *Provider) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
 	req.Model = p.Model
 
 	return p.client.CreateChatCompletion(ctx, req)
 }
 
 // GetChatCompletionsStream implements ai.LLMProvider.
-func (p *Provider) GetChatCompletionsStream(ctx context.Context, req openai.ChatCompletionRequest, _ metadata.M) (ai.ResponseRecver, error) {
+func (p *Provider) GetChatCompletionsStream(ctx context.Context, req openai.ChatCompletionRequest) (provider.ResponseRecver, error) {
 	req.Model = p.Model
 
 	return p.client.CreateChatCompletionStream(ctx, req)

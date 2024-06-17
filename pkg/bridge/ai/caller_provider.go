@@ -17,40 +17,57 @@ import (
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
 	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 	"github.com/yomorun/yomo/pkg/id"
 )
 
 var (
-	// ServiceCacheSize is the size of the service cache
-	ServiceCacheSize = 1024
-	// ServiceCacheTTL is the time to live of the service cache
-	ServiceCacheTTL = time.Minute * 0
+	// CallerProviderCacheSize is the size of the caller provider cache
+	CallerProviderCacheSize = 1024
+	// CallerProviderCacheTTL is the time to live of the provider cache
+	CallerProviderCacheTTL = time.Minute * 0
 )
 
-type Proxy struct {
-	cacheSize int
-	cacheTTL  time.Duration
-	callers   *expirable.LRU[string, *Caller]
+// CallerProvider provides the caller, which is used to interact with YoMo's stream function.
+type CallerProvider struct {
+	lp          provider.LLMProvider
+	zipperAddr  string
+	exFn        ExchangeMetadataFunc
+	provideFunc func(credential string, zipperAddr string, provider provider.LLMProvider, exFn ExchangeMetadataFunc) (*Caller, error)
+	callers     *expirable.LRU[string, *Caller]
 }
 
-func NewProxy(cacheSize int, cacheTTL time.Duration) *Proxy {
-	proxy := &Proxy{
-		cacheSize: cacheSize,
-		cacheTTL:  cacheTTL,
-		callers:   expirable.NewLRU(cacheSize, func(_ string, caller *Caller) { caller.Close() }, cacheTTL),
+// NewCallerProvider returns a new caller provider.
+func NewCallerProvider(zipperAddr string, lp provider.LLMProvider, exFn ExchangeMetadataFunc) *CallerProvider {
+	return newCallerProvider(zipperAddr, lp, exFn, NewCaller)
+}
+
+func newCallerProvider(
+	zipperAddr string,
+	lp provider.LLMProvider,
+	exFn ExchangeMetadataFunc,
+	provideFunc func(credential string, zipperAddr string, provider provider.LLMProvider, exFn ExchangeMetadataFunc) (*Caller, error),
+) *CallerProvider {
+	p := &CallerProvider{
+		zipperAddr:  zipperAddr,
+		lp:          lp,
+		exFn:        exFn,
+		provideFunc: provideFunc,
+		callers:     expirable.NewLRU(CallerProviderCacheSize, func(_ string, caller *Caller) { caller.Close() }, CallerProviderCacheTTL),
 	}
 
-	return proxy
+	return p
 }
 
-func (p *Proxy) LoadOrCreateCaller(credential string, zipperAddr string, provider LLMProvider, exFn ExchangeMetadataFunc) (*Caller, error) {
+// Provide provides the caller.
+func (p *CallerProvider) Provide(credential string) (*Caller, error) {
 	caller, ok := p.callers.Get(credential)
 	if ok {
 		return caller, nil
 	}
 
-	caller, err := NewCaller(credential, zipperAddr, provider, exFn)
+	caller, err := p.provideFunc(credential, p.zipperAddr, p.lp, p.exFn)
 	if err != nil {
 		return nil, err
 	}
@@ -60,14 +77,15 @@ func (p *Proxy) LoadOrCreateCaller(credential string, zipperAddr string, provide
 }
 
 type Caller struct {
+	CallSyncer
+
 	credential   string
 	Metadata     metadata.M
 	systemPrompt atomic.Value
-	provider     LLMProvider
-	CallSyncer
+	provider     provider.LLMProvider
 }
 
-func NewCaller(credential string, zipperAddr string, provider LLMProvider, exFn ExchangeMetadataFunc) (*Caller, error) {
+func NewCaller(credential string, zipperAddr string, provider provider.LLMProvider, exFn ExchangeMetadataFunc) (*Caller, error) {
 	source := yomo.NewSource(
 		"fc-source",
 		zipperAddr,
@@ -139,7 +157,7 @@ func (c *Caller) GetInvoke(ctx context.Context, userInstruction string, baseSyst
 		promptUsage     int
 		completionUsage int
 	)
-	chatCompletionResponse, err := c.provider.GetChatCompletions(ctx, req, c.Metadata)
+	chatCompletionResponse, err := c.provider.GetChatCompletions(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +197,7 @@ func (c *Caller) GetInvoke(ctx context.Context, userInstruction string, baseSyst
 	req2 := openai.ChatCompletionRequest{
 		Messages: messages2,
 	}
-	chatCompletionResponse2, err := c.provider.GetChatCompletions(ctx, req2, c.Metadata)
+	chatCompletionResponse2, err := c.provider.GetChatCompletions(ctx, req2)
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +247,7 @@ func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompleti
 			flusher        = eventFlusher(w)
 			isFunctionCall = false
 		)
-		resStream, err := c.provider.GetChatCompletionsStream(ctx, req, c.Metadata)
+		resStream, err := c.provider.GetChatCompletionsStream(ctx, req)
 		if err != nil {
 			return err
 		}
@@ -288,7 +306,7 @@ func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompleti
 			flusher.Flush()
 		}
 	} else {
-		resp, err := c.provider.GetChatCompletions(ctx, req, c.Metadata)
+		resp, err := c.provider.GetChatCompletions(ctx, req)
 		if err != nil {
 			return err
 		}
@@ -327,7 +345,7 @@ func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompleti
 
 	if req.Stream {
 		flusher := w.(http.Flusher)
-		resStream, err := c.provider.GetChatCompletionsStream(ctx, req, c.Metadata)
+		resStream, err := c.provider.GetChatCompletionsStream(ctx, req)
 		if err != nil {
 			return err
 		}
@@ -347,7 +365,7 @@ func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompleti
 			_ = writeStreamEvent(w, flusher, streamRes)
 		}
 	} else {
-		resp, err := c.provider.GetChatCompletions(ctx, req, c.Metadata)
+		resp, err := c.provider.GetChatCompletions(ctx, req)
 		if err != nil {
 			return err
 		}

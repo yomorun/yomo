@@ -27,6 +27,7 @@ import (
 	"github.com/yomorun/yomo/pkg/log"
 
 	"github.com/yomorun/yomo/pkg/bridge/ai"
+	providerpkg "github.com/yomorun/yomo/pkg/bridge/ai/provider"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/azopenai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cfazure"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cfopenai"
@@ -117,16 +118,16 @@ func registerAIProvider(aiConfig *ai.Config) error {
 	for name, provider := range aiConfig.Providers {
 		switch name {
 		case "azopenai":
-			ai.RegisterProvider(azopenai.NewProvider(
+			providerpkg.RegisterProvider(azopenai.NewProvider(
 				provider["api_key"],
 				provider["api_endpoint"],
 				provider["deployment_id"],
 				provider["api_version"],
 			))
 		case "openai":
-			ai.RegisterProvider(openai.NewProvider(provider["api_key"], provider["model"]))
+			providerpkg.RegisterProvider(openai.NewProvider(provider["api_key"], provider["model"]))
 		case "cloudflare_azure":
-			ai.RegisterProvider(cfazure.NewProvider(
+			providerpkg.RegisterProvider(cfazure.NewProvider(
 				provider["endpoint"],
 				provider["api_key"],
 				provider["resource"],
@@ -134,7 +135,7 @@ func registerAIProvider(aiConfig *ai.Config) error {
 				provider["api_version"],
 			))
 		case "cloudflare_openai":
-			ai.RegisterProvider(cfopenai.NewProvider(
+			providerpkg.RegisterProvider(cfopenai.NewProvider(
 				provider["endpoint"],
 				provider["api_key"],
 				provider["model"],
@@ -144,8 +145,7 @@ func registerAIProvider(aiConfig *ai.Config) error {
 		}
 	}
 
-	// log.InfoStatusEvent(os.Stdout, "registered [%d] AI provider", len(ai.ListProviders()))
-	ylog.Info("registered AI providers", "len", len(ai.ListProviders()))
+	ylog.Info("registered AI providers", "len", len(providerpkg.ListProviders()))
 	return nil
 }
 

@@ -1,16 +1,12 @@
 package ai
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
-	"sync"
 	"testing"
 
-	openai "github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/ai"
-	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 )
 
@@ -129,123 +125,6 @@ func TestParseConfig(t *testing.T) {
 	}
 }
 
-type MockLLMProvider struct {
-	name string
-}
-
-func (m *MockLLMProvider) GetChatCompletions(_ context.Context, req openai.ChatCompletionRequest, _ metadata.M) (openai.ChatCompletionResponse, error) {
-	return openai.ChatCompletionResponse{}, nil
-}
-
-func (m *MockLLMProvider) GetChatCompletionsStream(_ context.Context, req openai.ChatCompletionRequest, _ metadata.M) (ResponseRecver, error) {
-	return nil, nil
-}
-
-var _ LLMProvider = &MockLLMProvider{}
-
-func (m *MockLLMProvider) Name() string {
-	return m.name
-}
-
-func TestListProviders(t *testing.T) {
-	t.Cleanup(func() {
-		providers = sync.Map{}
-		defaultProvider = nil
-	})
-	providers.Store("provider1", &MockLLMProvider{})
-	providers.Store("provider2", &MockLLMProvider{})
-	providers.Store("provider3", &MockLLMProvider{})
-
-	expected := []string{"provider1", "provider2", "provider3"} // Replace with the expected provider names
-
-	val := ListProviders()
-
-	assert.ElementsMatch(t, expected, val)
-}
-
-func TestRegisterProvider(t *testing.T) {
-	t.Cleanup(func() {
-		providers = sync.Map{}
-		defaultProvider = nil
-	})
-	provider := &MockLLMProvider{name: "testProvider"}
-
-	// Test registering a provider
-	RegisterProvider(provider)
-
-	// Check if the provider was registered
-	storedProvider, ok := providers.Load(provider.Name())
-	assert.True(t, ok)
-	assert.Equal(t, provider, storedProvider)
-}
-
-func TestSetDefaultProvider(t *testing.T) {
-	t.Cleanup(func() {
-		providers = sync.Map{}
-		defaultProvider = nil
-	})
-	provider := &MockLLMProvider{name: "testProvider"}
-
-	// Register a provider
-	RegisterProvider(provider)
-
-	// Set the provider as default
-	SetDefaultProvider(provider.Name())
-
-	// Check if the default provider was set
-	assert.Equal(t, provider, defaultProvider)
-}
-
-func TestGetProviderAndSetDefault(t *testing.T) {
-	t.Cleanup(func() {
-		providers = sync.Map{}
-		defaultProvider = nil
-	})
-	provider := &MockLLMProvider{name: "testProvider"}
-
-	// Register a provider
-	RegisterProvider(provider)
-
-	// Get the provider and set it as default
-	retrievedProvider, err := GetProviderAndSetDefault(provider.Name())
-
-	// Check if the correct provider was retrieved and set as default
-	assert.NoError(t, err)
-	assert.Equal(t, provider, retrievedProvider)
-	assert.Equal(t, provider, defaultProvider)
-}
-
-func TestGetDefaultProvider(t *testing.T) {
-	t.Cleanup(func() {
-		providers = sync.Map{}
-		defaultProvider = nil
-	})
-
-	provider1 := &MockLLMProvider{name: "provider1"}
-	provider2 := &MockLLMProvider{name: "provider2"}
-
-	// Register first provider
-	RegisterProvider(provider1)
-
-	// Test getting the default provider when none is set
-	// The first available provider should be returned
-	p, err := GetDefaultProvider()
-	assert.NoError(t, err)
-	assert.Equal(t, provider1, p)
-
-	// Register second provider
-	RegisterProvider(provider2)
-
-	// Set the second provider as default
-	SetDefaultProvider(provider2.Name())
-
-	// Test getting the default provider when one is set
-	// The default provider should be returned
-	p, err = GetDefaultProvider()
-	assert.NoError(t, err)
-	assert.Equal(t, provider2, p)
-}
-
 func TestHandleOverview(t *testing.T) {
 	functionDefinition := &ai.FunctionDefinition{
 		Name:        "function1",
@@ -259,22 +138,11 @@ func TestHandleOverview(t *testing.T) {
 			Required: []string{"prop1"},
 		},
 	}
-	r := register.GetRegister()
-	r.RegisterFunction(100, functionDefinition, 200, nil)
-
-	register.SetRegister(r)
-
-	// Create a new mock service
-	service := &Caller{
-		provider: &MockLLMProvider{},
-	}
+	register.RegisterFunction(100, functionDefinition, 200, nil)
 
 	// Create a new request
 	req, err := http.NewRequest("GET", "/overview", nil)
 	assert.NoError(t, err)
-
-	// Add the service to the request context
-	req = req.WithContext(WithCallerContext(req.Context(), service))
 
 	// Record the response
 	rr := httptest.NewRecorder()

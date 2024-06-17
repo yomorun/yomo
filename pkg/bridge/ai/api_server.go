@@ -13,6 +13,7 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/ylog"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
 	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 	"github.com/yomorun/yomo/pkg/id"
 )
@@ -31,8 +32,8 @@ var (
 
 // BasicAPIServer provides restful service for end user
 type BasicAPIServer struct {
-	proxy    *Proxy
-	provider LLMProvider
+	cp       *CallerProvider
+	provider provider.LLMProvider
 	mux      *http.ServeMux
 	logger   *slog.Logger
 
@@ -42,7 +43,7 @@ type BasicAPIServer struct {
 
 // Serve starts the Basic API Server
 func Serve(config *Config, zipperListenAddr string, credential string, logger *slog.Logger) error {
-	provider, err := GetProviderAndSetDefault(config.Server.Provider)
+	provider, err := provider.GetProviderAndSetDefault(config.Server.Provider)
 	if err != nil {
 		return err
 	}
@@ -54,10 +55,10 @@ func Serve(config *Config, zipperListenAddr string, credential string, logger *s
 }
 
 // NewBasicAPIServer creates a new restful service
-func NewBasicAPIServer(config *Config, zipperAddr string, provider LLMProvider, credential string, logger *slog.Logger) (*BasicAPIServer, error) {
+func NewBasicAPIServer(config *Config, zipperAddr string, provider provider.LLMProvider, credential string, logger *slog.Logger) (*BasicAPIServer, error) {
 	zipperAddr = parseZipperAddr(zipperAddr)
 
-	proxy := NewProxy(ServiceCacheSize, ServiceCacheTTL)
+	cp := NewCallerProvider(zipperAddr, provider, DefaultExchangeMetadataFunc)
 
 	mux := http.NewServeMux()
 	// GET /overview
@@ -68,7 +69,7 @@ func NewBasicAPIServer(config *Config, zipperAddr string, provider LLMProvider, 
 	mux.HandleFunc("/v1/chat/completions", HandleChatCompletions)
 
 	server := &BasicAPIServer{
-		proxy:    proxy,
+		cp:       cp,
 		provider: provider,
 		mux:      mux,
 		logger:   logger.With("component", "bridge"),
@@ -87,13 +88,13 @@ func (a *BasicAPIServer) ServeAddr(addr string) error {
 
 	return http.ListenAndServe(
 		addr,
-		a.decorateReqContext(a.mux, a.credential, a.zipperAddr, a.provider, DefaultExchangeMetadataFunc),
+		a.decorateReqContext(a.mux, a.credential),
 	)
 }
 
 // decorateReqContext decorates the context of the request, it injects a transID and a caller into the context.
-func (a *BasicAPIServer) decorateReqContext(handler http.Handler, credential string, zipperAddr string, provider LLMProvider, exFn ExchangeMetadataFunc) http.Handler {
-	caller, err := a.proxy.LoadOrCreateCaller(credential, zipperAddr, provider, exFn)
+func (a *BasicAPIServer) decorateReqContext(handler http.Handler, credential string) http.Handler {
+	caller, err := a.cp.Provide(credential)
 	if err != nil {
 		a.logger.Info("can't load caller", "err", err)
 

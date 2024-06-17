@@ -61,9 +61,9 @@ func TestCloudflareAzureProvider_GetChatCompletions(t *testing.T) {
 		Messages: msgs,
 	}
 
-	_, err := provider.GetChatCompletions(context.TODO(), req, nil)
+	_, err := provider.GetChatCompletions(context.TODO(), req)
 	t.Log(err)
 
-	_, err = provider.GetChatCompletionsStream(context.TODO(), req, nil)
+	_, err = provider.GetChatCompletionsStream(context.TODO(), req)
 	t.Log(err)
 }
