@@ -121,7 +121,7 @@ func HandleOverview(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
-	tcs, err := register.ListToolCalls(caller.Metadata)
+	tcs, err := register.ListToolCalls(caller.Metadata())
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})

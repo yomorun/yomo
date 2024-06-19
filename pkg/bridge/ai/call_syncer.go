@@ -14,7 +14,16 @@ import (
 // CallSyncer fires a bunch of function callings, and wait the result of these function callings.
 // every tool call has a toolCallID, which is used to identify the function calling,
 // Note that one tool call can only be responded once.
-type CallSyncer struct {
+type CallSyncer interface {
+	// Call fires a bunch of function callings, and wait the result of these function callings.
+	// The result only contains the messages with role=="tool".
+	// If some function callings failed, the content will be returned as the failed reason.
+	Call(ctx context.Context, transID string, reqID string, toolCalls map[uint32][]*openai.ToolCall) ([]openai.ChatCompletionMessage, error)
+	// Close close the CallSyncer. if close, you can't use this CallSyncer anymore.
+	Close() error
+}
+
+type callSyncer struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	logger *slog.Logger
@@ -36,13 +45,13 @@ type reqMessage struct {
 }
 
 // NewCallSyncer creates a new CallSyncer.
-func NewCallSyncer(logger *slog.Logger, writer TagWriter, reducer Reducer, timeout time.Duration) *CallSyncer {
+func NewCallSyncer(logger *slog.Logger, writer TagWriter, reducer Reducer, timeout time.Duration) CallSyncer {
 	if timeout == 0 {
 		timeout = RunFunctionTimeout
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 
-	syncer := &CallSyncer{
+	syncer := &callSyncer{
 		ctx:       ctx,
 		cancel:    cancel,
 		logger:    logger,
@@ -65,10 +74,7 @@ type resSignal struct {
 	ch      chan openai.ChatCompletionMessage
 }
 
-// Call fires a bunch of function callings, and wait the result of these function callings.
-// The result only contains the messages with role=="tool".
-// If some function callings failed, the content will be returned as the failed reason.
-func (f *CallSyncer) Call(ctx context.Context, transID, reqID string, tagToolCalls map[uint32][]*openai.ToolCall) ([]openai.ChatCompletionMessage, error) {
+func (f *callSyncer) Call(ctx context.Context, transID, reqID string, tagToolCalls map[uint32][]*openai.ToolCall) ([]openai.ChatCompletionMessage, error) {
 	defer func() {
 		f.cleanCh <- reqID
 	}()
@@ -117,7 +123,7 @@ func (f *CallSyncer) Call(ctx context.Context, transID, reqID string, tagToolCal
 	}
 }
 
-func (f *CallSyncer) fire(transID string, reqID string, tagToolCalls map[uint32][]*openai.ToolCall) (map[string]struct{}, error) {
+func (f *callSyncer) fire(transID string, reqID string, tagToolCalls map[uint32][]*openai.ToolCall) (map[string]struct{}, error) {
 	ToolIDs := make(map[string]struct{})
 
 	for tag, tools := range tagToolCalls {
@@ -146,7 +152,7 @@ func (f *CallSyncer) fire(transID string, reqID string, tagToolCalls map[uint32]
 }
 
 // Close close the CallSyncer. if close, you can't use this CallSyncer anymore.
-func (f *CallSyncer) Close() error {
+func (f *callSyncer) Close() error {
 	f.cancel()
 
 	var err error
@@ -161,7 +167,7 @@ func (f *CallSyncer) Close() error {
 	return err
 }
 
-func (f *CallSyncer) background() {
+func (f *callSyncer) background() {
 	// buffered stores the messages from the reducer, the key is the reqID
 	buffered := make(map[string]map[string]openai.ChatCompletionMessage)
 	// singnals stores the result channel, the key is the reqID, the value channel will be sent when the buffered is fulled.

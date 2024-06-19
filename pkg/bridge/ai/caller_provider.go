@@ -34,21 +34,18 @@ type CallerProvider struct {
 	lp          provider.LLMProvider
 	zipperAddr  string
 	exFn        ExchangeMetadataFunc
-	provideFunc func(credential string, zipperAddr string, provider provider.LLMProvider, exFn ExchangeMetadataFunc) (*Caller, error)
+	provideFunc provideFunc
 	callers     *expirable.LRU[string, *Caller]
 }
+
+type provideFunc func(credential string, zipperAddr string, provider provider.LLMProvider, exFn ExchangeMetadataFunc) (*Caller, error)
 
 // NewCallerProvider returns a new caller provider.
 func NewCallerProvider(zipperAddr string, lp provider.LLMProvider, exFn ExchangeMetadataFunc) *CallerProvider {
 	return newCallerProvider(zipperAddr, lp, exFn, NewCaller)
 }
 
-func newCallerProvider(
-	zipperAddr string,
-	lp provider.LLMProvider,
-	exFn ExchangeMetadataFunc,
-	provideFunc func(credential string, zipperAddr string, provider provider.LLMProvider, exFn ExchangeMetadataFunc) (*Caller, error),
-) *CallerProvider {
+func newCallerProvider(zipperAddr string, lp provider.LLMProvider, exFn ExchangeMetadataFunc, provideFunc provideFunc) *CallerProvider {
 	p := &CallerProvider{
 		zipperAddr:  zipperAddr,
 		lp:          lp,
@@ -80,7 +77,7 @@ type Caller struct {
 	CallSyncer
 
 	credential   string
-	Metadata     metadata.M
+	md           metadata.M
 	systemPrompt atomic.Value
 	provider     provider.LLMProvider
 }
@@ -118,9 +115,9 @@ func NewCaller(credential string, zipperAddr string, provider provider.LLMProvid
 	}
 
 	caller := &Caller{
-		CallSyncer: *callSyncer,
+		CallSyncer: callSyncer,
 		credential: credential,
-		Metadata:   md,
+		md:         md,
 		provider:   provider,
 	}
 
@@ -134,10 +131,15 @@ func (c *Caller) SetSystemPrompt(prompt string) {
 	c.systemPrompt.Store(prompt)
 }
 
+// Metadata returns the metadata of caller.
+func (c *Caller) Metadata() metadata.M {
+	return c.md
+}
+
 // GetInvoke returns the invoke response
 func (c *Caller) GetInvoke(ctx context.Context, userInstruction string, baseSystemMessage string, transID string, includeCallStack bool) (*ai.InvokeResponse, error) {
 	// read tools attached to the metadata
-	tcs, err := register.ListToolCalls(c.Metadata)
+	tcs, err := register.ListToolCalls(c.md)
 	if err != nil {
 		return &ai.InvokeResponse{}, err
 	}
@@ -222,7 +224,7 @@ func (c *Caller) GetInvoke(ctx context.Context, userInstruction string, baseSyst
 
 func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, transID string, w http.ResponseWriter) error {
 	// 1. find all hosting tool sfn
-	tagTools, err := register.ListToolCalls(c.Metadata)
+	tagTools, err := register.ListToolCalls(c.md)
 	if err != nil {
 		return err
 	}
