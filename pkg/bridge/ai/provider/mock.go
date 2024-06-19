@@ -13,6 +13,8 @@ import (
 type Mock struct {
 	name string
 
+	reqs []openai.ChatCompletionRequest
+
 	// calling function once will return and remove one element from resp and streamResp.
 	resp       []openai.ChatCompletionResponse
 	streamResp []*ChatCompletionStreamResponse
@@ -22,7 +24,7 @@ type ChatCompletionStreamResponse struct {
 	items []openai.ChatCompletionStreamResponse
 }
 
-func NewMock(name string, data ...mockData) (LLMProvider, error) {
+func NewMock(name string, data ...mockData) (*Mock, error) {
 	p := &Mock{
 		name: name,
 	}
@@ -103,15 +105,23 @@ func MockChatCompletionStreamResponse(str ...string) mockData {
 }
 
 func (m *Mock) GetChatCompletions(_ context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+	m.reqs = append(m.reqs, req)
+
 	item := m.resp[0]
 	m.resp = m.resp[1:]
 	return item, nil
 }
 
 func (m *Mock) GetChatCompletionsStream(_ context.Context, req openai.ChatCompletionRequest) (ResponseRecver, error) {
+	m.reqs = append(m.reqs, req)
+
 	item := m.streamResp[0]
 	m.streamResp = m.streamResp[1:]
 	return item, nil
+}
+
+func (m *Mock) RequestRecords() []openai.ChatCompletionRequest {
+	return m.reqs
 }
 
 func (m *Mock) Name() string {
