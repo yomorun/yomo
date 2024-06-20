@@ -31,7 +31,6 @@ var (
 
 // CallerProvider provides the caller, which is used to interact with YoMo's stream function.
 type CallerProvider struct {
-	rg          register.Register
 	lp          provider.LLMProvider
 	zipperAddr  string
 	exFn        ExchangeMetadataFunc
@@ -39,17 +38,16 @@ type CallerProvider struct {
 	callers     *expirable.LRU[string, *Caller]
 }
 
-type provideFunc func(string, string, register.Register, provider.LLMProvider, ExchangeMetadataFunc) (*Caller, error)
+type provideFunc func(string, string, provider.LLMProvider, ExchangeMetadataFunc) (*Caller, error)
 
 // NewCallerProvider returns a new caller provider.
-func NewCallerProvider(zipperAddr string, rg register.Register, lp provider.LLMProvider, exFn ExchangeMetadataFunc) *CallerProvider {
-	return newCallerProvider(zipperAddr, rg, lp, exFn, NewCaller)
+func NewCallerProvider(zipperAddr string, lp provider.LLMProvider, exFn ExchangeMetadataFunc) *CallerProvider {
+	return newCallerProvider(zipperAddr, lp, exFn, NewCaller)
 }
 
-func newCallerProvider(zipperAddr string, rg register.Register, lp provider.LLMProvider, exFn ExchangeMetadataFunc, provideFunc provideFunc) *CallerProvider {
+func newCallerProvider(zipperAddr string, lp provider.LLMProvider, exFn ExchangeMetadataFunc, provideFunc provideFunc) *CallerProvider {
 	p := &CallerProvider{
 		zipperAddr:  zipperAddr,
-		rg:          rg,
 		lp:          lp,
 		exFn:        exFn,
 		provideFunc: provideFunc,
@@ -66,7 +64,7 @@ func (p *CallerProvider) Provide(credential string) (*Caller, error) {
 		return caller, nil
 	}
 
-	caller, err := p.provideFunc(credential, p.zipperAddr, p.rg, p.lp, p.exFn)
+	caller, err := p.provideFunc(credential, p.zipperAddr, p.lp, p.exFn)
 	if err != nil {
 		return nil, err
 	}
@@ -78,14 +76,13 @@ func (p *CallerProvider) Provide(credential string) (*Caller, error) {
 type Caller struct {
 	CallSyncer
 
-	register     register.Register
 	credential   string
 	md           metadata.M
 	systemPrompt atomic.Value
 	provider     provider.LLMProvider
 }
 
-func NewCaller(credential string, zipperAddr string, register register.Register, provider provider.LLMProvider, exFn ExchangeMetadataFunc) (*Caller, error) {
+func NewCaller(credential string, zipperAddr string, provider provider.LLMProvider, exFn ExchangeMetadataFunc) (*Caller, error) {
 	source := yomo.NewSource(
 		"fc-source",
 		zipperAddr,
@@ -119,7 +116,6 @@ func NewCaller(credential string, zipperAddr string, register register.Register,
 
 	caller := &Caller{
 		CallSyncer: callSyncer,
-		register:   register,
 		credential: credential,
 		md:         md,
 		provider:   provider,
@@ -143,7 +139,7 @@ func (c *Caller) Metadata() metadata.M {
 // GetInvoke returns the invoke response
 func (c *Caller) GetInvoke(ctx context.Context, userInstruction string, baseSystemMessage string, transID string, includeCallStack bool) (*ai.InvokeResponse, error) {
 	// read tools attached to the metadata
-	tcs, err := c.register.ListToolCalls(c.md)
+	tcs, err := register.ListToolCalls(c.md)
 	if err != nil {
 		return &ai.InvokeResponse{}, err
 	}
@@ -164,8 +160,6 @@ func (c *Caller) GetInvoke(ctx context.Context, userInstruction string, baseSyst
 		completionUsage int
 	)
 	chatCompletionResponse, err := c.provider.GetChatCompletions(ctx, req)
-	data, _ := json.Marshal(req)
-	fmt.Println(string(data))
 	if err != nil {
 		return nil, err
 	}
@@ -206,8 +200,6 @@ func (c *Caller) GetInvoke(ctx context.Context, userInstruction string, baseSyst
 		Messages: messages2,
 	}
 	chatCompletionResponse2, err := c.provider.GetChatCompletions(ctx, req2)
-	data, _ = json.Marshal(req2)
-	fmt.Println(string(data))
 	if err != nil {
 		return nil, err
 	}
@@ -232,7 +224,7 @@ func (c *Caller) GetInvoke(ctx context.Context, userInstruction string, baseSyst
 
 func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, transID string, w http.ResponseWriter) error {
 	// 1. find all hosting tool sfn
-	tagTools, err := c.register.ListToolCalls(c.md)
+	tagTools, err := register.ListToolCalls(c.md)
 	if err != nil {
 		return err
 	}
@@ -284,7 +276,7 @@ func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompleti
 					item, ok := toolCallsMap[index]
 					if !ok {
 						toolCallsMap[index] = openai.ToolCall{
-							Index:    &index,
+							Index:    t.Index,
 							ID:       t.ID,
 							Type:     t.Type,
 							Function: openai.FunctionCall{},

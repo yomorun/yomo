@@ -27,6 +27,7 @@ func TestTimeoutCallSyncer(t *testing.T) {
 	defer flow.Close()
 
 	syncer := NewCallSyncer(slog.Default(), flow, flow, time.Millisecond)
+	defer syncer.Close()
 	go flow.run()
 
 	var (
@@ -55,6 +56,7 @@ func TestCallSyncer(t *testing.T) {
 	defer flow.Close()
 
 	syncer := NewCallSyncer(slog.Default(), flow, flow, 0)
+	defer syncer.Close()
 	go flow.run()
 
 	var (

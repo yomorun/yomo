@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
 
@@ -105,6 +106,9 @@ func MockChatCompletionStreamResponse(str ...string) MockData {
 }
 
 func (m *Mock) GetChatCompletions(_ context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+	data, _ := json.Marshal(&req)
+	fmt.Println("[mock provider] request:", string(data))
+
 	m.reqs = append(m.reqs, req)
 
 	item := m.resp[0]
@@ -113,6 +117,9 @@ func (m *Mock) GetChatCompletions(_ context.Context, req openai.ChatCompletionRe
 }
 
 func (m *Mock) GetChatCompletionsStream(_ context.Context, req openai.ChatCompletionRequest) (ResponseRecver, error) {
+	data, _ := json.Marshal(&req)
+	fmt.Println("[mock provider] stream request:", string(data))
+
 	m.reqs = append(m.reqs, req)
 
 	item := m.streamResp[0]

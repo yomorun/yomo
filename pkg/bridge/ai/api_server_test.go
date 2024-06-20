@@ -24,8 +24,8 @@ func TestHandleOverview(t *testing.T) {
 			Required: []string{"prop1"},
 		},
 	}
-	rg := register.NewDefault()
-	rg.RegisterFunction(100, functionDefinition, 200, nil)
+	register.SetRegister(register.NewDefault())
+	register.RegisterFunction(100, functionDefinition, 200, nil)
 
 	// Create a new request
 	req, err := http.NewRequest("GET", "/overview", nil)
@@ -37,7 +37,7 @@ func TestHandleOverview(t *testing.T) {
 	rr := httptest.NewRecorder()
 
 	// Create a handler function
-	handler := http.HandlerFunc(HandleOverview(rg))
+	handler := http.HandlerFunc(HandleOverview)
 
 	// Serve the request
 	handler.ServeHTTP(rr, req)
