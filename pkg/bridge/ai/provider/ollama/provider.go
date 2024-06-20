@@ -16,9 +16,8 @@ import (
 	"time"
 
 	openai "github.com/sashabaranov/go-openai"
-	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
-	"github.com/yomorun/yomo/pkg/bridge/ai"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
 	"github.com/yomorun/yomo/pkg/id"
 )
 
@@ -147,7 +146,7 @@ func parseToolCallsFromResponse(response string) []openai.ToolCall {
 }
 
 // GetChatCompletions implements ai.LLMProvider.
-func (p *Provider) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, _ metadata.M) (openai.ChatCompletionResponse, error) {
+func (p *Provider) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
 	res := openai.ChatCompletionResponse{
 		ID:      "chatcmpl-" + id.New(29),
 		Model:   req.Model,
@@ -295,7 +294,7 @@ func (s *streamResponse) Recv() (openai.ChatCompletionStreamResponse, error) {
 }
 
 // GetChatCompletionsStream implements ai.LLMProvider.
-func (p *Provider) GetChatCompletionsStream(ctx context.Context, req openai.ChatCompletionRequest, _ metadata.M) (ai.ResponseRecver, error) {
+func (p *Provider) GetChatCompletionsStream(ctx context.Context, req openai.ChatCompletionRequest) (provider.ResponseRecver, error) {
 	urlPath, err := url.JoinPath(p.Endpoint, "api/generate")
 	if err != nil {
 		return nil, err

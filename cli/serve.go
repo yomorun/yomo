@@ -142,7 +142,7 @@ func registerAIProvider(aiConfig *ai.Config) error {
 				provider["model"],
 			))
 		case "ollama":
-			ai.RegisterProvider(ollama.NewProvider(provider["api_endpoint"]))
+			providerpkg.RegisterProvider(ollama.NewProvider(provider["api_endpoint"]))
 		default:
 			log.WarningStatusEvent(os.Stdout, "unknown provider: %s", name)
 		}
