@@ -26,7 +26,7 @@ type InvokeResponse struct {
 	// ToolCalls is the toolCalls from llm api response
 	ToolCalls map[uint32][]*openai.ToolCall `json:"tool_calls,omitempty"`
 	// ToolMessages is the tool messages from llm api response
-	ToolMessages []openai.ChatCompletionMessage `json:"tool_messages,omitempty"`
+	ToolMessages []ToolMessage `json:"tool_messages,omitempty"`
 	// FinishReason is the finish reason from llm api response
 	FinishReason string `json:"finish_reason,omitempty"`
 	// TokenUsage is the token usage from llm api response

@@ -211,7 +211,7 @@ var testPromptCmd = &cobra.Command{
 	},
 }
 
-func getToolCallResult(tc *openai.ToolCall, tms []openai.ChatCompletionMessage) string {
+func getToolCallResult(tc *openai.ToolCall, tms []ai.ToolMessage) string {
 	result := ""
 	for _, tm := range tms {
 		if tm.ToolCallID == tc.ID {

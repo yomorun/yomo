@@ -215,7 +215,7 @@ func (c *Caller) GetInvoke(ctx context.Context, userInstruction string, baseSyst
 	// INFO: call stack infomation
 	if includeCallStack {
 		res2.ToolCalls = res.ToolCalls
-		res2.ToolMessages = llmCalls
+		res2.ToolMessages = transToolMessage(llmCalls)
 	}
 	ylog.Debug("<<<< complete 2nd call", "res2", fmt.Sprintf("%+v", res2))
 
