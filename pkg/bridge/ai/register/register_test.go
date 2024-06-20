@@ -9,7 +9,7 @@ import (
 )
 
 func TestRegister(t *testing.T) {
-	r := &register{}
+	r := NewDefault()
 
 	SetRegister(r)
 	assert.Equal(t, r, GetRegister())

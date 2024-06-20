@@ -58,11 +58,11 @@ func Serve(config *Config, zipperListenAddr string, credential string, logger *s
 func NewBasicAPIServer(config *Config, zipperAddr string, provider provider.LLMProvider, credential string, logger *slog.Logger) (*BasicAPIServer, error) {
 	zipperAddr = parseZipperAddr(zipperAddr)
 
-	cp := NewCallerProvider(zipperAddr, provider, DefaultExchangeMetadataFunc)
+	cp := NewCallerProvider(zipperAddr, register.GetRegister(), provider, DefaultExchangeMetadataFunc)
 
 	mux := http.NewServeMux()
 	// GET /overview
-	mux.HandleFunc("/overview", HandleOverview)
+	mux.HandleFunc("/overview", HandleOverview(register.GetRegister()))
 	// POST /invoke
 	mux.HandleFunc("/invoke", HandleInvoke)
 	// POST /v1/chat/completions (OpenAI compatible interface)
@@ -116,25 +116,27 @@ func (a *BasicAPIServer) decorateReqContext(handler http.Handler, credential str
 }
 
 // HandleOverview is the handler for GET /overview
-func HandleOverview(w http.ResponseWriter, r *http.Request) {
-	caller := FromCallerContext(r.Context())
+func HandleOverview(rg register.Register) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller := FromCallerContext(r.Context())
 
-	w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/json")
 
-	tcs, err := register.ListToolCalls(caller.Metadata())
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-		return
+		tcs, err := rg.ListToolCalls(caller.Metadata())
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+
+		functions := make(map[uint32]*openai.FunctionDefinition)
+		for tag, tc := range tcs {
+			functions[tag] = tc.Function
+		}
+
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(&ai.OverviewResponse{Functions: functions})
 	}
-
-	functions := make(map[uint32]*openai.FunctionDefinition)
-	for tag, tc := range tcs {
-		functions[tag] = tc.Function
-	}
-
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(&ai.OverviewResponse{Functions: functions})
 }
 
 // HandleInvoke is the handler for POST /invoke

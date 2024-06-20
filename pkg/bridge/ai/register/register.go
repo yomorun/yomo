@@ -33,6 +33,11 @@ func GetRegister() Register {
 	return defaultRegister
 }
 
+// NewDefault creates a new default register.
+func NewDefault() Register {
+	return &register{}
+}
+
 // ListToolCalls returns the list of tool calls
 func ListToolCalls(md metadata.M) (map[uint32]openai.Tool, error) {
 	return defaultRegister.ListToolCalls(md)

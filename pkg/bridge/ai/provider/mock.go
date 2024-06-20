@@ -24,7 +24,7 @@ type ChatCompletionStreamResponse struct {
 	items []openai.ChatCompletionStreamResponse
 }
 
-func NewMock(name string, data ...mockData) (*Mock, error) {
+func NewMock(name string, data ...MockData) (*Mock, error) {
 	p := &Mock{
 		name: name,
 	}
@@ -49,7 +49,7 @@ func (m *ChatCompletionStreamResponse) Recv() (openai.ChatCompletionStreamRespon
 	return item, nil
 }
 
-type mockData interface {
+type MockData interface {
 	apply(*Mock) error
 }
 
@@ -57,7 +57,7 @@ type applyFunc func(*Mock) error
 
 func (f applyFunc) apply(mp *Mock) error { return f(mp) }
 
-func MockChatCompletionResponse(str ...string) mockData {
+func MockChatCompletionResponse(str ...string) MockData {
 	return applyFunc(func(m *Mock) error {
 		m.resp = make([]openai.ChatCompletionResponse, len(str))
 		for i, s := range str {
@@ -69,7 +69,7 @@ func MockChatCompletionResponse(str ...string) mockData {
 	})
 }
 
-func MockChatCompletionStreamResponse(str ...string) mockData {
+func MockChatCompletionStreamResponse(str ...string) MockData {
 	streamRespArr := make([]*ChatCompletionStreamResponse, len(str))
 	for i, s := range str {
 		scanner := bufio.NewScanner(strings.NewReader(s))
