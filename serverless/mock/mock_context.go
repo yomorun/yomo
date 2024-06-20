@@ -7,7 +7,6 @@ import (
 
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/serverless"
-	"github.com/yomorun/yomo/serverless/guest"
 )
 
 var _ serverless.Context = (*MockContext)(nil)
@@ -55,7 +54,7 @@ func (c *MockContext) Metadata(_ string) (string, bool) {
 
 // HTTP returns the HTTP interface.H
 func (m *MockContext) HTTP() serverless.HTTP {
-	return &guest.GuestHTTP{}
+	panic("not implemented, to use `net/http` package")
 }
 
 // Write writes the data with the given tag.
@@ -106,8 +105,13 @@ func (c *MockContext) WriteLLMResult(result string) error {
 	defer c.mu.Unlock()
 
 	if c.fnCall == nil {
-		return errors.New("no function call, can't write result")
+		fnCall, err := c.LLMFunctionCall()
+		if err != nil {
+			return err
+		}
+		c.fnCall = fnCall
 	}
+
 	// function call
 	c.fnCall.IsOK = true
 	c.fnCall.Result = result

@@ -427,7 +427,7 @@ func (s *Service) GetChatCompletions(ctx context.Context, req openai.ChatComplet
 		}
 		promptUsage = resp.Usage.PromptTokens
 		completionUsage = resp.Usage.CompletionTokens
-		totalUsage = resp.Usage.CompletionTokens
+		totalUsage = resp.Usage.TotalTokens
 
 		ylog.Debug(" #1 first call", "response", fmt.Sprintf("%+v", resp))
 		// it is a function call

@@ -9,8 +9,7 @@ import (
 
 // ReadLLMArguments reads LLM function arguments
 func (c *Context) ReadLLMArguments(args any) error {
-	fnCall := &ai.FunctionCall{}
-	err := fnCall.FromBytes(c.data)
+	fnCall, err := c.LLMFunctionCall()
 	if err != nil {
 		return err
 	}
@@ -27,6 +26,9 @@ func (c *Context) WriteLLMResult(result string) error {
 	if c.fnCall == nil {
 		return errors.New("no function call, can't write result")
 	}
+	if c.fnCall.IsOK && c.fnCall.Result != "" {
+		return errors.New("LLM function can only be called once")
+	}
 	// function call
 	c.fnCall.IsOK = true
 	c.fnCall.Result = result
@@ -34,6 +36,7 @@ func (c *Context) WriteLLMResult(result string) error {
 	if err != nil {
 		return err
 	}
+	c.data = buf
 	return c.Write(ai.ReducerTag, buf)
 }
 
