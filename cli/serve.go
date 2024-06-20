@@ -78,7 +78,7 @@ var serveCmd = &cobra.Command{
 		}
 		if aiConfig != nil {
 			// add AI connection middleware
-			options = append(options, yomo.WithZipperConnMiddleware(ai.ConnMiddleware))
+			options = append(options, yomo.WithZipperConnMiddleware(ai.RegisterFunction()))
 		}
 		// new zipper
 		zipper, err := yomo.NewZipper(

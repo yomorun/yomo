@@ -293,7 +293,7 @@ func (s *Server) createConnection(hf *frame.HandshakeFrame, md metadata.M, fconn
 	if hf.WantedTarget != "" {
 		md.Set(metadata.WantedTargetKey, hf.WantedTarget)
 	}
-	conn := newConnection(
+	conn := NewConnection(
 		incrID(),
 		hf.Name,
 		hf.ID,

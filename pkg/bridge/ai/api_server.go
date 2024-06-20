@@ -12,7 +12,6 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo/ai"
-	"github.com/yomorun/yomo/core/ylog"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
 	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 	"github.com/yomorun/yomo/pkg/id"
@@ -32,13 +31,10 @@ var (
 
 // BasicAPIServer provides restful service for end user
 type BasicAPIServer struct {
-	cp       *CallerProvider
-	provider provider.LLMProvider
-	mux      *http.ServeMux
-	logger   *slog.Logger
-
-	zipperAddr string
-	credential string
+	zipperAddr  string
+	credential  string
+	httpHandler http.Handler
+	logger      *slog.Logger
 }
 
 // Serve starts the Basic API Server
@@ -51,15 +47,12 @@ func Serve(config *Config, zipperListenAddr string, credential string, logger *s
 	if err != nil {
 		return err
 	}
+
+	logger.Info("start bridge server", "addr", config.Server.Addr, "provider", provider.Name())
 	return srv.ServeAddr(config.Server.Addr)
 }
 
-// NewBasicAPIServer creates a new restful service
-func NewBasicAPIServer(config *Config, zipperAddr string, provider provider.LLMProvider, credential string, logger *slog.Logger) (*BasicAPIServer, error) {
-	zipperAddr = parseZipperAddr(zipperAddr)
-
-	cp := NewCallerProvider(zipperAddr, provider, DefaultExchangeMetadataFunc)
-
+func bridgeHttpHanlder(decorater func(http.Handler) http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	// GET /overview
 	mux.HandleFunc("/overview", HandleOverview)
@@ -68,14 +61,20 @@ func NewBasicAPIServer(config *Config, zipperAddr string, provider provider.LLMP
 	// POST /v1/chat/completions (OpenAI compatible interface)
 	mux.HandleFunc("/v1/chat/completions", HandleChatCompletions)
 
-	server := &BasicAPIServer{
-		cp:       cp,
-		provider: provider,
-		mux:      mux,
-		logger:   logger.With("component", "bridge"),
+	return decorater(mux)
+}
 
-		zipperAddr: zipperAddr,
-		credential: credential,
+// NewBasicAPIServer creates a new restful service
+func NewBasicAPIServer(config *Config, zipperAddr string, provider provider.LLMProvider, credential string, logger *slog.Logger) (*BasicAPIServer, error) {
+	zipperAddr = parseZipperAddr(zipperAddr)
+
+	cp := NewCallerProvider(zipperAddr, provider, DefaultExchangeMetadataFunc)
+
+	server := &BasicAPIServer{
+		zipperAddr:  zipperAddr,
+		credential:  credential,
+		httpHandler: bridgeHttpHanlder(decorateReqContext(cp, logger, credential)),
+		logger:      logger.With("component", "bridge"),
 	}
 
 	return server, nil
@@ -84,35 +83,31 @@ func NewBasicAPIServer(config *Config, zipperAddr string, provider provider.LLMP
 // Serve starts a http server that provides some endpoints to bridge up the http server and YoMo.
 // User can chat to the http server and interact with the YoMo's stream function.
 func (a *BasicAPIServer) ServeAddr(addr string) error {
-	a.logger.Info("server is running", "addr", addr, "ai_provider", a.provider.Name())
-
-	return http.ListenAndServe(
-		addr,
-		a.decorateReqContext(a.mux, a.credential),
-	)
+	return http.ListenAndServe(addr, a.httpHandler)
 }
 
 // decorateReqContext decorates the context of the request, it injects a transID and a caller into the context.
-func (a *BasicAPIServer) decorateReqContext(handler http.Handler, credential string) http.Handler {
-	caller, err := a.cp.Provide(credential)
-	if err != nil {
-		a.logger.Info("can't load caller", "err", err)
+func decorateReqContext(cp *CallerProvider, logger *slog.Logger, credential string) func(handler http.Handler) http.Handler {
+	return func(handler http.Handler) http.Handler {
+		caller, err := cp.Provide(credential)
+		if err != nil {
+			logger.Info("can't load caller", "err", err)
+
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				RespondWithError(w, http.StatusInternalServerError, err)
+			})
+		}
 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			transID := id.New(32)
+			ctx := WithTransIDContext(r.Context(), transID)
+			ctx = WithCallerContext(ctx, caller)
+
+			logger.Info("request", "method", r.Method, "path", r.URL.Path, "transID", transID)
+
+			handler.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
-
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		transID := id.New(32)
-		ctx := WithTransIDContext(r.Context(), transID)
-		ctx = WithCallerContext(ctx, caller)
-
-		a.logger.Info("request", "method", r.Method, "path", r.URL.Path, "transID", transID)
-
-		handler.ServeHTTP(w, r.WithContext(ctx))
-	})
 }
 
 // HandleOverview is the handler for GET /overview
@@ -137,6 +132,8 @@ func HandleOverview(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(&ai.OverviewResponse{Functions: functions})
 }
 
+var baseSystemMessage = `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous.`
+
 // HandleInvoke is the handler for POST /invoke
 func HandleInvoke(w http.ResponseWriter, r *http.Request) {
 	var (
@@ -146,54 +143,23 @@ func HandleInvoke(w http.ResponseWriter, r *http.Request) {
 	)
 	defer r.Body.Close()
 
-	var req ai.InvokeRequest
+	req, err := DecodeRequest[ai.InvokeRequest](r, w)
+	if err != nil {
+		return
+	}
 
-	// decode the request
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+	ctx, cancel := context.WithTimeout(r.Context(), RequestTimeout)
+	defer cancel()
+
+	res, err := caller.GetInvoke(ctx, req.Prompt, baseSystemMessage, transID, req.IncludeCallStack)
+	if err != nil {
+		RespondWithError(w, http.StatusInternalServerError, err)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-
-	// Create a context with a timeout of 5 seconds
-	ctx, cancel := context.WithTimeout(context.Background(), RequestTimeout)
-	defer cancel()
-
-	// messages
-	baseSystemMessage := `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous.`
-
-	// Make the service call in a separate goroutine, and use a channel to get the result
-	resCh := make(chan *ai.InvokeResponse, 1)
-	errCh := make(chan error, 1)
-	go func(caller *Caller, req ai.InvokeRequest, baseSystemMessage string) {
-		// call llm to infer the function and arguments to be invoked
-		ylog.Debug(">> ai request", "transID", transID, "prompt", req.Prompt)
-		res, err := caller.GetInvoke(ctx, req.Prompt, baseSystemMessage, transID, req.IncludeCallStack)
-		if err != nil {
-			errCh <- err
-		} else {
-			resCh <- res
-		}
-	}(caller, req, baseSystemMessage)
-
-	// Use a select statement to handle the result or timeout
-	select {
-	case res := <-resCh:
-		ylog.Debug("<< ai response", "res", fmt.Sprintf("%+v", res))
-		// write the response to the client with res
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(res)
-	case err := <-errCh:
-		ylog.Debug("<< ai response an error", "err", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-	case <-ctx.Done():
-		// The context was cancelled, which means the service call timed out
-		w.WriteHeader(http.StatusRequestTimeout)
-		json.NewEncoder(w).Encode(map[string]string{"error": "request timed out"})
-	}
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(res)
 }
 
 // HandleChatCompletions is the handler for POST /chat/completion
@@ -205,9 +171,8 @@ func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	)
 	defer r.Body.Close()
 
-	var req openai.ChatCompletionRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondWithError(w, http.StatusBadRequest, err)
+	req, err := DecodeRequest[openai.ChatCompletionRequest](r, w)
+	if err != nil {
 		return
 	}
 
@@ -220,10 +185,22 @@ func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// DecodeRequest decodes the request body into given type.
+func DecodeRequest[T any](r *http.Request, w http.ResponseWriter) (T, error) {
+	var req T
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		RespondWithError(w, http.StatusBadRequest, err)
+		return req, err
+	}
+
+	return req, nil
+}
+
 // RespondWithError writes an error to response according to the OpenAI API spec.
 func RespondWithError(w http.ResponseWriter, code int, err error) {
-	w.WriteHeader(code)
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
 	w.Write([]byte(fmt.Sprintf(`{"error":{"code":"%d","message":"%s"}}`, code, err.Error())))
 }
 

@@ -44,7 +44,7 @@ type Connection struct {
 	Logger          *slog.Logger
 }
 
-func newConnection(
+func NewConnection(
 	id uint64,
 	name string, clientID string, clientType ClientType, md metadata.M, tags []uint32,
 	fconn frame.Conn, logger *slog.Logger,
