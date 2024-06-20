@@ -2,7 +2,6 @@
 package register
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/sashabaranov/go-openai"
@@ -24,7 +23,6 @@ func init() {
 func SetRegister(r Register) {
 	mu.Lock()
 	defer mu.Unlock()
-	fmt.Println("change default register")
 	defaultRegister = r
 }
 
