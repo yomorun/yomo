@@ -89,3 +89,14 @@ func TestWriteLLMResult(t *testing.T) {
 	assert.Equal(t, ai.ReducerTag, res[0].Tag)
 	assert.Equal(t, jsonStrWithResult("test result"), string(res[0].Data))
 }
+
+func TestWriteLLMResultWithoutRead(t *testing.T) {
+	ctx := NewMockContext([]byte(jsonStr), 0x10)
+	// write
+	err := ctx.WriteLLMResult("test result")
+	assert.NoError(t, err)
+
+	res := ctx.RecordsWritten()
+	assert.Equal(t, ai.ReducerTag, res[0].Tag)
+	assert.Equal(t, jsonStrWithResult("test result"), string(res[0].Data))
+}

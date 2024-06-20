@@ -3,6 +3,7 @@ package yomo
 import (
 	"context"
 	"errors"
+	"log/slog"
 
 	"github.com/robfig/cron/v3"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/yomorun/yomo/core/serverless"
 	"github.com/yomorun/yomo/pkg/id"
 	"github.com/yomorun/yomo/pkg/trace"
+	yserverless "github.com/yomorun/yomo/serverless"
 	"go.opentelemetry.io/otel/attribute"
 )
 
@@ -251,6 +253,7 @@ func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 
 			serverlessCtx := serverless.NewContext(s.client, dataFrame.Tag, md, dataFrame.Payload)
 			s.fn(serverlessCtx)
+			checkLLMFunctionCall(s.client.Logger, serverlessCtx)
 		}(dataFrame)
 	} else if s.pfn != nil {
 		data := dataFrame.Payload
@@ -269,4 +272,15 @@ func (s *streamFunction) SetErrorHandler(fn func(err error)) {
 // Init will initialize the stream function
 func (s *streamFunction) Init(fn func() error) error {
 	return fn()
+}
+
+func checkLLMFunctionCall(logger *slog.Logger, serverlessCtx yserverless.Context) {
+	fc, err := serverlessCtx.LLMFunctionCall()
+	if err != nil {
+		// it's not a LLM function call ctx
+		return
+	}
+	if !fc.IsOK {
+		logger.Warn("The function is not returning anything， please check if `WriteLLMResult()` has been called")
+	}
 }

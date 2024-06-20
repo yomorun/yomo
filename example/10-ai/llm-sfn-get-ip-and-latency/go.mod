@@ -12,9 +12,9 @@ replace github.com/yomorun/yomo => ../../../
 require (
 	github.com/caarlos0/env/v6 v6.10.1 // indirect
 	github.com/google/uuid v1.4.0 // indirect
-	github.com/sashabaranov/go-openai v1.23.1 // indirect
-	golang.org/x/net v0.24.0 // indirect
+	github.com/sashabaranov/go-openai v1.24.1 // indirect
+	golang.org/x/net v0.25.0 // indirect
 	golang.org/x/sync v0.6.0 // indirect
-	golang.org/x/sys v0.19.0 // indirect
+	golang.org/x/sys v0.20.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 )

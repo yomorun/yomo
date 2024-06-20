@@ -31,6 +31,7 @@ import (
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/azopenai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cfazure"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cfopenai"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/ollama"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/openai"
 )
 
@@ -140,6 +141,8 @@ func registerAIProvider(aiConfig *ai.Config) error {
 				provider["api_key"],
 				provider["model"],
 			))
+		case "ollama":
+			ai.RegisterProvider(ollama.NewProvider(provider["api_endpoint"]))
 		default:
 			log.WarningStatusEvent(os.Stdout, "unknown provider: %s", name)
 		}

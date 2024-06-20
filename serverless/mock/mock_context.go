@@ -104,10 +104,21 @@ func (c *MockContext) WriteLLMResult(result string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	var (
-		buf    []byte
-		fnCall = &ai.FunctionCall{}
-	)
+	if c.fnCall == nil {
+		fnCall, err := c.LLMFunctionCall()
+		if err != nil {
+			return err
+		}
+		c.fnCall = fnCall
+	}
+
+	// function call
+	c.fnCall.IsOK = true
+	c.fnCall.Result = result
+	buf, err := c.fnCall.Bytes()
+	if err != nil {
+		return err
+	}
 
 	err := fnCall.FromBytes(c.data)
 	if err == nil {

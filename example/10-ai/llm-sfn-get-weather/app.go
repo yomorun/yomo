@@ -40,8 +40,7 @@ func Handler(ctx serverless.Context) {
 	err = ctx.WriteLLMResult(data)
 	if err == nil {
 		slog.Info("[sfn] >> write", "tag", ai.ReducerTag, "msg", data)
-		fnCall := &ai.FunctionCall{}
-		err = ctx.LLMFunctionCall(fnCall)
+		fnCall, err := ctx.LLMFunctionCall()
 		if err != nil {
 			slog.Error("[sfn] LLMFunctionCall error", "err", err)
 			return

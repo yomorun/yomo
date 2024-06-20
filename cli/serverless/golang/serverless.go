@@ -173,25 +173,15 @@ func (s *GolangServerless) Build(clean bool) error {
 		if err := file.PutContents(tempMod, modContent); err != nil {
 			return fmt.Errorf("write go.mod err %s", err)
 		}
-		// mod download
-		cmd := exec.Command("go", "mod", "tidy")
-		cmd.Env = env
-		cmd.Dir = s.tempDir
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			err = fmt.Errorf("Build: go mod tidy err %s", out)
-			return err
-		}
-	} else {
-		// Upgrade modules that provide packages imported by packages in the main module
-		cmd := exec.Command("go", "get", "-d", "./...")
-		cmd.Dir = s.tempDir
-		cmd.Env = env
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			err = fmt.Errorf("Build: go get err %s", out)
-			return err
-		}
+	}
+	// mod download
+	cmd := exec.Command("go", "mod", "tidy")
+	cmd.Env = env
+	cmd.Dir = s.tempDir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		err = fmt.Errorf("Build: go mod tidy err %s", out)
+		return err
 	}
 	// build
 	// wasi
@@ -201,15 +191,8 @@ func (s *GolangServerless) Build(clean bool) error {
 		filename = "sfn.wasm"
 	}
 	sl, _ := filepath.Abs(dir + filename)
-
-	// clean build
-	if clean {
-		defer func() {
-			file.Remove(s.tempDir)
-		}()
-	}
 	s.output = sl
-	cmd := exec.Command("go", "build", "-o", sl, appPath)
+	cmd = exec.Command("go", "build", "-o", sl, appPath)
 	// wasi
 	if s.opts.WASI {
 		tinygo, err := exec.LookPath("tinygo")
@@ -220,10 +203,14 @@ func (s *GolangServerless) Build(clean bool) error {
 	}
 	cmd.Env = env
 	cmd.Dir = s.tempDir
-	out, err := cmd.CombinedOutput()
+	out, err = cmd.CombinedOutput()
 	if err != nil {
 		err = fmt.Errorf("Build: failure, %s %s", cmd.String(), out)
 		return err
+	}
+	// clean build
+	if clean {
+		file.Remove(s.tempDir)
 	}
 	return nil
 }
