@@ -52,7 +52,7 @@ func Serve(config *Config, zipperListenAddr string, credential string, logger *s
 	return srv.ServeAddr(config.Server.Addr)
 }
 
-func bridgeHttpHanlder(decorater func(http.Handler) http.Handler) http.Handler {
+func bridgeHTTPHanlder(decorater func(http.Handler) http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	// GET /overview
 	mux.HandleFunc("/overview", HandleOverview)
@@ -73,14 +73,14 @@ func NewBasicAPIServer(config *Config, zipperAddr string, provider provider.LLMP
 	server := &BasicAPIServer{
 		zipperAddr:  zipperAddr,
 		credential:  credential,
-		httpHandler: bridgeHttpHanlder(decorateReqContext(cp, logger, credential)),
+		httpHandler: bridgeHTTPHanlder(decorateReqContext(cp, logger, credential)),
 		logger:      logger.With("component", "bridge"),
 	}
 
 	return server, nil
 }
 
-// Serve starts a http server that provides some endpoints to bridge up the http server and YoMo.
+// ServeAddr starts a http server that provides some endpoints to bridge up the http server and YoMo.
 // User can chat to the http server and interact with the YoMo's stream function.
 func (a *BasicAPIServer) ServeAddr(addr string) error {
 	return http.ListenAndServe(addr, a.httpHandler)

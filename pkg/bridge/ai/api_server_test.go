@@ -42,7 +42,7 @@ func TestServer(t *testing.T) {
 
 	cp.provideFunc = mockCallerProvideFunc(map[uint32][]mockFunctionCall{}, pd)
 
-	handler := bridgeHttpHanlder(decorateReqContext(cp, slog.Default(), ""))
+	handler := bridgeHTTPHanlder(decorateReqContext(cp, slog.Default(), ""))
 
 	// create a test server
 	server := httptest.NewServer(handler)

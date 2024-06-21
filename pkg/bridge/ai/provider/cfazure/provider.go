@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 
-	_ "github.com/joho/godotenv/autoload"
 	openai "github.com/sashabaranov/go-openai"
 
 	"github.com/yomorun/yomo/core/ylog"
@@ -65,9 +64,9 @@ func (p *Provider) GetChatCompletionsStream(ctx context.Context, req openai.Chat
 }
 
 func newConfig(cfEndpoint string, apiKey string, resource string, deploymentID string, apiVersion string) openai.ClientConfig {
-	baseUrl := fmt.Sprintf("%s/azure-openai/%s/%s", cfEndpoint, resource, deploymentID)
+	baseURL := fmt.Sprintf("%s/azure-openai/%s/%s", cfEndpoint, resource, deploymentID)
 
-	config := openai.DefaultAzureConfig(apiKey, baseUrl)
+	config := openai.DefaultAzureConfig(apiKey, baseURL)
 	config.APIType = openai.APITypeCloudflareAzure
 	config.APIVersion = apiVersion
 

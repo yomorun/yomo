@@ -1,3 +1,4 @@
+// Package trace provides otel span tracer for YoMo.
 package trace
 
 import (

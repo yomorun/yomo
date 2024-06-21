@@ -1,3 +1,4 @@
+// Package provider defines the ai.Provider interface and provides a mock provider for unittest.
 package provider
 
 import (
@@ -11,6 +12,8 @@ import (
 	"github.com/sashabaranov/go-openai"
 )
 
+// Mock implements the ai.Provider interface.
+// And it can be used for recording requests and mocking responses.
 type Mock struct {
 	name string
 
@@ -21,10 +24,12 @@ type Mock struct {
 	streamResp []*ChatCompletionStreamResponse
 }
 
+// ChatCompletionStreamResponse has Recv() function so it implements the ResponseRecver interface.
 type ChatCompletionStreamResponse struct {
 	items []openai.ChatCompletionStreamResponse
 }
 
+// NewMock returns a mock provider.
 func NewMock(name string, data ...MockData) (*Mock, error) {
 	p := &Mock{
 		name: name,
@@ -41,6 +46,7 @@ func NewMock(name string, data ...MockData) (*Mock, error) {
 	return p, nil
 }
 
+// Recv implements the ResponseRecver interface.
 func (m *ChatCompletionStreamResponse) Recv() (openai.ChatCompletionStreamResponse, error) {
 	if len(m.items) == 0 {
 		return openai.ChatCompletionStreamResponse{}, io.EOF
@@ -50,6 +56,7 @@ func (m *ChatCompletionStreamResponse) Recv() (openai.ChatCompletionStreamRespon
 	return item, nil
 }
 
+// MockData supplys mock response data to the mock provider.
 type MockData interface {
 	apply(*Mock) error
 }
@@ -58,6 +65,7 @@ type applyFunc func(*Mock) error
 
 func (f applyFunc) apply(mp *Mock) error { return f(mp) }
 
+// MockChatCompletionResponse supplys mock response data to the mock provider.
 func MockChatCompletionResponse(str ...string) MockData {
 	return applyFunc(func(m *Mock) error {
 		m.resp = make([]openai.ChatCompletionResponse, len(str))
@@ -70,6 +78,7 @@ func MockChatCompletionResponse(str ...string) MockData {
 	})
 }
 
+// MockChatCompletionStreamResponse supplys mock response data in form of stream to the mock provider.
 func MockChatCompletionStreamResponse(str ...string) MockData {
 	streamRespArr := make([]*ChatCompletionStreamResponse, len(str))
 	for i, s := range str {
@@ -105,6 +114,7 @@ func MockChatCompletionStreamResponse(str ...string) MockData {
 	})
 }
 
+// GetChatCompletions implements the ai.Provider interface.
 func (m *Mock) GetChatCompletions(_ context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
 	data, _ := json.Marshal(&req)
 	fmt.Println("[mock provider] request:", string(data))
@@ -116,6 +126,7 @@ func (m *Mock) GetChatCompletions(_ context.Context, req openai.ChatCompletionRe
 	return item, nil
 }
 
+// GetChatCompletionsStream implements the ai.Provider interface.
 func (m *Mock) GetChatCompletionsStream(_ context.Context, req openai.ChatCompletionRequest) (ResponseRecver, error) {
 	data, _ := json.Marshal(&req)
 	fmt.Println("[mock provider] stream request:", string(data))
@@ -127,10 +138,12 @@ func (m *Mock) GetChatCompletionsStream(_ context.Context, req openai.ChatComple
 	return item, nil
 }
 
+// RequestRecords returns the request records.
 func (m *Mock) RequestRecords() []openai.ChatCompletionRequest {
 	return m.reqs
 }
 
+// Name returns the provider name.
 func (m *Mock) Name() string {
 	return m.name
 }

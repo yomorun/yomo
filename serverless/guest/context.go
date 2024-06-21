@@ -1,4 +1,4 @@
-// guest wasm application programming interface for guest module
+// Package guest wasm application programming interface for guest module
 package guest
 
 import (

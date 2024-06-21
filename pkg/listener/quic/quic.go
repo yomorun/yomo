@@ -1,3 +1,4 @@
+// Package yquic provides a quic implementation of yomo.FrameConn.
 package yquic
 
 import (

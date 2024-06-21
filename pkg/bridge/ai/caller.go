@@ -73,6 +73,7 @@ func (p *CallerProvider) Provide(credential string) (*Caller, error) {
 	return caller, nil
 }
 
+// Caller calls the invoke function and the chat completion function.
 type Caller struct {
 	CallSyncer
 
@@ -82,6 +83,7 @@ type Caller struct {
 	provider     provider.LLMProvider
 }
 
+// NewCaller returns a new caller.
 func NewCaller(credential string, zipperAddr string, provider provider.LLMProvider, exFn ExchangeMetadataFunc) (*Caller, error) {
 	source := yomo.NewSource(
 		"fc-source",
@@ -222,6 +224,7 @@ func (c *Caller) GetInvoke(ctx context.Context, userInstruction string, baseSyst
 	return res2, err
 }
 
+// GetChatCompletions accepts openai.ChatCompletionRequest and responds to http.ResponseWriter.
 func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, transID string, w http.ResponseWriter) error {
 	// 1. find all hosting tool sfn
 	tagTools, err := register.ListToolCalls(c.md)
@@ -298,15 +301,14 @@ func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompleti
 		}
 		if !isFunctionCall {
 			return writeStreamDone(w, flusher)
-		} else {
-			toolCalls = mapToSliceTools(toolCallsMap)
-
-			assistantMessage = openai.ChatCompletionMessage{
-				ToolCalls: toolCalls,
-				Role:      openai.ChatMessageRoleAssistant,
-			}
-			flusher.Flush()
 		}
+		toolCalls = mapToSliceTools(toolCallsMap)
+
+		assistantMessage = openai.ChatCompletionMessage{
+			ToolCalls: toolCalls,
+			Role:      openai.ChatMessageRoleAssistant,
+		}
+		flusher.Flush()
 	} else {
 		resp, err := c.provider.GetChatCompletions(ctx, req)
 		if err != nil {

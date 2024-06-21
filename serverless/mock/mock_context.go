@@ -1,3 +1,4 @@
+// Package mock provides a mock context for stream function.
 package mock
 
 import (
@@ -53,7 +54,7 @@ func (c *MockContext) Metadata(_ string) (string, bool) {
 }
 
 // HTTP returns the HTTP interface.H
-func (m *MockContext) HTTP() serverless.HTTP {
+func (c *MockContext) HTTP() serverless.HTTP {
 	panic("not implemented, to use `net/http` package")
 }
 

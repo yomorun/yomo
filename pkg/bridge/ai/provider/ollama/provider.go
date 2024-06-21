@@ -1,3 +1,4 @@
+// Package ollama is used to provide the Ollama service for YoMo Bridge.
 package ollama
 
 import (

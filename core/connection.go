@@ -44,6 +44,7 @@ type Connection struct {
 	Logger          *slog.Logger
 }
 
+// NewConnection creates a new connection according to the parameters.
 func NewConnection(
 	id uint64,
 	name string, clientID string, clientType ClientType, md metadata.M, tags []uint32,
