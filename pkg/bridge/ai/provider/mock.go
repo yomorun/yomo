@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/sashabaranov/go-openai"
+	"github.com/yomorun/yomo/core/metadata"
 )
 
 // Mock implements the ai.Provider interface.
@@ -115,7 +116,7 @@ func MockChatCompletionStreamResponse(str ...string) MockData {
 }
 
 // GetChatCompletions implements the ai.Provider interface.
-func (m *Mock) GetChatCompletions(_ context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+func (m *Mock) GetChatCompletions(_ context.Context, req openai.ChatCompletionRequest, _ metadata.M) (openai.ChatCompletionResponse, error) {
 	data, _ := json.Marshal(&req)
 	fmt.Println("[mock provider] request:", string(data))
 
@@ -127,7 +128,7 @@ func (m *Mock) GetChatCompletions(_ context.Context, req openai.ChatCompletionRe
 }
 
 // GetChatCompletionsStream implements the ai.Provider interface.
-func (m *Mock) GetChatCompletionsStream(_ context.Context, req openai.ChatCompletionRequest) (ResponseRecver, error) {
+func (m *Mock) GetChatCompletionsStream(_ context.Context, req openai.ChatCompletionRequest, _ metadata.M) (ResponseRecver, error) {
 	data, _ := json.Marshal(&req)
 	fmt.Println("[mock provider] stream request:", string(data))
 

@@ -20,8 +20,8 @@ func TestMockProviderRequest(t *testing.T) {
 		{Messages: []openai.ChatCompletionMessage{{Role: "user", Content: "hi, yomo"}}},
 	}
 
-	provider.GetChatCompletions(context.TODO(), reqs[0])
-	provider.GetChatCompletionsStream(context.TODO(), reqs[1])
+	provider.GetChatCompletions(context.TODO(), reqs[0], nil)
+	provider.GetChatCompletionsStream(context.TODO(), reqs[1], nil)
 
 	assert.Equal(t, reqs, provider.RequestRecords())
 }
@@ -37,7 +37,7 @@ func TestMockProvider(t *testing.T) {
 	})
 
 	t.Run("GetChatCompletions()", func(t *testing.T) {
-		resp, err := provider.GetChatCompletions(context.TODO(), openai.ChatCompletionRequest{Model: "gpt-4o-2024-05-13"})
+		resp, err := provider.GetChatCompletions(context.TODO(), openai.ChatCompletionRequest{Model: "gpt-4o-2024-05-13"}, nil)
 		assert.NoError(t, err)
 		assert.Equal(t, "chatcmpl-9b9wyqGfbZHi0pPDfYgYKXAV1obkm", resp.ID)
 		assert.Equal(t, "gpt-4o-2024-05-13", resp.Model)
@@ -45,7 +45,7 @@ func TestMockProvider(t *testing.T) {
 	})
 
 	t.Run("GetChatCompletionsStream()", func(t *testing.T) {
-		recver, err := provider.GetChatCompletionsStream(context.TODO(), openai.ChatCompletionRequest{})
+		recver, err := provider.GetChatCompletionsStream(context.TODO(), openai.ChatCompletionRequest{}, nil)
 		assert.NoError(t, err)
 
 		for {

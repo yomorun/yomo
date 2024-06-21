@@ -59,9 +59,9 @@ func TestAzureOpenAIProvider_GetChatCompletions(t *testing.T) {
 		Messages: msgs,
 	}
 
-	_, err := provider.GetChatCompletions(context.TODO(), req)
+	_, err := provider.GetChatCompletions(context.TODO(), req, nil)
 	t.Log(err)
 
-	_, err = provider.GetChatCompletionsStream(context.TODO(), req)
+	_, err = provider.GetChatCompletionsStream(context.TODO(), req, nil)
 	t.Log(err)
 }

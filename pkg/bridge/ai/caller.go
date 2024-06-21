@@ -161,7 +161,7 @@ func (c *Caller) GetInvoke(ctx context.Context, userInstruction string, baseSyst
 		promptUsage     int
 		completionUsage int
 	)
-	chatCompletionResponse, err := c.provider.GetChatCompletions(ctx, req)
+	chatCompletionResponse, err := c.provider.GetChatCompletions(ctx, req, c.md)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +175,7 @@ func (c *Caller) GetInvoke(ctx context.Context, userInstruction string, baseSyst
 		return nil, err
 	}
 	// if no tool_calls fired, just return the llm text result
-	if !(res.FinishReason == "tool_calls" || res.FinishReason == "gemini_tool_calls") {
+	if res.FinishReason != string(openai.FinishReasonToolCalls) {
 		return res, nil
 	}
 
@@ -201,7 +201,7 @@ func (c *Caller) GetInvoke(ctx context.Context, userInstruction string, baseSyst
 	req2 := openai.ChatCompletionRequest{
 		Messages: messages2,
 	}
-	chatCompletionResponse2, err := c.provider.GetChatCompletions(ctx, req2)
+	chatCompletionResponse2, err := c.provider.GetChatCompletions(ctx, req2, c.md)
 	if err != nil {
 		return nil, err
 	}
@@ -252,7 +252,7 @@ func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompleti
 			flusher        = eventFlusher(w)
 			isFunctionCall = false
 		)
-		resStream, err := c.provider.GetChatCompletionsStream(ctx, req)
+		resStream, err := c.provider.GetChatCompletionsStream(ctx, req, c.md)
 		if err != nil {
 			return err
 		}
@@ -310,7 +310,7 @@ func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompleti
 		}
 		flusher.Flush()
 	} else {
-		resp, err := c.provider.GetChatCompletions(ctx, req)
+		resp, err := c.provider.GetChatCompletions(ctx, req, c.md)
 		if err != nil {
 			return err
 		}
@@ -349,7 +349,7 @@ func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompleti
 
 	if req.Stream {
 		flusher := w.(http.Flusher)
-		resStream, err := c.provider.GetChatCompletionsStream(ctx, req)
+		resStream, err := c.provider.GetChatCompletionsStream(ctx, req, c.md)
 		if err != nil {
 			return err
 		}
@@ -369,7 +369,7 @@ func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompleti
 			_ = writeStreamEvent(w, flusher, streamRes)
 		}
 	} else {
-		resp, err := c.provider.GetChatCompletions(ctx, req)
+		resp, err := c.provider.GetChatCompletions(ctx, req, c.md)
 		if err != nil {
 			return err
 		}

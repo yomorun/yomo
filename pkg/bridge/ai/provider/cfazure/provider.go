@@ -9,6 +9,7 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 
+	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
 )
@@ -54,12 +55,12 @@ func (p *Provider) Name() string {
 }
 
 // GetChatCompletions implements ai.LLMProvider.
-func (p *Provider) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+func (p *Provider) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, _ metadata.M) (openai.ChatCompletionResponse, error) {
 	return p.client.CreateChatCompletion(ctx, req)
 }
 
 // GetChatCompletionsStream implements ai.LLMProvider.
-func (p *Provider) GetChatCompletionsStream(ctx context.Context, req openai.ChatCompletionRequest) (provider.ResponseRecver, error) {
+func (p *Provider) GetChatCompletionsStream(ctx context.Context, req openai.ChatCompletionRequest, _ metadata.M) (provider.ResponseRecver, error) {
 	return p.client.CreateChatCompletionStream(ctx, req)
 }
 

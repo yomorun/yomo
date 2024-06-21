@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	openai "github.com/sashabaranov/go-openai"
+	"github.com/yomorun/yomo/core/metadata"
 )
 
 // ErrNotExistsProvider is the error when the provider does not exist
@@ -16,9 +17,9 @@ type LLMProvider interface {
 	// Name returns the name of the llm provider
 	Name() string
 	// GetChatCompletions returns the chat completions.
-	GetChatCompletions(context.Context, openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error)
+	GetChatCompletions(context.Context, openai.ChatCompletionRequest, metadata.M) (openai.ChatCompletionResponse, error)
 	// GetChatCompletionsStream returns the chat completions in stream.
-	GetChatCompletionsStream(context.Context, openai.ChatCompletionRequest) (ResponseRecver, error)
+	GetChatCompletionsStream(context.Context, openai.ChatCompletionRequest, metadata.M) (ResponseRecver, error)
 }
 
 // ResponseRecver receives stream response.
