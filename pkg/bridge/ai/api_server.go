@@ -52,7 +52,7 @@ func Serve(config *Config, zipperListenAddr string, credential string, logger *s
 	return srv.ServeAddr(config.Server.Addr)
 }
 
-func bridgeHTTPHanlder(decorater func(http.Handler) http.Handler) http.Handler {
+func BridgeHTTPHanlder(decorater func(http.Handler) http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	// GET /overview
 	mux.HandleFunc("/overview", HandleOverview)
@@ -73,7 +73,7 @@ func NewBasicAPIServer(config *Config, zipperAddr string, provider provider.LLMP
 	server := &BasicAPIServer{
 		zipperAddr:  zipperAddr,
 		credential:  credential,
-		httpHandler: bridgeHTTPHanlder(decorateReqContext(cp, logger, credential)),
+		httpHandler: BridgeHTTPHanlder(decorateReqContext(cp, logger, credential)),
 		logger:      logger.With("component", "bridge"),
 	}
 

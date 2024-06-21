@@ -22,8 +22,8 @@ var (
 	ErrConfigFormatError = errors.New("ai config format is incorrect")
 )
 
-// RegisterFunction returns a ConnMiddleware that can be used to register an ai function.
-func RegisterFunction() core.ConnMiddleware { return registerFunction(register.GetRegister()) }
+// RegisterFunctionMW returns a ConnMiddleware that can be used to register an ai function.
+func RegisterFunctionMW() core.ConnMiddleware { return registerFunction(register.GetRegister()) }
 
 func registerFunction(r register.Register) core.ConnMiddleware {
 	return core.ConnMiddleware(func(next core.ConnHandler) core.ConnHandler {
@@ -32,8 +32,10 @@ func registerFunction(r register.Register) core.ConnMiddleware {
 			definition, ok := connMd.Get(ai.FunctionDefinitionKey)
 
 			defer func() {
+				if ok {
+					conn.Metadata().Set(ai.FunctionDefinitionKey, "")
+				}
 				// definition does not be transmitted in mesh network, It only works for handshake.
-				conn.Metadata().Set(ai.FunctionDefinitionKey, "")
 				next(conn)
 				if ok {
 					register.UnregisterFunction(conn.ID(), connMd)
