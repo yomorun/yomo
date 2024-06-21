@@ -96,7 +96,7 @@ func InfoStatusEvent(w io.Writer, fmtstr string, a ...interface{}) {
 	} else if runtime.GOOS == windowsOS {
 		fmt.Fprintf(w, "%s\n", fmt.Sprintf(fmtstr, a...))
 	} else {
-		fmt.Fprintf(w, "ℹ️   %s\n", fmt.Sprintf(fmtstr, a...))
+		fmt.Fprintf(w, "ℹ️  %s\n", fmt.Sprintf(fmtstr, a...))
 	}
 }
 
