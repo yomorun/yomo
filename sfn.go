@@ -281,6 +281,6 @@ func checkLLMFunctionCall(logger *slog.Logger, serverlessCtx yserverless.Context
 		return
 	}
 	if !fc.IsOK {
-		logger.Warn("The function is not returning anything， please check if `WriteLLMResult()` has been called")
+		logger.Warn("The function return nothing to LLM, please ensure ctx.ReadLLMArguments() and ctx.WriteLLMResult() has been called in Handler func.")
 	}
 }
