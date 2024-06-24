@@ -9,6 +9,7 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
+	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/serverless"
 	"github.com/yomorun/yomo/serverless/mock"
@@ -143,3 +144,17 @@ func (t *mockDataFlow) run() {
 		t.reducer(c)
 	}
 }
+
+var _ yomo.Source = (*mockDataFlow)(nil)
+var _ yomo.StreamFunction = (*mockDataFlow)(nil)
+
+// The test will not use blowing function in this mock implementation.
+func (t *mockDataFlow) Init(fn func() error) error                            { panic("unimplemented") }
+func (t *mockDataFlow) SetCronHandler(spec string, fn core.CronHandler) error { panic("unimplemented") }
+func (t *mockDataFlow) SetObserveDataTags(tag ...uint32)                      { panic("unimplemented") }
+func (t *mockDataFlow) SetPipeHandler(fn core.PipeHandler) error              { panic("unimplemented") }
+func (t *mockDataFlow) SetWantedTarget(string)                                { panic("unimplemented") }
+func (t *mockDataFlow) Wait()                                                 { panic("unimplemented") }
+func (t *mockDataFlow) Connect() error                                        { panic("unimplemented") }
+func (t *mockDataFlow) SetErrorHandler(fn func(err error))                    { panic("unimplemented") }
+func (t *mockDataFlow) WriteWithTarget(_ uint32, _ []byte, _ string) error    { panic("unimplemented") }

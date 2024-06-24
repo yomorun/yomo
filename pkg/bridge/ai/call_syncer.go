@@ -6,8 +6,8 @@ import (
 	"time"
 
 	openai "github.com/sashabaranov/go-openai"
+	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/ai"
-	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/serverless"
 )
 
@@ -29,23 +29,21 @@ type callSyncer struct {
 	logger *slog.Logger
 
 	// timeout is the timeout for waiting the result.
-	timeout  time.Duration
-	writer   TagWriter
-	reducer  Reducer
-	reduceCh <-chan reqMessage
-
-	// internal use
-	resSignal chan resSignal
+	timeout   time.Duration
+	source    yomo.Source
+	reducer   yomo.StreamFunction
+	reduceCh  <-chan refucerMessage
+	toolOutCh chan toolOut
 	cleanCh   chan string
 }
 
-type reqMessage struct {
+type refucerMessage struct {
 	reqID   string
 	message openai.ChatCompletionMessage
 }
 
 // NewCallSyncer creates a new CallSyncer.
-func NewCallSyncer(logger *slog.Logger, writer TagWriter, reducer Reducer, timeout time.Duration) CallSyncer {
+func NewCallSyncer(logger *slog.Logger, source yomo.Source, reducer yomo.StreamFunction, timeout time.Duration) CallSyncer {
 	if timeout == 0 {
 		timeout = RunFunctionTimeout
 	}
@@ -56,10 +54,10 @@ func NewCallSyncer(logger *slog.Logger, writer TagWriter, reducer Reducer, timeo
 		cancel:    cancel,
 		logger:    logger,
 		timeout:   timeout,
-		writer:    writer,
+		source:    source,
 		reducer:   reducer,
 		reduceCh:  handleToChan(logger, reducer),
-		resSignal: make(chan resSignal),
+		toolOutCh: make(chan toolOut),
 		cleanCh:   make(chan string),
 	}
 
@@ -68,7 +66,7 @@ func NewCallSyncer(logger *slog.Logger, writer TagWriter, reducer Reducer, timeo
 	return syncer
 }
 
-type resSignal struct {
+type toolOut struct {
 	reqID   string
 	toolIDs map[string]struct{}
 	ch      chan openai.ChatCompletionMessage
@@ -90,13 +88,13 @@ func (f *callSyncer) Call(ctx context.Context, transID, reqID string, tagToolCal
 		otherToolIDs[id] = struct{}{}
 	}
 
-	singal := resSignal{
+	toolOut := toolOut{
 		reqID:   reqID,
 		toolIDs: otherToolIDs,
 		ch:      ch,
 	}
 
-	f.resSignal <- singal
+	f.toolOutCh <- toolOut
 
 	var result []openai.ChatCompletionMessage
 	for {
@@ -139,7 +137,7 @@ func (f *callSyncer) fire(transID string, reqID string, tagToolCalls map[uint32]
 			}
 			buf, _ := data.Bytes()
 
-			if err := f.writer.Write(tag, buf); err != nil {
+			if err := f.source.Write(tag, buf); err != nil {
 				// TODO: maybe we should make a send failed collection here.
 				f.logger.Error("send data to zipper", "err", err.Error())
 				continue
@@ -156,7 +154,7 @@ func (f *callSyncer) Close() error {
 	f.cancel()
 
 	var err error
-	if err = f.writer.Close(); err != nil {
+	if err = f.source.Close(); err != nil {
 		f.logger.Error("callSyncer writer close", "err", err.Error())
 	}
 
@@ -171,24 +169,24 @@ func (f *callSyncer) background() {
 	// buffered stores the messages from the reducer, the key is the reqID
 	buffered := make(map[string]map[string]openai.ChatCompletionMessage)
 	// singnals stores the result channel, the key is the reqID, the value channel will be sent when the buffered is fulled.
-	singnals := make(map[string]resSignal)
+	singnals := make(map[string]toolOut)
 
 	for {
 		select {
 		case <-f.ctx.Done():
 			return
 
-		case sig := <-f.resSignal:
-			singnals[sig.reqID] = sig
+		case out := <-f.toolOutCh:
+			singnals[out.reqID] = out
 
 			// send data buffered to the result channel, one ToolCallID has one result.
-			for _, msg := range buffered[sig.reqID] {
-				if _, ok := sig.toolIDs[msg.ToolCallID]; !ok {
+			for _, msg := range buffered[out.reqID] {
+				if _, ok := out.toolIDs[msg.ToolCallID]; !ok {
 					continue
 				}
-				sig.ch <- msg
-				delete(buffered[sig.reqID], msg.ToolCallID)
-				delete(singnals[sig.reqID].toolIDs, msg.ToolCallID)
+				out.ch <- msg
+				delete(buffered[out.reqID], msg.ToolCallID)
+				delete(singnals[out.reqID].toolIDs, msg.ToolCallID)
 			}
 
 		case reqID := <-f.cleanCh:
@@ -225,13 +223,13 @@ func (f *callSyncer) background() {
 	}
 }
 
-func handleToChan(logger *slog.Logger, reducer Reducer) <-chan reqMessage {
-	ch := make(chan reqMessage)
+func handleToChan(logger *slog.Logger, reducer yomo.StreamFunction) <-chan refucerMessage {
+	ch := make(chan refucerMessage)
 
 	reducer.SetHandler(func(ctx serverless.Context) {
 		invoke, err := ctx.LLMFunctionCall()
 		if err != nil {
-			ch <- reqMessage{reqID: ""}
+			ch <- refucerMessage{reqID: ""}
 			logger.Error("parse function calling invoke", "err", err.Error())
 			return
 		}
@@ -243,22 +241,8 @@ func handleToChan(logger *slog.Logger, reducer Reducer) <-chan reqMessage {
 			ToolCallID: invoke.ToolCallID,
 		}
 
-		ch <- reqMessage{reqID: invoke.ReqID, message: message}
+		ch <- refucerMessage{reqID: invoke.ReqID, message: message}
 	})
 
 	return ch
 }
-
-type (
-	// TagWriter write tag and []byte.
-	TagWriter interface {
-		Write(tag uint32, data []byte) error
-		Close() error
-	}
-
-	// Reducer handle the tag and []byte.
-	Reducer interface {
-		SetHandler(fn core.AsyncHandler) error
-		Close() error
-	}
-)
