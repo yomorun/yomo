@@ -1,3 +1,8 @@
+{{if and .WithDescription (not .WithInputSchema)}}
+func InputSchema() any {
+	return nil
+}
+{{end}}
 
 // Serverless main function
 func main() {
@@ -30,7 +35,7 @@ func run(_ *cobra.Command, _ []string) {
 		name,
 		addr,
 		yomo.WithSfnCredential(credential),
-		{{if and .WithDescription .WithInputSchema}}yomo.WithSfnAIFunctionDefinition(Description(), InputSchema()),{{end}}
+		{{if .WithDescription}}yomo.WithSfnAIFunctionDefinition(Description(), InputSchema()),{{end}}
 	)
 	{{if .WithInitFunc}}
 	// init
