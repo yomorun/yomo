@@ -294,6 +294,7 @@ func parseAIFunctionParameters(inputModel any) (*ai.FunctionParameters, error) {
 			functionParameters.Properties[pair.Key] = &ai.ParameterProperty{
 				Type:        pair.Value.Type,
 				Description: pair.Value.Description,
+				Enum:        pair.Value.Enum,
 			}
 		}
 		return functionParameters, nil
