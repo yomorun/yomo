@@ -2,6 +2,7 @@ package ai
 
 import (
 	"encoding/json"
+	"errors"
 )
 
 // ReducerTag is the observed tag of the reducer
@@ -17,8 +18,6 @@ type FunctionCall struct {
 	ReqID string `json:"req_id"`
 	// Result is the struct result of the function calling.
 	Result string `json:"result,omitempty"`
-	// RetrievalResult is the string result of the function calling.
-	RetrievalResult string `json:"retrieval_result,omitempty"`
 	// Arguments is the arguments of the function calling. This should be kept in this
 	// context for next llm request in multi-turn request scenario.
 	Arguments string `json:"arguments"`
@@ -28,8 +27,6 @@ type FunctionCall struct {
 	FunctionName string `json:"function_name,omitempty"`
 	// IsOK is the flag to indicate the function calling is ok or not
 	IsOK bool `json:"is_ok"`
-	// Error is the error message
-	Error string `json:"error,omitempty"`
 }
 
 // Bytes serialize the []byte of FunctionCallObject
@@ -39,18 +36,12 @@ func (fco *FunctionCall) Bytes() ([]byte, error) {
 
 // FromBytes deserialize the FunctionCallObject from the given []byte
 func (fco *FunctionCall) FromBytes(b []byte) error {
-	obj := &FunctionCall{}
-	err := json.Unmarshal(b, &obj)
-	if err != nil {
-		return err
+	if b == nil {
+		return errors.New("llm-sfn: cannot read data from context")
 	}
-	fco.TransID = obj.TransID
-	fco.ReqID = obj.ReqID
-	fco.Arguments = obj.Arguments
-	fco.FunctionName = obj.FunctionName
-	fco.ToolCallID = obj.ToolCallID
-	fco.Result = obj.Result
-	fco.RetrievalResult = obj.RetrievalResult
-	fco.IsOK = obj.IsOK
+	err := json.Unmarshal(b, fco)
+	if err != nil {
+		return errors.New("llm-sfn: cannot read function call object from context data")
+	}
 	return nil
 }
