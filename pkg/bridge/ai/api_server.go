@@ -94,6 +94,7 @@ func decorateReqContext(cp *CallerProvider, logger *slog.Logger, credential stri
 			logger.Info("can't load caller", "err", err)
 
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
 				RespondWithError(w, http.StatusInternalServerError, err)
 			})
 		}
@@ -153,6 +154,7 @@ func HandleInvoke(w http.ResponseWriter, r *http.Request) {
 
 	res, err := caller.GetInvoke(ctx, req.Prompt, baseSystemMessage, transID, req.IncludeCallStack)
 	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
 		RespondWithError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -190,6 +192,7 @@ func DecodeRequest[T any](r *http.Request, w http.ResponseWriter) (T, error) {
 	var req T
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
 		RespondWithError(w, http.StatusBadRequest, err)
 		return req, err
 	}
@@ -199,7 +202,6 @@ func DecodeRequest[T any](r *http.Request, w http.ResponseWriter) (T, error) {
 
 // RespondWithError writes an error to response according to the OpenAI API spec.
 func RespondWithError(w http.ResponseWriter, code int, err error) {
-	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	w.Write([]byte(fmt.Sprintf(`{"error":{"code":"%d","message":"%s"}}`, code, err.Error())))
 }
