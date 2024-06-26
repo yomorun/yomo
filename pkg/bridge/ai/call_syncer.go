@@ -32,12 +32,12 @@ type callSyncer struct {
 	timeout   time.Duration
 	source    yomo.Source
 	reducer   yomo.StreamFunction
-	reduceCh  <-chan refucerMessage
+	reduceCh  <-chan reduceMessage
 	toolOutCh chan toolOut
 	cleanCh   chan string
 }
 
-type refucerMessage struct {
+type reduceMessage struct {
 	reqID   string
 	message openai.ChatCompletionMessage
 }
@@ -223,13 +223,13 @@ func (f *callSyncer) background() {
 	}
 }
 
-func handleToChan(logger *slog.Logger, reducer yomo.StreamFunction) <-chan refucerMessage {
-	ch := make(chan refucerMessage)
+func handleToChan(logger *slog.Logger, reducer yomo.StreamFunction) <-chan reduceMessage {
+	ch := make(chan reduceMessage)
 
 	reducer.SetHandler(func(ctx serverless.Context) {
 		invoke, err := ctx.LLMFunctionCall()
 		if err != nil {
-			ch <- refucerMessage{reqID: ""}
+			ch <- reduceMessage{reqID: ""}
 			logger.Error("parse function calling invoke", "err", err.Error())
 			return
 		}
@@ -241,7 +241,7 @@ func handleToChan(logger *slog.Logger, reducer yomo.StreamFunction) <-chan refuc
 			ToolCallID: invoke.ToolCallID,
 		}
 
-		ch <- refucerMessage{reqID: invoke.ReqID, message: message}
+		ch <- reduceMessage{reqID: invoke.ReqID, message: message}
 	})
 
 	return ch
