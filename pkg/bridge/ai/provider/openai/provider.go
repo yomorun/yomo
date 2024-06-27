@@ -9,13 +9,9 @@ import (
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo/core/metadata"
-	"github.com/yomorun/yomo/core/ylog"
 
 	provider "github.com/yomorun/yomo/pkg/bridge/ai/provider"
 )
-
-// APIEndpoint is the endpoint for OpenAI
-const APIEndpoint = "https://api.openai.com/v1/chat/completions"
 
 // Provider is the provider for OpenAI
 type Provider struct {
@@ -38,12 +34,15 @@ func NewProvider(apiKey string, model string) *Provider {
 	if model == "" {
 		model = os.Getenv("OPENAI_MODEL")
 	}
+	c := openai.DefaultConfig(apiKey)
+	if v, ok := os.LookupEnv("OPENAI_BASE_URL"); ok {
+		c.BaseURL = v
+	}
 
-	ylog.Debug("new openai provider", "api_endpoint", APIEndpoint, "api_key", apiKey, "model", model)
 	return &Provider{
 		APIKey: apiKey,
 		Model:  model,
-		client: openai.NewClient(apiKey),
+		client: openai.NewClientWithConfig(c),
 	}
 }
 
