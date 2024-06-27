@@ -254,7 +254,7 @@ func (c *Client) handshakeWithDefinition(hf *frame.HandshakeFrame) error {
 	if functionDefinition == nil {
 		return nil
 	}
-	c.Logger.Info("register function definition", "functionDefinition", string(functionDefinition))
+	c.Logger.Info("register function definition", "function_definition", string(functionDefinition))
 	hf.FunctionDefinition = functionDefinition
 	return nil
 }
