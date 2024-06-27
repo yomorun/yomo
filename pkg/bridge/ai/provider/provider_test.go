@@ -22,16 +22,12 @@ func TestProviders(t *testing.T) {
 	})
 
 	t.Run("GetProvider error", func(t *testing.T) {
-		_, err := GetProviderAndSetDefault("name-not-exist")
+		_, err := GetProvider("name-not-exist")
 		assert.ErrorIs(t, err, ErrNotExistsProvider)
 	})
 
 	t.Run("GetProvider", func(t *testing.T) {
-		assert.Equal(t, p2, GetProvider("name-2"))
-	})
-
-	t.Run("GetProvider", func(t *testing.T) {
-		p, err := GetProviderAndSetDefault("name-1")
+		p, err := GetProvider("name-1")
 		assert.NoError(t, err)
 		assert.Equal(t, p1, p)
 	})

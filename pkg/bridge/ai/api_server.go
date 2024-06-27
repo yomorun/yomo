@@ -39,7 +39,7 @@ type BasicAPIServer struct {
 
 // Serve starts the Basic API Server
 func Serve(config *Config, zipperListenAddr string, credential string, logger *slog.Logger) error {
-	provider, err := provider.GetProviderAndSetDefault(config.Server.Provider)
+	provider, err := provider.GetProvider(config.Server.Provider)
 	if err != nil {
 		return err
 	}

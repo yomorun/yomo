@@ -49,17 +49,16 @@ func ListProviders() []string {
 	return names
 }
 
-// GetProvider returns the llm provider by name
-func GetProvider(name string) LLMProvider {
+func getProvider(name string) LLMProvider {
 	if provider, ok := providers.Load(name); ok {
 		return provider.(LLMProvider)
 	}
 	return nil
 }
 
-// GetProviderAndSetDefault returns the llm provider by name and set it as the default provider
-func GetProviderAndSetDefault(name string) (LLMProvider, error) {
-	provider := GetProvider(name)
+// GetProvider returns the llm provider by name
+func GetProvider(name string) (LLMProvider, error) {
+	provider := getProvider(name)
 	if provider != nil {
 		return provider, nil
 	}
