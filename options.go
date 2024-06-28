@@ -112,6 +112,7 @@ var (
 		}
 	}
 
+	// WithVersionNegotiateFunc sets the version negotiate function for the zipper
 	WithVersionNegotiateFunc = func(f core.VersionNegotiateFunc) ZipperOption {
 		return func(zo *zipperOptions) {
 			zo.serverOption = append(zo.serverOption, core.WithVersionNegotiateFunc(f))

@@ -27,6 +27,7 @@ import (
 	"github.com/yomorun/yomo/pkg/log"
 
 	"github.com/yomorun/yomo/pkg/bridge/ai"
+	providerpkg "github.com/yomorun/yomo/pkg/bridge/ai/provider"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/azopenai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cfazure"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cfopenai"
@@ -78,7 +79,7 @@ var serveCmd = &cobra.Command{
 		}
 		if aiConfig != nil {
 			// add AI connection middleware
-			options = append(options, yomo.WithZipperConnMiddleware(ai.ConnMiddleware))
+			options = append(options, yomo.WithZipperConnMiddleware(ai.RegisterFunctionMW()))
 		}
 		// new zipper
 		zipper, err := yomo.NewZipper(
@@ -97,7 +98,7 @@ var serveCmd = &cobra.Command{
 			registerAIProvider(aiConfig)
 			// start the llm api server
 			go func() {
-				err := ai.Serve(aiConfig, listenAddr, fmt.Sprintf("token:%s", tokenString))
+				err := ai.Serve(aiConfig, listenAddr, fmt.Sprintf("token:%s", tokenString), ylog.Default())
 				if err != nil {
 					log.FailureStatusEvent(os.Stdout, err.Error())
 					return
@@ -118,16 +119,16 @@ func registerAIProvider(aiConfig *ai.Config) error {
 	for name, provider := range aiConfig.Providers {
 		switch name {
 		case "azopenai":
-			ai.RegisterProvider(azopenai.NewProvider(
+			providerpkg.RegisterProvider(azopenai.NewProvider(
 				provider["api_key"],
 				provider["api_endpoint"],
 				provider["deployment_id"],
 				provider["api_version"],
 			))
 		case "openai":
-			ai.RegisterProvider(openai.NewProvider(provider["api_key"], provider["model"]))
+			providerpkg.RegisterProvider(openai.NewProvider(provider["api_key"], provider["model"]))
 		case "cloudflare_azure":
-			ai.RegisterProvider(cfazure.NewProvider(
+			providerpkg.RegisterProvider(cfazure.NewProvider(
 				provider["endpoint"],
 				provider["api_key"],
 				provider["resource"],
@@ -135,20 +136,19 @@ func registerAIProvider(aiConfig *ai.Config) error {
 				provider["api_version"],
 			))
 		case "cloudflare_openai":
-			ai.RegisterProvider(cfopenai.NewProvider(
+			providerpkg.RegisterProvider(cfopenai.NewProvider(
 				provider["endpoint"],
 				provider["api_key"],
 				provider["model"],
 			))
 		case "ollama":
-			ai.RegisterProvider(ollama.NewProvider(provider["api_endpoint"]))
+			providerpkg.RegisterProvider(ollama.NewProvider(provider["api_endpoint"]))
 		default:
 			log.WarningStatusEvent(os.Stdout, "unknown provider: %s", name)
 		}
 	}
 
-	// log.InfoStatusEvent(os.Stdout, "registered [%d] AI provider", len(ai.ListProviders()))
-	ylog.Info("registered AI providers", "len", len(ai.ListProviders()))
+	ylog.Info("registered AI providers", "len", len(providerpkg.ListProviders()))
 	return nil
 }
 

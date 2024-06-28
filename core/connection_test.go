@@ -18,7 +18,7 @@ func TestConnection(t *testing.T) {
 		md       metadata.M
 	)
 
-	connection := newConnection(id, name, clientID, styp, md, observed, nil, ylog.Default())
+	connection := NewConnection(id, name, clientID, styp, md, observed, nil, ylog.Default())
 
 	t.Run("ConnectionInfo", func(t *testing.T) {
 		assert.Equal(t, id, connection.ID())

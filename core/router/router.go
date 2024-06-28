@@ -33,9 +33,9 @@ type defaultRouter struct {
 	data map[frame.Tag]map[uint64]struct{}
 }
 
-// DefaultRouter provides a default implementation of `router`,
+// Default provides a default implementation of `router`,
 // It routes data according to observed tag and metadata.
-func Default() *defaultRouter {
+func Default() Router {
 	return &defaultRouter{
 		targets: make(map[uint64]string),
 		data:    make(map[frame.Tag]map[uint64]struct{}),

@@ -6,11 +6,10 @@ import (
 	"github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/ai"
-	"github.com/yomorun/yomo/core/metadata"
 )
 
 func TestRegister(t *testing.T) {
-	r := &register{}
+	r := NewDefault()
 
 	SetRegister(r)
 	assert.Equal(t, r, GetRegister())
@@ -52,30 +51,4 @@ func assertToolCalls(t *testing.T, wantTag uint32, want *ai.FunctionDefinition, 
 	}
 	assert.Equal(t, wantTag, tag)
 	assert.Equal(t, want, got.Function)
-}
-
-func TestSfnFactor(t *testing.T) {
-	functionDefinition := &ai.FunctionDefinition{
-		Name:        "function1",
-		Description: "desc1",
-		Parameters: &ai.FunctionParameters{
-			Type: "type1",
-			Properties: map[string]*ai.ParameterProperty{
-				"prop1": {Type: "type1", Description: "desc1"},
-				"prop2": {Type: "type2", Description: "desc2"},
-			},
-			Required: []string{"prop1"},
-		},
-	}
-	RegisterFunction(1, functionDefinition, 1, nil)
-	assert.Equal(t, 1, SfnFactor(1, nil))
-
-	RegisterFunction(1, functionDefinition, 2, metadata.M{})
-	assert.Equal(t, 2, SfnFactor(1, metadata.M{}))
-
-	UnregisterFunction(1, nil)
-	assert.Equal(t, 1, SfnFactor(1, nil))
-
-	UnregisterFunction(2, metadata.M{})
-	assert.Equal(t, 0, SfnFactor(1, metadata.M{}))
 }

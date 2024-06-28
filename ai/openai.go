@@ -8,6 +8,7 @@ import (
 	"github.com/yomorun/yomo/core/ylog"
 )
 
+// ConvertToInvokeResponse converts openai.ChatCompletionResponse struct to InvokeResponse struct.
 func ConvertToInvokeResponse(res *openai.ChatCompletionResponse, tcs map[uint32]openai.Tool) (*InvokeResponse, error) {
 	choice := res.Choices[0]
 	ylog.Debug(">>finish_reason", "reason", choice.FinishReason)

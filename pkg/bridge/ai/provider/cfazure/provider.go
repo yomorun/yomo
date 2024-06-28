@@ -7,13 +7,11 @@ import (
 	"context"
 	"fmt"
 
-	_ "github.com/joho/godotenv/autoload"
 	openai "github.com/sashabaranov/go-openai"
 
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
-	"github.com/yomorun/yomo/pkg/bridge/ai"
-	bridgeai "github.com/yomorun/yomo/pkg/bridge/ai"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
 )
 
 // Provider is the provider for Azure OpenAI
@@ -27,7 +25,7 @@ type Provider struct {
 }
 
 // check if implements ai.Provider
-var _ bridgeai.LLMProvider = &Provider{}
+var _ provider.LLMProvider = &Provider{}
 
 // NewProvider creates a new AzureOpenAIProvider
 func NewProvider(cfEndpoint string, apiKey string, resource string, deploymentID string, apiVersion string) *Provider {
@@ -62,14 +60,14 @@ func (p *Provider) GetChatCompletions(ctx context.Context, req openai.ChatComple
 }
 
 // GetChatCompletionsStream implements ai.LLMProvider.
-func (p *Provider) GetChatCompletionsStream(ctx context.Context, req openai.ChatCompletionRequest, _ metadata.M) (ai.ResponseRecver, error) {
+func (p *Provider) GetChatCompletionsStream(ctx context.Context, req openai.ChatCompletionRequest, _ metadata.M) (provider.ResponseRecver, error) {
 	return p.client.CreateChatCompletionStream(ctx, req)
 }
 
 func newConfig(cfEndpoint string, apiKey string, resource string, deploymentID string, apiVersion string) openai.ClientConfig {
-	baseUrl := fmt.Sprintf("%s/azure-openai/%s/%s", cfEndpoint, resource, deploymentID)
+	baseURL := fmt.Sprintf("%s/azure-openai/%s/%s", cfEndpoint, resource, deploymentID)
 
-	config := openai.DefaultAzureConfig(apiKey, baseUrl)
+	config := openai.DefaultAzureConfig(apiKey, baseURL)
 	config.APIType = openai.APITypeCloudflareAzure
 	config.APIVersion = apiVersion
 

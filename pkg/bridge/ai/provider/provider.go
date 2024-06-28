@@ -1,12 +1,16 @@
-package ai
+package provider
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo/core/metadata"
 )
+
+// ErrNotExistsProvider is the error when the provider does not exist
+var ErrNotExistsProvider = errors.New("llm provider does not exist")
 
 // LLMProvider provides an interface to the llm providers
 type LLMProvider interface {
@@ -25,9 +29,7 @@ type ResponseRecver interface {
 }
 
 var (
-	providers       sync.Map
-	defaultProvider LLMProvider
-	mu              sync.Mutex
+	providers sync.Map
 )
 
 // RegisterProvider registers the llm provider
@@ -47,51 +49,18 @@ func ListProviders() []string {
 	return names
 }
 
-// SetDefaultProvider sets the default llm provider
-func SetDefaultProvider(name string) {
-	provider := GetProvider(name)
-	if provider != nil {
-		setDefaultProvider(provider)
-	}
-}
-
-func setDefaultProvider(provider LLMProvider) {
-	mu.Lock()
-	defer mu.Unlock()
-	defaultProvider = provider
-}
-
-// GetProvider returns the llm provider by name
-func GetProvider(name string) LLMProvider {
+func getProvider(name string) LLMProvider {
 	if provider, ok := providers.Load(name); ok {
 		return provider.(LLMProvider)
 	}
 	return nil
 }
 
-// GetProviderAndSetDefault returns the llm provider by name and set it as the default provider
-func GetProviderAndSetDefault(name string) (LLMProvider, error) {
-	provider := GetProvider(name)
+// GetProvider returns the llm provider by name
+func GetProvider(name string) (LLMProvider, error) {
+	provider := getProvider(name)
 	if provider != nil {
-		setDefaultProvider(provider)
 		return provider, nil
-	}
-	return nil, ErrNotExistsProvider
-}
-
-// GetDefaultProvider returns the default llm provider
-func GetDefaultProvider() (LLMProvider, error) {
-	mu.Lock()
-	defer mu.Unlock()
-	if defaultProvider != nil {
-		return defaultProvider, nil
-	}
-	names := ListProviders()
-	if len(names) > 0 {
-		p := GetProvider(names[0])
-		if p != nil {
-			return p, nil
-		}
 	}
 	return nil, ErrNotExistsProvider
 }

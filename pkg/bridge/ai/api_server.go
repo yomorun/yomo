@@ -5,13 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"time"
 
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo/ai"
-	"github.com/yomorun/yomo/core/ylog"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
+	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 	"github.com/yomorun/yomo/pkg/id"
 )
 
@@ -29,189 +31,178 @@ var (
 
 // BasicAPIServer provides restful service for end user
 type BasicAPIServer struct {
-	// Name is the name of the server
-	Name string
-	// Config is the configuration of the server
-	*Config
-	// ZipperAddr is the address of the zipper
-	ZipperAddr string
-	// Provider is the llm provider
-	Provider LLMProvider
-	// serviceCredential is the credential for Function Calling Service
-	serviceCredential string
+	zipperAddr  string
+	credential  string
+	httpHandler http.Handler
+	logger      *slog.Logger
 }
 
 // Serve starts the Basic API Server
-func Serve(config *Config, zipperListenAddr string, credential string) error {
-	provider, err := GetProviderAndSetDefault(config.Server.Provider)
+func Serve(config *Config, zipperListenAddr string, credential string, logger *slog.Logger) error {
+	provider, err := provider.GetProvider(config.Server.Provider)
 	if err != nil {
 		return err
 	}
-	srv, err := NewBasicAPIServer(provider.Name(), config, zipperListenAddr, provider, credential)
+	srv, err := NewBasicAPIServer(config, zipperListenAddr, provider, credential, logger)
 	if err != nil {
 		return err
 	}
-	return srv.Serve()
+
+	logger.Info("start bridge server", "addr", config.Server.Addr, "provider", provider.Name())
+	return srv.ServeAddr(config.Server.Addr)
 }
 
-// NewBasicAPIServer creates a new restful service
-func NewBasicAPIServer(name string, config *Config, zipperAddr string, provider LLMProvider, credential string) (*BasicAPIServer, error) {
-	zipperAddr = parseZipperAddr(zipperAddr)
-	return &BasicAPIServer{
-		Name:              name,
-		Config:            config,
-		ZipperAddr:        zipperAddr,
-		Provider:          provider,
-		serviceCredential: credential,
-	}, nil
-}
-
-// Serve starts a RESTful service that provides a '/invoke' endpoint.
-// Users submit questions to this endpoint. The service then generates a prompt based on the question and
-// registered functions. It calls the completion api by llm provider to get the functions and arguments to be
-// invoked. These functions are invoked sequentially by YoMo. all the functions write their results to the
-// reducer-sfn.
-func (a *BasicAPIServer) Serve() error {
+func BridgeHTTPHanlder(decorater func(http.Handler) http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	// GET /overview
 	mux.HandleFunc("/overview", HandleOverview)
 	// POST /invoke
 	mux.HandleFunc("/invoke", HandleInvoke)
-	// POST /v1/chat/completions OpenAI compatible interface
+	// POST /v1/chat/completions (OpenAI compatible interface)
 	mux.HandleFunc("/v1/chat/completions", HandleChatCompletions)
 
-	handler := WithContextService(mux, a.serviceCredential, a.ZipperAddr, a.Provider, DefaultExchangeMetadataFunc)
-
-	addr := a.Config.Server.Addr
-	ylog.Info("server is running", "addr", addr, "ai_provider", a.Name)
-	return http.ListenAndServe(addr, handler)
+	return decorater(mux)
 }
 
-// WithContextService adds the service to the request context
-func WithContextService(handler http.Handler, credential string, zipperAddr string, provider LLMProvider, exFn ExchangeMetadataFunc) http.Handler {
-	// create service instance when the api server starts
-	service, err := LoadOrCreateService(credential, zipperAddr, provider, exFn)
-	if err != nil {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-		})
+// NewBasicAPIServer creates a new restful service
+func NewBasicAPIServer(config *Config, zipperAddr string, provider provider.LLMProvider, credential string, logger *slog.Logger) (*BasicAPIServer, error) {
+	zipperAddr = parseZipperAddr(zipperAddr)
+
+	cp := NewCallerProvider(zipperAddr, provider, DefaultExchangeMetadataFunc)
+
+	server := &BasicAPIServer{
+		zipperAddr:  zipperAddr,
+		credential:  credential,
+		httpHandler: BridgeHTTPHanlder(decorateReqContext(cp, logger, credential)),
+		logger:      logger.With("component", "bridge"),
 	}
 
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		transID := id.New(32)
-		ctx := WithTransIDContext(r.Context(), transID)
-		ctx = WithServiceContext(ctx, service)
-		handler.ServeHTTP(w, r.WithContext(ctx))
-	})
+	return server, nil
+}
+
+// ServeAddr starts a http server that provides some endpoints to bridge up the http server and YoMo.
+// User can chat to the http server and interact with the YoMo's stream function.
+func (a *BasicAPIServer) ServeAddr(addr string) error {
+	return http.ListenAndServe(addr, a.httpHandler)
+}
+
+// decorateReqContext decorates the context of the request, it injects a transID and a caller into the context.
+func decorateReqContext(cp *CallerProvider, logger *slog.Logger, credential string) func(handler http.Handler) http.Handler {
+	return func(handler http.Handler) http.Handler {
+		caller, err := cp.Provide(credential)
+		if err != nil {
+			logger.Info("can't load caller", "err", err)
+
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				RespondWithError(w, http.StatusInternalServerError, err)
+			})
+		}
+
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			transID := id.New(32)
+			ctx := WithTransIDContext(r.Context(), transID)
+			ctx = WithCallerContext(ctx, caller)
+
+			logger.Info("request", "method", r.Method, "path", r.URL.Path, "transID", transID)
+
+			handler.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
 }
 
 // HandleOverview is the handler for GET /overview
 func HandleOverview(w http.ResponseWriter, r *http.Request) {
-	service := FromServiceContext(r.Context())
+	caller := FromCallerContext(r.Context())
 
 	w.Header().Set("Content-Type", "application/json")
-	// credential := getBearerToken(r)
-	resp, err := service.GetOverview()
+
+	tcs, err := register.ListToolCalls(caller.Metadata())
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
+
+	functions := make(map[uint32]*openai.FunctionDefinition)
+	for tag, tc := range tcs {
+		functions[tag] = tc.Function
+	}
+
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(resp)
+	json.NewEncoder(w).Encode(&ai.OverviewResponse{Functions: functions})
 }
+
+var baseSystemMessage = `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous.`
 
 // HandleInvoke is the handler for POST /invoke
 func HandleInvoke(w http.ResponseWriter, r *http.Request) {
 	var (
 		ctx     = r.Context()
-		service = FromServiceContext(ctx)
+		caller  = FromCallerContext(ctx)
 		transID = FromTransIDContext(ctx)
 	)
 	defer r.Body.Close()
 
-	var req ai.InvokeRequest
-
-	// decode the request
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		ylog.Error("decode request", "err", err.Error())
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-
-	// Create a context with a timeout of 5 seconds
-	ctx, cancel := context.WithTimeout(context.Background(), RequestTimeout)
-	defer cancel()
-
-	// messages
-	baseSystemMessage := `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous.`
-
-	// Make the service call in a separate goroutine, and use a channel to get the result
-	resCh := make(chan *ai.InvokeResponse, 1)
-	errCh := make(chan error, 1)
-	go func(service *Service, req ai.InvokeRequest, baseSystemMessage string) {
-		// call llm to infer the function and arguments to be invoked
-		ylog.Debug(">> ai request", "transID", transID, "prompt", req.Prompt)
-		res, err := service.GetInvoke(ctx, req.Prompt, baseSystemMessage, transID, req.IncludeCallStack)
-		if err != nil {
-			errCh <- err
-		} else {
-			resCh <- res
-		}
-	}(service, req, baseSystemMessage)
-
-	// Use a select statement to handle the result or timeout
-	select {
-	case res := <-resCh:
-		ylog.Debug(">> ai response response", "res", fmt.Sprintf("%+v", res))
-		// write the response to the client with res
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(res)
-	case err := <-errCh:
-		ylog.Error("invoke service", "err", err.Error())
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-	case <-ctx.Done():
-		// The context was cancelled, which means the service call timed out
-		w.WriteHeader(http.StatusRequestTimeout)
-		json.NewEncoder(w).Encode(map[string]string{"error": "request timed out"})
-	}
-}
-
-// HandleChatCompletions is the handler for POST /chat/completion
-func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
-	var (
-		ctx     = r.Context()
-		service = FromServiceContext(ctx)
-		transID = FromTransIDContext(ctx)
-	)
-	defer r.Body.Close()
-
-	var req openai.ChatCompletionRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		ylog.Error("decode request", "err", err.Error())
-		RespondWithError(w, http.StatusBadRequest, err)
+	req, err := DecodeRequest[ai.InvokeRequest](r, w)
+	if err != nil {
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), RequestTimeout)
 	defer cancel()
 
-	if err := service.GetChatCompletions(ctx, req, transID, w, false); err != nil {
-		ylog.Error("invoke chat completions", "err", err.Error())
+	res, err := caller.GetInvoke(ctx, req.Prompt, baseSystemMessage, transID, req.IncludeCallStack)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		RespondWithError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(res)
+}
+
+// HandleChatCompletions is the handler for POST /chat/completion
+func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
+	var (
+		ctx     = r.Context()
+		caller  = FromCallerContext(ctx)
+		transID = FromTransIDContext(ctx)
+	)
+	defer r.Body.Close()
+
+	req, err := DecodeRequest[openai.ChatCompletionRequest](r, w)
+	if err != nil {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), RequestTimeout)
+	defer cancel()
+
+	if err := caller.GetChatCompletions(ctx, req, transID, w); err != nil {
 		RespondWithError(w, http.StatusBadRequest, err)
 		return
 	}
 }
 
+// DecodeRequest decodes the request body into given type.
+func DecodeRequest[T any](r *http.Request, w http.ResponseWriter) (T, error) {
+	var req T
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		RespondWithError(w, http.StatusBadRequest, err)
+		return req, err
+	}
+
+	return req, nil
+}
+
 // RespondWithError writes an error to response according to the OpenAI API spec.
 func RespondWithError(w http.ResponseWriter, code int, err error) {
 	w.WriteHeader(code)
-	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(fmt.Sprintf(`{"error":{"code":"%d","message":"%s"}}`, code, err.Error())))
 }
 
@@ -231,16 +222,16 @@ func getLocalIP() (string, error) {
 	return "", errors.New("not found local ip")
 }
 
-type serviceContextKey struct{}
+type callerContextKey struct{}
 
-// WithServiceContext adds the service to the request context
-func WithServiceContext(ctx context.Context, service *Service) context.Context {
-	return context.WithValue(ctx, serviceContextKey{}, service)
+// WithCallerContext adds the caller to the request context
+func WithCallerContext(ctx context.Context, caller *Caller) context.Context {
+	return context.WithValue(ctx, callerContextKey{}, caller)
 }
 
-// FromServiceContext returns the service from the request context
-func FromServiceContext(ctx context.Context) *Service {
-	service, ok := ctx.Value(serviceContextKey{}).(*Service)
+// FromCallerContext returns the caller from the request context
+func FromCallerContext(ctx context.Context) *Caller {
+	service, ok := ctx.Value(callerContextKey{}).(*Caller)
 	if !ok {
 		return nil
 	}

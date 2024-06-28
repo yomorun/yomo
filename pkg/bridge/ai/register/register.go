@@ -33,6 +33,11 @@ func GetRegister() Register {
 	return defaultRegister
 }
 
+// NewDefault creates a new default register.
+func NewDefault() Register {
+	return &register{}
+}
+
 // ListToolCalls returns the list of tool calls
 func ListToolCalls(md metadata.M) (map[uint32]openai.Tool, error) {
 	return defaultRegister.ListToolCalls(md)
@@ -46,11 +51,6 @@ func RegisterFunction(tag uint32, functionDefinition *openai.FunctionDefinition,
 // UnregisterFunction unregisters a function calling function
 func UnregisterFunction(connID uint64, md metadata.M) {
 	defaultRegister.UnregisterFunction(connID, md)
-}
-
-// SfnFactor returns the sfn factor
-func SfnFactor(tag uint32, md metadata.M) int {
-	return defaultRegister.SfnFactor(tag, md)
 }
 
 type connectedFn struct {
@@ -67,8 +67,6 @@ type Register interface {
 	RegisterFunction(tag uint32, functionDefinition *openai.FunctionDefinition, connID uint64, md metadata.M) error
 	// UnregisterFunction unregisters a function calling function
 	UnregisterFunction(connID uint64, md metadata.M)
-	// SfnFactor returns the sfn factor
-	SfnFactor(tag uint32, md metadata.M) int
 }
 
 type register struct {
@@ -102,17 +100,4 @@ func (r *register) RegisterFunction(tag uint32, functionDefinition *ai.FunctionD
 
 func (r *register) UnregisterFunction(connID uint64, _ metadata.M) {
 	r.underlying.Delete(connID)
-}
-
-// SfnFactor returns the sfn factor
-func (r *register) SfnFactor(tag uint32, md metadata.M) int {
-	factor := 0
-	r.underlying.Range(func(key, value any) bool {
-		fn := value.(*connectedFn)
-		if fn.tag == tag {
-			factor++
-		}
-		return true
-	})
-	return factor
 }

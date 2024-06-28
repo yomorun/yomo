@@ -117,5 +117,5 @@ func TestConnector(t *testing.T) {
 // mockConn returns a connection that only includes an ID and a name.
 // This function is used for unit testing purposes.
 func mockConn(id uint64, name string) *Connection {
-	return newConnection(id, name, "mock-id", ClientType(0), nil, []frame.Tag{0}, nil, ylog.Default())
+	return NewConnection(id, name, "mock-id", ClientType(0), nil, []frame.Tag{0}, nil, ylog.Default())
 }

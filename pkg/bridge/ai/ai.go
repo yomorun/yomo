@@ -22,43 +22,48 @@ var (
 	ErrConfigFormatError = errors.New("ai config format is incorrect")
 )
 
-// ConnMiddleware returns a ConnMiddleware that can be used to intercept the connection.
-func ConnMiddleware(next core.ConnHandler) core.ConnHandler {
-	return func(conn *core.Connection) {
-		connMd := conn.Metadata().Clone()
-		definition, ok := connMd.Get(ai.FunctionDefinitionKey)
+// RegisterFunctionMW returns a ConnMiddleware that can be used to register an ai function.
+func RegisterFunctionMW() core.ConnMiddleware { return registerFunction(register.GetRegister()) }
 
-		defer func() {
-			// definition does not be transmitted in mesh network, It only works for handshake.
-			conn.Metadata().Set(ai.FunctionDefinitionKey, "")
-			next(conn)
-			if ok {
-				register.UnregisterFunction(conn.ID(), connMd)
-				conn.Logger.Info("unregister ai function", "name", conn.Name(), "connID", conn.ID())
-			}
-		}()
+func registerFunction(r register.Register) core.ConnMiddleware {
+	return core.ConnMiddleware(func(next core.ConnHandler) core.ConnHandler {
+		return func(conn *core.Connection) {
+			connMd := conn.Metadata().Clone()
+			definition, ok := connMd.Get(ai.FunctionDefinitionKey)
 
-		if conn.ClientType() != core.ClientTypeStreamFunction || !ok {
-			return
-		}
+			defer func() {
+				if ok {
+					conn.Metadata().Set(ai.FunctionDefinitionKey, "")
+				}
+				// definition does not be transmitted in mesh network, It only works for handshake.
+				next(conn)
+				if ok {
+					register.UnregisterFunction(conn.ID(), connMd)
+					conn.Logger.Info("unregister ai function", "name", conn.Name(), "connID", conn.ID())
+				}
+			}()
 
-		for _, tag := range conn.ObserveDataTags() {
-			// register ai function
-			fd := ai.FunctionDefinition{}
-			err := json.Unmarshal([]byte(definition), &fd)
-			if err != nil {
-				conn.Logger.Error("unmarshal function definition", "error", err)
+			if conn.ClientType() != core.ClientTypeStreamFunction || !ok {
 				return
 			}
-			err = register.RegisterFunction(tag, &fd, conn.ID(), connMd)
-			if err != nil {
-				conn.Logger.Error("failed to register ai function", "name", conn.Name(), "tag", tag, "err", err)
-				return
-			}
-			conn.Logger.Info("register ai function success", "name", conn.Name(), "tag", tag, "definition", string(definition))
-		}
 
-	}
+			for _, tag := range conn.ObserveDataTags() {
+				// register ai function
+				fd := ai.FunctionDefinition{}
+				err := json.Unmarshal([]byte(definition), &fd)
+				if err != nil {
+					conn.Logger.Error("unmarshal function definition", "error", err)
+					return
+				}
+				err = r.RegisterFunction(tag, &fd, conn.ID(), connMd)
+				if err != nil {
+					conn.Logger.Error("failed to register ai function", "name", conn.Name(), "tag", tag, "err", err)
+					return
+				}
+				conn.Logger.Info("register ai function success", "name", conn.Name(), "tag", tag, "definition", string(definition))
+			}
+		}
+	})
 }
 
 // Config is the configuration of AI bridge.
