@@ -86,8 +86,7 @@ func (c *MockContext) WriteWithTarget(tag uint32, data []byte, target string) er
 
 // ReadLLMArguments reads LLM function arguments.
 func (c *MockContext) ReadLLMArguments(args any) error {
-	fnCall := &ai.FunctionCall{}
-	err := fnCall.FromBytes(c.data)
+	fnCall, err := c.LLMFunctionCall()
 	if err != nil {
 		return err
 	}
@@ -111,7 +110,9 @@ func (c *MockContext) WriteLLMResult(result string) error {
 		}
 		c.fnCall = fnCall
 	}
-
+	if c.fnCall.IsOK && c.fnCall.Result != "" {
+		return errors.New("LLM function can only be called once")
+	}
 	// function call
 	c.fnCall.IsOK = true
 	c.fnCall.Result = result
@@ -127,16 +128,13 @@ func (c *MockContext) WriteLLMResult(result string) error {
 	return nil
 }
 
-// LLMFunctionCall reads LLM function call.
+// LLMFunctionCall reads LLM function call
 func (c *MockContext) LLMFunctionCall() (*ai.FunctionCall, error) {
-	if c.data == nil {
-		return nil, errors.New("ctx.Data() is nil")
-	}
-
 	fco := &ai.FunctionCall{}
 	if err := fco.FromBytes(c.data); err != nil {
-		return nil, errors.New("given object is not *ai.FunctionCall")
+		return nil, err
 	}
+
 	return fco, nil
 }
 

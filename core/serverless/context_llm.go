@@ -23,8 +23,13 @@ func (c *Context) ReadLLMArguments(args any) error {
 
 // WriteLLMResult writes LLM function result
 func (c *Context) WriteLLMResult(result string) error {
+	// check if the c.fnCall is nil, if it is, read the fnCall from c.data and assign to c.fnCall.
 	if c.fnCall == nil {
-		return errors.New("no function call, can't write result")
+		fnCall, err := c.LLMFunctionCall()
+		if err != nil {
+			return err
+		}
+		c.fnCall = fnCall
 	}
 	if c.fnCall.IsOK && c.fnCall.Result != "" {
 		return errors.New("LLM function can only be called once")
@@ -42,13 +47,9 @@ func (c *Context) WriteLLMResult(result string) error {
 
 // LLMFunctionCall reads LLM function call
 func (c *Context) LLMFunctionCall() (*ai.FunctionCall, error) {
-	if c.data == nil {
-		return nil, errors.New("ctx.Data() is nil")
-	}
-
 	fco := &ai.FunctionCall{}
 	if err := fco.FromBytes(c.data); err != nil {
-		return nil, errors.New("LLMFunctionCall: given object is not *ai.FunctionCall")
+		return nil, err
 	}
 
 	return fco, nil

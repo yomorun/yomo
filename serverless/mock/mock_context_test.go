@@ -36,21 +36,14 @@ func TestReadFunctionCall(t *testing.T) {
 		ctx := NewMockContext(nil, 0)
 
 		_, err := ctx.LLMFunctionCall()
-		assert.Error(t, err)
+		assert.EqualError(t, err, "llm-sfn: cannot read data from context")
 	})
 
-	t.Run("ctx.Data is invalid", func(t *testing.T) {
+	t.Run("ctx.Data cannot be unmarshal as *ai.FunctionCall", func(t *testing.T) {
 		ctx := NewMockContext([]byte(errJSONStr), 0)
 
 		_, err := ctx.LLMFunctionCall()
-		assert.Error(t, err)
-	})
-
-	t.Run("params is not *ai.FunctionCall", func(t *testing.T) {
-		ctx := NewMockContext([]byte(errJSONStr), 0)
-
-		_, err := ctx.LLMFunctionCall()
-		assert.EqualError(t, err, "given object is not *ai.FunctionCall")
+		assert.EqualError(t, err, "llm-sfn: cannot read function call object from context data")
 	})
 
 	t.Run("ok", func(t *testing.T) {
