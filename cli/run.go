@@ -49,7 +49,7 @@ var runCmd = &cobra.Command{
 			return
 		}
 		// resolve serverless
-		log.PendingStatusEvent(os.Stdout, "Create YoMo Stream Function instance...")
+		log.PendingStatusEvent(os.Stdout, "Creating YoMo Stream Function instance...")
 		if err := parseZipperAddr(&opts); err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
 			return
@@ -70,12 +70,12 @@ var runCmd = &cobra.Command{
 		}
 		// build if it's go file
 		if ext := filepath.Ext(opts.Filename); ext == ".go" {
-			log.PendingStatusEvent(os.Stdout, "YoMo Stream Function building...")
+			log.PendingStatusEvent(os.Stdout, "Bingding YoMo Stream Function instance...")
 			if err := s.Build(true); err != nil {
 				log.FailureStatusEvent(os.Stdout, err.Error())
 				os.Exit(127)
 			}
-			log.SuccessStatusEvent(os.Stdout, "Success! YoMo Stream Function build.")
+			log.SuccessStatusEvent(os.Stdout, "YoMo Stream Function build successful!")
 		}
 		// run
 		// wasi
@@ -88,7 +88,7 @@ var runCmd = &cobra.Command{
 		}
 		log.InfoStatusEvent(
 			os.Stdout,
-			"Starting YoMo Stream Function instance with zipper: %v",
+			"Starting YoMo Stream Function instance, connecting to zipper: %v",
 			opts.ZipperAddr,
 		)
 		log.InfoStatusEvent(os.Stdout, "Stream Function is running...")

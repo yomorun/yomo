@@ -19,6 +19,7 @@ import (
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 	"github.com/yomorun/yomo/pkg/id"
 	yquic "github.com/yomorun/yomo/pkg/listener/quic"
+	"github.com/yomorun/yomo/pkg/log"
 )
 
 // Client is the abstraction of a YoMo-Client. a YoMo-Client can be
@@ -254,7 +255,11 @@ func (c *Client) handshakeWithDefinition(hf *frame.HandshakeFrame) error {
 	if functionDefinition == nil {
 		return nil
 	}
-	c.Logger.Info("register function definition", "function_definition", string(functionDefinition))
+	// c.Logger.Info("register function definition", "function_definition", string(functionDefinition))
+	log.SuccessStatusEvent(os.Stdout, fmt.Sprintf("Register LLM Function Calling: [%s]", c.name))
+	// log.InfoStatusEvent(os.Stdout, fmt.Sprintf("-> Name: %s", c.name))
+	log.InfoStatusEvent(os.Stdout, fmt.Sprintf("-> Description: %s", c.opts.aiFunctionDescription))
+	log.InfoStatusEvent(os.Stdout, fmt.Sprintf("-> Arguments Struct: %v", c.opts.aiFunctionInputModel))
 	hf.FunctionDefinition = functionDefinition
 	return nil
 }
