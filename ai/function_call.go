@@ -40,7 +40,7 @@ func (fco *FunctionCall) FromBytes(b []byte) error {
 		return errors.New("llm-sfn: cannot read data from context")
 	}
 	err := json.Unmarshal(b, fco)
-	if err != nil {
+	if err != nil || fco.ReqID == "" {
 		return errors.New("llm-sfn: cannot read function call object from context data")
 	}
 	return nil
