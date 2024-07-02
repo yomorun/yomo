@@ -37,13 +37,13 @@ func TestLogger(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.FileExists(t, output)
-	assert.Equal(t, "level=INFO msg=\"some info\" hello=yomo\nlevel=WARN msg=\"some waring\" hello=yomo\n", string(log))
+	assert.Equal(t, "\x1b[92mINF\x1b[0m some info \x1b[2mhello=\x1b[0myomo\n\x1b[93mWRN\x1b[0m some waring \x1b[2mhello=\x1b[0myomo\n", string(log))
 
 	errlog, err := os.ReadFile(errOutput)
 
 	assert.NoError(t, err)
 	assert.FileExists(t, errOutput)
-	assert.Equal(t, "level=ERROR msg=error err=EOF hello=yomo\n", string(errlog))
+	assert.Equal(t, "\x1b[91mERR\x1b[0m error \x1b[2merr=\x1b[0mEOF \x1b[2mhello=\x1b[0myomo\n", string(errlog))
 
 	os.Remove(output)
 	os.Remove(errOutput)
