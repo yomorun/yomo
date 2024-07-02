@@ -70,7 +70,7 @@ var runCmd = &cobra.Command{
 		}
 		// build if it's go file
 		if ext := filepath.Ext(opts.Filename); ext == ".go" {
-			log.PendingStatusEvent(os.Stdout, "Bingding YoMo Stream Function instance...")
+			log.PendingStatusEvent(os.Stdout, "Building YoMo Stream Function instance...")
 			if err := s.Build(true); err != nil {
 				log.FailureStatusEvent(os.Stdout, err.Error())
 				os.Exit(127)

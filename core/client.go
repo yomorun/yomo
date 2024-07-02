@@ -255,11 +255,7 @@ func (c *Client) handshakeWithDefinition(hf *frame.HandshakeFrame) error {
 	if functionDefinition == nil {
 		return nil
 	}
-	// c.Logger.Info("register function definition", "function_definition", string(functionDefinition))
-	log.SuccessStatusEvent(os.Stdout, fmt.Sprintf("Register LLM Function Calling: [%s]", c.name))
-	// log.InfoStatusEvent(os.Stdout, fmt.Sprintf("-> Name: %s", c.name))
-	log.InfoStatusEvent(os.Stdout, fmt.Sprintf("-> Description: %s", c.opts.aiFunctionDescription))
-	log.InfoStatusEvent(os.Stdout, fmt.Sprintf("-> Arguments Struct: %v", c.opts.aiFunctionInputModel))
+	log.InfoStatusEvent(os.Stdout, "Function Calling jsonschema: %s", string(functionDefinition))
 	hf.FunctionDefinition = functionDefinition
 	return nil
 }
