@@ -9,6 +9,9 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/lmittmann/tint"
 )
 
 // handler supports splitting log stream to common log stream and error log stream.
@@ -126,10 +129,19 @@ func bufferedSlogHandler(buf io.Writer, format string, level slog.Level, verbose
 	}
 
 	var h slog.Handler
-	if strings.ToLower(format) == "json" {
+	format = strings.ToLower(format)
+	switch format {
+	case "json":
 		h = slog.NewJSONHandler(buf, opt)
-	} else {
+	case "text":
 		h = slog.NewTextHandler(buf, opt)
+	default:
+		h = tint.NewHandler(buf, &tint.Options{
+			AddSource:   verbose,
+			Level:       level,
+			ReplaceAttr: opt.ReplaceAttr,
+			TimeFormat:  time.Kitchen,
+		})
 	}
 
 	return h
