@@ -47,13 +47,13 @@ var buildCmd = &cobra.Command{
 		}
 		log.InfoStatusEvent(os.Stdout, "YoMo Stream Function parse done.")
 		// build
-		log.PendingStatusEvent(os.Stdout, "YoMo Stream Function building...")
+		log.PendingStatusEvent(os.Stdout, "Building YoMo Stream Function instance...")
 		if err := s.Build(true); err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
 			os.Exit(127)
 			// return
 		}
-		log.SuccessStatusEvent(os.Stdout, "Success! YoMo Stream Function build.")
+		log.SuccessStatusEvent(os.Stdout, "YoMo Stream Function build successful!")
 	},
 }
 

@@ -19,6 +19,7 @@ import (
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 	"github.com/yomorun/yomo/pkg/id"
 	yquic "github.com/yomorun/yomo/pkg/listener/quic"
+	"github.com/yomorun/yomo/pkg/log"
 )
 
 // Client is the abstraction of a YoMo-Client. a YoMo-Client can be
@@ -254,6 +255,7 @@ func (c *Client) handshakeWithDefinition(hf *frame.HandshakeFrame) error {
 	if functionDefinition == nil {
 		return nil
 	}
+	log.InfoStatusEvent(os.Stdout, "Function Calling jsonschema: %s", string(functionDefinition))
 	hf.FunctionDefinition = functionDefinition
 	return nil
 }
