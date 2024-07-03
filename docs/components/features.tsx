@@ -19,19 +19,25 @@ export type Features = Array<Feature>;
 
 const FEATURES: Features = [
   {
+    name: "LLM Function Calling",
+    description: `Strong-typed language, for OpenAI, Gemini and Ollama`,
+    link: "/docs/api/sfn",
+    Icon: WifiIcon,
+  },
+  {
     name: "Low-latency",
     description: `Guaranteed by implementing atop of QUIC Protocol.`,
     link: "/docs/", //"https://datatracker.ietf.org/wg/quic/documents/",
     Icon: BoltIcon,
   },
   {
-    name: "Geo-distributed",// Architecture",
+    name: "Geo-distributed",
     description: `Your code close to your users.`,
     link: "/docs/glossary",
     Icon: GlobeAltIcon,
   },
   {
-    name: "Self-hosting",// Efficiency",
+    name: "Self-hosting",
     description: `Less than $100 with 10K users with global scale.`,
     link: "/docs/devops_tuning",
     Icon: CurrencyDollarIcon,
@@ -47,12 +53,6 @@ const FEATURES: Features = [
     description: `Every data packet encrypted by TLS v1.3.`,
     link: "/docs/devops_tls",
     Icon: LockClosedIcon,
-  },
-  {
-    name: "5G/WiFi-6",
-    description: `Networking optimized for high-speed celluar and wireless.`,
-    link: "/docs/api/sfn",
-    Icon: WifiIcon,
   },
 ];
 
