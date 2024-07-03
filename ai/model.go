@@ -54,9 +54,9 @@ type FunctionParameters struct {
 
 // ParameterProperty defines the property of the parameter
 type ParameterProperty struct {
-	Type        string   `json:"type"`
-	Description string   `json:"description"`
-	Enum        []string `json:"enum,omitempty"`
+	Type        string `json:"type"`
+	Description string `json:"description"`
+	Enum        []any  `json:"enum,omitempty"`
 }
 
 // ToolMessage used for OpenAI tool message

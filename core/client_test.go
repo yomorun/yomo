@@ -333,8 +333,9 @@ func assertDownstreamDataFrame(t *testing.T, tag uint32, md metadata.M, payload 
 }
 
 type testParameters struct {
-	Name string `json:"name" jsonschema:"description=name"`
-	Age  string `json:"age" jsonschema:"description=age"`
+	Name   string `json:"name" jsonschema:"description=name"`
+	Gender string `json:"gender" jsonschema:"description=gender,enum=male,enum=female"`
+	Age    string `json:"age" jsonschema:"description=age"`
 }
 
 func TestParseAIFunctionDefinition(t *testing.T) {
@@ -356,7 +357,7 @@ func TestParseAIFunctionDefinition(t *testing.T) {
 				aiFunctionDescription: "test description",
 				aiFunctionInputModel:  &testParameters{},
 			},
-			want:    []byte(`{"name":"test sfn name","description":"test description","parameters":{"type":"object","properties":{"age":{"type":"string","description":"age"},"name":{"type":"string","description":"name"}},"required":["name","age"]}}`),
+			want:    []byte(`{"name":"test sfn name","description":"test description","parameters":{"type":"object","properties":{"age":{"type":"string","description":"age"},"gender":{"type":"string","description":"gender","enum":["male","female"]},"name":{"type":"string","description":"name"}},"required":["name","gender","age"]}}`),
 			wantErr: false,
 		},
 	}
