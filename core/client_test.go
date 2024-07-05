@@ -92,9 +92,11 @@ func TestFrameRoundTrip(t *testing.T) {
 
 	assert.Equal(t, server.Downstreams()["mockClientLocal"], recorder.ID())
 
+	done := make(chan struct{})
 	go func() {
 		err := server.ListenAndServe(ctx, testaddr)
 		fmt.Println(err)
+		close(done)
 	}()
 
 	illegalTokenSource := NewClient("source", testaddr, ClientTypeSource, WithCredential("token:error-token"), WithLogger(discardingLogger))
@@ -209,6 +211,7 @@ func TestFrameRoundTrip(t *testing.T) {
 	assert.NoError(t, sfn1.Close(), "sfn-1 client.Close() should not return error")
 	assert.NoError(t, sfn2.Close(), "sfn-2 client.Close() should not return error")
 	assert.NoError(t, server.Close(), "server.Close() should not return error")
+	<-done
 }
 
 func checkClientExited(client *Client, tim time.Duration) bool {
