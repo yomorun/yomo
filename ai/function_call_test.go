@@ -32,7 +32,7 @@ func TestFunctionCallBytes(t *testing.T) {
 		assert.EqualError(t, err, "llm-sfn: cannot read function call object from context data")
 	})
 
-	t.Run("data cannot be unmarshal as FunctionCall", func(t *testing.T) {
+	t.Run("data cannot be unmarshaled as FunctionCall", func(t *testing.T) {
 		actual := &FunctionCall{}
 		err := actual.FromBytes([]byte(`{"hello":"yomo"}`))
 		assert.EqualError(t, err, "llm-sfn: cannot read function call object from context data")

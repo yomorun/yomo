@@ -34,13 +34,13 @@ func (fco *FunctionCall) Bytes() ([]byte, error) {
 	return json.Marshal(fco)
 }
 
-// FromBytes deserialize the FunctionCallObject from the given []byte
+// FromBytes deserialize the FunctionCall object from the given []byte
 func (fco *FunctionCall) FromBytes(b []byte) error {
 	if b == nil {
 		return errors.New("llm-sfn: cannot read data from context")
 	}
 	err := json.Unmarshal(b, fco)
-	if err != nil || fco.ReqID == "" {
+	if err != nil || (fco.ReqID == "" && fco.ToolCallID == "") {
 		return errors.New("llm-sfn: cannot read function call object from context data")
 	}
 	return nil
