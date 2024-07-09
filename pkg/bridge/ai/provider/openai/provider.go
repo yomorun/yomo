@@ -53,14 +53,18 @@ func (p *Provider) Name() string {
 
 // GetChatCompletions implements ai.LLMProvider.
 func (p *Provider) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, _ metadata.M) (openai.ChatCompletionResponse, error) {
-	req.Model = p.Model
+	if p.Model != "" {
+		req.Model = p.Model
+	}
 
 	return p.client.CreateChatCompletion(ctx, req)
 }
 
 // GetChatCompletionsStream implements ai.LLMProvider.
 func (p *Provider) GetChatCompletionsStream(ctx context.Context, req openai.ChatCompletionRequest, _ metadata.M) (provider.ResponseRecver, error) {
-	req.Model = p.Model
+	if p.Model != "" {
+		req.Model = p.Model
+	}
 
 	return p.client.CreateChatCompletionStream(ctx, req)
 }

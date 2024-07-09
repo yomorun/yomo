@@ -14,11 +14,13 @@ FROM alpine:3.17
 
 RUN apk --no-cache add ca-certificates
 
-WORKDIR /workspace
+WORKDIR /zipper
 
 COPY --from=builder /bin/yomo /usr/local/bin
 
-# Smoke test
-RUN ["yomo", "version"]
+RUN echo -e "name: zipper\nhost: 0.0.0.0\nport: 9000\nbridge:\n  ai:\n    server:\n      addr: 0.0.0.0:8000\n      provider: openai\n\n    providers:\n      openai:" > /zipper/config.yaml
 
-ENTRYPOINT ["/usr/local/bin/yomo"]
+EXPOSE 9000/udp
+EXPOSE 8000/tcp
+
+CMD ["/usr/local/bin/yomo", "serve", "-c", "config.yaml"]

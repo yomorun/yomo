@@ -9,12 +9,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Function represents a yomo stream function.
-type Function struct {
-	// Name is the name of StreamFunction.
-	Name string `yaml:"name"`
-}
-
 // Config represents a yomo config.
 type Config struct {
 	// Name represents the name of the zipper.

@@ -14,8 +14,6 @@ import (
 )
 
 var (
-	// ErrNotExistsProvider is the error when the provider does not exist
-	ErrNotExistsProvider = errors.New("llm provider does not exist")
 	// ErrConfigNotFound is the error when the ai config was not found
 	ErrConfigNotFound = errors.New("ai config was not found")
 	// ErrConfigFormatError is the error when the ai config format is incorrect
