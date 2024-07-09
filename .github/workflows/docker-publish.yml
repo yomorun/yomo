@@ -2,10 +2,15 @@ name: Docker
 
 on:
   push:
+    branches: [ "main" ]
     tags: [ 'v*.*.*' ]
+  pull_request:
+    branches: [ "main" ]
 
 env:
+  # Use docker.io for Docker Hub if empty
   REGISTRY: ghcr.io
+  # github.repository as <account>/<repo>
   IMAGE_NAME: ${{ github.repository }}
 
 
@@ -16,6 +21,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # This is used to complete the identity challenge
       # with sigstore/fulcio when running outside of PRs.
       id-token: write
 
