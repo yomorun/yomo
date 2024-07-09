@@ -14,9 +14,9 @@ FROM alpine:3.17
 
 RUN apk --no-cache add ca-certificates
 
-WORKDIR /usr/local/bin
+WORKDIR /workspace
 
-COPY --from=builder /bin/yomo .
+COPY --from=builder /bin/yomo /usr/local/bin
 
 # Smoke test
 RUN ["yomo", "version"]
