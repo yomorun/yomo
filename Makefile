@@ -2,6 +2,7 @@ GO ?= go
 GOFMT ?= gofmt "-s"
 GOFILES := $(shell find . -name "*.go")
 VETPACKAGES ?= $(shell $(GO) list ./... | grep -v /example/)
+TAGS ?= $(shell git describe --tags 2>/dev/null || git rev-parse --short HEAD)
 
 .PHONY: fmt
 fmt:
