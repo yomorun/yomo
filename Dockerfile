@@ -18,4 +18,7 @@ WORKDIR /usr/local/bin
 
 COPY --from=builder /bin/yomo .
 
-CMD ["./yomo"]
+# Smoke test
+RUN ["yomo", "version"]
+
+ENTRYPOINT ["/usr/local/bin/yomo"]
