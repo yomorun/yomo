@@ -15,7 +15,7 @@ type FunctionCall struct {
 	TransID string `json:"tid,omitempty"`
 	// ReqID is the request id of the current function calling chain. Because multiple
 	// function calling invokes may be occurred in the same request chain.
-	ReqID string `json:"req_id"`
+	ReqID string `json:"req_id,omitempty"`
 	// Result is the struct result of the function calling.
 	Result string `json:"result,omitempty"`
 	// Arguments is the arguments of the function calling. This should be kept in this
