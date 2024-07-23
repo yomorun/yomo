@@ -11,8 +11,6 @@ import (
 )
 
 func convertToResponse(in *genai.GenerateContentResponse, model string) (out openai.ChatCompletionResponse) {
-	data, _ := json.Marshal(in)
-	fmt.Println(string(data))
 	out = openai.ChatCompletionResponse{
 		ID:      "chatcmpl-" + id.New(29),
 		Model:   model,
@@ -22,7 +20,6 @@ func convertToResponse(in *genai.GenerateContentResponse, model string) (out ope
 	}
 
 	if in.UsageMetadata != nil {
-		fmt.Println(in.UsageMetadata)
 		out.Usage = openai.Usage{
 			PromptTokens:     int(in.UsageMetadata.PromptTokenCount),
 			CompletionTokens: int(in.UsageMetadata.CandidatesTokenCount),
