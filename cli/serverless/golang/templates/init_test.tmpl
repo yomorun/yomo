@@ -1,9 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
+	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/serverless/mock"
 )
 
@@ -15,10 +17,10 @@ func TestHandler(t *testing.T) {
 		want []mock.WriteRecord
 	}{
 		{
-			name: "upper",
-			ctx:  mock.NewMockContext([]byte("hello"), 0x33),
+			name: "get weather",
+			ctx:  mock.NewMockContext([]byte(`{"arguments":"{\"city\":\"New York\",\"latitude\":40.7128,\"longitude\":-74.0060}"}`), 0x33),
 			want: []mock.WriteRecord{
-				{Data: []byte("HELLO"), Tag: 0x34},
+				{Data: []byte(`{"result":"The current weather in New York (40.712800,-74.006000) is sunny","arguments":"{\"city\":\"New York\",\"latitude\":40.7128,\"longitude\":-74.0060}","is_ok":true}`), Tag: ai.ReducerTag},
 			},
 		},
 		// TODO: add more test cases.
@@ -27,6 +29,8 @@ func TestHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			Handler(tt.ctx)
 			got := tt.ctx.RecordsWritten()
+
+			fmt.Println(string(got[0].Data))
 
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("TestHandler got: %v, want: %v", got, tt.want)

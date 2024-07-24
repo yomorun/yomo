@@ -2,30 +2,69 @@ package main
 
 import (
 	"fmt"
-	"strings"
+	"log/slog"
 
 	"github.com/yomorun/yomo/serverless"
 )
 
-// Init will initialize the stream function
+// Init is an optional function invoked during the initialization phase of the
+// sfn instance. It's designed for setup tasks like global variable
+// initialization, establishing database connections, or loading models into
+// GPU memory. If initialization fails, the sfn instance will halt and terminate.
+// This function can be omitted if no initialization tasks are needed.
 func Init() error {
-	fmt.Println("sfn init")
 	return nil
 }
 
-// Handler will handle the raw data
-func Handler(ctx serverless.Context) {
-	data := ctx.Data()
-	fmt.Printf("<< sfn received[%d Bytes]: %s\n", len(data), data)
-	output := strings.ToUpper(string(data))
-	err := ctx.Write(uint32(0x34), []byte(output))
-	if err != nil {
-		fmt.Printf(">> sfn write error: %v\n", err)
-		return
-	}
-	fmt.Printf(">> sfn written[%d Bytes]: %s\n", len(output), output)
+// Description outlines the functionality for the LLM Function Calling feature.
+// It provides a detailed description of the function's purpose, essential for
+// integration with LLM Function Calling. The presence of this function and its
+// return value make the function discoverable and callable within the LLM
+// ecosystem. For more information on Function Calling, refer to the OpenAI
+// documentation at: https://platform.openai.com/docs/guides/function-calling
+func Description() string {
+	return `Get current weather for a given city. If no city is provided, you 
+	should ask to clarify the city. If the city name is given, you should 
+	convert the city name to Latitude and Longitude geo coordinates, keeping 
+	Latitude and Longitude in decimal format.`
 }
 
+// InputSchema defines the argument structure for LLM Function Calling. It
+// utilizes jsonschema tags to detail the definition. For jsonschema in Go,
+// see https://github.com/invopop/jsonschema.
+func InputSchema() any {
+	return &LLMArguments{}
+}
+
+// LLMArguments defines the arguments for the LLM Function Calling. These
+// arguments are combined to form a prompt automatically.
+type LLMArguments struct {
+	City      string  `json:"city" jsonschema:"description=The city name to get the weather for,required"`
+	Latitude  float64 `json:"latitude" jsonschema:"description=The latitude of the city, in decimal format, range should be in (-90, 90)"`
+	Longitude float64 `json:"longitude" jsonschema:"description=The longitude of the city, in decimal format, range should be in (-180, 180)"`
+}
+
+// DataTags specifies the data tags to which this serverless function
+// subscribes, essential for data reception. Upon receiving data with these
+// tags, the Handler function is triggered.
 func DataTags() []uint32 {
-	return []uint32{0x33}
+	return []uint32{0x30}
+}
+
+// Handler orchestrates the core processing logic of this function.
+// - ctx.ReadLLMArguments() parses LLM Function Calling Arguments (skip if none).
+// - ctx.WriteLLMResult() sends the retrieval result back to LLM.
+// - ctx.Tag() identifies the tag of the incoming data.
+// - ctx.Data() accesses the raw data.
+// - ctx.Write() forwards processed data downstream.
+func Handler(ctx serverless.Context) {
+	var p LLMArguments
+	// deserilize the arguments from llm tool_call response
+	ctx.ReadLLMArguments(&p)
+
+	// invoke the open weather map api and return the result back to LLM
+	result := fmt.Sprintf("The current weather in %s (%f,%f) is sunny", p.City, p.Latitude, p.Longitude)
+	ctx.WriteLLMResult(result)
+
+	slog.Info("get-weather", "city", p.City, "rag", result)
 }
