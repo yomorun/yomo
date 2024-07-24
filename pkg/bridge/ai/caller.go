@@ -140,8 +140,9 @@ func (c *Caller) Metadata() metadata.M {
 
 // GetInvoke returns the invoke response
 func (c *Caller) GetInvoke(ctx context.Context, userInstruction string, baseSystemMessage string, transID string, includeCallStack bool) (*ai.InvokeResponse, error) {
+	md := c.md.Clone()
 	// read tools attached to the metadata
-	tcs, err := register.ListToolCalls(c.md)
+	tcs, err := register.ListToolCalls(md)
 	if err != nil {
 		return &ai.InvokeResponse{}, err
 	}
@@ -161,7 +162,7 @@ func (c *Caller) GetInvoke(ctx context.Context, userInstruction string, baseSyst
 		promptUsage     int
 		completionUsage int
 	)
-	chatCompletionResponse, err := c.provider.GetChatCompletions(ctx, req, c.md)
+	chatCompletionResponse, err := c.provider.GetChatCompletions(ctx, req, md)
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +202,7 @@ func (c *Caller) GetInvoke(ctx context.Context, userInstruction string, baseSyst
 	req2 := openai.ChatCompletionRequest{
 		Messages: messages2,
 	}
-	chatCompletionResponse2, err := c.provider.GetChatCompletions(ctx, req2, c.md)
+	chatCompletionResponse2, err := c.provider.GetChatCompletions(ctx, req2, md)
 	if err != nil {
 		return nil, err
 	}
@@ -226,8 +227,9 @@ func (c *Caller) GetInvoke(ctx context.Context, userInstruction string, baseSyst
 
 // GetChatCompletions accepts openai.ChatCompletionRequest and responds to http.ResponseWriter.
 func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, transID string, w http.ResponseWriter) error {
+	md := c.md.Clone()
 	// 1. find all hosting tool sfn
-	tagTools, err := register.ListToolCalls(c.md)
+	tagTools, err := register.ListToolCalls(md)
 	if err != nil {
 		return err
 	}
@@ -252,7 +254,7 @@ func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompleti
 			flusher        = eventFlusher(w)
 			isFunctionCall = false
 		)
-		resStream, err := c.provider.GetChatCompletionsStream(ctx, req, c.md)
+		resStream, err := c.provider.GetChatCompletionsStream(ctx, req, md)
 		if err != nil {
 			return err
 		}
@@ -310,7 +312,7 @@ func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompleti
 		}
 		flusher.Flush()
 	} else {
-		resp, err := c.provider.GetChatCompletions(ctx, req, c.md)
+		resp, err := c.provider.GetChatCompletions(ctx, req, md)
 		if err != nil {
 			return err
 		}
@@ -349,7 +351,7 @@ func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompleti
 
 	if req.Stream {
 		flusher := w.(http.Flusher)
-		resStream, err := c.provider.GetChatCompletionsStream(ctx, req, c.md)
+		resStream, err := c.provider.GetChatCompletionsStream(ctx, req, md)
 		if err != nil {
 			return err
 		}
@@ -369,7 +371,7 @@ func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompleti
 			_ = writeStreamEvent(w, flusher, streamRes)
 		}
 	} else {
-		resp, err := c.provider.GetChatCompletions(ctx, req, c.md)
+		resp, err := c.provider.GetChatCompletions(ctx, req, md)
 		if err != nil {
 			return err
 		}
