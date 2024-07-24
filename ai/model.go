@@ -49,7 +49,7 @@ type FunctionDefinition = openai.FunctionDefinition
 type FunctionParameters struct {
 	Type       string                        `json:"type"`
 	Properties map[string]*ParameterProperty `json:"properties"`
-	Required   []string                      `json:"required"`
+	Required   []string                      `json:"required,omitempty"`
 }
 
 // ParameterProperty defines the property of the parameter
