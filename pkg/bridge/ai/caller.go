@@ -30,41 +30,43 @@ var (
 )
 
 // CallerProvider provides the caller, which is used to interact with YoMo's stream function.
-type CallerProvider struct {
-	lp          provider.LLMProvider
+type CallerProvider interface {
+	Provide(credential string) (Caller, error)
+}
+
+type callerProvider struct {
 	zipperAddr  string
 	exFn        ExchangeMetadataFunc
 	provideFunc provideFunc
-	callers     *expirable.LRU[string, *Caller]
+	callers     *expirable.LRU[string, Caller]
 }
 
-type provideFunc func(string, string, provider.LLMProvider, ExchangeMetadataFunc) (*Caller, error)
+type provideFunc func(string, string, ExchangeMetadataFunc) (Caller, error)
 
 // NewCallerProvider returns a new caller provider.
-func NewCallerProvider(zipperAddr string, lp provider.LLMProvider, exFn ExchangeMetadataFunc) *CallerProvider {
-	return newCallerProvider(zipperAddr, lp, exFn, NewCaller)
+func NewCallerProvider(zipperAddr string, exFn ExchangeMetadataFunc) CallerProvider {
+	return newCallerProvider(zipperAddr, exFn, NewCaller)
 }
 
-func newCallerProvider(zipperAddr string, lp provider.LLMProvider, exFn ExchangeMetadataFunc, provideFunc provideFunc) *CallerProvider {
-	p := &CallerProvider{
+func newCallerProvider(zipperAddr string, exFn ExchangeMetadataFunc, provideFunc provideFunc) CallerProvider {
+	p := &callerProvider{
 		zipperAddr:  zipperAddr,
-		lp:          lp,
 		exFn:        exFn,
 		provideFunc: provideFunc,
-		callers:     expirable.NewLRU(CallerProviderCacheSize, func(_ string, caller *Caller) { caller.Close() }, CallerProviderCacheTTL),
+		callers:     expirable.NewLRU(CallerProviderCacheSize, func(_ string, caller Caller) { caller.Close() }, CallerProviderCacheTTL),
 	}
 
 	return p
 }
 
 // Provide provides the caller according to the credential.
-func (p *CallerProvider) Provide(credential string) (*Caller, error) {
+func (p *callerProvider) Provide(credential string) (Caller, error) {
 	caller, ok := p.callers.Get(credential)
 	if ok {
 		return caller, nil
 	}
 
-	caller, err := p.provideFunc(credential, p.zipperAddr, p.lp, p.exFn)
+	caller, err := p.provideFunc(credential, p.zipperAddr, p.exFn)
 	if err != nil {
 		return nil, err
 	}
@@ -73,18 +75,66 @@ func (p *CallerProvider) Provide(credential string) (*Caller, error) {
 	return caller, nil
 }
 
-// Caller calls the invoke function and the chat completion function.
-type Caller struct {
+// Caller calls the invoke function and keeps the metadata and system prompt.
+type Caller interface {
+	// Call calls the invoke function.
 	CallSyncer
+	// SetSystemPrompt sets the system prompt of the caller.
+	SetSystemPrompt(string)
+	// GetSystemPrompt returns the system prompt of the caller.
+	GetSystemPrompt() string
+	// Metadata returns the metadata of the caller.
+	Metadata() metadata.M
+	// Close closes the caller, if the caller is closed, the caller will not be reused.
+	Close() error
+}
 
-	credential   string
+type caller struct {
+	CallSyncer
+	source       yomo.Source
+	reducer      yomo.StreamFunction
 	md           metadata.M
 	systemPrompt atomic.Value
-	provider     provider.LLMProvider
+	logger       *slog.Logger
 }
 
 // NewCaller returns a new caller.
-func NewCaller(credential string, zipperAddr string, provider provider.LLMProvider, exFn ExchangeMetadataFunc) (*Caller, error) {
+func NewCaller(credential string, zipperAddr string, exFn ExchangeMetadataFunc) (Caller, error) {
+	logger := ylog.Default()
+
+	source, reqCh, err := ChanToSource(zipperAddr, credential, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	reducer, resCh, err := ReduceToChan(zipperAddr, credential, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	callSyncer := NewCallSyncer(logger, reqCh, resCh, 60*time.Second)
+
+	md, err := exFn(credential)
+	if err != nil {
+		return nil, err
+	}
+
+	caller := &caller{
+		CallSyncer: callSyncer,
+		source:     source,
+		reducer:    reducer,
+		md:         md,
+		logger:     logger,
+	}
+
+	caller.SetSystemPrompt("")
+
+	return caller, nil
+}
+
+// ChanToSource creates a yomo source and a channel,
+// The ai.FunctionCall objects are continuously be received from the channel and be sent by the source.
+func ChanToSource(zipperAddr, credential string, logger *slog.Logger) (yomo.Source, chan<- TagFunctionCall, error) {
 	source := yomo.NewSource(
 		"fc-source",
 		zipperAddr,
@@ -93,9 +143,17 @@ func NewCaller(credential string, zipperAddr string, provider provider.LLMProvid
 	)
 	err := source.Connect()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
+	ch := make(chan TagFunctionCall)
+	ToSource(source, logger, ch)
+
+	return source, ch, nil
+}
+
+// ReduceToChan creates a yomo stream function to reduce the messages and returns both.
+func ReduceToChan(zipperAddr, credential string, logger *slog.Logger) (yomo.StreamFunction, <-chan ReduceMessage, error) {
 	reducer := yomo.NewStreamFunction(
 		"ai-reducer",
 		zipperAddr,
@@ -104,43 +162,55 @@ func NewCaller(credential string, zipperAddr string, provider provider.LLMProvid
 	)
 	reducer.SetObserveDataTags(ai.ReducerTag)
 
-	// this line must before `Connect()`, because it should sets hander before connect.
-	callSyncer := NewCallSyncer(slog.Default(), source, reducer, 60*time.Second)
+	messages := make(chan ReduceMessage)
+	ToReducer(reducer, logger, messages)
 
 	if err := reducer.Connect(); err != nil {
-		return nil, err
+		return reducer, nil, err
 	}
 
-	md, err := exFn(credential)
-	if err != nil {
-		return nil, err
-	}
-
-	caller := &Caller{
-		CallSyncer: callSyncer,
-		credential: credential,
-		md:         md,
-		provider:   provider,
-	}
-
-	caller.SetSystemPrompt("")
-
-	return caller, nil
+	return reducer, messages, nil
 }
 
 // SetSystemPrompt sets the system prompt
-func (c *Caller) SetSystemPrompt(prompt string) {
+func (c *caller) SetSystemPrompt(prompt string) {
 	c.systemPrompt.Store(prompt)
 }
 
+// SetSystemPrompt gets the system prompt
+func (c *caller) GetSystemPrompt() string {
+	return c.systemPrompt.Load().(string)
+}
+
 // Metadata returns the metadata of caller.
-func (c *Caller) Metadata() metadata.M {
+func (c *caller) Metadata() metadata.M {
 	return c.md
 }
 
+// Close closes the caller.
+func (c *caller) Close() error {
+	_ = c.CallSyncer.Close()
+
+	var err error
+	if err = c.source.Close(); err != nil {
+		c.logger.Error("callSyncer writer close", "err", err.Error())
+	}
+
+	if err = c.reducer.Close(); err != nil {
+		c.logger.Error("callSyncer reducer close", "err", err.Error())
+	}
+
+	return err
+}
+
 // GetInvoke returns the invoke response
-func (c *Caller) GetInvoke(ctx context.Context, userInstruction string, baseSystemMessage string, transID string, includeCallStack bool) (*ai.InvokeResponse, error) {
-	md := c.md.Clone()
+func GetInvoke(
+	ctx context.Context,
+	userInstruction string, baseSystemMessage string, transID string,
+	includeCallStack bool,
+	caller Caller, provider provider.LLMProvider,
+) (*ai.InvokeResponse, error) {
+	md := caller.Metadata().Clone()
 	// read tools attached to the metadata
 	tcs, err := register.ListToolCalls(md)
 	if err != nil {
@@ -162,7 +232,7 @@ func (c *Caller) GetInvoke(ctx context.Context, userInstruction string, baseSyst
 		promptUsage     int
 		completionUsage int
 	)
-	chatCompletionResponse, err := c.provider.GetChatCompletions(ctx, req, md)
+	chatCompletionResponse, err := provider.GetChatCompletions(ctx, req, md)
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +258,7 @@ func (c *Caller) GetInvoke(ctx context.Context, userInstruction string, baseSyst
 	ylog.Debug(">> run function calls", "transID", transID, "res.ToolCalls", fmt.Sprintf("%+v", res.ToolCalls))
 
 	reqID := id.New(16)
-	llmCalls, err := c.Call(ctx, transID, reqID, res.ToolCalls)
+	llmCalls, err := caller.Call(ctx, transID, reqID, res.ToolCalls)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +272,7 @@ func (c *Caller) GetInvoke(ctx context.Context, userInstruction string, baseSyst
 	req2 := openai.ChatCompletionRequest{
 		Messages: messages2,
 	}
-	chatCompletionResponse2, err := c.provider.GetChatCompletions(ctx, req2, md)
+	chatCompletionResponse2, err := provider.GetChatCompletions(ctx, req2, md)
 	if err != nil {
 		return nil, err
 	}
@@ -226,8 +296,13 @@ func (c *Caller) GetInvoke(ctx context.Context, userInstruction string, baseSyst
 }
 
 // GetChatCompletions accepts openai.ChatCompletionRequest and responds to http.ResponseWriter.
-func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, transID string, w http.ResponseWriter) error {
-	md := c.md.Clone()
+func GetChatCompletions(
+	ctx context.Context,
+	req openai.ChatCompletionRequest, transID string,
+	provider provider.LLMProvider, caller Caller,
+	w http.ResponseWriter,
+) error {
+	md := caller.Metadata().Clone()
 	// 1. find all hosting tool sfn
 	tagTools, err := register.ListToolCalls(md)
 	if err != nil {
@@ -237,7 +312,7 @@ func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompleti
 	req = addToolsToRequest(req, tagTools)
 
 	// 3. over write system prompt to request
-	req = overWriteSystemPrompt(req, c.systemPrompt.Load().(string))
+	req = overWriteSystemPrompt(req, caller.GetSystemPrompt())
 
 	var (
 		promptUsage      = 0
@@ -254,7 +329,7 @@ func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompleti
 			flusher        = eventFlusher(w)
 			isFunctionCall = false
 		)
-		resStream, err := c.provider.GetChatCompletionsStream(ctx, req, md)
+		resStream, err := provider.GetChatCompletionsStream(ctx, req, md)
 		if err != nil {
 			return err
 		}
@@ -312,7 +387,7 @@ func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompleti
 		}
 		flusher.Flush()
 	} else {
-		resp, err := c.provider.GetChatCompletions(ctx, req, md)
+		resp, err := provider.GetChatCompletions(ctx, req, md)
 		if err != nil {
 			return err
 		}
@@ -337,7 +412,7 @@ func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompleti
 
 	// 6. run llm function calls
 	reqID := id.New(16)
-	llmCalls, err := c.Call(ctx, transID, reqID, fnCalls)
+	llmCalls, err := caller.Call(ctx, transID, reqID, fnCalls)
 	if err != nil {
 		return err
 	}
@@ -351,7 +426,7 @@ func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompleti
 
 	if req.Stream {
 		flusher := w.(http.Flusher)
-		resStream, err := c.provider.GetChatCompletionsStream(ctx, req, md)
+		resStream, err := provider.GetChatCompletionsStream(ctx, req, md)
 		if err != nil {
 			return err
 		}
@@ -371,7 +446,7 @@ func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompleti
 			_ = writeStreamEvent(w, flusher, streamRes)
 		}
 	} else {
-		resp, err := c.provider.GetChatCompletions(ctx, req, md)
+		resp, err := provider.GetChatCompletions(ctx, req, md)
 		if err != nil {
 			return err
 		}

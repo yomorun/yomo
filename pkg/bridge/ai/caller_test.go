@@ -95,14 +95,14 @@ func TestCallerInvoke(t *testing.T) {
 
 			cp := newMockCallerProvider()
 
-			cp.provideFunc = mockCallerProvideFunc(tt.args.mockCallReqResp, pd)
+			cp.provideFunc = mockCallerProvideFunc(tt.args.mockCallReqResp)
 
 			caller, err := cp.Provide("")
 			assert.NoError(t, err)
 
 			caller.SetSystemPrompt(tt.args.systemPrompt)
 
-			resp, err := caller.GetInvoke(context.TODO(), tt.args.userInstruction, tt.args.baseSystemMessage, "transID", true)
+			resp, err := GetInvoke(context.TODO(), tt.args.userInstruction, tt.args.baseSystemMessage, "transID", true, caller, pd)
 			assert.NoError(t, err)
 
 			assert.Equal(t, tt.wantUsage, resp.TokenUsage)
@@ -256,7 +256,7 @@ func TestCallerChatCompletion(t *testing.T) {
 
 			cp := newMockCallerProvider()
 
-			cp.provideFunc = mockCallerProvideFunc(tt.args.mockCallReqResp, pd)
+			cp.provideFunc = mockCallerProvideFunc(tt.args.mockCallReqResp)
 
 			caller, err := cp.Provide("")
 			assert.NoError(t, err)
@@ -264,7 +264,7 @@ func TestCallerChatCompletion(t *testing.T) {
 			caller.SetSystemPrompt(tt.args.systemPrompt)
 
 			w := httptest.NewRecorder()
-			err = caller.GetChatCompletions(context.TODO(), tt.args.request, "transID", w)
+			err = GetChatCompletions(context.TODO(), tt.args.request, "transID", pd, caller, w)
 			assert.NoError(t, err)
 
 			assert.Equal(t, tt.wantRequest, pd.RequestRecords())
@@ -272,18 +272,18 @@ func TestCallerChatCompletion(t *testing.T) {
 	}
 }
 
-func newMockCallerProvider() *CallerProvider {
-	cp := &CallerProvider{
+func newMockCallerProvider() *callerProvider {
+	cp := &callerProvider{
 		zipperAddr: DefaultZipperAddr,
 		exFn:       DefaultExchangeMetadataFunc,
-		callers:    expirable.NewLRU(CallerProviderCacheSize, func(_ string, caller *Caller) { caller.Close() }, CallerProviderCacheTTL),
+		callers:    expirable.NewLRU(CallerProviderCacheSize, func(_ string, caller Caller) { caller.Close() }, CallerProviderCacheTTL),
 	}
 	return cp
 }
 
 // mockCallerProvideFunc returns a mock caller provider, which is used for mockCallerProvider
 // the request-response of caller be provided has been defined in advance, the request and response are defined in the `calls`.
-func mockCallerProvideFunc(calls map[uint32][]mockFunctionCall, p provider.LLMProvider) provideFunc {
+func mockCallerProvideFunc(calls map[uint32][]mockFunctionCall) provideFunc {
 	// register function to register
 	for tag, call := range calls {
 		for _, c := range call {
@@ -291,11 +291,9 @@ func mockCallerProvideFunc(calls map[uint32][]mockFunctionCall, p provider.LLMPr
 		}
 	}
 
-	return func(credential, _ string, provider provider.LLMProvider, _ ExchangeMetadataFunc) (*Caller, error) {
-		caller := &Caller{
-			credential: credential,
-			provider:   p,
-			md:         metadata.M{"hello": "llm bridge"},
+	return func(credential, _ string, _ ExchangeMetadataFunc) (Caller, error) {
+		caller := &caller{
+			md: metadata.M{"hello": "llm bridge"},
 		}
 
 		caller.SetSystemPrompt("")
