@@ -147,7 +147,7 @@ func registerAIProvider(aiConfig *ai.Config) error {
 				provider["model"],
 			))
 		case "ollama":
-			providerpkg.RegisterProvider(ollama.NewProvider(provider["api_endpoint"]))
+			providerpkg.RegisterProvider(ollama.NewProvider(provider["api_endpoint"], provider["model"]))
 		case "gemini":
 			providerpkg.RegisterProvider(gemini.NewProvider(provider["api_key"]))
 		default:
