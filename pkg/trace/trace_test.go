@@ -1,7 +1,6 @@
 package trace
 
 import (
-	"os"
 	"testing"
 	"time"
 
@@ -10,8 +9,9 @@ import (
 )
 
 func TestTraceProvider(t *testing.T) {
-	os.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:43118")
-	SetTracerProvider("yomo-test")
+	t.Setenv("BASELIME_API_KEY", "")
+
+	SetTracerProvider()
 
 	tracer := NewTracer("Source")
 
