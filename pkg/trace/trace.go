@@ -20,12 +20,17 @@ import (
 )
 
 var (
+	// ServiceName is the default service name for otel.
 	ServiceName = "yomo"
 )
 
+func init() {
+	SetTracerProvider()
+}
+
 // SetTracerProvider set otel tracer provider.
-// if BASELIME_API_KEY is set, the tracer provider will be baselime tracer provider.
-// if OTEL_EXPORTER_OTLP_ENDPOINT is set, the tracer provider will be otlptracehttp tracer provider.
+// if enveronment BASELIME_API_KEY is set, the tracer provider will be baselime tracer provider.
+// if enveronment OTEL_EXPORTER_OTLP_ENDPOINT is set, the tracer provider will be otlptracehttp tracer provider.
 // This function set the global tracer provider by calling otel.SetTracerProvider(),
 // User also can set other tracer provider by calling otel.SetTracerProvider()
 func SetTracerProvider() {
@@ -57,7 +62,7 @@ func SetTracerProvider() {
 		tracesdk.WithSampler(tracesdk.AlwaysSample()),
 		tracesdk.WithResource(resource.NewWithAttributes(
 			semconv.SchemaURL,
-			semconv.ServiceNameKey.String("yomo"),
+			semconv.ServiceNameKey.String(ServiceName),
 		)),
 	)
 	otel.SetTracerProvider(tp)

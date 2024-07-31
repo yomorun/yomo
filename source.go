@@ -6,8 +6,6 @@ import (
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/pkg/id"
-	"github.com/yomorun/yomo/pkg/trace"
-	"go.opentelemetry.io/otel/attribute"
 )
 
 // Source is responsible for sending data to yomo.
@@ -59,7 +57,6 @@ func NewSource(name, zipperAddr string, opts ...SourceOption) Source {
 // Close will close the connection to YoMo-Zipper.
 func (s *yomoSource) Close() error {
 	_ = s.client.Close()
-	trace.ShutdownTracerProvider()
 	s.client.Logger.Debug("the source is closed")
 	return nil
 }
@@ -75,15 +72,6 @@ func (s *yomoSource) Write(tag uint32, data []byte) error {
 		return err
 	}
 	md := core.NewMetadata(s.client.ClientID(), id.New())
-	// add trace
-	tracer := trace.NewTracer("Source")
-	span := tracer.Start(md, s.name)
-	defer tracer.End(
-		md,
-		span,
-		attribute.Int("send_data_tag", int(tag)),
-		attribute.Int("send_data_len", len(data)),
-	)
 
 	mdBytes, err := md.Encode()
 	// metadata
@@ -105,17 +93,6 @@ func (s *yomoSource) WriteWithTarget(tag uint32, data []byte, target string) err
 		return err
 	}
 	md := core.NewMetadata(s.client.ClientID(), id.New())
-	// add trace
-	tracer := trace.NewTracer("Source")
-	span := tracer.Start(md, s.name)
-	defer tracer.End(
-		md,
-		span,
-		attribute.Int("send_data_tag", int(tag)),
-		attribute.String("send_data_target", target),
-		attribute.Int("send_data_len", len(data)),
-	)
-
 	if target != "" {
 		core.SetMetadataTarget(md, target)
 	}
