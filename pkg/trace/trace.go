@@ -24,10 +24,6 @@ var (
 	ServiceName = "yomo"
 )
 
-func init() {
-	SetTracerProvider()
-}
-
 // SetTracerProvider set otel tracer provider.
 // if enveronment BASELIME_API_KEY is set, the tracer provider will be baselime tracer provider.
 // if enveronment OTEL_EXPORTER_OTLP_ENDPOINT is set, the tracer provider will be otlptracehttp tracer provider.
@@ -90,8 +86,11 @@ type Tracer struct {
 }
 
 // NewTracer create tracer instance.
-func NewTracer(name string) *Tracer {
+func NewTracer(name string, enable ...bool) *Tracer {
 	tp := otel.GetTracerProvider()
+	if len(enable) > 0 && !enable[0] {
+		tp = noop.NewTracerProvider()
+	}
 
 	return &Tracer{
 		tracer:         tp.Tracer(name),

@@ -56,6 +56,9 @@ var (
 	WithSfnAIFunctionDefinition = func(description string, inputModel any) SfnOption {
 		return SfnOption(core.WithAIFunctionDefinition(description, inputModel))
 	}
+
+	// DisableOtelTrace determines whether to disable otel trace.
+	DisableOtelTrace = func() SfnOption { return SfnOption(core.DisableOtelTrace()) }
 )
 
 // ClientOption is option for the upstream Zipper.

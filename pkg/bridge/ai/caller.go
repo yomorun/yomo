@@ -101,6 +101,7 @@ func NewCaller(credential string, zipperAddr string, provider provider.LLMProvid
 		zipperAddr,
 		yomo.WithSfnReConnect(),
 		yomo.WithSfnCredential(credential),
+		yomo.DisableOtelTrace(),
 	)
 	reducer.SetObserveDataTags(ai.ReducerTag)
 
