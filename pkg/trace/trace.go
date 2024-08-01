@@ -1,4 +1,4 @@
-// Package trace provides otel span tracer for YoMo.
+// Package trace provides otel span tracer for YoMo's stream function.
 package trace
 
 import (
@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/yomorun/yomo/core/metadata"
+	"github.com/yomorun/yomo/core/ylog"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
@@ -40,9 +41,11 @@ func SetTracerProvider() {
 				"x-api-key": baselimeApiKey,
 			}),
 		)
+		ylog.Info("set tracer provider: baselime")
 	}
 	if _, ok = os.LookupEnv("OTEL_EXPORTER_OTLP_ENDPOINT"); ok {
 		client = otlptracehttp.NewClient()
+		ylog.Info("set tracer provider: otlptracehttp")
 	}
 	if client == nil {
 		otel.SetTracerProvider(noop.NewTracerProvider())

@@ -15,6 +15,8 @@ import (
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
 	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 	"github.com/yomorun/yomo/pkg/id"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -88,20 +90,32 @@ func (a *BasicAPIServer) ServeAddr(addr string) error {
 
 // decorateReqContext decorates the context of the request, it injects a transID and a caller into the context.
 func decorateReqContext(cp *CallerProvider, logger *slog.Logger, credential string) func(handler http.Handler) http.Handler {
-	return func(handler http.Handler) http.Handler {
-		caller, err := cp.Provide(credential)
-		if err != nil {
-			logger.Info("can't load caller", "err", err)
+	tracer := otel.Tracer("yomo-llm-bridge")
 
+	caller, err := cp.Provide(credential)
+	if err != nil {
+		logger.Info("can't load caller", "err", err)
+
+		return func(handler http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				RespondWithError(w, http.StatusInternalServerError, err)
 			})
 		}
+	}
 
+	caller.Tracer = tracer
+
+	return func(handler http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := r.Context()
+
+			// trace every request
+			ctx, span := tracer.Start(ctx, r.URL.Path, trace.WithSpanKind(trace.SpanKindServer))
+			defer span.End()
+
 			transID := id.New(32)
-			ctx := WithTransIDContext(r.Context(), transID)
+			ctx = WithTransIDContext(ctx, transID)
 			ctx = WithCallerContext(ctx, caller)
 
 			logger.Info("request", "method", r.Method, "path", r.URL.Path, "transID", transID)

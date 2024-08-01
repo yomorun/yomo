@@ -117,7 +117,7 @@ func WithAIFunctionDefinition(description string, inputModel any) ClientOption {
 // DisableOtelTrace determines whether to disable otel trace.
 func DisableOtelTrace() ClientOption {
 	return func(o *clientOptions) {
-		o.disableOtelTrace = true
+		o.disableOtelTrace = false
 	}
 }
 
