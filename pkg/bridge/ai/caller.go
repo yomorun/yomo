@@ -21,6 +21,7 @@ import (
 	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 	"github.com/yomorun/yomo/pkg/id"
 	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 var (
@@ -126,6 +127,7 @@ func NewCaller(credential string, zipperAddr string, provider provider.LLMProvid
 		credential: credential,
 		md:         md,
 		provider:   provider,
+		Tracer:     noop.NewTracerProvider().Tracer(""),
 	}
 
 	caller.SetSystemPrompt("")

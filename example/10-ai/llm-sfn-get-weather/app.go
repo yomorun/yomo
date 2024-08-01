@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
-	"time"
 
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/serverless"
@@ -37,7 +36,6 @@ func Handler(ctx serverless.Context) {
 	}
 	slog.Info("[sfn] << receive", "tag", tag, "msg", msg)
 	data := fmt.Sprintf("[%s] temperature: %d°C", msg.CityName, rand.Intn(40))
-	time.Sleep(time.Second)
 	// helper ai function
 	err = ctx.WriteLLMResult(data)
 	if err == nil {

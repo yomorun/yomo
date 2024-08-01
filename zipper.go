@@ -25,6 +25,32 @@ type Zipper interface {
 	Close() error
 }
 
+// RunZipper run a zipper from a config file.
+func RunZipper(ctx context.Context, configPath string) error {
+	conf, err := config.ParseConfigFile(configPath)
+	if err != nil {
+		return err
+	}
+
+	// listening address.
+	listenAddr := fmt.Sprintf("%s:%d", conf.Host, conf.Port)
+
+	options := []ZipperOption{}
+	if _, ok := conf.Auth["type"]; ok {
+		if tokenString, ok := conf.Auth["token"]; ok {
+			options = append(options, WithAuth("token", tokenString))
+		}
+	}
+
+	zipper, err := NewZipper(conf.Name, conf.Mesh, options...)
+	if err != nil {
+		return err
+	}
+	zipper.Logger().Info("using config file", "file_path", configPath)
+
+	return zipper.ListenAndServe(ctx, listenAddr)
+}
+
 // NewZipper returns a zipper.
 func NewZipper(name string, meshConfig map[string]config.Mesh, options ...ZipperOption) (Zipper, error) {
 	opts := &zipperOptions{}
