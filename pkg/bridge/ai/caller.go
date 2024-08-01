@@ -271,7 +271,6 @@ func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompleti
 		if err != nil {
 			return err
 		}
-		firstCallSpan.End()
 
 		var (
 			firstRespSpan trace.Span
@@ -286,11 +285,12 @@ func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompleti
 			}
 			if j == 0 && !isFunctionCall {
 				reqSpan.End()
+			} else {
+				firstCallSpan.End()
 			}
 			i++
 			streamRes, err := resStream.Recv()
 			if err == io.EOF {
-				firstRespSpan.End()
 				break
 			}
 			if err != nil {
@@ -336,6 +336,7 @@ func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompleti
 			respSpan.End()
 			return writeStreamDone(w, flusher)
 		}
+		firstRespSpan.End()
 		toolCalls = mapToSliceTools(toolCallsMap)
 
 		assistantMessage = openai.ChatCompletionMessage{
@@ -349,7 +350,7 @@ func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompleti
 		if err != nil {
 			return err
 		}
-		firstCallSpan.End()
+		reqSpan.End()
 
 		promptUsage = resp.Usage.PromptTokens
 		completionUsage = resp.Usage.CompletionTokens
@@ -360,6 +361,7 @@ func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompleti
 		if resp.Choices[0].FinishReason == openai.FinishReasonToolCalls {
 			toolCalls = append(toolCalls, resp.Choices[0].Message.ToolCalls...)
 			assistantMessage = resp.Choices[0].Message
+			firstCallSpan.End()
 		} else {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(resp)
