@@ -8,12 +8,10 @@ Follow the Ollama doc:
 
 <https://github.com/ollama/ollama?tab=readme-ov-file#ollama>
 
-## 2. Run the Mistral model
-
-Notice that only the Mistral v0.3+ models are supported currently.
+## 2. Run the model
 
 ```sh
-ollama run mistral:7b
+ollama run llama3.1
 ```
 
 ## 3. Start YoMo Zipper
@@ -34,7 +32,7 @@ bridge:
       provider: ollama
     providers:
       ollama:
-        api_endpoint: "http://localhost:11434/"
+        api_endpoint: "http://localhost:11434/v1"
 ```
 
 ```sh
