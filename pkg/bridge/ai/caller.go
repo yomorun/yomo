@@ -380,6 +380,7 @@ func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompleti
 		resp.Usage.CompletionTokens += completionUsage
 		resp.Usage.TotalTokens += totalUsage
 
+		ylog.Debug(" #2 second call", "response", fmt.Sprintf("%+v", resp))
 		w.Header().Set("Content-Type", "application/json")
 		return json.NewEncoder(w).Encode(resp)
 	}
