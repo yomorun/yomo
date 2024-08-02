@@ -30,7 +30,7 @@ func ConvertToInvokeResponse(res *openai.ChatCompletionResponse, tcs map[uint32]
 	ylog.Debug("++ llm result", "token_usage", fmt.Sprintf("%v", result.TokenUsage), "finish_reason", result.FinishReason)
 
 	// if llm said no function call, we should return the result
-	if result.FinishReason == string(openai.FinishReasonStop) && len(calls) == 0 {
+	if result.FinishReason == string(openai.FinishReasonStop) {
 		return result, nil
 	}
 

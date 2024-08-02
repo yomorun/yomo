@@ -176,7 +176,7 @@ func (c *Caller) GetInvoke(ctx context.Context, userInstruction string, baseSyst
 		return nil, err
 	}
 	// if no tool_calls fired, just return the llm text result
-	if res.FinishReason != string(openai.FinishReasonToolCalls) && len(res.ToolCalls) > 0 {
+	if res.FinishReason != string(openai.FinishReasonToolCalls) {
 		return res, nil
 	}
 
@@ -322,8 +322,7 @@ func (c *Caller) GetChatCompletions(ctx context.Context, req openai.ChatCompleti
 
 		ylog.Debug(" #1 first call", "response", fmt.Sprintf("%+v", resp))
 		// it is a function call
-		if (resp.Choices[0].FinishReason == openai.FinishReasonToolCalls) ||
-			(len(resp.Choices[0].Message.ToolCalls) > 0) {
+		if resp.Choices[0].FinishReason == openai.FinishReasonToolCalls {
 			toolCalls = append(toolCalls, resp.Choices[0].Message.ToolCalls...)
 			assistantMessage = resp.Choices[0].Message
 		} else {
