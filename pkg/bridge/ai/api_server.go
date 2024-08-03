@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"time"
 
 	openai "github.com/sashabaranov/go-openai"
@@ -16,15 +17,13 @@ import (
 	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 	"github.com/yomorun/yomo/pkg/id"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
 const (
 	// DefaultZipperAddr is the default endpoint of the zipper
 	DefaultZipperAddr = "localhost:9000"
-)
-
-var (
 	// RequestTimeout is the timeout for the request, default is 90 seconds
 	RequestTimeout = 90 * time.Second
 	//  RunFunctionTimeout is the timeout for awaiting the function response, default is 60 seconds
@@ -106,12 +105,19 @@ func decorateReqContext(cp *CallerProvider, logger *slog.Logger, credential stri
 
 	caller.Tracer = tracer
 
+	host, _ := os.Hostname()
+
 	return func(handler http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
 
 			// trace every request
-			ctx, span := tracer.Start(ctx, r.URL.Path, trace.WithSpanKind(trace.SpanKindServer))
+			ctx, span := tracer.Start(
+				ctx,
+				r.URL.Path,
+				trace.WithSpanKind(trace.SpanKindServer),
+				trace.WithAttributes(attribute.String("host", host)),
+			)
 			defer span.End()
 
 			transID := id.New(32)
