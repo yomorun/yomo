@@ -13,6 +13,7 @@ import (
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
 	"github.com/yomorun/yomo/pkg/bridge/ai/register"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 func TestCallerInvoke(t *testing.T) {
@@ -293,6 +294,7 @@ func mockCallerProvideFunc(calls map[uint32][]mockFunctionCall, p provider.LLMPr
 
 	return func(credential, _ string, provider provider.LLMProvider, _ ExchangeMetadataFunc) (*Caller, error) {
 		caller := &Caller{
+			Tracer:     noop.NewTracerProvider().Tracer("test"),
 			credential: credential,
 			provider:   p,
 			md:         metadata.M{"hello": "llm bridge"},

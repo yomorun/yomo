@@ -442,6 +442,9 @@ func (c *Client) ClientID() string { return c.clientID }
 // Name returns the name of client.
 func (c *Client) Name() string { return c.name }
 
+// DisableOtelTrace return if disable otel trace.
+func (c *Client) DisableOtelTrace() bool { return c.opts.disableOtelTrace }
+
 // Downstream represents a frame writer that can connect to an addr.
 type Downstream interface {
 	frame.Writer

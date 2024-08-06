@@ -1,8 +1,9 @@
-// Package trace provides otel span tracer for YoMo.
+// Package trace provides otel span tracer for YoMo's stream function.
 package trace
 
 import (
 	"context"
+	"log"
 	"os"
 
 	"github.com/yomorun/yomo/core/metadata"
@@ -19,33 +20,48 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 )
 
-func init() {
-	SetTracerProvider("yomo")
-}
+var (
+	// ServiceName is the default service name for otel.
+	ServiceName = "yomo"
+)
 
-// SetTracerProvider sets an OpenTelemetry TracerProvider configured to use
-// the Jaeger exporter that will send spans to the provided url. The global
-// TracerProvider will also use a Resource configured with all the information
-// about the application.
-func SetTracerProvider(service string) {
-	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-	if endpoint == "" {
+// SetTracerProvider set otel tracer provider.
+// if enveronment BASELIME_API_KEY is set, the tracer provider will be baselime tracer provider.
+// if enveronment OTEL_EXPORTER_OTLP_ENDPOINT is set, the tracer provider will be otlptracehttp tracer provider.
+// This function set the global tracer provider by calling otel.SetTracerProvider(),
+// User also can set other tracer provider by calling otel.SetTracerProvider()
+func SetTracerProvider() {
+	var client otlptrace.Client
+
+	baselimeApiKey, ok := os.LookupEnv("BASELIME_API_KEY")
+	if ok {
+		client = otlptracehttp.NewClient(
+			otlptracehttp.WithEndpointURL("https://otel.baselime.io"),
+			otlptracehttp.WithHeaders(map[string]string{
+				"x-api-key": baselimeApiKey,
+			}),
+		)
+		ylog.Info("set tracer provider: baselime")
+	}
+	if _, ok = os.LookupEnv("OTEL_EXPORTER_OTLP_ENDPOINT"); ok {
+		client = otlptracehttp.NewClient()
+		ylog.Info("set tracer provider: otlptracehttp")
+	}
+	if client == nil {
 		otel.SetTracerProvider(noop.NewTracerProvider())
 		return
 	}
-	ylog.Info("enable tracing", "endpoint", endpoint)
 
-	client := otlptracehttp.NewClient()
-	exp, err := otlptrace.New(context.Background(), client)
+	exporter, err := otlptrace.New(context.Background(), client)
 	if err != nil {
-		panic("failed to create trace exporter: " + err.Error())
+		log.Fatalln("failed to create trace exporter: " + err.Error())
 	}
 	tp := tracesdk.NewTracerProvider(
-		tracesdk.WithBatcher(exp),
+		tracesdk.WithBatcher(exporter),
 		tracesdk.WithSampler(tracesdk.AlwaysSample()),
 		tracesdk.WithResource(resource.NewWithAttributes(
 			semconv.SchemaURL,
-			semconv.ServiceNameKey.String(service),
+			semconv.ServiceNameKey.String(ServiceName),
 		)),
 	)
 	otel.SetTracerProvider(tp)
@@ -73,8 +89,11 @@ type Tracer struct {
 }
 
 // NewTracer create tracer instance.
-func NewTracer(name string) *Tracer {
+func NewTracer(name string, enable ...bool) *Tracer {
 	tp := otel.GetTracerProvider()
+	if len(enable) > 0 && !enable[0] {
+		tp = noop.NewTracerProvider()
+	}
 
 	return &Tracer{
 		tracer:         tp.Tracer(name),

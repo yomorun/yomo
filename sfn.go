@@ -49,6 +49,8 @@ type StreamFunction interface {
 
 // NewStreamFunction create a stream function.
 func NewStreamFunction(name, zipperAddr string, opts ...SfnOption) StreamFunction {
+	trace.SetTracerProvider()
+
 	clientOpts := make([]core.ClientOption, len(opts))
 	for k, v := range opts {
 		clientOpts[k] = core.ClientOption(v)
@@ -241,7 +243,7 @@ func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 			}
 
 			// add trace
-			tracer := trace.NewTracer("StreamFunction")
+			tracer := trace.NewTracer("StreamFunction", s.client.DisableOtelTrace())
 			span := tracer.Start(md, s.name)
 			defer tracer.End(
 				md,
