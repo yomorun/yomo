@@ -34,6 +34,7 @@ type clientOptions struct {
 	// ai function
 	aiFunctionInputModel  any
 	aiFunctionDescription string
+	disableOtelTrace      bool
 }
 
 // DefaultClientQuicConfig be used when the `quicConfig` of client is nil.
@@ -110,6 +111,13 @@ func WithAIFunctionDefinition(description string, inputModel any) ClientOption {
 	return func(o *clientOptions) {
 		o.aiFunctionDescription = description
 		o.aiFunctionInputModel = inputModel
+	}
+}
+
+// DisableOtelTrace determines whether to disable otel trace.
+func DisableOtelTrace() ClientOption {
+	return func(o *clientOptions) {
+		o.disableOtelTrace = false
 	}
 }
 

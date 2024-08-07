@@ -25,6 +25,7 @@ import (
 	"github.com/yomorun/yomo/core/ylog"
 	pkgconfig "github.com/yomorun/yomo/pkg/config"
 	"github.com/yomorun/yomo/pkg/log"
+	"github.com/yomorun/yomo/pkg/trace"
 
 	"github.com/yomorun/yomo/pkg/bridge/ai"
 	providerpkg "github.com/yomorun/yomo/pkg/bridge/ai/provider"
@@ -55,6 +56,9 @@ var serveCmd = &cobra.Command{
 			log.FailureStatusEvent(os.Stdout, err.Error())
 			return
 		}
+
+		trace.SetTracerProvider()
+
 		ctx := context.Background()
 		// listening address.
 		listenAddr := fmt.Sprintf("%s:%d", conf.Host, conf.Port)

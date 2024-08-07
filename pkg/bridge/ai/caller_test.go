@@ -293,7 +293,8 @@ func mockCallerProvideFunc(calls map[uint32][]mockFunctionCall) provideFunc {
 
 	return func(credential, _ string, _ ExchangeMetadataFunc) (Caller, error) {
 		caller := &caller{
-			md: metadata.M{"hello": "llm bridge"},
+			credential: credential,
+			md:         metadata.M{"hello": "llm bridge"},
 		}
 
 		caller.SetSystemPrompt("")

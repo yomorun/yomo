@@ -21,8 +21,6 @@ import (
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 	yquic "github.com/yomorun/yomo/pkg/listener/quic"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
-	"github.com/yomorun/yomo/pkg/trace"
-	"go.opentelemetry.io/otel/attribute"
 )
 
 // ErrServerClosed is returned by the Server's Serve and ListenAndServe methods after a call to Shutdown or Close.
@@ -334,16 +332,6 @@ func (s *Server) routingDataFrame(c *Context) error {
 
 	// counter +1
 	atomic.AddInt64(&s.counterOfDataFrame, 1)
-
-	// add trace
-	tracer := trace.NewTracer("Zipper")
-	span := tracer.Start(c.FrameMetadata, "zipper endpoint")
-	defer tracer.End(
-		c.FrameMetadata,
-		span,
-		attribute.Key("routing_data_tag").Int(int(dataFrame.Tag)),
-		attribute.Key("routing_data_len").Int(dataLength),
-	)
 
 	mdBytes, err := c.FrameMetadata.Encode()
 	if err != nil {
