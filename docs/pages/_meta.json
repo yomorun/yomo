@@ -10,7 +10,8 @@
   },
   "showcase": {
     "type": "page",
-    "title": "Showcase",
+    "title": "Examples",
+    "href": "https://github.com/yomorun/llm-function-calling-examples",
     "theme": {
       "typesetting": "article",
       "layout": "full"

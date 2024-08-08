@@ -6,48 +6,52 @@ import { Steps, Callout } from 'nextra-theme-docs'
 
 # YoMo
 
-an open source Streaming Serverless Framework for building low-latency geo-distributed applications.
+YoMo is an open source LLM Function Calling Serverless Framework for building reliable and low-latency AI applications.
+
+There are two main components in YoMo:
+
+- **LLM Providers**: Provides OpenAI API compitable interface for all models, currently support:
+  - OpenAI
+  - Azure OpenAI
+  - Llama
+  - Mistral
+  - Ollama
+- **Function Calling Serverless**: Write once, run on any model.
 
 ## Getting Started
 
 <Steps>
 ### Install CLI
 
-```bash
+```bash copy
 curl -fsSL "https://get.yomo.run" | sh
 ```
 
 ### Initialize a StreamFunction project
 
-```bash
-yomo init stateful-function
+```bash copy
+yomo init llm-tool-get-time
 ```
 
-### Build to .wasm
+### Build 
 
 ```bash {3}
-ᐅ cd stateful-function
+ᐅ cd llm-tool-get-time
 
 ᐅ yomo build app.go
-
-ᐅ exa -Tla .
-drwxr-xr-x@    - cc 16 Apr 21:58 .
-.rw-r--r--@   31 cc 16 Apr 20:39 ├── .env
-.rw-r--r--@  378 cc 16 Apr 21:23 ├── app.go
-.rwxr-xr-x@ 191k cc 16 Apr 21:58 ├── sfn.wasm
 ```
 
 ### Run StreamFunction with Public Zipper Test Service
 
 ```bash
-ᐅ yomo run sfn.wasm
+ᐅ yomo run app.go
 
 ℹ️ YoMo Stream Function file: app.go
-⌛  Create YoMo Stream Function instance...
-⌛  YoMo Stream Function building...
-✅  Success! YoMo Stream Function build.
-ℹ️   YoMo Stream Function is running...
-ℹ️   Run: /Users/fanweixiao/tmp/accumulator-func/sfn.yomo
+⌛ Create YoMo Stream Function instance...
+⌛ YoMo Stream Function building...
+✅ Success! YoMo Stream Function build.
+ℹ️ YoMo Stream Function is running...
+ℹ️ Run: /Users/fanweixiao/tmp/accumulator-func/sfn.yomo
 sfn received 58 bytes
 sfn received 58 bytes
 sfn received 59 bytes
