@@ -5,6 +5,10 @@
     "title": "Concept"
   },
   "glossary": "Glossary of terms",
+  "---LLMBridge": {
+    "type": "separator",
+    "title": "LLM Bridge"
+  },
   "---Reference": {
     "type": "separator",
     "title": "Reference"
