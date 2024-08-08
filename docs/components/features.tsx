@@ -1,10 +1,10 @@
 import {
   BoltIcon,
+  CheckBadgeIcon,
   CodeBracketIcon,
   CurrencyDollarIcon,
   GlobeAltIcon,
-  LockClosedIcon,
-  WifiIcon,
+  LockClosedIcon
 } from "@heroicons/react/24/outline";
 import { ComponentProps } from "react";
 
@@ -19,40 +19,40 @@ export type Features = Array<Feature>;
 
 const FEATURES: Features = [
   {
+    name: "Function Calling",
+    description: `Improve LLM accuracy by function calling.`,
+    link: "/docs/api/sfn",
+    Icon: CheckBadgeIcon,
+  },
+  {
     name: "Low-latency",
-    description: `Guaranteed by implementing atop of QUIC Protocol.`,
+    description: `Guaranteed by of QUIC Protocol and Streaming.`,
     link: "/docs/", //"https://datatracker.ietf.org/wg/quic/documents/",
     Icon: BoltIcon,
   },
   {
-    name: "Geo-distributed",// Architecture",
-    description: `Your code close to your users.`,
-    link: "/docs/glossary",
-    Icon: GlobeAltIcon,
-  },
-  {
-    name: "Self-hosting",// Efficiency",
+    name: "Cost Efficiency",
     description: `Less than $100 with 10K users with global scale.`,
     link: "/docs/devops_tuning",
     Icon: CurrencyDollarIcon,
   },
   {
-    name: "WebAssembly",
-    description: `Implement serverless function in Rust / Go / C, compile to wasm, run it everywhere.`,
+    name: "Strongly-typed Language",
+    description: `Write once, run on any model.`,
     link: "/docs/cli/build",
     Icon: CodeBracketIcon,
   },
   {
     name: "Security",
-    description: `Every data packet encrypted by TLS v1.3.`,
+    description: `Every data packet encrypted with TLS v1.3.`,
     link: "/docs/devops_tls",
     Icon: LockClosedIcon,
   },
   {
-    name: "5G/WiFi-6",
-    description: `Networking optimized for high-speed celluar and wireless.`,
-    link: "/docs/api/sfn",
-    Icon: WifiIcon,
+    name: "Geo-distributed",
+    description: `Run your model and tools close to your users.`,
+    link: "/docs/glossary",
+    Icon: GlobeAltIcon,
   },
 ];
 
