@@ -22,11 +22,11 @@ type Mock struct {
 
 	// calling function once will return and remove one element from resp and streamResp.
 	resp       []openai.ChatCompletionResponse
-	streamResp []*ChatCompletionStreamResponse
+	streamResp []*chatCompletionStreamResponse
 }
 
-// ChatCompletionStreamResponse has Recv() function so it implements the ResponseRecver interface.
-type ChatCompletionStreamResponse struct {
+// chatCompletionStreamResponse has Recv() function so it implements the ResponseRecver interface.
+type chatCompletionStreamResponse struct {
 	items []openai.ChatCompletionStreamResponse
 }
 
@@ -48,7 +48,7 @@ func NewMock(name string, data ...MockData) (*Mock, error) {
 }
 
 // Recv implements the ResponseRecver interface.
-func (m *ChatCompletionStreamResponse) Recv() (openai.ChatCompletionStreamResponse, error) {
+func (m *chatCompletionStreamResponse) Recv() (openai.ChatCompletionStreamResponse, error) {
 	if len(m.items) == 0 {
 		return openai.ChatCompletionStreamResponse{}, io.EOF
 	}
@@ -81,14 +81,14 @@ func MockChatCompletionResponse(str ...string) MockData {
 
 // MockChatCompletionStreamResponse supplys mock response data in form of stream to the mock provider.
 func MockChatCompletionStreamResponse(str ...string) MockData {
-	streamRespArr := make([]*ChatCompletionStreamResponse, len(str))
+	streamRespArr := make([]*chatCompletionStreamResponse, len(str))
 	for i, s := range str {
 		scanner := bufio.NewScanner(strings.NewReader(s))
 		scanner.Split(bufio.ScanLines)
 
 		var (
 			err        error
-			streamResp = new(ChatCompletionStreamResponse)
+			streamResp = new(chatCompletionStreamResponse)
 		)
 		for scanner.Scan() {
 			text := scanner.Text()

@@ -30,20 +30,32 @@ type callSyncer struct {
 
 	// timeout is the timeout for waiting the result.
 	timeout   time.Duration
-	source    yomo.Source
-	reducer   yomo.StreamFunction
-	reduceCh  <-chan reduceMessage
+	sourceCh  chan<- TagFunctionCall
+	reduceCh  <-chan ReduceMessage
 	toolOutCh chan toolOut
 	cleanCh   chan string
 }
 
-type reduceMessage struct {
-	reqID   string
-	message openai.ChatCompletionMessage
+// ReduceMessage is the message from the reducer.
+type ReduceMessage struct {
+	// ReqID indentifies the message.
+	ReqID string
+	// Message is the message.
+	Message openai.ChatCompletionMessage
+}
+
+// TagFunctionCall is the request to the syncer.
+// It always be sent to the source.
+type TagFunctionCall struct {
+	// Tag is the tag of the request.
+	Tag uint32
+	// FunctionCall is the function call.
+	// It cantains the arguments and the function name.
+	FunctionCall *ai.FunctionCall
 }
 
 // NewCallSyncer creates a new CallSyncer.
-func NewCallSyncer(logger *slog.Logger, source yomo.Source, reducer yomo.StreamFunction, timeout time.Duration) CallSyncer {
+func NewCallSyncer(logger *slog.Logger, sourceCh chan<- TagFunctionCall, reduceCh <-chan ReduceMessage, timeout time.Duration) CallSyncer {
 	if timeout == 0 {
 		timeout = RunFunctionTimeout
 	}
@@ -54,9 +66,8 @@ func NewCallSyncer(logger *slog.Logger, source yomo.Source, reducer yomo.StreamF
 		cancel:    cancel,
 		logger:    logger,
 		timeout:   timeout,
-		source:    source,
-		reducer:   reducer,
-		reduceCh:  handleToChan(logger, reducer),
+		sourceCh:  sourceCh,
+		reduceCh:  reduceCh,
 		toolOutCh: make(chan toolOut),
 		cleanCh:   make(chan string),
 	}
@@ -99,6 +110,10 @@ func (f *callSyncer) Call(ctx context.Context, transID, reqID string, tagToolCal
 	var result []openai.ChatCompletionMessage
 	for {
 		select {
+		case <-f.ctx.Done():
+			// the  TTL of cached reducer for users reached,
+			// return ctx error temporarily.
+			return nil, f.ctx.Err()
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case res := <-ch:
@@ -128,19 +143,15 @@ func (f *callSyncer) fire(transID string, reqID string, tagToolCalls map[uint32]
 		f.logger.Debug("fire tool_calls", "tag", tag, "len(tools)", len(tools), "transID", transID, "reqID", reqID)
 
 		for _, t := range tools {
-			data := &ai.FunctionCall{
-				TransID:      transID,
-				ReqID:        reqID,
-				ToolCallID:   t.ID,
-				FunctionName: t.Function.Name,
-				Arguments:    t.Function.Arguments,
-			}
-			buf, _ := data.Bytes()
-
-			if err := f.source.Write(tag, buf); err != nil {
-				// TODO: maybe we should make a send failed collection here.
-				f.logger.Error("send data to zipper", "err", err.Error())
-				continue
+			f.sourceCh <- TagFunctionCall{
+				Tag: tag,
+				FunctionCall: &ai.FunctionCall{
+					TransID:      transID,
+					ReqID:        reqID,
+					ToolCallID:   t.ID,
+					FunctionName: t.Function.Name,
+					Arguments:    t.Function.Arguments,
+				},
 			}
 			ToolIDs[t.ID] = struct{}{}
 		}
@@ -152,17 +163,7 @@ func (f *callSyncer) fire(transID string, reqID string, tagToolCalls map[uint32]
 // Close close the CallSyncer. if close, you can't use this CallSyncer anymore.
 func (f *callSyncer) Close() error {
 	f.cancel()
-
-	var err error
-	if err = f.source.Close(); err != nil {
-		f.logger.Error("callSyncer writer close", "err", err.Error())
-	}
-
-	if err = f.reducer.Close(); err != nil {
-		f.logger.Error("callSyncer reducer close", "err", err.Error())
-	}
-
-	return err
+	return nil
 }
 
 func (f *callSyncer) background() {
@@ -194,28 +195,28 @@ func (f *callSyncer) background() {
 			delete(singnals, reqID)
 
 		case msg := <-f.reduceCh:
-			if msg.reqID == "" {
+			if msg.ReqID == "" {
 				f.logger.Warn("recv unexpected message", "msg", msg)
 				continue
 			}
 			result := openai.ChatCompletionMessage{
-				ToolCallID: msg.message.ToolCallID,
-				Role:       msg.message.Role,
-				Content:    msg.message.Content,
+				ToolCallID: msg.Message.ToolCallID,
+				Role:       msg.Message.Role,
+				Content:    msg.Message.Content,
 			}
 
-			sig, ok := singnals[msg.reqID]
+			sig, ok := singnals[msg.ReqID]
 			// the signal that requests a result has not been sent. so buffer the data from reducer.
 			if !ok {
-				_, ok := buffered[msg.reqID]
+				_, ok := buffered[msg.ReqID]
 				if !ok {
-					buffered[msg.reqID] = make(map[string]openai.ChatCompletionMessage)
+					buffered[msg.ReqID] = make(map[string]openai.ChatCompletionMessage)
 				}
-				buffered[msg.reqID][msg.message.ToolCallID] = result
+				buffered[msg.ReqID][msg.Message.ToolCallID] = result
 			} else {
 				// the signal was sent,
 				// check if the message has been sent, and if not, send the message to signal's channel.
-				if _, ok := sig.toolIDs[msg.message.ToolCallID]; ok {
+				if _, ok := sig.toolIDs[msg.Message.ToolCallID]; ok {
 					sig.ch <- result
 				}
 			}
@@ -223,13 +224,15 @@ func (f *callSyncer) background() {
 	}
 }
 
-func handleToChan(logger *slog.Logger, reducer yomo.StreamFunction) <-chan reduceMessage {
-	ch := make(chan reduceMessage)
-
-	reducer.SetHandler(func(ctx serverless.Context) {
+// ToReducer converts a stream function to a reducer that can reduce the function calling result.
+func ToReducer(sfn yomo.StreamFunction, logger *slog.Logger, ch chan ReduceMessage) {
+	// set observe data tags
+	sfn.SetObserveDataTags(ai.ReducerTag)
+	// set reduce handler
+	sfn.SetHandler(func(ctx serverless.Context) {
 		invoke, err := ctx.LLMFunctionCall()
 		if err != nil {
-			ch <- reduceMessage{reqID: ""}
+			ch <- ReduceMessage{ReqID: ""}
 			logger.Error("parse function calling invoke", "err", err.Error())
 			return
 		}
@@ -241,8 +244,18 @@ func handleToChan(logger *slog.Logger, reducer yomo.StreamFunction) <-chan reduc
 			ToolCallID: invoke.ToolCallID,
 		}
 
-		ch <- reduceMessage{reqID: invoke.ReqID, message: message}
+		ch <- ReduceMessage{ReqID: invoke.ReqID, Message: message}
 	})
+}
 
-	return ch
+// ToSource convert a yomo source to the source that can send function calling body to the llm function.
+func ToSource(source yomo.Source, logger *slog.Logger, ch chan TagFunctionCall) {
+	go func() {
+		for c := range ch {
+			buf, _ := c.FunctionCall.Bytes()
+			if err := source.Write(c.Tag, buf); err != nil {
+				logger.Error("send data to zipper", "err", err.Error())
+			}
+		}
+	}()
 }

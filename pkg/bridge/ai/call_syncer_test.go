@@ -27,8 +27,13 @@ func TestTimeoutCallSyncer(t *testing.T) {
 	flow := newMockDataFlow(h.handle)
 	defer flow.Close()
 
-	syncer := NewCallSyncer(slog.Default(), flow, flow, time.Millisecond)
-	defer syncer.Close()
+	reqs := make(chan TagFunctionCall)
+	ToSource(flow, slog.Default(), reqs)
+
+	messages := make(chan ReduceMessage)
+	ToReducer(flow, slog.Default(), messages)
+
+	syncer := NewCallSyncer(slog.Default(), reqs, messages, time.Millisecond)
 	go flow.run()
 
 	var (
@@ -56,8 +61,13 @@ func TestCallSyncer(t *testing.T) {
 	flow := newMockDataFlow(h.handle)
 	defer flow.Close()
 
-	syncer := NewCallSyncer(slog.Default(), flow, flow, 0)
-	defer syncer.Close()
+	reqs := make(chan TagFunctionCall)
+	ToSource(flow, slog.Default(), reqs)
+
+	messages := make(chan ReduceMessage)
+	ToReducer(flow, slog.Default(), messages)
+
+	syncer := NewCallSyncer(slog.Default(), reqs, messages, 0)
 	go flow.run()
 
 	var (
@@ -149,9 +159,9 @@ var _ yomo.Source = (*mockDataFlow)(nil)
 var _ yomo.StreamFunction = (*mockDataFlow)(nil)
 
 // The test will not use blowing function in this mock implementation.
+func (t *mockDataFlow) SetObserveDataTags(tag ...uint32)                      {}
 func (t *mockDataFlow) Init(fn func() error) error                            { panic("unimplemented") }
 func (t *mockDataFlow) SetCronHandler(spec string, fn core.CronHandler) error { panic("unimplemented") }
-func (t *mockDataFlow) SetObserveDataTags(tag ...uint32)                      { panic("unimplemented") }
 func (t *mockDataFlow) SetPipeHandler(fn core.PipeHandler) error              { panic("unimplemented") }
 func (t *mockDataFlow) SetWantedTarget(string)                                { panic("unimplemented") }
 func (t *mockDataFlow) Wait()                                                 { panic("unimplemented") }
