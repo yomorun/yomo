@@ -28,9 +28,9 @@ require (
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 	github.com/yomorun/y3 v1.0.5
 	go.opentelemetry.io/otel v1.28.0
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.27.0
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.27.0
-	go.opentelemetry.io/otel/sdk v1.27.0
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.28.0
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.28.0
+	go.opentelemetry.io/otel/sdk v1.28.0
 	go.opentelemetry.io/otel/trace v1.28.0
 	golang.org/x/mod v0.20.0
 	golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d
@@ -95,7 +95,7 @@ require (
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.51.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.51.0 // indirect
 	go.opentelemetry.io/otel/metric v1.28.0 // indirect
-	go.opentelemetry.io/proto/otlp v1.2.0 // indirect
+	go.opentelemetry.io/proto/otlp v1.3.1 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/mock v0.4.0 // indirect
 	go.uber.org/multierr v1.9.0 // indirect
@@ -108,8 +108,8 @@ require (
 	golang.org/x/term v0.21.0 // indirect
 	golang.org/x/text v0.16.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20240617180043-68d350f18fd4 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240617180043-68d350f18fd4 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20240701130421-f6361c86f094 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240701130421-f6361c86f094 // indirect
 	google.golang.org/grpc v1.64.1 // indirect
 	google.golang.org/protobuf v1.34.2 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
