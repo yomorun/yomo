@@ -83,7 +83,7 @@ func NewBasicAPIServer(config *Config, zipperAddr, credential string, provider p
 
 	logger = logger.With("component", "bridge")
 
-	service := NewService(provider, DefaultComponentCreator(zipperAddr), &ServiceOption{
+	service := NewService(zipperAddr, provider, &ServiceOption{
 		Logger:         logger,
 		Tracer:         otel.Tracer("yomo-llm-bridge"),
 		CredentialFunc: func(r *http.Request) (string, error) { return credential, nil },

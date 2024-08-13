@@ -95,13 +95,17 @@ func TestServiceInvoke(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			cc := &testComponentCreator{flow: newMockDataFlow(newHandler(2 * time.Hour).handle)}
+			flow := newMockDataFlow(newHandler(2 * time.Hour).handle)
 
 			newCaller := func(_ yomo.Source, _ yomo.StreamFunction, _ metadata.M, _ time.Duration) (*Caller, error) {
 				return mockCaller(tt.args.mockCallReqResp), err
 			}
 
-			service := newService(pd, cc, newCaller, nil)
+			service := newService("fake_zipper_addr", pd, newCaller, &ServiceOption{
+				SourceBuilder:     func(_, _ string) yomo.Source { return flow },
+				ReducerBuilder:    func(_, _ string) yomo.StreamFunction { return flow },
+				MetadataExchanger: func(_ string) (metadata.M, error) { return metadata.M{"hello": "llm bridge"}, nil },
+			})
 
 			caller, err := service.LoadOrCreateCaller(&http.Request{})
 			assert.NoError(t, err)
@@ -260,13 +264,17 @@ func TestServiceChatCompletion(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			cc := &testComponentCreator{flow: newMockDataFlow(newHandler(2 * time.Hour).handle)}
+			flow := newMockDataFlow(newHandler(2 * time.Hour).handle)
 
 			newCaller := func(_ yomo.Source, _ yomo.StreamFunction, _ metadata.M, _ time.Duration) (*Caller, error) {
 				return mockCaller(tt.args.mockCallReqResp), err
 			}
 
-			service := newService(pd, cc, newCaller, nil)
+			service := newService("fake_zipper_addr", pd, newCaller, &ServiceOption{
+				SourceBuilder:     func(_, _ string) yomo.Source { return flow },
+				ReducerBuilder:    func(_, _ string) yomo.StreamFunction { return flow },
+				MetadataExchanger: func(_ string) (metadata.M, error) { return metadata.M{"hello": "llm bridge"}, nil },
+			})
 
 			caller, err := service.LoadOrCreateCaller(&http.Request{})
 			assert.NoError(t, err)
