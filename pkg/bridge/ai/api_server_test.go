@@ -4,13 +4,15 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/ai"
+	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
 	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 )
@@ -38,11 +40,15 @@ func TestServer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cp := newMockCallerProvider()
+	cc := &testComponentCreator{flow: newMockDataFlow(newHandler(2 * time.Hour).handle)}
 
-	cp.provideFunc = mockCallerProvideFunc(map[uint32][]mockFunctionCall{})
+	newCaller := func(_ yomo.Source, _ yomo.StreamFunction, _ metadata.M, _ time.Duration) (*Caller, error) {
+		return mockCaller(nil), err
+	}
 
-	handler := BridgeHTTPHanlder(pd, decorateReqContext(cp, slog.Default(), ""))
+	service := newService(pd, cc, newCaller, nil)
+
+	handler := DecorateHandler(NewServeMux(service), decorateReqContext(service, service.logger))
 
 	// create a test server
 	server := httptest.NewServer(handler)
