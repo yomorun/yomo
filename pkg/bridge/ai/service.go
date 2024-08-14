@@ -30,12 +30,12 @@ type Service struct {
 	provider      provider.LLMProvider
 	newCallerFunc newCallerFunc
 	callers       *expirable.LRU[string, *Caller]
-	option        *ServiceOption
+	option        *ServiceOptions
 	logger        *slog.Logger
 }
 
-// ServiceOption is the option for creating service
-type ServiceOption struct {
+// ServiceOptions is the option for creating service
+type ServiceOptions struct {
 	// Logger is the logger for the service
 	Logger *slog.Logger
 	// Tracer is the tracer for the service
@@ -57,13 +57,13 @@ type ServiceOption struct {
 }
 
 // NewService creates a new service for handling the logic from handler layer.
-func NewService(zipperAddr string, provider provider.LLMProvider, opt *ServiceOption) *Service {
+func NewService(zipperAddr string, provider provider.LLMProvider, opt *ServiceOptions) *Service {
 	return newService(zipperAddr, provider, NewCaller, opt)
 }
 
-func initOption(opt *ServiceOption) *ServiceOption {
+func initOption(opt *ServiceOptions) *ServiceOptions {
 	if opt == nil {
-		opt = &ServiceOption{}
+		opt = &ServiceOptions{}
 	}
 	if opt.Tracer == nil {
 		opt.Tracer = noop.NewTracerProvider().Tracer("yomo-ai-bridge")
@@ -105,7 +105,7 @@ func initOption(opt *ServiceOption) *ServiceOption {
 	return opt
 }
 
-func newService(zipperAddr string, provider provider.LLMProvider, ncf newCallerFunc, opt *ServiceOption) *Service {
+func newService(zipperAddr string, provider provider.LLMProvider, ncf newCallerFunc, opt *ServiceOptions) *Service {
 	var onEvict = func(_ string, caller *Caller) {
 		caller.Close()
 	}

@@ -101,7 +101,7 @@ func TestServiceInvoke(t *testing.T) {
 				return mockCaller(tt.args.mockCallReqResp), err
 			}
 
-			service := newService("fake_zipper_addr", pd, newCaller, &ServiceOption{
+			service := newService("fake_zipper_addr", pd, newCaller, &ServiceOptions{
 				SourceBuilder:     func(_, _ string) yomo.Source { return flow },
 				ReducerBuilder:    func(_, _ string) yomo.StreamFunction { return flow },
 				MetadataExchanger: func(_ string) (metadata.M, error) { return metadata.M{"hello": "llm bridge"}, nil },
@@ -270,7 +270,7 @@ func TestServiceChatCompletion(t *testing.T) {
 				return mockCaller(tt.args.mockCallReqResp), err
 			}
 
-			service := newService("fake_zipper_addr", pd, newCaller, &ServiceOption{
+			service := newService("fake_zipper_addr", pd, newCaller, &ServiceOptions{
 				SourceBuilder:     func(_, _ string) yomo.Source { return flow },
 				ReducerBuilder:    func(_, _ string) yomo.StreamFunction { return flow },
 				MetadataExchanger: func(_ string) (metadata.M, error) { return metadata.M{"hello": "llm bridge"}, nil },
