@@ -33,6 +33,7 @@ import (
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cfazure"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cfopenai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/gemini"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/githubmodels"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/ollama"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/openai"
 )
@@ -49,7 +50,7 @@ var serveCmd = &cobra.Command{
 		}
 
 		// log.InfoStatusEvent(os.Stdout, "")
-		ylog.Info("Starting Zipper...")
+		ylog.Info("Starting YoMo Zipper...")
 		// config
 		conf, err := pkgconfig.ParseConfigFile(config)
 		if err != nil {
@@ -150,12 +151,14 @@ func registerAIProvider(aiConfig *ai.Config) error {
 			providerpkg.RegisterProvider(ollama.NewProvider(provider["api_endpoint"]))
 		case "gemini":
 			providerpkg.RegisterProvider(gemini.NewProvider(provider["api_key"]))
+		case "githubmodels":
+			providerpkg.RegisterProvider(githubmodels.NewProvider(provider["api_key"], provider["model"]))
 		default:
 			log.WarningStatusEvent(os.Stdout, "unknown provider: %s", name)
 		}
 	}
 
-	ylog.Info("registered AI providers", "len", len(providerpkg.ListProviders()))
+	ylog.Info("register LLM providers", "num", len(providerpkg.ListProviders()))
 	return nil
 }
 

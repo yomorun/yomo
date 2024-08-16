@@ -48,7 +48,7 @@ func Serve(config *Config, zipperListenAddr string, credential string, logger *s
 		return err
 	}
 
-	logger.Info("start bridge server", "addr", config.Server.Addr, "provider", provider.Name())
+	logger.Info("start AI Bridge service", "addr", config.Server.Addr, "provider", provider.Name())
 	return http.ListenAndServe(config.Server.Addr, srv.httpHandler)
 }
 

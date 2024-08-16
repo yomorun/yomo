@@ -144,7 +144,6 @@ func ParseConfig(conf map[string]any) (config *Config, err error) {
 	if config.Server.Addr == "" {
 		config.Server.Addr = ":8000"
 	}
-	ylog.Info("parse AI config success")
 	return
 }
 
