@@ -6,9 +6,7 @@ import (
 	"time"
 
 	openai "github.com/sashabaranov/go-openai"
-	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/ai"
-	"github.com/yomorun/yomo/serverless"
 )
 
 // CallSyncer fires a bunch of function callings, and wait the result of these function callings.
@@ -222,40 +220,4 @@ func (f *callSyncer) background() {
 			}
 		}
 	}
-}
-
-// ToReducer converts a stream function to a reducer that can reduce the function calling result.
-func ToReducer(sfn yomo.StreamFunction, logger *slog.Logger, ch chan ReduceMessage) {
-	// set observe data tags
-	sfn.SetObserveDataTags(ai.ReducerTag)
-	// set reduce handler
-	sfn.SetHandler(func(ctx serverless.Context) {
-		invoke, err := ctx.LLMFunctionCall()
-		if err != nil {
-			ch <- ReduceMessage{ReqID: ""}
-			logger.Error("parse function calling invoke", "err", err.Error())
-			return
-		}
-		logger.Debug("sfn-reducer", "req_id", invoke.ReqID, "tool_call_id", invoke.ToolCallID, "result", string(invoke.Result))
-
-		message := openai.ChatCompletionMessage{
-			Role:       openai.ChatMessageRoleTool,
-			Content:    invoke.Result,
-			ToolCallID: invoke.ToolCallID,
-		}
-
-		ch <- ReduceMessage{ReqID: invoke.ReqID, Message: message}
-	})
-}
-
-// ToSource convert a yomo source to the source that can send function calling body to the llm function.
-func ToSource(source yomo.Source, logger *slog.Logger, ch chan TagFunctionCall) {
-	go func() {
-		for c := range ch {
-			buf, _ := c.FunctionCall.Bytes()
-			if err := source.Write(c.Tag, buf); err != nil {
-				logger.Error("send data to zipper", "err", err.Error())
-			}
-		}
-	}()
 }

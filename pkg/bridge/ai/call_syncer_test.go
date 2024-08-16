@@ -27,13 +27,10 @@ func TestTimeoutCallSyncer(t *testing.T) {
 	flow := newMockDataFlow(h.handle)
 	defer flow.Close()
 
-	reqs := make(chan TagFunctionCall)
-	ToSource(flow, slog.Default(), reqs)
+	req, _ := sourceWriteToChan(flow, slog.Default())
+	res, _ := reduceToChan(flow, slog.Default())
 
-	messages := make(chan ReduceMessage)
-	ToReducer(flow, slog.Default(), messages)
-
-	syncer := NewCallSyncer(slog.Default(), reqs, messages, time.Millisecond)
+	syncer := NewCallSyncer(slog.Default(), req, res, time.Millisecond)
 	go flow.run()
 
 	var (
@@ -61,13 +58,10 @@ func TestCallSyncer(t *testing.T) {
 	flow := newMockDataFlow(h.handle)
 	defer flow.Close()
 
-	reqs := make(chan TagFunctionCall)
-	ToSource(flow, slog.Default(), reqs)
+	req, _ := sourceWriteToChan(flow, slog.Default())
+	res, _ := reduceToChan(flow, slog.Default())
 
-	messages := make(chan ReduceMessage)
-	ToReducer(flow, slog.Default(), messages)
-
-	syncer := NewCallSyncer(slog.Default(), reqs, messages, 0)
+	syncer := NewCallSyncer(slog.Default(), req, res, 0)
 	go flow.run()
 
 	var (
@@ -118,7 +112,7 @@ func (h *handler) result() []openai.ChatCompletionMessage {
 	return want
 }
 
-// mockDataFlow mocks the data flow of ai bridge.
+// mockDataFlow mocks the data flow of llm bridge.
 // The data flow is: source -> hander -> reducer,
 // It is `Write() -> handler() -> reducer()` in this mock implementation.
 type mockDataFlow struct {
@@ -160,11 +154,11 @@ var _ yomo.StreamFunction = (*mockDataFlow)(nil)
 
 // The test will not use blowing function in this mock implementation.
 func (t *mockDataFlow) SetObserveDataTags(tag ...uint32)                      {}
+func (t *mockDataFlow) Connect() error                                        { return nil }
 func (t *mockDataFlow) Init(fn func() error) error                            { panic("unimplemented") }
 func (t *mockDataFlow) SetCronHandler(spec string, fn core.CronHandler) error { panic("unimplemented") }
 func (t *mockDataFlow) SetPipeHandler(fn core.PipeHandler) error              { panic("unimplemented") }
 func (t *mockDataFlow) SetWantedTarget(string)                                { panic("unimplemented") }
 func (t *mockDataFlow) Wait()                                                 { panic("unimplemented") }
-func (t *mockDataFlow) Connect() error                                        { panic("unimplemented") }
 func (t *mockDataFlow) SetErrorHandler(fn func(err error))                    { panic("unimplemented") }
 func (t *mockDataFlow) WriteWithTarget(_ uint32, _ []byte, _ string) error    { panic("unimplemented") }
