@@ -4,13 +4,15 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/ai"
+	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
 	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 )
@@ -38,11 +40,19 @@ func TestServer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cp := newMockCallerProvider()
+	flow := newMockDataFlow(newHandler(2 * time.Hour).handle)
 
-	cp.provideFunc = mockCallerProvideFunc(map[uint32][]mockFunctionCall{})
+	newCaller := func(_ yomo.Source, _ yomo.StreamFunction, _ metadata.M, _ time.Duration) (*Caller, error) {
+		return mockCaller(nil), err
+	}
 
-	handler := BridgeHTTPHanlder(pd, decorateReqContext(cp, slog.Default(), ""))
+	service := newService("fake_zipper_addr", pd, newCaller, &ServiceOptions{
+		SourceBuilder:     func(_, _ string) yomo.Source { return flow },
+		ReducerBuilder:    func(_, _ string) yomo.StreamFunction { return flow },
+		MetadataExchanger: func(_ string) (metadata.M, error) { return metadata.M{"hello": "llm bridge"}, nil },
+	})
+
+	handler := DecorateHandler(NewServeMux(service), decorateReqContext(service, service.logger))
 
 	// create a test server
 	server := httptest.NewServer(handler)
