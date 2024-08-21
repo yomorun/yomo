@@ -206,10 +206,14 @@ func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
 		WantedTarget:    c.wantedTarget,
 	}
 
-	err = c.handshakeWithDefinition(hf)
+	jsonschemaBytes, err := c.handshakeWithDefinition()
 	if err != nil {
 		return nil, err
 	}
+	hf.FunctionDefinition = jsonschemaBytes
+
+	// aiFunctionDefinition has a higher priority than description with input model.
+	hf.FunctionDefinition = []byte(c.opts.aiFunctionDefinition)
 
 	if err := conn.WriteFrame(hf); err != nil {
 		return conn, err
@@ -241,23 +245,22 @@ func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
 	return nil, err
 }
 
-func (c *Client) handshakeWithDefinition(hf *frame.HandshakeFrame) error {
+func (c *Client) handshakeWithDefinition() ([]byte, error) {
 	if c.clientType != ClientTypeStreamFunction {
-		return nil
+		return nil, nil
 	}
 	// register ai function definition
 	functionDefinition, err := parseAIFunctionDefinition(c.name, c.opts.aiFunctionDescription, c.opts.aiFunctionInputModel)
 	if err != nil {
 		c.Logger.Error("parse ai function definition error", "err", err)
-		return err
+		return nil, err
 	}
 	// ai function definition is not be found
 	if functionDefinition == nil {
-		return nil
+		return nil, nil
 	}
 	log.InfoStatusEvent(os.Stdout, "Function Calling jsonschema: %s", string(functionDefinition))
-	hf.FunctionDefinition = functionDefinition
-	return nil
+	return nil, nil
 }
 
 func parseAIFunctionDefinition(sfnName, aiFunctionDescription string, aiFunctionInputModel any) ([]byte, error) {

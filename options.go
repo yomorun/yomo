@@ -57,6 +57,11 @@ var (
 		return SfnOption(core.WithAIFunctionDefinition(description, inputModel))
 	}
 
+	// WithSfnAIFunctionDefinitionInJsonSchema sets AI function definition for the Sfn in the form of jsonschema string.
+	WithSfnAIFunctionDefinitionInJsonSchema = func(jsonschema string) SfnOption {
+		return SfnOption(core.WithAIFunctionDefinitionInJsonSchema(jsonschema))
+	}
+
 	// DisableOtelTrace determines whether to disable otel trace.
 	DisableOtelTrace = func() SfnOption { return SfnOption(core.DisableOtelTrace()) }
 )
