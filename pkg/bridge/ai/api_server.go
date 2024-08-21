@@ -35,7 +35,6 @@ type BasicAPIServer struct {
 	zipperAddr  string
 	credential  string
 	httpHandler http.Handler
-	logger      *slog.Logger
 }
 
 // Serve starts the Basic API Server
@@ -44,19 +43,20 @@ func Serve(config *Config, zipperListenAddr string, credential string, logger *s
 	if err != nil {
 		return err
 	}
-	srv, err := NewBasicAPIServer(config, zipperListenAddr, provider, credential, logger)
+	srv, err := NewBasicAPIServer(config, zipperListenAddr, credential, provider, logger)
 	if err != nil {
 		return err
 	}
 
-	logger.Info("start bridge server", "addr", config.Server.Addr, "provider", provider.Name())
-	return srv.ServeAddr(config.Server.Addr)
+	logger.Info("start AI Bridge service", "addr", config.Server.Addr, "provider", provider.Name())
+	return http.ListenAndServe(config.Server.Addr, srv.httpHandler)
 }
 
-func BridgeHTTPHanlder(provider provider.LLMProvider, decorater func(http.Handler) http.Handler) http.Handler {
+// NewServeMux creates a new http.ServeMux for the llm bridge server.
+func NewServeMux(service *Service) *http.ServeMux {
 	var (
+		h   = &Handler{service}
 		mux = http.NewServeMux()
-		h   = NewHandler(provider)
 	)
 	// GET /overview
 	mux.HandleFunc("/overview", h.HandleOverview)
@@ -65,57 +65,59 @@ func BridgeHTTPHanlder(provider provider.LLMProvider, decorater func(http.Handle
 	// POST /v1/chat/completions (OpenAI compatible interface)
 	mux.HandleFunc("/v1/chat/completions", h.HandleChatCompletions)
 
-	return decorater(mux)
+	return mux
+}
+
+// DecorateHandler decorates the http.Handler.
+func DecorateHandler(h http.Handler, decorates ...func(handler http.Handler) http.Handler) http.Handler {
+	// decorate the http.Handler
+	for i := len(decorates) - 1; i >= 0; i-- {
+		h = decorates[i](h)
+	}
+	return h
 }
 
 // NewBasicAPIServer creates a new restful service
-func NewBasicAPIServer(config *Config, zipperAddr string, provider provider.LLMProvider, credential string, logger *slog.Logger) (*BasicAPIServer, error) {
+func NewBasicAPIServer(config *Config, zipperAddr, credential string, provider provider.LLMProvider, logger *slog.Logger) (*BasicAPIServer, error) {
 	zipperAddr = parseZipperAddr(zipperAddr)
 
-	cp := NewCallerProvider(zipperAddr, DefaultExchangeMetadataFunc)
+	logger = logger.With("component", "bridge")
+
+	service := NewService(zipperAddr, provider, &ServiceOptions{
+		Logger:         logger,
+		Tracer:         otel.Tracer("yomo-llm-bridge"),
+		CredentialFunc: func(r *http.Request) (string, error) { return credential, nil },
+	})
+
+	mux := NewServeMux(service)
 
 	server := &BasicAPIServer{
 		zipperAddr:  zipperAddr,
 		credential:  credential,
-		httpHandler: BridgeHTTPHanlder(provider, decorateReqContext(cp, logger, credential)),
-		logger:      logger.With("component", "bridge"),
+		httpHandler: DecorateHandler(mux, decorateReqContext(service, logger)),
 	}
 
 	return server, nil
 }
 
-// ServeAddr starts a http server that provides some endpoints to bridge up the http server and YoMo.
-// User can chat to the http server and interact with the YoMo's stream function.
-func (a *BasicAPIServer) ServeAddr(addr string) error {
-	return http.ListenAndServe(addr, a.httpHandler)
-}
-
-// decorateReqContext decorates the context of the request, it injects a transID and a caller into the context.
-func decorateReqContext(cp CallerProvider, logger *slog.Logger, credential string) func(handler http.Handler) http.Handler {
-	tracer := otel.Tracer("yomo-llm-bridge")
-
-	caller, err := cp.Provide(credential)
-	if err != nil {
-		logger.Info("can't load caller", "err", err)
-
-		return func(handler http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				RespondWithError(w, http.StatusInternalServerError, err)
-			})
-		}
-	}
-
-	caller.SetTracer(tracer)
-
+// decorateReqContext decorates the context of the request, it injects a transID into the request's context,
+// log the request information and start tracing the request.
+func decorateReqContext(service *Service, logger *slog.Logger) func(handler http.Handler) http.Handler {
 	host, _ := os.Hostname()
 
 	return func(handler http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
 
+			caller, err := service.LoadOrCreateCaller(r)
+			if err != nil {
+				RespondWithError(w, http.StatusBadRequest, err)
+				return
+			}
+			ctx = WithCallerContext(ctx, caller)
+
 			// trace every request
-			ctx, span := tracer.Start(
+			ctx, span := service.option.Tracer.Start(
 				ctx,
 				r.URL.Path,
 				trace.WithSpanKind(trace.SpanKindServer),
@@ -125,7 +127,6 @@ func decorateReqContext(cp CallerProvider, logger *slog.Logger, credential strin
 
 			transID := id.New(32)
 			ctx = WithTransIDContext(ctx, transID)
-			ctx = WithCallerContext(ctx, caller)
 
 			logger.Info("request", "method", r.Method, "path", r.URL.Path, "transID", transID)
 
@@ -136,24 +137,16 @@ func decorateReqContext(cp CallerProvider, logger *slog.Logger, credential strin
 
 // Handler handles the http request.
 type Handler struct {
-	provider provider.LLMProvider
-}
-
-// NewHandler returns a new Handler.
-func NewHandler(provider provider.LLMProvider) *Handler {
-	return &Handler{provider}
+	service *Service
 }
 
 // HandleOverview is the handler for GET /overview
 func (h *Handler) HandleOverview(w http.ResponseWriter, r *http.Request) {
-	caller := FromCallerContext(r.Context())
-
 	w.Header().Set("Content-Type", "application/json")
 
-	tcs, err := register.ListToolCalls(caller.Metadata())
+	tcs, err := register.ListToolCalls(FromCallerContext(r.Context()).Metadata())
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		RespondWithError(w, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -172,7 +165,6 @@ var baseSystemMessage = `You are a very helpful assistant. Your job is to choose
 func (h *Handler) HandleInvoke(w http.ResponseWriter, r *http.Request) {
 	var (
 		ctx     = r.Context()
-		caller  = FromCallerContext(ctx)
 		transID = FromTransIDContext(ctx)
 	)
 	defer r.Body.Close()
@@ -185,14 +177,14 @@ func (h *Handler) HandleInvoke(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), RequestTimeout)
 	defer cancel()
 
-	res, err := GetInvoke(ctx, req.Prompt, baseSystemMessage, transID, req.IncludeCallStack, caller, h.provider)
+	w.Header().Set("Content-Type", "application/json")
+
+	res, err := h.service.GetInvoke(ctx, req.Prompt, baseSystemMessage, transID, FromCallerContext(ctx), req.IncludeCallStack)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
 		RespondWithError(w, http.StatusInternalServerError, err)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(res)
 }
@@ -201,7 +193,6 @@ func (h *Handler) HandleInvoke(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	var (
 		ctx     = r.Context()
-		caller  = FromCallerContext(ctx)
 		transID = FromTransIDContext(ctx)
 	)
 	defer r.Body.Close()
@@ -214,7 +205,7 @@ func (h *Handler) HandleChatCompletions(w http.ResponseWriter, r *http.Request) 
 	ctx, cancel := context.WithTimeout(r.Context(), RequestTimeout)
 	defer cancel()
 
-	if err := GetChatCompletions(ctx, req, transID, h.provider, caller, w); err != nil {
+	if err := h.service.GetChatCompletions(ctx, req, transID, FromCallerContext(ctx), w); err != nil {
 		RespondWithError(w, http.StatusBadRequest, err)
 		return
 	}
@@ -258,17 +249,17 @@ func getLocalIP() (string, error) {
 type callerContextKey struct{}
 
 // WithCallerContext adds the caller to the request context
-func WithCallerContext(ctx context.Context, caller Caller) context.Context {
+func WithCallerContext(ctx context.Context, caller *Caller) context.Context {
 	return context.WithValue(ctx, callerContextKey{}, caller)
 }
 
 // FromCallerContext returns the caller from the request context
-func FromCallerContext(ctx context.Context) Caller {
-	service, ok := ctx.Value(callerContextKey{}).(Caller)
+func FromCallerContext(ctx context.Context) *Caller {
+	caller, ok := ctx.Value(callerContextKey{}).(*Caller)
 	if !ok {
 		return nil
 	}
-	return service
+	return caller
 }
 
 type transIDContextKey struct{}

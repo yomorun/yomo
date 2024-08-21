@@ -21,7 +21,7 @@ import (
 func waitSignalForShutdownServer(server *core.Server) {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGTERM, syscall.SIGUSR2, syscall.SIGUSR1, syscall.SIGINT)
-	ylog.Info("Listening SIGUSR1, SIGUSR2, SIGTERM/SIGINT...")
+	ylog.Info("listening SIGUSR1, SIGUSR2, SIGTERM/SIGINT...")
 	for p1 := range c {
 		ylog.Debug("Received signal", "signal", p1)
 		if p1 == syscall.SIGTERM || p1 == syscall.SIGINT {
