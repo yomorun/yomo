@@ -228,17 +228,17 @@ func DecodeRequest[T any](r *http.Request, w http.ResponseWriter, logger *slog.L
 func RespondWithError(w http.ResponseWriter, code int, err error, logger *slog.Logger) {
 	logger.Error("bridge server error", "error", err)
 
+	errString := err.Error()
 	oerr, ok := err.(*openai.APIError)
 	if ok {
 		if oerr.HTTPStatusCode >= 400 {
 			code = http.StatusInternalServerError
-			w.WriteHeader(code)
-			w.Write([]byte(fmt.Sprintf(`{"error":{"code":"%d","message":"%s"}}`, code, "Internal Server Error, Please Try Again Later.")))
-			return
+			errString = "Internal Server Error, Please Try Again Later."
 		}
 	}
+
 	w.WriteHeader(code)
-	w.Write([]byte(fmt.Sprintf(`{"error":{"code":"%d","message":"%s"}}`, code, err.Error())))
+	w.Write([]byte(fmt.Sprintf(`{"error":{"code":"%d","message":"%s"}}`, code, errString)))
 }
 
 func getLocalIP() (string, error) {
