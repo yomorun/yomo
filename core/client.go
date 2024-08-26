@@ -213,7 +213,9 @@ func (c *Client) connect(ctx context.Context, addr string) (frame.Conn, error) {
 	hf.FunctionDefinition = jsonschemaBytes
 
 	// aiFunctionDefinition has a higher priority than description with input model.
-	hf.FunctionDefinition = []byte(c.opts.aiFunctionDefinition)
+	if c.opts.aiFunctionDefinition != "" {
+		hf.FunctionDefinition = []byte(c.opts.aiFunctionDefinition)
+	}
 
 	if err := conn.WriteFrame(hf); err != nil {
 		return conn, err
