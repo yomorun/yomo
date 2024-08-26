@@ -255,15 +255,15 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 	// 4. request first chat for getting tools
 	if req.Stream {
 		_, firstCallSpan := srv.option.Tracer.Start(reqCtx, "first_call_request")
-		var (
-			flusher        = eventFlusher(w)
-			isFunctionCall = false
-		)
+
 		resStream, err := srv.provider.GetChatCompletionsStream(reqCtx, req, md)
 		if err != nil {
 			return err
 		}
-
+		var (
+			flusher        = eventFlusher(w)
+			isFunctionCall = false
+		)
 		var (
 			i             int // number of chunks
 			j             int // number of tool call chunks
