@@ -226,7 +226,7 @@ func DecodeRequest[T any](r *http.Request, w http.ResponseWriter, logger *slog.L
 
 // RespondWithError writes an error to response according to the OpenAI API spec.
 func RespondWithError(w http.ResponseWriter, code int, err error, logger *slog.Logger) {
-	logger.Error("bridge server error", "error", err)
+	logger.Error("bridge server error", "err", err)
 
 	errString := err.Error()
 	oerr, ok := err.(*openai.APIError)
