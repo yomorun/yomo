@@ -1,0 +1,38 @@
+---
+title: Google Gemini Provider
+---
+
+# Google Gemini Provider
+
+[Google Gemini](https://ai.google.dev/) 
+
+## Configuration
+
+```yaml
+name: ai-zipper
+host: 0.0.0.0
+port: 9000
+
+bridge:
+  ai:
+    server:
+      addr: localhost:9000
+      provider: gemini
+      
+    providers:
+      gemini:
+        api_key: xxxxxxxxxxxxxxxxx
+```
+
+## How to get API Key
+
+Get API Key in [Google AI Studio](https://aistudio.google.com/app/apikey)
+
+## Support Models
+
+- `gpt-4-turbo`
+- `gpt-4`
+- `gpt-4o`
+- `chatgpt-4o-latest`: https://platform.openai.com/docs/models/gpt-4o
+- `gpt-4o-mini`
+- `gpt-3.5-turbo`

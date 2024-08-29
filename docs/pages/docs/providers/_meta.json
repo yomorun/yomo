@@ -1,0 +1,8 @@
+{
+  "openai": "OpenAI",
+  "gemini": "Google Gemini",
+  "azure-openai": "Azure OpenAI",
+  "ollama": "Ollama",
+  "github-models": "Github Models",
+  "mistral": "Mistral"
+}

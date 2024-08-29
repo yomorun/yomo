@@ -1,17 +1,14 @@
 {
   "index": "Getting Started",
-  "---Concept": {
-    "type": "separator",
-    "title": "Concept"
-  },
-  "glossary": "Glossary of terms",
   "---LLMBridge": {
     "type": "separator",
     "title": "LLM Bridge"
   },
-  "---Reference": {
+  "llm-bridge": "Introduction",
+  "providers": "Configuring Providers",
+  "---SFN": {
     "type": "separator",
-    "title": "Reference"
+    "title": "Serverless Function Calling"
   },
   "cli": "CLI",
   "api": "API",
@@ -26,9 +23,14 @@
   "opentracing": "Open Tracing",
   "---Hosting": {
     "type": "separator",
-    "title": "Hosting"
+    "title": "Self Hosting"
   },
   "devops_tuning": "Tuning QUIC Server",
   "devops_tls": "Self-signed TLS Certificates",
-  "devops_security": "Enhanced Security"
+  "devops_security": "Enhanced Security",
+  "---Fundamental": {
+    "type": "separator",
+    "title": "Fundamental"
+  },
+  "glossary": "Glossary of terms"
 }

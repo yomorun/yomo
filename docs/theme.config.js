@@ -107,7 +107,7 @@ const themeConfig = {
       return (
         <div className="w-full flex justify-between items-center">
           <a
-            href={`https://allegrocloud.io/?utm_source=YoMo-doc`}
+            href={`https://vivgrid.com/?utm_source=yomo-doc`}
             target="_blank"
             rel="noopener"
           >

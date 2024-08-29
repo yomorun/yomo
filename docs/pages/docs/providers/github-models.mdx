@@ -1,0 +1,42 @@
+---
+title: GitHub Models Provider
+---
+
+# GitHub Models Provider
+
+[Github Models](https://github.com/marketplace/models) is created by Github. If you want to develop a generative AI application, you can use GitHub Models to find and experiment with AI models for free. 
+
+## Configuration
+
+```yaml
+name: ai-zipper
+host: 0.0.0.0
+port: 9000
+
+bridge:
+  ai:
+    server:
+      addr: localhost:9000
+      provider: githubmodels
+
+    providers:
+      githubmodels:
+        api_key: ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+## How to get API Key
+
+[Create a GitHub personal access token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)
+
+
+## Support Models
+
+- `llama3.1`
+- `llama3`
+- `gemma2`
+- `mistral-nemo`
+- `mistral-large`
+- `mistral`
+- `gpt-4o`
+- `gpt-4o-mini`
+- `phi3`

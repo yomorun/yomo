@@ -1,0 +1,37 @@
+---
+title: Ollama Provider
+---
+
+# Ollama Provider
+
+[Ollama](https://ollama.com/) is an open-source project that serves as a powerful and user-friendly platform for running LLMs on your local machine.
+
+## Configuration
+
+```yaml
+name: ai-zipper
+host: 0.0.0.0
+port: 9000
+
+bridge:
+  ai:
+    server:
+      addr: localhost:9000
+      provider: ollama
+      
+    providers:
+      ollama:
+        api_endpoint: http://localhost:11434
+```
+
+## Support Models
+
+- `llama3.1`
+- `llama3`
+- `gemma2`
+- `mistral-nemo`
+- `mistral-large`
+- `mistral`
+- `qwen2`
+- `deepseek-coder-v2`
+- `phi3`

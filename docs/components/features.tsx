@@ -1,9 +1,9 @@
 import {
   BoltIcon,
-  CheckBadgeIcon,
   CodeBracketIcon,
   CurrencyDollarIcon,
   GlobeAltIcon,
+  LinkIcon,
   LockClosedIcon
 } from "@heroicons/react/24/outline";
 import { ComponentProps } from "react";
@@ -20,37 +20,37 @@ export type Features = Array<Feature>;
 const FEATURES: Features = [
   {
     name: "Function Calling",
-    description: `Improve LLM accuracy by function calling.`,
+    description: `Write once, run on any model, with stateful serverless`,
     link: "/docs/api/sfn",
-    Icon: CheckBadgeIcon,
+    Icon: CodeBracketIcon,
   },
   {
     name: "Low-latency",
-    description: `Guaranteed by of QUIC Protocol and Streaming.`,
+    description: `Guaranteed by of QUIC Protocol and Streaming`,
     link: "/docs/", //"https://datatracker.ietf.org/wg/quic/documents/",
     Icon: BoltIcon,
   },
   {
     name: "Cost Efficiency",
-    description: `Less than $100 with 10K users with global scale.`,
+    description: `Less than $100 with 10K users with global scale`,
     link: "/docs/devops_tuning",
     Icon: CurrencyDollarIcon,
   },
   {
-    name: "Strongly-typed Language",
-    description: `Write once, run on any model.`,
+    name: "LLM Bridge",
+    description: `OpenAI API compitable interface over any model`,
     link: "/docs/cli/build",
-    Icon: CodeBracketIcon,
+    Icon: LinkIcon,
   },
   {
     name: "Security",
-    description: `Every data packet encrypted with TLS v1.3.`,
+    description: `Isolate your private data from llm models`,
     link: "/docs/devops_tls",
     Icon: LockClosedIcon,
   },
   {
     name: "Geo-distributed",
-    description: `Run your model and tools close to your users.`,
+    description: `Run your model and tools close to user`,
     link: "/docs/glossary",
     Icon: GlobeAltIcon,
   },

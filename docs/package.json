@@ -5,7 +5,7 @@
   "private": true,
   "main": "index.js",
   "scripts": {
-    "dev": "next",
+    "dev": "next -H 0.0.0.0",
     "debug": "NODE_OPTIONS='--inspect' next",
     "start": "next start",
     "build": "next build",

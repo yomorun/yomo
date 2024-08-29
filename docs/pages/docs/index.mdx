@@ -6,29 +6,54 @@ import { Steps, Callout } from 'nextra-theme-docs'
 
 # YoMo
 
-YoMo is an open source LLM Function Calling Serverless Framework for building reliable and low-latency AI applications.
+YoMo is an open source Serverless LLM Function Calling Framework for building reliable and low-latency AI applications.
 
-There are two main components in YoMo:
+There are two components help developers building rapidly:
 
-- **AI Bridge**: Provides OpenAI API compitable interface for all models, currently support:
-  - OpenAI
-  - Azure OpenAI
-  - Llama
-  - Mistral
-  - Ollama
-- **Function Calling Serverless**: Write once, run on any model.
+1. **[LLM Bridge](/docs/llm-bridge)** provides an OpenAI API-compatible HTTP server and implements the [Chat API](https://platform.openai.com/docs/api-reference/chat/create), support range popular models including: OpenAI, Azure OpenAI, Google Gemini, Ollama, Github Models and More.
+
+2. **[Serverelss Function Calling](/docs/sfn)** guarantees _Write once, run on any model_. Developers can extend the llm model by implementing [tools](https://platform.openai.com/docs/guides/function-calling) in a strongly-typed language and can be deployed as a stateful serverless application.
 
 ## Getting Started
 
+When we request OpenAI API with question `How's the weather in Palo Alto?`, it will returns:
+
+> "I'm unable to provide real-time weather information. You can check the current weather in Palo Alto using a weather app, website, or by asking a voice"
+
+Now, let's build a Function Calling to get the realtime weather information for Palo Alto.
+
 <Steps>
-### Install CLI
+### Install YoMo CLI
 
 ```bash copy
 curl -fsSL "https://get.yomo.run" | sh
 ```
 
-### Initialize a StreamFunction project
+### Start LLM Bridge service
 
+```bash
+yomo serve -c ./yomo.yml
+```
+
+the configuration file `yomo.yml` is as below:
+
+```yaml
+name: my-llm-bridge
+host: 0.0.0.0
+port: 9000
+
+bridge:
+  ai:
+    server:
+      addr: 0.0.0.0:9000
+      provider: openai
+
+    providers:
+      openai:
+        api_key: sk-xxxxxxxxxxxxxxxxxx
+        model: gpt-4o
+```
+###################TODO
 ```bash copy
 yomo init llm-tool-get-time
 ```

@@ -24,7 +24,7 @@ class MyDocument extends Document {
           `,
             }}
           />
-          <script async src={`https://analytics.umami.is/script.js`} data-website-id={`d7fe47fa-d12e-42c4-b4ed-586bd3edf118`} />
+          <script async src="https://cdn.seline.so/seline.js"></script>
           <link href="https://fonts.googleapis.com/css2?family=Exo+2&display=swap" rel="stylesheet"></link>
         </Head>
         <body>
