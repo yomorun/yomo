@@ -231,10 +231,8 @@ func RespondWithError(w http.ResponseWriter, code int, err error, logger *slog.L
 	errString := err.Error()
 	oerr, ok := err.(*openai.APIError)
 	if ok {
-		if oerr.HTTPStatusCode >= 400 {
-			code = http.StatusInternalServerError
-			errString = "Internal Server Error, Please Try Again Later."
-		}
+		code = oerr.HTTPStatusCode
+		errString = oerr.Message
 	}
 
 	w.WriteHeader(code)
