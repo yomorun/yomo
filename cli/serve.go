@@ -29,6 +29,7 @@ import (
 
 	"github.com/yomorun/yomo/pkg/bridge/ai"
 	providerpkg "github.com/yomorun/yomo/pkg/bridge/ai/provider"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/anthropic"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/azopenai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cerebras"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cfazure"
@@ -156,6 +157,8 @@ func registerAIProvider(aiConfig *ai.Config) error {
 			providerpkg.RegisterProvider(githubmodels.NewProvider(provider["api_key"], provider["model"]))
 		case "cerebras":
 			providerpkg.RegisterProvider(cerebras.NewProvider(provider["api_key"], provider["model"]))
+		case "anthropic":
+			providerpkg.RegisterProvider(anthropic.NewProvider(provider["api_key"], provider["model"]))
 		default:
 			log.WarningStatusEvent(os.Stdout, "unknown provider: %s", name)
 		}
