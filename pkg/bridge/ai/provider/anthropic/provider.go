@@ -11,8 +11,14 @@ import (
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo/core/metadata"
+	"github.com/yomorun/yomo/core/ylog"
 
 	provider "github.com/yomorun/yomo/pkg/bridge/ai/provider"
+)
+
+const (
+	// DefaultMaxTokens is the default max tokens for completion
+	DefaultMaxTokens = 2048
 )
 
 // check if implements ai.Provider
@@ -58,7 +64,10 @@ func (p *Provider) GetChatCompletions(
 	if req.Model == "" {
 		req.Model = p.Model
 	}
-	// TODO: convert openai.ChatCompletionRequest to anthropic.MessageRequest
+	// default max tokens
+	if req.MaxTokens == 0 {
+		req.MaxTokens = DefaultMaxTokens
+	}
 	// convert open ai request messages to anthropic messages
 	msgs := make([]anthropic.MessageParam, 0)
 	systemMsgs := make([]anthropic.TextBlockParam, 0)
@@ -118,10 +127,11 @@ func (p *Provider) GetChatCompletions(
 		// ToolChoice:
 		// TopK:
 	})
-
 	if err != nil {
+		ylog.Error("anthropic.Messages.New", "err", err)
 		return openai.ChatCompletionResponse{}, err
 	}
+	// ylog.Debug("anthropic raw response", "result", fmt.Sprintf("%+v", result))
 
 	// convert anthropic.MessageResponse to openai.ChatCompletionResponse
 	resp := openai.ChatCompletionResponse{
@@ -130,7 +140,7 @@ func (p *Provider) GetChatCompletions(
 		Object:            "chat.completion",
 		Created:           time.Now().Unix(),
 		Choices:           make([]openai.ChatCompletionChoice, 0),
-		SystemFingerprint: "anthropic",
+		SystemFingerprint: "yomo_anthropic",
 	}
 	message := openai.ChatCompletionMessage{
 		Role:      openai.ChatMessageRoleAssistant,
@@ -157,6 +167,17 @@ func (p *Provider) GetChatCompletions(
 			toolCallIndex++
 		}
 	}
+	// choice
+	choice := openai.ChatCompletionChoice{Message: message}
+	// finish reasson
+	choice.FinishReason = convertFinishReason(result.StopReason)
+	resp.Choices = append(resp.Choices, choice)
+	// usage
+	resp.Usage = openai.Usage{
+		PromptTokens:     int(result.Usage.InputTokens),
+		CompletionTokens: int(result.Usage.OutputTokens),
+		TotalTokens:      int(result.Usage.InputTokens + result.Usage.OutputTokens),
+	}
 
 	return resp, nil
 }
@@ -171,4 +192,20 @@ func (p *Provider) GetChatCompletionsStream(
 	}
 	// TODO: anthropic stream request
 	return nil, nil
+}
+
+func convertFinishReason(reason anthropic.MessageStopReason) openai.FinishReason {
+	if reason.IsKnown() {
+		switch reason {
+		case anthropic.MessageStopReasonEndTurn:
+			return openai.FinishReasonStop
+		case anthropic.MessageStopReasonMaxTokens:
+			return openai.FinishReasonLength
+		case anthropic.MessageStopReasonStopSequence:
+			return openai.FinishReasonStop
+		case anthropic.MessageStopReasonToolUse:
+			return openai.FinishReasonToolCalls
+		}
+	}
+	return openai.FinishReason(string(reason))
 }
