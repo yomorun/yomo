@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
+	"github.com/anthropics/anthropic-sdk-go/packages/ssestream"
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo/core/metadata"
@@ -216,8 +218,91 @@ func (p *Provider) GetChatCompletionsStream(
 	if req.Model == "" {
 		req.Model = p.Model
 	}
-	// TODO: anthropic stream request
-	return nil, nil
+	// default max tokens
+	if req.MaxTokens == 0 {
+		req.MaxTokens = DefaultMaxTokens
+	}
+	// convert open ai request messages to anthropic messages
+	msgs := make([]anthropic.MessageParam, 0)
+	systemMsgs := make([]anthropic.TextBlockParam, 0)
+	tools := make([]anthropic.ToolParam, 0)
+	toolResult := []anthropic.MessageParamContentUnion{}
+
+	// tools
+	for _, tool := range req.Tools {
+		if tool.Type == openai.ToolTypeFunction {
+			tools = append(tools, anthropic.ToolParam{
+				Name:        anthropic.F(tool.Function.Name),
+				Description: anthropic.F(tool.Function.Description),
+				InputSchema: anthropic.F(tool.Function.Parameters),
+			})
+		}
+	}
+	ylog.Debug("anthropic tools", "tools", fmt.Sprintf("%+v", tools))
+
+	// messages
+	for _, msg := range req.Messages {
+		switch msg.Role {
+		case openai.ChatMessageRoleUser:
+			msgs = append(msgs, anthropic.NewUserMessage(anthropic.NewTextBlock(msg.Content)))
+		case openai.ChatMessageRoleAssistant:
+			// tool use, check if there are tool calls
+			ylog.Debug("openai request", "tool_calls", len(msg.ToolCalls))
+			if len(msg.ToolCalls) > 0 {
+				toolUses := make([]anthropic.MessageParamContentUnion, 0)
+				for _, toolCall := range msg.ToolCalls {
+					var args map[string]any
+					if len(toolCall.Function.Arguments) > 0 {
+						err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args)
+						if err != nil {
+							// TODO: handle error
+							ylog.Error("anthropic tool use unmarshal input", "err", err)
+						}
+					}
+					toolUse := anthropic.NewToolUseBlockParam(toolCall.ID, toolCall.Function.Name, args)
+					ylog.Debug("anthropic tool use", "tool_use", fmt.Sprintf("%+v", toolUse))
+					toolUses = append(toolUses, toolUse)
+				}
+				msgs = append(msgs, anthropic.NewAssistantMessage(toolUses...))
+			} else { // normal assistant message
+				msgs = append(msgs, anthropic.NewAssistantMessage(anthropic.NewTextBlock(msg.Content)))
+			}
+		case openai.ChatMessageRoleSystem:
+			systemMsgs = append(systemMsgs, anthropic.NewTextBlock(msg.Content))
+		// tool result
+		case openai.ChatMessageRoleTool:
+			toolResult = append(toolResult, anthropic.NewToolResultBlock(msg.ToolCallID, msg.Content, false))
+		}
+	}
+	// add tool result to user messages
+	if len(toolResult) > 0 {
+		msgs = append(msgs, anthropic.NewUserMessage(toolResult...))
+	}
+
+	// TODO: refactor this
+	// send anthropic stream request
+	stream := p.client.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
+		Model:         anthropic.F(req.Model),
+		MaxTokens:     anthropic.F(int64(req.MaxTokens)),
+		Messages:      anthropic.F(msgs),
+		System:        anthropic.F(systemMsgs),
+		Tools:         anthropic.F(tools),
+		TopP:          anthropic.F(float64(req.TopP)),
+		Temperature:   anthropic.F(float64(req.Temperature)),
+		StopSequences: anthropic.F(req.Stop),
+	})
+
+	includeUsage := false
+	if req.StreamOptions != nil && req.StreamOptions.IncludeUsage {
+		includeUsage = true
+	}
+
+	recv := &recver{
+		underlying:   stream,
+		includeUsage: includeUsage,
+	}
+
+	return recv, nil
 }
 
 func convertFinishReason(reason anthropic.MessageStopReason) openai.FinishReason {
@@ -234,4 +319,81 @@ func convertFinishReason(reason anthropic.MessageStopReason) openai.FinishReason
 		}
 	}
 	return openai.FinishReason(string(reason))
+}
+
+type recver struct {
+	id           string
+	model        string
+	includeUsage bool
+	inputTokens  int
+	outputTokens int
+	underlying   *ssestream.Stream[anthropic.MessageStreamEvent]
+}
+
+// Recv implements provider.ResponseRecver.
+func (r *recver) Recv() (response openai.ChatCompletionStreamResponse, err error) {
+	resp := openai.ChatCompletionStreamResponse{
+		Object:  "chat.completion.chunk",
+		Choices: make([]openai.ChatCompletionStreamChoice, 0),
+	}
+	// event
+	hasMore := r.underlying.Next()
+	if !hasMore {
+		return resp, io.EOF
+	}
+	event := r.underlying.Current()
+	switch event.Type {
+	case anthropic.MessageStreamEventTypeMessageStart:
+		r.id = event.Message.ID
+		r.model = event.Message.Model
+		r.inputTokens = int(event.Message.Usage.InputTokens)
+		ylog.Debug("anthropic message start", "event", event.Type, "id", r.id, "model", r.model, "input_tokens", r.inputTokens)
+	case anthropic.MessageStreamEventTypeMessageDelta:
+		r.outputTokens = int(event.Usage.OutputTokens)
+		ylog.Debug("anthropic message delta", "event", event.Type, "output_tokens", r.outputTokens)
+	case anthropic.MessageStreamEventTypeMessageStop:
+		resp.ID = r.id
+		resp.Model = r.model
+		resp.Created = time.Now().Unix()
+		// usage
+		if r.includeUsage {
+			resp.Usage = &openai.Usage{
+				PromptTokens:     r.inputTokens,
+				CompletionTokens: r.outputTokens,
+				TotalTokens:      r.inputTokens + r.outputTokens,
+			}
+			ylog.Debug("anthropic message stop", "usage", resp.Usage)
+		}
+		ylog.Debug("anthropic message stop", "event", event.Type, "response", fmt.Sprintf("%+v", resp))
+		return resp, nil
+	}
+	// response
+	resp.ID = r.id
+	resp.Model = r.model
+	resp.Created = time.Now().Unix()
+	index := len(resp.Choices)
+	// delta
+	switch delta := event.Delta.(type) {
+	case anthropic.ContentBlockDeltaEventDelta:
+		choice := openai.ChatCompletionStreamChoice{
+			Index: index,
+			Delta: openai.ChatCompletionStreamChoiceDelta{
+				Content: delta.Text,
+				Role:    openai.ChatMessageRoleAssistant,
+			},
+		}
+		resp.Choices = append(resp.Choices, choice)
+	case anthropic.MessageDeltaEventDelta:
+		choice := openai.ChatCompletionStreamChoice{
+			Index:        index,
+			FinishReason: convertFinishReason(anthropic.MessageStopReason(delta.StopReason)),
+		}
+		resp.Choices = append(resp.Choices, choice)
+	}
+	// stream error
+	if err := r.underlying.Err(); err != nil {
+		ylog.Error("anthropic stream error", "err", err)
+		return resp, r.underlying.Err()
+	}
+	return resp, nil
 }
