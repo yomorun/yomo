@@ -71,6 +71,15 @@ func (p *Provider) GetChatCompletionsStream(ctx context.Context, req openai.Chat
 	if req.Model == "" {
 		req.Model = p.Model
 	}
+	// The following fields are currently not supported and will result in a 400 error if they are supplied:
+	// frequency_penalty
+	// logit_bias
+	// logprobs
+	// presence_penalty
+	// parallel_tool_calls
+	// service_tier
+
+	// it does not support streaming calls when tools are present
 
 	return p.client.CreateChatCompletionStream(ctx, req)
 }
