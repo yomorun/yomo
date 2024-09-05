@@ -65,89 +65,12 @@ func (p *Provider) GetChatCompletions(
 	req openai.ChatCompletionRequest,
 	_ metadata.M,
 ) (openai.ChatCompletionResponse, error) {
-	if req.Model == "" {
-		req.Model = p.Model
-	}
-	// default max tokens
-	if req.MaxTokens == 0 {
-		req.MaxTokens = DefaultMaxTokens
-	}
-	// convert open ai request messages to anthropic messages
-	msgs := make([]anthropic.MessageParam, 0)
-	systemMsgs := make([]anthropic.TextBlockParam, 0)
-	tools := make([]anthropic.ToolParam, 0)
-	toolResult := []anthropic.MessageParamContentUnion{}
-
-	// tools
-	for _, tool := range req.Tools {
-		if tool.Type == openai.ToolTypeFunction {
-			tools = append(tools, anthropic.ToolParam{
-				Name:        anthropic.F(tool.Function.Name),
-				Description: anthropic.F(tool.Function.Description),
-				InputSchema: anthropic.F(tool.Function.Parameters),
-			})
-		}
-	}
-	ylog.Debug("anthropic tools", "tools", fmt.Sprintf("%+v", tools))
-
-	// messages
-	for _, msg := range req.Messages {
-		switch msg.Role {
-		case openai.ChatMessageRoleUser:
-			msgs = append(msgs, anthropic.NewUserMessage(anthropic.NewTextBlock(msg.Content)))
-		case openai.ChatMessageRoleAssistant:
-			// tool use, check if there are tool calls
-			ylog.Debug("openai request", "tool_calls", len(msg.ToolCalls))
-			if len(msg.ToolCalls) > 0 {
-				toolUses := make([]anthropic.MessageParamContentUnion, 0)
-				for _, toolCall := range msg.ToolCalls {
-					var args map[string]any
-					if len(toolCall.Function.Arguments) > 0 {
-						err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args)
-						if err != nil {
-							// TODO: handle error
-							ylog.Error("anthropic tool use unmarshal input", "err", err)
-						}
-					}
-					toolUse := anthropic.NewToolUseBlockParam(toolCall.ID, toolCall.Function.Name, args)
-					ylog.Debug("anthropic tool use", "tool_use", fmt.Sprintf("%+v", toolUse))
-					toolUses = append(toolUses, toolUse)
-				}
-				msgs = append(msgs, anthropic.NewAssistantMessage(toolUses...))
-			} else { // normal assistant message
-				msgs = append(msgs, anthropic.NewAssistantMessage(anthropic.NewTextBlock(msg.Content)))
-			}
-		case openai.ChatMessageRoleSystem:
-			systemMsgs = append(systemMsgs, anthropic.NewTextBlock(msg.Content))
-		// tool result
-		case openai.ChatMessageRoleTool:
-			toolResult = append(toolResult, anthropic.NewToolResultBlock(msg.ToolCallID, msg.Content, false))
-		}
-	}
-	// add tool result to user messages
-	if len(toolResult) > 0 {
-		msgs = append(msgs, anthropic.NewUserMessage(toolResult...))
-	}
-
 	// send anthropic request
-	result, err := p.client.Messages.New(ctx, anthropic.MessageNewParams{
-		Model:         anthropic.F(req.Model),
-		MaxTokens:     anthropic.F(int64(req.MaxTokens)),
-		Messages:      anthropic.F(msgs),
-		System:        anthropic.F(systemMsgs),
-		Tools:         anthropic.F(tools),
-		TopP:          anthropic.F(float64(req.TopP)),
-		Temperature:   anthropic.F(float64(req.Temperature)),
-		StopSequences: anthropic.F(req.Stop),
-		// ToolChoice:
-		// TopK:
-	})
+	result, err := p.client.Messages.New(ctx, p.convertMessageNewParams(req))
 	if err != nil {
-		ylog.Error("anthropic.Messages.New", "err", err)
+		ylog.Error("anthropic api request", "err", err)
 		return openai.ChatCompletionResponse{}, err
 	}
-	// ylog.Debug("anthropic raw response", "result", fmt.Sprintf("%+v", result))
-
 	// convert anthropic.MessageResponse to openai.ChatCompletionResponse
 	resp := openai.ChatCompletionResponse{
 		ID:                result.ID,
@@ -189,7 +112,7 @@ func (p *Provider) GetChatCompletions(
 	// choice
 	choice := openai.ChatCompletionChoice{Message: message}
 	// finish reasson
-	choice.FinishReason = convertFinishReason(result.StopReason)
+	choice.FinishReason = convertToOpenAIFinishReason(result.StopReason)
 	resp.Choices = append(resp.Choices, choice)
 	// usage
 	// BUG:
@@ -215,88 +138,14 @@ func (p *Provider) GetChatCompletionsStream(
 	ctx context.Context,
 	req openai.ChatCompletionRequest,
 	_ metadata.M) (provider.ResponseRecver, error) {
-	if req.Model == "" {
-		req.Model = p.Model
-	}
-	// default max tokens
-	if req.MaxTokens == 0 {
-		req.MaxTokens = DefaultMaxTokens
-	}
-	// convert open ai request messages to anthropic messages
-	msgs := make([]anthropic.MessageParam, 0)
-	systemMsgs := make([]anthropic.TextBlockParam, 0)
-	tools := make([]anthropic.ToolParam, 0)
-	toolResult := []anthropic.MessageParamContentUnion{}
-
-	// tools
-	for _, tool := range req.Tools {
-		if tool.Type == openai.ToolTypeFunction {
-			tools = append(tools, anthropic.ToolParam{
-				Name:        anthropic.F(tool.Function.Name),
-				Description: anthropic.F(tool.Function.Description),
-				InputSchema: anthropic.F(tool.Function.Parameters),
-			})
-		}
-	}
-	ylog.Debug("anthropic tools", "tools", fmt.Sprintf("%+v", tools))
-
-	// messages
-	for _, msg := range req.Messages {
-		switch msg.Role {
-		case openai.ChatMessageRoleUser:
-			msgs = append(msgs, anthropic.NewUserMessage(anthropic.NewTextBlock(msg.Content)))
-		case openai.ChatMessageRoleAssistant:
-			// tool use, check if there are tool calls
-			ylog.Debug("openai request", "tool_calls", len(msg.ToolCalls))
-			if len(msg.ToolCalls) > 0 {
-				toolUses := make([]anthropic.MessageParamContentUnion, 0)
-				for _, toolCall := range msg.ToolCalls {
-					var args map[string]any
-					if len(toolCall.Function.Arguments) > 0 {
-						err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args)
-						if err != nil {
-							// TODO: handle error
-							ylog.Error("anthropic tool use unmarshal input", "err", err)
-						}
-					}
-					toolUse := anthropic.NewToolUseBlockParam(toolCall.ID, toolCall.Function.Name, args)
-					ylog.Debug("anthropic tool use", "tool_use", fmt.Sprintf("%+v", toolUse))
-					toolUses = append(toolUses, toolUse)
-				}
-				msgs = append(msgs, anthropic.NewAssistantMessage(toolUses...))
-			} else { // normal assistant message
-				msgs = append(msgs, anthropic.NewAssistantMessage(anthropic.NewTextBlock(msg.Content)))
-			}
-		case openai.ChatMessageRoleSystem:
-			systemMsgs = append(systemMsgs, anthropic.NewTextBlock(msg.Content))
-		// tool result
-		case openai.ChatMessageRoleTool:
-			toolResult = append(toolResult, anthropic.NewToolResultBlock(msg.ToolCallID, msg.Content, false))
-		}
-	}
-	// add tool result to user messages
-	if len(toolResult) > 0 {
-		msgs = append(msgs, anthropic.NewUserMessage(toolResult...))
-	}
-
-	// TODO: refactor this
 	// send anthropic stream request
-	stream := p.client.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
-		Model:         anthropic.F(req.Model),
-		MaxTokens:     anthropic.F(int64(req.MaxTokens)),
-		Messages:      anthropic.F(msgs),
-		System:        anthropic.F(systemMsgs),
-		Tools:         anthropic.F(tools),
-		TopP:          anthropic.F(float64(req.TopP)),
-		Temperature:   anthropic.F(float64(req.Temperature)),
-		StopSequences: anthropic.F(req.Stop),
-	})
-
+	stream := p.client.Messages.NewStreaming(ctx, p.convertMessageNewParams(req))
+	// stream options
 	includeUsage := false
 	if req.StreamOptions != nil && req.StreamOptions.IncludeUsage {
 		includeUsage = true
 	}
-
+	// response recver
 	recv := &recver{
 		underlying:   stream,
 		includeUsage: includeUsage,
@@ -305,22 +154,7 @@ func (p *Provider) GetChatCompletionsStream(
 	return recv, nil
 }
 
-func convertFinishReason(reason anthropic.MessageStopReason) openai.FinishReason {
-	if reason.IsKnown() {
-		switch reason {
-		case anthropic.MessageStopReasonEndTurn:
-			return openai.FinishReasonStop
-		case anthropic.MessageStopReasonMaxTokens:
-			return openai.FinishReasonLength
-		case anthropic.MessageStopReasonStopSequence:
-			return openai.FinishReasonStop
-		case anthropic.MessageStopReasonToolUse:
-			return openai.FinishReasonToolCalls
-		}
-	}
-	return openai.FinishReason(string(reason))
-}
-
+// recver is the response receiver for anthropic stream
 type recver struct {
 	id           string
 	model        string
@@ -329,7 +163,6 @@ type recver struct {
 	outputTokens int
 	underlying   *ssestream.Stream[anthropic.MessageStreamEvent]
 	toolCalls    []openai.ToolCall
-	message      anthropic.Message
 }
 
 // Recv implements provider.ResponseRecver.
@@ -341,16 +174,14 @@ func (r *recver) Recv() (response openai.ChatCompletionStreamResponse, err error
 	// event
 	hasMore := r.underlying.Next()
 	if !hasMore {
+		// response end
 		return resp, io.EOF
 	}
+	// current event processing
 	event := r.underlying.Current()
-	// accumulate message for tool use
-	if err := r.message.Accumulate(event); err != nil {
-		ylog.Error("anthropic message accumulate", "err", err)
-		return resp, err
-	}
 	choiceIndex := len(resp.Choices)
 	toolCallIndex := len(r.toolCalls)
+
 	switch event.Type {
 	case anthropic.MessageStreamEventTypeMessageStart:
 		r.id = event.Message.ID
@@ -406,28 +237,22 @@ func (r *recver) Recv() (response openai.ChatCompletionStreamResponse, err error
 	resp.ID = r.id
 	resp.Model = r.model
 	resp.Created = time.Now().Unix()
-	// delta
+	// delta processing
 	switch delta := event.Delta.(type) {
 	case anthropic.ContentBlockDeltaEventDelta:
-		deltaType := delta.Type
-		// ylog.Warn("anthropic content block delta", "type", deltaType)
 		choice := openai.ChatCompletionStreamChoice{Index: choiceIndex}
+		// delta type
+		deltaType := delta.Type
 		switch deltaType {
+		// text
 		case anthropic.ContentBlockDeltaEventDeltaTypeTextDelta:
-			// choice := openai.ChatCompletionStreamChoice{
-			// 	Index: index,
-			// 	Delta: openai.ChatCompletionStreamChoiceDelta{
-			// 		Content: delta.Text,
-			// 		Role:    openai.ChatMessageRoleAssistant,
-			// 	},
-			// }
-			// ylog.Debug("anthropic text delta", "text", delta.Text)
 			choice.Delta = openai.ChatCompletionStreamChoiceDelta{
 				Content: delta.Text,
 				Role:    openai.ChatMessageRoleAssistant,
 			}
+		// tool use
 		case anthropic.ContentBlockDeltaEventDeltaTypeInputJSONDelta:
-			// tool call already handled in ContentBlockStartEvent
+			// tool call already added in ContentBlockStartEvent
 			if toolCallIndex > 0 {
 				index := toolCallIndex - 1
 				toolCall := openai.ToolCall{
@@ -447,27 +272,16 @@ func (r *recver) Recv() (response openai.ChatCompletionStreamResponse, err error
 				choice.Delta = openai.ChatCompletionStreamChoiceDelta{ToolCalls: toolCalls}
 			}
 		}
+		// add choice
 		resp.Choices = append(resp.Choices, choice)
+	// delta stop
 	case anthropic.MessageDeltaEventDelta:
 		choice := openai.ChatCompletionStreamChoice{
 			Index:        choiceIndex,
-			FinishReason: convertFinishReason(anthropic.MessageStopReason(delta.StopReason)),
+			FinishReason: convertToOpenAIFinishReason(anthropic.MessageStopReason(delta.StopReason)),
 		}
 		ylog.Debug("anthropic content block delta", "event", event.Type, "finish_reason", choice.FinishReason)
 		resp.Choices = append(resp.Choices, choice)
-		// case anthropic.ContentBlockStartEvent:
-		// 	ylog.Debug("anthropic content block start", "delta_type", delta.Type)
-		// if delta.Type == anthropic.ContentBlockTypeToolUse {
-		// 	toolCall := openai.ToolCall{
-		// 			Index: &int(event.Index),
-		// 		ID: delta.ID,
-		// 		Type: openai.ToolTypeFunction,
-		// 		Function: openai.FunctionCall{
-		// 			Name: delta.Name,
-		// 			Arguments: string(delta.Input),
-		// 		},
-		// 	}
-		// 	r.toolCalls = append(r.toolCalls, toolCall)
 	}
 	// stream error
 	if err := r.underlying.Err(); err != nil {
@@ -477,4 +291,103 @@ func (r *recver) Recv() (response openai.ChatCompletionStreamResponse, err error
 	// chunkResp, _ := json.Marshal(resp)
 	// ylog.Warn("openai response", "chunk_response", string(chunkResp))
 	return resp, nil
+}
+
+// convertMessageNewParams converts openai.ChatCompletionRequest to anthropic.MessageNewParams
+func (p *Provider) convertMessageNewParams(req openai.ChatCompletionRequest) anthropic.MessageNewParams {
+	// model
+	if req.Model == "" {
+		req.Model = p.Model
+	}
+	// default max tokens
+	if req.MaxTokens == 0 {
+		req.MaxTokens = DefaultMaxTokens
+	}
+
+	msgs := make([]anthropic.MessageParam, 0)
+	systemMsgs := make([]anthropic.TextBlockParam, 0)
+	tools := make([]anthropic.ToolParam, 0)
+	toolResult := []anthropic.MessageParamContentUnion{}
+
+	// tools
+	for _, tool := range req.Tools {
+		// only support function type
+		if tool.Type == openai.ToolTypeFunction {
+			tools = append(tools, anthropic.ToolParam{
+				Name:        anthropic.F(tool.Function.Name),
+				Description: anthropic.F(tool.Function.Description),
+				InputSchema: anthropic.F(tool.Function.Parameters),
+			})
+		}
+	}
+	ylog.Debug("anthropic tools", "tools", fmt.Sprintf("%+v", tools))
+
+	// messages
+	for _, msg := range req.Messages {
+		switch msg.Role {
+		case openai.ChatMessageRoleUser:
+			msgs = append(msgs, anthropic.NewUserMessage(anthropic.NewTextBlock(msg.Content)))
+		case openai.ChatMessageRoleAssistant:
+			// tool use, check if there are tool calls
+			if len(msg.ToolCalls) > 0 {
+				ylog.Debug("openai request", "tool_calls", len(msg.ToolCalls))
+				toolUses := make([]anthropic.MessageParamContentUnion, 0)
+				for _, toolCall := range msg.ToolCalls {
+					var args map[string]any
+					if len(toolCall.Function.Arguments) > 0 {
+						err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args)
+						if err != nil {
+							ylog.Error("anthropic tool use unmarshal input", "err", err)
+							continue
+						}
+					}
+					toolUse := anthropic.NewToolUseBlockParam(toolCall.ID, toolCall.Function.Name, args)
+					ylog.Debug("anthropic tool use", "tool_use", fmt.Sprintf("%+v", toolUse))
+					toolUses = append(toolUses, toolUse)
+				}
+				msgs = append(msgs, anthropic.NewAssistantMessage(toolUses...))
+			} else { // normal assistant message
+				msgs = append(msgs, anthropic.NewAssistantMessage(anthropic.NewTextBlock(msg.Content)))
+			}
+		case openai.ChatMessageRoleSystem:
+			systemMsgs = append(systemMsgs, anthropic.NewTextBlock(msg.Content))
+		// tool result
+		case openai.ChatMessageRoleTool:
+			toolResult = append(toolResult, anthropic.NewToolResultBlock(msg.ToolCallID, msg.Content, false))
+		}
+	}
+	// add tool result to user messages
+	if len(toolResult) > 0 {
+		msgs = append(msgs, anthropic.NewUserMessage(toolResult...))
+	}
+
+	return anthropic.MessageNewParams{
+		Model:         anthropic.F(req.Model),
+		MaxTokens:     anthropic.F(int64(req.MaxTokens)),
+		Messages:      anthropic.F(msgs),
+		System:        anthropic.F(systemMsgs),
+		Tools:         anthropic.F(tools),
+		TopP:          anthropic.F(float64(req.TopP)),
+		Temperature:   anthropic.F(float64(req.Temperature)),
+		StopSequences: anthropic.F(req.Stop),
+		// ToolChoice unsupported
+		// TopK unsupported
+	}
+}
+
+// convertToOpenAIFinishReason convert anthropic.MessageStopReason to openai.FinishReason
+func convertToOpenAIFinishReason(reason anthropic.MessageStopReason) openai.FinishReason {
+	if reason.IsKnown() {
+		switch reason {
+		case anthropic.MessageStopReasonEndTurn:
+			return openai.FinishReasonStop
+		case anthropic.MessageStopReasonMaxTokens:
+			return openai.FinishReasonLength
+		case anthropic.MessageStopReasonStopSequence:
+			return openai.FinishReasonStop
+		case anthropic.MessageStopReasonToolUse:
+			return openai.FinishReasonToolCalls
+		}
+	}
+	return openai.FinishReason(string(reason))
 }
