@@ -383,7 +383,10 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 	// 7. do the second call (the second call messages are from user input, first call resopnse and sfn calls result)
 	req.Messages = append(reqMessages, assistantMessage)
 	req.Messages = append(req.Messages, llmCalls...)
-	req.Tools = nil // reset tools field
+	// anthropic must define tools
+	if srv.provider.Name() != "anthropic" {
+		req.Tools = nil // reset tools field
+	}
 
 	srv.logger.Debug(" #2 second call", "request", fmt.Sprintf("%+v", req))
 
@@ -434,6 +437,8 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 		resp.Usage.TotalTokens += totalUsage
 
 		secondCallSpan.End()
+
+		srv.logger.Debug(" #2 second call", "response", fmt.Sprintf("%+v", resp))
 		w.Header().Set("Content-Type", "application/json")
 		return json.NewEncoder(w).Encode(resp)
 	}

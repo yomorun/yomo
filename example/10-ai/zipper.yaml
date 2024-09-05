@@ -10,7 +10,7 @@ bridge:
   ai:
     server:
       addr: localhost:8000
-      provider: cerebras
+      provider: anthropic
 
     providers:
       azopenai:
@@ -34,5 +34,9 @@ bridge:
         api_version:
 
       cerebras:
+        api_key:
+        model:
+
+      anthropic:
         api_key:
         model:
