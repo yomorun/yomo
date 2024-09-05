@@ -328,6 +328,8 @@ type recver struct {
 	inputTokens  int
 	outputTokens int
 	underlying   *ssestream.Stream[anthropic.MessageStreamEvent]
+	toolCalls    []openai.ToolCall
+	message      anthropic.Message
 }
 
 // Recv implements provider.ResponseRecver.
@@ -342,6 +344,13 @@ func (r *recver) Recv() (response openai.ChatCompletionStreamResponse, err error
 		return resp, io.EOF
 	}
 	event := r.underlying.Current()
+	// accumulate message for tool use
+	if err := r.message.Accumulate(event); err != nil {
+		ylog.Error("anthropic message accumulate", "err", err)
+		return resp, err
+	}
+	choiceIndex := len(resp.Choices)
+	toolCallIndex := len(r.toolCalls)
 	switch event.Type {
 	case anthropic.MessageStreamEventTypeMessageStart:
 		r.id = event.Message.ID
@@ -366,34 +375,106 @@ func (r *recver) Recv() (response openai.ChatCompletionStreamResponse, err error
 		}
 		ylog.Debug("anthropic message stop", "event", event.Type, "response", fmt.Sprintf("%+v", resp))
 		return resp, nil
+	case anthropic.MessageStreamEventTypeContentBlockStart:
+		ylog.Debug("anthropic content block start", "event", event.Type)
+		switch block := event.ContentBlock.(type) {
+		case anthropic.ContentBlockStartEventContentBlock:
+			ylog.Debug("anthropic content block type", "block_type", block.Type)
+			// tool use
+			// if toolUseBlock,ok := block.AsUnion().(anthropic.ToolUseBlock); ok {
+			if block.Type == anthropic.ContentBlockStartEventContentBlockTypeToolUse {
+				toolCall := openai.ToolCall{
+					Index: &toolCallIndex,
+					ID:    block.ID,
+					Type:  openai.ToolTypeFunction,
+					Function: openai.FunctionCall{
+						Name: block.Name,
+					},
+				}
+				// new tool call
+				ylog.Debug("anthropic tool use", "event", event.Type, fmt.Sprintf("tool_call[%d]", toolCallIndex), fmt.Sprintf("%+v", toolCall))
+				r.toolCalls = append(r.toolCalls, toolCall)
+				choice := openai.ChatCompletionStreamChoice{
+					Index: choiceIndex,
+					Delta: openai.ChatCompletionStreamChoiceDelta{ToolCalls: r.toolCalls},
+				}
+				resp.Choices = append(resp.Choices, choice)
+			}
+		}
 	}
 	// response
 	resp.ID = r.id
 	resp.Model = r.model
 	resp.Created = time.Now().Unix()
-	index := len(resp.Choices)
 	// delta
 	switch delta := event.Delta.(type) {
 	case anthropic.ContentBlockDeltaEventDelta:
-		choice := openai.ChatCompletionStreamChoice{
-			Index: index,
-			Delta: openai.ChatCompletionStreamChoiceDelta{
+		deltaType := delta.Type
+		// ylog.Warn("anthropic content block delta", "type", deltaType)
+		choice := openai.ChatCompletionStreamChoice{Index: choiceIndex}
+		switch deltaType {
+		case anthropic.ContentBlockDeltaEventDeltaTypeTextDelta:
+			// choice := openai.ChatCompletionStreamChoice{
+			// 	Index: index,
+			// 	Delta: openai.ChatCompletionStreamChoiceDelta{
+			// 		Content: delta.Text,
+			// 		Role:    openai.ChatMessageRoleAssistant,
+			// 	},
+			// }
+			// ylog.Debug("anthropic text delta", "text", delta.Text)
+			choice.Delta = openai.ChatCompletionStreamChoiceDelta{
 				Content: delta.Text,
 				Role:    openai.ChatMessageRoleAssistant,
-			},
+			}
+		case anthropic.ContentBlockDeltaEventDeltaTypeInputJSONDelta:
+			// tool call already handled in ContentBlockStartEvent
+			if toolCallIndex > 0 {
+				index := toolCallIndex - 1
+				toolCall := openai.ToolCall{
+					Index: &index,
+					Type:  openai.ToolTypeFunction,
+					Function: openai.FunctionCall{
+						Arguments: string(delta.PartialJSON),
+					},
+				}
+				// partial tool call
+				ylog.Debug("anthropic input json delta",
+					"event", event.Type,
+					"partial_json", delta.PartialJSON,
+					fmt.Sprintf("tool_call[%d]", toolCallIndex), fmt.Sprintf("%+v", toolCall),
+				)
+				toolCalls := []openai.ToolCall{toolCall}
+				choice.Delta = openai.ChatCompletionStreamChoiceDelta{ToolCalls: toolCalls}
+			}
 		}
 		resp.Choices = append(resp.Choices, choice)
 	case anthropic.MessageDeltaEventDelta:
 		choice := openai.ChatCompletionStreamChoice{
-			Index:        index,
+			Index:        choiceIndex,
 			FinishReason: convertFinishReason(anthropic.MessageStopReason(delta.StopReason)),
 		}
+		ylog.Debug("anthropic content block delta", "event", event.Type, "finish_reason", choice.FinishReason)
 		resp.Choices = append(resp.Choices, choice)
+		// case anthropic.ContentBlockStartEvent:
+		// 	ylog.Debug("anthropic content block start", "delta_type", delta.Type)
+		// if delta.Type == anthropic.ContentBlockTypeToolUse {
+		// 	toolCall := openai.ToolCall{
+		// 			Index: &int(event.Index),
+		// 		ID: delta.ID,
+		// 		Type: openai.ToolTypeFunction,
+		// 		Function: openai.FunctionCall{
+		// 			Name: delta.Name,
+		// 			Arguments: string(delta.Input),
+		// 		},
+		// 	}
+		// 	r.toolCalls = append(r.toolCalls, toolCall)
 	}
 	// stream error
 	if err := r.underlying.Err(); err != nil {
 		ylog.Error("anthropic stream error", "err", err)
 		return resp, r.underlying.Err()
 	}
+	// chunkResp, _ := json.Marshal(resp)
+	// ylog.Warn("openai response", "chunk_response", string(chunkResp))
 	return resp, nil
 }
