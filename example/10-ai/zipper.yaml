@@ -10,14 +10,14 @@ bridge:
   ai:
     server:
       addr: localhost:8000
-      provider: azopenai
+      provider: cerebras
 
     providers:
       azopenai:
-        api_endpoint: 
-        deployment_id: 
-        api_key: 
-        api_version: 
+        api_endpoint:
+        deployment_id:
+        api_key:
+        api_version:
 
       openai:
         api_key:
@@ -27,9 +27,12 @@ bridge:
         api_key:
 
       cloudflare_azure:
-        endpoint: 
-        api_key: 
-        resource: 
-        deployment_id: 
-        api_version: 
+        endpoint:
+        api_key:
+        resource:
+        deployment_id:
+        api_version:
 
+      cerebras:
+        api_key:
+        model:
