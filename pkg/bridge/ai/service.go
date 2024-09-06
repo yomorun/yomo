@@ -252,6 +252,11 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 		toolCalls        = []openai.ToolCall{}
 		assistantMessage = openai.ChatCompletionMessage{}
 	)
+	rawReq := req
+	// ollama request patch
+	// WARN: this is a temporary solution for ollama provider
+	req = srv.patchOllamaRequest(req)
+
 	// 4. request first chat for getting tools
 	if req.Stream {
 		_, firstCallSpan := srv.option.Tracer.Start(reqCtx, "first_call_request")
@@ -357,6 +362,56 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 			toolCalls = append(toolCalls, resp.Choices[0].Message.ToolCalls...)
 			assistantMessage = resp.Choices[0].Message
 			firstCallSpan.End()
+		} else if rawReq.Stream {
+			// if raw request is stream mode, we should return the stream response
+			// WARN: this is a temporary solution for ollama provider
+			flusher := eventFlusher(w)
+			// choices
+			choices := make([]openai.ChatCompletionStreamChoice, 0)
+			for _, choice := range resp.Choices {
+				delta := openai.ChatCompletionStreamChoiceDelta{
+					Content:      choice.Message.Content,
+					Role:         choice.Message.Role,
+					FunctionCall: choice.Message.FunctionCall,
+					ToolCalls:    choice.Message.ToolCalls,
+				}
+				choices = append(choices, openai.ChatCompletionStreamChoice{
+					Index:        choice.Index,
+					Delta:        delta,
+					FinishReason: choice.FinishReason,
+					// ContentFilterResults
+				})
+			}
+			// chunk response
+			streamRes := openai.ChatCompletionStreamResponse{
+				ID:                resp.ID,
+				Object:            "chat.completion.chunk",
+				Created:           resp.Created,
+				Model:             resp.Model,
+				Choices:           choices,
+				SystemFingerprint: resp.SystemFingerprint,
+				// PromptAnnotations:
+				// PromptFilterResults:
+			}
+			writeStreamEvent(w, flusher, streamRes)
+			// usage
+			if req.StreamOptions != nil && req.StreamOptions.IncludeUsage {
+				streamRes = openai.ChatCompletionStreamResponse{
+					ID:                resp.ID,
+					Object:            "chat.completion.chunk",
+					Created:           resp.Created,
+					Model:             resp.Model,
+					SystemFingerprint: resp.SystemFingerprint,
+					Usage: &openai.Usage{
+						PromptTokens:     promptUsage,
+						CompletionTokens: completionUsage,
+						TotalTokens:      totalUsage,
+					},
+				}
+				writeStreamEvent(w, flusher, streamRes)
+			}
+			// done
+			return writeStreamDone(w, flusher)
 		} else {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(resp)
@@ -387,6 +442,8 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 	if srv.provider.Name() != "anthropic" {
 		req.Tools = nil // reset tools field
 	}
+	// restore the original request stream field
+	req.Stream = rawReq.Stream
 
 	srv.logger.Debug(" #2 second call", "request", fmt.Sprintf("%+v", req))
 
@@ -642,4 +699,25 @@ func recordTTFT(ctx context.Context, tracer trace.Tracer) {
 	_, span := tracer.Start(ctx, "TTFT")
 	span.End()
 	time.Sleep(time.Millisecond)
+}
+
+// patchOllamaRequest patch the request for ollama provider(ollama function calling unsupported in stream mode)
+func (srv *Service) patchOllamaRequest(req openai.ChatCompletionRequest) openai.ChatCompletionRequest {
+	ylog.Debug("before request",
+		"stream", req.Stream,
+		"provider", srv.provider.Name(),
+		fmt.Sprintf("tools[%d]", len(req.Tools)), req.Tools,
+	)
+	if !req.Stream {
+		return req
+	}
+	if srv.provider.Name() == "ollama" && len(req.Tools) > 0 {
+		req.Stream = false
+	}
+	ylog.Debug("patch request",
+		"stream", req.Stream,
+		"provider", srv.provider.Name(),
+		fmt.Sprintf("tools[%d]", len(req.Tools)), req.Tools,
+	)
+	return req
 }
