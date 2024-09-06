@@ -286,13 +286,13 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 			if err != nil {
 				return err
 			}
-			if len(streamRes.Choices) == 0 {
-				continue
-			}
 			if streamRes.Usage != nil {
 				promptUsage = streamRes.Usage.PromptTokens
 				completionUsage = streamRes.Usage.CompletionTokens
 				totalUsage = streamRes.Usage.TotalTokens
+			}
+			if len(streamRes.Choices) == 0 {
+				continue
 			}
 			if tc := streamRes.Choices[0].Delta.ToolCalls; len(tc) > 0 {
 				isFunctionCall = true
@@ -697,6 +697,7 @@ func transToolMessage(msgs []openai.ChatCompletionMessage) []ai.ToolMessage {
 
 func recordTTFT(ctx context.Context, tracer trace.Tracer) {
 	_, span := tracer.Start(ctx, "TTFT")
+	time.Sleep(time.Millisecond)
 	span.End()
 	time.Sleep(time.Millisecond)
 }
