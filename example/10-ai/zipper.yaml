@@ -36,3 +36,11 @@ bridge:
       ollama:
         api_endpoint: http://localhost:11434/v1
         model: llama3.1
+
+      cerebras:
+        api_key:
+        model:
+
+      anthropic:
+        api_key:
+        model:
