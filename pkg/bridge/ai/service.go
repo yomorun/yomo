@@ -291,10 +291,10 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 				completionUsage = streamRes.Usage.CompletionTokens
 				totalUsage = streamRes.Usage.TotalTokens
 			}
-			if len(streamRes.Choices) == 0 {
-				continue
-			}
-			if tc := streamRes.Choices[0].Delta.ToolCalls; len(tc) > 0 {
+
+			choices := streamRes.Choices
+			if len(choices) > 0 && len(choices[0].Delta.ToolCalls) > 0 {
+				tc := choices[0].Delta.ToolCalls
 				isFunctionCall = true
 				if j == 0 {
 					firstCallSpan.End()
@@ -321,7 +321,7 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 					toolCallsMap[index] = item
 				}
 				j++
-			} else if streamRes.Choices[0].FinishReason != openai.FinishReasonToolCalls {
+			} else if !isFunctionCall {
 				_ = writeStreamEvent(w, flusher, streamRes)
 			}
 			if i == 0 && j == 0 && !isFunctionCall {
