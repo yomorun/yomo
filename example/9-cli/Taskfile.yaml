@@ -12,7 +12,6 @@ tasks:
     deps: [clean]
     cmds:
       - echo '9-cli example run'
-      - task: sfn-build
       - task: start
 
   # example cleanup
@@ -36,14 +35,6 @@ tasks:
       - "go build -o ../bin/source{{exeExt}} main.go"
     internal: true
 
-  sfn-build:
-    desc: build sfn
-    dir: sfn
-    cmds:
-      - "yomo build -m go.mod app.go"
-    status:
-      - test -f sfn/sfn.wasm
-
   source:
     desc: run source
     deps: [source-build]
@@ -57,7 +48,7 @@ tasks:
     desc: run sfn
     dir: sfn
     cmds:
-      - "yomo run sfn.wasm"
+      - "yomo run -m go.mod app.go"
     env:
       YOMO_LOG_LEVEL: error
       OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4318
