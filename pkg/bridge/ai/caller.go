@@ -108,17 +108,36 @@ func reduceFunc(messages chan ReduceMessage, logger *slog.Logger) core.AsyncHand
 	}
 }
 
+type promptOperation struct {
+	prompt    string
+	operation SystemPromptOp
+}
+
+// SystemPromptOp defines the operation of system prompt
+type SystemPromptOp int
+
+const (
+	SystemPromptOpOverwrite SystemPromptOp = 0
+	SystemPromptOpDisabled  SystemPromptOp = 1
+	SystemPromptOpPrefix    SystemPromptOp = 2
+)
+
 // SetSystemPrompt sets the system prompt
-func (c *Caller) SetSystemPrompt(prompt string) {
-	c.systemPrompt.Store(prompt)
+func (c *Caller) SetSystemPrompt(prompt string, op SystemPromptOp) {
+	p := &promptOperation{
+		prompt:    prompt,
+		operation: op,
+	}
+	c.systemPrompt.Store(p)
 }
 
 // SetSystemPrompt gets the system prompt
-func (c *Caller) GetSystemPrompt() string {
+func (c *Caller) GetSystemPrompt() (prompt string, op SystemPromptOp) {
 	if v := c.systemPrompt.Load(); v != nil {
-		return v.(string)
+		pop := v.(*promptOperation)
+		return pop.prompt, pop.operation
 	}
-	return ""
+	return "", SystemPromptOpOverwrite
 }
 
 // Metadata returns the metadata of caller.

@@ -110,7 +110,7 @@ func TestServiceInvoke(t *testing.T) {
 			caller, err := service.LoadOrCreateCaller(&http.Request{})
 			assert.NoError(t, err)
 
-			caller.SetSystemPrompt(tt.args.systemPrompt)
+			caller.SetSystemPrompt(tt.args.systemPrompt, SystemPromptOpOverwrite)
 
 			resp, err := service.GetInvoke(context.TODO(), tt.args.userInstruction, tt.args.baseSystemMessage, "transID", caller, true)
 			assert.NoError(t, err)
@@ -151,15 +151,15 @@ func TestServiceChatCompletion(t *testing.T) {
 			wantRequest: []openai.ChatCompletionRequest{
 				{
 					Messages: []openai.ChatCompletionMessage{
-						{Role: "user", Content: "How is the weather today in Boston, MA?"},
 						{Role: "system", Content: "this is a system prompt"},
+						{Role: "user", Content: "How is the weather today in Boston, MA?"},
 					},
 					Tools: []openai.Tool{{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "get_current_weather"}}},
 				},
 				{
 					Messages: []openai.ChatCompletionMessage{
-						{Role: "user", Content: "How is the weather today in Boston, MA?"},
 						{Role: "system", Content: "this is a system prompt"},
+						{Role: "user", Content: "How is the weather today in Boston, MA?"},
 						{Role: "assistant", ToolCalls: []openai.ToolCall{{ID: "call_abc123", Type: openai.ToolTypeFunction, Function: openai.FunctionCall{Name: "get_current_weather", Arguments: "{\n\"location\": \"Boston, MA\"\n}"}}}},
 						{Role: "tool", Content: "temperature: 31°C", ToolCallID: "call_abc123"},
 					},
@@ -184,8 +184,8 @@ func TestServiceChatCompletion(t *testing.T) {
 			wantRequest: []openai.ChatCompletionRequest{
 				{
 					Messages: []openai.ChatCompletionMessage{
-						{Role: "user", Content: "How are you"},
 						{Role: "system", Content: "You are an assistant."},
+						{Role: "user", Content: "How are you"},
 					},
 					Tools: []openai.Tool{{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "get_current_weather"}}},
 				},
@@ -211,16 +211,16 @@ func TestServiceChatCompletion(t *testing.T) {
 				{
 					Stream: true,
 					Messages: []openai.ChatCompletionMessage{
-						{Role: "user", Content: "How is the weather today in Boston, MA?"},
 						{Role: "system", Content: "You are a weather assistant"},
+						{Role: "user", Content: "How is the weather today in Boston, MA?"},
 					},
 					Tools: []openai.Tool{{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "get_current_weather"}}},
 				},
 				{
 					Stream: true,
 					Messages: []openai.ChatCompletionMessage{
-						{Role: "user", Content: "How is the weather today in Boston, MA?"},
 						{Role: "system", Content: "You are a weather assistant"},
+						{Role: "user", Content: "How is the weather today in Boston, MA?"},
 						{Role: "assistant", ToolCalls: []openai.ToolCall{{Index: toInt(0), ID: "call_9ctHOJqO3bYrpm2A6S7nHd5k", Type: openai.ToolTypeFunction, Function: openai.FunctionCall{Name: "get_current_weather", Arguments: "{\"location\":\"Boston, MA\"}"}}}},
 						{Role: "tool", Content: "temperature: 31°C", ToolCallID: "call_9ctHOJqO3bYrpm2A6S7nHd5k"},
 					},
@@ -247,8 +247,8 @@ func TestServiceChatCompletion(t *testing.T) {
 				{
 					Stream: true,
 					Messages: []openai.ChatCompletionMessage{
-						{Role: "user", Content: "How is the weather today in Boston, MA?"},
 						{Role: "system", Content: "You are a weather assistant"},
+						{Role: "user", Content: "How is the weather today in Boston, MA?"},
 					},
 					Tools: []openai.Tool{{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "get_current_weather"}}},
 				},
@@ -279,7 +279,7 @@ func TestServiceChatCompletion(t *testing.T) {
 			caller, err := service.LoadOrCreateCaller(&http.Request{})
 			assert.NoError(t, err)
 
-			caller.SetSystemPrompt(tt.args.systemPrompt)
+			caller.SetSystemPrompt(tt.args.systemPrompt, SystemPromptOpOverwrite)
 
 			w := httptest.NewRecorder()
 			err = service.GetChatCompletions(context.TODO(), tt.args.request, "transID", caller, w)
@@ -501,3 +501,6 @@ var toolCallResp = `{
     "total_tokens": 99
   }
 }`
+
+// []openai.ChatCompletionRequest{openai.ChatCompletionRequest{Model:"", Messages:[]openai.ChatCompletionMessage{openai.ChatCompletionMessage{Role:"user", Content:"How is the weather today in Boston, MA?", MultiContent:[]openai.ChatMessagePart(nil), Name:"", FunctionCall:(*openai.FunctionCall)(nil), ToolCalls:[]openai.ToolCall(nil), ToolCallID:""}, openai.ChatCompletionMessage{Role:"system", Content:"this is a system prompt", MultiContent:[]openai.ChatMessagePart(nil), Name:"", FunctionCall:(*openai.FunctionCall)(nil), ToolCalls:[]openai.ToolCall(nil), ToolCallID:""}}, MaxTokens:0, Temperature:0, TopP:0, N:0, Stream:false, Stop:[]string(nil), PresencePenalty:0, ResponseFormat:(*openai.ChatCompletionResponseFormat)(nil), Seed:(*int)(nil), FrequencyPenalty:0, LogitBias:map[string]int(nil), LogProbs:false, TopLogProbs:0, User:"", Functions:[]openai.FunctionDefinition(nil), FunctionCall:interface {}(nil), Tools:[]openai.Tool{openai.Tool{Type:"function", Function:(*openai.FunctionDefinition)(0xc00004f9c0)}}, ToolChoice:interface {}(nil), StreamOptions:(*openai.StreamOptions)(nil), ParallelToolCalls:interface {}(nil)}, openai.ChatCompletionRequest{Model:"", Messages:[]openai.ChatCompletionMessage{openai.ChatCompletionMessage{Role:"user", Content:"How is the weather today in Boston, MA?", MultiContent:[]openai.ChatMessagePart(nil), Name:"", FunctionCall:(*openai.FunctionCall)(nil), ToolCalls:[]openai.ToolCall(nil), ToolCallID:""}, openai.ChatCompletionMessage{Role:"system", Content:"this is a system prompt", MultiContent:[]openai.ChatMessagePart(nil), Name:"", FunctionCall:(*openai.FunctionCall)(nil), ToolCalls:[]openai.ToolCall(nil), ToolCallID:""}, openai.ChatCompletionMessage{Role:"assistant", Content:"", MultiContent:[]openai.ChatMessagePart(nil), Name:"", FunctionCall:(*openai.FunctionCall)(nil), ToolCalls:[]openai.ToolCall{openai.ToolCall{Index:(*int)(nil), ID:"call_abc123", Type:"function", Function:openai.FunctionCall{Name:"get_current_weather", Arguments:"{\n\"location\": \"Boston, MA\"\n}"}}}, ToolCallID:""}, openai.ChatCompletionMessage{Role:"tool", Content:"temperature: 31°C", MultiContent:[]openai.ChatMessagePart(nil), Name:"", FunctionCall:(*openai.FunctionCall)(nil), ToolCalls:[]openai.ToolCall(nil), ToolCallID:"call_abc123"}}, MaxTokens:0, Temperature:0, TopP:0, N:0, Stream:false, Stop:[]string(nil), PresencePenalty:0, ResponseFormat:(*openai.ChatCompletionResponseFormat)(nil), Seed:(*int)(nil), FrequencyPenalty:0, LogitBias:map[string]int(nil), LogProbs:false, TopLogProbs:0, User:"", Functions:[]openai.FunctionDefinition(nil), FunctionCall:interface {}(nil), Tools:[]openai.Tool(nil), ToolChoice:interface {}(nil), StreamOptions:(*openai.StreamOptions)(nil), ParallelToolCalls:interface {}(nil)}}
+// []openai.ChatCompletionRequest{openai.ChatCompletionRequest{Model:"", Messages:[]openai.ChatCompletionMessage{openai.ChatCompletionMessage{Role:"user", Content:"How is the weather today in Boston, MA?", MultiContent:[]openai.ChatMessagePart(nil), Name:"", FunctionCall:(*openai.FunctionCall)(nil), ToolCalls:[]openai.ToolCall(nil), ToolCallID:""}}, MaxTokens:0, Temperature:0, TopP:0, N:0, Stream:false, Stop:[]string(nil), PresencePenalty:0, ResponseFormat:(*openai.ChatCompletionResponseFormat)(nil), Seed:(*int)(nil), FrequencyPenalty:0, LogitBias:map[string]int(nil), LogProbs:false, TopLogProbs:0, User:"", Functions:[]openai.FunctionDefinition(nil), FunctionCall:interface {}(nil), Tools:[]openai.Tool{openai.Tool{Type:"function", Function:(*openai.FunctionDefinition)(0xc00004fbc0)}}, ToolChoice:interface {}(nil), StreamOptions:(*openai.StreamOptions)(nil), ParallelToolCalls:interface {}(nil)}, openai.ChatCompletionRequest{Model:"", Messages:[]openai.ChatCompletionMessage{openai.ChatCompletionMessage{Role:"user", Content:"How is the weather today in Boston, MA?", MultiContent:[]openai.ChatMessagePart(nil), Name:"", FunctionCall:(*openai.FunctionCall)(nil), ToolCalls:[]openai.ToolCall(nil), ToolCallID:""}, openai.ChatCompletionMessage{Role:"assistant", Content:"", MultiContent:[]openai.ChatMessagePart(nil), Name:"", FunctionCall:(*openai.FunctionCall)(nil), ToolCalls:[]openai.ToolCall{openai.ToolCall{Index:(*int)(nil), ID:"call_abc123", Type:"function", Function:openai.FunctionCall{Name:"get_current_weather", Arguments:"{\n\"location\": \"Boston, MA\"\n}"}}}, ToolCallID:""}, openai.ChatCompletionMessage{Role:"tool", Content:"temperature: 31°C", MultiContent:[]openai.ChatMessagePart(nil), Name:"", FunctionCall:(*openai.FunctionCall)(nil), ToolCalls:[]openai.ToolCall(nil), ToolCallID:"call_abc123"}}, MaxTokens:0, Temperature:0, TopP:0, N:0, Stream:false, Stop:[]string(nil), PresencePenalty:0, ResponseFormat:(*openai.ChatCompletionResponseFormat)(nil), Seed:(*int)(nil), FrequencyPenalty:0, LogitBias:map[string]int(nil), LogProbs:false, TopLogProbs:0, User:"", Functions:[]openai.FunctionDefinition(nil), FunctionCall:interface {}(nil), Tools:[]openai.Tool(nil), ToolChoice:interface {}(nil), StreamOptions:(*openai.StreamOptions)(nil), ParallelToolCalls:interface {}(nil)}}
