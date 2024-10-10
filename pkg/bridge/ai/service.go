@@ -240,8 +240,9 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 	// 2. add those tools to request
 	req = srv.addToolsToRequest(req, tagTools)
 
-	// 3. over write system prompt to request
-	req = srv.overWriteSystemPrompt(req, caller.GetSystemPrompt())
+	// 3. operate system prompt to request
+	prompt, op := caller.GetSystemPrompt()
+	req = srv.opSystemPrompt(req, prompt, op)
 
 	var (
 		promptUsage      = 0
@@ -537,32 +538,44 @@ func (srv *Service) addToolsToRequest(req openai.ChatCompletionRequest, tagTools
 	return req
 }
 
-func (srv *Service) overWriteSystemPrompt(req openai.ChatCompletionRequest, sysPrompt string) openai.ChatCompletionRequest {
-	// do nothing if system prompt is empty
-	if sysPrompt == "" {
+func (srv *Service) opSystemPrompt(req openai.ChatCompletionRequest, sysPrompt string, op SystemPromptOp) openai.ChatCompletionRequest {
+	if op == SystemPromptOpDisabled {
 		return req
 	}
-	// over write system prompt
-	isOverWrite := false
-	for i, msg := range req.Messages {
+	var (
+		systemCount = 0
+		messages    = []openai.ChatCompletionMessage{}
+	)
+	for _, msg := range req.Messages {
 		if msg.Role != "system" {
+			messages = append(messages, msg)
 			continue
 		}
-		req.Messages[i] = openai.ChatCompletionMessage{
-			Role:    msg.Role,
-			Content: sysPrompt,
+		if systemCount == 0 {
+			content := ""
+			switch op {
+			case SystemPromptOpPrefix:
+				content = sysPrompt + "\n" + msg.Content
+			case SystemPromptOpOverwrite:
+				content = sysPrompt
+			}
+			messages = append(messages, openai.ChatCompletionMessage{
+				Role:    msg.Role,
+				Content: content,
+			})
 		}
-		isOverWrite = true
+		systemCount++
 	}
-	// append system prompt
-	if !isOverWrite {
-		req.Messages = append(req.Messages, openai.ChatCompletionMessage{
+	if systemCount == 0 {
+		message := openai.ChatCompletionMessage{
 			Role:    "system",
 			Content: sysPrompt,
-		})
+		}
+		messages = append([]openai.ChatCompletionMessage{message}, req.Messages...)
 	}
+	req.Messages = messages
 
-	srv.logger.Debug(" #1 first call after overwrite", "request", fmt.Sprintf("%+v", req))
+	srv.logger.Debug(" #1 first call after operating", "request", fmt.Sprintf("%+v", req))
 
 	return req
 }
