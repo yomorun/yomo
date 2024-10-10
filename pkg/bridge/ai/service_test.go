@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -16,6 +17,107 @@ import (
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
 	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 )
+
+func TestOpSystemPrompt(t *testing.T) {
+	type args struct {
+		prompt string
+		op     SystemPromptOp
+		req    openai.ChatCompletionRequest
+	}
+	tests := []struct {
+		name string
+		args args
+		want openai.ChatCompletionRequest
+	}{
+		{
+			name: "disabled",
+			args: args{
+				prompt: "hello",
+				op:     SystemPromptOpDisabled,
+				req: openai.ChatCompletionRequest{
+					Messages: []openai.ChatCompletionMessage{
+						{Role: "user", Content: "hello"},
+					},
+				},
+			},
+			want: openai.ChatCompletionRequest{
+				Messages: []openai.ChatCompletionMessage{
+					{Role: "user", Content: "hello"},
+				},
+			},
+		},
+		{
+			name: "overwrite with empty system prompt",
+			args: args{
+				prompt: "hello",
+				op:     SystemPromptOpOverwrite,
+				req:    openai.ChatCompletionRequest{},
+			},
+			want: openai.ChatCompletionRequest{
+				Messages: []openai.ChatCompletionMessage{
+					{Role: "system", Content: "hello"},
+				},
+			},
+		},
+		{
+			name: "overwrite with not empty system prompt",
+			args: args{
+				prompt: "hello",
+				op:     SystemPromptOpOverwrite,
+				req: openai.ChatCompletionRequest{
+					Messages: []openai.ChatCompletionMessage{
+						{Role: "system", Content: "world"},
+					},
+				},
+			},
+			want: openai.ChatCompletionRequest{
+				Messages: []openai.ChatCompletionMessage{
+					{Role: "system", Content: "hello"},
+				},
+			},
+		},
+		{
+			name: "prefix with empty system prompt",
+			args: args{
+				prompt: "hello",
+				op:     SystemPromptOpPrefix,
+				req: openai.ChatCompletionRequest{
+					Messages: []openai.ChatCompletionMessage{},
+				},
+			},
+			want: openai.ChatCompletionRequest{
+				Messages: []openai.ChatCompletionMessage{
+					{Role: "system", Content: "hello"},
+				},
+			},
+		},
+		{
+			name: "prefix with not empty system prompt",
+			args: args{
+				prompt: "hello",
+				op:     SystemPromptOpPrefix,
+				req: openai.ChatCompletionRequest{
+					Messages: []openai.ChatCompletionMessage{
+						{Role: "system", Content: "world"},
+					},
+				},
+			},
+			want: openai.ChatCompletionRequest{
+				Messages: []openai.ChatCompletionMessage{
+					{Role: "system", Content: "hello\nworld"},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Service{logger: slog.Default()}
+			got := s.opSystemPrompt(tt.args.req, tt.args.prompt, tt.args.op)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
 
 func TestServiceInvoke(t *testing.T) {
 	type args struct {
