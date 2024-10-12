@@ -131,7 +131,7 @@ func (c *Caller) SetSystemPrompt(prompt string, op SystemPromptOp) {
 	c.systemPrompt.Store(p)
 }
 
-// SetSystemPrompt gets the system prompt
+// GetSystemPrompt gets the system prompt
 func (c *Caller) GetSystemPrompt() (prompt string, op SystemPromptOp) {
 	if v := c.systemPrompt.Load(); v != nil {
 		pop := v.(*promptOperation)
