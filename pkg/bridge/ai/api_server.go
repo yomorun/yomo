@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"reflect"
 	"time"
 
 	openai "github.com/sashabaranov/go-openai"
@@ -226,14 +227,18 @@ func DecodeRequest[T any](r *http.Request, w http.ResponseWriter, logger *slog.L
 
 // RespondWithError writes an error to response according to the OpenAI API spec.
 func RespondWithError(w http.ResponseWriter, code int, err error, logger *slog.Logger) {
-	logger.Error("bridge server error", "err", err)
-
 	errString := err.Error()
-	oerr, ok := err.(*openai.APIError)
-	if ok {
-		code = oerr.HTTPStatusCode
-		errString = oerr.Message
+
+	switch e := err.(type) {
+	case *openai.APIError:
+		code = e.HTTPStatusCode
+		errString = e.Message
+	case *openai.RequestError:
+		code = e.HTTPStatusCode
+		errString = e.Error()
 	}
+
+	logger.Error("bridge server error", "err", errString, "err_type", reflect.TypeOf(err).String())
 
 	w.WriteHeader(code)
 	w.Write([]byte(fmt.Sprintf(`{"error":{"code":"%d","message":"%s"}}`, code, errString)))

@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -16,6 +17,107 @@ import (
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
 	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 )
+
+func TestOpSystemPrompt(t *testing.T) {
+	type args struct {
+		prompt string
+		op     SystemPromptOp
+		req    openai.ChatCompletionRequest
+	}
+	tests := []struct {
+		name string
+		args args
+		want openai.ChatCompletionRequest
+	}{
+		{
+			name: "disabled",
+			args: args{
+				prompt: "hello",
+				op:     SystemPromptOpDisabled,
+				req: openai.ChatCompletionRequest{
+					Messages: []openai.ChatCompletionMessage{
+						{Role: "user", Content: "hello"},
+					},
+				},
+			},
+			want: openai.ChatCompletionRequest{
+				Messages: []openai.ChatCompletionMessage{
+					{Role: "user", Content: "hello"},
+				},
+			},
+		},
+		{
+			name: "overwrite with empty system prompt",
+			args: args{
+				prompt: "hello",
+				op:     SystemPromptOpOverwrite,
+				req:    openai.ChatCompletionRequest{},
+			},
+			want: openai.ChatCompletionRequest{
+				Messages: []openai.ChatCompletionMessage{
+					{Role: "system", Content: "hello"},
+				},
+			},
+		},
+		{
+			name: "overwrite with not empty system prompt",
+			args: args{
+				prompt: "hello",
+				op:     SystemPromptOpOverwrite,
+				req: openai.ChatCompletionRequest{
+					Messages: []openai.ChatCompletionMessage{
+						{Role: "system", Content: "world"},
+					},
+				},
+			},
+			want: openai.ChatCompletionRequest{
+				Messages: []openai.ChatCompletionMessage{
+					{Role: "system", Content: "hello"},
+				},
+			},
+		},
+		{
+			name: "prefix with empty system prompt",
+			args: args{
+				prompt: "hello",
+				op:     SystemPromptOpPrefix,
+				req: openai.ChatCompletionRequest{
+					Messages: []openai.ChatCompletionMessage{},
+				},
+			},
+			want: openai.ChatCompletionRequest{
+				Messages: []openai.ChatCompletionMessage{
+					{Role: "system", Content: "hello"},
+				},
+			},
+		},
+		{
+			name: "prefix with not empty system prompt",
+			args: args{
+				prompt: "hello",
+				op:     SystemPromptOpPrefix,
+				req: openai.ChatCompletionRequest{
+					Messages: []openai.ChatCompletionMessage{
+						{Role: "system", Content: "world"},
+					},
+				},
+			},
+			want: openai.ChatCompletionRequest{
+				Messages: []openai.ChatCompletionMessage{
+					{Role: "system", Content: "hello\nworld"},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Service{logger: slog.Default()}
+			got := s.opSystemPrompt(tt.args.req, tt.args.prompt, tt.args.op)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
 
 func TestServiceInvoke(t *testing.T) {
 	type args struct {
@@ -110,7 +212,7 @@ func TestServiceInvoke(t *testing.T) {
 			caller, err := service.LoadOrCreateCaller(&http.Request{})
 			assert.NoError(t, err)
 
-			caller.SetSystemPrompt(tt.args.systemPrompt)
+			caller.SetSystemPrompt(tt.args.systemPrompt, SystemPromptOpOverwrite)
 
 			resp, err := service.GetInvoke(context.TODO(), tt.args.userInstruction, tt.args.baseSystemMessage, "transID", caller, true)
 			assert.NoError(t, err)
@@ -151,15 +253,15 @@ func TestServiceChatCompletion(t *testing.T) {
 			wantRequest: []openai.ChatCompletionRequest{
 				{
 					Messages: []openai.ChatCompletionMessage{
-						{Role: "user", Content: "How is the weather today in Boston, MA?"},
 						{Role: "system", Content: "this is a system prompt"},
+						{Role: "user", Content: "How is the weather today in Boston, MA?"},
 					},
 					Tools: []openai.Tool{{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "get_current_weather"}}},
 				},
 				{
 					Messages: []openai.ChatCompletionMessage{
-						{Role: "user", Content: "How is the weather today in Boston, MA?"},
 						{Role: "system", Content: "this is a system prompt"},
+						{Role: "user", Content: "How is the weather today in Boston, MA?"},
 						{Role: "assistant", ToolCalls: []openai.ToolCall{{ID: "call_abc123", Type: openai.ToolTypeFunction, Function: openai.FunctionCall{Name: "get_current_weather", Arguments: "{\n\"location\": \"Boston, MA\"\n}"}}}},
 						{Role: "tool", Content: "temperature: 31°C", ToolCallID: "call_abc123"},
 					},
@@ -184,8 +286,8 @@ func TestServiceChatCompletion(t *testing.T) {
 			wantRequest: []openai.ChatCompletionRequest{
 				{
 					Messages: []openai.ChatCompletionMessage{
-						{Role: "user", Content: "How are you"},
 						{Role: "system", Content: "You are an assistant."},
+						{Role: "user", Content: "How are you"},
 					},
 					Tools: []openai.Tool{{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "get_current_weather"}}},
 				},
@@ -211,16 +313,16 @@ func TestServiceChatCompletion(t *testing.T) {
 				{
 					Stream: true,
 					Messages: []openai.ChatCompletionMessage{
-						{Role: "user", Content: "How is the weather today in Boston, MA?"},
 						{Role: "system", Content: "You are a weather assistant"},
+						{Role: "user", Content: "How is the weather today in Boston, MA?"},
 					},
 					Tools: []openai.Tool{{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "get_current_weather"}}},
 				},
 				{
 					Stream: true,
 					Messages: []openai.ChatCompletionMessage{
-						{Role: "user", Content: "How is the weather today in Boston, MA?"},
 						{Role: "system", Content: "You are a weather assistant"},
+						{Role: "user", Content: "How is the weather today in Boston, MA?"},
 						{Role: "assistant", ToolCalls: []openai.ToolCall{{Index: toInt(0), ID: "call_9ctHOJqO3bYrpm2A6S7nHd5k", Type: openai.ToolTypeFunction, Function: openai.FunctionCall{Name: "get_current_weather", Arguments: "{\"location\":\"Boston, MA\"}"}}}},
 						{Role: "tool", Content: "temperature: 31°C", ToolCallID: "call_9ctHOJqO3bYrpm2A6S7nHd5k"},
 					},
@@ -247,8 +349,8 @@ func TestServiceChatCompletion(t *testing.T) {
 				{
 					Stream: true,
 					Messages: []openai.ChatCompletionMessage{
-						{Role: "user", Content: "How is the weather today in Boston, MA?"},
 						{Role: "system", Content: "You are a weather assistant"},
+						{Role: "user", Content: "How is the weather today in Boston, MA?"},
 					},
 					Tools: []openai.Tool{{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "get_current_weather"}}},
 				},
@@ -279,7 +381,7 @@ func TestServiceChatCompletion(t *testing.T) {
 			caller, err := service.LoadOrCreateCaller(&http.Request{})
 			assert.NoError(t, err)
 
-			caller.SetSystemPrompt(tt.args.systemPrompt)
+			caller.SetSystemPrompt(tt.args.systemPrompt, SystemPromptOpOverwrite)
 
 			w := httptest.NewRecorder()
 			err = service.GetChatCompletions(context.TODO(), tt.args.request, "transID", caller, w)
