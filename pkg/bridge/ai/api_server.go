@@ -229,10 +229,13 @@ func RespondWithError(w http.ResponseWriter, code int, err error, logger *slog.L
 	logger.Error("bridge server error", "err", err)
 
 	errString := err.Error()
-	oerr, ok := err.(*openai.APIError)
-	if ok {
-		code = oerr.HTTPStatusCode
-		errString = oerr.Message
+	switch e := err.(type) {
+	case *openai.APIError:
+		code = e.HTTPStatusCode
+		errString = e.Message
+	case *openai.RequestError:
+		code = e.HTTPStatusCode
+		errString = e.Error()
 	}
 
 	w.WriteHeader(code)
