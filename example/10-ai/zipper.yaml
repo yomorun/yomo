@@ -2,22 +2,22 @@ name: ai-zipper
 host: 0.0.0.0
 port: 9000
 
-auth:
-  type: token
-  token: Happy New Year
+# auth:
+#   type: token
+#   token: Happy New Year
 
 bridge:
   ai:
     server:
       addr: localhost:8000
-      provider: azopenai
+      provider: ollama
 
     providers:
       azopenai:
-        api_endpoint: 
-        deployment_id: 
-        api_key: 
-        api_version: 
+        api_endpoint:
+        deployment_id:
+        api_key:
+        api_version:
 
       openai:
         api_key:
@@ -27,9 +27,20 @@ bridge:
         api_key:
 
       cloudflare_azure:
-        endpoint: 
-        api_key: 
-        resource: 
-        deployment_id: 
-        api_version: 
+        endpoint:
+        api_key:
+        resource:
+        deployment_id:
+        api_version:
 
+      ollama:
+        api_endpoint: http://localhost:11434/v1
+        model: llama3.1
+
+      cerebras:
+        api_key:
+        model:
+
+      anthropic:
+        api_key:
+        model:

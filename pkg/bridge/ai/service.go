@@ -240,8 +240,9 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 	// 2. add those tools to request
 	req = srv.addToolsToRequest(req, tagTools)
 
-	// 3. over write system prompt to request
-	req = srv.overWriteSystemPrompt(req, caller.GetSystemPrompt())
+	// 3. operate system prompt to request
+	prompt, op := caller.GetSystemPrompt()
+	req = srv.opSystemPrompt(req, prompt, op)
 
 	var (
 		promptUsage      = 0
@@ -252,18 +253,23 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 		toolCalls        = []openai.ToolCall{}
 		assistantMessage = openai.ChatCompletionMessage{}
 	)
+	rawReq := req
+	// ollama request patch
+	// WARN: this is a temporary solution for ollama provider
+	req = srv.patchOllamaRequest(req)
+
 	// 4. request first chat for getting tools
 	if req.Stream {
 		_, firstCallSpan := srv.option.Tracer.Start(reqCtx, "first_call_request")
-		var (
-			flusher        = eventFlusher(w)
-			isFunctionCall = false
-		)
+
 		resStream, err := srv.provider.GetChatCompletionsStream(reqCtx, req, md)
 		if err != nil {
 			return err
 		}
-
+		var (
+			flusher        = eventFlusher(w)
+			isFunctionCall = false
+		)
 		var (
 			i             int // number of chunks
 			j             int // number of tool call chunks
@@ -281,15 +287,15 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 			if err != nil {
 				return err
 			}
-			if len(streamRes.Choices) == 0 {
-				continue
-			}
 			if streamRes.Usage != nil {
 				promptUsage = streamRes.Usage.PromptTokens
 				completionUsage = streamRes.Usage.CompletionTokens
 				totalUsage = streamRes.Usage.TotalTokens
 			}
-			if tc := streamRes.Choices[0].Delta.ToolCalls; len(tc) > 0 {
+
+			choices := streamRes.Choices
+			if len(choices) > 0 && len(choices[0].Delta.ToolCalls) > 0 {
+				tc := choices[0].Delta.ToolCalls
 				isFunctionCall = true
 				if j == 0 {
 					firstCallSpan.End()
@@ -316,7 +322,7 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 					toolCallsMap[index] = item
 				}
 				j++
-			} else if streamRes.Choices[0].FinishReason != openai.FinishReasonToolCalls {
+			} else if !isFunctionCall {
 				_ = writeStreamEvent(w, flusher, streamRes)
 			}
 			if i == 0 && j == 0 && !isFunctionCall {
@@ -357,6 +363,56 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 			toolCalls = append(toolCalls, resp.Choices[0].Message.ToolCalls...)
 			assistantMessage = resp.Choices[0].Message
 			firstCallSpan.End()
+		} else if rawReq.Stream {
+			// if raw request is stream mode, we should return the stream response
+			// WARN: this is a temporary solution for ollama provider
+			flusher := eventFlusher(w)
+			// choices
+			choices := make([]openai.ChatCompletionStreamChoice, 0)
+			for _, choice := range resp.Choices {
+				delta := openai.ChatCompletionStreamChoiceDelta{
+					Content:      choice.Message.Content,
+					Role:         choice.Message.Role,
+					FunctionCall: choice.Message.FunctionCall,
+					ToolCalls:    choice.Message.ToolCalls,
+				}
+				choices = append(choices, openai.ChatCompletionStreamChoice{
+					Index:        choice.Index,
+					Delta:        delta,
+					FinishReason: choice.FinishReason,
+					// ContentFilterResults
+				})
+			}
+			// chunk response
+			streamRes := openai.ChatCompletionStreamResponse{
+				ID:                resp.ID,
+				Object:            "chat.completion.chunk",
+				Created:           resp.Created,
+				Model:             resp.Model,
+				Choices:           choices,
+				SystemFingerprint: resp.SystemFingerprint,
+				// PromptAnnotations:
+				// PromptFilterResults:
+			}
+			writeStreamEvent(w, flusher, streamRes)
+			// usage
+			if req.StreamOptions != nil && req.StreamOptions.IncludeUsage {
+				streamRes = openai.ChatCompletionStreamResponse{
+					ID:                resp.ID,
+					Object:            "chat.completion.chunk",
+					Created:           resp.Created,
+					Model:             resp.Model,
+					SystemFingerprint: resp.SystemFingerprint,
+					Usage: &openai.Usage{
+						PromptTokens:     promptUsage,
+						CompletionTokens: completionUsage,
+						TotalTokens:      totalUsage,
+					},
+				}
+				writeStreamEvent(w, flusher, streamRes)
+			}
+			// done
+			return writeStreamDone(w, flusher)
 		} else {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(resp)
@@ -383,7 +439,12 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 	// 7. do the second call (the second call messages are from user input, first call resopnse and sfn calls result)
 	req.Messages = append(reqMessages, assistantMessage)
 	req.Messages = append(req.Messages, llmCalls...)
-	req.Tools = nil // reset tools field
+	// anthropic must define tools
+	if srv.provider.Name() != "anthropic" {
+		req.Tools = nil // reset tools field
+	}
+	// restore the original request stream field
+	req.Stream = rawReq.Stream
 
 	srv.logger.Debug(" #2 second call", "request", fmt.Sprintf("%+v", req))
 
@@ -434,6 +495,8 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 		resp.Usage.TotalTokens += totalUsage
 
 		secondCallSpan.End()
+
+		srv.logger.Debug(" #2 second call", "response", fmt.Sprintf("%+v", resp))
 		w.Header().Set("Content-Type", "application/json")
 		return json.NewEncoder(w).Encode(resp)
 	}
@@ -475,32 +538,44 @@ func (srv *Service) addToolsToRequest(req openai.ChatCompletionRequest, tagTools
 	return req
 }
 
-func (srv *Service) overWriteSystemPrompt(req openai.ChatCompletionRequest, sysPrompt string) openai.ChatCompletionRequest {
-	// do nothing if system prompt is empty
-	if sysPrompt == "" {
+func (srv *Service) opSystemPrompt(req openai.ChatCompletionRequest, sysPrompt string, op SystemPromptOp) openai.ChatCompletionRequest {
+	if op == SystemPromptOpDisabled {
 		return req
 	}
-	// over write system prompt
-	isOverWrite := false
-	for i, msg := range req.Messages {
+	var (
+		systemCount = 0
+		messages    = []openai.ChatCompletionMessage{}
+	)
+	for _, msg := range req.Messages {
 		if msg.Role != "system" {
+			messages = append(messages, msg)
 			continue
 		}
-		req.Messages[i] = openai.ChatCompletionMessage{
-			Role:    msg.Role,
-			Content: sysPrompt,
+		if systemCount == 0 {
+			content := ""
+			switch op {
+			case SystemPromptOpPrefix:
+				content = sysPrompt + "\n" + msg.Content
+			case SystemPromptOpOverwrite:
+				content = sysPrompt
+			}
+			messages = append(messages, openai.ChatCompletionMessage{
+				Role:    msg.Role,
+				Content: content,
+			})
 		}
-		isOverWrite = true
+		systemCount++
 	}
-	// append system prompt
-	if !isOverWrite {
-		req.Messages = append(req.Messages, openai.ChatCompletionMessage{
+	if systemCount == 0 {
+		message := openai.ChatCompletionMessage{
 			Role:    "system",
 			Content: sysPrompt,
-		})
+		}
+		messages = append([]openai.ChatCompletionMessage{message}, req.Messages...)
 	}
+	req.Messages = messages
 
-	srv.logger.Debug(" #1 first call after overwrite", "request", fmt.Sprintf("%+v", req))
+	srv.logger.Debug(" #1 first call after operating", "request", fmt.Sprintf("%+v", req))
 
 	return req
 }
@@ -635,6 +710,28 @@ func transToolMessage(msgs []openai.ChatCompletionMessage) []ai.ToolMessage {
 
 func recordTTFT(ctx context.Context, tracer trace.Tracer) {
 	_, span := tracer.Start(ctx, "TTFT")
+	time.Sleep(time.Millisecond)
 	span.End()
 	time.Sleep(time.Millisecond)
+}
+
+// patchOllamaRequest patch the request for ollama provider(ollama function calling unsupported in stream mode)
+func (srv *Service) patchOllamaRequest(req openai.ChatCompletionRequest) openai.ChatCompletionRequest {
+	ylog.Debug("before request",
+		"stream", req.Stream,
+		"provider", srv.provider.Name(),
+		fmt.Sprintf("tools[%d]", len(req.Tools)), req.Tools,
+	)
+	if !req.Stream {
+		return req
+	}
+	if srv.provider.Name() == "ollama" && len(req.Tools) > 0 {
+		req.Stream = false
+	}
+	ylog.Debug("patch request",
+		"stream", req.Stream,
+		"provider", srv.provider.Name(),
+		fmt.Sprintf("tools[%d]", len(req.Tools)), req.Tools,
+	)
+	return req
 }

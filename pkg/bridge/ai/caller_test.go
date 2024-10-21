@@ -22,9 +22,14 @@ func TestCaller(t *testing.T) {
 
 	assert.Equal(t, md, caller.Metadata())
 
-	sysPrompt := "hello system prompt"
-	caller.SetSystemPrompt(sysPrompt)
-	assert.Equal(t, sysPrompt, caller.GetSystemPrompt())
+	var (
+		prompt = "hello system prompt"
+		op     = SystemPromptOpPrefix
+	)
+	caller.SetSystemPrompt(prompt, op)
+	gotPrompt, gotOp := caller.GetSystemPrompt()
+	assert.Equal(t, prompt, gotPrompt)
+	assert.Equal(t, op, gotOp)
 }
 
 type testComponentCreator struct {

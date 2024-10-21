@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"reflect"
 	"time"
 
 	openai "github.com/sashabaranov/go-openai"
@@ -111,7 +112,7 @@ func decorateReqContext(service *Service, logger *slog.Logger) func(handler http
 
 			caller, err := service.LoadOrCreateCaller(r)
 			if err != nil {
-				RespondWithError(w, http.StatusBadRequest, err)
+				RespondWithError(w, http.StatusBadRequest, err, logger)
 				return
 			}
 			ctx = WithCallerContext(ctx, caller)
@@ -146,7 +147,7 @@ func (h *Handler) HandleOverview(w http.ResponseWriter, r *http.Request) {
 
 	tcs, err := register.ListToolCalls(FromCallerContext(r.Context()).Metadata())
 	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, err)
+		RespondWithError(w, http.StatusInternalServerError, err, h.service.logger)
 		return
 	}
 
@@ -169,7 +170,7 @@ func (h *Handler) HandleInvoke(w http.ResponseWriter, r *http.Request) {
 	)
 	defer r.Body.Close()
 
-	req, err := DecodeRequest[ai.InvokeRequest](r, w)
+	req, err := DecodeRequest[ai.InvokeRequest](r, w, h.service.logger)
 	if err != nil {
 		return
 	}
@@ -181,7 +182,7 @@ func (h *Handler) HandleInvoke(w http.ResponseWriter, r *http.Request) {
 
 	res, err := h.service.GetInvoke(ctx, req.Prompt, baseSystemMessage, transID, FromCallerContext(ctx), req.IncludeCallStack)
 	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, err)
+		RespondWithError(w, http.StatusInternalServerError, err, h.service.logger)
 		return
 	}
 
@@ -197,7 +198,7 @@ func (h *Handler) HandleChatCompletions(w http.ResponseWriter, r *http.Request) 
 	)
 	defer r.Body.Close()
 
-	req, err := DecodeRequest[openai.ChatCompletionRequest](r, w)
+	req, err := DecodeRequest[openai.ChatCompletionRequest](r, w, h.service.logger)
 	if err != nil {
 		return
 	}
@@ -206,18 +207,18 @@ func (h *Handler) HandleChatCompletions(w http.ResponseWriter, r *http.Request) 
 	defer cancel()
 
 	if err := h.service.GetChatCompletions(ctx, req, transID, FromCallerContext(ctx), w); err != nil {
-		RespondWithError(w, http.StatusBadRequest, err)
+		RespondWithError(w, http.StatusBadRequest, err, h.service.logger)
 		return
 	}
 }
 
 // DecodeRequest decodes the request body into given type.
-func DecodeRequest[T any](r *http.Request, w http.ResponseWriter) (T, error) {
+func DecodeRequest[T any](r *http.Request, w http.ResponseWriter, logger *slog.Logger) (T, error) {
 	var req T
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
-		RespondWithError(w, http.StatusBadRequest, err)
+		RespondWithError(w, http.StatusBadRequest, err, logger)
 		return req, err
 	}
 
@@ -225,9 +226,22 @@ func DecodeRequest[T any](r *http.Request, w http.ResponseWriter) (T, error) {
 }
 
 // RespondWithError writes an error to response according to the OpenAI API spec.
-func RespondWithError(w http.ResponseWriter, code int, err error) {
+func RespondWithError(w http.ResponseWriter, code int, err error, logger *slog.Logger) {
+	errString := err.Error()
+
+	switch e := err.(type) {
+	case *openai.APIError:
+		code = e.HTTPStatusCode
+		errString = e.Message
+	case *openai.RequestError:
+		code = e.HTTPStatusCode
+		errString = e.Error()
+	}
+
+	logger.Error("bridge server error", "err", errString, "err_type", reflect.TypeOf(err).String())
+
 	w.WriteHeader(code)
-	w.Write([]byte(fmt.Sprintf(`{"error":{"code":"%d","message":"%s"}}`, code, err.Error())))
+	w.Write([]byte(fmt.Sprintf(`{"error":{"code":"%d","message":"%s"}}`, code, errString)))
 }
 
 func getLocalIP() (string, error) {
