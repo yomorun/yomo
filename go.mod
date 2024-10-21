@@ -1,6 +1,7 @@
 module github.com/yomorun/yomo
 
 go 1.21
+toolchain go1.22.5
 
 require (
 	github.com/anthropics/anthropic-sdk-go v0.1.0-alpha.1
@@ -15,7 +16,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/lmittmann/tint v1.0.4
 	github.com/matoous/go-nanoid/v2 v2.1.0
-	github.com/quic-go/quic-go v0.46.0
+	github.com/quic-go/quic-go v0.48.0
 	github.com/reactivex/rxgo/v2 v2.5.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/sashabaranov/go-openai v1.32.2
