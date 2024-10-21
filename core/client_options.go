@@ -116,8 +116,8 @@ func WithAIFunctionDefinition(description string, inputModel any) ClientOption {
 	}
 }
 
-// WithAIFunctionDefinitionInJsonSchema sets AI function definition for the client in the form of jsonschema string.
-func WithAIFunctionDefinitionInJsonSchema(jsonschema string) ClientOption {
+// WithAIFunctionJsonDefinition sets AI function definition for the client in the form of jsonschema string.
+func WithAIFunctionJsonDefinition(jsonschema string) ClientOption {
 	return func(o *clientOptions) {
 		o.aiFunctionDefinition = jsonschema
 	}
