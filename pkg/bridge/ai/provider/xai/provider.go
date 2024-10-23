@@ -12,7 +12,7 @@ import (
 )
 
 const BaseURL = "https://api.x.ai/v1"
-const DefaultModel = "groq-beta"
+const DefaultModel = "grok-beta"
 
 // check if implements ai.Provider
 var _ provider.LLMProvider = &Provider{}
@@ -45,7 +45,7 @@ func NewProvider(apiKey string, model string) *Provider {
 
 // Name returns the name of the provider
 func (p *Provider) Name() string {
-	return "x.ai"
+	return "xai"
 }
 
 // GetChatCompletions implements ai.LLMProvider.
