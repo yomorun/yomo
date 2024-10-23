@@ -24,7 +24,20 @@ cd llm-sfn-get-ip-and-latency && yomo run -m go.mod app.go
 ## Step 3: Invoke the LLM Function
 
 ```bash
-$ curl -i -X POST -H "Content-Type: application/json" -d '{"prompt":"compare nike and puma website speed"}' http://127.0.0.1:8000/invoke
+$ curl -i http://127.0.0.1:9000/v1/chat/completions -H "Content-Type: application/json" -d '{
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a test assistant."
+    },
+    {
+      "role": "user",
+      "content": "Compare website speed between Nike and Puma"
+    }
+  ],
+  "stream": false
+}'
+
 HTTP/1.1 200 OK
 Content-Length: 944
 Connection: keep-alive
@@ -47,7 +60,19 @@ Proxy-Connection: keep-alive
 ```
 
 ```bash
-$ curl -i -X POST -H "Content-Type: application/json" -d '{"prompt":"what is the time in Singapore for Thursday, February 15th, 2024 7:00am and 8:00am (UTC-08:00) Pacific Time"}' http://127.0.0.1:8000/invoke
+$ curl -i http://127.0.0.1:9000/v1/chat/completions -H "Content-Type: application/json" -d '{
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a test assistant."
+    },
+    {
+      "role": "user",
+      "content": "what is the time in Singapore for Thursday, February 15th, 2024 7:00am and 8:00am (UTC-08:00) Pacific Time"
+    }
+  ],
+  "stream": false
+}'
 HTTP/1.1 200 OK
 Content-Length: 618
 Connection: keep-alive
@@ -70,7 +95,19 @@ Proxy-Connection: keep-alive
 ```
 
 ```bash
-$ curl -i -X POST -H "Content-Type: application/json" -d '{"prompt":"How much is 100 usd in Korea and UK currency"}' http://127.0.0.1:8000/invoke
+$ curl -i http://127.0.0.1:9000/v1/chat/completions -H "Content-Type: application/json" -d '{
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a test assistant."
+    },
+    {
+      "role": "user",
+      "content": "How much is 100 usd in Korea and UK currency?"
+    }
+  ],
+  "stream": false
+}'
 HTTP/1.1 200 OK
 Content-Length: 333
 Connection: keep-alive

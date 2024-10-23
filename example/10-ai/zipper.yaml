@@ -44,3 +44,7 @@ bridge:
       anthropic:
         api_key:
         model:
+
+      xai:
+        api_key:
+        model:
