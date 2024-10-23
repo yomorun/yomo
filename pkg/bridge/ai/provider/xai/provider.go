@@ -1,47 +1,38 @@
-// Package cerebras is the Cerebras llm provider
-package cerebras
+// Package xai is the x.ai provider
+package xai
 
 import (
 	"context"
-	"os"
 
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo/core/metadata"
-	"github.com/yomorun/yomo/core/ylog"
 
 	provider "github.com/yomorun/yomo/pkg/bridge/ai/provider"
 )
 
-const BaseURL = "https://api.cerebras.ai/v1"
+const BaseURL = "https://api.x.ai/v1"
+const DefaultModel = "groq-beta"
 
 // check if implements ai.Provider
 var _ provider.LLMProvider = &Provider{}
 
-// Provider is the provider for Cerebras
+// Provider is the provider for x.ai
 type Provider struct {
-	// APIKey is the API key for Cerebras
+	// APIKey is the API key for x.ai
 	APIKey string
-	// Model is the model for Cerebras
-	// eg. "llama3.1-8b", "llama-3.1-70b"
+	// Model is the model for x.ai
+	// eg. "grok-beta"
 	Model  string
 	client *openai.Client
 }
 
-// NewProvider creates a new cerebras ai provider
+// NewProvider creates a new x.ai ai provider
 func NewProvider(apiKey string, model string) *Provider {
-	if apiKey == "" {
-		apiKey = os.Getenv("CEREBRAS_API_KEY")
-		if apiKey == "" {
-			ylog.Error("CEREBRAS_API_KEY is empty, cerebras provider will not work properly")
-		}
-	}
 	if model == "" {
-		model = os.Getenv("CEREBRAS_MODEL")
-		if model == "" {
-			model = "llama3.1-8b"
-		}
+		model = DefaultModel
 	}
+
 	c := openai.DefaultConfig(apiKey)
 	c.BaseURL = BaseURL
 
@@ -54,7 +45,7 @@ func NewProvider(apiKey string, model string) *Provider {
 
 // Name returns the name of the provider
 func (p *Provider) Name() string {
-	return "cerebras"
+	return "x.ai"
 }
 
 // GetChatCompletions implements ai.LLMProvider.
@@ -71,15 +62,6 @@ func (p *Provider) GetChatCompletionsStream(ctx context.Context, req openai.Chat
 	if req.Model == "" {
 		req.Model = p.Model
 	}
-	// The following fields are currently not supported and will result in a 400 error if they are supplied:
-	// frequency_penalty
-	// logit_bias
-	// logprobs
-	// presence_penalty
-	// parallel_tool_calls
-	// service_tier
-
 	// it does not support streaming calls when tools are present
-
 	return p.client.CreateChatCompletionStream(ctx, req)
 }
