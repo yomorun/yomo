@@ -12,7 +12,7 @@ func TestXAIProvider_Name(t *testing.T) {
 	provider := &Provider{}
 	name := provider.Name()
 
-	assert.Equal(t, "x.ai", name)
+	assert.Equal(t, "xai", name)
 }
 
 func TestXAIProvider_GetChatCompletions(t *testing.T) {
