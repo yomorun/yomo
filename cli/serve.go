@@ -38,6 +38,7 @@ import (
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/githubmodels"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/ollama"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/openai"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/xai"
 )
 
 // serveCmd represents the serve command
@@ -159,6 +160,8 @@ func registerAIProvider(aiConfig *ai.Config) error {
 			providerpkg.RegisterProvider(cerebras.NewProvider(provider["api_key"], provider["model"]))
 		case "anthropic":
 			providerpkg.RegisterProvider(anthropic.NewProvider(provider["api_key"], provider["model"]))
+		case "xai":
+			providerpkg.RegisterProvider(xai.NewProvider(provider["api_key"], provider["model"]))
 		default:
 			log.WarningStatusEvent(os.Stdout, "unknown provider: %s", name)
 		}

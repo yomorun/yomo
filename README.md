@@ -135,7 +135,20 @@ time=2024-03-19T21:43:30.584+08:00 level=INFO msg="register ai function success"
 ### Done, let's have a try
 
 ```sh
-$ curl -i -X POST -H "Content-Type: application/json" -d '{"prompt":"compare nike and puma website speed"}' http://127.0.0.1:8000/invoke
+$ curl -i http://127.0.0.1:9000/v1/chat/completions -H "Content-Type: application/json" -d '{
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a test assistant."
+    },
+    {
+      "role": "user",
+      "content": "Compare website speed between Nike and Puma"
+    }
+  ],
+  "stream": false
+}'
+
 HTTP/1.1 200 OK
 Content-Length: 944
 Connection: keep-alive
