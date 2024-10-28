@@ -263,7 +263,7 @@ func (c *Client) handshakeWithDefinition() ([]byte, error) {
 		return nil, nil
 	}
 	log.InfoStatusEvent(os.Stdout, "Function Calling jsonschema: %s", string(functionDefinition))
-	return nil, nil
+	return functionDefinition, nil
 }
 
 func parseAIFunctionDefinition(sfnName, aiFunctionDescription string, aiFunctionInputModel any) ([]byte, error) {
