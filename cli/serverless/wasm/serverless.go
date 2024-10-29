@@ -14,6 +14,7 @@ import (
 
 // wasmServerless will run serverless functions from the given compiled WebAssembly files.
 type wasmServerless struct {
+	runtimeName  string
 	runtime      Runtime
 	name         string
 	zipperAddr   string
@@ -35,6 +36,7 @@ func (s *wasmServerless) Init(opts *cli.Options) error {
 		return err
 	}
 
+	s.runtimeName = opts.Runtime
 	s.runtime = runtime
 	s.name = opts.Name
 	s.zipperAddr = opts.ZipperAddr
@@ -47,6 +49,11 @@ func (s *wasmServerless) Init(opts *cli.Options) error {
 
 // Build is an empty implementation
 func (s *wasmServerless) Build(clean bool) error {
+	wasmRuntime := s.runtimeName
+	if wasmRuntime == "" {
+		wasmRuntime = "wazero"
+	}
+	pkglog.InfoStatusEvent(os.Stdout, "WASM runtime: %s", wasmRuntime)
 	return nil
 }
 

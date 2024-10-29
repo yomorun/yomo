@@ -38,5 +38,5 @@ func (s *denoServerless) Executable() bool {
 }
 
 func init() {
-	serverless.Register(&denoServerless{}, ".js", ".ts")
+	serverless.Register(&denoServerless{}, ".js")
 }

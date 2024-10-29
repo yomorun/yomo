@@ -136,6 +136,7 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 
 // Build compiles the serverless to executable
 func (s *GolangServerless) Build(clean bool) error {
+	log.PendingStatusEvent(os.Stdout, "Building YoMo Stream Function instance...")
 	// check if the file exists
 	appPath := s.source
 	if _, err := os.Stat(appPath); os.IsNotExist(err) {
@@ -183,7 +184,6 @@ func (s *GolangServerless) Build(clean bool) error {
 		err = fmt.Errorf("Build: go mod tidy err %s", out)
 		return err
 	}
-	// build
 	// wasi
 	dir, _ := filepath.Split(s.opts.Filename)
 	filename := "sfn.yomo"
@@ -212,6 +212,7 @@ func (s *GolangServerless) Build(clean bool) error {
 	if clean {
 		file.Remove(s.tempDir)
 	}
+	log.SuccessStatusEvent(os.Stdout, "YoMo Stream Function build successful!")
 	return nil
 }
 

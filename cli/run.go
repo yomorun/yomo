@@ -17,7 +17,6 @@ package cli
 
 import (
 	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"github.com/yomorun/yomo/pkg/log"
@@ -27,6 +26,7 @@ import (
 	_ "github.com/yomorun/yomo/cli/serverless/deno"
 	_ "github.com/yomorun/yomo/cli/serverless/exec"
 	_ "github.com/yomorun/yomo/cli/serverless/golang"
+	_ "github.com/yomorun/yomo/cli/serverless/nodejs"
 	_ "github.com/yomorun/yomo/cli/serverless/wasm"
 	"github.com/yomorun/yomo/cli/viper"
 )
@@ -68,24 +68,12 @@ var runCmd = &cobra.Command{
 			)
 			return
 		}
-		// build if it's go file
-		if ext := filepath.Ext(opts.Filename); ext == ".go" {
-			log.PendingStatusEvent(os.Stdout, "Building YoMo Stream Function instance...")
-			if err := s.Build(true); err != nil {
-				log.FailureStatusEvent(os.Stdout, err.Error())
-				os.Exit(127)
-			}
-			log.SuccessStatusEvent(os.Stdout, "YoMo Stream Function build successful!")
+
+		if err := s.Build(true); err != nil {
+			log.FailureStatusEvent(os.Stdout, err.Error())
+			os.Exit(127)
 		}
-		// run
-		// wasi
-		if ext := filepath.Ext(opts.Filename); ext == ".wasm" {
-			wasmRuntime := opts.Runtime
-			if wasmRuntime == "" {
-				wasmRuntime = "wazero"
-			}
-			log.InfoStatusEvent(os.Stdout, "WASM runtime: %s", wasmRuntime)
-		}
+
 		log.InfoStatusEvent(
 			os.Stdout,
 			"Starting YoMo Stream Function instance, connecting to zipper: %v",
