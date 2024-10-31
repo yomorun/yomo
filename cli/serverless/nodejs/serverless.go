@@ -1,3 +1,4 @@
+// Package nodejs provides a ts serverless runtime
 package nodejs
 
 import (
@@ -13,7 +14,7 @@ type nodejsServerless struct {
 	wrapper    *NodejsWrapper
 }
 
-// Init initializes the serverless
+// Init initializes the nodejs serverless
 func (s *nodejsServerless) Init(opts *serverless.Options) error {
 	wrapper, err := NewWrapper(opts.Name, opts.Filename)
 	if err != nil {
@@ -28,12 +29,12 @@ func (s *nodejsServerless) Init(opts *serverless.Options) error {
 	return nil
 }
 
-// Build is an empty implementation
+// Build calls wrapper.Build
 func (s *nodejsServerless) Build(_ bool) error {
 	return s.wrapper.Build()
 }
 
-// Run the wasm serverless function
+// Run the wrapper.Run
 func (s *nodejsServerless) Run(verbose bool) error {
 	return wrapper.Run(s.name, s.zipperAddr, s.credential, s.wrapper)
 }

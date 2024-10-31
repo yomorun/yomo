@@ -19,6 +19,7 @@ var (
 	wrapperJS = ".wrapper.js"
 )
 
+// NodejsWrapper is the nodejs implementation of wrapper.
 type NodejsWrapper struct {
 	functionName string
 	workDir      string // eg. src/
@@ -31,6 +32,7 @@ type NodejsWrapper struct {
 	npmPath  string
 }
 
+// NewWrapper returns a new NodejsWrapper
 func NewWrapper(functionName, entryTSFile string) (*NodejsWrapper, error) {
 	// check command
 	nodePath, err := exec.LookPath("node")
@@ -65,10 +67,12 @@ func NewWrapper(functionName, entryTSFile string) (*NodejsWrapper, error) {
 	return w, nil
 }
 
+// WorkDir returns the working directory of the serverless function to build and run.
 func (w *NodejsWrapper) WorkDir() string {
 	return w.workDir
 }
 
+// Build defines how to build the serverless function.
 func (w *NodejsWrapper) Build() error {
 	// 1. generate .wrapper.ts file
 	dstPath := filepath.Join(w.workDir, wrapperTS)
@@ -99,6 +103,7 @@ func (w *NodejsWrapper) Build() error {
 	return nil
 }
 
+// Run runs the serverless function
 func (w *NodejsWrapper) Run() error {
 	cmd := exec.Command(w.nodePath, wrapperJS)
 	cmd.Dir = w.workDir
