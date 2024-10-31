@@ -2,6 +2,8 @@
 package nodejs
 
 import (
+	"os"
+
 	"github.com/yomorun/yomo/cli/serverless"
 	"github.com/yomorun/yomo/pkg/wrapper"
 )
@@ -31,12 +33,20 @@ func (s *nodejsServerless) Init(opts *serverless.Options) error {
 
 // Build calls wrapper.Build
 func (s *nodejsServerless) Build(_ bool) error {
-	return s.wrapper.Build()
+	return s.wrapper.Build(os.Environ())
 }
 
 // Run the wrapper.Run
 func (s *nodejsServerless) Run(verbose bool) error {
-	return wrapper.Run(s.name, s.zipperAddr, s.credential, s.wrapper)
+	err := serverless.LoadEnvFile(s.wrapper.workDir)
+	if err != nil {
+		return err
+	}
+	env := os.Environ()
+	if verbose {
+		env = append(env, "YOMO_LOG_LEVEL=debug")
+	}
+	return wrapper.Run(s.name, s.zipperAddr, s.credential, s.wrapper, env)
 }
 
 // Executable shows whether the program needs to be built

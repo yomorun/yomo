@@ -21,21 +21,21 @@ type SFNWrapper interface {
 	// WorkDir returns the working directory of the serverless function to build and run.
 	WorkDir() string
 	// Build defines how to build the serverless function.
-	Build() error
+	Build(env []string) error
 	// Run defines how to run the serverless function.
-	Run() error
+	Run(env []string) error
 }
 
 // BuildAndRun builds and runs the serverless function.
-func BuildAndRun(name, zipperAddr, credential string, wrapper SFNWrapper) error {
-	if err := wrapper.Build(); err != nil {
+func BuildAndRun(name, zipperAddr, credential string, wrapper SFNWrapper, env []string) error {
+	if err := wrapper.Build(env); err != nil {
 		return err
 	}
-	return Run(name, zipperAddr, credential, wrapper)
+	return Run(name, zipperAddr, credential, wrapper, env)
 }
 
 // Run runs the serverless function.
-func Run(name, zipperAddr, credential string, wrapper SFNWrapper) error {
+func Run(name, zipperAddr, credential string, wrapper SFNWrapper, env []string) error {
 	sockPath := filepath.Join(wrapper.WorkDir(), "sfn.sock")
 	_ = os.Remove(sockPath)
 
@@ -53,7 +53,7 @@ func Run(name, zipperAddr, credential string, wrapper SFNWrapper) error {
 	errch := make(chan error)
 
 	go func() {
-		if err := wrapper.Run(); err != nil {
+		if err := wrapper.Run(env); err != nil {
 			errch <- err
 		}
 	}()

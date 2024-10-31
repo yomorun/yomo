@@ -73,7 +73,7 @@ func (w *NodejsWrapper) WorkDir() string {
 }
 
 // Build defines how to build the serverless function.
-func (w *NodejsWrapper) Build() error {
+func (w *NodejsWrapper) Build(env []string) error {
 	// 1. generate .wrapper.ts file
 	dstPath := filepath.Join(w.workDir, wrapperTS)
 	_ = os.Remove(dstPath)
@@ -87,6 +87,7 @@ func (w *NodejsWrapper) Build() error {
 	cmd.Dir = w.workDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	cmd.Env = env
 	if err := cmd.Run(); err != nil {
 		return err
 	}
@@ -96,6 +97,7 @@ func (w *NodejsWrapper) Build() error {
 	cmd2.Dir = w.workDir
 	cmd2.Stdout = os.Stdout
 	cmd2.Stderr = os.Stderr
+	cmd2.Env = env
 	if err := cmd2.Run(); err != nil {
 		return err
 	}
@@ -104,11 +106,12 @@ func (w *NodejsWrapper) Build() error {
 }
 
 // Run runs the serverless function
-func (w *NodejsWrapper) Run() error {
+func (w *NodejsWrapper) Run(env []string) error {
 	cmd := exec.Command(w.nodePath, wrapperJS)
 	cmd.Dir = w.workDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	cmd.Env = env
 
 	return cmd.Run()
 }

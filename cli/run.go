@@ -37,7 +37,7 @@ var runCmd = &cobra.Command{
 	Short: "Run a YoMo Stream Function",
 	Long:  "Run a YoMo Stream Function",
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := parseFileArg(args, &opts, defaultSFNCompliedFile, defaultSFNWASIFile, defaultSFNSourceFile); err != nil {
+		if err := parseFileArg(args, &opts, defaultSFNCompliedFile, defaultSFNWASIFile, defaultSFNSourceFile, defaultSFNSourceTSFile); err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
 			return
 		}
@@ -91,7 +91,7 @@ func init() {
 	rootCmd.AddCommand(runCmd)
 
 	runCmd.Flags().StringVarP(&opts.ZipperAddr, "zipper", "z", "localhost:9000", "YoMo-Zipper endpoint addr")
-	runCmd.Flags().StringVarP(&opts.Name, "name", "n", "app", "yomo stream function name.")
+	runCmd.Flags().StringVarP(&opts.Name, "name", "n", "", "yomo stream function name.")
 	runCmd.Flags().StringVarP(&opts.ModFile, "modfile", "m", "", "custom go.mod")
 	runCmd.Flags().StringVarP(&opts.Credential, "credential", "d", "", "client credential payload, eg: `token:dBbBiRE7`")
 	runCmd.Flags().StringVarP(&opts.Runtime, "runtime", "r", "", "serverless runtime type")
