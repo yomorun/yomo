@@ -8,7 +8,7 @@ import {
 	_createConnection,
 	withTimeout,
 } from '@yomo/sfn'
-import { description, tags, handler } from '{{ .FileName }}'
+import { description, tag, handler } from '{{ .FileName }}'
 
 const WORK_DIR = '{{ .WorkDir }}'
 const FUNCTION_NAME = '{{ .FunctionName }}'
@@ -22,14 +22,14 @@ function run() {
 	if (
 		!description ||
 		!handler ||
-		!tags ||
-		tags.length === 0
+		tag === undefined ||
+		tag === null
 	) {
 		throw Error('description, tags, handler signature must be exported!')
 	}
 	const tools = _genTools(FUNCTION_NAME, description, SFN_FILE_PATH)
 	const header = JSON.stringify({
-		tags: tags,
+		tags: [tag],
 		function_definition: JSON.stringify(tools, null, 2)
 	})
 	const { conn } = _createConnection(SOCK_PATH, {
@@ -41,12 +41,14 @@ function run() {
 			const fc = new _FunctionCall(data)
 			const args = fc.readLLMArguments()
 			let result: any
-			// TODO: timeout
 			if (typeof handler === 'function') {
 				try {
 					result = await withTimeout(handler(args), TIMEOUT_DURATION)
 				} catch (error) {
-					console.error('handler timeout')
+					if (error instanceof Error && error.message === 'timeout') {
+						fc.writeLLMResult('timeout in this function calling, you should ignore this.', false)
+						_writeSFNData(conn, REDUCE_TAG, JSON.stringify(fc.data))
+					}
 					return
 				}
 			}

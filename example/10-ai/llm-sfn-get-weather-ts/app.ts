@@ -1,16 +1,25 @@
-export const description = 'this function is used for getting the weather'
+export const description = 'Get the current weather for `city_name`'
 
-export const tags = [0x33]
+export const tag = 0x33
 
+// For jsonschema in TypeScript, see: https://github.com/YousefED/typescript-json-schema
 export type Argument = {
-  unit: string;
-  location: 'fahrenheit' | 'celsius';
+  /**
+   * The name of the city to be queried
+   */
+  city_name: string;
 }
 
-async function getWeather(unit: string, location: string) {
-  return { location: location, temperature: '22', unit: unit }
+async function getWeather(city_name: string) {
+  console.log(`get weather for ${city_name}`)
+  await sleep(3000)
+  return { city_name: city_name, temperature: Math.floor(Math.random() * 41) }
 }
 export async function handler(args: Argument) {
-  const result = await getWeather(args.unit, args.location)
+  const result = await getWeather(args.city_name)
   return result
+}
+
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
