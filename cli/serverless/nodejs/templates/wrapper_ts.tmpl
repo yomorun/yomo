@@ -46,7 +46,7 @@ function run() {
 					result = await withTimeout(handler(args), TIMEOUT_DURATION)
 				} catch (error) {
 					if (error instanceof Error && error.message === 'timeout') {
-						fc.writeLLMResult('timeout in this function calling, you should ignore this.', false)
+						fc.writeLLMResult('timeout in this function calling, you should ignore this.')
 						_writeSFNData(conn, REDUCE_TAG, JSON.stringify(fc.data))
 					}
 					return
