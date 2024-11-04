@@ -10,7 +10,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@yomo/sfn": "1.0.4"
+    "@yomo/sfn": "1.0.5"
   },
   "devDependencies": {
     "@types/node": "^22.8.2",

@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@yomo/sfn':
-        specifier: 1.0.4
-        version: 1.0.4
+        specifier: 1.0.5
+        version: 1.0.5
     devDependencies:
       '@types/node':
         specifier: ^22.8.2
@@ -56,8 +56,8 @@ packages:
   '@types/node@22.8.2':
     resolution: {integrity: sha512-NzaRNFV+FZkvK/KLCsNdTvID0SThyrs5SHB6tsD/lajr22FGC73N2QeDPM2wHtVde8mgcXuSsHQkH5cX1pbPLw==}
 
-  '@yomo/sfn@1.0.4':
-    resolution: {integrity: sha512-rRAyEJEZhAXEmHiIeC4Iwl1SsNFdCBUJKCKJLaRddXeJhvSe6eQCO9F761TmysbncdAGfpPZ5te3Jg6/MOifAw==}
+  '@yomo/sfn@1.0.5':
+    resolution: {integrity: sha512-SvHQlLFKM7En88V4Cql7yJS63OmuFjU4im4sRFYTQP+H8nxL0TKu1wZQ3icxW3BW5Iy1F4I73XN51W0/P/Z8vg==}
 
   acorn-walk@8.3.4:
     resolution: {integrity: sha512-ueEepnujpqee2o5aIYnvHU6C0A42MNdsIDeqy5BydrkuC5R1ZuUFnm27EeFJGoEHJQgn3uleRvmTXaJgfXbt4g==}
@@ -255,7 +255,7 @@ snapshots:
     dependencies:
       undici-types: 6.19.8
 
-  '@yomo/sfn@1.0.4':
+  '@yomo/sfn@1.0.5':
     dependencies:
       typescript-json-schema: 0.65.1
     transitivePeerDependencies:
