@@ -72,7 +72,7 @@ func run(_ *cobra.Command, _ []string) {
 
 func init() {
 	rootCmd.Flags().StringVarP(&zipper, "zipper", "z", "localhost:9000", "YoMo-Zipper endpoint addr")
-	rootCmd.Flags().StringVarP(&name, "name", "n", "app", "yomo stream function name")
+	rootCmd.Flags().StringVarP(&name, "name", "n", "", "yomo stream function name")
 	rootCmd.Flags().StringVarP(&credential, "credential", "d", "", "client credential payload, eg: `token:dBbBiRE7`")
 	viper.SetEnvPrefix("YOMO_SFN")
 	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))

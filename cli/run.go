@@ -17,16 +17,15 @@ package cli
 
 import (
 	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"github.com/yomorun/yomo/pkg/log"
 
 	// serverless registrations
 	"github.com/yomorun/yomo/cli/serverless"
-	_ "github.com/yomorun/yomo/cli/serverless/deno"
 	_ "github.com/yomorun/yomo/cli/serverless/exec"
 	_ "github.com/yomorun/yomo/cli/serverless/golang"
+	_ "github.com/yomorun/yomo/cli/serverless/nodejs"
 	_ "github.com/yomorun/yomo/cli/serverless/wasm"
 	"github.com/yomorun/yomo/cli/viper"
 )
@@ -37,7 +36,7 @@ var runCmd = &cobra.Command{
 	Short: "Run a YoMo Stream Function",
 	Long:  "Run a YoMo Stream Function",
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := parseFileArg(args, &opts, defaultSFNCompliedFile, defaultSFNWASIFile, defaultSFNSourceFile); err != nil {
+		if err := parseFileArg(args, &opts, defaultSFNCompliedFile, defaultSFNWASIFile, defaultSFNSourceFile, defaultSFNSourceTSFile); err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
 			return
 		}
@@ -68,24 +67,12 @@ var runCmd = &cobra.Command{
 			)
 			return
 		}
-		// build if it's go file
-		if ext := filepath.Ext(opts.Filename); ext == ".go" {
-			log.PendingStatusEvent(os.Stdout, "Building YoMo Stream Function instance...")
-			if err := s.Build(true); err != nil {
-				log.FailureStatusEvent(os.Stdout, err.Error())
-				os.Exit(127)
-			}
-			log.SuccessStatusEvent(os.Stdout, "YoMo Stream Function build successful!")
+
+		if err := s.Build(true); err != nil {
+			log.FailureStatusEvent(os.Stdout, err.Error())
+			os.Exit(127)
 		}
-		// run
-		// wasi
-		if ext := filepath.Ext(opts.Filename); ext == ".wasm" {
-			wasmRuntime := opts.Runtime
-			if wasmRuntime == "" {
-				wasmRuntime = "wazero"
-			}
-			log.InfoStatusEvent(os.Stdout, "WASM runtime: %s", wasmRuntime)
-		}
+
 		log.InfoStatusEvent(
 			os.Stdout,
 			"Starting YoMo Stream Function instance, connecting to zipper: %v",
@@ -103,7 +90,7 @@ func init() {
 	rootCmd.AddCommand(runCmd)
 
 	runCmd.Flags().StringVarP(&opts.ZipperAddr, "zipper", "z", "localhost:9000", "YoMo-Zipper endpoint addr")
-	runCmd.Flags().StringVarP(&opts.Name, "name", "n", "app", "yomo stream function name.")
+	runCmd.Flags().StringVarP(&opts.Name, "name", "n", "", "yomo stream function name.")
 	runCmd.Flags().StringVarP(&opts.ModFile, "modfile", "m", "", "custom go.mod")
 	runCmd.Flags().StringVarP(&opts.Credential, "credential", "d", "", "client credential payload, eg: `token:dBbBiRE7`")
 	runCmd.Flags().StringVarP(&opts.Runtime, "runtime", "r", "", "serverless runtime type")
