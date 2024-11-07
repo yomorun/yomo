@@ -154,7 +154,7 @@ func decorateReqContext(service *Service, logger *slog.Logger) func(handler http
 				"duration", duration,
 			}
 			if ww.Err != nil {
-				logger.Error("llm birdge request", append(logContent, "error", ww.Err)...)
+				logger.Error("llm birdge request", append(logContent, "err", ww.Err)...)
 			} else {
 				logger.Info("llm birdge request", logContent...)
 			}
