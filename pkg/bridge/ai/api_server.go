@@ -20,6 +20,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 const (
@@ -82,11 +83,10 @@ func DecorateHandler(h http.Handler, decorates ...func(handler http.Handler) htt
 func NewBasicAPIServer(config *Config, zipperAddr, credential string, provider provider.LLMProvider, logger *slog.Logger) (*BasicAPIServer, error) {
 	zipperAddr = parseZipperAddr(zipperAddr)
 
-	logger = logger.With("component", "bridge")
+	logger = logger.With("namespace", "bridge")
 
 	service := NewService(zipperAddr, provider, &ServiceOptions{
 		Logger:         logger,
-		Tracer:         otel.Tracer("yomo-llm-bridge"),
 		CredentialFunc: func(r *http.Request) (string, error) { return credential, nil },
 	})
 
@@ -105,10 +105,14 @@ func NewBasicAPIServer(config *Config, zipperAddr, credential string, provider p
 // log the request information and start tracing the request.
 func decorateReqContext(service *Service, logger *slog.Logger) func(handler http.Handler) http.Handler {
 	host, _ := os.Hostname()
+	tracer := otel.Tracer("yomo-llm-bridge")
 
 	return func(handler http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
+			ctx = WithTracerContext(ctx, tracer)
+
+			start := time.Now()
 
 			caller, err := service.LoadOrCreateCaller(r)
 			if err != nil {
@@ -118,7 +122,7 @@ func decorateReqContext(service *Service, logger *slog.Logger) func(handler http
 			ctx = WithCallerContext(ctx, caller)
 
 			// trace every request
-			ctx, span := service.option.Tracer.Start(
+			ctx, span := tracer.Start(
 				ctx,
 				r.URL.Path,
 				trace.WithSpanKind(trace.SpanKindServer),
@@ -126,12 +130,35 @@ func decorateReqContext(service *Service, logger *slog.Logger) func(handler http
 			)
 			defer span.End()
 
+			traceID := span.SpanContext().TraceID().String()
+
 			transID := id.New(32)
 			ctx = WithTransIDContext(ctx, transID)
 
-			logger.Info("request", "method", r.Method, "path", r.URL.Path, "transID", transID)
+			ww := NewResponseWriter(w)
 
-			handler.ServeHTTP(w, r.WithContext(ctx))
+			handler.ServeHTTP(ww, r.WithContext(ctx))
+
+			duration := time.Since(start)
+			if !ww.TTFT.IsZero() {
+				duration = ww.TTFT.Sub(start)
+			}
+
+			logContent := []any{
+				"method", r.Method,
+				"path", r.URL.Path,
+				"stream", ww.IsStream,
+				"host", host,
+				"transID", transID,
+				"traceId", traceID,
+				"duration", duration,
+			}
+			if ww.Err != nil {
+				logger.Error("llm birdge request", append(logContent, "error", ww.Err)...)
+			} else {
+				logger.Info("llm birdge request", logContent...)
+			}
+
 		})
 	}
 }
@@ -167,26 +194,33 @@ func (h *Handler) HandleInvoke(w http.ResponseWriter, r *http.Request) {
 	var (
 		ctx     = r.Context()
 		transID = FromTransIDContext(ctx)
+		ww      = w.(*ResponseWriter)
 	)
 	defer r.Body.Close()
 
 	req, err := DecodeRequest[ai.InvokeRequest](r, w, h.service.logger)
 	if err != nil {
+		ww.Err = errors.New("bad request")
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), RequestTimeout)
 	defer cancel()
 
+	var (
+		caller = FromCallerContext(ctx)
+		tracer = FromTracerContext(ctx)
+	)
+
 	w.Header().Set("Content-Type", "application/json")
 
-	res, err := h.service.GetInvoke(ctx, req.Prompt, baseSystemMessage, transID, FromCallerContext(ctx), req.IncludeCallStack)
+	res, err := h.service.GetInvoke(ctx, req.Prompt, baseSystemMessage, transID, caller, req.IncludeCallStack, tracer)
 	if err != nil {
+		ww.Err = err
 		RespondWithError(w, http.StatusInternalServerError, err, h.service.logger)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(res)
 }
 
@@ -195,6 +229,7 @@ func (h *Handler) HandleChatCompletions(w http.ResponseWriter, r *http.Request) 
 	var (
 		ctx     = r.Context()
 		transID = FromTransIDContext(ctx)
+		ww      = w.(*ResponseWriter)
 	)
 	defer r.Body.Close()
 
@@ -206,7 +241,13 @@ func (h *Handler) HandleChatCompletions(w http.ResponseWriter, r *http.Request) 
 	ctx, cancel := context.WithTimeout(r.Context(), RequestTimeout)
 	defer cancel()
 
-	if err := h.service.GetChatCompletions(ctx, req, transID, FromCallerContext(ctx), w); err != nil {
+	var (
+		caller = FromCallerContext(ctx)
+		tracer = FromTracerContext(ctx)
+	)
+
+	if err := h.service.GetChatCompletions(ctx, req, transID, caller, ww, tracer); err != nil {
+		ww.Err = err
 		RespondWithError(w, http.StatusBadRequest, err, h.service.logger)
 		return
 	}
@@ -288,6 +329,22 @@ func FromTransIDContext(ctx context.Context) string {
 	val, ok := ctx.Value(transIDContextKey{}).(string)
 	if !ok {
 		return ""
+	}
+	return val
+}
+
+type tracerContextKey struct{}
+
+// WithTracerContext adds the tracer to the request context
+func WithTracerContext(ctx context.Context, tracer trace.Tracer) context.Context {
+	return context.WithValue(ctx, tracerContextKey{}, tracer)
+}
+
+// FromTransIDContext returns the transID from the request context
+func FromTracerContext(ctx context.Context) trace.Tracer {
+	val, ok := ctx.Value(tracerContextKey{}).(trace.Tracer)
+	if !ok {
+		return new(noop.Tracer)
 	}
 	return val
 }

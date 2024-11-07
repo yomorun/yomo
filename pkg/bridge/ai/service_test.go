@@ -214,7 +214,7 @@ func TestServiceInvoke(t *testing.T) {
 
 			caller.SetSystemPrompt(tt.args.systemPrompt, SystemPromptOpOverwrite)
 
-			resp, err := service.GetInvoke(context.TODO(), tt.args.userInstruction, tt.args.baseSystemMessage, "transID", caller, true)
+			resp, err := service.GetInvoke(context.TODO(), tt.args.userInstruction, tt.args.baseSystemMessage, "transID", caller, true, nil)
 			assert.NoError(t, err)
 
 			assert.Equal(t, tt.wantUsage, resp.TokenUsage)
@@ -384,7 +384,7 @@ func TestServiceChatCompletion(t *testing.T) {
 			caller.SetSystemPrompt(tt.args.systemPrompt, SystemPromptOpOverwrite)
 
 			w := httptest.NewRecorder()
-			err = service.GetChatCompletions(context.TODO(), tt.args.request, "transID", caller, w)
+			err = service.GetChatCompletions(context.TODO(), tt.args.request, "transID", caller, NewResponseWriter(w), nil)
 			assert.NoError(t, err)
 
 			assert.Equal(t, tt.wantRequest, pd.RequestRecords())

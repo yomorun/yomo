@@ -59,7 +59,7 @@ func NewStreamFunction(name, zipperAddr string, opts ...SfnOption) StreamFunctio
 	client := core.NewClient(name, zipperAddr, core.ClientTypeStreamFunction, clientOpts...)
 
 	client.Logger = client.Logger.With(
-		"component", core.ClientTypeStreamFunction.String(),
+		"namespace", core.ClientTypeStreamFunction.String(),
 		"sfn_id", client.ClientID(),
 		"sfn_name", client.Name(),
 		"zipper_addr", zipperAddr,

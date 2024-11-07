@@ -3,6 +3,7 @@ package xai
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
@@ -32,11 +33,14 @@ func TestXAIProvider_GetChatCompletions(t *testing.T) {
 		Model:    "groq-beta",
 	}
 
-	_, err := provider.GetChatCompletions(context.TODO(), req, nil)
+	ctx, cancel := context.WithTimeout(context.TODO(), time.Second)
+	defer cancel()
+
+	_, err := provider.GetChatCompletions(ctx, req, nil)
 	assert.Error(t, err)
 	t.Log(err)
 
-	_, err = provider.GetChatCompletionsStream(context.TODO(), req, nil)
+	_, err = provider.GetChatCompletionsStream(ctx, req, nil)
 	assert.Error(t, err)
 	t.Log(err)
 
@@ -44,11 +48,11 @@ func TestXAIProvider_GetChatCompletions(t *testing.T) {
 		Messages: msgs,
 	}
 
-	_, err = provider.GetChatCompletions(context.TODO(), req, nil)
+	_, err = provider.GetChatCompletions(ctx, req, nil)
 	assert.Error(t, err)
 	t.Log(err)
 
-	_, err = provider.GetChatCompletionsStream(context.TODO(), req, nil)
+	_, err = provider.GetChatCompletionsStream(ctx, req, nil)
 	assert.Error(t, err)
 	t.Log(err)
 }
