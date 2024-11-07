@@ -83,7 +83,7 @@ func DecorateHandler(h http.Handler, decorates ...func(handler http.Handler) htt
 func NewBasicAPIServer(config *Config, zipperAddr, credential string, provider provider.LLMProvider, logger *slog.Logger) (*BasicAPIServer, error) {
 	zipperAddr = parseZipperAddr(zipperAddr)
 
-	logger = logger.With("namespace", "bridge")
+	logger = logger.With("namespace", "llm-bridge")
 
 	service := NewService(zipperAddr, provider, &ServiceOptions{
 		Logger:         logger,
