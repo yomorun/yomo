@@ -158,8 +158,7 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, baseSystemMe
 		completionUsage int
 	)
 	var (
-		_, span    = tracer.Start(ctx, "first_call")
-		_, reqSpan = tracer.Start(ctx, "completions_request")
+		_, span = tracer.Start(ctx, "first_call")
 	)
 	chatCompletionResponse, err := srv.provider.GetChatCompletions(ctx, req, md)
 	if err != nil {
@@ -175,7 +174,6 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, baseSystemMe
 	}
 	// if no tool_calls fired, just return the llm text result
 	if res.FinishReason != string(openai.FinishReasonToolCalls) {
-		reqSpan.End()
 		return res, nil
 	}
 	span.End()
@@ -357,7 +355,6 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 		if err != nil {
 			return err
 		}
-		reqSpan.End()
 
 		promptUsage = resp.Usage.PromptTokens
 		completionUsage = resp.Usage.CompletionTokens
@@ -369,6 +366,7 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 			toolCalls = append(toolCalls, resp.Choices[0].Message.ToolCalls...)
 			assistantMessage = resp.Choices[0].Message
 			firstCallSpan.End()
+			reqSpan.End()
 		} else if rawReq.Stream {
 			// if raw request is stream mode, we should return the stream response
 			// WARN: this is a temporary solution for ollama provider
