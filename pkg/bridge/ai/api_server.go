@@ -83,7 +83,7 @@ func DecorateHandler(h http.Handler, decorates ...func(handler http.Handler) htt
 func NewBasicAPIServer(config *Config, zipperAddr, credential string, provider provider.LLMProvider, logger *slog.Logger) (*BasicAPIServer, error) {
 	zipperAddr = parseZipperAddr(zipperAddr)
 
-	logger = logger.With("namespace", "llm-bridge")
+	logger = logger.With("service", "llm-bridge")
 
 	service := NewService(zipperAddr, provider, &ServiceOptions{
 		Logger:         logger,
@@ -104,7 +104,7 @@ func NewBasicAPIServer(config *Config, zipperAddr, credential string, provider p
 // decorateReqContext decorates the context of the request, it injects a transID into the request's context,
 // log the request information and start tracing the request.
 func decorateReqContext(service *Service, logger *slog.Logger) func(handler http.Handler) http.Handler {
-	host, _ := os.Hostname()
+	hostname, _ := os.Hostname()
 	tracer := otel.Tracer("yomo-llm-bridge")
 
 	return func(handler http.Handler) http.Handler {
@@ -126,11 +126,9 @@ func decorateReqContext(service *Service, logger *slog.Logger) func(handler http
 				ctx,
 				r.URL.Path,
 				trace.WithSpanKind(trace.SpanKindServer),
-				trace.WithAttributes(attribute.String("host", host)),
+				trace.WithAttributes(attribute.String("host", hostname)),
 			)
 			defer span.End()
-
-			traceID := span.SpanContext().TraceID().String()
 
 			transID := id.New(32)
 			ctx = WithTransIDContext(ctx, transID)
@@ -145,20 +143,20 @@ func decorateReqContext(service *Service, logger *slog.Logger) func(handler http
 			}
 
 			logContent := []any{
-				"method", r.Method,
-				"path", r.URL.Path,
+				"namespace", fmt.Sprintf("%s %s", r.Method, r.URL.Path),
 				"stream", ww.IsStream,
-				"host", host,
-				"transID", transID,
-				"traceId", traceID,
+				"host", hostname,
+				"requestId", transID,
 				"duration", duration,
+			}
+			if traceID := span.SpanContext().TraceID(); traceID.IsValid() {
+				logContent = append(logContent, "traceId", traceID.String())
 			}
 			if ww.Err != nil {
 				logger.Error("llm birdge request", append(logContent, "err", ww.Err)...)
 			} else {
 				logger.Info("llm birdge request", logContent...)
 			}
-
 		})
 	}
 }

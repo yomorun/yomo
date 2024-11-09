@@ -68,7 +68,7 @@ func NewServer(name string, opts ...ServerOption) *Server {
 		o(options)
 	}
 
-	logger := options.logger.With("component", "zipper", "zipper_name", name)
+	logger := options.logger.With("service", "zipper", "zipper_name", name)
 
 	ctx, ctxCancel := context.WithCancel(context.Background())
 
