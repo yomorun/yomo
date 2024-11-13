@@ -291,6 +291,11 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 			if err != nil {
 				return err
 			}
+
+			if len(streamRes.PromptFilterResults) > 0 {
+				continue
+			}
+
 			if streamRes.Usage != nil {
 				promptUsage = streamRes.Usage.PromptTokens
 				completionUsage = streamRes.Usage.CompletionTokens
