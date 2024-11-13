@@ -181,7 +181,6 @@ func (h *Handler) HandleOverview(w http.ResponseWriter, r *http.Request) {
 		functions[tag] = tc.Function
 	}
 
-	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(&ai.OverviewResponse{Functions: functions})
 }
 
@@ -233,6 +232,7 @@ func (h *Handler) HandleChatCompletions(w http.ResponseWriter, r *http.Request) 
 
 	req, err := DecodeRequest[openai.ChatCompletionRequest](r, w, h.service.logger)
 	if err != nil {
+		ww.Err = err
 		return
 	}
 

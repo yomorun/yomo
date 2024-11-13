@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -13,6 +14,7 @@ type ResponseWriter struct {
 	IsStream   bool
 	Err        error
 	TTFT       time.Time
+	once       sync.Once
 	underlying http.ResponseWriter
 }
 
@@ -35,7 +37,9 @@ func (w *ResponseWriter) Write(b []byte) (int, error) {
 
 // WriteHeader writes the header to the underlying ResponseWriter.
 func (w *ResponseWriter) WriteHeader(code int) {
-	w.underlying.WriteHeader(code)
+	w.once.Do(func() {
+		w.underlying.WriteHeader(code)
+	})
 }
 
 // WriteStreamEvent writes the event to the underlying ResponseWriter.
