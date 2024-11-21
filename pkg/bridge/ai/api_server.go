@@ -246,6 +246,14 @@ func (h *Handler) HandleChatCompletions(w http.ResponseWriter, r *http.Request) 
 
 	if err := h.service.GetChatCompletions(ctx, req, transID, caller, ww, tracer); err != nil {
 		ww.Err = err
+		if err == context.Canceled {
+			return
+		}
+		if ww.IsStream {
+			h.service.logger.Error("bridge server error", "err", err.Error(), "err_type", reflect.TypeOf(err).String())
+			w.Write([]byte(fmt.Sprintf(`{"error":{"message":"%s"}}`, err.Error())))
+			return
+		}
 		RespondWithError(w, http.StatusBadRequest, err, h.service.logger)
 		return
 	}
@@ -266,6 +274,14 @@ func DecodeRequest[T any](r *http.Request, w http.ResponseWriter, logger *slog.L
 
 // RespondWithError writes an error to response according to the OpenAI API spec.
 func RespondWithError(w http.ResponseWriter, code int, err error, logger *slog.Logger) {
+	code, errString := parseCodeError(code, err)
+	logger.Error("bridge server error", "err", errString, "err_type", reflect.TypeOf(err).String())
+
+	w.WriteHeader(code)
+	w.Write([]byte(fmt.Sprintf(`{"error":{"code":"%d","message":"%s"}}`, code, errString)))
+}
+
+func parseCodeError(code int, err error) (int, string) {
 	errString := err.Error()
 
 	switch e := err.(type) {
@@ -277,10 +293,7 @@ func RespondWithError(w http.ResponseWriter, code int, err error, logger *slog.L
 		errString = e.Error()
 	}
 
-	logger.Error("bridge server error", "err", errString, "err_type", reflect.TypeOf(err).String())
-
-	w.WriteHeader(code)
-	w.Write([]byte(fmt.Sprintf(`{"error":{"code":"%d","message":"%s"}}`, code, errString)))
+	return code, errString
 }
 
 func getLocalIP() (string, error) {
