@@ -275,11 +275,13 @@ func (s *Server) handleConn(conn *Connection) {
 func (s *Server) authenticate(hf *frame.HandshakeFrame) (metadata.M, error) {
 	md, err := auth.Authenticate(s.opts.auths, hf)
 	if err != nil {
-		s.logger.Warn(
+		s.logger.Error(
 			"authentication failed",
+			"err", err,
 			"client_type", ClientType(hf.ClientType).String(),
 			"client_name", hf.Name,
-			"credential", hf.AuthName,
+			"auth_name", hf.AuthName,
+			"auth_payload", string(hf.AuthPayload),
 		)
 		return nil, err
 	}
