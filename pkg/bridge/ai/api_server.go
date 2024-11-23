@@ -20,6 +20,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 const (
@@ -82,11 +83,10 @@ func DecorateHandler(h http.Handler, decorates ...func(handler http.Handler) htt
 func NewBasicAPIServer(config *Config, zipperAddr, credential string, provider provider.LLMProvider, logger *slog.Logger) (*BasicAPIServer, error) {
 	zipperAddr = parseZipperAddr(zipperAddr)
 
-	logger = logger.With("component", "bridge")
+	logger = logger.With("service", "llm-bridge")
 
 	service := NewService(zipperAddr, provider, &ServiceOptions{
 		Logger:         logger,
-		Tracer:         otel.Tracer("yomo-llm-bridge"),
 		CredentialFunc: func(r *http.Request) (string, error) { return credential, nil },
 	})
 
@@ -104,11 +104,15 @@ func NewBasicAPIServer(config *Config, zipperAddr, credential string, provider p
 // decorateReqContext decorates the context of the request, it injects a transID into the request's context,
 // log the request information and start tracing the request.
 func decorateReqContext(service *Service, logger *slog.Logger) func(handler http.Handler) http.Handler {
-	host, _ := os.Hostname()
+	hostname, _ := os.Hostname()
+	tracer := otel.Tracer("yomo-llm-bridge")
 
 	return func(handler http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
+			ctx = WithTracerContext(ctx, tracer)
+
+			start := time.Now()
 
 			caller, err := service.LoadOrCreateCaller(r)
 			if err != nil {
@@ -118,20 +122,41 @@ func decorateReqContext(service *Service, logger *slog.Logger) func(handler http
 			ctx = WithCallerContext(ctx, caller)
 
 			// trace every request
-			ctx, span := service.option.Tracer.Start(
+			ctx, span := tracer.Start(
 				ctx,
 				r.URL.Path,
 				trace.WithSpanKind(trace.SpanKindServer),
-				trace.WithAttributes(attribute.String("host", host)),
+				trace.WithAttributes(attribute.String("host", hostname)),
 			)
 			defer span.End()
 
 			transID := id.New(32)
 			ctx = WithTransIDContext(ctx, transID)
 
-			logger.Info("request", "method", r.Method, "path", r.URL.Path, "transID", transID)
+			ww := NewResponseWriter(w)
 
-			handler.ServeHTTP(w, r.WithContext(ctx))
+			handler.ServeHTTP(ww, r.WithContext(ctx))
+
+			duration := time.Since(start)
+			if !ww.TTFT.IsZero() {
+				duration = ww.TTFT.Sub(start)
+			}
+
+			logContent := []any{
+				"namespace", fmt.Sprintf("%s %s", r.Method, r.URL.Path),
+				"stream", ww.IsStream,
+				"host", hostname,
+				"requestId", transID,
+				"duration", duration,
+			}
+			if traceID := span.SpanContext().TraceID(); traceID.IsValid() {
+				logContent = append(logContent, "traceId", traceID.String())
+			}
+			if ww.Err != nil {
+				logger.Error("llm birdge request", append(logContent, "err", ww.Err)...)
+			} else {
+				logger.Info("llm birdge request", logContent...)
+			}
 		})
 	}
 }
@@ -156,7 +181,6 @@ func (h *Handler) HandleOverview(w http.ResponseWriter, r *http.Request) {
 		functions[tag] = tc.Function
 	}
 
-	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(&ai.OverviewResponse{Functions: functions})
 }
 
@@ -167,26 +191,33 @@ func (h *Handler) HandleInvoke(w http.ResponseWriter, r *http.Request) {
 	var (
 		ctx     = r.Context()
 		transID = FromTransIDContext(ctx)
+		ww      = w.(*ResponseWriter)
 	)
 	defer r.Body.Close()
 
 	req, err := DecodeRequest[ai.InvokeRequest](r, w, h.service.logger)
 	if err != nil {
+		ww.Err = errors.New("bad request")
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), RequestTimeout)
 	defer cancel()
 
+	var (
+		caller = FromCallerContext(ctx)
+		tracer = FromTracerContext(ctx)
+	)
+
 	w.Header().Set("Content-Type", "application/json")
 
-	res, err := h.service.GetInvoke(ctx, req.Prompt, baseSystemMessage, transID, FromCallerContext(ctx), req.IncludeCallStack)
+	res, err := h.service.GetInvoke(ctx, req.Prompt, baseSystemMessage, transID, caller, req.IncludeCallStack, tracer)
 	if err != nil {
+		ww.Err = err
 		RespondWithError(w, http.StatusInternalServerError, err, h.service.logger)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(res)
 }
 
@@ -195,18 +226,34 @@ func (h *Handler) HandleChatCompletions(w http.ResponseWriter, r *http.Request) 
 	var (
 		ctx     = r.Context()
 		transID = FromTransIDContext(ctx)
+		ww      = w.(*ResponseWriter)
 	)
 	defer r.Body.Close()
 
 	req, err := DecodeRequest[openai.ChatCompletionRequest](r, w, h.service.logger)
 	if err != nil {
+		ww.Err = err
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), RequestTimeout)
 	defer cancel()
 
-	if err := h.service.GetChatCompletions(ctx, req, transID, FromCallerContext(ctx), w); err != nil {
+	var (
+		caller = FromCallerContext(ctx)
+		tracer = FromTracerContext(ctx)
+	)
+
+	if err := h.service.GetChatCompletions(ctx, req, transID, caller, ww, tracer); err != nil {
+		ww.Err = err
+		if err == context.Canceled {
+			return
+		}
+		if ww.IsStream {
+			h.service.logger.Error("bridge server error", "err", err.Error(), "err_type", reflect.TypeOf(err).String())
+			w.Write([]byte(fmt.Sprintf(`{"error":{"message":"%s"}}`, err.Error())))
+			return
+		}
 		RespondWithError(w, http.StatusBadRequest, err, h.service.logger)
 		return
 	}
@@ -227,6 +274,14 @@ func DecodeRequest[T any](r *http.Request, w http.ResponseWriter, logger *slog.L
 
 // RespondWithError writes an error to response according to the OpenAI API spec.
 func RespondWithError(w http.ResponseWriter, code int, err error, logger *slog.Logger) {
+	code, errString := parseCodeError(code, err)
+	logger.Error("bridge server error", "err", errString, "err_type", reflect.TypeOf(err).String())
+
+	w.WriteHeader(code)
+	w.Write([]byte(fmt.Sprintf(`{"error":{"code":"%d","message":"%s"}}`, code, errString)))
+}
+
+func parseCodeError(code int, err error) (int, string) {
 	errString := err.Error()
 
 	switch e := err.(type) {
@@ -238,10 +293,7 @@ func RespondWithError(w http.ResponseWriter, code int, err error, logger *slog.L
 		errString = e.Error()
 	}
 
-	logger.Error("bridge server error", "err", errString, "err_type", reflect.TypeOf(err).String())
-
-	w.WriteHeader(code)
-	w.Write([]byte(fmt.Sprintf(`{"error":{"code":"%d","message":"%s"}}`, code, errString)))
+	return code, errString
 }
 
 func getLocalIP() (string, error) {
@@ -288,6 +340,22 @@ func FromTransIDContext(ctx context.Context) string {
 	val, ok := ctx.Value(transIDContextKey{}).(string)
 	if !ok {
 		return ""
+	}
+	return val
+}
+
+type tracerContextKey struct{}
+
+// WithTracerContext adds the tracer to the request context
+func WithTracerContext(ctx context.Context, tracer trace.Tracer) context.Context {
+	return context.WithValue(ctx, tracerContextKey{}, tracer)
+}
+
+// FromTransIDContext returns the transID from the request context
+func FromTracerContext(ctx context.Context) trace.Tracer {
+	val, ok := ctx.Value(tracerContextKey{}).(trace.Tracer)
+	if !ok {
+		return new(noop.Tracer)
 	}
 	return val
 }

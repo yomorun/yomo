@@ -38,8 +38,6 @@ type Service struct {
 type ServiceOptions struct {
 	// Logger is the logger for the service
 	Logger *slog.Logger
-	// Tracer is the tracer for the service
-	Tracer trace.Tracer
 	// CredentialFunc is the function for getting the credential from the request
 	CredentialFunc func(r *http.Request) (string, error)
 	// CallerCacheSize is the size of the caller's cache
@@ -64,9 +62,6 @@ func NewService(zipperAddr string, provider provider.LLMProvider, opt *ServiceOp
 func initOption(opt *ServiceOptions) *ServiceOptions {
 	if opt == nil {
 		opt = &ServiceOptions{}
-	}
-	if opt.Tracer == nil {
-		opt.Tracer = noop.NewTracerProvider().Tracer("yomo-ai-bridge")
 	}
 	if opt.Logger == nil {
 		opt.Logger = ylog.Default()
@@ -136,7 +131,10 @@ func (srv *Service) LoadOrCreateCaller(r *http.Request) (*Caller, error) {
 }
 
 // GetInvoke returns the invoke response
-func (srv *Service) GetInvoke(ctx context.Context, userInstruction, baseSystemMessage, transID string, caller *Caller, includeCallStack bool) (*ai.InvokeResponse, error) {
+func (srv *Service) GetInvoke(ctx context.Context, userInstruction, baseSystemMessage, transID string, caller *Caller, includeCallStack bool, tracer trace.Tracer) (*ai.InvokeResponse, error) {
+	if tracer == nil {
+		tracer = new(noop.Tracer)
+	}
 	md := caller.Metadata().Clone()
 	// read tools attached to the metadata
 	tcs, err := register.ListToolCalls(md)
@@ -159,12 +157,13 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, baseSystemMe
 		promptUsage     int
 		completionUsage int
 	)
-	_, span := srv.option.Tracer.Start(ctx, "first_call")
+	var (
+		_, span = tracer.Start(ctx, "first_call")
+	)
 	chatCompletionResponse, err := srv.provider.GetChatCompletions(ctx, req, md)
 	if err != nil {
 		return nil, err
 	}
-	span.End()
 	promptUsage = chatCompletionResponse.Usage.PromptTokens
 	completionUsage = chatCompletionResponse.Usage.CompletionTokens
 
@@ -177,6 +176,7 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, baseSystemMe
 	if res.FinishReason != string(openai.FinishReasonToolCalls) {
 		return res, nil
 	}
+	span.End()
 
 	// run llm function calls
 	srv.logger.Debug(">>>> start 1st call response",
@@ -185,7 +185,7 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, baseSystemMe
 
 	srv.logger.Debug(">> run function calls", "transID", transID, "res.ToolCalls", fmt.Sprintf("%+v", res.ToolCalls))
 
-	_, span = srv.option.Tracer.Start(ctx, "run_sfn")
+	_, span = tracer.Start(ctx, "run_sfn")
 	reqID := id.New(16)
 	llmCalls, err := caller.Call(ctx, transID, reqID, res.ToolCalls)
 	if err != nil {
@@ -202,7 +202,7 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, baseSystemMe
 	req2 := openai.ChatCompletionRequest{
 		Messages: messages2,
 	}
-	_, span = srv.option.Tracer.Start(ctx, "second_call")
+	_, span = tracer.Start(ctx, "second_call")
 	chatCompletionResponse2, err := srv.provider.GetChatCompletions(ctx, req2, md)
 	if err != nil {
 		return nil, err
@@ -228,8 +228,11 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, baseSystemMe
 }
 
 // GetChatCompletions accepts openai.ChatCompletionRequest and responds to http.ResponseWriter.
-func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, transID string, caller *Caller, w http.ResponseWriter) error {
-	reqCtx, reqSpan := srv.option.Tracer.Start(ctx, "completions_request")
+func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, transID string, caller *Caller, w *ResponseWriter, tracer trace.Tracer) error {
+	if tracer == nil {
+		tracer = new(noop.Tracer)
+	}
+	reqCtx, reqSpan := tracer.Start(ctx, "completions_request")
 	md := caller.Metadata().Clone()
 
 	// 1. find all hosting tool sfn
@@ -260,25 +263,26 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 
 	// 4. request first chat for getting tools
 	if req.Stream {
-		_, firstCallSpan := srv.option.Tracer.Start(reqCtx, "first_call_request")
+		w.IsStream = true
+		_, firstCallSpan := tracer.Start(reqCtx, "first_call_request")
 
 		resStream, err := srv.provider.GetChatCompletionsStream(reqCtx, req, md)
 		if err != nil {
 			return err
 		}
+
+		w.SetStreamHeader()
+
 		var (
-			flusher        = eventFlusher(w)
 			isFunctionCall = false
-		)
-		var (
-			i             int // number of chunks
-			j             int // number of tool call chunks
-			firstRespSpan trace.Span
-			respSpan      trace.Span
+			i              int // number of chunks
+			j              int // number of tool call chunks
+			firstRespSpan  trace.Span
+			respSpan       trace.Span
 		)
 		for {
 			if i == 0 {
-				_, firstRespSpan = srv.option.Tracer.Start(reqCtx, "first_call_response_in_stream")
+				_, firstRespSpan = tracer.Start(reqCtx, "first_call_response_in_stream")
 			}
 			streamRes, err := resStream.Recv()
 			if err == io.EOF {
@@ -287,6 +291,11 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 			if err != nil {
 				return err
 			}
+
+			if len(streamRes.PromptFilterResults) > 0 {
+				continue
+			}
+
 			if streamRes.Usage != nil {
 				promptUsage = streamRes.Usage.PromptTokens
 				completionUsage = streamRes.Usage.CompletionTokens
@@ -323,18 +332,18 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 				}
 				j++
 			} else if !isFunctionCall {
-				_ = writeStreamEvent(w, flusher, streamRes)
+				_ = w.WriteStreamEvent(streamRes)
 			}
 			if i == 0 && j == 0 && !isFunctionCall {
 				reqSpan.End()
-				recordTTFT(ctx, srv.option.Tracer)
-				_, respSpan = srv.option.Tracer.Start(ctx, "response_in_stream(TBT)")
+				recordTTFT(ctx, tracer, w)
+				_, respSpan = tracer.Start(ctx, "response_in_stream(TBT)")
 			}
 			i++
 		}
 		if !isFunctionCall {
 			respSpan.End()
-			return writeStreamDone(w, flusher)
+			return w.WriteStreamDone()
 		}
 		firstRespSpan.End()
 		toolCalls = mapToSliceTools(toolCallsMap)
@@ -344,14 +353,13 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 			Role:      openai.ChatMessageRoleAssistant,
 		}
 		reqSpan.End()
-		flusher.Flush()
+		w.Flush() // flush the header before write body to the client.
 	} else {
-		_, firstCallSpan := srv.option.Tracer.Start(reqCtx, "first_call")
+		_, firstCallSpan := tracer.Start(reqCtx, "first_call")
 		resp, err := srv.provider.GetChatCompletions(ctx, req, md)
 		if err != nil {
 			return err
 		}
-		reqSpan.End()
 
 		promptUsage = resp.Usage.PromptTokens
 		completionUsage = resp.Usage.CompletionTokens
@@ -363,10 +371,11 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 			toolCalls = append(toolCalls, resp.Choices[0].Message.ToolCalls...)
 			assistantMessage = resp.Choices[0].Message
 			firstCallSpan.End()
+			reqSpan.End()
 		} else if rawReq.Stream {
 			// if raw request is stream mode, we should return the stream response
 			// WARN: this is a temporary solution for ollama provider
-			flusher := eventFlusher(w)
+			w.SetStreamHeader()
 			// choices
 			choices := make([]openai.ChatCompletionStreamChoice, 0)
 			for _, choice := range resp.Choices {
@@ -394,7 +403,7 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 				// PromptAnnotations:
 				// PromptFilterResults:
 			}
-			writeStreamEvent(w, flusher, streamRes)
+			_ = w.WriteStreamEvent(streamRes)
 			// usage
 			if req.StreamOptions != nil && req.StreamOptions.IncludeUsage {
 				streamRes = openai.ChatCompletionStreamResponse{
@@ -409,10 +418,10 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 						TotalTokens:      totalUsage,
 					},
 				}
-				writeStreamEvent(w, flusher, streamRes)
+				_ = w.WriteStreamEvent(streamRes)
 			}
 			// done
-			return writeStreamDone(w, flusher)
+			return w.WriteStreamDone()
 		} else {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(resp)
@@ -420,10 +429,10 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 		}
 	}
 
-	resCtx, resSpan := srv.option.Tracer.Start(ctx, "completions_response")
+	resCtx, resSpan := tracer.Start(ctx, "completions_response")
 	defer resSpan.End()
 
-	_, sfnSpan := srv.option.Tracer.Start(resCtx, "run_sfn")
+	_, sfnSpan := tracer.Start(resCtx, "run_sfn")
 
 	// 5. find sfns that hit the function call
 	fnCalls := findTagTools(tagTools, toolCalls)
@@ -449,8 +458,7 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 	srv.logger.Debug(" #2 second call", "request", fmt.Sprintf("%+v", req))
 
 	if req.Stream {
-		_, secondCallSpan := srv.option.Tracer.Start(resCtx, "second_call_request")
-		flusher := w.(http.Flusher)
+		_, secondCallSpan := tracer.Start(resCtx, "second_call_request")
 		resStream, err := srv.provider.GetChatCompletionsStream(resCtx, req, md)
 		if err != nil {
 			return err
@@ -463,14 +471,14 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 		)
 		for {
 			if i == 0 {
-				recordTTFT(resCtx, srv.option.Tracer)
-				_, secondRespSpan = srv.option.Tracer.Start(resCtx, "second_call_response_in_stream(TBT)")
+				recordTTFT(resCtx, tracer, w)
+				_, secondRespSpan = tracer.Start(resCtx, "second_call_response_in_stream(TBT)")
 			}
 			i++
 			streamRes, err := resStream.Recv()
 			if err == io.EOF {
 				secondRespSpan.End()
-				return writeStreamDone(w, flusher)
+				return w.WriteStreamDone()
 			}
 			if err != nil {
 				return err
@@ -480,10 +488,10 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 				streamRes.Usage.CompletionTokens += completionUsage
 				streamRes.Usage.TotalTokens += totalUsage
 			}
-			_ = writeStreamEvent(w, flusher, streamRes)
+			_ = w.WriteStreamEvent(streamRes)
 		}
 	} else {
-		_, secondCallSpan := srv.option.Tracer.Start(resCtx, "second_call")
+		_, secondCallSpan := tracer.Start(resCtx, "second_call")
 
 		resp, err := srv.provider.GetChatCompletions(resCtx, req, md)
 		if err != nil {
@@ -594,28 +602,6 @@ func findTagTools(tagTools map[uint32]openai.Tool, toolCalls []openai.ToolCall) 
 	return fnCalls
 }
 
-func writeStreamEvent(w http.ResponseWriter, flusher http.Flusher, streamRes openai.ChatCompletionStreamResponse) error {
-	if _, err := io.WriteString(w, "data: "); err != nil {
-		return err
-	}
-	if err := json.NewEncoder(w).Encode(streamRes); err != nil {
-		return err
-	}
-	if _, err := io.WriteString(w, "\n"); err != nil {
-		return err
-	}
-	flusher.Flush()
-
-	return nil
-}
-
-func writeStreamDone(w http.ResponseWriter, flusher http.Flusher) error {
-	_, err := io.WriteString(w, "data: [DONE]")
-	flusher.Flush()
-
-	return err
-}
-
 func (srv *Service) prepareMessages(baseSystemMessage string, userInstruction string, chainMessage ai.ChainMessage, tools []openai.Tool, withTool bool) []openai.ChatCompletionMessage {
 	systemInstructions := []string{"## Instructions\n"}
 
@@ -676,15 +662,6 @@ func mapToSliceTools(m map[int]openai.ToolCall) []openai.ToolCall {
 	return arr
 }
 
-func eventFlusher(w http.ResponseWriter) http.Flusher {
-	h := w.Header()
-	h.Set("Content-Type", "text/event-stream")
-	h.Set("Cache-Control", "no-cache, must-revalidate")
-	h.Set("x-content-type-options", "nosniff")
-	flusher := w.(http.Flusher)
-	return flusher
-}
-
 func prepareToolCalls(tcs map[uint32]openai.Tool) []openai.Tool {
 	// prepare tools
 	toolCalls := make([]openai.Tool, len(tcs))
@@ -708,16 +685,17 @@ func transToolMessage(msgs []openai.ChatCompletionMessage) []ai.ToolMessage {
 	return toolMessages
 }
 
-func recordTTFT(ctx context.Context, tracer trace.Tracer) {
+func recordTTFT(ctx context.Context, tracer trace.Tracer, w *ResponseWriter) {
 	_, span := tracer.Start(ctx, "TTFT")
 	time.Sleep(time.Millisecond)
 	span.End()
+	w.TTFT = time.Now()
 	time.Sleep(time.Millisecond)
 }
 
 // patchOllamaRequest patch the request for ollama provider(ollama function calling unsupported in stream mode)
 func (srv *Service) patchOllamaRequest(req openai.ChatCompletionRequest) openai.ChatCompletionRequest {
-	ylog.Debug("before request",
+	srv.logger.Debug("before request",
 		"stream", req.Stream,
 		"provider", srv.provider.Name(),
 		fmt.Sprintf("tools[%d]", len(req.Tools)), req.Tools,
@@ -728,7 +706,7 @@ func (srv *Service) patchOllamaRequest(req openai.ChatCompletionRequest) openai.
 	if srv.provider.Name() == "ollama" && len(req.Tools) > 0 {
 		req.Stream = false
 	}
-	ylog.Debug("patch request",
+	srv.logger.Debug("patch request",
 		"stream", req.Stream,
 		"provider", srv.provider.Name(),
 		fmt.Sprintf("tools[%d]", len(req.Tools)), req.Tools,

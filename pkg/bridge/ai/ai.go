@@ -50,7 +50,7 @@ func registerFunction(r register.Register) core.ConnMiddleware {
 				fd := ai.FunctionDefinition{}
 				err := json.Unmarshal([]byte(definition), &fd)
 				if err != nil {
-					conn.Logger.Error("unmarshal function definition", "error", err)
+					conn.Logger.Error("unmarshal function definition", "err", err)
 					return
 				}
 				err = r.RegisterFunction(tag, &fd, conn.ID(), connMd)

@@ -23,7 +23,12 @@ import (
 var (
 	// ServiceName is the default service name for otel.
 	ServiceName = "yomo"
+	// globalClient is the global otel client.
+	globalClient otlptrace.Client
 )
+
+// GetGlobalClient return the global otel client.
+func GetGlobalClient() otlptrace.Client { return globalClient }
 
 // SetTracerProvider set otel tracer provider.
 // if enveronment BASELIME_API_KEY is set, the tracer provider will be baselime tracer provider.
@@ -37,9 +42,7 @@ func SetTracerProvider() {
 	if ok {
 		client = otlptracehttp.NewClient(
 			otlptracehttp.WithEndpointURL("https://otel.baselime.io"),
-			otlptracehttp.WithHeaders(map[string]string{
-				"x-api-key": baselimeApiKey,
-			}),
+			otlptracehttp.WithHeaders(map[string]string{"x-api-key": baselimeApiKey}),
 		)
 		ylog.Info("set tracer provider: baselime")
 	}
@@ -52,20 +55,27 @@ func SetTracerProvider() {
 		return
 	}
 
-	exporter, err := otlptrace.New(context.Background(), client)
+	tp := NewTracerProviderFromClient(context.Background(), ServiceName, client)
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+
+	globalClient = client
+}
+
+// NewTracerProviderFromClient create tracer provider from otlptrace.Client.
+func NewTracerProviderFromClient(ctx context.Context, serviceName string, client otlptrace.Client) *tracesdk.TracerProvider {
+	exporter, err := otlptrace.New(ctx, client)
 	if err != nil {
 		log.Fatalln("failed to create trace exporter: " + err.Error())
 	}
-	tp := tracesdk.NewTracerProvider(
+	return tracesdk.NewTracerProvider(
 		tracesdk.WithBatcher(exporter),
 		tracesdk.WithSampler(tracesdk.AlwaysSample()),
 		tracesdk.WithResource(resource.NewWithAttributes(
 			semconv.SchemaURL,
-			semconv.ServiceNameKey.String(ServiceName),
+			semconv.ServiceNameKey.String(serviceName),
 		)),
 	)
-	otel.SetTracerProvider(tp)
-	otel.SetTextMapPropagator(propagation.TraceContext{})
 }
 
 // ShutdownTracerProvider shutdown the global TracerProvider.

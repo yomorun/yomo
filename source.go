@@ -41,7 +41,7 @@ func NewSource(name, zipperAddr string, opts ...SourceOption) Source {
 	client := core.NewClient(name, zipperAddr, core.ClientTypeSource, clientOpts...)
 
 	client.Logger = client.Logger.With(
-		"component", core.ClientTypeSource.String(),
+		"service", "source",
 		"source_id", client.ClientID(),
 		"source_name", client.Name(),
 		"zipper_addr", zipperAddr,
