@@ -12,7 +12,7 @@ require (
 require (
 	github.com/caarlos0/env/v6 v6.10.1 // indirect
 	github.com/lmittmann/tint v1.0.4 // indirect
-	github.com/sashabaranov/go-openai v1.32.2 // indirect
+	github.com/sashabaranov/go-openai v1.35.6 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
