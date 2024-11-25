@@ -57,21 +57,12 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 		WithInputSchema:  opt.WithInputSchema,
 	}
 
-	// determine: rx stream serverless or raw bytes serverless.
-	isRx := strings.Contains(string(source), "rx.Stream")
 	isWasi := opts.WASI
 	// main function template
 	mainFuncTmpl := MainFuncTmpl
 	// wasi template
 	if isWasi {
 		mainFuncTmpl = WasiMainFuncTmpl
-	}
-	// rx template
-	if isRx {
-		if isWasi {
-			return errors.New("wasi does not support rx.Stream")
-		}
-		mainFuncTmpl = MainFuncRxTmpl
 	}
 	mainFunc, err := RenderTmpl(string(mainFuncTmpl), &ctx)
 	if err != nil {

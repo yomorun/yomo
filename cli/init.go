@@ -27,10 +27,7 @@ import (
 	"github.com/yomorun/yomo/pkg/log"
 )
 
-var (
-	name string
-	rx   bool
-)
+var name string
 
 // initCmd represents the init command
 var initCmd = &cobra.Command{
@@ -52,9 +49,6 @@ var initCmd = &cobra.Command{
 		// create app.go
 		fname := filepath.Join(name, defaultSFNSourceFile)
 		contentTmpl := golang.InitTmpl
-		if rx {
-			contentTmpl = golang.InitRxTmpl
-		}
 		if err := file.PutContents(fname, contentTmpl); err != nil {
 			log.FailureStatusEvent(os.Stdout, "Write stream function into app.go file failure with the error: %v", err)
 			return
@@ -85,5 +79,4 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 
 	initCmd.Flags().StringVarP(&name, "name", "n", "", "The name of Stream Function")
-	initCmd.Flags().BoolVarP(&rx, "rx", "r", false, "Use RxStream Handler")
 }
