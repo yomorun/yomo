@@ -1,6 +1,7 @@
 module github.com/yomorun/yomo
 
 go 1.21
+toolchain go1.22.5
 
 require (
 	github.com/anthropics/anthropic-sdk-go v0.2.0-alpha.4
@@ -31,8 +32,8 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.28.0
 	go.opentelemetry.io/otel/sdk v1.29.0
 	go.opentelemetry.io/otel/trace v1.29.0
-	golang.org/x/mod v0.20.0
-	golang.org/x/tools v0.24.0
+	golang.org/x/mod v0.22.0
+	golang.org/x/tools v0.27.0
 	google.golang.org/api v0.206.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
