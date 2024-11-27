@@ -6,13 +6,6 @@ import (
 	"text/template"
 )
 
-// MainFuncRxTmpl the rxstream serverless of the main function template
-//
-//go:embed templates/main_rx.tmpl
-var MainFuncRxTmpl []byte
-
-// MainFuncTmpl the raw bytes serverless of the main function template
-//
 //go:embed templates/main.tmpl
 var MainFuncTmpl []byte
 
@@ -21,9 +14,6 @@ var InitTmpl []byte
 
 //go:embed templates/init_test.tmpl
 var InitTestTmpl []byte
-
-//go:embed templates/init_rx.tmpl
-var InitRxTmpl []byte
 
 //go:embed templates/wasi_main.tmpl
 var WasiMainFuncTmpl []byte

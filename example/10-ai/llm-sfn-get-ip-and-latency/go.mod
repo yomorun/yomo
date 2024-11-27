@@ -13,9 +13,9 @@ require (
 	github.com/caarlos0/env/v6 v6.10.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/lmittmann/tint v1.0.4 // indirect
-	github.com/sashabaranov/go-openai v1.32.2 // indirect
-	golang.org/x/net v0.30.0 // indirect
-	golang.org/x/sync v0.8.0 // indirect
-	golang.org/x/sys v0.26.0 // indirect
+	github.com/sashabaranov/go-openai v1.35.7 // indirect
+	golang.org/x/net v0.31.0 // indirect
+	golang.org/x/sync v0.9.0 // indirect
+	golang.org/x/sys v0.27.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 )

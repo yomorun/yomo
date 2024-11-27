@@ -23,7 +23,7 @@ jobs:
         run: go build $(go list ./... | grep -v /example)
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
-          file: coverage.txt
+          files: coverage.txt
           token: ${{ secrets.CODECOV_TOKEN }}
