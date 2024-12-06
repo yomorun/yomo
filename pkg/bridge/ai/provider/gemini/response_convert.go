@@ -27,13 +27,15 @@ func convertToResponse(in *genai.GenerateContentResponse, model string) (out ope
 		}
 	}
 
-	for i, candidate := range in.Candidates {
-		for j, part := range candidate.Content.Parts {
-			index := i + j
+	count := 0
+	toolCalls := make([]openai.ToolCall, 0)
+	for _, candidate := range in.Candidates {
+		for _, part := range candidate.Content.Parts {
+			index := count
 			switch pp := part.(type) {
 			case genai.Text:
 				out.Choices = append(out.Choices, openai.ChatCompletionChoice{
-					Index: index,
+					Index: int(index),
 					Message: openai.ChatCompletionMessage{
 						Content: string(pp),
 						Role:    openai.ChatMessageRoleUser,
@@ -42,23 +44,27 @@ func convertToResponse(in *genai.GenerateContentResponse, model string) (out ope
 				})
 			case genai.FunctionCall:
 				args, _ := json.Marshal(pp.Args)
-
-				out.Choices = append(out.Choices, openai.ChatCompletionChoice{
-					Index: index,
-					Message: openai.ChatCompletionMessage{
-						Role: openai.ChatMessageRoleAssistant,
-						ToolCalls: []openai.ToolCall{{
-							Index:    genai.Ptr(index),
-							ID:       pp.Name + "-" + id.New(4),
-							Type:     openai.ToolTypeFunction,
-							Function: openai.FunctionCall{Name: pp.Name, Arguments: string(args)},
-						}},
-					},
-					FinishReason: openai.FinishReasonToolCalls,
+				toolCalls = append(toolCalls, openai.ToolCall{
+					Index:    genai.Ptr(int(index)),
+					ID:       fmt.Sprintf("%s-%d", pp.Name, index),
+					Type:     openai.ToolTypeFunction,
+					Function: openai.FunctionCall{Name: pp.Name, Arguments: string(args)},
 				})
 			}
+			count++
 		}
 	}
+
+	if len(toolCalls) > 0 {
+		out.Choices = append(out.Choices, openai.ChatCompletionChoice{
+			Message: openai.ChatCompletionMessage{
+				ToolCalls: toolCalls,
+				Role:      openai.ChatMessageRoleAssistant,
+			},
+			FinishReason: openai.FinishReasonToolCalls,
+		})
+	}
+
 	return
 }
 
@@ -76,11 +82,13 @@ func convertToStreamResponse(id string, in *genai.GenerateContentResponse, model
 		usage.CompletionTokens += int(in.UsageMetadata.CandidatesTokenCount)
 	}
 
-	for i, candidate := range in.Candidates {
-		parts := candidate.Content.Parts
+	count := 0
+	toolCalls := make([]openai.ToolCall, 0)
 
-		for j, part := range parts {
-			index := i + j
+	for _, candidate := range in.Candidates {
+		parts := candidate.Content.Parts
+		for _, part := range parts {
+			index := count
 			switch pp := part.(type) {
 			case genai.Text:
 				out.Choices = append(out.Choices, openai.ChatCompletionStreamChoice{
@@ -94,24 +102,26 @@ func convertToStreamResponse(id string, in *genai.GenerateContentResponse, model
 			case genai.FunctionCall:
 				args, _ := json.Marshal(pp.Args)
 
-				out.Choices = append(out.Choices, openai.ChatCompletionStreamChoice{
-					Index: index,
-					Delta: openai.ChatCompletionStreamChoiceDelta{
-						Role: openai.ChatMessageRoleAssistant,
-						ToolCalls: []openai.ToolCall{
-							{
-								Index:    genai.Ptr(index),
-								ID:       pp.Name,
-								Type:     openai.ToolTypeFunction,
-								Function: openai.FunctionCall{Name: pp.Name, Arguments: string(args)},
-							},
-						},
-					},
-					FinishReason: toOpenAIFinishReason(candidate.FinishReason),
+				toolCalls = append(toolCalls, openai.ToolCall{
+					Index:    genai.Ptr(int(index)),
+					ID:       fmt.Sprintf("%s-%d", pp.Name, index),
+					Type:     openai.ToolTypeFunction,
+					Function: openai.FunctionCall{Name: pp.Name, Arguments: string(args)},
 				})
 			}
+			count++
 		}
 	}
+	if len(toolCalls) > 0 {
+		out.Choices = append(out.Choices, openai.ChatCompletionStreamChoice{
+			Delta: openai.ChatCompletionStreamChoiceDelta{
+				ToolCalls: toolCalls,
+				Role:      openai.ChatMessageRoleAssistant,
+			},
+			FinishReason: openai.FinishReasonToolCalls,
+		})
+	}
+
 	return out
 }
 

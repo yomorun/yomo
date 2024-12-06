@@ -1,3 +1,4 @@
+// Package vertexai is used to provide the vertexai service
 package vertexai
 
 import (
@@ -12,9 +13,10 @@ import (
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
 	"github.com/yomorun/yomo/pkg/id"
 	"google.golang.org/api/iterator"
+	"google.golang.org/api/option"
 )
 
-// Provider is the provider for google gemini.
+// Provider is the provider for google vertexai.
 type Provider struct {
 	model  string
 	client *genai.Client
@@ -22,11 +24,14 @@ type Provider struct {
 
 var _ provider.LLMProvider = &Provider{}
 
-// NewProvider creates a new gemini provider.
-func NewProvider(projectID, location, model string) *Provider {
-	client, err := genai.NewClient(context.Background(), projectID, location)
+// NewProvider creates a new vertexai provider.
+func NewProvider(projectID, location, model, credentialsFile string) *Provider {
+	client, err := genai.NewClient(context.Background(), projectID, location, option.WithCredentialsFile(credentialsFile))
 	if err != nil {
-		log.Fatal("new gemini client", err)
+		log.Fatal("new vertexai client: ", err)
+	}
+	if model == "" {
+		model = "gemini-1.5-pro-latest"
 	}
 
 	return &Provider{
@@ -51,7 +56,7 @@ func (p *Provider) generativeModel(req openai.ChatCompletionRequest) *genai.Gene
 func (p *Provider) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, md metadata.M) (openai.ChatCompletionResponse, error) {
 	model := p.generativeModel(req)
 
-	parts := convertPart(req, model)
+	parts := convertPart(req, model, md)
 
 	resp, err := model.GenerateContent(ctx, parts...)
 	if err != nil {
@@ -65,7 +70,7 @@ func (p *Provider) GetChatCompletions(ctx context.Context, req openai.ChatComple
 func (p *Provider) GetChatCompletionsStream(ctx context.Context, req openai.ChatCompletionRequest, md metadata.M) (provider.ResponseRecver, error) {
 	model := p.generativeModel(req)
 
-	parts := convertPart(req, model)
+	parts := convertPart(req, model, md)
 
 	resp := model.GenerateContentStream(ctx, parts...)
 
@@ -85,7 +90,7 @@ func (p *Provider) GetChatCompletionsStream(ctx context.Context, req openai.Chat
 
 // Name implements provider.LLMProvider.
 func (p *Provider) Name() string {
-	return "gemini"
+	return "vertexai"
 }
 
 type recver struct {

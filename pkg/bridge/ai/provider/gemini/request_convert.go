@@ -3,17 +3,28 @@ package gemini
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/google/generative-ai-go/genai"
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo/ai"
+	"github.com/yomorun/yomo/core/metadata"
 )
 
-func convertPart(req openai.ChatCompletionRequest, model *genai.GenerativeModel) []genai.Part {
+func convertPart(req openai.ChatCompletionRequest, model *genai.GenerativeModel, md metadata.M) []genai.Part {
 	parts := []genai.Part{}
 
 	if len(req.Tools) > 0 {
-		model.Tools = convertTools(req.Tools)
+		tools := convertTools(req.Tools)
+		model.Tools = tools
+		data, _ := json.Marshal(tools)
+		md.Set("vertexai_model_tools", string(data))
+	} else {
+		if data, ok := md.Get("vertexai_model_tools"); ok {
+			var tools []*genai.Tool
+			_ = json.Unmarshal([]byte(data), &tools)
+			model.Tools = tools
+		}
 	}
 
 	for _, message := range req.Messages {
@@ -34,26 +45,20 @@ func convertPart(req openai.ChatCompletionRequest, model *genai.GenerativeModel)
 					},
 				)
 			}
-		case openai.ChatMessageRoleAssistant:
-			for _, tc := range message.ToolCalls {
-				args := map[string]any{}
-				_ = json.Unmarshal([]byte(tc.Function.Arguments), &args)
-				parts = append(parts, genai.FunctionCall{
-					Name: tc.Function.Name,
-					Args: args,
-				})
-			}
 		case openai.ChatMessageRoleTool:
 			resp := map[string]any{}
 			if err := json.Unmarshal([]byte(message.Content), &resp); err != nil {
 				resp["result"] = message.Content
 			}
 
-			toolID := message.ToolCallID
-			parts = append(parts, genai.FunctionResponse{
-				Name:     toolID[:len(toolID)-4],
-				Response: resp,
-			})
+			sl := strings.Split(message.ToolCallID, "-")
+			if len(sl) > 1 {
+				name := sl[0]
+				parts = append(parts, genai.FunctionResponse{
+					Name:     name,
+					Response: resp,
+				})
+			}
 		}
 	}
 
