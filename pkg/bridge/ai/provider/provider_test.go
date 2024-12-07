@@ -21,15 +21,21 @@ func TestProviders(t *testing.T) {
 		assert.ElementsMatch(t, expected, val)
 	})
 
-	t.Run("GetProvider error", func(t *testing.T) {
-		_, err := GetProvider("name-not-exist")
-		assert.ErrorIs(t, err, ErrNotExistsProvider)
-	})
-
 	t.Run("GetProvider", func(t *testing.T) {
-		p, err := GetProvider("name-1")
-		assert.NoError(t, err)
-		assert.Equal(t, p1, p)
+		t.Run("ok", func(t *testing.T) {
+			p, err := GetProvider("name-1")
+			assert.NoError(t, err)
+			assert.Equal(t, p1, p)
+		})
+		t.Run("name is empty", func(t *testing.T) {
+			p, err := GetProvider("")
+			assert.NoError(t, err)
+			assert.Equal(t, p1, p)
+		})
+		t.Run("not found", func(t *testing.T) {
+			p, err := GetProvider("name-x")
+			assert.ErrorIs(t, err, ErrNotExistsProvider)
+			assert.Nil(t, p)
+		})
 	})
-
 }

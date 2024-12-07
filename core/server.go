@@ -143,14 +143,16 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 
 	defer closeServer(s.downstreams, s.connector, s.listener, s.router)
 
+	errCount := 0
 	for {
 		fconn, err := s.listener.Accept(s.ctx)
 		if err != nil {
 			if err == s.ctx.Err() {
 				return ErrServerClosed
 			}
-			s.logger.Error("accepted an error when accepting a connection", "err", err)
-			return err
+			errCount++
+			s.logger.Error("accepted an error when accepting a connection", "err", err, "err_count", errCount)
+			continue
 		}
 
 		go s.handleFrameConn(fconn, s.logger)

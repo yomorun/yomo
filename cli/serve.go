@@ -38,6 +38,7 @@ import (
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/githubmodels"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/ollama"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/openai"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/vertexai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/xai"
 )
 
@@ -162,6 +163,13 @@ func registerAIProvider(aiConfig *ai.Config) error {
 			providerpkg.RegisterProvider(anthropic.NewProvider(provider["api_key"], provider["model"]))
 		case "xai":
 			providerpkg.RegisterProvider(xai.NewProvider(provider["api_key"], provider["model"]))
+		case "vertexai":
+			providerpkg.RegisterProvider(vertexai.NewProvider(
+				provider["project_id"],
+				provider["location"],
+				provider["model"],
+				provider["credentials_file"]),
+			)
 		default:
 			log.WarningStatusEvent(os.Stdout, "unknown provider: %s", name)
 		}

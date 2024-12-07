@@ -49,14 +49,12 @@ func TestOpSystemPrompt(t *testing.T) {
 		{
 			name: "overwrite with empty system prompt",
 			args: args{
-				prompt: "hello",
+				prompt: "",
 				op:     SystemPromptOpOverwrite,
 				req:    openai.ChatCompletionRequest{},
 			},
 			want: openai.ChatCompletionRequest{
-				Messages: []openai.ChatCompletionMessage{
-					{Role: "system", Content: "hello"},
-				},
+				Messages: []openai.ChatCompletionMessage{},
 			},
 		},
 		{

@@ -1,14 +1,13 @@
-// Package gemini is used to provide the gemini service
-package gemini
+// Package vertexai is used to provide the vertexai service
+package vertexai
 
 import (
 	"context"
 	"io"
 	"log"
-	"os"
 	"time"
 
-	"github.com/google/generative-ai-go/genai"
+	"cloud.google.com/go/vertexai/genai"
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
@@ -17,28 +16,26 @@ import (
 	"google.golang.org/api/option"
 )
 
-// Provider is the provider for google gemini.
+// Provider is the provider for google vertexai.
 type Provider struct {
-	apiKey string
 	model  string
 	client *genai.Client
 }
 
 var _ provider.LLMProvider = &Provider{}
 
-// NewProvider creates a new gemini provider.
-func NewProvider(apiKey string) *Provider {
-	if apiKey == "" {
-		apiKey = os.Getenv("GEMINI_API_KEY")
-	}
-	client, err := genai.NewClient(context.Background(), option.WithAPIKey(apiKey))
+// NewProvider creates a new vertexai provider.
+func NewProvider(projectID, location, model, credentialsFile string) *Provider {
+	client, err := genai.NewClient(context.Background(), projectID, location, option.WithCredentialsFile(credentialsFile))
 	if err != nil {
-		log.Fatal("new gemini client: ", err)
+		log.Fatal("new vertexai client: ", err)
+	}
+	if model == "" {
+		model = "gemini-1.5-pro-latest"
 	}
 
 	return &Provider{
-		apiKey: apiKey,
-		model:  "gemini-1.5-pro-latest",
+		model:  model,
 		client: client,
 	}
 }
@@ -96,7 +93,7 @@ func (p *Provider) GetChatCompletionsStream(ctx context.Context, req openai.Chat
 
 // Name implements provider.LLMProvider.
 func (p *Provider) Name() string {
-	return "gemini"
+	return "vertexai"
 }
 
 type recver struct {

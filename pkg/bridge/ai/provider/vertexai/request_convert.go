@@ -1,11 +1,11 @@
-package gemini
+package vertexai
 
 import (
 	"encoding/json"
 	"fmt"
 	"strings"
 
-	"github.com/google/generative-ai-go/genai"
+	"cloud.google.com/go/vertexai/genai"
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/metadata"

@@ -48,3 +48,9 @@ bridge:
       xai:
         api_key:
         model:
+
+      vertexai:
+        project_id:
+        location:
+        model:
+        credentials_file:
