@@ -14,10 +14,10 @@ jobs:
       - name: Set up Go 1.x
         uses: actions/setup-go@v5
         with:
-          go-version: "1.21"
+          go-version: "1.22.7"
 
       - name: Test
-        run: CI=true go test -v -race -coverprofile=coverage.txt -covermode=atomic $(go list ./... | grep -Ev "/example|/cli")
+        run: CI=true go test -v -race -coverprofile=coverage.txt -covermode=atomic $(go list ./... | grep -v /example)
 
       - name: Build
         run: go build $(go list ./... | grep -v /example)
