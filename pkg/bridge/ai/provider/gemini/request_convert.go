@@ -18,9 +18,9 @@ func convertPart(req openai.ChatCompletionRequest, model *genai.GenerativeModel,
 		tools := convertTools(req.Tools)
 		model.Tools = tools
 		data, _ := json.Marshal(tools)
-		md.Set("vertexai_model_tools", string(data))
+		md.Set("tools", string(data))
 	} else {
-		if data, ok := md.Get("vertexai_model_tools"); ok {
+		if data, ok := md.Get("tools"); ok {
 			var tools []*genai.Tool
 			_ = json.Unmarshal([]byte(data), &tools)
 			model.Tools = tools

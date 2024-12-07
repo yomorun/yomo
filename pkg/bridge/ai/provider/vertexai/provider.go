@@ -48,6 +48,9 @@ func (p *Provider) generativeModel(req openai.ChatCompletionRequest) *genai.Gene
 	if req.MaxTokens > 0 {
 		model.SetMaxOutputTokens(int32(req.MaxTokens))
 	}
+	if len(req.Stop) != 0 {
+		model.StopSequences = req.Stop
+	}
 
 	return model
 }
