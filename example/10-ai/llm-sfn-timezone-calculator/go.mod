@@ -1,6 +1,8 @@
 module llm-sfn-timezone-calculator
 
-go 1.21
+go 1.23
+
+toolchain go1.23.0
 
 require github.com/yomorun/yomo v1.18.8
 
