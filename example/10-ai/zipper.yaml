@@ -35,7 +35,7 @@ bridge:
 
       ollama:
         api_endpoint: http://localhost:11434/v1
-        model: llama3.1
+        model: mistral
 
       cerebras:
         api_key:

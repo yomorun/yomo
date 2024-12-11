@@ -13,7 +13,7 @@ import (
 var tag uint32 = 0x11
 
 type Parameter struct {
-	CityName string `json:"city_name" jsonschema:"description=The name of the city to be queried"`
+	CityName string `json:"city_name" jsonschema:"description=The name of a city to be queried"`
 }
 
 // Description returns the description of this AI function.
