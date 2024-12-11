@@ -56,8 +56,21 @@ func getProvider(name string) LLMProvider {
 	return nil
 }
 
-// GetProvider returns the llm provider by name
+// GetProvider returns the llm provider by name,
+// if name is empty, it will return the first provider that has been registered
 func GetProvider(name string) (LLMProvider, error) {
+	if name == "" {
+		var provider LLMProvider
+		providers.Range(func(key, _ any) bool {
+			name = key.(string)
+			provider = getProvider(name)
+			return false
+		})
+		if provider != nil {
+			return provider, nil
+		}
+		return nil, ErrNotExistsProvider
+	}
 	provider := getProvider(name)
 	if provider != nil {
 		return provider, nil
