@@ -24,7 +24,7 @@ func TestSource(t *testing.T) {
 	)
 
 	exit := make(chan struct{})
-	time.AfterFunc(4*time.Second, func() {
+	time.AfterFunc(2*time.Second, func() {
 		source.Close()
 		close(exit)
 	})
