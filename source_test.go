@@ -13,9 +13,6 @@ import (
 func TestSource(t *testing.T) {
 	t.Parallel()
 
-	// wait all sfn connected
-	time.Sleep(time.Second)
-
 	// source
 	source := NewSource(
 		"test-source",
@@ -27,7 +24,7 @@ func TestSource(t *testing.T) {
 	)
 
 	exit := make(chan struct{})
-	time.AfterFunc(2*time.Second, func() {
+	time.AfterFunc(4*time.Second, func() {
 		source.Close()
 		close(exit)
 	})
