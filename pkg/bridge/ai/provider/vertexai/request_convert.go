@@ -11,9 +11,7 @@ import (
 	"github.com/yomorun/yomo/core/metadata"
 )
 
-func convertPart(req openai.ChatCompletionRequest, model *genai.GenerativeModel, md metadata.M) []genai.Part {
-	parts := []genai.Part{}
-
+func convertPart(chat *genai.ChatSession, req openai.ChatCompletionRequest, model *genai.GenerativeModel, md metadata.M) []genai.Part {
 	if len(req.Tools) > 0 {
 		tools := convertTools(req.Tools)
 		model.Tools = tools
@@ -27,23 +25,32 @@ func convertPart(req openai.ChatCompletionRequest, model *genai.GenerativeModel,
 		}
 	}
 
+	history := []*genai.Content{}
+
 	for _, message := range req.Messages {
 		switch message.Role {
 		case openai.ChatMessageRoleUser:
-			parts = append(parts, genai.Text(message.Content))
+			if message.Content != "" {
+				part := genai.Text(message.Content)
+				history = append(history, genai.NewUserContent(part))
+			}
 		case openai.ChatMessageRoleSystem:
 			if message.Content != "" {
 				model.SystemInstruction = &genai.Content{Parts: []genai.Part{genai.Text(message.Content)}}
 			}
+		case openai.ChatMessageRoleAssistant:
+			if message.Content != "" {
+				history = append(history, &genai.Content{
+					Role:  "model",
+					Parts: []genai.Part{genai.Text(message.Content)},
+				})
+			}
 			for _, tc := range message.ToolCalls {
 				args := map[string]any{}
 				_ = json.Unmarshal([]byte(tc.Function.Arguments), &args)
-				parts = append(parts,
-					genai.FunctionCall{
-						Name: tc.Function.Name,
-						Args: args,
-					},
-				)
+				part := genai.FunctionCall{Name: tc.Function.Name, Args: args}
+
+				history = append(history, genai.NewUserContent(part))
 			}
 		case openai.ChatMessageRoleTool:
 			resp := map[string]any{}
@@ -54,15 +61,18 @@ func convertPart(req openai.ChatCompletionRequest, model *genai.GenerativeModel,
 			sl := strings.Split(message.ToolCallID, "-")
 			if len(sl) > 1 {
 				name := sl[0]
-				parts = append(parts, genai.FunctionResponse{
+				part := genai.FunctionResponse{
 					Name:     name,
 					Response: resp,
-				})
+				}
+				history = append(history, genai.NewUserContent(part))
 			}
 		}
 	}
 
-	return parts
+	chat.History = history[:len(history)-1]
+
+	return history[len(history)-1].Parts
 }
 
 func convertTools(tools []openai.Tool) []*genai.Tool {
