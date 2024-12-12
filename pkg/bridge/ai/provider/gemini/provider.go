@@ -62,7 +62,9 @@ func (p *Provider) generativeModel(req openai.ChatCompletionRequest) *genai.Gene
 func (p *Provider) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, md metadata.M) (openai.ChatCompletionResponse, error) {
 	model := p.generativeModel(req)
 
-	parts := convertPart(req, model, md)
+	chat := model.StartChat()
+
+	parts := convertPart(chat, req, model, md)
 
 	resp, err := model.GenerateContent(ctx, parts...)
 	if err != nil {
@@ -76,7 +78,9 @@ func (p *Provider) GetChatCompletions(ctx context.Context, req openai.ChatComple
 func (p *Provider) GetChatCompletionsStream(ctx context.Context, req openai.ChatCompletionRequest, md metadata.M) (provider.ResponseRecver, error) {
 	model := p.generativeModel(req)
 
-	parts := convertPart(req, model, md)
+	chat := model.StartChat()
+
+	parts := convertPart(chat, req, model, md)
 
 	resp := model.GenerateContentStream(ctx, parts...)
 

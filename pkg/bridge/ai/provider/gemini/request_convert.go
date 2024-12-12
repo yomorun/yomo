@@ -11,7 +11,7 @@ import (
 	"github.com/yomorun/yomo/core/metadata"
 )
 
-func convertPart(req openai.ChatCompletionRequest, model *genai.GenerativeModel, md metadata.M) []genai.Part {
+func convertPart(chat *genai.ChatSession, req openai.ChatCompletionRequest, model *genai.GenerativeModel, md metadata.M) []genai.Part {
 	parts := []genai.Part{}
 
 	if len(req.Tools) > 0 {
@@ -45,6 +45,13 @@ func convertPart(req openai.ChatCompletionRequest, model *genai.GenerativeModel,
 					},
 				)
 			}
+		case openai.ChatMessageRoleAssistant:
+			chat.History = append(chat.History, &genai.Content{
+				Role: "model",
+				Parts: []genai.Part{
+					genai.Text(message.Content),
+				},
+			})
 		case openai.ChatMessageRoleTool:
 			resp := map[string]any{}
 			if err := json.Unmarshal([]byte(message.Content), &resp); err != nil {
