@@ -12,6 +12,9 @@ import (
 )
 
 func convertPart(chat *genai.ChatSession, req openai.ChatCompletionRequest, model *genai.GenerativeModel, md metadata.M) []genai.Part {
+	parts := []genai.Part{}
+	history := []*genai.Content{}
+
 	if len(req.Tools) > 0 {
 		tools := convertTools(req.Tools)
 		model.Tools = tools
@@ -25,33 +28,48 @@ func convertPart(chat *genai.ChatSession, req openai.ChatCompletionRequest, mode
 		}
 	}
 
-	history := []*genai.Content{}
+	isHistory := false
+	for i := len(req.Messages) - 1; i >= 0; i-- {
+		message := req.Messages[i]
 
-	for _, message := range req.Messages {
 		switch message.Role {
 		case openai.ChatMessageRoleUser:
-			if message.Content != "" {
-				part := genai.Text(message.Content)
-				history = append(history, genai.NewUserContent(part))
+			part := genai.Text(message.Content)
+			if isHistory {
+				history = prepend(history, genai.NewUserContent(part))
+			} else {
+				parts = prepend[genai.Part](parts, part)
 			}
+
 		case openai.ChatMessageRoleSystem:
 			if message.Content != "" {
 				model.SystemInstruction = &genai.Content{Parts: []genai.Part{genai.Text(message.Content)}}
 			}
 		case openai.ChatMessageRoleAssistant:
 			if message.Content != "" {
-				history = append(history, &genai.Content{
+				isHistory = true
+				history = prepend(history, &genai.Content{
 					Role:  "model",
 					Parts: []genai.Part{genai.Text(message.Content)},
 				})
 			}
+			if len(message.ToolCalls) == 0 {
+				continue
+			}
+			fcParts := []genai.Part{}
 			for _, tc := range message.ToolCalls {
 				args := map[string]any{}
 				_ = json.Unmarshal([]byte(tc.Function.Arguments), &args)
-				part := genai.FunctionCall{Name: tc.Function.Name, Args: args}
-
-				history = append(history, genai.NewUserContent(part))
+				fcParts = append(fcParts, genai.FunctionCall{
+					Name: tc.Function.Name,
+					Args: args,
+				})
 			}
+			history = append(history, &genai.Content{
+				Role:  "model",
+				Parts: fcParts,
+			})
+
 		case openai.ChatMessageRoleTool:
 			resp := map[string]any{}
 			if err := json.Unmarshal([]byte(message.Content), &resp); err != nil {
@@ -61,20 +79,21 @@ func convertPart(chat *genai.ChatSession, req openai.ChatCompletionRequest, mode
 			sl := strings.Split(message.ToolCallID, "-")
 			if len(sl) > 1 {
 				name := sl[0]
-				part := genai.FunctionResponse{
+				parts = prepend[genai.Part](parts, genai.FunctionResponse{
 					Name:     name,
 					Response: resp,
-				}
-				history = append(history, genai.NewUserContent(part))
+				})
 			}
 		}
 	}
 
-	chat.History = history[:len(history)-1]
-
-	return history[len(history)-1].Parts
+	chat.History = history
+	return parts
 }
 
+func prepend[T any](parts []T, part T) []T {
+	return append([]T{part}, parts...)
+}
 func convertTools(tools []openai.Tool) []*genai.Tool {
 	var result []*genai.Tool
 
