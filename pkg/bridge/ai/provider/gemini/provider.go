@@ -66,7 +66,7 @@ func (p *Provider) GetChatCompletions(ctx context.Context, req openai.ChatComple
 
 	parts := convertPart(chat, req, model, md)
 
-	resp, err := model.GenerateContent(ctx, parts...)
+	resp, err := chat.SendMessage(ctx, parts...)
 	if err != nil {
 		return openai.ChatCompletionResponse{}, err
 	}
@@ -82,7 +82,7 @@ func (p *Provider) GetChatCompletionsStream(ctx context.Context, req openai.Chat
 
 	parts := convertPart(chat, req, model, md)
 
-	resp := model.GenerateContentStream(ctx, parts...)
+	resp := chat.SendMessageStream(ctx, parts...)
 
 	includeUsage := false
 	if req.StreamOptions != nil && req.StreamOptions.IncludeUsage {
