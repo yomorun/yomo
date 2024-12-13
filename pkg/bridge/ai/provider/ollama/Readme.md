@@ -11,7 +11,7 @@ Follow the Ollama doc:
 ## 2. Run the model
 
 ```sh
-ollama run llama3.1
+ollama run mistral
 ```
 
 ## 3. Start YoMo Zipper
