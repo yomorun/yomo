@@ -27,38 +27,43 @@ func convertToResponse(in *genai.GenerateContentResponse, model string) (out ope
 		}
 	}
 
+	toolCalls := make([]openai.ToolCall, 0)
 	for i, candidate := range in.Candidates {
+		choice := openai.ChatCompletionChoice{
+			Index: i,
+		}
 		for j, part := range candidate.Content.Parts {
-			index := i + j
 			switch pp := part.(type) {
 			case genai.Text:
-				out.Choices = append(out.Choices, openai.ChatCompletionChoice{
-					Index: index,
-					Message: openai.ChatCompletionMessage{
-						Content: string(pp),
-						Role:    openai.ChatMessageRoleUser,
-					},
-					FinishReason: toOpenAIFinishReason(candidate.FinishReason),
-				})
+				if string(pp) == "" {
+					continue
+				}
+				choice.Message = openai.ChatCompletionMessage{
+					Content: string(pp),
+					Role:    openai.ChatMessageRoleAssistant,
+				}
+				choice.FinishReason = toOpenAIFinishReason(candidate.FinishReason)
+				out.Choices = append(out.Choices, choice)
 			case genai.FunctionCall:
 				args, _ := json.Marshal(pp.Args)
-
-				out.Choices = append(out.Choices, openai.ChatCompletionChoice{
-					Index: index,
-					Message: openai.ChatCompletionMessage{
-						Role: openai.ChatMessageRoleAssistant,
-						ToolCalls: []openai.ToolCall{{
-							Index:    genai.Ptr(index),
-							ID:       pp.Name + "-" + id.New(4),
-							Type:     openai.ToolTypeFunction,
-							Function: openai.FunctionCall{Name: pp.Name, Arguments: string(args)},
-						}},
-					},
-					FinishReason: openai.FinishReasonToolCalls,
+				toolCalls = append(toolCalls, openai.ToolCall{
+					Index:    genai.Ptr(j),
+					ID:       fmt.Sprintf("%s-%d", pp.Name, j),
+					Type:     openai.ToolTypeFunction,
+					Function: openai.FunctionCall{Name: pp.Name, Arguments: string(args)},
 				})
 			}
 		}
+		if len(toolCalls) > 0 {
+			choice.Message = openai.ChatCompletionMessage{
+				ToolCalls: toolCalls,
+				Role:      openai.ChatMessageRoleAssistant,
+			}
+			choice.FinishReason = openai.FinishReasonToolCalls
+			out.Choices = append(out.Choices, choice)
+		}
 	}
+
 	return
 }
 
@@ -76,42 +81,46 @@ func convertToStreamResponse(id string, in *genai.GenerateContentResponse, model
 		usage.CompletionTokens += int(in.UsageMetadata.CandidatesTokenCount)
 	}
 
-	for i, candidate := range in.Candidates {
-		parts := candidate.Content.Parts
+	count := 0
+	toolCalls := make([]openai.ToolCall, 0)
 
-		for j, part := range parts {
-			index := i + j
+	for _, candidate := range in.Candidates {
+		parts := candidate.Content.Parts
+		for _, part := range parts {
+			index := count
 			switch pp := part.(type) {
 			case genai.Text:
 				out.Choices = append(out.Choices, openai.ChatCompletionStreamChoice{
 					Index: index,
 					Delta: openai.ChatCompletionStreamChoiceDelta{
 						Content: string(pp),
-						Role:    openai.ChatMessageRoleUser,
+						Role:    openai.ChatMessageRoleAssistant,
 					},
 					FinishReason: toOpenAIFinishReason(candidate.FinishReason),
 				})
 			case genai.FunctionCall:
 				args, _ := json.Marshal(pp.Args)
 
-				out.Choices = append(out.Choices, openai.ChatCompletionStreamChoice{
-					Index: index,
-					Delta: openai.ChatCompletionStreamChoiceDelta{
-						Role: openai.ChatMessageRoleAssistant,
-						ToolCalls: []openai.ToolCall{
-							{
-								Index:    genai.Ptr(index),
-								ID:       pp.Name,
-								Type:     openai.ToolTypeFunction,
-								Function: openai.FunctionCall{Name: pp.Name, Arguments: string(args)},
-							},
-						},
-					},
-					FinishReason: toOpenAIFinishReason(candidate.FinishReason),
+				toolCalls = append(toolCalls, openai.ToolCall{
+					Index:    genai.Ptr(int(index)),
+					ID:       fmt.Sprintf("%s-%d", pp.Name, index),
+					Type:     openai.ToolTypeFunction,
+					Function: openai.FunctionCall{Name: pp.Name, Arguments: string(args)},
 				})
 			}
+			count++
 		}
 	}
+	if len(toolCalls) > 0 {
+		out.Choices = append(out.Choices, openai.ChatCompletionStreamChoice{
+			Delta: openai.ChatCompletionStreamChoiceDelta{
+				ToolCalls: toolCalls,
+				Role:      openai.ChatMessageRoleAssistant,
+			},
+			FinishReason: openai.FinishReasonToolCalls,
+		})
+	}
+
 	return out
 }
 
