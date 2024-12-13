@@ -27,42 +27,41 @@ func convertToResponse(in *genai.GenerateContentResponse, model string) (out ope
 		}
 	}
 
-	count := 0
 	toolCalls := make([]openai.ToolCall, 0)
-	for _, candidate := range in.Candidates {
-		for _, part := range candidate.Content.Parts {
-			index := count
+	for i, candidate := range in.Candidates {
+		choice := openai.ChatCompletionChoice{
+			Index: i,
+		}
+		for j, part := range candidate.Content.Parts {
 			switch pp := part.(type) {
 			case genai.Text:
-				out.Choices = append(out.Choices, openai.ChatCompletionChoice{
-					Index: int(index),
-					Message: openai.ChatCompletionMessage{
-						Content: string(pp),
-						Role:    openai.ChatMessageRoleUser,
-					},
-					FinishReason: toOpenAIFinishReason(candidate.FinishReason),
-				})
+				if string(pp) == "" {
+					continue
+				}
+				choice.Message = openai.ChatCompletionMessage{
+					Content: string(pp),
+					Role:    openai.ChatMessageRoleAssistant,
+				}
+				choice.FinishReason = toOpenAIFinishReason(candidate.FinishReason)
+				out.Choices = append(out.Choices, choice)
 			case genai.FunctionCall:
 				args, _ := json.Marshal(pp.Args)
 				toolCalls = append(toolCalls, openai.ToolCall{
-					Index:    genai.Ptr(int(index)),
-					ID:       fmt.Sprintf("%s-%d", pp.Name, index),
+					Index:    genai.Ptr(j),
+					ID:       fmt.Sprintf("%s-%d", pp.Name, j),
 					Type:     openai.ToolTypeFunction,
 					Function: openai.FunctionCall{Name: pp.Name, Arguments: string(args)},
 				})
 			}
-			count++
 		}
-	}
-
-	if len(toolCalls) > 0 {
-		out.Choices = append(out.Choices, openai.ChatCompletionChoice{
-			Message: openai.ChatCompletionMessage{
+		if len(toolCalls) > 0 {
+			choice.Message = openai.ChatCompletionMessage{
 				ToolCalls: toolCalls,
 				Role:      openai.ChatMessageRoleAssistant,
-			},
-			FinishReason: openai.FinishReasonToolCalls,
-		})
+			}
+			choice.FinishReason = openai.FinishReasonToolCalls
+			out.Choices = append(out.Choices, choice)
+		}
 	}
 
 	return
@@ -95,7 +94,7 @@ func convertToStreamResponse(id string, in *genai.GenerateContentResponse, model
 					Index: index,
 					Delta: openai.ChatCompletionStreamChoiceDelta{
 						Content: string(pp),
-						Role:    openai.ChatMessageRoleUser,
+						Role:    openai.ChatMessageRoleAssistant,
 					},
 					FinishReason: toOpenAIFinishReason(candidate.FinishReason),
 				})
