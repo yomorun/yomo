@@ -518,7 +518,7 @@ func (srv *Service) opSystemPrompt(req openai.ChatCompletionRequest, sysPrompt s
 		}
 		systemCount++
 	}
-	if systemCount == 0 {
+	if systemCount == 0 && sysPrompt != "" {
 		message := openai.ChatCompletionMessage{
 			Role:    "system",
 			Content: sysPrompt,
