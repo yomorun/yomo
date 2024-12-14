@@ -31,7 +31,7 @@ func NewProvider(projectID, location, model, credentialsFile string) *Provider {
 		log.Fatal("new vertexai client: ", err)
 	}
 	if model == "" {
-		model = "gemini-1.5-pro-latest"
+		model = "gemini-1.5-pro-002"
 	}
 
 	return &Provider{
