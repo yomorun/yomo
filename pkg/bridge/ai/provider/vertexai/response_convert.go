@@ -38,7 +38,7 @@ func convertToResponse(in *genai.GenerateContentResponse, model string) (out ope
 					Index: int(index),
 					Message: openai.ChatCompletionMessage{
 						Content: string(pp),
-						Role:    openai.ChatMessageRoleUser,
+						Role:    openai.ChatMessageRoleAssistant,
 					},
 					FinishReason: toOpenAIFinishReason(candidate.FinishReason),
 				})
@@ -95,7 +95,7 @@ func convertToStreamResponse(id string, in *genai.GenerateContentResponse, model
 					Index: index,
 					Delta: openai.ChatCompletionStreamChoiceDelta{
 						Content: string(pp),
-						Role:    openai.ChatMessageRoleUser,
+						Role:    openai.ChatMessageRoleAssistant,
 					},
 					FinishReason: toOpenAIFinishReason(candidate.FinishReason),
 				})
