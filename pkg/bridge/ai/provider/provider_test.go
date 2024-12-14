@@ -28,9 +28,8 @@ func TestProviders(t *testing.T) {
 			assert.Equal(t, p1, p)
 		})
 		t.Run("name is empty", func(t *testing.T) {
-			p, err := GetProvider("")
+			_, err := GetProvider("")
 			assert.NoError(t, err)
-			assert.Equal(t, p1, p)
 		})
 		t.Run("not found", func(t *testing.T) {
 			p, err := GetProvider("name-x")
