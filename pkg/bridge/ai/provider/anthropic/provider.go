@@ -304,7 +304,7 @@ func (p *Provider) convertMessageNewParams(req openai.ChatCompletionRequest) ant
 	msgs := make([]anthropic.MessageParam, 0)
 	systemMsgs := make([]anthropic.TextBlockParam, 0)
 	tools := make([]anthropic.ToolParam, 0)
-	toolResult := []anthropic.MessageParamContentUnion{}
+	toolResult := []anthropic.ContentBlockParamUnion{}
 
 	// tools
 	for _, tool := range req.Tools {
@@ -328,7 +328,7 @@ func (p *Provider) convertMessageNewParams(req openai.ChatCompletionRequest) ant
 			// tool use, check if there are tool calls
 			if len(msg.ToolCalls) > 0 {
 				ylog.Debug("openai request", "tool_calls", len(msg.ToolCalls))
-				toolUses := make([]anthropic.MessageParamContentUnion, 0)
+				toolUses := make([]anthropic.ContentBlockParamUnion, 0)
 				for _, toolCall := range msg.ToolCalls {
 					var args map[string]any
 					if len(toolCall.Function.Arguments) > 0 {
