@@ -2,8 +2,6 @@ module llm-sfn-currency-converter
 
 go 1.22.0
 
-toolchain go1.23.4
-
 require (
 	github.com/stretchr/testify v1.10.0
 	github.com/yomorun/yomo v1.18.8

@@ -2,8 +2,6 @@ module yomo.run/example-cli-source
 
 go 1.22.0
 
-toolchain go1.23.4
-
 replace github.com/yomorun/yomo => ../../../
 
 require github.com/yomorun/yomo v0.0.0

@@ -2,8 +2,6 @@ module llm-sfn-get-ip-and-latency
 
 go 1.22.0
 
-toolchain go1.23.4
-
 require (
 	github.com/go-ping/ping v1.1.0
 	github.com/yomorun/yomo v1.18.4

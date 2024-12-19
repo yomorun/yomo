@@ -2,8 +2,6 @@ module llm-sfn-get-weather
 
 go 1.22.0
 
-toolchain go1.23.4
-
 require github.com/yomorun/yomo v1.18.7
 
 require (
