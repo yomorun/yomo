@@ -494,6 +494,9 @@ func (srv *Service) opSystemPrompt(req openai.ChatCompletionRequest, sysPrompt s
 	if op == SystemPromptOpDisabled {
 		return req
 	}
+	if op == SystemPromptOpOverwrite && sysPrompt == "" {
+		return req
+	}
 	var (
 		systemCount = 0
 		messages    = []openai.ChatCompletionMessage{}
