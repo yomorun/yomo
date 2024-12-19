@@ -2,8 +2,6 @@ module github.com/yomorun/yomo
 
 go 1.22.0
 
-toolchain go1.23.4
-
 require (
 	cloud.google.com/go/vertexai v0.13.2
 	github.com/anthropics/anthropic-sdk-go v0.2.0-alpha.7
