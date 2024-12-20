@@ -2,7 +2,6 @@ module github.com/yomorun/yomo
 
 go 1.22.0
 
-toolchain go1.22.5
 
 require (
 	cloud.google.com/go/vertexai v0.13.2
