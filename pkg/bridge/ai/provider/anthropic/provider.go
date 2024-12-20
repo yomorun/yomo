@@ -43,7 +43,7 @@ func NewProvider(apiKey string, model string) *Provider {
 	if model == "" {
 		model = os.Getenv("ANTHROPIC_MODEL")
 		if model == "" {
-			model = anthropic.ModelClaude_3_5_Sonnet_20240620
+			model = anthropic.ModelClaude3_5SonnetLatest
 		}
 	}
 
@@ -95,7 +95,7 @@ func (p *Provider) GetChatCompletions(
 		case anthropic.ContentBlockTypeToolUse:
 			// case anthropic.ToolUseBlock:
 			i := toolCallIndex
-			ylog.Debug("anthropic tool use ", "function", content.Name, "arguments", string(content.Input))
+			ylog.Debug("anthropic tool use", "function", content.Name, "arguments", string(content.Input), "index", i)
 			message.ToolCalls = append(message.ToolCalls, openai.ToolCall{
 				Index: &i,
 				ID:    content.ID,
@@ -304,7 +304,7 @@ func (p *Provider) convertMessageNewParams(req openai.ChatCompletionRequest) ant
 	msgs := make([]anthropic.MessageParam, 0)
 	systemMsgs := make([]anthropic.TextBlockParam, 0)
 	tools := make([]anthropic.ToolParam, 0)
-	toolResult := []anthropic.MessageParamContentUnion{}
+	toolResult := []anthropic.ContentBlockParamUnion{}
 
 	// tools
 	for _, tool := range req.Tools {
@@ -317,7 +317,6 @@ func (p *Provider) convertMessageNewParams(req openai.ChatCompletionRequest) ant
 			})
 		}
 	}
-	ylog.Debug("anthropic tools", "tools", fmt.Sprintf("%+v", tools))
 
 	// messages
 	for _, msg := range req.Messages {
@@ -328,8 +327,9 @@ func (p *Provider) convertMessageNewParams(req openai.ChatCompletionRequest) ant
 			// tool use, check if there are tool calls
 			if len(msg.ToolCalls) > 0 {
 				ylog.Debug("openai request", "tool_calls", len(msg.ToolCalls))
-				toolUses := make([]anthropic.MessageParamContentUnion, 0)
-				for _, toolCall := range msg.ToolCalls {
+				toolUses := make([]anthropic.ContentBlockParamUnion, 0)
+				for i, toolCall := range msg.ToolCalls {
+					ylog.Debug("openai request", "tool_calls", len(msg.ToolCalls))
 					var args map[string]any
 					if len(toolCall.Function.Arguments) > 0 {
 						err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args)
@@ -339,7 +339,7 @@ func (p *Provider) convertMessageNewParams(req openai.ChatCompletionRequest) ant
 						}
 					}
 					toolUse := anthropic.NewToolUseBlockParam(toolCall.ID, toolCall.Function.Name, args)
-					ylog.Debug("anthropic tool use", "tool_use", fmt.Sprintf("%+v", toolUse))
+					ylog.Debug("anthropic tool use", "tool_use", fmt.Sprintf("%+v", toolUse), "index", i)
 					toolUses = append(toolUses, toolUse)
 				}
 				msgs = append(msgs, anthropic.NewAssistantMessage(toolUses...))
@@ -347,7 +347,9 @@ func (p *Provider) convertMessageNewParams(req openai.ChatCompletionRequest) ant
 				msgs = append(msgs, anthropic.NewAssistantMessage(anthropic.NewTextBlock(msg.Content)))
 			}
 		case openai.ChatMessageRoleSystem:
-			systemMsgs = append(systemMsgs, anthropic.NewTextBlock(msg.Content))
+			if msg.Content != "" {
+				systemMsgs = append(systemMsgs, anthropic.NewTextBlock(msg.Content))
+			}
 		// tool result
 		case openai.ChatMessageRoleTool:
 			toolResult = append(toolResult, anthropic.NewToolResultBlock(msg.ToolCallID, msg.Content, false))

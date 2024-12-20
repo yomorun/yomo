@@ -1,11 +1,10 @@
 module github.com/yomorun/yomo
 
-go 1.21
-toolchain go1.22.5
+go 1.22.0
 
 require (
 	cloud.google.com/go/vertexai v0.13.2
-	github.com/anthropics/anthropic-sdk-go v0.2.0-alpha.5
+	github.com/anthropics/anthropic-sdk-go v0.2.0-alpha.7
 	github.com/briandowns/spinner v1.23.0
 	github.com/bytecodealliance/wasmtime-go/v9 v9.0.0
 	github.com/caarlos0/env/v6 v6.10.1

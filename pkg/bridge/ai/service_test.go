@@ -51,10 +51,29 @@ func TestOpSystemPrompt(t *testing.T) {
 			args: args{
 				prompt: "",
 				op:     SystemPromptOpOverwrite,
-				req:    openai.ChatCompletionRequest{},
+				req: openai.ChatCompletionRequest{
+					Messages: []openai.ChatCompletionMessage{},
+				},
 			},
 			want: openai.ChatCompletionRequest{
 				Messages: []openai.ChatCompletionMessage{},
+			},
+		},
+		{
+			name: "empty system prompt should not overwrite",
+			args: args{
+				prompt: "",
+				op:     SystemPromptOpOverwrite,
+				req: openai.ChatCompletionRequest{
+					Messages: []openai.ChatCompletionMessage{
+						{Role: "system", Content: "hello"},
+					},
+				},
+			},
+			want: openai.ChatCompletionRequest{
+				Messages: []openai.ChatCompletionMessage{
+					{Role: "system", Content: "hello"},
+				},
 			},
 		},
 		{
