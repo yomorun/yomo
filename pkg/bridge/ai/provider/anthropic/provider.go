@@ -326,6 +326,7 @@ func (p *Provider) convertMessageNewParams(req openai.ChatCompletionRequest) ant
 		case openai.ChatMessageRoleAssistant:
 			// tool use, check if there are tool calls
 			if len(msg.ToolCalls) > 0 {
+				ylog.Debug("openai request", "tool_calls", len(msg.ToolCalls))
 				toolUses := make([]anthropic.ContentBlockParamUnion, 0)
 				for i, toolCall := range msg.ToolCalls {
 					ylog.Debug("openai request", "tool_calls", len(msg.ToolCalls))
