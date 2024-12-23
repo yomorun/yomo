@@ -13,7 +13,7 @@ import (
 
 // DefaultQuicConfig be used when `quicConfig` is nil.
 var DefaultQuicConfig = &quic.Config{
-	Versions:                       []quic.VersionNumber{quic.Version1, quic.Version2},
+	Versions:                       []quic.Version{quic.Version1, quic.Version2},
 	MaxIdleTimeout:                 time.Second * 5,
 	KeepAlivePeriod:                time.Second * 2,
 	MaxIncomingStreams:             1000,
