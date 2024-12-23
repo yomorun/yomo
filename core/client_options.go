@@ -41,7 +41,7 @@ type clientOptions struct {
 
 // DefaultClientQuicConfig be used when the `quicConfig` of client is nil.
 var DefaultClientQuicConfig = &quic.Config{
-	Versions:                       []quic.VersionNumber{quic.Version1, quic.Version2},
+	Versions:                       []quic.Version{quic.Version1, quic.Version2},
 	MaxIdleTimeout:                 time.Second * 40,
 	KeepAlivePeriod:                time.Second * 20,
 	MaxIncomingStreams:             1000,
