@@ -12,8 +12,14 @@ var MainFuncTmpl []byte
 //go:embed templates/init.tmpl
 var InitTmpl []byte
 
+//go:embed templates/init_llm.tmpl
+var InitLLMTmpl []byte
+
 //go:embed templates/init_test.tmpl
 var InitTestTmpl []byte
+
+//go:embed templates/init_llm_test.tmpl
+var InitLLMTestTmpl []byte
 
 //go:embed templates/wasi_main.tmpl
 var WasiMainFuncTmpl []byte

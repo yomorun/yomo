@@ -28,6 +28,7 @@ import (
 )
 
 var name string
+var sfnType string
 
 // initCmd represents the init command
 var initCmd = &cobra.Command{
@@ -48,7 +49,22 @@ var initCmd = &cobra.Command{
 		name = strings.ReplaceAll(name, " ", "_")
 		// create app.go
 		fname := filepath.Join(name, defaultSFNSourceFile)
-		contentTmpl := golang.InitTmpl
+		// sfn content template
+		var contentTmpl, testTmpl []byte
+		// sfn type
+		switch sfnType {
+		case "llm":
+			contentTmpl = golang.InitLLMTmpl
+			testTmpl = golang.InitLLMTestTmpl
+		case "normal":
+			contentTmpl = golang.InitTmpl
+			testTmpl = golang.InitTestTmpl
+		default:
+			log.WarningStatusEvent(os.Stdout, "The type of Stream Function is not supported, use the default type: llm")
+			contentTmpl = golang.InitLLMTmpl
+			testTmpl = golang.InitLLMTestTmpl
+
+		}
 		if err := file.PutContents(fname, contentTmpl); err != nil {
 			log.FailureStatusEvent(os.Stdout, "Write stream function into app.go file failure with the error: %v", err)
 			return
@@ -56,7 +72,7 @@ var initCmd = &cobra.Command{
 
 		// create app_test.go
 		testName := filepath.Join(name, defaultSFNTestSourceFile)
-		if err := file.PutContents(testName, golang.InitTestTmpl); err != nil {
+		if err := file.PutContents(testName, testTmpl); err != nil {
 			log.FailureStatusEvent(os.Stdout, "Write unittest tmpl into app_test.go file failure with the error: %v", err)
 			return
 		}
@@ -79,4 +95,5 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 
 	initCmd.Flags().StringVarP(&name, "name", "n", "", "The name of Stream Function")
+	initCmd.Flags().StringVarP(&sfnType, "type", "t", "llm", "The type of Stream Function, support normal and llm")
 }
