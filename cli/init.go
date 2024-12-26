@@ -16,13 +16,14 @@ limitations under the License.
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/yomorun/yomo/cli/serverless/golang"
+	"github.com/yomorun/yomo/cli/template"
 	"github.com/yomorun/yomo/pkg/file"
 	"github.com/yomorun/yomo/pkg/log"
 )
@@ -49,32 +50,28 @@ var initCmd = &cobra.Command{
 		name = strings.ReplaceAll(name, " ", "_")
 		// create app.go
 		fname := filepath.Join(name, defaultSFNSourceFile)
-		// sfn content template
-		var contentTmpl, testTmpl []byte
-		// sfn type
-		switch sfnType {
-		case "llm":
-			contentTmpl = golang.InitLLMTmpl
-			testTmpl = golang.InitLLMTestTmpl
-		case "normal":
-			contentTmpl = golang.InitTmpl
-			testTmpl = golang.InitTestTmpl
-		default:
-			log.WarningStatusEvent(os.Stdout, "The type of Stream Function is not supported, use the default type: llm")
-			contentTmpl = golang.InitLLMTmpl
-			testTmpl = golang.InitLLMTestTmpl
-
+		contentTmpl, err := template.GetContent("init", sfnType, "", false)
+		if err != nil {
+			log.FailureStatusEvent(os.Stdout, err.Error())
+			return
 		}
 		if err := file.PutContents(fname, contentTmpl); err != nil {
-			log.FailureStatusEvent(os.Stdout, "Write stream function into app.go file failure with the error: %v", err)
+			log.FailureStatusEvent(os.Stdout, "Write stream function into %s file failure with the error: %v", fname, err)
 			return
 		}
-
 		// create app_test.go
 		testName := filepath.Join(name, defaultSFNTestSourceFile)
-		if err := file.PutContents(testName, testTmpl); err != nil {
-			log.FailureStatusEvent(os.Stdout, "Write unittest tmpl into app_test.go file failure with the error: %v", err)
-			return
+		testTmpl, err := template.GetContent("init", sfnType, "", true)
+		if err != nil {
+			if !errors.Is(err, template.ErrUnsupportedTest) {
+				log.FailureStatusEvent(os.Stdout, err.Error())
+				return
+			}
+		} else {
+			if err := file.PutContents(testName, testTmpl); err != nil {
+				log.FailureStatusEvent(os.Stdout, "Write unittest tmpl into %s file failure with the error: %v", testName, err)
+				return
+			}
 		}
 
 		// create .env
