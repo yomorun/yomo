@@ -128,14 +128,13 @@ func (r *wazeroRuntime) Init(wasmFile string) error {
 	}
 
 	wantedTargetFunc := module.ExportedFunction(WasmFuncWantedTarget)
-	if wantedTargetFunc == nil {
-		return fmt.Errorf("%s function not found", WasmFuncWantedTarget)
-	}
-	if _, err := wantedTargetFunc.Call(r.ctx); err != nil {
-		if exitErr, ok := err.(*sys.ExitError); ok && exitErr.ExitCode() != 0 {
-			return fmt.Errorf("%s.Call: %v", WasmFuncWantedTarget, err)
-		} else if !ok {
-			return fmt.Errorf("%s.Call: %v", WasmFuncWantedTarget, err)
+	if wantedTargetFunc != nil {
+		if _, err := wantedTargetFunc.Call(r.ctx); err != nil {
+			if exitErr, ok := err.(*sys.ExitError); ok && exitErr.ExitCode() != 0 {
+				return fmt.Errorf("%s.Call: %v", WasmFuncWantedTarget, err)
+			} else if !ok {
+				return fmt.Errorf("%s.Call: %v", WasmFuncWantedTarget, err)
+			}
 		}
 	}
 
