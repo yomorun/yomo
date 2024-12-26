@@ -8,12 +8,14 @@ import (
 )
 
 //go:embed go
+//go:embed node
 var fs embed.FS
 
 var (
 	ErrUnsupportedSfnType = errors.New("unsupported sfn type")
 	ErrorUnsupportedLang  = errors.New("unsupported lang")
 	ErrUnsupportedTest    = errors.New("unsupported test")
+	ErrUnsupportedFeature = errors.New("unsupported feature")
 )
 
 var (
@@ -53,7 +55,7 @@ func GetContent(command string, sfnType string, lang string, isTest bool) ([]byt
 			if isTest {
 				return nil, ErrUnsupportedTest
 			}
-			return nil, err
+			return nil, ErrUnsupportedFeature
 		}
 		return nil, err
 	}
