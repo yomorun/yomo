@@ -23,7 +23,7 @@ var (
 
 // get template content
 func GetContent(command string, sfnType string, lang string, isTest bool) ([]byte, error) {
-	name, err := genNameByCommand(command, sfnType, lang, isTest)
+	name, err := getTemplateFileName(command, sfnType, lang, isTest)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +46,7 @@ func GetContent(command string, sfnType string, lang string, isTest bool) ([]byt
 	return fs.ReadFile(name)
 }
 
-func genNameByCommand(command string, sfnType string, lang string, isTest bool) (string, error) {
+func getTemplateFileName(command string, sfnType string, lang string, isTest bool) (string, error) {
 	if command == "" {
 		command = "init"
 	}
@@ -69,7 +69,7 @@ func genNameByCommand(command string, sfnType string, lang string, isTest bool) 
 	}
 	sb.WriteString(".tmpl")
 
-	// valdiate the path exists
+	// validate the path exists
 	name := sb.String()
 
 	return name, nil

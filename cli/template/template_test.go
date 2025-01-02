@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-func TestGenNameByCommand(t *testing.T) {
+func TestGetTemplateFileName(t *testing.T) {
 	type args struct {
 		command string
 		sfnType string
@@ -108,13 +108,13 @@ func TestGenNameByCommand(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := genNameByCommand(tt.args.command, tt.args.sfnType, tt.args.lang, tt.args.isTest)
+			got, err := getTemplateFileName(tt.args.command, tt.args.sfnType, tt.args.lang, tt.args.isTest)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("genNameByCommand() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("getTemplateFileName() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if got != tt.want {
-				t.Errorf("genNameByCommand() = %v, want %v", got, tt.want)
+				t.Errorf("getTemplateFileName() = %v, want %v", got, tt.want)
 			}
 		})
 	}
