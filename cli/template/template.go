@@ -23,30 +23,10 @@ var (
 
 // get template content
 func GetContent(command string, sfnType string, lang string, isTest bool) ([]byte, error) {
-	if command == "" {
-		command = "init"
-	}
-	sfnType, err := validateSfnType(sfnType)
+	name, err := genNameByCommand(command, sfnType, lang, isTest)
 	if err != nil {
 		return nil, err
 	}
-	lang, err = validateLang(lang)
-	if err != nil {
-		return nil, err
-	}
-	sb := new(strings.Builder)
-	sb.WriteString(lang)
-	sb.WriteString("/")
-	sb.WriteString(command)
-	sb.WriteString("_")
-	sb.WriteString(sfnType)
-	if isTest {
-		sb.WriteString("_test")
-	}
-	sb.WriteString(".tmpl")
-
-	// valdiate the path exists
-	name := sb.String()
 	f, err := fs.Open(name)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -64,6 +44,35 @@ func GetContent(command string, sfnType string, lang string, isTest bool) ([]byt
 	}
 
 	return fs.ReadFile(name)
+}
+
+func genNameByCommand(command string, sfnType string, lang string, isTest bool) (string, error) {
+	if command == "" {
+		command = "init"
+	}
+	sfnType, err := validateSfnType(sfnType)
+	if err != nil {
+		return "", err
+	}
+	lang, err = validateLang(lang)
+	if err != nil {
+		return "", err
+	}
+	sb := new(strings.Builder)
+	sb.WriteString(lang)
+	sb.WriteString("/")
+	sb.WriteString(command)
+	sb.WriteString("_")
+	sb.WriteString(sfnType)
+	if isTest {
+		sb.WriteString("_test")
+	}
+	sb.WriteString(".tmpl")
+
+	// valdiate the path exists
+	name := sb.String()
+
+	return name, nil
 }
 
 func validateSfnType(sfnType string) (string, error) {
