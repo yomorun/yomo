@@ -11,7 +11,7 @@ require (
 	github.com/fatih/color v1.18.0
 	github.com/google/generative-ai-go v0.18.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
-	github.com/invopop/jsonschema v0.12.0
+	github.com/invopop/jsonschema v0.13.0
 	github.com/joho/godotenv v1.5.1
 	github.com/lmittmann/tint v1.0.4
 	github.com/matoous/go-nanoid/v2 v2.1.0
