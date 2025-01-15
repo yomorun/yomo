@@ -22,8 +22,10 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/ylog"
 	pkgconfig "github.com/yomorun/yomo/pkg/config"
+	"github.com/yomorun/yomo/pkg/listener/mem"
 	"github.com/yomorun/yomo/pkg/log"
 	"github.com/yomorun/yomo/pkg/trace"
 
@@ -68,6 +70,9 @@ var serveCmd = &cobra.Command{
 		// listening address.
 		listenAddr := fmt.Sprintf("%s:%d", conf.Host, conf.Port)
 
+		// memory listener
+		listener := mem.Listen()
+
 		options := []yomo.ZipperOption{}
 		tokenString := ""
 		if _, ok := conf.Auth["type"]; ok {
@@ -75,6 +80,13 @@ var serveCmd = &cobra.Command{
 				options = append(options, yomo.WithAuth("token", tokenString))
 			}
 		}
+
+		conn, _ := listener.Dial()
+		source := ai.NewSource(conn, auth.NewCredential(fmt.Sprintf("token:%s", tokenString)))
+
+		conn2, _ := listener.Dial()
+		redducer := ai.NewReducer(conn2, auth.NewCredential(fmt.Sprintf("token:%s", tokenString)))
+
 		// check llm bridge server config
 		// parse the llm bridge config
 		bridgeConf := conf.Bridge
@@ -108,7 +120,7 @@ var serveCmd = &cobra.Command{
 			registerAIProvider(aiConfig)
 			// start the llm api server
 			go func() {
-				err := ai.Serve(aiConfig, listenAddr, fmt.Sprintf("token:%s", tokenString), ylog.Default())
+				err := ai.Serve(aiConfig, ylog.Default(), source, redducer)
 				if err != nil {
 					log.FailureStatusEvent(os.Stdout, err.Error())
 					return

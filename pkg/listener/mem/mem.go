@@ -142,8 +142,8 @@ type Listener struct {
 	outCh  chan chan frame.Frame
 }
 
-// Listen returns a quic Listener that can accept connections.
-func Listen(in chan frame.Frame) *Listener {
+// ListenChannel returns a Listener that can accept connections from the channel.
+func ListenChannel(in chan frame.Frame) *Listener {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	l := &Listener{
@@ -154,6 +154,11 @@ func Listen(in chan frame.Frame) *Listener {
 	}
 
 	return l
+}
+
+// Listen returns a Listener that can accept connections.
+func Listen() *Listener {
+	return ListenChannel(make(chan frame.Frame))
 }
 
 func (l *Listener) Dial() (*FrameConn, error) {

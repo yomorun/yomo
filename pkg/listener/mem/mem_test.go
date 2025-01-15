@@ -27,9 +27,7 @@ func TestMemAddr(t *testing.T) {
 }
 
 func TestListener(t *testing.T) {
-	ch := make(chan frame.Frame)
-
-	listener := Listen(ch)
+	listener := Listen()
 
 	go func() {
 		if err := runListener(t, listener); err != nil {

@@ -46,9 +46,9 @@ func TestServer(t *testing.T) {
 		return mockCaller(nil), err
 	}
 
-	service := newService("fake_zipper_addr", pd, newCaller, &ServiceOptions{
-		SourceBuilder:     func(_, _ string) yomo.Source { return flow },
-		ReducerBuilder:    func(_, _ string) yomo.StreamFunction { return flow },
+	service := newService(pd, newCaller, &ServiceOptions{
+		SourceBuilder:     func() yomo.Source { return flow },
+		ReducerBuilder:    func() yomo.StreamFunction { return flow },
 		MetadataExchanger: func(_ string) (metadata.M, error) { return metadata.M{"hello": "llm bridge"}, nil },
 	})
 
