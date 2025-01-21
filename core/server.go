@@ -155,6 +155,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 				if err != nil {
 					if err == s.ctx.Err() {
 						wg.Done()
+						return
 					}
 					errCount++
 					s.logger.Error("accepted an error when accepting a connection", "err", err, "err_count", errCount)
