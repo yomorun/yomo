@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"sync/atomic"
 
 	"github.com/yomorun/yomo/core/frame"
 )
@@ -15,17 +14,21 @@ import (
 // It transmits frames upon the golang channel.
 type FrameConn struct {
 	ctx    context.Context
-	cancel context.CancelFunc
-	errMsg atomic.Value
+	cancel context.CancelCauseFunc
 	rCh    chan frame.Frame
 	wCh    chan frame.Frame
 }
 
 var _ frame.Conn = &FrameConn{}
 
+// NewFrameConn creates FrameConn from read write channel.
+func NewFrameConn(ctx context.Context) *FrameConn {
+	return newFrameConn(ctx, make(chan frame.Frame), make(chan frame.Frame))
+}
+
 // newFrameConn creates FrameConn from read write channel.
 func newFrameConn(ctx context.Context, rCh, wCh chan frame.Frame) *FrameConn {
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancelCause(ctx)
 
 	conn := &FrameConn{
 		ctx:    ctx,
@@ -40,11 +43,13 @@ func newFrameConn(ctx context.Context, rCh, wCh chan frame.Frame) *FrameConn {
 // Handshake sends a HandshakeFrame to the connection.
 // This function should be called before ReadFrame or WriteFrame.
 func (p *FrameConn) Handshake(hf *frame.HandshakeFrame) error {
-	p.rCh <- hf
+	if err := p.WriteFrame(hf); err != nil {
+		return err
+	}
 
-	first, ok := <-p.wCh
-	if !ok {
-		return nil
+	first, err := p.ReadFrame()
+	if err != nil {
+		return err
 	}
 
 	switch f := first.(type) {
@@ -96,17 +101,11 @@ func (p *FrameConn) LocalAddr() net.Addr {
 // CloseWithError closes the connection.
 // After calling CloseWithError, ReadFrame and WriteFrame will return frame.ErrConnClosed error.
 func (p *FrameConn) CloseWithError(errString string) error {
-	if v := p.errMsg.Load(); v == nil {
-		p.errMsg.Store(errString)
-	}
-	p.cancel()
-	return nil
-}
-
-func (p *FrameConn) closeError() error {
-	v, ok := p.errMsg.Load().(string)
-	if ok {
-		return frame.NewErrConnClosed(false, v)
+	select {
+	case <-p.ctx.Done():
+		return nil
+	default:
+		p.cancel(frame.NewErrConnClosed(false, errString))
 	}
 	return nil
 }
@@ -114,23 +113,20 @@ func (p *FrameConn) closeError() error {
 // ReadFrame reads a frame. it usually be called in a for-loop.
 func (p *FrameConn) ReadFrame() (frame.Frame, error) {
 	select {
-	case <-p.ctx.Done():
-		return nil, p.closeError()
-	case f, ok := <-p.rCh:
-		if !ok {
-			return nil, p.closeError()
-		}
+	case f := <-p.rCh:
 		return f, nil
+	case <-p.ctx.Done():
+		return nil, context.Cause(p.ctx)
 	}
 }
 
 // WriteFrame writes a frame to connection.
 func (p *FrameConn) WriteFrame(f frame.Frame) error {
 	select {
-	case <-p.ctx.Done():
-		return p.closeError()
 	case p.wCh <- f:
 		return nil
+	case <-p.ctx.Done():
+		return context.Cause(p.ctx)
 	}
 }
 
@@ -138,36 +134,33 @@ func (p *FrameConn) WriteFrame(f frame.Frame) error {
 type Listener struct {
 	ctx    context.Context
 	cancel context.CancelFunc
-	in     chan frame.Frame
-	outCh  chan chan frame.Frame
+	conns  chan *FrameConn
 }
 
-// ListenChannel returns a Listener that can accept connections from the channel.
-func ListenChannel(in chan frame.Frame) *Listener {
+// Listen returns a Listener that can accept connections.
+func Listen() *Listener {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	l := &Listener{
 		ctx:    ctx,
 		cancel: cancel,
-		in:     in,
-		outCh:  make(chan chan frame.Frame),
+		conns:  make(chan *FrameConn, 10),
 	}
 
 	return l
 }
 
-// Listen returns a Listener that can accept connections.
-func Listen() *Listener {
-	return ListenChannel(make(chan frame.Frame))
-}
-
 func (l *Listener) Dial() (*FrameConn, error) {
-	ch := make(chan frame.Frame)
+	var (
+		rCh = make(chan frame.Frame)
+		wCh = make(chan frame.Frame)
+	)
+	conn := newFrameConn(l.ctx, rCh, wCh)
+
 	select {
 	case <-l.ctx.Done():
 		return nil, l.ctx.Err()
-	case l.outCh <- ch:
-		conn := newFrameConn(l.ctx, l.in, ch)
+	case l.conns <- conn:
 		return conn, nil
 	}
 }
@@ -178,11 +171,14 @@ func (l *Listener) Accept(ctx context.Context) (frame.Conn, error) {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case ch, ok := <-l.outCh:
-			if !ok {
-				return nil, frame.NewErrConnClosed(false, "listener has been closed")
+		case c := <-l.conns:
+			conn := &FrameConn{
+				ctx:    c.ctx,
+				cancel: c.cancel,
+				// swap rCh and wCh for bidirectional
+				rCh: c.wCh,
+				wCh: c.rCh,
 			}
-			conn := newFrameConn(ctx, l.in, ch)
 			return conn, nil
 		}
 	}

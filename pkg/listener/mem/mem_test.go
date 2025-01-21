@@ -17,7 +17,7 @@ const (
 )
 
 func TestMemAddr(t *testing.T) {
-	fconn := newFrameConn(context.TODO(), nil, nil)
+	fconn := NewFrameConn(context.TODO())
 
 	assert.Equal(t, "mem", fconn.LocalAddr().Network())
 	assert.Equal(t, "mem://local", fconn.LocalAddr().String())

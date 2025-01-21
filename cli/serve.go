@@ -85,7 +85,7 @@ var serveCmd = &cobra.Command{
 		source := ai.NewSource(conn, auth.NewCredential(fmt.Sprintf("token:%s", tokenString)))
 
 		conn2, _ := listener.Dial()
-		redducer := ai.NewReducer(conn2, auth.NewCredential(fmt.Sprintf("token:%s", tokenString)))
+		reducer := ai.NewReducer(conn2, auth.NewCredential(fmt.Sprintf("token:%s", tokenString)))
 
 		// check llm bridge server config
 		// parse the llm bridge config
@@ -102,6 +102,7 @@ var serveCmd = &cobra.Command{
 		if aiConfig != nil {
 			// add AI connection middleware
 			options = append(options, yomo.WithZipperConnMiddleware(ai.RegisterFunctionMW()))
+			options = append(options, yomo.WithFrameListener(listener))
 		}
 		// new zipper
 		zipper, err := yomo.NewZipper(
@@ -120,7 +121,7 @@ var serveCmd = &cobra.Command{
 			registerAIProvider(aiConfig)
 			// start the llm api server
 			go func() {
-				err := ai.Serve(aiConfig, ylog.Default(), source, redducer)
+				err := ai.Serve(aiConfig, ylog.Default(), source, reducer)
 				if err != nil {
 					log.FailureStatusEvent(os.Stdout, err.Error())
 					return
