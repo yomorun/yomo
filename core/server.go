@@ -392,7 +392,11 @@ func (s *Server) routingDataFrame(c *Context) error {
 
 // dispatch every DataFrames to all downstreams
 func (s *Server) dispatchToDownstreams(c *Context) error {
-	dataFrame := c.Frame
+	dataFrame := &frame.DataFrame{
+		Tag:      c.Frame.Tag,
+		Payload:  c.Frame.Payload,
+		Metadata: c.Frame.Metadata,
+	}
 	if c.Connection.ClientType() == ClientTypeUpstreamZipper {
 		c.Logger.Debug("ignored client", "client_type", c.Connection.ClientType().String())
 		// loop protection
