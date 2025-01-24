@@ -7,13 +7,14 @@ import (
 	"strings"
 )
 
-//go:embed go
+//go:embed node
 var fs embed.FS
 
 var (
 	ErrUnsupportedSfnType = errors.New("unsupported sfn type")
 	ErrorUnsupportedLang  = errors.New("unsupported lang")
 	ErrUnsupportedTest    = errors.New("unsupported test")
+	ErrUnsupportedFeature = errors.New("unsupported feature")
 )
 
 var (

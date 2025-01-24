@@ -7,16 +7,16 @@ hence it will be convenient for developers by importing this crate to your app
 istead of implementing our wasm api spec. See [src/lib.rs](src/lib.rs) for more
 details.
 
-## Add wasm32-wasi target
+## Add wasm32-wasip1 target
 
 ```sh
-rustup target add wasm32-wasi
+rustup target add wasm32-wasip1
 ```
 
 ## Build
 
 ```sh
-cargo build --release --target wasm32-wasi
+cargo build --release --target wasm32-wasip1
 
 cp target/wasm32-wasi/release/sfn.wasm ..
 ```
