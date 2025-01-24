@@ -16,6 +16,9 @@ var (
 
 // Serverless defines the interface for serverless
 type Serverless interface {
+	// Setup sets up the serverless
+	Setup(opts *Options) error
+
 	// Init initializes the serverless
 	Init(opts *Options) error
 
@@ -68,4 +71,18 @@ func Create(opts *Options) (Serverless, error) {
 	}
 
 	return nil, fmt.Errorf(`serverless: unsupport "%s" source (forgotten import?)`, ext)
+}
+
+// Setup sets up the serverless
+func Setup(opts *Options) error {
+	ext := filepath.Ext(opts.Filename)
+
+	driversMu.RLock()
+	s, ok := drivers[ext]
+	driversMu.RUnlock()
+	if ok {
+		return s.Setup(opts)
+	}
+
+	return fmt.Errorf(`serverless: unsupport "%s" source (forgotten import?)`, ext)
 }

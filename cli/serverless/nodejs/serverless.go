@@ -3,8 +3,11 @@ package nodejs
 
 import (
 	"os"
+	"path/filepath"
 
 	"github.com/yomorun/yomo/cli/serverless"
+	"github.com/yomorun/yomo/pkg/file"
+	"github.com/yomorun/yomo/pkg/log"
 	"github.com/yomorun/yomo/pkg/wrapper"
 )
 
@@ -14,6 +17,33 @@ type nodejsServerless struct {
 	zipperAddr string
 	credential string
 	wrapper    *NodejsWrapper
+}
+
+// Setup sets up the nodejs serverless
+func (s *nodejsServerless) Setup(opts *serverless.Options) error {
+	wrapper, err := NewWrapper(opts.Name, opts.Filename)
+	if err != nil {
+		return err
+	}
+	// init package.json
+	err = file.Mkdir(wrapper.workDir)
+	if err != nil {
+		log.FailureStatusEvent(os.Stdout, "Create work dir failed: %v", err)
+		return err
+	}
+	if !file.Exists(filepath.Join(wrapper.workDir, "package.json")) {
+		err = wrapper.Init()
+		if err != nil {
+			return err
+		}
+	}
+	// install dependencies
+	err = wrapper.InstallDeps()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Init initializes the nodejs serverless

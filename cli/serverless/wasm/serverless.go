@@ -24,6 +24,11 @@ type wasmServerless struct {
 	mu           sync.Mutex
 }
 
+// Setup sets up the serverless
+func (s *wasmServerless) Setup(opts *cli.Options) error {
+	return nil
+}
+
 // Init initializes the serverless
 func (s *wasmServerless) Init(opts *cli.Options) error {
 	runtime, err := NewRuntime(opts.Runtime)
