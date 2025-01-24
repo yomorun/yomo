@@ -32,7 +32,7 @@ func (s *nodejsServerless) Setup(opts *serverless.Options) error {
 		return err
 	}
 	if !file.Exists(filepath.Join(wrapper.workDir, "package.json")) {
-		err = wrapper.Init()
+		err = wrapper.InitApp()
 		if err != nil {
 			return err
 		}

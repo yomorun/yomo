@@ -29,10 +29,7 @@ import (
 	"github.com/yomorun/yomo/pkg/log"
 )
 
-var (
-	sfnType string
-	lang    string
-)
+var lang string
 
 // initCmd represents the init command
 var initCmd = &cobra.Command{
@@ -62,7 +59,7 @@ var initCmd = &cobra.Command{
 		}
 		// create app source file
 		fname := filepath.Join(name, DefaultSFNSourceFile(lang))
-		contentTmpl, err := template.GetContent("init", sfnType, lang, false)
+		contentTmpl, err := template.GetContent("init", "", lang, false)
 		if err != nil {
 			log.FailureStatusEvent(os.Stdout, err.Error())
 			return
@@ -73,7 +70,7 @@ var initCmd = &cobra.Command{
 		}
 		// create app test file
 		testName := filepath.Join(name, DefaultSFNTestSourceFile(lang))
-		testTmpl, err := template.GetContent("init", sfnType, lang, true)
+		testTmpl, err := template.GetContent("init", "", lang, true)
 		if err != nil {
 			if !errors.Is(err, template.ErrUnsupportedTest) {
 				log.FailureStatusEvent(os.Stdout, err.Error())
@@ -103,6 +100,5 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 
 	initCmd.Flags().StringVarP(&opts.Name, "name", "n", "", "The name of Stream Function")
-	initCmd.Flags().StringVarP(&sfnType, "type", "t", "llm", "The type of Stream Function, support normal and llm")
 	initCmd.Flags().StringVarP(&lang, "lang", "l", "go", "The language of Stream Function, support go and node")
 }

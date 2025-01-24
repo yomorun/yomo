@@ -143,8 +143,8 @@ func (w *NodejsWrapper) genWrapperTS(functionName, dstPath string) error {
 	return nil
 }
 
-// Init initializes the nodejs application
-func (w *NodejsWrapper) Init() error {
+// InitApp initializes the nodejs application
+func (w *NodejsWrapper) InitApp() error {
 	// init
 	cmd := exec.Command(w.npmPath, "init")
 	if w.npmPath == "npm" {
