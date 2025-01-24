@@ -7,6 +7,7 @@ import (
 	"strings"
 )
 
+//go:embed go
 //go:embed node
 var fs embed.FS
 
