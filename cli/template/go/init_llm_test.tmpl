@@ -11,7 +11,7 @@ func TestHandler(t *testing.T) {
 	tests := []struct {
 		name string
 		ctx  *mock.MockContext
-		// want is the expected result that be written by ctx.WriteLLMResult()
+		// want is the expected result written by ctx.WriteLLMResult()
 		want string
 	}{
 		{
