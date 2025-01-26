@@ -22,8 +22,10 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/ylog"
 	pkgconfig "github.com/yomorun/yomo/pkg/config"
+	"github.com/yomorun/yomo/pkg/listener/mem"
 	"github.com/yomorun/yomo/pkg/log"
 	"github.com/yomorun/yomo/pkg/trace"
 
@@ -68,6 +70,9 @@ var serveCmd = &cobra.Command{
 		// listening address.
 		listenAddr := fmt.Sprintf("%s:%d", conf.Host, conf.Port)
 
+		// memory listener
+		var listener *mem.Listener
+
 		options := []yomo.ZipperOption{}
 		tokenString := ""
 		if _, ok := conf.Auth["type"]; ok {
@@ -75,8 +80,8 @@ var serveCmd = &cobra.Command{
 				options = append(options, yomo.WithAuth("token", tokenString))
 			}
 		}
-		// check llm bridge server config
-		// parse the llm bridge config
+
+		// check and parse the llm bridge server config
 		bridgeConf := conf.Bridge
 		aiConfig, err := ai.ParseConfig(bridgeConf)
 		if err != nil {
@@ -88,8 +93,10 @@ var serveCmd = &cobra.Command{
 			}
 		}
 		if aiConfig != nil {
+			listener = mem.Listen()
 			// add AI connection middleware
 			options = append(options, yomo.WithZipperConnMiddleware(ai.RegisterFunctionMW()))
+			options = append(options, yomo.WithFrameListener(listener))
 		}
 		// new zipper
 		zipper, err := yomo.NewZipper(
@@ -108,7 +115,13 @@ var serveCmd = &cobra.Command{
 			registerAIProvider(aiConfig)
 			// start the llm api server
 			go func() {
-				err := ai.Serve(aiConfig, listenAddr, fmt.Sprintf("token:%s", tokenString), ylog.Default())
+				conn, _ := listener.Dial()
+				source := ai.NewSource(conn, auth.NewCredential(fmt.Sprintf("token:%s", tokenString)))
+
+				conn2, _ := listener.Dial()
+				reducer := ai.NewReducer(conn2, auth.NewCredential(fmt.Sprintf("token:%s", tokenString)))
+
+				err := ai.Serve(aiConfig, ylog.Default(), source, reducer)
 				if err != nil {
 					log.FailureStatusEvent(os.Stdout, err.Error())
 					return

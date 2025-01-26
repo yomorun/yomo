@@ -13,6 +13,7 @@ import (
 	"time"
 
 	openai "github.com/sashabaranov/go-openai"
+	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
 	"github.com/yomorun/yomo/pkg/bridge/ai/register"
@@ -34,23 +35,20 @@ const (
 
 // BasicAPIServer provides restful service for end user
 type BasicAPIServer struct {
-	zipperAddr  string
-	credential  string
 	httpHandler http.Handler
 }
 
 // Serve starts the Basic API Server
-func Serve(config *Config, zipperListenAddr string, credential string, logger *slog.Logger) error {
+func Serve(config *Config, logger *slog.Logger, source yomo.Source, reducer yomo.StreamFunction) error {
 	provider, err := provider.GetProvider(config.Server.Provider)
 	if err != nil {
 		return err
 	}
-	srv, err := NewBasicAPIServer(config, zipperListenAddr, credential, provider, logger)
+	srv, err := NewBasicAPIServer(config, provider, source, reducer, logger)
 	if err != nil {
 		return err
 	}
 
-	logger.Info("start AI Bridge service", "addr", config.Server.Addr, "provider", provider.Name())
 	return http.ListenAndServe(config.Server.Addr, srv.httpHandler)
 }
 
@@ -80,24 +78,23 @@ func DecorateHandler(h http.Handler, decorates ...func(handler http.Handler) htt
 }
 
 // NewBasicAPIServer creates a new restful service
-func NewBasicAPIServer(config *Config, zipperAddr, credential string, provider provider.LLMProvider, logger *slog.Logger) (*BasicAPIServer, error) {
-	zipperAddr = parseZipperAddr(zipperAddr)
-
+func NewBasicAPIServer(config *Config, provider provider.LLMProvider, source yomo.Source, reducer yomo.StreamFunction, logger *slog.Logger) (*BasicAPIServer, error) {
 	logger = logger.With("service", "llm-bridge")
 
-	service := NewService(zipperAddr, provider, &ServiceOptions{
+	opts := &ServiceOptions{
 		Logger:         logger,
-		CredentialFunc: func(r *http.Request) (string, error) { return credential, nil },
-	})
+		SourceBuilder:  func() yomo.Source { return source },
+		ReducerBuilder: func() yomo.StreamFunction { return reducer },
+	}
+	service := NewService(provider, opts)
 
 	mux := NewServeMux(service)
 
 	server := &BasicAPIServer{
-		zipperAddr:  zipperAddr,
-		credential:  credential,
 		httpHandler: DecorateHandler(mux, decorateReqContext(service, logger)),
 	}
 
+	logger.Info("start AI Bridge service", "addr", config.Server.Addr, "provider", provider.Name())
 	return server, nil
 }
 

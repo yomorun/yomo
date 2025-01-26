@@ -26,7 +26,6 @@ import (
 // Service is the  service layer for llm bridge server.
 // service is responsible for handling the logic from handler layer.
 type Service struct {
-	zipperAddr    string
 	provider      provider.LLMProvider
 	newCallerFunc newCallerFunc
 	callers       *expirable.LRU[string, *Caller]
@@ -47,16 +46,16 @@ type ServiceOptions struct {
 	// CallerCallTimeout is the timeout for awaiting the function response.
 	CallerCallTimeout time.Duration
 	// SourceBuilder should builds an unconnected source.
-	SourceBuilder func(zipperAddr, credential string) yomo.Source
+	SourceBuilder func() yomo.Source
 	// ReducerBuilder should builds an unconnected reducer.
-	ReducerBuilder func(zipperAddr, credential string) yomo.StreamFunction
+	ReducerBuilder func() yomo.StreamFunction
 	// MetadataExchanger exchanges metadata from the credential.
 	MetadataExchanger func(credential string) (metadata.M, error)
 }
 
 // NewService creates a new service for handling the logic from handler layer.
-func NewService(zipperAddr string, provider provider.LLMProvider, opt *ServiceOptions) *Service {
-	return newService(zipperAddr, provider, NewCaller, opt)
+func NewService(provider provider.LLMProvider, opt *ServiceOptions) *Service {
+	return newService(provider, NewCaller, opt)
 }
 
 func initOption(opt *ServiceOptions) *ServiceOptions {
@@ -67,29 +66,13 @@ func initOption(opt *ServiceOptions) *ServiceOptions {
 		opt.Logger = ylog.Default()
 	}
 	if opt.CredentialFunc == nil {
-		opt.CredentialFunc = func(_ *http.Request) (string, error) { return "", nil }
+		opt.CredentialFunc = func(_ *http.Request) (string, error) { return "token", nil }
 	}
 	if opt.CallerCacheSize == 0 {
 		opt.CallerCacheSize = 1
 	}
 	if opt.CallerCallTimeout == 0 {
 		opt.CallerCallTimeout = 60 * time.Second
-	}
-	if opt.SourceBuilder == nil {
-		opt.SourceBuilder = func(zipperAddr, credential string) yomo.Source {
-			return yomo.NewSource(
-				"fc-source",
-				zipperAddr,
-				yomo.WithSourceReConnect(), yomo.WithCredential(credential))
-		}
-	}
-	if opt.ReducerBuilder == nil {
-		opt.ReducerBuilder = func(zipperAddr, credential string) yomo.StreamFunction {
-			return yomo.NewStreamFunction(
-				"fc-reducer",
-				zipperAddr,
-				yomo.WithSfnReConnect(), yomo.WithSfnCredential(credential), yomo.DisableOtelTrace())
-		}
 	}
 	if opt.MetadataExchanger == nil {
 		opt.MetadataExchanger = func(credential string) (metadata.M, error) {
@@ -100,7 +83,7 @@ func initOption(opt *ServiceOptions) *ServiceOptions {
 	return opt
 }
 
-func newService(zipperAddr string, provider provider.LLMProvider, ncf newCallerFunc, opt *ServiceOptions) *Service {
+func newService(provider provider.LLMProvider, ncf newCallerFunc, opt *ServiceOptions) *Service {
 	var onEvict = func(_ string, caller *Caller) {
 		caller.Close()
 	}
@@ -108,7 +91,6 @@ func newService(zipperAddr string, provider provider.LLMProvider, ncf newCallerF
 	opt = initOption(opt)
 
 	service := &Service{
-		zipperAddr:    zipperAddr,
 		provider:      provider,
 		newCallerFunc: ncf,
 		callers:       expirable.NewLRU(opt.CallerCacheSize, onEvict, opt.CallerCacheTTL),
@@ -464,8 +446,8 @@ func (srv *Service) loadOrCreateCaller(credential string) (*Caller, error) {
 		return nil, err
 	}
 	caller, err = srv.newCallerFunc(
-		srv.option.SourceBuilder(srv.zipperAddr, credential),
-		srv.option.ReducerBuilder(srv.zipperAddr, credential),
+		srv.option.SourceBuilder(),
+		srv.option.ReducerBuilder(),
 		md,
 		srv.option.CallerCallTimeout,
 	)

@@ -7,6 +7,7 @@ import (
 
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core/auth"
+	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/router"
 	"github.com/yomorun/yomo/core/ylog"
 )
@@ -38,6 +39,7 @@ type serverOptions struct {
 	router               router.Router
 	connMiddlewares      []ConnMiddleware
 	frameMiddlewares     []FrameMiddleware
+	listeners            []frame.Listener
 }
 
 func defaultServerOptions() *serverOptions {
@@ -118,5 +120,12 @@ func WithFrameMiddleware(mws ...FrameMiddleware) ServerOption {
 func WithConnMiddleware(mws ...ConnMiddleware) ServerOption {
 	return func(o *serverOptions) {
 		o.connMiddlewares = append(o.connMiddlewares, mws...)
+	}
+}
+
+// WithFrameListener adds a Listener other than a quic.Listener.
+func WithFrameListener(l ...frame.Listener) ServerOption {
+	return func(o *serverOptions) {
+		o.listeners = append(o.listeners, l...)
 	}
 }

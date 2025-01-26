@@ -143,20 +143,32 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 
 	defer closeServer(s.downstreams, s.connector, s.listener, s.router)
 
-	errCount := 0
-	for {
-		fconn, err := s.listener.Accept(s.ctx)
-		if err != nil {
-			if err == s.ctx.Err() {
-				return ErrServerClosed
-			}
-			errCount++
-			s.logger.Error("accepted an error when accepting a connection", "err", err, "err_count", errCount)
-			continue
-		}
+	listeners := append(s.opts.listeners, s.listener)
 
-		go s.handleFrameConn(fconn, s.logger)
+	var wg sync.WaitGroup
+	for _, l := range listeners {
+		wg.Add(1)
+		go func(l frame.Listener) {
+			errCount := 0
+			for {
+				fconn, err := l.Accept(s.ctx)
+				if err != nil {
+					if err == s.ctx.Err() {
+						wg.Done()
+						return
+					}
+					errCount++
+					s.logger.Error("accepted an error when accepting a connection", "err", err, "err_count", errCount)
+					continue
+				}
+
+				go s.handleFrameConn(fconn, s.logger)
+			}
+		}(l)
 	}
+
+	wg.Wait()
+	return ErrServerClosed
 }
 
 func (s *Server) handleFrameConn(fconn frame.Conn, logger *slog.Logger) {
@@ -380,7 +392,11 @@ func (s *Server) routingDataFrame(c *Context) error {
 
 // dispatch every DataFrames to all downstreams
 func (s *Server) dispatchToDownstreams(c *Context) error {
-	dataFrame := c.Frame
+	dataFrame := &frame.DataFrame{
+		Tag:      c.Frame.Tag,
+		Payload:  c.Frame.Payload,
+		Metadata: c.Frame.Metadata,
+	}
 	if c.Connection.ClientType() == ClientTypeUpstreamZipper {
 		c.Logger.Debug("ignored client", "client_type", c.Connection.ClientType().String())
 		// loop protection

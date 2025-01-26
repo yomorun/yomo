@@ -6,6 +6,7 @@ import (
 
 	"github.com/quic-go/quic-go"
 	"github.com/yomorun/yomo/core"
+	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/router"
 )
 
@@ -145,6 +146,13 @@ var (
 	WithZipperFrameMiddleware = func(mw ...core.FrameMiddleware) ZipperOption {
 		return func(o *zipperOptions) {
 			o.serverOption = append(o.serverOption, core.WithFrameMiddleware(mw...))
+		}
+	}
+
+	// WithFrameListener adds a Listener other than a quic.Listener.
+	WithFrameListener = func(l ...frame.Listener) ZipperOption {
+		return func(o *zipperOptions) {
+			o.serverOption = append(o.serverOption, core.WithFrameListener(l...))
 		}
 	}
 )
