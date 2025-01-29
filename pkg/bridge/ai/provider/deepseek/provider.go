@@ -1,5 +1,5 @@
-// Package cerebras is the Cerebras llm provider
-package cerebras
+// Package deepseek is the DeepSeek llm provider
+package deepseek
 
 import (
 	"context"
@@ -17,17 +17,17 @@ const BaseURL = "https://api.deepseek.com/v1"
 // check if implements ai.Provider
 var _ provider.LLMProvider = &Provider{}
 
-// Provider is the provider for Cerebras
+// Provider is the provider for deepseek
 type Provider struct {
-	// APIKey is the API key for Cerebras
+	// APIKey is the API key for deepseek
 	APIKey string
-	// Model is the model for Cerebras
+	// Model is the model for deepseek
 	// eg. "deepseek-chat", "deepseek-reasoner"
 	Model  string
 	client *openai.Client
 }
 
-// NewProvider creates a new cerebras ai provider
+// NewProvider creates a new deepseek ai provider
 func NewProvider(apiKey string, model string) *Provider {
 	if model == "" {
 		model = "deepseek-chat"
