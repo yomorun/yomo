@@ -183,6 +183,8 @@ func registerAIProvider(aiConfig *ai.Config) error {
 				provider["model"],
 				provider["credentials_file"],
 			))
+		case "deepseek":
+			providerpkg.RegisterProvider(cerebras.NewProvider(provider["api_key"], provider["model"]))
 		default:
 			log.WarningStatusEvent(os.Stdout, "unknown provider: %s", name)
 		}
