@@ -29,6 +29,11 @@ type GolangServerless struct {
 	tempDir string
 }
 
+// Setup sets up the serverless
+func (s *GolangServerless) Setup(opts *serverless.Options) error {
+	return nil
+}
+
 // Init initializes the serverless
 func (s *GolangServerless) Init(opts *serverless.Options) error {
 	s.opts = opts

@@ -16,18 +16,20 @@ limitations under the License.
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/yomorun/yomo/cli/serverless/golang"
+	"github.com/yomorun/yomo/cli/serverless"
+	"github.com/yomorun/yomo/cli/template"
 	"github.com/yomorun/yomo/pkg/file"
 	"github.com/yomorun/yomo/pkg/log"
 )
 
-var name string
+var lang string
 
 // initCmd represents the init command
 var initCmd = &cobra.Command{
@@ -35,6 +37,7 @@ var initCmd = &cobra.Command{
 	Short: "Initialize a YoMo Stream function",
 	Long:  "Initialize a YoMo Stream function",
 	Run: func(cmd *cobra.Command, args []string) {
+		name := opts.Name
 		if len(args) >= 1 && args[0] != "" {
 			name = args[0]
 		}
@@ -46,21 +49,39 @@ var initCmd = &cobra.Command{
 
 		log.PendingStatusEvent(os.Stdout, "Initializing the Stream Function...")
 		name = strings.ReplaceAll(name, " ", "_")
-		// create app.go
-		fname := filepath.Join(name, defaultSFNSourceFile)
-		contentTmpl := golang.InitTmpl
+		filename := filepath.Join(name, DefaultSFNSourceFile(lang))
+		opts.Filename = filename
+		// serverless setup
+		err := serverless.Setup(&opts)
+		if err != nil {
+			log.FailureStatusEvent(os.Stdout, err.Error())
+			return
+		}
+		// create app source file
+		fname := filepath.Join(name, DefaultSFNSourceFile(lang))
+		contentTmpl, err := template.GetContent("init", "", lang, false)
+		if err != nil {
+			log.FailureStatusEvent(os.Stdout, err.Error())
+			return
+		}
 		if err := file.PutContents(fname, contentTmpl); err != nil {
-			log.FailureStatusEvent(os.Stdout, "Write stream function into app.go file failure with the error: %v", err)
+			log.FailureStatusEvent(os.Stdout, "Write stream function into %s file failure with the error: %v", fname, err)
 			return
 		}
-
-		// create app_test.go
-		testName := filepath.Join(name, defaultSFNTestSourceFile)
-		if err := file.PutContents(testName, golang.InitTestTmpl); err != nil {
-			log.FailureStatusEvent(os.Stdout, "Write unittest tmpl into app_test.go file failure with the error: %v", err)
-			return
+		// create app test file
+		testName := filepath.Join(name, DefaultSFNTestSourceFile(lang))
+		testTmpl, err := template.GetContent("init", "", lang, true)
+		if err != nil {
+			if !errors.Is(err, template.ErrUnsupportedTest) {
+				log.FailureStatusEvent(os.Stdout, err.Error())
+				return
+			}
+		} else {
+			if err := file.PutContents(testName, testTmpl); err != nil {
+				log.FailureStatusEvent(os.Stdout, "Write unittest tmpl into %s file failure with the error: %v", testName, err)
+				return
+			}
 		}
-
 		// create .env
 		fname = filepath.Join(name, ".env")
 		if err := file.PutContents(fname, []byte(fmt.Sprintf("YOMO_SFN_NAME=%s\nYOMO_SFN_ZIPPER=localhost:9000\n", name))); err != nil {
@@ -70,13 +91,13 @@ var initCmd = &cobra.Command{
 
 		log.SuccessStatusEvent(os.Stdout, "Congratulations! You have initialized the stream function successfully.")
 		log.InfoStatusEvent(os.Stdout, "You can enjoy the YoMo Stream Function via the command: ")
-		log.InfoStatusEvent(os.Stdout, "\tStep 1: cd %s && yomo build", name)
-		log.InfoStatusEvent(os.Stdout, "\tStep 2: yomo run sfn.yomo")
+		log.InfoStatusEvent(os.Stdout, "\tcd %s && yomo run", name)
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(initCmd)
 
-	initCmd.Flags().StringVarP(&name, "name", "n", "", "The name of Stream Function")
+	initCmd.Flags().StringVarP(&opts.Name, "name", "n", "", "The name of Stream Function")
+	initCmd.Flags().StringVarP(&lang, "lang", "l", "go", "The language of Stream Function, support go and node")
 }

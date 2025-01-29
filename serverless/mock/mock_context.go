@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/yomorun/yomo/ai"
+	"github.com/yomorun/yomo/pkg/id"
 	"github.com/yomorun/yomo/serverless"
 )
 
@@ -14,9 +15,10 @@ var _ serverless.Context = (*MockContext)(nil)
 
 // WriteRecord composes the data, tag and target.
 type WriteRecord struct {
-	Data   []byte
-	Tag    uint32
-	Target string
+	Data      []byte
+	Tag       uint32
+	Target    string
+	LLMResult string
 }
 
 // MockContext mock context.
@@ -35,6 +37,23 @@ func NewMockContext(data []byte, tag uint32) *MockContext {
 	return &MockContext{
 		data: data,
 		tag:  tag,
+	}
+}
+
+// NewArgumentsContext creates a Context with the provided arguments and tag.
+// This function is used for testing the LLM function.
+func NewArgumentsContext(arguments string, tag uint32) *MockContext {
+	fnCall := &ai.FunctionCall{
+		Arguments:  arguments,
+		ReqID:      id.New(16),
+		ToolCallID: "chatcmpl-" + id.New(29),
+	}
+	data, _ := fnCall.Bytes()
+
+	return &MockContext{
+		data:   data,
+		tag:    tag,
+		fnCall: fnCall,
 	}
 }
 
@@ -123,9 +142,11 @@ func (c *MockContext) WriteLLMResult(result string) error {
 	}
 
 	c.wrSlice = append(c.wrSlice, WriteRecord{
-		Data: buf,
-		Tag:  ai.ReducerTag,
+		Data:      buf,
+		Tag:       ai.ReducerTag,
+		LLMResult: result,
 	})
+
 	return nil
 }
 
