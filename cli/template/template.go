@@ -25,16 +25,40 @@ var (
 
 // get template content
 func GetContent(command string, sfnType string, lang string, isTest bool) ([]byte, error) {
+	name, err := getTemplateFileName(command, sfnType, lang, isTest)
+	if err != nil {
+		return nil, err
+	}
+	f, err := fs.Open(name)
+	if err != nil {
+		if os.IsNotExist(err) {
+			if isTest {
+				return nil, ErrUnsupportedTest
+			}
+			return nil, err
+		}
+		return nil, err
+	}
+	defer f.Close()
+	_, err = f.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	return fs.ReadFile(name)
+}
+
+func getTemplateFileName(command string, sfnType string, lang string, isTest bool) (string, error) {
 	if command == "" {
 		command = "init"
 	}
 	sfnType, err := validateSfnType(sfnType)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	lang, err = validateLang(lang)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	sb := new(strings.Builder)
 	sb.WriteString(lang)
@@ -47,25 +71,10 @@ func GetContent(command string, sfnType string, lang string, isTest bool) ([]byt
 	}
 	sb.WriteString(".tmpl")
 
-	// valdiate the path exists
+	// validate the path exists
 	name := sb.String()
-	f, err := fs.Open(name)
-	if err != nil {
-		if os.IsNotExist(err) {
-			if isTest {
-				return nil, ErrUnsupportedTest
-			}
-			return nil, ErrUnsupportedFeature
-		}
-		return nil, err
-	}
-	defer f.Close()
-	_, err = f.Stat()
-	if err != nil {
-		return nil, err
-	}
 
-	return fs.ReadFile(name)
+	return name, nil
 }
 
 func validateSfnType(sfnType string) (string, error) {
