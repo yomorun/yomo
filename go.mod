@@ -1,12 +1,10 @@
 module github.com/yomorun/yomo
 
-go 1.22.7
-
-toolchain go1.23.5
+go 1.23
 
 require (
 	cloud.google.com/go/vertexai v0.13.3
-	github.com/anthropics/anthropic-sdk-go v0.2.0-alpha.10
+	github.com/anthropics/anthropic-sdk-go v0.2.0-alpha.8
 	github.com/briandowns/spinner v1.23.2
 	github.com/bytecodealliance/wasmtime-go/v9 v9.0.0
 	github.com/caarlos0/env/v6 v6.10.1
@@ -17,7 +15,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/lmittmann/tint v1.0.7
 	github.com/matoous/go-nanoid/v2 v2.1.0
-	github.com/quic-go/quic-go v0.49.0
+	github.com/quic-go/quic-go v0.48.2
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/sashabaranov/go-openai v1.36.1
 	github.com/second-state/WasmEdge-go v0.13.4
