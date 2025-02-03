@@ -47,8 +47,8 @@ func TestServer(t *testing.T) {
 	}
 
 	service := newService(pd, newCaller, &ServiceOptions{
-		SourceBuilder:     func() yomo.Source { return flow },
-		ReducerBuilder:    func() yomo.StreamFunction { return flow },
+		SourceBuilder:     func(_ string) yomo.Source { return flow },
+		ReducerBuilder:    func(_ string) yomo.StreamFunction { return flow },
 		MetadataExchanger: func(_ string) (metadata.M, error) { return metadata.M{"hello": "llm bridge"}, nil },
 	})
 

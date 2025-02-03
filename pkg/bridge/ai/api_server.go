@@ -83,8 +83,8 @@ func NewBasicAPIServer(config *Config, provider provider.LLMProvider, source yom
 
 	opts := &ServiceOptions{
 		Logger:         logger,
-		SourceBuilder:  func() yomo.Source { return source },
-		ReducerBuilder: func() yomo.StreamFunction { return reducer },
+		SourceBuilder:  func(_ string) yomo.Source { return source },
+		ReducerBuilder: func(_ string) yomo.StreamFunction { return reducer },
 	}
 	service := NewService(provider, opts)
 
