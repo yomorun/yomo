@@ -16,18 +16,20 @@ limitations under the License.
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/yomorun/yomo/cli/serverless/golang"
+	"github.com/yomorun/yomo/cli/template"
 	"github.com/yomorun/yomo/pkg/file"
 	"github.com/yomorun/yomo/pkg/log"
 )
 
 var name string
+var sfnType string
 
 // initCmd represents the init command
 var initCmd = &cobra.Command{
@@ -48,17 +50,28 @@ var initCmd = &cobra.Command{
 		name = strings.ReplaceAll(name, " ", "_")
 		// create app.go
 		fname := filepath.Join(name, defaultSFNSourceFile)
-		contentTmpl := golang.InitTmpl
-		if err := file.PutContents(fname, contentTmpl); err != nil {
-			log.FailureStatusEvent(os.Stdout, "Write stream function into app.go file failure with the error: %v", err)
+		contentTmpl, err := template.GetContent("init", sfnType, "", false)
+		if err != nil {
+			log.FailureStatusEvent(os.Stdout, err.Error())
 			return
 		}
-
+		if err := file.PutContents(fname, contentTmpl); err != nil {
+			log.FailureStatusEvent(os.Stdout, "Write stream function into %s file failure with the error: %v", fname, err)
+			return
+		}
 		// create app_test.go
 		testName := filepath.Join(name, defaultSFNTestSourceFile)
-		if err := file.PutContents(testName, golang.InitTestTmpl); err != nil {
-			log.FailureStatusEvent(os.Stdout, "Write unittest tmpl into app_test.go file failure with the error: %v", err)
-			return
+		testTmpl, err := template.GetContent("init", sfnType, "", true)
+		if err != nil {
+			if !errors.Is(err, template.ErrUnsupportedTest) {
+				log.FailureStatusEvent(os.Stdout, err.Error())
+				return
+			}
+		} else {
+			if err := file.PutContents(testName, testTmpl); err != nil {
+				log.FailureStatusEvent(os.Stdout, "Write unittest tmpl into %s file failure with the error: %v", testName, err)
+				return
+			}
 		}
 
 		// create .env
@@ -79,4 +92,5 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 
 	initCmd.Flags().StringVarP(&name, "name", "n", "", "The name of Stream Function")
+	initCmd.Flags().StringVarP(&sfnType, "type", "t", "llm", "The type of Stream Function, support normal and llm")
 }
