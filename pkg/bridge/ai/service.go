@@ -46,9 +46,9 @@ type ServiceOptions struct {
 	// CallerCallTimeout is the timeout for awaiting the function response.
 	CallerCallTimeout time.Duration
 	// SourceBuilder should builds an unconnected source.
-	SourceBuilder func() yomo.Source
+	SourceBuilder func(credential string) yomo.Source
 	// ReducerBuilder should builds an unconnected reducer.
-	ReducerBuilder func() yomo.StreamFunction
+	ReducerBuilder func(credential string) yomo.StreamFunction
 	// MetadataExchanger exchanges metadata from the credential.
 	MetadataExchanger func(credential string) (metadata.M, error)
 }
@@ -446,8 +446,8 @@ func (srv *Service) loadOrCreateCaller(credential string) (*Caller, error) {
 		return nil, err
 	}
 	caller, err = srv.newCallerFunc(
-		srv.option.SourceBuilder(),
-		srv.option.ReducerBuilder(),
+		srv.option.SourceBuilder(credential),
+		srv.option.ReducerBuilder(credential),
 		md,
 		srv.option.CallerCallTimeout,
 	)
