@@ -32,7 +32,6 @@ func NewProvider(apiEndpoint string, apiKey string, model string) *Provider {
 		apiEndpoint = "http://127.0.0.1:8000"
 	}
 	// vllm api endpoint is different from the default openai api endpoint, so we need to append "/v1" to the endpoint
-	apiEndpoint = apiEndpoint + "/v1"
 	if model == "" {
 		model = "meta-llama/Llama-3.2-7B-Instruct"
 	}
