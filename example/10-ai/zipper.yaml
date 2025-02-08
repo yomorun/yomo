@@ -54,3 +54,9 @@ bridge:
         location:
         model:
         credentials_file:
+      
+      vllm:
+        api_endpoint: http://127.0.0.1:8000/v1
+        api_key: 
+        model: deepseek-ai/DeepSeek-R1-Distill-Qwen-14B
+
