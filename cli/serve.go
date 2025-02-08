@@ -41,6 +41,7 @@ import (
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/ollama"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/openai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/vertexai"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/vllm"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/xai"
 )
 
@@ -185,6 +186,8 @@ func registerAIProvider(aiConfig *ai.Config) error {
 			))
 		case "deepseek":
 			providerpkg.RegisterProvider(cerebras.NewProvider(provider["api_key"], provider["model"]))
+		case "vllm":
+			providerpkg.RegisterProvider(vllm.NewProvider(provider["api_endpoint"], provider["api_key"], provider["model"]))
 		default:
 			log.WarningStatusEvent(os.Stdout, "unknown provider: %s", name)
 		}
