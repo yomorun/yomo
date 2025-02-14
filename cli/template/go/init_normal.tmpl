@@ -1,0 +1,40 @@
+package main
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/yomorun/yomo/serverless"
+)
+
+// Init is an optional function invoked during the initialization phase of the
+// sfn instance. It's designed for setup tasks like global variable
+// initialization, establishing database connections, or loading models into
+// GPU memory. If initialization fails, the sfn instance will halt and terminate.
+// This function can be omitted if no initialization tasks are needed.
+func Init() error {
+	return nil
+}
+
+// DataTags specifies the data tags to which this serverless function
+// subscribes, essential for data reception. Upon receiving data with these
+// tags, the Handler function is triggered.
+func DataTags() []uint32 {
+	return []uint32{0x33}
+}
+
+// Handler orchestrates the core processing logic of this function.
+// - ctx.Tag() identifies the tag of the incoming data.
+// - ctx.Data() accesses the raw data.
+// - ctx.Write() forwards processed data downstream.
+func Handler(ctx serverless.Context) {
+	data := ctx.Data()
+	fmt.Printf("<< sfn received[%d Bytes]: %s\n", len(data), data)
+	output := strings.ToUpper(string(data))
+	err := ctx.Write(0x34, []byte(output))
+	if err != nil {
+		fmt.Printf(">> sfn write error: %v\n", err)
+		return
+	}
+	fmt.Printf(">> sfn written[%d Bytes]: %s\n", len(output), output)
+}
