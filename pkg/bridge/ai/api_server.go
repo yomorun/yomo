@@ -27,6 +27,9 @@ import (
 const (
 	// DefaultZipperAddr is the default endpoint of the zipper
 	DefaultZipperAddr = "localhost:9000"
+)
+
+var (
 	// RequestTimeout is the timeout for the request, default is 90 seconds
 	RequestTimeout = 90 * time.Second
 	//  RunFunctionTimeout is the timeout for awaiting the function response, default is 60 seconds
