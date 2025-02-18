@@ -138,8 +138,8 @@ func decorateReqContext(service *Service, logger *slog.Logger) func(handler http
 			handler.ServeHTTP(ww, r.WithContext(ctx))
 
 			duration := time.Since(start)
-			if !ww.TTFT.IsZero() {
-				duration = ww.TTFT.Sub(start)
+			if ttft := ww.GetTTFT(); !ttft.IsZero() {
+				duration = ttft.Sub(start)
 			}
 
 			logContent := []any{
@@ -152,8 +152,8 @@ func decorateReqContext(service *Service, logger *slog.Logger) func(handler http
 			if traceID := span.SpanContext().TraceID(); traceID.IsValid() {
 				logContent = append(logContent, "traceId", traceID.String())
 			}
-			if ww.Err != nil {
-				logger.Error("llm birdge request", append(logContent, "err", ww.Err)...)
+			if err := ww.GetError(); err != nil {
+				logger.Error("llm birdge request", append(logContent, "err", err)...)
 			} else {
 				logger.Info("llm birdge request", logContent...)
 			}
@@ -191,13 +191,13 @@ func (h *Handler) HandleInvoke(w http.ResponseWriter, r *http.Request) {
 	var (
 		ctx     = r.Context()
 		transID = FromTransIDContext(ctx)
-		ww      = w.(*ResponseWriter)
+		ww      = w.(EventResponseWriter)
 	)
 	defer r.Body.Close()
 
 	req, err := DecodeRequest[ai.InvokeRequest](r, w, h.service.logger)
 	if err != nil {
-		ww.Err = errors.New("bad request")
+		ww.RecordError(errors.New("bad request"))
 		return
 	}
 
@@ -213,7 +213,7 @@ func (h *Handler) HandleInvoke(w http.ResponseWriter, r *http.Request) {
 
 	res, err := h.service.GetInvoke(ctx, req.Prompt, baseSystemMessage, transID, caller, req.IncludeCallStack, tracer)
 	if err != nil {
-		ww.Err = err
+		ww.RecordError(err)
 		RespondWithError(w, http.StatusInternalServerError, err, h.service.logger)
 		return
 	}
@@ -226,13 +226,13 @@ func (h *Handler) HandleChatCompletions(w http.ResponseWriter, r *http.Request) 
 	var (
 		ctx     = r.Context()
 		transID = FromTransIDContext(ctx)
-		ww      = w.(*ResponseWriter)
+		ww      = w.(EventResponseWriter)
 	)
 	defer r.Body.Close()
 
 	req, err := DecodeRequest[openai.ChatCompletionRequest](r, w, h.service.logger)
 	if err != nil {
-		ww.Err = err
+		ww.RecordError(err)
 		return
 	}
 
@@ -245,11 +245,11 @@ func (h *Handler) HandleChatCompletions(w http.ResponseWriter, r *http.Request) 
 	)
 
 	if err := h.service.GetChatCompletions(ctx, req, transID, caller, ww, tracer); err != nil {
-		ww.Err = err
+		ww.RecordError(err)
 		if err == context.Canceled {
 			return
 		}
-		if ww.IsStream {
+		if ww.IsStream() {
 			h.service.logger.Error("bridge server error", "err", err.Error(), "err_type", reflect.TypeOf(err).String())
 			w.Write([]byte(fmt.Sprintf(`{"error":{"message":"%s"}}`, err.Error())))
 			return

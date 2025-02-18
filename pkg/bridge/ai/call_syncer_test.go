@@ -38,9 +38,8 @@ func TestTimeoutCallSyncer(t *testing.T) {
 		reqID   = "mock-req-id"
 	)
 
-	want := []openai.ChatCompletionMessage{
+	want := []ToolCallResult{
 		{
-			Role:       openai.ChatMessageRoleTool,
 			ToolCallID: "tool-call-id",
 			Content:    "timeout in this function calling, you should ignore this.",
 		},
@@ -97,15 +96,15 @@ func (h *handler) handle(c serverless.Context) {
 	h.ctxs[c.(*mock.MockContext)] = struct{}{}
 }
 
-func (h *handler) result() []openai.ChatCompletionMessage {
+func (h *handler) result() []ToolCallResult {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	want := []openai.ChatCompletionMessage{}
+	want := []ToolCallResult{}
 	for c := range h.ctxs {
 		invoke, _ := c.LLMFunctionCall()
-		want = append(want, openai.ChatCompletionMessage{
-			Role: openai.ChatMessageRoleTool, Content: invoke.Result, ToolCallID: invoke.ToolCallID,
+		want = append(want, ToolCallResult{
+			Content: invoke.Result, ToolCallID: invoke.ToolCallID,
 		})
 	}
 

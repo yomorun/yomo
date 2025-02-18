@@ -16,9 +16,17 @@ type CallSyncer interface {
 	// Call fires a bunch of function callings, and wait the result of these function callings.
 	// The result only contains the messages with role=="tool".
 	// If some function callings failed, the content will be returned as the failed reason.
-	Call(ctx context.Context, transID string, reqID string, toolCalls map[uint32][]*openai.ToolCall) ([]openai.ChatCompletionMessage, error)
+	Call(ctx context.Context, transID string, reqID string, toolCalls map[uint32][]*openai.ToolCall) ([]ToolCallResult, error)
 	// Close close the CallSyncer. if close, you can't use this CallSyncer anymore.
 	Close() error
+}
+
+// ToolCallResult is the result of a CallSyncer.Call()
+type ToolCallResult struct {
+	// ToolCallID is the tool call id.
+	ToolCallID string
+	// Content is the result of the function calling.
+	Content string
 }
 
 type callSyncer struct {
@@ -78,10 +86,10 @@ func NewCallSyncer(logger *slog.Logger, sourceCh chan<- TagFunctionCall, reduceC
 type toolOut struct {
 	reqID   string
 	toolIDs map[string]struct{}
-	ch      chan openai.ChatCompletionMessage
+	ch      chan ToolCallResult
 }
 
-func (f *callSyncer) Call(ctx context.Context, transID, reqID string, tagToolCalls map[uint32][]*openai.ToolCall) ([]openai.ChatCompletionMessage, error) {
+func (f *callSyncer) Call(ctx context.Context, transID, reqID string, tagToolCalls map[uint32][]*openai.ToolCall) ([]ToolCallResult, error) {
 	defer func() {
 		f.cleanCh <- reqID
 	}()
@@ -90,7 +98,7 @@ func (f *callSyncer) Call(ctx context.Context, transID, reqID string, tagToolCal
 	if err != nil {
 		return nil, err
 	}
-	ch := make(chan openai.ChatCompletionMessage)
+	ch := make(chan ToolCallResult)
 
 	otherToolIDs := make(map[string]struct{})
 	for id := range toolIDs {
@@ -105,7 +113,7 @@ func (f *callSyncer) Call(ctx context.Context, transID, reqID string, tagToolCal
 
 	f.toolOutCh <- toolOut
 
-	var result []openai.ChatCompletionMessage
+	var result []ToolCallResult
 	for {
 		select {
 		case <-f.ctx.Done():
@@ -123,9 +131,8 @@ func (f *callSyncer) Call(ctx context.Context, transID, reqID string, tagToolCal
 			}
 		case <-time.After(f.timeout):
 			for id := range toolIDs {
-				result = append(result, openai.ChatCompletionMessage{
+				result = append(result, ToolCallResult{
 					ToolCallID: id,
-					Role:       openai.ChatMessageRoleTool,
 					Content:    "timeout in this function calling, you should ignore this.",
 				})
 			}
@@ -166,7 +173,7 @@ func (f *callSyncer) Close() error {
 
 func (f *callSyncer) background() {
 	// buffered stores the messages from the reducer, the key is the reqID
-	buffered := make(map[string]map[string]openai.ChatCompletionMessage)
+	buffered := make(map[string]map[string]ToolCallResult)
 	// singnals stores the result channel, the key is the reqID, the value channel will be sent when the buffered is fulled.
 	singnals := make(map[string]toolOut)
 
@@ -197,9 +204,8 @@ func (f *callSyncer) background() {
 				f.logger.Warn("recv unexpected message", "msg", msg)
 				continue
 			}
-			result := openai.ChatCompletionMessage{
+			result := ToolCallResult{
 				ToolCallID: msg.Message.ToolCallID,
-				Role:       msg.Message.Role,
 				Content:    msg.Message.Content,
 			}
 
@@ -208,7 +214,7 @@ func (f *callSyncer) background() {
 			if !ok {
 				_, ok := buffered[msg.ReqID]
 				if !ok {
-					buffered[msg.ReqID] = make(map[string]openai.ChatCompletionMessage)
+					buffered[msg.ReqID] = make(map[string]ToolCallResult)
 				}
 				buffered[msg.ReqID][msg.Message.ToolCallID] = result
 			} else {
