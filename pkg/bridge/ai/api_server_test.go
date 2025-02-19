@@ -52,7 +52,7 @@ func TestServer(t *testing.T) {
 		MetadataExchanger: func(_ string) (metadata.M, error) { return metadata.M{"hello": "llm bridge"}, nil },
 	})
 
-	handler := DecorateHandler(NewServeMux(service), decorateReqContext(service, service.logger))
+	handler := DecorateHandler(NewServeMux(NewHandler(service)), decorateReqContext(service, service.logger))
 
 	// create a test server
 	server := httptest.NewServer(handler)

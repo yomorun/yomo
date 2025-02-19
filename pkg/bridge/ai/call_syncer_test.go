@@ -40,8 +40,9 @@ func TestTimeoutCallSyncer(t *testing.T) {
 
 	want := []ToolCallResult{
 		{
-			ToolCallID: "tool-call-id",
-			Content:    "timeout in this function calling, you should ignore this.",
+			FunctionName: "timeout-function",
+			ToolCallID:   "tool-call-id",
+			Content:      "timeout in this function calling, you should ignore this.",
 		},
 	}
 
@@ -104,7 +105,7 @@ func (h *handler) result() []ToolCallResult {
 	for c := range h.ctxs {
 		invoke, _ := c.LLMFunctionCall()
 		want = append(want, ToolCallResult{
-			Content: invoke.Result, ToolCallID: invoke.ToolCallID,
+			FunctionName: invoke.FunctionName, Content: invoke.Result, ToolCallID: invoke.ToolCallID,
 		})
 	}
 

@@ -23,6 +23,8 @@ type CallSyncer interface {
 
 // ToolCallResult is the result of a CallSyncer.Call()
 type ToolCallResult struct {
+	// FunctionName is the name of the function calling.
+	FunctionName string
 	// ToolCallID is the tool call id.
 	ToolCallID string
 	// Content is the result of the function calling.
@@ -94,6 +96,14 @@ func (f *callSyncer) Call(ctx context.Context, transID, reqID string, tagToolCal
 		f.cleanCh <- reqID
 	}()
 
+	toolNameMap := make(map[string]string)
+
+	for _, tools := range tagToolCalls {
+		for _, tool := range tools {
+			toolNameMap[tool.ID] = tool.Function.Name
+		}
+	}
+
 	toolIDs, err := f.fire(transID, reqID, tagToolCalls)
 	if err != nil {
 		return nil, err
@@ -132,8 +142,9 @@ func (f *callSyncer) Call(ctx context.Context, transID, reqID string, tagToolCal
 		case <-time.After(f.timeout):
 			for id := range toolIDs {
 				result = append(result, ToolCallResult{
-					ToolCallID: id,
-					Content:    "timeout in this function calling, you should ignore this.",
+					FunctionName: toolNameMap[id],
+					ToolCallID:   id,
+					Content:      "timeout in this function calling, you should ignore this.",
 				})
 			}
 			return result, nil
@@ -205,8 +216,9 @@ func (f *callSyncer) background() {
 				continue
 			}
 			result := ToolCallResult{
-				ToolCallID: msg.Message.ToolCallID,
-				Content:    msg.Message.Content,
+				FunctionName: msg.Message.Name,
+				ToolCallID:   msg.Message.ToolCallID,
+				Content:      msg.Message.Content,
 			}
 
 			sig, ok := singnals[msg.ReqID]

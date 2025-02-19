@@ -56,11 +56,9 @@ func Serve(config *Config, logger *slog.Logger, source yomo.Source, reducer yomo
 }
 
 // NewServeMux creates a new http.ServeMux for the llm bridge server.
-func NewServeMux(service *Service) *http.ServeMux {
-	var (
-		h   = &Handler{service}
-		mux = http.NewServeMux()
-	)
+func NewServeMux(h *Handler) *http.ServeMux {
+	mux := http.NewServeMux()
+
 	// GET /overview
 	mux.HandleFunc("/overview", h.HandleOverview)
 	// POST /invoke
@@ -91,7 +89,7 @@ func NewBasicAPIServer(config *Config, provider provider.LLMProvider, source yom
 	}
 	service := NewService(provider, opts)
 
-	mux := NewServeMux(service)
+	mux := NewServeMux(NewHandler(service))
 
 	server := &BasicAPIServer{
 		httpHandler: DecorateHandler(mux, decorateReqContext(service, logger)),
@@ -164,6 +162,11 @@ func decorateReqContext(service *Service, logger *slog.Logger) func(handler http
 // Handler handles the http request.
 type Handler struct {
 	service *Service
+}
+
+// NewHandler return a hander that handles chat completions requests.
+func NewHandler(service *Service) *Handler {
+	return &Handler{service}
 }
 
 // HandleOverview is the handler for GET /overview
