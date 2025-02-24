@@ -228,6 +228,9 @@ func (w *NodejsWrapper) InstallDeps() error {
 	}
 	// devDependencies
 	cmd = exec.Command(w.npmPath, "install", "-D", "@types/node", "ts-node")
+	cmd.Dir = w.workDir
+	cmd.Stderr = os.Stderr
+	cmd.Env = os.Environ()
 	err = cmd.Run()
 	if err != nil {
 		return fmt.Errorf("run %s failed: %v", cmd.String(), err)
