@@ -33,7 +33,7 @@ var devCmd = &cobra.Command{
 	FParseErrWhitelist: cobra.FParseErrWhitelist{UnknownFlags: true},
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := parseFileArg(args, &opts, defaultSFNCompliedFile, defaultSFNWASIFile, defaultSFNSourceFile); err != nil {
-			log.FailureStatusEvent(os.Stdout, err.Error())
+			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			return
 		}
 		loadOptionsFromViper(viper.RunViper, &opts)
@@ -52,7 +52,7 @@ var devCmd = &cobra.Command{
 
 		s, err := serverless.Create(&opts)
 		if err != nil {
-			log.FailureStatusEvent(os.Stdout, err.Error())
+			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			return
 		}
 		if !s.Executable() {
@@ -68,7 +68,7 @@ var devCmd = &cobra.Command{
 		if ext := filepath.Ext(opts.Filename); ext == ".go" {
 			log.PendingStatusEvent(os.Stdout, "Building YoMo Stream Function instance...")
 			if err := s.Build(true); err != nil {
-				log.FailureStatusEvent(os.Stdout, err.Error())
+				log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 				os.Exit(127)
 			}
 			log.SuccessStatusEvent(os.Stdout, "YoMo Stream Function build successful!")
@@ -81,7 +81,7 @@ var devCmd = &cobra.Command{
 		)
 		log.InfoStatusEvent(os.Stdout, "Stream Function is running...")
 		if err := s.Run(verbose); err != nil {
-			log.FailureStatusEvent(os.Stdout, err.Error())
+			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			return
 		}
 	},

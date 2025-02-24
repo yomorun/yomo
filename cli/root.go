@@ -36,7 +36,6 @@ var rootCmd = &cobra.Command{
 	Use:              "yomo",
 	Version:          GetVersion(),
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {},
-	// Run: func(cmd *cobra.Command, args []string) { },
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.

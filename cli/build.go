@@ -31,7 +31,7 @@ var buildCmd = &cobra.Command{
 	Long:  "Build the YoMo Stream Function",
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := parseFileArg(args, &opts, defaultSFNSourceFile); err != nil {
-			log.FailureStatusEvent(os.Stdout, err.Error())
+			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			os.Exit(127)
 			// return
 		}
@@ -41,7 +41,7 @@ var buildCmd = &cobra.Command{
 		log.InfoStatusEvent(os.Stdout, "YoMo Stream Function parsing...")
 		s, err := serverless.Create(&opts)
 		if err != nil {
-			log.FailureStatusEvent(os.Stdout, err.Error())
+			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			os.Exit(127)
 			// return
 		}
@@ -49,7 +49,7 @@ var buildCmd = &cobra.Command{
 		// build
 		log.PendingStatusEvent(os.Stdout, "Building YoMo Stream Function instance...")
 		if err := s.Build(true); err != nil {
-			log.FailureStatusEvent(os.Stdout, err.Error())
+			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			os.Exit(127)
 			// return
 		}

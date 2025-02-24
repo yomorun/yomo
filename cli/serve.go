@@ -61,7 +61,7 @@ var serveCmd = &cobra.Command{
 		// config
 		conf, err := pkgconfig.ParseConfigFile(config)
 		if err != nil {
-			log.FailureStatusEvent(os.Stdout, err.Error())
+			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			return
 		}
 
@@ -87,9 +87,9 @@ var serveCmd = &cobra.Command{
 		aiConfig, err := ai.ParseConfig(bridgeConf)
 		if err != nil {
 			if err == ai.ErrConfigNotFound {
-				log.InfoStatusEvent(os.Stdout, err.Error())
+				log.InfoStatusEvent(os.Stdout, "%s", err.Error())
 			} else {
-				log.FailureStatusEvent(os.Stdout, err.Error())
+				log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 				return
 			}
 		}
@@ -105,7 +105,7 @@ var serveCmd = &cobra.Command{
 			conf.Mesh,
 			options...)
 		if err != nil {
-			log.FailureStatusEvent(os.Stdout, err.Error())
+			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			return
 		}
 		zipper.Logger().Info("using config file", "file_path", config)
@@ -124,7 +124,7 @@ var serveCmd = &cobra.Command{
 
 				err := ai.Serve(aiConfig, ylog.Default(), source, reducer)
 				if err != nil {
-					log.FailureStatusEvent(os.Stdout, err.Error())
+					log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 					return
 				}
 			}()
@@ -133,7 +133,7 @@ var serveCmd = &cobra.Command{
 		// start the zipper
 		err = zipper.ListenAndServe(ctx, listenAddr)
 		if err != nil {
-			log.FailureStatusEvent(os.Stdout, err.Error())
+			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			return
 		}
 	},
