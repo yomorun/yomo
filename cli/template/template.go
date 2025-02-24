@@ -61,7 +61,7 @@ func getTemplateFileName(command string, sfnType string, lang string, isTest boo
 		return "", err
 	}
 	if lang == "node" && sfnType == "normal" {
-		return "", errors.New("language node only support type llm")
+		return "", errors.New("language node (-l node) only support type llm (-t llm)")
 	}
 
 	sb := new(strings.Builder)
