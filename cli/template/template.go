@@ -60,6 +60,10 @@ func getTemplateFileName(command string, sfnType string, lang string, isTest boo
 	if err != nil {
 		return "", err
 	}
+	if lang == "node" && sfnType == "normal" {
+		return "", errors.New("language node only support type llm")
+	}
+
 	sb := new(strings.Builder)
 	sb.WriteString(lang)
 	sb.WriteString("/")

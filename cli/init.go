@@ -30,7 +30,6 @@ import (
 )
 
 var (
-	name    string
 	sfnType string
 	lang    string
 )
@@ -41,13 +40,13 @@ var initCmd = &cobra.Command{
 	Short: "Initialize a YoMo Stream function",
 	Long:  "Initialize a YoMo Stream function",
 	Run: func(cmd *cobra.Command, args []string) {
-		name := opts.Name
+		name := ""
 		if len(args) >= 1 && args[0] != "" {
 			name = args[0]
+			opts.Name = name
 		}
-
 		if name == "" {
-			log.FailureStatusEvent(os.Stdout, "Please input your app name")
+			log.FailureStatusEvent(os.Stdout, "Please input your app name, e.g. `yomo init my-app [-l go -t llm]`")
 			return
 		}
 		log.PendingStatusEvent(os.Stdout, "Initializing the Stream Function...")
@@ -55,15 +54,16 @@ var initCmd = &cobra.Command{
 
 		filename := filepath.Join(name, DefaultSFNSourceFile(lang))
 		opts.Filename = filename
-		// serverless setup
-		err := serverless.Setup(&opts)
+
+		// create app source file
+		fname := filepath.Join(name, DefaultSFNSourceFile(lang))
+		contentTmpl, err := template.GetContent("init", sfnType, lang, false)
 		if err != nil {
 			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			return
 		}
-		// create app source file
-		fname := filepath.Join(name, DefaultSFNSourceFile(lang))
-		contentTmpl, err := template.GetContent("init", sfnType, lang, false)
+		// serverless setup
+		err = serverless.Setup(&opts)
 		if err != nil {
 			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			return
@@ -102,7 +102,6 @@ var initCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(initCmd)
 
-	initCmd.Flags().StringVarP(&name, "name", "n", "", "The name of Stream Function")
 	initCmd.Flags().StringVarP(&sfnType, "type", "t", "llm", "The type of Stream Function, support normal and llm")
 	initCmd.Flags().StringVarP(&lang, "lang", "l", "go", "The language of Stream Function, support go and node")
 }

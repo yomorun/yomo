@@ -36,8 +36,8 @@ func TestGetTemplateFileName(t *testing.T) {
 				lang:    "node",
 				isTest:  true,
 			},
-			want:    "node/init_normal_test.tmpl",
-			wantErr: false,
+			want:    "",
+			wantErr: true,
 		},
 		{
 			name: "default_command_llm_go",
