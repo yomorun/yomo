@@ -197,3 +197,40 @@ func (w *NodejsWrapper) genWrapperTS(functionName, dstPath string) error {
 
 	return nil
 }
+
+// InitApp initializes the nodejs application
+func (w *NodejsWrapper) InitApp() error {
+	// init
+	cmd := exec.Command(w.npmPath, "init")
+	if w.npmPath == "npm" {
+		cmd.Args = append(cmd.Args, "-y")
+	}
+	cmd.Dir = w.workDir
+	cmd.Stderr = os.Stderr
+	cmd.Env = os.Environ()
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("run %s failed: %v", cmd.String(), err)
+	}
+	return nil
+}
+
+// InstallDeps installs the yomo dependencies
+func (w *NodejsWrapper) InstallDeps() error {
+	// @yomo/sfn
+	cmd := exec.Command(w.npmPath, "install", "@yomo/sfn")
+	cmd.Dir = w.workDir
+	cmd.Stderr = os.Stderr
+	cmd.Env = os.Environ()
+	err := cmd.Run()
+	if err != nil {
+		return fmt.Errorf("run %s failed: %v", cmd.String(), err)
+	}
+	// devDependencies
+	cmd = exec.Command(w.npmPath, "install", "-D", "@types/node", "ts-node")
+	err = cmd.Run()
+	if err != nil {
+		return fmt.Errorf("run %s failed: %v", cmd.String(), err)
+	}
+	return nil
+}

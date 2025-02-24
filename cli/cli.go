@@ -17,11 +17,12 @@ import (
 
 // defaultSFNFile is the default serverless file name
 const (
-	defaultSFNSourceFile     = "app.go"
-	defaultSFNSourceTSFile   = "app.ts"
-	defaultSFNTestSourceFile = "app_test.go"
-	defaultSFNCompliedFile   = "sfn.yomo"
-	defaultSFNWASIFile       = "sfn.wasm"
+	defaultSFNSourceFile       = "app.go"
+	defaultSFNSourceTSFile     = "app.ts"
+	defaultSFNTestSourceFile   = "app_test.go"
+	defaultSFNTestSourceTSFile = "app_test.ts"
+	defaultSFNCompliedFile     = "sfn.yomo"
+	defaultSFNWASIFile         = "sfn.wasm"
 )
 
 // GetRootPath get root path
@@ -90,4 +91,24 @@ func checkOptions(opts *serverless.Options) error {
 	}
 	opts.Filename = f
 	return nil
+}
+
+// DefaultSFNSourceFile returns the default source file name for the given language
+func DefaultSFNSourceFile(lang string) string {
+	switch lang {
+	case "node":
+		return defaultSFNSourceTSFile
+	default:
+		return defaultSFNSourceFile
+	}
+}
+
+// DefaultSFNTestSourceFile returns the default test source file name
+func DefaultSFNTestSourceFile(lang string) string {
+	switch lang {
+	case "node":
+		return defaultSFNTestSourceTSFile
+	default:
+		return defaultSFNTestSourceFile
+	}
 }

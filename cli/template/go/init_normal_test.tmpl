@@ -5,7 +5,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/serverless/mock"
 )
 
@@ -17,10 +16,10 @@ func TestHandler(t *testing.T) {
 		want []mock.WriteRecord
 	}{
 		{
-			name: "get weather",
-			ctx:  mock.NewMockContext([]byte(`{"arguments":"{\"city\":\"New York\",\"latitude\":40.7128,\"longitude\":-74.0060}"}`), 0x33),
+			name: "upper",
+			ctx:  mock.NewMockContext([]byte("hello"), 0x33),
 			want: []mock.WriteRecord{
-				{Data: []byte(`{"result":"The current weather in New York (40.712800,-74.006000) is sunny","arguments":"{\"city\":\"New York\",\"latitude\":40.7128,\"longitude\":-74.0060}","is_ok":true}`), Tag: ai.ReducerTag},
+				{Data: []byte("HELLO"), Tag: 0x34},
 			},
 		},
 		// TODO: add more test cases.
