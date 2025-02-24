@@ -4,7 +4,7 @@ go 1.23
 
 require (
 	cloud.google.com/go/vertexai v0.13.3
-	github.com/anthropics/anthropic-sdk-go v0.2.0-alpha.8
+	github.com/anthropics/anthropic-sdk-go v0.2.0-alpha.10
 	github.com/briandowns/spinner v1.23.2
 	github.com/bytecodealliance/wasmtime-go/v9 v9.0.0
 	github.com/caarlos0/env/v6 v6.10.1
@@ -15,9 +15,9 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/lmittmann/tint v1.0.7
 	github.com/matoous/go-nanoid/v2 v2.1.0
-	github.com/quic-go/quic-go v0.48.2
+	github.com/quic-go/quic-go v0.49.0
 	github.com/robfig/cron/v3 v3.0.1
-	github.com/sashabaranov/go-openai v1.36.1
+	github.com/sashabaranov/go-openai v1.37.0
 	github.com/second-state/WasmEdge-go v0.13.4
 	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/spf13/cobra v1.8.1
@@ -34,7 +34,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.34.0
 	go.opentelemetry.io/otel/sdk v1.34.0
 	go.opentelemetry.io/otel/trace v1.34.0
-	golang.org/x/mod v0.22.0
+	golang.org/x/mod v0.23.0
 	golang.org/x/tools v0.29.0
 	google.golang.org/api v0.219.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
