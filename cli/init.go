@@ -36,7 +36,7 @@ var (
 
 // initCmd represents the init command
 var initCmd = &cobra.Command{
-	Use:   "init",
+	Use:   "init <app_name>",
 	Short: "Initialize a YoMo Stream function",
 	Long:  "Initialize a YoMo Stream function",
 	Run: func(cmd *cobra.Command, args []string) {
