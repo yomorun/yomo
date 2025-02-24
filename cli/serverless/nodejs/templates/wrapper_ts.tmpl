@@ -6,7 +6,6 @@ import {
 	_writeSFNHeader,
 	_FunctionCall,
 	_createConnection,
-	withTimeout,
 } from '@yomo/sfn'
 import { description, tag, handler } from '{{ .FileName }}'
 
@@ -15,8 +14,6 @@ const FUNCTION_NAME = '{{ .FunctionName }}'
 const SFN_FILE_PATH = '{{ .FilePath }}'
 const SOCK_PATH = join(WORK_DIR, 'sfn.sock');
 const REDUCE_TAG = 0xe001;
-
-const TIMEOUT_DURATION = 1000 * 60
 
 function run() {
 	if (
@@ -37,20 +34,12 @@ function run() {
 			_writeSFNHeader(conn, header)
 		},
 		onData: async (buf: Buffer) => {
-			const { tag, data } = _readSFNData(buf)
+			const { data } = _readSFNData(buf)
 			const fc = new _FunctionCall(data)
 			const args = fc.readLLMArguments()
-			let result: any
+			let result: unknown
 			if (typeof handler === 'function') {
-				try {
-					result = await withTimeout(handler(args), TIMEOUT_DURATION)
-				} catch (error) {
-					if (error instanceof Error && error.message === 'timeout') {
-						fc.writeLLMResult('timeout in this function calling, you should ignore this.')
-						_writeSFNData(conn, REDUCE_TAG, JSON.stringify(fc.data))
-					}
-					return
-				}
+				result = await handler(args)
 			}
 			if (!result) return
 			fc.writeLLMResult(JSON.stringify(result))

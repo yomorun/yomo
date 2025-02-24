@@ -15,7 +15,7 @@ func TestResponseWriter(t *testing.T) {
 
 	h := w.SetStreamHeader()
 
-	err := w.WriteStreamEvent(openai.ChatCompletionResponse{
+	err := w.WriteStreamEvent(openai.ChatCompletionStreamResponse{
 		ID: "chatcmpl-123",
 	})
 	assert.NoError(t, err)
@@ -25,7 +25,7 @@ func TestResponseWriter(t *testing.T) {
 
 	got := recorder.Body.String()
 
-	want := `data: {"id":"chatcmpl-123","object":"","created":0,"model":"","choices":null,"usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0,"prompt_tokens_details":null,"completion_tokens_details":null},"system_fingerprint":""}
+	want := `data: {"id":"chatcmpl-123","object":"","created":0,"model":"","choices":null,"system_fingerprint":""}
 
 data: [DONE]`
 

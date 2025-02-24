@@ -15,6 +15,11 @@ type ExecServerless struct {
 	target string
 }
 
+// Setup sets up the serverless
+func (s *ExecServerless) Setup(opts *serverless.Options) error {
+	return nil
+}
+
 // Init initializes the serverless
 func (s *ExecServerless) Init(opts *serverless.Options) error {
 	if !file.Exists(opts.Filename) {

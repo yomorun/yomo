@@ -26,7 +26,6 @@ import (
 // Service is the  service layer for llm bridge server.
 // service is responsible for handling the logic from handler layer.
 type Service struct {
-	zipperAddr    string
 	provider      provider.LLMProvider
 	newCallerFunc newCallerFunc
 	callers       *expirable.LRU[string, *Caller]
@@ -47,16 +46,16 @@ type ServiceOptions struct {
 	// CallerCallTimeout is the timeout for awaiting the function response.
 	CallerCallTimeout time.Duration
 	// SourceBuilder should builds an unconnected source.
-	SourceBuilder func(zipperAddr, credential string) yomo.Source
+	SourceBuilder func(credential string) yomo.Source
 	// ReducerBuilder should builds an unconnected reducer.
-	ReducerBuilder func(zipperAddr, credential string) yomo.StreamFunction
+	ReducerBuilder func(credential string) yomo.StreamFunction
 	// MetadataExchanger exchanges metadata from the credential.
 	MetadataExchanger func(credential string) (metadata.M, error)
 }
 
 // NewService creates a new service for handling the logic from handler layer.
-func NewService(zipperAddr string, provider provider.LLMProvider, opt *ServiceOptions) *Service {
-	return newService(zipperAddr, provider, NewCaller, opt)
+func NewService(provider provider.LLMProvider, opt *ServiceOptions) *Service {
+	return newService(provider, NewCaller, opt)
 }
 
 func initOption(opt *ServiceOptions) *ServiceOptions {
@@ -67,29 +66,13 @@ func initOption(opt *ServiceOptions) *ServiceOptions {
 		opt.Logger = ylog.Default()
 	}
 	if opt.CredentialFunc == nil {
-		opt.CredentialFunc = func(_ *http.Request) (string, error) { return "", nil }
+		opt.CredentialFunc = func(_ *http.Request) (string, error) { return "token", nil }
 	}
 	if opt.CallerCacheSize == 0 {
 		opt.CallerCacheSize = 1
 	}
 	if opt.CallerCallTimeout == 0 {
 		opt.CallerCallTimeout = 60 * time.Second
-	}
-	if opt.SourceBuilder == nil {
-		opt.SourceBuilder = func(zipperAddr, credential string) yomo.Source {
-			return yomo.NewSource(
-				"fc-source",
-				zipperAddr,
-				yomo.WithSourceReConnect(), yomo.WithCredential(credential))
-		}
-	}
-	if opt.ReducerBuilder == nil {
-		opt.ReducerBuilder = func(zipperAddr, credential string) yomo.StreamFunction {
-			return yomo.NewStreamFunction(
-				"fc-reducer",
-				zipperAddr,
-				yomo.WithSfnReConnect(), yomo.WithSfnCredential(credential), yomo.DisableOtelTrace())
-		}
 	}
 	if opt.MetadataExchanger == nil {
 		opt.MetadataExchanger = func(credential string) (metadata.M, error) {
@@ -100,7 +83,7 @@ func initOption(opt *ServiceOptions) *ServiceOptions {
 	return opt
 }
 
-func newService(zipperAddr string, provider provider.LLMProvider, ncf newCallerFunc, opt *ServiceOptions) *Service {
+func newService(provider provider.LLMProvider, ncf newCallerFunc, opt *ServiceOptions) *Service {
 	var onEvict = func(_ string, caller *Caller) {
 		caller.Close()
 	}
@@ -108,7 +91,6 @@ func newService(zipperAddr string, provider provider.LLMProvider, ncf newCallerF
 	opt = initOption(opt)
 
 	service := &Service{
-		zipperAddr:    zipperAddr,
 		provider:      provider,
 		newCallerFunc: ncf,
 		callers:       expirable.NewLRU(opt.CallerCacheSize, onEvict, opt.CallerCacheTTL),
@@ -187,15 +169,23 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, baseSystemMe
 
 	_, span = tracer.Start(ctx, "run_sfn")
 	reqID := id.New(16)
-	llmCalls, err := caller.Call(ctx, transID, reqID, res.ToolCalls)
+	callResult, err := caller.Call(ctx, transID, reqID, res.ToolCalls)
 	if err != nil {
 		return nil, err
 	}
 	span.End()
 
-	srv.logger.Debug(">>>> start 2nd call with", "calls", fmt.Sprintf("%+v", llmCalls), "preceeding_assistant_message", fmt.Sprintf("%+v", res.AssistantMessage))
+	srv.logger.Debug(">>>> start 2nd call with", "calls", fmt.Sprintf("%+v", callResult), "preceeding_assistant_message", fmt.Sprintf("%+v", res.AssistantMessage))
 
 	chainMessage.PreceedingAssistantMessage = res.AssistantMessage
+	llmCalls := make([]openai.ChatCompletionMessage, len(callResult))
+	for k, v := range callResult {
+		llmCalls[k] = openai.ChatCompletionMessage{
+			ToolCallID: v.ToolCallID,
+			Role:       openai.ChatMessageRoleTool,
+			Content:    v.Content,
+		}
+	}
 	chainMessage.ToolMessages = transToolMessage(llmCalls)
 	// do not attach toolMessage to prompt in 2nd call
 	messages2 := srv.prepareMessages(baseSystemMessage, userInstruction, chainMessage, tools, false)
@@ -228,7 +218,7 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, baseSystemMe
 }
 
 // GetChatCompletions accepts openai.ChatCompletionRequest and responds to http.ResponseWriter.
-func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, transID string, caller *Caller, w *ResponseWriter, tracer trace.Tracer) error {
+func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, transID string, caller *Caller, w EventResponseWriter, tracer trace.Tracer) error {
 	if tracer == nil {
 		tracer = new(noop.Tracer)
 	}
@@ -259,7 +249,7 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 
 	// 4. request first chat for getting tools
 	if req.Stream {
-		w.IsStream = true
+		w.RecordIsStream(true)
 		_, firstCallSpan := tracer.Start(reqCtx, "first_call_request")
 
 		resStream, err := srv.provider.GetChatCompletionsStream(reqCtx, req, md)
@@ -383,15 +373,26 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 	// 5. find sfns that hit the function call
 	fnCalls := findTagTools(tagTools, toolCalls)
 
+	_ = w.WriteStreamEvent(toolCalls)
+
 	// 6. run llm function calls
 	reqID := id.New(16)
-	llmCalls, err := caller.Call(ctx, transID, reqID, fnCalls)
+	callResult, err := caller.Call(ctx, transID, reqID, fnCalls)
 	if err != nil {
 		return err
 	}
+	_ = w.WriteStreamEvent(callResult)
 	sfnSpan.End()
 
 	// 7. do the second call (the second call messages are from user input, first call resopnse and sfn calls result)
+	llmCalls := make([]openai.ChatCompletionMessage, len(callResult))
+	for k, v := range callResult {
+		llmCalls[k] = openai.ChatCompletionMessage{
+			ToolCallID: v.ToolCallID,
+			Role:       openai.ChatMessageRoleTool,
+			Content:    v.Content,
+		}
+	}
 	req.Messages = append(reqMessages, assistantMessage)
 	req.Messages = append(req.Messages, llmCalls...)
 	// anthropic must define tools
@@ -464,8 +465,8 @@ func (srv *Service) loadOrCreateCaller(credential string) (*Caller, error) {
 		return nil, err
 	}
 	caller, err = srv.newCallerFunc(
-		srv.option.SourceBuilder(srv.zipperAddr, credential),
-		srv.option.ReducerBuilder(srv.zipperAddr, credential),
+		srv.option.SourceBuilder(credential),
+		srv.option.ReducerBuilder(credential),
 		md,
 		srv.option.CallerCallTimeout,
 	)
@@ -633,10 +634,10 @@ func transToolMessage(msgs []openai.ChatCompletionMessage) []ai.ToolMessage {
 	return toolMessages
 }
 
-func recordTTFT(ctx context.Context, tracer trace.Tracer, w *ResponseWriter) {
+func recordTTFT(ctx context.Context, tracer trace.Tracer, w EventResponseWriter) {
 	_, span := tracer.Start(ctx, "TTFT")
 	time.Sleep(time.Millisecond)
 	span.End()
-	w.TTFT = time.Now()
+	w.RecordTTFT(time.Now())
 	time.Sleep(time.Millisecond)
 }

@@ -29,6 +29,11 @@ type GolangServerless struct {
 	tempDir string
 }
 
+// Setup sets up the serverless
+func (s *GolangServerless) Setup(opts *serverless.Options) error {
+	return nil
+}
+
 // Init initializes the serverless
 func (s *GolangServerless) Init(opts *serverless.Options) error {
 	s.opts = opts
@@ -127,7 +132,6 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 
 // Build compiles the serverless to executable
 func (s *GolangServerless) Build(clean bool) error {
-	log.PendingStatusEvent(os.Stdout, "Building YoMo Stream Function instance...")
 	// check if the file exists
 	appPath := s.source
 	if _, err := os.Stat(appPath); os.IsNotExist(err) {
@@ -203,7 +207,6 @@ func (s *GolangServerless) Build(clean bool) error {
 	if clean {
 		file.Remove(s.tempDir)
 	}
-	log.SuccessStatusEvent(os.Stdout, "YoMo Stream Function build successful!")
 	return nil
 }
 

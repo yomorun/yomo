@@ -220,9 +220,9 @@ func TestServiceInvoke(t *testing.T) {
 				return mockCaller(tt.args.mockCallReqResp), err
 			}
 
-			service := newService("fake_zipper_addr", pd, newCaller, &ServiceOptions{
-				SourceBuilder:     func(_, _ string) yomo.Source { return flow },
-				ReducerBuilder:    func(_, _ string) yomo.StreamFunction { return flow },
+			service := newService(pd, newCaller, &ServiceOptions{
+				SourceBuilder:     func(_ string) yomo.Source { return flow },
+				ReducerBuilder:    func(_ string) yomo.StreamFunction { return flow },
 				MetadataExchanger: func(_ string) (metadata.M, error) { return metadata.M{"hello": "llm bridge"}, nil },
 			})
 
@@ -389,9 +389,9 @@ func TestServiceChatCompletion(t *testing.T) {
 				return mockCaller(tt.args.mockCallReqResp), err
 			}
 
-			service := newService("fake_zipper_addr", pd, newCaller, &ServiceOptions{
-				SourceBuilder:     func(_, _ string) yomo.Source { return flow },
-				ReducerBuilder:    func(_, _ string) yomo.StreamFunction { return flow },
+			service := newService(pd, newCaller, &ServiceOptions{
+				SourceBuilder:     func(_ string) yomo.Source { return flow },
+				ReducerBuilder:    func(_ string) yomo.StreamFunction { return flow },
 				MetadataExchanger: func(_ string) (metadata.M, error) { return metadata.M{"hello": "llm bridge"}, nil },
 			})
 
@@ -438,8 +438,8 @@ type mockCallSyncer struct {
 }
 
 // Call implements CallSyncer, it returns the mock response defined in advance.
-func (m *mockCallSyncer) Call(ctx context.Context, transID string, reqID string, toolCalls map[uint32][]*openai.ToolCall) ([]openai.ChatCompletionMessage, error) {
-	res := []openai.ChatCompletionMessage{}
+func (m *mockCallSyncer) Call(ctx context.Context, transID string, reqID string, toolCalls map[uint32][]*openai.ToolCall) ([]ToolCallResult, error) {
+	res := []ToolCallResult{}
 	for tag, calls := range toolCalls {
 		mcs, ok := m.calls[tag]
 		if !ok {
@@ -454,9 +454,8 @@ func (m *mockCallSyncer) Call(ctx context.Context, transID string, reqID string,
 			if !ok {
 				return nil, errors.New("call not found")
 			}
-			res = append(res, openai.ChatCompletionMessage{
+			res = append(res, ToolCallResult{
 				ToolCallID: mc.toolID,
-				Role:       openai.ChatMessageRoleTool,
 				Content:    mc.respContent,
 			})
 		}

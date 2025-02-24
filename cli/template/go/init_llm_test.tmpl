@@ -1,11 +1,9 @@
 package main
 
 import (
-	"fmt"
 	"reflect"
 	"testing"
 
-	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/serverless/mock"
 )
 
@@ -13,24 +11,22 @@ func TestHandler(t *testing.T) {
 	tests := []struct {
 		name string
 		ctx  *mock.MockContext
-		// want is the expected data and tag that be written by ctx.Write
-		want []mock.WriteRecord
+		// want is the expected result written by ctx.WriteLLMResult()
+		want string
 	}{
 		{
 			name: "get weather",
-			ctx:  mock.NewMockContext([]byte(`{"arguments":"{\"city\":\"New York\",\"latitude\":40.7128,\"longitude\":-74.0060}"}`), 0x33),
-			want: []mock.WriteRecord{
-				{Data: []byte(`{"result":"The current weather in New York (40.712800,-74.006000) is sunny","arguments":"{\"city\":\"New York\",\"latitude\":40.7128,\"longitude\":-74.0060}","is_ok":true}`), Tag: ai.ReducerTag},
-			},
+			ctx:  mock.NewArgumentsContext(`{"city":"New York","latitude":40.7128,"longitude":-74.0060}`, 0x33),
+			want: "The current weather in New York (40.712800,-74.006000) is sunny",
 		},
 		// TODO: add more test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			Handler(tt.ctx)
-			got := tt.ctx.RecordsWritten()
 
-			fmt.Println(string(got[0].Data))
+			records := tt.ctx.RecordsWritten()
+			got := records[0].LLMResult
 
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("TestHandler got: %v, want: %v", got, tt.want)
