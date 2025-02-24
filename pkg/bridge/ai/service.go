@@ -169,15 +169,23 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, baseSystemMe
 
 	_, span = tracer.Start(ctx, "run_sfn")
 	reqID := id.New(16)
-	llmCalls, err := caller.Call(ctx, transID, reqID, res.ToolCalls)
+	callResult, err := caller.Call(ctx, transID, reqID, res.ToolCalls)
 	if err != nil {
 		return nil, err
 	}
 	span.End()
 
-	srv.logger.Debug(">>>> start 2nd call with", "calls", fmt.Sprintf("%+v", llmCalls), "preceeding_assistant_message", fmt.Sprintf("%+v", res.AssistantMessage))
+	srv.logger.Debug(">>>> start 2nd call with", "calls", fmt.Sprintf("%+v", callResult), "preceeding_assistant_message", fmt.Sprintf("%+v", res.AssistantMessage))
 
 	chainMessage.PreceedingAssistantMessage = res.AssistantMessage
+	llmCalls := make([]openai.ChatCompletionMessage, len(callResult))
+	for k, v := range callResult {
+		llmCalls[k] = openai.ChatCompletionMessage{
+			ToolCallID: v.ToolCallID,
+			Role:       openai.ChatMessageRoleTool,
+			Content:    v.Content,
+		}
+	}
 	chainMessage.ToolMessages = transToolMessage(llmCalls)
 	// do not attach toolMessage to prompt in 2nd call
 	messages2 := srv.prepareMessages(baseSystemMessage, userInstruction, chainMessage, tools, false)
@@ -210,7 +218,7 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, baseSystemMe
 }
 
 // GetChatCompletions accepts openai.ChatCompletionRequest and responds to http.ResponseWriter.
-func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, transID string, caller *Caller, w *ResponseWriter, tracer trace.Tracer) error {
+func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, transID string, caller *Caller, w EventResponseWriter, tracer trace.Tracer) error {
 	if tracer == nil {
 		tracer = new(noop.Tracer)
 	}
@@ -241,7 +249,7 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 
 	// 4. request first chat for getting tools
 	if req.Stream {
-		w.IsStream = true
+		w.RecordIsStream(true)
 		_, firstCallSpan := tracer.Start(reqCtx, "first_call_request")
 
 		resStream, err := srv.provider.GetChatCompletionsStream(reqCtx, req, md)
@@ -365,15 +373,26 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 	// 5. find sfns that hit the function call
 	fnCalls := findTagTools(tagTools, toolCalls)
 
+	_ = w.WriteStreamEvent(toolCalls)
+
 	// 6. run llm function calls
 	reqID := id.New(16)
-	llmCalls, err := caller.Call(ctx, transID, reqID, fnCalls)
+	callResult, err := caller.Call(ctx, transID, reqID, fnCalls)
 	if err != nil {
 		return err
 	}
+	_ = w.WriteStreamEvent(callResult)
 	sfnSpan.End()
 
 	// 7. do the second call (the second call messages are from user input, first call resopnse and sfn calls result)
+	llmCalls := make([]openai.ChatCompletionMessage, len(callResult))
+	for k, v := range callResult {
+		llmCalls[k] = openai.ChatCompletionMessage{
+			ToolCallID: v.ToolCallID,
+			Role:       openai.ChatMessageRoleTool,
+			Content:    v.Content,
+		}
+	}
 	req.Messages = append(reqMessages, assistantMessage)
 	req.Messages = append(req.Messages, llmCalls...)
 	// anthropic must define tools
@@ -615,10 +634,10 @@ func transToolMessage(msgs []openai.ChatCompletionMessage) []ai.ToolMessage {
 	return toolMessages
 }
 
-func recordTTFT(ctx context.Context, tracer trace.Tracer, w *ResponseWriter) {
+func recordTTFT(ctx context.Context, tracer trace.Tracer, w EventResponseWriter) {
 	_, span := tracer.Start(ctx, "TTFT")
 	time.Sleep(time.Millisecond)
 	span.End()
-	w.TTFT = time.Now()
+	w.RecordTTFT(time.Now())
 	time.Sleep(time.Millisecond)
 }

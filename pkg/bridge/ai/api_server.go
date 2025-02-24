@@ -27,6 +27,9 @@ import (
 const (
 	// DefaultZipperAddr is the default endpoint of the zipper
 	DefaultZipperAddr = "localhost:9000"
+)
+
+var (
 	// RequestTimeout is the timeout for the request, default is 90 seconds
 	RequestTimeout = 90 * time.Second
 	//  RunFunctionTimeout is the timeout for awaiting the function response, default is 60 seconds
@@ -53,11 +56,9 @@ func Serve(config *Config, logger *slog.Logger, source yomo.Source, reducer yomo
 }
 
 // NewServeMux creates a new http.ServeMux for the llm bridge server.
-func NewServeMux(service *Service) *http.ServeMux {
-	var (
-		h   = &Handler{service}
-		mux = http.NewServeMux()
-	)
+func NewServeMux(h *Handler) *http.ServeMux {
+	mux := http.NewServeMux()
+
 	// GET /overview
 	mux.HandleFunc("/overview", h.HandleOverview)
 	// POST /invoke
@@ -88,7 +89,7 @@ func NewBasicAPIServer(config *Config, provider provider.LLMProvider, source yom
 	}
 	service := NewService(provider, opts)
 
-	mux := NewServeMux(service)
+	mux := NewServeMux(NewHandler(service))
 
 	server := &BasicAPIServer{
 		httpHandler: DecorateHandler(mux, decorateReqContext(service, logger)),
@@ -135,8 +136,8 @@ func decorateReqContext(service *Service, logger *slog.Logger) func(handler http
 			handler.ServeHTTP(ww, r.WithContext(ctx))
 
 			duration := time.Since(start)
-			if !ww.TTFT.IsZero() {
-				duration = ww.TTFT.Sub(start)
+			if ttft := ww.GetTTFT(); !ttft.IsZero() {
+				duration = ttft.Sub(start)
 			}
 
 			logContent := []any{
@@ -149,8 +150,8 @@ func decorateReqContext(service *Service, logger *slog.Logger) func(handler http
 			if traceID := span.SpanContext().TraceID(); traceID.IsValid() {
 				logContent = append(logContent, "traceId", traceID.String())
 			}
-			if ww.Err != nil {
-				logger.Error("llm birdge request", append(logContent, "err", ww.Err)...)
+			if err := ww.GetError(); err != nil {
+				logger.Error("llm birdge request", append(logContent, "err", err)...)
 			} else {
 				logger.Info("llm birdge request", logContent...)
 			}
@@ -161,6 +162,11 @@ func decorateReqContext(service *Service, logger *slog.Logger) func(handler http
 // Handler handles the http request.
 type Handler struct {
 	service *Service
+}
+
+// NewHandler return a hander that handles chat completions requests.
+func NewHandler(service *Service) *Handler {
+	return &Handler{service}
 }
 
 // HandleOverview is the handler for GET /overview
@@ -188,13 +194,13 @@ func (h *Handler) HandleInvoke(w http.ResponseWriter, r *http.Request) {
 	var (
 		ctx     = r.Context()
 		transID = FromTransIDContext(ctx)
-		ww      = w.(*ResponseWriter)
+		ww      = w.(EventResponseWriter)
 	)
 	defer r.Body.Close()
 
 	req, err := DecodeRequest[ai.InvokeRequest](r, w, h.service.logger)
 	if err != nil {
-		ww.Err = errors.New("bad request")
+		ww.RecordError(errors.New("bad request"))
 		return
 	}
 
@@ -210,7 +216,7 @@ func (h *Handler) HandleInvoke(w http.ResponseWriter, r *http.Request) {
 
 	res, err := h.service.GetInvoke(ctx, req.Prompt, baseSystemMessage, transID, caller, req.IncludeCallStack, tracer)
 	if err != nil {
-		ww.Err = err
+		ww.RecordError(err)
 		RespondWithError(w, http.StatusInternalServerError, err, h.service.logger)
 		return
 	}
@@ -223,13 +229,13 @@ func (h *Handler) HandleChatCompletions(w http.ResponseWriter, r *http.Request) 
 	var (
 		ctx     = r.Context()
 		transID = FromTransIDContext(ctx)
-		ww      = w.(*ResponseWriter)
+		ww      = w.(EventResponseWriter)
 	)
 	defer r.Body.Close()
 
 	req, err := DecodeRequest[openai.ChatCompletionRequest](r, w, h.service.logger)
 	if err != nil {
-		ww.Err = err
+		ww.RecordError(err)
 		return
 	}
 
@@ -242,11 +248,11 @@ func (h *Handler) HandleChatCompletions(w http.ResponseWriter, r *http.Request) 
 	)
 
 	if err := h.service.GetChatCompletions(ctx, req, transID, caller, ww, tracer); err != nil {
-		ww.Err = err
+		ww.RecordError(err)
 		if err == context.Canceled {
 			return
 		}
-		if ww.IsStream {
+		if ww.IsStream() {
 			h.service.logger.Error("bridge server error", "err", err.Error(), "err_type", reflect.TypeOf(err).String())
 			w.Write([]byte(fmt.Sprintf(`{"error":{"message":"%s"}}`, err.Error())))
 			return

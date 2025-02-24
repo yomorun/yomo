@@ -99,6 +99,7 @@ func reduceFunc(messages chan ReduceMessage, logger *slog.Logger) core.AsyncHand
 		logger.Debug("sfn-reducer", "req_id", invoke.ReqID, "tool_call_id", invoke.ToolCallID, "result", string(invoke.Result))
 
 		message := openai.ChatCompletionMessage{
+			Name:       invoke.FunctionName,
 			Role:       openai.ChatMessageRoleTool,
 			Content:    invoke.Result,
 			ToolCallID: invoke.ToolCallID,
