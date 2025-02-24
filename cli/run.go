@@ -37,7 +37,7 @@ var runCmd = &cobra.Command{
 	Long:  "Run a YoMo Stream Function",
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := parseFileArg(args, &opts, defaultSFNCompliedFile, defaultSFNWASIFile, defaultSFNSourceFile, defaultSFNSourceTSFile); err != nil {
-			log.FailureStatusEvent(os.Stdout, err.Error())
+			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			return
 		}
 		loadOptionsFromViper(viper.RunViper, &opts)
@@ -50,12 +50,12 @@ var runCmd = &cobra.Command{
 		// resolve serverless
 		log.PendingStatusEvent(os.Stdout, "Creating YoMo Stream Function instance...")
 		if err := parseZipperAddr(&opts); err != nil {
-			log.FailureStatusEvent(os.Stdout, err.Error())
+			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			return
 		}
 		s, err := serverless.Create(&opts)
 		if err != nil {
-			log.FailureStatusEvent(os.Stdout, err.Error())
+			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			return
 		}
 		if !s.Executable() {
@@ -69,7 +69,7 @@ var runCmd = &cobra.Command{
 		}
 
 		if err := s.Build(true); err != nil {
-			log.FailureStatusEvent(os.Stdout, err.Error())
+			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			os.Exit(127)
 		}
 
@@ -80,7 +80,7 @@ var runCmd = &cobra.Command{
 		)
 		log.InfoStatusEvent(os.Stdout, "Stream Function is running...")
 		if err := s.Run(verbose); err != nil {
-			log.FailureStatusEvent(os.Stdout, err.Error())
+			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			return
 		}
 	},

@@ -58,14 +58,14 @@ var initCmd = &cobra.Command{
 		// serverless setup
 		err := serverless.Setup(&opts)
 		if err != nil {
-			log.FailureStatusEvent(os.Stdout, err.Error())
+			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			return
 		}
 		// create app source file
 		fname := filepath.Join(name, DefaultSFNSourceFile(lang))
 		contentTmpl, err := template.GetContent("init", sfnType, lang, false)
 		if err != nil {
-			log.FailureStatusEvent(os.Stdout, err.Error())
+			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			return
 		}
 		if err := file.PutContents(fname, contentTmpl); err != nil {
@@ -77,7 +77,7 @@ var initCmd = &cobra.Command{
 		testTmpl, err := template.GetContent("init", sfnType, lang, true)
 		if err != nil {
 			if !errors.Is(err, template.ErrUnsupportedTest) {
-				log.FailureStatusEvent(os.Stdout, err.Error())
+				log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 				return
 			}
 		} else {
