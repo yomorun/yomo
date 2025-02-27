@@ -287,7 +287,7 @@ func (s *Server) handleConn(conn *Connection) {
 }
 
 func (s *Server) authenticate(hf *frame.HandshakeFrame) (metadata.M, error) {
-	md, err := auth.Authenticate(s.opts.auths, hf)
+	md, err := auth.Authenticate(s.opts.auths, auth.DefaultAuth(), hf)
 	if err != nil {
 		s.logger.Error(
 			"authentication failed",

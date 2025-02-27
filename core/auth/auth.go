@@ -10,7 +10,8 @@ import (
 )
 
 var (
-	auths = make(map[string]Authentication)
+	defaultAuth Authentication
+	auths       = make(map[string]Authentication)
 )
 
 // Authentication for server
@@ -23,9 +24,29 @@ type Authentication interface {
 	Name() string
 }
 
+// DefaultAuth get default authentication
+func DefaultAuth() Authentication {
+	return defaultAuth
+}
+
 // Register register authentication
-func Register(authentication Authentication) {
-	auths[authentication.Name()] = authentication
+func Register(a Authentication) {
+	if a == nil {
+		return
+	}
+	if defaultAuth == nil {
+		RegisterAsDefault(a)
+	}
+	auths[a.Name()] = a
+}
+
+// RegisterAsDefault register authentication and set it as default
+func RegisterAsDefault(a Authentication) {
+	if a == nil {
+		return
+	}
+	defaultAuth = a
+	auths[a.Name()] = a
 }
 
 // GetAuth get authentication by name
@@ -52,7 +73,7 @@ func NewCredential(payload string) *Credential {
 			payload: authPayload,
 		}
 	}
-	return &Credential{name: "none"}
+	return &Credential{payload: payload}
 }
 
 // Payload client credential payload
@@ -68,13 +89,17 @@ func (c *Credential) Name() string {
 // Authenticate finds the authentication strategy in `auths` and then authenticates the Object.
 //
 // If `auths` is nil or empty, It returns true, means authentication is not required.
-func Authenticate(auths map[string]Authentication, hf *frame.HandshakeFrame) (metadata.M, error) {
+func Authenticate(auths map[string]Authentication, defaultAuth Authentication, hf *frame.HandshakeFrame) (metadata.M, error) {
 	if auths == nil || len(auths) <= 0 {
 		return metadata.M{}, nil
 	}
 
 	if hf == nil {
 		return metadata.M{}, errors.New("handshake frame cannot be nil")
+	}
+
+	if hf.AuthName == "" && defaultAuth != nil {
+		return defaultAuth.Authenticate(hf.AuthPayload)
 	}
 
 	auth, ok := auths[hf.AuthName]
