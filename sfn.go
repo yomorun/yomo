@@ -242,6 +242,9 @@ func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 				return
 			}
 
+			// do not propagate target
+			core.SetMetadataTarget(md, "")
+
 			// add trace
 			tracer := trace.NewTracer("StreamFunction", s.client.DisableOtelTrace())
 			span := tracer.Start(md, s.name)

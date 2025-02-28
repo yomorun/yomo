@@ -85,7 +85,7 @@ func (r *register) RegisterFunction(fd *ai.FunctionDefinition, connID uint64, md
 	r.underlying.Range(func(_, value any) bool {
 		tool := value.(openai.Tool)
 		if tool.Function.Name == fd.Name {
-			err = fmt.Errorf("function %s already registered", fd.Name)
+			err = fmt.Errorf("function `%s` already registered", fd.Name)
 			return false
 		}
 		return true

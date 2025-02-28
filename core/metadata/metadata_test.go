@@ -27,7 +27,13 @@ func Test(t *testing.T) {
 		got, ok := md.Get("")
 		assert.False(t, ok)
 		assert.Equal(t, "", got)
+	})
 
+	t.Run("Set Empty Value", func(t *testing.T) {
+		md.Set("fff", "")
+		got, ok := md.Get("fff")
+		assert.False(t, ok)
+		assert.Equal(t, "", got)
 	})
 
 	t.Run("Range", func(t *testing.T) {

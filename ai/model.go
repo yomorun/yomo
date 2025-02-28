@@ -73,6 +73,3 @@ type ChainMessage struct {
 	// ToolMessages is the tool messages aggragated from reducer-sfn by AI service
 	ToolMessages []ToolMessage
 }
-
-// FunctionDefinitionKey is the yomo metadata key for function definition
-const FunctionDefinitionKey = "function-definition"

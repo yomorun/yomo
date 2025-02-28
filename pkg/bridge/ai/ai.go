@@ -2,14 +2,10 @@
 package ai
 
 import (
-	"encoding/json"
 	"errors"
 	"net"
 
-	"github.com/yomorun/yomo/ai"
-	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/ylog"
-	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 	"gopkg.in/yaml.v3"
 )
 
@@ -19,48 +15,6 @@ var (
 	// ErrConfigFormatError is the error when the ai config format is incorrect
 	ErrConfigFormatError = errors.New("ai config format is incorrect")
 )
-
-// RegisterFunctionMW returns a ConnMiddleware that can be used to register an ai function.
-func RegisterFunctionMW() core.ConnMiddleware { return registerFunction(register.GetRegister()) }
-
-func registerFunction(r register.Register) core.ConnMiddleware {
-	return core.ConnMiddleware(func(next core.ConnHandler) core.ConnHandler {
-		return func(conn *core.Connection) {
-			connMd := conn.Metadata().Clone()
-			definition, ok := connMd.Get(ai.FunctionDefinitionKey)
-
-			defer func() {
-				if ok {
-					conn.Metadata().Set(ai.FunctionDefinitionKey, "")
-				}
-				// definition does not be transmitted in mesh network, It only works for handshake.
-				next(conn)
-				if ok {
-					register.UnregisterFunction(conn.ID(), connMd)
-					conn.Logger.Info("unregister ai function", "name", conn.Name(), "connID", conn.ID())
-				}
-			}()
-
-			if conn.ClientType() != core.ClientTypeStreamFunction || !ok {
-				return
-			}
-
-			// register ai function
-			fd := ai.FunctionDefinition{}
-			err := json.Unmarshal([]byte(definition), &fd)
-			if err != nil {
-				conn.Logger.Error("unmarshal function definition", "err", err)
-				return
-			}
-			err = r.RegisterFunction(&fd, conn.ID(), connMd)
-			if err != nil {
-				conn.Logger.Error("failed to register ai function", "name", conn.Name(), "err", err)
-				return
-			}
-			conn.Logger.Info("register ai function success", "name", conn.Name(), "definition", string(definition))
-		}
-	})
-}
 
 // Config is the configuration of AI bridge.
 // The configuration looks like:

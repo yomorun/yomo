@@ -5,7 +5,6 @@ import (
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/serverless"
 	"github.com/yomorun/yomo/pkg/id"
 	"github.com/yomorun/yomo/pkg/listener/mem"
@@ -49,19 +48,19 @@ func (m *memSource) WriteWithTarget(tag uint32, data []byte, target string) erro
 	if target != "" {
 		core.SetMetadataTarget(md, target)
 	}
-	mdBytes, err := md.Encode()
-	if err != nil {
-		return err
-	}
+	mdBytes, _ := md.Encode()
+
 	f := &frame.DataFrame{
 		Tag:      tag,
 		Metadata: mdBytes,
 		Payload:  data,
 	}
+
 	return m.conn.WriteFrame(f)
 }
 
 type memStreamFunction struct {
+	id           string
 	observedTags []uint32
 	handler      core.AsyncHandler
 	cred         *auth.Credential
@@ -71,6 +70,7 @@ type memStreamFunction struct {
 // NewReducer creates a new instance of memory StreamFunction.
 func NewReducer(conn *mem.FrameConn, cred *auth.Credential) yomo.StreamFunction {
 	return &memStreamFunction{
+		id:   id.New(),
 		conn: conn,
 		cred: cred,
 	}
@@ -83,7 +83,7 @@ func (m *memStreamFunction) Close() error {
 func (m *memStreamFunction) Connect() error {
 	hf := &frame.HandshakeFrame{
 		Name:            "fc-reducer",
-		ID:              id.New(),
+		ID:              m.id,
 		ClientType:      byte(core.ClientTypeStreamFunction),
 		AuthName:        m.cred.Name(),
 		AuthPayload:     m.cred.Payload(),
@@ -115,21 +115,7 @@ func (m *memStreamFunction) Connect() error {
 }
 
 func (m *memStreamFunction) onDataFrame(dataFrame *frame.DataFrame) {
-	md, err := metadata.Decode(dataFrame.Metadata)
-	if err != nil {
-		return
-	}
-	trimd := metadata.New()
-
-	// trim target, target should not be extended to next data frame
-	md.Range(func(k, v string) bool {
-		if k != metadata.TargetKey {
-			trimd.Set(k, v)
-		}
-		return true
-	})
-
-	serverlessCtx := serverless.NewContext(m.conn, dataFrame.Tag, trimd, dataFrame.Payload)
+	serverlessCtx := serverless.NewContext(m.conn, dataFrame.Tag, core.NewMetadata(m.id, id.New()), dataFrame.Payload)
 	m.handler(serverlessCtx)
 }
 
