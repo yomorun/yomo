@@ -14,12 +14,14 @@ import (
 var _ yomo.Source = &memSource{}
 
 type memSource struct {
+	id   string
 	cred *auth.Credential
 	conn *mem.FrameConn
 }
 
 func NewSource(conn *mem.FrameConn, cred *auth.Credential) yomo.Source {
 	return &memSource{
+		id:   id.New(),
 		conn: conn,
 		cred: cred,
 	}
@@ -28,7 +30,7 @@ func NewSource(conn *mem.FrameConn, cred *auth.Credential) yomo.Source {
 func (m *memSource) Connect() error {
 	hf := &frame.HandshakeFrame{
 		Name:        "fc-source",
-		ID:          id.New(),
+		ID:          m.id,
 		ClientType:  byte(core.ClientTypeSource),
 		AuthName:    m.cred.Name(),
 		AuthPayload: m.cred.Payload(),
@@ -38,17 +40,26 @@ func (m *memSource) Connect() error {
 	return m.conn.Handshake(hf)
 }
 
-func (m *memSource) Write(tag uint32, data []byte) error {
-	df := &frame.DataFrame{
-		Tag:     tag,
-		Payload: data,
-	}
-	return m.conn.WriteFrame(df)
-}
+func (m *memSource) Write(_ uint32, _ []byte) error  { panic("unimplemented") }
+func (m *memSource) Close() error                    { panic("unimplemented") }
+func (m *memSource) SetErrorHandler(_ func(_ error)) { panic("unimplemented") }
 
-func (m *memSource) Close() error                                       { return nil }
-func (m *memSource) SetErrorHandler(_ func(_ error))                    {}
-func (m *memSource) WriteWithTarget(_ uint32, _ []byte, _ string) error { return nil }
+func (m *memSource) WriteWithTarget(tag uint32, data []byte, target string) error {
+	md := core.NewMetadata(m.id, id.New())
+	if target != "" {
+		core.SetMetadataTarget(md, target)
+	}
+	mdBytes, err := md.Encode()
+	if err != nil {
+		return err
+	}
+	f := &frame.DataFrame{
+		Tag:      tag,
+		Metadata: mdBytes,
+		Payload:  data,
+	}
+	return m.conn.WriteFrame(f)
+}
 
 type memStreamFunction struct {
 	observedTags []uint32
@@ -108,8 +119,17 @@ func (m *memStreamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 	if err != nil {
 		return
 	}
+	trimd := metadata.New()
 
-	serverlessCtx := serverless.NewContext(m.conn, dataFrame.Tag, md, dataFrame.Payload)
+	// trim target, target should not be extended to next data frame
+	md.Range(func(k, v string) bool {
+		if k != metadata.TargetKey {
+			trimd.Set(k, v)
+		}
+		return true
+	})
+
+	serverlessCtx := serverless.NewContext(m.conn, dataFrame.Tag, trimd, dataFrame.Payload)
 	m.handler(serverlessCtx)
 }
 
@@ -118,12 +138,14 @@ func (m *memStreamFunction) SetHandler(fn core.AsyncHandler) error {
 	return nil
 }
 
-func (m *memStreamFunction) Init(_ func() error) error                         { return nil }
-func (m *memStreamFunction) SetCronHandler(_ string, _ core.CronHandler) error { return nil }
-func (m *memStreamFunction) SetErrorHandler(_ func(err error))                 {}
-func (m *memStreamFunction) SetObserveDataTags(tags ...uint32)                 { m.observedTags = tags }
-func (m *memStreamFunction) SetPipeHandler(fn core.PipeHandler) error          { return nil }
-func (m *memStreamFunction) SetWantedTarget(string)                            {}
-func (m *memStreamFunction) Wait()                                             {}
+func (m *memStreamFunction) SetObserveDataTags(tags ...uint32) { m.observedTags = tags }
+func (m *memStreamFunction) Init(_ func() error) error         { panic("unimplemented") }
+func (m *memStreamFunction) SetCronHandler(_ string, _ core.CronHandler) error {
+	panic("unimplemented")
+}
+func (m *memStreamFunction) SetErrorHandler(_ func(err error))        { panic("unimplemented") }
+func (m *memStreamFunction) SetPipeHandler(fn core.PipeHandler) error { panic("unimplemented") }
+func (m *memStreamFunction) SetWantedTarget(string)                   { panic("unimplemented") }
+func (m *memStreamFunction) Wait()                                    {}
 
 var _ yomo.StreamFunction = &memStreamFunction{}
