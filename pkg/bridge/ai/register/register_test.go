@@ -30,7 +30,7 @@ func TestRegister(t *testing.T) {
 	assert.NoError(t, err)
 
 	gotErr := RegisterFunction(functionDefinition, 2, nil)
-	assert.EqualError(t, gotErr, "function function1 already registered")
+	assert.EqualError(t, gotErr, "function `function1` already registered")
 
 	toolCalls, err := ListToolCalls(nil)
 	assert.NoError(t, err)
