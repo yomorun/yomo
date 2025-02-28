@@ -237,18 +237,21 @@ func (s *Server) handshake(fconn frame.Conn) (*Connection, error) {
 			return nil, rejectHandshake(fconn, err)
 		}
 
-		// 3. create connection
+		// 3. try use function name as target
+		tryUseFunctionNameAsTarget(hf)
+
+		// 4. create connection
 		conn, err := s.createConnection(hf, md, fconn)
 		if err != nil {
 			return nil, rejectHandshake(fconn, err)
 		}
 
-		// 4. store function definition to metadata
+		// 5. store function definition to metadata
 		if hf.FunctionDefinition != nil {
 			conn.Metadata().Set(ai.FunctionDefinitionKey, string(hf.FunctionDefinition))
 		}
 
-		// 5. add route rules
+		// 6. add route rules
 		if err := s.addSfnRouteRule(conn.ID(), hf, conn.Metadata()); err != nil {
 			return nil, rejectHandshake(fconn, err)
 		}
@@ -256,6 +259,16 @@ func (s *Server) handshake(fconn frame.Conn) (*Connection, error) {
 	default:
 		err = fmt.Errorf("yomo: handshake read unexpected frame, read: %s", first.Type().String())
 		return nil, rejectHandshake(fconn, err)
+	}
+}
+
+func tryUseFunctionNameAsTarget(hf *frame.HandshakeFrame) {
+	if hf.ClientType != byte(ClientTypeStreamFunction) {
+		return
+	}
+	if hf.FunctionDefinition != nil {
+		hf.WantedTarget = hf.Name
+		hf.ObserveDataTags = append(hf.ObserveDataTags, ai.FunctionCallTag)
 	}
 }
 
@@ -287,7 +300,7 @@ func (s *Server) handleConn(conn *Connection) {
 }
 
 func (s *Server) authenticate(hf *frame.HandshakeFrame) (metadata.M, error) {
-	md, err := auth.Authenticate(s.opts.auths, hf)
+	md, err := auth.Authenticate(s.opts.auths, auth.DefaultAuth(), hf)
 	if err != nil {
 		s.logger.Error(
 			"authentication failed",

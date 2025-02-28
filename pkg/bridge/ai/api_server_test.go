@@ -32,7 +32,7 @@ func TestServer(t *testing.T) {
 		},
 	}
 	register.SetRegister(register.NewDefault())
-	register.RegisterFunction(100, functionDefinition, 200, nil)
+	register.RegisterFunction(functionDefinition, 200, nil)
 
 	// mock the provider and the req/res of the caller
 	pd, err := provider.NewMock("mock provider", provider.MockChatCompletionResponse(stopResp, stopResp))
@@ -72,7 +72,7 @@ func TestServer(t *testing.T) {
 		assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
 
 		body, _ := io.ReadAll(resp.Body)
-		assert.Equal(t, `{"Functions":{"100":{"name":"function1","description":"desc1","parameters":{"type":"type1","properties":{"prop1":{"type":"type1","description":"desc1"},"prop2":{"type":"type2","description":"desc2"}},"required":["prop1"]}}}}
+		assert.Equal(t, `{"Functions":[{"name":"function1","description":"desc1","parameters":{"type":"type1","properties":{"prop1":{"type":"type1","description":"desc1"},"prop2":{"type":"type2","description":"desc2"}},"required":["prop1"]}}]}
 `, string(body))
 	})
 

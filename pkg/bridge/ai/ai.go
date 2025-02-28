@@ -45,21 +45,19 @@ func registerFunction(r register.Register) core.ConnMiddleware {
 				return
 			}
 
-			for _, tag := range conn.ObserveDataTags() {
-				// register ai function
-				fd := ai.FunctionDefinition{}
-				err := json.Unmarshal([]byte(definition), &fd)
-				if err != nil {
-					conn.Logger.Error("unmarshal function definition", "err", err)
-					return
-				}
-				err = r.RegisterFunction(tag, &fd, conn.ID(), connMd)
-				if err != nil {
-					conn.Logger.Error("failed to register ai function", "name", conn.Name(), "tag", tag, "err", err)
-					return
-				}
-				conn.Logger.Info("register ai function success", "name", conn.Name(), "tag", tag, "definition", string(definition))
+			// register ai function
+			fd := ai.FunctionDefinition{}
+			err := json.Unmarshal([]byte(definition), &fd)
+			if err != nil {
+				conn.Logger.Error("unmarshal function definition", "err", err)
+				return
 			}
+			err = r.RegisterFunction(&fd, conn.ID(), connMd)
+			if err != nil {
+				conn.Logger.Error("failed to register ai function", "name", conn.Name(), "err", err)
+				return
+			}
+			conn.Logger.Info("register ai function success", "name", conn.Name(), "definition", string(definition))
 		}
 	})
 }

@@ -179,7 +179,7 @@ func (h *Handler) HandleOverview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	functions := make(map[uint32]*openai.FunctionDefinition)
+	functions := make([]*openai.FunctionDefinition, len(tcs))
 	for tag, tc := range tcs {
 		functions[tag] = tc.Function
 	}

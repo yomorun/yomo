@@ -23,7 +23,7 @@ func TestRegisterFunction(t *testing.T) {
 		connHandler(conn)
 
 		toolCalls, _ := r.ListToolCalls(conn.Metadata())
-		assert.Equal(t, map[uint32]openai.Tool{}, toolCalls)
+		assert.Equal(t, []openai.Tool{}, toolCalls)
 	})
 
 	t.Run("stream function", func(t *testing.T) {
@@ -32,8 +32,8 @@ func TestRegisterFunction(t *testing.T) {
 
 		toolCalls, _ := r.ListToolCalls(conn.Metadata())
 
-		want := map[uint32]openai.Tool{
-			0x33: {Type: "function", Function: &openai.FunctionDefinition{Name: "sfn"}},
+		want := []openai.Tool{
+			{Type: "function", Function: &openai.FunctionDefinition{Name: "sfn"}},
 		}
 
 		assert.Equal(t, want, toolCalls)

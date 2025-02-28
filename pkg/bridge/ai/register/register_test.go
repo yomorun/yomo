@@ -3,7 +3,6 @@ package register
 import (
 	"testing"
 
-	"github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/ai"
 )
@@ -27,28 +26,19 @@ func TestRegister(t *testing.T) {
 		},
 	}
 
-	err := RegisterFunction(1, functionDefinition, 1, nil)
+	err := RegisterFunction(functionDefinition, 1, nil)
 	assert.NoError(t, err)
+
+	gotErr := RegisterFunction(functionDefinition, 2, nil)
+	assert.EqualError(t, gotErr, "function function1 already registered")
 
 	toolCalls, err := ListToolCalls(nil)
 	assert.NoError(t, err)
-	assertToolCalls(t, 1, functionDefinition, toolCalls)
+	assert.Equal(t, functionDefinition.Name, toolCalls[0].Function.Name)
+	assert.Equal(t, functionDefinition.Description, toolCalls[0].Function.Description)
 
 	UnregisterFunction(1, nil)
 	toolCalls, err = ListToolCalls(nil)
 	assert.NoError(t, err)
-	assertToolCalls(t, 0, nil, toolCalls)
-}
-
-func assertToolCalls(t *testing.T, wantTag uint32, want *ai.FunctionDefinition, toolCalls map[uint32]openai.Tool) {
-	var (
-		tag uint32
-		got openai.Tool
-	)
-	for k, v := range toolCalls {
-		tag = k
-		got = v
-	}
-	assert.Equal(t, wantTag, tag)
-	assert.Equal(t, want, got.Function)
+	assert.Zero(t, len(toolCalls))
 }
