@@ -173,15 +173,15 @@ func NewHandler(service *Service) *Handler {
 func (h *Handler) HandleOverview(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	tcs, err := register.ListToolCalls(FromCallerContext(r.Context()).Metadata())
+	tools, err := register.ListToolCalls(FromCallerContext(r.Context()).Metadata())
 	if err != nil {
 		RespondWithError(w, http.StatusInternalServerError, err, h.service.logger)
 		return
 	}
 
-	functions := make([]*openai.FunctionDefinition, len(tcs))
-	for tag, tc := range tcs {
-		functions[tag] = tc.Function
+	functions := make([]*openai.FunctionDefinition, len(tools))
+	for i, tc := range tools {
+		functions[i] = tc.Function
 	}
 
 	json.NewEncoder(w).Encode(&ai.OverviewResponse{Functions: functions})
