@@ -9,8 +9,8 @@ import (
 
 func TestConvertToInvokeResponse(t *testing.T) {
 	type args struct {
-		res *openai.ChatCompletionResponse
-		tcs map[uint32]openai.Tool
+		res   *openai.ChatCompletionResponse
+		tools []openai.Tool
 	}
 	tests := []struct {
 		name     string
@@ -44,8 +44,8 @@ func TestConvertToInvokeResponse(t *testing.T) {
 						TotalTokens:      150,
 					},
 				},
-				tcs: map[uint32]openai.Tool{
-					9: {
+				tools: []openai.Tool{
+					{
 						Type:     openai.ToolTypeFunction,
 						Function: &openai.FunctionDefinition{Name: "get-weather"},
 					},
@@ -53,10 +53,8 @@ func TestConvertToInvokeResponse(t *testing.T) {
 			},
 			expected: &InvokeResponse{
 				Content: "How is the weather today?",
-				ToolCalls: map[uint32][]*openai.ToolCall{
-					9: {
-						{Type: openai.ToolTypeFunction, Function: openai.FunctionCall{Name: "get-weather"}},
-					},
+				ToolCalls: []openai.ToolCall{
+					{Type: openai.ToolTypeFunction, Function: openai.FunctionCall{Name: "get-weather"}},
 				},
 				FinishReason: "tool_calls",
 				TokenUsage:   TokenUsage{PromptTokens: 50, CompletionTokens: 100},
@@ -73,7 +71,7 @@ func TestConvertToInvokeResponse(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actual, _ := ConvertToInvokeResponse(tt.args.res, tt.args.tcs)
+			actual, _ := ConvertToInvokeResponse(tt.args.res, tt.args.tools)
 			assert.Equal(t, tt.expected, actual)
 		})
 	}

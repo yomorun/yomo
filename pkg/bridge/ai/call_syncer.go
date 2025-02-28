@@ -16,7 +16,7 @@ type CallSyncer interface {
 	// Call fires a bunch of function callings, and wait the result of these function callings.
 	// The result only contains the messages with role=="tool".
 	// If some function callings failed, the content will be returned as the failed reason.
-	Call(ctx context.Context, transID string, reqID string, toolCalls map[uint32][]*openai.ToolCall) ([]ToolCallResult, error)
+	Call(ctx context.Context, transID string, reqID string, toolCalls []openai.ToolCall) ([]ToolCallResult, error)
 	// Close close the CallSyncer. if close, you can't use this CallSyncer anymore.
 	Close() error
 }
@@ -38,7 +38,7 @@ type callSyncer struct {
 
 	// timeout is the timeout for waiting the result.
 	timeout   time.Duration
-	sourceCh  chan<- TagFunctionCall
+	sourceCh  chan<- ai.FunctionCall
 	reduceCh  <-chan ReduceMessage
 	toolOutCh chan toolOut
 	cleanCh   chan string
@@ -52,18 +52,8 @@ type ReduceMessage struct {
 	Message openai.ChatCompletionMessage
 }
 
-// TagFunctionCall is the request to the syncer.
-// It always be sent to the source.
-type TagFunctionCall struct {
-	// Tag is the tag of the request.
-	Tag uint32
-	// FunctionCall is the function call.
-	// It cantains the arguments and the function name.
-	FunctionCall *ai.FunctionCall
-}
-
 // NewCallSyncer creates a new CallSyncer.
-func NewCallSyncer(logger *slog.Logger, sourceCh chan<- TagFunctionCall, reduceCh <-chan ReduceMessage, timeout time.Duration) CallSyncer {
+func NewCallSyncer(logger *slog.Logger, sourceCh chan<- ai.FunctionCall, reduceCh <-chan ReduceMessage, timeout time.Duration) CallSyncer {
 	if timeout == 0 {
 		timeout = RunFunctionTimeout
 	}
@@ -91,20 +81,18 @@ type toolOut struct {
 	ch      chan ToolCallResult
 }
 
-func (f *callSyncer) Call(ctx context.Context, transID, reqID string, tagToolCalls map[uint32][]*openai.ToolCall) ([]ToolCallResult, error) {
+func (f *callSyncer) Call(ctx context.Context, transID, reqID string, toolCalls []openai.ToolCall) ([]ToolCallResult, error) {
 	defer func() {
 		f.cleanCh <- reqID
 	}()
 
 	toolNameMap := make(map[string]string)
 
-	for _, tools := range tagToolCalls {
-		for _, tool := range tools {
-			toolNameMap[tool.ID] = tool.Function.Name
-		}
+	for _, tool := range toolCalls {
+		toolNameMap[tool.ID] = tool.Function.Name
 	}
 
-	toolIDs, err := f.fire(transID, reqID, tagToolCalls)
+	toolIDs, err := f.fire(transID, reqID, toolCalls)
 	if err != nil {
 		return nil, err
 	}
@@ -152,25 +140,20 @@ func (f *callSyncer) Call(ctx context.Context, transID, reqID string, tagToolCal
 	}
 }
 
-func (f *callSyncer) fire(transID string, reqID string, tagToolCalls map[uint32][]*openai.ToolCall) (map[string]struct{}, error) {
+func (f *callSyncer) fire(transID string, reqID string, toolCalls []openai.ToolCall) (map[string]struct{}, error) {
 	ToolIDs := make(map[string]struct{})
 
-	for tag, tools := range tagToolCalls {
-		f.logger.Debug("fire tool_calls", "tag", tag, "len(tools)", len(tools), "transID", transID, "reqID", reqID)
+	f.logger.Debug("fire tool_calls", "transID", transID, "reqID", reqID, "len(tool_calls)", len(toolCalls))
 
-		for _, t := range tools {
-			f.sourceCh <- TagFunctionCall{
-				Tag: tag,
-				FunctionCall: &ai.FunctionCall{
-					TransID:      transID,
-					ReqID:        reqID,
-					ToolCallID:   t.ID,
-					FunctionName: t.Function.Name,
-					Arguments:    t.Function.Arguments,
-				},
-			}
-			ToolIDs[t.ID] = struct{}{}
+	for _, t := range toolCalls {
+		f.sourceCh <- ai.FunctionCall{
+			TransID:      transID,
+			ReqID:        reqID,
+			ToolCallID:   t.ID,
+			FunctionName: t.Function.Name,
+			Arguments:    t.Function.Arguments,
 		}
+		ToolIDs[t.ID] = struct{}{}
 	}
 
 	return ToolIDs, nil

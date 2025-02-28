@@ -41,8 +41,13 @@ func (m M) Get(k string) (string, bool) {
 }
 
 // Set sets the value of the given key. if the key is empty, it will do nothing.
+// if value is empty, the key will be deleted.
 func (m M) Set(k, v string) {
 	if len(k) == 0 {
+		return
+	}
+	if len(v) == 0 {
+		delete(m, k)
 		return
 	}
 	m[k] = v

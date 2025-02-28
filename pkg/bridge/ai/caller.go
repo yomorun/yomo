@@ -53,17 +53,17 @@ func NewCaller(source yomo.Source, reducer yomo.StreamFunction, md metadata.M, c
 
 // sourceWriteToChan makes source write data to the channel.
 // The TagFunctionCall objects are continuously be received from the channel and be sent by the source.
-func sourceWriteToChan(source yomo.Source, logger *slog.Logger) (chan<- TagFunctionCall, error) {
+func sourceWriteToChan(source yomo.Source, logger *slog.Logger) (chan<- ai.FunctionCall, error) {
 	err := source.Connect()
 	if err != nil {
 		return nil, err
 	}
 
-	ch := make(chan TagFunctionCall)
+	ch := make(chan ai.FunctionCall)
 	go func() {
 		for c := range ch {
-			buf, _ := c.FunctionCall.Bytes()
-			if err := source.Write(c.Tag, buf); err != nil {
+			buf, _ := c.Bytes()
+			if err := source.WriteWithTarget(ai.FunctionCallTag, buf, c.FunctionName); err != nil {
 				logger.Error("send data to zipper", "err", err.Error())
 			}
 		}

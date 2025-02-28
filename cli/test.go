@@ -166,30 +166,22 @@ var testPromptCmd = &cobra.Command{
 				continue
 			}
 			// tool calls
-			for tag, tcs := range invokeResp.ToolCalls {
-				toolCallCount := len(tcs)
-				if toolCallCount > 0 {
-					log.InfoStatusEvent(os.Stdout, "Invoking functions[%d]:", toolCallCount)
-					for _, tc := range tcs {
-						if invokeResp.ToolMessages == nil {
-							log.InfoStatusEvent(os.Stdout,
-								"\t[%s] tag: %d, name: %s, arguments: %s",
-								tc.ID,
-								tag,
-								tc.Function.Name,
-								tc.Function.Arguments,
-							)
-						} else {
-							log.InfoStatusEvent(os.Stdout,
-								"\t[%s] tag: %d, name: %s, arguments: %s\n🌟 result: %s",
-								tc.ID,
-								tag,
-								tc.Function.Name,
-								tc.Function.Arguments,
-								getToolCallResult(tc, invokeResp.ToolMessages),
-							)
-						}
-					}
+			for _, tc := range invokeResp.ToolCalls {
+				if invokeResp.ToolMessages == nil {
+					log.InfoStatusEvent(os.Stdout,
+						"\t[%s] name: %s, arguments: %s",
+						tc.ID,
+						tc.Function.Name,
+						tc.Function.Arguments,
+					)
+				} else {
+					log.InfoStatusEvent(os.Stdout,
+						"\t[%s] name: %s, arguments: %s\n🌟 result: %s",
+						tc.ID,
+						tc.Function.Name,
+						tc.Function.Arguments,
+						getToolCallResult(tc, invokeResp.ToolMessages),
+					)
 				}
 			}
 			// finish reason
@@ -211,7 +203,7 @@ var testPromptCmd = &cobra.Command{
 	},
 }
 
-func getToolCallResult(tc *openai.ToolCall, tms []ai.ToolMessage) string {
+func getToolCallResult(tc openai.ToolCall, tms []ai.ToolMessage) string {
 	result := ""
 	for _, tm := range tms {
 		if tm.ToolCallID == tc.ID {

@@ -119,13 +119,10 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, baseSystemMe
 	}
 	md := caller.Metadata().Clone()
 	// read tools attached to the metadata
-	tcs, err := register.ListToolCalls(md)
+	tools, err := register.ListToolCalls(md)
 	if err != nil {
 		return &ai.InvokeResponse{}, err
 	}
-	// prepare tools
-	tools := prepareToolCalls(tcs)
-
 	chainMessage := ai.ChainMessage{}
 	messages := srv.prepareMessages(baseSystemMessage, userInstruction, chainMessage, tools, true)
 	req := openai.ChatCompletionRequest{
@@ -150,7 +147,7 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, baseSystemMe
 	completionUsage = chatCompletionResponse.Usage.CompletionTokens
 
 	// convert ChatCompletionResponse to InvokeResponse
-	res, err := ai.ConvertToInvokeResponse(&chatCompletionResponse, tcs)
+	res, err := ai.ConvertToInvokeResponse(&chatCompletionResponse, tools)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +199,7 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, baseSystemMe
 	chatCompletionResponse2.Usage.PromptTokens += promptUsage
 	chatCompletionResponse2.Usage.CompletionTokens += completionUsage
 
-	res2, err := ai.ConvertToInvokeResponse(&chatCompletionResponse2, tcs)
+	res2, err := ai.ConvertToInvokeResponse(&chatCompletionResponse2, tools)
 	if err != nil {
 		return nil, err
 	}
@@ -226,12 +223,12 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 	md := caller.Metadata().Clone()
 
 	// 1. find all hosting tool sfn
-	tagTools, err := register.ListToolCalls(md)
+	tools, err := register.ListToolCalls(md)
 	if err != nil {
 		return err
 	}
 	// 2. add those tools to request
-	req = srv.addToolsToRequest(req, tagTools)
+	req = srv.addToolsToRequest(req, tools)
 
 	// 3. operate system prompt to request
 	prompt, op := caller.GetSystemPrompt()
@@ -371,7 +368,7 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 	_, sfnSpan := tracer.Start(resCtx, "run_sfn")
 
 	// 5. find sfns that hit the function call
-	fnCalls := findTagTools(tagTools, toolCalls)
+	fnCalls := findTools(tools, toolCalls)
 
 	_ = w.WriteStreamEvent(toolCalls)
 
@@ -479,11 +476,9 @@ func (srv *Service) loadOrCreateCaller(credential string) (*Caller, error) {
 	return caller, nil
 }
 
-func (srv *Service) addToolsToRequest(req openai.ChatCompletionRequest, tagTools map[uint32]openai.Tool) openai.ChatCompletionRequest {
-	toolCalls := prepareToolCalls(tagTools)
-
-	if len(toolCalls) > 0 {
-		req.Tools = toolCalls
+func (srv *Service) addToolsToRequest(req openai.ChatCompletionRequest, tools []openai.Tool) openai.ChatCompletionRequest {
+	if len(tools) > 0 {
+		req.Tools = tools
 	}
 
 	srv.logger.Debug(" #1 first call", "request", fmt.Sprintf("%+v", req))
@@ -537,14 +532,13 @@ func (srv *Service) opSystemPrompt(req openai.ChatCompletionRequest, sysPrompt s
 	return req
 }
 
-func findTagTools(tagTools map[uint32]openai.Tool, toolCalls []openai.ToolCall) map[uint32][]*openai.ToolCall {
-	fnCalls := make(map[uint32][]*openai.ToolCall)
-	// functions may be more than one
+func findTools(tools []openai.Tool, toolCalls []openai.ToolCall) []openai.ToolCall {
+	fnCalls := []openai.ToolCall{}
+
 	for _, call := range toolCalls {
-		for tag, tc := range tagTools {
-			if tc.Function.Name == call.Function.Name && tc.Type == call.Type {
-				currentCall := call
-				fnCalls[tag] = append(fnCalls[tag], &currentCall)
+		for _, tool := range tools {
+			if tool.Function.Name == call.Function.Name && tool.Type == call.Type {
+				fnCalls = append(fnCalls, call)
 			}
 		}
 	}
@@ -609,17 +603,6 @@ func mapToSliceTools(m map[int]openai.ToolCall) []openai.ToolCall {
 		arr[k] = v
 	}
 	return arr
-}
-
-func prepareToolCalls(tcs map[uint32]openai.Tool) []openai.Tool {
-	// prepare tools
-	toolCalls := make([]openai.Tool, len(tcs))
-	idx := 0
-	for _, tc := range tcs {
-		toolCalls[idx] = tc
-		idx++
-	}
-	return toolCalls
 }
 
 func transToolMessage(msgs []openai.ChatCompletionMessage) []ai.ToolMessage {

@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"sync"
 
+	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/metadata"
 )
@@ -58,6 +59,11 @@ func newContext(conn *Connection, df *frame.DataFrame) (c *Context, err error) {
 	fmd, err := metadata.Decode(df.Metadata)
 	if err != nil {
 		return nil, err
+	}
+
+	// compatible with client propagate target bug
+	if df.Tag == ai.ReducerTag {
+		SetMetadataTarget(fmd, "")
 	}
 
 	// merge connection metadata.

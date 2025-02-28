@@ -2,6 +2,7 @@
 package register
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/sashabaranov/go-openai"
@@ -39,13 +40,13 @@ func NewDefault() Register {
 }
 
 // ListToolCalls returns the list of tool calls
-func ListToolCalls(md metadata.M) (map[uint32]openai.Tool, error) {
+func ListToolCalls(md metadata.M) ([]openai.Tool, error) {
 	return defaultRegister.ListToolCalls(md)
 }
 
 // RegisterFunction registers a function calling function
-func RegisterFunction(tag uint32, functionDefinition *openai.FunctionDefinition, connID uint64, md metadata.M) error {
-	return defaultRegister.RegisterFunction(tag, functionDefinition, connID, md)
+func RegisterFunction(functionDefinition *openai.FunctionDefinition, connID uint64, md metadata.M) error {
+	return defaultRegister.RegisterFunction(functionDefinition, connID, md)
 }
 
 // UnregisterFunction unregisters a function calling function
@@ -53,18 +54,12 @@ func UnregisterFunction(connID uint64, md metadata.M) {
 	defaultRegister.UnregisterFunction(connID, md)
 }
 
-type connectedFn struct {
-	connID uint64
-	tag    uint32
-	tools  openai.Tool
-}
-
 // Register provides an stateful register for registering and unregistering functions
 type Register interface {
 	// ListToolCalls returns the list of tool calls
-	ListToolCalls(md metadata.M) (map[uint32]openai.Tool, error)
+	ListToolCalls(md metadata.M) ([]openai.Tool, error)
 	// RegisterFunction registers a function calling function
-	RegisterFunction(tag uint32, functionDefinition *openai.FunctionDefinition, connID uint64, md metadata.M) error
+	RegisterFunction(fd *openai.FunctionDefinition, connID uint64, md metadata.M) error
 	// UnregisterFunction unregisters a function calling function
 	UnregisterFunction(connID uint64, md metadata.M)
 }
@@ -73,26 +68,34 @@ type register struct {
 	underlying sync.Map
 }
 
-func (r *register) ListToolCalls(md metadata.M) (map[uint32]openai.Tool, error) {
-	result := make(map[uint32]openai.Tool)
+func (r *register) ListToolCalls(_ metadata.M) ([]openai.Tool, error) {
+	result := []openai.Tool{}
 
 	r.underlying.Range(func(_, value any) bool {
-		fn := value.(*connectedFn)
-		result[fn.tag] = fn.tools
+		tool := value.(openai.Tool)
+		result = append(result, tool)
 		return true
 	})
 
 	return result, nil
 }
 
-func (r *register) RegisterFunction(tag uint32, functionDefinition *ai.FunctionDefinition, connID uint64, md metadata.M) error {
-	r.underlying.Store(connID, &connectedFn{
-		connID: connID,
-		tag:    tag,
-		tools: openai.Tool{
-			Type:     openai.ToolTypeFunction,
-			Function: functionDefinition,
-		},
+func (r *register) RegisterFunction(fd *ai.FunctionDefinition, connID uint64, md metadata.M) error {
+	var err error
+	r.underlying.Range(func(_, value any) bool {
+		tool := value.(openai.Tool)
+		if tool.Function.Name == fd.Name {
+			err = fmt.Errorf("function `%s` already registered", fd.Name)
+			return false
+		}
+		return true
+	})
+	if err != nil {
+		return err
+	}
+	r.underlying.Store(connID, openai.Tool{
+		Function: fd,
+		Type:     openai.ToolTypeFunction,
 	})
 
 	return nil

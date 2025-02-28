@@ -15,11 +15,11 @@ import (
 	"github.com/yomorun/yomo/serverless/mock"
 )
 
-var testdata = map[uint32][]*openai.ToolCall{
-	1: {{ID: "tool-call-id-1", Function: openai.FunctionCall{Name: "function-1"}}},
-	2: {{ID: "tool-call-id-2", Function: openai.FunctionCall{Name: "function-2"}}},
-	3: {{ID: "tool-call-id-3", Function: openai.FunctionCall{Name: "function-3"}}},
-	4: {{ID: "tool-call-id-4", Function: openai.FunctionCall{Name: "function-4"}}},
+var testdata = []openai.ToolCall{
+	{ID: "tool-call-id-1", Function: openai.FunctionCall{Name: "function-1"}},
+	{ID: "tool-call-id-2", Function: openai.FunctionCall{Name: "function-2"}},
+	{ID: "tool-call-id-3", Function: openai.FunctionCall{Name: "function-3"}},
+	{ID: "tool-call-id-4", Function: openai.FunctionCall{Name: "function-4"}},
 }
 
 func TestTimeoutCallSyncer(t *testing.T) {
@@ -46,8 +46,8 @@ func TestTimeoutCallSyncer(t *testing.T) {
 		},
 	}
 
-	got, _ := syncer.Call(context.TODO(), transID, reqID, map[uint32][]*openai.ToolCall{
-		1: {{ID: "tool-call-id", Function: openai.FunctionCall{Name: "timeout-function"}}},
+	got, _ := syncer.Call(context.TODO(), transID, reqID, []openai.ToolCall{
+		{ID: "tool-call-id", Function: openai.FunctionCall{Name: "timeout-function"}},
 	})
 
 	assert.ElementsMatch(t, want, got)
@@ -133,6 +133,11 @@ func (t *mockDataFlow) Write(tag uint32, data []byte) error {
 	return nil
 }
 
+func (t *mockDataFlow) WriteWithTarget(tag uint32, data []byte, target string) error {
+	t.wrCh <- mock.NewMockContext(data, tag)
+	return nil
+}
+
 func (t *mockDataFlow) SetHandler(fn core.AsyncHandler) error {
 	t.reducer = fn
 	return nil
@@ -161,4 +166,3 @@ func (t *mockDataFlow) SetPipeHandler(fn core.PipeHandler) error              { 
 func (t *mockDataFlow) SetWantedTarget(string)                                { panic("unimplemented") }
 func (t *mockDataFlow) Wait()                                                 { panic("unimplemented") }
 func (t *mockDataFlow) SetErrorHandler(fn func(err error))                    { panic("unimplemented") }
-func (t *mockDataFlow) WriteWithTarget(_ uint32, _ []byte, _ string) error    { panic("unimplemented") }

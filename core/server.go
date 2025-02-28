@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -18,6 +19,7 @@ import (
 
 	// authentication implements, Currently, only token authentication is implemented
 	_ "github.com/yomorun/yomo/pkg/auth"
+	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 	yquic "github.com/yomorun/yomo/pkg/listener/quic"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
@@ -185,6 +187,7 @@ func (s *Server) handleFrameConn(fconn frame.Conn, logger *slog.Logger) {
 
 	if conn.ClientType() == ClientTypeStreamFunction {
 		s.router.Remove(conn.ID())
+		register.UnregisterFunction(conn.ID(), conn.Metadata())
 	}
 	_ = s.connector.Remove(conn.ID())
 }
@@ -237,18 +240,21 @@ func (s *Server) handshake(fconn frame.Conn) (*Connection, error) {
 			return nil, rejectHandshake(fconn, err)
 		}
 
-		// 3. create connection
+		// 3. try use function name as target
+		tryUseFunctionNameAsTarget(hf)
+
+		// 4. create connection
 		conn, err := s.createConnection(hf, md, fconn)
 		if err != nil {
 			return nil, rejectHandshake(fconn, err)
 		}
 
-		// 4. store function definition to metadata
-		if hf.FunctionDefinition != nil {
-			conn.Metadata().Set(ai.FunctionDefinitionKey, string(hf.FunctionDefinition))
+		// 5. try register function definition to global
+		if err := s.tryRegisterFunctionDefinition(hf, conn, md); err != nil {
+			return nil, rejectHandshake(fconn, err)
 		}
 
-		// 5. add route rules
+		// 6. add route rules
 		if err := s.addSfnRouteRule(conn.ID(), hf, conn.Metadata()); err != nil {
 			return nil, rejectHandshake(fconn, err)
 		}
@@ -257,6 +263,32 @@ func (s *Server) handshake(fconn frame.Conn) (*Connection, error) {
 		err = fmt.Errorf("yomo: handshake read unexpected frame, read: %s", first.Type().String())
 		return nil, rejectHandshake(fconn, err)
 	}
+}
+
+func tryUseFunctionNameAsTarget(hf *frame.HandshakeFrame) {
+	if hf.ClientType != byte(ClientTypeStreamFunction) {
+		return
+	}
+	if hf.FunctionDefinition != nil {
+		hf.WantedTarget = hf.Name
+		hf.ObserveDataTags = append(hf.ObserveDataTags, ai.FunctionCallTag)
+	}
+}
+
+func (s *Server) tryRegisterFunctionDefinition(hf *frame.HandshakeFrame, conn *Connection, md metadata.M) error {
+	definition := hf.FunctionDefinition
+	if definition == nil {
+		return nil
+	}
+	fd := ai.FunctionDefinition{}
+	if err := json.Unmarshal([]byte(definition), &fd); err != nil {
+		return fmt.Errorf("unmarshal function definition error: %s", err.Error())
+	}
+	if err := register.RegisterFunction(&fd, conn.ID(), md); err != nil {
+		return err
+	}
+	s.logger.Info("register ai function success", "function_name", fd.Name, "definition", string(definition))
+	return nil
 }
 
 func (s *Server) handleConn(conn *Connection) {

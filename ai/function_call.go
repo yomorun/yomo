@@ -5,8 +5,13 @@ import (
 	"errors"
 )
 
-// ReducerTag is the observed tag of the reducer
-var ReducerTag uint32 = 0xE001
+const (
+	// ReducerTag is the observed tag of the reducer
+	ReducerTag uint32 = 0xE001
+	// FunctionCallTag is the observed tag of the function call,
+	// All llm-sfn will use this tag and function name as the target to route the data.
+	FunctionCallTag uint32 = 0xE002
+)
 
 // FunctionCall describes the data structure when invoking the sfn function
 type FunctionCall struct {
