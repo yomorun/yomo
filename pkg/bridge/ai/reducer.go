@@ -39,9 +39,12 @@ func (m *memSource) Connect() error {
 	return m.conn.Handshake(hf)
 }
 
+func (m *memSource) Close() error {
+	return m.conn.CloseWithError("llm bridge source closed")
+}
+
 func (m *memSource) Write(_ uint32, _ []byte) error  { panic("unimplemented") }
 func (m *memSource) SetErrorHandler(_ func(_ error)) { panic("unimplemented") }
-func (m *memSource) Close() error                    { return nil }
 
 func (m *memSource) WriteWithTarget(tag uint32, data []byte, target string) error {
 	md := core.NewMetadata(m.id, id.New())
@@ -110,6 +113,10 @@ func (m *memStreamFunction) Connect() error {
 	return nil
 }
 
+func (m *memStreamFunction) Close() error {
+	return m.conn.CloseWithError("llm bridge reducer closed")
+}
+
 func (m *memStreamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 	serverlessCtx := serverless.NewContext(m.conn, dataFrame.Tag, core.NewMetadata(m.id, id.New()), dataFrame.Payload)
 	m.handler(serverlessCtx)
@@ -120,7 +127,6 @@ func (m *memStreamFunction) SetHandler(fn core.AsyncHandler) error {
 	return nil
 }
 
-func (m *memStreamFunction) Close() error                      { return nil }
 func (m *memStreamFunction) SetObserveDataTags(tags ...uint32) { m.observedTags = tags }
 func (m *memStreamFunction) Init(_ func() error) error         { panic("unimplemented") }
 func (m *memStreamFunction) SetCronHandler(_ string, _ core.CronHandler) error {
