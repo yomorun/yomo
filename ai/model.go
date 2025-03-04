@@ -10,7 +10,7 @@ type ErrorResponse struct {
 
 // OverviewResponse is the response for overview
 type OverviewResponse struct {
-	Functions map[uint32]*openai.FunctionDefinition // key is the tag of yomo
+	Functions []*openai.FunctionDefinition
 }
 
 // InvokeRequest is the request from user to BasicAPIServer
@@ -24,7 +24,7 @@ type InvokeResponse struct {
 	// Content is the content from llm api response
 	Content string `json:"content,omitempty"`
 	// ToolCalls is the toolCalls from llm api response
-	ToolCalls map[uint32][]*openai.ToolCall `json:"tool_calls,omitempty"`
+	ToolCalls []openai.ToolCall `json:"tool_calls,omitempty"`
 	// ToolMessages is the tool messages from llm api response
 	ToolMessages []ToolMessage `json:"tool_messages,omitempty"`
 	// FinishReason is the finish reason from llm api response
@@ -73,6 +73,3 @@ type ChainMessage struct {
 	// ToolMessages is the tool messages aggragated from reducer-sfn by AI service
 	ToolMessages []ToolMessage
 }
-
-// FunctionDefinitionKey is the yomo metadata key for function definition
-const FunctionDefinitionKey = "function-definition"

@@ -2,7 +2,6 @@ package ai
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -139,7 +138,7 @@ func TestOpSystemPrompt(t *testing.T) {
 func TestServiceInvoke(t *testing.T) {
 	type args struct {
 		providerMockData  []provider.MockData
-		mockCallReqResp   map[uint32][]mockFunctionCall
+		mockCallReqResp   []mockFunctionCall
 		systemPrompt      string
 		userInstruction   string
 		baseSystemMessage string
@@ -156,9 +155,9 @@ func TestServiceInvoke(t *testing.T) {
 				providerMockData: []provider.MockData{
 					provider.MockChatCompletionResponse(toolCallResp, stopResp),
 				},
-				mockCallReqResp: map[uint32][]mockFunctionCall{
+				mockCallReqResp: []mockFunctionCall{
 					// toolID should equal to toolCallResp's toolID
-					0x33: {{toolID: "call_abc123", functionName: "get_current_weather", respContent: "temperature: 31°C"}},
+					{toolID: "call_abc123", functionName: "get_current_weather", respContent: "temperature: 31°C"},
 				},
 				systemPrompt:      "this is a system prompt",
 				userInstruction:   "hi",
@@ -189,7 +188,7 @@ func TestServiceInvoke(t *testing.T) {
 				providerMockData: []provider.MockData{
 					provider.MockChatCompletionResponse(stopResp),
 				},
-				mockCallReqResp:   map[uint32][]mockFunctionCall{},
+				mockCallReqResp:   []mockFunctionCall{},
 				systemPrompt:      "this is a system prompt",
 				userInstruction:   "hi",
 				baseSystemMessage: "this is a base system message",
@@ -243,7 +242,7 @@ func TestServiceInvoke(t *testing.T) {
 func TestServiceChatCompletion(t *testing.T) {
 	type args struct {
 		providerMockData []provider.MockData
-		mockCallReqResp  map[uint32][]mockFunctionCall
+		mockCallReqResp  []mockFunctionCall
 		systemPrompt     string
 		request          openai.ChatCompletionRequest
 	}
@@ -258,9 +257,8 @@ func TestServiceChatCompletion(t *testing.T) {
 				providerMockData: []provider.MockData{
 					provider.MockChatCompletionResponse(toolCallResp, stopResp),
 				},
-				mockCallReqResp: map[uint32][]mockFunctionCall{
-					// toolID should equal to toolCallResp's toolID
-					0x33: {{toolID: "call_abc123", functionName: "get_current_weather", respContent: "temperature: 31°C"}},
+				mockCallReqResp: []mockFunctionCall{
+					{toolID: "call_abc123", functionName: "get_current_weather", respContent: "temperature: 31°C"},
 				},
 				systemPrompt: "this is a system prompt",
 				request: openai.ChatCompletionRequest{
@@ -291,9 +289,9 @@ func TestServiceChatCompletion(t *testing.T) {
 				providerMockData: []provider.MockData{
 					provider.MockChatCompletionResponse(stopResp),
 				},
-				mockCallReqResp: map[uint32][]mockFunctionCall{
+				mockCallReqResp: []mockFunctionCall{
 					// toolID should equal to toolCallResp's toolID
-					0x33: {{toolID: "call_abc123", functionName: "get_current_weather", respContent: "temperature: 31°C"}},
+					{toolID: "call_abc123", functionName: "get_current_weather", respContent: "temperature: 31°C"},
 				},
 				systemPrompt: "You are an assistant.",
 				request: openai.ChatCompletionRequest{
@@ -316,9 +314,9 @@ func TestServiceChatCompletion(t *testing.T) {
 				providerMockData: []provider.MockData{
 					provider.MockChatCompletionStreamResponse(toolCallStreamResp, stopStreamResp),
 				},
-				mockCallReqResp: map[uint32][]mockFunctionCall{
+				mockCallReqResp: []mockFunctionCall{
 					// toolID should equal to toolCallResp's toolID
-					0x33: {{toolID: "call_9ctHOJqO3bYrpm2A6S7nHd5k", functionName: "get_current_weather", respContent: "temperature: 31°C"}},
+					{toolID: "call_9ctHOJqO3bYrpm2A6S7nHd5k", functionName: "get_current_weather", respContent: "temperature: 31°C"},
 				},
 				systemPrompt: "You are a weather assistant",
 				request: openai.ChatCompletionRequest{
@@ -352,9 +350,9 @@ func TestServiceChatCompletion(t *testing.T) {
 				providerMockData: []provider.MockData{
 					provider.MockChatCompletionStreamResponse(stopStreamResp),
 				},
-				mockCallReqResp: map[uint32][]mockFunctionCall{
+				mockCallReqResp: []mockFunctionCall{
 					// toolID should equal to toolCallResp's toolID
-					0x33: {{toolID: "call_9ctHOJqO3bYrpm2A6S7nHd5k", functionName: "get_current_weather", respContent: "temperature: 31°C"}},
+					{toolID: "call_9ctHOJqO3bYrpm2A6S7nHd5k", functionName: "get_current_weather", respContent: "temperature: 31°C"},
 				},
 				systemPrompt: "You are a weather assistant",
 				request: openai.ChatCompletionRequest{
@@ -411,12 +409,10 @@ func TestServiceChatCompletion(t *testing.T) {
 
 // mockCaller returns a mock caller.
 // the request-response of caller has been defined in advance, the request and response are defined in the `calls`.
-func mockCaller(calls map[uint32][]mockFunctionCall) *Caller {
+func mockCaller(calls []mockFunctionCall) *Caller {
 	// register function to register
-	for tag, call := range calls {
-		for _, c := range call {
-			register.RegisterFunction(tag, &openai.FunctionDefinition{Name: c.functionName}, uint64(tag), nil)
-		}
+	for connID, call := range calls {
+		register.RegisterFunction(&openai.FunctionDefinition{Name: call.functionName}, uint64(connID), nil)
 	}
 
 	caller := &Caller{
@@ -434,31 +430,19 @@ type mockFunctionCall struct {
 }
 
 type mockCallSyncer struct {
-	calls map[uint32][]mockFunctionCall
+	calls []mockFunctionCall
 }
 
 // Call implements CallSyncer, it returns the mock response defined in advance.
-func (m *mockCallSyncer) Call(ctx context.Context, transID string, reqID string, toolCalls map[uint32][]*openai.ToolCall) ([]ToolCallResult, error) {
+func (m *mockCallSyncer) Call(ctx context.Context, transID string, reqID string, toolCalls []openai.ToolCall) ([]ToolCallResult, error) {
 	res := []ToolCallResult{}
-	for tag, calls := range toolCalls {
-		mcs, ok := m.calls[tag]
-		if !ok {
-			return nil, errors.New("call not found")
-		}
-		mcm := make(map[string]mockFunctionCall, len(mcs))
-		for _, mc := range mcs {
-			mcm[mc.toolID] = mc
-		}
-		for _, call := range calls {
-			mc, ok := mcm[call.ID]
-			if !ok {
-				return nil, errors.New("call not found")
-			}
-			res = append(res, ToolCallResult{
-				ToolCallID: mc.toolID,
-				Content:    mc.respContent,
-			})
-		}
+
+	for _, call := range m.calls {
+		res = append(res, ToolCallResult{
+			FunctionName: call.functionName,
+			ToolCallID:   call.toolID,
+			Content:      call.respContent,
+		})
 	}
 	return res, nil
 }

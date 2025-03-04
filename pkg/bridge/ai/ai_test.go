@@ -1,44 +1,10 @@
 package ai
 
 import (
-	"fmt"
 	"testing"
 
-	openai "github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
-	"github.com/yomorun/yomo/ai"
-	"github.com/yomorun/yomo/core"
-	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/core/metadata"
-	"github.com/yomorun/yomo/core/ylog"
-	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 )
-
-func TestRegisterFunction(t *testing.T) {
-	r := register.NewDefault()
-	connHandler := registerFunction(r)(func(c *core.Connection) {})
-
-	t.Run("source", func(t *testing.T) {
-		conn := mockSourceConn(1, "source")
-		connHandler(conn)
-
-		toolCalls, _ := r.ListToolCalls(conn.Metadata())
-		assert.Equal(t, map[uint32]openai.Tool{}, toolCalls)
-	})
-
-	t.Run("stream function", func(t *testing.T) {
-		conn := mockSfnConn(2, "sfn")
-		connHandler(conn)
-
-		toolCalls, _ := r.ListToolCalls(conn.Metadata())
-
-		want := map[uint32]openai.Tool{
-			0x33: {Type: "function", Function: &openai.FunctionDefinition{Name: "sfn"}},
-		}
-
-		assert.Equal(t, want, toolCalls)
-	})
-}
 
 func TestParseZipperAddr(t *testing.T) {
 	tests := []struct {
@@ -153,15 +119,4 @@ func TestParseConfig(t *testing.T) {
 			}
 		})
 	}
-}
-
-func mockSfnConn(id uint64, name string) *core.Connection {
-	md := metadata.M{
-		ai.FunctionDefinitionKey: fmt.Sprintf(`{"name": "%s"}`, name),
-	}
-	return core.NewConnection(id, name, "mock-sfn-id", core.ClientTypeStreamFunction, md, []frame.Tag{0x33}, nil, ylog.Default())
-}
-
-func mockSourceConn(id uint64, name string) *core.Connection {
-	return core.NewConnection(id, name, "mock-source-id", core.ClientTypeSource, metadata.New(), []frame.Tag{0x33}, nil, ylog.Default())
 }

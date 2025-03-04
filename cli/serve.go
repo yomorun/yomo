@@ -96,7 +96,6 @@ var serveCmd = &cobra.Command{
 		if aiConfig != nil {
 			listener = mem.Listen()
 			// add AI connection middleware
-			options = append(options, yomo.WithZipperConnMiddleware(ai.RegisterFunctionMW()))
 			options = append(options, yomo.WithFrameListener(listener))
 		}
 		// new zipper

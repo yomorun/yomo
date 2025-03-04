@@ -5,7 +5,6 @@ import (
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/frame"
-	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/serverless"
 	"github.com/yomorun/yomo/pkg/id"
 	"github.com/yomorun/yomo/pkg/listener/mem"
@@ -14,12 +13,14 @@ import (
 var _ yomo.Source = &memSource{}
 
 type memSource struct {
+	id   string
 	cred *auth.Credential
 	conn *mem.FrameConn
 }
 
 func NewSource(conn *mem.FrameConn, cred *auth.Credential) yomo.Source {
 	return &memSource{
+		id:   id.New(),
 		conn: conn,
 		cred: cred,
 	}
@@ -28,7 +29,7 @@ func NewSource(conn *mem.FrameConn, cred *auth.Credential) yomo.Source {
 func (m *memSource) Connect() error {
 	hf := &frame.HandshakeFrame{
 		Name:        "fc-source",
-		ID:          id.New(),
+		ID:          m.id,
 		ClientType:  byte(core.ClientTypeSource),
 		AuthName:    m.cred.Name(),
 		AuthPayload: m.cred.Payload(),
@@ -38,19 +39,28 @@ func (m *memSource) Connect() error {
 	return m.conn.Handshake(hf)
 }
 
-func (m *memSource) Write(tag uint32, data []byte) error {
-	df := &frame.DataFrame{
-		Tag:     tag,
-		Payload: data,
+func (m *memSource) Write(_ uint32, _ []byte) error  { panic("unimplemented") }
+func (m *memSource) Close() error                    { panic("unimplemented") }
+func (m *memSource) SetErrorHandler(_ func(_ error)) { panic("unimplemented") }
+
+func (m *memSource) WriteWithTarget(tag uint32, data []byte, target string) error {
+	md := core.NewMetadata(m.id, id.New())
+	if target != "" {
+		core.SetMetadataTarget(md, target)
 	}
-	return m.conn.WriteFrame(df)
+	mdBytes, _ := md.Encode()
+
+	f := &frame.DataFrame{
+		Tag:      tag,
+		Metadata: mdBytes,
+		Payload:  data,
+	}
+
+	return m.conn.WriteFrame(f)
 }
 
-func (m *memSource) Close() error                                       { return nil }
-func (m *memSource) SetErrorHandler(_ func(_ error))                    {}
-func (m *memSource) WriteWithTarget(_ uint32, _ []byte, _ string) error { return nil }
-
 type memStreamFunction struct {
+	id           string
 	observedTags []uint32
 	handler      core.AsyncHandler
 	cred         *auth.Credential
@@ -60,6 +70,7 @@ type memStreamFunction struct {
 // NewReducer creates a new instance of memory StreamFunction.
 func NewReducer(conn *mem.FrameConn, cred *auth.Credential) yomo.StreamFunction {
 	return &memStreamFunction{
+		id:   id.New(),
 		conn: conn,
 		cred: cred,
 	}
@@ -72,7 +83,7 @@ func (m *memStreamFunction) Close() error {
 func (m *memStreamFunction) Connect() error {
 	hf := &frame.HandshakeFrame{
 		Name:            "fc-reducer",
-		ID:              id.New(),
+		ID:              m.id,
 		ClientType:      byte(core.ClientTypeStreamFunction),
 		AuthName:        m.cred.Name(),
 		AuthPayload:     m.cred.Payload(),
@@ -104,12 +115,7 @@ func (m *memStreamFunction) Connect() error {
 }
 
 func (m *memStreamFunction) onDataFrame(dataFrame *frame.DataFrame) {
-	md, err := metadata.Decode(dataFrame.Metadata)
-	if err != nil {
-		return
-	}
-
-	serverlessCtx := serverless.NewContext(m.conn, dataFrame.Tag, md, dataFrame.Payload)
+	serverlessCtx := serverless.NewContext(m.conn, dataFrame.Tag, core.NewMetadata(m.id, id.New()), dataFrame.Payload)
 	m.handler(serverlessCtx)
 }
 
@@ -118,12 +124,14 @@ func (m *memStreamFunction) SetHandler(fn core.AsyncHandler) error {
 	return nil
 }
 
-func (m *memStreamFunction) Init(_ func() error) error                         { return nil }
-func (m *memStreamFunction) SetCronHandler(_ string, _ core.CronHandler) error { return nil }
-func (m *memStreamFunction) SetErrorHandler(_ func(err error))                 {}
-func (m *memStreamFunction) SetObserveDataTags(tags ...uint32)                 { m.observedTags = tags }
-func (m *memStreamFunction) SetPipeHandler(fn core.PipeHandler) error          { return nil }
-func (m *memStreamFunction) SetWantedTarget(string)                            {}
-func (m *memStreamFunction) Wait()                                             {}
+func (m *memStreamFunction) SetObserveDataTags(tags ...uint32) { m.observedTags = tags }
+func (m *memStreamFunction) Init(_ func() error) error         { panic("unimplemented") }
+func (m *memStreamFunction) SetCronHandler(_ string, _ core.CronHandler) error {
+	panic("unimplemented")
+}
+func (m *memStreamFunction) SetErrorHandler(_ func(err error))        { panic("unimplemented") }
+func (m *memStreamFunction) SetPipeHandler(fn core.PipeHandler) error { panic("unimplemented") }
+func (m *memStreamFunction) SetWantedTarget(string)                   { panic("unimplemented") }
+func (m *memStreamFunction) Wait()                                    {}
 
 var _ yomo.StreamFunction = &memStreamFunction{}
