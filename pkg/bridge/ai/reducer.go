@@ -40,8 +40,8 @@ func (m *memSource) Connect() error {
 }
 
 func (m *memSource) Write(_ uint32, _ []byte) error  { panic("unimplemented") }
-func (m *memSource) Close() error                    { panic("unimplemented") }
 func (m *memSource) SetErrorHandler(_ func(_ error)) { panic("unimplemented") }
+func (m *memSource) Close() error                    { return nil }
 
 func (m *memSource) WriteWithTarget(tag uint32, data []byte, target string) error {
 	md := core.NewMetadata(m.id, id.New())
@@ -74,10 +74,6 @@ func NewReducer(conn *mem.FrameConn, cred *auth.Credential) yomo.StreamFunction 
 		conn: conn,
 		cred: cred,
 	}
-}
-
-func (m *memStreamFunction) Close() error {
-	return nil
 }
 
 func (m *memStreamFunction) Connect() error {
@@ -124,6 +120,7 @@ func (m *memStreamFunction) SetHandler(fn core.AsyncHandler) error {
 	return nil
 }
 
+func (m *memStreamFunction) Close() error                      { return nil }
 func (m *memStreamFunction) SetObserveDataTags(tags ...uint32) { m.observedTags = tags }
 func (m *memStreamFunction) Init(_ func() error) error         { panic("unimplemented") }
 func (m *memStreamFunction) SetCronHandler(_ string, _ core.CronHandler) error {
