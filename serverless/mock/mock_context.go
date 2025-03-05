@@ -42,7 +42,7 @@ func NewMockContext(data []byte, tag uint32) *MockContext {
 
 // NewArgumentsContext creates a Context with the provided arguments and tag.
 // This function is used for testing the LLM function.
-func NewArgumentsContext(arguments string, tag uint32) *MockContext {
+func NewArgumentsContext(arguments string) *MockContext {
 	fnCall := &ai.FunctionCall{
 		Arguments:  arguments,
 		ReqID:      id.New(16),
@@ -52,7 +52,7 @@ func NewArgumentsContext(arguments string, tag uint32) *MockContext {
 
 	return &MockContext{
 		data:   data,
-		tag:    tag,
+		tag:    ai.FunctionCallTag,
 		fnCall: fnCall,
 	}
 }
