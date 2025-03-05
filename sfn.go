@@ -2,7 +2,6 @@ package yomo
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 
 	"github.com/robfig/cron/v3"
@@ -143,10 +142,6 @@ func (s *streamFunction) Connect() error {
 			s.cronFn(cronCtx)
 		})
 		s.cron.Start()
-	}
-
-	if len(s.observeDataTags) == 0 && !hasCron {
-		return errors.New("streamFunction cannot observe data because the required tag has not been set")
 	}
 
 	s.client.Logger.Debug("sfn connecting to zipper ...")

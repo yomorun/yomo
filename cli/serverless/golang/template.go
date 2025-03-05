@@ -28,6 +28,8 @@ type Context struct {
 	WithDescription bool
 	// WithInputSchema determines whether to work with input schema
 	WithInputSchema bool
+	// WithDataTags determines whether to work with data tags
+	WithDataTags bool
 }
 
 // RenderTmpl renders the template with the given context

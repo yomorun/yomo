@@ -60,6 +60,7 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 		WithWantedTarget: opt.WithWantedTarget,
 		WithDescription:  opt.WithDescription,
 		WithInputSchema:  opt.WithInputSchema,
+		WithDataTags:     opt.WithDataTags,
 	}
 
 	isWasi := opts.WASI
@@ -251,6 +252,7 @@ type AppOpts struct {
 	WithWantedTarget bool
 	WithDescription  bool
 	WithInputSchema  bool
+	WithDataTags     bool
 }
 
 // ParseSrc parse app option from source code to run serverless
@@ -274,6 +276,8 @@ func ParseSrc(appFile string) (*AppOpts, error) {
 				opts.WithInputSchema = true
 			case "WantedTarget":
 				opts.WithWantedTarget = true
+			case "DataTags":
+				opts.WithDataTags = true
 			}
 		}
 	}
