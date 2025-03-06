@@ -13,6 +13,7 @@ async function getWeather(city_name: string) {
   console.log(`get weather for ${city_name} with temperature ${tempraure}°C`)
   return { city_name: city_name, temperature: tempraure }
 }
+
 export async function handler(args: Argument) {
   const result = await getWeather(args.city_name)
   return result
