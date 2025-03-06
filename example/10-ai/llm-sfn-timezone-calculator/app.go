@@ -57,10 +57,6 @@ func Handler(ctx serverless.Context) {
 	ctx.WriteLLMResult(val)
 }
 
-func DataTags() []uint32 {
-	return []uint32{0x12}
-}
-
 // ConvertTimezone converts the current time from the source timezone to the target timezone.
 // It returns the converted time as a string in the format "2006-01-02 15:04:05".
 func ConvertTimezone(timeString, sourceTimezone, targetTimezone string) (string, error) {

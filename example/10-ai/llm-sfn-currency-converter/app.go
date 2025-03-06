@@ -54,10 +54,6 @@ func Handler(ctx serverless.Context) {
 	}
 }
 
-func DataTags() []uint32 {
-	return []uint32{0x10}
-}
-
 type Rates struct {
 	Rates map[string]float64 `json:"rates"`
 }

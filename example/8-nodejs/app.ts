@@ -1,7 +1,5 @@
 export const description = 'Get the current weather for `city_name`'
 
-export const tag = 0x33
-
 // For jsonschema in TypeScript, see: https://github.com/YousefED/typescript-json-schema
 export type Argument = {
   /**

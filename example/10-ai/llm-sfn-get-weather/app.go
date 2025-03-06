@@ -10,8 +10,6 @@ import (
 	"github.com/yomorun/yomo/serverless"
 )
 
-var tag uint32 = 0x11
-
 type Parameter struct {
 	CityName string `json:"city_name" jsonschema:"description=The name of a city to be queried"`
 }
@@ -35,7 +33,7 @@ func Handler(ctx serverless.Context) {
 		slog.Error("[sfn] ReadLLMArguments error", "err", err)
 		return
 	}
-	slog.Info("[sfn] << receive", "tag", tag, "msg", msg)
+	slog.Info("[sfn] << receive", "msg", msg)
 	data := fmt.Sprintf("[%s] temperature: %d°C", msg.CityName, rand.Intn(40))
 	time.Sleep(time.Millisecond * 300)
 	// helper ai function
@@ -49,8 +47,4 @@ func Handler(ctx serverless.Context) {
 		}
 		slog.Info("[sfn] >> write", "tag", ai.ReducerTag, "fnCall", fnCall)
 	}
-}
-
-func DataTags() []uint32 {
-	return []uint32{tag}
 }
