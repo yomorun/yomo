@@ -7,8 +7,13 @@ import {
 	_FunctionCall,
 	_createConnection,
 } from '@yomo/sfn'
-import { description, tag, handler } from '{{ .FileName }}'
+import * as app from '{{ .FileName }}'
 
+const { description, handler, tag } = app as {
+	description: string
+	handler: (args: unknown) => Promise<unknown>
+	tag?: number
+}
 const WORK_DIR = '{{ .WorkDir }}'
 const FUNCTION_NAME = '{{ .FunctionName }}'
 const SFN_FILE_PATH = '{{ .FilePath }}'
@@ -16,17 +21,16 @@ const SOCK_PATH = join(WORK_DIR, 'sfn.sock');
 const REDUCE_TAG = 0xe001;
 
 function run() {
-	if (
-		!description ||
-		!handler ||
-		tag === undefined ||
-		tag === null
-	) {
-		throw Error('description, tags, handler signature must be exported!')
+	if (!description || !handler) {
+		throw Error('description, handler signature must be exported!')
+	}
+	let tags: number[] = []
+	if (tag) {
+		tags = [tag]
 	}
 	const tools = _genTools(FUNCTION_NAME, description, SFN_FILE_PATH)
 	const header = JSON.stringify({
-		tags: [tag],
+		tags: tags,
 		function_definition: JSON.stringify(tools, null, 2)
 	})
 	const { conn } = _createConnection(SOCK_PATH, {

@@ -65,7 +65,3 @@ func Handler(ctx serverless.Context) {
 
 	ctx.WriteLLMResult(val)
 }
-
-func DataTags() []uint32 {
-	return []uint32{0x10}
-}

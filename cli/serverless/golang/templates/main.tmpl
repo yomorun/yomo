@@ -4,6 +4,12 @@ func InputSchema() any {
 }
 {{end}}
 
+{{if not .WithDataTags}}
+func DataTags() []uint32 {
+	return []uint32{}
+}
+{{end}}
+
 // Serverless main function
 func main() {
 	if err := rootCmd.Execute(); err != nil {

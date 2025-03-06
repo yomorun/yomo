@@ -16,7 +16,7 @@ func TestHandler(t *testing.T) {
 	}{
 		{
 			name: "get weather",
-			ctx:  mock.NewArgumentsContext(`{"city":"New York","latitude":40.7128,"longitude":-74.0060}`, 0x33),
+			ctx:  mock.NewArgumentsContext(`{"city":"New York","latitude":40.7128,"longitude":-74.0060}`),
 			want: "The current weather in New York (40.712800,-74.006000) is sunny",
 		},
 		// TODO: add more test cases.
