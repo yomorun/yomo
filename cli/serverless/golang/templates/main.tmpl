@@ -4,7 +4,7 @@ func InputSchema() any {
 }
 {{end}}
 
-{{if and .WithDescription (not .WithDataTags)}}
+{{if not .WithDataTags}}
 func DataTags() []uint32 {
 	return []uint32{}
 }
