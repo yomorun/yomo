@@ -36,6 +36,7 @@ import (
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cerebras"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cfazure"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cfopenai"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/deepseek"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/gemini"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/githubmodels"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/ollama"
@@ -184,7 +185,7 @@ func registerAIProvider(aiConfig *ai.Config) error {
 				provider["credentials_file"],
 			))
 		case "deepseek":
-			providerpkg.RegisterProvider(cerebras.NewProvider(provider["api_key"], provider["model"]))
+			providerpkg.RegisterProvider(deepseek.NewProvider(provider["api_key"], provider["model"]))
 		case "vllm":
 			providerpkg.RegisterProvider(vllm.NewProvider(provider["api_endpoint"], provider["api_key"], provider["model"]))
 		default:
