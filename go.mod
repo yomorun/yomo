@@ -1,7 +1,6 @@
 module github.com/yomorun/yomo
 
 go 1.23
-
 require (
 	cloud.google.com/go/vertexai v0.13.3
 	github.com/anthropics/anthropic-sdk-go v0.2.0-alpha.10
@@ -100,14 +99,14 @@ require (
 	go.opentelemetry.io/proto/otlp v1.5.0 // indirect
 	go.uber.org/mock v0.5.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/crypto v0.32.0 // indirect
+	golang.org/x/crypto v0.35.0 // indirect
 	golang.org/x/exp v0.0.0-20250128182459-e0ece0dbea4c // indirect
-	golang.org/x/net v0.34.0 // indirect
+	golang.org/x/net v0.36.0 // indirect
 	golang.org/x/oauth2 v0.25.0 // indirect
-	golang.org/x/sync v0.10.0 // indirect
-	golang.org/x/sys v0.29.0 // indirect
-	golang.org/x/term v0.28.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
+	golang.org/x/sync v0.11.0 // indirect
+	golang.org/x/sys v0.30.0 // indirect
+	golang.org/x/term v0.29.0 // indirect
+	golang.org/x/text v0.22.0 // indirect
 	golang.org/x/time v0.9.0 // indirect
 	google.golang.org/genproto v0.0.0-20250127172529-29210b9bc287 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250127172529-29210b9bc287 // indirect
