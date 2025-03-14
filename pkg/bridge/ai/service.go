@@ -228,7 +228,7 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 		return err
 	}
 	// 2. add those tools to request
-	req = srv.addToolsToRequest(req, tools)
+	req, hasReqTools := srv.addToolsToRequest(req, tools)
 
 	// 3. operate system prompt to request
 	prompt, op := caller.GetSystemPrompt()
@@ -274,7 +274,14 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 			if err != nil {
 				return err
 			}
-
+			if hasReqTools {
+				if i == 0 {
+					respSpan = startRespSpan(reqCtx, reqSpan, tracer, w)
+				}
+				w.WriteStreamEvent(streamRes)
+				i++
+				continue
+			}
 			if len(streamRes.PromptFilterResults) > 0 {
 				continue
 			}
@@ -318,13 +325,11 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 				_ = w.WriteStreamEvent(streamRes)
 			}
 			if i == 0 && j == 0 && !isFunctionCall {
-				reqSpan.End()
-				recordTTFT(ctx, tracer, w)
-				_, respSpan = tracer.Start(ctx, "response_in_stream(TBT)")
+				respSpan = startRespSpan(reqCtx, reqSpan, tracer, w)
 			}
 			i++
 		}
-		if !isFunctionCall {
+		if !isFunctionCall || hasReqTools {
 			respSpan.End()
 			return w.WriteStreamDone()
 		}
@@ -350,7 +355,7 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 
 		srv.logger.Debug(" #1 first call", "response", fmt.Sprintf("%+v", resp))
 		// it is a function call
-		if resp.Choices[0].FinishReason == openai.FinishReasonToolCalls {
+		if resp.Choices[0].FinishReason == openai.FinishReasonToolCalls && !hasReqTools {
 			toolCalls = append(toolCalls, resp.Choices[0].Message.ToolCalls...)
 			assistantMessage = resp.Choices[0].Message
 			firstCallSpan.End()
@@ -390,6 +395,8 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 			Content:    v.Content,
 		}
 	}
+	// second call should not have tool_choice option
+	req.ToolChoice = nil
 	req.Messages = append(reqMessages, assistantMessage)
 	req.Messages = append(req.Messages, llmCalls...)
 	// anthropic must define tools
@@ -413,7 +420,6 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 		)
 		for {
 			if i == 0 {
-				recordTTFT(resCtx, tracer, w)
 				_, secondRespSpan = tracer.Start(resCtx, "second_call_response_in_stream(TBT)")
 			}
 			i++
@@ -452,6 +458,13 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 	}
 }
 
+func startRespSpan(ctx context.Context, reqSpan trace.Span, tracer trace.Tracer, w EventResponseWriter) trace.Span {
+	reqSpan.End()
+	recordTTFT(ctx, tracer, w)
+	_, respSpan := tracer.Start(ctx, "response_in_stream(TBT)")
+	return respSpan
+}
+
 func (srv *Service) loadOrCreateCaller(credential string) (*Caller, error) {
 	caller, ok := srv.callers.Get(credential)
 	if ok {
@@ -476,14 +489,15 @@ func (srv *Service) loadOrCreateCaller(credential string) (*Caller, error) {
 	return caller, nil
 }
 
-func (srv *Service) addToolsToRequest(req openai.ChatCompletionRequest, tools []openai.Tool) openai.ChatCompletionRequest {
-	if len(tools) > 0 {
-		req.Tools = tools
+func (srv *Service) addToolsToRequest(req openai.ChatCompletionRequest, tools []openai.Tool) (openai.ChatCompletionRequest, bool) {
+	hasReqTools := len(req.Tools) > 0
+	if !hasReqTools {
+		if len(tools) > 0 {
+			req.Tools = tools
+			srv.logger.Debug("#1 first call", "request", fmt.Sprintf("%+v", req))
+		}
 	}
-
-	srv.logger.Debug(" #1 first call", "request", fmt.Sprintf("%+v", req))
-
-	return req
+	return req, hasReqTools
 }
 
 func (srv *Service) opSystemPrompt(req openai.ChatCompletionRequest, sysPrompt string, op SystemPromptOp) openai.ChatCompletionRequest {
