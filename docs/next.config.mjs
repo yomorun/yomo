@@ -1,9 +1,8 @@
-import { setupDevPlatform } from '@cloudflare/next-on-pages/next-dev';
+import { setupDevPlatform } from "@cloudflare/next-on-pages/next-dev";
 import nextra from 'nextra';
 import { remarkMermaid } from 'remark-mermaid-nextra';
 
-if (process.env.NODE_ENV === 'development') {
-  await setupDevPlatform()
+if (process.env.NODE_ENV === "development") {  await setupDevPlatform()
 }
 
 //const withNextra = require("nextra")
