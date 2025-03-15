@@ -10,7 +10,10 @@
     "start": "next start",
     "build": "next build",
     "sitemap": "next-sitemap",
-    "export": "next build && next-sitemap && next export"
+    "export": "next build && next-sitemap && next export",
+    "pages:build": "npx @cloudflare/next-on-pages",
+    "preview": "npm run pages:build && wrangler pages dev",
+    "deploy": "npm run pages:build && wrangler pages deploy"
   },
   "license": "MIT",
   "dependencies": {
@@ -29,6 +32,7 @@
     "remark-mermaid-nextra": "^0.0.4"
   },
   "devDependencies": {
+    "@cloudflare/next-on-pages": "^1.13.10",
     "@next/env": "^13.5.6",
     "@types/node": "18.15.11",
     "autoprefixer": "^10.4.14",
