@@ -1,6 +1,6 @@
 module github.com/yomorun/yomo
 
-go 1.23
+go 1.23.0
 
 require (
 	cloud.google.com/go/vertexai v0.13.3
