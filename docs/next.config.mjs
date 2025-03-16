@@ -2,6 +2,7 @@ import { setupDevPlatform } from "@cloudflare/next-on-pages/next-dev";
 import nextra from 'nextra';
 import { remarkMermaid } from 'remark-mermaid-nextra';
 
+
 if (process.env.NODE_ENV === "development") {  
   await setupDevPlatform();
 }
