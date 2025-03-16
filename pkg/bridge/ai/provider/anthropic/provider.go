@@ -303,7 +303,7 @@ func (p *Provider) convertMessageNewParams(req openai.ChatCompletionRequest) ant
 
 	msgs := make([]anthropic.MessageParam, 0)
 	systemMsgs := make([]anthropic.TextBlockParam, 0)
-	tools := make([]anthropic.ToolParam, 0)
+	tools := make([]anthropic.ToolUnionUnionParam, 0)
 	toolResult := []anthropic.ContentBlockParamUnion{}
 
 	// tools
