@@ -17,10 +17,11 @@ jobs:
           go-version: "1.23"
 
       - name: Test
-        run: CI=true go test -v -race -coverprofile=coverage.txt -covermode=atomic $(go list ./... | grep -v /example)
+
+        run: go test -v -race -coverprofile=coverage.txt -covermode=atomic $(go list ./...)
 
       - name: Build
-        run: go build $(go list ./... | grep -v /example)
+        run: go build $(go list ./...)
 
       - name: Upload coverage
         uses: codecov/codecov-action@v5
