@@ -82,6 +82,9 @@ type toolOut struct {
 }
 
 func (f *callSyncer) Call(ctx context.Context, transID, reqID string, toolCalls []openai.ToolCall) ([]ToolCallResult, error) {
+	if len(toolCalls) == 0 {
+		return []ToolCallResult{}, nil
+	}
 	defer func() {
 		f.cleanCh <- reqID
 	}()
