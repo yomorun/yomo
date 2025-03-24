@@ -36,7 +36,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.35.0
 	golang.org/x/mod v0.24.0
 	golang.org/x/tools v0.31.0
-	google.golang.org/api v0.226.0
+	google.golang.org/api v0.227.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
 )
