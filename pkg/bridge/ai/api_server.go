@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"reflect"
 	"time"
 
 	openai "github.com/sashabaranov/go-openai"
@@ -30,8 +29,8 @@ const (
 )
 
 var (
-	// RequestTimeout is the timeout for the request, default is 90 seconds
-	RequestTimeout = 90 * time.Second
+	// RequestTimeout is the timeout for the request, default is 360 seconds
+	RequestTimeout = 360 * time.Second
 	//  RunFunctionTimeout is the timeout for awaiting the function response, default is 60 seconds
 	RunFunctionTimeout = 60 * time.Second
 )
@@ -107,6 +106,8 @@ func decorateReqContext(service *Service, logger *slog.Logger) func(handler http
 
 	return func(handler http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ww := NewResponseWriter(w, logger)
+
 			ctx := r.Context()
 			ctx = WithTracerContext(ctx, tracer)
 
@@ -114,7 +115,7 @@ func decorateReqContext(service *Service, logger *slog.Logger) func(handler http
 
 			caller, err := service.LoadOrCreateCaller(r)
 			if err != nil {
-				RespondWithError(w, http.StatusBadRequest, err, logger)
+				RespondWithError(ww, http.StatusBadRequest, err)
 				return
 			}
 			ctx = WithCallerContext(ctx, caller)
@@ -131,8 +132,6 @@ func decorateReqContext(service *Service, logger *slog.Logger) func(handler http
 			transID := id.New(32)
 			ctx = WithTransIDContext(ctx, transID)
 
-			ww := NewResponseWriter(w)
-
 			handler.ServeHTTP(ww, r.WithContext(ctx))
 
 			duration := time.Since(start)
@@ -142,7 +141,7 @@ func decorateReqContext(service *Service, logger *slog.Logger) func(handler http
 
 			logContent := []any{
 				"namespace", fmt.Sprintf("%s %s", r.Method, r.URL.Path),
-				"stream", ww.IsStream,
+				"stream", ww.IsStream(),
 				"host", hostname,
 				"requestId", transID,
 				"duration", duration,
@@ -172,10 +171,11 @@ func NewHandler(service *Service) *Handler {
 // HandleOverview is the handler for GET /overview
 func (h *Handler) HandleOverview(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	ww := w.(EventResponseWriter)
 
 	tools, err := register.ListToolCalls(FromCallerContext(r.Context()).Metadata())
 	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, err, h.service.logger)
+		RespondWithError(ww, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -198,8 +198,9 @@ func (h *Handler) HandleInvoke(w http.ResponseWriter, r *http.Request) {
 	)
 	defer r.Body.Close()
 
-	req, err := DecodeRequest[ai.InvokeRequest](r, w, h.service.logger)
+	req, err := DecodeRequest[ai.InvokeRequest](r, ww, h.service.logger)
 	if err != nil {
+		RespondWithError(ww, http.StatusBadRequest, err)
 		ww.RecordError(errors.New("bad request"))
 		return
 	}
@@ -216,8 +217,7 @@ func (h *Handler) HandleInvoke(w http.ResponseWriter, r *http.Request) {
 
 	res, err := h.service.GetInvoke(ctx, req.Prompt, baseSystemMessage, transID, caller, req.IncludeCallStack, tracer)
 	if err != nil {
-		ww.RecordError(err)
-		RespondWithError(w, http.StatusInternalServerError, err, h.service.logger)
+		RespondWithError(ww, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -233,9 +233,10 @@ func (h *Handler) HandleChatCompletions(w http.ResponseWriter, r *http.Request) 
 	)
 	defer r.Body.Close()
 
-	req, err := DecodeRequest[openai.ChatCompletionRequest](r, w, h.service.logger)
+	req, err := DecodeRequest[openai.ChatCompletionRequest](r, ww, h.service.logger)
 	if err != nil {
-		ww.RecordError(err)
+		w.Header().Set("Content-Type", "application/json")
+		RespondWithError(ww, http.StatusBadRequest, err)
 		return
 	}
 
@@ -248,55 +249,26 @@ func (h *Handler) HandleChatCompletions(w http.ResponseWriter, r *http.Request) 
 	)
 
 	if err := h.service.GetChatCompletions(ctx, req, transID, caller, ww, tracer); err != nil {
-		ww.RecordError(err)
 		if err == context.Canceled {
 			return
 		}
-		if ww.IsStream() {
-			h.service.logger.Error("bridge server error", "err", err.Error(), "err_type", reflect.TypeOf(err).String())
-			w.Write([]byte(fmt.Sprintf(`{"error":{"message":"%s"}}`, err.Error())))
-			return
+		if !ww.IsStream() {
+			w.Header().Set("Content-Type", "application/json")
 		}
-		RespondWithError(w, http.StatusBadRequest, err, h.service.logger)
+		RespondWithError(ww, http.StatusBadRequest, err)
 		return
 	}
 }
 
 // DecodeRequest decodes the request body into given type.
-func DecodeRequest[T any](r *http.Request, w http.ResponseWriter, logger *slog.Logger) (T, error) {
+func DecodeRequest[T any](r *http.Request, ww EventResponseWriter, logger *slog.Logger) (T, error) {
 	var req T
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		RespondWithError(w, http.StatusBadRequest, err, logger)
 		return req, err
 	}
 
 	return req, nil
-}
-
-// RespondWithError writes an error to response according to the OpenAI API spec.
-func RespondWithError(w http.ResponseWriter, code int, err error, logger *slog.Logger) {
-	code, errString := parseCodeError(code, err)
-	logger.Error("bridge server error", "err", errString, "err_type", reflect.TypeOf(err).String())
-
-	w.WriteHeader(code)
-	w.Write([]byte(fmt.Sprintf(`{"error":{"code":"%d","message":"%s"}}`, code, errString)))
-}
-
-func parseCodeError(code int, err error) (int, string) {
-	errString := err.Error()
-
-	switch e := err.(type) {
-	case *openai.APIError:
-		code = e.HTTPStatusCode
-		errString = e.Message
-	case *openai.RequestError:
-		code = e.HTTPStatusCode
-		errString = e.Error()
-	}
-
-	return code, errString
 }
 
 func getLocalIP() (string, error) {
