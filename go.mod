@@ -15,7 +15,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/lmittmann/tint v1.0.7
 	github.com/matoous/go-nanoid/v2 v2.1.0
-	github.com/quic-go/quic-go v0.50.0
+	github.com/quic-go/quic-go v0.50.1
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/sashabaranov/go-openai v1.38.0
 	github.com/second-state/WasmEdge-go v0.14.0
