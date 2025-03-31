@@ -2,6 +2,8 @@ module github.com/yomorun/yomo
 
 go 1.23.0
 
+toolchain go1.24.1
+
 require (
 	cloud.google.com/go/vertexai v0.13.3
 	github.com/anthropics/anthropic-sdk-go v0.2.0-alpha.13
@@ -22,7 +24,7 @@ require (
 	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/pflag v1.0.6
-	github.com/spf13/viper v1.20.0
+	github.com/spf13/viper v1.20.1
 	github.com/stretchr/testify v1.10.0
 	github.com/tetratelabs/wazero v1.9.0
 	github.com/tidwall/gjson v1.18.0
