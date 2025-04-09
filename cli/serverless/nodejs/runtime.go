@@ -274,5 +274,14 @@ func (w *NodejsWrapper) InstallDeps() error {
 	if err != nil {
 		return fmt.Errorf("run %s failed: %v", cmd.String(), err)
 	}
+	// add .gitignore file, and ignore node_modules/, dist/, .wrapper.ts
+	gitignore := filepath.Join(w.workDir, ".gitignore")
+	if _, err := os.Stat(gitignore); os.IsNotExist(err) {
+		err = os.WriteFile(gitignore, []byte("node_modules/\ndist/\n.wrapper.ts\n"), 0644)
+		if err != nil {
+			return fmt.Errorf("write .gitignore failed: %v", err)
+		}
+	}
+
 	return nil
 }
