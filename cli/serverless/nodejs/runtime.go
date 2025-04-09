@@ -58,8 +58,7 @@ func NewWrapper(functionName, entryTSFile string) (*NodejsWrapper, error) {
 	}
 
 	// set workdir
-	// workdir := filepath.Dir(entryTSFile)
-	workdir := "./"
+	workdir := filepath.Dir(entryTSFile)
 
 	// set output dir
 	outputDir := filepath.Join(workdir, "dist")
@@ -196,8 +195,6 @@ func (w *NodejsWrapper) Run(env []string) error {
 		cmd.Env = env
 
 		return cmd.Run()
-	} else {
-		log.Println("Bun is not installed, check Nodejs")
 	}
 
 	// if bun is not found, fallback to nodejs
@@ -211,7 +208,7 @@ func (w *NodejsWrapper) Run(env []string) error {
 }
 
 func (w *NodejsWrapper) genWrapperTS(functionName, dstPath string) error {
-	baseFilename := w.workDir + filepath.Base(w.fileName)
+	baseFilename := "./" + filepath.Base(w.fileName)
 	entryTS := baseFilename + ".ts"
 
 	data := struct {
@@ -220,7 +217,7 @@ func (w *NodejsWrapper) genWrapperTS(functionName, dstPath string) error {
 		FileName     string
 		FilePath     string
 	}{
-		WorkDir:      w.workDir,
+		WorkDir:      "./",
 		FunctionName: functionName,
 		FileName:     baseFilename,
 		FilePath:     entryTS,
