@@ -103,5 +103,5 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 
 	initCmd.Flags().StringVarP(&sfnType, "type", "t", "llm", "The type of Stream Function, support normal and llm")
-	initCmd.Flags().StringVarP(&lang, "lang", "l", "go", "The language of Stream Function, support go and node")
+	initCmd.Flags().StringVarP(&lang, "lang", "l", "node", "The language of Stream Function, support go and node")
 }
