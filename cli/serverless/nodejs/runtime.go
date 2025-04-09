@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -175,6 +176,31 @@ func (w *NodejsWrapper) Build(env []string) error {
 
 // Run runs the serverless function
 func (w *NodejsWrapper) Run(env []string) error {
+	// try to run with bunjs
+	// first, check if bun is installed
+	bunPath, err := exec.LookPath("bun")
+	if err == nil {
+		// bun is installed, run the wrapper with bun
+		log.Println("Bun is installed, bun --version:")
+		cmd := exec.Command(bunPath, "--version")
+		cmd.Dir = w.workDir
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		cmd.Run()
+
+		cmd = exec.Command(bunPath, wrapperTS)
+		cmd.Dir = w.workDir
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Env = env
+
+		return cmd.Run()
+	} else {
+		log.Println("Bun is not installed, check Nodejs")
+	}
+
+	// if bun is not found, fallback to nodejs
 	cmd := exec.Command(w.nodePath, filepath.Join(w.outputDir, wrapperJS))
 	cmd.Dir = w.workDir
 	cmd.Stdout = os.Stdout
