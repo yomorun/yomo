@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,6 +30,7 @@ type NodejsWrapper struct {
 	entryTSFile  string // eg. src/app.ts
 	entryJSFile  string // eg. src/app.js
 	fileName     string // eg. src/app
+	outputDir    string // eg. dist/
 
 	// command path
 	nodePath string
@@ -37,25 +39,35 @@ type NodejsWrapper struct {
 
 // NewWrapper returns a new NodejsWrapper
 func NewWrapper(functionName, entryTSFile string) (*NodejsWrapper, error) {
-	// check command
+	// check node
 	nodePath, err := exec.LookPath("node")
 	if err != nil {
-		return nil, errors.New("[node] command was not found. to run the sfn in ts, you need to install node. For details, visit https://nodejs.org")
+		return nil, errors.New("the Node.js runtime is not found. To run TypeScript serverless functions, please install Node.js from https://nodejs.org")
 	}
+
+	// prefer pnpm, if pnpm is not found, fallback to npm
 	npmPath, err := exec.LookPath("pnpm")
 	if err != nil {
 		npmPath, _ = exec.LookPath("npm")
 	}
 
+	// check entry file
 	ext := filepath.Ext(entryTSFile)
 	if ext != ".ts" {
-		return nil, fmt.Errorf("only support typescript, got: %s", entryTSFile)
+		return nil, fmt.Errorf("this runtime only supports Typescript files (.ts), got: %s", entryTSFile)
 	}
+
+	// set workdir
 	workdir := filepath.Dir(entryTSFile)
 
+	// set output dir
+	outputDir := filepath.Join(workdir, "dist")
+
+	// the compiled js file
 	entryJSFile := entryTSFile[:len(entryTSFile)-len(ext)] + ".js"
 
-	fileName := entryTSFile[:len(entryTSFile)-len(filepath.Ext(entryTSFile))]
+	// the file name without extension
+	fileName := entryTSFile[:len(entryTSFile)-len(ext)]
 
 	w := &NodejsWrapper{
 		functionName: functionName,
@@ -65,6 +77,7 @@ func NewWrapper(functionName, entryTSFile string) (*NodejsWrapper, error) {
 		fileName:     fileName,
 		nodePath:     nodePath,
 		npmPath:      npmPath,
+		outputDir:    outputDir,
 	}
 
 	return w, nil
@@ -75,7 +88,7 @@ func (w *NodejsWrapper) WorkDir() string {
 	return w.workDir
 }
 
-// Build defines how to build the serverless function.
+// Build defines how to build the serverless llm function.
 func (w *NodejsWrapper) Build(env []string) error {
 	// 1. generate .wrapper.ts file
 	dstPath := filepath.Join(w.workDir, wrapperTS)
@@ -99,7 +112,7 @@ func (w *NodejsWrapper) Build(env []string) error {
 	tsconfigPath := filepath.Join(w.workDir, "tsconfig.json")
 	if _, err := os.Stat(tsconfigPath); os.IsNotExist(err) {
 		// not exist, create it using tsc --init
-		cmdTSCInit := exec.Command("tsc", "--init")
+		cmdTSCInit := exec.Command("tsc", "--init", "--outDir", "./dist")
 		cmdTSCInit.Dir = w.workDir
 		cmdTSCInit.Stdout = os.Stdout
 		cmdTSCInit.Stderr = os.Stderr
@@ -162,7 +175,30 @@ func (w *NodejsWrapper) Build(env []string) error {
 
 // Run runs the serverless function
 func (w *NodejsWrapper) Run(env []string) error {
-	cmd := exec.Command(w.nodePath, wrapperJS)
+	// try to run with bunjs
+	// first, check if bun is installed
+	bunPath, err := exec.LookPath("bun")
+	if err == nil {
+		// bun is installed, run the wrapper with bun
+		log.Println("Bun is installed, bun --version:")
+		cmd := exec.Command(bunPath, "--version")
+		cmd.Dir = w.workDir
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		cmd.Run()
+
+		cmd = exec.Command(bunPath, wrapperTS)
+		cmd.Dir = w.workDir
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Env = env
+
+		return cmd.Run()
+	}
+
+	// if bun is not found, fallback to nodejs
+	cmd := exec.Command(w.nodePath, filepath.Join(w.outputDir, wrapperJS))
 	cmd.Dir = w.workDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -172,16 +208,19 @@ func (w *NodejsWrapper) Run(env []string) error {
 }
 
 func (w *NodejsWrapper) genWrapperTS(functionName, dstPath string) error {
+	baseFilename := "./" + filepath.Base(w.fileName)
+	entryTS := baseFilename + ".ts"
+
 	data := struct {
 		WorkDir      string
 		FunctionName string
 		FileName     string
 		FilePath     string
 	}{
-		WorkDir:      w.workDir,
+		WorkDir:      "./",
 		FunctionName: functionName,
-		FileName:     w.fileName,
-		FilePath:     w.entryTSFile,
+		FileName:     baseFilename,
+		FilePath:     entryTS,
 	}
 
 	dst, err := os.OpenFile(dstPath, os.O_WRONLY|os.O_CREATE, 0755)
@@ -235,5 +274,14 @@ func (w *NodejsWrapper) InstallDeps() error {
 	if err != nil {
 		return fmt.Errorf("run %s failed: %v", cmd.String(), err)
 	}
+	// add .gitignore file, and ignore node_modules/, dist/, .wrapper.ts
+	gitignore := filepath.Join(w.workDir, ".gitignore")
+	if _, err := os.Stat(gitignore); os.IsNotExist(err) {
+		err = os.WriteFile(gitignore, []byte("node_modules/\ndist/\n.wrapper.ts\n"), 0644)
+		if err != nil {
+			return fmt.Errorf("write .gitignore failed: %v", err)
+		}
+	}
+
 	return nil
 }

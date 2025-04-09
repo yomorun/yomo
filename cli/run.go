@@ -33,8 +33,8 @@ import (
 // runCmd represents the run command
 var runCmd = &cobra.Command{
 	Use:   "run [flags] sfn",
-	Short: "Run a YoMo Stream Function",
-	Long:  "Run a YoMo Stream Function",
+	Short: "Run a YoMo Serverless LLM Function",
+	Long:  "Run a YoMo Serverless LLM Function",
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := parseFileArg(args, &opts, defaultSFNCompliedFile, defaultSFNWASIFile, defaultSFNSourceFile, defaultSFNSourceTSFile); err != nil {
 			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
@@ -42,13 +42,13 @@ var runCmd = &cobra.Command{
 		}
 		loadOptionsFromViper(viper.RunViper, &opts)
 		// Serverless
-		log.InfoStatusEvent(os.Stdout, "YoMo Stream Function file: %v", opts.Filename)
+		log.InfoStatusEvent(os.Stdout, "YoMo Serverless LLM Function file: %v", opts.Filename)
 		if opts.Name == "" {
-			log.FailureStatusEvent(os.Stdout, "YoMo Stream Function's Name is empty, please set name used by `-n` flag")
+			log.FailureStatusEvent(os.Stdout, "YoMo Serverless LLM Function's Name is empty, please set name used by `-n` flag")
 			return
 		}
 		// resolve serverless
-		log.PendingStatusEvent(os.Stdout, "Creating YoMo Stream Function instance...")
+		log.PendingStatusEvent(os.Stdout, "Creating YoMo Serverless LLM Function instance...")
 		if err := parseZipperAddr(&opts); err != nil {
 			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			return
@@ -75,10 +75,10 @@ var runCmd = &cobra.Command{
 
 		log.InfoStatusEvent(
 			os.Stdout,
-			"Starting YoMo Stream Function instance, connecting to zipper: %v",
+			"Starting YoMo Serverless LLM Function instance, connecting to zipper: %v",
 			opts.ZipperAddr,
 		)
-		log.InfoStatusEvent(os.Stdout, "Stream Function is running...")
+		log.InfoStatusEvent(os.Stdout, "Serverless LLM Function is running...")
 		if err := s.Run(verbose); err != nil {
 			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			return
@@ -90,7 +90,7 @@ func init() {
 	rootCmd.AddCommand(runCmd)
 
 	runCmd.Flags().StringVarP(&opts.ZipperAddr, "zipper", "z", "localhost:9000", "YoMo-Zipper endpoint addr")
-	runCmd.Flags().StringVarP(&opts.Name, "name", "n", "", "yomo stream function name.")
+	runCmd.Flags().StringVarP(&opts.Name, "name", "n", "", "yomo Serverless LLM Function name.")
 	runCmd.Flags().StringVarP(&opts.ModFile, "modfile", "m", "", "custom go.mod")
 	runCmd.Flags().StringVarP(&opts.Credential, "credential", "d", "", "client credential payload, eg: `token:dBbBiRE7`")
 	runCmd.Flags().StringVarP(&opts.Runtime, "runtime", "r", "", "serverless runtime type")

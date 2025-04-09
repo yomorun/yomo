@@ -37,8 +37,8 @@ var (
 // initCmd represents the init command
 var initCmd = &cobra.Command{
 	Use:   "init <app_name>",
-	Short: "Initialize a YoMo Stream function",
-	Long:  "Initialize a YoMo Stream function",
+	Short: "Initialize a YoMo Serverless LLM Function",
+	Long:  "Initialize a YoMo Serverless LLM Function",
 	Run: func(cmd *cobra.Command, args []string) {
 		name := ""
 		if len(args) >= 1 && args[0] != "" {
@@ -46,10 +46,10 @@ var initCmd = &cobra.Command{
 			opts.Name = name
 		}
 		if name == "" {
-			log.FailureStatusEvent(os.Stdout, "Please input your app name, e.g. `yomo init my-app [-l go -t llm]`")
+			log.FailureStatusEvent(os.Stdout, "Please input your app name, e.g. `yomo init my-app [-l node -t llm]`")
 			return
 		}
-		log.PendingStatusEvent(os.Stdout, "Initializing the Stream Function...")
+		log.PendingStatusEvent(os.Stdout, "Initializing the Serverless LLM Function...")
 		name = strings.ReplaceAll(name, " ", "_")
 
 		filename := filepath.Join(name, DefaultSFNSourceFile(lang))
@@ -69,7 +69,7 @@ var initCmd = &cobra.Command{
 			return
 		}
 		if err := file.PutContents(fname, contentTmpl); err != nil {
-			log.FailureStatusEvent(os.Stdout, "Write stream function into %s file failure with the error: %v", fname, err)
+			log.FailureStatusEvent(os.Stdout, "Write Serverless LLM Function into %s file failure with the error: %v", fname, err)
 			return
 		}
 		// create app test file
@@ -89,12 +89,12 @@ var initCmd = &cobra.Command{
 		// create .env
 		fname = filepath.Join(name, ".env")
 		if err := file.PutContents(fname, []byte(fmt.Sprintf("YOMO_SFN_NAME=%s\nYOMO_SFN_ZIPPER=localhost:9000\n", name))); err != nil {
-			log.FailureStatusEvent(os.Stdout, "Write stream function .env file failure with the error: %v", err)
+			log.FailureStatusEvent(os.Stdout, "Write Serverless LLM Function .env file failure with the error: %v", err)
 			return
 		}
 
-		log.SuccessStatusEvent(os.Stdout, "Congratulations! You have initialized the stream function successfully.")
-		log.InfoStatusEvent(os.Stdout, "You can enjoy the YoMo Stream Function via the command: ")
+		log.SuccessStatusEvent(os.Stdout, "Congratulations! You have initialized the Serverless LLM Function successfully.")
+		log.InfoStatusEvent(os.Stdout, "You can enjoy the YoMo Serverless LLM Function via the command: ")
 		log.InfoStatusEvent(os.Stdout, "\tcd %s && yomo run", name)
 	},
 }
@@ -102,6 +102,6 @@ var initCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(initCmd)
 
-	initCmd.Flags().StringVarP(&sfnType, "type", "t", "llm", "The type of Stream Function, support normal and llm")
-	initCmd.Flags().StringVarP(&lang, "lang", "l", "go", "The language of Stream Function, support go and node")
+	initCmd.Flags().StringVarP(&sfnType, "type", "t", "llm", "The type of Serverless LLM Function, support normal and llm")
+	initCmd.Flags().StringVarP(&lang, "lang", "l", "node", "The language of Serverless LLM Function, support go and node")
 }
