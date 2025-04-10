@@ -36,7 +36,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.35.0
 	golang.org/x/mod v0.24.0
 	golang.org/x/tools v0.32.0
-	google.golang.org/api v0.226.0
+	google.golang.org/api v0.228.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -46,7 +46,7 @@ require (
 	cloud.google.com/go/ai v0.10.1 // indirect
 	cloud.google.com/go/aiplatform v1.77.0 // indirect
 	cloud.google.com/go/auth v0.15.0 // indirect
-	cloud.google.com/go/auth/oauth2adapt v0.2.7 // indirect
+	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.6.0 // indirect
 	cloud.google.com/go/iam v1.4.2 // indirect
 	cloud.google.com/go/longrunning v0.6.6 // indirect
