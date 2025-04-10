@@ -7,7 +7,6 @@ import (
 	"os"
 
 	"github.com/yomorun/yomo/core/metadata"
-	"github.com/yomorun/yomo/core/ylog"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
@@ -23,12 +22,7 @@ import (
 var (
 	// ServiceName is the default service name for otel.
 	ServiceName = "yomo"
-	// globalClient is the global otel client.
-	globalClient otlptrace.Client
 )
-
-// GetGlobalClient return the global otel client.
-func GetGlobalClient() otlptrace.Client { return globalClient }
 
 // SetTracerProvider set otel tracer provider.
 // if enveronment BASELIME_API_KEY is set, the tracer provider will be baselime tracer provider.
@@ -36,30 +30,28 @@ func GetGlobalClient() otlptrace.Client { return globalClient }
 // This function set the global tracer provider by calling otel.SetTracerProvider(),
 // User also can set other tracer provider by calling otel.SetTracerProvider()
 func SetTracerProvider() {
-	var client otlptrace.Client
-
-	baselimeApiKey, ok := os.LookupEnv("BASELIME_API_KEY")
-	if ok {
-		client = otlptracehttp.NewClient(
-			otlptracehttp.WithEndpointURL("https://otel.baselime.io"),
-			otlptracehttp.WithHeaders(map[string]string{"x-api-key": baselimeApiKey}),
-		)
-		ylog.Info("set tracer provider: baselime")
-	}
-	if _, ok = os.LookupEnv("OTEL_EXPORTER_OTLP_ENDPOINT"); ok {
-		client = otlptracehttp.NewClient()
-		ylog.Info("set tracer provider: otlptracehttp")
-	}
+	client := NewClientFromEnv()
 	if client == nil {
 		otel.SetTracerProvider(noop.NewTracerProvider())
 		return
 	}
-
 	tp := NewTracerProviderFromClient(context.Background(), ServiceName, client)
 	otel.SetTracerProvider(tp)
 	otel.SetTextMapPropagator(propagation.TraceContext{})
+}
 
-	globalClient = client
+// NewClientFromEnv create otlptrace.Client from environment.
+func NewClientFromEnv() otlptrace.Client {
+	if baselimeApiKey, ok := os.LookupEnv("BASELIME_API_KEY"); ok {
+		return otlptracehttp.NewClient(
+			otlptracehttp.WithEndpointURL("https://otel.baselime.io"),
+			otlptracehttp.WithHeaders(map[string]string{"x-api-key": baselimeApiKey}),
+		)
+	}
+	if endpoint, ok := os.LookupEnv("OTEL_EXPORTER_OTLP_ENDPOINT"); ok {
+		return otlptracehttp.NewClient(otlptracehttp.WithEndpoint(endpoint))
+	}
+	return nil
 }
 
 // NewTracerProviderFromClient create tracer provider from otlptrace.Client.

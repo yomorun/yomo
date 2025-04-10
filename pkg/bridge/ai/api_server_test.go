@@ -121,6 +121,6 @@ func TestServer(t *testing.T) {
 		assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
 
 		body, _ := io.ReadAll(resp.Body)
-		assert.Equal(t, "{\"error\":{\"code\":\"400\",\"message\":\"invalid character 's' looking for beginning of value\"}}", string(body))
+		assert.Equal(t, "{\"error\":{\"code\":\"invalid_request_error\",\"message\":\"Invalid request: invalid character 's' looking for beginning of value\"}}\n", string(body))
 	})
 }
