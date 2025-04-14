@@ -58,7 +58,7 @@ func NewWrapper(functionName, entryTSFile string) (*NodejsWrapper, error) {
 	}
 
 	// set workdir
-	workdir := filepath.Dir(entryTSFile)
+	workdir := filepath.Dir(filepath.Dir(entryTSFile))
 
 	// set output dir
 	outputDir := filepath.Join(workdir, "dist")
@@ -130,7 +130,7 @@ func (w *NodejsWrapper) Build(env []string) error {
 	includePath := gjson.GetBytes(tsconfigData, "include")
 	if !includePath.Exists() {
 		// "include" doesn't exist, add it with .wrapper.ts
-		tsconfigData, err = sjson.SetBytes(tsconfigData, "include", []string{wrapperTS})
+		tsconfigData, err = sjson.SetBytes(tsconfigData, "include", []string{wrapperTS, "src/**/*.ts"})
 		if err != nil {
 			return fmt.Errorf("failed to modify tsconfig.json: %v", err)
 		}
@@ -151,6 +151,36 @@ func (w *NodejsWrapper) Build(env []string) error {
 		if !includeFound {
 			includeArray = append(includeArray, wrapperTS)
 			tsconfigData, err = sjson.SetBytes(tsconfigData, "include", includeArray)
+			if err != nil {
+				return fmt.Errorf("failed to modify tsconfig.json: %v", err)
+			}
+		}
+	}
+	// add `"exclude": ["node_modules"]` to tsconfig.json
+	excludePath := gjson.GetBytes(tsconfigData, "exclude")
+	if !excludePath.Exists() {
+		// "exclude" doesn't exist, add it with node_modules
+		tsconfigData, err = sjson.SetBytes(tsconfigData, "exclude", []string{"node_modules"})
+		if err != nil {
+			return fmt.Errorf("failed to modify tsconfig.json: %v", err)
+		}
+	} else {
+		// "exclude" exists, check if node_modules is already excluded
+		excludeArray := []string{}
+		for _, item := range excludePath.Array() {
+			excludeArray = append(excludeArray, item.String())
+		}
+		excludeFound := false
+		for _, item := range excludeArray {
+			if item == "node_modules" {
+				excludeFound = true
+				break
+			}
+		}
+		// if node_modules isn't found in the exclude array, append it
+		if !excludeFound {
+			excludeArray = append(excludeArray, "node_modules")
+			tsconfigData, err = sjson.SetBytes(tsconfigData, "exclude", excludeArray)
 			if err != nil {
 				return fmt.Errorf("failed to modify tsconfig.json: %v", err)
 			}
@@ -208,7 +238,7 @@ func (w *NodejsWrapper) Run(env []string) error {
 }
 
 func (w *NodejsWrapper) genWrapperTS(functionName, dstPath string) error {
-	baseFilename := "./" + filepath.Base(w.fileName)
+	baseFilename := "./src/" + filepath.Base(w.fileName)
 	entryTS := baseFilename + ".ts"
 
 	data := struct {

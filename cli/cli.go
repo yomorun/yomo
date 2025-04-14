@@ -18,7 +18,7 @@ import (
 // defaultSFNFile is the default serverless file name
 const (
 	defaultSFNSourceFile       = "app.go"
-	defaultSFNSourceTSFile     = "app.ts"
+	defaultSFNSourceTSFile     = "src/app.ts"
 	defaultSFNTestSourceFile   = "app_test.go"
 	defaultSFNTestSourceTSFile = "app_test.ts"
 	defaultSFNCompliedFile     = "sfn.yomo"

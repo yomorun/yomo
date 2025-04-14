@@ -46,7 +46,7 @@ var initCmd = &cobra.Command{
 			opts.Name = name
 		}
 		if name == "" {
-			log.FailureStatusEvent(os.Stdout, "Please input your app name, e.g. `yomo init my-app [-l node -t llm]`")
+			log.FailureStatusEvent(os.Stdout, "Please input your app name, e.g. `yomo init my-tool [-l node -t llm]`")
 			return
 		}
 		log.PendingStatusEvent(os.Stdout, "Initializing the Serverless LLM Function...")
