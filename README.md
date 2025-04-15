@@ -4,25 +4,26 @@
 
 # YoMo ![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg) [![codecov](https://codecov.io/gh/yomorun/yomo/branch/master/graph/badge.svg?token=MHCE5TZWKM)](https://codecov.io/gh/yomorun/yomo) [![Discord](https://img.shields.io/discord/770589787404369930.svg?label=discord&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/RMtNhx7vds)
 
-YoMo is an open-source LLM Function Calling Framework for building Geo-distributed AI applications.
-Built atop QUIC Transport Protocol and Stateful Serverless architecture, makes your AI application 
-low-latency, reliable, secure, and easy.
+YoMo is an open-source LLM Function Calling Framework for building Build Scalable and Ultra-Fast AI Agents
 
-💚 We care about: **Customer Experience in the Age of AI**
+💚 We care about: **Empowering Exceptional Customer Experiences in the Age of AI**
+
+We believe that seamless and responsive AI interactions are key to delivering outstanding customer experiences. YOMO is built with this principle at its core, focusing on speed, reliability, and scalability.
+
 
 ## 🌶 Features
 
 |    | **Features**                                                                                                 |
 | -- | ------------------------------------------------------------------------------------------------------------ |
-| ⚡️ | **Low-latency** Guaranteed by implementing atop QUIC [QUIC](https://datatracker.ietf.org/wg/quic/documents/) |
-| 🔐  | **Security** TLS v1.3 on every data packet by design                                                       |
-| 📸  | **Stateful Serverless** Make your GPU serverless 10x faster                    |
-| 🌎  | **Geo-Distributed Architecture** Brings AI inference closer to end users           |
-| 🚀  | **Y3** a [faster than real-time codec](https://github.com/yomorun/y3-codec-golang)                           |
+| ⚡️ | **Low-Latency** | Guaranteed by implementing atop the [QUIC Protocol](https://datatracker.ietf.org/wg/quic/documents/). Experience significantly faster communication for your AI agents. |
+| 🔐  | **Enhanced Security** | TLS v1.3 encryption is applied to every data packet by design, ensuring robust security for your AI agent communications. |
+| 🚀  | **Strongly-Typed LLM Function Calling** | Build robust LLM tools with confidence from easier unit testing and seamless combination of multiple function calling tools to create powerful AI agents. |
+| 📸  | **Effortless Serverless LLM Function Calling Management** | Simplify the entire lifecycle of building your LLM tools, from development to deployment. Minimizes operational overhead, allowing you focus on building innovative AI agent functionalities. |
+| 🌎  | **Geo-Distributed Architecture for Speed** | Bring AI inference and tools closer to your users with our globally distributed architecture, resulting in significantly faster response times and a superior user experience for your AI agents. |
 
 ## 🚀 Getting Started
 
-Let's implement a function calling with `sfn-currency-converter`:
+Let's implement a LLM Function Calling to get weather information `tool-get-weather`:
 
 ### Step 1. Install CLI
 
