@@ -9,9 +9,6 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
-
 	_ "embed"
 )
 
@@ -58,7 +55,7 @@ func NewWrapper(functionName, entryTSFile string) (*NodejsWrapper, error) {
 	}
 
 	// set workdir
-	workdir := filepath.Dir(entryTSFile)
+	workdir := filepath.Dir(filepath.Dir(entryTSFile))
 
 	// set output dir
 	outputDir := filepath.Join(workdir, "dist")
@@ -108,59 +105,7 @@ func (w *NodejsWrapper) Build(env []string) error {
 		return err
 	}
 
-	// 3. check tsconfig.json exist
-	tsconfigPath := filepath.Join(w.workDir, "tsconfig.json")
-	if _, err := os.Stat(tsconfigPath); os.IsNotExist(err) {
-		// not exist, create it using tsc --init
-		cmdTSCInit := exec.Command("tsc", "--init", "--outDir", "./dist")
-		cmdTSCInit.Dir = w.workDir
-		cmdTSCInit.Stdout = os.Stdout
-		cmdTSCInit.Stderr = os.Stderr
-		cmdTSCInit.Env = env
-		if err := cmdTSCInit.Run(); err != nil {
-			return err
-		}
-	}
-
-	// 4. check tsconfig include
-	tsconfigData, err := os.ReadFile(tsconfigPath)
-	if err != nil {
-		return fmt.Errorf("failed to read tsconfig.json: %v", err)
-	}
-	includePath := gjson.GetBytes(tsconfigData, "include")
-	if !includePath.Exists() {
-		// "include" doesn't exist, add it with .wrapper.ts
-		tsconfigData, err = sjson.SetBytes(tsconfigData, "include", []string{wrapperTS})
-		if err != nil {
-			return fmt.Errorf("failed to modify tsconfig.json: %v", err)
-		}
-	} else {
-		// "include" exists, check if .wrapper.ts is already included
-		includeArray := []string{}
-		for _, item := range includePath.Array() {
-			includeArray = append(includeArray, item.String())
-		}
-		includeFound := false
-		for _, item := range includeArray {
-			if item == wrapperTS {
-				includeFound = true
-				break
-			}
-		}
-		// if .wrapper.ts isn't found in the include array, append it
-		if !includeFound {
-			includeArray = append(includeArray, wrapperTS)
-			tsconfigData, err = sjson.SetBytes(tsconfigData, "include", includeArray)
-			if err != nil {
-				return fmt.Errorf("failed to modify tsconfig.json: %v", err)
-			}
-		}
-	}
-	if err := os.WriteFile(tsconfigPath, tsconfigData, 0644); err != nil {
-		return fmt.Errorf("failed to write tsconfig.json: %v", err)
-	}
-
-	// 5. compile ts file to js
+	// 4. compile ts file to js
 	cmd2 := exec.Command("tsc")
 	cmd2.Dir = w.workDir
 	cmd2.Stdout = os.Stdout
@@ -180,7 +125,7 @@ func (w *NodejsWrapper) Run(env []string) error {
 	bunPath, err := exec.LookPath("bun")
 	if err == nil {
 		// bun is installed, run the wrapper with bun
-		log.Println("Bun is installed, bun --version:")
+		log.Println("Bun is installed, check bun version")
 		cmd := exec.Command(bunPath, "--version")
 		cmd.Dir = w.workDir
 		cmd.Stdout = os.Stdout
@@ -208,7 +153,7 @@ func (w *NodejsWrapper) Run(env []string) error {
 }
 
 func (w *NodejsWrapper) genWrapperTS(functionName, dstPath string) error {
-	baseFilename := "./" + filepath.Base(w.fileName)
+	baseFilename := "./src/" + filepath.Base(w.fileName)
 	entryTS := baseFilename + ".ts"
 
 	data := struct {
@@ -237,7 +182,7 @@ func (w *NodejsWrapper) genWrapperTS(functionName, dstPath string) error {
 	return nil
 }
 
-// InitApp initializes the nodejs application
+// InitApp initializes the nodejs application by `npm init -y`
 func (w *NodejsWrapper) InitApp() error {
 	// init
 	cmd := exec.Command(w.npmPath, "init")
@@ -265,6 +210,7 @@ func (w *NodejsWrapper) InstallDeps() error {
 	if err != nil {
 		return fmt.Errorf("run %s failed: %v", cmd.String(), err)
 	}
+
 	// devDependencies
 	cmd = exec.Command(w.npmPath, "install", "-D", "@types/node", "ts-node")
 	cmd.Dir = w.workDir
@@ -274,6 +220,7 @@ func (w *NodejsWrapper) InstallDeps() error {
 	if err != nil {
 		return fmt.Errorf("run %s failed: %v", cmd.String(), err)
 	}
+
 	// add .gitignore file, and ignore node_modules/, dist/, .wrapper.ts
 	gitignore := filepath.Join(w.workDir, ".gitignore")
 	if _, err := os.Stat(gitignore); os.IsNotExist(err) {

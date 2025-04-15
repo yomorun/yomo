@@ -30,7 +30,7 @@ var buildCmd = &cobra.Command{
 	Short: "Build the YoMo Stream Function",
 	Long:  "Build the YoMo Stream Function",
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := parseFileArg(args, &opts, defaultSFNSourceFile); err != nil {
+		if err := parseFileArg(args, &opts, defaultSFNSourceTSFile); err != nil {
 			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			os.Exit(127)
 			// return

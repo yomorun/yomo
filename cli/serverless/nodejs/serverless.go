@@ -2,6 +2,7 @@
 package nodejs
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -25,18 +26,42 @@ func (s *nodejsServerless) Setup(opts *serverless.Options) error {
 	if err != nil {
 		return err
 	}
-	// init package.json
+
+	// create work dir
 	err = file.Mkdir(wrapper.workDir)
 	if err != nil {
 		log.FailureStatusEvent(os.Stdout, "Create work dir failed: %v", err)
 		return err
 	}
+
+	// generate tsconfig.json
+	tsconfigPath := filepath.Join(wrapper.workDir, "tsconfig.json")
+	if _, err := os.Stat(tsconfigPath); os.IsNotExist(err) {
+		tsconfigContent := `{
+  "compilerOptions": {
+    "target": "esNext",
+    "module": "commonjs",
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "outDir": "dist",
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*", ".wrapper.ts"],
+  "exclude": ["node_modules"]
+}`
+		if err := os.WriteFile(tsconfigPath, []byte(tsconfigContent), 0644); err != nil {
+			return fmt.Errorf("failed to write tsconfig.json: %v", err)
+		}
+	}
+
+	// generate package.json
 	if !file.Exists(filepath.Join(wrapper.workDir, "package.json")) {
 		err = wrapper.InitApp()
 		if err != nil {
 			return err
 		}
 	}
+
 	// install dependencies
 	err = wrapper.InstallDeps()
 	if err != nil {
