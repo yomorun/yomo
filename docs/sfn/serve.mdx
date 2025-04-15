@@ -1,0 +1,122 @@
+---
+title: yomo serve
+description: "Start LLM Bridge and expose MCP server"
+icon: 'code'
+---
+
+## Usage
+
+Zipper can be started by the following command:
+
+```bash
+yomo serve -c zipper.yaml
+```
+
+the `zipper.yaml` is a YAML file, which contains the configuration of the Zipper:
+
+```yaml zipper.yaml
+name: llm-bridge
+host: 0.0.0.0
+port: 9000
+
+auth:
+ type: token
+ token: YOUR_SECRET
+
+bridge:
+  ai:
+    server:
+      addr: localhost:9000
+      provider: vllm
+
+    providers:
+      vllm:
+        api_endpoint: http://127.0.0.1:9999/v1
+        api_key: <api_key>
+        model: deepseek-ai/DeepSeek-R1-Distill-Llama-70B
+
+      ollama:
+        api_endpoint: http://localhost:11434
+
+      openai:
+        api_key: <sk-proj->
+        model: gpt-4.1
+
+      gemini:
+        api_key: <api_key>
+
+      anthropic:
+        api_key: <sk-ant-api03-key>
+        model: claude-3.7-sonnet
+
+      vertexai:
+        project_id: <gcp_project_id>
+        credentials_file: <gcp_credential_json_file>
+        model: gemini-2.5-pro-preview-03-25
+        location: us-central1
+
+      azopenai:
+        api_endpoint: https://c3y.openai.azure.com
+        deployment_id: <deployment_id>
+        api_key: <api_key>
+        api_version: 2024-06-01
+
+      xai:
+        api_key: <xai-key>
+        model: grok-beta
+
+      githubmodels:
+        api_key: <ghp_key>
+
+      cloudflare_azure:
+        endpoint: https://gateway.ai.cloudflare.com/v1/<cf-id>/ai-test
+        api_key: <api_key>
+        resource: <resource>
+        deployment_id: <deployment_id>
+        api_version: 2024-05-13
+
+      cloudflare_openai:
+        endpoint: https://gateway.ai.cloudflare.com/v1/<cf-id>/ai-test
+        api_key: <sk-proj->
+        model: gpt-4.1
+```
+
+## Configuration
+
+### General Config
+
+- `name` - the name of the Zipper, it is used to identify the Zipper in the network.
+- `host` - the IP address zipper listens on, default value is `0.0.0.0`.
+- `port` - the port zipper listens on, default value is `9000`. Becareful, YoMo relies on QUIC protocol, which is a UDP based protocol, so this port should be allow UDP ingress.
+
+### Auth Config
+
+- `auth` - provides the credential for the Zipper, it is used to authenticate the [Source][source] and [StreamFunction][sfn] when they connect to this Zipper.
+  - `type` - the type of the credential, currently only `token` is supported.
+  - `token` - the credential, it is a string.
+
+### LLM Bridge
+
+- `bridge` - the LLM Bridge config, it contains the config of the LLM Bridge.
+  - `ai` - the name of the LLM Bridge, it is used to identify the LLM Bridge in the network.
+  - `server` - the config of the server, it contains the address and provider of the server.
+    - `addr` - the address of the server, it is used to connect to the server.
+    - `provider` - the provider of the server, it is used to identify the server in the network.
+  - `providers` - the config of the providers, it contains the config of the providers.
+
+Currently, the following providers are supported:
+
+- [vllm](https://docs.vllm.ai)
+- [ollama](https://ollama.com/)
+- [openai](https://openai.com)
+- [gemini](https://gemini.google/assistant/)
+- [anthropic](https://www.anthropic.com/)
+- [Vertex AI](https://cloud.google.com/vertex-ai)
+- [azopenai](https://learn.microsoft.com/en-us/azure/ai-services/openai/)
+- [xai](https://x.ai/)
+- [githubmodels](https://docs.github.com/en/github-models/prototyping-with-ai-models)
+- [cloudflare ai gateway](https://developers.cloudflare.com/ai-gateway/)
+
+## Self-Hosting Zipper Service
+
+[sfn]: /sfn/intro

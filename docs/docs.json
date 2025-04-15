@@ -1,0 +1,96 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "YoMo",
+  "colors": {
+    "primary": "#19428B",
+    "light": "#07C983",
+    "dark": "#15803D"
+  },
+  "favicon": "/favicon.ico",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Guides",
+        "groups": [
+          {
+            "group": "Introduction",
+            "pages": [
+              "introduction",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Serverless LLM Function Calling",
+            "pages": [
+              "sfn/intro",
+              "sfn/init",
+              "sfn/run",
+              "sfn/serve"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "API Documentation",
+            "pages": [
+              "api-ref/intro"
+            ]
+          },
+          {
+            "group": "Endpoint Examples",
+            "pages": [
+              "api-ref/endpoint/post"
+            ]
+          }
+        ]
+      }
+    ],
+    "global": {
+      "anchors": [
+        {
+          "anchor": "Documentation",
+          "href": "https://yomo.run",
+          "icon": "book-open-cover"
+        },
+        {
+          "anchor": "Community",
+          "href": "https://yomo.run/community",
+          "icon": "slack"
+        },
+        {
+          "anchor": "Github",
+          "href": "https://github.com/yomorun/yomo",
+          "icon": "github"
+        }
+      ]
+    }
+  },
+  "logo": {
+    "light": "/images/yomo-logo.png",
+    "dark": "/images/yomo-logo.png"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Support",
+        "href": "mailto:cc@yomo.run"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Github",
+      "href": "https://github.com/yomorun/yomo"
+    }
+  },
+  "footer": {
+    "socials": {
+      "x": "https://x.com/yomorunhq",
+      "github": "https://github.com/yomorun",
+      "linkedin": "https://linkedin.com/company/allegro"
+    }
+  }
+}

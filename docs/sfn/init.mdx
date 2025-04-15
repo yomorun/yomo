@@ -1,0 +1,65 @@
+---
+title: yomo init
+description: "Generate a LLM Function Calling"
+icon: 'code'
+---
+
+## Usage
+
+```bash
+yomo init [flags] tool-name
+```
+
+## Flags
+
+- `-n` or `--name`: Set the name of the LLM Function Calling.
+
+## Example
+
+```sh {1}
+ᐅ yomo init tool-get-weather
+
+⌛  Initializing the Stream Function...
+✅  Congratulations! You have initialized the stream function successfully.
+
+ᐅ cd tool-get-weather
+
+ᐅ tree . 
+
+drwxr-xr-x@   - c3ylabs 15 Apr 10:00 tool-get-weather
+.rw-r--r--@  53 c3ylabs 15 Apr 10:00 ├── .env
+.rw-r--r--@  32 c3ylabs 15 Apr 10:00 ├── .gitignore
+.rw-r--r--@ 391 c3ylabs 15 Apr 10:00 ├── package.json
+.rw-r--r--@ 14k c3ylabs 15 Apr 10:00 ├── pnpm-lock.yaml
+drwxr-xr-x@   - c3ylabs 15 Apr 10:00 ├── src
+.rw-r--r--@ 612 c3ylabs 15 Apr 10:00 │   └── app.ts
+.rw-r--r--@ 266 c3ylabs 15 Apr 10:00 └── tsconfig.json
+```
+
+The `src/app.ts` will be like:
+
+```typescript
+export const description = 'Get the current weather for `city_name`'
+
+// For jsonschema in TypeScript, see: https://github.com/YousefED/typescript-json-schema
+export type Argument = {
+  /**
+   * The name of the city to be queried
+   */
+  city_name: string;
+}
+
+async function getWeather(city_name: string) {
+  // Simulate a weather API call
+  let tempraure = Math.floor(Math.random() * 41)
+  console.log(`get weather for ${city_name} with temperature ${tempraure}°C`)
+  return { city_name: city_name, temperature: tempraure }
+}
+
+export async function handler(args: Argument) {
+  const result = await getWeather(args.city_name)
+  return result
+}
+```
+
+Now, just execute [yomo run](./run), it works!
