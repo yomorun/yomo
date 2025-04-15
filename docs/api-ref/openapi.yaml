@@ -1,0 +1,172 @@
+openapi: 3.0.0
+info:
+  title: LLM Bridge API with OpenAI API compitable
+  description: API reference for YoMo LLM Bridge
+  version: 1.0.0
+servers:
+  - url: http://localhost:9000/
+    description: Local development server
+paths:
+  /v1/chat/completions:
+    post:
+      operationId: createChatCompletion
+      summary: Create a chat completion
+      description: |
+        Creates a completion for the chat message
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateChatCompletionRequest"
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateChatCompletionResponse"
+components:
+  schemas:
+    CreateChatCompletionRequest:
+      allOf:
+        - $ref: "#/components/schemas/CreateModelResponseProperties"
+    CreateChatCompletionResponse:
+      type: object
+      description: |
+        Represents a chat completion response returned by model, based on
+        the provided input.
+      properties:
+        id:
+          type: string
+          description: A unique identifier for the chat completion.
+        object:
+          type: string
+          enum: [chat.completion]
+          description: The object type, which is always "chat.completion"
+        created:
+          type: integer
+          description: The Unix timestamp (in seconds) of when the chat completion was created.
+        model:
+          type: string
+          description: The model used for the chat completion.
+        choices:
+          type: array
+          description: A list of chat completion choices.
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+                description: The index of the choice in the list of choices.
+              message:
+                $ref: "#/components/schemas/ChatCompletionResponseMessage"
+              finish_reason:
+                type: string
+                enum: [stop, length, function_call, content_filter, tool_calls]
+                description: The reason the chat completion finished.
+        usage:
+          $ref: "#/components/schemas/CompletionUsage"
+      required:
+        - choices
+        - object
+    ChatCompletionResponseMessage:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [assistant]
+          description: The role of the message sender, always "assistant" for responses.
+        content:
+          type: string
+          nullable: true
+          description: The content of the message.
+      required:
+        - role
+    CompletionUsage:
+      type: object
+      properties:
+        prompt_tokens:
+          type: integer
+          description: Number of tokens in the prompt.
+        completion_tokens:
+          type: integer
+          description: Number of tokens in the completion.
+        total_tokens:
+          type: integer
+          description: Total number of tokens used (prompt + completion).
+    CreateModelResponseProperties:
+      type: object
+      properties:
+        model:
+          type: string
+          description: ID of the model to use.
+        messages:
+          type: array
+          description: A list of messages comprising the conversation so far.
+          items:
+            $ref: "#/components/schemas/ChatCompletionRequestMessage"
+        temperature:
+          type: number
+          minimum: 0
+          maximum: 2
+          default: 1
+          description: What sampling temperature to use, between 0 and 2.
+        top_p:
+          type: number
+          minimum: 0
+          maximum: 1
+          default: 1
+          description: An alternative to sampling with temperature, called nucleus sampling
+        stream:
+          type: boolean
+          default: false
+          description: If set, partial message deltas will be sent.
+      required:
+        - messages
+    ChatCompletionRequestMessage:
+      oneOf:
+        - $ref: "#/components/schemas/ChatCompletionRequestSystemMessage"
+        - $ref: "#/components/schemas/ChatCompletionRequestUserMessage"
+        - $ref: "#/components/schemas/ChatCompletionRequestAssistantMessage"
+    ChatCompletionRequestSystemMessage:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [system]
+          description: The role of the message sender, "system" in this case.
+        content:
+          type: string
+          description: The content of the message.
+      required:
+        - role
+        - content
+    ChatCompletionRequestUserMessage:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [user]
+          description: The role of the message sender, "user" in this case.
+        content:
+          type: string
+          description: The content of the message.
+      required:
+        - role
+        - content
+    ChatCompletionRequestAssistantMessage:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [assistant]
+          description: The role of the message sender, "assistant" in this case.
+        content:
+          type: string
+          nullable: true
+          description: The content of the message.
+      required:
+        - role
+security:
+  - ApiKeyAuth: []

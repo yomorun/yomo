@@ -1,8 +1,0 @@
-{
-  "index": "Overview",
-  "sfn": "yomo init <function>",
-  "dev": "yomo dev <serverless>",
-  "build": "yomo build <function>",
-  "run": "yomo run <serverless>",
-  "zipper": "yomo serve <zipper>"
-}

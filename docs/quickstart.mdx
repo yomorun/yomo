@@ -1,0 +1,51 @@
+<Steps>
+  <Step title="Install CLI">
+  ```sh
+  curl -fsSL "https://get.yomo.run" | sh
+  ```
+  </Step>
+  <Step title="Initialize a LLM Function">
+  ```sh
+  yomo init tool-get-weather
+  ```
+
+an example llm function calling will be created in the `ool-get-weather` directory:
+
+```sh
+$ tree ool-get-weather
+drwxr-xr-x@   - c3ylabs 15 Apr 10:00 tool-get-weather
+.rw-r--r--@  53 c3ylabs 15 Apr 10:00 ├── .env
+.rw-r--r--@  32 c3ylabs 15 Apr 10:00 ├── .gitignore
+.rw-r--r--@ 391 c3ylabs 15 Apr 10:00 ├── package.json
+.rw-r--r--@ 14k c3ylabs 15 Apr 10:00 ├── pnpm-lock.yaml
+drwxr-xr-x@   - c3ylabs 15 Apr 10:00 ├── src
+.rw-r--r--@ 612 c3ylabs 15 Apr 10:00 │   └── app.ts
+.rw-r--r--@ 266 c3ylabs 15 Apr 10:00 └── tsconfig.json
+```
+
+  </Step>
+  <Step title="Run YoMo Server and expose MCP server">
+```sh
+yomo serve
+```
+
+The output will be like:
+
+```sh 
+3:14PM INF Starting YoMo Zipper...
+3:14PM INF using config file service=zipper zipper_name=ai-zipper file_path=/Users/fanweixiao/tmp/yomo.config.ai.bridge.yaml
+3:14PM INF listening SIGUSR1, SIGUSR2, SIGTERM/SIGINT...
+3:14PM INF register LLM providers num=11
+3:14PM INF start AI Bridge service service=llm-bridge addr=localhost:9000 provider=vllm
+3:14PM INF zipper is up and running service=zipper zipper_name=ai-zipper zipper_addr=[::]:9000 pid=34882 quic="[v1 v2]" auth_name=[none]
+```
+  </Step>
+  <Step title="Start the serverless LLM function">
+  ```sh
+  yomo run
+  ```
+  <Note>Press `Ctrl-C` to stop the Serverless LLM Function.</Note>
+
+  </Step>
+
+</Steps>

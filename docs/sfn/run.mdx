@@ -1,0 +1,41 @@
+---
+title: yomo run
+description: "Start a Serverless LLM Function"
+icon: 'code'
+---
+
+## Usage
+
+```bash
+yomo run [flags] tool-name
+```
+
+## Flags
+
+- `-d, --credential`: Set the credential when connecting to [Zipper][zipper].
+- `-n, --name`: Set the name of the Serverless LLM Function, it should match the specific name in [Zipper][zipper] config file.
+- `-r, --runtime`: Set the runtime of the Serverless LLM Function, default is `node`, also support `go`
+- `-z, --zipper`: Set the address of [Zipper][zipper] to connect.
+
+## Example
+
+Follow [last tutorial: yomo init](./init), we created a LLM Function Calling `tool-get-weahter`, now we will run it with `yomo run` command.
+
+```bash {1}
+ᐅ yomo run -z localhost:9000 -n get-weather
+
+ℹ️  YoMo Serverless LLM Function file: /Users/fanweixiao/tmp/cccc/333/src/app.ts
+⌛  Creating YoMo Serverless LLM Function instance...
+Lockfile is up to date, resolution step is skipped
+Already up to date
+Done in 208ms using pnpm v10.8.0
+ℹ️  Starting YoMo Serverless LLM Function instance, connecting to zipper: localhost:9000
+ℹ️  Serverless LLM Function is running...
+2025/04/15 15:14:50 Bun is installed, bun version: 1.2.9
+3:14PM INF connected to zipper service=stream-function sfn_id=CPwVS0v5nw_7d9UwbuJao sfn_name=get-weather zipper_addr=localhost:9000
+ℹ️  [get-weather] waiting request...
+```
+
+The source code of this example can be found at [Github](https://github.com/yomorun/llm-function-calling-examples/)
+
+[zipper]: ./serve
