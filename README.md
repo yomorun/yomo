@@ -73,7 +73,7 @@ yomo serve -c my-agent.yaml
 
 ### Step 3. Implement the LLM Function Calling
 
-Create a type-safe function that grounding weather data:
+Create a type-safe function that retrieves weather data:
 
 ```typescript
 export const description = 'Get the current weather for `city`'
