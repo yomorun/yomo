@@ -53,7 +53,7 @@ auth:
 bridge:
   ai:
     server:
-      addr: 0.0.0.0:9000 ## OpenAI API compitable endpoint
+      addr: 0.0.0.0:9000 ## OpenAI API compatible endpoint
       provider: vllm     ## llm to use
 
     providers:
