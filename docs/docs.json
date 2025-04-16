@@ -1,13 +1,12 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
   "name": "YoMo",
-  "colors": {
-    "primary": "#19428B",
-    "light": "#07C983",
-    "dark": "#15803D"
-  },
+  "description": "The YoMo Documentation, a serverless LLM function calling framework, enabling developers to build and deploy ai agents with MCP fast and easily.",
   "favicon": "/favicon.ico",
+  "theme": "willow",
+  "colors" : {
+    "primary": "#007FFF"
+  },
   "navigation": {
     "tabs": [
       {
@@ -58,8 +57,8 @@
         },
         {
           "anchor": "Community",
-          "href": "https://yomo.run/community",
-          "icon": "slack"
+          "href": "https://discord.gg/RMtNhx7vds",
+          "icon": "discord"
         },
         {
           "anchor": "Github",
@@ -88,7 +87,7 @@
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/yomorunhq",
+      "x": "https://x.com/yomohq",
       "github": "https://github.com/yomorun",
       "linkedin": "https://linkedin.com/company/allegro"
     }
