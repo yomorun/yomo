@@ -6,12 +6,13 @@ import (
 
 	"github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
+	"github.com/yomorun/yomo/core/ylog"
 )
 
 func TestResponseWriter(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
-	w := NewResponseWriter(recorder)
+	w := NewResponseWriter(recorder, ylog.NewFromConfig(ylog.Config{}))
 
 	h := w.SetStreamHeader()
 

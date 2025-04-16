@@ -2,8 +2,11 @@ package ai
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
+	"reflect"
 	"time"
 
 	openai "github.com/sashabaranov/go-openai"
@@ -23,6 +26,8 @@ type EventResponseWriter interface {
 	WriteStreamEvent(any) error
 	// WriteStreamDone writes the done event to the underlying ResponseWriter.
 	WriteStreamDone() error
+	// InterceptError intercepts the error and returns the error body for responding.
+	InterceptError(code int, err error) (int, ErrorResponseBody)
 }
 
 // StreamRecorder records the stream status of the ResponseWriter.
@@ -46,13 +51,15 @@ var _ EventResponseWriter = (*responseWriter)(nil)
 // responseWriter is a wrapper for http.ResponseWriter.
 // It is used to add TTFT and Err to the response.
 type responseWriter struct {
+	logger *slog.Logger
 	recorder
 	underlying http.ResponseWriter
 }
 
 // NewResponseWriter returns a new ResponseWriter.
-func NewResponseWriter(w http.ResponseWriter) EventResponseWriter {
+func NewResponseWriter(w http.ResponseWriter, logger *slog.Logger) EventResponseWriter {
 	return &responseWriter{
+		logger:     logger,
 		underlying: w,
 	}
 }
@@ -60,6 +67,23 @@ func NewResponseWriter(w http.ResponseWriter) EventResponseWriter {
 // SetStreamHeader sets the stream headers of the underlying ResponseWriter.
 func (w *responseWriter) SetStreamHeader() http.Header {
 	return SetStreamHeader(w.underlying)
+}
+
+// WriteError writes an error to the underlying ResponseWriter.
+func (w *responseWriter) InterceptError(code int, err error) (int, ErrorResponseBody) {
+	pcode, codeString, errString := parseCodeError(err)
+
+	w.logger.Error("bridge server error", "err", errString, "err_type", reflect.TypeOf(err).String())
+
+	if pcode == 0 {
+		return code, ErrorResponseBody{
+			Code:    http.StatusText(code),
+			Message: err.Error()}
+	}
+	return pcode, ErrorResponseBody{
+		Code:    codeString,
+		Message: errString,
+	}
 }
 
 // WriteStreamEvent writes the event to the underlying ResponseWriter follow the OpenAI API spec.
@@ -77,9 +101,9 @@ func (w *responseWriter) WriteStreamEvent(e any) error {
 		}
 		w.Flush()
 	case []openai.ToolCall:
-		// do nothing here to keep the responseWriter consistent with the OpenAI API spec.
+		w.logger.Debug("tool calls", "tool_calls", event)
 	case []ToolCallResult:
-		// do nothing here to keep the responseWriter consistent with the OpenAI API spec.
+		w.logger.Debug("tool results", "tool_results", event)
 	}
 	return nil
 }
@@ -126,4 +150,62 @@ func SetStreamHeader(w http.ResponseWriter) http.Header {
 	h.Set("Cache-Control", "no-cache, must-revalidate")
 	h.Set("x-content-type-options", "nosniff")
 	return h
+}
+
+// ErrorResponse is the response for error, almost follow the OpenAI API spec.
+type ErrorResponse struct {
+	Error ErrorResponseBody `json:"error"`
+}
+
+// ErrorResponseBody is the main content for ErrorResponse.
+type ErrorResponseBody struct {
+	Code    string `json:"code,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
+// Error implements the error interface for ErrorResponseBody.
+func (e ErrorResponseBody) Error() string {
+	return e.Message
+}
+
+// RespondWithError writes an error to response according to the OpenAI API spec.
+func RespondWithError(w EventResponseWriter, code int, err error) error {
+	newCode, errBody := w.InterceptError(code, err)
+	w.RecordError(errBody)
+
+	if newCode != 0 {
+		code = newCode
+	}
+	w.WriteHeader(code)
+	return json.NewEncoder(w).Encode(&ErrorResponse{Error: errBody})
+
+}
+
+// parseCodeError returns the status code, error code string and error message string.
+func parseCodeError(err error) (code int, codeString string, message string) {
+	switch e := err.(type) {
+	// bad request
+	case *json.SyntaxError:
+		return http.StatusBadRequest, "invalid_request_error", fmt.Sprintf("Invalid request: %s", e.Error())
+	case *json.UnmarshalTypeError:
+		return http.StatusBadRequest, "invalid_request_error", fmt.Sprintf("Invalid type for `%s`: expected a %s, but got a %s", e.Field, e.Type.String(), e.Value)
+
+	case *openai.APIError:
+		// handle azure api error
+		if e.InnerError != nil {
+			return e.HTTPStatusCode, e.InnerError.Code, e.Message
+		}
+		// handle openai api error
+		eCode, ok := e.Code.(string)
+		if ok {
+			return e.HTTPStatusCode, eCode, e.Message
+		}
+		codeString = e.Type
+		return
+
+	case *openai.RequestError:
+		return e.HTTPStatusCode, e.HTTPStatus, string(e.Body)
+	}
+
+	return code, reflect.TypeOf(err).Name(), err.Error()
 }
