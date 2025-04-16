@@ -87,11 +87,11 @@ export type Argument = {
 
 export async function handler(args: Argument) {
   // Simulate a weather API call
-  let tempraure = Math.floor(Math.random() * 41)
+  let temperature = Math.floor(Math.random() * 41)
   // Return the result to LLM
   return { 
     city: args.city, 
-    temperature: tempraure,
+    temperature: temperature,
     feels_like: 11.9,
     rain: false,
   }
