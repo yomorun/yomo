@@ -4,25 +4,25 @@
 
 # YoMo ![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg) [![codecov](https://codecov.io/gh/yomorun/yomo/branch/master/graph/badge.svg?token=MHCE5TZWKM)](https://codecov.io/gh/yomorun/yomo) [![Discord](https://img.shields.io/discord/770589787404369930.svg?label=discord&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/RMtNhx7vds)
 
-YoMo is an open-source LLM Function Calling Framework for building Geo-distributed AI applications.
-Built atop QUIC Transport Protocol and Stateful Serverless architecture, makes your AI application 
-low-latency, reliable, secure, and easy.
+YoMo is an open-source LLM Function Calling Framework for building scalable and ultra-fast AI Agents.
+💚 We care about: **Empowering Exceptional Customer Experiences in the Age of AI**
 
-💚 We care about: **Customer Experience in the Age of AI**
+We believe that seamless and responsive AI interactions are key to delivering outstanding customer experiences. YoMo is built with this principle at its core, focusing on speed, reliability, and scalability.
+
 
 ## 🌶 Features
 
-|    | **Features**                                                                                                 |
-| -- | ------------------------------------------------------------------------------------------------------------ |
-| ⚡️ | **Low-latency** Guaranteed by implementing atop QUIC [QUIC](https://datatracker.ietf.org/wg/quic/documents/) |
-| 🔐  | **Security** TLS v1.3 on every data packet by design                                                       |
-| 📸  | **Stateful Serverless** Make your GPU serverless 10x faster                    |
-| 🌎  | **Geo-Distributed Architecture** Brings AI inference closer to end users           |
-| 🚀  | **Y3** a [faster than real-time codec](https://github.com/yomorun/y3-codec-golang)                           |
+|    | **Features** |    |
+| -- | ------------ | -- |
+| ⚡️ | **Low-Latency MCP** | Guaranteed by implementing atop the [QUIC Protocol](https://datatracker.ietf.org/wg/quic/documents/). Experience significantly faster communication between AI agents and MCP server. |
+| 🔐  | **Enhanced Security** | TLS v1.3 encryption is applied to every data packet by design, ensuring robust security for your AI agent communications. |
+| 🚀  | **Strongly-Typed Language** | Build robust AI agents with complete confidence through type-safe function calling, enhanced error detection, and seamless integration capabilities. Type safety prevents runtime errors, simplifies testing, and enables IDE auto-completion. Currently support TypeScript and Go. |
+| 📸  | **Effortless Serverless DevOps** | Streamline the entire lifecycle of your LLM tools, from development to deployment. Significantly reduces operational overhead, allowing you to focus exclusively on creating innovative AI agent functionalities. |
+| 🌎  | **Geo-Distributed Architecture** | Bring AI inference and tools closer to your users with our globally distributed architecture, resulting in significantly faster response times and a superior user experience for your AI agents. |
 
 ## 🚀 Getting Started
 
-Let's implement a function calling with `sfn-currency-converter`:
+Let's build a simple AI agent with LLM Function Calling to provide weather information:
 
 ### Step 1. Install CLI
 
@@ -30,7 +30,7 @@ Let's implement a function calling with `sfn-currency-converter`:
 curl -fsSL https://get.yomo.run | sh
 ```
 
-Verify if the CLI was installed successfully
+Verify the installation:
 
 ```bash
 yomo version
@@ -38,10 +38,10 @@ yomo version
 
 ### Step 2. Start the server
 
-Prepare the configuration as `my-agent.yaml`
+Create a configuration file `my-agent.yaml`:
 
 ```yaml
-name: ai-zipper
+name: my-agent
 host: 0.0.0.0
 port: 9000
 
@@ -52,136 +52,98 @@ auth:
 bridge:
   ai:
     server:
-      addr: 0.0.0.0:8000 ## Restful API endpoint
-      provider: openai ## LLM API Service we will use
+      addr: 0.0.0.0:9000 ## OpenAI API compatible endpoint
+      provider: vllm     ## llm to use
 
     providers:
-      azopenai:
-        api_endpoint: https://<RESOURCE>.openai.azure.com
-        deployment_id: <DEPLOYMENT_ID>
-        api_key: <API_KEY>
-        api_version: <API_VERSION>
+      vllm:
+        api_endpoint: http://127.0.0.1:8000/v1
+        model: meta-llama/Llama-4-Scout-17B-16E-Instruct
 
-      openai:
-        api_key: sk-xxxxxxxxxxxxxxxxxxxxxxxxxxx
-        model: gpt-4-1106-preview
-
-      gemini:
-        api_key: <GEMINI_API_KEY>
-
-      cloudflare_azure:
-        endpoint: https://gateway.ai.cloudflare.com/v1/<CF_GATEWAY_ID>/<CF_GATEWAY_NAME>
-        api_key: <AZURE_API_KEY>
-        resource: <AZURE_OPENAI_RESOURCE>
-        deployment_id: <AZURE_OPENAI_DEPLOYMENT_ID>
-        api_version: 2023-12-01-preview
+      ollama:
+        api_endpoint: http://localhost:11434
 ```
 
-Start the server:
+Launch the server:
 
 ```sh
-YOMO_LOG_LEVEL=debug yomo serve -c my-agent.yaml
+yomo serve -c my-agent.yaml
 ```
 
-### Step 3. Write the function
+### Step 3. Implement the LLM Function Calling
 
-First, let's define what this function do and how's the parameters required, these will be combined to prompt when invoking LLM.
+Create a type-safe function that retrieves weather data:
 
-```golang
-type Parameter struct {
-	Domain string `json:"domain" jsonschema:"description=Domain of the website,example=example.com"`
+```typescript
+export const description = 'Get the current weather for `city`'
+
+export type Argument = {
+  /**
+   * The name of the city to be queried
+   */
+  city: string;
 }
 
-func Description() string {
-	return `if user asks ip or network latency of a domain, you should return the result of the giving domain. try your best to dissect user expressions to infer the right domain names`
-}
-
-func InputSchema() any {
-	return &Parameter{}
+export async function handler(args: Argument) {
+  // Simulate a weather API call
+  let temperature = Math.floor(Math.random() * 41)
+  // Return the result to LLM
+  return { 
+    city: args.city, 
+    temperature: temperature,
+    feels_like: 11.9,
+    rain: false,
+  }
 }
 ```
 
-Create a Stateful Serverless Function to get the IP and Latency of a domain:
-
-```golang
-func Handler(ctx serverless.Context) {
-	var msg Parameter
-	ctx.ReadLLMArguments(&msg)
-
-	// get ip of the domain
-	ips, _ := net.LookupIP(msg.Domain)
-
-	// get ip[0] ping latency
-	pinger, _ := ping.NewPinger(ips[0].String())
-	pinger.Count = 3
-	pinger.Run()
-	stats := pinger.Statistics()
-
-	val := fmt.Sprintf("domain %s has ip %s with average latency %s", msg.Domain, ips[0], stats.AvgRtt)
-	ctx.WriteLLMResult(val)
-}
-
-```
-
-Finally, let's run it
+Finished, now, let's run it:
 
 ```bash
-$ yomo run app.go
-
-time=2024-03-19T21:43:30.583+08:00 level=INFO msg="connected to zipper" component=StreamFunction sfn_id=B0ttNSEKLSgMjXidB11K1 sfn_name=fn-get-ip-from-domain zipper_addr=localhost:9000
-time=2024-03-19T21:43:30.584+08:00 level=INFO msg="register ai function success" component=StreamFunction sfn_id=B0ttNSEKLSgMjXidB11K1 sfn_name=fn-get-ip-from-domain zipper_addr=localhost:9000 name=fn-get-ip-from-domain tag=16
+$ yomo run -n get-weather
 ```
 
 ### Done, let's have a try
 
 ```sh
-$ curl -i http://127.0.0.1:9000/v1/chat/completions -H "Content-Type: application/json" -d '{
+$ curl http://127.0.0.1:9000/v1/chat/completions \
+-H "Content-Type: application/json" \
+-H "Authorization: Bearer SECRET_TOKEN" \
+-d '{
   "messages": [
     {
-      "role": "system",
-      "content": "You are a test assistant."
-    },
-    {
       "role": "user",
-      "content": "Compare website speed between Nike and Puma"
+      "content": "I am going for a hike on the Yarra Bend Park Loop. What should I wear?"
     }
   ],
   "stream": false
 }'
-
-HTTP/1.1 200 OK
-Content-Length: 944
-Connection: keep-alive
-Content-Type: application/json
-Date: Tue, 19 Mar 2024 13:30:14 GMT
-Keep-Alive: timeout=4
-Proxy-Connection: keep-alive
-
-{
-  "Content": "Based on the data provided for the domains nike.com and puma.com which include IP addresses and average latencies, we can infer the following about their website speeds:
-  - Nike.com has an IP address of 13.225.183.84 with an average latency of 65.568333 milliseconds.
-  - Puma.com has an IP address of 151.101.194.132 with an average latency of 54.563666 milliseconds.
-  
-  Comparing these latencies, Puma.com is faster than Nike.com as it has a lower average latency. 
-  
-  Please be aware, however, that website speed can be influenced by many factors beyond latency, such as server processing time, content size, and delivery networks among others. To get a more comprehensive understanding of website speed, you would need to consider additional metrics and possibly conductreal-time speed tests.",
-  "FinishReason": "stop"
-}
 ```
 
-### Full Example Code
+You'll receive a helpful response like this:
 
-[Full LLM Function Calling Codes](./example/10-ai/)
+```
+For your hike on the Yarra Bend Park Loop, the current weather is clear with a temperature of approximately 12.3°C (feels like 11.9°C). 
+
+Here are some suggestions on what to wear: 
+
+1. **Layers**: Start with a base layer such as a moisture-wicking t-shirt. Add a light sweater or fleece for warmth since it can be chilly. 
+2. **Jacket**: Bring a lightweight jacket or windbreaker to keep warm, especially as it is breezy with a southeast wind at 6 km/h with gusts up to 14 km/h. 
+3. **Pants**: Comfortable hiking pants or leggings will be suitable. 
+4. **Footwear**: Wear sturdy hiking boots or shoes with good grip. 
+5. **Accessories**: Consider a hat or beanie for warmth, and bring gloves if you tend to get cold easily. 
+6. **Backpack**: Carry a small backpack with water, snacks, and any additional layers you might need. 
+
+Since there is **no rain** expected, you shouldn't need waterproof gear, but it's always wise to check the latest forecast before heading out. Enjoy your hike!
+```
+
+### Explore More Examples
+
+Check out our [Servereless LLM Function Calling Examples](https://github.com/yomorun/llm-function-calling-examples) for more use cases and inspiration.
 
 ## 📚 Documentation
 
-Read more about YoMo at [yomo.run/docs](https://yomo.run/docs).
-
-[YoMo](https://yomo.run) ❤️
-[Vercel](https://vercel.com/?utm_source=yomorun&utm_campaign=oss), our
-documentation website is
-
-[![Vercel Logo](https://yomo.run/vercel.svg)](https://vercel.com/?utm_source=yomorun&utm_campaign=oss)
+Read more about YoMo on [yomo.run](https://yomo.run/).
 
 ## 🎯 Focuses on Geo-distributed AI Inference Infra
 
