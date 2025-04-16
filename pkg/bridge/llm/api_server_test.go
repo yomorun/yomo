@@ -1,4 +1,4 @@
-package ai
+package llm
 
 import (
 	"bytes"
@@ -14,7 +14,7 @@ import (
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
-	"github.com/yomorun/yomo/pkg/bridge/ai/register"
+	_ "github.com/yomorun/yomo/pkg/bridge/ai/register"
 )
 
 func TestServer(t *testing.T) {
@@ -31,8 +31,8 @@ func TestServer(t *testing.T) {
 			Required: []string{"prop1"},
 		},
 	}
-	register.SetRegister(register.NewDefault())
-	register.RegisterFunction(functionDefinition, 200, nil)
+	// register.SetRegister(register.NewDefault())
+	ai.RegisterFunction(functionDefinition, 200, nil)
 
 	// mock the provider and the req/res of the caller
 	pd, err := provider.NewMock("mock provider", provider.MockChatCompletionResponse(stopResp, stopResp))

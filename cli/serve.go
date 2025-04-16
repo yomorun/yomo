@@ -44,6 +44,8 @@ import (
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/vertexai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/vllm"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/xai"
+	"github.com/yomorun/yomo/pkg/bridge/llm"
+	"github.com/yomorun/yomo/pkg/bridge/mcp"
 )
 
 // serveCmd represents the serve command
@@ -99,6 +101,16 @@ var serveCmd = &cobra.Command{
 			// add AI connection middleware
 			options = append(options, yomo.WithFrameListener(listener))
 		}
+		// check and parse the mcp server config
+		mcpConfig, err := mcp.ParseConfig(bridgeConf)
+		if err != nil {
+			if err == mcp.ErrConfigNotFound {
+				ylog.Warn("mcp server is disabled")
+			} else {
+				log.FailureStatusEvent(os.Stdout, "%s", err.Error())
+				return
+			}
+		}
 		// new zipper
 		zipper, err := yomo.NewZipper(
 			conf.Name,
@@ -110,8 +122,8 @@ var serveCmd = &cobra.Command{
 		}
 		zipper.Logger().Info("using config file", "file_path", config)
 
-		// AI Server
 		if aiConfig != nil {
+			// AI Server
 			// register the llm provider
 			registerAIProvider(aiConfig)
 			// start the llm api server
@@ -122,12 +134,23 @@ var serveCmd = &cobra.Command{
 				conn2, _ := listener.Dial()
 				reducer := ai.NewReducer(conn2, auth.NewCredential(fmt.Sprintf("token:%s", tokenString)))
 
-				err := ai.Serve(aiConfig, ylog.Default(), source, reducer)
+				err := llm.Serve(aiConfig, ylog.Default(), source, reducer)
 				if err != nil {
 					log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 					return
 				}
 			}()
+			// MCP Server
+			if mcpConfig != nil {
+				defer mcp.Stop()
+				go func() {
+					err = mcp.Start(mcpConfig, aiConfig, listenAddr, ylog.Default())
+					if err != nil {
+						log.FailureStatusEvent(os.Stdout, "%s", err.Error())
+						return
+					}
+				}()
+			}
 		}
 
 		// start the zipper

@@ -2,11 +2,20 @@
 package ai
 
 import (
+	"context"
 	"errors"
 	"net"
+	"time"
 
 	"github.com/yomorun/yomo/core/ylog"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 	"gopkg.in/yaml.v3"
+)
+
+const (
+	// DefaultZipperAddr is the default endpoint of the zipper
+	DefaultZipperAddr = "localhost:9000"
 )
 
 var (
@@ -14,6 +23,10 @@ var (
 	ErrConfigNotFound = errors.New("ai config was not found")
 	// ErrConfigFormatError is the error when the ai config format is incorrect
 	ErrConfigFormatError = errors.New("ai config format is incorrect")
+
+	RequestTimeout = 90 * time.Second
+	//  RunFunctionTimeout is the timeout for awaiting the function response, default is 60 seconds
+	RunFunctionTimeout = 60 * time.Second
 )
 
 // Config is the configuration of AI bridge.
@@ -99,8 +112,8 @@ func ParseConfig(conf map[string]any) (config *Config, err error) {
 	return
 }
 
-// parseZipperAddr parses the zipper address from zipper listen address
-func parseZipperAddr(addr string) string {
+// ParseZipperAddr parses the zipper address from zipper listen address
+func ParseZipperAddr(addr string) string {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		ylog.Error("invalid zipper address, return default",
@@ -135,4 +148,68 @@ func parseZipperAddr(addr string) string {
 		return DefaultZipperAddr
 	}
 	return localIP + ":" + port
+}
+
+func getLocalIP() (string, error) {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return "", err
+	}
+	for _, addr := range addrs {
+		ipnet, ok := addr.(*net.IPNet)
+		ip := ipnet.IP
+		if !ok || ip.IsUnspecified() || ip.To4() == nil || ip.To16() == nil {
+			continue
+		}
+		return ip.String(), nil
+	}
+	return "", errors.New("not found local ip")
+}
+
+type callerContextKey struct{}
+
+// WithCallerContext adds the caller to the request context
+func WithCallerContext(ctx context.Context, caller *Caller) context.Context {
+	return context.WithValue(ctx, callerContextKey{}, caller)
+}
+
+// FromCallerContext returns the caller from the request context
+func FromCallerContext(ctx context.Context) *Caller {
+	caller, ok := ctx.Value(callerContextKey{}).(*Caller)
+	if !ok {
+		return nil
+	}
+	return caller
+}
+
+type transIDContextKey struct{}
+
+// WithTransIDContext adds the transID to the request context
+func WithTransIDContext(ctx context.Context, transID string) context.Context {
+	return context.WithValue(ctx, transIDContextKey{}, transID)
+}
+
+// FromTransIDContext returns the transID from the request context
+func FromTransIDContext(ctx context.Context) string {
+	val, ok := ctx.Value(transIDContextKey{}).(string)
+	if !ok {
+		return ""
+	}
+	return val
+}
+
+type tracerContextKey struct{}
+
+// WithTracerContext adds the tracer to the request context
+func WithTracerContext(ctx context.Context, tracer trace.Tracer) context.Context {
+	return context.WithValue(ctx, tracerContextKey{}, tracer)
+}
+
+// FromTransIDContext returns the transID from the request context
+func FromTracerContext(ctx context.Context) trace.Tracer {
+	val, ok := ctx.Value(tracerContextKey{}).(trace.Tracer)
+	if !ok {
+		return new(noop.Tracer)
+	}
+	return val
 }

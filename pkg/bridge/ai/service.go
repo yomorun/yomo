@@ -17,7 +17,7 @@ import (
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
-	"github.com/yomorun/yomo/pkg/bridge/ai/register"
+
 	"github.com/yomorun/yomo/pkg/id"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
@@ -84,7 +84,7 @@ func initOption(opt *ServiceOptions) *ServiceOptions {
 }
 
 func newService(provider provider.LLMProvider, ncf newCallerFunc, opt *ServiceOptions) *Service {
-	var onEvict = func(_ string, caller *Caller) {
+	onEvict := func(_ string, caller *Caller) {
 		caller.Close()
 	}
 
@@ -119,7 +119,7 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, baseSystemMe
 	}
 	md := caller.Metadata().Clone()
 	// read tools attached to the metadata
-	tools, err := register.ListToolCalls(md)
+	tools, err := ai.ListToolCalls(md)
 	if err != nil {
 		return &ai.InvokeResponse{}, err
 	}
@@ -136,9 +136,7 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, baseSystemMe
 		promptUsage     int
 		completionUsage int
 	)
-	var (
-		_, span = tracer.Start(ctx, "first_call")
-	)
+	_, span := tracer.Start(ctx, "first_call")
 	chatCompletionResponse, err := srv.provider.GetChatCompletions(ctx, req, md)
 	if err != nil {
 		return nil, err
@@ -223,7 +221,7 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 	md := caller.Metadata().Clone()
 
 	// 1. find all hosting tool sfn
-	tools, err := register.ListToolCalls(md)
+	tools, err := ai.ListToolCalls(md)
 	if err != nil {
 		return err
 	}
@@ -456,6 +454,11 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 		w.Header().Set("Content-Type", "application/json")
 		return json.NewEncoder(w).Encode(resp)
 	}
+}
+
+// Logger returns the logger of the service
+func (src *Service) Logger() *slog.Logger {
+	return src.logger
 }
 
 func startRespSpan(ctx context.Context, reqSpan trace.Span, tracer trace.Tracer, w EventResponseWriter) trace.Span {

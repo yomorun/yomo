@@ -206,7 +206,7 @@ func TestServiceInvoke(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			register.SetRegister(register.NewDefault())
+			ai.SetRegister(register.NewDefault())
 
 			pd, err := provider.NewMock("mock provider", tt.args.providerMockData...)
 			if err != nil {
@@ -374,7 +374,7 @@ func TestServiceChatCompletion(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			register.SetRegister(register.NewDefault())
+			ai.SetRegister(register.NewDefault())
 
 			pd, err := provider.NewMock("mock provider", tt.args.providerMockData...)
 			if err != nil {
@@ -412,7 +412,7 @@ func TestServiceChatCompletion(t *testing.T) {
 func mockCaller(calls []mockFunctionCall) *Caller {
 	// register function to register
 	for connID, call := range calls {
-		register.RegisterFunction(&openai.FunctionDefinition{Name: call.functionName}, uint64(connID), nil)
+		ai.RegisterFunction(&openai.FunctionDefinition{Name: call.functionName}, uint64(connID), nil)
 	}
 
 	caller := &Caller{
