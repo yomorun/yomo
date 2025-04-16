@@ -4,8 +4,7 @@
 
 # YoMo ![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg) [![codecov](https://codecov.io/gh/yomorun/yomo/branch/master/graph/badge.svg?token=MHCE5TZWKM)](https://codecov.io/gh/yomorun/yomo) [![Discord](https://img.shields.io/discord/770589787404369930.svg?label=discord&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/RMtNhx7vds)
 
-YoMo is an open-source LLM Function Calling Framework for building scalable and ultra-Fast AI Agents.
-
+YoMo is an open-source LLM Function Calling Framework for building scalable and ultra-fast AI Agents.
 💚 We care about: **Empowering Exceptional Customer Experiences in the Age of AI**
 
 We believe that seamless and responsive AI interactions are key to delivering outstanding customer experiences. YoMo is built with this principle at its core, focusing on speed, reliability, and scalability.
