@@ -44,10 +44,10 @@ func TestAzureOpenAIProvider_GetChatCompletions(t *testing.T) {
 	}
 
 	_, err := provider.GetChatCompletions(context.TODO(), req, nil)
-	t.Log(err)
+	assert.NotNil(t, err, "Expected timeout error, but got nil")
 
 	_, err = provider.GetChatCompletionsStream(context.TODO(), req, nil)
-	t.Log(err)
+	assert.NotNil(t, err, "Expected timeout error, but got nil")
 }
 
 func TestNewProvider(t *testing.T) {
