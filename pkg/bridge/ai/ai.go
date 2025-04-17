@@ -21,7 +21,7 @@ var (
 	// ErrConfigFormatError is the error when the ai config format is incorrect
 	ErrConfigFormatError = errors.New("ai config format is incorrect")
 
-	RequestTimeout = 90 * time.Second
+	RequestTimeout = 360 * time.Second
 	//  RunFunctionTimeout is the timeout for awaiting the function response, default is 60 seconds
 	RunFunctionTimeout = 60 * time.Second
 )

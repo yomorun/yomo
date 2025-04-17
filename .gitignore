@@ -39,3 +39,4 @@ coverage.txt
 build/
 .env
 zipper.yml
+*.md

@@ -64,27 +64,44 @@ func FromTracerContext(ctx context.Context) trace.Tracer {
 }
 
 // RespondWithError writes an error to response according to the OpenAI API spec.
-func RespondWithError(w http.ResponseWriter, code int, err error, logger *slog.Logger) {
-	code, errString := parseCodeError(code, err)
-	logger.Error("bridge server error", "err", errString, "err_type", reflect.TypeOf(err).String())
+func RespondWithError(w EventResponseWriter, code int, err error) error {
+	newCode, errBody := w.InterceptError(code, err)
+	w.RecordError(errBody)
 
+	if newCode != 0 {
+		code = newCode
+	}
 	w.WriteHeader(code)
-	w.Write([]byte(fmt.Sprintf(`{"error":{"code":"%d","message":"%s"}}`, code, errString)))
+	return json.NewEncoder(w).Encode(&ErrorResponse{Error: errBody})
 }
 
-func parseCodeError(code int, err error) (int, string) {
-	errString := err.Error()
-
+// parseCodeError returns the status code, error code string and error message string.
+func parseCodeError(err error) (code int, codeString string, message string) {
 	switch e := err.(type) {
+	// bad request
+	case *json.SyntaxError:
+		return http.StatusBadRequest, "invalid_request_error", fmt.Sprintf("Invalid request: %s", e.Error())
+	case *json.UnmarshalTypeError:
+		return http.StatusBadRequest, "invalid_request_error", fmt.Sprintf("Invalid type for `%s`: expected a %s, but got a %s", e.Field, e.Type.String(), e.Value)
+
 	case *openai.APIError:
-		code = e.HTTPStatusCode
-		errString = e.Message
+		// handle azure api error
+		if e.InnerError != nil {
+			return e.HTTPStatusCode, e.InnerError.Code, e.Message
+		}
+		// handle openai api error
+		eCode, ok := e.Code.(string)
+		if ok {
+			return e.HTTPStatusCode, eCode, e.Message
+		}
+		codeString = e.Type
+		return
+
 	case *openai.RequestError:
-		code = e.HTTPStatusCode
-		errString = e.Error()
+		return e.HTTPStatusCode, e.HTTPStatus, string(e.Body)
 	}
 
-	return code, errString
+	return code, reflect.TypeOf(err).Name(), err.Error()
 }
 
 // NewServeMux creates a new http.ServeMux for the llm bridge server.
@@ -123,10 +140,11 @@ func NewHandler(service *Service) *Handler {
 // HandleOverview is the handler for GET /overview
 func (h *Handler) HandleOverview(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	ww := w.(EventResponseWriter)
 
 	tools, err := ai.ListToolCalls(FromCallerContext(r.Context()).Metadata())
 	if err != nil {
-		RespondWithError(w, http.StatusInternalServerError, err, h.service.Logger())
+		RespondWithError(ww, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -149,8 +167,9 @@ func (h *Handler) HandleInvoke(w http.ResponseWriter, r *http.Request) {
 	)
 	defer r.Body.Close()
 
-	req, err := DecodeRequest[ai.InvokeRequest](r, w, h.service.Logger())
+	req, err := DecodeRequest[ai.InvokeRequest](r, ww, h.service.Logger())
 	if err != nil {
+		RespondWithError(ww, http.StatusBadRequest, err)
 		ww.RecordError(errors.New("bad request"))
 		return
 	}
@@ -167,8 +186,7 @@ func (h *Handler) HandleInvoke(w http.ResponseWriter, r *http.Request) {
 
 	res, err := h.service.GetInvoke(ctx, req.Prompt, baseSystemMessage, transID, caller, req.IncludeCallStack, tracer)
 	if err != nil {
-		ww.RecordError(err)
-		RespondWithError(w, http.StatusInternalServerError, err, h.service.Logger())
+		RespondWithError(ww, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -184,9 +202,10 @@ func (h *Handler) HandleChatCompletions(w http.ResponseWriter, r *http.Request) 
 	)
 	defer r.Body.Close()
 
-	req, err := DecodeRequest[openai.ChatCompletionRequest](r, w, h.service.Logger())
+	req, err := DecodeRequest[openai.ChatCompletionRequest](r, ww, h.service.Logger())
 	if err != nil {
-		ww.RecordError(err)
+		w.Header().Set("Content-Type", "application/json")
+		RespondWithError(ww, http.StatusBadRequest, err)
 		return
 	}
 
@@ -199,27 +218,22 @@ func (h *Handler) HandleChatCompletions(w http.ResponseWriter, r *http.Request) 
 	)
 
 	if err := h.service.GetChatCompletions(ctx, req, transID, caller, ww, tracer); err != nil {
-		ww.RecordError(err)
 		if err == context.Canceled {
 			return
 		}
-		if ww.IsStream() {
-			h.service.Logger().Error("bridge server error", "err", err.Error(), "err_type", reflect.TypeOf(err).String())
-			w.Write([]byte(fmt.Sprintf(`{"error":{"message":"%s"}}`, err.Error())))
-			return
+		if !ww.IsStream() {
+			w.Header().Set("Content-Type", "application/json")
 		}
-		RespondWithError(w, http.StatusBadRequest, err, h.service.Logger())
+		RespondWithError(ww, http.StatusBadRequest, err)
 		return
 	}
 }
 
 // DecodeRequest decodes the request body into given type.
-func DecodeRequest[T any](r *http.Request, w http.ResponseWriter, logger *slog.Logger) (T, error) {
+func DecodeRequest[T any](r *http.Request, ww EventResponseWriter, logger *slog.Logger) (T, error) {
 	var req T
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		RespondWithError(w, http.StatusBadRequest, err, logger)
 		return req, err
 	}
 
