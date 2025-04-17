@@ -16,6 +16,7 @@ require (
 	github.com/lmittmann/tint v1.0.7
 	github.com/mark3labs/mcp-go v0.20.1
 	github.com/matoous/go-nanoid/v2 v2.1.0
+	github.com/openai/openai-go v0.1.0-beta.10
 	github.com/quic-go/quic-go v0.50.1
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/sashabaranov/go-openai v1.38.1
