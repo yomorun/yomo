@@ -28,16 +28,25 @@ func GetRegister() Register {
 
 // ListToolCalls returns the list of tool calls
 func ListToolCalls(md metadata.M) ([]openai.Tool, error) {
+	if defaultRegister == nil {
+		return nil, nil
+	}
 	return defaultRegister.ListToolCalls(md)
 }
 
 // RegisterFunction registers a function calling function
 func RegisterFunction(functionDefinition *openai.FunctionDefinition, connID uint64, md metadata.M) error {
+	if defaultRegister == nil {
+		return nil
+	}
 	return defaultRegister.RegisterFunction(functionDefinition, connID, md)
 }
 
 // UnregisterFunction unregisters a function calling function
 func UnregisterFunction(connID uint64, md metadata.M) {
+	if defaultRegister == nil {
+		return
+	}
 	defaultRegister.UnregisterFunction(connID, md)
 }
 

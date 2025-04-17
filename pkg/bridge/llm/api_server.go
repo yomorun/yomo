@@ -1,18 +1,13 @@
 package llm
 
 import (
-	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"time"
 
-	openai "github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/ai"
 	pkgai "github.com/yomorun/yomo/pkg/bridge/ai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
 	_ "github.com/yomorun/yomo/pkg/bridge/ai/register"
@@ -41,29 +36,6 @@ func Serve(config *pkgai.Config, logger *slog.Logger, source yomo.Source, reduce
 	return http.ListenAndServe(config.Server.Addr, srv.httpHandler)
 }
 
-// NewServeMux creates a new http.ServeMux for the llm bridge server.
-func NewServeMux(h *Handler) *http.ServeMux {
-	mux := http.NewServeMux()
-
-	// GET /overview
-	mux.HandleFunc("/overview", h.HandleOverview)
-	// POST /invoke
-	mux.HandleFunc("/invoke", h.HandleInvoke)
-	// POST /v1/chat/completions (OpenAI compatible interface)
-	mux.HandleFunc("/v1/chat/completions", h.HandleChatCompletions)
-
-	return mux
-}
-
-// DecorateHandler decorates the http.Handler.
-func DecorateHandler(h http.Handler, decorates ...func(handler http.Handler) http.Handler) http.Handler {
-	// decorate the http.Handler
-	for i := len(decorates) - 1; i >= 0; i-- {
-		h = decorates[i](h)
-	}
-	return h
-}
-
 // NewBasicAPIServer creates a new restful service
 func NewBasicAPIServer(config *pkgai.Config, provider provider.LLMProvider, source yomo.Source, reducer yomo.StreamFunction, logger *slog.Logger) (*BasicAPIServer, error) {
 	logger = logger.With("service", "llm-bridge")
@@ -75,10 +47,10 @@ func NewBasicAPIServer(config *pkgai.Config, provider provider.LLMProvider, sour
 	}
 	service := pkgai.NewService(provider, opts)
 
-	mux := NewServeMux(NewHandler(service))
+	mux := pkgai.NewServeMux(pkgai.NewHandler(service))
 
 	server := &BasicAPIServer{
-		httpHandler: DecorateHandler(mux, decorateReqContext(service, logger)),
+		httpHandler: pkgai.DecorateHandler(mux, decorateReqContext(service, logger)),
 	}
 
 	logger.Info("[llm] start llm bridge service", "addr", config.Server.Addr, "provider", provider.Name())
@@ -144,117 +116,4 @@ func decorateReqContext(service *pkgai.Service, logger *slog.Logger) func(handle
 			}
 		})
 	}
-}
-
-// Handler handles the http request.
-type Handler struct {
-	service *pkgai.Service
-}
-
-// NewHandler return a hander that handles chat completions requests.
-func NewHandler(service *pkgai.Service) *Handler {
-	return &Handler{service}
-}
-
-// HandleOverview is the handler for GET /overview
-func (h *Handler) HandleOverview(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	ww := w.(pkgai.EventResponseWriter)
-
-	tools, err := ai.ListToolCalls(pkgai.FromCallerContext(r.Context()).Metadata())
-	if err != nil {
-		pkgai.RespondWithError(ww, http.StatusInternalServerError, err)
-		return
-	}
-
-	functions := make([]*openai.FunctionDefinition, len(tools))
-	for i, tc := range tools {
-		functions[i] = tc.Function
-	}
-
-	json.NewEncoder(w).Encode(&ai.OverviewResponse{Functions: functions})
-}
-
-var baseSystemMessage = `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous.`
-
-// HandleInvoke is the handler for POST /invoke
-func (h *Handler) HandleInvoke(w http.ResponseWriter, r *http.Request) {
-	var (
-		ctx     = r.Context()
-		transID = pkgai.FromTransIDContext(ctx)
-		ww      = w.(pkgai.EventResponseWriter)
-	)
-	defer r.Body.Close()
-
-	req, err := DecodeRequest[ai.InvokeRequest](r, ww, h.service.Logger())
-	if err != nil {
-		pkgai.RespondWithError(ww, http.StatusBadRequest, err)
-		ww.RecordError(errors.New("bad request"))
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), pkgai.RequestTimeout)
-	defer cancel()
-
-	var (
-		caller = pkgai.FromCallerContext(ctx)
-		tracer = pkgai.FromTracerContext(ctx)
-	)
-
-	w.Header().Set("Content-Type", "application/json")
-
-	res, err := h.service.GetInvoke(ctx, req.Prompt, baseSystemMessage, transID, caller, req.IncludeCallStack, tracer)
-	if err != nil {
-		pkgai.RespondWithError(ww, http.StatusInternalServerError, err)
-		return
-	}
-
-	_ = json.NewEncoder(w).Encode(res)
-}
-
-// HandleChatCompletions is the handler for POST /chat/completions
-func (h *Handler) HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
-	var (
-		ctx     = r.Context()
-		transID = pkgai.FromTransIDContext(ctx)
-		ww      = w.(pkgai.EventResponseWriter)
-	)
-	defer r.Body.Close()
-
-	req, err := DecodeRequest[openai.ChatCompletionRequest](r, ww, h.service.Logger())
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		pkgai.RespondWithError(ww, http.StatusBadRequest, err)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), pkgai.RequestTimeout)
-	defer cancel()
-
-	var (
-		caller = pkgai.FromCallerContext(ctx)
-		tracer = pkgai.FromTracerContext(ctx)
-	)
-
-	if err := h.service.GetChatCompletions(ctx, req, transID, caller, ww, tracer); err != nil {
-		if err == context.Canceled {
-			return
-		}
-		if !ww.IsStream() {
-			w.Header().Set("Content-Type", "application/json")
-		}
-		pkgai.RespondWithError(ww, http.StatusBadRequest, err)
-		return
-	}
-}
-
-// DecodeRequest decodes the request body into given type.
-func DecodeRequest[T any](r *http.Request, ww pkgai.EventResponseWriter, logger *slog.Logger) (T, error) {
-	var req T
-	err := json.NewDecoder(r.Body).Decode(&req)
-	if err != nil {
-		return req, err
-	}
-
-	return req, nil
 }

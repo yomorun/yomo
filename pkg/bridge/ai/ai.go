@@ -2,14 +2,11 @@
 package ai
 
 import (
-	"context"
 	"errors"
 	"net"
 	"time"
 
 	"github.com/yomorun/yomo/core/ylog"
-	"go.opentelemetry.io/otel/trace"
-	"go.opentelemetry.io/otel/trace/noop"
 	"gopkg.in/yaml.v3"
 )
 
@@ -164,52 +161,4 @@ func getLocalIP() (string, error) {
 		return ip.String(), nil
 	}
 	return "", errors.New("not found local ip")
-}
-
-type callerContextKey struct{}
-
-// WithCallerContext adds the caller to the request context
-func WithCallerContext(ctx context.Context, caller *Caller) context.Context {
-	return context.WithValue(ctx, callerContextKey{}, caller)
-}
-
-// FromCallerContext returns the caller from the request context
-func FromCallerContext(ctx context.Context) *Caller {
-	caller, ok := ctx.Value(callerContextKey{}).(*Caller)
-	if !ok {
-		return nil
-	}
-	return caller
-}
-
-type transIDContextKey struct{}
-
-// WithTransIDContext adds the transID to the request context
-func WithTransIDContext(ctx context.Context, transID string) context.Context {
-	return context.WithValue(ctx, transIDContextKey{}, transID)
-}
-
-// FromTransIDContext returns the transID from the request context
-func FromTransIDContext(ctx context.Context) string {
-	val, ok := ctx.Value(transIDContextKey{}).(string)
-	if !ok {
-		return ""
-	}
-	return val
-}
-
-type tracerContextKey struct{}
-
-// WithTracerContext adds the tracer to the request context
-func WithTracerContext(ctx context.Context, tracer trace.Tracer) context.Context {
-	return context.WithValue(ctx, tracerContextKey{}, tracer)
-}
-
-// FromTransIDContext returns the transID from the request context
-func FromTracerContext(ctx context.Context) trace.Tracer {
-	val, ok := ctx.Value(tracerContextKey{}).(trace.Tracer)
-	if !ok {
-		return new(noop.Tracer)
-	}
-	return val
 }

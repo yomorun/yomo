@@ -10,7 +10,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/yomorun/yomo/core/ylog"
-	"github.com/yomorun/yomo/pkg/bridge/ai"
+	pkgai "github.com/yomorun/yomo/pkg/bridge/ai"
 )
 
 var (
@@ -98,7 +98,7 @@ func authContextFunc() server.SSEContextFunc {
 			return ctx
 		}
 		// caller
-		ctx = ai.WithCallerContext(ctx, caller)
+		ctx = pkgai.WithCallerContext(ctx, caller)
 		logger.Debug("[mcp] sse context with caller", "path", r.URL.Path)
 		return ctx
 	}

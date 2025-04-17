@@ -10,7 +10,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo"
-	"github.com/yomorun/yomo/pkg/bridge/ai"
+	pkgai "github.com/yomorun/yomo/pkg/bridge/ai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
 	"github.com/yomorun/yomo/pkg/id"
 )
@@ -19,12 +19,12 @@ var (
 	mcpServer  *MCPServer
 	tools      sync.Map
 	httpServer *http.Server
-	aiService  *ai.Service
+	aiService  *pkgai.Service
 	logger     *slog.Logger
 )
 
 // Start starts the http server
-func Start(config *Config, aiConfig *ai.Config, zipperAddr string, log *slog.Logger) error {
+func Start(config *Config, aiConfig *pkgai.Config, zipperAddr string, log *slog.Logger) error {
 	// ai provider
 	provider, err := provider.GetProvider(aiConfig.Server.Provider)
 	if err != nil {
@@ -33,12 +33,12 @@ func Start(config *Config, aiConfig *ai.Config, zipperAddr string, log *slog.Log
 	// logger
 	logger = log.With("service", "mcp-bridge")
 	// ai service
-	opts := &ai.ServiceOptions{
+	opts := &pkgai.ServiceOptions{
 		Logger: logger,
 		// SourceBuilder:  func(_ string) yomo.Source { return source },
 		// ReducerBuilder: func(_ string) yomo.StreamFunction { return reducer },
 	}
-	zipperAddr = ai.ParseZipperAddr(zipperAddr)
+	zipperAddr = pkgai.ParseZipperAddr(zipperAddr)
 	sourceBuilder := func(credential string) yomo.Source {
 		source := yomo.NewSource("mcp-source", zipperAddr, yomo.WithCredential(credential))
 		return source
@@ -49,7 +49,7 @@ func Start(config *Config, aiConfig *ai.Config, zipperAddr string, log *slog.Log
 	}
 	opts.SourceBuilder = sourceBuilder
 	opts.ReducerBuilder = reducerBuilder
-	aiService = ai.NewService(provider, opts)
+	aiService = pkgai.NewService(provider, opts)
 	// http server
 	addr := config.Server.Addr
 	mux := http.NewServeMux()
@@ -143,7 +143,7 @@ func RemoveMCPTool(connID uint64) error {
 // mcpToolHandler mcp tool handler
 func mcpToolHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	// get caller
-	caller := ai.FromCallerContext(ctx)
+	caller := pkgai.FromCallerContext(ctx)
 	if caller == nil {
 		logger.Error("[mcp] tool handler load failed", "error", ErrCallerNotFound.Error())
 		return nil, ErrCallerNotFound
