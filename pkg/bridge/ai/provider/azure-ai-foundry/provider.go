@@ -3,7 +3,6 @@ package azaifoundry
 
 import (
 	"context"
-	"log"
 	"strings"
 
 	// automatically load .env file
@@ -48,8 +47,6 @@ func (p *Provider) Name() string {
 // GetChatCompletions get chat completions for ai service
 func (p *Provider) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, _ metadata.M) (openai.ChatCompletionResponse, error) {
 	req.Model = p.Model
-	log.Printf("GetChatCompletions: %+v", req)
-	log.Printf("p.client: %+v", p.client)
 	return p.client.CreateChatCompletion(ctx, req)
 }
 
