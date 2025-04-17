@@ -50,16 +50,16 @@ func NewBasicAPIServer(config *pkgai.Config, provider provider.LLMProvider, sour
 	mux := pkgai.NewServeMux(pkgai.NewHandler(service))
 
 	server := &BasicAPIServer{
-		httpHandler: pkgai.DecorateHandler(mux, decorateReqContext(service, logger)),
+		httpHandler: pkgai.DecorateHandler(mux, DecorateReqContext(service, logger)),
 	}
 
 	logger.Info("[llm] start llm bridge service", "addr", config.Server.Addr, "provider", provider.Name())
 	return server, nil
 }
 
-// decorateReqContext decorates the context of the request, it injects a transID into the request's context,
+// DecorateReqContext decorates the context of the request, it injects a transID into the request's context,
 // log the request information and start tracing the request.
-func decorateReqContext(service *pkgai.Service, logger *slog.Logger) func(handler http.Handler) http.Handler {
+func DecorateReqContext(service *pkgai.Service, logger *slog.Logger) func(handler http.Handler) http.Handler {
 	hostname, _ := os.Hostname()
 	tracer := otel.Tracer("yomo-llm-bridge")
 

@@ -55,7 +55,7 @@ type ServiceOptions struct {
 
 // NewService creates a new service for handling the logic from handler layer.
 func NewService(provider provider.LLMProvider, opt *ServiceOptions) *Service {
-	return newService(provider, NewCaller, opt)
+	return NewServiceWithCallerFunc(provider, NewCaller, opt)
 }
 
 func initOption(opt *ServiceOptions) *ServiceOptions {
@@ -83,7 +83,7 @@ func initOption(opt *ServiceOptions) *ServiceOptions {
 	return opt
 }
 
-func newService(provider provider.LLMProvider, ncf newCallerFunc, opt *ServiceOptions) *Service {
+func NewServiceWithCallerFunc(provider provider.LLMProvider, ncf newCallerFunc, opt *ServiceOptions) *Service {
 	onEvict := func(_ string, caller *Caller) {
 		caller.Close()
 	}
@@ -230,7 +230,7 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 
 	// 3. operate system prompt to request
 	prompt, op := caller.GetSystemPrompt()
-	req = srv.opSystemPrompt(req, prompt, op)
+	req = srv.OpSystemPrompt(req, prompt, op)
 
 	var (
 		promptUsage      = 0
@@ -503,7 +503,7 @@ func (srv *Service) addToolsToRequest(req openai.ChatCompletionRequest, tools []
 	return req, hasReqTools
 }
 
-func (srv *Service) opSystemPrompt(req openai.ChatCompletionRequest, sysPrompt string, op SystemPromptOp) openai.ChatCompletionRequest {
+func (srv *Service) OpSystemPrompt(req openai.ChatCompletionRequest, sysPrompt string, op SystemPromptOp) openai.ChatCompletionRequest {
 	if op == SystemPromptOpDisabled {
 		return req
 	}
