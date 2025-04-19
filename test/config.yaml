@@ -8,6 +8,21 @@ auth:
   type: token
   token: <CREDENTIAL>
 
+### bridge ###
+bridge:
+  ai: # llm bridge
+    server:
+      addr: :8000
+      provider: ollama
+
+    providers:
+      ollama:
+        api_endpoint: http://localhost:11434
+
+  mcp: # mcp bridge
+    server:
+      addr: :9090
+
 ### cascading mesh ###
 mesh:
   zipper-sgp:

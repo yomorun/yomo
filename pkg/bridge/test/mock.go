@@ -1,79 +1,18 @@
-package ai
+package test
 
 import (
 	"context"
-	"log/slog"
 	"sync"
-	"testing"
 	"time"
 
-	openai "github.com/sashabaranov/go-openai"
-	"github.com/stretchr/testify/assert"
+	"github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core"
+	pkgai "github.com/yomorun/yomo/pkg/bridge/ai"
 	"github.com/yomorun/yomo/serverless"
 	"github.com/yomorun/yomo/serverless/mock"
 )
-
-var testdata = []openai.ToolCall{
-	{ID: "tool-call-id-1", Function: openai.FunctionCall{Name: "function-1"}},
-	{ID: "tool-call-id-2", Function: openai.FunctionCall{Name: "function-2"}},
-	{ID: "tool-call-id-3", Function: openai.FunctionCall{Name: "function-3"}},
-	{ID: "tool-call-id-4", Function: openai.FunctionCall{Name: "function-4"}},
-}
-
-func TestTimeoutCallSyncer(t *testing.T) {
-	h := newHandler(2 * time.Hour) // h.sleep > syncer.timeout
-	flow := newMockDataFlow(h.handle)
-	defer flow.Close()
-
-	req, _ := sourceWriteToChan(flow, slog.Default())
-	res, _ := reduceToChan(flow, slog.Default())
-
-	syncer := NewCallSyncer(slog.Default(), req, res, time.Millisecond)
-	go flow.run()
-
-	var (
-		transID = "mock-trans-id"
-		reqID   = "mock-req-id"
-	)
-
-	want := []ToolCallResult{
-		{
-			FunctionName: "timeout-function",
-			ToolCallID:   "tool-call-id",
-			Content:      "timeout in this function calling, you should ignore this.",
-		},
-	}
-
-	got, _ := syncer.Call(context.TODO(), transID, reqID, []openai.ToolCall{
-		{ID: "tool-call-id", Function: openai.FunctionCall{Name: "timeout-function"}},
-	})
-
-	assert.ElementsMatch(t, want, got)
-}
-
-func TestCallSyncer(t *testing.T) {
-	h := newHandler(0)
-	flow := newMockDataFlow(h.handle)
-	defer flow.Close()
-
-	req, _ := sourceWriteToChan(flow, slog.Default())
-	res, _ := reduceToChan(flow, slog.Default())
-
-	syncer := NewCallSyncer(slog.Default(), req, res, 0)
-	go flow.run()
-
-	var (
-		transID = "mock-trans-id"
-		reqID   = "mock-req-id"
-	)
-
-	got, _ := syncer.Call(context.TODO(), transID, reqID, testdata)
-
-	assert.NotEmpty(t, got)
-	assert.ElementsMatch(t, h.result(), got)
-}
 
 // handler.handle implements core.AsyncHandler, it just echo the context be written.
 type handler struct {
@@ -97,14 +36,14 @@ func (h *handler) handle(c serverless.Context) {
 	h.ctxs[c.(*mock.MockContext)] = struct{}{}
 }
 
-func (h *handler) result() []ToolCallResult {
+func (h *handler) Result() []pkgai.ToolCallResult {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	want := []ToolCallResult{}
+	want := []pkgai.ToolCallResult{}
 	for c := range h.ctxs {
 		invoke, _ := c.LLMFunctionCall()
-		want = append(want, ToolCallResult{
+		want = append(want, pkgai.ToolCallResult{
 			FunctionName: invoke.FunctionName, Content: invoke.Result, ToolCallID: invoke.ToolCallID,
 		})
 	}
@@ -147,15 +86,17 @@ func (t *mockDataFlow) Close() error { return nil }
 
 // this function explains how the data flow works,
 // it receives data from the write channel, and handle with the handler, then send the result to the reducer.
-func (t *mockDataFlow) run() {
+func (t *mockDataFlow) Run() {
 	for c := range t.wrCh {
 		t.handler(c)
 		t.reducer(c)
 	}
 }
 
-var _ yomo.Source = (*mockDataFlow)(nil)
-var _ yomo.StreamFunction = (*mockDataFlow)(nil)
+var (
+	_ yomo.Source         = (*mockDataFlow)(nil)
+	_ yomo.StreamFunction = (*mockDataFlow)(nil)
+)
 
 // The test will not use blowing function in this mock implementation.
 func (t *mockDataFlow) SetObserveDataTags(tag ...uint32)                      {}
@@ -166,3 +107,48 @@ func (t *mockDataFlow) SetPipeHandler(fn core.PipeHandler) error              { 
 func (t *mockDataFlow) SetWantedTarget(string)                                { panic("unimplemented") }
 func (t *mockDataFlow) Wait()                                                 { panic("unimplemented") }
 func (t *mockDataFlow) SetErrorHandler(fn func(err error))                    { panic("unimplemented") }
+
+// mockCaller returns a mock caller.
+// the request-response of caller has been defined in advance, the request and response are defined in the `calls`.
+func mockCaller(calls []mockFunctionCall) *pkgai.Caller {
+	// register function to register
+	for connID, call := range calls {
+		ai.RegisterFunction(&openai.FunctionDefinition{Name: call.functionName}, uint64(connID), nil)
+	}
+
+	// caller, _ := pkgai.NewCaller(nil, nil, metadata.M{"hello": "llm bridge"}, pkgai.RunFunctionTimeout)
+	// callSyncer := &mockCallSyncer{calls: calls}
+	// caller.CallSyncer = callSyncer
+	caller := &pkgai.Caller{
+		CallSyncer: &mockCallSyncer{calls: calls},
+		// md:         metadata.M{"hello": "llm bridge"},
+	}
+
+	return caller
+}
+
+type mockFunctionCall struct {
+	toolID       string
+	functionName string
+	respContent  string
+}
+
+type mockCallSyncer struct {
+	calls []mockFunctionCall
+}
+
+// Call implements CallSyncer, it returns the mock response defined in advance.
+func (m *mockCallSyncer) Call(ctx context.Context, transID string, reqID string, toolCalls []openai.ToolCall) ([]pkgai.ToolCallResult, error) {
+	res := []pkgai.ToolCallResult{}
+
+	for _, call := range m.calls {
+		res = append(res, pkgai.ToolCallResult{
+			FunctionName: call.functionName,
+			ToolCallID:   call.toolID,
+			Content:      call.respContent,
+		})
+	}
+	return res, nil
+}
+
+func (m *mockCallSyncer) Close() error { return nil }

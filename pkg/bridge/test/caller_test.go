@@ -1,4 +1,4 @@
-package ai
+package test
 
 import (
 	"testing"
@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/core/metadata"
+	pkgai "github.com/yomorun/yomo/pkg/bridge/ai"
 )
 
 func TestCaller(t *testing.T) {
@@ -15,7 +16,7 @@ func TestCaller(t *testing.T) {
 	md, err := cc.ExchangeMetadata("")
 	assert.NoError(t, err)
 
-	caller, err := NewCaller(cc.CreateSource(""), cc.CreateReducer(""), md, time.Minute)
+	caller, err := pkgai.NewCaller(cc.CreateSource(""), cc.CreateReducer(""), md, time.Minute)
 	assert.NoError(t, err)
 
 	defer caller.Close()
@@ -24,7 +25,7 @@ func TestCaller(t *testing.T) {
 
 	var (
 		prompt = "hello system prompt"
-		op     = SystemPromptOpPrefix
+		op     = pkgai.SystemPromptOpPrefix
 	)
 	caller.SetSystemPrompt(prompt, op)
 	gotPrompt, gotOp := caller.GetSystemPrompt()

@@ -19,7 +19,7 @@ import (
 
 	// authentication implements, Currently, only token authentication is implemented
 	_ "github.com/yomorun/yomo/pkg/auth"
-	"github.com/yomorun/yomo/pkg/bridge/ai/register"
+
 	"github.com/yomorun/yomo/pkg/frame-codec/y3codec"
 	yquic "github.com/yomorun/yomo/pkg/listener/quic"
 	pkgtls "github.com/yomorun/yomo/pkg/tls"
@@ -187,7 +187,7 @@ func (s *Server) handleFrameConn(fconn frame.Conn, logger *slog.Logger) {
 
 	if conn.ClientType() == ClientTypeStreamFunction {
 		s.router.Remove(conn.ID())
-		register.UnregisterFunction(conn.ID(), conn.Metadata())
+		ai.UnregisterFunction(conn.ID(), conn.Metadata())
 	}
 	_ = s.connector.Remove(conn.ID())
 }
@@ -284,7 +284,7 @@ func (s *Server) tryRegisterFunctionDefinition(hf *frame.HandshakeFrame, conn *C
 	if err := json.Unmarshal([]byte(definition), &fd); err != nil {
 		return fmt.Errorf("unmarshal function definition error: %s", err.Error())
 	}
-	if err := register.RegisterFunction(&fd, conn.ID(), md); err != nil {
+	if err := ai.RegisterFunction(&fd, conn.ID(), md); err != nil {
 		return err
 	}
 	s.logger.Info("register ai function success", "function_name", fd.Name, "definition", string(definition))

@@ -38,4 +38,5 @@ coverage.txt
 *.o
 build/
 .env
-example/10-ai/*.yaml
+zipper.yml
+*.md

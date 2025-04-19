@@ -1,4 +1,4 @@
-package ai
+package test
 
 import (
 	"bytes"
@@ -13,8 +13,10 @@ import (
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/metadata"
+	pkgai "github.com/yomorun/yomo/pkg/bridge/ai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
 	"github.com/yomorun/yomo/pkg/bridge/ai/register"
+	"github.com/yomorun/yomo/pkg/bridge/llm"
 )
 
 func TestServer(t *testing.T) {
@@ -31,8 +33,8 @@ func TestServer(t *testing.T) {
 			Required: []string{"prop1"},
 		},
 	}
-	register.SetRegister(register.NewDefault())
-	register.RegisterFunction(functionDefinition, 200, nil)
+	ai.SetRegister(register.NewDefault())
+	ai.RegisterFunction(functionDefinition, 200, nil)
 
 	// mock the provider and the req/res of the caller
 	pd, err := provider.NewMock("mock provider", provider.MockChatCompletionResponse(stopResp, stopResp))
@@ -42,17 +44,17 @@ func TestServer(t *testing.T) {
 
 	flow := newMockDataFlow(newHandler(2 * time.Hour).handle)
 
-	newCaller := func(_ yomo.Source, _ yomo.StreamFunction, _ metadata.M, _ time.Duration) (*Caller, error) {
+	newCaller := func(_ yomo.Source, _ yomo.StreamFunction, _ metadata.M, _ time.Duration) (*pkgai.Caller, error) {
 		return mockCaller(nil), err
 	}
 
-	service := newService(pd, newCaller, &ServiceOptions{
+	service := pkgai.NewServiceWithCallerFunc(pd, newCaller, &pkgai.ServiceOptions{
 		SourceBuilder:     func(_ string) yomo.Source { return flow },
 		ReducerBuilder:    func(_ string) yomo.StreamFunction { return flow },
 		MetadataExchanger: func(_ string) (metadata.M, error) { return metadata.M{"hello": "llm bridge"}, nil },
 	})
 
-	handler := DecorateHandler(NewServeMux(NewHandler(service)), decorateReqContext(service, service.logger))
+	handler := pkgai.DecorateHandler(pkgai.NewServeMux(pkgai.NewHandler(service)), llm.DecorateReqContext(service, service.Logger()))
 
 	// create a test server
 	server := httptest.NewServer(handler)
