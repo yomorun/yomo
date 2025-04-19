@@ -15,7 +15,7 @@ import (
 	"github.com/yomorun/yomo/core/metadata"
 	pkgai "github.com/yomorun/yomo/pkg/bridge/ai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
-	_ "github.com/yomorun/yomo/pkg/bridge/ai/register"
+	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 	"github.com/yomorun/yomo/pkg/bridge/llm"
 )
 
@@ -33,7 +33,7 @@ func TestServer(t *testing.T) {
 			Required: []string{"prop1"},
 		},
 	}
-	// register.SetRegister(register.NewDefault())
+	ai.SetRegister(register.NewDefault())
 	ai.RegisterFunction(functionDefinition, 200, nil)
 
 	// mock the provider and the req/res of the caller

@@ -15,7 +15,7 @@ import (
 	"github.com/yomorun/yomo/core/metadata"
 	pkgai "github.com/yomorun/yomo/pkg/bridge/ai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
-	_ "github.com/yomorun/yomo/pkg/bridge/ai/register"
+	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 )
 
 func TestOpSystemPrompt(t *testing.T) {
@@ -184,31 +184,31 @@ func TestServiceInvoke(t *testing.T) {
 			},
 			wantUsage: ai.TokenUsage{PromptTokens: 95, CompletionTokens: 43},
 		},
-		// BUG: test failed
-		// {
-		// 	name: "invoke without tool call",
-		// 	args: args{
-		// 		providerMockData: []provider.MockData{
-		// 			provider.MockChatCompletionResponse(stopResp),
-		// 		},
-		// 		mockCallReqResp:   []mockFunctionCall{},
-		// 		systemPrompt:      "this is a system prompt",
-		// 		userInstruction:   "hi",
-		// 		baseSystemMessage: "this is a base system message",
-		// 	},
-		// 	wantRequest: []openai.ChatCompletionRequest{
-		// 		{
-		// 			Messages: []openai.ChatCompletionMessage{
-		// 				{Role: "system", Content: "this is a base system message\n\n## Instructions\n\n"},
-		// 				{Role: "user", Content: "hi"},
-		// 			},
-		// 		},
-		// 	},
-		// 	wantUsage: ai.TokenUsage{PromptTokens: 13, CompletionTokens: 26},
-		// },
+		{
+			name: "invoke without tool call",
+			args: args{
+				providerMockData: []provider.MockData{
+					provider.MockChatCompletionResponse(stopResp),
+				},
+				mockCallReqResp:   []mockFunctionCall{},
+				systemPrompt:      "this is a system prompt",
+				userInstruction:   "hi",
+				baseSystemMessage: "this is a base system message",
+			},
+			wantRequest: []openai.ChatCompletionRequest{
+				{
+					Messages: []openai.ChatCompletionMessage{
+						{Role: "system", Content: "this is a base system message\n\n## Instructions\n\n"},
+						{Role: "user", Content: "hi"},
+					},
+				},
+			},
+			wantUsage: ai.TokenUsage{PromptTokens: 13, CompletionTokens: 26},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			ai.SetRegister(register.NewDefault())
 			pd, err := provider.NewMock("mock provider", tt.args.providerMockData...)
 			if err != nil {
 				t.Fatal(err)
