@@ -1,9 +1,10 @@
-package ai
+package test
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	pkgai "github.com/yomorun/yomo/pkg/bridge/ai"
 )
 
 func TestParseZipperAddr(t *testing.T) {
@@ -26,7 +27,7 @@ func TestParseZipperAddr(t *testing.T) {
 		{
 			name:     "Invalid address",
 			addr:     "invalid",
-			expected: DefaultZipperAddr,
+			expected: pkgai.DefaultZipperAddr,
 		},
 		{
 			name:     "Localhost",
@@ -42,7 +43,7 @@ func TestParseZipperAddr(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := parseZipperAddr(tt.addr)
+			got := pkgai.ParseZipperAddr(tt.addr)
 			assert.Equal(t, tt.expected, got, tt.name)
 		})
 	}
@@ -53,7 +54,7 @@ func TestParseConfig(t *testing.T) {
 		name        string
 		conf        map[string]interface{}
 		expectError bool
-		expected    *Config
+		expected    *pkgai.Config
 	}{
 		{
 			name:        "Config not found",
@@ -79,8 +80,8 @@ func TestParseConfig(t *testing.T) {
 				},
 			},
 			expectError: false,
-			expected: &Config{
-				Server: Server{
+			expected: &pkgai.Config{
+				Server: pkgai.Server{
 					Addr: "localhost:9000",
 				},
 			},
@@ -93,8 +94,8 @@ func TestParseConfig(t *testing.T) {
 				},
 			},
 			expectError: false,
-			expected: &Config{
-				Server: Server{
+			expected: &pkgai.Config{
+				Server: pkgai.Server{
 					Addr: ":8000",
 				},
 			},
@@ -111,7 +112,7 @@ func TestParseConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParseConfig(tt.conf)
+			got, err := pkgai.ParseConfig(tt.conf)
 			if err != nil {
 				assert.Equal(t, tt.expectError, true, tt.name)
 			} else {

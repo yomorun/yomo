@@ -28,12 +28,12 @@ type Caller struct {
 func NewCaller(source yomo.Source, reducer yomo.StreamFunction, md metadata.M, callTimeout time.Duration) (*Caller, error) {
 	logger := ylog.Default()
 
-	reqCh, err := sourceWriteToChan(source, logger)
+	reqCh, err := SourceWriteToChan(source, logger)
 	if err != nil {
 		return nil, err
 	}
 
-	resCh, err := reduceToChan(reducer, logger)
+	resCh, err := ReduceToChan(reducer, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -51,9 +51,9 @@ func NewCaller(source yomo.Source, reducer yomo.StreamFunction, md metadata.M, c
 	return caller, nil
 }
 
-// sourceWriteToChan makes source write data to the channel.
+// SourceWriteToChan makes source write data to the channel.
 // The TagFunctionCall objects are continuously be received from the channel and be sent by the source.
-func sourceWriteToChan(source yomo.Source, logger *slog.Logger) (chan<- ai.FunctionCall, error) {
+func SourceWriteToChan(source yomo.Source, logger *slog.Logger) (chan<- ai.FunctionCall, error) {
 	err := source.Connect()
 	if err != nil {
 		return nil, err
@@ -72,8 +72,8 @@ func sourceWriteToChan(source yomo.Source, logger *slog.Logger) (chan<- ai.Funct
 	return ch, nil
 }
 
-// reduceToChan configures the reducer and returns a channel to accept messages from the reducer.
-func reduceToChan(reducer yomo.StreamFunction, logger *slog.Logger) (<-chan ReduceMessage, error) {
+// ReduceToChan configures the reducer and returns a channel to accept messages from the reducer.
+func ReduceToChan(reducer yomo.StreamFunction, logger *slog.Logger) (<-chan ReduceMessage, error) {
 	reducer.SetObserveDataTags(ai.ReducerTag)
 
 	messages := make(chan ReduceMessage)

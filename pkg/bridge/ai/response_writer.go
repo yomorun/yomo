@@ -2,7 +2,6 @@ package ai
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -78,7 +77,8 @@ func (w *responseWriter) InterceptError(code int, err error) (int, ErrorResponse
 	if pcode == 0 {
 		return code, ErrorResponseBody{
 			Code:    http.StatusText(code),
-			Message: err.Error()}
+			Message: err.Error(),
+		}
 	}
 	return pcode, ErrorResponseBody{
 		Code:    codeString,
@@ -166,46 +166,4 @@ type ErrorResponseBody struct {
 // Error implements the error interface for ErrorResponseBody.
 func (e ErrorResponseBody) Error() string {
 	return e.Message
-}
-
-// RespondWithError writes an error to response according to the OpenAI API spec.
-func RespondWithError(w EventResponseWriter, code int, err error) error {
-	newCode, errBody := w.InterceptError(code, err)
-	w.RecordError(errBody)
-
-	if newCode != 0 {
-		code = newCode
-	}
-	w.WriteHeader(code)
-	return json.NewEncoder(w).Encode(&ErrorResponse{Error: errBody})
-
-}
-
-// parseCodeError returns the status code, error code string and error message string.
-func parseCodeError(err error) (code int, codeString string, message string) {
-	switch e := err.(type) {
-	// bad request
-	case *json.SyntaxError:
-		return http.StatusBadRequest, "invalid_request_error", fmt.Sprintf("Invalid request: %s", e.Error())
-	case *json.UnmarshalTypeError:
-		return http.StatusBadRequest, "invalid_request_error", fmt.Sprintf("Invalid type for `%s`: expected a %s, but got a %s", e.Field, e.Type.String(), e.Value)
-
-	case *openai.APIError:
-		// handle azure api error
-		if e.InnerError != nil {
-			return e.HTTPStatusCode, e.InnerError.Code, e.Message
-		}
-		// handle openai api error
-		eCode, ok := e.Code.(string)
-		if ok {
-			return e.HTTPStatusCode, eCode, e.Message
-		}
-		codeString = e.Type
-		return
-
-	case *openai.RequestError:
-		return e.HTTPStatusCode, e.HTTPStatus, string(e.Body)
-	}
-
-	return code, reflect.TypeOf(err).Name(), err.Error()
 }

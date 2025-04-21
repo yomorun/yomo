@@ -4,9 +4,15 @@ package ai
 import (
 	"errors"
 	"net"
+	"time"
 
 	"github.com/yomorun/yomo/core/ylog"
 	"gopkg.in/yaml.v3"
+)
+
+const (
+	// DefaultZipperAddr is the default endpoint of the zipper
+	DefaultZipperAddr = "localhost:9000"
 )
 
 var (
@@ -14,6 +20,10 @@ var (
 	ErrConfigNotFound = errors.New("ai config was not found")
 	// ErrConfigFormatError is the error when the ai config format is incorrect
 	ErrConfigFormatError = errors.New("ai config format is incorrect")
+
+	RequestTimeout = 360 * time.Second
+	//  RunFunctionTimeout is the timeout for awaiting the function response, default is 60 seconds
+	RunFunctionTimeout = 60 * time.Second
 )
 
 // Config is the configuration of AI bridge.
@@ -99,8 +109,8 @@ func ParseConfig(conf map[string]any) (config *Config, err error) {
 	return
 }
 
-// parseZipperAddr parses the zipper address from zipper listen address
-func parseZipperAddr(addr string) string {
+// ParseZipperAddr parses the zipper address from zipper listen address
+func ParseZipperAddr(addr string) string {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		ylog.Error("invalid zipper address, return default",
@@ -135,4 +145,20 @@ func parseZipperAddr(addr string) string {
 		return DefaultZipperAddr
 	}
 	return localIP + ":" + port
+}
+
+func getLocalIP() (string, error) {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return "", err
+	}
+	for _, addr := range addrs {
+		ipnet, ok := addr.(*net.IPNet)
+		ip := ipnet.IP
+		if !ok || ip.IsUnspecified() || ip.To4() == nil || ip.To16() == nil {
+			continue
+		}
+		return ip.String(), nil
+	}
+	return "", errors.New("not found local ip")
 }

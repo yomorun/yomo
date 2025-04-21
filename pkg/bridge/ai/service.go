@@ -17,7 +17,7 @@ import (
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
-	"github.com/yomorun/yomo/pkg/bridge/ai/register"
+
 	"github.com/yomorun/yomo/pkg/id"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
@@ -55,7 +55,7 @@ type ServiceOptions struct {
 
 // NewService creates a new service for handling the logic from handler layer.
 func NewService(provider provider.LLMProvider, opt *ServiceOptions) *Service {
-	return newService(provider, NewCaller, opt)
+	return NewServiceWithCallerFunc(provider, NewCaller, opt)
 }
 
 func initOption(opt *ServiceOptions) *ServiceOptions {
@@ -83,8 +83,8 @@ func initOption(opt *ServiceOptions) *ServiceOptions {
 	return opt
 }
 
-func newService(provider provider.LLMProvider, ncf newCallerFunc, opt *ServiceOptions) *Service {
-	var onEvict = func(_ string, caller *Caller) {
+func NewServiceWithCallerFunc(provider provider.LLMProvider, ncf newCallerFunc, opt *ServiceOptions) *Service {
+	onEvict := func(_ string, caller *Caller) {
 		caller.Close()
 	}
 
@@ -119,7 +119,7 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, baseSystemMe
 	}
 	md := caller.Metadata().Clone()
 	// read tools attached to the metadata
-	tools, err := register.ListToolCalls(md)
+	tools, err := ai.ListToolCalls(md)
 	if err != nil {
 		return &ai.InvokeResponse{}, err
 	}
@@ -136,9 +136,7 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, baseSystemMe
 		promptUsage     int
 		completionUsage int
 	)
-	var (
-		_, span = tracer.Start(ctx, "first_call")
-	)
+	_, span := tracer.Start(ctx, "first_call")
 	chatCompletionResponse, err := srv.provider.GetChatCompletions(ctx, req, md)
 	if err != nil {
 		return nil, err
@@ -223,7 +221,7 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 	md := caller.Metadata().Clone()
 
 	// 1. find all hosting tool sfn
-	tools, err := register.ListToolCalls(md)
+	tools, err := ai.ListToolCalls(md)
 	if err != nil {
 		return err
 	}
@@ -232,7 +230,7 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 
 	// 3. operate system prompt to request
 	prompt, op := caller.GetSystemPrompt()
-	req = srv.opSystemPrompt(req, prompt, op)
+	req = srv.OpSystemPrompt(req, prompt, op)
 
 	var (
 		promptUsage      = 0
@@ -458,6 +456,11 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 	}
 }
 
+// Logger returns the logger of the service
+func (src *Service) Logger() *slog.Logger {
+	return src.logger
+}
+
 func startRespSpan(ctx context.Context, reqSpan trace.Span, tracer trace.Tracer, w EventResponseWriter) trace.Span {
 	reqSpan.End()
 	recordTTFT(ctx, tracer, w)
@@ -500,7 +503,7 @@ func (srv *Service) addToolsToRequest(req openai.ChatCompletionRequest, tools []
 	return req, hasReqTools
 }
 
-func (srv *Service) opSystemPrompt(req openai.ChatCompletionRequest, sysPrompt string, op SystemPromptOp) openai.ChatCompletionRequest {
+func (srv *Service) OpSystemPrompt(req openai.ChatCompletionRequest, sysPrompt string, op SystemPromptOp) openai.ChatCompletionRequest {
 	if op == SystemPromptOpDisabled {
 		return req
 	}
