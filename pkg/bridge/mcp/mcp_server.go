@@ -56,7 +56,7 @@ func NewMCPServer(logger *slog.Logger) (*MCPServer, error) {
 		logger:     logger,
 	}
 
-	logger.Info("[mcp] server is created",
+	logger.Info("[mcp] start mcp bridge service",
 		"sse_endpoint", sseServer.CompleteSseEndpoint(),
 		"message_endpoint", sseServer.CompleteMessageEndpoint(),
 	)
