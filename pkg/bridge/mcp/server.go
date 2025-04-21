@@ -67,7 +67,7 @@ func Start(config *Config, aiConfig *pkgai.Config, zipperAddr string, log *slog.
 		logger.Error("[mcp] failed to create server", "error", err)
 		return err
 	}
-	logger.Info("[mcp] mcp bridge server is up and running", "endpoint", fmt.Sprintf("http://%s/sse", addr))
+	logger.Info("[mcp] server is up and running", "endpoint", fmt.Sprintf("http://%s/sse", addr))
 	defer httpServer.Close()
 
 	return httpServer.ListenAndServe()
