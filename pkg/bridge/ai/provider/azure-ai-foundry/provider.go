@@ -67,35 +67,3 @@ func newConfig(apiKey string, apiEndpoint string, apiVersion string) openai.Clie
 
 	return config
 }
-
-/** ps: I really want to change to openai-go **/
-// c := openai.NewClient(
-// 	withEndpoint(apiEndpoint, apiVersion),
-// 	withAPIKey(apiKey),
-// )
-
-// func withEndpoint(endpoint string, apiVersion string) option.RequestOption {
-// 	if !strings.HasSuffix(endpoint, "/") {
-// 		endpoint += "/"
-// 	}
-// 	endpoint += "models/"
-// 	withQueryAdd := option.WithQueryAdd("api-version", apiVersion)
-// 	withEndpoint := option.WithBaseURL(endpoint)
-
-// 	return requestconfig.RequestOptionFunc(func(rc *requestconfig.RequestConfig) error {
-// 		if apiVersion == "" {
-// 			return fmt.Errorf("apiVersion is an empty string, but needs to be set. See https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#rest-api-versioning for details.")
-// 		}
-// 		if err := withQueryAdd.Apply(rc); err != nil {
-// 			return err
-// 		}
-// 		if err := withEndpoint.Apply(rc); err != nil {
-// 			return err
-// 		}
-// 		return nil
-// 	})
-// }
-
-// func withAPIKey(apiKey string) option.RequestOption {
-// 	return option.WithHeader("api-key", apiKey)
-// }
