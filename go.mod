@@ -16,7 +16,7 @@ require (
 	github.com/lmittmann/tint v1.0.7
 	github.com/mark3labs/mcp-go v0.20.1
 	github.com/matoous/go-nanoid/v2 v2.1.0
-	github.com/quic-go/quic-go v0.50.1
+	github.com/quic-go/quic-go v0.51.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/sashabaranov/go-openai v1.38.1
 	github.com/second-state/WasmEdge-go v0.14.0
@@ -101,7 +101,6 @@ require (
 	go.uber.org/mock v0.5.1 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.37.0 // indirect
-	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
 	golang.org/x/net v0.39.0 // indirect
 	golang.org/x/oauth2 v0.28.0 // indirect
 	golang.org/x/sync v0.13.0 // indirect
