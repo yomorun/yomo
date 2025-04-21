@@ -33,6 +33,7 @@ import (
 	providerpkg "github.com/yomorun/yomo/pkg/bridge/ai/provider"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/anthropic"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/azopenai"
+	azaifoundry "github.com/yomorun/yomo/pkg/bridge/ai/provider/azure-ai-foundry"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cerebras"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cfazure"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cfopenai"
@@ -211,6 +212,13 @@ func registerAIProvider(aiConfig *ai.Config) error {
 			providerpkg.RegisterProvider(deepseek.NewProvider(provider["api_key"], provider["model"]))
 		case "vllm":
 			providerpkg.RegisterProvider(vllm.NewProvider(provider["api_endpoint"], provider["api_key"], provider["model"]))
+		case "azaifoundry":
+			providerpkg.RegisterProvider(azaifoundry.NewProvider(
+				provider["api_endpoint"],
+				provider["api_key"],
+				provider["api_version"],
+				provider["model"],
+			))
 		default:
 			log.WarningStatusEvent(os.Stdout, "unknown provider: %s", name)
 		}
