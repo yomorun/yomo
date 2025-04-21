@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -66,7 +67,7 @@ func Start(config *Config, aiConfig *pkgai.Config, zipperAddr string, log *slog.
 		logger.Error("[mcp] failed to create server", "error", err)
 		return err
 	}
-	logger.Info("[mcp] bridge server is running", "addr", addr)
+	logger.Info("[mcp] mcp bridge server is up and running", "endpoint", fmt.Sprintf("http://%s/sse", addr))
 	defer httpServer.Close()
 
 	return httpServer.ListenAndServe()
