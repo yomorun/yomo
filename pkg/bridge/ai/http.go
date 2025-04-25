@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
+	"io"
 	"net/http"
 	"reflect"
 
@@ -167,8 +167,8 @@ func (h *Handler) HandleInvoke(w http.ResponseWriter, r *http.Request) {
 	)
 	defer r.Body.Close()
 
-	req, err := DecodeRequest[ai.InvokeRequest](r, ww, h.service.Logger())
-	if err != nil {
+	var req ai.InvokeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		RespondWithError(ww, http.StatusBadRequest, err)
 		ww.RecordError(errors.New("bad request"))
 		return
@@ -202,7 +202,13 @@ func (h *Handler) HandleChatCompletions(w http.ResponseWriter, r *http.Request) 
 	)
 	defer r.Body.Close()
 
-	req, err := DecodeRequest[openai.ChatCompletionRequest](r, ww, h.service.Logger())
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		RespondWithError(ww, http.StatusBadRequest, err)
+		return
+	}
+	req, err := ai.DecodeChatCompletionRequest(body)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		RespondWithError(ww, http.StatusBadRequest, err)
@@ -227,15 +233,4 @@ func (h *Handler) HandleChatCompletions(w http.ResponseWriter, r *http.Request) 
 		RespondWithError(ww, http.StatusBadRequest, err)
 		return
 	}
-}
-
-// DecodeRequest decodes the request body into given type.
-func DecodeRequest[T any](r *http.Request, ww EventResponseWriter, logger *slog.Logger) (T, error) {
-	var req T
-	err := json.NewDecoder(r.Body).Decode(&req)
-	if err != nil {
-		return req, err
-	}
-
-	return req, nil
 }
