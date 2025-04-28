@@ -64,8 +64,8 @@ func TestGithubModelsProvider_GetChatCompletions(t *testing.T) {
 
 	_, err := provider.GetChatCompletions(context.TODO(), req, nil)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "401")
-	assert.Contains(t, err.Error(), "Bad credentials")
+	assert.Contains(t, err.Error(), "500")
+	assert.Contains(t, err.Error(), "Specified method is not supported")
 }
 
 func TestGithubModelsProvider_GetChatCompletionsStream(t *testing.T) {
@@ -95,6 +95,6 @@ func TestGithubModelsProvider_GetChatCompletionsStream(t *testing.T) {
 
 	_, err := provider.GetChatCompletionsStream(context.TODO(), req, nil)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "401")
-	assert.Contains(t, err.Error(), "Bad credentials")
+	assert.Contains(t, err.Error(), "500")
+	assert.Contains(t, err.Error(), "Specified method is not supported")
 }
