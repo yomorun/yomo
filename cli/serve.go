@@ -31,20 +31,6 @@ import (
 
 	"github.com/yomorun/yomo/pkg/bridge/ai"
 	providerpkg "github.com/yomorun/yomo/pkg/bridge/ai/provider"
-	"github.com/yomorun/yomo/pkg/bridge/ai/provider/anthropic"
-	"github.com/yomorun/yomo/pkg/bridge/ai/provider/azopenai"
-	azaifoundry "github.com/yomorun/yomo/pkg/bridge/ai/provider/azure-ai-foundry"
-	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cerebras"
-	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cfazure"
-	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cfopenai"
-	"github.com/yomorun/yomo/pkg/bridge/ai/provider/deepseek"
-	"github.com/yomorun/yomo/pkg/bridge/ai/provider/gemini"
-	"github.com/yomorun/yomo/pkg/bridge/ai/provider/githubmodels"
-	"github.com/yomorun/yomo/pkg/bridge/ai/provider/ollama"
-	"github.com/yomorun/yomo/pkg/bridge/ai/provider/openai"
-	"github.com/yomorun/yomo/pkg/bridge/ai/provider/vertexai"
-	"github.com/yomorun/yomo/pkg/bridge/ai/provider/vllm"
-	"github.com/yomorun/yomo/pkg/bridge/ai/provider/xai"
 	"github.com/yomorun/yomo/pkg/bridge/llm"
 	"github.com/yomorun/yomo/pkg/bridge/mcp"
 )
@@ -163,69 +149,16 @@ var serveCmd = &cobra.Command{
 	},
 }
 
-func registerAIProvider(aiConfig *ai.Config) error {
+func registerAIProvider(aiConfig *ai.Config) {
 	for name, provider := range aiConfig.Providers {
-		switch name {
-		case "azopenai":
-			providerpkg.RegisterProvider(azopenai.NewProvider(
-				provider["api_key"],
-				provider["api_endpoint"],
-				provider["deployment_id"],
-				provider["api_version"],
-			))
-		case "openai":
-			providerpkg.RegisterProvider(openai.NewProvider(provider["api_key"], provider["model"]))
-		case "cloudflare_azure":
-			providerpkg.RegisterProvider(cfazure.NewProvider(
-				provider["endpoint"],
-				provider["api_key"],
-				provider["resource"],
-				provider["deployment_id"],
-				provider["api_version"],
-			))
-		case "cloudflare_openai":
-			providerpkg.RegisterProvider(cfopenai.NewProvider(
-				provider["endpoint"],
-				provider["api_key"],
-				provider["model"],
-			))
-		case "ollama":
-			providerpkg.RegisterProvider(ollama.NewProvider(provider["api_endpoint"], provider["model"]))
-		case "gemini":
-			providerpkg.RegisterProvider(gemini.NewProvider(provider["api_key"]))
-		case "githubmodels":
-			providerpkg.RegisterProvider(githubmodels.NewProvider(provider["api_key"], provider["model"]))
-		case "cerebras":
-			providerpkg.RegisterProvider(cerebras.NewProvider(provider["api_key"], provider["model"]))
-		case "anthropic":
-			providerpkg.RegisterProvider(anthropic.NewProvider(provider["api_key"], provider["model"]))
-		case "xai":
-			providerpkg.RegisterProvider(xai.NewProvider(provider["api_key"], provider["model"]))
-		case "vertexai":
-			providerpkg.RegisterProvider(vertexai.NewProvider(
-				provider["project_id"],
-				provider["location"],
-				provider["model"],
-				provider["credentials_file"],
-			))
-		case "deepseek":
-			providerpkg.RegisterProvider(deepseek.NewProvider(provider["api_key"], provider["model"]))
-		case "vllm":
-			providerpkg.RegisterProvider(vllm.NewProvider(provider["api_endpoint"], provider["api_key"], provider["model"]))
-		case "azaifoundry":
-			providerpkg.RegisterProvider(azaifoundry.NewProvider(
-				provider["api_endpoint"],
-				provider["api_key"],
-				provider["api_version"],
-				provider["model"],
-			))
-		default:
-			log.WarningStatusEvent(os.Stdout, "unknown provider: %s", name)
+		p, err := ai.NewProviderFromConfig(name, provider)
+		if err != nil {
+			log.WarningStatusEvent(os.Stdout, "%s", err.Error())
+		} else {
+			providerpkg.RegisterProvider(p)
 		}
 	}
-
 	ylog.Info("register LLM providers", "num", len(providerpkg.ListProviders()))
-	return nil
 }
 
 func init() {

@@ -3,10 +3,26 @@ package ai
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"time"
 
 	"github.com/yomorun/yomo/core/ylog"
+	providerpkg "github.com/yomorun/yomo/pkg/bridge/ai/provider"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/anthropic"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/azopenai"
+	azaifoundry "github.com/yomorun/yomo/pkg/bridge/ai/provider/azure-ai-foundry"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cerebras"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cfazure"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/cfopenai"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/deepseek"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/gemini"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/githubmodels"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/ollama"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/openai"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/vertexai"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/vllm"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/xai"
 	"gopkg.in/yaml.v3"
 )
 
@@ -161,4 +177,65 @@ func getLocalIP() (string, error) {
 		return ip.String(), nil
 	}
 	return "", errors.New("not found local ip")
+}
+
+// NewProviderFromConfig create a llm provider from config that read from config.yaml
+func NewProviderFromConfig(name string, provider map[string]string) (providerpkg.LLMProvider, error) {
+	switch name {
+	case "azopenai":
+		return azopenai.NewProvider(
+			provider["api_key"],
+			provider["api_endpoint"],
+			provider["deployment_id"],
+			provider["api_version"],
+		), nil
+	case "openai":
+		return openai.NewProvider(provider["api_key"], provider["model"]), nil
+	case "cloudflare_azure":
+		return cfazure.NewProvider(
+			provider["endpoint"],
+			provider["api_key"],
+			provider["resource"],
+			provider["deployment_id"],
+			provider["api_version"],
+		), nil
+	case "cloudflare_openai":
+		return cfopenai.NewProvider(
+			provider["endpoint"],
+			provider["api_key"],
+			provider["model"],
+		), nil
+	case "ollama":
+		return ollama.NewProvider(provider["api_endpoint"], provider["model"]), nil
+	case "gemini":
+		return gemini.NewProvider(provider["api_key"]), nil
+	case "githubmodels":
+		return githubmodels.NewProvider(provider["api_key"], provider["model"]), nil
+	case "cerebras":
+		return cerebras.NewProvider(provider["api_key"], provider["model"]), nil
+	case "anthropic":
+		return anthropic.NewProvider(provider["api_key"], provider["model"]), nil
+	case "xai":
+		return xai.NewProvider(provider["api_key"], provider["model"]), nil
+	case "vertexai":
+		return vertexai.NewProvider(
+			provider["project_id"],
+			provider["location"],
+			provider["model"],
+			provider["credentials_file"],
+		), nil
+	case "deepseek":
+		return deepseek.NewProvider(provider["api_key"], provider["model"]), nil
+	case "vllm":
+		return vllm.NewProvider(provider["api_endpoint"], provider["api_key"], provider["model"]), nil
+	case "azaifoundry":
+		return azaifoundry.NewProvider(
+			provider["api_endpoint"],
+			provider["api_key"],
+			provider["api_version"],
+			provider["model"],
+		), nil
+	default:
+		return nil, fmt.Errorf("unknown provider: %s", name)
+	}
 }
