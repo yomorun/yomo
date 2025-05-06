@@ -252,8 +252,11 @@ func (s *streamFunction) onDataFrame(dataFrame *frame.DataFrame) {
 			)
 
 			serverlessCtx := serverless.NewContext(s.client, dataFrame.Tag, md, dataFrame.Payload)
+
+			beforeHandleCheck(serverlessCtx, s.client.Logger)
 			s.fn(serverlessCtx)
-			checkLLMFunctionCall(s.client.Logger, serverlessCtx)
+			afterHandleCheck(serverlessCtx, s.client.Logger)
+
 		}(dataFrame)
 	} else if s.pfn != nil {
 		data := dataFrame.Payload
@@ -274,13 +277,16 @@ func (s *streamFunction) Init(fn func() error) error {
 	return fn()
 }
 
-func checkLLMFunctionCall(logger *slog.Logger, serverlessCtx yserverless.Context) {
-	fc, err := serverlessCtx.LLMFunctionCall()
-	if err != nil {
-		// it's not a LLM function call ctx
-		return
+func beforeHandleCheck(yctx yserverless.Context, logger *slog.Logger) {
+	fc, err := yctx.LLMFunctionCall()
+	if isFunctionCall := err == nil; isFunctionCall {
+		logger.Debug("llm sfn request", "tool_call_id", fc.ToolCallID, "function_name", fc.FunctionName, "arguments", fc.Arguments)
 	}
-	if !fc.IsOK {
-		logger.Warn("The function return nothing to LLM, please ensure ctx.WriteLLMResult() has been called and successful in Handler func.")
+}
+
+func afterHandleCheck(yctx yserverless.Context, logger *slog.Logger) {
+	fc, err := yctx.LLMFunctionCall()
+	if isFunctionCall := err == nil; isFunctionCall {
+		logger.Debug("llm sfn response", "tool_call_id", fc.ToolCallID, "function_name", fc.FunctionName, "is_ok", fc.IsOK, "result", fc.Result)
 	}
 }
