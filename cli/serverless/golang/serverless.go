@@ -226,7 +226,7 @@ func (s *GolangServerless) Run(verbose bool) error {
 	}
 	env := os.Environ()
 	if verbose {
-		cmd.Env = append(env, "YOMO_LOG_LEVEL=debug")
+		env = append(env, "YOMO_LOG_LEVEL=debug")
 	}
 	cmd.Env = env
 	return cmd.Run()

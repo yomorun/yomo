@@ -188,6 +188,7 @@ func (s *Server) handleFrameConn(fconn frame.Conn, logger *slog.Logger) {
 	if conn.ClientType() == ClientTypeStreamFunction {
 		s.router.Remove(conn.ID())
 		ai.UnregisterFunction(conn.ID(), conn.Metadata())
+		s.logger.Info("unregister ai function", "conn_id", conn.ID())
 	}
 	_ = s.connector.Remove(conn.ID())
 }
@@ -287,7 +288,7 @@ func (s *Server) tryRegisterFunctionDefinition(hf *frame.HandshakeFrame, conn *C
 	if err := ai.RegisterFunction(&fd, conn.ID(), md); err != nil {
 		return err
 	}
-	s.logger.Info("register ai function success", "function_name", fd.Name, "definition", string(definition))
+	s.logger.Info("register ai function", "conn_id", conn.ID(), "function_name", fd.Name, "definition", string(definition))
 	return nil
 }
 
