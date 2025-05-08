@@ -25,7 +25,7 @@ var (
 )
 
 // Start starts the http server
-func Start(config *Config, aiConfig *pkgai.Config, zipperAddr string, log *slog.Logger) error {
+func Start(config *Config, aiConfig *pkgai.Config, source yomo.Source, reducer yomo.StreamFunction, log *slog.Logger) error {
 	// ai provider
 	provider, err := provider.GetProvider(aiConfig.Server.Provider)
 	if err != nil {
@@ -35,21 +35,21 @@ func Start(config *Config, aiConfig *pkgai.Config, zipperAddr string, log *slog.
 	logger = log.With("service", "mcp-bridge")
 	// ai service
 	opts := &pkgai.ServiceOptions{
-		Logger: logger,
-		// SourceBuilder:  func(_ string) yomo.Source { return source },
-		// ReducerBuilder: func(_ string) yomo.StreamFunction { return reducer },
+		Logger:         logger,
+		SourceBuilder:  func(_ string) yomo.Source { return source },
+		ReducerBuilder: func(_ string) yomo.StreamFunction { return reducer },
 	}
-	zipperAddr = pkgai.ParseZipperAddr(zipperAddr)
-	sourceBuilder := func(credential string) yomo.Source {
-		source := yomo.NewSource("mcp-source", zipperAddr, yomo.WithCredential(credential))
-		return source
-	}
-	reducerBuilder := func(credential string) yomo.StreamFunction {
-		reducer := yomo.NewStreamFunction("mcp-reducer", zipperAddr, yomo.WithSfnCredential(credential))
-		return reducer
-	}
-	opts.SourceBuilder = sourceBuilder
-	opts.ReducerBuilder = reducerBuilder
+	// zipperAddr = pkgai.ParseZipperAddr(zipperAddr)
+	// sourceBuilder := func(credential string) yomo.Source {
+	// 	source := yomo.NewSource("mcp-source", zipperAddr, yomo.WithCredential(credential))
+	// 	return source
+	// }
+	// reducerBuilder := func(credential string) yomo.StreamFunction {
+	// 	reducer := yomo.NewStreamFunction("mcp-reducer", zipperAddr, yomo.WithSfnCredential(credential))
+	// 	return reducer
+	// }
+	// opts.SourceBuilder = sourceBuilder
+	// opts.ReducerBuilder = reducerBuilder
 	aiService = pkgai.NewService(provider, opts)
 	// http server
 	addr := config.Server.Addr
