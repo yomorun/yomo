@@ -129,9 +129,16 @@ var serveCmd = &cobra.Command{
 			}()
 			// MCP Server
 			if mcpConfig != nil {
-				defer mcp.Stop()
+				conn, _ := listener.Dial()
+				source := ai.NewSource(conn, auth.NewCredential(fmt.Sprintf("token:%s", tokenString)))
+
+				conn2, _ := listener.Dial()
+				reducer := ai.NewReducer(conn2, auth.NewCredential(fmt.Sprintf("token:%s", tokenString)))
+
 				go func() {
-					err = mcp.Start(mcpConfig, aiConfig, listenAddr, ylog.Default())
+					defer mcp.Stop()
+
+					err = mcp.Start(mcpConfig, aiConfig, source, reducer, ylog.Default())
 					if err != nil {
 						log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 						return
