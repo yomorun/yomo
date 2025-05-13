@@ -11,12 +11,14 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/yomorun/yomo/core/ylog"
 	pkgai "github.com/yomorun/yomo/pkg/bridge/ai"
+	"go.opentelemetry.io/otel"
 )
 
 var (
 	ErrMCPServerNotFound    = errors.New("mcp server not found")
 	ErrUnknownMCPServerType = errors.New("unknown mcp server type")
 	ErrCallerNotFound       = errors.New("caller not found")
+	ErrTracerNotFound       = errors.New("tracer not found")
 )
 
 // MCPServer represents a MCP server
@@ -91,6 +93,9 @@ func (s *MCPServer) AddPrompt(prompt mcp.Prompt, handler server.PromptHandlerFun
 
 func authContextFunc() server.SSEContextFunc {
 	return func(ctx context.Context, r *http.Request) context.Context {
+		// trace
+		ctx = pkgai.WithTracerContext(ctx, otel.Tracer("yomo-mcp-bridge"))
+
 		// context with caller
 		caller, err := aiService.LoadOrCreateCaller(r)
 		if err != nil {

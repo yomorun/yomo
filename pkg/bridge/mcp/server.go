@@ -143,6 +143,13 @@ func RemoveMCPTool(connID uint64) error {
 
 // mcpToolHandler mcp tool handler
 func mcpToolHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	// get tracer
+	tracer := pkgai.FromTracerContext(ctx)
+	if tracer == nil {
+		logger.Error("[mcp] tool handler load failed", "error", ErrTracerNotFound.Error())
+		return nil, ErrTracerNotFound
+	}
+
 	// get caller
 	caller := pkgai.FromCallerContext(ctx)
 	if caller == nil {
@@ -170,7 +177,7 @@ func mcpToolHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.Call
 			},
 		},
 	}
-	callResult, err := caller.Call(ctx, transID, reqID, fnCalls)
+	callResult, err := caller.Call(ctx, transID, reqID, fnCalls, tracer)
 	if err != nil {
 		logger.Error("[mcp] tool call error", "error", err, "name", name, "arguments", args)
 		return nil, err

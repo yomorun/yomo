@@ -162,9 +162,9 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, baseSystemMe
 
 	srv.logger.Debug(">> run function calls", "transID", transID, "res.ToolCalls", fmt.Sprintf("%+v", res.ToolCalls))
 
-	_, span = tracer.Start(ctx, "run_sfn")
+	sfnCtx, span := tracer.Start(ctx, "run_sfn")
 	reqID := id.New(16)
-	callResult, err := caller.Call(ctx, transID, reqID, res.ToolCalls)
+	callResult, err := caller.Call(sfnCtx, transID, reqID, res.ToolCalls, tracer)
 	if err != nil {
 		return nil, err
 	}
@@ -368,7 +368,7 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 	resCtx, resSpan := tracer.Start(ctx, "completions_response")
 	defer resSpan.End()
 
-	_, sfnSpan := tracer.Start(resCtx, "run_sfn")
+	sfnCtx, sfnSpan := tracer.Start(resCtx, "run_sfn")
 
 	// 5. find sfns that hit the function call
 	fnCalls := findTools(tools, toolCalls)
@@ -377,7 +377,7 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 
 	// 6. run llm function calls
 	reqID := id.New(16)
-	callResult, err := caller.Call(ctx, transID, reqID, fnCalls)
+	callResult, err := caller.Call(sfnCtx, transID, reqID, fnCalls, tracer)
 	if err != nil {
 		return err
 	}

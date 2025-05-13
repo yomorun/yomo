@@ -5,7 +5,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	openai "github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core"
@@ -73,10 +72,10 @@ func SourceWriteToChan(source yomo.Source, logger *slog.Logger) (chan<- ai.Funct
 }
 
 // ReduceToChan configures the reducer and returns a channel to accept messages from the reducer.
-func ReduceToChan(reducer yomo.StreamFunction, logger *slog.Logger) (<-chan ReduceMessage, error) {
+func ReduceToChan(reducer yomo.StreamFunction, logger *slog.Logger) (<-chan ToolCallResult, error) {
 	reducer.SetObserveDataTags(ai.ReducerTag)
 
-	messages := make(chan ReduceMessage)
+	messages := make(chan ToolCallResult)
 
 	reducer.SetObserveDataTags(ai.ReducerTag)
 	reducer.SetHandler(reduceFunc(messages, logger))
@@ -88,24 +87,24 @@ func ReduceToChan(reducer yomo.StreamFunction, logger *slog.Logger) (<-chan Redu
 	return messages, nil
 }
 
-func reduceFunc(messages chan ReduceMessage, logger *slog.Logger) core.AsyncHandler {
+func reduceFunc(messages chan ToolCallResult, logger *slog.Logger) core.AsyncHandler {
 	return func(ctx serverless.Context) {
 		invoke, err := ctx.LLMFunctionCall()
 		if err != nil {
-			messages <- ReduceMessage{ReqID: ""}
+			messages <- ToolCallResult{ReqID: ""}
 			logger.Error("parse function calling invoke", "err", err.Error())
 			return
 		}
 		logger.Debug("sfn-reducer", "req_id", invoke.ReqID, "tool_call_id", invoke.ToolCallID, "result", string(invoke.Result))
 
-		message := openai.ChatCompletionMessage{
-			Name:       invoke.FunctionName,
-			Role:       openai.ChatMessageRoleTool,
-			Content:    invoke.Result,
-			ToolCallID: invoke.ToolCallID,
+		message := ToolCallResult{
+			ReqID:        invoke.ReqID,
+			FunctionName: invoke.FunctionName,
+			ToolCallID:   invoke.ToolCallID,
+			Content:      invoke.Result,
 		}
 
-		messages <- ReduceMessage{ReqID: invoke.ReqID, Message: message}
+		messages <- message
 	}
 }
 
