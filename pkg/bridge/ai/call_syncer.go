@@ -7,6 +7,7 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo/ai"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // CallSyncer fires a bunch of function callings, and wait the result of these function callings.
@@ -14,15 +15,16 @@ import (
 // Note that one tool call can only be responded once.
 type CallSyncer interface {
 	// Call fires a bunch of function callings, and wait the result of these function callings.
-	// The result only contains the messages with role=="tool".
 	// If some function callings failed, the content will be returned as the failed reason.
-	Call(ctx context.Context, transID string, reqID string, toolCalls []openai.ToolCall) ([]ToolCallResult, error)
+	Call(ctx context.Context, transID string, reqID string, toolCalls []openai.ToolCall, tracer trace.Tracer) ([]ToolCallResult, error)
 	// Close close the CallSyncer. if close, you can't use this CallSyncer anymore.
 	Close() error
 }
 
 // ToolCallResult is the result of a CallSyncer.Call()
 type ToolCallResult struct {
+	// ReqID identifies the tool call result.
+	ReqID string
 	// FunctionName is the name of the function calling.
 	FunctionName string
 	// ToolCallID is the tool call id.
@@ -39,21 +41,13 @@ type callSyncer struct {
 	// timeout is the timeout for waiting the result.
 	timeout   time.Duration
 	sourceCh  chan<- ai.FunctionCall
-	reduceCh  <-chan ReduceMessage
+	reduceCh  <-chan ToolCallResult
 	toolOutCh chan toolOut
 	cleanCh   chan string
 }
 
-// ReduceMessage is the message from the reducer.
-type ReduceMessage struct {
-	// ReqID indentifies the message.
-	ReqID string
-	// Message is the message.
-	Message openai.ChatCompletionMessage
-}
-
 // NewCallSyncer creates a new CallSyncer.
-func NewCallSyncer(logger *slog.Logger, sourceCh chan<- ai.FunctionCall, reduceCh <-chan ReduceMessage, timeout time.Duration) CallSyncer {
+func NewCallSyncer(logger *slog.Logger, sourceCh chan<- ai.FunctionCall, reduceCh <-chan ToolCallResult, timeout time.Duration) CallSyncer {
 	if timeout == 0 {
 		timeout = RunFunctionTimeout
 	}
@@ -81,7 +75,12 @@ type toolOut struct {
 	ch      chan ToolCallResult
 }
 
-func (f *callSyncer) Call(ctx context.Context, transID, reqID string, toolCalls []openai.ToolCall) ([]ToolCallResult, error) {
+type callSpan struct {
+	name string
+	span trace.Span
+}
+
+func (f *callSyncer) Call(ctx context.Context, transID, reqID string, toolCalls []openai.ToolCall, tracer trace.Tracer) ([]ToolCallResult, error) {
 	if len(toolCalls) == 0 {
 		return []ToolCallResult{}, nil
 	}
@@ -89,10 +88,14 @@ func (f *callSyncer) Call(ctx context.Context, transID, reqID string, toolCalls 
 		f.cleanCh <- reqID
 	}()
 
-	toolNameMap := make(map[string]string)
+	toolNameMap := make(map[string]callSpan)
 
 	for _, tool := range toolCalls {
-		toolNameMap[tool.ID] = tool.Function.Name
+		_, span := tracer.Start(ctx, tool.Function.Name)
+		toolNameMap[tool.ID] = callSpan{
+			span: span,
+			name: tool.Function.Name,
+		}
 	}
 
 	toolIDs, err := f.fire(transID, reqID, toolCalls)
@@ -126,17 +129,24 @@ func (f *callSyncer) Call(ctx context.Context, transID, reqID string, toolCalls 
 		case res := <-ch:
 			result = append(result, res)
 
+			callSpan := toolNameMap[res.ToolCallID]
+			callSpan.span.End()
+
 			delete(toolIDs, res.ToolCallID)
 			if len(toolIDs) == 0 {
 				return result, nil
 			}
 		case <-time.After(f.timeout):
-			for id := range toolIDs {
+			for toolID := range toolIDs {
+				callSpan := toolNameMap[toolID]
+
 				result = append(result, ToolCallResult{
-					FunctionName: toolNameMap[id],
-					ToolCallID:   id,
+					FunctionName: callSpan.name,
+					ToolCallID:   toolID,
 					Content:      "timeout in this function calling, you should ignore this.",
 				})
+
+				callSpan.span.End()
 			}
 			return result, nil
 		}
@@ -202,9 +212,9 @@ func (f *callSyncer) background() {
 				continue
 			}
 			result := ToolCallResult{
-				FunctionName: msg.Message.Name,
-				ToolCallID:   msg.Message.ToolCallID,
-				Content:      msg.Message.Content,
+				FunctionName: msg.FunctionName,
+				ToolCallID:   msg.ToolCallID,
+				Content:      msg.Content,
 			}
 
 			sig, ok := singnals[msg.ReqID]
@@ -214,11 +224,11 @@ func (f *callSyncer) background() {
 				if !ok {
 					buffered[msg.ReqID] = make(map[string]ToolCallResult)
 				}
-				buffered[msg.ReqID][msg.Message.ToolCallID] = result
+				buffered[msg.ReqID][msg.ToolCallID] = result
 			} else {
 				// the signal was sent,
 				// check if the message has been sent, and if not, send the message to signal's channel.
-				if _, ok := sig.toolIDs[msg.Message.ToolCallID]; ok {
+				if _, ok := sig.toolIDs[msg.ToolCallID]; ok {
 					sig.ch <- result
 				}
 			}

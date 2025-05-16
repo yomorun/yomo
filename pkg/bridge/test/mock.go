@@ -12,6 +12,7 @@ import (
 	pkgai "github.com/yomorun/yomo/pkg/bridge/ai"
 	"github.com/yomorun/yomo/serverless"
 	"github.com/yomorun/yomo/serverless/mock"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // handler.handle implements core.AsyncHandler, it just echo the context be written.
@@ -138,7 +139,7 @@ type mockCallSyncer struct {
 }
 
 // Call implements CallSyncer, it returns the mock response defined in advance.
-func (m *mockCallSyncer) Call(ctx context.Context, transID string, reqID string, toolCalls []openai.ToolCall) ([]pkgai.ToolCallResult, error) {
+func (m *mockCallSyncer) Call(ctx context.Context, transID string, reqID string, toolCalls []openai.ToolCall, _ trace.Tracer) ([]pkgai.ToolCallResult, error) {
 	res := []pkgai.ToolCallResult{}
 
 	for _, call := range m.calls {
