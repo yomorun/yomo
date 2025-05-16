@@ -23,7 +23,7 @@ type CallSyncer interface {
 
 // ToolCallResult is the result of a CallSyncer.Call()
 type ToolCallResult struct {
-	// ReqID indentifies the tool call result.
+	// ReqID identifies the tool call result.
 	ReqID string
 	// FunctionName is the name of the function calling.
 	FunctionName string
