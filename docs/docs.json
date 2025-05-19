@@ -4,7 +4,7 @@
   "description": "The YoMo Documentation, a serverless LLM function calling framework, enabling developers to build and deploy ai agents with MCP fast and easily.",
   "favicon": "/favicon.ico",
   "theme": "willow",
-  "colors" : {
+  "colors": {
     "primary": "#007FFF"
   },
   "navigation": {
@@ -14,19 +14,20 @@
         "groups": [
           {
             "group": "Introduction",
-            "pages": [
-              "introduction",
-              "quickstart"
-            ]
+            "pages": ["introduction", "quickstart"]
           },
           {
             "group": "Serverless LLM Function Calling",
-            "pages": [
-              "sfn/intro",
-              "sfn/init",
-              "sfn/run",
-              "sfn/serve"
-            ]
+            "pages": ["sfn/concept"]
+          },
+          {
+            "group": "YoMo CLI",
+            "pages": ["cli/overview", "cli/init", "cli/run", "cli/serve"]
+          },
+          { "group": "Server Configuation", "pages": [
+            "server-configuration/llm-bridge",
+            "server-configuration/mcp-bridge"
+            ] 
           }
         ]
       },
@@ -35,15 +36,11 @@
         "groups": [
           {
             "group": "API Documentation",
-            "pages": [
-              "api-ref/intro"
-            ]
+            "pages": ["api-ref/intro"]
           },
           {
             "group": "Endpoint Examples",
-            "pages": [
-              "api-ref/endpoint/post"
-            ]
+            "pages": ["api-ref/endpoint/post"]
           }
         ]
       }

@@ -1,6 +1,6 @@
 ---
-title: typescript spec
-description: TypeScript YoMo Serverless Function Spec
+title: Concept
+description: The Core of YoMo Serverless LLM Function
 icon: 'code'
 ---
 
@@ -32,7 +32,7 @@ The framework is designed with a serverless-first mindset, making it easy to dep
 npm install @yomo/sfn
 ```
 
-## Core Concepts
+## Enssential Components
 
 There are 3 essential components to define a tool:
 
@@ -80,22 +80,6 @@ export async function handler(args: Argument) {
 }
 ```
 
-## How YoMo Framework Works
-
-The framework acts as an intermediary between the LLM or MCP Client and your TypeScript tool code. The general flow is as follows:
-
-1. **Tool Registration**: You register your tools with the framework. The framework reads the description and the Argument type for each tool.
-
-2. **Schema Generation**: Using the Argument type, the framework generates a machine-readable schema (e.g., JSONSchema) for each tool's input.
-
-3. **LLM Interaction**: When you interact with an LLM (using the framework's integration layer), the framework provides the LLM with the description and the generated schema for your registered tools.
-
-4. **LLM Function Call**: Based on the user's prompt and the provided tool information, the LLM decides if it needs to call a tool. If it does, it responds with the name of the tool to call and an object containing the arguments, formatted according to the schema.
-
-5. **Argument Validation and Handling**: The framework receives the LLM's response, validates the provided arguments against the Argument type (or the generated schema), and then invokes the corresponding handler function with the validated arguments.
-
-6. **Result to LLM/MCP Client**: The object returned by your handler function is sent back to the LLM for it to formulate a response to the user, or is processed further by your application.
-
 ## Testing Your Tools
 
 Create the test file in `test/` folder, for example `test/app.test.ts`, and add the following code:
@@ -124,6 +108,22 @@ test('getWeatherByGoogleAPI', async () => {
 Then, run `bun test` to execute the tests. The framework will automatically validate the types and ensure that your tools are functioning as expected.
 
 You can use any testing framework you prefer, such as Jest or Mocha, to run your tests. The key is to ensure that your tests cover the functionality of your tools and validate the expected behavior.
+
+## How YoMo Works
+
+The framework acts as an intermediary between the LLM or MCP Client and your TypeScript tool code. The general flow is as follows:
+
+1. **Tool Registration**: You register your tools with the framework. The framework reads the description and the Argument type for each tool.
+
+2. **Schema Generation**: Using the Argument type, the framework generates a machine-readable schema (e.g., JSONSchema) for each tool's input.
+
+3. **LLM Interaction**: When you interact with an LLM (using the framework's integration layer), the framework provides the LLM with the description and the generated schema for your registered tools.
+
+4. **LLM Function Call**: Based on the user's prompt and the provided tool information, the LLM decides if it needs to call a tool. If it does, it responds with the name of the tool to call and an object containing the arguments, formatted according to the schema.
+
+5. **Argument Validation and Handling**: The framework receives the LLM's response, validates the provided arguments against the Argument type (or the generated schema), and then invokes the corresponding handler function with the validated arguments.
+
+6. **Result to LLM/MCP Client**: The object returned by your handler function is sent back to the LLM for it to formulate a response to the user, or is processed further by your application.
 
 ## Advanced Topics
 

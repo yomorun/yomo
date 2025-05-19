@@ -1,0 +1,22 @@
+---
+title: MCP Server
+description: MCP Bridge creates a MCP server that can expose all the Serverless LLM Functions.
+icon: 'usb'
+---
+
+## API
+
+MCP Bridge creates a MCP server on `http://localhost:9001/sse`.
+
+## MCP Bridge Configuration Structure
+
+```yaml yomo.yaml {6-8}
+name: llm-bridge
+host: 0.0.0.0
+port: 9000
+
+bridge:
+  mcp:
+    server:
+      addr: localhost:9001
+```

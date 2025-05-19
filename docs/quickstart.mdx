@@ -1,5 +1,10 @@
+---
+title: Getting Started
+description: Create your first LLM function calling tool
+icon: rocket
+---
 <Steps>
-  <Step title="Install CLI">
+  <Step title="Install Yomo CLI">
   ```sh
   curl -fsSL "https://get.yomo.run" | sh
   ```
@@ -9,10 +14,10 @@
   yomo init tool-get-weather
   ```
 
-an example llm function calling will be created in the `ool-get-weather` directory:
+an example serverless llm function will be created in the `tool-get-weather` directory:
 
 ```sh
-$ tree ool-get-weather
+$ tree tool-get-weather
 drwxr-xr-x@   - c3ylabs 15 Apr 10:00 tool-get-weather
 .rw-r--r--@  53 c3ylabs 15 Apr 10:00 ├── .env
 .rw-r--r--@  32 c3ylabs 15 Apr 10:00 ├── .gitignore
@@ -24,16 +29,38 @@ drwxr-xr-x@   - c3ylabs 15 Apr 10:00 ├── src
 ```
 
   </Step>
-  <Step title="Run YoMo Server and expose MCP server">
+  <Step title="Start YoMo Server and expose MCP server">
+Create your `yomo.config.yaml` file in the root directory of your project. This file is used to configure the YoMo server and specify the MCP server settings.
+
+```yaml
+name: ai-zipper
+host: 0.0.0.0
+port: 9000
+
+bridge:
+  mcp:
+    server:
+      addr: localhost:9001
+  ai:
+    server:
+      addr: localhost:9000
+      provider: openai
+
+    providers:
+      openai:
+        api_key: sk-proj-xxxxx
+        model: gpt-4.1
+```
+
 ```sh
-yomo serve
+yomo serve -c yomo.config.yaml
 ```
 
 The output will be like:
 
 ```sh 
 3:14PM INF Starting YoMo Zipper...
-3:14PM INF using config file service=zipper zipper_name=ai-zipper file_path=/Users/fanweixiao/tmp/yomo.config.ai.bridge.yaml
+3:14PM INF using config file service=zipper zipper_name=ai-zipper file_path=./yomo.config.yaml
 3:14PM INF listening SIGUSR1, SIGUSR2, SIGTERM/SIGINT...
 3:14PM INF register LLM providers num=11
 3:14PM INF start AI Bridge service service=llm-bridge addr=localhost:9000 provider=vllm

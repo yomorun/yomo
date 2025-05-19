@@ -1,0 +1,145 @@
+---
+title: Chat Completions API
+description: LLM Bridge provides an OpenAI API-compatible API server with support for multiple providers.
+icon: 'truck-flatbed'
+---
+
+## API
+
+LLM Bridge provides [POST /chat/completions](/api-ref/endpoint/post) API endpoint.
+
+## LLM Bridge Configuration
+
+```yaml yomo.yaml
+name: llm-bridge
+host: 0.0.0.0
+port: 9000
+
+bridge:
+  ai:
+    server:
+      addr: localhost:9000
+      provider: openai
+
+    providers:
+      openai:
+        api_key: sk-proj-xxxxx
+        model: gpt-4.1
+```
+
+## Configuration Fields
+
+### API Server Configuration (bridge.ai.server)
+
+- `addr`: The address of the API server.
+- `provider`: The provider of the API server. Supported providers include `openai`, `ollama`, `vllm`, `gemini`, `anthropic`, `vertexai` and etc.
+
+### Providers Configuration (bridge.ai.providers)
+
+#### OpenAI Provider
+
+- `api_key`: The API key for OpenAI. You can grab it from the [OpenAI Dashboard](https://platform.openai.com/account/api-keys).
+- `model`: The model to use. Supported all chat completions models like `gpt-4.1`, `gpt-o4` and etc.
+
+```yaml
+name: ai-zipper
+host: 0.0.0.0
+port: 9000
+
+bridge:
+  ai:
+    server:
+      addr: localhost:9000
+      provider: openai
+      
+    providers:
+      openai:
+        api_key: sk-xxxxxxxxxxxxxxxxx
+        model: chatgpt-4o-latest
+```
+
+#### Ollama Provider
+
+- `api_endpoint`: The endpoint of the Ollama API server. Default is `http://localhost:11434`.
+
+```yaml
+name: ai-zipper
+host: 0.0.0.0
+port: 9000
+
+bridge:
+  ai:
+    server:
+      addr: localhost:9000
+      provider: ollama
+      
+    providers:
+      ollama:
+        api_endpoint: http://localhost:11434
+```
+
+#### Google Gemini Provider
+
+- `api_key`: The API key for Google Gemini. You can grab it from the [Google Cloud Console](https://console.cloud.google.com/apis/credentials).
+
+```yaml
+name: ai-zipper
+host: 0.0.0.0
+port: 9000
+
+bridge:
+  ai:
+    server:
+      addr: localhost:9000
+      provider: gemini
+      
+    providers:
+      gemini:
+        api_key: xxxxxxxxxxxxxxxxx
+```
+
+#### vllm Provider
+
+- `api_endpoint`: The endpoint of the vllm API server. Default is `http://localhost:9999/v1`.
+- `api_key`: The API key for vllm.
+- `model`: The model to use. Supported all chat completions models like `deepseek-ai/DeepSeek-R1`, `llama3` and etc.
+
+```yaml
+name: ai-zipper
+host: 0.0.0.0
+port: 9000
+
+bridge:
+  ai:
+    server:
+      addr: localhost:9000
+      provider: vllm
+      
+    providers:
+      vllm:
+        api_endpoint: http://10.10.10.10:9999/v1
+        api_key: xxxx
+        model: deepseek-ai/DeepSeek-R1
+```
+
+#### Anthropic Provider
+
+- `api_key`: The API key for Anthropic. You can grab it from the [Anthropic Dashboard](https://console.anthropic.com/api-keys).
+- `model`: The model to use. Supported all chat completions models like `claude-3.7-sonnet`, `claude-3` and etc.
+
+```yaml
+name: ai-zipper
+host: 0.0.0.0
+port: 9000
+
+bridge:
+  ai:
+    server:
+      addr: localhost:9000
+      provider: anthropic
+      
+    providers:
+      anthropic:
+        api_key: sk-ant-api03-xxxxx
+        model: claude-3.7-sonnet
+```

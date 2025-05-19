@@ -1,7 +1,7 @@
 ---
 title: yomo serve
 description: "Start LLM Bridge and expose MCP server"
-icon: 'code'
+icon: 'terminal'
 ---
 
 ## Usage
@@ -9,12 +9,12 @@ icon: 'code'
 Zipper can be started by the following command:
 
 ```bash
-yomo serve -c zipper.yaml
+yomo serve -c yomo.yaml
 ```
 
-the `zipper.yaml` is a YAML file, which contains the configuration of the Zipper:
+the `yomo.yaml` is a YAML file, which contains the configuration of the Zipper:
 
-```yaml zipper.yaml
+```yaml yomo.yaml
 name: llm-bridge
 host: 0.0.0.0
 port: 9000
@@ -24,6 +24,11 @@ auth:
  token: YOUR_SECRET
 
 bridge:
+  ## mcp server
+  mcp:
+    server:
+      addr: localhost:9001
+  ## chat completion api server
   ai:
     server:
       addr: localhost:9000
@@ -111,11 +116,11 @@ Currently, the following providers are supported:
 - [openai](https://openai.com)
 - [gemini](https://gemini.google/assistant/)
 - [anthropic](https://www.anthropic.com/)
-- [Vertex AI](https://cloud.google.com/vertex-ai)
+- [vertexai](https://cloud.google.com/vertex-ai)
 - [azopenai](https://learn.microsoft.com/en-us/azure/ai-services/openai/)
 - [xai](https://x.ai/)
 - [githubmodels](https://docs.github.com/en/github-models/prototyping-with-ai-models)
-- [cloudflare ai gateway](https://developers.cloudflare.com/ai-gateway/)
+- [cloudflare_openai](https://developers.cloudflare.com/ai-gateway/)
 
 ## Self-Hosting Zipper Service
 
