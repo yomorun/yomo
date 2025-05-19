@@ -9,9 +9,9 @@ export type Argument = {
 }
 
 async function getWeather(city_name: string) {
-  let tempraure = Math.floor(Math.random() * 41)
-  console.log(`get weather for ${city_name} with temperature ${tempraure}°C`)
-  return { city_name: city_name, temperature: tempraure }
+  let temperature = Math.floor(Math.random() * 41)
+  console.log(`get weather for ${city_name} with temperature ${temperature}°C`)
+  return { city_name, temperature }
 }
 
 export async function handler(args: Argument) {

@@ -1,0 +1,131 @@
+---
+title: typescript spec
+description: TypeScript YoMo Serverless Function Spec
+icon: 'code'
+---
+
+## Concept
+
+Welcome to the developer documentation for our open-source TypeScript framework, designed to streamline the creation of LLM function calling tools using TypeScript. By leveraging the power of TypeScript's type system, we aim to provide a more efficient and engineering-friendly approach to defining and managing function calls for Large Language Models, including benefits like compile-time checks and easier unit testing.
+
+This framework allows TypeScript developers to define functions that can be called by LLMs. Instead of relying solely on JSONSchema for function definitions, you define your tools using standard TypeScript constructs: 
+
+- a `description` string
+- an `Argument` type for input type definitions
+- an asynchronous `handler()` function that contains your tool's logic
+
+This approach offers several advantages:
+
+- **Type Safety**: Define your function arguments with TypeScript types, catching potential errors at compile time.
+
+- **Improved Developer Experience**: Work within the familiar TypeScript ecosystem, utilizing existing tools for linting, formatting, and testing.
+
+- **Enhanced Maintainability**: Function definitions and implementations are co-located and strongly typed, making code easier to understand and maintain.
+
+- **Facilitates Testing**: Unit testing your tool's handler function becomes straightforward.
+
+The framework is designed with a serverless-first mindset, making it easy to deploy your LLM tools as serverless functions, although it can be adapted to other environments.
+
+## Install the Package
+
+```bash
+npm install @yomo/sfn
+```
+
+## Core Concepts
+
+There are 3 essential components to define a tool:
+
+### Description
+
+The `description` is a descriptive string to provide a clear, concise explanation of the tool's functionality to the LLM.
+
+example:
+
+```typescript
+const description = "Get the current weather for `city_name`";
+```
+
+### Argument
+
+The `Argument` type defines the structure of the input data that your handler function expects. This TypeScript type is used by the framework to generate a the JSONSchema that the LLM can understand to format the arguments correctly.
+
+Yomo internally use [typescript-json-schema](https://github.com/YousefED/typescript-json-schema) to generate the JSONSchema from the TypeScript type. 
+
+example:
+
+```typescript
+export type Argument = {
+  /**
+   * The name of the city to be queried
+   */
+  city_name: string;
+}
+```
+
+### Handler Function
+
+The `handler()` function is the core logic of your tool. This is the function that the LLM will call when it determines that your tool is needed.
+
+**Signature**: Must be an `async` function that accepts a single argument of the `Argument` type and returns a `Promise` that resolves to an object.
+
+**Return Value**: The object returned by the `handler()` will typically be formatted and presented back to the callee, which could be the LLM or MCP Client.
+
+example:
+
+```typescript
+export async function handler(args: Argument) {
+  const result = await getWeather(args.city_name)
+  return result
+}
+```
+
+## How YoMo Framework Works
+
+The framework acts as an intermediary between the LLM or MCP Client and your TypeScript tool code. The general flow is as follows:
+
+1. **Tool Registration**: You register your tools with the framework. The framework reads the description and the Argument type for each tool.
+
+2. **Schema Generation**: Using the Argument type, the framework generates a machine-readable schema (e.g., JSONSchema) for each tool's input.
+
+3. **LLM Interaction**: When you interact with an LLM (using the framework's integration layer), the framework provides the LLM with the description and the generated schema for your registered tools.
+
+4. **LLM Function Call**: Based on the user's prompt and the provided tool information, the LLM decides if it needs to call a tool. If it does, it responds with the name of the tool to call and an object containing the arguments, formatted according to the schema.
+
+5. **Argument Validation and Handling**: The framework receives the LLM's response, validates the provided arguments against the Argument type (or the generated schema), and then invokes the corresponding handler function with the validated arguments.
+
+6. **Result to LLM/MCP Client**: The object returned by your handler function is sent back to the LLM for it to formulate a response to the user, or is processed further by your application.
+
+## Testing Your Tools
+
+Create the test file in `test/` folder, for example `test/app.test.ts`, and add the following code:
+
+```typescript
+import { expect, test } from "bun:test";
+import { getGeocode, getWeather } from "../src/app";
+
+test('getGeocode', async () => {
+        const address = '1600 Amphitheatre Parkway, Mountain View, CA';
+        const result = await getGeocode(address);
+        expect(result.lat).toBeCloseTo(37.4193295);
+        expect(result.lng).toBeCloseTo(-122.0816532);
+})
+
+test('getWeatherByGoogleAPI', async () => {
+        const lat = 37.4193295;
+        const lng = -122.0816532;
+        const result = await getWeather(lat, lng);
+        expect(result).toBeDefined();
+        expect(result.timeZone.id).toBe('America/Los_Angeles');
+        expect(result.temperature).toBeDefined();
+});
+```
+
+Then, run `bun test` to execute the tests. The framework will automatically validate the types and ensure that your tools are functioning as expected.
+
+You can use any testing framework you prefer, such as Jest or Mocha, to run your tests. The key is to ensure that your tests cover the functionality of your tools and validate the expected behavior.
+
+## Advanced Topics
+
+- **Error Handling**: if error occurs in the handler function, the best practice is to generate a descriptive string and return it, in that, the LLM can understand the error and take action accordingly.
+- **Logging**: You can use any logging library you prefer, to log the events in your handler function. This will help you to debug the issues and understand the flow of the application.
