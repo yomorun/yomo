@@ -13,7 +13,7 @@
         "tab": "Guides",
         "groups": [
           {
-            "group": "Introduction",
+            "group": "Getting Started",
             "pages": ["introduction", "quickstart"]
           },
           {

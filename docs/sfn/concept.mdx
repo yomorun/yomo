@@ -4,11 +4,11 @@ description: The Core of YoMo Serverless LLM Function
 icon: 'code'
 ---
 
-## Concept
+## LLM Function Calling in Strongly-typed language 
 
-Welcome to the developer documentation for our open-source TypeScript framework, designed to streamline the creation of LLM function calling tools using TypeScript. By leveraging the power of TypeScript's type system, we aim to provide a more efficient and engineering-friendly approach to defining and managing function calls for Large Language Models, including benefits like compile-time checks and easier unit testing.
+YoMo is designed to streamline the creation of LLM function calling tools using strongly-typed languages, currently, TypeScript and Golang are supported. By leveraging the power of TypeScript's type system, we aim to provide a more efficient and engineering-friendly approach to defining and managing function calls for Large Language Models, including benefits like compile-time checks and easier unit testing.
 
-This framework allows TypeScript developers to define functions that can be called by LLMs. Instead of relying solely on JSONSchema for function definitions, you define your tools using standard TypeScript constructs: 
+This framework allows TypeScript developers to define functions that can be called by LLMs or MCP Clients. Instead of relying solely on JSONSchema for function definitions, you define your tools using standard TypeScript constructs: 
 
 - a `description` string
 - an `Argument` type for input type definitions
@@ -24,7 +24,7 @@ This approach offers several advantages:
 
 - **Facilitates Testing**: Unit testing your tool's handler function becomes straightforward.
 
-The framework is designed with a serverless-first mindset, making it easy to deploy your LLM tools as serverless functions, although it can be adapted to other environments.
+The framework is designed to make it easy to deploy your LLM tools as serverless while team collaboration through its structured and strongly-typed approach, and can be adapted to various environments.
 
 ## Install the Package
 
@@ -50,7 +50,7 @@ const description = "Get the current weather for `city_name`";
 
 The `Argument` type defines the structure of the input data that your handler function expects. This TypeScript type is used by the framework to generate a the JSONSchema that the LLM can understand to format the arguments correctly.
 
-Yomo internally use [typescript-json-schema](https://github.com/YousefED/typescript-json-schema) to generate the JSONSchema from the TypeScript type. 
+Internally use [typescript-json-schema](https://github.com/YousefED/typescript-json-schema) to generate the JSONSchema from the TypeScript type. 
 
 example:
 
