@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 
 	_ "embed"
+
+	"github.com/yomorun/yomo/core/ylog"
 )
 
 //go:embed templates/wrapper_ts.tmpl
@@ -105,7 +107,7 @@ func (w *NodejsWrapper) Build(env []string) error {
 		return err
 	}
 
-	// 4. compile ts file to js
+	// 3. compile ts file to js
 	cmd2 := exec.Command("tsc")
 	cmd2.Dir = w.workDir
 	cmd2.Stdout = os.Stdout
@@ -115,7 +117,61 @@ func (w *NodejsWrapper) Build(env []string) error {
 		return err
 	}
 
-	return nil
+	// 4. copy files other than .ts file from src/ to dist/src/ because tsc do not do that
+	srcDir := filepath.Join(w.workDir, "src")
+	dstDir := filepath.Join(w.workDir, "dist/src")
+	if err := os.MkdirAll(dstDir, 0755); err != nil {
+		return err
+	}
+	// copy all files from src/ to dist/
+	err := filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if path == srcDir {
+			return nil
+		}
+
+		// Get relative path to maintain directory structure
+		relPath, err := filepath.Rel(srcDir, path)
+		if err != nil {
+			return fmt.Errorf("failed to get relative path: %v", err)
+		}
+
+		if filepath.Ext(path) == ".ts" {
+			return nil
+		}
+
+		// Create destination path with same structure
+		dstPath := filepath.Join(dstDir, relPath)
+
+		// Check if the destination directory exists
+		dstDir := filepath.Dir(dstPath)
+		if _, err := os.Stat(dstDir); os.IsNotExist(err) {
+			return fmt.Errorf("destination directory %s does not exist", dstDir)
+		}
+
+		// Copy the file to ./dist/src/
+		if info.IsDir() {
+			return os.MkdirAll(dstPath, info.Mode())
+		} else {
+			// Read the source file
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return fmt.Errorf("failed to read file %s: %v", path, err)
+			}
+
+			// Write to the destination file
+			if err := os.WriteFile(dstPath, data, info.Mode()); err != nil {
+				return fmt.Errorf("failed to write file %s: %v", dstPath, err)
+			}
+
+			ylog.Info(fmt.Sprintf("copied %s to %s\n", path, dstPath))
+			return nil
+		}
+	})
+
+	return err
 }
 
 // Run runs the serverless function
