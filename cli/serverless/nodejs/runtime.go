@@ -4,14 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 
 	_ "embed"
 
-	"github.com/yomorun/yomo/core/ylog"
+	"github.com/yomorun/yomo/pkg/log"
 )
 
 //go:embed templates/wrapper_ts.tmpl
@@ -166,7 +165,7 @@ func (w *NodejsWrapper) Build(env []string) error {
 				return fmt.Errorf("failed to write file %s: %v", dstPath, err)
 			}
 
-			ylog.Info(fmt.Sprintf("copied %s to %s\n", path, dstPath))
+			log.InfoStatusEvent(os.Stdout, "copied %s to %s\n", path, dstPath)
 			return nil
 		}
 	})
@@ -181,7 +180,7 @@ func (w *NodejsWrapper) Run(env []string) error {
 	bunPath, err := exec.LookPath("bun")
 	if err == nil {
 		// bun is installed, run the wrapper with bun
-		log.Println("Bun is installed, check bun version")
+		log.InfoStatusEvent(os.Stdout, "Bun version: %s\n", bunPath)
 		cmd := exec.Command(bunPath, "--version")
 		cmd.Dir = w.workDir
 		cmd.Stdout = os.Stdout
