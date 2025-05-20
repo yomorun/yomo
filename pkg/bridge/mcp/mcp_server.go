@@ -41,13 +41,15 @@ func NewMCPServer(logger *slog.Logger) (*MCPServer, error) {
 		"2024-11-05",
 		server.WithLogging(),
 		server.WithHooks(hooks(logger)),
+		server.WithResourceCapabilities(false, false),
+		server.WithPromptCapabilities(false),
 		server.WithToolCapabilities(true),
 		server.WithRecovery(),
 	)
 	// sse options
 	sseOpts := []server.SSEOption{
 		server.WithHTTPServer(httpServer),
-		server.WithSSEContextFunc(authContextFunc()),
+		server.WithHTTPContextFunc(authContextFunc()),
 	}
 	// sse server
 	sseServer := server.NewSSEServer(underlyingMCPServer, sseOpts...)
@@ -57,10 +59,18 @@ func NewMCPServer(logger *slog.Logger) (*MCPServer, error) {
 		SSEServer:  sseServer,
 		logger:     logger,
 	}
+	sseEndpoint, err := sseServer.CompleteSseEndpoint()
+	if err != nil {
+		return nil, err
+	}
+	messageEndpoint, err := sseServer.CompleteMessageEndpoint()
+	if err != nil {
+		return nil, err
+	}
 
 	logger.Info("[mcp] start mcp bridge service",
-		"sse_endpoint", sseServer.CompleteSseEndpoint(),
-		"message_endpoint", sseServer.CompleteMessageEndpoint(),
+		"sse_endpoint", sseEndpoint,
+		"message_endpoint", messageEndpoint,
 	)
 
 	return mcpServer, nil
@@ -91,7 +101,7 @@ func (s *MCPServer) AddPrompt(prompt mcp.Prompt, handler server.PromptHandlerFun
 	s.underlying.AddPrompt(prompt, handler)
 }
 
-func authContextFunc() server.SSEContextFunc {
+func authContextFunc() server.HTTPContextFunc {
 	return func(ctx context.Context, r *http.Request) context.Context {
 		// trace
 		ctx = pkgai.WithTracerContext(ctx, otel.Tracer("yomo-mcp-bridge"))
