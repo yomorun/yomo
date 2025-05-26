@@ -96,11 +96,11 @@ func sseHTTPHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func streamableHTTPHandler(w http.ResponseWriter, r *http.Request) {
-	if streamableHTTPServer == nil {
+	if mcpServer.StreamableHTTPServer == nil {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	streamableHTTPServer.ServeHTTP(w, r)
+	mcpServer.StreamableHTTPServer.ServeHTTP(w, r)
 }
 
 // AddMCPTool add mcp tool
