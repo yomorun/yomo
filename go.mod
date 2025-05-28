@@ -4,7 +4,7 @@ go 1.23.0
 
 require (
 	cloud.google.com/go/vertexai v0.13.4
-	github.com/anthropics/anthropic-sdk-go v0.2.0-beta.4
+	github.com/anthropics/anthropic-sdk-go v1.2.0
 	github.com/briandowns/spinner v1.23.2
 	github.com/bytecodealliance/wasmtime-go/v9 v9.0.0
 	github.com/caarlos0/env/v6 v6.10.1
