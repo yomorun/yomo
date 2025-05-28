@@ -54,9 +54,14 @@ func Start(config *Config, aiConfig *pkgai.Config, source yomo.Source, reducer y
 	// http server
 	addr := config.Server.Addr
 	mux := http.NewServeMux()
+	// home
 	mux.HandleFunc("/", index)
-	mux.HandleFunc("/sse", mcpServerHandler)
-	mux.HandleFunc("/message", mcpServerHandler)
+	// sse http handler
+	mux.HandleFunc("/sse", sseHTTPHandler)
+	mux.HandleFunc("/message", sseHTTPHandler)
+	// streamable http handler
+	mux.HandleFunc("/mcp", streamableHTTPHandler)
+
 	httpServer = &http.Server{
 		Addr:    addr,
 		Handler: mux,
@@ -67,8 +72,7 @@ func Start(config *Config, aiConfig *pkgai.Config, source yomo.Source, reducer y
 		logger.Error("[mcp] failed to create server", "error", err)
 		return err
 	}
-	logger.Info("[mcp] server is up and running", "endpoint", fmt.Sprintf("http://%s/sse", addr))
-	defer httpServer.Close()
+	logger.Info("[mcp] server is up and running", "endpoint", fmt.Sprintf("http://%s", addr))
 
 	return httpServer.ListenAndServe()
 }
@@ -83,13 +87,20 @@ func index(w http.ResponseWriter, _ *http.Request) {
 	w.Write([]byte("MCP Server is running"))
 }
 
-func mcpServerHandler(w http.ResponseWriter, r *http.Request) {
+func sseHTTPHandler(w http.ResponseWriter, r *http.Request) {
 	if mcpServer == nil {
-		// mpc server is disabled
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 	mcpServer.ServeHTTP(w, r)
+}
+
+func streamableHTTPHandler(w http.ResponseWriter, r *http.Request) {
+	if mcpServer.StreamableHTTPServer == nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	mcpServer.StreamableHTTPServer.ServeHTTP(w, r)
 }
 
 // AddMCPTool add mcp tool

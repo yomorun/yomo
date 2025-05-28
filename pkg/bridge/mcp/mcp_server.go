@@ -23,10 +23,11 @@ var (
 
 // MCPServer represents a MCP server
 type MCPServer struct {
-	underlying *server.MCPServer
-	SSEServer  *server.SSEServer
-	basePath   string
-	logger     *slog.Logger
+	underlying           *server.MCPServer
+	SSEServer            *server.SSEServer
+	StreamableHTTPServer *server.StreamableHTTPServer
+	basePath             string
+	logger               *slog.Logger
 }
 
 // NewMCPServer create a new mcp server
@@ -38,7 +39,7 @@ func NewMCPServer(logger *slog.Logger) (*MCPServer, error) {
 	// create mcp server
 	underlyingMCPServer := server.NewMCPServer(
 		"mcp-server",
-		"2024-11-05",
+		"2025-03-26",
 		server.WithLogging(),
 		server.WithHooks(hooks(logger)),
 		server.WithResourceCapabilities(false, false),
@@ -49,28 +50,28 @@ func NewMCPServer(logger *slog.Logger) (*MCPServer, error) {
 	// sse options
 	sseOpts := []server.SSEOption{
 		server.WithHTTPServer(httpServer),
-		server.WithHTTPContextFunc(authContextFunc()),
+		server.WithSSEContextFunc(authContextFunc),
 	}
 	// sse server
 	sseServer := server.NewSSEServer(underlyingMCPServer, sseOpts...)
 
+	// streamable http server
+	streamableHTTPServer := server.NewStreamableHTTPServer(underlyingMCPServer, server.WithHTTPContextFunc(authContextFunc))
+
 	mcpServer := &MCPServer{
-		underlying: underlyingMCPServer,
-		SSEServer:  sseServer,
-		logger:     logger,
+		underlying:           underlyingMCPServer,
+		SSEServer:            sseServer,
+		StreamableHTTPServer: streamableHTTPServer,
+		logger:               logger,
 	}
 	sseEndpoint, err := sseServer.CompleteSseEndpoint()
 	if err != nil {
 		return nil, err
 	}
-	messageEndpoint, err := sseServer.CompleteMessageEndpoint()
-	if err != nil {
-		return nil, err
-	}
 
-	logger.Info("[mcp] start mcp bridge service",
+	logger.Info("[mcp] create mcp server",
 		"sse_endpoint", sseEndpoint,
-		"message_endpoint", messageEndpoint,
+		"streamable_http_endpoint", "/mcp",
 	)
 
 	return mcpServer, nil
@@ -101,22 +102,20 @@ func (s *MCPServer) AddPrompt(prompt mcp.Prompt, handler server.PromptHandlerFun
 	s.underlying.AddPrompt(prompt, handler)
 }
 
-func authContextFunc() server.HTTPContextFunc {
-	return func(ctx context.Context, r *http.Request) context.Context {
-		// trace
-		ctx = pkgai.WithTracerContext(ctx, otel.Tracer("yomo-mcp-bridge"))
+func authContextFunc(ctx context.Context, r *http.Request) context.Context {
+	// trace
+	ctx = pkgai.WithTracerContext(ctx, otel.Tracer("yomo-mcp-bridge"))
 
-		// context with caller
-		caller, err := aiService.LoadOrCreateCaller(r)
-		if err != nil {
-			logger.Error("[mcp] failed to load or create caller", "error", err)
-			return ctx
-		}
-		// caller
-		ctx = pkgai.WithCallerContext(ctx, caller)
-		logger.Debug("[mcp] sse context with caller", "path", r.URL.Path)
+	// context with caller
+	caller, err := aiService.LoadOrCreateCaller(r)
+	if err != nil {
+		logger.Error("[mcp] failed to load or create caller", "error", err)
 		return ctx
 	}
+	// caller
+	ctx = pkgai.WithCallerContext(ctx, caller)
+	logger.Debug("[mcp] sse context with caller", "path", r.URL.Path)
+	return ctx
 }
 
 func hooks(logger *slog.Logger) *server.Hooks {
