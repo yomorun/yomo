@@ -43,7 +43,7 @@ func NewProvider(apiKey string, model string) *Provider {
 	if model == "" {
 		model = os.Getenv("ANTHROPIC_MODEL")
 		if model == "" {
-			model = anthropic.ModelClaude3_7SonnetLatest
+			model = string(anthropic.ModelClaude3_7SonnetLatest)
 		}
 	}
 
@@ -74,7 +74,7 @@ func (p *Provider) GetChatCompletions(
 	// convert anthropic.MessageResponse to openai.ChatCompletionResponse
 	resp := openai.ChatCompletionResponse{
 		ID:                result.ID,
-		Model:             result.Model,
+		Model:             string(result.Model),
 		Object:            "chat.completion",
 		Created:           time.Now().Unix(),
 		Choices:           make([]openai.ChatCompletionChoice, 0),
@@ -176,7 +176,7 @@ func (r *recver) Recv() (response openai.ChatCompletionStreamResponse, err error
 	// message start
 	case anthropic.MessageStartEvent:
 		r.id = event.Message.ID
-		r.model = event.Message.Model
+		r.model = string(event.Message.Model)
 		if r.includeUsage {
 			r.inputTokens = int(event.Message.Usage.InputTokens)
 		}
