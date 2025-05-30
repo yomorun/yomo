@@ -123,7 +123,7 @@ func (c *Client) handleConnectResult(err error, alwaysReconnect bool) (reconnect
 	}
 	if err == nil {
 		c.Logger.Info("connected to zipper")
-		log.InfoStatusEvent(os.Stdout, "[%s] waiting request...", c.name)
+		log.InfoStatusEvent(os.Stdout, "[%s] is waiting for request...", c.name)
 		return false, nil
 	}
 	if e := new(ErrRejected); errors.As(err, &e) {

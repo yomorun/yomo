@@ -126,7 +126,7 @@ func (w *NodejsWrapper) Build(env []string) error {
 	} else {
 		tscVersion = v
 	}
-	log.InfoStatusEvent(os.Stdout, "Compiling by %s (%s)", tscCommand, tscVersion)
+	log.InfoStatusEvent(os.Stdout, "Compiling with %s (%s)", tscCommand, tscVersion)
 
 	cmd2 := exec.Command(tscCommand, "-p", "tsconfig.json")
 	cmd2.Dir = w.workDir
