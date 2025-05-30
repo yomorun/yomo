@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	_ "embed"
 
@@ -106,8 +107,28 @@ func (w *NodejsWrapper) Build(env []string) error {
 		return err
 	}
 
-	// 3. compile ts file to js
-	cmd2 := exec.Command("tsc")
+	// check if `tsgo` is installed, otherwise, use `tsc`
+	tscCommand := "tsgo"
+	_, err := exec.LookPath(tscCommand)
+	if err != nil {
+		tscCommand = "tsc"
+		_, err = exec.LookPath(tscCommand)
+		if err != nil {
+			return fmt.Errorf("the TypeScript compiler (%s) is not found. Please install it with `npm install -g typescript`", tscCommand)
+		}
+	}
+
+	// 3. compile ts files to js
+	// get the version of tsgo/tsc
+	var tscVersion string
+	if v, err := checkVersion(tscCommand); err != nil {
+		return err
+	} else {
+		tscVersion = v
+	}
+	log.InfoStatusEvent(os.Stdout, "Compiling by %s (%s)", tscCommand, tscVersion)
+
+	cmd2 := exec.Command(tscCommand, "-p", "tsconfig.json")
 	cmd2.Dir = w.workDir
 	cmd2.Stdout = os.Stdout
 	cmd2.Stderr = os.Stderr
@@ -123,7 +144,7 @@ func (w *NodejsWrapper) Build(env []string) error {
 		return err
 	}
 	// copy all files from src/ to dist/
-	err := filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -180,15 +201,16 @@ func (w *NodejsWrapper) Run(env []string) error {
 	bunPath, err := exec.LookPath("bun")
 	if err == nil {
 		// bun is installed, run the wrapper with bun
-		log.InfoStatusEvent(os.Stdout, "Bun version: %s\n", bunPath)
-		cmd := exec.Command(bunPath, "--version")
-		cmd.Dir = w.workDir
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
+		// get the version of tsgo/tsc
+		var bunVersion string
+		if v, err := checkVersion("bun"); err != nil {
+			return err
+		} else {
+			bunVersion = v
+		}
+		log.InfoStatusEvent(os.Stdout, "Runtime is Bun (Version %s)", bunVersion)
 
-		cmd.Run()
-
-		cmd = exec.Command(bunPath, wrapperTS)
+		cmd := exec.Command(bunPath, wrapperTS)
 		cmd.Dir = w.workDir
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -286,4 +308,18 @@ func (w *NodejsWrapper) InstallDeps() error {
 	}
 
 	return nil
+}
+
+func checkVersion(cmd string) (string, error) {
+	versionCmd := exec.Command(cmd, "--version")
+	versionOutput, versionErr := versionCmd.Output()
+	if versionErr == nil {
+		// need remove the trailing newline character
+		cmdVersion := strings.TrimSpace(string(versionOutput))
+		// log.InfoStatusEvent(os.Stdout, "%s is found :%s", cmd, cmdVersion)
+		return cmdVersion, nil
+	} else {
+		log.InfoStatusEvent(os.Stdout, "%s is found, but failed to get version: %v", cmd, versionErr)
+	}
+	return "", versionErr
 }
