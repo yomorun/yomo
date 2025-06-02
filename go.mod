@@ -13,7 +13,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/invopop/jsonschema v0.13.0
 	github.com/joho/godotenv v1.5.1
-	github.com/lmittmann/tint v1.1.0
+	github.com/lmittmann/tint v1.1.1
 	github.com/mark3labs/mcp-go v0.30.0
 	github.com/matoous/go-nanoid/v2 v2.1.0
 	github.com/quic-go/quic-go v0.52.0
