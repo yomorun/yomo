@@ -46,9 +46,6 @@ func (c *Context) Write(tag uint32, data []byte) error {
 	if data == nil {
 		return nil
 	}
-	if err := frame.IsReservedTag(tag); err != nil {
-		return err
-	}
 	mdBytes, err := c.md.Encode()
 	if err != nil {
 		return err
@@ -66,9 +63,6 @@ func (c *Context) Write(tag uint32, data []byte) error {
 func (c *Context) WriteWithTarget(tag uint32, data []byte, target string) error {
 	if data == nil {
 		return nil
-	}
-	if err := frame.IsReservedTag(tag); err != nil {
-		return err
 	}
 	if target != "" {
 		c.md.Set(metadata.TargetKey, target)

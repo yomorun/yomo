@@ -59,6 +59,11 @@ func NewZipper(name string, meshConfig map[string]config.Mesh, options ...Zipper
 		o(opts)
 	}
 
+	opts.serverOption = append(
+		opts.serverOption,
+		core.WithFrameMiddleware(core.RejectReservedTagMiddleware),
+	)
+
 	server := core.NewServer(name, opts.serverOption...)
 
 	// add downstreams to server.

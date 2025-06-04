@@ -6,7 +6,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/core"
-	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/ylog"
 )
 
@@ -23,21 +22,9 @@ func TestSource(t *testing.T) {
 		WithSourceTLSConfig(nil),
 	)
 
-	exit := make(chan struct{})
-	time.AfterFunc(2*time.Second, func() {
-		source.Close()
-		close(exit)
-	})
-
-	// error handler
-	source.SetErrorHandler(func(err error) {})
-
 	// connect to zipper from source
 	err := source.Connect()
 	assert.Nil(t, err)
-
-	err = source.Write(0xF001, []byte("reserved tag"))
-	assert.Equal(t, frame.ErrReservedTag, err)
 
 	// send data to zipper from source
 	err = source.Write(0x23, []byte("pipe test"))
@@ -47,11 +34,17 @@ func TestSource(t *testing.T) {
 	err = source.Write(0x21, []byte("test"))
 	assert.Nil(t, err)
 
-	err = source.WriteWithTarget(0xF002, []byte("reserved tag"), mockTargetString)
-	assert.Equal(t, frame.ErrReservedTag, err)
-
 	err = source.WriteWithTarget(0x22, []byte("message from source"), mockTargetString)
 	assert.Nil(t, err)
 
-	<-exit
+	source.Write(0xF000, []byte("reserved tag"))
+
+	for {
+		err = source.Write(0x24, []byte("try write"))
+		if err != nil {
+			assert.Error(t, err, "Source: shutdown with error=[0xF000, 0xFFFF] is reserved; please do not write within this range")
+			break
+		}
+		time.Sleep(time.Millisecond * 200)
+	}
 }

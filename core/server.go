@@ -35,6 +35,17 @@ type (
 	FrameMiddleware func(FrameHandler) FrameHandler
 )
 
+// RejectReservedTagMiddleware reject reserved tag
+func RejectReservedTagMiddleware(next FrameHandler) FrameHandler {
+	return func(c *Context) {
+		if err := frame.IsReservedTag(c.Frame.Tag); err != nil {
+			c.CloseWithError(err.Error())
+			return
+		}
+		next(c)
+	}
+}
+
 type (
 	// ConnHandler handles a connection.
 	ConnHandler func(*Connection)

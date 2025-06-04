@@ -28,10 +28,6 @@ func TestStreamFunction(t *testing.T) {
 	)
 	sfn.SetObserveDataTags(0x21)
 
-	time.AfterFunc(time.Second, func() {
-		sfn.Close()
-	})
-
 	// set error handler
 	sfn.SetErrorHandler(func(err error) {})
 
@@ -50,6 +46,7 @@ func TestStreamFunction(t *testing.T) {
 	err := sfn.Connect()
 	assert.Nil(t, err)
 
+	delayCloseStreamFunction(sfn)
 	sfn.Wait()
 }
 
@@ -58,10 +55,6 @@ func TestPipeStreamFunction(t *testing.T) {
 
 	sfn := NewStreamFunction("pipe-sfn", "localhost:9000", WithSfnCredential("token:<CREDENTIAL>"))
 	sfn.SetObserveDataTags(0x23)
-
-	time.AfterFunc(time.Second, func() {
-		sfn.Close()
-	})
 
 	// set cron handler
 	sfn.SetPipeHandler(func(in <-chan []byte, out chan<- *frame.DataFrame) {
@@ -78,6 +71,7 @@ func TestPipeStreamFunction(t *testing.T) {
 	err := sfn.Connect()
 	assert.Nil(t, err)
 
+	delayCloseStreamFunction(sfn)
 	sfn.Wait()
 }
 
@@ -87,10 +81,6 @@ func TestSfnWantedTarget(t *testing.T) {
 	sfn := NewStreamFunction("sfn-handler", "localhost:9000", WithSfnCredential("token:<CREDENTIAL>"))
 	sfn.SetObserveDataTags(0x22)
 	sfn.SetWantedTarget(mockTargetString)
-
-	time.AfterFunc(time.Second, func() {
-		sfn.Close()
-	})
 
 	// set handler
 	sfn.SetHandler(func(ctx serverless.Context) {
@@ -107,6 +97,7 @@ func TestSfnWantedTarget(t *testing.T) {
 	err := sfn.Connect()
 	assert.Nil(t, err)
 
+	delayCloseStreamFunction(sfn)
 	sfn.Wait()
 }
 
@@ -129,10 +120,6 @@ func TestSfnCron(t *testing.T) {
 
 	sfn := NewStreamFunction("sfn-cron", "localhost:9000", WithSfnCredential("token:<CREDENTIAL>"))
 
-	time.AfterFunc(time.Second, func() {
-		sfn.Close()
-	})
-
 	// set cron handler
 	sfn.SetCronHandler("@every 200ms", func(ctx serverless.CronContext) {
 		t.Log("unittest cron sfn, time reached")
@@ -143,5 +130,13 @@ func TestSfnCron(t *testing.T) {
 	err := sfn.Connect()
 	assert.Nil(t, err)
 
+	delayCloseStreamFunction(sfn)
 	sfn.Wait()
+}
+
+func delayCloseStreamFunction(sfn StreamFunction) {
+	go func() {
+		time.Sleep(time.Second)
+		sfn.Close()
+	}()
 }

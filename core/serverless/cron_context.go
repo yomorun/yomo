@@ -28,9 +28,6 @@ func (c *CronContext) Write(tag uint32, data []byte) error {
 	if data == nil {
 		return nil
 	}
-	if err := frame.IsReservedTag(tag); err != nil {
-		return err
-	}
 	dataFrame := &frame.DataFrame{
 		Tag:      tag,
 		Metadata: c.mdBytes,
@@ -44,9 +41,6 @@ func (c *CronContext) Write(tag uint32, data []byte) error {
 func (c *CronContext) WriteWithTarget(tag uint32, data []byte, target string) error {
 	if data == nil {
 		return nil
-	}
-	if err := frame.IsReservedTag(tag); err != nil {
-		return err
 	}
 	if target == "" {
 		return c.Write(tag, data)
