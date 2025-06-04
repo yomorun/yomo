@@ -68,9 +68,6 @@ func (s *yomoSource) Connect() error {
 
 // Write writes data with specified tag.
 func (s *yomoSource) Write(tag uint32, data []byte) error {
-	if err := frame.IsReservedTag(tag); err != nil {
-		return err
-	}
 	md := core.NewMetadata(s.client.ClientID(), id.New())
 
 	mdBytes, err := md.Encode()
@@ -89,9 +86,6 @@ func (s *yomoSource) Write(tag uint32, data []byte) error {
 
 // WritePayload writes `yomo.Payload` with specified tag.
 func (s *yomoSource) WriteWithTarget(tag uint32, data []byte, target string) error {
-	if err := frame.IsReservedTag(tag); err != nil {
-		return err
-	}
 	md := core.NewMetadata(s.client.ClientID(), id.New())
 	if target != "" {
 		core.SetMetadataTarget(md, target)
