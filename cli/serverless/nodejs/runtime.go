@@ -159,21 +159,23 @@ func (w *NodejsWrapper) Build(env []string) error {
 
 // Run runs the serverless function
 func (w *NodejsWrapper) Run(env []string) error {
+	// ./dist/.wrapper.js
+	entryJSFile := filepath.Join(w.outputDir, wrapperJS)
 	// try to run with bunjs
 	// first, check if bun is installed
 	bunPath, err := exec.LookPath("bun")
 	if err == nil {
 		// bun is installed, run the wrapper with bun
-		// get the version of tsgo/tsc
+		// get the version of bun
 		var bunVersion string
 		if v, err := checkVersion("bun"); err != nil {
 			return err
 		} else {
 			bunVersion = v
 		}
-		log.InfoStatusEvent(os.Stdout, "Runtime is Bun (Version %s)", bunVersion)
+		log.InfoStatusEvent(os.Stdout, "Runtime is Bun (Version %s), %s", bunVersion, entryJSFile)
 
-		cmd := exec.Command(bunPath, wrapperTS)
+		cmd := exec.Command(bunPath, "run", entryJSFile)
 		cmd.Dir = w.workDir
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -183,13 +185,20 @@ func (w *NodejsWrapper) Run(env []string) error {
 	}
 
 	// if bun is not found, fallback to nodejs
-	cmd := exec.Command(w.nodePath, filepath.Join(w.outputDir, wrapperJS))
+	cmd := exec.Command(w.nodePath, entryJSFile)
 	cmd.Dir = w.workDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Env = env
 
-	log.InfoStatusEvent(os.Stdout, "Runtime is Node.js, %s, %s", w.nodePath, filepath.Join(w.outputDir, wrapperJS))
+	var nodeVersion string
+	if v, err := checkVersion("node"); err != nil {
+		return err
+	} else {
+		nodeVersion = v
+	}
+
+	log.InfoStatusEvent(os.Stdout, "Runtime is Node.js (Version %s), %s, %s", nodeVersion, w.nodePath, entryJSFile)
 
 	return cmd.Run()
 }
