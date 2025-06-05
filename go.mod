@@ -4,7 +4,7 @@ go 1.23.0
 
 require (
 	cloud.google.com/go/vertexai v0.13.4
-	github.com/anthropics/anthropic-sdk-go v1.2.1
+	github.com/anthropics/anthropic-sdk-go v1.4.0
 	github.com/briandowns/spinner v1.23.2
 	github.com/caarlos0/env/v6 v6.10.1
 	github.com/fatih/color v1.18.0
