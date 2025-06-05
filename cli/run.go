@@ -67,9 +67,14 @@ var runCmd = &cobra.Command{
 			return
 		}
 
-		if err := s.Build(true); err != nil {
-			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
-			os.Exit(127)
+		// if has `--production` flag, skip s.Build() process
+		isProduction := opts.Production
+		log.InfoStatusEvent(os.Stdout, "prodution mode is %v", opts.Production)
+		if !isProduction {
+			if err := s.Build(true); err != nil {
+				log.FailureStatusEvent(os.Stdout, "%s", err.Error())
+				os.Exit(127)
+			}
 		}
 
 		log.InfoStatusEvent(
@@ -93,6 +98,7 @@ func init() {
 	runCmd.Flags().StringVarP(&opts.ModFile, "modfile", "m", "", "custom go.mod")
 	runCmd.Flags().StringVarP(&opts.Credential, "credential", "d", "", "client credential payload, eg: `token:dBbBiRE7`")
 	runCmd.Flags().StringVarP(&opts.Runtime, "runtime", "r", "", "serverless runtime type")
+	runCmd.Flags().BoolVarP(&opts.Production, "production", "p", false, "run in production mode, skip the build process")
 
 	viper.BindPFlags(viper.RunViper, runCmd.Flags())
 }
