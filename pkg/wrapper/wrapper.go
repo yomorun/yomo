@@ -26,13 +26,13 @@ type SFNWrapper interface {
 	Run(env []string) error
 }
 
-// BuildAndRun builds and runs the serverless function.
-func BuildAndRun(name, zipperAddr, credential string, wrapper SFNWrapper, env []string) error {
-	if err := wrapper.Build(env); err != nil {
-		return err
-	}
-	return Run(name, zipperAddr, credential, wrapper, env)
-}
+// // BuildAndRun builds and runs the serverless function.
+// func BuildAndRun(name, zipperAddr, credential string, wrapper SFNWrapper, env []string) error {
+// 	if err := wrapper.Build(env); err != nil {
+// 		return err
+// 	}
+// 	return Run(name, zipperAddr, credential, wrapper, env)
+// }
 
 // Run runs the serverless function.
 func Run(name, zipperAddr, credential string, wrapper SFNWrapper, env []string) error {
