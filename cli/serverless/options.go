@@ -14,4 +14,6 @@ type Options struct {
 	Credential string
 	// Runtime specifies the serverless runtime environment type
 	Runtime string
+	// Production indicates whether to run in production mode
+	Production bool
 }

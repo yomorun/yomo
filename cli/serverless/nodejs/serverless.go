@@ -43,10 +43,11 @@ func (s *nodejsServerless) Setup(opts *serverless.Options) error {
     "module": "commonjs",
     "forceConsistentCasingInFileNames": true,
     "strict": true,
-    "outDir": "dist",
+    "outDir": "./dist",
+    "rootDir": "./src",
     "skipLibCheck": true
   },
-  "include": ["src/**/*", ".wrapper.ts"],
+  "include": ["src/**/*", "src/.wrapper.ts"],
   "exclude": ["node_modules"]
 }`
 		if err := os.WriteFile(tsconfigPath, []byte(tsconfigContent), 0644); err != nil {

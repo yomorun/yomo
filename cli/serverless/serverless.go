@@ -56,8 +56,10 @@ func LoadEnvFile(envDir string) error {
 	return nil
 }
 
-// Create returns a new serverless instance with options.
+// Create returns a new serverless instance with options
 func Create(opts *Options) (Serverless, error) {
+	// TODO: need refactor to infer serverless runtime from `--runtime` flag or `RUNTIME` env,
+	// instead of inferring from file extension here.
 	ext := filepath.Ext(opts.Filename)
 
 	driversMu.RLock()
