@@ -21,7 +21,6 @@ func BindPFlags(v *viper.Viper, flags *pflag.FlagSet) {
 			v.SetDefault(f.Name, f.DefValue)
 		}
 	})
-
 	// bind environment variables
 	// v.AllowEmptyEnv(true)
 	v.SetEnvPrefix("YOMO_SFN")
