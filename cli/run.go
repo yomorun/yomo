@@ -69,7 +69,7 @@ var runCmd = &cobra.Command{
 
 		// if has `--production` flag, skip s.Build() process
 		isProduction := opts.Production
-		log.InfoStatusEvent(os.Stdout, "prodution mode is %v", opts.Production)
+		log.InfoStatusEvent(os.Stdout, "production mode is %v", opts.Production)
 		if !isProduction {
 			if err := s.Build(true); err != nil {
 				log.FailureStatusEvent(os.Stdout, "%s", err.Error())
