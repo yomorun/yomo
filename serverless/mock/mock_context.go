@@ -72,11 +72,6 @@ func (c *MockContext) Metadata(_ string) (string, bool) {
 	panic("not implemented")
 }
 
-// HTTP returns the HTTP interface.H
-func (c *MockContext) HTTP() serverless.HTTP {
-	panic("not implemented, to use `net/http` package")
-}
-
 // Write writes the data with the given tag.
 func (c *MockContext) Write(tag uint32, data []byte) error {
 	c.mu.Lock()

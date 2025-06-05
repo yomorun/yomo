@@ -1,3 +1,0 @@
-[workspace]
-
-members = ["yomo", "yomo_derive"]
