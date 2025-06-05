@@ -22,7 +22,6 @@ const (
 	defaultSFNTestSourceFile   = "app_test.go"
 	defaultSFNTestSourceTSFile = "app_test.ts"
 	defaultSFNCompliedFile     = "sfn.yomo"
-	defaultSFNWASIFile         = "sfn.wasm"
 )
 
 // GetRootPath get root path
@@ -63,7 +62,6 @@ func loadOptionsFromViper(v *viper.Viper, opts *serverless.Options) {
 	opts.Credential = v.GetString("credential")
 	opts.ModFile = v.GetString("modfile")
 	opts.Runtime = v.GetString("runtime")
-	opts.WASI = v.GetBool("wasi")
 }
 
 func parseFileArg(args []string, opts *serverless.Options, defaultFiles ...string) error {

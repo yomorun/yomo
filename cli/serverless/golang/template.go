@@ -9,9 +9,6 @@ import (
 //go:embed templates/main.tmpl
 var MainFuncTmpl []byte
 
-//go:embed templates/wasi_main.tmpl
-var WasiMainFuncTmpl []byte
-
 // Context defines context for the template
 type Context struct {
 	// Name of the servcie

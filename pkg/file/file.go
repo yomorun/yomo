@@ -88,12 +88,12 @@ func Truncate(path string, size int) error {
 
 // PutContents write content to given file
 func PutContents(path string, content []byte) error {
-	return putContents(path, []byte(content), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
+	return putContents(path, []byte(content), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o666)
 }
 
 // AppendContents append content to give file
 func AppendContents(path string, content []byte) error {
-	return putContents(path, content, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	return putContents(path, content, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o666)
 }
 
 // TempDir returns the OS temp dir
@@ -123,7 +123,7 @@ func GetBinContents(path string) []byte {
 // IsExec check is executable file
 func IsExec(filename string) bool {
 	ext := strings.ToLower(filepath.Ext(filename))
-	if ext == ".yomo" || ext == ".exe" || ext == ".wasm" {
+	if ext == ".yomo" || ext == ".exe" {
 		return true
 	}
 	return false

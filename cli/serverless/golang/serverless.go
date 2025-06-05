@@ -63,14 +63,8 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 		WithDataTags:     opt.WithDataTags,
 	}
 
-	isWasi := opts.WASI
 	// main function template
-	mainFuncTmpl := MainFuncTmpl
-	// wasi template
-	if isWasi {
-		mainFuncTmpl = WasiMainFuncTmpl
-	}
-	mainFunc, err := RenderTmpl(string(mainFuncTmpl), &ctx)
+	mainFunc, err := RenderTmpl(string(MainFuncTmpl), &ctx)
 	if err != nil {
 		return fmt.Errorf("Init: %s", err)
 	}
@@ -87,10 +81,6 @@ func (s *GolangServerless) Init(opts *serverless.Options) error {
 	astutil.AddNamedImport(fset, astf, "", "github.com/spf13/cobra")
 	astutil.AddNamedImport(fset, astf, "", "github.com/spf13/viper")
 
-	if isWasi {
-		// wasm guest import
-		astutil.AddNamedImport(fset, astf, "", "github.com/yomorun/yomo/serverless/guest")
-	}
 	// Generate the code
 	code, err := generateCode(fset, astf)
 	if err != nil {
@@ -180,23 +170,11 @@ func (s *GolangServerless) Build(clean bool) error {
 		err = fmt.Errorf("Build: go mod tidy err %s", out)
 		return err
 	}
-	// wasi
 	dir, _ := filepath.Split(s.opts.Filename)
 	filename := "sfn.yomo"
-	if s.opts.WASI {
-		filename = "sfn.wasm"
-	}
 	sl, _ := filepath.Abs(dir + filename)
 	s.output = sl
 	cmd = exec.Command("go", "build", "-o", sl, appPath)
-	// wasi
-	if s.opts.WASI {
-		tinygo, err := exec.LookPath("tinygo")
-		if err != nil {
-			return errors.New("[tinygo] command was not found. to build the wasm file, you need to install tinygo. For details, visit https://tinygo.org")
-		}
-		cmd = exec.Command(tinygo, "build", "-no-debug", "-target", "wasi", "-o", sl, appPath)
-	}
 	cmd.Env = env
 	cmd.Dir = s.tempDir
 	out, err = cmd.CombinedOutput()

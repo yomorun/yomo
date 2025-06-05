@@ -61,7 +61,6 @@ func init() {
 	rootCmd.AddCommand(buildCmd)
 
 	buildCmd.Flags().StringVarP(&opts.ModFile, "modfile", "m", "", "custom go.mod")
-	buildCmd.Flags().BoolVarP(&opts.WASI, "wasi", "w", false, "build with WASI target")
 
 	viper.BindPFlags(viper.BuildViper, buildCmd.Flags())
 }

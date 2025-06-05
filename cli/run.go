@@ -26,7 +26,6 @@ import (
 	_ "github.com/yomorun/yomo/cli/serverless/exec"
 	_ "github.com/yomorun/yomo/cli/serverless/golang"
 	_ "github.com/yomorun/yomo/cli/serverless/nodejs"
-	_ "github.com/yomorun/yomo/cli/serverless/wasm"
 	"github.com/yomorun/yomo/cli/viper"
 )
 
@@ -36,7 +35,7 @@ var runCmd = &cobra.Command{
 	Short: "Run a YoMo Serverless LLM Function",
 	Long:  "Run a YoMo Serverless LLM Function",
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := parseFileArg(args, &opts, defaultSFNCompliedFile, defaultSFNWASIFile, defaultSFNSourceFile, defaultSFNSourceTSFile); err != nil {
+		if err := parseFileArg(args, &opts, defaultSFNCompliedFile, defaultSFNSourceFile, defaultSFNSourceTSFile); err != nil {
 			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			return
 		}
