@@ -64,11 +64,16 @@ func loadOptionsFromViper(v *viper.Viper, opts *serverless.Options) {
 	opts.Runtime = v.GetString("runtime")
 }
 
+// parseFileArg parses the filename from command line arguments or uses default files if none provided.
+// It updates the given serverless.Options with the filename and validates it via checkOptions.
+// Returns nil if a valid filename is found, otherwise continues trying default files.
 func parseFileArg(args []string, opts *serverless.Options, defaultFiles ...string) error {
+	// parse filename from args, like `yomo run app.go`
 	if len(args) >= 1 && args[0] != "" {
 		opts.Filename = args[0]
 		return checkOptions(opts)
 	}
+	// if no filename is provided, use the default files
 	for _, f := range defaultFiles {
 		opts.Filename = f
 		err := checkOptions(opts)
