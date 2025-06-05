@@ -57,6 +57,8 @@ func parseZipperAddr(opts *serverless.Options) error {
 
 // loadOptionsFromViper load options from viper, supports flags and environment variables
 func loadOptionsFromViper(v *viper.Viper, opts *serverless.Options) {
+	v.SetDefault("runtime", "node")
+
 	opts.Name = v.GetString("name")
 	opts.ZipperAddr = v.GetString("zipper")
 	opts.Credential = v.GetString("credential")
@@ -91,22 +93,22 @@ func checkOptions(opts *serverless.Options) error {
 	return nil
 }
 
-// DefaultSFNSourceFile returns the default source file name for the given language
-func DefaultSFNSourceFile(lang string) string {
-	switch lang {
-	case "node":
-		return defaultSFNSourceTSFile
-	default:
+// DefaultSFNSourceFile returns the default source file name for the given runtime
+func DefaultSFNSourceFile(runtime string) string {
+	switch runtime {
+	case "go": // go
 		return defaultSFNSourceFile
+	default: // node
+		return defaultSFNSourceTSFile
 	}
 }
 
 // DefaultSFNTestSourceFile returns the default test source file name
-func DefaultSFNTestSourceFile(lang string) string {
-	switch lang {
-	case "node":
-		return defaultSFNTestSourceTSFile
-	default:
+func DefaultSFNTestSourceFile(runtime string) string {
+	switch runtime {
+	case "go": // go
 		return defaultSFNTestSourceFile
+	default: // node
+		return defaultSFNTestSourceTSFile
 	}
 }

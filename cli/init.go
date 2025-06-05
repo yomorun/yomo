@@ -25,14 +25,12 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/yomorun/yomo/cli/serverless"
 	"github.com/yomorun/yomo/cli/template"
+	"github.com/yomorun/yomo/cli/viper"
 	"github.com/yomorun/yomo/pkg/file"
 	"github.com/yomorun/yomo/pkg/log"
 )
 
-var (
-	sfnType string
-	lang    string
-)
+var sfnType string
 
 // initCmd represents the init command
 var initCmd = &cobra.Command{
@@ -46,18 +44,21 @@ var initCmd = &cobra.Command{
 			opts.Name = name
 		}
 		if name == "" {
-			log.FailureStatusEvent(os.Stdout, "Please input your app name, e.g. `yomo init my-tool [-l node -t llm]`")
+			log.FailureStatusEvent(os.Stdout, "Please input your app name, e.g. `yomo init my-tool [-r node -t llm]`")
 			return
 		}
-		log.PendingStatusEvent(os.Stdout, "Initializing the Serverless LLM Function...")
+
+		loadOptionsFromViper(viper.InitViper, &opts)
+
+		log.PendingStatusEvent(os.Stdout, "Initializing the Serverless LLM Function with [%s] runtime...", opts.Runtime)
 		name = strings.ReplaceAll(name, " ", "_")
 
-		filename := filepath.Join(name, DefaultSFNSourceFile(lang))
+		filename := filepath.Join(name, DefaultSFNSourceFile(opts.Runtime))
 		opts.Filename = filename
 
 		// create app source file
-		fname := filepath.Join(name, DefaultSFNSourceFile(lang))
-		contentTmpl, err := template.GetContent("init", sfnType, lang, false)
+		fname := filepath.Join(name, DefaultSFNSourceFile(opts.Runtime))
+		contentTmpl, err := template.GetContent("init", sfnType, opts.Runtime, false)
 		if err != nil {
 			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			return
@@ -73,8 +74,8 @@ var initCmd = &cobra.Command{
 			return
 		}
 		// create app test file
-		testName := filepath.Join(name, DefaultSFNTestSourceFile(lang))
-		testTmpl, err := template.GetContent("init", sfnType, lang, true)
+		testName := filepath.Join(name, DefaultSFNTestSourceFile(opts.Runtime))
+		testTmpl, err := template.GetContent("init", sfnType, opts.Runtime, true)
 		if err != nil {
 			if !errors.Is(err, template.ErrUnsupportedTest) {
 				log.FailureStatusEvent(os.Stdout, "%s", err.Error())
@@ -88,7 +89,11 @@ var initCmd = &cobra.Command{
 		}
 		// create .env
 		fname = filepath.Join(name, ".env")
-		if err := file.PutContents(fname, []byte(fmt.Sprintf("YOMO_SFN_NAME=%s\nYOMO_SFN_ZIPPER=localhost:9000\n", name))); err != nil {
+		var content []byte
+		content = fmt.Appendf(content, "YOMO_SFN_RUNTIME=%s\n", opts.Runtime)
+		content = fmt.Appendf(content, "YOMO_SFN_NAME=%s\n", name)
+		content = fmt.Appendf(content, "YOMO_SFN_ZIPPER=%s\n", "localhost:9000")
+		if err := file.PutContents(fname, content); err != nil {
 			log.FailureStatusEvent(os.Stdout, "Write Serverless LLM Function .env file failure with the error: %v", err)
 			return
 		}
@@ -103,5 +108,7 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 
 	initCmd.Flags().StringVarP(&sfnType, "type", "t", "llm", "The type of Serverless LLM Function, support normal and llm")
-	initCmd.Flags().StringVarP(&lang, "lang", "l", "node", "The language of Serverless LLM Function, support go and node")
+	initCmd.Flags().StringVarP(&opts.Runtime, "runtime", "r", "node", "serverless runtime type, support node and go")
+
+	viper.BindPFlags(viper.InitViper, initCmd.Flags())
 }

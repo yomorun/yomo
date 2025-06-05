@@ -4,6 +4,7 @@ import (
 	"embed"
 	"errors"
 	"os"
+	"slices"
 	"strings"
 )
 
@@ -12,20 +13,20 @@ import (
 var fs embed.FS
 
 var (
-	ErrUnsupportedSfnType = errors.New("unsupported sfn type")
-	ErrorUnsupportedLang  = errors.New("unsupported lang")
-	ErrUnsupportedTest    = errors.New("unsupported test")
-	ErrUnsupportedFeature = errors.New("unsupported feature")
+	ErrUnsupportedSfnType   = errors.New("unsupported sfn type")
+	ErrorUnsupportedRuntime = errors.New("unsupported runtime")
+	ErrUnsupportedTest      = errors.New("unsupported test")
+	ErrUnsupportedFeature   = errors.New("unsupported feature")
 )
 
 var (
 	SupportedSfnTypes = []string{"llm", "normal"}
-	SupportedLangs    = []string{"go", "node"}
+	SupportedRuntimes = []string{"node", "go"}
 )
 
 // get template content
-func GetContent(command string, sfnType string, lang string, isTest bool) ([]byte, error) {
-	name, err := getTemplateFileName(command, sfnType, lang, isTest)
+func GetContent(command string, sfnType string, runtime string, isTest bool) ([]byte, error) {
+	name, err := getTemplateFileName(command, sfnType, runtime, isTest)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +49,7 @@ func GetContent(command string, sfnType string, lang string, isTest bool) ([]byt
 	return fs.ReadFile(name)
 }
 
-func getTemplateFileName(command string, sfnType string, lang string, isTest bool) (string, error) {
+func getTemplateFileName(command string, sfnType string, runtime string, isTest bool) (string, error) {
 	if command == "" {
 		command = "init"
 	}
@@ -56,16 +57,16 @@ func getTemplateFileName(command string, sfnType string, lang string, isTest boo
 	if err != nil {
 		return "", err
 	}
-	lang, err = validateLang(lang)
+	runtime, err = validateRuntime(runtime)
 	if err != nil {
 		return "", err
 	}
-	if lang == "node" && sfnType == "normal" {
+	if runtime == "node" && sfnType == "normal" {
 		return "", errors.New("language node (-l node) only support type llm (-t llm)")
 	}
 
 	sb := new(strings.Builder)
-	sb.WriteString(lang)
+	sb.WriteString(runtime)
 	sb.WriteString("/")
 	sb.WriteString(command)
 	sb.WriteString("_")
@@ -86,23 +87,19 @@ func validateSfnType(sfnType string) (string, error) {
 		// default sfn type
 		return "llm", nil
 	}
-	for _, t := range SupportedSfnTypes {
-		if t == sfnType {
-			return sfnType, nil
-		}
+	if slices.Contains(SupportedSfnTypes, sfnType) {
+		return sfnType, nil
 	}
 	return sfnType, ErrUnsupportedSfnType
 }
 
-func validateLang(lang string) (string, error) {
-	if lang == "" {
+func validateRuntime(runtime string) (string, error) {
+	if runtime == "" {
 		// default lang
-		return "go", nil
+		return "node", nil
 	}
-	for _, l := range SupportedLangs {
-		if l == lang {
-			return lang, nil
-		}
+	if slices.Contains(SupportedRuntimes, runtime) {
+		return runtime, nil
 	}
-	return lang, ErrorUnsupportedLang
+	return runtime, ErrorUnsupportedRuntime
 }
