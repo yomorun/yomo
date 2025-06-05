@@ -57,8 +57,6 @@ func parseZipperAddr(opts *serverless.Options) error {
 
 // loadOptionsFromViper load options from viper, supports flags and environment variables
 func loadOptionsFromViper(v *viper.Viper, opts *serverless.Options) {
-	v.SetDefault("runtime", "node")
-
 	opts.Name = v.GetString("name")
 	opts.ZipperAddr = v.GetString("zipper")
 	opts.Credential = v.GetString("credential")
