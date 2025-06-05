@@ -29,17 +29,19 @@ import (
 	"github.com/yomorun/yomo/cli/viper"
 )
 
+var isProduction bool
+
 // runCmd represents the run command
 var runCmd = &cobra.Command{
 	Use:   "run [flags] sfn",
 	Short: "Run a YoMo Serverless LLM Function",
 	Long:  "Run a YoMo Serverless LLM Function",
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := parseFileArg(args, &opts, defaultSFNCompliedFile, defaultSFNSourceFile, defaultSFNSourceTSFile); err != nil {
+		loadOptionsFromViper(viper.RunViper, &opts)
+		if err := parseFileArg(&opts, defaultSFNCompliedFile, defaultSFNSourceFile, defaultSFNSourceTSFile); err != nil {
 			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			return
 		}
-		loadOptionsFromViper(viper.RunViper, &opts)
 		// Serverless
 		log.InfoStatusEvent(os.Stdout, "YoMo Serverless LLM Function file: %v", opts.Filename)
 		if opts.Name == "" {
@@ -57,19 +59,16 @@ var runCmd = &cobra.Command{
 			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			return
 		}
-		if !s.Executable() {
-			log.FailureStatusEvent(os.Stdout,
-				"You cannot run `%s` directly. build first with the `yomo build %s` command and then run with the 'yomo run %s' command.",
-				opts.Filename,
-				opts.Filename,
-				opts.Filename,
-			)
-			return
-		}
 
-		if err := s.Build(true); err != nil {
-			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
-			os.Exit(127)
+		// check production mode
+		if !isProduction {
+			// build
+			log.PendingStatusEvent(os.Stdout, "Building YoMo Stream Function instance...")
+			if err := s.Build(true); err != nil {
+				log.FailureStatusEvent(os.Stdout, "%s", err.Error())
+				return
+			}
+			log.SuccessStatusEvent(os.Stdout, "YoMo Stream Function build successful!")
 		}
 
 		log.InfoStatusEvent(
@@ -93,6 +92,7 @@ func init() {
 	runCmd.Flags().StringVarP(&opts.ModFile, "modfile", "m", "", "custom go.mod")
 	runCmd.Flags().StringVarP(&opts.Credential, "credential", "d", "", "client credential payload, eg: `token:dBbBiRE7`")
 	runCmd.Flags().StringVarP(&opts.Runtime, "runtime", "r", "", "serverless runtime type")
+	runCmd.Flags().BoolVarP(&isProduction, "production", "p", false, "run in production mode")
 
 	viper.BindPFlags(viper.RunViper, runCmd.Flags())
 }

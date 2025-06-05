@@ -64,11 +64,7 @@ func loadOptionsFromViper(v *viper.Viper, opts *serverless.Options) {
 	opts.Runtime = v.GetString("runtime")
 }
 
-func parseFileArg(args []string, opts *serverless.Options, defaultFiles ...string) error {
-	if len(args) >= 1 && args[0] != "" {
-		opts.Filename = args[0]
-		return checkOptions(opts)
-	}
+func parseFileArg(opts *serverless.Options, defaultFiles ...string) error {
 	for _, f := range defaultFiles {
 		opts.Filename = f
 		err := checkOptions(opts)

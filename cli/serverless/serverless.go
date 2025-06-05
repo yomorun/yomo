@@ -33,18 +33,13 @@ type Serverless interface {
 }
 
 // Register will register a serverless to drivers collections safely
-func Register(s Serverless, exts ...string) {
+func Register(s Serverless, runtime string) {
 	driversMu.Lock()
 	defer driversMu.Unlock()
 	if s == nil {
 		panic("serverless: Register serverless is nil")
 	}
-	for _, ext := range exts {
-		if _, dup := drivers[ext]; dup {
-			panic("serverless: Register called twice for source " + ext)
-		}
-		drivers[ext] = s
-	}
+	drivers[runtime] = s
 }
 
 // LoadEnvFile loads the environment variables from the file
@@ -58,10 +53,10 @@ func LoadEnvFile(envDir string) error {
 
 // Create returns a new serverless instance with options.
 func Create(opts *Options) (Serverless, error) {
-	ext := filepath.Ext(opts.Filename)
+	runtime := opts.Runtime
 
 	driversMu.RLock()
-	s, ok := drivers[ext]
+	s, ok := drivers[runtime]
 	driversMu.RUnlock()
 	if ok {
 		if err := s.Init(opts); err != nil {
@@ -70,19 +65,19 @@ func Create(opts *Options) (Serverless, error) {
 		return s, nil
 	}
 
-	return nil, fmt.Errorf(`serverless: unsupport "%s" source (forgotten import?)`, ext)
+	return nil, fmt.Errorf(`serverless: unsupport "%s" runtime`, runtime)
 }
 
 // Setup sets up the serverless
 func Setup(opts *Options) error {
-	ext := filepath.Ext(opts.Filename)
+	runtime := opts.Runtime
 
 	driversMu.RLock()
-	s, ok := drivers[ext]
+	s, ok := drivers[runtime]
 	driversMu.RUnlock()
 	if ok {
 		return s.Setup(opts)
 	}
 
-	return fmt.Errorf(`serverless: unsupport "%s" source (forgotten import?)`, ext)
+	return fmt.Errorf(`serverless: unsupport "%s" runtime`, runtime)
 }

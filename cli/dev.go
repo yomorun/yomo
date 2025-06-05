@@ -32,11 +32,11 @@ var devCmd = &cobra.Command{
 	Long:               "Test a YoMo Stream Function with public zipper and mocking data",
 	FParseErrWhitelist: cobra.FParseErrWhitelist{UnknownFlags: true},
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := parseFileArg(args, &opts, defaultSFNCompliedFile, defaultSFNSourceFile); err != nil {
+		loadOptionsFromViper(viper.RunViper, &opts)
+		if err := parseFileArg(&opts, defaultSFNCompliedFile, defaultSFNSourceFile); err != nil {
 			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			return
 		}
-		loadOptionsFromViper(viper.RunViper, &opts)
 		// Serverless
 		log.InfoStatusEvent(os.Stdout, "YoMo Stream Function file: %v", opts.Filename)
 		// resolve serverless

@@ -62,5 +62,5 @@ func (s *ExecServerless) Executable() bool {
 }
 
 func init() {
-	serverless.Register(&ExecServerless{}, ".yomo", ".exe")
+	serverless.Register(&ExecServerless{}, "exec")
 }

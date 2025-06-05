@@ -26,24 +26,21 @@ import (
 
 // buildCmd represents the build command
 var buildCmd = &cobra.Command{
-	Use:   "build [flags] app.go",
+	Use:   "build [flags]",
 	Short: "Build the YoMo Stream Function",
 	Long:  "Build the YoMo Stream Function",
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := parseFileArg(args, &opts, defaultSFNSourceTSFile); err != nil {
+		loadOptionsFromViper(viper.BuildViper, &opts)
+		if err := parseFileArg(&opts, defaultSFNSourceTSFile, defaultSFNSourceFile); err != nil {
 			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			os.Exit(127)
-			// return
 		}
-		loadOptionsFromViper(viper.BuildViper, &opts)
-
-		log.InfoStatusEvent(os.Stdout, "YoMo Stream Function file: %v", opts.Filename)
+		log.InfoStatusEvent(os.Stdout, "YoMo Stream Function runtime: %v", opts.Runtime)
 		log.InfoStatusEvent(os.Stdout, "YoMo Stream Function parsing...")
 		s, err := serverless.Create(&opts)
 		if err != nil {
 			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			os.Exit(127)
-			// return
 		}
 		log.InfoStatusEvent(os.Stdout, "YoMo Stream Function parse done.")
 		// build
@@ -51,7 +48,6 @@ var buildCmd = &cobra.Command{
 		if err := s.Build(true); err != nil {
 			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			os.Exit(127)
-			// return
 		}
 		log.SuccessStatusEvent(os.Stdout, "YoMo Stream Function build successful!")
 	},
@@ -61,6 +57,7 @@ func init() {
 	rootCmd.AddCommand(buildCmd)
 
 	buildCmd.Flags().StringVarP(&opts.ModFile, "modfile", "m", "", "custom go.mod")
+	buildCmd.Flags().StringVarP(&opts.Runtime, "runtime", "r", "node", "serverless runtime type")
 
 	viper.BindPFlags(viper.BuildViper, buildCmd.Flags())
 }

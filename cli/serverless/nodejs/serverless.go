@@ -49,7 +49,7 @@ func (s *nodejsServerless) Setup(opts *serverless.Options) error {
   "include": ["src/**/*", ".wrapper.ts"],
   "exclude": ["node_modules"]
 }`
-		if err := os.WriteFile(tsconfigPath, []byte(tsconfigContent), 0644); err != nil {
+		if err := os.WriteFile(tsconfigPath, []byte(tsconfigContent), 0o644); err != nil {
 			return fmt.Errorf("failed to write tsconfig.json: %v", err)
 		}
 	}
@@ -106,9 +106,10 @@ func (s *nodejsServerless) Run(verbose bool) error {
 
 // Executable shows whether the program needs to be built
 func (s *nodejsServerless) Executable() bool {
+	// TODO:  need to check if dist directory exists
 	return true
 }
 
 func init() {
-	serverless.Register(&nodejsServerless{}, ".ts")
+	serverless.Register(&nodejsServerless{}, "node")
 }
