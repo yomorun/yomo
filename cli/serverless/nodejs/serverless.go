@@ -47,7 +47,7 @@ func (s *nodejsServerless) Setup(opts *serverless.Options) error {
     "rootDir": "./src",
     "skipLibCheck": true
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "src/.wrapper.ts"],
   "exclude": ["node_modules"]
 }`
 		if err := os.WriteFile(tsconfigPath, []byte(tsconfigContent), 0644); err != nil {
