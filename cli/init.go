@@ -89,11 +89,11 @@ var initCmd = &cobra.Command{
 		}
 		// create .env
 		fname = filepath.Join(name, ".env")
-		var content []byte
-		content = fmt.Appendf(content, "YOMO_SFN_RUNTIME=%s\n", opts.Runtime)
-		content = fmt.Appendf(content, "YOMO_SFN_NAME=%s\n", name)
-		content = fmt.Appendf(content, "YOMO_SFN_ZIPPER=%s\n", "localhost:9000")
-		if err := file.PutContents(fname, content); err != nil {
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("YOMO_SFN_RUNTIME=%s\n", opts.Runtime))
+		sb.WriteString(fmt.Sprintf("YOMO_SFN_NAME=%s\n", name))
+		sb.WriteString(fmt.Sprintf("YOMO_SFN_ZIPPER=%s\n", "localhost:9000"))
+		if err := file.PutContents(fname, []byte(sb.String())); err != nil {
 			log.FailureStatusEvent(os.Stdout, "Write Serverless LLM Function .env file failure with the error: %v", err)
 			return
 		}
