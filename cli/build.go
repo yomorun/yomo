@@ -31,7 +31,7 @@ var buildCmd = &cobra.Command{
 	Long:  "Build the YoMo Stream Function",
 	Run: func(cmd *cobra.Command, args []string) {
 		loadOptionsFromViper(viper.BuildViper, &opts)
-		if err := parseFileArg(&opts, defaultSFNSourceTSFile, defaultSFNSourceFile); err != nil {
+		if err := parseFileArg(&opts); err != nil {
 			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			os.Exit(127)
 		}

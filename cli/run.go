@@ -37,7 +37,7 @@ var runCmd = &cobra.Command{
 	Long:  "Run a YoMo Serverless LLM Function",
 	Run: func(cmd *cobra.Command, args []string) {
 		loadOptionsFromViper(viper.RunViper, &opts)
-		if err := parseFileArg(&opts, defaultSFNCompliedFile, defaultSFNSourceFile, defaultSFNSourceTSFile); err != nil {
+		if err := parseFileArg(&opts); err != nil {
 			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			return
 		}

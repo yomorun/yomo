@@ -49,6 +49,7 @@ var testPromptCmd = &cobra.Command{
 	Aliases: []string{"p"},
 	Short:   "Test LLM prompt",
 	Long:    "Test LLM prompt",
+	Hidden:  true,
 	Run: func(cmd *cobra.Command, args []string) {
 		// sfn source directory
 		if len(sfnDir) == 0 {
@@ -66,7 +67,7 @@ var testPromptCmd = &cobra.Command{
 			// build
 			sfnSource := filepath.Join(dir, "app.go")
 			buildCmd.Run(nil, []string{sfnSource})
-			sfnBin := filepath.Join(dir, "sfn.yomo")
+			sfnBin := filepath.Join(dir, "dist", "sfn.yomo")
 			defer os.RemoveAll(sfnBin)
 
 			// run
@@ -88,8 +89,8 @@ var testPromptCmd = &cobra.Command{
 			outputReader := bufio.NewReader(stdout)
 			// read outputReader
 			output := make(chan string)
-			defer close(output)
 			go func(outputReader *bufio.Reader, output chan string) {
+				defer close(output)
 				for {
 					line, err := outputReader.ReadString('\n')
 					// log.InfoStatusEvent(os.Stdout, "LLM function output: %s", line)

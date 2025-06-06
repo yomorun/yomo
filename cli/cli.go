@@ -3,6 +3,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"path"
 	"path/filepath"
@@ -21,7 +22,6 @@ const (
 	defaultSFNSourceTSFile     = "src/app.ts"
 	defaultSFNTestSourceFile   = "app_test.go"
 	defaultSFNTestSourceTSFile = "app_test.ts"
-	defaultSFNCompliedFile     = "sfn.yomo"
 )
 
 // GetRootPath get root path
@@ -64,18 +64,19 @@ func loadOptionsFromViper(v *viper.Viper, opts *serverless.Options) {
 	opts.Runtime = v.GetString("runtime")
 }
 
-// parseFileArg parses the filename from command line arguments or uses default files if none provided.
-// It updates the given serverless.Options with the filename and validates it via checkOptions.
-// Returns nil if a valid filename is found, otherwise continues trying default files.
-func parseFileArg(opts *serverless.Options, defaultFiles ...string) error {
-	for _, f := range defaultFiles {
-		opts.Filename = f
-		err := checkOptions(opts)
-		if err == nil {
-			break
-		}
+// parseFileArg parses the file argument and sets the default file name based on the runtime
+func parseFileArg(opts *serverless.Options) error {
+	runtime := opts.Runtime
+	if runtime == "" {
+		return errors.New("runtime is not specified, please use `-r` flag to specify the runtime")
 	}
-	return nil
+	switch runtime {
+	case "go": // go
+		opts.Filename = defaultSFNSourceFile
+	default: // node
+		opts.Filename = defaultSFNSourceTSFile
+	}
+	return checkOptions(opts)
 }
 
 func checkOptions(opts *serverless.Options) error {

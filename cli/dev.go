@@ -17,7 +17,6 @@ package cli
 
 import (
 	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"github.com/yomorun/yomo/cli/serverless"
@@ -30,10 +29,11 @@ var devCmd = &cobra.Command{
 	Use:                "dev [flags]",
 	Short:              "Test a YoMo Stream Function",
 	Long:               "Test a YoMo Stream Function with public zipper and mocking data",
+	Hidden:             true,
 	FParseErrWhitelist: cobra.FParseErrWhitelist{UnknownFlags: true},
 	Run: func(cmd *cobra.Command, args []string) {
 		loadOptionsFromViper(viper.RunViper, &opts)
-		if err := parseFileArg(&opts, defaultSFNCompliedFile, defaultSFNSourceFile); err != nil {
+		if err := parseFileArg(&opts); err != nil {
 			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			return
 		}
@@ -55,23 +55,19 @@ var devCmd = &cobra.Command{
 			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			return
 		}
-		if !s.Executable() {
-			log.FailureStatusEvent(os.Stdout,
-				"You cannot run `%s` directly. build first with the `yomo build %s` command and then run with the 'yomo run %s' command.",
-				opts.Filename,
-				opts.Filename,
-				opts.Filename,
-			)
-			return
-		}
-		// build if it's go file
-		if ext := filepath.Ext(opts.Filename); ext == ".go" {
+
+		// if has `--production` flag, skip s.Build() process
+		isProduction := opts.Production
+		if !isProduction {
+			// build
 			log.PendingStatusEvent(os.Stdout, "Building YoMo Stream Function instance...")
 			if err := s.Build(true); err != nil {
 				log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 				os.Exit(127)
 			}
 			log.SuccessStatusEvent(os.Stdout, "YoMo Stream Function build successful!")
+		} else {
+			log.InfoStatusEvent(os.Stdout, "YoMo Serverless LLM Function is running in [production] mode")
 		}
 		// run
 		log.InfoStatusEvent(
@@ -91,6 +87,8 @@ func init() {
 	rootCmd.AddCommand(devCmd)
 
 	devCmd.Flags().StringVarP(&opts.ModFile, "modfile", "m", "", "custom go.mod")
+	devCmd.Flags().StringVarP(&opts.Runtime, "runtime", "r", "node", "serverless runtime type")
+	devCmd.Flags().BoolVarP(&opts.Production, "production", "p", false, "run in production mode, skip the build process")
 
 	viper.BindPFlags(viper.DevViper, devCmd.Flags())
 }
