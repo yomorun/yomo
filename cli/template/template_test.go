@@ -8,7 +8,7 @@ func TestGetTemplateFileName(t *testing.T) {
 	type args struct {
 		command string
 		sfnType string
-		lang    string
+		runtime string
 		isTest  bool
 	}
 	tests := []struct {
@@ -22,7 +22,7 @@ func TestGetTemplateFileName(t *testing.T) {
 			args: args{
 				command: "init",
 				sfnType: "llm",
-				lang:    "go",
+				runtime: "go",
 				isTest:  false,
 			},
 			want:    "go/init_llm.tmpl",
@@ -33,7 +33,7 @@ func TestGetTemplateFileName(t *testing.T) {
 			args: args{
 				command: "init",
 				sfnType: "normal",
-				lang:    "node",
+				runtime: "node",
 				isTest:  true,
 			},
 			want:    "",
@@ -44,7 +44,7 @@ func TestGetTemplateFileName(t *testing.T) {
 			args: args{
 				command: "",
 				sfnType: "llm",
-				lang:    "go",
+				runtime: "go",
 				isTest:  false,
 			},
 			want:    "go/init_llm.tmpl",
@@ -55,18 +55,18 @@ func TestGetTemplateFileName(t *testing.T) {
 			args: args{
 				command: "init",
 				sfnType: "unsupported",
-				lang:    "go",
+				runtime: "go",
 				isTest:  false,
 			},
 			want:    "",
 			wantErr: true,
 		},
 		{
-			name: "unsupported_lang",
+			name: "unsupported_runtime",
 			args: args{
 				command: "init",
 				sfnType: "llm",
-				lang:    "unsupported",
+				runtime: "unsupported",
 				isTest:  false,
 			},
 			want:    "",
@@ -77,38 +77,38 @@ func TestGetTemplateFileName(t *testing.T) {
 			args: args{
 				command: "init",
 				sfnType: "",
-				lang:    "go",
+				runtime: "go",
 				isTest:  false,
 			},
 			want:    "go/init_llm.tmpl",
 			wantErr: false,
 		},
 		{
-			name: "default_lang",
+			name: "default_runtime",
 			args: args{
 				command: "init",
 				sfnType: "llm",
-				lang:    "",
+				runtime: "",
 				isTest:  false,
 			},
-			want:    "go/init_llm.tmpl",
+			want:    "node/init_llm.tmpl",
 			wantErr: false,
 		},
 		{
-			name: "default_sfnType_and_lang",
+			name: "default_sfnType_and_runtime",
 			args: args{
 				command: "init",
 				sfnType: "",
-				lang:    "",
+				runtime: "",
 				isTest:  false,
 			},
-			want:    "go/init_llm.tmpl",
+			want:    "node/init_llm.tmpl",
 			wantErr: false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := getTemplateFileName(tt.args.command, tt.args.sfnType, tt.args.lang, tt.args.isTest)
+			got, err := getTemplateFileName(tt.args.command, tt.args.sfnType, tt.args.runtime, tt.args.isTest)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("getTemplateFileName() error = %v, wantErr %v", err, tt.wantErr)
 				return

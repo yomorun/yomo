@@ -25,7 +25,6 @@ import (
 type GolangServerless struct {
 	opts    *serverless.Options
 	source  string
-	output  string
 	tempDir string
 }
 
@@ -172,8 +171,10 @@ func (s *GolangServerless) Build(clean bool) error {
 	}
 	dir, _ := filepath.Split(s.opts.Filename)
 	filename := "sfn.yomo"
-	sl, _ := filepath.Abs(dir + filename)
-	s.output = sl
+	// dist directory
+	distDir := filepath.Join(dir, "dist")
+	sl, _ := filepath.Abs(filepath.Join(distDir, filename))
+	// s.output = sl
 	cmd = exec.Command("go", "build", "-o", sl, appPath)
 	cmd.Env = env
 	cmd.Dir = s.tempDir
@@ -191,9 +192,13 @@ func (s *GolangServerless) Build(clean bool) error {
 
 // Run compiles and runs the serverless
 func (s *GolangServerless) Run(verbose bool) error {
-	log.InfoStatusEvent(os.Stdout, "Run: %s", s.output)
-	dir := file.Dir(s.output)
-	cmd := exec.Command(s.output)
+	output := archive(s.opts)
+	log.InfoStatusEvent(os.Stdout, "Run: %s", output)
+	dir := file.Dir(s.opts.Filename)
+	if !s.Executable() {
+		return fmt.Errorf("the serverless %s is not executable, please run `yomo build` first", output)
+	}
+	cmd := exec.Command(output)
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
 	cmd.Args = os.Args
@@ -212,7 +217,15 @@ func (s *GolangServerless) Run(verbose bool) error {
 
 // Executable returns true if the serverless is executable
 func (s *GolangServerless) Executable() bool {
-	return true
+	return file.Exists(archive(s.opts))
+}
+
+func archive(opts *serverless.Options) string {
+	dir, _ := filepath.Split(opts.Filename)
+	distDir := filepath.Join(dir, "dist")
+	filename := "sfn.yomo"
+	sl, _ := filepath.Abs(filepath.Join(distDir, filename))
+	return sl
 }
 
 func generateCode(fset *token.FileSet, file *ast.File) ([]byte, error) {
@@ -264,5 +277,5 @@ func ParseSrc(appFile string) (*AppOpts, error) {
 }
 
 func init() {
-	serverless.Register(&GolangServerless{}, ".go")
+	serverless.Register(&GolangServerless{}, "go")
 }

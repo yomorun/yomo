@@ -23,7 +23,6 @@ import (
 
 	// serverless registrations
 	"github.com/yomorun/yomo/cli/serverless"
-	_ "github.com/yomorun/yomo/cli/serverless/exec"
 	_ "github.com/yomorun/yomo/cli/serverless/golang"
 	_ "github.com/yomorun/yomo/cli/serverless/nodejs"
 	"github.com/yomorun/yomo/cli/viper"
@@ -35,11 +34,11 @@ var runCmd = &cobra.Command{
 	Short: "Run a YoMo Serverless LLM Function",
 	Long:  "Run a YoMo Serverless LLM Function",
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := parseFileArg(args, &opts, defaultSFNCompliedFile, defaultSFNSourceFile, defaultSFNSourceTSFile); err != nil {
+		loadOptionsFromViper(viper.RunViper, &opts)
+		if err := parseFileArg(&opts); err != nil {
 			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			return
 		}
-		loadOptionsFromViper(viper.RunViper, &opts)
 		// Serverless
 		log.InfoStatusEvent(os.Stdout, "YoMo Serverless LLM Function file: %v", opts.Filename)
 		if opts.Name == "" {
@@ -57,24 +56,19 @@ var runCmd = &cobra.Command{
 			log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 			return
 		}
-		if !s.Executable() {
-			log.FailureStatusEvent(os.Stdout,
-				"You cannot run `%s` directly. build first with the `yomo build %s` command and then run with the 'yomo run %s' command.",
-				opts.Filename,
-				opts.Filename,
-				opts.Filename,
-			)
-			return
-		}
 
 		// if has `--production` flag, skip s.Build() process
 		isProduction := opts.Production
-		log.InfoStatusEvent(os.Stdout, "production mode is %v", opts.Production)
 		if !isProduction {
+			// build
+			log.PendingStatusEvent(os.Stdout, "Building YoMo Stream Function instance...")
 			if err := s.Build(true); err != nil {
 				log.FailureStatusEvent(os.Stdout, "%s", err.Error())
 				os.Exit(127)
 			}
+			log.SuccessStatusEvent(os.Stdout, "YoMo Stream Function build successful!")
+		} else {
+			log.InfoStatusEvent(os.Stdout, "YoMo Serverless LLM Function is running in [production] mode")
 		}
 
 		log.InfoStatusEvent(
@@ -97,7 +91,7 @@ func init() {
 	runCmd.Flags().StringVarP(&opts.Name, "name", "n", "", "yomo Serverless LLM Function name.")
 	runCmd.Flags().StringVarP(&opts.ModFile, "modfile", "m", "", "custom go.mod")
 	runCmd.Flags().StringVarP(&opts.Credential, "credential", "d", "", "client credential payload, eg: `token:dBbBiRE7`")
-	runCmd.Flags().StringVarP(&opts.Runtime, "runtime", "r", "", "serverless runtime type")
+	runCmd.Flags().StringVarP(&opts.Runtime, "runtime", "r", "node", "serverless runtime type")
 	runCmd.Flags().BoolVarP(&opts.Production, "production", "p", false, "run in production mode, skip the build process")
 
 	viper.BindPFlags(viper.RunViper, runCmd.Flags())

@@ -3,6 +3,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"path"
 	"path/filepath"
@@ -21,7 +22,6 @@ const (
 	defaultSFNSourceTSFile     = "src/app.ts"
 	defaultSFNTestSourceFile   = "app_test.go"
 	defaultSFNTestSourceTSFile = "app_test.ts"
-	defaultSFNCompliedFile     = "sfn.yomo"
 )
 
 // GetRootPath get root path
@@ -64,24 +64,19 @@ func loadOptionsFromViper(v *viper.Viper, opts *serverless.Options) {
 	opts.Runtime = v.GetString("runtime")
 }
 
-// parseFileArg parses the filename from command line arguments or uses default files if none provided.
-// It updates the given serverless.Options with the filename and validates it via checkOptions.
-// Returns nil if a valid filename is found, otherwise continues trying default files.
-func parseFileArg(args []string, opts *serverless.Options, defaultFiles ...string) error {
-	// parse filename from args, like `yomo run app.go`
-	if len(args) >= 1 && args[0] != "" {
-		opts.Filename = args[0]
-		return checkOptions(opts)
+// parseFileArg parses the file argument and sets the default file name based on the runtime
+func parseFileArg(opts *serverless.Options) error {
+	runtime := opts.Runtime
+	if runtime == "" {
+		return errors.New("runtime is not specified, please use `-r` flag to specify the runtime")
 	}
-	// if no filename is provided, use the default files
-	for _, f := range defaultFiles {
-		opts.Filename = f
-		err := checkOptions(opts)
-		if err == nil {
-			break
-		}
+	switch runtime {
+	case "go": // go
+		opts.Filename = defaultSFNSourceFile
+	default: // node
+		opts.Filename = defaultSFNSourceTSFile
 	}
-	return nil
+	return checkOptions(opts)
 }
 
 func checkOptions(opts *serverless.Options) error {
@@ -96,22 +91,22 @@ func checkOptions(opts *serverless.Options) error {
 	return nil
 }
 
-// DefaultSFNSourceFile returns the default source file name for the given language
-func DefaultSFNSourceFile(lang string) string {
-	switch lang {
-	case "node":
-		return defaultSFNSourceTSFile
-	default:
+// DefaultSFNSourceFile returns the default source file name for the given runtime
+func DefaultSFNSourceFile(runtime string) string {
+	switch runtime {
+	case "go": // go
 		return defaultSFNSourceFile
+	default: // node
+		return defaultSFNSourceTSFile
 	}
 }
 
 // DefaultSFNTestSourceFile returns the default test source file name
-func DefaultSFNTestSourceFile(lang string) string {
-	switch lang {
-	case "node":
-		return defaultSFNTestSourceTSFile
-	default:
+func DefaultSFNTestSourceFile(runtime string) string {
+	switch runtime {
+	case "go": // go
 		return defaultSFNTestSourceFile
+	default: // node
+		return defaultSFNTestSourceTSFile
 	}
 }

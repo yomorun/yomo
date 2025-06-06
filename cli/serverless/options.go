@@ -12,7 +12,7 @@ type Options struct {
 	ModFile string
 	// Client credential
 	Credential string
-	// Runtime specifies the serverless runtime environment type
+	// Runtime specifies the serverless runtime environment type, e.g. "node", "go"
 	Runtime string
 	// Production indicates whether to run in production mode
 	Production bool
