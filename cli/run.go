@@ -28,8 +28,6 @@ import (
 	"github.com/yomorun/yomo/cli/viper"
 )
 
-var isProduction bool
-
 // runCmd represents the run command
 var runCmd = &cobra.Command{
 	Use:   "run [flags] sfn",
