@@ -4,7 +4,7 @@ go 1.23.0
 
 require (
 	cloud.google.com/go/vertexai v0.13.4
-	github.com/anthropics/anthropic-sdk-go v1.2.0
+	github.com/anthropics/anthropic-sdk-go v1.2.1
 	github.com/briandowns/spinner v1.23.2
 	github.com/caarlos0/env/v6 v6.10.1
 	github.com/fatih/color v1.18.0
@@ -17,7 +17,7 @@ require (
 	github.com/matoous/go-nanoid/v2 v2.1.0
 	github.com/quic-go/quic-go v0.52.0
 	github.com/robfig/cron/v3 v3.0.1
-	github.com/sashabaranov/go-openai v1.40.0
+	github.com/sashabaranov/go-openai v1.40.1
 	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/pflag v1.0.6

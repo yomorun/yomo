@@ -51,7 +51,7 @@ func LoadEnvFile(envDir string) error {
 	return nil
 }
 
-// Create returns a new serverless instance with options.
+// Create returns a new serverless instance with options
 func Create(opts *Options) (Serverless, error) {
 	runtime := opts.Runtime
 

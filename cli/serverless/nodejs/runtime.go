@@ -89,10 +89,11 @@ func (w *NodejsWrapper) WorkDir() string {
 
 // Build defines how to build the serverless llm function.
 func (w *NodejsWrapper) Build(env []string) error {
-	// 1. generate .wrapper.ts file
-	dstPath := filepath.Join(w.workDir, wrapperTS)
+	// 1. generate ./src/.wrapper.ts file
+	dstPath := filepath.Join(w.workDir, "src/", wrapperTS)
+	// remove the old one
 	_ = os.Remove(dstPath)
-
+	// create new one
 	if err := w.genWrapperTS(w.functionName, dstPath); err != nil {
 		return err
 	}
@@ -137,80 +138,44 @@ func (w *NodejsWrapper) Build(env []string) error {
 		return err
 	}
 
-	// 4. copy files other than .ts file from src/ to dist/src/ because tsc do not do that
-	srcDir := filepath.Join(w.workDir, "src")
-	dstDir := filepath.Join(w.workDir, "dist/src")
-	if err := os.MkdirAll(dstDir, 0755); err != nil {
-		return err
+	// 4. copy src/app.ts to dist/app.ts
+	baseFileName := filepath.Base(w.entryTSFile)
+	srcEntryPath := w.entryTSFile
+	dstEntryPath := filepath.Join(w.outputDir, baseFileName)
+
+	data, err := os.ReadFile(srcEntryPath)
+	if err != nil {
+		return fmt.Errorf("failed to read file %s: %v", srcEntryPath, err)
 	}
-	// copy all files from src/ to dist/
-	err = filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if path == srcDir {
-			return nil
-		}
 
-		// Get relative path to maintain directory structure
-		relPath, err := filepath.Rel(srcDir, path)
-		if err != nil {
-			return fmt.Errorf("failed to get relative path: %v", err)
-		}
+	if err := os.WriteFile(dstEntryPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write file %s: %v", dstEntryPath, err)
+	}
 
-		if filepath.Ext(path) == ".ts" {
-			return nil
-		}
-
-		// Create destination path with same structure
-		dstPath := filepath.Join(dstDir, relPath)
-
-		// Check if the destination directory exists
-		dstDir := filepath.Dir(dstPath)
-		if _, err := os.Stat(dstDir); os.IsNotExist(err) {
-			return fmt.Errorf("destination directory %s does not exist", dstDir)
-		}
-
-		// Copy the file to ./dist/src/
-		if info.IsDir() {
-			return os.MkdirAll(dstPath, info.Mode())
-		} else {
-			// Read the source file
-			data, err := os.ReadFile(path)
-			if err != nil {
-				return fmt.Errorf("failed to read file %s: %v", path, err)
-			}
-
-			// Write to the destination file
-			if err := os.WriteFile(dstPath, data, info.Mode()); err != nil {
-				return fmt.Errorf("failed to write file %s: %v", dstPath, err)
-			}
-
-			log.InfoStatusEvent(os.Stdout, "copied %s to %s\n", path, dstPath)
-			return nil
-		}
-	})
+	// log.InfoStatusEvent(os.Stdout, "Copied %s to %s", srcEntryPath, dstEntryPath)
 
 	return err
 }
 
 // Run runs the serverless function
 func (w *NodejsWrapper) Run(env []string) error {
+	// ./dist/.wrapper.js
+	entryJSFile := filepath.Join(w.outputDir, wrapperJS)
 	// try to run with bunjs
 	// first, check if bun is installed
 	bunPath, err := exec.LookPath("bun")
 	if err == nil {
 		// bun is installed, run the wrapper with bun
-		// get the version of tsgo/tsc
+		// get the version of bun
 		var bunVersion string
 		if v, err := checkVersion("bun"); err != nil {
 			return err
 		} else {
 			bunVersion = v
 		}
-		log.InfoStatusEvent(os.Stdout, "Runtime is Bun (Version %s)", bunVersion)
+		log.InfoStatusEvent(os.Stdout, "Runtime is Bun (Version %s), %s", bunVersion, entryJSFile)
 
-		cmd := exec.Command(bunPath, wrapperTS)
+		cmd := exec.Command(bunPath, "run", entryJSFile)
 		cmd.Dir = w.workDir
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -220,18 +185,27 @@ func (w *NodejsWrapper) Run(env []string) error {
 	}
 
 	// if bun is not found, fallback to nodejs
-	cmd := exec.Command(w.nodePath, filepath.Join(w.outputDir, wrapperJS))
+	cmd := exec.Command(w.nodePath, entryJSFile)
 	cmd.Dir = w.workDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Env = env
 
+	var nodeVersion string
+	if v, err := checkVersion("node"); err != nil {
+		return err
+	} else {
+		nodeVersion = v
+	}
+
+	log.InfoStatusEvent(os.Stdout, "Runtime is Node.js (Version %s), %s, %s", nodeVersion, w.nodePath, entryJSFile)
+
 	return cmd.Run()
 }
 
 func (w *NodejsWrapper) genWrapperTS(functionName, dstPath string) error {
-	baseFilename := "./src/" + filepath.Base(w.fileName)
-	entryTS := baseFilename + ".ts"
+	baseFilename := "./" + filepath.Base(w.fileName)
+	entryTS := "./dist/" + baseFilename + ".ts"
 
 	data := struct {
 		WorkDir      string

@@ -60,15 +60,18 @@ var runCmd = &cobra.Command{
 			return
 		}
 
-		// check production mode
+		// if has `--production` flag, skip s.Build() process
+		isProduction := opts.Production
 		if !isProduction {
 			// build
 			log.PendingStatusEvent(os.Stdout, "Building YoMo Stream Function instance...")
 			if err := s.Build(true); err != nil {
 				log.FailureStatusEvent(os.Stdout, "%s", err.Error())
-				return
+				os.Exit(127)
 			}
 			log.SuccessStatusEvent(os.Stdout, "YoMo Stream Function build successful!")
+		} else {
+			log.InfoStatusEvent(os.Stdout, "YoMo Serverless LLM Function is running in [production] mode")
 		}
 
 		log.InfoStatusEvent(
@@ -91,8 +94,8 @@ func init() {
 	runCmd.Flags().StringVarP(&opts.Name, "name", "n", "", "yomo Serverless LLM Function name.")
 	runCmd.Flags().StringVarP(&opts.ModFile, "modfile", "m", "", "custom go.mod")
 	runCmd.Flags().StringVarP(&opts.Credential, "credential", "d", "", "client credential payload, eg: `token:dBbBiRE7`")
-	runCmd.Flags().StringVarP(&opts.Runtime, "runtime", "r", "", "serverless runtime type")
-	runCmd.Flags().BoolVarP(&isProduction, "production", "p", false, "run in production mode")
+	runCmd.Flags().StringVarP(&opts.Runtime, "runtime", "r", "node", "serverless runtime type")
+	runCmd.Flags().BoolVarP(&opts.Production, "production", "p", false, "run in production mode, skip the build process")
 
 	viper.BindPFlags(viper.RunViper, runCmd.Flags())
 }
