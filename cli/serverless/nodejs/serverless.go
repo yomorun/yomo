@@ -107,7 +107,6 @@ func (s *nodejsServerless) Run(verbose bool) error {
 
 // Executable shows whether the program needs to be built
 func (s *nodejsServerless) Executable() bool {
-	// TODO:  need to check if dist directory exists
 	return true
 }
 
