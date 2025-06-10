@@ -22,6 +22,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/ylog"
 	pkgconfig "github.com/yomorun/yomo/pkg/config"
@@ -98,6 +99,9 @@ var serveCmd = &cobra.Command{
 				return
 			}
 		}
+
+		options = append(options, yomo.WithZipperFrameMiddleware(core.RejectReservedTagMiddleware))
+
 		// new zipper
 		zipper, err := yomo.NewZipper(
 			conf.Name,
