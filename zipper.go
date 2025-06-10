@@ -42,6 +42,8 @@ func RunZipper(ctx context.Context, configPath string) error {
 		}
 	}
 
+	options = append(options, WithZipperFrameMiddleware(core.RejectReservedTagMiddleware))
+
 	zipper, err := NewZipper(conf.Name, conf.Mesh, options...)
 	if err != nil {
 		return err
@@ -58,11 +60,6 @@ func NewZipper(name string, meshConfig map[string]config.Mesh, options ...Zipper
 	for _, o := range options {
 		o(opts)
 	}
-
-	opts.serverOption = append(
-		opts.serverOption,
-		core.WithFrameMiddleware(core.RejectReservedTagMiddleware),
-	)
 
 	server := core.NewServer(name, opts.serverOption...)
 
