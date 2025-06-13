@@ -39,10 +39,6 @@ type StreamRecorder interface {
 	RecordError(error)
 	// GetError returns the error of the request.
 	GetError() error
-	// RecordTTFT records the TTFT(Time to First Token) of the request.
-	RecordTTFT(time.Time)
-	// GetTTFT returns the TTFT(Time to First Token) of the request.
-	GetTTFT() time.Time
 }
 
 var _ EventResponseWriter = (*responseWriter)(nil)
