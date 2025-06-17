@@ -353,7 +353,7 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 
 		srv.logger.Debug(" #1 first call", "response", fmt.Sprintf("%+v", resp))
 		// it is a function call
-		if resp.Choices[0].FinishReason == openai.FinishReasonToolCalls && !hasReqTools {
+		if (resp.Choices[0].FinishReason == openai.FinishReasonToolCalls || len(resp.Choices[0].Message.ToolCalls) != 0) && !hasReqTools {
 			toolCalls = append(toolCalls, resp.Choices[0].Message.ToolCalls...)
 			assistantMessage = resp.Choices[0].Message
 			firstCallSpan.End()
