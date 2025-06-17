@@ -43,6 +43,8 @@ func NewProvider(apiKey string) *Provider {
 func (p *Provider) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, md metadata.M) (openai.ChatCompletionResponse, error) {
 	if req.Model == "" {
 		req.Model = p.model
+	} else {
+		req.Model = "google/" + req.Model
 	}
 	return p.client.CreateChatCompletion(ctx, req)
 }
@@ -51,6 +53,8 @@ func (p *Provider) GetChatCompletions(ctx context.Context, req openai.ChatComple
 func (p *Provider) GetChatCompletionsStream(ctx context.Context, req openai.ChatCompletionRequest, md metadata.M) (provider.ResponseRecver, error) {
 	if req.Model == "" {
 		req.Model = p.model
+	} else {
+		req.Model = "google/" + req.Model
 	}
 
 	return p.client.CreateChatCompletionStream(ctx, req)
