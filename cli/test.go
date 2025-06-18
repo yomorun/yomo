@@ -65,8 +65,8 @@ var testPromptCmd = &cobra.Command{
 			log.InfoStatusEvent(os.Stdout, "--------------------------------------------------------")
 			log.InfoStatusEvent(os.Stdout, "Attaching LLM function in directory: %v", dir)
 			// build
-			sfnSource := filepath.Join(dir, "app.go")
-			buildCmd.Run(nil, []string{sfnSource})
+			buildCmd.Flags().Set("runtime", "go")
+			buildCmd.Run(nil, nil)
 			sfnBin := filepath.Join(dir, "dist", "sfn.yomo")
 			defer os.RemoveAll(sfnBin)
 
