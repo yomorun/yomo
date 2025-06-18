@@ -156,8 +156,6 @@ func (h *Handler) HandleOverview(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(&ai.OverviewResponse{Functions: functions})
 }
 
-var baseSystemMessage = `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous.`
-
 // HandleInvoke is the handler for POST /invoke
 func (h *Handler) HandleInvoke(w http.ResponseWriter, r *http.Request) {
 	var (
