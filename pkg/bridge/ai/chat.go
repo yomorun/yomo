@@ -88,7 +88,7 @@ func multiTurnFunctionCalling(
 		chatCtx  = &chatContext{req: req}
 	)
 
-	ctx, span := tracer.Start(gctx, "chat_completions_request")
+	ctx, reqSpan := tracer.Start(gctx, "chat_completions_request")
 	for {
 		// write header if it's a streaming request (write & flush header before write body)
 		if req.Stream && chatCtx.callTimes == 0 {
@@ -101,26 +101,32 @@ func multiTurnFunctionCalling(
 			chatCtx.req.ToolChoice = nil
 		}
 
-		reqCtx, reqSpan := tracer.Start(ctx, fmt.Sprintf("llm_chat(#%d)", chatCtx.callTimes+1))
+		reqCtx, chatSpan := tracer.Start(ctx, fmt.Sprintf("llm_chat(#%d)", chatCtx.callTimes+1))
 		resp, err := createChatCompletions(reqCtx, p, chatCtx.req, md)
 		if err != nil {
-			reqSpan.RecordError(err)
+			chatSpan.RecordError(err)
+			chatSpan.End()
+			reqSpan.End()
 			return err
 		}
-		reqSpan.End()
+		chatSpan.End()
 
 		// return the response if it's the last call
 		if chatCtx.callTimes == maxCalls {
-			return endCall(gctx, span, chatCtx, resp, w, tracer)
+			reqSpan.End()
+			return endCall(gctx, chatCtx, resp, w, tracer)
 		}
 
 		// if the request contains tools, return the response directly
 		if hasReqTools {
+			reqSpan.End()
 			return resp.writeResponse(w, chatCtx)
 		}
 
 		isFunctionCall, err := resp.checkFunctionCall()
 		if err != nil {
+			reqSpan.RecordError(err)
+			reqSpan.End()
 			return err
 		}
 		if isFunctionCall {
@@ -138,6 +144,8 @@ func multiTurnFunctionCalling(
 			callResult, err := caller.Call(callCtx, transID, reqID, toolCalls, tracer)
 			if err != nil {
 				callSpan.RecordError(err)
+				callSpan.End()
+				reqSpan.End()
 				return err
 			}
 			if req.Stream {
@@ -159,23 +167,22 @@ func multiTurnFunctionCalling(
 			chatCtx.callTimes++
 			continue
 		} else {
-			return endCall(gctx, span, chatCtx, resp, w, tracer)
+			reqSpan.End()
+			return endCall(gctx, chatCtx, resp, w, tracer)
 		}
 	}
 }
 
-func endCall(ctx context.Context, reqSpan trace.Span, chatCtx *chatContext, resp chatResponse, w EventResponseWriter, tracer trace.Tracer) error {
+func endCall(ctx context.Context, chatCtx *chatContext, resp chatResponse, w EventResponseWriter, tracer trace.Tracer) error {
 	updateTotalUsage(chatCtx, resp)
 
-	// end request span beofore responsing
-	reqSpan.End()
-
 	_, respSpan := tracer.Start(ctx, "chat_completions_response")
+	defer respSpan.End()
+
 	if err := resp.writeResponse(w, chatCtx); err != nil {
 		respSpan.RecordError(err)
 		return err
 	}
-	respSpan.End()
 
 	return nil
 }

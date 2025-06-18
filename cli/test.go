@@ -133,7 +133,7 @@ var testPromptCmd = &cobra.Command{
 			}
 			reqBuf, err := json.Marshal(invokeReq)
 			if err != nil {
-				log.FailureStatusEvent(os.Stdout, "Failed to marshal invoke request: %v", err)
+				log.FailureStatusEvent(os.Stdout, "Failed to marshal invoke request: %v", string(reqBuf))
 				continue
 			}
 			// invoke api endpoint
