@@ -7,6 +7,7 @@ import (
 	"io"
 
 	openai "github.com/sashabaranov/go-openai"
+	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
 	"github.com/yomorun/yomo/pkg/id"
@@ -23,8 +24,13 @@ type chatResponse interface {
 	// getUsage returns the usage in the response
 	getUsage() openai.Usage
 	// writeResponse defines how to write the response to the response writer
-	writeResponse(w EventResponseWriter, usage openai.Usage) error
+	writeResponse(w EventResponseWriter, chatCtx *chatContext) error
 }
+
+const (
+	invokeMetadataKey                 = "invoke"
+	invokeIncludeCallStackMetadataKey = "invoke_include_call_stack"
+)
 
 // createChatCompletions creates a chat completions response.
 func createChatCompletions(ctx context.Context, p provider.LLMProvider, req openai.ChatCompletionRequest, md metadata.M) (chatResponse, error) {
@@ -45,6 +51,15 @@ func createChatCompletions(ctx context.Context, p provider.LLMProvider, req open
 	if err != nil {
 		return nil, err
 	}
+
+	if _, ok := md.Get(invokeMetadataKey); ok {
+		if val, _ := md.Get(invokeIncludeCallStackMetadataKey); val == "true" {
+			return newInvokeResp(resp, true), nil
+		} else {
+			return newInvokeResp(resp, false), nil
+		}
+	}
+
 	return &chatResp{resp}, nil
 }
 
@@ -58,7 +73,15 @@ type chatContext struct {
 
 // multiTurnFunctionCalling calls chat completions multiple times until finishing function calling
 func multiTurnFunctionCalling(
-	ctx context.Context, req openai.ChatCompletionRequest, transID string, hasReqTools bool, w EventResponseWriter, p provider.LLMProvider, caller *Caller, tracer trace.Tracer,
+	ctx context.Context,
+	req openai.ChatCompletionRequest,
+	transID string,
+	hasReqTools bool,
+	w EventResponseWriter,
+	p provider.LLMProvider,
+	caller *Caller,
+	tracer trace.Tracer,
+	md metadata.M,
 ) error {
 	var (
 		maxCalls = 10
@@ -79,7 +102,7 @@ func multiTurnFunctionCalling(
 		}
 
 		reqCtx, reqSpan := tracer.Start(ctx, fmt.Sprintf("request(#%d)", chatCtx.callTimes+1))
-		resp, err := createChatCompletions(reqCtx, p, chatCtx.req, caller.md)
+		resp, err := createChatCompletions(reqCtx, p, chatCtx.req, md)
 		if err != nil {
 			reqSpan.RecordError(err)
 			return err
@@ -93,7 +116,7 @@ func multiTurnFunctionCalling(
 
 		// if the request contains tools, return the response directly
 		if hasReqTools {
-			return resp.writeResponse(w, chatCtx.totalUsage)
+			return resp.writeResponse(w, chatCtx)
 		}
 
 		isFunctionCall, err := resp.checkFunctionCall()
@@ -150,7 +173,7 @@ func endCall(ctx context.Context, reqSpan trace.Span, chatCtx *chatContext, resp
 	reqSpan.End()
 
 	_, respSpan := tracer.Start(ctx, "chat_completions_response")
-	if err := resp.writeResponse(w, chatCtx.totalUsage); err != nil {
+	if err := resp.writeResponse(w, chatCtx); err != nil {
 		respSpan.RecordError(err)
 		return err
 	}
@@ -186,8 +209,9 @@ func (c *chatResp) getUsage() openai.Usage {
 	return c.resp.Usage
 }
 
-func (c *chatResp) writeResponse(w EventResponseWriter, usage openai.Usage) error {
-	c.resp.Usage = usage
+func (c *chatResp) writeResponse(w EventResponseWriter, chatCtx *chatContext) error {
+	// accumulate usage before responding, so use `=` rather than `+=`
+	c.resp.Usage = chatCtx.totalUsage
 	w.Header().Set("Content-Type", "application/json")
 	return json.NewEncoder(w).Encode(c.resp)
 }
@@ -261,7 +285,7 @@ func (r *streamChatResp) getUsage() openai.Usage {
 	return r.usage
 }
 
-func (s *streamChatResp) writeResponse(w EventResponseWriter, totalUsage openai.Usage) error {
+func (s *streamChatResp) writeResponse(w EventResponseWriter, chatCtx *chatContext) error {
 	if err := w.WriteStreamEvent(s.roleMessage); err != nil {
 		return err
 	}
@@ -284,7 +308,7 @@ func (s *streamChatResp) writeResponse(w EventResponseWriter, totalUsage openai.
 		}
 		// response total usage when usage is not nil
 		if resp.Usage != nil {
-			resp.Usage = &totalUsage
+			resp.Usage = &chatCtx.totalUsage
 		}
 		if err := w.WriteStreamEvent(resp); err != nil {
 			return err
@@ -313,4 +337,38 @@ func (r *streamChatResp) accuamulate(delta []openai.ToolCall) {
 		}
 		r.toolCallsMap[index] = item
 	}
+}
+
+type invokeResp struct {
+	underlying       *chatResp
+	includeCallStack bool
+}
+
+var _ chatResponse = (*invokeResp)(nil)
+
+func (i *invokeResp) checkFunctionCall() (bool, error) { return i.underlying.checkFunctionCall() }
+func (i *invokeResp) getToolCalls() []openai.ToolCall  { return i.underlying.getToolCalls() }
+func (i *invokeResp) getUsage() openai.Usage           { return i.underlying.getUsage() }
+
+func newInvokeResp(resp openai.ChatCompletionResponse, includeCallStack bool) *invokeResp {
+	return &invokeResp{
+		underlying:       &chatResp{resp},
+		includeCallStack: includeCallStack,
+	}
+}
+
+func (i *invokeResp) writeResponse(w EventResponseWriter, chatCtx *chatContext) error {
+	resp := ai.InvokeResponse{
+		Content:      i.underlying.resp.Choices[0].Message.Content,
+		FinishReason: string(i.underlying.resp.Choices[0].FinishReason),
+		TokenUsage: ai.TokenUsage{
+			PromptTokens:     i.underlying.resp.Usage.PromptTokens,
+			CompletionTokens: i.underlying.resp.Usage.CompletionTokens,
+		},
+	}
+	if i.includeCallStack {
+		resp.History = chatCtx.req.Messages
+	}
+	w.Header().Set("Content-Type", "application/json")
+	return json.NewEncoder(w).Encode(resp)
 }

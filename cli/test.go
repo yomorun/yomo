@@ -167,21 +167,24 @@ var testPromptCmd = &cobra.Command{
 				continue
 			}
 			// tool calls
-			for _, tc := range invokeResp.ToolCalls {
-				if invokeResp.ToolMessages == nil {
-					log.InfoStatusEvent(os.Stdout,
-						"\t[%s] name: %s, arguments: %s",
-						tc.ID,
-						tc.Function.Name,
-						tc.Function.Arguments,
-					)
-				} else {
+			var (
+				toolCalls  = getToolCalls(invokeResp.History)
+				callResult = getCallResult(invokeResp.History)
+			)
+			for _, tc := range toolCalls {
+				log.InfoStatusEvent(os.Stdout,
+					"\t[%s] name: %s, arguments: %s",
+					tc.ID,
+					tc.Function.Name,
+					tc.Function.Arguments,
+				)
+				if result, ok := callResult[tc.ID]; ok {
 					log.InfoStatusEvent(os.Stdout,
 						"\t[%s] name: %s, arguments: %s\n🌟 result: %s",
 						tc.ID,
 						tc.Function.Name,
 						tc.Function.Arguments,
-						getToolCallResult(tc, invokeResp.ToolMessages),
+						result,
 					)
 				}
 			}
@@ -204,14 +207,24 @@ var testPromptCmd = &cobra.Command{
 	},
 }
 
-func getToolCallResult(tc openai.ToolCall, tms []ai.ToolMessage) string {
-	result := ""
-	for _, tm := range tms {
-		if tm.ToolCallID == tc.ID {
-			result = tm.Content
+func getCallResult(history []openai.ChatCompletionMessage) map[string]string {
+	result := map[string]string{}
+	for _, message := range history {
+		if message.Role == openai.ChatMessageRoleFunction {
+			result[message.ToolCallID] = message.Content
 		}
 	}
 	return result
+}
+
+func getToolCalls(history []openai.ChatCompletionMessage) []openai.ToolCall {
+	var toolCalls []openai.ToolCall
+	for _, message := range history {
+		if len(message.ToolCalls) != 0 {
+			toolCalls = append(toolCalls, message.ToolCalls...)
+		}
+	}
+	return toolCalls
 }
 
 func init() {

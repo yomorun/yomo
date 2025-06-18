@@ -182,15 +182,10 @@ func (h *Handler) HandleInvoke(w http.ResponseWriter, r *http.Request) {
 		tracer = FromTracerContext(ctx)
 	)
 
-	w.Header().Set("Content-Type", "application/json")
-
-	res, err := h.service.GetInvoke(ctx, req.Prompt, baseSystemMessage, transID, caller, req.IncludeCallStack, tracer)
-	if err != nil {
+	if err := h.service.GetInvoke(ctx, req.Prompt, transID, caller, req.IncludeCallStack, ww, tracer); err != nil {
 		RespondWithError(ww, http.StatusInternalServerError, err)
 		return
 	}
-
-	_ = json.NewEncoder(w).Encode(res)
 }
 
 // HandleChatCompletions is the handler for POST /chat/completions

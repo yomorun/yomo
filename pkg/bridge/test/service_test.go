@@ -139,17 +139,16 @@ func TestOpSystemPrompt(t *testing.T) {
 
 func TestServiceInvoke(t *testing.T) {
 	type args struct {
-		providerMockData  []provider.MockData
-		mockCallReqResp   []mockFunctionCall
-		systemPrompt      string
-		userInstruction   string
-		baseSystemMessage string
+		providerMockData []provider.MockData
+		mockCallReqResp  []mockFunctionCall
+		systemPrompt     string
+		userInstruction  string
 	}
 	tests := []struct {
 		name        string
 		args        args
 		wantRequest []openai.ChatCompletionRequest
-		wantUsage   ai.TokenUsage
+		wantUsage   openai.Usage
 	}{
 		{
 			name: "invoke with tool call",
@@ -161,28 +160,28 @@ func TestServiceInvoke(t *testing.T) {
 					// toolID should equal to toolCallResp's toolID
 					{toolID: "call_abc123", functionName: "get_current_weather", respContent: "temperature: 31°C"},
 				},
-				systemPrompt:      "this is a system prompt",
-				userInstruction:   "hi",
-				baseSystemMessage: "this is a base system message",
+				systemPrompt:    "this is a system prompt",
+				userInstruction: "hi",
 			},
 			wantRequest: []openai.ChatCompletionRequest{
 				{
 					Messages: []openai.ChatCompletionMessage{
-						{Role: "system", Content: "this is a base system message\n\n## Instructions\n- \n\n"},
+						{Role: "system", Content: "this is a system prompt"},
 						{Role: "user", Content: "hi"},
 					},
 					Tools: []openai.Tool{{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "get_current_weather"}}},
 				},
 				{
 					Messages: []openai.ChatCompletionMessage{
-						{Role: "system", Content: "this is a base system message\n\n## Instructions\n"},
+						{Role: "system", Content: "this is a system prompt"},
+						{Role: "user", Content: "hi"},
 						{Role: "assistant", ToolCalls: []openai.ToolCall{{ID: "call_abc123", Type: openai.ToolTypeFunction, Function: openai.FunctionCall{Name: "get_current_weather", Arguments: "{\n\"location\": \"Boston, MA\"\n}"}}}},
 						{Role: "tool", Content: "temperature: 31°C", ToolCallID: "call_abc123"},
-						{Role: "user", Content: "hi"},
 					},
+					Tools: []openai.Tool{{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "get_current_weather"}}},
 				},
 			},
-			wantUsage: ai.TokenUsage{PromptTokens: 95, CompletionTokens: 43},
+			wantUsage: openai.Usage{PromptTokens: 95, CompletionTokens: 43, TotalTokens: 138},
 		},
 		{
 			name: "invoke without tool call",
@@ -190,20 +189,19 @@ func TestServiceInvoke(t *testing.T) {
 				providerMockData: []provider.MockData{
 					provider.MockChatCompletionResponse(stopResp),
 				},
-				mockCallReqResp:   []mockFunctionCall{},
-				systemPrompt:      "this is a system prompt",
-				userInstruction:   "hi",
-				baseSystemMessage: "this is a base system message",
+				mockCallReqResp: []mockFunctionCall{},
+				systemPrompt:    "this is a system prompt",
+				userInstruction: "hi",
 			},
 			wantRequest: []openai.ChatCompletionRequest{
 				{
 					Messages: []openai.ChatCompletionMessage{
-						{Role: "system", Content: "this is a base system message\n\n## Instructions\n\n"},
+						{Role: "system", Content: "this is a system prompt"},
 						{Role: "user", Content: "hi"},
 					},
 				},
 			},
-			wantUsage: ai.TokenUsage{PromptTokens: 13, CompletionTokens: 26},
+			wantUsage: openai.Usage{PromptTokens: 13, CompletionTokens: 26, TotalTokens: 39},
 		},
 	}
 	for _, tt := range tests {
@@ -231,10 +229,10 @@ func TestServiceInvoke(t *testing.T) {
 
 			caller.SetSystemPrompt(tt.args.systemPrompt, pkgai.SystemPromptOpOverwrite)
 
-			resp, err := service.GetInvoke(context.TODO(), tt.args.userInstruction, tt.args.baseSystemMessage, "transID", caller, true, nil)
+			w := httptest.NewRecorder()
+			err = service.GetInvoke(context.TODO(), tt.args.userInstruction, "transID", caller, true, pkgai.NewResponseWriter(w, slog.Default()), nil)
 			assert.NoError(t, err)
 
-			assert.Equal(t, tt.wantUsage, resp.TokenUsage)
 			assert.Equal(t, tt.wantRequest, pd.RequestRecords())
 		})
 	}

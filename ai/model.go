@@ -23,21 +23,19 @@ type InvokeRequest struct {
 type InvokeResponse struct {
 	// Content is the content from llm api response
 	Content string `json:"content,omitempty"`
-	// ToolCalls is the toolCalls from llm api response
-	ToolCalls []openai.ToolCall `json:"tool_calls,omitempty"`
-	// ToolMessages is the tool messages from llm api response
-	ToolMessages []ToolMessage `json:"tool_messages,omitempty"`
 	// FinishReason is the finish reason from llm api response
 	FinishReason string `json:"finish_reason,omitempty"`
 	// TokenUsage is the token usage from llm api response
 	TokenUsage TokenUsage `json:"token_usage,omitempty"`
-	// AssistantMessage is the assistant message from llm api response, only present when finish reason is "tool_calls"
-	AssistantMessage interface{} `json:"assistant_message,omitempty"`
+	// History is the history messages for llm api reqiest
+	History []openai.ChatCompletionMessage `json:"history,omitempty"`
 }
 
-// TokenUsage is the token usage in Response
+// TokenUsage is the token usage
 type TokenUsage struct {
-	PromptTokens     int `json:"prompt_tokens"`
+	// PromptTokens is the prompt tokens
+	PromptTokens int `json:"prompt_tokens"`
+	// CompletionTokens is the completion tokens
 	CompletionTokens int `json:"completion_tokens"`
 }
 
@@ -57,19 +55,4 @@ type ParameterProperty struct {
 	Type        string `json:"type"`
 	Description string `json:"description"`
 	Enum        []any  `json:"enum,omitempty"`
-}
-
-// ToolMessage used for OpenAI tool message
-type ToolMessage struct {
-	Role       string `json:"role"`
-	Content    string `json:"content"`
-	ToolCallID string `json:"tool_call_id"`
-}
-
-// ChainMessage is the message for chaining llm request with preceeding `tool_calls` response
-type ChainMessage struct {
-	// PrecedingAssistantMessage is the preceding assistant message in llm response
-	PreceedingAssistantMessage interface{}
-	// ToolMessages is the tool messages aggragated from reducer-sfn by AI service
-	ToolMessages []ToolMessage
 }
