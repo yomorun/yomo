@@ -214,7 +214,8 @@ func (resp *streamChatResp) checkFunctionCall() (bool, error) {
 
 		// return when choices is not empty
 		if len(choices) > 0 {
-			if choices[0].Delta.Role != "" {
+			// sometimes the first choice only contains role=assistant, so save it and continue
+			if choices[0].Delta.Role != "" && len(choices[0].Delta.ToolCalls) == 0 {
 				resp.roleMessage = delta
 				continue
 			}
