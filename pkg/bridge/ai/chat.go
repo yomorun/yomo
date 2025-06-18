@@ -66,7 +66,7 @@ func multiTurnFunctionCalling(
 	)
 
 	ctx, span := tracer.Start(ctx, "chat_completions_request")
-	for chatCtx.callTimes < maxCalls {
+	for {
 		// write header if it's a streaming request (write & flush header before write body)
 		if req.Stream && chatCtx.callTimes == 0 {
 			w.SetStreamHeader()
@@ -78,7 +78,7 @@ func multiTurnFunctionCalling(
 			chatCtx.req.ToolChoice = nil
 		}
 
-		reqCtx, reqSpan := tracer.Start(ctx, fmt.Sprintf("request_%d", chatCtx.callTimes+1))
+		reqCtx, reqSpan := tracer.Start(ctx, fmt.Sprintf("request(#%d)", chatCtx.callTimes+1))
 		resp, err := createChatCompletions(reqCtx, p, chatCtx.req, caller.md)
 		if err != nil {
 			reqSpan.RecordError(err)
@@ -86,17 +86,22 @@ func multiTurnFunctionCalling(
 		}
 		reqSpan.End()
 
+		// return the response if it's the last call
+		if chatCtx.callTimes == maxCalls {
+			return endCall(ctx, span, chatCtx, resp, w, tracer)
+		}
+
 		// if the request contains tools, return the response directly
 		if hasReqTools {
 			return resp.writeResponse(w, chatCtx.totalUsage)
 		}
 
-		isFunction, err := resp.checkFunctionCall()
+		isFunctionCall, err := resp.checkFunctionCall()
 		if err != nil {
 			return err
 		}
-		if isFunction {
-			_, toolSpan := tracer.Start(ctx, fmt.Sprintf("response_%d", chatCtx.callTimes+1))
+		if isFunctionCall {
+			_, toolSpan := tracer.Start(ctx, fmt.Sprintf("get_tool_calls(#%d)", chatCtx.callTimes+1))
 			toolCalls := resp.getToolCalls()
 			toolSpan.End()
 
@@ -107,7 +112,7 @@ func multiTurnFunctionCalling(
 			})
 
 			// call functions
-			callCtx, callSpan := tracer.Start(ctx, fmt.Sprintf("call_functions_%d", chatCtx.callTimes+1))
+			callCtx, callSpan := tracer.Start(ctx, fmt.Sprintf("call_functions(#%d)", chatCtx.callTimes+1))
 			reqID := id.New(16)
 			callResult, err := caller.Call(callCtx, transID, reqID, toolCalls, tracer)
 			if err != nil {
@@ -133,24 +138,25 @@ func multiTurnFunctionCalling(
 			chatCtx.callTimes++
 			continue
 		} else {
-			updateTotalUsage(chatCtx, resp)
-
-			// end request span beofore responsing
-			span.End()
-
-			_, respSpan := tracer.Start(ctx, "chat_completions_response")
-			if err := resp.writeResponse(w, chatCtx.totalUsage); err != nil {
-				respSpan.RecordError(err)
-				return err
-			}
-			respSpan.End()
-
-			return nil
+			return endCall(ctx, span, chatCtx, resp, w, tracer)
 		}
 	}
+}
 
-	span.End()
-	return fmt.Errorf("exceed max calls %d", maxCalls)
+func endCall(ctx context.Context, reqSpan trace.Span, chatCtx *chatContext, resp chatResponse, w EventResponseWriter, tracer trace.Tracer) error {
+	updateTotalUsage(chatCtx, resp)
+
+	// end request span beofore responsing
+	reqSpan.End()
+
+	_, respSpan := tracer.Start(ctx, "chat_completions_response")
+	if err := resp.writeResponse(w, chatCtx.totalUsage); err != nil {
+		respSpan.RecordError(err)
+		return err
+	}
+	respSpan.End()
+
+	return nil
 }
 
 func updateTotalUsage(chatCtx *chatContext, resp chatResponse) {
@@ -188,6 +194,7 @@ func (c *chatResp) writeResponse(w EventResponseWriter, usage openai.Usage) erro
 
 // streamChatResp is the streaming implementation of chatResponse
 type streamChatResp struct {
+	roleMessage  openai.ChatCompletionStreamResponse
 	head         openai.ChatCompletionStreamResponse
 	recver       provider.ResponseRecver
 	usage        openai.Usage
@@ -207,6 +214,10 @@ func (resp *streamChatResp) checkFunctionCall() (bool, error) {
 
 		// return when choices is not empty
 		if len(choices) > 0 {
+			if choices[0].Delta.Role != "" {
+				resp.roleMessage = delta
+				continue
+			}
 			isFunctionCall := len(choices[0].Delta.ToolCalls) > 0
 
 			resp.head = delta
@@ -250,12 +261,17 @@ func (r *streamChatResp) getUsage() openai.Usage {
 }
 
 func (s *streamChatResp) writeResponse(w EventResponseWriter, totalUsage openai.Usage) error {
+	if err := w.WriteStreamEvent(s.roleMessage); err != nil {
+		return err
+	}
+
 	if err := w.WriteStreamEvent(s.head); err != nil {
 		return err
 	}
 
 	for {
 		resp, err := s.recver.Recv()
+		// time.Sleep(time.Millisecond * 100)
 		if err != nil {
 			if err == io.EOF {
 				return nil

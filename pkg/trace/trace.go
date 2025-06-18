@@ -49,7 +49,7 @@ func NewClientFromEnv() otlptrace.Client {
 		)
 	}
 	if endpoint, ok := os.LookupEnv("OTEL_EXPORTER_OTLP_ENDPOINT"); ok {
-		return otlptracehttp.NewClient(otlptracehttp.WithEndpoint(endpoint))
+		return otlptracehttp.NewClient(otlptracehttp.WithEndpointURL(endpoint))
 	}
 	return nil
 }
