@@ -73,7 +73,7 @@ type chatContext struct {
 
 // multiTurnFunctionCalling calls chat completions multiple times until finishing function calling
 func multiTurnFunctionCalling(
-	ctx context.Context,
+	gctx context.Context,
 	req openai.ChatCompletionRequest,
 	transID string,
 	hasReqTools bool,
@@ -88,7 +88,7 @@ func multiTurnFunctionCalling(
 		chatCtx  = &chatContext{req: req}
 	)
 
-	ctx, span := tracer.Start(ctx, "chat_completions_request")
+	ctx, span := tracer.Start(gctx, "chat_completions_request")
 	for {
 		// write header if it's a streaming request (write & flush header before write body)
 		if req.Stream && chatCtx.callTimes == 0 {
@@ -101,7 +101,7 @@ func multiTurnFunctionCalling(
 			chatCtx.req.ToolChoice = nil
 		}
 
-		reqCtx, reqSpan := tracer.Start(ctx, fmt.Sprintf("request(#%d)", chatCtx.callTimes+1))
+		reqCtx, reqSpan := tracer.Start(ctx, fmt.Sprintf("llm_chat(#%d)", chatCtx.callTimes+1))
 		resp, err := createChatCompletions(reqCtx, p, chatCtx.req, md)
 		if err != nil {
 			reqSpan.RecordError(err)
@@ -111,7 +111,7 @@ func multiTurnFunctionCalling(
 
 		// return the response if it's the last call
 		if chatCtx.callTimes == maxCalls {
-			return endCall(ctx, span, chatCtx, resp, w, tracer)
+			return endCall(gctx, span, chatCtx, resp, w, tracer)
 		}
 
 		// if the request contains tools, return the response directly
@@ -124,9 +124,8 @@ func multiTurnFunctionCalling(
 			return err
 		}
 		if isFunctionCall {
-			_, toolSpan := tracer.Start(ctx, fmt.Sprintf("get_tool_calls(#%d)", chatCtx.callTimes+1))
+			callCtx, callSpan := tracer.Start(ctx, fmt.Sprintf("call_functions(#%d)", chatCtx.callTimes+1))
 			toolCalls := resp.getToolCalls()
-			toolSpan.End()
 
 			// append role=assistant (argeuments) to context
 			chatCtx.req.Messages = append(chatCtx.req.Messages, openai.ChatCompletionMessage{
@@ -135,7 +134,6 @@ func multiTurnFunctionCalling(
 			})
 
 			// call functions
-			callCtx, callSpan := tracer.Start(ctx, fmt.Sprintf("call_functions(#%d)", chatCtx.callTimes+1))
 			reqID := id.New(16)
 			callResult, err := caller.Call(callCtx, transID, reqID, toolCalls, tracer)
 			if err != nil {
@@ -161,7 +159,7 @@ func multiTurnFunctionCalling(
 			chatCtx.callTimes++
 			continue
 		} else {
-			return endCall(ctx, span, chatCtx, resp, w, tracer)
+			return endCall(gctx, span, chatCtx, resp, w, tracer)
 		}
 	}
 }
