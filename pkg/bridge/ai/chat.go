@@ -251,9 +251,7 @@ func (r *streamChatResp) getToolCalls() []openai.ToolCall {
 		}
 
 		if resp.Usage != nil {
-			r.usage.PromptTokens = resp.Usage.PromptTokens
-			r.usage.CompletionTokens = resp.Usage.CompletionTokens
-			r.usage.TotalTokens = resp.Usage.TotalTokens
+			r.usage = *resp.Usage
 		}
 
 		if len(resp.Choices) > 0 {
