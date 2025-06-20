@@ -179,14 +179,22 @@ func updateTotalUsage(chatCtx *chatContext, resp chatResponse) {
 	chatCtx.totalUsage.TotalTokens += usage.TotalTokens
 
 	if detail := usage.PromptTokensDetails; detail != nil {
-		chatCtx.totalUsage.PromptTokensDetails.CachedTokens += detail.CachedTokens
-		chatCtx.totalUsage.PromptTokensDetails.AudioTokens += detail.AudioTokens
+		if chatCtx.totalUsage.PromptTokensDetails == nil {
+			chatCtx.totalUsage.PromptTokensDetails = detail
+		} else {
+			chatCtx.totalUsage.PromptTokensDetails.CachedTokens += detail.CachedTokens
+			chatCtx.totalUsage.PromptTokensDetails.AudioTokens += detail.AudioTokens
+		}
 	}
 	if detail := usage.CompletionTokensDetails; detail != nil {
-		chatCtx.totalUsage.CompletionTokensDetails.AudioTokens += detail.AudioTokens
-		chatCtx.totalUsage.CompletionTokensDetails.ReasoningTokens += detail.ReasoningTokens
-		chatCtx.totalUsage.CompletionTokensDetails.AcceptedPredictionTokens += detail.AcceptedPredictionTokens
-		chatCtx.totalUsage.CompletionTokensDetails.RejectedPredictionTokens += detail.RejectedPredictionTokens
+		if chatCtx.totalUsage.CompletionTokensDetails == nil {
+			chatCtx.totalUsage.CompletionTokensDetails = detail
+		} else {
+			chatCtx.totalUsage.CompletionTokensDetails.AudioTokens += detail.AudioTokens
+			chatCtx.totalUsage.CompletionTokensDetails.ReasoningTokens += detail.ReasoningTokens
+			chatCtx.totalUsage.CompletionTokensDetails.AcceptedPredictionTokens += detail.AcceptedPredictionTokens
+			chatCtx.totalUsage.CompletionTokensDetails.RejectedPredictionTokens += detail.RejectedPredictionTokens
+		}
 	}
 }
 
@@ -296,7 +304,6 @@ func (s *streamChatResp) writeResponse(w EventResponseWriter, chatCtx *chatConte
 
 	for {
 		resp, err := s.recver.Recv()
-		// time.Sleep(time.Millisecond * 100)
 		if err != nil {
 			if err == io.EOF {
 				w.WriteStreamDone()
@@ -318,23 +325,26 @@ func (s *streamChatResp) writeResponse(w EventResponseWriter, chatCtx *chatConte
 }
 
 func (r *streamChatResp) accuamulate(delta []openai.ToolCall) {
-	for _, t := range delta {
-		index := *t.Index
+	for k, v := range delta {
+		index := k
+		if v.Index != nil {
+			index = *v.Index
+		}
 		item, ok := r.toolCallsMap[index]
 		if !ok {
 			r.toolCallsMap[index] = openai.ToolCall{
-				Index:    t.Index,
-				ID:       t.ID,
-				Type:     t.Type,
+				Index:    v.Index,
+				ID:       v.ID,
+				Type:     v.Type,
 				Function: openai.FunctionCall{},
 			}
 			item = r.toolCallsMap[index]
 		}
-		if t.Function.Arguments != "" {
-			item.Function.Arguments += t.Function.Arguments
+		if v.Function.Arguments != "" {
+			item.Function.Arguments += v.Function.Arguments
 		}
-		if t.Function.Name != "" {
-			item.Function.Name = t.Function.Name
+		if v.Function.Name != "" {
+			item.Function.Name = v.Function.Name
 		}
 		r.toolCallsMap[index] = item
 	}
