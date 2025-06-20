@@ -232,7 +232,7 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 
 	// 4. loop if multi-turn function calling until call stop
 	w.RecordIsStream(req.Stream)
-	if err := multiTurnFunctionCalling(ctx, req, transID, hasReqTools, w, srv.provider, caller, tracer); err != nil {
+	if err := multiTurnFunctionCalling(ctx, req, transID, hasReqTools, w, srv.provider, caller, tracer, md); err != nil {
 		w.RecordError(err)
 		return err
 	}

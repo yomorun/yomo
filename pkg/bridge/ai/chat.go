@@ -23,7 +23,7 @@ type chatResponse interface {
 	// getUsage returns the usage in the response
 	getUsage() openai.Usage
 	// writeResponse defines how to write the response to the response writer
-	writeResponse(w EventResponseWriter, usage openai.Usage) error
+	writeResponse(w EventResponseWriter, chatCtx *chatContext) error
 }
 
 // createChatCompletions creates a chat completions response.
@@ -58,14 +58,22 @@ type chatContext struct {
 
 // multiTurnFunctionCalling calls chat completions multiple times until finishing function calling
 func multiTurnFunctionCalling(
-	ctx context.Context, req openai.ChatCompletionRequest, transID string, hasReqTools bool, w EventResponseWriter, p provider.LLMProvider, caller *Caller, tracer trace.Tracer,
+	gctx context.Context,
+	req openai.ChatCompletionRequest,
+	transID string,
+	hasReqTools bool,
+	w EventResponseWriter,
+	p provider.LLMProvider,
+	caller *Caller,
+	tracer trace.Tracer,
+	md metadata.M,
 ) error {
 	var (
 		maxCalls = 10
 		chatCtx  = &chatContext{req: req}
 	)
 
-	ctx, span := tracer.Start(ctx, "chat_completions_request")
+	ctx, reqSpan := tracer.Start(gctx, "chat_completions_request")
 	for {
 		// write header if it's a streaming request (write & flush header before write body)
 		if req.Stream && chatCtx.callTimes == 0 {
@@ -78,32 +86,37 @@ func multiTurnFunctionCalling(
 			chatCtx.req.ToolChoice = nil
 		}
 
-		reqCtx, reqSpan := tracer.Start(ctx, fmt.Sprintf("request(#%d)", chatCtx.callTimes+1))
-		resp, err := createChatCompletions(reqCtx, p, chatCtx.req, caller.md)
+		reqCtx, chatSpan := tracer.Start(ctx, fmt.Sprintf("llm_chat(#%d)", chatCtx.callTimes+1))
+		resp, err := createChatCompletions(reqCtx, p, chatCtx.req, md)
 		if err != nil {
-			reqSpan.RecordError(err)
+			chatSpan.RecordError(err)
+			chatSpan.End()
+			reqSpan.End()
 			return err
 		}
-		reqSpan.End()
+		chatSpan.End()
 
 		// return the response if it's the last call
 		if chatCtx.callTimes == maxCalls {
-			return endCall(ctx, span, chatCtx, resp, w, tracer)
+			reqSpan.End()
+			return endCall(gctx, chatCtx, resp, w, tracer)
 		}
 
 		// if the request contains tools, return the response directly
 		if hasReqTools {
-			return resp.writeResponse(w, chatCtx.totalUsage)
+			reqSpan.End()
+			return resp.writeResponse(w, chatCtx)
 		}
 
 		isFunctionCall, err := resp.checkFunctionCall()
 		if err != nil {
+			reqSpan.RecordError(err)
+			reqSpan.End()
 			return err
 		}
 		if isFunctionCall {
-			_, toolSpan := tracer.Start(ctx, fmt.Sprintf("get_tool_calls(#%d)", chatCtx.callTimes+1))
+			callCtx, callSpan := tracer.Start(ctx, fmt.Sprintf("call_functions(#%d)", chatCtx.callTimes+1))
 			toolCalls := resp.getToolCalls()
-			toolSpan.End()
 
 			// append role=assistant (argeuments) to context
 			chatCtx.req.Messages = append(chatCtx.req.Messages, openai.ChatCompletionMessage{
@@ -112,11 +125,12 @@ func multiTurnFunctionCalling(
 			})
 
 			// call functions
-			callCtx, callSpan := tracer.Start(ctx, fmt.Sprintf("call_functions(#%d)", chatCtx.callTimes+1))
 			reqID := id.New(16)
 			callResult, err := caller.Call(callCtx, transID, reqID, toolCalls, tracer)
 			if err != nil {
 				callSpan.RecordError(err)
+				callSpan.End()
+				reqSpan.End()
 				return err
 			}
 			if req.Stream {
@@ -138,23 +152,22 @@ func multiTurnFunctionCalling(
 			chatCtx.callTimes++
 			continue
 		} else {
-			return endCall(ctx, span, chatCtx, resp, w, tracer)
+			reqSpan.End()
+			return endCall(gctx, chatCtx, resp, w, tracer)
 		}
 	}
 }
 
-func endCall(ctx context.Context, reqSpan trace.Span, chatCtx *chatContext, resp chatResponse, w EventResponseWriter, tracer trace.Tracer) error {
+func endCall(ctx context.Context, chatCtx *chatContext, resp chatResponse, w EventResponseWriter, tracer trace.Tracer) error {
 	updateTotalUsage(chatCtx, resp)
 
-	// end request span beofore responsing
-	reqSpan.End()
-
 	_, respSpan := tracer.Start(ctx, "chat_completions_response")
-	if err := resp.writeResponse(w, chatCtx.totalUsage); err != nil {
+	defer respSpan.End()
+
+	if err := resp.writeResponse(w, chatCtx); err != nil {
 		respSpan.RecordError(err)
 		return err
 	}
-	respSpan.End()
 
 	return nil
 }
@@ -197,16 +210,17 @@ func (c *chatResp) getUsage() openai.Usage {
 	return c.resp.Usage
 }
 
-func (c *chatResp) writeResponse(w EventResponseWriter, usage openai.Usage) error {
-	c.resp.Usage = usage
+func (c *chatResp) writeResponse(w EventResponseWriter, chatCtx *chatContext) error {
+	// accumulate usage before responding, so use `=` rather than `+=`
+	c.resp.Usage = chatCtx.totalUsage
 	w.Header().Set("Content-Type", "application/json")
 	return json.NewEncoder(w).Encode(c.resp)
 }
 
 // streamChatResp is the streaming implementation of chatResponse
 type streamChatResp struct {
-	roleMessage  openai.ChatCompletionStreamResponse
-	head         openai.ChatCompletionStreamResponse
+	// buffer is the response be buffered before check if it is a function call
+	buffer       []openai.ChatCompletionStreamResponse
 	recver       provider.ResponseRecver
 	usage        openai.Usage
 	toolCallsMap map[int]openai.ToolCall
@@ -217,6 +231,9 @@ var _ chatResponse = (*streamChatResp)(nil)
 func (resp *streamChatResp) checkFunctionCall() (bool, error) {
 	for {
 		delta, err := resp.recver.Recv()
+		if err == io.EOF {
+			return false, nil
+		}
 		if err != nil {
 			return false, err
 		}
@@ -225,23 +242,23 @@ func (resp *streamChatResp) checkFunctionCall() (bool, error) {
 
 		// return when choices is not empty
 		if len(choices) > 0 {
-			// sometimes the first choice only contains role=assistant, so save it and continue
-			if choices[0].Delta.Role != "" && len(choices[0].Delta.ToolCalls) == 0 {
-				resp.roleMessage = delta
-				continue
+			resp.buffer = append(resp.buffer, delta)
+			if choices[0].Delta.Role == openai.ChatMessageRoleAssistant && len(choices[0].Delta.Content) != 0 {
+				return false, nil
 			}
-			isFunctionCall := len(choices[0].Delta.ToolCalls) > 0
-
-			resp.head = delta
-			return isFunctionCall, nil
+			if len(choices[0].Delta.ToolCalls) > 0 {
+				return true, nil
+			}
+			continue
 		}
 	}
 }
 
 func (r *streamChatResp) getToolCalls() []openai.ToolCall {
-	choices := r.head.Choices
-	if len(choices) > 0 {
-		r.accuamulate(choices[0].Delta.ToolCalls)
+	for _, resp := range r.buffer {
+		if len(resp.Choices) > 0 {
+			r.accuamulate(resp.Choices[0].Delta.ToolCalls)
+		}
 	}
 
 	for {
@@ -270,13 +287,11 @@ func (r *streamChatResp) getUsage() openai.Usage {
 	return r.usage
 }
 
-func (s *streamChatResp) writeResponse(w EventResponseWriter, totalUsage openai.Usage) error {
-	if err := w.WriteStreamEvent(s.roleMessage); err != nil {
-		return err
-	}
-
-	if err := w.WriteStreamEvent(s.head); err != nil {
-		return err
+func (s *streamChatResp) writeResponse(w EventResponseWriter, chatCtx *chatContext) error {
+	for _, resp := range s.buffer {
+		if err := w.WriteStreamEvent(resp); err != nil {
+			return err
+		}
 	}
 
 	for {
@@ -284,6 +299,7 @@ func (s *streamChatResp) writeResponse(w EventResponseWriter, totalUsage openai.
 		// time.Sleep(time.Millisecond * 100)
 		if err != nil {
 			if err == io.EOF {
+				w.WriteStreamDone()
 				return nil
 			}
 			return err
@@ -293,7 +309,7 @@ func (s *streamChatResp) writeResponse(w EventResponseWriter, totalUsage openai.
 		}
 		// response total usage when usage is not nil
 		if resp.Usage != nil {
-			resp.Usage = &totalUsage
+			resp.Usage = &chatCtx.totalUsage
 		}
 		if err := w.WriteStreamEvent(resp); err != nil {
 			return err
