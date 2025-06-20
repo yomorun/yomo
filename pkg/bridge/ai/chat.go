@@ -7,6 +7,7 @@ import (
 	"io"
 
 	openai "github.com/sashabaranov/go-openai"
+	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
 	"github.com/yomorun/yomo/pkg/id"
@@ -25,6 +26,11 @@ type chatResponse interface {
 	// writeResponse defines how to write the response to the response writer
 	writeResponse(w EventResponseWriter, chatCtx *chatContext) error
 }
+
+const (
+	invokeMetadataKey                 = "invoke"
+	invokeIncludeCallStackMetadataKey = "invoke_include_call_stack"
+)
 
 // createChatCompletions creates a chat completions response.
 func createChatCompletions(ctx context.Context, p provider.LLMProvider, req openai.ChatCompletionRequest, md metadata.M) (chatResponse, error) {
@@ -45,6 +51,15 @@ func createChatCompletions(ctx context.Context, p provider.LLMProvider, req open
 	if err != nil {
 		return nil, err
 	}
+
+	if _, ok := md.Get(invokeMetadataKey); ok {
+		if val, _ := md.Get(invokeIncludeCallStackMetadataKey); val == "true" {
+			return newInvokeResp(resp, true), nil
+		} else {
+			return newInvokeResp(resp, false), nil
+		}
+	}
+
 	return &chatResp{resp}, nil
 }
 
@@ -349,4 +364,38 @@ func (r *streamChatResp) accuamulate(delta []openai.ToolCall) {
 		}
 		r.toolCallsMap[index] = item
 	}
+}
+
+type invokeResp struct {
+	underlying       *chatResp
+	includeCallStack bool
+}
+
+var _ chatResponse = (*invokeResp)(nil)
+
+func (i *invokeResp) checkFunctionCall() (bool, error) { return i.underlying.checkFunctionCall() }
+func (i *invokeResp) getToolCalls() []openai.ToolCall  { return i.underlying.getToolCalls() }
+func (i *invokeResp) getUsage() openai.Usage           { return i.underlying.getUsage() }
+
+func newInvokeResp(resp openai.ChatCompletionResponse, includeCallStack bool) *invokeResp {
+	return &invokeResp{
+		underlying:       &chatResp{resp},
+		includeCallStack: includeCallStack,
+	}
+}
+
+func (i *invokeResp) writeResponse(w EventResponseWriter, chatCtx *chatContext) error {
+	resp := ai.InvokeResponse{
+		Content:      i.underlying.resp.Choices[0].Message.Content,
+		FinishReason: string(i.underlying.resp.Choices[0].FinishReason),
+		TokenUsage: ai.TokenUsage{
+			PromptTokens:     i.underlying.resp.Usage.PromptTokens,
+			CompletionTokens: i.underlying.resp.Usage.CompletionTokens,
+		},
+	}
+	if i.includeCallStack {
+		resp.History = chatCtx.req.Messages
+	}
+	w.Header().Set("Content-Type", "application/json")
+	return json.NewEncoder(w).Encode(resp)
 }
