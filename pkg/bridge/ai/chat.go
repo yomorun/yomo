@@ -164,6 +164,17 @@ func updateTotalUsage(chatCtx *chatContext, resp chatResponse) {
 	chatCtx.totalUsage.PromptTokens += usage.PromptTokens
 	chatCtx.totalUsage.CompletionTokens += usage.CompletionTokens
 	chatCtx.totalUsage.TotalTokens += usage.TotalTokens
+
+	if detail := usage.PromptTokensDetails; detail != nil {
+		chatCtx.totalUsage.PromptTokensDetails.CachedTokens += detail.CachedTokens
+		chatCtx.totalUsage.PromptTokensDetails.AudioTokens += detail.AudioTokens
+	}
+	if detail := usage.CompletionTokensDetails; detail != nil {
+		chatCtx.totalUsage.CompletionTokensDetails.AudioTokens += detail.AudioTokens
+		chatCtx.totalUsage.CompletionTokensDetails.ReasoningTokens += detail.ReasoningTokens
+		chatCtx.totalUsage.CompletionTokensDetails.AcceptedPredictionTokens += detail.AcceptedPredictionTokens
+		chatCtx.totalUsage.CompletionTokensDetails.RejectedPredictionTokens += detail.RejectedPredictionTokens
+	}
 }
 
 // chatResp is the non-streaming implementation of chatResponse
