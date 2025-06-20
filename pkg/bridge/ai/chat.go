@@ -206,7 +206,8 @@ type chatResp struct {
 var _ chatResponse = &chatResp{}
 
 func (c *chatResp) checkFunctionCall() (bool, error) {
-	isFunctionCall := c.resp.Choices[0].FinishReason == openai.FinishReasonToolCalls
+	isFunctionCall := c.resp.Choices[0].FinishReason == openai.FinishReasonToolCalls ||
+		len(c.resp.Choices[0].Message.ToolCalls) != 0
 	return isFunctionCall, nil
 }
 
