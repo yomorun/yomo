@@ -95,9 +95,6 @@ func DecorateReqContext(service *pkgai.Service, logger *slog.Logger) func(handle
 			handler.ServeHTTP(ww, r.WithContext(ctx))
 
 			duration := time.Since(start)
-			if ttft := ww.GetTTFT(); !ttft.IsZero() {
-				duration = ttft.Sub(start)
-			}
 
 			logContent := []any{
 				"namespace", fmt.Sprintf("%s %s", r.Method, r.URL.Path),

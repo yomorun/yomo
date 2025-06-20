@@ -13,6 +13,7 @@ import (
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/metadata"
+	"github.com/yomorun/yomo/core/ylog"
 	pkgai "github.com/yomorun/yomo/pkg/bridge/ai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
 	"github.com/yomorun/yomo/pkg/bridge/ai/register"
@@ -54,7 +55,7 @@ func TestServer(t *testing.T) {
 		MetadataExchanger: func(_ string) (metadata.M, error) { return metadata.M{"hello": "llm bridge"}, nil },
 	})
 
-	handler := pkgai.DecorateHandler(pkgai.NewServeMux(pkgai.NewHandler(service)), llm.DecorateReqContext(service, service.Logger()))
+	handler := pkgai.DecorateHandler(pkgai.NewServeMux(pkgai.NewHandler(service)), llm.DecorateReqContext(service, ylog.Default()))
 
 	// create a test server
 	server := httptest.NewServer(handler)

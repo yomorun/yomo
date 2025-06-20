@@ -7,6 +7,7 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo/ai"
+	"github.com/yomorun/yomo/pkg/id"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -76,8 +77,9 @@ type toolOut struct {
 }
 
 type callSpan struct {
-	name string
-	span trace.Span
+	hasID bool
+	name  string
+	span  trace.Span
 }
 
 func (f *callSyncer) Call(ctx context.Context, transID, reqID string, toolCalls []openai.ToolCall, tracer trace.Tracer) ([]ToolCallResult, error) {
@@ -88,17 +90,33 @@ func (f *callSyncer) Call(ctx context.Context, transID, reqID string, toolCalls 
 		f.cleanCh <- reqID
 	}()
 
-	toolNameMap := make(map[string]callSpan)
+	var (
+		callSpans     = make(map[string]callSpan)
+		toolCallsCopy = make([]openai.ToolCall, len(toolCalls)) // toolCalls
+	)
 
-	for _, tool := range toolCalls {
+	for i, tool := range toolCalls {
+		toolCallsCopy[i] = tool
+		var (
+			hasID  = true
+			toolID = tool.ID
+		)
+		// support toolCallID="" or toolCallID=functionName (gemini & vertexai compatible),
+		// if toolCallID is empty, ToolCallResult.ToolCallID will be the functionName
+		if tool.ID == "" || tool.ID == tool.Function.Name {
+			hasID = false
+			toolID = id.New(8)
+			toolCallsCopy[i].ID = toolID
+		}
 		_, span := tracer.Start(ctx, tool.Function.Name)
-		toolNameMap[tool.ID] = callSpan{
-			span: span,
-			name: tool.Function.Name,
+		callSpans[toolID] = callSpan{
+			hasID: hasID,
+			span:  span,
+			name:  tool.Function.Name,
 		}
 	}
 
-	toolIDs, err := f.fire(transID, reqID, toolCalls)
+	toolIDs, err := f.fire(transID, reqID, toolCallsCopy)
 	if err != nil {
 		return nil, err
 	}
@@ -127,22 +145,30 @@ func (f *callSyncer) Call(ctx context.Context, transID, reqID string, toolCalls 
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case res := <-ch:
-			result = append(result, res)
-
-			callSpan := toolNameMap[res.ToolCallID]
+			callSpan := callSpans[res.ToolCallID]
 			callSpan.span.End()
 
 			delete(toolIDs, res.ToolCallID)
+
+			if !callSpan.hasID {
+				res.ToolCallID = res.FunctionName
+			}
+			result = append(result, res)
+
 			if len(toolIDs) == 0 {
 				return result, nil
 			}
 		case <-time.After(f.timeout):
 			for toolID := range toolIDs {
-				callSpan := toolNameMap[toolID]
+				callSpan := callSpans[toolID]
 
+				toolCallID := toolID
+				if !callSpan.hasID {
+					toolCallID = callSpan.name
+				}
 				result = append(result, ToolCallResult{
 					FunctionName: callSpan.name,
-					ToolCallID:   toolID,
+					ToolCallID:   toolCallID,
 					Content:      "timeout in this function calling, you should ignore this.",
 				})
 
