@@ -84,7 +84,7 @@ func multiTurnFunctionCalling(
 	md metadata.M,
 ) error {
 	var (
-		maxCalls = 10
+		maxCalls = 14
 		chatCtx  = &chatContext{req: req}
 	)
 
@@ -133,6 +133,12 @@ func multiTurnFunctionCalling(
 			callCtx, callSpan := tracer.Start(ctx, fmt.Sprintf("call_functions(#%d)", chatCtx.callTimes+1))
 			toolCalls := resp.getToolCalls()
 
+			// add toolCallID if toolCallID is empty
+			for i, call := range toolCalls {
+				if call.ID == "" {
+					toolCalls[i].ID = fmt.Sprintf("%s_%d", call.Function.Name, i)
+				}
+			}
 			// append role=assistant (argeuments) to context
 			chatCtx.req.Messages = append(chatCtx.req.Messages, openai.ChatCompletionMessage{
 				Role:      openai.ChatMessageRoleAssistant,
@@ -237,6 +243,7 @@ func (c *chatResp) getUsage() openai.Usage {
 func (c *chatResp) writeResponse(w EventResponseWriter, chatCtx *chatContext) error {
 	// accumulate usage before responding, so use `=` rather than `+=`
 	c.resp.Usage = chatCtx.totalUsage
+
 	w.Header().Set("Content-Type", "application/json")
 	return json.NewEncoder(w).Encode(c.resp)
 }
