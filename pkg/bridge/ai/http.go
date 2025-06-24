@@ -156,8 +156,6 @@ func (h *Handler) HandleOverview(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(&ai.OverviewResponse{Functions: functions})
 }
 
-var baseSystemMessage = `You are a very helpful assistant. Your job is to choose the best possible action to solve the user question or task. Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous.`
-
 // HandleInvoke is the handler for POST /invoke
 func (h *Handler) HandleInvoke(w http.ResponseWriter, r *http.Request) {
 	var (
@@ -182,15 +180,10 @@ func (h *Handler) HandleInvoke(w http.ResponseWriter, r *http.Request) {
 		tracer = FromTracerContext(ctx)
 	)
 
-	w.Header().Set("Content-Type", "application/json")
-
-	res, err := h.service.GetInvoke(ctx, req.Prompt, baseSystemMessage, transID, caller, req.IncludeCallStack, tracer)
-	if err != nil {
+	if err := h.service.GetInvoke(ctx, req.Prompt, transID, caller, req.IncludeCallStack, ww, tracer); err != nil {
 		RespondWithError(ww, http.StatusInternalServerError, err)
 		return
 	}
-
-	_ = json.NewEncoder(w).Encode(res)
 }
 
 // HandleChatCompletions is the handler for POST /chat/completions
