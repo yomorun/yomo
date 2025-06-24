@@ -25,7 +25,7 @@ var _ provider.LLMProvider = &Provider{}
 func NewProvider(projectID, location, model, credentialsFile string) *Provider {
 	httpClient, _, err := transport.NewHTTPClient(
 		context.Background(),
-		option.WithEndpoint(fmt.Sprintf("%s-aiplatform.googleapis.com", location)),
+		// option.WithEndpoint(fmt.Sprintf("%s-aiplatform.googleapis.com", location)),
 		option.WithScopes("https://www.googleapis.com/auth/cloud-platform"),
 		option.WithCredentialsFile(credentialsFile),
 	)
@@ -33,14 +33,20 @@ func NewProvider(projectID, location, model, credentialsFile string) *Provider {
 		log.Fatalln("vertexai new http client: ", err)
 	}
 
+	// if location is "global"
+	baseURL := fmt.Sprintf("https://%s-aiplatform.googleapis.com/v1beta1/projects/%s/locations/%s/endpoints/openapi", location, projectID, location)
+	if location == "global" {
+		baseURL = fmt.Sprintf("https://aiplatform.googleapis.com/v1beta1/projects/%s/locations/global/endpoints/openapi", projectID)
+	}
+
 	client := openai.NewClientWithConfig(openai.ClientConfig{
-		BaseURL:            fmt.Sprintf("https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/endpoints/openapi", location, projectID, location),
+		BaseURL:            baseURL,
 		HTTPClient:         httpClient,
 		EmptyMessagesLimit: 300,
 	})
 
 	if model == "" {
-		model = "gemini-1.5-pro-002"
+		model = "gemini-2.5-flash"
 	}
 
 	model = "google/" + model
