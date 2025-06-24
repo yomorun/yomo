@@ -25,7 +25,6 @@ var _ provider.LLMProvider = &Provider{}
 func NewProvider(projectID, location, model, credentialsFile string) *Provider {
 	httpClient, _, err := transport.NewHTTPClient(
 		context.Background(),
-		// option.WithEndpoint(fmt.Sprintf("%s-aiplatform.googleapis.com", location)),
 		option.WithScopes("https://www.googleapis.com/auth/cloud-platform"),
 		option.WithCredentialsFile(credentialsFile),
 	)
