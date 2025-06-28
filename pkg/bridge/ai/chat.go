@@ -260,6 +260,8 @@ type streamChatResp struct {
 var _ chatResponse = (*streamChatResp)(nil)
 
 func (resp *streamChatResp) checkFunctionCall() (bool, error) {
+	var role string
+
 	for {
 		delta, err := resp.recver.Recv()
 		if err == io.EOF {
@@ -274,11 +276,14 @@ func (resp *streamChatResp) checkFunctionCall() (bool, error) {
 		// return when choices is not empty
 		if len(choices) > 0 {
 			resp.buffer = append(resp.buffer, delta)
-			if choices[0].Delta.Role == openai.ChatMessageRoleAssistant && len(choices[0].Delta.Content) != 0 {
-				return false, nil
+			if r := choices[0].Delta.Role; r != "" {
+				role = r
 			}
-			if len(choices[0].Delta.ToolCalls) > 0 {
+			if role == openai.ChatMessageRoleAssistant && len(choices[0].Delta.ToolCalls) > 0 {
 				return true, nil
+			}
+			if role == openai.ChatMessageRoleAssistant && len(choices[0].Delta.Content) != 0 {
+				return false, nil
 			}
 			continue
 		}
