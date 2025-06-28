@@ -282,6 +282,9 @@ func (resp *streamChatResp) checkFunctionCall() (bool, error) {
 			if role == openai.ChatMessageRoleAssistant && len(choices[0].Delta.ToolCalls) > 0 {
 				return true, nil
 			}
+			if role == openai.ChatMessageRoleAssistant && len(choices[0].Delta.ReasoningContent) != 0 {
+				return false, nil
+			}
 			if role == openai.ChatMessageRoleAssistant && len(choices[0].Delta.Content) != 0 {
 				return false, nil
 			}
