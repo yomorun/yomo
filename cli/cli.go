@@ -3,6 +3,7 @@
 package cli
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"path"
@@ -11,8 +12,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/spf13/cobra"
+	"github.com/spf13/cobra/doc"
 	"github.com/spf13/viper"
 	"github.com/yomorun/yomo/cli/serverless"
+	"github.com/yomorun/yomo/cli/template"
 	"github.com/yomorun/yomo/pkg/file"
 )
 
@@ -109,4 +113,44 @@ func DefaultSFNTestSourceFile(runtime string) string {
 	default: // node
 		return defaultSFNTestSourceTSFile
 	}
+}
+
+// Doc generates the documentation for the CLI commands
+func Doc(cmdstr string) (string, error) {
+	var cmd *cobra.Command
+	var example string
+	switch cmdstr {
+	case "init":
+		cmd = initCmd
+	case "run":
+		cmd = runCmd
+	case "build":
+		cmd = buildCmd
+	case "serve":
+		cmd = serveCmd
+		example = template.ZipperExample
+	case "version":
+		cmd = versionCmd
+	default:
+		cmd = rootCmd
+	}
+
+	buf := new(bytes.Buffer)
+
+	cmd.DisableAutoGenTag = true
+	err := doc.GenMarkdownCustom(cmd, buf, linkHandler)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate document for %s command: %w", cmd.Name(), err)
+	}
+
+	doc := buf.String()
+	doc += example
+
+	return doc, nil
+}
+
+func linkHandler(s string) string {
+	s = strings.TrimSuffix(s, ".md")
+	s = strings.ReplaceAll(s, "_", "-")
+	return "#" + s
 }

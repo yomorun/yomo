@@ -12,6 +12,9 @@ import (
 //go:embed node
 var fs embed.FS
 
+//go:embed zipper/example.tmpl
+var ZipperExample string
+
 var (
 	ErrUnsupportedSfnType   = errors.New("unsupported sfn type")
 	ErrorUnsupportedRuntime = errors.New("unsupported runtime")
