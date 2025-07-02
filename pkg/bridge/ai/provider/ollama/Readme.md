@@ -42,4 +42,4 @@ yomo serve -c config.yml
 
 ## 4. Start YoMo serverless function
 
-[llm-function-calling-examples](https://github.com/yomorun/llm-function-calling-examples)
+[LLM Function Calling Examples](https://github.com/yomorun/llm-function-calling-examples)
