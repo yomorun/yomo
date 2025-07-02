@@ -118,7 +118,7 @@ func DefaultSFNTestSourceFile(runtime string) string {
 // Doc generates the documentation for the CLI commands
 func Doc(cmdstr string) (string, error) {
 	var cmd *cobra.Command
-	var example string
+	example := template.ExampleSfn
 	switch cmdstr {
 	case "init":
 		cmd = initCmd
@@ -128,9 +128,10 @@ func Doc(cmdstr string) (string, error) {
 		cmd = buildCmd
 	case "serve":
 		cmd = serveCmd
-		example = template.ZipperExample
+		example = template.ExampleZipper
 	case "version":
 		cmd = versionCmd
+		example = ""
 	default:
 		cmd = rootCmd
 	}

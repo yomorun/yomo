@@ -12,8 +12,11 @@ import (
 //go:embed node
 var fs embed.FS
 
-//go:embed zipper/example.tmpl
-var ZipperExample string
+//go:embed example/zipper.tmpl
+var ExampleZipper string
+
+//go:embed example/sfn.tmpl
+var ExampleSfn string
 
 var (
 	ErrUnsupportedSfnType   = errors.New("unsupported sfn type")
