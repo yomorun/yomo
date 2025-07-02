@@ -146,6 +146,7 @@ func Doc(cmdstr string) (string, error) {
 
 	doc := buf.String()
 	doc += example
+	doc += template.ExampleMore
 
 	return doc, nil
 }

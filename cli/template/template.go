@@ -18,6 +18,9 @@ var ExampleZipper string
 //go:embed example/sfn.tmpl
 var ExampleSfn string
 
+//go:embed example/more.tmpl
+var ExampleMore string
+
 var (
 	ErrUnsupportedSfnType   = errors.New("unsupported sfn type")
 	ErrorUnsupportedRuntime = errors.New("unsupported runtime")
