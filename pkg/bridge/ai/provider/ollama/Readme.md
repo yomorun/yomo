@@ -32,6 +32,7 @@ bridge:
       provider: ollama
     providers:
       ollama:
+        model: mistral # Make sure this model is available in Ollama, e.g. run 'ollama run mistral'
         api_endpoint: "http://localhost:11434/v1"
 ```
 
@@ -41,4 +42,4 @@ yomo serve -c config.yml
 
 ## 4. Start YoMo serverless function
 
-[example](../../../../../example/10-ai/README.md)
+[LLM Function Calling Examples](https://github.com/yomorun/llm-function-calling-examples)
