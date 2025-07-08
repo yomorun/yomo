@@ -1,0 +1,85 @@
+### Example
+
+Typically, to run a zipper from a host, it is necessary to create a `zipper.yml` file. 
+To support Model Context Protocol (MCP), the `bridge.mcp.server` section must be configured.
+To support AI/LLM services, the `bridge.ai.server` and `bridge.ai.providers` sections must be configured.
+The basic content is as follows:
+
+
+```yaml
+name: zipper 
+host: 0.0.0.0
+port: 9000
+
+#auth:
+#  type: token
+#  token: YOUR_SECRET
+
+bridge:
+  # mcp server
+  mcp:
+    server:
+      addr: localhost:9001
+  # chat completion api server
+  ai:
+    server:
+      addr: localhost:8000
+      provider: ollama
+
+    providers:
+      vllm:
+        api_endpoint: http://127.0.0.1:9999/v1
+        api_key: <api_key>
+        model: deepseek-ai/DeepSeek-R1-Distill-Llama-70B
+
+      ollama:
+        api_endpoint: http://localhost:11434/v1
+
+      openai:
+        api_key: <sk-proj->
+        model: gpt-4.1
+
+      gemini:
+        api_key: <api_key>
+
+      anthropic:
+        api_key: <sk-ant-api03-key>
+        model: claude-3.7-sonnet
+
+      vertexai:
+        project_id: <gcp_project_id>
+        credentials_file: <gcp_credential_json_file>
+        model: gemini-2.5-pro-preview-03-25
+        location: us-central1
+
+      azopenai:
+        api_endpoint: https://c3y.openai.azure.com
+        deployment_id: <deployment_id>
+        api_key: <api_key>
+        api_version: 2024-06-01
+
+      xai:
+        api_key: <xai-key>
+        model: grok-beta
+
+      githubmodels:
+        api_key: <ghp_key>
+
+      cloudflare_azure:
+        endpoint: https://gateway.ai.cloudflare.com/v1/<cf-id>/ai-test
+        api_key: <api_key>
+        resource: <resource>
+        deployment_id: <deployment_id>
+        api_version: 2024-05-13
+
+      cloudflare_openai:
+        endpoint: https://gateway.ai.cloudflare.com/v1/<cf-id>/ai-test
+        api_key: <sk-proj->
+        model: gpt-4.1
+```
+
+then run zipper using the `yomo serve` command as follows:
+
+```bash
+yomo serve -c zipper.yml
+```
