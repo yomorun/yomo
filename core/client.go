@@ -253,7 +253,7 @@ func (c *Client) handshakeWithDefinition() ([]byte, error) {
 		return nil, nil
 	}
 	// register ai function definition
-	functionDefinition, err := parseAIFunctionDefinition(c.name, c.opts.aiFunctionDescription, c.opts.aiFunctionInputModel)
+	functionDefinition, err := ParseAIFunctionDefinition(c.name, c.opts.aiFunctionDescription, c.opts.aiFunctionInputModel)
 	if err != nil {
 		c.Logger.Error("parse ai function definition error", "err", err)
 		return nil, err
@@ -266,7 +266,8 @@ func (c *Client) handshakeWithDefinition() ([]byte, error) {
 	return functionDefinition, nil
 }
 
-func parseAIFunctionDefinition(sfnName, aiFunctionDescription string, aiFunctionInputModel any) ([]byte, error) {
+// ParseAIFunctionDefinition generates a function definition in jsonschemma based on the function name, description, and input model.
+func ParseAIFunctionDefinition(sfnName, aiFunctionDescription string, aiFunctionInputModel any) ([]byte, error) {
 	if aiFunctionDescription == "" {
 		return nil, nil
 	}
