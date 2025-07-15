@@ -366,7 +366,7 @@ func TestParseAIFunctionDefinition(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseAIFunctionDefinition(tt.args.sfnName, tt.args.aiFunctionDescription, tt.args.aiFunctionInputModel)
+			got, err := ParseAIFunctionDefinition(tt.args.sfnName, tt.args.aiFunctionDescription, tt.args.aiFunctionInputModel)
 			assert.NoError(t, err)
 			assert.Equal(t, string(tt.want), string(got))
 		})

@@ -90,12 +90,6 @@ func multiTurnFunctionCalling(
 
 	ctx, reqSpan := tracer.Start(gctx, "chat_completions_request")
 	for {
-		// write header if it's a streaming request (write & flush header before write body)
-		if req.Stream && chatCtx.callTimes == 0 {
-			w.SetStreamHeader()
-			w.Flush()
-		}
-
 		// second and later calls should not have tool_choice option
 		if chatCtx.callTimes != 0 {
 			chatCtx.req.ToolChoice = nil
@@ -110,6 +104,12 @@ func multiTurnFunctionCalling(
 			return err
 		}
 		chatSpan.End()
+
+		// write header if it's a streaming request (write & flush header before write body)
+		if req.Stream && chatCtx.callTimes == 0 {
+			w.SetStreamHeader()
+			w.Flush()
+		}
 
 		// return the response if it's the last call
 		if chatCtx.callTimes == maxCalls {
