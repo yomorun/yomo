@@ -266,7 +266,7 @@ func (c *Client) handshakeWithDefinition() ([]byte, error) {
 	return functionDefinition, nil
 }
 
-// ParseAIFunctionDefinition generates a function definition in jsonschemma based on the function name, description, and input model.
+// ParseAIFunctionDefinition generates a function definition in jsonschema based on the function name, description, and input model.
 func ParseAIFunctionDefinition(sfnName, aiFunctionDescription string, aiFunctionInputModel any) ([]byte, error) {
 	if aiFunctionDescription == "" {
 		return nil, nil
