@@ -19,10 +19,8 @@ import (
 type chatResponse interface {
 	// checkFunctionCall checks if the response is a function call response
 	checkFunctionCall() (bool, error)
-	// getToolCalls returns the tool calls in the response
-	getToolCalls() []openai.ToolCall
-	// getUsage returns the usage in the response
-	getUsage() openai.Usage
+	// getToolCalls returns the tool calls and its usage in the response
+	getToolCalls() ([]openai.ToolCall, openai.Usage)
 	// writeResponse defines how to write the response to the response writer
 	writeResponse(w EventResponseWriter, chatCtx *chatContext) error
 }
@@ -66,7 +64,7 @@ func createChatCompletions(ctx context.Context, p provider.LLMProvider, req open
 type chatContext struct {
 	// callTimes is the number of times for calling chat completions
 	callTimes int
-	// totalUsage is the total usage of all chat completions
+	// totalUsage is the total usage of all chat completions (include tool calls and final response)
 	totalUsage openai.Usage
 	req        openai.ChatCompletionRequest
 }
@@ -131,7 +129,7 @@ func multiTurnFunctionCalling(
 		}
 		if isFunctionCall {
 			callCtx, callSpan := tracer.Start(ctx, fmt.Sprintf("call_functions(#%d)", chatCtx.callTimes+1))
-			toolCalls := resp.getToolCalls()
+			toolCalls, usage := resp.getToolCalls()
 
 			// add toolCallID if toolCallID is empty
 			for i, call := range toolCalls {
@@ -168,7 +166,7 @@ func multiTurnFunctionCalling(
 				})
 			}
 
-			updateTotalUsage(chatCtx, resp)
+			updateCtxUsage(chatCtx, usage)
 
 			chatCtx.callTimes++
 			continue
@@ -180,8 +178,6 @@ func multiTurnFunctionCalling(
 }
 
 func endCall(ctx context.Context, chatCtx *chatContext, resp chatResponse, w EventResponseWriter, tracer trace.Tracer) error {
-	updateTotalUsage(chatCtx, resp)
-
 	_, respSpan := tracer.Start(ctx, "chat_completions_response")
 	defer respSpan.End()
 
@@ -193,8 +189,7 @@ func endCall(ctx context.Context, chatCtx *chatContext, resp chatResponse, w Eve
 	return nil
 }
 
-func updateTotalUsage(chatCtx *chatContext, resp chatResponse) {
-	usage := resp.getUsage()
+func updateCtxUsage(chatCtx *chatContext, usage openai.Usage) {
 	chatCtx.totalUsage.PromptTokens += usage.PromptTokens
 	chatCtx.totalUsage.CompletionTokens += usage.CompletionTokens
 	chatCtx.totalUsage.TotalTokens += usage.TotalTokens
@@ -232,16 +227,16 @@ func (c *chatResp) checkFunctionCall() (bool, error) {
 	return isFunctionCall, nil
 }
 
-func (c *chatResp) getToolCalls() []openai.ToolCall {
-	return c.resp.Choices[0].Message.ToolCalls
-}
+func (c *chatResp) getToolCalls() ([]openai.ToolCall, openai.Usage) {
+	originalToolCalls := c.resp.Choices[0].Message.ToolCalls
+	copiedToolCalls := make([]openai.ToolCall, len(originalToolCalls))
+	copy(copiedToolCalls, originalToolCalls)
 
-func (c *chatResp) getUsage() openai.Usage {
-	return c.resp.Usage
+	return copiedToolCalls, c.resp.Usage
 }
 
 func (c *chatResp) writeResponse(w EventResponseWriter, chatCtx *chatContext) error {
-	// accumulate usage before responding, so use `=` rather than `+=`
+	updateCtxUsage(chatCtx, c.resp.Usage)
 	c.resp.Usage = chatCtx.totalUsage
 
 	w.Header().Set("Content-Type", "application/json")
@@ -253,7 +248,6 @@ type streamChatResp struct {
 	// buffer is the response be buffered before check if it is a function call
 	buffer       []openai.ChatCompletionStreamResponse
 	recver       provider.ResponseRecver
-	usage        openai.Usage
 	toolCallsMap map[int]openai.ToolCall
 }
 
@@ -293,13 +287,14 @@ func (resp *streamChatResp) checkFunctionCall() (bool, error) {
 	}
 }
 
-func (r *streamChatResp) getToolCalls() []openai.ToolCall {
+func (r *streamChatResp) getToolCalls() ([]openai.ToolCall, openai.Usage) {
 	for _, resp := range r.buffer {
 		if len(resp.Choices) > 0 {
 			r.accuamulate(resp.Choices[0].Delta.ToolCalls)
 		}
 	}
 
+	usage := openai.Usage{}
 	for {
 		resp, err := r.recver.Recv()
 		if err != nil {
@@ -307,7 +302,7 @@ func (r *streamChatResp) getToolCalls() []openai.ToolCall {
 		}
 
 		if resp.Usage != nil {
-			r.usage = *resp.Usage
+			usage = *resp.Usage
 		}
 
 		if len(resp.Choices) > 0 {
@@ -319,11 +314,7 @@ func (r *streamChatResp) getToolCalls() []openai.ToolCall {
 	for k, v := range r.toolCallsMap {
 		toolCalls[k] = v
 	}
-	return toolCalls
-}
-
-func (r *streamChatResp) getUsage() openai.Usage {
-	return r.usage
+	return toolCalls, usage
 }
 
 func (s *streamChatResp) writeResponse(w EventResponseWriter, chatCtx *chatContext) error {
@@ -347,6 +338,7 @@ func (s *streamChatResp) writeResponse(w EventResponseWriter, chatCtx *chatConte
 		}
 		// response total usage when usage is not nil
 		if resp.Usage != nil {
+			updateCtxUsage(chatCtx, *resp.Usage)
 			resp.Usage = &chatCtx.totalUsage
 		}
 		if err := w.WriteStreamEvent(resp); err != nil {
@@ -389,8 +381,9 @@ type invokeResp struct {
 var _ chatResponse = (*invokeResp)(nil)
 
 func (i *invokeResp) checkFunctionCall() (bool, error) { return i.underlying.checkFunctionCall() }
-func (i *invokeResp) getToolCalls() []openai.ToolCall  { return i.underlying.getToolCalls() }
-func (i *invokeResp) getUsage() openai.Usage           { return i.underlying.getUsage() }
+func (i *invokeResp) getToolCalls() ([]openai.ToolCall, openai.Usage) {
+	return i.underlying.getToolCalls()
+}
 
 func newInvokeResp(resp openai.ChatCompletionResponse, includeCallStack bool) *invokeResp {
 	return &invokeResp{
