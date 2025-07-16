@@ -54,7 +54,7 @@ func WithTracerContext(ctx context.Context, tracer trace.Tracer) context.Context
 	return context.WithValue(ctx, tracerContextKey{}, tracer)
 }
 
-// FromTransIDContext returns the transID from the request context
+// FromTracerContext returns the tracer from the request context
 func FromTracerContext(ctx context.Context) trace.Tracer {
 	val, ok := ctx.Value(tracerContextKey{}).(trace.Tracer)
 	if !ok {
