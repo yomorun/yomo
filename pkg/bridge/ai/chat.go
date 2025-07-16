@@ -228,7 +228,11 @@ func (c *chatResp) checkFunctionCall() (bool, error) {
 }
 
 func (c *chatResp) getToolCalls() ([]openai.ToolCall, openai.Usage) {
-	return c.resp.Choices[0].Message.ToolCalls, c.resp.Usage
+	originalToolCalls := c.resp.Choices[0].Message.ToolCalls
+	copiedToolCalls := make([]openai.ToolCall, len(originalToolCalls))
+	copy(copiedToolCalls, originalToolCalls)
+
+	return copiedToolCalls, c.resp.Usage
 }
 
 func (c *chatResp) writeResponse(w EventResponseWriter, chatCtx *chatContext) error {
