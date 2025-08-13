@@ -11,15 +11,21 @@ import (
 // because the schema field is a json.Unmarshaler.
 // Therefore, we need to use a temporary tmpRequest to unmarshal it.
 func DecodeChatCompletionRequest(data []byte) (req openai.ChatCompletionRequest, err error) {
+	type tmpJSONSchema struct {
+		Name        string          `json:"name"`
+		Description string          `json:"description,omitempty"`
+		Schema      json.RawMessage `json:"schema"`
+		Strict      bool            `json:"strict"`
+	}
+
+	type tmpResponseFormat struct {
+		Type       openai.ChatCompletionResponseFormatType `json:"type"`
+		JSONSchema *tmpJSONSchema                          `json:"json_schema,omitempty"`
+	}
+
 	type tmpRequest struct {
 		openai.ChatCompletionRequest
-		ResponseFormat *struct {
-			*openai.ChatCompletionResponseFormat
-			JSONSchema *struct {
-				*openai.ChatCompletionResponseFormatJSONSchema
-				Schema json.RawMessage `json:"schema"` // json.RawMessage implements json.Unmarshaler
-			} `json:"json_schema"`
-		} `json:"response_format"`
+		ResponseFormat *tmpResponseFormat `json:"response_format"`
 	}
 
 	var tmp tmpRequest
@@ -30,11 +36,17 @@ func DecodeChatCompletionRequest(data []byte) (req openai.ChatCompletionRequest,
 	req = tmp.ChatCompletionRequest
 
 	if format := tmp.ResponseFormat; format != nil {
-		req.ResponseFormat = format.ChatCompletionResponseFormat
+		req.ResponseFormat = &openai.ChatCompletionResponseFormat{
+			Type: format.Type,
+		}
 		if jsonSchema := format.JSONSchema; jsonSchema != nil {
-			req.ResponseFormat.JSONSchema = jsonSchema.ChatCompletionResponseFormatJSONSchema
-			if schema := format.JSONSchema.Schema; schema != nil {
-				format.JSONSchema.ChatCompletionResponseFormatJSONSchema.Schema = schema
+			req.ResponseFormat.JSONSchema = &openai.ChatCompletionResponseFormatJSONSchema{
+				Name:        jsonSchema.Name,
+				Description: jsonSchema.Description,
+				Strict:      jsonSchema.Strict,
+			}
+			if schema := jsonSchema.Schema; schema != nil && string(schema) != "null" {
+				req.ResponseFormat.JSONSchema.Schema = schema
 			}
 		}
 	}
