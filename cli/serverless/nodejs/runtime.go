@@ -275,7 +275,50 @@ func (w *NodejsWrapper) InstallDeps() error {
 	// add .gitignore file, and ignore node_modules/, dist/, .wrapper.ts
 	gitignore := filepath.Join(w.workDir, ".gitignore")
 	if _, err := os.Stat(gitignore); os.IsNotExist(err) {
-		err = os.WriteFile(gitignore, []byte("node_modules/\ndist/\n.wrapper.ts\n"), 0644)
+		gitignoreContent := `# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnp/
+.pnp.js
+
+# Build artifacts
+dist/
+build/
+out/
+coverage/
+
+# Editor/IDE specific
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# npm cache and logs
+.npm/
+npm-cache/
+*.tgz
+
+# Test results
+junit.xml
+test-results.xml
+
+# YoMo specific
+.wrapper.ts
+`
+		err = os.WriteFile(gitignore, []byte(gitignoreContent), 0644)
 		if err != nil {
 			return fmt.Errorf("write .gitignore failed: %v", err)
 		}
