@@ -28,8 +28,8 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.35.0
 	go.opentelemetry.io/otel/sdk v1.36.0
 	go.opentelemetry.io/otel/trace v1.37.0
-	golang.org/x/mod v0.25.0
-	golang.org/x/tools v0.34.0
+	golang.org/x/mod v0.27.0
+	golang.org/x/tools v0.35.0
 	google.golang.org/api v0.246.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
