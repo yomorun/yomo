@@ -59,7 +59,7 @@ func createChatCompletions(ctx context.Context, p provider.LLMProvider, req open
 		}
 	}
 
-	return &chatResp{contents: []string{}, resp: resp}, nil
+	return &chatResp{resp: resp}, nil
 }
 
 type chatContext struct {
@@ -70,6 +70,10 @@ type chatContext struct {
 	totalUsage openai.Usage
 	// req.Messages is the chat history
 	req openai.ChatCompletionRequest
+
+	// non streaming response contents
+	contents          []string
+	reasoningContents []string
 }
 
 // multiTurnFunctionCalling calls chat completions multiple times until finishing function calling
@@ -219,9 +223,7 @@ func updateCtxUsage(chatCtx *chatContext, usage openai.Usage) {
 
 // chatResp is the non-streaming implementation of chatResponse
 type chatResp struct {
-	reasoningContents []string
-	contents          []string
-	resp              openai.ChatCompletionResponse
+	resp openai.ChatCompletionResponse
 }
 
 var _ chatResponse = &chatResp{}
@@ -231,10 +233,10 @@ func (c *chatResp) checkFunctionCall(_ EventResponseWriter, chatCtx *chatContext
 		return false, nil
 	}
 	if c.resp.Choices[0].Message.Content != "" {
-		c.contents = append(c.contents, c.resp.Choices[0].Message.Content)
+		chatCtx.contents = append(chatCtx.contents, c.resp.Choices[0].Message.Content)
 	}
 	if c.resp.Choices[0].Message.ReasoningContent != "" {
-		c.reasoningContents = append(c.reasoningContents, c.resp.Choices[0].Message.ReasoningContent)
+		chatCtx.reasoningContents = append(chatCtx.reasoningContents, c.resp.Choices[0].Message.ReasoningContent)
 	}
 	isFunctionCall := c.resp.Choices[0].FinishReason == openai.FinishReasonToolCalls ||
 		len(c.resp.Choices[0].Message.ToolCalls) != 0
@@ -249,19 +251,19 @@ func (c *chatResp) getToolCalls() ([]openai.ToolCall, openai.Usage) {
 	return copiedToolCalls, c.resp.Usage
 }
 
-func (c *chatResp) accContent() {
-	c.reasoningContents = append(c.reasoningContents, c.resp.Choices[0].Message.ReasoningContent)
-	c.resp.Choices[0].Message.ReasoningContent = strings.Join(c.reasoningContents, "")
+func (c *chatResp) accContent(chatCtx *chatContext) {
+	chatCtx.reasoningContents = append(chatCtx.reasoningContents, c.resp.Choices[0].Message.ReasoningContent)
+	c.resp.Choices[0].Message.ReasoningContent = strings.Join(chatCtx.reasoningContents, "")
 
-	c.contents = append(c.contents, c.resp.Choices[0].Message.Content)
-	c.resp.Choices[0].Message.Content = strings.Join(c.contents, "")
+	chatCtx.contents = append(chatCtx.contents, c.resp.Choices[0].Message.Content)
+	c.resp.Choices[0].Message.Content = strings.Join(chatCtx.contents, "")
 }
 
 func (c *chatResp) writeResponse(w EventResponseWriter, chatCtx *chatContext) error {
 	updateCtxUsage(chatCtx, c.resp.Usage)
 	c.resp.Usage = chatCtx.totalUsage
 
-	c.accContent()
+	c.accContent(chatCtx)
 
 	w.Header().Set("Content-Type", "application/json")
 	return json.NewEncoder(w).Encode(c.resp)
@@ -424,13 +426,13 @@ func (i *invokeResp) getToolCalls() ([]openai.ToolCall, openai.Usage) {
 
 func newInvokeResp(resp openai.ChatCompletionResponse, includeCallStack bool) *invokeResp {
 	return &invokeResp{
-		underlying:       &chatResp{contents: []string{}, resp: resp},
+		underlying:       &chatResp{resp: resp},
 		includeCallStack: includeCallStack,
 	}
 }
 
 func (i *invokeResp) writeResponse(w EventResponseWriter, chatCtx *chatContext) error {
-	i.underlying.accContent()
+	i.underlying.accContent(chatCtx)
 
 	resp := ai.InvokeResponse{
 		Content:      i.underlying.resp.Choices[0].Message.Content,
