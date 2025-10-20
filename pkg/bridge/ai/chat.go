@@ -326,7 +326,7 @@ func (r *streamChatResp) getToolCalls() ([]openai.ToolCall, openai.Usage) {
 
 	for _, resp := range r.toolCallDeltas {
 		if len(resp.Choices) > 0 {
-			r.accuamulateToolCall(resp.Choices[0].Delta.ToolCalls)
+			r.accumulateToolCall(resp.Choices[0].Delta.ToolCalls)
 		}
 	}
 
@@ -378,7 +378,7 @@ func (r *streamChatResp) writeEvent(w EventResponseWriter, chunk openai.ChatComp
 	return nil
 }
 
-func (r *streamChatResp) accuamulateToolCall(delta []openai.ToolCall) {
+func (r *streamChatResp) accumulateToolCall(delta []openai.ToolCall) {
 	for k, v := range delta {
 		index := k
 		if v.Index != nil {
