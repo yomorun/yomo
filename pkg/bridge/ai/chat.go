@@ -249,6 +249,20 @@ func (c *chatResp) writeResponse(w EventResponseWriter, chatCtx *chatContext) er
 	return json.NewEncoder(w).Encode(c.resp)
 }
 
+// streamState represents the current state of stream processing
+// The state machine transitions are:
+// stateInitial -> stateProcessingContent (when first content arrives)
+// stateInitial -> stateProcessingToolCalls (when tool calls detected)
+// any state -> stateCompleted (on EOF or explicit completion)
+type streamState int
+
+const (
+	stateInitial streamState = iota
+	stateProcessingContent
+	stateProcessingToolCalls
+	stateCompleted
+)
+
 // streamChatResp is the streaming implementation of chatResponse
 type streamChatResp struct {
 	recver       provider.ResponseRecver
@@ -258,67 +272,146 @@ type streamChatResp struct {
 	// toolCallDeltas is the delta responses that contain tool calls
 	toolCallDeltas []openai.ChatCompletionStreamResponse
 	toolCallsMap   map[int]openai.ToolCall
+	// state machine fields
+	currentState streamState
+	chatCtx      *chatContext
+	writer       EventResponseWriter
 }
 
 var _ chatResponse = (*streamChatResp)(nil)
 
 func (r *streamChatResp) checkFunctionCall(w EventResponseWriter, chatCtx *chatContext) (bool, error) {
-	for {
-		isFunctionCall := r.finishReason == openai.FinishReasonToolCalls || r.finishReason == "tool_call"
+	// Initialize state machine
+	r.currentState = stateInitial
+	r.chatCtx = chatCtx
+	r.writer = w
 
+	for {
 		chunk, err := r.recver.Recv()
 		if err == io.EOF {
-			return isFunctionCall, nil
+			return r.handleEOF()
 		}
 		if err != nil {
-			return isFunctionCall, err
+			return r.handleError(err)
 		}
 
-		if chunk.ID == "" {
-			continue
-		}
-		if chatCtx.id == "" {
-			chatCtx.id = chunk.ID
-		}
-
-		if usage := chunk.Usage; usage != nil {
-			updateCtxUsage(chatCtx, *usage)
-		}
-
-		if len(chunk.Choices) == 0 {
-			if err := r.writeEvent(w, chunk, chatCtx); err != nil {
-				return false, err
-			}
-			continue
-		}
-
-		choice := chunk.Choices[0]
-
-		if chunk.Choices[0].FinishReason != "" {
-			r.finishReason = chunk.Choices[0].FinishReason
-		}
-
-		// no content chunk (role chunk), just buffer it
-		if choice.Delta.Content == "" && choice.Delta.ReasoningContent == "" && len(choice.Delta.ToolCalls) == 0 {
-			r.buffer = append(r.buffer, chunk)
-			continue
-		}
-
-		if len(choice.Delta.ToolCalls) != 0 {
-			r.toolCallDeltas = append(r.toolCallDeltas, chunk)
-			if choice.Delta.Content != "" || choice.Delta.ReasoningContent != "" {
-				// just response content and reasoning content
-				chunk.Choices[0].Delta.ToolCalls = nil
-				if err := r.writeEvent(w, chunk, chatCtx); err != nil {
-					return false, err
-				}
-			}
-			continue
-		}
-		if err := r.writeEvent(w, chunk, chatCtx); err != nil {
+		if err := r.processChunk(chunk); err != nil {
 			return false, err
 		}
+
+		if r.currentState == stateCompleted {
+			return r.finishReason == openai.FinishReasonToolCalls || r.finishReason == "tool_call", nil
+		}
 	}
+}
+
+// handleEOF processes end of stream
+func (r *streamChatResp) handleEOF() (bool, error) {
+	r.currentState = stateCompleted
+	return r.finishReason == openai.FinishReasonToolCalls || r.finishReason == "tool_call", nil
+}
+
+// handleError processes stream errors
+func (r *streamChatResp) handleError(err error) (bool, error) {
+	r.currentState = stateCompleted
+	return r.finishReason == openai.FinishReasonToolCalls || r.finishReason == "tool_call", err
+}
+
+// processChunk handles a single chunk based on current state
+func (r *streamChatResp) processChunk(chunk openai.ChatCompletionStreamResponse) error {
+	// Skip invalid chunks
+	if chunk.ID == "" {
+		return nil
+	}
+
+	// Capture conversation ID from first valid chunk
+	if r.chatCtx.id == "" {
+		r.chatCtx.id = chunk.ID
+	}
+
+	// Update token usage if present
+	if chunk.Usage != nil {
+		updateCtxUsage(r.chatCtx, *chunk.Usage)
+	}
+
+	// Handle chunks without choices (metadata-only chunks)
+	if len(chunk.Choices) == 0 {
+		return r.handleMetadataChunk(chunk)
+	}
+
+	choice := chunk.Choices[0]
+
+	// if tools_call dected, to ProcessingToolCalls state
+	if choice.FinishReason != "" {
+		r.finishReason = choice.FinishReason
+		if r.finishReason == openai.FinishReasonToolCalls || r.finishReason == "tool_call" {
+			r.transitionTo(stateProcessingToolCalls)
+		}
+	}
+
+	// Process based on chunk content type
+	return r.handleContentChunk(chunk, choice)
+}
+
+// transitionTo changes the current state
+func (r *streamChatResp) transitionTo(newState streamState) {
+	r.currentState = newState
+}
+
+// handleMetadataChunk processes chunks without choices
+func (r *streamChatResp) handleMetadataChunk(chunk openai.ChatCompletionStreamResponse) error {
+	return r.writeEvent(r.writer, chunk, r.chatCtx)
+}
+
+// handleContentChunk processes chunks with choices based on content type
+func (r *streamChatResp) handleContentChunk(chunk openai.ChatCompletionStreamResponse, choice openai.ChatCompletionStreamChoice) error {
+	switch {
+	case r.isEmptyContentChunk(choice):
+		return r.handleEmptyChunk(chunk)
+	case r.hasToolCalls(choice):
+		return r.handleToolCallChunk(chunk, choice)
+	default:
+		return r.handleRegularContentChunk(chunk)
+	}
+}
+
+// isEmptyContentChunk checks if the chunk has no content
+func (r *streamChatResp) isEmptyContentChunk(choice openai.ChatCompletionStreamChoice) bool {
+	delta := choice.Delta
+	return delta.Content == "" && delta.ReasoningContent == "" && len(delta.ToolCalls) == 0
+}
+
+// hasToolCalls checks if the chunk contains tool calls
+func (r *streamChatResp) hasToolCalls(choice openai.ChatCompletionStreamChoice) bool {
+	return len(choice.Delta.ToolCalls) > 0
+}
+
+// handleEmptyChunk processes chunks with no content (role chunks)
+func (r *streamChatResp) handleEmptyChunk(chunk openai.ChatCompletionStreamResponse) error {
+	r.buffer = append(r.buffer, chunk)
+	return nil
+}
+
+// handleToolCallChunk processes chunks containing tool calls
+func (r *streamChatResp) handleToolCallChunk(chunk openai.ChatCompletionStreamResponse, choice openai.ChatCompletionStreamChoice) error {
+	r.transitionTo(stateProcessingToolCalls)
+	r.toolCallDeltas = append(r.toolCallDeltas, chunk)
+
+	// If chunk also contains content/reasoning, stream that part
+	if choice.Delta.Content != "" || choice.Delta.ReasoningContent != "" {
+		contentChunk := chunk
+		contentChunk.Choices[0].Delta.ToolCalls = nil
+		return r.writeEvent(r.writer, contentChunk, r.chatCtx)
+	}
+	return nil
+}
+
+// handleRegularContentChunk processes regular content chunks
+func (r *streamChatResp) handleRegularContentChunk(chunk openai.ChatCompletionStreamResponse) error {
+	if r.currentState == stateInitial {
+		r.transitionTo(stateProcessingContent)
+	}
+	return r.writeEvent(r.writer, chunk, r.chatCtx)
 }
 
 func (r *streamChatResp) getToolCalls() ([]openai.ToolCall, openai.Usage) {

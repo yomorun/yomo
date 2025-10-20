@@ -372,6 +372,43 @@ func TestServiceChatCompletion(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "deepseek-v3.2 stream with tools",
+			args: args{
+				providerMockData: []provider.MockData{
+					provider.MockChatCompletionStreamResponse(deepseekv32toolsResp, stopStreamResp),
+				},
+				mockCallReqResp: []mockFunctionCall{
+					// toolID should equal to toolCallResp's toolID
+					{toolID: "call_a6dea19b4490485bbdad7047", functionName: "market-get-weather", respContent: "temperature: 31°C"},
+				},
+				systemPrompt: "You are a weather assistant",
+				request: openai.ChatCompletionRequest{
+					Stream:   true,
+					Messages: []openai.ChatCompletionMessage{{Role: "user", Content: "how is the weather in tokyo?"}},
+				},
+			},
+			wantRequest: []openai.ChatCompletionRequest{
+				{
+					Stream: true,
+					Messages: []openai.ChatCompletionMessage{
+						{Role: "system", Content: "You are a weather assistant"},
+						{Role: "user", Content: "how is the weather in tokyo?"},
+					},
+					Tools: []openai.Tool{{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "market-get-weather"}}},
+				},
+				{
+					Stream: true,
+					Messages: []openai.ChatCompletionMessage{
+						{Role: "system", Content: "You are a weather assistant"},
+						{Role: "user", Content: "how is the weather in tokyo?"},
+						{Role: "assistant", ToolCalls: []openai.ToolCall{{Index: toInt(0), ID: "call_a6dea19b4490485bbdad7047", Type: openai.ToolTypeFunction, Function: openai.FunctionCall{Name: "market-get-weather", Arguments: "{\"city\": \"Tokyo\", \"latitude\": 35.6762, \"longitude\": 139.6503}"}}}},
+						{Role: "tool", Content: "temperature: 31°C", ToolCallID: "call_a6dea19b4490485bbdad7047"},
+					},
+					Tools: []openai.Tool{{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "market-get-weather"}}},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -560,3 +597,55 @@ var toolCallResp = `{
     "total_tokens": 99
   }
 }`
+
+var deepseekv32toolsResp = `data: {"id":"eaeae2b6e76f4c5b95f12d8a2e43a552","object":"chat.completion.chunk","created":1760968189,"model":"DeepSeek-V3.2-Exp","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null,"content_filter_results":{"hate":{"filtered":false},"self_harm":{"filtered":false},"sexual":{"filtered":false},"violence":{"filtered":false},"jailbreak":{"filtered":false,"detected":false},"profanity":{"filtered":false,"detected":false}}}],"system_fingerprint":""}
+
+data: {"id":"eaeae2b6e76f4c5b95f12d8a2e43a552","object":"chat.completion.chunk","created":1760968189,"model":"DeepSeek-V3.2-Exp","choices":[{"index":0,"delta":{"content":"我需要"},"finish_reason":null,"content_filter_results":{"hate":{"filtered":false},"self_harm":{"filtered":false},"sexual":{"filtered":false},"violence":{"filtered":false},"jailbreak":{"filtered":false,"detected":false},"profanity":{"filtered":false,"detected":false}}}],"system_fingerprint":""}
+
+data: {"id":"eaeae2b6e76f4c5b95f12d8a2e43a552","object":"chat.completion.chunk","created":1760968189,"model":"DeepSeek-V3.2-Exp","choices":[{"index":0,"delta":{"content":"查询"},"finish_reason":null,"content_filter_results":{"hate":{"filtered":false},"self_harm":{"filtered":false},"sexual":{"filtered":false},"violence":{"filtered":false},"jailbreak":{"filtered":false,"detected":false},"profanity":{"filtered":false,"detected":false}}}],"system_fingerprint":""}
+
+data: {"id":"eaeae2b6e76f4c5b95f12d8a2e43a552","object":"chat.completion.chunk","created":1760968189,"model":"DeepSeek-V3.2-Exp","choices":[{"index":0,"delta":{"content":"东京"},"finish_reason":null,"content_filter_results":{"hate":{"filtered":false},"self_harm":{"filtered":false},"sexual":{"filtered":false},"violence":{"filtered":false},"jailbreak":{"filtered":false,"detected":false},"profanity":{"filtered":false,"detected":false}}}],"system_fingerprint":""}
+
+data: {"id":"eaeae2b6e76f4c5b95f12d8a2e43a552","object":"chat.completion.chunk","created":1760968189,"model":"DeepSeek-V3.2-Exp","choices":[{"index":0,"delta":{"content":"的"},"finish_reason":null,"content_filter_results":{"hate":{"filtered":false},"self_harm":{"filtered":false},"sexual":{"filtered":false},"violence":{"filtered":false},"jailbreak":{"filtered":false,"detected":false},"profanity":{"filtered":false,"detected":false}}}],"system_fingerprint":""}
+
+data: {"id":"eaeae2b6e76f4c5b95f12d8a2e43a552","object":"chat.completion.chunk","created":1760968189,"model":"DeepSeek-V3.2-Exp","choices":[{"index":0,"delta":{"content":"天气"},"finish_reason":null,"content_filter_results":{"hate":{"filtered":false},"self_harm":{"filtered":false},"sexual":{"filtered":false},"violence":{"filtered":false},"jailbreak":{"filtered":false,"detected":false},"profanity":{"filtered":false,"detected":false}}}],"system_fingerprint":""}
+
+data: {"id":"eaeae2b6e76f4c5b95f12d8a2e43a552","object":"chat.completion.chunk","created":1760968189,"model":"DeepSeek-V3.2-Exp","choices":[{"index":0,"delta":{"content":"信息"},"finish_reason":null,"content_filter_results":{"hate":{"filtered":false},"self_harm":{"filtered":false},"sexual":{"filtered":false},"violence":{"filtered":false},"jailbreak":{"filtered":false,"detected":false},"profanity":{"filtered":false,"detected":false}}}],"system_fingerprint":""}
+
+data: {"id":"eaeae2b6e76f4c5b95f12d8a2e43a552","object":"chat.completion.chunk","created":1760968190,"model":"DeepSeek-V3.2-Exp","choices":[{"index":0,"delta":{"content":"。"},"finish_reason":null,"content_filter_results":{"hate":{"filtered":false},"self_harm":{"filtered":false},"sexual":{"filtered":false},"violence":{"filtered":false},"jailbreak":{"filtered":false,"detected":false},"profanity":{"filtered":false,"detected":false}}}],"system_fingerprint":""}
+
+data: {"id":"eaeae2b6e76f4c5b95f12d8a2e43a552","object":"chat.completion.chunk","created":1760968190,"model":"DeepSeek-V3.2-Exp","choices":[{"index":0,"delta":{"content":"首先"},"finish_reason":null,"content_filter_results":{"hate":{"filtered":false},"self_harm":{"filtered":false},"sexual":{"filtered":false},"violence":{"filtered":false},"jailbreak":{"filtered":false,"detected":false},"profanity":{"filtered":false,"detected":false}}}],"system_fingerprint":""}
+
+data: {"id":"eaeae2b6e76f4c5b95f12d8a2e43a552","object":"chat.completion.chunk","created":1760968190,"model":"DeepSeek-V3.2-Exp","choices":[{"index":0,"delta":{"content":"让我"},"finish_reason":null,"content_filter_results":{"hate":{"filtered":false},"self_harm":{"filtered":false},"sexual":{"filtered":false},"violence":{"filtered":false},"jailbreak":{"filtered":false,"detected":false},"profanity":{"filtered":false,"detected":false}}}],"system_fingerprint":""}
+
+data: {"id":"eaeae2b6e76f4c5b95f12d8a2e43a552","object":"chat.completion.chunk","created":1760968190,"model":"DeepSeek-V3.2-Exp","choices":[{"index":0,"delta":{"content":"获取"},"finish_reason":null,"content_filter_results":{"hate":{"filtered":false},"self_harm":{"filtered":false},"sexual":{"filtered":false},"violence":{"filtered":false},"jailbreak":{"filtered":false,"detected":false},"profanity":{"filtered":false,"detected":false}}}],"system_fingerprint":""}
+
+data: {"id":"eaeae2b6e76f4c5b95f12d8a2e43a552","object":"chat.completion.chunk","created":1760968190,"model":"DeepSeek-V3.2-Exp","choices":[{"index":0,"delta":{"content":"东京"},"finish_reason":null,"content_filter_results":{"hate":{"filtered":false},"self_harm":{"filtered":false},"sexual":{"filtered":false},"violence":{"filtered":false},"jailbreak":{"filtered":false,"detected":false},"profanity":{"filtered":false,"detected":false}}}],"system_fingerprint":""}
+
+data: {"id":"eaeae2b6e76f4c5b95f12d8a2e43a552","object":"chat.completion.chunk","created":1760968190,"model":"DeepSeek-V3.2-Exp","choices":[{"index":0,"delta":{"content":"的"},"finish_reason":null,"content_filter_results":{"hate":{"filtered":false},"self_harm":{"filtered":false},"sexual":{"filtered":false},"violence":{"filtered":false},"jailbreak":{"filtered":false,"detected":false},"profanity":{"filtered":false,"detected":false}}}],"system_fingerprint":""}
+
+data: {"id":"eaeae2b6e76f4c5b95f12d8a2e43a552","object":"chat.completion.chunk","created":1760968190,"model":"DeepSeek-V3.2-Exp","choices":[{"index":0,"delta":{"content":"坐标"},"finish_reason":null,"content_filter_results":{"hate":{"filtered":false},"self_harm":{"filtered":false},"sexual":{"filtered":false},"violence":{"filtered":false},"jailbreak":{"filtered":false,"detected":false},"profanity":{"filtered":false,"detected":false}}}],"system_fingerprint":""}
+
+data: {"id":"eaeae2b6e76f4c5b95f12d8a2e43a552","object":"chat.completion.chunk","created":1760968190,"model":"DeepSeek-V3.2-Exp","choices":[{"index":0,"delta":{"content":"，"},"finish_reason":null,"content_filter_results":{"hate":{"filtered":false},"self_harm":{"filtered":false},"sexual":{"filtered":false},"violence":{"filtered":false},"jailbreak":{"filtered":false,"detected":false},"profanity":{"filtered":false,"detected":false}}}],"system_fingerprint":""}
+
+data: {"id":"eaeae2b6e76f4c5b95f12d8a2e43a552","object":"chat.completion.chunk","created":1760968190,"model":"DeepSeek-V3.2-Exp","choices":[{"index":0,"delta":{"content":"然后"},"finish_reason":null,"content_filter_results":{"hate":{"filtered":false},"self_harm":{"filtered":false},"sexual":{"filtered":false},"violence":{"filtered":false},"jailbreak":{"filtered":false,"detected":false},"profanity":{"filtered":false,"detected":false}}}],"system_fingerprint":""}
+
+data: {"id":"eaeae2b6e76f4c5b95f12d8a2e43a552","object":"chat.completion.chunk","created":1760968190,"model":"DeepSeek-V3.2-Exp","choices":[{"index":0,"delta":{"content":"为您"},"finish_reason":null,"content_filter_results":{"hate":{"filtered":false},"self_harm":{"filtered":false},"sexual":{"filtered":false},"violence":{"filtered":false},"jailbreak":{"filtered":false,"detected":false},"profanity":{"filtered":false,"detected":false}}}],"system_fingerprint":""}
+
+data: {"id":"eaeae2b6e76f4c5b95f12d8a2e43a552","object":"chat.completion.chunk","created":1760968190,"model":"DeepSeek-V3.2-Exp","choices":[{"index":0,"delta":{"content":"查询"},"finish_reason":null,"content_filter_results":{"hate":{"filtered":false},"self_harm":{"filtered":false},"sexual":{"filtered":false},"violence":{"filtered":false},"jailbreak":{"filtered":false,"detected":false},"profanity":{"filtered":false,"detected":false}}}],"system_fingerprint":""}
+
+data: {"id":"eaeae2b6e76f4c5b95f12d8a2e43a552","object":"chat.completion.chunk","created":1760968190,"model":"DeepSeek-V3.2-Exp","choices":[{"index":0,"delta":{"content":"天气"},"finish_reason":null,"content_filter_results":{"hate":{"filtered":false},"self_harm":{"filtered":false},"sexual":{"filtered":false},"violence":{"filtered":false},"jailbreak":{"filtered":false,"detected":false},"profanity":{"filtered":false,"detected":false}}}],"system_fingerprint":""}
+
+data: {"id":"eaeae2b6e76f4c5b95f12d8a2e43a552","object":"chat.completion.chunk","created":1760968190,"model":"DeepSeek-V3.2-Exp","choices":[{"index":0,"delta":{"content":"情况"},"finish_reason":null,"content_filter_results":{"hate":{"filtered":false},"self_harm":{"filtered":false},"sexual":{"filtered":false},"violence":{"filtered":false},"jailbreak":{"filtered":false,"detected":false},"profanity":{"filtered":false,"detected":false}}}],"system_fingerprint":""}
+
+data: {"id":"eaeae2b6e76f4c5b95f12d8a2e43a552","object":"chat.completion.chunk","created":1760968190,"model":"DeepSeek-V3.2-Exp","choices":[{"index":0,"delta":{"content":"。"},"finish_reason":null,"content_filter_results":{"hate":{"filtered":false},"self_harm":{"filtered":false},"sexual":{"filtered":false},"violence":{"filtered":false},"jailbreak":{"filtered":false,"detected":false},"profanity":{"filtered":false,"detected":false}}}],"system_fingerprint":""}
+
+data: {"id":"eaeae2b6e76f4c5b95f12d8a2e43a552","object":"chat.completion.chunk","created":1760968193,"model":"DeepSeek-V3.2-Exp","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_a6dea19b4490485bbdad7047","type":"function","function":{"name":"market-get-weather"}}]},"finish_reason":null,"content_filter_results":{"hate":{"filtered":false},"self_harm":{"filtered":false},"sexual":{"filtered":false},"violence":{"filtered":false},"jailbreak":{"filtered":false,"detected":false},"profanity":{"filtered":false,"detected":false}}}],"system_fingerprint":""}
+
+data: {"id":"eaeae2b6e76f4c5b95f12d8a2e43a552","object":"chat.completion.chunk","created":1760968193,"model":"DeepSeek-V3.2-Exp","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"type":"function","function":{"arguments":"{\"city\": \"Tokyo\", \"latitude\": 35.6762, \"longitude\": 139.6503}"}}]},"finish_reason":null,"content_filter_results":{"hate":{"filtered":false},"self_harm":{"filtered":false},"sexual":{"filtered":false},"violence":{"filtered":false},"jailbreak":{"filtered":false,"detected":false},"profanity":{"filtered":false,"detected":false}}}],"system_fingerprint":""}
+
+data: {"id":"eaeae2b6e76f4c5b95f12d8a2e43a552","object":"chat.completion.chunk","created":1760968193,"model":"DeepSeek-V3.2-Exp","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls","content_filter_results":{"hate":{"filtered":false},"self_harm":{"filtered":false},"sexual":{"filtered":false},"violence":{"filtered":false},"jailbreak":{"filtered":false,"detected":false},"profanity":{"filtered":false,"detected":false}}}],"system_fingerprint":""}
+
+data: {"id":"eaeae2b6e76f4c5b95f12d8a2e43a552","object":"chat.completion.chunk","created":1760968193,"model":"DeepSeek-V3.2-Exp","choices":[],"system_fingerprint":"","usage":{"prompt_tokens":395,"completion_tokens":55,"total_tokens":450,"prompt_tokens_details":null,"completion_tokens_details":null}}
+
+data: [DONE]`
