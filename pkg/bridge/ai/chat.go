@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"strings"
 
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo/ai"
@@ -70,10 +69,6 @@ type chatContext struct {
 	totalUsage openai.Usage
 	// req.Messages is the chat history
 	req openai.ChatCompletionRequest
-
-	// non streaming response contents
-	contents          []string
-	reasoningContents []string
 }
 
 // multiTurnFunctionCalling calls chat completions multiple times until finishing function calling
@@ -232,12 +227,6 @@ func (c *chatResp) checkFunctionCall(_ EventResponseWriter, chatCtx *chatContext
 	if len(c.resp.Choices) == 0 {
 		return false, nil
 	}
-	if c.resp.Choices[0].Message.Content != "" {
-		chatCtx.contents = append(chatCtx.contents, c.resp.Choices[0].Message.Content)
-	}
-	if c.resp.Choices[0].Message.ReasoningContent != "" {
-		chatCtx.reasoningContents = append(chatCtx.reasoningContents, c.resp.Choices[0].Message.ReasoningContent)
-	}
 	isFunctionCall := c.resp.Choices[0].FinishReason == openai.FinishReasonToolCalls ||
 		len(c.resp.Choices[0].Message.ToolCalls) != 0
 	return isFunctionCall, nil
@@ -251,19 +240,9 @@ func (c *chatResp) getToolCalls() ([]openai.ToolCall, openai.Usage) {
 	return copiedToolCalls, c.resp.Usage
 }
 
-func (c *chatResp) accContent(chatCtx *chatContext) {
-	chatCtx.reasoningContents = append(chatCtx.reasoningContents, c.resp.Choices[0].Message.ReasoningContent)
-	c.resp.Choices[0].Message.ReasoningContent = strings.Join(chatCtx.reasoningContents, "")
-
-	chatCtx.contents = append(chatCtx.contents, c.resp.Choices[0].Message.Content)
-	c.resp.Choices[0].Message.Content = strings.Join(chatCtx.contents, "")
-}
-
 func (c *chatResp) writeResponse(w EventResponseWriter, chatCtx *chatContext) error {
 	updateCtxUsage(chatCtx, c.resp.Usage)
 	c.resp.Usage = chatCtx.totalUsage
-
-	c.accContent(chatCtx)
 
 	w.Header().Set("Content-Type", "application/json")
 	return json.NewEncoder(w).Encode(c.resp)
@@ -432,8 +411,6 @@ func newInvokeResp(resp openai.ChatCompletionResponse, includeCallStack bool) *i
 }
 
 func (i *invokeResp) writeResponse(w EventResponseWriter, chatCtx *chatContext) error {
-	i.underlying.accContent(chatCtx)
-
 	resp := ai.InvokeResponse{
 		Content:      i.underlying.resp.Choices[0].Message.Content,
 		FinishReason: string(i.underlying.resp.Choices[0].FinishReason),
