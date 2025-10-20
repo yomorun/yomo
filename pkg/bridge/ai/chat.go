@@ -341,7 +341,7 @@ func (r *streamChatResp) processChunk(chunk openai.ChatCompletionStreamResponse)
 
 	choice := chunk.Choices[0]
 
-	// if tools_call dected, to ProcessingToolCalls state
+	// if tools_call detected, to ProcessingToolCalls state
 	if choice.FinishReason != "" {
 		r.finishReason = choice.FinishReason
 		if r.finishReason == openai.FinishReasonToolCalls || r.finishReason == "tool_call" {
