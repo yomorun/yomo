@@ -494,7 +494,7 @@ var stopResp = `{
       "index": 0,
       "message": {
         "role": "assistant",
-        "content": "Hello! I'm just a computer program, so I don't have feelings, but thanks for asking. How can I assist you today?"
+        "content": "How can I assist you today?"
       },
       "logprobs": null,
       "finish_reason": "stop"

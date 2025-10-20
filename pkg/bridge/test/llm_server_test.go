@@ -92,7 +92,7 @@ func TestServer(t *testing.T) {
 		assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
 
 		body, _ := io.ReadAll(resp.Body)
-		assert.Equal(t, "{\"content\":\"Hello! I'm just a computer program, so I don't have feelings, but thanks for asking. How can I assist you today?\",\"finish_reason\":\"stop\",\"token_usage\":{\"prompt_tokens\":13,\"completion_tokens\":26}}\n", string(body))
+		assert.Equal(t, "{\"content\":\"How can I assist you today?How can I assist you today?\",\"finish_reason\":\"stop\",\"token_usage\":{\"prompt_tokens\":13,\"completion_tokens\":26}}\n", string(body))
 	})
 
 	t.Run("POST /v1/chat/completions", func(t *testing.T) {
@@ -108,7 +108,7 @@ func TestServer(t *testing.T) {
 		assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
 
 		body, _ := io.ReadAll(resp.Body)
-		assert.Equal(t, "{\"id\":\"chatcmpl-9blYknv9rHvr2dvCQKMeW21hlBpCX\",\"object\":\"chat.completion\",\"created\":1718787982,\"model\":\"gpt-4o-2024-05-13\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Hello! I'm just a computer program, so I don't have feelings, but thanks for asking. How can I assist you today?\"},\"finish_reason\":\"stop\",\"content_filter_results\":{\"hate\":{\"filtered\":false},\"self_harm\":{\"filtered\":false},\"sexual\":{\"filtered\":false},\"violence\":{\"filtered\":false},\"jailbreak\":{\"filtered\":false,\"detected\":false},\"profanity\":{\"filtered\":false,\"detected\":false}}}],\"usage\":{\"prompt_tokens\":13,\"completion_tokens\":26,\"total_tokens\":39,\"prompt_tokens_details\":null,\"completion_tokens_details\":null},\"system_fingerprint\":\"fp_f4e629d0a5\"}\n", string(body))
+		assert.Equal(t, "{\"id\":\"chatcmpl-9blYknv9rHvr2dvCQKMeW21hlBpCX\",\"object\":\"chat.completion\",\"created\":1718787982,\"model\":\"gpt-4o-2024-05-13\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"How can I assist you today?How can I assist you today?\"},\"finish_reason\":\"stop\",\"content_filter_results\":{\"hate\":{\"filtered\":false},\"self_harm\":{\"filtered\":false},\"sexual\":{\"filtered\":false},\"violence\":{\"filtered\":false},\"jailbreak\":{\"filtered\":false,\"detected\":false},\"profanity\":{\"filtered\":false,\"detected\":false}}}],\"usage\":{\"prompt_tokens\":13,\"completion_tokens\":26,\"total_tokens\":39,\"prompt_tokens_details\":null,\"completion_tokens_details\":null},\"system_fingerprint\":\"fp_f4e629d0a5\"}\n", string(body))
 	})
 
 	t.Run("illegal request", func(t *testing.T) {
