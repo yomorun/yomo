@@ -286,7 +286,9 @@ func (r *streamChatResp) checkFunctionCall(w EventResponseWriter, chatCtx *chatC
 		}
 
 		if len(chunk.Choices) == 0 {
-			_ = r.writeEvent(w, chunk, chatCtx)
+			if err := r.writeEvent(w, chunk, chatCtx); err != nil {
+				return false, err
+			}
 			continue
 		}
 
@@ -307,11 +309,15 @@ func (r *streamChatResp) checkFunctionCall(w EventResponseWriter, chatCtx *chatC
 			if choice.Delta.Content != "" || choice.Delta.ReasoningContent != "" {
 				// just response content and reasoning content
 				chunk.Choices[0].Delta.ToolCalls = nil
-				_ = r.writeEvent(w, chunk, chatCtx)
+				if err := r.writeEvent(w, chunk, chatCtx); err != nil {
+					return false, err
+				}
 			}
 			continue
 		}
-		_ = r.writeEvent(w, chunk, chatCtx)
+		if err := r.writeEvent(w, chunk, chatCtx); err != nil {
+			return false, err
+		}
 	}
 }
 
