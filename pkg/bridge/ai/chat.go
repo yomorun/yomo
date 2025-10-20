@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo/ai"
@@ -18,7 +19,7 @@ import (
 // chatResponse is to abstract both streaming and non-streaming requests, making them clearer within multiTurnFunctionCall.
 type chatResponse interface {
 	// checkFunctionCall checks if the response is a function call response
-	checkFunctionCall() (bool, error)
+	checkFunctionCall(w EventResponseWriter, chatCtx *chatContext) (bool, error)
 	// getToolCalls returns the tool calls and its usage in the response
 	getToolCalls() ([]openai.ToolCall, openai.Usage)
 	// writeResponse defines how to write the response to the response writer
@@ -58,15 +59,17 @@ func createChatCompletions(ctx context.Context, p provider.LLMProvider, req open
 		}
 	}
 
-	return &chatResp{resp}, nil
+	return &chatResp{contents: []string{}, resp: resp}, nil
 }
 
 type chatContext struct {
+	id string
 	// callTimes is the number of times for calling chat completions
 	callTimes int
 	// totalUsage is the total usage of all chat completions (include tool calls and final response)
 	totalUsage openai.Usage
-	req        openai.ChatCompletionRequest
+	// req.Messages is the chat history
+	req openai.ChatCompletionRequest
 }
 
 // multiTurnFunctionCalling calls chat completions multiple times until finishing function calling
@@ -121,7 +124,7 @@ func multiTurnFunctionCalling(
 			return resp.writeResponse(w, chatCtx)
 		}
 
-		isFunctionCall, err := resp.checkFunctionCall()
+		isFunctionCall, err := resp.checkFunctionCall(w, chatCtx)
 		if err != nil {
 			reqSpan.RecordError(err)
 			reqSpan.End()
@@ -216,12 +219,23 @@ func updateCtxUsage(chatCtx *chatContext, usage openai.Usage) {
 
 // chatResp is the non-streaming implementation of chatResponse
 type chatResp struct {
-	resp openai.ChatCompletionResponse
+	reasoningContents []string
+	contents          []string
+	resp              openai.ChatCompletionResponse
 }
 
 var _ chatResponse = &chatResp{}
 
-func (c *chatResp) checkFunctionCall() (bool, error) {
+func (c *chatResp) checkFunctionCall(_ EventResponseWriter, chatCtx *chatContext) (bool, error) {
+	if len(c.resp.Choices) == 0 {
+		return false, nil
+	}
+	if c.resp.Choices[0].Message.Content != "" {
+		c.contents = append(c.contents, c.resp.Choices[0].Message.Content)
+	}
+	if c.resp.Choices[0].Message.ReasoningContent != "" {
+		c.reasoningContents = append(c.reasoningContents, c.resp.Choices[0].Message.ReasoningContent)
+	}
 	isFunctionCall := c.resp.Choices[0].FinishReason == openai.FinishReasonToolCalls ||
 		len(c.resp.Choices[0].Message.ToolCalls) != 0
 	return isFunctionCall, nil
@@ -235,9 +249,19 @@ func (c *chatResp) getToolCalls() ([]openai.ToolCall, openai.Usage) {
 	return copiedToolCalls, c.resp.Usage
 }
 
+func (c *chatResp) accContent() {
+	c.reasoningContents = append(c.reasoningContents, c.resp.Choices[0].Message.ReasoningContent)
+	c.resp.Choices[0].Message.ReasoningContent = strings.Join(c.reasoningContents, "")
+
+	c.contents = append(c.contents, c.resp.Choices[0].Message.Content)
+	c.resp.Choices[0].Message.Content = strings.Join(c.contents, "")
+}
+
 func (c *chatResp) writeResponse(w EventResponseWriter, chatCtx *chatContext) error {
 	updateCtxUsage(chatCtx, c.resp.Usage)
 	c.resp.Usage = chatCtx.totalUsage
+
+	c.accContent()
 
 	w.Header().Set("Content-Type", "application/json")
 	return json.NewEncoder(w).Encode(c.resp)
@@ -245,109 +269,119 @@ func (c *chatResp) writeResponse(w EventResponseWriter, chatCtx *chatContext) er
 
 // streamChatResp is the streaming implementation of chatResponse
 type streamChatResp struct {
-	// buffer is the response be buffered before check if it is a function call
-	buffer       []openai.ChatCompletionStreamResponse
 	recver       provider.ResponseRecver
-	toolCallsMap map[int]openai.ToolCall
+	finishReason openai.FinishReason
+	// buffer is the buffer of chunks that contain no content
+	buffer []openai.ChatCompletionStreamResponse
+	// toolCallDeltas is the delta responses that contain tool calls
+	toolCallDeltas []openai.ChatCompletionStreamResponse
+	toolCallsMap   map[int]openai.ToolCall
 }
 
 var _ chatResponse = (*streamChatResp)(nil)
 
-func (resp *streamChatResp) checkFunctionCall() (bool, error) {
-	var role string
-
+func (r *streamChatResp) checkFunctionCall(w EventResponseWriter, chatCtx *chatContext) (bool, error) {
 	for {
-		delta, err := resp.recver.Recv()
+		isFunctionCall := r.finishReason == openai.FinishReasonToolCalls || r.finishReason == "tool_call"
+
+		chunk, err := r.recver.Recv()
 		if err == io.EOF {
-			return false, nil
+			return isFunctionCall, nil
 		}
 		if err != nil {
-			return false, err
+			return isFunctionCall, err
 		}
 
-		choices := delta.Choices
+		if chunk.ID == "" {
+			continue
+		}
+		if chatCtx.id == "" {
+			chatCtx.id = chunk.ID
+		}
 
-		// return when choices is not empty
-		if len(choices) > 0 {
-			resp.buffer = append(resp.buffer, delta)
-			if r := choices[0].Delta.Role; r != "" {
-				role = r
-			}
-			if role == openai.ChatMessageRoleAssistant && len(choices[0].Delta.ToolCalls) > 0 {
-				return true, nil
-			}
-			if role == openai.ChatMessageRoleAssistant && len(choices[0].Delta.ReasoningContent) != 0 {
-				return false, nil
-			}
-			if role == openai.ChatMessageRoleAssistant && len(choices[0].Delta.Content) != 0 {
-				return false, nil
+		if usage := chunk.Usage; usage != nil {
+			updateCtxUsage(chatCtx, *usage)
+		}
+
+		if len(chunk.Choices) == 0 {
+			_ = r.writeEvent(w, chunk, chatCtx)
+			continue
+		}
+
+		choice := chunk.Choices[0]
+
+		if chunk.Choices[0].FinishReason != "" {
+			r.finishReason = chunk.Choices[0].FinishReason
+		}
+
+		// no content chunk (role chunk), just buffer it
+		if choice.Delta.Content == "" && choice.Delta.ReasoningContent == "" && len(choice.Delta.ToolCalls) == 0 {
+			r.buffer = append(r.buffer, chunk)
+			continue
+		}
+
+		if len(choice.Delta.ToolCalls) != 0 {
+			r.toolCallDeltas = append(r.toolCallDeltas, chunk)
+			if choice.Delta.Content != "" || choice.Delta.ReasoningContent != "" {
+				// just response content and reasoning content
+				chunk.Choices[0].Delta.ToolCalls = nil
+				_ = r.writeEvent(w, chunk, chatCtx)
 			}
 			continue
 		}
+		_ = r.writeEvent(w, chunk, chatCtx)
 	}
 }
 
 func (r *streamChatResp) getToolCalls() ([]openai.ToolCall, openai.Usage) {
-	for _, resp := range r.buffer {
-		if len(resp.Choices) > 0 {
-			r.accuamulate(resp.Choices[0].Delta.ToolCalls)
-		}
-	}
-
 	usage := openai.Usage{}
-	for {
-		resp, err := r.recver.Recv()
-		if err != nil {
-			break
-		}
 
-		if resp.Usage != nil {
-			usage = *resp.Usage
-		}
-
+	for _, resp := range r.toolCallDeltas {
 		if len(resp.Choices) > 0 {
-			r.accuamulate(resp.Choices[0].Delta.ToolCalls)
+			if len(resp.Choices) > 0 {
+				r.accuamulateToolCall(resp.Choices[0].Delta.ToolCalls)
+			}
 		}
 	}
 
 	toolCalls := make([]openai.ToolCall, len(r.toolCallsMap))
 	for k, v := range r.toolCallsMap {
+		if len(toolCalls) <= k {
+			continue
+		}
 		toolCalls[k] = v
 	}
 	return toolCalls, usage
 }
 
-func (s *streamChatResp) writeResponse(w EventResponseWriter, chatCtx *chatContext) error {
-	for _, resp := range s.buffer {
-		if err := w.WriteStreamEvent(resp); err != nil {
-			return err
-		}
-	}
-
-	for {
-		resp, err := s.recver.Recv()
-		if err != nil {
-			if err == io.EOF {
-				w.WriteStreamDone()
-				return nil
-			}
-			return err
-		}
-		if len(resp.PromptFilterResults) > 0 {
-			continue
-		}
-		// response total usage when usage is not nil
-		if resp.Usage != nil {
-			updateCtxUsage(chatCtx, *resp.Usage)
-			resp.Usage = &chatCtx.totalUsage
-		}
-		if err := w.WriteStreamEvent(resp); err != nil {
-			return err
-		}
-	}
+func (r *streamChatResp) writeResponse(w EventResponseWriter, chatCtx *chatContext) error {
+	return w.WriteStreamDone()
 }
 
-func (r *streamChatResp) accuamulate(delta []openai.ToolCall) {
+func (r *streamChatResp) writeEvent(w EventResponseWriter, chunk openai.ChatCompletionStreamResponse, chatCtx *chatContext) error {
+	chunks := append(r.buffer, chunk)
+
+	defer func() {
+		r.buffer = r.buffer[:0]
+	}()
+
+	for _, v := range chunks {
+		if len(v.Choices) > 0 && v.Choices[0].FinishReason == openai.FinishReasonFunctionCall {
+			return nil
+		}
+		if v.Usage != nil {
+			v.Usage = &chatCtx.totalUsage
+		}
+		if r.finishReason != openai.FinishReasonToolCalls {
+			v.ID = chatCtx.id
+			_ = w.WriteStreamEvent(v)
+		}
+	}
+
+	return nil
+}
+
+func (r *streamChatResp) accuamulateToolCall(delta []openai.ToolCall) {
 	for k, v := range delta {
 		index := k
 		if v.Index != nil {
@@ -380,19 +414,24 @@ type invokeResp struct {
 
 var _ chatResponse = (*invokeResp)(nil)
 
-func (i *invokeResp) checkFunctionCall() (bool, error) { return i.underlying.checkFunctionCall() }
+func (i *invokeResp) checkFunctionCall(w EventResponseWriter, chatCtx *chatContext) (bool, error) {
+	return i.underlying.checkFunctionCall(w, chatCtx)
+}
+
 func (i *invokeResp) getToolCalls() ([]openai.ToolCall, openai.Usage) {
 	return i.underlying.getToolCalls()
 }
 
 func newInvokeResp(resp openai.ChatCompletionResponse, includeCallStack bool) *invokeResp {
 	return &invokeResp{
-		underlying:       &chatResp{resp},
+		underlying:       &chatResp{contents: []string{}, resp: resp},
 		includeCallStack: includeCallStack,
 	}
 }
 
 func (i *invokeResp) writeResponse(w EventResponseWriter, chatCtx *chatContext) error {
+	i.underlying.accContent()
+
 	resp := ai.InvokeResponse{
 		Content:      i.underlying.resp.Choices[0].Message.Content,
 		FinishReason: string(i.underlying.resp.Choices[0].FinishReason),
