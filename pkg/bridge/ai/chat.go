@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"slices"
 
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo/ai"
@@ -319,19 +320,26 @@ func (r *streamChatResp) getToolCalls() ([]openai.ToolCall, openai.Usage) {
 
 	for _, resp := range r.toolCallDeltas {
 		if len(resp.Choices) > 0 {
-			if len(resp.Choices) > 0 {
-				r.accuamulateToolCall(resp.Choices[0].Delta.ToolCalls)
-			}
+			r.accuamulateToolCall(resp.Choices[0].Delta.ToolCalls)
 		}
 	}
 
-	toolCalls := make([]openai.ToolCall, len(r.toolCallsMap))
-	for k, v := range r.toolCallsMap {
-		if len(toolCalls) <= k {
-			continue
-		}
-		toolCalls[k] = v
+	toolCalls := make([]openai.ToolCall, 0, len(r.toolCallsMap))
+	for _, v := range r.toolCallsMap {
+		toolCalls = append(toolCalls, v)
 	}
+
+	slices.SortFunc(toolCalls, func(i, j openai.ToolCall) int {
+		var iIndex, jIndex int
+		if i.Index != nil {
+			iIndex = *i.Index
+		}
+		if j.Index != nil {
+			jIndex = *j.Index
+		}
+		return iIndex - jIndex
+	})
+
 	return toolCalls, usage
 }
 
@@ -355,7 +363,9 @@ func (r *streamChatResp) writeEvent(w EventResponseWriter, chunk openai.ChatComp
 		}
 		if r.finishReason != openai.FinishReasonToolCalls {
 			v.ID = chatCtx.id
-			_ = w.WriteStreamEvent(v)
+			if err := w.WriteStreamEvent(v); err != nil {
+				return err
+			}
 		}
 	}
 
