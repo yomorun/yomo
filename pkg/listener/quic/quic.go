@@ -15,8 +15,8 @@ import (
 // It transmits frames upon the first stream from a QUIC connection.
 type FrameConn struct {
 	frameCh chan frame.Frame
-	conn    quic.Connection
-	stream  quic.Stream
+	conn    *quic.Conn
+	stream  *quic.Stream
 	codec   frame.Codec
 	prw     frame.PacketReadWriter
 }
@@ -42,7 +42,7 @@ func DialAddr(
 }
 
 func newFrameConn(
-	qconn quic.Connection, stream quic.Stream,
+	qconn *quic.Conn, stream *quic.Stream,
 	codec frame.Codec, prw frame.PacketReadWriter,
 ) *FrameConn {
 
