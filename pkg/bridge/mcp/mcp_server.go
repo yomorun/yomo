@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/yomorun/yomo/core/ylog"
 	pkgai "github.com/yomorun/yomo/pkg/bridge/ai"
 	"go.opentelemetry.io/otel"
@@ -23,8 +23,8 @@ var (
 
 // MCPServer represents a MCP server
 type MCPServer struct {
-	underlying           *server.MCPServer
-	SSEServer            *server.SSEServer
+	underlying           *mcp.Server
+	SSEServer            *mcp.SSEHandler
 	StreamableHTTPServer *server.StreamableHTTPServer
 	basePath             string
 	logger               *slog.Logger
@@ -37,23 +37,31 @@ func NewMCPServer(logger *slog.Logger) (*MCPServer, error) {
 		logger = ylog.Default()
 	}
 	// create mcp server
-	underlyingMCPServer := server.NewMCPServer(
-		"mcp-server",
-		"2025-03-26",
-		server.WithLogging(),
-		server.WithHooks(hooks(logger)),
-		server.WithResourceCapabilities(false, false),
-		server.WithPromptCapabilities(false),
-		server.WithToolCapabilities(true),
-		server.WithRecovery(),
+	underlyingMCPServer := mcp.NewServer(
+		&mcp.Implementation{
+			Name:    "mcp-server",
+			Version: "2025-03-26",
+		},
+		nil,
+		// server.WithLogging(),
+		// server.WithHooks(hooks(logger)),
+		// server.WithResourceCapabilities(false, false),
+		// server.WithPromptCapabilities(false),
+		// server.WithToolCapabilities(true),
+		// server.WithRecovery(),
 	)
 	// sse options
-	sseOpts := []server.SSEOption{
-		server.WithHTTPServer(httpServer),
-		server.WithSSEContextFunc(authContextFunc),
-	}
+	// sseOpts := []server.SSEOption{
+	// 	server.WithHTTPServer(httpServer),
+	// 	server.WithSSEContextFunc(authContextFunc),
+	// }
 	// sse server
-	sseServer := server.NewSSEServer(underlyingMCPServer, sseOpts...)
+	// sseServer := server.NewSSEServer(underlyingMCPServer, sseOpts...)
+	sseServer := mcp.NewSSEHandler(func(request *http.Request) *mcp.Server {
+		return underlyingMCPServer
+	},
+		&mcp.SSEOptions{},
+	)
 
 	// streamable http server
 	streamableHTTPServer := server.NewStreamableHTTPServer(underlyingMCPServer, server.WithHTTPContextFunc(authContextFunc))
