@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/mark3labs/mcp-go/server"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/yomorun/yomo/core/ylog"
 	pkgai "github.com/yomorun/yomo/pkg/bridge/ai"
@@ -25,7 +24,6 @@ var (
 type MCPServer struct {
 	underlying           *mcp.Server
 	SSEServer            *mcp.SSEHandler
-	StreamableHTTPServer *server.StreamableHTTPServer
 	basePath             string
 	logger               *slog.Logger
 }
@@ -63,14 +61,10 @@ func NewMCPServer(logger *slog.Logger) (*MCPServer, error) {
 		&mcp.SSEOptions{},
 	)
 
-	// streamable http server
-	streamableHTTPServer := server.NewStreamableHTTPServer(underlyingMCPServer, server.WithHTTPContextFunc(authContextFunc))
-
 	mcpServer := &MCPServer{
-		underlying:           underlyingMCPServer,
-		SSEServer:            sseServer,
-		StreamableHTTPServer: streamableHTTPServer,
-		logger:               logger,
+		underlying: underlyingMCPServer,
+		SSEServer:  sseServer,
+		logger:     logger,
 	}
 	sseEndpoint, err := sseServer.CompleteSseEndpoint()
 	if err != nil {
@@ -79,7 +73,6 @@ func NewMCPServer(logger *slog.Logger) (*MCPServer, error) {
 
 	logger.Info("[mcp] create mcp server",
 		"sse_endpoint", sseEndpoint,
-		"streamable_http_endpoint", "/mcp",
 	)
 
 	return mcpServer, nil
@@ -96,7 +89,7 @@ func (s *MCPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // AddTool adds a tool to the mcp server
-func (s *MCPServer) AddTool(tool mcp.Tool, handler server.ToolHandlerFunc) {
+func (s *MCPServer) AddTool(tool mcp.Tool, handler mcp.ToolHandlerFunc) {
 	s.underlying.AddTool(tool, handler)
 }
 
@@ -106,7 +99,7 @@ func (s *MCPServer) DeleteTools(names ...string) {
 }
 
 // AddPrompt adds a prompt to the mcp server
-func (s *MCPServer) AddPrompt(prompt mcp.Prompt, handler server.PromptHandlerFunc) {
+func (s *MCPServer) AddPrompt(prompt mcp.Prompt, handler mcp.PromptHandlerFunc) {
 	s.underlying.AddPrompt(prompt, handler)
 }
 
@@ -126,8 +119,8 @@ func authContextFunc(ctx context.Context, r *http.Request) context.Context {
 	return ctx
 }
 
-func hooks(logger *slog.Logger) *server.Hooks {
-	hooks := &server.Hooks{}
+func hooks(logger *slog.Logger) *mcp.Hooks {
+	hooks := &mcp.Hooks{}
 
 	hooks.AddBeforeAny(func(ctx context.Context, id any, method mcp.MCPMethod, message any) {
 		logger.Debug("[mcp] hook.beforeAny", "method", method, "id", id, "message", message)

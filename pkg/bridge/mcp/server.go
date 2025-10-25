@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo"
 	pkgai "github.com/yomorun/yomo/pkg/bridge/ai"
@@ -59,8 +59,7 @@ func Start(config *Config, aiConfig *pkgai.Config, source yomo.Source, reducer y
 	// sse http handler
 	mux.HandleFunc("/sse", sseHTTPHandler)
 	mux.HandleFunc("/message", sseHTTPHandler)
-	// streamable http handler
-	mux.HandleFunc("/mcp", streamableHTTPHandler)
+
 
 	httpServer = &http.Server{
 		Addr:    addr,
@@ -95,13 +94,6 @@ func sseHTTPHandler(w http.ResponseWriter, r *http.Request) {
 	mcpServer.ServeHTTP(w, r)
 }
 
-func streamableHTTPHandler(w http.ResponseWriter, r *http.Request) {
-	if mcpServer.StreamableHTTPServer == nil {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	mcpServer.StreamableHTTPServer.ServeHTTP(w, r)
-}
 
 // AddMCPTool add mcp tool
 func AddMCPTool(connID uint64, functionDefinition *openai.FunctionDefinition) error {
