@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"strconv"
 	"sync"
 	"sync/atomic"
 
@@ -560,4 +561,40 @@ func composeConnHandler(handler ConnHandler, middlewares ...ConnMiddleware) Conn
 		handler = middlewares[i](handler)
 	}
 	return handler
+}
+
+// ParseZipperAddr parse the zipper address
+// if port is missing, use default port 9000
+// if host is missing, use localhost.
+func ParseZipperAddr(zipper string) (string, error) {
+	host, port, err := net.SplitHostPort(zipper)
+	if err != nil {
+		// try to add default port
+		host, port, err = net.SplitHostPort(zipper + ":9000")
+		if err != nil {
+			return "", err
+		}
+	}
+	// validate host
+	if host == "" {
+		host = "localhost"
+	}
+	// validate port
+	if port == "" {
+		port = "9000"
+	}
+	_, err = strconv.Atoi(port)
+	if err != nil {
+		return "", errors.New("invalid port number")
+	}
+	return net.JoinHostPort(host, port), nil
+}
+
+// MustParseZipperAddr parse the zipper address and panic if error
+func MustParseZipperAddr(zipper string) string {
+	addr, err := ParseZipperAddr(zipper)
+	if err != nil {
+		panic(err)
+	}
+	return addr
 }

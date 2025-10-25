@@ -9,7 +9,6 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -17,6 +16,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/yomorun/yomo/cli/serverless"
 	"github.com/yomorun/yomo/cli/template"
+	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/pkg/file"
 )
 
@@ -38,24 +38,11 @@ func GetRootPath() string {
 }
 
 func parseZipperAddr(opts *serverless.Options) error {
-	url := opts.ZipperAddr
-	if url == "" {
-		opts.ZipperAddr = "localhost:9000"
-		return nil
-	}
-
-	splits := strings.Split(url, ":")
-	if len(splits) != 2 {
-		return fmt.Errorf(`the format of url "%s" is incorrect, it should be "host:port", e.g. localhost:9000`, url)
-	}
-
-	port, err := strconv.Atoi(splits[1])
+	zipperAddr, err := core.ParseZipperAddr(opts.ZipperAddr)
 	if err != nil {
-		return fmt.Errorf("%s: invalid port: %s", url, splits[1])
+		return err
 	}
-
-	opts.ZipperAddr = fmt.Sprintf("%s:%d", splits[0], port)
-
+	opts.ZipperAddr = zipperAddr
 	return nil
 }
 

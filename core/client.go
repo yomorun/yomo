@@ -56,6 +56,7 @@ type readOut struct {
 
 // NewClient creates a new YoMo-Client.
 func NewClient(appName, zipperAddr string, clientType ClientType, opts ...ClientOption) *Client {
+	zipper := MustParseZipperAddr(zipperAddr)
 	option := defaultClientOption()
 
 	for _, o := range opts {
@@ -73,7 +74,7 @@ func NewClient(appName, zipperAddr string, clientType ClientType, opts ...Client
 	ctx, ctxCancel := context.WithCancelCause(context.Background())
 
 	return &Client{
-		zipperAddr: zipperAddr,
+		zipperAddr: zipper,
 		name:       appName,
 		clientID:   clientID,
 		processor:  func(df *frame.DataFrame) { logger.Warn("the processor has not been set") },
