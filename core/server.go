@@ -585,7 +585,7 @@ func ParseZipperAddr(zipper string) (string, error) {
 	}
 	_, err = strconv.Atoi(port)
 	if err != nil {
-		return "", errors.New("invalid port number")
+		return "", fmt.Errorf("invalid port: %s", port)
 	}
 	return net.JoinHostPort(host, port), nil
 }
