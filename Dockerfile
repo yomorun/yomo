@@ -1,4 +1,4 @@
-FROM golang:1.24.0-alpine AS builder
+FROM golang:1.25-alpine3.22 AS builder
 
 RUN apk update && apk add --no-cache make && apk --no-cache add git
 
@@ -10,7 +10,7 @@ RUN GO_MODULE=$(go list -m) \
     && TAG=$(git describe --tags 2>/dev/null || git rev-parse --short HEAD) \
     && go build -o /bin/yomo -trimpath -ldflags "-s -w -X ${GO_MODULE}/cli.Version=${TAG}" ./cmd/yomo/main.go
 
-FROM alpine:3.17
+FROM alpine:3.22
 
 RUN apk --no-cache add ca-certificates
 
