@@ -3,7 +3,7 @@ module github.com/yomorun/yomo
 go 1.25
 
 require (
-	github.com/anthropics/anthropic-sdk-go v1.2.1
+	github.com/anthropics/anthropic-sdk-go v1.14.0
 	github.com/briandowns/spinner v1.23.2
 	github.com/caarlos0/env/v6 v6.10.1
 	github.com/fatih/color v1.18.0
