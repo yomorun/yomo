@@ -145,7 +145,9 @@ func multiTurnFunctionCalling(
 				Role:      openai.ChatMessageRoleAssistant,
 				ToolCalls: toolCalls,
 			})
-
+			if req.Stream {
+				_ = w.WriteStreamEvent(toolCalls)
+			}
 			// call functions
 			reqID := id.New(16)
 			callResult, err := caller.Call(callCtx, transID, reqID, toolCalls, tracer)
@@ -156,7 +158,7 @@ func multiTurnFunctionCalling(
 				return err
 			}
 			if req.Stream {
-				_ = w.WriteStreamEvent(toolCalls)
+				_ = w.WriteStreamEvent(callResult)
 			}
 			callSpan.End()
 

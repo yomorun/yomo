@@ -51,25 +51,25 @@ func Start(config *Config, aiConfig *pkgai.Config, source yomo.Source, reducer y
 	// opts.SourceBuilder = sourceBuilder
 	// opts.ReducerBuilder = reducerBuilder
 	aiService = pkgai.NewService(provider, opts)
-	// http server
-	addr := config.Server.Addr
-	mux := http.NewServeMux()
-	// home
-	mux.HandleFunc("/", index)
-	// sse http handler
-	mux.HandleFunc("/sse", sseHTTPHandler)
-	mux.HandleFunc("/message", sseHTTPHandler)
+	// mux := http.NewServeMux()
+	// // home
+	// mux.HandleFunc("/", index)
+	// // sse http handler
+	// mux.HandleFunc("/sse", sseHTTPHandler)
+	// mux.HandleFunc("/message", sseHTTPHandler)
 
-
-	httpServer = &http.Server{
-		Addr:    addr,
-		Handler: mux,
-	}
 	// mcp server
 	mcpServer, err = NewMCPServer(logger)
 	if err != nil {
 		logger.Error("[mcp] failed to create server", "error", err)
 		return err
+	}
+	// http server
+	addr := config.Server.Addr
+	httpServer = &http.Server{
+		Addr: addr,
+		// Handler: mux,
+		Handler: mcpServer.SSEServer,
 	}
 	logger.Info("[mcp] server is up and running", "endpoint", fmt.Sprintf("http://%s", addr))
 
@@ -86,14 +86,15 @@ func index(w http.ResponseWriter, _ *http.Request) {
 	w.Write([]byte("MCP Server is running"))
 }
 
-func sseHTTPHandler(w http.ResponseWriter, r *http.Request) {
-	if mcpServer == nil {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	mcpServer.ServeHTTP(w, r)
-}
-
+//
+// func sseHTTPHandler(w http.ResponseWriter, r *http.Request) {
+// 	if mcpServer == nil {
+// 		w.WriteHeader(http.StatusNotFound)
+// 		return
+// 	}
+// 	mcpServer.ServeHTTP(w, r)
+// }
+//
 
 // AddMCPTool add mcp tool
 func AddMCPTool(connID uint64, functionDefinition *openai.FunctionDefinition) error {
@@ -101,24 +102,29 @@ func AddMCPTool(connID uint64, functionDefinition *openai.FunctionDefinition) er
 		// mpc server is disabled
 		return nil
 	}
+	var err error
 	// add tool
-	tool := mcp.NewToolWithRawSchema(
-		functionDefinition.Name,
-		functionDefinition.Description,
-		json.RawMessage(`{}`),
-	)
+	rawInputSchema := []byte(`{"type":"object"}`)
+	tool := &mcp.Tool{
+		Name:        functionDefinition.Name,
+		Description: functionDefinition.Description,
+		// InputSchema: &jsonschema.Schema{Type: "object"},
+		InputSchema: json.RawMessage(rawInputSchema),
+		// json.RawMessage(`{}`),
+	}
 	// add input schema
 	if functionDefinition.Parameters != nil {
-		inputSchema, err := json.Marshal(functionDefinition.Parameters)
+		rawInputSchema, err = json.Marshal(functionDefinition.Parameters)
 		if err != nil {
 			return err
 		}
-		tool.RawInputSchema = json.RawMessage(inputSchema)
+		// tool.RawInputSchema = json.RawMessage(inputSchema)
+		tool.InputSchema = json.RawMessage(rawInputSchema)
 	}
 	// Add tool handler
 	mcpServer.AddTool(tool, mcpToolHandler)
 	tools.Store(connID, functionDefinition)
-	logger.Info("[mcp] add tool", "input_schema", string(tool.RawInputSchema), "conn_id", connID)
+	logger.Info("[mcp] add tool", "input_schema", string(rawInputSchema), "conn_id", connID)
 
 	return nil
 }
@@ -145,7 +151,8 @@ func RemoveMCPTool(connID uint64) error {
 }
 
 // mcpToolHandler mcp tool handler
-func mcpToolHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+// type ToolHandler func(context.Context, *CallToolRequest) (*CallToolResult, error)
+func mcpToolHandler(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	// get tracer
 	tracer := pkgai.FromTracerContext(ctx)
 	if tracer == nil {

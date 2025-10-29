@@ -24,6 +24,7 @@ var (
 type MCPServer struct {
 	underlying           *mcp.Server
 	SSEServer            *mcp.SSEHandler
+	StreamableHTTPServer *mcp.StreamableHTTPHandler
 	basePath             string
 	logger               *slog.Logger
 }
@@ -66,13 +67,10 @@ func NewMCPServer(logger *slog.Logger) (*MCPServer, error) {
 		SSEServer:  sseServer,
 		logger:     logger,
 	}
-	sseEndpoint, err := sseServer.CompleteSseEndpoint()
-	if err != nil {
-		return nil, err
-	}
 
 	logger.Info("[mcp] create mcp server",
-		"sse_endpoint", sseEndpoint,
+		"sse_endpoint", "/sse",
+		"streamable_http_endpoint", "/mcp",
 	)
 
 	return mcpServer, nil
@@ -89,17 +87,17 @@ func (s *MCPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // AddTool adds a tool to the mcp server
-func (s *MCPServer) AddTool(tool mcp.Tool, handler mcp.ToolHandlerFunc) {
+func (s *MCPServer) AddTool(tool *mcp.Tool, handler mcp.ToolHandler) {
 	s.underlying.AddTool(tool, handler)
 }
 
 // DeleteTools deletes tools by name
 func (s *MCPServer) DeleteTools(names ...string) {
-	s.underlying.DeleteTools(names...)
+	s.underlying.RemoveTools(names...)
 }
 
 // AddPrompt adds a prompt to the mcp server
-func (s *MCPServer) AddPrompt(prompt mcp.Prompt, handler mcp.PromptHandlerFunc) {
+func (s *MCPServer) AddPrompt(prompt *mcp.Prompt, handler mcp.PromptHandler) {
 	s.underlying.AddPrompt(prompt, handler)
 }
 
@@ -119,81 +117,81 @@ func authContextFunc(ctx context.Context, r *http.Request) context.Context {
 	return ctx
 }
 
-func hooks(logger *slog.Logger) *mcp.Hooks {
-	hooks := &mcp.Hooks{}
-
-	hooks.AddBeforeAny(func(ctx context.Context, id any, method mcp.MCPMethod, message any) {
-		logger.Debug("[mcp] hook.beforeAny", "method", method, "id", id, "message", message)
-	})
-	hooks.AddOnSuccess(func(ctx context.Context, id any, method mcp.MCPMethod, message any, result any) {
-		logger.Info(fmt.Sprintf("[mcp] rpc:%s", method), "id", id, "message", message, "result", result)
-	})
-	hooks.AddOnError(func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) {
-		logger.Error("[mcp] rpc call error", "method", method, "id", id, "message", message, "error", err)
-	})
-	// initialize
-	hooks.AddBeforeInitialize(func(ctx context.Context, id any, message *mcp.InitializeRequest) {
-		logger.Debug("[mcp] hook.beforeInitialize", "id", id, "message", message)
-	})
-	hooks.AddAfterInitialize(func(ctx context.Context, id any, message *mcp.InitializeRequest, result *mcp.InitializeResult) {
-		logger.Debug("[mcp] hook.afterInitialize", "id", id, "message", message, "result", result)
-	})
-	// ping
-	hooks.AddBeforePing(func(ctx context.Context, id any, message *mcp.PingRequest) {
-		logger.Debug("[mcp] hook.beforePing", "id", id, "message", message)
-	})
-	hooks.AddAfterPing(func(ctx context.Context, id any, message *mcp.PingRequest, result *mcp.EmptyResult) {
-		logger.Debug("[mcp] hook.afterPing", "id", id, "message", message, "result", result)
-	})
-	// list resources
-	hooks.AddBeforeListResources(func(ctx context.Context, id any, message *mcp.ListResourcesRequest) {
-		logger.Debug("[mcp] hook.beforeListResources", "id", id, "message", message)
-	})
-	hooks.AddAfterListResources(func(ctx context.Context, id any, message *mcp.ListResourcesRequest, result *mcp.ListResourcesResult) {
-		logger.Debug("[mcp] hook.afterListResources", "id", id, "message", message, "result", result)
-	})
-	// list resource templates
-	hooks.AddBeforeListResourceTemplates(func(ctx context.Context, id any, message *mcp.ListResourceTemplatesRequest) {
-		logger.Debug("[mcp] hook.beforeListResourceTemplates", "id", id, "message", message)
-	})
-	hooks.AddAfterListResourceTemplates(func(ctx context.Context, id any, message *mcp.ListResourceTemplatesRequest, result *mcp.ListResourceTemplatesResult) {
-		logger.Debug("[mcp] hook.afterListResourceTemplates", "id", id, "message", message, "result", result)
-	})
-	// read resource
-	hooks.AddBeforeReadResource(func(ctx context.Context, id any, message *mcp.ReadResourceRequest) {
-		logger.Debug("[mcp] hook.beforeReadResource", "id", id, "message", message)
-	})
-	hooks.AddAfterReadResource(func(ctx context.Context, id any, message *mcp.ReadResourceRequest, result *mcp.ReadResourceResult) {
-		logger.Debug("[mcp] hook.afterReadResource", "id", id, "message", message, "result", result)
-	})
-	// list prompts
-	hooks.AddBeforeListPrompts(func(ctx context.Context, id any, message *mcp.ListPromptsRequest) {
-		logger.Debug("[mcp] hook.beforeListPrompts", "id", id, "message", message)
-	})
-	hooks.AddAfterListPrompts(func(ctx context.Context, id any, message *mcp.ListPromptsRequest, result *mcp.ListPromptsResult) {
-		logger.Debug("[mcp] hook.afterListPrompts", "id", id, "message", message, "result", result)
-	})
-	// get prompt
-	hooks.AddBeforeGetPrompt(func(ctx context.Context, id any, message *mcp.GetPromptRequest) {
-		logger.Debug("[mcp] hook.beforeGetPrompt", "id", id, "message", message)
-	})
-	hooks.AddAfterGetPrompt(func(ctx context.Context, id any, message *mcp.GetPromptRequest, result *mcp.GetPromptResult) {
-		logger.Debug("[mcp] hook.afterGetPrompt", "id", id, "message", message, "result", result)
-	})
-	// list tools
-	hooks.AddBeforeListTools(func(ctx context.Context, id any, message *mcp.ListToolsRequest) {
-		logger.Debug("[mcp] hook.beforeListTools", "id", id, "message", message)
-	})
-	hooks.AddAfterListTools(func(ctx context.Context, id any, message *mcp.ListToolsRequest, result *mcp.ListToolsResult) {
-		logger.Debug("[mcp] hook.afterListTools", "id", id, "message", message, "result", result)
-	})
-	// call tool
-	hooks.AddBeforeCallTool(func(ctx context.Context, id any, message *mcp.CallToolRequest) {
-		logger.Debug("[mcp] hook.beforeCallTool", "id", id, "message", message)
-	})
-	hooks.AddAfterCallTool(func(ctx context.Context, id any, message *mcp.CallToolRequest, result *mcp.CallToolResult) {
-		logger.Debug("[mcp] hook.afterCallTool", "id", id, "message", message, "result", result)
-	})
-
-	return hooks
-}
+// func hooks(logger *slog.Logger) *mcp.Hooks {
+// 	hooks := &mcp.Hooks{}
+//
+// 	hooks.AddBeforeAny(func(ctx context.Context, id any, method mcp.MCPMethod, message any) {
+// 		logger.Debug("[mcp] hook.beforeAny", "method", method, "id", id, "message", message)
+// 	})
+// 	hooks.AddOnSuccess(func(ctx context.Context, id any, method mcp.MCPMethod, message any, result any) {
+// 		logger.Info(fmt.Sprintf("[mcp] rpc:%s", method), "id", id, "message", message, "result", result)
+// 	})
+// 	hooks.AddOnError(func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) {
+// 		logger.Error("[mcp] rpc call error", "method", method, "id", id, "message", message, "error", err)
+// 	})
+// 	// initialize
+// 	hooks.AddBeforeInitialize(func(ctx context.Context, id any, message *mcp.InitializeRequest) {
+// 		logger.Debug("[mcp] hook.beforeInitialize", "id", id, "message", message)
+// 	})
+// 	hooks.AddAfterInitialize(func(ctx context.Context, id any, message *mcp.InitializeRequest, result *mcp.InitializeResult) {
+// 		logger.Debug("[mcp] hook.afterInitialize", "id", id, "message", message, "result", result)
+// 	})
+// 	// ping
+// 	hooks.AddBeforePing(func(ctx context.Context, id any, message *mcp.PingRequest) {
+// 		logger.Debug("[mcp] hook.beforePing", "id", id, "message", message)
+// 	})
+// 	hooks.AddAfterPing(func(ctx context.Context, id any, message *mcp.PingRequest, result *mcp.EmptyResult) {
+// 		logger.Debug("[mcp] hook.afterPing", "id", id, "message", message, "result", result)
+// 	})
+// 	// list resources
+// 	hooks.AddBeforeListResources(func(ctx context.Context, id any, message *mcp.ListResourcesRequest) {
+// 		logger.Debug("[mcp] hook.beforeListResources", "id", id, "message", message)
+// 	})
+// 	hooks.AddAfterListResources(func(ctx context.Context, id any, message *mcp.ListResourcesRequest, result *mcp.ListResourcesResult) {
+// 		logger.Debug("[mcp] hook.afterListResources", "id", id, "message", message, "result", result)
+// 	})
+// 	// list resource templates
+// 	hooks.AddBeforeListResourceTemplates(func(ctx context.Context, id any, message *mcp.ListResourceTemplatesRequest) {
+// 		logger.Debug("[mcp] hook.beforeListResourceTemplates", "id", id, "message", message)
+// 	})
+// 	hooks.AddAfterListResourceTemplates(func(ctx context.Context, id any, message *mcp.ListResourceTemplatesRequest, result *mcp.ListResourceTemplatesResult) {
+// 		logger.Debug("[mcp] hook.afterListResourceTemplates", "id", id, "message", message, "result", result)
+// 	})
+// 	// read resource
+// 	hooks.AddBeforeReadResource(func(ctx context.Context, id any, message *mcp.ReadResourceRequest) {
+// 		logger.Debug("[mcp] hook.beforeReadResource", "id", id, "message", message)
+// 	})
+// 	hooks.AddAfterReadResource(func(ctx context.Context, id any, message *mcp.ReadResourceRequest, result *mcp.ReadResourceResult) {
+// 		logger.Debug("[mcp] hook.afterReadResource", "id", id, "message", message, "result", result)
+// 	})
+// 	// list prompts
+// 	hooks.AddBeforeListPrompts(func(ctx context.Context, id any, message *mcp.ListPromptsRequest) {
+// 		logger.Debug("[mcp] hook.beforeListPrompts", "id", id, "message", message)
+// 	})
+// 	hooks.AddAfterListPrompts(func(ctx context.Context, id any, message *mcp.ListPromptsRequest, result *mcp.ListPromptsResult) {
+// 		logger.Debug("[mcp] hook.afterListPrompts", "id", id, "message", message, "result", result)
+// 	})
+// 	// get prompt
+// 	hooks.AddBeforeGetPrompt(func(ctx context.Context, id any, message *mcp.GetPromptRequest) {
+// 		logger.Debug("[mcp] hook.beforeGetPrompt", "id", id, "message", message)
+// 	})
+// 	hooks.AddAfterGetPrompt(func(ctx context.Context, id any, message *mcp.GetPromptRequest, result *mcp.GetPromptResult) {
+// 		logger.Debug("[mcp] hook.afterGetPrompt", "id", id, "message", message, "result", result)
+// 	})
+// 	// list tools
+// 	hooks.AddBeforeListTools(func(ctx context.Context, id any, message *mcp.ListToolsRequest) {
+// 		logger.Debug("[mcp] hook.beforeListTools", "id", id, "message", message)
+// 	})
+// 	hooks.AddAfterListTools(func(ctx context.Context, id any, message *mcp.ListToolsRequest, result *mcp.ListToolsResult) {
+// 		logger.Debug("[mcp] hook.afterListTools", "id", id, "message", message, "result", result)
+// 	})
+// 	// call tool
+// 	hooks.AddBeforeCallTool(func(ctx context.Context, id any, message *mcp.CallToolRequest) {
+// 		logger.Debug("[mcp] hook.beforeCallTool", "id", id, "message", message)
+// 	})
+// 	hooks.AddAfterCallTool(func(ctx context.Context, id any, message *mcp.CallToolRequest, result *mcp.CallToolResult) {
+// 		logger.Debug("[mcp] hook.afterCallTool", "id", id, "message", message, "result", result)
+// 	})
+//
+// 	return hooks
+// }
