@@ -51,12 +51,6 @@ func Start(config *Config, aiConfig *pkgai.Config, source yomo.Source, reducer y
 	// opts.SourceBuilder = sourceBuilder
 	// opts.ReducerBuilder = reducerBuilder
 	aiService = pkgai.NewService(provider, opts)
-	// mux := http.NewServeMux()
-	// // home
-	// mux.HandleFunc("/", index)
-	// // sse http handler
-	// mux.HandleFunc("/sse", sseHTTPHandler)
-	// mux.HandleFunc("/message", sseHTTPHandler)
 
 	// mcp server
 	mcpServer, err = NewMCPServer(logger)
@@ -65,11 +59,14 @@ func Start(config *Config, aiConfig *pkgai.Config, source yomo.Source, reducer y
 		return err
 	}
 	// http server
+	mux := http.NewServeMux()
 	addr := config.Server.Addr
+	// handlers
+	mux.HandleFunc("/", index)
+	mux.HandleFunc("/sse", mcpServer.SSEServer.ServeHTTP)
 	httpServer = &http.Server{
-		Addr: addr,
-		// Handler: mux,
-		Handler: mcpServer.SSEServer,
+		Addr:    addr,
+		Handler: mux,
 	}
 	logger.Info("[mcp] server is up and running", "endpoint", fmt.Sprintf("http://%s", addr))
 
@@ -85,16 +82,6 @@ func index(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("MCP Server is running"))
 }
-
-//
-// func sseHTTPHandler(w http.ResponseWriter, r *http.Request) {
-// 	if mcpServer == nil {
-// 		w.WriteHeader(http.StatusNotFound)
-// 		return
-// 	}
-// 	mcpServer.ServeHTTP(w, r)
-// }
-//
 
 // AddMCPTool add mcp tool
 func AddMCPTool(connID uint64, functionDefinition *openai.FunctionDefinition) error {
@@ -195,5 +182,11 @@ func mcpToolHandler(ctx context.Context, request *mcp.CallToolRequest) (*mcp.Cal
 	result := callResult[0].Content
 	logger.Info("[mcp] tool call result", "name", name, "arguments", args, "result", string(result))
 
-	return mcp.NewToolResultText(result), nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{
+				Text: string(result),
+			},
+		},
+	}, nil
 }
