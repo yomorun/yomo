@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/sashabaranov/go-openai"
@@ -63,6 +64,7 @@ func Start(config *Config, aiConfig *pkgai.Config, source yomo.Source, reducer y
 	addr := config.Server.Addr
 	// handlers
 	mux.HandleFunc("/", index)
+	mux.HandleFunc("/health", health)
 	mux.HandleFunc("/sse", mcpServer.SSEServer.ServeHTTP)
 	httpServer = &http.Server{
 		Addr:    addr,
@@ -81,6 +83,14 @@ func Stop() error {
 func index(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("MCP Server is running"))
+}
+
+func health(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status": "healthy",
+		"time":   time.Now().Format(time.RFC3339),
+	})
 }
 
 // AddMCPTool add mcp tool
