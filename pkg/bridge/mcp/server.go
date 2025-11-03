@@ -1,7 +1,6 @@
 package mcp
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -14,7 +13,6 @@ import (
 	"github.com/yomorun/yomo"
 	pkgai "github.com/yomorun/yomo/pkg/bridge/ai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
-	"github.com/yomorun/yomo/pkg/id"
 )
 
 var (
@@ -40,19 +38,7 @@ func Start(config *Config, aiConfig *pkgai.Config, source yomo.Source, reducer y
 		SourceBuilder:  func(_ string) yomo.Source { return source },
 		ReducerBuilder: func(_ string) yomo.StreamFunction { return reducer },
 	}
-	// zipperAddr = pkgai.ParseZipperAddr(zipperAddr)
-	// sourceBuilder := func(credential string) yomo.Source {
-	// 	source := yomo.NewSource("mcp-source", zipperAddr, yomo.WithCredential(credential))
-	// 	return source
-	// }
-	// reducerBuilder := func(credential string) yomo.StreamFunction {
-	// 	reducer := yomo.NewStreamFunction("mcp-reducer", zipperAddr, yomo.WithSfnCredential(credential))
-	// 	return reducer
-	// }
-	// opts.SourceBuilder = sourceBuilder
-	// opts.ReducerBuilder = reducerBuilder
 	aiService = pkgai.NewService(provider, opts)
-
 	// mcp server
 	mcpServer, err = NewMCPServer(logger)
 	if err != nil {
@@ -65,7 +51,8 @@ func Start(config *Config, aiConfig *pkgai.Config, source yomo.Source, reducer y
 	// handlers
 	mux.HandleFunc("/", index)
 	mux.HandleFunc("/health", health)
-	mux.HandleFunc("/sse", mcpServer.SSEServer.ServeHTTP)
+	mux.HandleFunc("/sse", mcpServer.SSEHandler.ServeHTTP)
+	mux.HandleFunc("/mcp", mcpServer.StreamableHTTPHandler.ServeHTTP)
 	httpServer = &http.Server{
 		Addr:    addr,
 		Handler: mux,
@@ -132,71 +119,18 @@ func RemoveMCPTool(connID uint64) error {
 		// mpc server is disabled
 		return nil
 	}
-	tools.Delete(connID)
 	tool, ok := tools.Load(connID)
 	if !ok {
 		// tool not found
 		return nil
 	}
+	tools.Delete(connID)
 	functionDefinition, ok := tool.(*openai.FunctionDefinition)
 	if !ok {
 		// tool not found
 		return nil
 	}
 	mcpServer.DeleteTools(functionDefinition.Name)
+	logger.Info("[mcp] remove tool", "name", functionDefinition.Name, "conn_id", connID)
 	return nil
-}
-
-// mcpToolHandler mcp tool handler
-// type ToolHandler func(context.Context, *CallToolRequest) (*CallToolResult, error)
-func mcpToolHandler(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	// get tracer
-	tracer := pkgai.FromTracerContext(ctx)
-	if tracer == nil {
-		logger.Error("[mcp] tool handler load failed", "error", ErrTracerNotFound.Error())
-		return nil, ErrTracerNotFound
-	}
-
-	// get caller
-	caller := pkgai.FromCallerContext(ctx)
-	if caller == nil {
-		logger.Error("[mcp] tool handler load failed", "error", ErrCallerNotFound.Error())
-		return nil, ErrCallerNotFound
-	}
-	// run sfn and get result
-	transID := id.New(32)
-	reqID := id.New(16)
-	toolCallID := id.New(8)
-	name := request.Params.Name
-	arguments, err := json.Marshal(request.Params.Arguments)
-	if err != nil {
-		return nil, err
-	}
-	args := string(arguments)
-	logger.Info("[mcp] tool is calling...", "name", name, "arguments", args)
-	fnCalls := []openai.ToolCall{
-		{
-			ID:   toolCallID,
-			Type: "function",
-			Function: openai.FunctionCall{
-				Name:      name,
-				Arguments: string(arguments),
-			},
-		},
-	}
-	callResult, err := caller.Call(ctx, transID, reqID, fnCalls, tracer)
-	if err != nil {
-		logger.Error("[mcp] tool call error", "error", err, "name", name, "arguments", args)
-		return nil, err
-	}
-	result := callResult[0].Content
-	logger.Info("[mcp] tool call result", "name", name, "arguments", args, "result", string(result))
-
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			&mcp.TextContent{
-				Text: string(result),
-			},
-		},
-	}, nil
 }

@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo/core/ylog"
 	pkgai "github.com/yomorun/yomo/pkg/bridge/ai"
+	"github.com/yomorun/yomo/pkg/id"
 	"go.opentelemetry.io/otel"
 )
 
@@ -24,11 +26,10 @@ var (
 
 // MCPServer represents a MCP server
 type MCPServer struct {
-	underlying           *mcp.Server
-	SSEServer            http.Handler
-	StreamableHTTPServer *mcp.StreamableHTTPHandler
-	basePath             string
-	logger               *slog.Logger
+	underlying            *mcp.Server
+	SSEHandler            http.Handler
+	StreamableHTTPHandler http.Handler
+	logger                *slog.Logger
 }
 
 // NewMCPServer create a new mcp server
@@ -47,18 +48,28 @@ func NewMCPServer(logger *slog.Logger) (*MCPServer, error) {
 		opts,
 	)
 	underlyingMCPServer.AddReceivingMiddleware(loggingMiddleware(logger))
-	// sse server
-	sseServer := mcp.NewSSEHandler(
+	// sse handler
+	sseHandler := mcp.NewSSEHandler(
 		func(request *http.Request) *mcp.Server {
 			return underlyingMCPServer
 		},
 		&mcp.SSEOptions{},
 	)
-
+	// streamable http handler
+	streamableHTTPHandler := mcp.NewStreamableHTTPHandler(
+		func(request *http.Request) *mcp.Server {
+			return underlyingMCPServer
+		},
+		&mcp.StreamableHTTPOptions{
+			Logger: logger,
+		},
+	)
+	// mcp server
 	mcpServer := &MCPServer{
-		underlying: underlyingMCPServer,
-		SSEServer:  authHandler(sseServer),
-		logger:     logger,
+		underlying:            underlyingMCPServer,
+		SSEHandler:            authHandler(sseHandler),
+		StreamableHTTPHandler: authHandler(streamableHTTPHandler),
+		logger:                logger,
 	}
 
 	logger.Info("[mcp] create mcp server",
@@ -67,11 +78,6 @@ func NewMCPServer(logger *slog.Logger) (*MCPServer, error) {
 	)
 
 	return mcpServer, nil
-}
-
-// BasePath returns the base path of the mcp server
-func (s *MCPServer) BasePath() string {
-	return s.basePath
 }
 
 // AddTool adds a tool to the mcp server
@@ -108,6 +114,60 @@ func authHandler(handler http.Handler) http.Handler {
 		// handle request
 		handler.ServeHTTP(w, r)
 	})
+}
+
+// mcpToolHandler mcp tool handler
+// type ToolHandler func(context.Context, *CallToolRequest) (*CallToolResult, error)
+func mcpToolHandler(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	// get tracer
+	tracer := pkgai.FromTracerContext(ctx)
+	if tracer == nil {
+		logger.Error("[mcp] tool handler load failed", "error", ErrTracerNotFound.Error())
+		return nil, ErrTracerNotFound
+	}
+
+	// get caller
+	caller := pkgai.FromCallerContext(ctx)
+	if caller == nil {
+		logger.Error("[mcp] tool handler load failed", "error", ErrCallerNotFound.Error())
+		return nil, ErrCallerNotFound
+	}
+	// run sfn and get result
+	transID := id.New(32)
+	reqID := id.New(16)
+	toolCallID := id.New(8)
+	name := request.Params.Name
+	arguments, err := json.Marshal(request.Params.Arguments)
+	if err != nil {
+		return nil, err
+	}
+	args := string(arguments)
+	logger.Info("[mcp] tool is calling...", "name", name, "arguments", args)
+	fnCalls := []openai.ToolCall{
+		{
+			ID:   toolCallID,
+			Type: "function",
+			Function: openai.FunctionCall{
+				Name:      name,
+				Arguments: string(arguments),
+			},
+		},
+	}
+	callResult, err := caller.Call(ctx, transID, reqID, fnCalls, tracer)
+	if err != nil {
+		logger.Error("[mcp] tool call error", "error", err, "name", name, "arguments", args)
+		return nil, err
+	}
+	result := callResult[0].Content
+	logger.Info("[mcp] tool call result", "name", name, "arguments", args, "result", string(result))
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{
+				Text: string(result),
+			},
+		},
+	}, nil
 }
 
 func loggingMiddleware(logger *slog.Logger) mcp.Middleware {
