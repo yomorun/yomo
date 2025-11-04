@@ -105,7 +105,7 @@ func AddMCPTool(connID uint64, functionDefinition *openai.FunctionDefinition) er
 	// Add tool handler
 	mcpServer.AddTool(tool, toolHandler)
 	tools.Store(connID, functionDefinition)
-	logger.Info("[mcp] add tool", "input_schema", string(rawInputSchema), "conn_id", connID)
+	logger.Info("[mcp] add tool", "name", tool.Name, "input_schema", string(rawInputSchema), "conn_id", connID)
 
 	return nil
 }
