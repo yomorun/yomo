@@ -77,6 +77,9 @@ func NewMCPServer(logger *slog.Logger) (*MCPServer, error) {
 		"streamable_http_endpoint", "/mcp",
 	)
 
+	// add prompt
+	mcpServer.AddPrompt(&mcp.Prompt{Name: "yomo"}, promptHandler)
+
 	return mcpServer, nil
 }
 
@@ -95,6 +98,32 @@ func (s *MCPServer) AddPrompt(prompt *mcp.Prompt, handler mcp.PromptHandler) {
 	s.underlying.AddPrompt(prompt, handler)
 }
 
+// promptHandler returns a prompt handler
+func promptHandler(ctx context.Context, request *mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+	// get caller
+	caller := pkgai.FromCallerContext(ctx)
+	if caller == nil {
+		logger.Error("[mcp] prompt handler load failed", "error", ErrCallerNotFound.Error())
+		return nil, ErrCallerNotFound
+	}
+	// get prompt
+	systemPrompt, op := caller.GetSystemPrompt()
+	logger.Info("[mcp] add prompt", "name", request.Params.Name, "prompt", systemPrompt, "operation", op)
+
+	return &mcp.GetPromptResult{
+		Description: "yomo system prompt",
+		Messages: []*mcp.PromptMessage{
+			{
+				Role: "assistant",
+				Content: &mcp.TextContent{
+					Text: systemPrompt,
+				},
+			},
+		},
+	}, nil
+}
+
+// authHandler mcp auth handler
 func authHandler(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -108,6 +137,8 @@ func authHandler(handler http.Handler) http.Handler {
 			w.Write([]byte("failed to load caller"))
 			return
 		}
+		// TEST: set system prompt for testing
+		// caller.SetSystemPrompt("You are a helpful assistant.", pkgai.SystemPromptOpPrefix)
 		// caller
 		ctx = pkgai.WithCallerContext(ctx, caller)
 		r = r.WithContext(ctx)
@@ -116,9 +147,8 @@ func authHandler(handler http.Handler) http.Handler {
 	})
 }
 
-// mcpToolHandler mcp tool handler
-// type ToolHandler func(context.Context, *CallToolRequest) (*CallToolResult, error)
-func mcpToolHandler(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+// toolHandler mcp tool handler
+func toolHandler(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	// get tracer
 	tracer := pkgai.FromTracerContext(ctx)
 	if tracer == nil {

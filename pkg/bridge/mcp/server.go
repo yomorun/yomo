@@ -49,8 +49,8 @@ func Start(config *Config, aiConfig *pkgai.Config, source yomo.Source, reducer y
 	mux := http.NewServeMux()
 	addr := config.Server.Addr
 	// handlers
-	mux.HandleFunc("/", index)
-	mux.HandleFunc("/health", health)
+	mux.HandleFunc("/", indexHandler)
+	mux.HandleFunc("/health", healthHandler)
 	mux.HandleFunc("/sse", mcpServer.SSEHandler.ServeHTTP)
 	mux.HandleFunc("/mcp", mcpServer.StreamableHTTPHandler.ServeHTTP)
 	httpServer = &http.Server{
@@ -67,12 +67,12 @@ func Stop() error {
 	return httpServer.Close()
 }
 
-func index(w http.ResponseWriter, _ *http.Request) {
+func indexHandler(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("MCP Server is running"))
 }
 
-func health(w http.ResponseWriter, _ *http.Request) {
+func healthHandler(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"status": "healthy",
@@ -92,9 +92,7 @@ func AddMCPTool(connID uint64, functionDefinition *openai.FunctionDefinition) er
 	tool := &mcp.Tool{
 		Name:        functionDefinition.Name,
 		Description: functionDefinition.Description,
-		// InputSchema: &jsonschema.Schema{Type: "object"},
 		InputSchema: json.RawMessage(rawInputSchema),
-		// json.RawMessage(`{}`),
 	}
 	// add input schema
 	if functionDefinition.Parameters != nil {
@@ -102,11 +100,10 @@ func AddMCPTool(connID uint64, functionDefinition *openai.FunctionDefinition) er
 		if err != nil {
 			return err
 		}
-		// tool.RawInputSchema = json.RawMessage(inputSchema)
 		tool.InputSchema = json.RawMessage(rawInputSchema)
 	}
 	// Add tool handler
-	mcpServer.AddTool(tool, mcpToolHandler)
+	mcpServer.AddTool(tool, toolHandler)
 	tools.Store(connID, functionDefinition)
 	logger.Info("[mcp] add tool", "input_schema", string(rawInputSchema), "conn_id", connID)
 
