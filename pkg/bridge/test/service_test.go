@@ -214,12 +214,12 @@ func TestServiceInvoke(t *testing.T) {
 
 			flow := newMockDataFlow(newHandler(2 * time.Hour).handle)
 
-			newCaller := func(_ yomo.Source, _ yomo.StreamFunction, _ metadata.M, _ time.Duration) (*pkgai.Caller, error) {
+			newCaller := func(_ pkgai.ReduceSource, _ yomo.StreamFunction, _ metadata.M, _ time.Duration) (*pkgai.Caller, error) {
 				return mockCaller(tt.args.mockCallReqResp), err
 			}
 
 			service := pkgai.NewServiceWithCallerFunc(pd, newCaller, &pkgai.ServiceOptions{
-				SourceBuilder:     func(_ string) yomo.Source { return flow },
+				SourceBuilder:     func(_ string) pkgai.ReduceSource { return flow },
 				ReducerBuilder:    func(_ string) yomo.StreamFunction { return flow },
 				MetadataExchanger: func(_ string) (metadata.M, error) { return metadata.M{"hello": "llm bridge"}, nil },
 			})
@@ -419,12 +419,12 @@ func TestServiceChatCompletion(t *testing.T) {
 
 			flow := newMockDataFlow(newHandler(2 * time.Hour).handle)
 
-			newCaller := func(_ yomo.Source, _ yomo.StreamFunction, _ metadata.M, _ time.Duration) (*pkgai.Caller, error) {
+			newCaller := func(_ pkgai.ReduceSource, _ yomo.StreamFunction, _ metadata.M, _ time.Duration) (*pkgai.Caller, error) {
 				return mockCaller(tt.args.mockCallReqResp), err
 			}
 
 			service := pkgai.NewServiceWithCallerFunc(pd, newCaller, &pkgai.ServiceOptions{
-				SourceBuilder:     func(_ string) yomo.Source { return flow },
+				SourceBuilder:     func(_ string) pkgai.ReduceSource { return flow },
 				ReducerBuilder:    func(_ string) yomo.StreamFunction { return flow },
 				MetadataExchanger: func(_ string) (metadata.M, error) { return metadata.M{"hello": "llm bridge"}, nil },
 			})

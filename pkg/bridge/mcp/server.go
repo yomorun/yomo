@@ -11,6 +11,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo"
+	"github.com/yomorun/yomo/core/metadata"
 	pkgai "github.com/yomorun/yomo/pkg/bridge/ai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
 	"github.com/yomorun/yomo/pkg/id"
@@ -25,7 +26,7 @@ var (
 )
 
 // Start starts the http server
-func Start(config *Config, aiConfig *pkgai.Config, source yomo.Source, reducer yomo.StreamFunction, log *slog.Logger) error {
+func Start(config *Config, aiConfig *pkgai.Config, source pkgai.ReduceSource, reducer yomo.StreamFunction, log *slog.Logger) error {
 	// ai provider
 	provider, err := provider.GetProvider(aiConfig.Server.Provider)
 	if err != nil {
@@ -36,7 +37,7 @@ func Start(config *Config, aiConfig *pkgai.Config, source yomo.Source, reducer y
 	// ai service
 	opts := &pkgai.ServiceOptions{
 		Logger:         logger,
-		SourceBuilder:  func(_ string) yomo.Source { return source },
+		SourceBuilder:  func(_ string) pkgai.ReduceSource { return source },
 		ReducerBuilder: func(_ string) yomo.StreamFunction { return reducer },
 	}
 	// zipperAddr = pkgai.ParseZipperAddr(zipperAddr)
@@ -188,7 +189,15 @@ func mcpToolHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.Call
 			},
 		},
 	}
-	callResult, err := caller.Call(ctx, transID, reqID, fnCalls, tracer)
+
+	md := metadata.New()
+	for k, v := range request.Params.Meta.AdditionalFields {
+		if sv, ok := v.(string); ok {
+			md.Set(k, sv)
+		}
+	}
+
+	callResult, err := caller.Call(ctx, transID, reqID, md, fnCalls, tracer)
 	if err != nil {
 		logger.Error("[mcp] tool call error", "error", err, "name", name, "arguments", args)
 		return nil, err

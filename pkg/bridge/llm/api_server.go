@@ -23,7 +23,7 @@ type BasicAPIServer struct {
 }
 
 // Serve starts the Basic API Server
-func Serve(config *pkgai.Config, logger *slog.Logger, source yomo.Source, reducer yomo.StreamFunction) error {
+func Serve(config *pkgai.Config, logger *slog.Logger, source pkgai.ReduceSource, reducer yomo.StreamFunction) error {
 	provider, err := provider.GetProvider(config.Server.Provider)
 	if err != nil {
 		return err
@@ -37,12 +37,12 @@ func Serve(config *pkgai.Config, logger *slog.Logger, source yomo.Source, reduce
 }
 
 // NewBasicAPIServer creates a new restful service
-func NewBasicAPIServer(config *pkgai.Config, provider provider.LLMProvider, source yomo.Source, reducer yomo.StreamFunction, logger *slog.Logger) (*BasicAPIServer, error) {
+func NewBasicAPIServer(config *pkgai.Config, provider provider.LLMProvider, source pkgai.ReduceSource, reducer yomo.StreamFunction, logger *slog.Logger) (*BasicAPIServer, error) {
 	logger = logger.With("service", "llm-bridge")
 
 	opts := &pkgai.ServiceOptions{
 		Logger:         logger,
-		SourceBuilder:  func(_ string) yomo.Source { return source },
+		SourceBuilder:  func(_ string) pkgai.ReduceSource { return source },
 		ReducerBuilder: func(_ string) yomo.StreamFunction { return reducer },
 	}
 	service := pkgai.NewService(provider, opts)

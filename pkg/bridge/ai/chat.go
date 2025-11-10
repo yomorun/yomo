@@ -150,7 +150,7 @@ func multiTurnFunctionCalling(
 			}
 			// call functions
 			reqID := id.New(16)
-			callResult, err := caller.Call(callCtx, transID, reqID, toolCalls, tracer)
+			callResult, err := caller.Call(callCtx, transID, reqID, md, toolCalls, tracer)
 			if err != nil {
 				callSpan.RecordError(err)
 				callSpan.End()

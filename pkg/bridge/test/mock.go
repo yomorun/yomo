@@ -9,6 +9,7 @@ import (
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core"
+	"github.com/yomorun/yomo/core/metadata"
 	pkgai "github.com/yomorun/yomo/pkg/bridge/ai"
 	"github.com/yomorun/yomo/serverless"
 	"github.com/yomorun/yomo/serverless/mock"
@@ -68,12 +69,7 @@ func newMockDataFlow(handler core.AsyncHandler) *mockDataFlow {
 	}
 }
 
-func (t *mockDataFlow) Write(tag uint32, data []byte) error {
-	t.wrCh <- mock.NewMockContext(data, tag)
-	return nil
-}
-
-func (t *mockDataFlow) WriteWithTarget(tag uint32, data []byte, target string) error {
+func (t *mockDataFlow) Write(tag uint32, data []byte, _ metadata.M, target string) error {
 	t.wrCh <- mock.NewMockContext(data, tag)
 	return nil
 }
@@ -95,7 +91,7 @@ func (t *mockDataFlow) Run() {
 }
 
 var (
-	_ yomo.Source         = (*mockDataFlow)(nil)
+	_ pkgai.ReduceSource  = (*mockDataFlow)(nil)
 	_ yomo.StreamFunction = (*mockDataFlow)(nil)
 )
 
@@ -139,7 +135,7 @@ type mockCallSyncer struct {
 }
 
 // Call implements CallSyncer, it returns the mock response defined in advance.
-func (m *mockCallSyncer) Call(ctx context.Context, transID string, reqID string, toolCalls []openai.ToolCall, _ trace.Tracer) ([]pkgai.ToolCallResult, error) {
+func (m *mockCallSyncer) Call(ctx context.Context, transID string, reqID string, md metadata.M, toolCalls []openai.ToolCall, _ trace.Tracer) ([]pkgai.ToolCallResult, error) {
 	res := []pkgai.ToolCallResult{}
 
 	for _, call := range m.calls {

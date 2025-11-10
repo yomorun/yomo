@@ -5,12 +5,21 @@ import (
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/frame"
+	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/serverless"
 	"github.com/yomorun/yomo/pkg/id"
 	"github.com/yomorun/yomo/pkg/listener/mem"
 )
 
-var _ yomo.Source = &memSource{}
+// ReduceSource is a source like yomo.Source, but for caller reducer.
+type ReduceSource interface {
+	// Connect connects to the zipper.
+	Connect() error
+	// Write writes data to sfn instance with tag and metadata.
+	Write(tag uint32, data []byte, md metadata.M, target string) error
+	// Close closes the source.
+	Close() error
+}
 
 type memSource struct {
 	id   string
@@ -18,7 +27,8 @@ type memSource struct {
 	conn *mem.FrameConn
 }
 
-func NewSource(conn *mem.FrameConn, cred *auth.Credential) yomo.Source {
+// NewReduceSource creates a new instance of memory ReduceSource.
+func NewReduceSource(conn *mem.FrameConn, cred *auth.Credential) ReduceSource {
 	return &memSource{
 		id:   id.New(),
 		conn: conn,
@@ -43,15 +53,17 @@ func (m *memSource) Close() error {
 	return m.conn.CloseWithError("llm bridge source closed")
 }
 
-func (m *memSource) Write(_ uint32, _ []byte) error  { panic("unimplemented") }
-func (m *memSource) SetErrorHandler(_ func(_ error)) { panic("unimplemented") }
-
-func (m *memSource) WriteWithTarget(tag uint32, data []byte, target string) error {
-	md := core.NewMetadata(m.id, id.New())
+func (m *memSource) Write(tag uint32, data []byte, md metadata.M, target string) error {
+	newMd := core.NewMetadata(m.id, id.New())
 	if target != "" {
 		core.SetMetadataTarget(md, target)
 	}
-	mdBytes, _ := md.Encode()
+
+	for k, v := range md {
+		newMd.Set(k, v)
+	}
+
+	mdBytes, _ := newMd.Encode()
 
 	f := &frame.DataFrame{
 		Tag:      tag,

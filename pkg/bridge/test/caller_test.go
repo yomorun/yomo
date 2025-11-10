@@ -37,7 +37,7 @@ type testComponentCreator struct {
 	flow *mockDataFlow
 }
 
-func (c *testComponentCreator) CreateSource(_ string) yomo.Source {
+func (c *testComponentCreator) CreateSource(_ string) pkgai.ReduceSource {
 	return c.flow
 }
 
