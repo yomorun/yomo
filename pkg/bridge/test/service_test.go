@@ -435,7 +435,7 @@ func TestServiceChatCompletion(t *testing.T) {
 			caller.SetSystemPrompt(tt.args.systemPrompt, pkgai.SystemPromptOpOverwrite)
 
 			w := httptest.NewRecorder()
-			err = service.GetChatCompletions(context.TODO(), tt.args.request, "transID", caller, pkgai.NewResponseWriter(w, slog.Default()), nil)
+			err = service.GetChatCompletions(context.TODO(), tt.args.request, "transID", nil, caller, pkgai.NewResponseWriter(w, slog.Default()), nil)
 			assert.NoError(t, err)
 
 			assert.Equal(t, tt.wantRequest, pd.RequestRecords())

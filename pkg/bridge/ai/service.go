@@ -153,11 +153,17 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, transID stri
 }
 
 // GetChatCompletions accepts openai.ChatCompletionRequest and responds to http.ResponseWriter.
-func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, transID string, caller *Caller, w EventResponseWriter, tracer trace.Tracer) error {
+func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, transID string, toolCustom map[string]string, caller *Caller, w EventResponseWriter, tracer trace.Tracer) error {
 	if tracer == nil {
 		tracer = new(noop.Tracer)
 	}
 	md := caller.Metadata().Clone()
+	if md == nil {
+		md = metadata.New()
+	}
+	for k, v := range toolCustom {
+		md.Set(k, v)
+	}
 
 	// 1. find all hosting tool sfn
 	tools, err := ai.ListToolCalls(md)

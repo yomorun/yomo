@@ -16,6 +16,7 @@ func TestDecodeChatCompletionRequest(t *testing.T) {
 		name          string
 		args          args
 		wantReq       openai.ChatCompletionRequest
+		wantExtraBody extraBody
 		wantErrString string
 	}{
 		{
@@ -75,14 +76,33 @@ func TestDecodeChatCompletionRequest(t *testing.T) {
 			},
 			wantErrString: "invalid character 'm' looking for beginning of value",
 		},
+		{
+			name: "extra_body",
+			args: args{
+				data: `{"model":"gpt-4o-2024-08-06","response_format":{"type":"json_object"},"extra_body":{"yomo_tool_custom":"user_id":"123456"}}}`,
+			},
+			wantReq: openai.ChatCompletionRequest{
+				Model: "gpt-4o-2024-08-06",
+				ResponseFormat: &openai.ChatCompletionResponseFormat{
+					Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+				},
+			},
+			wantExtraBody: extraBody{
+				YomoToolCustom: map[string]string{
+					"user_id": "123456",
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotReq, err := DecodeChatCompletionRequest([]byte(tt.args.data))
+			gotReq, gotExtraBody, err := DecodeChatCompletionRequest([]byte(tt.args.data))
 			if err != nil {
 				assert.EqualError(t, err, tt.wantErrString)
 			}
 			assert.Equal(t, tt.wantReq, gotReq)
+			assert.Equal(t, tt.wantReq.ResponseFormat, gotReq.ResponseFormat)
+			assert.Equal(t, tt.wantExtraBody, gotExtraBody)
 		})
 	}
 }
