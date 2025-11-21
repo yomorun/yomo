@@ -153,7 +153,7 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, transID stri
 }
 
 // GetChatCompletions accepts openai.ChatCompletionRequest and responds to http.ResponseWriter.
-func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, transID string, toolCustom map[string]string, caller *Caller, w EventResponseWriter, tracer trace.Tracer) error {
+func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, transID string, agentContext map[string]string, caller *Caller, w EventResponseWriter, tracer trace.Tracer) error {
 	if tracer == nil {
 		tracer = new(noop.Tracer)
 	}
@@ -161,7 +161,7 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 	if md == nil {
 		md = metadata.New()
 	}
-	for k, v := range toolCustom {
+	for k, v := range agentContext {
 		md.Set(k, v)
 	}
 
