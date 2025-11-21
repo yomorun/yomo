@@ -9,7 +9,7 @@ import (
 )
 
 func TestTraceProvider(t *testing.T) {
-	t.Setenv("BASELIME_API_KEY", "")
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
 
 	SetTracerProvider()
 
