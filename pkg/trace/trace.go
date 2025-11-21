@@ -25,14 +25,12 @@ var (
 )
 
 // SetTracerProvider set otel tracer provider.
-// if enveronment BASELIME_API_KEY is set, the tracer provider will be baselime tracer provider.
 // if enveronment OTEL_EXPORTER_OTLP_ENDPOINT is set, the tracer provider will be otlptracehttp tracer provider.
 // This function set the global tracer provider by calling otel.SetTracerProvider(),
 // User also can set other tracer provider by calling otel.SetTracerProvider()
 func SetTracerProvider() {
 	client := NewClientFromEnv()
 	if client == nil {
-		otel.SetTracerProvider(noop.NewTracerProvider())
 		return
 	}
 	tp := NewTracerProviderFromClient(context.Background(), ServiceName, client)
@@ -42,12 +40,6 @@ func SetTracerProvider() {
 
 // NewClientFromEnv create otlptrace.Client from environment.
 func NewClientFromEnv() otlptrace.Client {
-	if baselimeApiKey, ok := os.LookupEnv("BASELIME_API_KEY"); ok {
-		return otlptracehttp.NewClient(
-			otlptracehttp.WithEndpointURL("https://otel.baselime.io"),
-			otlptracehttp.WithHeaders(map[string]string{"x-api-key": baselimeApiKey}),
-		)
-	}
 	if endpoint, ok := os.LookupEnv("OTEL_EXPORTER_OTLP_ENDPOINT"); ok {
 		return otlptracehttp.NewClient(otlptracehttp.WithEndpointURL(endpoint))
 	}
