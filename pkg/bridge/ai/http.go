@@ -66,7 +66,6 @@ func FromTracerContext(ctx context.Context) trace.Tracer {
 // RespondWithError writes an error to response according to the OpenAI API spec.
 func RespondWithError(w EventResponseWriter, code int, err error) error {
 	newCode, errBody := w.InterceptError(code, err)
-	w.RecordError(errBody)
 
 	if newCode != 0 {
 		code = newCode
