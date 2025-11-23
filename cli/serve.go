@@ -46,7 +46,6 @@ var serveCmd = &cobra.Command{
 			log.FailureStatusEvent(os.Stdout, "Please input the file name of config")
 			return
 		}
-
 		// log.InfoStatusEvent(os.Stdout, "")
 		ylog.Info("Starting YoMo Zipper...")
 		// config
