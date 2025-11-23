@@ -24,17 +24,18 @@ func waitSignalForShutdownServer(server *core.Server) {
 	ylog.Info("listening SIGUSR1, SIGUSR2, SIGTERM/SIGINT...")
 	for p1 := range c {
 		ylog.Debug("Received signal", "signal", p1)
-		if p1 == syscall.SIGTERM || p1 == syscall.SIGINT {
+		switch p1 {
+		case syscall.SIGTERM, syscall.SIGINT:
 			ylog.Debug("graceful shutting down ...", "sign", p1)
 			// waiting for the server to finish processing the current request
 			server.Close()
 			trace.ShutdownTracerProvider()
 			os.Exit(0)
-		} else if p1 == syscall.SIGUSR2 {
+		case syscall.SIGUSR2:
 			var m runtime.MemStats
 			runtime.ReadMemStats(&m)
 			ylog.Debug("runtime stats", "gc_nums", m.NumGC)
-		} else if p1 == syscall.SIGUSR1 {
+		case syscall.SIGUSR1:
 			statsToLogger(server)
 		}
 	}
