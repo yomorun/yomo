@@ -11,6 +11,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/sashabaranov/go-openai"
+	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
 	pkgai "github.com/yomorun/yomo/pkg/bridge/ai"
 	"github.com/yomorun/yomo/pkg/id"
@@ -183,7 +184,14 @@ func toolHandler(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallTo
 			},
 		},
 	}
-	callResult, err := caller.Call(ctx, transID, reqID, fnCalls, tracer)
+	// add metadata
+	md := metadata.New()
+	for k, v := range request.Params.Meta.GetMeta() {
+		if sv, ok := v.(string); ok {
+			md.Set(k, sv)
+		}
+	}
+	callResult, err := caller.Call(ctx, transID, reqID, md, fnCalls, tracer)
 	if err != nil {
 		logger.Error("[mcp] tool call error", "error", err, "name", name, "arguments", args)
 		return nil, err

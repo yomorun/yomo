@@ -10,27 +10,11 @@ import (
 // If a response_format is present, we cannot directly unmarshal it as a ChatCompletionRequest
 // because the schema field is a json.Unmarshaler.
 // Therefore, we need to use a temporary tmpRequest to unmarshal it.
-func DecodeChatCompletionRequest(data []byte) (req openai.ChatCompletionRequest, err error) {
-	type tmpJSONSchema struct {
-		Name        string          `json:"name"`
-		Description string          `json:"description,omitempty"`
-		Schema      json.RawMessage `json:"schema"`
-		Strict      bool            `json:"strict"`
-	}
-
-	type tmpResponseFormat struct {
-		Type       openai.ChatCompletionResponseFormatType `json:"type"`
-		JSONSchema *tmpJSONSchema                          `json:"json_schema,omitempty"`
-	}
-
-	type tmpRequest struct {
-		openai.ChatCompletionRequest
-		ResponseFormat *tmpResponseFormat `json:"response_format"`
-	}
+func DecodeChatCompletionRequest(data []byte) (req openai.ChatCompletionRequest, agentContext map[string]string, err error) {
 
 	var tmp tmpRequest
 	if err := json.Unmarshal(data, &tmp); err != nil {
-		return openai.ChatCompletionRequest{}, err
+		return openai.ChatCompletionRequest{}, nil, err
 	}
 
 	req = tmp.ChatCompletionRequest
@@ -51,5 +35,23 @@ func DecodeChatCompletionRequest(data []byte) (req openai.ChatCompletionRequest,
 		}
 	}
 
-	return req, nil
+	return req, tmp.AgentContext, nil
+}
+
+type tmpJSONSchema struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	Schema      json.RawMessage `json:"schema"`
+	Strict      bool            `json:"strict"`
+}
+
+type tmpResponseFormat struct {
+	Type       openai.ChatCompletionResponseFormatType `json:"type"`
+	JSONSchema *tmpJSONSchema                          `json:"json_schema,omitempty"`
+}
+
+type tmpRequest struct {
+	openai.ChatCompletionRequest
+	ResponseFormat *tmpResponseFormat `json:"response_format"`
+	AgentContext   map[string]string  `json:"agent_context,omitempty"`
 }

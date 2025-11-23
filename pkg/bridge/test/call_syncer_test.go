@@ -8,6 +8,7 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
+	"github.com/yomorun/yomo/core/metadata"
 	pkgai "github.com/yomorun/yomo/pkg/bridge/ai"
 	"go.opentelemetry.io/otel/trace/noop"
 )
@@ -45,9 +46,12 @@ func TestTimeoutCallSyncer(t *testing.T) {
 		},
 	}
 
-	got, _ := syncer.Call(context.TODO(), transID, reqID, []openai.ToolCall{
-		{ID: "tool-call-id", Function: openai.FunctionCall{Name: "timeout-function"}},
-	}, noopTracer)
+	got, _ := syncer.Call(context.TODO(), transID, reqID,
+		metadata.New(),
+		[]openai.ToolCall{
+			{ID: "tool-call-id", Function: openai.FunctionCall{Name: "timeout-function"}},
+		},
+		noopTracer)
 
 	assert.ElementsMatch(t, want, got)
 }
@@ -68,7 +72,7 @@ func TestCallSyncer(t *testing.T) {
 		reqID   = "mock-req-id"
 	)
 
-	got, _ := syncer.Call(context.TODO(), transID, reqID, testdata, noopTracer)
+	got, _ := syncer.Call(context.TODO(), transID, reqID, metadata.New(), testdata, noopTracer)
 
 	assert.NotEmpty(t, got)
 	assert.ElementsMatch(t, h.Result(), got)

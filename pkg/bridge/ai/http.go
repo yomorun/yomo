@@ -200,7 +200,7 @@ func (h *Handler) HandleChatCompletions(w http.ResponseWriter, r *http.Request) 
 		RespondWithError(ww, http.StatusBadRequest, err)
 		return
 	}
-	req, err := ai.DecodeChatCompletionRequest(body)
+	req, agentContext, err := ai.DecodeChatCompletionRequest(body)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		RespondWithError(ww, http.StatusBadRequest, err)
@@ -215,7 +215,7 @@ func (h *Handler) HandleChatCompletions(w http.ResponseWriter, r *http.Request) 
 		tracer = FromTracerContext(ctx)
 	)
 
-	if err := h.service.GetChatCompletions(ctx, req, transID, caller, ww, tracer); err != nil {
+	if err := h.service.GetChatCompletions(ctx, req, transID, agentContext, caller, ww, tracer); err != nil {
 		if err == context.Canceled {
 			return
 		}
