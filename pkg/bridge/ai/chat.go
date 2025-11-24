@@ -349,7 +349,7 @@ func (r *streamChatResp) process(w EventResponseWriter, chatCtx *chatContext) (*
 			continue
 		}
 		// write header when receive the first chunk
-		if !setHeader && chatCtx.callTimes == 0 {
+		if !setHeader && chatCtx.callTimes == 1 {
 			w.SetStreamHeader()
 			w.Flush()
 			setHeader = true
