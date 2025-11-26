@@ -53,5 +53,5 @@ type tmpResponseFormat struct {
 type tmpRequest struct {
 	openai.ChatCompletionRequest
 	ResponseFormat *tmpResponseFormat `json:"response_format"`
-	AgentContext   map[string]any     `json:"agent_context,omitempty"`
+	AgentContext   any                `json:"agent_context,omitempty"`
 }
