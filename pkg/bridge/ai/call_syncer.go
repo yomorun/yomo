@@ -2,7 +2,6 @@ package ai
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -194,7 +193,6 @@ func (f *callSyncer) fire(transID string, reqID string, agentContext any, toolCa
 			Arguments:    t.Function.Arguments,
 			AgentContext: agentContext,
 		}
-		fmt.Println("---------", agentContext)
 		f.sourceCh <- fc
 		ToolIDs[t.ID] = struct{}{}
 	}
