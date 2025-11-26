@@ -16,6 +16,7 @@ type OverviewResponse struct {
 // InvokeRequest is the request from user to BasicAPIServer
 type InvokeRequest struct {
 	Prompt           string `json:"prompt"`             // Prompt is user input text for chat completion
+	AgentContext     any    `json:"agent_context"`      // AgentContext is the context for llm api request
 	IncludeCallStack bool   `json:"include_call_stack"` // IncludeCallStack is the flag to include call stack in response
 }
 
