@@ -10,7 +10,7 @@ import (
 // If a response_format is present, we cannot directly unmarshal it as a ChatCompletionRequest
 // because the schema field is a json.Unmarshaler.
 // Therefore, we need to use a temporary tmpRequest to unmarshal it.
-func DecodeChatCompletionRequest(data []byte) (req openai.ChatCompletionRequest, agentContext map[string]any, err error) {
+func DecodeChatCompletionRequest(data []byte) (req openai.ChatCompletionRequest, agentContext any, err error) {
 
 	var tmp tmpRequest
 	if err := json.Unmarshal(data, &tmp); err != nil {

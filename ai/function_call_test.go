@@ -12,9 +12,9 @@ var original = &FunctionCall{
 	FunctionName: "fn-timezone-converter",
 	ToolCallID:   "call_aZrtm5xcLs1qtP0SWo4CZi75",
 	IsOK:         false,
-	AgentContext: map[string]any{
+	AgentContext: any(map[string]any{
 		"user_id": "123456",
-	},
+	}),
 }
 
 func TestFunctionCallBytes(t *testing.T) {

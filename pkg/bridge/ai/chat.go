@@ -90,7 +90,7 @@ func multiTurnFunctionCalling(
 	caller *Caller,
 	tracer trace.Tracer,
 	md metadata.M,
-	agentContext map[string]any,
+	agentContext any,
 ) error {
 	var (
 		maxCalls = 14
@@ -168,7 +168,7 @@ func doToolCall(
 	tracer trace.Tracer,
 	reqStream bool,
 	transID string,
-	agentContext map[string]any,
+	agentContext any,
 ) error {
 	callCtx, callSpan := tracer.Start(ctx, fmt.Sprintf("call_functions(#%d)", chatCtx.callTimes))
 

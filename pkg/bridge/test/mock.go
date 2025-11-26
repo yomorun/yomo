@@ -139,7 +139,7 @@ type mockCallSyncer struct {
 }
 
 // Call implements CallSyncer, it returns the mock response defined in advance.
-func (m *mockCallSyncer) Call(ctx context.Context, transID string, reqID string, _ map[string]any, toolCalls []openai.ToolCall, _ trace.Tracer) ([]pkgai.ToolCallResult, error) {
+func (m *mockCallSyncer) Call(ctx context.Context, transID string, reqID string, _ any, toolCalls []openai.ToolCall, _ trace.Tracer) ([]pkgai.ToolCallResult, error) {
 	res := []pkgai.ToolCallResult{}
 
 	for _, call := range m.calls {

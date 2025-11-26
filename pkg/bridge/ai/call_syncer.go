@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -17,7 +18,7 @@ import (
 type CallSyncer interface {
 	// Call fires a bunch of function callings, and wait the result of these function callings.
 	// If some function callings failed, the content will be returned as the failed reason.
-	Call(ctx context.Context, transID string, reqID string, agentContext map[string]any, toolCalls []openai.ToolCall, tracer trace.Tracer) ([]ToolCallResult, error)
+	Call(ctx context.Context, transID string, reqID string, agentContext any, toolCalls []openai.ToolCall, tracer trace.Tracer) ([]ToolCallResult, error)
 	// Close close the CallSyncer. if close, you can't use this CallSyncer anymore.
 	Close() error
 }
@@ -82,7 +83,7 @@ type callSpan struct {
 	span  trace.Span
 }
 
-func (f *callSyncer) Call(ctx context.Context, transID, reqID string, agentContext map[string]any, toolCalls []openai.ToolCall, tracer trace.Tracer) ([]ToolCallResult, error) {
+func (f *callSyncer) Call(ctx context.Context, transID, reqID string, agentContext any, toolCalls []openai.ToolCall, tracer trace.Tracer) ([]ToolCallResult, error) {
 	if len(toolCalls) == 0 {
 		return []ToolCallResult{}, nil
 	}
@@ -179,7 +180,7 @@ func (f *callSyncer) Call(ctx context.Context, transID, reqID string, agentConte
 	}
 }
 
-func (f *callSyncer) fire(transID string, reqID string, agentContext map[string]any, toolCalls []openai.ToolCall) (map[string]struct{}, error) {
+func (f *callSyncer) fire(transID string, reqID string, agentContext any, toolCalls []openai.ToolCall) (map[string]struct{}, error) {
 	ToolIDs := make(map[string]struct{})
 
 	f.logger.Debug("fire tool_calls", "transID", transID, "reqID", reqID, "len(tool_calls)", len(toolCalls))
@@ -193,6 +194,7 @@ func (f *callSyncer) fire(transID string, reqID string, agentContext map[string]
 			Arguments:    t.Function.Arguments,
 			AgentContext: agentContext,
 		}
+		fmt.Println("---------", agentContext)
 		f.sourceCh <- fc
 		ToolIDs[t.ID] = struct{}{}
 	}
