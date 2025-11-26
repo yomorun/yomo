@@ -90,6 +90,7 @@ func multiTurnFunctionCalling(
 	caller *Caller,
 	tracer trace.Tracer,
 	md metadata.M,
+	agentContext map[string]any,
 ) error {
 	var (
 		maxCalls = 14
@@ -147,7 +148,7 @@ func multiTurnFunctionCalling(
 		if result.isFunctionCall {
 			chatSpan.End()
 
-			if err := doToolCall(gctx, chatCtx, result.ToolCalls, w, caller, tracer, req.Stream, transID, md); err != nil {
+			if err := doToolCall(gctx, chatCtx, result.ToolCalls, w, caller, tracer, req.Stream, transID, agentContext); err != nil {
 				return err
 			}
 			continue
@@ -167,7 +168,7 @@ func doToolCall(
 	tracer trace.Tracer,
 	reqStream bool,
 	transID string,
-	md metadata.M,
+	agentContext map[string]any,
 ) error {
 	callCtx, callSpan := tracer.Start(ctx, fmt.Sprintf("call_functions(#%d)", chatCtx.callTimes))
 
@@ -187,7 +188,7 @@ func doToolCall(
 	}
 	// call functions
 	reqID := id.New(16)
-	callResult, err := caller.Call(callCtx, transID, reqID, md, toolCalls, tracer)
+	callResult, err := caller.Call(callCtx, transID, reqID, agentContext, toolCalls, tracer)
 	if err != nil {
 		callSpan.RecordError(err)
 		callSpan.End()

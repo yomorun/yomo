@@ -119,7 +119,7 @@ var serveCmd = &cobra.Command{
 			// start the llm api server
 			go func() {
 				conn, _ := listener.Dial()
-				source := ai.NewReduceSource(conn, auth.NewCredential(fmt.Sprintf("token:%s", tokenString)))
+				source := ai.NewSource(conn, auth.NewCredential(fmt.Sprintf("token:%s", tokenString)))
 
 				conn2, _ := listener.Dial()
 				reducer := ai.NewReducer(conn2, auth.NewCredential(fmt.Sprintf("token:%s", tokenString)))
@@ -133,7 +133,7 @@ var serveCmd = &cobra.Command{
 			// MCP Server
 			if mcpConfig != nil {
 				conn, _ := listener.Dial()
-				source := ai.NewReduceSource(conn, auth.NewCredential(fmt.Sprintf("token:%s", tokenString)))
+				source := ai.NewSource(conn, auth.NewCredential(fmt.Sprintf("token:%s", tokenString)))
 
 				conn2, _ := listener.Dial()
 				reducer := ai.NewReducer(conn2, auth.NewCredential(fmt.Sprintf("token:%s", tokenString)))

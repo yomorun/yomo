@@ -24,7 +24,7 @@ var (
 )
 
 // Start starts the http server
-func Start(config *Config, aiConfig *pkgai.Config, source pkgai.ReduceSource, reducer yomo.StreamFunction, log *slog.Logger) error {
+func Start(config *Config, aiConfig *pkgai.Config, source yomo.Source, reducer yomo.StreamFunction, log *slog.Logger) error {
 	// ai provider
 	provider, err := provider.GetProvider(aiConfig.Server.Provider)
 	if err != nil {
@@ -35,7 +35,7 @@ func Start(config *Config, aiConfig *pkgai.Config, source pkgai.ReduceSource, re
 	// ai service
 	opts := &pkgai.ServiceOptions{
 		Logger:         logger,
-		SourceBuilder:  func(_ string) pkgai.ReduceSource { return source },
+		SourceBuilder:  func(_ string) yomo.Source { return source },
 		ReducerBuilder: func(_ string) yomo.StreamFunction { return reducer },
 	}
 	aiService = pkgai.NewService(provider, opts)

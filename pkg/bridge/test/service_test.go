@@ -214,12 +214,12 @@ func TestServiceInvoke(t *testing.T) {
 
 			flow := newMockDataFlow(newHandler(2 * time.Hour).handle)
 
-			newCaller := func(_ pkgai.ReduceSource, _ yomo.StreamFunction, _ metadata.M, _ time.Duration) (*pkgai.Caller, error) {
+			newCaller := func(_ yomo.Source, _ yomo.StreamFunction, _ metadata.M, _ time.Duration) (*pkgai.Caller, error) {
 				return mockCaller(tt.args.mockCallReqResp), err
 			}
 
 			service := pkgai.NewServiceWithCallerFunc(pd, newCaller, &pkgai.ServiceOptions{
-				SourceBuilder:     func(_ string) pkgai.ReduceSource { return flow },
+				SourceBuilder:     func(_ string) yomo.Source { return flow },
 				ReducerBuilder:    func(_ string) yomo.StreamFunction { return flow },
 				MetadataExchanger: func(_ string) (metadata.M, error) { return metadata.M{"hello": "llm bridge"}, nil },
 			})
@@ -230,7 +230,7 @@ func TestServiceInvoke(t *testing.T) {
 			caller.SetSystemPrompt(tt.args.systemPrompt, pkgai.SystemPromptOpOverwrite)
 
 			w := httptest.NewRecorder()
-			err = service.GetInvoke(context.TODO(), tt.args.userInstruction, "transID", caller, true, pkgai.NewResponseWriter(w, slog.Default()), nil)
+			err = service.GetInvoke(context.TODO(), tt.args.userInstruction, "transID", caller, true, nil, pkgai.NewResponseWriter(w, slog.Default()), nil)
 			assert.NoError(t, err)
 
 			assert.Equal(t, tt.wantRequest, pd.RequestRecords())
@@ -419,12 +419,12 @@ func TestServiceChatCompletion(t *testing.T) {
 
 			flow := newMockDataFlow(newHandler(2 * time.Hour).handle)
 
-			newCaller := func(_ pkgai.ReduceSource, _ yomo.StreamFunction, _ metadata.M, _ time.Duration) (*pkgai.Caller, error) {
+			newCaller := func(_ yomo.Source, _ yomo.StreamFunction, _ metadata.M, _ time.Duration) (*pkgai.Caller, error) {
 				return mockCaller(tt.args.mockCallReqResp), err
 			}
 
 			service := pkgai.NewServiceWithCallerFunc(pd, newCaller, &pkgai.ServiceOptions{
-				SourceBuilder:     func(_ string) pkgai.ReduceSource { return flow },
+				SourceBuilder:     func(_ string) yomo.Source { return flow },
 				ReducerBuilder:    func(_ string) yomo.StreamFunction { return flow },
 				MetadataExchanger: func(_ string) (metadata.M, error) { return metadata.M{"hello": "llm bridge"}, nil },
 			})

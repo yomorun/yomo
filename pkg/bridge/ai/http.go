@@ -179,7 +179,7 @@ func (h *Handler) HandleInvoke(w http.ResponseWriter, r *http.Request) {
 		tracer = FromTracerContext(ctx)
 	)
 
-	if err := h.service.GetInvoke(ctx, req.Prompt, transID, caller, req.IncludeCallStack, ww, tracer); err != nil {
+	if err := h.service.GetInvoke(ctx, req.Prompt, transID, caller, req.IncludeCallStack, req.AgentContext, ww, tracer); err != nil {
 		RespondWithError(ww, http.StatusInternalServerError, err)
 		return
 	}

@@ -16,7 +16,7 @@ func TestDecodeChatCompletionRequest(t *testing.T) {
 		name             string
 		args             args
 		wantReq          openai.ChatCompletionRequest
-		wantAgentContext map[string]string
+		wantAgentContext map[string]any
 		wantErrString    string
 	}{
 		{
@@ -87,7 +87,7 @@ func TestDecodeChatCompletionRequest(t *testing.T) {
 					Type: openai.ChatCompletionResponseFormatTypeJSONObject,
 				},
 			},
-			wantAgentContext: map[string]string{
+			wantAgentContext: map[string]any{
 				"user_id": "123456",
 			},
 		},

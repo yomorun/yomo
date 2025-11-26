@@ -32,6 +32,9 @@ type FunctionCall struct {
 	FunctionName string `json:"function_name,omitempty"`
 	// IsOK is the flag to indicate the function calling is ok or not
 	IsOK bool `json:"is_ok"`
+	// AgentContext is the context of the agent, it is used to pass the context between
+	// the llm and the sfn.
+	AgentContext map[string]any `json:"agent_context,omitempty"`
 }
 
 // Bytes serialize the []byte of FunctionCallObject
