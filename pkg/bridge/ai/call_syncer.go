@@ -7,7 +7,6 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo/ai"
-	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/pkg/id"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -18,7 +17,7 @@ import (
 type CallSyncer interface {
 	// Call fires a bunch of function callings, and wait the result of these function callings.
 	// If some function callings failed, the content will be returned as the failed reason.
-	Call(ctx context.Context, transID string, reqID string, md metadata.M, toolCalls []openai.ToolCall, tracer trace.Tracer) ([]ToolCallResult, error)
+	Call(ctx context.Context, transID string, reqID string, agentContext []byte, toolCalls []openai.ToolCall, tracer trace.Tracer) ([]ToolCallResult, error)
 	// Close close the CallSyncer. if close, you can't use this CallSyncer anymore.
 	Close() error
 }
@@ -42,14 +41,14 @@ type callSyncer struct {
 
 	// timeout is the timeout for waiting the result.
 	timeout   time.Duration
-	sourceCh  chan<- metaFunctionCall
+	sourceCh  chan<- ai.FunctionCall
 	reduceCh  <-chan ToolCallResult
 	toolOutCh chan toolOut
 	cleanCh   chan string
 }
 
 // NewCallSyncer creates a new CallSyncer.
-func NewCallSyncer(logger *slog.Logger, sourceCh chan<- metaFunctionCall, reduceCh <-chan ToolCallResult, timeout time.Duration) CallSyncer {
+func NewCallSyncer(logger *slog.Logger, sourceCh chan<- ai.FunctionCall, reduceCh <-chan ToolCallResult, timeout time.Duration) CallSyncer {
 	if timeout == 0 {
 		timeout = RunFunctionTimeout
 	}
@@ -83,7 +82,7 @@ type callSpan struct {
 	span  trace.Span
 }
 
-func (f *callSyncer) Call(ctx context.Context, transID, reqID string, md metadata.M, toolCalls []openai.ToolCall, tracer trace.Tracer) ([]ToolCallResult, error) {
+func (f *callSyncer) Call(ctx context.Context, transID, reqID string, agentContext []byte, toolCalls []openai.ToolCall, tracer trace.Tracer) ([]ToolCallResult, error) {
 	if len(toolCalls) == 0 {
 		return []ToolCallResult{}, nil
 	}
@@ -117,7 +116,7 @@ func (f *callSyncer) Call(ctx context.Context, transID, reqID string, md metadat
 		}
 	}
 
-	toolIDs, err := f.fire(transID, reqID, md, toolCallsCopy)
+	toolIDs, err := f.fire(transID, reqID, agentContext, toolCallsCopy)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +179,7 @@ func (f *callSyncer) Call(ctx context.Context, transID, reqID string, md metadat
 	}
 }
 
-func (f *callSyncer) fire(transID string, reqID string, md metadata.M, toolCalls []openai.ToolCall) (map[string]struct{}, error) {
+func (f *callSyncer) fire(transID string, reqID string, agentContext []byte, toolCalls []openai.ToolCall) (map[string]struct{}, error) {
 	ToolIDs := make(map[string]struct{})
 
 	f.logger.Debug("fire tool_calls", "transID", transID, "reqID", reqID, "len(tool_calls)", len(toolCalls))
@@ -192,11 +191,9 @@ func (f *callSyncer) fire(transID string, reqID string, md metadata.M, toolCalls
 			ToolCallID:   t.ID,
 			FunctionName: t.Function.Name,
 			Arguments:    t.Function.Arguments,
+			AgentContext: string(agentContext),
 		}
-		f.sourceCh <- metaFunctionCall{
-			md: md,
-			fc: fc,
-		}
+		f.sourceCh <- fc
 		ToolIDs[t.ID] = struct{}{}
 	}
 

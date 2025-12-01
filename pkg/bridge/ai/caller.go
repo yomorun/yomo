@@ -16,7 +16,7 @@ import (
 // Caller calls the invoke function and keeps the metadata and system prompt.
 type Caller struct {
 	CallSyncer
-	source       ReduceSource
+	source       yomo.Source
 	reducer      yomo.StreamFunction
 	md           metadata.M
 	systemPrompt atomic.Value
@@ -24,7 +24,7 @@ type Caller struct {
 }
 
 // NewCaller returns a new caller.
-func NewCaller(source ReduceSource, reducer yomo.StreamFunction, md metadata.M, callTimeout time.Duration) (*Caller, error) {
+func NewCaller(source yomo.Source, reducer yomo.StreamFunction, md metadata.M, callTimeout time.Duration) (*Caller, error) {
 	logger := ylog.Default()
 
 	reqCh, err := SourceWriteToChan(source, logger)
@@ -50,24 +50,19 @@ func NewCaller(source ReduceSource, reducer yomo.StreamFunction, md metadata.M, 
 	return caller, nil
 }
 
-type metaFunctionCall struct {
-	fc ai.FunctionCall
-	md metadata.M
-}
-
 // SourceWriteToChan makes source write data to the channel.
 // The TagFunctionCall objects are continuously be received from the channel and be sent by the source.
-func SourceWriteToChan(source ReduceSource, logger *slog.Logger) (chan<- metaFunctionCall, error) {
+func SourceWriteToChan(source yomo.Source, logger *slog.Logger) (chan<- ai.FunctionCall, error) {
 	err := source.Connect()
 	if err != nil {
 		return nil, err
 	}
 
-	ch := make(chan metaFunctionCall)
+	ch := make(chan ai.FunctionCall)
 	go func() {
 		for c := range ch {
-			buf, _ := c.fc.Bytes()
-			if err := source.Write(ai.FunctionCallTag, buf, c.md, c.fc.FunctionName); err != nil {
+			buf, _ := c.Bytes()
+			if err := source.WriteWithTarget(ai.FunctionCallTag, buf, c.FunctionName); err != nil {
 				logger.Error("send data to zipper", "err", err.Error())
 			}
 		}

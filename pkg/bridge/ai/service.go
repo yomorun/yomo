@@ -42,7 +42,7 @@ type ServiceOptions struct {
 	// CallerCallTimeout is the timeout for awaiting the function response.
 	CallerCallTimeout time.Duration
 	// SourceBuilder should builds an unconnected source.
-	SourceBuilder func(credential string) ReduceSource
+	SourceBuilder func(credential string) yomo.Source
 	// ReducerBuilder should builds an unconnected reducer.
 	ReducerBuilder func(credential string) yomo.StreamFunction
 	// MetadataExchanger exchanges metadata from the credential.
@@ -97,7 +97,7 @@ func NewServiceWithCallerFunc(provider provider.LLMProvider, ncf newCallerFunc, 
 	return service
 }
 
-type newCallerFunc func(ReduceSource, yomo.StreamFunction, metadata.M, time.Duration) (*Caller, error)
+type newCallerFunc func(yomo.Source, yomo.StreamFunction, metadata.M, time.Duration) (*Caller, error)
 
 // LoadOrCreateCaller loads or creates the caller according to the http request.
 func (srv *Service) LoadOrCreateCaller(r *http.Request) (*Caller, error) {
@@ -109,7 +109,7 @@ func (srv *Service) LoadOrCreateCaller(r *http.Request) (*Caller, error) {
 }
 
 // GetInvoke returns the invoke response
-func (srv *Service) GetInvoke(ctx context.Context, userInstruction, transID string, caller *Caller, includeCallStack bool, w EventResponseWriter, tracer trace.Tracer) error {
+func (srv *Service) GetInvoke(ctx context.Context, userInstruction, transID string, caller *Caller, includeCallStack bool, agentContext []byte, w EventResponseWriter, tracer trace.Tracer) error {
 	if tracer == nil {
 		tracer = new(noop.Tracer)
 	}
@@ -145,7 +145,7 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, transID stri
 
 	// 4. loop if multi-turn function calling until call stop
 	w.RecordIsStream(req.Stream)
-	if err := multiTurnFunctionCalling(ctx, req, transID, hasReqTools, w, srv.provider, caller, tracer, md); err != nil {
+	if err := multiTurnFunctionCalling(ctx, req, transID, hasReqTools, w, srv.provider, caller, tracer, md, agentContext); err != nil {
 		w.RecordError(err)
 		return err
 	}
@@ -153,16 +153,13 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, transID stri
 }
 
 // GetChatCompletions accepts openai.ChatCompletionRequest and responds to http.ResponseWriter.
-func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, transID string, agentContext map[string]string, caller *Caller, w EventResponseWriter, tracer trace.Tracer) error {
+func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, transID string, agentContext []byte, caller *Caller, w EventResponseWriter, tracer trace.Tracer) error {
 	if tracer == nil {
 		tracer = new(noop.Tracer)
 	}
 	md := caller.Metadata().Clone()
 	if md == nil {
 		md = metadata.New()
-	}
-	for k, v := range agentContext {
-		md.Set(k, v)
 	}
 
 	// 1. find all hosting tool sfn
@@ -180,7 +177,7 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 
 	// 4. loop if multi-turn function calling until call stop
 	w.RecordIsStream(req.Stream)
-	if err := multiTurnFunctionCalling(ctx, req, transID, hasReqTools, w, srv.provider, caller, tracer, md); err != nil {
+	if err := multiTurnFunctionCalling(ctx, req, transID, hasReqTools, w, srv.provider, caller, tracer, md, agentContext); err != nil {
 		w.RecordError(err)
 		return err
 	}

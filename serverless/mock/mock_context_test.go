@@ -8,10 +8,10 @@ import (
 	"github.com/yomorun/yomo/ai"
 )
 
-var jsonStr = "{\"req_id\":\"yYdzyl\",\"arguments\":\"{\\n  \\\"sourceTimezone\\\": \\\"America/Los_Angeles\\\",\\n  \\\"targetTimezone\\\": \\\"Asia/Singapore\\\",\\n  \\\"timeString\\\": \\\"2024-03-25 07:00:00\\\"\\n}\",\"tool_call_id\":\"call_aZrtm5xcLs1qtP0SWo4CZi75\",\"function_name\":\"fn-timezone-converter\",\"is_ok\":false}"
+var jsonStr = "{\"req_id\":\"yYdzyl\",\"arguments\":\"{\\n  \\\"sourceTimezone\\\": \\\"America/Los_Angeles\\\",\\n  \\\"targetTimezone\\\": \\\"Asia/Singapore\\\",\\n  \\\"timeString\\\": \\\"2024-03-25 07:00:00\\\"\\n}\",\"tool_call_id\":\"call_aZrtm5xcLs1qtP0SWo4CZi75\",\"function_name\":\"fn-timezone-converter\",\"is_ok\":false,\"agent_context\":\"{\\\"user_id\\\":\\\"12345\\\"}\"}"
 
 var jsonStrWithResult = func(result string) string {
-	return fmt.Sprintf("{\"req_id\":\"yYdzyl\",\"result\":\"%s\",\"arguments\":\"{\\n  \\\"sourceTimezone\\\": \\\"America/Los_Angeles\\\",\\n  \\\"targetTimezone\\\": \\\"Asia/Singapore\\\",\\n  \\\"timeString\\\": \\\"2024-03-25 07:00:00\\\"\\n}\",\"tool_call_id\":\"call_aZrtm5xcLs1qtP0SWo4CZi75\",\"function_name\":\"fn-timezone-converter\",\"is_ok\":true}", result)
+	return fmt.Sprintf("{\"req_id\":\"yYdzyl\",\"result\":\"%s\",\"arguments\":\"{\\n  \\\"sourceTimezone\\\": \\\"America/Los_Angeles\\\",\\n  \\\"targetTimezone\\\": \\\"Asia/Singapore\\\",\\n  \\\"timeString\\\": \\\"2024-03-25 07:00:00\\\"\\n}\",\"tool_call_id\":\"call_aZrtm5xcLs1qtP0SWo4CZi75\",\"function_name\":\"fn-timezone-converter\",\"is_ok\":true,\"agent_context\":\"{\\\"user_id\\\":\\\"12345\\\"}\"}", result)
 }
 
 var errJSONStr = "{a}"
@@ -81,6 +81,16 @@ func TestWriteLLMResult(t *testing.T) {
 	res := ctx.RecordsWritten()
 	assert.Equal(t, ai.ReducerTag, res[0].Tag)
 	assert.Equal(t, jsonStrWithResult("test result"), string(res[0].Data))
+}
+
+func TestAgentContext(t *testing.T) {
+	ctx := NewMockContext([]byte(jsonStr), 0x10)
+
+	// read
+	agentContext := make(map[string]string)
+	err := ctx.AgentContext(&agentContext)
+	assert.NoError(t, err)
+	assert.Equal(t, "12345", agentContext["user_id"])
 }
 
 func TestWriteLLMResultWithoutRead(t *testing.T) {

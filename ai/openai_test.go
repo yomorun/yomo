@@ -16,7 +16,7 @@ func TestDecodeChatCompletionRequest(t *testing.T) {
 		name             string
 		args             args
 		wantReq          openai.ChatCompletionRequest
-		wantAgentContext map[string]string
+		wantAgentContext any
 		wantErrString    string
 	}{
 		{
@@ -35,6 +35,7 @@ func TestDecodeChatCompletionRequest(t *testing.T) {
 					},
 				},
 			},
+			wantAgentContext: nil,
 		},
 		{
 			name: "response_format=json_object",
@@ -47,6 +48,7 @@ func TestDecodeChatCompletionRequest(t *testing.T) {
 					Type: openai.ChatCompletionResponseFormatTypeJSONObject,
 				},
 			},
+			wantAgentContext: nil,
 		},
 		{
 			name: "response_format=text",
@@ -59,6 +61,7 @@ func TestDecodeChatCompletionRequest(t *testing.T) {
 					Type: openai.ChatCompletionResponseFormatTypeText,
 				},
 			},
+			wantAgentContext: nil,
 		},
 		{
 			name: "response_format=nil",
@@ -68,16 +71,18 @@ func TestDecodeChatCompletionRequest(t *testing.T) {
 			wantReq: openai.ChatCompletionRequest{
 				Model: "gpt-4o",
 			},
+			wantAgentContext: nil,
 		},
 		{
 			name: "not a json",
 			args: args{
 				data: `model=gpt-4o,response_format=text`,
 			},
-			wantErrString: "invalid character 'm' looking for beginning of value",
+			wantErrString:    "invalid character 'm' looking for beginning of value",
+			wantAgentContext: nil,
 		},
 		{
-			name: "extra_body",
+			name: "agent_context",
 			args: args{
 				data: `{"model":"gpt-4o-2024-08-06","response_format":{"type":"json_object"},"agent_context":{"user_id":"123456"}}`,
 			},
@@ -87,20 +92,20 @@ func TestDecodeChatCompletionRequest(t *testing.T) {
 					Type: openai.ChatCompletionResponseFormatTypeJSONObject,
 				},
 			},
-			wantAgentContext: map[string]string{
+			wantAgentContext: map[string]any{
 				"user_id": "123456",
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotReq, gotExtraBody, err := DecodeChatCompletionRequest([]byte(tt.args.data))
+			gotReq, gotAgentContext, err := DecodeChatCompletionRequest([]byte(tt.args.data))
 			if err != nil {
 				assert.EqualError(t, err, tt.wantErrString)
 			}
 			assert.Equal(t, tt.wantReq, gotReq)
 			assert.Equal(t, tt.wantReq.ResponseFormat, gotReq.ResponseFormat)
-			assert.Equal(t, tt.wantAgentContext, gotExtraBody)
+			assert.Equal(t, tt.wantAgentContext, gotAgentContext)
 		})
 	}
 }

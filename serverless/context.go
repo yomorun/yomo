@@ -21,6 +21,11 @@ type Context interface {
 	WriteLLMResult(result string) error
 	// LLMFunctionCall reads LLM function call
 	LLMFunctionCall() (*ai.FunctionCall, error)
+	// GetAgentContext gets the agent context from the request from LLM Bridge
+	// the `agent_context` is the context of the agent, it is used to pass the context between
+	// the llm and the sfn, the `agent_context` will be marshal to the json string, and then
+	// unmarshal to the `ac` in the AgentContext function.
+	AgentContext(ac any) error
 }
 
 // CronContext sfn corn handler context

@@ -54,3 +54,18 @@ func (c *Context) LLMFunctionCall() (*ai.FunctionCall, error) {
 
 	return fco, nil
 }
+
+// GetAgentContext gets the agent context from the request from LLM Bridge
+func (c *Context) AgentContext(ac any) error {
+	fc, err := c.LLMFunctionCall()
+	if err != nil {
+		return err
+	}
+	if len(fc.AgentContext) == 0 {
+		return errors.New("agent context is empty")
+	}
+	if err := json.Unmarshal([]byte(fc.AgentContext), ac); err != nil {
+		return err
+	}
+	return nil
+}
