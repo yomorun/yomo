@@ -183,7 +183,10 @@ func toolHandler(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallTo
 			},
 		},
 	}
-	agentContext := request.Params.Meta.GetMeta()
+	agentContext, err := json.Marshal(request.Params.Meta.GetMeta())
+	if err != nil {
+		return nil, err
+	}
 
 	callResult, err := caller.Call(ctx, transID, reqID, agentContext, fnCalls, tracer)
 	if err != nil {

@@ -34,7 +34,7 @@ type FunctionCall struct {
 	IsOK bool `json:"is_ok"`
 	// AgentContext is the context of the agent, it is used to pass the context between
 	// the llm and the sfn.
-	AgentContext any `json:"agent_context,omitempty"`
+	AgentContext string `json:"agent_context,omitempty"`
 }
 
 // Bytes serialize the []byte of FunctionCallObject

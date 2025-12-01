@@ -109,7 +109,7 @@ func (srv *Service) LoadOrCreateCaller(r *http.Request) (*Caller, error) {
 }
 
 // GetInvoke returns the invoke response
-func (srv *Service) GetInvoke(ctx context.Context, userInstruction, transID string, caller *Caller, includeCallStack bool, agentContext any, w EventResponseWriter, tracer trace.Tracer) error {
+func (srv *Service) GetInvoke(ctx context.Context, userInstruction, transID string, caller *Caller, includeCallStack bool, agentContext []byte, w EventResponseWriter, tracer trace.Tracer) error {
 	if tracer == nil {
 		tracer = new(noop.Tracer)
 	}
@@ -153,7 +153,7 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, transID stri
 }
 
 // GetChatCompletions accepts openai.ChatCompletionRequest and responds to http.ResponseWriter.
-func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, transID string, agentContext any, caller *Caller, w EventResponseWriter, tracer trace.Tracer) error {
+func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, transID string, agentContext []byte, caller *Caller, w EventResponseWriter, tracer trace.Tracer) error {
 	if tracer == nil {
 		tracer = new(noop.Tracer)
 	}

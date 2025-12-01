@@ -46,7 +46,7 @@ func TestTimeoutCallSyncer(t *testing.T) {
 	}
 
 	got, _ := syncer.Call(context.TODO(), transID, reqID,
-		map[string]any{},
+		nil,
 		[]openai.ToolCall{
 			{ID: "tool-call-id", Function: openai.FunctionCall{Name: "timeout-function"}},
 		},
@@ -71,7 +71,7 @@ func TestCallSyncer(t *testing.T) {
 		reqID   = "mock-req-id"
 	)
 
-	got, _ := syncer.Call(context.TODO(), transID, reqID, map[string]any{}, testdata, noopTracer)
+	got, _ := syncer.Call(context.TODO(), transID, reqID, nil, testdata, noopTracer)
 
 	assert.NotEmpty(t, got)
 	assert.ElementsMatch(t, h.Result(), got)

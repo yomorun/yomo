@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	"github.com/yomorun/yomo/ai"
-	"github.com/yomorun/yomo/pkg/id"
 	"github.com/yomorun/yomo/serverless"
 )
 
@@ -37,23 +36,6 @@ func NewMockContext(data []byte, tag uint32) *MockContext {
 	return &MockContext{
 		data: data,
 		tag:  tag,
-	}
-}
-
-// NewArgumentsContext creates a Context with the provided arguments and tag.
-// This function is used for testing the LLM function.
-func NewArgumentsContext(arguments string) *MockContext {
-	fnCall := &ai.FunctionCall{
-		Arguments:  arguments,
-		ReqID:      id.New(16),
-		ToolCallID: "chatcmpl-" + id.New(29),
-	}
-	data, _ := fnCall.Bytes()
-
-	return &MockContext{
-		data:   data,
-		tag:    ai.FunctionCallTag,
-		fnCall: fnCall,
 	}
 }
 
@@ -153,6 +135,21 @@ func (c *MockContext) LLMFunctionCall() (*ai.FunctionCall, error) {
 	}
 
 	return fco, nil
+}
+
+// AgentContext gets the agent context from the request from LLM Bridge
+func (c *MockContext) AgentContext(ac any) error {
+	fc, err := c.LLMFunctionCall()
+	if err != nil {
+		return err
+	}
+	if len(fc.AgentContext) == 0 {
+		return errors.New("agent context is empty")
+	}
+	if err := json.Unmarshal([]byte(fc.AgentContext), ac); err != nil {
+		return err
+	}
+	return nil
 }
 
 // RecordsWritten returns the data records be written with `ctx.Write`.

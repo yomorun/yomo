@@ -178,8 +178,14 @@ func (h *Handler) HandleInvoke(w http.ResponseWriter, r *http.Request) {
 		caller = FromCallerContext(ctx)
 		tracer = FromTracerContext(ctx)
 	)
+	agentContextJSON, err := json.Marshal(req.AgentContext)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		RespondWithError(ww, http.StatusBadRequest, ErrAgentContextType)
+		return
+	}
 
-	if err := h.service.GetInvoke(ctx, req.Prompt, transID, caller, req.IncludeCallStack, req.AgentContext, ww, tracer); err != nil {
+	if err := h.service.GetInvoke(ctx, req.Prompt, transID, caller, req.IncludeCallStack, agentContextJSON, ww, tracer); err != nil {
 		RespondWithError(ww, http.StatusInternalServerError, err)
 		return
 	}
@@ -214,8 +220,14 @@ func (h *Handler) HandleChatCompletions(w http.ResponseWriter, r *http.Request) 
 		caller = FromCallerContext(ctx)
 		tracer = FromTracerContext(ctx)
 	)
+	agentContextJSON, err := json.Marshal(agentContext)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		RespondWithError(ww, http.StatusBadRequest, ErrAgentContextType)
+		return
+	}
 
-	if err := h.service.GetChatCompletions(ctx, req, transID, agentContext, caller, ww, tracer); err != nil {
+	if err := h.service.GetChatCompletions(ctx, req, transID, agentContextJSON, caller, ww, tracer); err != nil {
 		if err == context.Canceled {
 			return
 		}
@@ -226,3 +238,5 @@ func (h *Handler) HandleChatCompletions(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 }
+
+var ErrAgentContextType = errors.New("agent_context must be JSON-marshalable")
