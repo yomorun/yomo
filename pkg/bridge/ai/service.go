@@ -263,3 +263,51 @@ func (srv *Service) OpSystemPrompt(req openai.ChatCompletionRequest, sysPrompt s
 
 	return req
 }
+
+type callerContextKey struct{}
+
+// WithCallerContext adds the caller to the request context
+func WithCallerContext(ctx context.Context, caller *caller.Caller) context.Context {
+	return context.WithValue(ctx, callerContextKey{}, caller)
+}
+
+// FromCallerContext returns the caller from the request context
+func FromCallerContext(ctx context.Context) *caller.Caller {
+	caller, ok := ctx.Value(callerContextKey{}).(*caller.Caller)
+	if !ok {
+		return nil
+	}
+	return caller
+}
+
+type transIDContextKey struct{}
+
+// WithTransIDContext adds the transID to the request context
+func WithTransIDContext(ctx context.Context, transID string) context.Context {
+	return context.WithValue(ctx, transIDContextKey{}, transID)
+}
+
+// FromTransIDContext returns the transID from the request context
+func FromTransIDContext(ctx context.Context) string {
+	val, ok := ctx.Value(transIDContextKey{}).(string)
+	if !ok {
+		return ""
+	}
+	return val
+}
+
+type tracerContextKey struct{}
+
+// WithTracerContext adds the tracer to the request context
+func WithTracerContext(ctx context.Context, tracer trace.Tracer) context.Context {
+	return context.WithValue(ctx, tracerContextKey{}, tracer)
+}
+
+// FromTracerContext returns the tracer from the request context
+func FromTracerContext(ctx context.Context) trace.Tracer {
+	val, ok := ctx.Value(tracerContextKey{}).(trace.Tracer)
+	if !ok {
+		return new(noop.Tracer)
+	}
+	return val
+}

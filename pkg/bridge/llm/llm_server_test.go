@@ -57,7 +57,7 @@ func TestServer(t *testing.T) {
 		MetadataExchanger: func(_ string) (metadata.M, error) { return metadata.M{"hello": "llm bridge"}, nil },
 	})
 
-	handler := pkgai.DecorateHandler(pkgai.NewServeMux(pkgai.NewHandler(service)), DecorateReqContext(service, ylog.Default()))
+	handler := DecorateHandler(NewServeMux(NewHandler(service)), DecorateReqContext(service, ylog.Default()))
 
 	// create a test server
 	server := httptest.NewServer(handler)
