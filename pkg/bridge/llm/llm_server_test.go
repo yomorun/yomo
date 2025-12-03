@@ -1,4 +1,4 @@
-package test
+package llm
 
 import (
 	"bytes"
@@ -15,12 +15,15 @@ import (
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
 	pkgai "github.com/yomorun/yomo/pkg/bridge/ai"
+	"github.com/yomorun/yomo/pkg/bridge/ai/caller"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
 	"github.com/yomorun/yomo/pkg/bridge/ai/register"
-	"github.com/yomorun/yomo/pkg/bridge/llm"
+	"github.com/yomorun/yomo/pkg/bridge/mock"
 )
 
 func TestServer(t *testing.T) {
+	ai.SetRegister(register.NewDefault(nil))
+
 	// register a function definition to the register
 	functionDefinition := &ai.FunctionDefinition{
 		Name:        "function1",
@@ -34,19 +37,18 @@ func TestServer(t *testing.T) {
 			Required: []string{"prop1"},
 		},
 	}
-	ai.SetRegister(register.NewDefault())
 	ai.RegisterFunction(functionDefinition, 200, nil)
 
 	// mock the provider and the req/res of the caller
-	pd, err := provider.NewMock("mock provider", provider.MockChatCompletionResponse(stopResp, stopResp))
+	pd, err := provider.NewMock("mock provider", provider.MockChatCompletionResponse(mock.StopResp, mock.StopResp))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	flow := newMockDataFlow(newHandler(2 * time.Hour).handle)
+	flow := mock.NewDataFlow(mock.NewHandler(2 * time.Hour).Handle)
 
-	newCaller := func(_ yomo.Source, _ yomo.StreamFunction, _ metadata.M, _ time.Duration) (*pkgai.Caller, error) {
-		return mockCaller(nil), err
+	newCaller := func(_ yomo.Source, _ yomo.StreamFunction, _ metadata.M, _ time.Duration) (*caller.Caller, error) {
+		return caller.MockCaller(nil), nil
 	}
 
 	service := pkgai.NewServiceWithCallerFunc(pd, newCaller, &pkgai.ServiceOptions{
@@ -55,7 +57,7 @@ func TestServer(t *testing.T) {
 		MetadataExchanger: func(_ string) (metadata.M, error) { return metadata.M{"hello": "llm bridge"}, nil },
 	})
 
-	handler := pkgai.DecorateHandler(pkgai.NewServeMux(pkgai.NewHandler(service)), llm.DecorateReqContext(service, ylog.Default()))
+	handler := DecorateHandler(NewServeMux(NewHandler(service)), DecorateReqContext(service, ylog.Default()))
 
 	// create a test server
 	server := httptest.NewServer(handler)

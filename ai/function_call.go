@@ -53,3 +53,15 @@ func (fco *FunctionCall) FromBytes(b []byte) error {
 	}
 	return nil
 }
+
+// ToolCallResult is the result of tool call.
+type ToolCallResult struct {
+	// ReqID identifies the tool call result.
+	ReqID string
+	// FunctionName is the name of the function calling.
+	FunctionName string
+	// ToolCallID is the tool call id.
+	ToolCallID string
+	// Content is the result of the function calling.
+	Content string
+}

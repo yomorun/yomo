@@ -1,10 +1,9 @@
-package test
+package ai
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	pkgai "github.com/yomorun/yomo/pkg/bridge/ai"
 )
 
 func TestParseZipperAddr(t *testing.T) {
@@ -27,7 +26,7 @@ func TestParseZipperAddr(t *testing.T) {
 		{
 			name:     "Invalid address",
 			addr:     "invalid",
-			expected: pkgai.DefaultZipperAddr,
+			expected: DefaultZipperAddr,
 		},
 		{
 			name:     "Localhost",
@@ -43,7 +42,7 @@ func TestParseZipperAddr(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := pkgai.ParseZipperAddr(tt.addr)
+			got := ParseZipperAddr(tt.addr)
 			assert.Equal(t, tt.expected, got, tt.name)
 		})
 	}
@@ -52,19 +51,19 @@ func TestParseZipperAddr(t *testing.T) {
 func TestParseConfig(t *testing.T) {
 	tests := []struct {
 		name        string
-		conf        map[string]interface{}
+		conf        map[string]any
 		expectError bool
-		expected    *pkgai.Config
+		expected    *Config
 	}{
 		{
 			name:        "Config not found",
-			conf:        map[string]interface{}{},
+			conf:        map[string]any{},
 			expectError: true,
 			expected:    nil,
 		},
 		{
 			name: "Config format error",
-			conf: map[string]interface{}{
+			conf: map[string]any{
 				"ai": "invalid",
 			},
 			expectError: true,
@@ -72,37 +71,37 @@ func TestParseConfig(t *testing.T) {
 		},
 		{
 			name: "Valid config",
-			conf: map[string]interface{}{
-				"ai": map[string]interface{}{
-					"server": map[string]interface{}{
+			conf: map[string]any{
+				"ai": map[string]any{
+					"server": map[string]any{
 						"addr": "localhost:9000",
 					},
 				},
 			},
 			expectError: false,
-			expected: &pkgai.Config{
-				Server: pkgai.Server{
+			expected: &Config{
+				Server: Server{
 					Addr: "localhost:9000",
 				},
 			},
 		},
 		{
 			name: "Default server address",
-			conf: map[string]interface{}{
-				"ai": map[string]interface{}{
-					"server": map[string]interface{}{},
+			conf: map[string]any{
+				"ai": map[string]any{
+					"server": map[string]any{},
 				},
 			},
 			expectError: false,
-			expected: &pkgai.Config{
-				Server: pkgai.Server{
+			expected: &Config{
+				Server: Server{
 					Addr: ":8000",
 				},
 			},
 		},
 		{
 			name: "malformaled config",
-			conf: map[string]interface{}{
+			conf: map[string]any{
 				"hello": "world",
 			},
 			expectError: true,
@@ -112,7 +111,7 @@ func TestParseConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := pkgai.ParseConfig(tt.conf)
+			got, err := ParseConfig(tt.conf)
 			if err != nil {
 				assert.Equal(t, tt.expectError, true, tt.name)
 			} else {

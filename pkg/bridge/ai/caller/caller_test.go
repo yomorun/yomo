@@ -1,4 +1,4 @@
-package test
+package caller
 
 import (
 	"testing"
@@ -7,16 +7,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/core/metadata"
-	pkgai "github.com/yomorun/yomo/pkg/bridge/ai"
+	"github.com/yomorun/yomo/pkg/bridge/mock"
 )
 
 func TestCaller(t *testing.T) {
-	cc := &testComponentCreator{flow: newMockDataFlow(newHandler(time.Millisecond).handle)}
+	cc := &testComponentCreator{flow: mock.NewDataFlow(mock.NewHandler(time.Millisecond).Handle)}
 
 	md, err := cc.ExchangeMetadata("")
 	assert.NoError(t, err)
 
-	caller, err := pkgai.NewCaller(cc.CreateSource(""), cc.CreateReducer(""), md, time.Minute)
+	caller, err := NewCaller(cc.CreateSource(""), cc.CreateReducer(""), md, time.Minute)
 	assert.NoError(t, err)
 
 	defer caller.Close()
@@ -25,7 +25,7 @@ func TestCaller(t *testing.T) {
 
 	var (
 		prompt = "hello system prompt"
-		op     = pkgai.SystemPromptOpPrefix
+		op     = SystemPromptOpPrefix
 	)
 	caller.SetSystemPrompt(prompt, op)
 	gotPrompt, gotOp := caller.GetSystemPrompt()
@@ -34,7 +34,7 @@ func TestCaller(t *testing.T) {
 }
 
 type testComponentCreator struct {
-	flow *mockDataFlow
+	flow *mock.DataFlow
 }
 
 func (c *testComponentCreator) CreateSource(_ string) yomo.Source {
