@@ -38,12 +38,19 @@ type MockCallSyncer struct {
 func (m *MockCallSyncer) Call(ctx context.Context, transID string, reqID string, _ []byte, toolCalls []openai.ToolCall, _ trace.Tracer) ([]ai.ToolCallResult, error) {
 	res := []ai.ToolCallResult{}
 
-	for _, call := range m.calls {
-		res = append(res, ai.ToolCallResult{
-			FunctionName: call.FunctionName,
-			ToolCallID:   call.ToolID,
-			Content:      call.RespContent,
-		})
+	mockMap := make(map[string]MockFunctionCall)
+	for _, mockCall := range m.calls {
+		mockMap[mockCall.ToolID] = mockCall
+	}
+
+	for _, toolCall := range toolCalls {
+		if mockCall, ok := mockMap[toolCall.ID]; ok {
+			res = append(res, ai.ToolCallResult{
+				FunctionName: mockCall.FunctionName,
+				ToolCallID:   toolCall.ID,
+				Content:      mockCall.RespContent,
+			})
+		}
 	}
 	return res, nil
 }
