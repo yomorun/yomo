@@ -1,4 +1,4 @@
-package test
+package caller
 
 import (
 	"context"
@@ -8,7 +8,8 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
-	pkgai "github.com/yomorun/yomo/pkg/bridge/ai"
+	"github.com/yomorun/yomo/ai"
+	"github.com/yomorun/yomo/pkg/bridge/mock"
 	"go.opentelemetry.io/otel/trace/noop"
 )
 
@@ -22,14 +23,14 @@ var testdata = []openai.ToolCall{
 var noopTracer = noop.NewTracerProvider().Tracer("for_test")
 
 func TestTimeoutCallSyncer(t *testing.T) {
-	h := newHandler(2 * time.Hour) // h.sleep > syncer.timeout
-	flow := newMockDataFlow(h.handle)
+	h := mock.NewHandler(2 * time.Hour) // h.sleep > syncer.timeout
+	flow := mock.NewDataFlow(h.Handle)
 	defer flow.Close()
 
-	req, _ := pkgai.SourceWriteToChan(flow, slog.Default())
-	res, _ := pkgai.ReduceToChan(flow, slog.Default())
+	req, _ := SourceWriteToChan(flow, slog.Default())
+	res, _ := ReduceToChan(flow, slog.Default())
 
-	syncer := pkgai.NewCallSyncer(slog.Default(), req, res, time.Millisecond)
+	syncer := NewCallSyncer(slog.Default(), req, res, time.Millisecond)
 	go flow.Run()
 
 	var (
@@ -37,7 +38,7 @@ func TestTimeoutCallSyncer(t *testing.T) {
 		reqID   = "mock-req-id"
 	)
 
-	want := []pkgai.ToolCallResult{
+	want := []ai.ToolCallResult{
 		{
 			FunctionName: "timeout-function",
 			ToolCallID:   "tool-call-id",
@@ -56,14 +57,14 @@ func TestTimeoutCallSyncer(t *testing.T) {
 }
 
 func TestCallSyncer(t *testing.T) {
-	h := newHandler(0)
-	flow := newMockDataFlow(h.handle)
+	h := mock.NewHandler(0)
+	flow := mock.NewDataFlow(h.Handle)
 	defer flow.Close()
 
-	req, _ := pkgai.SourceWriteToChan(flow, slog.Default())
-	res, _ := pkgai.ReduceToChan(flow, slog.Default())
+	req, _ := SourceWriteToChan(flow, slog.Default())
+	res, _ := ReduceToChan(flow, slog.Default())
 
-	syncer := pkgai.NewCallSyncer(slog.Default(), req, res, 0)
+	syncer := NewCallSyncer(slog.Default(), req, res, 0)
 	go flow.Run()
 
 	var (

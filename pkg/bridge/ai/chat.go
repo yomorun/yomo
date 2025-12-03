@@ -10,6 +10,7 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/metadata"
+	"github.com/yomorun/yomo/pkg/bridge/ai/caller"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
 	"github.com/yomorun/yomo/pkg/id"
 	"go.opentelemetry.io/otel/attribute"
@@ -87,7 +88,7 @@ func multiTurnFunctionCalling(
 	hasReqTools bool,
 	w EventResponseWriter,
 	p provider.LLMProvider,
-	caller *Caller,
+	caller *caller.Caller,
 	tracer trace.Tracer,
 	md metadata.M,
 	agentContext []byte,
@@ -164,7 +165,7 @@ func doToolCall(
 	chatCtx *chatContext,
 	toolCalls []openai.ToolCall,
 	w EventResponseWriter,
-	caller *Caller,
+	caller *caller.Caller,
 	tracer trace.Tracer,
 	reqStream bool,
 	transID string,

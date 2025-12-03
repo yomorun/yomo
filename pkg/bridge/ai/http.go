@@ -11,6 +11,7 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo/ai"
+	"github.com/yomorun/yomo/pkg/bridge/ai/caller"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 )
@@ -18,13 +19,13 @@ import (
 type callerContextKey struct{}
 
 // WithCallerContext adds the caller to the request context
-func WithCallerContext(ctx context.Context, caller *Caller) context.Context {
+func WithCallerContext(ctx context.Context, caller *caller.Caller) context.Context {
 	return context.WithValue(ctx, callerContextKey{}, caller)
 }
 
 // FromCallerContext returns the caller from the request context
-func FromCallerContext(ctx context.Context) *Caller {
-	caller, ok := ctx.Value(callerContextKey{}).(*Caller)
+func FromCallerContext(ctx context.Context) *caller.Caller {
+	caller, ok := ctx.Value(callerContextKey{}).(*caller.Caller)
 	if !ok {
 		return nil
 	}

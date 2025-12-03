@@ -9,6 +9,7 @@ import (
 	"time"
 
 	openai "github.com/sashabaranov/go-openai"
+	"github.com/yomorun/yomo/ai"
 )
 
 // EventResponseWriter is the interface for writing events to the underlying ResponseWriter.
@@ -98,7 +99,7 @@ func (w *responseWriter) WriteStreamEvent(e any) error {
 		w.Flush()
 	case []openai.ToolCall:
 		w.logger.Debug("tool calls", "tool_calls", event)
-	case []ToolCallResult:
+	case []ai.ToolCallResult:
 		w.logger.Debug("tool results", "tool_results", event)
 	}
 	return nil

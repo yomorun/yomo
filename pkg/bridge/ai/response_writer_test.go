@@ -1,4 +1,4 @@
-package test
+package ai
 
 import (
 	"net/http/httptest"
@@ -7,13 +7,12 @@ import (
 	"github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
 	"github.com/yomorun/yomo/core/ylog"
-	pkgai "github.com/yomorun/yomo/pkg/bridge/ai"
 )
 
 func TestResponseWriter(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
-	w := pkgai.NewResponseWriter(recorder, ylog.NewFromConfig(ylog.Config{}))
+	w := NewResponseWriter(recorder, ylog.NewFromConfig(ylog.Config{}))
 
 	h := w.SetStreamHeader()
 

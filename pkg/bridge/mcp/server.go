@@ -80,8 +80,11 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
+type MCPToolStore struct {
+}
+
 // AddMCPTool add mcp tool
-func AddMCPTool(connID uint64, functionDefinition *openai.FunctionDefinition) error {
+func (s *MCPToolStore) AddMCPTool(connID uint64, functionDefinition *openai.FunctionDefinition) error {
 	if mcpServer == nil {
 		// mpc server is disabled
 		return nil
@@ -111,7 +114,7 @@ func AddMCPTool(connID uint64, functionDefinition *openai.FunctionDefinition) er
 }
 
 // RemoveMCPTool remove mcp tool
-func RemoveMCPTool(connID uint64) error {
+func (s *MCPToolStore) RemoveMCPTool(connID uint64) error {
 	if mcpServer == nil {
 		// mpc server is disabled
 		return nil
