@@ -35,10 +35,12 @@ type callSyncer struct {
 	cleanCh   chan string
 }
 
+const defaultCallTimeout = 60 * time.Second
+
 // NewCallSyncer creates a new CallSyncer.
 func NewCallSyncer(logger *slog.Logger, sourceCh chan<- ai.FunctionCall, reduceCh <-chan ai.ToolCallResult, timeout time.Duration) CallSyncer {
 	if timeout == 0 {
-		timeout = 60 * time.Second
+		timeout = defaultCallTimeout
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 
