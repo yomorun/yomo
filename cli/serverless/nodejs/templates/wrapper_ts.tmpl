@@ -9,12 +9,9 @@ import {
 } from '@yomo/sfn'
 import * as app from '{{ .FileName }}'
 
-type ArgsHandler = (args: unknown) => Promise<unknown>
-type ContextHandler = (args: unknown, agentContext: unknown) =>  Promise<unknown>
-
 const { description, handler, tag } = app as {
 	description: string
-	handler: ArgsHandler & ContextHandler
+	handler: (args: unknown, agentContext?: unknown) =>  Promise<unknown>
 	tag?: number
 }
 
@@ -52,11 +49,7 @@ function run() {
 				if (VERBOSE) {
 					console.log(`llm sfn request: tool_call_id=${fc.data?.tool_call_id}, function_name=${FUNCTION_NAME}, arguments=${JSON.stringify(args)}`);
 				}
-				if (agentContext) {
-					result = await handler(args, agentContext)
-				} else {
-					result = await handler(args)
-				}
+				result = await handler(args, agentContext)
 				if (VERBOSE) {
 					console.log(`llm sfn response: tool_call_id=${fc.data?.tool_call_id}, function_name=${FUNCTION_NAME}, result=${JSON.stringify(result)}`);
 				}
