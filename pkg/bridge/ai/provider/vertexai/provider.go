@@ -32,10 +32,11 @@ func NewProvider(projectID, location, model, credentialsFile string) *Provider {
 		log.Fatalln("vertexai new http client: ", err)
 	}
 
-	// if location is "global"
-	baseURL := fmt.Sprintf("https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/endpoints/openapi", location, projectID, location)
+	var baseURL string
 	if location == "global" {
 		baseURL = fmt.Sprintf("https://aiplatform.googleapis.com/v1/projects/%s/locations/%s/endpoints/openapi", projectID, location)
+	} else {
+		baseURL = fmt.Sprintf("https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/endpoints/openapi", location, projectID, location)
 	}
 
 	client := openai.NewClientWithConfig(openai.ClientConfig{
