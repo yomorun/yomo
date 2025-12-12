@@ -64,7 +64,7 @@ func NewClient(appName, zipperAddr string, clientType ClientType, opts ...Client
 	}
 
 	if qlogTraceEnabled() && option.quicConfig != nil {
-		option.quicConfig.Tracer = qlogTracerfunc
+		option.quicConfig.Tracer = qlogTracer
 	}
 
 	clientID := id.New()
