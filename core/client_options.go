@@ -135,7 +135,7 @@ func qlogTraceEnabled() bool {
 	return strings.ToLower(os.Getenv("YOMO_QLOG_TRACE")) == "true"
 }
 
-func qlogTracerfunc(ctx context.Context, isClient bool, connID quic.ConnectionID) qlogwriter.Trace {
+func qlogTracer(_ context.Context, isClient bool, connID quic.ConnectionID) qlogwriter.Trace {
 	role := "server"
 	if isClient {
 		role = "client"
