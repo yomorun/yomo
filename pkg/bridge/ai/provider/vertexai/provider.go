@@ -33,9 +33,9 @@ func NewProvider(projectID, location, model, credentialsFile string) *Provider {
 	}
 
 	// if location is "global"
-	baseURL := fmt.Sprintf("https://%s-aiplatform.googleapis.com/v1beta1/projects/%s/locations/%s/endpoints/openapi", location, projectID, location)
+	baseURL := fmt.Sprintf("https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/endpoints/openapi", location, projectID, location)
 	if location == "global" {
-		baseURL = fmt.Sprintf("https://aiplatform.googleapis.com/v1beta1/projects/%s/locations/global/endpoints/openapi", projectID)
+		baseURL = fmt.Sprintf("https://aiplatform.googleapis.com/v1/projects/%s/locations/%s/endpoints/openapi", projectID, location)
 	}
 
 	client := openai.NewClientWithConfig(openai.ClientConfig{
