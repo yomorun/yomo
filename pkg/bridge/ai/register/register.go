@@ -9,25 +9,22 @@ import (
 	"github.com/yomorun/yomo/core/metadata"
 )
 
-// MCPToolStore defines the ability to add and remove tools.
-type MCPToolStore interface {
-	// AddMCPTool adds a tool definition.
+type mcpToolStore interface {
 	AddMCPTool(connID uint64, fd *ai.FunctionDefinition) error
-	// RemoveMCPTool removes a tool definition.
 	RemoveMCPTool(connID uint64) error
 }
 
 // NewDefault creates a new default register.
-func NewDefault(MCPToolStore MCPToolStore) ai.Register {
+func NewDefault(mcpToolStore mcpToolStore) ai.Register {
 	return &register{
 		underlying:   sync.Map{},
-		mcpToolStore: MCPToolStore,
+		mcpToolStore: mcpToolStore,
 	}
 }
 
 type register struct {
 	underlying   sync.Map
-	mcpToolStore MCPToolStore
+	mcpToolStore mcpToolStore
 }
 
 func (r *register) ListToolCalls(_ metadata.M) ([]openai.Tool, error) {
