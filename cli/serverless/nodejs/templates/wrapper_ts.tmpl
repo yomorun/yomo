@@ -11,11 +11,12 @@ import * as app from '{{ .FileName }}'
 
 const { description, handler, tag } = app as {
 	description: string
-	handler: (args: unknown) => Promise<unknown>
+	handler: (args: unknown, agentContext?: unknown) =>  Promise<unknown>
 	tag?: number
 }
+
 const WORK_DIR = '{{ .WorkDir }}'
-const FUNCTION_NAME = '{{ .FunctionName }}'
+const FUNCTION_NAME = process.env.YOMO_SFN_NAME || ''
 const SFN_FILE_PATH = '{{ .FilePath }}'
 const SOCK_PATH = join(WORK_DIR, 'sfn.sock');
 const REDUCE_TAG = 0xe001;
@@ -42,12 +43,13 @@ function run() {
 			const { data } = _readSFNData(buf)
 			const fc = new _FunctionCall(data)
 			const args = fc.readLLMArguments()
+			const agentContext = fc.getAgentContext()
 			let result: unknown
 			if (typeof handler === 'function') {
 				if (VERBOSE) {
 					console.log(`llm sfn request: tool_call_id=${fc.data?.tool_call_id}, function_name=${FUNCTION_NAME}, arguments=${JSON.stringify(args)}`);
 				}
-				result = await handler(args)
+				result = await handler(args, agentContext)
 				if (VERBOSE) {
 					console.log(`llm sfn response: tool_call_id=${fc.data?.tool_call_id}, function_name=${FUNCTION_NAME}, result=${JSON.stringify(result)}`);
 				}

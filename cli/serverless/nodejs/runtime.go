@@ -24,12 +24,11 @@ var (
 
 // NodejsWrapper is the nodejs implementation of wrapper.
 type NodejsWrapper struct {
-	functionName string
-	workDir      string // eg. src/
-	entryTSFile  string // eg. src/app.ts
-	entryJSFile  string // eg. src/app.js
-	fileName     string // eg. src/app
-	outputDir    string // eg. dist/
+	workDir     string // eg. src/
+	entryTSFile string // eg. src/app.ts
+	entryJSFile string // eg. src/app.js
+	fileName    string // eg. src/app
+	outputDir   string // eg. dist/
 
 	// command path
 	nodePath string
@@ -69,14 +68,13 @@ func NewWrapper(functionName, entryTSFile string) (*NodejsWrapper, error) {
 	fileName := entryTSFile[:len(entryTSFile)-len(ext)]
 
 	w := &NodejsWrapper{
-		functionName: functionName,
-		workDir:      workdir,
-		entryTSFile:  entryTSFile,
-		entryJSFile:  entryJSFile,
-		fileName:     fileName,
-		nodePath:     nodePath,
-		npmPath:      npmPath,
-		outputDir:    outputDir,
+		workDir:     workdir,
+		entryTSFile: entryTSFile,
+		entryJSFile: entryJSFile,
+		fileName:    fileName,
+		nodePath:    nodePath,
+		npmPath:     npmPath,
+		outputDir:   outputDir,
 	}
 
 	return w, nil
@@ -94,7 +92,7 @@ func (w *NodejsWrapper) Build(env []string) error {
 	// remove the old one
 	_ = os.Remove(dstPath)
 	// create new one
-	if err := w.genWrapperTS(w.functionName, dstPath); err != nil {
+	if err := w.genWrapperTS(dstPath); err != nil {
 		return err
 	}
 
@@ -203,20 +201,18 @@ func (w *NodejsWrapper) Run(env []string) error {
 	return cmd.Run()
 }
 
-func (w *NodejsWrapper) genWrapperTS(functionName, dstPath string) error {
+func (w *NodejsWrapper) genWrapperTS(dstPath string) error {
 	baseFilename := "./" + filepath.Base(w.fileName)
 	entryTS := "./dist/" + baseFilename + ".ts"
 
 	data := struct {
-		WorkDir      string
-		FunctionName string
-		FileName     string
-		FilePath     string
+		WorkDir  string
+		FileName string
+		FilePath string
 	}{
-		WorkDir:      "./",
-		FunctionName: functionName,
-		FileName:     baseFilename,
-		FilePath:     entryTS,
+		WorkDir:  "./",
+		FileName: baseFilename,
+		FilePath: entryTS,
 	}
 
 	dst, err := os.OpenFile(dstPath, os.O_WRONLY|os.O_CREATE, 0755)
