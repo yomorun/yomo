@@ -11,8 +11,7 @@ import (
 	"time"
 
 	"github.com/quic-go/quic-go"
-	"github.com/quic-go/quic-go/logging"
-	"github.com/quic-go/quic-go/qlog"
+	"github.com/quic-go/quic-go/qlogwriter"
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/frame"
 	"github.com/yomorun/yomo/core/ylog"
@@ -131,14 +130,14 @@ func DisableOtelTrace() ClientOption {
 }
 
 // qlog helps developers to debug quic protocol.
-// See more: https://github.com/quic-go/quic-go?tab=readme-ov-file#quic-event-logging-using-qlog
+// See more: https://quic-go.net/docs/quic/qlog
 func qlogTraceEnabled() bool {
 	return strings.ToLower(os.Getenv("YOMO_QLOG_TRACE")) == "true"
 }
 
-func qlogTracer(ctx context.Context, p logging.Perspective, connID quic.ConnectionID) *logging.ConnectionTracer {
+func qlogTracer(_ context.Context, isClient bool, connID quic.ConnectionID) qlogwriter.Trace {
 	role := "server"
-	if p == logging.PerspectiveClient {
+	if isClient {
 		role = "client"
 	}
 	filename := fmt.Sprintf("./log_%s_%s.qlog", connID, role)
@@ -146,5 +145,5 @@ func qlogTracer(ctx context.Context, p logging.Perspective, connID quic.Connecti
 	if err != nil {
 		log.Fatalf("qlog trace error: %s\n", err)
 	}
-	return qlog.NewConnectionTracer(f, p, connID)
+	return qlogwriter.NewFileSeq(f)
 }
