@@ -1,4 +1,4 @@
-package ai
+package caller
 
 import (
 	"log/slog"
@@ -22,6 +22,9 @@ type Caller struct {
 	systemPrompt atomic.Value
 	logger       *slog.Logger
 }
+
+// CreateCallerFunc is the function to create a new caller.
+type CreateCallerFunc func(yomo.Source, yomo.StreamFunction, metadata.M, time.Duration) (*Caller, error)
 
 // NewCaller returns a new caller.
 func NewCaller(source yomo.Source, reducer yomo.StreamFunction, md metadata.M, callTimeout time.Duration) (*Caller, error) {
@@ -72,10 +75,10 @@ func SourceWriteToChan(source yomo.Source, logger *slog.Logger) (chan<- ai.Funct
 }
 
 // ReduceToChan configures the reducer and returns a channel to accept messages from the reducer.
-func ReduceToChan(reducer yomo.StreamFunction, logger *slog.Logger) (<-chan ToolCallResult, error) {
+func ReduceToChan(reducer yomo.StreamFunction, logger *slog.Logger) (<-chan ai.ToolCallResult, error) {
 	reducer.SetObserveDataTags(ai.ReducerTag)
 
-	messages := make(chan ToolCallResult)
+	messages := make(chan ai.ToolCallResult)
 
 	reducer.SetObserveDataTags(ai.ReducerTag)
 	reducer.SetHandler(reduceFunc(messages, logger))
@@ -87,17 +90,17 @@ func ReduceToChan(reducer yomo.StreamFunction, logger *slog.Logger) (<-chan Tool
 	return messages, nil
 }
 
-func reduceFunc(messages chan ToolCallResult, logger *slog.Logger) core.AsyncHandler {
+func reduceFunc(messages chan ai.ToolCallResult, logger *slog.Logger) core.AsyncHandler {
 	return func(ctx serverless.Context) {
 		invoke, err := ctx.LLMFunctionCall()
 		if err != nil {
-			messages <- ToolCallResult{ReqID: ""}
+			messages <- ai.ToolCallResult{ReqID: ""}
 			logger.Error("parse function calling invoke", "err", err.Error())
 			return
 		}
 		logger.Debug("sfn-reducer", "req_id", invoke.ReqID, "tool_call_id", invoke.ToolCallID, "result", string(invoke.Result))
 
-		message := ToolCallResult{
+		message := ai.ToolCallResult{
 			ReqID:        invoke.ReqID,
 			FunctionName: invoke.FunctionName,
 			ToolCallID:   invoke.ToolCallID,

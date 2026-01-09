@@ -22,6 +22,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/yomorun/yomo"
+	yai "github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core"
 	"github.com/yomorun/yomo/core/auth"
 	"github.com/yomorun/yomo/core/ylog"
@@ -32,6 +33,7 @@ import (
 
 	"github.com/yomorun/yomo/pkg/bridge/ai"
 	providerpkg "github.com/yomorun/yomo/pkg/bridge/ai/provider"
+	"github.com/yomorun/yomo/pkg/bridge/ai/register"
 	"github.com/yomorun/yomo/pkg/bridge/llm"
 	"github.com/yomorun/yomo/pkg/bridge/mcp"
 )
@@ -149,6 +151,8 @@ var serveCmd = &cobra.Command{
 				}()
 			}
 		}
+
+		yai.SetRegister(register.NewDefault(&mcp.MCPToolStore{}))
 
 		// start the zipper
 		err = zipper.ListenAndServe(ctx, listenAddr)

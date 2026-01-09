@@ -13,6 +13,7 @@ import (
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
+	"github.com/yomorun/yomo/pkg/bridge/ai/caller"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider"
 
 	"go.opentelemetry.io/otel/trace"
@@ -22,11 +23,11 @@ import (
 // Service is the  service layer for llm bridge server.
 // service is responsible for handling the logic from handler layer.
 type Service struct {
-	provider      provider.LLMProvider
-	newCallerFunc newCallerFunc
-	callers       *expirable.LRU[string, *Caller]
-	option        *ServiceOptions
-	logger        *slog.Logger
+	provider     provider.LLMProvider
+	createCaller caller.CreateCallerFunc
+	callers      *expirable.LRU[string, *caller.Caller]
+	option       *ServiceOptions
+	logger       *slog.Logger
 }
 
 // ServiceOptions is the option for creating service
@@ -51,7 +52,7 @@ type ServiceOptions struct {
 
 // NewService creates a new service for handling the logic from handler layer.
 func NewService(provider provider.LLMProvider, opt *ServiceOptions) *Service {
-	return NewServiceWithCallerFunc(provider, NewCaller, opt)
+	return NewServiceWithCallerFunc(provider, caller.NewCaller, opt)
 }
 
 func initOption(opt *ServiceOptions) *ServiceOptions {
@@ -79,28 +80,26 @@ func initOption(opt *ServiceOptions) *ServiceOptions {
 	return opt
 }
 
-func NewServiceWithCallerFunc(provider provider.LLMProvider, ncf newCallerFunc, opt *ServiceOptions) *Service {
-	onEvict := func(_ string, caller *Caller) {
+func NewServiceWithCallerFunc(provider provider.LLMProvider, createCaller caller.CreateCallerFunc, opt *ServiceOptions) *Service {
+	onEvict := func(_ string, caller *caller.Caller) {
 		caller.Close()
 	}
 
 	opt = initOption(opt)
 
 	service := &Service{
-		provider:      provider,
-		newCallerFunc: ncf,
-		callers:       expirable.NewLRU(opt.CallerCacheSize, onEvict, opt.CallerCacheTTL),
-		option:        opt,
-		logger:        opt.Logger,
+		provider:     provider,
+		createCaller: createCaller,
+		callers:      expirable.NewLRU(opt.CallerCacheSize, onEvict, opt.CallerCacheTTL),
+		option:       opt,
+		logger:       opt.Logger,
 	}
 
 	return service
 }
 
-type newCallerFunc func(yomo.Source, yomo.StreamFunction, metadata.M, time.Duration) (*Caller, error)
-
 // LoadOrCreateCaller loads or creates the caller according to the http request.
-func (srv *Service) LoadOrCreateCaller(r *http.Request) (*Caller, error) {
+func (srv *Service) LoadOrCreateCaller(r *http.Request) (*caller.Caller, error) {
 	credential, err := srv.option.CredentialFunc(r)
 	if err != nil {
 		return nil, err
@@ -109,7 +108,7 @@ func (srv *Service) LoadOrCreateCaller(r *http.Request) (*Caller, error) {
 }
 
 // GetInvoke returns the invoke response
-func (srv *Service) GetInvoke(ctx context.Context, userInstruction, transID string, caller *Caller, includeCallStack bool, agentContext []byte, w EventResponseWriter, tracer trace.Tracer) error {
+func (srv *Service) GetInvoke(ctx context.Context, userInstruction, transID string, caller *caller.Caller, includeCallStack bool, agentContext []byte, w EventResponseWriter, tracer trace.Tracer) error {
 	if tracer == nil {
 		tracer = new(noop.Tracer)
 	}
@@ -153,7 +152,7 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, transID stri
 }
 
 // GetChatCompletions accepts openai.ChatCompletionRequest and responds to http.ResponseWriter.
-func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, transID string, agentContext []byte, caller *Caller, w EventResponseWriter, tracer trace.Tracer) error {
+func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompletionRequest, transID string, agentContext []byte, caller *caller.Caller, w EventResponseWriter, tracer trace.Tracer) error {
 	if tracer == nil {
 		tracer = new(noop.Tracer)
 	}
@@ -184,7 +183,7 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 	return nil
 }
 
-func (srv *Service) loadOrCreateCaller(credential string) (*Caller, error) {
+func (srv *Service) loadOrCreateCaller(credential string) (*caller.Caller, error) {
 	caller, ok := srv.callers.Get(credential)
 	if ok {
 		return caller, nil
@@ -193,7 +192,7 @@ func (srv *Service) loadOrCreateCaller(credential string) (*Caller, error) {
 	if err != nil {
 		return nil, err
 	}
-	caller, err = srv.newCallerFunc(
+	caller, err = srv.createCaller(
 		srv.option.SourceBuilder(credential),
 		srv.option.ReducerBuilder(credential),
 		md,
@@ -219,11 +218,11 @@ func (srv *Service) addToolsToRequest(req openai.ChatCompletionRequest, tools []
 	return req, hasReqTools
 }
 
-func (srv *Service) OpSystemPrompt(req openai.ChatCompletionRequest, sysPrompt string, op SystemPromptOp) openai.ChatCompletionRequest {
-	if op == SystemPromptOpDisabled {
+func (srv *Service) OpSystemPrompt(req openai.ChatCompletionRequest, sysPrompt string, op caller.SystemPromptOp) openai.ChatCompletionRequest {
+	if op == caller.SystemPromptOpDisabled {
 		return req
 	}
-	if op == SystemPromptOpOverwrite && sysPrompt == "" {
+	if op == caller.SystemPromptOpOverwrite && sysPrompt == "" {
 		return req
 	}
 	var (
@@ -238,9 +237,9 @@ func (srv *Service) OpSystemPrompt(req openai.ChatCompletionRequest, sysPrompt s
 		if systemCount == 0 {
 			content := ""
 			switch op {
-			case SystemPromptOpPrefix:
+			case caller.SystemPromptOpPrefix:
 				content = sysPrompt + "\n" + msg.Content
-			case SystemPromptOpOverwrite:
+			case caller.SystemPromptOpOverwrite:
 				content = sysPrompt
 			}
 			messages = append(messages, openai.ChatCompletionMessage{
@@ -263,4 +262,52 @@ func (srv *Service) OpSystemPrompt(req openai.ChatCompletionRequest, sysPrompt s
 	srv.logger.Debug(" #1 first call after operating", "request", fmt.Sprintf("%+v", req))
 
 	return req
+}
+
+type callerContextKey struct{}
+
+// WithCallerContext adds the caller to the request context
+func WithCallerContext(ctx context.Context, caller *caller.Caller) context.Context {
+	return context.WithValue(ctx, callerContextKey{}, caller)
+}
+
+// FromCallerContext returns the caller from the request context
+func FromCallerContext(ctx context.Context) *caller.Caller {
+	caller, ok := ctx.Value(callerContextKey{}).(*caller.Caller)
+	if !ok {
+		return nil
+	}
+	return caller
+}
+
+type transIDContextKey struct{}
+
+// WithTransIDContext adds the transID to the request context
+func WithTransIDContext(ctx context.Context, transID string) context.Context {
+	return context.WithValue(ctx, transIDContextKey{}, transID)
+}
+
+// FromTransIDContext returns the transID from the request context
+func FromTransIDContext(ctx context.Context) string {
+	val, ok := ctx.Value(transIDContextKey{}).(string)
+	if !ok {
+		return ""
+	}
+	return val
+}
+
+type tracerContextKey struct{}
+
+// WithTracerContext adds the tracer to the request context
+func WithTracerContext(ctx context.Context, tracer trace.Tracer) context.Context {
+	return context.WithValue(ctx, tracerContextKey{}, tracer)
+}
+
+// FromTracerContext returns the tracer from the request context
+func FromTracerContext(ctx context.Context) trace.Tracer {
+	val, ok := ctx.Value(tracerContextKey{}).(trace.Tracer)
+	if !ok {
+		return new(noop.Tracer)
+	}
+	return val
 }

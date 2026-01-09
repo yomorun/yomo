@@ -1,4 +1,3 @@
-// Package register provides a register for registering and unregistering functions
 package register
 
 import (
@@ -8,20 +7,24 @@ import (
 	"github.com/sashabaranov/go-openai"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/metadata"
-	"github.com/yomorun/yomo/pkg/bridge/mcp"
 )
 
-func init() {
-	ai.SetRegister(&register{})
+type mcpToolStore interface {
+	AddMCPTool(connID uint64, fd *ai.FunctionDefinition) error
+	RemoveMCPTool(connID uint64) error
 }
 
 // NewDefault creates a new default register.
-func NewDefault() ai.Register {
-	return &register{}
+func NewDefault(mcpToolStore mcpToolStore) ai.Register {
+	return &register{
+		underlying:   sync.Map{},
+		mcpToolStore: mcpToolStore,
+	}
 }
 
 type register struct {
-	underlying sync.Map
+	underlying   sync.Map
+	mcpToolStore mcpToolStore
 }
 
 func (r *register) ListToolCalls(_ metadata.M) ([]openai.Tool, error) {
@@ -54,8 +57,11 @@ func (r *register) RegisterFunction(fd *ai.FunctionDefinition, connID uint64, md
 		Function: fd,
 		Type:     openai.ToolTypeFunction,
 	})
+	if r.mcpToolStore == nil {
+		return nil
+	}
 	// mcp tool
-	err = mcp.AddMCPTool(connID, fd)
+	err = r.mcpToolStore.AddMCPTool(connID, fd)
 	if err != nil {
 		return err
 	}
@@ -66,6 +72,10 @@ func (r *register) RegisterFunction(fd *ai.FunctionDefinition, connID uint64, md
 func (r *register) UnregisterFunction(connID uint64, _ metadata.M) {
 	// ai function
 	r.underlying.Delete(connID)
+
 	// mcp tool
-	mcp.RemoveMCPTool(connID)
+	if r.mcpToolStore == nil {
+		return
+	}
+	r.mcpToolStore.RemoveMCPTool(connID)
 }

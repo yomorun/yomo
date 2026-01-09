@@ -47,10 +47,10 @@ func NewBasicAPIServer(config *pkgai.Config, provider provider.LLMProvider, sour
 	}
 	service := pkgai.NewService(provider, opts)
 
-	mux := pkgai.NewServeMux(pkgai.NewHandler(service))
+	mux := NewServeMux(NewHandler(service))
 
 	server := &BasicAPIServer{
-		httpHandler: pkgai.DecorateHandler(mux, DecorateReqContext(service, logger)),
+		httpHandler: DecorateHandler(mux, DecorateReqContext(service, logger)),
 	}
 
 	logger.Info("[llm] start llm bridge service", "addr", config.Server.Addr, "provider", provider.Name())
@@ -75,7 +75,7 @@ func DecorateReqContext(service *pkgai.Service, logger *slog.Logger) func(handle
 			caller, err := service.LoadOrCreateCaller(r)
 			if err != nil {
 				logger.Error("failed to load or create caller", "error", err)
-				pkgai.RespondWithError(ww, http.StatusBadRequest, err)
+				RespondWithError(ww, http.StatusBadRequest, err)
 				return
 			}
 			ctx = pkgai.WithCallerContext(ctx, caller)
