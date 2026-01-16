@@ -1,8 +1,8 @@
-use anyhow::{Result, bail};
+use anyhow::{Result, anyhow, bail};
 use bon::Builder;
 use log::error;
 use s2n_quic::{Client, Connection, client::Connect, stream::BidirectionalStream};
-use std::{net::SocketAddr, path::Path};
+use std::{net::ToSocketAddrs, path::Path};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::{
@@ -12,11 +12,11 @@ use crate::{
 
 #[derive(Clone, Builder)]
 pub struct Sfn {
-    #[builder(default = String::from("127.0.0.1:9000"))]
-    quic_addr: String,
+    #[builder(default = String::from("localhost:9000"))]
+    zipper: String,
 
-    #[builder(default = String::from("localhost"))]
-    server_name: String,
+    #[builder(default)]
+    credential: String,
 
     sfn_name: String,
 }
@@ -35,9 +35,17 @@ impl Sfn {
             .start()?;
 
         // Connect to zipper service
-        let addr: SocketAddr = self.quic_addr.parse()?;
+        let (server_name, server_port) = self
+            .zipper
+            .split_once(':')
+            .ok_or_else(|| anyhow!("invalid zipper addr format"))?;
+        let server_port = server_port.parse::<u16>()?;
+        let addr = (server_name, server_port)
+            .to_socket_addrs()?
+            .next()
+            .ok_or_else(|| anyhow!("no zipper ip found"))?;
         let mut conn = client
-            .connect(Connect::new(addr).with_server_name(self.server_name.to_owned()))
+            .connect(Connect::new(addr).with_server_name(server_name))
             .await?;
         conn.keep_alive(true)?;
         println!("connected to zipper");
@@ -71,7 +79,7 @@ impl Sfn {
         let h = Frame::Handshake {
             payload: HandshakePayload {
                 sfn_name: self.sfn_name.to_owned(),
-                credential: String::new(),
+                credential: self.credential.to_owned(),
                 ..Default::default()
             },
         };
