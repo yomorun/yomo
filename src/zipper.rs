@@ -7,12 +7,14 @@ use axum::{
 };
 use bon::Builder;
 use log::{debug, error, info};
-use s2n_quic::{Connection, provider::tls, stream::BidirectionalStream};
+use s2n_quic::{Connection, Server, provider::tls, stream::BidirectionalStream};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{collections::HashMap, sync::Arc};
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt, SimplexStream, WriteHalf, simplex},
+    io::{AsyncReadExt, AsyncWriteExt, SimplexStream, WriteHalf, copy, simplex},
+    net::TcpListener,
+    select, spawn,
     sync::{
         Mutex, RwLock,
         mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel},
@@ -32,45 +34,56 @@ struct Sfn {
     tx: UnboundedSender<(SfnRequest, WriteHalf<SimplexStream>)>,
 }
 
-// Zipper: Manages all registered Sfn connections
-#[derive(Clone, Builder)]
-pub struct Zipper {
+#[derive(Builder)]
+pub struct ZipperConfig {
     #[builder(default = String::from("0.0.0.0:9000"))]
     quic_addr: String,
 
     #[builder(default = String::from("0.0.0.0:8001"))]
     http_addr: String,
+}
 
-    #[builder(default = Arc::new(RwLock::new(MiddlewareImpl::default())))]
+// Zipper: Manages all registered Sfn connections
+#[derive(Clone)]
+pub struct Zipper {
     middleware: Arc<RwLock<dyn Middleware>>,
 
-    #[builder(skip)]
     all_sfns: Arc<Mutex<HashMap<u64, Sfn>>>,
 }
 
 impl Zipper {
+    pub fn new(token: String) -> Self {
+        Self {
+            middleware: Arc::new(RwLock::new(MiddlewareImpl::new(token))),
+            all_sfns: Arc::default(),
+        }
+    }
+}
+
+impl Zipper {
     // Start server: listen on both HTTP and QUIC ports
-    pub async fn serve(self) -> anyhow::Result<()> {
-        tokio::select! {
-            r = self.serve_http() => r,
-            r = self.serve_quic() => r,
+    pub async fn serve(self, config: ZipperConfig) -> anyhow::Result<()> {
+        select! {
+            r = self.serve_http(&config.http_addr) => r,
+            r = self.serve_quic(&config.quic_addr) => r,
         }
     }
 
     // HTTP server: listen and receive external requests
-    async fn serve_http(&self) -> anyhow::Result<()> {
+    async fn serve_http(&self, addr: &str) -> anyhow::Result<()> {
         let app = Router::new()
-            .route("/tool/{name}", post(handle_post_tool))
+            .route("/sfn/{name}", post(handle_post))
             .with_state(self.clone());
 
-        let listener = tokio::net::TcpListener::bind(&self.http_addr).await?;
+        let listener = TcpListener::bind(addr).await?;
+
         axum::serve(listener, app).await?;
 
         Ok(())
     }
 
     // QUIC server: accept remote Sfn connections
-    async fn serve_quic(&self) -> anyhow::Result<()> {
+    async fn serve_quic(&self, addr: &str) -> anyhow::Result<()> {
         let tls = tls::default::Server::builder()
             .with_certificate(
                 std::path::Path::new("cert.pem"),
@@ -79,15 +92,12 @@ impl Zipper {
             .with_application_protocols(&["yomo-v2"])?
             .build()?;
 
-        let mut server = s2n_quic::Server::builder()
-            .with_tls(tls)?
-            .with_io(self.quic_addr.as_str())?
-            .start()?;
+        let mut server = Server::builder().with_tls(tls)?.with_io(addr)?.start()?;
 
         // Start independent handling task for each connection
         while let Some(conn) = server.accept().await {
             let zipper = self.clone();
-            tokio::spawn(async move {
+            spawn(async move {
                 if let Err(e) = zipper.handle_connection(conn).await {
                     error!("Connection error: {}", e);
                 }
@@ -255,7 +265,7 @@ impl Zipper {
 
             // Handle request asynchronously
             let zipper = self.clone();
-            tokio::spawn(async move {
+            spawn(async move {
                 if let Err(e) = zipper
                     .handle_data_stream(stream, sfn_req, &mut writer)
                     .await
@@ -288,14 +298,14 @@ impl Zipper {
         send_stream.close().await?;
 
         // Receive and forward Sfn execution result response
-        tokio::io::copy(&mut receive_stream, writer).await?;
+        copy(&mut receive_stream, writer).await?;
 
         Ok(())
     }
 }
 
 #[derive(Deserialize)]
-pub struct HttpToolRequest {
+pub struct HttpRequest {
     pub args: String,
 
     #[serde(default)]
@@ -304,12 +314,12 @@ pub struct HttpToolRequest {
 
 // HTTP request handler: forward request to corresponding QUIC Sfn
 #[axum::debug_handler]
-async fn handle_post_tool(
+async fn handle_post(
     headers: HeaderMap,
     Path(name): Path<String>,
     State(zipper): State<Zipper>,
-    Json(req): Json<HttpToolRequest>,
-) -> Result<Json<Value>, StatusCode> {
+    Json(req): Json<HttpRequest>,
+) -> Result<Json<Value>, (StatusCode, String)> {
     info!("http new request: sfn_name={}, args={}", name, req.args);
 
     // Create metadata
@@ -317,9 +327,8 @@ async fn handle_post_tool(
         .middleware
         .read()
         .await
-        .create_request_metadata(&headers)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    debug!("metadata: {:?}", metadata);
+        .new_request_metadata(&headers)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     match zipper
         .proxy_request(&metadata, &name, &req.args, &req.context)
@@ -327,8 +336,11 @@ async fn handle_post_tool(
     {
         Ok(res) => match res {
             Some(res) => Ok(json!({"result": res.result}).into()),
-            None => Err(StatusCode::NOT_FOUND),
+            None => Err((StatusCode::NOT_FOUND, "Sfn not found".to_string())),
         },
-        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+        Err(_) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Internal server error".to_string(),
+        )),
     }
 }

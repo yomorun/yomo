@@ -7,7 +7,21 @@ use log::{debug, error, info};
 use crate::metadata::{RequestMetadata, SfnMetadata};
 
 pub trait Middleware: Sync + Send {
-    fn create_request_metadata(&self, headers: &HeaderMap) -> Result<RequestMetadata>;
+    fn new_request_metadata(&self, headers: &HeaderMap) -> Result<RequestMetadata>;
+
+    fn new_trace_id(&self, headers: &HeaderMap) -> Result<String> {
+        Ok(match headers.get("x-trace-id") {
+            Some(v) => v.to_str()?.to_owned(),
+            None => String::new(),
+        })
+    }
+
+    fn new_req_id(&self, headers: &HeaderMap) -> Result<String> {
+        Ok(match headers.get("x-trace-id") {
+            Some(v) => v.to_str()?.to_owned(),
+            None => String::new(),
+        })
+    }
 
     fn handshake(
         &mut self,
@@ -22,24 +36,31 @@ pub trait Middleware: Sync + Send {
     fn remove_sfn(&mut self, conn_id: u64) -> Result<()>;
 }
 
-#[derive(Default)]
 pub(crate) struct MiddlewareImpl {
+    token: String,
+
     route_map: HashMap<String, u64>,
 }
 
+impl MiddlewareImpl {
+    pub(crate) fn new(token: String) -> Self {
+        MiddlewareImpl {
+            token,
+            route_map: HashMap::new(),
+        }
+    }
+}
 impl Middleware for MiddlewareImpl {
-    fn create_request_metadata(&self, headers: &HeaderMap) -> Result<RequestMetadata> {
-        Ok(RequestMetadata {
-            trace_id: match headers.get("x-trace-id") {
-                Some(v) => v.to_str()?.to_owned(),
-                None => String::new(),
-            },
-            req_id: match headers.get("x-req-id") {
-                Some(v) => v.to_str()?.to_owned(),
-                None => String::new(),
-            },
+    fn new_request_metadata(&self, headers: &HeaderMap) -> Result<RequestMetadata> {
+        let metadata = RequestMetadata {
+            trace_id: self.new_trace_id(headers)?,
+            req_id: self.new_req_id(headers)?,
             ..Default::default()
-        })
+        };
+
+        debug!("metadata: {:?}", metadata);
+
+        Ok(metadata)
     }
 
     fn handshake(
@@ -49,7 +70,7 @@ impl Middleware for MiddlewareImpl {
         credential: &str,
         _metadata: &SfnMetadata,
     ) -> Result<Option<u64>> {
-        if credential != "" {
+        if credential != self.token {
             error!("invalid credential");
             bail!("invalid credential");
         }
@@ -73,7 +94,7 @@ impl Middleware for MiddlewareImpl {
     fn route(&self, name: &str, metadata: &RequestMetadata) -> Result<Option<u64>> {
         let conn_id = self.route_map.get(name);
         debug!(
-            "route: name={}, metadata={:?}, v={:?}",
+            "route: name={}, metadata={:?}, conn_id={:?}",
             name, metadata, conn_id
         );
 
