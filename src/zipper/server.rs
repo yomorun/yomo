@@ -1,16 +1,19 @@
-use anyhow::bail;
+use anyhow::{Context, bail};
 use axum::{
     Router,
     extract::{Json, Path, State},
     http::{HeaderMap, StatusCode},
     routing::post,
 };
-use bon::Builder;
 use log::{debug, error, info};
-use s2n_quic::{Connection, Server, provider::tls, stream::BidirectionalStream};
+use s2n_quic::{
+    Connection, Server,
+    provider::{io::TryInto, limits::Limits},
+    stream::BidirectionalStream,
+};
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, SimplexStream, WriteHalf, copy, simplex},
     net::TcpListener,
@@ -24,23 +27,18 @@ use tokio::{
 use crate::{
     frame::{Frame, HandshakeAckPayload, read_frame, write_frame},
     metadata::RequestMetadata,
-    middleware::{Middleware, MiddlewareImpl},
+    tls::new_server_tls,
     types::{SfnRequest, SfnResponse},
+    zipper::{
+        config::{HttpConfig, QuicConfig},
+        middleware::Middleware,
+    },
 };
 
 // Sfn: Function struct used to forward requests to Sfn clients
 #[derive(Clone)]
 struct Sfn {
     tx: UnboundedSender<(SfnRequest, WriteHalf<SimplexStream>)>,
-}
-
-#[derive(Builder)]
-pub struct ZipperConfig {
-    #[builder(default = String::from("0.0.0.0:9000"))]
-    quic_addr: String,
-
-    #[builder(default = String::from("0.0.0.0:8001"))]
-    http_addr: String,
 }
 
 // Zipper: Manages all registered Sfn connections
@@ -52,9 +50,9 @@ pub struct Zipper {
 }
 
 impl Zipper {
-    pub fn new(token: String) -> Self {
+    pub fn new(middleware: impl Middleware + 'static) -> Self {
         Self {
-            middleware: Arc::new(RwLock::new(MiddlewareImpl::new(token))),
+            middleware: Arc::new(RwLock::new(middleware)),
             all_sfns: Arc::default(),
         }
     }
@@ -62,44 +60,57 @@ impl Zipper {
 
 impl Zipper {
     // Start server: listen on both HTTP and QUIC ports
-    pub async fn serve(self, config: ZipperConfig) -> anyhow::Result<()> {
+    pub async fn serve(
+        self,
+        quic_config: &QuicConfig,
+        http_config: &HttpConfig,
+    ) -> anyhow::Result<()> {
         select! {
-            r = self.serve_http(&config.http_addr) => r,
-            r = self.serve_quic(&config.quic_addr) => r,
+            r = self.serve_quic(quic_config) => r,
+            r = self.serve_http(http_config) => r,
         }
     }
 
     // HTTP server: listen and receive external requests
-    async fn serve_http(&self, addr: &str) -> anyhow::Result<()> {
+    async fn serve_http(&self, config: &HttpConfig) -> anyhow::Result<()> {
         let app = Router::new()
             .route("/sfn/{name}", post(handle_post))
             .with_state(self.clone());
 
-        let listener = TcpListener::bind(addr).await?;
+        let listener = TcpListener::bind((config.host.to_owned(), config.port)).await?;
 
+        info!("start http server: {}:{}", config.host, config.port);
         axum::serve(listener, app).await?;
 
         Ok(())
     }
 
     // QUIC server: accept remote Sfn connections
-    async fn serve_quic(&self, addr: &str) -> anyhow::Result<()> {
-        let tls = tls::default::Server::builder()
-            .with_certificate(
-                std::path::Path::new("cert.pem"),
-                std::path::Path::new("key.pem"),
-            )?
-            .with_application_protocols(&["yomo-v2"])?
-            .build()?;
+    async fn serve_quic(&self, config: &QuicConfig) -> anyhow::Result<()> {
+        let tls = new_server_tls(&config.tls).context("failed to load tls certificates")?;
 
-        let mut server = Server::builder().with_tls(tls)?.with_io(addr)?.start()?;
+        let limits = Limits::new()
+            .with_max_handshake_duration(Duration::from_secs(10))?
+            .with_max_idle_timeout(Duration::from_secs(15))?
+            .with_max_open_local_bidirectional_streams(200)?
+            .with_max_open_local_unidirectional_streams(0)?
+            .with_max_open_remote_bidirectional_streams(1)?
+            .with_max_open_remote_unidirectional_streams(0)?;
+
+        let mut server = Server::builder()
+            .with_tls(tls)?
+            .with_io(TryInto::try_into((config.host.as_str(), config.port))?)?
+            .with_limits(limits)?
+            .start()?;
+
+        info!("start quic server: {}:{}/udp", config.host, config.port);
 
         // Start independent handling task for each connection
         while let Some(conn) = server.accept().await {
             let zipper = self.clone();
             spawn(async move {
                 if let Err(e) = zipper.handle_connection(conn).await {
-                    error!("Connection error: {}", e);
+                    error!("Connection error: {:?}", e);
                 }
             });
         }
@@ -115,48 +126,49 @@ impl Zipper {
         args: &str,
         context: &str,
     ) -> anyhow::Result<Option<SfnResponse>> {
-        if let Some(conn_id) = self.middleware.read().await.route(&name, &metadata)? {
-            // Create stream and send request through channel
-            let reader = match self.all_sfns.lock().await.get(&conn_id) {
-                Some(sfn) => {
-                    let stream = simplex(1024);
+        match self.middleware.read().await.route(&name, &metadata)? {
+            Some(conn_id) => {
+                // Create stream and send request through channel
+                let sfn = self
+                    .all_sfns
+                    .lock()
+                    .await
+                    .get(&conn_id)
+                    .ok_or(anyhow::Error::msg("sfn not found"))?
+                    .to_owned();
 
-                    debug!(
-                        "proxy_request: name={}, args={}, context={}",
-                        name, args, context
-                    );
+                info!(
+                    "[{}|{}] proxy request to sfn: {}",
+                    metadata.trace_id, metadata.req_id, conn_id
+                );
 
-                    // Send request through in-memory pipe
-                    let sfn_req = SfnRequest {
-                        args: args.to_owned(),
-                        context: context.to_owned(),
-                    };
+                // Send request through in-memory pipe
+                let sfn_req = SfnRequest {
+                    args: args.to_owned(),
+                    context: context.to_owned(),
+                };
 
-                    sfn.tx.send((sfn_req, stream.1))?;
+                let mut stream = simplex(1024);
+                sfn.tx.send((sfn_req, stream.1))?;
 
-                    Some(stream.0)
-                }
-                None => None,
-            };
-
-            if let Some(mut reader) = reader {
                 // Read response and return
                 let mut buf = Vec::new();
-                reader.read_to_end(&mut buf).await?;
-                return Ok(Some(SfnResponse {
-                    result: String::from_utf8_lossy(&buf).to_string(),
-                }));
+                stream.0.read_to_end(&mut buf).await?;
+                let result = String::from_utf8_lossy(&buf).to_string();
+
+                Ok(Some(SfnResponse { result }))
+            }
+            None => {
+                info!("[{}|{}] sfn not found", metadata.trace_id, metadata.req_id);
+
+                Ok(None)
             }
         }
-
-        // Find target Sfn
-        Ok(None)
     }
 
     // Handle QUIC connection: register Sfn
     async fn handle_connection(self, mut conn: Connection) -> anyhow::Result<()> {
         let conn_id = conn.id();
-        info!("handling connection: {}", conn_id);
 
         // Create channel for inter-goroutine communication
         let (tx, rx) = unbounded_channel();
@@ -167,7 +179,7 @@ impl Zipper {
         if let Some(mut ctrl_stream) = conn.accept_bidirectional_stream().await? {
             // Handshake: get Sfn name
             let sfn_name = self.handle_handshake(conn_id, &mut ctrl_stream).await?;
-            info!("new sfn connection: {}", sfn_name);
+            info!("new sfn connection {}: sfn_name={:?}", conn_id, sfn_name);
 
             // Start task to handle requests from HTTP
             let zipper = self.clone();
@@ -179,14 +191,9 @@ impl Zipper {
 
             // Monitor control stream to keep connection alive
             loop {
-                match read_frame(&mut ctrl_stream).await {
-                    Ok(f) => {
-                        info!("ctrl_stream frame: {:?}", f);
-                    }
-                    Err(e) => {
-                        error!("read_frame error: {}", e);
-                        break;
-                    }
+                if let Err(e) = read_frame(&mut ctrl_stream).await {
+                    error!("read_frame error: {:?}", e);
+                    break;
                 }
             }
 
@@ -207,16 +214,11 @@ impl Zipper {
         let f = read_frame(ctrl_stream).await?;
         match f {
             Frame::Handshake { payload } => {
-                info!(
-                    "handshake: sfn_name={}, credential={}",
-                    payload.sfn_name, payload.credential
-                );
-
                 let ack = match self.middleware.write().await.handshake(
                     conn_id,
-                    &payload.sfn_name,
-                    &payload.credential,
-                    &payload.metadata,
+                    payload.sfn_name.to_owned(),
+                    payload.credential,
+                    payload.metadata,
                 ) {
                     Ok(exsited_conn_id) => {
                         if let Some(conn_id) = exsited_conn_id {
@@ -255,11 +257,6 @@ impl Zipper {
         mut conn: Connection,
     ) -> anyhow::Result<()> {
         while let Some((sfn_req, mut writer)) = rx.recv().await {
-            info!(
-                "new request: args={}, context={}",
-                sfn_req.args, sfn_req.context
-            );
-
             // Open new data stream
             let stream = conn.open_bidirectional_stream().await?;
 
@@ -270,7 +267,7 @@ impl Zipper {
                     .handle_data_stream(stream, sfn_req, &mut writer)
                     .await
                 {
-                    error!("handle_data_stream error: {}", e);
+                    error!("handle_data_stream error: {:?}", e);
                 }
                 writer.shutdown().await.ok();
             });
@@ -320,8 +317,6 @@ async fn handle_post(
     State(zipper): State<Zipper>,
     Json(req): Json<HttpRequest>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    info!("http new request: sfn_name={}, args={}", name, req.args);
-
     // Create metadata
     let metadata = zipper
         .middleware
@@ -330,17 +325,32 @@ async fn handle_post(
         .new_request_metadata(&headers)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+    info!(
+        "[{}|{}] http new request: sfn_name={:?}, args={:?}, context={:?}",
+        metadata.trace_id, metadata.req_id, name, req.args, req.context
+    );
+
     match zipper
         .proxy_request(&metadata, &name, &req.args, &req.context)
         .await
     {
         Ok(res) => match res {
-            Some(res) => Ok(json!({"result": res.result}).into()),
-            None => Err((StatusCode::NOT_FOUND, "Sfn not found".to_string())),
+            Some(res) => {
+                info!("[{}|{}] sfn success", metadata.trace_id, metadata.req_id);
+                debug!(
+                    "[{}|{}] sfn response: {}",
+                    metadata.trace_id, metadata.req_id, res.result
+                );
+                Ok(json!({"result": res.result}).into())
+            }
+            None => Err((StatusCode::NOT_FOUND, "sfn not found".to_string())),
         },
-        Err(_) => Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Internal server error".to_string(),
-        )),
+        Err(e) => {
+            error!(
+                "[{}|{}] proxy_request error: {:?}",
+                metadata.trace_id, metadata.req_id, e
+            );
+            Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        }
     }
 }
