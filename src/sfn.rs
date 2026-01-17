@@ -1,37 +1,49 @@
 use anyhow::{Result, anyhow, bail};
 use bon::Builder;
-use log::error;
-use s2n_quic::{Client, Connection, client::Connect, stream::BidirectionalStream};
-use std::{net::ToSocketAddrs, path::Path};
+use log::{debug, error, info};
+use s2n_quic::{
+    Client, Connection, client::Connect, provider::limits::Limits, stream::BidirectionalStream,
+};
+use std::{net::ToSocketAddrs, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::{
     frame::{Frame, HandshakePayload, read_frame, write_frame},
+    tls::{TlsConfig, new_client_tls},
     types::SfnRequest,
 };
 
 #[derive(Clone, Builder)]
 pub struct Sfn {
+    sfn_name: String,
+
     #[builder(default = String::from("localhost:9000"))]
     zipper: String,
 
-    #[builder(default)]
-    credential: String,
+    credential: Option<String>,
 
-    sfn_name: String,
+    tls_config: TlsConfig,
+
+    tls_insecure: bool,
 }
 
 impl Sfn {
     pub async fn serve(self) -> Result<()> {
-        // Create QUIC client with TLS certificate and listening address
-        let tls = s2n_quic::provider::tls::default::Client::builder()
-            .with_certificate(Path::new("cert.pem"))?
-            .with_application_protocols(&["yomo-v2"])?
-            .build()?;
+        info!("start sfn: {}", self.sfn_name);
+
+        let tls = new_client_tls(&self.tls_config, self.tls_insecure)?;
+
+        let limits = Limits::new()
+            .with_max_handshake_duration(Duration::from_secs(10))?
+            .with_max_open_local_bidirectional_streams(1)?
+            .with_max_open_local_unidirectional_streams(0)?
+            .with_max_open_remote_bidirectional_streams(200)?
+            .with_max_open_remote_unidirectional_streams(0)?;
 
         let client = Client::builder()
             .with_tls(tls)?
             .with_io("0.0.0.0:0")?
+            .with_limits(limits)?
             .start()?;
 
         // Connect to zipper service
@@ -39,7 +51,7 @@ impl Sfn {
             .zipper
             .split_once(':')
             .ok_or_else(|| anyhow!("invalid zipper addr format"))?;
-        let server_port = server_port.parse::<u16>()?;
+        let server_port: u16 = server_port.parse()?;
         let addr = (server_name, server_port)
             .to_socket_addrs()?
             .next()
@@ -48,7 +60,7 @@ impl Sfn {
             .connect(Connect::new(addr).with_server_name(server_name))
             .await?;
         conn.keep_alive(true)?;
-        println!("connected to zipper");
+        info!("connected to zipper");
 
         self.handle_connection(conn).await
     }
@@ -66,7 +78,7 @@ impl Sfn {
             let sfn = self.clone();
             tokio::spawn(async move {
                 if let Err(e) = sfn.handle_data_stream(stream).await {
-                    eprintln!("handle_data_stream error: {}", e);
+                    error!("handle_data_stream error: {}", e);
                 }
             });
         }
@@ -102,7 +114,7 @@ impl Sfn {
     // Handle data stream: receive request, execute processing, return response
     async fn handle_data_stream(&self, stream: BidirectionalStream) -> Result<()> {
         let stream_id = stream.id();
-        println!("new data stream: {}", stream_id);
+        info!("new data stream: {}", stream_id);
 
         let (mut receive_stream, mut send_stream) = stream.split();
 
@@ -117,14 +129,14 @@ impl Sfn {
         // Send response and close stream
         send_stream.write_all(resp.as_bytes()).await?;
         send_stream.close().await?;
-        println!("stream closed: {}", stream_id);
+        info!("stream closed: {}", stream_id);
 
         Ok(())
     }
 
     // Function handler: actually execute function logic
     async fn call_handler(&self, args: &str, context: &str) -> Result<String> {
-        println!("args: {}, {}", args, context);
+        debug!("args: {}, context: {}", args, context);
 
         let resp = args.to_ascii_uppercase();
 

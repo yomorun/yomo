@@ -1,6 +1,6 @@
-# Yomo
+# YoMo
 
-v2 version is fully rewrite in Rust.
+v2 version is fully rewritten in Rust.
 
 - build:
 
@@ -23,5 +23,7 @@ RUST_LOG=debug ./target/debug/yomo run --name uppercase
 - send request:
 
 ```
-curl -d '{"args":"Hello, YoMo!"}' -H 'Content-type: application/json' http://127.0.0.1:8001/sfn/uppercase
+curl -d '{"args":"Hello, YoMo!"}' \
+  -H 'Content-type: application/json' \
+  http://127.0.0.1:9001/sfn/uppercase
 ```

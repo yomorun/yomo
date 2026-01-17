@@ -14,7 +14,7 @@ pub(crate) enum Frame {
 #[derive(Serialize, Deserialize, Default, Debug)]
 pub(crate) struct HandshakePayload {
     pub(crate) sfn_name: String,
-    pub(crate) credential: String,
+    pub(crate) credential: Option<String>,
     pub(crate) metadata: SfnMetadata,
 }
 
