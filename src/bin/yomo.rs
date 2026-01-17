@@ -3,11 +3,15 @@ use clap::Parser;
 use config::{Config, File};
 use log::{debug, info};
 
+use serde::Deserialize;
 use yomo::{
-    config::ServeConfig,
     sfn::Sfn,
     tls::TlsConfig,
-    zipper::{config::MiddlewareConfig, middleware::DefaultMiddleware, server::Zipper},
+    zipper::{
+        config::{MiddlewareConfig, ZipperConfig},
+        middleware::DefaultMiddleware,
+        server::Zipper,
+    },
 };
 
 #[derive(Parser, Debug)]
@@ -62,6 +66,12 @@ struct RunOptions {
         help = "enable the insecure mode will skip server name verification"
     )]
     tls_insecure: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+struct ServeConfig<T> {
+    #[serde(default)]
+    pub zipper: ZipperConfig<T>,
 }
 
 #[tokio::main]

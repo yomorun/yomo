@@ -2,33 +2,24 @@ use std::collections::HashMap;
 
 use anyhow::{Ok, Result, bail};
 use axum::http::HeaderMap;
-use nanoid::nanoid;
 
 use crate::{
-    metadata::{RequestMetadata, SfnMetadata},
+    metadata::{DefaultMetadata, Metadata},
     zipper::config::MiddlewareConfig,
 };
 
 pub trait Middleware: Sync + Send {
-    fn new_request_metadata(&self, headers: &HeaderMap) -> Result<RequestMetadata>;
-
-    fn new_trace_id(&self, _headers: &HeaderMap) -> Result<String> {
-        Ok(nanoid!(12))
-    }
-
-    fn new_req_id(&self, _headers: &HeaderMap) -> Result<String> {
-        Ok(nanoid!(8))
-    }
+    fn new_metadata(&self, headers: &HeaderMap) -> Result<Box<dyn Metadata>>;
 
     fn handshake(
         &mut self,
         conn_id: u64,
         sfn_name: String,
         credential: Option<String>,
-        metadata: SfnMetadata,
+        metadata: &[u8],
     ) -> Result<Option<u64>>;
 
-    fn route(&self, name: &str, metadata: &RequestMetadata) -> Result<Option<u64>>;
+    fn route(&self, name: &str, metadata: &Box<dyn Metadata>) -> Result<Option<u64>>;
 
     fn remove_sfn(&mut self, conn_id: u64) -> Result<()>;
 }
@@ -49,12 +40,8 @@ impl DefaultMiddleware {
 }
 
 impl Middleware for DefaultMiddleware {
-    fn new_request_metadata(&self, headers: &HeaderMap) -> Result<RequestMetadata> {
-        Ok(RequestMetadata {
-            trace_id: self.new_trace_id(headers)?,
-            req_id: self.new_req_id(headers)?,
-            ..Default::default()
-        })
+    fn new_metadata(&self, headers: &HeaderMap) -> Result<Box<dyn Metadata>> {
+        Ok(Box::new(DefaultMetadata::new(headers)?))
     }
 
     fn handshake(
@@ -62,7 +49,7 @@ impl Middleware for DefaultMiddleware {
         conn_id: u64,
         sfn_name: String,
         credential: Option<String>,
-        _metadata: SfnMetadata,
+        _metadata: &[u8],
     ) -> Result<Option<u64>> {
         if sfn_name.is_empty() {
             bail!("sfn name is empty");
@@ -93,7 +80,7 @@ impl Middleware for DefaultMiddleware {
         Ok(())
     }
 
-    fn route(&self, name: &str, _metadata: &RequestMetadata) -> Result<Option<u64>> {
+    fn route(&self, name: &str, _metadata: &Box<dyn Metadata>) -> Result<Option<u64>> {
         Ok(match self.route_map.get(name) {
             Some(conn_id) => Some(conn_id.to_owned()),
             None => None,

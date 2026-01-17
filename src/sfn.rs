@@ -8,7 +8,8 @@ use std::{net::ToSocketAddrs, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::{
-    frame::{Frame, HandshakePayload, read_frame, write_frame},
+    frame::{Frame, HandshakePayload},
+    io::{read_packet, write_packet},
     tls::{TlsConfig, new_client_tls},
     types::SfnRequest,
 };
@@ -96,9 +97,9 @@ impl Sfn {
             },
         };
 
-        write_frame(ctrl_stream, &h).await?;
+        write_packet(ctrl_stream, &h).await?;
 
-        match read_frame(ctrl_stream).await? {
+        match read_packet(ctrl_stream).await? {
             Frame::HandshakeAck { payload } => {
                 if !payload.ok {
                     error!("handshake failed: {}", payload.reason.unwrap_or_default());

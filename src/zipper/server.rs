@@ -25,8 +25,9 @@ use tokio::{
 };
 
 use crate::{
-    frame::{Frame, HandshakeAckPayload, read_frame, write_frame},
-    metadata::RequestMetadata,
+    frame::{Frame, HandshakeAckPayload},
+    io::{read_packet, write_packet},
+    metadata::Metadata,
     tls::new_server_tls,
     types::{SfnRequest, SfnResponse},
     zipper::{
@@ -121,7 +122,7 @@ impl Zipper {
     // Forward request to corresponding QUIC Sfn
     async fn proxy_request(
         &self,
-        metadata: &RequestMetadata,
+        metadata: &Box<dyn Metadata>,
         name: &str,
         args: &str,
         context: &str,
@@ -139,7 +140,9 @@ impl Zipper {
 
                 info!(
                     "[{}|{}] proxy request to sfn: {}",
-                    metadata.trace_id, metadata.req_id, conn_id
+                    metadata.trace_id(),
+                    metadata.req_id(),
+                    conn_id
                 );
 
                 // Send request through in-memory pipe
@@ -159,7 +162,11 @@ impl Zipper {
                 Ok(Some(SfnResponse { result }))
             }
             None => {
-                info!("[{}|{}] sfn not found", metadata.trace_id, metadata.req_id);
+                info!(
+                    "[{}|{}] sfn not found",
+                    metadata.trace_id(),
+                    metadata.req_id()
+                );
 
                 Ok(None)
             }
@@ -191,7 +198,7 @@ impl Zipper {
 
             // Monitor control stream to keep connection alive
             loop {
-                if let Err(e) = read_frame(&mut ctrl_stream).await {
+                if let Err(e) = read_packet::<Frame>(&mut ctrl_stream).await {
                     error!("read_frame error: {:?}", e);
                     break;
                 }
@@ -211,14 +218,14 @@ impl Zipper {
         conn_id: u64,
         ctrl_stream: &mut BidirectionalStream,
     ) -> anyhow::Result<String> {
-        let f = read_frame(ctrl_stream).await?;
+        let f = read_packet(ctrl_stream).await?;
         match f {
             Frame::Handshake { payload } => {
                 let ack = match self.middleware.write().await.handshake(
                     conn_id,
                     payload.sfn_name.to_owned(),
                     payload.credential,
-                    payload.metadata,
+                    &payload.metadata,
                 ) {
                     Ok(exsited_conn_id) => {
                         if let Some(conn_id) = exsited_conn_id {
@@ -238,7 +245,7 @@ impl Zipper {
 
                 let ok = ack.ok;
                 let f = Frame::HandshakeAck { payload: ack };
-                write_frame(ctrl_stream, &f).await?;
+                write_packet(ctrl_stream, &f).await?;
 
                 if !ok {
                     bail!("handshake failed");
@@ -322,12 +329,16 @@ async fn handle_post(
         .middleware
         .read()
         .await
-        .new_request_metadata(&headers)
+        .new_metadata(&headers)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     info!(
         "[{}|{}] http new request: sfn_name={:?}, args={:?}, context={:?}",
-        metadata.trace_id, metadata.req_id, name, req.args, req.context
+        metadata.trace_id(),
+        metadata.req_id(),
+        name,
+        req.args,
+        req.context
     );
 
     match zipper
@@ -336,10 +347,16 @@ async fn handle_post(
     {
         Ok(res) => match res {
             Some(res) => {
-                info!("[{}|{}] sfn success", metadata.trace_id, metadata.req_id);
+                info!(
+                    "[{}|{}] sfn success",
+                    metadata.trace_id(),
+                    metadata.req_id()
+                );
                 debug!(
                     "[{}|{}] sfn response: {}",
-                    metadata.trace_id, metadata.req_id, res.result
+                    metadata.trace_id(),
+                    metadata.req_id(),
+                    res.result
                 );
                 Ok(json!({"result": res.result}).into())
             }
@@ -348,7 +365,9 @@ async fn handle_post(
         Err(e) => {
             error!(
                 "[{}|{}] proxy_request error: {:?}",
-                metadata.trace_id, metadata.req_id, e
+                metadata.trace_id(),
+                metadata.req_id(),
+                e
             );
             Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
         }
