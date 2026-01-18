@@ -1,31 +1,19 @@
 use serde::Deserialize;
 
-use crate::tls::TlsConfig;
-
 #[derive(Debug, Clone, Deserialize)]
-pub struct ZipperConfig {
+pub struct HttpBridgeConfig {
     #[serde(default = "default_host")]
     pub host: String,
 
     #[serde(default = "default_port")]
     pub port: u16,
-
-    #[serde(default)]
-    pub tls: TlsConfig,
 }
 
-#[derive(Debug, Clone, Deserialize, Default)]
-pub struct ZipperMiddlewareImplConfig {
-    #[serde(default)]
-    pub auth_token: Option<String>,
-}
-
-impl Default for ZipperConfig {
+impl Default for HttpBridgeConfig {
     fn default() -> Self {
         Self {
             host: default_host(),
             port: default_port(),
-            tls: TlsConfig::default(),
         }
     }
 }
@@ -35,5 +23,5 @@ fn default_host() -> String {
 }
 
 fn default_port() -> u16 {
-    9000
+    9001
 }

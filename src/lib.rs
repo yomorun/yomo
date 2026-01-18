@@ -1,7 +1,8 @@
-mod frame;
-mod io;
+pub mod bridge;
+mod handshake;
+pub mod io;
 pub mod metadata;
 pub mod sfn;
 pub mod tls;
-mod types;
+pub mod types;
 pub mod zipper;

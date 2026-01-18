@@ -1,12 +1,15 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Default)]
-pub struct SfnRequest {
-    pub args: String,
-    pub context: String,
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Request {
+    pub data: Vec<u8>,
+    pub stream: bool,
 }
 
-#[derive(Serialize, Deserialize, Default)]
-pub struct SfnResponse {
-    pub result: String,
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "t", content = "v")]
+pub enum Response {
+    Data(Vec<u8>),
+    Error(String),
+    End,
 }
