@@ -23,7 +23,7 @@ RUST_LOG=info ./target/debug/yomo run --name uppercase
 - send request:
 
 ```
-curl -d '{"data": {"args": "Hello, YoMo!"}}' \
+curl -d '{"args": "Hello, YoMo!"}' \
   -H 'Content-type: application/json' \
   http://127.0.0.1:9001/sfn/uppercase
 ```
@@ -31,7 +31,7 @@ curl -d '{"data": {"args": "Hello, YoMo!"}}' \
 - send stream request:
 
 ```
-curl -d '{"data": {"args": "Hello, YoMo!"}}' \
+curl -d '{"args": "Hello, YoMo!"}' \
   -H 'Content-type: application/json' \
   http://127.0.0.1:9001/sfn/uppercase/sse
 ```

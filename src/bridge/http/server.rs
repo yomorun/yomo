@@ -10,23 +10,46 @@ use axum::{
     routing::post,
 };
 use futures_util::{Stream, stream};
-use log::{error, info};
+use log::{debug, error, info};
 use serde::{Deserialize, Serialize};
 use tokio::{
-    io::{AsyncReadExt, simplex},
+    io::{AsyncReadExt, AsyncWriteExt, simplex},
     net::TcpListener,
 };
 
 use crate::{
-    bridge::{
-        Bridge,
-        http::{config::HttpBridgeConfig, middleware::HttpMiddleware},
-    },
-    io::{receive_all, receive_chunk, send_all},
-    types::{Request, Response},
+    bridge::{Bridge, http::middleware::HttpMiddleware},
+    frame::{Frame, HandlerDelta, HandlerRequest, HandlerResponse},
+    io::{receive_frame, send_frame},
 };
 
 const MAX_BUF_SIZE: usize = 64 * 1024;
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct HttpBridgeConfig {
+    #[serde(default = "default_host")]
+    host: String,
+
+    #[serde(default = "default_port")]
+    port: u16,
+}
+
+impl Default for HttpBridgeConfig {
+    fn default() -> Self {
+        Self {
+            host: default_host(),
+            port: default_port(),
+        }
+    }
+}
+
+fn default_host() -> String {
+    "0.0.0.0".to_string()
+}
+
+fn default_port() -> u16 {
+    9001
+}
 
 struct AppError {
     status_code: StatusCode,
@@ -53,15 +76,15 @@ where
 
 #[derive(Deserialize, Serialize)]
 struct HttpRequest {
-    data: serde_json::Value,
+    args: String,
 }
 
-// HTTP request handler: forward request to corresponding QUIC Sfn
+// HTTP request handler: forward request to corresponding QUIC sfn
 #[axum::debug_handler]
 async fn handle_simple(
     headers: HeaderMap,
     Path(name): Path<String>,
-    State((middleware, bridge)): State<(Arc<dyn HttpMiddleware>, Arc<dyn Bridge>)>,
+    State((bridge, middleware)): State<(Arc<dyn Bridge>, Arc<dyn HttpMiddleware>)>,
     Json(req): Json<HttpRequest>,
 ) -> Result<Bytes, AppError> {
     info!("new request to [{}]", name);
@@ -69,22 +92,26 @@ async fn handle_simple(
     // Create metadata
     let metadata = middleware.new_metadata(&headers)?;
 
-    let request = Request {
-        data: serde_json::to_vec(&req.data)?,
+    let handler_req = HandlerRequest {
+        args: req.args,
         stream: false,
     };
 
-    let req_stream = simplex(MAX_BUF_SIZE);
-    let res_stream = simplex(MAX_BUF_SIZE);
+    let mut req_stream = simplex(MAX_BUF_SIZE);
+    let mut res_stream = simplex(MAX_BUF_SIZE);
 
     if bridge
         .forward(&name, &metadata, req_stream.0, res_stream.1)
         .await?
     {
-        send_all(req_stream.1, &request).await?;
+        send_frame(&mut req_stream.1, &Frame::Packet(handler_req)).await?;
+        req_stream.1.shutdown().await?;
 
-        if let Response::Data(data) = receive_all::<Response>(res_stream.0).await? {
-            Ok(data.into())
+        if let Frame::Packet(handler_res) =
+            receive_frame::<HandlerResponse>(&mut res_stream.0).await?
+        {
+            debug!("received response: {:?}", handler_res.result);
+            Ok(handler_res.result.into())
         } else {
             Err(anyhow!("invalid response format").into())
         }
@@ -96,12 +123,12 @@ async fn handle_simple(
     }
 }
 
-// HTTP request handler: forward request to corresponding QUIC Sfn
+// HTTP stream handler: forward request to corresponding QUIC sfn with SSE response
 #[axum::debug_handler]
 async fn handle_sse(
     headers: HeaderMap,
     Path(name): Path<String>,
-    State((middleware, bridge)): State<(Arc<dyn HttpMiddleware>, Arc<dyn Bridge>)>,
+    State((bridge, middleware)): State<(Arc<dyn Bridge>, Arc<dyn HttpMiddleware>)>,
     Json(req): Json<HttpRequest>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, AppError> {
     info!("new request to [{}]", name);
@@ -109,19 +136,20 @@ async fn handle_sse(
     // Create metadata
     let metadata = middleware.new_metadata(&headers)?;
 
-    let request = Request {
-        data: serde_json::to_vec(&req.data)?,
+    let handler_req = HandlerRequest {
+        args: req.args,
         stream: true,
     };
 
-    let req_stream = simplex(MAX_BUF_SIZE);
+    let mut req_stream = simplex(MAX_BUF_SIZE);
     let res_stream = simplex(MAX_BUF_SIZE);
 
     if bridge
         .forward(&name, &metadata, req_stream.0, res_stream.1)
         .await?
     {
-        send_all(req_stream.1, &request).await?;
+        send_frame(&mut req_stream.1, &Frame::Packet(handler_req)).await?;
+        req_stream.1.shutdown().await?;
 
         let stream = stream::unfold(res_stream.0, move |mut r| async move {
             match process_chunk(&mut r).await {
@@ -130,7 +158,7 @@ async fn handle_sse(
                     None => None,
                 },
                 Err(e) => {
-                    error!("Error receiving chunk: {}", e);
+                    error!("Error receiving frame: {}", e);
                     None
                 }
             }
@@ -146,26 +174,33 @@ async fn handle_sse(
 }
 
 async fn process_chunk(stream: &mut (impl AsyncReadExt + Unpin)) -> anyhow::Result<Option<Event>> {
-    if let Some(Response::Data(data)) = receive_chunk::<Response>(stream).await? {
-        let data: serde_json::Value = serde_json::from_slice(&data)?;
-        let data = serde_json::to_string(&data)?;
-        let event = Event::default().data(data);
-        Ok(Some(event))
-    } else {
-        Ok(None)
+    match receive_frame::<HandlerDelta>(stream).await? {
+        Frame::Chunk(id, data) => {
+            debug!("received chunk: id={}, delta={}", id, data.delta);
+            let event = Event::default().data(data.delta);
+            Ok(Some(event))
+        }
+        Frame::ChunkDone(count) => {
+            debug!("received chunk done: count={}", count);
+            Ok(None)
+        }
+        _ => {
+            error!("Unexpected frame type");
+            Ok(None)
+        }
     }
 }
 
 // HTTP server: listen and receive external requests
 pub async fn serve_http_bridge(
     config: &HttpBridgeConfig,
-    middleware: Arc<dyn HttpMiddleware>,
-    bridge: Arc<dyn Bridge>,
+    bridge: impl Bridge + 'static,
+    middleware: impl HttpMiddleware + 'static,
 ) -> anyhow::Result<()> {
     let app = Router::new()
         .route("/sfn/{name}", post(handle_simple))
         .route("/sfn/{name}/sse", post(handle_sse))
-        .with_state((middleware, bridge));
+        .with_state((Arc::new(bridge), Arc::new(middleware)));
 
     let listener = TcpListener::bind((config.host.to_owned(), config.port)).await?;
 

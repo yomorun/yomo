@@ -1,4 +1,5 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
+use bon::Builder;
 use log::{error, info};
 use s2n_quic::{
     Connection, Server,
@@ -6,50 +7,73 @@ use s2n_quic::{
     provider::{io::TryInto, limits::Limits},
     stream::BidirectionalStream,
 };
+use serde::Deserialize;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::{
-    io::{ReadHalf, SimplexStream, WriteHalf},
+    io::{AsyncWriteExt, ReadHalf, SimplexStream, WriteHalf},
     spawn,
     sync::{Mutex, RwLock},
 };
 
 use crate::{
     bridge::Bridge,
+    frame::Frame,
     handshake::{HandshakeReq, HandshakeRes},
-    io::{pipe_stream, receive_all, send_all},
+    io::{pipe_stream, receive_frame, send_frame},
     metadata::Metadata,
     tls::{TlsConfig, new_server_tls},
-    zipper::{config::ZipperConfig, middleware::ZipperMiddleware},
+    zipper::middleware::ZipperMiddleware,
 };
+
+#[derive(Debug, Clone, Deserialize, Builder)]
+pub struct ZipperConfig {
+    #[serde(default = "default_host")]
+    host: String,
+
+    #[serde(default = "default_port")]
+    port: u16,
+
+    #[serde(default)]
+    tls: TlsConfig,
+}
+
+impl Default for ZipperConfig {
+    fn default() -> Self {
+        Self {
+            host: default_host(),
+            port: default_port(),
+            tls: TlsConfig::default(),
+        }
+    }
+}
+
+fn default_host() -> String {
+    "0.0.0.0".to_string()
+}
+
+fn default_port() -> u16 {
+    9000
+}
 
 // Zipper: Manages all registered Sfn connections
 #[derive(Clone)]
 pub struct Zipper {
-    host: String,
-
-    port: u16,
-
-    tls: TlsConfig,
-
     middleware: Arc<RwLock<dyn ZipperMiddleware>>,
 
     all_sfns: Arc<Mutex<HashMap<u64, Handle>>>,
 }
 
 impl Zipper {
-    pub fn new(config: ZipperConfig, middleware: impl ZipperMiddleware + 'static) -> Self {
+    pub fn new(middleware: impl ZipperMiddleware + 'static) -> Self {
         Self {
-            host: config.host,
-            port: config.port,
-            tls: config.tls,
             middleware: Arc::new(RwLock::new(middleware)),
             all_sfns: Arc::default(),
         }
     }
 
     // Start server: listen on QUIC port, accept remote Sfn connections
-    pub async fn serve(self) -> Result<()> {
-        let tls = new_server_tls(&self.tls).context("failed to load tls certificates")?;
+    pub async fn serve(self, config: ZipperConfig) -> Result<()> {
+        let tls = new_server_tls(&config.tls).context("failed to load tls certificates")?;
 
         let limits = Limits::new()
             .with_max_handshake_duration(Duration::from_secs(10))?
@@ -61,11 +85,11 @@ impl Zipper {
 
         let mut server = Server::builder()
             .with_tls(tls)?
-            .with_io(TryInto::try_into((self.host.as_str(), self.port))?)?
+            .with_io(TryInto::try_into((config.host.as_str(), config.port))?)?
             .with_limits(limits)?
             .start()?;
 
-        info!("start quic server: {}:{}/udp", self.host, self.port);
+        info!("start quic server: {}:{}/udp", config.host, config.port);
 
         // Start independent handling task for each connection
         while let Some(conn) = server.accept().await {
@@ -84,13 +108,14 @@ impl Zipper {
     async fn handle_connection(self, mut conn: Connection) -> Result<()> {
         let conn_id = conn.id();
 
-        // save connection
-        self.all_sfns.lock().await.insert(conn_id, conn.handle());
-
         if let Some(stream) = conn.accept_bidirectional_stream().await? {
             // Handshake: get sfn name
             let sfn_name = self.handle_handshake(conn_id, stream).await?;
+
             info!("new sfn connection {}: sfn_name={:?}", conn_id, sfn_name);
+
+            // save connection
+            self.all_sfns.lock().await.insert(conn_id, conn.handle());
         } else {
             return Ok(());
         }
@@ -124,36 +149,40 @@ impl Zipper {
     }
 
     // Handshake protocol: read Sfn name
-    async fn handle_handshake(&self, conn_id: u64, stream: BidirectionalStream) -> Result<String> {
-        let (recv_stream, send_stream) = stream.split();
-        let req: HandshakeReq = receive_all(recv_stream).await?;
+    async fn handle_handshake(
+        &self,
+        conn_id: u64,
+        mut stream: BidirectionalStream,
+    ) -> Result<String> {
+        match receive_frame(&mut stream).await {
+            Ok(Frame::Packet(HandshakeReq {
+                sfn_name,
+                credential,
+            })) => {
+                let (ok, reason, conn_id) =
+                    self.middleware
+                        .write()
+                        .await
+                        .handshake(conn_id, &sfn_name, &credential);
 
-        let ok =
-            match self
-                .middleware
-                .write()
-                .await
-                .handshake(conn_id, &req.sfn_name, req.credential)
-            {
-                Ok(exsited_conn_id) => {
-                    if let Some(conn_id) = exsited_conn_id {
-                        if let Some(conn) = self.all_sfns.lock().await.remove(&conn_id) {
-                            info!("close existing connection: {}", conn_id);
-                            conn.close(1_u32.into());
-                        }
+                if let Some(conn_id) = conn_id {
+                    if let Some(conn) = self.all_sfns.lock().await.remove(&conn_id) {
+                        info!(
+                            "close existing connection {} of name: {}",
+                            conn_id, sfn_name
+                        );
+                        conn.close(1_u32.into());
                     }
-                    true
                 }
-                Err(e) => {
-                    error!("handshake error: {}", e);
-                    false
-                }
-            };
 
-        let res = HandshakeRes { ok };
-        send_all(send_stream, &res).await?;
+                let res = HandshakeRes { ok, reason };
+                send_frame(&mut stream, &Frame::Packet(res)).await?;
+                stream.shutdown().await?;
 
-        Ok(req.sfn_name)
+                Ok(sfn_name)
+            }
+            _ => bail!("invalid handshake response"),
+        }
     }
 }
 

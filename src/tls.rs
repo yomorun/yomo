@@ -1,16 +1,17 @@
 use std::path::Path;
 
 use anyhow::{Result, bail};
+use bon::Builder;
 use log::warn;
 use s2n_quic::provider::tls::default::{Client, Server, callbacks::VerifyHostNameCallback};
 use serde::Deserialize;
 
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize, Default, Builder)]
 pub struct TlsConfig {
-    pub ca_cert: Option<String>,
-    pub cert: Option<String>,
-    pub key: Option<String>,
-    pub mutual: bool,
+    ca_cert: Option<String>,
+    cert: Option<String>,
+    key: Option<String>,
+    mutual: bool,
 }
 
 const YOMO_TLS_PROTOCOL: [&str; 1] = ["yomo-v2"];

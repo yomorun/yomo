@@ -6,12 +6,13 @@ use s2n_quic::{
     stream::BidirectionalStream,
 };
 use std::{net::ToSocketAddrs, sync::Arc, time::Duration};
-use tokio::spawn;
+use tokio::{io::AsyncWriteExt, spawn};
 
 use crate::{
+    frame::Frame,
     handshake::{HandshakeReq, HandshakeRes},
-    io::{pipe_stream, receive_all, send_all},
-    sfn::handler::Handler,
+    io::{pipe_stream, receive_frame, send_frame},
+    sfn::handler::{Handler, HandlerImpl},
     tls::{TlsConfig, new_client_tls},
 };
 
@@ -19,23 +20,21 @@ use crate::{
 pub struct Sfn {
     sfn_name: String,
 
-    #[builder(default = String::from("localhost:9000"))]
-    zipper: String,
-
-    credential: Option<String>,
-
-    tls_config: TlsConfig,
-
-    tls_insecure: bool,
-
+    #[builder(default = Arc::new(HandlerImpl::default()))]
     handler: Arc<dyn Handler>,
 }
 
 impl Sfn {
-    pub async fn serve(self) -> Result<()> {
+    pub async fn run(
+        self,
+        zipper: &str,
+        credential: &str,
+        tls_config: &TlsConfig,
+        tls_insecure: bool,
+    ) -> Result<()> {
         info!("start sfn: {}", self.sfn_name);
 
-        let tls = new_client_tls(&self.tls_config, self.tls_insecure)?;
+        let tls = new_client_tls(tls_config, tls_insecure)?;
 
         let limits = Limits::new()
             .with_max_handshake_duration(Duration::from_secs(10))?
@@ -52,8 +51,7 @@ impl Sfn {
             .start()?;
 
         // Connect to zipper service
-        let (server_name, server_port) = self
-            .zipper
+        let (server_name, server_port) = zipper
             .split_once(':')
             .ok_or_else(|| anyhow!("invalid zipper addr format"))?;
         let server_port: u16 = server_port.parse()?;
@@ -67,13 +65,13 @@ impl Sfn {
         conn.keep_alive(true)?;
         info!("quic connected");
 
-        self.process(conn).await
+        self.process(conn, &credential).await
     }
 
     // process QUIC connection
-    async fn process(&self, mut conn: Connection) -> Result<()> {
+    async fn process(&self, mut conn: Connection, credential: &str) -> Result<()> {
         // Send handshake request
-        self.handshake(&mut conn).await?;
+        self.handshake(&mut conn, credential).await?;
 
         // Accept and process data streams (zipper creates new streams for each request)
         loop {
@@ -104,21 +102,27 @@ impl Sfn {
     }
 
     // Send handshake request
-    async fn handshake(&self, conn: &mut Connection) -> Result<()> {
-        let stream = conn.open_bidirectional_stream().await?;
-
-        let (recv_stream, send_stream) = stream.split();
+    async fn handshake(&self, conn: &mut Connection, credential: &str) -> Result<()> {
+        let mut stream = conn.open_bidirectional_stream().await?;
 
         let req = HandshakeReq {
             sfn_name: self.sfn_name.to_owned(),
-            credential: self.credential.to_owned(),
+            credential: credential.to_owned(),
         };
 
-        send_all(send_stream, &req).await?;
-        let res: HandshakeRes = receive_all(recv_stream).await?;
-        if !res.ok {
-            bail!("handshake credential rejected");
-        }
+        send_frame(&mut stream, &Frame::Packet(req)).await?;
+        stream.shutdown().await?;
+
+        match receive_frame(&mut stream).await {
+            Ok(Frame::Packet(HandshakeRes { ok, reason })) => {
+                if !ok {
+                    bail!("handshake failed: {}", reason.unwrap_or_default());
+                }
+            }
+            _ => bail!("invalid handshake response"),
+        };
+
+        info!("handshake success");
 
         Ok(())
     }

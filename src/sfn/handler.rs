@@ -1,8 +1,7 @@
 use std::time::Duration;
 
-use anyhow::Result;
-use log::info;
-use serde::{Deserialize, Serialize};
+use anyhow::{Result, anyhow};
+use log::{error, info};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, ReadHalf, SimplexStream, WriteHalf, simplex},
     spawn,
@@ -10,8 +9,8 @@ use tokio::{
 };
 
 use crate::{
-    io::{receive_all, send_all, send_chunk, send_chunk_done},
-    types::{Request, Response},
+    frame::{Frame, HandlerDelta, HandlerRequest, HandlerResponse},
+    io::{receive_frame, send_frame},
 };
 
 #[async_trait::async_trait]
@@ -27,73 +26,58 @@ const MAX_BUF_SIZE: usize = 64 * 1024;
 #[async_trait::async_trait]
 impl Handler for HandlerImpl {
     async fn open(&self) -> Result<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)> {
-        let req_stream = simplex(MAX_BUF_SIZE);
-        let res_stream = simplex(MAX_BUF_SIZE);
+        let mut req_stream = simplex(MAX_BUF_SIZE);
+        let mut res_stream = simplex(MAX_BUF_SIZE);
 
-        // open socket connection
+        // todo: open socket connection
 
         spawn(async move {
-            if let Err(e) = mock_handler(req_stream.0, res_stream.1).await {
-                eprintln!("Error in mock handler: {}", e);
+            if let Err(e) = mock_handler(&mut req_stream.0, &mut res_stream.1).await {
+                error!("Error in mock handler: {}", e);
             }
+            res_stream.1.shutdown().await.ok();
         });
 
         Ok((res_stream.0, req_stream.1))
     }
 }
 
-#[derive(Deserialize)]
-struct HandlerRequest {
-    args: String,
-}
-
-#[derive(Serialize)]
-struct HandlerResponse {
-    result: String,
-}
-
-#[derive(Serialize)]
-struct HandlerDelta {
-    delta: String,
-}
-
 async fn mock_handler(
-    req_stream: impl AsyncReadExt + Unpin,
-    mut res_stream: impl AsyncWriteExt + Unpin,
+    req_stream: &mut (impl AsyncReadExt + Unpin),
+    res_stream: &mut (impl AsyncWriteExt + Unpin),
 ) -> Result<()> {
-    let req: Request = receive_all(req_stream).await?;
+    if let Frame::Packet(req) = receive_frame::<HandlerRequest>(req_stream).await? {
+        info!("received request: args={}, stream={}", req.args, req.stream);
 
-    info!(
-        "received request: {}, stream: {}",
-        String::from_utf8_lossy(&req.data),
-        req.stream
-    );
+        let result = req.args.to_ascii_uppercase();
 
-    let handler_req: HandlerRequest = serde_json::from_slice(&req.data)?;
-    let result = handler_req.args.to_ascii_uppercase();
+        if req.stream {
+            let mut count = 0;
+            for delta in result.split_inclusive(' ') {
+                count += 1;
 
-    if req.stream {
-        for delta in result.split_inclusive(' ') {
-            let handler_delta = HandlerDelta {
-                delta: delta.to_owned(),
-            };
+                send_frame(
+                    res_stream,
+                    &Frame::Chunk(
+                        count,
+                        Some(HandlerDelta {
+                            delta: delta.to_owned(),
+                        }),
+                    ),
+                )
+                .await?;
 
-            let res = Response::Data(serde_json::to_vec(&handler_delta)?);
+                // Add a delay to simulate streaming
+                sleep(Duration::from_secs(1)).await;
+            }
 
-            send_chunk(&mut res_stream, &res).await?;
-
-            // Add a delay to simulate streaming
-            sleep(Duration::from_secs(1)).await;
+            send_frame::<HandlerDelta>(res_stream, &Frame::ChunkDone(count)).await?;
+        } else {
+            send_frame(res_stream, &Frame::Packet(HandlerResponse { result })).await?;
         }
 
-        send_chunk_done(res_stream).await?;
-    } else {
-        let handler_res = HandlerResponse { result };
-        let data = serde_json::to_vec(&handler_res)?;
-        let res = Response::Data(data);
-
-        send_all(res_stream, &res).await?;
+        return Ok(());
     }
 
-    Ok(())
+    Err(anyhow!("invalid request format"))
 }

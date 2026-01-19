@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use anyhow::Result;
 use clap::Parser;
 use config::{Config, File};
@@ -9,14 +7,14 @@ use serde::Deserialize;
 use tokio::select;
 use yomo::{
     bridge::http::{
-        config::HttpBridgeConfig, middleware::HttpMiddlewareImpl, server::serve_http_bridge,
+        middleware::HttpMiddlewareImpl,
+        server::{HttpBridgeConfig, serve_http_bridge},
     },
-    sfn::{client::Sfn, handler::HandlerImpl},
+    sfn::client::Sfn,
     tls::TlsConfig,
     zipper::{
-        config::{ZipperConfig, ZipperMiddlewareImplConfig},
-        middleware::ZipperMiddlewareImpl,
-        server::Zipper,
+        middleware::{ZipperMiddlewareImpl, ZipperMiddlewareImplConfig},
+        server::{Zipper, ZipperConfig},
     },
 };
 
@@ -48,8 +46,8 @@ struct RunOptions {
     )]
     zipper: String,
 
-    #[clap(long, help = "client credential payload")]
-    credential: Option<String>,
+    #[clap(long, default_value_t = String::default(), help = "client credential payload")]
+    credential: String,
 
     #[clap(long, help = "path to the tls CA certificate file")]
     tls_ca_cert_file: Option<String>,
@@ -77,13 +75,13 @@ struct RunOptions {
 #[derive(Debug, Clone, Deserialize, Default)]
 struct ServeConfig {
     #[serde(default)]
-    pub zipper: ZipperConfig,
+    zipper: ZipperConfig,
 
     #[serde(default)]
-    pub zipper_middleware: ZipperMiddlewareImplConfig,
+    zipper_middleware: ZipperMiddlewareImplConfig,
 
     #[serde(default)]
-    pub http_bridge: HttpBridgeConfig,
+    http_bridge: HttpBridgeConfig,
 }
 
 async fn serve(opt: ServeOptions) -> Result<()> {
@@ -106,35 +104,31 @@ async fn serve(opt: ServeOptions) -> Result<()> {
     info!("config: {:?}", config);
 
     let zipper_middleware = ZipperMiddlewareImpl::new(config.zipper_middleware);
-    let zipper = Zipper::new(config.zipper, zipper_middleware);
+    let zipper = Zipper::new(zipper_middleware);
 
     select! {
         r = serve_http_bridge(
             &config.http_bridge,
-            Arc::new(HttpMiddlewareImpl::default()),
-            Arc::new(zipper.clone()),
+            zipper.clone(),
+            HttpMiddlewareImpl::default(),
         ) => r,
-        r = zipper.serve() => r,
+        r = zipper.serve(config.zipper) => r,
     }?;
 
     Ok(())
 }
 
 async fn run(opt: RunOptions) -> Result<()> {
-    Sfn::builder()
-        .sfn_name(opt.name)
-        .zipper(opt.zipper)
-        .maybe_credential(opt.credential)
-        .tls_config(TlsConfig {
-            ca_cert: opt.tls_ca_cert_file,
-            cert: opt.tls_cert_file,
-            key: opt.tls_key_file,
-            mutual: opt.tls_mutual,
-        })
-        .tls_insecure(opt.tls_insecure)
-        .handler(Arc::new(HandlerImpl::default()))
-        .build()
-        .serve()
+    let tls_config = TlsConfig::builder()
+        .maybe_ca_cert(opt.tls_ca_cert_file)
+        .maybe_cert(opt.tls_cert_file)
+        .maybe_key(opt.tls_key_file)
+        .mutual(opt.tls_mutual)
+        .build();
+
+    let sfn = Sfn::builder().sfn_name(opt.name).build();
+
+    sfn.run(&opt.zipper, &opt.credential, &tls_config, opt.tls_insecure)
         .await
 }
 

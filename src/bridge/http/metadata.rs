@@ -4,7 +4,7 @@ use nanoid::nanoid;
 
 use crate::metadata::Metadata;
 
-pub(crate) struct HttpMetadata {
+pub struct HttpMetadata {
     trace_id: String,
     req_id: String,
 }
