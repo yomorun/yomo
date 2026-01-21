@@ -484,6 +484,9 @@ func (r *streamChatResp) accumulateToolCall(delta []openai.ToolCall) {
 		if v.Function.Name != "" {
 			item.Function.Name = v.Function.Name
 		}
+		if v.ExtraContent != nil {
+			item.ExtraContent = v.ExtraContent
+		}
 		r.toolCallsMap[index] = item
 	}
 }

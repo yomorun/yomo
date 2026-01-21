@@ -2,6 +2,8 @@ module github.com/yomorun/yomo
 
 go 1.25
 
+replace github.com/sashabaranov/go-openai => ../../sashabaranov/go-openai
+
 require (
 	github.com/anthropics/anthropic-sdk-go v1.18.1
 	github.com/briandowns/spinner v1.23.2
