@@ -1,7 +1,9 @@
+use std::{process, sync::Arc};
+
 use anyhow::Result;
 use clap::Parser;
 use config::{Config, File};
-use log::{debug, info};
+use log::{error, info};
 
 use serde::Deserialize;
 use tokio::select;
@@ -10,7 +12,7 @@ use yomo::{
         middleware::HttpMiddlewareImpl,
         server::{HttpBridgeConfig, serve_http_bridge},
     },
-    sfn::client::Sfn,
+    sfn::{client::Sfn, handler::ServerlessHandler},
     tls::TlsConfig,
     zipper::{
         middleware::{ZipperMiddlewareImpl, ZipperMiddlewareImplConfig},
@@ -36,6 +38,12 @@ struct ServeOptions {
 
 #[derive(Parser, Debug)]
 struct RunOptions {
+    #[clap(
+        default_value = ".",
+        help = "path to the serverless function source file (app.ts OR app.go)"
+    )]
+    src_file: String,
+
     #[clap(short, long, help = "yomo Serverless LLM Function name")]
     name: String,
 
@@ -87,7 +95,7 @@ struct ServeConfig {
 async fn serve(opt: ServeOptions) -> Result<()> {
     let config = match opt.config {
         Some(file) => {
-            debug!("using config file: {}", file);
+            info!("load config file: {}", file);
 
             Config::builder()
                 .add_source(File::with_name(&file))
@@ -95,13 +103,11 @@ async fn serve(opt: ServeOptions) -> Result<()> {
                 .try_deserialize::<ServeConfig>()?
         }
         None => {
-            debug!("using default config");
+            info!("use default config");
 
             ServeConfig::default()
         }
     };
-
-    info!("config: {:?}", config);
 
     let zipper_middleware = ZipperMiddlewareImpl::new(config.zipper_middleware);
     let zipper = Zipper::new(zipper_middleware);
@@ -126,18 +132,30 @@ async fn run(opt: RunOptions) -> Result<()> {
         .mutual(opt.tls_mutual)
         .build();
 
-    let sfn = Sfn::builder().sfn_name(opt.name).build();
+    let serverless_handler = Arc::new(ServerlessHandler::default());
 
-    sfn.run(&opt.zipper, &opt.credential, &tls_config, opt.tls_insecure)
-        .await
+    let sfn = Sfn::builder()
+        .sfn_name(opt.name)
+        .handler(serverless_handler.clone())
+        .build();
+
+    select! {
+        r = serverless_handler.run_subprocess(&opt.src_file) => r,
+        r = sfn.run(&opt.zipper, &opt.credential, &tls_config, opt.tls_insecure) => r,
+    }?;
+
+    Ok(())
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() {
     env_logger::init();
 
-    match Cli::parse() {
+    if let Err(e) = match Cli::parse() {
         Cli::Serve(opt) => serve(opt).await,
         Cli::Run(opt) => run(opt).await,
+    } {
+        error!("{}", e);
+        process::exit(1);
     }
 }

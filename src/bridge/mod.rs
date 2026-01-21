@@ -11,7 +11,7 @@ pub trait Bridge: Send + Sync {
         &self,
         sfn_name: &str,
         metadata: &Box<dyn Metadata>,
-        from_reader: ReadHalf<SimplexStream>,
-        from_writer: WriteHalf<SimplexStream>,
+        reader: ReadHalf<SimplexStream>,
+        writer: WriteHalf<SimplexStream>,
     ) -> Result<bool>;
 }

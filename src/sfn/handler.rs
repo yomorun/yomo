@@ -1,83 +1,144 @@
+use std::path::{Path, absolute};
+use std::process::Stdio;
 use std::time::Duration;
 
-use anyhow::{Result, anyhow};
-use log::{error, info};
+use anyhow::{Result, bail};
+use log::{debug, info};
+use tempfile::tempdir;
+use tokio::fs;
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt, ReadHalf, SimplexStream, WriteHalf, simplex},
-    spawn,
-    time::sleep,
+    io::{AsyncBufReadExt, BufReader, ReadHalf, SimplexStream, WriteHalf},
+    net::TcpStream,
+    process::Command,
+    sync::Mutex,
+    time::timeout,
 };
 
-use crate::{
-    frame::{Frame, HandlerDelta, HandlerRequest, HandlerResponse},
-    io::{receive_frame, send_frame},
-};
+use crate::io::pipe_stream;
+
+static GO_MAIN: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/serverless/go/main.go"
+));
+static GO_MOD: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/serverless/go/go.mod"));
 
 #[async_trait::async_trait]
 pub trait Handler: Send + Sync {
-    async fn open(&self) -> Result<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>;
+    async fn forward(
+        &self,
+        reader: ReadHalf<SimplexStream>,
+        writer: WriteHalf<SimplexStream>,
+    ) -> Result<()>;
 }
 
 #[derive(Default)]
-pub struct HandlerImpl {}
+pub struct ServerlessHandler {
+    socket_addr: Mutex<String>,
+}
 
-const MAX_BUF_SIZE: usize = 64 * 1024;
+impl ServerlessHandler {
+    pub async fn run_subprocess(&self, serverless_dir: &str) -> Result<()> {
+        // get the absolute path of serverless directory
+        let serverless_dir = Path::new(serverless_dir);
+        if !serverless_dir.is_dir() {
+            bail!("{} is not a directory", serverless_dir.display());
+        }
+        let serverless_dir = absolute(serverless_dir)?;
 
-#[async_trait::async_trait]
-impl Handler for HandlerImpl {
-    async fn open(&self) -> Result<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)> {
-        let mut req_stream = simplex(MAX_BUF_SIZE);
-        let mut res_stream = simplex(MAX_BUF_SIZE);
+        info!(
+            "start to run serverless: {}",
+            serverless_dir.display().to_string()
+        );
 
-        // todo: open socket connection
+        // find app.go in serverless directory
+        if !serverless_dir.join("app.go").exists() {
+            bail!("app.go not found in {}", serverless_dir.display());
+        }
 
-        spawn(async move {
-            if let Err(e) = mock_handler(&mut req_stream.0, &mut res_stream.1).await {
-                error!("Error in mock handler: {}", e);
-            }
-            res_stream.1.shutdown().await.ok();
-        });
+        self.run_go(&serverless_dir).await?;
 
-        Ok((res_stream.0, req_stream.1))
+        Ok(())
+    }
+
+    async fn run_go(&self, serverless_dir: &Path) -> Result<()> {
+        // create temp directory for serverless function
+        let workdir = tempdir()?;
+        let cwd = workdir.path();
+        debug!("cwd: {}", cwd.display());
+
+        // write files to work directory
+        fs::write(cwd.join("main.go"), GO_MAIN).await?;
+        if serverless_dir.join("go.mod").exists() {
+            fs::copy(serverless_dir.join("go.mod"), cwd.join("go.mod")).await?;
+        } else {
+            fs::write(cwd.join("go.mod"), GO_MOD).await?;
+        }
+
+        // copy app.go to work directory
+        fs::copy(serverless_dir.join("app.go"), cwd.join("app.go")).await?;
+
+        Command::new("go")
+            .args(&["mod", "tidy"])
+            .current_dir(cwd)
+            .spawn()?
+            .wait_with_output()
+            .await?;
+
+        info!("starting serverless function");
+
+        // start a sub process to run serverless
+        let mut child = Command::new("go")
+            .args(["run", "."])
+            .current_dir(cwd)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+
+        let mut buf = String::with_capacity(256);
+        let n = timeout(
+            Duration::from_secs(10),
+            BufReader::new(child.stdout.as_mut().expect("Failed to open stdout"))
+                .read_line(&mut buf),
+        )
+        .await??;
+
+        if n == 0 {
+            bail!("failed to read socket address from serverless process");
+        }
+
+        let addr = buf.trim().to_string();
+        if addr.is_empty() {
+            bail!("received empty socket address");
+        }
+
+        info!("serverless socket addr: {}", addr);
+        *self.socket_addr.lock().await = addr;
+
+        child.wait().await?;
+
+        Ok(())
     }
 }
 
-async fn mock_handler(
-    req_stream: &mut (impl AsyncReadExt + Unpin),
-    res_stream: &mut (impl AsyncWriteExt + Unpin),
-) -> Result<()> {
-    if let Frame::Packet(req) = receive_frame::<HandlerRequest>(req_stream).await? {
-        info!("received request: args={}, stream={}", req.args, req.stream);
-
-        let result = req.args.to_ascii_uppercase();
-
-        if req.stream {
-            let mut count = 0;
-            for delta in result.split_inclusive(' ') {
-                count += 1;
-
-                send_frame(
-                    res_stream,
-                    &Frame::Chunk(
-                        count,
-                        Some(HandlerDelta {
-                            delta: delta.to_owned(),
-                        }),
-                    ),
-                )
-                .await?;
-
-                // Add a delay to simulate streaming
-                sleep(Duration::from_secs(1)).await;
-            }
-
-            send_frame::<HandlerDelta>(res_stream, &Frame::ChunkDone(count)).await?;
-        } else {
-            send_frame(res_stream, &Frame::Packet(HandlerResponse { result })).await?;
+#[async_trait::async_trait]
+impl Handler for ServerlessHandler {
+    async fn forward(
+        &self,
+        reader: ReadHalf<SimplexStream>,
+        writer: WriteHalf<SimplexStream>,
+    ) -> Result<()> {
+        let socket_addr = self.socket_addr.lock().await.clone();
+        if socket_addr.is_empty() {
+            bail!("serverless process is not started");
         }
 
-        return Ok(());
-    }
+        let mut stream = TcpStream::connect(&socket_addr).await?;
+        let (to_reader, to_writer) = stream.split();
 
-    Err(anyhow!("invalid request format"))
+        // Pipe data between streams
+        pipe_stream(reader, writer, to_reader, to_writer).await;
+
+        Ok(())
+    }
 }

@@ -6,21 +6,24 @@ use s2n_quic::{
     stream::BidirectionalStream,
 };
 use std::{net::ToSocketAddrs, sync::Arc, time::Duration};
-use tokio::{io::AsyncWriteExt, spawn};
+use tokio::{
+    io::{AsyncWriteExt, simplex},
+    spawn,
+};
 
 use crate::{
-    frame::Frame,
     handshake::{HandshakeReq, HandshakeRes},
     io::{pipe_stream, receive_frame, send_frame},
-    sfn::handler::{Handler, HandlerImpl},
+    sfn::handler::Handler,
     tls::{TlsConfig, new_client_tls},
 };
+
+const MAX_BUF_SIZE: usize = 16 * 1024;
 
 #[derive(Clone, Builder)]
 pub struct Sfn {
     sfn_name: String,
 
-    #[builder(default = Arc::new(HandlerImpl::default()))]
     handler: Arc<dyn Handler>,
 }
 
@@ -80,13 +83,13 @@ impl Sfn {
                     if let Some(stream) = stream {
                         let sfn = self.clone();
                         spawn(async move {
-                            if let Err(e) = sfn.handle_data_stream(stream).await {
-                                // todo: handle error properly
-                                error!("handle_data_stream error: {}", e);
-                            }
+                            let stream_id = stream.id();
+                            debug!("stream ++: {}", stream_id);
+                            sfn.handle_stream(stream).await;
+                            debug!("stream --: {}", stream_id);
                         });
                     } else {
-                        info!("connection closed");
+                        info!("conn closed");
                         return Ok(());
                     }
                 }
@@ -110,37 +113,32 @@ impl Sfn {
             credential: credential.to_owned(),
         };
 
-        send_frame(&mut stream, &Frame::Packet(req)).await?;
+        send_frame(&mut stream, &req).await?;
         stream.shutdown().await?;
 
-        match receive_frame(&mut stream).await {
-            Ok(Frame::Packet(HandshakeRes { ok, reason })) => {
-                if !ok {
-                    bail!("handshake failed: {}", reason.unwrap_or_default());
-                }
-            }
-            _ => bail!("invalid handshake response"),
-        };
-
-        info!("handshake success");
+        let res = receive_frame::<HandshakeRes>(&mut stream)
+            .await?
+            .ok_or(anyhow!("receive handshake response failed"))?;
+        if !res.ok {
+            bail!("handshake failed: {}", res.reason);
+        }
 
         Ok(())
     }
 
     // Handle data stream: receive request, execute processing, return response
-    async fn handle_data_stream(&self, stream: BidirectionalStream) -> Result<()> {
-        let stream_id = stream.id();
-        debug!("new data stream: {}", stream_id);
+    async fn handle_stream(&self, stream: BidirectionalStream) {
+        let (quic_reader, quic_writer) = stream.split();
 
-        let (from_reader, from_writer) = stream.split();
+        let req_stream = simplex(MAX_BUF_SIZE);
+        let res_stream = simplex(MAX_BUF_SIZE);
 
-        // Create handler stream (e.g. a local tcp connection)
-        let (to_reader, to_writer) = self.handler.open().await?;
+        spawn(async move {
+            pipe_stream(quic_reader, quic_writer, res_stream.0, req_stream.1).await;
+        });
 
-        pipe_stream(from_reader, from_writer, to_reader, to_writer).await?;
-
-        debug!("stream closed: {}", stream_id);
-
-        Ok(())
+        if let Err(e) = self.handler.forward(req_stream.0, res_stream.1).await {
+            error!("handler error: {}", e);
+        }
     }
 }

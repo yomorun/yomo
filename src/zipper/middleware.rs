@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use anyhow::Result;
 use serde::Deserialize;
 
-use crate::metadata::Metadata;
+use crate::{handshake::HandshakeReq, metadata::Metadata};
 
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct ZipperMiddlewareImplConfig {
@@ -12,12 +12,7 @@ pub struct ZipperMiddlewareImplConfig {
 }
 
 pub trait ZipperMiddleware: Sync + Send {
-    fn handshake(
-        &mut self,
-        conn_id: u64,
-        sfn_name: &str,
-        credential: &str,
-    ) -> (bool, Option<String>, Option<u64>);
+    fn handshake(&mut self, conn_id: u64, req: &HandshakeReq) -> (bool, String, Option<u64>);
 
     fn route(&self, name: &str, metadata: &Box<dyn Metadata>) -> Result<Option<u64>>;
 
@@ -40,25 +35,20 @@ impl ZipperMiddlewareImpl {
 }
 
 impl ZipperMiddleware for ZipperMiddlewareImpl {
-    fn handshake(
-        &mut self,
-        conn_id: u64,
-        sfn_name: &str,
-        credential: &str,
-    ) -> (bool, Option<String>, Option<u64>) {
-        if sfn_name.is_empty() {
-            return (false, Some("sfn name is empty".to_owned()), None);
+    fn handshake(&mut self, conn_id: u64, req: &HandshakeReq) -> (bool, String, Option<u64>) {
+        if req.sfn_name.is_empty() {
+            return (false, "sfn name is empty".to_string(), None);
         }
 
         if let Some(token) = &self.auth_token {
-            if credential != token {
-                return (false, Some("invalid credential".to_owned()), None);
+            if &req.credential != token {
+                return (false, "invalid credential".to_string(), None);
             }
         }
 
-        let v = self.route_map.insert(sfn_name.to_owned(), conn_id);
+        let v = self.route_map.insert(req.sfn_name.to_owned(), conn_id);
 
-        (true, None, v)
+        (true, String::new(), v)
     }
 
     fn remove_sfn(&mut self, conn_id: u64) -> Result<()> {

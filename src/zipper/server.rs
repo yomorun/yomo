@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow};
 use bon::Builder;
 use log::{error, info};
 use s2n_quic::{
@@ -17,7 +17,6 @@ use tokio::{
 
 use crate::{
     bridge::Bridge,
-    frame::Frame,
     handshake::{HandshakeReq, HandshakeRes},
     io::{pipe_stream, receive_frame, send_frame},
     metadata::Metadata,
@@ -48,14 +47,14 @@ impl Default for ZipperConfig {
 }
 
 fn default_host() -> String {
-    "0.0.0.0".to_string()
+    "127.0.0.1".to_string()
 }
 
 fn default_port() -> u16 {
     9000
 }
 
-// Zipper: Manages all registered Sfn connections
+// Zipper: Manages all registered sfn connections
 #[derive(Clone)]
 pub struct Zipper {
     middleware: Arc<RwLock<dyn ZipperMiddleware>>,
@@ -71,7 +70,7 @@ impl Zipper {
         }
     }
 
-    // Start server: listen on QUIC port, accept remote Sfn connections
+    // Start server: listen on QUIC port, accept remote sfn connections
     pub async fn serve(self, config: ZipperConfig) -> Result<()> {
         let tls = new_server_tls(&config.tls).context("failed to load tls certificates")?;
 
@@ -104,7 +103,7 @@ impl Zipper {
         Ok(())
     }
 
-    // Handle QUIC connection: register Sfn
+    // Handle QUIC connection: register sfn
     async fn handle_connection(self, mut conn: Connection) -> Result<()> {
         let conn_id = conn.id();
 
@@ -117,6 +116,7 @@ impl Zipper {
             // save connection
             self.all_sfns.lock().await.insert(conn_id, conn.handle());
         } else {
+            info!("conn closed: {}", conn_id);
             return Ok(());
         }
 
@@ -127,6 +127,9 @@ impl Zipper {
                     if let Some(mut stream) = stream {
                         // this should never happen
                         stream.close().await.ok();
+                    } else {
+                        info!("conn closed: {}", conn_id);
+                        return Ok(());
                     }
                 }
                 Err(e) => {
@@ -148,41 +151,33 @@ impl Zipper {
         Ok(())
     }
 
-    // Handshake protocol: read Sfn name
+    // Handshake protocol: read sfn name
     async fn handle_handshake(
         &self,
         conn_id: u64,
         mut stream: BidirectionalStream,
     ) -> Result<String> {
-        match receive_frame(&mut stream).await {
-            Ok(Frame::Packet(HandshakeReq {
-                sfn_name,
-                credential,
-            })) => {
-                let (ok, reason, conn_id) =
-                    self.middleware
-                        .write()
-                        .await
-                        .handshake(conn_id, &sfn_name, &credential);
+        let req = receive_frame::<HandshakeReq>(&mut stream)
+            .await?
+            .ok_or(anyhow!("receive handshake request failed"))?;
 
-                if let Some(conn_id) = conn_id {
-                    if let Some(conn) = self.all_sfns.lock().await.remove(&conn_id) {
-                        info!(
-                            "close existing connection {} of name: {}",
-                            conn_id, sfn_name
-                        );
-                        conn.close(1_u32.into());
-                    }
-                }
+        let (ok, reason, conn_id) = self.middleware.write().await.handshake(conn_id, &req);
 
-                let res = HandshakeRes { ok, reason };
-                send_frame(&mut stream, &Frame::Packet(res)).await?;
-                stream.shutdown().await?;
+        let res = HandshakeRes { ok, reason };
+        send_frame(&mut stream, &res).await?;
+        stream.shutdown().await?;
 
-                Ok(sfn_name)
+        if let Some(conn_id) = conn_id {
+            if let Some(conn) = self.all_sfns.lock().await.remove(&conn_id) {
+                info!(
+                    "close existing connection {} of name: {}",
+                    conn_id, req.sfn_name
+                );
+                conn.close(1_u32.into());
             }
-            _ => bail!("invalid handshake response"),
         }
+
+        Ok(req.sfn_name)
     }
 }
 
@@ -212,11 +207,7 @@ impl Bridge for Zipper {
 
                 // Proxy data between the original streams and the QUIC stream
                 spawn(async move {
-                    if let Err(e) =
-                        pipe_stream(from_reader, from_writer, to_reader, to_writer).await
-                    {
-                        error!("proxy stream error: {}", e);
-                    }
+                    pipe_stream(from_reader, from_writer, to_reader, to_writer).await;
                 });
 
                 return Ok(true);

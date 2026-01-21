@@ -19,11 +19,11 @@ use tokio::{
 
 use crate::{
     bridge::{Bridge, http::middleware::HttpMiddleware},
-    frame::{Frame, HandlerDelta, HandlerRequest, HandlerResponse},
+    frame::{HandlerChunk, HandlerRequest, HandlerResponse},
     io::{receive_frame, send_frame},
 };
 
-const MAX_BUF_SIZE: usize = 64 * 1024;
+const MAX_BUF_SIZE: usize = 16 * 1024;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct HttpBridgeConfig {
@@ -44,7 +44,7 @@ impl Default for HttpBridgeConfig {
 }
 
 fn default_host() -> String {
-    "0.0.0.0".to_string()
+    "127.0.0.1".to_string()
 }
 
 fn default_port() -> u16 {
@@ -104,17 +104,14 @@ async fn handle_simple(
         .forward(&name, &metadata, req_stream.0, res_stream.1)
         .await?
     {
-        send_frame(&mut req_stream.1, &Frame::Packet(handler_req)).await?;
+        send_frame(&mut req_stream.1, &handler_req).await?;
         req_stream.1.shutdown().await?;
 
-        if let Frame::Packet(handler_res) =
-            receive_frame::<HandlerResponse>(&mut res_stream.0).await?
-        {
-            debug!("received response: {:?}", handler_res.result);
-            Ok(handler_res.result.into())
-        } else {
-            Err(anyhow!("invalid response format").into())
-        }
+        let handler_res = receive_frame::<HandlerResponse>(&mut res_stream.0)
+            .await?
+            .ok_or(anyhow!("Failed to receive response"))?;
+        debug!("received response: {:?}", handler_res.result);
+        Ok(handler_res.result.into())
     } else {
         Err(AppError {
             status_code: StatusCode::NOT_FOUND,
@@ -148,7 +145,7 @@ async fn handle_sse(
         .forward(&name, &metadata, req_stream.0, res_stream.1)
         .await?
     {
-        send_frame(&mut req_stream.1, &Frame::Packet(handler_req)).await?;
+        send_frame(&mut req_stream.1, &handler_req).await?;
         req_stream.1.shutdown().await?;
 
         let stream = stream::unfold(res_stream.0, move |mut r| async move {
@@ -172,22 +169,13 @@ async fn handle_sse(
         })
     }
 }
-
 async fn process_chunk(stream: &mut (impl AsyncReadExt + Unpin)) -> anyhow::Result<Option<Event>> {
-    match receive_frame::<HandlerDelta>(stream).await? {
-        Frame::Chunk(id, data) => {
-            debug!("received chunk: id={}, delta={}", id, data.delta);
-            let event = Event::default().data(data.delta);
-            Ok(Some(event))
-        }
-        Frame::ChunkDone(count) => {
-            debug!("received chunk done: count={}", count);
-            Ok(None)
-        }
-        _ => {
-            error!("Unexpected frame type");
-            Ok(None)
-        }
+    if let Some(data) = receive_frame::<HandlerChunk>(stream).await? {
+        debug!("received chunk: {}", data.chunk);
+        let event = Event::default().data(data.chunk);
+        Ok(Some(event))
+    } else {
+        Ok(None)
     }
 }
 

@@ -1,6 +1,6 @@
 pub mod bridge;
 pub mod frame;
-mod handshake;
+pub mod handshake;
 pub mod io;
 pub mod metadata;
 pub mod sfn;
