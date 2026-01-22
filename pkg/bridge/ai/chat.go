@@ -129,6 +129,10 @@ func multiTurnFunctionCalling(
 		}
 		// return the response directly if it's the last call or the request contains tools
 		if chatCtx.callTimes == maxCalls || hasReqTools {
+			if hasReqTools && req.Stream {
+				w.SetStreamHeader()
+				w.Flush()
+			}
 			err := resp.writeResponse(w, chatCtx)
 			respSpan.End()
 			if err != nil {

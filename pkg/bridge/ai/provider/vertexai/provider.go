@@ -97,7 +97,7 @@ func (p *Provider) GetChatCompletionsStream(ctx context.Context, req openai.Chat
 	if err != nil {
 		return nil, err
 	}
-	return &recver{resp: stream}, nil
+	return &recver{resp: stream, thoughtSign: p.thoughtSign}, nil
 }
 
 // Name implements provider.LLMProvider.
