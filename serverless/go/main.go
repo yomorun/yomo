@@ -9,22 +9,21 @@ import (
 	"net"
 )
 
+type RequestHeaders struct {
+	Stream  bool   `json:"stream"`
+	SfnName string `json:"sfn_name"`
+	TraceID string `json:"trace_id"`
+	ReqID   string `json:"req_id"`
+}
+
 type Request struct {
-	Args   string `json:"args"`
-	Stream bool   `json:"stream"`
+	Args    string `json:"args"`
+	Context string `json:"context"`
 }
 
 type Response struct {
-	Result string `json:"result"`
-	Error  string `json:"error"`
-}
-
-type Chunk struct {
-	Chunk string `json:"chunk"`
-}
-
-type ChunkDone struct {
-	Error string `json:"error"`
+	Data  string `json:"data"`
+	Error string `json:"error,omitempty"`
 }
 
 func readPacket[T any](r io.Reader) (*T, error) {
@@ -80,28 +79,47 @@ func writePacket(w io.Writer, packet any) error {
 func handleStream(stream io.ReadWriteCloser) {
 	defer stream.Close()
 
-	packet, err := readPacket[Request](stream)
+	headers, err := readPacket[RequestHeaders](stream)
 	if err != nil {
-		log.Println("read request packet error:", err)
+		log.Println("read headers error:", err)
 		return
 	}
 
-	if packet.Stream {
+	fmt.Println(headers)
+
+	request, err := readPacket[Request](stream)
+	if err != nil {
+		log.Println("read request error:", err)
+		return
+	}
+
+	if headers.Stream {
 		ch := make(chan string)
 		go func(ch <-chan string) {
 			for x := range ch {
-				err = writePacket(stream, &Chunk{Chunk: x})
+				err = writePacket(stream, &Response{Data: x})
 				if err != nil {
-					log.Println("write chunk packet error:", err)
-					return
+					log.Println("write chunk error:", err)
 				}
 			}
 		}(ch)
 
-		StreamHandler(packet.Args, ch)
+		err := StreamHandler(request.Args, ch)
+		if err != nil {
+			log.Println("stream handler error:", err)
+
+			err = writePacket(stream, &Response{Error: err.Error()})
+			if err != nil {
+				log.Println("write chunk error:", err)
+			}
+
+			return
+		}
+
+		close(ch)
 	} else {
-		result, err := SimpleHandler(packet.Args)
-		response := Response{Result: result}
+		result, err := SimpleHandler(request.Args)
+		response := Response{Data: result}
 		if err != nil {
 			response.Error = err.Error()
 		}

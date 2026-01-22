@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use anyhow::Result;
 use serde::Deserialize;
 
-use crate::{handshake::HandshakeReq, metadata::Metadata};
+use crate::{metadata::Metadata, types::HandshakeReq};
 
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct ZipperMiddlewareImplConfig {

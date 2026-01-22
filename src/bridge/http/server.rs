@@ -1,8 +1,7 @@
 use std::{convert::Infallible, sync::Arc};
 
-use anyhow::anyhow;
 use axum::{
-    Json, Router,
+    Router,
     body::Bytes,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
@@ -10,8 +9,8 @@ use axum::{
     routing::post,
 };
 use futures_util::{Stream, stream};
-use log::{debug, error, info};
-use serde::{Deserialize, Serialize};
+use log::{error, info};
+use serde::Deserialize;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, simplex},
     net::TcpListener,
@@ -19,8 +18,8 @@ use tokio::{
 
 use crate::{
     bridge::{Bridge, http::middleware::HttpMiddleware},
-    frame::{HandlerChunk, HandlerRequest, HandlerResponse},
-    io::{receive_frame, send_frame},
+    io::{receive_raw, send_frame, send_raw},
+    types::RequestHeaders,
 };
 
 const MAX_BUF_SIZE: usize = 16 * 1024;
@@ -74,28 +73,18 @@ where
     }
 }
 
-#[derive(Deserialize, Serialize)]
-struct HttpRequest {
-    args: String,
-}
-
 // HTTP request handler: forward request to corresponding QUIC sfn
 #[axum::debug_handler]
 async fn handle_simple(
     headers: HeaderMap,
     Path(name): Path<String>,
     State((bridge, middleware)): State<(Arc<dyn Bridge>, Arc<dyn HttpMiddleware>)>,
-    Json(req): Json<HttpRequest>,
+    body: Bytes,
 ) -> Result<Bytes, AppError> {
     info!("new request to [{}]", name);
 
     // Create metadata
     let metadata = middleware.new_metadata(&headers)?;
-
-    let handler_req = HandlerRequest {
-        args: req.args,
-        stream: false,
-    };
 
     let mut req_stream = simplex(MAX_BUF_SIZE);
     let mut res_stream = simplex(MAX_BUF_SIZE);
@@ -104,14 +93,22 @@ async fn handle_simple(
         .forward(&name, &metadata, req_stream.0, res_stream.1)
         .await?
     {
-        send_frame(&mut req_stream.1, &handler_req).await?;
+        send_frame(
+            &mut req_stream.1,
+            &RequestHeaders {
+                stream: false,
+                sfn_name: name,
+                trace_id: metadata.trace_id().to_owned(),
+                req_id: metadata.req_id().to_owned(),
+            },
+        )
+        .await?;
+        send_raw(&mut req_stream.1, &body).await?;
         req_stream.1.shutdown().await?;
 
-        let handler_res = receive_frame::<HandlerResponse>(&mut res_stream.0)
-            .await?
-            .ok_or(anyhow!("Failed to receive response"))?;
-        debug!("received response: {:?}", handler_res.result);
-        Ok(handler_res.result.into())
+        let response = receive_raw(&mut res_stream.0).await?.unwrap_or_default();
+
+        Ok(response.into())
     } else {
         Err(AppError {
             status_code: StatusCode::NOT_FOUND,
@@ -126,17 +123,12 @@ async fn handle_sse(
     headers: HeaderMap,
     Path(name): Path<String>,
     State((bridge, middleware)): State<(Arc<dyn Bridge>, Arc<dyn HttpMiddleware>)>,
-    Json(req): Json<HttpRequest>,
+    body: Bytes,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, AppError> {
     info!("new request to [{}]", name);
 
     // Create metadata
     let metadata = middleware.new_metadata(&headers)?;
-
-    let handler_req = HandlerRequest {
-        args: req.args,
-        stream: true,
-    };
 
     let mut req_stream = simplex(MAX_BUF_SIZE);
     let res_stream = simplex(MAX_BUF_SIZE);
@@ -145,7 +137,17 @@ async fn handle_sse(
         .forward(&name, &metadata, req_stream.0, res_stream.1)
         .await?
     {
-        send_frame(&mut req_stream.1, &handler_req).await?;
+        send_frame(
+            &mut req_stream.1,
+            &RequestHeaders {
+                stream: true,
+                sfn_name: name,
+                trace_id: metadata.trace_id().to_owned(),
+                req_id: metadata.req_id().to_owned(),
+            },
+        )
+        .await?;
+        send_raw(&mut req_stream.1, &body).await?;
         req_stream.1.shutdown().await?;
 
         let stream = stream::unfold(res_stream.0, move |mut r| async move {
@@ -155,7 +157,7 @@ async fn handle_sse(
                     None => None,
                 },
                 Err(e) => {
-                    error!("Error receiving frame: {}", e);
+                    error!("receiving frame error: {}", e);
                     None
                 }
             }
@@ -169,10 +171,10 @@ async fn handle_sse(
         })
     }
 }
+
 async fn process_chunk(stream: &mut (impl AsyncReadExt + Unpin)) -> anyhow::Result<Option<Event>> {
-    if let Some(data) = receive_frame::<HandlerChunk>(stream).await? {
-        debug!("received chunk: {}", data.chunk);
-        let event = Event::default().data(data.chunk);
+    if let Some(chunk) = receive_raw(stream).await? {
+        let event = Event::default().data(String::from_utf8_lossy(&chunk));
         Ok(Some(event))
     } else {
         Ok(None)

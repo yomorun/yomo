@@ -17,7 +17,7 @@ RUST_LOG=info ./target/debug/yomo serve
 - run sfn:
 
 ```
-RUST_LOG=info $CWD/target/debug/yomo run --name uppercase ./serverless/go/uppercase
+RUST_LOG=info ./target/debug/yomo run --name uppercase ./serverless/go/uppercase
 ```
 
 - send request:
@@ -31,7 +31,7 @@ curl -d '{"args": "Hello, YoMo!"}' \
 - send stream request:
 
 ```
-curl -d '{"args": "Hello, YoMo! Let us build LLM stream serverless functions."}' \
+curl -d '{"args": "Welcome to build stream serverless functions."}' \
   -H 'Content-type: application/json' \
   http://127.0.0.1:9001/sfn/uppercase/sse
 ```

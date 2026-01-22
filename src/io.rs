@@ -9,15 +9,40 @@ use tokio::{
     join,
 };
 
+pub async fn send_raw(stream: &mut (impl AsyncWriteExt + Unpin), data: &[u8]) -> Result<()> {
+    trace!("send raw: {:?}", String::from_utf8_lossy(&data));
+    stream.write_u32(data.len() as u32).await?;
+    stream.write_all(data).await?;
+    Ok(())
+}
+
+pub async fn receive_raw(read_stream: &mut (impl AsyncReadExt + Unpin)) -> Result<Option<Vec<u8>>> {
+    match read_stream.read_u32().await {
+        Ok(size) => {
+            let mut buf = vec![0; size as usize];
+            read_stream.read_exact(&mut buf).await?;
+            trace!("recv raw bytes: {:?}", String::from_utf8_lossy(&buf));
+            Ok(Some(buf))
+        }
+        Err(e) => {
+            if e.kind() == ErrorKind::UnexpectedEof {
+                return Ok(None);
+            }
+            error!("receive_raw error: {}", e);
+            Ok(None)
+        }
+    }
+}
+
 pub async fn send_frame<T: Serialize + Debug>(
-    send_stream: &mut (impl AsyncWriteExt + Unpin),
+    stream: &mut (impl AsyncWriteExt + Unpin),
     frame: &T,
 ) -> Result<()> {
     debug!("send frame: {:?}", frame);
     let buf = to_vec(frame)?;
-    trace!("send frame bytes: {:?}", buf);
-    send_stream.write_u32(buf.len() as u32).await?;
-    send_stream.write_all(&buf).await?;
+    trace!("send frame bytes: {:?}", String::from_utf8_lossy(&buf));
+    stream.write_u32(buf.len() as u32).await?;
+    stream.write_all(&buf).await?;
     Ok(())
 }
 
@@ -28,7 +53,7 @@ pub async fn receive_frame<T: for<'a> Deserialize<'a> + Debug>(
         Ok(size) => {
             let mut buf = vec![0; size as usize];
             read_stream.read_exact(&mut buf).await?;
-            trace!("recv frame bytes: {:?}", buf);
+            trace!("recv frame bytes: {:?}", String::from_utf8_lossy(&buf));
             let frame: T = from_slice(&buf)?;
             debug!("recv frame: {:?}", frame);
             Ok(Some(frame))

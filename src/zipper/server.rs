@@ -17,10 +17,10 @@ use tokio::{
 
 use crate::{
     bridge::Bridge,
-    handshake::{HandshakeReq, HandshakeRes},
     io::{pipe_stream, receive_frame, send_frame},
     metadata::Metadata,
     tls::{TlsConfig, new_server_tls},
+    types::{HandshakeReq, HandshakeRes},
     zipper::middleware::ZipperMiddleware,
 };
 
@@ -128,6 +128,7 @@ impl Zipper {
                         // this should never happen
                         stream.close().await.ok();
                     } else {
+                        self.all_sfns.lock().await.remove(&conn_id);
                         info!("conn closed: {}", conn_id);
                         return Ok(());
                     }

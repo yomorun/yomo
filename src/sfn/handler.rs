@@ -62,8 +62,10 @@ impl ServerlessHandler {
 
     async fn run_go(&self, serverless_dir: &Path) -> Result<()> {
         // create temp directory for serverless function
-        let workdir = tempdir()?;
-        let cwd = workdir.path();
+        let temp_dir = tempdir()?;
+        debug!("temp_dir: {}", temp_dir.path().display());
+
+        let cwd = temp_dir.path();
         debug!("cwd: {}", cwd.display());
 
         // write files to work directory
@@ -111,9 +113,23 @@ impl ServerlessHandler {
         if addr.is_empty() {
             bail!("received empty socket address");
         }
+        println!("serverless listening: {}", addr);
 
-        info!("serverless socket addr: {}", addr);
         *self.socket_addr.lock().await = addr;
+
+        drop(temp_dir);
+
+        loop {
+            let mut buf = String::with_capacity(256);
+            let n: usize = BufReader::new(child.stderr.as_mut().expect("Failed to open stderr"))
+                .read_line(&mut buf)
+                .await?;
+            println!("{}", buf.trim());
+
+            if n == 0 {
+                break;
+            }
+        }
 
         child.wait().await?;
 

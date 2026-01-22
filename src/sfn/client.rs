@@ -12,10 +12,10 @@ use tokio::{
 };
 
 use crate::{
-    handshake::{HandshakeReq, HandshakeRes},
     io::{pipe_stream, receive_frame, send_frame},
     sfn::handler::Handler,
     tls::{TlsConfig, new_client_tls},
+    types::{HandshakeReq, HandshakeRes},
 };
 
 const MAX_BUF_SIZE: usize = 16 * 1024;
