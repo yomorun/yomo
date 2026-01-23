@@ -1,35 +1,27 @@
 use std::path::{Path, absolute};
 use std::process::Stdio;
-use std::time::Duration;
 
-use anyhow::{Result, bail};
+use anyhow::{Ok, Result, anyhow, bail};
 use log::{debug, info};
 use tempfile::tempdir;
 use tokio::fs;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::{
-    io::{AsyncBufReadExt, BufReader, ReadHalf, SimplexStream, WriteHalf},
-    net::TcpStream,
+    io::{AsyncBufReadExt, BufReader},
     process::Command,
     sync::Mutex,
-    time::timeout,
 };
 
-use crate::io::pipe_stream;
+use crate::bridge::Bridge;
+use crate::connector::TcpConnector;
+use crate::types::RequestHeaders;
 
 static GO_MAIN: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/serverless/go/main.go"
 ));
 static GO_MOD: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/serverless/go/go.mod"));
-
-#[async_trait::async_trait]
-pub trait Handler: Send + Sync {
-    async fn forward(
-        &self,
-        reader: ReadHalf<SimplexStream>,
-        writer: WriteHalf<SimplexStream>,
-    ) -> Result<()>;
-}
 
 #[derive(Default)]
 pub struct ServerlessHandler {
@@ -63,8 +55,6 @@ impl ServerlessHandler {
     async fn run_go(&self, serverless_dir: &Path) -> Result<()> {
         // create temp directory for serverless function
         let temp_dir = tempdir()?;
-        debug!("temp_dir: {}", temp_dir.path().display());
-
         let cwd = temp_dir.path();
         debug!("cwd: {}", cwd.display());
 
@@ -92,20 +82,18 @@ impl ServerlessHandler {
         let mut child = Command::new("go")
             .args(["run", "."])
             .current_dir(cwd)
-            .stdin(Stdio::piped())
+            .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
             .spawn()?;
 
+        let mut reader = BufReader::new(
+            child
+                .stdout
+                .as_mut()
+                .ok_or(anyhow!("Failed to open stdout"))?,
+        );
         let mut buf = String::with_capacity(256);
-        let n = timeout(
-            Duration::from_secs(10),
-            BufReader::new(child.stdout.as_mut().expect("Failed to open stdout"))
-                .read_line(&mut buf),
-        )
-        .await??;
-
-        if n == 0 {
+        if reader.read_line(&mut buf).await? == 0 {
             bail!("failed to read socket address from serverless process");
         }
 
@@ -113,22 +101,18 @@ impl ServerlessHandler {
         if addr.is_empty() {
             bail!("received empty socket address");
         }
-        println!("serverless listening: {}", addr);
+        info!("serverless listening: {}", addr);
 
+        let addr = "127.0.0.1:12000".to_string();
         *self.socket_addr.lock().await = addr;
 
         drop(temp_dir);
 
         loop {
-            let mut buf = String::with_capacity(256);
-            let n: usize = BufReader::new(child.stderr.as_mut().expect("Failed to open stderr"))
-                .read_line(&mut buf)
-                .await?;
-            println!("{}", buf.trim());
-
-            if n == 0 {
+            if reader.read_line(&mut buf).await? == 0 {
                 break;
             }
+            println!("{}", buf);
         }
 
         child.wait().await?;
@@ -138,23 +122,17 @@ impl ServerlessHandler {
 }
 
 #[async_trait::async_trait]
-impl Handler for ServerlessHandler {
-    async fn forward(
-        &self,
-        reader: ReadHalf<SimplexStream>,
-        writer: WriteHalf<SimplexStream>,
-    ) -> Result<()> {
+impl<R, W> Bridge<TcpConnector, R, W, OwnedReadHalf, OwnedWriteHalf> for ServerlessHandler
+where
+    R: AsyncReadExt + Unpin + Send + 'static,
+    W: AsyncWriteExt + Unpin + Send + 'static,
+{
+    async fn find_downstream(&self, _headers: &RequestHeaders) -> Result<Option<TcpConnector>> {
         let socket_addr = self.socket_addr.lock().await.clone();
         if socket_addr.is_empty() {
-            bail!("serverless process is not started");
+            return Ok(None);
         }
 
-        let mut stream = TcpStream::connect(&socket_addr).await?;
-        let (to_reader, to_writer) = stream.split();
-
-        // Pipe data between streams
-        pipe_stream(reader, writer, to_reader, to_writer).await;
-
-        Ok(())
+        Ok(Some(TcpConnector::new(&socket_addr)))
     }
 }

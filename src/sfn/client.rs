@@ -1,3 +1,5 @@
+use std::{net::ToSocketAddrs, sync::Arc, time::Duration};
+
 use anyhow::{Result, anyhow, bail};
 use bon::Builder;
 use log::{debug, error, info};
@@ -5,26 +7,21 @@ use s2n_quic::{
     Client, Connection, client::Connect, connection, provider::limits::Limits,
     stream::BidirectionalStream,
 };
-use std::{net::ToSocketAddrs, sync::Arc, time::Duration};
-use tokio::{
-    io::{AsyncWriteExt, simplex},
-    spawn,
-};
+use tokio::{io::AsyncWriteExt as _, spawn};
 
 use crate::{
-    io::{pipe_stream, receive_frame, send_frame},
-    sfn::handler::Handler,
+    bridge::Bridge,
+    io::{receive_frame, send_frame},
+    sfn::serverless::ServerlessHandler,
     tls::{TlsConfig, new_client_tls},
-    types::{HandshakeReq, HandshakeRes},
+    types::{HandshakeReq, HandshakeRes, RequestHeaders},
 };
-
-const MAX_BUF_SIZE: usize = 16 * 1024;
 
 #[derive(Clone, Builder)]
 pub struct Sfn {
     sfn_name: String,
 
-    handler: Arc<dyn Handler>,
+    handler: Arc<ServerlessHandler>,
 }
 
 impl Sfn {
@@ -85,7 +82,11 @@ impl Sfn {
                         spawn(async move {
                             let stream_id = stream.id();
                             debug!("stream ++: {}", stream_id);
-                            sfn.handle_stream(stream).await;
+
+                            if let Err(e) = sfn.handle_stream(stream).await {
+                                error!("handle stream error: {}", e);
+                            }
+
                             debug!("stream --: {}", stream_id);
                         });
                     } else {
@@ -127,18 +128,13 @@ impl Sfn {
     }
 
     // Handle data stream: receive request, execute processing, return response
-    async fn handle_stream(&self, stream: BidirectionalStream) {
-        let (quic_reader, quic_writer) = stream.split();
+    async fn handle_stream(&self, stream: BidirectionalStream) -> Result<()> {
+        let (r1, w1) = stream.split();
 
-        let req_stream = simplex(MAX_BUF_SIZE);
-        let res_stream = simplex(MAX_BUF_SIZE);
+        let headers = RequestHeaders::default();
 
-        spawn(async move {
-            pipe_stream(quic_reader, quic_writer, res_stream.0, req_stream.1).await;
-        });
+        self.handler.forward(&headers, r1, w1).await?;
 
-        if let Err(e) = self.handler.forward(req_stream.0, res_stream.1).await {
-            error!("handler error: {}", e);
-        }
+        Ok(())
     }
 }

@@ -8,14 +8,11 @@ use log::{error, info};
 use serde::Deserialize;
 use tokio::select;
 use yomo::{
-    bridge::http::{
-        middleware::HttpMiddlewareImpl,
-        server::{HttpBridgeConfig, serve_http_bridge},
-    },
-    sfn::{client::Sfn, handler::ServerlessHandler},
+    entry::http::{HttpBridgeConfig, serve_http},
+    sfn::{client::Sfn, serverless::ServerlessHandler},
     tls::TlsConfig,
     zipper::{
-        middleware::{ZipperMiddlewareImpl, ZipperMiddlewareImplConfig},
+        router::RouterImpl,
         server::{Zipper, ZipperConfig},
     },
 };
@@ -86,7 +83,7 @@ struct ServeConfig {
     zipper: ZipperConfig,
 
     #[serde(default)]
-    zipper_middleware: ZipperMiddlewareImplConfig,
+    auth_token: Option<String>,
 
     #[serde(default)]
     http_bridge: HttpBridgeConfig,
@@ -109,14 +106,14 @@ async fn serve(opt: ServeOptions) -> Result<()> {
         }
     };
 
-    let zipper_middleware = ZipperMiddlewareImpl::new(config.zipper_middleware);
-    let zipper = Zipper::new(zipper_middleware);
+    let router = RouterImpl::new(config.auth_token);
+    let zipper = Arc::new(Zipper::new(router));
+    let zipper_clone = zipper.clone();
 
     select! {
-        r = serve_http_bridge(
+        r = serve_http(
             &config.http_bridge,
-            zipper.clone(),
-            HttpMiddlewareImpl::default(),
+            zipper_clone,
         ) => r,
         r = zipper.serve(config.zipper) => r,
     }?;

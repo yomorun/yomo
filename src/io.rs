@@ -3,26 +3,23 @@ use std::{fmt::Debug, io::ErrorKind};
 use anyhow::Result;
 use log::{debug, error, trace};
 use serde::{Deserialize, Serialize};
-use serde_json::{from_slice, to_vec};
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt, copy},
-    join,
+    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, copy},
+    spawn,
 };
 
-pub async fn send_raw(stream: &mut (impl AsyncWriteExt + Unpin), data: &[u8]) -> Result<()> {
-    trace!("send raw: {:?}", String::from_utf8_lossy(&data));
-    stream.write_u32(data.len() as u32).await?;
-    stream.write_all(data).await?;
-    Ok(())
-}
+pub async fn receive_raw(stream: &mut (impl AsyncReadExt + Unpin)) -> Result<Option<String>> {
+    let mut r = BufReader::new(stream);
+    let mut buf = String::new();
 
-pub async fn receive_raw(read_stream: &mut (impl AsyncReadExt + Unpin)) -> Result<Option<Vec<u8>>> {
-    match read_stream.read_u32().await {
+    match r.read_line(&mut buf).await {
         Ok(size) => {
-            let mut buf = vec![0; size as usize];
-            read_stream.read_exact(&mut buf).await?;
-            trace!("recv raw bytes: {:?}", String::from_utf8_lossy(&buf));
-            Ok(Some(buf))
+            if size == 0 {
+                return Ok(None);
+            }
+            let buf = buf.trim_end_matches("\n").trim_end_matches("\r");
+            trace!("recv raw: {}", buf);
+            Ok(Some(buf.to_owned()))
         }
         Err(e) => {
             if e.kind() == ErrorKind::UnexpectedEof {
@@ -39,53 +36,43 @@ pub async fn send_frame<T: Serialize + Debug>(
     frame: &T,
 ) -> Result<()> {
     debug!("send frame: {:?}", frame);
-    let buf = to_vec(frame)?;
-    trace!("send frame bytes: {:?}", String::from_utf8_lossy(&buf));
-    stream.write_u32(buf.len() as u32).await?;
-    stream.write_all(&buf).await?;
+    let buf = serde_json::to_string(frame)? + "\n";
+    trace!("send frame bytes: {}", buf);
+    stream.write_all(&buf.as_bytes()).await?;
     Ok(())
 }
 
 pub async fn receive_frame<T: for<'a> Deserialize<'a> + Debug>(
-    read_stream: &mut (impl AsyncReadExt + Unpin),
+    stream: &mut (impl AsyncReadExt + Unpin),
 ) -> Result<Option<T>> {
-    match read_stream.read_u32().await {
-        Ok(size) => {
-            let mut buf = vec![0; size as usize];
-            read_stream.read_exact(&mut buf).await?;
-            trace!("recv frame bytes: {:?}", String::from_utf8_lossy(&buf));
-            let frame: T = from_slice(&buf)?;
-            debug!("recv frame: {:?}", frame);
-            Ok(Some(frame))
-        }
-        Err(e) => {
-            if e.kind() == ErrorKind::UnexpectedEof {
-                return Ok(None);
-            }
-            error!("receive_frame error: {}", e);
-            Ok(None)
-        }
+    let raw = receive_raw(stream).await?;
+    if let Some(raw) = raw {
+        let frame: T = serde_json::from_str(&raw)?;
+        debug!("recv frame: {:?}", frame);
+        Ok(Some(frame))
+    } else {
+        Ok(None)
     }
 }
 
-pub async fn pipe_stream(
-    mut from_reader: impl AsyncReadExt + Unpin,
-    mut from_writer: impl AsyncWriteExt + Unpin,
-    mut to_reader: impl AsyncReadExt + Unpin,
-    mut to_writer: impl AsyncWriteExt + Unpin,
-) {
-    join!(
-        async move {
-            if let Err(e) = copy(&mut from_reader, &mut to_writer).await {
-                error!("pipe_stream forward error: {}", e);
-            }
-            to_writer.shutdown().await.ok();
-        },
-        async move {
-            if let Err(e) = copy(&mut to_reader, &mut from_writer).await {
-                error!("pipe_stream backward error: {}", e);
-            }
-            from_writer.shutdown().await.ok();
+pub fn pipe_streams<R1, W1, R2, W2>(mut r1: R1, mut w1: W1, mut r2: R2, mut w2: W2)
+where
+    R1: AsyncReadExt + Unpin + Send + 'static,
+    W1: AsyncWriteExt + Unpin + Send + 'static,
+    R2: AsyncReadExt + Unpin + Send + 'static,
+    W2: AsyncWriteExt + Unpin + Send + 'static,
+{
+    spawn(async move {
+        if let Err(e) = copy(&mut r1, &mut w2).await {
+            error!("copy request stream error: {}", e);
         }
-    );
+        w2.shutdown().await.ok();
+    });
+
+    spawn(async move {
+        if let Err(e) = copy(&mut r2, &mut w1).await {
+            error!("copy response stream error: {}", e);
+        }
+        w1.shutdown().await.ok();
+    });
 }

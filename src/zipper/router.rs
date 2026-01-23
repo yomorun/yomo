@@ -1,40 +1,34 @@
 use std::collections::HashMap;
 
 use anyhow::Result;
-use serde::Deserialize;
+use log::{info, warn};
 
-use crate::{metadata::Metadata, types::HandshakeReq};
+use crate::types::{HandshakeReq, RequestHeaders};
 
-#[derive(Debug, Clone, Deserialize, Default)]
-pub struct ZipperMiddlewareImplConfig {
-    #[serde(default)]
-    auth_token: Option<String>,
-}
-
-pub trait ZipperMiddleware: Sync + Send {
+pub trait Router: Sync + Send {
     fn handshake(&mut self, conn_id: u64, req: &HandshakeReq) -> (bool, String, Option<u64>);
 
-    fn route(&self, name: &str, metadata: &Box<dyn Metadata>) -> Result<Option<u64>>;
+    fn route(&self, headers: &RequestHeaders) -> Result<Option<u64>>;
 
     fn remove_sfn(&mut self, conn_id: u64) -> Result<()>;
 }
 
-pub struct ZipperMiddlewareImpl {
+pub struct RouterImpl {
     auth_token: Option<String>,
 
     route_map: HashMap<String, u64>,
 }
 
-impl ZipperMiddlewareImpl {
-    pub fn new(config: ZipperMiddlewareImplConfig) -> Self {
+impl RouterImpl {
+    pub fn new(auth_token: Option<String>) -> Self {
         Self {
-            auth_token: config.auth_token,
+            auth_token,
             route_map: HashMap::new(),
         }
     }
 }
 
-impl ZipperMiddleware for ZipperMiddlewareImpl {
+impl Router for RouterImpl {
     fn handshake(&mut self, conn_id: u64, req: &HandshakeReq) -> (bool, String, Option<u64>) {
         if req.sfn_name.is_empty() {
             return (false, "sfn name is empty".to_string(), None);
@@ -56,10 +50,16 @@ impl ZipperMiddleware for ZipperMiddlewareImpl {
         Ok(())
     }
 
-    fn route(&self, name: &str, _metadata: &Box<dyn Metadata>) -> Result<Option<u64>> {
-        Ok(match self.route_map.get(name) {
-            Some(conn_id) => Some(conn_id.to_owned()),
-            None => None,
+    fn route(&self, headers: &RequestHeaders) -> Result<Option<u64>> {
+        Ok(match self.route_map.get(&headers.sfn_name) {
+            Some(conn_id) => {
+                info!("route for [{}] to: {}", headers.sfn_name, conn_id);
+                Some(conn_id.to_owned())
+            }
+            None => {
+                warn!("route for [{}] not found", headers.sfn_name);
+                None
+            }
         })
     }
 }

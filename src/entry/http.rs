@@ -1,7 +1,7 @@
 use std::{convert::Infallible, sync::Arc};
 
 use axum::{
-    Router,
+    Json, Router,
     body::Bytes,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
@@ -17,9 +17,10 @@ use tokio::{
 };
 
 use crate::{
-    bridge::{Bridge, http::middleware::HttpMiddleware},
-    io::{receive_raw, send_frame, send_raw},
-    types::RequestHeaders,
+    bridge::Bridge,
+    io::receive_raw,
+    types::{Request, RequestBody, RequestHeaders},
+    zipper::server::Zipper,
 };
 
 const MAX_BUF_SIZE: usize = 16 * 1024;
@@ -76,39 +77,35 @@ where
 // HTTP request handler: forward request to corresponding QUIC sfn
 #[axum::debug_handler]
 async fn handle_simple(
-    headers: HeaderMap,
+    _headers: HeaderMap,
     Path(name): Path<String>,
-    State((bridge, middleware)): State<(Arc<dyn Bridge>, Arc<dyn HttpMiddleware>)>,
-    body: Bytes,
+    State(zipper): State<Arc<Zipper>>,
+    Json(body): Json<RequestBody>,
 ) -> Result<Bytes, AppError> {
     info!("new request to [{}]", name);
 
-    // Create metadata
-    let metadata = middleware.new_metadata(&headers)?;
+    let request = Request {
+        headers: RequestHeaders {
+            sfn_name: name.to_owned(),
+            stream: false,
+            ..Default::default()
+        },
+        body,
+    };
 
-    let mut req_stream = simplex(MAX_BUF_SIZE);
-    let mut res_stream = simplex(MAX_BUF_SIZE);
+    let (r1, mut w1) = simplex(MAX_BUF_SIZE);
+    let (mut r2, w2) = simplex(MAX_BUF_SIZE);
 
-    if bridge
-        .forward(&name, &metadata, req_stream.0, res_stream.1)
-        .await?
-    {
-        send_frame(
-            &mut req_stream.1,
-            &RequestHeaders {
-                stream: false,
-                sfn_name: name,
-                trace_id: metadata.trace_id().to_owned(),
-                req_id: metadata.req_id().to_owned(),
-            },
-        )
-        .await?;
-        send_raw(&mut req_stream.1, &body).await?;
-        req_stream.1.shutdown().await?;
+    if zipper.forward(&request.headers, r1, w2).await? {
+        let buf = serde_json::to_vec(&request)?;
+        w1.write_all(&buf).await?;
+        w1.shutdown().await?;
 
-        let response = receive_raw(&mut res_stream.0).await?.unwrap_or_default();
+        let mut buf = Vec::new();
+        let _ = r2.read_to_end(&mut buf).await?;
+        let response = Bytes::from(buf);
 
-        Ok(response.into())
+        Ok(response)
     } else {
         Err(AppError {
             status_code: StatusCode::NOT_FOUND,
@@ -120,42 +117,37 @@ async fn handle_simple(
 // HTTP stream handler: forward request to corresponding QUIC sfn with SSE response
 #[axum::debug_handler]
 async fn handle_sse(
-    headers: HeaderMap,
+    _headers: HeaderMap,
     Path(name): Path<String>,
-    State((bridge, middleware)): State<(Arc<dyn Bridge>, Arc<dyn HttpMiddleware>)>,
-    body: Bytes,
+    State(zipper): State<Arc<Zipper>>,
+    Json(body): Json<RequestBody>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, AppError> {
     info!("new request to [{}]", name);
 
-    // Create metadata
-    let metadata = middleware.new_metadata(&headers)?;
+    let request = Request {
+        headers: RequestHeaders {
+            sfn_name: name.to_owned(),
+            stream: true,
+            ..Default::default()
+        },
+        body,
+    };
 
-    let mut req_stream = simplex(MAX_BUF_SIZE);
-    let res_stream = simplex(MAX_BUF_SIZE);
+    let (r1, mut w1) = simplex(MAX_BUF_SIZE);
+    let (r2, w2) = simplex(MAX_BUF_SIZE);
 
-    if bridge
-        .forward(&name, &metadata, req_stream.0, res_stream.1)
-        .await?
-    {
-        send_frame(
-            &mut req_stream.1,
-            &RequestHeaders {
-                stream: true,
-                sfn_name: name,
-                trace_id: metadata.trace_id().to_owned(),
-                req_id: metadata.req_id().to_owned(),
-            },
-        )
-        .await?;
-        send_raw(&mut req_stream.1, &body).await?;
-        req_stream.1.shutdown().await?;
+    if zipper.forward(&request.headers, r1, w2).await? {
+        let buf = serde_json::to_vec(&request)?;
+        w1.write_all(&buf).await?;
+        w1.shutdown().await?;
 
-        let stream = stream::unfold(res_stream.0, move |mut r| async move {
-            match process_chunk(&mut r).await {
-                Ok(chunk) => match chunk {
-                    Some(chunk) => Some((Ok(chunk), r)),
-                    None => None,
-                },
+        let stream = stream::unfold(r2, move |mut r| async move {
+            match receive_raw(&mut r).await {
+                Ok(Some(chunk)) => {
+                    let event = Event::default().data(chunk);
+                    Some((Ok(event), r))
+                }
+                Ok(None) => None,
                 Err(e) => {
                     error!("receiving frame error: {}", e);
                     None
@@ -172,25 +164,12 @@ async fn handle_sse(
     }
 }
 
-async fn process_chunk(stream: &mut (impl AsyncReadExt + Unpin)) -> anyhow::Result<Option<Event>> {
-    if let Some(chunk) = receive_raw(stream).await? {
-        let event = Event::default().data(String::from_utf8_lossy(&chunk));
-        Ok(Some(event))
-    } else {
-        Ok(None)
-    }
-}
-
 // HTTP server: listen and receive external requests
-pub async fn serve_http_bridge(
-    config: &HttpBridgeConfig,
-    bridge: impl Bridge + 'static,
-    middleware: impl HttpMiddleware + 'static,
-) -> anyhow::Result<()> {
+pub async fn serve_http(config: &HttpBridgeConfig, zipper: Arc<Zipper>) -> anyhow::Result<()> {
     let app = Router::new()
         .route("/sfn/{name}", post(handle_simple))
         .route("/sfn/{name}/sse", post(handle_sse))
-        .with_state((Arc::new(bridge), Arc::new(middleware)));
+        .with_state(zipper);
 
     let listener = TcpListener::bind((config.host.to_owned(), config.port)).await?;
 

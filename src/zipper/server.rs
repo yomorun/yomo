@@ -5,23 +5,23 @@ use s2n_quic::{
     Connection, Server,
     connection::{self, Handle},
     provider::{io::TryInto, limits::Limits},
-    stream::BidirectionalStream,
+    stream::{BidirectionalStream, ReceiveStream, SendStream},
 };
 use serde::Deserialize;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::{
-    io::{AsyncWriteExt, ReadHalf, SimplexStream, WriteHalf},
+    io::{AsyncReadExt, AsyncWriteExt},
     spawn,
     sync::{Mutex, RwLock},
 };
 
 use crate::{
     bridge::Bridge,
-    io::{pipe_stream, receive_frame, send_frame},
-    metadata::Metadata,
+    connector::QuicConnector,
+    io::{receive_frame, send_frame},
     tls::{TlsConfig, new_server_tls},
-    types::{HandshakeReq, HandshakeRes},
-    zipper::middleware::ZipperMiddleware,
+    types::{HandshakeReq, HandshakeRes, RequestHeaders},
+    zipper::router::Router,
 };
 
 #[derive(Debug, Clone, Deserialize, Builder)]
@@ -57,21 +57,21 @@ fn default_port() -> u16 {
 // Zipper: Manages all registered sfn connections
 #[derive(Clone)]
 pub struct Zipper {
-    middleware: Arc<RwLock<dyn ZipperMiddleware>>,
+    router: Arc<RwLock<dyn Router>>,
 
     all_sfns: Arc<Mutex<HashMap<u64, Handle>>>,
 }
 
 impl Zipper {
-    pub fn new(middleware: impl ZipperMiddleware + 'static) -> Self {
+    pub fn new(router: impl Router + 'static) -> Self {
         Self {
-            middleware: Arc::new(RwLock::new(middleware)),
+            router: Arc::new(RwLock::new(router)),
             all_sfns: Arc::default(),
         }
     }
 
     // Start server: listen on QUIC port, accept remote sfn connections
-    pub async fn serve(self, config: ZipperConfig) -> Result<()> {
+    pub async fn serve(&self, config: ZipperConfig) -> Result<()> {
         let tls = new_server_tls(&config.tls).context("failed to load tls certificates")?;
 
         let limits = Limits::new()
@@ -146,7 +146,7 @@ impl Zipper {
         }
 
         // Clean up sfn registration
-        self.middleware.write().await.remove_sfn(conn_id)?;
+        self.router.write().await.remove_sfn(conn_id)?;
         self.all_sfns.lock().await.remove(&conn_id);
 
         Ok(())
@@ -162,7 +162,7 @@ impl Zipper {
             .await?
             .ok_or(anyhow!("receive handshake request failed"))?;
 
-        let (ok, reason, conn_id) = self.middleware.write().await.handshake(conn_id, &req);
+        let (ok, reason, conn_id) = self.router.write().await.handshake(conn_id, &req);
 
         let res = HandshakeRes { ok, reason };
         send_frame(&mut stream, &res).await?;
@@ -183,38 +183,23 @@ impl Zipper {
 }
 
 #[async_trait::async_trait]
-impl Bridge for Zipper {
-    // Forward stream to corresponding sfn
-    async fn forward(
-        &self,
-        sfn_name: &str,
-        metadata: &Box<dyn Metadata>,
-        from_reader: ReadHalf<SimplexStream>,
-        from_writer: WriteHalf<SimplexStream>,
-    ) -> Result<bool> {
-        if let Some(conn_id) = self.middleware.read().await.route(&sfn_name, &metadata)? {
+impl<R, W> Bridge<QuicConnector, R, W, ReceiveStream, SendStream> for Zipper
+where
+    R: AsyncReadExt + Unpin + Send + 'static,
+    W: AsyncWriteExt + Unpin + Send + 'static,
+{
+    async fn find_downstream(&self, headers: &RequestHeaders) -> Result<Option<QuicConnector>> {
+        if let Some(conn_id) = self.router.read().await.route(&headers)? {
             if let Some(conn) = self.all_sfns.lock().await.get(&conn_id) {
                 info!(
                     "[{}|{}] proxy to sfn: {}",
-                    metadata.trace_id(),
-                    metadata.req_id(),
-                    conn_id
+                    headers.trace_id, headers.req_id, conn_id
                 );
 
-                // Create new QUIC stream upon the sfn connection
-                let mut conn = conn.clone();
-                let quic_stream = conn.open_bidirectional_stream().await?;
-                let (to_reader, to_writer) = quic_stream.split();
-
-                // Proxy data between the original streams and the QUIC stream
-                spawn(async move {
-                    pipe_stream(from_reader, from_writer, to_reader, to_writer).await;
-                });
-
-                return Ok(true);
+                return Ok(Some(QuicConnector::new(conn.clone())));
             }
         }
 
-        Ok(false)
+        Ok(None)
     }
 }

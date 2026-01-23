@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -12,10 +14,24 @@ pub struct HandshakeRes {
     pub reason: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub struct RequestHeaders {
-    pub stream: bool,
-    pub sfn_name: String,
     pub trace_id: String,
     pub req_id: String,
+    pub sfn_name: String,
+    pub stream: bool,
+    pub extra: HashMap<String, String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct RequestBody {
+    pub args: String,
+    #[serde(default)]
+    pub context: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct Request {
+    pub headers: RequestHeaders,
+    pub body: RequestBody,
 }
