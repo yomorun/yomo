@@ -31,6 +31,7 @@ func NewProvider(projectID, location, model, credentialsFile string) *Provider {
 		context.Background(),
 		option.WithScopes("https://www.googleapis.com/auth/cloud-platform"),
 		option.WithCredentialsFile(credentialsFile),
+		option.WithTelemetryDisabled(),
 	)
 	if err != nil {
 		log.Fatalln("vertexai new http client: ", err)
