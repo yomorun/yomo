@@ -1,5 +1,4 @@
 use anyhow::{Context, Result, anyhow};
-use bon::Builder;
 use log::{error, info};
 use s2n_quic::{
     Connection, Server,
@@ -7,7 +6,6 @@ use s2n_quic::{
     provider::{io::TryInto, limits::Limits},
     stream::{BidirectionalStream, ReceiveStream, SendStream},
 };
-use serde::Deserialize;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -23,36 +21,6 @@ use crate::{
     types::{HandshakeReq, HandshakeRes, RequestHeaders},
     zipper::router::Router,
 };
-
-#[derive(Debug, Clone, Deserialize, Builder)]
-pub struct ZipperConfig {
-    #[serde(default = "default_host")]
-    host: String,
-
-    #[serde(default = "default_port")]
-    port: u16,
-
-    #[serde(default)]
-    tls: TlsConfig,
-}
-
-impl Default for ZipperConfig {
-    fn default() -> Self {
-        Self {
-            host: default_host(),
-            port: default_port(),
-            tls: TlsConfig::default(),
-        }
-    }
-}
-
-fn default_host() -> String {
-    "127.0.0.1".to_string()
-}
-
-fn default_port() -> u16 {
-    9000
-}
 
 // Zipper: Manages all registered sfn connections
 #[derive(Clone)]
@@ -71,8 +39,8 @@ impl Zipper {
     }
 
     // Start server: listen on QUIC port, accept remote sfn connections
-    pub async fn serve(&self, config: ZipperConfig) -> Result<()> {
-        let tls = new_server_tls(&config.tls).context("failed to load tls certificates")?;
+    pub async fn serve(&self, host: &str, port: u16, tls_config: &TlsConfig) -> Result<()> {
+        let tls = new_server_tls(tls_config).context("failed to load tls certificates")?;
 
         let limits = Limits::new()
             .with_max_handshake_duration(Duration::from_secs(10))?
@@ -84,11 +52,11 @@ impl Zipper {
 
         let mut server = Server::builder()
             .with_tls(tls)?
-            .with_io(TryInto::try_into((config.host.as_str(), config.port))?)?
+            .with_io(TryInto::try_into((host, port))?)?
             .with_limits(limits)?
             .start()?;
 
-        info!("start quic server: {}:{}/udp", config.host, config.port);
+        info!("start quic server: {}:{}/udp", host, port);
 
         // Start independent handling task for each connection
         while let Some(conn) = server.accept().await {

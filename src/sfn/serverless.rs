@@ -2,6 +2,7 @@ use std::path::{Path, absolute};
 use std::process::Stdio;
 
 use anyhow::{Ok, Result, anyhow, bail};
+use colored::Colorize;
 use log::{debug, info};
 use tempfile::tempdir;
 use tokio::fs;
@@ -92,7 +93,7 @@ impl ServerlessHandler {
                 .as_mut()
                 .ok_or(anyhow!("Failed to open stdout"))?,
         );
-        let mut buf = String::with_capacity(256);
+        let mut buf = String::new();
         if reader.read_line(&mut buf).await? == 0 {
             bail!("failed to read socket address from serverless process");
         }
@@ -103,18 +104,17 @@ impl ServerlessHandler {
         }
         info!("serverless listening: {}", addr);
 
-        let addr = "127.0.0.1:12000".to_string();
         *self.socket_addr.lock().await = addr;
 
         drop(temp_dir);
 
         loop {
+            let mut buf = String::new();
             if reader.read_line(&mut buf).await? == 0 {
                 break;
             }
-            println!("{}", buf);
+            print!("{} {}", "[Go Serverless]".cyan(), buf);
         }
-
         child.wait().await?;
 
         Ok(())

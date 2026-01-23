@@ -8,14 +8,23 @@ use log::{error, info};
 use serde::Deserialize;
 use tokio::select;
 use yomo::{
-    entry::http::{HttpBridgeConfig, serve_http},
+    entry::http::serve_http,
     sfn::{client::Sfn, serverless::ServerlessHandler},
     tls::TlsConfig,
-    zipper::{
-        router::RouterImpl,
-        server::{Zipper, ZipperConfig},
-    },
+    zipper::{router::RouterImpl, server::Zipper},
 };
+
+fn default_host() -> String {
+    "127.0.0.1".to_string()
+}
+
+fn default_quic_port() -> u16 {
+    9000
+}
+
+fn default_http_port() -> u16 {
+    9001
+}
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -37,9 +46,9 @@ struct ServeOptions {
 struct RunOptions {
     #[clap(
         default_value = ".",
-        help = "path to the serverless function source file (app.ts OR app.go)"
+        help = "directory to the serverless function source file"
     )]
-    src_file: String,
+    serverless_dir: String,
 
     #[clap(short, long, help = "yomo Serverless LLM Function name")]
     name: String,
@@ -77,16 +86,34 @@ struct RunOptions {
     tls_insecure: bool,
 }
 
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize)]
 struct ServeConfig {
+    #[serde(default = "default_host")]
+    host: String,
+
+    #[serde(default = "default_quic_port")]
+    quic_port: u16,
+
+    #[serde(default = "default_http_port")]
+    http_port: u16,
+
     #[serde(default)]
-    zipper: ZipperConfig,
+    tls: TlsConfig,
 
     #[serde(default)]
     auth_token: Option<String>,
+}
 
-    #[serde(default)]
-    http_bridge: HttpBridgeConfig,
+impl Default for ServeConfig {
+    fn default() -> Self {
+        Self {
+            host: default_host(),
+            quic_port: default_quic_port(),
+            http_port: default_http_port(),
+            tls: TlsConfig::default(),
+            auth_token: None,
+        }
+    }
 }
 
 async fn serve(opt: ServeOptions) -> Result<()> {
@@ -106,16 +133,15 @@ async fn serve(opt: ServeOptions) -> Result<()> {
         }
     };
 
+    info!("config: {:?}", config);
+
     let router = RouterImpl::new(config.auth_token);
     let zipper = Arc::new(Zipper::new(router));
     let zipper_clone = zipper.clone();
 
     select! {
-        r = serve_http(
-            &config.http_bridge,
-            zipper_clone,
-        ) => r,
-        r = zipper.serve(config.zipper) => r,
+        r = serve_http(&config.host, config.http_port, zipper_clone) => r,
+        r = zipper.serve(&config.host, config.quic_port, &config.tls) => r,
     }?;
 
     Ok(())
@@ -137,7 +163,7 @@ async fn run(opt: RunOptions) -> Result<()> {
         .build();
 
     select! {
-        r = serverless_handler.run_subprocess(&opt.src_file) => r,
+        r = serverless_handler.run_subprocess(&opt.serverless_dir) => r,
         r = sfn.run(&opt.zipper, &opt.credential, &tls_config, opt.tls_insecure) => r,
     }?;
 

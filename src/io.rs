@@ -1,34 +1,27 @@
 use std::{fmt::Debug, io::ErrorKind};
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use log::{debug, error, trace};
 use serde::{Deserialize, Serialize};
 use tokio::{
-    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, copy},
+    io::{AsyncReadExt, AsyncWriteExt, copy},
     spawn,
 };
-
-pub async fn receive_raw(stream: &mut (impl AsyncReadExt + Unpin)) -> Result<Option<String>> {
-    let mut r = BufReader::new(stream);
-    let mut buf = String::new();
-
-    match r.read_line(&mut buf).await {
-        Ok(size) => {
-            if size == 0 {
-                return Ok(None);
-            }
-            let buf = buf.trim_end_matches("\n").trim_end_matches("\r");
-            trace!("recv raw: {}", buf);
-            Ok(Some(buf.to_owned()))
-        }
+async fn receive_raw(stream: &mut (impl AsyncReadExt + Unpin)) -> Result<Option<Vec<u8>>> {
+    let size = match stream.read_u32().await {
+        Ok(size) => size,
         Err(e) => {
             if e.kind() == ErrorKind::UnexpectedEof {
                 return Ok(None);
             }
-            error!("receive_raw error: {}", e);
-            Ok(None)
+            bail!("receive_raw error: {}", e);
         }
-    }
+    };
+
+    let mut buf = vec![0; size as usize];
+    stream.read_exact(&mut buf).await?;
+    trace!("recv bytes: {:?}", buf);
+    Ok(Some(buf))
 }
 
 pub async fn send_frame<T: Serialize + Debug>(
@@ -36,9 +29,11 @@ pub async fn send_frame<T: Serialize + Debug>(
     frame: &T,
 ) -> Result<()> {
     debug!("send frame: {:?}", frame);
-    let buf = serde_json::to_string(frame)? + "\n";
-    trace!("send frame bytes: {}", buf);
-    stream.write_all(&buf.as_bytes()).await?;
+    let buf = serde_json::to_vec(frame)?;
+    stream.write_u32(buf.len() as u32).await?;
+    stream.write_all(&buf).await?;
+    stream.flush().await?;
+    trace!("sent bytes: {:?}", buf);
     Ok(())
 }
 
@@ -47,7 +42,7 @@ pub async fn receive_frame<T: for<'a> Deserialize<'a> + Debug>(
 ) -> Result<Option<T>> {
     let raw = receive_raw(stream).await?;
     if let Some(raw) = raw {
-        let frame: T = serde_json::from_str(&raw)?;
+        let frame: T = serde_json::from_slice(&raw)?;
         debug!("recv frame: {:?}", frame);
         Ok(Some(frame))
     } else {
@@ -55,7 +50,7 @@ pub async fn receive_frame<T: for<'a> Deserialize<'a> + Debug>(
     }
 }
 
-pub fn pipe_streams<R1, W1, R2, W2>(mut r1: R1, mut w1: W1, mut r2: R2, mut w2: W2)
+pub(crate) fn pipe_streams<R1, W1, R2, W2>(mut r1: R1, mut w1: W1, mut r2: R2, mut w2: W2)
 where
     R1: AsyncReadExt + Unpin + Send + 'static,
     W1: AsyncWriteExt + Unpin + Send + 'static,

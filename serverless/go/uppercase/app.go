@@ -2,26 +2,28 @@ package main
 
 import (
 	"errors"
-	"log"
+	"fmt"
 	"strings"
 	"time"
 )
 
-func SimpleHandler(args string) (string, error) {
-	log.Println("[Go SimpleHandler] args:", args)
+// The simple handler function that takes a string argument and returns a string result.
+func SimpleHandler(args string, context string) (string, error) {
+	fmt.Println("args:", args)
 
 	if len(args) > 20 {
 		return "", errors.New("input too long")
 	}
 
 	result := strings.ToUpper(args)
-	log.Println("[Go SimpleHandler] result:", result)
+	fmt.Println("result:", result)
 
 	return result, nil
 }
 
-func StreamHandler(args string, ch chan<- string) error {
-	log.Println("[Go StreamHandler] args:", args)
+// The stream handler function that takes a string argument and returns a stream of string results.
+func StreamHandler(args string, context string, ch chan<- string) error {
+	fmt.Println("args:", args)
 
 	for _, chunk := range strings.Split(args, " ") {
 		if len(chunk) > 20 {
@@ -29,7 +31,7 @@ func StreamHandler(args string, ch chan<- string) error {
 		}
 
 		chunkResult := strings.ToUpper(chunk)
-		log.Println("[Go StreamHandler] chunk result:", chunkResult)
+		fmt.Println("chunk result:", chunkResult)
 
 		ch <- chunkResult
 		time.Sleep(time.Second)

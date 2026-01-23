@@ -20,5 +20,6 @@ target
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
+Cargo.lock
 .vscode/
 .DS_Store

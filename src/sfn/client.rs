@@ -120,6 +120,7 @@ impl Sfn {
         let res = receive_frame::<HandshakeRes>(&mut stream)
             .await?
             .ok_or(anyhow!("receive handshake response failed"))?;
+
         if !res.ok {
             bail!("handshake failed: {}", res.reason);
         }
@@ -131,9 +132,9 @@ impl Sfn {
     async fn handle_stream(&self, stream: BidirectionalStream) -> Result<()> {
         let (r1, w1) = stream.split();
 
-        let headers = RequestHeaders::default();
-
-        self.handler.forward(&headers, r1, w1).await?;
+        self.handler
+            .forward(&RequestHeaders::default(), r1, w1)
+            .await?;
 
         Ok(())
     }

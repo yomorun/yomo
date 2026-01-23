@@ -31,7 +31,8 @@ pub struct RequestBody {
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
-pub struct Request {
-    pub headers: RequestHeaders,
-    pub body: RequestBody,
+pub struct ResponseBody {
+    pub data: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub error: String,
 }

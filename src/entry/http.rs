@@ -1,8 +1,8 @@
 use std::{convert::Infallible, sync::Arc};
 
+use anyhow::anyhow;
 use axum::{
     Json, Router,
-    body::Bytes,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Sse, sse::Event},
@@ -10,46 +10,19 @@ use axum::{
 };
 use futures_util::{Stream, stream};
 use log::{error, info};
-use serde::Deserialize;
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt, simplex},
+    io::{AsyncWriteExt, simplex},
     net::TcpListener,
 };
 
 use crate::{
     bridge::Bridge,
-    io::receive_raw,
-    types::{Request, RequestBody, RequestHeaders},
+    io::{receive_frame, send_frame},
+    types::{RequestBody, RequestHeaders, ResponseBody},
     zipper::server::Zipper,
 };
 
 const MAX_BUF_SIZE: usize = 16 * 1024;
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct HttpBridgeConfig {
-    #[serde(default = "default_host")]
-    host: String,
-
-    #[serde(default = "default_port")]
-    port: u16,
-}
-
-impl Default for HttpBridgeConfig {
-    fn default() -> Self {
-        Self {
-            host: default_host(),
-            port: default_port(),
-        }
-    }
-}
-
-fn default_host() -> String {
-    "127.0.0.1".to_string()
-}
-
-fn default_port() -> u16 {
-    9001
-}
 
 struct AppError {
     status_code: StatusCode,
@@ -74,42 +47,55 @@ where
     }
 }
 
+fn parse_http_headers(http_headers: &HeaderMap, key: &str) -> String {
+    match http_headers.get(key) {
+        Some(trace_id) => trace_id.to_str().unwrap_or_default(),
+        None => "",
+    }
+    .to_string()
+}
+
+fn new_request_headers(sfn_name: &str, http_headers: &HeaderMap, stream: bool) -> RequestHeaders {
+    RequestHeaders {
+        sfn_name: sfn_name.to_owned(),
+        stream,
+        trace_id: parse_http_headers(http_headers, "traceparent"),
+        req_id: parse_http_headers(http_headers, "X-Request-Id"),
+        extra: serde_json::from_str(&parse_http_headers(http_headers, "X-YoMo-Extra"))
+            .unwrap_or_default(),
+    }
+}
+
 // HTTP request handler: forward request to corresponding QUIC sfn
 #[axum::debug_handler]
 async fn handle_simple(
-    _headers: HeaderMap,
-    Path(name): Path<String>,
+    http_headers: HeaderMap,
+    Path(sfn_name): Path<String>,
     State(zipper): State<Arc<Zipper>>,
     Json(body): Json<RequestBody>,
-) -> Result<Bytes, AppError> {
-    info!("new request to [{}]", name);
+) -> Result<String, AppError> {
+    info!("new request to [{}]", sfn_name);
 
-    let request = Request {
-        headers: RequestHeaders {
-            sfn_name: name.to_owned(),
-            stream: false,
-            ..Default::default()
-        },
-        body,
-    };
+    let request_headers = new_request_headers(&sfn_name, &http_headers, false);
 
     let (r1, mut w1) = simplex(MAX_BUF_SIZE);
     let (mut r2, w2) = simplex(MAX_BUF_SIZE);
 
-    if zipper.forward(&request.headers, r1, w2).await? {
-        let buf = serde_json::to_vec(&request)?;
-        w1.write_all(&buf).await?;
+    if zipper.forward(&request_headers, r1, w2).await? {
+        send_frame(&mut w1, &request_headers).await?;
+        send_frame(&mut w1, &body).await?;
         w1.shutdown().await?;
 
-        let mut buf = Vec::new();
-        let _ = r2.read_to_end(&mut buf).await?;
-        let response = Bytes::from(buf);
+        let body: ResponseBody = receive_frame(&mut r2)
+            .await?
+            .ok_or(anyhow!("Failed to receive response"))?;
+        info!("recv response: {:?}", body);
 
-        Ok(response)
+        Ok(serde_json::to_string(&body)?)
     } else {
         Err(AppError {
             status_code: StatusCode::NOT_FOUND,
-            msg: "sfn not found".to_string(),
+            msg: format!("sfn [{}] not found", sfn_name),
         })
     }
 }
@@ -117,35 +103,32 @@ async fn handle_simple(
 // HTTP stream handler: forward request to corresponding QUIC sfn with SSE response
 #[axum::debug_handler]
 async fn handle_sse(
-    _headers: HeaderMap,
-    Path(name): Path<String>,
+    http_headers: HeaderMap,
+    Path(sfn_name): Path<String>,
     State(zipper): State<Arc<Zipper>>,
     Json(body): Json<RequestBody>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, AppError> {
-    info!("new request to [{}]", name);
+    info!("new request to [{}]", sfn_name);
 
-    let request = Request {
-        headers: RequestHeaders {
-            sfn_name: name.to_owned(),
-            stream: true,
-            ..Default::default()
-        },
-        body,
-    };
+    let request_headers = new_request_headers(&sfn_name, &http_headers, true);
 
     let (r1, mut w1) = simplex(MAX_BUF_SIZE);
     let (r2, w2) = simplex(MAX_BUF_SIZE);
 
-    if zipper.forward(&request.headers, r1, w2).await? {
-        let buf = serde_json::to_vec(&request)?;
-        w1.write_all(&buf).await?;
+    if zipper.forward(&request_headers, r1, w2).await? {
+        send_frame(&mut w1, &request_headers).await?;
+        send_frame(&mut w1, &body).await?;
         w1.shutdown().await?;
 
         let stream = stream::unfold(r2, move |mut r| async move {
-            match receive_raw(&mut r).await {
+            match receive_frame::<ResponseBody>(&mut r).await {
                 Ok(Some(chunk)) => {
-                    let event = Event::default().data(chunk);
-                    Some((Ok(event), r))
+                    info!("recv chunk: {:?}", chunk);
+                    let data = serde_json::to_string(&chunk).unwrap_or_default();
+                    if data.len() == 0 {
+                        return None;
+                    }
+                    Some((Ok(Event::default().data(data)), r))
                 }
                 Ok(None) => None,
                 Err(e) => {
@@ -159,21 +142,21 @@ async fn handle_sse(
     } else {
         Err(AppError {
             status_code: StatusCode::NOT_FOUND,
-            msg: "sfn not found".to_string(),
+            msg: format!("sfn [{}] not found", sfn_name),
         })
     }
 }
 
 // HTTP server: listen and receive external requests
-pub async fn serve_http(config: &HttpBridgeConfig, zipper: Arc<Zipper>) -> anyhow::Result<()> {
+pub async fn serve_http(host: &str, port: u16, zipper: Arc<Zipper>) -> anyhow::Result<()> {
     let app = Router::new()
-        .route("/sfn/{name}", post(handle_simple))
-        .route("/sfn/{name}/sse", post(handle_sse))
+        .route("/sfn/{sfn_name}", post(handle_simple))
+        .route("/sfn/{sfn_name}/sse", post(handle_sse))
         .with_state(zipper);
 
-    let listener = TcpListener::bind((config.host.to_owned(), config.port)).await?;
+    let listener = TcpListener::bind((host.to_owned(), port)).await?;
 
-    info!("start http server: {}:{}", config.host, config.port);
+    info!("start http server: {}:{}", host, port);
     axum::serve(listener, app).await?;
 
     Ok(())
