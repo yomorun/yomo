@@ -20,7 +20,7 @@ RUST_LOG=info ./target/debug/yomo serve
 RUST_LOG=info ./target/debug/yomo run --name uppercase ./serverless/go/uppercase
 ```
 
-- send request:
+- send a request:
 
 ```
 curl -d '{"args":"\"Hello, YoMo!\""}' \
@@ -28,10 +28,11 @@ curl -d '{"args":"\"Hello, YoMo!\""}' \
   http://127.0.0.1:9001/sfn/uppercase
 ```
 
-- send stream request:
+- SSE stream response:
 
 ```
 curl -d '{"args":"\"Welcome to build stream serverless functions.\""}' \
   -H 'Content-type: application/json' \
-  http://127.0.0.1:9001/sfn/uppercase/sse
+  -H 'X-Stream-Response: true' \
+  http://127.0.0.1:9001/sfn/uppercase
 ```
