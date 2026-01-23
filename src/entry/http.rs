@@ -60,8 +60,7 @@ fn new_request_headers(sfn_name: &str, http_headers: &HeaderMap) -> RequestHeade
         trace_id: parse_http_headers(http_headers, "traceparent"),
         req_id: parse_http_headers(http_headers, "X-Request-Id"),
         stream: parse_http_headers(http_headers, "X-Stream-Response").to_lowercase() == "true",
-        extra: serde_json::from_str(&parse_http_headers(http_headers, "X-YoMo-Extra"))
-            .unwrap_or_default(),
+        extension: parse_http_headers(http_headers, "X-Extension"),
     }
 }
 

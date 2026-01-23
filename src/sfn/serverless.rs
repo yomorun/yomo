@@ -83,7 +83,7 @@ impl ServerlessHandler {
         let mut child = Command::new("go")
             .args(["run", "."])
             .current_dir(cwd)
-            .stdin(Stdio::null())
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()?;
 

@@ -11,11 +11,11 @@ import (
 )
 
 type RequestHeaders struct {
-	TraceID string            `json:"trace_id"`
-	ReqID   string            `json:"req_id"`
-	SfnName string            `json:"sfn_name"`
-	Stream  bool              `json:"stream"`
-	Extra   map[string]string `json:"extra"`
+	TraceID   string `json:"trace_id"`
+	ReqID     string `json:"req_id"`
+	SfnName   string `json:"sfn_name"`
+	Stream    bool   `json:"stream"`
+	Extension string `json:"extension"`
 }
 
 type RequestBody struct {
@@ -205,6 +205,13 @@ func main() {
 	defer listener.Close()
 
 	fmt.Println(listener.Addr().String())
+
+	go func() {
+		for {
+			io.ReadAll(os.Stdin)
+			os.Exit(0)
+		}
+	}()
 
 	for {
 		conn, err := listener.Accept()
