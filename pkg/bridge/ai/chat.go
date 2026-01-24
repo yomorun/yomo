@@ -123,7 +123,7 @@ func multiTurnFunctionCalling(
 
 		resp, err := createChatCompletions(gctx, p, chatCtx.req, md)
 		if err != nil {
-			chatSpan.RecordError(err)
+			// chatSpan.RecordError(err)
 			chatSpan.End()
 			return err
 		}
@@ -136,7 +136,7 @@ func multiTurnFunctionCalling(
 			err := resp.writeResponse(w, chatCtx)
 			respSpan.End()
 			if err != nil {
-				respSpan.RecordError(err)
+				// respSpan.RecordError(err)
 				return err
 			}
 			return nil
@@ -146,7 +146,7 @@ func multiTurnFunctionCalling(
 
 		result, err := resp.process(w, chatCtx)
 		if err != nil {
-			chatSpan.RecordError(err)
+			// chatSpan.RecordError(err)
 			return err
 		}
 

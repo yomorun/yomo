@@ -16,6 +16,8 @@ import (
 func RespondWithError(w pkgai.EventResponseWriter, code int, err error) error {
 	newCode, errBody := w.InterceptError(code, err)
 
+	w.RecordError(errors.New(errBody.Message))
+
 	if newCode != 0 {
 		code = newCode
 	}

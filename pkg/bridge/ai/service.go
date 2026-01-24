@@ -145,7 +145,7 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, transID stri
 	// 4. loop if multi-turn function calling until call stop
 	w.RecordIsStream(req.Stream)
 	if err := multiTurnFunctionCalling(ctx, req, transID, hasReqTools, w, srv.provider, caller, tracer, md, agentContext); err != nil {
-		w.RecordError(err)
+		srv.logger.Error("chatCompletionFailed", "transID", transID, "err", err)
 		return err
 	}
 	return nil
@@ -177,7 +177,7 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 	// 4. loop if multi-turn function calling until call stop
 	w.RecordIsStream(req.Stream)
 	if err := multiTurnFunctionCalling(ctx, req, transID, hasReqTools, w, srv.provider, caller, tracer, md, agentContext); err != nil {
-		w.RecordError(err)
+		srv.logger.Error("chatCompletionFailed", "transID", transID, "err", err)
 		return err
 	}
 	return nil
