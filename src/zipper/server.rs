@@ -74,12 +74,13 @@ impl Zipper {
     // Handle QUIC connection: register sfn
     async fn handle_connection(self, mut conn: Connection) -> Result<()> {
         let conn_id = conn.id();
+        info!("new quic connection: {}", conn_id);
 
         if let Some(stream) = conn.accept_bidirectional_stream().await? {
             // Handshake: get sfn name
             let sfn_name = self.handle_handshake(conn_id, stream).await?;
 
-            info!("new sfn connection {}: sfn_name={:?}", conn_id, sfn_name);
+            info!("new sfn connected: sfn_name={}", sfn_name);
 
             // save connection
             self.all_sfns.lock().await.insert(conn_id, conn.handle());

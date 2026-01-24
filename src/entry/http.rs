@@ -117,9 +117,11 @@ async fn handle(
     let (r1, mut w1) = simplex(MAX_BUF_SIZE);
     let (mut r2, w2) = simplex(MAX_BUF_SIZE);
 
-    if zipper.forward(&request_headers, r1, w2).await? {
-        // send request headers and body
-        send_frame(&mut w1, &request_headers).await?;
+    // send request headers
+    send_frame(&mut w1, &request_headers).await?;
+
+    if zipper.forward(r1, w2).await? {
+        // send request body
         send_frame(&mut w1, &body).await?;
         w1.shutdown().await?;
 

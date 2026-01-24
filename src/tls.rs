@@ -11,6 +11,7 @@ pub struct TlsConfig {
     ca_cert: Option<String>,
     cert: Option<String>,
     key: Option<String>,
+    #[serde(default)]
     mutual: bool,
 }
 

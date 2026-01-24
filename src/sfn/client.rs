@@ -14,7 +14,7 @@ use crate::{
     io::{receive_frame, send_frame},
     sfn::serverless::ServerlessHandler,
     tls::{TlsConfig, new_client_tls},
-    types::{HandshakeReq, HandshakeRes, RequestHeaders},
+    types::{HandshakeReq, HandshakeRes},
 };
 
 #[derive(Clone, Builder)]
@@ -132,9 +132,7 @@ impl Sfn {
     async fn handle_stream(&self, stream: BidirectionalStream) -> Result<()> {
         let (r1, w1) = stream.split();
 
-        self.handler
-            .forward(&RequestHeaders::default(), r1, w1)
-            .await?;
+        self.handler.forward(r1, w1).await?;
 
         Ok(())
     }

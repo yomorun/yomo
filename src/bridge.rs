@@ -1,7 +1,11 @@
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::{connector::Connector, io::pipe_streams, types::RequestHeaders};
+use crate::{
+    connector::Connector,
+    io::{pipe_streams, receive_frame, send_frame},
+    types::RequestHeaders,
+};
 
 #[async_trait::async_trait]
 pub trait Bridge<C, R1, W1, R2, W2>: Send + Sync + 'static
@@ -16,10 +20,16 @@ where
         Ok(None)
     }
 
-    async fn forward(&self, headers: &RequestHeaders, r1: R1, w1: W1) -> Result<bool> {
-        match self.find_downstream(headers).await? {
+    async fn forward(&self, mut r1: R1, w1: W1) -> Result<bool> {
+        let headers: RequestHeaders = receive_frame(&mut r1)
+            .await?
+            .ok_or(anyhow!("failed to parse headers"))?;
+
+        match self.find_downstream(&headers).await? {
             Some(mut connector) => {
-                let (r2, w2) = connector.open_new_stream().await?;
+                let (r2, mut w2) = connector.open_new_stream().await?;
+
+                send_frame(&mut w2, &headers).await?;
 
                 // pipe request & response body streams
                 pipe_streams(r1, w1, r2, w2);

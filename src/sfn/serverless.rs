@@ -26,7 +26,7 @@ static GO_MOD: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/serverl
 
 #[derive(Default)]
 pub struct ServerlessHandler {
-    socket_addr: Mutex<String>,
+    socket_addr: Mutex<Option<String>>,
 }
 
 impl ServerlessHandler {
@@ -104,7 +104,7 @@ impl ServerlessHandler {
         }
         info!("serverless listening: {}", addr);
 
-        *self.socket_addr.lock().await = addr;
+        *self.socket_addr.lock().await = Some(addr);
 
         drop(temp_dir);
 
@@ -128,11 +128,9 @@ where
     W: AsyncWriteExt + Unpin + Send + 'static,
 {
     async fn find_downstream(&self, _headers: &RequestHeaders) -> Result<Option<TcpConnector>> {
-        let socket_addr = self.socket_addr.lock().await.clone();
-        if socket_addr.is_empty() {
-            return Ok(None);
-        }
-
-        Ok(Some(TcpConnector::new(&socket_addr)))
+        Ok(match self.socket_addr.lock().await.clone() {
+            Some(addr) => Some(TcpConnector::new(&addr)),
+            None => None,
+        })
     }
 }
