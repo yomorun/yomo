@@ -31,7 +31,7 @@ curl -d '{"args": "Hello, YoMo!"}' \
 - SSE stream response:
 
 ```
-curl -d '{"args":" "Welcome to build stream serverless functions."}' \
+curl -d '{"args": "Welcome to build stream serverless functions."}' \
   -H 'Content-type: application/json' \
   http://127.0.0.1:9001/sfn/uppercase
 ```

@@ -1,4 +1,4 @@
-use std::{process, sync::Arc};
+use std::process;
 
 use anyhow::Result;
 use clap::Parser;
@@ -6,9 +6,11 @@ use config::{Config, File};
 use log::{error, info};
 
 use serde::Deserialize;
-use tokio::select;
+use tokio::{select, sync::mpsc};
 use yomo::{
-    entry::http::serve_http,
+    bridge::Bridge,
+    connector::MemoryConnector,
+    http::serve_http,
     sfn::{client::Sfn, serverless::ServerlessHandler},
     tls::TlsConfig,
     zipper::{router::RouterImpl, server::Zipper},
@@ -136,13 +138,16 @@ async fn serve(opt: ServeOptions) -> Result<()> {
 
     info!("config: {:?}", config);
 
+    let (sender, receiver) = mpsc::unbounded_channel();
+    let connector = MemoryConnector::new(sender);
+
     let router = RouterImpl::new(config.auth_token);
-    let zipper = Arc::new(Zipper::new(router));
-    let zipper_clone = zipper.clone();
+    let zipper = Zipper::new(router, receiver);
 
     select! {
-        r = serve_http(&config.host, config.http_port, zipper_clone) => r,
-        r = zipper.serve(&config.host, config.quic_port, &config.tls) => r,
+        r = serve_http(&config.host, config.http_port, connector) => r,
+        r = zipper.clone().serve_bridge() => r,
+        r = zipper.listen_for_quic(&config.host, config.quic_port, &config.tls) => r,
     }?;
 
     Ok(())
@@ -156,16 +161,15 @@ async fn run(opt: RunOptions) -> Result<()> {
         .mutual(opt.tls_mutual)
         .build();
 
-    let serverless_handler = Arc::new(ServerlessHandler::default());
+    let serverless_handler = ServerlessHandler::default();
 
-    let sfn = Sfn::builder()
-        .sfn_name(opt.name)
-        .handler(serverless_handler.clone())
-        .build();
+    let mut sfn = Sfn::new(opt.name, serverless_handler.clone());
+    sfn.connect_zipper(&opt.zipper, &opt.credential, &tls_config, opt.tls_insecure)
+        .await?;
 
     select! {
         r = serverless_handler.run_subprocess(&opt.serverless_dir) => r,
-        r = sfn.run(&opt.zipper, &opt.credential, &tls_config, opt.tls_insecure) => r,
+        r = sfn.serve_bridge() => r,
     }?;
 
     Ok(())

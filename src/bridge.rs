@@ -1,6 +1,10 @@
 use anyhow::{Result, anyhow};
 use axum::http::StatusCode;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use log::error;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    spawn,
+};
 
 use crate::{
     connector::Connector,
@@ -9,7 +13,7 @@ use crate::{
 };
 
 #[async_trait::async_trait]
-pub trait Bridge<C, R1, W1, R2, W2>: Send + Sync + 'static
+pub trait Bridge<C, R1, W1, R2, W2>: Clone + Send + Sync + 'static
 where
     C: Connector<R2, W2>,
     R1: AsyncReadExt + Unpin + Send + 'static,
@@ -17,6 +21,10 @@ where
     R2: AsyncReadExt + Unpin + Send + 'static,
     W2: AsyncWriteExt + Unpin + Send + 'static,
 {
+    async fn accept(&mut self) -> Result<Option<(R1, W1)>> {
+        Ok(None)
+    }
+
     async fn find_downstream(&self, _headers: &RequestHeaders) -> Result<Option<C>> {
         Ok(None)
     }
@@ -48,6 +56,19 @@ where
                 .await?;
                 w1.shutdown().await?;
             }
+        }
+
+        Ok(())
+    }
+
+    async fn serve_bridge(mut self) -> Result<()> {
+        while let Some((r1, w1)) = self.accept().await? {
+            let bridge = self.clone();
+            spawn(async move {
+                if let Err(e) = bridge.forward(r1, w1).await {
+                    error!("forward error: {}", e);
+                }
+            });
         }
 
         Ok(())

@@ -8,9 +8,9 @@ use s2n_quic::{
 };
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::{AsyncWriteExt, ReadHalf, SimplexStream, WriteHalf},
     spawn,
-    sync::{Mutex, RwLock},
+    sync::{Mutex, RwLock, mpsc::UnboundedReceiver},
 };
 
 use crate::{
@@ -28,18 +28,29 @@ pub struct Zipper {
     router: Arc<RwLock<dyn Router>>,
 
     all_sfns: Arc<Mutex<HashMap<u64, Handle>>>,
+
+    receiver: Arc<Mutex<UnboundedReceiver<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>>>,
 }
 
 impl Zipper {
-    pub fn new(router: impl Router + 'static) -> Self {
+    pub fn new(
+        router: impl Router + 'static,
+        receiver: UnboundedReceiver<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>,
+    ) -> Self {
         Self {
             router: Arc::new(RwLock::new(router)),
             all_sfns: Arc::default(),
+            receiver: Arc::new(Mutex::new(receiver)),
         }
     }
 
     // Start server: listen on QUIC port, accept remote sfn connections
-    pub async fn serve(&self, host: &str, port: u16, tls_config: &TlsConfig) -> Result<()> {
+    pub async fn listen_for_quic(
+        &self,
+        host: &str,
+        port: u16,
+        tls_config: &TlsConfig,
+    ) -> Result<()> {
         let tls = new_server_tls(tls_config).context("failed to load tls certificates")?;
 
         let limits = Limits::new()
@@ -152,11 +163,21 @@ impl Zipper {
 }
 
 #[async_trait::async_trait]
-impl<R, W> Bridge<QuicConnector, R, W, ReceiveStream, SendStream> for Zipper
-where
-    R: AsyncReadExt + Unpin + Send + 'static,
-    W: AsyncWriteExt + Unpin + Send + 'static,
+impl
+    Bridge<
+        QuicConnector,
+        ReadHalf<SimplexStream>,
+        WriteHalf<SimplexStream>,
+        ReceiveStream,
+        SendStream,
+    > for Zipper
 {
+    async fn accept(
+        &mut self,
+    ) -> Result<Option<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>> {
+        Ok(self.receiver.lock().await.recv().await)
+    }
+
     async fn find_downstream(&self, headers: &RequestHeaders) -> Result<Option<QuicConnector>> {
         if let Some(conn_id) = self.router.read().await.route(&headers)? {
             if let Some(conn) = self.all_sfns.lock().await.get(&conn_id) {

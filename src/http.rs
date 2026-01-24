@@ -11,18 +11,16 @@ use axum::{
 use futures_util::stream;
 use log::{error, info};
 use tokio::{
-    io::{AsyncWriteExt, ReadHalf, SimplexStream, simplex},
+    io::{AsyncWriteExt, ReadHalf, SimplexStream},
     net::TcpListener,
+    sync::Mutex,
 };
 
 use crate::{
-    bridge::Bridge,
+    connector::{Connector, MemoryConnector},
     io::{receive_bytes, receive_frame, send_bytes, send_frame},
     types::{RequestHeaders, ResponseHeaders},
-    zipper::server::Zipper,
 };
-
-const MAX_BUF_SIZE: usize = 16 * 1024;
 
 struct CustomError {
     status_code: StatusCode,
@@ -67,15 +65,15 @@ fn new_request_headers(sfn_name: &str, http_headers: &HeaderMap) -> RequestHeade
 
 struct CustomResponse {
     body: Option<Vec<u8>>,
-    r2: Option<ReadHalf<SimplexStream>>,
+    reader: Option<ReadHalf<SimplexStream>>,
 }
 
 impl IntoResponse for CustomResponse {
     fn into_response(self) -> axum::response::Response {
         if let Some(body) = self.body {
             (StatusCode::OK, body).into_response()
-        } else if let Some(r2) = self.r2 {
-            let stream = stream::unfold(r2, move |mut r| async move {
+        } else if let Some(reader) = self.reader {
+            let stream = stream::unfold(reader, move |mut r| async move {
                 match receive_bytes(&mut r).await {
                     Ok(Some(chunk)) => {
                         let data = String::from_utf8_lossy(&chunk);
@@ -102,27 +100,23 @@ impl IntoResponse for CustomResponse {
 async fn handle(
     http_headers: HeaderMap,
     Path(sfn_name): Path<String>,
-    State(zipper): State<Arc<Zipper>>,
+    State(connector): State<Arc<Mutex<MemoryConnector>>>,
     body: Bytes,
 ) -> Result<CustomResponse, CustomError> {
     info!("new request to [{}]", sfn_name);
 
     let request_headers = new_request_headers(&sfn_name, &http_headers);
 
-    let (r1, mut w1) = simplex(MAX_BUF_SIZE);
-    let (mut r2, w2) = simplex(MAX_BUF_SIZE);
+    let (mut reader, mut writer) = connector.lock().await.open_new_stream().await?;
 
     // send request headers
-    send_frame(&mut w1, &request_headers).await?;
-
-    // pipe to downstream via zipper bridge
-    zipper.forward(r1, w2).await?;
+    send_frame(&mut writer, &request_headers).await?;
 
     // send request body
-    send_bytes(&mut w1, &body.to_vec()).await?;
-    w1.shutdown().await?;
+    send_bytes(&mut writer, &body.to_vec()).await?;
+    writer.shutdown().await?;
 
-    let response_headers: ResponseHeaders = receive_frame(&mut r2)
+    let response_headers: ResponseHeaders = receive_frame(&mut reader)
         .await?
         .ok_or(anyhow::anyhow!("Failed to receive response headers"))?;
 
@@ -137,25 +131,25 @@ async fn handle(
         // Stream response using SSE
         Ok(CustomResponse {
             body: None,
-            r2: Some(r2),
+            reader: Some(reader),
         })
     } else {
-        let body = receive_bytes(&mut r2)
+        let body = receive_bytes(&mut reader)
             .await?
             .ok_or(anyhow::anyhow!("Failed to receive response"))?;
 
         Ok(CustomResponse {
             body: Some(body),
-            r2: None,
+            reader: None,
         })
     }
 }
 
 // HTTP server: listen and receive external requests
-pub async fn serve_http(host: &str, port: u16, zipper: Arc<Zipper>) -> anyhow::Result<()> {
+pub async fn serve_http(host: &str, port: u16, connector: MemoryConnector) -> anyhow::Result<()> {
     let app = Router::new()
         .route("/sfn/{sfn_name}", post(handle))
-        .with_state(zipper);
+        .with_state(Arc::new(Mutex::new(connector)));
 
     let listener = TcpListener::bind((host.to_owned(), port)).await?;
 

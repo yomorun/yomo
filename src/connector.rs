@@ -4,11 +4,12 @@ use s2n_quic::{
     stream::{ReceiveStream, SendStream},
 };
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::{AsyncReadExt, AsyncWriteExt, ReadHalf, SimplexStream, WriteHalf, simplex},
     net::{
         TcpStream,
         tcp::{OwnedReadHalf, OwnedWriteHalf},
     },
+    sync::mpsc::UnboundedSender,
 };
 
 #[async_trait::async_trait]
@@ -55,5 +56,33 @@ impl Connector<ReceiveStream, SendStream> for QuicConnector {
     async fn open_new_stream(&mut self) -> Result<(ReceiveStream, SendStream)> {
         let stream = self.handle.open_bidirectional_stream().await?;
         Ok(stream.split())
+    }
+}
+
+const MAX_BUF_SIZE: usize = 64 * 1024;
+
+pub struct MemoryConnector {
+    sender: UnboundedSender<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>,
+}
+
+impl MemoryConnector {
+    pub fn new(
+        sender: UnboundedSender<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>,
+    ) -> Self {
+        Self { sender }
+    }
+}
+
+#[async_trait::async_trait]
+impl Connector<ReadHalf<SimplexStream>, WriteHalf<SimplexStream>> for MemoryConnector {
+    async fn open_new_stream(
+        &mut self,
+    ) -> Result<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)> {
+        let (r1, w1) = simplex(MAX_BUF_SIZE);
+        let (r2, w2) = simplex(MAX_BUF_SIZE);
+
+        self.sender.send((r1, w2))?;
+
+        Ok((r2, w1))
     }
 }

@@ -1,32 +1,50 @@
 use std::{net::ToSocketAddrs, sync::Arc, time::Duration};
 
 use anyhow::{Result, anyhow, bail};
-use bon::Builder;
-use log::{debug, error, info};
+use log::{debug, info};
 use s2n_quic::{
-    Client, Connection, client::Connect, connection, provider::limits::Limits,
-    stream::BidirectionalStream,
+    Client, Connection,
+    client::Connect,
+    provider::limits::Limits,
+    stream::{ReceiveStream, SendStream},
 };
-use tokio::{io::AsyncWriteExt as _, spawn};
+use tokio::{
+    io::AsyncWriteExt,
+    net::tcp::{OwnedReadHalf, OwnedWriteHalf},
+    sync::Mutex,
+};
 
 use crate::{
     bridge::Bridge,
+    connector::TcpConnector,
     io::{receive_frame, send_frame},
     sfn::serverless::ServerlessHandler,
     tls::{TlsConfig, new_client_tls},
-    types::{HandshakeReq, HandshakeRes},
+    types::{HandshakeReq, HandshakeRes, RequestHeaders},
 };
 
-#[derive(Clone, Builder)]
+#[derive(Clone)]
 pub struct Sfn {
     sfn_name: String,
 
-    handler: Arc<ServerlessHandler>,
+    quic_conn: Option<Arc<Mutex<Connection>>>,
+
+    serverless_handler: ServerlessHandler,
 }
 
 impl Sfn {
-    pub async fn run(
-        self,
+    pub fn new(sfn_name: String, serverless_handler: ServerlessHandler) -> Self {
+        Self {
+            sfn_name,
+            quic_conn: None,
+            serverless_handler,
+        }
+    }
+}
+
+impl Sfn {
+    pub async fn connect_zipper(
+        &mut self,
         zipper: &str,
         credential: &str,
         tls_config: &TlsConfig,
@@ -65,44 +83,12 @@ impl Sfn {
         conn.keep_alive(true)?;
         info!("quic connected");
 
-        self.process(conn, &credential).await
-    }
-
-    // process QUIC connection
-    async fn process(&self, mut conn: Connection, credential: &str) -> Result<()> {
         // Send handshake request
         self.handshake(&mut conn, credential).await?;
 
-        // Accept and process data streams (zipper creates new streams for each request)
-        loop {
-            match conn.accept_bidirectional_stream().await {
-                Ok(stream) => {
-                    if let Some(stream) = stream {
-                        let sfn = self.clone();
-                        spawn(async move {
-                            let stream_id = stream.id();
-                            debug!("stream ++: {}", stream_id);
+        self.quic_conn = Some(Arc::new(Mutex::new(conn)));
 
-                            if let Err(e) = sfn.handle_stream(stream).await {
-                                error!("handle stream error: {}", e);
-                            }
-
-                            debug!("stream --: {}", stream_id);
-                        });
-                    } else {
-                        info!("conn closed");
-                        return Ok(());
-                    }
-                }
-                Err(e) => {
-                    if let connection::Error::Application { error, .. } = e {
-                        info!("conn closed with error_code: {}", u64::from(*error));
-                        return Ok(());
-                    }
-                    bail!("accept_bidirectional_stream error: {}", e);
-                }
-            }
-        }
+        Ok(())
     }
 
     // Send handshake request
@@ -127,13 +113,27 @@ impl Sfn {
 
         Ok(())
     }
+}
 
-    // Handle data stream: receive request, execute processing, return response
-    async fn handle_stream(&self, stream: BidirectionalStream) -> Result<()> {
-        let (r1, w1) = stream.split();
+#[async_trait::async_trait]
+impl Bridge<TcpConnector, ReceiveStream, SendStream, OwnedReadHalf, OwnedWriteHalf> for Sfn {
+    async fn accept(&mut self) -> Result<Option<(ReceiveStream, SendStream)>> {
+        Ok(if let Some(conn) = &self.quic_conn {
+            let mut conn = conn.lock().await;
 
-        self.handler.forward(r1, w1).await?;
+            if let Some(stream) = conn.accept_bidirectional_stream().await? {
+                debug!("new quic stream: {}", stream.id());
 
-        Ok(())
+                Some(stream.split())
+            } else {
+                None
+            }
+        } else {
+            None
+        })
+    }
+
+    async fn find_downstream(&self, _headers: &RequestHeaders) -> Result<Option<TcpConnector>> {
+        self.serverless_handler.get_connector().await
     }
 }

@@ -1,22 +1,19 @@
 use std::path::{Path, absolute};
 use std::process::Stdio;
+use std::sync::Arc;
 
 use anyhow::{Ok, Result, anyhow, bail};
 use colored::Colorize;
 use log::{debug, info};
 use tempfile::tempdir;
 use tokio::fs;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::Command,
     sync::Mutex,
 };
 
-use crate::bridge::Bridge;
 use crate::connector::TcpConnector;
-use crate::types::RequestHeaders;
 
 static GO_MAIN: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -24,9 +21,9 @@ static GO_MAIN: &str = include_str!(concat!(
 ));
 static GO_MOD: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/serverless/go/go.mod"));
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ServerlessHandler {
-    socket_addr: Mutex<Option<String>>,
+    socket_addr: Arc<Mutex<Option<String>>>,
 }
 
 impl ServerlessHandler {
@@ -51,6 +48,14 @@ impl ServerlessHandler {
         self.run_go(&serverless_dir).await?;
 
         Ok(())
+    }
+
+    pub async fn get_connector(&self) -> Result<Option<TcpConnector>> {
+        let socket_addr = self.socket_addr.lock().await.clone();
+        if let Some(addr) = socket_addr {
+            return Ok(Some(TcpConnector::new(&addr)));
+        }
+        Ok(None)
     }
 
     async fn run_go(&self, serverless_dir: &Path) -> Result<()> {
@@ -118,19 +123,5 @@ impl ServerlessHandler {
         child.wait().await?;
 
         Ok(())
-    }
-}
-
-#[async_trait::async_trait]
-impl<R, W> Bridge<TcpConnector, R, W, OwnedReadHalf, OwnedWriteHalf> for ServerlessHandler
-where
-    R: AsyncReadExt + Unpin + Send + 'static,
-    W: AsyncWriteExt + Unpin + Send + 'static,
-{
-    async fn find_downstream(&self, _headers: &RequestHeaders) -> Result<Option<TcpConnector>> {
-        Ok(match self.socket_addr.lock().await.clone() {
-            Some(addr) => Some(TcpConnector::new(&addr)),
-            None => None,
-        })
     }
 }
