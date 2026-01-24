@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use log::{info, warn};
 
 use crate::types::{HandshakeReq, RequestHeaders};
 
 pub trait Router: Sync + Send {
-    fn handshake(&mut self, conn_id: u64, req: &HandshakeReq) -> (bool, String, Option<u64>);
+    fn handshake(&mut self, conn_id: u64, req: &HandshakeReq) -> Result<Option<u64>>;
 
     fn route(&self, headers: &RequestHeaders) -> Result<Option<u64>>;
 
@@ -29,20 +29,18 @@ impl RouterImpl {
 }
 
 impl Router for RouterImpl {
-    fn handshake(&mut self, conn_id: u64, req: &HandshakeReq) -> (bool, String, Option<u64>) {
+    fn handshake(&mut self, conn_id: u64, req: &HandshakeReq) -> Result<Option<u64>> {
         if req.sfn_name.is_empty() {
-            return (false, "sfn name is empty".to_string(), None);
+            bail!("sfn name is empty");
         }
 
         if let Some(token) = &self.auth_token {
             if &req.credential != token {
-                return (false, "invalid credential".to_string(), None);
+                bail!("invalid credential");
             }
         }
 
-        let v = self.route_map.insert(req.sfn_name.to_owned(), conn_id);
-
-        (true, String::new(), v)
+        Ok(self.route_map.insert(req.sfn_name.to_owned(), conn_id))
     }
 
     fn remove_sfn(&mut self, conn_id: u64) -> Result<()> {

@@ -142,23 +142,40 @@ impl Zipper {
             .await?
             .ok_or(anyhow!("receive handshake request failed"))?;
 
-        let (ok, reason, conn_id) = self.router.write().await.handshake(conn_id, &req);
+        match self.router.write().await.handshake(conn_id, &req) {
+            Ok(existed_conn) => {
+                let res = HandshakeRes {
+                    ok: true,
+                    ..Default::default()
+                };
+                send_frame(&mut stream, &res).await?;
+                stream.shutdown().await?;
 
-        let res = HandshakeRes { ok, reason };
-        send_frame(&mut stream, &res).await?;
-        stream.shutdown().await?;
+                if let Some(conn_id) = existed_conn {
+                    if let Some(conn) = self.all_sfns.lock().await.remove(&conn_id) {
+                        info!(
+                            "close existing connection {} for sfn_name: {}",
+                            conn_id, req.sfn_name
+                        );
+                        conn.close(1_u32.into());
+                    }
+                }
 
-        if let Some(conn_id) = conn_id {
-            if let Some(conn) = self.all_sfns.lock().await.remove(&conn_id) {
-                info!(
-                    "close existing connection {} of name: {}",
-                    conn_id, req.sfn_name
-                );
-                conn.close(1_u32.into());
+                Ok(req.sfn_name)
+            }
+            Err(e) => {
+                error!("handshake failed: {}", e);
+
+                let res = HandshakeRes {
+                    ok: false,
+                    reason: e.to_string(),
+                };
+                send_frame(&mut stream, &res).await?;
+                stream.shutdown().await?;
+
+                Err(anyhow!("handshake failed: {}", e))
             }
         }
-
-        Ok(req.sfn_name)
     }
 }
 
