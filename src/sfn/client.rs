@@ -72,11 +72,13 @@ impl Sfn {
         let (server_name, server_port) = zipper
             .split_once(':')
             .ok_or_else(|| anyhow!("invalid zipper addr format"))?;
+        info!("server_name: {}, server_port: {}", server_name, server_port);
         let server_port: u16 = server_port.parse()?;
         let addr = (server_name, server_port)
             .to_socket_addrs()?
             .next()
             .ok_or_else(|| anyhow!("no zipper ip found"))?;
+        info!("zipper socket addr: {:?}/udp", addr);
         let mut conn = client
             .connect(Connect::new(addr).with_server_name(server_name))
             .await?;

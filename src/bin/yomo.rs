@@ -58,7 +58,7 @@ struct RunOptions {
     #[clap(
         short,
         long,
-        default_value = "localhost:9000",
+        default_value = "127.0.0.1:9000",
         help = "YoMo-Zipper endpoint addr"
     )]
     zipper: String,
