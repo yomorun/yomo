@@ -23,6 +23,7 @@ use crate::{
     types::{HandshakeReq, HandshakeRes, RequestHeaders},
 };
 
+/// Serverless Function (SFN) client
 #[derive(Clone)]
 pub struct Sfn {
     sfn_name: String,
@@ -43,6 +44,7 @@ impl Sfn {
 }
 
 impl Sfn {
+    /// Connect to Zipper service
     pub async fn connect_zipper(
         &mut self,
         zipper: &str,
@@ -57,7 +59,7 @@ impl Sfn {
         let limits = Limits::new()
             .with_max_handshake_duration(Duration::from_secs(10))?
             .with_max_idle_timeout(Duration::from_secs(10))?
-            .with_max_open_local_bidirectional_streams(1)?
+            .with_max_open_local_bidirectional_streams(200)?
             .with_max_open_local_unidirectional_streams(0)?
             .with_max_open_remote_bidirectional_streams(200)?
             .with_max_open_remote_unidirectional_streams(0)?;
@@ -72,18 +74,20 @@ impl Sfn {
         let (server_name, server_port) = zipper
             .split_once(':')
             .ok_or_else(|| anyhow!("invalid zipper addr format"))?;
-        info!("server_name: {}, server_port: {}", server_name, server_port);
+        debug!("server_name: {}, server_port: {}", server_name, server_port);
+
         let server_port: u16 = server_port.parse()?;
         let addr = (server_name, server_port)
             .to_socket_addrs()?
             .next()
             .ok_or_else(|| anyhow!("no zipper ip found"))?;
-        info!("zipper socket addr: {:?}/udp", addr);
+        debug!("zipper socket addr: {}", addr);
+
         let mut conn = client
             .connect(Connect::new(addr).with_server_name(server_name))
             .await?;
         conn.keep_alive(true)?;
-        info!("quic connected");
+        info!("connected to zipper: {}/udp", addr);
 
         // Send handshake request
         self.handshake(&mut conn, credential).await?;
@@ -93,7 +97,7 @@ impl Sfn {
         Ok(())
     }
 
-    // Send handshake request
+    /// Send handshake request to Zipper
     async fn handshake(&self, conn: &mut Connection, credential: &str) -> Result<()> {
         let mut stream = conn.open_bidirectional_stream().await?;
 
@@ -120,19 +124,15 @@ impl Sfn {
 #[async_trait::async_trait]
 impl Bridge<TcpConnector, ReceiveStream, SendStream, OwnedReadHalf, OwnedWriteHalf> for Sfn {
     async fn accept(&mut self) -> Result<Option<(ReceiveStream, SendStream)>> {
-        Ok(if let Some(conn) = &self.quic_conn {
-            let mut conn = conn.lock().await;
-
-            if let Some(stream) = conn.accept_bidirectional_stream().await? {
+        if let Some(conn) = &self.quic_conn {
+            if let Some(stream) = conn.lock().await.accept_bidirectional_stream().await? {
                 debug!("new quic stream: {}", stream.id());
 
-                Some(stream.split())
-            } else {
-                None
+                return Ok(Some(stream.split()));
             }
-        } else {
-            None
-        })
+        }
+
+        Ok(None)
     }
 
     async fn find_downstream(&self, _headers: &RequestHeaders) -> Result<Option<TcpConnector>> {

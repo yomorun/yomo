@@ -9,9 +9,10 @@ use tokio::{
 use crate::{
     connector::Connector,
     io::{pipe_streams, receive_frame, send_frame},
-    types::{RequestHeaders, ResponseHeaders},
+    types::{BodyFormat, RequestHeaders, ResponseHeaders},
 };
 
+/// Bridge trait for forwarding requests between protocols
 #[async_trait::async_trait]
 pub trait Bridge<C, R1, W1, R2, W2>: Clone + Send + Sync + 'static
 where
@@ -49,7 +50,7 @@ where
                     &ResponseHeaders {
                         status_code: StatusCode::NOT_FOUND.as_u16(),
                         error_msg: "downstream not found".to_owned(),
-                        stream: false,
+                        body_format: BodyFormat::Null,
                         ..Default::default()
                     },
                 )
@@ -61,6 +62,7 @@ where
         Ok(())
     }
 
+    /// Start bridge service to accept and forward requests
     async fn serve_bridge(mut self) -> Result<()> {
         while let Some((r1, w1)) = self.accept().await? {
             let bridge = self.clone();

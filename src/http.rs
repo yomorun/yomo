@@ -11,17 +11,18 @@ use axum::{
 use futures_util::stream;
 use log::{error, info};
 use tokio::{
-    io::{AsyncWriteExt, ReadHalf, SimplexStream},
+    io::{AsyncWriteExt, ReadHalf, SimplexStream, WriteHalf},
     net::TcpListener,
-    sync::Mutex,
+    sync::{Mutex, mpsc::UnboundedSender},
 };
 
 use crate::{
     connector::{Connector, MemoryConnector},
     io::{receive_bytes, receive_frame, send_bytes, send_frame},
-    types::{RequestHeaders, ResponseHeaders},
+    types::{BodyFormat, RequestHeaders, ResponseHeaders},
 };
 
+/// Custom error with HTTP status code
 struct CustomError {
     status_code: StatusCode,
     msg: String,
@@ -45,6 +46,7 @@ where
     }
 }
 
+/// Parse HTTP header value
 fn parse_http_headers(http_headers: &HeaderMap, key: &str) -> String {
     match http_headers.get(key) {
         Some(value) => value.to_str().unwrap_or_default(),
@@ -53,16 +55,18 @@ fn parse_http_headers(http_headers: &HeaderMap, key: &str) -> String {
     .to_string()
 }
 
+/// Create request headers from HTTP headers
 fn new_request_headers(sfn_name: &str, http_headers: &HeaderMap) -> RequestHeaders {
     RequestHeaders {
         sfn_name: sfn_name.to_owned(),
-        stream: false,
+        body_format: BodyFormat::Bytes,
         trace_id: parse_http_headers(http_headers, "traceparent"),
         request_id: parse_http_headers(http_headers, "X-Request-Id"),
         extension: parse_http_headers(http_headers, "X-Extension"),
     }
 }
 
+/// Custom response supporting both regular bytes body and SSE streaming
 struct CustomResponse {
     body: Option<Vec<u8>>,
     reader: Option<ReadHalf<SimplexStream>>,
@@ -71,13 +75,14 @@ struct CustomResponse {
 impl IntoResponse for CustomResponse {
     fn into_response(self) -> axum::response::Response {
         if let Some(body) = self.body {
+            info!("recv body: {}", String::from_utf8_lossy(&body));
             (StatusCode::OK, body).into_response()
         } else if let Some(reader) = self.reader {
             let stream = stream::unfold(reader, move |mut r| async move {
                 match receive_bytes(&mut r).await {
                     Ok(Some(chunk)) => {
                         let data = String::from_utf8_lossy(&chunk);
-                        info!("recv chunk: {:?}", data);
+                        info!("recv chunk: {}", data);
                         Some((Ok(Event::default().data(data)), r))
                     }
                     Ok(None) => None,
@@ -87,15 +92,14 @@ impl IntoResponse for CustomResponse {
                     }
                 }
             });
-
             Sse::new(stream).into_response()
         } else {
-            (StatusCode::OK, "").into_response()
+            (StatusCode::OK, "".to_string()).into_response()
         }
     }
 }
 
-// HTTP stream handler: forward request to corresponding QUIC sfn with SSE response
+/// HTTP stream handler: forward request to corresponding QUIC sfn with SSE response
 #[axum::debug_handler]
 async fn handle(
     http_headers: HeaderMap,
@@ -103,9 +107,15 @@ async fn handle(
     State(connector): State<Arc<Mutex<MemoryConnector>>>,
     body: Bytes,
 ) -> Result<CustomResponse, CustomError> {
-    info!("new request to [{}]", sfn_name);
-
     let request_headers = new_request_headers(&sfn_name, &http_headers);
+
+    info!(
+        "[{}|{}] new request to [{}]: {}",
+        request_headers.trace_id,
+        request_headers.request_id,
+        sfn_name,
+        String::from_utf8_lossy(&body)
+    );
 
     let (mut reader, mut writer) = connector.lock().await.open_new_stream().await?;
 
@@ -127,29 +137,40 @@ async fn handle(
         });
     }
 
-    if response_headers.stream {
-        // Stream response using SSE
-        Ok(CustomResponse {
+    match response_headers.body_format {
+        BodyFormat::Null => Ok(CustomResponse {
             body: None,
-            reader: Some(reader),
-        })
-    } else {
-        let body = receive_bytes(&mut reader)
-            .await?
-            .ok_or(anyhow::anyhow!("Failed to receive response"))?;
-
-        Ok(CustomResponse {
-            body: Some(body),
             reader: None,
-        })
+        }),
+        BodyFormat::Bytes => {
+            let body = receive_bytes(&mut reader)
+                .await?
+                .ok_or(anyhow::anyhow!("Failed to receive response"))?;
+
+            Ok(CustomResponse {
+                body: Some(body),
+                reader: None,
+            })
+        }
+        BodyFormat::Chunk => {
+            // Stream response using SSE
+            Ok(CustomResponse {
+                body: None,
+                reader: Some(reader),
+            })
+        }
     }
 }
 
-// HTTP server: listen and receive external requests
-pub async fn serve_http(host: &str, port: u16, connector: MemoryConnector) -> anyhow::Result<()> {
+/// HTTP server: listen and receive external requests
+pub async fn serve_http(
+    host: &str,
+    port: u16,
+    sender: UnboundedSender<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>,
+) -> anyhow::Result<()> {
     let app = Router::new()
         .route("/sfn/{sfn_name}", post(handle))
-        .with_state(Arc::new(Mutex::new(connector)));
+        .with_state(Arc::new(Mutex::new(MemoryConnector::new(sender))));
 
     let listener = TcpListener::bind((host.to_owned(), port)).await?;
 

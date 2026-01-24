@@ -9,25 +9,31 @@ use serde::Deserialize;
 use tokio::{select, sync::mpsc};
 use yomo::{
     bridge::Bridge,
-    connector::MemoryConnector,
     http::serve_http,
     sfn::{client::Sfn, serverless::ServerlessHandler},
     tls::TlsConfig,
-    zipper::{router::RouterImpl, server::Zipper},
+    zipper::{
+        router::RouterImpl,
+        server::{Zipper, ZipperMemoryBridge},
+    },
 };
 
+/// Default host address
 fn default_host() -> String {
     "127.0.0.1".to_string()
 }
 
+/// Default QUIC port
 fn default_quic_port() -> u16 {
     9000
 }
 
+/// Default HTTP port
 fn default_http_port() -> u16 {
     9001
 }
 
+/// CLI commands
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 enum Cli {
@@ -38,12 +44,14 @@ enum Cli {
     Run(RunOptions),
 }
 
+/// Serve command options
 #[derive(Parser, Debug)]
 struct ServeOptions {
     #[clap(short, long, help = "path to the YoMo server configuration file")]
     config: Option<String>,
 }
 
+/// Run command options
 #[derive(Parser, Debug)]
 struct RunOptions {
     #[clap(
@@ -89,6 +97,7 @@ struct RunOptions {
     tls_insecure: bool,
 }
 
+/// Server configuration
 #[derive(Debug, Clone, Deserialize)]
 struct ServeConfig {
     #[serde(default = "default_host")]
@@ -119,6 +128,7 @@ impl Default for ServeConfig {
     }
 }
 
+/// Start Zipper service
 async fn serve(opt: ServeOptions) -> Result<()> {
     let config = match opt.config {
         Some(file) => {
@@ -139,20 +149,20 @@ async fn serve(opt: ServeOptions) -> Result<()> {
     info!("config: {:?}", config);
 
     let (sender, receiver) = mpsc::unbounded_channel();
-    let connector = MemoryConnector::new(sender);
 
-    let router = RouterImpl::new(config.auth_token);
-    let zipper = Zipper::new(router, receiver);
+    let zipper = Zipper::new(RouterImpl::new(config.auth_token));
+    let zipper_memory_bridge = ZipperMemoryBridge::new(zipper.clone(), receiver);
 
     select! {
-        r = serve_http(&config.host, config.http_port, connector) => r,
-        r = zipper.clone().serve_bridge() => r,
-        r = zipper.listen_for_quic(&config.host, config.quic_port, &config.tls) => r,
+        r = serve_http(&config.host, config.http_port, sender) => r,
+        r = zipper_memory_bridge.serve_bridge() => r,
+        r = zipper.serve(&config.host, config.quic_port, &config.tls) => r,
     }?;
 
     Ok(())
 }
 
+/// Run serverless function
 async fn run(opt: RunOptions) -> Result<()> {
     let tls_config = TlsConfig::builder()
         .maybe_ca_cert(opt.tls_ca_cert_file)

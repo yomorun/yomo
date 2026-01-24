@@ -8,24 +8,35 @@ import (
 	"log"
 	"net"
 	"os"
+	"reflect"
+)
+
+var (
+	simpleHandler func(Arguments) (Result, error)      = nil
+	streamHandler func(Arguments, chan<- Result) error = nil
+	rawHandler    func(io.Reader, io.Writer) error     = nil
+
+	handlerMode string
 )
 
 type RequestHeaders struct {
-	TraceID   string `json:"trace_id"`
-	ReqeustID string `json:"request_id"`
-	SfnName   string `json:"sfn_name"`
-	Extension string `json:"extension"`
+	SfnName    string `json:"sfn_name"`
+	TraceID    string `json:"trace_id"`
+	ReqeustID  string `json:"request_id"`
+	BodyFormat string `json:"body_format"`
+	Extension  string `json:"extension"`
 }
 
-type RequestBody[ARGS any, CONTEXT any] struct {
-	Args    ARGS    `json:"args"`
-	Context CONTEXT `json:"context"`
+type RequestBody[ARGS any] struct {
+	Args ARGS `json:"args"`
+	// todo: parse serverless context
+	// Context CONTEXT `json:"context"`
 }
 
 type ResponseHeaders struct {
 	StatusCode uint16 `json:"status_code"`
 	ErrorMsg   string `json:"error_msg"`
-	Stream     bool   `json:"stream"`
+	BodyFormat string `json:"body_format"`
 	Extension  string `json:"extension"`
 }
 
@@ -89,16 +100,16 @@ func writePacket(w io.Writer, packet any) {
 	writeBytes(w, buf)
 }
 
-func callSimpleHandler[ARGS any, RES any, CONTEXT any](
-	handler func(ARGS, CONTEXT) (RES, error), body []byte,
+func callSimpleHandler[ARGS any, RES any](
+	handler func(ARGS) (RES, error), body []byte,
 ) ([]byte, error) {
-	var request RequestBody[ARGS, CONTEXT]
+	var request RequestBody[ARGS]
 	err := json.Unmarshal(body, &request)
 	if err != nil {
 		return nil, err
 	}
 
-	res, err := handler(request.Args, request.Context)
+	res, err := handler(request.Args)
 	if err != nil {
 		return nil, err
 	}
@@ -112,10 +123,10 @@ func callSimpleHandler[ARGS any, RES any, CONTEXT any](
 	return buf, nil
 }
 
-func callStreamHandler[ARGS any, RES any, CONTEXT any](
-	stream io.Writer, handler func(ARGS, CONTEXT, chan<- RES) error, body []byte,
+func callStreamHandler[ARGS any, RES any](
+	stream io.Writer, handler func(ARGS, chan<- RES) error, body []byte,
 ) error {
-	var request RequestBody[ARGS, CONTEXT]
+	var request RequestBody[ARGS]
 	err := json.Unmarshal(body, &request)
 	if err != nil {
 		return err
@@ -130,7 +141,7 @@ func callStreamHandler[ARGS any, RES any, CONTEXT any](
 		}
 	}()
 
-	err = handler(request.Args, request.Context, ch)
+	err = handler(request.Args, ch)
 	if err != nil {
 		return err
 	}
@@ -155,44 +166,86 @@ func handleStream(stream io.ReadWriteCloser) {
 	}
 	log.Printf("req body: %s\n", string(reqBody))
 
-	// todo: parse serverless handler stream mode according to go ast
+	// todo: read description, set serverless context
+
 	resHeaders := ResponseHeaders{
 		StatusCode: 200,
-		Stream:     len(reqBody) > 50,
 	}
 
-	if resHeaders.Stream {
-		log.Println("call stream handler")
-
-		writePacket(stream, &resHeaders)
-
-		err := callStreamHandler(stream, StreamHandler, reqBody)
-		if err != nil {
-			log.Println("call stream handler error:", err)
-
-			writePacket(stream, &Chunk{Error: err.Error()})
-		}
-	} else {
+	switch handlerMode {
+	case "simple":
 		log.Println("call simple handler")
 
-		resBody, err := callSimpleHandler(SimpleHandler, reqBody)
+		resBody, err := callSimpleHandler(simpleHandler, reqBody)
 		if err != nil {
 			log.Println("call simple handler error:", err)
 
+			resHeaders.BodyFormat = "null"
 			resHeaders.StatusCode = 500
 			resHeaders.ErrorMsg = err.Error()
+		} else {
+			log.Printf("simple handler response: %s\n", string(resBody))
+
+			resHeaders.BodyFormat = "bytes"
 		}
-		log.Printf("simple handler response: %s\n", string(resBody))
 
 		writePacket(stream, &resHeaders)
 
 		if err == nil {
 			writeBytes(stream, resBody)
 		}
+	case "stream":
+		log.Println("call stream handler")
+
+		resHeaders.BodyFormat = "chunk"
+		writePacket(stream, &resHeaders)
+
+		err := callStreamHandler(stream, streamHandler, reqBody)
+		if err != nil {
+			log.Println("call stream handler error:", err)
+
+			writePacket(stream, &Chunk{Error: err.Error()})
+		}
+	case "raw":
+		resHeaders.BodyFormat = "bytes"
+		writePacket(stream, &resHeaders)
+
+		err := rawHandler(stream, stream)
+		if err != nil {
+			log.Println("call raw handler error:", err)
+		}
+	default:
+		resHeaders.StatusCode = 500
+		resHeaders.ErrorMsg = "unimplemented serverless mode: " + handlerMode
+	}
+}
+
+// reflect application Handler function
+func reflectApp() (string, error) {
+	h := reflect.ValueOf(Handler)
+
+	switch h.Type() {
+	case reflect.TypeOf(simpleHandler):
+		reflect.ValueOf(&simpleHandler).Elem().Set(h)
+		return "simple", nil
+	case reflect.TypeOf(streamHandler):
+		reflect.ValueOf(&streamHandler).Elem().Set(h)
+		return "stream", nil
+	case reflect.TypeOf(rawHandler):
+		reflect.ValueOf(&rawHandler).Elem().Set(h)
+		return "raw", nil
+	default:
+		return "", fmt.Errorf("unsupported handler type: %s", h.Type())
 	}
 }
 
 func main() {
+	mode, err := reflectApp()
+	if err != nil {
+		os.Exit(1)
+	}
+	handlerMode = mode
+
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		os.Exit(1)
@@ -200,6 +253,8 @@ func main() {
 	defer listener.Close()
 
 	fmt.Println(listener.Addr().String())
+
+	log.Println("serverless handler mode:", handlerMode)
 
 	go func() {
 		for {

@@ -1,9 +1,13 @@
 package main
 
-func SimpleHandler(args string, context string) (string, error) {
-	return "", nil
+type Arguments struct{}
+
+type Result struct{}
+
+var ServerlessContext map[string]any
+
+func Handler(args Arguments) (Result, error) {
+	return Result{}, nil
 }
 
-func StreamHandler(args string, context string, ch chan<- string) error {
-	return nil
-}
+const ServerlessMode = "simple"

@@ -2,7 +2,7 @@ use anyhow::{Context, Result, anyhow};
 use log::{error, info};
 use s2n_quic::{
     Connection, Server,
-    connection::{self, Handle},
+    connection::Handle,
     provider::{io::TryInto, limits::Limits},
     stream::{BidirectionalStream, ReceiveStream, SendStream},
 };
@@ -22,35 +22,24 @@ use crate::{
     zipper::router::Router,
 };
 
-// Zipper: Manages all registered sfn connections
+/// Zipper: Manages all registered SFN connections
 #[derive(Clone)]
 pub struct Zipper {
     router: Arc<RwLock<dyn Router>>,
 
     all_sfns: Arc<Mutex<HashMap<u64, Handle>>>,
-
-    receiver: Arc<Mutex<UnboundedReceiver<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>>>,
 }
 
 impl Zipper {
-    pub fn new(
-        router: impl Router + 'static,
-        receiver: UnboundedReceiver<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>,
-    ) -> Self {
+    pub fn new(router: impl Router + 'static) -> Self {
         Self {
             router: Arc::new(RwLock::new(router)),
             all_sfns: Arc::default(),
-            receiver: Arc::new(Mutex::new(receiver)),
         }
     }
 
-    // Start server: listen on QUIC port, accept remote sfn connections
-    pub async fn listen_for_quic(
-        &self,
-        host: &str,
-        port: u16,
-        tls_config: &TlsConfig,
-    ) -> Result<()> {
+    /// Start QUIC server: listen for remote SFN connections
+    pub async fn serve(&self, host: &str, port: u16, tls_config: &TlsConfig) -> Result<()> {
         let tls = new_server_tls(tls_config).context("failed to load tls certificates")?;
 
         let limits = Limits::new()
@@ -58,7 +47,7 @@ impl Zipper {
             .with_max_idle_timeout(Duration::from_secs(15))?
             .with_max_open_local_bidirectional_streams(200)?
             .with_max_open_local_unidirectional_streams(0)?
-            .with_max_open_remote_bidirectional_streams(1)?
+            .with_max_open_remote_bidirectional_streams(200)?
             .with_max_open_remote_unidirectional_streams(0)?;
 
         let mut server = Server::builder()
@@ -69,7 +58,6 @@ impl Zipper {
 
         info!("start quic server: {}:{}/udp", host, port);
 
-        // Start independent handling task for each connection
         while let Some(conn) = server.accept().await {
             let zipper = self.clone();
             spawn(async move {
@@ -82,7 +70,7 @@ impl Zipper {
         Ok(())
     }
 
-    // Handle QUIC connection: register sfn
+    /// Handle QUIC connection: register SFN
     async fn handle_connection(self, mut conn: Connection) -> Result<()> {
         let conn_id = conn.id();
         info!("new quic connection: {}", conn_id);
@@ -100,39 +88,19 @@ impl Zipper {
             return Ok(());
         }
 
-        // Keep connection alive
-        loop {
-            match conn.accept_bidirectional_stream().await {
-                Ok(stream) => {
-                    if let Some(mut stream) = stream {
-                        // this should never happen
-                        stream.close().await.ok();
-                    } else {
-                        self.all_sfns.lock().await.remove(&conn_id);
-                        info!("conn closed: {}", conn_id);
-                        return Ok(());
-                    }
-                }
-                Err(e) => {
-                    if let connection::Error::Application { error, .. } = e {
-                        info!("conn closed with error_code: {}", u64::from(*error));
-                        return Ok(());
-                    }
-
-                    error!("accept_bidirectional_stream error: {}", e);
-                    break;
-                }
-            }
-        }
+        // receive streams and forward, keep connection alive
+        let quic_bridge = ZipperQuicBridge::new(self.clone(), conn);
+        quic_bridge.serve_bridge().await.ok();
+        info!("conn closed: {}", conn_id);
 
         // Clean up sfn registration
-        self.router.write().await.remove_sfn(conn_id)?;
+        self.router.write().await.remove_sfn(conn_id);
         self.all_sfns.lock().await.remove(&conn_id);
 
         Ok(())
     }
 
-    // Handshake protocol: read sfn name
+    /// Handle handshake protocol: read SFN name
     async fn handle_handshake(
         &self,
         conn_id: u64,
@@ -177,6 +145,35 @@ impl Zipper {
             }
         }
     }
+
+    async fn route(&self, headers: &RequestHeaders) -> Result<Option<QuicConnector>> {
+        if let Some(conn_id) = self.router.read().await.route(&headers)? {
+            if let Some(conn) = self.all_sfns.lock().await.get(&conn_id) {
+                return Ok(Some(QuicConnector::new(conn.clone())));
+            }
+        }
+
+        Ok(None)
+    }
+}
+
+#[derive(Clone)]
+pub struct ZipperMemoryBridge {
+    zipper: Zipper,
+
+    receiver: Arc<Mutex<UnboundedReceiver<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>>>,
+}
+
+impl ZipperMemoryBridge {
+    pub fn new(
+        zipper: Zipper,
+        receiver: UnboundedReceiver<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>,
+    ) -> Self {
+        Self {
+            zipper,
+            receiver: Arc::new(Mutex::new(receiver)),
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -187,7 +184,7 @@ impl
         WriteHalf<SimplexStream>,
         ReceiveStream,
         SendStream,
-    > for Zipper
+    > for ZipperMemoryBridge
 {
     async fn accept(
         &mut self,
@@ -196,17 +193,40 @@ impl
     }
 
     async fn find_downstream(&self, headers: &RequestHeaders) -> Result<Option<QuicConnector>> {
-        if let Some(conn_id) = self.router.read().await.route(&headers)? {
-            if let Some(conn) = self.all_sfns.lock().await.get(&conn_id) {
-                info!(
-                    "[{}|{}] proxy to sfn: {}",
-                    headers.trace_id, headers.request_id, conn_id
-                );
+        self.zipper.route(headers).await
+    }
+}
 
-                return Ok(Some(QuicConnector::new(conn.clone())));
-            }
+#[derive(Clone)]
+struct ZipperQuicBridge {
+    zipper: Zipper,
+    conn: Arc<Mutex<Connection>>,
+}
+
+impl ZipperQuicBridge {
+    pub fn new(zipper: Zipper, conn: Connection) -> Self {
+        Self {
+            zipper,
+            conn: Arc::new(Mutex::new(conn)),
         }
+    }
+}
 
-        Ok(None)
+#[async_trait::async_trait]
+impl Bridge<QuicConnector, ReceiveStream, SendStream, ReceiveStream, SendStream>
+    for ZipperQuicBridge
+{
+    async fn accept(&mut self) -> Result<Option<(ReceiveStream, SendStream)>> {
+        Ok(self
+            .conn
+            .lock()
+            .await
+            .accept_bidirectional_stream()
+            .await?
+            .map(|stream| stream.split()))
+    }
+
+    async fn find_downstream(&self, headers: &RequestHeaders) -> Result<Option<QuicConnector>> {
+        self.zipper.route(headers).await
     }
 }

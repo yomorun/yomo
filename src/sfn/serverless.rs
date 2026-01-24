@@ -21,12 +21,14 @@ static GO_MAIN: &str = include_str!(concat!(
 ));
 static GO_MOD: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/serverless/go/go.mod"));
 
+/// Serverless function handler (supports Go)
 #[derive(Default, Clone)]
 pub struct ServerlessHandler {
     socket_addr: Arc<Mutex<Option<String>>>,
 }
 
 impl ServerlessHandler {
+    /// Run serverless function as subprocess
     pub async fn run_subprocess(&self, serverless_dir: &str) -> Result<()> {
         // get the absolute path of serverless directory
         let serverless_dir = Path::new(serverless_dir);
@@ -47,9 +49,12 @@ impl ServerlessHandler {
 
         self.run_go(&serverless_dir).await?;
 
+        info!("serverless function exited");
+
         Ok(())
     }
 
+    /// Get TCP connector to serverless function
     pub async fn get_connector(&self) -> Result<Option<TcpConnector>> {
         let socket_addr = self.socket_addr.lock().await.clone();
         if let Some(addr) = socket_addr {
@@ -58,6 +63,7 @@ impl ServerlessHandler {
         Ok(None)
     }
 
+    /// Compile and run Go serverless function
     async fn run_go(&self, serverless_dir: &Path) -> Result<()> {
         // create temp directory for serverless function
         let temp_dir = tempdir()?;

@@ -12,6 +12,7 @@ use tokio::{
     sync::mpsc::UnboundedSender,
 };
 
+/// Abstract connector for opening new streams
 #[async_trait::async_trait]
 pub trait Connector<R, W>: Send
 where
@@ -21,6 +22,7 @@ where
     async fn open_new_stream(&mut self) -> Result<(R, W)>;
 }
 
+/// TCP connector for establishing TCP connections
 pub struct TcpConnector {
     tcp_addr: String,
 }
@@ -41,6 +43,7 @@ impl Connector<OwnedReadHalf, OwnedWriteHalf> for TcpConnector {
     }
 }
 
+/// QUIC connector for opening streams on existing QUIC connection
 pub struct QuicConnector {
     handle: Handle,
 }
@@ -61,6 +64,7 @@ impl Connector<ReceiveStream, SendStream> for QuicConnector {
 
 const MAX_BUF_SIZE: usize = 64 * 1024;
 
+/// Memory connector for in-process communication via channel
 pub struct MemoryConnector {
     sender: UnboundedSender<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>,
 }
