@@ -127,6 +127,60 @@ func TestOpSystemPrompt(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "client preferred with client system prompt",
+			args: args{
+				prompt: "system prompt",
+				op:     caller.SystemPromptOpClientPreferred,
+				req: openai.ChatCompletionRequest{
+					Messages: []openai.ChatCompletionMessage{
+						{Role: "system", Content: "client prompt"},
+						{Role: "user", Content: "test"},
+					},
+				},
+			},
+			want: openai.ChatCompletionRequest{
+				Messages: []openai.ChatCompletionMessage{
+					{Role: "system", Content: "client prompt"},
+					{Role: "user", Content: "test"},
+				},
+			},
+		},
+		{
+			name: "client preferred without client system prompt",
+			args: args{
+				prompt: "system prompt",
+				op:     caller.SystemPromptOpClientPreferred,
+				req: openai.ChatCompletionRequest{
+					Messages: []openai.ChatCompletionMessage{
+						{Role: "user", Content: "test"},
+					},
+				},
+			},
+			want: openai.ChatCompletionRequest{
+				Messages: []openai.ChatCompletionMessage{
+					{Role: "system", Content: "system prompt"},
+					{Role: "user", Content: "test"},
+				},
+			},
+		},
+		{
+			name: "client preferred with empty system prompt",
+			args: args{
+				prompt: "",
+				op:     caller.SystemPromptOpClientPreferred,
+				req: openai.ChatCompletionRequest{
+					Messages: []openai.ChatCompletionMessage{
+						{Role: "user", Content: "test"},
+					},
+				},
+			},
+			want: openai.ChatCompletionRequest{
+				Messages: []openai.ChatCompletionMessage{
+					{Role: "user", Content: "test"},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
