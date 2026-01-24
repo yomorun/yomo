@@ -162,7 +162,7 @@ where
             if let Some(conn) = self.all_sfns.lock().await.get(&conn_id) {
                 info!(
                     "[{}|{}] proxy to sfn: {}",
-                    headers.trace_id, headers.req_id, conn_id
+                    headers.trace_id, headers.request_id, conn_id
                 );
 
                 return Ok(Some(QuicConnector::new(conn.clone())));

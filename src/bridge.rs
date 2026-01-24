@@ -1,10 +1,11 @@
 use anyhow::{Result, anyhow};
+use axum::http::StatusCode;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::{
     connector::Connector,
     io::{pipe_streams, receive_frame, send_frame},
-    types::RequestHeaders,
+    types::{RequestHeaders, ResponseHeaders},
 };
 
 #[async_trait::async_trait]
@@ -20,7 +21,7 @@ where
         Ok(None)
     }
 
-    async fn forward(&self, mut r1: R1, w1: W1) -> Result<bool> {
+    async fn forward(&self, mut r1: R1, mut w1: W1) -> Result<()> {
         let headers: RequestHeaders = receive_frame(&mut r1)
             .await?
             .ok_or(anyhow!("failed to parse headers"))?;
@@ -33,10 +34,22 @@ where
 
                 // pipe request & response body streams
                 pipe_streams(r1, w1, r2, w2);
-
-                Ok(true)
             }
-            None => Ok(false),
+            None => {
+                send_frame(
+                    &mut w1,
+                    &ResponseHeaders {
+                        status_code: StatusCode::NOT_FOUND.as_u16(),
+                        error_msg: "downstream not found".to_owned(),
+                        stream: false,
+                        ..Default::default()
+                    },
+                )
+                .await?;
+                w1.shutdown().await?;
+            }
         }
+
+        Ok(())
     }
 }

@@ -12,24 +12,33 @@ import (
 
 type RequestHeaders struct {
 	TraceID   string `json:"trace_id"`
-	ReqID     string `json:"req_id"`
+	ReqeustID string `json:"request_id"`
 	SfnName   string `json:"sfn_name"`
-	Stream    bool   `json:"stream"`
 	Extension string `json:"extension"`
 }
 
-type RequestBody struct {
-	Args    string `json:"args"`
-	Context string `json:"context"`
+type RequestBody[ARGS any, CONTEXT any] struct {
+	Args    ARGS    `json:"args"`
+	Context CONTEXT `json:"context"`
 }
 
-type Response struct {
-	Data  string `json:"data"`
+type ResponseHeaders struct {
+	StatusCode uint16 `json:"status_code"`
+	ErrorMsg   string `json:"error_msg"`
+	Stream     bool   `json:"stream"`
+	Extension  string `json:"extension"`
+}
+
+type ResponseBody struct {
+	Data any `json:"data"`
+}
+
+type Chunk struct {
+	Data  any    `json:"data"`
 	Error string `json:"error,omitempty"`
 }
 
-func readPacket[T any](r io.Reader) (*T, error) {
-	// read uint32 as length of the packet
+func readBytes(r io.Reader) ([]byte, error) {
 	lengthBuf := make([]byte, 4)
 	_, err := r.Read(lengthBuf)
 	if err != nil {
@@ -37,16 +46,35 @@ func readPacket[T any](r io.Reader) (*T, error) {
 	}
 	length := binary.BigEndian.Uint32(lengthBuf)
 
-	// read the actual packet data
-	packetData := make([]byte, length)
-	_, err = r.Read(packetData)
+	// read the actual data
+	data := make([]byte, length)
+	_, err = r.Read(data)
+	if err != nil {
+		return nil, err
+	}
+
+	return data, nil
+}
+
+func writeBytes(w io.Writer, data []byte) {
+	// write uint32 as length of the data
+	lengthBuf := make([]byte, 4)
+	binary.BigEndian.PutUint32(lengthBuf, uint32(len(data)))
+	w.Write(lengthBuf)
+
+	// write the actual data
+	w.Write(data)
+}
+
+func readPacket[T any](r io.Reader) (*T, error) {
+	buf, err := readBytes(r)
 	if err != nil {
 		return nil, err
 	}
 
 	// decode the packet
 	var packet T
-	err = json.Unmarshal(packetData, &packet)
+	err = json.Unmarshal(buf, &packet)
 	if err != nil {
 		return nil, err
 	}
@@ -54,23 +82,55 @@ func readPacket[T any](r io.Reader) (*T, error) {
 	return &packet, nil
 }
 
-func writePacket(w io.Writer, packet any) error {
+func writePacket(w io.Writer, packet any) {
 	// encode the packet
-	buf, err := json.Marshal(packet)
+	buf, _ := json.Marshal(packet)
+
+	writeBytes(w, buf)
+}
+
+func callSimpleHandler[ARGS any, RES any, CONTEXT any](
+	handler func(ARGS, CONTEXT) (RES, error), body []byte,
+) ([]byte, error) {
+	var request RequestBody[ARGS, CONTEXT]
+	err := json.Unmarshal(body, &request)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := handler(request.Args, request.Context)
+	if err != nil {
+		return nil, err
+	}
+
+	response := ResponseBody{Data: res}
+	buf, err := json.Marshal(response)
+	if err != nil {
+		return nil, err
+	}
+
+	return buf, nil
+}
+
+func callStreamHandler[ARGS any, RES any, CONTEXT any](
+	stream io.Writer, handler func(ARGS, CONTEXT, chan<- RES) error, body []byte,
+) error {
+	var request RequestBody[ARGS, CONTEXT]
+	err := json.Unmarshal(body, &request)
 	if err != nil {
 		return err
 	}
 
-	// write uint32 as length of the packet
-	lengthBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(lengthBuf, uint32(len(buf)))
-	_, err = w.Write(lengthBuf)
-	if err != nil {
-		return err
-	}
+	ch := make(chan RES)
+	defer close(ch)
 
-	// write the actual packet data
-	_, err = w.Write(buf)
+	go func() {
+		for x := range ch {
+			writePacket(stream, &Chunk{Data: x})
+		}
+	}()
+
+	err = handler(request.Args, request.Context, ch)
 	if err != nil {
 		return err
 	}
@@ -78,121 +138,56 @@ func writePacket(w io.Writer, packet any) error {
 	return nil
 }
 
-func callSimpleHandler[ARGS any, RES any, CONTEXT any](
-	handler func(ARGS, CONTEXT) (RES, error), rawArgs string, rawContext string,
-) Response {
-	var args ARGS
-	if len(rawArgs) > 0 {
-		err := json.Unmarshal([]byte(rawArgs), &args)
-		if err != nil {
-			return Response{Error: err.Error()}
-		}
-	}
-
-	var context CONTEXT
-	if len(rawContext) > 0 {
-		err := json.Unmarshal([]byte(rawContext), &context)
-		if err != nil {
-			return Response{Error: err.Error()}
-		}
-	}
-
-	res, err := handler(args, context)
-	if err != nil {
-		return Response{Error: err.Error()}
-	}
-
-	buf, err := json.Marshal(res)
-	if err != nil {
-		return Response{Error: err.Error()}
-	}
-
-	return Response{Data: string(buf)}
-}
-
-func callStreamHandler[ARGS any, RES any, CONTEXT any](
-	handler func(ARGS, CONTEXT, chan<- RES) error, rawArgs string, rawContext string, rawCh chan<- Response,
-) {
-	defer close(rawCh)
-
-	var args ARGS
-	if len(rawArgs) > 0 {
-		err := json.Unmarshal([]byte(rawArgs), &args)
-		if err != nil {
-			rawCh <- Response{Error: err.Error()}
-			return
-		}
-	}
-
-	var context CONTEXT
-	if len(rawContext) > 0 {
-		err := json.Unmarshal([]byte(rawContext), &context)
-		if err != nil {
-			rawCh <- Response{Error: err.Error()}
-			return
-		}
-	}
-
-	ch := make(chan RES)
-
-	go func() {
-		defer close(ch)
-
-		err := handler(args, context, ch)
-		if err != nil {
-			rawCh <- Response{Error: err.Error()}
-			return
-		}
-	}()
-
-	for x := range ch {
-		buf, err := json.Marshal(x)
-		if err != nil {
-			rawCh <- Response{Error: err.Error()}
-			return
-		}
-
-		rawCh <- Response{Data: string(buf)}
-	}
-}
-
 func handleStream(stream io.ReadWriteCloser) {
 	defer stream.Close()
 
-	headers, err := readPacket[RequestHeaders](stream)
+	reqHeaders, err := readPacket[RequestHeaders](stream)
 	if err != nil {
 		log.Println("read request header error:", err)
 		return
 	}
+	log.Printf("req headers: trace_id=%s, request_id=%s\n", reqHeaders.TraceID, reqHeaders.ReqeustID)
 
-	body, err := readPacket[RequestBody](stream)
+	reqBody, err := readBytes(stream)
 	if err != nil {
 		log.Println("read request body error:", err)
 		return
-	} else if body == nil {
-		log.Println("request body is nil")
-		return
+	}
+	log.Printf("req body: %s\n", string(reqBody))
+
+	// todo: parse serverless handler stream mode according to go ast
+	resHeaders := ResponseHeaders{
+		StatusCode: 200,
+		Stream:     len(reqBody) > 50,
 	}
 
-	if headers.Stream {
-		ch := make(chan Response)
+	if resHeaders.Stream {
+		log.Println("call stream handler")
 
-		go callStreamHandler(StreamHandler, body.Args, body.Context, ch)
+		writePacket(stream, &resHeaders)
 
-		for x := range ch {
-			err = writePacket(stream, &x)
-			if err != nil {
-				log.Println("write chunk error:", err)
-				return
-			}
+		err := callStreamHandler(stream, StreamHandler, reqBody)
+		if err != nil {
+			log.Println("call stream handler error:", err)
+
+			writePacket(stream, &Chunk{Error: err.Error()})
 		}
 	} else {
-		response := callSimpleHandler(SimpleHandler, body.Args, body.Context)
+		log.Println("call simple handler")
 
-		err = writePacket(stream, &response)
+		resBody, err := callSimpleHandler(SimpleHandler, reqBody)
 		if err != nil {
-			log.Println("write response packet error:", err)
-			return
+			log.Println("call simple handler error:", err)
+
+			resHeaders.StatusCode = 500
+			resHeaders.ErrorMsg = err.Error()
+		}
+		log.Printf("simple handler response: %s\n", string(resBody))
+
+		writePacket(stream, &resHeaders)
+
+		if err == nil {
+			writeBytes(stream, resBody)
 		}
 	}
 }

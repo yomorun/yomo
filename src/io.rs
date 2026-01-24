@@ -7,21 +7,30 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, copy},
     spawn,
 };
-async fn receive_raw(stream: &mut (impl AsyncReadExt + Unpin)) -> Result<Option<Vec<u8>>> {
+
+pub async fn receive_bytes(stream: &mut (impl AsyncReadExt + Unpin)) -> Result<Option<Vec<u8>>> {
     let size = match stream.read_u32().await {
         Ok(size) => size,
         Err(e) => {
             if e.kind() == ErrorKind::UnexpectedEof {
                 return Ok(None);
             }
-            bail!("receive_raw error: {}", e);
+            bail!("receive bytes error: {}", e);
         }
     };
 
-    let mut buf = vec![0; size as usize];
-    stream.read_exact(&mut buf).await?;
-    trace!("recv bytes: {:?}", buf);
-    Ok(Some(buf))
+    let mut bytes = vec![0; size as usize];
+    stream.read_exact(&mut bytes).await?;
+    trace!("receive bytes: {}", String::from_utf8_lossy(&bytes));
+    Ok(Some(bytes))
+}
+
+pub async fn send_bytes(stream: &mut (impl AsyncWriteExt + Unpin), bytes: &[u8]) -> Result<()> {
+    trace!("send bytes: {}", String::from_utf8_lossy(bytes));
+    stream.write_u32(bytes.len() as u32).await?;
+    stream.write_all(bytes).await?;
+    stream.flush().await?;
+    Ok(())
 }
 
 pub async fn send_frame<T: Serialize + Debug>(
@@ -29,20 +38,16 @@ pub async fn send_frame<T: Serialize + Debug>(
     frame: &T,
 ) -> Result<()> {
     debug!("send frame: {:?}", frame);
-    let buf = serde_json::to_vec(frame)?;
-    stream.write_u32(buf.len() as u32).await?;
-    stream.write_all(&buf).await?;
-    stream.flush().await?;
-    trace!("sent bytes: {:?}", buf);
+    let bytes = serde_json::to_vec(frame)?;
+    send_bytes(stream, &bytes).await?;
     Ok(())
 }
 
 pub async fn receive_frame<T: for<'a> Deserialize<'a> + Debug>(
     stream: &mut (impl AsyncReadExt + Unpin),
 ) -> Result<Option<T>> {
-    let raw = receive_raw(stream).await?;
-    if let Some(raw) = raw {
-        let frame: T = serde_json::from_slice(&raw)?;
+    if let Some(bytes) = receive_bytes(stream).await? {
+        let frame: T = serde_json::from_slice(&bytes)?;
         debug!("recv frame: {:?}", frame);
         Ok(Some(frame))
     } else {

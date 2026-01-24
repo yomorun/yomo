@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
 use axum::{
-    Json, Router,
+    Router,
+    body::Bytes,
     extract::{Path, State},
-    http::{HeaderMap, StatusCode},
+    http::{self, HeaderMap, StatusCode},
     response::{IntoResponse, Sse, sse::Event},
     routing::post,
 };
@@ -16,8 +17,8 @@ use tokio::{
 
 use crate::{
     bridge::Bridge,
-    io::{receive_frame, send_frame},
-    types::{RequestBody, RequestHeaders, ResponseBody},
+    io::{receive_bytes, receive_frame, send_bytes, send_frame},
+    types::{RequestHeaders, ResponseHeaders},
     zipper::server::Zipper,
 };
 
@@ -57,35 +58,29 @@ fn parse_http_headers(http_headers: &HeaderMap, key: &str) -> String {
 fn new_request_headers(sfn_name: &str, http_headers: &HeaderMap) -> RequestHeaders {
     RequestHeaders {
         sfn_name: sfn_name.to_owned(),
+        stream: false,
         trace_id: parse_http_headers(http_headers, "traceparent"),
-        req_id: parse_http_headers(http_headers, "X-Request-Id"),
-        stream: parse_http_headers(http_headers, "X-Stream-Response").to_lowercase() == "true",
+        request_id: parse_http_headers(http_headers, "X-Request-Id"),
         extension: parse_http_headers(http_headers, "X-Extension"),
     }
 }
 
 struct CustomResponse {
-    body: Option<ResponseBody>,
+    body: Option<Vec<u8>>,
     r2: Option<ReadHalf<SimplexStream>>,
 }
 
 impl IntoResponse for CustomResponse {
     fn into_response(self) -> axum::response::Response {
         if let Some(body) = self.body {
-            match serde_json::to_string(&body) {
-                Ok(buf) => (StatusCode::OK, buf).into_response(),
-                Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
-            }
+            (StatusCode::OK, body).into_response()
         } else if let Some(r2) = self.r2 {
             let stream = stream::unfold(r2, move |mut r| async move {
-                match receive_frame::<ResponseBody>(&mut r).await {
+                match receive_bytes(&mut r).await {
                     Ok(Some(chunk)) => {
-                        info!("recv chunk: {:?}", chunk);
-                        if let Some(data) = serde_json::to_string(&chunk).ok() {
-                            Some((Ok(Event::default().data(data)), r))
-                        } else {
-                            None
-                        }
+                        let data = String::from_utf8_lossy(&chunk);
+                        info!("recv chunk: {:?}", data);
+                        Some((Ok(Event::default().data(data)), r))
                     }
                     Ok(None) => None,
                     Err(e) => {
@@ -108,7 +103,7 @@ async fn handle(
     http_headers: HeaderMap,
     Path(sfn_name): Path<String>,
     State(zipper): State<Arc<Zipper>>,
-    Json(body): Json<RequestBody>,
+    body: Bytes,
 ) -> Result<CustomResponse, CustomError> {
     info!("new request to [{}]", sfn_name);
 
@@ -120,31 +115,38 @@ async fn handle(
     // send request headers
     send_frame(&mut w1, &request_headers).await?;
 
-    if zipper.forward(r1, w2).await? {
-        // send request body
-        send_frame(&mut w1, &body).await?;
-        w1.shutdown().await?;
+    // pipe to downstream via zipper bridge
+    zipper.forward(r1, w2).await?;
 
-        if request_headers.stream {
-            // Stream response using SSE
-            Ok(CustomResponse {
-                body: None,
-                r2: Some(r2),
-            })
-        } else {
-            let response: ResponseBody = receive_frame(&mut r2)
-                .await?
-                .ok_or(anyhow::anyhow!("Failed to receive response"))?;
+    // send request body
+    send_bytes(&mut w1, &body.to_vec()).await?;
+    w1.shutdown().await?;
 
-            Ok(CustomResponse {
-                body: Some(response),
-                r2: None,
-            })
-        }
+    let response_headers: ResponseHeaders = receive_frame(&mut r2)
+        .await?
+        .ok_or(anyhow::anyhow!("Failed to receive response headers"))?;
+
+    if response_headers.status_code != http::StatusCode::OK {
+        return Err(CustomError {
+            status_code: StatusCode::from_u16(response_headers.status_code)?,
+            msg: response_headers.error_msg,
+        });
+    }
+
+    if response_headers.stream {
+        // Stream response using SSE
+        Ok(CustomResponse {
+            body: None,
+            r2: Some(r2),
+        })
     } else {
-        Err(CustomError {
-            status_code: StatusCode::NOT_FOUND,
-            msg: format!("sfn [{}] not found", sfn_name),
+        let body = receive_bytes(&mut r2)
+            .await?
+            .ok_or(anyhow::anyhow!("Failed to receive response"))?;
+
+        Ok(CustomResponse {
+            body: Some(body),
+            r2: None,
         })
     }
 }

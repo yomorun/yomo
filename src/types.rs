@@ -14,23 +14,17 @@ pub struct HandshakeRes {
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct RequestHeaders {
-    pub trace_id: String,
-    pub req_id: String,
     pub sfn_name: String,
     pub stream: bool,
+    pub trace_id: String,
+    pub request_id: String,
     pub extension: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
-pub struct RequestBody {
-    pub args: String,
-    #[serde(default)]
-    pub context: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Default)]
-pub struct ResponseBody {
-    pub data: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub error: String,
+pub struct ResponseHeaders {
+    pub status_code: u16,
+    pub error_msg: String,
+    pub stream: bool,
+    pub extension: String,
 }
