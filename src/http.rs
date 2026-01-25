@@ -1,20 +1,14 @@
 use std::sync::Arc;
 
 use axum::{
-    Router,
     body::Bytes,
     extract::{Path, State},
     http::{self, HeaderMap, StatusCode},
     response::{IntoResponse, Sse, sse::Event},
-    routing::post,
 };
 use futures_util::stream;
 use log::{error, info};
-use tokio::{
-    io::{AsyncWriteExt, ReadHalf, SimplexStream, WriteHalf},
-    net::TcpListener,
-    sync::{Mutex, mpsc::UnboundedSender},
-};
+use tokio::io::{AsyncWriteExt, ReadHalf, SimplexStream};
 
 use crate::{
     connector::{Connector, MemoryConnector},
@@ -23,7 +17,7 @@ use crate::{
 };
 
 /// Custom error with HTTP status code
-struct CustomError {
+pub struct CustomError {
     status_code: StatusCode,
     msg: String,
 }
@@ -67,7 +61,7 @@ fn new_request_headers(sfn_name: &str, http_headers: &HeaderMap) -> RequestHeade
 }
 
 /// Custom response supporting both regular bytes body and SSE streaming
-struct CustomResponse {
+pub struct CustomResponse {
     body: Option<Vec<u8>>,
     reader: Option<ReadHalf<SimplexStream>>,
 }
@@ -101,10 +95,10 @@ impl IntoResponse for CustomResponse {
 
 /// HTTP stream handler: forward request to corresponding QUIC sfn with SSE response
 #[axum::debug_handler]
-async fn handle(
+pub async fn http_handler(
     http_headers: HeaderMap,
     Path(sfn_name): Path<String>,
-    State(connector): State<Arc<Mutex<MemoryConnector>>>,
+    State(connector): State<Arc<MemoryConnector>>,
     body: Bytes,
 ) -> Result<CustomResponse, CustomError> {
     let request_headers = new_request_headers(&sfn_name, &http_headers);
@@ -117,7 +111,7 @@ async fn handle(
         String::from_utf8_lossy(&body)
     );
 
-    let (mut reader, mut writer) = connector.lock().await.open_new_stream().await?;
+    let (mut reader, mut writer) = connector.open_new_stream().await?;
 
     // send request headers
     send_frame(&mut writer, &request_headers).await?;
@@ -160,22 +154,4 @@ async fn handle(
             })
         }
     }
-}
-
-/// HTTP server: listen and receive external requests
-pub async fn serve_http(
-    host: &str,
-    port: u16,
-    sender: UnboundedSender<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>,
-) -> anyhow::Result<()> {
-    let app = Router::new()
-        .route("/sfn/{sfn_name}", post(handle))
-        .with_state(Arc::new(Mutex::new(MemoryConnector::new(sender))));
-
-    let listener = TcpListener::bind((host.to_owned(), port)).await?;
-
-    info!("start http server: {}:{}", host, port);
-    axum::serve(listener, app).await?;
-
-    Ok(())
 }

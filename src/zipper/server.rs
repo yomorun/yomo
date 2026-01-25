@@ -1,3 +1,5 @@
+use std::{collections::HashMap, sync::Arc, time::Duration};
+
 use anyhow::{Context, Result, anyhow};
 use log::{error, info};
 use s2n_quic::{
@@ -6,7 +8,6 @@ use s2n_quic::{
     provider::{io::TryInto, limits::Limits},
     stream::{BidirectionalStream, ReceiveStream, SendStream},
 };
-use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::{
     io::{AsyncWriteExt, ReadHalf, SimplexStream, WriteHalf},
     spawn,
@@ -27,7 +28,7 @@ use crate::{
 pub struct Zipper {
     router: Arc<RwLock<dyn Router>>,
 
-    all_sfns: Arc<Mutex<HashMap<u64, Handle>>>,
+    all_sfns: Arc<RwLock<HashMap<u64, Handle>>>,
 }
 
 impl Zipper {
@@ -44,10 +45,11 @@ impl Zipper {
 
         let limits = Limits::new()
             .with_max_handshake_duration(Duration::from_secs(10))?
-            .with_max_idle_timeout(Duration::from_secs(15))?
-            .with_max_open_local_bidirectional_streams(200)?
+            .with_max_idle_timeout(Duration::from_secs(10))?
+            .with_max_keep_alive_period(Duration::from_secs(5))?
+            .with_max_open_local_bidirectional_streams(1000)?
             .with_max_open_local_unidirectional_streams(0)?
-            .with_max_open_remote_bidirectional_streams(200)?
+            .with_max_open_remote_bidirectional_streams(1000)?
             .with_max_open_remote_unidirectional_streams(0)?;
 
         let mut server = Server::builder()
@@ -82,7 +84,7 @@ impl Zipper {
             info!("new sfn connected: sfn_name={}", sfn_name);
 
             // save connection
-            self.all_sfns.lock().await.insert(conn_id, conn.handle());
+            self.all_sfns.write().await.insert(conn_id, conn.handle());
         } else {
             info!("conn closed: {}", conn_id);
             return Ok(());
@@ -95,7 +97,7 @@ impl Zipper {
 
         // Clean up sfn registration
         self.router.write().await.remove_sfn(conn_id);
-        self.all_sfns.lock().await.remove(&conn_id);
+        self.all_sfns.write().await.remove(&conn_id);
 
         Ok(())
     }
@@ -120,7 +122,7 @@ impl Zipper {
                 stream.shutdown().await?;
 
                 if let Some(conn_id) = existed_conn {
-                    if let Some(conn) = self.all_sfns.lock().await.remove(&conn_id) {
+                    if let Some(conn) = self.all_sfns.write().await.remove(&conn_id) {
                         info!(
                             "close existing connection {} for sfn_name: {}",
                             conn_id, req.sfn_name
@@ -148,7 +150,7 @@ impl Zipper {
 
     async fn route(&self, headers: &RequestHeaders) -> Result<Option<QuicConnector>> {
         if let Some(conn_id) = self.router.read().await.route(&headers)? {
-            if let Some(conn) = self.all_sfns.lock().await.get(&conn_id) {
+            if let Some(conn) = self.all_sfns.read().await.get(&conn_id) {
                 return Ok(Some(QuicConnector::new(conn.clone())));
             }
         }

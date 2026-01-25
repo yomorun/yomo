@@ -10,7 +10,7 @@ use tokio::fs;
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::Command,
-    sync::Mutex,
+    sync::RwLock,
 };
 
 use crate::connector::TcpConnector;
@@ -24,7 +24,7 @@ static GO_MOD: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/serverl
 /// Serverless function handler (supports Go)
 #[derive(Default, Clone)]
 pub struct ServerlessHandler {
-    socket_addr: Arc<Mutex<Option<String>>>,
+    socket_addr: Arc<RwLock<Option<String>>>,
 }
 
 impl ServerlessHandler {
@@ -55,8 +55,8 @@ impl ServerlessHandler {
     }
 
     /// Get TCP connector to serverless function
-    pub async fn get_connector(&self) -> Result<Option<TcpConnector>> {
-        let socket_addr = self.socket_addr.lock().await.clone();
+    pub(crate) async fn get_connector(&self) -> Result<Option<TcpConnector>> {
+        let socket_addr = self.socket_addr.read().await.clone();
         if let Some(addr) = socket_addr {
             return Ok(Some(TcpConnector::new(&addr)));
         }
@@ -115,7 +115,7 @@ impl ServerlessHandler {
         }
         info!("serverless listening: {}", addr);
 
-        *self.socket_addr.lock().await = Some(addr);
+        *self.socket_addr.write().await = Some(addr);
 
         drop(temp_dir);
 

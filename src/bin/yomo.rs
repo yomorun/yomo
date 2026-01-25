@@ -1,4 +1,4 @@
-use std::process;
+use std::{process, sync::Arc};
 
 use anyhow::Result;
 use clap::Parser;
@@ -6,10 +6,11 @@ use config::{Config, File};
 use log::{error, info};
 
 use serde::Deserialize;
-use tokio::{select, sync::mpsc};
+use tokio::{net::TcpListener, select, sync::mpsc};
 use yomo::{
     bridge::Bridge,
-    http::serve_http,
+    connector::MemoryConnector,
+    http::http_handler,
     sfn::{client::Sfn, serverless::ServerlessHandler},
     tls::TlsConfig,
     zipper::{
@@ -128,6 +129,20 @@ impl Default for ServeConfig {
     }
 }
 
+/// HTTP server: listen and receive external requests
+pub async fn serve_http(host: &str, port: u16, connector: MemoryConnector) -> anyhow::Result<()> {
+    let app = axum::Router::new()
+        .route("/sfn/{sfn_name}", axum::routing::post(http_handler))
+        .with_state(Arc::new(connector));
+
+    let listener = TcpListener::bind((host.to_owned(), port)).await?;
+
+    info!("start http server: {}:{}", host, port);
+    axum::serve(listener, app).await?;
+
+    Ok(())
+}
+
 /// Start Zipper service
 async fn serve(opt: ServeOptions) -> Result<()> {
     let config = match opt.config {
@@ -154,7 +169,7 @@ async fn serve(opt: ServeOptions) -> Result<()> {
     let zipper_memory_bridge = ZipperMemoryBridge::new(zipper.clone(), receiver);
 
     select! {
-        r = serve_http(&config.host, config.http_port, sender) => r,
+        r = serve_http(&config.host, config.http_port, MemoryConnector::new(sender, 4*1024*1024)) => r,
         r = zipper_memory_bridge.serve_bridge() => r,
         r = zipper.serve(&config.host, config.quic_port, &config.tls) => r,
     }?;

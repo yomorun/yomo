@@ -12,9 +12,9 @@ import (
 )
 
 var (
-	simpleHandler func(Arguments) (Result, error)      = nil
-	streamHandler func(Arguments, chan<- Result) error = nil
-	rawHandler    func(io.Reader, io.Writer) error     = nil
+	simpleHandler func(Arguments) (Result, error)       = nil
+	streamHandler func(Arguments, chan<- Result) error  = nil
+	rawHandler    func(io.Reader, io.WriteCloser) error = nil
 
 	handlerMode string
 )
@@ -51,7 +51,7 @@ type Chunk struct {
 
 func readBytes(r io.Reader) ([]byte, error) {
 	lengthBuf := make([]byte, 4)
-	_, err := r.Read(lengthBuf)
+	_, err := io.ReadFull(r, lengthBuf)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +59,7 @@ func readBytes(r io.Reader) ([]byte, error) {
 
 	// read the actual data
 	data := make([]byte, length)
-	_, err = r.Read(data)
+	_, err = io.ReadFull(r, data)
 	if err != nil {
 		return nil, err
 	}
@@ -159,13 +159,6 @@ func handleStream(stream io.ReadWriteCloser) {
 	}
 	log.Printf("req headers: trace_id=%s, request_id=%s\n", reqHeaders.TraceID, reqHeaders.ReqeustID)
 
-	reqBody, err := readBytes(stream)
-	if err != nil {
-		log.Println("read request body error:", err)
-		return
-	}
-	log.Printf("req body: %s\n", string(reqBody))
-
 	// todo: read description, set serverless context
 
 	resHeaders := ResponseHeaders{
@@ -175,6 +168,13 @@ func handleStream(stream io.ReadWriteCloser) {
 	switch handlerMode {
 	case "simple":
 		log.Println("call simple handler")
+
+		reqBody, err := readBytes(stream)
+		if err != nil {
+			log.Println("read request body error:", err)
+			return
+		}
+		log.Printf("req body: %s\n", string(reqBody))
 
 		resBody, err := callSimpleHandler(simpleHandler, reqBody)
 		if err != nil {
@@ -197,16 +197,25 @@ func handleStream(stream io.ReadWriteCloser) {
 	case "stream":
 		log.Println("call stream handler")
 
+		reqBody, err := readBytes(stream)
+		if err != nil {
+			log.Println("read request body error:", err)
+			return
+		}
+		log.Printf("req body: %s\n", string(reqBody))
+
 		resHeaders.BodyFormat = "chunk"
 		writePacket(stream, &resHeaders)
 
-		err := callStreamHandler(stream, streamHandler, reqBody)
+		err = callStreamHandler(stream, streamHandler, reqBody)
 		if err != nil {
 			log.Println("call stream handler error:", err)
 
 			writePacket(stream, &Chunk{Error: err.Error()})
 		}
 	case "raw":
+		log.Println("call raw handler")
+
 		resHeaders.BodyFormat = "bytes"
 		writePacket(stream, &resHeaders)
 

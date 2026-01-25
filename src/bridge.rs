@@ -36,7 +36,7 @@ where
             .ok_or(anyhow!("failed to parse headers"))?;
 
         match self.find_downstream(&headers).await? {
-            Some(mut connector) => {
+            Some(connector) => {
                 let (r2, mut w2) = connector.open_new_stream().await?;
 
                 send_frame(&mut w2, &headers).await?;

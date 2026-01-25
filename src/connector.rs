@@ -19,7 +19,7 @@ where
     R: AsyncReadExt + Unpin + Send + 'static,
     W: AsyncWriteExt + Unpin + Send + 'static,
 {
-    async fn open_new_stream(&mut self) -> Result<(R, W)>;
+    async fn open_new_stream(&self) -> Result<(R, W)>;
 }
 
 /// TCP connector for establishing TCP connections
@@ -37,7 +37,7 @@ impl TcpConnector {
 
 #[async_trait::async_trait]
 impl Connector<OwnedReadHalf, OwnedWriteHalf> for TcpConnector {
-    async fn open_new_stream(&mut self) -> Result<(OwnedReadHalf, OwnedWriteHalf)> {
+    async fn open_new_stream(&self) -> Result<(OwnedReadHalf, OwnedWriteHalf)> {
         let stream = TcpStream::connect(&self.tcp_addr).await?;
         Ok(stream.into_split())
     }
@@ -56,34 +56,35 @@ impl QuicConnector {
 
 #[async_trait::async_trait]
 impl Connector<ReceiveStream, SendStream> for QuicConnector {
-    async fn open_new_stream(&mut self) -> Result<(ReceiveStream, SendStream)> {
-        let stream = self.handle.open_bidirectional_stream().await?;
+    async fn open_new_stream(&self) -> Result<(ReceiveStream, SendStream)> {
+        let stream = self.handle.clone().open_bidirectional_stream().await?;
         Ok(stream.split())
     }
 }
 
-const MAX_BUF_SIZE: usize = 64 * 1024;
-
 /// Memory connector for in-process communication via channel
 pub struct MemoryConnector {
     sender: UnboundedSender<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>,
+    max_buf_size: usize,
 }
 
 impl MemoryConnector {
     pub fn new(
         sender: UnboundedSender<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>,
+        max_buf_size: usize,
     ) -> Self {
-        Self { sender }
+        Self {
+            sender,
+            max_buf_size,
+        }
     }
 }
 
 #[async_trait::async_trait]
 impl Connector<ReadHalf<SimplexStream>, WriteHalf<SimplexStream>> for MemoryConnector {
-    async fn open_new_stream(
-        &mut self,
-    ) -> Result<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)> {
-        let (r1, w1) = simplex(MAX_BUF_SIZE);
-        let (r2, w2) = simplex(MAX_BUF_SIZE);
+    async fn open_new_stream(&self) -> Result<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)> {
+        let (r1, w1) = simplex(self.max_buf_size);
+        let (r2, w2) = simplex(self.max_buf_size);
 
         self.sender.send((r1, w2))?;
 

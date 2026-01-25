@@ -58,10 +58,11 @@ impl Sfn {
 
         let limits = Limits::new()
             .with_max_handshake_duration(Duration::from_secs(10))?
-            .with_max_idle_timeout(Duration::from_secs(10))?
-            .with_max_open_local_bidirectional_streams(200)?
+            .with_max_idle_timeout(Duration::from_secs(40))?
+            .with_max_keep_alive_period(Duration::from_secs(20))?
+            .with_max_open_local_bidirectional_streams(1000)?
             .with_max_open_local_unidirectional_streams(0)?
-            .with_max_open_remote_bidirectional_streams(200)?
+            .with_max_open_remote_bidirectional_streams(1000)?
             .with_max_open_remote_unidirectional_streams(0)?;
 
         let client = Client::builder()
