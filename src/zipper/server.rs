@@ -1,6 +1,7 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use anyhow::{Context, Result, anyhow};
+use axum::http::StatusCode;
 use log::{error, info};
 use s2n_quic::{
     Connection, Server,
@@ -19,7 +20,7 @@ use crate::{
     connector::QuicConnector,
     io::{receive_frame, send_frame},
     tls::{TlsConfig, new_server_tls},
-    types::{HandshakeReq, HandshakeRes, RequestHeaders},
+    types::{HandshakeRequest, HandshakeResponse, RequestHeaders},
     zipper::router::Router,
 };
 
@@ -92,7 +93,7 @@ impl Zipper {
 
         // receive streams and forward, keep connection alive
         let quic_bridge = ZipperQuicBridge::new(self.clone(), conn);
-        quic_bridge.serve_bridge().await.ok();
+        quic_bridge.serve_bridge().await;
         info!("conn closed: {}", conn_id);
 
         // Clean up sfn registration
@@ -108,14 +109,14 @@ impl Zipper {
         conn_id: u64,
         mut stream: BidirectionalStream,
     ) -> Result<String> {
-        let req = receive_frame::<HandshakeReq>(&mut stream)
+        let req = receive_frame::<HandshakeRequest>(&mut stream)
             .await?
             .ok_or(anyhow!("receive handshake request failed"))?;
 
         match self.router.write().await.handshake(conn_id, &req) {
             Ok(existed_conn) => {
-                let res = HandshakeRes {
-                    ok: true,
+                let res = HandshakeResponse {
+                    status_code: StatusCode::OK.as_u16(),
                     ..Default::default()
                 };
                 send_frame(&mut stream, &res).await?;
@@ -136,9 +137,9 @@ impl Zipper {
             Err(e) => {
                 error!("handshake failed: {}", e);
 
-                let res = HandshakeRes {
-                    ok: false,
-                    reason: e.to_string(),
+                let res = HandshakeResponse {
+                    status_code: StatusCode::UNAUTHORIZED.as_u16(),
+                    error_msg: e.to_string(),
                 };
                 send_frame(&mut stream, &res).await?;
                 stream.shutdown().await?;

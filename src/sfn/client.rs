@@ -1,6 +1,7 @@
 use std::{net::ToSocketAddrs, sync::Arc, time::Duration};
 
 use anyhow::{Result, anyhow, bail};
+use axum::http::StatusCode;
 use log::{debug, info};
 use s2n_quic::{
     Client, Connection,
@@ -20,7 +21,7 @@ use crate::{
     io::{receive_frame, send_frame},
     sfn::serverless::ServerlessHandler,
     tls::{TlsConfig, new_client_tls},
-    types::{HandshakeReq, HandshakeRes, RequestHeaders},
+    types::{HandshakeRequest, HandshakeResponse, RequestHeaders},
 };
 
 /// Serverless Function (SFN) client
@@ -102,7 +103,7 @@ impl Sfn {
     async fn handshake(&self, conn: &mut Connection, credential: &str) -> Result<()> {
         let mut stream = conn.open_bidirectional_stream().await?;
 
-        let req = HandshakeReq {
+        let req = HandshakeRequest {
             sfn_name: self.sfn_name.to_owned(),
             credential: credential.to_owned(),
         };
@@ -110,12 +111,12 @@ impl Sfn {
         send_frame(&mut stream, &req).await?;
         stream.shutdown().await?;
 
-        let res = receive_frame::<HandshakeRes>(&mut stream)
+        let res = receive_frame::<HandshakeResponse>(&mut stream)
             .await?
             .ok_or(anyhow!("receive handshake response failed"))?;
 
-        if !res.ok {
-            bail!("handshake failed: {}", res.reason);
+        if res.status_code != StatusCode::OK {
+            bail!("handshake failed: [{}] {}", res.status_code, res.error_msg);
         }
 
         Ok(())

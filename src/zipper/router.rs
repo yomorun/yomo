@@ -1,14 +1,13 @@
 use std::collections::HashMap;
 
 use anyhow::{Result, bail};
-use log::{info, warn};
 
-use crate::types::{HandshakeReq, RequestHeaders};
+use crate::types::{HandshakeRequest, RequestHeaders};
 
 /// Router trait for managing SFN routing
 pub trait Router: Sync + Send {
     /// Handle SFN registration handshake
-    fn handshake(&mut self, conn_id: u64, req: &HandshakeReq) -> Result<Option<u64>>;
+    fn handshake(&mut self, conn_id: u64, req: &HandshakeRequest) -> Result<Option<u64>>;
 
     /// Route request to appropriate SFN
     fn route(&self, headers: &RequestHeaders) -> Result<Option<u64>>;
@@ -34,9 +33,10 @@ impl RouterImpl {
 }
 
 impl Router for RouterImpl {
-    fn handshake(&mut self, conn_id: u64, req: &HandshakeReq) -> Result<Option<u64>> {
+    fn handshake(&mut self, conn_id: u64, req: &HandshakeRequest) -> Result<Option<u64>> {
+        // anonymous: will not be routed, but can send requests
         if req.sfn_name.is_empty() {
-            bail!("sfn name is empty");
+            return Ok(None);
         }
 
         if let Some(token) = &self.auth_token {
@@ -53,21 +53,11 @@ impl Router for RouterImpl {
     }
 
     fn route(&self, headers: &RequestHeaders) -> Result<Option<u64>> {
-        Ok(match self.route_map.get(&headers.sfn_name) {
-            Some(conn_id) => {
-                info!(
-                    "[{}|{}] route for [{}]: conn_id={}",
-                    headers.trace_id, headers.request_id, headers.sfn_name, conn_id
-                );
-                Some(conn_id.to_owned())
+        if !headers.sfn_name.is_empty() {
+            if let Some(conn_id) = self.route_map.get(&headers.sfn_name) {
+                return Ok(Some(conn_id.to_owned()));
             }
-            None => {
-                warn!(
-                    "[{}|{}] route for [{}]: not found",
-                    headers.trace_id, headers.request_id, headers.sfn_name
-                );
-                None
-            }
-        })
+        }
+        Ok(None)
     }
 }

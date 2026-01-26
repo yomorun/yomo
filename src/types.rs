@@ -2,16 +2,16 @@ use serde::{Deserialize, Serialize};
 
 /// Handshake request from SFN to Zipper
 #[derive(Debug, Serialize, Deserialize, Default)]
-pub struct HandshakeReq {
+pub struct HandshakeRequest {
     pub sfn_name: String,
     pub credential: String,
 }
 
 /// Handshake response from Zipper to SFN
 #[derive(Debug, Serialize, Deserialize, Default)]
-pub struct HandshakeRes {
-    pub ok: bool,
-    pub reason: String,
+pub struct HandshakeResponse {
+    pub status_code: u16,
+    pub error_msg: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq)]

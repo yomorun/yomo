@@ -1,7 +1,7 @@
 use std::{process, sync::Arc};
 
 use anyhow::Result;
-use clap::Parser;
+use clap::{Parser, builder::NonEmptyStringValueParser};
 use config::{Config, File};
 use log::{error, info};
 
@@ -61,14 +61,14 @@ struct RunOptions {
     )]
     serverless_dir: String,
 
-    #[clap(short, long, help = "yomo Serverless LLM Function name")]
+    #[clap(short, long, value_parser = NonEmptyStringValueParser::new(), help = "yomo Serverless LLM Function name")]
     name: String,
 
     #[clap(
         short,
         long,
         default_value = "127.0.0.1:9000",
-        help = "YoMo-Zipper endpoint addr"
+        help = "YoMo-Zipper endpoint address"
     )]
     zipper: String,
 
@@ -93,7 +93,7 @@ struct RunOptions {
     #[clap(
         long,
         default_value_t = false,
-        help = "enable the insecure mode will skip server name verification"
+        help = "insecure mode will skip servername verification"
     )]
     tls_insecure: bool,
 }
@@ -170,7 +170,7 @@ async fn serve(opt: ServeOptions) -> Result<()> {
 
     select! {
         r = serve_http(&config.host, config.http_port, MemoryConnector::new(sender, 4*1024*1024)) => r,
-        r = zipper_memory_bridge.serve_bridge() => r,
+        _ = zipper_memory_bridge.serve_bridge() => Ok(()),
         r = zipper.serve(&config.host, config.quic_port, &config.tls) => r,
     }?;
 
@@ -194,7 +194,7 @@ async fn run(opt: RunOptions) -> Result<()> {
 
     select! {
         r = serverless_handler.run_subprocess(&opt.serverless_dir) => r,
-        r = sfn.serve_bridge() => r,
+        _ = sfn.serve_bridge() => Ok(()),
     }?;
 
     Ok(())

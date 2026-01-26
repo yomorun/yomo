@@ -1,6 +1,6 @@
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use axum::http::StatusCode;
-use log::error;
+use log::{error, info};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     spawn,
@@ -22,57 +22,93 @@ where
     R2: AsyncReadExt + Unpin + Send + 'static,
     W2: AsyncWriteExt + Unpin + Send + 'static,
 {
-    async fn accept(&mut self) -> Result<Option<(R1, W1)>> {
-        Ok(None)
-    }
+    async fn accept(&mut self) -> Result<Option<(R1, W1)>>;
 
-    async fn find_downstream(&self, _headers: &RequestHeaders) -> Result<Option<C>> {
-        Ok(None)
-    }
-
-    async fn forward(&self, mut r1: R1, mut w1: W1) -> Result<()> {
-        let headers: RequestHeaders = receive_frame(&mut r1)
-            .await?
-            .ok_or(anyhow!("failed to parse headers"))?;
-
-        match self.find_downstream(&headers).await? {
-            Some(connector) => {
-                let (r2, mut w2) = connector.open_new_stream().await?;
-
-                send_frame(&mut w2, &headers).await?;
-
-                // pipe request & response body streams
-                pipe_streams(r1, w1, r2, w2);
-            }
-            None => {
-                send_frame(
-                    &mut w1,
-                    &ResponseHeaders {
-                        status_code: StatusCode::NOT_FOUND.as_u16(),
-                        error_msg: "downstream not found".to_owned(),
-                        body_format: BodyFormat::Null,
-                        ..Default::default()
-                    },
-                )
-                .await?;
-                w1.shutdown().await?;
-            }
-        }
-
-        Ok(())
-    }
+    async fn find_downstream(&self, req_headers: &RequestHeaders) -> Result<Option<C>>;
 
     /// Start bridge service to accept and forward requests
-    async fn serve_bridge(mut self) -> Result<()> {
-        while let Some((r1, w1)) = self.accept().await? {
+    async fn serve_bridge(mut self) {
+        while let Ok(Some((mut r1, mut w1))) = self.accept().await {
             let bridge = self.clone();
+
             spawn(async move {
-                if let Err(e) = bridge.forward(r1, w1).await {
-                    error!("forward error: {}", e);
+                match receive_frame(&mut r1).await {
+                    Ok(Some(req_headers)) => match bridge.find_downstream(&req_headers).await {
+                        Ok(Some(connector)) => {
+                            info!(
+                                "[{}|{}] forward '{}' to downstream",
+                                req_headers.trace_id, req_headers.request_id, req_headers.sfn_name
+                            );
+
+                            match connector.open_new_stream().await {
+                                Ok((r2, mut w2)) => {
+                                    if let Err(e) = send_frame(&mut w2, &req_headers).await {
+                                        Self::response_error_headers(
+                                            &mut w1,
+                                            StatusCode::INTERNAL_SERVER_ERROR,
+                                            &format!("send request headers error: {}", e),
+                                        )
+                                        .await;
+                                    } else {
+                                        pipe_streams(r1, w1, r2, w2);
+                                    }
+                                }
+                                Err(e) => {
+                                    Self::response_error_headers(
+                                        &mut w1,
+                                        StatusCode::INTERNAL_SERVER_ERROR,
+                                        &format!("open new stream error: {}", e),
+                                    )
+                                    .await;
+                                }
+                            }
+                        }
+                        Ok(None) => {
+                            Self::response_error_headers(
+                                &mut w1,
+                                StatusCode::NOT_FOUND,
+                                &format!("downstream '{}' not found", req_headers.sfn_name),
+                            )
+                            .await;
+                        }
+                        Err(e) => {
+                            Self::response_error_headers(
+                                &mut w1,
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                &format!("find downstream '{}' error: {}", req_headers.sfn_name, e),
+                            )
+                            .await;
+                        }
+                    },
+                    _ => {
+                        Self::response_error_headers(
+                            &mut w1,
+                            StatusCode::BAD_REQUEST,
+                            "failed to receive request headers",
+                        )
+                        .await;
+                    }
                 }
             });
         }
+    }
 
-        Ok(())
+    async fn response_error_headers(w1: &mut W1, status_code: StatusCode, error_msg: &str) {
+        error!(
+            "forward to downstream error: {}, {}",
+            status_code, error_msg
+        );
+        send_frame(
+            w1,
+            &ResponseHeaders {
+                status_code: status_code.as_u16(),
+                error_msg: error_msg.to_owned(),
+                body_format: BodyFormat::Null,
+                ..Default::default()
+            },
+        )
+        .await
+        .ok();
+        w1.shutdown().await.ok();
     }
 }

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -16,7 +15,7 @@ func Handler(args Arguments, ch chan<- Result) error {
 
 	for _, chunk := range strings.Split(string(args), " ") {
 		if len(chunk) > 20 {
-			return errors.New("chunk too long")
+			return fmt.Errorf("chunk '%s' is too long", chunk)
 		}
 
 		chunkResult := strings.ToUpper(chunk)

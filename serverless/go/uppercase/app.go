@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 )
@@ -14,7 +13,7 @@ func Handler(args Arguments) (Result, error) {
 	fmt.Println("args:", args)
 
 	if len(args) > 20 {
-		return "", errors.New("input too long")
+		return "", fmt.Errorf("input '%s' is too long", args)
 	}
 
 	result := strings.ToUpper(string(args))
