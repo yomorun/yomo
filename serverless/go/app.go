@@ -1,9 +1,11 @@
 package main
 
-func SimpleHandler(args string) (string, error) {
-	return "", nil
-}
+type Arguments struct{}
 
-func StreamHandler(args string, ch chan<- string) error {
-	return nil
+type Result struct{}
+
+var ServerlessContext map[string]any
+
+func Handler(args Arguments) (Result, error) {
+	return Result{}, nil
 }

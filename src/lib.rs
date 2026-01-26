@@ -1,6 +1,7 @@
+// Library exports
 pub mod bridge;
 pub mod connector;
-pub mod entry;
+pub mod http;
 pub mod io;
 pub mod sfn;
 pub mod tls;

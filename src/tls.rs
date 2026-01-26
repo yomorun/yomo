@@ -6,11 +6,13 @@ use log::warn;
 use s2n_quic::provider::tls::default::{Client, Server, callbacks::VerifyHostNameCallback};
 use serde::Deserialize;
 
+/// TLS configuration
 #[derive(Debug, Clone, Deserialize, Default, Builder)]
 pub struct TlsConfig {
     ca_cert: Option<String>,
     cert: Option<String>,
     key: Option<String>,
+    #[serde(default)]
     mutual: bool,
 }
 
@@ -19,6 +21,7 @@ const YOMO_TLS_PROTOCOL: [&str; 1] = ["yomo-v2"];
 static LOCAL_CERT_PEM: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/certs/cert.pem"));
 static LOCAL_KEY_PEM: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/certs/key.pem"));
 
+/// Create server TLS configuration
 pub(crate) fn new_server_tls(c: &TlsConfig) -> Result<Server> {
     let mut builder = Server::builder()
         .with_application_protocols(YOMO_TLS_PROTOCOL)?
@@ -43,6 +46,7 @@ pub(crate) fn new_server_tls(c: &TlsConfig) -> Result<Server> {
     Ok(tls)
 }
 
+/// Skip hostname verification (for insecure mode)
 struct SkipVerify;
 
 impl VerifyHostNameCallback for SkipVerify {
@@ -51,6 +55,7 @@ impl VerifyHostNameCallback for SkipVerify {
     }
 }
 
+/// Create client TLS configuration
 pub(crate) fn new_client_tls(c: &TlsConfig, insecure: bool) -> Result<Client> {
     let mut builder = Client::builder()
         .with_application_protocols(YOMO_TLS_PROTOCOL)?

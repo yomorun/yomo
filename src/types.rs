@@ -1,37 +1,43 @@
-use std::collections::HashMap;
-
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+/// Handshake request from SFN to Zipper
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub struct HandshakeReq {
     pub sfn_name: String,
     pub credential: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+/// Handshake response from Zipper to SFN
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub struct HandshakeRes {
     pub ok: bool,
     pub reason: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BodyFormat {
+    #[default]
+    Null,
+    Bytes,
+    Chunk,
+}
+
+/// Request headers for proxying requests through the system
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct RequestHeaders {
-    pub trace_id: String,
-    pub req_id: String,
     pub sfn_name: String,
-    pub stream: bool,
-    pub extra: HashMap<String, String>,
+    pub trace_id: String,
+    pub request_id: String,
+    pub body_format: BodyFormat,
+    pub extension: String,
 }
 
+/// Response headers for responses from SFN
 #[derive(Debug, Serialize, Deserialize, Default)]
-pub struct RequestBody {
-    pub args: String,
-    #[serde(default)]
-    pub context: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Default)]
-pub struct Request {
-    pub headers: RequestHeaders,
-    pub body: RequestBody,
+pub struct ResponseHeaders {
+    pub status_code: u16,
+    pub error_msg: String,
+    pub body_format: BodyFormat,
+    pub extension: String,
 }

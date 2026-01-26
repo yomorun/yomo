@@ -1,21 +1,19 @@
 use std::path::{Path, absolute};
 use std::process::Stdio;
+use std::sync::Arc;
 
 use anyhow::{Ok, Result, anyhow, bail};
+use colored::Colorize;
 use log::{debug, info};
 use tempfile::tempdir;
 use tokio::fs;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::Command,
-    sync::Mutex,
+    sync::RwLock,
 };
 
-use crate::bridge::Bridge;
 use crate::connector::TcpConnector;
-use crate::types::RequestHeaders;
 
 static GO_MAIN: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -23,12 +21,14 @@ static GO_MAIN: &str = include_str!(concat!(
 ));
 static GO_MOD: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/serverless/go/go.mod"));
 
-#[derive(Default)]
+/// Serverless function handler (supports Go)
+#[derive(Default, Clone)]
 pub struct ServerlessHandler {
-    socket_addr: Mutex<String>,
+    socket_addr: Arc<RwLock<Option<String>>>,
 }
 
 impl ServerlessHandler {
+    /// Run serverless function as subprocess
     pub async fn run_subprocess(&self, serverless_dir: &str) -> Result<()> {
         // get the absolute path of serverless directory
         let serverless_dir = Path::new(serverless_dir);
@@ -49,9 +49,21 @@ impl ServerlessHandler {
 
         self.run_go(&serverless_dir).await?;
 
+        info!("serverless function exited");
+
         Ok(())
     }
 
+    /// Get TCP connector to serverless function
+    pub(crate) async fn get_connector(&self) -> Result<Option<TcpConnector>> {
+        let socket_addr = self.socket_addr.read().await.clone();
+        if let Some(addr) = socket_addr {
+            return Ok(Some(TcpConnector::new(&addr)));
+        }
+        Ok(None)
+    }
+
+    /// Compile and run Go serverless function
     async fn run_go(&self, serverless_dir: &Path) -> Result<()> {
         // create temp directory for serverless function
         let temp_dir = tempdir()?;
@@ -82,7 +94,7 @@ impl ServerlessHandler {
         let mut child = Command::new("go")
             .args(["run", "."])
             .current_dir(cwd)
-            .stdin(Stdio::null())
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()?;
 
@@ -92,7 +104,7 @@ impl ServerlessHandler {
                 .as_mut()
                 .ok_or(anyhow!("Failed to open stdout"))?,
         );
-        let mut buf = String::with_capacity(256);
+        let mut buf = String::new();
         if reader.read_line(&mut buf).await? == 0 {
             bail!("failed to read socket address from serverless process");
         }
@@ -103,36 +115,19 @@ impl ServerlessHandler {
         }
         info!("serverless listening: {}", addr);
 
-        let addr = "127.0.0.1:12000".to_string();
-        *self.socket_addr.lock().await = addr;
+        *self.socket_addr.write().await = Some(addr);
 
         drop(temp_dir);
 
         loop {
+            let mut buf = String::new();
             if reader.read_line(&mut buf).await? == 0 {
                 break;
             }
-            println!("{}", buf);
+            print!("{} {}", "[Go Serverless]".cyan(), buf);
         }
-
         child.wait().await?;
 
         Ok(())
-    }
-}
-
-#[async_trait::async_trait]
-impl<R, W> Bridge<TcpConnector, R, W, OwnedReadHalf, OwnedWriteHalf> for ServerlessHandler
-where
-    R: AsyncReadExt + Unpin + Send + 'static,
-    W: AsyncWriteExt + Unpin + Send + 'static,
-{
-    async fn find_downstream(&self, _headers: &RequestHeaders) -> Result<Option<TcpConnector>> {
-        let socket_addr = self.socket_addr.lock().await.clone();
-        if socket_addr.is_empty() {
-            return Ok(None);
-        }
-
-        Ok(Some(TcpConnector::new(&socket_addr)))
     }
 }
