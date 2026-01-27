@@ -7,13 +7,19 @@ use colored::Colorize;
 use log::{debug, info};
 use tempfile::tempdir;
 use tokio::fs;
+use tokio::io::{ReadHalf, SimplexStream, WriteHalf};
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::sync::Mutex;
+use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::Command,
     sync::RwLock,
 };
 
+use crate::bridge::Bridge;
 use crate::connector::TcpConnector;
+use crate::types::RequestHeaders;
 
 static GO_MAIN: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -52,15 +58,6 @@ impl ServerlessHandler {
         info!("serverless function exited");
 
         Ok(())
-    }
-
-    /// Get TCP connector to serverless function
-    pub(crate) async fn get_connector(&self) -> Result<Option<TcpConnector>> {
-        let socket_addr = self.socket_addr.read().await.clone();
-        if let Some(addr) = socket_addr {
-            return Ok(Some(TcpConnector::new(&addr)));
-        }
-        Ok(None)
     }
 
     /// Compile and run Go serverless function
@@ -129,5 +126,54 @@ impl ServerlessHandler {
         child.wait().await?;
 
         Ok(())
+    }
+}
+
+#[derive(Clone)]
+pub struct ServerlessMemoryBridge {
+    handler: ServerlessHandler,
+    receiver: Arc<Mutex<UnboundedReceiver<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>>>,
+}
+
+impl ServerlessMemoryBridge {
+    pub fn new(
+        handler: ServerlessHandler,
+        receiver: UnboundedReceiver<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>,
+    ) -> Self {
+        Self {
+            handler,
+            receiver: Arc::new(Mutex::new(receiver)),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl
+    Bridge<
+        TcpConnector,
+        ReadHalf<SimplexStream>,
+        WriteHalf<SimplexStream>,
+        OwnedReadHalf,
+        OwnedWriteHalf,
+    > for ServerlessMemoryBridge
+{
+    fn show_name<'a>(&'a self) -> &'a str {
+        "serverless-memory-bridge"
+    }
+
+    async fn accept(
+        &mut self,
+    ) -> Result<Option<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>> {
+        Ok(self.receiver.lock().await.recv().await)
+    }
+
+    async fn find_downstream(&self, _req_headers: &RequestHeaders) -> Result<Option<TcpConnector>> {
+        Ok(self
+            .handler
+            .socket_addr
+            .read()
+            .await
+            .clone()
+            .map(|addr| TcpConnector::new(&addr)))
     }
 }

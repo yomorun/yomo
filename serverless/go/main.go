@@ -12,9 +12,9 @@ import (
 )
 
 var (
-	simpleHandler func(Arguments) (Result, error)       = nil
-	streamHandler func(Arguments, chan<- Result) error  = nil
-	rawHandler    func(io.Reader, io.WriteCloser) error = nil
+	simpleHandler func(Arguments) (Result, error)      = nil
+	streamHandler func(Arguments, chan<- Result) error = nil
+	rawHandler    func(io.Reader, io.Writer)           = nil
 
 	handlerMode string
 )
@@ -161,8 +161,9 @@ func handleStream(stream io.ReadWriteCloser) {
 
 	// todo: read description, set serverless context
 
-	resHeaders := ResponseHeaders{
+	resHeaders := &ResponseHeaders{
 		StatusCode: 200,
+		BodyFormat: "null",
 	}
 
 	switch handlerMode {
@@ -172,27 +173,28 @@ func handleStream(stream io.ReadWriteCloser) {
 		reqBody, err := readBytes(stream)
 		if err != nil {
 			log.Println("read request body error:", err)
+
+			resHeaders.StatusCode = 400
+			resHeaders.ErrorMsg = err.Error()
+			writePacket(stream, resHeaders)
 			return
 		}
 		log.Printf("req body: %s\n", string(reqBody))
 
 		resBody, err := callSimpleHandler(simpleHandler, reqBody)
-		if err != nil {
-			log.Println("call simple handler error:", err)
-
-			resHeaders.BodyFormat = "null"
-			resHeaders.StatusCode = 500
-			resHeaders.ErrorMsg = err.Error()
-		} else {
+		if err == nil {
 			log.Printf("simple handler response: %s\n", string(resBody))
 
 			resHeaders.BodyFormat = "bytes"
-		}
+			writePacket(stream, resHeaders)
 
-		writePacket(stream, &resHeaders)
-
-		if err == nil {
 			writeBytes(stream, resBody)
+		} else {
+			log.Println("call simple handler error:", err)
+
+			resHeaders.StatusCode = 500
+			resHeaders.ErrorMsg = err.Error()
+			writePacket(stream, resHeaders)
 		}
 	case "stream":
 		log.Println("call stream handler")
@@ -200,12 +202,16 @@ func handleStream(stream io.ReadWriteCloser) {
 		reqBody, err := readBytes(stream)
 		if err != nil {
 			log.Println("read request body error:", err)
+
+			resHeaders.StatusCode = 400
+			resHeaders.ErrorMsg = err.Error()
+			writePacket(stream, resHeaders)
 			return
 		}
 		log.Printf("req body: %s\n", string(reqBody))
 
 		resHeaders.BodyFormat = "chunk"
-		writePacket(stream, &resHeaders)
+		writePacket(stream, resHeaders)
 
 		err = callStreamHandler(stream, streamHandler, reqBody)
 		if err != nil {
@@ -217,15 +223,13 @@ func handleStream(stream io.ReadWriteCloser) {
 		log.Println("call raw handler")
 
 		resHeaders.BodyFormat = "bytes"
-		writePacket(stream, &resHeaders)
+		writePacket(stream, resHeaders)
 
-		err := rawHandler(stream, stream)
-		if err != nil {
-			log.Println("call raw handler error:", err)
-		}
+		rawHandler(stream, stream)
 	default:
 		resHeaders.StatusCode = 500
 		resHeaders.ErrorMsg = "unimplemented serverless mode: " + handlerMode
+		writePacket(stream, resHeaders)
 	}
 }
 

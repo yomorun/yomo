@@ -11,13 +11,18 @@ use yomo::{
     bridge::Bridge,
     connector::MemoryConnector,
     http::http_handler,
-    sfn::{client::Sfn, serverless::ServerlessHandler},
+    sfn::{
+        client::Sfn,
+        serverless::{ServerlessHandler, ServerlessMemoryBridge},
+    },
     tls::TlsConfig,
     zipper::{
         router::RouterImpl,
         server::{Zipper, ZipperMemoryBridge},
     },
 };
+
+const MAX_BUF_SIZE: usize = 4 * 1024 * 1024;
 
 /// Default host address
 fn default_host() -> String {
@@ -169,7 +174,7 @@ async fn serve(opt: ServeOptions) -> Result<()> {
     let zipper_memory_bridge = ZipperMemoryBridge::new(zipper.clone(), receiver);
 
     select! {
-        r = serve_http(&config.host, config.http_port, MemoryConnector::new(sender, 4*1024*1024)) => r,
+        r = serve_http(&config.host, config.http_port, MemoryConnector::new(sender, MAX_BUF_SIZE)) => r,
         _ = zipper_memory_bridge.serve_bridge() => Ok(()),
         r = zipper.serve(&config.host, config.quic_port, &config.tls) => r,
     }?;
@@ -186,14 +191,17 @@ async fn run(opt: RunOptions) -> Result<()> {
         .mutual(opt.tls_mutual)
         .build();
 
+    let (sender, receiver) = mpsc::unbounded_channel();
     let serverless_handler = ServerlessHandler::default();
-
-    let mut sfn = Sfn::new(opt.name, serverless_handler.clone());
+    let serverless_memory_bridge =
+        ServerlessMemoryBridge::new(serverless_handler.clone(), receiver);
+    let mut sfn = Sfn::new(opt.name, MemoryConnector::new(sender, MAX_BUF_SIZE));
     sfn.connect_zipper(&opt.zipper, &opt.credential, &tls_config, opt.tls_insecure)
         .await?;
 
     select! {
         r = serverless_handler.run_subprocess(&opt.serverless_dir) => r,
+        _ = serverless_memory_bridge.serve_bridge() => Ok(()),
         _ = sfn.serve_bridge() => Ok(()),
     }?;
 

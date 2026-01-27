@@ -10,16 +10,14 @@ use s2n_quic::{
     stream::{ReceiveStream, SendStream},
 };
 use tokio::{
-    io::AsyncWriteExt,
-    net::tcp::{OwnedReadHalf, OwnedWriteHalf},
+    io::{AsyncWriteExt, ReadHalf, SimplexStream, WriteHalf},
     sync::Mutex,
 };
 
 use crate::{
     bridge::Bridge,
-    connector::TcpConnector,
+    connector::MemoryConnector,
     io::{receive_frame, send_frame},
-    sfn::serverless::ServerlessHandler,
     tls::{TlsConfig, new_client_tls},
     types::{HandshakeRequest, HandshakeResponse, RequestHeaders},
 };
@@ -31,15 +29,15 @@ pub struct Sfn {
 
     quic_conn: Option<Arc<Mutex<Connection>>>,
 
-    serverless_handler: ServerlessHandler,
+    memory_connector: MemoryConnector,
 }
 
 impl Sfn {
-    pub fn new(sfn_name: String, serverless_handler: ServerlessHandler) -> Self {
+    pub fn new(sfn_name: String, memory_connector: MemoryConnector) -> Self {
         Self {
             sfn_name,
             quic_conn: None,
-            serverless_handler,
+            memory_connector: memory_connector,
         }
     }
 }
@@ -124,7 +122,19 @@ impl Sfn {
 }
 
 #[async_trait::async_trait]
-impl Bridge<TcpConnector, ReceiveStream, SendStream, OwnedReadHalf, OwnedWriteHalf> for Sfn {
+impl
+    Bridge<
+        MemoryConnector,
+        ReceiveStream,
+        SendStream,
+        ReadHalf<SimplexStream>,
+        WriteHalf<SimplexStream>,
+    > for Sfn
+{
+    fn show_name<'a>(&'a self) -> &'a str {
+        "sfn"
+    }
+
     async fn accept(&mut self) -> Result<Option<(ReceiveStream, SendStream)>> {
         if let Some(conn) = &self.quic_conn {
             if let Some(stream) = conn.lock().await.accept_bidirectional_stream().await? {
@@ -137,7 +147,7 @@ impl Bridge<TcpConnector, ReceiveStream, SendStream, OwnedReadHalf, OwnedWriteHa
         Ok(None)
     }
 
-    async fn find_downstream(&self, _headers: &RequestHeaders) -> Result<Option<TcpConnector>> {
-        self.serverless_handler.get_connector().await
+    async fn find_downstream(&self, _headers: &RequestHeaders) -> Result<Option<MemoryConnector>> {
+        Ok(Some(self.memory_connector.clone()))
     }
 }

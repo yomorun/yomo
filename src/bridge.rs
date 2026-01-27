@@ -22,6 +22,8 @@ where
     R2: AsyncReadExt + Unpin + Send + 'static,
     W2: AsyncWriteExt + Unpin + Send + 'static,
 {
+    fn show_name<'a>(&'a self) -> &'a str;
+
     async fn accept(&mut self) -> Result<Option<(R1, W1)>>;
 
     async fn find_downstream(&self, req_headers: &RequestHeaders) -> Result<Option<C>>;
@@ -35,10 +37,7 @@ where
                 match receive_frame(&mut r1).await {
                     Ok(Some(req_headers)) => match bridge.find_downstream(&req_headers).await {
                         Ok(Some(connector)) => {
-                            info!(
-                                "[{}|{}] forward '{}' to downstream",
-                                req_headers.trace_id, req_headers.request_id, req_headers.sfn_name
-                            );
+                            info!("{} --> '{}'", bridge.show_name(), req_headers.sfn_name);
 
                             match connector.open_new_stream().await {
                                 Ok((r2, mut w2)) => {
@@ -50,7 +49,7 @@ where
                                         )
                                         .await;
                                     } else {
-                                        pipe_streams(r1, w1, r2, w2);
+                                        pipe_streams(r1, w1, r2, w2).await;
                                     }
                                 }
                                 Err(e) => {

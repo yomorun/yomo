@@ -189,6 +189,10 @@ impl
         SendStream,
     > for ZipperMemoryBridge
 {
+    fn show_name<'a>(&'a self) -> &'a str {
+        "zipper-memory"
+    }
+
     async fn accept(
         &mut self,
     ) -> Result<Option<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>> {
@@ -202,6 +206,7 @@ impl
 
 #[derive(Clone)]
 struct ZipperQuicBridge {
+    name: String,
     zipper: Zipper,
     conn: Arc<Mutex<Connection>>,
 }
@@ -209,6 +214,7 @@ struct ZipperQuicBridge {
 impl ZipperQuicBridge {
     pub fn new(zipper: Zipper, conn: Connection) -> Self {
         Self {
+            name: format!("zipper-quic-{}", conn.id()),
             zipper,
             conn: Arc::new(Mutex::new(conn)),
         }
@@ -219,6 +225,10 @@ impl ZipperQuicBridge {
 impl Bridge<QuicConnector, ReceiveStream, SendStream, ReceiveStream, SendStream>
     for ZipperQuicBridge
 {
+    fn show_name<'a>(&'a self) -> &'a str {
+        &self.name
+    }
+
     async fn accept(&mut self) -> Result<Option<(ReceiveStream, SendStream)>> {
         Ok(self
             .conn

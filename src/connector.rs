@@ -63,6 +63,7 @@ impl Connector<ReceiveStream, SendStream> for QuicConnector {
 }
 
 /// Memory connector for in-process communication via channel
+#[derive(Clone)]
 pub struct MemoryConnector {
     sender: UnboundedSender<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>,
     max_buf_size: usize,

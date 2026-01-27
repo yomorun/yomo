@@ -5,7 +5,7 @@ use log::{error, trace};
 use serde::{Deserialize, Serialize};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, copy},
-    spawn,
+    join,
 };
 
 /// Send bytes with length-prefixed framing
@@ -13,7 +13,7 @@ pub async fn send_bytes(stream: &mut (impl AsyncWriteExt + Unpin), bytes: &[u8])
     trace!("send bytes: {:?}", bytes);
     stream.write_u32(bytes.len() as u32).await?;
     stream.write_all(bytes).await?;
-    stream.flush().await?;
+    // stream.flush().await?;
     Ok(())
 }
 
@@ -58,24 +58,43 @@ pub async fn receive_frame<T: for<'a> Deserialize<'a> + Debug>(
 }
 
 /// Bidirectional pipe between two streams
-pub(crate) fn pipe_streams<R1, W1, R2, W2>(mut r1: R1, mut w1: W1, mut r2: R2, mut w2: W2)
+pub async fn pipe_streams<R1, W1, R2, W2>(mut r1: R1, mut w1: W1, mut r2: R2, mut w2: W2)
 where
     R1: AsyncReadExt + Unpin + Send + 'static,
     W1: AsyncWriteExt + Unpin + Send + 'static,
     R2: AsyncReadExt + Unpin + Send + 'static,
     W2: AsyncWriteExt + Unpin + Send + 'static,
 {
-    spawn(async move {
-        if let Err(e) = copy(&mut r1, &mut w2).await {
-            error!("copy request stream error: {}", e);
-        }
-        w2.shutdown().await.ok();
-    });
-
-    spawn(async move {
-        if let Err(e) = copy(&mut r2, &mut w1).await {
-            error!("copy response stream error: {}", e);
-        }
-        w1.shutdown().await.ok();
-    });
+    join!(
+        async move {
+            match copy(&mut r1, &mut w2).await {
+                Ok(n) => {
+                    trace!("copied {} bytes from r1 to w2", n);
+                }
+                Err(e) => {
+                    if e.kind() == ErrorKind::UnexpectedEof {
+                        trace!("r1 EOF");
+                    } else {
+                        error!("copy r1 to w2 error: {}", e);
+                    }
+                }
+            }
+            w2.shutdown().await.ok();
+        },
+        async move {
+            match copy(&mut r2, &mut w1).await {
+                Ok(n) => {
+                    trace!("copied {} bytes from r2 to w1", n);
+                }
+                Err(e) => {
+                    if e.kind() == ErrorKind::UnexpectedEof {
+                        trace!("r2 EOF");
+                    } else {
+                        error!("copy r2 to w1 error: {}", e);
+                    }
+                }
+            }
+            w1.shutdown().await.ok();
+        },
+    );
 }
