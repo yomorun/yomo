@@ -7,7 +7,7 @@ import (
 	"io"
 	"slices"
 
-	openai "github.com/sashabaranov/go-openai"
+	openai "github.com/yomorun/go-openai"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/pkg/bridge/ai/caller"
@@ -123,16 +123,20 @@ func multiTurnFunctionCalling(
 
 		resp, err := createChatCompletions(gctx, p, chatCtx.req, md)
 		if err != nil {
-			chatSpan.RecordError(err)
+			// chatSpan.RecordError(err)
 			chatSpan.End()
 			return err
 		}
 		// return the response directly if it's the last call or the request contains tools
 		if chatCtx.callTimes == maxCalls || hasReqTools {
+			if hasReqTools && req.Stream {
+				w.SetStreamHeader()
+				w.Flush()
+			}
 			err := resp.writeResponse(w, chatCtx)
 			respSpan.End()
 			if err != nil {
-				respSpan.RecordError(err)
+				// respSpan.RecordError(err)
 				return err
 			}
 			return nil
@@ -142,7 +146,7 @@ func multiTurnFunctionCalling(
 
 		result, err := resp.process(w, chatCtx)
 		if err != nil {
-			chatSpan.RecordError(err)
+			// chatSpan.RecordError(err)
 			return err
 		}
 
@@ -483,6 +487,9 @@ func (r *streamChatResp) accumulateToolCall(delta []openai.ToolCall) {
 		}
 		if v.Function.Name != "" {
 			item.Function.Name = v.Function.Name
+		}
+		if v.ExtraContent != nil {
+			item.ExtraContent = v.ExtraContent
 		}
 		r.toolCallsMap[index] = item
 	}

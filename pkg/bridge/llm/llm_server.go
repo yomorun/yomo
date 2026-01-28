@@ -107,6 +107,7 @@ func DecorateReqContext(service *pkgai.Service, logger *slog.Logger) func(handle
 				logContent = append(logContent, "traceId", traceID.String())
 			}
 			if err := ww.GetError(); err != nil {
+				span.RecordError(err)
 				logger.Error("llm birdge request", append(logContent, "err", err)...)
 			} else {
 				logger.Info("llm birdge request", logContent...)

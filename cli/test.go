@@ -27,9 +27,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sashabaranov/go-openai"
 	"github.com/shirou/gopsutil/v3/process"
 	"github.com/spf13/cobra"
+	"github.com/yomorun/go-openai"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/cli/serverless"
 	"github.com/yomorun/yomo/pkg/log"

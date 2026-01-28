@@ -4,8 +4,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
+	"github.com/yomorun/go-openai"
 	"github.com/yomorun/yomo/core/ylog"
 )
 

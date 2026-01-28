@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	openai "github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
+	openai "github.com/yomorun/go-openai"
 )
 
 func TestCloudflareOpenAIProvider_Name(t *testing.T) {

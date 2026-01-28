@@ -1,6 +1,6 @@
 module github.com/yomorun/yomo
 
-go 1.25
+go 1.25.0
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.18.1
@@ -15,13 +15,13 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.1.0
 	github.com/quic-go/quic-go v0.57.1
 	github.com/robfig/cron/v3 v3.0.1
-	github.com/sashabaranov/go-openai v1.40.5
 	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/pflag v1.0.10
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
 	github.com/vmihailenco/msgpack/v5 v5.4.1
+	github.com/yomorun/go-openai v1.50.0
 	github.com/yomorun/y3 v1.0.5
 	go.opentelemetry.io/otel v1.37.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.37.0
@@ -89,7 +89,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/crypto v0.41.0 // indirect
 	golang.org/x/net v0.43.0 // indirect
-	golang.org/x/oauth2 v0.30.0 // indirect
+	golang.org/x/oauth2 v0.34.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect
 	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/term v0.34.0 // indirect

@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
+	"github.com/yomorun/go-openai"
 )
 
 func TestNewProvider(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"io"
 	"net/http"
 
-	openai "github.com/sashabaranov/go-openai"
+	openai "github.com/yomorun/go-openai"
 	"github.com/yomorun/yomo/ai"
 	pkgai "github.com/yomorun/yomo/pkg/bridge/ai"
 )
@@ -15,6 +15,8 @@ import (
 // RespondWithError writes an error to response according to the OpenAI API spec.
 func RespondWithError(w pkgai.EventResponseWriter, code int, err error) error {
 	newCode, errBody := w.InterceptError(code, err)
+
+	w.RecordError(errors.New(errBody.Message))
 
 	if newCode != 0 {
 		code = newCode

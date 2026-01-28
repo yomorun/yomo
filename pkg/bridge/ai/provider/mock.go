@@ -9,7 +9,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/sashabaranov/go-openai"
+	"github.com/yomorun/go-openai"
 	"github.com/yomorun/yomo/core/metadata"
 )
 

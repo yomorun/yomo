@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
+	"github.com/yomorun/go-openai"
 )
 
 func TestDecodeChatCompletionRequest(t *testing.T) {

@@ -120,9 +120,10 @@ type promptOperation struct {
 type SystemPromptOp int
 
 const (
-	SystemPromptOpOverwrite SystemPromptOp = 0
-	SystemPromptOpDisabled  SystemPromptOp = 1
-	SystemPromptOpPrefix    SystemPromptOp = 2
+	SystemPromptOpOverwrite       SystemPromptOp = 0
+	SystemPromptOpDisabled        SystemPromptOp = 1
+	SystemPromptOpPrefix          SystemPromptOp = 2
+	SystemPromptOpClientPreferred SystemPromptOp = 3
 )
 
 // SetSystemPrompt sets the system prompt

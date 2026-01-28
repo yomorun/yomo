@@ -1,7 +1,7 @@
 // Package ai contains the model for LLM Function Calling features
 package ai
 
-import "github.com/sashabaranov/go-openai"
+import "github.com/yomorun/go-openai"
 
 // ErrorResponse is the response for error
 type ErrorResponse struct {

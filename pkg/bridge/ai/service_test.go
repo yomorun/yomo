@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	openai "github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
+	openai "github.com/yomorun/go-openai"
 	"github.com/yomorun/yomo"
 
 	"github.com/yomorun/yomo/ai"
@@ -124,6 +124,60 @@ func TestOpSystemPrompt(t *testing.T) {
 			want: openai.ChatCompletionRequest{
 				Messages: []openai.ChatCompletionMessage{
 					{Role: "system", Content: "hello\nworld"},
+				},
+			},
+		},
+		{
+			name: "client preferred with client system prompt",
+			args: args{
+				prompt: "system prompt",
+				op:     caller.SystemPromptOpClientPreferred,
+				req: openai.ChatCompletionRequest{
+					Messages: []openai.ChatCompletionMessage{
+						{Role: "system", Content: "client prompt"},
+						{Role: "user", Content: "test"},
+					},
+				},
+			},
+			want: openai.ChatCompletionRequest{
+				Messages: []openai.ChatCompletionMessage{
+					{Role: "system", Content: "client prompt"},
+					{Role: "user", Content: "test"},
+				},
+			},
+		},
+		{
+			name: "client preferred without client system prompt",
+			args: args{
+				prompt: "system prompt",
+				op:     caller.SystemPromptOpClientPreferred,
+				req: openai.ChatCompletionRequest{
+					Messages: []openai.ChatCompletionMessage{
+						{Role: "user", Content: "test"},
+					},
+				},
+			},
+			want: openai.ChatCompletionRequest{
+				Messages: []openai.ChatCompletionMessage{
+					{Role: "system", Content: "system prompt"},
+					{Role: "user", Content: "test"},
+				},
+			},
+		},
+		{
+			name: "client preferred with empty system prompt",
+			args: args{
+				prompt: "",
+				op:     caller.SystemPromptOpClientPreferred,
+				req: openai.ChatCompletionRequest{
+					Messages: []openai.ChatCompletionMessage{
+						{Role: "user", Content: "test"},
+					},
+				},
+			},
+			want: openai.ChatCompletionRequest{
+				Messages: []openai.ChatCompletionMessage{
+					{Role: "user", Content: "test"},
 				},
 			},
 		},

@@ -9,7 +9,7 @@ import (
 	"reflect"
 	"time"
 
-	openai "github.com/sashabaranov/go-openai"
+	openai "github.com/yomorun/go-openai"
 	"github.com/yomorun/yomo/ai"
 )
 

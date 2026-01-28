@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
+	"github.com/yomorun/go-openai"
 )
 
 func TestXAIProvider_Name(t *testing.T) {

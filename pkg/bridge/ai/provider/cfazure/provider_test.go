@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	openai "github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
+	openai "github.com/yomorun/go-openai"
 )
 
 func TestNewProvider(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/golang-lru/v2/expirable"
-	openai "github.com/sashabaranov/go-openai"
+	openai "github.com/yomorun/go-openai"
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/metadata"
@@ -145,7 +145,7 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, transID stri
 	// 4. loop if multi-turn function calling until call stop
 	w.RecordIsStream(req.Stream)
 	if err := multiTurnFunctionCalling(ctx, req, transID, hasReqTools, w, srv.provider, caller, tracer, md, agentContext); err != nil {
-		w.RecordError(err)
+		srv.logger.Error("chatCompletionFailed", "transID", transID, "err", err)
 		return err
 	}
 	return nil
@@ -177,7 +177,7 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 	// 4. loop if multi-turn function calling until call stop
 	w.RecordIsStream(req.Stream)
 	if err := multiTurnFunctionCalling(ctx, req, transID, hasReqTools, w, srv.provider, caller, tracer, md, agentContext); err != nil {
-		w.RecordError(err)
+		srv.logger.Error("chatCompletionFailed", "transID", transID, "err", err)
 		return err
 	}
 	return nil
@@ -241,6 +241,8 @@ func (srv *Service) OpSystemPrompt(req openai.ChatCompletionRequest, sysPrompt s
 				content = sysPrompt + "\n" + msg.Content
 			case caller.SystemPromptOpOverwrite:
 				content = sysPrompt
+			case caller.SystemPromptOpClientPreferred:
+				content = msg.Content
 			}
 			messages = append(messages, openai.ChatCompletionMessage{
 				Role:    msg.Role,
@@ -251,11 +253,13 @@ func (srv *Service) OpSystemPrompt(req openai.ChatCompletionRequest, sysPrompt s
 	}
 
 	if systemCount == 0 && sysPrompt != "" {
-		message := openai.ChatCompletionMessage{
-			Role:    "system",
-			Content: sysPrompt,
+		if op == caller.SystemPromptOpClientPreferred || op == caller.SystemPromptOpOverwrite || op == caller.SystemPromptOpPrefix {
+			message := openai.ChatCompletionMessage{
+				Role:    "system",
+				Content: sysPrompt,
+			}
+			messages = append([]openai.ChatCompletionMessage{message}, req.Messages...)
 		}
-		messages = append([]openai.ChatCompletionMessage{message}, req.Messages...)
 	}
 	req.Messages = messages
 

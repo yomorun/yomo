@@ -13,7 +13,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/anthropics/anthropic-sdk-go/packages/ssestream"
 	_ "github.com/joho/godotenv/autoload"
-	"github.com/sashabaranov/go-openai"
+	"github.com/yomorun/go-openai"
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"
 
