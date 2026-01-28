@@ -5,21 +5,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"os"
 	"reflect"
 )
 
 var (
-	simpleHandler func(Arguments) (Result, error)      = nil
-	streamHandler func(Arguments, chan<- Result) error = nil
-	rawHandler    func(io.Reader, io.Writer)           = nil
-
-	handlerMode string
+	yomoSimpleHandler func(Arguments) (Result, error) = nil
+	yomoStreamHandler func(Arguments, chan<- Result)  = nil
 )
 
-type RequestHeaders struct {
+type YomoRequestHeaders struct {
 	SfnName    string `json:"sfn_name"`
 	TraceID    string `json:"trace_id"`
 	ReqeustID  string `json:"request_id"`
@@ -27,29 +23,28 @@ type RequestHeaders struct {
 	Extension  string `json:"extension"`
 }
 
-type RequestBody[ARGS any] struct {
-	Args ARGS `json:"args"`
-	// todo: parse serverless context
-	// Context CONTEXT `json:"context"`
+type YomoRequestBody struct {
+	Args Arguments `json:"args"`
+	// todo
+	// Context map[string]any `json:"context"`
 }
 
-type ResponseHeaders struct {
+type YomoResponseHeaders struct {
 	StatusCode uint16 `json:"status_code"`
 	ErrorMsg   string `json:"error_msg"`
 	BodyFormat string `json:"body_format"`
 	Extension  string `json:"extension"`
 }
 
-type ResponseBody struct {
-	Data any `json:"data"`
+type YomoResponseBody struct {
+	Result any `json:"result"`
 }
 
 type Chunk struct {
-	Data  any    `json:"data"`
-	Error string `json:"error,omitempty"`
+	Chunk any `json:"chunk"`
 }
 
-func readBytes(r io.Reader) ([]byte, error) {
+func yomoReadBytes(r io.Reader) ([]byte, error) {
 	lengthBuf := make([]byte, 4)
 	_, err := io.ReadFull(r, lengthBuf)
 	if err != nil {
@@ -67,7 +62,7 @@ func readBytes(r io.Reader) ([]byte, error) {
 	return data, nil
 }
 
-func writeBytes(w io.Writer, data []byte) {
+func yomoWriteBytes(w io.Writer, data []byte) {
 	// write uint32 as length of the data
 	lengthBuf := make([]byte, 4)
 	binary.BigEndian.PutUint32(lengthBuf, uint32(len(data)))
@@ -77,8 +72,8 @@ func writeBytes(w io.Writer, data []byte) {
 	w.Write(data)
 }
 
-func readPacket[T any](r io.Reader) (*T, error) {
-	buf, err := readBytes(r)
+func yomoReadPacket[T any](r io.Reader) (*T, error) {
+	buf, err := yomoReadBytes(r)
 	if err != nil {
 		return nil, err
 	}
@@ -93,171 +88,93 @@ func readPacket[T any](r io.Reader) (*T, error) {
 	return &packet, nil
 }
 
-func writePacket(w io.Writer, packet any) {
+func yomoWritePacket(w io.Writer, packet any) {
 	// encode the packet
 	buf, _ := json.Marshal(packet)
 
-	writeBytes(w, buf)
+	yomoWriteBytes(w, buf)
 }
 
-func callSimpleHandler[ARGS any, RES any](
-	handler func(ARGS) (RES, error), body []byte,
-) ([]byte, error) {
-	var request RequestBody[ARGS]
-	err := json.Unmarshal(body, &request)
-	if err != nil {
-		return nil, err
-	}
+func yomoHandleStream(handlerMode string, conn io.ReadWriteCloser) error {
+	defer conn.Close()
 
-	res, err := handler(request.Args)
-	if err != nil {
-		return nil, err
-	}
-
-	response := ResponseBody{Data: res}
-	buf, err := json.Marshal(response)
-	if err != nil {
-		return nil, err
-	}
-
-	return buf, nil
-}
-
-func callStreamHandler[ARGS any, RES any](
-	stream io.Writer, handler func(ARGS, chan<- RES) error, body []byte,
-) error {
-	var request RequestBody[ARGS]
-	err := json.Unmarshal(body, &request)
+	_, err := yomoReadPacket[YomoRequestHeaders](conn)
 	if err != nil {
 		return err
 	}
 
-	ch := make(chan RES)
-	defer close(ch)
+	resHeaders := &YomoResponseHeaders{
+		StatusCode: 200,
+		BodyFormat: "null",
+	}
 
-	go func() {
-		for x := range ch {
-			writePacket(stream, &Chunk{Data: x})
+	reqBody, err := yomoReadPacket[YomoRequestBody](conn)
+	if err != nil {
+		resHeaders.StatusCode = 400
+		resHeaders.ErrorMsg = err.Error()
+		yomoWritePacket(conn, resHeaders)
+		return err
+	}
+
+	switch handlerMode {
+	case "simple":
+		result, err := yomoSimpleHandler(reqBody.Args)
+		if err == nil {
+			resHeaders.BodyFormat = "bytes"
+			yomoWritePacket(conn, resHeaders)
+			resBody := YomoResponseBody{Result: result}
+			yomoWritePacket(conn, resBody)
+		} else {
+			resHeaders.StatusCode = 500
+			resHeaders.ErrorMsg = err.Error()
+			yomoWritePacket(conn, resHeaders)
 		}
-	}()
+	case "stream":
+		resHeaders.BodyFormat = "chunk"
+		yomoWritePacket(conn, resHeaders)
 
-	err = handler(request.Args, ch)
-	if err != nil {
-		return err
+		ch := make(chan Result)
+
+		go func() {
+			for x := range ch {
+				yomoWritePacket(conn, &Chunk{Chunk: x})
+			}
+		}()
+
+		yomoStreamHandler(reqBody.Args, ch)
+		close(ch)
+	default:
+		resHeaders.StatusCode = 500
+		resHeaders.ErrorMsg = "unimplemented serverless mode: " + handlerMode
+		yomoWritePacket(conn, resHeaders)
 	}
 
 	return nil
 }
 
-func handleStream(stream io.ReadWriteCloser) {
-	defer stream.Close()
-
-	reqHeaders, err := readPacket[RequestHeaders](stream)
-	if err != nil {
-		log.Println("read request header error:", err)
-		return
-	}
-	log.Printf("req headers: trace_id=%s, request_id=%s\n", reqHeaders.TraceID, reqHeaders.ReqeustID)
-
-	// todo: read description, set serverless context
-
-	resHeaders := &ResponseHeaders{
-		StatusCode: 200,
-		BodyFormat: "null",
-	}
-
-	switch handlerMode {
-	case "simple":
-		log.Println("call simple handler")
-
-		reqBody, err := readBytes(stream)
-		if err != nil {
-			log.Println("read request body error:", err)
-
-			resHeaders.StatusCode = 400
-			resHeaders.ErrorMsg = err.Error()
-			writePacket(stream, resHeaders)
-			return
-		}
-		log.Printf("req body: %s\n", string(reqBody))
-
-		resBody, err := callSimpleHandler(simpleHandler, reqBody)
-		if err == nil {
-			log.Printf("simple handler response: %s\n", string(resBody))
-
-			resHeaders.BodyFormat = "bytes"
-			writePacket(stream, resHeaders)
-
-			writeBytes(stream, resBody)
-		} else {
-			log.Println("call simple handler error:", err)
-
-			resHeaders.StatusCode = 500
-			resHeaders.ErrorMsg = err.Error()
-			writePacket(stream, resHeaders)
-		}
-	case "stream":
-		log.Println("call stream handler")
-
-		reqBody, err := readBytes(stream)
-		if err != nil {
-			log.Println("read request body error:", err)
-
-			resHeaders.StatusCode = 400
-			resHeaders.ErrorMsg = err.Error()
-			writePacket(stream, resHeaders)
-			return
-		}
-		log.Printf("req body: %s\n", string(reqBody))
-
-		resHeaders.BodyFormat = "chunk"
-		writePacket(stream, resHeaders)
-
-		err = callStreamHandler(stream, streamHandler, reqBody)
-		if err != nil {
-			log.Println("call stream handler error:", err)
-
-			writePacket(stream, &Chunk{Error: err.Error()})
-		}
-	case "raw":
-		log.Println("call raw handler")
-
-		resHeaders.BodyFormat = "bytes"
-		writePacket(stream, resHeaders)
-
-		rawHandler(stream, stream)
-	default:
-		resHeaders.StatusCode = 500
-		resHeaders.ErrorMsg = "unimplemented serverless mode: " + handlerMode
-		writePacket(stream, resHeaders)
-	}
-}
-
 // reflect application Handler function
-func reflectApp() (string, error) {
+func yomoReflectApp() (string, error) {
 	h := reflect.ValueOf(Handler)
 
 	switch h.Type() {
-	case reflect.TypeOf(simpleHandler):
-		reflect.ValueOf(&simpleHandler).Elem().Set(h)
+	case reflect.TypeOf(yomoSimpleHandler):
+		reflect.ValueOf(&yomoSimpleHandler).Elem().Set(h)
 		return "simple", nil
-	case reflect.TypeOf(streamHandler):
-		reflect.ValueOf(&streamHandler).Elem().Set(h)
+	case reflect.TypeOf(yomoStreamHandler):
+		reflect.ValueOf(&yomoStreamHandler).Elem().Set(h)
 		return "stream", nil
-	case reflect.TypeOf(rawHandler):
-		reflect.ValueOf(&rawHandler).Elem().Set(h)
-		return "raw", nil
 	default:
 		return "", fmt.Errorf("unsupported handler type: %s", h.Type())
 	}
+
+	// todo: read description, set serverless context
 }
 
 func main() {
-	mode, err := reflectApp()
+	handlerMode, err := yomoReflectApp()
 	if err != nil {
 		os.Exit(1)
 	}
-	handlerMode = mode
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -266,8 +183,6 @@ func main() {
 	defer listener.Close()
 
 	fmt.Println(listener.Addr().String())
-
-	log.Println("serverless handler mode:", handlerMode)
 
 	go func() {
 		for {
@@ -279,10 +194,9 @@ func main() {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			log.Println("accept error:", err)
-			return
+			os.Exit(1)
 		}
 
-		go handleStream(conn)
+		go yomoHandleStream(handlerMode, conn)
 	}
 }
