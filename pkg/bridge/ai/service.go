@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/golang-lru/v2/expirable"
-	openai "github.com/sashabaranov/go-openai"
+	openai "github.com/yomorun/go-openai"
 	"github.com/yomorun/yomo"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/core/metadata"

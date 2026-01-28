@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
+	"github.com/yomorun/go-openai"
 )
 
 func TestAzureAIFoundryProvider_Name(t *testing.T) {

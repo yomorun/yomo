@@ -3,7 +3,7 @@ package ai
 import (
 	"encoding/json"
 
-	"github.com/sashabaranov/go-openai"
+	"github.com/yomorun/go-openai"
 )
 
 // DecodeChatCompletionRequest decodes openai.ChatCompletionRequest from JSON data.

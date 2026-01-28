@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	openai "github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
+	openai "github.com/yomorun/go-openai"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/pkg/bridge/mock"
 	"go.opentelemetry.io/otel/trace/noop"

@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	openai "github.com/sashabaranov/go-openai"
+	openai "github.com/yomorun/go-openai"
 	"github.com/yomorun/yomo/ai"
 	"github.com/yomorun/yomo/pkg/id"
 	"go.opentelemetry.io/otel/trace"

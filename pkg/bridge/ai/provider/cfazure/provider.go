@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 
-	openai "github.com/sashabaranov/go-openai"
+	openai "github.com/yomorun/go-openai"
 
 	"github.com/yomorun/yomo/core/metadata"
 	"github.com/yomorun/yomo/core/ylog"

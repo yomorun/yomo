@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	openai "github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
+	openai "github.com/yomorun/go-openai"
 	"github.com/yomorun/yomo"
 
 	"github.com/yomorun/yomo/ai"

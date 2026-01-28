@@ -7,7 +7,7 @@ import (
 
 	// automatically load .env file
 	_ "github.com/joho/godotenv/autoload"
-	"github.com/sashabaranov/go-openai"
+	"github.com/yomorun/go-openai"
 	"github.com/yomorun/yomo/core/metadata"
 
 	provider "github.com/yomorun/yomo/pkg/bridge/ai/provider"

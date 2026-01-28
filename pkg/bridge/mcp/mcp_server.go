@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/sashabaranov/go-openai"
+	"github.com/yomorun/go-openai"
 	"github.com/yomorun/yomo/core/ylog"
 	pkgai "github.com/yomorun/yomo/pkg/bridge/ai"
 	"github.com/yomorun/yomo/pkg/id"
