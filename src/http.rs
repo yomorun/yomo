@@ -7,7 +7,7 @@ use axum::{
     response::{IntoResponse, Sse, sse::Event},
 };
 use futures_util::stream;
-use log::{error, info};
+use log::{debug, error, info};
 use tokio::io::{AsyncWriteExt, ReadHalf, SimplexStream};
 
 use crate::{
@@ -69,17 +69,21 @@ pub struct CustomResponse {
 impl IntoResponse for CustomResponse {
     fn into_response(self) -> axum::response::Response {
         if let Some(body) = self.body {
-            info!("recv body: {}", String::from_utf8_lossy(&body));
+            debug!("recv body: {}", String::from_utf8_lossy(&body));
+            info!("recv body done");
             (StatusCode::OK, body).into_response()
         } else if let Some(reader) = self.reader {
             let stream = stream::unfold(reader, move |mut r| async move {
                 match receive_bytes(&mut r).await {
                     Ok(Some(chunk)) => {
                         let data = String::from_utf8_lossy(&chunk);
-                        info!("recv chunk: {}", data);
+                        debug!("recv chunk: {}", data);
                         Some((Ok(Event::default().data(data)), r))
                     }
-                    Ok(None) => None,
+                    Ok(None) => {
+                        info!("recv chunk done");
+                        None
+                    }
                     Err(e) => {
                         error!("receiving frame error: {}", e);
                         Some((Err(anyhow::anyhow!("receiving frame error: {}", e)), r))
@@ -104,10 +108,13 @@ pub async fn http_handler(
     let request_headers = new_request_headers(&sfn_name, &http_headers);
 
     info!(
-        "[{}|{}] new request to [{}]: {}",
+        "[{}|{}] new request to [{}]",
+        request_headers.trace_id, request_headers.request_id, sfn_name
+    );
+    debug!(
+        "[{}|{}] request headers: {}",
         request_headers.trace_id,
         request_headers.request_id,
-        sfn_name,
         String::from_utf8_lossy(&body)
     );
 

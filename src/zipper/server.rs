@@ -44,10 +44,12 @@ impl Zipper {
     pub async fn serve(&self, host: &str, port: u16, tls_config: &TlsConfig) -> Result<()> {
         let tls = new_server_tls(tls_config).context("failed to load tls certificates")?;
 
+        // todo: configurable
         let limits = Limits::new()
             .with_max_handshake_duration(Duration::from_secs(10))?
             .with_max_idle_timeout(Duration::from_secs(10))?
             .with_max_keep_alive_period(Duration::from_secs(5))?
+            .with_max_active_connection_ids(2000)?
             .with_max_open_local_bidirectional_streams(1000)?
             .with_max_open_local_unidirectional_streams(0)?
             .with_max_open_remote_bidirectional_streams(1000)?

@@ -8,10 +8,16 @@ use tokio::{
     join,
 };
 
+const MAX_FRAME_SIZE: u32 = 64 * 1024 * 1024;
+
 /// Send bytes with length-prefixed framing
 pub async fn send_bytes(stream: &mut (impl AsyncWriteExt + Unpin), bytes: &[u8]) -> Result<()> {
+    let length = bytes.len() as u32;
+    if length > MAX_FRAME_SIZE {
+        bail!("frame size too large: {}", length);
+    }
     trace!("send bytes: {:?}", bytes);
-    stream.write_u32(bytes.len() as u32).await?;
+    stream.write_u32(length).await?;
     stream.write_all(bytes).await?;
     // stream.flush().await?;
     Ok(())
@@ -19,7 +25,7 @@ pub async fn send_bytes(stream: &mut (impl AsyncWriteExt + Unpin), bytes: &[u8])
 
 /// Receive bytes with length-prefixed framing
 pub async fn receive_bytes(stream: &mut (impl AsyncReadExt + Unpin)) -> Result<Option<Vec<u8>>> {
-    let size = match stream.read_u32().await {
+    let length = match stream.read_u32().await {
         Ok(size) => size,
         Err(e) => {
             if e.kind() == ErrorKind::UnexpectedEof {
@@ -29,7 +35,11 @@ pub async fn receive_bytes(stream: &mut (impl AsyncReadExt + Unpin)) -> Result<O
         }
     };
 
-    let mut bytes = vec![0; size as usize];
+    if length > MAX_FRAME_SIZE {
+        bail!("frame size too large: {}", length);
+    }
+
+    let mut bytes = vec![0; length as usize];
     stream.read_exact(&mut bytes).await?;
     trace!("receive bytes: {:?}", bytes);
     Ok(Some(bytes))

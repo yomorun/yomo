@@ -34,9 +34,8 @@ impl RouterImpl {
 
 impl Router for RouterImpl {
     fn handshake(&mut self, conn_id: u64, req: &HandshakeRequest) -> Result<Option<u64>> {
-        // anonymous: will not be routed, but can send requests
         if req.sfn_name.is_empty() {
-            return Ok(None);
+            bail!("sfn_name cannot be empty");
         }
 
         if let Some(token) = &self.auth_token {

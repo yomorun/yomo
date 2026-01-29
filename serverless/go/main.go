@@ -37,11 +37,13 @@ type YomoResponseHeaders struct {
 }
 
 type YomoResponseBody struct {
-	Result any `json:"result"`
+	Result   any    `json:"result"`
+	ErrorMsg string `json:"error_msg,omitempty"`
 }
 
 type Chunk struct {
 	Chunk any `json:"chunk"`
+	// todo: error process
 }
 
 func yomoReadBytes(r io.Reader) ([]byte, error) {
@@ -100,40 +102,59 @@ func yomoHandleStream(handlerMode string, conn io.ReadWriteCloser) error {
 
 	_, err := yomoReadPacket[YomoRequestHeaders](conn)
 	if err != nil {
+		yomoWritePacket(
+			conn,
+			&YomoResponseHeaders{
+				StatusCode: 400,
+				ErrorMsg:   err.Error(),
+				BodyFormat: "null",
+			},
+		)
 		return err
-	}
-
-	resHeaders := &YomoResponseHeaders{
-		StatusCode: 200,
-		BodyFormat: "null",
 	}
 
 	reqBody, err := yomoReadPacket[YomoRequestBody](conn)
 	if err != nil {
-		resHeaders.StatusCode = 400
-		resHeaders.ErrorMsg = err.Error()
-		yomoWritePacket(conn, resHeaders)
+		yomoWritePacket(
+			conn,
+			&YomoResponseHeaders{
+				StatusCode: 400,
+				ErrorMsg:   err.Error(),
+				BodyFormat: "null",
+			},
+		)
 		return err
 	}
 
 	switch handlerMode {
 	case "simple":
+		resBody := &YomoResponseBody{}
 		result, err := yomoSimpleHandler(reqBody.Args)
 		if err == nil {
-			resHeaders.BodyFormat = "bytes"
-			yomoWritePacket(conn, resHeaders)
-			resBody := YomoResponseBody{Result: result}
-			yomoWritePacket(conn, resBody)
+			resBody.Result = result
 		} else {
-			resHeaders.StatusCode = 500
-			resHeaders.ErrorMsg = err.Error()
-			yomoWritePacket(conn, resHeaders)
+			resBody.ErrorMsg = err.Error()
 		}
+
+		yomoWritePacket(
+			conn,
+			&YomoResponseHeaders{
+				StatusCode: 200,
+				BodyFormat: "bytes",
+			},
+		)
+		yomoWritePacket(conn, resBody)
 	case "stream":
-		resHeaders.BodyFormat = "chunk"
-		yomoWritePacket(conn, resHeaders)
+		yomoWritePacket(
+			conn,
+			&YomoResponseHeaders{
+				StatusCode: 200,
+				BodyFormat: "chunk",
+			},
+		)
 
 		ch := make(chan Result)
+		defer close(ch)
 
 		go func() {
 			for x := range ch {
@@ -142,11 +163,17 @@ func yomoHandleStream(handlerMode string, conn io.ReadWriteCloser) error {
 		}()
 
 		yomoStreamHandler(reqBody.Args, ch)
-		close(ch)
 	default:
-		resHeaders.StatusCode = 500
-		resHeaders.ErrorMsg = "unimplemented serverless mode: " + handlerMode
-		yomoWritePacket(conn, resHeaders)
+		err = fmt.Errorf("unimplemented serverless mode: %s", handlerMode)
+		yomoWritePacket(
+			conn,
+			&YomoResponseHeaders{
+				StatusCode: 500,
+				ErrorMsg:   err.Error(),
+				BodyFormat: "null",
+			},
+		)
+		return err
 	}
 
 	return nil
