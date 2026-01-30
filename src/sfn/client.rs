@@ -1,4 +1,4 @@
-use std::{net::ToSocketAddrs, sync::Arc, time::Duration};
+use std::{net::ToSocketAddrs as _, sync::Arc, time::Duration};
 
 use anyhow::{Result, anyhow, bail};
 use axum::http::StatusCode;
@@ -18,7 +18,7 @@ use crate::{
     bridge::Bridge,
     connector::MemoryConnector,
     io::{receive_frame, send_frame},
-    tls::{TlsConfig, new_client_tls},
+    tls::{TlsConfig, new_tls},
     types::{HandshakeRequest, HandshakeResponse, RequestHeaders},
 };
 
@@ -49,11 +49,8 @@ impl Sfn {
         zipper: &str,
         credential: &str,
         tls_config: &TlsConfig,
-        tls_insecure: bool,
     ) -> Result<()> {
         info!("start sfn: {}", self.sfn_name);
-
-        let tls = new_client_tls(tls_config, tls_insecure)?;
 
         let limits = Limits::new()
             .with_max_handshake_duration(Duration::from_secs(10))?
@@ -65,7 +62,7 @@ impl Sfn {
             .with_max_open_remote_unidirectional_streams(0)?;
 
         let client = Client::builder()
-            .with_tls(tls)?
+            .with_tls(new_tls(tls_config, false).await?)?
             .with_io("0.0.0.0:0")?
             .with_limits(limits)?
             .start()?;

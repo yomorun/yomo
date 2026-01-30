@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Result, anyhow};
 use axum::http::StatusCode;
 use log::{error, info};
 use s2n_quic::{
@@ -19,7 +19,7 @@ use crate::{
     bridge::Bridge,
     connector::QuicConnector,
     io::{receive_frame, send_frame},
-    tls::{TlsConfig, new_server_tls},
+    tls::{TlsConfig, new_tls},
     types::{HandshakeRequest, HandshakeResponse, RequestHeaders},
     zipper::router::Router,
 };
@@ -42,8 +42,6 @@ impl Zipper {
 
     /// Start QUIC server: listen for remote SFN connections
     pub async fn serve(&self, host: &str, port: u16, tls_config: &TlsConfig) -> Result<()> {
-        let tls = new_server_tls(tls_config).context("failed to load tls certificates")?;
-
         // todo: configurable
         let limits = Limits::new()
             .with_max_handshake_duration(Duration::from_secs(10))?
@@ -56,7 +54,7 @@ impl Zipper {
             .with_max_open_remote_unidirectional_streams(0)?;
 
         let mut server = Server::builder()
-            .with_tls(tls)?
+            .with_tls(new_tls(tls_config, true).await?)?
             .with_io(TryInto::try_into((host, port))?)?
             .with_limits(limits)?
             .start()?;
