@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use anyhow::{Result, bail};
+use log::debug;
 
 use crate::types::{HandshakeRequest, RequestHeaders};
 
@@ -54,6 +55,10 @@ impl Router for RouterImpl {
     fn route(&self, headers: &RequestHeaders) -> Result<Option<u64>> {
         if !headers.sfn_name.is_empty() {
             if let Some(conn_id) = self.route_map.get(&headers.sfn_name) {
+                debug!(
+                    "[{}|{}] route [{}] --> conn_id: {}",
+                    headers.trace_id, headers.request_id, headers.sfn_name, conn_id
+                );
                 return Ok(Some(conn_id.to_owned()));
             }
         }

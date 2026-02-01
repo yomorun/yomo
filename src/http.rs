@@ -7,7 +7,7 @@ use axum::{
     response::{IntoResponse, Sse, sse::Event},
 };
 use futures_util::stream;
-use log::{debug, error, info};
+use log::{debug, error};
 use tokio::io::{AsyncWriteExt, ReadHalf, SimplexStream};
 
 use crate::{
@@ -70,7 +70,6 @@ impl IntoResponse for CustomResponse {
     fn into_response(self) -> axum::response::Response {
         if let Some(body) = self.body {
             debug!("recv body: {}", String::from_utf8_lossy(&body));
-            info!("recv body done");
             (StatusCode::OK, body).into_response()
         } else if let Some(reader) = self.reader {
             let stream = stream::unfold(reader, move |mut r| async move {
@@ -81,7 +80,7 @@ impl IntoResponse for CustomResponse {
                         Some((Ok(Event::default().data(data)), r))
                     }
                     Ok(None) => {
-                        info!("recv chunk done");
+                        debug!("recv chunk done");
                         None
                     }
                     Err(e) => {
@@ -107,14 +106,11 @@ pub async fn http_handler(
 ) -> Result<CustomResponse, CustomError> {
     let request_headers = new_request_headers(&sfn_name, &http_headers);
 
-    info!(
-        "[{}|{}] new request to [{}]",
-        request_headers.trace_id, request_headers.request_id, sfn_name
-    );
     debug!(
-        "[{}|{}] request headers: {}",
+        "[{}|{}] new request to [{}]: {}",
         request_headers.trace_id,
         request_headers.request_id,
+        request_headers.sfn_name,
         String::from_utf8_lossy(&body)
     );
 

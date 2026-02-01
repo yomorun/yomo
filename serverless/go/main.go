@@ -25,8 +25,6 @@ type YomoRequestHeaders struct {
 
 type YomoRequestBody struct {
 	Args Arguments `json:"args"`
-	// todo
-	// Context map[string]any `json:"context"`
 }
 
 type YomoResponseHeaders struct {

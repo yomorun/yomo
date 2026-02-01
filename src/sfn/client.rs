@@ -128,10 +128,6 @@ impl
         WriteHalf<SimplexStream>,
     > for Sfn
 {
-    fn show_name<'a>(&'a self) -> &'a str {
-        "sfn"
-    }
-
     async fn accept(&mut self) -> Result<Option<(ReceiveStream, SendStream)>> {
         if let Some(conn) = &self.quic_conn {
             if let Some(stream) = conn.lock().await.accept_bidirectional_stream().await? {
@@ -144,7 +140,10 @@ impl
         Ok(None)
     }
 
-    async fn find_downstream(&self, _headers: &RequestHeaders) -> Result<Option<MemoryConnector>> {
+    async fn find_downstream(
+        &self,
+        _headers: &Option<RequestHeaders>,
+    ) -> Result<Option<MemoryConnector>> {
         Ok(Some(self.memory_connector.clone()))
     }
 }

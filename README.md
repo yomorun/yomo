@@ -11,7 +11,7 @@ cargo build
 - run server:
 
 ```
-RUST_LOG=info ./target/debug/yomo serve
+RUST_LOG=debug ./target/debug/yomo serve
 ```
 
 - run sfn:

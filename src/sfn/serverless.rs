@@ -157,17 +157,16 @@ impl
         OwnedWriteHalf,
     > for ServerlessMemoryBridge
 {
-    fn show_name<'a>(&'a self) -> &'a str {
-        "serverless-memory-bridge"
-    }
-
     async fn accept(
         &mut self,
     ) -> Result<Option<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>> {
         Ok(self.receiver.lock().await.recv().await)
     }
 
-    async fn find_downstream(&self, _req_headers: &RequestHeaders) -> Result<Option<TcpConnector>> {
+    async fn find_downstream(
+        &self,
+        _req_headers: &Option<RequestHeaders>,
+    ) -> Result<Option<TcpConnector>> {
         Ok(self
             .handler
             .socket_addr

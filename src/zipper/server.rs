@@ -189,24 +189,28 @@ impl
         SendStream,
     > for ZipperMemoryBridge
 {
-    fn show_name<'a>(&'a self) -> &'a str {
-        "zipper-memory"
-    }
-
     async fn accept(
         &mut self,
     ) -> Result<Option<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>> {
         Ok(self.receiver.lock().await.recv().await)
     }
 
-    async fn find_downstream(&self, headers: &RequestHeaders) -> Result<Option<QuicConnector>> {
-        self.zipper.route(headers).await
+    fn skip_headers(&self) -> bool {
+        false
+    }
+
+    async fn find_downstream(
+        &self,
+        headers: &Option<RequestHeaders>,
+    ) -> Result<Option<QuicConnector>> {
+        self.zipper
+            .route(headers.as_ref().ok_or(anyhow!("no headers"))?)
+            .await
     }
 }
 
 #[derive(Clone)]
 struct ZipperQuicBridge {
-    name: String,
     zipper: Zipper,
     conn: Arc<Mutex<Connection>>,
 }
@@ -214,7 +218,6 @@ struct ZipperQuicBridge {
 impl ZipperQuicBridge {
     pub fn new(zipper: Zipper, conn: Connection) -> Self {
         Self {
-            name: format!("zipper-quic-{}", conn.id()),
             zipper,
             conn: Arc::new(Mutex::new(conn)),
         }
@@ -225,10 +228,6 @@ impl ZipperQuicBridge {
 impl Bridge<QuicConnector, ReceiveStream, SendStream, ReceiveStream, SendStream>
     for ZipperQuicBridge
 {
-    fn show_name<'a>(&'a self) -> &'a str {
-        &self.name
-    }
-
     async fn accept(&mut self) -> Result<Option<(ReceiveStream, SendStream)>> {
         Ok(self
             .conn
@@ -239,7 +238,16 @@ impl Bridge<QuicConnector, ReceiveStream, SendStream, ReceiveStream, SendStream>
             .map(|stream| stream.split()))
     }
 
-    async fn find_downstream(&self, headers: &RequestHeaders) -> Result<Option<QuicConnector>> {
-        self.zipper.route(headers).await
+    fn skip_headers(&self) -> bool {
+        false
+    }
+
+    async fn find_downstream(
+        &self,
+        headers: &Option<RequestHeaders>,
+    ) -> Result<Option<QuicConnector>> {
+        self.zipper
+            .route(headers.as_ref().ok_or(anyhow!("no headers"))?)
+            .await
     }
 }
