@@ -16,7 +16,7 @@ use tokio::{
 
 use crate::{
     bridge::Bridge,
-    connector::MemoryConnector,
+    connector::{MemoryConnector, QuicConnector},
     io::{receive_frame, send_frame},
     tls::{TlsConfig, new_tls},
     types::{HandshakeRequest, HandshakeResponse, RequestHeaders},
@@ -29,15 +29,15 @@ pub struct Sfn {
 
     quic_conn: Option<Arc<Mutex<Connection>>>,
 
-    memory_connector: MemoryConnector,
+    memory_connector: Option<MemoryConnector>,
 }
 
 impl Sfn {
-    pub fn new(sfn_name: String, memory_connector: MemoryConnector) -> Self {
+    pub fn new(sfn_name: String, memory_connector: Option<MemoryConnector>) -> Self {
         Self {
             sfn_name,
             quic_conn: None,
-            memory_connector: memory_connector,
+            memory_connector,
         }
     }
 }
@@ -49,7 +49,7 @@ impl Sfn {
         zipper: &str,
         credential: &str,
         tls_config: &TlsConfig,
-    ) -> Result<()> {
+    ) -> Result<QuicConnector> {
         info!("start sfn: {}", self.sfn_name);
 
         let limits = Limits::new()
@@ -89,9 +89,10 @@ impl Sfn {
         // Send handshake request
         self.handshake(&mut conn, credential).await?;
 
+        let quic_connector = QuicConnector::new(conn.handle());
         self.quic_conn = Some(Arc::new(Mutex::new(conn)));
 
-        Ok(())
+        Ok(quic_connector)
     }
 
     /// Send handshake request to Zipper
@@ -144,6 +145,9 @@ impl
         &self,
         _headers: &Option<RequestHeaders>,
     ) -> Result<Option<MemoryConnector>> {
-        Ok(Some(self.memory_connector.clone()))
+        match &self.memory_connector {
+            Some(c) => Ok(Some(c.clone())),
+            None => Ok(None),
+        }
     }
 }

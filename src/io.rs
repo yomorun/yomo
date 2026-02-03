@@ -19,7 +19,6 @@ pub async fn send_bytes(stream: &mut (impl AsyncWriteExt + Unpin), bytes: &[u8])
     trace!("send bytes: {:?}", bytes);
     stream.write_u32(length).await?;
     stream.write_all(bytes).await?;
-    // stream.flush().await?;
     Ok(())
 }
 
@@ -70,10 +69,10 @@ pub async fn receive_frame<T: for<'a> Deserialize<'a> + Debug>(
 /// Bidirectional pipe between two streams
 pub async fn pipe_streams<R1, W1, R2, W2>(mut r1: R1, mut w1: W1, mut r2: R2, mut w2: W2)
 where
-    R1: AsyncReadExt + Unpin + Send + 'static,
-    W1: AsyncWriteExt + Unpin + Send + 'static,
-    R2: AsyncReadExt + Unpin + Send + 'static,
-    W2: AsyncWriteExt + Unpin + Send + 'static,
+    R1: AsyncReadExt + Unpin + Send,
+    W1: AsyncWriteExt + Unpin + Send,
+    R2: AsyncReadExt + Unpin + Send,
+    W2: AsyncWriteExt + Unpin + Send,
 {
     join!(
         async move {

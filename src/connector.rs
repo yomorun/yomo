@@ -44,6 +44,7 @@ impl Connector<OwnedReadHalf, OwnedWriteHalf> for TcpConnector {
 }
 
 /// QUIC connector for opening streams on existing QUIC connection
+#[derive(Clone)]
 pub struct QuicConnector {
     handle: Handle,
 }

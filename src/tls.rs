@@ -2,7 +2,7 @@ use std::{io::Cursor, sync::Arc};
 
 use anyhow::{Result, bail};
 use bon::Builder;
-use log::{trace, warn};
+use log::warn;
 use rustls_pki_types::pem::PemObject;
 #[allow(deprecated)]
 use s2n_quic::provider::tls::rustls::rustls::{
@@ -13,7 +13,6 @@ use s2n_quic::provider::tls::rustls::rustls::{
 use s2n_quic::provider::tls::{self as s2n_quic_tls_provider};
 use serde::Deserialize;
 use tokio::{fs::File, io::AsyncReadExt};
-use x509_parser::parse_x509_certificate;
 
 const YOMO_TLS_PROTOCOL: &[u8] = b"yomo-v2";
 
@@ -165,14 +164,6 @@ fn into_root_store(
     let mut roots = RootCertStore::empty();
     if load_native {
         for cert in rustls_native_certs::load_native_certs().certs {
-            trace!(
-                "load native cert: {}",
-                parse_x509_certificate(cert.as_ref())
-                    .map_err(|e| RustlsError::General(e.to_string()))?
-                    .1
-                    .tbs_certificate
-                    .subject
-            );
             roots.add(cert)?;
         }
     }

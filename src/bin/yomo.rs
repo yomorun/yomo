@@ -188,7 +188,7 @@ async fn run(opt: RunOptions) -> Result<()> {
     let serverless_handler = ServerlessHandler::default();
     let serverless_memory_bridge =
         ServerlessMemoryBridge::new(serverless_handler.clone(), receiver);
-    let mut sfn = Sfn::new(opt.name, MemoryConnector::new(sender, MAX_BUF_SIZE));
+    let mut sfn = Sfn::new(opt.name, Some(MemoryConnector::new(sender, MAX_BUF_SIZE)));
     sfn.connect_zipper(&opt.zipper, &opt.credential, &tls_config)
         .await?;
 
