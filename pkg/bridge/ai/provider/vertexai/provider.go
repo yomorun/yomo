@@ -54,7 +54,9 @@ func NewProvider(projectID, location, model, credentialsFile string) *Provider {
 		model = "gemini-2.5-flash"
 	}
 
-	model = "google/" + model
+	if model != "zai-org/glm-5-maas" {
+		model = "google/" + model
+	}
 
 	return &Provider{
 		model:       model,
@@ -68,7 +70,9 @@ func (p *Provider) GetChatCompletions(ctx context.Context, req openai.ChatComple
 	if req.Model == "" {
 		req.Model = p.model
 	} else {
-		req.Model = "google/" + req.Model
+		if req.Model != "zai-org/glm-5-maas" {
+			req.Model = "google/" + req.Model
+		}
 	}
 
 	p.thoughtSign.AttachExtra(req)
@@ -90,7 +94,9 @@ func (p *Provider) GetChatCompletionsStream(ctx context.Context, req openai.Chat
 	if req.Model == "" {
 		req.Model = p.model
 	} else {
-		req.Model = "google/" + req.Model
+		if req.Model != "zai-org/glm-5-maas" {
+			req.Model = "google/" + req.Model
+		}
 	}
 	p.thoughtSign.AttachExtra(req)
 

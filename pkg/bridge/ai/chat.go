@@ -363,7 +363,7 @@ func (r *streamChatResp) process(w EventResponseWriter, chatCtx *chatContext) (*
 		if chatCtx.id == "" {
 			chatCtx.id = chunk.ID
 		}
-		if usage := chunk.Usage; usage != nil {
+		if usage := chunk.Usage; usage != nil && usage.TotalTokens != 0 {
 			updateCtxUsage(chatCtx, *usage)
 		}
 
@@ -377,6 +377,8 @@ func (r *streamChatResp) process(w EventResponseWriter, chatCtx *chatContext) (*
 		choice := chunk.Choices[0]
 		if chunk.Choices[0].FinishReason != "" {
 			r.finishReason = chunk.Choices[0].FinishReason
+			// ignore usage in finish chunk
+			chunk.Usage = nil
 		}
 		// no content chunk (role chunk), just buffer it
 		if choice.Delta.Content == "" && choice.Delta.ReasoningContent == "" && len(choice.Delta.ToolCalls) == 0 {
@@ -452,7 +454,7 @@ func (r *streamChatResp) writeEvent(w EventResponseWriter, chunk openai.ChatComp
 		if len(v.Choices) > 0 && v.Choices[0].FinishReason == openai.FinishReasonFunctionCall {
 			return nil
 		}
-		if v.Usage != nil {
+		if v.Usage != nil && v.Usage.TotalTokens != 0 {
 			v.Usage = &chatCtx.totalUsage
 		}
 		if r.finishReason != openai.FinishReasonToolCalls {
