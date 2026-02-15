@@ -152,15 +152,15 @@ func yomoHandleStream(handlerMode string, conn io.ReadWriteCloser) error {
 		)
 
 		ch := make(chan Result)
-		defer close(ch)
 
 		go func() {
-			for x := range ch {
-				yomoWritePacket(conn, &Chunk{Chunk: x})
-			}
+			yomoStreamHandler(reqBody.Args, ch)
+			close(ch)
 		}()
 
-		yomoStreamHandler(reqBody.Args, ch)
+		for x := range ch {
+			yomoWritePacket(conn, &Chunk{Chunk: x})
+		}
 	default:
 		err = fmt.Errorf("unimplemented serverless mode: %s", handlerMode)
 		yomoWritePacket(
@@ -207,7 +207,7 @@ func main() {
 	}
 	defer listener.Close()
 
-	fmt.Println(listener.Addr().String())
+	fmt.Printf("YOMO_SFN_ADDR: %s\n", listener.Addr().String())
 
 	go func() {
 		for {

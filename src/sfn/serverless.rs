@@ -101,20 +101,23 @@ impl ServerlessHandler {
                 .as_mut()
                 .ok_or(anyhow!("Failed to open stdout"))?,
         );
-        let mut buf = String::new();
-        if reader.read_line(&mut buf).await? == 0 {
-            bail!("failed to read socket address from serverless process");
+
+        loop {
+            let mut buf = String::new();
+            if reader.read_line(&mut buf).await? == 0 {
+                bail!("failed to read socket address from serverless process: process exited");
+            }
+
+            let line = buf.trim();
+            if let Some(stripped) = line.strip_prefix("YOMO_SFN_ADDR: ") {
+                let addr = stripped.to_string();
+                info!("serverless listening: {}", addr);
+                *self.socket_addr.write().await = Some(addr);
+                break;
+            } else if !line.is_empty() {
+                print!("{} {}", "[Go Serverless]".cyan(), buf);
+            }
         }
-
-        let addr = buf.trim().to_string();
-        if addr.is_empty() {
-            bail!("received empty socket address");
-        }
-        info!("serverless listening: {}", addr);
-
-        *self.socket_addr.write().await = Some(addr);
-
-        drop(temp_dir);
 
         loop {
             let mut buf = String::new();
