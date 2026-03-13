@@ -75,7 +75,7 @@ func (p *Provider) GetChatCompletions(ctx context.Context, req openai.ChatComple
 		}
 	}
 
-	p.thoughtSign.AttachExtra(req)
+	p.thoughtSign.AttachExtra(&req)
 
 	resp, err := p.client.CreateChatCompletion(ctx, req)
 	if err != nil {
@@ -98,7 +98,7 @@ func (p *Provider) GetChatCompletionsStream(ctx context.Context, req openai.Chat
 			req.Model = "google/" + req.Model
 		}
 	}
-	p.thoughtSign.AttachExtra(req)
+	p.thoughtSign.AttachExtra(&req)
 
 	stream, err := p.client.CreateChatCompletionStream(ctx, req)
 	if err != nil {
@@ -138,7 +138,7 @@ type thoughtSignature struct {
 
 func newThoughtSignature() *thoughtSignature {
 	return &thoughtSignature{
-		inner: expirable.NewLRU[string, map[string]any](200, nil, time.Hour),
+		inner: expirable.NewLRU[string, map[string]any](8000, nil, 6*time.Hour),
 	}
 }
 
@@ -150,14 +150,31 @@ func (k *thoughtSignature) SaveExtra(toolCalls []openai.ToolCall) {
 	}
 }
 
-func (k *thoughtSignature) AttachExtra(req openai.ChatCompletionRequest) {
-	for i, msg := range req.Messages {
-		for j, toolCall := range msg.ToolCalls {
+func (k *thoughtSignature) AttachExtra(req *openai.ChatCompletionRequest) {
+	toolCallIDsToRemove := make(map[string]struct{})
 
+	for i, msg := range req.Messages {
+		var validToolCalls []openai.ToolCall
+		for _, toolCall := range msg.ToolCalls {
 			if extra, ok := k.inner.Get(toolCall.ID); ok {
 				// k.inner.Remove(toolCall.ID)
-				req.Messages[i].ToolCalls[j].ExtraContent = extra
+				toolCall.ExtraContent = extra
+				validToolCalls = append(validToolCalls, toolCall)
+			} else {
+				toolCallIDsToRemove[toolCall.ID] = struct{}{}
 			}
 		}
+		req.Messages[i].ToolCalls = validToolCalls
 	}
+
+	var validMessages []openai.ChatCompletionMessage
+	for _, msg := range req.Messages {
+		if msg.Role == openai.ChatMessageRoleTool && len(toolCallIDsToRemove) > 0 {
+			if _, ok := toolCallIDsToRemove[msg.ToolCallID]; ok {
+				continue
+			}
+		}
+		validMessages = append(validMessages, msg)
+	}
+	req.Messages = validMessages
 }
