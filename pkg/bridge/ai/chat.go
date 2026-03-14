@@ -347,6 +347,9 @@ func writeClientToolCallsResponse(
 		w.Header().Set("Content-Type", "application/json")
 		return json.NewEncoder(w).Encode(filtered)
 	case *streamChatResp:
+		if r.toolCallsStreamed {
+			return nil
+		}
 		return writeFilteredStreamToolCalls(w, r, clientToolCalls)
 	case *invokeResp:
 		return r.writeResponse(w, chatCtx)
@@ -495,6 +498,12 @@ type streamChatResp struct {
 	// toolCallDeltas is the delta responses that contain tool calls
 	toolCallDeltas []openai.ChatCompletionStreamResponse
 	toolCallsMap   map[int]openai.ToolCall
+	// streamToolCalls indicates whether tool calls should be streamed to client
+	streamToolCalls bool
+	// allowedToolIndexes is the set of tool call indexes for client tools
+	allowedToolIndexes map[int]struct{}
+	// toolCallsStreamed indicates tool calls have been streamed
+	toolCallsStreamed bool
 }
 
 var _ chatResponse = (*streamChatResp)(nil)
@@ -509,6 +518,20 @@ func (r *streamChatResp) endProcess(w EventResponseWriter) (*processResult, erro
 		return &processResult{
 			isFunctionCall: false,
 		}, nil
+	}
+
+	if r.streamToolCalls {
+		for _, chunk := range r.buffer {
+			if len(chunk.Choices) == 0 || chunk.Choices[0].FinishReason == "" {
+				continue
+			}
+			if err := w.WriteStreamEvent(chunk); err != nil {
+				return nil, err
+			}
+		}
+		if err := w.WriteStreamDone(); err != nil {
+			return nil, err
+		}
 	}
 
 	toolCalls := r.getToolCalls()
@@ -567,6 +590,27 @@ func (r *streamChatResp) process(w EventResponseWriter, chatCtx *chatContext) (*
 		}
 		if len(choice.Delta.ToolCalls) != 0 {
 			r.toolCallDeltas = append(r.toolCallDeltas, chunk)
+			r.accumulateToolCall(choice.Delta.ToolCalls)
+			r.updateAllowedToolIndexes(chatCtx)
+			if len(r.allowedToolIndexes) != 0 {
+				r.streamToolCalls = true
+			}
+			if r.streamToolCalls {
+				if !r.toolCallsStreamed {
+					if err := r.flushBufferedNonFinishChunks(w); err != nil {
+						return nil, err
+					}
+					r.toolCallsStreamed = true
+				}
+				filteredCalls := r.filterToolCalls(choice.Delta.ToolCalls)
+				if len(filteredCalls) != 0 {
+					chunk.Choices[0].Delta.ToolCalls = filteredCalls
+					if err := w.WriteStreamEvent(chunk); err != nil {
+						return nil, err
+					}
+				}
+				continue
+			}
 			if choice.Delta.Content != "" || choice.Delta.ReasoningContent != "" {
 				// only response content and reasoning content
 				chunk.Choices[0].Delta.ToolCalls = nil
@@ -645,6 +689,59 @@ func (r *streamChatResp) writeEvent(w EventResponseWriter, chunk openai.ChatComp
 		}
 	}
 
+	return nil
+}
+
+func (r *streamChatResp) updateAllowedToolIndexes(chatCtx *chatContext) {
+	if r.allowedToolIndexes == nil {
+		r.allowedToolIndexes = make(map[int]struct{})
+	}
+	for index, call := range r.toolCallsMap {
+		if call.Function.Name == "" {
+			continue
+		}
+		if isServer, ok := chatCtx.toolSources[call.Function.Name]; ok {
+			if !isServer {
+				r.allowedToolIndexes[index] = struct{}{}
+			}
+			continue
+		}
+		r.allowedToolIndexes[index] = struct{}{}
+	}
+}
+
+func (r *streamChatResp) filterToolCalls(toolCalls []openai.ToolCall) []openai.ToolCall {
+	if len(r.allowedToolIndexes) == 0 {
+		return nil
+	}
+	filteredCalls := make([]openai.ToolCall, 0, len(toolCalls))
+	for k, call := range toolCalls {
+		index := k
+		if call.Index != nil {
+			index = *call.Index
+		}
+		if _, ok := r.allowedToolIndexes[index]; ok {
+			filteredCalls = append(filteredCalls, call)
+		}
+	}
+	return filteredCalls
+}
+
+func (r *streamChatResp) flushBufferedNonFinishChunks(w EventResponseWriter) error {
+	if len(r.buffer) == 0 {
+		return nil
+	}
+	remaining := r.buffer[:0]
+	for _, chunk := range r.buffer {
+		if len(chunk.Choices) > 0 && chunk.Choices[0].FinishReason != "" {
+			remaining = append(remaining, chunk)
+			continue
+		}
+		if err := w.WriteStreamEvent(chunk); err != nil {
+			return err
+		}
+	}
+	r.buffer = remaining
 	return nil
 }
 

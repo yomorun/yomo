@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http/httptest"
 	"strings"
@@ -250,4 +251,65 @@ func TestWriteClientToolCallsResponseStreamFiltersClientTools(t *testing.T) {
 	assert.True(t, strings.Contains(got, "toolA"))
 	assert.False(t, strings.Contains(got, "tool1"))
 	assert.True(t, strings.Contains(got, "[DONE]"))
+}
+
+type mockStreamRecver struct {
+	items []openai.ChatCompletionStreamResponse
+}
+
+func (m *mockStreamRecver) Recv() (openai.ChatCompletionStreamResponse, error) {
+	if len(m.items) == 0 {
+		return openai.ChatCompletionStreamResponse{}, io.EOF
+	}
+	item := m.items[0]
+	m.items = m.items[1:]
+	return item, nil
+}
+
+func TestStreamToolCallsImmediateForClientTools(t *testing.T) {
+	recver := &mockStreamRecver{items: []openai.ChatCompletionStreamResponse{
+		{
+			ID: "chatcmpl-1",
+			Choices: []openai.ChatCompletionStreamChoice{
+				{Delta: openai.ChatCompletionStreamChoiceDelta{Role: "assistant"}},
+			},
+		},
+		{
+			ID: "chatcmpl-1",
+			Choices: []openai.ChatCompletionStreamChoice{
+				{Delta: openai.ChatCompletionStreamChoiceDelta{ToolCalls: []openai.ToolCall{{Index: toInt(0), Function: openai.FunctionCall{Name: "toolA", Arguments: "{}"}}}}},
+			},
+		},
+		{
+			ID: "chatcmpl-1",
+			Choices: []openai.ChatCompletionStreamChoice{
+				{FinishReason: openai.FinishReasonToolCalls, Delta: openai.ChatCompletionStreamChoiceDelta{}},
+			},
+		},
+	}}
+
+	resp := &streamChatResp{
+		recver:       recver,
+		toolCallsMap: make(map[int]openai.ToolCall),
+	}
+
+	chatCtx := &chatContext{
+		callTimes: 1,
+		toolSources: map[string]bool{
+			"toolA": false,
+		},
+	}
+
+	w := httptest.NewRecorder()
+	responseWriter := NewResponseWriter(w, slog.Default())
+
+	result, err := resp.process(responseWriter, chatCtx)
+	assert.NoError(t, err)
+	assert.True(t, result.isFunctionCall)
+
+	got := w.Body.String()
+	idxTool := strings.Index(got, "toolA")
+	idxDone := strings.Index(got, "[DONE]")
+	assert.True(t, idxTool >= 0)
+	assert.True(t, idxDone > idxTool)
 }
