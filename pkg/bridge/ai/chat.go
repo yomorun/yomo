@@ -302,7 +302,7 @@ func handleToolCalls(
 			w.SetStreamHeader()
 			w.Flush()
 		}
-		err := resp.writeResponse(w, chatCtx)
+		err := writeClientToolCallsResponse(w, chatCtx, resp, clientToolCalls)
 		respSpan.End()
 		if err != nil {
 			return false, err
@@ -314,7 +314,7 @@ func handleToolCalls(
 			w.SetStreamHeader()
 			w.Flush()
 		}
-		err := resp.writeResponse(w, chatCtx)
+		err := writeClientToolCallsResponse(w, chatCtx, resp, clientToolCalls)
 		respSpan.End()
 		if err != nil {
 			return false, err
@@ -327,6 +327,98 @@ func handleToolCalls(
 		}
 		return true, nil
 	}
+}
+
+func writeClientToolCallsResponse(
+	w EventResponseWriter,
+	chatCtx *chatContext,
+	resp chatResponse,
+	clientToolCalls []openai.ToolCall,
+) error {
+	switch r := resp.(type) {
+	case *chatResp:
+		filtered := r.resp
+		if len(filtered.Choices) > 0 {
+			filtered.Choices[0].Message.ToolCalls = clientToolCalls
+		}
+		updateCtxUsage(chatCtx, filtered.Usage)
+		filtered.Usage = chatCtx.totalUsage
+
+		w.Header().Set("Content-Type", "application/json")
+		return json.NewEncoder(w).Encode(filtered)
+	case *streamChatResp:
+		return writeFilteredStreamToolCalls(w, r, clientToolCalls)
+	case *invokeResp:
+		return r.writeResponse(w, chatCtx)
+	}
+
+	return resp.writeResponse(w, chatCtx)
+}
+
+func writeFilteredStreamToolCalls(
+	w EventResponseWriter,
+	r *streamChatResp,
+	clientToolCalls []openai.ToolCall,
+) error {
+	allowedIndexes := make(map[int]struct{}, len(clientToolCalls))
+	for i, call := range clientToolCalls {
+		index := i
+		if call.Index != nil {
+			index = *call.Index
+		}
+		allowedIndexes[index] = struct{}{}
+	}
+
+	var roleChunks []openai.ChatCompletionStreamResponse
+	var finishChunks []openai.ChatCompletionStreamResponse
+	for _, chunk := range r.buffer {
+		if len(chunk.Choices) > 0 && chunk.Choices[0].FinishReason != "" {
+			finishChunks = append(finishChunks, chunk)
+			continue
+		}
+		roleChunks = append(roleChunks, chunk)
+	}
+
+	for _, chunk := range roleChunks {
+		if err := w.WriteStreamEvent(chunk); err != nil {
+			return err
+		}
+	}
+
+	for _, chunk := range r.toolCallDeltas {
+		if len(chunk.Choices) == 0 {
+			continue
+		}
+		choice := chunk.Choices[0]
+		if len(choice.Delta.ToolCalls) == 0 {
+			continue
+		}
+		filteredCalls := make([]openai.ToolCall, 0, len(choice.Delta.ToolCalls))
+		for k, call := range choice.Delta.ToolCalls {
+			index := k
+			if call.Index != nil {
+				index = *call.Index
+			}
+			if _, ok := allowedIndexes[index]; ok {
+				filteredCalls = append(filteredCalls, call)
+			}
+		}
+		if len(filteredCalls) == 0 {
+			continue
+		}
+		chunk.Choices[0].Delta.ToolCalls = filteredCalls
+		if err := w.WriteStreamEvent(chunk); err != nil {
+			return err
+		}
+	}
+
+	for _, chunk := range finishChunks {
+		if err := w.WriteStreamEvent(chunk); err != nil {
+			return err
+		}
+	}
+
+	return w.WriteStreamDone()
 }
 
 // chatResp is the non-streaming implementation of chatResponse

@@ -2,8 +2,10 @@ package ai
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -133,4 +135,119 @@ func TestHandleToolCalls(t *testing.T) {
 			assert.Equal(t, tt.wantContinue, continueLoop)
 		})
 	}
+}
+
+func TestHandleToolCallsFiltersMixedClientTools(t *testing.T) {
+	chatCtx := &chatContext{
+		toolSources: map[string]bool{
+			"tool1": true,
+			"toolA": false,
+		},
+	}
+	toolCalls := []openai.ToolCall{
+		{Function: openai.FunctionCall{Name: "tool1"}},
+		{Function: openai.FunctionCall{Name: "toolA"}},
+	}
+
+	w := httptest.NewRecorder()
+	responseWriter := NewResponseWriter(w, slog.Default())
+
+	mockResp := &chatResp{
+		resp: openai.ChatCompletionResponse{
+			Choices: []openai.ChatCompletionChoice{
+				{
+					Message: openai.ChatCompletionMessage{
+						ToolCalls: toolCalls,
+					},
+				},
+			},
+		},
+	}
+
+	mockCaller := caller.MockCaller([]caller.MockFunctionCall{
+		{FunctionName: "tool1", RespContent: "test response"},
+	})
+
+	tracer := noop.NewTracerProvider().Tracer("")
+	_, span := tracer.Start(context.Background(), "test")
+
+	continueLoop, err := handleToolCalls(
+		context.Background(),
+		chatCtx,
+		toolCalls,
+		false,
+		responseWriter,
+		mockResp,
+		span,
+		mockCaller,
+		tracer,
+		"test-trans-id",
+		nil,
+	)
+
+	assert.NoError(t, err)
+	assert.False(t, continueLoop)
+
+	var got openai.ChatCompletionResponse
+	decodeErr := json.Unmarshal(w.Body.Bytes(), &got)
+	assert.NoError(t, decodeErr)
+	if assert.NotEmpty(t, got.Choices) {
+		toolCalls := got.Choices[0].Message.ToolCalls
+		if assert.Len(t, toolCalls, 1) {
+			assert.Equal(t, "toolA", toolCalls[0].Function.Name)
+		}
+	}
+}
+
+func TestWriteClientToolCallsResponseStreamFiltersClientTools(t *testing.T) {
+	resp := &streamChatResp{
+		buffer: []openai.ChatCompletionStreamResponse{
+			{
+				ID: "chatcmpl-1",
+				Choices: []openai.ChatCompletionStreamChoice{
+					{
+						Delta: openai.ChatCompletionStreamChoiceDelta{Role: "assistant"},
+					},
+				},
+			},
+			{
+				ID: "chatcmpl-1",
+				Choices: []openai.ChatCompletionStreamChoice{
+					{
+						FinishReason: openai.FinishReasonToolCalls,
+						Delta:        openai.ChatCompletionStreamChoiceDelta{},
+					},
+				},
+			},
+		},
+		toolCallDeltas: []openai.ChatCompletionStreamResponse{
+			{
+				ID: "chatcmpl-1",
+				Choices: []openai.ChatCompletionStreamChoice{
+					{
+						Delta: openai.ChatCompletionStreamChoiceDelta{
+							ToolCalls: []openai.ToolCall{
+								{Index: toInt(0), Function: openai.FunctionCall{Name: "tool1"}},
+								{Index: toInt(1), Function: openai.FunctionCall{Name: "toolA"}},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	clientToolCalls := []openai.ToolCall{{Index: toInt(1), Function: openai.FunctionCall{Name: "toolA"}}}
+
+	w := httptest.NewRecorder()
+	responseWriter := NewResponseWriter(w, slog.Default())
+	responseWriter.SetStreamHeader()
+
+	err := writeClientToolCallsResponse(responseWriter, &chatContext{}, resp, clientToolCalls)
+	assert.NoError(t, err)
+
+	got := w.Body.String()
+	assert.True(t, strings.Contains(got, "toolA"))
+	assert.False(t, strings.Contains(got, "tool1"))
+	assert.True(t, strings.Contains(got, "[DONE]"))
 }
