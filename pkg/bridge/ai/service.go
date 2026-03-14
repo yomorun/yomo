@@ -136,7 +136,7 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, transID stri
 	}
 
 	// 2. add those tools to request
-	req, hasReqTools := srv.addToolsToRequest(req, tools)
+	req, toolSources := srv.mergeToolsToRequest(req, tools)
 
 	// 3. operate system prompt to request
 	prompt, op := caller.GetSystemPrompt()
@@ -144,7 +144,7 @@ func (srv *Service) GetInvoke(ctx context.Context, userInstruction, transID stri
 
 	// 4. loop if multi-turn function calling until call stop
 	w.RecordIsStream(req.Stream)
-	if err := multiTurnFunctionCalling(ctx, req, transID, hasReqTools, w, srv.provider, caller, tracer, md, agentContext); err != nil {
+	if err := multiTurnFunctionCalling(ctx, req, transID, toolSources, w, srv.provider, caller, tracer, md, agentContext); err != nil {
 		srv.logger.Error("chatCompletionFailed", "transID", transID, "err", err)
 		return err
 	}
@@ -168,7 +168,7 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 	}
 
 	// 2. add those tools to request
-	req, hasReqTools := srv.addToolsToRequest(req, tools)
+	req, toolSources := srv.mergeToolsToRequest(req, tools)
 
 	// 3. operate system prompt to request
 	prompt, op := caller.GetSystemPrompt()
@@ -176,7 +176,7 @@ func (srv *Service) GetChatCompletions(ctx context.Context, req openai.ChatCompl
 
 	// 4. loop if multi-turn function calling until call stop
 	w.RecordIsStream(req.Stream)
-	if err := multiTurnFunctionCalling(ctx, req, transID, hasReqTools, w, srv.provider, caller, tracer, md, agentContext); err != nil {
+	if err := multiTurnFunctionCalling(ctx, req, transID, toolSources, w, srv.provider, caller, tracer, md, agentContext); err != nil {
 		srv.logger.Error("chatCompletionFailed", "transID", transID, "err", err)
 		return err
 	}
@@ -207,15 +207,52 @@ func (srv *Service) loadOrCreateCaller(credential string) (*caller.Caller, error
 	return caller, nil
 }
 
-func (srv *Service) addToolsToRequest(req openai.ChatCompletionRequest, tools []openai.Tool) (openai.ChatCompletionRequest, bool) {
-	hasReqTools := len(req.Tools) > 0
-	if !hasReqTools {
-		if len(tools) > 0 {
-			req.Tools = tools
-			srv.logger.Debug("#1 first call", "request", fmt.Sprintf("%+v", req))
+func (srv *Service) mergeToolsToRequest(req openai.ChatCompletionRequest, serverTools []openai.Tool) (openai.ChatCompletionRequest, map[string]bool) {
+	// Create a map to store merged tools, using tool name as key
+	toolMap := make(map[string]openai.Tool)
+	// Create a map to store tool sources (true for backend, false for frontend)
+	toolSources := make(map[string]bool)
+
+	// First add server tools (server tools have priority)
+	for _, tool := range serverTools {
+		toolMap[tool.Function.Name] = tool
+		toolSources[tool.Function.Name] = true // backend tool
+	}
+
+	// Then add request tools, skipping those with same name as server tools
+	for _, tool := range req.Tools {
+		if _, exists := toolMap[tool.Function.Name]; !exists {
+			toolMap[tool.Function.Name] = tool
+			toolSources[tool.Function.Name] = false // frontend tool
 		}
 	}
-	return req, hasReqTools
+
+	// Convert map back to slice, preserving server tools first order
+	mergedTools := make([]openai.Tool, 0, len(toolMap))
+	// First add server tools in original order
+	for _, tool := range serverTools {
+		if _, exists := toolMap[tool.Function.Name]; exists {
+			mergedTools = append(mergedTools, tool)
+			delete(toolMap, tool.Function.Name)
+		}
+	}
+	// Then add remaining request tools
+	for _, tool := range req.Tools {
+		if _, exists := toolMap[tool.Function.Name]; exists {
+			mergedTools = append(mergedTools, tool)
+			delete(toolMap, tool.Function.Name)
+		}
+	}
+
+	// Update request tools
+	if len(mergedTools) > 0 {
+		req.Tools = mergedTools
+	} else {
+		req.Tools = nil
+	}
+	srv.logger.Debug("#1 first call", "request", fmt.Sprintf("%+v", req))
+
+	return req, toolSources
 }
 
 func (srv *Service) OpSystemPrompt(req openai.ChatCompletionRequest, sysPrompt string, op caller.SystemPromptOp) openai.ChatCompletionRequest {

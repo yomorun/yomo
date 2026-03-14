@@ -504,3 +504,127 @@ func TestServiceChatCompletion(t *testing.T) {
 }
 
 func toInt(val int) *int { return &val }
+
+func TestMergeToolsToRequest(t *testing.T) {
+	type args struct {
+		req         openai.ChatCompletionRequest
+		serverTools []openai.Tool
+	}
+	tests := []struct {
+		name            string
+		args            args
+		wantReq         openai.ChatCompletionRequest
+		wantToolSources map[string]bool
+	}{
+		{
+			name: "only server tools",
+			args: args{
+				req: openai.ChatCompletionRequest{
+					Tools: []openai.Tool{},
+				},
+				serverTools: []openai.Tool{
+					{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "tool1"}},
+					{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "tool2"}},
+				},
+			},
+			wantReq: openai.ChatCompletionRequest{
+				Tools: []openai.Tool{
+					{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "tool1"}},
+					{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "tool2"}},
+				},
+			},
+			wantToolSources: map[string]bool{
+				"tool1": true,
+				"tool2": true,
+			},
+		},
+		{
+			name: "only request tools",
+			args: args{
+				req: openai.ChatCompletionRequest{
+					Tools: []openai.Tool{
+						{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "toolA"}},
+						{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "toolB"}},
+					},
+				},
+				serverTools: []openai.Tool{},
+			},
+			wantReq: openai.ChatCompletionRequest{
+				Tools: []openai.Tool{
+					{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "toolA"}},
+					{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "toolB"}},
+				},
+			},
+			wantToolSources: map[string]bool{
+				"toolA": false,
+				"toolB": false,
+			},
+		},
+		{
+			name: "both tools no conflict",
+			args: args{
+				req: openai.ChatCompletionRequest{
+					Tools: []openai.Tool{
+						{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "toolA"}},
+						{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "toolB"}},
+					},
+				},
+				serverTools: []openai.Tool{
+					{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "tool1"}},
+					{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "tool2"}},
+				},
+			},
+			wantReq: openai.ChatCompletionRequest{
+				Tools: []openai.Tool{
+					{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "tool1"}},
+					{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "tool2"}},
+					{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "toolA"}},
+					{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "toolB"}},
+				},
+			},
+			wantToolSources: map[string]bool{
+				"tool1": true,
+				"tool2": true,
+				"toolA": false,
+				"toolB": false,
+			},
+		},
+		{
+			name: "both tools with conflict",
+			args: args{
+				req: openai.ChatCompletionRequest{
+					Tools: []openai.Tool{
+						{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "tool1"}},
+						{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "toolB"}},
+					},
+				},
+				serverTools: []openai.Tool{
+					{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "tool1"}},
+					{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "tool2"}},
+				},
+			},
+			wantReq: openai.ChatCompletionRequest{
+				Tools: []openai.Tool{
+					{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "tool1"}},
+					{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "tool2"}},
+					{Type: openai.ToolTypeFunction, Function: &openai.FunctionDefinition{Name: "toolB"}},
+				},
+			},
+			wantToolSources: map[string]bool{
+				"tool1": true,
+				"tool2": true,
+				"toolB": false,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := &ServiceOptions{Logger: slog.Default()}
+			s := NewService(nil, opts)
+			gotReq, gotToolSources := s.mergeToolsToRequest(tt.args.req, tt.args.serverTools)
+			assert.Equal(t, tt.wantReq, gotReq)
+			assert.Equal(t, tt.wantToolSources, gotToolSources)
+		})
+	}
+}

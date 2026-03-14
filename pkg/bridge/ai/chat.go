@@ -78,6 +78,8 @@ type chatContext struct {
 	totalUsage openai.Usage
 	// req.Messages is the chat history
 	req openai.ChatCompletionRequest
+	// toolSources maps tool names to their sources (true for server, false for client)
+	toolSources map[string]bool
 }
 
 // multiTurnFunctionCalling calls chat completions multiple times until finishing function calling
@@ -85,7 +87,7 @@ func multiTurnFunctionCalling(
 	gctx context.Context,
 	req openai.ChatCompletionRequest,
 	transID string,
-	hasReqTools bool,
+	toolSources map[string]bool,
 	w EventResponseWriter,
 	p provider.LLMProvider,
 	caller *caller.Caller,
@@ -95,7 +97,7 @@ func multiTurnFunctionCalling(
 ) error {
 	var (
 		maxCalls = 14
-		chatCtx  = &chatContext{req: req}
+		chatCtx  = &chatContext{req: req, toolSources: toolSources}
 	)
 
 	for {
@@ -104,10 +106,21 @@ func multiTurnFunctionCalling(
 			chatCtx.req.ToolChoice = nil
 		}
 
+		// Count server and client tools
+		var serverToolCount, clientToolCount int
+		for _, isServer := range toolSources {
+			if isServer {
+				serverToolCount++
+			} else {
+				clientToolCount++
+			}
+		}
+
 		spanOptions := []trace.SpanStartOption{
 			trace.WithAttributes(
 				attribute.Bool("stream", req.Stream),
-				attribute.Bool("has_tools", hasReqTools),
+				attribute.Int("server_tool_count", serverToolCount),
+				attribute.Int("client_tool_count", clientToolCount),
 			),
 		}
 		if req.ResponseFormat != nil {
@@ -127,12 +140,8 @@ func multiTurnFunctionCalling(
 			chatSpan.End()
 			return err
 		}
-		// return the response directly if it's the last call or the request contains tools
-		if chatCtx.callTimes == maxCalls || hasReqTools {
-			if hasReqTools && req.Stream {
-				w.SetStreamHeader()
-				w.Flush()
-			}
+		// return the response directly if it's the last call
+		if chatCtx.callTimes == maxCalls {
 			err := resp.writeResponse(w, chatCtx)
 			respSpan.End()
 			if err != nil {
@@ -153,10 +162,15 @@ func multiTurnFunctionCalling(
 		if result.isFunctionCall {
 			chatSpan.End()
 
-			if err := doToolCall(gctx, chatCtx, result.ToolCalls, w, caller, tracer, req.Stream, transID, agentContext); err != nil {
+			// Handle mixed tool calls
+			continueLoop, err := handleToolCalls(gctx, chatCtx, result.ToolCalls, req.Stream, w, resp, respSpan, caller, tracer, transID, agentContext)
+			if err != nil {
 				return err
 			}
-			continue
+			if continueLoop {
+				continue
+			}
+			return nil
 		} else {
 			respSpan.End()
 			return nil
@@ -238,6 +252,80 @@ func updateCtxUsage(chatCtx *chatContext, usage openai.Usage) {
 			chatCtx.totalUsage.CompletionTokensDetails.AcceptedPredictionTokens += detail.AcceptedPredictionTokens
 			chatCtx.totalUsage.CompletionTokensDetails.RejectedPredictionTokens += detail.RejectedPredictionTokens
 		}
+	}
+}
+
+// handleToolCalls handles tool calls based on their sources
+// Returns (continueLoop, error)
+// continueLoop is true if we should continue the loop (only server tools case)
+// continueLoop is false if we should return (client or mixed tools case)
+func handleToolCalls(
+	ctx context.Context,
+	chatCtx *chatContext,
+	toolCalls []openai.ToolCall,
+	reqStream bool,
+	w EventResponseWriter,
+	resp chatResponse,
+	respSpan trace.Span,
+	caller *caller.Caller,
+	tracer trace.Tracer,
+	transID string,
+	agentContext []byte,
+) (bool, error) {
+	// Check if there are both server and client tool calls (mixed case)
+	hasServerTool := false
+	hasClientTool := false
+
+	// For mixed case, only keep client tool calls
+	var clientToolCalls []openai.ToolCall
+
+	// Analyze tool calls to determine their sources
+	for _, toolCall := range toolCalls {
+		if isServer, exists := chatCtx.toolSources[toolCall.Function.Name]; exists {
+			if isServer {
+				hasServerTool = true
+			} else {
+				hasClientTool = true
+				clientToolCalls = append(clientToolCalls, toolCall)
+			}
+		} else {
+			// Unknown tool source, assume client tool
+			hasClientTool = true
+			clientToolCalls = append(clientToolCalls, toolCall)
+		}
+	}
+
+	// Handle mixed tool calls: only pass client tools to client
+	if hasServerTool && hasClientTool {
+		// Mixed case: discard server tools, only pass client tools
+		if reqStream {
+			w.SetStreamHeader()
+			w.Flush()
+		}
+		err := resp.writeResponse(w, chatCtx)
+		respSpan.End()
+		if err != nil {
+			return false, err
+		}
+		return false, nil
+	} else if hasClientTool {
+		// Only client tools: pass through to client
+		if reqStream {
+			w.SetStreamHeader()
+			w.Flush()
+		}
+		err := resp.writeResponse(w, chatCtx)
+		respSpan.End()
+		if err != nil {
+			return false, err
+		}
+		return false, nil
+	} else {
+		// Only server tools: execute them
+		if err := doToolCall(ctx, chatCtx, toolCalls, w, caller, tracer, reqStream, transID, agentContext); err != nil {
+			return false, err
+		}
+		return true, nil
 	}
 }
 
