@@ -635,6 +635,13 @@ func (r *streamChatResp) writeResponse(w EventResponseWriter, chatCtx *chatConte
 		if err != nil {
 			return err
 		}
+		if chunk.ID != "" && chatCtx.id == "" {
+			chatCtx.id = chunk.ID
+		}
+		if usage := chunk.Usage; usage != nil && usage.TotalTokens != 0 {
+			updateCtxUsage(chatCtx, *usage)
+			chunk.Usage = &chatCtx.totalUsage
+		}
 		if err := w.WriteStreamEvent(chunk); err != nil {
 			return err
 		}
@@ -793,12 +800,13 @@ func (i *invokeResp) process(w EventResponseWriter, chatCtx *chatContext) (*proc
 }
 
 func (i *invokeResp) writeResponse(w EventResponseWriter, chatCtx *chatContext) error {
+	updateCtxUsage(chatCtx, i.underlying.resp.Usage)
 	resp := ai.InvokeResponse{
 		Content:      i.underlying.resp.Choices[0].Message.Content,
 		FinishReason: string(i.underlying.resp.Choices[0].FinishReason),
 		TokenUsage: ai.TokenUsage{
-			PromptTokens:     i.underlying.resp.Usage.PromptTokens,
-			CompletionTokens: i.underlying.resp.Usage.CompletionTokens,
+			PromptTokens:     chatCtx.totalUsage.PromptTokens,
+			CompletionTokens: chatCtx.totalUsage.CompletionTokens,
 		},
 	}
 	if i.includeCallStack {
