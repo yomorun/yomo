@@ -727,7 +727,8 @@ func (r *streamChatResp) writeEvent(w EventResponseWriter, chunk openai.ChatComp
 		if v.Usage != nil && v.Usage.TotalTokens != 0 {
 			v.Usage = &chatCtx.totalUsage
 		}
-		if r.finishReason != openai.FinishReasonToolCalls {
+		allowUsageChunk := len(v.Choices) == 0 && v.Usage != nil && v.Usage.TotalTokens != 0
+		if r.finishReason != openai.FinishReasonToolCalls || allowUsageChunk {
 			v.ID = chatCtx.id
 			if err := w.WriteStreamEvent(v); err != nil {
 				return err
