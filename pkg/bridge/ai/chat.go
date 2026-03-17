@@ -80,6 +80,10 @@ type chatContext struct {
 	req openai.ChatCompletionRequest
 	// toolSources maps tool names to their sources (true for server, false for client)
 	toolSources map[string]bool
+	// transID is the transaction id for tracing
+	transID string
+	// providerName is the name of the provider
+	providerName string
 }
 
 // multiTurnFunctionCalling calls chat completions multiple times until finishing function calling
@@ -97,7 +101,7 @@ func multiTurnFunctionCalling(
 ) error {
 	var (
 		maxCalls = 14
-		chatCtx  = &chatContext{req: req, toolSources: toolSources}
+		chatCtx  = &chatContext{req: req, toolSources: toolSources, transID: transID, providerName: p.Name()}
 	)
 
 	for {
@@ -139,6 +143,16 @@ func multiTurnFunctionCalling(
 			// chatSpan.RecordError(err)
 			chatSpan.End()
 			return err
+		}
+		if streamResp, ok := resp.(*streamChatResp); ok {
+			recorder := getResponseRecorder()
+			if recorder != nil {
+				streamResp.recordEnabled = true
+				streamResp.recordReq = cloneChatCompletionRequest(chatCtx.req)
+				streamResp.recordTransID = chatCtx.transID
+				streamResp.recordCallIdx = chatCtx.callTimes + 1
+				streamResp.recordProvider = chatCtx.providerName
+			}
 		}
 		// return the response directly if it's the last call
 		if chatCtx.callTimes == maxCalls {
@@ -444,6 +458,18 @@ func (c *chatResp) processWithResponseWriteFunc(
 	if err != nil {
 		return nil, err
 	}
+	recorder := getResponseRecorder()
+	if recorder != nil {
+		_ = recorder.Record(recordEntry{
+			Time:      nowISO8601(),
+			TransID:   chatCtx.transID,
+			CallIndex: chatCtx.callTimes,
+			Provider:  chatCtx.providerName,
+			Stream:    false,
+			Request:   cloneChatCompletionRequest(chatCtx.req),
+			Response:  &c.resp,
+		})
+	}
 
 	if isFunctionCall {
 		toolCalls, usage := c.getToolCalls()
@@ -504,6 +530,13 @@ type streamChatResp struct {
 	allowedToolIndexes map[int]struct{}
 	// toolCallsStreamed indicates tool calls have been streamed
 	toolCallsStreamed bool
+	// record fields
+	recordEnabled  bool
+	recordReq      openai.ChatCompletionRequest
+	recordTransID  string
+	recordCallIdx  int
+	recordProvider string
+	recordChunks   []openai.ChatCompletionStreamResponse
 }
 
 var _ chatResponse = (*streamChatResp)(nil)
@@ -549,6 +582,7 @@ func (r *streamChatResp) process(w EventResponseWriter, chatCtx *chatContext) (*
 	for {
 		chunk, err := r.recver.Recv()
 		if err == io.EOF {
+			r.recordStreamEnd(chatCtx)
 			return r.endProcess(w)
 		}
 		if err != nil {
@@ -557,6 +591,7 @@ func (r *streamChatResp) process(w EventResponseWriter, chatCtx *chatContext) (*
 		if chunk.ID == "" {
 			continue
 		}
+		r.recordStreamChunk(chunk)
 		// write header when receive the first chunk
 		if !setHeader && chatCtx.callTimes == 1 {
 			w.SetStreamHeader()
@@ -630,6 +665,7 @@ func (r *streamChatResp) writeResponse(w EventResponseWriter, chatCtx *chatConte
 	for {
 		chunk, err := r.recver.Recv()
 		if err == io.EOF {
+			r.recordStreamEnd(chatCtx)
 			return w.WriteStreamDone()
 		}
 		if err != nil {
@@ -642,6 +678,7 @@ func (r *streamChatResp) writeResponse(w EventResponseWriter, chatCtx *chatConte
 			updateCtxUsage(chatCtx, *usage)
 			chunk.Usage = &chatCtx.totalUsage
 		}
+		r.recordStreamChunk(chunk)
 		if err := w.WriteStreamEvent(chunk); err != nil {
 			return err
 		}
@@ -649,9 +686,11 @@ func (r *streamChatResp) writeResponse(w EventResponseWriter, chatCtx *chatConte
 }
 
 func (r *streamChatResp) getToolCalls() []openai.ToolCall {
-	for _, resp := range r.toolCallDeltas {
-		if len(resp.Choices) > 0 {
-			r.accumulateToolCall(resp.Choices[0].Delta.ToolCalls)
+	if len(r.toolCallsMap) == 0 {
+		for _, resp := range r.toolCallDeltas {
+			if len(resp.Choices) > 0 {
+				r.accumulateToolCall(resp.Choices[0].Delta.ToolCalls)
+			}
 		}
 	}
 
@@ -779,6 +818,29 @@ func (r *streamChatResp) accumulateToolCall(delta []openai.ToolCall) {
 		}
 		r.toolCallsMap[index] = item
 	}
+}
+
+func (r *streamChatResp) recordStreamChunk(chunk openai.ChatCompletionStreamResponse) {
+	if !r.recordEnabled {
+		return
+	}
+	r.recordChunks = append(r.recordChunks, chunk)
+}
+
+func (r *streamChatResp) recordStreamEnd(_ *chatContext) {
+	if !r.recordEnabled {
+		return
+	}
+	recorder := getResponseRecorder()
+	_ = recorder.Record(recordEntry{
+		Time:         nowISO8601(),
+		TransID:      r.recordTransID,
+		CallIndex:    r.recordCallIdx,
+		Provider:     r.recordProvider,
+		Stream:       true,
+		Request:      r.recordReq,
+		StreamChunks: r.recordChunks,
+	})
 }
 
 type invokeResp struct {
