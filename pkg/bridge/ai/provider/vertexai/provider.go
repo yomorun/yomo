@@ -174,6 +174,14 @@ func (k *thoughtSignature) AttachExtra(req *openai.ChatCompletionRequest) {
 				continue
 			}
 		}
+
+		// gemini-3.1-flash-lite-preview non-stream mode has compact bug
+		if req.Model == "google/gemini-3.1-flash-lite-preview" && req.Stream == false {
+			if msg.Role != openai.ChatMessageRoleUser {
+				msg.Role = "model"
+			}
+		}
+
 		validMessages = append(validMessages, msg)
 	}
 	req.Messages = validMessages
