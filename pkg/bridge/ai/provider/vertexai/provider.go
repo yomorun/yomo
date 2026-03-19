@@ -151,8 +151,6 @@ func (k *thoughtSignature) SaveExtra(toolCalls []openai.ToolCall) {
 }
 
 func (k *thoughtSignature) AttachExtra(req *openai.ChatCompletionRequest) {
-	toolCallIDsToRemove := make(map[string]struct{})
-
 	for i, msg := range req.Messages {
 		var validToolCalls []openai.ToolCall
 		for _, toolCall := range msg.ToolCalls {
@@ -160,8 +158,6 @@ func (k *thoughtSignature) AttachExtra(req *openai.ChatCompletionRequest) {
 				// k.inner.Remove(toolCall.ID)
 				toolCall.ExtraContent = extra
 				validToolCalls = append(validToolCalls, toolCall)
-			} else {
-				toolCallIDsToRemove[toolCall.ID] = struct{}{}
 			}
 		}
 		req.Messages[i].ToolCalls = validToolCalls
@@ -169,19 +165,12 @@ func (k *thoughtSignature) AttachExtra(req *openai.ChatCompletionRequest) {
 
 	var validMessages []openai.ChatCompletionMessage
 	for _, msg := range req.Messages {
-		if msg.Role == openai.ChatMessageRoleTool && len(toolCallIDsToRemove) > 0 {
-			if _, ok := toolCallIDsToRemove[msg.ToolCallID]; ok {
-				continue
-			}
-		}
-
 		// gemini-3.1-flash-lite-preview non-stream mode has compact bug
 		if req.Model == "google/gemini-3.1-flash-lite-preview" && req.Stream == false {
 			if msg.Role != openai.ChatMessageRoleUser {
 				msg.Role = "model"
 			}
 		}
-
 		validMessages = append(validMessages, msg)
 	}
 	req.Messages = validMessages
