@@ -21,7 +21,7 @@ require (
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
 	github.com/vmihailenco/msgpack/v5 v5.4.1
-	github.com/yomorun/go-openai v1.50.2
+	github.com/yomorun/go-openai v1.50.3
 	github.com/yomorun/y3 v1.0.5
 	go.opentelemetry.io/otel v1.37.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.37.0
