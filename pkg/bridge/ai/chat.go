@@ -78,6 +78,12 @@ type chatContext struct {
 	totalUsage openai.Usage
 	// req.Messages is the chat history
 	req openai.ChatCompletionRequest
+	// toolSources maps tool names to their sources (true for server, false for client)
+	toolSources map[string]bool
+	// transID is the transaction id for tracing
+	transID string
+	// providerName is the name of the provider
+	providerName string
 }
 
 // multiTurnFunctionCalling calls chat completions multiple times until finishing function calling
@@ -85,7 +91,7 @@ func multiTurnFunctionCalling(
 	gctx context.Context,
 	req openai.ChatCompletionRequest,
 	transID string,
-	hasReqTools bool,
+	toolSources map[string]bool,
 	w EventResponseWriter,
 	p provider.LLMProvider,
 	caller *caller.Caller,
@@ -95,7 +101,7 @@ func multiTurnFunctionCalling(
 ) error {
 	var (
 		maxCalls = 14
-		chatCtx  = &chatContext{req: req}
+		chatCtx  = &chatContext{req: req, toolSources: toolSources, transID: transID, providerName: p.Name()}
 	)
 
 	for {
@@ -104,10 +110,21 @@ func multiTurnFunctionCalling(
 			chatCtx.req.ToolChoice = nil
 		}
 
+		// Count server and client tools
+		var serverToolCount, clientToolCount int
+		for _, isServer := range toolSources {
+			if isServer {
+				serverToolCount++
+			} else {
+				clientToolCount++
+			}
+		}
+
 		spanOptions := []trace.SpanStartOption{
 			trace.WithAttributes(
 				attribute.Bool("stream", req.Stream),
-				attribute.Bool("has_tools", hasReqTools),
+				attribute.Int("server_tool_count", serverToolCount),
+				attribute.Int("client_tool_count", clientToolCount),
 			),
 		}
 		if req.ResponseFormat != nil {
@@ -127,12 +144,18 @@ func multiTurnFunctionCalling(
 			chatSpan.End()
 			return err
 		}
-		// return the response directly if it's the last call or the request contains tools
-		if chatCtx.callTimes == maxCalls || hasReqTools {
-			if hasReqTools && req.Stream {
-				w.SetStreamHeader()
-				w.Flush()
+		if streamResp, ok := resp.(*streamChatResp); ok {
+			recorder := getResponseRecorder()
+			if recorder != nil {
+				streamResp.recordEnabled = true
+				streamResp.recordReq = cloneChatCompletionRequest(chatCtx.req)
+				streamResp.recordTransID = chatCtx.transID
+				streamResp.recordCallIdx = chatCtx.callTimes + 1
+				streamResp.recordProvider = chatCtx.providerName
 			}
+		}
+		// return the response directly if it's the last call
+		if chatCtx.callTimes == maxCalls {
 			err := resp.writeResponse(w, chatCtx)
 			respSpan.End()
 			if err != nil {
@@ -153,10 +176,15 @@ func multiTurnFunctionCalling(
 		if result.isFunctionCall {
 			chatSpan.End()
 
-			if err := doToolCall(gctx, chatCtx, result.ToolCalls, w, caller, tracer, req.Stream, transID, agentContext); err != nil {
+			// Handle mixed tool calls
+			continueLoop, err := handleToolCalls(gctx, chatCtx, result.ToolCalls, req.Stream, w, resp, respSpan, caller, tracer, transID, agentContext)
+			if err != nil {
 				return err
 			}
-			continue
+			if continueLoop {
+				continue
+			}
+			return nil
 		} else {
 			respSpan.End()
 			return nil
@@ -241,6 +269,175 @@ func updateCtxUsage(chatCtx *chatContext, usage openai.Usage) {
 	}
 }
 
+// handleToolCalls handles tool calls based on their sources
+// Returns (continueLoop, error)
+// continueLoop is true if we should continue the loop (only server tools case)
+// continueLoop is false if we should return (client or mixed tools case)
+func handleToolCalls(
+	ctx context.Context,
+	chatCtx *chatContext,
+	toolCalls []openai.ToolCall,
+	reqStream bool,
+	w EventResponseWriter,
+	resp chatResponse,
+	respSpan trace.Span,
+	caller *caller.Caller,
+	tracer trace.Tracer,
+	transID string,
+	agentContext []byte,
+) (bool, error) {
+	// Check if there are both server and client tool calls (mixed case)
+	hasServerTool := false
+	hasClientTool := false
+
+	// For mixed case, only keep client tool calls
+	var clientToolCalls []openai.ToolCall
+
+	// Analyze tool calls to determine their sources
+	for _, toolCall := range toolCalls {
+		if isServer, exists := chatCtx.toolSources[toolCall.Function.Name]; exists {
+			if isServer {
+				hasServerTool = true
+			} else {
+				hasClientTool = true
+				clientToolCalls = append(clientToolCalls, toolCall)
+			}
+		} else {
+			// Unknown tool source, assume client tool
+			hasClientTool = true
+			clientToolCalls = append(clientToolCalls, toolCall)
+		}
+	}
+
+	// Handle mixed tool calls: only pass client tools to client
+	if hasServerTool && hasClientTool {
+		// Mixed case: discard server tools, only pass client tools
+		if reqStream {
+			w.SetStreamHeader()
+			w.Flush()
+		}
+		err := writeClientToolCallsResponse(w, chatCtx, resp, clientToolCalls)
+		respSpan.End()
+		if err != nil {
+			return false, err
+		}
+		return false, nil
+	} else if hasClientTool {
+		// Only client tools: pass through to client
+		if reqStream {
+			w.SetStreamHeader()
+			w.Flush()
+		}
+		err := writeClientToolCallsResponse(w, chatCtx, resp, clientToolCalls)
+		respSpan.End()
+		if err != nil {
+			return false, err
+		}
+		return false, nil
+	} else {
+		// Only server tools: execute them
+		if err := doToolCall(ctx, chatCtx, toolCalls, w, caller, tracer, reqStream, transID, agentContext); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+}
+
+func writeClientToolCallsResponse(
+	w EventResponseWriter,
+	chatCtx *chatContext,
+	resp chatResponse,
+	clientToolCalls []openai.ToolCall,
+) error {
+	switch r := resp.(type) {
+	case *chatResp:
+		filtered := r.resp
+		if len(filtered.Choices) > 0 {
+			filtered.Choices[0].Message.ToolCalls = clientToolCalls
+		}
+		updateCtxUsage(chatCtx, filtered.Usage)
+		filtered.Usage = chatCtx.totalUsage
+
+		w.Header().Set("Content-Type", "application/json")
+		return json.NewEncoder(w).Encode(filtered)
+	case *streamChatResp:
+		if r.toolCallsStreamed {
+			return nil
+		}
+		return writeFilteredStreamToolCalls(w, r, clientToolCalls)
+	case *invokeResp:
+		return r.writeResponse(w, chatCtx)
+	}
+
+	return resp.writeResponse(w, chatCtx)
+}
+
+func writeFilteredStreamToolCalls(
+	w EventResponseWriter,
+	r *streamChatResp,
+	clientToolCalls []openai.ToolCall,
+) error {
+	allowedIndexes := make(map[int]struct{}, len(clientToolCalls))
+	for i, call := range clientToolCalls {
+		index := i
+		if call.Index != nil {
+			index = *call.Index
+		}
+		allowedIndexes[index] = struct{}{}
+	}
+
+	var roleChunks []openai.ChatCompletionStreamResponse
+	var finishChunks []openai.ChatCompletionStreamResponse
+	for _, chunk := range r.buffer {
+		if len(chunk.Choices) > 0 && chunk.Choices[0].FinishReason != "" {
+			finishChunks = append(finishChunks, chunk)
+			continue
+		}
+		roleChunks = append(roleChunks, chunk)
+	}
+
+	for _, chunk := range roleChunks {
+		if err := w.WriteStreamEvent(chunk); err != nil {
+			return err
+		}
+	}
+
+	for _, chunk := range r.toolCallDeltas {
+		if len(chunk.Choices) == 0 {
+			continue
+		}
+		choice := chunk.Choices[0]
+		if len(choice.Delta.ToolCalls) == 0 {
+			continue
+		}
+		filteredCalls := make([]openai.ToolCall, 0, len(choice.Delta.ToolCalls))
+		for k, call := range choice.Delta.ToolCalls {
+			index := k
+			if call.Index != nil {
+				index = *call.Index
+			}
+			if _, ok := allowedIndexes[index]; ok {
+				filteredCalls = append(filteredCalls, call)
+			}
+		}
+		if len(filteredCalls) == 0 {
+			continue
+		}
+		chunk.Choices[0].Delta.ToolCalls = filteredCalls
+		if err := w.WriteStreamEvent(chunk); err != nil {
+			return err
+		}
+	}
+
+	for _, chunk := range finishChunks {
+		if err := w.WriteStreamEvent(chunk); err != nil {
+			return err
+		}
+	}
+
+	return w.WriteStreamDone()
+}
+
 // chatResp is the non-streaming implementation of chatResponse
 type chatResp struct {
 	resp openai.ChatCompletionResponse
@@ -260,6 +457,18 @@ func (c *chatResp) processWithResponseWriteFunc(
 	isFunctionCall, err := c.checkFunctionCall(w)
 	if err != nil {
 		return nil, err
+	}
+	recorder := getResponseRecorder()
+	if recorder != nil {
+		_ = recorder.Record(recordEntry{
+			Time:      nowISO8601(),
+			TransID:   chatCtx.transID,
+			CallIndex: chatCtx.callTimes,
+			Provider:  chatCtx.providerName,
+			Stream:    false,
+			Request:   cloneChatCompletionRequest(chatCtx.req),
+			Response:  &c.resp,
+		})
 	}
 
 	if isFunctionCall {
@@ -315,6 +524,19 @@ type streamChatResp struct {
 	// toolCallDeltas is the delta responses that contain tool calls
 	toolCallDeltas []openai.ChatCompletionStreamResponse
 	toolCallsMap   map[int]openai.ToolCall
+	// streamToolCalls indicates whether tool calls should be streamed to client
+	streamToolCalls bool
+	// allowedToolIndexes is the set of tool call indexes for client tools
+	allowedToolIndexes map[int]struct{}
+	// toolCallsStreamed indicates tool calls have been streamed
+	toolCallsStreamed bool
+	// record fields
+	recordEnabled  bool
+	recordReq      openai.ChatCompletionRequest
+	recordTransID  string
+	recordCallIdx  int
+	recordProvider string
+	recordChunks   []openai.ChatCompletionStreamResponse
 }
 
 var _ chatResponse = (*streamChatResp)(nil)
@@ -329,6 +551,20 @@ func (r *streamChatResp) endProcess(w EventResponseWriter) (*processResult, erro
 		return &processResult{
 			isFunctionCall: false,
 		}, nil
+	}
+
+	if r.streamToolCalls {
+		for _, chunk := range r.buffer {
+			if len(chunk.Choices) == 0 || chunk.Choices[0].FinishReason == "" {
+				continue
+			}
+			if err := w.WriteStreamEvent(chunk); err != nil {
+				return nil, err
+			}
+		}
+		if err := w.WriteStreamDone(); err != nil {
+			return nil, err
+		}
 	}
 
 	toolCalls := r.getToolCalls()
@@ -346,6 +582,7 @@ func (r *streamChatResp) process(w EventResponseWriter, chatCtx *chatContext) (*
 	for {
 		chunk, err := r.recver.Recv()
 		if err == io.EOF {
+			r.recordStreamEnd(chatCtx)
 			return r.endProcess(w)
 		}
 		if err != nil {
@@ -354,6 +591,7 @@ func (r *streamChatResp) process(w EventResponseWriter, chatCtx *chatContext) (*
 		if chunk.ID == "" {
 			continue
 		}
+		r.recordStreamChunk(chunk)
 		// write header when receive the first chunk
 		if !setHeader && chatCtx.callTimes == 1 {
 			w.SetStreamHeader()
@@ -387,6 +625,27 @@ func (r *streamChatResp) process(w EventResponseWriter, chatCtx *chatContext) (*
 		}
 		if len(choice.Delta.ToolCalls) != 0 {
 			r.toolCallDeltas = append(r.toolCallDeltas, chunk)
+			r.accumulateToolCall(choice.Delta.ToolCalls)
+			r.updateAllowedToolIndexes(chatCtx)
+			if len(r.allowedToolIndexes) != 0 {
+				r.streamToolCalls = true
+			}
+			if r.streamToolCalls {
+				if !r.toolCallsStreamed {
+					if err := r.flushBufferedNonFinishChunks(w); err != nil {
+						return nil, err
+					}
+					r.toolCallsStreamed = true
+				}
+				filteredCalls := r.filterToolCalls(choice.Delta.ToolCalls)
+				if len(filteredCalls) != 0 {
+					chunk.Choices[0].Delta.ToolCalls = filteredCalls
+					if err := w.WriteStreamEvent(chunk); err != nil {
+						return nil, err
+					}
+				}
+				continue
+			}
 			if choice.Delta.Content != "" || choice.Delta.ReasoningContent != "" {
 				// only response content and reasoning content
 				chunk.Choices[0].Delta.ToolCalls = nil
@@ -406,11 +665,20 @@ func (r *streamChatResp) writeResponse(w EventResponseWriter, chatCtx *chatConte
 	for {
 		chunk, err := r.recver.Recv()
 		if err == io.EOF {
+			r.recordStreamEnd(chatCtx)
 			return w.WriteStreamDone()
 		}
 		if err != nil {
 			return err
 		}
+		if chunk.ID != "" && chatCtx.id == "" {
+			chatCtx.id = chunk.ID
+		}
+		if usage := chunk.Usage; usage != nil && usage.TotalTokens != 0 {
+			updateCtxUsage(chatCtx, *usage)
+			chunk.Usage = &chatCtx.totalUsage
+		}
+		r.recordStreamChunk(chunk)
 		if err := w.WriteStreamEvent(chunk); err != nil {
 			return err
 		}
@@ -418,9 +686,11 @@ func (r *streamChatResp) writeResponse(w EventResponseWriter, chatCtx *chatConte
 }
 
 func (r *streamChatResp) getToolCalls() []openai.ToolCall {
-	for _, resp := range r.toolCallDeltas {
-		if len(resp.Choices) > 0 {
-			r.accumulateToolCall(resp.Choices[0].Delta.ToolCalls)
+	if len(r.toolCallsMap) == 0 {
+		for _, resp := range r.toolCallDeltas {
+			if len(resp.Choices) > 0 {
+				r.accumulateToolCall(resp.Choices[0].Delta.ToolCalls)
+			}
 		}
 	}
 
@@ -457,7 +727,8 @@ func (r *streamChatResp) writeEvent(w EventResponseWriter, chunk openai.ChatComp
 		if v.Usage != nil && v.Usage.TotalTokens != 0 {
 			v.Usage = &chatCtx.totalUsage
 		}
-		if r.finishReason != openai.FinishReasonToolCalls {
+		allowUsageChunk := len(v.Choices) == 0 && v.Usage != nil && v.Usage.TotalTokens != 0
+		if r.finishReason != openai.FinishReasonToolCalls || allowUsageChunk {
 			v.ID = chatCtx.id
 			if err := w.WriteStreamEvent(v); err != nil {
 				return err
@@ -465,6 +736,59 @@ func (r *streamChatResp) writeEvent(w EventResponseWriter, chunk openai.ChatComp
 		}
 	}
 
+	return nil
+}
+
+func (r *streamChatResp) updateAllowedToolIndexes(chatCtx *chatContext) {
+	if r.allowedToolIndexes == nil {
+		r.allowedToolIndexes = make(map[int]struct{})
+	}
+	for index, call := range r.toolCallsMap {
+		if call.Function.Name == "" {
+			continue
+		}
+		if isServer, ok := chatCtx.toolSources[call.Function.Name]; ok {
+			if !isServer {
+				r.allowedToolIndexes[index] = struct{}{}
+			}
+			continue
+		}
+		r.allowedToolIndexes[index] = struct{}{}
+	}
+}
+
+func (r *streamChatResp) filterToolCalls(toolCalls []openai.ToolCall) []openai.ToolCall {
+	if len(r.allowedToolIndexes) == 0 {
+		return nil
+	}
+	filteredCalls := make([]openai.ToolCall, 0, len(toolCalls))
+	for k, call := range toolCalls {
+		index := k
+		if call.Index != nil {
+			index = *call.Index
+		}
+		if _, ok := r.allowedToolIndexes[index]; ok {
+			filteredCalls = append(filteredCalls, call)
+		}
+	}
+	return filteredCalls
+}
+
+func (r *streamChatResp) flushBufferedNonFinishChunks(w EventResponseWriter) error {
+	if len(r.buffer) == 0 {
+		return nil
+	}
+	remaining := r.buffer[:0]
+	for _, chunk := range r.buffer {
+		if len(chunk.Choices) > 0 && chunk.Choices[0].FinishReason != "" {
+			remaining = append(remaining, chunk)
+			continue
+		}
+		if err := w.WriteStreamEvent(chunk); err != nil {
+			return err
+		}
+	}
+	r.buffer = remaining
 	return nil
 }
 
@@ -497,6 +821,29 @@ func (r *streamChatResp) accumulateToolCall(delta []openai.ToolCall) {
 	}
 }
 
+func (r *streamChatResp) recordStreamChunk(chunk openai.ChatCompletionStreamResponse) {
+	if !r.recordEnabled {
+		return
+	}
+	r.recordChunks = append(r.recordChunks, chunk)
+}
+
+func (r *streamChatResp) recordStreamEnd(_ *chatContext) {
+	if !r.recordEnabled {
+		return
+	}
+	recorder := getResponseRecorder()
+	_ = recorder.Record(recordEntry{
+		Time:         nowISO8601(),
+		TransID:      r.recordTransID,
+		CallIndex:    r.recordCallIdx,
+		Provider:     r.recordProvider,
+		Stream:       true,
+		Request:      r.recordReq,
+		StreamChunks: r.recordChunks,
+	})
+}
+
 type invokeResp struct {
 	underlying       *chatResp
 	includeCallStack bool
@@ -516,12 +863,13 @@ func (i *invokeResp) process(w EventResponseWriter, chatCtx *chatContext) (*proc
 }
 
 func (i *invokeResp) writeResponse(w EventResponseWriter, chatCtx *chatContext) error {
+	updateCtxUsage(chatCtx, i.underlying.resp.Usage)
 	resp := ai.InvokeResponse{
 		Content:      i.underlying.resp.Choices[0].Message.Content,
 		FinishReason: string(i.underlying.resp.Choices[0].FinishReason),
 		TokenUsage: ai.TokenUsage{
-			PromptTokens:     i.underlying.resp.Usage.PromptTokens,
-			CompletionTokens: i.underlying.resp.Usage.CompletionTokens,
+			PromptTokens:     chatCtx.totalUsage.PromptTokens,
+			CompletionTokens: chatCtx.totalUsage.CompletionTokens,
 		},
 	}
 	if i.includeCallStack {
