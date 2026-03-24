@@ -8,6 +8,8 @@ import (
 	"net"
 	"os"
 	"reflect"
+
+	"github.com/invopop/jsonschema"
 )
 
 var (
@@ -16,9 +18,9 @@ var (
 )
 
 type YomoRequestHeaders struct {
-	ToolName   string `json:"tool_name"`
+	Name       string `json:"name"`
 	TraceID    string `json:"trace_id"`
-	ReqeustID  string `json:"request_id"`
+	SpanID     string `json:"span_id"`
 	BodyFormat string `json:"body_format"`
 	Extension  string `json:"extension"`
 }
@@ -42,6 +44,11 @@ type YomoResponseBody struct {
 type Chunk struct {
 	Chunk any `json:"chunk"`
 	// todo: error process
+}
+
+type FunctionSchema struct {
+	Description string             `json:"description"`
+	Parameters  *jsonschema.Schema `json:"parameters"`
 }
 
 func yomoReadBytes(r io.Reader) ([]byte, error) {
@@ -93,6 +100,27 @@ func yomoWritePacket(w io.Writer, packet any) {
 	buf, _ := json.Marshal(packet)
 
 	yomoWriteBytes(w, buf)
+}
+
+func yomoGenerateJSONSchema() (string, error) {
+	reflector := &jsonschema.Reflector{
+		DoNotReference:            true,
+		ExpandedStruct:            true,
+		AllowAdditionalProperties: false,
+	}
+	parameters := reflector.Reflect(&Arguments{})
+
+	schema := FunctionSchema{
+		Description: Description,
+		Parameters:  parameters,
+	}
+
+	buf, err := json.Marshal(schema)
+	if err != nil {
+		return "", err
+	}
+
+	return string(buf), nil
 }
 
 func yomoHandleStream(handlerMode string, conn io.ReadWriteCloser) error {
@@ -191,12 +219,15 @@ func yomoReflectApp() (string, error) {
 	default:
 		return "", fmt.Errorf("unsupported handler type: %s", h.Type())
 	}
-
-	// todo: read description, set serverless context
 }
 
 func main() {
 	handlerMode, err := yomoReflectApp()
+	if err != nil {
+		os.Exit(1)
+	}
+
+	jsonSchema, err := yomoGenerateJSONSchema()
 	if err != nil {
 		os.Exit(1)
 	}
@@ -206,6 +237,8 @@ func main() {
 		os.Exit(1)
 	}
 	defer listener.Close()
+
+	fmt.Printf("YOMO_TOOL_JSONSCHEMA: %s\n", jsonSchema)
 
 	fmt.Printf("YOMO_TOOL_ADDR: %s\n", listener.Addr().String())
 

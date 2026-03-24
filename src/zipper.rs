@@ -9,7 +9,9 @@ use s2n_quic::{
     provider::{io::TryInto, limits::Limits},
     stream::{BidirectionalStream, ReceiveStream, SendStream},
 };
+use tempfile::TempDir;
 use tokio::{
+    fs,
     io::{AsyncWriteExt, ReadHalf, SimplexStream, WriteHalf},
     spawn,
     sync::{Mutex, RwLock, mpsc::UnboundedReceiver},
@@ -22,6 +24,7 @@ use crate::{
     router::Router,
     tls::{TlsConfig, new_tls},
     types::{HandshakeRequest, HandshakeResponse, RequestHeaders},
+    utils,
 };
 
 /// Zipper: Manages all registered Tool connections
@@ -30,6 +33,7 @@ pub struct Zipper {
     router: Arc<RwLock<dyn Router>>,
 
     all_conns: Arc<RwLock<HashMap<u64, Handle>>>,
+    schema_dir: Arc<TempDir>,
 }
 
 impl Zipper {
@@ -37,7 +41,16 @@ impl Zipper {
         Self {
             router: Arc::new(RwLock::new(router)),
             all_conns: Arc::default(),
+            schema_dir: Arc::new(tempfile::tempdir().expect("failed to create schema temp dir")),
         }
+    }
+
+    async fn persist_json_schema(&self, name: &str, json_schema: &str) -> Result<()> {
+        let file_name = format!("tool-{}.json", utils::sanitize_name(name));
+        let schema_path = self.schema_dir.path().join(file_name);
+        fs::write(&schema_path, json_schema).await?;
+        info!("tool schema stored: {}", schema_path.display());
+        Ok(())
     }
 
     /// Start QUIC server: listen for remote Tool connections
@@ -60,6 +73,7 @@ impl Zipper {
             .start()?;
 
         info!("start zipper quic server: {}:{}/udp", host, port);
+        info!("tool schema temp dir: {}", self.schema_dir.path().display());
 
         while let Some(conn) = server.accept().await {
             let zipper = self.clone();
@@ -115,6 +129,10 @@ impl Zipper {
 
         match self.router.write().await.handshake(conn_id, &req) {
             Ok(existed_conn) => {
+                if let Some(json_schema) = req.json_schema.as_deref() {
+                    self.persist_json_schema(&req.name, json_schema).await?;
+                }
+
                 let res = HandshakeResponse {
                     status_code: StatusCode::OK.as_u16(),
                     ..Default::default()

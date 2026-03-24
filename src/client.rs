@@ -49,6 +49,7 @@ impl Client {
         zipper: &str,
         credential: &str,
         tls_config: &TlsConfig,
+        json_schema: Option<String>,
     ) -> Result<QuicConnector> {
         info!("start client: {}", self.name);
 
@@ -87,7 +88,7 @@ impl Client {
         info!("connected to zipper: {}/udp", addr);
 
         // Send handshake request
-        self.handshake(&mut conn, credential).await?;
+        self.handshake(&mut conn, credential, json_schema).await?;
 
         let quic_connector = QuicConnector::new(conn.handle());
         self.quic_conn = Some(Arc::new(Mutex::new(conn)));
@@ -96,12 +97,18 @@ impl Client {
     }
 
     /// Send handshake request to Zipper
-    async fn handshake(&self, conn: &mut Connection, credential: &str) -> Result<()> {
+    async fn handshake(
+        &self,
+        conn: &mut Connection,
+        credential: &str,
+        json_schema: Option<String>,
+    ) -> Result<()> {
         let mut stream = conn.open_bidirectional_stream().await?;
 
         let req = HandshakeRequest {
             name: self.name.to_owned(),
             credential: credential.to_owned(),
+            json_schema,
         };
 
         send_frame(&mut stream, &req).await?;

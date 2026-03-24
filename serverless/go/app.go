@@ -1,5 +1,7 @@
 package main
 
+const Description = "Hello, YoMo!"
+
 type Arguments struct{}
 
 type Result struct{}

@@ -8,4 +8,5 @@ pub mod serverless;
 pub mod tls;
 pub mod tool_api;
 pub mod types;
+pub mod utils;
 pub mod zipper;

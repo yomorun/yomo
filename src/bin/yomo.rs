@@ -1,11 +1,15 @@
 use std::process;
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use clap::{Parser, builder::NonEmptyStringValueParser};
 use config::{Config, File};
 use log::{error, info};
 use serde::Deserialize;
-use tokio::{select, sync::mpsc};
+use tokio::{
+    select,
+    sync::mpsc,
+    time::{Duration, sleep},
+};
 
 use yomo::{
     bridge::Bridge,
@@ -208,13 +212,46 @@ async fn run(opt: RunOptions) -> Result<()> {
     let serverless_handler = ServerlessHandler::default();
     let serverless_memory_bridge =
         ServerlessMemoryBridge::new(serverless_handler.clone(), receiver);
+
+    let run_handler = serverless_handler.clone();
+    let serverless_dir = opt.serverless_dir.clone();
+    let run_task = tokio::spawn(async move { run_handler.run_subprocess(&serverless_dir).await });
+
+    let json_schema = loop {
+        if let Some(schema) = serverless_handler.json_schema().await {
+            break schema;
+        }
+
+        if run_task.is_finished() {
+            let res = run_task
+                .await
+                .map_err(|e| anyhow!("tool subprocess task failed: {}", e))?;
+            return match res {
+                Ok(()) => Err(anyhow!(
+                    "tool subprocess exited before startup metadata was ready"
+                )),
+                Err(e) => Err(e),
+            };
+        }
+
+        sleep(Duration::from_millis(20)).await;
+    };
+
     let mut client = Client::new(opt.name, Some(MemoryConnector::new(sender, MAX_BUF_SIZE)));
-    client
-        .connect_zipper(&opt.zipper, &opt.credential, &tls_config)
-        .await?;
+    if let Err(e) = client
+        .connect_zipper(&opt.zipper, &opt.credential, &tls_config, Some(json_schema))
+        .await
+    {
+        run_task.abort();
+        return Err(e);
+    }
 
     select! {
-        r = serverless_handler.run_subprocess(&opt.serverless_dir) => r,
+        r = async {
+            run_task
+                .await
+                .map_err(|e| anyhow!("tool subprocess task failed: {}", e))?
+        } => r,
         _ = serverless_memory_bridge.serve_bridge() => Ok(()),
         _ = client.serve_bridge() => Ok(()),
     }?;

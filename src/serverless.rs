@@ -31,9 +31,18 @@ static GO_MOD: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/serverl
 #[derive(Default, Clone)]
 pub struct ServerlessHandler {
     socket_addr: Arc<RwLock<Option<String>>>,
+    json_schema: Arc<RwLock<Option<String>>>,
 }
 
 impl ServerlessHandler {
+    pub async fn socket_addr(&self) -> Option<String> {
+        self.socket_addr.read().await.clone()
+    }
+
+    pub async fn json_schema(&self) -> Option<String> {
+        self.json_schema.read().await.clone()
+    }
+
     /// Run tool as subprocess
     pub async fn run_subprocess(&self, serverless_dir: &str) -> Result<()> {
         // get the absolute path of serverless directory
@@ -43,7 +52,7 @@ impl ServerlessHandler {
         }
         let serverless_dir = absolute(serverless_dir)?;
 
-        info!("start to run tool: {}", serverless_dir.display().to_string());
+        info!("start to run serverless tool: {}", serverless_dir.display());
 
         // find app.go in serverless directory
         if !serverless_dir.join("app.go").exists() {
@@ -99,6 +108,9 @@ impl ServerlessHandler {
                 .ok_or(anyhow!("Failed to open stdout"))?,
         );
 
+        let mut got_addr = false;
+        let mut got_schema = false;
+
         loop {
             let mut buf = String::new();
             if reader.read_line(&mut buf).await? == 0 {
@@ -106,13 +118,22 @@ impl ServerlessHandler {
             }
 
             let line = buf.trim();
-            if let Some(stripped) = line.strip_prefix("YOMO_TOOL_ADDR: ") {
+            if let Some(stripped) = line.strip_prefix("YOMO_TOOL_JSONSCHEMA: ") {
+                let json_schema = stripped.to_string();
+                info!("tool json schema generated");
+                *self.json_schema.write().await = Some(json_schema);
+                got_schema = true;
+            } else if let Some(stripped) = line.strip_prefix("YOMO_TOOL_ADDR: ") {
                 let addr = stripped.to_string();
                 info!("tool listening: {}", addr);
                 *self.socket_addr.write().await = Some(addr);
-                break;
+                got_addr = true;
             } else if !line.is_empty() {
-                print!("{} {}", "[Go Tool]".cyan(), buf);
+                print!("{} {}", "[Go Serverless]".cyan(), buf);
+            }
+
+            if got_addr && got_schema {
+                break;
             }
         }
 

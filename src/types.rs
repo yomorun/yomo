@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 pub struct HandshakeRequest {
     pub name: String,
     pub credential: String,
+    #[serde(default)]
+    pub json_schema: Option<String>,
 }
 
 /// Handshake response from Zipper to Tool
