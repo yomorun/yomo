@@ -14,10 +14,10 @@ cargo build
 RUST_LOG=debug ./target/debug/yomo serve
 ```
 
-- run sfn:
+- run tool:
 
 ```
-RUST_LOG=info ./target/debug/yomo run --name uppercase ./serverless/go/uppercase
+RUST_LOG=info ./target/debug/yomo run --name uppercase ./demo/go/uppercase
 ```
 
 - send a request:
@@ -25,17 +25,5 @@ RUST_LOG=info ./target/debug/yomo run --name uppercase ./serverless/go/uppercase
 ```
 curl -d '{"args": "Hello, YoMo!"}' \
   -H 'Content-type: application/json' \
-  http://127.0.0.1:9001/sfn/uppercase
-```
-
-- SSE stream response:
-
-```
-RUST_LOG=info ./target/debug/yomo run --name uppercase ./serverless/go/uppercase_stream
-```
-
-```
-curl -d '{"args": "Welcome to build stream serverless functions."}' \
-  -H 'Content-type: application/json' \
-  http://127.0.0.1:9001/sfn/uppercase
+  http://127.0.0.1:9001/tool/uppercase
 ```

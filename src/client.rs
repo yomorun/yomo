@@ -4,7 +4,7 @@ use anyhow::{Result, anyhow, bail};
 use axum::http::StatusCode;
 use log::{debug, info};
 use s2n_quic::{
-    Client, Connection,
+    Client as QuicClient, Connection,
     client::Connect,
     provider::limits::Limits,
     stream::{ReceiveStream, SendStream},
@@ -22,27 +22,27 @@ use crate::{
     types::{HandshakeRequest, HandshakeResponse, RequestHeaders},
 };
 
-/// Serverless Function (SFN) client
+/// YoMo client
 #[derive(Clone)]
-pub struct Sfn {
-    sfn_name: String,
+pub struct Client {
+    name: String,
 
     quic_conn: Option<Arc<Mutex<Connection>>>,
 
     memory_connector: Option<MemoryConnector>,
 }
 
-impl Sfn {
-    pub fn new(sfn_name: String, memory_connector: Option<MemoryConnector>) -> Self {
+impl Client {
+    pub fn new(name: String, memory_connector: Option<MemoryConnector>) -> Self {
         Self {
-            sfn_name,
+            name,
             quic_conn: None,
             memory_connector,
         }
     }
 }
 
-impl Sfn {
+impl Client {
     /// Connect to Zipper service
     pub async fn connect_zipper(
         &mut self,
@@ -50,7 +50,7 @@ impl Sfn {
         credential: &str,
         tls_config: &TlsConfig,
     ) -> Result<QuicConnector> {
-        info!("start sfn: {}", self.sfn_name);
+        info!("start client: {}", self.name);
 
         let limits = Limits::new()
             .with_max_handshake_duration(Duration::from_secs(10))?
@@ -61,7 +61,7 @@ impl Sfn {
             .with_max_open_remote_bidirectional_streams(1000)?
             .with_max_open_remote_unidirectional_streams(0)?;
 
-        let client = Client::builder()
+        let quic_client = QuicClient::builder()
             .with_tls(new_tls(tls_config, false).await?)?
             .with_io("0.0.0.0:0")?
             .with_limits(limits)?
@@ -80,7 +80,7 @@ impl Sfn {
             .ok_or_else(|| anyhow!("no zipper ip found"))?;
         debug!("zipper socket addr: {}", addr);
 
-        let mut conn = client
+        let mut conn = quic_client
             .connect(Connect::new(addr).with_server_name(server_name))
             .await?;
         conn.keep_alive(true)?;
@@ -100,7 +100,7 @@ impl Sfn {
         let mut stream = conn.open_bidirectional_stream().await?;
 
         let req = HandshakeRequest {
-            sfn_name: self.sfn_name.to_owned(),
+            name: self.name.to_owned(),
             credential: credential.to_owned(),
         };
 
@@ -127,7 +127,7 @@ impl
         SendStream,
         ReadHalf<SimplexStream>,
         WriteHalf<SimplexStream>,
-    > for Sfn
+    > for Client
 {
     async fn accept(&mut self) -> Result<Option<(ReceiveStream, SendStream)>> {
         if let Some(conn) = &self.quic_conn {

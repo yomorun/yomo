@@ -27,14 +27,14 @@ static GO_MAIN: &str = include_str!(concat!(
 ));
 static GO_MOD: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/serverless/go/go.mod"));
 
-/// Serverless function handler (supports Go)
+/// Tool subprocess handler (supports Go)
 #[derive(Default, Clone)]
 pub struct ServerlessHandler {
     socket_addr: Arc<RwLock<Option<String>>>,
 }
 
 impl ServerlessHandler {
-    /// Run serverless function as subprocess
+    /// Run tool as subprocess
     pub async fn run_subprocess(&self, serverless_dir: &str) -> Result<()> {
         // get the absolute path of serverless directory
         let serverless_dir = Path::new(serverless_dir);
@@ -43,10 +43,7 @@ impl ServerlessHandler {
         }
         let serverless_dir = absolute(serverless_dir)?;
 
-        info!(
-            "start to run serverless: {}",
-            serverless_dir.display().to_string()
-        );
+        info!("start to run tool: {}", serverless_dir.display().to_string());
 
         // find app.go in serverless directory
         if !serverless_dir.join("app.go").exists() {
@@ -55,14 +52,14 @@ impl ServerlessHandler {
 
         self.run_go(&serverless_dir).await?;
 
-        info!("serverless function exited");
+        info!("tool exited");
 
         Ok(())
     }
 
-    /// Compile and run Go serverless function
+    /// Compile and run Go tool
     async fn run_go(&self, serverless_dir: &Path) -> Result<()> {
-        // create temp directory for serverless function
+        // create temp directory for tool
         let temp_dir = tempdir()?;
         let cwd = temp_dir.path();
         debug!("cwd: {}", cwd.display());
@@ -85,9 +82,9 @@ impl ServerlessHandler {
             .wait_with_output()
             .await?;
 
-        info!("starting serverless function");
+        info!("starting tool");
 
-        // start a sub process to run serverless
+        // start a sub process to run tool
         let mut child = Command::new("go")
             .args(["run", "."])
             .current_dir(cwd)
@@ -105,17 +102,17 @@ impl ServerlessHandler {
         loop {
             let mut buf = String::new();
             if reader.read_line(&mut buf).await? == 0 {
-                bail!("failed to read socket address from serverless process: process exited");
+                bail!("failed to read socket address from tool process: process exited");
             }
 
             let line = buf.trim();
-            if let Some(stripped) = line.strip_prefix("YOMO_SFN_ADDR: ") {
+            if let Some(stripped) = line.strip_prefix("YOMO_TOOL_ADDR: ") {
                 let addr = stripped.to_string();
-                info!("serverless listening: {}", addr);
+                info!("tool listening: {}", addr);
                 *self.socket_addr.write().await = Some(addr);
                 break;
             } else if !line.is_empty() {
-                print!("{} {}", "[Go Serverless]".cyan(), buf);
+                print!("{} {}", "[Go Tool]".cyan(), buf);
             }
         }
 
@@ -124,7 +121,7 @@ impl ServerlessHandler {
             if reader.read_line(&mut buf).await? == 0 {
                 break;
             }
-            print!("{} {}", "[Go Serverless]".cyan(), buf);
+            print!("{} {}", "[Go Tool]".cyan(), buf);
         }
         child.wait().await?;
 

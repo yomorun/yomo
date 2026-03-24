@@ -7,8 +7,11 @@ use axum::{
     response::{IntoResponse, Sse, sse::Event},
 };
 use futures_util::stream;
-use log::{debug, error};
-use tokio::io::{AsyncWriteExt, ReadHalf, SimplexStream};
+use log::{debug, error, info};
+use tokio::{
+    io::{AsyncWriteExt, ReadHalf, SimplexStream},
+    net::TcpListener,
+};
 
 use crate::{
     connector::{Connector, MemoryConnector},
@@ -50,12 +53,12 @@ fn parse_http_headers(http_headers: &HeaderMap, key: &str) -> String {
 }
 
 /// Create request headers from HTTP headers
-fn new_request_headers(sfn_name: &str, http_headers: &HeaderMap) -> RequestHeaders {
+fn new_request_headers(tool_name: &str, http_headers: &HeaderMap) -> RequestHeaders {
     RequestHeaders {
-        sfn_name: sfn_name.to_owned(),
+        name: tool_name.to_owned(),
         body_format: BodyFormat::Bytes,
-        trace_id: parse_http_headers(http_headers, "traceparent"),
-        request_id: parse_http_headers(http_headers, "X-Request-Id"),
+        trace_id: parse_http_headers(http_headers, "X-Trace-Id"),
+        span_id: parse_http_headers(http_headers, "X-Span-Id"),
         extension: parse_http_headers(http_headers, "X-Extension"),
     }
 }
@@ -96,21 +99,21 @@ impl IntoResponse for CustomResponse {
     }
 }
 
-/// HTTP stream handler: forward request to corresponding QUIC sfn with SSE response
+/// HTTP stream handler: forward request to corresponding QUIC tool with SSE response
 #[axum::debug_handler]
-pub async fn http_handler(
+pub async fn tool_invoke_handler(
     http_headers: HeaderMap,
-    Path(sfn_name): Path<String>,
+    Path(tool_name): Path<String>,
     State(connector): State<Arc<MemoryConnector>>,
     body: Bytes,
 ) -> Result<CustomResponse, CustomError> {
-    let request_headers = new_request_headers(&sfn_name, &http_headers);
+    let request_headers = new_request_headers(&tool_name, &http_headers);
 
     debug!(
         "[{}|{}] new request to [{}]: {}",
         request_headers.trace_id,
-        request_headers.request_id,
-        request_headers.sfn_name,
+        request_headers.span_id,
+        request_headers.name,
         String::from_utf8_lossy(&body)
     );
 
@@ -157,4 +160,25 @@ pub async fn http_handler(
             })
         }
     }
+}
+
+/// Tool API server: listen and receive external requests for tool invocation
+pub async fn serve_tool_api(
+    host: &str,
+    port: u16,
+    connector: MemoryConnector,
+) -> anyhow::Result<()> {
+    let app = axum::Router::new()
+        .route(
+            "/tool/{tool_name}",
+            axum::routing::post(tool_invoke_handler),
+        )
+        .with_state(Arc::new(connector));
+
+    let listener = TcpListener::bind((host.to_owned(), port)).await?;
+
+    info!("start tool api server: {}:{}", host, port);
+    axum::serve(listener, app).await?;
+
+    Ok(())
 }

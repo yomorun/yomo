@@ -1,9 +1,11 @@
 // Library exports
 pub mod bridge;
+pub mod client;
 pub mod connector;
-pub mod http;
 pub mod io;
-pub mod sfn;
+pub mod router;
+pub mod serverless;
 pub mod tls;
+pub mod tool_api;
 pub mod types;
 pub mod zipper;

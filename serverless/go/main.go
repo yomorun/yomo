@@ -16,7 +16,7 @@ var (
 )
 
 type YomoRequestHeaders struct {
-	SfnName    string `json:"sfn_name"`
+	ToolName   string `json:"tool_name"`
 	TraceID    string `json:"trace_id"`
 	ReqeustID  string `json:"request_id"`
 	BodyFormat string `json:"body_format"`
@@ -207,7 +207,7 @@ func main() {
 	}
 	defer listener.Close()
 
-	fmt.Printf("YOMO_SFN_ADDR: %s\n", listener.Addr().String())
+	fmt.Printf("YOMO_TOOL_ADDR: %s\n", listener.Addr().String())
 
 	go func() {
 		for {

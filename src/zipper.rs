@@ -19,28 +19,28 @@ use crate::{
     bridge::Bridge,
     connector::QuicConnector,
     io::{receive_frame, send_frame},
+    router::Router,
     tls::{TlsConfig, new_tls},
     types::{HandshakeRequest, HandshakeResponse, RequestHeaders},
-    zipper::router::Router,
 };
 
-/// Zipper: Manages all registered SFN connections
+/// Zipper: Manages all registered Tool connections
 #[derive(Clone)]
 pub struct Zipper {
     router: Arc<RwLock<dyn Router>>,
 
-    all_sfns: Arc<RwLock<HashMap<u64, Handle>>>,
+    all_conns: Arc<RwLock<HashMap<u64, Handle>>>,
 }
 
 impl Zipper {
     pub fn new(router: impl Router + 'static) -> Self {
         Self {
             router: Arc::new(RwLock::new(router)),
-            all_sfns: Arc::default(),
+            all_conns: Arc::default(),
         }
     }
 
-    /// Start QUIC server: listen for remote SFN connections
+    /// Start QUIC server: listen for remote Tool connections
     pub async fn serve(&self, host: &str, port: u16, tls_config: &TlsConfig) -> Result<()> {
         // todo: configurable
         let limits = Limits::new()
@@ -59,7 +59,7 @@ impl Zipper {
             .with_limits(limits)?
             .start()?;
 
-        info!("start quic server: {}:{}/udp", host, port);
+        info!("start zipper quic server: {}:{}/udp", host, port);
 
         while let Some(conn) = server.accept().await {
             let zipper = self.clone();
@@ -73,19 +73,19 @@ impl Zipper {
         Ok(())
     }
 
-    /// Handle QUIC connection: register SFN
+    /// Handle QUIC connection: register Tool
     async fn handle_connection(self, mut conn: Connection) -> Result<()> {
         let conn_id = conn.id();
         info!("new quic connection: {}", conn_id);
 
         if let Some(stream) = conn.accept_bidirectional_stream().await? {
-            // Handshake: get sfn name
-            let sfn_name = self.handle_handshake(conn_id, stream).await?;
+            // Handshake: get client name
+            let client_name = self.handle_handshake(conn_id, stream).await?;
 
-            info!("new sfn connected: sfn_name={}", sfn_name);
+            info!("new client connected: client_name={}", client_name);
 
             // save connection
-            self.all_sfns.write().await.insert(conn_id, conn.handle());
+            self.all_conns.write().await.insert(conn_id, conn.handle());
         } else {
             info!("conn closed: {}", conn_id);
             return Ok(());
@@ -96,14 +96,14 @@ impl Zipper {
         quic_bridge.serve_bridge().await;
         info!("conn closed: {}", conn_id);
 
-        // Clean up sfn registration
-        self.router.write().await.remove_sfn(conn_id);
-        self.all_sfns.write().await.remove(&conn_id);
+        // Clean up registration
+        self.router.write().await.remove(conn_id);
+        self.all_conns.write().await.remove(&conn_id);
 
         Ok(())
     }
 
-    /// Handle handshake protocol: read SFN name
+    /// Handle handshake protocol: read client name
     async fn handle_handshake(
         &self,
         conn_id: u64,
@@ -123,16 +123,16 @@ impl Zipper {
                 stream.shutdown().await?;
 
                 if let Some(conn_id) = existed_conn {
-                    if let Some(conn) = self.all_sfns.write().await.remove(&conn_id) {
+                    if let Some(conn) = self.all_conns.write().await.remove(&conn_id) {
                         info!(
-                            "close existing connection {} for sfn_name: {}",
-                            conn_id, req.sfn_name
+                            "close existing connection {} for client_name: {}",
+                            conn_id, req.name
                         );
                         conn.close(1_u32.into());
                     }
                 }
 
-                Ok(req.sfn_name)
+                Ok(req.name)
             }
             Err(e) => {
                 error!("handshake failed: {}", e);
@@ -151,7 +151,7 @@ impl Zipper {
 
     async fn route(&self, headers: &RequestHeaders) -> Result<Option<QuicConnector>> {
         if let Some(conn_id) = self.router.read().await.route(&headers)? {
-            if let Some(conn) = self.all_sfns.read().await.get(&conn_id) {
+            if let Some(conn) = self.all_conns.read().await.get(&conn_id) {
                 return Ok(Some(QuicConnector::new(conn.clone())));
             }
         }

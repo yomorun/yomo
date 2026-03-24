@@ -1,13 +1,13 @@
 use serde::{Deserialize, Serialize};
 
-/// Handshake request from SFN to Zipper
+/// Handshake request from Tool to Zipper
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct HandshakeRequest {
-    pub sfn_name: String,
+    pub name: String,
     pub credential: String,
 }
 
-/// Handshake response from Zipper to SFN
+/// Handshake response from Zipper to Tool
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct HandshakeResponse {
     pub status_code: u16,
@@ -26,14 +26,14 @@ pub enum BodyFormat {
 /// Request headers for proxying requests through the system
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct RequestHeaders {
-    pub sfn_name: String,
+    pub name: String,
     pub trace_id: String,
-    pub request_id: String,
+    pub span_id: String,
     pub body_format: BodyFormat,
     pub extension: String,
 }
 
-/// Response headers for responses from SFN
+/// Response headers for responses from Tool
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct ResponseHeaders {
     pub status_code: u16,
