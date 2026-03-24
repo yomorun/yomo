@@ -17,6 +17,7 @@ futures-util = "0.3"
 log = "0.4"
 rustls-native-certs = "0.8"
 rustls-pki-types = "1.14"
+reqwest = { version = "0.12", features = ["json"] }
 s2n-quic = { version = "1", features = [
     "provider-address-token-default",
     "provider-tls-rustls",

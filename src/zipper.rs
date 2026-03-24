@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
 
 use anyhow::{Result, anyhow};
 use axum::http::StatusCode;
@@ -9,6 +9,7 @@ use s2n_quic::{
     provider::{io::TryInto, limits::Limits},
     stream::{BidirectionalStream, ReceiveStream, SendStream},
 };
+use serde_json::Value;
 use tempfile::TempDir;
 use tokio::{
     fs,
@@ -45,10 +46,20 @@ impl Zipper {
         }
     }
 
+    pub fn tool_schema_dir(&self) -> PathBuf {
+        self.schema_dir.path().to_path_buf()
+    }
+
     async fn persist_json_schema(&self, name: &str, json_schema: &str) -> Result<()> {
-        let file_name = format!("tool-{}.json", utils::sanitize_name(name));
+        let file_name = format!("{}.json", utils::sanitize_name(name)?);
         let schema_path = self.schema_dir.path().join(file_name);
-        fs::write(&schema_path, json_schema).await?;
+
+        let mut schema: Value = serde_json::from_str(json_schema)?;
+        if let Some(obj) = schema.as_object_mut() {
+            obj.insert("name".to_string(), Value::String(name.to_owned()));
+        }
+
+        fs::write(&schema_path, serde_json::to_vec(&schema)?).await?;
         info!("tool schema stored: {}", schema_path.display());
         Ok(())
     }

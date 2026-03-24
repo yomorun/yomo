@@ -3,6 +3,7 @@ pub mod bridge;
 pub mod client;
 pub mod connector;
 pub mod io;
+pub mod llm_api;
 pub mod router;
 pub mod serverless;
 pub mod tls;

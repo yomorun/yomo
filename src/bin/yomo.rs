@@ -15,6 +15,7 @@ use yomo::{
     bridge::Bridge,
     client::Client,
     connector::MemoryConnector,
+    llm_api::serve_llm_api,
     router::RouterImpl,
     serverless::{ServerlessHandler, ServerlessMemoryBridge},
     tls::TlsConfig,
@@ -34,9 +35,19 @@ fn default_zipper_port() -> u16 {
     9000
 }
 
+/// Default LLM API HTTP port
+fn default_llm_api_port() -> u16 {
+    9001
+}
+
 /// Default tool API HTTP port
 fn default_tool_api_port() -> u16 {
-    9001
+    9002
+}
+
+/// Default LLM API base URL
+fn default_llm_api_base_url() -> String {
+    "http://127.0.0.1:11434".to_string()
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -66,10 +77,33 @@ impl Default for ZipperConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-struct ToolApiConfig {
-    #[serde(default)]
-    enabled: bool,
+struct LlmApiConfig {
+    #[serde(default = "default_host")]
+    host: String,
 
+    #[serde(default = "default_llm_api_port")]
+    port: u16,
+
+    #[serde(default)]
+    base_url: String,
+
+    #[serde(default)]
+    api_key: String,
+}
+
+impl Default for LlmApiConfig {
+    fn default() -> Self {
+        Self {
+            host: default_host(),
+            port: default_llm_api_port(),
+            base_url: default_llm_api_base_url(),
+            api_key: String::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ToolApiConfig {
     #[serde(default = "default_host")]
     host: String,
 
@@ -80,7 +114,6 @@ struct ToolApiConfig {
 impl Default for ToolApiConfig {
     fn default() -> Self {
         Self {
-            enabled: false,
             host: default_host(),
             port: default_tool_api_port(),
         }
@@ -147,15 +180,19 @@ struct ServeConfig {
     #[serde(default)]
     zipper: ZipperConfig,
 
+    #[serde(default, rename = "llm_api")]
+    llm_api: LlmApiConfig,
+
     #[serde(default, rename = "tool_api")]
-    tool_api: ToolApiConfig,
+    tool_api: Option<ToolApiConfig>,
 }
 
 impl Default for ServeConfig {
     fn default() -> Self {
         Self {
             zipper: ZipperConfig::default(),
-            tool_api: ToolApiConfig::default(),
+            llm_api: LlmApiConfig::default(),
+            tool_api: None,
         }
     }
 }
@@ -183,17 +220,28 @@ async fn serve(opt: ServeOptions) -> Result<()> {
     let (sender, receiver) = mpsc::unbounded_channel();
     let zipper = Zipper::new(RouterImpl::new(config.zipper.auth_token.clone()));
     let zipper_memory_bridge = ZipperMemoryBridge::new(zipper.clone(), receiver);
+    let tool_api_connector = MemoryConnector::new(sender.clone(), MAX_BUF_SIZE);
+    let llm_api_connector = MemoryConnector::new(sender, MAX_BUF_SIZE);
+    let schema_dir = zipper.tool_schema_dir();
 
     select! {
+        _ = zipper_memory_bridge.serve_bridge() => Ok(()),
+        r = zipper.serve(&config.zipper.host, config.zipper.port, &config.zipper.tls) => r,
+        r = serve_llm_api(
+                &config.llm_api.host,
+                config.llm_api.port,
+                llm_api_connector,
+                schema_dir,
+                config.llm_api.base_url,
+                config.llm_api.api_key,
+            ) => r,
         r = async {
-            if config.tool_api.enabled {
-                serve_tool_api(&config.tool_api.host, config.tool_api.port, MemoryConnector::new(sender, MAX_BUF_SIZE)).await
+            if let Some(tool_api) = config.tool_api {
+                serve_tool_api(&tool_api.host, tool_api.port, tool_api_connector).await
             } else {
                 core::future::pending().await
             }
         } => r,
-        _ = zipper_memory_bridge.serve_bridge() => Ok(()),
-        r = zipper.serve(&config.zipper.host, config.zipper.port, &config.zipper.tls) => r,
     }?;
 
     Ok(())
@@ -238,6 +286,8 @@ async fn run(opt: RunOptions) -> Result<()> {
     };
 
     let mut client = Client::new(opt.name, Some(MemoryConnector::new(sender, MAX_BUF_SIZE)));
+
+    // Clean up subprocess if connection fails
     if let Err(e) = client
         .connect_zipper(&opt.zipper, &opt.credential, &tls_config, Some(json_schema))
         .await

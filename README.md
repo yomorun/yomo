@@ -1,29 +1,43 @@
 # YoMo
 
-v2 version is fully rewritten in Rust.
+- build
 
-- build:
+  ```
+  cargo build
+  ```
 
-```
-cargo build
-```
+- use Ollama as the LLM provider:
 
-- run server:
+  ```
+  ollama pull qwen3.5
+  ```
 
-```
-RUST_LOG=debug ./target/debug/yomo serve
-```
+- run YoMo server:
 
-- run tool:
+  ```
+  RUST_LOG=info ./target/debug/yomo serve
+  ```
 
-```
-RUST_LOG=info ./target/debug/yomo run --name uppercase ./demo/go/uppercase
-```
+- run YoMo serverless tool:
+
+  ```
+  RUST_LOG=info ./target/debug/yomo run --name get-weather ./demo/go/get_weather
+  ```
 
 - send a request:
 
-```
-curl -d '{"args": "Hello, YoMo!"}' \
-  -H 'Content-type: application/json' \
-  http://127.0.0.1:9001/tool/uppercase
-```
+  ```
+  curl \
+    --request POST \
+    --url http://127.0.0.1:9001/v1/chat/completions \
+    --header 'Content-Type: application/json' \
+    --data '{
+      "model": "qwen3.5",
+      "messages": [
+          {
+              "role": "user",
+              "content": "How is the weather in Beijing?"
+          }
+        ]
+      }'
+  ```
