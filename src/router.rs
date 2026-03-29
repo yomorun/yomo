@@ -8,6 +8,9 @@ use crate::types::{HandshakeRequest, RequestHeaders};
 /// Router trait for managing routing
 pub trait Router: Sync + Send {
     /// Handle client registration handshake
+    ///
+    /// Returns the previously registered connection id when the same tool name
+    /// already exists.
     fn handshake(&mut self, conn_id: u64, req: &HandshakeRequest) -> Result<Option<u64>>;
 
     /// Route request to appropriate client
@@ -25,6 +28,10 @@ pub struct RouterImpl {
 }
 
 impl RouterImpl {
+    /// Create a new router instance.
+    ///
+    /// If `auth_token` is set, all handshake requests must provide the same
+    /// credential value.
     pub fn new(auth_token: Option<String>) -> Self {
         Self {
             auth_token,

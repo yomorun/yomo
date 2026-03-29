@@ -1,7 +1,14 @@
 [package]
 name = "yomo"
-version = "0.1.0"
+version = "0.4.0"
 edition = "2024"
+license = "Apache-2.0"
+description = "A QUIC-based runtime for AI-LLM tool routing and serverless execution"
+readme = "README.md"
+repository = "https://github.com/yomorun/yomo"
+homepage = "https://github.com/yomorun/yomo"
+documentation = "https://docs.rs/yomo"
+keywords = ["ai", "agent", "llm", "serverless", "tool"]
 
 [dependencies]
 anyhow = "1.0"

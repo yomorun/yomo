@@ -19,6 +19,11 @@ where
     R: AsyncReadExt + Unpin + Send + 'static,
     W: AsyncWriteExt + Unpin + Send + 'static,
 {
+    /// Open a new bidirectional stream pair.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when creating the underlying transport stream fails.
     async fn open_new_stream(&self) -> Result<(R, W)>;
 }
 
@@ -28,6 +33,7 @@ pub struct TcpConnector {
 }
 
 impl TcpConnector {
+    /// Create a TCP connector for a target address.
     pub fn new(tcp_addr: &str) -> Self {
         Self {
             tcp_addr: tcp_addr.to_owned(),
@@ -50,6 +56,7 @@ pub struct QuicConnector {
 }
 
 impl QuicConnector {
+    /// Create a QUIC connector from an existing connection handle.
     pub fn new(handle: Handle) -> Self {
         Self { handle }
     }
@@ -71,6 +78,7 @@ pub struct MemoryConnector {
 }
 
 impl MemoryConnector {
+    /// Create an in-memory connector backed by a channel and simplex streams.
     pub fn new(
         sender: UnboundedSender<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>,
         max_buf_size: usize,

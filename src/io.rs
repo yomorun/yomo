@@ -11,6 +11,13 @@ use tokio::{
 const MAX_FRAME_SIZE: u32 = 16 * 1024;
 
 /// Send bytes with length-prefixed framing
+///
+/// The payload is prefixed with a 4-byte big-endian length.
+///
+/// # Errors
+///
+/// Returns an error if the payload exceeds `MAX_FRAME_SIZE` or if writing to
+/// the stream fails.
 pub async fn send_bytes(stream: &mut (impl AsyncWriteExt + Unpin), bytes: &[u8]) -> Result<()> {
     let length = bytes.len() as u32;
     if length > MAX_FRAME_SIZE {
@@ -23,6 +30,13 @@ pub async fn send_bytes(stream: &mut (impl AsyncWriteExt + Unpin), bytes: &[u8])
 }
 
 /// Receive bytes with length-prefixed framing
+///
+/// Returns `Ok(None)` when the stream reaches EOF before reading a new frame.
+///
+/// # Errors
+///
+/// Returns an error if the frame length exceeds `MAX_FRAME_SIZE`, if the frame
+/// is truncated, or if stream reads fail for non-EOF reasons.
 pub async fn receive_bytes(stream: &mut (impl AsyncReadExt + Unpin)) -> Result<Option<Vec<u8>>> {
     let length = match stream.read_u32().await {
         Ok(size) => size,
@@ -45,6 +59,10 @@ pub async fn receive_bytes(stream: &mut (impl AsyncReadExt + Unpin)) -> Result<O
 }
 
 /// Send a serialized frame
+///
+/// # Errors
+///
+/// Returns an error if JSON serialization fails or if the framed write fails.
 pub async fn send_frame<T: Serialize + Debug>(
     stream: &mut (impl AsyncWriteExt + Unpin),
     frame: &T,
@@ -55,6 +73,13 @@ pub async fn send_frame<T: Serialize + Debug>(
 }
 
 /// Receive and deserialize a frame
+///
+/// Returns `Ok(None)` when the stream reaches EOF before a complete frame is
+/// available.
+///
+/// # Errors
+///
+/// Returns an error if framed reading fails or JSON deserialization fails.
 pub async fn receive_frame<T: for<'a> Deserialize<'a> + Debug>(
     stream: &mut (impl AsyncReadExt + Unpin),
 ) -> Result<Option<T>> {
@@ -67,6 +92,9 @@ pub async fn receive_frame<T: for<'a> Deserialize<'a> + Debug>(
 }
 
 /// Bidirectional pipe between two streams
+///
+/// This function concurrently copies bytes in both directions until either side
+/// closes or a non-EOF error occurs.
 pub async fn pipe_streams<R1, W1, R2, W2>(mut r1: R1, mut w1: W1, mut r2: R2, mut w2: W2)
 where
     R1: AsyncReadExt + Unpin + Send,
