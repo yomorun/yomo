@@ -43,3 +43,17 @@ pub struct ResponseHeaders {
     pub body_format: BodyFormat,
     pub extension: String,
 }
+
+/// Tool request body
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct ToolRequest {
+    pub args: String,
+    pub agent_context: Option<String>,
+}
+
+/// Tool response body
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct ToolResponse {
+    pub result: Option<String>,
+    pub error_msg: Option<String>,
+}

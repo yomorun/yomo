@@ -142,7 +142,7 @@ impl ServerlessHandler {
             if reader.read_line(&mut buf).await? == 0 {
                 break;
             }
-            print!("{} {}", "[Go Tool]".cyan(), buf);
+            print!("{} {}", "[Go Serverless]".cyan(), buf);
         }
         child.wait().await?;
 

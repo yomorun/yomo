@@ -13,8 +13,8 @@ import (
 )
 
 var (
-	yomoSimpleHandler func(Arguments) (Result, error) = nil
-	yomoStreamHandler func(Arguments, chan<- Result)  = nil
+	yomoHandler1 func(Arguments) (Result, error)                    = nil
+	yomoHandler2 func(Arguments, map[string]string) (Result, error) = nil
 )
 
 type YomoRequestHeaders struct {
@@ -26,7 +26,8 @@ type YomoRequestHeaders struct {
 }
 
 type YomoRequestBody struct {
-	Args Arguments `json:"args"`
+	Args         string `json:"args"`
+	AgentContext string `json:"agent_context"`
 }
 
 type YomoResponseHeaders struct {
@@ -39,16 +40,6 @@ type YomoResponseHeaders struct {
 type YomoResponseBody struct {
 	Result   any    `json:"result"`
 	ErrorMsg string `json:"error_msg,omitempty"`
-}
-
-type Chunk struct {
-	Chunk any `json:"chunk"`
-	// todo: error process
-}
-
-type FunctionSchema struct {
-	Description string             `json:"description"`
-	Parameters  *jsonschema.Schema `json:"parameters"`
 }
 
 func yomoReadBytes(r io.Reader) ([]byte, error) {
@@ -110,7 +101,10 @@ func yomoGenerateJSONSchema() (string, error) {
 	}
 	parameters := reflector.Reflect(&Arguments{})
 
-	schema := FunctionSchema{
+	schema := struct {
+		Description string             `json:"description"`
+		Parameters  *jsonschema.Schema `json:"parameters"`
+	}{
 		Description: Description,
 		Parameters:  parameters,
 	}
@@ -123,10 +117,10 @@ func yomoGenerateJSONSchema() (string, error) {
 	return string(buf), nil
 }
 
-func yomoHandleStream(handlerMode string, conn io.ReadWriteCloser) error {
+func yomoHandleStream(handlerMode int, conn io.ReadWriteCloser) error {
 	defer conn.Close()
 
-	_, err := yomoReadPacket[YomoRequestHeaders](conn)
+	reqHeaders, err := yomoReadPacket[YomoRequestHeaders](conn)
 	if err != nil {
 		yomoWritePacket(
 			conn,
@@ -137,6 +131,18 @@ func yomoHandleStream(handlerMode string, conn io.ReadWriteCloser) error {
 			},
 		)
 		return err
+	}
+
+	if reqHeaders.BodyFormat != "bytes" {
+		yomoWritePacket(
+			conn,
+			&YomoResponseHeaders{
+				StatusCode: 400,
+				ErrorMsg:   "unsupported body format",
+				BodyFormat: "null",
+			},
+		)
+		return fmt.Errorf("unsupported body format: %s", reqHeaders.BodyFormat)
 	}
 
 	reqBody, err := yomoReadPacket[YomoRequestBody](conn)
@@ -152,72 +158,68 @@ func yomoHandleStream(handlerMode string, conn io.ReadWriteCloser) error {
 		return err
 	}
 
+	var args Arguments
+
+	if len(reqBody.Args) > 0 {
+		err := json.Unmarshal([]byte(reqBody.Args), &args)
+		if err != nil {
+			return err
+		}
+	}
+
+	resBody := &YomoResponseBody{}
 	switch handlerMode {
-	case "simple":
-		resBody := &YomoResponseBody{}
-		result, err := yomoSimpleHandler(reqBody.Args)
+	case 1:
+		result, err := yomoHandler1(args)
 		if err == nil {
 			resBody.Result = result
 		} else {
 			resBody.ErrorMsg = err.Error()
 		}
+	case 2:
+		var agentContext map[string]string
+		if len(reqBody.AgentContext) > 0 {
+			err := json.Unmarshal([]byte(reqBody.AgentContext), &agentContext)
+			if err != nil {
+				return err
+			}
+		}
 
-		yomoWritePacket(
-			conn,
-			&YomoResponseHeaders{
-				StatusCode: 200,
-				BodyFormat: "bytes",
-			},
-		)
-		yomoWritePacket(conn, resBody)
-	case "stream":
-		yomoWritePacket(
-			conn,
-			&YomoResponseHeaders{
-				StatusCode: 200,
-				BodyFormat: "chunk",
-			},
-		)
-
-		ch := make(chan Result)
-
-		go func() {
-			yomoStreamHandler(reqBody.Args, ch)
-			close(ch)
-		}()
-
-		for x := range ch {
-			yomoWritePacket(conn, &Chunk{Chunk: x})
+		result, err := yomoHandler2(args, agentContext)
+		if err == nil {
+			resBody.Result = result
+		} else {
+			resBody.ErrorMsg = err.Error()
 		}
 	default:
-		err = fmt.Errorf("unimplemented serverless mode: %s", handlerMode)
-		yomoWritePacket(
-			conn,
-			&YomoResponseHeaders{
-				StatusCode: 500,
-				ErrorMsg:   err.Error(),
-				BodyFormat: "null",
-			},
-		)
-		return err
+		resBody.ErrorMsg = "unsupported handler mode"
 	}
+
+	yomoWritePacket(
+		conn,
+		&YomoResponseHeaders{
+			StatusCode: 200,
+			BodyFormat: "bytes",
+		},
+	)
+	yomoWritePacket(conn, resBody)
 
 	return nil
 }
 
 // reflect application Handler function
-func yomoReflectApp() (string, error) {
+func yomoReflectApp() (int, error) {
 	h := reflect.ValueOf(Handler)
 
 	switch h.Type() {
-	case reflect.TypeOf(yomoSimpleHandler):
-		reflect.ValueOf(&yomoSimpleHandler).Elem().Set(h)
-		return "simple", nil
-	case reflect.TypeOf(yomoStreamHandler):
-		reflect.ValueOf(&yomoStreamHandler).Elem().Set(h)
-		return "stream", nil
+	case reflect.TypeOf(yomoHandler1):
+		reflect.ValueOf(&yomoHandler1).Elem().Set(h)
+		return 1, nil
+	case reflect.TypeOf(yomoHandler2):
+		reflect.ValueOf(&yomoHandler2).Elem().Set(h)
+		return 2, nil
 	default:
-		return "", fmt.Errorf("unsupported handler type: %s", h.Type())
+		return 0, fmt.Errorf("unsupported handler type: %s", h.Type())
 	}
 }
 

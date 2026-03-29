@@ -8,8 +8,8 @@ use tokio::{fs, io::AsyncWriteExt, net::TcpListener};
 
 use crate::{
     connector::{Connector, MemoryConnector},
-    io::{receive_bytes, receive_frame, send_bytes, send_frame},
-    types::{BodyFormat, RequestHeaders, ResponseHeaders},
+    io::{receive_frame, send_frame},
+    types::{BodyFormat, RequestHeaders, ResponseHeaders, ToolRequest, ToolResponse},
 };
 
 /// Custom error with HTTP status code
@@ -138,7 +138,11 @@ fn response_finish_reason(response: &Value) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
-async fn invoke_tool(connector: &MemoryConnector, tool_name: &str, args: Value) -> Result<Value> {
+async fn invoke_tool(
+    connector: &MemoryConnector,
+    tool_name: &str,
+    tool_request: &ToolRequest,
+) -> Result<ToolResponse> {
     let request_headers = RequestHeaders {
         name: tool_name.to_owned(),
         trace_id: "llm-api".to_string(),
@@ -150,8 +154,7 @@ async fn invoke_tool(connector: &MemoryConnector, tool_name: &str, args: Value) 
     let (mut reader, mut writer) = connector.open_new_stream().await?;
 
     send_frame(&mut writer, &request_headers).await?;
-    let body = serde_json::to_vec(&json!({"args": args}))?;
-    send_bytes(&mut writer, &body).await?;
+    send_frame(&mut writer, &tool_request).await?;
     writer.shutdown().await?;
 
     let response_headers: ResponseHeaders = receive_frame(&mut reader)
@@ -161,10 +164,10 @@ async fn invoke_tool(connector: &MemoryConnector, tool_name: &str, args: Value) 
         bail!("tool invocation failed: {}", response_headers.error_msg);
     }
 
-    let body = receive_bytes(&mut reader)
+    let result = receive_frame(&mut reader)
         .await?
         .ok_or(anyhow!("Failed to receive tool response"))?;
-    let result: Value = serde_json::from_slice(&body)?;
+
     Ok(result)
 }
 
@@ -178,6 +181,8 @@ async fn chat_completions_handler(
         payload["tools"] = Value::Array(tools.clone());
         payload["tool_choice"] = Value::String("auto".to_string());
     }
+
+    let agent_context = req.get("agent_context").and_then(|v| Some(v.to_string()));
 
     let first = call_llm(&state, &payload).await?;
     if response_finish_reason(&first).as_deref() != Some("tool_calls") {
@@ -209,19 +214,35 @@ async fn chat_completions_handler(
             .get("name")
             .and_then(|v| v.as_str())
             .ok_or(anyhow!("tool_call.function.name missing"))?;
-        let args_str = func
+        let args = func
             .get("arguments")
             .and_then(|v| v.as_str())
-            .ok_or(anyhow!("tool_call.function.arguments missing"))?;
+            .ok_or(anyhow!("tool_call.function.arguments missing"))?
+            .to_string();
 
-        let args: Value = serde_json::from_str(args_str)?;
-        let tool_result = invoke_tool(&state.connector, name, args).await?;
+        let tool_response = invoke_tool(
+            &state.connector,
+            name,
+            &ToolRequest {
+                args,
+                agent_context: agent_context.to_owned(),
+            },
+        )
+        .await?;
 
-        messages.push(json!({
-            "role": "tool",
-            "tool_call_id": tool_call_id,
-            "content": tool_result.to_string(),
-        }));
+        if let Some(result) = tool_response.result {
+            messages.push(json!({
+                "role": "tool",
+                "tool_call_id": tool_call_id,
+                "content": result,
+            }));
+        } else if let Some(error_msg) = tool_response.error_msg {
+            messages.push(json!({
+                "role": "tool",
+                "tool_call_id": tool_call_id,
+                "content": format!("tool_call error: {}", error_msg),
+            }));
+        }
     }
 
     let mut second_payload = req.clone();

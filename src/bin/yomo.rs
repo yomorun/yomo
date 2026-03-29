@@ -23,7 +23,7 @@ use yomo::{
     zipper::{Zipper, ZipperMemoryBridge},
 };
 
-const MAX_BUF_SIZE: usize = 4 * 1024 * 1024;
+const MAX_BUF_SIZE: usize = 64 * 1024;
 
 /// Default host address
 fn default_host() -> String {
