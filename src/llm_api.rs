@@ -1,14 +1,15 @@
-use std::{path::PathBuf, sync::Arc};
+use std::sync::Arc;
 
 use anyhow::{Result, anyhow, bail};
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse, routing::post};
 use log::info;
 use serde_json::{Value, json};
-use tokio::{fs, io::AsyncWriteExt, net::TcpListener};
+use tokio::{io::AsyncWriteExt, net::TcpListener};
 
 use crate::{
     connector::{Connector, MemoryConnector},
     io::{receive_frame, send_frame},
+    tool_mgr::ToolMgr,
     types::{BodyFormat, RequestHeaders, ResponseHeaders, ToolRequest, ToolResponse},
 };
 
@@ -39,62 +40,18 @@ where
 #[derive(Clone)]
 struct LlmApiState {
     connector: Arc<MemoryConnector>,
-    schema_dir: PathBuf,
+    tool_mgr: Arc<dyn ToolMgr>,
     base_url: String,
     api_key: String,
     client: reqwest::Client,
 }
 
-fn tool_name_from_path(path: &std::path::Path) -> String {
-    path.file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("tool")
-        .to_string()
-}
-
-fn extract_tools_from_schema(path: &std::path::Path, schema: Value) -> Option<Value> {
-    let obj = schema.as_object()?;
-    let fallback_name = tool_name_from_path(path);
-    let name = obj
-        .get("name")
-        .and_then(|v| v.as_str())
-        .unwrap_or(&fallback_name)
-        .to_string();
-
-    let description = obj
-        .get("description")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default();
-
-    let parameters = obj.get("parameters").cloned().unwrap_or_else(|| json!({}));
-
-    Some(json!({
-        "type": "function",
-        "function": {
-            "name": name,
-            "description": description,
-            "parameters": parameters,
-        }
-    }))
-}
-
-async fn load_tools(schema_dir: &PathBuf) -> Result<Vec<Value>> {
-    let mut tools = Vec::new();
-    let mut entries = fs::read_dir(schema_dir).await?;
-    while let Some(entry) = entries.next_entry().await? {
-        let path = entry.path();
-        if path.extension().and_then(|s| s.to_str()) != Some("json") {
-            continue;
-        }
-
-        let text = fs::read_to_string(&path).await?;
-        let schema: Value = serde_json::from_str(&text)?;
-        if let Some(tool) = extract_tools_from_schema(&path, schema) {
-            tools.push(tool);
-        }
-    }
-
-    Ok(tools)
+async fn load_tools(tool_mgr: &Arc<dyn ToolMgr>) -> Result<Vec<Value>> {
+    let tool_functions = tool_mgr.list_tools().await?;
+    Ok(tool_functions
+        .into_iter()
+        .map(|tool_function| tool_function.to_openai_tool())
+        .collect())
 }
 
 async fn call_llm(state: &LlmApiState, payload: &Value) -> Result<Value> {
@@ -176,7 +133,7 @@ async fn chat_completions_handler(
     Json(req): Json<Value>,
 ) -> Result<Json<Value>, CustomError> {
     let mut payload = req.clone();
-    let tools = load_tools(&state.schema_dir).await?;
+    let tools = load_tools(&state.tool_mgr).await?;
     if !tools.is_empty() {
         payload["tools"] = Value::Array(tools.clone());
         payload["tool_choice"] = Value::String("auto".to_string());
@@ -261,13 +218,13 @@ pub async fn serve_llm_api(
     host: &str,
     port: u16,
     connector: MemoryConnector,
-    schema_dir: PathBuf,
+    tool_mgr: Arc<dyn ToolMgr>,
     base_url: String,
     api_key: String,
 ) -> Result<()> {
     let state = Arc::new(LlmApiState {
         connector: Arc::new(connector),
-        schema_dir,
+        tool_mgr,
         base_url,
         api_key,
         client: reqwest::Client::new(),

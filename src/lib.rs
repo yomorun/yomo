@@ -21,6 +21,8 @@ pub mod serverless;
 pub mod tls;
 /// Tool-facing HTTP APIs.
 pub mod tool_api;
+/// Tool manager trait and implementation.
+pub mod tool_mgr;
 /// Shared protocol types.
 pub mod types;
 /// Utility helpers.

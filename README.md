@@ -3,7 +3,7 @@
 - build
 
   ```
-  cargo build
+  cargo build --release
   ```
 
 - use Ollama as the LLM provider:
@@ -15,13 +15,13 @@
 - run YoMo server:
 
   ```
-  RUST_LOG=info ./target/debug/yomo serve
+  ./target/release/yomo serve
   ```
 
 - run YoMo serverless tool:
 
   ```
-  RUST_LOG=info ./target/debug/yomo run --name get-weather ./demo/go/get_weather
+  ./target/release/yomo run --name get-weather ./demo/go/get_weather
   ```
 
 - send a request:

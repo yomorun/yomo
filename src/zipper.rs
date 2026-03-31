@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use anyhow::{Result, anyhow};
 use axum::http::StatusCode;
@@ -9,10 +9,8 @@ use s2n_quic::{
     provider::{io::TryInto, limits::Limits},
     stream::{BidirectionalStream, ReceiveStream, SendStream},
 };
-use serde_json::Value;
-use tempfile::TempDir;
+use serde_json::{Value, json};
 use tokio::{
-    fs,
     io::{AsyncWriteExt, ReadHalf, SimplexStream, WriteHalf},
     spawn,
     sync::{Mutex, RwLock, mpsc::UnboundedReceiver},
@@ -24,43 +22,52 @@ use crate::{
     io::{receive_frame, send_frame},
     router::Router,
     tls::{TlsConfig, new_tls},
+    tool_mgr::{ToolFunction, ToolMgr},
     types::{HandshakeRequest, HandshakeResponse, RequestHeaders},
-    utils,
 };
 
 /// Zipper: Manages all registered Tool connections
 #[derive(Clone)]
 pub struct Zipper {
     router: Arc<RwLock<dyn Router>>,
-
+    tool_mgr: Arc<dyn ToolMgr>,
     all_conns: Arc<RwLock<HashMap<u64, Handle>>>,
-    schema_dir: Arc<TempDir>,
 }
 
 impl Zipper {
-    pub fn new(router: impl Router + 'static) -> Self {
+    pub fn new(router: impl Router + 'static, tool_mgr: Arc<dyn ToolMgr>) -> Self {
         Self {
             router: Arc::new(RwLock::new(router)),
             all_conns: Arc::default(),
-            schema_dir: Arc::new(tempfile::tempdir().expect("failed to create schema temp dir")),
+            tool_mgr,
         }
     }
 
-    pub fn tool_schema_dir(&self) -> PathBuf {
-        self.schema_dir.path().to_path_buf()
-    }
-
-    async fn persist_json_schema(&self, name: &str, json_schema: &str) -> Result<()> {
-        let file_name = format!("{}.json", utils::sanitize_name(name)?);
-        let schema_path = self.schema_dir.path().join(file_name);
-
+    fn tool_function_from_schema(tool_name: &str, json_schema: &str) -> Result<ToolFunction> {
         let mut schema: Value = serde_json::from_str(json_schema)?;
-        if let Some(obj) = schema.as_object_mut() {
-            obj.insert("name".to_string(), Value::String(name.to_owned()));
-        }
+        let obj = schema
+            .as_object_mut()
+            .ok_or(anyhow!("tool json_schema must be a JSON object"))?;
 
-        fs::write(&schema_path, serde_json::to_vec(&schema)?).await?;
-        info!("tool schema stored: {}", schema_path.display());
+        let description = obj
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_owned();
+
+        let parameters = obj.get("parameters").cloned().unwrap_or_else(|| json!({}));
+
+        Ok(ToolFunction {
+            tool_name: tool_name.to_owned(),
+            description,
+            parameters,
+        })
+    }
+
+    async fn persist_tool_function(&self, tool_name: &str, json_schema: &str) -> Result<()> {
+        let tool_function = Self::tool_function_from_schema(tool_name, json_schema)?;
+        self.tool_mgr.upsert_tool(tool_function).await?;
+        info!("tool function stored: {}", tool_name);
         Ok(())
     }
 
@@ -84,8 +91,6 @@ impl Zipper {
             .start()?;
 
         info!("start zipper quic server: {}:{}/udp", host, port);
-        info!("tool schema temp dir: {}", self.schema_dir.path().display());
-
         while let Some(conn) = server.accept().await {
             let zipper = self.clone();
             spawn(async move {
@@ -140,8 +145,8 @@ impl Zipper {
 
         match self.router.write().await.handshake(conn_id, &req) {
             Ok(existed_conn) => {
-                if let Some(json_schema) = req.json_schema.as_deref() {
-                    self.persist_json_schema(&req.name, json_schema).await?;
+                if let Some(json_schema) = req.json_schema {
+                    self.persist_tool_function(&req.name, &json_schema).await?;
                 }
 
                 let res = HandshakeResponse {

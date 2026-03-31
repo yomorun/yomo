@@ -1,13 +1,14 @@
-use std::process;
+use std::{process, sync::Arc};
 
 use anyhow::{Result, anyhow};
 use clap::{Parser, builder::NonEmptyStringValueParser};
 use config::{Config, File};
+use env_logger::Env;
 use log::{error, info};
 use serde::Deserialize;
 use tokio::{
     select,
-    sync::mpsc,
+    sync::mpsc::unbounded_channel,
     time::{Duration, sleep},
 };
 
@@ -20,6 +21,7 @@ use yomo::{
     serverless::{ServerlessHandler, ServerlessMemoryBridge},
     tls::TlsConfig,
     tool_api::serve_tool_api,
+    tool_mgr::{ToolMgr, ToolMgrImpl},
     zipper::{Zipper, ZipperMemoryBridge},
 };
 
@@ -217,12 +219,15 @@ async fn serve(opt: ServeOptions) -> Result<()> {
 
     info!("config: {:?}", config);
 
-    let (sender, receiver) = mpsc::unbounded_channel();
-    let zipper = Zipper::new(RouterImpl::new(config.zipper.auth_token.clone()));
+    let (sender, receiver) = unbounded_channel();
+    let tool_mgr: Arc<dyn ToolMgr> = Arc::new(ToolMgrImpl::new());
+    let zipper = Zipper::new(
+        RouterImpl::new(config.zipper.auth_token.clone()),
+        tool_mgr.clone(),
+    );
     let zipper_memory_bridge = ZipperMemoryBridge::new(zipper.clone(), receiver);
     let tool_api_connector = MemoryConnector::new(sender.clone(), MAX_BUF_SIZE);
     let llm_api_connector = MemoryConnector::new(sender, MAX_BUF_SIZE);
-    let schema_dir = zipper.tool_schema_dir();
 
     select! {
         _ = zipper_memory_bridge.serve_bridge() => Ok(()),
@@ -231,7 +236,7 @@ async fn serve(opt: ServeOptions) -> Result<()> {
                 &config.llm_api.host,
                 config.llm_api.port,
                 llm_api_connector,
-                schema_dir,
+                tool_mgr,
                 config.llm_api.base_url,
                 config.llm_api.api_key,
             ) => r,
@@ -256,7 +261,7 @@ async fn run(opt: RunOptions) -> Result<()> {
         .mutual(opt.tls_mutual)
         .build();
 
-    let (sender, receiver) = mpsc::unbounded_channel();
+    let (sender, receiver) = unbounded_channel();
     let serverless_handler = ServerlessHandler::default();
     let serverless_memory_bridge =
         ServerlessMemoryBridge::new(serverless_handler.clone(), receiver);
@@ -311,7 +316,7 @@ async fn run(opt: RunOptions) -> Result<()> {
 
 #[tokio::main]
 async fn main() {
-    env_logger::init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
     if let Err(e) = match Cli::parse() {
         Cli::Serve(opt) => serve(opt).await,
