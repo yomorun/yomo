@@ -2,13 +2,14 @@ use std::sync::Arc;
 
 use anyhow::{Result, anyhow, bail};
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse, routing::post};
-use log::info;
+use log::{debug, error, info};
 use serde_json::{Value, json};
 use tokio::{io::AsyncWriteExt, net::TcpListener};
 
 use crate::{
     connector::{Connector, MemoryConnector},
     io::{receive_frame, send_frame},
+    metadata::Metadata,
     tool_mgr::ToolMgr,
     types::{BodyFormat, RequestHeaders, ResponseHeaders, ToolRequest, ToolResponse},
 };
@@ -47,10 +48,30 @@ struct LlmApiState {
 }
 
 async fn load_tools(tool_mgr: &Arc<dyn ToolMgr>) -> Result<Vec<Value>> {
-    let tool_functions = tool_mgr.list_tools().await?;
-    Ok(tool_functions
+    Ok(tool_mgr
+        .list_tools(&Metadata::default())
+        .await?
         .into_iter()
-        .map(|tool_function| tool_function.to_openai_tool())
+        .filter_map(|(name, tool)| match serde_json::from_str::<Value>(&tool) {
+            Ok(v) => {
+                if let Some(description) = v.get("description") {
+                    Some(json!({
+                        "type": "function",
+                        "function": {
+                            "name": Value::String(name),
+                            "description": description.as_str(),
+                            "parameters": v.get("parameters").cloned().unwrap_or(json!({})),
+                        }
+                    }))
+                } else {
+                    None
+                }
+            }
+            Err(e) => {
+                error!("failed to parse tool {}: {}", name, e);
+                None
+            }
+        })
         .collect())
 }
 
@@ -100,12 +121,14 @@ async fn invoke_tool(
     tool_name: &str,
     tool_request: &ToolRequest,
 ) -> Result<ToolResponse> {
+    debug!("invoke tool: {:?}", tool_request);
+
     let request_headers = RequestHeaders {
         name: tool_name.to_owned(),
         trace_id: "llm-api".to_string(),
         span_id: format!("tool-{}", tool_name),
         body_format: BodyFormat::Bytes,
-        extension: String::new(),
+        ..Default::default()
     };
 
     let (mut reader, mut writer) = connector.open_new_stream().await?;
@@ -125,6 +148,8 @@ async fn invoke_tool(
         .await?
         .ok_or(anyhow!("Failed to receive tool response"))?;
 
+    debug!("tool response: {:?}", result);
+
     Ok(result)
 }
 
@@ -132,6 +157,8 @@ async fn chat_completions_handler(
     State(state): State<Arc<LlmApiState>>,
     Json(req): Json<Value>,
 ) -> Result<Json<Value>, CustomError> {
+    info!("chat_completions request: {:?}", req);
+
     let mut payload = req.clone();
     let tools = load_tools(&state.tool_mgr).await?;
     if !tools.is_empty() {
@@ -139,9 +166,16 @@ async fn chat_completions_handler(
         payload["tool_choice"] = Value::String("auto".to_string());
     }
 
-    let agent_context = req.get("agent_context").and_then(|v| Some(v.to_string()));
-
+    debug!(
+        "first llm request: {}",
+        serde_json::to_string_pretty(&payload)?
+    );
     let first = call_llm(&state, &payload).await?;
+    debug!(
+        "first llm response: {}",
+        serde_json::to_string_pretty(&first)?
+    );
+
     if response_finish_reason(&first).as_deref() != Some("tool_calls") {
         return Ok(Json(first));
     }
@@ -158,6 +192,8 @@ async fn chat_completions_handler(
         .cloned()
         .ok_or(anyhow!("request.messages is required"))?;
     messages.push(assistant_msg.clone());
+
+    let agent_context = req.get("agent_context").and_then(|v| Some(v.to_string()));
 
     for tc in tool_calls {
         let tool_call_id = tc
@@ -209,7 +245,16 @@ async fn chat_completions_handler(
         second_payload["tool_choice"] = Value::String("auto".to_string());
     }
 
+    debug!(
+        "second llm request: {}",
+        serde_json::to_string_pretty(&second_payload)?
+    );
     let second = call_llm(&state, &second_payload).await?;
+    debug!(
+        "second llm response: {}",
+        serde_json::to_string_pretty(&second)?
+    );
+
     Ok(Json(second))
 }
 

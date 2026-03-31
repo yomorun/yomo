@@ -13,11 +13,11 @@ use tokio::{
 };
 
 use yomo::{
+    auth::AuthImpl,
     bridge::Bridge,
     client::Client,
     connector::MemoryConnector,
     llm_api::serve_llm_api,
-    router::RouterImpl,
     serverless::{ServerlessHandler, ServerlessMemoryBridge},
     tls::TlsConfig,
     tool_api::serve_tool_api,
@@ -221,10 +221,10 @@ async fn serve(opt: ServeOptions) -> Result<()> {
 
     let (sender, receiver) = unbounded_channel();
     let tool_mgr: Arc<dyn ToolMgr> = Arc::new(ToolMgrImpl::new());
-    let zipper = Zipper::new(
-        RouterImpl::new(config.zipper.auth_token.clone()),
-        tool_mgr.clone(),
-    );
+    let zipper = Zipper::builder()
+        .auth(Arc::new(AuthImpl::new(config.zipper.auth_token)))
+        .tool_mgr(tool_mgr.clone())
+        .build();
     let zipper_memory_bridge = ZipperMemoryBridge::new(zipper.clone(), receiver);
     let tool_api_connector = MemoryConnector::new(sender.clone(), MAX_BUF_SIZE);
     let llm_api_connector = MemoryConnector::new(sender, MAX_BUF_SIZE);

@@ -15,13 +15,13 @@
 - run YoMo server:
 
   ```
-  ./target/release/yomo serve
+  RUST_LOG=debug ./target/release/yomo serve
   ```
 
 - run YoMo serverless tool:
 
   ```
-  ./target/release/yomo run --name get-weather ./demo/go/get_weather
+  RUST_LOG=debug ./target/release/yomo run --name get-weather ./demo/go/get_weather
   ```
 
 - send a request:

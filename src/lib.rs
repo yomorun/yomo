@@ -3,6 +3,8 @@
 //! This crate provides the transport, routing, and bridge abstractions used to
 //! connect tools and the zipper runtime.
 
+/// Handshake authentication abstractions.
+pub mod auth;
 /// Request forwarding bridge implementations.
 pub mod bridge;
 /// YoMo client implementation.
@@ -13,6 +15,8 @@ pub mod connector;
 pub mod io;
 /// LLM-facing HTTP APIs.
 pub mod llm_api;
+/// Manage user-defined metadata extension.
+pub mod metadata;
 /// Routing traits and implementations.
 pub mod router;
 /// Serverless runtime and handlers.

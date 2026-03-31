@@ -1,39 +1,25 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use anyhow::Result;
-use serde_json::{Value, json};
 use tokio::sync::RwLock;
 
-#[derive(Debug, Clone)]
-pub struct ToolFunction {
-    pub tool_name: String,
-    pub description: String,
-    pub parameters: Value,
-}
-
-impl ToolFunction {
-    pub fn to_openai_tool(&self) -> Value {
-        json!({
-            "type": "function",
-            "function": {
-                "name": self.tool_name,
-                "description": self.description,
-                "parameters": self.parameters,
-            }
-        })
-    }
-}
+use crate::metadata::Metadata;
 
 /// Tool Manager: persist tool function definitions
 #[async_trait::async_trait]
 pub trait ToolMgr: Send + Sync {
-    async fn upsert_tool(&self, tool: ToolFunction) -> Result<()>;
-    async fn list_tools(&self) -> Result<Vec<ToolFunction>>;
+    async fn upsert_tool(
+        &self,
+        tool_name: String,
+        schema: String,
+        metadata: &Metadata,
+    ) -> Result<()>;
+    async fn list_tools(&self, metadata: &Metadata) -> Result<HashMap<String, String>>;
 }
 
-#[derive(Clone, Default)]
+#[derive(Default)]
 pub struct ToolMgrImpl {
-    tools: Arc<RwLock<HashMap<String, ToolFunction>>>,
+    tools: RwLock<HashMap<String, String>>,
 }
 
 impl ToolMgrImpl {
@@ -44,15 +30,17 @@ impl ToolMgrImpl {
 
 #[async_trait::async_trait]
 impl ToolMgr for ToolMgrImpl {
-    async fn upsert_tool(&self, tool: ToolFunction) -> Result<()> {
-        self.tools
-            .write()
-            .await
-            .insert(tool.tool_name.to_owned(), tool);
+    async fn upsert_tool(
+        &self,
+        tool_name: String,
+        schema: String,
+        _metadata: &Metadata,
+    ) -> Result<()> {
+        self.tools.write().await.insert(tool_name, schema);
         Ok(())
     }
 
-    async fn list_tools(&self) -> Result<Vec<ToolFunction>> {
-        Ok(self.tools.read().await.values().cloned().collect())
+    async fn list_tools(&self, _metadata: &Metadata) -> Result<HashMap<String, String>> {
+        Ok(self.tools.read().await.to_owned())
     }
 }

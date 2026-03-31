@@ -2,73 +2,75 @@ use std::collections::HashMap;
 
 use anyhow::{Result, bail};
 use log::debug;
+use tokio::sync::RwLock;
 
-use crate::types::{HandshakeRequest, RequestHeaders};
+use crate::metadata::Metadata;
 
 /// Router trait for managing routing
+#[async_trait::async_trait]
 pub trait Router: Sync + Send {
-    /// Handle client registration handshake
+    /// Register a tool connection.
     ///
-    /// Returns the previously registered connection id when the same tool name
-    /// already exists.
-    fn handshake(&mut self, conn_id: u64, req: &HandshakeRequest) -> Result<Option<u64>>;
+    /// Returns the previously registered connection id when the same name already exists.
+    async fn register(&self, conn_id: u64, name: &str, metadata: &Metadata) -> Result<Option<u64>>;
 
-    /// Route request to appropriate client
-    fn route(&self, headers: &RequestHeaders) -> Result<Option<u64>>;
+    /// Route request to appropriate client.
+    async fn route(&self, name: &str, metadata: &Metadata) -> Result<Option<u64>>;
 
     /// Remove disconnected client
-    fn remove(&mut self, conn_id: u64);
+    async fn remove(&self, conn_id: u64);
 }
 
 /// Router implementation
 pub struct RouterImpl {
-    auth_token: Option<String>,
-
-    route_map: HashMap<String, u64>,
+    route_map: RwLock<HashMap<String, u64>>,
 }
 
 impl RouterImpl {
     /// Create a new router instance.
-    ///
-    /// If `auth_token` is set, all handshake requests must provide the same
-    /// credential value.
-    pub fn new(auth_token: Option<String>) -> Self {
+    pub fn new() -> Self {
         Self {
-            auth_token,
-            route_map: HashMap::new(),
+            route_map: RwLock::default(),
         }
     }
 }
 
+#[async_trait::async_trait]
 impl Router for RouterImpl {
-    fn handshake(&mut self, conn_id: u64, req: &HandshakeRequest) -> Result<Option<u64>> {
-        if req.name.is_empty() {
+    async fn register(
+        &self,
+        conn_id: u64,
+        name: &str,
+        _metadata: &Metadata,
+    ) -> Result<Option<u64>> {
+        if name.is_empty() {
             bail!("name cannot be empty");
         }
 
-        if let Some(token) = &self.auth_token {
-            if &req.credential != token {
-                bail!("invalid credential");
-            }
-        }
-
-        Ok(self.route_map.insert(req.name.to_owned(), conn_id))
+        Ok(self
+            .route_map
+            .write()
+            .await
+            .insert(name.to_owned(), conn_id))
     }
 
-    fn remove(&mut self, conn_id: u64) {
-        self.route_map.retain(|_name, id| *id != conn_id);
-    }
-
-    fn route(&self, headers: &RequestHeaders) -> Result<Option<u64>> {
-        if !headers.name.is_empty() {
-            if let Some(conn_id) = self.route_map.get(&headers.name) {
-                debug!(
-                    "[{}|{}] route [{}] --> conn_id: {}",
-                    headers.trace_id, headers.span_id, headers.name, conn_id
-                );
-                return Ok(Some(conn_id.to_owned()));
-            }
+    async fn route(&self, name: &str, _metadata: &Metadata) -> Result<Option<u64>> {
+        if name.is_empty() {
+            return Ok(None);
         }
+
+        if let Some(conn_id) = self.route_map.read().await.get(name) {
+            debug!("route [{}] --> conn_id: {}", name, conn_id);
+            return Ok(Some(*conn_id));
+        }
+
         Ok(None)
+    }
+
+    async fn remove(&self, conn_id: u64) {
+        self.route_map
+            .write()
+            .await
+            .retain(|_key, id| *id != conn_id);
     }
 }

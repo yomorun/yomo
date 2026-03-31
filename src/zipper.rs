@@ -2,6 +2,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use anyhow::{Result, anyhow};
 use axum::http::StatusCode;
+use bon::Builder;
 use log::{error, info};
 use s2n_quic::{
     Connection, Server,
@@ -9,7 +10,6 @@ use s2n_quic::{
     provider::{io::TryInto, limits::Limits},
     stream::{BidirectionalStream, ReceiveStream, SendStream},
 };
-use serde_json::{Value, json};
 use tokio::{
     io::{AsyncWriteExt, ReadHalf, SimplexStream, WriteHalf},
     spawn,
@@ -17,60 +17,37 @@ use tokio::{
 };
 
 use crate::{
+    auth::{Auth, AuthImpl},
     bridge::Bridge,
     connector::QuicConnector,
     io::{receive_frame, send_frame},
-    router::Router,
+    metadata::{Metadata, MetadataMgr, MetadataMgrImpl},
+    router::{Router, RouterImpl},
     tls::{TlsConfig, new_tls},
-    tool_mgr::{ToolFunction, ToolMgr},
+    tool_mgr::{ToolMgr, ToolMgrImpl},
     types::{HandshakeRequest, HandshakeResponse, RequestHeaders},
 };
 
 /// Zipper: Manages all registered Tool connections
-#[derive(Clone)]
+#[derive(Clone, Builder)]
 pub struct Zipper {
-    router: Arc<RwLock<dyn Router>>,
+    #[builder(default = Arc::new(AuthImpl::new(None)))]
+    auth: Arc<dyn Auth>,
+
+    #[builder(default = Arc::new(MetadataMgrImpl::new()))]
+    metadata_mgr: Arc<dyn MetadataMgr>,
+
+    #[builder(default = Arc::new(RouterImpl::new()))]
+    router: Arc<dyn Router>,
+
+    #[builder(default = Arc::new(ToolMgrImpl::new()))]
     tool_mgr: Arc<dyn ToolMgr>,
+
+    #[builder(default = Arc::default())]
     all_conns: Arc<RwLock<HashMap<u64, Handle>>>,
 }
 
 impl Zipper {
-    pub fn new(router: impl Router + 'static, tool_mgr: Arc<dyn ToolMgr>) -> Self {
-        Self {
-            router: Arc::new(RwLock::new(router)),
-            all_conns: Arc::default(),
-            tool_mgr,
-        }
-    }
-
-    fn tool_function_from_schema(tool_name: &str, json_schema: &str) -> Result<ToolFunction> {
-        let mut schema: Value = serde_json::from_str(json_schema)?;
-        let obj = schema
-            .as_object_mut()
-            .ok_or(anyhow!("tool json_schema must be a JSON object"))?;
-
-        let description = obj
-            .get("description")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .to_owned();
-
-        let parameters = obj.get("parameters").cloned().unwrap_or_else(|| json!({}));
-
-        Ok(ToolFunction {
-            tool_name: tool_name.to_owned(),
-            description,
-            parameters,
-        })
-    }
-
-    async fn persist_tool_function(&self, tool_name: &str, json_schema: &str) -> Result<()> {
-        let tool_function = Self::tool_function_from_schema(tool_name, json_schema)?;
-        self.tool_mgr.upsert_tool(tool_function).await?;
-        info!("tool function stored: {}", tool_name);
-        Ok(())
-    }
-
     /// Start QUIC server: listen for remote Tool connections
     pub async fn serve(&self, host: &str, port: u16, tls_config: &TlsConfig) -> Result<()> {
         // todo: configurable
@@ -127,7 +104,7 @@ impl Zipper {
         info!("conn closed: {}", conn_id);
 
         // Clean up registration
-        self.router.write().await.remove(conn_id);
+        self.router.remove(conn_id).await;
         self.all_conns.write().await.remove(&conn_id);
 
         Ok(())
@@ -143,10 +120,12 @@ impl Zipper {
             .await?
             .ok_or(anyhow!("receive handshake request failed"))?;
 
-        match self.router.write().await.handshake(conn_id, &req) {
-            Ok(existed_conn) => {
+        match self.handle_handshake_request(conn_id, &req).await {
+            Ok((metadata, existed_conn)) => {
                 if let Some(json_schema) = req.json_schema {
-                    self.persist_tool_function(&req.name, &json_schema).await?;
+                    self.tool_mgr
+                        .upsert_tool(req.name.to_owned(), json_schema, &metadata)
+                        .await?;
                 }
 
                 let res = HandshakeResponse {
@@ -183,8 +162,19 @@ impl Zipper {
         }
     }
 
-    async fn route(&self, headers: &RequestHeaders) -> Result<Option<QuicConnector>> {
-        if let Some(conn_id) = self.router.read().await.route(&headers)? {
+    async fn handle_handshake_request(
+        &self,
+        conn_id: u64,
+        req: &HandshakeRequest,
+    ) -> Result<(Metadata, Option<u64>)> {
+        let auth_info = self.auth.authenticate(&req.credential).await?;
+        let metadata = self.metadata_mgr.new_from_auth_info(&auth_info)?;
+        let existed_conn = self.router.register(conn_id, &req.name, &metadata).await?;
+        Ok((metadata, existed_conn))
+    }
+
+    async fn route(&self, name: &str, metadata: &Metadata) -> Result<Option<QuicConnector>> {
+        if let Some(conn_id) = self.router.route(&name, metadata).await? {
             if let Some(conn) = self.all_conns.read().await.get(&conn_id) {
                 return Ok(Some(QuicConnector::new(conn.clone())));
             }
@@ -197,7 +187,6 @@ impl Zipper {
 #[derive(Clone)]
 pub struct ZipperMemoryBridge {
     zipper: Zipper,
-
     receiver: Arc<Mutex<UnboundedReceiver<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>>>,
 }
 
@@ -237,9 +226,12 @@ impl
         &self,
         headers: &Option<RequestHeaders>,
     ) -> Result<Option<QuicConnector>> {
-        self.zipper
-            .route(headers.as_ref().ok_or(anyhow!("no headers"))?)
-            .await
+        let headers = headers.as_ref().ok_or(anyhow!("no headers"))?;
+        let metadata = self
+            .zipper
+            .metadata_mgr
+            .new_from_extension(&headers.extension)?;
+        self.zipper.route(&headers.name, &metadata).await
     }
 }
 
@@ -280,8 +272,11 @@ impl Bridge<QuicConnector, ReceiveStream, SendStream, ReceiveStream, SendStream>
         &self,
         headers: &Option<RequestHeaders>,
     ) -> Result<Option<QuicConnector>> {
-        self.zipper
-            .route(headers.as_ref().ok_or(anyhow!("no headers"))?)
-            .await
+        let headers = headers.as_ref().ok_or(anyhow!("no headers"))?;
+        let metadata = self
+            .zipper
+            .metadata_mgr
+            .new_from_extension(&headers.extension)?;
+        self.zipper.route(&headers.name, &metadata).await
     }
 }
