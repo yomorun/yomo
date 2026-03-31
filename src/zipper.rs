@@ -110,7 +110,10 @@ impl Zipper {
         Ok(())
     }
 
-    /// Handle handshake protocol: read client name
+    /// Handles the handshake stream for a new tool connection.
+    ///
+    /// Successful handshakes may register or replace existing routes and can
+    /// also persist the tool schema in `ToolMgr`.
     async fn handle_handshake(
         &self,
         conn_id: u64,

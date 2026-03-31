@@ -2,18 +2,22 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 
-/// Metadata: key-value pairs
+/// Metadata key/value pairs used for route and tool filtering.
 pub type Metadata = HashMap<String, String>;
 
-/// MetadataMgr trait for managing metadata
+/// Builds metadata from handshake auth info and request extension.
 pub trait MetadataMgr: Send + Sync {
+    /// Builds metadata from authenticator output.
     fn new_from_auth_info(&self, auth_info: &str) -> Result<Metadata>;
+    /// Builds metadata from request extension payload.
     fn new_from_extension(&self, extension: &str) -> Result<Metadata>;
 }
 
+/// Default metadata manager.
 pub struct MetadataMgrImpl {}
 
 impl MetadataMgrImpl {
+    /// Creates a default no-op metadata manager.
     pub fn new() -> Self {
         Self {}
     }

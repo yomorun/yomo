@@ -121,7 +121,7 @@ async fn invoke_tool(
     tool_name: &str,
     tool_request: &ToolRequest,
 ) -> Result<ToolResponse> {
-    debug!("invoke tool: {:?}", tool_request);
+    debug!("invoke tool: {}", tool_name);
 
     let request_headers = RequestHeaders {
         name: tool_name.to_owned(),
@@ -148,7 +148,7 @@ async fn invoke_tool(
         .await?
         .ok_or(anyhow!("Failed to receive tool response"))?;
 
-    debug!("tool response: {:?}", result);
+    debug!("tool response received: {}", tool_name);
 
     Ok(result)
 }
@@ -157,7 +157,14 @@ async fn chat_completions_handler(
     State(state): State<Arc<LlmApiState>>,
     Json(req): Json<Value>,
 ) -> Result<Json<Value>, CustomError> {
-    info!("chat_completions request: {:?}", req);
+    let message_count = req
+        .get("messages")
+        .and_then(|v| v.as_array())
+        .map_or(0, |messages| messages.len());
+    info!(
+        "chat_completions request received: messages={}",
+        message_count
+    );
 
     let mut payload = req.clone();
     let tools = load_tools(&state.tool_mgr).await?;
@@ -166,15 +173,9 @@ async fn chat_completions_handler(
         payload["tool_choice"] = Value::String("auto".to_string());
     }
 
-    debug!(
-        "first llm request: {}",
-        serde_json::to_string_pretty(&payload)?
-    );
+    debug!("first llm request prepared");
     let first = call_llm(&state, &payload).await?;
-    debug!(
-        "first llm response: {}",
-        serde_json::to_string_pretty(&first)?
-    );
+    debug!("first llm response received");
 
     if response_finish_reason(&first).as_deref() != Some("tool_calls") {
         return Ok(Json(first));
@@ -245,15 +246,9 @@ async fn chat_completions_handler(
         second_payload["tool_choice"] = Value::String("auto".to_string());
     }
 
-    debug!(
-        "second llm request: {}",
-        serde_json::to_string_pretty(&second_payload)?
-    );
+    debug!("second llm request prepared");
     let second = call_llm(&state, &second_payload).await?;
-    debug!(
-        "second llm response: {}",
-        serde_json::to_string_pretty(&second)?
-    );
+    debug!("second llm response received");
 
     Ok(Json(second))
 }
