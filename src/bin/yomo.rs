@@ -1,4 +1,4 @@
-use std::{process, sync::Arc};
+use std::{path::Path, process, sync::Arc};
 
 use anyhow::{Result, anyhow};
 use clap::{Parser, builder::NonEmptyStringValueParser};
@@ -7,7 +7,7 @@ use env_logger::Env;
 use log::{error, info};
 use serde::Deserialize;
 use tokio::{
-    select,
+    fs, select,
     sync::mpsc::unbounded_channel,
     time::{Duration, sleep},
 };
@@ -129,6 +129,9 @@ enum Cli {
     /// Serve a YoMo Service (Zipper)
     Serve(ServeOptions),
 
+    /// Initialize a YoMo Tool project
+    Init(InitOptions),
+
     /// Run a YoMo Tool
     Run(RunOptions),
 }
@@ -174,7 +177,124 @@ struct RunOptions {
 
     #[clap(long, default_value_t = false, help = "enable mutual TLS mode")]
     tls_mutual: bool,
+
+    #[clap(
+        short,
+        long,
+        value_parser = ["node", "go"],
+        help = "tool language: node/go (auto-detect when omitted)"
+    )]
+    language: Option<String>,
 }
+
+/// Init command options
+#[derive(Parser, Debug)]
+struct InitOptions {
+    #[clap(
+        short,
+        long,
+        default_value = "node",
+        value_parser = ["node", "go"],
+        help = "tool language template"
+    )]
+    language: String,
+
+    #[clap(
+        default_value = "./app",
+        help = "directory to initialize the tool project"
+    )]
+    output_dir: String,
+}
+
+const NODE_TEMPLATE_APP: &str = r#"export const description = "Get weather for a city"
+
+export type Argument = {
+  /**
+   * The city name to get the weather for.
+   */
+  city: string
+}
+
+export async function handler(args: Argument): Promise<string> {
+  const city = (args.city || "").trim()
+  if (!city) {
+    throw new Error("city is required")
+  }
+
+  process.stdout.write(`start to query weather for city: ${city}\n`)
+
+  const url = `https://wttr.in/${encodeURIComponent(city)}?format=3`
+  const resp = await fetch(url)
+  if (!resp.ok) {
+    throw new Error(`failed to query weather, status code: ${resp.status}`)
+  }
+
+  return await resp.text()
+}
+"#;
+
+const NODE_TEMPLATE_PACKAGE_JSON: &str = r#"{
+  "name": "yomo-app",
+  "private": true,
+  "version": "0.0.1",
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "typescript": "^5.7.2"
+  }
+}
+"#;
+
+const NODE_TEMPLATE_TSCONFIG: &str = r#"{
+  "compilerOptions": {
+    "target": "es2020",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.ts"]
+}
+"#;
+
+const GO_TEMPLATE_APP: &str = r#"package main
+
+import (
+	"fmt"
+	"io"
+	"net/http"
+)
+
+const Description = "Get weather for a city"
+
+type Arguments struct {
+	City string `json:"city" jsonschema:"description=The city name to get the weather for"`
+}
+
+type Result string
+
+func Handler(args Arguments) (Result, error) {
+	fmt.Println("start to query weather for city:", args.City)
+
+	url := fmt.Sprintf("https://wttr.in/%s?format=3", args.City)
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to query weather, status code: %d", resp.StatusCode)
+	}
+
+	result, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	return Result(result), nil
+}
+"#;
 
 /// Server configuration
 #[derive(Debug, Clone, Deserialize)]
@@ -252,8 +372,56 @@ async fn serve(opt: ServeOptions) -> Result<()> {
     Ok(())
 }
 
+async fn ensure_empty_or_create(output_dir: &Path) -> Result<()> {
+    if output_dir.exists() {
+        let mut entries = fs::read_dir(output_dir).await?;
+        if entries.next_entry().await?.is_some() {
+            return Err(anyhow!(
+                "output directory is not empty: {}",
+                output_dir.display()
+            ));
+        }
+        return Ok(());
+    }
+
+    fs::create_dir_all(output_dir).await?;
+    Ok(())
+}
+
+/// Initialize serverless tool project
+async fn init(opt: InitOptions) -> Result<()> {
+    let output_dir = Path::new(&opt.output_dir);
+    ensure_empty_or_create(output_dir).await?;
+
+    match opt.language.as_str() {
+        "node" => {
+            fs::create_dir_all(output_dir.join("src")).await?;
+            fs::write(output_dir.join("src/app.ts"), NODE_TEMPLATE_APP).await?;
+            fs::write(output_dir.join("package.json"), NODE_TEMPLATE_PACKAGE_JSON).await?;
+            fs::write(output_dir.join("tsconfig.json"), NODE_TEMPLATE_TSCONFIG).await?;
+            info!("initialized node tool project: {}", output_dir.display());
+            info!("next step: edit {}/src/app.ts", output_dir.display());
+        }
+        "go" => {
+            fs::write(output_dir.join("app.go"), GO_TEMPLATE_APP).await?;
+            info!("initialized go tool project: {}", output_dir.display());
+            info!("next step: edit {}/app.go", output_dir.display());
+        }
+        _ => unreachable!(),
+    }
+
+    Ok(())
+}
+
 /// Run serverless tool
 async fn run(opt: RunOptions) -> Result<()> {
+    let language = match opt.language.as_deref() {
+        Some("go") => yomo::serverless::ServerlessLanguage::Go,
+        Some("node") => yomo::serverless::ServerlessLanguage::Node,
+        None => yomo::serverless::ServerlessLanguage::Auto,
+        Some(_) => unreachable!(),
+    };
+
     let tls_config = TlsConfig::builder()
         .maybe_ca_cert(opt.tls_ca_cert_file)
         .maybe_cert(opt.tls_cert_file)
@@ -268,7 +436,8 @@ async fn run(opt: RunOptions) -> Result<()> {
 
     let run_handler = serverless_handler.clone();
     let serverless_dir = opt.serverless_dir.clone();
-    let run_task = tokio::spawn(async move { run_handler.run_subprocess(&serverless_dir).await });
+    let run_task =
+        tokio::spawn(async move { run_handler.run_subprocess(&serverless_dir, language).await });
 
     let json_schema = loop {
         if let Some(schema) = serverless_handler.json_schema().await {
@@ -320,6 +489,7 @@ async fn main() {
 
     if let Err(e) = match Cli::parse() {
         Cli::Serve(opt) => serve(opt).await,
+        Cli::Init(opt) => init(opt).await,
         Cli::Run(opt) => run(opt).await,
     } {
         error!("{}", e);

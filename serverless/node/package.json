@@ -1,0 +1,10 @@
+{
+  "name": "yomo-serverless-node",
+  "version": "0.1.0",
+  "private": true,
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "typescript": "^5.7.2",
+    "typescript-json-schema": "^0.65.1"
+  }
+}
