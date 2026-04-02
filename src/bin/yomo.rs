@@ -221,7 +221,7 @@ export async function handler(args: Argument): Promise<string> {
     throw new Error("city is required")
   }
 
-  process.stdout.write(`start to query weather for city: ${city}\n`)
+  console.log(`query weather for city: ${city}`)
 
   const url = `https://wttr.in/${encodeURIComponent(city)}?format=3`
   const resp = await fetch(url)
@@ -229,7 +229,10 @@ export async function handler(args: Argument): Promise<string> {
     throw new Error(`failed to query weather, status code: ${resp.status}`)
   }
 
-  return await resp.text()
+  const result = await resp.text()
+  console.log(result)
+
+  return result
 }
 "#;
 
@@ -261,6 +264,7 @@ const GO_TEMPLATE_APP: &str = r#"package main
 
 import (
 	"fmt"
+	"log/slog"
 	"io"
 	"net/http"
 )
@@ -274,7 +278,7 @@ type Arguments struct {
 type Result string
 
 func Handler(args Arguments) (Result, error) {
-	fmt.Println("start to query weather for city:", args.City)
+	slog.Info("query weather for city: " + args.City)
 
 	url := fmt.Sprintf("https://wttr.in/%s?format=3", args.City)
 	resp, err := http.Get(url)
@@ -287,10 +291,12 @@ func Handler(args Arguments) (Result, error) {
 		return "", fmt.Errorf("failed to query weather, status code: %d", resp.StatusCode)
 	}
 
-	result, err := io.ReadAll(resp.Body)
+	budy, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
 	}
+	result := string(budy)
+	slog.Info(result)
 
 	return Result(result), nil
 }

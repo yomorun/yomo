@@ -3,7 +3,6 @@ use std::process::Stdio;
 use std::sync::Arc;
 
 use anyhow::{Ok, Result, anyhow, bail};
-use colored::Colorize;
 use log::{debug, info};
 use tempfile::tempdir;
 use tokio::fs;
@@ -205,7 +204,7 @@ impl ServerlessHandler {
                 *self.socket_addr.write().await = Some(addr);
                 got_addr = true;
             } else if !line.is_empty() {
-                print!("{} {}", "[Go Serverless]".cyan(), buf);
+                println!("{line}");
             }
 
             if got_addr && got_schema {
@@ -218,7 +217,10 @@ impl ServerlessHandler {
             if reader.read_line(&mut buf).await? == 0 {
                 break;
             }
-            print!("{} {}", "[Go Serverless]".cyan(), buf);
+            let line = buf.trim();
+            if !line.is_empty() {
+                println!("{line}");
+            }
         }
         child.wait().await?;
 
@@ -372,7 +374,7 @@ impl ServerlessHandler {
                 *self.socket_addr.write().await = Some(addr);
                 got_addr = true;
             } else if !line.is_empty() {
-                print!("{} {}", "[Node Serverless]".cyan(), buf);
+                println!("{line}");
             }
 
             if got_addr && got_schema {
@@ -385,7 +387,10 @@ impl ServerlessHandler {
             if reader.read_line(&mut buf).await? == 0 {
                 break;
             }
-            print!("{} {}", "[Node Serverless]".cyan(), buf);
+            let line = buf.trim();
+            if !line.is_empty() {
+                println!("{line}");
+            }
         }
         child.wait().await?;
 
