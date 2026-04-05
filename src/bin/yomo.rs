@@ -1,13 +1,15 @@
 use std::{path::Path, process, sync::Arc};
 
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, bail};
 use clap::{Parser, builder::NonEmptyStringValueParser};
 use config::{Config, File};
 use env_logger::Env;
 use log::{error, info};
 use serde::Deserialize;
 use tokio::{
-    fs, select,
+    fs,
+    net::TcpListener,
+    select, spawn,
     sync::mpsc::unbounded_channel,
     time::{Duration, sleep},
 };
@@ -17,14 +19,14 @@ use yomo::{
     bridge::Bridge,
     client::Client,
     connector::MemoryConnector,
-    llm_api::serve_llm_api,
+    llm_api::build_llm_api,
     metadata_mgr::MetadataMgrImpl,
     router::RouterImpl,
     serverless::{ServerlessHandler, ServerlessMemoryBridge},
     tls::TlsConfig,
-    tool_api::serve_tool_api,
+    tool_api::build_tool_api,
     tool_mgr::ToolMgrImpl,
-    zipper::{Zipper, ZipperMemoryBridge},
+    zipper::{MemorySource, Zipper, ZipperBridge},
 };
 
 const MAX_BUF_SIZE: usize = 64 * 1024;
@@ -39,18 +41,13 @@ fn default_zipper_port() -> u16 {
     9000
 }
 
-/// Default LLM API HTTP port
-fn default_llm_api_port() -> u16 {
+/// Default Http API HTTP port
+fn default_http_api_port() -> u16 {
     9001
 }
 
-/// Default tool API HTTP port
-fn default_tool_api_port() -> u16 {
-    9002
-}
-
-/// Default LLM API base URL
-fn default_llm_api_base_url() -> String {
+/// Default LLM base URL
+fn default_llm_base_url() -> String {
     "http://127.0.0.1:11434".to_string()
 }
 
@@ -81,47 +78,56 @@ impl Default for ZipperConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-struct LlmApiConfig {
-    #[serde(default = "default_host")]
-    host: String,
-
-    #[serde(default = "default_llm_api_port")]
-    port: u16,
-
-    #[serde(default)]
+struct LlmConfig {
+    #[serde(default = "default_llm_base_url")]
     base_url: String,
 
     #[serde(default)]
     api_key: String,
 }
 
-impl Default for LlmApiConfig {
+impl Default for LlmConfig {
     fn default() -> Self {
         Self {
-            host: default_host(),
-            port: default_llm_api_port(),
-            base_url: default_llm_api_base_url(),
+            base_url: default_llm_base_url(),
             api_key: String::new(),
         }
     }
 }
 
 #[derive(Debug, Clone, Deserialize)]
-struct ToolApiConfig {
+struct HttpApiConfig {
     #[serde(default = "default_host")]
     host: String,
 
-    #[serde(default = "default_tool_api_port")]
+    #[serde(default = "default_http_api_port")]
     port: u16,
+
+    #[serde(default)]
+    llm: LlmConfig,
+
+    #[serde(default)]
+    enable_tool_api: bool,
 }
 
-impl Default for ToolApiConfig {
+impl Default for HttpApiConfig {
     fn default() -> Self {
         Self {
             host: default_host(),
-            port: default_tool_api_port(),
+            port: default_http_api_port(),
+            llm: LlmConfig::default(),
+            enable_tool_api: false,
         }
     }
+}
+
+/// Server configuration
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default, rename_all = "snake_case")]
+struct ServeConfig {
+    zipper: ZipperConfig,
+
+    http_api: HttpApiConfig,
 }
 
 /// CLI commands
@@ -293,39 +299,16 @@ func Handler(args Arguments) (Result, error) {
 		return "", fmt.Errorf("failed to query weather, status code: %d", resp.StatusCode)
 	}
 
-	budy, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
 	}
-	result := string(budy)
+	result := string(body)
 	slog.Info(result)
 
 	return Result(result), nil
 }
 "#;
-
-/// Server configuration
-#[derive(Debug, Clone, Deserialize)]
-struct ServeConfig {
-    #[serde(default)]
-    zipper: ZipperConfig,
-
-    #[serde(default, rename = "llm_api")]
-    llm_api: LlmApiConfig,
-
-    #[serde(default, rename = "tool_api")]
-    tool_api: Option<ToolApiConfig>,
-}
-
-impl Default for ServeConfig {
-    fn default() -> Self {
-        Self {
-            zipper: ZipperConfig::default(),
-            llm_api: LlmApiConfig::default(),
-            tool_api: None,
-        }
-    }
-}
 
 /// Start Zipper service
 async fn serve(opt: ServeOptions) -> Result<()> {
@@ -355,53 +338,54 @@ async fn serve(opt: ServeOptions) -> Result<()> {
         .router(Arc::new(RouterImpl::new()))
         .tool_mgr(tool_mgr.clone())
         .build();
-    let zipper_memory_bridge = ZipperMemoryBridge::new(zipper.clone(), (), receiver);
-    let tool_api_connector = MemoryConnector::new(sender.clone(), MAX_BUF_SIZE);
-    let llm_api_connector = MemoryConnector::new(sender, MAX_BUF_SIZE);
+    let zipper_memory_bridge = ZipperBridge::new(zipper.clone(), MemorySource::new(receiver), ());
+    let connector = MemoryConnector::new(sender.clone(), MAX_BUF_SIZE);
+
+    let mut app = axum::Router::new().nest(
+        "/v1",
+        build_llm_api(
+            connector.to_owned(),
+            tool_mgr,
+            config.http_api.llm.base_url,
+            config.http_api.llm.api_key,
+        )
+        .await?,
+    );
+    if config.http_api.enable_tool_api {
+        app = app.nest("/tool", build_tool_api(connector).await?);
+    }
+    info!(
+        "start HTTP API server on {}:{} (LLM API at /v1, Tool API {})",
+        config.http_api.host,
+        config.http_api.port,
+        if config.http_api.enable_tool_api {
+            "enabled at /tool"
+        } else {
+            "disabled"
+        }
+    );
+    let listener = TcpListener::bind((config.http_api.host.as_ref(), config.http_api.port)).await?;
 
     select! {
         _ = zipper_memory_bridge.serve_bridge() => Ok(()),
         r = zipper.serve(&config.zipper.host, config.zipper.port, &config.zipper.tls) => r,
-        r = serve_llm_api(
-                &config.llm_api.host,
-                config.llm_api.port,
-                llm_api_connector,
-                tool_mgr,
-                config.llm_api.base_url,
-                config.llm_api.api_key,
-            ) => r,
-        r = async {
-            if let Some(tool_api) = config.tool_api {
-                serve_tool_api(&tool_api.host, tool_api.port, tool_api_connector).await
-            } else {
-                core::future::pending().await
-            }
-        } => r,
+        r = axum::serve(listener, app) => r.map_err(|e| anyhow!(e)),
     }?;
 
-    Ok(())
-}
-
-async fn ensure_empty_or_create(output_dir: &Path) -> Result<()> {
-    if output_dir.exists() {
-        let mut entries = fs::read_dir(output_dir).await?;
-        if entries.next_entry().await?.is_some() {
-            return Err(anyhow!(
-                "output directory is not empty: {}",
-                output_dir.display()
-            ));
-        }
-        return Ok(());
-    }
-
-    fs::create_dir_all(output_dir).await?;
     Ok(())
 }
 
 /// Initialize serverless tool project
 async fn init(opt: InitOptions) -> Result<()> {
     let output_dir = Path::new(&opt.output_dir);
-    ensure_empty_or_create(output_dir).await?;
+    if output_dir.exists() {
+        let mut entries = fs::read_dir(output_dir).await?;
+        if entries.next_entry().await?.is_some() {
+            bail!("output directory is not empty: {:?}", output_dir);
+        }
+    } else {
+        fs::create_dir_all(output_dir).await?;
+    }
 
     match opt.language.as_str() {
         "node" => {
@@ -409,13 +393,13 @@ async fn init(opt: InitOptions) -> Result<()> {
             fs::write(output_dir.join("src/app.ts"), NODE_TEMPLATE_APP).await?;
             fs::write(output_dir.join("package.json"), NODE_TEMPLATE_PACKAGE_JSON).await?;
             fs::write(output_dir.join("tsconfig.json"), NODE_TEMPLATE_TSCONFIG).await?;
-            info!("initialized node tool project: {}", output_dir.display());
-            info!("next step: edit {}/src/app.ts", output_dir.display());
+            info!("initialized node tool project: {:?}", output_dir);
+            info!("next step: edit {:?}/src/app.ts", output_dir);
         }
         "go" => {
             fs::write(output_dir.join("app.go"), GO_TEMPLATE_APP).await?;
-            info!("initialized go tool project: {}", output_dir.display());
-            info!("next step: edit {}/app.go", output_dir.display());
+            info!("initialized go tool project: {:?}", output_dir);
+            info!("next step: edit {:?}/app.go", output_dir);
         }
         _ => unreachable!(),
     }
@@ -447,7 +431,7 @@ async fn run(opt: RunOptions) -> Result<()> {
     let run_handler = serverless_handler.clone();
     let serverless_dir = opt.serverless_dir.clone();
     let run_task =
-        tokio::spawn(async move { run_handler.run_subprocess(&serverless_dir, language).await });
+        spawn(async move { run_handler.run_subprocess(&serverless_dir, language).await });
 
     let json_schema = loop {
         if let Some(schema) = serverless_handler.json_schema().await {

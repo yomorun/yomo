@@ -11,7 +11,7 @@ use s2n_quic::{
     stream::{BidirectionalStream, ReceiveStream, SendStream},
 };
 use tokio::{
-    io::{AsyncWriteExt, ReadHalf, SimplexStream, WriteHalf},
+    io::{AsyncReadExt, AsyncWriteExt, ReadHalf, SimplexStream, WriteHalf},
     spawn,
     sync::{Mutex, RwLock, mpsc::UnboundedReceiver},
 };
@@ -103,7 +103,7 @@ where
         self.all_conns.write().await.insert(conn_id, conn.handle());
 
         // receive streams and forward, keep connection alive
-        let quic_bridge = ZipperQuicBridge::new(self.clone(), auth_info, conn);
+        let quic_bridge = ZipperBridge::new(self.clone(), QuicSource::new(conn), auth_info);
         quic_bridge.serve_bridge().await;
         info!("conn closed: {}", conn_id);
 
@@ -190,104 +190,58 @@ where
     }
 }
 
+#[async_trait::async_trait]
+pub trait UpstreamSource: Clone + Send + Sync + 'static {
+    type R: AsyncReadExt + Unpin + Send + 'static;
+    type W: AsyncWriteExt + Unpin + Send + 'static;
+
+    async fn accept(&self) -> Result<Option<(Self::R, Self::W)>>;
+}
+
 #[derive(Clone)]
-pub struct ZipperMemoryBridge<A, M>
-where
-    A: Clone + Send + Sync + 'static,
-    M: Clone + Send + Sync + 'static,
-{
-    zipper: Zipper<A, M>,
-    auth_info: A,
+pub struct MemorySource {
     receiver: Arc<Mutex<UnboundedReceiver<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>>>,
 }
 
-impl<A, M> ZipperMemoryBridge<A, M>
-where
-    A: Clone + Send + Sync + 'static,
-    M: Clone + Send + Sync + 'static,
-{
+impl MemorySource {
     pub fn new(
-        zipper: Zipper<A, M>,
-        auth_info: A,
         receiver: UnboundedReceiver<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>,
     ) -> Self {
         Self {
-            zipper,
-            auth_info,
             receiver: Arc::new(Mutex::new(receiver)),
         }
     }
 }
 
 #[async_trait::async_trait]
-impl<A, M>
-    Bridge<
-        QuicConnector,
-        ReadHalf<SimplexStream>,
-        WriteHalf<SimplexStream>,
-        ReceiveStream,
-        SendStream,
-    > for ZipperMemoryBridge<A, M>
-where
-    A: Clone + Send + Sync + 'static,
-    M: Clone + Send + Sync + 'static,
-{
-    async fn accept(
-        &mut self,
-    ) -> Result<Option<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>> {
+impl UpstreamSource for MemorySource {
+    type R = ReadHalf<SimplexStream>;
+    type W = WriteHalf<SimplexStream>;
+
+    async fn accept(&self) -> Result<Option<(Self::R, Self::W)>> {
         Ok(self.receiver.lock().await.recv().await)
-    }
-
-    fn skip_headers(&self) -> bool {
-        false
-    }
-
-    async fn find_downstream(
-        &self,
-        headers: &Option<RequestHeaders>,
-    ) -> Result<Option<QuicConnector>> {
-        let headers = headers.as_ref().ok_or(anyhow!("no headers"))?;
-        let metadata = self
-            .zipper
-            .metadata_mgr
-            .new_from_extension(&self.auth_info, &headers.extension)?;
-        self.zipper.route(&headers.name, &metadata).await
     }
 }
 
 #[derive(Clone)]
-struct ZipperQuicBridge<A, M>
-where
-    A: Clone + Send + Sync + 'static,
-    M: Clone + Send + Sync + 'static,
-{
-    zipper: Zipper<A, M>,
-    auth_info: A,
+struct QuicSource {
     conn: Arc<Mutex<Connection>>,
 }
 
-impl<A, M> ZipperQuicBridge<A, M>
-where
-    A: Clone + Send + Sync + 'static,
-    M: Clone + Send + Sync + 'static,
-{
-    pub fn new(zipper: Zipper<A, M>, auth_info: A, conn: Connection) -> Self {
+impl QuicSource {
+    fn new(conn: Connection) -> Self {
         Self {
-            zipper,
-            auth_info,
             conn: Arc::new(Mutex::new(conn)),
         }
     }
 }
 
 #[async_trait::async_trait]
-impl<A, M> Bridge<QuicConnector, ReceiveStream, SendStream, ReceiveStream, SendStream>
-    for ZipperQuicBridge<A, M>
-where
-    A: Clone + Send + Sync + 'static,
-    M: Clone + Send + Sync + 'static,
-{
-    async fn accept(&mut self) -> Result<Option<(ReceiveStream, SendStream)>> {
+impl UpstreamSource for QuicSource {
+    type R = ReceiveStream;
+    type W = SendStream;
+
+    async fn accept(&self) -> Result<Option<(Self::R, Self::W)>> {
         Ok(self
             .conn
             .lock()
@@ -296,6 +250,45 @@ where
             .await?
             .map(|stream| stream.split()))
     }
+}
+
+#[derive(Clone)]
+pub struct ZipperBridge<S, A, M>
+where
+    S: UpstreamSource,
+    A: Clone + Send + Sync + 'static,
+    M: Clone + Send + Sync + 'static,
+{
+    zipper: Zipper<A, M>,
+    source: S,
+    auth_info: A,
+}
+
+impl<S, A, M> ZipperBridge<S, A, M>
+where
+    S: UpstreamSource,
+    A: Clone + Send + Sync + 'static,
+    M: Clone + Send + Sync + 'static,
+{
+    pub fn new(zipper: Zipper<A, M>, source: S, auth_info: A) -> Self {
+        Self {
+            zipper,
+            source,
+            auth_info,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl<S, A, M> Bridge<QuicConnector, S::R, S::W, ReceiveStream, SendStream> for ZipperBridge<S, A, M>
+where
+    S: UpstreamSource,
+    A: Clone + Send + Sync + 'static,
+    M: Clone + Send + Sync + 'static,
+{
+    async fn accept(&mut self) -> Result<Option<(S::R, S::W)>> {
+        self.source.accept().await
+    }
 
     fn skip_headers(&self) -> bool {
         false
@@ -305,11 +298,11 @@ where
         &self,
         headers: &Option<RequestHeaders>,
     ) -> Result<Option<QuicConnector>> {
-        let headers = headers.as_ref().ok_or(anyhow!("no headers"))?;
-        let metatdata_2 = self
+        let headers = headers.as_ref().ok_or(anyhow!("headers cannot be empty"))?;
+        let metadata = self
             .zipper
             .metadata_mgr
             .new_from_extension(&self.auth_info, &headers.extension)?;
-        self.zipper.route(&headers.name, &metatdata_2).await
+        self.zipper.route(&headers.name, &metadata).await
     }
 }

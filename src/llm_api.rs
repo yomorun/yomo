@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use anyhow::{Result, anyhow, bail};
-use axum::{Json, extract::State, http::StatusCode, response::IntoResponse, routing::post};
+use axum::{Json, Router, extract::State, http::StatusCode, response::IntoResponse, routing::post};
 use log::{debug, error, info};
 use serde_json::{Value, json};
-use tokio::{io::AsyncWriteExt, net::TcpListener};
+use tokio::io::AsyncWriteExt;
 
 use crate::{
     connector::{Connector, MemoryConnector},
@@ -253,14 +253,12 @@ async fn chat_completions_handler(
 }
 
 /// LLM API server: OpenAI-compatible /v1/chat/completions endpoint
-pub async fn serve_llm_api(
-    host: &str,
-    port: u16,
+pub async fn build_llm_api(
     connector: MemoryConnector,
     tool_mgr: Arc<dyn ToolMgr<(), ()>>,
     base_url: String,
     api_key: String,
-) -> Result<()> {
+) -> Result<Router> {
     let state = Arc::new(LlmApiState {
         connector: Arc::new(connector),
         tool_mgr,
@@ -270,11 +268,8 @@ pub async fn serve_llm_api(
     });
 
     let app = axum::Router::new()
-        .route("/v1/chat/completions", post(chat_completions_handler))
+        .route("/chat/completions", post(chat_completions_handler))
         .with_state(state);
 
-    let listener = TcpListener::bind((host.to_owned(), port)).await?;
-    info!("start llm api server: {}:{}", host, port);
-    axum::serve(listener, app).await?;
-    Ok(())
+    Ok(app)
 }

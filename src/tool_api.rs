@@ -1,17 +1,15 @@
 use std::sync::Arc;
 
 use axum::{
+    Router,
     body::Bytes,
     extract::{Path, State},
     http::{self, HeaderMap, StatusCode},
     response::{IntoResponse, Sse, sse::Event},
 };
 use futures_util::stream;
-use log::{debug, error, info};
-use tokio::{
-    io::{AsyncWriteExt, ReadHalf, SimplexStream},
-    net::TcpListener,
-};
+use log::{debug, error};
+use tokio::io::{AsyncWriteExt, ReadHalf, SimplexStream};
 
 use crate::{
     connector::{Connector, MemoryConnector},
@@ -163,22 +161,12 @@ pub async fn tool_invoke_handler(
 }
 
 /// Tool API server: listen and receive external requests for tool invocation
-pub async fn serve_tool_api(
-    host: &str,
-    port: u16,
-    connector: MemoryConnector,
-) -> anyhow::Result<()> {
+pub async fn build_tool_api(connector: MemoryConnector) -> anyhow::Result<Router> {
+    let state = Arc::new(connector);
+
     let app = axum::Router::new()
-        .route(
-            "/tool/{tool_name}",
-            axum::routing::post(tool_invoke_handler),
-        )
-        .with_state(Arc::new(connector));
+        .route("/{tool_name}", axum::routing::post(tool_invoke_handler))
+        .with_state(state);
 
-    let listener = TcpListener::bind((host.to_owned(), port)).await?;
-
-    info!("start tool api server: {}:{}", host, port);
-    axum::serve(listener, app).await?;
-
-    Ok(())
+    Ok(app)
 }
