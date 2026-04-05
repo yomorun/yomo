@@ -4,23 +4,21 @@ use anyhow::{Result, bail};
 use log::debug;
 use tokio::sync::RwLock;
 
-use crate::metadata::Metadata;
-
 /// Routes tool requests to active tool connections.
 #[async_trait::async_trait]
-pub trait Router: Sync + Send {
+pub trait Router<A, M>: Sync + Send {
     /// Register a tool connection.
     ///
     /// `metadata` can be used to partition routes (for example by tenant).
     ///
     /// Returns the previously registered connection id when the same route key
     /// already exists.
-    async fn register(&self, conn_id: u64, name: &str, metadata: &Metadata) -> Result<Option<u64>>;
+    async fn register(&self, conn_id: u64, name: &str, auth_info: &A) -> Result<Option<u64>>;
 
     /// Resolves a route key to a connection id.
     ///
     /// Returns `Ok(None)` when no matching route exists.
-    async fn route(&self, name: &str, metadata: &Metadata) -> Result<Option<u64>>;
+    async fn route(&self, name: &str, metadata: &M) -> Result<Option<u64>>;
 
     /// Removes all routes associated with a disconnected connection id.
     async fn remove(&self, conn_id: u64);
@@ -41,13 +39,8 @@ impl RouterImpl {
 }
 
 #[async_trait::async_trait]
-impl Router for RouterImpl {
-    async fn register(
-        &self,
-        conn_id: u64,
-        name: &str,
-        _metadata: &Metadata,
-    ) -> Result<Option<u64>> {
+impl<A, M> Router<A, M> for RouterImpl {
+    async fn register(&self, conn_id: u64, name: &str, _auth_info: &A) -> Result<Option<u64>> {
         if name.is_empty() {
             bail!("name cannot be empty");
         }
@@ -59,7 +52,7 @@ impl Router for RouterImpl {
             .insert(name.to_owned(), conn_id))
     }
 
-    async fn route(&self, name: &str, _metadata: &Metadata) -> Result<Option<u64>> {
+    async fn route(&self, name: &str, _metadata: &M) -> Result<Option<u64>> {
         if name.is_empty() {
             return Ok(None);
         }

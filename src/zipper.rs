@@ -17,37 +17,41 @@ use tokio::{
 };
 
 use crate::{
-    auth::{Auth, AuthImpl},
+    auth::Auth,
     bridge::Bridge,
     connector::QuicConnector,
     io::{receive_frame, send_frame},
-    metadata::{Metadata, MetadataMgr, MetadataMgrImpl},
-    router::{Router, RouterImpl},
+    metadata_mgr::MetadataMgr,
+    router::Router,
     tls::{TlsConfig, new_tls},
-    tool_mgr::{ToolMgr, ToolMgrImpl},
+    tool_mgr::ToolMgr,
     types::{HandshakeRequest, HandshakeResponse, RequestHeaders},
 };
 
 /// Zipper: Manages all registered Tool connections
 #[derive(Clone, Builder)]
-pub struct Zipper {
-    #[builder(default = Arc::new(AuthImpl::new(None)))]
-    auth: Arc<dyn Auth>,
+pub struct Zipper<A, M>
+where
+    A: Clone + Send + Sync + 'static,
+    M: Clone + Send + Sync + 'static,
+{
+    auth: Arc<dyn Auth<A>>,
 
-    #[builder(default = Arc::new(MetadataMgrImpl::new()))]
-    metadata_mgr: Arc<dyn MetadataMgr>,
+    metadata_mgr: Arc<dyn MetadataMgr<A, M>>,
 
-    #[builder(default = Arc::new(RouterImpl::new()))]
-    router: Arc<dyn Router>,
+    router: Arc<dyn Router<A, M>>,
 
-    #[builder(default = Arc::new(ToolMgrImpl::new()))]
-    tool_mgr: Arc<dyn ToolMgr>,
+    tool_mgr: Arc<dyn ToolMgr<A, M>>,
 
     #[builder(default = Arc::default())]
     all_conns: Arc<RwLock<HashMap<u64, Handle>>>,
 }
 
-impl Zipper {
+impl<A, M> Zipper<A, M>
+where
+    A: Clone + Send + Sync + 'static,
+    M: Clone + Send + Sync + 'static,
+{
     /// Start QUIC server: listen for remote Tool connections
     pub async fn serve(&self, host: &str, port: u16, tls_config: &TlsConfig) -> Result<()> {
         // todo: configurable
@@ -85,21 +89,21 @@ impl Zipper {
         let conn_id = conn.id();
         info!("new quic connection: {}", conn_id);
 
-        if let Some(stream) = conn.accept_bidirectional_stream().await? {
-            // Handshake: get client name
-            let client_name = self.handle_handshake(conn_id, stream).await?;
-
-            info!("new client connected: client_name={}", client_name);
-
-            // save connection
-            self.all_conns.write().await.insert(conn_id, conn.handle());
-        } else {
+        let Some(stream) = conn.accept_bidirectional_stream().await? else {
             info!("conn closed: {}", conn_id);
             return Ok(());
-        }
+        };
+
+        // Handshake: get client name
+        let (auth_info, client_name) = self.handle_handshake(conn_id, stream).await?;
+
+        info!("new client connected: client_name={}", client_name);
+
+        // save connection
+        self.all_conns.write().await.insert(conn_id, conn.handle());
 
         // receive streams and forward, keep connection alive
-        let quic_bridge = ZipperQuicBridge::new(self.clone(), conn);
+        let quic_bridge = ZipperQuicBridge::new(self.clone(), auth_info, conn);
         quic_bridge.serve_bridge().await;
         info!("conn closed: {}", conn_id);
 
@@ -118,16 +122,16 @@ impl Zipper {
         &self,
         conn_id: u64,
         mut stream: BidirectionalStream,
-    ) -> Result<String> {
+    ) -> Result<(A, String)> {
         let req = receive_frame::<HandshakeRequest>(&mut stream)
             .await?
             .ok_or(anyhow!("receive handshake request failed"))?;
 
         match self.handle_handshake_request(conn_id, &req).await {
-            Ok((metadata, existed_conn)) => {
+            Ok((auth_info, existed_conn)) => {
                 if let Some(json_schema) = req.json_schema {
                     self.tool_mgr
-                        .upsert_tool(req.name.to_owned(), json_schema, &metadata)
+                        .upsert_tool(req.name.to_owned(), json_schema, &auth_info)
                         .await?;
                 }
 
@@ -148,7 +152,7 @@ impl Zipper {
                     }
                 }
 
-                Ok(req.name)
+                Ok((auth_info, req.name))
             }
             Err(e) => {
                 error!("handshake failed: {}", e);
@@ -169,14 +173,13 @@ impl Zipper {
         &self,
         conn_id: u64,
         req: &HandshakeRequest,
-    ) -> Result<(Metadata, Option<u64>)> {
+    ) -> Result<(A, Option<u64>)> {
         let auth_info = self.auth.authenticate(&req.credential).await?;
-        let metadata = self.metadata_mgr.new_from_auth_info(&auth_info)?;
-        let existed_conn = self.router.register(conn_id, &req.name, &metadata).await?;
-        Ok((metadata, existed_conn))
+        let existed_conn = self.router.register(conn_id, &req.name, &auth_info).await?;
+        Ok((auth_info, existed_conn))
     }
 
-    async fn route(&self, name: &str, metadata: &Metadata) -> Result<Option<QuicConnector>> {
+    async fn route(&self, name: &str, metadata: &M) -> Result<Option<QuicConnector>> {
         if let Some(conn_id) = self.router.route(&name, metadata).await? {
             if let Some(conn) = self.all_conns.read().await.get(&conn_id) {
                 return Ok(Some(QuicConnector::new(conn.clone())));
@@ -188,32 +191,46 @@ impl Zipper {
 }
 
 #[derive(Clone)]
-pub struct ZipperMemoryBridge {
-    zipper: Zipper,
+pub struct ZipperMemoryBridge<A, M>
+where
+    A: Clone + Send + Sync + 'static,
+    M: Clone + Send + Sync + 'static,
+{
+    zipper: Zipper<A, M>,
+    auth_info: A,
     receiver: Arc<Mutex<UnboundedReceiver<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>>>,
 }
 
-impl ZipperMemoryBridge {
+impl<A, M> ZipperMemoryBridge<A, M>
+where
+    A: Clone + Send + Sync + 'static,
+    M: Clone + Send + Sync + 'static,
+{
     pub fn new(
-        zipper: Zipper,
+        zipper: Zipper<A, M>,
+        auth_info: A,
         receiver: UnboundedReceiver<(ReadHalf<SimplexStream>, WriteHalf<SimplexStream>)>,
     ) -> Self {
         Self {
             zipper,
+            auth_info,
             receiver: Arc::new(Mutex::new(receiver)),
         }
     }
 }
 
 #[async_trait::async_trait]
-impl
+impl<A, M>
     Bridge<
         QuicConnector,
         ReadHalf<SimplexStream>,
         WriteHalf<SimplexStream>,
         ReceiveStream,
         SendStream,
-    > for ZipperMemoryBridge
+    > for ZipperMemoryBridge<A, M>
+where
+    A: Clone + Send + Sync + 'static,
+    M: Clone + Send + Sync + 'static,
 {
     async fn accept(
         &mut self,
@@ -233,29 +250,42 @@ impl
         let metadata = self
             .zipper
             .metadata_mgr
-            .new_from_extension(&headers.extension)?;
+            .new_from_extension(&self.auth_info, &headers.extension)?;
         self.zipper.route(&headers.name, &metadata).await
     }
 }
 
 #[derive(Clone)]
-struct ZipperQuicBridge {
-    zipper: Zipper,
+struct ZipperQuicBridge<A, M>
+where
+    A: Clone + Send + Sync + 'static,
+    M: Clone + Send + Sync + 'static,
+{
+    zipper: Zipper<A, M>,
+    auth_info: A,
     conn: Arc<Mutex<Connection>>,
 }
 
-impl ZipperQuicBridge {
-    pub fn new(zipper: Zipper, conn: Connection) -> Self {
+impl<A, M> ZipperQuicBridge<A, M>
+where
+    A: Clone + Send + Sync + 'static,
+    M: Clone + Send + Sync + 'static,
+{
+    pub fn new(zipper: Zipper<A, M>, auth_info: A, conn: Connection) -> Self {
         Self {
             zipper,
+            auth_info,
             conn: Arc::new(Mutex::new(conn)),
         }
     }
 }
 
 #[async_trait::async_trait]
-impl Bridge<QuicConnector, ReceiveStream, SendStream, ReceiveStream, SendStream>
-    for ZipperQuicBridge
+impl<A, M> Bridge<QuicConnector, ReceiveStream, SendStream, ReceiveStream, SendStream>
+    for ZipperQuicBridge<A, M>
+where
+    A: Clone + Send + Sync + 'static,
+    M: Clone + Send + Sync + 'static,
 {
     async fn accept(&mut self) -> Result<Option<(ReceiveStream, SendStream)>> {
         Ok(self
@@ -276,10 +306,10 @@ impl Bridge<QuicConnector, ReceiveStream, SendStream, ReceiveStream, SendStream>
         headers: &Option<RequestHeaders>,
     ) -> Result<Option<QuicConnector>> {
         let headers = headers.as_ref().ok_or(anyhow!("no headers"))?;
-        let metadata = self
+        let metatdata_2 = self
             .zipper
             .metadata_mgr
-            .new_from_extension(&headers.extension)?;
-        self.zipper.route(&headers.name, &metadata).await
+            .new_from_extension(&self.auth_info, &headers.extension)?;
+        self.zipper.route(&headers.name, &metatdata_2).await
     }
 }

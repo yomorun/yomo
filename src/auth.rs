@@ -2,12 +2,12 @@ use anyhow::{Result, bail};
 
 /// Auth trait for validating tool handshake requests.
 #[async_trait::async_trait]
-pub trait Auth: Send + Sync {
+pub trait Auth<A>: Send + Sync {
     /// Validates a credential string from a handshake request.
     ///
-    /// Returns an `auth_info` string that can be consumed by `MetadataMgr`
+    /// Returns an `auth_info` that can be consumed by `MetadataMgr`
     /// to derive route/tool selection metadata.
-    async fn authenticate(&self, credential: &str) -> Result<String>;
+    async fn authenticate(&self, credential: &str) -> Result<A>;
 }
 
 /// Default auth implementation based on optional shared token.
@@ -25,14 +25,14 @@ impl AuthImpl {
 }
 
 #[async_trait::async_trait]
-impl Auth for AuthImpl {
-    async fn authenticate(&self, credential: &str) -> Result<String> {
+impl Auth<()> for AuthImpl {
+    async fn authenticate(&self, credential: &str) -> Result<()> {
         if let Some(token) = &self.auth_token {
             if &credential != token {
                 bail!("invalid credential");
             }
         }
 
-        Ok(String::new())
+        Ok(())
     }
 }

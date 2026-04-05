@@ -18,10 +18,12 @@ use yomo::{
     client::Client,
     connector::MemoryConnector,
     llm_api::serve_llm_api,
+    metadata_mgr::MetadataMgrImpl,
+    router::RouterImpl,
     serverless::{ServerlessHandler, ServerlessMemoryBridge},
     tls::TlsConfig,
     tool_api::serve_tool_api,
-    tool_mgr::{ToolMgr, ToolMgrImpl},
+    tool_mgr::ToolMgrImpl,
     zipper::{Zipper, ZipperMemoryBridge},
 };
 
@@ -346,12 +348,14 @@ async fn serve(opt: ServeOptions) -> Result<()> {
     info!("config: {:?}", config);
 
     let (sender, receiver) = unbounded_channel();
-    let tool_mgr: Arc<dyn ToolMgr> = Arc::new(ToolMgrImpl::new());
+    let tool_mgr = Arc::new(ToolMgrImpl::new());
     let zipper = Zipper::builder()
         .auth(Arc::new(AuthImpl::new(config.zipper.auth_token)))
+        .metadata_mgr(Arc::new(MetadataMgrImpl::new()))
+        .router(Arc::new(RouterImpl::new()))
         .tool_mgr(tool_mgr.clone())
         .build();
-    let zipper_memory_bridge = ZipperMemoryBridge::new(zipper.clone(), receiver);
+    let zipper_memory_bridge = ZipperMemoryBridge::new(zipper.clone(), (), receiver);
     let tool_api_connector = MemoryConnector::new(sender.clone(), MAX_BUF_SIZE);
     let llm_api_connector = MemoryConnector::new(sender, MAX_BUF_SIZE);
 

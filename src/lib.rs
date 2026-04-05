@@ -16,7 +16,7 @@ pub mod io;
 /// LLM-facing HTTP APIs.
 pub mod llm_api;
 /// Manage user-defined metadata extension.
-pub mod metadata;
+pub mod metadata_mgr;
 /// Routing traits and implementations.
 pub mod router;
 /// Serverless runtime and handlers.

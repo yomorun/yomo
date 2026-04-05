@@ -9,7 +9,6 @@ use tokio::{io::AsyncWriteExt, net::TcpListener};
 use crate::{
     connector::{Connector, MemoryConnector},
     io::{receive_frame, send_frame},
-    metadata::Metadata,
     tool_mgr::ToolMgr,
     types::{BodyFormat, RequestHeaders, ResponseHeaders, ToolRequest, ToolResponse},
 };
@@ -41,15 +40,15 @@ where
 #[derive(Clone)]
 struct LlmApiState {
     connector: Arc<MemoryConnector>,
-    tool_mgr: Arc<dyn ToolMgr>,
+    tool_mgr: Arc<dyn ToolMgr<(), ()>>,
     base_url: String,
     api_key: String,
     client: reqwest::Client,
 }
 
-async fn load_tools(tool_mgr: &Arc<dyn ToolMgr>) -> Result<Vec<Value>> {
+async fn load_tools(tool_mgr: &Arc<dyn ToolMgr<(), ()>>) -> Result<Vec<Value>> {
     Ok(tool_mgr
-        .list_tools(&Metadata::default())
+        .list_tools(&())
         .await?
         .into_iter()
         .filter_map(|(name, tool)| match serde_json::from_str::<Value>(&tool) {
@@ -258,7 +257,7 @@ pub async fn serve_llm_api(
     host: &str,
     port: u16,
     connector: MemoryConnector,
-    tool_mgr: Arc<dyn ToolMgr>,
+    tool_mgr: Arc<dyn ToolMgr<(), ()>>,
     base_url: String,
     api_key: String,
 ) -> Result<()> {
