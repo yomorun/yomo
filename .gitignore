@@ -26,4 +26,6 @@ Cargo.lock
 
 AGENTS.md
 config.yaml
+node_modules/
+pnpm-lock.yaml
 app/

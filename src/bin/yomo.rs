@@ -214,102 +214,6 @@ struct InitOptions {
     output_dir: String,
 }
 
-const NODE_TEMPLATE_APP: &str = r#"export const description = "Get weather for a city"
-
-export type Argument = {
-  /**
-   * The city name to get the weather for.
-   */
-  city: string
-}
-
-export async function handler(args: Argument): Promise<string> {
-  const city = (args.city || "").trim()
-  if (!city) {
-    throw new Error("city is required")
-  }
-
-  console.log(`query weather for city: ${city}`)
-
-  const url = `https://wttr.in/${encodeURIComponent(city)}?format=3`
-  const resp = await fetch(url)
-  if (!resp.ok) {
-    throw new Error(`failed to query weather, status code: ${resp.status}`)
-  }
-
-  const result = await resp.text()
-  console.log(result)
-
-  return result
-}
-"#;
-
-const NODE_TEMPLATE_PACKAGE_JSON: &str = r#"{
-  "name": "yomo-app",
-  "private": true,
-  "version": "0.0.1",
-  "devDependencies": {
-    "@types/node": "^22.10.1",
-    "typescript": "^5.7.2"
-  }
-}
-"#;
-
-const NODE_TEMPLATE_TSCONFIG: &str = r#"{
-  "compilerOptions": {
-    "target": "es2020",
-    "module": "commonjs",
-    "moduleResolution": "node",
-    "esModuleInterop": true,
-    "strict": true,
-    "skipLibCheck": true
-  },
-  "include": ["src/**/*.ts"]
-}
-"#;
-
-const GO_TEMPLATE_APP: &str = r#"package main
-
-import (
-	"fmt"
-	"log/slog"
-	"io"
-	"net/http"
-)
-
-const Description = "Get weather for a city"
-
-type Arguments struct {
-	City string `json:"city" jsonschema:"description=The city name to get the weather for"`
-}
-
-type Result string
-
-func Handler(args Arguments) (Result, error) {
-	slog.Info("query weather for city: " + args.City)
-
-	url := fmt.Sprintf("https://wttr.in/%s?format=3", args.City)
-	resp, err := http.Get(url)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("failed to query weather, status code: %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	result := string(body)
-	slog.Info(result)
-
-	return Result(result), nil
-}
-"#;
-
 /// Start Zipper service
 async fn serve(opt: ServeOptions) -> Result<()> {
     let config = match opt.config {
@@ -389,17 +293,14 @@ async fn init(opt: InitOptions) -> Result<()> {
 
     match opt.language.as_str() {
         "node" => {
-            fs::create_dir_all(output_dir.join("src")).await?;
-            fs::write(output_dir.join("src/app.ts"), NODE_TEMPLATE_APP).await?;
-            fs::write(output_dir.join("package.json"), NODE_TEMPLATE_PACKAGE_JSON).await?;
-            fs::write(output_dir.join("tsconfig.json"), NODE_TEMPLATE_TSCONFIG).await?;
-            info!("initialized node tool project: {:?}", output_dir);
-            info!("next step: edit {:?}/src/app.ts", output_dir);
+            ServerlessHandler::init_node(output_dir).await?;
+            info!("initialized node tool project: {}", output_dir.display());
+            info!("next step: edit {}/src/app.ts", output_dir.display());
         }
         "go" => {
-            fs::write(output_dir.join("app.go"), GO_TEMPLATE_APP).await?;
-            info!("initialized go tool project: {:?}", output_dir);
-            info!("next step: edit {:?}/app.go", output_dir);
+            ServerlessHandler::init_go(output_dir).await?;
+            info!("initialized go tool project: {}", output_dir.display());
+            info!("next step: edit {}/app.go", output_dir.display());
         }
         _ => unreachable!(),
     }
