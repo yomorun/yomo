@@ -1,7 +1,6 @@
-import { createServer, Socket } from "node:net"
-import { join } from "node:path"
-import * as TJS from "typescript-json-schema"
-import ts from "typescript"
+import { createServer, Socket } from "net"
+import { join } from "path"
+import * as tsj from "ts-json-schema-generator"
 
 type RequestHeaders = {
   name: string
@@ -74,31 +73,39 @@ async function waitReadable(socket: Socket): Promise<void> {
 }
 
 function generateParametersSchema(appTsPath: string): unknown {
-  const settings: TJS.PartialArgs = {
-    required: true,
-    noExtraProps: true,
-    ignoreErrors: true,
-    topRef: false,
-  }
-  const compilerOptions: ts.CompilerOptions = {
-    strictNullChecks: true,
-    module: ts.ModuleKind.CommonJS,
-    target: ts.ScriptTarget.ES2020,
-    moduleResolution: ts.ModuleResolutionKind.NodeJs,
-    esModuleInterop: true,
-    skipLibCheck: true,
-  }
+  try {
+    const generator = tsj.createGenerator({
+      path: appTsPath,
+      tsconfig: join(__dirname, "..", "tsconfig.json"),
+      type: "Argument",
+      topRef: false,
+      expose: "none",
+      additionalProperties: false,
+      skipTypeCheck: true,
+      jsDoc: "extended",
+    })
 
-  const program = TJS.getProgramFromFiles([appTsPath], compilerOptions, join(__dirname, ".."))
-  const schema = TJS.generateSchema(program, "Argument", settings)
-  if (schema != null) {
+    const schema = generator.createSchema("Argument") as {
+      $ref?: string
+      definitions?: Record<string, unknown>
+      [k: string]: unknown
+    }
+
+    if (typeof schema.$ref === "string" && schema.$ref.startsWith("#/definitions/")) {
+      const key = schema.$ref.slice("#/definitions/".length)
+      const deref = schema.definitions?.[key]
+      if (deref != null) {
+        return deref
+      }
+    }
+
     return schema
-  }
-
-  return {
-    type: "object",
-    properties: {},
-    additionalProperties: false,
+  } catch {
+    return {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    }
   }
 }
 
@@ -181,7 +188,7 @@ async function handleConnection(socket: Socket, toolModule: ToolModule): Promise
 }
 
 async function main(): Promise<void> {
-  const toolModule = (await import("./src/app")) as ToolModule
+  const toolModule = (await import("./src/app.js")) as ToolModule
   const description = typeof toolModule.description === "string" ? toolModule.description : ""
   const appTsPath = join(__dirname, "..", "src", "app.ts")
   const parameters = generateParametersSchema(appTsPath)

@@ -20,11 +20,16 @@ use crate::bridge::Bridge;
 use crate::connector::TcpConnector;
 use crate::types::RequestHeaders;
 
+static GO_APP: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/serverless/go/app.go"));
 static GO_MAIN: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/serverless/go/main.go"
 ));
 static GO_MOD: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/serverless/go/go.mod"));
+static NODE_APP: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/serverless/node/src/app.ts"
+));
 static NODE_MAIN: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/serverless/node/main.ts"
@@ -71,6 +76,21 @@ impl ServerlessHandler {
         } else {
             None
         }
+    }
+
+    /// Initialize Go tool project.
+    pub async fn init_go(serverless_dir: &Path) -> Result<()> {
+        fs::write(serverless_dir.join("app.go"), GO_APP).await?;
+        Ok(())
+    }
+
+    /// Initialize Node.js tool project.
+    pub async fn init_node(serverless_dir: &Path) -> Result<()> {
+        fs::create_dir_all(serverless_dir.join("src")).await?;
+        fs::write(serverless_dir.join("src/app.ts"), NODE_APP).await?;
+        fs::write(serverless_dir.join("package.json"), NODE_PACKAGE_JSON).await?;
+        fs::write(serverless_dir.join("tsconfig.json"), NODE_TSCONFIG).await?;
+        Ok(())
     }
 
     /// Run tool as subprocess.
@@ -252,7 +272,15 @@ impl ServerlessHandler {
             fs::write(cwd.join("package.json"), NODE_PACKAGE_JSON).await?;
         }
 
-        fs::write(cwd.join("tsconfig.json"), NODE_TSCONFIG).await?;
+        if serverless_dir.join("tsconfig.json").exists() {
+            fs::copy(
+                serverless_dir.join("tsconfig.json"),
+                cwd.join("tsconfig.json"),
+            )
+            .await?;
+        } else {
+            fs::write(cwd.join("tsconfig.json"), NODE_TSCONFIG).await?;
+        }
 
         if serverless_dir.join("src").exists() {
             self.copy_dir_recursive(&serverless_dir.join("src"), &cwd.join("src"))
@@ -296,7 +324,7 @@ impl ServerlessHandler {
                 "install",
                 "--no-save",
                 "typescript",
-                "typescript-json-schema",
+                "ts-json-schema-generator",
                 "@types/node",
             ])
             .current_dir(cwd)
@@ -311,22 +339,7 @@ impl ServerlessHandler {
         }
 
         let build_output = Command::new("npx")
-            .args([
-                "tsc",
-                "main.ts",
-                "src/app.ts",
-                "--outDir",
-                "dist",
-                "--module",
-                "commonjs",
-                "--target",
-                "es2020",
-                "--moduleResolution",
-                "node",
-                "--esModuleInterop",
-                "--strict",
-                "--skipLibCheck",
-            ])
+            .args(["tsc", "-p", "tsconfig.json"])
             .current_dir(cwd)
             .spawn()?
             .wait_with_output()
