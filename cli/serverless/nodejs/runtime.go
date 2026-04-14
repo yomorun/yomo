@@ -233,7 +233,7 @@ func (w *NodejsWrapper) genWrapperTS(dstPath string) error {
 func (w *NodejsWrapper) InitApp() error {
 	// init
 	cmd := exec.Command(w.npmPath, "init")
-	if w.npmPath == "npm" {
+	if filepath.Base(w.npmPath) == "npm" {
 		cmd.Args = append(cmd.Args, "-y")
 	}
 	cmd.Dir = w.workDir
