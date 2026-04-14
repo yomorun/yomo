@@ -14,12 +14,22 @@ jobs:
   build:
     name: Build and release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     env:
       ACTIONS_ALLOW_UNSECURE_COMMANDS: true
 
     steps:
       - name: Check out
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ensure tag points to master
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          git fetch origin master --depth=1
+          git merge-base --is-ancestor "$GITHUB_SHA" "origin/master"
 
       - name: Setup Go
         uses: actions/setup-go@v5
