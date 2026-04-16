@@ -616,7 +616,7 @@ func (r *streamChatResp) process(w EventResponseWriter, chatCtx *chatContext) (*
 		if chunk.Choices[0].FinishReason != "" {
 			r.finishReason = chunk.Choices[0].FinishReason
 			// ignore usage in finish chunk
-			chunk.Usage = nil
+			// chunk.Usage = nil // This line causes gemini-2.5-pro do not return usage.
 		}
 		// no content chunk (role chunk), just buffer it
 		if choice.Delta.Content == "" && choice.Delta.ReasoningContent == "" && len(choice.Delta.ToolCalls) == 0 {
