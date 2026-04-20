@@ -1,6 +1,6 @@
 [package]
 name = "yomo"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2024"
 license = "Apache-2.0"
 description = "A QUIC-based runtime for AI-LLM tool routing and serverless execution"
@@ -16,7 +16,7 @@ async-trait = "0.1"
 axum = { version = "0.8", features = ["macros"] }
 bon = "3"
 chrono = "0.4"
-clap = { version = "4.5", features = ["derive"] }
+clap = { version = "4.5", features = ["derive", "env"] }
 config = "0.15"
 env_logger = "0.11"
 futures-util = "0.3"

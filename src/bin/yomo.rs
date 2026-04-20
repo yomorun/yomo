@@ -157,38 +157,65 @@ struct RunOptions {
     #[clap(default_value = ".", help = "directory to the tool source file")]
     serverless_dir: String,
 
-    #[clap(short, long, value_parser = NonEmptyStringValueParser::new(), help = "yomo tool name")]
+    #[clap(
+        short,
+        long,
+        value_parser = NonEmptyStringValueParser::new(),
+        env="YOMO_TOOL_NAME",
+        help = "the serverless tool name"
+    )]
     name: String,
 
     #[clap(
         short,
         long,
+        env = "YOMO_ZIPPER",
         default_value = "127.0.0.1:9000",
         help = "YoMo-Zipper endpoint address"
     )]
     zipper: String,
 
-    #[clap(long, default_value_t = String::default(), help = "client credential payload")]
+    #[clap(
+        short,
+        long,
+        env = "YOMO_CREDENTIAL",
+        default_value = "",
+        help = "client credential payload"
+    )]
     credential: String,
 
-    #[clap(long, help = "path to the tls CA certificate file")]
+    #[clap(
+        long,
+        env = "YOMO_TLS_CA_CERT_FILE",
+        help = "path to the tls CA certificate file"
+    )]
     tls_ca_cert_file: Option<String>,
 
     #[clap(
         long,
+        env = "YOMO_TLS_CERT_FILE",
         help = "path to the tls client certificate file (for mutual TLS mode)"
     )]
     tls_cert_file: Option<String>,
 
-    #[clap(long, help = "path to the tls client key file (for mutual TLS mode)")]
+    #[clap(
+        long,
+        env = "YOMO_TLS_KEY_FILE",
+        help = "path to the tls client key file (for mutual TLS mode)"
+    )]
     tls_key_file: Option<String>,
 
-    #[clap(long, default_value_t = false, help = "enable mutual TLS mode")]
+    #[clap(
+        long,
+        env = "YOMO_TLS_MUTUAL",
+        help = "option to enable mutual TLS mode"
+    )]
     tls_mutual: bool,
 
     #[clap(
         short,
         long,
+        env = "YOMO_TOOL_LANGUAGE",
         value_parser = ["node", "go"],
         help = "tool language: node/go (auto-detect when omitted)"
     )]
