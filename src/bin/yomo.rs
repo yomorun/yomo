@@ -162,7 +162,7 @@ struct RunOptions {
         long,
         value_parser = NonEmptyStringValueParser::new(),
         env="YOMO_TOOL_NAME",
-        help = "the serverless tool name",
+        help = "the serverless tool name"
     )]
     name: String,
 
@@ -217,7 +217,7 @@ struct RunOptions {
         long,
         env = "YOMO_TOOL_LANGUAGE",
         value_parser = ["node", "go"],
-        help = "tool language: node/go (auto-detect when omitted)",
+        help = "tool language: node/go (auto-detect when omitted)"
     )]
     language: Option<String>,
 }
@@ -230,7 +230,7 @@ struct InitOptions {
         long,
         default_value = "node",
         value_parser = ["node", "go"],
-        help = "tool language template",
+        help = "tool language template"
     )]
     language: String,
 

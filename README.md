@@ -223,7 +223,7 @@ project, for example:
     --url http://127.0.0.1:9001/v1/chat/completions \
     --header 'Content-Type: application/json' \
     --data '{
-      "model": "auto",
+      "model": "qwen3.5",
       "messages": [
           {
               "role": "user",
