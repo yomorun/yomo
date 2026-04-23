@@ -156,6 +156,75 @@ problem, this is **Geo-distributed System Architecture**:
 
 <img width="580" alt="yomo geo-distributed system" src="https://user-images.githubusercontent.com/65603/162367572-5a0417fa-e2b2-4d35-8c92-2c95d461706d.png">
 
+## ❓ FAQ & Troubleshooting
+
+### General
+
+**Q: What is YoMo and how is it different from other LLM frameworks?**
+
+YoMo is a serverless LLM Function Calling framework designed for geo-distributed AI inference. Unlike traditional frameworks that run inference in centralized data centers, YoMo brings AI tools closer to end users at the edge, reducing latency and improving response times for real-time AI applications.
+
+**Q: What LLM providers does YoMo support?**
+
+YoMo supports any OpenAI API-compatible provider, including:
+- OpenAI (GPT-4, GPT-3.5)
+- Local models via Ollama, vLLM, or LM Studio
+- Cloud providers like Azure OpenAI, Anthropic (via proxy)
+- Custom endpoints that implement the OpenAI chat completions API
+
+**Q: Can I use YoMo with existing LangChain or LlamaIndex applications?**
+
+Yes. YoMo's serverless tools expose OpenAI-compatible endpoints, so they integrate seamlessly with LangChain, LlamaIndex, and other frameworks that support function calling.
+
+### Setup & Configuration
+
+**Q: CLI installation fails with "permission denied"?**
+
+Run the install script with sudo or install to a user-writable directory:
+```bash
+curl -fsSL https://get.yomo.run | sh -s -- --install-dir ~/.local/bin
+```
+Ensure `~/.local/bin` is in your `$PATH`.
+
+**Q: `yomo serve` fails to start with port already in use?**
+
+Change the port in your config file or use the `--port` flag:
+```bash
+yomo serve -c my-agent.yaml --port 9001
+```
+
+**Q: How do I enable debug logging?**
+
+Set the `RUST_LOG` environment variable:
+```bash
+RUST_LOG=debug yomo serve -c my-agent.yaml
+```
+
+### Common Issues
+
+**Q: Function calling returns empty results?**
+
+Verify:
+1. Your tool is running (`yomo run -n <tool-name>`)
+2. The LLM provider endpoint is accessible (`curl http://127.0.0.1:8000/v1/models`)
+3. The function signature matches what the LLM expects (check the tool's `handler` export)
+
+**Q: TLS connection errors when connecting to YoMo server?**
+
+YoMo uses TLS v1.3 by default. If you're testing locally, you can disable TLS:
+```yaml
+auth:
+  type: none
+```
+For production, ensure your TLS certificates are valid and not expired.
+
+**Q: `yomo run` hangs indefinitely?**
+
+Check that:
+1. The YoMo server is running (`yomo serve`)
+2. The tool name matches exactly (case-sensitive)
+3. Your handler function doesn't have blocking operations without timeouts
+
 ## 🦸 Contributing
 
 First off, thank you for considering making contributions. It's people like you
