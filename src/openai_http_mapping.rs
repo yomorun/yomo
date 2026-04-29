@@ -2,7 +2,7 @@ use std::pin::Pin;
 
 use async_stream::try_stream;
 use axum::body::Bytes;
-use axum::http::StatusCode;
+use axum::http::{StatusCode, header};
 use futures_core::Stream;
 use futures_util::StreamExt;
 use log::{error, info};
@@ -515,6 +515,7 @@ pub fn openai_error_response(
     let payload = serde_json::to_vec(&response).unwrap_or_else(|_| b"{}".to_vec());
     axum::response::Response::builder()
         .status(status)
+        .header(header::CONTENT_TYPE, "application/json")
         .body(axum::body::Body::from(payload))
         .expect("build error response")
 }
@@ -526,6 +527,7 @@ pub fn map_chat_error(err: ProviderError) -> axum::response::Response {
             let payload = serde_json::to_vec(&response).unwrap_or_else(|_| b"{}".to_vec());
             axum::response::Response::builder()
                 .status(status)
+                .header(header::CONTENT_TYPE, "application/json")
                 .body(axum::body::Body::from(payload))
                 .expect("build error response")
         }

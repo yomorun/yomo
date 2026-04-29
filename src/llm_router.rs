@@ -3,7 +3,7 @@ use std::fmt;
 use anyhow::Context;
 use axum::body::{Body, Bytes};
 use axum::extract::State;
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use log::{error, info};
 use opentelemetry::trace::TraceContextExt;
@@ -265,6 +265,7 @@ where
             root_span.record("http.status_code", StatusCode::OK.as_u16() as i64);
             Ok(Response::builder()
                 .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "application/json")
                 .body(Body::from(payload))
                 .expect("build response"))
         }
@@ -274,6 +275,9 @@ where
             let body = Body::from_stream(sse);
             Ok(Response::builder()
                 .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "text/event-stream; charset=utf-8")
+                .header(header::CACHE_CONTROL, "no-cache")
+                .header(header::CONNECTION, "keep-alive")
                 .body(body)
                 .expect("build response"))
         }
