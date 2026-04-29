@@ -161,7 +161,7 @@ async fn serve(opt: ServeOptions) -> Result<()> {
         }
     };
 
-    info!("config: {:?}", config);
+    info!("config: {:?}, {:?}", config.http_api, config.zipper);
 
     init_tracing().await?;
 

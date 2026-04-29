@@ -16,7 +16,7 @@ pub async fn init_tracing() -> Result<(), anyhow::Error> {
         _ => return Ok(()),
     };
     let service_name = std::env::var("OTEL_SERVICE_NAME")
-        .unwrap_or_else(|_| "llm_api".to_string());
+        .unwrap_or_else(|_| "yomo".to_string());
     global::set_text_map_propagator(TraceContextPropagator::new());
     let exporter = opentelemetry_otlp::new_exporter()
         .http()

@@ -7,7 +7,8 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use log::{error, info};
 use opentelemetry::trace::TraceContextExt;
-use tracing::{Instrument, Span, field, info_span};
+use opentelemetry_sdk::trace::{IdGenerator, RandomIdGenerator};
+use tracing::{Instrument, Span, debug_span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::agent_loop::{AgentLoopConfig, AgentLoopResult, run_agent_loop};
@@ -76,31 +77,25 @@ where
     A: Send + Sync + 'static,
     M: Send + Sync + fmt::Debug + Clone + 'static,
 {
-    let root_span = info_span!(
+    let root_span = debug_span!(
         "http.request",
         http.method = "POST",
         http.route = "/v1/chat/completions",
-        http.status_code = field::Empty,
-        model = field::Empty,
-        streaming = field::Empty,
     );
-    let otel_trace_id = root_span
-        .context()
-        .span()
-        .span_context()
-        .trace_id()
-        .to_string();
-    let trace_id = otel_trace_id;
+    let trace_id = {
+        let span_context = root_span.context().span().span_context().clone();
+        if span_context.is_valid() {
+            span_context.trace_id().to_string()
+        } else {
+            RandomIdGenerator::default().new_trace_id().to_string()
+        }
+    };
     let extension = String::new();
     let credential = parse_credential(&headers);
 
     let auth_info = match state.auth.authenticate(&credential).await {
         Ok(info) => info,
         Err(err) => {
-            root_span.record(
-                "http.status_code",
-                StatusCode::UNAUTHORIZED.as_u16() as i64,
-            );
             error!("chat auth failed: {err}");
             return openai_error_response(
                 StatusCode::UNAUTHORIZED,
@@ -113,10 +108,6 @@ where
     let metadata = match state.metadata_mgr.new_from_extension(&auth_info, &extension) {
         Ok(metadata) => metadata,
         Err(err) => {
-            root_span.record(
-                "http.status_code",
-                StatusCode::INTERNAL_SERVER_ERROR.as_u16() as i64,
-            );
             error!("metadata init failed: {err}");
             return openai_error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -126,7 +117,6 @@ where
         }
     };
 
-    info!("chat request received {:?}", metadata);
     let metadata_for_error = metadata.clone();
     match handle_chat_completions_inner::<A, M>(
         state,
@@ -141,10 +131,6 @@ where
     {
         Ok(response) => response,
         Err(err) => {
-            root_span.record(
-                "http.status_code",
-                StatusCode::INTERNAL_SERVER_ERROR.as_u16() as i64,
-            );
             error!("chat completion failed: {err} {:?}", metadata_for_error);
             openai_error_response(StatusCode::INTERNAL_SERVER_ERROR, "internal error", None)
         }
@@ -183,7 +169,6 @@ where
     {
         Ok(selection) => selection,
         Err(SelectionError::ModelNotSupported) => {
-            root_span.record("http.status_code", StatusCode::BAD_REQUEST.as_u16() as i64);
             let model = request_model_id.as_deref().unwrap_or("");
             let message = format!("model {model} is not supported");
             return Ok(openai_error_response(
@@ -196,11 +181,6 @@ where
 
     request.model = selection.model_id.clone();
     let stream = request.stream.unwrap_or(false);
-    root_span.record(
-        "model",
-        field::display(request_model_id.as_deref().unwrap_or(&selection.model_id)),
-    );
-    root_span.record("streaming", stream);
     if stream {
         match &mut request.stream_options {
             Some(options) => {
@@ -215,10 +195,10 @@ where
         }
     }
     info!(
-        "chat request parsed: model_id={}, model={}, stream={} {:?}",
+        "http.request.start; method=POST path=/v1/chat/completion model_id={} stream={} trace_id={} metadata={:?}",
         request_model_id.as_deref().unwrap_or(&selection.model_id),
-        selection.model_id,
         stream,
+        trace_id,
         metadata
     );
     if let Err(message) = validate_openai_request(&request) {
@@ -228,7 +208,6 @@ where
             message,
             metadata
         );
-        root_span.record("http.status_code", StatusCode::BAD_REQUEST.as_u16() as i64);
         return Ok(openai_error_response(
             StatusCode::BAD_REQUEST,
             &message,
@@ -250,19 +229,21 @@ where
         trace_id.clone(),
         extension,
         AgentLoopConfig::default(),
-        root_span.clone(),
     )
     .await;
 
     match loop_result {
         Ok(AgentLoopResult::NonStream(response)) => {
             info!(
-                "chat request success: model={} {:?}",
-                response.model, metadata_for_log
+                "http.request.end; status_code=200 model_id={} prompt_tokens={} completion_tokens={} trace_id={} metadata={:?}",
+                request_model,
+                response.usage.input_tokens,
+                response.usage.output_tokens,
+                trace_id,
+                metadata_for_log
             );
             let mapped = map_openai_response(response);
             let payload = serde_json::to_vec(&mapped).context("serialize response")?;
-            root_span.record("http.status_code", StatusCode::OK.as_u16() as i64);
             Ok(Response::builder()
                 .status(StatusCode::OK)
                 .header(header::CONTENT_TYPE, "application/json")
@@ -270,7 +251,6 @@ where
                 .expect("build response"))
         }
         Ok(AgentLoopResult::Stream { events }) => {
-            root_span.record("http.status_code", StatusCode::OK.as_u16() as i64);
             let sse = stream_openai_chunks(events, trace_id, request_model, root_span.clone());
             let body = Body::from_stream(sse);
             Ok(Response::builder()
@@ -283,11 +263,13 @@ where
         }
         Err(err) => {
             error!(
-                "chat request failed: model={}, error={} {:?}",
-                model_for_log, err, metadata_for_log
+                "http.request.end; status_code=500 model_id={} error={} trace_id={} metadata={:?}",
+                model_for_log,
+                err,
+                trace_id,
+                metadata_for_log
             );
             let response = map_chat_error(err);
-            root_span.record("http.status_code", response.status().as_u16() as i64);
             Ok(response)
         }
     }

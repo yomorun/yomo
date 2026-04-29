@@ -6,12 +6,12 @@ use std::sync::Arc;
 use crate::tool_invoker::ToolInvoker;
 use futures_core::Stream;
 use futures_util::{StreamExt, future::join_all};
-use log::{debug, error};
+use log::{error, info};
 use opentelemetry::KeyValue;
 use opentelemetry::global;
 use opentelemetry::trace::{Span as OtelSpan, Status, Tracer};
 use serde_json::Value;
-use tracing::{Instrument, Span, field, info_span};
+use tracing::Span;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use crate::types::{BodyFormat, RequestHeaders, ToolRequest};
 
@@ -58,7 +58,6 @@ pub async fn run_agent_loop<A, M>(
     trace_id: String,
     extension: String,
     config: AgentLoopConfig,
-    root_span: Span,
 ) -> Result<AgentLoopResult, ProviderError>
 where
     A: Send + Sync + 'static,
@@ -76,7 +75,6 @@ where
             trace_id,
             extension,
             config,
-            root_span,
         )
         .await
     } else {
@@ -89,7 +87,6 @@ where
             trace_id,
             extension,
             config,
-            root_span,
         )
         .await
     }
@@ -104,7 +101,6 @@ async fn run_agent_loop_nonstream<A, M>(
     trace_id: String,
     extension: String,
     config: AgentLoopConfig,
-    root_span: Span,
 ) -> Result<AgentLoopResult, ProviderError>
 where
     A: Send + Sync + 'static,
@@ -125,31 +121,12 @@ where
             request.tool_choice = None;
         }
 
-        let llm_span = info_span!(
-            parent: &root_span,
-            "llm.call",
-            round = (call_count + 1) as i64,
-            model = %request.model,
-            streaming = false,
-            usage_input_tokens = field::Empty,
-            usage_output_tokens = field::Empty,
-            usage_total_tokens = field::Empty,
-            usage_cached_tokens = field::Empty,
-            usage_reasoning_tokens = field::Empty,
-        );
         let mut response = provider
             .complete(request.clone())
             .await
             .map_err(|err| ProviderError::Internal(err.to_string()))?;
-        record_usage(&llm_span, &response.usage);
         add_usage(&mut total_usage, &response.usage);
         call_count += 1;
-        debug!(
-            "llm chat(#{call_count}), usage={:?} {:?}",
-            response.usage,
-            metadata.as_ref()
-        );
-        drop(llm_span);
 
         if call_count >= config.max_calls {
             response.usage = total_usage;
@@ -158,6 +135,14 @@ where
 
         let mut tool_calls = response.tool_calls.take().unwrap_or_default();
         ensure_provider_call_ids(&response.request_id, &mut tool_calls);
+        log_llm_call(
+            call_count,
+            &request.model,
+            false,
+            tool_calls.len(),
+            Some(&response.usage),
+            &trace_id,
+        );
         if tool_calls.is_empty() {
             response.tool_calls = None;
             response.usage = total_usage;
@@ -177,12 +162,6 @@ where
         }
 
         let request_id = response.request_id.clone();
-        let tool_group_span = info_span!(
-            parent: &root_span,
-            "tool.calls",
-            round = call_count as i64,
-            tool_count = server_calls.len() as i64,
-        );
         let next_messages = async {
             let mut next_messages = Vec::new();
             next_messages.push(build_assistant_tool_call_message(
@@ -203,7 +182,6 @@ where
             );
             Ok::<Vec<Message>, ProviderError>(next_messages)
         }
-        .instrument(tool_group_span)
         .await?;
         request.messages.extend(next_messages);
     }
@@ -218,7 +196,6 @@ async fn run_agent_loop_stream<A, M>(
     trace_id: String,
     extension: String,
     config: AgentLoopConfig,
-    root_span: Span,
 ) -> Result<AgentLoopResult, ProviderError>
 where
     A: Send + Sync + 'static,
@@ -233,6 +210,8 @@ where
             cached_tokens: None,
             reasoning_tokens: None,
         };
+        let mut last_finish_reason: Option<String> = None;
+        let model_id = request.model.clone();
         loop {
         let tool_maps = build_tool_maps(&request, server_tools.as_ref())?;
         request.tools = tool_maps.merged_tools.clone();
@@ -240,18 +219,6 @@ where
             request.tool_choice = None;
             }
 
-            let llm_span = info_span!(
-                parent: &root_span,
-                "llm.call",
-                round = (call_count + 1) as i64,
-                model = %request.model,
-                streaming = true,
-                usage_input_tokens = field::Empty,
-                usage_output_tokens = field::Empty,
-                usage_total_tokens = field::Empty,
-                usage_cached_tokens = field::Empty,
-                usage_reasoning_tokens = field::Empty,
-            );
             let mut provider_stream = provider.stream(request.clone());
 
             let usage_offset = total_usage.clone();
@@ -347,6 +314,7 @@ where
                     }
                     UnifiedEvent::Completed { finish_reason: reason, usage: chunk_usage } => {
                         finish_reason = reason.clone();
+                        last_finish_reason = reason.clone();
                         if let Some(chunk_usage) = chunk_usage {
                             usage = Some(chunk_usage.clone());
                         }
@@ -375,15 +343,16 @@ where
 
             call_count += 1;
             if let Some(current_usage) = &usage {
-                record_usage(&llm_span, current_usage);
                 add_usage(&mut total_usage, current_usage);
-                debug!(
-                    "llm chat(#{call_count}), usage={:?} {:?}",
-                    current_usage,
-                    metadata.as_ref()
-                );
             }
-            drop(llm_span);
+            log_llm_call(
+                call_count,
+                &request.model,
+                true,
+                tool_calls.len(),
+                usage.as_ref(),
+                &trace_id,
+            );
             if call_count >= config.max_calls {
                 if !tool_calls.is_empty() {
                     if !emitted_client_tool {
@@ -445,12 +414,6 @@ where
             }
 
             let request_id = request.model.clone();
-            let tool_group_span = info_span!(
-                parent: &root_span,
-                "tool.calls",
-                round = call_count as i64,
-                tool_count = server_calls.len() as i64,
-            );
             let tool_messages = async {
                 let mut tool_messages = Vec::new();
                 tool_messages.push(build_assistant_tool_call_message(&request_id, &server_calls));
@@ -468,10 +431,17 @@ where
                 );
                 Ok::<Vec<Message>, ProviderError>(tool_messages)
             }
-            .instrument(tool_group_span)
             .await?;
             request.messages.extend(tool_messages);
         }
+        info!(
+            "http.request.end; status_code=200 model_id={} finish_reason={} prompt_tokens={} completion_tokens={} trace_id={}",
+            model_id,
+            last_finish_reason.as_deref().unwrap_or(""),
+            total_usage.input_tokens,
+            total_usage.output_tokens,
+            trace_id
+        );
     };
 
     let boxed_stream: Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send>> =
@@ -770,14 +740,30 @@ fn add_usage_cloned(total: &Usage, delta: &Usage) -> Usage {
     usage
 }
 
-fn record_usage(span: &Span, usage: &Usage) {
-    span.record("usage_input_tokens", usage.input_tokens as i64);
-    span.record("usage_output_tokens", usage.output_tokens as i64);
-    span.record("usage_total_tokens", usage.total_tokens as i64);
-    if let Some(cached) = usage.cached_tokens {
-        span.record("usage_cached_tokens", cached as i64);
-    }
-    if let Some(reasoning) = usage.reasoning_tokens {
-        span.record("usage_reasoning_tokens", reasoning as i64);
-    }
+fn log_llm_call(
+    round: usize,
+    model: &str,
+    streaming: bool,
+    tool_count: usize,
+    usage: Option<&Usage>,
+    trace_id: &str,
+) {
+    let default_usage = Usage {
+        input_tokens: 0,
+        output_tokens: 0,
+        total_tokens: 0,
+        cached_tokens: None,
+        reasoning_tokens: None,
+    };
+    let usage = usage.unwrap_or(&default_usage);
+    info!(
+        "llm.call; trace_id={} round={} model={} streaming={} tool_count={} prompt_tokens={} completion_tokens={}",
+        trace_id,
+        round,
+        model,
+        streaming,
+        tool_count,
+        usage.input_tokens,
+        usage.output_tokens
+    );
 }

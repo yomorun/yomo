@@ -5,8 +5,8 @@ use axum::body::Bytes;
 use axum::http::{StatusCode, header};
 use futures_core::Stream;
 use futures_util::StreamExt;
-use log::{error, info};
-use tracing::{Span, field, info_span};
+use log::{debug, error};
+use tracing::{Span, field, debug_span};
 
 use crate::openai_types::{
     ChatCompletionChunk, ChatCompletionChunkChoice, ChatCompletionChunkDelta,
@@ -183,7 +183,7 @@ pub fn stream_openai_chunks(
 
         let ensure_response_span = |response_span: &mut Option<Span>| {
             if response_span.is_none() {
-                let span = info_span!(
+                let span = debug_span!(
                     parent: &root_span,
                     "response.stream",
                     http.status_code = StatusCode::OK.as_u16() as i64,
@@ -378,9 +378,14 @@ pub fn stream_openai_chunks(
                         });
                     }
                     let finish_reason_log = finish_reason.as_deref().unwrap_or("");
-                    info!(
-                        "chat stream completed: model={}, finish_reason={} trace_id={trace_id}",
-                        model_for_log, finish_reason_log
+                    let usage_for_log = usage.as_ref();
+                    debug!(
+                        "http.request.stream.completed; model_id={} finish_reason={} prompt_tokens={} completion_tokens={} trace_id={}",
+                        model_for_log,
+                        finish_reason_log,
+                        usage_for_log.map(|value| value.input_tokens).unwrap_or(0),
+                        usage_for_log.map(|value| value.output_tokens).unwrap_or(0),
+                        trace_id
                     );
                 }
                 UnifiedEvent::Failed { code, message } => {
@@ -434,7 +439,7 @@ fn map_finish_reason_string(reason: &FinishReason) -> String {
     .to_string()
 }
 
-fn map_usage_to_openai(usage: &crate::llm_providers::Usage) -> Usage {
+pub fn map_usage_to_openai(usage: &crate::llm_providers::Usage) -> Usage {
     Usage {
         prompt_tokens: usage.input_tokens,
         completion_tokens: usage.output_tokens,
