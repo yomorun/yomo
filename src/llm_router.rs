@@ -149,8 +149,17 @@ where
     A: Send + Sync + 'static,
     M: fmt::Debug + Clone + Send + Sync + 'static,
 {
-    let mut request: ChatCompletionRequest =
-        serde_json::from_slice(&body).context("invalid json body")?;
+    let mut request: ChatCompletionRequest = match serde_json::from_slice(&body) {
+        Ok(request) => request,
+        Err(err) => {
+            error!("chat request invalid json: {err}");
+            return Ok(openai_error_response(
+                StatusCode::BAD_REQUEST,
+                &format!("invalid request body: {err}"),
+                Some("invalid_request_error"),
+            ));
+        }
+    };
 
     let server_tools = state
         .tool_mgr
