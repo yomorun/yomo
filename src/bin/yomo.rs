@@ -5,7 +5,6 @@ use clap::{Parser, builder::NonEmptyStringValueParser};
 use config::{Config, File};
 use env_logger::Env;
 use log::{error, info};
-use serde::Deserialize;
 use tokio::{
     fs,
     net::TcpListener,
@@ -19,7 +18,8 @@ use yomo::{
     bridge::Bridge,
     client::Client,
     connector::MemoryConnector,
-    llm_api::build_llm_api,
+    serve_config::ServeConfig,
+    llm_router::build_llm_router,
     metadata_mgr::MetadataMgrImpl,
     router::RouterImpl,
     serverless::{ServerlessHandler, ServerlessMemoryBridge},
@@ -27,108 +27,10 @@ use yomo::{
     tool_api::build_tool_api,
     tool_mgr::ToolMgrImpl,
     zipper::{MemorySource, Zipper, ZipperBridge},
+    trace::init_tracing,
 };
 
 const MAX_BUF_SIZE: usize = 64 * 1024;
-
-/// Default host address
-fn default_host() -> String {
-    "127.0.0.1".to_string()
-}
-
-/// Default Zipper QUIC port
-fn default_zipper_port() -> u16 {
-    9000
-}
-
-/// Default Http API HTTP port
-fn default_http_api_port() -> u16 {
-    9001
-}
-
-/// Default LLM base URL
-fn default_llm_base_url() -> String {
-    "http://127.0.0.1:11434".to_string()
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct ZipperConfig {
-    #[serde(default = "default_host")]
-    host: String,
-
-    #[serde(default = "default_zipper_port")]
-    port: u16,
-
-    #[serde(default)]
-    tls: TlsConfig,
-
-    #[serde(default)]
-    auth_token: Option<String>,
-}
-
-impl Default for ZipperConfig {
-    fn default() -> Self {
-        Self {
-            host: default_host(),
-            port: default_zipper_port(),
-            tls: TlsConfig::default(),
-            auth_token: None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct LlmConfig {
-    #[serde(default = "default_llm_base_url")]
-    base_url: String,
-
-    #[serde(default)]
-    api_key: String,
-}
-
-impl Default for LlmConfig {
-    fn default() -> Self {
-        Self {
-            base_url: default_llm_base_url(),
-            api_key: String::new(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct HttpApiConfig {
-    #[serde(default = "default_host")]
-    host: String,
-
-    #[serde(default = "default_http_api_port")]
-    port: u16,
-
-    #[serde(default)]
-    llm: LlmConfig,
-
-    #[serde(default)]
-    enable_tool_api: bool,
-}
-
-impl Default for HttpApiConfig {
-    fn default() -> Self {
-        Self {
-            host: default_host(),
-            port: default_http_api_port(),
-            llm: LlmConfig::default(),
-            enable_tool_api: false,
-        }
-    }
-}
-
-/// Server configuration
-#[derive(Debug, Clone, Deserialize, Default)]
-#[serde(default, rename_all = "snake_case")]
-struct ServeConfig {
-    zipper: ZipperConfig,
-
-    http_api: HttpApiConfig,
-}
 
 /// CLI commands
 #[derive(Parser, Debug)]
@@ -261,10 +163,12 @@ async fn serve(opt: ServeOptions) -> Result<()> {
 
     info!("config: {:?}", config);
 
+    init_tracing().await?;
+
     let (sender, receiver) = unbounded_channel();
     let tool_mgr = Arc::new(ToolMgrImpl::new());
     let zipper = Zipper::builder()
-        .auth(Arc::new(AuthImpl::new(config.zipper.auth_token)))
+        .auth(Arc::new(AuthImpl::new(config.zipper.auth_token.clone())))
         .metadata_mgr(Arc::new(MetadataMgrImpl::new()))
         .router(Arc::new(RouterImpl::new()))
         .tool_mgr(tool_mgr.clone())
@@ -272,18 +176,25 @@ async fn serve(opt: ServeOptions) -> Result<()> {
     let zipper_memory_bridge = ZipperBridge::new(zipper.clone(), MemorySource::new(receiver), ());
     let connector = MemoryConnector::new(sender.clone(), MAX_BUF_SIZE);
 
+    let selection_strategy = std::sync::Arc::new(
+        yomo::llm_providers::selection::ByModel::default(),
+    );
+    let provider_registry = yomo::llm_providers::registry::ProviderRegistry::from_providers(
+        &config.llm_providers,
+        selection_strategy,
+    )?;
+
+    let connector = Arc::new(connector);
+    let tool_invoker: Arc<dyn yomo::tool_invoker::ToolInvoker<()>> =
+        Arc::new(yomo::tool_invoker::ConnToolInvoker::<(), _, _, _>::new(
+            Arc::clone(&connector),
+        ));
     let mut app = axum::Router::new().nest(
         "/v1",
-        build_llm_api(
-            connector.to_owned(),
-            tool_mgr,
-            config.http_api.llm.base_url,
-            config.http_api.llm.api_key,
-        )
-        .await?,
+        build_llm_router(tool_mgr, provider_registry, tool_invoker).await?,
     );
     if config.http_api.enable_tool_api {
-        app = app.nest("/tool", build_tool_api(connector).await?);
+        app = app.nest("/tool", build_tool_api(Arc::unwrap_or_clone(connector)).await?);
     }
     info!(
         "start HTTP API server on {}:{} (LLM API at /v1, Tool API {})",

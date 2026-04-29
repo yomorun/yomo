@@ -36,30 +36,28 @@ yomo version
 
 ### Step 2. Start the server
 
-Create a configuration file `my-agent.yaml`:
+Create a configuration file `my-agent.yaml` (you can start from `agent.template.yaml`):
 
 ```yaml
-name: my-agent
-host: 0.0.0.0
-port: 9000
+zipper:
+  host: "0.0.0.0"
+  port: 9000
+  tls: {}
+  auth_token: "SECRET_TOKEN"
 
-auth:
-  type: token
-  token: SECRET_TOKEN
+http_api:
+  host: "0.0.0.0"
+  port: 9001
+  enable_tool_api: false
 
-bridge:
-  ai:
-    server:
-      addr: 0.0.0.0:9000  ## OpenAI API compatible endpoint
-      provider: vllm      ## llm provider to use
-
-    providers:
-      vllm:
-        api_endpoint: http://127.0.0.1:8000/v1
-        model: google/gemma-4-31B-it
-
-      ollama:
-        api_endpoint: http://localhost:11434
+llm_providers:
+  - type: "openai"
+    model_id: "gemma-4-31B-it"
+    default: true
+    params:
+      model: "google/gemma-4-31B-it"
+      base_url: "http://localhost:11434"
+      api_key: ""
 ```
 
 Launch the server:

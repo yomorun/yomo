@@ -13,8 +13,10 @@ pub mod client;
 pub mod connector;
 /// Framed IO helpers.
 pub mod io;
-/// LLM-facing HTTP APIs.
-pub mod llm_api;
+/// LLM-facing HTTP routers.
+pub mod llm_router;
+/// LLM provider abstractions.
+pub mod llm_providers;
 /// Manage user-defined metadata extension.
 pub mod metadata_mgr;
 /// Routing traits and implementations.
@@ -29,7 +31,20 @@ pub mod tool_api;
 pub mod tool_mgr;
 /// Shared protocol types.
 pub mod types;
+/// OpenAI request/response types.
+pub mod openai_types;
 /// Utility helpers.
 pub mod utils;
 /// Zipper coordinator implementation.
 pub mod zipper;
+/// Agent loop implementation.
+pub mod agent_loop;
+/// Tool invoker implementation.
+pub mod tool_invoker;
+/// OpenAI request/response mapping to Events.
+pub mod openai_http_mapping;
+
+/// OpenTelemetry tracing setup.
+pub mod trace;
+/// Server configuration used by the CLI.
+pub mod serve_config;

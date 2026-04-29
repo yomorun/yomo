@@ -29,3 +29,4 @@ config.yaml
 node_modules/
 pnpm-lock.yaml
 app/
+agent.yaml

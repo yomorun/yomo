@@ -13,17 +13,22 @@ keywords = ["ai", "agent", "llm", "serverless", "tool"]
 [dependencies]
 anyhow = "1.0"
 async-trait = "0.1"
+async-stream = "0.3"
 axum = { version = "0.8", features = ["macros"] }
 bon = "3"
 chrono = "0.4"
 clap = { version = "4.5", features = ["derive", "env"] }
 config = "0.15"
 env_logger = "0.11"
+futures-core = "0.3"
 futures-util = "0.3"
 log = "0.4"
+opentelemetry = "0.22"
+opentelemetry-otlp = { version = "0.15", features = ["http-proto"] }
+opentelemetry_sdk = { version = "0.22", features = ["rt-tokio"] }
 rustls-native-certs = "0.8"
 rustls-pki-types = "1.14"
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
 s2n-quic = { version = "1", features = [
     "provider-address-token-default",
     "provider-tls-rustls",
@@ -32,3 +37,6 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tempfile = "3"
 tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-opentelemetry = "0.23"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

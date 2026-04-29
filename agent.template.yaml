@@ -1,0 +1,19 @@
+zipper:
+  host: "127.0.0.1"
+  port: 9000
+  tls: {}
+  auth_token: ""
+
+http_api:
+  host: "127.0.0.1"
+  port: 9001
+  enable_tool_api: false
+
+llm_providers:
+  - type: "openai"
+    model_id: "gpt-4o-mini"
+    default: true
+    params:
+      model: "gpt-4o-mini"
+      api_key: ""
+      base_url: "https://api.openai.com/v1"
