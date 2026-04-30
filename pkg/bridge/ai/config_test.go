@@ -120,3 +120,44 @@ func TestParseConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestNewProviderFromConfig(t *testing.T) {
+	tests := []struct {
+		name     string
+		provider map[string]string
+		expected string
+	}{
+		{
+			name: "openai",
+			provider: map[string]string{
+				"api_key": "sk-123456",
+				"model":   "gpt-3.5-turbo",
+			},
+			expected: "openai",
+		},
+		{
+			name: "groq",
+			provider: map[string]string{
+				"api_key": "gsk-123456",
+				"model":   "llama3-8b-8192",
+			},
+			expected: "groq",
+		},
+		{
+			name: "mistral",
+			provider: map[string]string{
+				"api_key": "msk-123456",
+				"model":   "mistral-tiny",
+			},
+			expected: "mistral",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := NewProviderFromConfig(tt.name, tt.provider)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expected, got.Name())
+		})
+	}
+}

@@ -18,6 +18,8 @@ import (
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/deepseek"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/gemini"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/githubmodels"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/groq"
+	"github.com/yomorun/yomo/pkg/bridge/ai/provider/mistral"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/ollama"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/openai"
 	"github.com/yomorun/yomo/pkg/bridge/ai/provider/vertexai"
@@ -211,6 +213,10 @@ func NewProviderFromConfig(name string, provider map[string]string) (providerpkg
 		return gemini.NewProvider(provider["api_key"]), nil
 	case "githubmodels":
 		return githubmodels.NewProvider(provider["api_key"], provider["model"]), nil
+	case "groq":
+		return groq.NewProvider(provider["api_key"], provider["model"]), nil
+	case "mistral":
+		return mistral.NewProvider(provider["api_key"], provider["model"]), nil
 	case "cerebras":
 		return cerebras.NewProvider(provider["api_key"], provider["model"]), nil
 	case "anthropic":
