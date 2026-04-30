@@ -6,12 +6,10 @@ use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use log::{error, info};
-use opentelemetry::trace::TraceContextExt;
-use opentelemetry_sdk::trace::{IdGenerator, RandomIdGenerator};
-use tracing::{Instrument, Span, debug_span};
-use tracing_opentelemetry::OpenTelemetrySpanExt;
+use tracing::{Instrument, Span};
 
 use crate::agent_loop::{AgentLoopConfig, AgentLoopResult, run_agent_loop};
+use crate::utils::{authenticate_and_metadata, start_request_span};
 use crate::llm_provider::registry::ProviderRegistry;
 use crate::llm_provider::selection::SelectionError;
 use crate::openai_http_mapping::{
@@ -46,28 +44,6 @@ impl<A, M> Clone for LlmHandlerState<A, M> {
     }
 }
 
-/// Parse HTTP header value
-fn parse_http_headers(http_headers: &HeaderMap, key: &str) -> String {
-    http_headers
-        .get(key)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or_default()
-        .to_string()
-}
-
-fn parse_credential(http_headers: &HeaderMap) -> String {
-    let credential = parse_http_headers(http_headers, "X-Credential");
-    if !credential.trim().is_empty() {
-        return credential;
-    }
-    let auth_header = parse_http_headers(http_headers, "Authorization");
-    let bearer_prefix = "Bearer ";
-    if let Some(token) = auth_header.strip_prefix(bearer_prefix) {
-        return token.trim().to_string();
-    }
-    String::new()
-}
-
 pub async fn handle_chat_completions<A, M>(
     State(state): State<LlmHandlerState<A, M>>,
     headers: HeaderMap,
@@ -77,44 +53,19 @@ where
     A: Send + Sync + 'static,
     M: Send + Sync + fmt::Debug + Clone + 'static,
 {
-    let root_span = debug_span!(
-        "http.request",
-        http.method = "POST",
-        http.route = "/v1/chat/completions",
-    );
-    let trace_id = {
-        let span_context = root_span.context().span().span_context().clone();
-        if span_context.is_valid() {
-            span_context.trace_id().to_string()
-        } else {
-            RandomIdGenerator::default().new_trace_id().to_string()
-        }
-    };
+    let (root_span, trace_id) = start_request_span("POST", "/v1/chat/completions");
     let extension = String::new();
-    let credential = parse_credential(&headers);
-
-    let auth_info = match state.auth.authenticate(&credential).await {
-        Ok(info) => info,
-        Err(err) => {
-            error!("chat auth failed: {err}");
-            return openai_error_response(
-                StatusCode::UNAUTHORIZED,
-                "unauthorized",
-                Some("invalid_request_error"),
-            );
-        }
-    };
-
-    let metadata = match state.metadata_mgr.new_from_extension(&auth_info, &extension) {
+    let metadata = match authenticate_and_metadata(
+        &state.auth,
+        &state.metadata_mgr,
+        &headers,
+        &extension,
+        "chat",
+    )
+    .await
+    {
         Ok(metadata) => metadata,
-        Err(err) => {
-            error!("metadata init failed: {err}");
-            return openai_error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "metadata error",
-                None,
-            );
-        }
+        Err(response) => return response,
     };
 
     let metadata_for_error = metadata.clone();
