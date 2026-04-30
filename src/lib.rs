@@ -16,7 +16,7 @@ pub mod io;
 /// LLM-facing HTTP routers.
 pub mod llm_router;
 /// LLM provider abstractions.
-pub mod llm_providers;
+pub mod llm_provider;
 /// Manage user-defined metadata extension.
 pub mod metadata_mgr;
 /// Routing traits and implementations.

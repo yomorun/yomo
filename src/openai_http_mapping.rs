@@ -14,7 +14,7 @@ use crate::openai_types::{
     ChatCompletionResponse, Content as OpenAIContent, ContentPart, ErrorResponse, Role,
     ToolCall as OpenAIToolCall, ToolCallFunction, ToolChoice, Usage,
 };
-use crate::llm_providers::{FinishReason, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse};
+use crate::llm_provider::{FinishReason, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse};
 
 pub fn map_openai_response(response: UnifiedResponse) -> ChatCompletionResponse {
     let content = if response.output_text.is_empty() {
@@ -439,7 +439,7 @@ fn map_finish_reason_string(reason: &FinishReason) -> String {
     .to_string()
 }
 
-pub fn map_usage_to_openai(usage: &crate::llm_providers::Usage) -> Usage {
+pub fn map_usage_to_openai(usage: &crate::llm_provider::Usage) -> Usage {
     Usage {
         prompt_tokens: usage.input_tokens,
         completion_tokens: usage.output_tokens,
@@ -484,7 +484,7 @@ fn map_finish_reason(reason: &str) -> String {
     .to_string()
 }
 
-fn map_usage(usage: &crate::llm_providers::Usage) -> Usage {
+fn map_usage(usage: &crate::llm_provider::Usage) -> Usage {
     Usage {
         prompt_tokens: usage.input_tokens,
         completion_tokens: usage.output_tokens,

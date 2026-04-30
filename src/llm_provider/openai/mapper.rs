@@ -4,7 +4,7 @@ use crate::openai_types::{
     ChatCompletionChunk, ChatCompletionChunkToolCall, ChatCompletionChunkToolCallFunction,
     Content as OpenAIContent, ContentPart, Usage as OpenAIUsage,
 };
-use crate::llm_providers::{
+use crate::llm_provider::{
     FinishReason, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse, Usage,
 };
 

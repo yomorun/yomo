@@ -12,8 +12,8 @@ use tracing::{Instrument, Span, debug_span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::agent_loop::{AgentLoopConfig, AgentLoopResult, run_agent_loop};
-use crate::llm_providers::registry::ProviderRegistry;
-use crate::llm_providers::selection::SelectionError;
+use crate::llm_provider::registry::ProviderRegistry;
+use crate::llm_provider::selection::SelectionError;
 use crate::openai_http_mapping::{
     map_chat_error, map_openai_response, openai_error_response, stream_openai_chunks,
     validate_openai_request,

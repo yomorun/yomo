@@ -183,9 +183,9 @@ async fn serve(opt: ServeOptions) -> Result<()> {
     let mut app = axum::Router::new();
     if llm_providers_present {
         let selection_strategy = std::sync::Arc::new(
-            yomo::llm_providers::selection::ByModel::default(),
+            yomo::llm_provider::selection::ByModel::default(),
         );
-        let provider_registry = yomo::llm_providers::registry::ProviderRegistry::from_providers(
+        let provider_registry = yomo::llm_provider::registry::ProviderRegistry::from_providers(
             &config.llm_providers,
             selection_strategy,
         )?;

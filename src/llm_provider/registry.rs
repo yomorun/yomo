@@ -3,9 +3,9 @@ use std::sync::Arc;
 
 use crate::serve_config::ConfigError;
 use crate::serve_config::ProviderConfig;
-use crate::llm_providers::Provider;
-use crate::llm_providers::openai::build_openai_provider;
-use crate::llm_providers::selection::SelectionStrategy;
+use crate::llm_provider::Provider;
+use crate::llm_provider::openai::build_openai_provider;
+use crate::llm_provider::selection::SelectionStrategy;
 
 #[derive(Clone)]
 pub struct ProviderEntry {
@@ -79,8 +79,8 @@ impl<M> ProviderRegistry<M> {
         model_id: Option<&str>,
         metadata: &M,
     ) -> Result<
-        (crate::llm_providers::selection::SelectionResult, ProviderEntry),
-        crate::llm_providers::selection::SelectionError,
+        (crate::llm_provider::selection::SelectionResult, ProviderEntry),
+        crate::llm_provider::selection::SelectionError,
     > {
         let selected = self
             .strategy
@@ -94,7 +94,7 @@ impl<M> ProviderRegistry<M> {
                     == selected.model_id.to_ascii_lowercase()
             })
             .cloned()
-            .ok_or(crate::llm_providers::selection::SelectionError::ModelNotSupported)?;
+            .ok_or(crate::llm_provider::selection::SelectionError::ModelNotSupported)?;
         Ok((selected, provider))
     }
 

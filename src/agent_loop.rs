@@ -16,10 +16,10 @@ use tracing_opentelemetry::OpenTelemetrySpanExt;
 use crate::types::{BodyFormat, RequestHeaders, ToolRequest};
 
 use crate::openai_types::{ChatCompletionRequest, Content, Message, Role, ToolDefinition};
-use crate::llm_providers::{
+use crate::llm_provider::{
     Provider, ProviderError, ToolCall as ProviderToolCall, UnifiedEvent, UnifiedResponse, Usage,
 };
-use crate::llm_providers::openai::mapper::ensure_tool_call_id;
+use crate::llm_provider::openai::mapper::ensure_tool_call_id;
 
 pub struct AgentLoopConfig {
     pub max_calls: usize,
