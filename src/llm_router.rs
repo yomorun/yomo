@@ -152,7 +152,7 @@ where
     let mut request: ChatCompletionRequest = match serde_json::from_slice(&body) {
         Ok(request) => request,
         Err(err) => {
-            error!("chat request invalid json: {err}");
+            error!("chat request invalid json: {err} trace_id={trace_id}");
             return Ok(openai_error_response(
                 StatusCode::BAD_REQUEST,
                 &format!("invalid request body: {err}"),
