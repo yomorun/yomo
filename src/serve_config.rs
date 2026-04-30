@@ -33,6 +33,8 @@ pub struct ServeConfig {
     pub http_api: HttpApiConfig,
     #[serde(default)]
     pub llm_providers: Vec<ProviderConfig>,
+    #[serde(default)]
+    pub model_api: ModelApiConfig,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -44,6 +46,22 @@ pub struct ProviderConfig {
     pub default: bool,
     #[serde(default)]
     pub params: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default)]
+pub struct ModelApiConfig {
+    pub providers: Vec<ProviderConfig>,
+    pub endpoints: Vec<ModelApiEndpointConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModelApiEndpointConfig {
+    pub path: String,
+    #[serde(default)]
+    pub models: Vec<String>,
+    #[serde(default)]
+    pub default_model: Option<String>,
 }
 
 /// Default host address
@@ -172,6 +190,69 @@ impl ServeConfig {
                     "duplicate model_id: {}",
                     provider.model_id
                 )));
+            }
+        }
+
+        if !self.model_api.providers.is_empty() || !self.model_api.endpoints.is_empty() {
+            let mut model_ids = HashSet::new();
+            for provider in &self.model_api.providers {
+                if provider.provider_type.trim().is_empty() {
+                    return Err(ConfigError::InvalidProvider(format!(
+                        "provider type is required for {}",
+                        provider.model_id
+                    )));
+                }
+                if provider.model_id.trim().is_empty() {
+                    return Err(ConfigError::InvalidProvider(
+                        "model_id is required for provider".to_string(),
+                    ));
+                }
+                let normalized_model_id = provider.model_id.to_ascii_lowercase();
+                if !model_ids.insert(normalized_model_id) {
+                    return Err(ConfigError::InvalidProvider(format!(
+                        "duplicate model_id: {}",
+                        provider.model_id
+                    )));
+                }
+            }
+
+            for endpoint in &self.model_api.endpoints {
+                if endpoint.path.trim().is_empty() {
+                    return Err(ConfigError::InvalidProvider(
+                        "model_api endpoint path is required".to_string(),
+                    ));
+                }
+                if let Some(default_model) = &endpoint.default_model {
+                    if default_model.trim().is_empty() {
+                        return Err(ConfigError::InvalidProvider(
+                            "model_api default_model is empty".to_string(),
+                        ));
+                    }
+                    if !self
+                        .model_api
+                        .providers
+                        .iter()
+                        .any(|provider| provider.model_id == *default_model)
+                    {
+                        return Err(ConfigError::InvalidProvider(format!(
+                            "model_api default_model not found: {}",
+                            default_model
+                        )));
+                    }
+                }
+                for model in &endpoint.models {
+                    if !self
+                        .model_api
+                        .providers
+                        .iter()
+                        .any(|provider| provider.model_id == *model)
+                    {
+                        return Err(ConfigError::InvalidProvider(format!(
+                            "model_api endpoint model not found: {}",
+                            model
+                        )));
+                    }
+                }
             }
         }
 

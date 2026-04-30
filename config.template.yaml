@@ -1,0 +1,72 @@
+zipper:
+  host: "127.0.0.1"
+  port: 9000
+  tls: {}
+  auth_token: ""
+
+http_api:
+  host: "127.0.0.1"
+  port: 9001
+  enable_tool_api: false
+
+llm_providers:
+  - type: "openai"
+    model_id: "gpt-4o-mini"
+    default: true
+    params:
+      model: "gpt-4o-mini"
+      api_key: ""
+      base_url: "https://api.openai.com/v1"
+
+model_api:
+  providers:
+    - type: "openai"
+      model_id: "gpt-4o-mini"
+      params:
+        api_key: ""
+        base_url: "https://api.openai.com/v1"
+    - type: "openai"
+      model_id: "gpt-image-1"
+      params:
+        api_key: ""
+        base_url: "https://api.openai.com/v1"
+    - type: "anthropic"
+      model_id: "claude-3-5-sonnet-20240620"
+      params:
+        api_key: ""
+        base_url: "https://api.anthropic.com/v1"
+        anthropic_version: "2023-06-01"
+
+  endpoints:
+    - path: "/responses"
+      models:
+        - "gpt-4o-mini"
+      default_model: "gpt-4o-mini"
+    - path: "/messages"
+      models:
+        - "claude-3-5-sonnet-20240620"
+      default_model: "claude-3-5-sonnet-20240620"
+    - path: "/embeddings"
+      models:
+        - "gpt-4o-mini"
+      default_model: "gpt-4o-mini"
+    - path: "/rerank"
+      models:
+        - "gpt-4o-mini"
+      default_model: "gpt-4o-mini"
+    - path: "/audio/speech"
+      models:
+        - "gpt-4o-mini"
+      default_model: "gpt-4o-mini"
+    - path: "/audio/transcriptions"
+      models:
+        - "gpt-4o-mini"
+      default_model: "gpt-4o-mini"
+    - path: "/images/generations"
+      models:
+        - "gpt-image-1"
+      default_model: "gpt-image-1"
+    - path: "/images/edits"
+      models:
+        - "gpt-image-1"
+      default_model: "gpt-image-1"

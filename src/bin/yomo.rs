@@ -20,6 +20,7 @@ use yomo::{
     connector::MemoryConnector,
     serve_config::ServeConfig,
     llm_router::build_llm_router,
+    model_api_router::build_model_api_router,
     metadata_mgr::MetadataMgrImpl,
     router::RouterImpl,
     serverless::{ServerlessHandler, ServerlessMemoryBridge},
@@ -145,19 +146,21 @@ struct InitOptions {
 
 /// Start Zipper service
 async fn serve(opt: ServeOptions) -> Result<()> {
-    let config = match opt.config {
+    let (config, llm_providers_present) = match opt.config {
         Some(file) => {
             info!("load config file: {}", file);
 
-            Config::builder()
+            let raw_config = Config::builder()
                 .add_source(File::with_name(&file))
-                .build()?
-                .try_deserialize::<ServeConfig>()?
+                .build()?;
+            let llm_providers_present = raw_config.get_array("llm_providers").is_ok();
+            let config = raw_config.try_deserialize::<ServeConfig>()?;
+            (config, llm_providers_present)
         }
         None => {
             info!("use default config");
 
-            ServeConfig::default()
+            (ServeConfig::default(), false)
         }
     };
 
@@ -176,30 +179,65 @@ async fn serve(opt: ServeOptions) -> Result<()> {
     let zipper_memory_bridge = ZipperBridge::new(zipper.clone(), MemorySource::new(receiver), ());
     let connector = MemoryConnector::new(sender.clone(), MAX_BUF_SIZE);
 
-    let selection_strategy = std::sync::Arc::new(
-        yomo::llm_providers::selection::ByModel::default(),
-    );
-    let provider_registry = yomo::llm_providers::registry::ProviderRegistry::from_providers(
-        &config.llm_providers,
-        selection_strategy,
-    )?;
-
     let connector = Arc::new(connector);
-    let tool_invoker: Arc<dyn yomo::tool_invoker::ToolInvoker<()>> =
-        Arc::new(yomo::tool_invoker::ConnToolInvoker::<(), _, _, _>::new(
-            Arc::clone(&connector),
-        ));
-    let mut app = axum::Router::new().nest(
-        "/v1",
-        build_llm_router(tool_mgr, provider_registry, tool_invoker).await?,
+    let mut app = axum::Router::new();
+    if llm_providers_present {
+        let selection_strategy = std::sync::Arc::new(
+            yomo::llm_providers::selection::ByModel::default(),
+        );
+        let provider_registry = yomo::llm_providers::registry::ProviderRegistry::from_providers(
+            &config.llm_providers,
+            selection_strategy,
+        )?;
+        let tool_invoker: Arc<dyn yomo::tool_invoker::ToolInvoker<()>> =
+            Arc::new(yomo::tool_invoker::ConnToolInvoker::<(), _, _, _>::new(
+                Arc::clone(&connector),
+            ));
+        app = app.nest(
+            "/v1",
+            build_llm_router(tool_mgr, provider_registry, tool_invoker).await?,
+        );
+    }
+    if !config.model_api.providers.is_empty() && !config.model_api.endpoints.is_empty() {
+        let model_api_endpoints = config
+            .model_api
+            .endpoints
+            .iter()
+            .map(|endpoint| (endpoint.path.clone(), endpoint.clone()))
+            .collect::<std::collections::HashMap<_, _>>();
+    let model_api_selection = std::sync::Arc::new(
+        yomo::model_api_provider::ByEndpointModel::new(model_api_endpoints),
     );
+    let model_api_registry = yomo::model_api_provider::ProviderRegistry::from_config(
+        &config.model_api,
+        model_api_selection,
+    )?;
+    let model_api_usage_handler: std::sync::Arc<dyn yomo::model_api_provider::UsageHandler<()>> =
+        std::sync::Arc::new(yomo::model_api_provider::NoopUsageHandler::default());
+        app = app.nest(
+            "/v1",
+            build_model_api_router(model_api_registry, model_api_usage_handler).await?,
+        );
+    }
     if config.http_api.enable_tool_api {
         app = app.nest("/tool", build_tool_api(Arc::unwrap_or_clone(connector)).await?);
     }
+    let model_api_enabled =
+        !config.model_api.providers.is_empty() && !config.model_api.endpoints.is_empty();
     info!(
-        "start HTTP API server on {}:{} (LLM API at /v1, Tool API {})",
+        "start HTTP API server on {}:{} (LLM API {}, Model API {}, Tool API {})",
         config.http_api.host,
         config.http_api.port,
+        if llm_providers_present {
+            "enabled at /v1"
+        } else {
+            "disabled"
+        },
+        if model_api_enabled {
+            "enabled at /v1"
+        } else {
+            "disabled"
+        },
         if config.http_api.enable_tool_api {
             "enabled at /tool"
         } else {

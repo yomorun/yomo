@@ -48,3 +48,7 @@ pub mod openai_http_mapping;
 pub mod trace;
 /// Server configuration used by the CLI.
 pub mod serve_config;
+/// Model API router.
+pub mod model_api_router;
+/// Model API providers.
+pub mod model_api_provider;
