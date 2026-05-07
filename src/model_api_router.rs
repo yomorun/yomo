@@ -10,7 +10,6 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 use tracing::Instrument;
 
-use crate::auth::Auth;
 use crate::metadata_mgr::MetadataMgr;
 use crate::model_api_provider::{
     AudioSpeechUsage, AudioTranscriptionsUsage, EmbeddingsUsage, ImagesUsage, MessagesUsage,
@@ -24,7 +23,6 @@ pub struct ModelApiHandlerState<A, M> {
     pub provider_registry: std::sync::Arc<ProviderRegistry<M>>,
     pub usage_handler: std::sync::Arc<dyn UsageHandler<M>>,
     pub metadata_mgr: std::sync::Arc<dyn MetadataMgr<A, M>>,
-    pub auth: std::sync::Arc<dyn Auth<A>>,
 }
 
 impl<A, M> Clone for ModelApiHandlerState<A, M> {
@@ -33,7 +31,6 @@ impl<A, M> Clone for ModelApiHandlerState<A, M> {
             provider_registry: std::sync::Arc::clone(&self.provider_registry),
             usage_handler: std::sync::Arc::clone(&self.usage_handler),
             metadata_mgr: std::sync::Arc::clone(&self.metadata_mgr),
-            auth: std::sync::Arc::clone(&self.auth),
         }
     }
 }
@@ -343,7 +340,6 @@ pub async fn build_model_api_router(
         provider_registry: std::sync::Arc::new(provider_registry),
         usage_handler,
         metadata_mgr: std::sync::Arc::new(crate::metadata_mgr::MetadataMgrImpl::new()),
-        auth: std::sync::Arc::new(crate::auth::AuthImpl::new(None)),
     };
 
     let app = axum::Router::new()

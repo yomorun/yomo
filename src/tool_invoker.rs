@@ -60,7 +60,12 @@ where
             };
         }
 
-        writer.shutdown().await.ok();
+        if let Err(err) = writer.shutdown().await {
+            return ToolResponse {
+                result: None,
+                error_msg: Some(format!("tool_shutdown_error: {err}")),
+            };
+        }
 
         let response_headers: ResponseHeaders = match receive_frame(&mut reader).await {
             Ok(Some(headers)) => headers,
