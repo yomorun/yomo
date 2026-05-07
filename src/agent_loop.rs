@@ -4,22 +4,23 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use crate::tool_invoker::ToolInvoker;
+use crate::types::{BodyFormat, RequestHeaders, ToolRequest};
 use futures_core::Stream;
 use futures_util::{StreamExt, future::join_all};
 use log::{error, info};
 use opentelemetry::KeyValue;
 use opentelemetry::global;
 use opentelemetry::trace::{Span as OtelSpan, Status, Tracer};
+use serde::Serialize;
 use serde_json::Value;
 use tracing::Span;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
-use crate::types::{BodyFormat, RequestHeaders, ToolRequest};
 
-use crate::openai_types::{ChatCompletionRequest, Content, Message, Role, ToolDefinition};
+use crate::llm_provider::openai::mapper::ensure_tool_call_id;
 use crate::llm_provider::{
     Provider, ProviderError, ToolCall as ProviderToolCall, UnifiedEvent, UnifiedResponse, Usage,
 };
-use crate::llm_provider::openai::mapper::ensure_tool_call_id;
+use crate::openai_types::{ChatCompletionRequest, Content, Message, Role, ToolDefinition};
 
 pub struct AgentLoopConfig {
     pub max_calls: usize,
@@ -50,21 +51,20 @@ struct ToolMaps {
 }
 
 pub async fn run_agent_loop<A, M>(
-    provider: std::sync::Arc<dyn Provider>,
+    provider: Arc<dyn Provider>,
     request: ChatCompletionRequest,
     server_tools: HashMap<String, String>,
-    invoker: std::sync::Arc<dyn ToolInvoker<M>>,
+    invoker: Arc<dyn ToolInvoker>,
     metadata: M,
     trace_id: String,
-    extension: String,
     config: AgentLoopConfig,
 ) -> Result<AgentLoopResult, ProviderError>
 where
     A: Send + Sync + 'static,
-    M: fmt::Debug + Send + Sync + 'static,
+    M: fmt::Debug + Serialize + Send + Sync + 'static,
 {
-    let server_tools = std::sync::Arc::new(server_tools);
-    let metadata = std::sync::Arc::new(metadata);
+    let server_tools = Arc::new(server_tools);
+    let metadata = Arc::new(metadata);
     if request.stream.unwrap_or(false) {
         run_agent_loop_stream::<A, M>(
             provider,
@@ -73,7 +73,6 @@ where
             invoker,
             metadata,
             trace_id,
-            extension,
             config,
         )
         .await
@@ -85,7 +84,6 @@ where
             invoker,
             metadata,
             trace_id,
-            extension,
             config,
         )
         .await
@@ -93,18 +91,17 @@ where
 }
 
 async fn run_agent_loop_nonstream<A, M>(
-    provider: std::sync::Arc<dyn Provider>,
+    provider: Arc<dyn Provider>,
     mut request: ChatCompletionRequest,
-    server_tools: std::sync::Arc<HashMap<String, String>>,
-    invoker: std::sync::Arc<dyn ToolInvoker<M>>,
-    metadata: std::sync::Arc<M>,
+    server_tools: Arc<HashMap<String, String>>,
+    invoker: Arc<dyn ToolInvoker>,
+    metadata: Arc<M>,
     trace_id: String,
-    extension: String,
     config: AgentLoopConfig,
 ) -> Result<AgentLoopResult, ProviderError>
 where
     A: Send + Sync + 'static,
-    M: fmt::Debug + Send + Sync + 'static,
+    M: fmt::Debug + Serialize + Send + Sync + 'static,
 {
     let mut call_count = 0usize;
     let mut total_usage = Usage {
@@ -175,7 +172,6 @@ where
                     invoker.clone(),
                     metadata.clone(),
                     trace_id.clone(),
-                    extension.clone(),
                     request.agent_context.clone(),
                 )
                 .await?,
@@ -188,18 +184,17 @@ where
 }
 
 async fn run_agent_loop_stream<A, M>(
-    provider: std::sync::Arc<dyn Provider>,
+    provider: Arc<dyn Provider>,
     mut request: ChatCompletionRequest,
-    server_tools: std::sync::Arc<HashMap<String, String>>,
-    invoker: std::sync::Arc<dyn ToolInvoker<M>>,
-    metadata: std::sync::Arc<M>,
+    server_tools: Arc<HashMap<String, String>>,
+    invoker: Arc<dyn ToolInvoker>,
+    metadata: Arc<M>,
     trace_id: String,
-    extension: String,
     config: AgentLoopConfig,
 ) -> Result<AgentLoopResult, ProviderError>
 where
     A: Send + Sync + 'static,
-    M: fmt::Debug + Send + Sync + 'static,
+    M: fmt::Debug + Serialize + Send + Sync + 'static,
 {
     let stream = async_stream::try_stream! {
         let mut call_count = 0usize;
@@ -424,7 +419,6 @@ where
                         invoker.clone(),
                         metadata.clone(),
                         trace_id.clone(),
-                        extension.clone(),
                         request.agent_context.clone(),
                     )
                         .await?,
@@ -555,13 +549,12 @@ fn ensure_provider_call_ids(request_id: &str, calls: &mut [ProviderToolCall]) {
     }
 }
 
-async fn build_tool_messages<M>(
+async fn build_tool_messages<M: Serialize>(
     request_id: &str,
     calls: &[ProviderToolCall],
-    invoker: std::sync::Arc<dyn ToolInvoker<M>>,
-    metadata: std::sync::Arc<M>,
+    invoker: Arc<dyn ToolInvoker>,
+    metadata: Arc<M>,
     trace_id: String,
-    extension: String,
     agent_context: Option<Value>,
 ) -> Result<Vec<Message>, ProviderError>
 where
@@ -575,7 +568,6 @@ where
         let invoker = invoker.clone();
         let metadata = metadata.clone();
         let trace_id = trace_id.clone();
-        let extension = extension.clone();
         let agent_context = agent_context.clone();
         let request_id = request_id.clone();
         let parent_span = parent_span.clone();
@@ -604,11 +596,9 @@ where
                 trace_id,
                 span_id: format!("tool-{}", call.name),
                 body_format: BodyFormat::Bytes,
-                extension,
+                extension: serde_json::to_string(metadata.as_ref()).unwrap_or_default(),
             };
-            let response = invoker
-                .invoke(metadata.as_ref(), request_headers, request)
-                .await;
+            let response = invoker.invoke(request_headers, request).await;
             let content = if let Some(error_msg) = response.error_msg {
                 span.set_attribute(KeyValue::new("status", "error"));
                 span.set_attribute(KeyValue::new("error", error_msg.clone()));
@@ -758,12 +748,6 @@ fn log_llm_call(
     let usage = usage.unwrap_or(&default_usage);
     info!(
         "llm.call; trace_id={} round={} model={} streaming={} tool_count={} prompt_tokens={} completion_tokens={}",
-        trace_id,
-        round,
-        model,
-        streaming,
-        tool_count,
-        usage.input_tokens,
-        usage.output_tokens
+        trace_id, round, model, streaming, tool_count, usage.input_tokens, usage.output_tokens
     );
 }

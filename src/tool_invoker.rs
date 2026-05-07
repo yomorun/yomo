@@ -1,28 +1,23 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use async_trait::async_trait;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use crate::connector::Connector;
 use crate::io::{receive_frame, send_frame};
 use crate::types::{RequestHeaders, ResponseHeaders, ToolRequest, ToolResponse};
+use async_trait::async_trait;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[async_trait]
-pub trait ToolInvoker<M>: Send + Sync {
-    async fn invoke(
-        &self,
-        metadata: &M,
-        headers: RequestHeaders,
-        request: ToolRequest,
-    ) -> ToolResponse;
+pub trait ToolInvoker: Send + Sync {
+    async fn invoke(&self, headers: RequestHeaders, request: ToolRequest) -> ToolResponse;
 }
 
-pub struct ConnToolInvoker<Metadata, C, R, W> {
+pub struct ConnToolInvoker<C, R, W> {
     connector: Arc<C>,
-    _marker: PhantomData<(Metadata, R, W)>,
+    _marker: PhantomData<(R, W)>,
 }
 
-impl<Metadata, C, R, W> ConnToolInvoker<Metadata, C, R, W> {
+impl<C, R, W> ConnToolInvoker<C, R, W> {
     pub fn new(connector: Arc<C>) -> Self {
         Self {
             connector,
@@ -32,19 +27,13 @@ impl<Metadata, C, R, W> ConnToolInvoker<Metadata, C, R, W> {
 }
 
 #[async_trait]
-impl<Metadata, C, R, W> ToolInvoker<Metadata> for ConnToolInvoker<Metadata, C, R, W>
+impl<C, R, W> ToolInvoker for ConnToolInvoker<C, R, W>
 where
-    Metadata: Send + Sync + 'static,
     C: Connector<R, W> + Send + Sync + 'static,
     R: AsyncReadExt + Unpin + Send + Sync + 'static,
     W: AsyncWriteExt + Unpin + Send + Sync + 'static,
 {
-    async fn invoke(
-        &self,
-        _metadata: &Metadata,
-        headers: RequestHeaders,
-        request: ToolRequest,
-    ) -> ToolResponse {
+    async fn invoke(&self, headers: RequestHeaders, request: ToolRequest) -> ToolResponse {
         let connector = self.connector.clone();
 
         let (mut reader, mut writer) = match connector.open_new_stream().await {
@@ -60,21 +49,18 @@ where
         if let Err(err) = send_frame(&mut writer, &headers).await {
             return ToolResponse {
                 result: None,
-                error_msg: Some(format!("tool_request_error: {err}")),
+                error_msg: Some(format!("tool_handshake_error: {err}")),
             };
         }
+
         if let Err(err) = send_frame(&mut writer, &request).await {
             return ToolResponse {
                 result: None,
                 error_msg: Some(format!("tool_request_error: {err}")),
             };
         }
-        if let Err(err) = writer.shutdown().await {
-            return ToolResponse {
-                result: None,
-                error_msg: Some(format!("tool_request_error: {err}")),
-            };
-        }
+
+        writer.shutdown().await.ok();
 
         let response_headers: ResponseHeaders = match receive_frame(&mut reader).await {
             Ok(Some(headers)) => headers,

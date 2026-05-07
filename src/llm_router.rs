@@ -1,47 +1,35 @@
 use std::fmt;
+use std::sync::Arc;
 
 use anyhow::Context;
+use axum::Router;
 use axum::body::{Body, Bytes};
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use log::{error, info};
+use serde::Serialize;
 use tracing::{Instrument, Span};
 
 use crate::agent_loop::{AgentLoopConfig, AgentLoopResult, run_agent_loop};
-use crate::utils::{authenticate_and_metadata, start_request_span};
 use crate::llm_provider::registry::ProviderRegistry;
 use crate::llm_provider::selection::SelectionError;
+use crate::metadata_mgr::MetadataMgr;
 use crate::openai_http_mapping::{
     map_chat_error, map_openai_response, openai_error_response, stream_openai_chunks,
     validate_openai_request,
 };
 use crate::openai_types::ChatCompletionRequest;
 use crate::tool_invoker::ToolInvoker;
-use crate::auth::Auth;
-use crate::metadata_mgr::MetadataMgr;
 use crate::tool_mgr::ToolMgr;
-use axum::Router;
-use std::sync::Arc;
+use crate::utils::start_request_span;
 
+#[derive(Clone)]
 pub struct LlmHandlerState<A, M> {
-    pub provider_registry: std::sync::Arc<ProviderRegistry<M>>,
-    pub tool_mgr: std::sync::Arc<dyn ToolMgr<A, M>>,
-    pub tool_invoker: std::sync::Arc<dyn ToolInvoker<M>>,
-    pub metadata_mgr: std::sync::Arc<dyn MetadataMgr<A, M>>,
-    pub auth: std::sync::Arc<dyn Auth<A>>,
-}
-
-impl<A, M> Clone for LlmHandlerState<A, M> {
-    fn clone(&self) -> Self {
-        Self {
-            provider_registry: std::sync::Arc::clone(&self.provider_registry),
-            tool_mgr: std::sync::Arc::clone(&self.tool_mgr),
-            tool_invoker: std::sync::Arc::clone(&self.tool_invoker),
-            metadata_mgr: std::sync::Arc::clone(&self.metadata_mgr),
-            auth: std::sync::Arc::clone(&self.auth),
-        }
-    }
+    pub provider_registry: Arc<ProviderRegistry<M>>,
+    pub tool_mgr: Arc<dyn ToolMgr<A, M>>,
+    pub tool_invoker: Arc<dyn ToolInvoker>,
+    pub metadata_mgr: Arc<dyn MetadataMgr<A, M>>,
 }
 
 pub async fn handle_chat_completions<A, M>(
@@ -51,30 +39,23 @@ pub async fn handle_chat_completions<A, M>(
 ) -> impl IntoResponse
 where
     A: Send + Sync + 'static,
-    M: Send + Sync + fmt::Debug + Clone + 'static,
+    M: fmt::Debug + Clone + Serialize + Send + Sync + 'static,
 {
     let (root_span, trace_id) = start_request_span("POST", "/v1/chat/completions");
-    let extension = String::new();
-    let metadata = match authenticate_and_metadata(
-        &state.auth,
-        &state.metadata_mgr,
-        &headers,
-        &extension,
-        "chat",
-    )
-    .await
-    {
+
+    let metadata = match state.metadata_mgr.new_from_http_headers(&headers) {
         Ok(metadata) => metadata,
-        Err(response) => return response,
+        Err(err) => {
+            error!("new metadata from headers: {err}");
+            return openai_error_response(StatusCode::BAD_REQUEST, &err.to_string(), None);
+        }
     };
 
-    let metadata_for_error = metadata.clone();
     match handle_chat_completions_inner::<A, M>(
         state,
-        metadata,
+        metadata.to_owned(),
         trace_id,
         body,
-        extension,
         root_span.clone(),
     )
     .instrument(root_span.clone())
@@ -82,7 +63,7 @@ where
     {
         Ok(response) => response,
         Err(err) => {
-            error!("chat completion failed: {err} {:?}", metadata_for_error);
+            error!("chat completion failed: {err} {:?}", metadata);
             openai_error_response(StatusCode::INTERNAL_SERVER_ERROR, "internal error", None)
         }
     }
@@ -93,12 +74,11 @@ async fn handle_chat_completions_inner<A, M>(
     metadata: M,
     trace_id: String,
     body: Bytes,
-    extension: String,
     root_span: Span,
 ) -> Result<Response, anyhow::Error>
 where
     A: Send + Sync + 'static,
-    M: fmt::Debug + Clone + Send + Sync + 'static,
+    M: fmt::Debug + Clone + Serialize + Send + Sync + 'static,
 {
     let mut request: ChatCompletionRequest = match serde_json::from_slice(&body) {
         Ok(request) => request,
@@ -175,19 +155,14 @@ where
         ));
     }
 
-    let provider = std::sync::Arc::clone(&provider_entry.provider);
-
-    let model_for_log = selection.model_id.clone();
-    let request_model = selection.model_id.clone();
-    let metadata_for_log = metadata.clone();
+    let model_id = selection.model_id.clone();
     let loop_result = run_agent_loop::<A, M>(
-        provider,
+        provider_entry.provider,
         request,
         server_tools,
-        std::sync::Arc::clone(&state.tool_invoker),
-        metadata,
+        state.tool_invoker.clone(),
+        metadata.clone(),
         trace_id.clone(),
-        extension,
         AgentLoopConfig::default(),
     )
     .await;
@@ -196,11 +171,11 @@ where
         Ok(AgentLoopResult::NonStream(response)) => {
             info!(
                 "http.request.end; status_code=200 model_id={} prompt_tokens={} completion_tokens={} trace_id={} metadata={:?}",
-                request_model,
+                model_id,
                 response.usage.input_tokens,
                 response.usage.output_tokens,
                 trace_id,
-                metadata_for_log
+                metadata
             );
             let mapped = map_openai_response(response);
             let payload = serde_json::to_vec(&mapped).context("serialize response")?;
@@ -211,7 +186,7 @@ where
                 .expect("build response"))
         }
         Ok(AgentLoopResult::Stream { events }) => {
-            let sse = stream_openai_chunks(events, trace_id, request_model, root_span.clone());
+            let sse = stream_openai_chunks(events, trace_id, model_id, root_span.clone());
             let body = Body::from_stream(sse);
             Ok(Response::builder()
                 .status(StatusCode::OK)
@@ -224,10 +199,7 @@ where
         Err(err) => {
             error!(
                 "http.request.end; status_code=500 model_id={} error={} trace_id={} metadata={:?}",
-                model_for_log,
-                err,
-                trace_id,
-                metadata_for_log
+                model_id, err, trace_id, metadata
             );
             let response = map_chat_error(err);
             Ok(response)
@@ -238,18 +210,20 @@ where
 pub async fn build_llm_router(
     tool_mgr: Arc<dyn ToolMgr<(), ()>>,
     provider_registry: ProviderRegistry<()>,
-    tool_invoker: Arc<dyn ToolInvoker<()>>,
+    tool_invoker: Arc<dyn ToolInvoker>,
 ) -> anyhow::Result<Router> {
     let state = LlmHandlerState {
         provider_registry: Arc::new(provider_registry),
         tool_mgr,
         tool_invoker,
         metadata_mgr: Arc::new(crate::metadata_mgr::MetadataMgrImpl::new()),
-        auth: Arc::new(crate::auth::AuthImpl::new(None)),
     };
 
     let app = axum::Router::new()
-        .route("/chat/completions", axum::routing::post(handle_chat_completions::<(), ()>))
+        .route(
+            "/chat/completions",
+            axum::routing::post(handle_chat_completions::<(), ()>),
+        )
         .with_state(state);
     Ok(app)
 }

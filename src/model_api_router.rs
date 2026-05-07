@@ -11,14 +11,14 @@ use serde_json::Value;
 use tracing::Instrument;
 
 use crate::auth::Auth;
-use crate::utils::{authenticate_and_metadata, start_request_span};
 use crate::metadata_mgr::MetadataMgr;
 use crate::model_api_provider::{
     AudioSpeechUsage, AudioTranscriptionsUsage, EmbeddingsUsage, ImagesUsage, MessagesUsage,
-    ProviderRegistry, ProxyBody, ProxyRequest, RerankUsage, ResponsesUsage,
-    SelectionError, Usage, UsageHandler,
+    ProviderRegistry, ProxyBody, ProxyRequest, RerankUsage, ResponsesUsage, SelectionError, Usage,
+    UsageHandler,
 };
 use crate::openai_http_mapping::openai_error_response;
+use crate::utils::start_request_span;
 
 pub struct ModelApiHandlerState<A, M> {
     pub provider_registry: std::sync::Arc<ProviderRegistry<M>>,
@@ -84,18 +84,12 @@ where
     let route = format!("/v1{endpoint_path}");
     let (root_span, trace_id) = start_request_span("POST", &route);
 
-    let extension = String::new();
-    let metadata = match authenticate_and_metadata(
-        &state.auth,
-        &state.metadata_mgr,
-        &headers,
-        &extension,
-        "model api",
-    )
-    .await
-    {
+    let metadata = match state.metadata_mgr.new_from_http_headers(&headers) {
         Ok(metadata) => metadata,
-        Err(response) => return response,
+        Err(err) => {
+            error!("new metadata from headers: {err}");
+            return openai_error_response(StatusCode::BAD_REQUEST, &err.to_string(), None);
+        }
     };
 
     let content_type = headers
@@ -114,33 +108,30 @@ where
         }
     };
 
-    let (selection, provider_entry) = match state
-        .provider_registry
-        .select(endpoint_path, requested_model.as_deref(), &metadata)
-    {
-        Ok(selection) => selection,
-        Err(SelectionError::ModelNotSupported) => {
-            let model = requested_model.as_deref().unwrap_or("");
-            let message = if model.is_empty() {
-                "model is required".to_string()
-            } else {
-                format!("model {model} is not supported")
-            };
-            return openai_error_response(
-                StatusCode::BAD_REQUEST,
-                &message,
-                Some("invalid_request_error"),
-            );
-        }
-    };
+    let (selection, provider_entry) =
+        match state
+            .provider_registry
+            .select(endpoint_path, requested_model.as_deref(), &metadata)
+        {
+            Ok(selection) => selection,
+            Err(SelectionError::ModelNotSupported) => {
+                let model = requested_model.as_deref().unwrap_or("");
+                let message = if model.is_empty() {
+                    "model is required".to_string()
+                } else {
+                    format!("model {model} is not supported")
+                };
+                return openai_error_response(
+                    StatusCode::BAD_REQUEST,
+                    &message,
+                    Some("invalid_request_error"),
+                );
+            }
+        };
 
     info!(
         "http.request.start; method=POST path=/v1{} model_id={} stream={} trace_id={} metadata={:?}",
-        endpoint_path,
-        selection.model_id,
-        is_stream,
-        trace_id,
-        metadata
+        endpoint_path, selection.model_id, is_stream, trace_id, metadata
     );
 
     let proxy_request = ProxyRequest {
@@ -162,10 +153,7 @@ where
         Err(err) => {
             error!(
                 "http.request.end; status_code=502 model_id={} error={} trace_id={} metadata={:?}",
-                selection.model_id,
-                err,
-                trace_id,
-                metadata
+                selection.model_id, err, trace_id, metadata
             );
             return Response::builder()
                 .status(StatusCode::BAD_GATEWAY)
@@ -195,9 +183,7 @@ where
                     )
                     .await;
             }
-            builder
-                .body(Body::from(payload))
-                .expect("build response")
+            builder.body(Body::from(payload)).expect("build response")
         }
         ProxyBody::Stream(stream) => builder
             .body(Body::from_stream(stream))
@@ -221,8 +207,8 @@ async fn parse_request_metadata(
 ) -> Result<(Option<String>, bool), String> {
     if let Some(content_type) = content_type {
         if content_type.starts_with("application/json") {
-            let value: Value = serde_json::from_slice(body)
-                .map_err(|err| format!("invalid json body: {err}"))?;
+            let value: Value =
+                serde_json::from_slice(body).map_err(|err| format!("invalid json body: {err}"))?;
             let model = value
                 .get("model")
                 .and_then(|value| value.as_str())
@@ -241,10 +227,7 @@ async fn parse_request_metadata(
     Ok((None, false))
 }
 
-async fn parse_multipart_model(
-    content_type: &str,
-    body: &Bytes,
-) -> Result<Option<String>, String> {
+async fn parse_multipart_model(content_type: &str, body: &Bytes) -> Result<Option<String>, String> {
     let boundary = parse_multipart_boundary(content_type)
         .ok_or_else(|| "multipart boundary is missing".to_string())?;
     let stream = stream::once(async move { Ok::<Bytes, multer::Error>(body.clone()) });
@@ -279,29 +262,41 @@ fn parse_usage(kind: EndpointKind, payload: &Bytes) -> Option<Usage> {
     match kind {
         EndpointKind::Messages => parse_usage_value::<MessagesUsage>(Some(usage_value.clone()))
             .map(Usage::Messages)
-            .or_else(|| Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
-                raw: usage_value,
-            }))),
+            .or_else(|| {
+                Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
+                    raw: usage_value,
+                }))
+            }),
         EndpointKind::Responses => parse_usage_value::<ResponsesUsage>(Some(usage_value.clone()))
             .map(Usage::Responses)
-            .or_else(|| Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
-                raw: usage_value,
-            }))),
+            .or_else(|| {
+                Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
+                    raw: usage_value,
+                }))
+            }),
         EndpointKind::Embeddings => parse_usage_value::<EmbeddingsUsage>(Some(usage_value.clone()))
             .map(Usage::Embeddings)
-            .or_else(|| Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
-                raw: usage_value,
-            }))),
+            .or_else(|| {
+                Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
+                    raw: usage_value,
+                }))
+            }),
         EndpointKind::Rerank => parse_usage_value::<RerankUsage>(Some(usage_value.clone()))
             .map(Usage::Rerank)
-            .or_else(|| Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
-                raw: usage_value,
-            }))),
-        EndpointKind::AudioSpeech => parse_usage_value::<AudioSpeechUsage>(Some(usage_value.clone()))
-            .map(Usage::AudioSpeech)
-            .or_else(|| Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
-                raw: usage_value,
-            }))),
+            .or_else(|| {
+                Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
+                    raw: usage_value,
+                }))
+            }),
+        EndpointKind::AudioSpeech => {
+            parse_usage_value::<AudioSpeechUsage>(Some(usage_value.clone()))
+                .map(Usage::AudioSpeech)
+                .or_else(|| {
+                    Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
+                        raw: usage_value,
+                    }))
+                })
+        }
         EndpointKind::AudioTranscriptions => {
             parse_usage_value::<AudioTranscriptionsUsage>(Some(usage_value.clone()))
                 .map(Usage::AudioTranscriptions)
@@ -313,9 +308,11 @@ fn parse_usage(kind: EndpointKind, payload: &Bytes) -> Option<Usage> {
         }
         EndpointKind::Images => parse_usage_value::<ImagesUsage>(Some(usage_value.clone()))
             .map(Usage::Images)
-            .or_else(|| Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
-                raw: usage_value,
-            }))),
+            .or_else(|| {
+                Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
+                    raw: usage_value,
+                }))
+            }),
     }
 }
 

@@ -1,9 +1,13 @@
 use anyhow::Result;
+use axum::http::HeaderMap;
 
-/// Builds metadata from handshake auth info and request extension.
+/// Build metadata from handshake auth info and request extension.
 pub trait MetadataMgr<A, M>: Send + Sync {
-    /// Builds metadata from request extension payload and authenticator output.
+    /// Build metadata from request extension payload and authenticator output.
     fn new_from_extension(&self, auth_info: &A, extension: &str) -> Result<M>;
+
+    /// Build metadata from llm-api http headers.
+    fn new_from_http_headers(&self, headers: &HeaderMap) -> Result<M>;
 }
 
 /// Default metadata manager.
@@ -18,6 +22,10 @@ impl MetadataMgrImpl {
 
 impl<A> MetadataMgr<A, ()> for MetadataMgrImpl {
     fn new_from_extension(&self, _auth_info: &A, _extension: &str) -> Result<()> {
+        Ok(())
+    }
+
+    fn new_from_http_headers(&self, _headers: &HeaderMap) -> Result<()> {
         Ok(())
     }
 }
