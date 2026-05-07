@@ -36,30 +36,28 @@ yomo version
 
 ### Step 2. Start the server
 
-Create a configuration file `my-agent.yaml`:
+Create a configuration file `my-agent.yaml` (you can start from `agent.template.yaml`):
 
 ```yaml
-name: my-agent
-host: 0.0.0.0
-port: 9000
+zipper:
+  host: "0.0.0.0"
+  port: 9000
+  tls: {}
+  auth_token: "SECRET_TOKEN"
 
-auth:
-  type: token
-  token: SECRET_TOKEN
+http_api:
+  host: "0.0.0.0"
+  port: 9001
+  enable_tool_api: false
 
-bridge:
-  ai:
-    server:
-      addr: 0.0.0.0:9000  ## OpenAI API compatible endpoint
-      provider: vllm      ## llm provider to use
-
-    providers:
-      vllm:
-        api_endpoint: http://127.0.0.1:8000/v1
-        model: google/gemma-4-31B-it
-
-      ollama:
-        api_endpoint: http://localhost:11434
+llm_providers:
+  - type: "openai"
+    model_id: "gemma-4-31B-it"
+    default: true
+    params:
+      model: "google/gemma-4-31B-it"
+      base_url: "http://localhost:11434"
+      api_key: ""
 ```
 
 Launch the server:
@@ -156,75 +154,6 @@ problem, this is **Geo-distributed System Architecture**:
 
 <img width="580" alt="yomo geo-distributed system" src="https://user-images.githubusercontent.com/65603/162367572-5a0417fa-e2b2-4d35-8c92-2c95d461706d.png">
 
-## ❓ FAQ & Troubleshooting
-
-### General
-
-**Q: What is YoMo and how is it different from other LLM frameworks?**
-
-YoMo is a serverless LLM Function Calling framework designed for geo-distributed AI inference. Unlike traditional frameworks that run inference in centralized data centers, YoMo brings AI tools closer to end users at the edge, reducing latency and improving response times for real-time AI applications.
-
-**Q: What LLM providers does YoMo support?**
-
-YoMo supports any OpenAI API-compatible provider, including:
-- OpenAI (GPT-4, GPT-3.5)
-- Local models via Ollama, vLLM, or LM Studio
-- Cloud providers like Azure OpenAI, Anthropic (via proxy)
-- Custom endpoints that implement the OpenAI chat completions API
-
-**Q: Can I use YoMo with existing LangChain or LlamaIndex applications?**
-
-Yes. YoMo's serverless tools expose OpenAI-compatible endpoints, so they integrate seamlessly with LangChain, LlamaIndex, and other frameworks that support function calling.
-
-### Setup & Configuration
-
-**Q: CLI installation fails with "permission denied"?**
-
-Run the install script with sudo or install to a user-writable directory:
-```bash
-curl -fsSL https://get.yomo.run | sh -s -- --install-dir ~/.local/bin
-```
-Ensure `~/.local/bin` is in your `$PATH`.
-
-**Q: `yomo serve` fails to start with port already in use?**
-
-Change the port in your config file or use the `--port` flag:
-```bash
-yomo serve -c my-agent.yaml --port 9001
-```
-
-**Q: How do I enable debug logging?**
-
-Set the `RUST_LOG` environment variable:
-```bash
-RUST_LOG=debug yomo serve -c my-agent.yaml
-```
-
-### Common Issues
-
-**Q: Function calling returns empty results?**
-
-Verify:
-1. Your tool is running (`yomo run -n <tool-name>`)
-2. The LLM provider endpoint is accessible (`curl http://127.0.0.1:8000/v1/models`)
-3. The function signature matches what the LLM expects (check the tool's `handler` export)
-
-**Q: TLS connection errors when connecting to YoMo server?**
-
-YoMo uses TLS v1.3 by default. If you're testing locally, you can disable TLS:
-```yaml
-auth:
-  type: none
-```
-For production, ensure your TLS certificates are valid and not expired.
-
-**Q: `yomo run` hangs indefinitely?**
-
-Check that:
-1. The YoMo server is running (`yomo serve`)
-2. The tool name matches exactly (case-sensitive)
-3. Your handler function doesn't have blocking operations without timeouts
-
 ## 🦸 Contributing
 
 First off, thank you for considering making contributions. It's people like you
@@ -303,6 +232,53 @@ project, for example:
   ```
 
   
+
+## ❓ FAQ
+
+### What is YoMo?
+YoMo is an open-source LLM Function Calling Framework for building scalable and ultra-fast AI Agents with a geo-distributed architecture.
+
+### How is YoMo different from other AI Agent frameworks?
+- **Geo-Distributed**: Deploy AI inference closer to end users for faster response times
+- **Serverless LLM Tools**: Deploy and manage LLM tools/skills seamlessly
+- **TLS v1.3 Security**: End-to-end encryption by design
+- **Multi-Provider Support**: Works with OpenAI, Ollama, and other LLM providers
+
+### What are the system requirements?
+- Go 1.21+ or Rust (for development builds)
+- A supported LLM provider (OpenAI API key or local Ollama instance)
+
+### How do I install YoMo?
+```bash
+curl -fsSL https://get.yomo.run | sh
+yomo version
+```
+
+### What LLM providers are supported?
+- OpenAI (GPT models)
+- Ollama (local models like qwen3.5, gemma)
+- Custom providers via configuration
+
+### Can I use YoMo with local models?
+Yes! YoMo supports Ollama for running models locally:
+```bash
+ollama pull qwen3.5
+# Configure base_url in your YAML to point to Ollama
+```
+
+### What is LLM Function Calling?
+Function Calling allows LLMs to execute structured functions (tools/skills) to interact with external systems, APIs, or databases.
+
+### How does the geo-distributed architecture work?
+YoMo enables deploying AI inference and tools at edge locations worldwide, bringing computation closer to users for lower latency.
+
+### Where can I find more examples?
+Check out the [Serverless LLM Function Calling Examples](https://github.com/yomorun/llm-function-calling-examples) repository.
+
+### How can I get help?
+- Read the documentation at [yomo.run](https://yomo.run/)
+- File issues on [GitHub](https://github.com/yomorun/yomo/issues)
+- Join the community discussions
 ## License
 
 [Apache License 2.0](http://www.apache.org/licenses/LICENSE-2.0.html)
