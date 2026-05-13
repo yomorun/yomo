@@ -163,17 +163,124 @@ First off, thank you for considering making contributions. It's people like you
 that make YoMo better. There are many ways in which you can participate in the
 project, for example:
 
-- File a
-  [bug report](https://github.com/yomorun/yomo/issues/new?assignees=&labels=bug&template=bug_report.md&title=%5BBUG%5D).
-  Be sure to include information like what version of YoMo you are using, what
-  your operating system is, and steps to recreate the bug.
+
+## ❓ FAQ
+
+### Getting Started
+
+**Q: What is YoMo?**  
+A: YoMo is an open-source LLM Function Calling Framework for building scalable and ultra-fast AI Agents. Built atop QUIC Protocol for low-latency MCP communication, with TLS v1.3 encryption by design.
+
+**Q: How is YoMo different from LangChain?**  
+A: LangChain focuses on Python orchestration; YoMo focuses on **geo-distributed AI inference infrastructure** with QUIC-based low-latency communication. YoMo brings AI inference closer to users globally.
+
+**Q: What languages are supported?**  
+A: TypeScript and Go. Both provide type-safe function calling with IDE auto-completion.
+
+**Q: How do I install YoMo?**  
+A:
+```bash
+curl -fsSL https://get.yomo.run | sh
+yomo version
+```
+
+### Core Features
+
+**Q: What is Low-Latency MCP?**  
+A: YoMo implements MCP atop QUIC Protocol, providing significantly faster communication between AI agents and MCP servers compared to HTTP-based approaches.
+
+**Q: How does Geo-Distributed Architecture work?**  
+A: YoMo enables deploying AI inference close to end users globally. Instead of central data centers, applications run near users for faster response times.
+
+**Q: What is Serverless DevOps?**  
+A: YoMo streamlines LLM tool lifecycle from development to deployment, reducing operational overhead for AI agent functionalities.
+
+### Configuration
+
+**Q: How do I configure the server?**  
+A: Create a YAML config file (`my-agent.yaml`) with name/host/port/auth/bridge settings:
+```yaml
+name: my-agent
+host: 0.0.0.0
+port: 9000
+auth:
+  type: token
+  token: SECRET_TOKEN
+bridge:
+  ai:
+    server:
+      addr: 0.0.0.0:9000
+      provider: vllm
+```
+
+**Q: Which LLM providers are supported?**  
+A: Configure `vllm` or `ollama` providers. YoMo provides OpenAI API compatible endpoint at `http://localhost:9000/v1`.
+
+**Q: How do I use Ollama?**  
+A: Configure in YAML:
+```yaml
+bridge:
+  ai:
+    providers:
+      ollama:
+        api_endpoint: http://localhost:11434
+```
+Ensure Ollama is running (`ollama serve`).
+
+### Function Calling
+
+**Q: How do I implement a function?**  
+A: Create TypeScript file with `description`, `Argument` type, and `handler` function:
+```typescript
+export const description = 'Get weather for city'
+export type Argument = { city: string }
+export async function handler(args: Argument) {
+  return { city: args.city, temperature: 20 }
+}
+```
+
+**Q: How do I run a function?**  
+A:
+```bash
+yomo run -n get-weather
+```
+
+**Q: How do I call the function from LLM?**  
+A: Send chat completion request to YoMo's OpenAI-compatible endpoint:
+```bash
+curl http://localhost:9000/v1/chat/completions \
+  -H "Authorization: Bearer SECRET_TOKEN" \
+  -d '{"messages":[{"role":"user","content":"What should I wear?"}]}'
+```
+
+### Troubleshooting
+
+**Q: Server fails to start?**  
+A: Check YAML configuration file syntax. Ensure `auth.token` is set and `bridge.ai.server.addr` matches host/port.
+
+**Q: Function calling fails?**  
+A: Ensure function file has correct `description`, `Argument` type with JSDoc comments, and `handler` returns proper response.
+
+**Q: Ollama connection fails?**  
+A: Verify Ollama is running (`ollama serve`) and `api_endpoint` is correct in YAML config.
+
+**Q: Authentication fails?**  
+A: Check `Authorization: Bearer SECRET_TOKEN` header matches token in YAML config.
+
+### More Help
+
+Check [Serverless LLM Function Calling Examples](https://github.com/yomorun/llm-function-calling-examples) or visit [yomo.run](https://yomo.run/) for documentation.
+
+---
+
+## 🦸 Contributing
+
+First off, thank you for considering making contributions. It's people like you that make YoMo better. There are many ways in which you can participate in the project, for example:
+
+- File a [bug report](https://github.com/yomorun/yomo/issues/new?assignees=&labels=bug&template=bug_report.md&title=%5BBUG%5D). Be sure to include information like what version of YoMo you are using, what your operating system is, and steps to recreate the bug.
 - Suggest a new feature.
-- Read our
-  [contributing guidelines](https://github.com/yomorun/yomo/blob/master/CONTRIBUTING.md)
-  to learn about what types of contributions we are looking for.
-- We have also adopted a
-  [code of conduct](https://github.com/yomorun/yomo/blob/master/CODE_OF_CONDUCT.md)
-  that we expect project participants to adhere to.
+- Read our [contributing guidelines](https://github.com/yomorun/yomo/blob/master/CONTRIBUTING.md) to learn about what types of contributions we are looking for.
+- We have also adopted a [code of conduct](https://github.com/yomorun/yomo/blob/master/CODE_OF_CONDUCT.md) that we expect project participants to adhere to.
 
 ## License
 
