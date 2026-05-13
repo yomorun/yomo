@@ -215,12 +215,18 @@ func (srv *Service) mergeToolsToRequest(req openai.ChatCompletionRequest, server
 
 	// First add server tools (server tools have priority)
 	for _, tool := range serverTools {
+		if tool.Function == nil {
+			continue
+		}
 		toolMap[tool.Function.Name] = tool
 		toolSources[tool.Function.Name] = true // backend tool
 	}
 
 	// Then add request tools, skipping those with same name as server tools
 	for _, tool := range req.Tools {
+		if tool.Function == nil {
+			continue
+		}
 		if _, exists := toolMap[tool.Function.Name]; !exists {
 			toolMap[tool.Function.Name] = tool
 			toolSources[tool.Function.Name] = false // frontend tool
@@ -231,6 +237,9 @@ func (srv *Service) mergeToolsToRequest(req openai.ChatCompletionRequest, server
 	mergedTools := make([]openai.Tool, 0, len(toolMap))
 	// First add server tools in original order
 	for _, tool := range serverTools {
+		if tool.Function == nil {
+			continue
+		}
 		if _, exists := toolMap[tool.Function.Name]; exists {
 			mergedTools = append(mergedTools, tool)
 			delete(toolMap, tool.Function.Name)
@@ -238,6 +247,9 @@ func (srv *Service) mergeToolsToRequest(req openai.ChatCompletionRequest, server
 	}
 	// Then add remaining request tools
 	for _, tool := range req.Tools {
+		if tool.Function == nil {
+			continue
+		}
 		if _, exists := toolMap[tool.Function.Name]; exists {
 			mergedTools = append(mergedTools, tool)
 			delete(toolMap, tool.Function.Name)
