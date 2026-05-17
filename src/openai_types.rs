@@ -94,6 +94,7 @@ impl std::fmt::Display for ApiError {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionRequest {
+    #[serde(default)]
     pub model: String,
     pub messages: Vec<Message>,
     #[serde(skip_serializing_if = "Option::is_none")]
