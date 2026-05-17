@@ -305,4 +305,167 @@ project, for example:
   
 ## License
 
-[Apache License 2.0](http://www.apache.org/licenses/LICENSE-2.0.html)
+[Apache License 2.0](http://www.apache.org/licenses/LICENSE-2.0.html)\n\n## ❓ Frequently Asked Questions
+
+### General
+
+**Q: What is YoMo?**
+
+YoMo is an open-source **Serverless LLM Function Calling Framework** for building scalable and ultra-fast AI Agents. It focuses on speed, reliability, and scalability for delivering exceptional customer experiences in the Age of AI.
+
+**Q: How does YoMo differ from LangChain or CrewAI?**
+
+| Framework | Approach | Key Differentiator |
+|-----------|----------|-------------------|
+| **YoMo** | Serverless LLM Tools + Geo-Distributed | **Edge-First Architecture** - brings AI inference closer to users |
+| LangChain | Chain-based orchestration | General-purpose LLM chaining |
+| CrewAI | Role-playing agents | Multi-agent collaboration |
+
+YoMo's **geo-distributed architecture** reduces latency by running AI tools at edge locations, while its **serverless design** simplifies DevOps.
+
+**Q: What are the key features?**
+
+| Feature | Description |
+|---------|-------------|
+| ⚡️ **Serverless LLM Tools** | Deploy and Manage LLM Tools/Skills seamlessly |
+| 🔐 **Enhanced Security** | TLS v1.3 encryption for all data packets by design |
+| 📸 **Effortless DevOps** | Streamlined lifecycle from development to deployment |
+| 🌎 **Geo-Distributed** | Edge locations for faster response times |
+
+### Getting Started
+
+**Q: How do I install YoMo?**
+
+```bash
+curl -fsSL https://get.yomo.run | sh
+yomo version
+```
+
+**Q: How do I start the server?**
+
+1. Create `my-agent.yaml` (start from `agent.template.yaml`)
+2. Configure zipper, HTTP API, and LLM providers
+3. Run: `yomo serve -c my-agent.yaml`
+
+**Q: How do I implement an LLM Function Calling?**
+
+Create a TypeScript file with `description`, `Argument` type, and `handler` function:
+
+```typescript
+export const description = 'Get the current weather for `city`'
+
+export type Argument = {
+  city: string;
+}
+
+export async function handler(args: Argument) {
+  return { city: args.city, temperature: Math.floor(Math.random() * 41) }
+}
+```
+
+Run: `yomo run -n get-weather`
+
+### LLM Providers
+
+**Q: What LLM providers are supported?**
+
+YoMo supports **OpenAI-compatible providers**:
+
+| Provider | Configuration |
+|----------|---------------|
+| **Ollama** (Local) | `base_url: "http://localhost:11434"` |
+| **OpenAI** | Set `api_key` and default `model` |
+| **Other** | Any OpenAI-compatible API endpoint |
+
+Example configuration:
+```yaml
+llm_providers:
+  - type: "openai"
+    model_id: "gemma-4-31B-it"
+    default: true
+    params:
+      model: "google/gemma-4-31B-it"
+      base_url: "http://localhost:11434"
+      api_key: ""
+```
+
+### Architecture
+
+**Q: What is the Geo-Distributed Architecture?**
+
+YoMo runs AI inference and tools at **edge locations** closer to your users:
+
+- **Lower latency**: Faster response times
+- **Better UX**: Superior user experience for AI agents
+- **Global scale**: Deploy tools worldwide
+
+**Q: What is TLS v1.3 encryption?**
+
+YoMo applies **TLS v1.3 encryption** to **every data packet by design**:
+
+- End-to-end security
+- No plaintext transmission
+- Robust protection for AI agent communications
+
+### Tools & Skills
+
+**Q: How do I create custom tools?**
+
+1. Define `description` for LLM to understand tool purpose
+2. Define `Argument` type with TypeScript types
+3. Implement `handler` function with async/await
+4. Run with `yomo run -n <tool-name>`
+
+**Q: What is the Function Calling flow?**
+
+```
+User Request → LLM → Tool Selection → Handler Execution → Response
+```
+
+YoMo uses OpenAI-compatible Function Calling format.
+
+### DevOps
+
+**Q: How does YoMo simplify DevOps?**
+
+YoMo provides:
+
+- **CLI**: `yomo serve`, `yomo run`, `yomo version`
+- **Configuration**: YAML-based agent configuration
+- **Deployment**: Single command to serve and run
+- **Monitoring**: Built-in observability support
+
+### Troubleshooting
+
+**Q: Server won't start?**
+
+Check:
+1. YAML configuration syntax
+2. `auth_token` is set correctly
+3. Port 9000/9001 not occupied
+4. LLM provider endpoint reachable
+
+**Q: Function Calling not working?**
+
+Check:
+1. `description` is clear for LLM
+2. `Argument` type matches handler logic
+3. Handler returns correct format
+4. Tool is running (`yomo run -n <tool>`)
+
+**Q: Connection timeout?**
+
+Check:
+1. Network connectivity to edge locations
+2. TLS configuration
+3. Firewall rules for ports 9000/9001
+
+### Help & Resources
+
+- **Documentation**: [blog.yomo.run](https://blog.yomo.run)
+- **GitHub**: [yomorun/yomo](https://github.com/yomorun/yomo)
+- **Issues**: [GitHub Issues](https://github.com/yomorun/yomo/issues)
+
+---
+
+*For more details, see the [YoMo Blog](https://blog.yomo.run) and [GitHub repository](https://github.com/yomorun/yomo).*
