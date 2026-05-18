@@ -18,6 +18,7 @@ use yomo::{
     bridge::Bridge,
     client::Client,
     connector::MemoryConnector,
+    http_auth::require_bearer_auth,
     llm_api::build_llm_api,
     llm_provider,
     metadata_mgr::MetadataMgrImpl,
@@ -173,7 +174,7 @@ async fn serve(opt: ServeOptions) -> Result<()> {
     let (sender, receiver) = unbounded_channel();
     let tool_mgr = Arc::new(ToolMgrImpl::new());
     let zipper = Zipper::builder()
-        .auth(Arc::new(AuthImpl::new(config.zipper.auth_token.clone())))
+        .auth(Arc::new(AuthImpl::new(config.auth_token.clone())))
         .metadata_mgr(Arc::new(MetadataMgrImpl::new()))
         .router(Arc::new(RouterImpl::new()))
         .tool_mgr(tool_mgr.clone())
@@ -244,6 +245,11 @@ async fn serve(opt: ServeOptions) -> Result<()> {
     if config.http_api.enable_tool_api {
         app = app.nest("/tool", build_tool_api(connector).await?);
     }
+
+    app = app.layer(axum::middleware::from_fn_with_state(
+        config.auth_token.clone(),
+        require_bearer_auth,
+    ));
 
     info!(
         "start HTTP API server on {}:{} (LLM API {}, Model API {}, Tool API {})",

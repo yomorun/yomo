@@ -13,6 +13,8 @@ pub mod bridge;
 pub mod client;
 /// Connector abstractions for opening downstream streams.
 pub mod connector;
+/// HTTP authentication middleware.
+pub mod http_auth;
 /// Framed IO helpers.
 pub mod io;
 /// LLM-facing HTTP APIs.

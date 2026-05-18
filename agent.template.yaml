@@ -1,8 +1,9 @@
+auth_token: ""
+
 zipper:
   host: "127.0.0.1"
   port: 9000
   tls: {}
-  auth_token: ""
 
 http_api:
   host: "127.0.0.1"

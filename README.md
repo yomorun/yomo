@@ -39,11 +39,12 @@ yomo version
 Create a configuration file `my-agent.yaml` (you can start from `agent.template.yaml`):
 
 ```yaml
+auth_token: "SECRET_TOKEN"
+
 zipper:
   host: "0.0.0.0"
   port: 9000
   tls: {}
-  auth_token: "SECRET_TOKEN"
 
 http_api:
   host: "0.0.0.0"
@@ -59,6 +60,8 @@ llm_providers:
       base_url: "http://localhost:11434"
       api_key: ""
 ```
+
+When `auth_token` is configured, all HTTP APIs require `Authorization: Bearer <token>`.
 
 Launch the server:
 

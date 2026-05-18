@@ -29,6 +29,8 @@ impl Error for ConfigError {}
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(default, rename_all = "snake_case")]
 pub struct ServeConfig {
+    #[serde(default)]
+    pub auth_token: Option<String>,
     pub zipper: ZipperConfig,
     pub http_api: HttpApiConfig,
     #[serde(default)]
@@ -96,9 +98,6 @@ pub struct ZipperConfig {
 
     #[serde(default)]
     pub tls: TlsConfig,
-
-    #[serde(default)]
-    pub auth_token: Option<String>,
 }
 
 impl Default for ZipperConfig {
@@ -107,7 +106,6 @@ impl Default for ZipperConfig {
             host: default_host(),
             port: default_zipper_port(),
             tls: TlsConfig::default(),
-            auth_token: None,
         }
     }
 }
