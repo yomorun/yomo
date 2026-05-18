@@ -105,6 +105,10 @@ impl TlsProvider {
         key_pem: Option<Vec<u8>>,
         mutual: bool,
     ) -> Result<Self, RustlsError> {
+        rustls_crate::crypto::aws_lc_rs::default_provider()
+            .install_default()
+            .ok();
+
         Ok(Self {
             ca_cert: if let Some(buf) = ca_cert_pem {
                 Some(into_certificate(&buf)?)
