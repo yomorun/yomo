@@ -131,6 +131,13 @@ where
         &metadata,
     ) {
         Ok(provider_entry) => provider_entry,
+        Err(SelectionError::OutstandingBalance) => {
+            return openai_error_response(
+                StatusCode::PAYMENT_REQUIRED,
+                "outstanding_balance",
+                Some("outstanding_balance"),
+            );
+        }
         Err(SelectionError::ModelNotSupported) => {
             let model = requested_model.as_deref().unwrap_or("");
             let message = if model.is_empty() {

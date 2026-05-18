@@ -6,6 +6,7 @@ pub struct SelectionResult {
 #[derive(Debug)]
 pub enum SelectionError {
     ModelNotSupported,
+    OutstandingBalance,
 }
 
 pub trait SelectionStrategy<M>: Send + Sync {

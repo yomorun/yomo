@@ -123,6 +123,13 @@ where
         .select(request_model_id.as_deref(), &metadata)
     {
         Ok(provider_entry) => provider_entry,
+        Err(SelectionError::OutstandingBalance) => {
+            return Ok(openai_error_response(
+                StatusCode::PAYMENT_REQUIRED,
+                "outstanding_balance",
+                Some("outstanding_balance"),
+            ));
+        }
         Err(SelectionError::ModelNotSupported) => {
             let model = request_model_id.as_deref().unwrap_or("");
             let message = format!("model {model} is not supported");
