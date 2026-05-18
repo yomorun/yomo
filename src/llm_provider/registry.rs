@@ -18,6 +18,7 @@ pub struct ProviderEntry {
     pub provider: Arc<dyn Provider>,
 }
 
+#[derive(Clone)]
 pub struct ProviderRegistry<M> {
     providers: HashMap<String, ProviderEntry>,
     strategy: Arc<dyn SelectionStrategy<M>>,
@@ -107,5 +108,12 @@ impl<M> ProviderRegistry<M> {
 
     pub fn providers(&self) -> &HashMap<String, ProviderEntry> {
         &self.providers
+    }
+
+    pub fn model_list(&self) -> Vec<String> {
+        self.providers
+            .values()
+            .map(|provider| provider.model_id.clone())
+            .collect()
     }
 }

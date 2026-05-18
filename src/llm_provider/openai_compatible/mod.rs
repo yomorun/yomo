@@ -4,10 +4,10 @@ use futures_core::Stream;
 use futures_util::StreamExt;
 use std::pin::Pin;
 
-use crate::serve_config::ConfigError;
+use crate::llm_provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
 use crate::openai_http_mapping::validate_openai_request;
 use crate::openai_types::{ChatCompletionRequest, ClientError};
-use crate::llm_provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
+use crate::serve_config::ConfigError;
 
 pub mod client;
 
@@ -97,8 +97,8 @@ pub fn build_openai_compatible_provider(
     if let Some(base_url) = params.get("base_url") {
         config = config.base_url(base_url.to_string());
     }
-    let client = client::Client::new(config)
-        .map_err(|err| ConfigError::InvalidProvider(err.to_string()))?;
+    let client =
+        client::Client::new(config).map_err(|err| ConfigError::InvalidProvider(err.to_string()))?;
     Ok(OpenAICompatibleProvider::new(client, model_id))
 }
 

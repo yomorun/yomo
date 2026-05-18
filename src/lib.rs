@@ -53,3 +53,5 @@ pub mod serve_config;
 pub mod model_api;
 /// Model API providers.
 pub mod model_api_provider;
+/// Models list HTTP API.
+pub mod model_list;

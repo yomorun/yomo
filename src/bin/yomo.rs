@@ -23,13 +23,14 @@ use yomo::{
     metadata_mgr::MetadataMgrImpl,
     model_api::build_model_api,
     model_api_provider,
+    model_list::build_model_list_api,
     router::RouterImpl,
     serve_config::ServeConfig,
     serverless::{ServerlessHandler, ServerlessLanguage, ServerlessMemoryBridge},
     tls::TlsConfig,
+    tool_api::build_tool_api,
     tool_invoker::ConnToolInvoker,
     tool_mgr::ToolMgrImpl,
-    tool_api::build_tool_api,
     trace::init_tracing,
     zipper::{MemorySource, Zipper, ZipperBridge},
 };
@@ -182,6 +183,8 @@ async fn serve(opt: ServeOptions) -> Result<()> {
 
     let mut app = axum::Router::new();
     let mut llm_providers_enabled = false;
+    let mut llm_registry_for_model_list: Option<llm_provider::registry::ProviderRegistry<()>> =
+        None;
     if !config.llm_providers.is_empty() {
         llm_providers_enabled = true;
         let selection_strategy = Arc::new(llm_provider::selection::ByModel::default());
@@ -189,6 +192,7 @@ async fn serve(opt: ServeOptions) -> Result<()> {
             &config.llm_providers,
             selection_strategy,
         )?;
+        llm_registry_for_model_list = Some(provider_registry.clone());
         let tool_invoker = Arc::new(ConnToolInvoker::new(Arc::new(connector.to_owned())));
         app = app.nest(
             "/v1",
@@ -203,6 +207,8 @@ async fn serve(opt: ServeOptions) -> Result<()> {
     }
 
     let mut model_api_enabled = false;
+    let mut model_api_registry_for_model_list: Option<model_api_provider::ProviderRegistry<()>> =
+        None;
     if !config.model_api.providers.is_empty() && !config.model_api.endpoints.is_empty() {
         model_api_enabled = true;
         let model_api_endpoints = config
@@ -218,12 +224,22 @@ async fn serve(opt: ServeOptions) -> Result<()> {
             &config.model_api,
             model_api_selection,
         )?;
+        model_api_registry_for_model_list = Some(model_api_registry.clone());
         let model_api_usage_handler = Arc::new(model_api_provider::NoopUsageHandler::default());
         app = app.nest(
             "/v1",
             build_model_api(model_api_registry, model_api_usage_handler).await?,
         );
     }
+
+    app = app.nest(
+        "/v1",
+        build_model_list_api(
+            llm_registry_for_model_list,
+            model_api_registry_for_model_list,
+        )
+        .await?,
+    );
 
     if config.http_api.enable_tool_api {
         app = app.nest("/tool", build_tool_api(connector).await?);

@@ -13,6 +13,7 @@ pub struct ProviderEntry {
     pub provider: Arc<dyn ModelApiProvider>,
 }
 
+#[derive(Clone)]
 pub struct ProviderRegistry<M> {
     providers: HashMap<String, HashMap<String, ProviderEntry>>,
     endpoints: HashMap<String, ModelApiEndpointConfig>,
@@ -65,6 +66,16 @@ impl<M> ProviderRegistry<M> {
 
     pub fn endpoint(&self, path: &str) -> Option<&ModelApiEndpointConfig> {
         self.endpoints.get(path)
+    }
+
+    pub fn model_list(&self) -> Vec<String> {
+        let mut models = std::collections::HashSet::new();
+        for endpoint_models in self.providers.values() {
+            for provider in endpoint_models.values() {
+                models.insert(provider.model_id.clone());
+            }
+        }
+        models.into_iter().collect()
     }
 }
 
