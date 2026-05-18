@@ -152,7 +152,6 @@ impl Default for HttpApiConfig {
     }
 }
 
-
 impl ServeConfig {
     pub fn load(path: impl AsRef<Path>) -> Result<Self, ConfigError> {
         let path = path.as_ref();

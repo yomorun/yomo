@@ -151,7 +151,9 @@ where
     }
     info!(
         "http.request.start; method=POST path=/v1/chat/completion model_id={} stream={} trace_id={} metadata={:?}",
-        request_model_id.as_deref().unwrap_or(&provider_entry.model_id),
+        request_model_id
+            .as_deref()
+            .unwrap_or(&provider_entry.model_id),
         stream,
         trace_id,
         metadata
@@ -159,7 +161,9 @@ where
     if let Err(message) = validate_openai_request(&request) {
         error!(
             "chat request invalid: model_id={}, error={} {:?}",
-            request_model_id.as_deref().unwrap_or(&provider_entry.model_id),
+            request_model_id
+                .as_deref()
+                .unwrap_or(&provider_entry.model_id),
             message,
             metadata
         );

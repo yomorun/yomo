@@ -2,12 +2,12 @@ use std::collections::HashMap;
 
 use serde_json;
 
+use crate::llm_provider::{
+    FinishReason, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse, Usage,
+};
 use crate::openai_types::{
     ChatCompletionChunk, ChatCompletionChunkToolCall, ChatCompletionChunkToolCallFunction,
     Content as OpenAIContent, ContentPart, Usage as OpenAIUsage,
-};
-use crate::llm_provider::{
-    FinishReason, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse, Usage,
 };
 
 #[derive(Default)]

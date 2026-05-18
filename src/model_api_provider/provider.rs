@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use axum::body::Bytes;
 use axum::http::{HeaderMap, Method, StatusCode};
 use futures_core::Stream;
-use futures_util::stream;
 use futures_util::StreamExt;
+use futures_util::stream;
 use reqwest::multipart::{Form, Part};
 use serde_json::Value;
 
@@ -65,7 +65,8 @@ pub async fn proxy_request(
             if content_type.starts_with("application/json") {
                 request_body = rewrite_json_model(&request_body, model)?;
             } else if content_type.starts_with("multipart/form-data") {
-                multipart_form = Some(rewrite_multipart_model(content_type, &request_body, model).await?);
+                multipart_form =
+                    Some(rewrite_multipart_model(content_type, &request_body, model).await?);
                 headers.remove(axum::http::header::CONTENT_TYPE);
             }
         }

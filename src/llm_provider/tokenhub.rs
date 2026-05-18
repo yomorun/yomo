@@ -101,8 +101,8 @@ pub fn build_tokenhub_provider(
         config = config.base_url("https://tokenhub.tencentmaas.com/v1".to_string());
     }
 
-    let client = client::Client::new(config)
-        .map_err(|err| ConfigError::InvalidProvider(err.to_string()))?;
+    let client =
+        client::Client::new(config).map_err(|err| ConfigError::InvalidProvider(err.to_string()))?;
     Ok(TokenHubProvider::new(client, model_id))
 }
 
@@ -313,7 +313,10 @@ mod tests {
 
         normalize_tokenhub_request(&mut request);
 
-        assert_eq!(request.messages[0].reasoning_content.as_deref(), Some("trace"));
+        assert_eq!(
+            request.messages[0].reasoning_content.as_deref(),
+            Some("trace")
+        );
     }
 
     #[test]

@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::model_api_provider::ModelApiProvider;
 use crate::model_api_provider::providers;
 use crate::model_api_provider::selection::{SelectionError, SelectionResult, SelectionStrategy};
-use crate::model_api_provider::ModelApiProvider;
 use crate::serve_config::{ConfigError, ModelApiConfig, ModelApiEndpointConfig, ProviderConfig};
 
 #[derive(Clone)]

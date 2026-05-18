@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::serve_config::ConfigError;
-use crate::serve_config::ProviderConfig;
 use crate::llm_provider::Provider;
 use crate::llm_provider::openai_compatible::build_openai_compatible_provider;
-use crate::llm_provider::tokenhub::build_tokenhub_provider;
-use crate::llm_provider::vllm_deepseek::build_vllm_deepseek_provider;
-use crate::llm_provider::vertexai::build_vertexai_provider;
 use crate::llm_provider::selection::SelectionStrategy;
+use crate::llm_provider::tokenhub::build_tokenhub_provider;
+use crate::llm_provider::vertexai::build_vertexai_provider;
+use crate::llm_provider::vllm_deepseek::build_vllm_deepseek_provider;
+use crate::serve_config::ConfigError;
+use crate::serve_config::ProviderConfig;
 
 #[derive(Clone)]
 pub struct ProviderEntry {
@@ -54,9 +54,7 @@ impl<M> ProviderRegistry<M> {
 
         for item in providers {
             let provider: Arc<dyn Provider> = match item.provider_type.as_str() {
-                "openai-compatible" => {
-                    Arc::new(build_openai_compatible_provider(&item.params)?)
-                }
+                "openai-compatible" => Arc::new(build_openai_compatible_provider(&item.params)?),
                 "tokenhub" => Arc::new(build_tokenhub_provider(&item.params)?),
                 "vllm_deepseek" => Arc::new(build_vllm_deepseek_provider(&item.params)?),
                 "vertexai" => Arc::new(build_vertexai_provider(&item.params)?),
@@ -98,8 +96,7 @@ impl<M> ProviderRegistry<M> {
             .providers
             .values()
             .find(|provider| {
-                provider.model_id.to_ascii_lowercase()
-                    == selected.model_id.to_ascii_lowercase()
+                provider.model_id.to_ascii_lowercase() == selected.model_id.to_ascii_lowercase()
             })
             .cloned()
             .ok_or(crate::llm_provider::selection::SelectionError::ModelNotSupported)?;

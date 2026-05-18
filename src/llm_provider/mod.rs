@@ -1,10 +1,10 @@
 pub mod openai_compatible;
-pub mod tokenhub;
-pub mod vllm_deepseek;
-pub mod vertexai;
+pub mod provider;
 pub mod registry;
 pub mod selection;
-pub mod provider;
+pub mod tokenhub;
+pub mod vertexai;
+pub mod vllm_deepseek;
 
 pub use provider::{
     FinishReason, Provider, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse, Usage,

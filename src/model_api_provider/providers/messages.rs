@@ -55,8 +55,8 @@ impl MessagesClient {
     async fn client(&self) -> Result<&aws_sdk_bedrockruntime::Client, anyhow::Error> {
         self.bedrock_client
             .get_or_try_init(|| async {
-                let mut loader =
-                    aws_config::defaults(BehaviorVersion::latest()).region(Region::new(self.aws_region.clone()));
+                let mut loader = aws_config::defaults(BehaviorVersion::latest())
+                    .region(Region::new(self.aws_region.clone()));
 
                 if let (Some(access_key_id), Some(secret_access_key)) = (
                     self.aws_access_key_id.as_ref(),
@@ -89,7 +89,8 @@ impl ModelApiProvider for MessagesClient {
 
     async fn execute(&self, req: ProviderRequest) -> Result<ProviderResponse, anyhow::Error> {
         let stream = parse_stream_flag(&req.body);
-        let body = rewrite_messages_body(&req.body, &self.anthropic_version, self.default_max_tokens)?;
+        let body =
+            rewrite_messages_body(&req.body, &self.anthropic_version, self.default_max_tokens)?;
         let client = self.client().await?;
 
         if stream {
@@ -181,7 +182,9 @@ impl ModelApiProvider for MessagesClient {
 
 pub fn build_client(provider: &ProviderConfig) -> Result<Arc<dyn ModelApiProvider>, ConfigError> {
     if provider.provider_type != "bedrock-messages" {
-        return Err(ConfigError::UnknownProviderType(provider.provider_type.clone()));
+        return Err(ConfigError::UnknownProviderType(
+            provider.provider_type.clone(),
+        ));
     }
     let bedrock_model = provider
         .params

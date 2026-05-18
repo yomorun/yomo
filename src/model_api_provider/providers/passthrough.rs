@@ -2,7 +2,9 @@ use async_trait::async_trait;
 use axum::http::HeaderMap;
 use std::sync::Arc;
 
-use crate::model_api_provider::provider::{ModelApiProvider, ProviderRequest, ProviderResponse, proxy_request};
+use crate::model_api_provider::provider::{
+    ModelApiProvider, ProviderRequest, ProviderResponse, proxy_request,
+};
 use crate::serve_config::{ConfigError, ProviderConfig};
 
 #[derive(Clone)]
@@ -52,7 +54,9 @@ impl ModelApiProvider for ProxyClient {
 
 pub fn build_client(provider: &ProviderConfig) -> Result<Arc<dyn ModelApiProvider>, ConfigError> {
     if provider.provider_type != "passthrough" {
-        return Err(ConfigError::UnknownProviderType(provider.provider_type.clone()));
+        return Err(ConfigError::UnknownProviderType(
+            provider.provider_type.clone(),
+        ));
     }
     let api_key = provider
         .params

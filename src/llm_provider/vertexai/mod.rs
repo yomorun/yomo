@@ -12,7 +12,6 @@ use futures_core::Stream;
 use futures_util::StreamExt;
 use reqwest::StatusCode;
 
-use crate::llm_provider::{FinishReason, Provider, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse, Usage};
 use self::client::VertexAIClient;
 use self::types::{
     VertexCandidate, VertexContent, VertexFunctionCall, VertexFunctionCallingConfig,
@@ -20,8 +19,13 @@ use self::types::{
     VertexGenerationConfig, VertexInlineData, VertexPart, VertexSystemInstruction, VertexTool,
     VertexToolConfig, VertexUsageMetadata,
 };
+use crate::llm_provider::{
+    FinishReason, Provider, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse, Usage,
+};
 use crate::openai_http_mapping::validate_openai_request;
-use crate::openai_types::{ChatCompletionRequest, Content, ContentPart, ResponseFormat, Role, ToolChoice};
+use crate::openai_types::{
+    ChatCompletionRequest, Content, ContentPart, ResponseFormat, Role, ToolChoice,
+};
 use crate::serve_config::ConfigError;
 
 const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
@@ -61,7 +65,8 @@ impl Provider for VertexAIProvider {
             .client
             .post_json_with_headers(
                 &self.model_id,
-                serde_json::to_vec(&body).map_err(|err| ProviderError::Internal(err.to_string()))?,
+                serde_json::to_vec(&body)
+                    .map_err(|err| ProviderError::Internal(err.to_string()))?,
                 false,
                 axum::http::HeaderMap::new(),
             )
@@ -94,7 +99,8 @@ impl Provider for VertexAIProvider {
             .client
             .post_json_with_headers(
                 &self.model_id,
-                serde_json::to_vec(&body).map_err(|err| ProviderError::Internal(err.to_string()))?,
+                serde_json::to_vec(&body)
+                    .map_err(|err| ProviderError::Internal(err.to_string()))?,
                 true,
                 axum::http::HeaderMap::new(),
             )
@@ -213,7 +219,9 @@ async fn build_vertex_request(
     }
 
     if contents.is_empty() {
-        return Err(ProviderError::Internal("vertexai request has no content".to_string()));
+        return Err(ProviderError::Internal(
+            "vertexai request has no content".to_string(),
+        ));
     }
 
     let system_instruction = if system_texts.is_empty() {
@@ -376,7 +384,9 @@ async fn image_to_inline_data(
             .unwrap_or("application/octet-stream")
             .to_string();
         if !mime_type.starts_with("image/") {
-            return Err(ProviderError::Internal("image_url content-type is not image/*".to_string()));
+            return Err(ProviderError::Internal(
+                "image_url content-type is not image/*".to_string(),
+            ));
         }
 
         let bytes = response
@@ -413,7 +423,7 @@ fn extract_message_text(content: &Content) -> Result<String, ProviderError> {
                     _ => {
                         return Err(ProviderError::Internal(
                             "system/developer message only supports text".to_string(),
-                        ))
+                        ));
                     }
                 }
             }
@@ -442,7 +452,9 @@ fn map_vertex_response(
     default_model: &str,
 ) -> Result<UnifiedResponse, ProviderError> {
     let request_id = value.response_id.unwrap_or_else(new_response_id);
-    let model = value.model_version.unwrap_or_else(|| default_model.to_string());
+    let model = value
+        .model_version
+        .unwrap_or_else(|| default_model.to_string());
 
     let candidate = value
         .candidates
@@ -555,8 +567,12 @@ fn map_vertex_stream_chunk(
 }
 
 fn map_usage_from_usage_metadata(usage: Option<&VertexUsageMetadata>) -> Usage {
-    let input_tokens = usage.and_then(|value| value.prompt_token_count).unwrap_or(0);
-    let output_tokens = usage.and_then(|value| value.candidates_token_count).unwrap_or(0);
+    let input_tokens = usage
+        .and_then(|value| value.prompt_token_count)
+        .unwrap_or(0);
+    let output_tokens = usage
+        .and_then(|value| value.candidates_token_count)
+        .unwrap_or(0);
     let total_tokens = usage
         .and_then(|value| value.total_token_count)
         .unwrap_or(input_tokens + output_tokens);
@@ -572,7 +588,11 @@ fn map_usage_from_usage_metadata(usage: Option<&VertexUsageMetadata>) -> Usage {
 }
 
 fn extract_text_from_candidate(candidate: &VertexCandidate) -> String {
-    let Some(parts) = candidate.content.as_ref().map(|value| value.parts.as_slice()) else {
+    let Some(parts) = candidate
+        .content
+        .as_ref()
+        .map(|value| value.parts.as_slice())
+    else {
         return String::new();
     };
 
@@ -583,7 +603,10 @@ fn extract_text_from_candidate(candidate: &VertexCandidate) -> String {
 }
 
 fn extract_tool_calls_from_candidate(candidate: &VertexCandidate) -> Option<Vec<ToolCall>> {
-    let parts = candidate.content.as_ref().map(|value| value.parts.as_slice())?;
+    let parts = candidate
+        .content
+        .as_ref()
+        .map(|value| value.parts.as_slice())?;
 
     let calls = parts
         .iter()
@@ -602,11 +625,7 @@ fn extract_tool_calls_from_candidate(candidate: &VertexCandidate) -> Option<Vec<
         })
         .collect::<Vec<_>>();
 
-    if calls.is_empty() {
-        None
-    } else {
-        Some(calls)
-    }
+    if calls.is_empty() { None } else { Some(calls) }
 }
 
 fn map_finish_reason(reason: &str, tool_calls: Option<&Vec<ToolCall>>) -> FinishReason {
@@ -639,7 +658,9 @@ fn map_finish_reason_string(reason: &str, content: Option<&VertexContent>) -> St
 
 fn map_http_error(status: StatusCode, body: &[u8]) -> ProviderError {
     let text = String::from_utf8_lossy(body).to_string();
-    ProviderError::Internal(format!("vertexai request failed with status {status}: {text}"))
+    ProviderError::Internal(format!(
+        "vertexai request failed with status {status}: {text}"
+    ))
 }
 
 fn new_response_id() -> String {

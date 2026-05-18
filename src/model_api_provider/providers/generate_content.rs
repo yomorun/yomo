@@ -3,11 +3,11 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use futures_util::StreamExt;
 
+use crate::llm_provider::vertexai::client::VertexAIClient;
 use crate::model_api_provider::provider::{
     ModelApiProvider, ProviderBody, ProviderRequest, ProviderResponse, filter_request_headers,
     filter_response_headers, parse_stream_flag,
 };
-use crate::llm_provider::vertexai::client::VertexAIClient;
 use crate::serve_config::{ConfigError, ProviderConfig};
 
 #[derive(Clone)]
@@ -18,11 +18,7 @@ pub struct GenerateContentClient {
 }
 
 impl GenerateContentClient {
-    pub fn new(
-        model_id: String,
-        upstream_model: String,
-        client: VertexAIClient,
-    ) -> Self {
+    pub fn new(model_id: String, upstream_model: String, client: VertexAIClient) -> Self {
         Self {
             model_id,
             upstream_model,
@@ -42,12 +38,7 @@ impl ModelApiProvider for GenerateContentClient {
         let headers = filter_request_headers(req.headers);
         let response = self
             .client
-            .post_json_with_headers(
-                &self.upstream_model,
-                req.body.to_vec(),
-                stream,
-                headers,
-            )
+            .post_json_with_headers(&self.upstream_model, req.body.to_vec(), stream, headers)
             .await?;
         let status = response.status();
         let mut resp_headers = filter_response_headers(response.headers());
@@ -77,7 +68,9 @@ impl ModelApiProvider for GenerateContentClient {
 
 pub fn build_client(provider: &ProviderConfig) -> Result<Arc<dyn ModelApiProvider>, ConfigError> {
     if provider.provider_type != "generate_content" {
-        return Err(ConfigError::UnknownProviderType(provider.provider_type.clone()));
+        return Err(ConfigError::UnknownProviderType(
+            provider.provider_type.clone(),
+        ));
     }
     let project_id = provider
         .params

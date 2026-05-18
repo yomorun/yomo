@@ -92,8 +92,8 @@ pub fn build_vllm_deepseek_provider(
     if let Some(base_url) = params.get("base_url") {
         config = config.base_url(base_url.to_string());
     }
-    let client = client::Client::new(config)
-        .map_err(|err| ConfigError::InvalidProvider(err.to_string()))?;
+    let client =
+        client::Client::new(config).map_err(|err| ConfigError::InvalidProvider(err.to_string()))?;
     Ok(VllmDeepseekProvider::new(client, model_id))
 }
 
@@ -240,7 +240,10 @@ mod tests {
 
         let kwargs = request.chat_template_kwargs.expect("chat_template_kwargs");
         assert_eq!(kwargs.get("thinking"), Some(&Value::Bool(true)));
-        assert_eq!(kwargs.get("reasoning_effort"), Some(&Value::String("high".to_string())));
+        assert_eq!(
+            kwargs.get("reasoning_effort"),
+            Some(&Value::String("high".to_string()))
+        );
     }
 
     #[test]
@@ -309,9 +312,10 @@ mod tests {
         }]);
 
         let err = ensure_no_image_parts(&request).expect_err("should reject image parts");
-        assert!(err
-            .to_string()
-            .contains("deepseek-v4-flash does not support image_url messages"));
+        assert!(
+            err.to_string()
+                .contains("deepseek-v4-flash does not support image_url messages")
+        );
     }
 
     #[test]
@@ -342,6 +346,9 @@ mod tests {
             .chat_template_kwargs
             .expect("chat_template_kwargs set by reasoning effort");
         assert_eq!(kwargs.get("thinking"), Some(&Value::Bool(true)));
-        assert_eq!(kwargs.get("reasoning_effort"), Some(&Value::String("max".to_string())));
+        assert_eq!(
+            kwargs.get("reasoning_effort"),
+            Some(&Value::String("max".to_string()))
+        );
     }
 }

@@ -5,16 +5,16 @@ use std::sync::Arc;
 
 use crate::tool_invoker::ToolInvoker;
 use crate::types::{BodyFormat, RequestHeaders, ToolRequest};
+use axum::http::StatusCode;
 use futures_core::Stream;
 use futures_util::{StreamExt, future::join_all};
 use log::{debug, error, info};
 use opentelemetry::KeyValue;
 use opentelemetry::global;
 use opentelemetry::trace::{Span as OtelSpan, Status, Tracer};
-use axum::http::StatusCode;
 use serde::Serialize;
-use serde_json::Value;
 use serde_json;
+use serde_json::Value;
 use tracing::Span;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
@@ -23,8 +23,8 @@ use crate::llm_provider::{
     Provider, ProviderError, ToolCall as ProviderToolCall, UnifiedEvent, UnifiedResponse, Usage,
 };
 use crate::openai_types::{ChatCompletionRequest, Content, Message, Role, ToolDefinition};
-use async_trait::async_trait;
 use crate::usage_handler::{NoopUsageHandler, UsageHandler};
+use async_trait::async_trait;
 
 #[derive(Clone)]
 pub struct AgentLoopConfig<M> {
@@ -898,8 +898,14 @@ fn log_llm_call(
     );
 }
 
-fn log_round_request(round: usize, streaming: bool, request: &ChatCompletionRequest, trace_id: &str) {
-    let messages_json = serde_json::to_string(&request.messages).unwrap_or_else(|_| "[]".to_string());
+fn log_round_request(
+    round: usize,
+    streaming: bool,
+    request: &ChatCompletionRequest,
+    trace_id: &str,
+) {
+    let messages_json =
+        serde_json::to_string(&request.messages).unwrap_or_else(|_| "[]".to_string());
     debug!(
         "llm.request; trace_id={} round={} model={} streaming={} tool_choice={:?} messages_count={} messages={}",
         trace_id,

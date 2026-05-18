@@ -125,25 +125,26 @@ where
     };
     let requested_model = requested_model_from_path.or(request_model);
 
-    let provider_entry = match state
-        .provider_registry
-        .select(selection_endpoint, requested_model.as_deref(), &metadata)
-    {
+    let provider_entry = match state.provider_registry.select(
+        selection_endpoint,
+        requested_model.as_deref(),
+        &metadata,
+    ) {
         Ok(provider_entry) => provider_entry,
-            Err(SelectionError::ModelNotSupported) => {
-                let model = requested_model.as_deref().unwrap_or("");
-                let message = if model.is_empty() {
-                    "model is required".to_string()
-                } else {
-                    format!("model {model} is not supported")
-                };
-                return openai_error_response(
-                    StatusCode::BAD_REQUEST,
-                    &message,
-                    Some("invalid_request_error"),
-                );
-            }
-        };
+        Err(SelectionError::ModelNotSupported) => {
+            let model = requested_model.as_deref().unwrap_or("");
+            let message = if model.is_empty() {
+                "model is required".to_string()
+            } else {
+                format!("model {model} is not supported")
+            };
+            return openai_error_response(
+                StatusCode::BAD_REQUEST,
+                &message,
+                Some("invalid_request_error"),
+            );
+        }
+    };
 
     info!(
         "http.request.start; method=POST path=/v1{} model_id={} stream={} trace_id={} metadata={:?}",
@@ -191,10 +192,10 @@ where
                 if let Ok(usage_value) = serde_json::to_value(usage) {
                     let usage_handler = std::sync::Arc::clone(&state.usage_handler);
                     let endpoint = endpoint_path.to_string();
-                        let model_id = provider_entry.model_id.clone();
-                        let trace_id = trace_id.clone();
-                        let status_code = response.status.as_u16();
-                        let metadata = metadata.clone();
+                    let model_id = provider_entry.model_id.clone();
+                    let trace_id = trace_id.clone();
+                    let status_code = response.status.as_u16();
+                    let metadata = metadata.clone();
                     let request_id = request_id.clone();
                     tokio::spawn(async move {
                         usage_handler
@@ -291,22 +292,22 @@ fn parse_usage(kind: EndpointKind, payload: &Bytes) -> Option<Usage> {
         EndpointKind::Messages => {
             let usage_value = value.get("usage").cloned()?;
             parse_usage_value::<MessagesUsage>(Some(usage_value.clone()))
-            .map(Usage::Messages)
-            .or_else(|| {
-                Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
-                    raw: usage_value,
-                }))
-            })
+                .map(Usage::Messages)
+                .or_else(|| {
+                    Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
+                        raw: usage_value,
+                    }))
+                })
         }
         EndpointKind::Responses => {
             let usage_value = value.get("usage").cloned()?;
             parse_usage_value::<ResponsesUsage>(Some(usage_value.clone()))
-            .map(Usage::Responses)
-            .or_else(|| {
-                Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
-                    raw: usage_value,
-                }))
-            })
+                .map(Usage::Responses)
+                .or_else(|| {
+                    Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
+                        raw: usage_value,
+                    }))
+                })
         }
         EndpointKind::GenerateContent => {
             parse_usage_value::<GenerateContentUsage>(value.get("usageMetadata").cloned())
@@ -320,22 +321,22 @@ fn parse_usage(kind: EndpointKind, payload: &Bytes) -> Option<Usage> {
         EndpointKind::Embeddings => {
             let usage_value = value.get("usage").cloned()?;
             parse_usage_value::<EmbeddingsUsage>(Some(usage_value.clone()))
-            .map(Usage::Embeddings)
-            .or_else(|| {
-                Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
-                    raw: usage_value,
-                }))
-            })
+                .map(Usage::Embeddings)
+                .or_else(|| {
+                    Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
+                        raw: usage_value,
+                    }))
+                })
         }
         EndpointKind::Rerank => {
             let usage_value = value.get("usage").cloned()?;
             parse_usage_value::<RerankUsage>(Some(usage_value.clone()))
-            .map(Usage::Rerank)
-            .or_else(|| {
-                Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
-                    raw: usage_value,
-                }))
-            })
+                .map(Usage::Rerank)
+                .or_else(|| {
+                    Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
+                        raw: usage_value,
+                    }))
+                })
         }
         EndpointKind::AudioSpeech => {
             let usage_value = value.get("usage").cloned()?;
@@ -360,19 +361,22 @@ fn parse_usage(kind: EndpointKind, payload: &Bytes) -> Option<Usage> {
         EndpointKind::Images => {
             let usage_value = value.get("usage").cloned()?;
             parse_usage_value::<ImagesUsage>(Some(usage_value.clone()))
-            .map(Usage::Images)
-            .or_else(|| {
-                Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
-                    raw: usage_value,
-                }))
-            })
+                .map(Usage::Images)
+                .or_else(|| {
+                    Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
+                        raw: usage_value,
+                    }))
+                })
         }
     }
 }
 
 fn parse_request_id(payload: &Bytes) -> Option<String> {
     let value: Value = serde_json::from_slice(payload).ok()?;
-    value.get("id").and_then(|id| id.as_str()).map(|id| id.to_string())
+    value
+        .get("id")
+        .and_then(|id| id.as_str())
+        .map(|id| id.to_string())
 }
 
 fn parse_usage_value<T: DeserializeOwned>(usage: Option<Value>) -> Option<T> {

@@ -7,15 +7,15 @@ use futures_core::Stream;
 use futures_util::StreamExt;
 use log::{debug, error};
 use serde_json;
-use tracing::{Span, field, debug_span};
+use tracing::{Span, debug_span, field};
 
+use crate::llm_provider::{FinishReason, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse};
 use crate::openai_types::{
     ChatCompletionChunk, ChatCompletionChunkChoice, ChatCompletionChunkDelta,
     ChatCompletionChunkToolCall, ChatCompletionChunkToolCallFunction, ChatCompletionRequest,
     ChatCompletionResponse, Content as OpenAIContent, ContentPart, ErrorResponse, Role,
     ToolCall as OpenAIToolCall, ToolCallFunction, ToolChoice, Usage,
 };
-use crate::llm_provider::{FinishReason, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse};
 
 pub fn map_openai_response(response: UnifiedResponse) -> ChatCompletionResponse {
     let content = if response.output_text.is_empty() {

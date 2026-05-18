@@ -1,14 +1,13 @@
+use anyhow::{Context, Result};
 use opentelemetry::KeyValue;
 use opentelemetry::global;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::runtime::Tokio;
 use opentelemetry_sdk::{Resource, trace as sdktrace};
-use anyhow::{Context, Result};
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::prelude::*;
-
 
 pub struct TraceGuard {
     enabled: bool,
@@ -27,8 +26,7 @@ pub async fn init_tracing() -> Result<TraceGuard> {
         Ok(value) if !value.trim().is_empty() => value,
         _ => return Ok(TraceGuard { enabled: false }),
     };
-    let service_name = std::env::var("OTEL_SERVICE_NAME")
-        .unwrap_or_else(|_| "yomo".to_string());
+    let service_name = std::env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "yomo".to_string());
     global::set_text_map_propagator(TraceContextPropagator::new());
     let exporter = opentelemetry_otlp::new_exporter()
         .http()
