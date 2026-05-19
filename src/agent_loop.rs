@@ -835,6 +835,14 @@ fn build_assistant_tool_call_message(
     calls: &[ProviderToolCall],
     reasoning_content: Option<String>,
 ) -> Message {
+    let reasoning_content = reasoning_content.and_then(|value| {
+        if value.trim().is_empty() {
+            None
+        } else {
+            Some(value)
+        }
+    });
+
     let tool_calls = calls
         .iter()
         .enumerate()

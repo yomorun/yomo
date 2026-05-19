@@ -176,7 +176,13 @@ fn ensure_reasoning_content_for_assistant_tool_call(message: &mut Message) {
         return;
     }
 
-    if message.reasoning_content.is_none() {
+    let missing_reasoning_content = message
+        .reasoning_content
+        .as_deref()
+        .map(str::trim)
+        .map(|value| value.is_empty())
+        .unwrap_or(true);
+    if missing_reasoning_content {
         message.reasoning_content = Some(" ".to_string());
     }
 }
@@ -317,6 +323,18 @@ mod tests {
             request.messages[0].reasoning_content.as_deref(),
             Some("trace")
         );
+    }
+
+    #[test]
+    fn normalize_fills_reasoning_content_for_empty_string() {
+        let mut request = request_with_messages(vec![assistant_tool_call_message(Some(""))]);
+        request.thinking = Some(ThinkingConfig {
+            kind: ThinkingType::Enabled,
+        });
+
+        normalize_tokenhub_request(&mut request);
+
+        assert_eq!(request.messages[0].reasoning_content.as_deref(), Some(" "));
     }
 
     #[test]
