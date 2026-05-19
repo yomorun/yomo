@@ -2,13 +2,13 @@ use std::pin::Pin;
 
 use async_stream::try_stream;
 use axum::body::Bytes;
-use axum::http::{StatusCode, header};
+use axum::http::header;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use log::{debug, error};
 use serde_json;
 use serde_json::Value;
-use tracing::{Span, debug_span, field};
+use tracing::{Span, field};
 
 use crate::llm_provider::{FinishReason, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse};
 use crate::openai_types::{
@@ -176,11 +176,11 @@ pub fn stream_openai_chunks(
         futures_util::pin_mut!(stream);
         let mut role_sent = false;
         let mut finish_sent = false;
-        let mut response_span: Option<Span> = None;
         let mut sent_preamble = false;
         let mut response_id = String::new();
         let mut model = default_model;
         let mut created_at = String::new();
+        let mut latest_usage_for_root: Option<Value> = None;
         let mut tool_call_index: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
         let mut next_tool_index: i32 = 0;
 
@@ -317,6 +317,7 @@ pub fn stream_openai_chunks(
                     });
                 }
                 UnifiedEvent::Usage { usage } => {
+                    latest_usage_for_root = serde_json::to_value(map_usage(&usage)).ok();
                     yield sse_chunk(ChatCompletionChunk {
                         id: response_id.clone(),
                         created: parse_created_at(&created_at),
@@ -331,26 +332,12 @@ pub fn stream_openai_chunks(
                 UnifiedEvent::MessageStop { .. } => {}
                 UnifiedEvent::Completed { finish_reason, usage } => {
                     let model_for_log = model.clone();
-                    if response_span.is_none() {
-                        response_span = Some(debug_span!(
-                            parent: &root_span,
-                            "response.streaming",
-                            http.response.status_code = StatusCode::OK.as_u16() as i64,
-                            finish_reason = field::Empty,
-                        ));
-                    }
                     root_span.record(
                         "finish_reason",
                         field::display(finish_reason.as_deref().unwrap_or("")),
                     );
                     if let Some(usage) = usage.as_ref() {
-                        let usage_value = usage.raw.clone().unwrap_or_else(|| {
-                            serde_json::to_value(usage).unwrap_or(Value::Null)
-                        });
-                        record_flattened_json_attributes(&root_span, "usage", &usage_value);
-                    }
-                    if let (Some(reason), Some(span)) = (finish_reason.as_deref(), response_span.as_ref()) {
-                        span.record("finish_reason", field::display(reason));
+                        latest_usage_for_root = serde_json::to_value(map_usage(usage)).ok();
                     }
                     if !finish_sent {
                         let request_id = response_id.clone();
@@ -417,6 +404,10 @@ pub fn stream_openai_chunks(
             }
         }
 
+        if let Some(usage_value) = latest_usage_for_root {
+            record_flattened_json_attributes(&root_span, "usage", &usage_value);
+        }
+
         yield Bytes::from_static(b"data: [DONE]\n\n");
     }
 }
@@ -445,11 +436,6 @@ fn map_finish_reason_string(reason: &FinishReason) -> String {
 }
 
 pub fn map_usage_to_openai(usage: &crate::llm_provider::Usage) -> Usage {
-    if let Some(raw) = usage.raw.as_ref() {
-        if let Ok(raw_usage) = serde_json::from_value::<Usage>(raw.clone()) {
-            return raw_usage;
-        }
-    }
     Usage {
         prompt_tokens: usage.input_tokens,
         completion_tokens: usage.output_tokens,
@@ -495,11 +481,6 @@ fn map_finish_reason(reason: &str) -> String {
 }
 
 fn map_usage(usage: &crate::llm_provider::Usage) -> Usage {
-    if let Some(raw) = usage.raw.as_ref() {
-        if let Ok(raw_usage) = serde_json::from_value::<Usage>(raw.clone()) {
-            return raw_usage;
-        }
-    }
     Usage {
         prompt_tokens: usage.input_tokens,
         completion_tokens: usage.output_tokens,

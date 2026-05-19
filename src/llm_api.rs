@@ -275,11 +275,9 @@ fn finish_reason_to_str(reason: &FinishReason) -> &'static str {
 }
 
 fn usage_to_value(usage: &crate::llm_provider::Usage) -> Value {
-    usage
-        .raw
-        .clone()
-        .or_else(|| serde_json::to_value(usage).ok())
-        .unwrap_or(Value::Null)
+    let mut usage = usage.clone();
+    usage.raw = None;
+    serde_json::to_value(usage).unwrap_or(Value::Null)
 }
 
 pub async fn build_llm_api(

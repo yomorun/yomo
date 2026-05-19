@@ -85,7 +85,7 @@ pub async fn init_tracing() -> Result<TraceGuard> {
     Ok(TraceGuard { enabled: true })
 }
 
-pub fn start_request_span<M>(method: &str, route: &str, metadata: Option<&M>) -> (Span, String)
+pub fn start_request_span<M>(method: &str, route: &str, _metadata: Option<&M>) -> (Span, String)
 where
     M: serde::Serialize,
 {
@@ -102,11 +102,7 @@ where
         finish_reason = field::Empty,
     );
     root_span.record("otel.name", field::display(endpoint_name));
-    if let Some(metadata) = metadata {
-        if let Ok(value) = serde_json::to_value(metadata) {
-            record_flattened_json_attributes(&root_span, "metadata", &value);
-        }
-    }
+
     let trace_id = {
         let span_context = root_span.context().span().span_context().clone();
         if span_context.is_valid() {
@@ -148,15 +144,21 @@ pub(crate) fn record_flattened_json_attributes(span: &Span, prefix: &str, value:
             Value::Bool(v) => span.set_attribute(key, v),
             Value::Number(v) => {
                 if let Some(i) = v.as_i64() {
-                    span.set_attribute(key, i);
-                } else if let Some(u) = v.as_u64() {
-                    if let Ok(i) = i64::try_from(u) {
+                    if i != 0 {
                         span.set_attribute(key, i);
-                    } else {
-                        span.set_attribute(key, u.to_string());
+                    }
+                } else if let Some(u) = v.as_u64() {
+                    if u != 0 {
+                        if let Ok(i) = i64::try_from(u) {
+                            span.set_attribute(key, i);
+                        } else {
+                            span.set_attribute(key, u.to_string());
+                        }
                     }
                 } else if let Some(f) = v.as_f64() {
-                    span.set_attribute(key, f);
+                    if f != 0.0 {
+                        span.set_attribute(key, f);
+                    }
                 }
             }
             Value::String(v) => span.set_attribute(key, v),
