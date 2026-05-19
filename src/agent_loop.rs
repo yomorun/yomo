@@ -245,7 +245,7 @@ where
                 Some(response.output_text.clone()),
             ));
             next_messages.extend(
-                build_tool_messages::<M>(
+                invoke_server_tools::<M>(
                     &request_id,
                     &server_calls,
                     invoker.clone(),
@@ -253,7 +253,8 @@ where
                     trace_id.clone(),
                     request.agent_context.clone(),
                 )
-                .await?,
+                .await?
+                .0,
             );
             Ok::<Vec<Message>, ProviderError>(next_messages)
         }
@@ -531,27 +532,25 @@ where
             }
 
             let request_id = request.model.clone();
-            let tool_messages = async {
-                let mut tool_messages = Vec::new();
-                tool_messages.push(build_assistant_tool_call_message(
-                    &request_id,
-                    &server_calls,
-                    Some(assistant_reasoning_content.clone()),
-                ));
-                tool_messages.extend(
-                    build_tool_messages::<M>(
-                        &request_id,
-                        &server_calls,
-                        invoker.clone(),
-                        metadata.clone(),
-                        trace_id.clone(),
-                        request.agent_context.clone(),
-                    )
-                        .await?,
-                );
-                Ok::<Vec<Message>, ProviderError>(tool_messages)
-            }
+            let mut tool_messages = Vec::new();
+            tool_messages.push(build_assistant_tool_call_message(
+                &request_id,
+                &server_calls,
+                Some(assistant_reasoning_content.clone()),
+            ));
+            let (tool_messages_from_invoker, tool_events) = invoke_server_tools::<M>(
+                &request_id,
+                &server_calls,
+                invoker.clone(),
+                metadata.clone(),
+                trace_id.clone(),
+                request.agent_context.clone(),
+            )
             .await?;
+            for event in tool_events {
+                yield event;
+            }
+            tool_messages.extend(tool_messages_from_invoker);
             request.messages.extend(tool_messages);
         }
         info!(
@@ -675,14 +674,14 @@ fn ensure_provider_call_ids(request_id: &str, calls: &mut [ProviderToolCall]) {
     }
 }
 
-async fn build_tool_messages<M: Serialize>(
+async fn invoke_server_tools<M: Serialize>(
     request_id: &str,
     calls: &[ProviderToolCall],
     invoker: Arc<dyn ToolInvoker>,
     metadata: Arc<M>,
     trace_id: String,
     agent_context: Option<Value>,
-) -> Result<Vec<Message>, ProviderError>
+) -> Result<(Vec<Message>, Vec<UnifiedEvent>), ProviderError>
 where
     M: Send + Sync + 'static,
 {
@@ -699,65 +698,136 @@ where
         let parent_span = parent_span.clone();
         let parent_cx = parent_cx.clone();
         tokio::task::spawn(async move {
-            let _enter = parent_span.enter();
-            let tracer = global::tracer("llm_api");
-            let tool_name = call.name.clone();
-            let mut span = tracer.start_with_context(tool_name.clone(), &parent_cx);
-            span.set_attribute(KeyValue::new("tool_name", tool_name));
-            span.set_attribute(KeyValue::new("arguments", call.arguments.clone()));
-            let tool_call_id = call
-                .id
-                .clone()
-                .unwrap_or_else(|| ensure_tool_call_id(&request_id, index));
-            span.set_attribute(KeyValue::new(
-                "args_size",
-                call.arguments.as_bytes().len() as i64,
-            ));
-            let request = ToolRequest {
-                args: call.arguments.clone(),
-                agent_context,
-            };
-            let request_headers = RequestHeaders {
-                name: call.name.clone(),
+            invoke_server_tool_call(
+                call,
+                index,
+                &request_id,
+                invoker,
+                metadata,
                 trace_id,
-                span_id: format!("tool-{}", call.name),
-                body_format: BodyFormat::Bytes,
-                extension: serde_json::to_string(metadata.as_ref()).unwrap_or_default(),
-            };
-            let response = invoker.invoke(request_headers, request).await;
-            let content = if let Some(error_msg) = response.error_msg {
-                span.set_attribute(KeyValue::new("status", "error"));
-                span.set_attribute(KeyValue::new("error", error_msg.clone()));
-                span.set_status(Status::error(error_msg.clone()));
-                error_msg
-            } else {
-                span.set_attribute(KeyValue::new("status", "ok"));
-                response.result.unwrap_or_default()
-            };
-            span.set_attribute(KeyValue::new(
-                "result_size",
-                content.as_bytes().len() as i64,
-            ));
-            span.set_attribute(KeyValue::new("result", content.clone()));
-            span.end();
-            Ok(Message {
-                role: Role::Tool,
-                content: Content::Text(content),
-                reasoning_content: None,
-                tool_call_id: Some(tool_call_id),
-                tool_calls: None,
-            })
+                agent_context,
+                parent_span,
+                parent_cx,
+            )
+            .await
         })
     });
 
     let results = join_all(tasks).await;
     let mut messages = Vec::with_capacity(results.len());
+    let mut events = Vec::with_capacity(results.len() * 2);
     for result in results {
-        let message = result
+        let (call_event, call_result_event) = result
             .map_err(|err| ProviderError::Internal(format!("tool task join error: {err}")))??;
-        messages.push(message);
+        messages.push(compose_server_tool_message(&call_result_event));
+        events.push(call_event);
+        events.push(call_result_event);
     }
-    Ok(messages)
+    Ok((messages, events))
+}
+
+async fn invoke_server_tool_call<M: Serialize>(
+    call: ProviderToolCall,
+    index: usize,
+    request_id: &str,
+    invoker: Arc<dyn ToolInvoker>,
+    metadata: Arc<M>,
+    trace_id: String,
+    agent_context: Option<String>,
+    parent_span: Span,
+    parent_cx: opentelemetry::Context,
+) -> Result<(UnifiedEvent, UnifiedEvent), ProviderError>
+where
+    M: Send + Sync + 'static,
+{
+    let _enter = parent_span.enter();
+    let tracer = global::tracer("llm_api");
+    let tool_name = call.name.clone();
+    let mut span = tracer.start_with_context(tool_name.clone(), &parent_cx);
+    span.set_attribute(KeyValue::new("tool_name", tool_name));
+    span.set_attribute(KeyValue::new("arguments", call.arguments.clone()));
+
+    let tool_call_id = call
+        .id
+        .clone()
+        .unwrap_or_else(|| ensure_tool_call_id(request_id, index));
+    span.set_attribute(KeyValue::new(
+        "args_size",
+        call.arguments.as_bytes().len() as i64,
+    ));
+
+    let request = ToolRequest {
+        args: call.arguments.clone(),
+        agent_context,
+    };
+    let request_headers = RequestHeaders {
+        name: call.name.clone(),
+        trace_id,
+        span_id: format!("tool-{}", call.name),
+        body_format: BodyFormat::Bytes,
+        extension: serde_json::to_string(metadata.as_ref()).unwrap_or_default(),
+    };
+
+    let response = invoker.invoke(request_headers, request).await;
+    let result = response.result;
+    let error = response.error_msg;
+
+    let content = if let Some(error_msg) = &error {
+        span.set_attribute(KeyValue::new("status", "error"));
+        span.set_attribute(KeyValue::new("error", error_msg.clone()));
+        span.set_status(Status::error(error_msg.clone()));
+        error_msg.clone()
+    } else {
+        span.set_attribute(KeyValue::new("status", "ok"));
+        result.clone().unwrap_or_default()
+    };
+
+    span.set_attribute(KeyValue::new(
+        "result_size",
+        content.as_bytes().len() as i64,
+    ));
+    span.set_attribute(KeyValue::new("result", content));
+    span.end();
+
+    let call_event = UnifiedEvent::ServerToolCall {
+        tool_call_id: tool_call_id.clone(),
+        name: call.name.clone(),
+        arguments: call.arguments,
+    };
+    let call_result_event = UnifiedEvent::ServerToolCallResult {
+        tool_call_id,
+        name: call.name,
+        result,
+        error,
+    };
+
+    Ok((call_event, call_result_event))
+}
+
+fn compose_server_tool_message(call_result_event: &UnifiedEvent) -> Message {
+    let (tool_call_id, result, error) = match call_result_event {
+        UnifiedEvent::ServerToolCallResult {
+            tool_call_id,
+            result,
+            error,
+            ..
+        } => (tool_call_id.clone(), result.clone(), error.clone()),
+        _ => unreachable!("compose_server_tool_message expects ServerToolCallResult"),
+    };
+
+    let content = if let Some(error_msg) = error {
+        error_msg
+    } else {
+        result.unwrap_or_default()
+    };
+
+    Message {
+        role: Role::Tool,
+        content: Content::Text(content),
+        reasoning_content: None,
+        tool_call_id: Some(tool_call_id),
+        tool_calls: None,
+    }
 }
 
 fn build_assistant_tool_call_message(

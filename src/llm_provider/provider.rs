@@ -101,6 +101,19 @@ pub enum UnifiedEvent {
         name: String,
         arguments: String,
     },
+    ServerToolCall {
+        tool_call_id: String,
+        name: String,
+        arguments: String,
+    },
+    ServerToolCallResult {
+        tool_call_id: String,
+        name: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        result: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
     MessageStart {
         id: String,
         role: String,

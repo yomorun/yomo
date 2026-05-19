@@ -14,10 +14,10 @@ use tracing::{Instrument, Span};
 use crate::agent_loop::{AgentLoopConfig, AgentLoopResult, run_agent_loop};
 use crate::llm_provider::registry::ProviderRegistry;
 use crate::llm_provider::selection::SelectionError;
+use crate::llm_stream_mapper::{DefaultStreamMapperSelector, StreamMapperSelector};
 use crate::metadata_mgr::MetadataMgr;
 use crate::openai_http_mapping::{
-    map_chat_error, map_openai_response, openai_error_response, stream_openai_chunks,
-    validate_openai_request,
+    map_chat_error, map_openai_response, openai_error_response, validate_openai_request,
 };
 use crate::openai_types::ChatCompletionRequest;
 use crate::tool_invoker::ToolInvoker;
@@ -31,6 +31,7 @@ pub struct LlmHandlerState<A, M> {
     pub tool_invoker: Arc<dyn ToolInvoker>,
     pub metadata_mgr: Arc<dyn MetadataMgr<A, M>>,
     pub agent_loop_config: AgentLoopConfig<M>,
+    pub mapper_selector: Arc<dyn StreamMapperSelector>,
 }
 
 pub async fn handle_chat_completions<A, M>(
@@ -58,6 +59,7 @@ where
         trace_id,
         body,
         root_span.clone(),
+        headers.clone(),
     )
     .instrument(root_span.clone())
     .await
@@ -76,6 +78,7 @@ async fn handle_chat_completions_inner<A, M>(
     trace_id: String,
     body: Bytes,
     root_span: Span,
+    headers: HeaderMap,
 ) -> Result<Response, anyhow::Error>
 where
     A: Send + Sync + 'static,
@@ -213,7 +216,8 @@ where
                 .expect("build response"))
         }
         Ok(AgentLoopResult::Stream { events }) => {
-            let sse = stream_openai_chunks(events, trace_id, model_id, root_span.clone());
+            let mapper = state.mapper_selector.select(&headers);
+            let sse = mapper.map_stream(events, trace_id, model_id, root_span.clone());
             let body = Body::from_stream(sse);
             Ok(Response::builder()
                 .status(StatusCode::OK)
@@ -246,6 +250,7 @@ pub async fn build_llm_api(
         tool_invoker,
         metadata_mgr: Arc::new(crate::metadata_mgr::MetadataMgrImpl::new()),
         agent_loop_config,
+        mapper_selector: Arc::new(DefaultStreamMapperSelector::default()),
     };
 
     let app = axum::Router::new()

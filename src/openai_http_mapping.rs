@@ -409,7 +409,9 @@ pub fn stream_openai_chunks(
                 | UnifiedEvent::ContentPartDelta { .. }
                 | UnifiedEvent::ContentPartDone { .. }
                 | UnifiedEvent::ThinkingDelta { .. }
-                | UnifiedEvent::ThinkingDone { .. } => {}
+                | UnifiedEvent::ThinkingDone { .. }
+                | UnifiedEvent::ServerToolCall { .. }
+                | UnifiedEvent::ServerToolCallResult { .. } => {}
             }
         }
 

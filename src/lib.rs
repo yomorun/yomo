@@ -21,6 +21,8 @@ pub mod io;
 pub mod llm_api;
 /// LLM provider abstractions.
 pub mod llm_provider;
+/// Stream mapper abstractions for LLM streaming output.
+pub mod llm_stream_mapper;
 /// Manage user-defined metadata extension.
 pub mod metadata_mgr;
 /// Model API HTTP APIs.
