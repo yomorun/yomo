@@ -9,20 +9,18 @@ use axum::http::StatusCode;
 use futures_core::Stream;
 use futures_util::{StreamExt, future::join_all};
 use log::{debug, error, info};
-use opentelemetry::KeyValue;
-use opentelemetry::global;
-use opentelemetry::trace::{Span as OtelSpan, Status, Tracer};
 use serde::Serialize;
 use serde_json;
 use serde_json::Value;
-use tracing::Span;
-use tracing_opentelemetry::OpenTelemetrySpanExt;
+use tracing::{Instrument, Span, field, info_span};
 
 use crate::llm_provider::openai_compatible::mapper::ensure_tool_call_id;
 use crate::llm_provider::{
-    Provider, ProviderError, ToolCall as ProviderToolCall, UnifiedEvent, UnifiedResponse, Usage,
+    FinishReason, Provider, ProviderError, ToolCall as ProviderToolCall, UnifiedEvent,
+    UnifiedResponse, Usage,
 };
 use crate::openai_types::{ChatCompletionRequest, Content, Message, Role, ToolDefinition};
+use crate::trace::record_flattened_json_attributes;
 use crate::usage_handler::{NoopUsageHandler, UsageHandler};
 use async_trait::async_trait;
 
@@ -159,6 +157,7 @@ where
     A: Send + Sync + 'static,
     M: fmt::Debug + Clone + Serialize + Send + Sync + 'static,
 {
+    let parent_span = Span::current();
     let mut call_count = 0usize;
     let mut total_usage = Usage {
         input_tokens: 0,
@@ -169,6 +168,19 @@ where
         raw: None,
     };
     loop {
+        let llm_chat_span = info_span!(
+            parent: &parent_span,
+            "llm.chat",
+            trace_id = %trace_id,
+            round = (call_count + 1) as i64,
+            streaming = false,
+            model = %request.model,
+            request_id = field::Empty,
+            finish_reason = field::Empty,
+            "tool_calls.server.count" = 0i64,
+            "tool_calls.client.count" = 0i64,
+        );
+
         let tool_maps = build_tool_maps(&request, server_tools.as_ref())?;
         request.tools = tool_maps.merged_tools.clone();
         if call_count > 0 {
@@ -177,8 +189,17 @@ where
 
         log_round_request(call_count + 1, false, &request, &trace_id);
 
-        let mut response = provider.complete(request.clone()).await?;
+        let mut response = provider
+            .complete(request.clone())
+            .instrument(llm_chat_span.clone())
+            .await?;
         response.usage = config.handle_usage(response.usage.raw.clone(), response.usage);
+        llm_chat_span.record("request_id", field::display(&response.request_id));
+        llm_chat_span.record(
+            "finish_reason",
+            field::display(finish_reason_to_str(&response.finish_reason)),
+        );
+        record_flattened_json_attributes(&llm_chat_span, "usage", &usage_to_value(&response.usage));
         let usage_handler = Arc::clone(&config.usage_handler);
         let model_id = response.model.clone();
         let request_id = response.request_id.clone();
@@ -225,6 +246,8 @@ where
         }
 
         let (server_calls, client_calls) = split_tool_calls(&tool_calls, &tool_maps.source_map);
+        llm_chat_span.record("tool_calls.server.count", server_calls.len() as i64);
+        llm_chat_span.record("tool_calls.client.count", client_calls.len() as i64);
         if server_calls.is_empty() {
             response.tool_calls = Some(client_calls);
             response.usage = total_usage;
@@ -237,6 +260,14 @@ where
         }
 
         let request_id = response.request_id.clone();
+        let tool_calls_span = info_span!(
+            parent: &parent_span,
+            "tool.calls",
+            trace_id = %trace_id,
+            round = call_count as i64,
+            streaming = false,
+            tool_count = server_calls.len() as i64,
+        );
         let next_messages = async {
             let mut next_messages = Vec::new();
             next_messages.push(build_assistant_tool_call_message(
@@ -253,11 +284,13 @@ where
                     trace_id.clone(),
                     request.agent_context.clone(),
                 )
+                .instrument(tool_calls_span)
                 .await?
                 .0,
             );
             Ok::<Vec<Message>, ProviderError>(next_messages)
         }
+        .instrument(llm_chat_span)
         .await?;
         request.messages.extend(next_messages);
     }
@@ -277,6 +310,7 @@ where
     A: Send + Sync + 'static,
     M: fmt::Debug + Clone + Serialize + Send + Sync + 'static,
 {
+    let parent_span = Span::current();
     let stream = async_stream::try_stream! {
         let mut call_count = 0usize;
         let mut total_usage = Usage {
@@ -290,15 +324,31 @@ where
         let mut last_finish_reason: Option<String> = None;
         let model_id = request.model.clone();
         loop {
-        let tool_maps = build_tool_maps(&request, server_tools.as_ref())?;
-        request.tools = tool_maps.merged_tools.clone();
-        if call_count > 0 {
-            request.tool_choice = None;
+            let llm_chat_span = info_span!(
+                parent: &parent_span,
+                "llm.chat",
+                trace_id = %trace_id,
+                round = (call_count + 1) as i64,
+                streaming = true,
+                model = %request.model,
+                request_id = field::Empty,
+                finish_reason = field::Empty,
+                "tool_calls.server.count" = 0i64,
+                "tool_calls.client.count" = 0i64,
+            );
+
+            let tool_maps = build_tool_maps(&request, server_tools.as_ref())?;
+            request.tools = tool_maps.merged_tools.clone();
+            if call_count > 0 {
+                request.tool_choice = None;
             }
 
             log_round_request(call_count + 1, true, &request, &trace_id);
 
-            let mut provider_stream = provider.stream(request.clone()).await?;
+            let mut provider_stream = provider
+                .stream(request.clone())
+                .instrument(llm_chat_span.clone())
+                .await?;
 
             let usage_offset = total_usage.clone();
 
@@ -439,7 +489,19 @@ where
             }
 
             call_count += 1;
+            if let Some(id) = request_id.as_deref() {
+                llm_chat_span.record("request_id", field::display(id));
+            }
+            llm_chat_span.record(
+                "finish_reason",
+                field::display(finish_reason.as_deref().unwrap_or("")),
+            );
             if let Some(current_usage) = &usage {
+                record_flattened_json_attributes(
+                    &llm_chat_span,
+                    "usage",
+                    &usage_to_value(current_usage),
+                );
                 let usage_handler = Arc::clone(&config.usage_handler);
                 let model_id = model_id.clone();
                 let request_id = request_id.clone().unwrap_or_default();
@@ -496,6 +558,8 @@ where
             }
 
             let (server_calls, client_calls) = split_tool_calls(&tool_calls, &tool_maps.source_map);
+            llm_chat_span.record("tool_calls.server.count", server_calls.len() as i64);
+            llm_chat_span.record("tool_calls.client.count", client_calls.len() as i64);
             if server_calls.is_empty() {
                 if !emitted_client_tool {
                     let events = build_client_tool_events(
@@ -538,6 +602,14 @@ where
                 &server_calls,
                 Some(assistant_reasoning_content.clone()),
             ));
+            let tool_calls_span = info_span!(
+                parent: &parent_span,
+                "tool.calls",
+                trace_id = %trace_id,
+                round = call_count as i64,
+                streaming = true,
+                tool_count = server_calls.len() as i64,
+            );
             let (tool_messages_from_invoker, tool_events) = invoke_server_tools::<M>(
                 &request_id,
                 &server_calls,
@@ -546,6 +618,7 @@ where
                 trace_id.clone(),
                 request.agent_context.clone(),
             )
+            .instrument(tool_calls_span)
             .await?;
             for event in tool_events {
                 yield event;
@@ -688,7 +761,6 @@ where
     let agent_context = agent_context.map(|value| value.to_string());
     let request_id = request_id.to_string();
     let parent_span = Span::current();
-    let parent_cx = parent_span.context();
     let tasks = calls.iter().cloned().enumerate().map(|(index, call)| {
         let invoker = invoker.clone();
         let metadata = metadata.clone();
@@ -696,7 +768,6 @@ where
         let agent_context = agent_context.clone();
         let request_id = request_id.clone();
         let parent_span = parent_span.clone();
-        let parent_cx = parent_cx.clone();
         tokio::task::spawn(async move {
             invoke_server_tool_call(
                 call,
@@ -707,7 +778,6 @@ where
                 trace_id,
                 agent_context,
                 parent_span,
-                parent_cx,
             )
             .await
         })
@@ -735,26 +805,22 @@ async fn invoke_server_tool_call<M: Serialize>(
     trace_id: String,
     agent_context: Option<String>,
     parent_span: Span,
-    parent_cx: opentelemetry::Context,
 ) -> Result<(UnifiedEvent, UnifiedEvent), ProviderError>
 where
     M: Send + Sync + 'static,
 {
-    let _enter = parent_span.enter();
-    let tracer = global::tracer("llm_api");
-    let tool_name = call.name.clone();
-    let mut span = tracer.start_with_context(tool_name.clone(), &parent_cx);
-    span.set_attribute(KeyValue::new("tool_name", tool_name));
-    span.set_attribute(KeyValue::new("arguments", call.arguments.clone()));
-
     let tool_call_id = call
         .id
         .clone()
         .unwrap_or_else(|| ensure_tool_call_id(request_id, index));
-    span.set_attribute(KeyValue::new(
-        "args_size",
-        call.arguments.as_bytes().len() as i64,
-    ));
+    let tool_call_span = info_span!(
+        parent: &parent_span,
+        "tool.call",
+        otel.name = %call.name,
+        tool_name = %call.name,
+        tool_call_id = %tool_call_id,
+        args_size = call.arguments.as_bytes().len() as i64,
+    );
 
     let request = ToolRequest {
         args: call.arguments.clone(),
@@ -768,26 +834,12 @@ where
         extension: serde_json::to_string(metadata.as_ref()).unwrap_or_default(),
     };
 
-    let response = invoker.invoke(request_headers, request).await;
+    let response = invoker
+        .invoke(request_headers, request)
+        .instrument(tool_call_span)
+        .await;
     let result = response.result;
     let error = response.error_msg;
-
-    let content = if let Some(error_msg) = &error {
-        span.set_attribute(KeyValue::new("status", "error"));
-        span.set_attribute(KeyValue::new("error", error_msg.clone()));
-        span.set_status(Status::error(error_msg.clone()));
-        error_msg.clone()
-    } else {
-        span.set_attribute(KeyValue::new("status", "ok"));
-        result.clone().unwrap_or_default()
-    };
-
-    span.set_attribute(KeyValue::new(
-        "result_size",
-        content.as_bytes().len() as i64,
-    ));
-    span.set_attribute(KeyValue::new("result", content));
-    span.end();
 
     let call_event = UnifiedEvent::ServerToolCall {
         tool_call_id: tool_call_id.clone(),
@@ -945,6 +997,16 @@ fn usage_to_value(usage: &Usage) -> Value {
         .clone()
         .or_else(|| serde_json::to_value(usage).ok())
         .unwrap_or(Value::Null)
+}
+
+fn finish_reason_to_str(reason: &FinishReason) -> &'static str {
+    match reason {
+        FinishReason::Stop => "stop",
+        FinishReason::Length => "length",
+        FinishReason::ToolCalls => "tool_calls",
+        FinishReason::ContentFilter => "content_filter",
+        FinishReason::Other => "other",
+    }
 }
 
 fn add_usage_cloned(total: &Usage, delta: &Usage) -> Usage {

@@ -9,9 +9,11 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use log::{error, info};
 use serde::Serialize;
+use serde_json::Value;
 use tracing::{Instrument, Span};
 
 use crate::agent_loop::{AgentLoopConfig, AgentLoopResult, run_agent_loop};
+use crate::llm_provider::FinishReason;
 use crate::llm_provider::registry::ProviderRegistry;
 use crate::llm_provider::selection::SelectionError;
 use crate::llm_stream_mapper::{DefaultStreamMapperSelector, StreamMapperSelector};
@@ -22,7 +24,8 @@ use crate::openai_http_mapping::{
 use crate::openai_types::ChatCompletionRequest;
 use crate::tool_invoker::ToolInvoker;
 use crate::tool_mgr::ToolMgr;
-use crate::utils::start_request_span;
+use crate::trace::{DefaultRequestSpanStarter, RequestSpanStarter};
+use crate::trace::{record_flattened_json_attributes, set_http_span_status};
 
 #[derive(Clone)]
 pub struct LlmHandlerState<A, M> {
@@ -30,6 +33,7 @@ pub struct LlmHandlerState<A, M> {
     pub tool_mgr: Arc<dyn ToolMgr<A, M>>,
     pub tool_invoker: Arc<dyn ToolInvoker>,
     pub metadata_mgr: Arc<dyn MetadataMgr<A, M>>,
+    pub request_span_starter: Arc<dyn RequestSpanStarter<M>>,
     pub agent_loop_config: AgentLoopConfig<M>,
     pub mapper_selector: Arc<dyn StreamMapperSelector>,
 }
@@ -43,17 +47,28 @@ where
     A: Send + Sync + 'static,
     M: fmt::Debug + Clone + Serialize + Send + Sync + 'static,
 {
-    let (root_span, trace_id) = start_request_span("POST", "/v1/chat/completions");
-
     let metadata = match state.metadata_mgr.new_from_http_headers(&headers) {
         Ok(metadata) => metadata,
         Err(err) => {
+            let (root_span, _trace_id) =
+                state
+                    .request_span_starter
+                    .start_request_span("POST", "/v1/chat/completions", None);
+            root_span.record("http.request.body.size", body.len() as i64);
             error!("new metadata from headers: {err}");
-            return openai_error_response(StatusCode::BAD_REQUEST, &err.to_string(), None);
+            let message = err.to_string();
+            set_http_span_status(&root_span, StatusCode::BAD_REQUEST, Some(&message));
+            return openai_error_response(StatusCode::BAD_REQUEST, &message, None);
         }
     };
+    let (root_span, trace_id) = state.request_span_starter.start_request_span(
+        "POST",
+        "/v1/chat/completions",
+        Some(&metadata),
+    );
+    root_span.record("http.request.body.size", body.len() as i64);
 
-    match handle_chat_completions_inner::<A, M>(
+    let (response, status_message) = match handle_chat_completions_inner::<A, M>(
         state,
         metadata.to_owned(),
         trace_id,
@@ -64,12 +79,18 @@ where
     .instrument(root_span.clone())
     .await
     {
-        Ok(response) => response,
+        Ok(response) => (response, None),
         Err(err) => {
             error!("chat completion failed: {err} {:?}", metadata);
-            openai_error_response(StatusCode::INTERNAL_SERVER_ERROR, "internal error", None)
+            let message = err.to_string();
+            (
+                openai_error_response(StatusCode::INTERNAL_SERVER_ERROR, "internal error", None),
+                Some(message),
+            )
         }
-    }
+    };
+    set_http_span_status(&root_span, response.status(), status_message.as_deref());
+    response
 }
 
 async fn handle_chat_completions_inner<A, M>(
@@ -199,6 +220,11 @@ where
 
     match loop_result {
         Ok(AgentLoopResult::NonStream(response)) => {
+            root_span.record(
+                "finish_reason",
+                tracing::field::display(finish_reason_to_str(&response.finish_reason)),
+            );
+            record_flattened_json_attributes(&root_span, "usage", &usage_to_value(&response.usage));
             info!(
                 "http.request.end; status_code=200 model_id={} prompt_tokens={} completion_tokens={} trace_id={} metadata={:?}",
                 model_id,
@@ -238,6 +264,24 @@ where
     }
 }
 
+fn finish_reason_to_str(reason: &FinishReason) -> &'static str {
+    match reason {
+        FinishReason::Stop => "stop",
+        FinishReason::Length => "length",
+        FinishReason::ToolCalls => "tool_calls",
+        FinishReason::ContentFilter => "content_filter",
+        FinishReason::Other => "other",
+    }
+}
+
+fn usage_to_value(usage: &crate::llm_provider::Usage) -> Value {
+    usage
+        .raw
+        .clone()
+        .or_else(|| serde_json::to_value(usage).ok())
+        .unwrap_or(Value::Null)
+}
+
 pub async fn build_llm_api(
     tool_mgr: Arc<dyn ToolMgr<(), ()>>,
     provider_registry: ProviderRegistry<()>,
@@ -249,6 +293,7 @@ pub async fn build_llm_api(
         tool_mgr,
         tool_invoker,
         metadata_mgr: Arc::new(crate::metadata_mgr::MetadataMgrImpl::new()),
+        request_span_starter: Arc::new(DefaultRequestSpanStarter),
         agent_loop_config,
         mapper_selector: Arc::new(DefaultStreamMapperSelector::default()),
     };

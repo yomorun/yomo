@@ -7,6 +7,7 @@ use futures_core::Stream;
 use futures_util::StreamExt;
 use log::{debug, error};
 use serde_json;
+use serde_json::Value;
 use tracing::{Span, debug_span, field};
 
 use crate::llm_provider::{FinishReason, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse};
@@ -16,6 +17,7 @@ use crate::openai_types::{
     ChatCompletionResponse, Content as OpenAIContent, ContentPart, ErrorResponse, Role,
     ToolCall as OpenAIToolCall, ToolCallFunction, ToolChoice, Usage,
 };
+use crate::trace::record_flattened_json_attributes;
 
 pub fn map_openai_response(response: UnifiedResponse) -> ChatCompletionResponse {
     let content = if response.output_text.is_empty() {
@@ -182,18 +184,6 @@ pub fn stream_openai_chunks(
         let mut tool_call_index: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
         let mut next_tool_index: i32 = 0;
 
-        let ensure_response_span = |response_span: &mut Option<Span>| {
-            if response_span.is_none() {
-                let span = debug_span!(
-                    parent: &root_span,
-                    "response.stream",
-                    http.status_code = StatusCode::OK.as_u16() as i64,
-                    finish_reason = field::Empty,
-                );
-                *response_span = Some(span);
-            }
-        };
-
         while let Some(item) = stream.next().await {
             let event = match item {
                 Ok(event) => event,
@@ -210,7 +200,6 @@ pub fn stream_openai_chunks(
                     }
                     created_at = resp_created;
                     if !sent_preamble {
-                        ensure_response_span(&mut response_span);
                         sent_preamble = true;
                         yield sse_chunk(ChatCompletionChunk {
                             id: String::new(),
@@ -237,7 +226,6 @@ pub fn stream_openai_chunks(
                         tool_calls: None,
                     };
                     role_sent = true;
-                    ensure_response_span(&mut response_span);
                     yield sse_chunk(ChatCompletionChunk {
                         id: response_id.clone(),
                         created: parse_created_at(&created_at),
@@ -275,7 +263,6 @@ pub fn stream_openai_chunks(
                         }]),
                     };
                     role_sent = true;
-                    ensure_response_span(&mut response_span);
                     yield sse_chunk(ChatCompletionChunk {
                         id: response_id.clone(),
                         created: parse_created_at(&created_at),
@@ -313,7 +300,6 @@ pub fn stream_openai_chunks(
                         }]),
                     };
                     role_sent = true;
-                    ensure_response_span(&mut response_span);
                     yield sse_chunk(ChatCompletionChunk {
                         id: response_id.clone(),
                         created: parse_created_at(&created_at),
@@ -331,7 +317,6 @@ pub fn stream_openai_chunks(
                     });
                 }
                 UnifiedEvent::Usage { usage } => {
-                    ensure_response_span(&mut response_span);
                     yield sse_chunk(ChatCompletionChunk {
                         id: response_id.clone(),
                         created: parse_created_at(&created_at),
@@ -346,6 +331,24 @@ pub fn stream_openai_chunks(
                 UnifiedEvent::MessageStop { .. } => {}
                 UnifiedEvent::Completed { finish_reason, usage } => {
                     let model_for_log = model.clone();
+                    if response_span.is_none() {
+                        response_span = Some(debug_span!(
+                            parent: &root_span,
+                            "response.streaming",
+                            http.response.status_code = StatusCode::OK.as_u16() as i64,
+                            finish_reason = field::Empty,
+                        ));
+                    }
+                    root_span.record(
+                        "finish_reason",
+                        field::display(finish_reason.as_deref().unwrap_or("")),
+                    );
+                    if let Some(usage) = usage.as_ref() {
+                        let usage_value = usage.raw.clone().unwrap_or_else(|| {
+                            serde_json::to_value(usage).unwrap_or(Value::Null)
+                        });
+                        record_flattened_json_attributes(&root_span, "usage", &usage_value);
+                    }
                     if let (Some(reason), Some(span)) = (finish_reason.as_deref(), response_span.as_ref()) {
                         span.record("finish_reason", field::display(reason));
                     }
@@ -361,7 +364,6 @@ pub fn stream_openai_chunks(
                         role_sent = true;
                         finish_sent = true;
                         let usage = usage.as_ref().map(map_usage);
-                        ensure_response_span(&mut response_span);
                         yield sse_chunk(ChatCompletionChunk {
                             id: request_id,
                             created: parse_created_at(&created_at),

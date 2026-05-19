@@ -1,10 +1,12 @@
-use std::fmt;
+use std::{fmt, pin::Pin};
 
+use async_stream::try_stream;
 use axum::body::{Body, Bytes};
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, Method, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use futures_util::stream;
+use futures_core::Stream;
+use futures_util::{StreamExt, stream};
 use log::{error, info};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -17,13 +19,17 @@ use crate::model_api_provider::{
     SelectionError, Usage,
 };
 use crate::openai_http_mapping::openai_error_response;
+use crate::trace::{
+    DefaultRequestSpanStarter, RequestSpanStarter, record_flattened_json_attributes,
+    set_http_span_status,
+};
 use crate::usage_handler::UsageHandler;
-use crate::utils::start_request_span;
 
 pub struct ModelApiHandlerState<A, M> {
     pub provider_registry: std::sync::Arc<ProviderRegistry<M>>,
     pub usage_handler: std::sync::Arc<dyn UsageHandler<M>>,
     pub metadata_mgr: std::sync::Arc<dyn MetadataMgr<A, M>>,
+    pub request_span_starter: std::sync::Arc<dyn RequestSpanStarter<M>>,
 }
 
 impl<A, M> Clone for ModelApiHandlerState<A, M> {
@@ -32,6 +38,7 @@ impl<A, M> Clone for ModelApiHandlerState<A, M> {
             provider_registry: std::sync::Arc::clone(&self.provider_registry),
             usage_handler: std::sync::Arc::clone(&self.usage_handler),
             metadata_mgr: std::sync::Arc::clone(&self.metadata_mgr),
+            request_span_starter: std::sync::Arc::clone(&self.request_span_starter),
         }
     }
 }
@@ -98,15 +105,24 @@ where
     M: fmt::Debug + Clone + Send + Sync + 'static,
 {
     let route = format!("/v1{endpoint_path}");
-    let (root_span, trace_id) = start_request_span("POST", &route);
-
     let metadata = match state.metadata_mgr.new_from_http_headers(&headers) {
         Ok(metadata) => metadata,
         Err(err) => {
+            let (root_span, _trace_id) = state
+                .request_span_starter
+                .start_request_span("POST", &route, None);
+            root_span.record("http.request.body.size", body.len() as i64);
             error!("new metadata from headers: {err}");
-            return openai_error_response(StatusCode::BAD_REQUEST, &err.to_string(), None);
+            let message = err.to_string();
+            set_http_span_status(&root_span, StatusCode::BAD_REQUEST, Some(&message));
+            return openai_error_response(StatusCode::BAD_REQUEST, &message, None);
         }
     };
+    let (root_span, trace_id) =
+        state
+            .request_span_starter
+            .start_request_span("POST", &route, Some(&metadata));
+    root_span.record("http.request.body.size", body.len() as i64);
 
     let content_type = headers
         .get(header::CONTENT_TYPE)
@@ -116,6 +132,7 @@ where
         Ok(metadata) => metadata,
         Err(err) => {
             error!("model api request parse failed: {err} trace_id={trace_id}");
+            set_http_span_status(&root_span, StatusCode::BAD_REQUEST, Some(&err));
             return openai_error_response(
                 StatusCode::BAD_REQUEST,
                 &err,
@@ -132,6 +149,11 @@ where
     ) {
         Ok(provider_entry) => provider_entry,
         Err(SelectionError::OutstandingBalance) => {
+            set_http_span_status(
+                &root_span,
+                StatusCode::PAYMENT_REQUIRED,
+                Some("outstanding_balance"),
+            );
             return openai_error_response(
                 StatusCode::PAYMENT_REQUIRED,
                 "outstanding_balance",
@@ -145,6 +167,7 @@ where
             } else {
                 format!("model {model} is not supported")
             };
+            set_http_span_status(&root_span, StatusCode::BAD_REQUEST, Some(&message));
             return openai_error_response(
                 StatusCode::BAD_REQUEST,
                 &message,
@@ -179,10 +202,12 @@ where
                 "http.request.end; status_code=502 model_id={} error={} trace_id={} metadata={:?}",
                 provider_entry.model_id, err, trace_id, metadata
             );
+            let message = err.to_string();
+            set_http_span_status(&root_span, StatusCode::BAD_GATEWAY, Some(&message));
             return Response::builder()
                 .status(StatusCode::BAD_GATEWAY)
                 .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
-                .body(Body::from(err.to_string()))
+                .body(Body::from(message))
                 .expect("build response");
         }
     };
@@ -197,6 +222,7 @@ where
             let request_id = parse_request_id(&payload).unwrap_or_default();
             if let Some(usage) = parse_usage(kind, &payload) {
                 if let Ok(usage_value) = serde_json::to_value(usage) {
+                    record_flattened_json_attributes(&root_span, "usage", &usage_value);
                     let usage_handler = std::sync::Arc::clone(&state.usage_handler);
                     let endpoint = endpoint_path.to_string();
                     let model_id = provider_entry.model_id.clone();
@@ -223,7 +249,11 @@ where
             builder.body(Body::from(payload)).expect("build response")
         }
         ProviderBody::Stream(stream) => builder
-            .body(Body::from_stream(stream))
+            .body(Body::from_stream(wrap_stream_with_usage(
+                kind,
+                stream,
+                root_span.clone(),
+            )))
             .expect("build response"),
     };
 
@@ -234,6 +264,8 @@ where
         trace_id,
         metadata
     );
+
+    set_http_span_status(&root_span, response.status(), None);
 
     response
 }
@@ -295,9 +327,18 @@ fn parse_multipart_boundary(content_type: &str) -> Option<String> {
 
 fn parse_usage(kind: EndpointKind, payload: &Bytes) -> Option<Usage> {
     let value: Value = serde_json::from_slice(payload).ok()?;
+    parse_usage_from_json(kind, &value)
+}
+
+fn parse_usage_from_json(kind: EndpointKind, value: &Value) -> Option<Usage> {
     match kind {
         EndpointKind::Messages => {
-            let usage_value = value.get("usage").cloned()?;
+            let usage_value = value.get("usage").cloned().or_else(|| {
+                value
+                    .get("message")
+                    .and_then(|message| message.get("usage"))
+                    .cloned()
+            })?;
             parse_usage_value::<MessagesUsage>(Some(usage_value.clone()))
                 .map(Usage::Messages)
                 .or_else(|| {
@@ -307,7 +348,12 @@ fn parse_usage(kind: EndpointKind, payload: &Bytes) -> Option<Usage> {
                 })
         }
         EndpointKind::Responses => {
-            let usage_value = value.get("usage").cloned()?;
+            let usage_value = value.get("usage").cloned().or_else(|| {
+                value
+                    .get("response")
+                    .and_then(|response| response.get("usage"))
+                    .cloned()
+            })?;
             parse_usage_value::<ResponsesUsage>(Some(usage_value.clone()))
                 .map(Usage::Responses)
                 .or_else(|| {
@@ -316,15 +362,20 @@ fn parse_usage(kind: EndpointKind, payload: &Bytes) -> Option<Usage> {
                     }))
                 })
         }
-        EndpointKind::GenerateContent => {
-            parse_usage_value::<GenerateContentUsage>(value.get("usageMetadata").cloned())
-                .map(Usage::GenerateContent)
-                .or_else(|| {
-                    Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
-                        raw: value,
-                    }))
-                })
-        }
+        EndpointKind::GenerateContent => parse_usage_value::<GenerateContentUsage>(
+            value.get("usageMetadata").cloned().or_else(|| {
+                value
+                    .get("response")
+                    .and_then(|response| response.get("usageMetadata"))
+                    .cloned()
+            }),
+        )
+        .map(Usage::GenerateContent)
+        .or_else(|| {
+            Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
+                raw: value.clone(),
+            }))
+        }),
         EndpointKind::Embeddings => {
             let usage_value = value.get("usage").cloned()?;
             parse_usage_value::<EmbeddingsUsage>(Some(usage_value.clone()))
@@ -378,6 +429,73 @@ fn parse_usage(kind: EndpointKind, payload: &Bytes) -> Option<Usage> {
     }
 }
 
+fn wrap_stream_with_usage(
+    kind: EndpointKind,
+    stream: Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send>>,
+    root_span: tracing::Span,
+) -> Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send>> {
+    Box::pin(try_stream! {
+        futures_util::pin_mut!(stream);
+        let mut text_buffer = String::new();
+        let mut latest_usage: Option<Value> = None;
+        while let Some(item) = stream.next().await {
+            let chunk = item?;
+            if let Ok(text) = std::str::from_utf8(&chunk) {
+                text_buffer.push_str(text);
+                update_usage_from_sse_frames(kind, &mut text_buffer, &mut latest_usage);
+            }
+            yield chunk;
+        }
+
+        if !text_buffer.trim().is_empty() {
+            if let Ok(value) = serde_json::from_str::<Value>(text_buffer.trim()) {
+                if let Some(usage) = parse_usage_from_json(kind, &value) {
+                    latest_usage = serde_json::to_value(usage).ok();
+                }
+            } else {
+                update_usage_from_sse_frames(kind, &mut text_buffer, &mut latest_usage);
+            }
+        }
+
+        if let Some(usage_value) = latest_usage {
+            record_flattened_json_attributes(&root_span, "usage", &usage_value);
+        }
+    })
+}
+
+fn update_usage_from_sse_frames(
+    kind: EndpointKind,
+    buffer: &mut String,
+    latest_usage: &mut Option<Value>,
+) {
+    while let Some(frame_end) = buffer.find("\n\n") {
+        let frame = buffer[..frame_end].to_string();
+        buffer.drain(..frame_end + 2);
+        if let Some(value) = parse_sse_data_json(&frame) {
+            if let Some(usage) = parse_usage_from_json(kind, &value) {
+                *latest_usage = serde_json::to_value(usage).ok();
+            }
+        }
+    }
+}
+
+fn parse_sse_data_json(frame: &str) -> Option<Value> {
+    let mut payload = String::new();
+    for line in frame.lines() {
+        if let Some(data) = line.strip_prefix("data:") {
+            if !payload.is_empty() {
+                payload.push('\n');
+            }
+            payload.push_str(data.trim_start());
+        }
+    }
+    let payload = payload.trim();
+    if payload.is_empty() || payload == "[DONE]" {
+        return None;
+    }
+    serde_json::from_str(payload).ok()
+}
+
 fn parse_request_id(payload: &Bytes) -> Option<String> {
     let value: Value = serde_json::from_slice(payload).ok()?;
     value
@@ -428,6 +546,7 @@ pub async fn build_model_api(
         provider_registry: std::sync::Arc::new(provider_registry),
         usage_handler,
         metadata_mgr: std::sync::Arc::new(crate::metadata_mgr::MetadataMgrImpl::new()),
+        request_span_starter: std::sync::Arc::new(DefaultRequestSpanStarter),
     };
 
     let app = axum::Router::new()
