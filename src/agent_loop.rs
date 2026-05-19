@@ -820,7 +820,12 @@ where
         tool_name = %call.name,
         tool_call_id = %tool_call_id,
         args_size = call.arguments.as_bytes().len() as i64,
+        arguments = field::Empty,
+        status = field::Empty,
+        result_size = field::Empty,
+        result = field::Empty,
     );
+    tool_call_span.record("arguments", field::display(&call.arguments));
 
     let request = ToolRequest {
         args: call.arguments.clone(),
@@ -836,10 +841,20 @@ where
 
     let response = invoker
         .invoke(request_headers, request)
-        .instrument(tool_call_span)
+        .instrument(tool_call_span.clone())
         .await;
     let result = response.result;
     let error = response.error_msg;
+    if let Some(error_msg) = error.as_ref() {
+        tool_call_span.record("status", field::display("error"));
+        tool_call_span.record("result_size", error_msg.as_bytes().len() as i64);
+        tool_call_span.record("result", field::display(error_msg));
+    } else {
+        let result_text = result.as_deref().unwrap_or("");
+        tool_call_span.record("status", field::display("ok"));
+        tool_call_span.record("result_size", result_text.as_bytes().len() as i64);
+        tool_call_span.record("result", field::display(result_text));
+    }
 
     let call_event = UnifiedEvent::ServerToolCall {
         tool_call_id: tool_call_id.clone(),
