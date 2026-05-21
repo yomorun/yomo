@@ -1,4 +1,3 @@
-use reqwest::StatusCode;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -36,60 +35,6 @@ pub struct CompletionTokensDetails {
     pub reasoning_tokens: i32,
     #[serde(default)]
     pub rejected_prediction_tokens: i32,
-}
-
-#[derive(Debug)]
-pub enum ClientError {
-    Http(reqwest::Error),
-    InvalidRequest(String),
-    InvalidResponse(String),
-    Timeout(String),
-    Api(ApiError),
-}
-
-impl std::fmt::Display for ClientError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ClientError::Http(err) => write!(f, "http error: {err}"),
-            ClientError::InvalidRequest(message) => write!(f, "invalid request: {message}"),
-            ClientError::InvalidResponse(message) => write!(f, "invalid response: {message}"),
-            ClientError::Timeout(message) => write!(f, "timeout: {message}"),
-            ClientError::Api(err) => write!(f, "api error: {err}"),
-        }
-    }
-}
-
-impl std::error::Error for ClientError {}
-
-impl From<reqwest::Error> for ClientError {
-    fn from(err: reqwest::Error) -> Self {
-        ClientError::Http(err)
-    }
-}
-
-#[derive(Debug)]
-pub enum ApiError {
-    OpenAI {
-        status: StatusCode,
-        error: ErrorDetail,
-    },
-    Custom(Value),
-    Unknown {
-        status: StatusCode,
-        body: String,
-    },
-}
-
-impl std::fmt::Display for ApiError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ApiError::OpenAI { status, error } => {
-                write!(f, "status {status}, {}", error.message)
-            }
-            ApiError::Custom(value) => write!(f, "custom error: {value}"),
-            ApiError::Unknown { status, body } => write!(f, "status {status}, {body}"),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

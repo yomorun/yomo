@@ -6,12 +6,11 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::pin::Pin;
 
+use crate::llm_provider::openai_compatible::client::{ApiError, ClientError};
 use crate::llm_provider::openai_compatible::{client, mapper};
 use crate::llm_provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
 use crate::openai_http_mapping::validate_openai_request;
-use crate::openai_types::{
-    ApiError, ChatCompletionRequest, ClientError, Content, ContentPart, ErrorDetail, Role,
-};
+use crate::openai_types::{ChatCompletionRequest, Content, ContentPart, ErrorDetail, Role};
 use crate::serve_config::ConfigError;
 
 #[derive(Clone)]
@@ -179,12 +178,38 @@ fn normalize_reasoning_effort(request: &mut ChatCompletionRequest) {
 
 fn map_openai_error(err: ClientError) -> ProviderError {
     match err {
-        ClientError::Api(ApiError::OpenAI { status, error }) => ProviderError::Public {
-            status: axum::http::StatusCode::from_u16(status.as_u16())
-                .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
-            error,
-        },
+        ClientError::Api(ApiError::OpenAI { status, error }) => {
+            if status.is_server_error() {
+                upstream_service_error("http_service_error")
+            } else {
+                ProviderError::Public {
+                    status: axum::http::StatusCode::from_u16(status.as_u16())
+                        .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                    error,
+                }
+            }
+        }
+        ClientError::Api(ApiError::Unknown { status, .. }) if status.is_server_error() => {
+            upstream_service_error("http_service_error")
+        }
+        ClientError::Timeout(_) => upstream_service_error("compute_resource_error"),
+        ClientError::Http(error) if error.is_timeout() => {
+            upstream_service_error("compute_resource_error")
+        }
+        ClientError::Http(_) => upstream_service_error("network_error"),
         other => ProviderError::Internal(other.to_string()),
+    }
+}
+
+fn upstream_service_error(code: &str) -> ProviderError {
+    ProviderError::Public {
+        status: axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+        error: ErrorDetail {
+            message: code.to_string(),
+            r#type: "upstream_error".to_string(),
+            code: Some(code.to_string()),
+            param: None,
+        },
     }
 }
 
@@ -380,6 +405,62 @@ mod tests {
                 assert_eq!(error.message, "rate limit exceeded");
                 assert_eq!(error.r#type, "rate_limit_error");
                 assert_eq!(error.code.as_deref(), Some("rate_limit"));
+            }
+            other => panic!("expected public error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn map_openai_error_openai_5xx_becomes_http_service_error() {
+        let err = ClientError::Api(ApiError::OpenAI {
+            status: reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+            error: ErrorDetail {
+                message: "upstream failed".to_string(),
+                r#type: "server_error".to_string(),
+                code: None,
+                param: None,
+            },
+        });
+
+        match map_openai_error(err) {
+            ProviderError::Public { status, error } => {
+                assert_eq!(status, axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+                assert_eq!(error.message, "http_service_error");
+                assert_eq!(error.r#type, "upstream_error");
+                assert_eq!(error.code.as_deref(), Some("http_service_error"));
+            }
+            other => panic!("expected public error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn map_openai_error_timeout_becomes_compute_resource_error() {
+        let err = ClientError::Timeout("stream first byte timeout".to_string());
+
+        match map_openai_error(err) {
+            ProviderError::Public { status, error } => {
+                assert_eq!(status, axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+                assert_eq!(error.message, "compute_resource_error");
+                assert_eq!(error.r#type, "upstream_error");
+                assert_eq!(error.code.as_deref(), Some("compute_resource_error"));
+            }
+            other => panic!("expected public error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn map_openai_error_unknown_5xx_becomes_http_service_error() {
+        let err = ClientError::Api(ApiError::Unknown {
+            status: reqwest::StatusCode::BAD_GATEWAY,
+            body: "gateway failed".to_string(),
+        });
+
+        match map_openai_error(err) {
+            ProviderError::Public { status, error } => {
+                assert_eq!(status, axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+                assert_eq!(error.message, "http_service_error");
+                assert_eq!(error.r#type, "upstream_error");
+                assert_eq!(error.code.as_deref(), Some("http_service_error"));
             }
             other => panic!("expected public error, got {other:?}"),
         }

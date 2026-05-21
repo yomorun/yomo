@@ -4,12 +4,11 @@ use futures_core::Stream;
 use futures_util::StreamExt;
 use std::pin::Pin;
 
+use crate::llm_provider::openai_compatible::client::ClientError;
 use crate::llm_provider::openai_compatible::{client, mapper};
 use crate::llm_provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
 use crate::openai_http_mapping::validate_openai_request;
-use crate::openai_types::{
-    ChatCompletionRequest, ClientError, Message, Role, ThinkingConfig, ThinkingType,
-};
+use crate::openai_types::{ChatCompletionRequest, Message, Role, ThinkingConfig, ThinkingType};
 use crate::serve_config::ConfigError;
 
 #[derive(Clone)]
