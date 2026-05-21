@@ -9,7 +9,9 @@ use std::pin::Pin;
 use crate::llm_provider::openai_compatible::{client, mapper};
 use crate::llm_provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
 use crate::openai_http_mapping::validate_openai_request;
-use crate::openai_types::{ChatCompletionRequest, ClientError, Content, ContentPart, Role};
+use crate::openai_types::{
+    ApiError, ChatCompletionRequest, ClientError, Content, ContentPart, ErrorDetail, Role,
+};
 use crate::serve_config::ConfigError;
 
 #[derive(Clone)]
@@ -27,7 +29,7 @@ impl VllmDeepseekProvider {
 #[async_trait]
 impl Provider for VllmDeepseekProvider {
     fn model_id(&self) -> &str {
-        "deepseek-v4-flash"
+        self.model_id.as_deref().unwrap_or("deepseek-v4-flash")
     }
 
     async fn complete(
@@ -98,7 +100,7 @@ pub fn build_vllm_deepseek_provider(
 }
 
 fn validate_request(request: &ChatCompletionRequest) -> Result<(), ProviderError> {
-    validate_openai_request(request).map_err(ProviderError::Internal)
+    validate_openai_request(request).map_err(invalid_request)
 }
 
 fn normalize_request(
@@ -115,8 +117,8 @@ fn ensure_no_image_parts(request: &ChatCompletionRequest) -> Result<(), Provider
         if let Content::Parts(parts) = &message.content {
             for part in parts {
                 if matches!(part, ContentPart::Image { .. }) {
-                    return Err(ProviderError::Internal(
-                        "deepseek-v4-flash does not support image_url messages".to_string(),
+                    return Err(invalid_request(
+                        "deepseek model do not support image_url messages",
                     ));
                 }
             }
@@ -176,7 +178,26 @@ fn normalize_reasoning_effort(request: &mut ChatCompletionRequest) {
 }
 
 fn map_openai_error(err: ClientError) -> ProviderError {
-    ProviderError::Internal(err.to_string())
+    match err {
+        ClientError::Api(ApiError::OpenAI { status, error }) => ProviderError::Public {
+            status: axum::http::StatusCode::from_u16(status.as_u16())
+                .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+            error,
+        },
+        other => ProviderError::Internal(other.to_string()),
+    }
+}
+
+fn invalid_request(message: impl Into<String>) -> ProviderError {
+    ProviderError::Public {
+        status: axum::http::StatusCode::BAD_REQUEST,
+        error: ErrorDetail {
+            message: message.into(),
+            r#type: "invalid_request_error".to_string(),
+            code: None,
+            param: None,
+        },
+    }
 }
 
 #[cfg(test)]
@@ -189,7 +210,7 @@ mod tests {
 
     fn request_with_messages(messages: Vec<Message>) -> ChatCompletionRequest {
         ChatCompletionRequest {
-            model: "deepseek-v4-flash".to_string(),
+            model: "deepseek".to_string(),
             messages,
             n: None,
             temperature: None,
@@ -312,10 +333,56 @@ mod tests {
         }]);
 
         let err = ensure_no_image_parts(&request).expect_err("should reject image parts");
-        assert!(
-            err.to_string()
-                .contains("deepseek-v4-flash does not support image_url messages")
-        );
+        match err {
+            ProviderError::Public { status, error } => {
+                assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
+                assert_eq!(error.r#type, "invalid_request_error");
+                assert!(
+                    error
+                        .message
+                        .contains("vllm deepseek models do not support image_url messages")
+                );
+            }
+            other => panic!("expected public bad request, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_request_returns_public_bad_request() {
+        let request = request_with_messages(vec![user_text_message("   ")]);
+
+        let err = validate_request(&request).expect_err("should reject empty content");
+        match err {
+            ProviderError::Public { status, error } => {
+                assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
+                assert_eq!(error.r#type, "invalid_request_error");
+                assert_eq!(error.message, "content is empty");
+            }
+            other => panic!("expected public bad request, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn map_openai_error_openai_api_error_becomes_public() {
+        let err = ClientError::Api(ApiError::OpenAI {
+            status: reqwest::StatusCode::TOO_MANY_REQUESTS,
+            error: ErrorDetail {
+                message: "rate limit exceeded".to_string(),
+                r#type: "rate_limit_error".to_string(),
+                code: Some("rate_limit".to_string()),
+                param: None,
+            },
+        });
+
+        match map_openai_error(err) {
+            ProviderError::Public { status, error } => {
+                assert_eq!(status, axum::http::StatusCode::TOO_MANY_REQUESTS);
+                assert_eq!(error.message, "rate limit exceeded");
+                assert_eq!(error.r#type, "rate_limit_error");
+                assert_eq!(error.code.as_deref(), Some("rate_limit"));
+            }
+            other => panic!("expected public error, got {other:?}"),
+        }
     }
 
     #[test]
