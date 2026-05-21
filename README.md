@@ -303,6 +303,59 @@ project, for example:
   ```
 
   
+
+## ❓ FAQ
+
+### What is YoMo?
+
+YoMo is an open-source **LLM Function Calling Framework** for building scalable and ultra-fast AI Agents. It focuses on Geo-distributed architecture, bringing AI inference closer to end users for faster response times.
+
+### How does YoMo compare to LangChain/CrewAI/AutoGen?
+
+| Framework | Focus | Architecture | Best For |
+|-----------|-------|--------------|----------|
+| YoMo | Function Calling + Geo-distributed | Serverless + Rust Core | Real-time AI agents |
+| LangChain | Chain abstraction | Python library | Sequential workflows |
+| CrewAI | Role-based agents | Python framework | Multi-agent collaboration |
+
+**YoMo's key differentiator**: TLS v1.3 encryption + Geo-distributed architecture.
+
+### What are the key features?
+
+- **Serverless LLM Tools**: Deploy and manage LLM tools seamlessly
+- **Enhanced Security**: TLS v1.3 encryption by design
+- **Effortless DevOps**: Streamline lifecycle from development to deployment
+- **Geo-Distributed**: Bring AI closer to users globally
+
+### What LLM providers does YoMo support?
+
+- OpenAI, Anthropic, Google Gemini
+- Local: Ollama (qwen3.5)
+- Any OpenAI-compatible API (vLLM, LMStudio)
+
+### How do I get started?
+
+1. `curl -fsSL https://get.yomo.run | sh`
+2. Create `my-agent.yaml` config
+3. `yomo serve -c my-agent.yaml`
+4. Write TypeScript/Python function
+5. `yomo run -n get-weather ./app`
+
+### What languages does YoMo support?
+
+- Serverless Tools: TypeScript, Python
+- Core: Rust-based for performance
+
+### What license?
+
+Apache License 2.0.
+
+### Where to find help?
+
+- Docs: [yomo.run](https://yomo.run/)
+- Issues: [GitHub Issues](https://github.com/yomorun/yomo/issues)
+
+
 ## License
 
 [Apache License 2.0](http://www.apache.org/licenses/LICENSE-2.0.html)\n\n## ❓ Frequently Asked Questions
