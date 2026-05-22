@@ -36,31 +36,32 @@ yomo version
 
 ### Step 2. Start the server
 
-Create a configuration file `my-agent.yaml`:
+Create a configuration file `my-agent.yaml` (you can start from `agent.template.yaml`):
 
 ```yaml
-name: my-agent
-host: 0.0.0.0
-port: 9000
+auth_token: "SECRET_TOKEN"
 
-auth:
-  type: token
-  token: SECRET_TOKEN
+zipper:
+  host: "0.0.0.0"
+  port: 9000
+  tls: {}
 
-bridge:
-  ai:
-    server:
-      addr: 0.0.0.0:9000  ## OpenAI API compatible endpoint
-      provider: vllm      ## llm provider to use
+http_api:
+  host: "0.0.0.0"
+  port: 9001
+  enable_tool_api: false
 
-    providers:
-      vllm:
-        api_endpoint: http://127.0.0.1:8000/v1
-        model: google/gemma-4-31B-it
-
-      ollama:
-        api_endpoint: http://localhost:11434
+llm_providers:
+  - type: "openai"
+    model_id: "gemma-4-31B-it"
+    default: true
+    params:
+      model: "google/gemma-4-31B-it"
+      base_url: "http://localhost:11434"
+      api_key: ""
 ```
+
+When `auth_token` is configured, all HTTP APIs require `Authorization: Bearer <token>`.
 
 Launch the server:
 
@@ -156,75 +157,6 @@ problem, this is **Geo-distributed System Architecture**:
 
 <img width="580" alt="yomo geo-distributed system" src="https://user-images.githubusercontent.com/65603/162367572-5a0417fa-e2b2-4d35-8c92-2c95d461706d.png">
 
-## ❓ FAQ & Troubleshooting
-
-### General
-
-**Q: What is YoMo and how is it different from other LLM frameworks?**
-
-YoMo is a serverless LLM Function Calling framework designed for geo-distributed AI inference. Unlike traditional frameworks that run inference in centralized data centers, YoMo brings AI tools closer to end users at the edge, reducing latency and improving response times for real-time AI applications.
-
-**Q: What LLM providers does YoMo support?**
-
-YoMo supports any OpenAI API-compatible provider, including:
-- OpenAI (GPT-4, GPT-3.5)
-- Local models via Ollama, vLLM, or LM Studio
-- Cloud providers like Azure OpenAI, Anthropic (via proxy)
-- Custom endpoints that implement the OpenAI chat completions API
-
-**Q: Can I use YoMo with existing LangChain or LlamaIndex applications?**
-
-Yes. YoMo's serverless tools expose OpenAI-compatible endpoints, so they integrate seamlessly with LangChain, LlamaIndex, and other frameworks that support function calling.
-
-### Setup & Configuration
-
-**Q: CLI installation fails with "permission denied"?**
-
-Run the install script with sudo or install to a user-writable directory:
-```bash
-curl -fsSL https://get.yomo.run | sh -s -- --install-dir ~/.local/bin
-```
-Ensure `~/.local/bin` is in your `$PATH`.
-
-**Q: `yomo serve` fails to start with port already in use?**
-
-Change the port in your config file or use the `--port` flag:
-```bash
-yomo serve -c my-agent.yaml --port 9001
-```
-
-**Q: How do I enable debug logging?**
-
-Set the `RUST_LOG` environment variable:
-```bash
-RUST_LOG=debug yomo serve -c my-agent.yaml
-```
-
-### Common Issues
-
-**Q: Function calling returns empty results?**
-
-Verify:
-1. Your tool is running (`yomo run -n <tool-name>`)
-2. The LLM provider endpoint is accessible (`curl http://127.0.0.1:8000/v1/models`)
-3. The function signature matches what the LLM expects (check the tool's `handler` export)
-
-**Q: TLS connection errors when connecting to YoMo server?**
-
-YoMo uses TLS v1.3 by default. If you're testing locally, you can disable TLS:
-```yaml
-auth:
-  type: none
-```
-For production, ensure your TLS certificates are valid and not expired.
-
-**Q: `yomo run` hangs indefinitely?**
-
-Check that:
-1. The YoMo server is running (`yomo serve`)
-2. The tool name matches exactly (case-sensitive)
-3. Your handler function doesn't have blocking operations without timeouts
-
 ## 🦸 Contributing
 
 First off, thank you for considering making contributions. It's people like you
@@ -303,169 +235,56 @@ project, for example:
   ```
 
   
-## License
 
-[Apache License 2.0](http://www.apache.org/licenses/LICENSE-2.0.html)\n\n## ❓ Frequently Asked Questions
+## ❓ FAQ
 
-### General
+### What is YoMo?
 
-**Q: What is YoMo?**
+YoMo is an open-source **Serverless LLM Function Calling Framework** for building scalable and ultra-fast AI Agents. It focuses on **Empowering Exceptional Customer Experiences** through geo-distributed architecture that brings AI inference closer to users.
 
-YoMo is an open-source **Serverless LLM Function Calling Framework** for building scalable and ultra-fast AI Agents. It focuses on speed, reliability, and scalability for delivering exceptional customer experiences in the Age of AI.
-
-**Q: How does YoMo differ from LangChain or CrewAI?**
-
-| Framework | Approach | Key Differentiator |
-|-----------|----------|-------------------|
-| **YoMo** | Serverless LLM Tools + Geo-Distributed | **Edge-First Architecture** - brings AI inference closer to users |
-| LangChain | Chain-based orchestration | General-purpose LLM chaining |
-| CrewAI | Role-playing agents | Multi-agent collaboration |
-
-YoMo's **geo-distributed architecture** reduces latency by running AI tools at edge locations, while its **serverless design** simplifies DevOps.
-
-**Q: What are the key features?**
+### Key Features
 
 | Feature | Description |
 |---------|-------------|
-| ⚡️ **Serverless LLM Tools** | Deploy and Manage LLM Tools/Skills seamlessly |
-| 🔐 **Enhanced Security** | TLS v1.3 encryption for all data packets by design |
-| 📸 **Effortless DevOps** | Streamlined lifecycle from development to deployment |
-| 🌎 **Geo-Distributed** | Edge locations for faster response times |
-
-### Getting Started
-
-**Q: How do I install YoMo?**
-
-```bash
-curl -fsSL https://get.yomo.run | sh
-yomo version
-```
-
-**Q: How do I start the server?**
-
-1. Create `my-agent.yaml` (start from `agent.template.yaml`)
-2. Configure zipper, HTTP API, and LLM providers
-3. Run: `yomo serve -c my-agent.yaml`
-
-**Q: How do I implement an LLM Function Calling?**
-
-Create a TypeScript file with `description`, `Argument` type, and `handler` function:
-
-```typescript
-export const description = 'Get the current weather for `city`'
-
-export type Argument = {
-  city: string;
-}
-
-export async function handler(args: Argument) {
-  return { city: args.city, temperature: Math.floor(Math.random() * 41) }
-}
-```
-
-Run: `yomo run -n get-weather`
+| ⚡️ **Serverless LLM Tools** | Deploy and manage LLM tools/skills seamlessly without infrastructure overhead |
+| 🔐 **Enhanced Security** | TLS v1.3 encryption applied to every data packet by design |
+| 📸 **Effortless DevOps** | Streamline the entire lifecycle from development to deployment |
+| 🌎 **Geo-Distributed** | Bring AI inference closer to users for faster response times |
 
 ### LLM Providers
 
-**Q: What LLM providers are supported?**
+YoMo supports OpenAI-compatible providers:
+- **OpenAI** (GPT-4, GPT-3.5, etc.)
+- **Ollama** (Local models: qwen3.5, gemma, etc.)
+- Any OpenAI-compatible endpoint
 
-YoMo supports **OpenAI-compatible providers**:
+### Getting Started
 
-| Provider | Configuration |
-|----------|---------------|
-| **Ollama** (Local) | `base_url: "http://localhost:11434"` |
-| **OpenAI** | Set `api_key` and default `model` |
-| **Other** | Any OpenAI-compatible API endpoint |
+```bash
+# Step 1: Install CLI
+curl -fsSL https://get.yomo.run | sh
 
-Example configuration:
-```yaml
-llm_providers:
-  - type: "openai"
-    model_id: "gemma-4-31B-it"
-    default: true
-    params:
-      model: "google/gemma-4-31B-it"
-      base_url: "http://localhost:11434"
-      api_key: ""
+# Step 2: Configure server
+yomo serve -c my-agent.yaml
+
+# Step 3: Implement function calling (TypeScript)
+yomo run -n get-weather
 ```
 
-### Architecture
+### How does Geo-Distributed Architecture work?
 
-**Q: What is the Geo-Distributed Architecture?**
+YoMo deploys AI inference and tools closer to end users globally, resulting in significantly faster response times and superior user experience. Unlike traditional cloud-only distribution, YoMo enables edge deployment.
 
-YoMo runs AI inference and tools at **edge locations** closer to your users:
+### License
 
-- **Lower latency**: Faster response times
-- **Better UX**: Superior user experience for AI agents
-- **Global scale**: Deploy tools worldwide
+Apache License 2.0
 
-**Q: What is TLS v1.3 encryption?**
+### Help Resources
 
-YoMo applies **TLS v1.3 encryption** to **every data packet by design**:
+- 📚 Documentation: [yomo.run](https://yomo.run/)
+- 💬 Issues: [GitHub Issues](https://github.com/yomorun/yomo/issues)
+- 📖 Examples: [Serverless LLM Function Calling Examples](https://github.com/yomorun/llm-function-calling-examples)
 
-- End-to-end security
-- No plaintext transmission
-- Robust protection for AI agent communications
+## License
 
-### Tools & Skills
-
-**Q: How do I create custom tools?**
-
-1. Define `description` for LLM to understand tool purpose
-2. Define `Argument` type with TypeScript types
-3. Implement `handler` function with async/await
-4. Run with `yomo run -n <tool-name>`
-
-**Q: What is the Function Calling flow?**
-
-```
-User Request → LLM → Tool Selection → Handler Execution → Response
-```
-
-YoMo uses OpenAI-compatible Function Calling format.
-
-### DevOps
-
-**Q: How does YoMo simplify DevOps?**
-
-YoMo provides:
-
-- **CLI**: `yomo serve`, `yomo run`, `yomo version`
-- **Configuration**: YAML-based agent configuration
-- **Deployment**: Single command to serve and run
-- **Monitoring**: Built-in observability support
-
-### Troubleshooting
-
-**Q: Server won't start?**
-
-Check:
-1. YAML configuration syntax
-2. `auth_token` is set correctly
-3. Port 9000/9001 not occupied
-4. LLM provider endpoint reachable
-
-**Q: Function Calling not working?**
-
-Check:
-1. `description` is clear for LLM
-2. `Argument` type matches handler logic
-3. Handler returns correct format
-4. Tool is running (`yomo run -n <tool>`)
-
-**Q: Connection timeout?**
-
-Check:
-1. Network connectivity to edge locations
-2. TLS configuration
-3. Firewall rules for ports 9000/9001
-
-### Help & Resources
-
-- **Documentation**: [blog.yomo.run](https://blog.yomo.run)
-- **GitHub**: [yomorun/yomo](https://github.com/yomorun/yomo)
-- **Issues**: [GitHub Issues](https://github.com/yomorun/yomo/issues)
-
----
-
-*For more details, see the [YoMo Blog](https://blog.yomo.run) and [GitHub repository](https://github.com/yomorun/yomo).*
+[Apache License 2.0](http://www.apache.org/licenses/LICENSE-2.0.html)
