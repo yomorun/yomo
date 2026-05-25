@@ -162,6 +162,7 @@ impl Role {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub role: Role,
+    #[serde(default, deserialize_with = "null_to_default")]
     pub content: Content,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_content: Option<String>,
@@ -176,6 +177,12 @@ pub struct Message {
 pub enum Content {
     Text(String),
     Parts(Vec<ContentPart>),
+}
+
+impl Default for Content {
+    fn default() -> Self {
+        Content::Text(String::new())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -406,5 +413,19 @@ mod tests {
         let message = r#"{"role":"assistant","content":null,"refusal":null,"tool_calls":null}"#;
         let parsed: ChatCompletionMessage = serde_json::from_str(message).expect("parse message");
         assert!(parsed.annotations.is_empty());
+    }
+
+    #[test]
+    fn message_allows_null_content() {
+        let message = r#"{"role":"assistant","content":null,"tool_calls":[]}"#;
+        let parsed: Message = serde_json::from_str(message).expect("parse message");
+        assert!(matches!(parsed.content, Content::Text(text) if text.is_empty()));
+    }
+
+    #[test]
+    fn message_defaults_missing_content() {
+        let message = r#"{"role":"assistant"}"#;
+        let parsed: Message = serde_json::from_str(message).expect("parse message");
+        assert!(matches!(parsed.content, Content::Text(text) if text.is_empty()));
     }
 }
