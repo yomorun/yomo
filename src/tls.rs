@@ -16,7 +16,7 @@ use tokio::{fs::File, io::AsyncReadExt};
 
 const YOMO_TLS_PROTOCOL: &[u8] = b"yomo-v2";
 
-static DEV_CA_CERT: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/certs/ca.pem"));
+static YOMO_CA_CERT: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/certs/ca.pem"));
 static DEV_SERVER_CERT: &[u8] =
     include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/certs/server.pem"));
 static DEV_SERVER_KEY: &[u8] =
@@ -263,7 +263,7 @@ pub struct TlsConfig {
 
 /// Create TLS Provider from configuration
 pub(crate) async fn new_tls(c: &TlsConfig, is_server: bool) -> Result<TlsProvider> {
-    let mut ca_cert = DEV_CA_CERT.to_vec();
+    let mut ca_cert = YOMO_CA_CERT.to_vec();
     if let Some(c) = &c.ca_cert {
         ca_cert = read_file(c).await?;
     };
