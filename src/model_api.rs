@@ -199,15 +199,18 @@ where
         Ok(response) => response,
         Err(err) => {
             error!(
-                "http.request.end; status_code=502 model_id={} error={} trace_id={} metadata={:?}",
+                "http.request.end; status_code=500 model_id={} error={:?} trace_id={} metadata={:?}",
                 provider_entry.model_id, err, trace_id, metadata
             );
-            let message = err.to_string();
-            set_http_span_status(&root_span, StatusCode::BAD_GATEWAY, Some(&message));
+            set_http_span_status(
+                &root_span,
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Some("internal_server_error"),
+            );
             return Response::builder()
-                .status(StatusCode::BAD_GATEWAY)
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
-                .body(Body::from(message))
+                .body(Body::from("internal server error"))
                 .expect("build response");
         }
     };

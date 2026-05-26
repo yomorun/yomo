@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use anyhow::anyhow;
 use async_trait::async_trait;
 use aws_config::BehaviorVersion;
 use aws_credential_types::Credentials;
@@ -100,7 +101,8 @@ impl ModelApiProvider for MessagesClient {
                 .content_type("application/json")
                 .body(Blob::new(body.to_vec()))
                 .send()
-                .await?;
+                .await
+                .map_err(|err| anyhow!("bedrock invoke_model_with_response_stream failed: {err:?}"))?;
 
             let mut stream = response.body;
             let mapped = async_stream::stream! {
@@ -162,7 +164,8 @@ impl ModelApiProvider for MessagesClient {
                 .accept("application/json")
                 .body(Blob::new(body.to_vec()))
                 .send()
-                .await?;
+                .await
+                .map_err(|err| anyhow!("bedrock invoke_model failed: {err:?}"))?;
 
             let mut headers = HeaderMap::new();
             headers.insert(

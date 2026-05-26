@@ -29,7 +29,7 @@ opentelemetry-otlp = { version = "0.15", features = ["http-proto"] }
 opentelemetry_sdk = { version = "0.22", features = ["rt-tokio"] }
 rustls-native-certs = "0.8"
 rustls-pki-types = "1.14"
-reqwest = { version = "0.12", features = ["json", "stream", "multipart"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "multipart", "rustls-tls"] }
 multer = "3"
 aws-config = "1"
 aws-sdk-bedrockruntime = "1"
