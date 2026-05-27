@@ -10,6 +10,7 @@ use futures_core::Stream;
 use futures_util::{StreamExt, future::join_all};
 use log::{debug, error, info};
 use opentelemetry::trace::TraceContextExt;
+use opentelemetry_sdk::trace::{IdGenerator, RandomIdGenerator};
 use serde::Serialize;
 use serde_json;
 use serde_json::Value;
@@ -834,10 +835,7 @@ where
         if span_context.is_valid() {
             span_context.span_id().to_string()
         } else {
-            format!("tool-{}", call.name)
-                .chars()
-                .take(16)
-                .collect::<String>()
+            RandomIdGenerator::default().new_span_id().to_string()
         }
     };
 
