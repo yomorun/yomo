@@ -9,10 +9,12 @@ use axum::http::StatusCode;
 use futures_core::Stream;
 use futures_util::{StreamExt, future::join_all};
 use log::{debug, error, info};
+use opentelemetry::trace::TraceContextExt;
 use serde::Serialize;
 use serde_json;
 use serde_json::Value;
 use tracing::{Instrument, Span, field, info_span};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::llm_provider::openai_compatible::mapper::ensure_tool_call_id;
 use crate::llm_provider::{
@@ -827,6 +829,18 @@ where
     );
     tool_call_span.record("arguments", field::display(&call.arguments));
 
+    let span_id = {
+        let span_context = tool_call_span.context().span().span_context().clone();
+        if span_context.is_valid() {
+            span_context.span_id().to_string()
+        } else {
+            format!("tool-{}", call.name)
+                .chars()
+                .take(16)
+                .collect::<String>()
+        }
+    };
+
     let request = ToolRequest {
         args: call.arguments.clone(),
         agent_context,
@@ -834,7 +848,7 @@ where
     let request_headers = RequestHeaders {
         name: call.name.clone(),
         trace_id,
-        span_id: format!("tool-{}", call.name),
+        span_id,
         body_format: BodyFormat::Bytes,
         extension: serde_json::to_string(metadata.as_ref()).unwrap_or_default(),
     };
