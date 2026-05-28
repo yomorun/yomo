@@ -8,10 +8,6 @@ pub struct Usage {
     pub completion_tokens: i32,
     pub total_tokens: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub cached_tokens: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reasoning_tokens: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_tokens_details: Option<PromptTokensDetails>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub completion_tokens_details: Option<CompletionTokensDetails>,

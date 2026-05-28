@@ -440,8 +440,6 @@ pub fn map_usage_to_openai(usage: &crate::llm_provider::Usage) -> Usage {
         prompt_tokens: usage.input_tokens,
         completion_tokens: usage.output_tokens,
         total_tokens: usage.total_tokens,
-        cached_tokens: usage.cached_tokens,
-        reasoning_tokens: usage.reasoning_tokens,
         prompt_tokens_details: Some(crate::openai_types::PromptTokensDetails {
             audio_tokens: 0,
             cached_tokens: usage.cached_tokens.unwrap_or(0),
@@ -485,8 +483,6 @@ fn map_usage(usage: &crate::llm_provider::Usage) -> Usage {
         prompt_tokens: usage.input_tokens,
         completion_tokens: usage.output_tokens,
         total_tokens: usage.total_tokens,
-        cached_tokens: usage.cached_tokens,
-        reasoning_tokens: usage.reasoning_tokens,
         prompt_tokens_details: Some(crate::openai_types::PromptTokensDetails {
             audio_tokens: 0,
             cached_tokens: usage.cached_tokens.unwrap_or(0),

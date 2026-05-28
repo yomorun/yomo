@@ -188,8 +188,14 @@ pub fn map_usage_to_provider(usage: &OpenAIUsage) -> Usage {
         input_tokens: usage.prompt_tokens,
         output_tokens: usage.completion_tokens,
         total_tokens: usage.total_tokens,
-        cached_tokens: usage.cached_tokens,
-        reasoning_tokens: usage.reasoning_tokens,
+        cached_tokens: usage
+            .prompt_tokens_details
+            .as_ref()
+            .map(|details| details.cached_tokens),
+        reasoning_tokens: usage
+            .completion_tokens_details
+            .as_ref()
+            .map(|details| details.reasoning_tokens),
         raw: serde_json::to_value(usage).ok(),
     }
 }
