@@ -12,9 +12,8 @@ use opentelemetry_sdk::{
 };
 use serde_json::Value;
 use tracing::subscriber::set_global_default;
-use tracing::{Span, debug_span, field};
+use tracing::{Span, field, info_span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
-use tracing_subscriber::EnvFilter;
 use tracing_subscriber::filter::*;
 use tracing_subscriber::prelude::*;
 
@@ -53,9 +52,18 @@ impl Drop for TraceGuard {
 }
 
 pub async fn init_tracing() -> Result<TraceGuard> {
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+    let fmt_layer = tracing_subscriber::fmt::layer()
+        .with_writer(|| std::io::stdout())
+        .with_filter(filter_fn(|meta| !meta.is_span()));
+
     let endpoint = match std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT") {
         Ok(value) if !value.trim().is_empty() => value,
-        _ => return Ok(TraceGuard { enabled: false }),
+        _ => {
+            let _ = set_global_default(tracing_subscriber::registry().with(filter).with(fmt_layer));
+            return Ok(TraceGuard { enabled: false });
+        }
     };
     let service_name = std::env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "yomo".to_string());
     global::set_text_map_propagator(TraceContextPropagator::new());
@@ -77,9 +85,7 @@ pub async fn init_tracing() -> Result<TraceGuard> {
         .with_location(false)
         .with_threads(false)
         .with_filter(filter_fn(|meta| meta.is_span()));
-    let subscriber = tracing_subscriber::registry()
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
-        .with(otel_layer);
+    let subscriber = tracing_subscriber::registry().with(filter).with(otel_layer);
     set_global_default(subscriber).context("set tracing subscriber")?;
     log::info!("tracing enabled: endpoint={endpoint}, service={service_name}");
     Ok(TraceGuard { enabled: true })
@@ -90,7 +96,7 @@ where
     M: serde::Serialize,
 {
     let endpoint_name = if route.is_empty() { "/" } else { route };
-    let root_span = debug_span!(
+    let root_span = info_span!(
         "http.request",
         otel.name = field::Empty,
         http.method = method,

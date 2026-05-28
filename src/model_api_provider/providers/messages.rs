@@ -102,7 +102,9 @@ impl ModelApiProvider for MessagesClient {
                 .body(Blob::new(body.to_vec()))
                 .send()
                 .await
-                .map_err(|err| anyhow!("bedrock invoke_model_with_response_stream failed: {err:?}"))?;
+                .map_err(|err| {
+                    anyhow!("bedrock invoke_model_with_response_stream failed: {err:?}")
+                })?;
 
             let mut stream = response.body;
             let mapped = async_stream::stream! {
