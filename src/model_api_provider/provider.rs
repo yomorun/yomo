@@ -34,6 +34,83 @@ pub trait ModelApiProvider: Send + Sync {
     fn model_id(&self) -> &str;
 
     async fn execute(&self, req: ProviderRequest) -> Result<ProviderResponse, anyhow::Error>;
+
+    fn extract_request_id_from_full(&self, body_json: &Value) -> Option<String> {
+        body_json
+            .get("id")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .or_else(|| {
+                body_json
+                    .get("response")
+                    .and_then(|response| response.get("id"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+    }
+
+    fn extract_request_id_from_stream_event(&self, event_json: &Value) -> Option<String> {
+        self.extract_request_id_from_full(event_json)
+    }
+
+    fn extract_usage_from_full(&self, body_json: &Value) -> Option<Value> {
+        body_json
+            .get("usage")
+            .cloned()
+            .or_else(|| body_json.get("usageMetadata").cloned())
+            .or_else(|| {
+                body_json
+                    .get("response")
+                    .and_then(|response| response.get("usage"))
+                    .cloned()
+            })
+            .or_else(|| {
+                body_json
+                    .get("response")
+                    .and_then(|response| response.get("usageMetadata"))
+                    .cloned()
+            })
+    }
+
+    fn extract_usage_from_stream_event(&self, event_json: &Value) -> Option<Value> {
+        self.extract_usage_from_full(event_json)
+    }
+
+    fn inject_usage_into_full(&self, body_json: &mut Value, usage: Value) -> bool {
+        inject_usage_value(body_json, usage)
+    }
+
+    fn inject_usage_into_stream_event(&self, event_json: &mut Value, usage: Value) -> bool {
+        self.inject_usage_into_full(event_json, usage)
+    }
+}
+
+fn inject_usage_value(value: &mut Value, usage: Value) -> bool {
+    let Some(obj) = value.as_object_mut() else {
+        return false;
+    };
+
+    if obj.contains_key("usage") {
+        obj.insert("usage".to_string(), usage);
+        return true;
+    }
+    if obj.contains_key("usageMetadata") {
+        obj.insert("usageMetadata".to_string(), usage);
+        return true;
+    }
+
+    if let Some(response) = obj.get_mut("response").and_then(Value::as_object_mut) {
+        if response.contains_key("usage") {
+            response.insert("usage".to_string(), usage);
+            return true;
+        }
+        if response.contains_key("usageMetadata") {
+            response.insert("usageMetadata".to_string(), usage);
+            return true;
+        }
+    }
+
+    false
 }
 
 const HOP_HEADERS: [&str; 8] = [

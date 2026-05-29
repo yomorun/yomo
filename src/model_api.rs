@@ -8,17 +8,12 @@ use axum::response::{IntoResponse, Response};
 use futures_core::Stream;
 use futures_util::{StreamExt, stream};
 use log::{error, info};
-use serde::de::DeserializeOwned;
 use serde_json::Value;
 use std::sync::Arc;
 use tracing::Instrument;
 
 use crate::metadata_mgr::MetadataMgr;
-use crate::model_api_provider::{
-    AudioSpeechUsage, AudioTranscriptionsUsage, EmbeddingsUsage, GenerateContentUsage, ImagesUsage,
-    MessagesUsage, ProviderBody, ProviderRegistry, ProviderRequest, RerankUsage, ResponsesUsage,
-    SelectionError, Usage,
-};
+use crate::model_api_provider::{ProviderBody, ProviderRegistry, ProviderRequest, SelectionError};
 use crate::openai_http_mapping::openai_error_response;
 use crate::trace::{
     DefaultRequestSpanStarter, RequestSpanStarter, record_flattened_json_attributes,
@@ -81,7 +76,6 @@ where
         endpoint_path.as_str()
     };
     handle_endpoint(
-        kind,
         &endpoint_path,
         selection_endpoint,
         requested_model_from_path,
@@ -93,7 +87,6 @@ where
 }
 
 async fn handle_endpoint<A, M>(
-    kind: EndpointKind,
     endpoint_path: &str,
     selection_endpoint: &str,
     requested_model_from_path: Option<String>,
@@ -129,8 +122,8 @@ where
         .get(header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
         .map(|value| value.to_string());
-    let (request_model, is_stream) = match parse_request_metadata(&content_type, &body).await {
-        Ok(metadata) => metadata,
+    let (request_model, is_stream) = match parse_model_request_fields(&content_type, &body).await {
+        Ok(result) => result,
         Err(err) => {
             error!("model api request parse failed: {err} trace_id={trace_id}");
             set_http_span_status(&root_span, StatusCode::BAD_REQUEST, Some(&err));
@@ -221,12 +214,15 @@ where
         builder = builder.header(key, value);
     }
 
+    let provider = Arc::clone(&provider_entry.provider);
     let response = match response.body {
         ProviderBody::Full(payload) => {
-            let request_id = parse_request_id(&payload).unwrap_or_default();
             let mut payload = payload;
-            if let Some(usage) = parse_usage(kind, &payload) {
-                if let Ok(usage_value) = serde_json::to_value(usage) {
+            if let Ok(mut body_json) = serde_json::from_slice::<Value>(&payload) {
+                let request_id = provider
+                    .extract_request_id_from_full(&body_json)
+                    .unwrap_or_default();
+                if let Some(usage_value) = provider.extract_usage_from_full(&body_json) {
                     let modified_usage = state
                         .usage_handler
                         .on_usage(
@@ -240,16 +236,20 @@ where
                         )
                         .await;
                     record_flattened_json_attributes(&root_span, "usage", &modified_usage);
-                    payload = replace_usage_in_payload(kind, &payload, &modified_usage);
+                    if provider.inject_usage_into_full(&mut body_json, modified_usage) {
+                        payload = serde_json::to_vec(&body_json)
+                            .map(Bytes::from)
+                            .unwrap_or(payload);
+                    }
                 }
             }
             builder.body(Body::from(payload)).expect("build response")
         }
         ProviderBody::Stream(stream) => builder
             .body(Body::from_stream(wrap_stream_with_usage(
-                kind,
                 stream,
                 root_span.clone(),
+                provider,
                 Arc::clone(&state.usage_handler),
                 endpoint_path.to_string(),
                 provider_entry.model_id.clone(),
@@ -273,7 +273,12 @@ where
     response
 }
 
-async fn parse_request_metadata(
+/// Parses request-level metadata from HTTP content type and body payload.
+///
+/// Returns the requested model identifier (if present) and whether streaming
+/// mode is enabled. JSON requests read `model` and `stream`; multipart requests
+/// read only `model` and always return `stream = false`.
+async fn parse_model_request_fields(
     content_type: &Option<String>,
     body: &Bytes,
 ) -> Result<(Option<String>, bool), String> {
@@ -328,114 +333,10 @@ fn parse_multipart_boundary(content_type: &str) -> Option<String> {
     })
 }
 
-fn parse_usage(kind: EndpointKind, payload: &Bytes) -> Option<Usage> {
-    let value: Value = serde_json::from_slice(payload).ok()?;
-    parse_usage_from_json(kind, &value)
-}
-
-fn parse_usage_from_json(kind: EndpointKind, value: &Value) -> Option<Usage> {
-    match kind {
-        EndpointKind::Messages => {
-            let usage_value = value.get("usage").cloned().or_else(|| {
-                value
-                    .get("message")
-                    .and_then(|message| message.get("usage"))
-                    .cloned()
-            })?;
-            parse_usage_value::<MessagesUsage>(Some(usage_value.clone()))
-                .map(Usage::Messages)
-                .or_else(|| {
-                    Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
-                        raw: usage_value,
-                    }))
-                })
-        }
-        EndpointKind::Responses => {
-            let usage_value = value.get("usage").cloned().or_else(|| {
-                value
-                    .get("response")
-                    .and_then(|response| response.get("usage"))
-                    .cloned()
-            })?;
-            parse_usage_value::<ResponsesUsage>(Some(usage_value.clone()))
-                .map(Usage::Responses)
-                .or_else(|| {
-                    Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
-                        raw: usage_value,
-                    }))
-                })
-        }
-        EndpointKind::GenerateContent => parse_usage_value::<GenerateContentUsage>(
-            value.get("usageMetadata").cloned().or_else(|| {
-                value
-                    .get("response")
-                    .and_then(|response| response.get("usageMetadata"))
-                    .cloned()
-            }),
-        )
-        .map(Usage::GenerateContent)
-        .or_else(|| {
-            Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
-                raw: value.clone(),
-            }))
-        }),
-        EndpointKind::Embeddings => {
-            let usage_value = value.get("usage").cloned()?;
-            parse_usage_value::<EmbeddingsUsage>(Some(usage_value.clone()))
-                .map(Usage::Embeddings)
-                .or_else(|| {
-                    Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
-                        raw: usage_value,
-                    }))
-                })
-        }
-        EndpointKind::Rerank => {
-            let usage_value = value.get("usage").cloned()?;
-            parse_usage_value::<RerankUsage>(Some(usage_value.clone()))
-                .map(Usage::Rerank)
-                .or_else(|| {
-                    Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
-                        raw: usage_value,
-                    }))
-                })
-        }
-        EndpointKind::AudioSpeech => {
-            let usage_value = value.get("usage").cloned()?;
-            parse_usage_value::<AudioSpeechUsage>(Some(usage_value.clone()))
-                .map(Usage::AudioSpeech)
-                .or_else(|| {
-                    Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
-                        raw: usage_value,
-                    }))
-                })
-        }
-        EndpointKind::AudioTranscriptions => {
-            let usage_value = value.get("usage").cloned()?;
-            parse_usage_value::<AudioTranscriptionsUsage>(Some(usage_value.clone()))
-                .map(Usage::AudioTranscriptions)
-                .or_else(|| {
-                    Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
-                        raw: usage_value,
-                    }))
-                })
-        }
-        EndpointKind::Images => {
-            let usage_value = value.get("usage").cloned()?;
-            parse_usage_value::<ImagesUsage>(Some(usage_value.clone()))
-                .map(Usage::Images)
-                .or_else(|| {
-                    Some(Usage::Unknown(crate::model_api_provider::UnknownUsage {
-                        raw: usage_value,
-                    }))
-                })
-        }
-    }
-}
-
 fn wrap_stream_with_usage<M>(
-    kind: EndpointKind,
     stream: Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send>>,
     root_span: tracing::Span,
+    provider: Arc<dyn crate::model_api_provider::ModelApiProvider>,
     usage_handler: Arc<dyn UsageHandler<M>>,
     endpoint: String,
     model_id: String,
@@ -458,7 +359,7 @@ where
                     let frame = text_buffer[..frame_end].to_string();
                     text_buffer.drain(..frame_end + 2);
                     let (output_frame, usage) = rewrite_sse_frame_usage(
-                        kind,
+                        Arc::clone(&provider),
                         &frame,
                         Arc::clone(&usage_handler),
                         &endpoint,
@@ -481,7 +382,7 @@ where
         if !text_buffer.trim().is_empty() {
             if text_buffer.trim_start().starts_with("data:") {
                 let (output_frame, usage) = rewrite_sse_frame_usage(
-                    kind,
+                    Arc::clone(&provider),
                     text_buffer.trim_end_matches('\n'),
                     Arc::clone(&usage_handler),
                     &endpoint,
@@ -497,23 +398,24 @@ where
                 yield Bytes::from(output_frame);
             } else {
                 if let Ok(mut value) = serde_json::from_str::<Value>(text_buffer.trim()) {
-                    if let Some(usage_value) = extract_usage_value(kind, &value) {
-                        let request_id = value
-                            .get("id")
-                            .and_then(|id| id.as_str())
-                            .unwrap_or("");
+                    if let Some(usage_value) = provider.extract_usage_from_stream_event(&value) {
+                        let request_id = provider
+                            .extract_request_id_from_stream_event(&value)
+                            .unwrap_or_default();
                         let modified_usage = usage_handler
                             .on_usage(
                                 &endpoint,
                                 &model_id,
                                 label.as_deref(),
-                                request_id,
+                                &request_id,
                                 &trace_id,
-                                metadata,
+                                metadata.clone(),
                                 usage_value,
                             )
                             .await;
-                        if replace_usage_in_json_value(kind, &mut value, modified_usage.clone()) {
+                        if provider
+                            .inject_usage_into_stream_event(&mut value, modified_usage.clone())
+                        {
                             latest_usage = Some(modified_usage);
                             if let Ok(encoded) = serde_json::to_vec(&value) {
                                 yield Bytes::from(encoded);
@@ -539,7 +441,7 @@ where
 }
 
 async fn rewrite_sse_frame_usage<M>(
-    kind: EndpointKind,
+    provider: Arc<dyn crate::model_api_provider::ModelApiProvider>,
     frame: &str,
     usage_handler: Arc<dyn UsageHandler<M>>,
     endpoint: &str,
@@ -552,25 +454,27 @@ where
     M: Clone + Send + Sync + 'static,
 {
     if let Some(mut value) = parse_sse_data_json(frame) {
-        if let Some(usage_value) = extract_usage_value(kind, &value) {
-            let request_id = value
-                .get("id")
-                .and_then(|id| id.as_str())
-                .unwrap_or("");
+        if let Some(usage_value) = provider.extract_usage_from_stream_event(&value) {
+            let request_id = provider
+                .extract_request_id_from_stream_event(&value)
+                .unwrap_or_default();
             let modified_usage = usage_handler
                 .on_usage(
                     endpoint,
                     model_id,
                     label,
-                    request_id,
+                    &request_id,
                     trace_id,
                     metadata,
                     usage_value,
                 )
                 .await;
-            if replace_usage_in_json_value(kind, &mut value, modified_usage.clone()) {
+            if provider.inject_usage_into_stream_event(&mut value, modified_usage.clone()) {
                 if let Ok(encoded) = serde_json::to_string(&value) {
-                    return (rebuild_sse_frame_with_data(frame, &encoded), Some(modified_usage));
+                    return (
+                        rebuild_sse_frame_with_data(frame, &encoded),
+                        Some(modified_usage),
+                    );
                 }
             }
         }
@@ -589,79 +493,6 @@ fn rebuild_sse_frame_with_data(frame: &str, json_payload: &str) -> String {
     format!("{}\n\n", lines.join("\n"))
 }
 
-fn extract_usage_value(kind: EndpointKind, value: &Value) -> Option<Value> {
-    parse_usage_from_json(kind, value).and_then(|usage| serde_json::to_value(usage).ok())
-}
-
-fn replace_usage_in_payload(kind: EndpointKind, payload: &Bytes, usage: &Value) -> Bytes {
-    let Ok(mut value) = serde_json::from_slice::<Value>(payload) else {
-        return payload.clone();
-    };
-    if replace_usage_in_json_value(kind, &mut value, usage.clone()) {
-        serde_json::to_vec(&value)
-            .map(Bytes::from)
-            .unwrap_or_else(|_| payload.clone())
-    } else {
-        payload.clone()
-    }
-}
-
-fn replace_usage_in_json_value(kind: EndpointKind, value: &mut Value, usage: Value) -> bool {
-    match kind {
-        EndpointKind::Messages
-        | EndpointKind::Embeddings
-        | EndpointKind::Rerank
-        | EndpointKind::AudioSpeech
-        | EndpointKind::AudioTranscriptions
-        | EndpointKind::Images => {
-            if let Some(obj) = value.as_object_mut() {
-                obj.insert("usage".to_string(), usage);
-                true
-            } else {
-                false
-            }
-        }
-        EndpointKind::Responses => {
-            if let Some(obj) = value.as_object_mut() {
-                if obj.contains_key("usage") {
-                    obj.insert("usage".to_string(), usage);
-                    true
-                } else if let Some(response) = obj.get_mut("response") {
-                    if let Some(response_obj) = response.as_object_mut() {
-                        response_obj.insert("usage".to_string(), usage);
-                        true
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-            } else {
-                false
-            }
-        }
-        EndpointKind::GenerateContent => {
-            if let Some(obj) = value.as_object_mut() {
-                if obj.contains_key("usageMetadata") {
-                    obj.insert("usageMetadata".to_string(), usage);
-                    true
-                } else if let Some(response) = obj.get_mut("response") {
-                    if let Some(response_obj) = response.as_object_mut() {
-                        response_obj.insert("usageMetadata".to_string(), usage);
-                        true
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-            } else {
-                false
-            }
-        }
-    }
-}
-
 fn parse_sse_data_json(frame: &str) -> Option<Value> {
     let mut payload = String::new();
     for line in frame.lines() {
@@ -677,19 +508,6 @@ fn parse_sse_data_json(frame: &str) -> Option<Value> {
         return None;
     }
     serde_json::from_str(payload).ok()
-}
-
-fn parse_request_id(payload: &Bytes) -> Option<String> {
-    let value: Value = serde_json::from_slice(payload).ok()?;
-    value
-        .get("id")
-        .and_then(|id| id.as_str())
-        .map(|id| id.to_string())
-}
-
-fn parse_usage_value<T: DeserializeOwned>(usage: Option<Value>) -> Option<T> {
-    let usage = usage?;
-    serde_json::from_value(usage).ok()
 }
 
 fn resolve_endpoint_kind(endpoint: &str) -> Option<EndpointKind> {
@@ -736,4 +554,85 @@ pub async fn build_model_api(
         .route("/*path", axum::routing::post(handle_model_api::<(), ()>))
         .with_state(state);
     Ok(app)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_model_request_fields;
+    use axum::body::Bytes;
+
+    /// Verifies JSON requests return both model and stream metadata.
+    #[tokio::test]
+    async fn parse_model_request_fields_reads_json_model_and_stream() {
+        let content_type = Some("application/json".to_string());
+        let body = Bytes::from_static(br#"{"model":"gpt-4o","stream":true}"#);
+
+        let parsed = parse_model_request_fields(&content_type, &body).await;
+
+        assert_eq!(parsed.unwrap(), (Some("gpt-4o".to_string()), true));
+    }
+
+    /// Verifies JSON requests without optional fields fall back to defaults.
+    #[tokio::test]
+    async fn parse_model_request_fields_defaults_missing_json_fields() {
+        let content_type = Some("application/json".to_string());
+        let body = Bytes::from_static(br#"{}"#);
+
+        let parsed = parse_model_request_fields(&content_type, &body).await;
+
+        assert_eq!(parsed.unwrap(), (None, false));
+    }
+
+    /// Verifies malformed JSON bodies are rejected with a parse error.
+    #[tokio::test]
+    async fn parse_model_request_fields_rejects_invalid_json_body() {
+        let content_type = Some("application/json".to_string());
+        let body = Bytes::from_static(br#"{"model":"gpt-4o""#);
+
+        let parsed = parse_model_request_fields(&content_type, &body).await;
+
+        assert!(parsed.is_err());
+        assert!(
+            parsed
+                .err()
+                .unwrap_or_default()
+                .starts_with("invalid json body:")
+        );
+    }
+
+    /// Verifies multipart requests extract the model field value.
+    #[tokio::test]
+    async fn parse_model_request_fields_reads_multipart_model() {
+        let boundary = "test-boundary";
+        let content_type = Some(format!("multipart/form-data; boundary={boundary}"));
+        let body = Bytes::from(format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\ngpt-4.1\r\n--{boundary}--\r\n"
+        ));
+
+        let parsed = parse_model_request_fields(&content_type, &body).await;
+
+        assert_eq!(parsed.unwrap(), (Some("gpt-4.1".to_string()), false));
+    }
+
+    /// Verifies multipart requests without a boundary return a clear error.
+    #[tokio::test]
+    async fn parse_model_request_fields_rejects_multipart_without_boundary() {
+        let content_type = Some("multipart/form-data".to_string());
+        let body = Bytes::from_static(b"ignored");
+
+        let parsed = parse_model_request_fields(&content_type, &body).await;
+
+        assert_eq!(parsed, Err("multipart boundary is missing".to_string()));
+    }
+
+    /// Verifies unsupported or missing content types fall back to defaults.
+    #[tokio::test]
+    async fn parse_model_request_fields_defaults_for_unknown_content_type() {
+        let content_type = Some("text/plain".to_string());
+        let body = Bytes::from_static(b"hello");
+
+        let parsed = parse_model_request_fields(&content_type, &body).await;
+
+        assert_eq!(parsed.unwrap(), (None, false));
+    }
 }

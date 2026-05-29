@@ -8,6 +8,7 @@ use aws_sdk_bedrockruntime::primitives::Blob;
 use aws_types::region::Region;
 use axum::body::Bytes;
 use axum::http::{HeaderMap, StatusCode};
+use serde_json::Value;
 use tokio::sync::OnceCell;
 
 use crate::model_api_provider::provider::{
@@ -182,6 +183,138 @@ impl ModelApiProvider for MessagesClient {
                 body: ProviderBody::Full(Bytes::from(response.body.into_inner())),
             })
         }
+    }
+
+    fn extract_request_id_from_full(&self, body_json: &Value) -> Option<String> {
+        extract_request_id_from_full_json(body_json)
+    }
+
+    fn extract_request_id_from_stream_event(&self, event_json: &Value) -> Option<String> {
+        extract_request_id_from_stream_event_json(event_json)
+    }
+
+    fn extract_usage_from_full(&self, body_json: &Value) -> Option<Value> {
+        extract_usage_from_full_json(body_json)
+    }
+
+    fn extract_usage_from_stream_event(&self, event_json: &Value) -> Option<Value> {
+        extract_usage_from_stream_event_json(event_json)
+    }
+
+    fn inject_usage_into_full(&self, body_json: &mut Value, usage: Value) -> bool {
+        inject_usage_into_full_json(body_json, usage)
+    }
+
+    fn inject_usage_into_stream_event(&self, event_json: &mut Value, usage: Value) -> bool {
+        self.inject_usage_into_full(event_json, usage)
+    }
+}
+
+fn extract_request_id_from_full_json(body_json: &Value) -> Option<String> {
+    body_json
+        .get("id")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .or_else(|| {
+            body_json
+                .get("message")
+                .and_then(|message| message.get("id"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+}
+
+fn extract_request_id_from_stream_event_json(event_json: &Value) -> Option<String> {
+    extract_request_id_from_full_json(event_json)
+}
+
+fn extract_usage_from_full_json(body_json: &Value) -> Option<Value> {
+    body_json.get("usage").cloned().or_else(|| {
+        body_json
+            .get("message")
+            .and_then(|message| message.get("usage"))
+            .cloned()
+    })
+}
+
+fn extract_usage_from_stream_event_json(event_json: &Value) -> Option<Value> {
+    extract_usage_from_full_json(event_json)
+}
+
+fn inject_usage_into_full_json(body_json: &mut Value, usage: Value) -> bool {
+    let Some(obj) = body_json.as_object_mut() else {
+        return false;
+    };
+    if obj.contains_key("usage") {
+        obj.insert("usage".to_string(), usage);
+        return true;
+    }
+    if let Some(message) = obj.get_mut("message").and_then(Value::as_object_mut) {
+        message.insert("usage".to_string(), usage);
+        return true;
+    }
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        extract_request_id_from_full_json, extract_request_id_from_stream_event_json,
+        extract_usage_from_full_json, extract_usage_from_stream_event_json,
+        inject_usage_into_full_json,
+    };
+    use serde_json::json;
+
+    /// Verifies full payload request id extraction prefers top-level `id`.
+    #[test]
+    fn extract_request_id_from_full_json_prefers_top_level_id() {
+        let payload = json!({"id": "msg_top", "message": {"id": "msg_nested"}});
+
+        let request_id = extract_request_id_from_full_json(&payload);
+
+        assert_eq!(request_id.as_deref(), Some("msg_top"));
+    }
+
+    /// Verifies stream-event request id extraction supports nested `message.id` fallback.
+    #[test]
+    fn extract_request_id_from_stream_event_json_supports_nested_message_id() {
+        let payload = json!({"message": {"id": "msg_nested"}});
+
+        let request_id = extract_request_id_from_stream_event_json(&payload);
+
+        assert_eq!(request_id.as_deref(), Some("msg_nested"));
+    }
+
+    /// Verifies full payload usage extraction falls back to `message.usage`.
+    #[test]
+    fn extract_usage_from_full_json_reads_nested_message_usage() {
+        let payload = json!({"message": {"usage": {"input_tokens": 3}}});
+
+        let usage = extract_usage_from_full_json(&payload);
+
+        assert_eq!(usage, Some(json!({"input_tokens": 3})));
+    }
+
+    /// Verifies stream-event usage extraction supports top-level usage payloads.
+    #[test]
+    fn extract_usage_from_stream_event_json_reads_top_level_usage() {
+        let payload = json!({"usage": {"output_tokens": 7}});
+
+        let usage = extract_usage_from_stream_event_json(&payload);
+
+        assert_eq!(usage, Some(json!({"output_tokens": 7})));
+    }
+
+    /// Verifies usage injection writes to nested `message.usage` when top-level field is absent.
+    #[test]
+    fn inject_usage_into_full_json_updates_nested_message_usage() {
+        let mut payload = json!({"message": {"usage": {"input_tokens": 1}}});
+        let new_usage = json!({"input_tokens": 55});
+
+        let injected = inject_usage_into_full_json(&mut payload, new_usage.clone());
+
+        assert!(injected);
+        assert_eq!(payload["message"]["usage"], new_usage);
     }
 }
 
