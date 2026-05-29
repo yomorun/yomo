@@ -10,10 +10,9 @@ pub trait UsageHandler<M>: Send + Sync {
         label: Option<&str>,
         request_id: &str,
         trace_id: &str,
-        status_code: u16,
         metadata: M,
         usage: Value,
-    );
+    ) -> Value;
 }
 
 #[derive(Clone, Default)]
@@ -31,9 +30,9 @@ where
         _label: Option<&str>,
         _request_id: &str,
         _trace_id: &str,
-        _status_code: u16,
         _metadata: M,
-        _usage: Value,
-    ) {
+        usage: Value,
+    ) -> Value {
+        usage
     }
 }

@@ -5,10 +5,9 @@ use std::sync::Arc;
 
 use crate::tool_invoker::ToolInvoker;
 use crate::types::{BodyFormat, RequestHeaders, ToolRequest};
-use axum::http::StatusCode;
 use futures_core::Stream;
 use futures_util::{StreamExt, future::join_all};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use opentelemetry::trace::TraceContextExt;
 use opentelemetry_sdk::trace::{IdGenerator, RandomIdGenerator};
 use serde::Serialize;
@@ -210,20 +209,25 @@ where
         let label = label.clone();
         let metadata_value = (*metadata).clone();
         let usage = usage_to_value(&response.usage);
-        tokio::spawn(async move {
-            usage_handler
-                .on_usage(
-                    "/chat/completions",
-                    &model_id,
-                    label.as_deref(),
-                    &request_id,
-                    &usage_trace_id,
-                    StatusCode::OK.as_u16(),
-                    metadata_value,
-                    usage,
-                )
-                .await;
-        });
+        let modified_usage = usage_handler
+            .on_usage(
+                "/chat/completions",
+                &model_id,
+                label.as_deref(),
+                &request_id,
+                &usage_trace_id,
+                metadata_value,
+                usage,
+            )
+            .await;
+        match serde_json::from_value::<Usage>(modified_usage) {
+            Ok(parsed_usage) => {
+                response.usage = parsed_usage;
+            }
+            Err(err) => {
+                warn!("usage handler returned invalid usage payload: {err}");
+            }
+        }
         add_usage(&mut total_usage, &response.usage);
         call_count += 1;
 
@@ -471,18 +475,72 @@ where
                         UnifiedEvent::Usage { usage: chunk_usage } => {
                             let processed_usage =
                                 config.handle_usage(chunk_usage.raw.clone(), chunk_usage.clone());
-                            let usage = add_usage_cloned(&usage_offset, &processed_usage);
-                            yield UnifiedEvent::Usage { usage };
+                            let usage_value = usage_to_value(&processed_usage);
+                            let modified_usage = config
+                                .usage_handler
+                                .on_usage(
+                                    "/chat/completions",
+                                    &model_id,
+                                    label.as_deref(),
+                                    request_id.as_deref().unwrap_or(""),
+                                    &trace_id,
+                                    (*metadata).clone(),
+                                    usage_value,
+                                )
+                                .await;
+                            let handled_usage = match serde_json::from_value::<Usage>(modified_usage) {
+                                Ok(usage) => usage,
+                                Err(err) => {
+                                    warn!("usage handler returned invalid usage payload: {err}");
+                                    processed_usage
+                                }
+                            };
+                            usage = Some(handled_usage.clone());
+                            let usage_with_offset = add_usage_cloned(&usage_offset, &handled_usage);
+                            yield UnifiedEvent::Usage {
+                                usage: usage_with_offset,
+                            };
                         }
                         UnifiedEvent::Completed { finish_reason, usage: chunk_usage } => {
-                            let usage = chunk_usage.map(|chunk_usage| {
+                            let event_usage = chunk_usage.map(|chunk_usage| {
                                 let processed_usage = config.handle_usage(
                                     chunk_usage.raw.clone(),
                                     chunk_usage,
                                 );
-                                add_usage_cloned(&usage_offset, &processed_usage)
+                                processed_usage
                             });
-                            yield UnifiedEvent::Completed { finish_reason, usage };
+                            let event_usage = if let Some(current_usage) = event_usage {
+                                let usage_value = usage_to_value(&current_usage);
+                                let modified_usage = config
+                                    .usage_handler
+                                    .on_usage(
+                                        "/chat/completions",
+                                        &model_id,
+                                        label.as_deref(),
+                                        request_id.as_deref().unwrap_or(""),
+                                        &trace_id,
+                                        (*metadata).clone(),
+                                        usage_value,
+                                    )
+                                    .await;
+                                let handled_usage = match serde_json::from_value::<Usage>(modified_usage) {
+                                    Ok(usage) => usage,
+                                    Err(err) => {
+                                        warn!(
+                                            "usage handler returned invalid usage payload: {err}"
+                                        );
+                                        current_usage
+                                    }
+                                };
+                                usage = Some(handled_usage.clone());
+                                Some(add_usage_cloned(&usage_offset, &handled_usage))
+                            } else {
+                                None
+                            };
+                            yield UnifiedEvent::Completed {
+                                finish_reason,
+                                usage: event_usage,
+                            };
                         }
                         _ => {
                             yield event;
@@ -505,28 +563,30 @@ where
                     "usage",
                     &usage_to_value(current_usage),
                 );
-                let usage_handler = Arc::clone(&config.usage_handler);
-                let model_id = model_id.clone();
-                let request_id = request_id.clone().unwrap_or_default();
-                let trace_id = trace_id.clone();
-                let label = label.clone();
-                let metadata = (*metadata).clone();
-                let usage = usage_to_value(current_usage);
-                tokio::spawn(async move {
-                    usage_handler
+                if saw_tool_call {
+                    let modified_usage = config
+                        .usage_handler
                         .on_usage(
                             "/chat/completions",
                             &model_id,
                             label.as_deref(),
-                            &request_id,
+                            request_id.as_deref().unwrap_or(""),
                             &trace_id,
-                            StatusCode::OK.as_u16(),
-                            metadata,
-                            usage,
+                            (*metadata).clone(),
+                            usage_to_value(current_usage),
                         )
                         .await;
-                });
-                add_usage(&mut total_usage, current_usage);
+                    let current_usage = match serde_json::from_value::<Usage>(modified_usage) {
+                        Ok(usage) => usage,
+                        Err(err) => {
+                            warn!("usage handler returned invalid usage payload: {err}");
+                            current_usage.clone()
+                        }
+                    };
+                    add_usage(&mut total_usage, &current_usage);
+                } else {
+                    add_usage(&mut total_usage, current_usage);
+                }
             }
             log_llm_call(
                 call_count,

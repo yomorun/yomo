@@ -10,6 +10,7 @@ use futures_util::{StreamExt, stream};
 use log::{error, info};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
+use std::sync::Arc;
 use tracing::Instrument;
 
 use crate::metadata_mgr::MetadataMgr;
@@ -223,30 +224,23 @@ where
     let response = match response.body {
         ProviderBody::Full(payload) => {
             let request_id = parse_request_id(&payload).unwrap_or_default();
+            let mut payload = payload;
             if let Some(usage) = parse_usage(kind, &payload) {
                 if let Ok(usage_value) = serde_json::to_value(usage) {
-                    record_flattened_json_attributes(&root_span, "usage", &usage_value);
-                    let usage_handler = std::sync::Arc::clone(&state.usage_handler);
-                    let endpoint = endpoint_path.to_string();
-                    let model_id = provider_entry.model_id.clone();
-                    let trace_id = trace_id.clone();
-                    let status_code = response.status.as_u16();
-                    let metadata = metadata.clone();
-                    let request_id = request_id.clone();
-                    tokio::spawn(async move {
-                        usage_handler
-                            .on_usage(
-                                &endpoint,
-                                &model_id,
-                                provider_entry.label.as_deref(),
-                                &request_id,
-                                &trace_id,
-                                status_code,
-                                metadata,
-                                usage_value,
-                            )
-                            .await;
-                    });
+                    let modified_usage = state
+                        .usage_handler
+                        .on_usage(
+                            endpoint_path,
+                            &provider_entry.model_id,
+                            provider_entry.label.as_deref(),
+                            &request_id,
+                            &trace_id,
+                            metadata.clone(),
+                            usage_value,
+                        )
+                        .await;
+                    record_flattened_json_attributes(&root_span, "usage", &modified_usage);
+                    payload = replace_usage_in_payload(kind, &payload, &modified_usage);
                 }
             }
             builder.body(Body::from(payload)).expect("build response")
@@ -256,6 +250,12 @@ where
                 kind,
                 stream,
                 root_span.clone(),
+                Arc::clone(&state.usage_handler),
+                endpoint_path.to_string(),
+                provider_entry.model_id.clone(),
+                provider_entry.label.clone(),
+                trace_id.clone(),
+                metadata.clone(),
             )))
             .expect("build response"),
     };
@@ -432,11 +432,20 @@ fn parse_usage_from_json(kind: EndpointKind, value: &Value) -> Option<Usage> {
     }
 }
 
-fn wrap_stream_with_usage(
+fn wrap_stream_with_usage<M>(
     kind: EndpointKind,
     stream: Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send>>,
     root_span: tracing::Span,
-) -> Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send>> {
+    usage_handler: Arc<dyn UsageHandler<M>>,
+    endpoint: String,
+    model_id: String,
+    label: Option<String>,
+    trace_id: String,
+    metadata: M,
+) -> Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send>>
+where
+    M: Clone + Send + Sync + 'static,
+{
     Box::pin(try_stream! {
         futures_util::pin_mut!(stream);
         let mut text_buffer = String::new();
@@ -445,18 +454,81 @@ fn wrap_stream_with_usage(
             let chunk = item?;
             if let Ok(text) = std::str::from_utf8(&chunk) {
                 text_buffer.push_str(text);
-                update_usage_from_sse_frames(kind, &mut text_buffer, &mut latest_usage);
+                while let Some(frame_end) = text_buffer.find("\n\n") {
+                    let frame = text_buffer[..frame_end].to_string();
+                    text_buffer.drain(..frame_end + 2);
+                    let (output_frame, usage) = rewrite_sse_frame_usage(
+                        kind,
+                        &frame,
+                        Arc::clone(&usage_handler),
+                        &endpoint,
+                        &model_id,
+                        label.as_deref(),
+                        &trace_id,
+                        metadata.clone(),
+                    )
+                    .await;
+                    if usage.is_some() {
+                        latest_usage = usage;
+                    }
+                    yield Bytes::from(output_frame);
+                }
+            } else {
+                yield chunk;
             }
-            yield chunk;
         }
 
         if !text_buffer.trim().is_empty() {
-            if let Ok(value) = serde_json::from_str::<Value>(text_buffer.trim()) {
-                if let Some(usage) = parse_usage_from_json(kind, &value) {
-                    latest_usage = serde_json::to_value(usage).ok();
+            if text_buffer.trim_start().starts_with("data:") {
+                let (output_frame, usage) = rewrite_sse_frame_usage(
+                    kind,
+                    text_buffer.trim_end_matches('\n'),
+                    Arc::clone(&usage_handler),
+                    &endpoint,
+                    &model_id,
+                    label.as_deref(),
+                    &trace_id,
+                    metadata.clone(),
+                )
+                .await;
+                if usage.is_some() {
+                    latest_usage = usage;
                 }
+                yield Bytes::from(output_frame);
             } else {
-                update_usage_from_sse_frames(kind, &mut text_buffer, &mut latest_usage);
+                if let Ok(mut value) = serde_json::from_str::<Value>(text_buffer.trim()) {
+                    if let Some(usage_value) = extract_usage_value(kind, &value) {
+                        let request_id = value
+                            .get("id")
+                            .and_then(|id| id.as_str())
+                            .unwrap_or("");
+                        let modified_usage = usage_handler
+                            .on_usage(
+                                &endpoint,
+                                &model_id,
+                                label.as_deref(),
+                                request_id,
+                                &trace_id,
+                                metadata,
+                                usage_value,
+                            )
+                            .await;
+                        if replace_usage_in_json_value(kind, &mut value, modified_usage.clone()) {
+                            latest_usage = Some(modified_usage);
+                            if let Ok(encoded) = serde_json::to_vec(&value) {
+                                yield Bytes::from(encoded);
+                            } else {
+                                yield Bytes::from(text_buffer.clone());
+                            }
+                        } else {
+                            yield Bytes::from(text_buffer.clone());
+                        }
+                    } else {
+                        yield Bytes::from(text_buffer.clone());
+                    }
+                } else {
+                    yield Bytes::from(text_buffer.clone());
+                }
             }
         }
 
@@ -466,17 +538,125 @@ fn wrap_stream_with_usage(
     })
 }
 
-fn update_usage_from_sse_frames(
+async fn rewrite_sse_frame_usage<M>(
     kind: EndpointKind,
-    buffer: &mut String,
-    latest_usage: &mut Option<Value>,
-) {
-    while let Some(frame_end) = buffer.find("\n\n") {
-        let frame = buffer[..frame_end].to_string();
-        buffer.drain(..frame_end + 2);
-        if let Some(value) = parse_sse_data_json(&frame) {
-            if let Some(usage) = parse_usage_from_json(kind, &value) {
-                *latest_usage = serde_json::to_value(usage).ok();
+    frame: &str,
+    usage_handler: Arc<dyn UsageHandler<M>>,
+    endpoint: &str,
+    model_id: &str,
+    label: Option<&str>,
+    trace_id: &str,
+    metadata: M,
+) -> (String, Option<Value>)
+where
+    M: Clone + Send + Sync + 'static,
+{
+    if let Some(mut value) = parse_sse_data_json(frame) {
+        if let Some(usage_value) = extract_usage_value(kind, &value) {
+            let request_id = value
+                .get("id")
+                .and_then(|id| id.as_str())
+                .unwrap_or("");
+            let modified_usage = usage_handler
+                .on_usage(
+                    endpoint,
+                    model_id,
+                    label,
+                    request_id,
+                    trace_id,
+                    metadata,
+                    usage_value,
+                )
+                .await;
+            if replace_usage_in_json_value(kind, &mut value, modified_usage.clone()) {
+                if let Ok(encoded) = serde_json::to_string(&value) {
+                    return (rebuild_sse_frame_with_data(frame, &encoded), Some(modified_usage));
+                }
+            }
+        }
+    }
+    (format!("{frame}\n\n"), None)
+}
+
+fn rebuild_sse_frame_with_data(frame: &str, json_payload: &str) -> String {
+    let mut lines = Vec::new();
+    for line in frame.lines() {
+        if !line.starts_with("data:") {
+            lines.push(line.to_string());
+        }
+    }
+    lines.push(format!("data: {json_payload}"));
+    format!("{}\n\n", lines.join("\n"))
+}
+
+fn extract_usage_value(kind: EndpointKind, value: &Value) -> Option<Value> {
+    parse_usage_from_json(kind, value).and_then(|usage| serde_json::to_value(usage).ok())
+}
+
+fn replace_usage_in_payload(kind: EndpointKind, payload: &Bytes, usage: &Value) -> Bytes {
+    let Ok(mut value) = serde_json::from_slice::<Value>(payload) else {
+        return payload.clone();
+    };
+    if replace_usage_in_json_value(kind, &mut value, usage.clone()) {
+        serde_json::to_vec(&value)
+            .map(Bytes::from)
+            .unwrap_or_else(|_| payload.clone())
+    } else {
+        payload.clone()
+    }
+}
+
+fn replace_usage_in_json_value(kind: EndpointKind, value: &mut Value, usage: Value) -> bool {
+    match kind {
+        EndpointKind::Messages
+        | EndpointKind::Embeddings
+        | EndpointKind::Rerank
+        | EndpointKind::AudioSpeech
+        | EndpointKind::AudioTranscriptions
+        | EndpointKind::Images => {
+            if let Some(obj) = value.as_object_mut() {
+                obj.insert("usage".to_string(), usage);
+                true
+            } else {
+                false
+            }
+        }
+        EndpointKind::Responses => {
+            if let Some(obj) = value.as_object_mut() {
+                if obj.contains_key("usage") {
+                    obj.insert("usage".to_string(), usage);
+                    true
+                } else if let Some(response) = obj.get_mut("response") {
+                    if let Some(response_obj) = response.as_object_mut() {
+                        response_obj.insert("usage".to_string(), usage);
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        }
+        EndpointKind::GenerateContent => {
+            if let Some(obj) = value.as_object_mut() {
+                if obj.contains_key("usageMetadata") {
+                    obj.insert("usageMetadata".to_string(), usage);
+                    true
+                } else if let Some(response) = obj.get_mut("response") {
+                    if let Some(response_obj) = response.as_object_mut() {
+                        response_obj.insert("usageMetadata".to_string(), usage);
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
             }
         }
     }
