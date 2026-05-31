@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::pin::Pin;
 
 use async_stream::try_stream;
@@ -182,6 +183,7 @@ pub fn stream_openai_chunks(
         let mut created_at = String::new();
         let mut latest_usage_for_root: Option<Value> = None;
         let mut tool_call_index: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+        let mut tool_call_delta_emitted: HashSet<String> = HashSet::new();
         let mut next_tool_index: i32 = 0;
 
         while let Some(item) = stream.next().await {
@@ -243,6 +245,7 @@ pub fn stream_openai_chunks(
                     });
                 }
                 UnifiedEvent::ToolCallDelta { id, name, arguments_delta } => {
+                    tool_call_delta_emitted.insert(id.clone());
                     let index = *tool_call_index.entry(id.clone()).or_insert_with(|| {
                         let current = next_tool_index;
                         next_tool_index += 1;
@@ -280,6 +283,9 @@ pub fn stream_openai_chunks(
                     });
                 }
                 UnifiedEvent::ToolCallDone { id, name, arguments } => {
+                    if tool_call_delta_emitted.contains(&id) {
+                        continue;
+                    }
                     let index = *tool_call_index.entry(id.clone()).or_insert_with(|| {
                         let current = next_tool_index;
                         next_tool_index += 1;
@@ -493,6 +499,144 @@ fn map_usage(usage: &crate::llm_provider::Usage) -> Usage {
             reasoning_tokens: usage.reasoning_tokens.unwrap_or(0),
             rejected_prediction_tokens: 0,
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::stream_openai_chunks;
+    use crate::llm_provider::{UnifiedEvent, Usage};
+    use futures_util::StreamExt;
+    use serde_json::Value;
+    use tracing::Span;
+
+    #[tokio::test]
+    async fn suppresses_tool_call_done_after_delta_for_same_id() {
+        let events = vec![
+            Ok(UnifiedEvent::ResponseCreated {
+                id: "req-1".to_string(),
+                model: "m".to_string(),
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+            }),
+            Ok(UnifiedEvent::ToolCallDelta {
+                id: "req-1-tool-0".to_string(),
+                name: "client_ping".to_string(),
+                arguments_delta: "{\"message\":\"hello\"}".to_string(),
+            }),
+            Ok(UnifiedEvent::ToolCallDone {
+                id: "req-1-tool-0".to_string(),
+                name: "client_ping".to_string(),
+                arguments: "{\"message\":\"hello\"}".to_string(),
+            }),
+            Ok(UnifiedEvent::Completed {
+                finish_reason: Some("tool_calls".to_string()),
+                usage: Some(Usage {
+                    input_tokens: 1,
+                    output_tokens: 1,
+                    total_tokens: 2,
+                    cached_tokens: None,
+                    reasoning_tokens: None,
+                    raw: None,
+                }),
+            }),
+        ];
+
+        let stream = stream_openai_chunks(
+            Box::pin(futures_util::stream::iter(events)),
+            "trace-1".to_string(),
+            "m".to_string(),
+            Span::none(),
+        );
+
+        let mut payloads = Vec::new();
+        futures_util::pin_mut!(stream);
+        while let Some(item) = stream.next().await {
+            payloads.push(item.expect("stream chunk"));
+        }
+
+        let mut tool_call_chunk_count = 0;
+        for payload in payloads {
+            let text = String::from_utf8(payload.to_vec()).expect("utf8");
+            let Some(json) = text.strip_prefix("data: ") else {
+                continue;
+            };
+            let json = json.trim();
+            if json == "[DONE]" {
+                continue;
+            }
+            let value: Value = serde_json::from_str(json).expect("valid json chunk");
+            let has_tool_calls = value
+                .get("choices")
+                .and_then(Value::as_array)
+                .and_then(|choices| choices.first())
+                .and_then(|choice| choice.get("delta"))
+                .and_then(|delta| delta.get("tool_calls"))
+                .is_some();
+            if has_tool_calls {
+                tool_call_chunk_count += 1;
+            }
+        }
+
+        assert_eq!(tool_call_chunk_count, 1);
+    }
+
+    #[tokio::test]
+    async fn emits_tool_call_done_when_no_delta_seen() {
+        let events = vec![
+            Ok(UnifiedEvent::ResponseCreated {
+                id: "req-1".to_string(),
+                model: "m".to_string(),
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+            }),
+            Ok(UnifiedEvent::ToolCallDone {
+                id: "req-1-tool-0".to_string(),
+                name: "client_ping".to_string(),
+                arguments: "{\"message\":\"hello\"}".to_string(),
+            }),
+            Ok(UnifiedEvent::Completed {
+                finish_reason: Some("tool_calls".to_string()),
+                usage: Some(Usage {
+                    input_tokens: 1,
+                    output_tokens: 1,
+                    total_tokens: 2,
+                    cached_tokens: None,
+                    reasoning_tokens: None,
+                    raw: None,
+                }),
+            }),
+        ];
+
+        let stream = stream_openai_chunks(
+            Box::pin(futures_util::stream::iter(events)),
+            "trace-1".to_string(),
+            "m".to_string(),
+            Span::none(),
+        );
+
+        let mut payloads = Vec::new();
+        futures_util::pin_mut!(stream);
+        while let Some(item) = stream.next().await {
+            payloads.push(item.expect("stream chunk"));
+        }
+
+        let tool_call_chunk_count = payloads
+            .into_iter()
+            .filter_map(|payload| String::from_utf8(payload.to_vec()).ok())
+            .filter_map(|text| text.strip_prefix("data: ").map(str::to_string))
+            .filter(|json| json.trim() != "[DONE]")
+            .filter_map(|json| serde_json::from_str::<Value>(json.trim()).ok())
+            .filter(|value| {
+                value
+                    .get("choices")
+                    .and_then(Value::as_array)
+                    .and_then(|choices| choices.first())
+                    .and_then(|choice| choice.get("delta"))
+                    .and_then(|delta| delta.get("tool_calls"))
+                    .is_some()
+            })
+            .count();
+
+        assert_eq!(tool_call_chunk_count, 1);
     }
 }
 
