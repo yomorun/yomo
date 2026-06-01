@@ -19,7 +19,7 @@ use crate::trace::{
     DefaultRequestSpanStarter, RequestSpanStarter, record_flattened_json_attributes,
     set_http_span_status,
 };
-use crate::usage_handler::UsageHandler;
+use crate::usage_handler::{EndpointUsage, UsageHandler};
 
 pub struct ModelApiHandlerState<A, M> {
     pub provider_registry: std::sync::Arc<ProviderRegistry<M>>,
@@ -232,9 +232,10 @@ where
                             &request_id,
                             &trace_id,
                             metadata.clone(),
-                            usage_value,
+                            EndpointUsage::from_endpoint_payload(endpoint_path, usage_value),
                         )
-                        .await;
+                        .await
+                        .into_payload(endpoint_path);
                     record_flattened_json_attributes(&root_span, "usage", &modified_usage);
                     if provider.inject_usage_into_full(&mut body_json, modified_usage) {
                         payload = serde_json::to_vec(&body_json)
@@ -410,9 +411,10 @@ where
                                 &request_id,
                                 &trace_id,
                                 metadata.clone(),
-                                usage_value,
+                                EndpointUsage::from_endpoint_payload(&endpoint, usage_value),
                             )
-                            .await;
+                            .await
+                            .into_payload(&endpoint);
                         if provider
                             .inject_usage_into_stream_event(&mut value, modified_usage.clone())
                         {
@@ -466,9 +468,10 @@ where
                     &request_id,
                     trace_id,
                     metadata,
-                    usage_value,
+                    EndpointUsage::from_endpoint_payload(endpoint, usage_value),
                 )
-                .await;
+                .await
+                .into_payload(endpoint);
             if provider.inject_usage_into_stream_event(&mut value, modified_usage.clone()) {
                 if let Ok(encoded) = serde_json::to_string(&value) {
                     return (

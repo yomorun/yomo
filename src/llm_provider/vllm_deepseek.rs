@@ -117,7 +117,7 @@ fn ensure_no_image_parts(request: &ChatCompletionRequest) -> Result<(), Provider
             for part in parts {
                 if matches!(part, ContentPart::Image { .. }) {
                     return Err(invalid_request(
-                        "deepseek model do not support image_url messages",
+                        "vllm deepseek models do not support image_url messages",
                     ));
                 }
             }

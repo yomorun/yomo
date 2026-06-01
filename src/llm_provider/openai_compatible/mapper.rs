@@ -1,13 +1,12 @@
 use std::collections::HashMap;
 
 use serde_json;
+use serde_json::Value;
 
-use crate::llm_provider::{
-    FinishReason, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse, Usage,
-};
+use crate::llm_provider::{FinishReason, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse};
 use crate::openai_types::{
     ChatCompletionChunk, ChatCompletionChunkToolCall, ChatCompletionChunkToolCallFunction,
-    Content as OpenAIContent, ContentPart, Usage as OpenAIUsage,
+    Content as OpenAIContent, ContentPart,
 };
 
 #[derive(Default)]
@@ -43,15 +42,8 @@ pub fn map_response(
     let usage = response
         .usage
         .as_ref()
-        .map(map_usage_to_provider)
-        .unwrap_or(Usage {
-            input_tokens: 0,
-            output_tokens: 0,
-            total_tokens: 0,
-            cached_tokens: None,
-            reasoning_tokens: None,
-            raw: None,
-        });
+        .and_then(|usage| serde_json::to_value(usage).ok())
+        .unwrap_or(Value::Null);
 
     Ok(UnifiedResponse {
         request_id: response.id,
@@ -116,9 +108,9 @@ pub fn map_stream_chunk(
     }
 
     if let Some(chunk_usage) = &chunk.usage {
-        state.usage = Some(map_usage_to_provider(chunk_usage));
+        state.usage = serde_json::to_value(chunk_usage).ok();
         events.push(UnifiedEvent::Usage {
-            usage: map_usage_to_provider(chunk_usage),
+            usage: serde_json::to_value(chunk_usage).unwrap_or(Value::Null),
         });
     }
 
@@ -128,14 +120,7 @@ pub fn map_stream_chunk(
         .and_then(|choice| choice.finish_reason.as_deref())
     {
         let finish_reason_value = reason.to_string();
-        let usage = state.usage.clone().unwrap_or(Usage {
-            input_tokens: 0,
-            output_tokens: 0,
-            total_tokens: 0,
-            cached_tokens: None,
-            reasoning_tokens: None,
-            raw: None,
-        });
+        let usage = state.usage.clone().unwrap_or(Value::Null);
 
         if finish_reason_value == "tool_calls" {
             for (index, call_state) in state.tool_call_state.drain() {
@@ -166,7 +151,7 @@ pub struct StreamMapState {
     pub request_id: String,
     pub model: String,
     pub created_at: String,
-    pub usage: Option<Usage>,
+    pub usage: Option<Value>,
     pub tool_call_state: HashMap<i32, ToolCallState>,
 }
 
@@ -180,23 +165,6 @@ impl Default for StreamMapState {
             usage: None,
             tool_call_state: HashMap::new(),
         }
-    }
-}
-
-pub fn map_usage_to_provider(usage: &OpenAIUsage) -> Usage {
-    Usage {
-        input_tokens: usage.prompt_tokens,
-        output_tokens: usage.completion_tokens,
-        total_tokens: usage.total_tokens,
-        cached_tokens: usage
-            .prompt_tokens_details
-            .as_ref()
-            .map(|details| details.cached_tokens),
-        reasoning_tokens: usage
-            .completion_tokens_details
-            .as_ref()
-            .map(|details| details.reasoning_tokens),
-        raw: serde_json::to_value(usage).ok(),
     }
 }
 

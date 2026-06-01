@@ -19,11 +19,11 @@ use tracing_opentelemetry::OpenTelemetrySpanExt;
 use crate::llm_provider::openai_compatible::mapper::ensure_tool_call_id;
 use crate::llm_provider::{
     FinishReason, Provider, ProviderError, ToolCall as ProviderToolCall, UnifiedEvent,
-    UnifiedResponse, Usage,
+    UnifiedResponse, UsageAccumulator, UsageSummary, parse_usage_payload, usage_summary_to_value,
 };
 use crate::openai_types::{ChatCompletionRequest, Content, Message, Role, ToolDefinition};
 use crate::trace::record_flattened_json_attributes;
-use crate::usage_handler::{NoopUsageHandler, UsageHandler};
+use crate::usage_handler::{EndpointUsage, NoopUsageHandler, UsageHandler};
 use async_trait::async_trait;
 
 #[derive(Clone)]
@@ -47,10 +47,9 @@ where
 }
 
 impl<M> AgentLoopConfig<M> {
-    pub fn handle_usage(&self, raw_usage: Option<Value>, usage: Usage) -> Usage {
-        let mut usage = usage;
-        if usage.raw.is_none() {
-            usage.raw = raw_usage;
+    pub fn handle_usage(&self, raw_usage: Option<Value>, usage: Value) -> Value {
+        if usage.is_null() {
+            return raw_usage.unwrap_or(Value::Null);
         }
         usage
     }
@@ -161,14 +160,7 @@ where
 {
     let parent_span = Span::current();
     let mut call_count = 0usize;
-    let mut total_usage = Usage {
-        input_tokens: 0,
-        output_tokens: 0,
-        total_tokens: 0,
-        cached_tokens: None,
-        reasoning_tokens: None,
-        raw: None,
-    };
+    let mut total_usage = UsageSummary::default();
     loop {
         let llm_chat_span = info_span!(
             parent: &parent_span,
@@ -195,7 +187,7 @@ where
             .complete(request.clone())
             .instrument(llm_chat_span.clone())
             .await?;
-        response.usage = config.handle_usage(response.usage.raw.clone(), response.usage);
+        response.usage = config.handle_usage(None, response.usage);
         llm_chat_span.record("request_id", field::display(&response.request_id));
         llm_chat_span.record(
             "finish_reason",
@@ -217,22 +209,20 @@ where
                 &request_id,
                 &usage_trace_id,
                 metadata_value,
-                usage,
+                EndpointUsage::from_endpoint_payload("/chat/completions", usage),
             )
-            .await;
-        match serde_json::from_value::<Usage>(modified_usage) {
-            Ok(parsed_usage) => {
-                response.usage = parsed_usage;
-            }
-            Err(err) => {
-                warn!("usage handler returned invalid usage payload: {err}");
-            }
+            .await
+            .into_payload("/chat/completions");
+        response.usage = modified_usage;
+        if let Some(parsed_usage) = parse_usage_payload(&response.usage) {
+            parsed_usage.accumulate_into(&mut total_usage);
+        } else {
+            warn!("usage handler returned invalid usage payload");
         }
-        add_usage(&mut total_usage, &response.usage);
         call_count += 1;
 
         if call_count >= config.max_calls {
-            response.usage = total_usage;
+            response.usage = usage_summary_to_value(&total_usage);
             return Ok(AgentLoopResult::NonStream(response));
         }
 
@@ -248,7 +238,7 @@ where
         );
         if tool_calls.is_empty() {
             response.tool_calls = None;
-            response.usage = total_usage;
+            response.usage = usage_summary_to_value(&total_usage);
             return Ok(AgentLoopResult::NonStream(response));
         }
 
@@ -257,12 +247,12 @@ where
         llm_chat_span.record("tool_calls.client.count", client_calls.len() as i64);
         if server_calls.is_empty() {
             response.tool_calls = Some(client_calls);
-            response.usage = total_usage;
+            response.usage = usage_summary_to_value(&total_usage);
             return Ok(AgentLoopResult::NonStream(response));
         }
         if !client_calls.is_empty() {
             response.tool_calls = Some(client_calls);
-            response.usage = total_usage;
+            response.usage = usage_summary_to_value(&total_usage);
             return Ok(AgentLoopResult::NonStream(response));
         }
 
@@ -320,14 +310,7 @@ where
     let parent_span = Span::current();
     let stream = async_stream::try_stream! {
         let mut call_count = 0usize;
-        let mut total_usage = Usage {
-            input_tokens: 0,
-            output_tokens: 0,
-            total_tokens: 0,
-            cached_tokens: None,
-            reasoning_tokens: None,
-            raw: None,
-        };
+        let mut total_usage = UsageSummary::default();
         let mut last_finish_reason: Option<String> = None;
         let model_id = request.model.clone();
         loop {
@@ -458,13 +441,13 @@ where
                         }
                     }
                     UnifiedEvent::Usage { usage: chunk_usage } => {
-                        usage = Some(config.handle_usage(chunk_usage.raw.clone(), chunk_usage.clone()));
+                        usage = Some(config.handle_usage(None, chunk_usage.clone()));
                     }
                     UnifiedEvent::Completed { finish_reason: reason, usage: chunk_usage } => {
                         finish_reason = reason.clone();
                         last_finish_reason = reason.clone();
                         if let Some(chunk_usage) = chunk_usage {
-                            usage = Some(config.handle_usage(chunk_usage.raw.clone(), chunk_usage.clone()));
+                            usage = Some(config.handle_usage(None, chunk_usage.clone()));
                         }
                     }
                     _ => {}
@@ -473,8 +456,7 @@ where
                 if !saw_tool_call {
                     match event {
                         UnifiedEvent::Usage { usage: chunk_usage } => {
-                            let processed_usage =
-                                config.handle_usage(chunk_usage.raw.clone(), chunk_usage.clone());
+                            let processed_usage = config.handle_usage(None, chunk_usage.clone());
                             let usage_value = usage_to_value(&processed_usage);
                             let modified_usage = config
                                 .usage_handler
@@ -485,16 +467,14 @@ where
                                     request_id.as_deref().unwrap_or(""),
                                     &trace_id,
                                     (*metadata).clone(),
-                                    usage_value,
+                                    EndpointUsage::from_endpoint_payload(
+                                        "/chat/completions",
+                                        usage_value,
+                                    ),
                                 )
-                                .await;
-                            let handled_usage = match serde_json::from_value::<Usage>(modified_usage) {
-                                Ok(usage) => usage,
-                                Err(err) => {
-                                    warn!("usage handler returned invalid usage payload: {err}");
-                                    processed_usage
-                                }
-                            };
+                                .await
+                                .into_payload("/chat/completions");
+                            let handled_usage = modified_usage;
                             usage = Some(handled_usage.clone());
                             let usage_with_offset = add_usage_cloned(&usage_offset, &handled_usage);
                             yield UnifiedEvent::Usage {
@@ -504,7 +484,7 @@ where
                         UnifiedEvent::Completed { finish_reason, usage: chunk_usage } => {
                             let event_usage = chunk_usage.map(|chunk_usage| {
                                 let processed_usage = config.handle_usage(
-                                    chunk_usage.raw.clone(),
+                                    None,
                                     chunk_usage,
                                 );
                                 processed_usage
@@ -520,18 +500,14 @@ where
                                         request_id.as_deref().unwrap_or(""),
                                         &trace_id,
                                         (*metadata).clone(),
-                                        usage_value,
+                                        EndpointUsage::from_endpoint_payload(
+                                            "/chat/completions",
+                                            usage_value,
+                                        ),
                                     )
-                                    .await;
-                                let handled_usage = match serde_json::from_value::<Usage>(modified_usage) {
-                                    Ok(usage) => usage,
-                                    Err(err) => {
-                                        warn!(
-                                            "usage handler returned invalid usage payload: {err}"
-                                        );
-                                        current_usage
-                                    }
-                                };
+                                    .await
+                                    .into_payload("/chat/completions");
+                                let handled_usage = modified_usage;
                                 usage = Some(handled_usage.clone());
                                 Some(add_usage_cloned(&usage_offset, &handled_usage))
                             } else {
@@ -573,19 +549,22 @@ where
                             request_id.as_deref().unwrap_or(""),
                             &trace_id,
                             (*metadata).clone(),
-                            usage_to_value(current_usage),
+                            EndpointUsage::from_endpoint_payload(
+                                "/chat/completions",
+                                usage_to_value(current_usage),
+                            ),
                         )
-                        .await;
-                    let current_usage = match serde_json::from_value::<Usage>(modified_usage) {
-                        Ok(usage) => usage,
-                        Err(err) => {
-                            warn!("usage handler returned invalid usage payload: {err}");
-                            current_usage.clone()
-                        }
-                    };
-                    add_usage(&mut total_usage, &current_usage);
+                        .await
+                        .into_payload("/chat/completions");
+                    if let Some(parsed_usage) = parse_usage_payload(&modified_usage) {
+                        parsed_usage.accumulate_into(&mut total_usage);
+                    } else {
+                        warn!("usage handler returned invalid usage payload");
+                    }
                 } else {
-                    add_usage(&mut total_usage, current_usage);
+                    if let Some(parsed_usage) = parse_usage_payload(current_usage) {
+                        parsed_usage.accumulate_into(&mut total_usage);
+                    }
                 }
             }
             log_llm_call(
@@ -600,7 +579,7 @@ where
                 if !tool_calls.is_empty() {
                     if !emitted_client_tool {
                         let events = build_client_tool_events(
-                            &Some(total_usage.clone()),
+                            &Some(usage_summary_to_value(&total_usage)),
                             &finish_reason,
                             &tool_calls,
                         );
@@ -608,7 +587,7 @@ where
                             yield event;
                         }
                     } else if let Some(completed) =
-                        build_completed_event(&Some(total_usage.clone()), &finish_reason)
+                        build_completed_event(&Some(usage_summary_to_value(&total_usage)), &finish_reason)
                     {
                         yield completed;
                     }
@@ -626,7 +605,7 @@ where
             if server_calls.is_empty() {
                 if !emitted_client_tool {
                     let events = build_client_tool_events(
-                        &Some(total_usage.clone()),
+                        &Some(usage_summary_to_value(&total_usage)),
                         &finish_reason,
                         &client_calls,
                     );
@@ -634,7 +613,7 @@ where
                         yield event;
                     }
                 } else if let Some(completed) =
-                    build_completed_event(&Some(total_usage.clone()), &finish_reason)
+                    build_completed_event(&Some(usage_summary_to_value(&total_usage)), &finish_reason)
                 {
                     yield completed;
                 }
@@ -643,7 +622,7 @@ where
             if !client_calls.is_empty() {
                 if !emitted_client_tool {
                     let events = build_client_tool_events(
-                        &Some(total_usage.clone()),
+                        &Some(usage_summary_to_value(&total_usage)),
                         &finish_reason,
                         &client_calls,
                     );
@@ -651,7 +630,7 @@ where
                         yield event;
                     }
                 } else if let Some(completed) =
-                    build_completed_event(&Some(total_usage.clone()), &finish_reason)
+                    build_completed_event(&Some(usage_summary_to_value(&total_usage)), &finish_reason)
                 {
                     yield completed;
                 }
@@ -1009,18 +988,11 @@ fn build_assistant_tool_call_message(
 }
 
 fn build_client_tool_events(
-    usage: &Option<Usage>,
+    usage: &Option<Value>,
     finish_reason: &Option<String>,
     calls: &[ProviderToolCall],
 ) -> Vec<UnifiedEvent> {
-    let usage = usage.clone().unwrap_or(Usage {
-        input_tokens: 0,
-        output_tokens: 0,
-        total_tokens: 0,
-        cached_tokens: None,
-        reasoning_tokens: None,
-        raw: None,
-    });
+    let usage = usage.clone().unwrap_or(Value::Null);
     let finish_reason = finish_reason
         .clone()
         .or_else(|| Some("tool_calls".to_string()));
@@ -1041,17 +1013,10 @@ fn build_client_tool_events(
 }
 
 fn build_completed_event(
-    usage: &Option<Usage>,
+    usage: &Option<Value>,
     finish_reason: &Option<String>,
 ) -> Option<UnifiedEvent> {
-    let usage = usage.clone().unwrap_or(Usage {
-        input_tokens: 0,
-        output_tokens: 0,
-        total_tokens: 0,
-        cached_tokens: None,
-        reasoning_tokens: None,
-        raw: None,
-    });
+    let usage = usage.clone().unwrap_or(Value::Null);
     let finish_reason = finish_reason
         .clone()
         .or_else(|| Some("tool_calls".to_string()));
@@ -1061,29 +1026,8 @@ fn build_completed_event(
     })
 }
 
-fn add_usage(total: &mut Usage, delta: &Usage) {
-    total.input_tokens += delta.input_tokens;
-    total.output_tokens += delta.output_tokens;
-    total.total_tokens += delta.total_tokens;
-    if total.cached_tokens.is_some() || delta.cached_tokens.is_some() {
-        total.cached_tokens =
-            Some(total.cached_tokens.unwrap_or(0) + delta.cached_tokens.unwrap_or(0));
-    }
-    if total.reasoning_tokens.is_some() || delta.reasoning_tokens.is_some() {
-        total.reasoning_tokens =
-            Some(total.reasoning_tokens.unwrap_or(0) + delta.reasoning_tokens.unwrap_or(0));
-    }
-    if delta.raw.is_some() {
-        total.raw = delta.raw.clone();
-    }
-}
-
-fn usage_to_value(usage: &Usage) -> Value {
-    usage
-        .raw
-        .clone()
-        .or_else(|| serde_json::to_value(usage).ok())
-        .unwrap_or(Value::Null)
+fn usage_to_value(usage: &Value) -> Value {
+    usage.clone()
 }
 
 fn finish_reason_to_str(reason: &FinishReason) -> &'static str {
@@ -1096,10 +1040,12 @@ fn finish_reason_to_str(reason: &FinishReason) -> &'static str {
     }
 }
 
-fn add_usage_cloned(total: &Usage, delta: &Usage) -> Usage {
+fn add_usage_cloned(total: &UsageSummary, delta: &Value) -> Value {
     let mut usage = total.clone();
-    add_usage(&mut usage, delta);
-    usage
+    if let Some(parsed_usage) = parse_usage_payload(delta) {
+        parsed_usage.accumulate_into(&mut usage);
+    }
+    usage_summary_to_value(&usage)
 }
 
 fn log_llm_call(
@@ -1107,21 +1053,16 @@ fn log_llm_call(
     model: &str,
     streaming: bool,
     tool_count: usize,
-    usage: Option<&Usage>,
+    usage: Option<&Value>,
     trace_id: &str,
 ) {
-    let default_usage = Usage {
-        input_tokens: 0,
-        output_tokens: 0,
-        total_tokens: 0,
-        cached_tokens: None,
-        reasoning_tokens: None,
-        raw: None,
-    };
-    let usage = usage.unwrap_or(&default_usage);
+    let usage = usage
+        .and_then(parse_usage_payload)
+        .map(|value| (value.input_tokens, value.output_tokens))
+        .unwrap_or((0, 0));
     info!(
         "llm.call; trace_id={} round={} model={} streaming={} tool_count={} prompt_tokens={} completion_tokens={}",
-        trace_id, round, model, streaming, tool_count, usage.input_tokens, usage.output_tokens
+        trace_id, round, model, streaming, tool_count, usage.0, usage.1
     );
 }
 

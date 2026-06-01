@@ -13,9 +13,9 @@ use serde_json::Value;
 use tracing::{Instrument, Span};
 
 use crate::agent_loop::{AgentLoopConfig, AgentLoopResult, run_agent_loop};
-use crate::llm_provider::FinishReason;
 use crate::llm_provider::registry::ProviderRegistry;
 use crate::llm_provider::selection::SelectionError;
+use crate::llm_provider::{FinishReason, parse_usage_payload};
 use crate::llm_stream_mapper::{DefaultStreamMapperSelector, StreamMapperSelector};
 use crate::metadata_mgr::MetadataMgr;
 use crate::openai_http_mapping::{
@@ -228,8 +228,12 @@ where
             info!(
                 "http.request.end; status_code=200 model_id={} prompt_tokens={} completion_tokens={} trace_id={} metadata={:?}",
                 model_id,
-                response.usage.input_tokens,
-                response.usage.output_tokens,
+                parse_usage_payload(&response.usage)
+                    .map(|value| value.input_tokens)
+                    .unwrap_or(0),
+                parse_usage_payload(&response.usage)
+                    .map(|value| value.output_tokens)
+                    .unwrap_or(0),
                 trace_id,
                 metadata
             );
@@ -274,10 +278,8 @@ fn finish_reason_to_str(reason: &FinishReason) -> &'static str {
     }
 }
 
-fn usage_to_value(usage: &crate::llm_provider::Usage) -> Value {
-    let mut usage = usage.clone();
-    usage.raw = None;
-    serde_json::to_value(usage).unwrap_or(Value::Null)
+fn usage_to_value(usage: &Value) -> Value {
+    usage.clone()
 }
 
 pub async fn build_llm_api(

@@ -11,7 +11,10 @@ use serde_json;
 use serde_json::Value;
 use tracing::{Span, field};
 
-use crate::llm_provider::{FinishReason, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse};
+use crate::llm_provider::{
+    FinishReason, ProviderError, ToOpenAIUsage, ToolCall, UnifiedEvent, UnifiedResponse,
+    parse_usage_payload,
+};
 use crate::openai_types::{
     ChatCompletionChunk, ChatCompletionChunkChoice, ChatCompletionChunkDelta,
     ChatCompletionChunkToolCall, ChatCompletionChunkToolCallFunction, ChatCompletionRequest,
@@ -379,8 +382,14 @@ pub fn stream_openai_chunks(
                         "http.request.stream.completed; model_id={} finish_reason={} prompt_tokens={} completion_tokens={} trace_id={}",
                         model_for_log,
                         finish_reason_log,
-                        usage_for_log.map(|value| value.input_tokens).unwrap_or(0),
-                        usage_for_log.map(|value| value.output_tokens).unwrap_or(0),
+                        usage_for_log
+                            .and_then(parse_usage_payload)
+                            .map(|value| value.input_tokens)
+                            .unwrap_or(0),
+                        usage_for_log
+                            .and_then(parse_usage_payload)
+                            .map(|value| value.output_tokens)
+                            .unwrap_or(0),
                         trace_id
                     );
                 }
@@ -441,22 +450,8 @@ fn map_finish_reason_string(reason: &FinishReason) -> String {
     .to_string()
 }
 
-pub fn map_usage_to_openai(usage: &crate::llm_provider::Usage) -> Usage {
-    Usage {
-        prompt_tokens: usage.input_tokens,
-        completion_tokens: usage.output_tokens,
-        total_tokens: usage.total_tokens,
-        prompt_tokens_details: Some(crate::openai_types::PromptTokensDetails {
-            audio_tokens: 0,
-            cached_tokens: usage.cached_tokens.unwrap_or(0),
-        }),
-        completion_tokens_details: Some(crate::openai_types::CompletionTokensDetails {
-            accepted_prediction_tokens: 0,
-            audio_tokens: 0,
-            reasoning_tokens: usage.reasoning_tokens.unwrap_or(0),
-            rejected_prediction_tokens: 0,
-        }),
-    }
+pub fn map_usage_to_openai(usage: &serde_json::Value) -> Usage {
+    map_usage(usage)
 }
 
 fn sse_chunk(chunk: ChatCompletionChunk) -> Bytes {
@@ -484,28 +479,33 @@ fn map_finish_reason(reason: &str) -> String {
     .to_string()
 }
 
-fn map_usage(usage: &crate::llm_provider::Usage) -> Usage {
-    Usage {
-        prompt_tokens: usage.input_tokens,
-        completion_tokens: usage.output_tokens,
-        total_tokens: usage.total_tokens,
-        prompt_tokens_details: Some(crate::openai_types::PromptTokensDetails {
-            audio_tokens: 0,
-            cached_tokens: usage.cached_tokens.unwrap_or(0),
-        }),
-        completion_tokens_details: Some(crate::openai_types::CompletionTokensDetails {
-            accepted_prediction_tokens: 0,
-            audio_tokens: 0,
-            reasoning_tokens: usage.reasoning_tokens.unwrap_or(0),
-            rejected_prediction_tokens: 0,
-        }),
+fn map_usage(usage: &serde_json::Value) -> Usage {
+    if let Ok(openai_usage) = serde_json::from_value::<Usage>(usage.clone()) {
+        return openai_usage;
     }
+    parse_usage_payload(usage)
+        .map(|value| value.to_openai_usage())
+        .unwrap_or(Usage {
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0,
+            prompt_tokens_details: Some(crate::openai_types::PromptTokensDetails {
+                audio_tokens: 0,
+                cached_tokens: 0,
+            }),
+            completion_tokens_details: Some(crate::openai_types::CompletionTokensDetails {
+                accepted_prediction_tokens: 0,
+                audio_tokens: 0,
+                reasoning_tokens: 0,
+                rejected_prediction_tokens: 0,
+            }),
+        })
 }
 
 #[cfg(test)]
 mod tests {
     use super::stream_openai_chunks;
-    use crate::llm_provider::{UnifiedEvent, Usage};
+    use crate::llm_provider::UnifiedEvent;
     use futures_util::StreamExt;
     use serde_json::Value;
     use tracing::Span;
@@ -530,14 +530,11 @@ mod tests {
             }),
             Ok(UnifiedEvent::Completed {
                 finish_reason: Some("tool_calls".to_string()),
-                usage: Some(Usage {
-                    input_tokens: 1,
-                    output_tokens: 1,
-                    total_tokens: 2,
-                    cached_tokens: None,
-                    reasoning_tokens: None,
-                    raw: None,
-                }),
+                usage: Some(serde_json::json!({
+                    "input_tokens": 1,
+                    "output_tokens": 1,
+                    "total_tokens": 2
+                })),
             }),
         ];
 
@@ -595,14 +592,11 @@ mod tests {
             }),
             Ok(UnifiedEvent::Completed {
                 finish_reason: Some("tool_calls".to_string()),
-                usage: Some(Usage {
-                    input_tokens: 1,
-                    output_tokens: 1,
-                    total_tokens: 2,
-                    cached_tokens: None,
-                    reasoning_tokens: None,
-                    raw: None,
-                }),
+                usage: Some(serde_json::json!({
+                    "input_tokens": 1,
+                    "output_tokens": 1,
+                    "total_tokens": 2
+                })),
             }),
         ];
 

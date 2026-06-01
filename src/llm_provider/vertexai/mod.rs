@@ -11,6 +11,7 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use reqwest::StatusCode;
+use serde_json::Value;
 
 use self::client::VertexAIClient;
 use self::types::{
@@ -19,8 +20,9 @@ use self::types::{
     VertexGenerationConfig, VertexInlineData, VertexPart, VertexSystemInstruction, VertexTool,
     VertexToolConfig, VertexUsageMetadata,
 };
+use crate::llm_provider::provider::InputOutputUsage;
 use crate::llm_provider::{
-    FinishReason, Provider, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse, Usage,
+    FinishReason, Provider, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse,
 };
 use crate::openai_http_mapping::validate_openai_request;
 use crate::openai_types::{
@@ -178,7 +180,7 @@ struct VertexStreamState {
     request_id: String,
     model: String,
     created_at: String,
-    latest_usage: Option<Usage>,
+    latest_usage: Option<Value>,
 }
 
 fn validate_request(request: &ChatCompletionRequest) -> Result<(), ProviderError> {
@@ -477,7 +479,7 @@ fn map_vertex_response(
         output_text,
         tool_calls,
         finish_reason,
-        usage,
+        usage: serde_json::to_value(usage).unwrap_or(Value::Null),
     })
 }
 
@@ -546,6 +548,7 @@ fn map_vertex_stream_chunk(
 
     let usage = map_usage_from_usage_metadata(value.usage_metadata.as_ref());
     if usage.input_tokens > 0 || usage.output_tokens > 0 || usage.total_tokens > 0 {
+        let usage = serde_json::to_value(&usage).unwrap_or(Value::Null);
         state.latest_usage = Some(usage.clone());
         events.push(UnifiedEvent::Usage { usage });
     }
@@ -566,7 +569,7 @@ fn map_vertex_stream_chunk(
     events
 }
 
-fn map_usage_from_usage_metadata(usage: Option<&VertexUsageMetadata>) -> Usage {
+fn map_usage_from_usage_metadata(usage: Option<&VertexUsageMetadata>) -> InputOutputUsage {
     let input_tokens = usage
         .and_then(|value| value.prompt_token_count)
         .unwrap_or(0);
@@ -577,13 +580,12 @@ fn map_usage_from_usage_metadata(usage: Option<&VertexUsageMetadata>) -> Usage {
         .and_then(|value| value.total_token_count)
         .unwrap_or(input_tokens + output_tokens);
 
-    Usage {
-        input_tokens,
-        output_tokens,
-        total_tokens,
+    InputOutputUsage {
+        input_tokens: i64::from(input_tokens),
+        output_tokens: i64::from(output_tokens),
+        total_tokens: i64::from(total_tokens),
         cached_tokens: None,
         reasoning_tokens: None,
-        raw: usage.and_then(|value| serde_json::to_value(value).ok()),
     }
 }
 
