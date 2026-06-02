@@ -97,11 +97,12 @@ fn extract_request_id_from_stream_event_json(event_json: &Value) -> Option<Strin
 }
 
 fn extract_usage_from_full_json(body_json: &Value) -> Option<Value> {
-    body_json.get("usage").cloned().or_else(|| {
-        body_json
-            .get("response")
-            .and_then(|response| response.get("usage"))
-            .cloned()
+    non_null_usage(body_json.get("usage")).or_else(|| {
+        non_null_usage(
+            body_json
+                .get("response")
+                .and_then(|response| response.get("usage")),
+        )
     })
 }
 
@@ -122,6 +123,10 @@ fn inject_usage_into_full_json(body_json: &mut Value, usage: Value) -> bool {
         return true;
     }
     false
+}
+
+fn non_null_usage(value: Option<&Value>) -> Option<Value> {
+    value.filter(|usage| !usage.is_null()).cloned()
 }
 
 #[cfg(test)]
@@ -163,14 +168,25 @@ mod tests {
         assert_eq!(usage, Some(json!({"total_tokens": 42})));
     }
 
-    /// Verifies stream-event usage extraction supports top-level usage payloads.
+    /// Verifies stream-event usage extraction ignores null usage payloads.
     #[test]
-    fn extract_usage_from_stream_event_json_reads_top_level_usage() {
-        let payload = json!({"usage": {"prompt_tokens": 8}});
+    fn extract_usage_from_stream_event_json_ignores_null_usage() {
+        let payload = json!({"usage": null});
 
         let usage = extract_usage_from_stream_event_json(&payload);
 
-        assert_eq!(usage, Some(json!({"prompt_tokens": 8})));
+        assert_eq!(usage, None);
+    }
+
+    /// Verifies stream-event usage extraction supports nested completed-response usage payloads.
+    #[test]
+    fn extract_usage_from_stream_event_json_reads_nested_response_usage() {
+        let payload =
+            json!({"type": "response.completed", "response": {"usage": {"input_tokens": 8}}});
+
+        let usage = extract_usage_from_stream_event_json(&payload);
+
+        assert_eq!(usage, Some(json!({"input_tokens": 8})));
     }
 
     /// Verifies usage injection writes to the top-level usage field when present.

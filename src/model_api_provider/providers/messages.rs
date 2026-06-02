@@ -229,11 +229,12 @@ fn extract_request_id_from_stream_event_json(event_json: &Value) -> Option<Strin
 }
 
 fn extract_usage_from_full_json(body_json: &Value) -> Option<Value> {
-    body_json.get("usage").cloned().or_else(|| {
-        body_json
-            .get("message")
-            .and_then(|message| message.get("usage"))
-            .cloned()
+    non_null_usage(body_json.get("usage")).or_else(|| {
+        non_null_usage(
+            body_json
+                .get("message")
+                .and_then(|message| message.get("usage")),
+        )
     })
 }
 
@@ -254,6 +255,10 @@ fn inject_usage_into_full_json(body_json: &mut Value, usage: Value) -> bool {
         return true;
     }
     false
+}
+
+fn non_null_usage(value: Option<&Value>) -> Option<Value> {
+    value.filter(|usage| !usage.is_null()).cloned()
 }
 
 #[cfg(test)]
@@ -295,14 +300,14 @@ mod tests {
         assert_eq!(usage, Some(json!({"input_tokens": 3})));
     }
 
-    /// Verifies stream-event usage extraction supports top-level usage payloads.
+    /// Verifies stream-event usage extraction ignores null usage payloads.
     #[test]
-    fn extract_usage_from_stream_event_json_reads_top_level_usage() {
-        let payload = json!({"usage": {"output_tokens": 7}});
+    fn extract_usage_from_stream_event_json_ignores_null_usage() {
+        let payload = json!({"usage": null});
 
         let usage = extract_usage_from_stream_event_json(&payload);
 
-        assert_eq!(usage, Some(json!({"output_tokens": 7})));
+        assert_eq!(usage, None);
     }
 
     /// Verifies usage injection writes to nested `message.usage` when top-level field is absent.

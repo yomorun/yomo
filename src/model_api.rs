@@ -222,7 +222,10 @@ where
                 let request_id = provider
                     .extract_request_id_from_full(&body_json)
                     .unwrap_or_default();
-                if let Some(usage_value) = provider.extract_usage_from_full(&body_json) {
+                if let Some(usage_value) = provider
+                    .extract_usage_from_full(&body_json)
+                    .filter(|usage| !usage.is_null())
+                {
                     let modified_usage = state
                         .usage_handler
                         .on_usage(
@@ -399,7 +402,10 @@ where
                 yield Bytes::from(output_frame);
             } else {
                 if let Ok(mut value) = serde_json::from_str::<Value>(text_buffer.trim()) {
-                    if let Some(usage_value) = provider.extract_usage_from_stream_event(&value) {
+                    if let Some(usage_value) = provider
+                        .extract_usage_from_stream_event(&value)
+                        .filter(|usage| !usage.is_null())
+                    {
                         let request_id = provider
                             .extract_request_id_from_stream_event(&value)
                             .unwrap_or_default();
@@ -456,7 +462,10 @@ where
     M: Clone + Send + Sync + 'static,
 {
     if let Some(mut value) = parse_sse_data_json(frame) {
-        if let Some(usage_value) = provider.extract_usage_from_stream_event(&value) {
+        if let Some(usage_value) = provider
+            .extract_usage_from_stream_event(&value)
+            .filter(|usage| !usage.is_null())
+        {
             let request_id = provider
                 .extract_request_id_from_stream_event(&value)
                 .unwrap_or_default();

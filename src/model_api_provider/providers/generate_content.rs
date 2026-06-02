@@ -110,11 +110,12 @@ fn extract_request_id_from_stream_event_json(event_json: &Value) -> Option<Strin
 }
 
 fn extract_usage_from_full_json(body_json: &Value) -> Option<Value> {
-    body_json.get("usageMetadata").cloned().or_else(|| {
-        body_json
-            .get("response")
-            .and_then(|response| response.get("usageMetadata"))
-            .cloned()
+    non_null_usage(body_json.get("usageMetadata")).or_else(|| {
+        non_null_usage(
+            body_json
+                .get("response")
+                .and_then(|response| response.get("usageMetadata")),
+        )
     })
 }
 
@@ -135,6 +136,10 @@ fn inject_usage_into_full_json(body_json: &mut Value, usage: Value) -> bool {
         return true;
     }
     false
+}
+
+fn non_null_usage(value: Option<&Value>) -> Option<Value> {
+    value.filter(|usage| !usage.is_null()).cloned()
 }
 
 #[cfg(test)]
@@ -176,14 +181,14 @@ mod tests {
         assert_eq!(usage, Some(json!({"totalTokenCount": 42})));
     }
 
-    /// Verifies stream-event usage extraction supports top-level `usageMetadata` payloads.
+    /// Verifies stream-event usage extraction ignores null usage metadata payloads.
     #[test]
-    fn extract_usage_from_stream_event_json_reads_top_level_usage_metadata() {
-        let payload = json!({"usageMetadata": {"promptTokenCount": 8}});
+    fn extract_usage_from_stream_event_json_ignores_null_usage_metadata() {
+        let payload = json!({"usageMetadata": null});
 
         let usage = extract_usage_from_stream_event_json(&payload);
 
-        assert_eq!(usage, Some(json!({"promptTokenCount": 8})));
+        assert_eq!(usage, None);
     }
 
     /// Verifies usage injection updates nested `response.usageMetadata` when top-level field is absent.
