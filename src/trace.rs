@@ -124,6 +124,17 @@ where
 
 pub(crate) fn set_http_span_status(span: &Span, status_code: StatusCode, message: Option<&str>) {
     span.record("http.response.status_code", i64::from(status_code.as_u16()));
+    let (otel_status_code, otel_status_message) = http_status_to_otel_status(status_code, message);
+    span.record("otel.status_code", otel_status_code);
+    if let Some(status_message) = otel_status_message {
+        span.record("otel.status_message", field::display(&status_message));
+    }
+}
+
+fn http_status_to_otel_status(
+    status_code: StatusCode,
+    message: Option<&str>,
+) -> (&'static str, Option<String>) {
     if status_code.is_client_error() || status_code.is_server_error() {
         let status_message = message
             .filter(|value| !value.trim().is_empty())
@@ -134,11 +145,9 @@ pub(crate) fn set_http_span_status(span: &Span, status_code: StatusCode, message
                     .unwrap_or("request failed")
                     .to_string()
             });
-        span.record("otel.status_code", "ERROR");
-        span.record("otel.status_message", field::display(&status_message));
+        ("ERROR", Some(status_message))
     } else {
-        span.record("otel.status_code", "OK");
-        span.record("otel.status_message", field::display(""));
+        ("OK", None)
     }
 }
 
@@ -189,5 +198,26 @@ fn collect_flattened_attributes(path: String, value: &Value, out: &mut Vec<(Stri
                 collect_flattened_attributes(format!("{path}.{key}"), item, out);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::http_status_to_otel_status;
+    use axum::http::StatusCode;
+
+    #[test]
+    fn otel_status_is_ok_without_message_for_success_response() {
+        let (status_code, status_message) = http_status_to_otel_status(StatusCode::OK, None);
+        assert_eq!(status_code, "OK");
+        assert_eq!(status_message, None);
+    }
+
+    #[test]
+    fn otel_status_is_error_with_message_for_failure_response() {
+        let (status_code, status_message) =
+            http_status_to_otel_status(StatusCode::BAD_REQUEST, Some("invalid request"));
+        assert_eq!(status_code, "ERROR");
+        assert_eq!(status_message.as_deref(), Some("invalid request"));
     }
 }
