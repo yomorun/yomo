@@ -2,13 +2,13 @@ use anyhow::{Context, Result};
 use axum::http::StatusCode;
 use opentelemetry::KeyValue;
 use opentelemetry::global;
-use opentelemetry::trace::TraceContextExt;
+use opentelemetry::trace::{TraceContextExt, TracerProvider};
+use opentelemetry_otlp::Protocol;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
-use opentelemetry_sdk::runtime::Tokio;
 use opentelemetry_sdk::{
     Resource,
-    trace::{self as sdktrace, IdGenerator},
+    trace::{self as sdktrace, IdGenerator, SdkTracerProvider},
 };
 use serde_json::Value;
 use tracing::subscriber::set_global_default;
@@ -19,6 +19,7 @@ use tracing_subscriber::prelude::*;
 
 pub struct TraceGuard {
     enabled: bool,
+    tracer_provider: Option<SdkTracerProvider>,
 }
 
 pub trait RequestSpanStarter<M>: Send + Sync {
@@ -46,7 +47,9 @@ where
 impl Drop for TraceGuard {
     fn drop(&mut self) {
         if self.enabled {
-            opentelemetry::global::shutdown_tracer_provider();
+            if let Some(provider) = self.tracer_provider.take() {
+                let _ = provider.shutdown();
+            }
         }
     }
 }
@@ -62,23 +65,29 @@ pub async fn init_tracing() -> Result<TraceGuard> {
         Ok(value) if !value.trim().is_empty() => value,
         _ => {
             let _ = set_global_default(tracing_subscriber::registry().with(filter).with(fmt_layer));
-            return Ok(TraceGuard { enabled: false });
+            return Ok(TraceGuard {
+                enabled: false,
+                tracer_provider: None,
+            });
         }
     };
     let service_name = std::env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "yomo".to_string());
     global::set_text_map_propagator(TraceContextPropagator::new());
-    let exporter = opentelemetry_otlp::new_exporter()
-        .http()
-        .with_endpoint(&endpoint);
-    let tracer =
-        opentelemetry_otlp::new_pipeline()
-            .tracing()
-            .with_exporter(exporter)
-            .with_trace_config(sdktrace::config().with_resource(Resource::new(vec![
-                KeyValue::new("service.name", service_name.clone()),
-            ])))
-            .install_batch(Tokio)
-            .context("init otlp tracing")?;
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_http()
+        .with_protocol(Protocol::HttpBinary)
+        .with_endpoint(&endpoint)
+        .build()
+        .context("build otlp span exporter")?;
+    let tracer_provider = SdkTracerProvider::builder()
+        .with_resource(
+            Resource::builder_empty()
+                .with_attributes([KeyValue::new("service.name", service_name.clone())])
+                .build(),
+        )
+        .with_batch_exporter(exporter)
+        .build();
+    let tracer = tracer_provider.tracer(service_name.clone());
     let otel_layer = tracing_opentelemetry::layer()
         .with_tracer(tracer)
         .with_tracked_inactivity(false)
@@ -88,7 +97,10 @@ pub async fn init_tracing() -> Result<TraceGuard> {
     let subscriber = tracing_subscriber::registry().with(filter).with(otel_layer);
     set_global_default(subscriber).context("set tracing subscriber")?;
     log::info!("tracing enabled: endpoint={endpoint}, service={service_name}");
-    Ok(TraceGuard { enabled: true })
+    Ok(TraceGuard {
+        enabled: true,
+        tracer_provider: Some(tracer_provider),
+    })
 }
 
 pub fn start_request_span<M>(method: &str, route: &str, _metadata: Option<&M>) -> (Span, String)
