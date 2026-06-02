@@ -475,6 +475,7 @@ fn map_vertex_response(
 
     Ok(UnifiedResponse {
         request_id,
+        created_at: chrono::Utc::now().to_rfc3339(),
         model,
         output_text,
         tool_calls,

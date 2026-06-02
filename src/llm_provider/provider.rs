@@ -226,6 +226,7 @@ pub struct ToolCall {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UnifiedResponse {
     pub request_id: String,
+    pub created_at: String,
     pub model: String,
     pub output_text: String,
     #[serde(skip_serializing_if = "Option::is_none")]

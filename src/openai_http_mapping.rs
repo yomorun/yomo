@@ -38,7 +38,7 @@ pub fn map_openai_response(response: UnifiedResponse) -> ChatCompletionResponse 
 
     ChatCompletionResponse {
         id: response.request_id,
-        created: None,
+        created: parse_created_at(&response.created_at),
         model: response.model,
         object: "chat.completion".to_string(),
         system_fingerprint: None,
@@ -504,11 +504,32 @@ fn map_usage(usage: &serde_json::Value) -> Usage {
 
 #[cfg(test)]
 mod tests {
-    use super::stream_openai_chunks;
-    use crate::llm_provider::UnifiedEvent;
+    use super::{map_openai_response, stream_openai_chunks};
+    use crate::llm_provider::{FinishReason, UnifiedEvent, UnifiedResponse};
     use futures_util::StreamExt;
     use serde_json::Value;
     use tracing::Span;
+
+    #[test]
+    fn maps_non_streaming_created_timestamp() {
+        let response = UnifiedResponse {
+            request_id: "resp-1".to_string(),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            model: "gpt-4.1".to_string(),
+            output_text: "hello".to_string(),
+            tool_calls: None,
+            finish_reason: FinishReason::Stop,
+            usage: serde_json::json!({
+                "prompt_tokens": 1,
+                "completion_tokens": 1,
+                "total_tokens": 2
+            }),
+        };
+
+        let mapped = map_openai_response(response);
+
+        assert_eq!(mapped.created, Some(1767225600));
+    }
 
     #[tokio::test]
     async fn suppresses_tool_call_done_after_delta_for_same_id() {

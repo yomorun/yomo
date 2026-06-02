@@ -47,6 +47,10 @@ pub fn map_response(
 
     Ok(UnifiedResponse {
         request_id: response.id,
+        created_at: response
+            .created
+            .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0).map(|dt| dt.to_rfc3339()))
+            .unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
         model: response.model,
         output_text,
         tool_calls,
