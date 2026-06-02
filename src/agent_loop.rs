@@ -19,11 +19,13 @@ use tracing_opentelemetry::OpenTelemetrySpanExt;
 use crate::llm_provider::openai_compatible::mapper::ensure_tool_call_id;
 use crate::llm_provider::{
     FinishReason, Provider, ProviderError, ToolCall as ProviderToolCall, UnifiedEvent,
-    UnifiedResponse, UsageAccumulator, UsageSummary, parse_usage_payload, usage_summary_to_value,
+    UnifiedResponse, UsageAccumulator, UsageSummary, usage_summary_to_value,
 };
 use crate::openai_types::{ChatCompletionRequest, Content, Message, Role, ToolDefinition};
 use crate::trace::record_flattened_json_attributes;
-use crate::usage_handler::{EndpointUsage, NoopUsageHandler, UsageHandler};
+use crate::usage_handler::{
+    EndpointUsage, NoopUsageHandler, UsageHandler, parse_endpoint_usage_as_input_output,
+};
 use async_trait::async_trait;
 
 #[derive(Clone)]
@@ -214,7 +216,12 @@ where
             .await
             .into_payload("/chat/completions");
         response.usage = modified_usage;
-        if let Some(parsed_usage) = parse_usage_payload(&response.usage) {
+        if let Some(parsed_usage) = parse_endpoint_usage_as_input_output(
+            "/chat/completions",
+            &response.usage,
+            Some(&model_id),
+            Some(&usage_trace_id),
+        ) {
             parsed_usage.accumulate_into(&mut total_usage);
         } else {
             warn!("usage handler returned invalid usage payload");
@@ -556,13 +563,25 @@ where
                         )
                         .await
                         .into_payload("/chat/completions");
-                    if let Some(parsed_usage) = parse_usage_payload(&modified_usage) {
+                    if let Some(parsed_usage) = parse_endpoint_usage_as_input_output(
+                        "/chat/completions",
+                        &modified_usage,
+                        Some(&model_id),
+                        Some(&trace_id),
+                    )
+                    {
                         parsed_usage.accumulate_into(&mut total_usage);
                     } else {
                         warn!("usage handler returned invalid usage payload");
                     }
                 } else {
-                    if let Some(parsed_usage) = parse_usage_payload(current_usage) {
+                    if let Some(parsed_usage) = parse_endpoint_usage_as_input_output(
+                        "/chat/completions",
+                        current_usage,
+                        Some(&model_id),
+                        Some(&trace_id),
+                    )
+                    {
                         parsed_usage.accumulate_into(&mut total_usage);
                     }
                 }
@@ -992,7 +1011,6 @@ fn build_client_tool_events(
     finish_reason: &Option<String>,
     calls: &[ProviderToolCall],
 ) -> Vec<UnifiedEvent> {
-    let usage = usage.clone().unwrap_or(Value::Null);
     let finish_reason = finish_reason
         .clone()
         .or_else(|| Some("tool_calls".to_string()));
@@ -1007,7 +1025,7 @@ fn build_client_tool_events(
     }
     events.push(UnifiedEvent::Completed {
         finish_reason,
-        usage: Some(usage),
+        usage: usage.clone(),
     });
     events
 }
@@ -1016,13 +1034,12 @@ fn build_completed_event(
     usage: &Option<Value>,
     finish_reason: &Option<String>,
 ) -> Option<UnifiedEvent> {
-    let usage = usage.clone().unwrap_or(Value::Null);
     let finish_reason = finish_reason
         .clone()
         .or_else(|| Some("tool_calls".to_string()));
     Some(UnifiedEvent::Completed {
         finish_reason,
-        usage: Some(usage),
+        usage: usage.clone(),
     })
 }
 
@@ -1042,7 +1059,9 @@ fn finish_reason_to_str(reason: &FinishReason) -> &'static str {
 
 fn add_usage_cloned(total: &UsageSummary, delta: &Value) -> Value {
     let mut usage = total.clone();
-    if let Some(parsed_usage) = parse_usage_payload(delta) {
+    if let Some(parsed_usage) =
+        parse_endpoint_usage_as_input_output("/chat/completions", delta, None, None)
+    {
         parsed_usage.accumulate_into(&mut usage);
     }
     usage_summary_to_value(&usage)
@@ -1057,7 +1076,14 @@ fn log_llm_call(
     trace_id: &str,
 ) {
     let usage = usage
-        .and_then(parse_usage_payload)
+        .and_then(|value| {
+            parse_endpoint_usage_as_input_output(
+                "/chat/completions",
+                value,
+                Some(model),
+                Some(trace_id),
+            )
+        })
         .map(|value| (value.input_tokens, value.output_tokens))
         .unwrap_or((0, 0));
     info!(

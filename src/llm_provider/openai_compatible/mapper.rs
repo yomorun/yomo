@@ -124,7 +124,6 @@ pub fn map_stream_chunk(
         .and_then(|choice| choice.finish_reason.as_deref())
     {
         let finish_reason_value = reason.to_string();
-        let usage = state.usage.clone().unwrap_or(Value::Null);
 
         if finish_reason_value == "tool_calls" {
             for (index, call_state) in state.tool_call_state.drain() {
@@ -143,7 +142,7 @@ pub fn map_stream_chunk(
         });
         events.push(UnifiedEvent::Completed {
             finish_reason: Some(finish_reason_value),
-            usage: Some(usage),
+            usage: state.usage.clone(),
         });
     }
 

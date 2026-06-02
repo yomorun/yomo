@@ -13,7 +13,6 @@ use tracing::{Span, field};
 
 use crate::llm_provider::{
     FinishReason, ProviderError, ToOpenAIUsage, ToolCall, UnifiedEvent, UnifiedResponse,
-    parse_usage_payload,
 };
 use crate::openai_types::{
     ChatCompletionChunk, ChatCompletionChunkChoice, ChatCompletionChunkDelta,
@@ -22,6 +21,7 @@ use crate::openai_types::{
     ToolCall as OpenAIToolCall, ToolCallFunction, ToolChoice, Usage,
 };
 use crate::trace::record_flattened_json_attributes;
+use crate::usage_handler::parse_endpoint_usage_as_input_output;
 
 pub fn map_openai_response(response: UnifiedResponse) -> ChatCompletionResponse {
     let content = if response.output_text.is_empty() {
@@ -383,11 +383,25 @@ pub fn stream_openai_chunks(
                         model_for_log,
                         finish_reason_log,
                         usage_for_log
-                            .and_then(parse_usage_payload)
+                            .and_then(|value| {
+                                parse_endpoint_usage_as_input_output(
+                                    "/chat/completions",
+                                    value,
+                                    Some(&model_for_log),
+                                    Some(&trace_id),
+                                )
+                            })
                             .map(|value| value.input_tokens)
                             .unwrap_or(0),
                         usage_for_log
-                            .and_then(parse_usage_payload)
+                            .and_then(|value| {
+                                parse_endpoint_usage_as_input_output(
+                                    "/chat/completions",
+                                    value,
+                                    Some(&model_for_log),
+                                    Some(&trace_id),
+                                )
+                            })
                             .map(|value| value.output_tokens)
                             .unwrap_or(0),
                         trace_id
@@ -483,7 +497,7 @@ fn map_usage(usage: &serde_json::Value) -> Usage {
     if let Ok(openai_usage) = serde_json::from_value::<Usage>(usage.clone()) {
         return openai_usage;
     }
-    parse_usage_payload(usage)
+    parse_endpoint_usage_as_input_output("/chat/completions", usage, None, None)
         .map(|value| value.to_openai_usage())
         .unwrap_or(Usage {
             prompt_tokens: 0,

@@ -14,6 +14,8 @@ pub struct UsageSummary {
     pub total_tokens: i64,
     pub cached_tokens: Option<i64>,
     pub reasoning_tokens: Option<i64>,
+    pub input_audio_tokens: Option<i64>,
+    pub output_audio_tokens: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,6 +27,10 @@ pub(crate) struct InputOutputUsage {
     pub cached_tokens: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_tokens: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_audio_tokens: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_audio_tokens: Option<i64>,
 }
 
 /// Aggregates usage payloads into a provider-neutral summary.
@@ -45,10 +51,14 @@ impl UsageAccumulator for crate::openai_types::Usage {
         if let Some(details) = &self.prompt_tokens_details {
             total.cached_tokens =
                 Some(total.cached_tokens.unwrap_or(0) + i64::from(details.cached_tokens));
+            total.input_audio_tokens =
+                Some(total.input_audio_tokens.unwrap_or(0) + i64::from(details.audio_tokens));
         }
         if let Some(details) = &self.completion_tokens_details {
             total.reasoning_tokens =
                 Some(total.reasoning_tokens.unwrap_or(0) + i64::from(details.reasoning_tokens));
+            total.output_audio_tokens =
+                Some(total.output_audio_tokens.unwrap_or(0) + i64::from(details.audio_tokens));
         }
     }
 }
@@ -70,6 +80,14 @@ impl UsageAccumulator for InputOutputUsage {
         if let Some(reasoning_tokens) = self.reasoning_tokens {
             total.reasoning_tokens = Some(total.reasoning_tokens.unwrap_or(0) + reasoning_tokens);
         }
+        if let Some(input_audio_tokens) = self.input_audio_tokens {
+            total.input_audio_tokens =
+                Some(total.input_audio_tokens.unwrap_or(0) + input_audio_tokens);
+        }
+        if let Some(output_audio_tokens) = self.output_audio_tokens {
+            total.output_audio_tokens =
+                Some(total.output_audio_tokens.unwrap_or(0) + output_audio_tokens);
+        }
     }
 }
 
@@ -80,12 +98,12 @@ impl ToOpenAIUsage for InputOutputUsage {
             completion_tokens: self.output_tokens as i32,
             total_tokens: self.total_tokens as i32,
             prompt_tokens_details: Some(crate::openai_types::PromptTokensDetails {
-                audio_tokens: 0,
+                audio_tokens: self.input_audio_tokens.unwrap_or(0) as i32,
                 cached_tokens: self.cached_tokens.unwrap_or(0) as i32,
             }),
             completion_tokens_details: Some(crate::openai_types::CompletionTokensDetails {
                 accepted_prediction_tokens: 0,
-                audio_tokens: 0,
+                audio_tokens: self.output_audio_tokens.unwrap_or(0) as i32,
                 reasoning_tokens: self.reasoning_tokens.unwrap_or(0) as i32,
                 rejected_prediction_tokens: 0,
             }),
@@ -93,84 +111,21 @@ impl ToOpenAIUsage for InputOutputUsage {
     }
 }
 
-pub(crate) fn parse_usage_payload(payload: &Value) -> Option<InputOutputUsage> {
-    let obj = payload.as_object()?;
-    let input_tokens = obj
-        .get("input_tokens")
-        .and_then(Value::as_i64)
-        .or_else(|| obj.get("prompt_tokens").and_then(Value::as_i64))
-        .or_else(|| obj.get("prompt_token_count").and_then(Value::as_i64))?;
-    let output_tokens = obj
-        .get("output_tokens")
-        .and_then(Value::as_i64)
-        .or_else(|| obj.get("completion_tokens").and_then(Value::as_i64))
-        .or_else(|| obj.get("candidates_token_count").and_then(Value::as_i64))
-        .unwrap_or(0);
-    let total_tokens = obj
-        .get("total_tokens")
-        .and_then(Value::as_i64)
-        .or_else(|| obj.get("total_token_count").and_then(Value::as_i64))
-        .unwrap_or(input_tokens + output_tokens);
-
-    let cached_tokens = obj
-        .get("cached_tokens")
-        .and_then(Value::as_i64)
-        .or_else(|| {
-            obj.get("prompt_tokens_details")
-                .and_then(Value::as_object)
-                .and_then(|details| details.get("cached_tokens"))
-                .and_then(Value::as_i64)
-        });
-    let reasoning_tokens = obj
-        .get("reasoning_tokens")
-        .and_then(Value::as_i64)
-        .or_else(|| {
-            obj.get("completion_tokens_details")
-                .and_then(Value::as_object)
-                .and_then(|details| details.get("reasoning_tokens"))
-                .and_then(Value::as_i64)
-        })
-        .or_else(|| obj.get("thoughts_token_count").and_then(Value::as_i64));
-
-    Some(InputOutputUsage {
-        input_tokens,
-        output_tokens,
-        total_tokens,
-        cached_tokens,
-        reasoning_tokens,
-    })
-}
-
 pub fn usage_summary_to_value(summary: &UsageSummary) -> Value {
     json!({
         "input_tokens": summary.input_tokens,
         "output_tokens": summary.output_tokens,
-        "total_tokens": summary.total_tokens,
-        "cached_tokens": summary.cached_tokens,
-        "reasoning_tokens": summary.reasoning_tokens,
+            "total_tokens": summary.total_tokens,
+            "cached_tokens": summary.cached_tokens,
+            "reasoning_tokens": summary.reasoning_tokens,
+            "input_audio_tokens": summary.input_audio_tokens,
+            "output_audio_tokens": summary.output_audio_tokens,
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{InputOutputUsage, ToOpenAIUsage, parse_usage_payload};
-
-    #[test]
-    fn parse_usage_payload_supports_openai_usage_shape() {
-        let usage = serde_json::json!({
-            "prompt_tokens": 12,
-            "completion_tokens": 8,
-            "total_tokens": 20,
-            "prompt_tokens_details": {"cached_tokens": 3},
-            "completion_tokens_details": {"reasoning_tokens": 2}
-        });
-        let parsed = parse_usage_payload(&usage).expect("must parse usage");
-        assert_eq!(parsed.input_tokens, 12);
-        assert_eq!(parsed.output_tokens, 8);
-        assert_eq!(parsed.total_tokens, 20);
-        assert_eq!(parsed.cached_tokens, Some(3));
-        assert_eq!(parsed.reasoning_tokens, Some(2));
-    }
+    use super::{InputOutputUsage, ToOpenAIUsage};
 
     #[test]
     fn maps_input_output_usage_to_openai_usage() {
@@ -180,6 +135,8 @@ mod tests {
             total_tokens: 15,
             cached_tokens: Some(2),
             reasoning_tokens: Some(1),
+            input_audio_tokens: Some(4),
+            output_audio_tokens: Some(7),
         };
         let mapped = usage.to_openai_usage();
         assert_eq!(mapped.prompt_tokens, 10);
@@ -195,11 +152,27 @@ mod tests {
         );
         assert_eq!(
             mapped
+                .prompt_tokens_details
+                .as_ref()
+                .expect("prompt details")
+                .audio_tokens,
+            4
+        );
+        assert_eq!(
+            mapped
                 .completion_tokens_details
                 .as_ref()
                 .expect("completion details")
                 .reasoning_tokens,
             1
+        );
+        assert_eq!(
+            mapped
+                .completion_tokens_details
+                .as_ref()
+                .expect("completion details")
+                .audio_tokens,
+            7
         );
     }
 }

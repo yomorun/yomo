@@ -13,9 +13,9 @@ use serde_json::Value;
 use tracing::{Instrument, Span};
 
 use crate::agent_loop::{AgentLoopConfig, AgentLoopResult, run_agent_loop};
+use crate::llm_provider::FinishReason;
 use crate::llm_provider::registry::ProviderRegistry;
 use crate::llm_provider::selection::SelectionError;
-use crate::llm_provider::{FinishReason, parse_usage_payload};
 use crate::llm_stream_mapper::{DefaultStreamMapperSelector, StreamMapperSelector};
 use crate::metadata_mgr::MetadataMgr;
 use crate::openai_http_mapping::{
@@ -26,6 +26,7 @@ use crate::tool_invoker::ToolInvoker;
 use crate::tool_mgr::ToolMgr;
 use crate::trace::{DefaultRequestSpanStarter, RequestSpanStarter};
 use crate::trace::{record_flattened_json_attributes, set_http_span_status};
+use crate::usage_handler::parse_endpoint_usage_as_input_output;
 
 #[derive(Clone)]
 pub struct LlmHandlerState<A, M> {
@@ -228,12 +229,22 @@ where
             info!(
                 "http.request.end; status_code=200 model_id={} prompt_tokens={} completion_tokens={} trace_id={} metadata={:?}",
                 model_id,
-                parse_usage_payload(&response.usage)
-                    .map(|value| value.input_tokens)
-                    .unwrap_or(0),
-                parse_usage_payload(&response.usage)
-                    .map(|value| value.output_tokens)
-                    .unwrap_or(0),
+                parse_endpoint_usage_as_input_output(
+                    "/chat/completions",
+                    &response.usage,
+                    Some(&model_id),
+                    Some(&trace_id),
+                )
+                .map(|value| value.input_tokens)
+                .unwrap_or(0),
+                parse_endpoint_usage_as_input_output(
+                    "/chat/completions",
+                    &response.usage,
+                    Some(&model_id),
+                    Some(&trace_id),
+                )
+                .map(|value| value.output_tokens)
+                .unwrap_or(0),
                 trace_id,
                 metadata
             );

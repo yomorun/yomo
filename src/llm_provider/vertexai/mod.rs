@@ -765,6 +765,8 @@ fn map_usage_from_usage_metadata(usage: Option<&VertexUsageMetadata>) -> InputOu
         total_tokens: i64::from(total_tokens),
         cached_tokens: None,
         reasoning_tokens: None,
+        input_audio_tokens: None,
+        output_audio_tokens: None,
     }
 }
 
