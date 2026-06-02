@@ -211,6 +211,9 @@ where
 
     let mut builder = Response::builder().status(response.status);
     for (key, value) in response.headers.iter() {
+        if key == header::CONTENT_LENGTH {
+            continue;
+        }
         builder = builder.header(key, value);
     }
 
