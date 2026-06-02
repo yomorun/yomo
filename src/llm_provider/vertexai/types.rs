@@ -101,6 +101,10 @@ pub struct VertexPart {
     pub inline_data: Option<VertexInlineData>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub function_call: Option<VertexFunctionCall>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub function_response: Option<VertexFunctionResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thought_signature: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -115,6 +119,12 @@ pub struct VertexFunctionCall {
     pub name: String,
     #[serde(default)]
     pub args: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VertexFunctionResponse {
+    pub name: String,
+    pub response: Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

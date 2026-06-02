@@ -4,6 +4,7 @@ use std::time::Duration;
 use async_stream::try_stream;
 use futures_core::Stream;
 use futures_util::StreamExt;
+use log::debug;
 use reqwest::StatusCode;
 use serde_json::Value;
 use tokio::time::timeout;
@@ -157,6 +158,7 @@ impl Client {
 
         let status = response.status();
         let bytes = response.bytes().await?;
+        debug_response_json("non_stream", Some(status), &bytes);
 
         if !status.is_success() {
             return Err(self.parse_error(status, &bytes));
@@ -190,6 +192,7 @@ impl Client {
         let status = response.status();
         if !status.is_success() {
             let bytes = response.bytes().await?;
+            debug_response_json("stream", Some(status), &bytes);
             return Err(self.parse_error(status, &bytes));
         }
 
@@ -206,6 +209,7 @@ impl Client {
                     break;
                 };
                 let chunk = chunk.map_err(ClientError::Http)?;
+                debug_response_json("stream_chunk", None, &chunk);
                 let text = String::from_utf8_lossy(&chunk);
                 buffer.push_str(&text);
 
@@ -218,6 +222,7 @@ impl Client {
                     }
 
                     if let Some(data) = line.strip_prefix("data: ") {
+                        debug_stream_event_json(data);
                         if data == "[DONE]" {
                             return;
                         }
@@ -257,6 +262,65 @@ impl Client {
         let text = String::from_utf8_lossy(body).to_string();
         ClientError::Api(ApiError::Unknown { status, body: text })
     }
+}
+
+const MAX_DEBUG_BODY_BYTES: usize = 8 * 1024;
+
+fn debug_body(bytes: &[u8]) -> String {
+    let body = String::from_utf8_lossy(bytes);
+    let compact = compact_json_string(&body);
+    truncate_for_debug(&compact)
+}
+
+fn debug_body_value(bytes: &[u8]) -> Value {
+    let body = String::from_utf8_lossy(bytes);
+    serde_json::from_str::<Value>(&body).unwrap_or_else(|_| Value::String(debug_body(bytes)))
+}
+
+fn truncate_for_debug(value: &str) -> String {
+    if value.len() <= MAX_DEBUG_BODY_BYTES {
+        return value.to_string();
+    }
+    let mut end = MAX_DEBUG_BODY_BYTES;
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!(
+        "{}...[truncated {} bytes]",
+        &value[..end],
+        value.len() - MAX_DEBUG_BODY_BYTES
+    )
+}
+
+fn debug_response_json(event: &str, status: Option<StatusCode>, body: &[u8]) {
+    let truncated = body.len() > MAX_DEBUG_BODY_BYTES;
+    let payload = serde_json::json!({
+        "target": "openai_compatible.client.response",
+        "event": event,
+        "status": status.map(|value| value.as_u16()),
+        "body": debug_body_value(body),
+        "truncated": truncated,
+    });
+    debug!("{}", payload);
+}
+
+fn debug_stream_event_json(data: &str) {
+    let compact = compact_json_string(data);
+    let data_value = serde_json::from_str::<Value>(&compact)
+        .unwrap_or_else(|_| Value::String(truncate_for_debug(&compact)));
+    let payload = serde_json::json!({
+        "target": "openai_compatible.client.response",
+        "event": "stream_event",
+        "data": data_value,
+        "truncated": compact.len() > MAX_DEBUG_BODY_BYTES,
+    });
+    debug!("{}", payload);
+}
+
+fn compact_json_string(value: &str) -> String {
+    serde_json::from_str::<Value>(value)
+        .map(|json| json.to_string())
+        .unwrap_or_else(|_| value.to_string())
 }
 
 pub(crate) fn trimmed_base_url(base_url: &str) -> &str {

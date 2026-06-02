@@ -1,4 +1,6 @@
+use std::collections::{HashMap, VecDeque};
 use std::pin::Pin;
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub mod client;
@@ -10,16 +12,18 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use futures_core::Stream;
 use futures_util::StreamExt;
+use log::debug;
 use reqwest::StatusCode;
 use serde_json::Value;
 
 use self::client::VertexAIClient;
 use self::types::{
     VertexCandidate, VertexContent, VertexFunctionCall, VertexFunctionCallingConfig,
-    VertexFunctionDeclaration, VertexGenerateContentRequest, VertexGenerateContentResponse,
-    VertexGenerationConfig, VertexInlineData, VertexPart, VertexSystemInstruction, VertexTool,
-    VertexToolConfig, VertexUsageMetadata,
+    VertexFunctionDeclaration, VertexFunctionResponse, VertexGenerateContentRequest,
+    VertexGenerateContentResponse, VertexGenerationConfig, VertexInlineData, VertexPart,
+    VertexSystemInstruction, VertexTool, VertexToolConfig, VertexUsageMetadata,
 };
+use crate::llm_provider::openai_compatible::mapper::ensure_tool_call_id;
 use crate::llm_provider::provider::InputOutputUsage;
 use crate::llm_provider::{
     FinishReason, Provider, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse,
@@ -36,6 +40,7 @@ const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
 pub struct VertexAIProvider {
     client: VertexAIClient,
     model_id: String,
+    thought_signatures: Arc<Mutex<ThoughtSignatureStore>>,
 }
 
 impl VertexAIProvider {
@@ -47,7 +52,13 @@ impl VertexAIProvider {
     ) -> Result<Self, ConfigError> {
         let client = VertexAIClient::new(project_id, location, credentials_file)
             .map_err(|err| ConfigError::InvalidProvider(err.to_string()))?;
-        Ok(Self { client, model_id })
+        Ok(Self {
+            client,
+            model_id,
+            thought_signatures: Arc::new(Mutex::new(ThoughtSignatureStore::new(
+                MAX_THOUGHT_SIGNATURES,
+            ))),
+        })
     }
 }
 
@@ -62,7 +73,8 @@ impl Provider for VertexAIProvider {
         request: ChatCompletionRequest,
     ) -> Result<UnifiedResponse, ProviderError> {
         validate_request(&request)?;
-        let body = build_vertex_request(&request, self.client.http()).await?;
+        let body =
+            build_vertex_request(&request, self.client.http(), &self.thought_signatures).await?;
         let response = self
             .client
             .post_json_with_headers(
@@ -80,12 +92,13 @@ impl Provider for VertexAIProvider {
             .bytes()
             .await
             .map_err(|err| ProviderError::Internal(err.to_string()))?;
+        debug_response_json("non_stream", Some(status), &bytes);
         if !status.is_success() {
             return Err(map_http_error(status, &bytes));
         }
         let value: VertexGenerateContentResponse = serde_json::from_slice(&bytes)
             .map_err(|err| ProviderError::Internal(format!("parse vertex response: {err}")))?;
-        map_vertex_response(value, &self.model_id)
+        map_vertex_response(value, &self.model_id, &self.thought_signatures)
     }
 
     async fn stream<'a>(
@@ -96,7 +109,8 @@ impl Provider for VertexAIProvider {
         ProviderError,
     > {
         validate_request(&request)?;
-        let body = build_vertex_request(&request, self.client.http()).await?;
+        let body =
+            build_vertex_request(&request, self.client.http(), &self.thought_signatures).await?;
         let response = self
             .client
             .post_json_with_headers(
@@ -115,6 +129,7 @@ impl Provider for VertexAIProvider {
                 .bytes()
                 .await
                 .map_err(|err| ProviderError::Internal(err.to_string()))?;
+            debug_response_json("stream", Some(status), &bytes);
             return Err(map_http_error(status, &bytes));
         }
 
@@ -128,6 +143,7 @@ impl Provider for VertexAIProvider {
             let mut buffer = String::new();
             while let Some(item) = stream.next().await {
                 let chunk = item.map_err(|err| ProviderError::Internal(err.to_string()))?;
+                debug_response_json("stream_chunk", None, &chunk);
                 let text = String::from_utf8_lossy(&chunk);
                 buffer.push_str(&text);
 
@@ -141,6 +157,7 @@ impl Provider for VertexAIProvider {
                         .strip_prefix("data: ")
                         .or_else(|| line.strip_prefix("data:"))
                     {
+                        debug_stream_event_json(data);
                         if data.trim() == "[DONE]" {
                             if !state.completed {
                                 yield UnifiedEvent::Completed {
@@ -154,7 +171,7 @@ impl Provider for VertexAIProvider {
                         let value: VertexGenerateContentResponse = serde_json::from_str(data)
                             .map_err(|err| ProviderError::Internal(format!("parse vertex stream event: {err}")))?;
 
-                        for event in map_vertex_stream_chunk(&value, &mut state) {
+                        for event in map_vertex_stream_chunk(&value, &mut state, &self.thought_signatures) {
                             yield event;
                         }
                     }
@@ -171,6 +188,102 @@ impl Provider for VertexAIProvider {
 
         Ok(Box::pin(output))
     }
+}
+
+const MAX_DEBUG_BODY_BYTES: usize = 8 * 1024;
+const MAX_THOUGHT_SIGNATURES: usize = 4096;
+
+#[derive(Default)]
+struct ThoughtSignatureStore {
+    max_entries: usize,
+    by_tool_call_id: HashMap<String, String>,
+    insertion_order: VecDeque<String>,
+}
+
+impl ThoughtSignatureStore {
+    fn new(max_entries: usize) -> Self {
+        Self {
+            max_entries,
+            by_tool_call_id: HashMap::new(),
+            insertion_order: VecDeque::new(),
+        }
+    }
+
+    fn insert(&mut self, tool_call_id: String, signature: String) {
+        if self.by_tool_call_id.contains_key(&tool_call_id) {
+            self.by_tool_call_id.insert(tool_call_id, signature);
+            return;
+        }
+
+        self.by_tool_call_id.insert(tool_call_id.clone(), signature);
+        self.insertion_order.push_back(tool_call_id);
+        while self.by_tool_call_id.len() > self.max_entries {
+            if let Some(oldest) = self.insertion_order.pop_front() {
+                self.by_tool_call_id.remove(&oldest);
+            }
+        }
+    }
+
+    fn get(&self, tool_call_id: &str) -> Option<String> {
+        self.by_tool_call_id.get(tool_call_id).cloned()
+    }
+}
+
+fn debug_body(bytes: &[u8]) -> String {
+    let body = String::from_utf8_lossy(bytes);
+    let compact = compact_json_string(&body);
+    truncate_for_debug(&compact)
+}
+
+fn debug_body_value(bytes: &[u8]) -> Value {
+    let body = String::from_utf8_lossy(bytes);
+    serde_json::from_str::<Value>(&body).unwrap_or_else(|_| Value::String(debug_body(bytes)))
+}
+
+fn truncate_for_debug(value: &str) -> String {
+    if value.len() <= MAX_DEBUG_BODY_BYTES {
+        return value.to_string();
+    }
+    let mut end = MAX_DEBUG_BODY_BYTES;
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!(
+        "{}...[truncated {} bytes]",
+        &value[..end],
+        value.len() - MAX_DEBUG_BODY_BYTES
+    )
+}
+
+fn debug_response_json(event: &str, status: Option<StatusCode>, body: &[u8]) {
+    let truncated = body.len() > MAX_DEBUG_BODY_BYTES;
+    let payload = serde_json::json!({
+        "target": "vertexai.client.response",
+        "event": event,
+        "status": status.map(|value| value.as_u16()),
+        "body": debug_body_value(body),
+        "truncated": truncated,
+    });
+    debug!("{}", payload);
+}
+
+fn debug_stream_event_json(data: &str) {
+    let compact = compact_json_string(data);
+    let data_value = serde_json::from_str::<Value>(&compact)
+        .unwrap_or_else(|_| Value::String(truncate_for_debug(&compact)));
+    let payload = serde_json::json!({
+        "target": "vertexai.client.response",
+        "event": "stream_event",
+        "data": data_value,
+        "truncated": compact.len() > MAX_DEBUG_BODY_BYTES,
+    });
+    debug!("{}", payload);
+}
+
+fn compact_json_string(value: &str) -> String {
+    serde_json::from_str::<Value>(value)
+        .map(|json| json.to_string())
+        .unwrap_or_else(|_| value.to_string())
 }
 
 #[derive(Default)]
@@ -190,9 +303,11 @@ fn validate_request(request: &ChatCompletionRequest) -> Result<(), ProviderError
 async fn build_vertex_request(
     request: &ChatCompletionRequest,
     http: &reqwest::Client,
+    thought_signatures: &Arc<Mutex<ThoughtSignatureStore>>,
 ) -> Result<VertexGenerateContentRequest, ProviderError> {
     let mut contents = Vec::<VertexContent>::new();
     let mut system_texts = Vec::<String>::new();
+    let mut tool_name_by_id = HashMap::<String, String>::new();
 
     for message in &request.messages {
         match message.role {
@@ -202,20 +317,77 @@ async fn build_vertex_request(
                     system_texts.push(text);
                 }
             }
-            Role::User | Role::Assistant | Role::Tool => {
-                let role = if message.role == Role::Assistant {
-                    "model"
-                } else {
-                    "user"
-                }
-                .to_string();
+            Role::User => {
                 let parts = content_to_vertex_parts(&message.content, http).await?;
                 if !parts.is_empty() {
                     contents.push(VertexContent {
-                        role: Some(role),
+                        role: Some("user".to_string()),
                         parts,
                     });
                 }
+            }
+            Role::Assistant => {
+                if let Some(tool_calls) = &message.tool_calls {
+                    let mut parts = Vec::new();
+                    for call in tool_calls {
+                        let args = parse_function_call_args(&call.function.arguments);
+                        let tool_call_id = call.id.clone().unwrap_or_default();
+                        let thought_signature = if tool_call_id.is_empty() {
+                            None
+                        } else {
+                            thought_signatures
+                                .lock()
+                                .ok()
+                                .and_then(|store| store.get(&tool_call_id))
+                        };
+                        if !tool_call_id.is_empty() {
+                            tool_name_by_id.insert(tool_call_id, call.function.name.clone());
+                        }
+                        parts.push(VertexPart {
+                            function_call: Some(VertexFunctionCall {
+                                name: call.function.name.clone(),
+                                args,
+                            }),
+                            thought_signature,
+                            ..Default::default()
+                        });
+                    }
+                    if !parts.is_empty() {
+                        contents.push(VertexContent {
+                            role: Some("model".to_string()),
+                            parts,
+                        });
+                    }
+                } else {
+                    let parts = content_to_vertex_parts(&message.content, http).await?;
+                    if !parts.is_empty() {
+                        contents.push(VertexContent {
+                            role: Some("model".to_string()),
+                            parts,
+                        });
+                    }
+                }
+            }
+            Role::Tool => {
+                let tool_call_id = message.tool_call_id.as_deref().unwrap_or("").trim();
+                if tool_call_id.is_empty() {
+                    continue;
+                }
+                let tool_name = tool_name_by_id
+                    .get(tool_call_id)
+                    .cloned()
+                    .unwrap_or_else(|| "unknown_tool".to_string());
+                let response = parse_tool_response_payload(&message.content);
+                contents.push(VertexContent {
+                    role: Some("user".to_string()),
+                    parts: vec![VertexPart {
+                        function_response: Some(VertexFunctionResponse {
+                            name: tool_name,
+                            response,
+                        }),
+                        ..Default::default()
+                    }],
+                });
             }
         }
     }
@@ -452,6 +624,7 @@ fn parse_data_url(url: &str) -> Option<(String, String)> {
 fn map_vertex_response(
     value: VertexGenerateContentResponse,
     default_model: &str,
+    thought_signatures: &Arc<Mutex<ThoughtSignatureStore>>,
 ) -> Result<UnifiedResponse, ProviderError> {
     let request_id = value.response_id.unwrap_or_else(new_response_id);
     let model = value
@@ -466,7 +639,9 @@ fn map_vertex_response(
         .unwrap_or_default();
 
     let output_text = extract_text_from_candidate(&candidate);
-    let tool_calls = extract_tool_calls_from_candidate(&candidate);
+    let extracted_tool_calls = extract_tool_calls_from_candidate(&candidate, &request_id);
+    cache_thought_signatures(thought_signatures, &extracted_tool_calls);
+    let tool_calls = map_extracted_tool_calls(extracted_tool_calls);
     let finish_reason = map_finish_reason(
         candidate.finish_reason.as_deref().unwrap_or("STOP"),
         tool_calls.as_ref(),
@@ -487,6 +662,7 @@ fn map_vertex_response(
 fn map_vertex_stream_chunk(
     value: &VertexGenerateContentResponse,
     state: &mut VertexStreamState,
+    thought_signatures: &Arc<Mutex<ThoughtSignatureStore>>,
 ) -> Vec<UnifiedEvent> {
     let mut events = Vec::new();
 
@@ -528,7 +704,9 @@ fn map_vertex_stream_chunk(
         });
     }
 
-    if let Some(calls) = extract_tool_calls_from_candidate(&candidate) {
+    let calls = extract_tool_calls_from_candidate(&candidate, &state.request_id);
+    cache_thought_signatures(thought_signatures, &calls);
+    if let Some(calls) = map_extracted_tool_calls(calls) {
         for (idx, call) in calls.into_iter().enumerate() {
             let tool_id = call
                 .id
@@ -605,18 +783,25 @@ fn extract_text_from_candidate(candidate: &VertexCandidate) -> String {
         .collect::<String>()
 }
 
-fn extract_tool_calls_from_candidate(candidate: &VertexCandidate) -> Option<Vec<ToolCall>> {
-    let parts = candidate
+fn extract_tool_calls_from_candidate(
+    candidate: &VertexCandidate,
+    request_id: &str,
+) -> Vec<(ToolCall, Option<String>)> {
+    let Some(parts) = candidate
         .content
         .as_ref()
-        .map(|value| value.parts.as_slice())?;
+        .map(|value| value.parts.as_slice())
+    else {
+        return Vec::new();
+    };
 
-    let calls = parts
+    parts
         .iter()
-        .filter_map(|call| {
+        .enumerate()
+        .filter_map(|(index, call)| {
             let VertexFunctionCall { name, args } = call.function_call.clone()?;
             Some(ToolCall {
-                id: None,
+                id: Some(ensure_tool_call_id(request_id, index)),
                 name,
                 description: String::new(),
                 arguments: if args.is_null() {
@@ -625,10 +810,57 @@ fn extract_tool_calls_from_candidate(candidate: &VertexCandidate) -> Option<Vec<
                     args.to_string()
                 },
             })
+            .map(|tool_call| (tool_call, call.thought_signature.clone()))
         })
-        .collect::<Vec<_>>();
+        .collect::<Vec<_>>()
+}
 
+fn map_extracted_tool_calls(calls: Vec<(ToolCall, Option<String>)>) -> Option<Vec<ToolCall>> {
+    let calls = calls.into_iter().map(|(call, _)| call).collect::<Vec<_>>();
     if calls.is_empty() { None } else { Some(calls) }
+}
+
+fn cache_thought_signatures(
+    thought_signatures: &Arc<Mutex<ThoughtSignatureStore>>,
+    calls: &[(ToolCall, Option<String>)],
+) {
+    let Ok(mut store) = thought_signatures.lock() else {
+        return;
+    };
+    for (call, signature) in calls {
+        let (Some(tool_call_id), Some(signature)) = (call.id.as_ref(), signature.as_ref()) else {
+            continue;
+        };
+        if signature.trim().is_empty() {
+            continue;
+        }
+        store.insert(tool_call_id.clone(), signature.clone());
+    }
+}
+
+fn parse_function_call_args(arguments: &str) -> Value {
+    serde_json::from_str::<Value>(arguments)
+        .unwrap_or_else(|_| Value::String(arguments.to_string()))
+}
+
+fn parse_tool_response_payload(content: &Content) -> Value {
+    let text = match content {
+        Content::Text(text) => text,
+        Content::Parts(parts) => {
+            return Value::String(
+                parts
+                    .iter()
+                    .filter_map(|part| match part {
+                        ContentPart::Text { text } => Some(text.clone()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join(""),
+            );
+        }
+    };
+
+    serde_json::from_str::<Value>(text).unwrap_or_else(|_| Value::String(text.clone()))
 }
 
 fn map_finish_reason(reason: &str, tool_calls: Option<&Vec<ToolCall>>) -> FinishReason {
@@ -700,6 +932,10 @@ pub fn build_vertexai_provider(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::openai_types::{
+        ChatCompletionRequest, Content, FunctionDefinition, Message, Role, ToolCall,
+        ToolCallFunction, ToolDefinition,
+    };
 
     #[test]
     fn parse_data_url_supports_base64() {
@@ -728,5 +964,270 @@ mod tests {
         assert_eq!(mapped.input_tokens, 12);
         assert_eq!(mapped.output_tokens, 8);
         assert_eq!(mapped.total_tokens, 20);
+    }
+
+    #[test]
+    fn extracts_and_caches_thought_signature() {
+        let candidate = VertexCandidate {
+            content: Some(VertexContent {
+                role: Some("model".to_string()),
+                parts: vec![VertexPart {
+                    function_call: Some(VertexFunctionCall {
+                        name: "check_flight".to_string(),
+                        args: serde_json::json!({"flight": "AA100"}),
+                    }),
+                    thought_signature: Some("sig-a".to_string()),
+                    ..Default::default()
+                }],
+            }),
+            finish_reason: Some("STOP".to_string()),
+        };
+
+        let extracted = extract_tool_calls_from_candidate(&candidate, "resp-1");
+        assert_eq!(extracted.len(), 1);
+        let (call, signature) = &extracted[0];
+        assert_eq!(call.id.as_deref(), Some("resp-1-tool-0"));
+        assert_eq!(signature.as_deref(), Some("sig-a"));
+
+        let signatures = Arc::new(Mutex::new(ThoughtSignatureStore::new(16)));
+        cache_thought_signatures(&signatures, &extracted);
+
+        let cached = signatures.lock().expect("lock store").get("resp-1-tool-0");
+        assert_eq!(cached.as_deref(), Some("sig-a"));
+    }
+
+    #[tokio::test]
+    async fn build_vertex_request_reinjects_cached_signature_for_assistant_tool_call() {
+        let signatures = Arc::new(Mutex::new(ThoughtSignatureStore::new(16)));
+        signatures
+            .lock()
+            .expect("lock store")
+            .insert("call-1".to_string(), "sig-a".to_string());
+
+        let request = ChatCompletionRequest {
+            model: "gemini".to_string(),
+            messages: vec![
+                Message {
+                    role: Role::User,
+                    content: Content::Text("check flight".to_string()),
+                    reasoning_content: None,
+                    tool_call_id: None,
+                    tool_calls: None,
+                },
+                Message {
+                    role: Role::Assistant,
+                    content: Content::Text("Tool call".to_string()),
+                    reasoning_content: None,
+                    tool_call_id: None,
+                    tool_calls: Some(vec![ToolCall {
+                        id: Some("call-1".to_string()),
+                        r#type: Some("function".to_string()),
+                        function: ToolCallFunction {
+                            name: "check_flight".to_string(),
+                            arguments: "{\"flight\":\"AA100\"}".to_string(),
+                            description: None,
+                        },
+                    }]),
+                },
+                Message {
+                    role: Role::Tool,
+                    content: Content::Text("{\"status\":\"delayed\"}".to_string()),
+                    reasoning_content: None,
+                    tool_call_id: Some("call-1".to_string()),
+                    tool_calls: None,
+                },
+            ],
+            n: None,
+            temperature: None,
+            top_p: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            logprobs: None,
+            top_logprobs: None,
+            modalities: None,
+            audio: None,
+            max_completion_tokens: None,
+            stop: None,
+            response_format: None,
+            thinking: None,
+            reasoning_effort: None,
+            chat_template_kwargs: None,
+            prediction: None,
+            verbosity: None,
+            tools: Some(vec![ToolDefinition {
+                r#type: "function".to_string(),
+                function: FunctionDefinition {
+                    name: "check_flight".to_string(),
+                    description: None,
+                    strict: None,
+                    parameters: serde_json::json!({"type": "object"}),
+                },
+            }]),
+            tool_choice: None,
+            allowed_tools: None,
+            parallel_tool_calls: None,
+            service_tier: None,
+            seed: None,
+            stream: None,
+            stream_options: None,
+            metadata: None,
+            agent_context: None,
+        };
+
+        let http = reqwest::Client::new();
+        let mapped = build_vertex_request(&request, &http, &signatures)
+            .await
+            .expect("build vertex request");
+
+        let assistant_part = mapped
+            .contents
+            .iter()
+            .find_map(|content| {
+                if content.role.as_deref() == Some("model") {
+                    content.parts.first()
+                } else {
+                    None
+                }
+            })
+            .expect("assistant function call part");
+        assert_eq!(assistant_part.thought_signature.as_deref(), Some("sig-a"));
+
+        let tool_part = mapped
+            .contents
+            .iter()
+            .find_map(|content| {
+                content
+                    .parts
+                    .iter()
+                    .find(|part| part.function_response.is_some())
+            })
+            .and_then(|part| part.function_response.as_ref())
+            .expect("tool function response part");
+        assert_eq!(tool_part.name, "check_flight");
+        assert_eq!(tool_part.response, serde_json::json!({"status": "delayed"}));
+    }
+
+    #[tokio::test]
+    async fn build_vertex_request_parallel_tool_calls_only_reinjects_existing_signature() {
+        let signatures = Arc::new(Mutex::new(ThoughtSignatureStore::new(16)));
+        signatures
+            .lock()
+            .expect("lock store")
+            .insert("call-paris".to_string(), "sig-paris".to_string());
+
+        let request = ChatCompletionRequest {
+            model: "gemini".to_string(),
+            messages: vec![
+                Message {
+                    role: Role::User,
+                    content: Content::Text("Check weather in Paris and London".to_string()),
+                    reasoning_content: None,
+                    tool_call_id: None,
+                    tool_calls: None,
+                },
+                Message {
+                    role: Role::Assistant,
+                    content: Content::Text("Tool call".to_string()),
+                    reasoning_content: None,
+                    tool_call_id: None,
+                    tool_calls: Some(vec![
+                        ToolCall {
+                            id: Some("call-paris".to_string()),
+                            r#type: Some("function".to_string()),
+                            function: ToolCallFunction {
+                                name: "get_current_temperature".to_string(),
+                                arguments: "{\"location\":\"Paris\"}".to_string(),
+                                description: None,
+                            },
+                        },
+                        ToolCall {
+                            id: Some("call-london".to_string()),
+                            r#type: Some("function".to_string()),
+                            function: ToolCallFunction {
+                                name: "get_current_temperature".to_string(),
+                                arguments: "{\"location\":\"London\"}".to_string(),
+                                description: None,
+                            },
+                        },
+                    ]),
+                },
+                Message {
+                    role: Role::Tool,
+                    content: Content::Text("{\"temp\":\"15C\"}".to_string()),
+                    reasoning_content: None,
+                    tool_call_id: Some("call-paris".to_string()),
+                    tool_calls: None,
+                },
+                Message {
+                    role: Role::Tool,
+                    content: Content::Text("{\"temp\":\"12C\"}".to_string()),
+                    reasoning_content: None,
+                    tool_call_id: Some("call-london".to_string()),
+                    tool_calls: None,
+                },
+            ],
+            n: None,
+            temperature: None,
+            top_p: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            logprobs: None,
+            top_logprobs: None,
+            modalities: None,
+            audio: None,
+            max_completion_tokens: None,
+            stop: None,
+            response_format: None,
+            thinking: None,
+            reasoning_effort: None,
+            chat_template_kwargs: None,
+            prediction: None,
+            verbosity: None,
+            tools: Some(vec![ToolDefinition {
+                r#type: "function".to_string(),
+                function: FunctionDefinition {
+                    name: "get_current_temperature".to_string(),
+                    description: None,
+                    strict: None,
+                    parameters: serde_json::json!({"type": "object"}),
+                },
+            }]),
+            tool_choice: None,
+            allowed_tools: None,
+            parallel_tool_calls: None,
+            service_tier: None,
+            seed: None,
+            stream: None,
+            stream_options: None,
+            metadata: None,
+            agent_context: None,
+        };
+
+        let http = reqwest::Client::new();
+        let mapped = build_vertex_request(&request, &http, &signatures)
+            .await
+            .expect("build vertex request");
+
+        let assistant_model_content = mapped
+            .contents
+            .iter()
+            .find(|content| content.role.as_deref() == Some("model"))
+            .expect("assistant model content");
+        assert_eq!(assistant_model_content.parts.len(), 2);
+        assert_eq!(
+            assistant_model_content.parts[0]
+                .thought_signature
+                .as_deref(),
+            Some("sig-paris")
+        );
+        assert_eq!(assistant_model_content.parts[1].thought_signature, None);
+
+        let function_response_parts = mapped
+            .contents
+            .iter()
+            .flat_map(|content| content.parts.iter())
+            .filter_map(|part| part.function_response.as_ref())
+            .collect::<Vec<_>>();
+        assert_eq!(function_response_parts.len(), 2);
     }
 }
