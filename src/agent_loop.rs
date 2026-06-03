@@ -213,6 +213,7 @@ where
                 metadata_value,
                 EndpointUsage::from_endpoint_payload("/chat/completions", usage),
             )
+            .instrument(llm_chat_span.clone())
             .await
             .into_payload("/chat/completions");
         response.usage = modified_usage;
@@ -479,6 +480,7 @@ where
                                         usage_value,
                                     ),
                                 )
+                                .instrument(llm_chat_span.clone())
                                 .await
                                 .into_payload("/chat/completions");
                             let handled_usage = modified_usage;
@@ -512,6 +514,7 @@ where
                                             usage_value,
                                         ),
                                     )
+                                    .instrument(llm_chat_span.clone())
                                     .await
                                     .into_payload("/chat/completions");
                                 let handled_usage = modified_usage;
@@ -561,6 +564,7 @@ where
                                 usage_to_value(current_usage),
                             ),
                         )
+                        .instrument(llm_chat_span.clone())
                         .await
                         .into_payload("/chat/completions");
                     if let Some(parsed_usage) = parse_endpoint_usage_as_input_output(
