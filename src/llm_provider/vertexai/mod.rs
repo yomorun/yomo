@@ -30,7 +30,7 @@ use crate::llm_provider::{
 };
 use crate::openai_http_mapping::validate_openai_request;
 use crate::openai_types::{
-    ChatCompletionRequest, Content, ContentPart, ResponseFormat, Role, ToolChoice,
+    ChatCompletionRequest, Content, ContentPart, ErrorDetail, ResponseFormat, Role, ToolChoice,
 };
 use crate::serve_config::ConfigError;
 
@@ -895,6 +895,17 @@ fn map_finish_reason_string(reason: &str, content: Option<&VertexContent>) -> St
 
 fn map_http_error(status: StatusCode, body: &[u8]) -> ProviderError {
     let text = String::from_utf8_lossy(body).to_string();
+    if status.as_u16() == 400 {
+        return ProviderError::Public {
+            status: axum::http::StatusCode::BAD_REQUEST,
+            error: ErrorDetail {
+                message: text,
+                r#type: "invalid_request_error".to_string(),
+                code: None,
+                param: None,
+            },
+        };
+    }
     ProviderError::Internal(format!(
         "vertexai request failed with status {status}: {text}"
     ))

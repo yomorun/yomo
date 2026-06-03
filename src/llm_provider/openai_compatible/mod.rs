@@ -4,7 +4,7 @@ use futures_core::Stream;
 use futures_util::StreamExt;
 use std::pin::Pin;
 
-use crate::llm_provider::openai_compatible::client::ClientError;
+use crate::llm_provider::openai_compatible::client::{ApiError, ClientError};
 use crate::llm_provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
 use crate::openai_http_mapping::validate_openai_request;
 use crate::openai_types::ChatCompletionRequest;
@@ -84,7 +84,15 @@ impl Provider for OpenAICompatibleProvider {
 }
 
 fn map_openai_error(err: ClientError) -> ProviderError {
-    ProviderError::Internal(err.to_string())
+    match err {
+        ClientError::Api(ApiError::OpenAI { status, error }) if status.as_u16() == 400 => {
+            ProviderError::Public {
+                status: axum::http::StatusCode::BAD_REQUEST,
+                error,
+            }
+        }
+        other => ProviderError::Internal(other.to_string()),
+    }
 }
 
 pub fn build_openai_compatible_provider(
