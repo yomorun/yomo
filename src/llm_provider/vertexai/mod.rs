@@ -33,6 +33,7 @@ use crate::openai_types::{
     ChatCompletionRequest, Content, ContentPart, ErrorDetail, ResponseFormat, Role, ToolChoice,
 };
 use crate::serve_config::ConfigError;
+use crate::utils::{MAX_LOG_BODY_BYTES, truncate_for_log};
 
 const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
 
@@ -190,7 +191,6 @@ impl Provider for VertexAIProvider {
     }
 }
 
-const MAX_DEBUG_BODY_BYTES: usize = 8 * 1024;
 const MAX_THOUGHT_SIGNATURES: usize = 4096;
 
 #[derive(Default)]
@@ -232,7 +232,7 @@ impl ThoughtSignatureStore {
 fn debug_body(bytes: &[u8]) -> String {
     let body = String::from_utf8_lossy(bytes);
     let compact = compact_json_string(&body);
-    truncate_for_debug(&compact)
+    truncate_for_log(&compact)
 }
 
 fn debug_body_value(bytes: &[u8]) -> Value {
@@ -240,23 +240,8 @@ fn debug_body_value(bytes: &[u8]) -> Value {
     serde_json::from_str::<Value>(&body).unwrap_or_else(|_| Value::String(debug_body(bytes)))
 }
 
-fn truncate_for_debug(value: &str) -> String {
-    if value.len() <= MAX_DEBUG_BODY_BYTES {
-        return value.to_string();
-    }
-    let mut end = MAX_DEBUG_BODY_BYTES;
-    while !value.is_char_boundary(end) {
-        end -= 1;
-    }
-    format!(
-        "{}...[truncated {} bytes]",
-        &value[..end],
-        value.len() - MAX_DEBUG_BODY_BYTES
-    )
-}
-
 fn debug_response_json(event: &str, status: Option<StatusCode>, body: &[u8]) {
-    let truncated = body.len() > MAX_DEBUG_BODY_BYTES;
+    let truncated = body.len() > MAX_LOG_BODY_BYTES;
     let payload = serde_json::json!({
         "target": "vertexai.client.response",
         "event": event,
@@ -270,12 +255,12 @@ fn debug_response_json(event: &str, status: Option<StatusCode>, body: &[u8]) {
 fn debug_stream_event_json(data: &str) {
     let compact = compact_json_string(data);
     let data_value = serde_json::from_str::<Value>(&compact)
-        .unwrap_or_else(|_| Value::String(truncate_for_debug(&compact)));
+        .unwrap_or_else(|_| Value::String(truncate_for_log(&compact)));
     let payload = serde_json::json!({
         "target": "vertexai.client.response",
         "event": "stream_event",
         "data": data_value,
-        "truncated": compact.len() > MAX_DEBUG_BODY_BYTES,
+        "truncated": compact.len() > MAX_LOG_BODY_BYTES,
     });
     debug!("{}", payload);
 }
@@ -425,7 +410,8 @@ async fn build_vertex_request(
             }
             ResponseFormat::JsonSchema { json_schema } => {
                 generation_config.response_mime_type = Some("application/json".to_string());
-                generation_config.response_schema = Some(json_schema.schema.clone());
+                generation_config.response_schema =
+                    Some(sanitize_vertex_schema(&json_schema.schema));
             }
             ResponseFormat::Text => {}
         }
@@ -446,7 +432,7 @@ async fn build_vertex_request(
                     .map(|tool| VertexFunctionDeclaration {
                         name: tool.function.name.clone(),
                         description: tool.function.description.clone(),
-                        parameters: tool.function.parameters.clone(),
+                        parameters: sanitize_vertex_schema(&tool.function.parameters),
                     })
                     .collect::<Vec<_>>(),
             }])
@@ -618,6 +604,26 @@ fn parse_data_url(url: &str) -> Option<(String, String)> {
         Some((mime.to_string(), data.to_string()))
     } else {
         None
+    }
+}
+
+fn sanitize_vertex_schema(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let sanitized = map
+                .iter()
+                .filter_map(|(k, v)| {
+                    if k == "$schema" {
+                        None
+                    } else {
+                        Some((k.clone(), sanitize_vertex_schema(v)))
+                    }
+                })
+                .collect();
+            Value::Object(sanitized)
+        }
+        Value::Array(items) => Value::Array(items.iter().map(sanitize_vertex_schema).collect()),
+        _ => value.clone(),
     }
 }
 
@@ -846,23 +852,30 @@ fn parse_function_call_args(arguments: &str) -> Value {
 }
 
 fn parse_tool_response_payload(content: &Content) -> Value {
-    let text = match content {
-        Content::Text(text) => text,
-        Content::Parts(parts) => {
-            return Value::String(
-                parts
-                    .iter()
-                    .filter_map(|part| match part {
-                        ContentPart::Text { text } => Some(text.clone()),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .join(""),
-            );
+    let payload = match content {
+        Content::Text(text) => {
+            serde_json::from_str::<Value>(text).unwrap_or_else(|_| Value::String(text.clone()))
         }
+        Content::Parts(parts) => Value::String(
+            parts
+                .iter()
+                .filter_map(|part| match part {
+                    ContentPart::Text { text } => Some(text.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join(""),
+        ),
     };
 
-    serde_json::from_str::<Value>(text).unwrap_or_else(|_| Value::String(text.clone()))
+    ensure_vertex_struct(payload)
+}
+
+fn ensure_vertex_struct(value: Value) -> Value {
+    match value {
+        Value::Object(_) => value,
+        _ => serde_json::json!({"content": value}),
+    }
 }
 
 fn map_finish_reason(reason: &str, tool_calls: Option<&Vec<ToolCall>>) -> FinishReason {
@@ -977,6 +990,45 @@ mod tests {
         assert_eq!(mapped.input_tokens, 12);
         assert_eq!(mapped.output_tokens, 8);
         assert_eq!(mapped.total_tokens, 20);
+    }
+
+    #[test]
+    fn sanitize_vertex_schema_removes_schema_keyword_recursively() {
+        let original = serde_json::json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+                "name": {
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "type": "string"
+                }
+            },
+            "allOf": [
+                {
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "type": "object"
+                }
+            ]
+        });
+
+        let sanitized = sanitize_vertex_schema(&original);
+        assert!(sanitized.get("$schema").is_none());
+        assert!(sanitized["properties"]["name"].get("$schema").is_none());
+        assert!(sanitized["allOf"][0].get("$schema").is_none());
+        assert_eq!(sanitized["type"], serde_json::json!("object"));
+    }
+
+    #[test]
+    fn parse_tool_response_payload_wraps_plain_text_as_object() {
+        let payload = parse_tool_response_payload(&Content::Text("hello world".to_string()));
+        assert_eq!(payload, serde_json::json!({"content": "hello world"}));
+    }
+
+    #[test]
+    fn parse_tool_response_payload_keeps_object_payload() {
+        let payload =
+            parse_tool_response_payload(&Content::Text("{\"status\":\"ok\"}".to_string()));
+        assert_eq!(payload, serde_json::json!({"status": "ok"}));
     }
 
     #[test]
@@ -1118,6 +1170,83 @@ mod tests {
             .expect("tool function response part");
         assert_eq!(tool_part.name, "check_flight");
         assert_eq!(tool_part.response, serde_json::json!({"status": "delayed"}));
+    }
+
+    #[tokio::test]
+    async fn build_vertex_request_strips_schema_from_tool_parameters() {
+        let signatures = Arc::new(Mutex::new(ThoughtSignatureStore::new(16)));
+        let request = ChatCompletionRequest {
+            model: "gemini".to_string(),
+            messages: vec![Message {
+                role: Role::User,
+                content: Content::Text("hello".to_string()),
+                reasoning_content: None,
+                tool_call_id: None,
+                tool_calls: None,
+            }],
+            n: None,
+            temperature: None,
+            top_p: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            logprobs: None,
+            top_logprobs: None,
+            modalities: None,
+            audio: None,
+            max_completion_tokens: None,
+            stop: None,
+            response_format: None,
+            thinking: None,
+            reasoning_effort: None,
+            chat_template_kwargs: None,
+            prediction: None,
+            verbosity: None,
+            tools: Some(vec![ToolDefinition {
+                r#type: "function".to_string(),
+                function: FunctionDefinition {
+                    name: "tool_a".to_string(),
+                    description: None,
+                    strict: None,
+                    parameters: serde_json::json!({
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "type": "object",
+                        "properties": {
+                            "city": {
+                                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                                "type": "string"
+                            }
+                        }
+                    }),
+                },
+            }]),
+            tool_choice: None,
+            allowed_tools: None,
+            parallel_tool_calls: None,
+            service_tier: None,
+            seed: None,
+            stream: None,
+            stream_options: None,
+            metadata: None,
+            agent_context: None,
+        };
+
+        let http = reqwest::Client::new();
+        let mapped = build_vertex_request(&request, &http, &signatures)
+            .await
+            .expect("build vertex request");
+        let parameters = &mapped
+            .tools
+            .as_ref()
+            .expect("tools")
+            .first()
+            .expect("first tool")
+            .function_declarations
+            .first()
+            .expect("first declaration")
+            .parameters;
+
+        assert!(parameters.get("$schema").is_none());
+        assert!(parameters["properties"]["city"].get("$schema").is_none());
     }
 
     #[tokio::test]

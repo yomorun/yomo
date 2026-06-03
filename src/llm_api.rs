@@ -7,6 +7,7 @@ use axum::body::{Body, Bytes};
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
+use futures_util::{StreamExt, stream};
 use log::{error, info};
 use serde::Serialize;
 use serde_json::Value;
@@ -14,6 +15,7 @@ use tracing::{Instrument, Span};
 
 use crate::agent_loop::{AgentLoopConfig, AgentLoopResult, run_agent_loop};
 use crate::llm_provider::FinishReason;
+use crate::llm_provider::ProviderError;
 use crate::llm_provider::registry::ProviderRegistry;
 use crate::llm_provider::selection::SelectionError;
 use crate::llm_stream_mapper::{DefaultStreamMapperSelector, StreamMapperSelector};
@@ -27,6 +29,7 @@ use crate::tool_mgr::ToolMgr;
 use crate::trace::{DefaultRequestSpanStarter, RequestSpanStarter};
 use crate::trace::{record_flattened_json_attributes, set_http_span_status};
 use crate::usage_handler::parse_endpoint_usage_as_input_output;
+use crate::utils::truncate_bytes_for_log;
 
 #[derive(Clone)]
 pub struct LlmHandlerState<A, M> {
@@ -69,28 +72,31 @@ where
     );
     root_span.record("http.request.body.size", body.len() as i64);
 
-    let (response, status_message) = match handle_chat_completions_inner::<A, M>(
+    let root_span_for_error = root_span.clone();
+    let instrument_span = root_span.clone();
+    let response = match handle_chat_completions_inner::<A, M>(
         state,
         metadata.to_owned(),
         trace_id,
         body,
-        root_span.clone(),
+        root_span,
         headers.clone(),
     )
-    .instrument(root_span.clone())
+    .instrument(instrument_span)
     .await
     {
-        Ok(response) => (response, None),
+        Ok(response) => response,
         Err(err) => {
             error!("chat completion failed: {err} {:?}", metadata);
             let message = err.to_string();
-            (
-                openai_error_response(StatusCode::INTERNAL_SERVER_ERROR, "internal error", None),
-                Some(message),
-            )
+            set_http_span_status(
+                &root_span_for_error,
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Some(&message),
+            );
+            openai_error_response(StatusCode::INTERNAL_SERVER_ERROR, "Internal Error, Please Try Again Later", None)
         }
     };
-    set_http_span_status(&root_span, response.status(), status_message.as_deref());
     response
 }
 
@@ -109,12 +115,15 @@ where
     let mut request: ChatCompletionRequest = match serde_json::from_slice(&body) {
         Ok(request) => request,
         Err(err) => {
-            error!("chat request invalid json: {err} trace_id={trace_id}");
-            return Ok(openai_error_response(
+            let request_body = truncate_bytes_for_log(&body);
+            error!("chat request invalid json: {err} trace_id={trace_id} body={request_body}");
+            let response = openai_error_response(
                 StatusCode::BAD_REQUEST,
                 &format!("invalid request body: {err}"),
                 Some("invalid_request_error"),
-            ));
+            );
+            set_http_span_status(&root_span, response.status(), Some(&err.to_string()));
+            return Ok(response);
         }
     };
 
@@ -131,11 +140,13 @@ where
         .await
     {
         error!("request preprocess failed: {err}");
-        return Ok(openai_error_response(
+        let response = openai_error_response(
             StatusCode::BAD_REQUEST,
             &err.to_string(),
             Some("invalid_request_error"),
-        ));
+        );
+        set_http_span_status(&root_span, response.status(), Some(&err.to_string()));
+        return Ok(response);
     }
 
     let request_model_id = if request.model.trim().is_empty() {
@@ -149,20 +160,24 @@ where
     {
         Ok(provider_entry) => provider_entry,
         Err(SelectionError::OutstandingBalance) => {
-            return Ok(openai_error_response(
+            let response = openai_error_response(
                 StatusCode::PAYMENT_REQUIRED,
                 "outstanding_balance",
                 Some("outstanding_balance"),
-            ));
+            );
+            set_http_span_status(&root_span, response.status(), Some("outstanding_balance"));
+            return Ok(response);
         }
         Err(SelectionError::ModelNotSupported) => {
             let model = request_model_id.as_deref().unwrap_or("");
             let message = format!("model {model} is not supported");
-            return Ok(openai_error_response(
+            let response = openai_error_response(
                 StatusCode::BAD_REQUEST,
                 &message,
                 Some("invalid_request_error"),
-            ));
+            );
+            set_http_span_status(&root_span, response.status(), Some(&message));
+            return Ok(response);
         }
     };
 
@@ -199,11 +214,13 @@ where
             message,
             metadata
         );
-        return Ok(openai_error_response(
+        let response = openai_error_response(
             StatusCode::BAD_REQUEST,
             &message,
             Some("invalid_request_error"),
-        ));
+        );
+        set_http_span_status(&root_span, response.status(), Some(&message));
+        return Ok(response);
     }
 
     let model_id = provider_entry.model_id.clone();
@@ -250,15 +267,46 @@ where
             );
             let mapped = map_openai_response(response);
             let payload = serde_json::to_vec(&mapped).context("serialize response")?;
-            Ok(Response::builder()
+            let response = Response::builder()
                 .status(StatusCode::OK)
                 .header(header::CONTENT_TYPE, "application/json")
                 .body(Body::from(payload))
-                .expect("build response"))
+                .expect("build response");
+            set_http_span_status(&root_span, response.status(), None);
+            Ok(response)
         }
         Ok(AgentLoopResult::Stream { events }) => {
+            let mut events = events;
+            let Some(first_item) = events.next().await else {
+                error!(
+                    "http.request.end; status_code=500 model_id={} error=stream ended before first event trace_id={} metadata={:?}",
+                    model_id, trace_id, metadata
+                );
+                let response = openai_error_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal Error, Please Try Again Later",
+                    None,
+                );
+                set_http_span_status(&root_span, response.status(), Some("internal_server_error"));
+                return Ok(response);
+            };
+            let first_event = match first_item {
+                Ok(event) => event,
+                Err(err) => {
+                    error!(
+                        "http.request.end; status_code=500 model_id={} error={} trace_id={} metadata={:?}",
+                        model_id, err, trace_id, metadata
+                    );
+                    let status = provider_error_status(&err);
+                    let status_message = trace_status_message_for_provider_error(&err, status);
+                    let response = map_chat_error(err);
+                    set_http_span_status(&root_span, status, Some(status_message.as_str()));
+                    return Ok(response);
+                }
+            };
+            let events = Box::pin(stream::once(async move { Ok(first_event) }).chain(events));
             let mapper = state.mapper_selector.select(&headers);
-            let sse = mapper.map_stream(events, trace_id, model_id, root_span.clone());
+            let sse = mapper.map_stream(events, trace_id, model_id, root_span);
             let body = Body::from_stream(sse);
             Ok(Response::builder()
                 .status(StatusCode::OK)
@@ -273,7 +321,10 @@ where
                 "http.request.end; status_code=500 model_id={} error={} trace_id={} metadata={:?}",
                 model_id, err, trace_id, metadata
             );
+            let status = provider_error_status(&err);
+            let status_message = trace_status_message_for_provider_error(&err, status);
             let response = map_chat_error(err);
+            set_http_span_status(&root_span, status, Some(status_message.as_str()));
             Ok(response)
         }
     }
@@ -291,6 +342,24 @@ fn finish_reason_to_str(reason: &FinishReason) -> &'static str {
 
 fn usage_to_value(usage: &Value) -> Value {
     usage.clone()
+}
+
+fn trace_status_message_for_provider_error(err: &ProviderError, status: StatusCode) -> String {
+    if status == StatusCode::BAD_REQUEST {
+        match err {
+            ProviderError::Public { error, .. } => error.message.clone(),
+            ProviderError::Internal(_) => "internal_server_error".to_string(),
+        }
+    } else {
+        "internal_server_error".to_string()
+    }
+}
+
+fn provider_error_status(err: &ProviderError) -> StatusCode {
+    match err {
+        ProviderError::Public { status, .. } => *status,
+        ProviderError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    }
 }
 
 pub async fn build_llm_api(
@@ -316,4 +385,49 @@ pub async fn build_llm_api(
         )
         .with_state(state);
     Ok(app)
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::http::StatusCode;
+
+    use super::trace_status_message_for_provider_error;
+    use crate::llm_provider::ProviderError;
+    use crate::openai_types::ErrorDetail;
+
+    #[test]
+    fn trace_status_message_uses_public_message_for_bad_request() {
+        let err = ProviderError::Public {
+            status: StatusCode::BAD_REQUEST,
+            error: ErrorDetail {
+                message: "provider_bad_request".to_string(),
+                r#type: "invalid_request_error".to_string(),
+                code: None,
+                param: None,
+            },
+        };
+
+        assert_eq!(
+            trace_status_message_for_provider_error(&err, StatusCode::BAD_REQUEST),
+            "provider_bad_request"
+        );
+    }
+
+    #[test]
+    fn trace_status_message_uses_internal_for_non_bad_request() {
+        let err = ProviderError::Public {
+            status: StatusCode::UNPROCESSABLE_ENTITY,
+            error: ErrorDetail {
+                message: "provider_error".to_string(),
+                r#type: "invalid_request_error".to_string(),
+                code: None,
+                param: None,
+            },
+        };
+
+        assert_eq!(
+            trace_status_message_for_provider_error(&err, StatusCode::UNPROCESSABLE_ENTITY),
+            "internal_server_error"
+        );
+    }
 }

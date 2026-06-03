@@ -10,8 +10,7 @@ use crate::model_api_provider::{
     MessagesUsage, RerankUsage, ResponsesUsage,
 };
 use crate::openai_types::Usage as OpenAIUsage;
-
-const MAX_LOGGED_USAGE_PAYLOAD_LEN: usize = 1024;
+use crate::utils::truncate_for_log;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload", rename_all = "snake_case")]
@@ -397,20 +396,7 @@ fn ceil_f64_to_i64(value: Option<f64>) -> Option<i64> {
 
 fn format_payload_for_log(payload: &Value) -> String {
     let payload = payload.to_string();
-    if payload.len() <= MAX_LOGGED_USAGE_PAYLOAD_LEN {
-        return payload;
-    }
-
-    let mut truncate_at = MAX_LOGGED_USAGE_PAYLOAD_LEN;
-    while truncate_at > 0 && !payload.is_char_boundary(truncate_at) {
-        truncate_at -= 1;
-    }
-
-    format!(
-        "{}...(truncated, total_len={})",
-        &payload[..truncate_at],
-        payload.len()
-    )
+    truncate_for_log(&payload)
 }
 
 fn map_unknown_for_endpoint(endpoint: &str, payload: Value) -> Value {

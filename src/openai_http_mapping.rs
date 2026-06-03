@@ -1,12 +1,14 @@
 use std::collections::HashSet;
 use std::pin::Pin;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 use async_stream::try_stream;
 use axum::body::Bytes;
-use axum::http::header;
+use axum::http::{StatusCode, header};
 use futures_core::Stream;
 use futures_util::StreamExt;
-use log::{debug, error};
+use log::{error, info};
 use serde_json;
 use serde_json::Value;
 use tracing::{Span, field};
@@ -20,7 +22,7 @@ use crate::openai_types::{
     ChatCompletionResponse, Content as OpenAIContent, ContentPart, ErrorResponse, Role,
     ToolCall as OpenAIToolCall, ToolCallFunction, ToolChoice, Usage,
 };
-use crate::trace::record_flattened_json_attributes;
+use crate::trace::{record_flattened_json_attributes, set_http_span_status};
 use crate::usage_handler::parse_endpoint_usage_as_input_output;
 
 pub fn map_openai_response(response: UnifiedResponse) -> ChatCompletionResponse {
@@ -185,6 +187,7 @@ pub fn stream_openai_chunks(
         let mut model = default_model;
         let mut created_at = String::new();
         let mut latest_usage_for_root: Option<Value> = None;
+        let mut finalizer = StreamSpanFinalizer::new(root_span.clone(), trace_id.clone(), model.clone());
         let mut tool_call_index: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
         let mut tool_call_delta_emitted: HashSet<String> = HashSet::new();
         let mut next_tool_index: i32 = 0;
@@ -194,6 +197,7 @@ pub fn stream_openai_chunks(
                 Ok(event) => event,
                 Err(err) => {
                     error!("chat stream item error: {err} trace_id={trace_id}");
+                    finalizer.set_failure(model.clone(), err.to_string());
                     break;
                 }
             };
@@ -202,6 +206,7 @@ pub fn stream_openai_chunks(
                     response_id = id;
                     if !resp_model.trim().is_empty() {
                         model = resp_model;
+                        finalizer.set_model(model.clone());
                     }
                     created_at = resp_created;
                     if !sent_preamble {
@@ -327,6 +332,7 @@ pub fn stream_openai_chunks(
                 }
                 UnifiedEvent::Usage { usage } => {
                     latest_usage_for_root = serde_json::to_value(map_usage(&usage)).ok();
+                    finalizer.set_latest_usage(usage.clone());
                     yield sse_chunk(ChatCompletionChunk {
                         id: response_id.clone(),
                         created: parse_created_at(&created_at),
@@ -340,14 +346,15 @@ pub fn stream_openai_chunks(
                 }
                 UnifiedEvent::MessageStop { .. } => {}
                 UnifiedEvent::Completed { finish_reason, usage } => {
-                    let model_for_log = model.clone();
                     root_span.record(
                         "finish_reason",
                         field::display(finish_reason.as_deref().unwrap_or("")),
                     );
                     if let Some(usage) = usage.as_ref() {
                         latest_usage_for_root = serde_json::to_value(map_usage(usage)).ok();
+                        finalizer.set_latest_usage(usage.clone());
                     }
+                    finalizer.set_finish_reason(finish_reason.clone());
                     if !finish_sent {
                         let request_id = response_id.clone();
                         let model = model.clone();
@@ -376,42 +383,13 @@ pub fn stream_openai_chunks(
                             usage,
                         });
                     }
-                    let finish_reason_log = finish_reason.as_deref().unwrap_or("");
-                    let usage_for_log = usage.as_ref();
-                    debug!(
-                        "http.request.stream.completed; model_id={} finish_reason={} prompt_tokens={} completion_tokens={} trace_id={}",
-                        model_for_log,
-                        finish_reason_log,
-                        usage_for_log
-                            .and_then(|value| {
-                                parse_endpoint_usage_as_input_output(
-                                    "/chat/completions",
-                                    value,
-                                    Some(&model_for_log),
-                                    Some(&trace_id),
-                                )
-                            })
-                            .map(|value| value.input_tokens)
-                            .unwrap_or(0),
-                        usage_for_log
-                            .and_then(|value| {
-                                parse_endpoint_usage_as_input_output(
-                                    "/chat/completions",
-                                    value,
-                                    Some(&model_for_log),
-                                    Some(&trace_id),
-                                )
-                            })
-                            .map(|value| value.output_tokens)
-                            .unwrap_or(0),
-                        trace_id
-                    );
                 }
                 UnifiedEvent::Failed { code, message } => {
                     error!(
                         "chat stream failed: model={}, code={}, message={} trace_id={trace_id}",
                         model, code, message
                     );
+                    finalizer.set_failure(model.clone(), format!("code={code} message={message}"));
                     break;
                 }
                 UnifiedEvent::Cancelled { reason } => {
@@ -419,6 +397,7 @@ pub fn stream_openai_chunks(
                         "chat stream cancelled: model={}, reason={} trace_id={trace_id}",
                         model, reason
                     );
+                    finalizer.set_failure(model.clone(), format!("cancelled: {reason}"));
                     break;
                 }
                 UnifiedEvent::OutputItemAdded { .. }
@@ -436,8 +415,122 @@ pub fn stream_openai_chunks(
         if let Some(usage_value) = latest_usage_for_root {
             record_flattened_json_attributes(&root_span, "usage", &usage_value);
         }
+        finalizer.set_success_if_unset();
 
         yield Bytes::from_static(b"data: [DONE]\n\n");
+    }
+}
+
+#[derive(Clone)]
+struct StreamSpanFinalizer {
+    root_span: Span,
+    trace_id: String,
+    state: Arc<Mutex<StreamFinalState>>,
+}
+
+struct StreamFinalState {
+    status: StatusCode,
+    model: String,
+    error: Option<String>,
+    finish_reason: Option<String>,
+    usage: Option<Value>,
+}
+
+impl StreamSpanFinalizer {
+    fn new(root_span: Span, trace_id: String, model: String) -> Self {
+        Self {
+            root_span,
+            trace_id,
+            state: Arc::new(Mutex::new(StreamFinalState {
+                status: StatusCode::OK,
+                model,
+                error: None,
+                finish_reason: None,
+                usage: None,
+            })),
+        }
+    }
+
+    fn set_model(&mut self, model: String) {
+        if let Ok(mut state) = self.state.lock() {
+            state.model = model;
+        }
+    }
+
+    fn set_latest_usage(&mut self, usage: Value) {
+        if let Ok(mut state) = self.state.lock() {
+            state.usage = Some(usage);
+        }
+    }
+
+    fn set_finish_reason(&mut self, finish_reason: Option<String>) {
+        if let Ok(mut state) = self.state.lock() {
+            state.finish_reason = finish_reason;
+        }
+    }
+
+    fn set_failure(&mut self, model: String, error: String) {
+        if let Ok(mut state) = self.state.lock() {
+            state.status = StatusCode::INTERNAL_SERVER_ERROR;
+            state.model = model;
+            state.error = Some(error);
+        }
+    }
+
+    fn set_success_if_unset(&mut self) {
+        if let Ok(mut state) = self.state.lock() {
+            if state.status == StatusCode::OK {
+                state.error = None;
+            }
+        }
+    }
+}
+
+impl Drop for StreamSpanFinalizer {
+    fn drop(&mut self) {
+        let Ok(state) = self.state.lock() else {
+            return;
+        };
+        set_http_span_status(&self.root_span, state.status, state.error.as_deref());
+        if state.status == StatusCode::OK {
+            let usage = state.usage.as_ref();
+            info!(
+                "http.request.end; status_code=200 model_id={} finish_reason={} prompt_tokens={} completion_tokens={} trace_id={}",
+                state.model,
+                state.finish_reason.as_deref().unwrap_or(""),
+                usage
+                    .and_then(|value| {
+                        parse_endpoint_usage_as_input_output(
+                            "/chat/completions",
+                            value,
+                            Some(&state.model),
+                            Some(&self.trace_id),
+                        )
+                    })
+                    .map(|value| value.input_tokens)
+                    .unwrap_or(0),
+                usage
+                    .and_then(|value| {
+                        parse_endpoint_usage_as_input_output(
+                            "/chat/completions",
+                            value,
+                            Some(&state.model),
+                            Some(&self.trace_id),
+                        )
+                    })
+                    .map(|value| value.output_tokens)
+                    .unwrap_or(0),
+                self.trace_id
+            );
+        } else {
+            error!(
+                "http.request.end; status_code={} model_id={} error={} trace_id={}",
+                state.status.as_u16(),
+                state.model,
+                state.error.as_deref().unwrap_or("stream failed"),
+                self.trace_id
+            );
+        }
     }
 }
 

@@ -1,4 +1,4 @@
-use std::{fmt, pin::Pin};
+use std::{fmt, pin::Pin, sync::Mutex};
 
 use async_stream::try_stream;
 use axum::body::{Body, Bytes};
@@ -250,12 +250,21 @@ where
                     }
                 }
             }
-            builder.body(Body::from(payload)).expect("build response")
+            let response = builder.body(Body::from(payload)).expect("build response");
+            info!(
+                "http.request.end; status_code={} model_id={} trace_id={} metadata={:?}",
+                response.status().as_u16(),
+                provider_entry.model_id,
+                trace_id,
+                metadata
+            );
+            set_http_span_status(&root_span, response.status(), None);
+            response
         }
         ProviderBody::Stream(stream) => builder
             .body(Body::from_stream(wrap_stream_with_usage(
                 stream,
-                root_span.clone(),
+                root_span,
                 provider,
                 Arc::clone(&state.usage_handler),
                 endpoint_path.to_string(),
@@ -263,19 +272,10 @@ where
                 provider_entry.label.clone(),
                 trace_id.clone(),
                 metadata.clone(),
+                format!("{:?}", metadata),
             )))
             .expect("build response"),
     };
-
-    info!(
-        "http.request.end; status_code={} model_id={} trace_id={} metadata={:?}",
-        response.status().as_u16(),
-        provider_entry.model_id,
-        trace_id,
-        metadata
-    );
-
-    set_http_span_status(&root_span, response.status(), None);
 
     response
 }
@@ -350,16 +350,29 @@ fn wrap_stream_with_usage<M>(
     label: Option<String>,
     trace_id: String,
     metadata: M,
+    metadata_debug: String,
 ) -> Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send>>
 where
     M: Clone + Send + Sync + 'static,
 {
     Box::pin(try_stream! {
         futures_util::pin_mut!(stream);
+        let mut finalizer = ModelApiStreamFinalizer::new(
+            root_span.clone(),
+            trace_id.clone(),
+            model_id.clone(),
+            metadata_debug,
+        );
         let mut text_buffer = String::new();
         let mut latest_usage: Option<Value> = None;
         while let Some(item) = stream.next().await {
-            let chunk = item?;
+            let chunk = match item {
+                Ok(chunk) => chunk,
+                Err(err) => {
+                    finalizer.set_failure(err.to_string());
+                    Err(err)?
+                }
+            };
             if let Ok(text) = std::str::from_utf8(&chunk) {
                 text_buffer.push_str(text);
                 while let Some(frame_end) = text_buffer.find("\n\n") {
@@ -446,9 +459,85 @@ where
         }
 
         if let Some(usage_value) = latest_usage {
-            record_flattened_json_attributes(&root_span, "usage", &usage_value);
+            finalizer.set_usage(usage_value);
         }
     })
+}
+
+#[derive(Clone)]
+struct ModelApiStreamFinalizer {
+    root_span: tracing::Span,
+    trace_id: String,
+    state: Arc<Mutex<ModelApiStreamFinalState>>,
+}
+
+struct ModelApiStreamFinalState {
+    status_code: StatusCode,
+    model_id: String,
+    error: Option<String>,
+    metadata_debug: String,
+    usage: Option<Value>,
+}
+
+impl ModelApiStreamFinalizer {
+    fn new(
+        root_span: tracing::Span,
+        trace_id: String,
+        model_id: String,
+        metadata_debug: String,
+    ) -> Self {
+        Self {
+            root_span,
+            trace_id,
+            state: Arc::new(Mutex::new(ModelApiStreamFinalState {
+                status_code: StatusCode::OK,
+                model_id,
+                error: None,
+                metadata_debug,
+                usage: None,
+            })),
+        }
+    }
+
+    fn set_failure(&mut self, error: String) {
+        if let Ok(mut state) = self.state.lock() {
+            state.status_code = StatusCode::INTERNAL_SERVER_ERROR;
+            state.error = Some(error);
+        }
+    }
+
+    fn set_usage(&mut self, usage: Value) {
+        if let Ok(mut state) = self.state.lock() {
+            state.usage = Some(usage);
+        }
+    }
+}
+
+impl Drop for ModelApiStreamFinalizer {
+    fn drop(&mut self) {
+        let Ok(state) = self.state.lock() else {
+            return;
+        };
+        if let Some(usage) = state.usage.as_ref() {
+            record_flattened_json_attributes(&self.root_span, "usage", usage);
+        }
+        set_http_span_status(&self.root_span, state.status_code, state.error.as_deref());
+        if state.status_code == StatusCode::OK {
+            info!(
+                "http.request.end; status_code=200 model_id={} trace_id={} metadata={}",
+                state.model_id, self.trace_id, state.metadata_debug
+            );
+        } else {
+            error!(
+                "http.request.end; status_code={} model_id={} error={} trace_id={} metadata={}",
+                state.status_code.as_u16(),
+                state.model_id,
+                state.error.as_deref().unwrap_or("stream failed"),
+                self.trace_id,
+                state.metadata_debug
+            );
+        }
+    }
 }
 
 async fn rewrite_sse_frame_usage<M>(
