@@ -608,23 +608,169 @@ fn parse_data_url(url: &str) -> Option<(String, String)> {
 }
 
 fn sanitize_vertex_schema(value: &Value) -> Value {
+    let mut defs_keys = std::collections::HashSet::new();
+    let sanitized = sanitize_vertex_schema_with_defs(value, &mut defs_keys);
+    prune_invalid_refs(sanitized, &defs_keys)
+}
+
+fn sanitize_vertex_schema_with_defs(
+    value: &Value,
+    defs_keys: &mut std::collections::HashSet<String>,
+) -> Value {
     match value {
         Value::Object(map) => {
             let sanitized = map
                 .iter()
                 .filter_map(|(k, v)| {
-                    if k == "$schema" {
-                        None
+                    let mapped_key = match k.as_str() {
+                        "$ref" => "ref",
+                        "$defs" => "defs",
+                        _ => k.as_str(),
+                    };
+                    if is_vertex_schema_key_allowed(mapped_key) {
+                        let sanitized_value = match mapped_key {
+                            "properties" => sanitize_vertex_schema_map(v, defs_keys),
+                            "defs" => sanitize_vertex_schema_defs(v, defs_keys),
+                            "ref" => sanitize_vertex_schema_ref(v),
+                            "items" => sanitize_vertex_schema_items(v, defs_keys),
+                            "anyOf" => sanitize_vertex_schema_anyof(v, defs_keys),
+                            _ => Some(sanitize_vertex_schema_with_defs(v, defs_keys)),
+                        };
+                        sanitized_value.map(|value| (mapped_key.to_string(), value))
                     } else {
-                        Some((k.clone(), sanitize_vertex_schema(v)))
+                        None
                     }
                 })
                 .collect();
             Value::Object(sanitized)
         }
-        Value::Array(items) => Value::Array(items.iter().map(sanitize_vertex_schema).collect()),
+        Value::Array(items) => Value::Array(
+            items
+                .iter()
+                .map(|item| sanitize_vertex_schema_with_defs(item, defs_keys))
+                .collect(),
+        ),
         _ => value.clone(),
     }
+}
+
+fn sanitize_vertex_schema_map(
+    value: &Value,
+    defs_keys: &mut std::collections::HashSet<String>,
+) -> Option<Value> {
+    match value {
+        Value::Object(map) => Some(Value::Object(
+            map.iter()
+                .map(|(k, v)| (k.clone(), sanitize_vertex_schema_with_defs(v, defs_keys)))
+                .collect(),
+        )),
+        _ => None,
+    }
+}
+
+fn sanitize_vertex_schema_defs(
+    value: &Value,
+    defs_keys: &mut std::collections::HashSet<String>,
+) -> Option<Value> {
+    let map = value.as_object()?;
+    for key in map.keys() {
+        defs_keys.insert(key.clone());
+    }
+    Some(Value::Object(
+        map.iter()
+            .map(|(k, v)| (k.clone(), sanitize_vertex_schema_with_defs(v, defs_keys)))
+            .collect(),
+    ))
+}
+
+fn sanitize_vertex_schema_items(
+    value: &Value,
+    defs_keys: &mut std::collections::HashSet<String>,
+) -> Option<Value> {
+    match value {
+        Value::Object(_) => Some(sanitize_vertex_schema_with_defs(value, defs_keys)),
+        _ => None,
+    }
+}
+
+fn sanitize_vertex_schema_anyof(
+    value: &Value,
+    defs_keys: &mut std::collections::HashSet<String>,
+) -> Option<Value> {
+    match value {
+        Value::Array(items) => Some(Value::Array(
+            items
+                .iter()
+                .map(|item| sanitize_vertex_schema_with_defs(item, defs_keys))
+                .collect(),
+        )),
+        _ => None,
+    }
+}
+
+fn sanitize_vertex_schema_ref(value: &Value) -> Option<Value> {
+    let raw = value.as_str()?;
+    let normalized = normalize_vertex_schema_ref(raw)?;
+    Some(Value::String(normalized))
+}
+
+fn normalize_vertex_schema_ref(value: &str) -> Option<String> {
+    let value = value.trim();
+    let rest = value.strip_prefix("#/")?;
+    let rest = rest
+        .strip_prefix("$defs/")
+        .or_else(|| rest.strip_prefix("defs/"))?;
+    if rest.is_empty() || rest.contains('/') {
+        return None;
+    }
+    Some(format!("#/defs/{rest}"))
+}
+
+fn prune_invalid_refs(value: Value, defs_keys: &std::collections::HashSet<String>) -> Value {
+    match value {
+        Value::Object(map) => {
+            let sanitized = map
+                .into_iter()
+                .filter_map(|(k, v)| {
+                    if k == "ref" {
+                        let ref_value = v.as_str()?;
+                        let def_key = ref_value.strip_prefix("#/defs/")?;
+                        if defs_keys.contains(def_key) {
+                            return Some((k, Value::String(ref_value.to_string())));
+                        }
+                        return None;
+                    }
+
+                    Some((k, prune_invalid_refs(v, defs_keys)))
+                })
+                .collect();
+            Value::Object(sanitized)
+        }
+        Value::Array(items) => Value::Array(
+            items
+                .into_iter()
+                .map(|item| prune_invalid_refs(item, defs_keys))
+                .collect(),
+        ),
+        _ => value,
+    }
+}
+
+fn is_vertex_schema_key_allowed(key: &str) -> bool {
+    matches!(
+        key,
+        "type"
+            | "nullable"
+            | "required"
+            | "format"
+            | "description"
+            | "properties"
+            | "items"
+            | "enum"
+            | "anyOf"
+            | "ref"
+            | "defs"
+    )
 }
 
 fn map_vertex_response(
@@ -993,14 +1139,17 @@ mod tests {
     }
 
     #[test]
-    fn sanitize_vertex_schema_removes_schema_keyword_recursively() {
+    fn sanitize_vertex_schema_removes_unsupported_fields_recursively() {
         let original = serde_json::json!({
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "type": "object",
             "properties": {
                 "name": {
                     "$schema": "https://json-schema.org/draft/2020-12/schema",
-                    "type": "string"
+                    "type": "string",
+                    "patternProperties": {
+                        "^foo_": {"type": "string"}
+                    }
                 }
             },
             "allOf": [
@@ -1013,9 +1162,110 @@ mod tests {
 
         let sanitized = sanitize_vertex_schema(&original);
         assert!(sanitized.get("$schema").is_none());
+        assert!(sanitized.get("allOf").is_none());
         assert!(sanitized["properties"]["name"].get("$schema").is_none());
-        assert!(sanitized["allOf"][0].get("$schema").is_none());
+        assert!(
+            sanitized["properties"]["name"]
+                .get("patternProperties")
+                .is_none()
+        );
         assert_eq!(sanitized["type"], serde_json::json!("object"));
+        assert_eq!(
+            sanitized["properties"]["name"]["type"],
+            serde_json::json!("string")
+        );
+    }
+
+    #[test]
+    fn sanitize_vertex_schema_maps_ref_and_defs_keys() {
+        let original = serde_json::json!({
+            "type": "object",
+            "$defs": {
+                "Location": {
+                    "type": "object",
+                    "properties": {
+                        "city": {"type": "string"}
+                    }
+                }
+            },
+            "properties": {
+                "loc": {"$ref": r"#/$defs/Location"}
+            }
+        });
+
+        let sanitized = sanitize_vertex_schema(&original);
+        assert!(sanitized.get("$defs").is_none());
+        assert!(sanitized["properties"]["loc"].get("$ref").is_none());
+        assert!(sanitized.get("defs").is_some());
+        assert_eq!(
+            sanitized["properties"]["loc"]["ref"],
+            serde_json::json!("#/defs/Location")
+        );
+    }
+
+    #[test]
+    fn sanitize_vertex_schema_drops_invalid_ref() {
+        let original = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "loc": {"$ref": "#/defs/Location/City"}
+            }
+        });
+
+        let sanitized = sanitize_vertex_schema(&original);
+        assert!(sanitized["properties"]["loc"].get("ref").is_none());
+    }
+
+    #[test]
+    fn sanitize_vertex_schema_drops_non_object_defs() {
+        let original = serde_json::json!({
+            "type": "object",
+            "$defs": "not-an-object",
+            "properties": {
+                "loc": {"$ref": "#/defs/Location"}
+            }
+        });
+
+        let sanitized = sanitize_vertex_schema(&original);
+        assert!(sanitized.get("defs").is_none());
+    }
+
+    #[test]
+    fn sanitize_vertex_schema_drops_non_object_items() {
+        let original = serde_json::json!({
+            "type": "array",
+            "items": "not-an-object"
+        });
+
+        let sanitized = sanitize_vertex_schema(&original);
+        assert!(sanitized.get("items").is_none());
+    }
+
+    #[test]
+    fn sanitize_vertex_schema_drops_non_array_anyof() {
+        let original = serde_json::json!({
+            "type": "object",
+            "anyOf": {"type": "string"}
+        });
+
+        let sanitized = sanitize_vertex_schema(&original);
+        assert!(sanitized.get("anyOf").is_none());
+    }
+
+    #[test]
+    fn sanitize_vertex_schema_drops_ref_with_missing_def() {
+        let original = serde_json::json!({
+            "type": "object",
+            "$defs": {
+                "Location": {"type": "object"}
+            },
+            "properties": {
+                "loc": {"$ref": "#/defs/Unknown"}
+            }
+        });
+
+        let sanitized = sanitize_vertex_schema(&original);
+        assert!(sanitized["properties"]["loc"].get("ref").is_none());
     }
 
     #[test]

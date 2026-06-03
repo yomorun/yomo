@@ -94,7 +94,11 @@ where
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Some(&message),
             );
-            openai_error_response(StatusCode::INTERNAL_SERVER_ERROR, "Internal Error, Please Try Again Later", None)
+            openai_error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Internal Error, Please Try Again Later",
+                None,
+            )
         }
     };
     response
