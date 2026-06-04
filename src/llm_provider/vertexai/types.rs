@@ -127,7 +127,7 @@ pub struct VertexFunctionResponse {
     pub response: Value,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct VertexUsageMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -135,5 +135,107 @@ pub struct VertexUsageMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub candidates_token_count: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub cached_content_token_count: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_use_prompt_token_count: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thoughts_token_count: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub total_token_count: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_tokens_details: Option<Vec<VertexModalityTokenCount>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_tokens_details: Option<Vec<VertexModalityTokenCount>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub candidates_tokens_details: Option<Vec<VertexModalityTokenCount>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_use_prompt_tokens_details: Option<Vec<VertexModalityTokenCount>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub traffic_type: Option<VertexTrafficType>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VertexModalityTokenCount {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub modality: Option<VertexMediaModality>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token_count: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum VertexMediaModality {
+    ModalityUnspecified,
+    Text,
+    Image,
+    Video,
+    Audio,
+    Document,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum VertexTrafficType {
+    TrafficTypeUnspecified,
+    OnDemand,
+    OnDemandPriority,
+    OnDemandFlex,
+    ProvisionedThroughput,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{VertexMediaModality, VertexTrafficType, VertexUsageMetadata};
+
+    #[test]
+    fn vertex_usage_metadata_deserializes_extended_camel_case_fields() {
+        let payload = serde_json::json!({
+            "promptTokenCount": 11,
+            "candidatesTokenCount": 7,
+            "cachedContentTokenCount": 3,
+            "toolUsePromptTokenCount": 2,
+            "thoughtsTokenCount": 1,
+            "totalTokenCount": 21,
+            "promptTokensDetails": [
+                {
+                    "modality": "TEXT",
+                    "tokenCount": 11
+                }
+            ],
+            "trafficType": "ON_DEMAND"
+        });
+
+        let usage: VertexUsageMetadata =
+            serde_json::from_value(payload).expect("must parse usage metadata");
+
+        assert_eq!(usage.prompt_token_count, Some(11));
+        assert_eq!(usage.candidates_token_count, Some(7));
+        assert_eq!(usage.cached_content_token_count, Some(3));
+        assert_eq!(usage.tool_use_prompt_token_count, Some(2));
+        assert_eq!(usage.thoughts_token_count, Some(1));
+        assert_eq!(usage.total_token_count, Some(21));
+        assert_eq!(usage.prompt_tokens_details.as_ref().map(Vec::len), Some(1));
+        assert!(matches!(
+            usage.traffic_type,
+            Some(VertexTrafficType::OnDemand)
+        ));
+    }
+
+    #[test]
+    fn vertex_usage_metadata_serializes_modality_and_traffic_as_enum_strings() {
+        let usage = VertexUsageMetadata {
+            prompt_tokens_details: Some(vec![super::VertexModalityTokenCount {
+                modality: Some(VertexMediaModality::Audio),
+                token_count: Some(5),
+            }]),
+            traffic_type: Some(VertexTrafficType::ProvisionedThroughput),
+            ..Default::default()
+        };
+
+        let value = serde_json::to_value(usage).expect("must serialize usage metadata");
+
+        assert_eq!(value["promptTokensDetails"][0]["modality"], "AUDIO");
+        assert_eq!(value["trafficType"], "PROVISIONED_THROUGHPUT");
+    }
 }

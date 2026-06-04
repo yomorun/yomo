@@ -1166,6 +1166,7 @@ mod tests {
             prompt_token_count: Some(12),
             candidates_token_count: Some(8),
             total_token_count: Some(20),
+            ..Default::default()
         };
         let mapped = map_usage_from_usage_metadata(Some(&usage));
         assert_eq!(mapped.input_tokens, 12);

@@ -15,6 +15,7 @@ pub use usage::{
     AudioSpeechUsage, AudioTranscriptionsUsage, ChatCompletionsCompletionTokensDetails,
     ChatCompletionsPromptTokensDetails, ChatCompletionsUsage, EmbeddingsUsage,
     GenerateContentUsage, ImagesInputTokensDetails, ImagesOutputTokensDetails, ImagesUsage,
-    MessagesCacheCreation, MessagesServerToolUse, MessagesUsage, RerankBilledUnits, RerankUsage,
-    ResponsesInputTokensDetails, ResponsesOutputTokensDetails, ResponsesUsage, UnknownUsage, Usage,
+    MediaModality, MessagesCacheCreation, MessagesServerToolUse, MessagesUsage, ModalityTokenCount,
+    RerankBilledUnits, RerankUsage, ResponsesInputTokensDetails, ResponsesOutputTokensDetails,
+    ResponsesUsage, TrafficType, UnknownUsage, Usage,
 };

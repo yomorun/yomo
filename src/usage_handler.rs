@@ -196,8 +196,15 @@ impl EndpointUsage {
             Self::GenerateContent(usage) => {
                 if usage.prompt_token_count.is_none()
                     && usage.candidates_token_count.is_none()
+                    && usage.cached_content_token_count.is_none()
+                    && usage.tool_use_prompt_token_count.is_none()
                     && usage.thoughts_token_count.is_none()
                     && usage.total_token_count.is_none()
+                    && usage.cache_tokens_details.is_none()
+                    && usage.prompt_tokens_details.is_none()
+                    && usage.candidates_tokens_details.is_none()
+                    && usage.tool_use_prompt_tokens_details.is_none()
+                    && usage.traffic_type.is_none()
                 {
                     return None;
                 }
@@ -214,7 +221,9 @@ impl EndpointUsage {
                     input_tokens,
                     output_tokens,
                     total_tokens,
-                    cached_tokens: None,
+                    cached_tokens: usage
+                        .cached_content_token_count
+                        .and_then(|value| i64::try_from(value).ok()),
                     reasoning_tokens: usage
                         .thoughts_token_count
                         .and_then(|value| i64::try_from(value).ok()),
@@ -480,7 +489,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::EndpointUsage;
-    use crate::model_api_provider::{MessagesUsage, ResponsesUsage};
+    use crate::model_api_provider::{GenerateContentUsage, MessagesUsage, ResponsesUsage};
     use crate::openai_types::{PromptTokensDetails, Usage as OpenAIUsage};
 
     #[test]
@@ -523,6 +532,65 @@ mod tests {
                 .and_then(|v| v.as_i64()),
             Some(7)
         );
+    }
+
+    #[test]
+    fn generate_content_usage_parses_camel_case_usage_metadata() {
+        let payload = serde_json::json!({
+            "promptTokenCount": 11,
+            "candidatesTokenCount": 7,
+            "cachedContentTokenCount": 3,
+            "toolUsePromptTokenCount": 2,
+            "thoughtsTokenCount": 1,
+            "totalTokenCount": 21,
+            "promptTokensDetails": [
+                {
+                    "modality": "TEXT",
+                    "tokenCount": 11
+                }
+            ],
+            "trafficType": "ON_DEMAND"
+        });
+
+        let usage =
+            EndpointUsage::from_endpoint_payload("/models/gemini-2.5:generateContent", payload);
+
+        let EndpointUsage::GenerateContent(usage) = usage else {
+            panic!("expected generate content usage");
+        };
+        assert_eq!(usage.prompt_token_count, Some(11));
+        assert_eq!(usage.candidates_token_count, Some(7));
+        assert_eq!(usage.cached_content_token_count, Some(3));
+        assert_eq!(usage.tool_use_prompt_token_count, Some(2));
+        assert_eq!(usage.thoughts_token_count, Some(1));
+        assert_eq!(usage.total_token_count, Some(21));
+        assert!(usage.prompt_tokens_details.is_some());
+        assert!(usage.traffic_type.is_some());
+    }
+
+    #[test]
+    fn to_input_output_usage_for_generate_content_maps_cached_content_tokens() {
+        let usage = EndpointUsage::GenerateContent(GenerateContentUsage {
+            prompt_token_count: Some(11),
+            candidates_token_count: Some(7),
+            cached_content_token_count: Some(3),
+            tool_use_prompt_token_count: Some(2),
+            thoughts_token_count: Some(1),
+            total_token_count: Some(21),
+            cache_tokens_details: None,
+            prompt_tokens_details: None,
+            candidates_tokens_details: None,
+            tool_use_prompt_tokens_details: None,
+            traffic_type: None,
+        });
+
+        let mapped = usage.to_input_output_usage().expect("usage must map");
+
+        assert_eq!(mapped.input_tokens, 11);
+        assert_eq!(mapped.output_tokens, 7);
+        assert_eq!(mapped.total_tokens, 21);
+        assert_eq!(mapped.cached_tokens, Some(3));
+        assert_eq!(mapped.reasoning_tokens, Some(1));
     }
 
     #[test]

@@ -85,11 +85,47 @@ pub struct ChatCompletionsCompletionTokensDetails {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GenerateContentUsage {
     pub prompt_token_count: Option<u64>,
     pub candidates_token_count: Option<u64>,
+    pub cached_content_token_count: Option<u64>,
+    pub tool_use_prompt_token_count: Option<u64>,
     pub thoughts_token_count: Option<u64>,
     pub total_token_count: Option<u64>,
+    pub cache_tokens_details: Option<Vec<ModalityTokenCount>>,
+    pub prompt_tokens_details: Option<Vec<ModalityTokenCount>>,
+    pub candidates_tokens_details: Option<Vec<ModalityTokenCount>>,
+    pub tool_use_prompt_tokens_details: Option<Vec<ModalityTokenCount>>,
+    pub traffic_type: Option<TrafficType>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModalityTokenCount {
+    pub modality: Option<MediaModality>,
+    pub token_count: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum MediaModality {
+    ModalityUnspecified,
+    Text,
+    Image,
+    Video,
+    Audio,
+    Document,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum TrafficType {
+    TrafficTypeUnspecified,
+    OnDemand,
+    OnDemandPriority,
+    OnDemandFlex,
+    ProvisionedThroughput,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
