@@ -6,7 +6,7 @@ use serde_json::Value;
 use crate::llm_provider::{FinishReason, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse};
 use crate::openai_types::{
     ChatCompletionChunk, ChatCompletionChunkToolCall, ChatCompletionChunkToolCallFunction,
-    Content as OpenAIContent, ContentPart,
+    ChatCompletionResponse, Content as OpenAIContent, ContentPart, ToolCall as OpenAIToolCall,
 };
 
 #[derive(Default)]
@@ -23,9 +23,7 @@ pub struct ToolCallDeltaEvent {
     pub index: i32,
 }
 
-pub fn map_response(
-    response: crate::openai_types::ChatCompletionResponse,
-) -> Result<UnifiedResponse, ProviderError> {
+pub fn map_response(response: ChatCompletionResponse) -> Result<UnifiedResponse, ProviderError> {
     let choice = response
         .choices
         .into_iter()
@@ -171,7 +169,7 @@ impl Default for StreamMapState {
     }
 }
 
-pub fn map_tool_call_from_openai(call: crate::openai_types::ToolCall) -> ToolCall {
+pub fn map_tool_call_from_openai(call: OpenAIToolCall) -> ToolCall {
     ToolCall {
         id: call.id,
         name: call.function.name,

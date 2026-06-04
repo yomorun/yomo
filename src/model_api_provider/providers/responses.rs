@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use axum::http::HeaderMap;
+use axum::http::{HeaderMap, HeaderValue, header};
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -226,9 +226,9 @@ pub fn build_client(provider: &ProviderConfig) -> Result<Arc<dyn ModelApiProvide
     let mut headers = HeaderMap::new();
     let auth_value = format!("Bearer {}", api_key);
     headers.insert(
-        axum::http::header::AUTHORIZATION,
+        header::AUTHORIZATION,
         auth_value
-            .parse::<axum::http::HeaderValue>()
+            .parse::<HeaderValue>()
             .map_err(|err| ConfigError::InvalidProvider(err.to_string()))?,
     );
 

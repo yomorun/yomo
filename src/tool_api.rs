@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use anyhow::anyhow;
 use axum::{
     Router,
     body::Bytes,
@@ -86,7 +87,7 @@ impl IntoResponse for CustomResponse {
                     }
                     Err(e) => {
                         error!("receiving frame error: {}", e);
-                        Some((Err(anyhow::anyhow!("receiving frame error: {}", e)), r))
+                        Some((Err(anyhow!("receiving frame error: {}", e)), r))
                     }
                 }
             });
@@ -126,7 +127,7 @@ pub async fn tool_invoke_handler(
 
     let response_headers: ResponseHeaders = receive_frame(&mut reader)
         .await?
-        .ok_or(anyhow::anyhow!("Failed to receive response headers"))?;
+        .ok_or(anyhow!("Failed to receive response headers"))?;
 
     if response_headers.status_code != http::StatusCode::OK {
         return Err(CustomError {
@@ -143,7 +144,7 @@ pub async fn tool_invoke_handler(
         BodyFormat::Bytes => {
             let body = receive_bytes(&mut reader)
                 .await?
-                .ok_or(anyhow::anyhow!("Failed to receive response"))?;
+                .ok_or(anyhow!("Failed to receive response"))?;
 
             Ok(CustomResponse {
                 body: Some(body),

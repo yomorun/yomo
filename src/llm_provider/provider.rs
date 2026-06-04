@@ -1,11 +1,14 @@
 use async_trait::async_trait;
+use axum::http::StatusCode;
 use futures_core::Stream;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_json::json;
 use std::pin::Pin;
 
-use crate::openai_types::ChatCompletionRequest;
+use crate::openai_types::{
+    ChatCompletionRequest, CompletionTokensDetails, ErrorDetail, PromptTokensDetails, Usage,
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct UsageSummary {
@@ -40,10 +43,10 @@ pub trait UsageAccumulator {
 
 /// Maps endpoint usage payloads into OpenAI chat usage format.
 pub trait ToOpenAIUsage {
-    fn to_openai_usage(&self) -> crate::openai_types::Usage;
+    fn to_openai_usage(&self) -> Usage;
 }
 
-impl UsageAccumulator for crate::openai_types::Usage {
+impl UsageAccumulator for Usage {
     fn accumulate_into(&self, total: &mut UsageSummary) {
         total.input_tokens += i64::from(self.prompt_tokens);
         total.output_tokens += i64::from(self.completion_tokens);
@@ -63,8 +66,8 @@ impl UsageAccumulator for crate::openai_types::Usage {
     }
 }
 
-impl ToOpenAIUsage for crate::openai_types::Usage {
-    fn to_openai_usage(&self) -> crate::openai_types::Usage {
+impl ToOpenAIUsage for Usage {
+    fn to_openai_usage(&self) -> Usage {
         self.clone()
     }
 }
@@ -92,16 +95,16 @@ impl UsageAccumulator for InputOutputUsage {
 }
 
 impl ToOpenAIUsage for InputOutputUsage {
-    fn to_openai_usage(&self) -> crate::openai_types::Usage {
-        crate::openai_types::Usage {
+    fn to_openai_usage(&self) -> Usage {
+        Usage {
             prompt_tokens: self.input_tokens as i32,
             completion_tokens: self.output_tokens as i32,
             total_tokens: self.total_tokens as i32,
-            prompt_tokens_details: Some(crate::openai_types::PromptTokensDetails {
+            prompt_tokens_details: Some(PromptTokensDetails {
                 audio_tokens: self.input_audio_tokens.unwrap_or(0) as i32,
                 cached_tokens: self.cached_tokens.unwrap_or(0) as i32,
             }),
-            completion_tokens_details: Some(crate::openai_types::CompletionTokensDetails {
+            completion_tokens_details: Some(CompletionTokensDetails {
                 accepted_prediction_tokens: 0,
                 audio_tokens: self.output_audio_tokens.unwrap_or(0) as i32,
                 reasoning_tokens: self.reasoning_tokens.unwrap_or(0) as i32,
@@ -115,11 +118,11 @@ pub fn usage_summary_to_value(summary: &UsageSummary) -> Value {
     json!({
         "input_tokens": summary.input_tokens,
         "output_tokens": summary.output_tokens,
-            "total_tokens": summary.total_tokens,
-            "cached_tokens": summary.cached_tokens,
-            "reasoning_tokens": summary.reasoning_tokens,
-            "input_audio_tokens": summary.input_audio_tokens,
-            "output_audio_tokens": summary.output_audio_tokens,
+        "total_tokens": summary.total_tokens,
+        "cached_tokens": summary.cached_tokens,
+        "reasoning_tokens": summary.reasoning_tokens,
+        "input_audio_tokens": summary.input_audio_tokens,
+        "output_audio_tokens": summary.output_audio_tokens,
     })
 }
 
@@ -304,8 +307,8 @@ pub enum UnifiedEvent {
 #[derive(Debug)]
 pub enum ProviderError {
     Public {
-        status: axum::http::StatusCode,
-        error: crate::openai_types::ErrorDetail,
+        status: StatusCode,
+        error: ErrorDetail,
     },
     Internal(String),
 }

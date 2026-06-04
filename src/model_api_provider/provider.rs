@@ -1,5 +1,6 @@
 use std::pin::Pin;
 
+use anyhow::anyhow;
 use async_trait::async_trait;
 use axum::body::Bytes;
 use axum::http::{HeaderMap, Method, StatusCode};
@@ -156,7 +157,7 @@ pub async fn proxy_request(
         builder = builder.body(request_body);
     }
 
-    let response = builder.send().await.map_err(|err| anyhow::anyhow!(err))?;
+    let response = builder.send().await.map_err(|err| anyhow!(err))?;
 
     let status = response.status();
     let mut resp_headers = filter_response_headers(response.headers());
@@ -176,7 +177,7 @@ pub async fn proxy_request(
             body: ProviderBody::Stream(body),
         })
     } else {
-        let bytes = response.bytes().await.map_err(|err| anyhow::anyhow!(err))?;
+        let bytes = response.bytes().await.map_err(|err| anyhow!(err))?;
         Ok(ProviderResponse {
             status,
             headers: resp_headers,
@@ -247,7 +248,7 @@ pub(crate) async fn rewrite_multipart_model(
     model: &str,
 ) -> Result<Form, anyhow::Error> {
     let boundary = parse_multipart_boundary(content_type)
-        .ok_or_else(|| anyhow::anyhow!("multipart boundary is missing"))?;
+        .ok_or_else(|| anyhow!("multipart boundary is missing"))?;
     let stream = stream::once(async move { Ok::<Bytes, multer::Error>(body.clone()) });
     let mut multipart = multer::Multipart::new(stream, boundary);
     let mut form = Form::new();

@@ -1091,7 +1091,7 @@ fn map_http_error(status: StatusCode, body: &[u8]) -> ProviderError {
     let text = String::from_utf8_lossy(body).to_string();
     if status.as_u16() == 400 {
         return ProviderError::Public {
-            status: axum::http::StatusCode::BAD_REQUEST,
+            status: StatusCode::BAD_REQUEST,
             error: ErrorDetail {
                 message: text,
                 r#type: "invalid_request_error".to_string(),
@@ -1114,7 +1114,7 @@ fn new_response_id() -> String {
 }
 
 pub fn build_vertexai_provider(
-    params: &std::collections::HashMap<String, String>,
+    params: &HashMap<String, String>,
 ) -> Result<VertexAIProvider, ConfigError> {
     let model = params
         .get("model")

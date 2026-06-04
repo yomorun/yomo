@@ -1,7 +1,7 @@
 use std::fmt;
 use std::sync::Arc;
 
-use anyhow::Context;
+use anyhow::{Context, anyhow};
 use axum::Router;
 use axum::body::{Body, Bytes};
 use axum::extract::State;
@@ -19,11 +19,11 @@ use crate::llm_provider::ProviderError;
 use crate::llm_provider::registry::ProviderRegistry;
 use crate::llm_provider::selection::SelectionError;
 use crate::llm_stream_mapper::{DefaultStreamMapperSelector, StreamMapperSelector};
-use crate::metadata_mgr::MetadataMgr;
+use crate::metadata_mgr::{MetadataMgr, MetadataMgrImpl};
 use crate::openai_http_mapping::{
     map_chat_error, map_openai_response, openai_error_response, validate_openai_request,
 };
-use crate::openai_types::ChatCompletionRequest;
+use crate::openai_types::{ChatCompletionRequest, StreamOptions};
 use crate::tool_invoker::ToolInvoker;
 use crate::tool_mgr::ToolMgr;
 use crate::trace::{DefaultRequestSpanStarter, RequestSpanStarter};
@@ -135,7 +135,7 @@ where
         .tool_mgr
         .list_tools(&metadata)
         .await
-        .map_err(|err| anyhow::anyhow!("tool manager error: {err}"))?;
+        .map_err(|err| anyhow!("tool manager error: {err}"))?;
 
     if let Err(err) = state
         .agent_loop_config
@@ -193,7 +193,7 @@ where
                 options.include_usage = true;
             }
             None => {
-                request.stream_options = Some(crate::openai_types::StreamOptions {
+                request.stream_options = Some(StreamOptions {
                     include_usage: true,
                     include_obfuscation: None,
                 });
@@ -376,7 +376,7 @@ pub async fn build_llm_api(
         provider_registry: Arc::new(provider_registry),
         tool_mgr,
         tool_invoker,
-        metadata_mgr: Arc::new(crate::metadata_mgr::MetadataMgrImpl::new()),
+        metadata_mgr: Arc::new(MetadataMgrImpl::new()),
         request_span_starter: Arc::new(DefaultRequestSpanStarter),
         agent_loop_config,
         mapper_selector: Arc::new(DefaultStreamMapperSelector::default()),

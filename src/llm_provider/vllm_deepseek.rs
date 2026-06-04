@@ -1,5 +1,6 @@
 use async_stream::try_stream;
 use async_trait::async_trait;
+use axum::http::StatusCode;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use serde_json::Value;
@@ -83,7 +84,7 @@ impl Provider for VllmDeepseekProvider {
 }
 
 pub fn build_vllm_deepseek_provider(
-    params: &std::collections::HashMap<String, String>,
+    params: &HashMap<String, String>,
 ) -> Result<VllmDeepseekProvider, ConfigError> {
     let api_key = params
         .get("api_key")
@@ -183,8 +184,8 @@ fn map_openai_error(err: ClientError) -> ProviderError {
                 upstream_service_error("http_service_error")
             } else {
                 ProviderError::Public {
-                    status: axum::http::StatusCode::from_u16(status.as_u16())
-                        .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+                    status: StatusCode::from_u16(status.as_u16())
+                        .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
                     error,
                 }
             }
@@ -203,7 +204,7 @@ fn map_openai_error(err: ClientError) -> ProviderError {
 
 fn upstream_service_error(code: &str) -> ProviderError {
     ProviderError::Public {
-        status: axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+        status: StatusCode::INTERNAL_SERVER_ERROR,
         error: ErrorDetail {
             message: code.to_string(),
             r#type: "upstream_error".to_string(),
@@ -215,7 +216,7 @@ fn upstream_service_error(code: &str) -> ProviderError {
 
 fn invalid_request(message: impl Into<String>) -> ProviderError {
     ProviderError::Public {
-        status: axum::http::StatusCode::BAD_REQUEST,
+        status: StatusCode::BAD_REQUEST,
         error: ErrorDetail {
             message: message.into(),
             r#type: "invalid_request_error".to_string(),

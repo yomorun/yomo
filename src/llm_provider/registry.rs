@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use crate::llm_provider::Provider;
 use crate::llm_provider::openai_compatible::build_openai_compatible_provider;
+use crate::llm_provider::selection::SelectionError;
 use crate::llm_provider::selection::SelectionStrategy;
 use crate::llm_provider::tokenhub::build_tokenhub_provider;
 use crate::llm_provider::vertexai::build_vertexai_provider;
@@ -87,7 +88,7 @@ impl<M> ProviderRegistry<M> {
         &self,
         model_id: Option<&str>,
         metadata: &M,
-    ) -> Result<ProviderEntry, crate::llm_provider::selection::SelectionError> {
+    ) -> Result<ProviderEntry, SelectionError> {
         let selected = self
             .strategy
             .select(model_id, metadata)
@@ -99,7 +100,7 @@ impl<M> ProviderRegistry<M> {
                 provider.model_id.to_ascii_lowercase() == selected.model_id.to_ascii_lowercase()
             })
             .cloned()
-            .ok_or(crate::llm_provider::selection::SelectionError::ModelNotSupported)?;
+            .ok_or(SelectionError::ModelNotSupported)?;
         Ok(provider)
     }
 

@@ -1,11 +1,12 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::Mutex;
 
 use async_stream::try_stream;
-use axum::body::Bytes;
+use axum::body::{Body, Bytes};
 use axum::http::{StatusCode, header};
+use axum::response::Response;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use log::{error, info};
@@ -17,10 +18,11 @@ use crate::llm_provider::{
     FinishReason, ProviderError, ToOpenAIUsage, ToolCall, UnifiedEvent, UnifiedResponse,
 };
 use crate::openai_types::{
-    ChatCompletionChunk, ChatCompletionChunkChoice, ChatCompletionChunkDelta,
-    ChatCompletionChunkToolCall, ChatCompletionChunkToolCallFunction, ChatCompletionRequest,
-    ChatCompletionResponse, Content as OpenAIContent, ContentPart, ErrorResponse, Role,
-    ToolCall as OpenAIToolCall, ToolCallFunction, ToolChoice, Usage,
+    ChatCompletionChoice, ChatCompletionChunk, ChatCompletionChunkChoice, ChatCompletionChunkDelta,
+    ChatCompletionChunkToolCall, ChatCompletionChunkToolCallFunction, ChatCompletionMessage,
+    ChatCompletionRequest, ChatCompletionResponse, Content as OpenAIContent, ContentPart,
+    ErrorDetail, ErrorResponse, Role, ToolCall as OpenAIToolCall, ToolCallFunction, ToolChoice,
+    Usage,
 };
 use crate::trace::{record_flattened_json_attributes, set_http_span_status};
 use crate::usage_handler::parse_endpoint_usage_as_input_output;
@@ -44,8 +46,8 @@ pub fn map_openai_response(response: UnifiedResponse) -> ChatCompletionResponse 
         model: response.model,
         object: "chat.completion".to_string(),
         system_fingerprint: None,
-        choices: vec![crate::openai_types::ChatCompletionChoice {
-            message: crate::openai_types::ChatCompletionMessage {
+        choices: vec![ChatCompletionChoice {
+            message: ChatCompletionMessage {
                 role: Role::Assistant,
                 content,
                 annotations: Vec::new(),
@@ -188,7 +190,7 @@ pub fn stream_openai_chunks(
         let mut created_at = String::new();
         let mut latest_usage_for_root: Option<Value> = None;
         let mut finalizer = StreamSpanFinalizer::new(root_span.clone(), trace_id.clone(), model.clone());
-        let mut tool_call_index: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+        let mut tool_call_index: HashMap<String, i32> = HashMap::new();
         let mut tool_call_delta_emitted: HashSet<String> = HashSet::new();
         let mut next_tool_index: i32 = 0;
 
@@ -763,12 +765,12 @@ mod tests {
 }
 
 pub fn openai_error_response(
-    status: axum::http::StatusCode,
+    status: StatusCode,
     message: &str,
     error_type: Option<&str>,
-) -> axum::response::Response {
+) -> Response {
     let response = ErrorResponse {
-        error: crate::openai_types::ErrorDetail {
+        error: ErrorDetail {
             message: message.to_string(),
             r#type: error_type.unwrap_or("internal_error").to_string(),
             code: None,
@@ -776,14 +778,14 @@ pub fn openai_error_response(
         },
     };
     let payload = serde_json::to_vec(&response).unwrap_or_else(|_| b"{}".to_vec());
-    axum::response::Response::builder()
+    Response::builder()
         .status(status)
         .header(header::CONTENT_TYPE, "application/json")
-        .body(axum::body::Body::from(payload))
+        .body(Body::from(payload))
         .expect("build error response")
 }
 
-pub fn map_chat_error(err: ProviderError) -> axum::response::Response {
+pub fn map_chat_error(err: ProviderError) -> Response {
     match err {
         ProviderError::Public { status, error } => {
             let response = ErrorResponse { error };
@@ -795,7 +797,7 @@ pub fn map_chat_error(err: ProviderError) -> axum::response::Response {
                 .expect("build error response")
         }
         ProviderError::Internal(_) => openai_error_response(
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            StatusCode::INTERNAL_SERVER_ERROR,
             "internal error",
             Some("internal_error"),
         ),

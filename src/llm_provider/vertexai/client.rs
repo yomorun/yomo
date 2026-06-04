@@ -1,6 +1,8 @@
 use std::sync::Arc;
+use std::time::Duration;
 
-use axum::http::HeaderMap;
+use anyhow::anyhow;
+use axum::http::{HeaderMap, HeaderValue};
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
 use tokio::sync::OnceCell;
 use yup_oauth2::authenticator::DefaultAuthenticator;
@@ -22,7 +24,7 @@ impl VertexAIClient {
         credentials_file: String,
     ) -> Result<Self, anyhow::Error> {
         let http = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(300))
+            .timeout(Duration::from_secs(300))
             .build()?;
         Ok(Self {
             http,
@@ -48,12 +50,9 @@ impl VertexAIClient {
         let url = self.generate_content_url(model, stream);
         headers.insert(
             AUTHORIZATION,
-            format!("Bearer {token}").parse::<axum::http::HeaderValue>()?,
+            format!("Bearer {token}").parse::<HeaderValue>()?,
         );
-        headers.insert(
-            CONTENT_TYPE,
-            "application/json".parse::<axum::http::HeaderValue>()?,
-        );
+        headers.insert(CONTENT_TYPE, "application/json".parse::<HeaderValue>()?);
         let response = self
             .http
             .post(url)
@@ -82,7 +81,7 @@ impl VertexAIClient {
         token
             .token()
             .map(ToString::to_string)
-            .ok_or_else(|| anyhow::anyhow!("missing google access token"))
+            .ok_or_else(|| anyhow!("missing google access token"))
     }
 
     fn generate_content_url(&self, model: &str, stream: bool) -> String {

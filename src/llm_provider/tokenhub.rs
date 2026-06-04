@@ -1,7 +1,9 @@
 use async_stream::try_stream;
 use async_trait::async_trait;
+use axum::http::StatusCode;
 use futures_core::Stream;
 use futures_util::StreamExt;
+use std::collections::HashMap;
 use std::pin::Pin;
 
 use crate::llm_provider::openai_compatible::client::{ApiError, ClientError};
@@ -86,7 +88,7 @@ impl Provider for TokenHubProvider {
 }
 
 pub fn build_tokenhub_provider(
-    params: &std::collections::HashMap<String, String>,
+    params: &HashMap<String, String>,
 ) -> Result<TokenHubProvider, ConfigError> {
     let api_key = params
         .get("api_key")
@@ -190,7 +192,7 @@ fn map_openai_error(err: ClientError) -> ProviderError {
     match err {
         ClientError::Api(ApiError::OpenAI { status, error }) if status.as_u16() == 400 => {
             ProviderError::Public {
-                status: axum::http::StatusCode::BAD_REQUEST,
+                status: StatusCode::BAD_REQUEST,
                 error,
             }
         }

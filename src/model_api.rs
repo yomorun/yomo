@@ -13,7 +13,10 @@ use std::sync::Arc;
 use tracing::Instrument;
 
 use crate::metadata_mgr::MetadataMgr;
-use crate::model_api_provider::{ProviderBody, ProviderRegistry, ProviderRequest, SelectionError};
+use crate::metadata_mgr::MetadataMgrImpl;
+use crate::model_api_provider::{
+    ModelApiProvider, ProviderBody, ProviderRegistry, ProviderRequest, SelectionError,
+};
 use crate::openai_http_mapping::openai_error_response;
 use crate::trace::{
     DefaultRequestSpanStarter, RequestSpanStarter, record_flattened_json_attributes,
@@ -22,19 +25,19 @@ use crate::trace::{
 use crate::usage_handler::{EndpointUsage, UsageHandler};
 
 pub struct ModelApiHandlerState<A, M> {
-    pub provider_registry: std::sync::Arc<ProviderRegistry<M>>,
-    pub usage_handler: std::sync::Arc<dyn UsageHandler<M>>,
-    pub metadata_mgr: std::sync::Arc<dyn MetadataMgr<A, M>>,
-    pub request_span_starter: std::sync::Arc<dyn RequestSpanStarter<M>>,
+    pub provider_registry: Arc<ProviderRegistry<M>>,
+    pub usage_handler: Arc<dyn UsageHandler<M>>,
+    pub metadata_mgr: Arc<dyn MetadataMgr<A, M>>,
+    pub request_span_starter: Arc<dyn RequestSpanStarter<M>>,
 }
 
 impl<A, M> Clone for ModelApiHandlerState<A, M> {
     fn clone(&self) -> Self {
         Self {
-            provider_registry: std::sync::Arc::clone(&self.provider_registry),
-            usage_handler: std::sync::Arc::clone(&self.usage_handler),
-            metadata_mgr: std::sync::Arc::clone(&self.metadata_mgr),
-            request_span_starter: std::sync::Arc::clone(&self.request_span_starter),
+            provider_registry: Arc::clone(&self.provider_registry),
+            usage_handler: Arc::clone(&self.usage_handler),
+            metadata_mgr: Arc::clone(&self.metadata_mgr),
+            request_span_starter: Arc::clone(&self.request_span_starter),
         }
     }
 }
@@ -343,7 +346,7 @@ fn parse_multipart_boundary(content_type: &str) -> Option<String> {
 fn wrap_stream_with_usage<M>(
     stream: Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send>>,
     root_span: tracing::Span,
-    provider: Arc<dyn crate::model_api_provider::ModelApiProvider>,
+    provider: Arc<dyn ModelApiProvider>,
     usage_handler: Arc<dyn UsageHandler<M>>,
     endpoint: String,
     model_id: String,
@@ -541,7 +544,7 @@ impl Drop for ModelApiStreamFinalizer {
 }
 
 async fn rewrite_sse_frame_usage<M>(
-    provider: Arc<dyn crate::model_api_provider::ModelApiProvider>,
+    provider: Arc<dyn ModelApiProvider>,
     frame: &str,
     usage_handler: Arc<dyn UsageHandler<M>>,
     endpoint: &str,
@@ -645,13 +648,13 @@ fn parse_generate_content_model(endpoint: &str) -> Option<String> {
 
 pub async fn build_model_api(
     provider_registry: ProviderRegistry<()>,
-    usage_handler: std::sync::Arc<dyn UsageHandler<()>>,
+    usage_handler: Arc<dyn UsageHandler<()>>,
 ) -> anyhow::Result<axum::Router> {
     let state = ModelApiHandlerState {
-        provider_registry: std::sync::Arc::new(provider_registry),
+        provider_registry: Arc::new(provider_registry),
         usage_handler,
-        metadata_mgr: std::sync::Arc::new(crate::metadata_mgr::MetadataMgrImpl::new()),
-        request_span_starter: std::sync::Arc::new(DefaultRequestSpanStarter),
+        metadata_mgr: Arc::new(MetadataMgrImpl::new()),
+        request_span_starter: Arc::new(DefaultRequestSpanStarter),
     };
 
     let app = axum::Router::new()

@@ -21,7 +21,10 @@ use crate::llm_provider::{
     FinishReason, Provider, ProviderError, ToolCall as ProviderToolCall, UnifiedEvent,
     UnifiedResponse, UsageAccumulator, UsageSummary, usage_summary_to_value,
 };
-use crate::openai_types::{ChatCompletionRequest, Content, Message, Role, ToolDefinition};
+use crate::openai_types::{
+    ChatCompletionRequest, Content, FunctionDefinition, Message, Role, ToolCall as OpenAIToolCall,
+    ToolCallFunction, ToolDefinition,
+};
 use crate::trace::record_flattened_json_attributes;
 use crate::usage_handler::{
     EndpointUsage, NoopUsageHandler, UsageHandler, parse_endpoint_usage_as_input_output,
@@ -776,7 +779,7 @@ fn parse_tool_schema(name: &str, schema: &str) -> Option<ToolDefinition> {
 
     Some(ToolDefinition {
         r#type: "function".to_string(),
-        function: crate::openai_types::FunctionDefinition {
+        function: FunctionDefinition {
             name: name.to_string(),
             description,
             strict,
@@ -987,13 +990,13 @@ fn build_assistant_tool_call_message(
     let tool_calls = calls
         .iter()
         .enumerate()
-        .map(|(index, call)| crate::openai_types::ToolCall {
+        .map(|(index, call)| OpenAIToolCall {
             id: call
                 .id
                 .clone()
                 .or_else(|| Some(ensure_tool_call_id(request_id, index))),
             r#type: Some("function".to_string()),
-            function: crate::openai_types::ToolCallFunction {
+            function: ToolCallFunction {
                 name: call.name.clone(),
                 arguments: call.arguments.clone(),
                 description: Some(call.description.clone()),
