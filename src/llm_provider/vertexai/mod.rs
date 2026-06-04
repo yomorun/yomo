@@ -432,7 +432,9 @@ async fn build_vertex_request(
                     .map(|tool| VertexFunctionDeclaration {
                         name: tool.function.name.clone(),
                         description: tool.function.description.clone(),
-                        parameters: sanitize_vertex_schema(&tool.function.parameters),
+                        parameters: ensure_vertex_object_schema(sanitize_vertex_schema(
+                            &tool.function.parameters,
+                        )),
                     })
                     .collect::<Vec<_>>(),
             }])
@@ -613,6 +615,22 @@ fn sanitize_vertex_schema(value: &Value) -> Value {
     prune_invalid_refs(sanitized, &defs_keys)
 }
 
+fn ensure_vertex_object_schema(value: Value) -> Value {
+    match value {
+        Value::Object(mut map) => {
+            let is_object = map
+                .get("type")
+                .and_then(|value| value.as_str())
+                .is_some_and(|value| value == "object");
+            if !is_object {
+                map.insert("type".to_string(), Value::String("object".to_string()));
+            }
+            Value::Object(map)
+        }
+        _ => serde_json::json!({"type": "object", "properties": {}}),
+    }
+}
+
 fn sanitize_vertex_schema_with_defs(
     value: &Value,
     defs_keys: &mut std::collections::HashSet<String>,
@@ -634,6 +652,8 @@ fn sanitize_vertex_schema_with_defs(
                             "ref" => sanitize_vertex_schema_ref(v),
                             "items" => sanitize_vertex_schema_items(v, defs_keys),
                             "anyOf" => sanitize_vertex_schema_anyof(v, defs_keys),
+                            "enum" => sanitize_vertex_schema_enum(v),
+                            "required" => sanitize_vertex_schema_required(v),
                             _ => Some(sanitize_vertex_schema_with_defs(v, defs_keys)),
                         };
                         sanitized_value.map(|value| (mapped_key.to_string(), value))
@@ -661,6 +681,7 @@ fn sanitize_vertex_schema_map(
     match value {
         Value::Object(map) => Some(Value::Object(
             map.iter()
+                .filter(|(k, _)| !k.trim().is_empty())
                 .map(|(k, v)| (k.clone(), sanitize_vertex_schema_with_defs(v, defs_keys)))
                 .collect(),
         )),
@@ -704,6 +725,20 @@ fn sanitize_vertex_schema_anyof(
                 .map(|item| sanitize_vertex_schema_with_defs(item, defs_keys))
                 .collect(),
         )),
+        _ => None,
+    }
+}
+
+fn sanitize_vertex_schema_enum(value: &Value) -> Option<Value> {
+    match value {
+        Value::Array(_) => Some(value.clone()),
+        _ => None,
+    }
+}
+
+fn sanitize_vertex_schema_required(value: &Value) -> Option<Value> {
+    match value {
+        Value::Array(items) if items.iter().all(|item| item.is_string()) => Some(value.clone()),
         _ => None,
     }
 }
@@ -1266,6 +1301,76 @@ mod tests {
 
         let sanitized = sanitize_vertex_schema(&original);
         assert!(sanitized["properties"]["loc"].get("ref").is_none());
+    }
+
+    #[test]
+    fn ensure_vertex_object_schema_forces_object_type() {
+        let original = serde_json::json!({
+            "type": "string",
+            "description": "not object"
+        });
+        let ensured = ensure_vertex_object_schema(original);
+
+        assert_eq!(ensured["type"], serde_json::json!("object"));
+        assert_eq!(ensured["description"], serde_json::json!("not object"));
+    }
+
+    #[test]
+    fn ensure_vertex_object_schema_handles_non_object_value() {
+        let ensured = ensure_vertex_object_schema(serde_json::json!("oops"));
+
+        assert_eq!(ensured["type"], serde_json::json!("object"));
+        assert!(ensured["properties"].is_object());
+    }
+
+    #[test]
+    fn sanitize_vertex_schema_drops_empty_property_keys() {
+        let original = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "": {"type": "string"},
+                "  ": {"type": "string"},
+                "valid": {"type": "string"}
+            }
+        });
+
+        let sanitized = sanitize_vertex_schema(&original);
+        assert!(sanitized["properties"].get("").is_none());
+        assert!(sanitized["properties"].get("  ").is_none());
+        assert!(sanitized["properties"].get("valid").is_some());
+    }
+
+    #[test]
+    fn sanitize_vertex_schema_drops_non_array_enum() {
+        let original = serde_json::json!({
+            "type": "string",
+            "enum": "not-an-array"
+        });
+
+        let sanitized = sanitize_vertex_schema(&original);
+        assert!(sanitized.get("enum").is_none());
+    }
+
+    #[test]
+    fn sanitize_vertex_schema_drops_non_array_required() {
+        let original = serde_json::json!({
+            "type": "object",
+            "required": "name"
+        });
+
+        let sanitized = sanitize_vertex_schema(&original);
+        assert!(sanitized.get("required").is_none());
+    }
+
+    #[test]
+    fn sanitize_vertex_schema_drops_required_with_non_string_items() {
+        let original = serde_json::json!({
+            "type": "object",
+            "required": ["name", 2]
+        });
+
+        let sanitized = sanitize_vertex_schema(&original);
+        assert!(sanitized.get("required").is_none());
     }
 
     #[test]
