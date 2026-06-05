@@ -1,13 +1,21 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use async_trait::async_trait;
+use futures_core::Stream;
+
 use crate::llm_provider::Provider;
+use crate::llm_provider::ProviderError;
+use crate::llm_provider::UnifiedEvent;
+use crate::llm_provider::UnifiedResponse;
 use crate::llm_provider::openai_compatible::build_openai_compatible_provider;
 use crate::llm_provider::selection::SelectionError;
 use crate::llm_provider::selection::SelectionStrategy;
 use crate::llm_provider::tokenhub::build_tokenhub_provider;
 use crate::llm_provider::vertexai::build_vertexai_provider;
 use crate::llm_provider::vllm_deepseek::build_vllm_deepseek_provider;
+use crate::openai_types::ChatCompletionRequest;
+use crate::provider_error_notifier::{ProviderErrorEvent, ProviderErrorNotifier};
 use crate::serve_config::ConfigError;
 use crate::serve_config::ProviderConfig;
 
@@ -23,6 +31,7 @@ pub struct ProviderEntry {
 pub struct ProviderRegistry<M> {
     providers: HashMap<String, ProviderEntry>,
     strategy: Arc<dyn SelectionStrategy<M>>,
+    error_notifier: Option<Arc<dyn ProviderErrorNotifier<M>>>,
 }
 
 impl<M> ProviderRegistry<M> {
@@ -81,19 +90,28 @@ impl<M> ProviderRegistry<M> {
         Self {
             providers,
             strategy,
+            error_notifier: None,
         }
+    }
+
+    pub fn with_error_notifier(mut self, notifier: Arc<dyn ProviderErrorNotifier<M>>) -> Self {
+        self.error_notifier = Some(notifier);
+        self
     }
 
     pub fn select(
         &self,
         model_id: Option<&str>,
         metadata: &M,
-    ) -> Result<ProviderEntry, SelectionError> {
+    ) -> Result<ProviderEntry, SelectionError>
+    where
+        M: Clone + Send + Sync + 'static,
+    {
         let selected = self
             .strategy
             .select(model_id, metadata)
             .map_err(|err| err)?;
-        let provider = self
+        let mut provider = self
             .providers
             .values()
             .find(|provider| {
@@ -101,6 +119,15 @@ impl<M> ProviderRegistry<M> {
             })
             .cloned()
             .ok_or(SelectionError::ModelNotSupported)?;
+        if let Some(notifier) = &self.error_notifier {
+            provider.provider = Arc::new(HookedProvider {
+                inner: Arc::clone(&provider.provider),
+                error_notifier: Arc::clone(notifier),
+                metadata: metadata.clone(),
+                model_id: provider.model_id.clone(),
+                endpoint: "/v1/chat/completions".to_string(),
+            });
+        }
         Ok(provider)
     }
 
@@ -113,5 +140,209 @@ impl<M> ProviderRegistry<M> {
             .values()
             .map(|provider| provider.model_id.clone())
             .collect()
+    }
+}
+
+#[derive(Clone)]
+struct HookedProvider<M> {
+    inner: Arc<dyn Provider>,
+    error_notifier: Arc<dyn ProviderErrorNotifier<M>>,
+    metadata: M,
+    model_id: String,
+    endpoint: String,
+}
+
+#[async_trait]
+impl<M> Provider for HookedProvider<M>
+where
+    M: Clone + Send + Sync + 'static,
+{
+    fn model_id(&self) -> &str {
+        self.inner.model_id()
+    }
+
+    async fn complete(
+        &self,
+        request: ChatCompletionRequest,
+    ) -> Result<UnifiedResponse, ProviderError> {
+        self.inner
+            .complete(request)
+            .await
+            .map_err(|err| self.notify_error(err))
+    }
+
+    async fn stream<'a>(
+        &'a self,
+        request: ChatCompletionRequest,
+    ) -> Result<
+        std::pin::Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
+        ProviderError,
+    > {
+        self.inner
+            .stream(request)
+            .await
+            .map_err(|err| self.notify_error(err))
+    }
+}
+
+impl<M> HookedProvider<M>
+where
+    M: Clone + Send + Sync + 'static,
+{
+    fn notify_error(&self, err: ProviderError) -> ProviderError {
+        let http_status = match &err {
+            ProviderError::Public { status, .. } => Some(status.as_u16()),
+            ProviderError::Internal(_) => None,
+        };
+        self.error_notifier
+            .notify_provider_error(ProviderErrorEvent {
+                model: Some(self.model_id.clone()),
+                metadata: self.metadata.clone(),
+                http_status,
+                error: err.to_string(),
+                endpoint: Some(self.endpoint.clone()),
+            });
+        err
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+    use std::pin::Pin;
+    use std::sync::Arc;
+
+    use async_trait::async_trait;
+    use axum::http::StatusCode;
+    use futures_core::Stream;
+
+    use super::{ProviderEntry, ProviderRegistry};
+    use crate::llm_provider::selection::{ByModel, SelectionStrategy};
+    use crate::llm_provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
+    use crate::openai_types::{ChatCompletionRequest, ErrorDetail};
+    use std::sync::Mutex;
+
+    use crate::provider_error_notifier::{ProviderErrorEvent, ProviderErrorNotifier};
+
+    struct FailingProvider;
+
+    #[async_trait]
+    impl Provider for FailingProvider {
+        fn model_id(&self) -> &str {
+            "demo-model"
+        }
+
+        async fn complete(
+            &self,
+            _request: ChatCompletionRequest,
+        ) -> Result<UnifiedResponse, ProviderError> {
+            Err(ProviderError::Public {
+                status: StatusCode::PAYMENT_REQUIRED,
+                error: ErrorDetail {
+                    message: "upstream_402".to_string(),
+                    r#type: "invalid_request_error".to_string(),
+                    code: None,
+                    param: None,
+                },
+            })
+        }
+
+        async fn stream<'a>(
+            &'a self,
+            _request: ChatCompletionRequest,
+        ) -> Result<
+            Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
+            ProviderError,
+        > {
+            Err(ProviderError::Internal("stream_fail".to_string()))
+        }
+    }
+
+    struct CollectNotifier {
+        calls: Mutex<Vec<ProviderErrorEvent<()>>>,
+    }
+
+    impl ProviderErrorNotifier<()> for CollectNotifier {
+        fn notify_provider_error(&self, event: ProviderErrorEvent<()>) {
+            self.calls.lock().expect("lock notifier calls").push(event);
+        }
+    }
+
+    #[tokio::test]
+    async fn provider_registry_error_notifier_receives_complete_error() {
+        let mut providers = HashMap::new();
+        providers.insert(
+            "demo-model".to_string(),
+            ProviderEntry {
+                provider_type: "openai-compatible".to_string(),
+                model_id: "demo-model".to_string(),
+                label: Some("demo".to_string()),
+                provider: Arc::new(FailingProvider),
+            },
+        );
+        let notifier = Arc::new(CollectNotifier {
+            calls: Mutex::new(Vec::new()),
+        });
+        let strategy: Arc<dyn SelectionStrategy<()>> = Arc::new(ByModel);
+        let registry = ProviderRegistry::new(providers, strategy)
+            .with_error_notifier(Arc::clone(&notifier) as Arc<dyn ProviderErrorNotifier<()>>);
+
+        let entry = registry
+            .select(Some("demo-model"), &())
+            .expect("select provider");
+
+        let err = entry
+            .provider
+            .complete(empty_request())
+            .await
+            .expect_err("provider should fail");
+        match err {
+            ProviderError::Public { status, .. } => {
+                assert_eq!(status, StatusCode::PAYMENT_REQUIRED)
+            }
+            other => panic!("unexpected error: {other}"),
+        }
+        let calls = notifier.calls.lock().expect("lock calls");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].model.as_deref(), Some("demo-model"));
+        assert_eq!(
+            calls[0].http_status,
+            Some(StatusCode::PAYMENT_REQUIRED.as_u16())
+        );
+        assert_eq!(calls[0].endpoint.as_deref(), Some("/v1/chat/completions"));
+    }
+
+    fn empty_request() -> ChatCompletionRequest {
+        ChatCompletionRequest {
+            model: "demo-model".to_string(),
+            messages: Vec::new(),
+            n: None,
+            temperature: None,
+            top_p: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            logprobs: None,
+            top_logprobs: None,
+            modalities: None,
+            audio: None,
+            max_completion_tokens: None,
+            stop: None,
+            response_format: None,
+            reasoning_effort: None,
+            chat_template_kwargs: None,
+            prediction: None,
+            verbosity: None,
+            tools: None,
+            tool_choice: None,
+            allowed_tools: None,
+            parallel_tool_calls: None,
+            service_tier: None,
+            seed: None,
+            stream: None,
+            stream_options: None,
+            metadata: None,
+            agent_context: None,
+            thinking: None,
+        }
     }
 }

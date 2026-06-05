@@ -213,6 +213,15 @@ where
     };
 
     let mut builder = Response::builder().status(response.status);
+    if !response.status.is_success() {
+        state.provider_registry.notify_http_error(
+            endpoint_path,
+            &provider_entry.model_id,
+            &metadata,
+            response.status.as_u16(),
+            format!("upstream returned status {}", response.status.as_u16()),
+        );
+    }
     for (key, value) in response.headers.iter() {
         if key == header::CONTENT_LENGTH {
             continue;

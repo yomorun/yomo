@@ -35,6 +35,8 @@ pub mod model_list;
 pub mod openai_http_mapping;
 /// OpenAI request/response types.
 pub mod openai_types;
+/// Provider error notifier abstractions.
+pub mod provider_error_notifier;
 /// Routing traits and implementations.
 pub mod router;
 /// Server configuration used by the CLI.

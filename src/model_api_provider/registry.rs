@@ -1,9 +1,15 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use anyhow::Error;
+use async_trait::async_trait;
+
 use crate::model_api_provider::ModelApiProvider;
+use crate::model_api_provider::ProviderRequest;
+use crate::model_api_provider::ProviderResponse;
 use crate::model_api_provider::providers;
 use crate::model_api_provider::selection::{SelectionError, SelectionResult, SelectionStrategy};
+use crate::provider_error_notifier::{ProviderErrorEvent, ProviderErrorNotifier};
 use crate::serve_config::{ConfigError, ModelApiConfig, ModelApiEndpointConfig, ProviderConfig};
 
 #[derive(Clone)]
@@ -18,6 +24,7 @@ pub struct ProviderRegistry<M> {
     providers: HashMap<String, HashMap<String, ProviderEntry>>,
     endpoints: HashMap<String, ModelApiEndpointConfig>,
     strategy: Arc<dyn SelectionStrategy<M>>,
+    error_notifier: Option<Arc<dyn ProviderErrorNotifier<M>>>,
 }
 
 impl<M> ProviderRegistry<M> {
@@ -35,7 +42,13 @@ impl<M> ProviderRegistry<M> {
             providers,
             endpoints,
             strategy,
+            error_notifier: None,
         })
+    }
+
+    pub fn with_error_notifier(mut self, notifier: Arc<dyn ProviderErrorNotifier<M>>) -> Self {
+        self.error_notifier = Some(notifier);
+        self
     }
 
     pub fn select(
@@ -43,12 +56,15 @@ impl<M> ProviderRegistry<M> {
         endpoint: &str,
         model_id: Option<&str>,
         metadata: &M,
-    ) -> Result<ProviderEntry, SelectionError> {
+    ) -> Result<ProviderEntry, SelectionError>
+    where
+        M: Clone + Send + Sync + 'static,
+    {
         let selected = self
             .strategy
             .select(endpoint, model_id, metadata)
             .map_err(|err| err)?;
-        let provider = self
+        let mut provider = self
             .providers
             .get(endpoint)
             .and_then(|endpoint_models| {
@@ -61,7 +77,37 @@ impl<M> ProviderRegistry<M> {
                     .cloned()
             })
             .ok_or(SelectionError::ModelNotSupported)?;
+        if let Some(notifier) = &self.error_notifier {
+            provider.provider = Arc::new(HookedProvider {
+                inner: Arc::clone(&provider.provider),
+                error_notifier: Arc::clone(notifier),
+                metadata: metadata.clone(),
+                model_id: provider.model_id.clone(),
+            });
+        }
         Ok(provider)
+    }
+
+    pub fn notify_http_error(
+        &self,
+        endpoint: &str,
+        model: &str,
+        metadata: &M,
+        status: u16,
+        error: String,
+    ) where
+        M: Clone,
+    {
+        let Some(notifier) = &self.error_notifier else {
+            return;
+        };
+        notifier.notify_provider_error(ProviderErrorEvent {
+            model: Some(model.to_string()),
+            metadata: metadata.clone(),
+            http_status: Some(status),
+            error,
+            endpoint: Some(endpoint.to_string()),
+        });
     }
 
     pub fn endpoint(&self, path: &str) -> Option<&ModelApiEndpointConfig> {
@@ -76,6 +122,237 @@ impl<M> ProviderRegistry<M> {
             }
         }
         models.into_iter().collect()
+    }
+}
+
+#[derive(Clone)]
+struct HookedProvider<M> {
+    inner: Arc<dyn ModelApiProvider>,
+    error_notifier: Arc<dyn ProviderErrorNotifier<M>>,
+    metadata: M,
+    model_id: String,
+}
+
+#[async_trait]
+impl<M> ModelApiProvider for HookedProvider<M>
+where
+    M: Clone + Send + Sync + 'static,
+{
+    fn model_id(&self) -> &str {
+        self.inner.model_id()
+    }
+
+    async fn execute(&self, req: ProviderRequest) -> Result<ProviderResponse, Error> {
+        let endpoint = req.endpoint_path.clone();
+        self.inner
+            .execute(req)
+            .await
+            .map_err(|err| self.notify_error(endpoint.as_str(), err))
+    }
+}
+
+impl<M> HookedProvider<M>
+where
+    M: Clone + Send + Sync + 'static,
+{
+    fn notify_error(&self, endpoint: &str, err: Error) -> Error {
+        self.error_notifier
+            .notify_provider_error(ProviderErrorEvent {
+                model: Some(self.model_id.clone()),
+                metadata: self.metadata.clone(),
+                http_status: None,
+                error: err.to_string(),
+                endpoint: Some(endpoint.to_string()),
+            });
+        err
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    use anyhow::anyhow;
+    use async_trait::async_trait;
+    use axum::http::{HeaderMap, Method, StatusCode};
+
+    use std::sync::Mutex;
+
+    use super::{ProviderEntry, ProviderRegistry};
+    use crate::model_api_provider::selection::{SelectionResult, SelectionStrategy};
+    use crate::model_api_provider::{
+        ModelApiProvider, ProviderBody, ProviderRequest, ProviderResponse,
+    };
+    use crate::provider_error_notifier::{ProviderErrorEvent, ProviderErrorNotifier};
+
+    struct SelectModel;
+
+    impl SelectionStrategy<()> for SelectModel {
+        fn select(
+            &self,
+            _endpoint: &str,
+            _model_id: Option<&str>,
+            _metadata: &(),
+        ) -> Result<SelectionResult, crate::model_api_provider::SelectionError> {
+            Ok(SelectionResult {
+                model_id: "embed-1".to_string(),
+            })
+        }
+    }
+
+    struct FailingProvider;
+
+    #[async_trait]
+    impl ModelApiProvider for FailingProvider {
+        fn model_id(&self) -> &str {
+            "embed-1"
+        }
+
+        async fn execute(&self, _req: ProviderRequest) -> Result<ProviderResponse, anyhow::Error> {
+            Err(anyhow!("upstream timeout"))
+        }
+    }
+
+    struct CollectNotifier {
+        calls: Mutex<Vec<ProviderErrorEvent<()>>>,
+    }
+
+    impl ProviderErrorNotifier<()> for CollectNotifier {
+        fn notify_provider_error(&self, event: ProviderErrorEvent<()>) {
+            self.calls.lock().expect("lock notifier calls").push(event);
+        }
+    }
+
+    #[tokio::test]
+    async fn provider_registry_error_notifier_receives_model_api_error() {
+        let mut endpoint_models = HashMap::new();
+        endpoint_models.insert(
+            "embed-1".to_string(),
+            ProviderEntry {
+                model_id: "embed-1".to_string(),
+                label: Some("embed".to_string()),
+                provider: Arc::new(FailingProvider),
+            },
+        );
+
+        let mut providers = HashMap::new();
+        providers.insert("/embeddings".to_string(), endpoint_models);
+
+        let mut endpoints = HashMap::new();
+        endpoints.insert(
+            "/embeddings".to_string(),
+            crate::serve_config::ModelApiEndpointConfig {
+                path: "/embeddings".to_string(),
+                default_model: Some("embed-1".to_string()),
+                models: vec!["embed-1".to_string()],
+            },
+        );
+
+        let notifier = Arc::new(CollectNotifier {
+            calls: Mutex::new(Vec::new()),
+        });
+        let registry = ProviderRegistry {
+            providers,
+            endpoints,
+            strategy: Arc::new(SelectModel),
+            error_notifier: Some(Arc::clone(&notifier) as Arc<dyn ProviderErrorNotifier<()>>),
+        };
+
+        let entry = registry
+            .select("/embeddings", None, &())
+            .expect("select provider");
+        let err = match entry
+            .provider
+            .execute(ProviderRequest {
+                method: Method::POST,
+                endpoint_path: "/embeddings".to_string(),
+                headers: HeaderMap::new(),
+                body: axum::body::Bytes::new(),
+                is_stream: false,
+                content_type: None,
+            })
+            .await
+        {
+            Ok(_) => panic!("provider should fail"),
+            Err(err) => err,
+        };
+        assert_eq!(err.to_string(), "upstream timeout");
+        let calls = notifier.calls.lock().expect("lock calls");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].model.as_deref(), Some("embed-1"));
+        assert_eq!(calls[0].http_status, None);
+        assert_eq!(calls[0].endpoint.as_deref(), Some("/embeddings"));
+    }
+
+    struct SuccessProvider;
+
+    #[async_trait]
+    impl ModelApiProvider for SuccessProvider {
+        fn model_id(&self) -> &str {
+            "embed-1"
+        }
+
+        async fn execute(&self, _req: ProviderRequest) -> Result<ProviderResponse, anyhow::Error> {
+            Ok(ProviderResponse {
+                status: StatusCode::OK,
+                headers: HeaderMap::new(),
+                body: ProviderBody::Full(axum::body::Bytes::new()),
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn provider_registry_error_notifier_does_not_change_success_response() {
+        let mut endpoint_models = HashMap::new();
+        endpoint_models.insert(
+            "embed-1".to_string(),
+            ProviderEntry {
+                model_id: "embed-1".to_string(),
+                label: None,
+                provider: Arc::new(SuccessProvider),
+            },
+        );
+        let mut providers = HashMap::new();
+        providers.insert("/embeddings".to_string(), endpoint_models);
+        let mut endpoints = HashMap::new();
+        endpoints.insert(
+            "/embeddings".to_string(),
+            crate::serve_config::ModelApiEndpointConfig {
+                path: "/embeddings".to_string(),
+                default_model: Some("embed-1".to_string()),
+                models: vec!["embed-1".to_string()],
+            },
+        );
+
+        let notifier = Arc::new(CollectNotifier {
+            calls: Mutex::new(Vec::new()),
+        });
+        let registry = ProviderRegistry {
+            providers,
+            endpoints,
+            strategy: Arc::new(SelectModel),
+            error_notifier: Some(Arc::clone(&notifier) as Arc<dyn ProviderErrorNotifier<()>>),
+        };
+
+        let entry = registry
+            .select("/embeddings", None, &())
+            .expect("select provider");
+        let response = entry
+            .provider
+            .execute(ProviderRequest {
+                method: Method::POST,
+                endpoint_path: "/embeddings".to_string(),
+                headers: HeaderMap::new(),
+                body: axum::body::Bytes::new(),
+                is_stream: false,
+                content_type: None,
+            })
+            .await
+            .expect("provider should succeed");
+        assert_eq!(response.status, StatusCode::OK);
+        let calls = notifier.calls.lock().expect("lock calls");
+        assert!(calls.is_empty());
     }
 }
 
