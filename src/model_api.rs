@@ -7,7 +7,7 @@ use axum::http::{HeaderMap, Method, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use futures_core::Stream;
 use futures_util::{StreamExt, stream};
-use log::{error, info};
+use log::{error, info, warn};
 use serde_json::Value;
 use std::sync::Arc;
 use tracing::Instrument;
@@ -261,6 +261,11 @@ where
                             .unwrap_or(payload);
                     }
                 }
+            } else {
+                warn!(
+                    "model api got invalid json body for model_id {}",
+                    provider_entry.model_id
+                );
             }
             let response = builder.body(Body::from(payload)).expect("build response");
             info!(
