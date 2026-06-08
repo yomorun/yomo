@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use async_trait::async_trait;
-use aws_config::BehaviorVersion;
-use aws_sdk_bedrockruntime::config::Token;
+use aws_sdk_bedrockruntime::config::{BehaviorVersion, Token};
 use aws_sdk_bedrockruntime::primitives::Blob;
 use aws_types::region::Region;
 use axum::body::Bytes;
@@ -51,19 +50,18 @@ impl MessagesClient {
     async fn client(&self) -> Result<&aws_sdk_bedrockruntime::Client, anyhow::Error> {
         self.bedrock_client
             .get_or_try_init(|| async {
-                let loader = aws_config::defaults(BehaviorVersion::latest())
-                    .region(Region::new(self.aws_region.clone()));
-
-                let config = loader.load().await;
-                let client = if let Some(token) = self.aws_bearer_token.as_ref() {
-                    let bedrock_config = aws_sdk_bedrockruntime::config::Builder::from(&config)
-                        .bearer_token(Token::new(token, None))
-                        .build();
-                    aws_sdk_bedrockruntime::Client::from_conf(bedrock_config)
-                } else {
-                    aws_sdk_bedrockruntime::Client::new(&config)
-                };
-                Ok::<aws_sdk_bedrockruntime::Client, anyhow::Error>(client)
+                let token = self
+                    .aws_bearer_token
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("aws_bearer_token is required"))?;
+                let config = aws_sdk_bedrockruntime::Config::builder()
+                    .behavior_version(BehaviorVersion::latest())
+                    .region(Region::new(self.aws_region.clone()))
+                    .bearer_token(Token::new(token, None))
+                    .build();
+                Ok::<aws_sdk_bedrockruntime::Client, anyhow::Error>(
+                    aws_sdk_bedrockruntime::Client::from_conf(config),
+                )
             })
             .await
     }
