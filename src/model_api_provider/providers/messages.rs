@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use aws_config::BehaviorVersion;
-use aws_credential_types::Credentials;
+use aws_sdk_bedrockruntime::config::Token;
 use aws_sdk_bedrockruntime::primitives::Blob;
 use aws_types::region::Region;
 use axum::body::Bytes;
@@ -24,9 +24,7 @@ pub struct MessagesClient {
     aws_region: String,
     anthropic_version: String,
     default_max_tokens: u64,
-    aws_access_key_id: Option<String>,
-    aws_secret_access_key: Option<String>,
-    aws_session_token: Option<String>,
+    aws_bearer_token: Option<String>,
     bedrock_client: Arc<OnceCell<aws_sdk_bedrockruntime::Client>>,
 }
 
@@ -37,9 +35,7 @@ impl MessagesClient {
         aws_region: String,
         anthropic_version: String,
         default_max_tokens: u64,
-        aws_access_key_id: Option<String>,
-        aws_secret_access_key: Option<String>,
-        aws_session_token: Option<String>,
+        aws_bearer_token: Option<String>,
     ) -> Self {
         Self {
             model_id,
@@ -47,9 +43,7 @@ impl MessagesClient {
             aws_region,
             anthropic_version,
             default_max_tokens,
-            aws_access_key_id,
-            aws_secret_access_key,
-            aws_session_token,
+            aws_bearer_token,
             bedrock_client: Arc::new(OnceCell::new()),
         }
     }
@@ -57,27 +51,19 @@ impl MessagesClient {
     async fn client(&self) -> Result<&aws_sdk_bedrockruntime::Client, anyhow::Error> {
         self.bedrock_client
             .get_or_try_init(|| async {
-                let mut loader = aws_config::defaults(BehaviorVersion::latest())
+                let loader = aws_config::defaults(BehaviorVersion::latest())
                     .region(Region::new(self.aws_region.clone()));
 
-                if let (Some(access_key_id), Some(secret_access_key)) = (
-                    self.aws_access_key_id.as_ref(),
-                    self.aws_secret_access_key.as_ref(),
-                ) {
-                    let credentials = Credentials::new(
-                        access_key_id,
-                        secret_access_key,
-                        self.aws_session_token.clone(),
-                        None,
-                        "model-api-messages",
-                    );
-                    loader = loader.credentials_provider(credentials);
-                }
-
                 let config = loader.load().await;
-                Ok::<aws_sdk_bedrockruntime::Client, anyhow::Error>(
-                    aws_sdk_bedrockruntime::Client::new(&config),
-                )
+                let client = if let Some(token) = self.aws_bearer_token.as_ref() {
+                    let bedrock_config = aws_sdk_bedrockruntime::config::Builder::from(&config)
+                        .bearer_token(Token::new(token, None))
+                        .build();
+                    aws_sdk_bedrockruntime::Client::from_conf(bedrock_config)
+                } else {
+                    aws_sdk_bedrockruntime::Client::new(&config)
+                };
+                Ok::<aws_sdk_bedrockruntime::Client, anyhow::Error>(client)
             })
             .await
     }
@@ -264,11 +250,13 @@ fn non_null_usage(value: Option<&Value>) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::{
-        extract_request_id_from_full_json, extract_request_id_from_stream_event_json,
+        build_client, extract_request_id_from_full_json, extract_request_id_from_stream_event_json,
         extract_usage_from_full_json, extract_usage_from_stream_event_json,
         inject_usage_into_full_json,
     };
+    use crate::serve_config::ProviderConfig;
     use serde_json::json;
+    use std::collections::HashMap;
 
     /// Verifies full payload request id extraction prefers top-level `id`.
     #[test]
@@ -321,6 +309,58 @@ mod tests {
         assert!(injected);
         assert_eq!(payload["message"]["usage"], new_usage);
     }
+
+    /// Verifies bedrock client creation accepts explicit bearer token config.
+    #[test]
+    fn build_client_accepts_aws_bearer_token_param() {
+        let mut params = HashMap::new();
+        params.insert(
+            "model".to_string(),
+            "global.anthropic.claude-sonnet-4-6".to_string(),
+        );
+        params.insert("aws_region".to_string(), "ap-northeast-1".to_string());
+        params.insert("aws_bearer_token".to_string(), "test-token".to_string());
+
+        let provider = ProviderConfig {
+            provider_type: "bedrock-messages".to_string(),
+            model_id: "claude-sonnet-4-6".to_string(),
+            label: None,
+            default: false,
+            params,
+        };
+
+        let client = build_client(&provider).expect("bedrock client should build");
+
+        assert_eq!(client.model_id(), "claude-sonnet-4-6");
+    }
+
+    /// Verifies bedrock client creation rejects missing bearer token config.
+    #[test]
+    fn build_client_rejects_missing_aws_bearer_token_param() {
+        let mut params = HashMap::new();
+        params.insert(
+            "model".to_string(),
+            "global.anthropic.claude-sonnet-4-6".to_string(),
+        );
+        params.insert("aws_region".to_string(), "ap-northeast-1".to_string());
+
+        let provider = ProviderConfig {
+            provider_type: "bedrock-messages".to_string(),
+            model_id: "claude-sonnet-4-6".to_string(),
+            label: None,
+            default: false,
+            params,
+        };
+
+        let err = build_client(&provider)
+            .err()
+            .expect("missing token must be rejected");
+
+        assert_eq!(
+            err.to_string(),
+            "invalid provider: aws_bearer_token is required"
+        );
+    }
 }
 
 pub fn build_client(provider: &ProviderConfig) -> Result<Arc<dyn ModelApiProvider>, ConfigError> {
@@ -349,9 +389,12 @@ pub fn build_client(provider: &ProviderConfig) -> Result<Arc<dyn ModelApiProvide
         .get("max_tokens")
         .and_then(|raw| raw.parse::<u64>().ok())
         .unwrap_or(4096);
-    let aws_access_key_id = provider.params.get("aws_access_key_id").cloned();
-    let aws_secret_access_key = provider.params.get("aws_secret_access_key").cloned();
-    let aws_session_token = provider.params.get("aws_session_token").cloned();
+    let aws_bearer_token = provider
+        .params
+        .get("aws_bearer_token")
+        .map(|token| token.trim().to_string())
+        .filter(|token| !token.is_empty())
+        .ok_or_else(|| ConfigError::InvalidProvider("aws_bearer_token is required".to_string()))?;
 
     Ok(Arc::new(MessagesClient::new(
         provider.model_id.clone(),
@@ -359,8 +402,6 @@ pub fn build_client(provider: &ProviderConfig) -> Result<Arc<dyn ModelApiProvide
         aws_region,
         anthropic_version,
         default_max_tokens,
-        aws_access_key_id,
-        aws_secret_access_key,
-        aws_session_token,
+        Some(aws_bearer_token),
     )))
 }
