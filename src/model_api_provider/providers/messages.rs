@@ -169,38 +169,26 @@ impl ModelApiProvider for MessagesClient {
         }
     }
 
-    fn extract_request_id_from_full(&self, body_json: &Value) -> Option<String> {
-        extract_request_id_from_full_json(body_json)
+    fn extract_request_id(&self, payload_json: &Value) -> Option<String> {
+        extract_request_id_json(payload_json)
     }
 
-    fn extract_request_id_from_stream_event(&self, event_json: &Value) -> Option<String> {
-        extract_request_id_from_stream_event_json(event_json)
+    fn extract_usage(&self, payload_json: &Value) -> Option<Value> {
+        extract_usage_json(payload_json)
     }
 
-    fn extract_usage_from_full(&self, body_json: &Value) -> Option<Value> {
-        extract_usage_from_full_json(body_json)
-    }
-
-    fn extract_usage_from_stream_event(&self, event_json: &Value) -> Option<Value> {
-        extract_usage_from_stream_event_json(event_json)
-    }
-
-    fn inject_usage_into_full(&self, body_json: &mut Value, usage: Value) -> bool {
-        inject_usage_into_full_json(body_json, usage)
-    }
-
-    fn inject_usage_into_stream_event(&self, event_json: &mut Value, usage: Value) -> bool {
-        self.inject_usage_into_full(event_json, usage)
+    fn inject_usage(&self, payload_json: &mut Value, usage: Value) -> bool {
+        inject_usage_json(payload_json, usage)
     }
 }
 
-fn extract_request_id_from_full_json(body_json: &Value) -> Option<String> {
-    body_json
+fn extract_request_id_json(payload_json: &Value) -> Option<String> {
+    payload_json
         .get("id")
         .and_then(Value::as_str)
         .map(str::to_string)
         .or_else(|| {
-            body_json
+            payload_json
                 .get("message")
                 .and_then(|message| message.get("id"))
                 .and_then(Value::as_str)
@@ -208,26 +196,18 @@ fn extract_request_id_from_full_json(body_json: &Value) -> Option<String> {
         })
 }
 
-fn extract_request_id_from_stream_event_json(event_json: &Value) -> Option<String> {
-    extract_request_id_from_full_json(event_json)
-}
-
-fn extract_usage_from_full_json(body_json: &Value) -> Option<Value> {
-    non_null_usage(body_json.get("usage")).or_else(|| {
+fn extract_usage_json(payload_json: &Value) -> Option<Value> {
+    non_null_usage(payload_json.get("usage")).or_else(|| {
         non_null_usage(
-            body_json
+            payload_json
                 .get("message")
                 .and_then(|message| message.get("usage")),
         )
     })
 }
 
-fn extract_usage_from_stream_event_json(event_json: &Value) -> Option<Value> {
-    extract_usage_from_full_json(event_json)
-}
-
-fn inject_usage_into_full_json(body_json: &mut Value, usage: Value) -> bool {
-    let Some(obj) = body_json.as_object_mut() else {
+fn inject_usage_json(payload_json: &mut Value, usage: Value) -> bool {
+    let Some(obj) = payload_json.as_object_mut() else {
         return false;
     };
     if obj.contains_key("usage") {
@@ -247,62 +227,58 @@ fn non_null_usage(value: Option<&Value>) -> Option<Value> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        build_client, extract_request_id_from_full_json, extract_request_id_from_stream_event_json,
-        extract_usage_from_full_json, extract_usage_from_stream_event_json,
-        inject_usage_into_full_json,
-    };
+    use super::{build_client, extract_request_id_json, extract_usage_json, inject_usage_json};
     use crate::serve_config::ProviderConfig;
     use serde_json::json;
     use std::collections::HashMap;
 
     /// Verifies full payload request id extraction prefers top-level `id`.
     #[test]
-    fn extract_request_id_from_full_json_prefers_top_level_id() {
+    fn extract_request_id_json_prefers_top_level_id() {
         let payload = json!({"id": "msg_top", "message": {"id": "msg_nested"}});
 
-        let request_id = extract_request_id_from_full_json(&payload);
+        let request_id = extract_request_id_json(&payload);
 
         assert_eq!(request_id.as_deref(), Some("msg_top"));
     }
 
-    /// Verifies stream-event request id extraction supports nested `message.id` fallback.
+    /// Verifies request id extraction supports nested `message.id` fallback.
     #[test]
-    fn extract_request_id_from_stream_event_json_supports_nested_message_id() {
+    fn extract_request_id_json_supports_nested_message_id() {
         let payload = json!({"message": {"id": "msg_nested"}});
 
-        let request_id = extract_request_id_from_stream_event_json(&payload);
+        let request_id = extract_request_id_json(&payload);
 
         assert_eq!(request_id.as_deref(), Some("msg_nested"));
     }
 
     /// Verifies full payload usage extraction falls back to `message.usage`.
     #[test]
-    fn extract_usage_from_full_json_reads_nested_message_usage() {
+    fn extract_usage_json_reads_nested_message_usage() {
         let payload = json!({"message": {"usage": {"input_tokens": 3}}});
 
-        let usage = extract_usage_from_full_json(&payload);
+        let usage = extract_usage_json(&payload);
 
         assert_eq!(usage, Some(json!({"input_tokens": 3})));
     }
 
-    /// Verifies stream-event usage extraction ignores null usage payloads.
+    /// Verifies usage extraction ignores null usage payloads.
     #[test]
-    fn extract_usage_from_stream_event_json_ignores_null_usage() {
+    fn extract_usage_json_ignores_null_usage() {
         let payload = json!({"usage": null});
 
-        let usage = extract_usage_from_stream_event_json(&payload);
+        let usage = extract_usage_json(&payload);
 
         assert_eq!(usage, None);
     }
 
     /// Verifies usage injection writes to nested `message.usage` when top-level field is absent.
     #[test]
-    fn inject_usage_into_full_json_updates_nested_message_usage() {
+    fn inject_usage_json_updates_nested_message_usage() {
         let mut payload = json!({"message": {"usage": {"input_tokens": 1}}});
         let new_usage = json!({"input_tokens": 55});
 
-        let injected = inject_usage_into_full_json(&mut payload, new_usage.clone());
+        let injected = inject_usage_json(&mut payload, new_usage.clone());
 
         assert!(injected);
         assert_eq!(payload["message"]["usage"], new_usage);

@@ -66,38 +66,26 @@ impl ModelApiProvider for GenerateContentClient {
         }
     }
 
-    fn extract_request_id_from_full(&self, body_json: &Value) -> Option<String> {
-        extract_request_id_from_full_json(body_json)
+    fn extract_request_id(&self, payload_json: &Value) -> Option<String> {
+        extract_request_id_json(payload_json)
     }
 
-    fn extract_request_id_from_stream_event(&self, event_json: &Value) -> Option<String> {
-        extract_request_id_from_stream_event_json(event_json)
+    fn extract_usage(&self, payload_json: &Value) -> Option<Value> {
+        extract_usage_json(payload_json)
     }
 
-    fn extract_usage_from_full(&self, body_json: &Value) -> Option<Value> {
-        extract_usage_from_full_json(body_json)
-    }
-
-    fn extract_usage_from_stream_event(&self, event_json: &Value) -> Option<Value> {
-        extract_usage_from_stream_event_json(event_json)
-    }
-
-    fn inject_usage_into_full(&self, body_json: &mut Value, usage: Value) -> bool {
-        inject_usage_into_full_json(body_json, usage)
-    }
-
-    fn inject_usage_into_stream_event(&self, event_json: &mut Value, usage: Value) -> bool {
-        self.inject_usage_into_full(event_json, usage)
+    fn inject_usage(&self, payload_json: &mut Value, usage: Value) -> bool {
+        inject_usage_json(payload_json, usage)
     }
 }
 
-fn extract_request_id_from_full_json(body_json: &Value) -> Option<String> {
-    body_json
+fn extract_request_id_json(payload_json: &Value) -> Option<String> {
+    payload_json
         .get("id")
         .and_then(Value::as_str)
         .map(str::to_string)
         .or_else(|| {
-            body_json
+            payload_json
                 .get("response")
                 .and_then(|response| response.get("id"))
                 .and_then(Value::as_str)
@@ -105,26 +93,18 @@ fn extract_request_id_from_full_json(body_json: &Value) -> Option<String> {
         })
 }
 
-fn extract_request_id_from_stream_event_json(event_json: &Value) -> Option<String> {
-    extract_request_id_from_full_json(event_json)
-}
-
-fn extract_usage_from_full_json(body_json: &Value) -> Option<Value> {
-    non_null_usage(body_json.get("usageMetadata")).or_else(|| {
+fn extract_usage_json(payload_json: &Value) -> Option<Value> {
+    non_null_usage(payload_json.get("usageMetadata")).or_else(|| {
         non_null_usage(
-            body_json
+            payload_json
                 .get("response")
                 .and_then(|response| response.get("usageMetadata")),
         )
     })
 }
 
-fn extract_usage_from_stream_event_json(event_json: &Value) -> Option<Value> {
-    extract_usage_from_full_json(event_json)
-}
-
-fn inject_usage_into_full_json(body_json: &mut Value, usage: Value) -> bool {
-    let Some(obj) = body_json.as_object_mut() else {
+fn inject_usage_json(payload_json: &mut Value, usage: Value) -> bool {
+    let Some(obj) = payload_json.as_object_mut() else {
         return false;
     };
     if obj.contains_key("usageMetadata") {
@@ -144,60 +124,56 @@ fn non_null_usage(value: Option<&Value>) -> Option<Value> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        extract_request_id_from_full_json, extract_request_id_from_stream_event_json,
-        extract_usage_from_full_json, extract_usage_from_stream_event_json,
-        inject_usage_into_full_json,
-    };
+    use super::{extract_request_id_json, extract_usage_json, inject_usage_json};
     use serde_json::json;
 
     /// Verifies full payload request id extraction prefers top-level `id`.
     #[test]
-    fn extract_request_id_from_full_json_prefers_top_level_id() {
+    fn extract_request_id_json_prefers_top_level_id() {
         let payload = json!({"id": "gen_top", "response": {"id": "gen_nested"}});
 
-        let request_id = extract_request_id_from_full_json(&payload);
+        let request_id = extract_request_id_json(&payload);
 
         assert_eq!(request_id.as_deref(), Some("gen_top"));
     }
 
-    /// Verifies stream-event request id extraction supports nested `response.id` fallback.
+    /// Verifies request id extraction supports nested `response.id` fallback.
     #[test]
-    fn extract_request_id_from_stream_event_json_supports_nested_response_id() {
+    fn extract_request_id_json_supports_nested_response_id() {
         let payload = json!({"response": {"id": "gen_nested"}});
 
-        let request_id = extract_request_id_from_stream_event_json(&payload);
+        let request_id = extract_request_id_json(&payload);
 
         assert_eq!(request_id.as_deref(), Some("gen_nested"));
     }
 
     /// Verifies full payload usage extraction falls back to `response.usageMetadata`.
     #[test]
-    fn extract_usage_from_full_json_reads_nested_usage_metadata() {
+    fn extract_usage_json_reads_nested_usage_metadata() {
         let payload = json!({"response": {"usageMetadata": {"totalTokenCount": 42}}});
 
-        let usage = extract_usage_from_full_json(&payload);
+        let usage = extract_usage_json(&payload);
 
         assert_eq!(usage, Some(json!({"totalTokenCount": 42})));
     }
 
-    /// Verifies stream-event usage extraction ignores null usage metadata payloads.
+    /// Verifies usage extraction ignores null usage metadata payloads.
     #[test]
-    fn extract_usage_from_stream_event_json_ignores_null_usage_metadata() {
+    fn extract_usage_json_ignores_null_usage_metadata() {
         let payload = json!({"usageMetadata": null});
 
-        let usage = extract_usage_from_stream_event_json(&payload);
+        let usage = extract_usage_json(&payload);
 
         assert_eq!(usage, None);
     }
 
     /// Verifies usage injection updates nested `response.usageMetadata` when top-level field is absent.
     #[test]
-    fn inject_usage_into_full_json_updates_nested_response_usage_metadata() {
+    fn inject_usage_json_updates_nested_response_usage_metadata() {
         let mut payload = json!({"response": {"usageMetadata": {"totalTokenCount": 1}}});
         let new_usage = json!({"totalTokenCount": 99});
 
-        let injected = inject_usage_into_full_json(&mut payload, new_usage.clone());
+        let injected = inject_usage_json(&mut payload, new_usage.clone());
 
         assert!(injected);
         assert_eq!(payload["response"]["usageMetadata"], new_usage);

@@ -234,11 +234,10 @@ where
         ProviderBody::Full(payload) => {
             let mut payload = payload;
             if let Ok(mut body_json) = serde_json::from_slice::<Value>(&payload) {
-                let request_id = provider
-                    .extract_request_id_from_full(&body_json)
-                    .unwrap_or_default();
+                let request_id =
+                    resolve_request_id(provider.extract_request_id(&body_json), &trace_id);
                 if let Some(usage_value) = provider
-                    .extract_usage_from_full(&body_json)
+                    .extract_usage(&body_json)
                     .filter(|usage| !usage.is_null())
                 {
                     let modified_usage = state
@@ -256,7 +255,7 @@ where
                         .await
                         .into_payload(endpoint_path);
                     record_flattened_json_attributes(&root_span, "usage", &modified_usage);
-                    if provider.inject_usage_into_full(&mut body_json, modified_usage) {
+                    if provider.inject_usage(&mut body_json, modified_usage) {
                         payload = serde_json::to_vec(&body_json)
                             .map(Bytes::from)
                             .unwrap_or(payload);
@@ -431,13 +430,9 @@ where
                 yield Bytes::from(output_frame);
             } else {
                 if let Ok(mut value) = serde_json::from_str::<Value>(text_buffer.trim()) {
-                    if let Some(usage_value) = provider
-                        .extract_usage_from_stream_event(&value)
-                        .filter(|usage| !usage.is_null())
+                    if let Some(usage_value) = provider.extract_usage(&value).filter(|usage| !usage.is_null())
                     {
-                        let request_id = provider
-                            .extract_request_id_from_stream_event(&value)
-                            .unwrap_or_default();
+                        let request_id = resolve_request_id(provider.extract_request_id(&value), &trace_id);
                         let modified_usage = usage_handler
                             .on_usage(
                                 &endpoint,
@@ -451,9 +446,7 @@ where
                             )
                             .await
                             .into_payload(&endpoint);
-                        if provider
-                            .inject_usage_into_stream_event(&mut value, modified_usage.clone())
-                        {
+                        if provider.inject_usage(&mut value, modified_usage.clone()) {
                             latest_usage = Some(modified_usage);
                             if let Ok(encoded) = serde_json::to_vec(&value) {
                                 yield Bytes::from(encoded);
@@ -569,12 +562,10 @@ where
 {
     if let Some(mut value) = parse_sse_data_json(frame) {
         if let Some(usage_value) = provider
-            .extract_usage_from_stream_event(&value)
+            .extract_usage(&value)
             .filter(|usage| !usage.is_null())
         {
-            let request_id = provider
-                .extract_request_id_from_stream_event(&value)
-                .unwrap_or_default();
+            let request_id = resolve_request_id(provider.extract_request_id(&value), trace_id);
             let modified_usage = usage_handler
                 .on_usage(
                     endpoint,
@@ -588,7 +579,7 @@ where
                 )
                 .await
                 .into_payload(endpoint);
-            if provider.inject_usage_into_stream_event(&mut value, modified_usage.clone()) {
+            if provider.inject_usage(&mut value, modified_usage.clone()) {
                 if let Ok(encoded) = serde_json::to_string(&value) {
                     return (
                         rebuild_sse_frame_with_data(frame, &encoded),
@@ -627,6 +618,13 @@ fn parse_sse_data_json(frame: &str) -> Option<Value> {
         return None;
     }
     serde_json::from_str(payload).ok()
+}
+
+fn resolve_request_id(request_id: Option<String>, trace_id: &str) -> String {
+    request_id
+        .map(|id| id.trim().to_string())
+        .filter(|id| !id.is_empty())
+        .unwrap_or_else(|| trace_id.to_string())
 }
 
 fn resolve_endpoint_kind(endpoint: &str) -> Option<EndpointKind> {
@@ -677,7 +675,7 @@ pub async fn build_model_api(
 
 #[cfg(test)]
 mod tests {
-    use super::parse_model_request_fields;
+    use super::{parse_model_request_fields, resolve_request_id};
     use axum::body::Bytes;
 
     /// Verifies JSON requests return both model and stream metadata.
@@ -753,5 +751,23 @@ mod tests {
         let parsed = parse_model_request_fields(&content_type, &body).await;
 
         assert_eq!(parsed.unwrap(), (None, false));
+    }
+
+    /// Verifies request id resolver preserves non-empty extracted id values.
+    #[test]
+    fn resolve_request_id_prefers_extracted_value() {
+        let request_id = resolve_request_id(Some("req_123".to_string()), "trace_123");
+
+        assert_eq!(request_id, "req_123");
+    }
+
+    /// Verifies request id resolver falls back to trace id for missing or blank ids.
+    #[test]
+    fn resolve_request_id_falls_back_to_trace_id() {
+        let missing = resolve_request_id(None, "trace_456");
+        let blank = resolve_request_id(Some("   ".to_string()), "trace_789");
+
+        assert_eq!(missing, "trace_456");
+        assert_eq!(blank, "trace_789");
     }
 }
