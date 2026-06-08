@@ -21,14 +21,15 @@ use crate::llm_provider::selection::SelectionError;
 use crate::llm_stream_mapper::{DefaultStreamMapperSelector, StreamMapperSelector};
 use crate::metadata_mgr::{MetadataMgr, MetadataMgrImpl};
 use crate::openai_http_mapping::{
-    map_chat_error, map_openai_response, openai_error_response, validate_openai_request,
+    map_chat_error, map_openai_response, map_usage_to_openai, openai_error_response,
+    validate_openai_request,
 };
 use crate::openai_types::{ChatCompletionRequest, StreamOptions};
 use crate::tool_invoker::ToolInvoker;
 use crate::tool_mgr::ToolMgr;
 use crate::trace::{DefaultRequestSpanStarter, RequestSpanStarter};
 use crate::trace::{record_flattened_json_attributes, set_http_span_status};
-use crate::usage_handler::parse_endpoint_usage_as_input_output;
+use crate::usage_handler::EndpointUsage;
 use crate::utils::truncate_bytes_for_log;
 
 #[derive(Clone)]
@@ -247,27 +248,10 @@ where
                 tracing::field::display(finish_reason_to_str(&response.finish_reason)),
             );
             record_flattened_json_attributes(&root_span, "usage", &usage_to_value(&response.usage));
+            let usage = map_usage_to_openai(&response.usage);
             info!(
                 "http.request.end; status_code=200 model_id={} prompt_tokens={} completion_tokens={} trace_id={} metadata={:?}",
-                model_id,
-                parse_endpoint_usage_as_input_output(
-                    "/chat/completions",
-                    &response.usage,
-                    Some(&model_id),
-                    Some(&trace_id),
-                )
-                .map(|value| value.input_tokens)
-                .unwrap_or(0),
-                parse_endpoint_usage_as_input_output(
-                    "/chat/completions",
-                    &response.usage,
-                    Some(&model_id),
-                    Some(&trace_id),
-                )
-                .map(|value| value.output_tokens)
-                .unwrap_or(0),
-                trace_id,
-                metadata
+                model_id, usage.prompt_tokens, usage.completion_tokens, trace_id, metadata
             );
             let mapped = map_openai_response(response);
             let payload = serde_json::to_vec(&mapped).context("serialize response")?;
@@ -344,8 +328,8 @@ fn finish_reason_to_str(reason: &FinishReason) -> &'static str {
     }
 }
 
-fn usage_to_value(usage: &Value) -> Value {
-    usage.clone()
+fn usage_to_value(usage: &EndpointUsage) -> Value {
+    usage.clone().into_payload("/chat/completions")
 }
 
 fn trace_status_message_for_provider_error(err: &ProviderError, status: StatusCode) -> String {

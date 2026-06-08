@@ -24,15 +24,16 @@ use self::types::{
     VertexSystemInstruction, VertexTool, VertexToolConfig, VertexUsageMetadata,
 };
 use crate::llm_provider::openai_compatible::mapper::ensure_tool_call_id;
-use crate::llm_provider::provider::InputOutputUsage;
 use crate::llm_provider::{
     FinishReason, Provider, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse,
 };
+use crate::model_api_provider::GenerateContentUsage;
 use crate::openai_http_mapping::validate_openai_request;
 use crate::openai_types::{
     ChatCompletionRequest, Content, ContentPart, ErrorDetail, ResponseFormat, Role, ToolChoice,
 };
 use crate::serve_config::ConfigError;
+use crate::usage_handler::EndpointUsage;
 use crate::utils::{MAX_LOG_BODY_BYTES, truncate_for_log};
 
 const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
@@ -163,7 +164,6 @@ impl Provider for VertexAIProvider {
                             if !state.completed {
                                 yield UnifiedEvent::Completed {
                                     finish_reason: Some("stop".to_string()),
-                                    usage: state.latest_usage.clone(),
                                 };
                             }
                             return;
@@ -182,7 +182,6 @@ impl Provider for VertexAIProvider {
             if !state.completed {
                 yield UnifiedEvent::Completed {
                     finish_reason: Some("stop".to_string()),
-                    usage: state.latest_usage.clone(),
                 };
             }
         };
@@ -278,7 +277,6 @@ struct VertexStreamState {
     request_id: String,
     model: String,
     created_at: String,
-    latest_usage: Option<Value>,
 }
 
 fn validate_request(request: &ChatCompletionRequest) -> Result<(), ProviderError> {
@@ -833,7 +831,8 @@ fn map_vertex_response(
         candidate.finish_reason.as_deref().unwrap_or("STOP"),
         tool_calls.as_ref(),
     );
-    let usage = map_usage_from_usage_metadata(value.usage_metadata.as_ref());
+    let usage = map_usage_from_usage_metadata(value.usage_metadata.as_ref())
+        .expect("vertexai expected generateContent usage metadata");
 
     Ok(UnifiedResponse {
         request_id,
@@ -842,7 +841,7 @@ fn map_vertex_response(
         output_text,
         tool_calls,
         finish_reason,
-        usage: serde_json::to_value(usage).unwrap_or(Value::Null),
+        usage,
     })
 }
 
@@ -912,10 +911,7 @@ fn map_vertex_stream_chunk(
         }
     }
 
-    let usage = map_usage_from_usage_metadata(value.usage_metadata.as_ref());
-    if usage.input_tokens > 0 || usage.output_tokens > 0 || usage.total_tokens > 0 {
-        let usage = serde_json::to_value(&usage).unwrap_or(Value::Null);
-        state.latest_usage = Some(usage.clone());
+    if let Some(usage) = map_usage_from_usage_metadata(value.usage_metadata.as_ref()) {
         events.push(UnifiedEvent::Usage { usage });
     }
 
@@ -927,7 +923,6 @@ fn map_vertex_stream_chunk(
         });
         events.push(UnifiedEvent::Completed {
             finish_reason: Some(finish_reason),
-            usage: state.latest_usage.clone(),
         });
         state.completed = true;
     }
@@ -935,26 +930,10 @@ fn map_vertex_stream_chunk(
     events
 }
 
-fn map_usage_from_usage_metadata(usage: Option<&VertexUsageMetadata>) -> InputOutputUsage {
-    let input_tokens = usage
-        .and_then(|value| value.prompt_token_count)
-        .unwrap_or(0);
-    let output_tokens = usage
-        .and_then(|value| value.candidates_token_count)
-        .unwrap_or(0);
-    let total_tokens = usage
-        .and_then(|value| value.total_token_count)
-        .unwrap_or(input_tokens + output_tokens);
-
-    InputOutputUsage {
-        input_tokens: i64::from(input_tokens),
-        output_tokens: i64::from(output_tokens),
-        total_tokens: i64::from(total_tokens),
-        cached_tokens: None,
-        reasoning_tokens: None,
-        input_audio_tokens: None,
-        output_audio_tokens: None,
-    }
+fn map_usage_from_usage_metadata(usage: Option<&VertexUsageMetadata>) -> Option<EndpointUsage> {
+    let payload = serde_json::to_value(usage?).ok()?;
+    let usage = serde_json::from_value::<GenerateContentUsage>(payload).ok()?;
+    Some(EndpointUsage::GenerateContent(usage))
 }
 
 fn extract_text_from_candidate(candidate: &VertexCandidate) -> String {
@@ -1168,10 +1147,13 @@ mod tests {
             total_token_count: Some(20),
             ..Default::default()
         };
-        let mapped = map_usage_from_usage_metadata(Some(&usage));
-        assert_eq!(mapped.input_tokens, 12);
-        assert_eq!(mapped.output_tokens, 8);
-        assert_eq!(mapped.total_tokens, 20);
+        let mapped = map_usage_from_usage_metadata(Some(&usage)).expect("usage must map");
+        let EndpointUsage::GenerateContent(mapped) = mapped else {
+            panic!("expected generate content usage");
+        };
+        assert_eq!(mapped.prompt_token_count, Some(12));
+        assert_eq!(mapped.candidates_token_count, Some(8));
+        assert_eq!(mapped.total_token_count, Some(20));
     }
 
     #[test]

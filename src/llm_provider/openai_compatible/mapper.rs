@@ -8,6 +8,7 @@ use crate::openai_types::{
     ChatCompletionChunk, ChatCompletionChunkToolCall, ChatCompletionChunkToolCallFunction,
     ChatCompletionResponse, Content as OpenAIContent, ContentPart, ToolCall as OpenAIToolCall,
 };
+use crate::usage_handler::EndpointUsage;
 
 #[derive(Default)]
 pub struct ToolCallState {
@@ -53,7 +54,8 @@ pub fn map_response(response: ChatCompletionResponse) -> Result<UnifiedResponse,
         output_text,
         tool_calls,
         finish_reason,
-        usage,
+        usage: EndpointUsage::from_endpoint_payload("/chat/completions", usage)
+            .expect("openai_compatible mapper expected chat/completions usage payload"),
     })
 }
 
@@ -110,9 +112,8 @@ pub fn map_stream_chunk(
     }
 
     if let Some(chunk_usage) = &chunk.usage {
-        state.usage = serde_json::to_value(chunk_usage).ok();
         events.push(UnifiedEvent::Usage {
-            usage: serde_json::to_value(chunk_usage).unwrap_or(Value::Null),
+            usage: EndpointUsage::ChatCompletions(chunk_usage.clone()),
         });
     }
 
@@ -140,7 +141,6 @@ pub fn map_stream_chunk(
         });
         events.push(UnifiedEvent::Completed {
             finish_reason: Some(finish_reason_value),
-            usage: state.usage.clone(),
         });
     }
 
@@ -152,7 +152,6 @@ pub struct StreamMapState {
     pub request_id: String,
     pub model: String,
     pub created_at: String,
-    pub usage: Option<Value>,
     pub tool_call_state: HashMap<i32, ToolCallState>,
 }
 
@@ -163,7 +162,6 @@ impl Default for StreamMapState {
             request_id: String::new(),
             model: String::new(),
             created_at: String::new(),
-            usage: None,
             tool_call_state: HashMap::new(),
         }
     }

@@ -11,21 +11,18 @@ use futures_core::Stream;
 use futures_util::StreamExt;
 use log::{error, info};
 use serde_json;
-use serde_json::Value;
 use tracing::{Span, field};
 
-use crate::llm_provider::{
-    FinishReason, ProviderError, ToOpenAIUsage, ToolCall, UnifiedEvent, UnifiedResponse,
-};
+use crate::llm_provider::{FinishReason, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse};
 use crate::openai_types::{
     ChatCompletionChoice, ChatCompletionChunk, ChatCompletionChunkChoice, ChatCompletionChunkDelta,
     ChatCompletionChunkToolCall, ChatCompletionChunkToolCallFunction, ChatCompletionMessage,
-    ChatCompletionRequest, ChatCompletionResponse, Content as OpenAIContent, ContentPart,
-    ErrorDetail, ErrorResponse, Role, ToolCall as OpenAIToolCall, ToolCallFunction, ToolChoice,
-    Usage,
+    ChatCompletionRequest, ChatCompletionResponse, CompletionTokensDetails,
+    Content as OpenAIContent, ContentPart, ErrorDetail, ErrorResponse, PromptTokensDetails, Role,
+    ToolCall as OpenAIToolCall, ToolCallFunction, ToolChoice, Usage,
 };
 use crate::trace::{record_flattened_json_attributes, set_http_span_status};
-use crate::usage_handler::parse_endpoint_usage_as_input_output;
+use crate::usage_handler::EndpointUsage;
 
 pub fn map_openai_response(response: UnifiedResponse) -> ChatCompletionResponse {
     let content = if response.output_text.is_empty() {
@@ -188,7 +185,7 @@ pub fn stream_openai_chunks(
         let mut response_id = String::new();
         let mut model = default_model;
         let mut created_at = String::new();
-        let mut latest_usage_for_root: Option<Value> = None;
+        let mut latest_usage_for_root: Option<EndpointUsage> = None;
         let mut finalizer = StreamSpanFinalizer::new(root_span.clone(), trace_id.clone(), model.clone());
         let mut tool_call_index: HashMap<String, i32> = HashMap::new();
         let mut tool_call_delta_emitted: HashSet<String> = HashSet::new();
@@ -333,7 +330,7 @@ pub fn stream_openai_chunks(
                     });
                 }
                 UnifiedEvent::Usage { usage } => {
-                    latest_usage_for_root = serde_json::to_value(map_usage(&usage)).ok();
+                    latest_usage_for_root = Some(usage.clone());
                     finalizer.set_latest_usage(usage.clone());
                     yield sse_chunk(ChatCompletionChunk {
                         id: response_id.clone(),
@@ -343,19 +340,15 @@ pub fn stream_openai_chunks(
                         system_fingerprint: None,
                         obfuscation: None,
                         choices: Vec::new(),
-                        usage: Some(map_usage(&usage)),
+                        usage: Some(map_usage_to_openai(&usage)),
                     });
                 }
                 UnifiedEvent::MessageStop { .. } => {}
-                UnifiedEvent::Completed { finish_reason, usage } => {
+                UnifiedEvent::Completed { finish_reason } => {
                     root_span.record(
                         "finish_reason",
                         field::display(finish_reason.as_deref().unwrap_or("")),
                     );
-                    if let Some(usage) = usage.as_ref() {
-                        latest_usage_for_root = serde_json::to_value(map_usage(usage)).ok();
-                        finalizer.set_latest_usage(usage.clone());
-                    }
                     finalizer.set_finish_reason(finish_reason.clone());
                     if !finish_sent {
                         let request_id = response_id.clone();
@@ -368,7 +361,6 @@ pub fn stream_openai_chunks(
                         };
                         role_sent = true;
                         finish_sent = true;
-                        let usage = usage.as_ref().map(map_usage);
                         yield sse_chunk(ChatCompletionChunk {
                             id: request_id,
                             created: parse_created_at(&created_at),
@@ -382,7 +374,7 @@ pub fn stream_openai_chunks(
                                 index: 0,
                                 logprobs: None,
                             }],
-                            usage,
+                            usage: None,
                         });
                     }
                 }
@@ -414,7 +406,8 @@ pub fn stream_openai_chunks(
             }
         }
 
-        if let Some(usage_value) = latest_usage_for_root {
+        if let Some(usage) = latest_usage_for_root {
+            let usage_value = usage.into_payload("/chat/completions");
             record_flattened_json_attributes(&root_span, "usage", &usage_value);
         }
         finalizer.set_success_if_unset();
@@ -435,7 +428,7 @@ struct StreamFinalState {
     model: String,
     error: Option<String>,
     finish_reason: Option<String>,
-    usage: Option<Value>,
+    usage: Option<EndpointUsage>,
 }
 
 impl StreamSpanFinalizer {
@@ -459,7 +452,7 @@ impl StreamSpanFinalizer {
         }
     }
 
-    fn set_latest_usage(&mut self, usage: Value) {
+    fn set_latest_usage(&mut self, usage: EndpointUsage) {
         if let Ok(mut state) = self.state.lock() {
             state.usage = Some(usage);
         }
@@ -501,26 +494,10 @@ impl Drop for StreamSpanFinalizer {
                 state.model,
                 state.finish_reason.as_deref().unwrap_or(""),
                 usage
-                    .and_then(|value| {
-                        parse_endpoint_usage_as_input_output(
-                            "/chat/completions",
-                            value,
-                            Some(&state.model),
-                            Some(&self.trace_id),
-                        )
-                    })
-                    .map(|value| value.input_tokens)
+                    .map(|value| map_usage_to_openai(value).prompt_tokens)
                     .unwrap_or(0),
                 usage
-                    .and_then(|value| {
-                        parse_endpoint_usage_as_input_output(
-                            "/chat/completions",
-                            value,
-                            Some(&state.model),
-                            Some(&self.trace_id),
-                        )
-                    })
-                    .map(|value| value.output_tokens)
+                    .map(|value| map_usage_to_openai(value).completion_tokens)
                     .unwrap_or(0),
                 self.trace_id
             );
@@ -559,8 +536,22 @@ fn map_finish_reason_string(reason: &FinishReason) -> String {
     .to_string()
 }
 
-pub fn map_usage_to_openai(usage: &serde_json::Value) -> Usage {
-    map_usage(usage)
+pub fn map_usage_to_openai(usage: &EndpointUsage) -> Usage {
+    usage.to_openai_usage().unwrap_or(Usage {
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0,
+        prompt_tokens_details: Some(PromptTokensDetails {
+            audio_tokens: 0,
+            cached_tokens: 0,
+        }),
+        completion_tokens_details: Some(CompletionTokensDetails {
+            accepted_prediction_tokens: 0,
+            audio_tokens: 0,
+            reasoning_tokens: 0,
+            rejected_prediction_tokens: 0,
+        }),
+    })
 }
 
 fn sse_chunk(chunk: ChatCompletionChunk) -> Bytes {
@@ -588,33 +579,11 @@ fn map_finish_reason(reason: &str) -> String {
     .to_string()
 }
 
-fn map_usage(usage: &serde_json::Value) -> Usage {
-    if let Ok(openai_usage) = serde_json::from_value::<Usage>(usage.clone()) {
-        return openai_usage;
-    }
-    parse_endpoint_usage_as_input_output("/chat/completions", usage, None, None)
-        .map(|value| value.to_openai_usage())
-        .unwrap_or(Usage {
-            prompt_tokens: 0,
-            completion_tokens: 0,
-            total_tokens: 0,
-            prompt_tokens_details: Some(crate::openai_types::PromptTokensDetails {
-                audio_tokens: 0,
-                cached_tokens: 0,
-            }),
-            completion_tokens_details: Some(crate::openai_types::CompletionTokensDetails {
-                accepted_prediction_tokens: 0,
-                audio_tokens: 0,
-                reasoning_tokens: 0,
-                rejected_prediction_tokens: 0,
-            }),
-        })
-}
-
 #[cfg(test)]
 mod tests {
     use super::{map_openai_response, stream_openai_chunks};
     use crate::llm_provider::{FinishReason, UnifiedEvent, UnifiedResponse};
+    use crate::usage_handler::EndpointUsage;
     use futures_util::StreamExt;
     use serde_json::Value;
     use tracing::Span;
@@ -628,11 +597,15 @@ mod tests {
             output_text: "hello".to_string(),
             tool_calls: None,
             finish_reason: FinishReason::Stop,
-            usage: serde_json::json!({
-                "prompt_tokens": 1,
-                "completion_tokens": 1,
-                "total_tokens": 2
-            }),
+            usage: EndpointUsage::from_endpoint_payload(
+                "/chat/completions",
+                serde_json::json!({
+                    "prompt_tokens": 1,
+                    "completion_tokens": 1,
+                    "total_tokens": 2
+                }),
+            )
+            .expect("openai_http_mapping test expected chat/completions usage payload"),
         };
 
         let mapped = map_openai_response(response);
@@ -660,11 +633,6 @@ mod tests {
             }),
             Ok(UnifiedEvent::Completed {
                 finish_reason: Some("tool_calls".to_string()),
-                usage: Some(serde_json::json!({
-                    "input_tokens": 1,
-                    "output_tokens": 1,
-                    "total_tokens": 2
-                })),
             }),
         ];
 
@@ -722,11 +690,6 @@ mod tests {
             }),
             Ok(UnifiedEvent::Completed {
                 finish_reason: Some("tool_calls".to_string()),
-                usage: Some(serde_json::json!({
-                    "input_tokens": 1,
-                    "output_tokens": 1,
-                    "total_tokens": 2
-                })),
             }),
         ];
 

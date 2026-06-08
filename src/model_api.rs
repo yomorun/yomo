@@ -250,7 +250,8 @@ where
                             &request_id,
                             &trace_id,
                             metadata.clone(),
-                            EndpointUsage::from_endpoint_payload(endpoint_path, usage_value),
+                            EndpointUsage::from_endpoint_payload(endpoint_path, usage_value)
+                                .expect("model_api expected endpoint usage payload"),
                         )
                         .await
                         .into_payload(endpoint_path);
@@ -445,7 +446,8 @@ where
                                 &request_id,
                                 &trace_id,
                                 metadata.clone(),
-                                EndpointUsage::from_endpoint_payload(&endpoint, usage_value),
+                                EndpointUsage::from_endpoint_payload(&endpoint, usage_value)
+                                    .expect("model_api expected endpoint usage payload"),
                             )
                             .await
                             .into_payload(&endpoint);
@@ -581,7 +583,8 @@ where
                     &request_id,
                     trace_id,
                     metadata,
-                    EndpointUsage::from_endpoint_payload(endpoint, usage_value),
+                    EndpointUsage::from_endpoint_payload(endpoint, usage_value)
+                        .expect("model_api expected endpoint usage payload"),
                 )
                 .await
                 .into_payload(endpoint);

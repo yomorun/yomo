@@ -4,9 +4,9 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Usage {
-    pub prompt_tokens: i32,
-    pub completion_tokens: i32,
-    pub total_tokens: i32,
+    pub prompt_tokens: i64,
+    pub completion_tokens: i64,
+    pub total_tokens: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_tokens_details: Option<PromptTokensDetails>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -16,21 +16,21 @@ pub struct Usage {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PromptTokensDetails {
     #[serde(default)]
-    pub audio_tokens: i32,
+    pub audio_tokens: i64,
     #[serde(default)]
-    pub cached_tokens: i32,
+    pub cached_tokens: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CompletionTokensDetails {
     #[serde(default)]
-    pub accepted_prediction_tokens: i32,
+    pub accepted_prediction_tokens: i64,
     #[serde(default)]
-    pub audio_tokens: i32,
+    pub audio_tokens: i64,
     #[serde(default)]
-    pub reasoning_tokens: i32,
+    pub reasoning_tokens: i64,
     #[serde(default)]
-    pub rejected_prediction_tokens: i32,
+    pub rejected_prediction_tokens: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

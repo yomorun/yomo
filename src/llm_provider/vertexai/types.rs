@@ -131,17 +131,17 @@ pub struct VertexFunctionResponse {
 #[serde(rename_all = "camelCase")]
 pub struct VertexUsageMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub prompt_token_count: Option<i32>,
+    pub prompt_token_count: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub candidates_token_count: Option<i32>,
+    pub candidates_token_count: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub cached_content_token_count: Option<i32>,
+    pub cached_content_token_count: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_use_prompt_token_count: Option<i32>,
+    pub tool_use_prompt_token_count: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub thoughts_token_count: Option<i32>,
+    pub thoughts_token_count: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub total_token_count: Option<i32>,
+    pub total_token_count: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_tokens_details: Option<Vec<VertexModalityTokenCount>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -160,7 +160,7 @@ pub struct VertexModalityTokenCount {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub modality: Option<VertexMediaModality>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub token_count: Option<i32>,
+    pub token_count: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
