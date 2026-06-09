@@ -4,7 +4,6 @@ on:
   push:
     tags:
       - "v*"
-  workflow_dispatch:
 
 jobs:
   build:
@@ -57,7 +56,7 @@ jobs:
           if [ "${{ matrix.use_cross }}" = "true" ]; then
             cross build --release --target "${{ matrix.target }}"
           else
-            cargo build --release
+            cargo build --release --target "${{ matrix.target }}"
           fi
 
       - name: Package
