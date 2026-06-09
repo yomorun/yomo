@@ -40,3 +40,4 @@ build/
 .env
 zipper.yml
 *.md
+app

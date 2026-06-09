@@ -545,6 +545,16 @@ func (r *streamChatResp) endProcess(w EventResponseWriter) (*processResult, erro
 	isFunctionCall := r.finishReason == openai.FinishReasonToolCalls || r.finishReason == "tool_call"
 
 	if !isFunctionCall {
+		for _, chunk := range r.buffer {
+			hasFinishReason := len(chunk.Choices) > 0 && chunk.Choices[0].FinishReason != ""
+			hasUsage := chunk.Usage != nil && chunk.Usage.TotalTokens != 0
+			if !hasFinishReason && !hasUsage {
+				continue
+			}
+			if err := w.WriteStreamEvent(chunk); err != nil {
+				return nil, err
+			}
+		}
 		if err := w.WriteStreamDone(); err != nil {
 			return nil, err
 		}

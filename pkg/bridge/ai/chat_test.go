@@ -313,3 +313,45 @@ func TestStreamToolCallsImmediateForClientTools(t *testing.T) {
 	assert.True(t, idxTool >= 0)
 	assert.True(t, idxDone > idxTool)
 }
+
+func TestStreamProcessWritesBufferedFinishAndUsageChunk(t *testing.T) {
+	recver := &mockStreamRecver{items: []openai.ChatCompletionStreamResponse{
+		{
+			ID: "chatcmpl-1",
+			Choices: []openai.ChatCompletionStreamChoice{
+				{Delta: openai.ChatCompletionStreamChoiceDelta{Role: "assistant"}},
+			},
+		},
+		{
+			ID: "chatcmpl-1",
+			Choices: []openai.ChatCompletionStreamChoice{
+				{Delta: openai.ChatCompletionStreamChoiceDelta{Content: "hello"}},
+			},
+		},
+		{
+			ID: "chatcmpl-1",
+			Choices: []openai.ChatCompletionStreamChoice{
+				{FinishReason: openai.FinishReasonStop, Delta: openai.ChatCompletionStreamChoiceDelta{}},
+			},
+			Usage: &openai.Usage{TotalTokens: 3, PromptTokens: 1, CompletionTokens: 2},
+		},
+	}}
+
+	resp := &streamChatResp{
+		recver:       recver,
+		toolCallsMap: make(map[int]openai.ToolCall),
+	}
+
+	chatCtx := &chatContext{callTimes: 1}
+	ww := httptest.NewRecorder()
+	responseWriter := NewResponseWriter(ww, slog.Default())
+
+	result, err := resp.process(responseWriter, chatCtx)
+	assert.NoError(t, err)
+	assert.False(t, result.isFunctionCall)
+
+	got := ww.Body.String()
+	assert.Contains(t, got, "\"finish_reason\":\"stop\"")
+	assert.Contains(t, got, "\"usage\":")
+	assert.Contains(t, got, "[DONE]")
+}
