@@ -228,12 +228,12 @@ pub fn stream_openai_chunks(
                     if response_id.is_empty() {
                         response_id = id.clone();
                     }
-                    if delta.is_empty() && role_sent {
+                    if delta.is_empty() {
                         continue;
                     }
                     let delta = ChatCompletionChunkDelta {
                         role: if role_sent { None } else { Some(Role::Assistant) },
-                        content: if delta.is_empty() { None } else { Some(delta) },
+                        content: Some(delta),
                         refusal: None,
                         tool_calls: None,
                     };
@@ -828,7 +828,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn does_not_emit_empty_content_field_for_empty_message_delta() {
+    async fn skips_empty_message_delta_and_emits_role_on_first_text_chunk() {
         let events = vec![
             Ok(UnifiedEvent::ResponseCreated {
                 id: "req-1".to_string(),
@@ -842,6 +842,10 @@ mod tests {
             Ok(UnifiedEvent::MessageDelta {
                 id: "req-1".to_string(),
                 delta: "hello".to_string(),
+            }),
+            Ok(UnifiedEvent::MessageDelta {
+                id: "req-1".to_string(),
+                delta: "world".to_string(),
             }),
             Ok(UnifiedEvent::Completed {
                 finish_reason: Some("stop".to_string()),
@@ -884,15 +888,23 @@ mod tests {
             deltas.push(delta);
         }
 
-        assert!(!deltas.is_empty());
+        let text_deltas = deltas
+            .into_iter()
+            .filter(|delta| delta.get("content").and_then(Value::as_str).is_some())
+            .collect::<Vec<_>>();
+
+        assert_eq!(text_deltas.len(), 2);
         assert_eq!(
-            deltas[0].get("role").and_then(Value::as_str),
+            text_deltas[0].get("role").and_then(Value::as_str),
             Some("assistant")
         );
-        assert!(deltas[0].get("content").is_none());
         assert_eq!(
-            deltas[1].get("content").and_then(Value::as_str),
+            text_deltas[0].get("content").and_then(Value::as_str),
             Some("hello")
+        );
+        assert_eq!(
+            text_deltas[1].get("content").and_then(Value::as_str),
+            Some("world")
         );
     }
 }

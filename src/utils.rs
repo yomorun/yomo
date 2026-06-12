@@ -1,6 +1,7 @@
 use anyhow::{Result, bail};
 
 pub const MAX_LOG_BODY_BYTES: usize = 8 * 1024;
+const LOG_HEAD_BYTES: usize = 2 * 1024;
 
 pub fn sanitize_name(name: &str) -> Result<String> {
     let sanitized = name
@@ -26,15 +27,26 @@ pub fn truncate_for_log(value: &str) -> String {
         return value.to_string();
     }
 
-    let mut end = MAX_LOG_BODY_BYTES;
-    while !value.is_char_boundary(end) {
-        end -= 1;
+    let mut head_end = LOG_HEAD_BYTES;
+    while !value.is_char_boundary(head_end) {
+        head_end -= 1;
     }
 
+    let tail_budget = MAX_LOG_BODY_BYTES - head_end;
+    let mut tail_start = value.len().saturating_sub(tail_budget);
+    while tail_start < value.len() && !value.is_char_boundary(tail_start) {
+        tail_start += 1;
+    }
+
+    let head = &value[..head_end];
+    let tail = &value[tail_start..];
+    let truncated_bytes = value
+        .len()
+        .saturating_sub(head.len().saturating_add(tail.len()));
+
     format!(
-        "{}...[truncated {} bytes]",
-        &value[..end],
-        value.len() - MAX_LOG_BODY_BYTES
+        "{}...[truncated {} bytes]...{}",
+        head, truncated_bytes, tail
     )
 }
 
@@ -45,7 +57,9 @@ pub fn truncate_bytes_for_log(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_LOG_BODY_BYTES, sanitize_name, truncate_bytes_for_log, truncate_for_log};
+    use super::{
+        LOG_HEAD_BYTES, MAX_LOG_BODY_BYTES, sanitize_name, truncate_bytes_for_log, truncate_for_log,
+    };
 
     #[test]
     fn sanitize_name_replaces_invalid_characters() {
@@ -64,8 +78,9 @@ mod tests {
         let value = "a".repeat(MAX_LOG_BODY_BYTES + 10);
         let truncated = truncate_for_log(&value);
 
-        assert!(truncated.starts_with(&"a".repeat(MAX_LOG_BODY_BYTES)));
-        assert!(truncated.ends_with("...[truncated 10 bytes]"));
+        assert!(truncated.starts_with(&"a".repeat(LOG_HEAD_BYTES)));
+        assert!(truncated.contains("...[truncated 10 bytes]..."));
+        assert!(truncated.ends_with(&"a".repeat(MAX_LOG_BODY_BYTES - LOG_HEAD_BYTES)));
     }
 
     #[test]
@@ -73,11 +88,8 @@ mod tests {
         let value = "a".repeat(MAX_LOG_BODY_BYTES - 1) + "中";
         let truncated = truncate_for_log(&value);
 
-        assert_eq!(
-            truncated.len(),
-            MAX_LOG_BODY_BYTES + "...[truncated 2 bytes]".len() - 1
-        );
-        assert!(truncated.ends_with("...[truncated 2 bytes]"));
+        assert!(truncated.contains("...[truncated 2 bytes]..."));
+        assert!(truncated.ends_with("中"));
     }
 
     #[test]
