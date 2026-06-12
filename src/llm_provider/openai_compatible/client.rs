@@ -4,7 +4,7 @@ use std::time::Duration;
 use async_stream::try_stream;
 use futures_core::Stream;
 use futures_util::StreamExt;
-use log::debug;
+use log::{Level, debug, log_enabled};
 use reqwest::StatusCode;
 use serde_json::Value;
 use tokio::time::timeout;
@@ -143,8 +143,9 @@ impl Client {
 
     pub async fn chat_completions(
         &self,
-        request: ChatCompletionRequest,
+        mut request: ChatCompletionRequest,
     ) -> Result<ChatCompletionResponse, ClientError> {
+        clear_agent_context(&mut request);
         let url = format!(
             "{}/chat/completions",
             trimmed_base_url(&self.config.base_url)
@@ -159,7 +160,10 @@ impl Client {
 
         let status = response.status();
         let bytes = response.bytes().await?;
-        debug_response_json("non_stream", Some(status), &bytes);
+        if log_enabled!(Level::Debug) {
+            let payload = build_debug_response_payload("non_stream", Some(status), &bytes);
+            debug!("{}", payload);
+        }
 
         if !status.is_success() {
             return Err(self.parse_error(status, &bytes));
@@ -174,6 +178,7 @@ impl Client {
         &self,
         mut request: ChatCompletionRequest,
     ) -> Result<impl Stream<Item = Result<ChatCompletionChunk, ClientError>>, ClientError> {
+        clear_agent_context(&mut request);
         request.stream = Some(true);
         let url = format!(
             "{}/chat/completions",
@@ -193,7 +198,10 @@ impl Client {
         let status = response.status();
         if !status.is_success() {
             let bytes = response.bytes().await?;
-            debug_response_json("stream", Some(status), &bytes);
+            if log_enabled!(Level::Debug) {
+                let payload = build_debug_response_payload("stream", Some(status), &bytes);
+                debug!("{}", payload);
+            }
             return Err(self.parse_error(status, &bytes));
         }
 
@@ -210,7 +218,10 @@ impl Client {
                     break;
                 };
                 let chunk = chunk.map_err(ClientError::Http)?;
-                debug_response_json("stream_chunk", None, &chunk);
+                if log_enabled!(Level::Debug) {
+                    let payload = build_debug_response_payload("stream_chunk", None, &chunk);
+                    debug!("{}", payload);
+                }
                 let text = String::from_utf8_lossy(&chunk);
                 buffer.push_str(&text);
 
@@ -223,7 +234,10 @@ impl Client {
                     }
 
                     if let Some(data) = line.strip_prefix("data: ") {
-                        debug_stream_event_json(data);
+                        if log_enabled!(Level::Debug) {
+                            let payload = build_debug_stream_event_payload(data);
+                            debug!("{}", payload);
+                        }
                         if data == "[DONE]" {
                             return;
                         }
@@ -276,29 +290,27 @@ fn debug_body_value(bytes: &[u8]) -> Value {
     serde_json::from_str::<Value>(&body).unwrap_or_else(|_| Value::String(debug_body(bytes)))
 }
 
-fn debug_response_json(event: &str, status: Option<StatusCode>, body: &[u8]) {
+fn build_debug_response_payload(event: &str, status: Option<StatusCode>, body: &[u8]) -> Value {
     let truncated = body.len() > MAX_LOG_BODY_BYTES;
-    let payload = serde_json::json!({
+    serde_json::json!({
         "target": "openai_compatible.client.response",
         "event": event,
         "status": status.map(|value| value.as_u16()),
         "body": debug_body_value(body),
         "truncated": truncated,
-    });
-    debug!("{}", payload);
+    })
 }
 
-fn debug_stream_event_json(data: &str) {
+fn build_debug_stream_event_payload(data: &str) -> Value {
     let compact = compact_json_string(data);
     let data_value = serde_json::from_str::<Value>(&compact)
         .unwrap_or_else(|_| Value::String(truncate_for_log(&compact)));
-    let payload = serde_json::json!({
+    serde_json::json!({
         "target": "openai_compatible.client.response",
         "event": "stream_event",
         "data": data_value,
         "truncated": compact.len() > MAX_LOG_BODY_BYTES,
-    });
-    debug!("{}", payload);
+    })
 }
 
 fn compact_json_string(value: &str) -> String {
@@ -309,4 +321,52 @@ fn compact_json_string(value: &str) -> String {
 
 pub(crate) fn trimmed_base_url(base_url: &str) -> &str {
     base_url.trim_end_matches('/')
+}
+
+fn clear_agent_context(request: &mut ChatCompletionRequest) {
+    request.agent_context = None;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clear_agent_context_removes_agent_context() {
+        let mut request = ChatCompletionRequest {
+            model: "gpt-test".to_string(),
+            messages: Vec::new(),
+            n: None,
+            temperature: None,
+            top_p: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            logprobs: None,
+            top_logprobs: None,
+            modalities: None,
+            audio: None,
+            max_completion_tokens: None,
+            stop: None,
+            response_format: None,
+            thinking: None,
+            reasoning_effort: None,
+            chat_template_kwargs: None,
+            prediction: None,
+            verbosity: None,
+            tools: None,
+            tool_choice: None,
+            allowed_tools: None,
+            parallel_tool_calls: None,
+            service_tier: None,
+            seed: None,
+            stream: None,
+            stream_options: None,
+            metadata: None,
+            agent_context: Some(serde_json::json!({"key": "value"})),
+        };
+
+        clear_agent_context(&mut request);
+
+        assert!(request.agent_context.is_none());
+    }
 }
