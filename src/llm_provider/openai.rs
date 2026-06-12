@@ -147,7 +147,7 @@ fn normalize_gpt5_request(request: &mut ChatCompletionRequest) {
 fn is_target_gpt5_model(model: &str) -> bool {
     matches!(
         model,
-        "gpt-5.5" | "gpt-5.4" | "gpt-5.4-mini" | "gpt-5.4-nano"
+        "gpt-5.5" | "gpt-5.5-1" | "gpt-5.4" | "gpt-5.4-mini" | "gpt-5.4-nano"
     )
 }
 
