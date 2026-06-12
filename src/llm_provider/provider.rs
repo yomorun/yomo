@@ -33,6 +33,8 @@ pub struct UnifiedResponse {
     pub model: String,
     pub output_text: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCall>>,
     pub finish_reason: FinishReason,
     pub usage: EndpointUsage,

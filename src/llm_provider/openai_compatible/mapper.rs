@@ -32,6 +32,7 @@ pub fn map_response(response: ChatCompletionResponse) -> Result<UnifiedResponse,
         .ok_or_else(|| ProviderError::internal("missing choices".to_string()))?;
     let finish_reason = map_finish_reason_to_provider(choice.finish_reason.as_deref());
     let output_text = extract_text(choice.message.content);
+    let reasoning_content = choice.message.reasoning_content;
     let tool_calls = choice.message.tool_calls.map(|calls| {
         calls
             .into_iter()
@@ -52,6 +53,7 @@ pub fn map_response(response: ChatCompletionResponse) -> Result<UnifiedResponse,
             .unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
         model: response.model,
         output_text,
+        reasoning_content,
         tool_calls,
         finish_reason,
         usage: EndpointUsage::from_endpoint_payload("/chat/completions", usage)
@@ -94,6 +96,12 @@ pub fn map_stream_chunk(
             events.push(UnifiedEvent::MessageDelta {
                 id: state.request_id.clone(),
                 delta: content.clone(),
+            });
+        }
+        if let Some(reasoning_content) = &delta.reasoning_content {
+            events.push(UnifiedEvent::ThinkingDelta {
+                id: state.request_id.clone(),
+                delta: reasoning_content.clone(),
             });
         }
         if let Some(tool_calls) = &delta.tool_calls {
@@ -239,5 +247,82 @@ fn extract_text(content: Option<OpenAIContent>) -> String {
             .collect::<Vec<_>>()
             .join(""),
         None => String::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{StreamMapState, map_response, map_stream_chunk};
+    use crate::llm_provider::UnifiedEvent;
+    use crate::openai_types::{
+        ChatCompletionChoice, ChatCompletionChunk, ChatCompletionChunkChoice,
+        ChatCompletionChunkDelta, ChatCompletionMessage, ChatCompletionResponse, Usage,
+    };
+
+    #[test]
+    fn map_response_maps_reasoning_content() {
+        let response = ChatCompletionResponse {
+            id: "resp-1".to_string(),
+            created: Some(1),
+            model: "m".to_string(),
+            object: "chat.completion".to_string(),
+            system_fingerprint: None,
+            choices: vec![ChatCompletionChoice {
+                message: ChatCompletionMessage {
+                    role: crate::openai_types::Role::Assistant,
+                    content: Some(crate::openai_types::Content::Text("answer".to_string())),
+                    reasoning_content: Some("reasoning".to_string()),
+                    annotations: Vec::new(),
+                    refusal: None,
+                    tool_calls: None,
+                },
+                finish_reason: Some("stop".to_string()),
+                index: 0,
+                logprobs: None,
+            }],
+            usage: Some(Usage {
+                prompt_tokens: 1,
+                completion_tokens: 1,
+                total_tokens: 2,
+                prompt_tokens_details: None,
+                completion_tokens_details: None,
+            }),
+        };
+
+        let mapped = map_response(response).expect("map response");
+        assert_eq!(mapped.reasoning_content.as_deref(), Some("reasoning"));
+    }
+
+    #[test]
+    fn map_stream_chunk_emits_thinking_delta_from_reasoning_content() {
+        let chunk = ChatCompletionChunk {
+            id: "req-1".to_string(),
+            created: Some(1),
+            model: "m".to_string(),
+            object: "chat.completion.chunk".to_string(),
+            system_fingerprint: None,
+            obfuscation: None,
+            choices: vec![ChatCompletionChunkChoice {
+                delta: ChatCompletionChunkDelta {
+                    role: Some(crate::openai_types::Role::Assistant),
+                    content: None,
+                    reasoning_content: Some("think step".to_string()),
+                    refusal: None,
+                    tool_calls: None,
+                },
+                finish_reason: None,
+                index: 0,
+                logprobs: None,
+            }],
+            usage: None,
+        };
+
+        let events = map_stream_chunk(chunk, &mut StreamMapState::default());
+        assert!(events.iter().any(|event| {
+            matches!(
+                event,
+                UnifiedEvent::ThinkingDelta { delta, .. } if delta == "think step"
+            )
+        }));
     }
 }

@@ -37,6 +37,27 @@ pub struct VertexGenerationConfig {
     pub response_mime_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_schema: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking_config: Option<VertexThinkingConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct VertexThinkingConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking_budget: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking_level: Option<VertexThinkingLevel>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum VertexThinkingLevel {
+    ThinkingLevelUnspecified,
+    Minimal,
+    Low,
+    Medium,
+    High,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -104,6 +125,8 @@ pub struct VertexPart {
     pub function_call: Option<VertexFunctionCall>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub function_response: Option<VertexFunctionResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thought: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thought_signature: Option<String>,
 }
@@ -188,7 +211,8 @@ pub enum VertexTrafficType {
 #[cfg(test)]
 mod tests {
     use super::{
-        VertexGenerateContentResponse, VertexMediaModality, VertexTrafficType, VertexUsageMetadata,
+        VertexGenerateContentResponse, VertexMediaModality, VertexThinkingConfig,
+        VertexThinkingLevel, VertexTrafficType, VertexUsageMetadata,
     };
 
     #[test]
@@ -262,5 +286,17 @@ mod tests {
         assert_eq!(candidates.len(), 1);
         let content = candidates[0].content.as_ref().expect("content must exist");
         assert!(content.parts.is_empty());
+    }
+
+    #[test]
+    fn vertex_thinking_config_serializes_level_and_budget() {
+        let config = VertexThinkingConfig {
+            thinking_budget: Some(2048),
+            thinking_level: Some(VertexThinkingLevel::Medium),
+        };
+
+        let value = serde_json::to_value(config).expect("must serialize thinking config");
+        assert_eq!(value["thinkingBudget"], 2048);
+        assert_eq!(value["thinkingLevel"], "MEDIUM");
     }
 }

@@ -47,6 +47,7 @@ pub fn map_openai_response(response: UnifiedResponse) -> ChatCompletionResponse 
             message: ChatCompletionMessage {
                 role: Role::Assistant,
                 content,
+                reasoning_content: response.reasoning_content.map(|value| value.to_string()),
                 annotations: Vec::new(),
                 refusal: None,
                 tool_calls,
@@ -113,17 +114,6 @@ pub fn validate_openai_request(request: &ChatCompletionRequest) -> Result<(), St
                 .is_empty()
             {
                 return Err("tool_call_id is required for tool messages".to_string());
-            }
-            match &message.content {
-                OpenAIContent::Text(_) => {}
-                OpenAIContent::Parts(parts) => {
-                    if parts
-                        .iter()
-                        .any(|part| !matches!(part, ContentPart::Text { .. }))
-                    {
-                        return Err("tool messages only support text content parts".to_string());
-                    }
-                }
             }
         }
     }
@@ -221,6 +211,38 @@ pub fn stream_openai_chunks(
                     let delta = ChatCompletionChunkDelta {
                         role: if role_sent { None } else { Some(Role::Assistant) },
                         content: Some(delta),
+                        reasoning_content: None,
+                        refusal: None,
+                        tool_calls: None,
+                    };
+                    role_sent = true;
+                    yield sse_chunk(ChatCompletionChunk {
+                        id: response_id.clone(),
+                        created: parse_created_at(&created_at),
+                        model: model.clone(),
+                        object: "chat.completion.chunk".to_string(),
+                        system_fingerprint: None,
+                        obfuscation: None,
+                        choices: vec![ChatCompletionChunkChoice {
+                            delta,
+                            finish_reason: None,
+                            index: 0,
+                            logprobs: None,
+                        }],
+                        usage: None,
+                    });
+                }
+                UnifiedEvent::ThinkingDelta { id, delta } => {
+                    if response_id.is_empty() {
+                        response_id = id.clone();
+                    }
+                    if delta.is_empty() {
+                        continue;
+                    }
+                    let delta = ChatCompletionChunkDelta {
+                        role: if role_sent { None } else { Some(Role::Assistant) },
+                        content: None,
+                        reasoning_content: Some(delta),
                         refusal: None,
                         tool_calls: None,
                     };
@@ -251,6 +273,7 @@ pub fn stream_openai_chunks(
                     let delta = ChatCompletionChunkDelta {
                         role: if role_sent { None } else { Some(Role::Assistant) },
                         content: None,
+                        reasoning_content: None,
                         refusal: None,
                         tool_calls: Some(vec![ChatCompletionChunkToolCall {
                             index,
@@ -295,6 +318,7 @@ pub fn stream_openai_chunks(
                     let delta = ChatCompletionChunkDelta {
                         role: if role_sent { None } else { Some(Role::Assistant) },
                         content: None,
+                        reasoning_content: None,
                         refusal: None,
                         tool_calls: Some(vec![ChatCompletionChunkToolCall {
                             index,
@@ -350,6 +374,7 @@ pub fn stream_openai_chunks(
                         let delta = ChatCompletionChunkDelta {
                             role: if role_sent { None } else { Some(Role::Assistant) },
                             content: None,
+                            reasoning_content: None,
                             refusal: None,
                             tool_calls: None,
                         };
@@ -393,7 +418,6 @@ pub fn stream_openai_chunks(
                 | UnifiedEvent::ContentPartAdded { .. }
                 | UnifiedEvent::ContentPartDelta { .. }
                 | UnifiedEvent::ContentPartDone { .. }
-                | UnifiedEvent::ThinkingDelta { .. }
                 | UnifiedEvent::ThinkingDone { .. }
                 | UnifiedEvent::ServerToolCall { .. }
                 | UnifiedEvent::ServerToolCallResult { .. } => {}
@@ -590,6 +614,7 @@ mod tests {
             created_at: "2026-01-01T00:00:00Z".to_string(),
             model: "gpt-4.1".to_string(),
             output_text: "hello".to_string(),
+            reasoning_content: None,
             tool_calls: None,
             finish_reason: FinishReason::Stop,
             usage: EndpointUsage::from_endpoint_payload(
@@ -662,7 +687,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_openai_request_rejects_tool_message_non_text_parts() {
+    fn validate_openai_request_allows_tool_message_non_text_parts() {
         let request: ChatCompletionRequest = serde_json::from_value(serde_json::json!({
             "model": "gpt-5.1",
             "messages": [
@@ -678,10 +703,7 @@ mod tests {
         .expect("parse request");
 
         let result = validate_openai_request(&request);
-        assert!(matches!(
-            result,
-            Err(err) if err == "tool messages only support text content parts"
-        ));
+        assert!(result.is_ok());
     }
 
     #[tokio::test]
@@ -970,6 +992,56 @@ mod tests {
             text_deltas[1].get("content").and_then(Value::as_str),
             Some("world")
         );
+    }
+
+    #[tokio::test]
+    async fn emits_reasoning_content_from_thinking_delta() {
+        let events = vec![
+            Ok(UnifiedEvent::ResponseCreated {
+                id: "req-1".to_string(),
+                model: "m".to_string(),
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+            }),
+            Ok(UnifiedEvent::ThinkingDelta {
+                id: "req-1".to_string(),
+                delta: "hidden".to_string(),
+            }),
+            Ok(UnifiedEvent::Completed {
+                finish_reason: Some("stop".to_string()),
+            }),
+        ];
+
+        let stream = stream_openai_chunks(
+            Box::pin(futures_util::stream::iter(events)),
+            "trace-1".to_string(),
+            "m".to_string(),
+            Span::none(),
+        );
+
+        let mut payloads = Vec::new();
+        futures_util::pin_mut!(stream);
+        while let Some(item) = stream.next().await {
+            payloads.push(item.expect("stream chunk"));
+        }
+
+        let has_reasoning_chunk = payloads
+            .into_iter()
+            .filter_map(|payload| String::from_utf8(payload.to_vec()).ok())
+            .filter_map(|text| text.strip_prefix("data: ").map(str::to_string))
+            .filter(|json| json.trim() != "[DONE]")
+            .filter_map(|json| serde_json::from_str::<Value>(json.trim()).ok())
+            .any(|value| {
+                value
+                    .get("choices")
+                    .and_then(Value::as_array)
+                    .and_then(|choices| choices.first())
+                    .and_then(|choice| choice.get("delta"))
+                    .and_then(|delta| delta.get("reasoning_content"))
+                    .and_then(Value::as_str)
+                    == Some("hidden")
+            });
+
+        assert!(has_reasoning_chunk);
     }
 }
 

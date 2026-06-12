@@ -280,6 +280,7 @@ where
                 &request_id,
                 &server_calls,
                 Some(response.output_text.clone()),
+                response.reasoning_content.clone(),
             ));
             next_messages.extend(
                 invoke_server_tools::<M>(
@@ -355,6 +356,7 @@ where
             let mut finish_reason = None;
             let mut saw_tool_call = false;
             let mut emitted_client_tool = false;
+            let mut assistant_output_content = String::new();
             let mut assistant_reasoning_content = String::new();
             let mut request_id: Option<String> = None;
 
@@ -362,6 +364,10 @@ where
                 let event = item?;
                 match &event {
                     UnifiedEvent::MessageDelta { id, delta } => {
+                        request_id = Some(id.clone());
+                        assistant_output_content.push_str(delta);
+                    }
+                    UnifiedEvent::ThinkingDelta { id, delta } => {
                         request_id = Some(id.clone());
                         assistant_reasoning_content.push_str(delta);
                     }
@@ -607,6 +613,7 @@ where
             tool_messages.push(build_assistant_tool_call_message(
                 &request_id,
                 &server_calls,
+                Some(assistant_output_content.clone()),
                 Some(assistant_reasoning_content.clone()),
             ));
             let tool_calls_span = info_span!(
@@ -917,8 +924,16 @@ fn compose_server_tool_message(call_result_event: &UnifiedEvent) -> Message {
 fn build_assistant_tool_call_message(
     request_id: &str,
     calls: &[ProviderToolCall],
+    content: Option<String>,
     reasoning_content: Option<String>,
 ) -> Message {
+    let content = content.and_then(|value| {
+        if value.trim().is_empty() {
+            None
+        } else {
+            Some(value)
+        }
+    });
     let reasoning_content = reasoning_content.and_then(|value| {
         if value.trim().is_empty() {
             None
@@ -946,10 +961,31 @@ fn build_assistant_tool_call_message(
 
     Message {
         role: Role::Assistant,
-        content: Content::Text("Tool call".to_string()),
+        content: Content::Text(compose_assistant_tool_call_content(
+            content,
+            reasoning_content.clone(),
+        )),
         reasoning_content,
         tool_call_id: None,
         tool_calls: Some(tool_calls),
+    }
+}
+
+fn compose_assistant_tool_call_content(
+    content: Option<String>,
+    reasoning_content: Option<String>,
+) -> String {
+    let mut sections = Vec::new();
+    if let Some(reasoning) = reasoning_content {
+        sections.push(format!("<think>{reasoning}</think>"));
+    }
+    if let Some(content) = content {
+        sections.push(content);
+    }
+    if sections.is_empty() {
+        "Tool call".to_string()
+    } else {
+        sections.join("\n")
     }
 }
 
@@ -1038,4 +1074,25 @@ fn log_round_request(
         request.messages.len(),
         messages_json
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compose_assistant_tool_call_content;
+
+    #[test]
+    fn compose_assistant_tool_call_content_wraps_reasoning_in_think_tag() {
+        let content = compose_assistant_tool_call_content(
+            Some("visible".to_string()),
+            Some("hidden reasoning".to_string()),
+        );
+
+        assert_eq!(content, "<think>hidden reasoning</think>\nvisible");
+    }
+
+    #[test]
+    fn compose_assistant_tool_call_content_falls_back_to_tool_call_text() {
+        let content = compose_assistant_tool_call_content(None, None);
+        assert_eq!(content, "Tool call");
+    }
 }

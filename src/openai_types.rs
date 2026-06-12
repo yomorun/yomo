@@ -355,6 +355,8 @@ pub struct ChatCompletionChoice {
 pub struct ChatCompletionMessage {
     pub role: Role,
     pub content: Option<Content>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_content: Option<String>,
     #[serde(default, deserialize_with = "null_to_default")]
     pub annotations: Vec<Value>,
     pub refusal: Option<String>,
@@ -414,6 +416,8 @@ pub struct ChatCompletionChunkDelta {
     pub role: Option<Role>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_content: Option<String>,
     pub refusal: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ChatCompletionChunkToolCall>>,
@@ -518,6 +522,13 @@ mod tests {
         let message = r#"{"role":"assistant","content":"ok"}"#;
         let parsed: Message = serde_json::from_str(message).expect("parse assistant message");
         assert!(parsed.tool_call_id.is_none());
+    }
+
+    #[test]
+    fn chat_completion_message_deserializes_reasoning_content() {
+        let message = r#"{"role":"assistant","content":"ok","reasoning_content":"think"}"#;
+        let parsed: ChatCompletionMessage = serde_json::from_str(message).expect("parse message");
+        assert_eq!(parsed.reasoning_content.as_deref(), Some("think"));
     }
 
     #[test]

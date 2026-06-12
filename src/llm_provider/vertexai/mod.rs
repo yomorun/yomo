@@ -21,7 +21,8 @@ use self::types::{
     VertexCandidate, VertexContent, VertexFunctionCall, VertexFunctionCallingConfig,
     VertexFunctionDeclaration, VertexFunctionResponse, VertexGenerateContentRequest,
     VertexGenerateContentResponse, VertexGenerationConfig, VertexInlineData, VertexPart,
-    VertexSystemInstruction, VertexTool, VertexToolConfig, VertexUsageMetadata,
+    VertexSystemInstruction, VertexThinkingConfig, VertexThinkingLevel, VertexTool,
+    VertexToolConfig, VertexUsageMetadata,
 };
 use crate::llm_provider::openai_compatible::mapper::ensure_tool_call_id;
 use crate::llm_provider::{
@@ -400,6 +401,7 @@ async fn build_vertex_request(
         stop_sequences: request.stop.clone().filter(|stops| !stops.is_empty()),
         response_mime_type: None,
         response_schema: None,
+        thinking_config: map_vertex_thinking_config(request),
     };
     if let Some(format) = &request.response_format {
         match format {
@@ -824,6 +826,7 @@ fn map_vertex_response(
         .unwrap_or_default();
 
     let output_text = extract_text_from_candidate(&candidate);
+    let reasoning_content = extract_reasoning_from_candidate(&candidate);
     let extracted_tool_calls = extract_tool_calls_from_candidate(&candidate, &request_id);
     cache_thought_signatures(thought_signatures, &extracted_tool_calls);
     let tool_calls = map_extracted_tool_calls(extracted_tool_calls);
@@ -839,6 +842,7 @@ fn map_vertex_response(
         created_at: chrono::Utc::now().to_rfc3339(),
         model,
         output_text,
+        reasoning_content,
         tool_calls,
         finish_reason,
         usage,
@@ -890,6 +894,14 @@ fn map_vertex_stream_chunk(
         });
     }
 
+    let thinking_delta = extract_reasoning_from_candidate(&candidate);
+    if let Some(thinking_delta) = thinking_delta {
+        events.push(UnifiedEvent::ThinkingDelta {
+            id: state.request_id.clone(),
+            delta: thinking_delta,
+        });
+    }
+
     let calls = extract_tool_calls_from_candidate(&candidate, &state.request_id);
     cache_thought_signatures(thought_signatures, &calls);
     if let Some(calls) = map_extracted_tool_calls(calls) {
@@ -937,18 +949,47 @@ fn map_usage_from_usage_metadata(usage: Option<&VertexUsageMetadata>) -> Option<
 }
 
 fn extract_text_from_candidate(candidate: &VertexCandidate) -> String {
-    let Some(parts) = candidate
+    extract_text_from_parts(candidate, false).unwrap_or_default()
+}
+
+fn extract_reasoning_from_candidate(candidate: &VertexCandidate) -> Option<String> {
+    extract_text_from_parts(candidate, true)
+}
+
+fn extract_text_from_parts(candidate: &VertexCandidate, thought: bool) -> Option<String> {
+    let parts = candidate
         .content
         .as_ref()
-        .map(|value| value.parts.as_slice())
-    else {
-        return String::new();
-    };
+        .map(|value| value.parts.as_slice())?;
 
-    parts
+    let text = parts
         .iter()
+        .filter(|part| part.thought.unwrap_or(false) == thought)
         .filter_map(|part| part.text.as_deref())
-        .collect::<String>()
+        .collect::<String>();
+    if text.is_empty() { None } else { Some(text) }
+}
+
+fn map_vertex_thinking_config(request: &ChatCompletionRequest) -> Option<VertexThinkingConfig> {
+    let thinking_level = request
+        .reasoning_effort
+        .as_deref()
+        .and_then(map_reasoning_effort_to_vertex_level)?;
+
+    Some(VertexThinkingConfig {
+        thinking_budget: None,
+        thinking_level: Some(thinking_level),
+    })
+}
+
+fn map_reasoning_effort_to_vertex_level(effort: &str) -> Option<VertexThinkingLevel> {
+    match effort {
+        "minimal" => Some(VertexThinkingLevel::Minimal),
+        "low" => Some(VertexThinkingLevel::Low),
+        "medium" => Some(VertexThinkingLevel::Medium),
+        "high" | "max" => Some(VertexThinkingLevel::High),
+        _ => None,
+    }
 }
 
 fn extract_tool_calls_from_candidate(
@@ -1155,6 +1196,80 @@ mod tests {
         assert_eq!(mapped.prompt_token_count, Some(12));
         assert_eq!(mapped.candidates_token_count, Some(8));
         assert_eq!(mapped.total_token_count, Some(20));
+    }
+
+    #[test]
+    fn map_reasoning_effort_to_vertex_level_works() {
+        assert_eq!(
+            map_reasoning_effort_to_vertex_level("minimal"),
+            Some(VertexThinkingLevel::Minimal)
+        );
+        assert_eq!(
+            map_reasoning_effort_to_vertex_level("low"),
+            Some(VertexThinkingLevel::Low)
+        );
+        assert_eq!(
+            map_reasoning_effort_to_vertex_level("medium"),
+            Some(VertexThinkingLevel::Medium)
+        );
+        assert_eq!(
+            map_reasoning_effort_to_vertex_level("high"),
+            Some(VertexThinkingLevel::High)
+        );
+        assert_eq!(
+            map_reasoning_effort_to_vertex_level("max"),
+            Some(VertexThinkingLevel::High)
+        );
+        assert_eq!(map_reasoning_effort_to_vertex_level("unknown"), None);
+    }
+
+    #[test]
+    fn map_vertex_thinking_config_only_uses_reasoning_effort() {
+        let disabled: ChatCompletionRequest = serde_json::from_value(serde_json::json!({
+            "model": "gemini-2.5-flash",
+            "messages": [{"role": "user", "content": "hi"}],
+            "thinking": {"type": "disabled"}
+        }))
+        .expect("parse disabled request");
+        assert!(map_vertex_thinking_config(&disabled).is_none());
+
+        let high_effort: ChatCompletionRequest = serde_json::from_value(serde_json::json!({
+            "model": "gemini-2.5-flash",
+            "messages": [{"role": "user", "content": "hi"}],
+            "reasoning_effort": "high"
+        }))
+        .expect("parse effort request");
+        let config = map_vertex_thinking_config(&high_effort).expect("config must exist");
+        assert_eq!(config.thinking_budget, None);
+        assert_eq!(config.thinking_level, Some(VertexThinkingLevel::High));
+    }
+
+    #[test]
+    fn extract_reasoning_from_candidate_uses_thought_parts_only() {
+        let candidate = VertexCandidate {
+            content: Some(VertexContent {
+                role: Some("model".to_string()),
+                parts: vec![
+                    VertexPart {
+                        text: Some("final answer".to_string()),
+                        thought: Some(false),
+                        ..Default::default()
+                    },
+                    VertexPart {
+                        text: Some("hidden chain".to_string()),
+                        thought: Some(true),
+                        ..Default::default()
+                    },
+                ],
+            }),
+            ..Default::default()
+        };
+
+        assert_eq!(extract_text_from_candidate(&candidate), "final answer");
+        assert_eq!(
+            extract_reasoning_from_candidate(&candidate).as_deref(),
+            Some("hidden chain")
+        );
     }
 
     #[test]
