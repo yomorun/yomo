@@ -1,3 +1,4 @@
+use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -155,7 +156,7 @@ impl Role {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Message {
     pub role: Role,
     #[serde(default, deserialize_with = "null_to_default")]
@@ -166,6 +167,41 @@ pub struct Message {
     pub tool_call_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCall>>,
+}
+
+impl<'de> Deserialize<'de> for Message {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct RawMessage {
+            role: Role,
+            #[serde(default, deserialize_with = "null_to_default")]
+            content: Content,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            reasoning_content: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            tool_call_id: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            tool_calls: Option<Vec<ToolCall>>,
+        }
+
+        let raw = RawMessage::deserialize(deserializer)?;
+        if raw.role == Role::Tool && raw.tool_call_id.as_deref().unwrap_or("").trim().is_empty() {
+            return Err(D::Error::custom(
+                "tool_call_id is required for tool messages",
+            ));
+        }
+
+        Ok(Message {
+            role: raw.role,
+            content: raw.content,
+            reasoning_content: raw.reasoning_content,
+            tool_call_id: raw.tool_call_id,
+            tool_calls: raw.tool_calls,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -423,5 +459,39 @@ mod tests {
         let message = r#"{"role":"assistant"}"#;
         let parsed: Message = serde_json::from_str(message).expect("parse message");
         assert!(matches!(parsed.content, Content::Text(text) if text.is_empty()));
+    }
+
+    #[test]
+    fn tool_message_requires_tool_call_id() {
+        let message = r#"{"role":"tool","content":"done"}"#;
+        let err = serde_json::from_str::<Message>(message).expect_err("should reject missing id");
+        assert!(
+            err.to_string()
+                .contains("tool_call_id is required for tool messages")
+        );
+    }
+
+    #[test]
+    fn tool_message_rejects_blank_tool_call_id() {
+        let message = r#"{"role":"tool","content":"done","tool_call_id":"   "}"#;
+        let err = serde_json::from_str::<Message>(message).expect_err("should reject blank id");
+        assert!(
+            err.to_string()
+                .contains("tool_call_id is required for tool messages")
+        );
+    }
+
+    #[test]
+    fn tool_message_accepts_tool_call_id() {
+        let message = r#"{"role":"tool","content":"done","tool_call_id":"call_123"}"#;
+        let parsed: Message = serde_json::from_str(message).expect("parse tool message");
+        assert_eq!(parsed.tool_call_id.as_deref(), Some("call_123"));
+    }
+
+    #[test]
+    fn non_tool_message_allows_missing_tool_call_id() {
+        let message = r#"{"role":"assistant","content":"ok"}"#;
+        let parsed: Message = serde_json::from_str(message).expect("parse assistant message");
+        assert!(parsed.tool_call_id.is_none());
     }
 }
