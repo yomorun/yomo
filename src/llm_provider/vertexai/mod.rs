@@ -1119,20 +1119,83 @@ fn map_finish_reason_string(reason: &str, content: Option<&VertexContent>) -> St
 fn map_http_error(status: StatusCode, body: &[u8]) -> ProviderError {
     let text = String::from_utf8_lossy(body).to_string();
     if status.as_u16() == 400 {
+        let mapped = map_vertex_bad_request(body).unwrap_or_else(|| ErrorDetail {
+            message: text.clone(),
+            r#type: "invalid_request_error".to_string(),
+            code: None,
+            param: None,
+        });
         return ProviderError::Public {
             status: StatusCode::BAD_REQUEST,
-            error: ErrorDetail {
-                message: text,
-                r#type: "invalid_request_error".to_string(),
-                code: None,
-                param: None,
-            },
+            error: mapped,
         };
     }
     ProviderError::internal_with_upstream_status(
         status,
         format!("vertexai request failed with status {status}: {text}"),
     )
+}
+
+#[derive(serde::Deserialize)]
+struct VertexErrorEnvelope {
+    error: Option<VertexErrorPayload>,
+}
+
+#[derive(serde::Deserialize)]
+struct VertexErrorPayload {
+    code: Option<i64>,
+    message: Option<String>,
+    status: Option<String>,
+}
+
+fn map_vertex_bad_request(body: &[u8]) -> Option<ErrorDetail> {
+    let parsed = serde_json::from_slice::<VertexErrorEnvelope>(body).ok()?;
+    let payload = parsed.error?;
+    let message = payload.message?.trim().to_string();
+    if message.is_empty() {
+        return None;
+    }
+
+    let normalized_status = payload
+        .status
+        .as_deref()
+        .map(normalize_vertex_error_status_code);
+    let message_lower = message.to_ascii_lowercase();
+    let (error_type, code) = if message_lower.contains("missing a thought_signature") {
+        (
+            "missing_thought_signature_error".to_string(),
+            Some("missing_thought_signature".to_string()),
+        )
+    } else {
+        (
+            map_vertex_error_type(payload.status.as_deref()).to_string(),
+            normalized_status,
+        )
+    };
+
+    let code = code.or_else(|| payload.code.map(|value| value.to_string()));
+
+    Some(ErrorDetail {
+        message,
+        r#type: error_type,
+        code,
+        param: None,
+    })
+}
+
+fn map_vertex_error_type(status: Option<&str>) -> &'static str {
+    match status {
+        Some("UNAUTHENTICATED") => "authentication_error",
+        Some("PERMISSION_DENIED") => "permission_denied_error",
+        Some("RESOURCE_EXHAUSTED") => "rate_limit_error",
+        Some("FAILED_PRECONDITION") => "failed_precondition_error",
+        Some("INVALID_ARGUMENT") => "invalid_argument_error",
+        _ => "invalid_request_error",
+    }
+}
+
+fn normalize_vertex_error_status_code(status: &str) -> String {
+    status.trim().to_ascii_lowercase()
 }
 
 fn new_response_id() -> String {
@@ -1836,5 +1899,49 @@ mod tests {
             .filter_map(|part| part.function_response.as_ref())
             .collect::<Vec<_>>();
         assert_eq!(function_response_parts.len(), 2);
+    }
+
+    #[test]
+    fn map_http_error_maps_missing_thought_signature_error_type() {
+        let body = r#"{
+          "error": {
+            "code": 400,
+            "message": "Function call is missing a thought_signature in functionCall parts. This is required for tools to work correctly, and missing thought_signature may lead to degraded model performance. Additional data, function call `default_api:session_status` , position 26.",
+            "status": "INVALID_ARGUMENT"
+          }
+        }"#;
+
+        let err = map_http_error(StatusCode::BAD_REQUEST, body.as_bytes());
+        match err {
+            ProviderError::Public { status, error } => {
+                assert_eq!(status, StatusCode::BAD_REQUEST);
+                assert_eq!(error.r#type, "missing_thought_signature_error");
+                assert_eq!(error.code.as_deref(), Some("missing_thought_signature"));
+                assert!(error.message.contains("missing a thought_signature"));
+            }
+            other => panic!("expected public bad request, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn map_http_error_maps_invalid_argument_type_from_vertex_status() {
+        let body = r#"{
+          "error": {
+            "code": 400,
+            "message": "Unsupported parameter.",
+            "status": "INVALID_ARGUMENT"
+          }
+        }"#;
+
+        let err = map_http_error(StatusCode::BAD_REQUEST, body.as_bytes());
+        match err {
+            ProviderError::Public { status, error } => {
+                assert_eq!(status, StatusCode::BAD_REQUEST);
+                assert_eq!(error.r#type, "invalid_argument_error");
+                assert_eq!(error.code.as_deref(), Some("invalid_argument"));
+                assert_eq!(error.message, "Unsupported parameter.");
+            }
+            other => panic!("expected public bad request, got {other:?}"),
+        }
     }
 }
