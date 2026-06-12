@@ -99,7 +99,9 @@ pub struct ChatCompletionRequest {
 pub struct ThinkingConfig {
     /// TokenHub deep thinking parameter.
     ///
-    /// Reference: https://cloud.tencent.com/document/product/1823/131208
+    /// References:
+    /// - https://cloud.tencent.com/document/product/1823/131208
+    /// - https://cloud.tencent.com/document/product/1823/130079
     #[serde(rename = "type")]
     pub kind: ThinkingType,
 }
@@ -107,7 +109,11 @@ pub struct ThinkingConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ThinkingType {
+    /// Always enable provider-side reasoning.
     Enabled,
+    /// Let provider adaptively decide whether to reason.
+    Adaptive,
+    /// Disable provider-side reasoning.
     Disabled,
 }
 

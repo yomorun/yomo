@@ -119,8 +119,9 @@ pub(crate) fn normalize_tokenhub_request(request: &mut ChatCompletionRequest) {
 
 fn normalize_default_thinking(request: &mut ChatCompletionRequest) {
     if request.thinking.is_none() {
+        let thinking_type = preferred_thinking_type_for_model(&request.model);
         request.thinking = Some(ThinkingConfig {
-            kind: ThinkingType::Enabled,
+            kind: thinking_type,
         });
     }
 }
@@ -131,11 +132,23 @@ fn normalize_reasoning_effort(request: &mut ChatCompletionRequest) {
         return;
     };
 
+    let thinking_type = preferred_thinking_type_for_model(&request.model);
     request.thinking = Some(ThinkingConfig {
-        kind: ThinkingType::Enabled,
+        kind: thinking_type,
     });
 
     request.reasoning_effort = Some(map_reasoning_effort_to_tokenhub(&effort).to_string());
+}
+
+fn preferred_thinking_type_for_model(model: &str) -> ThinkingType {
+    // TokenHub OpenAI-compatible API doc:
+    // https://cloud.tencent.com/document/product/1823/130079
+    // minimax-m3 rejects `thinking.type = enabled` and only accepts adaptive/disabled.
+    if model == "minimax-m3" {
+        ThinkingType::Adaptive
+    } else {
+        ThinkingType::Enabled
+    }
 }
 
 fn map_reasoning_effort_to_tokenhub(effort: &str) -> &str {
@@ -152,7 +165,7 @@ fn map_reasoning_effort_to_tokenhub(effort: &str) -> &str {
 fn normalize_reasoning_content_for_tool_calls(request: &mut ChatCompletionRequest) {
     let thinking_enabled = matches!(
         request.thinking.as_ref().map(|value| &value.kind),
-        Some(ThinkingType::Enabled)
+        Some(ThinkingType::Enabled | ThinkingType::Adaptive)
     );
     if !thinking_enabled {
         return;
@@ -296,6 +309,46 @@ mod tests {
     }
 
     #[test]
+    fn normalize_uses_adaptive_thinking_for_minimax_m3() {
+        let mut request = request_with_messages(vec![Message {
+            role: Role::User,
+            content: Content::Text("hello".to_string()),
+            reasoning_content: None,
+            tool_call_id: None,
+            tool_calls: None,
+        }]);
+        request.model = "minimax-m3".to_string();
+
+        normalize_tokenhub_request(&mut request);
+
+        assert!(matches!(
+            request.thinking.as_ref().map(|value| &value.kind),
+            Some(ThinkingType::Adaptive)
+        ));
+    }
+
+    #[test]
+    fn normalize_reasoning_effort_uses_adaptive_thinking_for_minimax_m3() {
+        let mut request = request_with_messages(vec![Message {
+            role: Role::User,
+            content: Content::Text("hello".to_string()),
+            reasoning_content: None,
+            tool_call_id: None,
+            tool_calls: None,
+        }]);
+        request.model = "minimax-m3".to_string();
+        request.reasoning_effort = Some("max".to_string());
+
+        normalize_tokenhub_request(&mut request);
+
+        assert!(matches!(
+            request.thinking.as_ref().map(|value| &value.kind),
+            Some(ThinkingType::Adaptive)
+        ));
+        assert_eq!(request.reasoning_effort.as_deref(), Some("high"));
+    }
+
+    #[test]
     fn normalize_fills_reasoning_content_for_assistant_tool_call_when_thinking_enabled() {
         let mut request = request_with_messages(vec![assistant_tool_call_message(None)]);
         request.thinking = Some(ThinkingConfig {
@@ -349,6 +402,18 @@ mod tests {
     #[test]
     fn normalize_fills_reasoning_content_with_default_thinking() {
         let mut request = request_with_messages(vec![assistant_tool_call_message(None)]);
+
+        normalize_tokenhub_request(&mut request);
+
+        assert_eq!(request.messages[0].reasoning_content.as_deref(), Some(" "));
+    }
+
+    #[test]
+    fn normalize_fills_reasoning_content_with_adaptive_thinking() {
+        let mut request = request_with_messages(vec![assistant_tool_call_message(None)]);
+        request.thinking = Some(ThinkingConfig {
+            kind: ThinkingType::Adaptive,
+        });
 
         normalize_tokenhub_request(&mut request);
 
