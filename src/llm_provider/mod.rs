@@ -1,3 +1,4 @@
+pub mod openai;
 pub mod openai_compatible;
 pub mod provider;
 pub mod registry;
