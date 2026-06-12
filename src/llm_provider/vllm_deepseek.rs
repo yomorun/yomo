@@ -377,18 +377,11 @@ mod tests {
     }
 
     #[test]
-    fn validate_request_returns_public_bad_request() {
+    fn validate_request_allows_empty_content() {
         let request = request_with_messages(vec![user_text_message("   ")]);
 
-        let err = validate_request(&request).expect_err("should reject empty content");
-        match err {
-            ProviderError::Public { status, error } => {
-                assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
-                assert_eq!(error.r#type, "invalid_request_error");
-                assert_eq!(error.message, "content is empty");
-            }
-            other => panic!("expected public bad request, got {other:?}"),
-        }
+        let result = validate_request(&request);
+        assert!(result.is_ok());
     }
 
     #[test]

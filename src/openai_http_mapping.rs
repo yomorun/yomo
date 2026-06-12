@@ -75,24 +75,14 @@ pub fn validate_openai_request(request: &ChatCompletionRequest) -> Result<(), St
             return Err(format!("invalid role: {}", message.role.as_str()));
         }
         match &message.content {
-            OpenAIContent::Text(text) => {
-                if text.trim().is_empty()
-                    && !(message.role == Role::Assistant && message.tool_calls.is_some())
-                {
-                    return Err("content is empty".to_string());
-                }
-            }
+            OpenAIContent::Text(_) => {}
             OpenAIContent::Parts(parts) => {
                 if parts.is_empty() {
                     return Err("content parts is empty".to_string());
                 }
                 for part in parts {
                     match part {
-                        ContentPart::Text { text } => {
-                            if text.trim().is_empty() {
-                                return Err("text content is empty".to_string());
-                            }
-                        }
+                        ContentPart::Text { .. } => {}
                         ContentPart::Image { image_url } => {
                             if image_url.url.trim().is_empty() {
                                 return Err("image_url is empty".to_string());
@@ -106,15 +96,7 @@ pub fn validate_openai_request(request: &ChatCompletionRequest) -> Result<(), St
                                 return Err("input_audio format is empty".to_string());
                             }
                         }
-                        ContentPart::File {
-                            file_id, file_data, ..
-                        } => {
-                            if file_id.as_deref().unwrap_or("").trim().is_empty()
-                                && file_data.as_deref().unwrap_or("").trim().is_empty()
-                            {
-                                return Err("file content is empty".to_string());
-                            }
-                        }
+                        ContentPart::File { .. } => {}
                     }
                 }
             }
@@ -134,8 +116,13 @@ pub fn validate_openai_request(request: &ChatCompletionRequest) -> Result<(), St
             }
             match &message.content {
                 OpenAIContent::Text(_) => {}
-                OpenAIContent::Parts(_) => {
-                    return Err("tool messages must use text content".to_string());
+                OpenAIContent::Parts(parts) => {
+                    if parts
+                        .iter()
+                        .any(|part| !matches!(part, ContentPart::Text { .. }))
+                    {
+                        return Err("tool messages only support text content parts".to_string());
+                    }
                 }
             }
         }
@@ -588,8 +575,9 @@ fn map_finish_reason(reason: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{map_openai_response, stream_openai_chunks};
+    use super::{map_openai_response, stream_openai_chunks, validate_openai_request};
     use crate::llm_provider::{FinishReason, UnifiedEvent, UnifiedResponse};
+    use crate::openai_types::ChatCompletionRequest;
     use crate::usage_handler::EndpointUsage;
     use futures_util::StreamExt;
     use serde_json::Value;
@@ -618,6 +606,82 @@ mod tests {
         let mapped = map_openai_response(response);
 
         assert_eq!(mapped.created, Some(1767225600));
+    }
+
+    #[test]
+    fn validate_openai_request_allows_empty_string_content() {
+        let request: ChatCompletionRequest = serde_json::from_value(serde_json::json!({
+            "model": "gpt-5.1",
+            "messages": [
+                { "role": "user", "content": "" }
+            ]
+        }))
+        .expect("parse request");
+
+        let result = validate_openai_request(&request);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_openai_request_allows_empty_text_content_part() {
+        let request: ChatCompletionRequest = serde_json::from_value(serde_json::json!({
+            "model": "gpt-5.1",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        { "type": "text", "text": "" }
+                    ]
+                }
+            ]
+        }))
+        .expect("parse request");
+
+        let result = validate_openai_request(&request);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_openai_request_allows_tool_message_text_parts() {
+        let request: ChatCompletionRequest = serde_json::from_value(serde_json::json!({
+            "model": "gpt-5.1",
+            "messages": [
+                {
+                    "role": "tool",
+                    "tool_call_id": "call_123",
+                    "content": [
+                        { "type": "text", "text": "tool result" }
+                    ]
+                }
+            ]
+        }))
+        .expect("parse request");
+
+        let result = validate_openai_request(&request);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_openai_request_rejects_tool_message_non_text_parts() {
+        let request: ChatCompletionRequest = serde_json::from_value(serde_json::json!({
+            "model": "gpt-5.1",
+            "messages": [
+                {
+                    "role": "tool",
+                    "tool_call_id": "call_123",
+                    "content": [
+                        { "type": "image_url", "image_url": { "url": "https://example.com/a.png" } }
+                    ]
+                }
+            ]
+        }))
+        .expect("parse request");
+
+        let result = validate_openai_request(&request);
+        assert!(matches!(
+            result,
+            Err(err) if err == "tool messages only support text content parts"
+        ));
     }
 
     #[tokio::test]

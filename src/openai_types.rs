@@ -237,15 +237,33 @@ pub enum ContentPart {
         input_audio: InputAudio,
     },
     File {
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
+        file: FileContent,
+        #[serde(default, skip_serializing)]
         file_id: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing)]
         file_data: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing)]
         filename: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing)]
+        file_url: Option<String>,
+        #[serde(default, skip_serializing)]
         mime_type: Option<String>,
     },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct FileContent {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_data: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filename: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -519,5 +537,52 @@ mod tests {
         assert_eq!(parts.len(), 2);
         assert!(matches!(parts[0], ContentPart::Text { .. }));
         assert!(matches!(parts[1], ContentPart::Image { .. }));
+    }
+
+    #[test]
+    fn message_content_parts_accept_nested_file_object() {
+        let message = r#"{
+            "role":"user",
+            "content":[
+                {"type":"file","file":{"file_id":"file-123","filename":"doc.txt"}}
+            ]
+        }"#;
+
+        let parsed: Message = serde_json::from_str(message).expect("parse file message");
+        let Content::Parts(parts) = parsed.content else {
+            panic!("expected content parts");
+        };
+        let ContentPart::File { file, .. } = &parts[0] else {
+            panic!("expected file content part");
+        };
+        assert_eq!(file.file_id.as_deref(), Some("file-123"));
+        assert_eq!(file.filename.as_deref(), Some("doc.txt"));
+    }
+
+    #[test]
+    fn message_content_parts_accept_legacy_flat_file_fields() {
+        let message = r#"{
+            "role":"user",
+            "content":[
+                {"type":"file","file_id":"file-legacy","filename":"legacy.txt"}
+            ]
+        }"#;
+
+        let parsed: Message = serde_json::from_str(message).expect("parse legacy file message");
+        let Content::Parts(parts) = parsed.content else {
+            panic!("expected content parts");
+        };
+        let ContentPart::File {
+            file,
+            file_id,
+            filename,
+            ..
+        } = &parts[0]
+        else {
+            panic!("expected file content part");
+        };
+        assert!(file.file_id.is_none());
+        assert_eq!(file_id.as_deref(), Some("file-legacy"));
+        assert_eq!(filename.as_deref(), Some("legacy.txt"));
     }
 }
