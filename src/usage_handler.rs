@@ -85,7 +85,14 @@ impl EndpointUsage {
         ))
     }
 
-    pub fn into_payload(self, _endpoint: &str) -> Value {
+    pub fn into_payload(self, endpoint: &str) -> Value {
+        if endpoint == "/chat/completions" {
+            if let Some(usage) = self.to_openai_usage() {
+                return serde_json::to_value(usage).unwrap_or(Value::Null);
+            }
+            return Value::Null;
+        }
+
         match self {
             Self::ChatCompletions(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
             Self::Messages(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
@@ -492,7 +499,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::EndpointUsage;
-    use crate::model_api_provider::{GenerateContentUsage, MessagesUsage, ResponsesUsage};
+    use crate::model_api_provider::{
+        GenerateContentUsage, MessagesUsage, ResponsesUsage, TrafficType,
+    };
     use crate::openai_types::{PromptTokensDetails, Usage as OpenAIUsage};
 
     #[test]
@@ -591,6 +600,30 @@ mod tests {
                 .map(|details| details.reasoning_tokens),
             Some(1)
         );
+    }
+
+    #[test]
+    fn into_payload_for_chat_completions_maps_generate_content_usage() {
+        let payload = EndpointUsage::GenerateContent(GenerateContentUsage {
+            prompt_token_count: None,
+            candidates_token_count: None,
+            cached_content_token_count: None,
+            tool_use_prompt_token_count: None,
+            thoughts_token_count: None,
+            total_token_count: None,
+            cache_tokens_details: None,
+            prompt_tokens_details: None,
+            candidates_tokens_details: None,
+            tool_use_prompt_tokens_details: None,
+            traffic_type: Some(TrafficType::OnDemand),
+        })
+        .into_payload("/chat/completions");
+
+        assert_eq!(payload["prompt_tokens"], 0);
+        assert_eq!(payload["completion_tokens"], 0);
+        assert_eq!(payload["total_tokens"], 0);
+        assert_eq!(payload["prompt_tokens_details"]["cached_tokens"], 0);
+        assert_eq!(payload["completion_tokens_details"]["reasoning_tokens"], 0);
     }
 
     #[test]
