@@ -228,9 +228,12 @@ pub fn stream_openai_chunks(
                     if response_id.is_empty() {
                         response_id = id.clone();
                     }
+                    if delta.is_empty() && role_sent {
+                        continue;
+                    }
                     let delta = ChatCompletionChunkDelta {
                         role: if role_sent { None } else { Some(Role::Assistant) },
-                        content: Some(delta),
+                        content: if delta.is_empty() { None } else { Some(delta) },
                         refusal: None,
                         tool_calls: None,
                     };
@@ -252,7 +255,7 @@ pub fn stream_openai_chunks(
                     });
                 }
                 UnifiedEvent::ToolCallDelta { id, name, arguments_delta } => {
-                    tool_call_delta_emitted.insert(id.clone());
+                    let first_delta_for_call = tool_call_delta_emitted.insert(id.clone());
                     let index = *tool_call_index.entry(id.clone()).or_insert_with(|| {
                         let current = next_tool_index;
                         next_tool_index += 1;
@@ -264,10 +267,14 @@ pub fn stream_openai_chunks(
                         refusal: None,
                         tool_calls: Some(vec![ChatCompletionChunkToolCall {
                             index,
-                            id: Some(id),
-                            r#type: Some("function".to_string()),
+                            id: if first_delta_for_call { Some(id) } else { None },
+                            r#type: if first_delta_for_call {
+                                Some("function".to_string())
+                            } else {
+                                None
+                            },
                             function: Some(ChatCompletionChunkToolCallFunction {
-                                name: Some(name),
+                                name: if first_delta_for_call { Some(name) } else { None },
                                 arguments: Some(arguments_delta),
                             }),
                         }]),
@@ -724,6 +731,169 @@ mod tests {
             .count();
 
         assert_eq!(tool_call_chunk_count, 1);
+    }
+
+    #[tokio::test]
+    async fn emits_tool_call_name_only_on_first_delta_chunk() {
+        let events = vec![
+            Ok(UnifiedEvent::ResponseCreated {
+                id: "req-1".to_string(),
+                model: "m".to_string(),
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+            }),
+            Ok(UnifiedEvent::ToolCallDelta {
+                id: "req-1-tool-0".to_string(),
+                name: "client_ping".to_string(),
+                arguments_delta: "{\"".to_string(),
+            }),
+            Ok(UnifiedEvent::ToolCallDelta {
+                id: "req-1-tool-0".to_string(),
+                name: "client_ping".to_string(),
+                arguments_delta: "message\":\"hello\"}".to_string(),
+            }),
+            Ok(UnifiedEvent::Completed {
+                finish_reason: Some("tool_calls".to_string()),
+            }),
+        ];
+
+        let stream = stream_openai_chunks(
+            Box::pin(futures_util::stream::iter(events)),
+            "trace-1".to_string(),
+            "m".to_string(),
+            Span::none(),
+        );
+
+        let mut payloads = Vec::new();
+        futures_util::pin_mut!(stream);
+        while let Some(item) = stream.next().await {
+            payloads.push(item.expect("stream chunk"));
+        }
+
+        let mut tool_call_values = Vec::new();
+        for payload in payloads {
+            let text = String::from_utf8(payload.to_vec()).expect("utf8");
+            let Some(json) = text.strip_prefix("data: ") else {
+                continue;
+            };
+            let json = json.trim();
+            if json == "[DONE]" {
+                continue;
+            }
+            let value: Value = serde_json::from_str(json).expect("valid json chunk");
+            let Some(tool_calls) = value
+                .get("choices")
+                .and_then(Value::as_array)
+                .and_then(|choices| choices.first())
+                .and_then(|choice| choice.get("delta"))
+                .and_then(|delta| delta.get("tool_calls"))
+                .and_then(Value::as_array)
+            else {
+                continue;
+            };
+            if let Some(tool_call) = tool_calls.first() {
+                tool_call_values.push(tool_call.clone());
+            }
+        }
+
+        assert_eq!(tool_call_values.len(), 2);
+
+        let first = &tool_call_values[0];
+        assert_eq!(
+            first.get("id").and_then(Value::as_str),
+            Some("req-1-tool-0")
+        );
+        assert_eq!(
+            first
+                .get("function")
+                .and_then(|value| value.get("name"))
+                .and_then(Value::as_str),
+            Some("client_ping")
+        );
+
+        let second = &tool_call_values[1];
+        assert!(second.get("id").is_none());
+        assert!(
+            second
+                .get("function")
+                .and_then(|value| value.get("name"))
+                .is_none()
+        );
+        assert_eq!(
+            second
+                .get("function")
+                .and_then(|value| value.get("arguments"))
+                .and_then(Value::as_str),
+            Some("message\":\"hello\"}")
+        );
+    }
+
+    #[tokio::test]
+    async fn does_not_emit_empty_content_field_for_empty_message_delta() {
+        let events = vec![
+            Ok(UnifiedEvent::ResponseCreated {
+                id: "req-1".to_string(),
+                model: "m".to_string(),
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+            }),
+            Ok(UnifiedEvent::MessageDelta {
+                id: "req-1".to_string(),
+                delta: "".to_string(),
+            }),
+            Ok(UnifiedEvent::MessageDelta {
+                id: "req-1".to_string(),
+                delta: "hello".to_string(),
+            }),
+            Ok(UnifiedEvent::Completed {
+                finish_reason: Some("stop".to_string()),
+            }),
+        ];
+
+        let stream = stream_openai_chunks(
+            Box::pin(futures_util::stream::iter(events)),
+            "trace-1".to_string(),
+            "m".to_string(),
+            Span::none(),
+        );
+
+        let mut payloads = Vec::new();
+        futures_util::pin_mut!(stream);
+        while let Some(item) = stream.next().await {
+            payloads.push(item.expect("stream chunk"));
+        }
+
+        let mut deltas = Vec::new();
+        for payload in payloads {
+            let text = String::from_utf8(payload.to_vec()).expect("utf8");
+            let Some(json) = text.strip_prefix("data: ") else {
+                continue;
+            };
+            let json = json.trim();
+            if json == "[DONE]" {
+                continue;
+            }
+            let value: Value = serde_json::from_str(json).expect("valid json chunk");
+            let Some(delta) = value
+                .get("choices")
+                .and_then(Value::as_array)
+                .and_then(|choices| choices.first())
+                .and_then(|choice| choice.get("delta"))
+                .cloned()
+            else {
+                continue;
+            };
+            deltas.push(delta);
+        }
+
+        assert!(!deltas.is_empty());
+        assert_eq!(
+            deltas[0].get("role").and_then(Value::as_str),
+            Some("assistant")
+        );
+        assert!(deltas[0].get("content").is_none());
+        assert_eq!(
+            deltas[1].get("content").and_then(Value::as_str),
+            Some("hello")
+        );
     }
 }
 
