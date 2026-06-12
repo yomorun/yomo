@@ -89,6 +89,7 @@ pub struct VertexCandidate {
 pub struct VertexContent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
+    #[serde(default)]
     pub parts: Vec<VertexPart>,
 }
 
@@ -186,7 +187,9 @@ pub enum VertexTrafficType {
 
 #[cfg(test)]
 mod tests {
-    use super::{VertexMediaModality, VertexTrafficType, VertexUsageMetadata};
+    use super::{
+        VertexGenerateContentResponse, VertexMediaModality, VertexTrafficType, VertexUsageMetadata,
+    };
 
     #[test]
     fn vertex_usage_metadata_deserializes_extended_camel_case_fields() {
@@ -237,5 +240,27 @@ mod tests {
 
         assert_eq!(value["promptTokensDetails"][0]["modality"], "AUDIO");
         assert_eq!(value["trafficType"], "PROVISIONED_THROUGHPUT");
+    }
+
+    #[test]
+    fn vertex_response_deserializes_content_without_parts() {
+        let payload = serde_json::json!({
+            "responseId": "resp-1",
+            "candidates": [
+                {
+                    "content": {
+                        "role": "model"
+                    },
+                    "finishReason": "STOP"
+                }
+            ]
+        });
+
+        let response: VertexGenerateContentResponse =
+            serde_json::from_value(payload).expect("must parse response");
+        let candidates = response.candidates.expect("candidates must exist");
+        assert_eq!(candidates.len(), 1);
+        let content = candidates[0].content.as_ref().expect("content must exist");
+        assert!(content.parts.is_empty());
     }
 }

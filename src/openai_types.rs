@@ -229,6 +229,7 @@ pub enum ContentPart {
     Text {
         text: String,
     },
+    #[serde(rename = "image_url")]
     Image {
         image_url: ImageUrl,
     },
@@ -499,5 +500,24 @@ mod tests {
         let message = r#"{"role":"assistant","content":"ok"}"#;
         let parsed: Message = serde_json::from_str(message).expect("parse assistant message");
         assert!(parsed.tool_call_id.is_none());
+    }
+
+    #[test]
+    fn message_content_parts_accept_image_url_type() {
+        let message = r#"{
+            "role":"user",
+            "content":[
+                {"type":"text","text":"Read this image"},
+                {"type":"image_url","image_url":{"url":"data:image/png;base64,aGVsbG8="}}
+            ]
+        }"#;
+
+        let parsed: Message = serde_json::from_str(message).expect("parse multimodal message");
+        let Content::Parts(parts) = parsed.content else {
+            panic!("expected content parts");
+        };
+        assert_eq!(parts.len(), 2);
+        assert!(matches!(parts[0], ContentPart::Text { .. }));
+        assert!(matches!(parts[1], ContentPart::Image { .. }));
     }
 }
