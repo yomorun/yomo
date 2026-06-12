@@ -923,8 +923,10 @@ fn map_vertex_stream_chunk(
         }
     }
 
-    if let Some(usage) = map_usage_from_usage_metadata(value.usage_metadata.as_ref()) {
-        events.push(UnifiedEvent::Usage { usage });
+    if vertex_usage_metadata_has_usage(value.usage_metadata.as_ref()) {
+        if let Some(usage) = map_usage_from_usage_metadata(value.usage_metadata.as_ref()) {
+            events.push(UnifiedEvent::Usage { usage });
+        }
     }
 
     if let Some(reason) = candidate.finish_reason.as_deref() {
@@ -946,6 +948,23 @@ fn map_usage_from_usage_metadata(usage: Option<&VertexUsageMetadata>) -> Option<
     let payload = serde_json::to_value(usage?).ok()?;
     let usage = serde_json::from_value::<GenerateContentUsage>(payload).ok()?;
     Some(EndpointUsage::GenerateContent(usage))
+}
+
+fn vertex_usage_metadata_has_usage(usage: Option<&VertexUsageMetadata>) -> bool {
+    let Some(usage) = usage else {
+        return false;
+    };
+
+    is_positive_usage_token(usage.total_token_count)
+        || is_positive_usage_token(usage.prompt_token_count)
+        || is_positive_usage_token(usage.candidates_token_count)
+        || is_positive_usage_token(usage.cached_content_token_count)
+        || is_positive_usage_token(usage.tool_use_prompt_token_count)
+        || is_positive_usage_token(usage.thoughts_token_count)
+}
+
+fn is_positive_usage_token(value: Option<i64>) -> bool {
+    matches!(value, Some(count) if count > 0)
 }
 
 fn extract_text_from_candidate(candidate: &VertexCandidate) -> String {
@@ -1268,6 +1287,71 @@ mod tests {
         assert_eq!(mapped.prompt_token_count, Some(12));
         assert_eq!(mapped.candidates_token_count, Some(8));
         assert_eq!(mapped.total_token_count, Some(20));
+    }
+
+    #[test]
+    fn vertex_usage_metadata_has_usage_checks_all_relevant_fields() {
+        assert!(!vertex_usage_metadata_has_usage(None));
+        assert!(!vertex_usage_metadata_has_usage(Some(
+            &VertexUsageMetadata::default()
+        )));
+
+        let with_cached = VertexUsageMetadata {
+            cached_content_token_count: Some(1),
+            ..Default::default()
+        };
+        assert!(vertex_usage_metadata_has_usage(Some(&with_cached)));
+
+        let with_total = VertexUsageMetadata {
+            total_token_count: Some(3),
+            ..Default::default()
+        };
+        assert!(vertex_usage_metadata_has_usage(Some(&with_total)));
+    }
+
+    #[test]
+    fn map_vertex_stream_chunk_skips_empty_usage_events() {
+        let mut state = VertexStreamState::default();
+        state.model = "gemini-2.5-flash".to_string();
+        let thought_signatures = Arc::new(Mutex::new(ThoughtSignatureStore::new(16)));
+
+        let chunk = VertexGenerateContentResponse {
+            response_id: Some("resp-1".to_string()),
+            usage_metadata: Some(VertexUsageMetadata::default()),
+            ..Default::default()
+        };
+
+        let events = map_vertex_stream_chunk(&chunk, &mut state, &thought_signatures);
+
+        assert!(
+            events
+                .iter()
+                .all(|event| !matches!(event, UnifiedEvent::Usage { .. }))
+        );
+    }
+
+    #[test]
+    fn map_vertex_stream_chunk_emits_usage_when_tokens_present() {
+        let mut state = VertexStreamState::default();
+        state.model = "gemini-2.5-flash".to_string();
+        let thought_signatures = Arc::new(Mutex::new(ThoughtSignatureStore::new(16)));
+
+        let chunk = VertexGenerateContentResponse {
+            response_id: Some("resp-2".to_string()),
+            usage_metadata: Some(VertexUsageMetadata {
+                total_token_count: Some(9),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let events = map_vertex_stream_chunk(&chunk, &mut state, &thought_signatures);
+
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, UnifiedEvent::Usage { .. }))
+        );
     }
 
     #[test]
