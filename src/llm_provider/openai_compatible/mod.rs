@@ -93,7 +93,13 @@ fn map_openai_error(err: ClientError) -> ProviderError {
                 error,
             }
         }
-        other => ProviderError::Internal(other.to_string()),
+        ClientError::Api(ApiError::OpenAI { status, error }) => {
+            ProviderError::internal_with_upstream_status(status, error.message)
+        }
+        ClientError::Api(ApiError::Unknown { status, body }) => {
+            ProviderError::internal_with_upstream_status(status, body)
+        }
+        other => ProviderError::internal(other.to_string()),
     }
 }
 
@@ -114,5 +120,5 @@ pub fn build_openai_compatible_provider(
 }
 
 fn validate_request(request: &ChatCompletionRequest) -> Result<(), ProviderError> {
-    validate_openai_request(request).map_err(ProviderError::Internal)
+    validate_openai_request(request).map_err(ProviderError::internal)
 }

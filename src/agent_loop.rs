@@ -796,7 +796,7 @@ where
     let mut events = Vec::with_capacity(results.len() * 2);
     for result in results {
         let (call_event, call_result_event) = result
-            .map_err(|err| ProviderError::Internal(format!("tool task join error: {err}")))??;
+            .map_err(|err| ProviderError::internal(format!("tool task join error: {err}")))??;
         messages.push(compose_server_tool_message(&call_result_event));
         events.push(call_event);
         events.push(call_result_event);

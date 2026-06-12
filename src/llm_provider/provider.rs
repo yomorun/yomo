@@ -136,7 +136,10 @@ pub enum ProviderError {
         status: StatusCode,
         error: ErrorDetail,
     },
-    Internal(String),
+    Internal {
+        upstream_http_status: StatusCode,
+        message: String,
+    },
 }
 
 impl std::fmt::Display for ProviderError {
@@ -145,7 +148,23 @@ impl std::fmt::Display for ProviderError {
             ProviderError::Public { error, .. } => {
                 write!(f, "provider error: {}", error.message)
             }
-            ProviderError::Internal(message) => write!(f, "provider error: {message}"),
+            ProviderError::Internal { message, .. } => write!(f, "provider error: {message}"),
+        }
+    }
+}
+
+impl ProviderError {
+    pub fn internal(message: impl Into<String>) -> Self {
+        Self::Internal {
+            upstream_http_status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: message.into(),
+        }
+    }
+
+    pub fn internal_with_upstream_status(status: StatusCode, message: impl Into<String>) -> Self {
+        Self::Internal {
+            upstream_http_status: status,
+            message: message.into(),
         }
     }
 }

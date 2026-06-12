@@ -40,7 +40,7 @@ impl Provider for OpenAIProvider {
             request.model = model_id.clone();
         }
         normalize_gpt5_request(&mut request);
-        validate_openai_request(&request).map_err(ProviderError::Internal)?;
+        validate_openai_request(&request).map_err(ProviderError::internal)?;
         let model = request.model.clone();
         let response = self
             .client
@@ -62,7 +62,7 @@ impl Provider for OpenAIProvider {
             request.model = model_id.clone();
         }
         normalize_gpt5_request(&mut request);
-        validate_openai_request(&request).map_err(ProviderError::Internal)?;
+        validate_openai_request(&request).map_err(ProviderError::internal)?;
         let model = request.model.clone();
         let stream = self
             .client
@@ -106,7 +106,13 @@ fn map_openai_error(err: ClientError, model: &str) -> ProviderError {
                 error,
             }
         }
-        other => ProviderError::Internal(other.to_string()),
+        ClientError::Api(ApiError::OpenAI { status, error }) => {
+            ProviderError::internal_with_upstream_status(status, error.message)
+        }
+        ClientError::Api(ApiError::Unknown { status, body }) => {
+            ProviderError::internal_with_upstream_status(status, body)
+        }
+        other => ProviderError::internal(other.to_string()),
     }
 }
 

@@ -194,7 +194,10 @@ where
     fn notify_error(&self, err: ProviderError) -> ProviderError {
         let http_status = match &err {
             ProviderError::Public { status, .. } => Some(status.as_u16()),
-            ProviderError::Internal(_) => None,
+            ProviderError::Internal {
+                upstream_http_status,
+                ..
+            } => Some(upstream_http_status.as_u16()),
         };
         self.error_notifier
             .notify_provider_error(ProviderErrorEvent {
@@ -228,6 +231,8 @@ mod tests {
 
     struct FailingProvider;
 
+    struct InternalFailingProvider;
+
     #[async_trait]
     impl Provider for FailingProvider {
         fn model_id(&self) -> &str {
@@ -256,7 +261,34 @@ mod tests {
             Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
             ProviderError,
         > {
-            Err(ProviderError::Internal("stream_fail".to_string()))
+            Err(ProviderError::internal("stream_fail".to_string()))
+        }
+    }
+
+    #[async_trait]
+    impl Provider for InternalFailingProvider {
+        fn model_id(&self) -> &str {
+            "demo-model"
+        }
+
+        async fn complete(
+            &self,
+            _request: ChatCompletionRequest,
+        ) -> Result<UnifiedResponse, ProviderError> {
+            Err(ProviderError::internal_with_upstream_status(
+                StatusCode::PAYMENT_REQUIRED,
+                "upstream_402",
+            ))
+        }
+
+        async fn stream<'a>(
+            &'a self,
+            _request: ChatCompletionRequest,
+        ) -> Result<
+            Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
+            ProviderError,
+        > {
+            Err(ProviderError::internal("stream_fail".to_string()))
         }
     }
 
@@ -312,6 +344,52 @@ mod tests {
             Some(StatusCode::PAYMENT_REQUIRED.as_u16())
         );
         assert_eq!(calls[0].endpoint.as_deref(), Some("/v1/chat/completions"));
+    }
+
+    #[tokio::test]
+    async fn provider_registry_error_notifier_receives_internal_upstream_status() {
+        let mut providers = HashMap::new();
+        providers.insert(
+            "demo-model".to_string(),
+            ProviderEntry {
+                provider_type: "openai-compatible".to_string(),
+                model_id: "demo-model".to_string(),
+                label: Some("demo".to_string()),
+                provider: Arc::new(InternalFailingProvider),
+            },
+        );
+        let notifier = Arc::new(CollectNotifier {
+            calls: Mutex::new(Vec::new()),
+        });
+        let strategy: Arc<dyn SelectionStrategy<()>> = Arc::new(ByModel);
+        let registry = ProviderRegistry::new(providers, strategy)
+            .with_error_notifier(Arc::clone(&notifier) as Arc<dyn ProviderErrorNotifier<()>>);
+
+        let entry = registry
+            .select(Some("demo-model"), &())
+            .expect("select provider");
+
+        let err = entry
+            .provider
+            .complete(empty_request())
+            .await
+            .expect_err("provider should fail");
+        match err {
+            ProviderError::Internal {
+                upstream_http_status,
+                ..
+            } => {
+                assert_eq!(upstream_http_status, StatusCode::PAYMENT_REQUIRED)
+            }
+            other => panic!("unexpected error: {other}"),
+        }
+
+        let calls = notifier.calls.lock().expect("lock calls");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(
+            calls[0].http_status,
+            Some(StatusCode::PAYMENT_REQUIRED.as_u16())
+        );
     }
 
     fn empty_request() -> ChatCompletionRequest {

@@ -82,24 +82,24 @@ impl Provider for VertexAIProvider {
             .post_json_with_headers(
                 &self.model_id,
                 serde_json::to_vec(&body)
-                    .map_err(|err| ProviderError::Internal(err.to_string()))?,
+                    .map_err(|err| ProviderError::internal(err.to_string()))?,
                 false,
                 axum::http::HeaderMap::new(),
             )
             .await
-            .map_err(|err| ProviderError::Internal(err.to_string()))?;
+            .map_err(|err| ProviderError::internal(err.to_string()))?;
 
         let status = response.status();
         let bytes = response
             .bytes()
             .await
-            .map_err(|err| ProviderError::Internal(err.to_string()))?;
+            .map_err(|err| ProviderError::internal(err.to_string()))?;
         debug_response_json("non_stream", Some(status), &bytes);
         if !status.is_success() {
             return Err(map_http_error(status, &bytes));
         }
         let value: VertexGenerateContentResponse = serde_json::from_slice(&bytes)
-            .map_err(|err| ProviderError::Internal(format!("parse vertex response: {err}")))?;
+            .map_err(|err| ProviderError::internal(format!("parse vertex response: {err}")))?;
         map_vertex_response(value, &self.model_id, &self.thought_signatures)
     }
 
@@ -118,19 +118,19 @@ impl Provider for VertexAIProvider {
             .post_json_with_headers(
                 &self.model_id,
                 serde_json::to_vec(&body)
-                    .map_err(|err| ProviderError::Internal(err.to_string()))?,
+                    .map_err(|err| ProviderError::internal(err.to_string()))?,
                 true,
                 axum::http::HeaderMap::new(),
             )
             .await
-            .map_err(|err| ProviderError::Internal(err.to_string()))?;
+            .map_err(|err| ProviderError::internal(err.to_string()))?;
 
         let status = response.status();
         if !status.is_success() {
             let bytes = response
                 .bytes()
                 .await
-                .map_err(|err| ProviderError::Internal(err.to_string()))?;
+                .map_err(|err| ProviderError::internal(err.to_string()))?;
             debug_response_json("stream", Some(status), &bytes);
             return Err(map_http_error(status, &bytes));
         }
@@ -144,7 +144,7 @@ impl Provider for VertexAIProvider {
 
             let mut buffer = String::new();
             while let Some(item) = stream.next().await {
-                let chunk = item.map_err(|err| ProviderError::Internal(err.to_string()))?;
+                let chunk = item.map_err(|err| ProviderError::internal(err.to_string()))?;
                 debug_response_json("stream_chunk", None, &chunk);
                 let text = String::from_utf8_lossy(&chunk);
                 buffer.push_str(&text);
@@ -170,7 +170,7 @@ impl Provider for VertexAIProvider {
                         }
 
                         let value: VertexGenerateContentResponse = serde_json::from_str(data)
-                            .map_err(|err| ProviderError::Internal(format!("parse vertex stream event: {err}")))?;
+                            .map_err(|err| ProviderError::internal(format!("parse vertex stream event: {err}")))?;
 
                         for event in map_vertex_stream_chunk(&value, &mut state, &self.thought_signatures) {
                             yield event;
@@ -280,7 +280,7 @@ struct VertexStreamState {
 }
 
 fn validate_request(request: &ChatCompletionRequest) -> Result<(), ProviderError> {
-    validate_openai_request(request).map_err(ProviderError::Internal)
+    validate_openai_request(request).map_err(ProviderError::internal)
 }
 
 async fn build_vertex_request(
@@ -376,7 +376,7 @@ async fn build_vertex_request(
     }
 
     if contents.is_empty() {
-        return Err(ProviderError::Internal(
+        return Err(ProviderError::internal(
             "vertexai request has no content".to_string(),
         ));
     }
@@ -461,7 +461,7 @@ async fn build_vertex_request(
                     }
                 }
                 _ => {
-                    return Err(ProviderError::Internal(
+                    return Err(ProviderError::internal(
                         "invalid tool_choice for vertexai".to_string(),
                     ));
                 }
@@ -505,7 +505,7 @@ async fn content_to_vertex_parts(
                         });
                     }
                     ContentPart::InputAudio { .. } | ContentPart::File { .. } => {
-                        return Err(ProviderError::Internal(
+                        return Err(ProviderError::internal(
                             "vertexai provider does not support input_audio/file yet".to_string(),
                         ));
                     }
@@ -529,9 +529,9 @@ async fn image_to_inline_data(
             .get(url)
             .send()
             .await
-            .map_err(|err| ProviderError::Internal(format!("download image failed: {err}")))?;
+            .map_err(|err| ProviderError::internal(format!("download image failed: {err}")))?;
         if !response.status().is_success() {
-            return Err(ProviderError::Internal(format!(
+            return Err(ProviderError::internal(format!(
                 "download image failed with status {}",
                 response.status()
             )));
@@ -544,7 +544,7 @@ async fn image_to_inline_data(
             .unwrap_or("application/octet-stream")
             .to_string();
         if !mime_type.starts_with("image/") {
-            return Err(ProviderError::Internal(
+            return Err(ProviderError::internal(
                 "image_url content-type is not image/*".to_string(),
             ));
         }
@@ -552,9 +552,9 @@ async fn image_to_inline_data(
         let bytes = response
             .bytes()
             .await
-            .map_err(|err| ProviderError::Internal(format!("read image body failed: {err}")))?;
+            .map_err(|err| ProviderError::internal(format!("read image body failed: {err}")))?;
         if bytes.len() > MAX_IMAGE_BYTES {
-            return Err(ProviderError::Internal(format!(
+            return Err(ProviderError::internal(format!(
                 "image is too large (>{MAX_IMAGE_BYTES} bytes)"
             )));
         }
@@ -562,7 +562,7 @@ async fn image_to_inline_data(
         return Ok((mime_type, BASE64_STANDARD.encode(bytes)));
     }
 
-    Err(ProviderError::Internal(
+    Err(ProviderError::internal(
         "vertexai provider supports image_url as data URL or http(s) URL".to_string(),
     ))
 }
@@ -581,7 +581,7 @@ fn extract_message_text(content: &Content) -> Result<String, ProviderError> {
                         buf.push_str(text);
                     }
                     _ => {
-                        return Err(ProviderError::Internal(
+                        return Err(ProviderError::internal(
                             "system/developer message only supports text".to_string(),
                         ));
                     }
@@ -1079,9 +1079,10 @@ fn map_http_error(status: StatusCode, body: &[u8]) -> ProviderError {
             },
         };
     }
-    ProviderError::Internal(format!(
-        "vertexai request failed with status {status}: {text}"
-    ))
+    ProviderError::internal_with_upstream_status(
+        status,
+        format!("vertexai request failed with status {status}: {text}"),
+    )
 }
 
 fn new_response_id() -> String {

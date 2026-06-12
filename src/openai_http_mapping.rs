@@ -941,7 +941,7 @@ pub fn map_chat_error(err: ProviderError) -> Response {
                 .body(axum::body::Body::from(payload))
                 .expect("build error response")
         }
-        ProviderError::Internal(_) => openai_error_response(
+        ProviderError::Internal { .. } => openai_error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
             "internal error",
             Some("internal_error"),

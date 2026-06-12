@@ -193,12 +193,15 @@ fn map_openai_error(err: ClientError) -> ProviderError {
         ClientError::Api(ApiError::Unknown { status, .. }) if status.is_server_error() => {
             upstream_service_error("http_service_error")
         }
+        ClientError::Api(ApiError::Unknown { status, body }) => {
+            ProviderError::internal_with_upstream_status(status, body)
+        }
         ClientError::Timeout(_) => upstream_service_error("compute_resource_error"),
         ClientError::Http(error) if error.is_timeout() => {
             upstream_service_error("compute_resource_error")
         }
         ClientError::Http(_) => upstream_service_error("network_error"),
-        other => ProviderError::Internal(other.to_string()),
+        other => ProviderError::internal(other.to_string()),
     }
 }
 

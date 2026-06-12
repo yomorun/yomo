@@ -29,7 +29,7 @@ pub fn map_response(response: ChatCompletionResponse) -> Result<UnifiedResponse,
         .choices
         .into_iter()
         .next()
-        .ok_or_else(|| ProviderError::Internal("missing choices".to_string()))?;
+        .ok_or_else(|| ProviderError::internal("missing choices".to_string()))?;
     let finish_reason = map_finish_reason_to_provider(choice.finish_reason.as_deref());
     let output_text = extract_text(choice.message.content);
     let tool_calls = choice.message.tool_calls.map(|calls| {

@@ -336,7 +336,7 @@ fn trace_status_message_for_provider_error(err: &ProviderError, status: StatusCo
     if status == StatusCode::BAD_REQUEST {
         match err {
             ProviderError::Public { error, .. } => error.message.clone(),
-            ProviderError::Internal(_) => "internal_server_error".to_string(),
+            ProviderError::Internal { .. } => "internal_server_error".to_string(),
         }
     } else {
         "internal_server_error".to_string()
@@ -346,7 +346,7 @@ fn trace_status_message_for_provider_error(err: &ProviderError, status: StatusCo
 fn provider_error_status(err: &ProviderError) -> StatusCode {
     match err {
         ProviderError::Public { status, .. } => *status,
-        ProviderError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        ProviderError::Internal { .. } => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
 

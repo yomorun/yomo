@@ -108,7 +108,7 @@ pub fn build_tokenhub_provider(
 }
 
 fn validate_request(request: &ChatCompletionRequest) -> Result<(), ProviderError> {
-    validate_openai_request(request).map_err(ProviderError::Internal)
+    validate_openai_request(request).map_err(ProviderError::internal)
 }
 
 pub(crate) fn normalize_tokenhub_request(request: &mut ChatCompletionRequest) {
@@ -209,13 +209,20 @@ fn map_openai_error(err: ClientError) -> ProviderError {
                 error,
             }
         }
-        other => ProviderError::Internal(other.to_string()),
+        ClientError::Api(ApiError::OpenAI { status, error }) => {
+            ProviderError::internal_with_upstream_status(status, error.message)
+        }
+        ClientError::Api(ApiError::Unknown { status, body }) => {
+            ProviderError::internal_with_upstream_status(status, body)
+        }
+        other => ProviderError::internal(other.to_string()),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::llm_provider::openai_compatible::client::{ApiError, ClientError};
     use crate::openai_types::{Content, ToolCall, ToolCallFunction};
 
     fn request_with_messages(messages: Vec<Message>) -> ChatCompletionRequest {
@@ -427,5 +434,29 @@ mod tests {
         assert_eq!(map_reasoning_effort_to_tokenhub("medium"), "medium");
         assert_eq!(map_reasoning_effort_to_tokenhub("high"), "high");
         assert_eq!(map_reasoning_effort_to_tokenhub("max"), "high");
+    }
+
+    #[test]
+    fn map_openai_error_keeps_upstream_status_for_non_400() {
+        let err = ClientError::Api(ApiError::OpenAI {
+            status: reqwest::StatusCode::PAYMENT_REQUIRED,
+            error: crate::openai_types::ErrorDetail {
+                message: "endpoint is inactive: FREE_QUOTA_EXHAUSTED".to_string(),
+                r#type: "invalid_request_error".to_string(),
+                code: Some("FREE_QUOTA_EXHAUSTED".to_string()),
+                param: None,
+            },
+        });
+
+        match map_openai_error(err) {
+            ProviderError::Internal {
+                upstream_http_status,
+                message,
+            } => {
+                assert_eq!(upstream_http_status, StatusCode::PAYMENT_REQUIRED);
+                assert!(message.contains("FREE_QUOTA_EXHAUSTED"));
+            }
+            other => panic!("expected internal error, got {other:?}"),
+        }
     }
 }
