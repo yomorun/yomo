@@ -971,6 +971,10 @@ fn extract_text_from_parts(candidate: &VertexCandidate, thought: bool) -> Option
 }
 
 fn map_vertex_thinking_config(request: &ChatCompletionRequest) -> Option<VertexThinkingConfig> {
+    if should_disable_thinking_config_for_model(&request.model) {
+        return None;
+    }
+
     let thinking_level = request
         .reasoning_effort
         .as_deref()
@@ -980,6 +984,11 @@ fn map_vertex_thinking_config(request: &ChatCompletionRequest) -> Option<VertexT
         thinking_budget: None,
         thinking_level: Some(thinking_level),
     })
+}
+
+fn should_disable_thinking_config_for_model(model: &str) -> bool {
+    let model = model.strip_prefix("google/").unwrap_or(model);
+    model.starts_with("gemini-2.5-pro") || model.starts_with("gemini-2.5-flash")
 }
 
 fn map_reasoning_effort_to_vertex_level(effort: &str) -> Option<VertexThinkingLevel> {
@@ -1225,21 +1234,23 @@ mod tests {
 
     #[test]
     fn map_vertex_thinking_config_only_uses_reasoning_effort() {
-        let disabled: ChatCompletionRequest = serde_json::from_value(serde_json::json!({
-            "model": "gemini-2.5-flash",
-            "messages": [{"role": "user", "content": "hi"}],
-            "thinking": {"type": "disabled"}
-        }))
-        .expect("parse disabled request");
-        assert!(map_vertex_thinking_config(&disabled).is_none());
-
         let high_effort: ChatCompletionRequest = serde_json::from_value(serde_json::json!({
             "model": "gemini-2.5-flash",
             "messages": [{"role": "user", "content": "hi"}],
             "reasoning_effort": "high"
         }))
         .expect("parse effort request");
-        let config = map_vertex_thinking_config(&high_effort).expect("config must exist");
+        assert!(map_vertex_thinking_config(&high_effort).is_none());
+
+        let high_effort_other_model: ChatCompletionRequest =
+            serde_json::from_value(serde_json::json!({
+                "model": "gemini-3.0-pro",
+                "messages": [{"role": "user", "content": "hi"}],
+                "reasoning_effort": "high"
+            }))
+            .expect("parse effort request");
+        let config =
+            map_vertex_thinking_config(&high_effort_other_model).expect("config must exist");
         assert_eq!(config.thinking_budget, None);
         assert_eq!(config.thinking_level, Some(VertexThinkingLevel::High));
     }
