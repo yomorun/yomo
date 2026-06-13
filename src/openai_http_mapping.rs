@@ -166,6 +166,7 @@ pub fn stream_openai_chunks(
         let mut finalizer = StreamSpanFinalizer::new(root_span.clone(), trace_id.clone(), model.clone());
         let mut tool_call_index: HashMap<String, i32> = HashMap::new();
         let mut tool_call_delta_emitted: HashSet<String> = HashSet::new();
+        let mut tool_call_done_emitted: HashSet<String> = HashSet::new();
         let mut next_tool_index: i32 = 0;
 
         while let Some(item) = stream.next().await {
@@ -264,6 +265,9 @@ pub fn stream_openai_chunks(
                     });
                 }
                 UnifiedEvent::ToolCallDelta { id, name, arguments_delta } => {
+                    if tool_call_done_emitted.contains(&id) {
+                        continue;
+                    }
                     let first_delta_for_call = tool_call_delta_emitted.insert(id.clone());
                     let index = *tool_call_index.entry(id.clone()).or_insert_with(|| {
                         let current = next_tool_index;
@@ -308,6 +312,7 @@ pub fn stream_openai_chunks(
                 }
                 UnifiedEvent::ToolCallDone { id, name, arguments } => {
                     if tool_call_delta_emitted.contains(&id) {
+                        tool_call_done_emitted.insert(id);
                         continue;
                     }
                     let index = *tool_call_index.entry(id.clone()).or_insert_with(|| {
@@ -322,7 +327,7 @@ pub fn stream_openai_chunks(
                         refusal: None,
                         tool_calls: Some(vec![ChatCompletionChunkToolCall {
                             index,
-                            id: Some(id),
+                            id: Some(id.clone()),
                             r#type: Some("function".to_string()),
                             function: Some(ChatCompletionChunkToolCallFunction {
                                 name: Some(name),
@@ -346,6 +351,7 @@ pub fn stream_openai_chunks(
                         }],
                         usage: None,
                     });
+                    tool_call_done_emitted.insert(id);
                 }
                 UnifiedEvent::Usage { usage } => {
                     latest_usage_for_root = Some(usage.clone());
@@ -764,6 +770,62 @@ mod tests {
                 tool_call_chunk_count += 1;
             }
         }
+
+        assert_eq!(tool_call_chunk_count, 1);
+    }
+
+    #[tokio::test]
+    async fn suppresses_tool_call_delta_after_done_for_same_id() {
+        let events = vec![
+            Ok(UnifiedEvent::ResponseCreated {
+                id: "req-1".to_string(),
+                model: "m".to_string(),
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+            }),
+            Ok(UnifiedEvent::ToolCallDone {
+                id: "req-1-tool-0".to_string(),
+                name: "client_ping".to_string(),
+                arguments: "{\"message\":\"hello\"}".to_string(),
+            }),
+            Ok(UnifiedEvent::ToolCallDelta {
+                id: "req-1-tool-0".to_string(),
+                name: "client_ping".to_string(),
+                arguments_delta: "ignored".to_string(),
+            }),
+            Ok(UnifiedEvent::Completed {
+                finish_reason: Some("tool_calls".to_string()),
+            }),
+        ];
+
+        let stream = stream_openai_chunks(
+            Box::pin(futures_util::stream::iter(events)),
+            "trace-1".to_string(),
+            "m".to_string(),
+            Span::none(),
+        );
+
+        let mut payloads = Vec::new();
+        futures_util::pin_mut!(stream);
+        while let Some(item) = stream.next().await {
+            payloads.push(item.expect("stream chunk"));
+        }
+
+        let tool_call_chunk_count = payloads
+            .into_iter()
+            .filter_map(|payload| String::from_utf8(payload.to_vec()).ok())
+            .filter_map(|text| text.strip_prefix("data: ").map(str::to_string))
+            .filter(|json| json.trim() != "[DONE]")
+            .filter_map(|json| serde_json::from_str::<Value>(json.trim()).ok())
+            .filter(|value| {
+                value
+                    .get("choices")
+                    .and_then(Value::as_array)
+                    .and_then(|choices| choices.first())
+                    .and_then(|choice| choice.get("delta"))
+                    .and_then(|delta| delta.get("tool_calls"))
+                    .is_some()
+            })
+            .count();
 
         assert_eq!(tool_call_chunk_count, 1);
     }
