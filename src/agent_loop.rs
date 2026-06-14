@@ -872,12 +872,12 @@ where
     if let Some(error_msg) = error.as_ref() {
         tool_call_span.record("status", field::display("error"));
         tool_call_span.record("result_size", error_msg.as_bytes().len() as i64);
-        tool_call_span.record("result", field::display(error_msg));
+        tool_call_span.record("result", error_msg);
     } else {
         let result_text = result.as_deref().unwrap_or("");
         tool_call_span.record("status", field::display("ok"));
         tool_call_span.record("result_size", result_text.as_bytes().len() as i64);
-        tool_call_span.record("result", field::display(result_text));
+        tool_call_span.record("result", result_text);
     }
 
     let call_event = UnifiedEvent::ServerToolCall {
