@@ -12,12 +12,14 @@ use crate::usage_handler::EndpointUsage;
 
 #[derive(Default)]
 pub struct ToolCallState {
+    id: Option<String>,
     name: String,
     description: String,
     arguments: String,
 }
 
 pub struct ToolCallDeltaEvent {
+    pub id: Option<String>,
     pub name: String,
     pub description: String,
     pub arguments_delta: String,
@@ -107,8 +109,9 @@ pub fn map_stream_chunk(
         if let Some(tool_calls) = &delta.tool_calls {
             for call in tool_calls {
                 if let Some(delta_event) = map_tool_call_delta(call, &mut state.tool_call_state) {
-                    let call_id =
-                        ensure_tool_call_id(&state.request_id, delta_event.index as usize);
+                    let call_id = delta_event.id.unwrap_or_else(|| {
+                        ensure_tool_call_id(&state.request_id, delta_event.index as usize)
+                    });
                     events.push(UnifiedEvent::ToolCallDelta {
                         id: call_id,
                         name: delta_event.name,
@@ -134,7 +137,9 @@ pub fn map_stream_chunk(
 
         if finish_reason_value == "tool_calls" {
             for (index, call_state) in state.tool_call_state.drain() {
-                let call_id = ensure_tool_call_id(&state.request_id, index as usize);
+                let call_id = call_state
+                    .id
+                    .unwrap_or_else(|| ensure_tool_call_id(&state.request_id, index as usize));
                 events.push(UnifiedEvent::ToolCallDone {
                     id: call_id,
                     name: call_state.name,
@@ -206,6 +211,10 @@ fn map_tool_call_delta(
     let entry = state.entry(index).or_default();
     let mut arguments_delta = String::new();
 
+    if let Some(id) = &call.id {
+        entry.id = Some(id.clone());
+    }
+
     if let Some(ChatCompletionChunkToolCallFunction { name, arguments }) = &call.function {
         if let Some(name) = name {
             entry.name = name.clone();
@@ -217,6 +226,7 @@ fn map_tool_call_delta(
     }
 
     Some(ToolCallDeltaEvent {
+        id: entry.id.clone(),
         name: entry.name.clone(),
         description: entry.description.clone(),
         arguments_delta,
@@ -256,7 +266,8 @@ mod tests {
     use crate::llm_provider::UnifiedEvent;
     use crate::openai_types::{
         ChatCompletionChoice, ChatCompletionChunk, ChatCompletionChunkChoice,
-        ChatCompletionChunkDelta, ChatCompletionMessage, ChatCompletionResponse, Usage,
+        ChatCompletionChunkDelta, ChatCompletionChunkToolCall, ChatCompletionChunkToolCallFunction,
+        ChatCompletionMessage, ChatCompletionResponse, Usage,
     };
 
     #[test]
@@ -324,5 +335,155 @@ mod tests {
                 UnifiedEvent::ThinkingDelta { delta, .. } if delta == "think step"
             )
         }));
+    }
+
+    #[test]
+    fn map_stream_chunk_prefers_provider_tool_call_id() {
+        let mut state = StreamMapState::default();
+        let mut events = Vec::new();
+
+        let first_chunk = ChatCompletionChunk {
+            id: "req-1".to_string(),
+            created: Some(1),
+            model: "m".to_string(),
+            object: "chat.completion.chunk".to_string(),
+            system_fingerprint: None,
+            obfuscation: None,
+            choices: vec![ChatCompletionChunkChoice {
+                delta: ChatCompletionChunkDelta {
+                    role: Some(crate::openai_types::Role::Assistant),
+                    content: None,
+                    reasoning_content: None,
+                    refusal: None,
+                    tool_calls: Some(vec![ChatCompletionChunkToolCall {
+                        index: 0,
+                        id: Some("call_abc123".to_string()),
+                        r#type: Some("function".to_string()),
+                        function: Some(ChatCompletionChunkToolCallFunction {
+                            name: Some("client_ping".to_string()),
+                            arguments: Some("{\"".to_string()),
+                        }),
+                    }]),
+                },
+                finish_reason: None,
+                index: 0,
+                logprobs: None,
+            }],
+            usage: None,
+        };
+        events.extend(map_stream_chunk(first_chunk, &mut state));
+
+        let second_chunk = ChatCompletionChunk {
+            id: "req-1".to_string(),
+            created: Some(1),
+            model: "m".to_string(),
+            object: "chat.completion.chunk".to_string(),
+            system_fingerprint: None,
+            obfuscation: None,
+            choices: vec![ChatCompletionChunkChoice {
+                delta: ChatCompletionChunkDelta {
+                    role: None,
+                    content: None,
+                    reasoning_content: None,
+                    refusal: None,
+                    tool_calls: Some(vec![ChatCompletionChunkToolCall {
+                        index: 0,
+                        id: None,
+                        r#type: None,
+                        function: Some(ChatCompletionChunkToolCallFunction {
+                            name: None,
+                            arguments: Some("message\":\"ping\"}".to_string()),
+                        }),
+                    }]),
+                },
+                finish_reason: None,
+                index: 0,
+                logprobs: None,
+            }],
+            usage: None,
+        };
+        events.extend(map_stream_chunk(second_chunk, &mut state));
+
+        let finish_chunk = ChatCompletionChunk {
+            id: "req-1".to_string(),
+            created: Some(1),
+            model: "m".to_string(),
+            object: "chat.completion.chunk".to_string(),
+            system_fingerprint: None,
+            obfuscation: None,
+            choices: vec![ChatCompletionChunkChoice {
+                delta: ChatCompletionChunkDelta {
+                    role: None,
+                    content: None,
+                    reasoning_content: None,
+                    refusal: None,
+                    tool_calls: None,
+                },
+                finish_reason: Some("tool_calls".to_string()),
+                index: 0,
+                logprobs: None,
+            }],
+            usage: None,
+        };
+        events.extend(map_stream_chunk(finish_chunk, &mut state));
+
+        let delta_ids = events
+            .iter()
+            .filter_map(|event| match event {
+                UnifiedEvent::ToolCallDelta { id, .. } => Some(id.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(delta_ids, vec!["call_abc123", "call_abc123"]);
+
+        let done_ids = events
+            .iter()
+            .filter_map(|event| match event {
+                UnifiedEvent::ToolCallDone { id, .. } => Some(id.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(done_ids, vec!["call_abc123"]);
+    }
+
+    #[test]
+    fn map_stream_chunk_falls_back_to_synthesized_tool_call_id() {
+        let mut state = StreamMapState::default();
+
+        let first_chunk = ChatCompletionChunk {
+            id: "req-1".to_string(),
+            created: Some(1),
+            model: "m".to_string(),
+            object: "chat.completion.chunk".to_string(),
+            system_fingerprint: None,
+            obfuscation: None,
+            choices: vec![ChatCompletionChunkChoice {
+                delta: ChatCompletionChunkDelta {
+                    role: Some(crate::openai_types::Role::Assistant),
+                    content: None,
+                    reasoning_content: None,
+                    refusal: None,
+                    tool_calls: Some(vec![ChatCompletionChunkToolCall {
+                        index: 0,
+                        id: None,
+                        r#type: Some("function".to_string()),
+                        function: Some(ChatCompletionChunkToolCallFunction {
+                            name: Some("client_ping".to_string()),
+                            arguments: Some("{\"message\":\"ping\"}".to_string()),
+                        }),
+                    }]),
+                },
+                finish_reason: None,
+                index: 0,
+                logprobs: None,
+            }],
+            usage: None,
+        };
+        let events = map_stream_chunk(first_chunk, &mut state);
+        let delta_id = events.iter().find_map(|event| match event {
+            UnifiedEvent::ToolCallDelta { id, .. } => Some(id.as_str()),
+            _ => None,
+        });
+        assert_eq!(delta_id, Some("req-1-tool-0"));
     }
 }

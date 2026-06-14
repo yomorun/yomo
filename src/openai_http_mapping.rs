@@ -265,6 +265,11 @@ pub fn stream_openai_chunks(
                     });
                 }
                 UnifiedEvent::ToolCallDelta { id, name, arguments_delta } => {
+                    if response_id.is_empty() {
+                        if let Some(derived_id) = derive_response_id_from_tool_call_id(&id) {
+                            response_id = derived_id;
+                        }
+                    }
                     if tool_call_done_emitted.contains(&id) {
                         continue;
                     }
@@ -289,7 +294,11 @@ pub fn stream_openai_chunks(
                             },
                             function: Some(ChatCompletionChunkToolCallFunction {
                                 name: if first_delta_for_call { Some(name) } else { None },
-                                arguments: Some(arguments_delta),
+                                arguments: if arguments_delta.is_empty() {
+                                    None
+                                } else {
+                                    Some(arguments_delta)
+                                },
                             }),
                         }]),
                     };
@@ -311,6 +320,11 @@ pub fn stream_openai_chunks(
                     });
                 }
                 UnifiedEvent::ToolCallDone { id, name, arguments } => {
+                    if response_id.is_empty() {
+                        if let Some(derived_id) = derive_response_id_from_tool_call_id(&id) {
+                            response_id = derived_id;
+                        }
+                    }
                     if tool_call_delta_emitted.contains(&id) {
                         tool_call_done_emitted.insert(id);
                         continue;
@@ -331,7 +345,11 @@ pub fn stream_openai_chunks(
                             r#type: Some("function".to_string()),
                             function: Some(ChatCompletionChunkToolCallFunction {
                                 name: Some(name),
-                                arguments: Some(arguments),
+                                arguments: if arguments.is_empty() {
+                                    None
+                                } else {
+                                    Some(arguments)
+                                },
                             }),
                         }]),
                     };
@@ -601,6 +619,12 @@ fn map_finish_reason(reason: &str) -> String {
         _ => "other",
     }
     .to_string()
+}
+
+fn derive_response_id_from_tool_call_id(tool_call_id: &str) -> Option<String> {
+    tool_call_id
+        .split_once("-tool-")
+        .map(|(prefix, _)| prefix.to_string())
 }
 
 #[cfg(test)]
@@ -972,6 +996,156 @@ mod tests {
                 .and_then(|value| value.get("arguments"))
                 .and_then(Value::as_str),
             Some("message\":\"hello\"}")
+        );
+    }
+
+    #[tokio::test]
+    async fn derives_response_id_from_tool_call_id_when_missing_response_created() {
+        let events = vec![
+            Ok(UnifiedEvent::ToolCallDelta {
+                id: "req-1-tool-0".to_string(),
+                name: "client_ping".to_string(),
+                arguments_delta: "{\"message\":\"hello\"}".to_string(),
+            }),
+            Ok(UnifiedEvent::Completed {
+                finish_reason: Some("tool_calls".to_string()),
+            }),
+        ];
+
+        let stream = stream_openai_chunks(
+            Box::pin(futures_util::stream::iter(events)),
+            "trace-1".to_string(),
+            "m".to_string(),
+            Span::none(),
+        );
+
+        let mut payloads = Vec::new();
+        futures_util::pin_mut!(stream);
+        while let Some(item) = stream.next().await {
+            payloads.push(item.expect("stream chunk"));
+        }
+
+        let tool_chunk = payloads
+            .into_iter()
+            .filter_map(|payload| String::from_utf8(payload.to_vec()).ok())
+            .filter_map(|text| text.strip_prefix("data: ").map(str::to_string))
+            .filter(|json| json.trim() != "[DONE]")
+            .filter_map(|json| serde_json::from_str::<Value>(json.trim()).ok())
+            .find(|value| {
+                value
+                    .get("choices")
+                    .and_then(Value::as_array)
+                    .and_then(|choices| choices.first())
+                    .and_then(|choice| choice.get("delta"))
+                    .and_then(|delta| delta.get("tool_calls"))
+                    .is_some()
+            })
+            .expect("tool call chunk");
+
+        assert_eq!(tool_chunk.get("id").and_then(Value::as_str), Some("req-1"));
+    }
+
+    #[tokio::test]
+    async fn does_not_set_response_id_from_provider_tool_call_id() {
+        let events = vec![
+            Ok(UnifiedEvent::ToolCallDelta {
+                id: "call_abc123".to_string(),
+                name: "client_ping".to_string(),
+                arguments_delta: "{\"message\":\"hello\"}".to_string(),
+            }),
+            Ok(UnifiedEvent::Completed {
+                finish_reason: Some("tool_calls".to_string()),
+            }),
+        ];
+
+        let stream = stream_openai_chunks(
+            Box::pin(futures_util::stream::iter(events)),
+            "trace-1".to_string(),
+            "m".to_string(),
+            Span::none(),
+        );
+
+        let mut payloads = Vec::new();
+        futures_util::pin_mut!(stream);
+        while let Some(item) = stream.next().await {
+            payloads.push(item.expect("stream chunk"));
+        }
+
+        let tool_chunk = payloads
+            .into_iter()
+            .filter_map(|payload| String::from_utf8(payload.to_vec()).ok())
+            .filter_map(|text| text.strip_prefix("data: ").map(str::to_string))
+            .filter(|json| json.trim() != "[DONE]")
+            .filter_map(|json| serde_json::from_str::<Value>(json.trim()).ok())
+            .find(|value| {
+                value
+                    .get("choices")
+                    .and_then(Value::as_array)
+                    .and_then(|choices| choices.first())
+                    .and_then(|choice| choice.get("delta"))
+                    .and_then(|delta| delta.get("tool_calls"))
+                    .is_some()
+            })
+            .expect("tool call chunk");
+
+        assert_eq!(tool_chunk.get("id").and_then(Value::as_str), Some(""));
+    }
+
+    #[tokio::test]
+    async fn omits_empty_tool_call_arguments_in_delta_chunk() {
+        let events = vec![
+            Ok(UnifiedEvent::ResponseCreated {
+                id: "req-1".to_string(),
+                model: "m".to_string(),
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+            }),
+            Ok(UnifiedEvent::ToolCallDelta {
+                id: "req-1-tool-0".to_string(),
+                name: "client_ping".to_string(),
+                arguments_delta: "".to_string(),
+            }),
+            Ok(UnifiedEvent::Completed {
+                finish_reason: Some("tool_calls".to_string()),
+            }),
+        ];
+
+        let stream = stream_openai_chunks(
+            Box::pin(futures_util::stream::iter(events)),
+            "trace-1".to_string(),
+            "m".to_string(),
+            Span::none(),
+        );
+
+        let mut payloads = Vec::new();
+        futures_util::pin_mut!(stream);
+        while let Some(item) = stream.next().await {
+            payloads.push(item.expect("stream chunk"));
+        }
+
+        let tool_call = payloads
+            .into_iter()
+            .filter_map(|payload| String::from_utf8(payload.to_vec()).ok())
+            .filter_map(|text| text.strip_prefix("data: ").map(str::to_string))
+            .filter(|json| json.trim() != "[DONE]")
+            .filter_map(|json| serde_json::from_str::<Value>(json.trim()).ok())
+            .filter_map(|value| {
+                value
+                    .get("choices")
+                    .and_then(Value::as_array)
+                    .and_then(|choices| choices.first())
+                    .and_then(|choice| choice.get("delta"))
+                    .and_then(|delta| delta.get("tool_calls"))
+                    .and_then(Value::as_array)
+                    .and_then(|calls| calls.first().cloned())
+            })
+            .next()
+            .expect("tool call chunk");
+
+        assert!(
+            tool_call
+                .get("function")
+                .and_then(|value| value.get("arguments"))
+                .is_none()
         );
     }
 
