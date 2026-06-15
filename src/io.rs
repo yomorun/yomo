@@ -8,7 +8,7 @@ use tokio::{
     join,
 };
 
-const MAX_FRAME_SIZE: u32 = 16 * 1024;
+const MAX_FRAME_SIZE: u32 = 4 * 1024 * 1024;
 
 /// Send bytes with length-prefixed framing
 ///
