@@ -95,6 +95,50 @@ struct ToolMaps {
     source_map: HashMap<String, ToolSource>,
 }
 
+struct StreamLoopState {
+    call_count: usize,
+    round_usages: Vec<Value>,
+    last_finish_reason: Option<String>,
+}
+
+impl StreamLoopState {
+    fn new() -> Self {
+        Self {
+            call_count: 0,
+            round_usages: Vec::new(),
+            last_finish_reason: None,
+        }
+    }
+}
+
+struct StreamRoundState {
+    tool_calls: Vec<ProviderToolCall>,
+    tool_call_index: HashMap<String, usize>,
+    usage: Option<Value>,
+    finish_reason: Option<String>,
+    saw_tool_call: bool,
+    emitted_client_tool: bool,
+    assistant_output_content: String,
+    assistant_reasoning_content: String,
+    request_id: Option<String>,
+}
+
+impl StreamRoundState {
+    fn new() -> Self {
+        Self {
+            tool_calls: Vec::new(),
+            tool_call_index: HashMap::new(),
+            usage: None,
+            finish_reason: None,
+            saw_tool_call: false,
+            emitted_client_tool: false,
+            assistant_output_content: String::new(),
+            assistant_reasoning_content: String::new(),
+            request_id: None,
+        }
+    }
+}
+
 pub async fn run_agent_loop<A, M>(
     provider: Arc<dyn Provider>,
     request: ChatCompletionRequest,
@@ -319,16 +363,14 @@ where
 {
     let parent_span = Span::current();
     let stream = async_stream::try_stream! {
-        let mut call_count = 0usize;
-        let mut round_usages: Vec<Value> = Vec::new();
-        let mut last_finish_reason: Option<String> = None;
+        let mut loop_state = StreamLoopState::new();
         let model_id = request.model.clone();
         loop {
             let llm_chat_span = info_span!(
                 parent: &parent_span,
                 "llm.chat",
                 trace_id = %trace_id,
-                round = (call_count + 1) as i64,
+                round = (loop_state.call_count + 1) as i64,
                 streaming = true,
                 model = %request.model,
                 request_id = field::Empty,
@@ -339,49 +381,41 @@ where
 
             let tool_maps = build_tool_maps(&request, server_tools.as_ref())?;
             request.tools = tool_maps.merged_tools.clone();
-            if call_count > 0 {
+            if loop_state.call_count > 0 {
                 request.tool_choice = None;
             }
 
-            log_round_request(call_count + 1, true, &request, &trace_id);
+            log_round_request(loop_state.call_count + 1, true, &request, &trace_id);
 
             let mut provider_stream = provider
                 .stream(request.clone())
                 .instrument(llm_chat_span.clone())
                 .await?;
 
-            let mut tool_calls: Vec<ProviderToolCall> = Vec::new();
-            let mut tool_call_index: HashMap<String, usize> = HashMap::new();
-            let mut usage = None;
-            let mut finish_reason = None;
-            let mut saw_tool_call = false;
-            let mut emitted_client_tool = false;
-            let mut assistant_output_content = String::new();
-            let mut assistant_reasoning_content = String::new();
-            let mut request_id: Option<String> = None;
+            let mut round_state = StreamRoundState::new();
 
             while let Some(item) = provider_stream.next().await {
                 let event = item?;
                 match &event {
                     UnifiedEvent::MessageDelta { id, delta } => {
-                        request_id = Some(id.clone());
-                        assistant_output_content.push_str(delta);
+                        round_state.request_id = Some(id.clone());
+                        round_state.assistant_output_content.push_str(delta);
                     }
                     UnifiedEvent::ThinkingDelta { id, delta } => {
-                        request_id = Some(id.clone());
-                        assistant_reasoning_content.push_str(delta);
+                        round_state.request_id = Some(id.clone());
+                        round_state.assistant_reasoning_content.push_str(delta);
                     }
                     UnifiedEvent::ResponseCreated { id, .. }
                     | UnifiedEvent::ResponseInProgress { id, .. }
                     | UnifiedEvent::MessageStart { id, .. }
                     | UnifiedEvent::MessageStop { id, .. } => {
-                        request_id = Some(id.clone());
+                        round_state.request_id = Some(id.clone());
                     }
                     UnifiedEvent::ToolCallDelta { id, name, arguments_delta } => {
-                        saw_tool_call = true;
-                        let index = *tool_call_index.entry(id.clone()).or_insert_with(|| {
-                            let current = tool_calls.len();
-                            tool_calls.push(ProviderToolCall {
+                        round_state.saw_tool_call = true;
+                        let index = *round_state.tool_call_index.entry(id.clone()).or_insert_with(|| {
+                            let current = round_state.tool_calls.len();
+                            round_state.tool_calls.push(ProviderToolCall {
                                 id: Some(id.clone()),
                                 name: name.clone(),
                                 description: String::new(),
@@ -398,16 +432,16 @@ where
                             ToolSource::Server
                         );
                         if is_server {
-                            if let Some(call) = tool_calls.get_mut(index) {
+                            if let Some(call) = round_state.tool_calls.get_mut(index) {
                                 call.name = name.clone();
                                 call.arguments.push_str(arguments_delta);
                             }
                         } else {
-                            if let Some(call) = tool_calls.get_mut(index) {
+                            if let Some(call) = round_state.tool_calls.get_mut(index) {
                                 call.name = name.clone();
                                 call.arguments.push_str(arguments_delta);
                             }
-                            emitted_client_tool = true;
+                            round_state.emitted_client_tool = true;
                             yield UnifiedEvent::ToolCallDelta {
                                 id: id.clone(),
                                 name: name.clone(),
@@ -416,10 +450,10 @@ where
                         }
                     }
                     UnifiedEvent::ToolCallDone { id, name, arguments } => {
-                        saw_tool_call = true;
-                        let index = *tool_call_index.entry(id.clone()).or_insert_with(|| {
-                            let current = tool_calls.len();
-                            tool_calls.push(ProviderToolCall {
+                        round_state.saw_tool_call = true;
+                        let index = *round_state.tool_call_index.entry(id.clone()).or_insert_with(|| {
+                            let current = round_state.tool_calls.len();
+                            round_state.tool_calls.push(ProviderToolCall {
                                 id: Some(id.clone()),
                                 name: name.clone(),
                                 description: String::new(),
@@ -436,16 +470,16 @@ where
                             ToolSource::Server
                         );
                         if is_server {
-                            if let Some(call) = tool_calls.get_mut(index) {
+                            if let Some(call) = round_state.tool_calls.get_mut(index) {
                                 call.name = name.clone();
                                 call.arguments = arguments.clone();
                             }
                         } else {
-                            if let Some(call) = tool_calls.get_mut(index) {
+                            if let Some(call) = round_state.tool_calls.get_mut(index) {
                                 call.name = name.clone();
                                 call.arguments = arguments.clone();
                             }
-                            emitted_client_tool = true;
+                            round_state.emitted_client_tool = true;
                             yield UnifiedEvent::ToolCallDone {
                                 id: id.clone(),
                                 name: name.clone(),
@@ -454,42 +488,22 @@ where
                         }
                     }
                     UnifiedEvent::Usage { usage: chunk_usage } => {
-                        usage = Some(chunk_usage.clone().into_payload("/chat/completions"));
+                        round_state.usage = Some(chunk_usage.clone().into_payload("/chat/completions"));
                     }
                     UnifiedEvent::Completed { finish_reason: reason } => {
-                        finish_reason = reason.clone();
-                        last_finish_reason = reason.clone();
+                        round_state.finish_reason = reason.clone();
+                        loop_state.last_finish_reason = reason.clone();
                     }
                     _ => {}
                 }
 
-                if !saw_tool_call {
+                if !round_state.saw_tool_call {
                     match event {
                         UnifiedEvent::Usage { usage: chunk_usage } => {
                             let processed_usage = chunk_usage.into_payload("/chat/completions");
-                            let usage_value = processed_usage.clone();
-                            let modified_usage = config
-                                .usage_handler
-                                .on_usage(
-                                    "/chat/completions",
-                                    &model_id,
-                                    label.as_deref(),
-                                    request_id.as_deref().unwrap_or(""),
-                                    &trace_id,
-                                    (*metadata).clone(),
-                                    EndpointUsage::from_endpoint_payload(
-                                        "/chat/completions",
-                                        usage_value,
-                                    )
-                                    .expect("agent_loop expected chat/completions usage payload"),
-                                )
-                                .instrument(llm_chat_span.clone())
-                                .await
-                                .into_payload("/chat/completions");
-                            let handled_usage = modified_usage;
-                            usage = Some(handled_usage.clone());
-                            let mut usage_with_history = round_usages.clone();
-                            usage_with_history.push(handled_usage.clone());
+                            round_state.usage = Some(processed_usage.clone());
+                            let mut usage_with_history = loop_state.round_usages.clone();
+                            usage_with_history.push(processed_usage);
                             let usage_with_offset =
                                 aggregate_usages_to_value("/chat/completions", &usage_with_history);
                             yield UnifiedEvent::Usage {
@@ -512,61 +526,57 @@ where
                 }
             }
 
-            call_count += 1;
-            if let Some(id) = request_id.as_deref() {
-                llm_chat_span.record("request_id", field::display(id));
+            loop_state.call_count += 1;
+            if let Some(id) = round_state.request_id.as_deref() {
+                llm_chat_span.record("request_id", id);
             }
             llm_chat_span.record(
                 "finish_reason",
-                field::display(finish_reason.as_deref().unwrap_or("")),
+                round_state.finish_reason.as_deref().unwrap_or(""),
             );
-            if let Some(current_usage) = &usage {
+            if let Some(current_usage) = &round_state.usage {
                 record_flattened_json_attributes(
                     &llm_chat_span,
                     "usage",
                     current_usage,
                 );
-                if saw_tool_call {
-                    let modified_usage = config
-                        .usage_handler
-                        .on_usage(
+                let modified_usage = config
+                    .usage_handler
+                    .on_usage(
+                        "/chat/completions",
+                        &model_id,
+                        label.as_deref(),
+                        round_state.request_id.as_deref().unwrap_or(""),
+                        &trace_id,
+                        (*metadata).clone(),
+                        EndpointUsage::from_endpoint_payload(
                             "/chat/completions",
-                            &model_id,
-                            label.as_deref(),
-                            request_id.as_deref().unwrap_or(""),
-                            &trace_id,
-                            (*metadata).clone(),
-                            EndpointUsage::from_endpoint_payload(
-                                "/chat/completions",
-                                current_usage.clone(),
-                            )
-                            .expect("agent_loop expected chat/completions usage payload"),
+                            current_usage.clone(),
                         )
-                        .instrument(llm_chat_span.clone())
-                        .await
-                        .into_payload("/chat/completions");
-                    round_usages.push(modified_usage);
-                } else {
-                    round_usages.push(current_usage.clone());
-                }
+                        .expect("agent_loop expected chat/completions usage payload"),
+                    )
+                    .instrument(llm_chat_span.clone())
+                    .await
+                    .into_payload("/chat/completions");
+                loop_state.round_usages.push(modified_usage);
             }
             log_llm_call(
-                call_count,
+                loop_state.call_count,
                 &request.model,
                 true,
-                tool_calls.len(),
-                usage.as_ref(),
+                round_state.tool_calls.len(),
+                round_state.usage.as_ref(),
                 &trace_id,
             );
-            if call_count >= config.max_calls {
-                if !tool_calls.is_empty() {
-                    if !emitted_client_tool {
-                        let events = build_client_tool_events(&finish_reason, &tool_calls);
+            if loop_state.call_count >= config.max_calls {
+                if !round_state.tool_calls.is_empty() {
+                    if !round_state.emitted_client_tool {
+                        let events = build_client_tool_events(&round_state.finish_reason, &round_state.tool_calls);
                         for event in events {
                             yield event;
                         }
                     } else if let Some(completed) =
-                        build_completed_event(&finish_reason)
+                        build_completed_event(&round_state.finish_reason)
                     {
                         yield completed;
                     }
@@ -574,34 +584,34 @@ where
                 break;
             }
 
-            if tool_calls.is_empty() {
+            if round_state.tool_calls.is_empty() {
                 break;
             }
 
-            let (server_calls, client_calls) = split_tool_calls(&tool_calls, &tool_maps.source_map);
+            let (server_calls, client_calls) = split_tool_calls(&round_state.tool_calls, &tool_maps.source_map);
             llm_chat_span.record("tool_calls.server.count", server_calls.len() as i64);
             llm_chat_span.record("tool_calls.client.count", client_calls.len() as i64);
             if server_calls.is_empty() {
-                if !emitted_client_tool {
-                    let events = build_client_tool_events(&finish_reason, &client_calls);
+                if !round_state.emitted_client_tool {
+                    let events = build_client_tool_events(&round_state.finish_reason, &client_calls);
                     for event in events {
                         yield event;
                     }
                 } else if let Some(completed) =
-                    build_completed_event(&finish_reason)
+                    build_completed_event(&round_state.finish_reason)
                 {
                     yield completed;
                 }
                 break;
             }
             if !client_calls.is_empty() {
-                if !emitted_client_tool {
-                    let events = build_client_tool_events(&finish_reason, &client_calls);
+                if !round_state.emitted_client_tool {
+                    let events = build_client_tool_events(&round_state.finish_reason, &client_calls);
                     for event in events {
                         yield event;
                     }
                 } else if let Some(completed) =
-                    build_completed_event(&finish_reason)
+                    build_completed_event(&round_state.finish_reason)
                 {
                     yield completed;
                 }
@@ -613,14 +623,14 @@ where
             tool_messages.push(build_assistant_tool_call_message(
                 &request_id,
                 &server_calls,
-                Some(assistant_output_content.clone()),
-                Some(assistant_reasoning_content.clone()),
+                Some(round_state.assistant_output_content.clone()),
+                Some(round_state.assistant_reasoning_content.clone()),
             ));
             let tool_calls_span = info_span!(
                 parent: &parent_span,
                 "tool.calls",
                 trace_id = %trace_id,
-                round = call_count as i64,
+                round = loop_state.call_count as i64,
                 streaming = true,
                 tool_count = server_calls.len() as i64,
             );
@@ -640,11 +650,11 @@ where
             tool_messages.extend(tool_messages_from_invoker);
             request.messages.extend(tool_messages);
         }
-        let total_usage = aggregate_to_openai("/chat/completions", &round_usages);
+        let total_usage = aggregate_to_openai("/chat/completions", &loop_state.round_usages);
         info!(
             "http.request.end; status_code=200 model_id={} finish_reason={} prompt_tokens={} completion_tokens={} trace_id={}",
             model_id,
-            last_finish_reason.as_deref().unwrap_or(""),
+            loop_state.last_finish_reason.as_deref().unwrap_or(""),
             total_usage.prompt_tokens,
             total_usage.completion_tokens,
             trace_id
@@ -1078,7 +1088,150 @@ fn log_round_request(
 
 #[cfg(test)]
 mod tests {
-    use super::compose_assistant_tool_call_content;
+    use std::collections::HashMap;
+    use std::pin::Pin;
+    use std::sync::{Arc, Mutex};
+
+    use async_trait::async_trait;
+    use futures_core::Stream;
+    use futures_util::{StreamExt, stream};
+
+    use super::{
+        AgentLoopConfig, AgentLoopResult, compose_assistant_tool_call_content, run_agent_loop,
+    };
+    use crate::llm_provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
+    use crate::openai_types::{
+        ChatCompletionRequest, Content, Message, Role, Usage as OpenAIUsage,
+    };
+    use crate::tool_invoker::ToolInvoker;
+    use crate::types::{RequestHeaders, ToolRequest, ToolResponse};
+    use crate::usage_handler::{EndpointUsage, UsageHandler};
+
+    #[derive(Clone)]
+    struct StaticStreamProvider {
+        events: Arc<Vec<UnifiedEvent>>,
+    }
+
+    #[async_trait]
+    impl Provider for StaticStreamProvider {
+        fn model_id(&self) -> &str {
+            "mock-model"
+        }
+
+        async fn complete(
+            &self,
+            _request: ChatCompletionRequest,
+        ) -> Result<UnifiedResponse, ProviderError> {
+            Err(ProviderError::internal("unused in stream test"))
+        }
+
+        async fn stream<'a>(
+            &'a self,
+            _request: ChatCompletionRequest,
+        ) -> Result<
+            Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
+            ProviderError,
+        > {
+            let events = self
+                .events
+                .iter()
+                .cloned()
+                .map(Ok::<UnifiedEvent, ProviderError>)
+                .collect::<Vec<_>>();
+            Ok(Box::pin(stream::iter(events)))
+        }
+    }
+
+    #[derive(Default)]
+    struct NoopToolInvoker;
+
+    #[async_trait]
+    impl ToolInvoker for NoopToolInvoker {
+        async fn invoke(&self, _headers: RequestHeaders, _request: ToolRequest) -> ToolResponse {
+            ToolResponse::default()
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct RecordingUsageHandler {
+        calls: Arc<Mutex<Vec<serde_json::Value>>>,
+    }
+
+    impl RecordingUsageHandler {
+        fn captured(&self) -> Vec<serde_json::Value> {
+            self.calls.lock().expect("usage calls lock").clone()
+        }
+    }
+
+    #[async_trait]
+    impl UsageHandler<()> for RecordingUsageHandler {
+        async fn on_usage(
+            &self,
+            endpoint: &str,
+            _model_id: &str,
+            _label: Option<&str>,
+            _request_id: &str,
+            _trace_id: &str,
+            _metadata: (),
+            usage: EndpointUsage,
+        ) -> EndpointUsage {
+            self.calls
+                .lock()
+                .expect("usage calls lock")
+                .push(usage.clone().into_payload(endpoint));
+            usage
+        }
+    }
+
+    fn stream_request() -> ChatCompletionRequest {
+        ChatCompletionRequest {
+            model: "mock-model".to_string(),
+            messages: vec![Message {
+                role: Role::User,
+                content: Content::Text("hello".to_string()),
+                reasoning_content: None,
+                tool_call_id: None,
+                tool_calls: None,
+            }],
+            n: None,
+            temperature: None,
+            top_p: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            logprobs: None,
+            top_logprobs: None,
+            modalities: None,
+            audio: None,
+            max_completion_tokens: None,
+            stop: None,
+            response_format: None,
+            thinking: None,
+            reasoning_effort: None,
+            chat_template_kwargs: None,
+            prediction: None,
+            verbosity: None,
+            tools: None,
+            tool_choice: None,
+            allowed_tools: None,
+            parallel_tool_calls: None,
+            service_tier: None,
+            seed: None,
+            stream: Some(true),
+            stream_options: None,
+            metadata: None,
+            agent_context: None,
+        }
+    }
+
+    fn usage(prompt_tokens: i64, completion_tokens: i64, total_tokens: i64) -> EndpointUsage {
+        EndpointUsage::ChatCompletions(OpenAIUsage {
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
+            prompt_tokens_details: None,
+            completion_tokens_details: None,
+        })
+    }
 
     #[test]
     fn compose_assistant_tool_call_content_wraps_reasoning_in_think_tag() {
@@ -1094,5 +1247,68 @@ mod tests {
     fn compose_assistant_tool_call_content_falls_back_to_tool_call_text() {
         let content = compose_assistant_tool_call_content(None, None);
         assert_eq!(content, "Tool call");
+    }
+
+    #[tokio::test]
+    async fn run_agent_loop_stream_calls_on_usage_once_per_round_with_tool_events() {
+        let usage_handler = RecordingUsageHandler::default();
+        let provider = StaticStreamProvider {
+            events: Arc::new(vec![
+                UnifiedEvent::MessageStart {
+                    id: "req-1".to_string(),
+                    role: "assistant".to_string(),
+                },
+                UnifiedEvent::Usage {
+                    usage: usage(11, 3, 14),
+                },
+                UnifiedEvent::ToolCallDone {
+                    id: "tool-1".to_string(),
+                    name: "client_tool".to_string(),
+                    arguments: "{}".to_string(),
+                },
+                UnifiedEvent::Usage {
+                    usage: usage(22, 4, 26),
+                },
+                UnifiedEvent::Completed {
+                    finish_reason: Some("tool_calls".to_string()),
+                },
+            ]),
+        };
+        let config = AgentLoopConfig {
+            max_calls: 1,
+            usage_handler: Arc::new(usage_handler.clone()),
+            ..AgentLoopConfig::default()
+        };
+
+        let result = run_agent_loop::<(), ()>(
+            Arc::new(provider),
+            stream_request(),
+            HashMap::new(),
+            Arc::new(NoopToolInvoker),
+            (),
+            "trace-1".to_string(),
+            None,
+            config,
+        )
+        .await
+        .expect("stream run should succeed");
+
+        let AgentLoopResult::Stream { mut events } = result else {
+            panic!("expected stream result");
+        };
+        while let Some(event) = events.next().await {
+            event.expect("stream event should be ok");
+        }
+
+        let calls = usage_handler.captured();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(
+            calls[0],
+            serde_json::json!({
+                "prompt_tokens": 22,
+                "completion_tokens": 4,
+                "total_tokens": 26
+            })
+        );
     }
 }
