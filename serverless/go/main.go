@@ -38,7 +38,7 @@ type YomoResponseHeaders struct {
 }
 
 type YomoResponseBody struct {
-	Result   any    `json:"result"`
+	Result   string `json:"result"`
 	ErrorMsg string `json:"error_msg,omitempty"`
 }
 
@@ -172,7 +172,8 @@ func yomoHandleStream(handlerMode int, conn io.ReadWriteCloser) error {
 	case 1:
 		result, err := yomoHandler1(args)
 		if err == nil {
-			resBody.Result = result
+			buf, _ := json.Marshal(result)
+			resBody.Result = string(buf)
 		} else {
 			resBody.ErrorMsg = err.Error()
 		}
@@ -187,7 +188,8 @@ func yomoHandleStream(handlerMode int, conn io.ReadWriteCloser) error {
 
 		result, err := yomoHandler2(args, agentContext)
 		if err == nil {
-			resBody.Result = result
+			buf, _ := json.Marshal(result)
+			resBody.Result = string(buf)
 		} else {
 			resBody.ErrorMsg = err.Error()
 		}
