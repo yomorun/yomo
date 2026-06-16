@@ -1,4 +1,5 @@
 pub mod provider;
+pub mod metadata_headers;
 pub mod providers;
 pub mod registry;
 pub mod selection;

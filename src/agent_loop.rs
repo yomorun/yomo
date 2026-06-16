@@ -21,6 +21,7 @@ use crate::llm_provider::{
     FinishReason, Provider, ProviderError, ToolCall as ProviderToolCall, UnifiedEvent,
     UnifiedResponse,
 };
+use crate::llm_provider::provider::ProviderMetadataExt;
 use crate::openai_types::{
     ChatCompletionRequest, Content, FunctionDefinition, Message, Role, ToolCall as OpenAIToolCall,
     ToolCallFunction, ToolDefinition, Usage,
@@ -178,6 +179,7 @@ where
         log_round_request(call_count + 1, false, &request, &trace_id);
 
         let mut response = provider
+            .with_metadata(&metadata)
             .complete(request.clone())
             .instrument(llm_chat_span.clone())
             .await?;
@@ -345,7 +347,7 @@ where
 
             log_round_request(call_count + 1, true, &request, &trace_id);
 
-            let mut provider_stream = provider
+            let mut provider_stream = provider.with_metadata(&metadata)
                 .stream(request.clone())
                 .instrument(llm_chat_span.clone())
                 .await?;

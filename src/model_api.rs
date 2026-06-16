@@ -14,6 +14,8 @@ use tracing::Instrument;
 
 use crate::metadata_mgr::MetadataMgr;
 use crate::metadata_mgr::MetadataMgrImpl;
+use crate::model_api_provider::metadata_headers::MetadataHeaderMapper;
+use crate::model_api_provider::metadata_headers::NoopMetadataHeaderMapper;
 use crate::model_api_provider::{
     ModelApiProvider, ProviderBody, ProviderRegistry, ProviderRequest, SelectionError,
 };
@@ -28,6 +30,7 @@ pub struct ModelApiHandlerState<A, M> {
     pub provider_registry: Arc<ProviderRegistry<M>>,
     pub usage_handler: Arc<dyn UsageHandler<M>>,
     pub metadata_mgr: Arc<dyn MetadataMgr<A, M>>,
+    pub metadata_header_mapper: Arc<dyn MetadataHeaderMapper<M>>,
     pub request_span_starter: Arc<dyn RequestSpanStarter<M>>,
 }
 
@@ -37,6 +40,7 @@ impl<A, M> Clone for ModelApiHandlerState<A, M> {
             provider_registry: Arc::clone(&self.provider_registry),
             usage_handler: Arc::clone(&self.usage_handler),
             metadata_mgr: Arc::clone(&self.metadata_mgr),
+            metadata_header_mapper: Arc::clone(&self.metadata_header_mapper),
             request_span_starter: Arc::clone(&self.request_span_starter),
         }
     }
@@ -181,7 +185,11 @@ where
     let provider_request = ProviderRequest {
         method: Method::POST,
         endpoint_path: endpoint_path.to_string(),
-        headers: headers.clone(),
+        headers: {
+            let mut provider_headers = headers.clone();
+            provider_headers.extend(state.metadata_header_mapper.headers_for(&metadata));
+            provider_headers
+        },
         body,
         is_stream,
         content_type,
@@ -669,6 +677,7 @@ pub async fn build_model_api(
         provider_registry: Arc::new(provider_registry),
         usage_handler,
         metadata_mgr: Arc::new(MetadataMgrImpl::new()),
+        metadata_header_mapper: Arc::new(NoopMetadataHeaderMapper),
         request_span_starter: Arc::new(DefaultRequestSpanStarter),
     };
 

@@ -190,3 +190,14 @@ pub trait Provider: Send + Sync {
         ProviderError,
     >;
 }
+
+pub trait ProviderMetadataExt: Provider {
+    fn with_metadata<M>(&self, _metadata: &M) -> &Self
+    where
+        M: Clone + Send + Sync + 'static,
+    {
+        self
+    }
+}
+
+impl<T> ProviderMetadataExt for T where T: Provider + ?Sized {}
