@@ -172,7 +172,7 @@ async function handleConnection(socket: Socket, toolModule: ToolModule): Promise
       extension: "",
     } satisfies ResponseHeaders)
     writeFrame(socket, {
-      result: JSON.stringify(result),
+      result,
       ...(error_msg ? { error_msg } : {}),
     } satisfies ResponseBody)
     socket.end()
