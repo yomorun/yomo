@@ -181,7 +181,7 @@ pub fn stream_openai_chunks(
             };
             match event {
                 UnifiedEvent::ResponseCreated { id, model: resp_model, created_at: resp_created } => {
-                    if response_id.is_empty() {
+                    if response_id.is_empty() && !id.trim().is_empty() {
                         response_id = id;
                     }
                     if !resp_model.trim().is_empty() {
@@ -206,7 +206,7 @@ pub fn stream_openai_chunks(
                 UnifiedEvent::ResponseInProgress { .. } => {}
                 UnifiedEvent::MessageStart { .. } => {}
                 UnifiedEvent::MessageDelta { id, delta } => {
-                    if response_id.is_empty() {
+                    if response_id.is_empty() && !id.trim().is_empty() {
                         response_id = id.clone();
                     }
                     if delta.is_empty() {
@@ -237,7 +237,7 @@ pub fn stream_openai_chunks(
                     });
                 }
                 UnifiedEvent::ThinkingDelta { id, delta } => {
-                    if response_id.is_empty() {
+                    if response_id.is_empty() && !id.trim().is_empty() {
                         response_id = id.clone();
                     }
                     if delta.is_empty() {
@@ -270,7 +270,9 @@ pub fn stream_openai_chunks(
                 UnifiedEvent::ToolCallDelta { id, name, arguments_delta } => {
                     if response_id.is_empty() {
                         if let Some(derived_id) = derive_response_id_from_tool_call_id(&id) {
-                            response_id = derived_id;
+                            if !derived_id.trim().is_empty() {
+                                response_id = derived_id;
+                            }
                         }
                     }
                     if tool_call_done_emitted.contains(&id) {
@@ -325,7 +327,9 @@ pub fn stream_openai_chunks(
                 UnifiedEvent::ToolCallDone { id, name, arguments } => {
                     if response_id.is_empty() {
                         if let Some(derived_id) = derive_response_id_from_tool_call_id(&id) {
-                            response_id = derived_id;
+                            if !derived_id.trim().is_empty() {
+                                response_id = derived_id;
+                            }
                         }
                     }
                     if tool_call_delta_emitted.contains(&id) {
@@ -913,6 +917,62 @@ mod tests {
             .filter(|id| !id.is_empty())
             .collect::<Vec<_>>();
 
+        assert!(response_ids.iter().all(|id| id == "req-1"));
+    }
+
+    #[tokio::test]
+    async fn fixes_response_id_from_first_non_empty_stream_event_once() {
+        let events = vec![
+            Ok(UnifiedEvent::ResponseCreated {
+                id: String::new(),
+                model: "m".to_string(),
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+            }),
+            Ok(UnifiedEvent::MessageDelta {
+                id: "req-1".to_string(),
+                delta: "first round".to_string(),
+            }),
+            Ok(UnifiedEvent::Completed {
+                finish_reason: Some("tool_calls".to_string()),
+            }),
+            Ok(UnifiedEvent::ResponseCreated {
+                id: "req-2".to_string(),
+                model: "m".to_string(),
+                created_at: "2026-01-01T00:00:01Z".to_string(),
+            }),
+            Ok(UnifiedEvent::MessageDelta {
+                id: "req-2".to_string(),
+                delta: "second round".to_string(),
+            }),
+            Ok(UnifiedEvent::Completed {
+                finish_reason: Some("stop".to_string()),
+            }),
+        ];
+
+        let stream = stream_openai_chunks(
+            Box::pin(futures_util::stream::iter(events)),
+            "trace-1".to_string(),
+            "m".to_string(),
+            Span::none(),
+        );
+
+        let mut payloads = Vec::new();
+        futures_util::pin_mut!(stream);
+        while let Some(item) = stream.next().await {
+            payloads.push(item.expect("stream chunk"));
+        }
+
+        let response_ids = payloads
+            .into_iter()
+            .filter_map(|payload| String::from_utf8(payload.to_vec()).ok())
+            .filter_map(|text| text.strip_prefix("data: ").map(str::to_string))
+            .filter(|json| json.trim() != "[DONE]")
+            .filter_map(|json| serde_json::from_str::<Value>(json.trim()).ok())
+            .filter_map(|value| value.get("id").and_then(Value::as_str).map(str::to_string))
+            .filter(|id| !id.is_empty())
+            .collect::<Vec<_>>();
+
+        assert!(!response_ids.is_empty());
         assert!(response_ids.iter().all(|id| id == "req-1"));
     }
 

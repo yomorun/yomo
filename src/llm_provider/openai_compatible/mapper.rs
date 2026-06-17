@@ -69,13 +69,18 @@ pub fn map_stream_chunk(
 ) -> Vec<UnifiedEvent> {
     let mut events = Vec::new();
     let (chunk_request_id, chunk_model, chunk_created) = chunk_metadata(&chunk);
-    if state.request_id.is_empty() {
+    if state.request_id.is_empty() && !chunk_request_id.trim().is_empty() {
         state.request_id = chunk_request_id;
         state.model = chunk_model;
         state.created_at = chunk_created;
     }
 
-    if !state.started {
+    if state.request_id.is_empty() {
+        state.pending_chunks.push(chunk);
+        return events;
+    }
+
+    if !state.started && !state.request_id.is_empty() {
         state.started = true;
         events.push(UnifiedEvent::ResponseCreated {
             id: state.request_id.clone(),
@@ -93,6 +98,21 @@ pub fn map_stream_chunk(
         });
     }
 
+    let pending_chunks = std::mem::take(&mut state.pending_chunks);
+    for pending_chunk in pending_chunks {
+        append_stream_chunk_events(pending_chunk, state, &mut events);
+    }
+
+    append_stream_chunk_events(chunk, state, &mut events);
+
+    events
+}
+
+fn append_stream_chunk_events(
+    chunk: ChatCompletionChunk,
+    state: &mut StreamMapState,
+    events: &mut Vec<UnifiedEvent>,
+) {
     if let Some(delta) = chunk.choices.first().map(|choice| &choice.delta) {
         if let Some(content) = &delta.content {
             events.push(UnifiedEvent::MessageDelta {
@@ -156,8 +176,6 @@ pub fn map_stream_chunk(
             finish_reason: Some(finish_reason_value),
         });
     }
-
-    events
 }
 
 pub struct StreamMapState {
@@ -166,6 +184,7 @@ pub struct StreamMapState {
     pub model: String,
     pub created_at: String,
     pub tool_call_state: HashMap<i32, ToolCallState>,
+    pub pending_chunks: Vec<ChatCompletionChunk>,
 }
 
 impl Default for StreamMapState {
@@ -176,6 +195,7 @@ impl Default for StreamMapState {
             model: String::new(),
             created_at: String::new(),
             tool_call_state: HashMap::new(),
+            pending_chunks: Vec::new(),
         }
     }
 }
@@ -337,6 +357,122 @@ mod tests {
                 UnifiedEvent::ThinkingDelta { delta, .. } if delta == "think step"
             )
         }));
+    }
+
+    #[test]
+    fn map_stream_chunk_waits_for_first_non_empty_response_id() {
+        let mut state = StreamMapState::default();
+
+        let first_chunk = ChatCompletionChunk {
+            id: String::new(),
+            created: Some(1),
+            model: "m".to_string(),
+            object: "chat.completion.chunk".to_string(),
+            system_fingerprint: None,
+            obfuscation: None,
+            choices: Vec::new(),
+            usage: None,
+        };
+        let first_events = map_stream_chunk(first_chunk, &mut state);
+        assert!(first_events.is_empty());
+        assert!(!state.started);
+        assert!(state.request_id.is_empty());
+        assert_eq!(state.pending_chunks.len(), 1);
+
+        let second_chunk = ChatCompletionChunk {
+            id: "req-1".to_string(),
+            created: Some(1),
+            model: "m".to_string(),
+            object: "chat.completion.chunk".to_string(),
+            system_fingerprint: None,
+            obfuscation: None,
+            choices: vec![ChatCompletionChunkChoice {
+                delta: ChatCompletionChunkDelta {
+                    role: Some(crate::openai_types::Role::Assistant),
+                    content: Some("hello".to_string()),
+                    reasoning_content: None,
+                    refusal: None,
+                    tool_calls: None,
+                },
+                finish_reason: None,
+                index: 0,
+                logprobs: None,
+            }],
+            usage: None,
+        };
+        let second_events = map_stream_chunk(second_chunk, &mut state);
+
+        assert!(state.started);
+        assert_eq!(state.request_id, "req-1");
+        assert!(matches!(
+            second_events.first(),
+            Some(UnifiedEvent::ResponseCreated { id, .. }) if id == "req-1"
+        ));
+        assert!(second_events.iter().any(|event| matches!(
+            event,
+            UnifiedEvent::MessageDelta { id, delta } if id == "req-1" && delta == "hello"
+        )));
+    }
+
+    #[test]
+    fn map_stream_chunk_replays_pending_content_after_response_id_arrives() {
+        let mut state = StreamMapState::default();
+
+        let pending_chunk = ChatCompletionChunk {
+            id: String::new(),
+            created: Some(1),
+            model: "m".to_string(),
+            object: "chat.completion.chunk".to_string(),
+            system_fingerprint: None,
+            obfuscation: None,
+            choices: vec![ChatCompletionChunkChoice {
+                delta: ChatCompletionChunkDelta {
+                    role: Some(crate::openai_types::Role::Assistant),
+                    content: Some("hello".to_string()),
+                    reasoning_content: None,
+                    refusal: None,
+                    tool_calls: None,
+                },
+                finish_reason: None,
+                index: 0,
+                logprobs: None,
+            }],
+            usage: None,
+        };
+        assert!(map_stream_chunk(pending_chunk, &mut state).is_empty());
+
+        let id_chunk = ChatCompletionChunk {
+            id: "req-1".to_string(),
+            created: Some(1),
+            model: "m".to_string(),
+            object: "chat.completion.chunk".to_string(),
+            system_fingerprint: None,
+            obfuscation: None,
+            choices: vec![ChatCompletionChunkChoice {
+                delta: ChatCompletionChunkDelta {
+                    role: None,
+                    content: Some(" world".to_string()),
+                    reasoning_content: None,
+                    refusal: None,
+                    tool_calls: None,
+                },
+                finish_reason: None,
+                index: 0,
+                logprobs: None,
+            }],
+            usage: None,
+        };
+        let events = map_stream_chunk(id_chunk, &mut state);
+
+        let deltas = events
+            .iter()
+            .filter_map(|event| match event {
+                UnifiedEvent::MessageDelta { id, delta } => Some((id.as_str(), delta.as_str())),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(deltas, vec![("req-1", "hello"), ("req-1", " world")]);
+        assert!(state.pending_chunks.is_empty());
     }
 
     #[test]
