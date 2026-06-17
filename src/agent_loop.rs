@@ -893,17 +893,22 @@ where
         .invoke(request_headers, request)
         .instrument(tool_call_span.clone())
         .await;
-    let result = response.result;
+    let mut result = None;
     let error = response.error_msg;
     if let Some(error_msg) = error.as_ref() {
         tool_call_span.record("status", field::display("error"));
         tool_call_span.record("result_size", error_msg.as_bytes().len() as i64);
         tool_call_span.record("result", error_msg);
     } else {
-        let result_text = result.as_deref().unwrap_or("");
+        let result_text = match &response.result {
+            serde_json::Value::Null => String::new(),
+            serde_json::Value::String(s) => s.clone(),
+            other => other.to_string(),
+        };
         tool_call_span.record("status", field::display("ok"));
         tool_call_span.record("result_size", result_text.as_bytes().len() as i64);
-        tool_call_span.record("result", result_text);
+        tool_call_span.record("result", &result_text);
+        result = Some(result_text);
     }
 
     let call_event = UnifiedEvent::ServerToolCall {

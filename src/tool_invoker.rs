@@ -40,7 +40,7 @@ where
             Ok(streams) => streams,
             Err(err) => {
                 return ToolResponse {
-                    result: None,
+                    result: serde_json::Value::Null,
                     error_msg: Some(format!("tool_connection_error: {err}")),
                 };
             }
@@ -48,21 +48,21 @@ where
 
         if let Err(err) = send_frame(&mut writer, &headers).await {
             return ToolResponse {
-                result: None,
+                result: serde_json::Value::Null,
                 error_msg: Some(format!("tool_handshake_error: {err}")),
             };
         }
 
         if let Err(err) = send_frame(&mut writer, &request).await {
             return ToolResponse {
-                result: None,
+                result: serde_json::Value::Null,
                 error_msg: Some(format!("tool_request_error: {err}")),
             };
         }
 
         if let Err(err) = writer.shutdown().await {
             return ToolResponse {
-                result: None,
+                result: serde_json::Value::Null,
                 error_msg: Some(format!("tool_shutdown_error: {err}")),
             };
         }
@@ -71,13 +71,13 @@ where
             Ok(Some(headers)) => headers,
             Ok(None) => {
                 return ToolResponse {
-                    result: None,
+                    result: serde_json::Value::Null,
                     error_msg: Some("tool_response_error: missing response headers".to_string()),
                 };
             }
             Err(err) => {
                 return ToolResponse {
-                    result: None,
+                    result: serde_json::Value::Null,
                     error_msg: Some(format!("tool_response_error: {err}")),
                 };
             }
@@ -85,7 +85,7 @@ where
 
         if response_headers.status_code != 200 {
             return ToolResponse {
-                result: None,
+                result: serde_json::Value::Null,
                 error_msg: Some(response_headers.error_msg),
             };
         }
@@ -93,11 +93,11 @@ where
         match receive_frame(&mut reader).await {
             Ok(Some(response)) => response,
             Ok(None) => ToolResponse {
-                result: None,
+                result: serde_json::Value::Null,
                 error_msg: Some("tool_response_error: missing tool response".to_string()),
             },
             Err(err) => ToolResponse {
-                result: None,
+                result: serde_json::Value::Null,
                 error_msg: Some(format!("tool_response_error: {err}")),
             },
         }
