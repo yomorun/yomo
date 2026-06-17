@@ -157,7 +157,8 @@ pub fn stream_openai_chunks(
     try_stream! {
         futures_util::pin_mut!(stream);
         let mut role_sent = false;
-        let mut finish_sent = false;
+        let mut completed_seen = false;
+        let mut completed_finish_reason: Option<String> = None;
         let mut sent_preamble = false;
         let mut response_id = String::new();
         let mut model = default_model;
@@ -376,16 +377,6 @@ pub fn stream_openai_chunks(
                 UnifiedEvent::Usage { usage } => {
                     latest_usage_for_root = Some(usage.clone());
                     finalizer.set_latest_usage(usage.clone());
-                    yield sse_chunk(ChatCompletionChunk {
-                        id: response_id.clone(),
-                        created: parse_created_at(&created_at),
-                        model: model.clone(),
-                        object: "chat.completion.chunk".to_string(),
-                        system_fingerprint: None,
-                        obfuscation: None,
-                        choices: Vec::new(),
-                        usage: Some(map_usage_to_openai(&usage)),
-                    });
                 }
                 UnifiedEvent::MessageStop { .. } => {}
                 UnifiedEvent::Completed { finish_reason } => {
@@ -394,34 +385,8 @@ pub fn stream_openai_chunks(
                         field::display(finish_reason.as_deref().unwrap_or("")),
                     );
                     finalizer.set_finish_reason(finish_reason.clone());
-                    if !finish_sent {
-                        let request_id = response_id.clone();
-                        let model = model.clone();
-                        let delta = ChatCompletionChunkDelta {
-                            role: if role_sent { None } else { Some(Role::Assistant) },
-                            content: None,
-                            reasoning_content: None,
-                            refusal: None,
-                            tool_calls: None,
-                        };
-                        role_sent = true;
-                        finish_sent = true;
-                        yield sse_chunk(ChatCompletionChunk {
-                            id: request_id,
-                            created: parse_created_at(&created_at),
-                            model,
-                            object: "chat.completion.chunk".to_string(),
-                            system_fingerprint: None,
-                            obfuscation: None,
-                            choices: vec![ChatCompletionChunkChoice {
-                                delta,
-                                finish_reason: finish_reason.clone().map(|value| map_finish_reason(&value)),
-                                index: 0,
-                                logprobs: None,
-                            }],
-                            usage: None,
-                        });
-                    }
+                    completed_seen = true;
+                    completed_finish_reason = finish_reason;
                 }
                 UnifiedEvent::Failed { code, message } => {
                     error!(
@@ -448,6 +413,46 @@ pub fn stream_openai_chunks(
                 | UnifiedEvent::ServerToolCall { .. }
                 | UnifiedEvent::ServerToolCallResult { .. } => {}
             }
+        }
+
+        if completed_seen {
+            let request_id = response_id.clone();
+            let model = model.clone();
+            let delta = ChatCompletionChunkDelta {
+                role: if role_sent { None } else { Some(Role::Assistant) },
+                content: None,
+                reasoning_content: None,
+                refusal: None,
+                tool_calls: None,
+            };
+            yield sse_chunk(ChatCompletionChunk {
+                id: request_id,
+                created: parse_created_at(&created_at),
+                model,
+                object: "chat.completion.chunk".to_string(),
+                system_fingerprint: None,
+                obfuscation: None,
+                choices: vec![ChatCompletionChunkChoice {
+                    delta,
+                    finish_reason: completed_finish_reason
+                        .clone()
+                        .map(|value| map_finish_reason(&value)),
+                    index: 0,
+                    logprobs: None,
+                }],
+                usage: latest_usage_for_root.as_ref().map(map_usage_to_openai),
+            });
+        } else if let Some(usage) = latest_usage_for_root.as_ref() {
+            yield sse_chunk(ChatCompletionChunk {
+                id: response_id.clone(),
+                created: parse_created_at(&created_at),
+                model: model.clone(),
+                object: "chat.completion.chunk".to_string(),
+                system_fingerprint: None,
+                obfuscation: None,
+                choices: Vec::new(),
+                usage: Some(map_usage_to_openai(usage)),
+            });
         }
 
         if let Some(usage) = latest_usage_for_root {
@@ -909,6 +914,151 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(response_ids.iter().all(|id| id == "req-1"));
+    }
+
+    #[tokio::test]
+    async fn combines_usage_into_finish_chunk() {
+        let events = vec![
+            Ok(UnifiedEvent::ResponseCreated {
+                id: "req-1".to_string(),
+                model: "m".to_string(),
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+            }),
+            Ok(UnifiedEvent::MessageDelta {
+                id: "req-1".to_string(),
+                delta: "hello".to_string(),
+            }),
+            Ok(UnifiedEvent::Usage {
+                usage: EndpointUsage::from_endpoint_payload(
+                    "/chat/completions",
+                    serde_json::json!({
+                        "prompt_tokens": 2,
+                        "completion_tokens": 3,
+                        "total_tokens": 5
+                    }),
+                )
+                .expect("valid usage payload"),
+            }),
+            Ok(UnifiedEvent::Completed {
+                finish_reason: Some("stop".to_string()),
+            }),
+        ];
+
+        let stream = stream_openai_chunks(
+            Box::pin(futures_util::stream::iter(events)),
+            "trace-1".to_string(),
+            "m".to_string(),
+            Span::none(),
+        );
+
+        let mut payloads = Vec::new();
+        futures_util::pin_mut!(stream);
+        while let Some(item) = stream.next().await {
+            payloads.push(item.expect("stream chunk"));
+        }
+
+        let chunks = payloads
+            .into_iter()
+            .filter_map(|payload| String::from_utf8(payload.to_vec()).ok())
+            .filter_map(|text| text.strip_prefix("data: ").map(str::to_string))
+            .filter(|json| json.trim() != "[DONE]")
+            .filter_map(|json| serde_json::from_str::<Value>(json.trim()).ok())
+            .collect::<Vec<_>>();
+
+        let usage_only_chunk_count = chunks
+            .iter()
+            .filter(|value| {
+                value.get("usage").and_then(Value::as_object).is_some()
+                    && value
+                        .get("choices")
+                        .and_then(Value::as_array)
+                        .map(|choices| choices.is_empty())
+                        .unwrap_or(false)
+            })
+            .count();
+        assert_eq!(usage_only_chunk_count, 0);
+
+        let finish_chunk = chunks
+            .iter()
+            .find(|value| {
+                value
+                    .get("choices")
+                    .and_then(Value::as_array)
+                    .and_then(|choices| choices.first())
+                    .and_then(|choice| choice.get("finish_reason"))
+                    .and_then(Value::as_str)
+                    == Some("stop")
+            })
+            .expect("finish chunk");
+        assert_eq!(
+            finish_chunk
+                .get("usage")
+                .and_then(|value| value.get("total_tokens"))
+                .and_then(Value::as_i64),
+            Some(5)
+        );
+    }
+
+    #[tokio::test]
+    async fn emits_usage_only_chunk_when_stream_has_no_completed_event() {
+        let events = vec![
+            Ok(UnifiedEvent::ResponseCreated {
+                id: "req-1".to_string(),
+                model: "m".to_string(),
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+            }),
+            Ok(UnifiedEvent::Usage {
+                usage: EndpointUsage::from_endpoint_payload(
+                    "/chat/completions",
+                    serde_json::json!({
+                        "prompt_tokens": 4,
+                        "completion_tokens": 6,
+                        "total_tokens": 10
+                    }),
+                )
+                .expect("valid usage payload"),
+            }),
+        ];
+
+        let stream = stream_openai_chunks(
+            Box::pin(futures_util::stream::iter(events)),
+            "trace-1".to_string(),
+            "m".to_string(),
+            Span::none(),
+        );
+
+        let mut payloads = Vec::new();
+        futures_util::pin_mut!(stream);
+        while let Some(item) = stream.next().await {
+            payloads.push(item.expect("stream chunk"));
+        }
+
+        let chunks = payloads
+            .into_iter()
+            .filter_map(|payload| String::from_utf8(payload.to_vec()).ok())
+            .filter_map(|text| text.strip_prefix("data: ").map(str::to_string))
+            .filter(|json| json.trim() != "[DONE]")
+            .filter_map(|json| serde_json::from_str::<Value>(json.trim()).ok())
+            .collect::<Vec<_>>();
+
+        let usage_chunk = chunks
+            .iter()
+            .find(|value| {
+                value.get("usage").and_then(Value::as_object).is_some()
+                    && value
+                        .get("choices")
+                        .and_then(Value::as_array)
+                        .map(|choices| choices.is_empty())
+                        .unwrap_or(false)
+            })
+            .expect("usage-only chunk");
+        assert_eq!(
+            usage_chunk
+                .get("usage")
+                .and_then(|value| value.get("total_tokens"))
+                .and_then(Value::as_i64),
+            Some(10)
+        );
     }
 
     #[tokio::test]

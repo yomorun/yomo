@@ -1234,7 +1234,7 @@ mod tests {
                 .expect("tool calls lock")
                 .push(request.args);
             ToolResponse {
-                result: Some("{\"status\":\"ok\"}".to_string()),
+                result: serde_json::json!({"status": "ok"}),
                 error_msg: None,
             }
         }
