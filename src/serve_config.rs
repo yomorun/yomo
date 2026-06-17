@@ -151,12 +151,6 @@ impl Default for HttpApiConfig {
 
 impl ServeConfig {
     pub fn validate(&self) -> Result<(), ConfigError> {
-        if self.llm_providers.is_empty() {
-            return Err(ConfigError::InvalidProvider(
-                "llm_providers list is empty".to_string(),
-            ));
-        }
-
         let mut model_ids = HashSet::new();
         for provider in &self.llm_providers {
             if provider.provider_type.trim().is_empty() {
