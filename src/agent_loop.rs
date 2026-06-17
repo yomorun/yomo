@@ -423,28 +423,32 @@ where
                             });
                             current
                         });
+                        let resolved_name = round_state
+                            .tool_calls
+                            .get(index)
+                            .map(|call| resolve_tool_call_name(&call.name, name))
+                            .unwrap_or_else(|| name.clone());
                         let is_server = matches!(
                             tool_maps
                                 .source_map
-                                .get(name)
+                                .get(&resolved_name)
                                 .copied()
                                 .unwrap_or(ToolSource::Client),
                             ToolSource::Server
                         );
+                        if let Some(call) = round_state.tool_calls.get_mut(index) {
+                            call.name = resolved_name.clone();
+                            call.arguments.push_str(arguments_delta);
+                        }
+                        if resolved_name.trim().is_empty() {
+                            continue;
+                        }
                         if is_server {
-                            if let Some(call) = round_state.tool_calls.get_mut(index) {
-                                call.name = name.clone();
-                                call.arguments.push_str(arguments_delta);
-                            }
                         } else {
-                            if let Some(call) = round_state.tool_calls.get_mut(index) {
-                                call.name = name.clone();
-                                call.arguments.push_str(arguments_delta);
-                            }
                             round_state.emitted_client_tool = true;
                             yield UnifiedEvent::ToolCallDelta {
                                 id: id.clone(),
-                                name: name.clone(),
+                                name: resolved_name,
                                 arguments_delta: arguments_delta.clone(),
                             };
                         }
@@ -461,28 +465,32 @@ where
                             });
                             current
                         });
+                        let resolved_name = round_state
+                            .tool_calls
+                            .get(index)
+                            .map(|call| resolve_tool_call_name(&call.name, name))
+                            .unwrap_or_else(|| name.clone());
                         let is_server = matches!(
                             tool_maps
                                 .source_map
-                                .get(name)
+                                .get(&resolved_name)
                                 .copied()
                                 .unwrap_or(ToolSource::Client),
                             ToolSource::Server
                         );
+                        if let Some(call) = round_state.tool_calls.get_mut(index) {
+                            call.name = resolved_name.clone();
+                            call.arguments = arguments.clone();
+                        }
+                        if resolved_name.trim().is_empty() {
+                            continue;
+                        }
                         if is_server {
-                            if let Some(call) = round_state.tool_calls.get_mut(index) {
-                                call.name = name.clone();
-                                call.arguments = arguments.clone();
-                            }
                         } else {
-                            if let Some(call) = round_state.tool_calls.get_mut(index) {
-                                call.name = name.clone();
-                                call.arguments = arguments.clone();
-                            }
                             round_state.emitted_client_tool = true;
                             yield UnifiedEvent::ToolCallDone {
                                 id: id.clone(),
-                                name: name.clone(),
+                                name: resolved_name,
                                 arguments: arguments.clone(),
                             };
                         }
@@ -762,6 +770,14 @@ fn split_tool_calls(
         }
     }
     (server, client)
+}
+
+fn resolve_tool_call_name(existing: &str, incoming: &str) -> String {
+    if incoming.trim().is_empty() {
+        existing.to_string()
+    } else {
+        incoming.to_string()
+    }
 }
 
 fn ensure_provider_call_ids(request_id: &str, calls: &mut [ProviderToolCall]) {
@@ -1097,7 +1113,8 @@ mod tests {
     use futures_util::{StreamExt, stream};
 
     use super::{
-        AgentLoopConfig, AgentLoopResult, compose_assistant_tool_call_content, run_agent_loop,
+        AgentLoopConfig, AgentLoopResult, compose_assistant_tool_call_content,
+        resolve_tool_call_name, run_agent_loop,
     };
     use crate::llm_provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
     use crate::openai_types::{
@@ -1110,6 +1127,12 @@ mod tests {
     #[derive(Clone)]
     struct StaticStreamProvider {
         events: Arc<Vec<UnifiedEvent>>,
+    }
+
+    #[derive(Clone)]
+    struct SequencedStreamProvider {
+        rounds: Arc<Vec<Vec<UnifiedEvent>>>,
+        next_round: Arc<Mutex<usize>>,
     }
 
     #[async_trait]
@@ -1142,6 +1165,41 @@ mod tests {
         }
     }
 
+    #[async_trait]
+    impl Provider for SequencedStreamProvider {
+        fn model_id(&self) -> &str {
+            "mock-model"
+        }
+
+        async fn complete(
+            &self,
+            _request: ChatCompletionRequest,
+        ) -> Result<UnifiedResponse, ProviderError> {
+            Err(ProviderError::internal("unused in stream test"))
+        }
+
+        async fn stream<'a>(
+            &'a self,
+            _request: ChatCompletionRequest,
+        ) -> Result<
+            Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
+            ProviderError,
+        > {
+            let mut guard = self.next_round.lock().expect("next round lock");
+            let index = *guard;
+            *guard += 1;
+            let events = self
+                .rounds
+                .get(index)
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .map(Ok::<UnifiedEvent, ProviderError>)
+                .collect::<Vec<_>>();
+            Ok(Box::pin(stream::iter(events)))
+        }
+    }
+
     #[derive(Default)]
     struct NoopToolInvoker;
 
@@ -1149,6 +1207,31 @@ mod tests {
     impl ToolInvoker for NoopToolInvoker {
         async fn invoke(&self, _headers: RequestHeaders, _request: ToolRequest) -> ToolResponse {
             ToolResponse::default()
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct RecordingToolInvoker {
+        args: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl RecordingToolInvoker {
+        fn captured(&self) -> Vec<String> {
+            self.args.lock().expect("tool calls lock").clone()
+        }
+    }
+
+    #[async_trait]
+    impl ToolInvoker for RecordingToolInvoker {
+        async fn invoke(&self, _headers: RequestHeaders, request: ToolRequest) -> ToolResponse {
+            self.args
+                .lock()
+                .expect("tool calls lock")
+                .push(request.args);
+            ToolResponse {
+                result: Some("{\"status\":\"ok\"}".to_string()),
+                error_msg: None,
+            }
         }
     }
 
@@ -1249,6 +1332,22 @@ mod tests {
         assert_eq!(content, "Tool call");
     }
 
+    #[test]
+    fn resolve_tool_call_name_keeps_existing_when_incoming_is_empty() {
+        assert_eq!(
+            resolve_tool_call_name("get_weather", ""),
+            "get_weather".to_string()
+        );
+        assert_eq!(
+            resolve_tool_call_name("get_weather", "   "),
+            "get_weather".to_string()
+        );
+        assert_eq!(
+            resolve_tool_call_name("get_weather", "query_weather"),
+            "query_weather".to_string()
+        );
+    }
+
     #[tokio::test]
     async fn run_agent_loop_stream_calls_on_usage_once_per_round_with_tool_events() {
         let usage_handler = RecordingUsageHandler::default();
@@ -1309,6 +1408,98 @@ mod tests {
                 "completion_tokens": 4,
                 "total_tokens": 26
             })
+        );
+    }
+
+    #[tokio::test]
+    async fn run_agent_loop_stream_resolves_empty_tool_delta_name_to_server_tool() {
+        let provider = SequencedStreamProvider {
+            rounds: Arc::new(vec![
+                vec![
+                    UnifiedEvent::MessageStart {
+                        id: "req-1".to_string(),
+                        role: "assistant".to_string(),
+                    },
+                    UnifiedEvent::ToolCallDelta {
+                        id: "call_weather".to_string(),
+                        name: "".to_string(),
+                        arguments_delta: "{\"location\"".to_string(),
+                    },
+                    UnifiedEvent::ToolCallDone {
+                        id: "call_weather".to_string(),
+                        name: "get_weather".to_string(),
+                        arguments: "{\"location\":\"beijing\"}".to_string(),
+                    },
+                    UnifiedEvent::Completed {
+                        finish_reason: Some("tool_calls".to_string()),
+                    },
+                ],
+                vec![
+                    UnifiedEvent::MessageStart {
+                        id: "req-2".to_string(),
+                        role: "assistant".to_string(),
+                    },
+                    UnifiedEvent::MessageDelta {
+                        id: "req-2".to_string(),
+                        delta: "晴天".to_string(),
+                    },
+                    UnifiedEvent::Completed {
+                        finish_reason: Some("stop".to_string()),
+                    },
+                ],
+            ]),
+            next_round: Arc::new(Mutex::new(0)),
+        };
+        let invoker = RecordingToolInvoker::default();
+        let mut server_tools = HashMap::new();
+        server_tools.insert(
+            "get_weather".to_string(),
+            serde_json::json!({
+                "description": "Query weather",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "location": {"type": "string"}
+                    },
+                    "required": ["location"]
+                }
+            })
+            .to_string(),
+        );
+
+        let result = run_agent_loop::<(), ()>(
+            Arc::new(provider),
+            stream_request(),
+            server_tools,
+            Arc::new(invoker.clone()),
+            (),
+            "trace-1".to_string(),
+            None,
+            AgentLoopConfig::default(),
+        )
+        .await
+        .expect("stream run should succeed");
+
+        let AgentLoopResult::Stream { mut events } = result else {
+            panic!("expected stream result");
+        };
+        let mut seen_empty_client_tool_event = false;
+        while let Some(event) = events.next().await {
+            match event.expect("stream event should be ok") {
+                UnifiedEvent::ToolCallDelta { name, .. }
+                | UnifiedEvent::ToolCallDone { name, .. } => {
+                    if name.trim().is_empty() {
+                        seen_empty_client_tool_event = true;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        assert!(!seen_empty_client_tool_event);
+        assert_eq!(
+            invoker.captured(),
+            vec!["{\"location\":\"beijing\"}".to_string()]
         );
     }
 }

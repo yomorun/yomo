@@ -217,7 +217,9 @@ fn map_tool_call_delta(
 
     if let Some(ChatCompletionChunkToolCallFunction { name, arguments }) = &call.function {
         if let Some(name) = name {
-            entry.name = name.clone();
+            if !name.trim().is_empty() {
+                entry.name = name.clone();
+            }
         }
         if let Some(arguments) = arguments {
             arguments_delta = arguments.clone();
@@ -485,5 +487,104 @@ mod tests {
             _ => None,
         });
         assert_eq!(delta_id, Some("req-1-tool-0"));
+    }
+
+    #[test]
+    fn map_stream_chunk_keeps_previous_name_when_later_chunk_name_is_empty() {
+        let mut state = StreamMapState::default();
+        let mut events = Vec::new();
+
+        let first_chunk = ChatCompletionChunk {
+            id: "req-1".to_string(),
+            created: Some(1),
+            model: "m".to_string(),
+            object: "chat.completion.chunk".to_string(),
+            system_fingerprint: None,
+            obfuscation: None,
+            choices: vec![ChatCompletionChunkChoice {
+                delta: ChatCompletionChunkDelta {
+                    role: Some(crate::openai_types::Role::Assistant),
+                    content: None,
+                    reasoning_content: None,
+                    refusal: None,
+                    tool_calls: Some(vec![ChatCompletionChunkToolCall {
+                        index: 0,
+                        id: Some("call_weather".to_string()),
+                        r#type: Some("function".to_string()),
+                        function: Some(ChatCompletionChunkToolCallFunction {
+                            name: Some("get_weather".to_string()),
+                            arguments: Some("{\"location\"".to_string()),
+                        }),
+                    }]),
+                },
+                finish_reason: None,
+                index: 0,
+                logprobs: None,
+            }],
+            usage: None,
+        };
+        events.extend(map_stream_chunk(first_chunk, &mut state));
+
+        let second_chunk = ChatCompletionChunk {
+            id: "req-1".to_string(),
+            created: Some(1),
+            model: "m".to_string(),
+            object: "chat.completion.chunk".to_string(),
+            system_fingerprint: None,
+            obfuscation: None,
+            choices: vec![ChatCompletionChunkChoice {
+                delta: ChatCompletionChunkDelta {
+                    role: None,
+                    content: None,
+                    reasoning_content: None,
+                    refusal: None,
+                    tool_calls: Some(vec![ChatCompletionChunkToolCall {
+                        index: 0,
+                        id: None,
+                        r#type: None,
+                        function: Some(ChatCompletionChunkToolCallFunction {
+                            name: Some("".to_string()),
+                            arguments: Some(":\"beijing\"}".to_string()),
+                        }),
+                    }]),
+                },
+                finish_reason: None,
+                index: 0,
+                logprobs: None,
+            }],
+            usage: None,
+        };
+        events.extend(map_stream_chunk(second_chunk, &mut state));
+
+        let finish_chunk = ChatCompletionChunk {
+            id: "req-1".to_string(),
+            created: Some(1),
+            model: "m".to_string(),
+            object: "chat.completion.chunk".to_string(),
+            system_fingerprint: None,
+            obfuscation: None,
+            choices: vec![ChatCompletionChunkChoice {
+                delta: ChatCompletionChunkDelta {
+                    role: None,
+                    content: None,
+                    reasoning_content: None,
+                    refusal: None,
+                    tool_calls: None,
+                },
+                finish_reason: Some("tool_calls".to_string()),
+                index: 0,
+                logprobs: None,
+            }],
+            usage: None,
+        };
+        events.extend(map_stream_chunk(finish_chunk, &mut state));
+
+        let done = events.iter().find_map(|event| match event {
+            UnifiedEvent::ToolCallDone {
+                name, arguments, ..
+            } => Some((name.as_str(), arguments.as_str())),
+            _ => None,
+        });
+        assert_eq!(done, Some(("get_weather", "{\"location\":\"beijing\"}")));
     }
 }

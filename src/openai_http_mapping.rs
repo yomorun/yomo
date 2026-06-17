@@ -180,7 +180,9 @@ pub fn stream_openai_chunks(
             };
             match event {
                 UnifiedEvent::ResponseCreated { id, model: resp_model, created_at: resp_created } => {
-                    response_id = id;
+                    if response_id.is_empty() {
+                        response_id = id;
+                    }
                     if !resp_model.trim().is_empty() {
                         model = resp_model;
                         finalizer.set_model(model.clone());
@@ -852,6 +854,61 @@ mod tests {
             .count();
 
         assert_eq!(tool_call_chunk_count, 1);
+    }
+
+    #[tokio::test]
+    async fn keeps_first_response_id_across_multi_round_stream() {
+        let events = vec![
+            Ok(UnifiedEvent::ResponseCreated {
+                id: "req-1".to_string(),
+                model: "m".to_string(),
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+            }),
+            Ok(UnifiedEvent::ThinkingDelta {
+                id: "req-1".to_string(),
+                delta: "plan tool call".to_string(),
+            }),
+            Ok(UnifiedEvent::Completed {
+                finish_reason: Some("tool_calls".to_string()),
+            }),
+            Ok(UnifiedEvent::ResponseCreated {
+                id: "req-2".to_string(),
+                model: "m".to_string(),
+                created_at: "2026-01-01T00:00:01Z".to_string(),
+            }),
+            Ok(UnifiedEvent::MessageDelta {
+                id: "req-2".to_string(),
+                delta: "final answer".to_string(),
+            }),
+            Ok(UnifiedEvent::Completed {
+                finish_reason: Some("stop".to_string()),
+            }),
+        ];
+
+        let stream = stream_openai_chunks(
+            Box::pin(futures_util::stream::iter(events)),
+            "trace-1".to_string(),
+            "m".to_string(),
+            Span::none(),
+        );
+
+        let mut payloads = Vec::new();
+        futures_util::pin_mut!(stream);
+        while let Some(item) = stream.next().await {
+            payloads.push(item.expect("stream chunk"));
+        }
+
+        let response_ids = payloads
+            .into_iter()
+            .filter_map(|payload| String::from_utf8(payload.to_vec()).ok())
+            .filter_map(|text| text.strip_prefix("data: ").map(str::to_string))
+            .filter(|json| json.trim() != "[DONE]")
+            .filter_map(|json| serde_json::from_str::<Value>(json.trim()).ok())
+            .filter_map(|value| value.get("id").and_then(Value::as_str).map(str::to_string))
+            .filter(|id| !id.is_empty())
+            .collect::<Vec<_>>();
+
+        assert!(response_ids.iter().all(|id| id == "req-1"));
     }
 
     #[tokio::test]
