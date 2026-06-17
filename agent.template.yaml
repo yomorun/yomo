@@ -23,11 +23,9 @@ llm_providers:
   #   required params: model, project_id, location, credentials_file
   # Common fields:
   # - model_id: external model name used by requests
-  # - default: optional, marks default model when model is not specified
   # - label: optional display label for logs/ops
   - type: "openai-compatible"
     model_id: "gpt-4o-mini"
-    default: true
     params:
       model: "gpt-4o-mini"
       api_key: ""
@@ -51,6 +49,8 @@ llm_providers:
   #     project_id: "your-gcp-project-id"
   #     location: "global"
   #     credentials_file: "/abs/path/to/service-account.json"
+
+llm_default_model_id: "gpt-4o-mini"
 
 model_api:
   # model_api provider types:

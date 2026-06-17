@@ -186,7 +186,6 @@ mod tests {
             provider_type: "messages".to_string(),
             model_id: "claude-sonnet-4".to_string(),
             label: None,
-            default: false,
             params,
         };
 
@@ -234,7 +233,6 @@ mod tests {
             provider_type: "messages".to_string(),
             model_id: "claude-sonnet-4".to_string(),
             label: None,
-            default: false,
             params,
         };
 
