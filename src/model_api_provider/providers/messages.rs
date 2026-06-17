@@ -1,69 +1,40 @@
+use async_trait::async_trait;
+use axum::http::{HeaderMap, HeaderValue, header};
+use serde_json::Value;
 use std::sync::Arc;
 
-use anyhow::anyhow;
-use async_trait::async_trait;
-use aws_sdk_bedrockruntime::config::{BehaviorVersion, Token};
-use aws_sdk_bedrockruntime::primitives::Blob;
-use aws_types::region::Region;
-use axum::body::Bytes;
-use axum::http::{HeaderMap, StatusCode};
-use serde_json::Value;
-use tokio::sync::OnceCell;
-
 use crate::model_api_provider::provider::{
-    ModelApiProvider, ProviderBody, ProviderRequest, ProviderResponse, parse_stream_flag,
-    rewrite_messages_body,
+    ModelApiProvider, ProviderRequest, ProviderResponse, proxy_request,
 };
 use crate::serve_config::{ConfigError, ProviderConfig};
 
 #[derive(Clone)]
 pub struct MessagesClient {
+    client: reqwest::Client,
+    base_url: String,
+    auth_headers: HeaderMap,
     model_id: String,
-    bedrock_model: String,
-    aws_region: String,
+    upstream_model: String,
     anthropic_version: String,
-    default_max_tokens: u64,
-    aws_bearer_token: Option<String>,
-    bedrock_client: Arc<OnceCell<aws_sdk_bedrockruntime::Client>>,
 }
 
 impl MessagesClient {
     pub fn new(
+        client: reqwest::Client,
+        base_url: String,
+        auth_headers: HeaderMap,
         model_id: String,
-        bedrock_model: String,
-        aws_region: String,
+        upstream_model: String,
         anthropic_version: String,
-        default_max_tokens: u64,
-        aws_bearer_token: Option<String>,
     ) -> Self {
         Self {
+            client,
+            base_url,
+            auth_headers,
             model_id,
-            bedrock_model,
-            aws_region,
+            upstream_model,
             anthropic_version,
-            default_max_tokens,
-            aws_bearer_token,
-            bedrock_client: Arc::new(OnceCell::new()),
         }
-    }
-
-    async fn client(&self) -> Result<&aws_sdk_bedrockruntime::Client, anyhow::Error> {
-        self.bedrock_client
-            .get_or_try_init(|| async {
-                let token = self
-                    .aws_bearer_token
-                    .as_ref()
-                    .ok_or_else(|| anyhow!("aws_bearer_token is required"))?;
-                let config = aws_sdk_bedrockruntime::Config::builder()
-                    .behavior_version(BehaviorVersion::latest())
-                    .region(Region::new(self.aws_region.clone()))
-                    .bearer_token(Token::new(token, None))
-                    .build();
-                Ok::<aws_sdk_bedrockruntime::Client, anyhow::Error>(
-                    aws_sdk_bedrockruntime::Client::from_conf(config),
-                )
-            })
-            .await
     }
 }
 
@@ -73,100 +44,22 @@ impl ModelApiProvider for MessagesClient {
         &self.model_id
     }
 
-    async fn execute(&self, req: ProviderRequest) -> Result<ProviderResponse, anyhow::Error> {
-        let stream = parse_stream_flag(&req.body);
-        let body =
-            rewrite_messages_body(&req.body, &self.anthropic_version, self.default_max_tokens)?;
-        let client = self.client().await?;
-
-        if stream {
-            let response = client
-                .invoke_model_with_response_stream()
-                .model_id(&self.bedrock_model)
-                .content_type("application/json")
-                .body(Blob::new(body.to_vec()))
-                .send()
-                .await
-                .map_err(|err| {
-                    anyhow!("bedrock invoke_model_with_response_stream failed: {err:?}")
-                })?;
-
-            let mut stream = response.body;
-            let mapped = async_stream::stream! {
-                loop {
-                    match stream.recv().await {
-                        Ok(Some(event)) => {
-                            if let Ok(chunk) = event.as_chunk() {
-                                if let Some(payload) = chunk.bytes.as_ref() {
-                                    let frame = format!(
-                                        "data: {}\n\n",
-                                        String::from_utf8_lossy(payload.as_ref())
-                                    );
-                                    yield Ok::<Bytes, std::io::Error>(Bytes::from(frame));
-                                }
-                            }
-                        }
-                        Ok(None) => {
-                            break;
-                        }
-                        Err(err) => {
-                            yield Err(std::io::Error::new(std::io::ErrorKind::Other, err.to_string()));
-                            break;
-                        }
-                    }
-                }
-                yield Ok(Bytes::from_static(b"data: [DONE]\n\n"));
-            };
-
-            let mut headers = HeaderMap::new();
-            headers.insert(
-                axum::http::header::CONTENT_TYPE,
-                "text/event-stream"
-                    .parse()
-                    .expect("static header value must be valid"),
-            );
-            headers.insert(
-                axum::http::header::CACHE_CONTROL,
-                "no-cache"
-                    .parse()
-                    .expect("static header value must be valid"),
-            );
-            headers.insert(
-                axum::http::header::CONNECTION,
-                "keep-alive"
-                    .parse()
-                    .expect("static header value must be valid"),
-            );
-
-            Ok(ProviderResponse {
-                status: StatusCode::OK,
-                headers,
-                body: ProviderBody::Stream(Box::pin(mapped)),
-            })
-        } else {
-            let response = client
-                .invoke_model()
-                .model_id(&self.bedrock_model)
-                .content_type("application/json")
-                .accept("application/json")
-                .body(Blob::new(body.to_vec()))
-                .send()
-                .await
-                .map_err(|err| anyhow!("bedrock invoke_model failed: {err:?}"))?;
-
-            let mut headers = HeaderMap::new();
-            headers.insert(
-                axum::http::header::CONTENT_TYPE,
-                "application/json"
-                    .parse()
-                    .expect("static header value must be valid"),
-            );
-            Ok(ProviderResponse {
-                status: StatusCode::OK,
-                headers,
-                body: ProviderBody::Full(Bytes::from(response.body.into_inner())),
-            })
-        }
+    async fn execute(&self, mut req: ProviderRequest) -> Result<ProviderResponse, anyhow::Error> {
+        req.endpoint_path = "/messages".to_string();
+        req.headers.insert(
+            "anthropic-version",
+            self.anthropic_version
+                .parse::<HeaderValue>()
+                .map_err(|err| anyhow::anyhow!("invalid anthropic-version header: {err}"))?,
+        );
+        proxy_request(
+            &self.client,
+            &self.base_url,
+            self.auth_headers.clone(),
+            Some(self.upstream_model.as_str()),
+            req,
+        )
+        .await
     }
 
     fn extract_request_id(&self, payload_json: &Value) -> Option<String> {
@@ -232,7 +125,6 @@ mod tests {
     use serde_json::json;
     use std::collections::HashMap;
 
-    /// Verifies full payload request id extraction prefers top-level `id`.
     #[test]
     fn extract_request_id_json_prefers_top_level_id() {
         let payload = json!({"id": "msg_top", "message": {"id": "msg_nested"}});
@@ -242,7 +134,6 @@ mod tests {
         assert_eq!(request_id.as_deref(), Some("msg_top"));
     }
 
-    /// Verifies request id extraction supports nested `message.id` fallback.
     #[test]
     fn extract_request_id_json_supports_nested_message_id() {
         let payload = json!({"message": {"id": "msg_nested"}});
@@ -252,7 +143,6 @@ mod tests {
         assert_eq!(request_id.as_deref(), Some("msg_nested"));
     }
 
-    /// Verifies full payload usage extraction falls back to `message.usage`.
     #[test]
     fn extract_usage_json_reads_nested_message_usage() {
         let payload = json!({"message": {"usage": {"input_tokens": 3}}});
@@ -262,7 +152,6 @@ mod tests {
         assert_eq!(usage, Some(json!({"input_tokens": 3})));
     }
 
-    /// Verifies usage extraction ignores null usage payloads.
     #[test]
     fn extract_usage_json_ignores_null_usage() {
         let payload = json!({"usage": null});
@@ -272,7 +161,6 @@ mod tests {
         assert_eq!(usage, None);
     }
 
-    /// Verifies usage injection writes to nested `message.usage` when top-level field is absent.
     #[test]
     fn inject_usage_json_updates_nested_message_usage() {
         let mut payload = json!({"message": {"usage": {"input_tokens": 1}}});
@@ -284,43 +172,67 @@ mod tests {
         assert_eq!(payload["message"]["usage"], new_usage);
     }
 
-    /// Verifies bedrock client creation accepts explicit bearer token config.
     #[test]
-    fn build_client_accepts_aws_bearer_token_param() {
+    fn build_client_accepts_x_api_key_auth_style() {
         let mut params = HashMap::new();
+        params.insert("api_key".to_string(), "sk-ant-test".to_string());
         params.insert(
-            "model".to_string(),
-            "global.anthropic.claude-sonnet-4-6".to_string(),
+            "base_url".to_string(),
+            "https://api.anthropic.com/v1".to_string(),
         );
-        params.insert("aws_region".to_string(), "ap-northeast-1".to_string());
-        params.insert("aws_bearer_token".to_string(), "test-token".to_string());
+        params.insert("model".to_string(), "claude-sonnet-4-20250514".to_string());
 
         let provider = ProviderConfig {
-            provider_type: "bedrock-messages".to_string(),
-            model_id: "claude-sonnet-4-6".to_string(),
+            provider_type: "messages".to_string(),
+            model_id: "claude-sonnet-4".to_string(),
             label: None,
             default: false,
             params,
         };
 
-        let client = build_client(&provider).expect("bedrock client should build");
+        let client = build_client(&provider).expect("messages client should build");
 
-        assert_eq!(client.model_id(), "claude-sonnet-4-6");
+        assert_eq!(client.model_id(), "claude-sonnet-4");
     }
 
-    /// Verifies bedrock client creation rejects missing bearer token config.
     #[test]
-    fn build_client_rejects_missing_aws_bearer_token_param() {
+    fn build_client_accepts_bearer_auth_style() {
         let mut params = HashMap::new();
+        params.insert("api_key".to_string(), "sk-test".to_string());
         params.insert(
-            "model".to_string(),
-            "global.anthropic.claude-sonnet-4-6".to_string(),
+            "base_url".to_string(),
+            "https://proxy.example.com/v1".to_string(),
         );
-        params.insert("aws_region".to_string(), "ap-northeast-1".to_string());
+        params.insert("model".to_string(), "claude-sonnet-4-20250514".to_string());
+        params.insert("auth_style".to_string(), "bearer".to_string());
 
         let provider = ProviderConfig {
-            provider_type: "bedrock-messages".to_string(),
-            model_id: "claude-sonnet-4-6".to_string(),
+            provider_type: "messages".to_string(),
+            model_id: "claude-sonnet-4".to_string(),
+            label: None,
+            default: false,
+            params,
+        };
+
+        let client = build_client(&provider).expect("messages client should build");
+
+        assert_eq!(client.model_id(), "claude-sonnet-4");
+    }
+
+    #[test]
+    fn build_client_rejects_unknown_auth_style() {
+        let mut params = HashMap::new();
+        params.insert("api_key".to_string(), "sk-test".to_string());
+        params.insert(
+            "base_url".to_string(),
+            "https://proxy.example.com/v1".to_string(),
+        );
+        params.insert("model".to_string(), "claude-sonnet-4-20250514".to_string());
+        params.insert("auth_style".to_string(), "unknown".to_string());
+
+        let provider = ProviderConfig {
+            provider_type: "messages".to_string(),
+            model_id: "claude-sonnet-4".to_string(),
             label: None,
             default: false,
             params,
@@ -328,54 +240,148 @@ mod tests {
 
         let err = build_client(&provider)
             .err()
-            .expect("missing token must be rejected");
+            .expect("unknown auth_style must be rejected");
 
         assert_eq!(
             err.to_string(),
-            "invalid provider: aws_bearer_token is required"
+            "invalid provider: unknown auth_style: unknown"
         );
+    }
+
+    #[test]
+    fn build_client_rejects_missing_api_key() {
+        let mut params = HashMap::new();
+        params.insert(
+            "base_url".to_string(),
+            "https://api.anthropic.com/v1".to_string(),
+        );
+        params.insert("model".to_string(), "claude-sonnet-4-20250514".to_string());
+
+        let provider = ProviderConfig {
+            provider_type: "messages".to_string(),
+            model_id: "claude-sonnet-4".to_string(),
+            label: None,
+            default: false,
+            params,
+        };
+
+        let err = build_client(&provider)
+            .err()
+            .expect("missing api_key must be rejected");
+
+        assert_eq!(err.to_string(), "invalid provider: api_key is required");
+    }
+
+    #[test]
+    fn build_client_rejects_missing_base_url() {
+        let mut params = HashMap::new();
+        params.insert("api_key".to_string(), "sk-ant-test".to_string());
+        params.insert("model".to_string(), "claude-sonnet-4-20250514".to_string());
+
+        let provider = ProviderConfig {
+            provider_type: "messages".to_string(),
+            model_id: "claude-sonnet-4".to_string(),
+            label: None,
+            default: false,
+            params,
+        };
+
+        let err = build_client(&provider)
+            .err()
+            .expect("missing base_url must be rejected");
+
+        assert_eq!(err.to_string(), "invalid provider: base_url is required");
+    }
+
+    #[test]
+    fn build_client_rejects_missing_model() {
+        let mut params = HashMap::new();
+        params.insert("api_key".to_string(), "sk-ant-test".to_string());
+        params.insert(
+            "base_url".to_string(),
+            "https://api.anthropic.com/v1".to_string(),
+        );
+
+        let provider = ProviderConfig {
+            provider_type: "messages".to_string(),
+            model_id: "claude-sonnet-4".to_string(),
+            label: None,
+            default: false,
+            params,
+        };
+
+        let err = build_client(&provider)
+            .err()
+            .expect("missing model must be rejected");
+
+        assert_eq!(err.to_string(), "invalid provider: model is required");
     }
 }
 
 pub fn build_client(provider: &ProviderConfig) -> Result<Arc<dyn ModelApiProvider>, ConfigError> {
-    if provider.provider_type != "bedrock-messages" {
+    if provider.provider_type != "messages" {
         return Err(ConfigError::UnknownProviderType(
             provider.provider_type.clone(),
         ));
     }
-    let bedrock_model = provider
+    let api_key = provider
+        .params
+        .get("api_key")
+        .ok_or_else(|| ConfigError::InvalidProvider("api_key is required".to_string()))?;
+    let base_url = provider
+        .params
+        .get("base_url")
+        .cloned()
+        .ok_or_else(|| ConfigError::InvalidProvider("base_url is required".to_string()))?;
+    let upstream_model = provider
         .params
         .get("model")
         .cloned()
         .ok_or_else(|| ConfigError::InvalidProvider("model is required".to_string()))?;
-    let aws_region = provider
-        .params
-        .get("aws_region")
-        .cloned()
-        .ok_or_else(|| ConfigError::InvalidProvider("aws_region is required".to_string()))?;
     let anthropic_version = provider
         .params
         .get("anthropic_version")
         .cloned()
-        .unwrap_or_else(|| "bedrock-2023-05-31".to_string());
-    let default_max_tokens = provider
+        .unwrap_or_else(|| "2023-06-01".to_string());
+    let auth_style = provider
         .params
-        .get("max_tokens")
-        .and_then(|raw| raw.parse::<u64>().ok())
-        .unwrap_or(4096);
-    let aws_bearer_token = provider
-        .params
-        .get("aws_bearer_token")
-        .map(|token| token.trim().to_string())
-        .filter(|token| !token.is_empty())
-        .ok_or_else(|| ConfigError::InvalidProvider("aws_bearer_token is required".to_string()))?;
+        .get("auth_style")
+        .cloned()
+        .unwrap_or_else(|| "x-api-key".to_string());
+
+    let mut headers = HeaderMap::new();
+    match auth_style.as_str() {
+        "x-api-key" => {
+            headers.insert(
+                "x-api-key",
+                api_key
+                    .parse::<HeaderValue>()
+                    .map_err(|err| ConfigError::InvalidProvider(err.to_string()))?,
+            );
+        }
+        "bearer" => {
+            let auth_value = format!("Bearer {}", api_key);
+            headers.insert(
+                header::AUTHORIZATION,
+                auth_value
+                    .parse::<HeaderValue>()
+                    .map_err(|err| ConfigError::InvalidProvider(err.to_string()))?,
+            );
+        }
+        other => {
+            return Err(ConfigError::InvalidProvider(format!(
+                "unknown auth_style: {}",
+                other
+            )));
+        }
+    }
 
     Ok(Arc::new(MessagesClient::new(
+        reqwest::Client::new(),
+        base_url,
+        headers,
         provider.model_id.clone(),
-        bedrock_model,
-        aws_region,
+        upstream_model,
         anthropic_version,
-        default_max_tokens,
-        Some(aws_bearer_token),
     )))
 }

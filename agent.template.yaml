@@ -62,6 +62,10 @@ model_api:
   #   required params: model, aws_region
   #   optional params: anthropic_version(default bedrock-2023-05-31),
   #     max_tokens(default 4096), aws_bearer_token
+  # - messages: HTTP proxy Anthropic Messages adapter.
+  #   required params: api_key, base_url, model
+  #   optional params: anthropic_version(default 2023-06-01),
+  #     auth_style(default x-api-key, alternative: bearer)
   # - generate_content: Google Vertex generateContent adapter.
   #   required params: model, project_id, credentials_file
   #   optional params: location(default global)
@@ -86,6 +90,14 @@ model_api:
     #     aws_bearer_token: ""
     #     anthropic_version: "bedrock-2023-05-31"
     #     max_tokens: "4096"
+    # - type: "messages"
+    #   model_id: "claude-sonnet-4-20250514"
+    #   params:
+    #     model: "claude-sonnet-4-20250514"
+    #     api_key: ""
+    #     base_url: "https://api.anthropic.com/v1"
+    #     anthropic_version: "2023-06-01"
+    #     auth_style: "x-api-key"
     # - type: "generate_content"
     #   model_id: "gemini-2.5-flash"
     #   params:

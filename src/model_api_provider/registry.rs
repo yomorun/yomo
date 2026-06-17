@@ -436,7 +436,11 @@ fn build_provider(
     endpoint_path: &str,
 ) -> Result<Arc<dyn ModelApiProvider>, ConfigError> {
     match endpoint_path {
-        "/messages" => providers::messages::build_client(provider),
+        "/messages" => match provider.provider_type.as_str() {
+            "bedrock-messages" => providers::bedrock_messages::build_client(provider),
+            "messages" => providers::messages::build_client(provider),
+            other => Err(ConfigError::UnknownProviderType(other.to_string())),
+        },
         "/responses" => providers::responses::build_client(provider),
         "/embeddings" => providers::passthrough::build_client(provider),
         "/rerank" => providers::passthrough::build_client(provider),

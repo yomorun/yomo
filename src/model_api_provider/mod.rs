@@ -8,7 +8,9 @@ pub use crate::usage_handler::{NoopUsageHandler, UsageHandler};
 pub use provider::{
     ModelApiProvider, ProviderBody, ProviderRequest, ProviderResponse, proxy_request,
 };
-pub use providers::{GenerateContentClient, MessagesClient, ProxyClient, ResponsesClient};
+pub use providers::{
+    BedrockMessagesClient, GenerateContentClient, MessagesClient, ProxyClient, ResponsesClient,
+};
 pub use registry::{ByEndpointModel, ProviderEntry, ProviderRegistry};
 pub use selection::{SelectionError, SelectionResult, SelectionStrategy};
 pub use usage::{
