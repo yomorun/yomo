@@ -884,7 +884,11 @@ where
         tool_call_span.record("result_size", error_msg.as_bytes().len() as i64);
         tool_call_span.record("result", error_msg);
     } else {
-        let result_text = response.result.to_string();
+        let result_text = match &response.result {
+            serde_json::Value::Null => String::new(),
+            serde_json::Value::String(s) => s.clone(),
+            other => other.to_string(),
+        };
         tool_call_span.record("status", field::display("ok"));
         tool_call_span.record("result_size", result_text.as_bytes().len() as i64);
         tool_call_span.record("result", &result_text);
