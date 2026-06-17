@@ -75,7 +75,7 @@ pub struct ToolRequest {
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct ToolResponse {
     /// Tool execution result payload.
-    pub result: Option<String>,
+    pub result: serde_json::Value,
     /// Error details returned by tool execution.
     pub error_msg: Option<String>,
 }
