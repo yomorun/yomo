@@ -154,8 +154,13 @@ where
         return Ok(response);
     }
 
-    let request_model_id = if request.model.trim().is_empty() {
-        None
+    let requested_model_is_default =
+        request.model.trim().is_empty() || request.model.trim() == "auto";
+    let request_model_id = if requested_model_is_default {
+        state
+            .provider_registry
+            .default_model_id()
+            .map(str::to_string)
     } else {
         Some(request.model.clone())
     };
@@ -174,8 +179,12 @@ where
             return Ok(response);
         }
         Err(SelectionError::ModelNotSupported) => {
-            let model = request_model_id.as_deref().unwrap_or("");
-            let message = format!("model {model} is not supported");
+            let message = if requested_model_is_default && request_model_id.is_none() {
+                "default model is not configured".to_string()
+            } else {
+                let model = request_model_id.as_deref().unwrap_or_default();
+                format!("model {model} is not supported")
+            };
             let response = openai_error_response(
                 StatusCode::BAD_REQUEST,
                 &message,

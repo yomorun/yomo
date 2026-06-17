@@ -31,6 +31,7 @@ pub struct ProviderEntry {
 #[derive(Clone)]
 pub struct ProviderRegistry<M> {
     providers: HashMap<String, ProviderEntry>,
+    default_model_id: Option<String>,
     strategy: Arc<dyn SelectionStrategy<M>>,
     error_notifier: Option<Arc<dyn ProviderErrorNotifier<M>>>,
 }
@@ -38,6 +39,7 @@ pub struct ProviderRegistry<M> {
 impl<M> ProviderRegistry<M> {
     pub fn from_providers(
         providers: &[ProviderConfig],
+        default_model_id: Option<String>,
         strategy: Arc<dyn SelectionStrategy<M>>,
     ) -> Result<Self, ConfigError> {
         let mut registry: HashMap<String, ProviderEntry> = HashMap::new();
@@ -82,18 +84,29 @@ impl<M> ProviderRegistry<M> {
             registry.insert(item.model_id.clone(), entry);
         }
 
-        Ok(Self::new(registry, strategy))
+        Ok(Self {
+            providers: registry,
+            default_model_id,
+            strategy,
+            error_notifier: None,
+        })
     }
 
     pub fn new(
         providers: HashMap<String, ProviderEntry>,
+        default_model_id: Option<String>,
         strategy: Arc<dyn SelectionStrategy<M>>,
     ) -> Self {
         Self {
             providers,
+            default_model_id,
             strategy,
             error_notifier: None,
         }
+    }
+
+    pub fn default_model_id(&self) -> Option<&str> {
+        self.default_model_id.as_deref()
     }
 
     pub fn with_error_notifier(mut self, notifier: Arc<dyn ProviderErrorNotifier<M>>) -> Self {

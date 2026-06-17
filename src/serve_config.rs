@@ -36,6 +36,8 @@ pub struct ServeConfig {
     #[serde(default)]
     pub llm_providers: Vec<ProviderConfig>,
     #[serde(default)]
+    pub llm_default_model_id: Option<String>,
+    #[serde(default)]
     pub model_api: ModelApiConfig,
 }
 
@@ -46,8 +48,6 @@ pub struct ProviderConfig {
     pub model_id: String,
     #[serde(default)]
     pub label: Option<String>,
-    #[serde(default)]
-    pub default: bool,
     #[serde(default)]
     pub params: HashMap<String, String>,
 }

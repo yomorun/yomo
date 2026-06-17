@@ -191,6 +191,7 @@ async fn serve(opt: ServeOptions) -> Result<()> {
         let selection_strategy = Arc::new(llm_provider::selection::ByModel::default());
         let provider_registry = llm_provider::registry::ProviderRegistry::from_providers(
             &config.llm_providers,
+            config.llm_default_model_id.clone(),
             selection_strategy,
         )?;
         llm_registry_for_model_list = Some(provider_registry.clone());
