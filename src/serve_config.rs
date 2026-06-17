@@ -2,7 +2,6 @@ use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
-use std::path::Path;
 
 use crate::tls::TlsConfig;
 
@@ -36,6 +35,8 @@ pub struct ServeConfig {
     #[serde(default)]
     pub llm_providers: Vec<ProviderConfig>,
     #[serde(default)]
+    pub llm_default_model_id: Option<String>,
+    #[serde(default)]
     pub model_api: ModelApiConfig,
 }
 
@@ -46,8 +47,6 @@ pub struct ProviderConfig {
     pub model_id: String,
     #[serde(default)]
     pub label: Option<String>,
-    #[serde(default)]
-    pub default: bool,
     #[serde(default)]
     pub params: HashMap<String, String>,
 }
@@ -151,25 +150,7 @@ impl Default for HttpApiConfig {
 }
 
 impl ServeConfig {
-    pub fn load(path: impl AsRef<Path>) -> Result<Self, ConfigError> {
-        let path = path.as_ref();
-        let config = config::Config::builder()
-            .add_source(config::File::from(path))
-            .build()
-            .map_err(|err| ConfigError::Load(err.to_string()))?;
-        let parsed: Self = config
-            .try_deserialize()
-            .map_err(|err| ConfigError::Load(err.to_string()))?;
-        Ok(parsed)
-    }
-
     pub fn validate(&self) -> Result<(), ConfigError> {
-        if self.llm_providers.is_empty() {
-            return Err(ConfigError::InvalidProvider(
-                "llm_providers list is empty".to_string(),
-            ));
-        }
-
         let mut model_ids = HashSet::new();
         for provider in &self.llm_providers {
             if provider.provider_type.trim().is_empty() {
@@ -178,16 +159,31 @@ impl ServeConfig {
                     provider.model_id
                 )));
             }
+
             if provider.model_id.trim().is_empty() {
                 return Err(ConfigError::InvalidProvider(
                     "model_id is required for provider".to_string(),
                 ));
             }
+
             let normalized_model_id = provider.model_id.to_ascii_lowercase();
             if !model_ids.insert(normalized_model_id) {
                 return Err(ConfigError::InvalidProvider(format!(
                     "duplicate model_id: {}",
                     provider.model_id
+                )));
+            }
+        }
+
+        if let Some(default_model) = &self.llm_default_model_id {
+            if !self
+                .llm_providers
+                .iter()
+                .any(|p| p.model_id == *default_model)
+            {
+                return Err(ConfigError::InvalidProvider(format!(
+                    "llm_default_model_id not found in llm_providers: {}",
+                    default_model
                 )));
             }
         }
