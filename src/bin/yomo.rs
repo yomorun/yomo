@@ -167,6 +167,8 @@ async fn serve(opt: ServeOptions) -> Result<()> {
         }
     };
 
+    config.validate()?;
+
     info!("config: {:?}, {:?}", config.http_api, config.zipper);
 
     let _trace_guard = init_tracing().await?;
