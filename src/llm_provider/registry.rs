@@ -331,7 +331,7 @@ mod tests {
             calls: Mutex::new(Vec::new()),
         });
         let strategy: Arc<dyn SelectionStrategy<()>> = Arc::new(ByModel);
-        let registry = ProviderRegistry::new(providers, strategy)
+        let registry = ProviderRegistry::new(providers, None, strategy)
             .with_error_notifier(Arc::clone(&notifier) as Arc<dyn ProviderErrorNotifier<()>>);
 
         let entry = registry
@@ -375,7 +375,7 @@ mod tests {
             calls: Mutex::new(Vec::new()),
         });
         let strategy: Arc<dyn SelectionStrategy<()>> = Arc::new(ByModel);
-        let registry = ProviderRegistry::new(providers, strategy)
+        let registry = ProviderRegistry::new(providers, None, strategy)
             .with_error_notifier(Arc::clone(&notifier) as Arc<dyn ProviderErrorNotifier<()>>);
 
         let entry = registry
