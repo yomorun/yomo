@@ -189,7 +189,7 @@ where
 
     let response = match provider_entry
         .provider
-        .execute(provider_request)
+        .execute(provider_request, &metadata)
         .instrument(root_span.clone())
         .await
     {
@@ -360,7 +360,7 @@ fn parse_multipart_boundary(content_type: &str) -> Option<String> {
 fn wrap_stream_with_usage<M>(
     stream: Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send>>,
     root_span: tracing::Span,
-    provider: Arc<dyn ModelApiProvider>,
+    provider: Arc<dyn ModelApiProvider<M>>,
     usage_handler: Arc<dyn UsageHandler<M>>,
     endpoint: String,
     model_id: String,
@@ -553,7 +553,7 @@ impl Drop for ModelApiStreamFinalizer {
 }
 
 async fn rewrite_sse_frame_usage<M>(
-    provider: Arc<dyn ModelApiProvider>,
+    provider: Arc<dyn ModelApiProvider<M>>,
     frame: &str,
     usage_handler: Arc<dyn UsageHandler<M>>,
     endpoint: &str,

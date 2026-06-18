@@ -140,7 +140,7 @@ impl StreamRoundState {
 }
 
 pub async fn run_agent_loop<A, M>(
-    provider: Arc<dyn Provider>,
+    provider: Arc<dyn Provider<M>>,
     request: ChatCompletionRequest,
     server_tools: HashMap<String, String>,
     invoker: Arc<dyn ToolInvoker>,
@@ -183,7 +183,7 @@ where
 }
 
 async fn run_agent_loop_nonstream<A, M>(
-    provider: Arc<dyn Provider>,
+    provider: Arc<dyn Provider<M>>,
     mut request: ChatCompletionRequest,
     server_tools: Arc<HashMap<String, String>>,
     invoker: Arc<dyn ToolInvoker>,
@@ -222,7 +222,7 @@ where
         log_round_request(call_count + 1, false, &request, &trace_id);
 
         let mut response = provider
-            .complete(request.clone())
+            .complete(request.clone(), &metadata)
             .instrument(llm_chat_span.clone())
             .await?;
         llm_chat_span.record("request_id", field::display(&response.request_id));
@@ -348,7 +348,7 @@ where
 }
 
 async fn run_agent_loop_stream<A, M>(
-    provider: Arc<dyn Provider>,
+    provider: Arc<dyn Provider<M>>,
     mut request: ChatCompletionRequest,
     server_tools: Arc<HashMap<String, String>>,
     invoker: Arc<dyn ToolInvoker>,
@@ -388,7 +388,7 @@ where
             log_round_request(loop_state.call_count + 1, true, &request, &trace_id);
 
             let mut provider_stream = provider
-                .stream(request.clone())
+                .stream(request.clone(), &metadata)
                 .instrument(llm_chat_span.clone())
                 .await?;
 
@@ -1141,7 +1141,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl Provider for StaticStreamProvider {
+    impl Provider<()> for StaticStreamProvider {
         fn model_id(&self) -> &str {
             "mock-model"
         }
@@ -1149,6 +1149,7 @@ mod tests {
         async fn complete(
             &self,
             _request: ChatCompletionRequest,
+            _metadata: &(),
         ) -> Result<UnifiedResponse, ProviderError> {
             Err(ProviderError::internal("unused in stream test"))
         }
@@ -1156,6 +1157,7 @@ mod tests {
         async fn stream<'a>(
             &'a self,
             _request: ChatCompletionRequest,
+            _metadata: &(),
         ) -> Result<
             Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
             ProviderError,
@@ -1171,7 +1173,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl Provider for SequencedStreamProvider {
+    impl Provider<()> for SequencedStreamProvider {
         fn model_id(&self) -> &str {
             "mock-model"
         }
@@ -1179,6 +1181,7 @@ mod tests {
         async fn complete(
             &self,
             _request: ChatCompletionRequest,
+            _metadata: &(),
         ) -> Result<UnifiedResponse, ProviderError> {
             Err(ProviderError::internal("unused in stream test"))
         }
@@ -1186,6 +1189,7 @@ mod tests {
         async fn stream<'a>(
             &'a self,
             _request: ChatCompletionRequest,
+            _metadata: &(),
         ) -> Result<
             Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
             ProviderError,

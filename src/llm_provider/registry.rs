@@ -21,16 +21,16 @@ use crate::serve_config::ConfigError;
 use crate::serve_config::ProviderConfig;
 
 #[derive(Clone)]
-pub struct ProviderEntry {
+pub struct ProviderEntry<M> {
     pub provider_type: String,
     pub model_id: String,
     pub label: Option<String>,
-    pub provider: Arc<dyn Provider>,
+    pub provider: Arc<dyn Provider<M>>,
 }
 
 #[derive(Clone)]
 pub struct ProviderRegistry<M> {
-    providers: HashMap<String, ProviderEntry>,
+    providers: HashMap<String, ProviderEntry<M>>,
     default_model_id: Option<String>,
     strategy: Arc<dyn SelectionStrategy<M>>,
     error_notifier: Option<Arc<dyn ProviderErrorNotifier<M>>>,
@@ -42,7 +42,7 @@ impl<M> ProviderRegistry<M> {
         default_model_id: Option<String>,
         strategy: Arc<dyn SelectionStrategy<M>>,
     ) -> Result<Self, ConfigError> {
-        let mut registry: HashMap<String, ProviderEntry> = HashMap::new();
+        let mut registry: HashMap<String, ProviderEntry<M>> = HashMap::new();
         let mut model_ids = std::collections::HashSet::new();
         for item in providers {
             if item.provider_type.trim().is_empty() {
@@ -66,7 +66,7 @@ impl<M> ProviderRegistry<M> {
         }
 
         for item in providers {
-            let provider: Arc<dyn Provider> = match item.provider_type.as_str() {
+            let provider: Arc<dyn Provider<M>> = match item.provider_type.as_str() {
                 "openai" => Arc::new(build_openai_provider(&item.params)?),
                 "openai-compatible" => Arc::new(build_openai_compatible_provider(&item.params)?),
                 "tokenhub" => Arc::new(build_tokenhub_provider(&item.params)?),
@@ -93,7 +93,7 @@ impl<M> ProviderRegistry<M> {
     }
 
     pub fn new(
-        providers: HashMap<String, ProviderEntry>,
+        providers: HashMap<String, ProviderEntry<M>>,
         default_model_id: Option<String>,
         strategy: Arc<dyn SelectionStrategy<M>>,
     ) -> Self {
@@ -118,7 +118,7 @@ impl<M> ProviderRegistry<M> {
         &self,
         model_id: Option<&str>,
         metadata: &M,
-    ) -> Result<ProviderEntry, SelectionError>
+    ) -> Result<ProviderEntry<M>, SelectionError>
     where
         M: Clone + Send + Sync + 'static,
     {
@@ -146,7 +146,7 @@ impl<M> ProviderRegistry<M> {
         Ok(provider)
     }
 
-    pub fn providers(&self) -> &HashMap<String, ProviderEntry> {
+    pub fn providers(&self) -> &HashMap<String, ProviderEntry<M>> {
         &self.providers
     }
 
@@ -160,7 +160,7 @@ impl<M> ProviderRegistry<M> {
 
 #[derive(Clone)]
 struct HookedProvider<M> {
-    inner: Arc<dyn Provider>,
+    inner: Arc<dyn Provider<M>>,
     error_notifier: Arc<dyn ProviderErrorNotifier<M>>,
     metadata: M,
     model_id: String,
@@ -168,7 +168,7 @@ struct HookedProvider<M> {
 }
 
 #[async_trait]
-impl<M> Provider for HookedProvider<M>
+impl<M> Provider<M> for HookedProvider<M>
 where
     M: Clone + Send + Sync + 'static,
 {
@@ -179,9 +179,10 @@ where
     async fn complete(
         &self,
         request: ChatCompletionRequest,
+        metadata: &M,
     ) -> Result<UnifiedResponse, ProviderError> {
         self.inner
-            .complete(request)
+            .complete(request, metadata)
             .await
             .map_err(|err| self.notify_error(err))
     }
@@ -189,12 +190,13 @@ where
     async fn stream<'a>(
         &'a self,
         request: ChatCompletionRequest,
+        metadata: &M,
     ) -> Result<
         std::pin::Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
         ProviderError,
     > {
         self.inner
-            .stream(request)
+            .stream(request, metadata)
             .await
             .map_err(|err| self.notify_error(err))
     }
@@ -247,7 +249,7 @@ mod tests {
     struct InternalFailingProvider;
 
     #[async_trait]
-    impl Provider for FailingProvider {
+    impl Provider<()> for FailingProvider {
         fn model_id(&self) -> &str {
             "demo-model"
         }
@@ -255,6 +257,7 @@ mod tests {
         async fn complete(
             &self,
             _request: ChatCompletionRequest,
+            _metadata: &(),
         ) -> Result<UnifiedResponse, ProviderError> {
             Err(ProviderError::Public {
                 status: StatusCode::PAYMENT_REQUIRED,
@@ -270,6 +273,7 @@ mod tests {
         async fn stream<'a>(
             &'a self,
             _request: ChatCompletionRequest,
+            _metadata: &(),
         ) -> Result<
             Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
             ProviderError,
@@ -279,7 +283,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl Provider for InternalFailingProvider {
+    impl Provider<()> for InternalFailingProvider {
         fn model_id(&self) -> &str {
             "demo-model"
         }
@@ -287,6 +291,7 @@ mod tests {
         async fn complete(
             &self,
             _request: ChatCompletionRequest,
+            _metadata: &(),
         ) -> Result<UnifiedResponse, ProviderError> {
             Err(ProviderError::internal_with_upstream_status(
                 StatusCode::PAYMENT_REQUIRED,
@@ -297,6 +302,7 @@ mod tests {
         async fn stream<'a>(
             &'a self,
             _request: ChatCompletionRequest,
+            _metadata: &(),
         ) -> Result<
             Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
             ProviderError,
@@ -340,7 +346,7 @@ mod tests {
 
         let err = entry
             .provider
-            .complete(empty_request())
+            .complete(empty_request(), &())
             .await
             .expect_err("provider should fail");
         match err {
@@ -384,7 +390,7 @@ mod tests {
 
         let err = entry
             .provider
-            .complete(empty_request())
+            .complete(empty_request(), &())
             .await
             .expect_err("provider should fail");
         match err {

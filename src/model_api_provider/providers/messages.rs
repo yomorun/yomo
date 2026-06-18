@@ -39,12 +39,16 @@ impl MessagesClient {
 }
 
 #[async_trait]
-impl ModelApiProvider for MessagesClient {
+impl<M> ModelApiProvider<M> for MessagesClient {
     fn model_id(&self) -> &str {
         &self.model_id
     }
 
-    async fn execute(&self, mut req: ProviderRequest) -> Result<ProviderResponse, anyhow::Error> {
+    async fn execute(
+        &self,
+        mut req: ProviderRequest,
+        _metadata: &M,
+    ) -> Result<ProviderResponse, anyhow::Error> {
         req.endpoint_path = "/messages".to_string();
         req.headers.insert(
             "anthropic-version",
@@ -189,7 +193,7 @@ mod tests {
             params,
         };
 
-        let client = build_client(&provider).expect("messages client should build");
+        let client = build_client::<()>(&provider).expect("messages client should build");
 
         assert_eq!(client.model_id(), "claude-sonnet-4");
     }
@@ -212,7 +216,7 @@ mod tests {
             params,
         };
 
-        let client = build_client(&provider).expect("messages client should build");
+        let client = build_client::<()>(&provider).expect("messages client should build");
 
         assert_eq!(client.model_id(), "claude-sonnet-4");
     }
@@ -235,7 +239,7 @@ mod tests {
             params,
         };
 
-        let err = build_client(&provider)
+        let err = build_client::<()>(&provider)
             .err()
             .expect("unknown auth_style must be rejected");
 
@@ -261,7 +265,7 @@ mod tests {
             params,
         };
 
-        let err = build_client(&provider)
+        let err = build_client::<()>(&provider)
             .err()
             .expect("missing api_key must be rejected");
 
@@ -281,7 +285,7 @@ mod tests {
             params,
         };
 
-        let err = build_client(&provider)
+        let err = build_client::<()>(&provider)
             .err()
             .expect("missing base_url must be rejected");
 
@@ -304,7 +308,7 @@ mod tests {
             params,
         };
 
-        let err = build_client(&provider)
+        let err = build_client::<()>(&provider)
             .err()
             .expect("missing model must be rejected");
 
@@ -312,7 +316,9 @@ mod tests {
     }
 }
 
-pub fn build_client(provider: &ProviderConfig) -> Result<Arc<dyn ModelApiProvider>, ConfigError> {
+pub fn build_client<M>(
+    provider: &ProviderConfig,
+) -> Result<Arc<dyn ModelApiProvider<M>>, ConfigError> {
     if provider.provider_type != "messages" {
         return Err(ConfigError::UnknownProviderType(
             provider.provider_type.clone(),
