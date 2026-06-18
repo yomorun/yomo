@@ -81,7 +81,6 @@ impl<M> ProviderRegistry<M> {
             provider.provider = Arc::new(HookedProvider {
                 inner: Arc::clone(&provider.provider),
                 error_notifier: Arc::clone(notifier),
-                metadata: metadata.clone(),
                 model_id: provider.model_id.clone(),
             });
         }
@@ -129,7 +128,6 @@ impl<M> ProviderRegistry<M> {
 struct HookedProvider<M> {
     inner: Arc<dyn ModelApiProvider<M>>,
     error_notifier: Arc<dyn ProviderErrorNotifier<M>>,
-    metadata: M,
     model_id: String,
 }
 
@@ -147,7 +145,7 @@ where
         self.inner
             .execute(req, metadata)
             .await
-            .map_err(|err| self.notify_error(endpoint.as_str(), err))
+            .map_err(|err| self.notify_error(endpoint.as_str(), metadata, err))
     }
 }
 
@@ -155,11 +153,11 @@ impl<M> HookedProvider<M>
 where
     M: Clone + Send + Sync + 'static,
 {
-    fn notify_error(&self, endpoint: &str, err: Error) -> Error {
+    fn notify_error(&self, endpoint: &str, metadata: &M, err: Error) -> Error {
         self.error_notifier
             .notify_provider_error(ProviderErrorEvent {
                 model: Some(self.model_id.clone()),
-                metadata: self.metadata.clone(),
+                metadata: metadata.clone(),
                 http_status: None,
                 error: err.to_string(),
                 endpoint: Some(endpoint.to_string()),

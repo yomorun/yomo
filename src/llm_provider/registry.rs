@@ -138,7 +138,6 @@ impl<M> ProviderRegistry<M> {
             provider.provider = Arc::new(HookedProvider {
                 inner: Arc::clone(&provider.provider),
                 error_notifier: Arc::clone(notifier),
-                metadata: metadata.clone(),
                 model_id: provider.model_id.clone(),
                 endpoint: "/v1/chat/completions".to_string(),
             });
@@ -162,7 +161,6 @@ impl<M> ProviderRegistry<M> {
 struct HookedProvider<M> {
     inner: Arc<dyn Provider<M>>,
     error_notifier: Arc<dyn ProviderErrorNotifier<M>>,
-    metadata: M,
     model_id: String,
     endpoint: String,
 }
@@ -184,7 +182,7 @@ where
         self.inner
             .complete(request, metadata)
             .await
-            .map_err(|err| self.notify_error(err))
+            .map_err(|err| self.notify_error(metadata, err))
     }
 
     async fn stream<'a>(
@@ -198,7 +196,7 @@ where
         self.inner
             .stream(request, metadata)
             .await
-            .map_err(|err| self.notify_error(err))
+            .map_err(|err| self.notify_error(metadata, err))
     }
 }
 
@@ -206,7 +204,7 @@ impl<M> HookedProvider<M>
 where
     M: Clone + Send + Sync + 'static,
 {
-    fn notify_error(&self, err: ProviderError) -> ProviderError {
+    fn notify_error(&self, metadata: &M, err: ProviderError) -> ProviderError {
         let http_status = match &err {
             ProviderError::Public { status, .. } => Some(status.as_u16()),
             ProviderError::Internal {
@@ -217,7 +215,7 @@ where
         self.error_notifier
             .notify_provider_error(ProviderErrorEvent {
                 model: Some(self.model_id.clone()),
-                metadata: self.metadata.clone(),
+                metadata: metadata.clone(),
                 http_status,
                 error: err.to_string(),
                 endpoint: Some(self.endpoint.clone()),
