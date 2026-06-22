@@ -68,12 +68,16 @@ impl BedrockMessagesClient {
 }
 
 #[async_trait]
-impl ModelApiProvider for BedrockMessagesClient {
+impl<M> ModelApiProvider<M> for BedrockMessagesClient {
     fn model_id(&self) -> &str {
         &self.model_id
     }
 
-    async fn execute(&self, req: ProviderRequest) -> Result<ProviderResponse, anyhow::Error> {
+    async fn execute(
+        &self,
+        req: ProviderRequest,
+        _metadata: &M,
+    ) -> Result<ProviderResponse, anyhow::Error> {
         let stream = parse_stream_flag(&req.body);
         let body =
             rewrite_messages_body(&req.body, &self.anthropic_version, self.default_max_tokens)?;
@@ -302,7 +306,7 @@ mod tests {
             params,
         };
 
-        let client = build_client(&provider).expect("bedrock client should build");
+        let client = build_client::<()>(&provider).expect("bedrock client should build");
 
         assert_eq!(client.model_id(), "claude-sonnet-4-6");
     }
@@ -324,7 +328,7 @@ mod tests {
             params,
         };
 
-        let err = build_client(&provider)
+        let err = build_client::<()>(&provider)
             .err()
             .expect("missing token must be rejected");
 
@@ -335,7 +339,9 @@ mod tests {
     }
 }
 
-pub fn build_client(provider: &ProviderConfig) -> Result<Arc<dyn ModelApiProvider>, ConfigError> {
+pub fn build_client<M>(
+    provider: &ProviderConfig,
+) -> Result<Arc<dyn ModelApiProvider<M>>, ConfigError> {
     if provider.provider_type != "bedrock-messages" {
         return Err(ConfigError::UnknownProviderType(
             provider.provider_type.clone(),

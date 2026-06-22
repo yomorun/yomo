@@ -29,7 +29,7 @@ impl OpenAICompatibleProvider {
 }
 
 #[async_trait]
-impl Provider for OpenAICompatibleProvider {
+impl<M> Provider<M> for OpenAICompatibleProvider {
     fn model_id(&self) -> &str {
         "openai-compatible"
     }
@@ -37,6 +37,7 @@ impl Provider for OpenAICompatibleProvider {
     async fn complete(
         &self,
         mut request: ChatCompletionRequest,
+        _metadata: &M,
     ) -> Result<UnifiedResponse, ProviderError> {
         if let Some(model_id) = &self.model_id {
             request.model = model_id.clone();
@@ -54,6 +55,7 @@ impl Provider for OpenAICompatibleProvider {
     async fn stream<'a>(
         &'a self,
         mut request: ChatCompletionRequest,
+        _metadata: &M,
     ) -> Result<
         Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
         ProviderError,

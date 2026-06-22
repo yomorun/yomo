@@ -31,10 +31,14 @@ pub struct ProviderResponse {
 }
 
 #[async_trait]
-pub trait ModelApiProvider: Send + Sync {
+pub trait ModelApiProvider<M>: Send + Sync {
     fn model_id(&self) -> &str;
 
-    async fn execute(&self, req: ProviderRequest) -> Result<ProviderResponse, anyhow::Error>;
+    async fn execute(
+        &self,
+        req: ProviderRequest,
+        metadata: &M,
+    ) -> Result<ProviderResponse, anyhow::Error>;
 
     fn extract_request_id(&self, payload_json: &Value) -> Option<String> {
         payload_json

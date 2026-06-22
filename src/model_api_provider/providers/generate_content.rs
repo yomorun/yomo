@@ -29,12 +29,16 @@ impl GenerateContentClient {
 }
 
 #[async_trait]
-impl ModelApiProvider for GenerateContentClient {
+impl<M> ModelApiProvider<M> for GenerateContentClient {
     fn model_id(&self) -> &str {
         &self.model_id
     }
 
-    async fn execute(&self, req: ProviderRequest) -> Result<ProviderResponse, anyhow::Error> {
+    async fn execute(
+        &self,
+        req: ProviderRequest,
+        _metadata: &M,
+    ) -> Result<ProviderResponse, anyhow::Error> {
         let stream = parse_stream_flag(&req.body);
         let headers = filter_request_headers(req.headers);
         let response = self
@@ -180,7 +184,9 @@ mod tests {
     }
 }
 
-pub fn build_client(provider: &ProviderConfig) -> Result<Arc<dyn ModelApiProvider>, ConfigError> {
+pub fn build_client<M>(
+    provider: &ProviderConfig,
+) -> Result<Arc<dyn ModelApiProvider<M>>, ConfigError> {
     if provider.provider_type != "generate_content" {
         return Err(ConfigError::UnknownProviderType(
             provider.provider_type.clone(),

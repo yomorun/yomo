@@ -66,7 +66,7 @@ impl VertexAIProvider {
 }
 
 #[async_trait]
-impl Provider for VertexAIProvider {
+impl<M> Provider<M> for VertexAIProvider {
     fn model_id(&self) -> &str {
         &self.model_id
     }
@@ -74,6 +74,7 @@ impl Provider for VertexAIProvider {
     async fn complete(
         &self,
         request: ChatCompletionRequest,
+        _metadata: &M,
     ) -> Result<UnifiedResponse, ProviderError> {
         validate_request(&request)?;
         let body =
@@ -107,6 +108,7 @@ impl Provider for VertexAIProvider {
     async fn stream<'a>(
         &'a self,
         request: ChatCompletionRequest,
+        _metadata: &M,
     ) -> Result<
         Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
         ProviderError,

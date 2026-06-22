@@ -13,15 +13,15 @@ use crate::provider_error_notifier::{ProviderErrorEvent, ProviderErrorNotifier};
 use crate::serve_config::{ConfigError, ModelApiConfig, ModelApiEndpointConfig, ProviderConfig};
 
 #[derive(Clone)]
-pub struct ProviderEntry {
+pub struct ProviderEntry<M> {
     pub model_id: String,
     pub label: Option<String>,
-    pub provider: Arc<dyn ModelApiProvider>,
+    pub provider: Arc<dyn ModelApiProvider<M>>,
 }
 
 #[derive(Clone)]
 pub struct ProviderRegistry<M> {
-    providers: HashMap<String, HashMap<String, ProviderEntry>>,
+    providers: HashMap<String, HashMap<String, ProviderEntry<M>>>,
     endpoints: HashMap<String, ModelApiEndpointConfig>,
     strategy: Arc<dyn SelectionStrategy<M>>,
     error_notifier: Option<Arc<dyn ProviderErrorNotifier<M>>>,
@@ -56,7 +56,7 @@ impl<M> ProviderRegistry<M> {
         endpoint: &str,
         model_id: Option<&str>,
         metadata: &M,
-    ) -> Result<ProviderEntry, SelectionError>
+    ) -> Result<ProviderEntry<M>, SelectionError>
     where
         M: Clone + Send + Sync + 'static,
     {
@@ -81,7 +81,6 @@ impl<M> ProviderRegistry<M> {
             provider.provider = Arc::new(HookedProvider {
                 inner: Arc::clone(&provider.provider),
                 error_notifier: Arc::clone(notifier),
-                metadata: metadata.clone(),
                 model_id: provider.model_id.clone(),
             });
         }
@@ -127,14 +126,13 @@ impl<M> ProviderRegistry<M> {
 
 #[derive(Clone)]
 struct HookedProvider<M> {
-    inner: Arc<dyn ModelApiProvider>,
+    inner: Arc<dyn ModelApiProvider<M>>,
     error_notifier: Arc<dyn ProviderErrorNotifier<M>>,
-    metadata: M,
     model_id: String,
 }
 
 #[async_trait]
-impl<M> ModelApiProvider for HookedProvider<M>
+impl<M> ModelApiProvider<M> for HookedProvider<M>
 where
     M: Clone + Send + Sync + 'static,
 {
@@ -142,12 +140,12 @@ where
         self.inner.model_id()
     }
 
-    async fn execute(&self, req: ProviderRequest) -> Result<ProviderResponse, Error> {
+    async fn execute(&self, req: ProviderRequest, metadata: &M) -> Result<ProviderResponse, Error> {
         let endpoint = req.endpoint_path.clone();
         self.inner
-            .execute(req)
+            .execute(req, metadata)
             .await
-            .map_err(|err| self.notify_error(endpoint.as_str(), err))
+            .map_err(|err| self.notify_error(endpoint.as_str(), metadata, err))
     }
 }
 
@@ -155,11 +153,11 @@ impl<M> HookedProvider<M>
 where
     M: Clone + Send + Sync + 'static,
 {
-    fn notify_error(&self, endpoint: &str, err: Error) -> Error {
+    fn notify_error(&self, endpoint: &str, metadata: &M, err: Error) -> Error {
         self.error_notifier
             .notify_provider_error(ProviderErrorEvent {
                 model: Some(self.model_id.clone()),
-                metadata: self.metadata.clone(),
+                metadata: metadata.clone(),
                 http_status: None,
                 error: err.to_string(),
                 endpoint: Some(endpoint.to_string()),
@@ -204,12 +202,16 @@ mod tests {
     struct FailingProvider;
 
     #[async_trait]
-    impl ModelApiProvider for FailingProvider {
+    impl ModelApiProvider<()> for FailingProvider {
         fn model_id(&self) -> &str {
             "embed-1"
         }
 
-        async fn execute(&self, _req: ProviderRequest) -> Result<ProviderResponse, anyhow::Error> {
+        async fn execute(
+            &self,
+            _req: ProviderRequest,
+            _metadata: &(),
+        ) -> Result<ProviderResponse, anyhow::Error> {
             Err(anyhow!("upstream timeout"))
         }
     }
@@ -264,14 +266,17 @@ mod tests {
             .expect("select provider");
         let err = match entry
             .provider
-            .execute(ProviderRequest {
-                method: Method::POST,
-                endpoint_path: "/embeddings".to_string(),
-                headers: HeaderMap::new(),
-                body: axum::body::Bytes::new(),
-                is_stream: false,
-                content_type: None,
-            })
+            .execute(
+                ProviderRequest {
+                    method: Method::POST,
+                    endpoint_path: "/embeddings".to_string(),
+                    headers: HeaderMap::new(),
+                    body: axum::body::Bytes::new(),
+                    is_stream: false,
+                    content_type: None,
+                },
+                &(),
+            )
             .await
         {
             Ok(_) => panic!("provider should fail"),
@@ -288,12 +293,16 @@ mod tests {
     struct SuccessProvider;
 
     #[async_trait]
-    impl ModelApiProvider for SuccessProvider {
+    impl ModelApiProvider<()> for SuccessProvider {
         fn model_id(&self) -> &str {
             "embed-1"
         }
 
-        async fn execute(&self, _req: ProviderRequest) -> Result<ProviderResponse, anyhow::Error> {
+        async fn execute(
+            &self,
+            _req: ProviderRequest,
+            _metadata: &(),
+        ) -> Result<ProviderResponse, anyhow::Error> {
             Ok(ProviderResponse {
                 status: StatusCode::OK,
                 headers: HeaderMap::new(),
@@ -340,14 +349,17 @@ mod tests {
             .expect("select provider");
         let response = entry
             .provider
-            .execute(ProviderRequest {
-                method: Method::POST,
-                endpoint_path: "/embeddings".to_string(),
-                headers: HeaderMap::new(),
-                body: axum::body::Bytes::new(),
-                is_stream: false,
-                content_type: None,
-            })
+            .execute(
+                ProviderRequest {
+                    method: Method::POST,
+                    endpoint_path: "/embeddings".to_string(),
+                    headers: HeaderMap::new(),
+                    body: axum::body::Bytes::new(),
+                    is_stream: false,
+                    content_type: None,
+                },
+                &(),
+            )
             .await
             .expect("provider should succeed");
         assert_eq!(response.status, StatusCode::OK);
@@ -392,18 +404,18 @@ impl<M> SelectionStrategy<M> for ByEndpointModel {
     }
 }
 
-fn build_providers(
+fn build_providers<M>(
     providers: &[ProviderConfig],
     endpoints: &[ModelApiEndpointConfig],
-) -> Result<HashMap<String, HashMap<String, ProviderEntry>>, ConfigError> {
+) -> Result<HashMap<String, HashMap<String, ProviderEntry<M>>>, ConfigError> {
     let mut provider_map: HashMap<String, &ProviderConfig> = HashMap::new();
     for item in providers {
         provider_map.insert(item.model_id.clone(), item);
     }
 
-    let mut registry: HashMap<String, HashMap<String, ProviderEntry>> = HashMap::new();
+    let mut registry: HashMap<String, HashMap<String, ProviderEntry<M>>> = HashMap::new();
     for endpoint in endpoints {
-        let mut endpoint_models: HashMap<String, ProviderEntry> = HashMap::new();
+        let mut endpoint_models: HashMap<String, ProviderEntry<M>> = HashMap::new();
         let mut model_ids = endpoint.models.clone();
         if let Some(default_model) = &endpoint.default_model {
             if !model_ids.iter().any(|model| model == default_model) {
@@ -431,10 +443,10 @@ fn build_providers(
     Ok(registry)
 }
 
-fn build_provider(
+fn build_provider<M>(
     provider: &ProviderConfig,
     endpoint_path: &str,
-) -> Result<Arc<dyn ModelApiProvider>, ConfigError> {
+) -> Result<Arc<dyn ModelApiProvider<M>>, ConfigError> {
     match endpoint_path {
         "/messages" => match provider.provider_type.as_str() {
             "bedrock-messages" => providers::bedrock_messages::build_client(provider),

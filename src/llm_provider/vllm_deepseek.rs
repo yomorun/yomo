@@ -27,7 +27,7 @@ impl VllmDeepseekProvider {
 }
 
 #[async_trait]
-impl Provider for VllmDeepseekProvider {
+impl<M> Provider<M> for VllmDeepseekProvider {
     fn model_id(&self) -> &str {
         self.model_id.as_deref().unwrap_or("deepseek-v4-flash")
     }
@@ -35,6 +35,7 @@ impl Provider for VllmDeepseekProvider {
     async fn complete(
         &self,
         mut request: ChatCompletionRequest,
+        _metadata: &M,
     ) -> Result<UnifiedResponse, ProviderError> {
         if let Some(model_id) = &self.model_id {
             request.model = model_id.clone();
@@ -52,6 +53,7 @@ impl Provider for VllmDeepseekProvider {
     async fn stream<'a>(
         &'a self,
         mut request: ChatCompletionRequest,
+        _metadata: &M,
     ) -> Result<
         Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
         ProviderError,

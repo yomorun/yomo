@@ -174,17 +174,19 @@ impl ProviderError {
 impl std::error::Error for ProviderError {}
 
 #[async_trait]
-pub trait Provider: Send + Sync {
+pub trait Provider<M>: Send + Sync {
     fn model_id(&self) -> &str;
 
     async fn complete(
         &self,
         request: ChatCompletionRequest,
+        metadata: &M,
     ) -> Result<UnifiedResponse, ProviderError>;
 
     async fn stream<'a>(
         &'a self,
         request: ChatCompletionRequest,
+        metadata: &M,
     ) -> Result<
         Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
         ProviderError,

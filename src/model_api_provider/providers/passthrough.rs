@@ -35,12 +35,16 @@ impl ProxyClient {
 }
 
 #[async_trait]
-impl ModelApiProvider for ProxyClient {
+impl<M> ModelApiProvider<M> for ProxyClient {
     fn model_id(&self) -> &str {
         &self.model_id
     }
 
-    async fn execute(&self, req: ProviderRequest) -> Result<ProviderResponse, anyhow::Error> {
+    async fn execute(
+        &self,
+        req: ProviderRequest,
+        _metadata: &M,
+    ) -> Result<ProviderResponse, anyhow::Error> {
         proxy_request(
             &self.client,
             &self.base_url,
@@ -52,7 +56,9 @@ impl ModelApiProvider for ProxyClient {
     }
 }
 
-pub fn build_client(provider: &ProviderConfig) -> Result<Arc<dyn ModelApiProvider>, ConfigError> {
+pub fn build_client<M>(
+    provider: &ProviderConfig,
+) -> Result<Arc<dyn ModelApiProvider<M>>, ConfigError> {
     if provider.provider_type != "passthrough" {
         return Err(ConfigError::UnknownProviderType(
             provider.provider_type.clone(),

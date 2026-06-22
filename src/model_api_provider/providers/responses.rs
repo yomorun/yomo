@@ -36,12 +36,16 @@ impl ResponsesClient {
 }
 
 #[async_trait]
-impl ModelApiProvider for ResponsesClient {
+impl<M> ModelApiProvider<M> for ResponsesClient {
     fn model_id(&self) -> &str {
         &self.model_id
     }
 
-    async fn execute(&self, mut req: ProviderRequest) -> Result<ProviderResponse, anyhow::Error> {
+    async fn execute(
+        &self,
+        mut req: ProviderRequest,
+        _metadata: &M,
+    ) -> Result<ProviderResponse, anyhow::Error> {
         req.endpoint_path = "/responses".to_string();
         proxy_request(
             &self.client,
@@ -178,7 +182,9 @@ mod tests {
     }
 }
 
-pub fn build_client(provider: &ProviderConfig) -> Result<Arc<dyn ModelApiProvider>, ConfigError> {
+pub fn build_client<M>(
+    provider: &ProviderConfig,
+) -> Result<Arc<dyn ModelApiProvider<M>>, ConfigError> {
     if provider.provider_type != "responses" {
         return Err(ConfigError::UnknownProviderType(
             provider.provider_type.clone(),
