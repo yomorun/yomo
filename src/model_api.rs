@@ -19,8 +19,7 @@ use crate::model_api_provider::{
 };
 use crate::openai_http_mapping::openai_error_response;
 use crate::trace::{
-    DefaultRequestSpanStarter, RequestSpanStarter, record_flattened_json_attributes,
-    set_http_span_status,
+    DefaultRequestSpanStarter, RequestSpanStarter, record_usage_attributes, set_http_span_status,
 };
 use crate::usage_handler::{EndpointUsage, UsageHandler};
 
@@ -243,7 +242,6 @@ where
                     let modified_usage = state
                         .usage_handler
                         .on_usage(
-                            endpoint_path,
                             &provider_entry.model_id,
                             provider_entry.label.as_deref(),
                             &request_id,
@@ -252,10 +250,10 @@ where
                             EndpointUsage::from_endpoint_payload(endpoint_path, usage_value)
                                 .expect("model_api expected endpoint usage payload"),
                         )
-                        .await
-                        .into_payload(endpoint_path);
-                    record_flattened_json_attributes(&root_span, "usage", &modified_usage);
-                    if provider.inject_usage(&mut body_json, modified_usage) {
+                        .await;
+                    record_usage_attributes(&root_span, "usage", &modified_usage);
+                    let response_usage = modified_usage.into_payload(endpoint_path);
+                    if provider.inject_usage(&mut body_json, response_usage) {
                         payload = serde_json::to_vec(&body_json)
                             .map(Bytes::from)
                             .unwrap_or(payload);
@@ -381,7 +379,7 @@ where
             metadata_debug,
         );
         let mut text_buffer = String::new();
-        let mut latest_usage: Option<Value> = None;
+        let mut latest_usage: Option<EndpointUsage> = None;
         while let Some(item) = stream.next().await {
             let chunk = match item {
                 Ok(chunk) => chunk,
@@ -440,7 +438,6 @@ where
                         let request_id = resolve_request_id(provider.extract_request_id(&value), &trace_id);
                         let modified_usage = usage_handler
                             .on_usage(
-                                &endpoint,
                                 &model_id,
                                 label.as_deref(),
                                 &request_id,
@@ -449,9 +446,9 @@ where
                                 EndpointUsage::from_endpoint_payload(&endpoint, usage_value)
                                     .expect("model_api expected endpoint usage payload"),
                             )
-                            .await
-                            .into_payload(&endpoint);
-                        if provider.inject_usage(&mut value, modified_usage.clone()) {
+                            .await;
+                        let response_usage = modified_usage.clone().into_payload(&endpoint);
+                        if provider.inject_usage(&mut value, response_usage) {
                             latest_usage = Some(modified_usage);
                             if let Ok(encoded) = serde_json::to_vec(&value) {
                                 yield Bytes::from(encoded);
@@ -470,8 +467,8 @@ where
             }
         }
 
-        if let Some(usage_value) = latest_usage {
-            finalizer.set_usage(usage_value);
+        if let Some(usage) = latest_usage {
+            finalizer.set_usage(usage);
         }
     })
 }
@@ -488,7 +485,7 @@ struct ModelApiStreamFinalState {
     model_id: String,
     error: Option<String>,
     metadata_debug: String,
-    usage: Option<Value>,
+    usage: Option<EndpointUsage>,
 }
 
 impl ModelApiStreamFinalizer {
@@ -518,7 +515,7 @@ impl ModelApiStreamFinalizer {
         }
     }
 
-    fn set_usage(&mut self, usage: Value) {
+    fn set_usage(&mut self, usage: EndpointUsage) {
         if let Ok(mut state) = self.state.lock() {
             state.usage = Some(usage);
         }
@@ -531,7 +528,7 @@ impl Drop for ModelApiStreamFinalizer {
             return;
         };
         if let Some(usage) = state.usage.as_ref() {
-            record_flattened_json_attributes(&self.root_span, "usage", usage);
+            record_usage_attributes(&self.root_span, "usage", usage);
         }
         set_http_span_status(&self.root_span, state.status_code, state.error.as_deref());
         if state.status_code == StatusCode::OK {
@@ -561,7 +558,7 @@ async fn rewrite_sse_frame_usage<M>(
     label: Option<&str>,
     trace_id: &str,
     metadata: M,
-) -> (String, Option<Value>)
+) -> (String, Option<EndpointUsage>)
 where
     M: Clone + Send + Sync + 'static,
 {
@@ -573,7 +570,6 @@ where
             let request_id = resolve_request_id(provider.extract_request_id(&value), trace_id);
             let modified_usage = usage_handler
                 .on_usage(
-                    endpoint,
                     model_id,
                     label,
                     &request_id,
@@ -582,9 +578,9 @@ where
                     EndpointUsage::from_endpoint_payload(endpoint, usage_value)
                         .expect("model_api expected endpoint usage payload"),
                 )
-                .await
-                .into_payload(endpoint);
-            if provider.inject_usage(&mut value, modified_usage.clone()) {
+                .await;
+            let response_usage = modified_usage.clone().into_payload(endpoint);
+            if provider.inject_usage(&mut value, response_usage) {
                 if let Ok(encoded) = serde_json::to_string(&value) {
                     return (
                         rebuild_sse_frame_with_data(frame, &encoded),

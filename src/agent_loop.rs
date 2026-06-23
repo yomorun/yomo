@@ -25,7 +25,7 @@ use crate::openai_types::{
     ChatCompletionRequest, Content, FunctionDefinition, Message, Role, ToolCall as OpenAIToolCall,
     ToolCallFunction, ToolDefinition, Usage,
 };
-use crate::trace::record_flattened_json_attributes;
+use crate::trace::record_usage_attributes;
 use crate::usage_handler::{EndpointUsage, NoopUsageHandler, UsageHandler, aggregate_to_openai};
 use async_trait::async_trait;
 
@@ -114,7 +114,8 @@ impl StreamLoopState {
 struct StreamRoundState {
     tool_calls: Vec<ProviderToolCall>,
     tool_call_index: HashMap<String, usize>,
-    usage: Option<Value>,
+    openai_usage_payload: Option<Value>,
+    raw_usage: Option<EndpointUsage>,
     finish_reason: Option<String>,
     saw_tool_call: bool,
     emitted_client_tool: bool,
@@ -128,7 +129,8 @@ impl StreamRoundState {
         Self {
             tool_calls: Vec::new(),
             tool_call_index: HashMap::new(),
-            usage: None,
+            openai_usage_payload: None,
+            raw_usage: None,
             finish_reason: None,
             saw_tool_call: false,
             emitted_client_tool: false,
@@ -230,24 +232,21 @@ where
             "finish_reason",
             field::display(finish_reason_to_str(&response.finish_reason)),
         );
-        record_flattened_json_attributes(&llm_chat_span, "usage", &usage_to_value(&response.usage));
+        record_usage_attributes(&llm_chat_span, "usage", &response.usage);
         let usage_handler = Arc::clone(&config.usage_handler);
         let model_id = response.model.clone();
         let request_id = response.request_id.clone();
         let usage_trace_id = trace_id.clone();
         let label = label.clone();
         let metadata_value = (*metadata).clone();
-        let usage = usage_to_value(&response.usage);
         let modified_usage = usage_handler
             .on_usage(
-                "/chat/completions",
                 &model_id,
                 label.as_deref(),
                 &request_id,
                 &usage_trace_id,
                 metadata_value,
-                EndpointUsage::from_endpoint_payload("/chat/completions", usage)
-                    .expect("agent_loop expected chat/completions usage payload"),
+                response.usage.clone(),
             )
             .instrument(llm_chat_span.clone())
             .await
@@ -496,7 +495,9 @@ where
                         }
                     }
                     UnifiedEvent::Usage { usage: chunk_usage } => {
-                        round_state.usage = Some(chunk_usage.clone().into_payload("/chat/completions"));
+                        round_state.raw_usage = Some(chunk_usage.clone());
+                        round_state.openai_usage_payload =
+                            Some(chunk_usage.clone().into_payload("/chat/completions"));
                     }
                     UnifiedEvent::Completed { finish_reason: reason } => {
                         round_state.finish_reason = reason.clone();
@@ -508,8 +509,9 @@ where
                 if !round_state.saw_tool_call {
                     match event {
                         UnifiedEvent::Usage { usage: chunk_usage } => {
+                            round_state.raw_usage = Some(chunk_usage.clone());
                             let processed_usage = chunk_usage.into_payload("/chat/completions");
-                            round_state.usage = Some(processed_usage.clone());
+                            round_state.openai_usage_payload = Some(processed_usage.clone());
                             let mut usage_with_history = loop_state.round_usages.clone();
                             usage_with_history.push(processed_usage);
                             let usage_with_offset =
@@ -542,26 +544,21 @@ where
                 "finish_reason",
                 round_state.finish_reason.as_deref().unwrap_or(""),
             );
-            if let Some(current_usage) = &round_state.usage {
-                record_flattened_json_attributes(
-                    &llm_chat_span,
-                    "usage",
-                    current_usage,
-                );
+            if let Some(current_usage) = &round_state.openai_usage_payload {
+                let trace_usage = round_state.raw_usage.clone().unwrap_or_else(|| {
+                    EndpointUsage::from_endpoint_payload("/chat/completions", current_usage.clone())
+                        .expect("agent_loop expected chat/completions usage payload")
+                });
+                record_usage_attributes(&llm_chat_span, "usage", &trace_usage);
                 let modified_usage = config
                     .usage_handler
                     .on_usage(
-                        "/chat/completions",
                         &model_id,
                         label.as_deref(),
                         round_state.request_id.as_deref().unwrap_or(""),
                         &trace_id,
                         (*metadata).clone(),
-                        EndpointUsage::from_endpoint_payload(
-                            "/chat/completions",
-                            current_usage.clone(),
-                        )
-                        .expect("agent_loop expected chat/completions usage payload"),
+                        trace_usage,
                     )
                     .instrument(llm_chat_span.clone())
                     .await
@@ -573,7 +570,7 @@ where
                 &request.model,
                 true,
                 round_state.tool_calls.len(),
-                round_state.usage.as_ref(),
+                round_state.openai_usage_payload.as_ref(),
                 &trace_id,
             );
             if loop_state.call_count >= config.max_calls {
@@ -1122,6 +1119,7 @@ mod tests {
         resolve_tool_call_name, run_agent_loop,
     };
     use crate::llm_provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
+    use crate::model_api_provider::GenerateContentUsage;
     use crate::openai_types::{
         ChatCompletionRequest, Content, Message, Role, Usage as OpenAIUsage,
     };
@@ -1132,6 +1130,11 @@ mod tests {
     #[derive(Clone)]
     struct StaticStreamProvider {
         events: Arc<Vec<UnifiedEvent>>,
+    }
+
+    #[derive(Clone)]
+    struct StaticCompleteProvider {
+        response: UnifiedResponse,
     }
 
     #[derive(Clone)]
@@ -1169,6 +1172,32 @@ mod tests {
                 .map(Ok::<UnifiedEvent, ProviderError>)
                 .collect::<Vec<_>>();
             Ok(Box::pin(stream::iter(events)))
+        }
+    }
+
+    #[async_trait]
+    impl Provider<()> for StaticCompleteProvider {
+        fn model_id(&self) -> &str {
+            "mock-model"
+        }
+
+        async fn complete(
+            &self,
+            _request: ChatCompletionRequest,
+            _metadata: &(),
+        ) -> Result<UnifiedResponse, ProviderError> {
+            Ok(self.response.clone())
+        }
+
+        async fn stream<'a>(
+            &'a self,
+            _request: ChatCompletionRequest,
+            _metadata: &(),
+        ) -> Result<
+            Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
+            ProviderError,
+        > {
+            Err(ProviderError::internal("unused in non-stream test"))
         }
     }
 
@@ -1246,11 +1275,11 @@ mod tests {
 
     #[derive(Clone, Default)]
     struct RecordingUsageHandler {
-        calls: Arc<Mutex<Vec<serde_json::Value>>>,
+        calls: Arc<Mutex<Vec<EndpointUsage>>>,
     }
 
     impl RecordingUsageHandler {
-        fn captured(&self) -> Vec<serde_json::Value> {
+        fn captured(&self) -> Vec<EndpointUsage> {
             self.calls.lock().expect("usage calls lock").clone()
         }
     }
@@ -1259,7 +1288,6 @@ mod tests {
     impl UsageHandler<()> for RecordingUsageHandler {
         async fn on_usage(
             &self,
-            endpoint: &str,
             _model_id: &str,
             _label: Option<&str>,
             _request_id: &str,
@@ -1270,7 +1298,7 @@ mod tests {
             self.calls
                 .lock()
                 .expect("usage calls lock")
-                .push(usage.clone().into_payload(endpoint));
+                .push(usage.clone());
             usage
         }
     }
@@ -1322,6 +1350,26 @@ mod tests {
             total_tokens,
             prompt_tokens_details: None,
             completion_tokens_details: None,
+        })
+    }
+
+    fn generate_content_usage(
+        prompt_token_count: i64,
+        candidates_token_count: i64,
+        total_token_count: i64,
+    ) -> EndpointUsage {
+        EndpointUsage::GenerateContent(GenerateContentUsage {
+            prompt_token_count: Some(prompt_token_count),
+            candidates_token_count: Some(candidates_token_count),
+            cached_content_token_count: None,
+            tool_use_prompt_token_count: None,
+            thoughts_token_count: None,
+            total_token_count: Some(total_token_count),
+            cache_tokens_details: None,
+            prompt_tokens_details: None,
+            candidates_tokens_details: None,
+            tool_use_prompt_tokens_details: None,
+            traffic_type: None,
         })
     }
 
@@ -1411,13 +1459,124 @@ mod tests {
         let calls = usage_handler.captured();
         assert_eq!(calls.len(), 1);
         assert_eq!(
-            calls[0],
+            calls[0].clone().into_payload("/chat/completions"),
             serde_json::json!({
                 "prompt_tokens": 22,
                 "completion_tokens": 4,
                 "total_tokens": 26
             })
         );
+    }
+
+    #[tokio::test]
+    async fn run_agent_loop_nonstream_passes_raw_generate_content_usage_to_handler() {
+        let usage_handler = RecordingUsageHandler::default();
+        let provider = StaticCompleteProvider {
+            response: UnifiedResponse {
+                request_id: "req-1".to_string(),
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+                model: "gemini-2.5-flash".to_string(),
+                output_text: "hello".to_string(),
+                reasoning_content: None,
+                tool_calls: None,
+                finish_reason: crate::llm_provider::FinishReason::Stop,
+                usage: generate_content_usage(11, 7, 18),
+            },
+        };
+        let config = AgentLoopConfig {
+            max_calls: 1,
+            usage_handler: Arc::new(usage_handler.clone()),
+            ..AgentLoopConfig::default()
+        };
+
+        let mut request = stream_request();
+        request.stream = Some(false);
+        let result = run_agent_loop::<(), ()>(
+            Arc::new(provider),
+            request,
+            HashMap::new(),
+            Arc::new(NoopToolInvoker),
+            (),
+            "trace-1".to_string(),
+            None,
+            config,
+        )
+        .await
+        .expect("non-stream run should succeed");
+
+        let AgentLoopResult::NonStream(response) = result else {
+            panic!("expected non-stream result");
+        };
+        assert_eq!(
+            response.usage.into_payload("/chat/completions")["prompt_tokens"],
+            11
+        );
+        let calls = usage_handler.captured();
+        assert_eq!(calls.len(), 1);
+        let EndpointUsage::GenerateContent(usage) = &calls[0] else {
+            panic!("expected generate content usage");
+        };
+        assert_eq!(usage.prompt_token_count, Some(11));
+        assert_eq!(usage.candidates_token_count, Some(7));
+        assert_eq!(usage.total_token_count, Some(18));
+    }
+
+    #[tokio::test]
+    async fn run_agent_loop_stream_passes_raw_generate_content_usage_to_handler() {
+        let usage_handler = RecordingUsageHandler::default();
+        let provider = StaticStreamProvider {
+            events: Arc::new(vec![
+                UnifiedEvent::MessageStart {
+                    id: "req-1".to_string(),
+                    role: "assistant".to_string(),
+                },
+                UnifiedEvent::Usage {
+                    usage: generate_content_usage(13, 5, 18),
+                },
+                UnifiedEvent::Completed {
+                    finish_reason: Some("stop".to_string()),
+                },
+            ]),
+        };
+        let config = AgentLoopConfig {
+            max_calls: 1,
+            usage_handler: Arc::new(usage_handler.clone()),
+            ..AgentLoopConfig::default()
+        };
+
+        let result = run_agent_loop::<(), ()>(
+            Arc::new(provider),
+            stream_request(),
+            HashMap::new(),
+            Arc::new(NoopToolInvoker),
+            (),
+            "trace-1".to_string(),
+            None,
+            config,
+        )
+        .await
+        .expect("stream run should succeed");
+
+        let AgentLoopResult::Stream { mut events } = result else {
+            panic!("expected stream result");
+        };
+        let mut output_usages = Vec::new();
+        while let Some(event) = events.next().await {
+            if let UnifiedEvent::Usage { usage } = event.expect("stream event should be ok") {
+                output_usages.push(usage.into_payload("/chat/completions"));
+            }
+        }
+
+        assert_eq!(output_usages.len(), 1);
+        assert_eq!(output_usages[0]["prompt_tokens"], 13);
+        let calls = usage_handler.captured();
+        assert_eq!(calls.len(), 1);
+        let EndpointUsage::GenerateContent(usage) = &calls[0] else {
+            panic!("expected generate content usage");
+        };
+        assert_eq!(usage.prompt_token_count, Some(13));
+        assert_eq!(usage.candidates_token_count, Some(5));
+        assert_eq!(usage.total_token_count, Some(18));
     }
 
     #[tokio::test]
