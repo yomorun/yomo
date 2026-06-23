@@ -10,7 +10,6 @@ use axum::response::{IntoResponse, Response};
 use futures_util::{StreamExt, stream};
 use log::{error, info};
 use serde::Serialize;
-use serde_json::Value;
 use tracing::{Instrument, Span};
 
 use crate::agent_loop::{AgentLoopConfig, AgentLoopResult, run_agent_loop};
@@ -28,8 +27,7 @@ use crate::openai_types::{ChatCompletionRequest, StreamOptions};
 use crate::tool_invoker::ToolInvoker;
 use crate::tool_mgr::ToolMgr;
 use crate::trace::{DefaultRequestSpanStarter, RequestSpanStarter};
-use crate::trace::{record_flattened_json_attributes, set_http_span_status};
-use crate::usage_handler::EndpointUsage;
+use crate::trace::{record_usage_attributes, set_http_span_status};
 use crate::utils::truncate_bytes_for_log;
 
 #[derive(Clone)]
@@ -256,7 +254,7 @@ where
                 "finish_reason",
                 tracing::field::display(finish_reason_to_str(&response.finish_reason)),
             );
-            record_flattened_json_attributes(&root_span, "usage", &usage_to_value(&response.usage));
+            record_usage_attributes(&root_span, "usage", &response.usage);
             let usage = map_usage_to_openai(&response.usage);
             info!(
                 "http.request.end; status_code=200 model_id={} prompt_tokens={} completion_tokens={} trace_id={} metadata={:?}",
@@ -335,10 +333,6 @@ fn finish_reason_to_str(reason: &FinishReason) -> &'static str {
         FinishReason::ContentFilter => "content_filter",
         FinishReason::Other => "other",
     }
-}
-
-fn usage_to_value(usage: &EndpointUsage) -> Value {
-    usage.clone().into_payload("/chat/completions")
 }
 
 fn trace_status_message_for_provider_error(err: &ProviderError, status: StatusCode) -> String {
