@@ -10,12 +10,13 @@ use opentelemetry_sdk::{
     Resource,
     trace::{self as sdktrace, IdGenerator, SdkTracerProvider},
 };
-use serde_json::Value;
 use tracing::subscriber::set_global_default;
 use tracing::{Span, field, info_span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use tracing_subscriber::filter::*;
 use tracing_subscriber::prelude::*;
+
+use crate::usage_handler::{EndpointUsage, flatten_usage_quantities_for_usage};
 
 pub struct TraceGuard {
     enabled: bool,
@@ -163,53 +164,9 @@ fn http_status_to_otel_status(
     }
 }
 
-pub(crate) fn record_flattened_json_attributes(span: &Span, prefix: &str, value: &Value) {
-    let mut attributes: Vec<(String, Value)> = Vec::new();
-    collect_flattened_attributes(prefix.to_string(), value, &mut attributes);
-    for (key, value) in attributes {
-        match value {
-            Value::Bool(v) => span.set_attribute(key, v),
-            Value::Number(v) => {
-                if let Some(i) = v.as_i64() {
-                    if i != 0 {
-                        span.set_attribute(key, i);
-                    }
-                } else if let Some(u) = v.as_u64() {
-                    if u != 0 {
-                        if let Ok(i) = i64::try_from(u) {
-                            span.set_attribute(key, i);
-                        } else {
-                            span.set_attribute(key, u.to_string());
-                        }
-                    }
-                } else if let Some(f) = v.as_f64() {
-                    if f != 0.0 {
-                        span.set_attribute(key, f);
-                    }
-                }
-            }
-            Value::String(v) => span.set_attribute(key, v),
-            _ => {}
-        }
-    }
-}
-
-fn collect_flattened_attributes(path: String, value: &Value, out: &mut Vec<(String, Value)>) {
-    match value {
-        Value::Null => {}
-        Value::Bool(v) => out.push((path, Value::Bool(*v))),
-        Value::Number(v) => out.push((path, Value::Number(v.clone()))),
-        Value::String(v) => out.push((path, Value::String(v.clone()))),
-        Value::Array(items) => {
-            for (index, item) in items.iter().enumerate() {
-                collect_flattened_attributes(format!("{path}.{index}"), item, out);
-            }
-        }
-        Value::Object(map) => {
-            for (key, item) in map {
-                collect_flattened_attributes(format!("{path}.{key}"), item, out);
-            }
-        }
+pub(crate) fn record_usage_attributes(span: &Span, prefix: &str, usage: &EndpointUsage) {
+    for (path, quantity) in flatten_usage_quantities_for_usage(usage) {
+        span.set_attribute(format!("{prefix}.{path}"), quantity);
     }
 }
 

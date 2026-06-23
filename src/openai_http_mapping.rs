@@ -21,7 +21,7 @@ use crate::openai_types::{
     Content as OpenAIContent, ContentPart, ErrorDetail, ErrorResponse, PromptTokensDetails, Role,
     ToolCall as OpenAIToolCall, ToolCallFunction, ToolChoice, Usage,
 };
-use crate::trace::{record_flattened_json_attributes, set_http_span_status};
+use crate::trace::{record_usage_attributes, set_http_span_status};
 use crate::usage_handler::EndpointUsage;
 
 pub fn map_openai_response(response: UnifiedResponse) -> ChatCompletionResponse {
@@ -460,8 +460,7 @@ pub fn stream_openai_chunks(
         }
 
         if let Some(usage) = latest_usage_for_root {
-            let usage_value = usage.into_payload("/chat/completions");
-            record_flattened_json_attributes(&root_span, "usage", &usage_value);
+            record_usage_attributes(&root_span, "usage", &usage);
         }
         finalizer.set_success_if_unset();
 

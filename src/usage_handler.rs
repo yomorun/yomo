@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use log::warn;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeMap;
 
 use crate::model_api_provider::{
     AudioSpeechUsage, AudioTranscriptionsUsage, EmbeddingsUsage, GenerateContentUsage, ImagesUsage,
@@ -93,6 +94,20 @@ impl EndpointUsage {
             return Value::Null;
         }
 
+        match self {
+            Self::ChatCompletions(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
+            Self::Messages(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
+            Self::Responses(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
+            Self::GenerateContent(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
+            Self::Embeddings(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
+            Self::Rerank(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
+            Self::AudioSpeech(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
+            Self::AudioTranscriptions(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
+            Self::Images(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
+        }
+    }
+
+    pub fn raw_payload(&self) -> Value {
         match self {
             Self::ChatCompletions(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
             Self::Messages(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
@@ -374,6 +389,126 @@ impl EndpointUsage {
     }
 }
 
+pub fn flatten_usage_quantities_for_usage(usage: &EndpointUsage) -> Vec<(String, i64)> {
+    let payload = usage.raw_payload();
+    if matches!(usage, EndpointUsage::GenerateContent(_)) {
+        return flatten_generate_content_usage_quantities(&payload);
+    }
+
+    flatten_usage_quantities(&payload)
+}
+
+fn flatten_usage_quantities(payload: &Value) -> Vec<(String, i64)> {
+    let mut out = Vec::new();
+    collect_usage_quantities(String::new(), payload, &mut out, array_index_usage_key);
+    out
+}
+
+fn flatten_generate_content_usage_quantities(payload: &Value) -> Vec<(String, i64)> {
+    let mut out = Vec::new();
+    collect_usage_quantities(String::new(), payload, &mut out, array_modality_usage_key);
+
+    merge_usage_quantities(out)
+}
+
+fn merge_usage_quantities(entries: Vec<(String, i64)>) -> Vec<(String, i64)> {
+    let mut merged: BTreeMap<String, i64> = BTreeMap::new();
+    for (path, quantity) in entries {
+        merged
+            .entry(path)
+            .and_modify(|existing| *existing = existing.saturating_add(quantity))
+            .or_insert(quantity);
+    }
+
+    merged.into_iter().collect()
+}
+
+fn collect_usage_quantities(
+    path: String,
+    value: &Value,
+    out: &mut Vec<(String, i64)>,
+    array_key_resolver: fn(usize, &Value) -> String,
+) {
+    match value {
+        Value::Null | Value::Bool(_) | Value::String(_) => {}
+        Value::Number(number) => {
+            if let Some(quantity) = quantity_from_json_number(number) {
+                if !path.is_empty() {
+                    out.push((path, quantity));
+                }
+            }
+        }
+        Value::Array(items) => {
+            for (index, item) in items.iter().enumerate() {
+                let array_key = array_key_resolver(index, item);
+                let next_path = if path.is_empty() {
+                    array_key
+                } else {
+                    format!("{path}.{array_key}")
+                };
+                collect_usage_quantities(next_path, item, out, array_key_resolver);
+            }
+        }
+        Value::Object(map) => {
+            for (key, item) in map {
+                let next_path = if path.is_empty() {
+                    key.to_string()
+                } else {
+                    format!("{path}.{key}")
+                };
+                collect_usage_quantities(next_path, item, out, array_key_resolver);
+            }
+        }
+    }
+}
+
+fn array_index_usage_key(index: usize, _item: &Value) -> String {
+    index.to_string()
+}
+
+fn array_modality_usage_key(index: usize, item: &Value) -> String {
+    let Some(map) = item.as_object() else {
+        return index.to_string();
+    };
+
+    let Some(modality) = map.get("modality").and_then(|value| value.as_str()) else {
+        return index.to_string();
+    };
+
+    if modality.is_empty() {
+        return index.to_string();
+    }
+
+    if modality == "MODALITY_UNSPECIFIED" {
+        return "TEXT".to_string();
+    }
+
+    modality.to_string()
+}
+
+fn quantity_from_json_number(number: &serde_json::Number) -> Option<i64> {
+    if let Some(value) = number.as_i64() {
+        return (value > 0).then_some(value);
+    }
+
+    if let Some(value) = number.as_u64() {
+        if value == 0 {
+            return None;
+        }
+        return i64::try_from(value).ok();
+    }
+
+    let value = number.as_f64()?;
+    if !value.is_finite() || value <= 0.0 {
+        return None;
+    }
+    let rounded = value.ceil();
+    if rounded > i64::MAX as f64 {
+        return None;
+    }
+    Some(rounded as i64)
+}
+
 pub(crate) fn aggregate_to_openai(endpoint: &str, usages: &[Value]) -> OpenAIUsage {
     let mut total = OpenAIUsage {
         prompt_tokens: 0,
@@ -464,7 +599,6 @@ fn accumulate_openai_usage(total: &mut OpenAIUsage, usage: &OpenAIUsage) {
 pub trait UsageHandler<M>: Send + Sync {
     async fn on_usage(
         &self,
-        endpoint: &str,
         model_id: &str,
         label: Option<&str>,
         request_id: &str,
@@ -484,7 +618,6 @@ where
 {
     async fn on_usage(
         &self,
-        _endpoint: &str,
         _model_id: &str,
         _label: Option<&str>,
         _request_id: &str,
@@ -498,7 +631,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::EndpointUsage;
+    use super::{EndpointUsage, flatten_usage_quantities_for_usage};
     use crate::model_api_provider::{
         GenerateContentUsage, MessagesUsage, ResponsesUsage, TrafficType,
     };
@@ -600,6 +733,58 @@ mod tests {
                 .map(|details| details.reasoning_tokens),
             Some(1)
         );
+    }
+
+    #[test]
+    fn raw_payload_for_generate_content_preserves_usage_metadata_shape() {
+        let usage = EndpointUsage::GenerateContent(GenerateContentUsage {
+            prompt_token_count: Some(120),
+            candidates_token_count: Some(80),
+            cached_content_token_count: Some(24),
+            tool_use_prompt_token_count: Some(16),
+            thoughts_token_count: Some(4),
+            total_token_count: Some(220),
+            cache_tokens_details: None,
+            prompt_tokens_details: None,
+            candidates_tokens_details: None,
+            tool_use_prompt_tokens_details: None,
+            traffic_type: None,
+        });
+
+        let payload = usage.raw_payload();
+
+        assert_eq!(payload["promptTokenCount"], 120);
+        assert_eq!(payload["candidatesTokenCount"], 80);
+        assert!(payload.get("prompt_tokens").is_none());
+    }
+
+    #[test]
+    fn flatten_usage_quantities_for_generate_content_uses_modality_paths() {
+        let usage = EndpointUsage::from_endpoint_payload(
+            "/models/gemini-2.5:generateContent",
+            serde_json::json!({
+                "promptTokenCount": 120,
+                "promptTokensDetails": [
+                    {"modality": "TEXT", "tokenCount": 100},
+                    {"modality": "TEXT", "tokenCount": 2},
+                    {"modality": "IMAGE", "tokenCount": 20},
+                    {"modality": "MODALITY_UNSPECIFIED", "tokenCount": 7}
+                ]
+            }),
+        )
+        .expect("expected generate content usage");
+
+        let mut entries = flatten_usage_quantities_for_usage(&usage);
+        entries.sort_by(|left, right| left.0.cmp(&right.0));
+
+        let mut expected = vec![
+            ("promptTokenCount".to_string(), 120),
+            ("promptTokensDetails.IMAGE.tokenCount".to_string(), 20),
+            ("promptTokensDetails.TEXT.tokenCount".to_string(), 109),
+        ];
+        expected.sort_by(|left, right| left.0.cmp(&right.0));
+
+        assert_eq!(entries, expected);
     }
 
     #[test]

@@ -78,9 +78,9 @@ pub struct Config {
     pub error_parser: Option<Arc<dyn Fn(&[u8]) -> Option<Value> + Send + Sync>>,
 }
 
-pub const DEFAULT_REQUEST_TIMEOUT_SECS: u64 = 300;
-pub const DEFAULT_STREAM_FIRST_BYTE_TIMEOUT_SECS: u64 = 60;
-pub const DEFAULT_STREAM_IDLE_TIMEOUT_SECS: u64 = 30;
+pub const DEFAULT_REQUEST_TIMEOUT_SECS: u64 = 600;
+pub const DEFAULT_STREAM_FIRST_BYTE_TIMEOUT_SECS: u64 = 180;
+pub const DEFAULT_STREAM_IDLE_TIMEOUT_SECS: u64 = 180;
 
 impl Config {
     pub fn new(api_key: impl Into<String>) -> Self {
