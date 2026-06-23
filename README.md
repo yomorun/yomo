@@ -2,7 +2,7 @@
   <img width="200px" height="200px" src="https://blog.yomo.run/static/images/logo.png" />
 </p>
 
-# YoMo ![Go](https://github.com/yomorun/yomo/workflows/Go/badge.svg) [![codecov](https://codecov.io/gh/yomorun/yomo/branch/main/graph/badge.svg?token=MHCE5TZWKM)](https://codecov.io/gh/yomorun/yomo) 
+# YoMo [![codecov](https://codecov.io/gh/yomorun/yomo/branch/main/graph/badge.svg)](https://codecov.io/gh/yomorun/yomo)
 
 YoMo is an open-source LLM Function Calling Framework for building scalable and ultra-fast AI Agents.
 💚 We care about: **Empowering Exceptional Customer Experiences in the Age of AI**
