@@ -544,12 +544,8 @@ where
                 "finish_reason",
                 round_state.finish_reason.as_deref().unwrap_or(""),
             );
-            if let Some(current_usage) = &round_state.openai_usage_payload {
-                let trace_usage = round_state.raw_usage.clone().unwrap_or_else(|| {
-                    EndpointUsage::from_endpoint_payload("/chat/completions", current_usage.clone())
-                        .expect("agent_loop expected chat/completions usage payload")
-                });
-                record_usage_attributes(&llm_chat_span, "usage", &trace_usage);
+            if let Some(raw_usage) = &round_state.raw_usage {
+                record_usage_attributes(&llm_chat_span, "usage", raw_usage);
                 let modified_usage = config
                     .usage_handler
                     .on_usage(
@@ -558,7 +554,7 @@ where
                         round_state.request_id.as_deref().unwrap_or(""),
                         &trace_id,
                         (*metadata).clone(),
-                        trace_usage,
+                        raw_usage.clone(),
                     )
                     .instrument(llm_chat_span.clone())
                     .await
