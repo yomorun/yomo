@@ -41,7 +41,7 @@ aws-config = "1"
 aws-sdk-bedrockruntime = "1"
 aws-credential-types = "1"
 aws-types = "1"
-yup-oauth2 = "11"
+yup-oauth2 = "12"
 s2n-quic = { version = "1", features = [
     "provider-address-token-default",
     "provider-tls-rustls",

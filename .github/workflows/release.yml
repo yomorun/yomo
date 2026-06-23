@@ -29,7 +29,7 @@ jobs:
           fi
 
       - name: Check crate package
-        run: cargo publish --dry-run --locked
+        run: cargo publish --dry-run
 
   build:
     name: Build ${{ matrix.asset_name }}
@@ -121,7 +121,7 @@ jobs:
       - name: Publish to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish --locked
+        run: cargo publish
 
   release:
     name: Publish GitHub Release

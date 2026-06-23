@@ -39,13 +39,13 @@ jobs:
         run: cargo fmt --check
 
       - name: Check build
-        run: cargo check --locked
+        run: cargo check
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Test with coverage
-        run: cargo llvm-cov --locked --all-targets --lcov --output-path lcov.info
+        run: cargo llvm-cov --all-targets --lcov --output-path lcov.info
 
       - name: Upload coverage
         uses: codecov/codecov-action@v5
