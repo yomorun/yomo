@@ -17,6 +17,9 @@ pub struct OpenAIProvider {
     model_id: Option<String>,
 }
 
+const CONTENT_FILTER_MESSAGE: &str =
+    "The request was rejected by the safety policy. Please revise your input and try again.";
+
 impl OpenAIProvider {
     pub fn new(
         client: crate::llm_provider::openai_compatible::client::Client,
@@ -94,8 +97,7 @@ fn map_openai_error(err: ClientError, model: &str) -> ProviderError {
     match err {
         ClientError::Api(ApiError::OpenAI { status, mut error }) if status.as_u16() == 400 => {
             if error.code.as_deref() == Some("content_filter") {
-                error.message = "The response was filtered due to the prompt triggering content management policy. Please modify your prompt and retry"
-                    .to_string();
+                error.message = CONTENT_FILTER_MESSAGE.to_string();
             }
             if error.code.as_deref() == Some("OperationNotSupported") {
                 error.message = format!(
@@ -329,10 +331,7 @@ mod tests {
         let ProviderError::Public { error, .. } = mapped else {
             panic!("expected public error");
         };
-        assert_eq!(
-            error.message,
-            "The response was filtered due to the prompt triggering content management policy. Please modify your prompt and retry"
-        );
+        assert_eq!(error.message, CONTENT_FILTER_MESSAGE);
     }
 
     #[test]

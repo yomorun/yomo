@@ -6,6 +6,7 @@ use futures_core::Stream;
 use futures_util::StreamExt;
 use log::{Level, debug, log_enabled};
 use reqwest::StatusCode;
+use serde::Deserialize;
 use serde_json::Value;
 use tokio::time::timeout;
 
@@ -54,6 +55,39 @@ pub enum ApiError {
         status: StatusCode,
         body: String,
     },
+}
+
+#[derive(Debug, Deserialize)]
+struct UpstreamErrorResponse {
+    error: UpstreamErrorDetail,
+}
+
+/// Upstream error payload compatible with both OpenAI and Azure OpenAI.
+///
+/// This structure is intentionally permissive and then normalized into `ErrorDetail`.
+#[derive(Debug, Deserialize)]
+struct UpstreamErrorDetail {
+    /// Human-readable upstream error message (present in both OpenAI and Azure OpenAI).
+    message: String,
+    /// Error category. Azure OpenAI can return `null`, so this field stays optional.
+    #[serde(rename = "type")]
+    r#type: Option<String>,
+    /// Provider error code, such as `content_filter`.
+    #[serde(default)]
+    code: Option<String>,
+    /// Related request parameter name, such as `prompt`.
+    #[serde(default)]
+    param: Option<String>,
+    /// Azure-specific field nested inside `error`.
+    ///
+    /// We do not use this value for status mapping because the HTTP status line is the source
+    /// of truth.
+    #[serde(default, rename = "status")]
+    _status: Option<u16>,
+    /// Azure-specific nested error payload (for example `ResponsibleAIPolicyViolation` and
+    /// `content_filter_result`).
+    #[serde(default, rename = "innererror")]
+    _innererror: Option<Value>,
 }
 
 impl std::fmt::Display for ApiError {
@@ -274,9 +308,45 @@ impl Client {
             });
         }
 
+        if let Ok(parsed) = serde_json::from_slice::<UpstreamErrorResponse>(body) {
+            return ClientError::Api(ApiError::OpenAI {
+                status,
+                error: normalize_upstream_error(parsed.error, status),
+            });
+        }
+
         let text = String::from_utf8_lossy(body).to_string();
         ClientError::Api(ApiError::Unknown { status, body: text })
     }
+}
+
+fn normalize_upstream_error(detail: UpstreamErrorDetail, status: StatusCode) -> ErrorDetail {
+    let error_type = detail
+        .r#type
+        .and_then(|value| {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        })
+        .unwrap_or_else(|| default_error_type_for_status(status).to_string());
+
+    ErrorDetail {
+        message: detail.message,
+        r#type: error_type,
+        code: detail.code,
+        param: detail.param,
+    }
+}
+
+fn default_error_type_for_status(status: StatusCode) -> &'static str {
+    if status == StatusCode::BAD_REQUEST {
+        return "invalid_request_error";
+    }
+
+    "internal_error"
 }
 
 fn debug_body(bytes: &[u8]) -> String {
@@ -368,5 +438,53 @@ mod tests {
         clear_agent_context(&mut request);
 
         assert!(request.agent_context.is_none());
+    }
+
+    #[test]
+    fn parse_error_accepts_upstream_null_type_for_bad_request() {
+        let client = Client::new(Config::new("test-key")).expect("build client");
+        let body = br#"{
+            "error": {
+                "message": "filtered",
+                "type": null,
+                "param": "prompt",
+                "code": "content_filter",
+                "status": 400,
+                "innererror": {
+                    "code": "ResponsibleAIPolicyViolation"
+                }
+            }
+        }"#;
+
+        let parsed = client.parse_error(StatusCode::BAD_REQUEST, body);
+
+        let ClientError::Api(ApiError::OpenAI { status, error }) = parsed else {
+            panic!("expected openai api error");
+        };
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.message, "filtered");
+        assert_eq!(error.r#type, "invalid_request_error");
+        assert_eq!(error.code.as_deref(), Some("content_filter"));
+        assert_eq!(error.param.as_deref(), Some("prompt"));
+    }
+
+    #[test]
+    fn parse_error_defaults_null_type_to_internal_error_for_non_bad_request() {
+        let client = Client::new(Config::new("test-key")).expect("build client");
+        let body = br#"{
+            "error": {
+                "message": "upstream failed",
+                "type": null,
+                "code": "server_error"
+            }
+        }"#;
+
+        let parsed = client.parse_error(StatusCode::INTERNAL_SERVER_ERROR, body);
+
+        let ClientError::Api(ApiError::OpenAI { status, error }) = parsed else {
+            panic!("expected openai api error");
+        };
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(error.r#type, "internal_error");
     }
 }
