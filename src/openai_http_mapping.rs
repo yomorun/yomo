@@ -1581,7 +1581,7 @@ pub fn map_chat_error(err: ProviderError) -> Response {
         }
         ProviderError::Internal { .. } => openai_error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
-            "internal error",
+            "Internal Server Error",
             Some("internal_error"),
         ),
     }

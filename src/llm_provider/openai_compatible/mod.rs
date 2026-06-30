@@ -16,6 +16,9 @@ pub mod client;
 
 pub mod mapper;
 
+const CONTENT_FILTER_MESSAGE: &str =
+    "The request was rejected by the safety policy. Please revise your input and try again.";
+
 #[derive(Clone)]
 pub struct OpenAICompatibleProvider {
     client: client::Client,
@@ -89,7 +92,10 @@ impl<M> Provider<M> for OpenAICompatibleProvider {
 
 fn map_openai_error(err: ClientError) -> ProviderError {
     match err {
-        ClientError::Api(ApiError::OpenAI { status, error }) if status.as_u16() == 400 => {
+        ClientError::Api(ApiError::OpenAI { status, mut error }) if status.as_u16() == 400 => {
+            if error.code.as_deref() == Some("content_filter") {
+                error.message = CONTENT_FILTER_MESSAGE.to_string();
+            }
             ProviderError::Public {
                 status: StatusCode::BAD_REQUEST,
                 error,
@@ -123,4 +129,54 @@ pub fn build_openai_compatible_provider(
 
 fn validate_request(request: &ChatCompletionRequest) -> Result<(), ProviderError> {
     validate_openai_request(request).map_err(ProviderError::internal)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CONTENT_FILTER_MESSAGE;
+    use super::map_openai_error;
+    use crate::llm_provider::ProviderError;
+    use crate::llm_provider::openai_compatible::client::{ApiError, ClientError};
+    use crate::openai_types::ErrorDetail;
+
+    #[test]
+    fn map_openai_error_rewrites_content_filter_message() {
+        let err = ClientError::Api(ApiError::OpenAI {
+            status: reqwest::StatusCode::BAD_REQUEST,
+            error: ErrorDetail {
+                message: "upstream message".to_string(),
+                r#type: "invalid_request_error".to_string(),
+                code: Some("content_filter".to_string()),
+                param: None,
+            },
+        });
+
+        let mapped = map_openai_error(err);
+
+        let ProviderError::Public { status, error } = mapped else {
+            panic!("expected public error");
+        };
+        assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
+        assert_eq!(error.message, CONTENT_FILTER_MESSAGE);
+    }
+
+    #[test]
+    fn map_openai_error_keeps_non_filter_bad_request_message() {
+        let err = ClientError::Api(ApiError::OpenAI {
+            status: reqwest::StatusCode::BAD_REQUEST,
+            error: ErrorDetail {
+                message: "original".to_string(),
+                r#type: "invalid_request_error".to_string(),
+                code: Some("invalid_parameter".to_string()),
+                param: None,
+            },
+        });
+
+        let mapped = map_openai_error(err);
+
+        let ProviderError::Public { error, .. } = mapped else {
+            panic!("expected public error");
+        };
+        assert_eq!(error.message, "original");
+    }
 }

@@ -288,11 +288,15 @@ where
             let first_event = match first_item {
                 Ok(event) => event,
                 Err(err) => {
-                    error!(
-                        "http.request.end; status_code=500 model_id={} error={} trace_id={} metadata={:?}",
-                        model_id, err, trace_id, metadata
-                    );
                     let status = provider_error_status(&err);
+                    error!(
+                        "http.request.end; status_code={} model_id={} error={} trace_id={} metadata={:?}",
+                        status.as_u16(),
+                        model_id,
+                        err,
+                        trace_id,
+                        metadata
+                    );
                     let status_message = trace_status_message_for_provider_error(&err, status);
                     let response = map_chat_error(err);
                     set_http_span_status(&root_span, status, Some(status_message.as_str()));
@@ -312,11 +316,15 @@ where
                 .expect("build response"))
         }
         Err(err) => {
-            error!(
-                "http.request.end; status_code=500 model_id={} error={} trace_id={} metadata={:?}",
-                model_id, err, trace_id, metadata
-            );
             let status = provider_error_status(&err);
+            error!(
+                "http.request.end; status_code={} model_id={} error={} trace_id={} metadata={:?}",
+                status.as_u16(),
+                model_id,
+                err,
+                trace_id,
+                metadata
+            );
             let status_message = trace_status_message_for_provider_error(&err, status);
             let response = map_chat_error(err);
             set_http_span_status(&root_span, status, Some(status_message.as_str()));
