@@ -167,6 +167,7 @@ pub struct Message {
     pub role: Role,
     #[serde(default, deserialize_with = "null_to_default")]
     pub content: Content,
+    #[serde(alias = "reasoning")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -185,6 +186,7 @@ impl<'de> Deserialize<'de> for Message {
             role: Role,
             #[serde(default, deserialize_with = "null_to_default")]
             content: Content,
+            #[serde(alias = "reasoning")]
             #[serde(skip_serializing_if = "Option::is_none")]
             reasoning_content: Option<String>,
             #[serde(skip_serializing_if = "Option::is_none")]
@@ -530,6 +532,13 @@ mod tests {
     fn chat_completion_message_deserializes_reasoning_content() {
         let message = r#"{"role":"assistant","content":"ok","reasoning_content":"think"}"#;
         let parsed: ChatCompletionMessage = serde_json::from_str(message).expect("parse message");
+        assert_eq!(parsed.reasoning_content.as_deref(), Some("think"));
+    }
+
+    #[test]
+    fn message_deserializes_reasoning_alias() {
+        let message = r#"{"role":"assistant","content":"ok","reasoning":"think"}"#;
+        let parsed: Message = serde_json::from_str(message).expect("parse message");
         assert_eq!(parsed.reasoning_content.as_deref(), Some("think"));
     }
 
