@@ -11,7 +11,7 @@ use serde_json::Value;
 use tokio::time::timeout;
 
 use crate::openai_types::{
-    ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, ErrorDetail, ErrorResponse,
+    ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, ErrorDetail,
 };
 use crate::utils::{MAX_LOG_BODY_BYTES, truncate_for_log};
 
@@ -299,13 +299,6 @@ impl Client {
             if let Some(custom) = (parser)(body) {
                 return ClientError::Api(ApiError::Custom(custom));
             }
-        }
-
-        if let Ok(parsed) = serde_json::from_slice::<ErrorResponse>(body) {
-            return ClientError::Api(ApiError::OpenAI {
-                status,
-                error: parsed.error,
-            });
         }
 
         if let Ok(parsed) = serde_json::from_slice::<UpstreamErrorResponse>(body) {
