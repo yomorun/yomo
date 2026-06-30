@@ -167,6 +167,7 @@ pub struct Message {
     pub role: Role,
     #[serde(default, deserialize_with = "null_to_default")]
     pub content: Content,
+    #[serde(alias = "reasoning")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -185,6 +186,7 @@ impl<'de> Deserialize<'de> for Message {
             role: Role,
             #[serde(default, deserialize_with = "null_to_default")]
             content: Content,
+            #[serde(alias = "reasoning")]
             #[serde(skip_serializing_if = "Option::is_none")]
             reasoning_content: Option<String>,
             #[serde(skip_serializing_if = "Option::is_none")]
@@ -355,6 +357,7 @@ pub struct ChatCompletionChoice {
 pub struct ChatCompletionMessage {
     pub role: Role,
     pub content: Option<Content>,
+    #[serde(alias = "reasoning")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_content: Option<String>,
     #[serde(default, deserialize_with = "null_to_default")]
@@ -416,6 +419,7 @@ pub struct ChatCompletionChunkDelta {
     pub role: Option<Role>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
+    #[serde(alias = "reasoning")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_content: Option<String>,
     pub refusal: Option<String>,
@@ -529,6 +533,45 @@ mod tests {
         let message = r#"{"role":"assistant","content":"ok","reasoning_content":"think"}"#;
         let parsed: ChatCompletionMessage = serde_json::from_str(message).expect("parse message");
         assert_eq!(parsed.reasoning_content.as_deref(), Some("think"));
+    }
+
+    #[test]
+    fn message_deserializes_reasoning_alias() {
+        let message = r#"{"role":"assistant","content":"ok","reasoning":"think"}"#;
+        let parsed: Message = serde_json::from_str(message).expect("parse message");
+        assert_eq!(parsed.reasoning_content.as_deref(), Some("think"));
+    }
+
+    #[test]
+    fn chat_completion_message_deserializes_reasoning_alias() {
+        let message = r#"{"role":"assistant","content":"ok","reasoning":"think"}"#;
+        let parsed: ChatCompletionMessage = serde_json::from_str(message).expect("parse message");
+        assert_eq!(parsed.reasoning_content.as_deref(), Some("think"));
+    }
+
+    #[test]
+    fn chat_completion_chunk_deserializes_reasoning_alias() {
+        let chunk = r#"{
+            "id":"chunk-1",
+            "created":1,
+            "model":"DeepSeek-V4-Flash",
+            "object":"chat.completion.chunk",
+            "system_fingerprint":null,
+            "obfuscation":null,
+            "choices":[{
+                "delta":{"reasoning":"step"},
+                "finish_reason":null,
+                "index":0,
+                "logprobs":null
+            }],
+            "usage":null
+        }"#;
+
+        let parsed: ChatCompletionChunk = serde_json::from_str(chunk).expect("parse chunk");
+        assert_eq!(
+            parsed.choices[0].delta.reasoning_content.as_deref(),
+            Some("step")
+        );
     }
 
     #[test]
