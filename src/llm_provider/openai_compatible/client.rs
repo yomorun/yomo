@@ -50,7 +50,10 @@ pub enum ApiError {
         status: StatusCode,
         error: ErrorDetail,
     },
-    Custom(Value),
+    Custom {
+        status: Option<StatusCode>,
+        value: Value,
+    },
     Unknown {
         status: StatusCode,
         body: String,
@@ -96,7 +99,7 @@ impl std::fmt::Display for ApiError {
             ApiError::OpenAI { status, error } => {
                 write!(f, "status {status}, {}", error.message)
             }
-            ApiError::Custom(value) => write!(f, "custom error: {value}"),
+            ApiError::Custom { value, .. } => write!(f, "custom error: {value}"),
             ApiError::Unknown { status, body } => write!(f, "status {status}, {body}"),
         }
     }
@@ -282,7 +285,10 @@ impl Client {
                                 let raw = data.as_bytes();
                                 if let Some(parser) = &parse_error {
                                     if let Some(custom) = (parser)(raw) {
-                                        Err(ClientError::Api(ApiError::Custom(custom)))?;
+                                        Err(ClientError::Api(ApiError::Custom {
+                                            status: None,
+                                            value: custom,
+                                        }))?;
                                     }
                                 }
                                 Err(ClientError::InvalidResponse(err.to_string()))?;
@@ -297,7 +303,10 @@ impl Client {
     pub(crate) fn parse_error(&self, status: StatusCode, body: &[u8]) -> ClientError {
         if let Some(parser) = &self.config.error_parser {
             if let Some(custom) = (parser)(body) {
-                return ClientError::Api(ApiError::Custom(custom));
+                return ClientError::Api(ApiError::Custom {
+                    status: Some(status),
+                    value: custom,
+                });
             }
         }
 
