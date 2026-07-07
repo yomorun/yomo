@@ -232,10 +232,8 @@ fn map_openai_error(err: ClientError) -> ProviderError {
             }
         }
         ClientError::Api(ApiError::Custom { status, value }) => {
-            let Some(status) = status else {
-                return ProviderError::internal("tokenhub custom error missing status");
-            };
             if let Some(error) = map_tokenhub_custom_error(value) {
+                let status = status.unwrap_or(StatusCode::BAD_GATEWAY);
                 ProviderError::Public { status, error }
             } else {
                 ProviderError::internal("tokenhub custom error parse failed")
@@ -605,6 +603,33 @@ mod tests {
                 assert_eq!(error.r#type, "invalid_request_error");
                 assert_eq!(error.code.as_deref(), Some("bad_param"));
                 assert!(error.message.contains("request_id=req_456"));
+            }
+            other => panic!("expected public error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn map_openai_error_maps_custom_tokenhub_error_without_status_to_public() {
+        let err = ClientError::Api(ApiError::Custom {
+            status: None,
+            value: serde_json::json!({
+                "error": {
+                    "type": "invalid_request_error",
+                    "code": "bad_param",
+                    "message": "invalid request",
+                    "source": "gateway",
+                    "upstream_status": "422",
+                    "request_id": "req_789"
+                }
+            }),
+        });
+
+        match map_openai_error(err) {
+            ProviderError::Public { status, error } => {
+                assert_eq!(status, StatusCode::BAD_GATEWAY);
+                assert_eq!(error.r#type, "invalid_request_error");
+                assert_eq!(error.code.as_deref(), Some("bad_param"));
+                assert!(error.message.contains("request_id=req_789"));
             }
             other => panic!("expected public error, got {other:?}"),
         }
