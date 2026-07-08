@@ -76,7 +76,7 @@ function generateParametersSchema(appTsPath: string): unknown {
   try {
     const generator = tsj.createGenerator({
       path: appTsPath,
-      tsconfig: join(__dirname, "..", "tsconfig.json"),
+      tsconfig: join(process.cwd(), "tsconfig.json"),
       type: "Argument",
       topRef: false,
       expose: "none",
@@ -190,7 +190,7 @@ async function handleConnection(socket: Socket, toolModule: ToolModule): Promise
 async function main(): Promise<void> {
   const toolModule = (await import("./src/app.js")) as ToolModule
   const description = typeof toolModule.description === "string" ? toolModule.description : ""
-  const appTsPath = join(__dirname, "..", "src", "app.ts")
+  const appTsPath = join(process.cwd(), "src", "app.ts")
   const parameters = generateParametersSchema(appTsPath)
 
   const schema = {
