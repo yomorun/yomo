@@ -3,6 +3,8 @@ use async_trait::async_trait;
 use axum::http::StatusCode;
 use futures_core::Stream;
 use futures_util::StreamExt;
+use serde::Deserialize;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::pin::Pin;
 
@@ -17,6 +19,23 @@ use crate::serve_config::ConfigError;
 pub struct TokenHubProvider {
     client: client::Client,
     model_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TokenHubErrorEnvelope {
+    error: TokenHubErrorDetail,
+}
+
+#[derive(Debug, Deserialize)]
+struct TokenHubErrorDetail {
+    #[serde(rename = "type")]
+    r#type: Option<String>,
+    code: Option<String>,
+    message: Option<String>,
+    source: Option<String>,
+    upstream_code: Option<String>,
+    upstream_status: Option<u16>,
+    request_id: Option<String>,
 }
 
 impl TokenHubProvider {
@@ -103,6 +122,7 @@ pub fn build_tokenhub_provider(
     } else {
         config = config.base_url("https://tokenhub.tencentmaas.com/v1".to_string());
     }
+    config = config.error_parser(parse_tokenhub_error_payload);
 
     let client =
         client::Client::new(config).map_err(|err| ConfigError::InvalidProvider(err.to_string()))?;
@@ -234,6 +254,14 @@ fn map_openai_error(err: ClientError) -> ProviderError {
                 error,
             }
         }
+        ClientError::Api(ApiError::Custom { status, value }) => {
+            if let Some(error) = map_tokenhub_custom_error(value) {
+                let status = status.unwrap_or(StatusCode::BAD_GATEWAY);
+                ProviderError::Public { status, error }
+            } else {
+                ProviderError::internal("tokenhub custom error parse failed")
+            }
+        }
         ClientError::Api(ApiError::OpenAI { status, error }) => {
             ProviderError::internal_with_upstream_status(status, error.message)
         }
@@ -242,6 +270,54 @@ fn map_openai_error(err: ClientError) -> ProviderError {
         }
         other => ProviderError::internal(other.to_string()),
     }
+}
+
+fn parse_tokenhub_error_payload(body: &[u8]) -> Option<Value> {
+    let value = serde_json::from_slice::<Value>(body).ok()?;
+    serde_json::from_value::<TokenHubErrorEnvelope>(value.clone()).ok()?;
+    Some(value)
+}
+
+fn map_tokenhub_custom_error(value: Value) -> Option<crate::openai_types::ErrorDetail> {
+    let envelope = serde_json::from_value::<TokenHubErrorEnvelope>(value).ok()?;
+    let detail = envelope.error;
+    let message = detail.message.unwrap_or_default();
+
+    let metadata = [
+        detail
+            .source
+            .as_deref()
+            .map(|value| format!("source={value}")),
+        detail
+            .upstream_code
+            .as_deref()
+            .map(|value| format!("upstream_code={value}")),
+        detail
+            .upstream_status
+            .map(|value| format!("upstream_status={value}")),
+        detail
+            .request_id
+            .as_deref()
+            .map(|value| format!("request_id={value}")),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
+
+    let message = if metadata.is_empty() {
+        message
+    } else {
+        format!("{} [{}]", message, metadata.join(" "))
+    };
+
+    let error = crate::openai_types::ErrorDetail {
+        message,
+        r#type: detail.r#type.unwrap_or_default(),
+        code: detail.code,
+        param: None,
+    };
+
+    Some(error)
 }
 
 #[cfg(test)]
@@ -531,5 +607,114 @@ mod tests {
             }
             other => panic!("expected internal error, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn parse_tokenhub_error_payload_returns_custom_value() {
+        let body = br#"{
+            "error": {
+                "type": "invalid_request_error",
+                "code": "bad_param",
+                "message": "invalid request",
+                "source": "upstream",
+                "upstream_code": "E1001",
+                "upstream_status": 400,
+                "request_id": "req_123"
+            }
+        }"#;
+
+        let parsed = parse_tokenhub_error_payload(body);
+        assert!(parsed.is_some());
+    }
+
+    #[test]
+    fn map_tokenhub_custom_error_maps_and_appends_metadata() {
+        let value = serde_json::json!({
+            "error": {
+                "type": "invalid_request_error",
+                "code": "bad_param",
+                "message": "invalid request",
+                "source": "upstream",
+                "upstream_code": "E1001",
+                "upstream_status": 400,
+                "request_id": "req_123"
+            }
+        });
+
+        let error = map_tokenhub_custom_error(value).expect("map tokenhub error");
+        assert_eq!(error.r#type, "invalid_request_error");
+        assert_eq!(error.code.as_deref(), Some("bad_param"));
+        assert!(error.message.contains("invalid request"));
+        assert!(error.message.contains("source=upstream"));
+        assert!(error.message.contains("upstream_code=E1001"));
+        assert!(error.message.contains("upstream_status=400"));
+        assert!(error.message.contains("request_id=req_123"));
+    }
+
+    #[test]
+    fn map_openai_error_maps_custom_tokenhub_error_to_public() {
+        let err = ClientError::Api(ApiError::Custom {
+            status: Some(StatusCode::UNPROCESSABLE_ENTITY),
+            value: serde_json::json!({
+                "error": {
+                    "type": "invalid_request_error",
+                    "code": "bad_param",
+                    "message": "invalid request",
+                    "source": "gateway",
+                    "upstream_status": 422,
+                    "request_id": "req_456"
+                }
+            }),
+        });
+
+        match map_openai_error(err) {
+            ProviderError::Public { status, error } => {
+                assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+                assert_eq!(error.r#type, "invalid_request_error");
+                assert_eq!(error.code.as_deref(), Some("bad_param"));
+                assert!(error.message.contains("request_id=req_456"));
+            }
+            other => panic!("expected public error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn map_openai_error_maps_custom_tokenhub_error_without_status_to_public() {
+        let err = ClientError::Api(ApiError::Custom {
+            status: None,
+            value: serde_json::json!({
+                "error": {
+                    "type": "invalid_request_error",
+                    "code": "bad_param",
+                    "message": "invalid request",
+                    "source": "gateway",
+                    "upstream_status": 422,
+                    "request_id": "req_789"
+                }
+            }),
+        });
+
+        match map_openai_error(err) {
+            ProviderError::Public { status, error } => {
+                assert_eq!(status, StatusCode::BAD_GATEWAY);
+                assert_eq!(error.r#type, "invalid_request_error");
+                assert_eq!(error.code.as_deref(), Some("bad_param"));
+                assert!(error.message.contains("request_id=req_789"));
+            }
+            other => panic!("expected public error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn map_tokenhub_custom_error_keeps_empty_type_when_missing() {
+        let value = serde_json::json!({
+            "error": {
+                "code": "bad_param",
+                "message": "invalid request"
+            }
+        });
+
+        let error = map_tokenhub_custom_error(value).expect("map tokenhub error");
+        assert_eq!(error.r#type, "");
     }
 }
