@@ -114,9 +114,32 @@ fn validate_request(request: &ChatCompletionRequest) -> Result<(), ProviderError
 }
 
 pub(crate) fn normalize_tokenhub_request(request: &mut ChatCompletionRequest) {
+    normalize_developer_role_for_model(request);
     normalize_default_thinking(request);
     normalize_reasoning_effort(request);
     normalize_reasoning_content_for_tool_calls(request);
+}
+
+fn normalize_developer_role_for_model(request: &mut ChatCompletionRequest) {
+    if !is_deepseek_v4_model_without_developer_role(&request.model) {
+        return;
+    }
+
+    for message in &mut request.messages {
+        if message.role == Role::Developer {
+            message.role = Role::System;
+        }
+    }
+}
+
+fn is_deepseek_v4_model_without_developer_role(model: &str) -> bool {
+    let normalized = model.trim().to_ascii_lowercase();
+    let model_name = normalized.rsplit('/').next().unwrap_or(normalized.as_str());
+
+    model_name == "deepseek-v4-pro"
+        || model_name == "deepseek-v4-flash"
+        || model_name.starts_with("deepseek-v4-pro-")
+        || model_name.starts_with("deepseek-v4-flash-")
 }
 
 fn normalize_default_thinking(request: &mut ChatCompletionRequest) {
@@ -427,6 +450,54 @@ mod tests {
         normalize_tokenhub_request(&mut request);
 
         assert_eq!(request.messages[0].reasoning_content.as_deref(), Some(" "));
+    }
+
+    #[test]
+    fn normalize_maps_developer_role_to_system_for_deepseek_v4_model() {
+        let mut request = request_with_messages(vec![Message {
+            role: Role::Developer,
+            content: Content::Text("safety".to_string()),
+            reasoning_content: None,
+            tool_call_id: None,
+            tool_calls: None,
+        }]);
+        request.model = "deepseek-v4-pro".to_string();
+
+        normalize_tokenhub_request(&mut request);
+
+        assert_eq!(request.messages[0].role, Role::System);
+    }
+
+    #[test]
+    fn normalize_keeps_developer_role_for_non_deepseek_v4_model() {
+        let mut request = request_with_messages(vec![Message {
+            role: Role::Developer,
+            content: Content::Text("safety".to_string()),
+            reasoning_content: None,
+            tool_call_id: None,
+            tool_calls: None,
+        }]);
+        request.model = "kimi-k2.6".to_string();
+
+        normalize_tokenhub_request(&mut request);
+
+        assert_eq!(request.messages[0].role, Role::Developer);
+    }
+
+    #[test]
+    fn normalize_maps_developer_role_for_namespaced_deepseek_v4_model() {
+        let mut request = request_with_messages(vec![Message {
+            role: Role::Developer,
+            content: Content::Text("safety".to_string()),
+            reasoning_content: None,
+            tool_call_id: None,
+            tool_calls: None,
+        }]);
+        request.model = "tokenhub/deepseek-v4-flash".to_string();
+
+        normalize_tokenhub_request(&mut request);
+
+        assert_eq!(request.messages[0].role, Role::System);
     }
 
     #[test]
