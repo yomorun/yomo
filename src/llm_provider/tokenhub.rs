@@ -34,7 +34,7 @@ struct TokenHubErrorDetail {
     message: Option<String>,
     source: Option<String>,
     upstream_code: Option<String>,
-    upstream_status: Option<String>,
+    upstream_status: Option<u16>,
     request_id: Option<String>,
 }
 
@@ -271,7 +271,6 @@ fn map_tokenhub_custom_error(value: Value) -> Option<crate::openai_types::ErrorD
             .map(|value| format!("upstream_code={value}")),
         detail
             .upstream_status
-            .as_deref()
             .map(|value| format!("upstream_status={value}")),
         detail
             .request_id
@@ -548,7 +547,7 @@ mod tests {
                 "message": "invalid request",
                 "source": "upstream",
                 "upstream_code": "E1001",
-                "upstream_status": "400",
+                "upstream_status": 400,
                 "request_id": "req_123"
             }
         }"#;
@@ -566,7 +565,7 @@ mod tests {
                 "message": "invalid request",
                 "source": "upstream",
                 "upstream_code": "E1001",
-                "upstream_status": "400",
+                "upstream_status": 400,
                 "request_id": "req_123"
             }
         });
@@ -591,7 +590,7 @@ mod tests {
                     "code": "bad_param",
                     "message": "invalid request",
                     "source": "gateway",
-                    "upstream_status": "422",
+                    "upstream_status": 422,
                     "request_id": "req_456"
                 }
             }),
@@ -618,7 +617,7 @@ mod tests {
                     "code": "bad_param",
                     "message": "invalid request",
                     "source": "gateway",
-                    "upstream_status": "422",
+                    "upstream_status": 422,
                     "request_id": "req_789"
                 }
             }),
