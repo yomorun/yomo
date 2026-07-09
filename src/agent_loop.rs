@@ -506,24 +506,26 @@ where
                     _ => {}
                 }
 
+                if let UnifiedEvent::Usage { usage: chunk_usage } = event {
+                    round_state.raw_usage = Some(chunk_usage.clone());
+                    let processed_usage = chunk_usage.into_payload("/chat/completions");
+                    round_state.openai_usage_payload = Some(processed_usage.clone());
+                    let mut usage_with_history = loop_state.round_usages.clone();
+                    usage_with_history.push(processed_usage);
+                    let usage_with_offset =
+                        aggregate_usages_to_value("/chat/completions", &usage_with_history);
+                    yield UnifiedEvent::Usage {
+                        usage: EndpointUsage::from_endpoint_payload(
+                            "/chat/completions",
+                            usage_with_offset,
+                        )
+                        .expect("agent_loop expected chat/completions usage payload"),
+                    };
+                    continue;
+                }
+
                 if !round_state.saw_tool_call {
                     match event {
-                        UnifiedEvent::Usage { usage: chunk_usage } => {
-                            round_state.raw_usage = Some(chunk_usage.clone());
-                            let processed_usage = chunk_usage.into_payload("/chat/completions");
-                            round_state.openai_usage_payload = Some(processed_usage.clone());
-                            let mut usage_with_history = loop_state.round_usages.clone();
-                            usage_with_history.push(processed_usage);
-                            let usage_with_offset =
-                                aggregate_usages_to_value("/chat/completions", &usage_with_history);
-                            yield UnifiedEvent::Usage {
-                                usage: EndpointUsage::from_endpoint_payload(
-                                    "/chat/completions",
-                                    usage_with_offset,
-                                )
-                                .expect("agent_loop expected chat/completions usage payload"),
-                            };
-                        }
                         UnifiedEvent::Completed { finish_reason } => {
                             yield UnifiedEvent::Completed {
                                 finish_reason,
@@ -1452,6 +1454,73 @@ mod tests {
             event.expect("stream event should be ok");
         }
 
+        let calls = usage_handler.captured();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(
+            calls[0].clone().into_payload("/chat/completions"),
+            serde_json::json!({
+                "prompt_tokens": 22,
+                "completion_tokens": 4,
+                "total_tokens": 26
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn run_agent_loop_stream_emits_usage_after_tool_call() {
+        let usage_handler = RecordingUsageHandler::default();
+        let provider = StaticStreamProvider {
+            events: Arc::new(vec![
+                UnifiedEvent::MessageStart {
+                    id: "req-1".to_string(),
+                    role: "assistant".to_string(),
+                },
+                UnifiedEvent::ToolCallDone {
+                    id: "tool-1".to_string(),
+                    name: "client_tool".to_string(),
+                    arguments: "{}".to_string(),
+                },
+                UnifiedEvent::Usage {
+                    usage: usage(22, 4, 26),
+                },
+                UnifiedEvent::Completed {
+                    finish_reason: Some("tool_calls".to_string()),
+                },
+            ]),
+        };
+        let config = AgentLoopConfig {
+            max_calls: 1,
+            usage_handler: Arc::new(usage_handler.clone()),
+            ..AgentLoopConfig::default()
+        };
+
+        let result = run_agent_loop::<(), ()>(
+            Arc::new(provider),
+            stream_request(),
+            HashMap::new(),
+            Arc::new(NoopToolInvoker),
+            (),
+            "trace-1".to_string(),
+            None,
+            config,
+        )
+        .await
+        .expect("stream run should succeed");
+
+        let AgentLoopResult::Stream { mut events } = result else {
+            panic!("expected stream result");
+        };
+        let mut output_usages = Vec::new();
+        while let Some(event) = events.next().await {
+            if let UnifiedEvent::Usage { usage } = event.expect("stream event should be ok") {
+                output_usages.push(usage.into_payload("/chat/completions"));
+            }
+        }
+
+        assert_eq!(output_usages.len(), 1);
+        assert_eq!(output_usages[0]["prompt_tokens"], 22);
+        assert_eq!(output_usages[0]["completion_tokens"], 4);
+        assert_eq!(output_usages[0]["total_tokens"], 26);
         let calls = usage_handler.captured();
         assert_eq!(calls.len(), 1);
         assert_eq!(
