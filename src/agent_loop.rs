@@ -494,11 +494,6 @@ where
                             };
                         }
                     }
-                    UnifiedEvent::Usage { usage: chunk_usage } => {
-                        round_state.raw_usage = Some(chunk_usage.clone());
-                        round_state.openai_usage_payload =
-                            Some(chunk_usage.clone().into_payload("/chat/completions"));
-                    }
                     UnifiedEvent::Completed { finish_reason: reason } => {
                         round_state.finish_reason = reason.clone();
                         loop_state.last_finish_reason = reason.clone();
