@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use axum::http::StatusCode;
 use futures_util::StreamExt;
 use serde_json::Value;
 
@@ -39,16 +40,22 @@ impl<M> ModelApiProvider<M> for GenerateContentClient {
         req: ProviderRequest,
         _metadata: &M,
     ) -> Result<ProviderResponse, anyhow::Error> {
-        let stream = parse_stream_flag(&req.body);
+        let stream_requested = parse_stream_flag(&req.body);
         let headers = filter_request_headers(req.headers);
         let response = self
             .client
-            .post_json_with_headers(&self.upstream_model, req.body.to_vec(), stream, headers)
+            .post_json_with_headers(
+                &self.upstream_model,
+                req.body.to_vec(),
+                stream_requested,
+                headers,
+            )
             .await?;
         let status = response.status();
         let mut resp_headers = filter_response_headers(response.headers());
+        let is_stream_response = should_stream_response(stream_requested, status);
 
-        if stream {
+        if is_stream_response {
             resp_headers.remove(axum::http::header::CONTENT_LENGTH);
             let body_stream = response.bytes_stream().map(|chunk| match chunk {
                 Ok(bytes) => Ok(bytes),
@@ -81,6 +88,10 @@ impl<M> ModelApiProvider<M> for GenerateContentClient {
     fn inject_usage(&self, payload_json: &mut Value, usage: Value) -> bool {
         inject_usage_json(payload_json, usage)
     }
+}
+
+fn should_stream_response(stream_requested: bool, status: StatusCode) -> bool {
+    stream_requested && status.is_success()
 }
 
 fn extract_request_id_json(payload_json: &Value) -> Option<String> {
@@ -128,7 +139,10 @@ fn non_null_usage(value: Option<&Value>) -> Option<Value> {
 
 #[cfg(test)]
 mod tests {
-    use super::{extract_request_id_json, extract_usage_json, inject_usage_json};
+    use super::{
+        extract_request_id_json, extract_usage_json, inject_usage_json, should_stream_response,
+    };
+    use axum::http::StatusCode;
     use serde_json::json;
 
     /// Verifies full payload request id extraction prefers top-level `id`.
@@ -181,6 +195,25 @@ mod tests {
 
         assert!(injected);
         assert_eq!(payload["response"]["usageMetadata"], new_usage);
+    }
+
+    #[test]
+    fn should_stream_response_requires_stream_request() {
+        assert!(!should_stream_response(false, StatusCode::OK));
+    }
+
+    #[test]
+    fn should_stream_response_requires_success_status() {
+        assert!(!should_stream_response(true, StatusCode::BAD_REQUEST));
+        assert!(!should_stream_response(
+            true,
+            StatusCode::INTERNAL_SERVER_ERROR
+        ));
+    }
+
+    #[test]
+    fn should_stream_response_allows_successful_stream_request() {
+        assert!(should_stream_response(true, StatusCode::OK));
     }
 }
 
