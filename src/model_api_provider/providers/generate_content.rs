@@ -1,14 +1,13 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use axum::http::StatusCode;
 use futures_util::StreamExt;
 use serde_json::Value;
 
 use crate::llm_provider::vertexai::client::VertexAIClient;
 use crate::model_api_provider::provider::{
     ModelApiProvider, ProviderBody, ProviderRequest, ProviderResponse, filter_request_headers,
-    filter_response_headers, parse_stream_flag,
+    filter_response_headers, parse_stream_flag, should_stream_response,
 };
 use crate::serve_config::{ConfigError, ProviderConfig};
 
@@ -90,10 +89,6 @@ impl<M> ModelApiProvider<M> for GenerateContentClient {
     }
 }
 
-fn should_stream_response(stream_requested: bool, status: StatusCode) -> bool {
-    stream_requested && status.is_success()
-}
-
 fn extract_request_id_json(payload_json: &Value) -> Option<String> {
     payload_json
         .get("id")
@@ -139,10 +134,7 @@ fn non_null_usage(value: Option<&Value>) -> Option<Value> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        extract_request_id_json, extract_usage_json, inject_usage_json, should_stream_response,
-    };
-    use axum::http::StatusCode;
+    use super::{extract_request_id_json, extract_usage_json, inject_usage_json};
     use serde_json::json;
 
     /// Verifies full payload request id extraction prefers top-level `id`.
@@ -195,25 +187,6 @@ mod tests {
 
         assert!(injected);
         assert_eq!(payload["response"]["usageMetadata"], new_usage);
-    }
-
-    #[test]
-    fn should_stream_response_requires_stream_request() {
-        assert!(!should_stream_response(false, StatusCode::OK));
-    }
-
-    #[test]
-    fn should_stream_response_requires_success_status() {
-        assert!(!should_stream_response(true, StatusCode::BAD_REQUEST));
-        assert!(!should_stream_response(
-            true,
-            StatusCode::INTERNAL_SERVER_ERROR
-        ));
-    }
-
-    #[test]
-    fn should_stream_response_allows_successful_stream_request() {
-        assert!(should_stream_response(true, StatusCode::OK));
     }
 }
 

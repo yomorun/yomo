@@ -178,7 +178,7 @@ pub async fn proxy_request(
     }
 }
 
-fn should_stream_response(is_stream_request: bool, status: StatusCode) -> bool {
+pub(crate) fn should_stream_response(is_stream_request: bool, status: StatusCode) -> bool {
     is_stream_request && status.is_success()
 }
 
