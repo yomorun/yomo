@@ -275,12 +275,13 @@ where
                 }
             } else {
                 warn!(
-                    "model api got invalid json body for model_id {} status_code={} content_type={} content_encoding={} body={}",
+                    "model api got invalid json body for model_id {} status_code={} content_type={} content_encoding={} body={} trace_id={}",
                     provider_entry.model_id,
                     upstream_status_code,
                     upstream_content_type.as_deref().unwrap_or_default(),
                     upstream_content_encoding.as_deref().unwrap_or_default(),
-                    body_preview_for_log(&payload, upstream_content_encoding.as_deref())
+                    body_preview_for_log(&payload, upstream_content_encoding.as_deref()),
+                    trace_id
                 );
             }
             let response = builder.body(Body::from(payload)).expect("build response");
