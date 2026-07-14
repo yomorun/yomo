@@ -25,29 +25,38 @@ impl fmt::Display for ConfigError {
 }
 
 impl Error for ConfigError {}
-#[derive(Debug, Clone, Deserialize, Default)]
-#[serde(default, rename_all = "snake_case")]
+#[derive(Debug, Clone, Deserialize)]
 pub struct ServeConfig {
-    #[serde(default)]
     pub auth_token: Option<String>,
     pub zipper: ZipperConfig,
     pub http_api: HttpApiConfig,
-    #[serde(default)]
+    #[serde(default = "default_llm_providers")]
     pub llm_providers: Vec<ProviderConfig>,
-    #[serde(default)]
+    #[serde(default = "default_llm_model")]
     pub llm_default_model_id: Option<String>,
-    #[serde(default)]
     pub model_api: ModelApiConfig,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+impl Default for ServeConfig {
+    fn default() -> Self {
+        Self {
+            auth_token: None,
+            zipper: ZipperConfig::default(),
+            http_api: HttpApiConfig::default(),
+            llm_providers: default_llm_providers(),
+            llm_default_model_id: default_llm_model(),
+            model_api: ModelApiConfig::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default)]
 pub struct ProviderConfig {
     #[serde(rename = "type")]
     pub provider_type: String,
     pub model_id: String,
-    #[serde(default)]
     pub label: Option<String>,
-    #[serde(default)]
     pub params: HashMap<String, String>,
 }
 
@@ -58,12 +67,11 @@ pub struct ModelApiConfig {
     pub endpoints: Vec<ModelApiEndpointConfig>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default)]
 pub struct ModelApiEndpointConfig {
     pub path: String,
-    #[serde(default)]
     pub models: Vec<String>,
-    #[serde(default)]
     pub default_model: Option<String>,
 }
 
@@ -82,9 +90,23 @@ fn default_http_api_port() -> u16 {
     9001
 }
 
-/// Default LLM base URL
-fn default_llm_base_url() -> String {
-    "http://127.0.0.1:11434".to_string()
+/// Default LLM providers
+fn default_llm_providers() -> Vec<ProviderConfig> {
+    vec![ProviderConfig {
+        provider_type: "openai-compatible".to_string(),
+        model_id: "ornith".to_string(),
+        params: [(
+            "base_url".to_string(),
+            "http://127.0.0.1:11434/v1".to_string(),
+        )]
+        .into(),
+        ..Default::default()
+    }]
+}
+
+/// Default LLM model
+fn default_llm_model() -> Option<String> {
+    Some("ornith".to_string())
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -105,24 +127,6 @@ impl Default for ZipperConfig {
             host: default_host(),
             port: default_zipper_port(),
             tls: TlsConfig::default(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct LlmConfig {
-    #[serde(default = "default_llm_base_url")]
-    pub base_url: String,
-
-    #[serde(default)]
-    pub api_key: String,
-}
-
-impl Default for LlmConfig {
-    fn default() -> Self {
-        Self {
-            base_url: default_llm_base_url(),
-            api_key: String::new(),
         }
     }
 }

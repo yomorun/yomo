@@ -189,31 +189,27 @@ project, for example:
 - Use Ollama as the LLM provider:
 
   ```sh
-  ollama pull qwen3.5
+  ollama pull ornith
   ```
 
 - Run YoMo server:
 
-  ```
-  RUST_LOG=debug ./target/release/yomo serve
+  ```sh
+  ./target/release/yomo serve
   ```
 
 - Initialize a Serverless LLM Tool project:
 
-  ```
+  ```sh
   ./target/release/yomo init
   ```
 
-- Edit tool source:
-
-  ```
-  vim ./app/src/app.ts
-  ```
+  then edit `./app/src/app.ts` in the project.
 
 - Run YoMo serverless tool:
 
-  ```
-  RUST_LOG=debug ./target/release/yomo run --name get-weather ./app
+  ```sh
+  ./target/release/yomo run --name get-weather ./app
   ```
 
 - Send an agent request:
@@ -224,7 +220,6 @@ project, for example:
     --url http://127.0.0.1:9001/v1/chat/completions \
     --header 'Content-Type: application/json' \
     --data '{
-      "model": "qwen3.5",
       "messages": [
           {
               "role": "user",

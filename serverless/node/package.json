@@ -1,10 +1,5 @@
 {
   "name": "yomo-serverless-node",
   "version": "0.1.0",
-  "private": true,
-  "devDependencies": {
-    "@types/node": "^25.5.2",
-    "typescript": "^6.0.2",
-    "ts-json-schema-generator": "^2.9.0"
-  }
+  "private": true
 }
