@@ -1,4 +1,7 @@
+use std::path::Path;
+
 use anyhow::{Result, bail};
+use tokio::fs;
 
 pub const MAX_LOG_BODY_BYTES: usize = 8 * 1024;
 const LOG_HEAD_BYTES: usize = 2 * 1024;
@@ -53,6 +56,38 @@ pub fn truncate_for_log(value: &str) -> String {
 pub fn truncate_bytes_for_log(bytes: &[u8]) -> String {
     let decoded = String::from_utf8_lossy(bytes);
     truncate_for_log(decoded.as_ref())
+}
+
+pub async fn copy_if_provided(src: &Path, dst: &Path, default_content: Option<&str>) -> Result<()> {
+    if src.exists() {
+        fs::copy(src, dst).await?;
+    } else if let Some(default_content) = default_content {
+        fs::write(dst, default_content).await?;
+    }
+
+    Ok(())
+}
+
+pub async fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
+    fs::create_dir_all(dst).await?;
+
+    let mut stack = vec![(src.to_path_buf(), dst.to_path_buf())];
+    while let Some((current_src, current_dst)) = stack.pop() {
+        fs::create_dir_all(&current_dst).await?;
+        let mut entries = fs::read_dir(&current_src).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let entry_type = entry.file_type().await?;
+            let src_path = entry.path();
+            let dst_path = current_dst.join(entry.file_name());
+            if entry_type.is_dir() {
+                stack.push((src_path, dst_path));
+            } else if entry_type.is_file() {
+                fs::copy(src_path, dst_path).await?;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
