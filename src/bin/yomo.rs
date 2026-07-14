@@ -169,7 +169,7 @@ async fn serve(opt: ServeOptions) -> Result<()> {
 
     config.validate()?;
 
-    info!("config: {:?}, {:?}", config.http_api, config.zipper);
+    info!("config: {:?}", config);
 
     let _trace_guard = init_tracing().await?;
 
@@ -262,11 +262,11 @@ async fn serve(opt: ServeOptions) -> Result<()> {
     );
 
     if llm_providers_enabled {
-        info!("LLM providers enabled at /v1");
+        info!("LLM API enabled at /v1");
     }
 
     if model_api_enabled {
-        info!("Model API providers enabled at /v1");
+        info!("Model API enabled at /v1");
     }
 
     if !tool_api_prefix.is_empty() {
