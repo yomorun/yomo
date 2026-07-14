@@ -153,9 +153,9 @@ pub async fn proxy_request(
 
     let status = response.status();
     let mut resp_headers = filter_response_headers(response.headers());
-    let is_stream = req.is_stream;
+    let is_stream_response = should_stream_response(req.is_stream, status);
 
-    if is_stream {
+    if is_stream_response {
         resp_headers.remove(axum::http::header::CONTENT_LENGTH);
         let stream = response.bytes_stream().map(|chunk| match chunk {
             Ok(bytes) => Ok(bytes),
@@ -176,6 +176,10 @@ pub async fn proxy_request(
             body: ProviderBody::Full(bytes),
         })
     }
+}
+
+pub(crate) fn should_stream_response(is_stream_request: bool, status: StatusCode) -> bool {
+    is_stream_request && status.is_success()
 }
 
 pub(crate) fn rewrite_json_model(body: &Bytes, model: &str) -> Result<Bytes, anyhow::Error> {
@@ -334,4 +338,29 @@ fn is_hop_header(header: &str) -> bool {
     HOP_HEADERS
         .iter()
         .any(|item| item.eq_ignore_ascii_case(header))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_stream_response;
+    use axum::http::StatusCode;
+
+    #[test]
+    fn should_stream_response_requires_stream_request() {
+        assert!(!should_stream_response(false, StatusCode::OK));
+    }
+
+    #[test]
+    fn should_stream_response_requires_success_status() {
+        assert!(!should_stream_response(true, StatusCode::BAD_REQUEST));
+        assert!(!should_stream_response(
+            true,
+            StatusCode::INTERNAL_SERVER_ERROR
+        ));
+    }
+
+    #[test]
+    fn should_stream_response_allows_successful_stream_request() {
+        assert!(should_stream_response(true, StatusCode::OK));
+    }
 }

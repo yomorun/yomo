@@ -7,7 +7,7 @@ use serde_json::Value;
 use crate::llm_provider::vertexai::client::VertexAIClient;
 use crate::model_api_provider::provider::{
     ModelApiProvider, ProviderBody, ProviderRequest, ProviderResponse, filter_request_headers,
-    filter_response_headers, parse_stream_flag,
+    filter_response_headers, parse_stream_flag, should_stream_response,
 };
 use crate::serve_config::{ConfigError, ProviderConfig};
 
@@ -39,16 +39,22 @@ impl<M> ModelApiProvider<M> for GenerateContentClient {
         req: ProviderRequest,
         _metadata: &M,
     ) -> Result<ProviderResponse, anyhow::Error> {
-        let stream = parse_stream_flag(&req.body);
+        let stream_requested = parse_stream_flag(&req.body);
         let headers = filter_request_headers(req.headers);
         let response = self
             .client
-            .post_json_with_headers(&self.upstream_model, req.body.to_vec(), stream, headers)
+            .post_json_with_headers(
+                &self.upstream_model,
+                req.body.to_vec(),
+                stream_requested,
+                headers,
+            )
             .await?;
         let status = response.status();
         let mut resp_headers = filter_response_headers(response.headers());
+        let is_stream_response = should_stream_response(stream_requested, status);
 
-        if stream {
+        if is_stream_response {
             resp_headers.remove(axum::http::header::CONTENT_LENGTH);
             let body_stream = response.bytes_stream().map(|chunk| match chunk {
                 Ok(bytes) => Ok(bytes),
