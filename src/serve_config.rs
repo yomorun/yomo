@@ -26,6 +26,7 @@ impl fmt::Display for ConfigError {
 
 impl Error for ConfigError {}
 #[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct ServeConfig {
     pub auth_token: Option<String>,
     pub zipper: ZipperConfig,
