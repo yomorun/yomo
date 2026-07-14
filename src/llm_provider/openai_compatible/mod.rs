@@ -114,10 +114,8 @@ fn map_openai_error(err: ClientError) -> ProviderError {
 pub fn build_openai_compatible_provider(
     params: &HashMap<String, String>,
 ) -> Result<OpenAICompatibleProvider, ConfigError> {
-    let api_key = params
-        .get("api_key")
-        .ok_or_else(|| ConfigError::InvalidProvider("api_key is required".to_string()))?;
-    let mut config = client::Config::new(api_key.to_string());
+    let api_key = params.get("api_key").cloned().unwrap_or_default();
+    let mut config = client::Config::new(api_key);
     let model_id = params.get("model").cloned();
     if let Some(base_url) = params.get("base_url") {
         config = config.base_url(base_url.to_string());
