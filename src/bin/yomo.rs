@@ -245,8 +245,10 @@ async fn serve(opt: ServeOptions) -> Result<()> {
         .await?,
     );
 
-    if config.http_api.enable_tool_api {
-        app = app.nest("/tool", build_tool_api(connector).await?);
+    let mut tool_api_prefix = String::new();
+    if let Some(t) = config.http_api.tool_api_prefix {
+        tool_api_prefix = t.clone();
+        app = app.nest(&tool_api_prefix, build_tool_api(connector).await?);
     }
 
     app = app.layer(axum::middleware::from_fn_with_state(
@@ -255,25 +257,22 @@ async fn serve(opt: ServeOptions) -> Result<()> {
     ));
 
     info!(
-        "start HTTP API server on {}:{} (LLM API {}, Model API {}, Tool API {})",
-        config.http_api.host,
-        config.http_api.port,
-        if llm_providers_enabled {
-            "enabled at /v1"
-        } else {
-            "disabled"
-        },
-        if model_api_enabled {
-            "enabled at /v1"
-        } else {
-            "disabled"
-        },
-        if config.http_api.enable_tool_api {
-            "enabled at /tool"
-        } else {
-            "disabled"
-        }
+        "start HTTP API server on {}:{}",
+        config.http_api.host, config.http_api.port,
     );
+
+    if llm_providers_enabled {
+        info!("LLM providers enabled at /v1");
+    }
+
+    if model_api_enabled {
+        info!("Model API providers enabled at /v1");
+    }
+
+    if !tool_api_prefix.is_empty() {
+        info!("Tool API enabled at {}", tool_api_prefix);
+    }
+
     let listener = TcpListener::bind((config.http_api.host.as_ref(), config.http_api.port)).await?;
 
     select! {

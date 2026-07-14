@@ -212,7 +212,7 @@ project, for example:
   ./target/release/yomo run --name get-weather ./app
   ```
 
-- Send an agent request:
+- Send a request to the LLM agent:
 
   ```sh
   curl \
@@ -227,6 +227,18 @@ project, for example:
           }
         ]
       }'
+  ```
+
+- Send a request to the serverless function directly:
+
+  ```sh
+  curl \
+    --request POST \
+    --url http://127.0.0.1:9001/tool/get-weather \
+    --header 'Content-Type: application/json' \
+    --data '{
+      "args":"{\"city\":\"London\"}"
+    }'
   ```
 
   

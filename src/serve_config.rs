@@ -110,6 +110,11 @@ fn default_llm_model() -> Option<String> {
     Some("ornith".to_string())
 }
 
+/// Default tool api prefix
+fn default_tool_api_prefix() -> Option<String> {
+    Some("/tool".to_string())
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ZipperConfig {
     #[serde(default = "default_host")]
@@ -140,8 +145,8 @@ pub struct HttpApiConfig {
     #[serde(default = "default_http_api_port")]
     pub port: u16,
 
-    #[serde(default)]
-    pub enable_tool_api: bool,
+    #[serde(default = "default_tool_api_prefix")]
+    pub tool_api_prefix: Option<String>,
 }
 
 impl Default for HttpApiConfig {
@@ -149,7 +154,7 @@ impl Default for HttpApiConfig {
         Self {
             host: default_host(),
             port: default_http_api_port(),
-            enable_tool_api: false,
+            tool_api_prefix: default_tool_api_prefix(),
         }
     }
 }
