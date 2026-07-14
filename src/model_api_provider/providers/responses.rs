@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use axum::body::Bytes;
 use axum::http::{HeaderMap, HeaderValue, header};
-use serde_json::{Map, Value};
+use serde_json::Value;
 use std::sync::Arc;
 
 use crate::model_api_provider::provider::{
@@ -152,24 +152,8 @@ fn sanitize_responses_request_body(body: &Bytes) -> Option<Bytes> {
         let has_role = item_obj.get("role").and_then(Value::as_str).is_some();
         let has_content = item_obj.contains_key("content");
         if has_role && has_content {
-            let role_value = item_obj
-                .get("role")
-                .cloned()
-                .expect("message-like item must have role");
-            let content_value = item_obj
-                .get("content")
-                .cloned()
-                .expect("message-like item must have content");
-
-            let mut normalized_item = Map::with_capacity(3);
-            normalized_item.insert("type".to_string(), Value::String("message".to_string()));
-            normalized_item.insert("role".to_string(), role_value);
-            normalized_item.insert("content".to_string(), content_value);
-
-            if *item_obj != normalized_item {
-                *item_obj = normalized_item;
-                changed = true;
-            }
+            item_obj.insert("type".to_string(), Value::String("message".to_string()));
+            changed = true;
         }
     }
 
@@ -372,8 +356,8 @@ mod tests {
         assert_eq!(sanitized_json["input"][0]["type"], "message");
         assert_eq!(sanitized_json["input"][1]["type"], "message");
         assert_eq!(sanitized_json["input"][2]["type"], "message");
-        assert!(sanitized_json["input"][1].get("id").is_none());
-        assert!(sanitized_json["input"][1].get("phase").is_none());
+        assert_eq!(sanitized_json["input"][1]["id"], "msg_1");
+        assert_eq!(sanitized_json["input"][1]["phase"], "loop");
         assert_eq!(sanitized_json["input"][3]["type"], "reasoning");
     }
 }
