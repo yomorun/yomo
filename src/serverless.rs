@@ -19,6 +19,7 @@ use tokio::{
 use crate::bridge::Bridge;
 use crate::connector::TcpConnector;
 use crate::types::RequestHeaders;
+use crate::utils::{copy_dir_recursive, copy_if_provided};
 
 static GO_APP: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/serverless/go/app.go"));
 static GO_MAIN: &str = include_str!(concat!(
@@ -139,28 +140,6 @@ impl ServerlessHandler {
         Ok(())
     }
 
-    async fn copy_dir_recursive(&self, src: &Path, dst: &Path) -> Result<()> {
-        fs::create_dir_all(dst).await?;
-
-        let mut stack = vec![(src.to_path_buf(), dst.to_path_buf())];
-        while let Some((current_src, current_dst)) = stack.pop() {
-            fs::create_dir_all(&current_dst).await?;
-            let mut entries = fs::read_dir(&current_src).await?;
-            while let Some(entry) = entries.next_entry().await? {
-                let entry_type = entry.file_type().await?;
-                let src_path = entry.path();
-                let dst_path = current_dst.join(entry.file_name());
-                if entry_type.is_dir() {
-                    stack.push((src_path, dst_path));
-                } else if entry_type.is_file() {
-                    fs::copy(src_path, dst_path).await?;
-                }
-            }
-        }
-
-        Ok(())
-    }
-
     /// Compile and run Go tool
     async fn run_go(&self, serverless_dir: &Path) -> Result<()> {
         // create temp directory for tool
@@ -255,59 +234,26 @@ impl ServerlessHandler {
 
         fs::write(cwd.join("main.ts"), NODE_MAIN).await?;
 
-        if serverless_dir.join("package.json").exists() {
-            fs::copy(
-                serverless_dir.join("package.json"),
-                cwd.join("package.json"),
-            )
-            .await?;
-            if serverless_dir.join("package-lock.json").exists() {
-                fs::copy(
-                    serverless_dir.join("package-lock.json"),
-                    cwd.join("package-lock.json"),
-                )
-                .await?;
-            }
-        } else {
-            fs::write(cwd.join("package.json"), NODE_PACKAGE_JSON).await?;
-        }
+        copy_dir_recursive(&serverless_dir.join("src"), &cwd.join("src")).await?;
 
-        if serverless_dir.join("tsconfig.json").exists() {
-            fs::copy(
-                serverless_dir.join("tsconfig.json"),
-                cwd.join("tsconfig.json"),
-            )
-            .await?;
-        } else {
-            fs::write(cwd.join("tsconfig.json"), NODE_TSCONFIG).await?;
-        }
+        copy_if_provided(
+            &serverless_dir.join("package.json"),
+            &cwd.join("package.json"),
+            Some(NODE_PACKAGE_JSON),
+        )
+        .await?;
 
-        if serverless_dir.join("src").exists() {
-            self.copy_dir_recursive(&serverless_dir.join("src"), &cwd.join("src"))
-                .await?;
-        } else {
-            fs::create_dir_all(cwd.join("src")).await?;
-        }
+        copy_if_provided(
+            &serverless_dir.join("tsconfig.json"),
+            &cwd.join("tsconfig.json"),
+            Some(NODE_TSCONFIG),
+        )
+        .await?;
 
-        if !cwd.join("src/app.ts").exists() {
-            if serverless_dir.join("app.ts").exists() {
-                fs::copy(serverless_dir.join("app.ts"), cwd.join("src/app.ts")).await?;
-            } else {
-                bail!("app.ts not found in {}", serverless_dir.display());
-            }
-        }
+        copy_if_provided(&serverless_dir.join(".env"), &cwd.join(".env"), None).await?;
 
-        if serverless_dir.join(".env").exists() {
-            fs::copy(serverless_dir.join(".env"), cwd.join(".env")).await?;
-        }
-
-        let install_cmd = if cwd.join("package-lock.json").exists() {
-            vec!["ci"]
-        } else {
-            vec!["install"]
-        };
         let install_output = Command::new("npm")
-            .args(install_cmd)
+            .args(["install"])
             .current_dir(cwd)
             .spawn()?
             .wait_with_output()

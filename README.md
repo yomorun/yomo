@@ -24,117 +24,71 @@ Let's build a simple AI agent with LLM Function Calling to provide weather infor
 
 ### Step 1. Install CLI
 
-```bash
+```sh
 curl -fsSL https://get.yomo.run | sh
 ```
 
 Verify the installation:
 
-```bash
-yomo version
+```sh
+yomo --version
 ```
 
 ### Step 2. Start the server
 
-Create a configuration file `my-agent.yaml` (you can start from `agent.template.yaml`):
+Use Ollama as the LLM provider:
 
-```yaml
-auth_token: "SECRET_TOKEN"
-
-zipper:
-  host: "0.0.0.0"
-  port: 9000
-  tls: {}
-
-http_api:
-  host: "0.0.0.0"
-  port: 9001
-  enable_tool_api: false
-
-llm_providers:
-  - type: "openai"
-    model_id: "gemma-4-31B-it"
-    default: true
-    params:
-      model: "google/gemma-4-31B-it"
-      base_url: "http://localhost:11434"
-      api_key: ""
+```sh
+ollama pull ornith
 ```
-
-When `auth_token` is configured, all HTTP APIs require `Authorization: Bearer <token>`.
 
 Launch the server:
 
 ```sh
-yomo serve -c my-agent.yaml
+yomo serve
 ```
+
+You can also use the `--config` flag to specify a custom coniguration yaml file.
 
 ### Step 3. Implement the LLM Function Calling
 
-Create a type-safe function that retrieves weather data:
-
-```typescript
-export const description = 'Get the current weather for `city`'
-
-export type Argument = {
-  /**
-   * The name of the city to be queried
-   */
-  city: string;
-}
-
-export async function handler(args: Argument) {
-  // Simulate a weather API call
-  let temperature = Math.floor(Math.random() * 41)
-
-  // Return the result to LLM
-  return { 
-    city: args.city, 
-    temperature: temperature,
-    feels_like: 11.9,
-    rain: false,
-  }
-}
+```sh
+yomo init
 ```
 
 Finished, now, let's run it:
 
 ```bash
-$ yomo run -n get-weather
+yomo run -n get-weather ./app
 ```
 
 ### Done, let's have a try
 
 ```sh
-$ curl http://127.0.0.1:9000/v1/chat/completions \
+curl http://127.0.0.1:9001/v1/chat/completions \
 -H "Content-Type: application/json" \
--H "Authorization: Bearer SECRET_TOKEN" \
 -d '{
   "messages": [
     {
       "role": "user",
       "content": "I am going for a hike on the Yarra Bend Park Loop. What should I wear?"
     }
-  ],
-  "stream": false
+  ]
 }'
 ```
 
 You'll receive a helpful response like this:
 
 ```
-For your hike on the Yarra Bend Park Loop, the current weather is clear with a temperature of approximately 12.3°C (feels like 11.9°C). 
+Yarra Bend Park is on the Yarra River and gets misty/foggy when it overflows from its channel into the park—this typically occurs on damp autumns around November. Today's conditions are mild, warm, dry, with no fog expected today but a chance of light rain or drizzle possible tomorrow afternoon.
 
-Here are some suggestions on what to wear: 
+**Clothing for your hike:**
+- **Base/mid-layer:** A long-sleeve top is enough. If it gets chilly at the river bank (a 2°C drop is possible), add a fleece mid-layer rather than relying on just an autumn outer shell.
+- **Pants:** Jeans are okay if you want them, but light hiking pants or athletic wear are more comfortable and dry faster.
+- **Footwear:** You'll be on forest trails around the Yarra River—sturdy sneakers will do for the loop today. If there's rain tomorrow afternoon, bring a pair of boots.
+- **Rain gear:** Carry an umbrella just in case you get caught on the trail after the rain passes this weekend.
 
-1. **Layers**: Start with a base layer such as a moisture-wicking t-shirt. Add a light sweater or fleece for warmth since it can be chilly. 
-2. **Jacket**: Bring a lightweight jacket or windbreaker to keep warm, especially as it is breezy with a southeast wind at 6 km/h with gusts up to 14 km/h. 
-3. **Pants**: Comfortable hiking pants or leggings will be suitable. 
-4. **Footwear**: Wear sturdy hiking boots or shoes with good grip. 
-5. **Accessories**: Consider a hat or beanie for warmth, and bring gloves if you tend to get cold easily. 
-6. **Backpack**: Carry a small backpack with water, snacks, and any additional layers you might need. 
-
-Since there is **no rain** expected, you shouldn't need waterproof gear, but it's always wise to check the latest forecast before heading out. Enjoy your hike!
+**Don't worry about mosquitoes this month.** They arrive in March/April when it gets hot and dry—and that's right around the time summer solstice fog starts forming (June). In November, no mosquitoes at all.
 ```
 
 ### Explore More Examples
@@ -189,34 +143,30 @@ project, for example:
 - Use Ollama as the LLM provider:
 
   ```sh
-  ollama pull qwen3.5
+  ollama pull ornith
   ```
 
 - Run YoMo server:
 
-  ```
-  RUST_LOG=debug ./target/release/yomo serve
+  ```sh
+  ./target/release/yomo serve
   ```
 
 - Initialize a Serverless LLM Tool project:
 
-  ```
+  ```sh
   ./target/release/yomo init
   ```
 
-- Edit tool source:
-
-  ```
-  vim ./app/src/app.ts
-  ```
+  then edit `./app/src/app.ts` in the project.
 
 - Run YoMo serverless tool:
 
-  ```
-  RUST_LOG=debug ./target/release/yomo run --name get-weather ./app
+  ```sh
+  ./target/release/yomo run --name get-weather ./app
   ```
 
-- Send an agent request:
+- Send a request to the LLM agent:
 
   ```sh
   curl \
@@ -224,7 +174,6 @@ project, for example:
     --url http://127.0.0.1:9001/v1/chat/completions \
     --header 'Content-Type: application/json' \
     --data '{
-      "model": "qwen3.5",
       "messages": [
           {
               "role": "user",
@@ -232,6 +181,18 @@ project, for example:
           }
         ]
       }'
+  ```
+
+- Send a request to the serverless function directly:
+
+  ```sh
+  curl \
+    --request POST \
+    --url http://127.0.0.1:9001/tool/get-weather \
+    --header 'Content-Type: application/json' \
+    --data '{
+      "args":"{\"city\":\"London\"}"
+    }'
   ```
 
   
