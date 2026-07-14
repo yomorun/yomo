@@ -157,7 +157,14 @@ fn normalize_gpt5_request(request: &mut ChatCompletionRequest) {
 fn is_target_gpt5_model(model: &str) -> bool {
     matches!(
         model,
-        "gpt-5.5" | "gpt-5.5-1" | "gpt-5.4" | "gpt-5.4-mini" | "gpt-5.4-nano"
+        "gpt-5.5"
+            | "gpt-5.5-1"
+            | "gpt-5.4"
+            | "gpt-5.4-mini"
+            | "gpt-5.4-nano"
+            | "gpt-5.6-sol"
+            | "gpt-5.6-luna"
+            | "gpt-5.6-terra"
     )
 }
 
@@ -272,6 +279,25 @@ mod tests {
     #[test]
     fn normalize_gpt5_clears_reasoning_effort_when_tools_present() {
         let mut request = base_request("gpt-5.4-mini");
+        request.reasoning_effort = Some("medium".to_string());
+        request.tools = Some(vec![ToolDefinition {
+            r#type: "function".to_string(),
+            function: FunctionDefinition {
+                name: "test_tool".to_string(),
+                description: None,
+                strict: None,
+                parameters: json!({}),
+            },
+        }]);
+
+        normalize_gpt5_request(&mut request);
+
+        assert!(request.reasoning_effort.is_none());
+    }
+
+    #[test]
+    fn normalize_gpt56_clears_reasoning_effort_when_tools_present() {
+        let mut request = base_request("gpt-5.6-luna");
         request.reasoning_effort = Some("medium".to_string());
         request.tools = Some(vec![ToolDefinition {
             r#type: "function".to_string(),
