@@ -1,6 +1,7 @@
 use async_trait::async_trait;
+use axum::body::Bytes;
 use axum::http::{HeaderMap, HeaderValue, header};
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::sync::Arc;
 
 use crate::model_api_provider::provider::{
@@ -47,6 +48,15 @@ impl<M> ModelApiProvider<M> for ResponsesClient {
         _metadata: &M,
     ) -> Result<ProviderResponse, anyhow::Error> {
         req.endpoint_path = "/responses".to_string();
+        if req
+            .content_type
+            .as_deref()
+            .is_some_and(|content_type| content_type.starts_with("application/json"))
+        {
+            if let Some(sanitized_body) = sanitize_responses_request_body(&req.body) {
+                req.body = sanitized_body;
+            }
+        }
         proxy_request(
             &self.client,
             &self.base_url,
@@ -113,9 +123,70 @@ fn non_null_usage(value: Option<&Value>) -> Option<Value> {
     value.filter(|usage| !usage.is_null()).cloned()
 }
 
+fn sanitize_responses_request_body(body: &Bytes) -> Option<Bytes> {
+    let mut payload_json: Value = serde_json::from_slice(body).ok()?;
+    let payload_obj = payload_json.as_object_mut()?;
+    let model = payload_obj.get("model").and_then(Value::as_str)?;
+    if !matches!(model, "gpt-5.6-sol" | "gpt-5.6-luna" | "gpt-5.6-terra") {
+        return None;
+    }
+
+    let input_items = payload_obj.get_mut("input")?.as_array_mut()?;
+    let mut changed = false;
+
+    for item in input_items {
+        let Some(item_obj) = item.as_object_mut() else {
+            continue;
+        };
+
+        let missing_or_empty_type = match item_obj.get("type") {
+            None => true,
+            Some(Value::String(value)) => value.trim().is_empty(),
+            Some(Value::Null) => true,
+            _ => false,
+        };
+        if !missing_or_empty_type {
+            continue;
+        }
+
+        let has_role = item_obj.get("role").and_then(Value::as_str).is_some();
+        let has_content = item_obj.contains_key("content");
+        if has_role && has_content {
+            let role_value = item_obj
+                .get("role")
+                .cloned()
+                .expect("message-like item must have role");
+            let content_value = item_obj
+                .get("content")
+                .cloned()
+                .expect("message-like item must have content");
+
+            let mut normalized_item = Map::with_capacity(3);
+            normalized_item.insert("type".to_string(), Value::String("message".to_string()));
+            normalized_item.insert("role".to_string(), role_value);
+            normalized_item.insert("content".to_string(), content_value);
+
+            if *item_obj != normalized_item {
+                *item_obj = normalized_item;
+                changed = true;
+            }
+        }
+    }
+
+    if !changed {
+        return None;
+    }
+
+    serde_json::to_vec(&payload_json).ok().map(Bytes::from)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{extract_request_id_json, extract_usage_json, inject_usage_json};
+    use super::{
+        extract_request_id_json, extract_usage_json, inject_usage_json,
+        sanitize_responses_request_body,
+    };
+    use axum::body::Bytes;
     use serde_json::json;
 
     /// Verifies full payload request id extraction prefers top-level `id`.
@@ -179,6 +250,131 @@ mod tests {
 
         assert!(injected);
         assert_eq!(payload.get("usage"), Some(&new_usage));
+    }
+
+    /// Verifies message-like input items get `type: message` for targeted GPT-5.6 models.
+    #[test]
+    fn sanitize_responses_request_body_adds_message_type_for_target_models() {
+        let body = Bytes::from(
+            serde_json::to_vec(&json!({
+                "model": "gpt-5.6-sol",
+                "input": [
+                    {
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": "hi"}]
+                    }
+                ]
+            }))
+            .expect("serialize test body"),
+        );
+
+        let sanitized =
+            sanitize_responses_request_body(&body).expect("expected request body to be sanitized");
+        let sanitized_json: serde_json::Value =
+            serde_json::from_slice(&sanitized).expect("parse sanitized request body");
+
+        assert_eq!(sanitized_json["input"][0]["type"], "message");
+        assert_eq!(sanitized_json["input"][0]["content"][0]["text"], "hi");
+    }
+
+    /// Verifies non-target models are left untouched.
+    #[test]
+    fn sanitize_responses_request_body_skips_non_target_models() {
+        let body = Bytes::from(
+            serde_json::to_vec(&json!({
+                "model": "gpt-5.4",
+                "input": [
+                    {
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": "hi"}]
+                    }
+                ]
+            }))
+            .expect("serialize test body"),
+        );
+
+        let sanitized = sanitize_responses_request_body(&body);
+
+        assert!(sanitized.is_none());
+    }
+
+    /// Verifies non-message items are preserved while compatible message items are repaired.
+    #[test]
+    fn sanitize_responses_request_body_preserves_non_message_items() {
+        let body = Bytes::from(
+            serde_json::to_vec(&json!({
+                "model": "gpt-5.6-terra",
+                "input": [
+                    {
+                        "type": "",
+                        "foo": "bar"
+                    },
+                    {
+                        "type": "",
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": "hello"}]
+                    }
+                ]
+            }))
+            .expect("serialize test body"),
+        );
+
+        let sanitized =
+            sanitize_responses_request_body(&body).expect("expected request body to be sanitized");
+        let sanitized_json: serde_json::Value =
+            serde_json::from_slice(&sanitized).expect("parse sanitized request body");
+
+        assert_eq!(sanitized_json["input"].as_array().map(Vec::len), Some(2));
+        assert_eq!(sanitized_json["input"][0]["type"], "");
+        assert_eq!(sanitized_json["input"][0]["foo"], "bar");
+        assert_eq!(sanitized_json["input"][1]["type"], "message");
+        assert_eq!(sanitized_json["input"][1]["content"][0]["text"], "hello");
+    }
+
+    /// Verifies all message-shaped roles are repaired without dropping other inputs.
+    #[test]
+    fn sanitize_responses_request_body_repairs_all_message_roles() {
+        let body = Bytes::from(
+            serde_json::to_vec(&json!({
+                "model": "gpt-5.6-luna",
+                "input": [
+                    {
+                        "role": "developer",
+                        "content": "system rules"
+                    },
+                    {
+                        "type": null,
+                        "role": "assistant",
+                        "id": "msg_1",
+                        "phase": "loop",
+                        "content": [{"type": "output_text", "text": "ok"}]
+                    },
+                    {
+                        "type": "  ",
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": "hi"}]
+                    },
+                    {
+                        "type": "reasoning",
+                        "id": "rs_1",
+                        "encrypted_content": "abc"
+                    }
+                ]
+            }))
+            .expect("serialize test body"),
+        );
+
+        let sanitized =
+            sanitize_responses_request_body(&body).expect("expected request body to be sanitized");
+        let sanitized_json: serde_json::Value =
+            serde_json::from_slice(&sanitized).expect("parse sanitized request body");
+
+        assert_eq!(sanitized_json["input"][0]["type"], "message");
+        assert_eq!(sanitized_json["input"][1]["type"], "message");
+        assert_eq!(sanitized_json["input"][2]["type"], "message");
+        assert!(sanitized_json["input"][1].get("id").is_none());
+        assert!(sanitized_json["input"][1].get("phase").is_none());
+        assert_eq!(sanitized_json["input"][3]["type"], "reasoning");
     }
 }
 
