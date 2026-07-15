@@ -296,22 +296,15 @@ mod tests {
     }
 
     #[test]
-    fn normalize_gpt56_clears_reasoning_effort_when_tools_present() {
-        let mut request = base_request("gpt-5.6-luna");
-        request.reasoning_effort = Some("medium".to_string());
-        request.tools = Some(vec![ToolDefinition {
-            r#type: "function".to_string(),
-            function: FunctionDefinition {
-                name: "test_tool".to_string(),
-                description: None,
-                strict: None,
-                parameters: json!({}),
-            },
-        }]);
+    fn is_target_gpt5_model_includes_gpt56_models() {
+        for model in ["gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.6-terra"] {
+            assert!(
+                is_target_gpt5_model(model),
+                "expected {model} to be a target"
+            );
+        }
 
-        normalize_gpt5_request(&mut request);
-
-        assert!(request.reasoning_effort.is_none());
+        assert!(!is_target_gpt5_model("gpt-5.6-unknown"));
     }
 
     #[test]
