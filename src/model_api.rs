@@ -1,10 +1,12 @@
-use std::{fmt, pin::Pin, sync::Mutex};
+use std::{borrow::Cow, fmt, io::Read, pin::Pin, sync::Mutex};
 
 use async_stream::try_stream;
 use axum::body::{Body, Bytes};
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, Method, StatusCode, header};
 use axum::response::{IntoResponse, Response};
+use brotli::Decompressor;
+use flate2::read::{GzDecoder, ZlibDecoder};
 use futures_core::Stream;
 use futures_util::{StreamExt, stream};
 use log::{error, info, warn};
@@ -22,6 +24,7 @@ use crate::trace::{
     DefaultRequestSpanStarter, RequestSpanStarter, record_usage_attributes, set_http_span_status,
 };
 use crate::usage_handler::{EndpointUsage, UsageHandler};
+use crate::utils::{MAX_LOG_BODY_BYTES, truncate_for_log};
 
 pub struct ModelApiHandlerState<A, M> {
     pub provider_registry: Arc<ProviderRegistry<M>>,
@@ -260,9 +263,24 @@ where
                     }
                 }
             } else {
+                let upstream_status_code = response.status.as_u16();
+                let upstream_content_type = response
+                    .headers
+                    .get(header::CONTENT_TYPE)
+                    .and_then(|value| value.to_str().ok())
+                    .unwrap_or_default();
+                let upstream_content_encoding = response
+                    .headers
+                    .get(header::CONTENT_ENCODING)
+                    .and_then(|value| value.to_str().ok());
                 warn!(
-                    "model api got invalid json body for model_id {}",
-                    provider_entry.model_id
+                    "model api got invalid json body for model_id {} status_code={} content_type={} content_encoding={} body={} trace_id={}",
+                    provider_entry.model_id,
+                    upstream_status_code,
+                    upstream_content_type,
+                    upstream_content_encoding.unwrap_or_default(),
+                    body_preview_for_log(&payload, upstream_content_encoding),
+                    trace_id
                 );
             }
             let response = builder.body(Body::from(payload)).expect("build response");
@@ -293,6 +311,91 @@ where
     };
 
     response
+}
+
+fn body_preview_for_log(payload: &Bytes, content_encoding: Option<&str>) -> String {
+    let mut decode_failed = false;
+    let decoded_payload = match decode_payload_for_log(payload, content_encoding) {
+        Ok(decoded) => decoded,
+        Err(_) => {
+            decode_failed = true;
+            Cow::Borrowed(payload.as_ref())
+        }
+    };
+
+    if let Ok(decoded) = std::str::from_utf8(&decoded_payload) {
+        return truncate_for_log(decoded);
+    }
+
+    let prefix_len = decoded_payload.len().min(24);
+    let hex_prefix = decoded_payload
+        .iter()
+        .take(prefix_len)
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<Vec<String>>()
+        .join("");
+    let encoding_hint = content_encoding
+        .filter(|value| !value.is_empty())
+        .map(|value| format!(", content_encoding={value}"))
+        .unwrap_or_default();
+    let decode_failed_hint = if decode_failed {
+        ", decode_failed=true"
+    } else {
+        ""
+    };
+
+    format!(
+        "<non-utf8 body: len={} first_bytes_hex={}{}{}>",
+        decoded_payload.len(),
+        hex_prefix,
+        encoding_hint,
+        decode_failed_hint
+    )
+}
+
+fn decode_payload_for_log<'a>(
+    payload: &'a Bytes,
+    content_encoding: Option<&str>,
+) -> Result<Cow<'a, [u8]>, std::io::Error> {
+    let Some(encoding) = content_encoding
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(Cow::Borrowed(payload.as_ref()));
+    };
+
+    let normalized = encoding
+        .split(',')
+        .next_back()
+        .unwrap_or(encoding)
+        .trim()
+        .to_ascii_lowercase();
+
+    match normalized.as_str() {
+        "identity" => Ok(Cow::Borrowed(payload.as_ref())),
+        "br" => {
+            let mut decoded = Vec::new();
+            let decoder = Decompressor::new(payload.as_ref(), 4096);
+            let mut limited_decoder = decoder.take(MAX_LOG_BODY_BYTES as u64);
+            limited_decoder.read_to_end(&mut decoded)?;
+            Ok(Cow::Owned(decoded))
+        }
+        "gzip" | "x-gzip" => {
+            let mut decoded = Vec::new();
+            let decoder = GzDecoder::new(payload.as_ref());
+            let mut limited_decoder = decoder.take(MAX_LOG_BODY_BYTES as u64);
+            limited_decoder.read_to_end(&mut decoded)?;
+            Ok(Cow::Owned(decoded))
+        }
+        "deflate" => {
+            let mut decoded = Vec::new();
+            let decoder = ZlibDecoder::new(payload.as_ref());
+            let mut limited_decoder = decoder.take(MAX_LOG_BODY_BYTES as u64);
+            limited_decoder.read_to_end(&mut decoded)?;
+            Ok(Cow::Owned(decoded))
+        }
+        _ => Ok(Cow::Borrowed(payload.as_ref())),
+    }
 }
 
 /// Parses request-level metadata from HTTP content type and body payload.
@@ -676,8 +779,16 @@ pub async fn build_model_api(
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_model_request_fields, resolve_request_id};
+    use super::{
+        body_preview_for_log, decode_payload_for_log, parse_model_request_fields,
+        resolve_request_id,
+    };
+    use crate::utils::MAX_LOG_BODY_BYTES;
     use axum::body::Bytes;
+    use brotli::CompressorReader;
+    use flate2::Compression;
+    use flate2::write::GzEncoder;
+    use std::io::{Read, Write};
 
     /// Verifies JSON requests return both model and stream metadata.
     #[tokio::test]
@@ -770,5 +881,74 @@ mod tests {
 
         assert_eq!(missing, "trace_456");
         assert_eq!(blank, "trace_789");
+    }
+
+    /// Verifies invalid upstream payload previews are UTF-8 safe and bounded.
+    #[test]
+    fn body_preview_for_log_handles_non_utf8_and_truncates() {
+        let mut payload = vec![0xff, 0xfe];
+        payload.extend(std::iter::repeat_n(b'a', MAX_LOG_BODY_BYTES + 128));
+        let preview = body_preview_for_log(&Bytes::from(payload), Some("br"));
+
+        assert!(preview.starts_with("<non-utf8 body: len="));
+        assert!(preview.contains("first_bytes_hex=fffe"));
+        assert!(preview.contains("content_encoding=br"));
+    }
+
+    /// Verifies UTF-8 payload preview keeps truncation behavior.
+    #[test]
+    fn body_preview_for_log_truncates_utf8_payload() {
+        let payload = Bytes::from("a".repeat(MAX_LOG_BODY_BYTES + 64));
+        let preview = body_preview_for_log(&payload, None);
+
+        assert!(preview.contains("[truncated"));
+    }
+
+    /// Verifies Brotli-encoded error bodies are decoded for readable logs.
+    #[test]
+    fn body_preview_for_log_decodes_brotli_payload() {
+        let raw = b"{\"error\":{\"message\":\"invalid_payload\"}}";
+        let mut compressor = CompressorReader::new(&raw[..], 4096, 5, 22);
+        let mut compressed = Vec::new();
+        compressor
+            .read_to_end(&mut compressed)
+            .expect("compress test payload");
+
+        let preview = body_preview_for_log(&Bytes::from(compressed), Some("br"));
+
+        assert!(preview.contains("invalid_payload"));
+        assert!(!preview.starts_with("<non-utf8 body"));
+    }
+
+    /// Verifies decoder applies the outermost content encoding first.
+    #[test]
+    fn decode_payload_for_log_uses_outermost_encoding() {
+        let raw = b"outermost-encoding";
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(raw).expect("write gzip payload");
+        let compressed = encoder.finish().expect("finish gzip payload");
+
+        let payload = Bytes::from(compressed);
+        let decoded =
+            decode_payload_for_log(&payload, Some("identity, gzip")).expect("decode payload");
+
+        assert_eq!(decoded.as_ref(), raw);
+    }
+
+    /// Verifies decode size is bounded to avoid decompression bomb logs.
+    #[test]
+    fn decode_payload_for_log_limits_decompressed_output() {
+        let raw = "a".repeat(MAX_LOG_BODY_BYTES + 1024).into_bytes();
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder
+            .write_all(&raw)
+            .expect("write oversized gzip payload");
+        let compressed = encoder.finish().expect("finish oversized gzip payload");
+
+        let payload = Bytes::from(compressed);
+        let decoded =
+            decode_payload_for_log(&payload, Some("gzip")).expect("decode payload with limit");
+
+        assert_eq!(decoded.len(), MAX_LOG_BODY_BYTES);
     }
 }
