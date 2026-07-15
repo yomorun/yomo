@@ -23,10 +23,12 @@ config = "0.15"
 env_logger = "0.11"
 futures-core = "0.3"
 futures-util = "0.3"
+flate2 = "1.1"
 log = "0.4"
 opentelemetry = "0.32"
 opentelemetry-otlp = { version = "0.32", features = ["http-proto"] }
 opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
+brotli = "8"
 rustls-native-certs = "0.8"
 rustls-pki-types = "1.14"
 reqwest = { version = "0.13", default-features = false, features = [
