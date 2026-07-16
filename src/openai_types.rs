@@ -185,13 +185,9 @@ impl<'de> Deserialize<'de> for Message {
             role: Role,
             #[serde(default, deserialize_with = "null_to_default")]
             content: Content,
-            #[serde(skip_serializing_if = "Option::is_none")]
             reasoning_content: Option<String>,
-            #[serde(skip_serializing_if = "Option::is_none")]
             reasoning: Option<String>,
-            #[serde(skip_serializing_if = "Option::is_none")]
             tool_call_id: Option<String>,
-            #[serde(skip_serializing_if = "Option::is_none")]
             tool_calls: Option<Vec<ToolCall>>,
         }
 
@@ -353,11 +349,10 @@ pub struct ChatCompletionChoice {
     pub logprobs: Option<Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ChatCompletionMessage {
     pub role: Role,
     pub content: Option<Content>,
-    #[serde(alias = "reasoning")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_content: Option<String>,
     #[serde(default, deserialize_with = "null_to_default")]
@@ -365,6 +360,35 @@ pub struct ChatCompletionMessage {
     pub refusal: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCall>>,
+}
+
+impl<'de> Deserialize<'de> for ChatCompletionMessage {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct RawChatCompletionMessage {
+            role: Role,
+            content: Option<Content>,
+            reasoning_content: Option<String>,
+            reasoning: Option<String>,
+            #[serde(default, deserialize_with = "null_to_default")]
+            annotations: Vec<Value>,
+            refusal: Option<String>,
+            tool_calls: Option<Vec<ToolCall>>,
+        }
+
+        let raw = RawChatCompletionMessage::deserialize(deserializer)?;
+        Ok(ChatCompletionMessage {
+            role: raw.role,
+            content: raw.content,
+            reasoning_content: raw.reasoning_content.or(raw.reasoning),
+            annotations: raw.annotations,
+            refusal: raw.refusal,
+            tool_calls: raw.tool_calls,
+        })
+    }
 }
 
 fn null_to_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
@@ -413,18 +437,43 @@ pub struct ChatCompletionChunkChoice {
     pub logprobs: Option<Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ChatCompletionChunkDelta {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub role: Option<Role>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
-    #[serde(alias = "reasoning")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_content: Option<String>,
     pub refusal: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ChatCompletionChunkToolCall>>,
+}
+
+impl<'de> Deserialize<'de> for ChatCompletionChunkDelta {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct RawChatCompletionChunkDelta {
+            role: Option<Role>,
+            content: Option<String>,
+            reasoning_content: Option<String>,
+            reasoning: Option<String>,
+            refusal: Option<String>,
+            tool_calls: Option<Vec<ChatCompletionChunkToolCall>>,
+        }
+
+        let raw = RawChatCompletionChunkDelta::deserialize(deserializer)?;
+        Ok(ChatCompletionChunkDelta {
+            role: raw.role,
+            content: raw.content,
+            reasoning_content: raw.reasoning_content.or(raw.reasoning),
+            refusal: raw.refusal,
+            tool_calls: raw.tool_calls,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -564,6 +613,20 @@ mod tests {
     }
 
     #[test]
+    fn chat_completion_message_deserializes_reasoning_and_reasoning_content_when_both_present() {
+        let message = r#"{"role":"assistant","content":"ok","reasoning_content":"think","reasoning":"think"}"#;
+        let parsed: ChatCompletionMessage = serde_json::from_str(message).expect("parse message");
+        assert_eq!(parsed.reasoning_content.as_deref(), Some("think"));
+    }
+
+    #[test]
+    fn chat_completion_message_prefers_reasoning_content_over_reasoning_when_both_present() {
+        let message = r#"{"role":"assistant","content":"ok","reasoning_content":"primary","reasoning":"alias"}"#;
+        let parsed: ChatCompletionMessage = serde_json::from_str(message).expect("parse message");
+        assert_eq!(parsed.reasoning_content.as_deref(), Some("primary"));
+    }
+
+    #[test]
     fn chat_completion_chunk_deserializes_reasoning_alias() {
         let chunk = r#"{
             "id":"chunk-1",
@@ -585,6 +648,56 @@ mod tests {
         assert_eq!(
             parsed.choices[0].delta.reasoning_content.as_deref(),
             Some("step")
+        );
+    }
+
+    #[test]
+    fn chat_completion_chunk_deserializes_reasoning_and_reasoning_content_when_both_present() {
+        let chunk = r#"{
+            "id":"chunk-1",
+            "created":1,
+            "model":"DeepSeek-V4-Flash",
+            "object":"chat.completion.chunk",
+            "system_fingerprint":null,
+            "obfuscation":null,
+            "choices":[{
+                "delta":{"reasoning_content":"step","reasoning":"step"},
+                "finish_reason":null,
+                "index":0,
+                "logprobs":null
+            }],
+            "usage":null
+        }"#;
+
+        let parsed: ChatCompletionChunk = serde_json::from_str(chunk).expect("parse chunk");
+        assert_eq!(
+            parsed.choices[0].delta.reasoning_content.as_deref(),
+            Some("step")
+        );
+    }
+
+    #[test]
+    fn chat_completion_chunk_prefers_reasoning_content_over_reasoning_when_both_present() {
+        let chunk = r#"{
+            "id":"chunk-1",
+            "created":1,
+            "model":"DeepSeek-V4-Flash",
+            "object":"chat.completion.chunk",
+            "system_fingerprint":null,
+            "obfuscation":null,
+            "choices":[{
+                "delta":{"reasoning_content":"primary","reasoning":"alias"},
+                "finish_reason":null,
+                "index":0,
+                "logprobs":null
+            }],
+            "usage":null
+        }"#;
+
+        let parsed: ChatCompletionChunk = serde_json::from_str(chunk).expect("parse chunk");
+        assert_eq!(
+            parsed.choices[0].delta.reasoning_content.as_deref(),
+            Some("primary")
         );
     }
 
