@@ -147,6 +147,14 @@ where
         &metadata,
     ) {
         Ok(provider_entry) => provider_entry,
+        Err(SelectionError::AccessDenied) => {
+            set_http_span_status(&root_span, StatusCode::FORBIDDEN, Some("access_denied"));
+            return openai_error_response(
+                StatusCode::FORBIDDEN,
+                "access_denied",
+                Some("access_denied"),
+            );
+        }
         Err(SelectionError::OutstandingBalance) => {
             set_http_span_status(
                 &root_span,
