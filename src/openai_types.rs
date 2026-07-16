@@ -167,7 +167,6 @@ pub struct Message {
     pub role: Role,
     #[serde(default, deserialize_with = "null_to_default")]
     pub content: Content,
-    #[serde(alias = "reasoning")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -186,9 +185,10 @@ impl<'de> Deserialize<'de> for Message {
             role: Role,
             #[serde(default, deserialize_with = "null_to_default")]
             content: Content,
-            #[serde(alias = "reasoning")]
             #[serde(skip_serializing_if = "Option::is_none")]
             reasoning_content: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            reasoning: Option<String>,
             #[serde(skip_serializing_if = "Option::is_none")]
             tool_call_id: Option<String>,
             #[serde(skip_serializing_if = "Option::is_none")]
@@ -205,7 +205,7 @@ impl<'de> Deserialize<'de> for Message {
         Ok(Message {
             role: raw.role,
             content: raw.content,
-            reasoning_content: raw.reasoning_content,
+            reasoning_content: raw.reasoning_content.or(raw.reasoning),
             tool_call_id: raw.tool_call_id,
             tool_calls: raw.tool_calls,
         })
@@ -540,6 +540,20 @@ mod tests {
         let message = r#"{"role":"assistant","content":"ok","reasoning":"think"}"#;
         let parsed: Message = serde_json::from_str(message).expect("parse message");
         assert_eq!(parsed.reasoning_content.as_deref(), Some("think"));
+    }
+
+    #[test]
+    fn message_deserializes_reasoning_and_reasoning_content_when_both_present() {
+        let message = r#"{"role":"assistant","content":"ok","reasoning_content":"think","reasoning":"think"}"#;
+        let parsed: Message = serde_json::from_str(message).expect("parse message");
+        assert_eq!(parsed.reasoning_content.as_deref(), Some("think"));
+    }
+
+    #[test]
+    fn message_prefers_reasoning_content_over_reasoning_when_both_present() {
+        let message = r#"{"role":"assistant","content":"ok","reasoning_content":"primary","reasoning":"alias"}"#;
+        let parsed: Message = serde_json::from_str(message).expect("parse message");
+        assert_eq!(parsed.reasoning_content.as_deref(), Some("primary"));
     }
 
     #[test]
