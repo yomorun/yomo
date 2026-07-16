@@ -157,7 +157,14 @@ fn normalize_gpt5_request(request: &mut ChatCompletionRequest) {
 fn is_target_gpt5_model(model: &str) -> bool {
     matches!(
         model,
-        "gpt-5.5" | "gpt-5.5-1" | "gpt-5.4" | "gpt-5.4-mini" | "gpt-5.4-nano"
+        "gpt-5.5"
+            | "gpt-5.5-1"
+            | "gpt-5.4"
+            | "gpt-5.4-mini"
+            | "gpt-5.4-nano"
+            | "gpt-5.6-sol"
+            | "gpt-5.6-luna"
+            | "gpt-5.6-terra"
     )
 }
 
@@ -286,6 +293,18 @@ mod tests {
         normalize_gpt5_request(&mut request);
 
         assert!(request.reasoning_effort.is_none());
+    }
+
+    #[test]
+    fn is_target_gpt5_model_includes_gpt56_models() {
+        for model in ["gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.6-terra"] {
+            assert!(
+                is_target_gpt5_model(model),
+                "expected {model} to be a target"
+            );
+        }
+
+        assert!(!is_target_gpt5_model("gpt-5.6-unknown"));
     }
 
     #[test]
