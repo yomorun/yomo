@@ -6,7 +6,7 @@ use aws_sdk_bedrockruntime::config::{BehaviorVersion, Token};
 use aws_sdk_bedrockruntime::primitives::Blob;
 use aws_types::region::Region;
 use axum::body::Bytes;
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{HeaderMap, StatusCode, header};
 use serde_json::Value;
 use tokio::sync::OnceCell;
 
@@ -90,10 +90,18 @@ impl<M> ModelApiProvider<M> for BedrockMessagesClient {
                 .content_type("application/json")
                 .body(Blob::new(body.to_vec()))
                 .send()
-                .await
-                .map_err(|err| {
-                    anyhow!("bedrock invoke_model_with_response_stream failed: {err:?}")
-                })?;
+                .await;
+            let response = match response {
+                Ok(response) => response,
+                Err(err) => {
+                    if let Some(response) = passthrough_bad_request(&err) {
+                        return Ok(response);
+                    }
+                    return Err(anyhow!(
+                        "bedrock invoke_model_with_response_stream failed: {err:?}"
+                    ));
+                }
+            };
 
             let mut stream = response.body;
             let mapped = async_stream::stream! {
@@ -155,8 +163,16 @@ impl<M> ModelApiProvider<M> for BedrockMessagesClient {
                 .accept("application/json")
                 .body(Blob::new(body.to_vec()))
                 .send()
-                .await
-                .map_err(|err| anyhow!("bedrock invoke_model failed: {err:?}"))?;
+                .await;
+            let response = match response {
+                Ok(response) => response,
+                Err(err) => {
+                    if let Some(response) = passthrough_bad_request(&err) {
+                        return Ok(response);
+                    }
+                    return Err(anyhow!("bedrock invoke_model failed: {err:?}"));
+                }
+            };
 
             let mut headers = HeaderMap::new();
             headers.insert(
@@ -229,10 +245,54 @@ fn non_null_usage(value: Option<&Value>) -> Option<Value> {
     value.filter(|usage| !usage.is_null()).cloned()
 }
 
+fn passthrough_bad_request<E>(
+    err: &aws_sdk_bedrockruntime::error::SdkError<E>,
+) -> Option<ProviderResponse>
+where
+    E: std::error::Error + Send + Sync + 'static,
+{
+    let raw_response = err.raw_response()?;
+    let status = StatusCode::from_u16(raw_response.status().as_u16()).ok()?;
+    let content_type = raw_response.headers().get("content-type");
+    let payload = raw_response.body().bytes();
+
+    passthrough_bad_request_response(status, content_type, payload)
+}
+
+fn passthrough_bad_request_response(
+    status: StatusCode,
+    content_type: Option<&str>,
+    payload: Option<&[u8]>,
+) -> Option<ProviderResponse> {
+    if status != StatusCode::BAD_REQUEST {
+        return None;
+    }
+
+    let mut headers = HeaderMap::new();
+    let content_type = content_type.unwrap_or("application/json");
+    if let Ok(content_type_value) = content_type.parse() {
+        headers.insert(header::CONTENT_TYPE, content_type_value);
+    }
+
+    let payload = payload
+        .map(|bytes| Bytes::copy_from_slice(bytes))
+        .unwrap_or_default();
+
+    Some(ProviderResponse {
+        status,
+        headers,
+        body: ProviderBody::Full(payload),
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{build_client, extract_request_id_json, extract_usage_json, inject_usage_json};
+    use super::{
+        build_client, extract_request_id_json, extract_usage_json, inject_usage_json,
+        passthrough_bad_request_response,
+    };
     use crate::serve_config::ProviderConfig;
+    use axum::http::{StatusCode, header};
     use serde_json::json;
     use std::collections::HashMap;
 
@@ -336,6 +396,44 @@ mod tests {
             err.to_string(),
             "invalid provider: aws_bearer_token is required"
         );
+    }
+
+    /// Verifies Bedrock client errors with HTTP 400 are passed through to frontend status/body.
+    #[test]
+    fn passthrough_bad_request_maps_status_and_body() {
+        let response = passthrough_bad_request_response(
+            StatusCode::BAD_REQUEST,
+            Some("application/json"),
+            Some(br#"{"message":"bad input"}"#),
+        )
+        .expect("400 should be passed through");
+
+        assert_eq!(response.status, StatusCode::BAD_REQUEST);
+        let content_type = response
+            .headers
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok());
+        assert_eq!(content_type, Some("application/json"));
+        match response.body {
+            crate::model_api_provider::ProviderBody::Full(payload) => {
+                assert_eq!(payload.as_ref(), b"{\"message\":\"bad input\"}");
+            }
+            crate::model_api_provider::ProviderBody::Stream(_) => {
+                panic!("expected full payload response")
+            }
+        }
+    }
+
+    /// Verifies non-400 Bedrock client errors are not treated as passthrough responses.
+    #[test]
+    fn passthrough_bad_request_ignores_non_400() {
+        let response = passthrough_bad_request_response(
+            StatusCode::TOO_MANY_REQUESTS,
+            Some("application/json"),
+            Some(br#"{"message":"throttled"}"#),
+        );
+
+        assert!(response.is_none());
     }
 }
 
