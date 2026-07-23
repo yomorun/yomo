@@ -7,6 +7,7 @@ pub struct SelectionResult {
 pub enum SelectionError {
     ModelNotSupported,
     OutstandingBalance,
+    AccessDenied,
 }
 
 pub trait SelectionStrategy<M>: Send + Sync {
