@@ -239,6 +239,7 @@ pub(crate) fn rewrite_messages_body(
     Ok(Bytes::from(serde_json::to_vec(&value)?))
 }
 
+// follow: https://code.claude.com/docs/en/errors#extra-inputs-are-not-permitted
 fn strip_bedrock_unsupported_beta_fields(value: &mut Value) {
     let Some(obj) = value.as_object_mut() else {
         return;
