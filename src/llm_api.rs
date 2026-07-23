@@ -167,6 +167,15 @@ where
         .select(request_model_id.as_deref(), &metadata)
     {
         Ok(provider_entry) => provider_entry,
+        Err(SelectionError::AccessDenied) => {
+            let response = openai_error_response(
+                StatusCode::FORBIDDEN,
+                "access_denied",
+                Some("access_denied"),
+            );
+            set_http_span_status(&root_span, response.status(), Some("access_denied"));
+            return Ok(response);
+        }
         Err(SelectionError::OutstandingBalance) => {
             let response = openai_error_response(
                 StatusCode::PAYMENT_REQUIRED,
@@ -209,7 +218,7 @@ where
         }
     }
     info!(
-        "http.request.start; method=POST path=/v1/chat/completion model_id={} stream={} trace_id={} metadata={:?}",
+        "http.request.start; method=POST path=/v1/chat/completions model_id={} stream={} trace_id={} metadata={:?}",
         request_model_id
             .as_deref()
             .unwrap_or(&provider_entry.model_id),

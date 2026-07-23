@@ -3,11 +3,7 @@ pub struct SelectionResult {
     pub model_id: String,
 }
 
-#[derive(Debug)]
-pub enum SelectionError {
-    ModelNotSupported,
-    OutstandingBalance,
-}
+pub use crate::llm_provider::selection::SelectionError;
 
 pub trait SelectionStrategy<M>: Send + Sync {
     fn select(
