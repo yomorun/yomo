@@ -218,6 +218,7 @@ pub(crate) fn rewrite_messages_body(
     }
 
     strip_cache_control_scope(&mut value);
+    strip_bedrock_unsupported_beta_fields(&mut value);
 
     {
         let obj = value
@@ -236,6 +237,30 @@ pub(crate) fn rewrite_messages_body(
     }
 
     Ok(Bytes::from(serde_json::to_vec(&value)?))
+}
+
+// follow: https://code.claude.com/docs/en/errors#extra-inputs-are-not-permitted
+fn strip_bedrock_unsupported_beta_fields(value: &mut Value) {
+    let Some(obj) = value.as_object_mut() else {
+        return;
+    };
+
+    obj.remove("context_management");
+    obj.remove("effort");
+
+    let Some(tools) = obj.get_mut("tools").and_then(Value::as_array_mut) else {
+        return;
+    };
+
+    for tool in tools {
+        let Some(tool_obj) = tool.as_object_mut() else {
+            continue;
+        };
+        let Some(custom_obj) = tool_obj.get_mut("custom").and_then(Value::as_object_mut) else {
+            continue;
+        };
+        custom_obj.remove("input_examples");
+    }
 }
 
 pub(crate) async fn rewrite_multipart_model(
@@ -342,8 +367,10 @@ fn is_hop_header(header: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::should_stream_response;
+    use super::{rewrite_messages_body, should_stream_response};
+    use axum::body::Bytes;
     use axum::http::StatusCode;
+    use serde_json::{Value, json};
 
     #[test]
     fn should_stream_response_requires_stream_request() {
@@ -362,5 +389,68 @@ mod tests {
     #[test]
     fn should_stream_response_allows_successful_stream_request() {
         assert!(should_stream_response(true, StatusCode::OK));
+    }
+
+    #[test]
+    fn rewrite_messages_body_strips_beta_fields_for_bedrock_compatibility() {
+        let request = json!({
+            "model": "claude-sonnet-4",
+            "stream": true,
+            "messages": [{"role": "user", "content": "hello"}],
+            "context_management": {"enabled": true},
+            "effort": "medium",
+            "tools": [
+                {
+                    "name": "search",
+                    "custom": {
+                        "input_schema": {"type": "object"},
+                        "input_examples": [{"query": "rust"}]
+                    }
+                }
+            ]
+        });
+
+        let rewritten = rewrite_messages_body(
+            &Bytes::from(serde_json::to_vec(&request).expect("request json should serialize")),
+            "bedrock-2023-05-31",
+            4096,
+        )
+        .expect("rewrite should succeed");
+        let parsed: Value =
+            serde_json::from_slice(&rewritten).expect("rewritten json should parse");
+
+        assert!(parsed.get("context_management").is_none());
+        assert!(parsed.get("effort").is_none());
+        assert!(parsed.get("model").is_none());
+        assert!(parsed.get("stream").is_none());
+        assert_eq!(
+            parsed.get("anthropic_version").and_then(Value::as_str),
+            Some("bedrock-2023-05-31")
+        );
+        assert_eq!(parsed.get("max_tokens"), Some(&json!(4096)));
+        assert!(parsed["tools"][0]["custom"].get("input_examples").is_none());
+        assert_eq!(
+            parsed["tools"][0]["custom"].get("input_schema"),
+            Some(&json!({"type": "object"}))
+        );
+    }
+
+    #[test]
+    fn rewrite_messages_body_keeps_existing_max_tokens() {
+        let request = json!({
+            "messages": [{"role": "user", "content": "hello"}],
+            "max_tokens": 123
+        });
+
+        let rewritten = rewrite_messages_body(
+            &Bytes::from(serde_json::to_vec(&request).expect("request json should serialize")),
+            "bedrock-2023-05-31",
+            4096,
+        )
+        .expect("rewrite should succeed");
+        let parsed: Value =
+            serde_json::from_slice(&rewritten).expect("rewritten json should parse");
+
+        assert_eq!(parsed.get("max_tokens"), Some(&json!(123)));
     }
 }
