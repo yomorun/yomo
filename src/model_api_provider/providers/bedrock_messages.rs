@@ -7,6 +7,7 @@ use aws_sdk_bedrockruntime::primitives::Blob;
 use aws_types::region::Region;
 use axum::body::Bytes;
 use axum::http::{HeaderMap, StatusCode, header};
+use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::OnceCell;
 
@@ -110,10 +111,7 @@ impl<M> ModelApiProvider<M> for BedrockMessagesClient {
                         Ok(Some(event)) => {
                             if let Ok(chunk) = event.as_chunk() {
                                 if let Some(payload) = chunk.bytes.as_ref() {
-                                    let frame = format!(
-                                        "data: {}\n\n",
-                                        String::from_utf8_lossy(payload.as_ref())
-                                    );
+                                    let frame = build_sse_frame(payload.as_ref());
                                     yield Ok::<Bytes, std::io::Error>(Bytes::from(frame));
                                 }
                             }
@@ -245,6 +243,29 @@ fn non_null_usage(value: Option<&Value>) -> Option<Value> {
     value.filter(|usage| !usage.is_null()).cloned()
 }
 
+#[derive(Deserialize)]
+struct BedrockEventEnvelope {
+    #[serde(default)]
+    r#type: String,
+}
+
+fn anthropic_sse_event_name(payload: &[u8]) -> Option<String> {
+    let envelope: BedrockEventEnvelope = serde_json::from_slice(payload).ok()?;
+    let event_name = envelope.r#type.trim();
+    if event_name.is_empty() {
+        return None;
+    }
+    Some(event_name.to_string())
+}
+
+fn build_sse_frame(payload: &[u8]) -> String {
+    let payload_text = String::from_utf8_lossy(payload);
+    if let Some(event_name) = anthropic_sse_event_name(payload) {
+        return format!("event: {event_name}\ndata: {payload_text}\n\n");
+    }
+    format!("data: {payload_text}\n\n")
+}
+
 fn passthrough_bad_request<E>(
     err: &aws_sdk_bedrockruntime::error::SdkError<E>,
 ) -> Option<ProviderResponse>
@@ -288,8 +309,8 @@ fn passthrough_bad_request_response(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_client, extract_request_id_json, extract_usage_json, inject_usage_json,
-        passthrough_bad_request_response,
+        anthropic_sse_event_name, build_client, build_sse_frame, extract_request_id_json,
+        extract_usage_json, inject_usage_json, passthrough_bad_request_response,
     };
     use crate::serve_config::ProviderConfig;
     use axum::http::{StatusCode, header};
@@ -434,6 +455,41 @@ mod tests {
         );
 
         assert!(response.is_none());
+    }
+
+    #[test]
+    fn anthropic_sse_event_name_extracts_type() {
+        let payload = br#"{"type":"content_block_delta","index":0}"#;
+
+        let event_name = anthropic_sse_event_name(payload);
+
+        assert_eq!(event_name.as_deref(), Some("content_block_delta"));
+    }
+
+    #[test]
+    fn anthropic_sse_event_name_returns_none_for_invalid_payload() {
+        let event_name = anthropic_sse_event_name(b"not-json");
+
+        assert_eq!(event_name, None);
+    }
+
+    #[test]
+    fn build_sse_frame_includes_event_when_type_present() {
+        let payload = br#"{"type":"message_start","message":{"id":"m1"}}"#;
+
+        let frame = build_sse_frame(payload);
+
+        assert!(frame.starts_with("event: message_start\ndata: {\"type\":\"message_start\","));
+        assert!(frame.ends_with("\n\n"));
+    }
+
+    #[test]
+    fn build_sse_frame_falls_back_to_data_only_when_type_missing() {
+        let payload = br#"{"message":{"id":"m1"}}"#;
+
+        let frame = build_sse_frame(payload);
+
+        assert_eq!(frame, "data: {\"message\":{\"id\":\"m1\"}}\n\n");
     }
 }
 
