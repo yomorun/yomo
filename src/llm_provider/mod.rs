@@ -1,3 +1,4 @@
+pub mod anthropic_messages;
 pub mod openai;
 pub mod openai_compatible;
 pub mod provider;
