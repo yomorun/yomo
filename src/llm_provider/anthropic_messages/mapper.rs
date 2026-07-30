@@ -29,10 +29,12 @@ pub(super) fn map_request(
             }
             Role::User => {
                 let blocks = map_regular_content(&message.content)?;
-                messages.push(AnthropicMessage {
-                    role: "user".to_string(),
-                    content: blocks,
-                });
+                if !blocks.is_empty() {
+                    messages.push(AnthropicMessage {
+                        role: "user".to_string(),
+                        content: blocks,
+                    });
+                }
             }
             Role::Assistant => {
                 let mut blocks = map_regular_content(&message.content)?;
@@ -50,15 +52,12 @@ pub(super) fn map_request(
                         });
                     }
                 }
-                if blocks.is_empty() {
-                    blocks.push(AnthropicContentBlock::Text {
-                        text: String::new(),
+                if !blocks.is_empty() {
+                    messages.push(AnthropicMessage {
+                        role: "assistant".to_string(),
+                        content: blocks,
                     });
                 }
-                messages.push(AnthropicMessage {
-                    role: "assistant".to_string(),
-                    content: blocks,
-                });
             }
             Role::Tool => {
                 let tool_use_id = message
@@ -69,11 +68,13 @@ pub(super) fn map_request(
                         ProviderError::internal("tool_call_id is required for tool messages")
                     })?;
                 let result_text = extract_text_from_content(&message.content);
+                let content = (!result_text.is_empty())
+                    .then_some(vec![AnthropicContentBlock::Text { text: result_text }]);
                 messages.push(AnthropicMessage {
                     role: "user".to_string(),
                     content: vec![AnthropicContentBlock::ToolResult {
                         tool_use_id,
-                        content: vec![AnthropicContentBlock::Text { text: result_text }],
+                        content,
                         is_error: None,
                     }],
                 });
@@ -239,18 +240,20 @@ pub(super) fn map_stream_event(event: StreamEvent, state: &mut StreamState) -> V
                 });
             }
             StreamContentDelta::InputJsonDelta { partial_json } => {
-                if let Some(ActiveBlock::ToolUse {
-                    id,
-                    name,
-                    arguments,
-                }) = state.blocks.get_mut(&index)
-                {
-                    arguments.push_str(&partial_json);
-                    out.push(UnifiedEvent::ToolCallDelta {
-                        id: id.clone(),
-                        name: name.clone(),
-                        arguments_delta: partial_json,
-                    });
+                if !partial_json.is_empty() {
+                    if let Some(ActiveBlock::ToolUse {
+                        id,
+                        name,
+                        arguments,
+                    }) = state.blocks.get_mut(&index)
+                    {
+                        arguments.push_str(&partial_json);
+                        out.push(UnifiedEvent::ToolCallDelta {
+                            id: id.clone(),
+                            name: name.clone(),
+                            arguments_delta: partial_json,
+                        });
+                    }
                 }
             }
             StreamContentDelta::Unknown => {}
@@ -302,13 +305,20 @@ pub(super) fn map_stream_event(event: StreamEvent, state: &mut StreamState) -> V
 
 fn map_regular_content(content: &Content) -> Result<Vec<AnthropicContentBlock>, ProviderError> {
     match content {
-        Content::Text(text) => Ok(vec![AnthropicContentBlock::Text { text: text.clone() }]),
+        Content::Text(text) => {
+            if text.is_empty() {
+                return Ok(Vec::new());
+            }
+            Ok(vec![AnthropicContentBlock::Text { text: text.clone() }])
+        }
         Content::Parts(parts) => {
             let mut blocks = Vec::new();
             for part in parts {
                 match part {
                     ContentPart::Text { text } => {
-                        blocks.push(AnthropicContentBlock::Text { text: text.clone() });
+                        if !text.is_empty() {
+                            blocks.push(AnthropicContentBlock::Text { text: text.clone() });
+                        }
                     }
                     ContentPart::Image { image_url } => {
                         blocks.push(AnthropicContentBlock::Image {
@@ -331,7 +341,7 @@ fn map_regular_content(content: &Content) -> Result<Vec<AnthropicContentBlock>, 
 
 fn map_thinking(
     thinking: Option<&crate::openai_types::ThinkingConfig>,
-    _reasoning_effort: Option<&str>,
+    reasoning_effort: Option<&str>,
 ) -> Option<AnthropicThinking> {
     if let Some(config) = thinking {
         return match config.kind {
@@ -341,6 +351,10 @@ fn map_thinking(
             crate::openai_types::ThinkingType::Adaptive => Some(AnthropicThinking::Adaptive),
             crate::openai_types::ThinkingType::Disabled => Some(AnthropicThinking::Disabled),
         };
+    }
+
+    if reasoning_effort.is_some() {
+        return Some(AnthropicThinking::Adaptive);
     }
 
     None

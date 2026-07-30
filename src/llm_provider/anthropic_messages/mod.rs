@@ -266,7 +266,12 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::llm_provider::anthropic_messages::types::AnthropicContentBlock;
+    use crate::llm_provider::anthropic_messages::types::{
+        AnthropicContentBlock, AnthropicThinking,
+    };
+    use crate::llm_provider::anthropic_messages::types::{
+        StreamContentBlock, StreamContentDelta, StreamEvent, StreamMessage,
+    };
     use crate::openai_types::{
         Content, FunctionDefinition, Message, Role, ToolChoice, ToolDefinition,
     };
@@ -396,7 +401,116 @@ mod tests {
     }
 
     #[test]
-    fn map_request_does_not_enable_thinking_from_reasoning_effort() {
+    fn map_request_skips_empty_assistant_message_without_tool_calls() {
+        let request = ChatCompletionRequest {
+            model: "alias".to_string(),
+            messages: vec![
+                Message {
+                    role: Role::User,
+                    content: Content::Text("hi".to_string()),
+                    reasoning_content: None,
+                    tool_call_id: None,
+                    tool_calls: None,
+                },
+                Message {
+                    role: Role::Assistant,
+                    content: Content::Text(String::new()),
+                    reasoning_content: None,
+                    tool_call_id: None,
+                    tool_calls: None,
+                },
+            ],
+            n: None,
+            temperature: None,
+            top_p: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            logprobs: None,
+            top_logprobs: None,
+            modalities: None,
+            audio: None,
+            max_completion_tokens: None,
+            stop: None,
+            response_format: None,
+            thinking: None,
+            reasoning_effort: None,
+            chat_template_kwargs: None,
+            prediction: None,
+            verbosity: None,
+            tools: None,
+            tool_choice: None,
+            allowed_tools: None,
+            parallel_tool_calls: None,
+            service_tier: None,
+            seed: None,
+            stream: None,
+            stream_options: None,
+            metadata: None,
+            agent_context: None,
+        };
+
+        let mapped = map_request(request, "claude-sonnet-5".to_string(), DEFAULT_MAX_TOKENS)
+            .expect("request should map");
+
+        assert_eq!(mapped.messages.len(), 1);
+        assert!(matches!(
+            mapped.messages[0].content[0],
+            AnthropicContentBlock::Text { .. }
+        ));
+    }
+
+    #[test]
+    fn map_request_omits_empty_tool_result_text_content() {
+        let request = ChatCompletionRequest {
+            model: "alias".to_string(),
+            messages: vec![Message {
+                role: Role::Tool,
+                content: Content::Text(String::new()),
+                reasoning_content: None,
+                tool_call_id: Some("call_1".to_string()),
+                tool_calls: None,
+            }],
+            n: None,
+            temperature: None,
+            top_p: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            logprobs: None,
+            top_logprobs: None,
+            modalities: None,
+            audio: None,
+            max_completion_tokens: None,
+            stop: None,
+            response_format: None,
+            thinking: None,
+            reasoning_effort: None,
+            chat_template_kwargs: None,
+            prediction: None,
+            verbosity: None,
+            tools: None,
+            tool_choice: None,
+            allowed_tools: None,
+            parallel_tool_calls: None,
+            service_tier: None,
+            seed: None,
+            stream: None,
+            stream_options: None,
+            metadata: None,
+            agent_context: None,
+        };
+
+        let mapped = map_request(request, "claude-sonnet-5".to_string(), DEFAULT_MAX_TOKENS)
+            .expect("request should map");
+
+        assert_eq!(mapped.messages.len(), 1);
+        assert!(matches!(
+            &mapped.messages[0].content[0],
+            AnthropicContentBlock::ToolResult { content: None, .. }
+        ));
+    }
+
+    #[test]
+    fn map_request_uses_adaptive_thinking_from_reasoning_effort() {
         let request = ChatCompletionRequest {
             model: "alias".to_string(),
             messages: vec![Message {
@@ -438,7 +552,7 @@ mod tests {
         let mapped = map_request(request, "claude-haiku-4-5".to_string(), DEFAULT_MAX_TOKENS)
             .expect("request should map");
 
-        assert!(mapped.thinking.is_none());
+        assert!(matches!(mapped.thinking, Some(AnthropicThinking::Adaptive)));
     }
 
     #[test]
@@ -451,5 +565,52 @@ mod tests {
             err.to_string(),
             "invalid provider: unknown auth_style: unknown"
         );
+    }
+
+    #[test]
+    fn map_stream_event_ignores_empty_input_json_delta() {
+        let mut state = StreamState::default();
+
+        let events = map_stream_event(
+            StreamEvent::MessageStart {
+                message: StreamMessage {
+                    id: "msg_1".to_string(),
+                    model: "claude-haiku-4-5".to_string(),
+                },
+            },
+            &mut state,
+        );
+        assert!(!events.is_empty());
+
+        let events = map_stream_event(
+            StreamEvent::ContentBlockStart {
+                index: 0,
+                content_block: StreamContentBlock::ToolUse {
+                    id: "toolu_1".to_string(),
+                    name: "TaskList".to_string(),
+                    input: json!({}),
+                },
+            },
+            &mut state,
+        );
+        assert!(events.is_empty());
+
+        let events = map_stream_event(
+            StreamEvent::ContentBlockDelta {
+                index: 0,
+                delta: StreamContentDelta::InputJsonDelta {
+                    partial_json: String::new(),
+                },
+            },
+            &mut state,
+        );
+        assert!(events.is_empty());
+
+        let events = map_stream_event(StreamEvent::ContentBlockStop { index: 0 }, &mut state);
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            &events[0],
+            UnifiedEvent::ToolCallDone { arguments, .. } if arguments == "{}"
+        ));
     }
 }

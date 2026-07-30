@@ -75,7 +75,8 @@ pub(super) enum AnthropicContentBlock {
     },
     ToolResult {
         tool_use_id: String,
-        content: Vec<AnthropicContentBlock>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        content: Option<Vec<AnthropicContentBlock>>,
         #[serde(skip_serializing_if = "Option::is_none")]
         is_error: Option<bool>,
     },
