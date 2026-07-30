@@ -171,7 +171,7 @@ impl<M> Provider<M> for AnthropicMessagesProvider {
                 }
             }
 
-            if state.started {
+            if state.started && !state.completed {
                 let stop_reason = state
                     .stop_reason
                     .clone()
@@ -612,5 +612,102 @@ mod tests {
             &events[0],
             UnifiedEvent::ToolCallDone { arguments, .. } if arguments == "{}"
         ));
+    }
+
+    #[test]
+    fn map_request_generates_unique_fallback_tool_call_ids() {
+        let request = ChatCompletionRequest {
+            model: "alias".to_string(),
+            messages: vec![Message {
+                role: Role::Assistant,
+                content: Content::Text(String::new()),
+                reasoning_content: None,
+                tool_call_id: None,
+                tool_calls: Some(vec![
+                    crate::openai_types::ToolCall {
+                        id: None,
+                        r#type: Some("function".to_string()),
+                        function: crate::openai_types::ToolCallFunction {
+                            name: "lookup".to_string(),
+                            arguments: "{\"q\":\"x\"}".to_string(),
+                            description: None,
+                        },
+                    },
+                    crate::openai_types::ToolCall {
+                        id: None,
+                        r#type: Some("function".to_string()),
+                        function: crate::openai_types::ToolCallFunction {
+                            name: "lookup".to_string(),
+                            arguments: "{\"q\":\"y\"}".to_string(),
+                            description: None,
+                        },
+                    },
+                ]),
+            }],
+            n: None,
+            temperature: None,
+            top_p: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            logprobs: None,
+            top_logprobs: None,
+            modalities: None,
+            audio: None,
+            max_completion_tokens: None,
+            stop: None,
+            response_format: None,
+            thinking: None,
+            reasoning_effort: None,
+            chat_template_kwargs: None,
+            prediction: None,
+            verbosity: None,
+            tools: None,
+            tool_choice: None,
+            allowed_tools: None,
+            parallel_tool_calls: None,
+            service_tier: None,
+            seed: None,
+            stream: None,
+            stream_options: None,
+            metadata: None,
+            agent_context: None,
+        };
+
+        let mapped = map_request(request, "claude-sonnet-5".to_string(), DEFAULT_MAX_TOKENS)
+            .expect("request should map");
+
+        let AnthropicContentBlock::ToolUse { id: first_id, .. } = &mapped.messages[0].content[0]
+        else {
+            panic!("expected first tool use block");
+        };
+        let AnthropicContentBlock::ToolUse { id: second_id, .. } = &mapped.messages[0].content[1]
+        else {
+            panic!("expected second tool use block");
+        };
+
+        assert_ne!(first_id, second_id);
+    }
+
+    #[test]
+    fn map_stream_event_ignores_duplicate_message_stop() {
+        let mut state = StreamState::default();
+
+        let events = map_stream_event(
+            StreamEvent::MessageStart {
+                message: StreamMessage {
+                    id: "msg_1".to_string(),
+                    model: "claude-haiku-4-5".to_string(),
+                },
+            },
+            &mut state,
+        );
+        assert!(!events.is_empty());
+
+        let first_stop_events = map_stream_event(StreamEvent::MessageStop, &mut state);
+        assert_eq!(first_stop_events.len(), 2);
+        assert!(state.completed);
+
+        let second_stop_events = map_stream_event(StreamEvent::MessageStop, &mut state);
+        assert!(second_stop_events.is_empty());
     }
 }

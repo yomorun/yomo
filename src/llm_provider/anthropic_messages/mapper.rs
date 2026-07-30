@@ -39,9 +39,9 @@ pub(super) fn map_request(
             Role::Assistant => {
                 let mut blocks = map_regular_content(&message.content)?;
                 if let Some(tool_calls) = message.tool_calls {
-                    for call in tool_calls {
+                    for (index, call) in tool_calls.into_iter().enumerate() {
                         let id = call.id.unwrap_or_else(|| {
-                            format!("toolu_{}", uuid_suffix(&call.function.name))
+                            format!("toolu_{}_{}", uuid_suffix(&call.function.name), index)
                         });
                         let input = serde_json::from_str::<Value>(&call.function.arguments)
                             .unwrap_or_else(|_| json!({"input": call.function.arguments}));
@@ -283,7 +283,7 @@ pub(super) fn map_stream_event(event: StreamEvent, state: &mut StreamState) -> V
             }
         }
         StreamEvent::MessageStop => {
-            if state.started {
+            if state.started && !state.completed {
                 let stop_reason = state
                     .stop_reason
                     .clone()
@@ -295,6 +295,7 @@ pub(super) fn map_stream_event(event: StreamEvent, state: &mut StreamState) -> V
                 out.push(UnifiedEvent::Completed {
                     finish_reason: Some(map_stop_reason_string(&stop_reason).to_string()),
                 });
+                state.completed = true;
             }
         }
         StreamEvent::Ping | StreamEvent::Unknown => {}
