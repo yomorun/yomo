@@ -1,3 +1,4 @@
+use log::warn;
 use serde_json::{Value, json};
 
 use crate::llm_provider::{FinishReason, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse};
@@ -153,6 +154,12 @@ pub(super) fn map_response(response: AnthropicResponse) -> UnifiedResponse {
         }
     }
 
+    if response.usage.is_none() {
+        warn!(
+            "anthropic messages upstream response missing usage; model={} request_id={}",
+            response.model, response.id
+        );
+    }
     let usage = EndpointUsage::Messages(response.usage.unwrap_or(MessagesUsage {
         input_tokens: None,
         output_tokens: None,
@@ -277,6 +284,7 @@ pub(super) fn map_stream_event(event: StreamEvent, state: &mut StreamState) -> V
                 state.stop_reason = delta.stop_reason;
             }
             if let Some(usage) = usage {
+                state.usage_received = true;
                 out.push(UnifiedEvent::Usage {
                     usage: EndpointUsage::Messages(usage),
                 });

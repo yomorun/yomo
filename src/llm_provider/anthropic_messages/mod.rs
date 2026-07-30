@@ -5,6 +5,7 @@ use async_stream::try_stream;
 use async_trait::async_trait;
 use futures_core::Stream;
 use futures_util::StreamExt;
+use log::warn;
 
 use crate::llm_provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
 use crate::openai_http_mapping::validate_openai_request;
@@ -169,6 +170,13 @@ impl<M> Provider<M> for AnthropicMessagesProvider {
                 for mapped_event in map_stream_event(event, &mut state) {
                     yield mapped_event;
                 }
+            }
+
+            if !state.usage_received {
+                warn!(
+                    "anthropic messages upstream stream missing usage; model={} request_id={}",
+                    state.model, state.response_id
+                );
             }
 
             if state.started && !state.completed {
@@ -709,5 +717,29 @@ mod tests {
 
         let second_stop_events = map_stream_event(StreamEvent::MessageStop, &mut state);
         assert!(second_stop_events.is_empty());
+    }
+
+    #[test]
+    fn map_stream_event_tracks_received_usage() {
+        let mut state = StreamState::default();
+
+        map_stream_event(
+            StreamEvent::MessageDelta {
+                delta: None,
+                usage: Some(crate::model_api_provider::MessagesUsage {
+                    input_tokens: Some(10),
+                    output_tokens: Some(2),
+                    cache_creation_input_tokens: None,
+                    cache_read_input_tokens: None,
+                    cache_creation: None,
+                    inference_geo: None,
+                    service_tier: None,
+                    server_tool_use: None,
+                }),
+            },
+            &mut state,
+        );
+
+        assert!(state.usage_received);
     }
 }

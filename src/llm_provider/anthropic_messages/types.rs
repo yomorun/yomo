@@ -243,6 +243,7 @@ pub(super) struct StreamState {
     pub created_at: String,
     pub started: bool,
     pub completed: bool,
+    pub usage_received: bool,
     pub stop_reason: Option<String>,
     pub blocks: HashMap<usize, ActiveBlock>,
 }
