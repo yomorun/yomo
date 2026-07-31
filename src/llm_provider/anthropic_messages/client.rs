@@ -2,6 +2,7 @@ use std::pin::Pin;
 
 use async_stream::try_stream;
 use aws_sdk_bedrockruntime::config::{BehaviorVersion, Token};
+use aws_sdk_bedrockruntime::error::SdkError;
 use aws_sdk_bedrockruntime::primitives::Blob;
 use aws_types::region::Region;
 use axum::http::StatusCode;
@@ -195,9 +196,7 @@ impl BedrockClient {
             .body(Blob::new(body))
             .send()
             .await
-            .map_err(|err| {
-                ClientError::Internal(format!("bedrock invoke_model failed: {err:?}"))
-            })?;
+            .map_err(|err| map_bedrock_invoke_error(err, "bedrock invoke_model failed"))?;
 
         serde_json::from_slice::<AnthropicResponse>(&response.body.into_inner())
             .map_err(|err| ClientError::Parse(err.to_string()))
@@ -218,9 +217,7 @@ impl BedrockClient {
             .body(Blob::new(body))
             .send()
             .await
-            .map_err(|err| {
-                ClientError::Internal(format!("bedrock stream invoke failed: {err:?}"))
-            })?;
+            .map_err(|err| map_bedrock_invoke_error(err, "bedrock stream invoke failed"))?;
 
         let mut stream = response.body;
         Ok(Box::pin(try_stream! {
@@ -305,4 +302,113 @@ fn default_error_type(status: StatusCode) -> &'static str {
         return "invalid_request_error";
     }
     "internal_error"
+}
+
+fn map_bedrock_invoke_error<E>(err: SdkError<E>, context: &str) -> ClientError
+where
+    E: std::error::Error + Send + Sync + 'static,
+{
+    passthrough_bad_request(&err)
+        .unwrap_or_else(|| ClientError::Internal(format!("{context}: {err:?}")))
+}
+
+fn passthrough_bad_request<E>(err: &SdkError<E>) -> Option<ClientError>
+where
+    E: std::error::Error + Send + Sync + 'static,
+{
+    let raw_response = err.raw_response()?;
+    let status = StatusCode::from_u16(raw_response.status().as_u16()).ok()?;
+    let payload = raw_response.body().bytes();
+
+    passthrough_bad_request_response(status, payload)
+}
+
+fn passthrough_bad_request_response(
+    status: StatusCode,
+    payload: Option<&[u8]>,
+) -> Option<ClientError> {
+    if status != StatusCode::BAD_REQUEST {
+        return None;
+    }
+
+    let status = reqwest::StatusCode::from_u16(status.as_u16()).ok()?;
+    let payload = payload.unwrap_or_default();
+    Some(parse_api_error(status, payload))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ClientError, map_client_error, passthrough_bad_request_response};
+    use crate::llm_provider::ProviderError;
+    use crate::openai_types::ErrorDetail;
+    use axum::http::StatusCode;
+
+    #[test]
+    fn passthrough_bad_request_response_maps_json_message() {
+        let payload = br#"{"message":"adaptive thinking is not supported on this model"}"#;
+
+        let err = passthrough_bad_request_response(StatusCode::BAD_REQUEST, Some(payload));
+
+        let Some(ClientError::Api { status, error }) = err else {
+            panic!("expected api error");
+        };
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            error.message,
+            "adaptive thinking is not supported on this model"
+        );
+        assert_eq!(error.r#type, "invalid_request_error");
+    }
+
+    #[test]
+    fn passthrough_bad_request_response_ignores_non_bad_request() {
+        let payload = br#"{"message":"upstream error"}"#;
+
+        let err =
+            passthrough_bad_request_response(StatusCode::INTERNAL_SERVER_ERROR, Some(payload));
+
+        assert!(err.is_none());
+    }
+
+    #[test]
+    fn map_client_error_passthroughs_bad_request_for_direct_client() {
+        let err = map_client_error(ClientError::Api {
+            status: StatusCode::BAD_REQUEST,
+            error: ErrorDetail {
+                message: "unsupported request".to_string(),
+                r#type: "invalid_request_error".to_string(),
+                code: None,
+                param: None,
+            },
+        });
+
+        let ProviderError::Public { status, error } = err else {
+            panic!("expected public provider error");
+        };
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.message, "unsupported request");
+    }
+
+    #[test]
+    fn map_client_error_keeps_non_bad_request_as_internal() {
+        let err = map_client_error(ClientError::Api {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            error: ErrorDetail {
+                message: "rate limited".to_string(),
+                r#type: "rate_limit_error".to_string(),
+                code: None,
+                param: None,
+            },
+        });
+
+        let ProviderError::Internal {
+            upstream_http_status,
+            message,
+        } = err
+        else {
+            panic!("expected internal provider error");
+        };
+        assert_eq!(upstream_http_status, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(message, "rate limited");
+    }
 }

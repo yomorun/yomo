@@ -113,6 +113,7 @@ pub(super) fn map_request(
     });
 
     let thinking = map_thinking(
+        &upstream_model,
         request.thinking.as_ref(),
         request.reasoning_effort.as_deref(),
     );
@@ -349,9 +350,14 @@ fn map_regular_content(content: &Content) -> Result<Vec<AnthropicContentBlock>, 
 }
 
 fn map_thinking(
+    model: &str,
     thinking: Option<&crate::openai_types::ThinkingConfig>,
     reasoning_effort: Option<&str>,
 ) -> Option<AnthropicThinking> {
+    if is_thinking_unsupported_model(model) {
+        return None;
+    }
+
     if let Some(config) = thinking {
         return match config.kind {
             crate::openai_types::ThinkingType::Enabled => Some(AnthropicThinking::Enabled {
@@ -367,6 +373,10 @@ fn map_thinking(
     }
 
     None
+}
+
+fn is_thinking_unsupported_model(model: &str) -> bool {
+    model.to_ascii_lowercase().contains("claude-haiku")
 }
 
 fn extract_text_from_content(content: &Content) -> String {

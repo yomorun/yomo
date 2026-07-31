@@ -518,7 +518,7 @@ mod tests {
     }
 
     #[test]
-    fn map_request_uses_adaptive_thinking_from_reasoning_effort() {
+    fn map_request_disables_thinking_for_haiku_models() {
         let request = ChatCompletionRequest {
             model: "alias".to_string(),
             messages: vec![Message {
@@ -559,6 +559,108 @@ mod tests {
 
         let mapped = map_request(request, "claude-haiku-4-5".to_string(), DEFAULT_MAX_TOKENS)
             .expect("request should map");
+
+        assert!(mapped.thinking.is_none());
+    }
+
+    #[test]
+    fn map_request_disables_thinking_for_prefixed_haiku_models() {
+        let request = ChatCompletionRequest {
+            model: "alias".to_string(),
+            messages: vec![Message {
+                role: Role::User,
+                content: Content::Text("hello".to_string()),
+                reasoning_content: None,
+                tool_call_id: None,
+                tool_calls: None,
+            }],
+            n: None,
+            temperature: None,
+            top_p: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            logprobs: None,
+            top_logprobs: None,
+            modalities: None,
+            audio: None,
+            max_completion_tokens: None,
+            stop: None,
+            response_format: None,
+            thinking: Some(crate::openai_types::ThinkingConfig {
+                kind: crate::openai_types::ThinkingType::Enabled,
+            }),
+            reasoning_effort: Some("high".to_string()),
+            chat_template_kwargs: None,
+            prediction: None,
+            verbosity: None,
+            tools: None,
+            tool_choice: None,
+            allowed_tools: None,
+            parallel_tool_calls: None,
+            service_tier: None,
+            seed: None,
+            stream: None,
+            stream_options: None,
+            metadata: None,
+            agent_context: None,
+        };
+
+        let mapped = map_request(
+            request,
+            "anthropic.claude-haiku-4-5".to_string(),
+            DEFAULT_MAX_TOKENS,
+        )
+        .expect("request should map");
+
+        assert!(mapped.thinking.is_none());
+    }
+
+    #[test]
+    fn map_request_uses_adaptive_thinking_from_reasoning_effort_for_non_haiku_models() {
+        let request = ChatCompletionRequest {
+            model: "alias".to_string(),
+            messages: vec![Message {
+                role: Role::User,
+                content: Content::Text("hello".to_string()),
+                reasoning_content: None,
+                tool_call_id: None,
+                tool_calls: None,
+            }],
+            n: None,
+            temperature: None,
+            top_p: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            logprobs: None,
+            top_logprobs: None,
+            modalities: None,
+            audio: None,
+            max_completion_tokens: None,
+            stop: None,
+            response_format: None,
+            thinking: None,
+            reasoning_effort: Some("high".to_string()),
+            chat_template_kwargs: None,
+            prediction: None,
+            verbosity: None,
+            tools: None,
+            tool_choice: None,
+            allowed_tools: None,
+            parallel_tool_calls: None,
+            service_tier: None,
+            seed: None,
+            stream: None,
+            stream_options: None,
+            metadata: None,
+            agent_context: None,
+        };
+
+        let mapped = map_request(
+            request,
+            "global.anthropic.claude-sonnet-4-6".to_string(),
+            DEFAULT_MAX_TOKENS,
+        )
+        .expect("request should map");
 
         assert!(matches!(mapped.thinking, Some(AnthropicThinking::Adaptive)));
     }
