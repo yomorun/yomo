@@ -8,6 +8,9 @@ use crate::llm_provider::Provider;
 use crate::llm_provider::ProviderError;
 use crate::llm_provider::UnifiedEvent;
 use crate::llm_provider::UnifiedResponse;
+use crate::llm_provider::anthropic_messages::{
+    build_anthropic_messages_provider, build_bedrock_messages_provider,
+};
 use crate::llm_provider::openai::build_openai_provider;
 use crate::llm_provider::openai_compatible::build_openai_compatible_provider;
 use crate::llm_provider::selection::SelectionError;
@@ -69,6 +72,8 @@ impl<M> ProviderRegistry<M> {
             let provider: Arc<dyn Provider<M>> = match item.provider_type.as_str() {
                 "openai" => Arc::new(build_openai_provider(&item.params)?),
                 "openai-compatible" => Arc::new(build_openai_compatible_provider(&item.params)?),
+                "anthropic-messages" => Arc::new(build_anthropic_messages_provider(&item.params)?),
+                "bedrock-messages" => Arc::new(build_bedrock_messages_provider(&item.params)?),
                 "tokenhub" => Arc::new(build_tokenhub_provider(&item.params)?),
                 "vllm_deepseek" => Arc::new(build_vllm_deepseek_provider(&item.params)?),
                 "vertexai" => Arc::new(build_vertexai_provider(&item.params)?),
