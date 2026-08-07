@@ -4,16 +4,14 @@ use axum::extract::State;
 use axum::response::IntoResponse;
 use serde::Serialize;
 
-use crate::llm_provider::registry as llm_registry;
-use crate::model_api_provider as model_api_registry;
+use crate::provider_registry;
 
 const FIXED_CREATED_AT: i64 = 1_715_367_049;
 const FIXED_OWNED_BY: &str = "system";
 
 #[derive(Clone)]
 pub struct ModelListHandlerState {
-    pub llm_provider_registry: Option<Arc<llm_registry::ProviderRegistry<()>>>,
-    pub model_api_provider_registry: Option<Arc<model_api_registry::ProviderRegistry<()>>>,
+    pub provider_registry: Arc<provider_registry::ProviderRegistry<()>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -32,12 +30,7 @@ struct ModelItem {
 
 pub async fn handle_list_models(State(state): State<ModelListHandlerState>) -> impl IntoResponse {
     let mut models = Vec::new();
-    if let Some(registry) = &state.llm_provider_registry {
-        models.extend(registry.model_list());
-    }
-    if let Some(registry) = &state.model_api_provider_registry {
-        models.extend(registry.model_list());
-    }
+    models.extend(state.provider_registry.model_list());
 
     let mut unique = std::collections::HashMap::new();
     for model in models {
@@ -63,12 +56,10 @@ pub async fn handle_list_models(State(state): State<ModelListHandlerState>) -> i
 }
 
 pub async fn build_model_list_api(
-    llm_provider_registry: Option<llm_registry::ProviderRegistry<()>>,
-    model_api_provider_registry: Option<model_api_registry::ProviderRegistry<()>>,
+    provider_registry: provider_registry::ProviderRegistry<()>,
 ) -> anyhow::Result<axum::Router> {
     let state = ModelListHandlerState {
-        llm_provider_registry: llm_provider_registry.map(Arc::new),
-        model_api_provider_registry: model_api_provider_registry.map(Arc::new),
+        provider_registry: Arc::new(provider_registry),
     };
     let app = axum::Router::new()
         .route("/models", axum::routing::get(handle_list_models))

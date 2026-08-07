@@ -2,8 +2,6 @@ pub mod anthropic_messages;
 pub mod openai;
 pub mod openai_compatible;
 pub mod provider;
-pub mod registry;
-pub mod selection;
 pub mod tokenhub;
 pub mod vertexai;
 pub mod vllm_deepseek;

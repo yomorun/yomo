@@ -25,17 +25,75 @@ impl fmt::Display for ConfigError {
 }
 
 impl Error for ConfigError {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum EndpointKind {
+    ChatCompletions,
+    Messages,
+    Responses,
+    Embeddings,
+    Rerank,
+    AudioSpeech,
+    AudioTranscriptions,
+    ImagesGenerations,
+    ImagesEdits,
+    ModelsGenerateContent,
+}
+
+impl EndpointKind {
+    pub fn as_path(&self) -> &'static str {
+        match self {
+            EndpointKind::ChatCompletions => "/chat/completions",
+            EndpointKind::Messages => "/messages",
+            EndpointKind::Responses => "/responses",
+            EndpointKind::Embeddings => "/embeddings",
+            EndpointKind::Rerank => "/rerank",
+            EndpointKind::AudioSpeech => "/audio/speech",
+            EndpointKind::AudioTranscriptions => "/audio/transcriptions",
+            EndpointKind::ImagesGenerations => "/images/generations",
+            EndpointKind::ImagesEdits => "/images/edits",
+            EndpointKind::ModelsGenerateContent => "/models/:generateContent",
+        }
+    }
+
+    pub fn from_config_path(path: &str) -> Result<Self, ConfigError> {
+        Self::from_path(path)
+            .ok_or_else(|| ConfigError::InvalidProvider(format!("unknown endpoint path: {path}")))
+    }
+
+    pub fn from_request_path(path: &str) -> Option<Self> {
+        if parse_generate_content_model(path).is_some() {
+            return Some(Self::ModelsGenerateContent);
+        }
+        Self::from_path(path)
+    }
+
+    fn from_path(path: &str) -> Option<Self> {
+        match path {
+            "/chat/completions" => Some(Self::ChatCompletions),
+            "/messages" => Some(Self::Messages),
+            "/responses" => Some(Self::Responses),
+            "/embeddings" => Some(Self::Embeddings),
+            "/rerank" => Some(Self::Rerank),
+            "/audio/speech" => Some(Self::AudioSpeech),
+            "/audio/transcriptions" => Some(Self::AudioTranscriptions),
+            "/images/generations" => Some(Self::ImagesGenerations),
+            "/images/edits" => Some(Self::ImagesEdits),
+            "/models/:generateContent" => Some(Self::ModelsGenerateContent),
+            _ => None,
+        }
+    }
+}
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct ServeConfig {
     pub auth_token: Option<String>,
     pub zipper: ZipperConfig,
     pub http_api: HttpApiConfig,
-    #[serde(default = "default_llm_providers")]
-    pub llm_providers: Vec<ProviderConfig>,
-    #[serde(default = "default_llm_model")]
-    pub llm_default_model_id: Option<String>,
-    pub model_api: ModelApiConfig,
+    #[serde(default = "default_providers")]
+    pub providers: Vec<ProviderConfig>,
+    #[serde(default = "default_endpoints")]
+    pub endpoints: Vec<EndpointConfig>,
 }
 
 impl Default for ServeConfig {
@@ -44,9 +102,8 @@ impl Default for ServeConfig {
             auth_token: None,
             zipper: ZipperConfig::default(),
             http_api: HttpApiConfig::default(),
-            llm_providers: default_llm_providers(),
-            llm_default_model_id: default_llm_model(),
-            model_api: ModelApiConfig::default(),
+            providers: default_providers(),
+            endpoints: default_endpoints(),
         }
     }
 }
@@ -63,17 +120,25 @@ pub struct ProviderConfig {
 
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(default)]
-pub struct ModelApiConfig {
-    pub providers: Vec<ProviderConfig>,
-    pub endpoints: Vec<ModelApiEndpointConfig>,
-}
-
-#[derive(Debug, Clone, Deserialize, Default)]
-#[serde(default)]
-pub struct ModelApiEndpointConfig {
+pub struct EndpointConfig {
     pub path: String,
     pub models: Vec<String>,
     pub default_model: Option<String>,
+}
+
+impl EndpointConfig {
+    pub fn endpoint(&self) -> Result<EndpointKind, ConfigError> {
+        EndpointKind::from_config_path(self.path.as_str())
+    }
+}
+
+pub fn parse_generate_content_model(endpoint: &str) -> Option<String> {
+    endpoint
+        .strip_prefix("/models/")
+        .and_then(|value| value.strip_suffix(":generateContent"))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
 }
 
 /// Default host address
@@ -91,8 +156,8 @@ fn default_http_api_port() -> u16 {
     9001
 }
 
-/// Default LLM providers
-fn default_llm_providers() -> Vec<ProviderConfig> {
+/// Default providers
+fn default_providers() -> Vec<ProviderConfig> {
     vec![ProviderConfig {
         provider_type: "openai-compatible".to_string(),
         model_id: "ornith".to_string(),
@@ -105,9 +170,13 @@ fn default_llm_providers() -> Vec<ProviderConfig> {
     }]
 }
 
-/// Default LLM model
-fn default_llm_model() -> Option<String> {
-    Some("ornith".to_string())
+/// Default endpoint mapping
+fn default_endpoints() -> Vec<EndpointConfig> {
+    vec![EndpointConfig {
+        path: "/chat/completions".to_string(),
+        models: vec!["ornith".to_string()],
+        default_model: Some("ornith".to_string()),
+    }]
 }
 
 /// Default tool api prefix
@@ -162,7 +231,7 @@ impl Default for HttpApiConfig {
 impl ServeConfig {
     pub fn validate(&self) -> Result<(), ConfigError> {
         let mut model_ids = HashSet::new();
-        for provider in &self.llm_providers {
+        for provider in &self.providers {
             if provider.provider_type.trim().is_empty() {
                 return Err(ConfigError::InvalidProvider(format!(
                     "provider type is required for {}",
@@ -185,78 +254,40 @@ impl ServeConfig {
             }
         }
 
-        if let Some(default_model) = &self.llm_default_model_id {
-            if !self
-                .llm_providers
-                .iter()
-                .any(|p| p.model_id == *default_model)
-            {
-                return Err(ConfigError::InvalidProvider(format!(
-                    "llm_default_model_id not found in llm_providers: {}",
-                    default_model
-                )));
+        for endpoint in &self.endpoints {
+            if endpoint.path.trim().is_empty() {
+                return Err(ConfigError::InvalidProvider(
+                    "endpoint path is required".to_string(),
+                ));
             }
-        }
-
-        if !self.model_api.providers.is_empty() || !self.model_api.endpoints.is_empty() {
-            let mut model_ids = HashSet::new();
-            for provider in &self.model_api.providers {
-                if provider.provider_type.trim().is_empty() {
-                    return Err(ConfigError::InvalidProvider(format!(
-                        "provider type is required for {}",
-                        provider.model_id
-                    )));
-                }
-                if provider.model_id.trim().is_empty() {
+            endpoint.endpoint()?;
+            if let Some(default_model) = &endpoint.default_model {
+                if default_model.trim().is_empty() {
                     return Err(ConfigError::InvalidProvider(
-                        "model_id is required for provider".to_string(),
+                        "default_model is empty".to_string(),
                     ));
                 }
-                let normalized_model_id = provider.model_id.to_ascii_lowercase();
-                if !model_ids.insert(normalized_model_id) {
+                if !self
+                    .providers
+                    .iter()
+                    .any(|provider| provider.model_id == *default_model)
+                {
                     return Err(ConfigError::InvalidProvider(format!(
-                        "duplicate model_id: {}",
-                        provider.model_id
+                        "endpoint default_model not found: {}",
+                        default_model
                     )));
                 }
             }
-
-            for endpoint in &self.model_api.endpoints {
-                if endpoint.path.trim().is_empty() {
-                    return Err(ConfigError::InvalidProvider(
-                        "model_api endpoint path is required".to_string(),
-                    ));
-                }
-                if let Some(default_model) = &endpoint.default_model {
-                    if default_model.trim().is_empty() {
-                        return Err(ConfigError::InvalidProvider(
-                            "model_api default_model is empty".to_string(),
-                        ));
-                    }
-                    if !self
-                        .model_api
-                        .providers
-                        .iter()
-                        .any(|provider| provider.model_id == *default_model)
-                    {
-                        return Err(ConfigError::InvalidProvider(format!(
-                            "model_api default_model not found: {}",
-                            default_model
-                        )));
-                    }
-                }
-                for model in &endpoint.models {
-                    if !self
-                        .model_api
-                        .providers
-                        .iter()
-                        .any(|provider| provider.model_id == *model)
-                    {
-                        return Err(ConfigError::InvalidProvider(format!(
-                            "model_api endpoint model not found: {}",
-                            model
-                        )));
-                    }
+            for model in &endpoint.models {
+                if !self
+                    .providers
+                    .iter()
+                    .any(|provider| provider.model_id == *model)
+                {
+                    return Err(ConfigError::InvalidProvider(format!(
+                        "endpoint model not found: {}",
+                        model
+                    )));
                 }
             }
         }
