@@ -16,7 +16,14 @@ pub(super) fn map_request(
     request: ChatCompletionRequest,
     upstream_model: String,
     default_max_tokens: i32,
+    sampling_compat: bool,
 ) -> Result<RequestParts, ProviderError> {
+    let (temperature, top_p) = map_sampling_params(
+        request.temperature,
+        request.top_p,
+        &request.model,
+        sampling_compat,
+    );
     let mut system_chunks = Vec::<String>::new();
     let mut messages = Vec::<AnthropicMessage>::new();
 
@@ -123,13 +130,49 @@ pub(super) fn map_request(
         max_tokens: request.max_completion_tokens.unwrap_or(default_max_tokens),
         messages,
         system: (!system_chunks.is_empty()).then(|| system_chunks.join("\n")),
-        temperature: request.temperature,
-        top_p: request.top_p,
+        temperature,
+        top_p,
         stop_sequences: request.stop,
         tools,
         tool_choice,
         thinking,
     })
+}
+
+fn map_sampling_params(
+    temperature: Option<f32>,
+    top_p: Option<f32>,
+    model: &str,
+    sampling_compat: bool,
+) -> (Option<f32>, Option<f32>) {
+    if !sampling_compat || !is_sampling_restricted_model(model) {
+        return (temperature, top_p);
+    }
+
+    (
+        filter_non_default_sampling_value(temperature),
+        filter_non_default_sampling_value(top_p),
+    )
+}
+
+fn filter_non_default_sampling_value(value: Option<f32>) -> Option<f32> {
+    match value {
+        Some(v) if (v - 1.0).abs() < f32::EPSILON => Some(v),
+        Some(_) => None,
+        None => None,
+    }
+}
+
+fn is_sampling_restricted_model(model: &str) -> bool {
+    matches!(
+        model.to_ascii_lowercase().as_str(),
+        "claude-sonnet-5"
+            | "claude-opus-5"
+            | "claude-opus-4-8"
+            | "claude-opus-4-7"
+            | "claude-fable-5"
+            | "claude-mythos-5"
+    )
 }
 
 pub(super) fn map_response(response: AnthropicResponse) -> UnifiedResponse {

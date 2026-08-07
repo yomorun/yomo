@@ -63,6 +63,7 @@ impl<M> Provider<M> for AnthropicMessagesProvider {
             request,
             self.upstream_model.clone(),
             self.default_max_tokens,
+            true,
         )?;
         let response = match &self.backend {
             Backend::Direct(client) => {
@@ -120,6 +121,7 @@ impl<M> Provider<M> for AnthropicMessagesProvider {
             request,
             self.upstream_model.clone(),
             self.default_max_tokens,
+            true,
         )?;
 
         let stream = match &self.backend {
@@ -284,6 +286,46 @@ mod tests {
         Content, FunctionDefinition, Message, Role, ToolChoice, ToolDefinition,
     };
 
+    fn basic_chat_request(temperature: Option<f32>, top_p: Option<f32>) -> ChatCompletionRequest {
+        ChatCompletionRequest {
+            model: "alias".to_string(),
+            messages: vec![Message {
+                role: Role::User,
+                content: Content::Text("hello".to_string()),
+                reasoning_content: None,
+                tool_call_id: None,
+                tool_calls: None,
+            }],
+            n: None,
+            temperature,
+            top_p,
+            presence_penalty: None,
+            frequency_penalty: None,
+            logprobs: None,
+            top_logprobs: None,
+            modalities: None,
+            audio: None,
+            max_completion_tokens: None,
+            stop: None,
+            response_format: None,
+            thinking: None,
+            reasoning_effort: None,
+            chat_template_kwargs: None,
+            prediction: None,
+            verbosity: None,
+            tools: None,
+            tool_choice: None,
+            allowed_tools: None,
+            parallel_tool_calls: None,
+            service_tier: None,
+            seed: None,
+            stream: None,
+            stream_options: None,
+            metadata: None,
+            agent_context: None,
+        }
+    }
+
     #[test]
     fn build_anthropic_messages_provider_accepts_x_api_key_auth_style() {
         let mut params = HashMap::new();
@@ -398,8 +440,13 @@ mod tests {
             agent_context: None,
         };
 
-        let mapped = map_request(request, "claude-sonnet-5".to_string(), DEFAULT_MAX_TOKENS)
-            .expect("request should map");
+        let mapped = map_request(
+            request,
+            "claude-sonnet-5".to_string(),
+            DEFAULT_MAX_TOKENS,
+            false,
+        )
+        .expect("request should map");
 
         assert_eq!(mapped.messages.len(), 2);
         assert!(matches!(
@@ -457,8 +504,13 @@ mod tests {
             agent_context: None,
         };
 
-        let mapped = map_request(request, "claude-sonnet-5".to_string(), DEFAULT_MAX_TOKENS)
-            .expect("request should map");
+        let mapped = map_request(
+            request,
+            "claude-sonnet-5".to_string(),
+            DEFAULT_MAX_TOKENS,
+            false,
+        )
+        .expect("request should map");
 
         assert_eq!(mapped.messages.len(), 1);
         assert!(matches!(
@@ -507,8 +559,13 @@ mod tests {
             agent_context: None,
         };
 
-        let mapped = map_request(request, "claude-sonnet-5".to_string(), DEFAULT_MAX_TOKENS)
-            .expect("request should map");
+        let mapped = map_request(
+            request,
+            "claude-sonnet-5".to_string(),
+            DEFAULT_MAX_TOKENS,
+            false,
+        )
+        .expect("request should map");
 
         assert_eq!(mapped.messages.len(), 1);
         assert!(matches!(
@@ -557,8 +614,13 @@ mod tests {
             agent_context: None,
         };
 
-        let mapped = map_request(request, "claude-haiku-4-5".to_string(), DEFAULT_MAX_TOKENS)
-            .expect("request should map");
+        let mapped = map_request(
+            request,
+            "claude-haiku-4-5".to_string(),
+            DEFAULT_MAX_TOKENS,
+            false,
+        )
+        .expect("request should map");
 
         assert!(mapped.thinking.is_none());
     }
@@ -609,6 +671,7 @@ mod tests {
             request,
             "anthropic.claude-haiku-4-5".to_string(),
             DEFAULT_MAX_TOKENS,
+            false,
         )
         .expect("request should map");
 
@@ -659,10 +722,61 @@ mod tests {
             request,
             "global.anthropic.claude-sonnet-4-6".to_string(),
             DEFAULT_MAX_TOKENS,
+            false,
         )
         .expect("request should map");
 
         assert!(matches!(mapped.thinking, Some(AnthropicThinking::Adaptive)));
+    }
+
+    #[test]
+    fn map_request_drops_non_default_sampling_for_restricted_models_when_compat_enabled() {
+        let mut request = basic_chat_request(Some(0.2), Some(0.7));
+        request.model = "claude-sonnet-5".to_string();
+
+        let mapped = map_request(
+            request,
+            "claude-sonnet-5".to_string(),
+            DEFAULT_MAX_TOKENS,
+            true,
+        )
+        .expect("request should map");
+
+        assert_eq!(mapped.temperature, None);
+        assert_eq!(mapped.top_p, None);
+    }
+
+    #[test]
+    fn map_request_keeps_non_default_sampling_for_non_restricted_models_when_compat_enabled() {
+        let request = basic_chat_request(Some(0.2), Some(0.7));
+
+        let mapped = map_request(
+            request,
+            "claude-sonnet-4-6".to_string(),
+            DEFAULT_MAX_TOKENS,
+            true,
+        )
+        .expect("request should map");
+
+        assert_eq!(mapped.temperature, Some(0.2));
+        assert_eq!(mapped.top_p, Some(0.7));
+    }
+
+    #[test]
+    fn map_request_sampling_compat_checks_request_model_only() {
+        let mut request = basic_chat_request(Some(0.2), Some(0.7));
+        request.model = "global.anthropic.claude-sonnet-5".to_string();
+
+        let mapped = map_request(
+            request,
+            "claude-sonnet-5".to_string(),
+            DEFAULT_MAX_TOKENS,
+            true,
+        )
+        .expect("request should map");
+
+        assert_eq!(mapped.temperature, Some(0.2));
+        assert_eq!(mapped.top_p, Some(0.7));
     }
 
     #[test]
@@ -783,8 +897,13 @@ mod tests {
             agent_context: None,
         };
 
-        let mapped = map_request(request, "claude-sonnet-5".to_string(), DEFAULT_MAX_TOKENS)
-            .expect("request should map");
+        let mapped = map_request(
+            request,
+            "claude-sonnet-5".to_string(),
+            DEFAULT_MAX_TOKENS,
+            false,
+        )
+        .expect("request should map");
 
         let AnthropicContentBlock::ToolUse { id: first_id, .. } = &mapped.messages[0].content[0]
         else {
