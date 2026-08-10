@@ -604,10 +604,10 @@ fn build_chat_provider_with_custom<M>(
             &provider.params,
         )?))),
         "openai" => Ok(Some(Arc::new(build_openai_provider(&provider.params)?))),
-        "anthropic" => Ok(Some(Arc::new(build_anthropic_messages_provider(
+        "anthropic-messages" => Ok(Some(Arc::new(build_anthropic_messages_provider(
             &provider.params,
         )?))),
-        "bedrock" => Ok(Some(Arc::new(build_bedrock_messages_provider(
+        "bedrock-messages" => Ok(Some(Arc::new(build_bedrock_messages_provider(
             &provider.params,
         )?))),
         "tokenhub" => Ok(Some(Arc::new(build_tokenhub_provider(&provider.params)?))),
@@ -632,8 +632,8 @@ fn build_endpoint_provider_with_custom<M>(
 
     match endpoint {
         EndpointKind::Messages => match provider.provider_type.as_str() {
-            "anthropic" => providers::messages::build_client(provider),
-            "bedrock" => providers::bedrock_messages::build_client(provider),
+            "anthropic-messages" => providers::messages::build_client(provider),
+            "bedrock-messages" => providers::bedrock_messages::build_client(provider),
             other => Err(ConfigError::InvalidProvider(format!(
                 "provider type {other} is not supported for /messages"
             ))),
