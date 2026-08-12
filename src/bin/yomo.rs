@@ -1,6 +1,10 @@
 use std::{path::Path, process, sync::Arc};
 
 use anyhow::{Result, anyhow, bail};
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+};
 use clap::{Parser, builder::NonEmptyStringValueParser};
 use config::{Config, File};
 use env_logger::Env;
@@ -24,6 +28,7 @@ use yomo::{
     model_api::build_model_api,
     model_list::build_model_list_api,
     provider_registry,
+    openai_http_mapping::openai_error_response,
     router::RouterImpl,
     serve_config::ServeConfig,
     serverless::{ServerlessHandler, ServerlessLanguage, ServerlessMemoryBridge},
@@ -37,6 +42,18 @@ use yomo::{
 };
 
 const MAX_BUF_SIZE: usize = 64 * 1024;
+
+fn method_not_allowed_response() -> Response {
+    openai_error_response(
+        StatusCode::METHOD_NOT_ALLOWED,
+        "Method Not Allowed",
+        Some("invalid_request_error"),
+    )
+}
+
+async fn handle_method_not_allowed() -> impl IntoResponse {
+    method_not_allowed_response()
+}
 
 /// CLI commands
 #[derive(Parser, Debug)]
@@ -230,6 +247,8 @@ async fn serve(opt: ServeOptions) -> Result<()> {
         require_bearer_auth,
     ));
 
+    app = app.method_not_allowed_fallback(handle_method_not_allowed);
+
     info!(
         "start HTTP API server on {}:{}",
         config.http_api.host, config.http_api.port,
@@ -363,5 +382,38 @@ async fn main() {
     } {
         error!("{}", e);
         process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::{
+        body::to_bytes,
+        http::{StatusCode, header},
+    };
+    use serde_json::Value;
+
+    use super::method_not_allowed_response;
+
+    #[tokio::test]
+    async fn method_not_allowed_response_uses_openai_error_payload() {
+        let response = method_not_allowed_response();
+
+        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("application/json")
+        );
+
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read response body");
+        let payload: Value = serde_json::from_slice(&body).expect("parse json response body");
+
+        assert_eq!(payload["error"]["message"], "Method Not Allowed");
+        assert_eq!(payload["error"]["type"], "invalid_request_error");
     }
 }
