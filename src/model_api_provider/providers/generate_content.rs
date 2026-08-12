@@ -193,11 +193,6 @@ mod tests {
 pub fn build_client<M>(
     provider: &ProviderConfig,
 ) -> Result<Arc<dyn ModelApiProvider<M>>, ConfigError> {
-    if provider.provider_type != "generate_content" {
-        return Err(ConfigError::UnknownProviderType(
-            provider.provider_type.clone(),
-        ));
-    }
     let project_id = provider
         .params
         .get("project_id")

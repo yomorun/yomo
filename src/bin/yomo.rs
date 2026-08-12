@@ -24,12 +24,11 @@ use yomo::{
     connector::MemoryConnector,
     http_auth::require_bearer_auth,
     llm_api::build_llm_api,
-    llm_provider,
     metadata_mgr::MetadataMgrImpl,
     model_api::build_model_api,
-    model_api_provider,
     model_list::build_model_list_api,
     openai_http_mapping::openai_error_response,
+    provider_registry,
     router::RouterImpl,
     serve_config::ServeConfig,
     serverless::{ServerlessHandler, ServerlessLanguage, ServerlessMemoryBridge},
@@ -38,6 +37,7 @@ use yomo::{
     tool_invoker::ConnToolInvoker,
     tool_mgr::ToolMgrImpl,
     trace::init_tracing,
+    usage_handler::NoopUsageHandler,
     zipper::{MemorySource, Zipper, ZipperBridge},
 };
 
@@ -202,64 +202,38 @@ async fn serve(opt: ServeOptions) -> Result<()> {
     let connector = MemoryConnector::new(sender.clone(), MAX_BUF_SIZE);
 
     let mut app = axum::Router::new();
-    let mut llm_providers_enabled = false;
-    let mut llm_registry_for_model_list: Option<llm_provider::registry::ProviderRegistry<()>> =
-        None;
-    if !config.llm_providers.is_empty() {
-        llm_providers_enabled = true;
-        let selection_strategy = Arc::new(llm_provider::selection::ByModel::default());
-        let provider_registry = llm_provider::registry::ProviderRegistry::from_providers(
-            &config.llm_providers,
-            config.llm_default_model_id.clone(),
-            selection_strategy,
-        )?;
-        llm_registry_for_model_list = Some(provider_registry.clone());
-        let tool_invoker = Arc::new(ConnToolInvoker::new(Arc::new(connector.to_owned())));
-        app = app.nest(
-            "/v1",
-            build_llm_api(
-                tool_mgr,
-                provider_registry,
-                tool_invoker,
-                yomo::agent_loop::AgentLoopConfig::<()>::default(),
-            )
-            .await?,
-        );
+    let mut endpoint_map = std::collections::HashMap::new();
+    for endpoint in &config.endpoints {
+        endpoint_map.insert(endpoint.endpoint()?, endpoint.clone());
     }
+    let selection_strategy = Arc::new(provider_registry::ByEndpointModel::new(endpoint_map));
+    let provider_registry = provider_registry::ProviderRegistry::from_config(
+        &config.providers,
+        &config.endpoints,
+        selection_strategy,
+    )?;
 
-    let mut model_api_enabled = false;
-    let mut model_api_registry_for_model_list: Option<model_api_provider::ProviderRegistry<()>> =
-        None;
-    if !config.model_api.providers.is_empty() && !config.model_api.endpoints.is_empty() {
-        model_api_enabled = true;
-        let model_api_endpoints = config
-            .model_api
-            .endpoints
-            .iter()
-            .map(|endpoint| (endpoint.path.clone(), endpoint.clone()))
-            .collect::<std::collections::HashMap<_, _>>();
-        let model_api_selection = Arc::new(model_api_provider::ByEndpointModel::new(
-            model_api_endpoints,
-        ));
-        let model_api_registry = model_api_provider::ProviderRegistry::from_config(
-            &config.model_api,
-            model_api_selection,
-        )?;
-        model_api_registry_for_model_list = Some(model_api_registry.clone());
-        let model_api_usage_handler = Arc::new(model_api_provider::NoopUsageHandler::default());
-        app = app.nest(
-            "/v1",
-            build_model_api(model_api_registry, model_api_usage_handler).await?,
-        );
-    }
+    let tool_invoker = Arc::new(ConnToolInvoker::new(Arc::new(connector.to_owned())));
+    app = app.nest(
+        "/v1",
+        build_llm_api(
+            tool_mgr,
+            provider_registry.clone(),
+            tool_invoker,
+            yomo::agent_loop::AgentLoopConfig::<()>::default(),
+        )
+        .await?,
+    );
+
+    let model_api_usage_handler = Arc::new(NoopUsageHandler::default());
+    app = app.nest(
+        "/v1",
+        build_model_api(provider_registry.clone(), model_api_usage_handler).await?,
+    );
 
     app = app.nest(
         "/v1",
-        build_model_list_api(
-            llm_registry_for_model_list,
-            model_api_registry_for_model_list,
-        )
-        .await?,
+        build_model_list_api(provider_registry.clone()).await?,
     );
 
     let mut tool_api_prefix = String::new();
@@ -280,13 +254,8 @@ async fn serve(opt: ServeOptions) -> Result<()> {
         config.http_api.host, config.http_api.port,
     );
 
-    if llm_providers_enabled {
-        info!("LLM API enabled at /v1");
-    }
-
-    if model_api_enabled {
-        info!("Model API enabled at /v1");
-    }
+    info!("LLM API enabled at /v1");
+    info!("Model API enabled at /v1");
 
     if !tool_api_prefix.is_empty() {
         info!("Tool API enabled at {}", tool_api_prefix);

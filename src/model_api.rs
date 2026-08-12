@@ -16,10 +16,10 @@ use tracing::Instrument;
 
 use crate::metadata_mgr::MetadataMgr;
 use crate::metadata_mgr::MetadataMgrImpl;
-use crate::model_api_provider::{
-    ModelApiProvider, ProviderBody, ProviderRegistry, ProviderRequest, SelectionError,
-};
+use crate::model_api_provider::{ModelApiProvider, ProviderBody, ProviderRequest};
 use crate::openai_http_mapping::openai_error_response;
+use crate::provider_registry::{ProviderRegistry, SelectionError};
+use crate::serve_config::{EndpointKind, parse_generate_content_model};
 use crate::trace::{
     DefaultRequestSpanStarter, RequestSpanStarter, record_usage_attributes, set_http_span_status,
 };
@@ -44,18 +44,6 @@ impl<A, M> Clone for ModelApiHandlerState<A, M> {
     }
 }
 
-#[derive(Clone, Copy)]
-enum EndpointKind {
-    Messages,
-    Responses,
-    GenerateContent,
-    Embeddings,
-    Rerank,
-    AudioSpeech,
-    AudioTranscriptions,
-    Images,
-}
-
 pub async fn handle_model_api<A, M>(
     Path(path): Path<String>,
     State(state): State<ModelApiHandlerState<A, M>>,
@@ -68,21 +56,16 @@ where
 {
     let endpoint_path = format!("/{path}");
     let requested_model_from_path = parse_generate_content_model(&endpoint_path);
-    let Some(kind) = resolve_endpoint_kind(&endpoint_path) else {
+    let Some(endpoint) = EndpointKind::from_request_path(&endpoint_path) else {
         return openai_error_response(
             StatusCode::NOT_FOUND,
             "endpoint not found",
             Some("invalid_request_error"),
         );
     };
-    let selection_endpoint = if matches!(kind, EndpointKind::GenerateContent) {
-        "/models/:generateContent"
-    } else {
-        endpoint_path.as_str()
-    };
     handle_endpoint(
         &endpoint_path,
-        selection_endpoint,
+        endpoint,
         requested_model_from_path,
         state,
         headers,
@@ -93,7 +76,7 @@ where
 
 async fn handle_endpoint<A, M>(
     endpoint_path: &str,
-    selection_endpoint: &str,
+    endpoint: EndpointKind,
     requested_model_from_path: Option<String>,
     state: ModelApiHandlerState<A, M>,
     headers: HeaderMap,
@@ -141,8 +124,8 @@ where
     };
     let requested_model = requested_model_from_path.or(request_model);
 
-    let provider_entry = match state.provider_registry.select(
-        selection_endpoint,
+    let provider_entry = match state.provider_registry.select_endpoint(
+        endpoint,
         requested_model.as_deref(),
         &metadata,
     ) {
@@ -167,13 +150,17 @@ where
                 Some("outstanding_balance"),
             );
         }
-        Err(SelectionError::ModelNotSupported) => {
-            let model = requested_model.as_deref().unwrap_or("");
-            let message = if model.is_empty() {
-                "model is required".to_string()
-            } else {
-                format!("model {model} is not supported")
-            };
+        Err(SelectionError::ModelRequired) => {
+            let message = selection_model_required_message(&route);
+            set_http_span_status(&root_span, StatusCode::BAD_REQUEST, Some(&message));
+            return openai_error_response(
+                StatusCode::BAD_REQUEST,
+                &message,
+                Some("invalid_request_error"),
+            );
+        }
+        Err(SelectionError::ModelNotSupported { model }) => {
+            let message = selection_model_not_supported_message(&route, &model);
             set_http_span_status(&root_span, StatusCode::BAD_REQUEST, Some(&message));
             return openai_error_response(
                 StatusCode::BAD_REQUEST,
@@ -739,33 +726,12 @@ fn resolve_request_id(request_id: Option<String>, trace_id: &str) -> String {
         .unwrap_or_else(|| trace_id.to_string())
 }
 
-fn resolve_endpoint_kind(endpoint: &str) -> Option<EndpointKind> {
-    match endpoint {
-        "/messages" => Some(EndpointKind::Messages),
-        "/responses" => Some(EndpointKind::Responses),
-        "/embeddings" => Some(EndpointKind::Embeddings),
-        "/rerank" => Some(EndpointKind::Rerank),
-        "/audio/speech" => Some(EndpointKind::AudioSpeech),
-        "/audio/transcriptions" => Some(EndpointKind::AudioTranscriptions),
-        "/images/generations" => Some(EndpointKind::Images),
-        "/images/edits" => Some(EndpointKind::Images),
-        _ => {
-            if parse_generate_content_model(endpoint).is_some() {
-                Some(EndpointKind::GenerateContent)
-            } else {
-                None
-            }
-        }
-    }
+fn selection_model_required_message(endpoint: &str) -> String {
+    format!("model is required for {endpoint}")
 }
 
-fn parse_generate_content_model(endpoint: &str) -> Option<String> {
-    endpoint
-        .strip_prefix("/models/")
-        .and_then(|value| value.strip_suffix(":generateContent"))
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
+fn selection_model_not_supported_message(endpoint: &str, model: &str) -> String {
+    format!("model {model} is not supported for {endpoint}")
 }
 
 pub async fn build_model_api(
@@ -789,7 +755,8 @@ pub async fn build_model_api(
 mod tests {
     use super::{
         body_preview_for_log, decode_payload_for_log, parse_model_request_fields,
-        resolve_request_id,
+        resolve_request_id, selection_model_not_supported_message,
+        selection_model_required_message,
     };
     use crate::utils::MAX_LOG_BODY_BYTES;
     use axum::body::Bytes;
@@ -958,5 +925,23 @@ mod tests {
             decode_payload_for_log(&payload, Some("gzip")).expect("decode payload with limit");
 
         assert_eq!(decoded.len(), MAX_LOG_BODY_BYTES);
+    }
+
+    /// Verifies selection errors include endpoint in model-required message.
+    #[test]
+    fn selection_model_required_message_includes_endpoint() {
+        assert_eq!(
+            selection_model_required_message("/v1/responses"),
+            "model is required for /v1/responses"
+        );
+    }
+
+    /// Verifies selection errors include endpoint in unsupported-model message.
+    #[test]
+    fn selection_model_not_supported_message_includes_endpoint() {
+        assert_eq!(
+            selection_model_not_supported_message("/v1/responses", "gpt-x"),
+            "model gpt-x is not supported for /v1/responses"
+        );
     }
 }

@@ -365,11 +365,6 @@ mod tests {
 pub fn build_client<M>(
     provider: &ProviderConfig,
 ) -> Result<Arc<dyn ModelApiProvider<M>>, ConfigError> {
-    if provider.provider_type != "responses" {
-        return Err(ConfigError::UnknownProviderType(
-            provider.provider_type.clone(),
-        ));
-    }
     let api_key = provider
         .params
         .get("api_key")

@@ -37,6 +37,8 @@ pub mod openai_http_mapping;
 pub mod openai_types;
 /// Provider error notifier abstractions.
 pub mod provider_error_notifier;
+/// Unified provider registry and selection.
+pub mod provider_registry;
 /// Routing traits and implementations.
 pub mod router;
 /// Server configuration used by the CLI.

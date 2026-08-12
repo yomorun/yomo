@@ -15,8 +15,6 @@ use tracing::{Instrument, Span};
 use crate::agent_loop::{AgentLoopConfig, AgentLoopResult, run_agent_loop};
 use crate::llm_provider::FinishReason;
 use crate::llm_provider::ProviderError;
-use crate::llm_provider::registry::ProviderRegistry;
-use crate::llm_provider::selection::SelectionError;
 use crate::llm_stream_mapper::{DefaultStreamMapperSelector, StreamMapperSelector};
 use crate::metadata_mgr::{MetadataMgr, MetadataMgrImpl};
 use crate::openai_http_mapping::{
@@ -24,6 +22,8 @@ use crate::openai_http_mapping::{
     validate_openai_request,
 };
 use crate::openai_types::{ChatCompletionRequest, StreamOptions};
+use crate::provider_registry::{ProviderRegistry, SelectionError};
+use crate::serve_config::EndpointKind;
 use crate::tool_invoker::ToolInvoker;
 use crate::tool_mgr::ToolMgr;
 use crate::trace::{DefaultRequestSpanStarter, RequestSpanStarter};
@@ -152,20 +152,16 @@ where
         return Ok(response);
     }
 
-    let requested_model_is_default =
-        request.model.trim().is_empty() || request.model.trim() == "auto";
-    let request_model_id = if requested_model_is_default {
-        state
-            .provider_registry
-            .default_model_id()
-            .map(str::to_string)
+    let request_model_id = if request.model.trim().is_empty() || request.model.trim() == "auto" {
+        None
     } else {
         Some(request.model.clone())
     };
-    let provider_entry = match state
-        .provider_registry
-        .select(request_model_id.as_deref(), &metadata)
-    {
+    let provider_entry = match state.provider_registry.select_chat(
+        EndpointKind::ChatCompletions,
+        request_model_id.as_deref(),
+        &metadata,
+    ) {
         Ok(provider_entry) => provider_entry,
         Err(SelectionError::AccessDenied) => {
             let response = openai_error_response(
@@ -185,13 +181,24 @@ where
             set_http_span_status(&root_span, response.status(), Some("outstanding_balance"));
             return Ok(response);
         }
-        Err(SelectionError::ModelNotSupported) => {
-            let message = if requested_model_is_default && request_model_id.is_none() {
-                "default model is not configured".to_string()
-            } else {
-                let model = request_model_id.as_deref().unwrap_or_default();
-                format!("model {model} is not supported")
-            };
+        Err(SelectionError::ModelRequired) => {
+            let message = selection_model_required_message(&format!(
+                "/v1{}",
+                EndpointKind::ChatCompletions.as_path()
+            ));
+            let response = openai_error_response(
+                StatusCode::BAD_REQUEST,
+                &message,
+                Some("invalid_request_error"),
+            );
+            set_http_span_status(&root_span, response.status(), Some(&message));
+            return Ok(response);
+        }
+        Err(SelectionError::ModelNotSupported { model }) => {
+            let message = selection_model_not_supported_message(
+                &format!("/v1{}", EndpointKind::ChatCompletions.as_path()),
+                &model,
+            );
             let response = openai_error_response(
                 StatusCode::BAD_REQUEST,
                 &message,
@@ -370,6 +377,14 @@ fn provider_error_status(err: &ProviderError) -> StatusCode {
     }
 }
 
+fn selection_model_required_message(endpoint: &str) -> String {
+    format!("model is required for {endpoint}")
+}
+
+fn selection_model_not_supported_message(endpoint: &str, model: &str) -> String {
+    format!("model {model} is not supported for {endpoint}")
+}
+
 pub async fn build_llm_api(
     tool_mgr: Arc<dyn ToolMgr<(), ()>>,
     provider_registry: ProviderRegistry<()>,
@@ -399,7 +414,10 @@ pub async fn build_llm_api(
 mod tests {
     use axum::http::StatusCode;
 
-    use super::trace_status_message_for_provider_error;
+    use super::{
+        selection_model_not_supported_message, selection_model_required_message,
+        trace_status_message_for_provider_error,
+    };
     use crate::llm_provider::ProviderError;
     use crate::openai_types::ErrorDetail;
 
@@ -436,6 +454,22 @@ mod tests {
         assert_eq!(
             trace_status_message_for_provider_error(&err, StatusCode::UNPROCESSABLE_ENTITY),
             "internal_server_error"
+        );
+    }
+
+    #[test]
+    fn selection_model_required_message_includes_endpoint() {
+        assert_eq!(
+            selection_model_required_message("/v1/chat/completions"),
+            "model is required for /v1/chat/completions"
+        );
+    }
+
+    #[test]
+    fn selection_model_not_supported_message_includes_endpoint() {
+        assert_eq!(
+            selection_model_not_supported_message("/v1/chat/completions", "gpt-x"),
+            "model gpt-x is not supported for /v1/chat/completions"
         );
     }
 }
