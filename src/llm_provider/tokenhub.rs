@@ -283,37 +283,40 @@ fn map_tokenhub_custom_error(value: Value) -> Option<crate::openai_types::ErrorD
     let detail = envelope.error;
     let message = detail.message.unwrap_or_default();
 
-    let metadata = [
-        detail
-            .source
-            .as_deref()
-            .map(|value| format!("source={value}")),
-        detail
-            .upstream_code
-            .as_deref()
-            .map(|value| format!("upstream_code={value}")),
-        detail
-            .upstream_status
-            .map(|value| format!("upstream_status={value}")),
-        detail
-            .request_id
-            .as_deref()
-            .map(|value| format!("request_id={value}")),
-    ]
-    .into_iter()
-    .flatten()
-    .collect::<Vec<_>>();
+    let error_type = detail.r#type.unwrap_or_default();
+    let error_code = detail.code;
+    let metadata = vec![
+        format!("type={}", error_type),
+        format!("code={}", error_code.as_deref().unwrap_or_default()),
+        format!("source={}", detail.source.as_deref().unwrap_or_default()),
+        format!(
+            "upstream_code={}",
+            detail.upstream_code.as_deref().unwrap_or_default()
+        ),
+        format!(
+            "upstream_status={}",
+            detail
+                .upstream_status
+                .map(|value| value.to_string())
+                .unwrap_or_default()
+        ),
+        format!(
+            "request_id={}",
+            detail.request_id.as_deref().unwrap_or_default()
+        ),
+    ];
 
-    let message = if metadata.is_empty() {
-        message
+    let metadata_text = metadata.join(" ");
+    let message = if message.is_empty() {
+        format!("[{metadata_text}]")
     } else {
-        format!("{} [{}]", message, metadata.join(" "))
+        format!("{message} [{metadata_text}]")
     };
 
     let error = crate::openai_types::ErrorDetail {
         message,
-        r#type: detail.r#type.unwrap_or_default(),
-        code: detail.code,
+        r#type: error_type,
+        code: error_code,
         param: None,
     };
 
@@ -645,6 +648,8 @@ mod tests {
         assert_eq!(error.r#type, "invalid_request_error");
         assert_eq!(error.code.as_deref(), Some("bad_param"));
         assert!(error.message.contains("invalid request"));
+        assert!(error.message.contains("type=invalid_request_error"));
+        assert!(error.message.contains("code=bad_param"));
         assert!(error.message.contains("source=upstream"));
         assert!(error.message.contains("upstream_code=E1001"));
         assert!(error.message.contains("upstream_status=400"));
@@ -716,5 +721,25 @@ mod tests {
 
         let error = map_tokenhub_custom_error(value).expect("map tokenhub error");
         assert_eq!(error.r#type, "");
+        assert!(error.message.contains("type="));
+        assert!(error.message.contains("source="));
+        assert!(error.message.contains("upstream_code="));
+        assert!(error.message.contains("upstream_status="));
+        assert!(error.message.contains("request_id="));
+    }
+
+    #[test]
+    fn map_tokenhub_custom_error_formats_metadata_when_message_missing() {
+        let value = serde_json::json!({
+            "error": {
+                "type": "invalid_request_error",
+                "code": "bad_param"
+            }
+        });
+
+        let error = map_tokenhub_custom_error(value).expect("map tokenhub error");
+        assert!(error.message.starts_with("["));
+        assert!(error.message.contains("type=invalid_request_error"));
+        assert!(error.message.contains("code=bad_param"));
     }
 }
