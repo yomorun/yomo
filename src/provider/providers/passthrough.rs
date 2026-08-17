@@ -2,8 +2,8 @@ use async_trait::async_trait;
 use axum::http::{HeaderMap, HeaderValue, header};
 use std::sync::Arc;
 
-use crate::model_api_provider::provider::{
-    ModelApiProvider, ProviderRequest, ProviderResponse, proxy_request,
+use crate::provider::{
+    HttpProviderRequest, HttpProviderResponse, Provider, ProviderError, proxy_request,
 };
 use crate::serve_config::{ConfigError, ProviderConfig};
 
@@ -12,7 +12,6 @@ pub struct ProxyClient {
     client: reqwest::Client,
     base_url: String,
     auth_headers: HeaderMap,
-    model_id: String,
     upstream_model: String,
 }
 
@@ -21,30 +20,24 @@ impl ProxyClient {
         client: reqwest::Client,
         base_url: String,
         auth_headers: HeaderMap,
-        model_id: String,
         upstream_model: String,
     ) -> Self {
         Self {
             client,
             base_url,
             auth_headers,
-            model_id,
             upstream_model,
         }
     }
 }
 
 #[async_trait]
-impl<M> ModelApiProvider<M> for ProxyClient {
-    fn model_id(&self) -> &str {
-        &self.model_id
-    }
-
-    async fn execute(
+impl<M: Sync> Provider<M> for ProxyClient {
+    async fn http(
         &self,
-        req: ProviderRequest,
+        req: HttpProviderRequest,
         _metadata: &M,
-    ) -> Result<ProviderResponse, anyhow::Error> {
+    ) -> Result<HttpProviderResponse, ProviderError> {
         proxy_request(
             &self.client,
             &self.base_url,
@@ -56,9 +49,9 @@ impl<M> ModelApiProvider<M> for ProxyClient {
     }
 }
 
-pub fn build_client<M>(
+pub fn build_client<M: Sync>(
     provider: &ProviderConfig,
-) -> Result<Arc<dyn ModelApiProvider<M>>, ConfigError> {
+) -> Result<Arc<dyn Provider<M>>, ConfigError> {
     let api_key = provider
         .params
         .get("api_key")
@@ -85,7 +78,6 @@ pub fn build_client<M>(
         reqwest::Client::new(),
         base_url,
         headers,
-        provider.model_id.clone(),
         upstream_model,
     )))
 }

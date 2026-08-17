@@ -4,24 +4,22 @@ use async_trait::async_trait;
 use futures_util::StreamExt;
 use serde_json::Value;
 
-use crate::llm_provider::vertexai::client::VertexAIClient;
-use crate::model_api_provider::provider::{
-    ModelApiProvider, ProviderBody, ProviderRequest, ProviderResponse, filter_request_headers,
-    filter_response_headers, parse_stream_flag, should_stream_response,
+use crate::provider::vertexai::client::VertexAIClient;
+use crate::provider::{
+    HttpProviderRequest, HttpProviderResponse, Provider, ProviderBody, ProviderError,
+    filter_request_headers, filter_response_headers, should_stream_response,
 };
 use crate::serve_config::{ConfigError, ProviderConfig};
 
 #[derive(Clone)]
 pub struct GenerateContentClient {
-    model_id: String,
     upstream_model: String,
     client: VertexAIClient,
 }
 
 impl GenerateContentClient {
-    pub fn new(model_id: String, upstream_model: String, client: VertexAIClient) -> Self {
+    pub fn new(upstream_model: String, client: VertexAIClient) -> Self {
         Self {
-            model_id,
             upstream_model,
             client,
         }
@@ -29,17 +27,13 @@ impl GenerateContentClient {
 }
 
 #[async_trait]
-impl<M> ModelApiProvider<M> for GenerateContentClient {
-    fn model_id(&self) -> &str {
-        &self.model_id
-    }
-
-    async fn execute(
+impl<M: Sync> Provider<M> for GenerateContentClient {
+    async fn http(
         &self,
-        req: ProviderRequest,
+        req: HttpProviderRequest,
         _metadata: &M,
-    ) -> Result<ProviderResponse, anyhow::Error> {
-        let stream_requested = parse_stream_flag(&req.body);
+    ) -> Result<HttpProviderResponse, ProviderError> {
+        let stream_requested = req.is_stream;
         let headers = filter_request_headers(req.headers);
         let response = self
             .client
@@ -61,14 +55,14 @@ impl<M> ModelApiProvider<M> for GenerateContentClient {
                 Err(err) => Err(std::io::Error::new(std::io::ErrorKind::Other, err)),
             });
 
-            Ok(ProviderResponse {
+            Ok(HttpProviderResponse {
                 status,
                 headers: resp_headers,
                 body: ProviderBody::Stream(Box::pin(body_stream)),
             })
         } else {
             let bytes = response.bytes().await?;
-            Ok(ProviderResponse {
+            Ok(HttpProviderResponse {
                 status,
                 headers: resp_headers,
                 body: ProviderBody::Full(bytes),
@@ -190,9 +184,9 @@ mod tests {
     }
 }
 
-pub fn build_client<M>(
+pub fn build_client<M: Sync>(
     provider: &ProviderConfig,
-) -> Result<Arc<dyn ModelApiProvider<M>>, ConfigError> {
+) -> Result<Arc<dyn Provider<M>>, ConfigError> {
     let project_id = provider
         .params
         .get("project_id")
@@ -216,9 +210,5 @@ pub fn build_client<M>(
 
     let client = VertexAIClient::new(project_id, location, credentials_file)
         .map_err(|err| ConfigError::InvalidProvider(err.to_string()))?;
-    Ok(Arc::new(GenerateContentClient::new(
-        provider.model_id.clone(),
-        upstream_model,
-        client,
-    )))
+    Ok(Arc::new(GenerateContentClient::new(upstream_model, client)))
 }

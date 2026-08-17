@@ -1,5 +1,4 @@
 use std::collections::{HashMap, VecDeque};
-use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -15,6 +14,7 @@ use futures_util::StreamExt;
 use log::debug;
 use reqwest::StatusCode;
 use serde_json::Value;
+use std::pin::Pin;
 
 use self::client::VertexAIClient;
 use self::types::{
@@ -24,14 +24,14 @@ use self::types::{
     VertexSystemInstruction, VertexThinkingConfig, VertexThinkingLevel, VertexTool,
     VertexToolConfig, VertexUsageMetadata,
 };
-use crate::llm_provider::openai_compatible::mapper::ensure_tool_call_id;
-use crate::llm_provider::{
-    FinishReason, Provider, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse,
-};
-use crate::model_api_provider::GenerateContentUsage;
 use crate::openai_http_mapping::validate_openai_request;
 use crate::openai_types::{
     ChatCompletionRequest, Content, ContentPart, ErrorDetail, ResponseFormat, Role, ToolChoice,
+};
+use crate::provider::GenerateContentUsage;
+use crate::provider::openai_compatible::mapper::ensure_tool_call_id;
+use crate::provider::{
+    FinishReason, Provider, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse,
 };
 use crate::serve_config::ConfigError;
 use crate::usage_handler::EndpointUsage;
@@ -66,11 +66,7 @@ impl VertexAIProvider {
 }
 
 #[async_trait]
-impl<M> Provider<M> for VertexAIProvider {
-    fn model_id(&self) -> &str {
-        &self.model_id
-    }
-
+impl<M: Sync> Provider<M> for VertexAIProvider {
     async fn complete(
         &self,
         request: ChatCompletionRequest,
@@ -108,7 +104,7 @@ impl<M> Provider<M> for VertexAIProvider {
     async fn stream<'a>(
         &'a self,
         request: ChatCompletionRequest,
-        _metadata: &M,
+        _metadata: &'a M,
     ) -> Result<
         Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
         ProviderError,
@@ -140,6 +136,7 @@ impl<M> Provider<M> for VertexAIProvider {
 
         let stream = response.bytes_stream();
         let model_id = self.model_id.clone();
+        let thought_signatures = Arc::clone(&self.thought_signatures);
         let output = try_stream! {
             futures_util::pin_mut!(stream);
             let mut state = VertexStreamState::default();
@@ -175,13 +172,12 @@ impl<M> Provider<M> for VertexAIProvider {
                         let value: VertexGenerateContentResponse = serde_json::from_str(data)
                             .map_err(|err| ProviderError::internal(format!("parse vertex stream event: {err}")))?;
 
-                        for event in map_vertex_stream_chunk(&value, &mut state, &self.thought_signatures) {
+                        for event in map_vertex_stream_chunk(&value, &mut state, &thought_signatures) {
                             yield event;
                         }
                     }
                 }
             }
-
             if !state.completed {
                 yield UnifiedEvent::Completed {
                     finish_reason: Some("stop".to_string()),

@@ -13,7 +13,6 @@ use log::{error, info};
 use serde_json;
 use tracing::{Span, field};
 
-use crate::llm_provider::{FinishReason, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse};
 use crate::openai_types::{
     ChatCompletionChoice, ChatCompletionChunk, ChatCompletionChunkChoice, ChatCompletionChunkDelta,
     ChatCompletionChunkToolCall, ChatCompletionChunkToolCallFunction, ChatCompletionMessage,
@@ -21,6 +20,7 @@ use crate::openai_types::{
     Content as OpenAIContent, ContentPart, ErrorDetail, ErrorResponse, PromptTokensDetails, Role,
     ToolCall as OpenAIToolCall, ToolCallFunction, ToolChoice, Usage,
 };
+use crate::provider::{FinishReason, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse};
 use crate::trace::{record_usage_attributes, set_http_span_status};
 use crate::usage_handler::EndpointUsage;
 
@@ -640,8 +640,8 @@ fn derive_response_id_from_tool_call_id(tool_call_id: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{map_openai_response, stream_openai_chunks, validate_openai_request};
-    use crate::llm_provider::{FinishReason, UnifiedEvent, UnifiedResponse};
     use crate::openai_types::ChatCompletionRequest;
+    use crate::provider::{FinishReason, UnifiedEvent, UnifiedResponse};
     use crate::usage_handler::EndpointUsage;
     use futures_util::StreamExt;
     use serde_json::Value;

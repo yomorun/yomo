@@ -4,11 +4,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-use crate::model_api_provider::{
+use crate::openai_types::{CompletionTokensDetails, PromptTokensDetails, Usage as OpenAIUsage};
+use crate::provider::{
     AudioSpeechUsage, AudioTranscriptionsUsage, EmbeddingsUsage, GenerateContentUsage, ImagesUsage,
     MessagesUsage, RerankUsage, ResponsesUsage,
 };
-use crate::openai_types::{CompletionTokensDetails, PromptTokensDetails, Usage as OpenAIUsage};
 use crate::utils::truncate_for_log;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,7 +71,10 @@ impl EndpointUsage {
                 }
             }
             _ => {
-                if endpoint.starts_with("/models/") && endpoint.ends_with(":generateContent") {
+                if endpoint.starts_with("/models/")
+                    && (endpoint.ends_with(":generateContent")
+                        || endpoint.ends_with(":streamGenerateContent"))
+                {
                     if let Ok(usage) =
                         serde_json::from_value::<GenerateContentUsage>(payload.clone())
                     {
@@ -632,10 +635,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::{EndpointUsage, flatten_usage_quantities_for_usage};
-    use crate::model_api_provider::{
-        GenerateContentUsage, MessagesUsage, ResponsesUsage, TrafficType,
-    };
     use crate::openai_types::{PromptTokensDetails, Usage as OpenAIUsage};
+    use crate::provider::{GenerateContentUsage, MessagesUsage, ResponsesUsage, TrafficType};
 
     #[test]
     fn from_endpoint_payload_rejects_invalid_chat_completions_shape() {
@@ -878,7 +879,7 @@ mod tests {
             input_tokens: Some(11),
             input_tokens_details: None,
             output_tokens: Some(6),
-            output_tokens_details: Some(crate::model_api_provider::ResponsesOutputTokensDetails {
+            output_tokens_details: Some(crate::provider::ResponsesOutputTokensDetails {
                 reasoning_tokens: Some(4),
             }),
             total_tokens: Some(17),

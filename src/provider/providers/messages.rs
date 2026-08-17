@@ -3,8 +3,8 @@ use axum::http::{HeaderMap, HeaderValue, header};
 use serde_json::Value;
 use std::sync::Arc;
 
-use crate::model_api_provider::provider::{
-    ModelApiProvider, ProviderRequest, ProviderResponse, proxy_request,
+use crate::provider::{
+    HttpProviderRequest, HttpProviderResponse, Provider, ProviderError, proxy_request,
 };
 use crate::serve_config::{ConfigError, ProviderConfig};
 
@@ -13,7 +13,6 @@ pub struct MessagesClient {
     client: reqwest::Client,
     base_url: String,
     auth_headers: HeaderMap,
-    model_id: String,
     upstream_model: String,
     anthropic_version: String,
 }
@@ -23,7 +22,6 @@ impl MessagesClient {
         client: reqwest::Client,
         base_url: String,
         auth_headers: HeaderMap,
-        model_id: String,
         upstream_model: String,
         anthropic_version: String,
     ) -> Self {
@@ -31,7 +29,6 @@ impl MessagesClient {
             client,
             base_url,
             auth_headers,
-            model_id,
             upstream_model,
             anthropic_version,
         }
@@ -39,16 +36,12 @@ impl MessagesClient {
 }
 
 #[async_trait]
-impl<M> ModelApiProvider<M> for MessagesClient {
-    fn model_id(&self) -> &str {
-        &self.model_id
-    }
-
-    async fn execute(
+impl<M: Sync> Provider<M> for MessagesClient {
+    async fn http(
         &self,
-        mut req: ProviderRequest,
+        mut req: HttpProviderRequest,
         _metadata: &M,
-    ) -> Result<ProviderResponse, anyhow::Error> {
+    ) -> Result<HttpProviderResponse, ProviderError> {
         req.endpoint_path = "/messages".to_string();
         req.headers.insert(
             "anthropic-version",
@@ -193,9 +186,7 @@ mod tests {
             params,
         };
 
-        let client = build_client::<()>(&provider).expect("messages client should build");
-
-        assert_eq!(client.model_id(), "claude-sonnet-4");
+        assert!(build_client::<()>(&provider).is_ok());
     }
 
     #[test]
@@ -216,9 +207,7 @@ mod tests {
             params,
         };
 
-        let client = build_client::<()>(&provider).expect("messages client should build");
-
-        assert_eq!(client.model_id(), "claude-sonnet-4");
+        assert!(build_client::<()>(&provider).is_ok());
     }
 
     #[test]
@@ -316,9 +305,9 @@ mod tests {
     }
 }
 
-pub fn build_client<M>(
+pub fn build_client<M: Sync>(
     provider: &ProviderConfig,
-) -> Result<Arc<dyn ModelApiProvider<M>>, ConfigError> {
+) -> Result<Arc<dyn Provider<M>>, ConfigError> {
     let api_key = provider
         .params
         .get("api_key")
@@ -375,7 +364,6 @@ pub fn build_client<M>(
         reqwest::Client::new(),
         base_url,
         headers,
-        provider.model_id.clone(),
         upstream_model,
         anthropic_version,
     )))

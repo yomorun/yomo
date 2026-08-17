@@ -16,14 +16,14 @@ use serde_json::Value;
 use tracing::{Instrument, Span, field, info_span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
-use crate::llm_provider::openai_compatible::mapper::ensure_tool_call_id;
-use crate::llm_provider::{
-    FinishReason, Provider, ProviderError, ToolCall as ProviderToolCall, UnifiedEvent,
-    UnifiedResponse,
-};
 use crate::openai_types::{
     ChatCompletionRequest, Content, FunctionDefinition, Message, Role, ToolCall as OpenAIToolCall,
     ToolCallFunction, ToolDefinition, Usage,
+};
+use crate::provider::openai_compatible::mapper::ensure_tool_call_id;
+use crate::provider::{
+    FinishReason, Provider, ProviderError, ToolCall as ProviderToolCall, UnifiedEvent,
+    UnifiedResponse,
 };
 use crate::trace::record_usage_attributes;
 use crate::usage_handler::{EndpointUsage, NoopUsageHandler, UsageHandler, aggregate_to_openai};
@@ -1111,11 +1111,11 @@ mod tests {
         AgentLoopConfig, AgentLoopResult, compose_assistant_tool_call_content,
         resolve_tool_call_name, run_agent_loop,
     };
-    use crate::llm_provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
-    use crate::model_api_provider::GenerateContentUsage;
     use crate::openai_types::{
         ChatCompletionRequest, Content, Message, Role, Usage as OpenAIUsage,
     };
+    use crate::provider::GenerateContentUsage;
+    use crate::provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
     use crate::tool_invoker::ToolInvoker;
     use crate::types::{RequestHeaders, ToolRequest, ToolResponse};
     use crate::usage_handler::{EndpointUsage, UsageHandler};
@@ -1138,10 +1138,6 @@ mod tests {
 
     #[async_trait]
     impl Provider<()> for StaticStreamProvider {
-        fn model_id(&self) -> &str {
-            "mock-model"
-        }
-
         async fn complete(
             &self,
             _request: ChatCompletionRequest,
@@ -1153,7 +1149,7 @@ mod tests {
         async fn stream<'a>(
             &'a self,
             _request: ChatCompletionRequest,
-            _metadata: &(),
+            _metadata: &'a (),
         ) -> Result<
             Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
             ProviderError,
@@ -1170,10 +1166,6 @@ mod tests {
 
     #[async_trait]
     impl Provider<()> for StaticCompleteProvider {
-        fn model_id(&self) -> &str {
-            "mock-model"
-        }
-
         async fn complete(
             &self,
             _request: ChatCompletionRequest,
@@ -1185,7 +1177,7 @@ mod tests {
         async fn stream<'a>(
             &'a self,
             _request: ChatCompletionRequest,
-            _metadata: &(),
+            _metadata: &'a (),
         ) -> Result<
             Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
             ProviderError,
@@ -1196,10 +1188,6 @@ mod tests {
 
     #[async_trait]
     impl Provider<()> for SequencedStreamProvider {
-        fn model_id(&self) -> &str {
-            "mock-model"
-        }
-
         async fn complete(
             &self,
             _request: ChatCompletionRequest,
@@ -1211,7 +1199,7 @@ mod tests {
         async fn stream<'a>(
             &'a self,
             _request: ChatCompletionRequest,
-            _metadata: &(),
+            _metadata: &'a (),
         ) -> Result<
             Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
             ProviderError,
@@ -1539,7 +1527,7 @@ mod tests {
                 output_text: "hello".to_string(),
                 reasoning_content: None,
                 tool_calls: None,
-                finish_reason: crate::llm_provider::FinishReason::Stop,
+                finish_reason: crate::provider::FinishReason::Stop,
                 usage: generate_content_usage(11, 7, 18),
             },
         };

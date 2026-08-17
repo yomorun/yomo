@@ -22,11 +22,9 @@ use yomo::{
     bridge::Bridge,
     client::Client,
     connector::MemoryConnector,
+    endpoint_api::build_endpoint_api,
     http_auth::require_bearer_auth,
-    llm_api::build_llm_api,
     metadata_mgr::MetadataMgrImpl,
-    model_api::build_model_api,
-    model_list::build_model_list_api,
     openai_http_mapping::openai_error_response,
     provider_registry,
     router::RouterImpl,
@@ -214,26 +212,17 @@ async fn serve(opt: ServeOptions) -> Result<()> {
     )?;
 
     let tool_invoker = Arc::new(ConnToolInvoker::new(Arc::new(connector.to_owned())));
+    let endpoint_usage_handler = Arc::new(NoopUsageHandler::default());
     app = app.nest(
         "/v1",
-        build_llm_api(
+        build_endpoint_api(
             tool_mgr,
             provider_registry.clone(),
             tool_invoker,
             yomo::agent_loop::AgentLoopConfig::<()>::default(),
+            endpoint_usage_handler,
         )
         .await?,
-    );
-
-    let model_api_usage_handler = Arc::new(NoopUsageHandler::default());
-    app = app.nest(
-        "/v1",
-        build_model_api(provider_registry.clone(), model_api_usage_handler).await?,
-    );
-
-    app = app.nest(
-        "/v1",
-        build_model_list_api(provider_registry.clone()).await?,
     );
 
     let mut tool_api_prefix = String::new();
@@ -254,8 +243,7 @@ async fn serve(opt: ServeOptions) -> Result<()> {
         config.http_api.host, config.http_api.port,
     );
 
-    info!("LLM API enabled at /v1");
-    info!("Model API enabled at /v1");
+    info!("Endpoint API enabled at /v1");
 
     if !tool_api_prefix.is_empty() {
         info!("Tool API enabled at {}", tool_api_prefix);

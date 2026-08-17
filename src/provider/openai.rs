@@ -6,14 +6,14 @@ use futures_util::StreamExt;
 use std::collections::HashMap;
 use std::pin::Pin;
 
-use crate::llm_provider::openai_compatible::client::{ApiError, ClientError};
-use crate::llm_provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
 use crate::openai_http_mapping::validate_openai_request;
 use crate::openai_types::{ChatCompletionRequest, ToolChoice};
+use crate::provider::openai_compatible::client::{ApiError, ClientError};
+use crate::provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
 use crate::serve_config::ConfigError;
 
 pub struct OpenAIProvider {
-    client: crate::llm_provider::openai_compatible::client::Client,
+    client: crate::provider::openai_compatible::client::Client,
     model_id: Option<String>,
 }
 
@@ -22,7 +22,7 @@ const CONTENT_FILTER_MESSAGE: &str =
 
 impl OpenAIProvider {
     pub fn new(
-        client: crate::llm_provider::openai_compatible::client::Client,
+        client: crate::provider::openai_compatible::client::Client,
         model_id: Option<String>,
     ) -> Self {
         Self { client, model_id }
@@ -30,11 +30,7 @@ impl OpenAIProvider {
 }
 
 #[async_trait]
-impl<M> Provider<M> for OpenAIProvider {
-    fn model_id(&self) -> &str {
-        "openai"
-    }
-
+impl<M: Sync> Provider<M> for OpenAIProvider {
     async fn complete(
         &self,
         mut request: ChatCompletionRequest,
@@ -46,19 +42,20 @@ impl<M> Provider<M> for OpenAIProvider {
         normalize_gpt5_request(&mut request);
         validate_openai_request(&request).map_err(ProviderError::internal)?;
         let model = request.model.clone();
+
         let response = self
             .client
             .chat_completions(request)
             .await
             .map_err(|err| map_openai_error(err, &model))?;
 
-        crate::llm_provider::openai_compatible::mapper::map_response(response)
+        crate::provider::openai_compatible::mapper::map_response(response)
     }
 
     async fn stream<'a>(
         &'a self,
         mut request: ChatCompletionRequest,
-        _metadata: &M,
+        _metadata: &'a M,
     ) -> Result<
         Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
         ProviderError,
@@ -69,21 +66,20 @@ impl<M> Provider<M> for OpenAIProvider {
         normalize_gpt5_request(&mut request);
         validate_openai_request(&request).map_err(ProviderError::internal)?;
         let model = request.model.clone();
-        let stream = self
-            .client
-            .chat_completions_stream(request)
-            .await
-            .map_err(|err| map_openai_error(err, &model))?;
-        let stream = stream;
+        let client = self.client.clone();
         let model = model.clone();
 
         let output = try_stream! {
+            let stream = client
+                .chat_completions_stream(request)
+                .await
+                .map_err(|err| map_openai_error(err, &model))?;
             futures_util::pin_mut!(stream);
-            let mut state = crate::llm_provider::openai_compatible::mapper::StreamMapState::default();
+            let mut state = crate::provider::openai_compatible::mapper::StreamMapState::default();
 
             while let Some(item) = stream.next().await {
                 let chunk = item.map_err(|err| map_openai_error(err, &model))?;
-                for event in crate::llm_provider::openai_compatible::mapper::map_stream_chunk(chunk, &mut state) {
+                for event in crate::provider::openai_compatible::mapper::map_stream_chunk(chunk, &mut state) {
                     yield event;
                 }
             }
@@ -126,13 +122,12 @@ pub fn build_openai_provider(
     let api_key = params
         .get("api_key")
         .ok_or_else(|| ConfigError::InvalidProvider("api_key is required".to_string()))?;
-    let mut config =
-        crate::llm_provider::openai_compatible::client::Config::new(api_key.to_string());
+    let mut config = crate::provider::openai_compatible::client::Config::new(api_key.to_string());
     let model_id = params.get("model").cloned();
     if let Some(base_url) = params.get("base_url") {
         config = config.base_url(base_url.to_string());
     }
-    let client = crate::llm_provider::openai_compatible::client::Client::new(config)
+    let client = crate::provider::openai_compatible::client::Client::new(config)
         .map_err(|err| ConfigError::InvalidProvider(err.to_string()))?;
     Ok(OpenAIProvider::new(client, model_id))
 }

@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
 
+use crate::endpoint_api::EndpointKind;
 use crate::tls::TlsConfig;
 
 #[derive(Debug)]
@@ -26,20 +27,6 @@ impl fmt::Display for ConfigError {
 
 impl Error for ConfigError {}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum EndpointKind {
-    ChatCompletions,
-    Messages,
-    Responses,
-    Embeddings,
-    Rerank,
-    AudioSpeech,
-    AudioTranscriptions,
-    ImagesGenerations,
-    ImagesEdits,
-    ModelsGenerateContent,
-}
-
 impl EndpointKind {
     pub fn as_path(&self) -> &'static str {
         match self {
@@ -53,6 +40,7 @@ impl EndpointKind {
             EndpointKind::ImagesGenerations => "/images/generations",
             EndpointKind::ImagesEdits => "/images/edits",
             EndpointKind::ModelsGenerateContent => "/models/:generateContent",
+            EndpointKind::ModelsStreamGenerateContent => "/models/:streamGenerateContent",
         }
     }
 
@@ -62,8 +50,8 @@ impl EndpointKind {
     }
 
     pub fn from_request_path(path: &str) -> Option<Self> {
-        if parse_generate_content_model(path).is_some() {
-            return Some(Self::ModelsGenerateContent);
+        if let Some(action) = parse_generate_content_action(path) {
+            return Some(action.endpoint);
         }
         Self::from_path(path)
     }
@@ -80,6 +68,7 @@ impl EndpointKind {
             "/images/generations" => Some(Self::ImagesGenerations),
             "/images/edits" => Some(Self::ImagesEdits),
             "/models/:generateContent" => Some(Self::ModelsGenerateContent),
+            "/models/:streamGenerateContent" => Some(Self::ModelsStreamGenerateContent),
             _ => None,
         }
     }
@@ -132,13 +121,35 @@ impl EndpointConfig {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GenerateContentAction {
+    pub model: String,
+    pub endpoint: EndpointKind,
+}
+
 pub fn parse_generate_content_model(endpoint: &str) -> Option<String> {
-    endpoint
-        .strip_prefix("/models/")
-        .and_then(|value| value.strip_suffix(":generateContent"))
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
+    parse_generate_content_action(endpoint).and_then(|action| {
+        (action.endpoint == EndpointKind::ModelsGenerateContent).then_some(action.model)
+    })
+}
+
+pub fn parse_generate_content_action(endpoint: &str) -> Option<GenerateContentAction> {
+    let value = endpoint.strip_prefix("/models/")?;
+    let (model, endpoint) = if let Some(model) = value.strip_suffix(":generateContent") {
+        (model, EndpointKind::ModelsGenerateContent)
+    } else if let Some(model) = value.strip_suffix(":streamGenerateContent") {
+        (model, EndpointKind::ModelsStreamGenerateContent)
+    } else {
+        return None;
+    };
+    let model = model.trim();
+    if model.is_empty() {
+        return None;
+    }
+    Some(GenerateContentAction {
+        model: model.to_string(),
+        endpoint,
+    })
 }
 
 /// Default host address
@@ -293,5 +304,48 @@ impl ServeConfig {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{EndpointKind, parse_generate_content_action, parse_generate_content_model};
+
+    #[test]
+    fn parses_generate_content_action() {
+        let action = parse_generate_content_action("/models/gemini-2.5-pro:generateContent")
+            .expect("parse generateContent action");
+
+        assert_eq!(action.model, "gemini-2.5-pro");
+        assert_eq!(action.endpoint, EndpointKind::ModelsGenerateContent);
+    }
+
+    #[test]
+    fn parses_stream_generate_content_action() {
+        let action = parse_generate_content_action("/models/gemini-2.5-pro:streamGenerateContent")
+            .expect("parse streamGenerateContent action");
+
+        assert_eq!(action.model, "gemini-2.5-pro");
+        assert_eq!(action.endpoint, EndpointKind::ModelsStreamGenerateContent);
+    }
+
+    #[test]
+    fn parse_generate_content_model_only_accepts_non_stream_action() {
+        assert_eq!(
+            parse_generate_content_model("/models/gemini-2.5-pro:generateContent"),
+            Some("gemini-2.5-pro".to_string())
+        );
+        assert_eq!(
+            parse_generate_content_model("/models/gemini-2.5-pro:streamGenerateContent"),
+            None
+        );
+    }
+
+    #[test]
+    fn endpoint_kind_resolves_stream_generate_content_request_path() {
+        assert_eq!(
+            EndpointKind::from_request_path("/models/gemini-2.5-pro:streamGenerateContent"),
+            Some(EndpointKind::ModelsStreamGenerateContent)
+        );
     }
 }

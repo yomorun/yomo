@@ -1,9 +1,9 @@
 use log::warn;
 use serde_json::{Value, json};
 
-use crate::llm_provider::{FinishReason, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse};
-use crate::model_api_provider::MessagesUsage;
 use crate::openai_types::{ChatCompletionRequest, Content, ContentPart, Role, ToolChoice};
+use crate::provider::MessagesUsage;
+use crate::provider::{FinishReason, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse};
 use crate::usage_handler::EndpointUsage;
 
 use super::types::{

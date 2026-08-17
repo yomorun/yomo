@@ -6,10 +6,10 @@ use futures_util::StreamExt;
 use std::collections::HashMap;
 use std::pin::Pin;
 
-use crate::llm_provider::openai_compatible::client::{ApiError, ClientError};
-use crate::llm_provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
 use crate::openai_http_mapping::validate_openai_request;
 use crate::openai_types::ChatCompletionRequest;
+use crate::provider::openai_compatible::client::{ApiError, ClientError};
+use crate::provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
 use crate::serve_config::ConfigError;
 
 pub mod client;
@@ -32,11 +32,7 @@ impl OpenAICompatibleProvider {
 }
 
 #[async_trait]
-impl<M> Provider<M> for OpenAICompatibleProvider {
-    fn model_id(&self) -> &str {
-        "openai-compatible"
-    }
-
+impl<M: Sync> Provider<M> for OpenAICompatibleProvider {
     async fn complete(
         &self,
         mut request: ChatCompletionRequest,
@@ -46,6 +42,7 @@ impl<M> Provider<M> for OpenAICompatibleProvider {
             request.model = model_id.clone();
         }
         validate_request(&request)?;
+
         let response = self
             .client
             .chat_completions(request)
@@ -58,7 +55,7 @@ impl<M> Provider<M> for OpenAICompatibleProvider {
     async fn stream<'a>(
         &'a self,
         mut request: ChatCompletionRequest,
-        _metadata: &M,
+        _metadata: &'a M,
     ) -> Result<
         Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
         ProviderError,
@@ -67,14 +64,13 @@ impl<M> Provider<M> for OpenAICompatibleProvider {
             request.model = model_id.clone();
         }
         validate_request(&request)?;
-        let stream = self
-            .client
-            .chat_completions_stream(request)
-            .await
-            .map_err(map_openai_error)?;
-        let stream = stream;
+        let client = self.client.clone();
 
         let output = try_stream! {
+            let stream = client
+                .chat_completions_stream(request)
+                .await
+                .map_err(map_openai_error)?;
             futures_util::pin_mut!(stream);
             let mut state = mapper::StreamMapState::default();
 
@@ -133,9 +129,9 @@ fn validate_request(request: &ChatCompletionRequest) -> Result<(), ProviderError
 mod tests {
     use super::CONTENT_FILTER_MESSAGE;
     use super::map_openai_error;
-    use crate::llm_provider::ProviderError;
-    use crate::llm_provider::openai_compatible::client::{ApiError, ClientError};
     use crate::openai_types::ErrorDetail;
+    use crate::provider::ProviderError;
+    use crate::provider::openai_compatible::client::{ApiError, ClientError};
 
     #[test]
     fn map_openai_error_rewrites_content_filter_message() {

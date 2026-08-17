@@ -11,15 +11,14 @@ use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::OnceCell;
 
-use crate::model_api_provider::provider::{
-    ModelApiProvider, ProviderBody, ProviderRequest, ProviderResponse, parse_stream_flag,
-    rewrite_messages_body,
+use crate::provider::{
+    HttpProviderRequest, HttpProviderResponse, Provider, ProviderBody, ProviderError,
+    parse_stream_flag, rewrite_messages_body,
 };
 use crate::serve_config::{ConfigError, ProviderConfig};
 
 #[derive(Clone)]
 pub struct BedrockMessagesClient {
-    model_id: String,
     bedrock_model: String,
     aws_region: String,
     anthropic_version: String,
@@ -30,7 +29,6 @@ pub struct BedrockMessagesClient {
 
 impl BedrockMessagesClient {
     pub fn new(
-        model_id: String,
         bedrock_model: String,
         aws_region: String,
         anthropic_version: String,
@@ -38,7 +36,6 @@ impl BedrockMessagesClient {
         aws_bearer_token: Option<String>,
     ) -> Self {
         Self {
-            model_id,
             bedrock_model,
             aws_region,
             anthropic_version,
@@ -69,16 +66,12 @@ impl BedrockMessagesClient {
 }
 
 #[async_trait]
-impl<M> ModelApiProvider<M> for BedrockMessagesClient {
-    fn model_id(&self) -> &str {
-        &self.model_id
-    }
-
-    async fn execute(
+impl<M: Sync> Provider<M> for BedrockMessagesClient {
+    async fn http(
         &self,
-        req: ProviderRequest,
+        req: HttpProviderRequest,
         _metadata: &M,
-    ) -> Result<ProviderResponse, anyhow::Error> {
+    ) -> Result<HttpProviderResponse, ProviderError> {
         let stream = parse_stream_flag(&req.body);
         let body =
             rewrite_messages_body(&req.body, &self.anthropic_version, self.default_max_tokens)?;
@@ -98,9 +91,9 @@ impl<M> ModelApiProvider<M> for BedrockMessagesClient {
                     if let Some(response) = passthrough_bad_request(&err) {
                         return Ok(response);
                     }
-                    return Err(anyhow!(
+                    return Err(ProviderError::internal(format!(
                         "bedrock invoke_model_with_response_stream failed: {err:?}"
-                    ));
+                    )));
                 }
             };
 
@@ -148,7 +141,7 @@ impl<M> ModelApiProvider<M> for BedrockMessagesClient {
                     .expect("static header value must be valid"),
             );
 
-            Ok(ProviderResponse {
+            Ok(HttpProviderResponse {
                 status: StatusCode::OK,
                 headers,
                 body: ProviderBody::Stream(Box::pin(mapped)),
@@ -168,7 +161,9 @@ impl<M> ModelApiProvider<M> for BedrockMessagesClient {
                     if let Some(response) = passthrough_bad_request(&err) {
                         return Ok(response);
                     }
-                    return Err(anyhow!("bedrock invoke_model failed: {err:?}"));
+                    return Err(ProviderError::internal(format!(
+                        "bedrock invoke_model failed: {err:?}"
+                    )));
                 }
             };
 
@@ -179,7 +174,7 @@ impl<M> ModelApiProvider<M> for BedrockMessagesClient {
                     .parse()
                     .expect("static header value must be valid"),
             );
-            Ok(ProviderResponse {
+            Ok(HttpProviderResponse {
                 status: StatusCode::OK,
                 headers,
                 body: ProviderBody::Full(Bytes::from(response.body.into_inner())),
@@ -268,7 +263,7 @@ fn build_sse_frame(payload: &[u8]) -> String {
 
 fn passthrough_bad_request<E>(
     err: &aws_sdk_bedrockruntime::error::SdkError<E>,
-) -> Option<ProviderResponse>
+) -> Option<HttpProviderResponse>
 where
     E: std::error::Error + Send + Sync + 'static,
 {
@@ -284,7 +279,7 @@ fn passthrough_bad_request_response(
     status: StatusCode,
     content_type: Option<&str>,
     payload: Option<&[u8]>,
-) -> Option<ProviderResponse> {
+) -> Option<HttpProviderResponse> {
     if status != StatusCode::BAD_REQUEST {
         return None;
     }
@@ -299,7 +294,7 @@ fn passthrough_bad_request_response(
         .map(|bytes| Bytes::copy_from_slice(bytes))
         .unwrap_or_default();
 
-    Some(ProviderResponse {
+    Some(HttpProviderResponse {
         status,
         headers,
         body: ProviderBody::Full(payload),
@@ -387,9 +382,7 @@ mod tests {
             params,
         };
 
-        let client = build_client::<()>(&provider).expect("bedrock client should build");
-
-        assert_eq!(client.model_id(), "claude-sonnet-4-6");
+        assert!(build_client::<()>(&provider).is_ok());
     }
 
     /// Verifies bedrock client creation rejects missing bearer token config.
@@ -436,10 +429,10 @@ mod tests {
             .and_then(|value| value.to_str().ok());
         assert_eq!(content_type, Some("application/json"));
         match response.body {
-            crate::model_api_provider::ProviderBody::Full(payload) => {
+            crate::provider::ProviderBody::Full(payload) => {
                 assert_eq!(payload.as_ref(), b"{\"message\":\"bad input\"}");
             }
-            crate::model_api_provider::ProviderBody::Stream(_) => {
+            crate::provider::ProviderBody::Stream(_) => {
                 panic!("expected full payload response")
             }
         }
@@ -493,9 +486,9 @@ mod tests {
     }
 }
 
-pub fn build_client<M>(
+pub fn build_client<M: Sync>(
     provider: &ProviderConfig,
-) -> Result<Arc<dyn ModelApiProvider<M>>, ConfigError> {
+) -> Result<Arc<dyn Provider<M>>, ConfigError> {
     let bedrock_model = provider
         .params
         .get("model")
@@ -524,7 +517,6 @@ pub fn build_client<M>(
         .ok_or_else(|| ConfigError::InvalidProvider("aws_bearer_token is required".to_string()))?;
 
     Ok(Arc::new(BedrockMessagesClient::new(
-        provider.model_id.clone(),
         bedrock_model,
         aws_region,
         anthropic_version,

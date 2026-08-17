@@ -7,11 +7,11 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::pin::Pin;
 
-use crate::llm_provider::openai_compatible::client::{ApiError, ClientError};
-use crate::llm_provider::openai_compatible::{client, mapper};
-use crate::llm_provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
 use crate::openai_http_mapping::validate_openai_request;
 use crate::openai_types::{ChatCompletionRequest, Content, ContentPart, ErrorDetail, Role};
+use crate::provider::openai_compatible::client::{ApiError, ClientError};
+use crate::provider::openai_compatible::{client, mapper};
+use crate::provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
 use crate::serve_config::ConfigError;
 
 #[derive(Clone)]
@@ -27,11 +27,7 @@ impl VllmDeepseekProvider {
 }
 
 #[async_trait]
-impl<M> Provider<M> for VllmDeepseekProvider {
-    fn model_id(&self) -> &str {
-        self.model_id.as_deref().unwrap_or("deepseek-v4-flash")
-    }
-
+impl<M: Sync> Provider<M> for VllmDeepseekProvider {
     async fn complete(
         &self,
         mut request: ChatCompletionRequest,
@@ -42,6 +38,7 @@ impl<M> Provider<M> for VllmDeepseekProvider {
         }
         let request = normalize_request(request)?;
         validate_request(&request)?;
+
         let response = self
             .client
             .chat_completions(request)
@@ -53,7 +50,7 @@ impl<M> Provider<M> for VllmDeepseekProvider {
     async fn stream<'a>(
         &'a self,
         mut request: ChatCompletionRequest,
-        _metadata: &M,
+        _metadata: &'a M,
     ) -> Result<
         Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
         ProviderError,
@@ -63,13 +60,14 @@ impl<M> Provider<M> for VllmDeepseekProvider {
         }
         let request = normalize_request(request)?;
         validate_request(&request)?;
-        let stream = self
-            .client
-            .chat_completions_stream(request)
-            .await
-            .map_err(map_openai_error)?;
+        let client = self.client.clone();
 
         let output = try_stream! {
+            let stream = client
+                .chat_completions_stream(request)
+                .await
+                .map_err(map_openai_error)?;
+
             futures_util::pin_mut!(stream);
             let mut state = mapper::StreamMapState::default();
 

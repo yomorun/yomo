@@ -5,8 +5,8 @@ use futures_core::Stream;
 use tracing::Span;
 
 use crate::{
-    llm_provider::{ProviderError, UnifiedEvent},
     openai_http_mapping::stream_openai_chunks,
+    provider::{ProviderError, UnifiedEvent},
 };
 
 pub type UnifiedEventStream =

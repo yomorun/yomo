@@ -10,8 +10,8 @@ use futures_core::Stream;
 use futures_util::StreamExt;
 use serde_json::Value;
 
-use crate::llm_provider::ProviderError;
 use crate::openai_types::ErrorDetail;
+use crate::provider::ProviderError;
 use crate::serve_config::ConfigError;
 
 use super::types::{
@@ -339,8 +339,8 @@ fn passthrough_bad_request_response(
 #[cfg(test)]
 mod tests {
     use super::{ClientError, map_client_error, passthrough_bad_request_response};
-    use crate::llm_provider::ProviderError;
     use crate::openai_types::ErrorDetail;
+    use crate::provider::ProviderError;
     use axum::http::StatusCode;
 
     #[test]

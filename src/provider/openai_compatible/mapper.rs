@@ -3,11 +3,11 @@ use std::collections::HashMap;
 use serde_json;
 use serde_json::Value;
 
-use crate::llm_provider::{FinishReason, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse};
 use crate::openai_types::{
     ChatCompletionChunk, ChatCompletionChunkToolCall, ChatCompletionChunkToolCallFunction,
     ChatCompletionResponse, Content as OpenAIContent, ContentPart, ToolCall as OpenAIToolCall,
 };
+use crate::provider::{FinishReason, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse};
 use crate::usage_handler::EndpointUsage;
 
 #[derive(Default)]
@@ -285,12 +285,12 @@ fn extract_text(content: Option<OpenAIContent>) -> String {
 #[cfg(test)]
 mod tests {
     use super::{StreamMapState, map_response, map_stream_chunk};
-    use crate::llm_provider::UnifiedEvent;
     use crate::openai_types::{
         ChatCompletionChoice, ChatCompletionChunk, ChatCompletionChunkChoice,
         ChatCompletionChunkDelta, ChatCompletionChunkToolCall, ChatCompletionChunkToolCallFunction,
         ChatCompletionMessage, ChatCompletionResponse, Usage,
     };
+    use crate::provider::UnifiedEvent;
 
     #[test]
     fn map_response_maps_reasoning_content() {

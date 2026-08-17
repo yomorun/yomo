@@ -8,11 +8,11 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::pin::Pin;
 
-use crate::llm_provider::openai_compatible::client::{ApiError, ClientError};
-use crate::llm_provider::openai_compatible::{client, mapper};
-use crate::llm_provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
 use crate::openai_http_mapping::validate_openai_request;
 use crate::openai_types::{ChatCompletionRequest, Message, Role, ThinkingConfig, ThinkingType};
+use crate::provider::openai_compatible::client::{ApiError, ClientError};
+use crate::provider::openai_compatible::{client, mapper};
+use crate::provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
 use crate::serve_config::ConfigError;
 
 #[derive(Clone)]
@@ -45,11 +45,7 @@ impl TokenHubProvider {
 }
 
 #[async_trait]
-impl<M> Provider<M> for TokenHubProvider {
-    fn model_id(&self) -> &str {
-        "tokenhub"
-    }
-
+impl<M: Sync> Provider<M> for TokenHubProvider {
     async fn complete(
         &self,
         mut request: ChatCompletionRequest,
@@ -74,7 +70,7 @@ impl<M> Provider<M> for TokenHubProvider {
     async fn stream<'a>(
         &'a self,
         mut request: ChatCompletionRequest,
-        _metadata: &M,
+        _metadata: &'a M,
     ) -> Result<
         Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
         ProviderError,
@@ -85,14 +81,13 @@ impl<M> Provider<M> for TokenHubProvider {
 
         normalize_tokenhub_request(&mut request);
         validate_request(&request)?;
-
-        let stream = self
-            .client
-            .chat_completions_stream(request)
-            .await
-            .map_err(map_openai_error)?;
+        let client = self.client.clone();
 
         let output = try_stream! {
+            let stream = client
+                .chat_completions_stream(request)
+                .await
+                .map_err(map_openai_error)?;
             futures_util::pin_mut!(stream);
             let mut state = mapper::StreamMapState::default();
 
@@ -326,8 +321,8 @@ fn map_tokenhub_custom_error(value: Value) -> Option<crate::openai_types::ErrorD
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::llm_provider::openai_compatible::client::{ApiError, ClientError};
     use crate::openai_types::{Content, ToolCall, ToolCallFunction};
+    use crate::provider::openai_compatible::client::{ApiError, ClientError};
 
     fn request_with_messages(messages: Vec<Message>) -> ChatCompletionRequest {
         ChatCompletionRequest {

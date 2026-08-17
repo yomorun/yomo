@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::model_api_provider::MessagesUsage;
+use crate::provider::MessagesUsage;
 
 pub(super) const DEFAULT_ANTHROPIC_VERSION: &str = "2023-06-01";
 pub(super) const DEFAULT_BEDROCK_ANTHROPIC_VERSION: &str = "bedrock-2023-05-31";

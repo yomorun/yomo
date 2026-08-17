@@ -8,9 +8,138 @@ use futures_core::Stream;
 use futures_util::StreamExt;
 use futures_util::stream;
 use reqwest::multipart::{Form, Part};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub struct ProviderRequest {
+use crate::openai_types::{ChatCompletionRequest, ErrorDetail};
+use crate::usage_handler::EndpointUsage;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FinishReason {
+    Stop,
+    Length,
+    ToolCalls,
+    ContentFilter,
+    Other,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCall {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    pub name: String,
+    pub description: String,
+    pub arguments: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnifiedResponse {
+    pub request_id: String,
+    pub created_at: String,
+    pub model: String,
+    pub output_text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCall>>,
+    pub finish_reason: FinishReason,
+    pub usage: EndpointUsage,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum UnifiedEvent {
+    ResponseCreated {
+        id: String,
+        model: String,
+        created_at: String,
+    },
+    ResponseInProgress {
+        id: String,
+        model: String,
+        created_at: String,
+    },
+    OutputItemAdded {
+        id: String,
+        item_type: String,
+    },
+    OutputItemDone {
+        id: String,
+        item_type: String,
+    },
+    ContentPartAdded {
+        item_id: String,
+        part_type: String,
+    },
+    ContentPartDelta {
+        item_id: String,
+        part_type: String,
+        delta: String,
+    },
+    ContentPartDone {
+        item_id: String,
+        part_type: String,
+    },
+    ThinkingDelta {
+        id: String,
+        delta: String,
+    },
+    ThinkingDone {
+        id: String,
+        summary: Option<String>,
+    },
+    ToolCallDelta {
+        id: String,
+        name: String,
+        arguments_delta: String,
+    },
+    ToolCallDone {
+        id: String,
+        name: String,
+        arguments: String,
+    },
+    ServerToolCall {
+        tool_call_id: String,
+        name: String,
+        arguments: String,
+    },
+    ServerToolCallResult {
+        tool_call_id: String,
+        name: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        result: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+    MessageStart {
+        id: String,
+        role: String,
+    },
+    MessageDelta {
+        id: String,
+        delta: String,
+    },
+    MessageStop {
+        id: String,
+        stop_reason: Option<String>,
+    },
+    Usage {
+        usage: EndpointUsage,
+    },
+    Completed {
+        finish_reason: Option<String>,
+    },
+    Failed {
+        code: String,
+        message: String,
+    },
+    Cancelled {
+        reason: String,
+    },
+}
+
+pub struct HttpProviderRequest {
     pub method: Method,
     pub endpoint_path: String,
     pub headers: HeaderMap,
@@ -24,21 +153,98 @@ pub enum ProviderBody {
     Stream(Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send>>),
 }
 
-pub struct ProviderResponse {
+pub struct HttpProviderResponse {
     pub status: StatusCode,
     pub headers: HeaderMap,
     pub body: ProviderBody,
 }
 
-#[async_trait]
-pub trait ModelApiProvider<M>: Send + Sync {
-    fn model_id(&self) -> &str;
+#[derive(Debug)]
+pub enum ProviderError {
+    Public {
+        status: StatusCode,
+        error: ErrorDetail,
+    },
+    Internal {
+        upstream_http_status: StatusCode,
+        message: String,
+    },
+}
 
-    async fn execute(
+impl std::fmt::Display for ProviderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProviderError::Public { error, .. } => write!(f, "provider error: {}", error.message),
+            ProviderError::Internal { message, .. } => write!(f, "provider error: {message}"),
+        }
+    }
+}
+
+impl ProviderError {
+    pub fn internal(message: impl Into<String>) -> Self {
+        Self::Internal {
+            upstream_http_status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: message.into(),
+        }
+    }
+
+    pub fn internal_with_upstream_status(status: StatusCode, message: impl Into<String>) -> Self {
+        Self::Internal {
+            upstream_http_status: status,
+            message: message.into(),
+        }
+    }
+}
+
+impl std::error::Error for ProviderError {}
+
+impl From<anyhow::Error> for ProviderError {
+    fn from(err: anyhow::Error) -> Self {
+        ProviderError::internal(err.to_string())
+    }
+}
+
+impl From<reqwest::Error> for ProviderError {
+    fn from(err: reqwest::Error) -> Self {
+        ProviderError::internal(err.to_string())
+    }
+}
+
+/// Executes requests for one configured model provider across supported endpoints.
+#[async_trait]
+pub trait Provider<M: Sync>: Send + Sync {
+    async fn complete(
         &self,
-        req: ProviderRequest,
-        metadata: &M,
-    ) -> Result<ProviderResponse, anyhow::Error>;
+        _request: ChatCompletionRequest,
+        _metadata: &M,
+    ) -> Result<UnifiedResponse, ProviderError> {
+        Err(ProviderError::internal(
+            "provider does not support chat completion requests",
+        ))
+    }
+
+    async fn stream<'a>(
+        &'a self,
+        _request: ChatCompletionRequest,
+        _metadata: &'a M,
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
+        ProviderError,
+    > {
+        Err(ProviderError::internal(
+            "provider does not support chat completion streams",
+        ))
+    }
+
+    async fn http(
+        &self,
+        _request: HttpProviderRequest,
+        _metadata: &M,
+    ) -> Result<HttpProviderResponse, ProviderError> {
+        Err(ProviderError::internal(
+            "provider does not support HTTP endpoint requests",
+        ))
+    }
 
     fn extract_request_id(&self, payload_json: &Value) -> Option<String> {
         payload_json
@@ -82,7 +288,6 @@ fn inject_usage_value(value: &mut Value, usage: Value) -> bool {
     let Some(obj) = value.as_object_mut() else {
         return false;
     };
-
     if obj.contains_key("usage") {
         obj.insert("usage".to_string(), usage);
         return true;
@@ -91,7 +296,6 @@ fn inject_usage_value(value: &mut Value, usage: Value) -> bool {
         obj.insert("usageMetadata".to_string(), usage);
         return true;
     }
-
     if let Some(response) = obj.get_mut("response").and_then(Value::as_object_mut) {
         if response.contains_key("usage") {
             response.insert("usage".to_string(), usage);
@@ -102,7 +306,6 @@ fn inject_usage_value(value: &mut Value, usage: Value) -> bool {
             return true;
         }
     }
-
     false
 }
 
@@ -122,8 +325,20 @@ pub async fn proxy_request(
     base_url: &str,
     mut auth_headers: HeaderMap,
     model_override: Option<&str>,
-    req: ProviderRequest,
-) -> Result<ProviderResponse, anyhow::Error> {
+    req: HttpProviderRequest,
+) -> Result<HttpProviderResponse, ProviderError> {
+    proxy_request_inner(client, base_url, &mut auth_headers, model_override, req)
+        .await
+        .map_err(|err| ProviderError::internal(err.to_string()))
+}
+
+async fn proxy_request_inner(
+    client: &reqwest::Client,
+    base_url: &str,
+    auth_headers: &mut HeaderMap,
+    model_override: Option<&str>,
+    req: HttpProviderRequest,
+) -> Result<HttpProviderResponse, anyhow::Error> {
     let url = format!("{}{}", base_url.trim_end_matches('/'), req.endpoint_path);
     let mut headers = filter_request_headers(req.headers);
     headers.extend(auth_headers.drain());
@@ -150,7 +365,6 @@ pub async fn proxy_request(
     }
 
     let response = builder.send().await.map_err(|err| anyhow!(err))?;
-
     let status = response.status();
     let mut resp_headers = filter_response_headers(response.headers());
     let is_stream_response = should_stream_response(req.is_stream, status);
@@ -161,16 +375,14 @@ pub async fn proxy_request(
             Ok(bytes) => Ok(bytes),
             Err(err) => Err(std::io::Error::new(std::io::ErrorKind::Other, err)),
         });
-        let body: Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send>> =
-            Box::pin(stream);
-        Ok(ProviderResponse {
+        Ok(HttpProviderResponse {
             status,
             headers: resp_headers,
-            body: ProviderBody::Stream(body),
+            body: ProviderBody::Stream(Box::pin(stream)),
         })
     } else {
         let bytes = response.bytes().await.map_err(|err| anyhow!(err))?;
-        Ok(ProviderResponse {
+        Ok(HttpProviderResponse {
             status,
             headers: resp_headers,
             body: ProviderBody::Full(bytes),
@@ -178,7 +390,7 @@ pub async fn proxy_request(
     }
 }
 
-pub(crate) fn should_stream_response(is_stream_request: bool, status: StatusCode) -> bool {
+pub fn should_stream_response(is_stream_request: bool, status: StatusCode) -> bool {
     is_stream_request && status.is_success()
 }
 
@@ -192,14 +404,14 @@ pub(crate) fn rewrite_json_model(body: &Bytes, model: &str) -> Result<Bytes, any
     Ok(Bytes::from(rewritten))
 }
 
-pub(crate) fn parse_stream_flag(body: &Bytes) -> bool {
+pub fn parse_stream_flag(body: &Bytes) -> bool {
     serde_json::from_slice::<Value>(body)
         .ok()
         .and_then(|value| value.get("stream").and_then(Value::as_bool))
         .unwrap_or(false)
 }
 
-pub(crate) fn rewrite_messages_body(
+pub fn rewrite_messages_body(
     body: &Bytes,
     anthropic_version: &str,
     default_max_tokens: u64,
@@ -208,7 +420,6 @@ pub(crate) fn rewrite_messages_body(
     if !value.is_object() {
         return Ok(body.clone());
     }
-
     {
         let obj = value
             .as_object_mut()
@@ -216,10 +427,8 @@ pub(crate) fn rewrite_messages_body(
         obj.remove("model");
         obj.remove("stream");
     }
-
     strip_cache_control_scope(&mut value);
     strip_bedrock_unsupported_beta_fields(&mut value);
-
     {
         let obj = value
             .as_object_mut()
@@ -235,23 +444,18 @@ pub(crate) fn rewrite_messages_body(
             );
         }
     }
-
     Ok(Bytes::from(serde_json::to_vec(&value)?))
 }
 
-// follow: https://code.claude.com/docs/en/errors#extra-inputs-are-not-permitted
 fn strip_bedrock_unsupported_beta_fields(value: &mut Value) {
     let Some(obj) = value.as_object_mut() else {
         return;
     };
-
     obj.remove("context_management");
     obj.remove("effort");
-
     let Some(tools) = obj.get_mut("tools").and_then(Value::as_array_mut) else {
         return;
     };
-
     for tool in tools {
         let Some(tool_obj) = tool.as_object_mut() else {
             continue;
@@ -273,17 +477,14 @@ pub(crate) async fn rewrite_multipart_model(
     let stream = stream::once(async move { Ok::<Bytes, multer::Error>(body.clone()) });
     let mut multipart = multer::Multipart::new(stream, boundary);
     let mut form = Form::new();
-
     while let Some(field) = multipart.next_field().await? {
         let name = field.name().unwrap_or("").to_string();
         if name == "model" {
             continue;
         }
-
         let filename = field.file_name().map(|value| value.to_string());
         let mime = field.content_type().map(|value| value.to_string());
         let bytes = field.bytes().await?;
-
         let mut part = Part::bytes(bytes.to_vec());
         if let Some(filename) = filename {
             part = part.file_name(filename);
@@ -293,20 +494,16 @@ pub(crate) async fn rewrite_multipart_model(
         }
         form = form.part(name, part);
     }
-
     Ok(form.text("model", model.to_string()))
 }
 
-pub(crate) fn filter_request_headers(headers: HeaderMap) -> HeaderMap {
+pub fn filter_request_headers(headers: HeaderMap) -> HeaderMap {
     let mut filtered = HeaderMap::new();
     for (key, value) in headers.iter() {
-        if key == axum::http::header::HOST {
-            continue;
-        }
-        if key == axum::http::header::CONTENT_LENGTH {
-            continue;
-        }
-        if is_hop_header(key.as_str()) {
+        if key == axum::http::header::HOST
+            || key == axum::http::header::CONTENT_LENGTH
+            || is_hop_header(key.as_str())
+        {
             continue;
         }
         filtered.insert(key.clone(), value.clone());
@@ -314,7 +511,7 @@ pub(crate) fn filter_request_headers(headers: HeaderMap) -> HeaderMap {
     filtered
 }
 
-pub(crate) fn filter_response_headers(headers: &HeaderMap) -> HeaderMap {
+pub fn filter_response_headers(headers: &HeaderMap) -> HeaderMap {
     let mut filtered = HeaderMap::new();
     for (key, value) in headers.iter() {
         if is_hop_header(key.as_str()) {
@@ -409,7 +606,6 @@ mod tests {
                 }
             ]
         });
-
         let rewritten = rewrite_messages_body(
             &Bytes::from(serde_json::to_vec(&request).expect("request json should serialize")),
             "bedrock-2023-05-31",
@@ -418,7 +614,6 @@ mod tests {
         .expect("rewrite should succeed");
         let parsed: Value =
             serde_json::from_slice(&rewritten).expect("rewritten json should parse");
-
         assert!(parsed.get("context_management").is_none());
         assert!(parsed.get("effort").is_none());
         assert!(parsed.get("model").is_none());
@@ -437,11 +632,8 @@ mod tests {
 
     #[test]
     fn rewrite_messages_body_keeps_existing_max_tokens() {
-        let request = json!({
-            "messages": [{"role": "user", "content": "hello"}],
-            "max_tokens": 123
-        });
-
+        let request =
+            json!({"messages": [{"role": "user", "content": "hello"}], "max_tokens": 123});
         let rewritten = rewrite_messages_body(
             &Bytes::from(serde_json::to_vec(&request).expect("request json should serialize")),
             "bedrock-2023-05-31",
@@ -450,7 +642,6 @@ mod tests {
         .expect("rewrite should succeed");
         let parsed: Value =
             serde_json::from_slice(&rewritten).expect("rewritten json should parse");
-
         assert_eq!(parsed.get("max_tokens"), Some(&json!(123)));
     }
 }

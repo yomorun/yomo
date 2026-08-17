@@ -1,15 +1,15 @@
 use std::collections::HashMap;
-use std::pin::Pin;
 
 use async_stream::try_stream;
 use async_trait::async_trait;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use log::warn;
+use std::pin::Pin;
 
-use crate::llm_provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
 use crate::openai_http_mapping::validate_openai_request;
 use crate::openai_types::ChatCompletionRequest;
+use crate::provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
 use crate::serve_config::ConfigError;
 
 use self::client::{Backend, BedrockClient, DirectClient, map_client_error, parse_auth_style};
@@ -48,11 +48,7 @@ impl AnthropicMessagesProvider {
 }
 
 #[async_trait]
-impl<M> Provider<M> for AnthropicMessagesProvider {
-    fn model_id(&self) -> &str {
-        "anthropic-messages"
-    }
-
+impl<M: Sync> Provider<M> for AnthropicMessagesProvider {
     async fn complete(
         &self,
         request: ChatCompletionRequest,
@@ -111,7 +107,7 @@ impl<M> Provider<M> for AnthropicMessagesProvider {
     async fn stream<'a>(
         &'a self,
         request: ChatCompletionRequest,
-        _metadata: &M,
+        _metadata: &'a M,
     ) -> Result<
         Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
         ProviderError,
@@ -276,14 +272,13 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::llm_provider::anthropic_messages::types::{
-        AnthropicContentBlock, AnthropicThinking,
-    };
-    use crate::llm_provider::anthropic_messages::types::{
-        StreamContentBlock, StreamContentDelta, StreamEvent, StreamMessage,
-    };
     use crate::openai_types::{
-        Content, FunctionDefinition, Message, Role, ToolChoice, ToolDefinition,
+        ChatCompletionRequest, Content, FunctionDefinition, Message, Role, ToolChoice,
+        ToolDefinition,
+    };
+    use crate::provider::anthropic_messages::types::{AnthropicContentBlock, AnthropicThinking};
+    use crate::provider::anthropic_messages::types::{
+        StreamContentBlock, StreamContentDelta, StreamEvent, StreamMessage,
     };
 
     fn basic_chat_request(temperature: Option<f32>, top_p: Option<f32>) -> ChatCompletionRequest {
@@ -947,7 +942,7 @@ mod tests {
         map_stream_event(
             StreamEvent::MessageDelta {
                 delta: None,
-                usage: Some(crate::model_api_provider::MessagesUsage {
+                usage: Some(crate::provider::MessagesUsage {
                     input_tokens: Some(10),
                     output_tokens: Some(2),
                     cache_creation_input_tokens: None,
