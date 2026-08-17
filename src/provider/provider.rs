@@ -2,6 +2,7 @@ use std::pin::Pin;
 
 use anyhow::anyhow;
 use async_trait::async_trait;
+use aws_sdk_bedrockruntime::error::SdkError;
 use axum::body::Bytes;
 use axum::http::{HeaderMap, Method, StatusCode};
 use futures_core::Stream;
@@ -309,6 +310,86 @@ fn inject_usage_value(value: &mut Value, usage: Value) -> bool {
     false
 }
 
+#[derive(Debug, Clone)]
+pub struct BedrockBadRequestPayload {
+    pub status: StatusCode,
+    pub content_type: Option<String>,
+    pub payload: Bytes,
+}
+
+pub fn extract_messages_request_id_json(payload_json: &Value) -> Option<String> {
+    payload_json
+        .get("id")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .or_else(|| {
+            payload_json
+                .get("message")
+                .and_then(|message| message.get("id"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+}
+
+pub fn extract_messages_usage_json(payload_json: &Value) -> Option<Value> {
+    non_null_messages_usage(payload_json.get("usage")).or_else(|| {
+        non_null_messages_usage(
+            payload_json
+                .get("message")
+                .and_then(|message| message.get("usage")),
+        )
+    })
+}
+
+pub fn inject_messages_usage_json(payload_json: &mut Value, usage: Value) -> bool {
+    let Some(obj) = payload_json.as_object_mut() else {
+        return false;
+    };
+    if obj.contains_key("usage") {
+        obj.insert("usage".to_string(), usage);
+        return true;
+    }
+    if let Some(message) = obj.get_mut("message").and_then(Value::as_object_mut) {
+        message.insert("usage".to_string(), usage);
+        return true;
+    }
+    false
+}
+
+pub fn extract_bedrock_bad_request<E>(err: &SdkError<E>) -> Option<BedrockBadRequestPayload>
+where
+    E: std::error::Error + Send + Sync + 'static,
+{
+    let raw_response = err.raw_response()?;
+    let status = StatusCode::from_u16(raw_response.status().as_u16()).ok()?;
+    let content_type = raw_response.headers().get("content-type");
+    let payload = raw_response.body().bytes();
+
+    extract_bedrock_bad_request_parts(status, content_type, payload)
+}
+
+pub fn extract_bedrock_bad_request_parts(
+    status: StatusCode,
+    content_type: Option<&str>,
+    payload: Option<&[u8]>,
+) -> Option<BedrockBadRequestPayload> {
+    if status != StatusCode::BAD_REQUEST {
+        return None;
+    }
+
+    Some(BedrockBadRequestPayload {
+        status,
+        content_type: content_type.map(str::to_string),
+        payload: payload
+            .map(Bytes::copy_from_slice)
+            .unwrap_or_else(Bytes::new),
+    })
+}
+
+fn non_null_messages_usage(value: Option<&Value>) -> Option<Value> {
+    value.filter(|usage| !usage.is_null()).cloned()
+}
+
 const HOP_HEADERS: [&str; 8] = [
     "connection",
     "keep-alive",
@@ -414,7 +495,7 @@ pub fn parse_stream_flag(body: &Bytes) -> bool {
 pub fn rewrite_messages_body(
     body: &Bytes,
     anthropic_version: &str,
-    default_max_tokens: u64,
+    default_max_tokens: i32,
 ) -> Result<Bytes, anyhow::Error> {
     let mut value: Value = serde_json::from_slice(body)?;
     if !value.is_object() {
@@ -564,7 +645,11 @@ fn is_hop_header(header: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{rewrite_messages_body, should_stream_response};
+    use super::{
+        extract_bedrock_bad_request_parts, extract_messages_request_id_json,
+        extract_messages_usage_json, inject_messages_usage_json, rewrite_messages_body,
+        should_stream_response,
+    };
     use axum::body::Bytes;
     use axum::http::StatusCode;
     use serde_json::{Value, json};
@@ -643,5 +728,63 @@ mod tests {
         let parsed: Value =
             serde_json::from_slice(&rewritten).expect("rewritten json should parse");
         assert_eq!(parsed.get("max_tokens"), Some(&json!(123)));
+    }
+
+    #[test]
+    fn extract_messages_request_id_json_supports_nested_message_id() {
+        let payload = json!({"message": {"id": "msg_nested"}});
+
+        let request_id = extract_messages_request_id_json(&payload);
+
+        assert_eq!(request_id.as_deref(), Some("msg_nested"));
+    }
+
+    #[test]
+    fn extract_messages_usage_json_ignores_null_usage() {
+        let payload = json!({"usage": null});
+
+        let usage = extract_messages_usage_json(&payload);
+
+        assert_eq!(usage, None);
+    }
+
+    #[test]
+    fn inject_messages_usage_json_updates_nested_message_usage() {
+        let mut payload = json!({"message": {"usage": {"input_tokens": 1}}});
+        let new_usage = json!({"input_tokens": 55});
+
+        let injected = inject_messages_usage_json(&mut payload, new_usage.clone());
+
+        assert!(injected);
+        assert_eq!(payload["message"]["usage"], new_usage);
+    }
+
+    #[test]
+    fn extract_bedrock_bad_request_parts_maps_bad_request_payload() {
+        let payload = br#"{"message":"bad input"}"#;
+
+        let mapped = extract_bedrock_bad_request_parts(
+            StatusCode::BAD_REQUEST,
+            Some("application/json"),
+            Some(payload),
+        )
+        .expect("bad request should be mapped");
+
+        assert_eq!(mapped.status, StatusCode::BAD_REQUEST);
+        assert_eq!(mapped.content_type.as_deref(), Some("application/json"));
+        assert_eq!(mapped.payload, Bytes::from_static(payload));
+    }
+
+    #[test]
+    fn extract_bedrock_bad_request_parts_ignores_non_bad_request() {
+        let payload = br#"{"message":"upstream error"}"#;
+
+        let mapped = extract_bedrock_bad_request_parts(
+            StatusCode::TOO_MANY_REQUESTS,
+            Some("application/json"),
+            Some(payload),
+        );
+
+        assert!(mapped.is_none());
     }
 }

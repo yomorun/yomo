@@ -1,17 +1,15 @@
 use std::pin::Pin;
 
 use async_stream::try_stream;
-use aws_sdk_bedrockruntime::config::{BehaviorVersion, Token};
 use aws_sdk_bedrockruntime::error::SdkError;
 use aws_sdk_bedrockruntime::primitives::Blob;
-use aws_types::region::Region;
 use axum::http::StatusCode;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use serde_json::Value;
 
 use crate::openai_types::ErrorDetail;
-use crate::provider::ProviderError;
+use crate::provider::{ProviderError, extract_bedrock_bad_request};
 use crate::serve_config::ConfigError;
 
 use super::types::{
@@ -35,8 +33,7 @@ pub(super) struct DirectClient {
 #[derive(Clone)]
 pub(super) struct BedrockClient {
     pub model_id: String,
-    pub aws_region: String,
-    pub aws_bearer_token: String,
+    pub bedrock_client: aws_sdk_bedrockruntime::Client,
 }
 
 #[derive(Clone, Copy)]
@@ -185,7 +182,7 @@ impl BedrockClient {
         &self,
         request: BedrockRequest,
     ) -> Result<AnthropicResponse, ClientError> {
-        let client = self.client().await?;
+        let client = self.client();
         let body =
             serde_json::to_vec(&request).map_err(|err| ClientError::Parse(err.to_string()))?;
         let response = client
@@ -207,7 +204,7 @@ impl BedrockClient {
         request: BedrockRequest,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<StreamEvent, ProviderError>> + Send>>, ClientError>
     {
-        let client = self.client().await?;
+        let client = self.client();
         let body =
             serde_json::to_vec(&request).map_err(|err| ClientError::Parse(err.to_string()))?;
         let response = client
@@ -241,13 +238,8 @@ impl BedrockClient {
         }))
     }
 
-    async fn client(&self) -> Result<aws_sdk_bedrockruntime::Client, ClientError> {
-        let config = aws_sdk_bedrockruntime::Config::builder()
-            .behavior_version(BehaviorVersion::latest())
-            .region(Region::new(self.aws_region.clone()))
-            .bearer_token(Token::new(&self.aws_bearer_token, None))
-            .build();
-        Ok(aws_sdk_bedrockruntime::Client::from_conf(config))
+    fn client(&self) -> &aws_sdk_bedrockruntime::Client {
+        &self.bedrock_client
     }
 }
 
@@ -308,21 +300,24 @@ fn map_bedrock_invoke_error<E>(err: SdkError<E>, context: &str) -> ClientError
 where
     E: std::error::Error + Send + Sync + 'static,
 {
-    passthrough_bad_request(&err)
+    bedrock_bad_request_to_client_error(&err)
         .unwrap_or_else(|| ClientError::Internal(format!("{context}: {err:?}")))
 }
 
-fn passthrough_bad_request<E>(err: &SdkError<E>) -> Option<ClientError>
+fn bedrock_bad_request_to_client_error<E>(err: &SdkError<E>) -> Option<ClientError>
 where
     E: std::error::Error + Send + Sync + 'static,
 {
-    let raw_response = err.raw_response()?;
-    let status = StatusCode::from_u16(raw_response.status().as_u16()).ok()?;
-    let payload = raw_response.body().bytes();
-
-    passthrough_bad_request_response(status, payload)
+    let mapped = extract_bedrock_bad_request(err)?;
+    bad_request_payload_to_client_error(mapped.payload.as_ref())
 }
 
+fn bad_request_payload_to_client_error(payload: &[u8]) -> Option<ClientError> {
+    let status = reqwest::StatusCode::BAD_REQUEST;
+    Some(parse_api_error(status, payload))
+}
+
+#[cfg(test)]
 fn passthrough_bad_request_response(
     status: StatusCode,
     payload: Option<&[u8]>,
@@ -331,17 +326,19 @@ fn passthrough_bad_request_response(
         return None;
     }
 
-    let status = reqwest::StatusCode::from_u16(status.as_u16()).ok()?;
     let payload = payload.unwrap_or_default();
-    Some(parse_api_error(status, payload))
+    bad_request_payload_to_client_error(payload)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{ClientError, map_client_error, passthrough_bad_request_response};
+    use super::{BedrockClient, ClientError, map_client_error, passthrough_bad_request_response};
     use crate::openai_types::ErrorDetail;
-    use crate::provider::ProviderError;
+    use crate::provider::{ProviderError, extract_bedrock_bad_request_parts};
+    use aws_sdk_bedrockruntime::config::{BehaviorVersion, Token};
+    use aws_types::region::Region;
     use axum::http::StatusCode;
+    use std::ptr;
 
     #[test]
     fn passthrough_bad_request_response_maps_json_message() {
@@ -410,5 +407,45 @@ mod tests {
         };
         assert_eq!(upstream_http_status, StatusCode::TOO_MANY_REQUESTS);
         assert_eq!(message, "rate limited");
+    }
+
+    #[test]
+    fn bedrock_client_reuses_prebuilt_sdk_client() {
+        let config = aws_sdk_bedrockruntime::Config::builder()
+            .behavior_version(BehaviorVersion::latest())
+            .region(Region::new("ap-northeast-1".to_string()))
+            .bearer_token(Token::new("test-token", None))
+            .build();
+        let client = BedrockClient {
+            model_id: "global.anthropic.claude-sonnet-4-6".to_string(),
+            bedrock_client: aws_sdk_bedrockruntime::Client::from_conf(config),
+        };
+
+        let first = client.client();
+        let second = client.client();
+
+        assert!(ptr::eq(first, second));
+    }
+
+    #[test]
+    fn bedrock_bad_request_mapping_stays_consistent_with_messages_payload() {
+        let mapped = extract_bedrock_bad_request_parts(
+            StatusCode::BAD_REQUEST,
+            Some("application/json"),
+            Some(br#"{"message":"adaptive thinking is not supported on this model"}"#),
+        )
+        .expect("400 should map to shared bedrock bad request payload");
+
+        let err = passthrough_bad_request_response(mapped.status, Some(mapped.payload.as_ref()))
+            .expect("anthropic mapping should produce api error");
+        let ClientError::Api { status, error } = err else {
+            panic!("expected api error")
+        };
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            error.message,
+            "adaptive thinking is not supported on this model"
+        );
+        assert_eq!(error.r#type, "invalid_request_error");
     }
 }

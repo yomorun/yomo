@@ -4,7 +4,9 @@ use serde_json::Value;
 use std::sync::Arc;
 
 use crate::provider::{
-    HttpProviderRequest, HttpProviderResponse, Provider, ProviderError, proxy_request,
+    HttpProviderRequest, HttpProviderResponse, Provider, ProviderError,
+    extract_messages_request_id_json, extract_messages_usage_json, inject_messages_usage_json,
+    proxy_request,
 };
 use crate::serve_config::{ConfigError, ProviderConfig};
 
@@ -60,64 +62,24 @@ impl<M: Sync> Provider<M> for MessagesClient {
     }
 
     fn extract_request_id(&self, payload_json: &Value) -> Option<String> {
-        extract_request_id_json(payload_json)
+        extract_messages_request_id_json(payload_json)
     }
 
     fn extract_usage(&self, payload_json: &Value) -> Option<Value> {
-        extract_usage_json(payload_json)
+        extract_messages_usage_json(payload_json)
     }
 
     fn inject_usage(&self, payload_json: &mut Value, usage: Value) -> bool {
-        inject_usage_json(payload_json, usage)
+        inject_messages_usage_json(payload_json, usage)
     }
-}
-
-fn extract_request_id_json(payload_json: &Value) -> Option<String> {
-    payload_json
-        .get("id")
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .or_else(|| {
-            payload_json
-                .get("message")
-                .and_then(|message| message.get("id"))
-                .and_then(Value::as_str)
-                .map(str::to_string)
-        })
-}
-
-fn extract_usage_json(payload_json: &Value) -> Option<Value> {
-    non_null_usage(payload_json.get("usage")).or_else(|| {
-        non_null_usage(
-            payload_json
-                .get("message")
-                .and_then(|message| message.get("usage")),
-        )
-    })
-}
-
-fn inject_usage_json(payload_json: &mut Value, usage: Value) -> bool {
-    let Some(obj) = payload_json.as_object_mut() else {
-        return false;
-    };
-    if obj.contains_key("usage") {
-        obj.insert("usage".to_string(), usage);
-        return true;
-    }
-    if let Some(message) = obj.get_mut("message").and_then(Value::as_object_mut) {
-        message.insert("usage".to_string(), usage);
-        return true;
-    }
-    false
-}
-
-fn non_null_usage(value: Option<&Value>) -> Option<Value> {
-    value.filter(|usage| !usage.is_null()).cloned()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{build_client, extract_request_id_json, extract_usage_json, inject_usage_json};
+    use super::build_client;
+    use crate::provider::{
+        extract_messages_request_id_json, extract_messages_usage_json, inject_messages_usage_json,
+    };
     use crate::serve_config::ProviderConfig;
     use serde_json::json;
     use std::collections::HashMap;
@@ -126,7 +88,7 @@ mod tests {
     fn extract_request_id_json_prefers_top_level_id() {
         let payload = json!({"id": "msg_top", "message": {"id": "msg_nested"}});
 
-        let request_id = extract_request_id_json(&payload);
+        let request_id = extract_messages_request_id_json(&payload);
 
         assert_eq!(request_id.as_deref(), Some("msg_top"));
     }
@@ -135,7 +97,7 @@ mod tests {
     fn extract_request_id_json_supports_nested_message_id() {
         let payload = json!({"message": {"id": "msg_nested"}});
 
-        let request_id = extract_request_id_json(&payload);
+        let request_id = extract_messages_request_id_json(&payload);
 
         assert_eq!(request_id.as_deref(), Some("msg_nested"));
     }
@@ -144,7 +106,7 @@ mod tests {
     fn extract_usage_json_reads_nested_message_usage() {
         let payload = json!({"message": {"usage": {"input_tokens": 3}}});
 
-        let usage = extract_usage_json(&payload);
+        let usage = extract_messages_usage_json(&payload);
 
         assert_eq!(usage, Some(json!({"input_tokens": 3})));
     }
@@ -153,7 +115,7 @@ mod tests {
     fn extract_usage_json_ignores_null_usage() {
         let payload = json!({"usage": null});
 
-        let usage = extract_usage_json(&payload);
+        let usage = extract_messages_usage_json(&payload);
 
         assert_eq!(usage, None);
     }
@@ -163,7 +125,7 @@ mod tests {
         let mut payload = json!({"message": {"usage": {"input_tokens": 1}}});
         let new_usage = json!({"input_tokens": 55});
 
-        let injected = inject_usage_json(&mut payload, new_usage.clone());
+        let injected = inject_messages_usage_json(&mut payload, new_usage.clone());
 
         assert!(injected);
         assert_eq!(payload["message"]["usage"], new_usage);

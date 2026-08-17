@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use anyhow::anyhow;
 use async_trait::async_trait;
 use aws_sdk_bedrockruntime::config::{BehaviorVersion, Token};
 use aws_sdk_bedrockruntime::primitives::Blob;
@@ -9,59 +8,40 @@ use axum::body::Bytes;
 use axum::http::{HeaderMap, StatusCode, header};
 use serde::Deserialize;
 use serde_json::Value;
-use tokio::sync::OnceCell;
 
 use crate::provider::{
-    HttpProviderRequest, HttpProviderResponse, Provider, ProviderBody, ProviderError,
-    parse_stream_flag, rewrite_messages_body,
+    BedrockBadRequestPayload, HttpProviderRequest, HttpProviderResponse, Provider, ProviderBody,
+    ProviderError, extract_bedrock_bad_request, extract_messages_request_id_json,
+    extract_messages_usage_json, inject_messages_usage_json, parse_stream_flag,
+    rewrite_messages_body,
 };
 use crate::serve_config::{ConfigError, ProviderConfig};
 
 #[derive(Clone)]
 pub struct BedrockMessagesClient {
     bedrock_model: String,
-    aws_region: String,
     anthropic_version: String,
-    default_max_tokens: u64,
-    aws_bearer_token: Option<String>,
-    bedrock_client: Arc<OnceCell<aws_sdk_bedrockruntime::Client>>,
+    default_max_tokens: i32,
+    bedrock_client: aws_sdk_bedrockruntime::Client,
 }
 
 impl BedrockMessagesClient {
     pub fn new(
         bedrock_model: String,
-        aws_region: String,
         anthropic_version: String,
-        default_max_tokens: u64,
-        aws_bearer_token: Option<String>,
+        default_max_tokens: i32,
+        bedrock_client: aws_sdk_bedrockruntime::Client,
     ) -> Self {
         Self {
             bedrock_model,
-            aws_region,
             anthropic_version,
             default_max_tokens,
-            aws_bearer_token,
-            bedrock_client: Arc::new(OnceCell::new()),
+            bedrock_client,
         }
     }
 
-    async fn client(&self) -> Result<&aws_sdk_bedrockruntime::Client, anyhow::Error> {
-        self.bedrock_client
-            .get_or_try_init(|| async {
-                let token = self
-                    .aws_bearer_token
-                    .as_ref()
-                    .ok_or_else(|| anyhow!("aws_bearer_token is required"))?;
-                let config = aws_sdk_bedrockruntime::Config::builder()
-                    .behavior_version(BehaviorVersion::latest())
-                    .region(Region::new(self.aws_region.clone()))
-                    .bearer_token(Token::new(token, None))
-                    .build();
-                Ok::<aws_sdk_bedrockruntime::Client, anyhow::Error>(
-                    aws_sdk_bedrockruntime::Client::from_conf(config),
-                )
-            })
-            .await
+    fn client(&self) -> &aws_sdk_bedrockruntime::Client {
+        &self.bedrock_client
     }
 }
 
@@ -75,7 +55,7 @@ impl<M: Sync> Provider<M> for BedrockMessagesClient {
         let stream = parse_stream_flag(&req.body);
         let body =
             rewrite_messages_body(&req.body, &self.anthropic_version, self.default_max_tokens)?;
-        let client = self.client().await?;
+        let client = self.client();
 
         if stream {
             let response = client
@@ -88,7 +68,7 @@ impl<M: Sync> Provider<M> for BedrockMessagesClient {
             let response = match response {
                 Ok(response) => response,
                 Err(err) => {
-                    if let Some(response) = passthrough_bad_request(&err) {
+                    if let Some(response) = map_bedrock_bad_request_response(&err) {
                         return Ok(response);
                     }
                     return Err(ProviderError::internal(format!(
@@ -158,7 +138,7 @@ impl<M: Sync> Provider<M> for BedrockMessagesClient {
             let response = match response {
                 Ok(response) => response,
                 Err(err) => {
-                    if let Some(response) = passthrough_bad_request(&err) {
+                    if let Some(response) = map_bedrock_bad_request_response(&err) {
                         return Ok(response);
                     }
                     return Err(ProviderError::internal(format!(
@@ -183,59 +163,16 @@ impl<M: Sync> Provider<M> for BedrockMessagesClient {
     }
 
     fn extract_request_id(&self, payload_json: &Value) -> Option<String> {
-        extract_request_id_json(payload_json)
+        extract_messages_request_id_json(payload_json)
     }
 
     fn extract_usage(&self, payload_json: &Value) -> Option<Value> {
-        extract_usage_json(payload_json)
+        extract_messages_usage_json(payload_json)
     }
 
     fn inject_usage(&self, payload_json: &mut Value, usage: Value) -> bool {
-        inject_usage_json(payload_json, usage)
+        inject_messages_usage_json(payload_json, usage)
     }
-}
-
-fn extract_request_id_json(payload_json: &Value) -> Option<String> {
-    payload_json
-        .get("id")
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .or_else(|| {
-            payload_json
-                .get("message")
-                .and_then(|message| message.get("id"))
-                .and_then(Value::as_str)
-                .map(str::to_string)
-        })
-}
-
-fn extract_usage_json(payload_json: &Value) -> Option<Value> {
-    non_null_usage(payload_json.get("usage")).or_else(|| {
-        non_null_usage(
-            payload_json
-                .get("message")
-                .and_then(|message| message.get("usage")),
-        )
-    })
-}
-
-fn inject_usage_json(payload_json: &mut Value, usage: Value) -> bool {
-    let Some(obj) = payload_json.as_object_mut() else {
-        return false;
-    };
-    if obj.contains_key("usage") {
-        obj.insert("usage".to_string(), usage);
-        return true;
-    }
-    if let Some(message) = obj.get_mut("message").and_then(Value::as_object_mut) {
-        message.insert("usage".to_string(), usage);
-        return true;
-    }
-    false
-}
-
-fn non_null_usage(value: Option<&Value>) -> Option<Value> {
-    value.filter(|usage| !usage.is_null()).cloned()
 }
 
 #[derive(Deserialize)]
@@ -261,51 +198,38 @@ fn build_sse_frame(payload: &[u8]) -> String {
     format!("data: {payload_text}\n\n")
 }
 
-fn passthrough_bad_request<E>(
+fn map_bedrock_bad_request_response<E>(
     err: &aws_sdk_bedrockruntime::error::SdkError<E>,
 ) -> Option<HttpProviderResponse>
 where
     E: std::error::Error + Send + Sync + 'static,
 {
-    let raw_response = err.raw_response()?;
-    let status = StatusCode::from_u16(raw_response.status().as_u16()).ok()?;
-    let content_type = raw_response.headers().get("content-type");
-    let payload = raw_response.body().bytes();
-
-    passthrough_bad_request_response(status, content_type, payload)
+    let mapped = extract_bedrock_bad_request(err)?;
+    Some(bedrock_bad_request_response(mapped))
 }
 
-fn passthrough_bad_request_response(
-    status: StatusCode,
-    content_type: Option<&str>,
-    payload: Option<&[u8]>,
-) -> Option<HttpProviderResponse> {
-    if status != StatusCode::BAD_REQUEST {
-        return None;
-    }
-
+fn bedrock_bad_request_response(mapped: BedrockBadRequestPayload) -> HttpProviderResponse {
     let mut headers = HeaderMap::new();
-    let content_type = content_type.unwrap_or("application/json");
+    let content_type = mapped.content_type.as_deref().unwrap_or("application/json");
     if let Ok(content_type_value) = content_type.parse() {
         headers.insert(header::CONTENT_TYPE, content_type_value);
     }
 
-    let payload = payload
-        .map(|bytes| Bytes::copy_from_slice(bytes))
-        .unwrap_or_default();
-
-    Some(HttpProviderResponse {
-        status,
+    HttpProviderResponse {
+        status: mapped.status,
         headers,
-        body: ProviderBody::Full(payload),
-    })
+        body: ProviderBody::Full(mapped.payload),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        anthropic_sse_event_name, build_client, build_sse_frame, extract_request_id_json,
-        extract_usage_json, inject_usage_json, passthrough_bad_request_response,
+        anthropic_sse_event_name, bedrock_bad_request_response, build_client, build_sse_frame,
+    };
+    use crate::provider::{
+        BedrockBadRequestPayload, extract_bedrock_bad_request_parts,
+        extract_messages_request_id_json, extract_messages_usage_json, inject_messages_usage_json,
     };
     use crate::serve_config::ProviderConfig;
     use axum::http::{StatusCode, header};
@@ -317,7 +241,7 @@ mod tests {
     fn extract_request_id_json_prefers_top_level_id() {
         let payload = json!({"id": "msg_top", "message": {"id": "msg_nested"}});
 
-        let request_id = extract_request_id_json(&payload);
+        let request_id = extract_messages_request_id_json(&payload);
 
         assert_eq!(request_id.as_deref(), Some("msg_top"));
     }
@@ -327,7 +251,7 @@ mod tests {
     fn extract_request_id_json_supports_nested_message_id() {
         let payload = json!({"message": {"id": "msg_nested"}});
 
-        let request_id = extract_request_id_json(&payload);
+        let request_id = extract_messages_request_id_json(&payload);
 
         assert_eq!(request_id.as_deref(), Some("msg_nested"));
     }
@@ -337,7 +261,7 @@ mod tests {
     fn extract_usage_json_reads_nested_message_usage() {
         let payload = json!({"message": {"usage": {"input_tokens": 3}}});
 
-        let usage = extract_usage_json(&payload);
+        let usage = extract_messages_usage_json(&payload);
 
         assert_eq!(usage, Some(json!({"input_tokens": 3})));
     }
@@ -347,7 +271,7 @@ mod tests {
     fn extract_usage_json_ignores_null_usage() {
         let payload = json!({"usage": null});
 
-        let usage = extract_usage_json(&payload);
+        let usage = extract_messages_usage_json(&payload);
 
         assert_eq!(usage, None);
     }
@@ -358,7 +282,7 @@ mod tests {
         let mut payload = json!({"message": {"usage": {"input_tokens": 1}}});
         let new_usage = json!({"input_tokens": 55});
 
-        let injected = inject_usage_json(&mut payload, new_usage.clone());
+        let injected = inject_messages_usage_json(&mut payload, new_usage.clone());
 
         assert!(injected);
         assert_eq!(payload["message"]["usage"], new_usage);
@@ -415,12 +339,13 @@ mod tests {
     /// Verifies Bedrock client errors with HTTP 400 are passed through to frontend status/body.
     #[test]
     fn passthrough_bad_request_maps_status_and_body() {
-        let response = passthrough_bad_request_response(
+        let mapped = extract_bedrock_bad_request_parts(
             StatusCode::BAD_REQUEST,
             Some("application/json"),
             Some(br#"{"message":"bad input"}"#),
         )
-        .expect("400 should be passed through");
+        .expect("400 should be mapped");
+        let response = bedrock_bad_request_response(mapped);
 
         assert_eq!(response.status, StatusCode::BAD_REQUEST);
         let content_type = response
@@ -441,13 +366,30 @@ mod tests {
     /// Verifies non-400 Bedrock client errors are not treated as passthrough responses.
     #[test]
     fn passthrough_bad_request_ignores_non_400() {
-        let response = passthrough_bad_request_response(
+        let response = extract_bedrock_bad_request_parts(
             StatusCode::TOO_MANY_REQUESTS,
             Some("application/json"),
             Some(br#"{"message":"throttled"}"#),
         );
 
         assert!(response.is_none());
+    }
+
+    #[test]
+    fn bedrock_bad_request_response_defaults_content_type() {
+        let mapped = BedrockBadRequestPayload {
+            status: StatusCode::BAD_REQUEST,
+            content_type: None,
+            payload: axum::body::Bytes::from_static(br#"{"message":"bad input"}"#),
+        };
+
+        let response = bedrock_bad_request_response(mapped);
+        let content_type = response
+            .headers
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok());
+
+        assert_eq!(content_type, Some("application/json"));
     }
 
     #[test]
@@ -507,7 +449,7 @@ pub fn build_client<M: Sync>(
     let default_max_tokens = provider
         .params
         .get("max_tokens")
-        .and_then(|raw| raw.parse::<u64>().ok())
+        .and_then(|raw| raw.parse::<i32>().ok())
         .unwrap_or(4096);
     let aws_bearer_token = provider
         .params
@@ -516,11 +458,17 @@ pub fn build_client<M: Sync>(
         .filter(|token| !token.is_empty())
         .ok_or_else(|| ConfigError::InvalidProvider("aws_bearer_token is required".to_string()))?;
 
+    let bedrock_client = aws_sdk_bedrockruntime::Config::builder()
+        .behavior_version(BehaviorVersion::latest())
+        .region(Region::new(aws_region))
+        .bearer_token(Token::new(&aws_bearer_token, None))
+        .build();
+    let bedrock_client = aws_sdk_bedrockruntime::Client::from_conf(bedrock_client);
+
     Ok(Arc::new(BedrockMessagesClient::new(
         bedrock_model,
-        aws_region,
         anthropic_version,
         default_max_tokens,
-        Some(aws_bearer_token),
+        bedrock_client,
     )))
 }

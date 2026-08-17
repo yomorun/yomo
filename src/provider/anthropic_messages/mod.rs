@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use async_stream::try_stream;
 use async_trait::async_trait;
+use aws_sdk_bedrockruntime::config::{BehaviorVersion, Token};
+use aws_types::region::Region;
 use futures_core::Stream;
 use futures_util::StreamExt;
 use log::warn;
@@ -254,12 +256,17 @@ pub fn build_bedrock_messages_provider(
         .get("max_tokens")
         .and_then(|raw| raw.parse::<i32>().ok())
         .unwrap_or(DEFAULT_MAX_TOKENS);
+    let bedrock_client = aws_sdk_bedrockruntime::Config::builder()
+        .behavior_version(BehaviorVersion::latest())
+        .region(Region::new(aws_region.clone()))
+        .bearer_token(Token::new(&aws_bearer_token, None))
+        .build();
+    let bedrock_client = aws_sdk_bedrockruntime::Client::from_conf(bedrock_client);
 
     Ok(AnthropicMessagesProvider::new(
         Backend::Bedrock(BedrockClient {
             model_id: bedrock_model.clone(),
-            aws_region,
-            aws_bearer_token,
+            bedrock_client,
         }),
         bedrock_model,
         anthropic_version,

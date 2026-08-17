@@ -10,9 +10,9 @@ use crate::openai_types::ChatCompletionRequest;
 use crate::provider::anthropic_messages::{
     build_anthropic_messages_provider, build_bedrock_messages_provider,
 };
+use crate::provider::endpoint_providers;
 use crate::provider::openai::build_openai_provider;
 use crate::provider::openai_compatible::build_openai_compatible_provider;
-use crate::provider::providers;
 use crate::provider::tokenhub::build_tokenhub_provider;
 use crate::provider::vertexai::build_vertexai_provider;
 use crate::provider::vllm_deepseek::build_vllm_deepseek_provider;
@@ -491,15 +491,15 @@ fn build_provider_with_custom<M: Sync>(
             ))),
         },
         EndpointKind::Messages => match provider.provider_type.as_str() {
-            "anthropic-messages" => providers::messages::build_client(provider),
-            "bedrock-messages" => providers::bedrock_messages::build_client(provider),
+            "anthropic-messages" => endpoint_providers::messages::build_client(provider),
+            "bedrock-messages" => endpoint_providers::bedrock_messages::build_client(provider),
             other => Err(ConfigError::InvalidProvider(format!(
                 "provider type {other} is not supported for /messages"
             ))),
         },
         EndpointKind::Responses => match provider.provider_type.as_str() {
             "openai-compatible" | "openai" | "tokenhub" => {
-                providers::responses::build_client(provider)
+                endpoint_providers::responses::build_client(provider)
             }
             other => Err(ConfigError::InvalidProvider(format!(
                 "provider type {other} is not supported for /responses"
@@ -512,7 +512,7 @@ fn build_provider_with_custom<M: Sync>(
         | EndpointKind::ImagesGenerations
         | EndpointKind::ImagesEdits => match provider.provider_type.as_str() {
             "openai-compatible" | "openai" | "tokenhub" => {
-                providers::passthrough::build_client(provider)
+                endpoint_providers::passthrough::build_client(provider)
             }
             other => Err(ConfigError::InvalidProvider(format!(
                 "provider type {other} is not supported for {}",
@@ -521,7 +521,7 @@ fn build_provider_with_custom<M: Sync>(
         },
         EndpointKind::ModelsGenerateContent | EndpointKind::ModelsStreamGenerateContent => {
             match provider.provider_type.as_str() {
-                "vertexai" => providers::generate_content::build_client(provider),
+                "vertexai" => endpoint_providers::generate_content::build_client(provider),
                 other => Err(ConfigError::InvalidProvider(format!(
                     "provider type {other} is not supported for {}",
                     endpoint.as_path()
