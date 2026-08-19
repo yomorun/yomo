@@ -10,6 +10,7 @@ use crate::llm_provider::anthropic_messages::{
 };
 use crate::llm_provider::openai::build_openai_provider;
 use crate::llm_provider::openai_compatible::build_openai_compatible_provider;
+use crate::llm_provider::orcarouter::build_orcarouter_provider;
 use crate::llm_provider::tokenhub::build_tokenhub_provider;
 use crate::llm_provider::vertexai::build_vertexai_provider;
 use crate::llm_provider::vllm_deepseek::build_vllm_deepseek_provider;
@@ -603,6 +604,7 @@ fn build_chat_provider_with_custom<M>(
         "openai-compatible" => Ok(Some(Arc::new(build_openai_compatible_provider(
             &provider.params,
         )?))),
+        "orcarouter" => Ok(Some(Arc::new(build_orcarouter_provider(&provider.params)?))),
         "openai" => Ok(Some(Arc::new(build_openai_provider(&provider.params)?))),
         "anthropic-messages" => Ok(Some(Arc::new(build_anthropic_messages_provider(
             &provider.params,
@@ -772,6 +774,34 @@ mod tests {
             .expect("default model should be selected");
 
         assert_eq!(selected.model_id, "chat-a");
+    }
+
+    #[test]
+    fn from_config_accepts_orcarouter_chat_provider() {
+        let providers = vec![ProviderConfig {
+            provider_type: "orcarouter".to_string(),
+            model_id: "orca".to_string(),
+            label: None,
+            params: HashMap::from([
+                ("api_key".to_string(), "sk-test".to_string()),
+                ("model".to_string(), "orcarouter/auto".to_string()),
+            ]),
+        }];
+        let endpoints = vec![EndpointConfig {
+            path: "/chat/completions".to_string(),
+            models: vec!["orca".to_string()],
+            default_model: Some("orca".to_string()),
+        }];
+        let strategy = Arc::new(ByEndpointModel::new(HashMap::from([(
+            EndpointKind::ChatCompletions,
+            endpoints[0].clone(),
+        )])));
+        let registry = ProviderRegistry::<()>::from_config(&providers, &endpoints, strategy)
+            .expect("orcarouter provider should be accepted for chat completions");
+        let selected = registry
+            .select_chat(EndpointKind::ChatCompletions, None, &())
+            .expect("chat provider should be selectable");
+        assert_eq!(selected.model_id, "orca");
     }
 
     #[test]

@@ -746,7 +746,7 @@ pub async fn build_model_api(
     };
 
     let app = axum::Router::new()
-        .route("/*path", axum::routing::post(handle_model_api::<(), ()>))
+        .route("/{*path}", axum::routing::post(handle_model_api::<(), ()>))
         .with_state(state);
     Ok(app)
 }

@@ -50,6 +50,33 @@ yomo serve
 
 You can also use the `--config` flag to specify a custom coniguration yaml file.
 
+#### Use OrcaRouter as the LLM provider
+
+Instead of Ollama, you can point YoMo at [OrcaRouter](https://www.orcarouter.ai) — an OpenAI-compatible gateway that routes to 180+ models (Anthropic, OpenAI, Google, DeepSeek and more) behind a single endpoint.
+
+Create a config file, e.g. `yomo.yaml`:
+
+```yaml
+providers:
+  - type: orcarouter
+    model_id: orca
+    params:
+      api_key: sk-orca-your-key
+      model: orcarouter/auto
+endpoints:
+  - path: /chat/completions
+    models: [orca]
+    default_model: orca
+```
+
+Then launch the server with your config:
+
+```sh
+yomo serve --config ./yomo.yaml
+```
+
+OrcaRouter's `orcarouter/auto` picks the best model for each request automatically. You can pin any of the gateway's models instead, e.g. `anthropic/claude-sonnet-4.6`, `openai/gpt-4o` or `deepseek/deepseek-chat`.
+
 ### Step 3. Implement the LLM Function Calling
 
 ```sh
