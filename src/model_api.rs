@@ -16,8 +16,10 @@ use tracing::Instrument;
 
 use crate::metadata_mgr::MetadataMgr;
 use crate::metadata_mgr::MetadataMgrImpl;
-use crate::model_api_provider::{ModelApiProvider, ProviderBody, ProviderRequest};
-use crate::openai_http_mapping::openai_error_response;
+use crate::model_api_provider::{
+    ModelApiProvider, ProviderBody, ProviderRequest, ProviderResponse,
+};
+use crate::openai_http_mapping::{INTERNAL_SERVER_ERROR_MESSAGE, openai_error_response};
 use crate::provider_registry::{ProviderRegistry, SelectionError};
 use crate::serve_config::{EndpointKind, parse_generate_content_model};
 use crate::trace::{
@@ -31,6 +33,7 @@ pub struct ModelApiHandlerState<A, M> {
     pub usage_handler: Arc<dyn UsageHandler<M>>,
     pub metadata_mgr: Arc<dyn MetadataMgr<A, M>>,
     pub request_span_starter: Arc<dyn RequestSpanStarter<M>>,
+    pub error_response_policy: Arc<dyn ModelApiErrorResponsePolicy<M>>,
 }
 
 impl<A, M> Clone for ModelApiHandlerState<A, M> {
@@ -40,7 +43,48 @@ impl<A, M> Clone for ModelApiHandlerState<A, M> {
             usage_handler: Arc::clone(&self.usage_handler),
             metadata_mgr: Arc::clone(&self.metadata_mgr),
             request_span_starter: Arc::clone(&self.request_span_starter),
+            error_response_policy: Arc::clone(&self.error_response_policy),
         }
+    }
+}
+
+pub enum ModelApiErrorAction {
+    Passthrough,
+    Override(Response),
+}
+
+/// Decides how model-api non-success upstream responses are converted to HTTP responses.
+pub trait ModelApiErrorResponsePolicy<M>: Send + Sync {
+    fn handle_error_response(
+        &self,
+        endpoint_path: &str,
+        model_id: &str,
+        metadata: &M,
+        upstream_response: &ProviderResponse,
+    ) -> ModelApiErrorAction;
+}
+
+pub struct DefaultModelApiErrorResponsePolicy;
+
+impl<M> ModelApiErrorResponsePolicy<M> for DefaultModelApiErrorResponsePolicy {
+    fn handle_error_response(
+        &self,
+        _endpoint_path: &str,
+        _model_id: &str,
+        _metadata: &M,
+        upstream_response: &ProviderResponse,
+    ) -> ModelApiErrorAction {
+        if upstream_response.status == StatusCode::BAD_REQUEST {
+            return ModelApiErrorAction::Passthrough;
+        }
+        if !upstream_response.status.is_success() {
+            return ModelApiErrorAction::Override(openai_error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                INTERNAL_SERVER_ERROR_MESSAGE,
+                Some("internal_error"),
+            ));
+        }
+        ModelApiErrorAction::Passthrough
     }
 }
 
@@ -204,7 +248,7 @@ where
             return Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
-                .body(Body::from("internal server error"))
+                .body(Body::from(INTERNAL_SERVER_ERROR_MESSAGE))
                 .expect("build response");
         }
     };
@@ -218,6 +262,36 @@ where
             response.status.as_u16(),
             format!("upstream returned status {}", response.status.as_u16()),
         );
+        if let ModelApiErrorAction::Override(overridden) =
+            state.error_response_policy.handle_error_response(
+                endpoint_path,
+                &provider_entry.model_id,
+                &metadata,
+                &response,
+            )
+        {
+            let status = overridden.status();
+            if status.is_success() {
+                info!(
+                    "http.request.end; status_code={} model_id={} trace_id={} metadata={:?}",
+                    status.as_u16(),
+                    provider_entry.model_id,
+                    trace_id,
+                    metadata
+                );
+            } else {
+                error!(
+                    "http.request.end; status_code={} model_id={} error=upstream status {} overridden by policy trace_id={} metadata={:?}",
+                    status.as_u16(),
+                    provider_entry.model_id,
+                    response.status.as_u16(),
+                    trace_id,
+                    metadata
+                );
+            }
+            set_http_span_status(&root_span, status, Some("response_overridden_by_policy"));
+            return overridden;
+        }
     }
     for (key, value) in response.headers.iter() {
         if key == header::CONTENT_LENGTH {
@@ -738,11 +812,25 @@ pub async fn build_model_api(
     provider_registry: ProviderRegistry<()>,
     usage_handler: Arc<dyn UsageHandler<()>>,
 ) -> anyhow::Result<axum::Router> {
+    build_model_api_with_error_policy(
+        provider_registry,
+        usage_handler,
+        Arc::new(DefaultModelApiErrorResponsePolicy),
+    )
+    .await
+}
+
+pub async fn build_model_api_with_error_policy(
+    provider_registry: ProviderRegistry<()>,
+    usage_handler: Arc<dyn UsageHandler<()>>,
+    error_response_policy: Arc<dyn ModelApiErrorResponsePolicy<()>>,
+) -> anyhow::Result<axum::Router> {
     let state = ModelApiHandlerState {
         provider_registry: Arc::new(provider_registry),
         usage_handler,
         metadata_mgr: Arc::new(MetadataMgrImpl::new()),
         request_span_starter: Arc::new(DefaultRequestSpanStarter),
+        error_response_policy,
     };
 
     let app = axum::Router::new()
@@ -754,16 +842,43 @@ pub async fn build_model_api(
 #[cfg(test)]
 mod tests {
     use super::{
+        DefaultModelApiErrorResponsePolicy, ModelApiErrorAction, ModelApiErrorResponsePolicy,
         body_preview_for_log, decode_payload_for_log, parse_model_request_fields,
         resolve_request_id, selection_model_not_supported_message,
         selection_model_required_message,
     };
+    use crate::model_api_provider::{ProviderBody, ProviderResponse};
     use crate::utils::MAX_LOG_BODY_BYTES;
     use axum::body::Bytes;
+    use axum::http::StatusCode;
+    use axum::response::Response;
     use brotli::CompressorReader;
     use flate2::Compression;
     use flate2::write::GzEncoder;
     use std::io::{Read, Write};
+    use std::sync::Arc;
+
+    struct OverrideAllErrorsPolicy;
+
+    impl<M> ModelApiErrorResponsePolicy<M> for OverrideAllErrorsPolicy {
+        fn handle_error_response(
+            &self,
+            _endpoint_path: &str,
+            _model_id: &str,
+            _metadata: &M,
+            upstream_response: &ProviderResponse,
+        ) -> ModelApiErrorAction {
+            if upstream_response.status.is_success() {
+                return ModelApiErrorAction::Passthrough;
+            }
+            ModelApiErrorAction::Override(
+                Response::builder()
+                    .status(StatusCode::BAD_GATEWAY)
+                    .body(axum::body::Body::from("custom override"))
+                    .expect("build custom override response"),
+            )
+        }
+    }
 
     /// Verifies JSON requests return both model and stream metadata.
     #[tokio::test]
@@ -943,5 +1058,56 @@ mod tests {
             selection_model_not_supported_message("/v1/responses", "gpt-x"),
             "model gpt-x is not supported for /v1/responses"
         );
+    }
+
+    #[test]
+    fn default_model_api_error_policy_passthroughs_bad_request() {
+        let policy = DefaultModelApiErrorResponsePolicy;
+        let upstream_response = ProviderResponse {
+            status: StatusCode::BAD_REQUEST,
+            headers: axum::http::HeaderMap::new(),
+            body: ProviderBody::Full(Bytes::from_static(b"{}")),
+        };
+
+        let action =
+            policy.handle_error_response("/responses", "gpt-test", &(), &upstream_response);
+
+        assert!(matches!(action, ModelApiErrorAction::Passthrough));
+    }
+
+    #[test]
+    fn default_model_api_error_policy_overrides_non_bad_request_error() {
+        let policy = DefaultModelApiErrorResponsePolicy;
+        let upstream_response = ProviderResponse {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            headers: axum::http::HeaderMap::new(),
+            body: ProviderBody::Full(Bytes::from_static(b"{}")),
+        };
+
+        let action =
+            policy.handle_error_response("/responses", "gpt-test", &(), &upstream_response);
+
+        let ModelApiErrorAction::Override(response) = action else {
+            panic!("expected override response");
+        };
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn custom_model_api_error_policy_can_override_response() {
+        let policy: Arc<dyn ModelApiErrorResponsePolicy<()>> = Arc::new(OverrideAllErrorsPolicy);
+        let upstream_response = ProviderResponse {
+            status: StatusCode::UNAUTHORIZED,
+            headers: axum::http::HeaderMap::new(),
+            body: ProviderBody::Full(Bytes::from_static(b"{}")),
+        };
+
+        let action =
+            policy.handle_error_response("/responses", "gpt-test", &(), &upstream_response);
+
+        let ModelApiErrorAction::Override(response) = action else {
+            panic!("expected override response");
+        };
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
     }
 }
