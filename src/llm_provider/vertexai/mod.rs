@@ -39,6 +39,7 @@ use crate::utils::{MAX_LOG_BODY_BYTES, truncate_for_log};
 
 const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
 const GEMINI_MAX_OUTPUT_TOKENS_65K: i32 = 65_536;
+// Official output token cap for Gemini image generation models.
 const GEMINI_MAX_OUTPUT_TOKENS_32K: i32 = 32_768;
 
 #[derive(Clone)]
