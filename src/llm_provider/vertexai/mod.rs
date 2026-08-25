@@ -38,6 +38,9 @@ use crate::usage_handler::EndpointUsage;
 use crate::utils::{MAX_LOG_BODY_BYTES, truncate_for_log};
 
 const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
+const GEMINI_MAX_OUTPUT_TOKENS_65K: i32 = 65_536;
+// Official output token cap for Gemini image generation models.
+const GEMINI_MAX_OUTPUT_TOKENS_32K: i32 = 32_768;
 
 #[derive(Clone)]
 pub struct VertexAIProvider {
@@ -398,7 +401,10 @@ async fn build_vertex_request(
     let mut generation_config = VertexGenerationConfig {
         temperature: request.temperature,
         top_p: request.top_p,
-        max_output_tokens: request.max_completion_tokens,
+        max_output_tokens: clamp_gemini_max_output_tokens(
+            &request.model,
+            request.max_completion_tokens,
+        ),
         candidate_count: request.n,
         stop_sequences: request.stop.clone().filter(|stops| !stops.is_empty()),
         response_mime_type: None,
@@ -1012,6 +1018,34 @@ fn should_disable_thinking_config_for_model(model: &str) -> bool {
     model.starts_with("gemini-2.5-pro") || model.starts_with("gemini-2.5-flash")
 }
 
+fn clamp_gemini_max_output_tokens(model: &str, max_output_tokens: Option<i32>) -> Option<i32> {
+    let Some(requested) = max_output_tokens else {
+        return None;
+    };
+
+    let Some(limit) = gemini_max_output_tokens_limit(model) else {
+        return Some(requested);
+    };
+
+    Some(requested.min(limit))
+}
+
+fn gemini_max_output_tokens_limit(model: &str) -> Option<i32> {
+    let model = model.strip_prefix("google/").unwrap_or(model);
+    match model {
+        "gemini-3.1-pro-preview" => Some(GEMINI_MAX_OUTPUT_TOKENS_65K),
+        "gemini-3.5-flash" => Some(GEMINI_MAX_OUTPUT_TOKENS_65K),
+        "gemini-3.6-flash" => Some(GEMINI_MAX_OUTPUT_TOKENS_65K),
+        "gemini-3.7-flash" => Some(GEMINI_MAX_OUTPUT_TOKENS_65K),
+        "gemini-3-flash-preview" => Some(GEMINI_MAX_OUTPUT_TOKENS_65K),
+        "gemini-2.5-flash" => Some(GEMINI_MAX_OUTPUT_TOKENS_65K),
+        "gemini-2.5-pro" => Some(GEMINI_MAX_OUTPUT_TOKENS_65K),
+        "gemini-3-pro-image" => Some(GEMINI_MAX_OUTPUT_TOKENS_32K),
+        "gemini-3.1-flash-image" => Some(GEMINI_MAX_OUTPUT_TOKENS_32K),
+        _ => None,
+    }
+}
+
 fn map_reasoning_effort_to_vertex_level(effort: &str) -> Option<VertexThinkingLevel> {
     match effort {
         "minimal" => Some(VertexThinkingLevel::Minimal),
@@ -1379,6 +1413,30 @@ mod tests {
             Some(VertexThinkingLevel::High)
         );
         assert_eq!(map_reasoning_effort_to_vertex_level("unknown"), None);
+    }
+
+    #[test]
+    fn clamp_gemini_max_output_tokens_clamps_text_models_to_65k() {
+        let clamped = clamp_gemini_max_output_tokens("gemini-3.7-flash", Some(128_000));
+        assert_eq!(clamped, Some(65_536));
+    }
+
+    #[test]
+    fn clamp_gemini_max_output_tokens_clamps_image_models_to_32k() {
+        let clamped = clamp_gemini_max_output_tokens("gemini-3-pro-image", Some(65_536));
+        assert_eq!(clamped, Some(32_768));
+    }
+
+    #[test]
+    fn clamp_gemini_max_output_tokens_keeps_values_within_limit() {
+        let clamped = clamp_gemini_max_output_tokens("google/gemini-3.6-flash", Some(4096));
+        assert_eq!(clamped, Some(4096));
+    }
+
+    #[test]
+    fn clamp_gemini_max_output_tokens_keeps_non_gemini_models_unchanged() {
+        let clamped = clamp_gemini_max_output_tokens("claude-opus-4-6", Some(128_000));
+        assert_eq!(clamped, Some(128_000));
     }
 
     #[test]
