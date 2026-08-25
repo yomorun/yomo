@@ -32,6 +32,7 @@ use async_trait::async_trait;
 #[derive(Clone)]
 pub struct AgentLoopConfig<M> {
     pub max_calls: usize,
+    pub max_total_tokens: Option<i64>,
     pub usage_handler: Arc<dyn UsageHandler<M>>,
     pub request_hook: Arc<dyn RequestHook<M>>,
 }
@@ -42,7 +43,8 @@ where
 {
     fn default() -> Self {
         Self {
-            max_calls: 14,
+            max_calls: 24,
+            max_total_tokens: Some(32_768),
             usage_handler: Arc::new(NoopUsageHandler::default()),
             request_hook: Arc::new(NoopRequestHook::default()),
         }
@@ -257,7 +259,10 @@ where
         round_usages.push(modified_usage);
         call_count += 1;
 
-        if call_count >= config.max_calls {
+        let reached_max_calls = call_count >= config.max_calls;
+        let reached_max_total_tokens =
+            is_total_token_limit_reached(config.max_total_tokens, &round_usages);
+        if reached_max_calls || reached_max_total_tokens {
             response.usage = EndpointUsage::from_endpoint_payload(
                 "/chat/completions",
                 aggregate_usages_to_value("/chat/completions", &round_usages),
@@ -566,7 +571,10 @@ where
                 round_state.openai_usage_payload.as_ref(),
                 &trace_id,
             );
-            if loop_state.call_count >= config.max_calls {
+            let reached_max_calls = loop_state.call_count >= config.max_calls;
+            let reached_max_total_tokens =
+                is_total_token_limit_reached(config.max_total_tokens, &loop_state.round_usages);
+            if reached_max_calls || reached_max_total_tokens {
                 if !round_state.tool_calls.is_empty() {
                     if !round_state.emitted_client_tool {
                         let events = build_client_tool_events(&round_state.finish_reason, &round_state.tool_calls);
@@ -1045,6 +1053,14 @@ fn aggregate_usages_to_value(endpoint: &str, usages: &[Value]) -> Value {
     serde_json::to_value(aggregate_to_openai(endpoint, usages)).unwrap_or(Value::Null)
 }
 
+fn is_total_token_limit_reached(max_total_tokens: Option<i64>, usages: &[Value]) -> bool {
+    let Some(max_total_tokens) = max_total_tokens else {
+        return false;
+    };
+    let usage = aggregate_to_openai("/chat/completions", usages);
+    usage.total_tokens >= max_total_tokens
+}
+
 fn finish_reason_to_str(reason: &FinishReason) -> &'static str {
     match reason {
         FinishReason::Stop => "stop",
@@ -1111,7 +1127,9 @@ mod tests {
         AgentLoopConfig, AgentLoopResult, compose_assistant_tool_call_content,
         resolve_tool_call_name, run_agent_loop,
     };
-    use crate::llm_provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
+    use crate::llm_provider::{
+        Provider, ProviderError, ToolCall as ProviderToolCall, UnifiedEvent, UnifiedResponse,
+    };
     use crate::model_api_provider::GenerateContentUsage;
     use crate::openai_types::{
         ChatCompletionRequest, Content, Message, Role, Usage as OpenAIUsage,
@@ -1133,6 +1151,12 @@ mod tests {
     #[derive(Clone)]
     struct SequencedStreamProvider {
         rounds: Arc<Vec<Vec<UnifiedEvent>>>,
+        next_round: Arc<Mutex<usize>>,
+    }
+
+    #[derive(Clone)]
+    struct SequencedCompleteProvider {
+        rounds: Arc<Vec<UnifiedResponse>>,
         next_round: Arc<Mutex<usize>>,
     }
 
@@ -1228,6 +1252,39 @@ mod tests {
                 .map(Ok::<UnifiedEvent, ProviderError>)
                 .collect::<Vec<_>>();
             Ok(Box::pin(stream::iter(events)))
+        }
+    }
+
+    #[async_trait]
+    impl Provider<()> for SequencedCompleteProvider {
+        fn model_id(&self) -> &str {
+            "mock-model"
+        }
+
+        async fn complete(
+            &self,
+            _request: ChatCompletionRequest,
+            _metadata: &(),
+        ) -> Result<UnifiedResponse, ProviderError> {
+            let mut guard = self.next_round.lock().expect("next round lock");
+            let index = *guard;
+            *guard += 1;
+            self.rounds
+                .get(index)
+                .cloned()
+                .or_else(|| self.rounds.last().cloned())
+                .ok_or_else(|| ProviderError::internal("no complete rounds configured"))
+        }
+
+        async fn stream<'a>(
+            &'a self,
+            _request: ChatCompletionRequest,
+            _metadata: &(),
+        ) -> Result<
+            Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
+            ProviderError,
+        > {
+            Err(ProviderError::internal("unused in non-stream test"))
         }
     }
 
@@ -1729,5 +1786,125 @@ mod tests {
             invoker.captured(),
             vec!["{\"location\":\"beijing\"}".to_string()]
         );
+    }
+
+    #[tokio::test]
+    async fn run_agent_loop_nonstream_stops_when_total_tokens_reach_limit() {
+        let provider = SequencedCompleteProvider {
+            rounds: Arc::new(vec![UnifiedResponse {
+                request_id: "req-1".to_string(),
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+                model: "mock-model".to_string(),
+                output_text: String::new(),
+                reasoning_content: None,
+                tool_calls: Some(vec![ProviderToolCall {
+                    id: Some("call-1".to_string()),
+                    name: "get_weather".to_string(),
+                    description: String::new(),
+                    arguments: "{\"location\":\"beijing\"}".to_string(),
+                }]),
+                finish_reason: crate::llm_provider::FinishReason::ToolCalls,
+                usage: usage(12, 8, 20),
+            }]),
+            next_round: Arc::new(Mutex::new(0)),
+        };
+        let invoker = RecordingToolInvoker::default();
+
+        let mut request = stream_request();
+        request.stream = Some(false);
+        let result = run_agent_loop::<(), ()>(
+            Arc::new(provider.clone()),
+            request,
+            HashMap::new(),
+            Arc::new(invoker.clone()),
+            (),
+            "trace-1".to_string(),
+            None,
+            AgentLoopConfig {
+                max_total_tokens: Some(10),
+                ..AgentLoopConfig::default()
+            },
+        )
+        .await
+        .expect("non-stream run should succeed");
+
+        let AgentLoopResult::NonStream(response) = result else {
+            panic!("expected non-stream result");
+        };
+        assert!(response.tool_calls.is_some());
+        assert!(invoker.captured().is_empty());
+        assert_eq!(*provider.next_round.lock().expect("next round lock"), 1);
+    }
+
+    #[tokio::test]
+    async fn run_agent_loop_stream_stops_when_total_tokens_reach_limit() {
+        let provider = SequencedStreamProvider {
+            rounds: Arc::new(vec![
+                vec![
+                    UnifiedEvent::MessageStart {
+                        id: "req-1".to_string(),
+                        role: "assistant".to_string(),
+                    },
+                    UnifiedEvent::ToolCallDone {
+                        id: "call-1".to_string(),
+                        name: "get_weather".to_string(),
+                        arguments: "{\"location\":\"beijing\"}".to_string(),
+                    },
+                    UnifiedEvent::Usage {
+                        usage: usage(12, 8, 20),
+                    },
+                    UnifiedEvent::Completed {
+                        finish_reason: Some("tool_calls".to_string()),
+                    },
+                ],
+                vec![UnifiedEvent::MessageStart {
+                    id: "req-2".to_string(),
+                    role: "assistant".to_string(),
+                }],
+            ]),
+            next_round: Arc::new(Mutex::new(0)),
+        };
+        let invoker = RecordingToolInvoker::default();
+        let mut server_tools = HashMap::new();
+        server_tools.insert(
+            "get_weather".to_string(),
+            serde_json::json!({
+                "description": "Query weather",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "location": {"type": "string"}
+                    },
+                    "required": ["location"]
+                }
+            })
+            .to_string(),
+        );
+
+        let result = run_agent_loop::<(), ()>(
+            Arc::new(provider.clone()),
+            stream_request(),
+            server_tools,
+            Arc::new(invoker.clone()),
+            (),
+            "trace-1".to_string(),
+            None,
+            AgentLoopConfig {
+                max_total_tokens: Some(10),
+                ..AgentLoopConfig::default()
+            },
+        )
+        .await
+        .expect("stream run should succeed");
+
+        let AgentLoopResult::Stream { mut events } = result else {
+            panic!("expected stream result");
+        };
+        while let Some(event) = events.next().await {
+            event.expect("stream event should be ok");
+        }
+
+        assert!(invoker.captured().is_empty());
+        assert_eq!(*provider.next_round.lock().expect("next round lock"), 1);
     }
 }
