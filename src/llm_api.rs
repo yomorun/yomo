@@ -18,7 +18,7 @@ use crate::llm_provider::ProviderError;
 use crate::llm_stream_mapper::{DefaultStreamMapperSelector, StreamMapperSelector};
 use crate::metadata_mgr::{MetadataMgr, MetadataMgrImpl};
 use crate::openai_http_mapping::{
-    map_chat_error, map_openai_response, map_usage_to_openai, openai_error_response,
+    INTERNAL_SERVER_ERROR_MESSAGE, map_openai_response, map_usage_to_openai, openai_error_response,
     validate_openai_request,
 };
 use crate::openai_types::{ChatCompletionRequest, StreamOptions};
@@ -39,6 +39,57 @@ pub struct LlmHandlerState<A, M> {
     pub request_span_starter: Arc<dyn RequestSpanStarter<M>>,
     pub agent_loop_config: AgentLoopConfig<M>,
     pub mapper_selector: Arc<dyn StreamMapperSelector>,
+    pub error_response_policy: Arc<dyn LlmErrorResponsePolicy<M>>,
+}
+
+/// Decides how provider errors are converted to chat-completions HTTP responses.
+pub trait LlmErrorResponsePolicy<M>: Send + Sync {
+    fn handle_provider_error(
+        &self,
+        endpoint: EndpointKind,
+        model_id: &str,
+        metadata: &M,
+        err: ProviderError,
+    ) -> Response;
+}
+
+pub struct DefaultLlmErrorResponsePolicy;
+
+impl<M> LlmErrorResponsePolicy<M> for DefaultLlmErrorResponsePolicy {
+    fn handle_provider_error(
+        &self,
+        _endpoint: EndpointKind,
+        _model_id: &str,
+        _metadata: &M,
+        err: ProviderError,
+    ) -> Response {
+        if matches!(&err, ProviderError::Public { status, .. } if *status == StatusCode::BAD_REQUEST)
+        {
+            return map_public_provider_error(err);
+        }
+        openai_error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            INTERNAL_SERVER_ERROR_MESSAGE,
+            Some("internal_error"),
+        )
+    }
+}
+
+fn map_public_provider_error(err: ProviderError) -> Response {
+    let ProviderError::Public { status, error } = err else {
+        return openai_error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            INTERNAL_SERVER_ERROR_MESSAGE,
+            Some("internal_error"),
+        );
+    };
+    let response = crate::openai_types::ErrorResponse { error };
+    let payload = serde_json::to_vec(&response).unwrap_or_else(|_| b"{}".to_vec());
+    Response::builder()
+        .status(status)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(payload))
+        .expect("build error response")
 }
 
 pub async fn handle_chat_completions<A, M>(
@@ -95,7 +146,7 @@ where
             );
             openai_error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "Internal Error, Please Try Again Later",
+                INTERNAL_SERVER_ERROR_MESSAGE,
                 None,
             )
         }
@@ -295,7 +346,7 @@ where
                 );
                 let response = openai_error_response(
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    "Internal Error, Please Try Again Later",
+                    INTERNAL_SERVER_ERROR_MESSAGE,
                     None,
                 );
                 set_http_span_status(&root_span, response.status(), Some("internal_server_error"));
@@ -304,18 +355,25 @@ where
             let first_event = match first_item {
                 Ok(event) => event,
                 Err(err) => {
-                    let status = provider_error_status(&err);
-                    error!(
-                        "http.request.end; status_code={} model_id={} error={} trace_id={} metadata={:?}",
-                        status.as_u16(),
-                        model_id,
+                    let upstream_status = provider_error_status(&err);
+                    let error_message = err.to_string();
+                    let response = state.error_response_policy.handle_provider_error(
+                        EndpointKind::ChatCompletions,
+                        &model_id,
+                        &metadata,
                         err,
+                    );
+                    let final_status = response.status();
+                    error!(
+                        "http.request.end; status_code={} upstream_status_code={} model_id={} error={} trace_id={} metadata={:?}",
+                        final_status.as_u16(),
+                        upstream_status.as_u16(),
+                        model_id,
+                        error_message,
                         trace_id,
                         metadata
                     );
-                    let status_message = trace_status_message_for_provider_error(&err, status);
-                    let response = map_chat_error(err);
-                    set_http_span_status(&root_span, status, Some(status_message.as_str()));
+                    set_http_span_status(&root_span, response.status(), Some("provider_error"));
                     return Ok(response);
                 }
             };
@@ -332,18 +390,25 @@ where
                 .expect("build response"))
         }
         Err(err) => {
-            let status = provider_error_status(&err);
-            error!(
-                "http.request.end; status_code={} model_id={} error={} trace_id={} metadata={:?}",
-                status.as_u16(),
-                model_id,
+            let upstream_status = provider_error_status(&err);
+            let error_message = err.to_string();
+            let response = state.error_response_policy.handle_provider_error(
+                EndpointKind::ChatCompletions,
+                &model_id,
+                &metadata,
                 err,
+            );
+            let final_status = response.status();
+            error!(
+                "http.request.end; status_code={} upstream_status_code={} model_id={} error={} trace_id={} metadata={:?}",
+                final_status.as_u16(),
+                upstream_status.as_u16(),
+                model_id,
+                error_message,
                 trace_id,
                 metadata
             );
-            let status_message = trace_status_message_for_provider_error(&err, status);
-            let response = map_chat_error(err);
-            set_http_span_status(&root_span, status, Some(status_message.as_str()));
+            set_http_span_status(&root_span, response.status(), Some("provider_error"));
             Ok(response)
         }
     }
@@ -359,20 +424,10 @@ fn finish_reason_to_str(reason: &FinishReason) -> &'static str {
     }
 }
 
-fn trace_status_message_for_provider_error(err: &ProviderError, status: StatusCode) -> String {
-    if status == StatusCode::BAD_REQUEST {
-        match err {
-            ProviderError::Public { error, .. } => error.message.clone(),
-            ProviderError::Internal { .. } => "internal_server_error".to_string(),
-        }
-    } else {
-        "internal_server_error".to_string()
-    }
-}
-
 fn provider_error_status(err: &ProviderError) -> StatusCode {
     match err {
-        ProviderError::Public { status, .. } => *status,
+        ProviderError::Public { status, .. } if *status == StatusCode::BAD_REQUEST => *status,
+        ProviderError::Public { .. } => StatusCode::INTERNAL_SERVER_ERROR,
         ProviderError::Internal { .. } => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
@@ -391,6 +446,23 @@ pub async fn build_llm_api(
     tool_invoker: Arc<dyn ToolInvoker>,
     agent_loop_config: AgentLoopConfig<()>,
 ) -> anyhow::Result<Router> {
+    build_llm_api_with_error_policy(
+        tool_mgr,
+        provider_registry,
+        tool_invoker,
+        agent_loop_config,
+        Arc::new(DefaultLlmErrorResponsePolicy),
+    )
+    .await
+}
+
+pub async fn build_llm_api_with_error_policy(
+    tool_mgr: Arc<dyn ToolMgr<(), ()>>,
+    provider_registry: ProviderRegistry<()>,
+    tool_invoker: Arc<dyn ToolInvoker>,
+    agent_loop_config: AgentLoopConfig<()>,
+    error_response_policy: Arc<dyn LlmErrorResponsePolicy<()>>,
+) -> anyhow::Result<Router> {
     let state = LlmHandlerState {
         provider_registry: Arc::new(provider_registry),
         tool_mgr,
@@ -399,6 +471,7 @@ pub async fn build_llm_api(
         request_span_starter: Arc::new(DefaultRequestSpanStarter),
         agent_loop_config,
         mapper_selector: Arc::new(DefaultStreamMapperSelector::default()),
+        error_response_policy,
     };
 
     let app = axum::Router::new()
@@ -413,48 +486,103 @@ pub async fn build_llm_api(
 #[cfg(test)]
 mod tests {
     use axum::http::StatusCode;
+    use axum::response::Response;
 
     use super::{
+        DefaultLlmErrorResponsePolicy, LlmErrorResponsePolicy, provider_error_status,
         selection_model_not_supported_message, selection_model_required_message,
-        trace_status_message_for_provider_error,
     };
     use crate::llm_provider::ProviderError;
     use crate::openai_types::ErrorDetail;
 
+    struct AlwaysTeapotPolicy;
+
+    impl<M> LlmErrorResponsePolicy<M> for AlwaysTeapotPolicy {
+        fn handle_provider_error(
+            &self,
+            _endpoint: crate::serve_config::EndpointKind,
+            _model_id: &str,
+            _metadata: &M,
+            _err: ProviderError,
+        ) -> Response {
+            Response::builder()
+                .status(StatusCode::IM_A_TEAPOT)
+                .body(axum::body::Body::from("teapot"))
+                .expect("build teapot response")
+        }
+    }
+
     #[test]
-    fn trace_status_message_uses_public_message_for_bad_request() {
+    fn provider_error_status_maps_non_bad_request_to_internal_server_error() {
         let err = ProviderError::Public {
-            status: StatusCode::BAD_REQUEST,
+            status: StatusCode::TOO_MANY_REQUESTS,
             error: ErrorDetail {
-                message: "provider_bad_request".to_string(),
-                r#type: "invalid_request_error".to_string(),
-                code: None,
+                message: "rate limited".to_string(),
+                r#type: "rate_limit_error".to_string(),
+                code: Some("rate_limit".to_string()),
                 param: None,
             },
         };
 
         assert_eq!(
-            trace_status_message_for_provider_error(&err, StatusCode::BAD_REQUEST),
-            "provider_bad_request"
+            provider_error_status(&err),
+            StatusCode::INTERNAL_SERVER_ERROR
         );
     }
 
     #[test]
-    fn trace_status_message_uses_internal_for_non_bad_request() {
-        let err = ProviderError::Public {
-            status: StatusCode::UNPROCESSABLE_ENTITY,
-            error: ErrorDetail {
-                message: "provider_error".to_string(),
-                r#type: "invalid_request_error".to_string(),
-                code: None,
-                param: None,
+    fn default_llm_error_response_policy_passthroughs_bad_request() {
+        let policy = DefaultLlmErrorResponsePolicy;
+        let response = policy.handle_provider_error(
+            crate::serve_config::EndpointKind::ChatCompletions,
+            "gpt-test",
+            &(),
+            ProviderError::Public {
+                status: StatusCode::BAD_REQUEST,
+                error: ErrorDetail {
+                    message: "invalid_request".to_string(),
+                    r#type: "invalid_request_error".to_string(),
+                    code: None,
+                    param: None,
+                },
             },
-        };
-
-        assert_eq!(
-            trace_status_message_for_provider_error(&err, StatusCode::UNPROCESSABLE_ENTITY),
-            "internal_server_error"
         );
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn default_llm_error_response_policy_normalizes_rate_limit_to_internal_server_error() {
+        let policy = DefaultLlmErrorResponsePolicy;
+        let response = policy.handle_provider_error(
+            crate::serve_config::EndpointKind::ChatCompletions,
+            "gpt-test",
+            &(),
+            ProviderError::Public {
+                status: StatusCode::TOO_MANY_REQUESTS,
+                error: ErrorDetail {
+                    message: "rate limited".to_string(),
+                    r#type: "rate_limit_error".to_string(),
+                    code: Some("rate_limit".to_string()),
+                    param: None,
+                },
+            },
+        );
+
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn custom_llm_error_response_policy_can_override_status() {
+        let policy = AlwaysTeapotPolicy;
+        let response = policy.handle_provider_error(
+            crate::serve_config::EndpointKind::ChatCompletions,
+            "gpt-test",
+            &(),
+            ProviderError::internal("boom"),
+        );
+
+        assert_eq!(response.status(), StatusCode::IM_A_TEAPOT);
     }
 
     #[test]

@@ -24,6 +24,8 @@ use crate::openai_types::{
 use crate::trace::{record_usage_attributes, set_http_span_status};
 use crate::usage_handler::EndpointUsage;
 
+pub const INTERNAL_SERVER_ERROR_MESSAGE: &str = "Internal Server Error";
+
 pub fn map_openai_response(response: UnifiedResponse) -> ChatCompletionResponse {
     let content = if response.output_text.is_empty() {
         None
@@ -1566,23 +1568,4 @@ pub fn openai_error_response(
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(payload))
         .expect("build error response")
-}
-
-pub fn map_chat_error(err: ProviderError) -> Response {
-    match err {
-        ProviderError::Public { status, error } => {
-            let response = ErrorResponse { error };
-            let payload = serde_json::to_vec(&response).unwrap_or_else(|_| b"{}".to_vec());
-            axum::response::Response::builder()
-                .status(status)
-                .header(header::CONTENT_TYPE, "application/json")
-                .body(axum::body::Body::from(payload))
-                .expect("build error response")
-        }
-        ProviderError::Internal { .. } => openai_error_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Internal Server Error",
-            Some("internal_error"),
-        ),
-    }
 }
