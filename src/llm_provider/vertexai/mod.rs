@@ -38,6 +38,8 @@ use crate::usage_handler::EndpointUsage;
 use crate::utils::{MAX_LOG_BODY_BYTES, truncate_for_log};
 
 const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
+// Gemini inline data limit for non-image file parts (e.g. PDF).
+const MAX_FILE_BYTES: usize = 20 * 1024 * 1024;
 const GEMINI_MAX_OUTPUT_TOKENS_65K: i32 = 65_536;
 // Official output token cap for Gemini image generation models.
 const GEMINI_MAX_OUTPUT_TOKENS_32K: i32 = 32_768;
@@ -514,9 +516,30 @@ async fn content_to_vertex_parts(
                             ..Default::default()
                         });
                     }
-                    ContentPart::InputAudio { .. } | ContentPart::File { .. } => {
+                    ContentPart::File {
+                        file,
+                        file_url,
+                        file_id,
+                        mime_type,
+                        ..
+                    } => {
+                        if file_url.is_some() || file_id.is_some() {
+                            return Err(ProviderError::internal(
+                                "model does not support file_url/file_id, only file_data is supported"
+                                    .to_string(),
+                            ));
+                        }
+                        let file_data = file.file_data.as_deref().unwrap_or_default();
+                        let (mime_type, data) =
+                            file_to_inline_data(file_data, mime_type.as_deref())?;
+                        out.push(VertexPart {
+                            inline_data: Some(VertexInlineData { mime_type, data }),
+                            ..Default::default()
+                        });
+                    }
+                    ContentPart::InputAudio { .. } => {
                         return Err(ProviderError::internal(
-                            "vertexai provider does not support input_audio/file yet".to_string(),
+                            "model does not support input_audio yet".to_string(),
                         ));
                     }
                 }
@@ -573,8 +596,34 @@ async fn image_to_inline_data(
     }
 
     Err(ProviderError::internal(
-        "vertexai provider supports image_url as data URL or http(s) URL".to_string(),
+        "model supports image_url as data URL or http(s) URL".to_string(),
     ))
+}
+
+fn file_to_inline_data(
+    file_data: &str,
+    mime_type: Option<&str>,
+) -> Result<(String, String), ProviderError> {
+    if file_data.trim().is_empty() {
+        return Err(ProviderError::internal(
+            "model requires file_data (base64) for file parts".to_string(),
+        ));
+    }
+    let mime_type = mime_type.unwrap_or_default().trim().to_string();
+    if mime_type.is_empty() {
+        return Err(ProviderError::internal(
+            "model requires mime_type for file parts".to_string(),
+        ));
+    }
+    let bytes = BASE64_STANDARD
+        .decode(file_data.trim())
+        .map_err(|err| ProviderError::internal(format!("invalid base64 file_data: {err}")))?;
+    if bytes.len() > MAX_FILE_BYTES {
+        return Err(ProviderError::internal(format!(
+            "file is too large (>{MAX_FILE_BYTES} bytes)"
+        )));
+    }
+    Ok((mime_type, file_data.trim().to_string()))
 }
 
 fn extract_message_text(content: &Content) -> Result<String, ProviderError> {
@@ -1306,6 +1355,71 @@ mod tests {
     fn parse_data_url_rejects_non_base64() {
         let raw = "data:image/png;utf8,hello";
         assert!(parse_data_url(raw).is_none());
+    }
+
+    #[test]
+    fn file_to_inline_data_returns_mime_and_base64_data() {
+        let data = BASE64_STANDARD.encode("hello pdf");
+        let (mime, out) =
+            file_to_inline_data(&data, Some("application/pdf")).expect("must map file data");
+        assert_eq!(mime, "application/pdf");
+        assert_eq!(out, data);
+    }
+
+    #[test]
+    fn file_to_inline_data_rejects_empty_file_data() {
+        let err = file_to_inline_data("", Some("application/pdf")).expect_err("must fail");
+        assert!(err.to_string().contains("requires file_data"));
+    }
+
+    #[test]
+    fn file_to_inline_data_rejects_missing_mime_type() {
+        let data = BASE64_STANDARD.encode("hello");
+        let err = file_to_inline_data(&data, None).expect_err("must fail");
+        assert!(err.to_string().contains("requires mime_type"));
+    }
+
+    #[test]
+    fn file_to_inline_data_rejects_invalid_base64() {
+        let err =
+            file_to_inline_data("not!!base64!!", Some("application/pdf")).expect_err("must fail");
+        assert!(err.to_string().contains("invalid base64"));
+    }
+
+    #[test]
+    fn file_to_inline_data_rejects_oversized_file() {
+        let oversized = vec![b'a'; MAX_FILE_BYTES + 1];
+        let data = BASE64_STANDARD.encode(oversized);
+        let err = file_to_inline_data(&data, Some("application/pdf")).expect_err("must fail");
+        assert!(err.to_string().contains("too large"));
+    }
+
+    #[test]
+    fn file_to_inline_data_accepts_exactly_at_size_limit() {
+        let bytes = vec![b'a'; MAX_FILE_BYTES];
+        let data = BASE64_STANDARD.encode(bytes);
+        assert!(file_to_inline_data(&data, Some("application/pdf")).is_ok());
+    }
+
+    #[test]
+    fn content_to_vertex_parts_rejects_file_without_file_data() {
+        let content = Content::Parts(vec![ContentPart::File {
+            file: crate::openai_types::FileContent::default(),
+            file_id: None,
+            file_data: None,
+            filename: None,
+            file_url: Some("https://example.com/doc.pdf".to_string()),
+            mime_type: Some("application/pdf".to_string()),
+        }]);
+        let client = reqwest::Client::new();
+        let err = tokio::runtime::Runtime::new()
+            .expect("runtime")
+            .block_on(content_to_vertex_parts(&content, &client))
+            .expect_err("must fail");
+        assert!(
+            err.to_string()
+                .contains("does not support file_url/file_id")
+        );
     }
 
     #[test]
