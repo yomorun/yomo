@@ -426,9 +426,11 @@ fn finish_reason_to_str(reason: &FinishReason) -> &'static str {
 
 fn provider_error_status(err: &ProviderError) -> StatusCode {
     match err {
-        ProviderError::Public { status, .. } if *status == StatusCode::BAD_REQUEST => *status,
-        ProviderError::Public { .. } => StatusCode::INTERNAL_SERVER_ERROR,
-        ProviderError::Internal { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+        ProviderError::Public { status, .. } => *status,
+        ProviderError::Internal {
+            upstream_http_status,
+            ..
+        } => *upstream_http_status,
     }
 }
 
@@ -513,7 +515,7 @@ mod tests {
     }
 
     #[test]
-    fn provider_error_status_maps_non_bad_request_to_internal_server_error() {
+    fn provider_error_status_keeps_public_upstream_status() {
         let err = ProviderError::Public {
             status: StatusCode::TOO_MANY_REQUESTS,
             error: ErrorDetail {
@@ -524,10 +526,17 @@ mod tests {
             },
         };
 
-        assert_eq!(
-            provider_error_status(&err),
-            StatusCode::INTERNAL_SERVER_ERROR
+        assert_eq!(provider_error_status(&err), StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    #[test]
+    fn provider_error_status_keeps_internal_upstream_status() {
+        let err = ProviderError::internal_with_upstream_status(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "upstream timeout",
         );
+
+        assert_eq!(provider_error_status(&err), StatusCode::SERVICE_UNAVAILABLE);
     }
 
     #[test]
