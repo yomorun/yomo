@@ -624,7 +624,7 @@ where
                 break;
             }
 
-            let request_id = request.model.clone();
+            let request_id = resolve_round_request_id(round_state.request_id.as_deref(), &trace_id);
             let mut tool_messages = Vec::new();
             tool_messages.push(build_assistant_tool_call_message(
                 &request_id,
@@ -776,6 +776,14 @@ fn resolve_tool_call_name(existing: &str, incoming: &str) -> String {
     } else {
         incoming.to_string()
     }
+}
+
+fn resolve_round_request_id(request_id: Option<&str>, trace_id: &str) -> String {
+    request_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| trace_id.to_string())
 }
 
 fn ensure_provider_call_ids(request_id: &str, calls: &mut [ProviderToolCall]) {
@@ -1125,7 +1133,7 @@ mod tests {
 
     use super::{
         AgentLoopConfig, AgentLoopResult, compose_assistant_tool_call_content,
-        resolve_tool_call_name, run_agent_loop,
+        resolve_round_request_id, resolve_tool_call_name, run_agent_loop,
     };
     use crate::llm_provider::{
         Provider, ProviderError, ToolCall as ProviderToolCall, UnifiedEvent, UnifiedResponse,
@@ -1452,6 +1460,26 @@ mod tests {
         assert_eq!(
             resolve_tool_call_name("get_weather", "query_weather"),
             "query_weather".to_string()
+        );
+    }
+
+    #[test]
+    fn resolve_round_request_id_prefers_non_empty_request_id() {
+        assert_eq!(
+            resolve_round_request_id(Some(" req-123 "), "trace-1"),
+            "req-123".to_string()
+        );
+    }
+
+    #[test]
+    fn resolve_round_request_id_falls_back_to_trace_id() {
+        assert_eq!(
+            resolve_round_request_id(None, "trace-1"),
+            "trace-1".to_string()
+        );
+        assert_eq!(
+            resolve_round_request_id(Some("   "), "trace-2"),
+            "trace-2".to_string()
         );
     }
 
