@@ -44,7 +44,7 @@ where
     fn default() -> Self {
         Self {
             max_calls: 24,
-            max_total_tokens: Some(32_768),
+            max_total_tokens: Some(327_680),
             usage_handler: Arc::new(NoopUsageHandler::default()),
             request_hook: Arc::new(NoopRequestHook::default()),
         }
@@ -259,18 +259,6 @@ where
         round_usages.push(modified_usage);
         call_count += 1;
 
-        let reached_max_calls = call_count >= config.max_calls;
-        let reached_max_total_tokens =
-            is_total_token_limit_reached(config.max_total_tokens, &round_usages);
-        if reached_max_calls || reached_max_total_tokens {
-            response.usage = EndpointUsage::from_endpoint_payload(
-                "/chat/completions",
-                aggregate_usages_to_value("/chat/completions", &round_usages),
-            )
-            .expect("agent_loop expected chat/completions usage payload");
-            return Ok(AgentLoopResult::NonStream(response));
-        }
-
         let mut tool_calls = response.tool_calls.take().unwrap_or_default();
         ensure_provider_call_ids(&response.request_id, &mut tool_calls);
         log_llm_call(
@@ -281,6 +269,27 @@ where
             Some(&usage_to_value(&response.usage)),
             &trace_id,
         );
+        let (server_calls, client_calls) = split_tool_calls(&tool_calls, &tool_maps.source_map);
+        llm_chat_span.record("tool_calls.server.count", server_calls.len() as i64);
+        llm_chat_span.record("tool_calls.client.count", client_calls.len() as i64);
+
+        let reached_max_calls = call_count >= config.max_calls;
+        let reached_max_total_tokens =
+            is_total_token_limit_reached(config.max_total_tokens, &round_usages);
+        if reached_max_calls || reached_max_total_tokens {
+            response.tool_calls = if client_calls.is_empty() {
+                None
+            } else {
+                Some(client_calls.clone())
+            };
+            response.usage = EndpointUsage::from_endpoint_payload(
+                "/chat/completions",
+                aggregate_usages_to_value("/chat/completions", &round_usages),
+            )
+            .expect("agent_loop expected chat/completions usage payload");
+            return Ok(AgentLoopResult::NonStream(response));
+        }
+
         if tool_calls.is_empty() {
             response.tool_calls = None;
             response.usage = EndpointUsage::from_endpoint_payload(
@@ -291,9 +300,6 @@ where
             return Ok(AgentLoopResult::NonStream(response));
         }
 
-        let (server_calls, client_calls) = split_tool_calls(&tool_calls, &tool_maps.source_map);
-        llm_chat_span.record("tool_calls.server.count", server_calls.len() as i64);
-        llm_chat_span.record("tool_calls.client.count", client_calls.len() as i64);
         if server_calls.is_empty() {
             response.tool_calls = Some(client_calls);
             response.usage = EndpointUsage::from_endpoint_payload(
@@ -571,32 +577,28 @@ where
                 round_state.openai_usage_payload.as_ref(),
                 &trace_id,
             );
+            let (server_calls, client_calls) =
+                split_tool_calls(&round_state.tool_calls, &tool_maps.source_map);
+            llm_chat_span.record("tool_calls.server.count", server_calls.len() as i64);
+            llm_chat_span.record("tool_calls.client.count", client_calls.len() as i64);
             let reached_max_calls = loop_state.call_count >= config.max_calls;
             let reached_max_total_tokens =
                 is_total_token_limit_reached(config.max_total_tokens, &loop_state.round_usages);
             if reached_max_calls || reached_max_total_tokens {
-                if !round_state.tool_calls.is_empty() {
-                    if !round_state.emitted_client_tool {
-                        let events = build_client_tool_events(&round_state.finish_reason, &round_state.tool_calls);
-                        for event in events {
-                            yield event;
-                        }
-                    } else if let Some(completed) =
-                        build_completed_event(&round_state.finish_reason)
-                    {
-                        yield completed;
+                if !client_calls.is_empty() && !round_state.emitted_client_tool {
+                    let events = build_client_tool_events(&round_state.finish_reason, &client_calls);
+                    for event in events {
+                        yield event;
                     }
+                } else if let Some(completed) = build_completed_event(&round_state.finish_reason) {
+                    yield completed;
                 }
                 break;
             }
 
-            if round_state.tool_calls.is_empty() {
+            if server_calls.is_empty() && client_calls.is_empty() {
                 break;
             }
-
-            let (server_calls, client_calls) = split_tool_calls(&round_state.tool_calls, &tool_maps.source_map);
-            llm_chat_span.record("tool_calls.server.count", server_calls.len() as i64);
-            llm_chat_span.record("tool_calls.client.count", client_calls.len() as i64);
             if server_calls.is_empty() {
                 if !round_state.emitted_client_tool {
                     let events = build_client_tool_events(&round_state.finish_reason, &client_calls);
@@ -1837,13 +1839,28 @@ mod tests {
             next_round: Arc::new(Mutex::new(0)),
         };
         let invoker = RecordingToolInvoker::default();
+        let mut server_tools = HashMap::new();
+        server_tools.insert(
+            "get_weather".to_string(),
+            serde_json::json!({
+                "description": "Query weather",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "location": {"type": "string"}
+                    },
+                    "required": ["location"]
+                }
+            })
+            .to_string(),
+        );
 
         let mut request = stream_request();
         request.stream = Some(false);
         let result = run_agent_loop::<(), ()>(
             Arc::new(provider.clone()),
             request,
-            HashMap::new(),
+            server_tools,
             Arc::new(invoker.clone()),
             (),
             "trace-1".to_string(),
@@ -1859,7 +1876,7 @@ mod tests {
         let AgentLoopResult::NonStream(response) = result else {
             panic!("expected non-stream result");
         };
-        assert!(response.tool_calls.is_some());
+        assert!(response.tool_calls.is_none());
         assert!(invoker.captured().is_empty());
         assert_eq!(*provider.next_round.lock().expect("next round lock"), 1);
     }
@@ -1928,10 +1945,20 @@ mod tests {
         let AgentLoopResult::Stream { mut events } = result else {
             panic!("expected stream result");
         };
+        let mut seen_server_tool_event = false;
         while let Some(event) = events.next().await {
-            event.expect("stream event should be ok");
+            match event.expect("stream event should be ok") {
+                UnifiedEvent::ToolCallDelta { name, .. }
+                | UnifiedEvent::ToolCallDone { name, .. } => {
+                    if name == "get_weather" {
+                        seen_server_tool_event = true;
+                    }
+                }
+                _ => {}
+            }
         }
 
+        assert!(!seen_server_tool_event);
         assert!(invoker.captured().is_empty());
         assert_eq!(*provider.next_round.lock().expect("next round lock"), 1);
     }
