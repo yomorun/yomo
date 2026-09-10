@@ -165,6 +165,7 @@ fn is_target_gpt5_model(model: &str) -> bool {
             | "gpt-5.6-sol"
             | "gpt-5.6-luna"
             | "gpt-5.6-terra"
+            | "gpt-6-astra"
     )
 }
 
@@ -296,7 +297,7 @@ mod tests {
     }
 
     #[test]
-    fn is_target_gpt5_model_includes_gpt56_models() {
+    fn is_target_gpt5_model_includes_gpt56_and_gpt6_astra() {
         for model in ["gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.6-terra"] {
             assert!(
                 is_target_gpt5_model(model),
@@ -304,7 +305,10 @@ mod tests {
             );
         }
 
+        assert!(is_target_gpt5_model("gpt-6-astra"));
+
         assert!(!is_target_gpt5_model("gpt-5.6-unknown"));
+        assert!(!is_target_gpt5_model("gpt-6-astra-plus"));
     }
 
     #[test]
