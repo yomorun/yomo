@@ -18,7 +18,10 @@ use crate::model_api_provider::providers;
 use crate::model_api_provider::{ModelApiProvider, ProviderRequest, ProviderResponse};
 use crate::openai_types::ChatCompletionRequest;
 use crate::provider_error_notifier::{ProviderErrorEvent, ProviderErrorNotifier};
-use crate::serve_config::{ConfigError, EndpointConfig, EndpointKind, ProviderConfig};
+use crate::serve_config::{
+    ConfigError, EndpointConfig, EndpointKind, ProviderConfig, ResponseModelMode,
+    parse_response_model_mode,
+};
 
 #[derive(Clone, Debug)]
 pub struct SelectionResult {
@@ -98,6 +101,7 @@ impl<M> SelectionStrategy<M> for ByEndpointModel {
 struct ProviderCatalogEntry<M> {
     model_id: String,
     label: Option<String>,
+    response_model_mode: ResponseModelMode,
     chat_provider: Option<Arc<dyn Provider<M>>>,
     endpoint_providers: HashMap<EndpointKind, Arc<dyn ModelApiProvider<M>>>,
 }
@@ -112,6 +116,7 @@ struct Catalog<M> {
 struct ResolvedChatProvider<M> {
     model_id: String,
     label: Option<String>,
+    response_model_mode: ResponseModelMode,
     provider: Arc<dyn Provider<M>>,
 }
 
@@ -119,6 +124,7 @@ struct ResolvedChatProvider<M> {
 struct ResolvedEndpointProvider<M> {
     model_id: String,
     label: Option<String>,
+    response_model_mode: ResponseModelMode,
     provider: Arc<dyn ModelApiProvider<M>>,
 }
 
@@ -126,6 +132,7 @@ struct ResolvedEndpointProvider<M> {
 pub struct ChatProviderEntry<M> {
     pub model_id: String,
     pub label: Option<String>,
+    pub response_model_mode: ResponseModelMode,
     pub provider: Arc<dyn Provider<M>>,
 }
 
@@ -133,6 +140,7 @@ pub struct ChatProviderEntry<M> {
 pub struct EndpointProviderEntry<M> {
     pub model_id: String,
     pub label: Option<String>,
+    pub response_model_mode: ResponseModelMode,
     pub provider: Arc<dyn ModelApiProvider<M>>,
 }
 
@@ -172,11 +180,19 @@ impl<M> Catalog<M> {
         let mut provider_map = HashMap::new();
         for provider in providers {
             let chat_provider = build_chat_provider_with_custom(provider, chat_builder)?;
+            let response_model_mode = parse_response_model_mode(provider.response_model.as_deref())
+                .map_err(|err| {
+                    ConfigError::InvalidProvider(format!(
+                        "invalid response_model for {}: {}",
+                        provider.model_id, err
+                    ))
+                })?;
             provider_map.insert(
                 provider.model_id.to_ascii_lowercase(),
                 ProviderCatalogEntry {
                     model_id: provider.model_id.clone(),
                     label: provider.label.clone(),
+                    response_model_mode,
                     chat_provider,
                     endpoint_providers: HashMap::new(),
                 },
@@ -259,6 +275,7 @@ impl<M> Catalog<M> {
         Ok(ResolvedChatProvider {
             model_id: catalog.model_id.clone(),
             label: catalog.label.clone(),
+            response_model_mode: catalog.response_model_mode.clone(),
             provider,
         })
     }
@@ -284,6 +301,7 @@ impl<M> Catalog<M> {
         Ok(ResolvedEndpointProvider {
             model_id: catalog.model_id.clone(),
             label: catalog.label.clone(),
+            response_model_mode: catalog.response_model_mode.clone(),
             provider,
         })
     }
@@ -372,6 +390,7 @@ impl<M> ProviderRegistry<M> {
         Ok(ChatProviderEntry {
             model_id: resolved.model_id,
             label: resolved.label,
+            response_model_mode: resolved.response_model_mode,
             provider,
         })
     }
@@ -393,6 +412,7 @@ impl<M> ProviderRegistry<M> {
         Ok(EndpointProviderEntry {
             model_id: resolved.model_id,
             label: resolved.label,
+            response_model_mode: resolved.response_model_mode,
             provider,
         })
     }
@@ -694,7 +714,7 @@ mod tests {
     use crate::llm_provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
     use crate::model_api_provider::{ModelApiProvider, ProviderRequest, ProviderResponse};
     use crate::openai_types::ChatCompletionRequest;
-    use crate::serve_config::{EndpointConfig, EndpointKind, ProviderConfig};
+    use crate::serve_config::{EndpointConfig, EndpointKind, ProviderConfig, ResponseModelMode};
 
     struct DenyStrategy;
 
@@ -786,6 +806,7 @@ mod tests {
             provider_type: "openai-compatible".to_string(),
             model_id: "oai-a".to_string(),
             label: None,
+            response_model: None,
             params: HashMap::from([
                 ("api_key".to_string(), "sk-test".to_string()),
                 (
@@ -822,6 +843,7 @@ mod tests {
             provider_type: "typesafe-systemone".to_string(),
             model_id: "jev-latest".to_string(),
             label: None,
+            response_model: None,
             params: HashMap::from([
                 ("api_key".to_string(), "ts-test".to_string()),
                 (
@@ -856,6 +878,7 @@ mod tests {
             provider_type: "openai-compatible".to_string(),
             model_id: "jev-latest".to_string(),
             label: None,
+            response_model: None,
             params: HashMap::from([
                 ("api_key".to_string(), "ts-test".to_string()),
                 (
@@ -892,6 +915,7 @@ mod tests {
             provider_type: "custom-chat".to_string(),
             model_id: "gpt-5.5".to_string(),
             label: None,
+            response_model: None,
             params: HashMap::new(),
         }];
         let endpoints = vec![EndpointConfig {
@@ -931,6 +955,7 @@ mod tests {
             provider_type: "custom-endpoint".to_string(),
             model_id: "gpt-5.5".to_string(),
             label: None,
+            response_model: None,
             params: HashMap::new(),
         }];
         let endpoints = vec![EndpointConfig {
@@ -998,6 +1023,7 @@ mod tests {
                     ProviderCatalogEntry {
                         model_id: "chat-a".to_string(),
                         label: None,
+                        response_model_mode: ResponseModelMode::Upstream,
                         chat_provider: Some(Arc::new(DummyChatProvider)),
                         endpoint_providers: HashMap::new(),
                     },
@@ -1028,6 +1054,7 @@ mod tests {
             provider_type: "openai-compatible".to_string(),
             model_id: "oai-a".to_string(),
             label: None,
+            response_model: None,
             params: HashMap::from([
                 ("api_key".to_string(), "sk-test".to_string()),
                 (
@@ -1072,6 +1099,7 @@ mod tests {
                 provider_type: "openai-compatible".to_string(),
                 model_id: "enabled-model".to_string(),
                 label: None,
+                response_model: None,
                 params: HashMap::from([
                     ("api_key".to_string(), "sk-test".to_string()),
                     (
@@ -1085,6 +1113,7 @@ mod tests {
                 provider_type: "openai-compatible".to_string(),
                 model_id: "unused-model".to_string(),
                 label: None,
+                response_model: None,
                 params: HashMap::from([
                     ("api_key".to_string(), "sk-test".to_string()),
                     (
@@ -1109,5 +1138,43 @@ mod tests {
             .expect("registry should be created");
 
         assert_eq!(registry.model_list(), vec!["enabled-model".to_string()]);
+    }
+
+    #[test]
+    fn select_chat_propagates_provider_response_model_mode() {
+        let providers = vec![ProviderConfig {
+            provider_type: "openai-compatible".to_string(),
+            model_id: "enabled-model".to_string(),
+            label: None,
+            response_model: Some("fixed:masked-model".to_string()),
+            params: HashMap::from([
+                ("api_key".to_string(), "sk-test".to_string()),
+                (
+                    "base_url".to_string(),
+                    "https://api.example.com/v1".to_string(),
+                ),
+                ("model".to_string(), "enabled-model".to_string()),
+            ]),
+        }];
+        let endpoints = vec![EndpointConfig {
+            path: "/chat/completions".to_string(),
+            models: vec!["enabled-model".to_string()],
+            default_model: Some("enabled-model".to_string()),
+        }];
+        let strategy = Arc::new(ByEndpointModel::new(HashMap::from([(
+            EndpointKind::ChatCompletions,
+            endpoints[0].clone(),
+        )])));
+
+        let registry = ProviderRegistry::<()>::from_config(&providers, &endpoints, strategy)
+            .expect("registry should be created");
+        let selected = registry
+            .select_chat(EndpointKind::ChatCompletions, None, &())
+            .expect("chat provider should be selectable");
+
+        assert_eq!(
+            selected.response_model_mode,
+            ResponseModelMode::Fixed("masked-model".to_string())
+        );
     }
 }

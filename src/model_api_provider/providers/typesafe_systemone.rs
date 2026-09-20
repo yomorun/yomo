@@ -108,6 +108,7 @@ mod tests {
             provider_type: "typesafe-systemone".to_string(),
             model_id: "jev-latest".to_string(),
             label: None,
+            response_model: None,
             params,
         };
 
@@ -124,6 +125,7 @@ mod tests {
             provider_type: "typesafe-systemone".to_string(),
             model_id: "jev-latest".to_string(),
             label: None,
+            response_model: None,
             params,
         };
 
@@ -142,6 +144,7 @@ mod tests {
             provider_type: "typesafe-systemone".to_string(),
             model_id: "jev-latest".to_string(),
             label: None,
+            response_model: None,
             params,
         };
 

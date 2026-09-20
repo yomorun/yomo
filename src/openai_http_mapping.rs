@@ -21,10 +21,29 @@ use crate::openai_types::{
     Content as OpenAIContent, ContentPart, ErrorDetail, ErrorResponse, PromptTokensDetails, Role,
     ToolCall as OpenAIToolCall, ToolCallFunction, ToolChoice, Usage,
 };
+use crate::serve_config::ResponseModelMode;
 use crate::trace::{record_usage_attributes, set_http_span_status};
 use crate::usage_handler::EndpointUsage;
 
 pub const INTERNAL_SERVER_ERROR_MESSAGE: &str = "Internal Server Error";
+
+fn response_model_for_mode(
+    mode: &ResponseModelMode,
+    routed_model: &str,
+    upstream_model: String,
+) -> String {
+    match mode {
+        ResponseModelMode::Upstream => {
+            if upstream_model.trim().is_empty() {
+                routed_model.to_string()
+            } else {
+                upstream_model
+            }
+        }
+        ResponseModelMode::Routed => routed_model.to_string(),
+        ResponseModelMode::Fixed(model) => model.clone(),
+    }
+}
 
 pub fn map_openai_response(response: UnifiedResponse) -> ChatCompletionResponse {
     let content = if response.output_text.is_empty() {
@@ -154,6 +173,7 @@ pub fn stream_openai_chunks(
     stream: Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send>>,
     trace_id: String,
     default_model: String,
+    response_model_mode: ResponseModelMode,
     root_span: Span,
 ) -> impl Stream<Item = Result<Bytes, std::io::Error>> {
     try_stream! {
@@ -163,7 +183,11 @@ pub fn stream_openai_chunks(
         let mut completed_finish_reason: Option<String> = None;
         let mut sent_preamble = false;
         let mut response_id = String::new();
-        let mut model = default_model;
+        let mut model = response_model_for_mode(
+            &response_model_mode,
+            &default_model,
+            default_model.clone(),
+        );
         let mut created_at = String::new();
         let mut latest_usage_for_root: Option<EndpointUsage> = None;
         let mut finalizer = StreamSpanFinalizer::new(root_span.clone(), trace_id.clone(), model.clone());
@@ -186,10 +210,8 @@ pub fn stream_openai_chunks(
                     if response_id.is_empty() && !id.trim().is_empty() {
                         response_id = id;
                     }
-                    if !resp_model.trim().is_empty() {
-                        model = resp_model;
-                        finalizer.set_model(model.clone());
-                    }
+                    model = response_model_for_mode(&response_model_mode, &default_model, resp_model);
+                    finalizer.set_model(model.clone());
                     created_at = resp_created;
                     if !sent_preamble {
                         sent_preamble = true;
@@ -205,7 +227,10 @@ pub fn stream_openai_chunks(
                         });
                     }
                 }
-                UnifiedEvent::ResponseInProgress { .. } => {}
+                UnifiedEvent::ResponseInProgress { model: resp_model, .. } => {
+                    model = response_model_for_mode(&response_model_mode, &default_model, resp_model);
+                    finalizer.set_model(model.clone());
+                }
                 UnifiedEvent::MessageStart { .. } => {}
                 UnifiedEvent::MessageDelta { id, delta } => {
                     if response_id.is_empty() && !id.trim().is_empty() {
@@ -641,7 +666,9 @@ fn derive_response_id_from_tool_call_id(tool_call_id: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{map_openai_response, stream_openai_chunks, validate_openai_request};
+    use super::{
+        ResponseModelMode, map_openai_response, stream_openai_chunks, validate_openai_request,
+    };
     use crate::llm_provider::{FinishReason, UnifiedEvent, UnifiedResponse};
     use crate::openai_types::ChatCompletionRequest;
     use crate::usage_handler::EndpointUsage;
@@ -775,6 +802,7 @@ mod tests {
             Box::pin(futures_util::stream::iter(events)),
             "trace-1".to_string(),
             "m".to_string(),
+            ResponseModelMode::Upstream,
             Span::none(),
         );
 
@@ -837,6 +865,7 @@ mod tests {
             Box::pin(futures_util::stream::iter(events)),
             "trace-1".to_string(),
             "m".to_string(),
+            ResponseModelMode::Upstream,
             Span::none(),
         );
 
@@ -899,6 +928,7 @@ mod tests {
             Box::pin(futures_util::stream::iter(events)),
             "trace-1".to_string(),
             "m".to_string(),
+            ResponseModelMode::Upstream,
             Span::none(),
         );
 
@@ -954,6 +984,7 @@ mod tests {
             Box::pin(futures_util::stream::iter(events)),
             "trace-1".to_string(),
             "m".to_string(),
+            ResponseModelMode::Upstream,
             Span::none(),
         );
 
@@ -1009,6 +1040,7 @@ mod tests {
             Box::pin(futures_util::stream::iter(events)),
             "trace-1".to_string(),
             "m".to_string(),
+            ResponseModelMode::Upstream,
             Span::none(),
         );
 
@@ -1085,6 +1117,7 @@ mod tests {
             Box::pin(futures_util::stream::iter(events)),
             "trace-1".to_string(),
             "m".to_string(),
+            ResponseModelMode::Upstream,
             Span::none(),
         );
 
@@ -1144,6 +1177,7 @@ mod tests {
             Box::pin(futures_util::stream::iter(events)),
             "trace-1".to_string(),
             "m".to_string(),
+            ResponseModelMode::Upstream,
             Span::none(),
         );
 
@@ -1200,6 +1234,7 @@ mod tests {
             Box::pin(futures_util::stream::iter(events)),
             "trace-1".to_string(),
             "m".to_string(),
+            ResponseModelMode::Upstream,
             Span::none(),
         );
 
@@ -1284,6 +1319,7 @@ mod tests {
             Box::pin(futures_util::stream::iter(events)),
             "trace-1".to_string(),
             "m".to_string(),
+            ResponseModelMode::Upstream,
             Span::none(),
         );
 
@@ -1330,6 +1366,7 @@ mod tests {
             Box::pin(futures_util::stream::iter(events)),
             "trace-1".to_string(),
             "m".to_string(),
+            ResponseModelMode::Upstream,
             Span::none(),
         );
 
@@ -1381,6 +1418,7 @@ mod tests {
             Box::pin(futures_util::stream::iter(events)),
             "trace-1".to_string(),
             "m".to_string(),
+            ResponseModelMode::Upstream,
             Span::none(),
         );
 
@@ -1446,6 +1484,7 @@ mod tests {
             Box::pin(futures_util::stream::iter(events)),
             "trace-1".to_string(),
             "m".to_string(),
+            ResponseModelMode::Upstream,
             Span::none(),
         );
 
@@ -1519,6 +1558,7 @@ mod tests {
             Box::pin(futures_util::stream::iter(events)),
             "trace-1".to_string(),
             "m".to_string(),
+            ResponseModelMode::Upstream,
             Span::none(),
         );
 
@@ -1546,6 +1586,106 @@ mod tests {
             });
 
         assert!(has_reasoning_chunk);
+    }
+
+    #[tokio::test]
+    async fn stream_openai_chunks_uses_routed_response_model_mode() {
+        let events = vec![
+            Ok(UnifiedEvent::ResponseCreated {
+                id: "req-1".to_string(),
+                model: "upstream-model".to_string(),
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+            }),
+            Ok(UnifiedEvent::MessageDelta {
+                id: "req-1".to_string(),
+                delta: "hello".to_string(),
+            }),
+            Ok(UnifiedEvent::Completed {
+                finish_reason: Some("stop".to_string()),
+            }),
+        ];
+
+        let stream = stream_openai_chunks(
+            Box::pin(futures_util::stream::iter(events)),
+            "trace-1".to_string(),
+            "routed-model".to_string(),
+            ResponseModelMode::Routed,
+            Span::none(),
+        );
+
+        let mut payloads = Vec::new();
+        futures_util::pin_mut!(stream);
+        while let Some(item) = stream.next().await {
+            payloads.push(item.expect("stream chunk"));
+        }
+
+        let model_values = payloads
+            .into_iter()
+            .filter_map(|payload| String::from_utf8(payload.to_vec()).ok())
+            .filter_map(|text| text.strip_prefix("data: ").map(str::to_string))
+            .filter(|json| json.trim() != "[DONE]")
+            .filter_map(|json| serde_json::from_str::<Value>(json.trim()).ok())
+            .filter_map(|value| {
+                value
+                    .get("model")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+            .filter(|model| !model.is_empty())
+            .collect::<Vec<_>>();
+
+        assert!(!model_values.is_empty());
+        assert!(model_values.iter().all(|model| model == "routed-model"));
+    }
+
+    #[tokio::test]
+    async fn stream_openai_chunks_uses_fixed_response_model_mode() {
+        let events = vec![
+            Ok(UnifiedEvent::ResponseCreated {
+                id: "req-1".to_string(),
+                model: "upstream-model".to_string(),
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+            }),
+            Ok(UnifiedEvent::MessageDelta {
+                id: "req-1".to_string(),
+                delta: "hello".to_string(),
+            }),
+            Ok(UnifiedEvent::Completed {
+                finish_reason: Some("stop".to_string()),
+            }),
+        ];
+
+        let stream = stream_openai_chunks(
+            Box::pin(futures_util::stream::iter(events)),
+            "trace-1".to_string(),
+            "routed-model".to_string(),
+            ResponseModelMode::Fixed("fixed-model".to_string()),
+            Span::none(),
+        );
+
+        let mut payloads = Vec::new();
+        futures_util::pin_mut!(stream);
+        while let Some(item) = stream.next().await {
+            payloads.push(item.expect("stream chunk"));
+        }
+
+        let model_values = payloads
+            .into_iter()
+            .filter_map(|payload| String::from_utf8(payload.to_vec()).ok())
+            .filter_map(|text| text.strip_prefix("data: ").map(str::to_string))
+            .filter(|json| json.trim() != "[DONE]")
+            .filter_map(|json| serde_json::from_str::<Value>(json.trim()).ok())
+            .filter_map(|value| {
+                value
+                    .get("model")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+            .filter(|model| !model.is_empty())
+            .collect::<Vec<_>>();
+
+        assert!(!model_values.is_empty());
+        assert!(model_values.iter().all(|model| model == "fixed-model"));
     }
 }
 
