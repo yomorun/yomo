@@ -31,7 +31,13 @@ pub struct SelectionResult {
 #[derive(Debug)]
 pub enum SelectionError {
     ModelRequired,
-    ModelNotSupported { model: String },
+    ModelNotSupported {
+        model: String,
+    },
+    ModelEndpointNotSupported {
+        model: String,
+        endpoint: EndpointKind,
+    },
     OutstandingBalance,
     AccessDenied,
 }
@@ -244,7 +250,11 @@ impl<M> Catalog<M> {
         })
     }
 
-    fn supports_model(&self, endpoint: EndpointKind, model_id: &str) -> bool {
+    fn contains_model(&self, model_id: &str) -> bool {
+        self.providers.contains_key(&model_id.to_ascii_lowercase())
+    }
+
+    fn supports_model_for_endpoint(&self, endpoint: EndpointKind, model_id: &str) -> bool {
         let Some(endpoint_config) = self.endpoints.get(&endpoint) else {
             return false;
         };
@@ -258,20 +268,23 @@ impl<M> Catalog<M> {
                 .is_some_and(|model| model.eq_ignore_ascii_case(model_id))
     }
 
-    fn resolve_chat(&self, model_id: &str) -> Result<ResolvedChatProvider<M>, SelectionError> {
+    fn resolve_chat(
+        &self,
+        endpoint: EndpointKind,
+        model_id: &str,
+    ) -> Result<ResolvedChatProvider<M>, SelectionError> {
         let catalog = self
             .providers
             .get(&model_id.to_ascii_lowercase())
             .ok_or_else(|| SelectionError::ModelNotSupported {
                 model: model_id.to_string(),
             })?;
-        let provider =
-            catalog
-                .chat_provider
-                .clone()
-                .ok_or_else(|| SelectionError::ModelNotSupported {
-                    model: model_id.to_string(),
-                })?;
+        let provider = catalog.chat_provider.clone().ok_or_else(|| {
+            SelectionError::ModelEndpointNotSupported {
+                model: model_id.to_string(),
+                endpoint,
+            }
+        })?;
         Ok(ResolvedChatProvider {
             model_id: catalog.model_id.clone(),
             label: catalog.label.clone(),
@@ -295,8 +308,9 @@ impl<M> Catalog<M> {
             .endpoint_providers
             .get(&endpoint)
             .cloned()
-            .ok_or_else(|| SelectionError::ModelNotSupported {
+            .ok_or_else(|| SelectionError::ModelEndpointNotSupported {
                 model: model_id.to_string(),
+                endpoint,
             })?;
         Ok(ResolvedEndpointProvider {
             model_id: catalog.model_id.clone(),
@@ -384,7 +398,9 @@ impl<M> ProviderRegistry<M> {
         M: Clone + Send + Sync + 'static,
     {
         let selected_model = self.select_model(endpoint, model_id, metadata)?;
-        let resolved = self.catalog.resolve_chat(selected_model.as_str())?;
+        let resolved = self
+            .catalog
+            .resolve_chat(endpoint, selected_model.as_str())?;
         let provider =
             self.wrap_chat_provider(endpoint, resolved.provider.clone(), &resolved.model_id);
         Ok(ChatProviderEntry {
@@ -424,12 +440,18 @@ impl<M> ProviderRegistry<M> {
         metadata: &M,
     ) -> Result<String, SelectionError> {
         let selected = self.strategy.select(endpoint, model_id, metadata)?;
-        if !self
-            .catalog
-            .supports_model(endpoint, selected.model_id.as_str())
-        {
+        if !self.catalog.contains_model(selected.model_id.as_str()) {
             return Err(SelectionError::ModelNotSupported {
                 model: selected.model_id,
+            });
+        }
+        if !self
+            .catalog
+            .supports_model_for_endpoint(endpoint, selected.model_id.as_str())
+        {
+            return Err(SelectionError::ModelEndpointNotSupported {
+                model: selected.model_id,
+                endpoint,
             });
         }
         Ok(selected.model_id)
@@ -1045,7 +1067,64 @@ mod tests {
             Ok(_) => panic!("endpoint provider capability is required"),
             Err(err) => err,
         };
-        assert!(matches!(err, SelectionError::ModelNotSupported { .. }));
+        assert!(matches!(
+            err,
+            SelectionError::ModelEndpointNotSupported {
+                model,
+                endpoint: EndpointKind::Responses,
+            } if model == "chat-a"
+        ));
+    }
+
+    #[test]
+    fn select_endpoint_distinguishes_unknown_model_from_endpoint_restriction() {
+        let registry = ProviderRegistry {
+            catalog: Catalog {
+                providers: HashMap::from([(
+                    "chat-a".to_string(),
+                    ProviderCatalogEntry {
+                        model_id: "chat-a".to_string(),
+                        label: None,
+                        response_model_mode: ResponseModelMode::Upstream,
+                        chat_provider: Some(Arc::new(DummyChatProvider)),
+                        endpoint_providers: HashMap::new(),
+                    },
+                )]),
+                endpoints: HashMap::from([(
+                    EndpointKind::Responses,
+                    EndpointConfig {
+                        path: "/responses".to_string(),
+                        models: vec![],
+                        default_model: None,
+                    },
+                )]),
+            },
+            strategy: Arc::new(ByEndpointModel::new(HashMap::new())),
+            error_notifier: None,
+        };
+
+        let unknown_model =
+            match registry.select_endpoint(EndpointKind::Responses, Some("unknown-model"), &()) {
+                Ok(_) => panic!("unknown model must be rejected"),
+                Err(err) => err,
+            };
+        assert!(matches!(
+            unknown_model,
+            SelectionError::ModelNotSupported { model } if model == "unknown-model"
+        ));
+
+        let restricted_model =
+            match registry.select_endpoint(EndpointKind::Responses, Some("chat-a"), &()) {
+                Ok(_) => panic!("model excluded from endpoint must be rejected"),
+                Err(err) => err,
+            };
+        assert!(matches!(
+            restricted_model,
+            SelectionError::ModelEndpointNotSupported {
+                model,
+                endpoint: EndpointKind::Responses,
+            } if model == "chat-a"
+        ));
     }
 
     #[test]
