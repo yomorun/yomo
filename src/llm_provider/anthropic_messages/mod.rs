@@ -13,7 +13,9 @@ use crate::openai_types::ChatCompletionRequest;
 use crate::serve_config::ConfigError;
 
 use self::client::{Backend, BedrockClient, DirectClient, map_client_error, parse_auth_style};
-use self::mapper::{map_request, map_response, map_stop_reason_string, map_stream_event};
+use self::mapper::{
+    inline_image_urls, map_request, map_response, map_stop_reason_string, map_stream_event,
+};
 use self::types::{
     AnthropicRequest, BedrockRequest, DEFAULT_ANTHROPIC_VERSION, DEFAULT_BEDROCK_ANTHROPIC_VERSION,
     DEFAULT_MAX_TOKENS, StreamState,
@@ -29,6 +31,7 @@ pub struct AnthropicMessagesProvider {
     upstream_model: String,
     anthropic_version: String,
     default_max_tokens: i32,
+    image_client: reqwest::Client,
 }
 
 impl AnthropicMessagesProvider {
@@ -43,6 +46,7 @@ impl AnthropicMessagesProvider {
             upstream_model,
             anthropic_version,
             default_max_tokens,
+            image_client: reqwest::Client::new(),
         }
     }
 }
@@ -59,6 +63,8 @@ impl<M> Provider<M> for AnthropicMessagesProvider {
         _metadata: &M,
     ) -> Result<UnifiedResponse, ProviderError> {
         validate_openai_request(&request).map_err(ProviderError::internal)?;
+        let mut request = request;
+        inline_image_urls(&mut request, &self.image_client).await?;
         let mapped = map_request(
             request,
             self.upstream_model.clone(),
@@ -117,6 +123,8 @@ impl<M> Provider<M> for AnthropicMessagesProvider {
         ProviderError,
     > {
         validate_openai_request(&request).map_err(ProviderError::internal)?;
+        let mut request = request;
+        inline_image_urls(&mut request, &self.image_client).await?;
         let mapped = map_request(
             request,
             self.upstream_model.clone(),

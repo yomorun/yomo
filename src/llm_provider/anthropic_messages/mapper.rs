@@ -1,3 +1,5 @@
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use log::warn;
 use serde_json::{Value, json};
 
@@ -12,6 +14,89 @@ use super::types::{
     RequestParts, StreamContentBlock, StreamContentDelta, StreamEvent, StreamState,
 };
 
+const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
+
+pub(super) async fn inline_image_urls(
+    request: &mut ChatCompletionRequest,
+    http: &reqwest::Client,
+) -> Result<(), ProviderError> {
+    for message in &mut request.messages {
+        let Content::Parts(parts) = &mut message.content else {
+            continue;
+        };
+
+        for part in parts {
+            let ContentPart::Image { image_url } = part else {
+                continue;
+            };
+            if image_url.url.trim().starts_with("data:") {
+                continue;
+            }
+            image_url.url = download_image_as_data_url(&image_url.url, http).await?;
+        }
+    }
+    Ok(())
+}
+
+async fn download_image_as_data_url(
+    url: &str,
+    http: &reqwest::Client,
+) -> Result<String, ProviderError> {
+    if !matches!(url, value if value.starts_with("http://") || value.starts_with("https://")) {
+        return Err(ProviderError::internal(
+            "anthropic models support image_url as a data URL or http(s) URL",
+        ));
+    }
+
+    let response = http
+        .get(url)
+        .send()
+        .await
+        .map_err(|err| ProviderError::internal(format!("download image failed: {err}")))?;
+    if !response.status().is_success() {
+        return Err(ProviderError::internal(format!(
+            "download image failed with status {}",
+            response.status()
+        )));
+    }
+    if response
+        .content_length()
+        .is_some_and(|length| length > MAX_IMAGE_BYTES as u64)
+    {
+        return Err(ProviderError::internal(format!(
+            "image is too large (>{MAX_IMAGE_BYTES} bytes)"
+        )));
+    }
+
+    let mime_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(';').next())
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    if !mime_type.starts_with("image/") {
+        return Err(ProviderError::internal(
+            "image_url content-type is not image/*",
+        ));
+    }
+
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|err| ProviderError::internal(format!("read image body failed: {err}")))?;
+    if bytes.len() > MAX_IMAGE_BYTES {
+        return Err(ProviderError::internal(format!(
+            "image is too large (>{MAX_IMAGE_BYTES} bytes)"
+        )));
+    }
+
+    Ok(format!(
+        "data:{mime_type};base64,{}",
+        BASE64_STANDARD.encode(bytes)
+    ))
+}
 pub(super) fn map_request(
     request: ChatCompletionRequest,
     upstream_model: String,
@@ -375,9 +460,7 @@ fn map_regular_content(content: &Content) -> Result<Vec<AnthropicContentBlock>, 
                     }
                     ContentPart::Image { image_url } => {
                         blocks.push(AnthropicContentBlock::Image {
-                            source: AnthropicImageSource::Url {
-                                url: image_url.url.clone(),
-                            },
+                            source: map_image_source(&image_url.url)?,
                         });
                     }
                     ContentPart::InputAudio { .. } | ContentPart::File { .. } => {
@@ -392,6 +475,29 @@ fn map_regular_content(content: &Content) -> Result<Vec<AnthropicContentBlock>, 
     }
 }
 
+fn map_image_source(url: &str) -> Result<AnthropicImageSource, ProviderError> {
+    if let Some((mime_type, data)) = parse_image_data_url(url) {
+        return Ok(AnthropicImageSource::Base64 { mime_type, data });
+    }
+    if url.trim().starts_with("data:") {
+        return Err(ProviderError::internal(
+            "image_url data URL must contain base64-encoded image data",
+        ));
+    }
+    Ok(AnthropicImageSource::Url {
+        url: url.to_string(),
+    })
+}
+
+fn parse_image_data_url(url: &str) -> Option<(String, String)> {
+    let (meta, data) = url.trim().strip_prefix("data:")?.split_once(',')?;
+    let (mime_type, encoding) = meta.split_once(';')?;
+    if mime_type.starts_with("image/") && encoding.eq_ignore_ascii_case("base64") {
+        Some((mime_type.to_string(), data.to_string()))
+    } else {
+        None
+    }
+}
 fn map_thinking(
     model: &str,
     thinking: Option<&crate::openai_types::ThinkingConfig>,
@@ -466,4 +572,32 @@ fn uuid_suffix(name: &str) -> String {
         .filter(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
         .take(32)
         .collect::<String>()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::map_image_source;
+    use crate::llm_provider::anthropic_messages::types::AnthropicImageSource;
+
+    #[test]
+    fn map_image_source_converts_base64_data_url() {
+        let source =
+            map_image_source("data:image/png;base64,aGVsbG8=").expect("base64 data URL should map");
+
+        assert!(matches!(
+            source,
+            AnthropicImageSource::Base64 { mime_type, data }
+                if mime_type == "image/png" && data == "aGVsbG8="
+        ));
+    }
+
+    #[test]
+    fn map_image_source_rejects_non_base64_data_url() {
+        let error = match map_image_source("data:image/png,hello") {
+            Ok(_) => panic!("non-base64 data URL must be rejected"),
+            Err(error) => error,
+        };
+
+        assert!(error.to_string().contains("base64-encoded image data"));
+    }
 }
