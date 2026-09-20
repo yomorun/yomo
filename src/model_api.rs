@@ -210,7 +210,16 @@ where
             );
         }
         Err(SelectionError::ModelNotSupported { model }) => {
-            let message = selection_model_not_supported_message(&route, &model);
+            let message = selection_model_not_supported_message(&model);
+            set_http_span_status(&root_span, StatusCode::BAD_REQUEST, Some(&message));
+            return openai_error_response(
+                StatusCode::BAD_REQUEST,
+                &message,
+                Some("invalid_request_error"),
+            );
+        }
+        Err(SelectionError::ModelEndpointNotSupported { model, .. }) => {
+            let message = selection_model_endpoint_not_supported_message(&route, &model);
             set_http_span_status(&root_span, StatusCode::BAD_REQUEST, Some(&message));
             return openai_error_response(
                 StatusCode::BAD_REQUEST,
@@ -885,8 +894,12 @@ fn selection_model_required_message(endpoint: &str) -> String {
     format!("model is required for {endpoint}")
 }
 
-fn selection_model_not_supported_message(endpoint: &str, model: &str) -> String {
-    format!("model {model} is not supported for {endpoint}")
+fn selection_model_not_supported_message(model: &str) -> String {
+    format!("model {model} is not supported")
+}
+
+fn selection_model_endpoint_not_supported_message(endpoint: &str, model: &str) -> String {
+    format!("model {model} is not enabled for {endpoint}")
 }
 
 pub async fn build_model_api(
@@ -925,7 +938,8 @@ mod tests {
     use super::{
         DefaultModelApiErrorResponsePolicy, ModelApiErrorAction, ModelApiErrorResponsePolicy,
         apply_response_model_mode_to_json, body_preview_for_log, decode_payload_for_log,
-        parse_model_request_fields, resolve_request_id, selection_model_not_supported_message,
+        parse_model_request_fields, resolve_request_id,
+        selection_model_endpoint_not_supported_message, selection_model_not_supported_message,
         selection_model_required_message,
     };
     use crate::model_api_provider::{ProviderBody, ProviderResponse};
@@ -1165,12 +1179,16 @@ mod tests {
         );
     }
 
-    /// Verifies selection errors include endpoint in unsupported-model message.
+    /// Verifies selection errors distinguish unsupported models from disabled endpoints.
     #[test]
-    fn selection_model_not_supported_message_includes_endpoint() {
+    fn selection_error_messages_distinguish_model_and_endpoint_support() {
         assert_eq!(
-            selection_model_not_supported_message("/v1/responses", "gpt-x"),
-            "model gpt-x is not supported for /v1/responses"
+            selection_model_not_supported_message("gpt-x"),
+            "model gpt-x is not supported"
+        );
+        assert_eq!(
+            selection_model_endpoint_not_supported_message("/v1/responses", "gpt-x"),
+            "model gpt-x is not enabled for /v1/responses"
         );
     }
 

@@ -246,7 +246,17 @@ where
             return Ok(response);
         }
         Err(SelectionError::ModelNotSupported { model }) => {
-            let message = selection_model_not_supported_message(
+            let message = selection_model_not_supported_message(&model);
+            let response = openai_error_response(
+                StatusCode::BAD_REQUEST,
+                &message,
+                Some("invalid_request_error"),
+            );
+            set_http_span_status(&root_span, response.status(), Some(&message));
+            return Ok(response);
+        }
+        Err(SelectionError::ModelEndpointNotSupported { model, .. }) => {
+            let message = selection_model_endpoint_not_supported_message(
                 &format!("/v1{}", EndpointKind::ChatCompletions.as_path()),
                 &model,
             );
@@ -459,8 +469,12 @@ fn selection_model_required_message(endpoint: &str) -> String {
     format!("model is required for {endpoint}")
 }
 
-fn selection_model_not_supported_message(endpoint: &str, model: &str) -> String {
-    format!("model {model} is not supported for {endpoint}")
+fn selection_model_not_supported_message(model: &str) -> String {
+    format!("model {model} is not supported")
+}
+
+fn selection_model_endpoint_not_supported_message(endpoint: &str, model: &str) -> String {
+    format!("model {model} is not enabled for {endpoint}")
 }
 
 pub async fn build_llm_api(
@@ -513,8 +527,8 @@ mod tests {
 
     use super::{
         DefaultLlmErrorResponsePolicy, LlmErrorResponsePolicy, provider_error_status,
-        response_model_for_mode, selection_model_not_supported_message,
-        selection_model_required_message,
+        response_model_for_mode, selection_model_endpoint_not_supported_message,
+        selection_model_not_supported_message, selection_model_required_message,
     };
     use crate::llm_provider::ProviderError;
     use crate::openai_types::ErrorDetail;
@@ -626,10 +640,14 @@ mod tests {
     }
 
     #[test]
-    fn selection_model_not_supported_message_includes_endpoint() {
+    fn selection_error_messages_distinguish_model_and_endpoint_support() {
         assert_eq!(
-            selection_model_not_supported_message("/v1/chat/completions", "gpt-x"),
-            "model gpt-x is not supported for /v1/chat/completions"
+            selection_model_not_supported_message("gpt-x"),
+            "model gpt-x is not supported"
+        );
+        assert_eq!(
+            selection_model_endpoint_not_supported_message("/v1/chat/completions", "gpt-x"),
+            "model gpt-x is not enabled for /v1/chat/completions"
         );
     }
 
