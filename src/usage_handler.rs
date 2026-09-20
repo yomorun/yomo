@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use crate::model_api_provider::{
     AudioSpeechUsage, AudioTranscriptionsUsage, EmbeddingsUsage, GenerateContentUsage, ImagesUsage,
-    MessagesUsage, RerankUsage, ResponsesUsage,
+    MessagesUsage, RerankUsage, ResponsesUsage, SystemOneUsage,
 };
 use crate::openai_types::{CompletionTokensDetails, PromptTokensDetails, Usage as OpenAIUsage};
 use crate::utils::truncate_for_log;
@@ -15,6 +15,7 @@ use crate::utils::truncate_for_log;
 #[serde(tag = "type", content = "payload", rename_all = "snake_case")]
 pub enum EndpointUsage {
     ChatCompletions(OpenAIUsage),
+    SystemOne(SystemOneUsage),
     Messages(MessagesUsage),
     Responses(ResponsesUsage),
     GenerateContent(GenerateContentUsage),
@@ -31,6 +32,11 @@ impl EndpointUsage {
             "/chat/completions" => {
                 if let Ok(usage) = serde_json::from_value::<OpenAIUsage>(payload.clone()) {
                     return Ok(Self::ChatCompletions(usage));
+                }
+            }
+            "/systemone" => {
+                if let Ok(usage) = serde_json::from_value::<SystemOneUsage>(payload.clone()) {
+                    return Ok(Self::SystemOne(usage));
                 }
             }
             "/messages" => {
@@ -96,6 +102,7 @@ impl EndpointUsage {
 
         match self {
             Self::ChatCompletions(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
+            Self::SystemOne(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
             Self::Messages(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
             Self::Responses(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
             Self::GenerateContent(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
@@ -110,6 +117,7 @@ impl EndpointUsage {
     pub fn raw_payload(&self) -> Value {
         match self {
             Self::ChatCompletions(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
+            Self::SystemOne(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
             Self::Messages(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
             Self::Responses(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
             Self::GenerateContent(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
@@ -124,6 +132,28 @@ impl EndpointUsage {
     pub(crate) fn to_openai_usage(&self) -> Option<OpenAIUsage> {
         match self {
             Self::ChatCompletions(usage) => Some(usage.clone()),
+            Self::SystemOne(usage) => {
+                if usage.input_tokens.is_none() && usage.output_tokens.is_none() {
+                    return None;
+                }
+                let input_tokens = usage.input_tokens.unwrap_or(0);
+                let output_tokens = usage.output_tokens.unwrap_or(0);
+                Some(OpenAIUsage {
+                    prompt_tokens: input_tokens,
+                    completion_tokens: output_tokens,
+                    total_tokens: input_tokens.saturating_add(output_tokens),
+                    prompt_tokens_details: Some(PromptTokensDetails {
+                        audio_tokens: 0,
+                        cached_tokens: 0,
+                    }),
+                    completion_tokens_details: Some(CompletionTokensDetails {
+                        accepted_prediction_tokens: 0,
+                        audio_tokens: 0,
+                        reasoning_tokens: 0,
+                        rejected_prediction_tokens: 0,
+                    }),
+                })
+            }
             Self::Messages(usage) => {
                 if usage.input_tokens.is_none()
                     && usage.output_tokens.is_none()
@@ -633,7 +663,7 @@ where
 mod tests {
     use super::{EndpointUsage, flatten_usage_quantities_for_usage};
     use crate::model_api_provider::{
-        GenerateContentUsage, MessagesUsage, ResponsesUsage, TrafficType,
+        GenerateContentUsage, MessagesUsage, ResponsesUsage, SystemOneUsage, TrafficType,
     };
     use crate::openai_types::{PromptTokensDetails, Usage as OpenAIUsage};
 
@@ -661,6 +691,50 @@ mod tests {
         );
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn systemone_usage_parses_endpoint_payload() {
+        let usage = EndpointUsage::from_endpoint_payload(
+            "/systemone",
+            serde_json::json!({
+                "input_tokens": 123,
+                "output_tokens": 45
+            }),
+        )
+        .expect("expected systemone usage");
+
+        let EndpointUsage::SystemOne(systemone) = usage else {
+            panic!("expected systemone usage");
+        };
+        assert_eq!(systemone.input_tokens, Some(123));
+        assert_eq!(systemone.output_tokens, Some(45));
+    }
+
+    #[test]
+    fn to_openai_usage_for_systemone_maps_input_and_output() {
+        let usage = EndpointUsage::SystemOne(SystemOneUsage {
+            input_tokens: Some(12),
+            output_tokens: Some(8),
+        });
+
+        let mapped = usage.to_openai_usage().expect("usage must map");
+
+        assert_eq!(mapped.prompt_tokens, 12);
+        assert_eq!(mapped.completion_tokens, 8);
+        assert_eq!(mapped.total_tokens, 20);
+    }
+
+    #[test]
+    fn systemone_usage_into_payload_preserves_fields() {
+        let payload = EndpointUsage::SystemOne(SystemOneUsage {
+            input_tokens: Some(9),
+            output_tokens: Some(6),
+        })
+        .into_payload("/systemone");
+
+        assert_eq!(payload["input_tokens"], 9);
+        assert_eq!(payload["output_tokens"], 6);
     }
 
     #[test]

@@ -4,6 +4,7 @@ use serde_json::Value;
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "endpoint", rename_all = "snake_case")]
 pub enum Usage {
+    SystemOne(SystemOneUsage),
     Messages(MessagesUsage),
     Responses(ResponsesUsage),
     ChatCompletions(ChatCompletionsUsage),
@@ -14,6 +15,12 @@ pub enum Usage {
     AudioTranscriptions(AudioTranscriptionsUsage),
     Images(ImagesUsage),
     Unknown(UnknownUsage),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SystemOneUsage {
+    pub input_tokens: Option<i64>,
+    pub output_tokens: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

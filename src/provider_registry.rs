@@ -638,6 +638,12 @@ fn build_endpoint_provider_with_custom<M>(
                 "provider type {other} is not supported for /messages"
             ))),
         },
+        EndpointKind::SystemOne => match provider.provider_type.as_str() {
+            "typesafe-systemone" => providers::typesafe_systemone::build_client(provider),
+            other => Err(ConfigError::InvalidProvider(format!(
+                "provider type {other} is not supported for /systemone"
+            ))),
+        },
         EndpointKind::Responses => match provider.provider_type.as_str() {
             "openai-compatible" | "openai" | "tokenhub" => {
                 providers::responses::build_client(provider)
@@ -807,6 +813,76 @@ mod tests {
         assert!(
             err.to_string()
                 .contains("provider type openai-compatible is not supported for /messages")
+        );
+    }
+
+    #[test]
+    fn from_config_accepts_typesafe_systemone_provider_type() {
+        let providers = vec![ProviderConfig {
+            provider_type: "typesafe-systemone".to_string(),
+            model_id: "jev-latest".to_string(),
+            label: None,
+            params: HashMap::from([
+                ("api_key".to_string(), "ts-test".to_string()),
+                (
+                    "base_url".to_string(),
+                    "https://api.typesafe.ai/v1".to_string(),
+                ),
+                ("model".to_string(), "jev-latest".to_string()),
+            ]),
+        }];
+        let endpoints = vec![EndpointConfig {
+            path: "/systemone".to_string(),
+            models: vec!["jev-latest".to_string()],
+            default_model: Some("jev-latest".to_string()),
+        }];
+
+        let strategy = Arc::new(ByEndpointModel::new(HashMap::from([(
+            EndpointKind::SystemOne,
+            endpoints[0].clone(),
+        )])));
+        let registry = ProviderRegistry::<()>::from_config(&providers, &endpoints, strategy)
+            .expect("/systemone should accept typesafe-systemone provider type");
+
+        let selected = registry
+            .select_endpoint(EndpointKind::SystemOne, None, &())
+            .expect("systemone provider should be selectable");
+        assert_eq!(selected.model_id, "jev-latest");
+    }
+
+    #[test]
+    fn from_config_rejects_unsupported_systemone_provider_type() {
+        let providers = vec![ProviderConfig {
+            provider_type: "openai-compatible".to_string(),
+            model_id: "jev-latest".to_string(),
+            label: None,
+            params: HashMap::from([
+                ("api_key".to_string(), "ts-test".to_string()),
+                (
+                    "base_url".to_string(),
+                    "https://api.example.com/v1".to_string(),
+                ),
+                ("model".to_string(), "jev-latest".to_string()),
+            ]),
+        }];
+        let endpoints = vec![EndpointConfig {
+            path: "/systemone".to_string(),
+            models: vec!["jev-latest".to_string()],
+            default_model: Some("jev-latest".to_string()),
+        }];
+
+        let strategy = Arc::new(ByEndpointModel::new(HashMap::from([(
+            EndpointKind::SystemOne,
+            endpoints[0].clone(),
+        )])));
+        let err = match ProviderRegistry::<()>::from_config(&providers, &endpoints, strategy) {
+            Ok(_) => panic!("/systemone should reject openai-compatible provider type"),
+            Err(err) => err,
+        };
+
+        assert!(
+            err.to_string()
+                .contains("provider type openai-compatible is not supported for /systemone")
         );
     }
 
