@@ -8,6 +8,7 @@ pub use provider::{
 };
 pub use providers::{
     BedrockMessagesClient, GenerateContentClient, MessagesClient, ProxyClient, ResponsesClient,
+    TypeSafeSystemOneClient,
 };
 pub use usage::{
     AudioSpeechUsage, AudioTranscriptionsUsage, ChatCompletionsCompletionTokensDetails,
@@ -15,5 +16,5 @@ pub use usage::{
     GenerateContentUsage, ImagesInputTokensDetails, ImagesOutputTokensDetails, ImagesUsage,
     MediaModality, MessagesCacheCreation, MessagesServerToolUse, MessagesUsage, ModalityTokenCount,
     RerankBilledUnits, RerankUsage, ResponsesInputTokensDetails, ResponsesOutputTokensDetails,
-    ResponsesUsage, TrafficType, UnknownUsage, Usage,
+    ResponsesUsage, SystemOneUsage, TrafficType, UnknownUsage, Usage,
 };

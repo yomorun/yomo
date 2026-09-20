@@ -69,13 +69,19 @@ pub struct DefaultModelApiErrorResponsePolicy;
 impl<M> ModelApiErrorResponsePolicy<M> for DefaultModelApiErrorResponsePolicy {
     fn handle_error_response(
         &self,
-        _endpoint_path: &str,
+        endpoint_path: &str,
         _model_id: &str,
         _metadata: &M,
         upstream_response: &ProviderResponse,
     ) -> ModelApiErrorAction {
         if upstream_response.status == StatusCode::BAD_REQUEST {
             return ModelApiErrorAction::Passthrough;
+        }
+        if endpoint_path == "/systemone" {
+            let status_code = upstream_response.status.as_u16();
+            if status_code == StatusCode::TOO_MANY_REQUESTS.as_u16() || status_code == 529 {
+                return ModelApiErrorAction::Passthrough;
+            }
         }
         if !upstream_response.status.is_success() {
             return ModelApiErrorAction::Override(openai_error_response(
@@ -1091,6 +1097,36 @@ mod tests {
             panic!("expected override response");
         };
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn default_model_api_error_policy_passthroughs_systemone_rate_limits() {
+        let policy = DefaultModelApiErrorResponsePolicy;
+        let upstream_response = ProviderResponse {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            headers: axum::http::HeaderMap::new(),
+            body: ProviderBody::Full(Bytes::from_static(b"{}")),
+        };
+
+        let action =
+            policy.handle_error_response("/systemone", "jev-latest", &(), &upstream_response);
+
+        assert!(matches!(action, ModelApiErrorAction::Passthrough));
+    }
+
+    #[test]
+    fn default_model_api_error_policy_passthroughs_systemone_overloaded() {
+        let policy = DefaultModelApiErrorResponsePolicy;
+        let upstream_response = ProviderResponse {
+            status: StatusCode::from_u16(529).expect("529 status code should be valid"),
+            headers: axum::http::HeaderMap::new(),
+            body: ProviderBody::Full(Bytes::from_static(b"{}")),
+        };
+
+        let action =
+            policy.handle_error_response("/systemone", "jev-latest", &(), &upstream_response);
+
+        assert!(matches!(action, ModelApiErrorAction::Passthrough));
     }
 
     #[test]

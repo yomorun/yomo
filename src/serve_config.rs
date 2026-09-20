@@ -29,6 +29,7 @@ impl Error for ConfigError {}
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EndpointKind {
     ChatCompletions,
+    SystemOne,
     Messages,
     Responses,
     Embeddings,
@@ -44,6 +45,7 @@ impl EndpointKind {
     pub fn as_path(&self) -> &'static str {
         match self {
             EndpointKind::ChatCompletions => "/chat/completions",
+            EndpointKind::SystemOne => "/systemone",
             EndpointKind::Messages => "/messages",
             EndpointKind::Responses => "/responses",
             EndpointKind::Embeddings => "/embeddings",
@@ -71,6 +73,7 @@ impl EndpointKind {
     fn from_path(path: &str) -> Option<Self> {
         match path {
             "/chat/completions" => Some(Self::ChatCompletions),
+            "/systemone" => Some(Self::SystemOne),
             "/messages" => Some(Self::Messages),
             "/responses" => Some(Self::Responses),
             "/embeddings" => Some(Self::Embeddings),
@@ -293,5 +296,18 @@ impl ServeConfig {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EndpointKind;
+
+    #[test]
+    fn endpoint_kind_maps_systemone_path() {
+        let endpoint = EndpointKind::from_request_path("/systemone");
+
+        assert_eq!(endpoint, Some(EndpointKind::SystemOne));
+        assert_eq!(EndpointKind::SystemOne.as_path(), "/systemone");
     }
 }
