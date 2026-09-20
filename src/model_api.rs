@@ -21,7 +21,7 @@ use crate::model_api_provider::{
 };
 use crate::openai_http_mapping::{INTERNAL_SERVER_ERROR_MESSAGE, openai_error_response};
 use crate::provider_registry::{ProviderRegistry, SelectionError};
-use crate::serve_config::{EndpointKind, parse_generate_content_model};
+use crate::serve_config::{EndpointKind, ResponseModelMode, parse_generate_content_model};
 use crate::trace::{
     DefaultRequestSpanStarter, RequestSpanStarter, record_usage_attributes, set_http_span_status,
 };
@@ -311,6 +311,11 @@ where
         ProviderBody::Full(payload) => {
             let mut payload = payload;
             if let Ok(mut body_json) = serde_json::from_slice::<Value>(&payload) {
+                let mut payload_changed = apply_response_model_mode_to_json(
+                    &mut body_json,
+                    &provider_entry.response_model_mode,
+                    &provider_entry.model_id,
+                );
                 let request_id =
                     resolve_request_id(provider.extract_request_id(&body_json), &trace_id);
                 if let Some(usage_value) = provider
@@ -332,10 +337,13 @@ where
                     record_usage_attributes(&root_span, "usage", &modified_usage);
                     let response_usage = modified_usage.into_payload(endpoint_path);
                     if provider.inject_usage(&mut body_json, response_usage) {
-                        payload = serde_json::to_vec(&body_json)
-                            .map(Bytes::from)
-                            .unwrap_or(payload);
+                        payload_changed = true;
                     }
+                }
+                if payload_changed {
+                    payload = serde_json::to_vec(&body_json)
+                        .map(Bytes::from)
+                        .unwrap_or(payload);
                 }
             } else {
                 let upstream_status_code = response.status.as_u16();
@@ -377,6 +385,7 @@ where
                 Arc::clone(&state.usage_handler),
                 endpoint_path.to_string(),
                 provider_entry.model_id.clone(),
+                provider_entry.response_model_mode.clone(),
                 provider_entry.label.clone(),
                 trace_id.clone(),
                 metadata.clone(),
@@ -540,6 +549,7 @@ fn wrap_stream_with_usage<M>(
     usage_handler: Arc<dyn UsageHandler<M>>,
     endpoint: String,
     model_id: String,
+    response_model_mode: ResponseModelMode,
     label: Option<String>,
     trace_id: String,
     metadata: M,
@@ -577,6 +587,7 @@ where
                         Arc::clone(&usage_handler),
                         &endpoint,
                         &model_id,
+                        &response_model_mode,
                         label.as_deref(),
                         &trace_id,
                         metadata.clone(),
@@ -600,6 +611,7 @@ where
                     Arc::clone(&usage_handler),
                     &endpoint,
                     &model_id,
+                    &response_model_mode,
                     label.as_deref(),
                     &trace_id,
                     metadata.clone(),
@@ -613,6 +625,11 @@ where
                 if let Ok(mut value) = serde_json::from_str::<Value>(text_buffer.trim()) {
                     if let Some(usage_value) = provider.extract_usage(&value).filter(|usage| !usage.is_null())
                     {
+                        let payload_changed = apply_response_model_mode_to_json(
+                            &mut value,
+                            &response_model_mode,
+                            &model_id,
+                        );
                         let request_id = resolve_request_id(provider.extract_request_id(&value), &trace_id);
                         let modified_usage = usage_handler
                             .on_usage(
@@ -633,11 +650,29 @@ where
                             } else {
                                 yield Bytes::from(text_buffer.clone());
                             }
+                        } else if payload_changed {
+                            if let Ok(encoded) = serde_json::to_vec(&value) {
+                                yield Bytes::from(encoded);
+                            } else {
+                                yield Bytes::from(text_buffer.clone());
+                            }
                         } else {
                             yield Bytes::from(text_buffer.clone());
                         }
                     } else {
-                        yield Bytes::from(text_buffer.clone());
+                        if apply_response_model_mode_to_json(
+                            &mut value,
+                            &response_model_mode,
+                            &model_id,
+                        ) {
+                            if let Ok(encoded) = serde_json::to_vec(&value) {
+                                yield Bytes::from(encoded);
+                            } else {
+                                yield Bytes::from(text_buffer.clone());
+                            }
+                        } else {
+                            yield Bytes::from(text_buffer.clone());
+                        }
                     }
                 } else {
                     yield Bytes::from(text_buffer.clone());
@@ -733,6 +768,7 @@ async fn rewrite_sse_frame_usage<M>(
     usage_handler: Arc<dyn UsageHandler<M>>,
     endpoint: &str,
     model_id: &str,
+    response_model_mode: &ResponseModelMode,
     label: Option<&str>,
     trace_id: &str,
     metadata: M,
@@ -741,6 +777,8 @@ where
     M: Clone + Send + Sync + 'static,
 {
     if let Some(mut value) = parse_sse_data_json(frame) {
+        let mut payload_changed =
+            apply_response_model_mode_to_json(&mut value, response_model_mode, model_id);
         if let Some(usage_value) = provider
             .extract_usage(&value)
             .filter(|usage| !usage.is_null())
@@ -759,6 +797,7 @@ where
                 .await;
             let response_usage = modified_usage.clone().into_payload(endpoint);
             if provider.inject_usage(&mut value, response_usage) {
+                payload_changed = true;
                 if let Ok(encoded) = serde_json::to_string(&value) {
                     return (
                         rebuild_sse_frame_with_data(frame, &encoded),
@@ -767,8 +806,44 @@ where
                 }
             }
         }
+        if payload_changed {
+            if let Ok(encoded) = serde_json::to_string(&value) {
+                return (rebuild_sse_frame_with_data(frame, &encoded), None);
+            }
+        }
     }
     (format!("{frame}\n\n"), None)
+}
+
+fn apply_response_model_mode_to_json(
+    payload_json: &mut Value,
+    mode: &ResponseModelMode,
+    routed_model: &str,
+) -> bool {
+    let replacement = match mode {
+        ResponseModelMode::Upstream => return false,
+        ResponseModelMode::Routed => routed_model.to_string(),
+        ResponseModelMode::Fixed(model) => model.clone(),
+    };
+
+    let mut changed = false;
+    let Some(obj) = payload_json.as_object_mut() else {
+        return false;
+    };
+
+    if let Some(model) = obj.get_mut("model") {
+        *model = Value::String(replacement.clone());
+        changed = true;
+    }
+
+    if let Some(response) = obj.get_mut("response").and_then(Value::as_object_mut) {
+        if response.contains_key("model") {
+            response.insert("model".to_string(), Value::String(replacement));
+            changed = true;
+        }
+    }
+
+    changed
 }
 
 fn rebuild_sse_frame_with_data(frame: &str, json_payload: &str) -> String {
@@ -849,11 +924,12 @@ pub async fn build_model_api_with_error_policy(
 mod tests {
     use super::{
         DefaultModelApiErrorResponsePolicy, ModelApiErrorAction, ModelApiErrorResponsePolicy,
-        body_preview_for_log, decode_payload_for_log, parse_model_request_fields,
-        resolve_request_id, selection_model_not_supported_message,
+        apply_response_model_mode_to_json, body_preview_for_log, decode_payload_for_log,
+        parse_model_request_fields, resolve_request_id, selection_model_not_supported_message,
         selection_model_required_message,
     };
     use crate::model_api_provider::{ProviderBody, ProviderResponse};
+    use crate::serve_config::ResponseModelMode;
     use crate::utils::MAX_LOG_BODY_BYTES;
     use axum::body::Bytes;
     use axum::http::StatusCode;
@@ -1014,6 +1090,38 @@ mod tests {
 
         assert!(preview.contains("invalid_payload"));
         assert!(!preview.starts_with("<non-utf8 body"));
+    }
+
+    #[test]
+    fn apply_response_model_mode_to_json_updates_model_fields() {
+        let mut payload = serde_json::json!({
+            "model": "upstream",
+            "response": {"model": "nested-upstream"}
+        });
+
+        let changed = apply_response_model_mode_to_json(
+            &mut payload,
+            &ResponseModelMode::Routed,
+            "routed-model",
+        );
+
+        assert!(changed);
+        assert_eq!(payload["model"], "routed-model");
+        assert_eq!(payload["response"]["model"], "routed-model");
+    }
+
+    #[test]
+    fn apply_response_model_mode_to_json_keeps_upstream_mode() {
+        let mut payload = serde_json::json!({"model": "upstream"});
+
+        let changed = apply_response_model_mode_to_json(
+            &mut payload,
+            &ResponseModelMode::Upstream,
+            "routed-model",
+        );
+
+        assert!(!changed);
+        assert_eq!(payload["model"], "upstream");
     }
 
     /// Verifies decoder applies the outermost content encoding first.

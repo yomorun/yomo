@@ -384,6 +384,7 @@ mod tests {
             provider_type: "bedrock-messages".to_string(),
             model_id: "claude-sonnet-4-6".to_string(),
             label: None,
+            response_model: None,
             params,
         };
 
@@ -406,6 +407,7 @@ mod tests {
             provider_type: "bedrock-messages".to_string(),
             model_id: "claude-sonnet-4-6".to_string(),
             label: None,
+            response_model: None,
             params,
         };
 

@@ -23,7 +23,7 @@ use crate::openai_http_mapping::{
 };
 use crate::openai_types::{ChatCompletionRequest, StreamOptions};
 use crate::provider_registry::{ProviderRegistry, SelectionError};
-use crate::serve_config::EndpointKind;
+use crate::serve_config::{EndpointKind, ResponseModelMode};
 use crate::tool_invoker::ToolInvoker;
 use crate::tool_mgr::ToolMgr;
 use crate::trace::{DefaultRequestSpanStarter, RequestSpanStarter};
@@ -303,6 +303,7 @@ where
     }
 
     let model_id = provider_entry.model_id.clone();
+    let response_model_mode = provider_entry.response_model_mode.clone();
     let loop_result = run_agent_loop::<A, M>(
         provider_entry.provider,
         request,
@@ -316,7 +317,7 @@ where
     .await;
 
     match loop_result {
-        Ok(AgentLoopResult::NonStream(response)) => {
+        Ok(AgentLoopResult::NonStream(mut response)) => {
             root_span.record(
                 "finish_reason",
                 tracing::field::display(finish_reason_to_str(&response.finish_reason)),
@@ -327,6 +328,8 @@ where
                 "http.request.end; status_code=200 model_id={} prompt_tokens={} completion_tokens={} trace_id={} metadata={:?}",
                 model_id, usage.prompt_tokens, usage.completion_tokens, trace_id, metadata
             );
+            response.model =
+                response_model_for_mode(&response_model_mode, &model_id, response.model);
             let mapped = map_openai_response(response);
             let payload = serde_json::to_vec(&mapped).context("serialize response")?;
             let response = Response::builder()
@@ -379,7 +382,7 @@ where
             };
             let events = Box::pin(stream::once(async move { Ok(first_event) }).chain(events));
             let mapper = state.mapper_selector.select(&headers);
-            let sse = mapper.map_stream(events, trace_id, model_id, root_span);
+            let sse = mapper.map_stream(events, trace_id, model_id, response_model_mode, root_span);
             let body = Body::from_stream(sse);
             Ok(Response::builder()
                 .status(StatusCode::OK)
@@ -431,6 +434,24 @@ fn provider_error_status(err: &ProviderError) -> StatusCode {
             upstream_http_status,
             ..
         } => *upstream_http_status,
+    }
+}
+
+fn response_model_for_mode(
+    mode: &ResponseModelMode,
+    routed_model: &str,
+    upstream_model: String,
+) -> String {
+    match mode {
+        ResponseModelMode::Upstream => {
+            if upstream_model.trim().is_empty() {
+                routed_model.to_string()
+            } else {
+                upstream_model
+            }
+        }
+        ResponseModelMode::Routed => routed_model.to_string(),
+        ResponseModelMode::Fixed(model) => model.clone(),
     }
 }
 
@@ -492,10 +513,12 @@ mod tests {
 
     use super::{
         DefaultLlmErrorResponsePolicy, LlmErrorResponsePolicy, provider_error_status,
-        selection_model_not_supported_message, selection_model_required_message,
+        response_model_for_mode, selection_model_not_supported_message,
+        selection_model_required_message,
     };
     use crate::llm_provider::ProviderError;
     use crate::openai_types::ErrorDetail;
+    use crate::serve_config::ResponseModelMode;
 
     struct AlwaysTeapotPolicy;
 
@@ -608,5 +631,33 @@ mod tests {
             selection_model_not_supported_message("/v1/chat/completions", "gpt-x"),
             "model gpt-x is not supported for /v1/chat/completions"
         );
+    }
+
+    #[test]
+    fn response_model_for_mode_prefers_upstream_when_present() {
+        let model = response_model_for_mode(
+            &ResponseModelMode::Upstream,
+            "routed-model",
+            "upstream-model".to_string(),
+        );
+
+        assert_eq!(model, "upstream-model");
+    }
+
+    #[test]
+    fn response_model_for_mode_supports_routed_and_fixed() {
+        let routed = response_model_for_mode(
+            &ResponseModelMode::Routed,
+            "routed-model",
+            "upstream-model".to_string(),
+        );
+        let fixed = response_model_for_mode(
+            &ResponseModelMode::Fixed("fixed-model".to_string()),
+            "routed-model",
+            "upstream-model".to_string(),
+        );
+
+        assert_eq!(routed, "routed-model");
+        assert_eq!(fixed, "fixed-model");
     }
 }

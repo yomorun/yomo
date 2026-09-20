@@ -118,7 +118,39 @@ pub struct ProviderConfig {
     pub provider_type: String,
     pub model_id: String,
     pub label: Option<String>,
+    pub response_model: Option<String>,
     pub params: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResponseModelMode {
+    Upstream,
+    Routed,
+    Fixed(String),
+}
+
+pub fn parse_response_model_mode(value: Option<&str>) -> Result<ResponseModelMode, String> {
+    let Some(value) = value else {
+        return Ok(ResponseModelMode::Upstream);
+    };
+    let value = value.trim();
+    if value.is_empty() {
+        return Err("response_model cannot be empty".to_string());
+    }
+    match value {
+        "upstream" => Ok(ResponseModelMode::Upstream),
+        "routed" => Ok(ResponseModelMode::Routed),
+        _ => {
+            if let Some(fixed_value) = value.strip_prefix("fixed:") {
+                let fixed_value = fixed_value.trim();
+                if fixed_value.is_empty() {
+                    return Err("response_model fixed target cannot be empty".to_string());
+                }
+                return Ok(ResponseModelMode::Fixed(fixed_value.to_string()));
+            }
+            Err("response_model must be one of: upstream, routed, fixed:<model_name>".to_string())
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -255,6 +287,13 @@ impl ServeConfig {
                     provider.model_id
                 )));
             }
+
+            parse_response_model_mode(provider.response_model.as_deref()).map_err(|err| {
+                ConfigError::InvalidProvider(format!(
+                    "invalid response_model for {}: {}",
+                    provider.model_id, err
+                ))
+            })?;
         }
 
         for endpoint in &self.endpoints {
@@ -301,7 +340,7 @@ impl ServeConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::EndpointKind;
+    use super::{EndpointKind, ResponseModelMode, parse_response_model_mode};
 
     #[test]
     fn endpoint_kind_maps_systemone_path() {
@@ -309,5 +348,30 @@ mod tests {
 
         assert_eq!(endpoint, Some(EndpointKind::SystemOne));
         assert_eq!(EndpointKind::SystemOne.as_path(), "/systemone");
+    }
+
+    #[test]
+    fn parse_response_model_mode_defaults_to_upstream() {
+        let mode = parse_response_model_mode(None).expect("default response model mode");
+
+        assert_eq!(mode, ResponseModelMode::Upstream);
+    }
+
+    #[test]
+    fn parse_response_model_mode_parses_routed_and_fixed() {
+        let routed = parse_response_model_mode(Some("routed")).expect("routed mode");
+        let fixed = parse_response_model_mode(Some("fixed:gpt-4.1")).expect("fixed mode");
+
+        assert_eq!(routed, ResponseModelMode::Routed);
+        assert_eq!(fixed, ResponseModelMode::Fixed("gpt-4.1".to_string()));
+    }
+
+    #[test]
+    fn parse_response_model_mode_rejects_invalid_values() {
+        let empty_fixed = parse_response_model_mode(Some("fixed:   "));
+        let unknown = parse_response_model_mode(Some("something-else"));
+
+        assert!(empty_fixed.is_err());
+        assert!(unknown.is_err());
     }
 }

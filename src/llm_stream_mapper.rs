@@ -7,6 +7,7 @@ use tracing::Span;
 use crate::{
     llm_provider::{ProviderError, UnifiedEvent},
     openai_http_mapping::stream_openai_chunks,
+    serve_config::ResponseModelMode,
 };
 
 pub type UnifiedEventStream =
@@ -19,6 +20,7 @@ pub trait StreamChunkMapper: Send + Sync {
         stream: UnifiedEventStream,
         trace_id: String,
         default_model: String,
+        response_model_mode: ResponseModelMode,
         root_span: Span,
     ) -> StreamBytes;
 }
@@ -36,12 +38,14 @@ impl StreamChunkMapper for OpenAiSseStreamMapper {
         stream: UnifiedEventStream,
         trace_id: String,
         default_model: String,
+        response_model_mode: ResponseModelMode,
         root_span: Span,
     ) -> StreamBytes {
         Box::pin(stream_openai_chunks(
             stream,
             trace_id,
             default_model,
+            response_model_mode,
             root_span,
         ))
     }
