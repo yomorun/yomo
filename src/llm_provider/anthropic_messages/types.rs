@@ -85,6 +85,7 @@ pub(super) enum AnthropicContentBlock {
 #[derive(Serialize, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(super) enum AnthropicImageSource {
+    Base64 { mime_type: String, data: String },
     Url { url: String },
 }
 
