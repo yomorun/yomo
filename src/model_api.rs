@@ -847,7 +847,16 @@ fn apply_response_model_mode_to_json(
 
     if let Some(response) = obj.get_mut("response").and_then(Value::as_object_mut) {
         if response.contains_key("model") {
-            response.insert("model".to_string(), Value::String(replacement));
+            response.insert("model".to_string(), Value::String(replacement.clone()));
+            changed = true;
+        }
+    }
+
+    // Anthropic /messages streaming frames nest the model under "message"
+    // (e.g. message_start: {"type":"message_start","message":{"model":...}}).
+    if let Some(message) = obj.get_mut("message").and_then(Value::as_object_mut) {
+        if message.contains_key("model") {
+            message.insert("model".to_string(), Value::String(replacement));
             changed = true;
         }
     }
@@ -1136,6 +1145,37 @@ mod tests {
 
         assert!(!changed);
         assert_eq!(payload["model"], "upstream");
+    }
+
+    /// Anthropic /messages streaming frames nest the model under "message"
+    /// (message_start), which must also be rewritten.
+    #[test]
+    fn apply_response_model_mode_to_json_updates_nested_message_model() {
+        let mut payload = serde_json::json!({
+            "type": "message_start",
+            "message": {"id": "msg_1", "model": "upstream-model"}
+        });
+
+        let changed = apply_response_model_mode_to_json(
+            &mut payload,
+            &ResponseModelMode::Routed,
+            "routed-model",
+        );
+
+        assert!(changed);
+        assert_eq!(payload["message"]["model"], "routed-model");
+
+        let mut fixed_payload = serde_json::json!({
+            "type": "message_start",
+            "message": {"id": "msg_1", "model": "upstream-model"}
+        });
+        let fixed_changed = apply_response_model_mode_to_json(
+            &mut fixed_payload,
+            &ResponseModelMode::Fixed("fixed-model".to_string()),
+            "routed-model",
+        );
+        assert!(fixed_changed);
+        assert_eq!(fixed_payload["message"]["model"], "fixed-model");
     }
 
     /// Verifies decoder applies the outermost content encoding first.
