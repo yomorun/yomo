@@ -152,6 +152,16 @@ fn normalize_gpt5_request(request: &mut ChatCompletionRequest) {
     if request.reasoning_effort.is_some() && has_tool_usage(request) {
         request.reasoning_effort = None;
     }
+
+    if is_gpt6_sol_luna(&request.model) && has_tool_usage(request) {
+        request.reasoning_effort = Some("none".to_string());
+    }
+}
+
+/// gpt-6-sol / gpt-6-luna only support function calling in Chat Completions
+/// with `reasoning_effort: "none"`, so force it explicitly when tools are used.
+fn is_gpt6_sol_luna(model: &str) -> bool {
+    matches!(model, "gpt-6-sol" | "gpt-6-luna")
 }
 
 fn is_target_gpt5_model(model: &str) -> bool {
@@ -166,6 +176,8 @@ fn is_target_gpt5_model(model: &str) -> bool {
             | "gpt-5.6-luna"
             | "gpt-5.6-terra"
             | "gpt-6-astra"
+            | "gpt-6-sol"
+            | "gpt-6-luna"
     )
 }
 
@@ -278,6 +290,39 @@ mod tests {
     }
 
     #[test]
+    fn normalize_gpt6_sol_luna_forces_reasoning_effort_none_with_tools() {
+        for model in ["gpt-6-sol", "gpt-6-luna"] {
+            let mut request = base_request(model);
+            request.reasoning_effort = Some("medium".to_string());
+            request.tools = Some(vec![ToolDefinition {
+                r#type: "function".to_string(),
+                function: FunctionDefinition {
+                    name: "test_tool".to_string(),
+                    description: None,
+                    strict: None,
+                    parameters: json!({}),
+                },
+            }]);
+
+            normalize_gpt5_request(&mut request);
+
+            assert_eq!(request.reasoning_effort.as_deref(), Some("none"));
+        }
+    }
+
+    #[test]
+    fn normalize_gpt6_sol_luna_keeps_reasoning_effort_without_tools() {
+        for model in ["gpt-6-sol", "gpt-6-luna"] {
+            let mut request = base_request(model);
+            request.reasoning_effort = Some("medium".to_string());
+
+            normalize_gpt5_request(&mut request);
+
+            assert_eq!(request.reasoning_effort.as_deref(), Some("medium"));
+        }
+    }
+
+    #[test]
     fn normalize_gpt5_clears_reasoning_effort_when_tools_present() {
         let mut request = base_request("gpt-5.4-mini");
         request.reasoning_effort = Some("medium".to_string());
@@ -298,7 +343,13 @@ mod tests {
 
     #[test]
     fn is_target_gpt5_model_includes_gpt56_and_gpt6_astra() {
-        for model in ["gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.6-terra"] {
+        for model in [
+            "gpt-5.6-sol",
+            "gpt-5.6-luna",
+            "gpt-5.6-terra",
+            "gpt-6-sol",
+            "gpt-6-luna",
+        ] {
             assert!(
                 is_target_gpt5_model(model),
                 "expected {model} to be a target"
@@ -309,6 +360,7 @@ mod tests {
 
         assert!(!is_target_gpt5_model("gpt-5.6-unknown"));
         assert!(!is_target_gpt5_model("gpt-6-astra-plus"));
+        assert!(!is_target_gpt5_model("gpt-6-sol-plus"));
     }
 
     #[test]

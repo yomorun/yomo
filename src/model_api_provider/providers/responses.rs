@@ -129,7 +129,12 @@ fn sanitize_responses_request_body(body: &Bytes) -> Option<Bytes> {
     let model = payload_obj.get("model").and_then(Value::as_str)?;
     if !matches!(
         model,
-        "gpt-5.6-sol" | "gpt-5.6-luna" | "gpt-5.6-terra" | "gpt-6-astra"
+        "gpt-5.6-sol"
+            | "gpt-5.6-luna"
+            | "gpt-5.6-terra"
+            | "gpt-6-astra"
+            | "gpt-6-sol"
+            | "gpt-6-luna"
     ) {
         return None;
     }
@@ -370,6 +375,31 @@ mod tests {
         let body = Bytes::from(
             serde_json::to_vec(&json!({
                 "model": "gpt-6-astra",
+                "input": [
+                    {
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": "hello"}]
+                    }
+                ]
+            }))
+            .expect("serialize test body"),
+        );
+
+        let sanitized =
+            sanitize_responses_request_body(&body).expect("expected request body to be sanitized");
+        let sanitized_json: serde_json::Value =
+            serde_json::from_slice(&sanitized).expect("parse sanitized request body");
+
+        assert_eq!(sanitized_json["input"][0]["type"], "message");
+        assert_eq!(sanitized_json["input"][0]["content"][0]["text"], "hello");
+    }
+
+    /// Verifies gpt-6-sol receives the same message type repair behavior.
+    #[test]
+    fn sanitize_responses_request_body_adds_message_type_for_gpt6_sol() {
+        let body = Bytes::from(
+            serde_json::to_vec(&json!({
+                "model": "gpt-6-sol",
                 "input": [
                     {
                         "role": "user",
