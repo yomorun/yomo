@@ -166,6 +166,8 @@ fn is_target_gpt5_model(model: &str) -> bool {
             | "gpt-5.6-luna"
             | "gpt-5.6-terra"
             | "gpt-6-astra"
+            | "gpt-6-sol"
+            | "gpt-6-luna"
     )
 }
 
@@ -298,7 +300,13 @@ mod tests {
 
     #[test]
     fn is_target_gpt5_model_includes_gpt56_and_gpt6_astra() {
-        for model in ["gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.6-terra"] {
+        for model in [
+            "gpt-5.6-sol",
+            "gpt-5.6-luna",
+            "gpt-5.6-terra",
+            "gpt-6-sol",
+            "gpt-6-luna",
+        ] {
             assert!(
                 is_target_gpt5_model(model),
                 "expected {model} to be a target"
@@ -309,6 +317,7 @@ mod tests {
 
         assert!(!is_target_gpt5_model("gpt-5.6-unknown"));
         assert!(!is_target_gpt5_model("gpt-6-astra-plus"));
+        assert!(!is_target_gpt5_model("gpt-6-sol-plus"));
     }
 
     #[test]
