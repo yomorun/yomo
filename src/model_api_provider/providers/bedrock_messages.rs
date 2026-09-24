@@ -17,6 +17,11 @@ use crate::model_api_provider::provider::{
 };
 use crate::serve_config::{ConfigError, ProviderConfig};
 
+const KEY_NORMALIZATION_RULES: [(&str, &str); 1] = [(
+    "\"amazon-bedrock-invocationMetrics\":",
+    "\"invocationMetric\":",
+)];
+
 #[derive(Clone)]
 pub struct BedrockMessagesClient {
     model_id: String,
@@ -179,10 +184,11 @@ impl<M> ModelApiProvider<M> for BedrockMessagesClient {
                     .parse()
                     .expect("static header value must be valid"),
             );
+            let response_body = response.body.into_inner();
             Ok(ProviderResponse {
                 status: StatusCode::OK,
                 headers,
-                body: ProviderBody::Full(Bytes::from(response.body.into_inner())),
+                body: ProviderBody::Full(normalize_payload_keys_in_json_bytes(&response_body)),
             })
         }
     }
@@ -259,11 +265,33 @@ fn anthropic_sse_event_name(payload: &[u8]) -> Option<String> {
 }
 
 fn build_sse_frame(payload: &[u8]) -> String {
-    let payload_text = String::from_utf8_lossy(payload);
-    if let Some(event_name) = anthropic_sse_event_name(payload) {
+    let rewritten_payload = normalize_payload_keys_in_json_bytes(payload);
+    let payload_text = String::from_utf8_lossy(&rewritten_payload);
+    if let Some(event_name) = anthropic_sse_event_name(&rewritten_payload) {
         return format!("event: {event_name}\ndata: {payload_text}\n\n");
     }
     format!("data: {payload_text}\n\n")
+}
+
+fn normalize_payload_keys_in_json_bytes(payload: &[u8]) -> Bytes {
+    let Ok(payload_text) = std::str::from_utf8(payload) else {
+        return Bytes::copy_from_slice(payload);
+    };
+
+    let mut normalized = payload_text.to_string();
+    let mut changed = false;
+    for (source, target) in KEY_NORMALIZATION_RULES {
+        if normalized.contains(source) {
+            normalized = normalized.replace(source, target);
+            changed = true;
+        }
+    }
+
+    if changed {
+        Bytes::from(normalized)
+    } else {
+        Bytes::copy_from_slice(payload)
+    }
 }
 
 fn passthrough_bad_request<E>(
@@ -310,7 +338,8 @@ fn passthrough_bad_request_response(
 mod tests {
     use super::{
         anthropic_sse_event_name, build_client, build_sse_frame, extract_request_id_json,
-        extract_usage_json, inject_usage_json, passthrough_bad_request_response,
+        extract_usage_json, inject_usage_json, normalize_payload_keys_in_json_bytes,
+        passthrough_bad_request_response,
     };
     use crate::serve_config::ProviderConfig;
     use axum::http::{StatusCode, header};
@@ -492,6 +521,39 @@ mod tests {
         let frame = build_sse_frame(payload);
 
         assert_eq!(frame, "data: {\"message\":{\"id\":\"m1\"}}\n\n");
+    }
+
+    #[test]
+    fn build_sse_frame_normalizes_vendor_metrics_key() {
+        let payload =
+            br#"{"type":"message_stop","amazon-bedrock-invocationMetrics":{"inputTokenCount":3}}"#;
+
+        let frame = build_sse_frame(payload);
+
+        assert!(frame.contains("\"invocationMetric\""));
+        assert!(!frame.contains("\"amazon-bedrock-invocationMetrics\""));
+    }
+
+    #[test]
+    fn normalize_payload_keys_in_json_bytes_keeps_non_json_payload() {
+        let payload = b"not-json";
+
+        let rewritten = normalize_payload_keys_in_json_bytes(payload);
+
+        assert_eq!(rewritten.as_ref(), payload);
+    }
+
+    #[test]
+    fn normalize_payload_keys_preserves_key_order() {
+        let payload = br#"{"type":"message_stop","amazon-bedrock-invocationMetrics":{"outputTokenCount":11}}"#;
+
+        let normalized = normalize_payload_keys_in_json_bytes(payload);
+        let normalized_text = std::str::from_utf8(normalized.as_ref()).expect("utf8 payload");
+
+        assert_eq!(
+            normalized_text,
+            "{\"type\":\"message_stop\",\"invocationMetric\":{\"outputTokenCount\":11}}"
+        );
     }
 }
 
