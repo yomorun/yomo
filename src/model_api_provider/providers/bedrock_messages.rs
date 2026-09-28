@@ -17,6 +17,8 @@ use crate::model_api_provider::provider::{
 };
 use crate::serve_config::{ConfigError, ProviderConfig};
 
+const INVOCATION_METRICS_KEYS: [&str; 2] = ["invocationMetric", "amazon-bedrock-invocationMetrics"];
+
 #[derive(Clone)]
 pub struct BedrockMessagesClient {
     model_id: String,
@@ -179,10 +181,13 @@ impl<M> ModelApiProvider<M> for BedrockMessagesClient {
                     .parse()
                     .expect("static header value must be valid"),
             );
+            let response_body = response.body.into_inner();
             Ok(ProviderResponse {
                 status: StatusCode::OK,
                 headers,
-                body: ProviderBody::Full(Bytes::from(response.body.into_inner())),
+                body: ProviderBody::Full(strip_invocation_metrics(&Bytes::copy_from_slice(
+                    &response_body,
+                ))),
             })
         }
     }
@@ -259,11 +264,45 @@ fn anthropic_sse_event_name(payload: &[u8]) -> Option<String> {
 }
 
 fn build_sse_frame(payload: &[u8]) -> String {
-    let payload_text = String::from_utf8_lossy(payload);
-    if let Some(event_name) = anthropic_sse_event_name(payload) {
+    let stripped_payload = strip_invocation_metrics(&Bytes::copy_from_slice(payload));
+    let payload_text = String::from_utf8_lossy(&stripped_payload);
+    if let Some(event_name) = anthropic_sse_event_name(&stripped_payload) {
         return format!("event: {event_name}\ndata: {payload_text}\n\n");
     }
     format!("data: {payload_text}\n\n")
+}
+
+/// Strips Bedrock's invocation metrics, which are redundant with the standard
+/// Anthropic `usage` field.
+fn strip_invocation_metrics(payload: &Bytes) -> Bytes {
+    let matched = INVOCATION_METRICS_KEYS.iter().any(|key| {
+        let needle = format!("\"{key}\":");
+        payload
+            .as_ref()
+            .windows(needle.len())
+            .any(|window| window == needle.as_bytes())
+    });
+    if !matched {
+        return payload.clone();
+    }
+
+    let Ok(mut value) = serde_json::from_slice::<Value>(payload) else {
+        return payload.clone();
+    };
+    let Some(obj) = value.as_object_mut() else {
+        return payload.clone();
+    };
+    let mut removed = false;
+    for key in INVOCATION_METRICS_KEYS {
+        removed |= obj.remove(key).is_some();
+    }
+    if !removed {
+        return payload.clone();
+    }
+
+    serde_json::to_vec(&value)
+        .map(Bytes::from)
+        .unwrap_or_else(|_| payload.clone())
 }
 
 fn passthrough_bad_request<E>(
@@ -311,8 +350,10 @@ mod tests {
     use super::{
         anthropic_sse_event_name, build_client, build_sse_frame, extract_request_id_json,
         extract_usage_json, inject_usage_json, passthrough_bad_request_response,
+        strip_invocation_metrics,
     };
     use crate::serve_config::ProviderConfig;
+    use axum::body::Bytes;
     use axum::http::{StatusCode, header};
     use serde_json::json;
     use std::collections::HashMap;
@@ -492,6 +533,67 @@ mod tests {
         let frame = build_sse_frame(payload);
 
         assert_eq!(frame, "data: {\"message\":{\"id\":\"m1\"}}\n\n");
+    }
+
+    #[test]
+    fn build_sse_frame_normalizes_vendor_metrics_key() {
+        let payload =
+            br#"{"type":"message_stop","amazon-bedrock-invocationMetrics":{"inputTokenCount":3}}"#;
+
+        let frame = build_sse_frame(payload);
+
+        assert!(!frame.contains("invocationMetric"));
+        assert!(!frame.contains("amazon-bedrock-invocationMetrics"));
+        assert!(frame.starts_with("event: message_stop\ndata: {\"type\":\"message_stop\"}"));
+    }
+
+    #[test]
+    fn build_sse_frame_strips_normalized_invocation_metrics_key() {
+        let payload = br#"{"type":"message_stop","invocationMetric":{"inputTokenCount":25,"outputTokenCount":17}}"#;
+
+        let frame = build_sse_frame(payload);
+
+        assert_eq!(
+            frame,
+            "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+        );
+    }
+
+    #[test]
+    fn build_sse_frame_keeps_payload_without_invocation_metrics() {
+        let payload = br#"{"type":"message_start","message":{"id":"m1"}}"#;
+
+        let frame = build_sse_frame(payload);
+
+        assert!(frame.contains("\"message\""));
+    }
+
+    #[test]
+    fn strip_invocation_metrics_keeps_non_json_payload() {
+        let payload = Bytes::from_static(b"not-json");
+
+        let rewritten = strip_invocation_metrics(&payload);
+
+        assert_eq!(rewritten, payload);
+    }
+
+    #[test]
+    fn strip_invocation_metrics_removes_both_key_variants() {
+        let normalized = strip_invocation_metrics(&Bytes::from_static(
+            br#"{"type":"message_stop","invocationMetric":{"outputTokenCount":11}}"#,
+        ));
+        let vendor_prefixed = strip_invocation_metrics(&Bytes::from_static(
+            br#"{"type":"message_stop","amazon-bedrock-invocationMetrics":{"outputTokenCount":11}}"#,
+        ));
+
+        assert_eq!(
+            std::str::from_utf8(normalized.as_ref()).expect("utf8 payload"),
+            "{\"type\":\"message_stop\"}"
+        );
+        assert_eq!(
+            std::str::from_utf8(vendor_prefixed.as_ref()).expect("utf8 payload"),
+            "{\"type\":\"message_stop\"}"
+        );
     }
 }
 

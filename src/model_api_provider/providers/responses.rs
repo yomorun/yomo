@@ -126,21 +126,33 @@ fn non_null_usage(value: Option<&Value>) -> Option<Value> {
 fn sanitize_responses_request_body(body: &Bytes) -> Option<Bytes> {
     let mut payload_json: Value = serde_json::from_slice(body).ok()?;
     let payload_obj = payload_json.as_object_mut()?;
-    let model = payload_obj.get("model").and_then(Value::as_str)?;
-    if !matches!(
-        model,
-        "gpt-5.6-sol"
-            | "gpt-5.6-luna"
-            | "gpt-5.6-terra"
-            | "gpt-6-astra"
-            | "gpt-6-sol"
-            | "gpt-6-luna"
-    ) {
-        return None;
+    let allow_summary_passthrough = payload_obj
+        .get("model")
+        .and_then(Value::as_str)
+        .is_some_and(|model| model.starts_with("gpt-"));
+
+    let mut changed = false;
+
+    if !allow_summary_passthrough {
+        if payload_obj.remove("summary").is_some() {
+            changed = true;
+        }
+        if let Some(reasoning_obj) = payload_obj
+            .get_mut("reasoning")
+            .and_then(Value::as_object_mut)
+        {
+            if reasoning_obj.remove("summary").is_some() {
+                changed = true;
+            }
+        }
     }
 
-    let input_items = payload_obj.get_mut("input")?.as_array_mut()?;
-    let mut changed = false;
+    let Some(input_items) = payload_obj.get_mut("input").and_then(Value::as_array_mut) else {
+        if !changed {
+            return None;
+        }
+        return serde_json::to_vec(&payload_json).ok().map(Bytes::from);
+    };
 
     for item in input_items {
         let Some(item_obj) = item.as_object_mut() else {
@@ -244,12 +256,12 @@ mod tests {
         assert_eq!(payload.get("usage"), Some(&new_usage));
     }
 
-    /// Verifies message-like input items get `type: message` for targeted GPT-5.6 models.
+    /// Verifies message-like input items get `type: message` for alias models on /responses.
     #[test]
-    fn sanitize_responses_request_body_adds_message_type_for_target_models() {
+    fn sanitize_responses_request_body_adds_message_type_for_alias_model() {
         let body = Bytes::from(
             serde_json::to_vec(&json!({
-                "model": "gpt-5.6-sol",
+                "model": "alias-fast",
                 "input": [
                     {
                         "role": "user",
@@ -269,18 +281,13 @@ mod tests {
         assert_eq!(sanitized_json["input"][0]["content"][0]["text"], "hi");
     }
 
-    /// Verifies non-target models are left untouched.
+    /// Verifies string-form `input` payloads are left untouched.
     #[test]
-    fn sanitize_responses_request_body_skips_non_target_models() {
+    fn sanitize_responses_request_body_skips_string_input() {
         let body = Bytes::from(
             serde_json::to_vec(&json!({
-                "model": "gpt-5.4",
-                "input": [
-                    {
-                        "role": "user",
-                        "content": [{"type": "input_text", "text": "hi"}]
-                    }
-                ]
+                "model": "alias-fast",
+                "input": "hello"
             }))
             .expect("serialize test body"),
         );
@@ -295,7 +302,7 @@ mod tests {
     fn sanitize_responses_request_body_preserves_non_message_items() {
         let body = Bytes::from(
             serde_json::to_vec(&json!({
-                "model": "gpt-5.6-terra",
+                "model": "alias-fast",
                 "input": [
                     {
                         "type": "",
@@ -305,6 +312,16 @@ mod tests {
                         "type": "",
                         "role": "user",
                         "content": [{"type": "input_text", "text": "hello"}]
+                    },
+                    {
+                        "type": "function_call",
+                        "name": "calc",
+                        "arguments": "{\"x\":1}"
+                    },
+                    {
+                        "type": "function_call_output",
+                        "call_id": "call_123",
+                        "output": "{\"ok\":true}"
                     }
                 ]
             }))
@@ -316,11 +333,15 @@ mod tests {
         let sanitized_json: serde_json::Value =
             serde_json::from_slice(&sanitized).expect("parse sanitized request body");
 
-        assert_eq!(sanitized_json["input"].as_array().map(Vec::len), Some(2));
+        assert_eq!(sanitized_json["input"].as_array().map(Vec::len), Some(4));
         assert_eq!(sanitized_json["input"][0]["type"], "");
         assert_eq!(sanitized_json["input"][0]["foo"], "bar");
         assert_eq!(sanitized_json["input"][1]["type"], "message");
         assert_eq!(sanitized_json["input"][1]["content"][0]["text"], "hello");
+        assert_eq!(sanitized_json["input"][2]["type"], "function_call");
+        assert_eq!(sanitized_json["input"][2]["name"], "calc");
+        assert_eq!(sanitized_json["input"][3]["type"], "function_call_output");
+        assert_eq!(sanitized_json["input"][3]["call_id"], "call_123");
     }
 
     /// Verifies all message-shaped roles are repaired without dropping other inputs.
@@ -328,7 +349,7 @@ mod tests {
     fn sanitize_responses_request_body_repairs_all_message_roles() {
         let body = Bytes::from(
             serde_json::to_vec(&json!({
-                "model": "gpt-5.6-luna",
+                "model": "alias-fast",
                 "input": [
                     {
                         "role": "developer",
@@ -369,12 +390,13 @@ mod tests {
         assert_eq!(sanitized_json["input"][3]["type"], "reasoning");
     }
 
-    /// Verifies gpt-6-astra receives the same message type repair behavior.
+    /// Verifies stream responses requests receive the same message type repair behavior.
     #[test]
-    fn sanitize_responses_request_body_adds_message_type_for_gpt6_astra() {
+    fn sanitize_responses_request_body_adds_message_type_for_stream_requests() {
         let body = Bytes::from(
             serde_json::to_vec(&json!({
-                "model": "gpt-6-astra",
+                "model": "alias-fast",
+                "stream": true,
                 "input": [
                     {
                         "role": "user",
@@ -392,20 +414,79 @@ mod tests {
 
         assert_eq!(sanitized_json["input"][0]["type"], "message");
         assert_eq!(sanitized_json["input"][0]["content"][0]["text"], "hello");
+        assert_eq!(sanitized_json["stream"], true);
     }
 
-    /// Verifies gpt-6-sol receives the same message type repair behavior.
+    /// Verifies non-gpt models drop top-level and reasoning summary fields.
     #[test]
-    fn sanitize_responses_request_body_adds_message_type_for_gpt6_sol() {
+    fn sanitize_responses_request_body_strips_summary_for_non_gpt_models() {
+        let body = Bytes::from(
+            serde_json::to_vec(&json!({
+                "model": "alias-fast",
+                "summary": "auto",
+                "reasoning": {
+                    "effort": "medium",
+                    "summary": "concise"
+                },
+                "input": [
+                    {
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": "hello"}]
+                    }
+                ]
+            }))
+            .expect("serialize test body"),
+        );
+
+        let sanitized =
+            sanitize_responses_request_body(&body).expect("expected request body to be sanitized");
+        let sanitized_json: serde_json::Value =
+            serde_json::from_slice(&sanitized).expect("parse sanitized request body");
+
+        assert_eq!(sanitized_json.get("summary"), None);
+        assert_eq!(sanitized_json["reasoning"].get("summary"), None);
+        assert_eq!(sanitized_json["reasoning"]["effort"], "medium");
+        assert_eq!(sanitized_json["input"][0]["type"], "message");
+    }
+
+    /// Verifies gpt models keep summary fields untouched.
+    #[test]
+    fn sanitize_responses_request_body_keeps_summary_for_gpt_models() {
         let body = Bytes::from(
             serde_json::to_vec(&json!({
                 "model": "gpt-6-sol",
+                "summary": "auto",
+                "reasoning": {
+                    "effort": "high",
+                    "summary": "detailed"
+                },
                 "input": [
                     {
+                        "type": "message",
                         "role": "user",
                         "content": [{"type": "input_text", "text": "hello"}]
                     }
                 ]
+            }))
+            .expect("serialize test body"),
+        );
+
+        let sanitized = sanitize_responses_request_body(&body);
+
+        assert!(sanitized.is_none());
+    }
+
+    /// Verifies non-gpt models still strip summary even when `input` is not an array.
+    #[test]
+    fn sanitize_responses_request_body_strips_summary_without_array_input() {
+        let body = Bytes::from(
+            serde_json::to_vec(&json!({
+                "model": "alias-fast",
+                "summary": "auto",
+                "reasoning": {
+                    "summary": "concise"
+                },
+                "input": "hello"
             }))
             .expect("serialize test body"),
         );
@@ -415,8 +496,9 @@ mod tests {
         let sanitized_json: serde_json::Value =
             serde_json::from_slice(&sanitized).expect("parse sanitized request body");
 
-        assert_eq!(sanitized_json["input"][0]["type"], "message");
-        assert_eq!(sanitized_json["input"][0]["content"][0]["text"], "hello");
+        assert_eq!(sanitized_json.get("summary"), None);
+        assert_eq!(sanitized_json["reasoning"].get("summary"), None);
+        assert_eq!(sanitized_json["input"], "hello");
     }
 }
 
