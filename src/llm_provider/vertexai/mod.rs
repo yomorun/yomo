@@ -520,18 +520,32 @@ async fn content_to_vertex_parts(
                         file,
                         file_url,
                         file_id,
+                        file_data,
+                        filename,
                         mime_type,
                         ..
                     } => {
-                        if file_url.is_some() || file_id.is_some() {
+                        if file_url.is_some()
+                            || file_id.is_some()
+                            || file.file_url.is_some()
+                            || file.file_id.is_some()
+                        {
                             return Err(ProviderError::internal(
                                 "model does not support file_url/file_id, only file_data is supported"
                                     .to_string(),
                             ));
                         }
-                        let file_data = file.file_data.as_deref().unwrap_or_default();
+                        // Fields may appear top-level or nested inside `file`;
+                        // prefer the nested variant.
+                        let file_data = file
+                            .file_data
+                            .as_deref()
+                            .or(file_data.as_deref())
+                            .unwrap_or_default();
+                        let mime_type = file.mime_type.as_deref().or(mime_type.as_deref());
+                        let filename = file.filename.as_deref().or(filename.as_deref());
                         let (mime_type, data) =
-                            file_to_inline_data(file_data, mime_type.as_deref())?;
+                            file_to_inline_data(file_data, mime_type, filename)?;
                         out.push(VertexPart {
                             inline_data: Some(VertexInlineData { mime_type, data }),
                             ..Default::default()
@@ -600,30 +614,97 @@ async fn image_to_inline_data(
     ))
 }
 
+/// Resolves the Gemini `inline_data` fields for a file content part.
+///
+/// The MIME type is resolved with the following priority:
+/// 1. the explicit `mime_type` field,
+/// 2. the media type embedded in a `data:` URL `file_data`,
+/// 3. the extension of `filename`.
 fn file_to_inline_data(
     file_data: &str,
     mime_type: Option<&str>,
+    filename: Option<&str>,
 ) -> Result<(String, String), ProviderError> {
-    if file_data.trim().is_empty() {
+    let file_data = file_data.trim();
+    if file_data.is_empty() {
         return Err(ProviderError::internal(
             "model requires file_data (base64) for file parts".to_string(),
         ));
     }
-    let mime_type = mime_type.unwrap_or_default().trim().to_string();
-    if mime_type.is_empty() {
-        return Err(ProviderError::internal(
-            "model requires mime_type for file parts".to_string(),
-        ));
-    }
+    let (mime_type, data) = match parse_data_url(file_data) {
+        Some((data_url_mime, data)) => {
+            let mime_type = mime_type
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+                .unwrap_or(data_url_mime);
+            (mime_type, data)
+        }
+        None => {
+            let mime_type = infer_file_mime_type(mime_type, filename).ok_or_else(|| {
+                ProviderError::internal(
+                    "model requires mime_type for file parts; set the mime_type field, send \
+                     file_data as a data: URL (e.g. data:application/pdf;base64,...), or provide \
+                     a filename to infer the type from"
+                        .to_string(),
+                )
+            })?;
+            (mime_type, file_data.to_string())
+        }
+    };
     let bytes = BASE64_STANDARD
-        .decode(file_data.trim())
+        .decode(data.trim())
         .map_err(|err| ProviderError::internal(format!("invalid base64 file_data: {err}")))?;
     if bytes.len() > MAX_FILE_BYTES {
         return Err(ProviderError::internal(format!(
             "file is too large (>{MAX_FILE_BYTES} bytes)"
         )));
     }
-    Ok((mime_type, file_data.trim().to_string()))
+    Ok((mime_type, data.trim().to_string()))
+}
+
+/// Resolves the MIME type for a file part, preferring the explicit
+/// `mime_type` field over the `filename` extension.
+fn infer_file_mime_type(mime_type: Option<&str>, filename: Option<&str>) -> Option<String> {
+    if let Some(mime_type) = mime_type.map(str::trim).filter(|value| !value.is_empty()) {
+        return Some(mime_type.to_string());
+    }
+    let ext = filename?.trim().rsplit_once('.')?.1;
+    extension_mime_type(ext).map(str::to_string)
+}
+
+/// Maps a lowercase file extension to its MIME type.
+fn extension_mime_type(ext: &str) -> Option<&'static str> {
+    match ext.to_ascii_lowercase().as_str() {
+        "pdf" => Some("application/pdf"),
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        "heic" | "heif" => Some("image/heic"),
+        "mp3" => Some("audio/mpeg"),
+        "wav" => Some("audio/wav"),
+        "ogg" => Some("audio/ogg"),
+        "aiff" | "aif" => Some("audio/aiff"),
+        "mp4" => Some("video/mp4"),
+        "mpeg" | "mpg" => Some("video/mpeg"),
+        "webm" => Some("video/webm"),
+        "mov" => Some("video/quicktime"),
+        "txt" => Some("text/plain"),
+        "html" | "htm" => Some("text/html"),
+        "css" => Some("text/css"),
+        "csv" => Some("text/csv"),
+        "md" => Some("text/markdown"),
+        "json" => Some("application/json"),
+        "xml" => Some("application/xml"),
+        "doc" => Some("application/msword"),
+        "docx" => Some("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+        "xls" => Some("application/vnd.ms-excel"),
+        "xlsx" => Some("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+        "ppt" => Some("application/vnd.ms-powerpoint"),
+        "pptx" => Some("application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+        _ => None,
+    }
 }
 
 fn extract_message_text(content: &Content) -> Result<String, ProviderError> {
@@ -1361,28 +1442,79 @@ mod tests {
     fn file_to_inline_data_returns_mime_and_base64_data() {
         let data = BASE64_STANDARD.encode("hello pdf");
         let (mime, out) =
-            file_to_inline_data(&data, Some("application/pdf")).expect("must map file data");
+            file_to_inline_data(&data, Some("application/pdf"), None).expect("must map file data");
         assert_eq!(mime, "application/pdf");
         assert_eq!(out, data);
     }
 
     #[test]
     fn file_to_inline_data_rejects_empty_file_data() {
-        let err = file_to_inline_data("", Some("application/pdf")).expect_err("must fail");
+        let err = file_to_inline_data("", Some("application/pdf"), None).expect_err("must fail");
         assert!(err.to_string().contains("requires file_data"));
     }
 
     #[test]
     fn file_to_inline_data_rejects_missing_mime_type() {
         let data = BASE64_STANDARD.encode("hello");
-        let err = file_to_inline_data(&data, None).expect_err("must fail");
+        let err = file_to_inline_data(&data, None, None).expect_err("must fail");
+        assert!(err.to_string().contains("requires mime_type"));
+    }
+
+    #[test]
+    fn file_to_inline_data_uses_mime_from_data_url() {
+        let data = BASE64_STANDARD.encode("hello pdf");
+        let raw = format!("data:application/pdf;base64,{data}");
+        let (mime, out) = file_to_inline_data(&raw, None, None).expect("must map file data");
+        assert_eq!(mime, "application/pdf");
+        assert_eq!(out, data);
+    }
+
+    #[test]
+    fn file_to_inline_data_prefers_explicit_mime_over_data_url() {
+        let data = BASE64_STANDARD.encode("hello pdf");
+        let raw = format!("data:application/pdf;base64,{data}");
+        let (mime, out) =
+            file_to_inline_data(&raw, Some("text/plain"), None).expect("must map file data");
+        assert_eq!(mime, "text/plain");
+        assert_eq!(out, data);
+    }
+
+    #[test]
+    fn file_to_inline_data_infers_mime_from_filename() {
+        let data = BASE64_STANDARD.encode("hello pdf");
+        let (mime, out) =
+            file_to_inline_data(&data, None, Some("report.PDF")).expect("must map file data");
+        assert_eq!(mime, "application/pdf");
+        assert_eq!(out, data);
+    }
+
+    #[test]
+    fn file_to_inline_data_prefers_explicit_mime_over_filename() {
+        let data = BASE64_STANDARD.encode("hello");
+        let (mime, out) = file_to_inline_data(&data, Some("text/plain"), Some("doc.pdf"))
+            .expect("must map file data");
+        assert_eq!(mime, "text/plain");
+        assert_eq!(out, data);
+    }
+
+    #[test]
+    fn file_to_inline_data_rejects_unknown_extension() {
+        let data = BASE64_STANDARD.encode("hello");
+        let err = file_to_inline_data(&data, None, Some("doc.xyz")).expect_err("must fail");
+        assert!(err.to_string().contains("requires mime_type"));
+    }
+
+    #[test]
+    fn file_to_inline_data_rejects_filename_without_extension() {
+        let data = BASE64_STANDARD.encode("hello");
+        let err = file_to_inline_data(&data, None, Some("noext")).expect_err("must fail");
         assert!(err.to_string().contains("requires mime_type"));
     }
 
     #[test]
     fn file_to_inline_data_rejects_invalid_base64() {
-        let err =
-            file_to_inline_data("not!!base64!!", Some("application/pdf")).expect_err("must fail");
+        let err = file_to_inline_data("not!!base64!!", Some("application/pdf"), None)
+            .expect_err("must fail");
         assert!(err.to_string().contains("invalid base64"));
     }
 
@@ -1390,7 +1522,7 @@ mod tests {
     fn file_to_inline_data_rejects_oversized_file() {
         let oversized = vec![b'a'; MAX_FILE_BYTES + 1];
         let data = BASE64_STANDARD.encode(oversized);
-        let err = file_to_inline_data(&data, Some("application/pdf")).expect_err("must fail");
+        let err = file_to_inline_data(&data, Some("application/pdf"), None).expect_err("must fail");
         assert!(err.to_string().contains("too large"));
     }
 
@@ -1398,7 +1530,7 @@ mod tests {
     fn file_to_inline_data_accepts_exactly_at_size_limit() {
         let bytes = vec![b'a'; MAX_FILE_BYTES];
         let data = BASE64_STANDARD.encode(bytes);
-        assert!(file_to_inline_data(&data, Some("application/pdf")).is_ok());
+        assert!(file_to_inline_data(&data, Some("application/pdf"), None).is_ok());
     }
 
     #[test]
