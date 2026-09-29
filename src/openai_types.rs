@@ -34,7 +34,7 @@ pub struct CompletionTokensDetails {
     pub rejected_prediction_tokens: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ChatCompletionRequest {
     #[serde(default)]
     pub model: String,
@@ -208,7 +208,7 @@ impl<'de> Deserialize<'de> for Message {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum Content {
     Text(String),
@@ -221,7 +221,7 @@ impl Default for Content {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentPart {
     Text {
@@ -250,7 +250,7 @@ pub enum ContentPart {
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct FileContent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_id: Option<String>,
@@ -264,14 +264,14 @@ pub struct FileContent {
     pub mime_type: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ImageUrl {
     pub url: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct InputAudio {
     pub data: String,
     pub format: String,
