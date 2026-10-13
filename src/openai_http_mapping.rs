@@ -181,7 +181,6 @@ pub fn stream_openai_chunks(
         let mut role_sent = false;
         let mut completed_seen = false;
         let mut completed_finish_reason: Option<String> = None;
-        let mut sent_preamble = false;
         let mut response_id = String::new();
         let mut model = response_model_for_mode(
             &response_model_mode,
@@ -213,19 +212,6 @@ pub fn stream_openai_chunks(
                     model = response_model_for_mode(&response_model_mode, &default_model, resp_model);
                     finalizer.set_model(model.clone());
                     created_at = resp_created;
-                    if !sent_preamble {
-                        sent_preamble = true;
-                        yield sse_chunk(ChatCompletionChunk {
-                            id: String::new(),
-                            created: Some(0),
-                            model: String::new(),
-                            object: "chat.completion.chunk".to_string(),
-                            system_fingerprint: None,
-                            obfuscation: None,
-                            choices: Vec::new(),
-                            usage: None,
-                        });
-                    }
                 }
                 UnifiedEvent::ResponseInProgress { model: resp_model, .. } => {
                     model = response_model_for_mode(&response_model_mode, &default_model, resp_model);
@@ -1686,6 +1672,72 @@ mod tests {
 
         assert!(!model_values.is_empty());
         assert!(model_values.iter().all(|model| model == "fixed-model"));
+    }
+
+    #[tokio::test]
+    async fn every_chunk_carries_choices_or_usage() {
+        let events = vec![
+            Ok(UnifiedEvent::ResponseCreated {
+                id: "req-1".to_string(),
+                model: "m".to_string(),
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+            }),
+            Ok(UnifiedEvent::ThinkingDelta {
+                id: "req-1".to_string(),
+                delta: "thinking".to_string(),
+            }),
+            Ok(UnifiedEvent::MessageDelta {
+                id: "req-1".to_string(),
+                delta: "hello".to_string(),
+            }),
+            Ok(UnifiedEvent::Usage {
+                usage: EndpointUsage::from_endpoint_payload(
+                    "/chat/completions",
+                    serde_json::json!({
+                        "prompt_tokens": 2,
+                        "completion_tokens": 3,
+                        "total_tokens": 5
+                    }),
+                )
+                .expect("valid usage payload"),
+            }),
+            Ok(UnifiedEvent::Completed {
+                finish_reason: Some("stop".to_string()),
+            }),
+        ];
+
+        let stream = stream_openai_chunks(
+            Box::pin(futures_util::stream::iter(events)),
+            "trace-1".to_string(),
+            "m".to_string(),
+            ResponseModelMode::Upstream,
+            Span::none(),
+        );
+
+        let mut payloads = Vec::new();
+        futures_util::pin_mut!(stream);
+        while let Some(item) = stream.next().await {
+            payloads.push(item.expect("stream chunk"));
+        }
+
+        let chunks = payloads
+            .into_iter()
+            .filter_map(|payload| String::from_utf8(payload.to_vec()).ok())
+            .filter_map(|text| text.strip_prefix("data: ").map(str::to_string))
+            .filter(|json| json.trim() != "[DONE]")
+            .filter_map(|json| serde_json::from_str::<Value>(json.trim()).ok())
+            .collect::<Vec<_>>();
+
+        assert!(!chunks.is_empty());
+        assert!(chunks.iter().all(|value| {
+            let has_choices = value
+                .get("choices")
+                .and_then(Value::as_array)
+                .is_some_and(|choices| !choices.is_empty());
+            let has_usage = value.get("usage").and_then(Value::as_object).is_some();
+            has_choices || has_usage
+        }));
+        assert_eq!(chunks[0].get("id").and_then(Value::as_str), Some("req-1"));
     }
 }
 
