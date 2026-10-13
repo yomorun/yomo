@@ -331,7 +331,7 @@ pub fn stream_openai_chunks(
                         choices: vec![ChatCompletionChunkChoice {
                             delta,
                             finish_reason: None,
-                            index,
+                            index: 0,
                             logprobs: None,
                         }],
                         usage: None,
@@ -384,7 +384,7 @@ pub fn stream_openai_chunks(
                         choices: vec![ChatCompletionChunkChoice {
                             delta,
                             finish_reason: None,
-                            index,
+                            index: 0,
                             logprobs: None,
                         }],
                         usage: None,
@@ -1738,6 +1738,77 @@ mod tests {
             has_choices || has_usage
         }));
         assert_eq!(chunks[0].get("id").and_then(Value::as_str), Some("req-1"));
+    }
+
+    #[tokio::test]
+    async fn parallel_tool_calls_share_choice_index_zero() {
+        let events = vec![
+            Ok(UnifiedEvent::ResponseCreated {
+                id: "req-1".to_string(),
+                model: "m".to_string(),
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+            }),
+            Ok(UnifiedEvent::ToolCallDelta {
+                id: "call-a".to_string(),
+                name: "get_weather".to_string(),
+                arguments_delta: "{\"city\":".to_string(),
+            }),
+            Ok(UnifiedEvent::ToolCallDelta {
+                id: "call-a".to_string(),
+                name: "get_weather".to_string(),
+                arguments_delta: "\"Tokyo\"}".to_string(),
+            }),
+            Ok(UnifiedEvent::ToolCallDelta {
+                id: "call-b".to_string(),
+                name: "get_weather".to_string(),
+                arguments_delta: "{\"city\":\"Paris\"}".to_string(),
+            }),
+            Ok(UnifiedEvent::ToolCallDone {
+                id: "call-c".to_string(),
+                name: "get_weather".to_string(),
+                arguments: "{\"city\":\"Rome\"}".to_string(),
+            }),
+            Ok(UnifiedEvent::Completed {
+                finish_reason: Some("tool_calls".to_string()),
+            }),
+        ];
+
+        let stream = stream_openai_chunks(
+            Box::pin(futures_util::stream::iter(events)),
+            "trace-1".to_string(),
+            "m".to_string(),
+            ResponseModelMode::Upstream,
+            Span::none(),
+        );
+
+        let mut payloads = Vec::new();
+        futures_util::pin_mut!(stream);
+        while let Some(item) = stream.next().await {
+            payloads.push(item.expect("stream chunk"));
+        }
+
+        let choices = payloads
+            .into_iter()
+            .filter_map(|payload| String::from_utf8(payload.to_vec()).ok())
+            .filter_map(|text| text.strip_prefix("data: ").map(str::to_string))
+            .filter(|json| json.trim() != "[DONE]")
+            .filter_map(|json| serde_json::from_str::<Value>(json.trim()).ok())
+            .filter_map(|value| value.get("choices").and_then(Value::as_array).cloned())
+            .flatten()
+            .collect::<Vec<_>>();
+
+        assert!(
+            choices
+                .iter()
+                .all(|choice| choice.get("index").and_then(Value::as_i64) == Some(0))
+        );
+
+        let tool_call_indexes = choices
+            .iter()
+            .filter_map(|choice| choice.pointer("/delta/tool_calls/0/index"))
+            .filter_map(Value::as_i64)
+            .collect::<Vec<_>>();
+        assert_eq!(tool_call_indexes, vec![0, 0, 1, 2]);
     }
 }
 
