@@ -5,7 +5,7 @@ use axum::{
     Router,
     body::Bytes,
     extract::{Path, State},
-    http::{self, HeaderMap, StatusCode},
+    http::{self, HeaderMap, HeaderName, StatusCode},
     response::{IntoResponse, Sse, sse::Event},
 };
 use futures_util::stream;
@@ -49,6 +49,51 @@ fn parse_http_headers(http_headers: &HeaderMap, key: &str) -> String {
         None => "",
     }
     .to_string()
+}
+
+/// Return application-specific headers while excluding standard HTTP headers.
+pub(crate) fn custom_http_headers(http_headers: &HeaderMap) -> HeaderMap {
+    const STANDARD_HEADERS: &[&str] = &[
+        "accept",
+        "accept-charset",
+        "accept-encoding",
+        "accept-language",
+        "authorization",
+        "cache-control",
+        "connection",
+        "content-encoding",
+        "content-length",
+        "content-type",
+        "cookie",
+        "date",
+        "expect",
+        "forwarded",
+        "host",
+        "if-match",
+        "if-modified-since",
+        "if-none-match",
+        "if-range",
+        "if-unmodified-since",
+        "origin",
+        "pragma",
+        "referer",
+        "te",
+        "trailer",
+        "transfer-encoding",
+        "user-agent",
+        "upgrade",
+        "via",
+    ];
+
+    http_headers
+        .iter()
+        .filter(|(name, _)| {
+            !STANDARD_HEADERS
+                .iter()
+                .any(|standard| name == &HeaderName::from_static(standard))
+        })
+        .map(|(name, value)| (name.clone(), value.clone()))
+        .collect()
 }
 
 /// Create request headers from HTTP headers
@@ -108,6 +153,10 @@ pub async fn tool_invoke_handler(
 ) -> Result<CustomResponse, CustomError> {
     let request_headers = new_request_headers(&tool_name, &http_headers);
 
+    debug!(
+        "request custom HTTP headers: {:?}",
+        custom_http_headers(&http_headers)
+    );
     debug!(
         "[{}|{}] new request to [{}]: {}",
         request_headers.trace_id,
