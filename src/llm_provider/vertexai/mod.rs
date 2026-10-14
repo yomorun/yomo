@@ -369,16 +369,22 @@ async fn build_vertex_request(
                     .cloned()
                     .unwrap_or_else(|| "unknown_tool".to_string());
                 let response = parse_tool_response_payload(&message.content);
-                contents.push(VertexContent {
-                    role: Some("user".to_string()),
-                    parts: vec![VertexPart {
-                        function_response: Some(VertexFunctionResponse {
-                            name: tool_name,
-                            response,
-                        }),
-                        ..Default::default()
-                    }],
-                });
+                let part = VertexPart {
+                    function_response: Some(VertexFunctionResponse {
+                        name: tool_name,
+                        response,
+                    }),
+                    ..Default::default()
+                };
+                // Gemini requires all responses to a parallel function call turn
+                // in a single content, so merge consecutive tool messages.
+                match contents.last_mut() {
+                    Some(last) if is_function_response_content(last) => last.parts.push(part),
+                    _ => contents.push(VertexContent {
+                        role: Some("user".to_string()),
+                        parts: vec![part],
+                    }),
+                }
             }
         }
     }
@@ -1264,6 +1270,15 @@ fn parse_tool_response_payload(content: &Content) -> Value {
     };
 
     ensure_vertex_struct(payload)
+}
+
+fn is_function_response_content(content: &VertexContent) -> bool {
+    content.role.as_deref() == Some("user")
+        && !content.parts.is_empty()
+        && content
+            .parts
+            .iter()
+            .all(|part| part.function_response.is_some())
 }
 
 fn ensure_vertex_struct(value: Value) -> Value {
@@ -2282,13 +2297,25 @@ mod tests {
         );
         assert_eq!(assistant_model_content.parts[1].thought_signature, None);
 
-        let function_response_parts = mapped
-            .contents
+        // Gemini rejects the turn unless every response to a parallel call sits
+        // in the single content that follows the function call content.
+        assert_eq!(mapped.contents.len(), 3);
+        let response_content = &mapped.contents[2];
+        assert_eq!(response_content.role.as_deref(), Some("user"));
+        let function_response_parts = response_content
+            .parts
             .iter()
-            .flat_map(|content| content.parts.iter())
             .filter_map(|part| part.function_response.as_ref())
             .collect::<Vec<_>>();
         assert_eq!(function_response_parts.len(), 2);
+        assert_eq!(
+            function_response_parts[0].response,
+            serde_json::json!({"temp": "15C"})
+        );
+        assert_eq!(
+            function_response_parts[1].response,
+            serde_json::json!({"temp": "12C"})
+        );
     }
 
     #[test]
