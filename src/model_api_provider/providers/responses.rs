@@ -9,17 +9,6 @@ use crate::model_api_provider::provider::{
 };
 use crate::serve_config::{ConfigError, ProviderConfig};
 
-/// Hosted tool types OpenAI bills per call or per container on top of tokens
-/// (web search, file search, code interpreter, image generation). Those charges
-/// are absent from `usage`, so they cannot be attributed to a caller. Matched by
-/// prefix to cover dated variants such as `web_search_preview_2025_03_11`.
-const BILLED_TOOL_TYPE_PREFIXES: [&str; 4] = [
-    "web_search",
-    "file_search",
-    "code_interpreter",
-    "image_generation",
-];
-
 #[derive(Clone)]
 pub struct ResponsesClient {
     client: reqwest::Client,
@@ -51,10 +40,6 @@ impl ResponsesClient {
 impl<M> ModelApiProvider<M> for ResponsesClient {
     fn model_id(&self) -> &str {
         &self.model_id
-    }
-
-    fn prepare_request_body(&self, body: Bytes) -> Result<Bytes, String> {
-        strip_billed_tools(&body)
     }
 
     async fn execute(
@@ -138,43 +123,6 @@ fn non_null_usage(value: Option<&Value>) -> Option<Value> {
     value.filter(|usage| !usage.is_null()).cloned()
 }
 
-/// Drops separately billed hosted tools and returns the re-serialized body, so
-/// upstream parses exactly the JSON checked here (e.g. a duplicated `tools` key
-/// cannot slip past the check). Tools are dropped rather than rejected because
-/// agent clients send them by default (Codex declares `web_search` unless it is
-/// disabled), and rejecting would fail every request from them.
-fn strip_billed_tools(body: &Bytes) -> Result<Bytes, String> {
-    let mut payload_json: Value =
-        serde_json::from_slice(body).map_err(|err| format!("invalid json body: {err}"))?;
-    match payload_json.get_mut("tools") {
-        None | Some(Value::Null) => {}
-        Some(Value::Array(tools)) => {
-            tools.retain(|tool| !is_billed_tool(tool));
-        }
-        Some(_) => return Err("`tools` must be an array".to_string()),
-    }
-    serde_json::to_vec(&payload_json)
-        .map(Bytes::from)
-        .map_err(|err| format!("invalid json body: {err}"))
-}
-
-fn is_billed_tool(tool: &Value) -> bool {
-    let Some(tool_type) = tool.get("type").and_then(Value::as_str) else {
-        return false;
-    };
-    if tool_type == "shell" {
-        // Hosted shell runs in a billed OpenAI container; only shell executed by
-        // the client (no environment, or `environment.type: local`) is kept.
-        return match tool.get("environment") {
-            None | Some(Value::Null) => false,
-            Some(environment) => environment.get("type").and_then(Value::as_str) != Some("local"),
-        };
-    }
-    BILLED_TOOL_TYPE_PREFIXES
-        .iter()
-        .any(|prefix| tool_type.starts_with(prefix))
-}
-
 fn sanitize_responses_request_body(body: &Bytes) -> Option<Bytes> {
     let mut payload_json: Value = serde_json::from_slice(body).ok()?;
     let payload_obj = payload_json.as_object_mut()?;
@@ -240,87 +188,10 @@ fn sanitize_responses_request_body(body: &Bytes) -> Option<Bytes> {
 mod tests {
     use super::{
         extract_request_id_json, extract_usage_json, inject_usage_json,
-        sanitize_responses_request_body, strip_billed_tools,
+        sanitize_responses_request_body,
     };
     use axum::body::Bytes;
-    use serde_json::{Value, json};
-
-    fn strip(request: Value) -> Result<Value, String> {
-        let body =
-            Bytes::from(serde_json::to_vec(&request).expect("request json should serialize"));
-        strip_billed_tools(&body)
-            .map(|body| serde_json::from_slice(&body).expect("stripped json should parse"))
-    }
-
-    /// Verifies per-call and per-container billed hosted tools are dropped while client tools stay.
-    #[test]
-    fn strip_billed_tools_drops_hosted_billed_tools() {
-        let request = json!({
-            "model": "gpt-5",
-            "input": "hi",
-            "tools": [
-                {"type": "function", "name": "lookup", "parameters": {"type": "object"}},
-                {"type": "web_search", "external_web_access": false},
-                {"type": "web_search_preview_2025_03_11"},
-                {"type": "file_search", "vector_store_ids": ["vs_1"]},
-                {"type": "code_interpreter", "container": {"type": "auto"}},
-                {"type": "image_generation"},
-                {"type": "shell", "environment": {"type": "container_auto"}},
-                {"type": "shell", "environment": {"type": "container_reference", "container_id": "cntr_1"}},
-                {"type": "custom", "name": "apply_patch"},
-                {"type": "local_shell"},
-                {"type": "shell", "environment": {"type": "local"}},
-                {"type": "shell"},
-                {"type": "mcp", "server_label": "docs", "server_url": "https://example.com/mcp"}
-            ]
-        });
-
-        let stripped = strip(request).expect("request should be accepted");
-
-        assert_eq!(
-            stripped["tools"],
-            json!([
-                {"type": "function", "name": "lookup", "parameters": {"type": "object"}},
-                {"type": "custom", "name": "apply_patch"},
-                {"type": "local_shell"},
-                {"type": "shell", "environment": {"type": "local"}},
-                {"type": "shell"},
-                {"type": "mcp", "server_label": "docs", "server_url": "https://example.com/mcp"}
-            ])
-        );
-        assert_eq!(stripped["model"], "gpt-5");
-    }
-
-    /// Verifies requests without tools pass through unchanged.
-    #[test]
-    fn strip_billed_tools_keeps_requests_without_tools() {
-        let request = json!({"model": "gpt-5", "input": "hi"});
-        assert_eq!(strip(request.clone()), Ok(request));
-
-        let request = json!({"model": "gpt-5", "input": "hi", "tools": null});
-        assert_eq!(strip(request.clone()), Ok(request));
-    }
-
-    /// Verifies malformed bodies are rejected instead of forwarded unchecked.
-    #[test]
-    fn strip_billed_tools_rejects_malformed_tools() {
-        assert_eq!(
-            strip(json!({"tools": {"type": "web_search"}})),
-            Err("`tools` must be an array".to_string())
-        );
-        assert!(strip_billed_tools(&Bytes::from_static(b"not json")).is_err());
-    }
-
-    /// Verifies a duplicated `tools` key forwards only the value that was checked.
-    #[test]
-    fn strip_billed_tools_forwards_checked_duplicate_key_value() {
-        let body = Bytes::from_static(br#"{"tools":[],"tools":[{"type":"web_search"}]}"#);
-
-        let stripped = strip_billed_tools(&body).expect("request should be accepted");
-
-        let parsed: Value = serde_json::from_slice(&stripped).expect("stripped json should parse");
-        assert_eq!(parsed, json!({"tools": []}));
-    }
+    use serde_json::json;
 
     /// Verifies full payload request id extraction prefers top-level `id`.
     #[test]

@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use axum::body::Bytes;
 use futures_util::StreamExt;
 use serde_json::Value;
 
@@ -11,14 +10,6 @@ use crate::model_api_provider::provider::{
     filter_response_headers, parse_stream_flag, should_stream_response,
 };
 use crate::serve_config::{ConfigError, ProviderConfig};
-
-/// `Tool` fields forwarded to Vertex AI, normalized by [`normalize_field_name`].
-/// These are billed through tokens reported in `usageMetadata`. Everything else
-/// is rejected: Google Search / Web Grounding for Enterprise / Google Maps
-/// grounding are billed per query and "grounding with your data" (`retrieval`)
-/// per prompt, none of which shows up in `usageMetadata`. Computer Use is also
-/// rejected, as is any tool type Google adds later until it is reviewed here.
-const ALLOWED_TOOL_FIELDS: [&str; 3] = ["functiondeclarations", "codeexecution", "urlcontext"];
 
 #[derive(Clone)]
 pub struct GenerateContentClient {
@@ -41,10 +32,6 @@ impl GenerateContentClient {
 impl<M> ModelApiProvider<M> for GenerateContentClient {
     fn model_id(&self) -> &str {
         &self.model_id
-    }
-
-    fn prepare_request_body(&self, body: Bytes) -> Result<Bytes, String> {
-        sanitize_request_body(&body)
     }
 
     async fn execute(
@@ -102,42 +89,6 @@ impl<M> ModelApiProvider<M> for GenerateContentClient {
     }
 }
 
-/// Rejects requests carrying tools outside [`ALLOWED_TOOL_FIELDS`] and returns
-/// the re-serialized body, so upstream parses exactly the JSON checked here
-/// (e.g. a duplicated `tools` key cannot slip past the check).
-fn sanitize_request_body(body: &Bytes) -> Result<Bytes, String> {
-    let value: Value =
-        serde_json::from_slice(body).map_err(|err| format!("invalid json body: {err}"))?;
-    match value.get("tools") {
-        None | Some(Value::Null) => {}
-        Some(Value::Array(tools)) => {
-            for tool in tools {
-                let Some(tool) = tool.as_object() else {
-                    return Err("each entry in `tools` must be an object".to_string());
-                };
-                if let Some(field) = tool.keys().find(|field| {
-                    !ALLOWED_TOOL_FIELDS.contains(&normalize_field_name(field).as_str())
-                }) {
-                    return Err(format!("tool `{field}` is not supported"));
-                }
-            }
-        }
-        Some(_) => return Err("`tools` must be an array".to_string()),
-    }
-    serde_json::to_vec(&value)
-        .map(Bytes::from)
-        .map_err(|err| format!("invalid json body: {err}"))
-}
-
-/// Vertex accepts both the camelCase and snake_case spelling of proto fields.
-fn normalize_field_name(field: &str) -> String {
-    field
-        .chars()
-        .filter(|ch| *ch != '_')
-        .map(|ch| ch.to_ascii_lowercase())
-        .collect()
-}
-
 fn extract_request_id_json(payload_json: &Value) -> Option<String> {
     payload_json
         .get("id")
@@ -183,114 +134,8 @@ fn non_null_usage(value: Option<&Value>) -> Option<Value> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        extract_request_id_json, extract_usage_json, inject_usage_json, sanitize_request_body,
-    };
-    use axum::body::Bytes;
-    use serde_json::{Value, json};
-
-    fn sanitize(request: Value) -> Result<Value, String> {
-        let body =
-            Bytes::from(serde_json::to_vec(&request).expect("request json should serialize"));
-        sanitize_request_body(&body)
-            .map(|body| serde_json::from_slice(&body).expect("sanitized json should parse"))
-    }
-
-    /// Verifies function declarations, code execution and URL context are forwarded unchanged.
-    #[test]
-    fn sanitize_request_body_allows_token_billed_tools() {
-        let request = json!({
-            "contents": [{"role": "user", "parts": [{"text": "hi"}]}],
-            "tools": [
-                {"functionDeclarations": [{"name": "lookup", "parameters": {"type": "object"}}]},
-                {"codeExecution": {}},
-                {"url_context": {}}
-            ]
-        });
-
-        assert_eq!(sanitize(request.clone()), Ok(request));
-    }
-
-    /// Verifies requests without tools pass through.
-    #[test]
-    fn sanitize_request_body_allows_missing_or_null_tools() {
-        let request = json!({"contents": [{"role": "user", "parts": [{"text": "hi"}]}]});
-        assert_eq!(sanitize(request.clone()), Ok(request));
-
-        let request = json!({"contents": [], "tools": null});
-        assert_eq!(sanitize(request.clone()), Ok(request));
-    }
-
-    /// Verifies grounding and computer use tools are rejected in either field spelling.
-    #[test]
-    fn sanitize_request_body_rejects_separately_billed_tools() {
-        for field in [
-            "googleSearch",
-            "google_search",
-            "googleSearchRetrieval",
-            "enterpriseWebSearch",
-            "googleMaps",
-            "google_maps",
-            "retrieval",
-            "computerUse",
-            "computer_use",
-            "someFutureTool",
-        ] {
-            let request = json!({
-                "contents": [],
-                "tools": [
-                    {"functionDeclarations": []},
-                    {field: {}}
-                ]
-            });
-
-            assert_eq!(
-                sanitize(request),
-                Err(format!("tool `{field}` is not supported")),
-                "{field} must be rejected"
-            );
-        }
-    }
-
-    /// Verifies a blocked tool sharing an object with function declarations is rejected.
-    #[test]
-    fn sanitize_request_body_rejects_blocked_tool_in_mixed_entry() {
-        let request = json!({
-            "contents": [],
-            "tools": [{"functionDeclarations": [], "googleSearch": {}}]
-        });
-
-        assert_eq!(
-            sanitize(request),
-            Err("tool `googleSearch` is not supported".to_string())
-        );
-    }
-
-    /// Verifies malformed `tools` values are rejected instead of forwarded.
-    #[test]
-    fn sanitize_request_body_rejects_malformed_tools() {
-        assert_eq!(
-            sanitize(json!({"tools": {"googleSearch": {}}})),
-            Err("`tools` must be an array".to_string())
-        );
-        assert_eq!(
-            sanitize(json!({"tools": ["googleSearch"]})),
-            Err("each entry in `tools` must be an object".to_string())
-        );
-        assert!(sanitize_request_body(&Bytes::from_static(b"not json")).is_err());
-    }
-
-    /// Verifies a duplicated `tools` key forwards only the value that was checked.
-    #[test]
-    fn sanitize_request_body_forwards_checked_duplicate_key_value() {
-        let body = Bytes::from_static(br#"{"tools":[{"googleSearch":{}}],"tools":[]}"#);
-
-        let sanitized = sanitize_request_body(&body).expect("last tools value is allowed");
-
-        let parsed: Value =
-            serde_json::from_slice(&sanitized).expect("sanitized json should parse");
-        assert_eq!(parsed, json!({"tools": []}));
-    }
+    use super::{extract_request_id_json, extract_usage_json, inject_usage_json};
+    use serde_json::json;
 
     /// Verifies full payload request id extraction prefers top-level `id`.
     #[test]
