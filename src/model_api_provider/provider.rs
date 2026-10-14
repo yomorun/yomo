@@ -34,6 +34,12 @@ pub struct ProviderResponse {
 pub trait ModelApiProvider<M>: Send + Sync {
     fn model_id(&self) -> &str;
 
+    /// Validates the client request body before it is sent upstream and returns
+    /// the body to forward. An `Err` is a client-facing message answered with 400.
+    fn prepare_request_body(&self, body: Bytes) -> Result<Bytes, String> {
+        Ok(body)
+    }
+
     async fn execute(
         &self,
         req: ProviderRequest,

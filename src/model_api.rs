@@ -234,6 +234,22 @@ where
         endpoint_path, provider_entry.model_id, is_stream, trace_id, metadata
     );
 
+    let body = match provider_entry.provider.prepare_request_body(body) {
+        Ok(body) => body,
+        Err(message) => {
+            warn!(
+                "http.request.end; status_code=400 model_id={} error={} trace_id={} metadata={:?}",
+                provider_entry.model_id, message, trace_id, metadata
+            );
+            set_http_span_status(&root_span, StatusCode::BAD_REQUEST, Some(&message));
+            return openai_error_response(
+                StatusCode::BAD_REQUEST,
+                &message,
+                Some("invalid_request_error"),
+            );
+        }
+    };
+
     let provider_request = ProviderRequest {
         method: Method::POST,
         endpoint_path: endpoint_path.to_string(),
