@@ -788,6 +788,10 @@ fn sanitize_vertex_schema_with_defs(
                     let mapped_key = match k.as_str() {
                         "$ref" => "ref",
                         "$defs" => "defs",
+                        // Vertex has no oneOf. Dropping it would leave the property with no
+                        // fields at all, while anyOf keeps the variants and matches the same
+                        // arguments when each variant pins a distinct enum value.
+                        "oneOf" if !map.contains_key("anyOf") => "anyOf",
                         _ => k.as_str(),
                     };
                     if is_vertex_schema_key_allowed(mapped_key) {
@@ -1820,6 +1824,79 @@ mod tests {
         assert_eq!(
             sanitized["properties"]["name"]["type"],
             serde_json::json!("string")
+        );
+    }
+
+    #[test]
+    fn sanitize_vertex_schema_maps_oneof_to_anyof() {
+        // Trimmed from the fx agent's shell tool: the field names exist only in the variants.
+        let original = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "request": {
+                    "oneOf": [
+                        {
+                            "type": "object",
+                            "properties": {
+                                "action": {"type": "string", "enum": ["run"]},
+                                "command": {"type": "string", "maxLength": 65536}
+                            },
+                            "additionalProperties": false,
+                            "required": ["action", "command"]
+                        },
+                        {
+                            "type": "object",
+                            "properties": {
+                                "action": {"type": "string", "enum": ["stop"]},
+                                "session_id": {"type": "string"}
+                            },
+                            "additionalProperties": false,
+                            "required": ["action", "session_id"]
+                        }
+                    ]
+                }
+            },
+            "additionalProperties": false,
+            "required": ["request"]
+        });
+
+        let sanitized = sanitize_vertex_schema(&original);
+        let request = &sanitized["properties"]["request"];
+        assert!(request.get("oneOf").is_none());
+        assert_eq!(
+            request["anyOf"],
+            serde_json::json!([
+                {
+                    "type": "object",
+                    "properties": {
+                        "action": {"type": "string", "enum": ["run"]},
+                        "command": {"type": "string"}
+                    },
+                    "required": ["action", "command"]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "action": {"type": "string", "enum": ["stop"]},
+                        "session_id": {"type": "string"}
+                    },
+                    "required": ["action", "session_id"]
+                }
+            ])
+        );
+    }
+
+    #[test]
+    fn sanitize_vertex_schema_keeps_anyof_over_oneof() {
+        let original = serde_json::json!({
+            "anyOf": [{"type": "string"}],
+            "oneOf": [{"type": "integer"}]
+        });
+
+        let sanitized = sanitize_vertex_schema(&original);
+        assert_eq!(
+            sanitized,
+            serde_json::json!({"anyOf": [{"type": "string"}]})
         );
     }
 
