@@ -282,6 +282,7 @@ fn compact_json_string(value: &str) -> String {
 struct VertexStreamState {
     started: bool,
     completed: bool,
+    saw_tool_call: bool,
     request_id: String,
     model: String,
     created_at: String,
@@ -369,16 +370,22 @@ async fn build_vertex_request(
                     .cloned()
                     .unwrap_or_else(|| "unknown_tool".to_string());
                 let response = parse_tool_response_payload(&message.content);
-                contents.push(VertexContent {
-                    role: Some("user".to_string()),
-                    parts: vec![VertexPart {
-                        function_response: Some(VertexFunctionResponse {
-                            name: tool_name,
-                            response,
-                        }),
-                        ..Default::default()
-                    }],
-                });
+                let part = VertexPart {
+                    function_response: Some(VertexFunctionResponse {
+                        name: tool_name,
+                        response,
+                    }),
+                    ..Default::default()
+                };
+                // Gemini requires all responses to a parallel function call turn
+                // in a single content, so merge consecutive tool messages.
+                match contents.last_mut() {
+                    Some(last) if is_function_response_content(last) => last.parts.push(part),
+                    _ => contents.push(VertexContent {
+                        role: Some("user".to_string()),
+                        parts: vec![part],
+                    }),
+                }
             }
         }
     }
@@ -781,6 +788,10 @@ fn sanitize_vertex_schema_with_defs(
                     let mapped_key = match k.as_str() {
                         "$ref" => "ref",
                         "$defs" => "defs",
+                        // Vertex has no oneOf. Dropping it would leave the property with no
+                        // fields at all, while anyOf keeps the variants and matches the same
+                        // arguments when each variant pins a distinct enum value.
+                        "oneOf" if !map.contains_key("anyOf") => "anyOf",
                         _ => k.as_str(),
                     };
                     if is_vertex_schema_key_allowed(mapped_key) {
@@ -1043,6 +1054,7 @@ fn map_vertex_stream_chunk(
     let calls = extract_tool_calls_from_candidate(&candidate, &state.request_id);
     cache_thought_signatures(thought_signatures, &calls);
     if let Some(calls) = map_extracted_tool_calls(calls) {
+        state.saw_tool_call = true;
         for (idx, call) in calls.into_iter().enumerate() {
             let tool_id = call
                 .id
@@ -1068,7 +1080,9 @@ fn map_vertex_stream_chunk(
     }
 
     if let Some(reason) = candidate.finish_reason.as_deref() {
-        let finish_reason = map_finish_reason_string(reason, candidate.content.as_ref());
+        // Gemini sends functionCall parts and finishReason in separate chunks,
+        // so decide from every chunk seen, not only the final one.
+        let finish_reason = map_finish_reason_string(reason, state.saw_tool_call);
         events.push(UnifiedEvent::MessageStop {
             id: state.request_id.clone(),
             stop_reason: Some(finish_reason.clone()),
@@ -1266,6 +1280,15 @@ fn parse_tool_response_payload(content: &Content) -> Value {
     ensure_vertex_struct(payload)
 }
 
+fn is_function_response_content(content: &VertexContent) -> bool {
+    content.role.as_deref() == Some("user")
+        && !content.parts.is_empty()
+        && content
+            .parts
+            .iter()
+            .all(|part| part.function_response.is_some())
+}
+
 fn ensure_vertex_struct(value: Value) -> Value {
     match value {
         Value::Object(_) => value,
@@ -1285,10 +1308,7 @@ fn map_finish_reason(reason: &str, tool_calls: Option<&Vec<ToolCall>>) -> Finish
     }
 }
 
-fn map_finish_reason_string(reason: &str, content: Option<&VertexContent>) -> String {
-    let has_tool_call = content
-        .map(|value| value.parts.iter().any(|part| part.function_call.is_some()))
-        .unwrap_or(false);
+fn map_finish_reason_string(reason: &str, has_tool_call: bool) -> String {
     if has_tool_call {
         return "tool_calls".to_string();
     }
@@ -1637,6 +1657,39 @@ mod tests {
     }
 
     #[test]
+    fn map_vertex_stream_chunk_reports_tool_calls_when_stop_arrives_in_later_chunk() {
+        let mut state = VertexStreamState::default();
+        state.model = "gemini-3.8-flash".to_string();
+        let thought_signatures = Arc::new(Mutex::new(ThoughtSignatureStore::new(16)));
+
+        let call_chunk: VertexGenerateContentResponse = serde_json::from_value(serde_json::json!({
+            "candidates": [{"content": {"role": "model", "parts": [{
+                "functionCall": {"name": "glob_files", "args": {"pattern": "*"}},
+                "thoughtSignature": "sig-a"
+            }]}}],
+            "responseId": "resp-3"
+        }))
+        .expect("call chunk");
+        let stop_chunk: VertexGenerateContentResponse = serde_json::from_value(serde_json::json!({
+            "candidates": [{
+                "content": {"role": "model", "parts": [{"text": ""}]},
+                "finishReason": "STOP"
+            }],
+            "responseId": "resp-3"
+        }))
+        .expect("stop chunk");
+
+        map_vertex_stream_chunk(&call_chunk, &mut state, &thought_signatures);
+        let events = map_vertex_stream_chunk(&stop_chunk, &mut state, &thought_signatures);
+
+        let finish_reason = events.iter().find_map(|event| match event {
+            UnifiedEvent::Completed { finish_reason } => finish_reason.clone(),
+            _ => None,
+        });
+        assert_eq!(finish_reason.as_deref(), Some("tool_calls"));
+    }
+
+    #[test]
     fn map_reasoning_effort_to_vertex_level_works() {
         assert_eq!(
             map_reasoning_effort_to_vertex_level("minimal"),
@@ -1771,6 +1824,79 @@ mod tests {
         assert_eq!(
             sanitized["properties"]["name"]["type"],
             serde_json::json!("string")
+        );
+    }
+
+    #[test]
+    fn sanitize_vertex_schema_maps_oneof_to_anyof() {
+        // Trimmed from the fx agent's shell tool: the field names exist only in the variants.
+        let original = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "request": {
+                    "oneOf": [
+                        {
+                            "type": "object",
+                            "properties": {
+                                "action": {"type": "string", "enum": ["run"]},
+                                "command": {"type": "string", "maxLength": 65536}
+                            },
+                            "additionalProperties": false,
+                            "required": ["action", "command"]
+                        },
+                        {
+                            "type": "object",
+                            "properties": {
+                                "action": {"type": "string", "enum": ["stop"]},
+                                "session_id": {"type": "string"}
+                            },
+                            "additionalProperties": false,
+                            "required": ["action", "session_id"]
+                        }
+                    ]
+                }
+            },
+            "additionalProperties": false,
+            "required": ["request"]
+        });
+
+        let sanitized = sanitize_vertex_schema(&original);
+        let request = &sanitized["properties"]["request"];
+        assert!(request.get("oneOf").is_none());
+        assert_eq!(
+            request["anyOf"],
+            serde_json::json!([
+                {
+                    "type": "object",
+                    "properties": {
+                        "action": {"type": "string", "enum": ["run"]},
+                        "command": {"type": "string"}
+                    },
+                    "required": ["action", "command"]
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "action": {"type": "string", "enum": ["stop"]},
+                        "session_id": {"type": "string"}
+                    },
+                    "required": ["action", "session_id"]
+                }
+            ])
+        );
+    }
+
+    #[test]
+    fn sanitize_vertex_schema_keeps_anyof_over_oneof() {
+        let original = serde_json::json!({
+            "anyOf": [{"type": "string"}],
+            "oneOf": [{"type": "integer"}]
+        });
+
+        let sanitized = sanitize_vertex_schema(&original);
+        assert_eq!(
+            sanitized,
+            serde_json::json!({"anyOf": [{"type": "string"}]})
         );
     }
 
@@ -2282,13 +2408,25 @@ mod tests {
         );
         assert_eq!(assistant_model_content.parts[1].thought_signature, None);
 
-        let function_response_parts = mapped
-            .contents
+        // Gemini rejects the turn unless every response to a parallel call sits
+        // in the single content that follows the function call content.
+        assert_eq!(mapped.contents.len(), 3);
+        let response_content = &mapped.contents[2];
+        assert_eq!(response_content.role.as_deref(), Some("user"));
+        let function_response_parts = response_content
+            .parts
             .iter()
-            .flat_map(|content| content.parts.iter())
             .filter_map(|part| part.function_response.as_ref())
             .collect::<Vec<_>>();
         assert_eq!(function_response_parts.len(), 2);
+        assert_eq!(
+            function_response_parts[0].response,
+            serde_json::json!({"temp": "15C"})
+        );
+        assert_eq!(
+            function_response_parts[1].response,
+            serde_json::json!({"temp": "12C"})
+        );
     }
 
     #[test]

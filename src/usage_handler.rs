@@ -249,8 +249,18 @@ impl EndpointUsage {
                 {
                     return None;
                 }
-                let input_tokens = usage.prompt_token_count.unwrap_or(0);
-                let output_tokens = usage.candidates_token_count.unwrap_or(0);
+                // Gemini counts tool-use prompt and thought tokens separately from
+                // prompt and candidates, and totalTokenCount includes them. OpenAI
+                // counts reasoning inside completion_tokens, so fold both in to keep
+                // prompt_tokens + completion_tokens == total_tokens.
+                let input_tokens = usage
+                    .prompt_token_count
+                    .unwrap_or(0)
+                    .saturating_add(usage.tool_use_prompt_token_count.unwrap_or(0));
+                let output_tokens = usage
+                    .candidates_token_count
+                    .unwrap_or(0)
+                    .saturating_add(usage.thoughts_token_count.unwrap_or(0));
                 let total_tokens = usage
                     .total_token_count
                     .or_else(|| input_tokens.checked_add(output_tokens))
@@ -790,9 +800,13 @@ mod tests {
 
         let mapped = usage.to_openai_usage().expect("usage must map");
 
-        assert_eq!(mapped.prompt_tokens, 11);
-        assert_eq!(mapped.completion_tokens, 7);
+        assert_eq!(mapped.prompt_tokens, 13);
+        assert_eq!(mapped.completion_tokens, 8);
         assert_eq!(mapped.total_tokens, 21);
+        assert_eq!(
+            mapped.prompt_tokens + mapped.completion_tokens,
+            mapped.total_tokens
+        );
         assert_eq!(
             mapped
                 .prompt_tokens_details
