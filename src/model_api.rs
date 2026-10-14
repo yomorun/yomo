@@ -375,14 +375,31 @@ where
                     trace_id
                 );
             }
+            let content_encoding = response
+                .headers
+                .get(header::CONTENT_ENCODING)
+                .and_then(|value| value.to_str().ok());
+            if let Some(error) =
+                full_response_error_for_log(response.status, &payload, content_encoding)
+            {
+                error!(
+                    "http.request.end; status_code={} model_id={} error={} trace_id={} metadata={:?}",
+                    response.status.as_u16(),
+                    provider_entry.model_id,
+                    error,
+                    trace_id,
+                    metadata
+                );
+            } else {
+                info!(
+                    "http.request.end; status_code={} model_id={} trace_id={} metadata={:?}",
+                    response.status.as_u16(),
+                    provider_entry.model_id,
+                    trace_id,
+                    metadata
+                );
+            }
             let response = builder.body(Body::from(payload)).expect("build response");
-            info!(
-                "http.request.end; status_code={} model_id={} trace_id={} metadata={:?}",
-                response.status().as_u16(),
-                provider_entry.model_id,
-                trace_id,
-                metadata
-            );
             set_http_span_status(&root_span, response.status(), None);
             response
         }
@@ -404,6 +421,17 @@ where
     };
 
     response
+}
+
+fn full_response_error_for_log(
+    status: StatusCode,
+    payload: &Bytes,
+    content_encoding: Option<&str>,
+) -> Option<String> {
+    if status.is_success() {
+        return None;
+    }
+    Some(body_preview_for_log(payload, content_encoding))
 }
 
 fn body_preview_for_log(payload: &Bytes, content_encoding: Option<&str>) -> String {
@@ -947,7 +975,7 @@ mod tests {
     use super::{
         DefaultModelApiErrorResponsePolicy, ModelApiErrorAction, ModelApiErrorResponsePolicy,
         apply_response_model_mode_to_json, body_preview_for_log, decode_payload_for_log,
-        parse_model_request_fields, resolve_request_id,
+        full_response_error_for_log, parse_model_request_fields, resolve_request_id,
         selection_model_endpoint_not_supported_message, selection_model_not_supported_message,
         selection_model_required_message,
     };
@@ -1076,6 +1104,45 @@ mod tests {
 
         assert_eq!(missing, "trace_456");
         assert_eq!(blank, "trace_789");
+    }
+
+    /// Valid JSON error bodies must be included in non-success response logs.
+    #[test]
+    fn full_response_error_for_log_includes_json_error_body() {
+        let payload = Bytes::from_static(br#"{"error":{"message":"invalid request"}}"#);
+
+        for status in [
+            StatusCode::BAD_REQUEST,
+            StatusCode::TOO_MANY_REQUESTS,
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ] {
+            assert_eq!(
+                full_response_error_for_log(status, &payload, None).as_deref(),
+                Some(r#"{"error":{"message":"invalid request"}}"#)
+            );
+        }
+        assert_eq!(
+            full_response_error_for_log(StatusCode::OK, &payload, None),
+            None
+        );
+    }
+
+    /// Compressed HTTP errors must retain readable details without changing the payload.
+    #[test]
+    fn full_response_error_for_log_decodes_compressed_error_body() {
+        let raw = br#"{"error":{"message":"invalid request"}}"#;
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(raw).expect("write gzip error body");
+        let payload = Bytes::from(encoder.finish().expect("finish gzip error body"));
+
+        let error = full_response_error_for_log(StatusCode::BAD_REQUEST, &payload, Some("gzip"));
+
+        assert_eq!(
+            error.as_deref(),
+            Some(r#"{"error":{"message":"invalid request"}}"#)
+        );
+        let decoded = decode_payload_for_log(&payload, Some("gzip")).expect("decode original body");
+        assert_eq!(decoded.as_ref(), raw);
     }
 
     /// Verifies invalid upstream payload previews are UTF-8 safe and bounded.
