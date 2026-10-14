@@ -8,7 +8,7 @@ use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use futures_util::{StreamExt, stream};
-use log::{error, info};
+use log::{debug, error, info};
 use serde::Serialize;
 use tracing::{Instrument, Span};
 
@@ -24,6 +24,7 @@ use crate::openai_http_mapping::{
 use crate::openai_types::{ChatCompletionRequest, StreamOptions};
 use crate::provider_registry::{ProviderRegistry, SelectionError};
 use crate::serve_config::{EndpointKind, ResponseModelMode};
+use crate::tool_api::custom_http_headers;
 use crate::tool_invoker::ToolInvoker;
 use crate::tool_mgr::ToolMgr;
 use crate::trace::{DefaultRequestSpanStarter, RequestSpanStarter};
@@ -101,6 +102,10 @@ where
     A: Send + Sync + 'static,
     M: fmt::Debug + Clone + Serialize + Send + Sync + 'static,
 {
+    debug!(
+        "request custom HTTP headers: {:?}",
+        custom_http_headers(&headers)
+    );
     let metadata = match state.metadata_mgr.new_from_http_headers(&headers) {
         Ok(metadata) => metadata,
         Err(err) => {
