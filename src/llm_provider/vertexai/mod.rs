@@ -282,6 +282,7 @@ fn compact_json_string(value: &str) -> String {
 struct VertexStreamState {
     started: bool,
     completed: bool,
+    saw_tool_call: bool,
     request_id: String,
     model: String,
     created_at: String,
@@ -1049,6 +1050,7 @@ fn map_vertex_stream_chunk(
     let calls = extract_tool_calls_from_candidate(&candidate, &state.request_id);
     cache_thought_signatures(thought_signatures, &calls);
     if let Some(calls) = map_extracted_tool_calls(calls) {
+        state.saw_tool_call = true;
         for (idx, call) in calls.into_iter().enumerate() {
             let tool_id = call
                 .id
@@ -1074,7 +1076,9 @@ fn map_vertex_stream_chunk(
     }
 
     if let Some(reason) = candidate.finish_reason.as_deref() {
-        let finish_reason = map_finish_reason_string(reason, candidate.content.as_ref());
+        // Gemini sends functionCall parts and finishReason in separate chunks,
+        // so decide from every chunk seen, not only the final one.
+        let finish_reason = map_finish_reason_string(reason, state.saw_tool_call);
         events.push(UnifiedEvent::MessageStop {
             id: state.request_id.clone(),
             stop_reason: Some(finish_reason.clone()),
@@ -1300,10 +1304,7 @@ fn map_finish_reason(reason: &str, tool_calls: Option<&Vec<ToolCall>>) -> Finish
     }
 }
 
-fn map_finish_reason_string(reason: &str, content: Option<&VertexContent>) -> String {
-    let has_tool_call = content
-        .map(|value| value.parts.iter().any(|part| part.function_call.is_some()))
-        .unwrap_or(false);
+fn map_finish_reason_string(reason: &str, has_tool_call: bool) -> String {
     if has_tool_call {
         return "tool_calls".to_string();
     }
@@ -1649,6 +1650,39 @@ mod tests {
                 .iter()
                 .any(|event| matches!(event, UnifiedEvent::Usage { .. }))
         );
+    }
+
+    #[test]
+    fn map_vertex_stream_chunk_reports_tool_calls_when_stop_arrives_in_later_chunk() {
+        let mut state = VertexStreamState::default();
+        state.model = "gemini-3.8-flash".to_string();
+        let thought_signatures = Arc::new(Mutex::new(ThoughtSignatureStore::new(16)));
+
+        let call_chunk: VertexGenerateContentResponse = serde_json::from_value(serde_json::json!({
+            "candidates": [{"content": {"role": "model", "parts": [{
+                "functionCall": {"name": "glob_files", "args": {"pattern": "*"}},
+                "thoughtSignature": "sig-a"
+            }]}}],
+            "responseId": "resp-3"
+        }))
+        .expect("call chunk");
+        let stop_chunk: VertexGenerateContentResponse = serde_json::from_value(serde_json::json!({
+            "candidates": [{
+                "content": {"role": "model", "parts": [{"text": ""}]},
+                "finishReason": "STOP"
+            }],
+            "responseId": "resp-3"
+        }))
+        .expect("stop chunk");
+
+        map_vertex_stream_chunk(&call_chunk, &mut state, &thought_signatures);
+        let events = map_vertex_stream_chunk(&stop_chunk, &mut state, &thought_signatures);
+
+        let finish_reason = events.iter().find_map(|event| match event {
+            UnifiedEvent::Completed { finish_reason } => finish_reason.clone(),
+            _ => None,
+        });
+        assert_eq!(finish_reason.as_deref(), Some("tool_calls"));
     }
 
     #[test]
