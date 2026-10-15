@@ -7,7 +7,6 @@ use crate::model_api_provider::MessagesUsage;
 
 pub(super) const DEFAULT_ANTHROPIC_VERSION: &str = "2023-06-01";
 pub(super) const DEFAULT_BEDROCK_ANTHROPIC_VERSION: &str = "bedrock-2023-05-31";
-pub(super) const DEFAULT_MAX_TOKENS: i32 = 4096;
 
 #[derive(Serialize)]
 pub(super) struct AnthropicRequest {
@@ -30,6 +29,8 @@ pub(super) struct AnthropicRequest {
     pub tool_choice: Option<AnthropicToolChoice>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thinking: Option<AnthropicThinking>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_config: Option<AnthropicOutputConfig>,
 }
 
 #[derive(Serialize)]
@@ -51,6 +52,8 @@ pub(super) struct BedrockRequest {
     pub tool_choice: Option<AnthropicToolChoice>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thinking: Option<AnthropicThinking>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_config: Option<AnthropicOutputConfig>,
 }
 
 #[derive(Serialize)]
@@ -122,6 +125,11 @@ pub(super) enum AnthropicThinking {
     Adaptive,
     Enabled { budget_tokens: i32 },
     Disabled,
+}
+
+#[derive(Serialize)]
+pub(super) struct AnthropicOutputConfig {
+    pub effort: String,
 }
 
 #[derive(Deserialize)]
@@ -269,4 +277,5 @@ pub(super) struct RequestParts {
     pub tools: Option<Vec<AnthropicTool>>,
     pub tool_choice: Option<AnthropicToolChoice>,
     pub thinking: Option<AnthropicThinking>,
+    pub output_config: Option<AnthropicOutputConfig>,
 }

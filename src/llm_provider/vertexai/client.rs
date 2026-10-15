@@ -3,10 +3,13 @@ use std::time::Duration;
 
 use anyhow::anyhow;
 use axum::http::{HeaderMap, HeaderValue};
+use log::debug;
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
 use tokio::sync::OnceCell;
 use yup_oauth2::authenticator::DefaultAuthenticator;
 use yup_oauth2::{ServiceAccountAuthenticator, read_service_account_key};
+
+use crate::utils::json_body_for_log;
 
 #[derive(Clone)]
 pub struct VertexAIClient {
@@ -48,6 +51,11 @@ impl VertexAIClient {
     ) -> Result<reqwest::Response, anyhow::Error> {
         let token = self.access_token().await?;
         let url = self.generate_content_url(model, stream);
+        debug!(
+            "upstream.request; url={} body={}",
+            url,
+            json_body_for_log(&body)
+        );
         headers.insert(
             AUTHORIZATION,
             format!("Bearer {token}").parse::<HeaderValue>()?,

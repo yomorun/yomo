@@ -1,10 +1,13 @@
 use std::path::Path;
 
 use anyhow::{Result, bail};
+use serde::Serialize;
+use serde_json::Value;
 use tokio::fs;
 
 pub const MAX_LOG_BODY_BYTES: usize = 8 * 1024;
 const LOG_HEAD_BYTES: usize = 2 * 1024;
+const MAX_LOG_JSON_STRING_CHARS: usize = 256;
 
 pub fn sanitize_name(name: &str) -> Result<String> {
     let sanitized = name
@@ -58,6 +61,51 @@ pub fn truncate_bytes_for_log(bytes: &[u8]) -> String {
     truncate_for_log(decoded.as_ref())
 }
 
+/// Render a JSON body for logging, keeping every field but shortening long string values
+/// (message text, base64 payloads) so request parameters stay visible.
+pub fn json_body_for_log(bytes: &[u8]) -> String {
+    match serde_json::from_slice::<Value>(bytes) {
+        Ok(mut value) => {
+            shorten_json_strings(&mut value);
+            value.to_string()
+        }
+        Err(_) => truncate_bytes_for_log(bytes),
+    }
+}
+
+/// Serialize a request for logging with the same string shortening as [`json_body_for_log`].
+pub fn json_value_for_log<T: Serialize>(value: &T) -> String {
+    match serde_json::to_value(value) {
+        Ok(mut value) => {
+            shorten_json_strings(&mut value);
+            value.to_string()
+        }
+        Err(err) => format!("<unserializable: {err}>"),
+    }
+}
+
+fn shorten_json_strings(value: &mut Value) {
+    match value {
+        Value::String(text) => {
+            let total_chars = text.chars().count();
+            if total_chars > MAX_LOG_JSON_STRING_CHARS {
+                let head = text
+                    .chars()
+                    .take(MAX_LOG_JSON_STRING_CHARS)
+                    .collect::<String>();
+                *text = format!(
+                    "{}...[{} more chars]",
+                    head,
+                    total_chars - MAX_LOG_JSON_STRING_CHARS
+                );
+            }
+        }
+        Value::Array(items) => items.iter_mut().for_each(shorten_json_strings),
+        Value::Object(fields) => fields.values_mut().for_each(shorten_json_strings),
+        _ => {}
+    }
+}
+
 pub async fn copy_if_provided(src: &Path, dst: &Path, default_content: Option<&str>) -> Result<()> {
     if src.exists() {
         fs::copy(src, dst).await?;
@@ -92,8 +140,11 @@ pub async fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::{Value, json};
+
     use super::{
-        LOG_HEAD_BYTES, MAX_LOG_BODY_BYTES, sanitize_name, truncate_bytes_for_log, truncate_for_log,
+        LOG_HEAD_BYTES, MAX_LOG_BODY_BYTES, MAX_LOG_JSON_STRING_CHARS, json_body_for_log,
+        json_value_for_log, sanitize_name, truncate_bytes_for_log, truncate_for_log,
     };
 
     #[test]
@@ -133,5 +184,52 @@ mod tests {
         let truncated = truncate_bytes_for_log(&bytes);
 
         assert_eq!(truncated, "��a");
+    }
+
+    #[test]
+    fn json_body_for_log_keeps_fields_and_shortens_long_strings() {
+        let long_text = "中".repeat(MAX_LOG_JSON_STRING_CHARS + 5);
+        let body = json!({
+            "model": "claude-haiku-5-5",
+            "max_tokens": 32000,
+            "messages": [{"role": "user", "content": long_text}],
+        });
+
+        let logged = json_body_for_log(body.to_string().as_bytes());
+        let parsed: Value = serde_json::from_str(&logged).expect("valid json");
+
+        assert_eq!(parsed["model"], "claude-haiku-5-5");
+        assert_eq!(parsed["max_tokens"], 32000);
+        assert_eq!(
+            parsed["messages"][0]["content"],
+            format!(
+                "{}...[5 more chars]",
+                "中".repeat(MAX_LOG_JSON_STRING_CHARS)
+            )
+        );
+    }
+
+    #[test]
+    fn json_body_for_log_falls_back_for_invalid_json() {
+        assert_eq!(json_body_for_log(b"not json"), "not json");
+    }
+
+    #[test]
+    fn json_value_for_log_shortens_serialized_strings() {
+        let request = json!({
+            "max_tokens": 4096,
+            "system": "a".repeat(MAX_LOG_JSON_STRING_CHARS + 1),
+        });
+
+        let logged = json_value_for_log(&request);
+        let parsed: Value = serde_json::from_str(&logged).expect("valid json");
+
+        assert_eq!(parsed["max_tokens"], 4096);
+        assert!(
+            parsed["system"]
+                .as_str()
+                .expect("string")
+                .ends_with("...[1 more chars]")
+        );
     }
 }

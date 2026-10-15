@@ -619,7 +619,7 @@ pub fn build_client<M>(
         .params
         .get("max_tokens")
         .and_then(|raw| raw.parse::<u64>().ok())
-        .unwrap_or(4096);
+        .unwrap_or(64000);
     let aws_bearer_token = provider
         .params
         .get("aws_bearer_token")

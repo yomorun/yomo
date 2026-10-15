@@ -9,9 +9,10 @@ use crate::openai_types::{ChatCompletionRequest, Content, ContentPart, Role, Too
 use crate::usage_handler::EndpointUsage;
 
 use super::types::{
-    ActiveBlock, AnthropicContentBlock, AnthropicImageSource, AnthropicMessage, AnthropicResponse,
-    AnthropicResponseContentBlock, AnthropicThinking, AnthropicTool, AnthropicToolChoice,
-    RequestParts, StreamContentBlock, StreamContentDelta, StreamEvent, StreamState,
+    ActiveBlock, AnthropicContentBlock, AnthropicImageSource, AnthropicMessage,
+    AnthropicOutputConfig, AnthropicResponse, AnthropicResponseContentBlock, AnthropicThinking,
+    AnthropicTool, AnthropicToolChoice, RequestParts, StreamContentBlock, StreamContentDelta,
+    StreamEvent, StreamState,
 };
 
 const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
@@ -204,11 +205,13 @@ pub(super) fn map_request(
         },
     });
 
-    let thinking = map_thinking(
-        &upstream_model,
-        request.thinking.as_ref(),
-        request.reasoning_effort.as_deref(),
-    );
+    let thinking = map_thinking(&upstream_model, request.thinking.as_ref());
+    let output_config = request
+        .reasoning_effort
+        .as_deref()
+        .map(|effort| AnthropicOutputConfig {
+            effort: map_effort(effort).to_string(),
+        });
 
     Ok(RequestParts {
         model: upstream_model,
@@ -221,6 +224,7 @@ pub(super) fn map_request(
         tools,
         tool_choice,
         thinking,
+        output_config,
     })
 }
 
@@ -501,7 +505,6 @@ fn parse_image_data_url(url: &str) -> Option<(String, String)> {
 fn map_thinking(
     model: &str,
     thinking: Option<&crate::openai_types::ThinkingConfig>,
-    reasoning_effort: Option<&str>,
 ) -> Option<AnthropicThinking> {
     if is_thinking_unsupported_model(model) {
         return None;
@@ -517,15 +520,35 @@ fn map_thinking(
         };
     }
 
-    if reasoning_effort.is_some() {
-        return Some(AnthropicThinking::Adaptive);
-    }
-
     None
 }
 
+/// Anthropic effort levels are low|medium|high|xhigh|max; OpenAI's none/minimal have no match.
+fn map_effort(reasoning_effort: &str) -> &str {
+    match reasoning_effort {
+        "none" | "minimal" => "low",
+        effort => effort,
+    }
+}
+
+/// Haiku supports thinking from 5.5 on, e.g. `claude-haiku-4-5-20251001` does not but
+/// `global.anthropic.claude-haiku-5-5` does.
 fn is_thinking_unsupported_model(model: &str) -> bool {
-    model.to_ascii_lowercase().contains("claude-haiku")
+    let model = model.to_ascii_lowercase();
+    let Some((_, version)) = model.split_once("claude-haiku") else {
+        return false;
+    };
+    let mut parts = version.trim_start_matches('-').split(['-', '@', ':']);
+    let Some(major) = parts.next().and_then(|part| part.parse::<u32>().ok()) else {
+        return true;
+    };
+    // A date suffix (`-20251001`) is not a minor version.
+    let minor = parts
+        .next()
+        .filter(|part| part.len() <= 2)
+        .and_then(|part| part.parse::<u32>().ok())
+        .unwrap_or(0);
+    (major, minor) < (5, 5)
 }
 
 fn extract_text_from_content(content: &Content) -> String {
@@ -576,7 +599,7 @@ fn uuid_suffix(name: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::map_image_source;
+    use super::{is_thinking_unsupported_model, map_image_source};
     use crate::llm_provider::anthropic_messages::types::AnthropicImageSource;
 
     #[test]
@@ -599,5 +622,30 @@ mod tests {
         };
 
         assert!(error.to_string().contains("base64-encoded image data"));
+    }
+
+    #[test]
+    fn thinking_is_unsupported_only_for_haiku_before_5_5() {
+        for model in [
+            "claude-haiku-4-5",
+            "claude-haiku-4-5-20251001",
+            "anthropic.claude-haiku-4-5-20251001-v1:0",
+            "claude-haiku-4-5@20251001",
+            "claude-haiku-5-20260101",
+            "claude-haiku",
+        ] {
+            assert!(is_thinking_unsupported_model(model), "{model}");
+        }
+
+        for model in [
+            "claude-haiku-5-5",
+            "global.anthropic.claude-haiku-5-5",
+            "claude-haiku-5-5@20261001",
+            "claude-haiku-6",
+            "claude-opus-5-5",
+            "global.anthropic.claude-sonnet-5-5",
+        ] {
+            assert!(!is_thinking_unsupported_model(model), "{model}");
+        }
     }
 }

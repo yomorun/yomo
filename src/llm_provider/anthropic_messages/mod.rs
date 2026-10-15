@@ -1,36 +1,48 @@
 use std::collections::HashMap;
 use std::pin::Pin;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicI32, Ordering};
 
 use async_stream::try_stream;
 use async_trait::async_trait;
+use axum::http::StatusCode;
 use futures_core::Stream;
 use futures_util::StreamExt;
-use log::warn;
+use log::{info, warn};
 
 use crate::llm_provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
 use crate::openai_http_mapping::validate_openai_request;
 use crate::openai_types::ChatCompletionRequest;
 use crate::serve_config::ConfigError;
 
-use self::client::{Backend, BedrockClient, DirectClient, map_client_error, parse_auth_style};
+use self::client::{
+    Backend, BedrockClient, ClientError, DirectClient, map_client_error, parse_auth_style,
+};
 use self::mapper::{
     inline_image_urls, map_request, map_response, map_stop_reason_string, map_stream_event,
 };
 use self::types::{
     AnthropicRequest, BedrockRequest, DEFAULT_ANTHROPIC_VERSION, DEFAULT_BEDROCK_ANTHROPIC_VERSION,
-    DEFAULT_MAX_TOKENS, StreamState,
+    StreamState,
 };
 
 mod client;
 mod mapper;
 mod types;
 
+/// Anthropic requires `max_tokens`. When neither the client nor the config sets one and the
+/// model's limit is not known yet, send this value: the upstream rejects it with the model's
+/// maximum output tokens, which is cached and used for the retry and later requests.
+const PROBE_MAX_TOKENS: i32 = i32::MAX;
+
 #[derive(Clone)]
 pub struct AnthropicMessagesProvider {
     backend: Backend,
     upstream_model: String,
     anthropic_version: String,
-    default_max_tokens: i32,
+    configured_max_tokens: Option<i32>,
+    /// The model's maximum output tokens learned from the upstream; 0 until known.
+    model_max_tokens: Arc<AtomicI32>,
     image_client: reqwest::Client,
 }
 
@@ -39,16 +51,62 @@ impl AnthropicMessagesProvider {
         backend: Backend,
         upstream_model: String,
         anthropic_version: String,
-        default_max_tokens: i32,
+        configured_max_tokens: Option<i32>,
     ) -> Self {
         Self {
             backend,
             upstream_model,
             anthropic_version,
-            default_max_tokens,
+            configured_max_tokens,
+            model_max_tokens: Arc::new(AtomicI32::new(0)),
             image_client: reqwest::Client::new(),
         }
     }
+
+    /// Output limit for requests without `max_completion_tokens`: the configured `max_tokens`,
+    /// else the model's learned maximum.
+    fn default_max_tokens(&self) -> Option<i32> {
+        self.configured_max_tokens.or_else(|| {
+            let learned = self.model_max_tokens.load(Ordering::Relaxed);
+            (learned > 0).then_some(learned)
+        })
+    }
+
+    /// If the upstream rejected [`PROBE_MAX_TOKENS`], cache the model's maximum from the error
+    /// and return it for a retry.
+    fn learn_model_max_tokens<T>(
+        &self,
+        probing: bool,
+        result: &Result<T, ClientError>,
+    ) -> Option<i32> {
+        if !probing {
+            return None;
+        }
+        let Err(ClientError::Api { status, error }) = result else {
+            return None;
+        };
+        if *status != StatusCode::BAD_REQUEST {
+            return None;
+        }
+        let limit = parse_max_output_tokens(&error.message)?;
+        self.model_max_tokens.store(limit, Ordering::Relaxed);
+        info!(
+            "anthropic messages model max_tokens learned; model={} max_tokens={}",
+            self.upstream_model, limit
+        );
+        Some(limit)
+    }
+}
+
+/// Parse the limit from "max_tokens: 2147483647 > 128000, which is the maximum allowed number
+/// of output tokens for ...".
+fn parse_max_output_tokens(message: &str) -> Option<i32> {
+    let (_, rest) = message.split_once(" > ")?;
+    let (limit, tail) = rest.split_once(',')?;
+    if !tail.contains("maximum allowed number of output tokens") {
+        return None;
+    }
+    limit.trim().parse().ok().filter(|limit| *limit > 0)
 }
 
 #[async_trait]
@@ -65,15 +123,17 @@ impl<M> Provider<M> for AnthropicMessagesProvider {
         validate_openai_request(&request).map_err(ProviderError::internal)?;
         let mut request = request;
         inline_image_urls(&mut request, &self.image_client).await?;
+        let default_max_tokens = self.default_max_tokens();
+        let probing = request.max_completion_tokens.is_none() && default_max_tokens.is_none();
         let mapped = map_request(
             request,
             self.upstream_model.clone(),
-            self.default_max_tokens,
+            default_max_tokens.unwrap_or(PROBE_MAX_TOKENS),
             true,
         )?;
         let response = match &self.backend {
             Backend::Direct(client) => {
-                let payload = AnthropicRequest {
+                let mut payload = AnthropicRequest {
                     model: mapped.model,
                     max_tokens: mapped.max_tokens,
                     messages: mapped.messages,
@@ -85,14 +145,21 @@ impl<M> Provider<M> for AnthropicMessagesProvider {
                     tools: mapped.tools,
                     tool_choice: mapped.tool_choice,
                     thinking: mapped.thinking,
+                    output_config: mapped.output_config,
                 };
-                client
-                    .send_complete(payload, &self.anthropic_version)
-                    .await
-                    .map_err(map_client_error)?
+                let mut result = client
+                    .send_complete(&payload, &self.anthropic_version)
+                    .await;
+                if let Some(limit) = self.learn_model_max_tokens(probing, &result) {
+                    payload.max_tokens = limit;
+                    result = client
+                        .send_complete(&payload, &self.anthropic_version)
+                        .await;
+                }
+                result.map_err(map_client_error)?
             }
             Backend::Bedrock(client) => {
-                let payload = BedrockRequest {
+                let mut payload = BedrockRequest {
                     anthropic_version: self.anthropic_version.clone(),
                     max_tokens: mapped.max_tokens,
                     messages: mapped.messages,
@@ -103,11 +170,14 @@ impl<M> Provider<M> for AnthropicMessagesProvider {
                     tools: mapped.tools,
                     tool_choice: mapped.tool_choice,
                     thinking: mapped.thinking,
+                    output_config: mapped.output_config,
                 };
-                client
-                    .send_complete(payload)
-                    .await
-                    .map_err(map_client_error)?
+                let mut result = client.send_complete(&payload).await;
+                if let Some(limit) = self.learn_model_max_tokens(probing, &result) {
+                    payload.max_tokens = limit;
+                    result = client.send_complete(&payload).await;
+                }
+                result.map_err(map_client_error)?
             }
         };
 
@@ -125,16 +195,18 @@ impl<M> Provider<M> for AnthropicMessagesProvider {
         validate_openai_request(&request).map_err(ProviderError::internal)?;
         let mut request = request;
         inline_image_urls(&mut request, &self.image_client).await?;
+        let default_max_tokens = self.default_max_tokens();
+        let probing = request.max_completion_tokens.is_none() && default_max_tokens.is_none();
         let mapped = map_request(
             request,
             self.upstream_model.clone(),
-            self.default_max_tokens,
+            default_max_tokens.unwrap_or(PROBE_MAX_TOKENS),
             true,
         )?;
 
         let stream = match &self.backend {
             Backend::Direct(client) => {
-                let payload = AnthropicRequest {
+                let mut payload = AnthropicRequest {
                     model: mapped.model,
                     max_tokens: mapped.max_tokens,
                     messages: mapped.messages,
@@ -146,14 +218,17 @@ impl<M> Provider<M> for AnthropicMessagesProvider {
                     tools: mapped.tools,
                     tool_choice: mapped.tool_choice,
                     thinking: mapped.thinking,
+                    output_config: mapped.output_config,
                 };
-                client
-                    .send_stream(payload, &self.anthropic_version)
-                    .await
-                    .map_err(map_client_error)?
+                let mut result = client.send_stream(&payload, &self.anthropic_version).await;
+                if let Some(limit) = self.learn_model_max_tokens(probing, &result) {
+                    payload.max_tokens = limit;
+                    result = client.send_stream(&payload, &self.anthropic_version).await;
+                }
+                result.map_err(map_client_error)?
             }
             Backend::Bedrock(client) => {
-                let payload = BedrockRequest {
+                let mut payload = BedrockRequest {
                     anthropic_version: self.anthropic_version.clone(),
                     max_tokens: mapped.max_tokens,
                     messages: mapped.messages,
@@ -164,11 +239,14 @@ impl<M> Provider<M> for AnthropicMessagesProvider {
                     tools: mapped.tools,
                     tool_choice: mapped.tool_choice,
                     thinking: mapped.thinking,
+                    output_config: mapped.output_config,
                 };
-                client
-                    .send_stream(payload)
-                    .await
-                    .map_err(map_client_error)?
+                let mut result = client.send_stream(&payload).await;
+                if let Some(limit) = self.learn_model_max_tokens(probing, &result) {
+                    payload.max_tokens = limit;
+                    result = client.send_stream(&payload).await;
+                }
+                result.map_err(map_client_error)?
             }
         };
 
@@ -238,7 +316,7 @@ pub fn build_anthropic_messages_provider(
         }),
         upstream_model,
         anthropic_version,
-        DEFAULT_MAX_TOKENS,
+        parse_max_tokens(params),
     ))
 }
 
@@ -262,11 +340,6 @@ pub fn build_bedrock_messages_provider(
         .get("anthropic_version")
         .cloned()
         .unwrap_or_else(|| DEFAULT_BEDROCK_ANTHROPIC_VERSION.to_string());
-    let max_tokens = params
-        .get("max_tokens")
-        .and_then(|raw| raw.parse::<i32>().ok())
-        .unwrap_or(DEFAULT_MAX_TOKENS);
-
     Ok(AnthropicMessagesProvider::new(
         Backend::Bedrock(BedrockClient {
             model_id: bedrock_model.clone(),
@@ -275,8 +348,16 @@ pub fn build_bedrock_messages_provider(
         }),
         bedrock_model,
         anthropic_version,
-        max_tokens,
+        parse_max_tokens(params),
     ))
+}
+
+/// Optional fixed `max_tokens` for requests that do not set `max_completion_tokens`.
+fn parse_max_tokens(params: &HashMap<String, String>) -> Option<i32> {
+    params
+        .get("max_tokens")
+        .and_then(|raw| raw.parse::<i32>().ok())
+        .filter(|max_tokens| *max_tokens > 0)
 }
 
 #[cfg(test)]
@@ -284,9 +365,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::llm_provider::anthropic_messages::types::{
-        AnthropicContentBlock, AnthropicThinking,
-    };
+    use crate::llm_provider::anthropic_messages::types::AnthropicContentBlock;
     use crate::llm_provider::anthropic_messages::types::{
         StreamContentBlock, StreamContentDelta, StreamEvent, StreamMessage,
     };
@@ -380,7 +459,92 @@ mod tests {
         let provider = build_bedrock_messages_provider(&params)
             .expect("bedrock messages provider should build");
 
-        assert_eq!(provider.default_max_tokens, DEFAULT_MAX_TOKENS);
+        assert_eq!(provider.configured_max_tokens, None);
+    }
+
+    fn bedrock_provider(max_tokens: Option<&str>) -> AnthropicMessagesProvider {
+        let mut params = HashMap::new();
+        params.insert(
+            "model".to_string(),
+            "global.anthropic.claude-haiku-5-5".to_string(),
+        );
+        params.insert("aws_region".to_string(), "eu-central-1".to_string());
+        params.insert("aws_bearer_token".to_string(), "token".to_string());
+        if let Some(max_tokens) = max_tokens {
+            params.insert("max_tokens".to_string(), max_tokens.to_string());
+        }
+        build_bedrock_messages_provider(&params).expect("bedrock messages provider should build")
+    }
+
+    fn api_error(status: StatusCode, message: &str) -> Result<(), ClientError> {
+        Err(ClientError::Api {
+            status,
+            error: crate::openai_types::ErrorDetail {
+                message: message.to_string(),
+                r#type: "invalid_request_error".to_string(),
+                code: None,
+                param: None,
+            },
+        })
+    }
+
+    const MAX_TOKENS_LIMIT_MESSAGE: &str = "max_tokens: 2147483647 > 128000, which is the maximum allowed number of output tokens for anthropic.claude-haiku-5-5";
+
+    #[test]
+    fn configured_max_tokens_is_the_default() {
+        let provider = bedrock_provider(Some("32000"));
+
+        assert_eq!(provider.default_max_tokens(), Some(32000));
+    }
+
+    #[test]
+    fn learn_model_max_tokens_caches_upstream_limit() {
+        let provider = bedrock_provider(None);
+        assert_eq!(provider.default_max_tokens(), None);
+
+        let learned = provider.learn_model_max_tokens(
+            true,
+            &api_error(StatusCode::BAD_REQUEST, MAX_TOKENS_LIMIT_MESSAGE),
+        );
+
+        assert_eq!(learned, Some(128000));
+        assert_eq!(provider.clone().default_max_tokens(), Some(128000));
+    }
+
+    #[test]
+    fn learn_model_max_tokens_ignores_other_errors() {
+        let provider = bedrock_provider(None);
+
+        let not_probing = provider.learn_model_max_tokens(
+            false,
+            &api_error(StatusCode::BAD_REQUEST, MAX_TOKENS_LIMIT_MESSAGE),
+        );
+        let other_message = provider.learn_model_max_tokens(
+            true,
+            &api_error(StatusCode::BAD_REQUEST, "messages: Field required"),
+        );
+        let other_status = provider.learn_model_max_tokens(
+            true,
+            &api_error(StatusCode::TOO_MANY_REQUESTS, MAX_TOKENS_LIMIT_MESSAGE),
+        );
+
+        assert_eq!(
+            (not_probing, other_message, other_status),
+            (None, None, None)
+        );
+        assert_eq!(provider.default_max_tokens(), None);
+    }
+
+    #[test]
+    fn parse_max_output_tokens_reads_limit() {
+        assert_eq!(
+            parse_max_output_tokens(MAX_TOKENS_LIMIT_MESSAGE),
+            Some(128000)
+        );
+        assert_eq!(
+            parse_max_output_tokens("max_tokens: 5 > 3, which is not about output"),
+            None
+        );
     }
 
     #[test]
@@ -448,13 +612,8 @@ mod tests {
             agent_context: None,
         };
 
-        let mapped = map_request(
-            request,
-            "claude-sonnet-5".to_string(),
-            DEFAULT_MAX_TOKENS,
-            false,
-        )
-        .expect("request should map");
+        let mapped = map_request(request, "claude-sonnet-5".to_string(), 4096, false)
+            .expect("request should map");
 
         assert_eq!(mapped.messages.len(), 2);
         assert!(matches!(
@@ -512,13 +671,8 @@ mod tests {
             agent_context: None,
         };
 
-        let mapped = map_request(
-            request,
-            "claude-sonnet-5".to_string(),
-            DEFAULT_MAX_TOKENS,
-            false,
-        )
-        .expect("request should map");
+        let mapped = map_request(request, "claude-sonnet-5".to_string(), 4096, false)
+            .expect("request should map");
 
         assert_eq!(mapped.messages.len(), 1);
         assert!(matches!(
@@ -567,13 +721,8 @@ mod tests {
             agent_context: None,
         };
 
-        let mapped = map_request(
-            request,
-            "claude-sonnet-5".to_string(),
-            DEFAULT_MAX_TOKENS,
-            false,
-        )
-        .expect("request should map");
+        let mapped = map_request(request, "claude-sonnet-5".to_string(), 4096, false)
+            .expect("request should map");
 
         assert_eq!(mapped.messages.len(), 1);
         assert!(matches!(
@@ -622,13 +771,8 @@ mod tests {
             agent_context: None,
         };
 
-        let mapped = map_request(
-            request,
-            "claude-haiku-4-5".to_string(),
-            DEFAULT_MAX_TOKENS,
-            false,
-        )
-        .expect("request should map");
+        let mapped = map_request(request, "claude-haiku-4-5".to_string(), 4096, false)
+            .expect("request should map");
 
         assert!(mapped.thinking.is_none());
     }
@@ -678,7 +822,7 @@ mod tests {
         let mapped = map_request(
             request,
             "anthropic.claude-haiku-4-5".to_string(),
-            DEFAULT_MAX_TOKENS,
+            4096,
             false,
         )
         .expect("request should map");
@@ -687,7 +831,7 @@ mod tests {
     }
 
     #[test]
-    fn map_request_uses_adaptive_thinking_from_reasoning_effort_for_non_haiku_models() {
+    fn map_request_maps_reasoning_effort_to_output_config_effort() {
         let request = ChatCompletionRequest {
             model: "alias".to_string(),
             messages: vec![Message {
@@ -729,12 +873,71 @@ mod tests {
         let mapped = map_request(
             request,
             "global.anthropic.claude-sonnet-4-6".to_string(),
-            DEFAULT_MAX_TOKENS,
+            4096,
             false,
         )
         .expect("request should map");
 
-        assert!(matches!(mapped.thinking, Some(AnthropicThinking::Adaptive)));
+        assert!(mapped.thinking.is_none());
+        assert_eq!(
+            mapped.output_config.map(|config| config.effort).as_deref(),
+            Some("high")
+        );
+    }
+
+    #[test]
+    fn map_request_keeps_thinking_for_haiku_5_5() {
+        let mut request = basic_chat_request(None, None);
+        request.thinking = Some(crate::openai_types::ThinkingConfig {
+            kind: crate::openai_types::ThinkingType::Adaptive,
+        });
+
+        let mapped = map_request(
+            request,
+            "global.anthropic.claude-haiku-5-5".to_string(),
+            4096,
+            false,
+        )
+        .expect("request should map");
+
+        assert!(matches!(
+            mapped.thinking,
+            Some(crate::llm_provider::anthropic_messages::types::AnthropicThinking::Adaptive)
+        ));
+    }
+
+    #[test]
+    fn map_request_maps_openai_only_effort_levels_to_low() {
+        for effort in ["none", "minimal"] {
+            let mut request = basic_chat_request(None, None);
+            request.reasoning_effort = Some(effort.to_string());
+
+            let mapped = map_request(
+                request,
+                "global.anthropic.claude-opus-5-5".to_string(),
+                4096,
+                false,
+            )
+            .expect("request should map");
+
+            assert_eq!(
+                mapped.output_config.map(|config| config.effort).as_deref(),
+                Some("low")
+            );
+        }
+    }
+
+    #[test]
+    fn map_request_omits_output_config_without_reasoning_effort() {
+        let mapped = map_request(
+            basic_chat_request(None, None),
+            "global.anthropic.claude-opus-5-5".to_string(),
+            4096,
+            false,
+        )
+        .expect("request should map");
+
+        assert!(mapped.output_config.is_none());
     }
 
     #[test]
@@ -742,13 +945,8 @@ mod tests {
         let mut request = basic_chat_request(Some(0.2), Some(0.7));
         request.model = "claude-sonnet-5".to_string();
 
-        let mapped = map_request(
-            request,
-            "claude-sonnet-5".to_string(),
-            DEFAULT_MAX_TOKENS,
-            true,
-        )
-        .expect("request should map");
+        let mapped = map_request(request, "claude-sonnet-5".to_string(), 4096, true)
+            .expect("request should map");
 
         assert_eq!(mapped.temperature, None);
         assert_eq!(mapped.top_p, None);
@@ -758,13 +956,8 @@ mod tests {
     fn map_request_keeps_non_default_sampling_for_non_restricted_models_when_compat_enabled() {
         let request = basic_chat_request(Some(0.2), Some(0.7));
 
-        let mapped = map_request(
-            request,
-            "claude-sonnet-4-6".to_string(),
-            DEFAULT_MAX_TOKENS,
-            true,
-        )
-        .expect("request should map");
+        let mapped = map_request(request, "claude-sonnet-4-6".to_string(), 4096, true)
+            .expect("request should map");
 
         assert_eq!(mapped.temperature, Some(0.2));
         assert_eq!(mapped.top_p, Some(0.7));
@@ -775,13 +968,8 @@ mod tests {
         let mut request = basic_chat_request(Some(0.2), Some(0.7));
         request.model = "global.anthropic.claude-sonnet-5".to_string();
 
-        let mapped = map_request(
-            request,
-            "claude-sonnet-5".to_string(),
-            DEFAULT_MAX_TOKENS,
-            true,
-        )
-        .expect("request should map");
+        let mapped = map_request(request, "claude-sonnet-5".to_string(), 4096, true)
+            .expect("request should map");
 
         assert_eq!(mapped.temperature, Some(0.2));
         assert_eq!(mapped.top_p, Some(0.7));
@@ -905,13 +1093,8 @@ mod tests {
             agent_context: None,
         };
 
-        let mapped = map_request(
-            request,
-            "claude-sonnet-5".to_string(),
-            DEFAULT_MAX_TOKENS,
-            false,
-        )
-        .expect("request should map");
+        let mapped = map_request(request, "claude-sonnet-5".to_string(), 4096, false)
+            .expect("request should map");
 
         let AnthropicContentBlock::ToolUse { id: first_id, .. } = &mapped.messages[0].content[0]
         else {
