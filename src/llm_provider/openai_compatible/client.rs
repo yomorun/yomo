@@ -13,7 +13,7 @@ use tokio::time::timeout;
 use crate::openai_types::{
     ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, ErrorDetail,
 };
-use crate::utils::{MAX_LOG_BODY_BYTES, truncate_for_log};
+use crate::utils::{MAX_LOG_BODY_BYTES, json_value_for_log, truncate_for_log};
 
 #[derive(Debug)]
 pub enum ClientError {
@@ -187,6 +187,11 @@ impl Client {
             "{}/chat/completions",
             trimmed_base_url(&self.config.base_url)
         );
+        debug!(
+            "upstream.request; url={} body={}",
+            url,
+            json_value_for_log(&request)
+        );
         let response = self
             .client
             .post(url)
@@ -220,6 +225,11 @@ impl Client {
         let url = format!(
             "{}/chat/completions",
             trimmed_base_url(&self.config.base_url)
+        );
+        debug!(
+            "upstream.request; url={} body={}",
+            url,
+            json_value_for_log(&request)
         );
         let response = timeout(
             self.config.stream_first_byte_timeout,

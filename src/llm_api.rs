@@ -9,7 +9,7 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use futures_util::{StreamExt, stream};
 use log::{debug, error, info};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tracing::{Instrument, Span};
 
 use crate::agent_loop::{AgentLoopConfig, AgentLoopResult, run_agent_loop};
@@ -24,12 +24,12 @@ use crate::openai_http_mapping::{
 use crate::openai_types::{ChatCompletionRequest, StreamOptions};
 use crate::provider_registry::{ProviderRegistry, SelectionError};
 use crate::serve_config::{EndpointKind, ResponseModelMode};
-use crate::tool_api::custom_http_headers;
+use crate::tool_api::redacted_http_headers;
 use crate::tool_invoker::ToolInvoker;
 use crate::tool_mgr::ToolMgr;
 use crate::trace::{DefaultRequestSpanStarter, RequestSpanStarter};
 use crate::trace::{record_usage_attributes, set_http_span_status};
-use crate::utils::truncate_bytes_for_log;
+use crate::utils::{json_body_for_log, truncate_bytes_for_log};
 
 #[derive(Clone)]
 pub struct LlmHandlerState<A, M> {
@@ -102,10 +102,6 @@ where
     A: Send + Sync + 'static,
     M: fmt::Debug + Clone + Serialize + Send + Sync + 'static,
 {
-    debug!(
-        "request custom HTTP headers: {:?}",
-        custom_http_headers(&headers)
-    );
     let metadata = match state.metadata_mgr.new_from_http_headers(&headers) {
         Ok(metadata) => metadata,
         Err(err) => {
@@ -171,6 +167,16 @@ where
     A: Send + Sync + 'static,
     M: fmt::Debug + Clone + Serialize + Send + Sync + 'static,
 {
+    debug!(
+        "http.request.headers; trace_id={} headers={:?}",
+        trace_id,
+        redacted_http_headers(&headers)
+    );
+    debug!(
+        "http.request.body; trace_id={} body={}",
+        trace_id,
+        json_body_for_log(&body)
+    );
     let mut request: ChatCompletionRequest = match serde_json::from_slice(&body) {
         Ok(request) => request,
         Err(err) => {
@@ -185,6 +191,7 @@ where
             return Ok(response);
         }
     };
+    apply_claude_max_tokens(&mut request, &body);
 
     let server_tools = state
         .tool_mgr
@@ -432,6 +439,22 @@ where
     }
 }
 
+/// `ChatCompletionRequest` drops the deprecated `max_tokens`; for claude-* models use it as
+/// `max_completion_tokens` when the latter is not set.
+fn apply_claude_max_tokens(request: &mut ChatCompletionRequest, body: &[u8]) {
+    #[derive(Deserialize)]
+    struct LegacyMaxTokens {
+        max_tokens: Option<i32>,
+    }
+
+    if request.max_completion_tokens.is_some() || !request.model.starts_with("claude-") {
+        return;
+    }
+    request.max_completion_tokens = serde_json::from_slice::<LegacyMaxTokens>(body)
+        .ok()
+        .and_then(|legacy| legacy.max_tokens);
+}
+
 fn finish_reason_to_str(reason: &FinishReason) -> &'static str {
     match reason {
         FinishReason::Stop => "stop",
@@ -531,9 +554,10 @@ mod tests {
     use axum::response::Response;
 
     use super::{
-        DefaultLlmErrorResponsePolicy, LlmErrorResponsePolicy, provider_error_status,
-        response_model_for_mode, selection_model_endpoint_not_supported_message,
-        selection_model_not_supported_message, selection_model_required_message,
+        DefaultLlmErrorResponsePolicy, LlmErrorResponsePolicy, apply_claude_max_tokens,
+        provider_error_status, response_model_for_mode,
+        selection_model_endpoint_not_supported_message, selection_model_not_supported_message,
+        selection_model_required_message,
     };
     use crate::llm_provider::ProviderError;
     use crate::openai_types::ErrorDetail;
@@ -682,5 +706,47 @@ mod tests {
 
         assert_eq!(routed, "routed-model");
         assert_eq!(fixed, "fixed-model");
+    }
+
+    fn apply_max_tokens(body: serde_json::Value) -> Option<i32> {
+        let bytes = body.to_string();
+        let mut request: crate::openai_types::ChatCompletionRequest =
+            serde_json::from_str(&bytes).expect("valid request");
+        apply_claude_max_tokens(&mut request, bytes.as_bytes());
+        request.max_completion_tokens
+    }
+
+    #[test]
+    fn claude_max_tokens_becomes_max_completion_tokens() {
+        let body = serde_json::json!({
+            "model": "claude-haiku-5-5",
+            "messages": [],
+            "max_tokens": 32000,
+        });
+
+        assert_eq!(apply_max_tokens(body), Some(32000));
+    }
+
+    #[test]
+    fn claude_max_completion_tokens_wins_over_max_tokens() {
+        let body = serde_json::json!({
+            "model": "claude-haiku-5-5",
+            "messages": [],
+            "max_tokens": 32000,
+            "max_completion_tokens": 1000,
+        });
+
+        assert_eq!(apply_max_tokens(body), Some(1000));
+    }
+
+    #[test]
+    fn non_claude_max_tokens_is_ignored() {
+        let body = serde_json::json!({
+            "model": "glm-5.3-flash",
+            "messages": [],
+            "max_tokens": 32000,
+        });
+
+        assert_eq!(apply_max_tokens(body), None);
     }
 }

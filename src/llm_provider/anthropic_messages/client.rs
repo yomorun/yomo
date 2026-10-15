@@ -8,11 +8,13 @@ use aws_types::region::Region;
 use axum::http::StatusCode;
 use futures_core::Stream;
 use futures_util::StreamExt;
+use log::debug;
 use serde_json::Value;
 
 use crate::llm_provider::ProviderError;
 use crate::openai_types::ErrorDetail;
 use crate::serve_config::ConfigError;
+use crate::utils::{json_body_for_log, json_value_for_log};
 
 use super::types::{
     AnthropicErrorEnvelope, AnthropicRequest, AnthropicResponse, BedrockRequest, StreamEvent,
@@ -102,12 +104,18 @@ pub(super) fn map_client_error(err: ClientError) -> ProviderError {
 impl DirectClient {
     pub(super) async fn send_complete(
         &self,
-        request: AnthropicRequest,
+        request: &AnthropicRequest,
         anthropic_version: &str,
     ) -> Result<AnthropicResponse, ClientError> {
+        let url = format!("{}/messages", self.base_url.trim_end_matches('/'));
+        debug!(
+            "upstream.request; url={} body={}",
+            url,
+            json_value_for_log(request)
+        );
         let mut builder = self
             .client
-            .post(format!("{}/messages", self.base_url.trim_end_matches('/')))
+            .post(url)
             .header("anthropic-version", anthropic_version)
             .header(reqwest::header::CONTENT_TYPE, "application/json");
         builder = match self.auth_style {
@@ -115,7 +123,7 @@ impl DirectClient {
             AuthStyle::Bearer => builder.bearer_auth(&self.api_key),
         };
 
-        let response = builder.json(&request).send().await?;
+        let response = builder.json(request).send().await?;
         let status = response.status();
         let bytes = response.bytes().await?;
         if !status.is_success() {
@@ -127,13 +135,19 @@ impl DirectClient {
 
     pub(super) async fn send_stream(
         &self,
-        request: AnthropicRequest,
+        request: &AnthropicRequest,
         anthropic_version: &str,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<StreamEvent, ProviderError>> + Send>>, ClientError>
     {
+        let url = format!("{}/messages", self.base_url.trim_end_matches('/'));
+        debug!(
+            "upstream.request; url={} body={}",
+            url,
+            json_value_for_log(request)
+        );
         let mut builder = self
             .client
-            .post(format!("{}/messages", self.base_url.trim_end_matches('/')))
+            .post(url)
             .header("anthropic-version", anthropic_version)
             .header(reqwest::header::CONTENT_TYPE, "application/json");
         builder = match self.auth_style {
@@ -141,7 +155,7 @@ impl DirectClient {
             AuthStyle::Bearer => builder.bearer_auth(&self.api_key),
         };
 
-        let response = builder.json(&request).send().await?;
+        let response = builder.json(request).send().await?;
         let status = response.status();
         if !status.is_success() {
             let bytes = response.bytes().await?;
@@ -183,11 +197,17 @@ impl DirectClient {
 impl BedrockClient {
     pub(super) async fn send_complete(
         &self,
-        request: BedrockRequest,
+        request: &BedrockRequest,
     ) -> Result<AnthropicResponse, ClientError> {
         let client = self.client().await?;
         let body =
-            serde_json::to_vec(&request).map_err(|err| ClientError::Parse(err.to_string()))?;
+            serde_json::to_vec(request).map_err(|err| ClientError::Parse(err.to_string()))?;
+        debug!(
+            "upstream.request; bedrock_model_id={} aws_region={} body={}",
+            self.model_id,
+            self.aws_region,
+            json_body_for_log(&body)
+        );
         let response = client
             .invoke_model()
             .model_id(&self.model_id)
@@ -204,12 +224,18 @@ impl BedrockClient {
 
     pub(super) async fn send_stream(
         &self,
-        request: BedrockRequest,
+        request: &BedrockRequest,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<StreamEvent, ProviderError>> + Send>>, ClientError>
     {
         let client = self.client().await?;
         let body =
-            serde_json::to_vec(&request).map_err(|err| ClientError::Parse(err.to_string()))?;
+            serde_json::to_vec(request).map_err(|err| ClientError::Parse(err.to_string()))?;
+        debug!(
+            "upstream.request; bedrock_model_id={} aws_region={} body={}",
+            self.model_id,
+            self.aws_region,
+            json_body_for_log(&body)
+        );
         let response = client
             .invoke_model_with_response_stream()
             .model_id(&self.model_id)

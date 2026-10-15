@@ -5,7 +5,7 @@ use axum::{
     Router,
     body::Bytes,
     extract::{Path, State},
-    http::{self, HeaderMap, HeaderName, StatusCode},
+    http::{self, HeaderMap, HeaderName, HeaderValue, StatusCode},
     response::{IntoResponse, Sse, sse::Event},
 };
 use futures_util::stream;
@@ -93,6 +93,30 @@ pub(crate) fn custom_http_headers(http_headers: &HeaderMap) -> HeaderMap {
                 .any(|standard| name == &HeaderName::from_static(standard))
         })
         .map(|(name, value)| (name.clone(), value.clone()))
+        .collect()
+}
+
+/// Return all headers with credential values redacted.
+pub(crate) fn redacted_http_headers(http_headers: &HeaderMap) -> HeaderMap {
+    const SENSITIVE_HEADERS: &[&str] = &[
+        "authorization",
+        "proxy-authorization",
+        "cookie",
+        "x-api-key",
+        "api-key",
+        "x-goog-api-key",
+    ];
+
+    http_headers
+        .iter()
+        .map(|(name, value)| {
+            let value = if SENSITIVE_HEADERS.contains(&name.as_str()) {
+                HeaderValue::from_static("[redacted]")
+            } else {
+                value.clone()
+            };
+            (name.clone(), value)
+        })
         .collect()
 }
 
