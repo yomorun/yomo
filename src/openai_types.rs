@@ -59,7 +59,11 @@ pub struct ChatCompletionRequest {
     pub audio: Option<AudioOutput>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_completion_tokens: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "string_or_vec",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub stop: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_format: Option<ResponseFormat>,
@@ -399,6 +403,26 @@ where
     Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
 }
 
+/// Accepts OpenAI's `string | string[] | null` shape and normalizes it to a list.
+fn string_or_vec<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrVec {
+        One(String),
+        Many(Vec<String>),
+    }
+
+    Ok(
+        Option::<StringOrVec>::deserialize(deserializer)?.map(|value| match value {
+            StringOrVec::One(value) => vec![value],
+            StringOrVec::Many(values) => values,
+        }),
+    )
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCall {
     pub id: Option<String>,
@@ -514,6 +538,45 @@ pub struct ErrorDetail {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn parse_stop(stop: &str) -> Option<Vec<String>> {
+        let body = format!(r#"{{"model":"m","messages":[]{stop}}}"#);
+        serde_json::from_str::<ChatCompletionRequest>(&body)
+            .expect("parse request")
+            .stop
+    }
+
+    #[test]
+    fn chat_completion_request_stop_accepts_string_array_null_and_missing() {
+        assert_eq!(
+            parse_stop(r#","stop":"END""#),
+            Some(vec!["END".to_string()])
+        );
+        assert_eq!(
+            parse_stop(r#","stop":["END","STOP"]"#),
+            Some(vec!["END".to_string(), "STOP".to_string()])
+        );
+        assert_eq!(parse_stop(r#","stop":null"#), None);
+        assert_eq!(parse_stop(""), None);
+    }
+
+    #[test]
+    fn chat_completion_request_stop_rejects_non_string_values() {
+        let body = r#"{"model":"m","messages":[],"stop":1}"#;
+
+        assert!(serde_json::from_str::<ChatCompletionRequest>(body).is_err());
+    }
+
+    #[test]
+    fn chat_completion_request_serializes_string_stop_as_array() {
+        let request: ChatCompletionRequest =
+            serde_json::from_str(r#"{"model":"m","messages":[],"stop":"END"}"#)
+                .expect("parse request");
+
+        let value = serde_json::to_value(&request).expect("serialize request");
+
+        assert_eq!(value["stop"], serde_json::json!(["END"]));
+    }
 
     #[test]
     fn chat_completion_message_allows_null_annotations() {
