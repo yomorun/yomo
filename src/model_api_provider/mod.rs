@@ -1,3 +1,4 @@
+pub(crate) mod hosted_tools;
 pub mod provider;
 pub mod providers;
 pub mod usage;

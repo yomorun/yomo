@@ -16,6 +16,7 @@ use tracing::Instrument;
 
 use crate::metadata_mgr::MetadataMgr;
 use crate::metadata_mgr::MetadataMgrImpl;
+use crate::model_api_provider::hosted_tools::strip_hosted_tools;
 use crate::model_api_provider::{
     ModelApiProvider, ProviderBody, ProviderRequest, ProviderResponse,
 };
@@ -233,6 +234,30 @@ where
         "http.request.start; method=POST path=/v1{} model_id={} stream={} trace_id={} metadata={:?}",
         endpoint_path, provider_entry.model_id, is_stream, trace_id, metadata
     );
+
+    let body = match strip_hosted_tools(endpoint, body) {
+        Ok((body, removed)) => {
+            if !removed.is_empty() {
+                info!(
+                    "model api request stripped upstream-executed tools; model_id={} tools={:?} trace_id={} metadata={:?}",
+                    provider_entry.model_id, removed, trace_id, metadata
+                );
+            }
+            body
+        }
+        Err(message) => {
+            warn!(
+                "http.request.end; status_code=400 model_id={} error={} trace_id={} metadata={:?}",
+                provider_entry.model_id, message, trace_id, metadata
+            );
+            set_http_span_status(&root_span, StatusCode::BAD_REQUEST, Some(&message));
+            return openai_error_response(
+                StatusCode::BAD_REQUEST,
+                &message,
+                Some("invalid_request_error"),
+            );
+        }
+    };
 
     let provider_request = ProviderRequest {
         method: Method::POST,
