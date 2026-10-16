@@ -480,8 +480,8 @@ fn map_regular_content(content: &Content) -> Result<Vec<AnthropicContentBlock>, 
 }
 
 fn map_image_source(url: &str) -> Result<AnthropicImageSource, ProviderError> {
-    if let Some((mime_type, data)) = parse_image_data_url(url) {
-        return Ok(AnthropicImageSource::Base64 { mime_type, data });
+    if let Some((media_type, data)) = parse_image_data_url(url) {
+        return Ok(AnthropicImageSource::Base64 { media_type, data });
     }
     if url.trim().starts_with("data:") {
         return Err(ProviderError::internal(
@@ -599,19 +599,29 @@ fn uuid_suffix(name: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::{is_thinking_unsupported_model, map_image_source};
-    use crate::llm_provider::anthropic_messages::types::AnthropicImageSource;
+    use crate::llm_provider::anthropic_messages::types::AnthropicContentBlock;
 
     #[test]
-    fn map_image_source_converts_base64_data_url() {
+    fn map_image_source_serializes_base64_data_url_with_media_type() {
         let source =
             map_image_source("data:image/png;base64,aGVsbG8=").expect("base64 data URL should map");
+        let block = serde_json::to_value(AnthropicContentBlock::Image { source })
+            .expect("image block should serialize");
 
-        assert!(matches!(
-            source,
-            AnthropicImageSource::Base64 { mime_type, data }
-                if mime_type == "image/png" && data == "aGVsbG8="
-        ));
+        assert_eq!(
+            block,
+            json!({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/png",
+                    "data": "aGVsbG8="
+                }
+            })
+        );
     }
 
     #[test]
