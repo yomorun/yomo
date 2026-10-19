@@ -604,6 +604,22 @@ fn parse_multipart_boundary(content_type: &str) -> Option<String> {
     })
 }
 
+/// Extracts the requested model from the request path and payload. Shared by the
+/// model api handler and downstream request gates so both resolve the model the
+/// same way. The path model (Gemini style) takes precedence over the payload model.
+pub async fn extract_request_model(
+    endpoint_path: &str,
+    content_type: &Option<String>,
+    body: &Bytes,
+) -> Option<String> {
+    let path_model = parse_generate_content_model(endpoint_path);
+    let body_model = parse_model_request_fields(content_type, body)
+        .await
+        .ok()
+        .and_then(|(model, _)| model);
+    path_model.or(body_model)
+}
+
 fn wrap_stream_with_usage<M>(
     stream: Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send>>,
     root_span: tracing::Span,
@@ -1000,9 +1016,9 @@ mod tests {
     use super::{
         DefaultModelApiErrorResponsePolicy, ModelApiErrorAction, ModelApiErrorResponsePolicy,
         apply_response_model_mode_to_json, body_preview_for_log, decode_payload_for_log,
-        full_response_error_for_log, parse_model_request_fields, resolve_request_id,
-        selection_model_endpoint_not_supported_message, selection_model_not_supported_message,
-        selection_model_required_message,
+        extract_request_model, full_response_error_for_log, parse_model_request_fields,
+        resolve_request_id, selection_model_endpoint_not_supported_message,
+        selection_model_not_supported_message, selection_model_required_message,
     };
     use crate::model_api_provider::{ProviderBody, ProviderResponse};
     use crate::serve_config::ResponseModelMode;
@@ -1047,6 +1063,54 @@ mod tests {
         let parsed = parse_model_request_fields(&content_type, &body).await;
 
         assert_eq!(parsed.unwrap(), (Some("gpt-4o".to_string()), true));
+    }
+
+    /// Verifies the shared extractor prefers the Gemini path model over the payload.
+    #[tokio::test]
+    async fn extract_request_model_prefers_path_model_over_payload() {
+        let content_type = Some("application/json".to_string());
+        let body = Bytes::from_static(br#"{"model":"gpt-4o"}"#);
+
+        let model =
+            extract_request_model("/models/gemini-flash:generateContent", &content_type, &body)
+                .await;
+
+        assert_eq!(model.as_deref(), Some("gemini-flash"));
+    }
+
+    /// Verifies the shared extractor falls back to the JSON and multipart payload.
+    #[tokio::test]
+    async fn extract_request_model_reads_json_and_multipart_payload() {
+        let json_body = Bytes::from_static(br#"{"model":"gpt-4o"}"#);
+        let model = extract_request_model(
+            "/responses",
+            &Some("application/json".to_string()),
+            &json_body,
+        )
+        .await;
+        assert_eq!(model.as_deref(), Some("gpt-4o"));
+
+        let multipart_body = Bytes::from_static(
+            b"--boundary\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\nwhisper-2\r\n--boundary--\r\n",
+        );
+        let model = extract_request_model(
+            "/audio/transcriptions",
+            &Some("multipart/form-data; boundary=boundary".to_string()),
+            &multipart_body,
+        )
+        .await;
+        assert_eq!(model.as_deref(), Some("whisper-2"));
+    }
+
+    /// Verifies the shared extractor returns none for unknown payload shapes.
+    #[tokio::test]
+    async fn extract_request_model_returns_none_without_model() {
+        let body = Bytes::from_static(br#"{"messages":[]}"#);
+
+        let model =
+            extract_request_model("/responses", &Some("application/json".to_string()), &body).await;
+
+        assert_eq!(model, None);
     }
 
     /// Verifies JSON requests without optional fields fall back to defaults.
