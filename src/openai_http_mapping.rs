@@ -13,7 +13,6 @@ use log::{error, info};
 use serde_json;
 use tracing::{Span, field};
 
-use crate::llm_provider::{FinishReason, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse};
 use crate::openai_types::{
     ChatCompletionChoice, ChatCompletionChunk, ChatCompletionChunkChoice, ChatCompletionChunkDelta,
     ChatCompletionChunkToolCall, ChatCompletionChunkToolCallFunction, ChatCompletionMessage,
@@ -21,11 +20,17 @@ use crate::openai_types::{
     Content as OpenAIContent, ContentPart, ErrorDetail, ErrorResponse, PromptTokensDetails, Role,
     ToolCall as OpenAIToolCall, ToolCallFunction, ToolChoice, Usage,
 };
+use crate::provider::{ProviderError, ToolCall, UnifiedEvent, UnifiedResponse};
+use crate::provider::{
+    UnifiedContentDelta, UnifiedEventKind, UnifiedItemDelta, UnifiedOutputItemKind, UnifiedRequest,
+};
 use crate::serve_config::ResponseModelMode;
 use crate::trace::{record_usage_attributes, set_http_span_status};
 use crate::usage_handler::EndpointUsage;
 
 pub const INTERNAL_SERVER_ERROR_MESSAGE: &str = "Internal Server Error";
+pub const RESPONSES_NORMALIZE_NON_FUNCTION_TOOLS_MARKER: &str =
+    "__responses_normalize_non_function_tools";
 
 fn response_model_for_mode(
     mode: &ResponseModelMode,
@@ -46,12 +51,68 @@ fn response_model_for_mode(
 }
 
 pub fn map_openai_response(response: UnifiedResponse) -> ChatCompletionResponse {
-    let content = if response.output_text.is_empty() {
+    let output_text = response
+        .candidates
+        .first()
+        .into_iter()
+        .flat_map(|candidate| &candidate.output)
+        .filter_map(|item| match &item.kind {
+            UnifiedOutputItemKind::Message { content, .. } => Some(content),
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|part| match &part.kind {
+            crate::provider::UnifiedContentPartKind::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<String>();
+    let reasoning_content = response
+        .candidates
+        .first()
+        .into_iter()
+        .flat_map(|candidate| &candidate.output)
+        .filter_map(|item| match &item.kind {
+            UnifiedOutputItemKind::Message { content, .. } => Some(content),
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|part| match &part.kind {
+            crate::provider::UnifiedContentPartKind::Thinking { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<String>();
+    let calls = response
+        .candidates
+        .first()
+        .into_iter()
+        .flat_map(|candidate| &candidate.output)
+        .filter_map(|item| match &item.kind {
+            UnifiedOutputItemKind::FunctionCall {
+                call_id,
+                name,
+                arguments,
+                ..
+            } => Some(ToolCall {
+                id: Some(call_id.clone()),
+                name: name.clone(),
+                arguments: arguments.clone(),
+                description: String::new(),
+            }),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let finish_reason = response
+        .candidates
+        .first()
+        .and_then(|candidate| candidate.ending.as_ref())
+        .map_or("stop", |ending| ending.to_chat())
+        .to_string();
+    let content = if output_text.is_empty() {
         None
     } else {
-        Some(OpenAIContent::Text(response.output_text))
+        Some(OpenAIContent::Text(output_text))
     };
-    let tool_calls = response.tool_calls.map(|calls| {
+    let tool_calls = (!calls.is_empty()).then_some(calls).map(|calls| {
         calls
             .into_iter()
             .map(map_tool_call_to_openai)
@@ -59,8 +120,8 @@ pub fn map_openai_response(response: UnifiedResponse) -> ChatCompletionResponse 
     });
 
     ChatCompletionResponse {
-        id: response.request_id,
-        created: parse_created_at(&response.created_at),
+        id: response.id,
+        created: response.created_at,
         model: response.model,
         object: "chat.completion".to_string(),
         system_fingerprint: None,
@@ -68,17 +129,40 @@ pub fn map_openai_response(response: UnifiedResponse) -> ChatCompletionResponse 
             message: ChatCompletionMessage {
                 role: Role::Assistant,
                 content,
-                reasoning_content: response.reasoning_content.map(|value| value.to_string()),
+                reasoning_content: (!reasoning_content.is_empty()).then_some(reasoning_content),
                 annotations: Vec::new(),
                 refusal: None,
                 tool_calls,
             },
-            finish_reason: Some(map_finish_reason_string(&response.finish_reason)),
+            finish_reason: Some(finish_reason),
             index: 0,
             logprobs: None,
         }],
-        usage: Some(map_usage_to_openai(&response.usage)),
+        usage: response.usage.as_ref().map(map_usage_to_openai),
     }
+}
+
+pub fn empty_usage() -> EndpointUsage {
+    EndpointUsage::ChatCompletions(Usage {
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0,
+        prompt_tokens_details: None,
+        completion_tokens_details: None,
+    })
+}
+
+pub fn validate_unified_request(request: &UnifiedRequest) -> Result<(), String> {
+    if request.model.trim().is_empty() {
+        return Err("model is required".into());
+    }
+    if request.input.is_empty()
+        && request.context.previous_response_id.is_none()
+        && request.context.conversation_id.is_none()
+    {
+        return Err("input is required".into());
+    }
+    Ok(())
 }
 
 pub fn validate_openai_request(request: &ChatCompletionRequest) -> Result<(), String> {
@@ -169,6 +253,39 @@ pub fn validate_openai_request(request: &ChatCompletionRequest) -> Result<(), St
     Ok(())
 }
 
+pub fn normalize_non_function_tools(request: &mut ChatCompletionRequest) {
+    if let Some(tools) = request.tools.as_mut() {
+        for tool in tools.iter_mut() {
+            if tool.r#type == "function" {
+                continue;
+            }
+
+            if tool.function.name.trim().is_empty() {
+                tool.function.name = tool.r#type.clone();
+            }
+
+            tool.r#type = "function".to_string();
+            tool.extra.clear();
+        }
+
+        tools.retain(|tool| !tool.function.name.trim().is_empty());
+        if tools.is_empty() {
+            request.tools = None;
+        }
+    }
+
+    for message in &mut request.messages {
+        let Some(tool_calls) = message.tool_calls.as_mut() else {
+            continue;
+        };
+        for tool_call in tool_calls {
+            if tool_call.r#type.as_deref() != Some("function") {
+                tool_call.r#type = Some("function".to_string());
+            }
+        }
+    }
+}
+
 pub fn stream_openai_chunks(
     stream: Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send>>,
     trace_id: String,
@@ -194,6 +311,7 @@ pub fn stream_openai_chunks(
         let mut tool_call_delta_emitted: HashSet<String> = HashSet::new();
         let mut tool_call_done_emitted: HashSet<String> = HashSet::new();
         let mut next_tool_index: i32 = 0;
+        let mut tool_items = HashMap::new();
 
         while let Some(item) = stream.next().await {
             let event = match item {
@@ -204,8 +322,16 @@ pub fn stream_openai_chunks(
                     break;
                 }
             };
-            match event {
-                UnifiedEvent::ResponseCreated { id, model: resp_model, created_at: resp_created } => {
+            let id = event.response_id.clone().or_else(|| event.target.as_ref().and_then(|target|target.item_id.clone())).unwrap_or_default();
+            let text_logprobs = match &event.kind {
+                UnifiedEventKind::ContentPartDelta { delta: UnifiedContentDelta::TextWithLogprobs { logprobs, .. } } => Some(serde_json::json!({"content":logprobs})),
+                _ => None,
+            };
+            match event.kind {
+                UnifiedEventKind::ResponseCreated { response } => {
+                    let id = response.id;
+                    let resp_model = response.model;
+                    let resp_created = response.created_at.and_then(|time|chrono::DateTime::from_timestamp(time,0)).map(|time|time.to_rfc3339()).unwrap_or_default();
                     if response_id.is_empty() && !id.trim().is_empty() {
                         response_id = id;
                     }
@@ -213,12 +339,13 @@ pub fn stream_openai_chunks(
                     finalizer.set_model(model.clone());
                     created_at = resp_created;
                 }
-                UnifiedEvent::ResponseInProgress { model: resp_model, .. } => {
+                UnifiedEventKind::ResponseInProgress { response: Some(response) } => {
+                    let resp_model = response.model;
                     model = response_model_for_mode(&response_model_mode, &default_model, resp_model);
                     finalizer.set_model(model.clone());
                 }
-                UnifiedEvent::MessageStart { .. } => {}
-                UnifiedEvent::MessageDelta { id, delta } => {
+                UnifiedEventKind::ContentPartDelta { delta: UnifiedContentDelta::Text(delta) } |
+                UnifiedEventKind::ContentPartDelta { delta: UnifiedContentDelta::TextWithLogprobs { text: delta, .. } } => {
                     if response_id.is_empty() && !id.trim().is_empty() {
                         response_id = id.clone();
                     }
@@ -244,12 +371,12 @@ pub fn stream_openai_chunks(
                             delta,
                             finish_reason: None,
                             index: 0,
-                            logprobs: None,
+                            logprobs: text_logprobs,
                         }],
                         usage: None,
                     });
                 }
-                UnifiedEvent::ThinkingDelta { id, delta } => {
+                UnifiedEventKind::ContentPartDelta { delta: UnifiedContentDelta::Thinking(delta) } | UnifiedEventKind::ReasoningSummaryTextDelta { delta } => {
                     if response_id.is_empty() && !id.trim().is_empty() {
                         response_id = id.clone();
                     }
@@ -280,7 +407,12 @@ pub fn stream_openai_chunks(
                         usage: None,
                     });
                 }
-                UnifiedEvent::ToolCallDelta { id, name, arguments_delta } => {
+                UnifiedEventKind::OutputItemAdded { item } if matches!(item.kind, UnifiedOutputItemKind::FunctionCall { .. }) => {
+                    tool_items.insert(item.identity.internal_id.clone(), item);
+                }
+                UnifiedEventKind::ItemDelta { delta: UnifiedItemDelta::FunctionArguments(arguments_delta) } => {
+                    let item_id = event.target.as_ref().and_then(|target|target.item_id.as_ref()).cloned().unwrap_or_default();
+                    let (id, name) = tool_items.get(&item_id).and_then(|item| match &item.kind { UnifiedOutputItemKind::FunctionCall { call_id, name, .. } => Some((call_id.clone(),name.clone())), _=>None }).unwrap_or((item_id,String::new()));
                     if response_id.is_empty() {
                         if let Some(derived_id) = derive_response_id_from_tool_call_id(&id) {
                             if !derived_id.trim().is_empty() {
@@ -337,7 +469,8 @@ pub fn stream_openai_chunks(
                         usage: None,
                     });
                 }
-                UnifiedEvent::ToolCallDone { id, name, arguments } => {
+                UnifiedEventKind::OutputItemDone { item } if matches!(item.kind, UnifiedOutputItemKind::FunctionCall { .. }) => {
+                    let UnifiedOutputItemKind::FunctionCall { call_id:id, name, arguments, .. } = item.kind else { unreachable!() };
                     if response_id.is_empty() {
                         if let Some(derived_id) = derive_response_id_from_tool_call_id(&id) {
                             if !derived_id.trim().is_empty() {
@@ -391,12 +524,15 @@ pub fn stream_openai_chunks(
                     });
                     tool_call_done_emitted.insert(id);
                 }
-                UnifiedEvent::Usage { usage } => {
+                UnifiedEventKind::Usage { usage, .. } => {
                     latest_usage_for_root = Some(usage.clone());
                     finalizer.set_latest_usage(usage.clone());
                 }
-                UnifiedEvent::MessageStop { .. } => {}
-                UnifiedEvent::Completed { finish_reason } => {
+                UnifiedEventKind::CandidateDone { ending } => {
+                    completed_finish_reason = Some(ending.to_chat().to_string());
+                }
+                UnifiedEventKind::Completed { response } | UnifiedEventKind::Incomplete { response, .. } => {
+                    let finish_reason = response.as_ref().and_then(|response|response.candidates.first()).and_then(|candidate|candidate.ending.as_ref()).map(|ending|ending.to_chat().to_string()).or_else(||completed_finish_reason.clone());
                     root_span.record(
                         "finish_reason",
                         field::display(finish_reason.as_deref().unwrap_or("")),
@@ -405,7 +541,8 @@ pub fn stream_openai_chunks(
                     completed_seen = true;
                     completed_finish_reason = finish_reason;
                 }
-                UnifiedEvent::Failed { code, message } => {
+                UnifiedEventKind::Failed { error, .. } => {
+                    let code = error.code.unwrap_or_default(); let message = error.message;
                     error!(
                         "chat stream failed: model={}, code={}, message={} trace_id={trace_id}",
                         model, code, message
@@ -413,7 +550,8 @@ pub fn stream_openai_chunks(
                     finalizer.set_failure(model.clone(), format!("code={code} message={message}"));
                     break;
                 }
-                UnifiedEvent::Cancelled { reason } => {
+                UnifiedEventKind::Cancelled { reason, .. } => {
+                    let reason = reason.unwrap_or_default();
                     error!(
                         "chat stream cancelled: model={}, reason={} trace_id={trace_id}",
                         model, reason
@@ -421,14 +559,7 @@ pub fn stream_openai_chunks(
                     finalizer.set_failure(model.clone(), format!("cancelled: {reason}"));
                     break;
                 }
-                UnifiedEvent::OutputItemAdded { .. }
-                | UnifiedEvent::OutputItemDone { .. }
-                | UnifiedEvent::ContentPartAdded { .. }
-                | UnifiedEvent::ContentPartDelta { .. }
-                | UnifiedEvent::ContentPartDone { .. }
-                | UnifiedEvent::ThinkingDone { .. }
-                | UnifiedEvent::ServerToolCall { .. }
-                | UnifiedEvent::ServerToolCallResult { .. } => {}
+                _ => {}
             }
         }
 
@@ -590,17 +721,6 @@ fn map_tool_call_to_openai(call: ToolCall) -> OpenAIToolCall {
     }
 }
 
-fn map_finish_reason_string(reason: &FinishReason) -> String {
-    match reason {
-        FinishReason::Stop => "stop",
-        FinishReason::Length => "length",
-        FinishReason::ToolCalls => "tool_calls",
-        FinishReason::ContentFilter => "content_filter",
-        FinishReason::Other => "other",
-    }
-    .to_string()
-}
-
 pub fn map_usage_to_openai(usage: &EndpointUsage) -> Usage {
     usage.to_openai_usage().unwrap_or(Usage {
         prompt_tokens: 0,
@@ -652,27 +772,143 @@ fn derive_response_id_from_tool_call_id(tool_call_id: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn responses_logprobs_and_incomplete_survive_chat_output() {
+        let mut state = crate::dialects::openai_responses::mapper::StreamMapState::default();
+        let mut events = Vec::new();
+        for value in [
+            serde_json::json!({"type":"response.created","response":{"id":"r","model":"m","status":"in_progress","output":[]}}),
+            serde_json::json!({"type":"response.output_text.delta","item_id":"msg","output_index":0,"content_index":0,"delta":"answer","logprobs":[{"token":"answer","logprob":-0.1}]}),
+            serde_json::json!({"type":"response.incomplete","response":{"id":"r","model":"m","status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[]}}),
+        ] {
+            events.extend(
+                crate::dialects::openai_responses::mapper::stream_event_from_value(
+                    &value, &mut state,
+                )
+                .expect("mapped")
+                .into_iter()
+                .map(Ok),
+            );
+        }
+        let output = super::stream_openai_chunks(
+            Box::pin(futures_util::stream::iter(events)),
+            "trace".into(),
+            "m".into(),
+            crate::serve_config::ResponseModelMode::Upstream,
+            tracing::Span::none(),
+        );
+        futures_util::pin_mut!(output);
+        let mut frames = String::new();
+        while let Some(frame) = output.next().await {
+            frames.push_str(std::str::from_utf8(&frame.expect("frame")).expect("utf8"));
+        }
+        assert!(frames.contains("\"content\":\"answer\""));
+        assert!(frames.contains("\"logprob\":-0.1"));
+        assert!(frames.contains("\"finish_reason\":\"length\""));
+    }
     use super::{
-        ResponseModelMode, map_openai_response, stream_openai_chunks, validate_openai_request,
+        ResponseModelMode, map_openai_response, normalize_non_function_tools, stream_openai_chunks,
+        validate_openai_request,
     };
-    use crate::llm_provider::{FinishReason, UnifiedEvent, UnifiedResponse};
-    use crate::openai_types::ChatCompletionRequest;
+    use crate::openai_types::{
+        ChatCompletionRequest, FunctionDefinition, ToolCall, ToolCallFunction, ToolDefinition,
+    };
+    use crate::provider::{FinishReason, UnifiedEvent, UnifiedResponse};
+    use crate::provider::{
+        UnifiedCandidate, UnifiedContentDelta, UnifiedEnding, UnifiedEventKind, UnifiedItemDelta,
+        UnifiedOutputItem, UnifiedOutputItemKind, UnifiedUsageUpdate,
+    };
     use crate::usage_handler::EndpointUsage;
     use futures_util::StreamExt;
     use serde_json::Value;
+    use std::collections::HashMap;
     use tracing::Span;
+
+    fn created(id: String, model: String, time: String) -> UnifiedEvent {
+        let mut response = UnifiedResponse::new(id, model);
+        response.created_at = chrono::DateTime::parse_from_rfc3339(&time)
+            .ok()
+            .map(|time| time.timestamp());
+        UnifiedEvent::new(UnifiedEventKind::ResponseCreated { response })
+    }
+    fn text(id: String, delta: String, thinking: bool) -> UnifiedEvent {
+        let mut event = UnifiedEvent::new(UnifiedEventKind::ContentPartDelta {
+            delta: if thinking {
+                UnifiedContentDelta::Thinking(delta)
+            } else {
+                UnifiedContentDelta::Text(delta)
+            },
+        });
+        event.response_id = Some(id);
+        event
+    }
+    fn tool_delta(id: String, name: String, arguments: String) -> Vec<UnifiedEvent> {
+        let item = UnifiedOutputItem::new(
+            id.clone(),
+            UnifiedOutputItemKind::FunctionCall {
+                call_id: id.clone(),
+                name,
+                arguments: String::new(),
+                caller: None,
+            },
+        );
+        vec![
+            UnifiedEvent::new(UnifiedEventKind::OutputItemAdded { item }).located(
+                0,
+                id.clone(),
+                0,
+                None,
+            ),
+            UnifiedEvent::new(UnifiedEventKind::ItemDelta {
+                delta: UnifiedItemDelta::FunctionArguments(arguments),
+            })
+            .located(0, id, 0, None),
+        ]
+    }
+    fn tool_done(id: String, name: String, arguments: String) -> UnifiedEvent {
+        let item = UnifiedOutputItem::new(
+            id.clone(),
+            UnifiedOutputItemKind::FunctionCall {
+                call_id: id.clone(),
+                name,
+                arguments,
+                caller: None,
+            },
+        );
+        UnifiedEvent::new(UnifiedEventKind::OutputItemDone { item }).located(0, id, 0, None)
+    }
+    fn completed(reason: Option<String>) -> UnifiedEvent {
+        let mut response = UnifiedResponse::new(String::new(), String::new());
+        response.candidates.push(UnifiedCandidate {
+            index: 0,
+            output: vec![],
+            ending: reason.as_deref().map(UnifiedEnding::from_source),
+            logprobs: None,
+            source_extensions: None,
+        });
+        UnifiedEvent::new(UnifiedEventKind::Completed {
+            response: Some(response),
+        })
+    }
+    fn usage_event(usage: EndpointUsage) -> UnifiedEvent {
+        UnifiedEvent::new(UnifiedEventKind::Usage {
+            usage,
+            update: UnifiedUsageUpdate::Snapshot,
+            source_usage: None,
+        })
+    }
 
     #[test]
     fn maps_non_streaming_created_timestamp() {
-        let response = UnifiedResponse {
-            request_id: "resp-1".to_string(),
-            created_at: "2026-01-01T00:00:00Z".to_string(),
-            model: "gpt-4.1".to_string(),
-            output_text: "hello".to_string(),
-            reasoning_content: None,
-            tool_calls: None,
-            finish_reason: FinishReason::Stop,
-            usage: EndpointUsage::from_endpoint_payload(
+        let response = UnifiedResponse::from_completion(
+            "resp-1".into(),
+            "2026-01-01T00:00:00Z".into(),
+            "gpt-4.1".into(),
+            "hello".into(),
+            None,
+            None,
+            FinishReason::Stop,
+            EndpointUsage::from_endpoint_payload(
                 "/chat/completions",
                 serde_json::json!({
                     "prompt_tokens": 1,
@@ -681,7 +917,7 @@ mod tests {
                 }),
             )
             .expect("openai_http_mapping test expected chat/completions usage payload"),
-        };
+        );
 
         let mapped = map_openai_response(response);
 
@@ -761,27 +997,106 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    #[test]
+    fn normalize_non_function_tools_converts_and_filters_tools() {
+        let mut request: ChatCompletionRequest = serde_json::from_value(serde_json::json!({
+            "model": "glm-5.3-flash",
+            "messages": [{"role": "user", "content": "hi"}]
+        }))
+        .expect("parse request");
+        request.tools = Some(vec![
+            ToolDefinition {
+                r#type: "local_shell".to_string(),
+                function: FunctionDefinition {
+                    name: String::new(),
+                    description: Some("run local shell".to_string()),
+                    strict: None,
+                    parameters: serde_json::json!({"type": "object"}),
+                },
+                extra: HashMap::from([("extra_field".to_string(), serde_json::json!(1))]),
+            },
+            ToolDefinition {
+                r#type: String::new(),
+                function: FunctionDefinition {
+                    name: String::new(),
+                    description: None,
+                    strict: None,
+                    parameters: serde_json::json!({"type": "object"}),
+                },
+                extra: HashMap::new(),
+            },
+            ToolDefinition {
+                r#type: "function".to_string(),
+                function: FunctionDefinition {
+                    name: "grep".to_string(),
+                    description: None,
+                    strict: None,
+                    parameters: serde_json::json!({"type": "object"}),
+                },
+                extra: HashMap::new(),
+            },
+        ]);
+
+        normalize_non_function_tools(&mut request);
+
+        let tools = request.tools.expect("tools");
+        assert_eq!(tools.len(), 2);
+        assert_eq!(tools[0].r#type, "function");
+        assert_eq!(tools[0].function.name, "local_shell");
+        assert!(tools[0].extra.is_empty());
+        assert_eq!(tools[1].r#type, "function");
+        assert_eq!(tools[1].function.name, "grep");
+    }
+
+    #[test]
+    fn normalize_non_function_tools_normalizes_message_tool_calls() {
+        let mut request: ChatCompletionRequest = serde_json::from_value(serde_json::json!({
+            "model": "glm-5.3-flash",
+            "messages": [{"role": "assistant", "content": ""}]
+        }))
+        .expect("parse request");
+        request.messages[0].tool_calls = Some(vec![ToolCall {
+            id: Some("call-1".to_string()),
+            r#type: Some("local_shell".to_string()),
+            function: ToolCallFunction {
+                name: "local_shell".to_string(),
+                arguments: "{}".to_string(),
+                description: None,
+            },
+        }]);
+
+        normalize_non_function_tools(&mut request);
+
+        let tool_calls = request.messages[0].tool_calls.as_ref().expect("tool calls");
+        assert_eq!(tool_calls[0].r#type.as_deref(), Some("function"));
+    }
+
     #[tokio::test]
     async fn suppresses_tool_call_done_after_delta_for_same_id() {
         let events = vec![
-            Ok(UnifiedEvent::ResponseCreated {
-                id: "req-1".to_string(),
-                model: "m".to_string(),
-                created_at: "2026-01-01T00:00:00Z".to_string(),
-            }),
-            Ok(UnifiedEvent::ToolCallDelta {
-                id: "req-1-tool-0".to_string(),
-                name: "client_ping".to_string(),
-                arguments_delta: "{\"message\":\"hello\"}".to_string(),
-            }),
-            Ok(UnifiedEvent::ToolCallDone {
-                id: "req-1-tool-0".to_string(),
-                name: "client_ping".to_string(),
-                arguments: "{\"message\":\"hello\"}".to_string(),
-            }),
-            Ok(UnifiedEvent::Completed {
-                finish_reason: Some("tool_calls".to_string()),
-            }),
+            Ok(created(
+                "req-1".into(),
+                "m".into(),
+                "2026-01-01T00:00:00Z".into(),
+            )),
+            Ok(tool_delta(
+                "req-1-tool-0".into(),
+                "client_ping".into(),
+                "{\"message\":\"hello\"}".into(),
+            )
+            .remove(0)),
+            Ok(tool_delta(
+                "req-1-tool-0".into(),
+                "client_ping".into(),
+                "{\"message\":\"hello\"}".into(),
+            )
+            .remove(1)),
+            Ok(tool_done(
+                "req-1-tool-0".into(),
+                "client_ping".into(),
+                "{\"message\":\"hello\"}".into(),
+            )),
+            Ok(completed(Some("tool_calls".into()))),
         ];
 
         let stream = stream_openai_chunks(
@@ -827,24 +1142,23 @@ mod tests {
     #[tokio::test]
     async fn suppresses_tool_call_delta_after_done_for_same_id() {
         let events = vec![
-            Ok(UnifiedEvent::ResponseCreated {
-                id: "req-1".to_string(),
-                model: "m".to_string(),
-                created_at: "2026-01-01T00:00:00Z".to_string(),
-            }),
-            Ok(UnifiedEvent::ToolCallDone {
-                id: "req-1-tool-0".to_string(),
-                name: "client_ping".to_string(),
-                arguments: "{\"message\":\"hello\"}".to_string(),
-            }),
-            Ok(UnifiedEvent::ToolCallDelta {
-                id: "req-1-tool-0".to_string(),
-                name: "client_ping".to_string(),
-                arguments_delta: "ignored".to_string(),
-            }),
-            Ok(UnifiedEvent::Completed {
-                finish_reason: Some("tool_calls".to_string()),
-            }),
+            Ok(created(
+                "req-1".into(),
+                "m".into(),
+                "2026-01-01T00:00:00Z".into(),
+            )),
+            Ok(tool_done(
+                "req-1-tool-0".into(),
+                "client_ping".into(),
+                "{\"message\":\"hello\"}".into(),
+            )),
+            Ok(tool_delta(
+                "req-1-tool-0".into(),
+                "client_ping".into(),
+                "ignored".into(),
+            )
+            .remove(1)),
+            Ok(completed(Some("tool_calls".into()))),
         ];
 
         let stream = stream_openai_chunks(
@@ -884,30 +1198,20 @@ mod tests {
     #[tokio::test]
     async fn keeps_first_response_id_across_multi_round_stream() {
         let events = vec![
-            Ok(UnifiedEvent::ResponseCreated {
-                id: "req-1".to_string(),
-                model: "m".to_string(),
-                created_at: "2026-01-01T00:00:00Z".to_string(),
-            }),
-            Ok(UnifiedEvent::ThinkingDelta {
-                id: "req-1".to_string(),
-                delta: "plan tool call".to_string(),
-            }),
-            Ok(UnifiedEvent::Completed {
-                finish_reason: Some("tool_calls".to_string()),
-            }),
-            Ok(UnifiedEvent::ResponseCreated {
-                id: "req-2".to_string(),
-                model: "m".to_string(),
-                created_at: "2026-01-01T00:00:01Z".to_string(),
-            }),
-            Ok(UnifiedEvent::MessageDelta {
-                id: "req-2".to_string(),
-                delta: "final answer".to_string(),
-            }),
-            Ok(UnifiedEvent::Completed {
-                finish_reason: Some("stop".to_string()),
-            }),
+            Ok(created(
+                "req-1".into(),
+                "m".into(),
+                "2026-01-01T00:00:00Z".into(),
+            )),
+            Ok(text("req-1".into(), "plan tool call".into(), true)),
+            Ok(completed(Some("tool_calls".into()))),
+            Ok(created(
+                "req-2".into(),
+                "m".into(),
+                "2026-01-01T00:00:01Z".into(),
+            )),
+            Ok(text("req-2".into(), "final answer".into(), false)),
+            Ok(completed(Some("stop".into()))),
         ];
 
         let stream = stream_openai_chunks(
@@ -940,30 +1244,20 @@ mod tests {
     #[tokio::test]
     async fn fixes_response_id_from_first_non_empty_stream_event_once() {
         let events = vec![
-            Ok(UnifiedEvent::ResponseCreated {
-                id: String::new(),
-                model: "m".to_string(),
-                created_at: "2026-01-01T00:00:00Z".to_string(),
-            }),
-            Ok(UnifiedEvent::MessageDelta {
-                id: "req-1".to_string(),
-                delta: "first round".to_string(),
-            }),
-            Ok(UnifiedEvent::Completed {
-                finish_reason: Some("tool_calls".to_string()),
-            }),
-            Ok(UnifiedEvent::ResponseCreated {
-                id: "req-2".to_string(),
-                model: "m".to_string(),
-                created_at: "2026-01-01T00:00:01Z".to_string(),
-            }),
-            Ok(UnifiedEvent::MessageDelta {
-                id: "req-2".to_string(),
-                delta: "second round".to_string(),
-            }),
-            Ok(UnifiedEvent::Completed {
-                finish_reason: Some("stop".to_string()),
-            }),
+            Ok(created(
+                String::new(),
+                "m".into(),
+                "2026-01-01T00:00:00Z".into(),
+            )),
+            Ok(text("req-1".into(), "first round".into(), false)),
+            Ok(completed(Some("tool_calls".into()))),
+            Ok(created(
+                "req-2".into(),
+                "m".into(),
+                "2026-01-01T00:00:01Z".into(),
+            )),
+            Ok(text("req-2".into(), "second round".into(), false)),
+            Ok(completed(Some("stop".into()))),
         ];
 
         let stream = stream_openai_chunks(
@@ -997,17 +1291,14 @@ mod tests {
     #[tokio::test]
     async fn combines_usage_into_finish_chunk() {
         let events = vec![
-            Ok(UnifiedEvent::ResponseCreated {
-                id: "req-1".to_string(),
-                model: "m".to_string(),
-                created_at: "2026-01-01T00:00:00Z".to_string(),
-            }),
-            Ok(UnifiedEvent::MessageDelta {
-                id: "req-1".to_string(),
-                delta: "hello".to_string(),
-            }),
-            Ok(UnifiedEvent::Usage {
-                usage: EndpointUsage::from_endpoint_payload(
+            Ok(created(
+                "req-1".into(),
+                "m".into(),
+                "2026-01-01T00:00:00Z".into(),
+            )),
+            Ok(text("req-1".into(), "hello".into(), false)),
+            Ok(usage_event(
+                EndpointUsage::from_endpoint_payload(
                     "/chat/completions",
                     serde_json::json!({
                         "prompt_tokens": 2,
@@ -1016,10 +1307,8 @@ mod tests {
                     }),
                 )
                 .expect("valid usage payload"),
-            }),
-            Ok(UnifiedEvent::Completed {
-                finish_reason: Some("stop".to_string()),
-            }),
+            )),
+            Ok(completed(Some("stop".into()))),
         ];
 
         let stream = stream_openai_chunks(
@@ -1081,13 +1370,13 @@ mod tests {
     #[tokio::test]
     async fn emits_usage_only_chunk_when_stream_has_no_completed_event() {
         let events = vec![
-            Ok(UnifiedEvent::ResponseCreated {
-                id: "req-1".to_string(),
-                model: "m".to_string(),
-                created_at: "2026-01-01T00:00:00Z".to_string(),
-            }),
-            Ok(UnifiedEvent::Usage {
-                usage: EndpointUsage::from_endpoint_payload(
+            Ok(created(
+                "req-1".into(),
+                "m".into(),
+                "2026-01-01T00:00:00Z".into(),
+            )),
+            Ok(usage_event(
+                EndpointUsage::from_endpoint_payload(
                     "/chat/completions",
                     serde_json::json!({
                         "prompt_tokens": 4,
@@ -1096,7 +1385,7 @@ mod tests {
                     }),
                 )
                 .expect("valid usage payload"),
-            }),
+            )),
         ];
 
         let stream = stream_openai_chunks(
@@ -1144,19 +1433,17 @@ mod tests {
     #[tokio::test]
     async fn emits_tool_call_done_when_no_delta_seen() {
         let events = vec![
-            Ok(UnifiedEvent::ResponseCreated {
-                id: "req-1".to_string(),
-                model: "m".to_string(),
-                created_at: "2026-01-01T00:00:00Z".to_string(),
-            }),
-            Ok(UnifiedEvent::ToolCallDone {
-                id: "req-1-tool-0".to_string(),
-                name: "client_ping".to_string(),
-                arguments: "{\"message\":\"hello\"}".to_string(),
-            }),
-            Ok(UnifiedEvent::Completed {
-                finish_reason: Some("tool_calls".to_string()),
-            }),
+            Ok(created(
+                "req-1".into(),
+                "m".into(),
+                "2026-01-01T00:00:00Z".into(),
+            )),
+            Ok(tool_done(
+                "req-1-tool-0".into(),
+                "client_ping".into(),
+                "{\"message\":\"hello\"}".into(),
+            )),
+            Ok(completed(Some("tool_calls".into()))),
         ];
 
         let stream = stream_openai_chunks(
@@ -1196,24 +1483,20 @@ mod tests {
     #[tokio::test]
     async fn emits_tool_call_name_only_on_first_delta_chunk() {
         let events = vec![
-            Ok(UnifiedEvent::ResponseCreated {
-                id: "req-1".to_string(),
-                model: "m".to_string(),
-                created_at: "2026-01-01T00:00:00Z".to_string(),
-            }),
-            Ok(UnifiedEvent::ToolCallDelta {
-                id: "req-1-tool-0".to_string(),
-                name: "client_ping".to_string(),
-                arguments_delta: "{\"".to_string(),
-            }),
-            Ok(UnifiedEvent::ToolCallDelta {
-                id: "req-1-tool-0".to_string(),
-                name: "client_ping".to_string(),
-                arguments_delta: "message\":\"hello\"}".to_string(),
-            }),
-            Ok(UnifiedEvent::Completed {
-                finish_reason: Some("tool_calls".to_string()),
-            }),
+            Ok(created(
+                "req-1".into(),
+                "m".into(),
+                "2026-01-01T00:00:00Z".into(),
+            )),
+            Ok(tool_delta("req-1-tool-0".into(), "client_ping".into(), "{\"".into()).remove(0)),
+            Ok(tool_delta("req-1-tool-0".into(), "client_ping".into(), "{\"".into()).remove(1)),
+            Ok(tool_delta(
+                "req-1-tool-0".into(),
+                "client_ping".into(),
+                "message\":\"hello\"}".into(),
+            )
+            .remove(1)),
+            Ok(completed(Some("tool_calls".into()))),
         ];
 
         let stream = stream_openai_chunks(
@@ -1291,14 +1574,19 @@ mod tests {
     #[tokio::test]
     async fn derives_response_id_from_tool_call_id_when_missing_response_created() {
         let events = vec![
-            Ok(UnifiedEvent::ToolCallDelta {
-                id: "req-1-tool-0".to_string(),
-                name: "client_ping".to_string(),
-                arguments_delta: "{\"message\":\"hello\"}".to_string(),
-            }),
-            Ok(UnifiedEvent::Completed {
-                finish_reason: Some("tool_calls".to_string()),
-            }),
+            Ok(tool_delta(
+                "req-1-tool-0".into(),
+                "client_ping".into(),
+                "{\"message\":\"hello\"}".into(),
+            )
+            .remove(0)),
+            Ok(tool_delta(
+                "req-1-tool-0".into(),
+                "client_ping".into(),
+                "{\"message\":\"hello\"}".into(),
+            )
+            .remove(1)),
+            Ok(completed(Some("tool_calls".into()))),
         ];
 
         let stream = stream_openai_chunks(
@@ -1338,14 +1626,19 @@ mod tests {
     #[tokio::test]
     async fn does_not_set_response_id_from_provider_tool_call_id() {
         let events = vec![
-            Ok(UnifiedEvent::ToolCallDelta {
-                id: "call_abc123".to_string(),
-                name: "client_ping".to_string(),
-                arguments_delta: "{\"message\":\"hello\"}".to_string(),
-            }),
-            Ok(UnifiedEvent::Completed {
-                finish_reason: Some("tool_calls".to_string()),
-            }),
+            Ok(tool_delta(
+                "call_abc123".into(),
+                "client_ping".into(),
+                "{\"message\":\"hello\"}".into(),
+            )
+            .remove(0)),
+            Ok(tool_delta(
+                "call_abc123".into(),
+                "client_ping".into(),
+                "{\"message\":\"hello\"}".into(),
+            )
+            .remove(1)),
+            Ok(completed(Some("tool_calls".into()))),
         ];
 
         let stream = stream_openai_chunks(
@@ -1385,19 +1678,14 @@ mod tests {
     #[tokio::test]
     async fn omits_empty_tool_call_arguments_in_delta_chunk() {
         let events = vec![
-            Ok(UnifiedEvent::ResponseCreated {
-                id: "req-1".to_string(),
-                model: "m".to_string(),
-                created_at: "2026-01-01T00:00:00Z".to_string(),
-            }),
-            Ok(UnifiedEvent::ToolCallDelta {
-                id: "req-1-tool-0".to_string(),
-                name: "client_ping".to_string(),
-                arguments_delta: "".to_string(),
-            }),
-            Ok(UnifiedEvent::Completed {
-                finish_reason: Some("tool_calls".to_string()),
-            }),
+            Ok(created(
+                "req-1".into(),
+                "m".into(),
+                "2026-01-01T00:00:00Z".into(),
+            )),
+            Ok(tool_delta("req-1-tool-0".into(), "client_ping".into(), String::new()).remove(0)),
+            Ok(tool_delta("req-1-tool-0".into(), "client_ping".into(), String::new()).remove(1)),
+            Ok(completed(Some("tool_calls".into()))),
         ];
 
         let stream = stream_openai_chunks(
@@ -1444,26 +1732,15 @@ mod tests {
     #[tokio::test]
     async fn skips_empty_message_delta_and_emits_role_on_first_text_chunk() {
         let events = vec![
-            Ok(UnifiedEvent::ResponseCreated {
-                id: "req-1".to_string(),
-                model: "m".to_string(),
-                created_at: "2026-01-01T00:00:00Z".to_string(),
-            }),
-            Ok(UnifiedEvent::MessageDelta {
-                id: "req-1".to_string(),
-                delta: "".to_string(),
-            }),
-            Ok(UnifiedEvent::MessageDelta {
-                id: "req-1".to_string(),
-                delta: "hello".to_string(),
-            }),
-            Ok(UnifiedEvent::MessageDelta {
-                id: "req-1".to_string(),
-                delta: "world".to_string(),
-            }),
-            Ok(UnifiedEvent::Completed {
-                finish_reason: Some("stop".to_string()),
-            }),
+            Ok(created(
+                "req-1".into(),
+                "m".into(),
+                "2026-01-01T00:00:00Z".into(),
+            )),
+            Ok(text("req-1".into(), String::new(), false)),
+            Ok(text("req-1".into(), "hello".into(), false)),
+            Ok(text("req-1".into(), "world".into(), false)),
+            Ok(completed(Some("stop".into()))),
         ];
 
         let stream = stream_openai_chunks(
@@ -1526,18 +1803,13 @@ mod tests {
     #[tokio::test]
     async fn emits_reasoning_content_from_thinking_delta() {
         let events = vec![
-            Ok(UnifiedEvent::ResponseCreated {
-                id: "req-1".to_string(),
-                model: "m".to_string(),
-                created_at: "2026-01-01T00:00:00Z".to_string(),
-            }),
-            Ok(UnifiedEvent::ThinkingDelta {
-                id: "req-1".to_string(),
-                delta: "hidden".to_string(),
-            }),
-            Ok(UnifiedEvent::Completed {
-                finish_reason: Some("stop".to_string()),
-            }),
+            Ok(created(
+                "req-1".into(),
+                "m".into(),
+                "2026-01-01T00:00:00Z".into(),
+            )),
+            Ok(text("req-1".into(), "hidden".into(), true)),
+            Ok(completed(Some("stop".into()))),
         ];
 
         let stream = stream_openai_chunks(
@@ -1577,18 +1849,13 @@ mod tests {
     #[tokio::test]
     async fn stream_openai_chunks_uses_routed_response_model_mode() {
         let events = vec![
-            Ok(UnifiedEvent::ResponseCreated {
-                id: "req-1".to_string(),
-                model: "upstream-model".to_string(),
-                created_at: "2026-01-01T00:00:00Z".to_string(),
-            }),
-            Ok(UnifiedEvent::MessageDelta {
-                id: "req-1".to_string(),
-                delta: "hello".to_string(),
-            }),
-            Ok(UnifiedEvent::Completed {
-                finish_reason: Some("stop".to_string()),
-            }),
+            Ok(created(
+                "req-1".into(),
+                "upstream-model".into(),
+                "2026-01-01T00:00:00Z".into(),
+            )),
+            Ok(text("req-1".into(), "hello".into(), false)),
+            Ok(completed(Some("stop".into()))),
         ];
 
         let stream = stream_openai_chunks(
@@ -1627,18 +1894,13 @@ mod tests {
     #[tokio::test]
     async fn stream_openai_chunks_uses_fixed_response_model_mode() {
         let events = vec![
-            Ok(UnifiedEvent::ResponseCreated {
-                id: "req-1".to_string(),
-                model: "upstream-model".to_string(),
-                created_at: "2026-01-01T00:00:00Z".to_string(),
-            }),
-            Ok(UnifiedEvent::MessageDelta {
-                id: "req-1".to_string(),
-                delta: "hello".to_string(),
-            }),
-            Ok(UnifiedEvent::Completed {
-                finish_reason: Some("stop".to_string()),
-            }),
+            Ok(created(
+                "req-1".into(),
+                "upstream-model".into(),
+                "2026-01-01T00:00:00Z".into(),
+            )),
+            Ok(text("req-1".into(), "hello".into(), false)),
+            Ok(completed(Some("stop".into()))),
         ];
 
         let stream = stream_openai_chunks(
@@ -1677,21 +1939,15 @@ mod tests {
     #[tokio::test]
     async fn every_chunk_carries_choices_or_usage() {
         let events = vec![
-            Ok(UnifiedEvent::ResponseCreated {
-                id: "req-1".to_string(),
-                model: "m".to_string(),
-                created_at: "2026-01-01T00:00:00Z".to_string(),
-            }),
-            Ok(UnifiedEvent::ThinkingDelta {
-                id: "req-1".to_string(),
-                delta: "thinking".to_string(),
-            }),
-            Ok(UnifiedEvent::MessageDelta {
-                id: "req-1".to_string(),
-                delta: "hello".to_string(),
-            }),
-            Ok(UnifiedEvent::Usage {
-                usage: EndpointUsage::from_endpoint_payload(
+            Ok(created(
+                "req-1".to_string(),
+                "m".to_string(),
+                "2026-01-01T00:00:00Z".to_string(),
+            )),
+            Ok(text("req-1".to_string(), "thinking".to_string(), true)),
+            Ok(text("req-1".to_string(), "hello".to_string(), false)),
+            Ok(usage_event(
+                EndpointUsage::from_endpoint_payload(
                     "/chat/completions",
                     serde_json::json!({
                         "prompt_tokens": 2,
@@ -1700,10 +1956,8 @@ mod tests {
                     }),
                 )
                 .expect("valid usage payload"),
-            }),
-            Ok(UnifiedEvent::Completed {
-                finish_reason: Some("stop".to_string()),
-            }),
+            )),
+            Ok(completed(Some("stop".to_string()))),
         ];
 
         let stream = stream_openai_chunks(
@@ -1742,36 +1996,32 @@ mod tests {
 
     #[tokio::test]
     async fn parallel_tool_calls_share_choice_index_zero() {
-        let events = vec![
-            Ok(UnifiedEvent::ResponseCreated {
-                id: "req-1".to_string(),
-                model: "m".to_string(),
-                created_at: "2026-01-01T00:00:00Z".to_string(),
-            }),
-            Ok(UnifiedEvent::ToolCallDelta {
-                id: "call-a".to_string(),
-                name: "get_weather".to_string(),
-                arguments_delta: "{\"city\":".to_string(),
-            }),
-            Ok(UnifiedEvent::ToolCallDelta {
-                id: "call-a".to_string(),
-                name: "get_weather".to_string(),
-                arguments_delta: "\"Tokyo\"}".to_string(),
-            }),
-            Ok(UnifiedEvent::ToolCallDelta {
-                id: "call-b".to_string(),
-                name: "get_weather".to_string(),
-                arguments_delta: "{\"city\":\"Paris\"}".to_string(),
-            }),
-            Ok(UnifiedEvent::ToolCallDone {
-                id: "call-c".to_string(),
-                name: "get_weather".to_string(),
-                arguments: "{\"city\":\"Rome\"}".to_string(),
-            }),
-            Ok(UnifiedEvent::Completed {
-                finish_reason: Some("tool_calls".to_string()),
-            }),
-        ];
+        let mut events = vec![Ok(created(
+            "req-1".to_string(),
+            "m".to_string(),
+            "2026-01-01T00:00:00Z".to_string(),
+        ))];
+        for (id, arguments) in [
+            ("call-a", "{\"city\":"),
+            ("call-a", "\"Tokyo\"}"),
+            ("call-b", "{\"city\":\"Paris\"}"),
+        ] {
+            events.extend(
+                tool_delta(
+                    id.to_string(),
+                    "get_weather".to_string(),
+                    arguments.to_string(),
+                )
+                .into_iter()
+                .map(Ok),
+            );
+        }
+        events.push(Ok(tool_done(
+            "call-c".to_string(),
+            "get_weather".to_string(),
+            "{\"city\":\"Rome\"}".to_string(),
+        )));
+        events.push(Ok(completed(Some("tool_calls".to_string()))));
 
         let stream = stream_openai_chunks(
             Box::pin(futures_util::stream::iter(events)),

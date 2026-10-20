@@ -7,26 +7,27 @@ use crate::tool_invoker::ToolInvoker;
 use crate::types::{BodyFormat, RequestHeaders, ToolRequest};
 use futures_core::Stream;
 use futures_util::{StreamExt, future::join_all};
-use log::{debug, error, info};
+use log::{error, info};
 use opentelemetry::trace::TraceContextExt;
 use opentelemetry_sdk::trace::{IdGenerator, RandomIdGenerator};
 use serde::Serialize;
 use serde_json;
-use serde_json::Value;
+use serde_json::{Value, json};
 use tracing::{Instrument, Span, field, info_span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
-use crate::llm_provider::openai_compatible::mapper::ensure_tool_call_id;
-use crate::llm_provider::{
+use crate::openai_types::{Content, FunctionDefinition, Message, Role, ToolDefinition, Usage};
+use crate::provider::{
     FinishReason, Provider, ProviderError, ToolCall as ProviderToolCall, UnifiedEvent,
-    UnifiedResponse,
+    UnifiedResponse, adapt_bound_request, diagnostic_call_id, log_unified,
 };
-use crate::openai_types::{
-    ChatCompletionRequest, Content, FunctionDefinition, Message, Role, ToolCall as OpenAIToolCall,
-    ToolCallFunction, ToolDefinition, Usage,
+use crate::provider::{
+    UnifiedContentDelta, UnifiedEventKind, UnifiedInputItem, UnifiedInputItemKind,
+    UnifiedOutputItemKind, UnifiedRequest, UnifiedToolOutput, UnifiedUsageUpdate, apply_event,
 };
 use crate::trace::record_usage_attributes;
 use crate::usage_handler::{EndpointUsage, NoopUsageHandler, UsageHandler, aggregate_to_openai};
+use crate::utils::ensure_tool_call_id;
 use async_trait::async_trait;
 
 #[derive(Clone)]
@@ -57,7 +58,7 @@ pub trait RequestHook<M>: Send + Sync {
         &self,
         trace_id: &str,
         metadata: &M,
-        request: &mut ChatCompletionRequest,
+        request: &mut UnifiedRequest,
     ) -> anyhow::Result<()>;
 }
 
@@ -73,7 +74,7 @@ where
         &self,
         _trace_id: &str,
         _metadata: &M,
-        _request: &mut ChatCompletionRequest,
+        _request: &mut UnifiedRequest,
     ) -> anyhow::Result<()> {
         Ok(())
     }
@@ -124,6 +125,8 @@ struct StreamRoundState {
     assistant_output_content: String,
     assistant_reasoning_content: String,
     request_id: Option<String>,
+    response: UnifiedResponse,
+    pending_tool_events: Vec<UnifiedEvent>,
 }
 
 impl StreamRoundState {
@@ -139,13 +142,15 @@ impl StreamRoundState {
             assistant_output_content: String::new(),
             assistant_reasoning_content: String::new(),
             request_id: None,
+            response: UnifiedResponse::new(String::new(), String::new()),
+            pending_tool_events: Vec::new(),
         }
     }
 }
 
 pub async fn run_agent_loop<A, M>(
     provider: Arc<dyn Provider<M>>,
-    request: ChatCompletionRequest,
+    request: UnifiedRequest,
     server_tools: HashMap<String, String>,
     invoker: Arc<dyn ToolInvoker>,
     metadata: M,
@@ -159,7 +164,7 @@ where
 {
     let server_tools = Arc::new(server_tools);
     let metadata = Arc::new(metadata);
-    if request.stream.unwrap_or(false) {
+    if request.controls.stream.unwrap_or(false) {
         run_agent_loop_stream::<A, M>(
             provider,
             request,
@@ -188,7 +193,7 @@ where
 
 async fn run_agent_loop_nonstream<A, M>(
     provider: Arc<dyn Provider<M>>,
-    mut request: ChatCompletionRequest,
+    mut request: UnifiedRequest,
     server_tools: Arc<HashMap<String, String>>,
     invoker: Arc<dyn ToolInvoker>,
     metadata: Arc<M>,
@@ -218,26 +223,49 @@ where
         );
 
         let tool_maps = build_tool_maps(&request, server_tools.as_ref())?;
-        request.tools = tool_maps.merged_tools.clone();
+        set_request_tools(&mut request, tool_maps.merged_tools.as_deref())?;
         if call_count > 0 {
             request.tool_choice = None;
         }
 
-        log_round_request(call_count + 1, false, &request, &trace_id);
+        let call_id = diagnostic_call_id(&llm_chat_span);
+        log_unified(
+            "unified.request",
+            &call_id,
+            &trace_id,
+            call_count + 1,
+            provider.model_id(),
+            &request,
+        );
 
+        if let Some(binding) = provider.binding() {
+            adapt_bound_request(&mut request, binding)?;
+        }
         let mut response = provider
             .complete(request.clone(), &metadata)
             .instrument(llm_chat_span.clone())
             .await?;
-        llm_chat_span.record("request_id", field::display(&response.request_id));
+        log_unified(
+            "unified.response",
+            &call_id,
+            &trace_id,
+            call_count + 1,
+            provider.model_id(),
+            &response,
+        );
+        llm_chat_span.record("request_id", field::display(&response.id));
         llm_chat_span.record(
             "finish_reason",
-            field::display(finish_reason_to_str(&response.finish_reason)),
+            field::display(finish_reason_to_str(&response_finish_reason(&response))),
         );
-        record_usage_attributes(&llm_chat_span, "usage", &response.usage);
+        let raw_usage = response
+            .usage
+            .clone()
+            .unwrap_or_else(crate::openai_http_mapping::empty_usage);
+        record_usage_attributes(&llm_chat_span, "usage", &raw_usage);
         let usage_handler = Arc::clone(&config.usage_handler);
         let model_id = response.model.clone();
-        let request_id = response.request_id.clone();
+        let request_id = response.id.clone();
         let usage_trace_id = trace_id.clone();
         let label = label.clone();
         let metadata_value = (*metadata).clone();
@@ -248,25 +276,26 @@ where
                 &request_id,
                 &usage_trace_id,
                 metadata_value,
-                response.usage.clone(),
+                raw_usage,
             )
             .instrument(llm_chat_span.clone())
             .await
             .into_payload("/chat/completions");
-        response.usage =
+        response.usage = Some(
             EndpointUsage::from_endpoint_payload("/chat/completions", modified_usage.clone())
-                .expect("agent_loop expected chat/completions usage payload");
+                .expect("agent_loop expected chat/completions usage payload"),
+        );
         round_usages.push(modified_usage);
         call_count += 1;
 
-        let mut tool_calls = response.tool_calls.take().unwrap_or_default();
-        ensure_provider_call_ids(&response.request_id, &mut tool_calls);
+        let mut tool_calls = response_tool_calls(&response);
+        ensure_provider_call_ids(&response.id, &mut tool_calls);
         log_llm_call(
             call_count,
             &request.model,
             false,
             tool_calls.len(),
-            Some(&usage_to_value(&response.usage)),
+            response.usage.as_ref().map(usage_to_value).as_ref(),
             &trace_id,
         );
         let (server_calls, client_calls) = split_tool_calls(&tool_calls, &tool_maps.source_map);
@@ -277,49 +306,52 @@ where
         let reached_max_total_tokens =
             is_total_token_limit_reached(config.max_total_tokens, &round_usages);
         if reached_max_calls || reached_max_total_tokens {
-            response.tool_calls = if client_calls.is_empty() {
-                None
-            } else {
-                Some(client_calls.clone())
-            };
-            response.usage = EndpointUsage::from_endpoint_payload(
-                "/chat/completions",
-                aggregate_usages_to_value("/chat/completions", &round_usages),
-            )
-            .expect("agent_loop expected chat/completions usage payload");
+            retain_response_tool_calls(&mut response, &client_calls);
+            response.usage = Some(
+                EndpointUsage::from_endpoint_payload(
+                    "/chat/completions",
+                    aggregate_usages_to_value("/chat/completions", &round_usages),
+                )
+                .expect("agent_loop expected chat/completions usage payload"),
+            );
             return Ok(AgentLoopResult::NonStream(response));
         }
 
         if tool_calls.is_empty() {
-            response.tool_calls = None;
-            response.usage = EndpointUsage::from_endpoint_payload(
-                "/chat/completions",
-                aggregate_usages_to_value("/chat/completions", &round_usages),
-            )
-            .expect("agent_loop expected chat/completions usage payload");
+            response.usage = Some(
+                EndpointUsage::from_endpoint_payload(
+                    "/chat/completions",
+                    aggregate_usages_to_value("/chat/completions", &round_usages),
+                )
+                .expect("agent_loop expected chat/completions usage payload"),
+            );
             return Ok(AgentLoopResult::NonStream(response));
         }
 
         if server_calls.is_empty() {
-            response.tool_calls = Some(client_calls);
-            response.usage = EndpointUsage::from_endpoint_payload(
-                "/chat/completions",
-                aggregate_usages_to_value("/chat/completions", &round_usages),
-            )
-            .expect("agent_loop expected chat/completions usage payload");
+            retain_response_tool_calls(&mut response, &client_calls);
+            response.usage = Some(
+                EndpointUsage::from_endpoint_payload(
+                    "/chat/completions",
+                    aggregate_usages_to_value("/chat/completions", &round_usages),
+                )
+                .expect("agent_loop expected chat/completions usage payload"),
+            );
             return Ok(AgentLoopResult::NonStream(response));
         }
         if !client_calls.is_empty() {
-            response.tool_calls = Some(client_calls);
-            response.usage = EndpointUsage::from_endpoint_payload(
-                "/chat/completions",
-                aggregate_usages_to_value("/chat/completions", &round_usages),
-            )
-            .expect("agent_loop expected chat/completions usage payload");
+            retain_response_tool_calls(&mut response, &client_calls);
+            response.usage = Some(
+                EndpointUsage::from_endpoint_payload(
+                    "/chat/completions",
+                    aggregate_usages_to_value("/chat/completions", &round_usages),
+                )
+                .expect("agent_loop expected chat/completions usage payload"),
+            );
             return Ok(AgentLoopResult::NonStream(response));
         }
 
-        let request_id = response.request_id.clone();
+        let request_id = response.id.clone();
         let tool_calls_span = info_span!(
             parent: &parent_span,
             "tool.calls",
@@ -330,12 +362,7 @@ where
         );
         let next_messages = async {
             let mut next_messages = Vec::new();
-            next_messages.push(build_assistant_tool_call_message(
-                &request_id,
-                &server_calls,
-                Some(response.output_text.clone()),
-                response.reasoning_content.clone(),
-            ));
+            next_messages.extend(response_input_items(&response));
             next_messages.extend(
                 invoke_server_tools::<M>(
                     &request_id,
@@ -343,23 +370,25 @@ where
                     invoker.clone(),
                     metadata.clone(),
                     trace_id.clone(),
-                    request.agent_context.clone(),
+                    request.execution_context.clone(),
                 )
                 .instrument(tool_calls_span)
                 .await?
-                .0,
+                .0
+                .into_iter()
+                .map(tool_message_to_input),
             );
-            Ok::<Vec<Message>, ProviderError>(next_messages)
+            Ok::<Vec<UnifiedInputItem>, ProviderError>(next_messages)
         }
         .instrument(llm_chat_span)
         .await?;
-        request.messages.extend(next_messages);
+        request.input.extend(next_messages);
     }
 }
 
 async fn run_agent_loop_stream<A, M>(
     provider: Arc<dyn Provider<M>>,
-    mut request: ChatCompletionRequest,
+    mut request: UnifiedRequest,
     server_tools: Arc<HashMap<String, String>>,
     invoker: Arc<dyn ToolInvoker>,
     metadata: Arc<M>,
@@ -390,13 +419,17 @@ where
             );
 
             let tool_maps = build_tool_maps(&request, server_tools.as_ref())?;
-            request.tools = tool_maps.merged_tools.clone();
+            set_request_tools(&mut request, tool_maps.merged_tools.as_deref())?;
             if loop_state.call_count > 0 {
                 request.tool_choice = None;
             }
 
-            log_round_request(loop_state.call_count + 1, true, &request, &trace_id);
+            let call_id = diagnostic_call_id(&llm_chat_span);
+            log_unified("unified.request", &call_id, &trace_id, loop_state.call_count + 1, provider.model_id(), &request);
 
+            if let Some(binding) = provider.binding() {
+                adapt_bound_request(&mut request, binding)?;
+            }
             let mut provider_stream = provider
                 .stream(request.clone(), &metadata)
                 .instrument(llm_chat_span.clone())
@@ -406,27 +439,31 @@ where
 
             while let Some(item) = provider_stream.next().await {
                 let event = item?;
-                match &event {
-                    UnifiedEvent::MessageDelta { id, delta } => {
-                        round_state.request_id = Some(id.clone());
+                log_unified("unified.event", &call_id, &trace_id, loop_state.call_count + 1, provider.model_id(), &event);
+                apply_event(&mut round_state.response, &event).map_err(ProviderError::internal)?;
+                if !round_state.response.id.is_empty() { round_state.request_id = Some(round_state.response.id.clone()); }
+                match &event.kind {
+                    UnifiedEventKind::ContentPartDelta { delta: UnifiedContentDelta::Text(delta) } => {
                         round_state.assistant_output_content.push_str(delta);
                     }
-                    UnifiedEvent::ThinkingDelta { id, delta } => {
-                        round_state.request_id = Some(id.clone());
+                    UnifiedEventKind::ContentPartDelta { delta: UnifiedContentDelta::Thinking(delta) }
+                    | UnifiedEventKind::ReasoningSummaryTextDelta { delta } => {
                         round_state.assistant_reasoning_content.push_str(delta);
                     }
-                    UnifiedEvent::ResponseCreated { id, .. }
-                    | UnifiedEvent::ResponseInProgress { id, .. }
-                    | UnifiedEvent::MessageStart { id, .. }
-                    | UnifiedEvent::MessageStop { id, .. } => {
-                        round_state.request_id = Some(id.clone());
+                    UnifiedEventKind::ResponseCreated { response }
+                    | UnifiedEventKind::ResponseInProgress { response: Some(response) } => {
+                        round_state.request_id = Some(response.id.clone());
                     }
-                    UnifiedEvent::ToolCallDelta { id, name, arguments_delta } => {
+                    UnifiedEventKind::OutputItemAdded { item } | UnifiedEventKind::OutputItemDone { item }
+                        if matches!(item.kind, UnifiedOutputItemKind::FunctionCall { .. }) => {
                         round_state.saw_tool_call = true;
+                        round_state.pending_tool_events.push(event.clone());
+                        let UnifiedOutputItemKind::FunctionCall { call_id, name, arguments, .. } = &item.kind else { unreachable!() };
+                        let id = &item.identity.internal_id;
                         let index = *round_state.tool_call_index.entry(id.clone()).or_insert_with(|| {
                             let current = round_state.tool_calls.len();
                             round_state.tool_calls.push(ProviderToolCall {
-                                id: Some(id.clone()),
+                                id: Some(call_id.clone()),
                                 name: name.clone(),
                                 description: String::new(),
                                 arguments: String::new(),
@@ -438,37 +475,37 @@ where
                             .get(index)
                             .map(|call| resolve_tool_call_name(&call.name, name))
                             .unwrap_or_else(|| name.clone());
-                        let is_server = matches!(
-                            tool_maps
-                                .source_map
-                                .get(&resolved_name)
-                                .copied()
-                                .unwrap_or(ToolSource::Client),
-                            ToolSource::Server
-                        );
                         if let Some(call) = round_state.tool_calls.get_mut(index) {
                             call.name = resolved_name.clone();
-                            call.arguments.push_str(arguments_delta);
+                            call.id = Some(call_id.clone());
+                            call.arguments = arguments.clone();
                         }
                         if resolved_name.trim().is_empty() {
                             continue;
                         }
+                        let is_server = matches!(tool_maps.source_map.get(&resolved_name), Some(ToolSource::Server));
                         if is_server {
                         } else {
                             round_state.emitted_client_tool = true;
-                            yield UnifiedEvent::ToolCallDelta {
-                                id: id.clone(),
-                                name: resolved_name,
-                                arguments_delta: arguments_delta.clone(),
-                            };
+                            let mut retained = Vec::new();
+                            for pending in round_state.pending_tool_events.drain(..) {
+                                if pending.target.as_ref().and_then(|target| target.item_id.as_ref()) == Some(id) { yield pending; }
+                                else { retained.push(pending); }
+                            }
+                            round_state.pending_tool_events = retained;
                         }
                     }
-                    UnifiedEvent::ToolCallDone { id, name, arguments } => {
+                    UnifiedEventKind::ItemDelta { .. } | UnifiedEventKind::FunctionArgumentsDone { .. } => {
                         round_state.saw_tool_call = true;
+                        round_state.pending_tool_events.push(event.clone());
+                        let Some(target) = &event.target else { continue; };
+                        let Some(id) = &target.item_id else { continue; };
+                        let Some(item) = round_state.response.candidates.iter().flat_map(|candidate| &candidate.output).find(|item| &item.identity.internal_id == id) else { continue; };
+                        let UnifiedOutputItemKind::FunctionCall { call_id, name, arguments, .. } = &item.kind else { continue; };
                         let index = *round_state.tool_call_index.entry(id.clone()).or_insert_with(|| {
                             let current = round_state.tool_calls.len();
                             round_state.tool_calls.push(ProviderToolCall {
-                                id: Some(id.clone()),
+                                id: Some(call_id.clone()),
                                 name: name.clone(),
                                 description: String::new(),
                                 arguments: String::new(),
@@ -490,6 +527,7 @@ where
                         );
                         if let Some(call) = round_state.tool_calls.get_mut(index) {
                             call.name = resolved_name.clone();
+                            call.id = Some(call_id.clone());
                             call.arguments = arguments.clone();
                         }
                         if resolved_name.trim().is_empty() {
@@ -498,21 +536,34 @@ where
                         if is_server {
                         } else {
                             round_state.emitted_client_tool = true;
-                            yield UnifiedEvent::ToolCallDone {
-                                id: id.clone(),
-                                name: resolved_name,
-                                arguments: arguments.clone(),
-                            };
+                            let mut retained = Vec::new();
+                            for pending in round_state.pending_tool_events.drain(..) {
+                                if pending.target.as_ref().and_then(|target| target.item_id.as_ref()) == Some(id) { yield pending; }
+                                else { retained.push(pending); }
+                            }
+                            round_state.pending_tool_events = retained;
                         }
                     }
-                    UnifiedEvent::Completed { finish_reason: reason } => {
+                    UnifiedEventKind::CandidateDone { ending } => {
+                        let reason = Some(ending.to_chat().to_string());
                         round_state.finish_reason = reason.clone();
-                        loop_state.last_finish_reason = reason.clone();
+                        loop_state.last_finish_reason = reason;
+                    }
+                    UnifiedEventKind::Completed { .. } => {
+                        let reason = response_finish_reason(&round_state.response);
+                        round_state.finish_reason = Some(finish_reason_to_str(&reason).into());
+                        loop_state.last_finish_reason = round_state.finish_reason.clone();
+                    }
+                    UnifiedEventKind::Incomplete { .. } => {
+                        round_state.finish_reason = Some("length".into());
+                        loop_state.last_finish_reason = round_state.finish_reason.clone();
                     }
                     _ => {}
                 }
 
-                if let UnifiedEvent::Usage { usage: chunk_usage } = event {
+                let usage_event = matches!(&event.kind, UnifiedEventKind::Usage { .. });
+                if let Some(chunk_usage) = event_usage(&round_state.response, &event) {
+                    let changed = round_state.raw_usage.as_ref().is_none_or(|old| old.raw_payload() != chunk_usage.raw_payload());
                     round_state.raw_usage = Some(chunk_usage.clone());
                     let processed_usage = chunk_usage.into_payload("/chat/completions");
                     round_state.openai_usage_payload = Some(processed_usage.clone());
@@ -520,30 +571,24 @@ where
                     usage_with_history.push(processed_usage);
                     let usage_with_offset =
                         aggregate_usages_to_value("/chat/completions", &usage_with_history);
-                    yield UnifiedEvent::Usage {
+                    if changed { yield UnifiedEvent::new(UnifiedEventKind::Usage {
                         usage: EndpointUsage::from_endpoint_payload(
                             "/chat/completions",
                             usage_with_offset,
                         )
                         .expect("agent_loop expected chat/completions usage payload"),
-                    };
-                    continue;
+                        update: UnifiedUsageUpdate::Snapshot,
+                        source_usage: None,
+                    }); }
                 }
+                if usage_event { continue; }
 
                 if !round_state.saw_tool_call {
-                    match event {
-                        UnifiedEvent::Completed { finish_reason } => {
-                            yield UnifiedEvent::Completed {
-                                finish_reason,
-                            };
-                        }
-                        _ => {
-                            yield event;
-                        }
-                    }
+                    yield event;
                 }
             }
 
+            log_unified("unified.response", &call_id, &trace_id, loop_state.call_count + 1, provider.model_id(), &round_state.response);
             loop_state.call_count += 1;
             if let Some(id) = round_state.request_id.as_deref() {
                 llm_chat_span.record("request_id", id);
@@ -628,12 +673,7 @@ where
 
             let request_id = resolve_round_request_id(round_state.request_id.as_deref(), &trace_id);
             let mut tool_messages = Vec::new();
-            tool_messages.push(build_assistant_tool_call_message(
-                &request_id,
-                &server_calls,
-                Some(round_state.assistant_output_content.clone()),
-                Some(round_state.assistant_reasoning_content.clone()),
-            ));
+            tool_messages.extend(response_input_items(&round_state.response));
             let tool_calls_span = info_span!(
                 parent: &parent_span,
                 "tool.calls",
@@ -648,15 +688,15 @@ where
                 invoker.clone(),
                 metadata.clone(),
                 trace_id.clone(),
-                request.agent_context.clone(),
+                request.execution_context.clone(),
             )
             .instrument(tool_calls_span)
             .await?;
             for event in tool_events {
                 yield event;
             }
-            tool_messages.extend(tool_messages_from_invoker);
-            request.messages.extend(tool_messages);
+            tool_messages.extend(tool_messages_from_invoker.into_iter().map(tool_message_to_input));
+            request.input.extend(tool_messages);
         }
         let total_usage = aggregate_to_openai("/chat/completions", &loop_state.round_usages);
         info!(
@@ -677,7 +717,7 @@ where
 }
 
 fn build_tool_maps(
-    request: &ChatCompletionRequest,
+    request: &UnifiedRequest,
     server_tools: &HashMap<String, String>,
 ) -> Result<ToolMaps, ProviderError> {
     let server_tools = server_tools
@@ -694,7 +734,8 @@ fn build_tool_maps(
         server_lookup.insert(tool.function.name.clone(), tool);
     }
 
-    if let Some(request_tools) = &request.tools {
+    let request_tools = request_function_tools(request);
+    if let Some(request_tools) = &request_tools {
         for tool in request_tools {
             if let Some(server_tool) = server_lookup.get(&tool.function.name) {
                 merged.push(server_tool.clone());
@@ -720,6 +761,164 @@ fn build_tool_maps(
             Some(merged)
         },
         source_map,
+    })
+}
+
+fn request_function_tools(request: &UnifiedRequest) -> Option<Vec<ToolDefinition>> {
+    request.tools.as_ref().map(|tools| {
+        tools
+            .iter()
+            .filter_map(|tool| {
+                let crate::provider::UnifiedToolKind::Function {
+                    name,
+                    description,
+                    parameters,
+                    strict,
+                    ..
+                } = &tool.kind
+                else {
+                    return None;
+                };
+                Some(ToolDefinition {
+                    r#type: "function".into(),
+                    function: FunctionDefinition {
+                        name: name.clone(),
+                        description: description.clone(),
+                        parameters: parameters.clone(),
+                        strict: *strict,
+                    },
+                    extra: Default::default(),
+                })
+            })
+            .collect()
+    })
+}
+
+fn set_request_tools(
+    request: &mut UnifiedRequest,
+    tools: Option<&[ToolDefinition]>,
+) -> Result<(), ProviderError> {
+    let mut merged = tools
+        .unwrap_or(&[])
+        .iter()
+        .map(|tool| crate::provider::UnifiedTool {
+            cache_control: None,
+            source_extensions: None,
+            kind: crate::provider::UnifiedToolKind::Function {
+                name: tool.function.name.clone(),
+                description: tool.function.description.clone(),
+                parameters: tool.function.parameters.clone(),
+                strict: tool.function.strict,
+                allowed_callers: None,
+            },
+        })
+        .collect::<Vec<_>>();
+    if let Some(existing) = &request.tools {
+        for tool in existing {
+            match &tool.kind {
+                crate::provider::UnifiedToolKind::Function { name, .. } => {
+                    if let Some(next) = merged.iter_mut().find(|next| matches!(&next.kind, crate::provider::UnifiedToolKind::Function { name: next_name, .. } if name == next_name)) {
+                        next.cache_control = tool.cache_control.clone(); next.source_extensions = tool.source_extensions.clone();
+                        if let (crate::provider::UnifiedToolKind::Function { allowed_callers, .. }, crate::provider::UnifiedToolKind::Function { allowed_callers: original, .. }) = (&mut next.kind, &tool.kind) { *allowed_callers = original.clone(); }
+                    }
+                }
+                _ => merged.push(tool.clone()),
+            }
+        }
+    }
+    request.tools = (!merged.is_empty()).then_some(merged);
+    Ok(())
+}
+
+fn response_tool_calls(response: &UnifiedResponse) -> Vec<ProviderToolCall> {
+    response
+        .candidates
+        .first()
+        .into_iter()
+        .flat_map(|candidate| &candidate.output)
+        .filter_map(|item| {
+            let UnifiedOutputItemKind::FunctionCall {
+                call_id,
+                name,
+                arguments,
+                ..
+            } = &item.kind
+            else {
+                return None;
+            };
+            Some(ProviderToolCall {
+                id: (!call_id.is_empty()).then_some(call_id.clone()),
+                name: name.clone(),
+                arguments: arguments.clone(),
+                description: String::new(),
+            })
+        })
+        .collect()
+}
+
+fn response_finish_reason(response: &UnifiedResponse) -> FinishReason {
+    let reason = response
+        .candidates
+        .first()
+        .and_then(|candidate| candidate.ending.as_ref())
+        .map(|ending| ending.to_chat());
+    match reason {
+        Some("stop") => FinishReason::Stop,
+        Some("length") => FinishReason::Length,
+        Some("tool_calls") => FinishReason::ToolCalls,
+        Some("content_filter") => FinishReason::ContentFilter,
+        _ => FinishReason::Other,
+    }
+}
+
+fn event_usage(response: &UnifiedResponse, event: &UnifiedEvent) -> Option<EndpointUsage> {
+    match &event.kind {
+        UnifiedEventKind::Usage { .. }
+        | UnifiedEventKind::Completed { response: Some(_) }
+        | UnifiedEventKind::Incomplete {
+            response: Some(_), ..
+        }
+        | UnifiedEventKind::Failed {
+            response: Some(_), ..
+        }
+        | UnifiedEventKind::Cancelled {
+            response: Some(_), ..
+        } => response.usage.clone(),
+        _ => None,
+    }
+}
+
+fn retain_response_tool_calls(response: &mut UnifiedResponse, calls: &[ProviderToolCall]) {
+    for candidate in &mut response.candidates {
+        candidate.output.retain(|item| match &item.kind {
+            UnifiedOutputItemKind::FunctionCall { call_id, .. } => {
+                calls.iter().any(|call| call.id.as_ref() == Some(call_id))
+            }
+            _ => true,
+        });
+    }
+}
+
+fn response_input_items(response: &UnifiedResponse) -> Vec<UnifiedInputItem> {
+    response
+        .candidates
+        .first()
+        .into_iter()
+        .flat_map(|candidate| &candidate.output)
+        .map(crate::provider::UnifiedOutputItem::as_input)
+        .collect()
+}
+
+fn tool_message_to_input(message: Message) -> UnifiedInputItem {
+    let output = match message.content {
+        Content::Text(text) => UnifiedToolOutput::Text(text),
+        Content::Parts(parts) => UnifiedToolOutput::Json(json!(parts)),
+    };
+    UnifiedInputItem::new(UnifiedInputItemKind::FunctionCallOutput {
+        call_id: message.tool_call_id.unwrap_or_default(),
+        output,
+        is_error: None,
+        cache_control: None,
     })
 }
 
@@ -750,6 +949,7 @@ fn parse_tool_schema(name: &str, schema: &str) -> Option<ToolDefinition> {
             strict,
             parameters,
         },
+        extra: Default::default(),
     })
 }
 
@@ -919,97 +1119,44 @@ where
         result = Some(result_text);
     }
 
-    let call_event = UnifiedEvent::ServerToolCall {
-        tool_call_id: tool_call_id.clone(),
+    let call_event = UnifiedEvent::new(UnifiedEventKind::RuntimeToolStarted {
+        call_id: tool_call_id.clone(),
         name: call.name.clone(),
         arguments: call.arguments,
-    };
-    let call_result_event = UnifiedEvent::ServerToolCallResult {
-        tool_call_id,
+    });
+    let is_error = error.is_some();
+    let call_result_event = UnifiedEvent::new(UnifiedEventKind::RuntimeToolFinished {
+        call_id: tool_call_id,
         name: call.name,
-        result,
-        error,
-    };
+        output: UnifiedToolOutput::Text(error.or(result).unwrap_or_default()),
+        is_error,
+    });
 
     Ok((call_event, call_result_event))
 }
 
 fn compose_server_tool_message(call_result_event: &UnifiedEvent) -> Message {
-    let (tool_call_id, result, error) = match call_result_event {
-        UnifiedEvent::ServerToolCallResult {
-            tool_call_id,
-            result,
-            error,
+    let (tool_call_id, content) = match &call_result_event.kind {
+        UnifiedEventKind::RuntimeToolFinished {
+            call_id,
+            output: UnifiedToolOutput::Text(content),
             ..
-        } => (tool_call_id.clone(), result.clone(), error.clone()),
+        } => (call_id.clone(), content.clone()),
         _ => unreachable!("compose_server_tool_message expects ServerToolCallResult"),
-    };
-
-    let content = if let Some(error_msg) = error {
-        error_msg
-    } else {
-        result.unwrap_or_default()
     };
 
     Message {
         role: Role::Tool,
         content: Content::Text(content),
         reasoning_content: None,
+        reasoning_blocks: None,
+        cache_control: None,
         tool_call_id: Some(tool_call_id),
         tool_calls: None,
     }
 }
 
-fn build_assistant_tool_call_message(
-    request_id: &str,
-    calls: &[ProviderToolCall],
-    content: Option<String>,
-    reasoning_content: Option<String>,
-) -> Message {
-    let content = content.and_then(|value| {
-        if value.trim().is_empty() {
-            None
-        } else {
-            Some(value)
-        }
-    });
-    let reasoning_content = reasoning_content.and_then(|value| {
-        if value.trim().is_empty() {
-            None
-        } else {
-            Some(value)
-        }
-    });
-
-    let tool_calls = calls
-        .iter()
-        .enumerate()
-        .map(|(index, call)| OpenAIToolCall {
-            id: call
-                .id
-                .clone()
-                .or_else(|| Some(ensure_tool_call_id(request_id, index))),
-            r#type: Some("function".to_string()),
-            function: ToolCallFunction {
-                name: call.name.clone(),
-                arguments: call.arguments.clone(),
-                description: Some(call.description.clone()),
-            },
-        })
-        .collect();
-
-    Message {
-        role: Role::Assistant,
-        content: Content::Text(compose_assistant_tool_call_content(
-            content,
-            reasoning_content.clone(),
-        )),
-        reasoning_content,
-        tool_call_id: None,
-        tool_calls: Some(tool_calls),
-    }
-}
-
+#[cfg(test)]
 fn compose_assistant_tool_call_content(
     content: Option<String>,
     reasoning_content: Option<String>,
@@ -1038,13 +1185,28 @@ fn build_client_tool_events(
 
     let mut events = Vec::new();
     for call in calls {
-        events.push(UnifiedEvent::ToolCallDone {
-            id: call.id.clone().unwrap_or_default(),
-            name: call.name.clone(),
-            arguments: call.arguments.clone(),
-        });
+        let id = call.id.clone().unwrap_or_default();
+        let item = crate::provider::UnifiedOutputItem::new(
+            id.clone(),
+            UnifiedOutputItemKind::FunctionCall {
+                call_id: id.clone(),
+                name: call.name.clone(),
+                arguments: call.arguments.clone(),
+                caller: None,
+            },
+        );
+        events.push(
+            UnifiedEvent::new(UnifiedEventKind::OutputItemDone { item }).located(
+                0,
+                id,
+                events.len() as u32,
+                None,
+            ),
+        );
     }
-    events.push(UnifiedEvent::Completed { finish_reason });
+    if let Some(event) = build_completed_event(&finish_reason) {
+        events.push(event);
+    }
     events
 }
 
@@ -1052,7 +1214,19 @@ fn build_completed_event(finish_reason: &Option<String>) -> Option<UnifiedEvent>
     let finish_reason = finish_reason
         .clone()
         .or_else(|| Some("tool_calls".to_string()));
-    Some(UnifiedEvent::Completed { finish_reason })
+    let mut response = UnifiedResponse::new(String::new(), String::new());
+    response.candidates.push(crate::provider::UnifiedCandidate {
+        index: 0,
+        output: vec![],
+        ending: finish_reason
+            .as_deref()
+            .map(crate::provider::UnifiedEnding::from_source),
+        logprobs: None,
+        source_extensions: None,
+    });
+    Some(UnifiedEvent::new(UnifiedEventKind::Completed {
+        response: Some(response),
+    }))
 }
 
 fn usage_to_value(usage: &EndpointUsage) -> Value {
@@ -1103,28 +1277,9 @@ fn map_usage_to_log(usage: &Value) -> Usage {
     aggregate_to_openai("/chat/completions", std::slice::from_ref(usage))
 }
 
-fn log_round_request(
-    round: usize,
-    streaming: bool,
-    request: &ChatCompletionRequest,
-    trace_id: &str,
-) {
-    let messages_json =
-        serde_json::to_string(&request.messages).unwrap_or_else(|_| "[]".to_string());
-    debug!(
-        "llm.request; trace_id={} round={} model={} streaming={} tool_choice={:?} messages_count={} messages={}",
-        trace_id,
-        round,
-        request.model,
-        streaming,
-        request.tool_choice,
-        request.messages.len(),
-        messages_json
-    );
-}
-
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
     use std::collections::HashMap;
     use std::pin::Pin;
     use std::sync::{Arc, Mutex};
@@ -1133,20 +1288,154 @@ mod tests {
     use futures_core::Stream;
     use futures_util::{StreamExt, stream};
 
+    use super::response_tool_calls;
     use super::{
         AgentLoopConfig, AgentLoopResult, compose_assistant_tool_call_content,
         resolve_round_request_id, resolve_tool_call_name, run_agent_loop,
     };
-    use crate::llm_provider::{
-        Provider, ProviderError, ToolCall as ProviderToolCall, UnifiedEvent, UnifiedResponse,
-    };
-    use crate::model_api_provider::GenerateContentUsage;
     use crate::openai_types::{
         ChatCompletionRequest, Content, Message, Role, Usage as OpenAIUsage,
+    };
+    use crate::provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
+    use crate::provider::{
+        UnifiedContentDelta, UnifiedEventKind, UnifiedItemDelta, UnifiedOutputItem,
+        UnifiedOutputItemKind, UnifiedRequest, UnifiedUsageUpdate,
     };
     use crate::tool_invoker::ToolInvoker;
     use crate::types::{RequestHeaders, ToolRequest, ToolResponse};
     use crate::usage_handler::{EndpointUsage, UsageHandler};
+    use crate::usage_types::GenerateContentUsage;
+
+    #[test]
+    fn terminal_snapshots_supply_usage_without_suppressing_empty_completion() {
+        let mut response = UnifiedResponse::new("r".into(), "m".into());
+        response.usage = Some(usage(10, 5, 15));
+        let event = UnifiedEvent::new(UnifiedEventKind::Completed {
+            response: Some(response.clone()),
+        });
+        assert_eq!(
+            super::event_usage(&response, &event)
+                .expect("usage")
+                .raw_payload(),
+            response.usage.as_ref().expect("usage").raw_payload()
+        );
+        response.usage = None;
+        assert!(super::event_usage(&response, &event).is_none());
+    }
+
+    #[test]
+    fn responses_terminal_usage_replaces_snapshot_instead_of_adding_it() {
+        let mut state = crate::dialects::openai_responses::mapper::StreamMapState::default();
+        let events = crate::dialects::openai_responses::mapper::stream_event_from_value(&json!({"type":"response.completed","response":{"id":"r","model":"m","status":"completed","output":[],"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15}}}), &mut state).expect("events");
+        let mut response = UnifiedResponse::new("r".into(), "m".into());
+        super::apply_event(&mut response, &usage_event(usage(10, 2, 12))).expect("snapshot");
+        let mut final_usage = None;
+        for event in events {
+            super::apply_event(&mut response, &event).expect("terminal");
+            if let Some(usage) = super::event_usage(&response, &event) {
+                final_usage = Some(usage);
+            }
+        }
+        let usage = final_usage
+            .expect("terminal usage")
+            .to_openai_usage()
+            .expect("billing usage");
+        assert_eq!(usage.prompt_tokens, 10);
+        assert_eq!(usage.completion_tokens, 5);
+        assert_eq!(usage.total_tokens, 15);
+    }
+
+    #[test]
+    fn tool_round_preserves_callers_and_selects_one_candidate() {
+        let mut request = crate::api::request_from_value(&json!({"model":"m","max_tokens":100,"messages":[{"role":"user","content":"hi"}],"tools":[{"name":"lookup","input_schema":{},"allowed_callers":["direct"]}]}), crate::provider::UnifiedSourceProtocol::Messages).expect("request");
+        let maps = super::build_tool_maps(&request, &HashMap::new()).expect("maps");
+        super::set_request_tools(&mut request, maps.merged_tools.as_deref()).expect("tools");
+        let native = crate::api::request_to_value(
+            &request,
+            crate::provider::UnifiedSourceProtocol::Messages,
+        )
+        .expect("native");
+        assert_eq!(native["tools"][0]["allowed_callers"], json!(["direct"]));
+        let mut response = UnifiedResponse::new("r".into(), "m".into());
+        for index in 0..2 {
+            super::apply_event(
+                &mut response,
+                &call_done(&format!("call-{index}"), "lookup", "{}").located(
+                    index,
+                    format!("call-{index}"),
+                    0,
+                    None,
+                ),
+            )
+            .expect("call");
+        }
+        assert_eq!(response_tool_calls(&response).len(), 1);
+        assert_eq!(
+            response_tool_calls(&response)[0].id.as_deref(),
+            Some("call-0")
+        );
+        let event = super::build_completed_event(&Some("length".into())).expect("completed");
+        assert!(
+            matches!(event.kind, UnifiedEventKind::Completed { response: Some(response) } if super::response_finish_reason(&response) == crate::provider::FinishReason::Length)
+        );
+    }
+
+    fn start(id: &str) -> UnifiedEvent {
+        UnifiedEvent::new(UnifiedEventKind::ResponseCreated {
+            response: UnifiedResponse::new(id.into(), "mock-model".into()),
+        })
+    }
+    fn usage_event(usage: EndpointUsage) -> UnifiedEvent {
+        UnifiedEvent::new(UnifiedEventKind::Usage {
+            usage,
+            update: UnifiedUsageUpdate::Snapshot,
+            source_usage: None,
+        })
+    }
+    fn completed(reason: Option<&str>) -> UnifiedEvent {
+        let mut response = UnifiedResponse::new(String::new(), String::new());
+        response.candidates.push(crate::provider::UnifiedCandidate {
+            index: 0,
+            output: vec![],
+            ending: reason.map(crate::provider::UnifiedEnding::from_source),
+            logprobs: None,
+            source_extensions: None,
+        });
+        UnifiedEvent::new(UnifiedEventKind::Completed {
+            response: Some(response),
+        })
+    }
+    fn call_done(id: &str, name: &str, arguments: &str) -> UnifiedEvent {
+        let item = UnifiedOutputItem::new(
+            id.into(),
+            UnifiedOutputItemKind::FunctionCall {
+                call_id: id.into(),
+                name: name.into(),
+                arguments: arguments.into(),
+                caller: None,
+            },
+        );
+        UnifiedEvent::new(UnifiedEventKind::OutputItemDone { item }).located(0, id.into(), 0, None)
+    }
+    fn call_delta(id: &str, arguments: &str) -> UnifiedEvent {
+        UnifiedEvent::new(UnifiedEventKind::ItemDelta {
+            delta: UnifiedItemDelta::FunctionArguments(arguments.into()),
+        })
+        .located(0, id.into(), 0, None)
+    }
+    fn text_event(id: &str, text: &str) -> UnifiedEvent {
+        let mut event = UnifiedEvent::new(UnifiedEventKind::ContentPartDelta {
+            delta: UnifiedContentDelta::Text(text.into()),
+        })
+        .located(
+            0,
+            format!("{id}-message"),
+            0,
+            Some(crate::provider::UnifiedPartLocation::Content(0)),
+        );
+        event.response_id = Some(id.into());
+        event
+    }
 
     #[derive(Clone)]
     struct StaticStreamProvider {
@@ -1178,7 +1467,7 @@ mod tests {
 
         async fn complete(
             &self,
-            _request: ChatCompletionRequest,
+            _request: UnifiedRequest,
             _metadata: &(),
         ) -> Result<UnifiedResponse, ProviderError> {
             Err(ProviderError::internal("unused in stream test"))
@@ -1186,7 +1475,7 @@ mod tests {
 
         async fn stream<'a>(
             &'a self,
-            _request: ChatCompletionRequest,
+            _request: UnifiedRequest,
             _metadata: &(),
         ) -> Result<
             Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
@@ -1210,7 +1499,7 @@ mod tests {
 
         async fn complete(
             &self,
-            _request: ChatCompletionRequest,
+            _request: UnifiedRequest,
             _metadata: &(),
         ) -> Result<UnifiedResponse, ProviderError> {
             Ok(self.response.clone())
@@ -1218,7 +1507,7 @@ mod tests {
 
         async fn stream<'a>(
             &'a self,
-            _request: ChatCompletionRequest,
+            _request: UnifiedRequest,
             _metadata: &(),
         ) -> Result<
             Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
@@ -1236,7 +1525,7 @@ mod tests {
 
         async fn complete(
             &self,
-            _request: ChatCompletionRequest,
+            _request: UnifiedRequest,
             _metadata: &(),
         ) -> Result<UnifiedResponse, ProviderError> {
             Err(ProviderError::internal("unused in stream test"))
@@ -1244,7 +1533,7 @@ mod tests {
 
         async fn stream<'a>(
             &'a self,
-            _request: ChatCompletionRequest,
+            _request: UnifiedRequest,
             _metadata: &(),
         ) -> Result<
             Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
@@ -1273,7 +1562,7 @@ mod tests {
 
         async fn complete(
             &self,
-            _request: ChatCompletionRequest,
+            _request: UnifiedRequest,
             _metadata: &(),
         ) -> Result<UnifiedResponse, ProviderError> {
             let mut guard = self.next_round.lock().expect("next round lock");
@@ -1288,7 +1577,7 @@ mod tests {
 
         async fn stream<'a>(
             &'a self,
-            _request: ChatCompletionRequest,
+            _request: UnifiedRequest,
             _metadata: &(),
         ) -> Result<
             Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
@@ -1363,13 +1652,15 @@ mod tests {
         }
     }
 
-    fn stream_request() -> ChatCompletionRequest {
-        ChatCompletionRequest {
+    fn stream_request() -> UnifiedRequest {
+        let request = ChatCompletionRequest {
             model: "mock-model".to_string(),
             messages: vec![Message {
                 role: Role::User,
                 content: Content::Text("hello".to_string()),
                 reasoning_content: None,
+                reasoning_blocks: None,
+                cache_control: None,
                 tool_call_id: None,
                 tool_calls: None,
             }],
@@ -1400,7 +1691,10 @@ mod tests {
             stream_options: None,
             metadata: None,
             agent_context: None,
-        }
+            extra: Default::default(),
+        };
+        crate::dialects::openai_chat_completions::mapper::request_from_chat(&request)
+            .expect("request")
     }
 
     fn usage(prompt_tokens: i64, completion_tokens: i64, total_tokens: i64) -> EndpointUsage {
@@ -1490,24 +1784,11 @@ mod tests {
         let usage_handler = RecordingUsageHandler::default();
         let provider = StaticStreamProvider {
             events: Arc::new(vec![
-                UnifiedEvent::MessageStart {
-                    id: "req-1".to_string(),
-                    role: "assistant".to_string(),
-                },
-                UnifiedEvent::Usage {
-                    usage: usage(11, 3, 14),
-                },
-                UnifiedEvent::ToolCallDone {
-                    id: "tool-1".to_string(),
-                    name: "client_tool".to_string(),
-                    arguments: "{}".to_string(),
-                },
-                UnifiedEvent::Usage {
-                    usage: usage(22, 4, 26),
-                },
-                UnifiedEvent::Completed {
-                    finish_reason: Some("tool_calls".to_string()),
-                },
+                start("req-1"),
+                usage_event(usage(11, 3, 14)),
+                call_done("tool-1", "client_tool", "{}"),
+                usage_event(usage(22, 4, 26)),
+                completed(Some("tool_calls")),
             ]),
         };
         let config = AgentLoopConfig {
@@ -1553,21 +1834,10 @@ mod tests {
         let usage_handler = RecordingUsageHandler::default();
         let provider = StaticStreamProvider {
             events: Arc::new(vec![
-                UnifiedEvent::MessageStart {
-                    id: "req-1".to_string(),
-                    role: "assistant".to_string(),
-                },
-                UnifiedEvent::ToolCallDone {
-                    id: "tool-1".to_string(),
-                    name: "client_tool".to_string(),
-                    arguments: "{}".to_string(),
-                },
-                UnifiedEvent::Usage {
-                    usage: usage(22, 4, 26),
-                },
-                UnifiedEvent::Completed {
-                    finish_reason: Some("tool_calls".to_string()),
-                },
+                start("req-1"),
+                call_done("tool-1", "client_tool", "{}"),
+                usage_event(usage(22, 4, 26)),
+                completed(Some("tool_calls")),
             ]),
         };
         let config = AgentLoopConfig {
@@ -1594,7 +1864,9 @@ mod tests {
         };
         let mut output_usages = Vec::new();
         while let Some(event) = events.next().await {
-            if let UnifiedEvent::Usage { usage } = event.expect("stream event should be ok") {
+            if let UnifiedEventKind::Usage { usage, .. } =
+                event.expect("stream event should be ok").kind
+            {
                 output_usages.push(usage.into_payload("/chat/completions"));
             }
         }
@@ -1619,15 +1891,10 @@ mod tests {
     async fn run_agent_loop_nonstream_passes_raw_generate_content_usage_to_handler() {
         let usage_handler = RecordingUsageHandler::default();
         let provider = StaticCompleteProvider {
-            response: UnifiedResponse {
-                request_id: "req-1".to_string(),
-                created_at: "2026-01-01T00:00:00Z".to_string(),
-                model: "gemini-2.5-flash".to_string(),
-                output_text: "hello".to_string(),
-                reasoning_content: None,
-                tool_calls: None,
-                finish_reason: crate::llm_provider::FinishReason::Stop,
-                usage: generate_content_usage(11, 7, 18),
+            response: {
+                let mut response = UnifiedResponse::new("req-1".into(), "gemini-2.5-flash".into());
+                response.usage = Some(generate_content_usage(11, 7, 18));
+                response
             },
         };
         let config = AgentLoopConfig {
@@ -1637,7 +1904,7 @@ mod tests {
         };
 
         let mut request = stream_request();
-        request.stream = Some(false);
+        request.controls.stream = Some(false);
         let result = run_agent_loop::<(), ()>(
             Arc::new(provider),
             request,
@@ -1655,7 +1922,10 @@ mod tests {
             panic!("expected non-stream result");
         };
         assert_eq!(
-            response.usage.into_payload("/chat/completions")["prompt_tokens"],
+            response
+                .usage
+                .expect("usage")
+                .into_payload("/chat/completions")["prompt_tokens"],
             11
         );
         let calls = usage_handler.captured();
@@ -1673,16 +1943,9 @@ mod tests {
         let usage_handler = RecordingUsageHandler::default();
         let provider = StaticStreamProvider {
             events: Arc::new(vec![
-                UnifiedEvent::MessageStart {
-                    id: "req-1".to_string(),
-                    role: "assistant".to_string(),
-                },
-                UnifiedEvent::Usage {
-                    usage: generate_content_usage(13, 5, 18),
-                },
-                UnifiedEvent::Completed {
-                    finish_reason: Some("stop".to_string()),
-                },
+                start("req-1"),
+                usage_event(generate_content_usage(13, 5, 18)),
+                completed(Some("stop")),
             ]),
         };
         let config = AgentLoopConfig {
@@ -1709,7 +1972,9 @@ mod tests {
         };
         let mut output_usages = Vec::new();
         while let Some(event) = events.next().await {
-            if let UnifiedEvent::Usage { usage } = event.expect("stream event should be ok") {
+            if let UnifiedEventKind::Usage { usage, .. } =
+                event.expect("stream event should be ok").kind
+            {
                 output_usages.push(usage.into_payload("/chat/completions"));
             }
         }
@@ -1731,36 +1996,25 @@ mod tests {
         let provider = SequencedStreamProvider {
             rounds: Arc::new(vec![
                 vec![
-                    UnifiedEvent::MessageStart {
-                        id: "req-1".to_string(),
-                        role: "assistant".to_string(),
+                    start("req-1"),
+                    {
+                        let event = call_done("call_weather", "", "");
+                        let UnifiedEventKind::OutputItemDone { item } = event.kind else {
+                            unreachable!()
+                        };
+                        UnifiedEvent {
+                            kind: UnifiedEventKind::OutputItemAdded { item },
+                            ..event
+                        }
                     },
-                    UnifiedEvent::ToolCallDelta {
-                        id: "call_weather".to_string(),
-                        name: "".to_string(),
-                        arguments_delta: "{\"location\"".to_string(),
-                    },
-                    UnifiedEvent::ToolCallDone {
-                        id: "call_weather".to_string(),
-                        name: "get_weather".to_string(),
-                        arguments: "{\"location\":\"beijing\"}".to_string(),
-                    },
-                    UnifiedEvent::Completed {
-                        finish_reason: Some("tool_calls".to_string()),
-                    },
+                    call_delta("call_weather", "{\"location\""),
+                    call_done("call_weather", "get_weather", "{\"location\":\"beijing\"}"),
+                    completed(Some("tool_calls")),
                 ],
                 vec![
-                    UnifiedEvent::MessageStart {
-                        id: "req-2".to_string(),
-                        role: "assistant".to_string(),
-                    },
-                    UnifiedEvent::MessageDelta {
-                        id: "req-2".to_string(),
-                        delta: "晴天".to_string(),
-                    },
-                    UnifiedEvent::Completed {
-                        finish_reason: Some("stop".to_string()),
-                    },
+                    start("req-2"),
+                    text_event("req-2", "晴天"),
+                    completed(Some("stop")),
                 ],
             ]),
             next_round: Arc::new(Mutex::new(0)),
@@ -1800,9 +2054,12 @@ mod tests {
         };
         let mut seen_empty_client_tool_event = false;
         while let Some(event) = events.next().await {
-            match event.expect("stream event should be ok") {
-                UnifiedEvent::ToolCallDelta { name, .. }
-                | UnifiedEvent::ToolCallDone { name, .. } => {
+            match event.expect("stream event should be ok").kind {
+                UnifiedEventKind::OutputItemAdded { item }
+                | UnifiedEventKind::OutputItemDone { item } => {
+                    let UnifiedOutputItemKind::FunctionCall { name, .. } = item.kind else {
+                        continue;
+                    };
                     if name.trim().is_empty() {
                         seen_empty_client_tool_event = true;
                     }
@@ -1821,20 +2078,15 @@ mod tests {
     #[tokio::test]
     async fn run_agent_loop_nonstream_stops_when_total_tokens_reach_limit() {
         let provider = SequencedCompleteProvider {
-            rounds: Arc::new(vec![UnifiedResponse {
-                request_id: "req-1".to_string(),
-                created_at: "2026-01-01T00:00:00Z".to_string(),
-                model: "mock-model".to_string(),
-                output_text: String::new(),
-                reasoning_content: None,
-                tool_calls: Some(vec![ProviderToolCall {
-                    id: Some("call-1".to_string()),
-                    name: "get_weather".to_string(),
-                    description: String::new(),
-                    arguments: "{\"location\":\"beijing\"}".to_string(),
-                }]),
-                finish_reason: crate::llm_provider::FinishReason::ToolCalls,
-                usage: usage(12, 8, 20),
+            rounds: Arc::new(vec![{
+                let mut response = UnifiedResponse::new("req-1".into(), "mock-model".into());
+                super::apply_event(
+                    &mut response,
+                    &call_done("call-1", "get_weather", "{\"location\":\"beijing\"}"),
+                )
+                .expect("call");
+                response.usage = Some(usage(12, 8, 20));
+                response
             }]),
             next_round: Arc::new(Mutex::new(0)),
         };
@@ -1856,7 +2108,7 @@ mod tests {
         );
 
         let mut request = stream_request();
-        request.stream = Some(false);
+        request.controls.stream = Some(false);
         let result = run_agent_loop::<(), ()>(
             Arc::new(provider.clone()),
             request,
@@ -1876,7 +2128,7 @@ mod tests {
         let AgentLoopResult::NonStream(response) = result else {
             panic!("expected non-stream result");
         };
-        assert!(response.tool_calls.is_none());
+        assert!(response_tool_calls(&response).is_empty());
         assert!(invoker.captured().is_empty());
         assert_eq!(*provider.next_round.lock().expect("next round lock"), 1);
     }
@@ -1886,26 +2138,12 @@ mod tests {
         let provider = SequencedStreamProvider {
             rounds: Arc::new(vec![
                 vec![
-                    UnifiedEvent::MessageStart {
-                        id: "req-1".to_string(),
-                        role: "assistant".to_string(),
-                    },
-                    UnifiedEvent::ToolCallDone {
-                        id: "call-1".to_string(),
-                        name: "get_weather".to_string(),
-                        arguments: "{\"location\":\"beijing\"}".to_string(),
-                    },
-                    UnifiedEvent::Usage {
-                        usage: usage(12, 8, 20),
-                    },
-                    UnifiedEvent::Completed {
-                        finish_reason: Some("tool_calls".to_string()),
-                    },
+                    start("req-1"),
+                    call_done("call-1", "get_weather", "{\"location\":\"beijing\"}"),
+                    usage_event(usage(12, 8, 20)),
+                    completed(Some("tool_calls")),
                 ],
-                vec![UnifiedEvent::MessageStart {
-                    id: "req-2".to_string(),
-                    role: "assistant".to_string(),
-                }],
+                vec![start("req-2")],
             ]),
             next_round: Arc::new(Mutex::new(0)),
         };
@@ -1947,9 +2185,12 @@ mod tests {
         };
         let mut seen_server_tool_event = false;
         while let Some(event) = events.next().await {
-            match event.expect("stream event should be ok") {
-                UnifiedEvent::ToolCallDelta { name, .. }
-                | UnifiedEvent::ToolCallDone { name, .. } => {
+            match event.expect("stream event should be ok").kind {
+                UnifiedEventKind::OutputItemAdded { item }
+                | UnifiedEventKind::OutputItemDone { item } => {
+                    let UnifiedOutputItemKind::FunctionCall { name, .. } = item.kind else {
+                        continue;
+                    };
                     if name == "get_weather" {
                         seen_server_tool_event = true;
                     }

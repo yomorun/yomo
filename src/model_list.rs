@@ -11,7 +11,7 @@ const FIXED_OWNED_BY: &str = "system";
 
 #[derive(Clone)]
 pub struct ModelListHandlerState {
-    pub provider_registry: Arc<provider_registry::ProviderRegistry<()>>,
+    pub provider_registry: Arc<dyn provider_registry::ProviderRegistry<()>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -56,11 +56,9 @@ pub async fn handle_list_models(State(state): State<ModelListHandlerState>) -> i
 }
 
 pub async fn build_model_list_api(
-    provider_registry: provider_registry::ProviderRegistry<()>,
+    provider_registry: Arc<dyn provider_registry::ProviderRegistry<()>>,
 ) -> anyhow::Result<axum::Router> {
-    let state = ModelListHandlerState {
-        provider_registry: Arc::new(provider_registry),
-    };
+    let state = ModelListHandlerState { provider_registry };
     let app = axum::Router::new()
         .route("/models", axum::routing::get(handle_list_models))
         .with_state(state);

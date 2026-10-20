@@ -5,6 +5,10 @@
 
 /// Agent loop implementation.
 pub mod agent_loop;
+/// Anthropic Messages native protocol types (request / response / stream events).
+pub mod anthropic_messages_types;
+/// Client API parsing and serialization.
+pub mod api;
 /// Handshake authentication abstractions.
 pub mod auth;
 /// Request forwarding bridge implementations.
@@ -13,28 +17,32 @@ pub mod bridge;
 pub mod client;
 /// Connector abstractions for opening downstream streams.
 pub mod connector;
+/// Upstream API formats, transport clients and credentials.
+pub mod dialects;
 /// HTTP authentication middleware.
 pub mod http_auth;
 /// Framed IO helpers.
 pub mod io;
 /// LLM-facing HTTP APIs.
 pub mod llm_api;
-/// LLM provider abstractions.
-pub mod llm_provider;
 /// Stream mapper abstractions for LLM streaming output.
 pub mod llm_stream_mapper;
 /// Manage user-defined metadata extension.
 pub mod metadata_mgr;
 /// Model API HTTP APIs.
-pub mod model_api;
 /// Model API providers.
-pub mod model_api_provider;
 /// Models list HTTP API.
 pub mod model_list;
+/// Model identities and declared capabilities.
+pub mod models;
 /// OpenAI request/response mapping to Events.
 pub mod openai_http_mapping;
+/// OpenAI Responses native protocol types (request / response object / stream events).
+pub mod openai_responses_types;
 /// OpenAI request/response types.
 pub mod openai_types;
+/// LLM provider abstractions.
+pub mod provider;
 /// Provider error notifier abstractions.
 pub mod provider_error_notifier;
 /// Unified provider registry and selection.
@@ -57,8 +65,12 @@ pub mod tool_mgr;
 pub mod trace;
 /// Shared protocol types.
 pub mod types;
+/// Vendor integrations, fixed dialect bindings and error interpretation.
+pub mod upstreams;
 /// Usage handler interfaces.
 pub mod usage_handler;
+/// Usage data types (per-endpoint shapes for the billing contract).
+pub mod usage_types;
 /// Utility helpers.
 pub mod utils;
 /// Zipper coordinator implementation.

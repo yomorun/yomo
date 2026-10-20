@@ -97,6 +97,10 @@ pub struct ChatCompletionRequest {
     pub metadata: Option<HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_context: Option<Value>,
+    /// Fidelity channel for unmodeled top-level request fields, retained when
+    /// encoding requests in the same API format.
+    #[serde(flatten, default, skip_serializing_if = "HashMap::is_empty")]
+    pub extra: HashMap<String, Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -166,6 +170,30 @@ impl Role {
     }
 }
 
+/// IR reasoning block: reasoning content passed across protocols.
+///
+/// Carries responses reasoning items (summary + encrypted_content) and
+/// anthropic thinking / redacted_thinking blocks; encrypted payloads must pass through unchanged.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ReasoningBlock {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// responses summary parts, passed through unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<Vec<Value>>,
+    /// anthropic thinking text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<String>,
+    /// anthropic thinking signature (must be returned unchanged).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
+    /// Encrypted reasoning payload (responses encrypted_content / anthropic redacted_thinking data).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encrypted_content: Option<String>,
+    #[serde(flatten, default, skip_serializing_if = "HashMap::is_empty")]
+    pub extra: HashMap<String, Value>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Message {
     pub role: Role,
@@ -173,6 +201,12 @@ pub struct Message {
     pub content: Content,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_content: Option<String>,
+    /// IR extension: structured reasoning block (encrypted passthrough item).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_blocks: Option<Vec<ReasoningBlock>>,
+    /// IR extension: cache hint (semantic marker equivalent to anthropic cache_control).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_control: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -191,6 +225,8 @@ impl<'de> Deserialize<'de> for Message {
             content: Content,
             reasoning_content: Option<String>,
             reasoning: Option<String>,
+            reasoning_blocks: Option<Vec<ReasoningBlock>>,
+            cache_control: Option<Value>,
             tool_call_id: Option<String>,
             tool_calls: Option<Vec<ToolCall>>,
         }
@@ -206,6 +242,8 @@ impl<'de> Deserialize<'de> for Message {
             role: raw.role,
             content: raw.content,
             reasoning_content: raw.reasoning_content.or(raw.reasoning),
+            reasoning_blocks: raw.reasoning_blocks,
+            cache_control: raw.cache_control,
             tool_call_id: raw.tool_call_id,
             tool_calls: raw.tool_calls,
         })
@@ -298,6 +336,9 @@ pub struct Prediction {
 pub struct ToolDefinition {
     pub r#type: String,
     pub function: FunctionDefinition,
+    /// IR extension: fidelity channel for non-function tools (e.g. codex local_shell) raw fields.
+    #[serde(flatten, default, skip_serializing_if = "HashMap::is_empty")]
+    pub extra: HashMap<String, Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -533,6 +574,67 @@ pub struct ErrorDetail {
     pub code: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub param: Option<String>,
+}
+
+impl ChatCompletionRequest {
+    /// Normalize cross-vendor reasoning/thinking request fields into IR modeled fields.
+    ///
+    /// Explicit IR fields keep priority. Unmodeled top-level vendor fields may still be
+    /// present in `extra` and are used as fallback sources.
+    pub fn normalize_reasoning_compat_fields(&mut self) {
+        if self.thinking.is_none()
+            && let Some(kind) = self
+                .extra
+                .get("thinking")
+                .and_then(parse_thinking_type_from_value)
+        {
+            self.thinking = Some(ThinkingConfig { kind });
+        }
+
+        if self.reasoning_effort.is_none() {
+            let effort = self
+                .extra
+                .get("reasoning_effort")
+                .and_then(parse_effort_string)
+                .or_else(|| {
+                    self.extra
+                        .get("reasoning")
+                        .and_then(extract_reasoning_effort)
+                });
+            if let Some(effort) = effort {
+                self.reasoning_effort = Some(effort);
+            }
+        }
+    }
+}
+
+fn parse_effort_string(value: &Value) -> Option<String> {
+    value
+        .as_str()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn extract_reasoning_effort(value: &Value) -> Option<String> {
+    value
+        .as_object()
+        .and_then(|object| object.get("effort"))
+        .and_then(parse_effort_string)
+}
+
+fn parse_thinking_type_from_value(value: &Value) -> Option<ThinkingType> {
+    let raw = match value {
+        Value::String(kind) => kind.as_str(),
+        Value::Object(object) => object.get("type")?.as_str()?,
+        _ => return None,
+    };
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "enabled" => Some(ThinkingType::Enabled),
+        "adaptive" => Some(ThinkingType::Adaptive),
+        "disabled" => Some(ThinkingType::Disabled),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -828,5 +930,119 @@ mod tests {
         assert!(file.file_id.is_none());
         assert_eq!(file_id.as_deref(), Some("file-legacy"));
         assert_eq!(filename.as_deref(), Some("legacy.txt"));
+    }
+
+    #[test]
+    fn normalize_reasoning_compat_uses_extra_fields_when_modeled_fields_are_missing() {
+        let mut request = ChatCompletionRequest {
+            model: "glm-5.3-flash".to_string(),
+            messages: vec![],
+            extra: HashMap::from([
+                (
+                    "thinking".to_string(),
+                    serde_json::json!({"type": "enabled"}),
+                ),
+                (
+                    "reasoning".to_string(),
+                    serde_json::json!({"effort": "max", "summary": "auto"}),
+                ),
+            ]),
+            ..Default::default()
+        };
+
+        request.normalize_reasoning_compat_fields();
+
+        assert_eq!(
+            request
+                .thinking
+                .as_ref()
+                .map(|thinking| thinking.kind.clone()),
+            Some(ThinkingType::Enabled)
+        );
+        assert_eq!(request.reasoning_effort.as_deref(), Some("max"));
+    }
+
+    #[test]
+    fn normalize_reasoning_compat_preserves_explicit_modeled_fields() {
+        let mut request = ChatCompletionRequest {
+            model: "glm-5.3-flash".to_string(),
+            messages: vec![],
+            thinking: Some(ThinkingConfig {
+                kind: ThinkingType::Disabled,
+            }),
+            reasoning_effort: Some("high".to_string()),
+            extra: HashMap::from([
+                (
+                    "thinking".to_string(),
+                    serde_json::json!({"type": "enabled"}),
+                ),
+                (
+                    "reasoning".to_string(),
+                    serde_json::json!({"effort": "max"}),
+                ),
+            ]),
+            ..Default::default()
+        };
+
+        request.normalize_reasoning_compat_fields();
+
+        assert_eq!(
+            request
+                .thinking
+                .as_ref()
+                .map(|thinking| thinking.kind.clone()),
+            Some(ThinkingType::Disabled)
+        );
+        assert_eq!(request.reasoning_effort.as_deref(), Some("high"));
+    }
+}
+
+#[cfg(test)]
+mod reasoning_block_tests {
+    use super::*;
+
+    #[test]
+    fn message_deserializes_reasoning_blocks_and_cache_control() {
+        let message = r#"{
+            "role": "assistant",
+            "content": "ok",
+            "reasoning_blocks": [
+                {
+                    "id": "rs_1",
+                    "summary": [{"type": "summary_text", "text": "think"}],
+                    "encrypted_content": "enc-blob"
+                }
+            ],
+            "cache_control": {"type": "ephemeral"}
+        }"#;
+
+        let parsed: Message = serde_json::from_str(message).expect("parse message");
+        let blocks = parsed.reasoning_blocks.expect("reasoning blocks");
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].id.as_deref(), Some("rs_1"));
+        assert_eq!(blocks[0].encrypted_content.as_deref(), Some("enc-blob"));
+        assert_eq!(parsed.cache_control.unwrap()["type"], "ephemeral");
+    }
+
+    #[test]
+    fn message_without_new_fields_serializes_without_new_keys() {
+        let message: Message =
+            serde_json::from_str(r#"{"role":"assistant","content":"ok"}"#).expect("parse");
+        let value = serde_json::to_value(&message).expect("serialize");
+        let object = value.as_object().expect("object");
+        assert!(!object.contains_key("reasoning_blocks"));
+        assert!(!object.contains_key("cache_control"));
+        assert_eq!(object.get("content"), Some(&serde_json::json!("ok")));
+    }
+
+    #[test]
+    fn reasoning_block_roundtrips_extra_fields() {
+        let block: ReasoningBlock =
+            serde_json::from_str(r#"{"thinking":"hmm","signature":"sig","future_field":1}"#)
+                .expect("parse reasoning block");
+        let value = serde_json::to_value(&block).expect("serialize");
+        assert_eq!(value["thinking"], "hmm");
+        assert_eq!(value["signature"], "sig");
+        assert_eq!(value["future_field"], 1);
     }
 }

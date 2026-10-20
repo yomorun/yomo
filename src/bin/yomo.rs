@@ -25,7 +25,6 @@ use yomo::{
     http_auth::require_bearer_auth,
     llm_api::build_llm_api,
     metadata_mgr::MetadataMgrImpl,
-    model_api::build_model_api,
     model_list::build_model_list_api,
     openai_http_mapping::openai_error_response,
     provider_registry,
@@ -37,7 +36,6 @@ use yomo::{
     tool_invoker::ConnToolInvoker,
     tool_mgr::ToolMgrImpl,
     trace::init_tracing,
-    usage_handler::NoopUsageHandler,
     zipper::{MemorySource, Zipper, ZipperBridge},
 };
 
@@ -203,13 +201,14 @@ async fn serve(opt: ServeOptions) -> Result<()> {
 
     let mut app = axum::Router::new();
     let mut endpoint_map = std::collections::HashMap::new();
-    for endpoint in &config.endpoints {
+    for endpoint in
+        &yomo::serve_config::derive_endpoints_from_typed(&config.providers, &config.defaults)
+    {
         endpoint_map.insert(endpoint.endpoint()?, endpoint.clone());
     }
     let selection_strategy = Arc::new(provider_registry::ByEndpointModel::new(endpoint_map));
-    let provider_registry = provider_registry::ProviderRegistry::from_config(
+    let provider_registry = provider_registry::ConfigProviderRegistry::from_entries(
         &config.providers,
-        &config.endpoints,
         selection_strategy,
     )?;
 
@@ -218,22 +217,16 @@ async fn serve(opt: ServeOptions) -> Result<()> {
         "/v1",
         build_llm_api(
             tool_mgr,
-            provider_registry.clone(),
+            Arc::new(provider_registry.clone()),
             tool_invoker,
             yomo::agent_loop::AgentLoopConfig::<()>::default(),
         )
         .await?,
     );
 
-    let model_api_usage_handler = Arc::new(NoopUsageHandler::default());
     app = app.nest(
         "/v1",
-        build_model_api(provider_registry.clone(), model_api_usage_handler).await?,
-    );
-
-    app = app.nest(
-        "/v1",
-        build_model_list_api(provider_registry.clone()).await?,
+        build_model_list_api(Arc::new(provider_registry.clone())).await?,
     );
 
     let mut tool_api_prefix = String::new();

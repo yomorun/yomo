@@ -1,0 +1,166 @@
+//! Claude Sonnet 5.5 on Bedrock Converse. Probed 2026-10-19 (ap-northeast-3):
+//! an adaptive-only model. `thinking` accepts `{type: adaptive}` and
+//! `{type: between_tools}`; budget-style `enabled` is rejected by the
+//! upstream ("not supported for this model... use adaptive and
+//! output_config.effort"), and `disabled` is rejected with a hint to use
+//! `between_tools`. `output_config.effort` accepts low/medium/high/xhigh/max
+//! (all probed); `none`/`minimal` are not in the upstream enum.
+//! `thinking.display` accepts only summarized/omitted; `block_binding` is
+//! rejected; temperature must be 1 while thinking is enabled or adaptive.
+
+use crate::models::compat::{reasoning_effort, thinking_budget, thinking_mode};
+use crate::models::{Ctx, Profile, ReasoningEffort, ThinkingMode, unsupported};
+use crate::provider::{ProviderError, UnifiedRequest};
+use crate::upstreams::EffortField;
+
+const PROBED_ONLY: &str = "bedrock-sonnet-5-5-probed-controls-only";
+
+pub(super) fn bedrock_profile() -> Profile {
+    Profile {
+        effort_field: EffortField::OutputConfig,
+        ..super::bedrock_profile()
+    }
+}
+
+/// Only probed controls are allowed; nothing is silently dropped or mapped.
+pub(super) fn adapt_bedrock_request(
+    _ctx: &Ctx,
+    request: &UnifiedRequest,
+) -> Result<(), ProviderError> {
+    if request.options.thinking.is_some() {
+        match thinking_mode(request) {
+            Some(ThinkingMode::Adaptive | ThinkingMode::BetweenTools) => {}
+            Some(ThinkingMode::Disabled) => {
+                return Err(unsupported(
+                    PROBED_ONLY,
+                    "thinking",
+                    "this model cannot disable thinking; upstream suggests thinking.type between_tools",
+                ));
+            }
+            Some(ThinkingMode::Enabled) => {
+                return Err(unsupported(
+                    PROBED_ONLY,
+                    "thinking",
+                    "budget-style enabled thinking is not supported for this model; use adaptive thinking with output_config.effort",
+                ));
+            }
+            None => {
+                return Err(unsupported(
+                    PROBED_ONLY,
+                    "thinking.type",
+                    "unknown thinking type",
+                ));
+            }
+        }
+        if thinking_budget(request).is_some() {
+            return Err(unsupported(
+                PROBED_ONLY,
+                "thinking.budget_tokens",
+                "no thinking budget is accepted",
+            ));
+        }
+        super::reject_client_only_thinking_keys(request)?;
+    }
+    if let Some(effort) = reasoning_effort(request) {
+        match effort {
+            ReasoningEffort::Low
+            | ReasoningEffort::Medium
+            | ReasoningEffort::High
+            | ReasoningEffort::XHigh
+            | ReasoningEffort::Max => {}
+            ReasoningEffort::None | ReasoningEffort::Minimal => {
+                return Err(unsupported(
+                    PROBED_ONLY,
+                    "reasoning_effort",
+                    "upstream effort enum is low/medium/high/xhigh/max; none/minimal do not exist",
+                ));
+            }
+        }
+    }
+    super::reject_modified_sampling_with_thinking(request)
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+    use crate::models::{adapt_request, profile};
+    use crate::upstreams::{Dialect, Upstream};
+
+    fn ctx() -> Ctx<'static> {
+        Ctx {
+            model: "claude-sonnet-5-5",
+            upstream: Upstream::AwsBedrock,
+            dialect: Dialect::BedrockConverse,
+        }
+    }
+
+    #[test]
+    fn allows_only_probed_adaptive_and_effort_controls() {
+        let mut request = UnifiedRequest::default();
+        for effort in ["low", "medium", "high", "xhigh", "max"] {
+            request.options.reasoning_effort = Some(effort.into());
+            assert!(adapt_request(&ctx(), &mut request).is_ok(), "{effort}");
+        }
+        request.options.thinking = Some(json!({"type": "adaptive"}));
+        assert!(adapt_request(&ctx(), &mut request).is_ok());
+        request.options.thinking = Some(json!({"type": "between_tools"}));
+        assert!(adapt_request(&ctx(), &mut request).is_ok());
+        request.options.thinking = Some(json!({"type": "adaptive", "display": "summarized"}));
+        assert!(adapt_request(&ctx(), &mut request).is_ok());
+    }
+
+    #[test]
+    fn budget_style_and_disabled_thinking_are_rejected() {
+        let mut request = UnifiedRequest::default();
+        request.options.thinking = Some(json!({"type": "enabled", "budget_tokens": 2048}));
+        match adapt_request(&ctx(), &mut request) {
+            Err(ProviderError::Public { error, .. }) => {
+                assert!(error.message.contains("not supported"), "{}", error.message);
+            }
+            other => panic!("expected a public denial, got {other:?}"),
+        }
+        request.options.thinking = Some(json!({"type": "disabled"}));
+        assert!(adapt_request(&ctx(), &mut request).is_err());
+        request.options.thinking = Some(json!({"type": "adaptive", "budget_tokens": 2048}));
+        assert!(adapt_request(&ctx(), &mut request).is_err());
+        request.options.thinking = Some(json!({"type": "auto"}));
+        assert!(adapt_request(&ctx(), &mut request).is_err());
+    }
+
+    #[test]
+    fn effort_none_minimal_and_sampling_are_rejected() {
+        let mut request = UnifiedRequest::default();
+        for effort in ["none", "minimal"] {
+            request.options.reasoning_effort = Some(effort.into());
+            assert!(adapt_request(&ctx(), &mut request).is_err(), "{effort}");
+        }
+        request.options.reasoning_effort = Some("high".into());
+        request.options.thinking = Some(json!({"type": "adaptive"}));
+        request.options.temperature = Some(0.7);
+        match adapt_request(&ctx(), &mut request) {
+            Err(ProviderError::Public { error, .. }) => {
+                assert_eq!(error.param.as_deref(), Some("temperature"));
+            }
+            other => panic!("expected a public denial, got {other:?}"),
+        }
+        request.options.temperature = Some(1.0);
+        assert!(adapt_request(&ctx(), &mut request).is_ok());
+    }
+
+    #[test]
+    fn client_only_thinking_keys_are_rejected_and_effort_is_carried_by_output_config() {
+        let mut request = UnifiedRequest::default();
+        request.options.thinking = Some(
+            json!({"type": "adaptive", "block_binding": {"prefix_mismatch_behavior": "error"}}),
+        );
+        assert!(adapt_request(&ctx(), &mut request).is_err());
+        request.options.thinking = Some(json!({"type": "adaptive", "display": "updates"}));
+        assert!(adapt_request(&ctx(), &mut request).is_err());
+
+        let sonnet = profile("claude-sonnet-5-5", Upstream::AwsBedrock).expect("profile");
+        assert_eq!(sonnet.effort_field, EffortField::OutputConfig);
+        assert_eq!(sonnet.dialects, &[Dialect::BedrockConverse]);
+    }
+}

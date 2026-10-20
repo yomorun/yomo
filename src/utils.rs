@@ -9,6 +9,11 @@ pub const MAX_LOG_BODY_BYTES: usize = 8 * 1024;
 const LOG_HEAD_BYTES: usize = 2 * 1024;
 const MAX_LOG_JSON_STRING_CHARS: usize = 256;
 
+/// Build a deterministic tool-call ID from a request prefix and call index.
+pub fn ensure_tool_call_id(prefix: &str, index: usize) -> String {
+    format!("{prefix}-tool-{index}")
+}
+
 pub fn sanitize_name(name: &str) -> Result<String> {
     let sanitized = name
         .chars()
@@ -143,9 +148,15 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::{
-        LOG_HEAD_BYTES, MAX_LOG_BODY_BYTES, MAX_LOG_JSON_STRING_CHARS, json_body_for_log,
-        json_value_for_log, sanitize_name, truncate_bytes_for_log, truncate_for_log,
+        LOG_HEAD_BYTES, MAX_LOG_BODY_BYTES, MAX_LOG_JSON_STRING_CHARS, ensure_tool_call_id,
+        json_body_for_log, json_value_for_log, sanitize_name, truncate_bytes_for_log,
+        truncate_for_log,
     };
+
+    #[test]
+    fn ensure_tool_call_id_includes_prefix_and_index() {
+        assert_eq!(ensure_tool_call_id("request-1", 2), "request-1-tool-2");
+    }
 
     #[test]
     fn sanitize_name_replaces_invalid_characters() {
