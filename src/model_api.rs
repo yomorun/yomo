@@ -644,7 +644,9 @@ where
             model_id.clone(),
             metadata_debug,
         );
-        let mut text_buffer = String::new();
+        // Buffer raw bytes: upstream chunk boundaries can split a multi-byte
+        // UTF-8 character, so decode only complete frames to keep byte order.
+        let mut frame_buffer: Vec<u8> = Vec::new();
         let mut latest_usage: Option<EndpointUsage> = None;
         while let Some(item) = stream.next().await {
             let chunk = match item {
@@ -654,33 +656,46 @@ where
                     Err(err)?
                 }
             };
-            if let Ok(text) = std::str::from_utf8(&chunk) {
-                text_buffer.push_str(text);
-                while let Some(frame_end) = text_buffer.find("\n\n") {
-                    let frame = text_buffer[..frame_end].to_string();
-                    text_buffer.drain(..frame_end + 2);
-                    let (output_frame, usage) = rewrite_sse_frame_usage(
-                        Arc::clone(&provider),
-                        &frame,
-                        Arc::clone(&usage_handler),
-                        &endpoint,
-                        &model_id,
-                        &response_model_mode,
-                        label.as_deref(),
-                        &trace_id,
-                        metadata.clone(),
-                    )
-                    .await;
-                    if usage.is_some() {
-                        latest_usage = usage;
+            // Resume the delimiter search one byte early in case "\n\n" spans chunks.
+            let mut search_from = frame_buffer.len().saturating_sub(1);
+            frame_buffer.extend_from_slice(&chunk);
+            while let Some(offset) = find_sse_frame_end(&frame_buffer[search_from..]) {
+                let frame_end = search_from + offset;
+                search_from = 0;
+                let frame_bytes: Vec<u8> = frame_buffer.drain(..frame_end + 2).collect();
+                let frame = match std::str::from_utf8(&frame_bytes[..frame_end]) {
+                    Ok(frame) => frame,
+                    Err(_) => {
+                        yield Bytes::from(frame_bytes);
+                        continue;
                     }
-                    yield Bytes::from(output_frame);
+                };
+                let (output_frame, usage) = rewrite_sse_frame_usage(
+                    Arc::clone(&provider),
+                    frame,
+                    Arc::clone(&usage_handler),
+                    &endpoint,
+                    &model_id,
+                    &response_model_mode,
+                    label.as_deref(),
+                    &trace_id,
+                    metadata.clone(),
+                )
+                .await;
+                if usage.is_some() {
+                    latest_usage = usage;
                 }
-            } else {
-                yield chunk;
+                yield Bytes::from(output_frame);
             }
         }
 
+        let text_buffer = match String::from_utf8(frame_buffer) {
+            Ok(text) => text,
+            Err(err) => {
+                yield Bytes::from(err.into_bytes());
+                String::new()
+            }
+        };
         if !text_buffer.trim().is_empty() {
             if text_buffer.trim_start().starts_with("data:") {
                 let (output_frame, usage) = rewrite_sse_frame_usage(
@@ -933,6 +948,10 @@ fn apply_response_model_mode_to_json(
     changed
 }
 
+fn find_sse_frame_end(buffer: &[u8]) -> Option<usize> {
+    buffer.windows(2).position(|window| window == b"\n\n")
+}
+
 fn rebuild_sse_frame_with_data(frame: &str, json_payload: &str) -> String {
     let mut lines = Vec::new();
     for line in frame.lines() {
@@ -1019,18 +1038,25 @@ mod tests {
         extract_request_model, full_response_error_for_log, parse_model_request_fields,
         resolve_request_id, selection_model_endpoint_not_supported_message,
         selection_model_not_supported_message, selection_model_required_message,
+        wrap_stream_with_usage,
     };
-    use crate::model_api_provider::{ProviderBody, ProviderResponse};
+    use crate::model_api_provider::{
+        ModelApiProvider, ProviderBody, ProviderRequest, ProviderResponse,
+    };
     use crate::serve_config::ResponseModelMode;
+    use crate::usage_handler::{EndpointUsage, UsageHandler};
     use crate::utils::MAX_LOG_BODY_BYTES;
+    use async_trait::async_trait;
     use axum::body::Bytes;
     use axum::http::StatusCode;
     use axum::response::Response;
     use brotli::CompressorReader;
     use flate2::Compression;
     use flate2::write::GzEncoder;
+    use futures_util::StreamExt;
     use std::io::{Read, Write};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     struct OverrideAllErrorsPolicy;
 
@@ -1467,5 +1493,183 @@ mod tests {
             panic!("expected override response");
         };
         assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    }
+
+    struct StubProvider;
+
+    #[async_trait]
+    impl ModelApiProvider<()> for StubProvider {
+        fn model_id(&self) -> &str {
+            "stub"
+        }
+
+        async fn execute(
+            &self,
+            _req: ProviderRequest,
+            _metadata: &(),
+        ) -> Result<ProviderResponse, anyhow::Error> {
+            unreachable!("stream tests do not execute requests")
+        }
+    }
+
+    #[derive(Default)]
+    struct CountingUsageHandler {
+        calls: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl UsageHandler<()> for CountingUsageHandler {
+        async fn on_usage(
+            &self,
+            _model_id: &str,
+            _label: Option<&str>,
+            _request_id: &str,
+            _trace_id: &str,
+            _metadata: (),
+            usage: EndpointUsage,
+        ) -> EndpointUsage {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            usage
+        }
+    }
+
+    /// Splits `input` into chunks of `chunk_size` bytes, ignoring UTF-8 boundaries.
+    fn split_raw(input: &[u8], chunk_size: usize) -> Vec<Bytes> {
+        input
+            .chunks(chunk_size)
+            .map(Bytes::copy_from_slice)
+            .collect()
+    }
+
+    async fn run_wrapped_stream(
+        chunks: Vec<Bytes>,
+        usage_handler: Arc<CountingUsageHandler>,
+    ) -> Vec<u8> {
+        let upstream = futures_util::stream::iter(chunks.into_iter().map(Ok::<_, std::io::Error>));
+        let wrapped = wrap_stream_with_usage::<()>(
+            Box::pin(upstream),
+            tracing::Span::none(),
+            Arc::new(StubProvider),
+            usage_handler,
+            "/responses".to_string(),
+            "stub".to_string(),
+            ResponseModelMode::Upstream,
+            None,
+            "trace".to_string(),
+            (),
+            "()".to_string(),
+        );
+        let mut output = Vec::new();
+        futures_util::pin_mut!(wrapped);
+        while let Some(chunk) = wrapped.next().await {
+            output.extend_from_slice(&chunk.expect("wrapped stream chunk"));
+        }
+        output
+    }
+
+    fn large_cjk_text() -> String {
+        (1..=400)
+            .map(|id| format!("{{\"id\":{id},\"text\":\"周末的园艺课教大家制作小型香草盆栽，老师准备了迷迭香。\"}}"))
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+
+    fn sse_event(event: &str, payload: &serde_json::Value) -> String {
+        format!("event: {event}\ndata: {payload}\n\n")
+    }
+
+    /// Regression for xileteam/roadmap#1911: chunks that split a multi-byte
+    /// UTF-8 character must not overtake a partially buffered SSE frame.
+    #[tokio::test]
+    async fn wrap_stream_with_usage_preserves_bytes_when_chunks_split_utf8() {
+        let text = large_cjk_text();
+        let input = [
+            sse_event(
+                "response.output_text.delta",
+                &serde_json::json!({"type": "response.output_text.delta", "delta": "你好", "sequence_number": 1}),
+            ),
+            sse_event(
+                "response.output_text.done",
+                &serde_json::json!({"type": "response.output_text.done", "text": text, "sequence_number": 2}),
+            ),
+            sse_event(
+                "response.output_item.done",
+                &serde_json::json!({"type": "response.output_item.done", "item": {"content": [{"text": text}]}, "sequence_number": 3}),
+            ),
+        ]
+        .concat();
+        assert!(input.len() > 40 * 1024);
+
+        // 7 and 16384 bytes both cut through 3-byte CJK characters; 1 also cuts "\n\n".
+        for chunk_size in [1, 7, 4096, 16384] {
+            let usage_handler = Arc::new(CountingUsageHandler::default());
+            let output =
+                run_wrapped_stream(split_raw(input.as_bytes(), chunk_size), usage_handler).await;
+            assert!(
+                output == input.as_bytes(),
+                "output differs from upstream bytes for chunk_size={chunk_size}"
+            );
+        }
+    }
+
+    /// Regression for xileteam/roadmap#1911: a split `response.completed`
+    /// frame must still be parsed so its usage is reported exactly once.
+    #[tokio::test]
+    async fn wrap_stream_with_usage_reports_usage_when_completed_frame_is_split() {
+        let text = large_cjk_text();
+        let usage = serde_json::json!({
+            "input_tokens": 128,
+            "input_tokens_details": {"cached_tokens": 0},
+            "output_tokens": 10158,
+            "output_tokens_details": {"reasoning_tokens": 0},
+            "total_tokens": 10286
+        });
+        let completed = serde_json::json!({
+            "type": "response.completed",
+            "response": {
+                "id": "resp_1",
+                "output": [{"content": [{"text": text}]}],
+                "usage": usage
+            },
+            "sequence_number": 4
+        });
+        let input = sse_event("response.completed", &completed);
+
+        let usage_handler = Arc::new(CountingUsageHandler::default());
+        let output = run_wrapped_stream(
+            split_raw(input.as_bytes(), 16384),
+            Arc::clone(&usage_handler),
+        )
+        .await;
+
+        assert_eq!(usage_handler.calls.load(Ordering::SeqCst), 1);
+        let output = String::from_utf8(output).expect("output is valid UTF-8");
+        let frame = output
+            .strip_suffix("\n\n")
+            .expect("frame ends with blank line");
+        assert!(frame.starts_with("event: response.completed\n"));
+        let data = frame
+            .lines()
+            .find_map(|line| line.strip_prefix("data: "))
+            .expect("frame has data line");
+        let parsed: serde_json::Value = serde_json::from_str(data).expect("data is valid JSON");
+        assert_eq!(parsed, completed);
+    }
+
+    /// Verifies a trailing frame without "\n\n" that is split mid-character
+    /// is flushed intact at end of stream.
+    #[tokio::test]
+    async fn wrap_stream_with_usage_flushes_split_trailing_frame() {
+        let head = sse_event(
+            "response.output_text.delta",
+            &serde_json::json!({"type": "response.output_text.delta", "delta": "你好"}),
+        );
+        let tail = "event: response.output_text.done\ndata: {\"text\":\"园艺课";
+        let input = format!("{head}{tail}");
+
+        let usage_handler = Arc::new(CountingUsageHandler::default());
+        let output = run_wrapped_stream(split_raw(input.as_bytes(), 5), usage_handler).await;
+
+        assert!(output == input.as_bytes());
     }
 }
