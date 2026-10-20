@@ -1,6 +1,6 @@
 //! GPT family: Azure dialect routes and per-model request rules.
 
-use crate::models::compat::{has_function_calls, reasoning_effort};
+use crate::models::compat::{has_function_tools, reasoning_effort};
 use crate::models::{Ctx, Profile, ReasoningEffort as Effort, generic_profile, unsupported};
 use crate::provider::{ProviderError, UnifiedRequest};
 use crate::upstreams::{Dialect, EffortField, Upstream};
@@ -80,9 +80,10 @@ pub(super) fn profile(id: &str, upstream: Upstream) -> Option<Profile> {
 }
 
 /// Function tools over Azure Chat require an explicit effort of `none`; an
-/// unset effort defaults to medium, which is rejected too.
+/// unset effort defaults to medium, which is rejected too. Only tools declared
+/// in `tools` count: replaying earlier calls is history, not a declaration.
 fn azure_gpt_56_chat_tools(ctx: &Ctx, request: &UnifiedRequest) -> Result<(), ProviderError> {
-    if ctx.dialect != Dialect::OpenAiChatCompletions || !has_function_calls(request) {
+    if ctx.dialect != Dialect::OpenAiChatCompletions || !has_function_tools(request) {
         return Ok(());
     }
     match reasoning_effort(request) {
@@ -125,7 +126,7 @@ mod tests {
 
     use super::*;
     use crate::models::{adapt_request as adapt, profile};
-    use crate::provider::{UnifiedTool, UnifiedToolKind};
+    use crate::provider::{UnifiedInputItem, UnifiedInputItemKind, UnifiedTool, UnifiedToolKind};
 
     fn ctx(model: &'static str, dialect: Dialect) -> Ctx<'static> {
         Ctx {
@@ -148,6 +149,19 @@ mod tests {
                 allowed_callers: None,
             },
         }]);
+        request.options.reasoning_effort = effort.map(Into::into);
+        request
+    }
+
+    fn with_replayed_call(effort: Option<&str>) -> UnifiedRequest {
+        let mut request = UnifiedRequest::default();
+        request.input = vec![UnifiedInputItem::new(UnifiedInputItemKind::FunctionCall {
+            call_id: "call_1".into(),
+            name: "read".into(),
+            arguments: "{}".into(),
+            caller: None,
+            cache_control: None,
+        })];
         request.options.reasoning_effort = effort.map(Into::into);
         request
     }
@@ -184,6 +198,21 @@ mod tests {
             ..ctx("gpt-5.6-sol", Dialect::OpenAiChatCompletions)
         };
         assert!(adapt(&vivgrid, &mut with_function_tool(Some("high"))).is_ok());
+    }
+
+    #[test]
+    fn azure_replayed_tool_calls_do_not_require_effort_none() {
+        let chat = ctx("gpt-5.6-sol", Dialect::OpenAiChatCompletions);
+        assert!(adapt(&chat, &mut with_replayed_call(Some("high"))).is_ok());
+        assert!(adapt(&chat, &mut with_replayed_call(None)).is_ok());
+        // Declaring the same tool still triggers the rule.
+        match adapt(&chat, &mut with_function_tool(Some("high"))) {
+            Err(ProviderError::Public { error, .. }) => {
+                assert!(error.message.contains(AZURE_GPT_56_CHAT_TOOLS));
+                assert_eq!(error.param.as_deref(), Some("reasoning_effort"));
+            }
+            other => panic!("expected a public denial, got {other:?}"),
+        }
     }
 
     #[test]

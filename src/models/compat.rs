@@ -4,7 +4,7 @@
 use serde_json::Value;
 
 use super::{ReasoningEffort, ThinkingMode};
-use crate::provider::{UnifiedInputItemKind, UnifiedRequest, UnifiedToolKind};
+use crate::provider::{UnifiedRequest, UnifiedToolKind};
 
 /// Reasoning effort when it is set to a recognized native value.
 pub(super) fn reasoning_effort(request: &UnifiedRequest) -> Option<ReasoningEffort> {
@@ -36,14 +36,12 @@ pub(super) fn thinking_budget(request: &UnifiedRequest) -> Option<u64> {
         .and_then(Value::as_u64)
 }
 
-/// Whether the request declares or replays function calls.
-pub(super) fn has_function_calls(request: &UnifiedRequest) -> bool {
+/// Whether the request declares function tools in `tools`. Replayed tool calls
+/// are history, not a declaration, so they do not count.
+pub(super) fn has_function_tools(request: &UnifiedRequest) -> bool {
     request.tools.as_ref().is_some_and(|tools| {
         tools
             .iter()
             .any(|tool| matches!(tool.kind, UnifiedToolKind::Function { .. }))
-    }) || request
-        .input
-        .iter()
-        .any(|item| matches!(item.kind, UnifiedInputItemKind::FunctionCall { .. }))
+    })
 }
