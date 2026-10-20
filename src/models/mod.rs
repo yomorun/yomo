@@ -67,7 +67,7 @@ pub enum ThinkingMode {
     Adaptive,
     /// Claude-native mode: no thinking before responding, but the short
     /// updates the model writes between tool calls still come back as
-    /// thinking blocks (probed on Claude Sonnet 5.5 via Bedrock).
+    /// thinking blocks.
     BetweenTools,
 }
 
@@ -183,8 +183,8 @@ pub fn adapt_request(ctx: &Ctx, request: &mut UnifiedRequest) -> Result<(), Prov
 
 /// Build the public error for a request a model cannot honor.
 ///
-/// `rule` is a stable kebab-case identifier cited in logs and tests; keep the
-/// source of the fact (doc or probe) next to the rule in the model file.
+/// `rule` is a stable kebab-case identifier cited in logs and tests; document
+/// the fact behind each rule next to it in the model file.
 pub fn unsupported(rule: &str, param: &str, reason: &str) -> ProviderError {
     ProviderError::Public {
         status: StatusCode::BAD_REQUEST,
@@ -204,28 +204,6 @@ pub(crate) fn generic_profile(upstream: Upstream) -> Option<Profile> {
         Upstream::Vivgrid => Some(Profile::chat()),
         Upstream::Vllm => Some(Profile::vllm_chat()),
         _ => None,
-    }
-}
-
-/// Build the public error for a control that yomo cannot yet encode for this
-/// model on the selected upstream.
-///
-/// This is an implementation gap in the dialect mapper, not a statement about
-/// the model: the model may well support the control. Callers mirror the
-/// mapper so the request fails before a stream starts, and must be removed
-/// once the mapping lands.
-pub(crate) fn mapping_pending(ctx: &Ctx, param: &str) -> ProviderError {
-    ProviderError::Public {
-        status: StatusCode::BAD_REQUEST,
-        error: ErrorDetail {
-            message: format!(
-                "{param} is not yet mapped for {} on {:?}",
-                ctx.model, ctx.upstream
-            ),
-            r#type: "invalid_request_error".into(),
-            code: Some("unsupported_capability".into()),
-            param: Some(param.into()),
-        },
     }
 }
 

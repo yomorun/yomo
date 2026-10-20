@@ -1845,7 +1845,7 @@ mod tests {
     }
 
     #[test]
-    fn bedrock_haiku55_allows_only_probed_adaptive_effort_controls() {
+    fn bedrock_haiku55_allows_only_supported_adaptive_effort_controls() {
         let binding = ResolvedBinding {
             public_model: "claude-haiku-5-5".into(),
             model: "claude-haiku-5-5".into(),
@@ -1873,29 +1873,8 @@ mod tests {
     }
 
     #[test]
-    fn bedrock_does_not_silently_drop_reasoning_controls() {
-        // Unprobed Bedrock models still reject both controls instead of
-        // dropping them.
+    fn bedrock_models_map_reasoning_controls() {
         let binding = ResolvedBinding {
-            public_model: "claude-opus-5".into(),
-            model: "claude-opus-5".into(),
-            provider: "aws.jpn".into(),
-            upstream: Upstream::AwsBedrock,
-            upstream_model: "global.anthropic.claude-opus-5".into(),
-            dialect: Some(Dialect::BedrockConverse),
-            label: "aws.jpn.global.anthropic.claude-opus-5".into(),
-        };
-        let mut request = UnifiedRequest::default();
-        request.options.reasoning_effort = Some("high".into());
-        assert!(adapt_bound_request(&mut request, &binding).is_err());
-        assert_eq!(request.options.reasoning_effort.as_deref(), Some("high"));
-        request.options.reasoning_effort = None;
-        request.options.thinking = Some(json!({"type":"adaptive"}));
-        assert!(adapt_bound_request(&mut request, &binding).is_err());
-        assert_eq!(request.options.thinking, Some(json!({"type":"adaptive"})));
-
-        // Probed models map the controls instead.
-        let sonnet = ResolvedBinding {
             public_model: "claude-sonnet-4-6".into(),
             model: "claude-sonnet-4-6".into(),
             provider: "aws.jpn".into(),
@@ -1904,9 +1883,21 @@ mod tests {
             dialect: Some(Dialect::BedrockConverse),
             label: "aws.jpn.global.anthropic.claude-sonnet-4-6".into(),
         };
-        request.options.thinking = None;
+        let mut request = UnifiedRequest::default();
         request.options.reasoning_effort = Some("high".into());
-        assert!(adapt_bound_request(&mut request, &sonnet).is_ok());
+        request.options.thinking = Some(json!({"type": "adaptive"}));
+        assert!(adapt_bound_request(&mut request, &binding).is_ok());
+
+        request.options.max_output_tokens = Some(2048);
+        request.options.thinking = Some(json!({"type": "enabled", "budget_tokens": 1024}));
+        assert!(adapt_bound_request(&mut request, &binding).is_ok());
+
+        // The model layer still rejects combinations outside its rule set.
+        request.options.thinking = Some(json!({"type": "between_tools"}));
+        assert!(matches!(
+            adapt_bound_request(&mut request, &binding),
+            Err(ProviderError::Public { .. })
+        ));
     }
 
     #[test]

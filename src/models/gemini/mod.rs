@@ -1,13 +1,10 @@
 //! Gemini family: Vertex generateContent profile and request rules.
 //!
-//! Thinking facts come from the Vertex AI doc "Control model thinking"
-//! (cloud.google.com/vertex-ai/generative-ai/docs/learn/thinking, fetched
-//! 2026-10-19): Gemini 3+ models take `thinkingConfig.thinkingLevel` and
-//! reject `thinkingBudget` (deprecated; intermittent 400 on 3, guaranteed
-//! 400 on 4, error when both are set), while 2.5 models take
-//! `thinkingConfig.thinkingBudget` and reject `thinkingLevel`. 2.5 budgets
-//! are soft limits: 2.5-flash 1–24,576 (0 turns thinking off), 2.5-pro
-//! 128–32,768 (cannot be turned off), `-1` means explicit dynamic budget.
+//! Gemini 3+ models take `thinkingConfig.thinkingLevel` and reject
+//! `thinkingBudget`; 2.5 models take `thinkingConfig.thinkingBudget` and
+//! reject `thinkingLevel`. 2.5 budgets are soft limits: 2.5-flash 1–24,576
+//! (0 turns thinking off), 2.5-pro 128–32,768 (cannot be turned off), `-1`
+//! means an explicit dynamic budget.
 
 use crate::models::{Ctx, Profile, ReasoningEffort, ThinkingMode, generic_profile, unsupported};
 use crate::provider::{ProviderError, UnifiedRequest};
@@ -39,13 +36,13 @@ const RULE_CONFLICT: &str = "vertex-gemini-thinking-effort-conflict";
 /// Thinking budget bounds for a 2.5 model: `(min, max, can disable with 0)`.
 type BudgetFacts = (i64, i64, bool);
 
-/// 2.5-flash budget facts (Vertex thinking doc, fetched 2026-10-19).
+/// 2.5-flash budget facts; 0 turns thinking off.
 const FLASH_2_5_BUDGET: BudgetFacts = (1, 24_576, true);
 /// 2.5-pro budget facts; the model cannot turn thinking off.
 const PRO_2_5_BUDGET: BudgetFacts = (128, 32_768, false);
 
 /// Thinking levels supported by gemini-3-flash-preview, gemini-3.5-flash and
-/// gemini-3.6-flash (Vertex thinking doc table, fetched 2026-10-19).
+/// gemini-3.6-flash.
 const LEVELS_MINIMAL_UP: &[&str] = &["minimal", "low", "medium", "high"];
 /// Thinking levels supported by gemini-3.1-pro-preview, gemini-3.7-flash and
 /// gemini-3.8-flash; they do not accept MINIMAL.

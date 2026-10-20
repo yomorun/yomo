@@ -1,19 +1,16 @@
-//! Claude Sonnet 5.5 on Bedrock Converse. Probed 2026-10-19 (ap-northeast-3):
-//! an adaptive-only model. `thinking` accepts `{type: adaptive}` and
-//! `{type: between_tools}`; budget-style `enabled` is rejected by the
-//! upstream ("not supported for this model... use adaptive and
-//! output_config.effort"), and `disabled` is rejected with a hint to use
-//! `between_tools`. `output_config.effort` accepts low/medium/high/xhigh/max
-//! (all probed); `none`/`minimal` are not in the upstream enum.
-//! `thinking.display` accepts only summarized/omitted; `block_binding` is
-//! rejected; temperature must be 1 while thinking is enabled or adaptive.
+//! Claude Sonnet 5.5 on Bedrock Converse: adaptive and `between_tools`
+//! thinking; budget-style `enabled` and `disabled` are rejected.
+//! `output_config.effort` accepts low/medium/high/xhigh/max; `none` and
+//! `minimal` are rejected. `display` accepts only summarized/omitted,
+//! block_binding is rejected, and temperature must be 1 while thinking is
+//! enabled or adaptive.
 
 use crate::models::compat::{reasoning_effort, thinking_budget, thinking_mode};
 use crate::models::{Ctx, Profile, ReasoningEffort, ThinkingMode, unsupported};
 use crate::provider::{ProviderError, UnifiedRequest};
 use crate::upstreams::EffortField;
 
-const PROBED_ONLY: &str = "bedrock-sonnet-5-5-probed-controls-only";
+const RULE: &str = "bedrock-sonnet-5-5-reasoning-controls-only";
 
 pub(super) fn bedrock_profile() -> Profile {
     Profile {
@@ -22,7 +19,8 @@ pub(super) fn bedrock_profile() -> Profile {
     }
 }
 
-/// Only probed controls are allowed; nothing is silently dropped or mapped.
+/// Reject controls outside this model's rule set; nothing is silently dropped
+/// or mapped.
 pub(super) fn adapt_bedrock_request(
     _ctx: &Ctx,
     request: &UnifiedRequest,
@@ -32,29 +30,25 @@ pub(super) fn adapt_bedrock_request(
             Some(ThinkingMode::Adaptive | ThinkingMode::BetweenTools) => {}
             Some(ThinkingMode::Disabled) => {
                 return Err(unsupported(
-                    PROBED_ONLY,
+                    RULE,
                     "thinking",
                     "this model cannot disable thinking; upstream suggests thinking.type between_tools",
                 ));
             }
             Some(ThinkingMode::Enabled) => {
                 return Err(unsupported(
-                    PROBED_ONLY,
+                    RULE,
                     "thinking",
                     "budget-style enabled thinking is not supported for this model; use adaptive thinking with output_config.effort",
                 ));
             }
             None => {
-                return Err(unsupported(
-                    PROBED_ONLY,
-                    "thinking.type",
-                    "unknown thinking type",
-                ));
+                return Err(unsupported(RULE, "thinking.type", "unknown thinking type"));
             }
         }
         if thinking_budget(request).is_some() {
             return Err(unsupported(
-                PROBED_ONLY,
+                RULE,
                 "thinking.budget_tokens",
                 "no thinking budget is accepted",
             ));
@@ -70,7 +64,7 @@ pub(super) fn adapt_bedrock_request(
             | ReasoningEffort::Max => {}
             ReasoningEffort::None | ReasoningEffort::Minimal => {
                 return Err(unsupported(
-                    PROBED_ONLY,
+                    RULE,
                     "reasoning_effort",
                     "upstream effort enum is low/medium/high/xhigh/max; none/minimal do not exist",
                 ));
@@ -97,7 +91,7 @@ mod tests {
     }
 
     #[test]
-    fn allows_only_probed_adaptive_and_effort_controls() {
+    fn allows_only_adaptive_and_effort_controls() {
         let mut request = UnifiedRequest::default();
         for effort in ["low", "medium", "high", "xhigh", "max"] {
             request.options.reasoning_effort = Some(effort.into());

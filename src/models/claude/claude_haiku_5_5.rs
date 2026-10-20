@@ -1,13 +1,13 @@
-//! Claude Haiku 5.5 on Bedrock Converse. Probed: it accepts adaptive thinking
-//! and `output_config.effort = high` through additionalModelRequestFields, and
-//! no thinking budget.
+//! Claude Haiku 5.5 on Bedrock Converse: adaptive thinking and
+//! `output_config.effort = high` through additionalModelRequestFields; no
+//! thinking budget.
 
 use crate::models::compat::{reasoning_effort, thinking_budget, thinking_mode};
 use crate::models::{Ctx, Profile, ReasoningEffort, ThinkingMode, unsupported};
 use crate::provider::{ProviderError, UnifiedRequest};
 use crate::upstreams::EffortField;
 
-const PROBED_ONLY: &str = "bedrock-haiku-5-5-probed-controls-only";
+const RULE: &str = "bedrock-haiku-5-5-reasoning-controls-only";
 
 pub(super) fn bedrock_profile() -> Profile {
     Profile {
@@ -16,7 +16,8 @@ pub(super) fn bedrock_profile() -> Profile {
     }
 }
 
-/// Only probed controls are allowed; nothing is silently dropped or mapped.
+/// Reject controls outside this model's rule set; nothing is silently dropped
+/// or mapped.
 pub(super) fn adapt_bedrock_request(
     _ctx: &Ctx,
     request: &UnifiedRequest,
@@ -24,23 +25,23 @@ pub(super) fn adapt_bedrock_request(
     if request.options.thinking.is_some() && thinking_mode(request) != Some(ThinkingMode::Adaptive)
     {
         return Err(unsupported(
-            PROBED_ONLY,
+            RULE,
             "thinking mapping",
-            "only adaptive thinking is probed",
+            "only adaptive thinking is supported",
         ));
     }
     if request.options.reasoning_effort.is_some()
         && reasoning_effort(request) != Some(ReasoningEffort::High)
     {
         return Err(unsupported(
-            PROBED_ONLY,
+            RULE,
             "reasoning_effort",
-            "only effort high is probed",
+            "only effort high is supported",
         ));
     }
     if thinking_budget(request).is_some() {
         return Err(unsupported(
-            PROBED_ONLY,
+            RULE,
             "thinking.budget_tokens",
             "no thinking budget is accepted",
         ));
@@ -65,7 +66,7 @@ mod tests {
     }
 
     #[test]
-    fn allows_only_probed_adaptive_effort_controls() {
+    fn allows_only_supported_adaptive_effort_controls() {
         let mut request = UnifiedRequest::default();
         request.options.reasoning_effort = Some("high".into());
         request.options.thinking = Some(json!({"type": "adaptive"}));

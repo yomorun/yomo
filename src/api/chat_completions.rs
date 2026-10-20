@@ -369,9 +369,9 @@ pub fn request_to_value(request: &UnifiedRequest) -> Result<Value, String> {
                 } else {
                     json!(parts)
                 };
-                // Chat upstreams have no developer role (probed: TokenHub
-                // rejects it with 400001); developer instructions encode as
-                // system messages, which these endpoints accept in multiples.
+                // Chat upstreams have no developer role; developer
+                // instructions encode as system messages, which these
+                // endpoints accept in multiples.
                 let encoded_role = match role {
                     UnifiedRole::Developer => "system",
                     other => role_name(*other),

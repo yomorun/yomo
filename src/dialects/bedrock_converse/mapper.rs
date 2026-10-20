@@ -39,15 +39,134 @@ pub type ConverseRequestParts = (
     InferenceConfiguration,
 );
 
-const CLAUDE_HAIKU_55_BEDROCK_MODEL: &str = "global.anthropic.claude-haiku-5-5";
+const CLAUDE_HAIKU_55_BEDROCK_MODEL: &str = "claude-haiku-5-5";
 const CLAUDE_SONNET_55_BEDROCK_MODEL: &str = "claude-sonnet-5-5";
 const CLAUDE_SONNET_46_BEDROCK_MODEL: &str = "claude-sonnet-4-6";
+const CLAUDE_SONNET_5_BEDROCK_MODEL: &str = "claude-sonnet-5";
+const CLAUDE_HAIKU_45_BEDROCK_MODEL: &str = "claude-haiku-4-5";
+const CLAUDE_OPUS_46_BEDROCK_MODEL: &str = "claude-opus-4-6";
+const CLAUDE_OPUS_47_BEDROCK_MODEL: &str = "claude-opus-4-7";
+const CLAUDE_OPUS_48_BEDROCK_MODEL: &str = "claude-opus-4-8";
+const CLAUDE_OPUS_55_BEDROCK_MODEL: &str = "claude-opus-5-5";
+const CLAUDE_OPUS_5_BEDROCK_MODEL: &str = "claude-opus-5";
+const CLAUDE_FABLE_51_BEDROCK_MODEL: &str = "claude-fable-5-1";
+const CLAUDE_FABLE_5_BEDROCK_MODEL: &str = "claude-fable-5";
 
-/// Encode the verified Claude controls supported by Bedrock Converse.
+/// Thinking modes accepted by the adaptive-only and adaptive/disabled routes.
+const THINKING_ADAPTIVE: &[&str] = &["adaptive"];
+const THINKING_ADAPTIVE_DISABLED: &[&str] = &["adaptive", "disabled"];
+
+/// Effort enums accepted by the Bedrock Claude routes.
+const EFFORT_LOW_TO_MAX: &[&str] = &["low", "medium", "high", "xhigh", "max"];
+const EFFORT_LOW_TO_MAX_NO_XHIGH: &[&str] = &["low", "medium", "high", "max"];
+
+/// Reasoning controls accepted by one Bedrock Claude route.
+struct ReasoningControls {
+    thinking_modes: &'static [&'static str],
+    efforts: &'static [&'static str],
+}
+
+/// Controls keyed by the Converse model id.
+fn reasoning_controls(model: &str) -> Option<(&'static str, ReasoningControls)> {
+    // Longer ids first so `claude-opus-5-5` never matches `claude-opus-5`.
+    if model.contains(CLAUDE_OPUS_55_BEDROCK_MODEL) {
+        return Some((
+            "Opus 5.5",
+            ReasoningControls {
+                thinking_modes: THINKING_ADAPTIVE,
+                efforts: EFFORT_LOW_TO_MAX,
+            },
+        ));
+    }
+    if model.contains(CLAUDE_FABLE_51_BEDROCK_MODEL) {
+        return Some((
+            "Fable 5.1",
+            ReasoningControls {
+                thinking_modes: THINKING_ADAPTIVE,
+                efforts: EFFORT_LOW_TO_MAX,
+            },
+        ));
+    }
+    if model.contains(CLAUDE_FABLE_5_BEDROCK_MODEL) {
+        return Some((
+            "Fable 5",
+            ReasoningControls {
+                thinking_modes: THINKING_ADAPTIVE,
+                efforts: EFFORT_LOW_TO_MAX,
+            },
+        ));
+    }
+    if model.contains(CLAUDE_OPUS_47_BEDROCK_MODEL) {
+        return Some((
+            "Opus 4.7",
+            ReasoningControls {
+                thinking_modes: THINKING_ADAPTIVE_DISABLED,
+                efforts: EFFORT_LOW_TO_MAX,
+            },
+        ));
+    }
+    if model.contains(CLAUDE_OPUS_48_BEDROCK_MODEL) {
+        return Some((
+            "Opus 4.8",
+            ReasoningControls {
+                thinking_modes: THINKING_ADAPTIVE_DISABLED,
+                efforts: EFFORT_LOW_TO_MAX,
+            },
+        ));
+    }
+    if model.contains(CLAUDE_OPUS_5_BEDROCK_MODEL) {
+        return Some((
+            "Opus 5",
+            ReasoningControls {
+                thinking_modes: THINKING_ADAPTIVE_DISABLED,
+                efforts: EFFORT_LOW_TO_MAX,
+            },
+        ));
+    }
+    if model.contains(CLAUDE_SONNET_5_BEDROCK_MODEL) {
+        return Some((
+            "Sonnet 5",
+            ReasoningControls {
+                thinking_modes: THINKING_ADAPTIVE_DISABLED,
+                efforts: EFFORT_LOW_TO_MAX,
+            },
+        ));
+    }
+    if model.contains(CLAUDE_SONNET_46_BEDROCK_MODEL) {
+        return Some((
+            "Sonnet 4.6",
+            ReasoningControls {
+                thinking_modes: &["enabled", "adaptive", "disabled"],
+                efforts: EFFORT_LOW_TO_MAX_NO_XHIGH,
+            },
+        ));
+    }
+    if model.contains(CLAUDE_OPUS_46_BEDROCK_MODEL) {
+        return Some((
+            "Opus 4.6",
+            ReasoningControls {
+                thinking_modes: &["enabled", "adaptive", "disabled"],
+                efforts: EFFORT_LOW_TO_MAX_NO_XHIGH,
+            },
+        ));
+    }
+    if model.contains(CLAUDE_HAIKU_45_BEDROCK_MODEL) {
+        return Some((
+            "Haiku 4.5",
+            ReasoningControls {
+                thinking_modes: &["enabled", "disabled"],
+                efforts: &[],
+            },
+        ));
+    }
+    None
+}
+
+/// Encode the Claude controls supported by Bedrock Converse.
 ///
-/// Sonnet 5.5 (adaptive-only) and Sonnet 4.6 (budget-style) were probed on
-/// 2026-10-19; Haiku 5.5 was probed on 2026-10-15. Other models have no
-/// verified mapping yet and reject reasoning controls.
+/// Each configured model has its own rule set. Any other Claude model id passes
+/// its reasoning controls through unchanged and lets the upstream decide what
+/// it supports.
 pub(super) fn additional_model_request_fields(
     request: &UnifiedRequest,
     bedrock_model: &str,
@@ -56,14 +175,11 @@ pub(super) fn additional_model_request_fields(
     if model.contains(CLAUDE_SONNET_55_BEDROCK_MODEL) {
         return sonnet_5_5_fields(request);
     }
-    if model.contains(CLAUDE_SONNET_46_BEDROCK_MODEL) {
-        return sonnet_4_6_fields(request);
+    if let Some((label, controls)) = reasoning_controls(&model) {
+        return encode_claude_fields(request, &controls, label);
     }
-    if !bedrock_model.eq_ignore_ascii_case(CLAUDE_HAIKU_55_BEDROCK_MODEL) {
-        if request.options.thinking.is_some() || request.options.reasoning_effort.is_some() {
-            return Err("Bedrock reasoning controls are not mapped for this model".into());
-        }
-        return Ok(None);
+    if !model.contains(CLAUDE_HAIKU_55_BEDROCK_MODEL) {
+        return passthrough_claude_fields(request);
     }
 
     let mut fields = Map::new();
@@ -137,28 +253,49 @@ fn sonnet_5_5_fields(request: &UnifiedRequest) -> Result<Option<Document>, Strin
     claude_fields_to_document(fields)
 }
 
-/// Claude Sonnet 4.6: budget-style; forward enabled{budget_tokens} within the
-/// documented bounds, adaptive, or disabled, plus output_config.effort.
-fn sonnet_4_6_fields(request: &UnifiedRequest) -> Result<Option<Document>, String> {
+/// Forward reasoning controls of a Claude route without its own rules, without
+/// dropping or rewriting them; the upstream reports what it rejects.
+fn passthrough_claude_fields(request: &UnifiedRequest) -> Result<Option<Document>, String> {
     let mut fields = Map::new();
     if let Some(effort) = request.options.reasoning_effort.as_deref() {
-        if !matches!(effort, "low" | "medium" | "high" | "max") {
+        fields.insert("output_config".into(), json!({"effort": effort}));
+    }
+    if let Some(thinking) = &request.options.thinking {
+        fields.insert("thinking".into(), thinking.clone());
+    }
+    claude_fields_to_document(fields)
+}
+
+/// Encode the controls accepted by one Bedrock Claude route. Budget bounds are
+/// re-checked defensively; the model layer already rejects out-of-scope input.
+fn encode_claude_fields(
+    request: &UnifiedRequest,
+    controls: &ReasoningControls,
+    label: &str,
+) -> Result<Option<Document>, String> {
+    let mut fields = Map::new();
+    if let Some(effort) = request.options.reasoning_effort.as_deref() {
+        if !controls.efforts.contains(&effort) {
             return Err(format!(
-                "Bedrock Claude Sonnet 4.6 does not map reasoning_effort {effort}"
+                "Bedrock Claude {label} does not map reasoning_effort {effort}"
             ));
         }
         fields.insert("output_config".into(), json!({"effort": effort}));
     }
     if let Some(thinking) = &request.options.thinking {
-        let type_name = claude_thinking_type(thinking, &["enabled", "adaptive", "disabled"])?;
+        let type_name = claude_thinking_type(thinking, controls.thinking_modes)?;
         let mut value = json!({"type": type_name});
         if type_name == "enabled" {
             let budget = thinking
                 .get("budget_tokens")
                 .and_then(Value::as_u64)
-                .ok_or("Bedrock Claude Sonnet 4.6 requires thinking.budget_tokens for enabled")?;
-            if !(1024..).contains(&budget) {
-                return Err("Bedrock Claude Sonnet 4.6 requires budget_tokens >= 1024".into());
+                .ok_or_else(|| {
+                    format!("Bedrock Claude {label} requires thinking.budget_tokens for enabled")
+                })?;
+            if budget < 1024 {
+                return Err(format!(
+                    "Bedrock Claude {label} requires budget_tokens >= 1024"
+                ));
             }
             if let Some(max) = request
                 .options
@@ -166,10 +303,14 @@ fn sonnet_4_6_fields(request: &UnifiedRequest) -> Result<Option<Document>, Strin
                 .filter(|max| budget >= *max as u64)
             {
                 return Err(format!(
-                    "Bedrock Claude Sonnet 4.6 requires budget_tokens below max_output_tokens ({max})"
+                    "Bedrock Claude {label} requires budget_tokens below max_output_tokens ({max})"
                 ));
             }
             value["budget_tokens"] = json!(budget);
+        } else if thinking.get("budget_tokens").is_some() {
+            return Err(format!(
+                "Bedrock Claude {label} accepts no thinking budget for {type_name} thinking"
+            ));
         }
         if let Some(display) = claude_thinking_display(thinking)? {
             value["display"] = json!(display);
@@ -179,7 +320,7 @@ fn sonnet_4_6_fields(request: &UnifiedRequest) -> Result<Option<Document>, Strin
     claude_fields_to_document(fields)
 }
 
-/// Read and defensively validate `thinking.type` against the model's probed
+/// Read and defensively validate `thinking.type` against the model's supported
 /// modes.
 fn claude_thinking_type<'a>(thinking: &'a Value, supported: &[&str]) -> Result<&'a str, String> {
     let type_name = thinking
@@ -218,7 +359,9 @@ pub(super) fn validate_model_conversation(
     bedrock_model: &str,
     messages: &[ConverseMessage],
 ) -> Result<(), String> {
-    if bedrock_model.eq_ignore_ascii_case(CLAUDE_HAIKU_55_BEDROCK_MODEL)
+    if bedrock_model
+        .to_ascii_lowercase()
+        .contains(CLAUDE_HAIKU_55_BEDROCK_MODEL)
         && messages
             .last()
             .is_some_and(|message| *message.role() == ConversationRole::Assistant)
@@ -1229,11 +1372,15 @@ mod tests {
             validate_model_conversation("global.anthropic.claude-haiku-5-5", &[message.clone()])
                 .is_err()
         );
+        assert!(
+            validate_model_conversation("us.anthropic.claude-haiku-5-5-v1:0", &[message.clone()])
+                .is_err()
+        );
         assert!(validate_model_conversation("global.anthropic.claude-opus-5", &[message]).is_ok());
     }
 
     #[test]
-    fn haiku_55_additional_fields_match_probed_bedrock_parameters() {
+    fn haiku_55_additional_fields_match_bedrock_parameters() {
         let expected = json!({
             "thinking": {"type":"adaptive"},
             "output_config": {"effort":"high"}
@@ -1245,6 +1392,12 @@ mod tests {
             .expect("supported Bedrock parameters")
             .expect("additional fields");
         assert_eq!(document_to_json_value(&fields), expected);
+        // Any inference-profile prefix resolves to the same model.
+        let fields =
+            additional_model_request_fields(&request, "us.anthropic.claude-haiku-5-5-v1:0")
+                .expect("supported Bedrock parameters")
+                .expect("additional fields");
+        assert_eq!(document_to_json_value(&fields), expected);
 
         request.options.thinking = Some(json!({"type":"adaptive", "display":"updates"}));
         let fields = additional_model_request_fields(&request, "global.anthropic.claude-haiku-5-5")
@@ -1254,7 +1407,7 @@ mod tests {
     }
 
     #[test]
-    fn haiku_55_additional_fields_reject_unprobed_parameter_variants() {
+    fn haiku_55_additional_fields_reject_unsupported_parameter_variants() {
         for thinking in [
             json!({"type":"enabled"}),
             json!({"type":"adaptive", "budget_tokens":4096}),
@@ -1301,6 +1454,147 @@ mod tests {
         assert!(
             additional_model_request_fields(&request, "global.anthropic.claude-haiku-5-5",)
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn mapped_claude_routes_encode_thinking_and_effort() {
+        let mut request = UnifiedRequest::default();
+        request.options.reasoning_effort = Some("xhigh".into());
+        request.options.thinking = Some(json!({"type": "adaptive"}));
+        let fields = additional_model_request_fields(&request, "global.anthropic.claude-sonnet-5")
+            .expect("supported Bedrock parameters")
+            .expect("additional fields");
+        assert_eq!(
+            document_to_json_value(&fields),
+            json!({"thinking": {"type": "adaptive"}, "output_config": {"effort": "xhigh"}})
+        );
+
+        // Opus 5.5 is adaptive-only and must not be confused with Opus 5.
+        request.options.reasoning_effort = Some("max".into());
+        let fields =
+            additional_model_request_fields(&request, "global.anthropic.claude-opus-5-5-v1")
+                .expect("supported Bedrock parameters")
+                .expect("additional fields");
+        assert_eq!(
+            document_to_json_value(&fields),
+            json!({"thinking": {"type": "adaptive"}, "output_config": {"effort": "max"}})
+        );
+
+        let mut budget = UnifiedRequest::default();
+        budget.options.max_output_tokens = Some(4096);
+        budget.options.thinking = Some(json!({
+            "type": "enabled",
+            "budget_tokens": 1024,
+            "display": "summarized"
+        }));
+        let fields = additional_model_request_fields(
+            &budget,
+            "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+        )
+        .expect("supported Bedrock parameters")
+        .expect("additional fields");
+        assert_eq!(
+            document_to_json_value(&fields),
+            json!({"thinking": {"type": "enabled", "budget_tokens": 1024, "display": "summarized"}})
+        );
+    }
+
+    #[test]
+    fn mapped_claude_routes_reject_unsupported_parameter_variants() {
+        let cases = [
+            (
+                "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+                json!({"type": "adaptive"}),
+            ),
+            (
+                "global.anthropic.claude-sonnet-5",
+                json!({"type": "enabled", "budget_tokens": 4096}),
+            ),
+            (
+                "global.anthropic.claude-opus-4-7",
+                json!({"type": "between_tools"}),
+            ),
+            (
+                "global.anthropic.claude-opus-5-5",
+                json!({"type": "disabled"}),
+            ),
+            (
+                "global.anthropic.claude-fable-5-1",
+                json!({"type": "adaptive", "budget_tokens": 4096}),
+            ),
+            (
+                "global.anthropic.claude-opus-4-6",
+                json!({"type": "adaptive", "display": "updates"}),
+            ),
+        ];
+        for (model, thinking) in cases {
+            let mut request = UnifiedRequest::default();
+            request.options.max_output_tokens = Some(4096);
+            let label = thinking.to_string();
+            request.options.thinking = Some(thinking);
+            assert!(
+                additional_model_request_fields(&request, model).is_err(),
+                "{model} accepted {label}"
+            );
+        }
+
+        // Budget bounds and the missing effort parameter of Haiku 4.5.
+        let haiku = "global.anthropic.claude-haiku-4-5-20251001-v1:0";
+        let mut too_small = UnifiedRequest::default();
+        too_small.options.max_output_tokens = Some(4096);
+        too_small.options.thinking = Some(json!({"type": "enabled", "budget_tokens": 512}));
+        assert!(additional_model_request_fields(&too_small, haiku).is_err());
+
+        let mut not_below_max = UnifiedRequest::default();
+        not_below_max.options.max_output_tokens = Some(1024);
+        not_below_max.options.thinking = Some(json!({"type": "enabled", "budget_tokens": 1024}));
+        assert!(additional_model_request_fields(&not_below_max, haiku).is_err());
+
+        let mut effort = UnifiedRequest::default();
+        effort.options.reasoning_effort = Some("high".into());
+        assert!(additional_model_request_fields(&effort, haiku).is_err());
+
+        // xhigh is outside the Opus 4.6 enum.
+        let mut opus_46 = UnifiedRequest::default();
+        opus_46.options.reasoning_effort = Some("xhigh".into());
+        assert!(
+            additional_model_request_fields(&opus_46, "global.anthropic.claude-opus-4-6-v1")
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn unmapped_claude_routes_pass_reasoning_controls_through() {
+        let mut request = UnifiedRequest::default();
+        request.options.reasoning_effort = Some("ultra".into());
+        request.options.thinking = Some(json!({
+            "type": "enabled",
+            "budget_tokens": 512,
+            "display": "updates",
+            "block_binding": {"prefix_mismatch_behavior": "error"}
+        }));
+        let fields = additional_model_request_fields(&request, "global.anthropic.claude-opus-9")
+            .expect("unmapped routes pass controls through")
+            .expect("additional fields");
+        assert_eq!(
+            document_to_json_value(&fields),
+            json!({
+                "thinking": {
+                    "type": "enabled",
+                    "budget_tokens": 512,
+                    "display": "updates",
+                    "block_binding": {"prefix_mismatch_behavior": "error"}
+                },
+                "output_config": {"effort": "ultra"}
+            })
+        );
+
+        let empty = UnifiedRequest::default();
+        assert!(
+            additional_model_request_fields(&empty, "global.anthropic.claude-opus-9")
+                .expect("nothing to forward")
+                .is_none()
         );
     }
 
