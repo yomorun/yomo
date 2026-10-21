@@ -454,11 +454,22 @@ mod binding_tests {
         let entries = compile_model_entries(&providers, &models).expect("compile");
         assert_eq!(entries[0].kind, ProviderKind::OpenAiResponses);
 
-        let missing_dialect = serde_json::from_value(serde_json::json!({
+        let defaulted_dialect = serde_json::from_value(serde_json::json!({
             "gpt-5.6-sol": {"upstream":{"provider":"azure"}}
         }))
         .expect("models");
-        assert!(resolve_model_bindings(&providers, &missing_dialect).is_err());
+        let bindings =
+            resolve_model_bindings(&providers, &defaulted_dialect).expect("default binding");
+        assert_eq!(bindings[0].dialect, Some(Dialect::OpenAiResponses));
+
+        let unsupported_chat = serde_json::from_value(serde_json::json!({
+            "gpt-5.6-sol": {
+                "upstream": {"provider":"azure"},
+                "dialect":"openai-chat-completions"
+            }
+        }))
+        .expect("models");
+        assert!(resolve_model_bindings(&providers, &unsupported_chat).is_err());
 
         let unsupported_models = serde_json::from_value(serde_json::json!({
             "gpt-5.5": {

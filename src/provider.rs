@@ -1907,59 +1907,6 @@ mod tests {
     }
 
     #[test]
-    fn azure_tool_rule_reports_rule_identity_for_explicit_and_unset_effort() {
-        let binding = ResolvedBinding {
-            public_model: "gpt-5.6-sol".into(),
-            model: "gpt-5.6-sol".into(),
-            provider: "azure.eastus".into(),
-            upstream: Upstream::AzureOpenai,
-            upstream_model: "gpt-5.6-sol".into(),
-            dialect: Some(Dialect::OpenAiChatCompletions),
-            label: "azure.eastus.gpt-5.6-sol".into(),
-        };
-        let mut request = UnifiedRequest::default();
-        request.tools = Some(vec![UnifiedTool {
-            cache_control: None,
-            source_extensions: None,
-            kind: UnifiedToolKind::Function {
-                name: "read".into(),
-                description: None,
-                parameters: json!({"type": "object"}),
-                strict: None,
-                allowed_callers: None,
-            },
-        }]);
-        request.options.reasoning_effort = Some("high".into());
-        match adapt_bound_request(&mut request, &binding) {
-            Err(ProviderError::Public { error, .. }) => {
-                assert!(
-                    error
-                        .message
-                        .contains("gpt56-chat-tools-require-effort-none"),
-                    "{}",
-                    error.message
-                );
-                assert!(!error.message.contains("AzureOpenai"), "{}", error.message);
-                assert_eq!(error.param.as_deref(), Some("reasoning_effort"));
-            }
-            other => panic!("expected a public denial, got {other:?}"),
-        }
-        request.options.reasoning_effort = None;
-        match adapt_bound_request(&mut request, &binding) {
-            Err(ProviderError::Public { error, .. }) => {
-                assert!(
-                    error.message.contains("effort is unset"),
-                    "{}",
-                    error.message
-                );
-            }
-            other => panic!("expected a public denial for unset effort, got {other:?}"),
-        }
-        request.options.reasoning_effort = Some("none".into());
-        assert!(adapt_bound_request(&mut request, &binding).is_ok());
-    }
-
-    #[test]
     fn azure_gpt6_luna_maps_only_adaptive_thinking_with_explicit_effort() {
         let binding = ResolvedBinding {
             public_model: "gpt-6-luna".into(),
@@ -1989,7 +1936,7 @@ mod tests {
     }
 
     #[test]
-    fn azure_gpt56_responses_route_skips_chat_only_tool_constraint() {
+    fn azure_gpt56_responses_allows_reasoning_with_tools() {
         let binding = ResolvedBinding {
             public_model: "gpt-5.6-sol".into(),
             model: "gpt-5.6-sol".into(),
