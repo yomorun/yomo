@@ -1672,4 +1672,22 @@ mod tests {
 
         assert!(output == input.as_bytes());
     }
+
+    /// Frames that are not valid UTF-8 even when complete pass through unchanged
+    /// and in order, both mid-stream and as the trailing remainder.
+    #[tokio::test]
+    async fn wrap_stream_with_usage_passes_through_invalid_utf8_frames() {
+        let valid = sse_event(
+            "response.output_text.delta",
+            &serde_json::json!({"type": "response.output_text.delta", "delta": "你好"}),
+        );
+        let mut input = b"data: {\"delta\":\"\xff\xfe\"}\n\n".to_vec();
+        input.extend_from_slice(valid.as_bytes());
+        input.extend_from_slice(b"data: \xff");
+
+        let usage_handler = Arc::new(CountingUsageHandler::default());
+        let output = run_wrapped_stream(split_raw(&input, 3), usage_handler).await;
+
+        assert!(output == input);
+    }
 }
