@@ -3,10 +3,19 @@ use async_trait::async_trait;
 use axum::http::StatusCode;
 use futures_core::Stream;
 use futures_util::StreamExt;
+use log::warn;
 use std::collections::HashMap;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::llm_provider::openai_compatible::client::{ApiError, ClientError};
+use crate::llm_provider::openai_compatible::{
+    is_responses_unsupported, parse_upstream_api_mode, responses_event_stream,
+};
+use crate::llm_provider::openai_responses::{
+    UpstreamApiMode, can_fallback_to_chat_completions, chat_to_responses_request,
+    map_responses_to_unified, should_route_to_responses,
+};
 use crate::llm_provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
 use crate::openai_http_mapping::validate_openai_request;
 use crate::openai_types::{ChatCompletionRequest, ToolChoice};
@@ -15,6 +24,10 @@ use crate::serve_config::ConfigError;
 pub struct OpenAIProvider {
     client: crate::llm_provider::openai_compatible::client::Client,
     model_id: Option<String>,
+    upstream_api: UpstreamApiMode,
+    /// Set once the upstream rejected the Responses API, so later requests skip
+    /// the failed Responses attempt.
+    responses_unsupported: AtomicBool,
 }
 
 const CONTENT_FILTER_MESSAGE: &str =
@@ -25,7 +38,33 @@ impl OpenAIProvider {
         client: crate::llm_provider::openai_compatible::client::Client,
         model_id: Option<String>,
     ) -> Self {
-        Self { client, model_id }
+        Self {
+            client,
+            model_id,
+            upstream_api: UpstreamApiMode::default(),
+            responses_unsupported: AtomicBool::new(false),
+        }
+    }
+
+    /// Overrides how the upstream API is selected for a request.
+    pub fn with_upstream_api(mut self, upstream_api: UpstreamApiMode) -> Self {
+        self.upstream_api = upstream_api;
+        self
+    }
+
+    /// Returns `true` when the request must be sent to the Responses API.
+    fn should_use_responses(&self, model: &str) -> bool {
+        should_route_to_responses(
+            self.upstream_api,
+            self.responses_unsupported.load(Ordering::Relaxed),
+            model,
+        )
+    }
+
+    /// Returns `true` when a rejected Responses request may be replayed
+    /// through Chat Completions.
+    fn can_fallback(&self) -> bool {
+        can_fallback_to_chat_completions(self.upstream_api)
     }
 }
 
@@ -43,9 +82,23 @@ impl<M> Provider<M> for OpenAIProvider {
         if let Some(model_id) = &self.model_id {
             request.model = model_id.clone();
         }
-        normalize_gpt5_request(&mut request);
         validate_openai_request(&request).map_err(ProviderError::internal)?;
         let model = request.model.clone();
+
+        if self.should_use_responses(&model) {
+            let translated = chat_to_responses_request(&request)?;
+            match self.client.responses_completions(translated).await {
+                Ok(response) => return map_responses_to_unified(response),
+                // Unsupported upstream: replay through Chat Completions.
+                Err(err) if self.can_fallback() && is_responses_unsupported(&err) => {
+                    self.responses_unsupported.store(true, Ordering::Relaxed);
+                    warn!("responses upstream unsupported, replaying via chat completions: {err}");
+                }
+                Err(err) => return Err(map_openai_error(err, &model)),
+            }
+        }
+
+        normalize_gpt5_request(&mut request);
         let response = self
             .client
             .chat_completions(request)
@@ -66,9 +119,23 @@ impl<M> Provider<M> for OpenAIProvider {
         if let Some(model_id) = &self.model_id {
             request.model = model_id.clone();
         }
-        normalize_gpt5_request(&mut request);
         validate_openai_request(&request).map_err(ProviderError::internal)?;
         let model = request.model.clone();
+
+        if self.should_use_responses(&model) {
+            let translated = chat_to_responses_request(&request)?;
+            match self.client.responses_completions_stream(translated).await {
+                Ok(events) => return Ok(Box::pin(responses_event_stream(events))),
+                // Unsupported upstream: replay through Chat Completions.
+                Err(err) if self.can_fallback() && is_responses_unsupported(&err) => {
+                    self.responses_unsupported.store(true, Ordering::Relaxed);
+                    warn!("responses upstream unsupported, replaying via chat completions: {err}");
+                }
+                Err(err) => return Err(map_openai_error(err, &model)),
+            }
+        }
+
+        normalize_gpt5_request(&mut request);
         let stream = self
             .client
             .chat_completions_stream(request)
@@ -134,7 +201,8 @@ pub fn build_openai_provider(
     }
     let client = crate::llm_provider::openai_compatible::client::Client::new(config)
         .map_err(|err| ConfigError::InvalidProvider(err.to_string()))?;
-    Ok(OpenAIProvider::new(client, model_id))
+    let upstream_api = parse_upstream_api_mode(params.get("upstream_api"))?;
+    Ok(OpenAIProvider::new(client, model_id).with_upstream_api(upstream_api))
 }
 
 fn normalize_gpt5_request(request: &mut ChatCompletionRequest) {
@@ -523,5 +591,42 @@ mod tests {
             error.message,
             "The chatCompletion operation does not work with model gpt-5.4. Please choose different model and try again."
         );
+    }
+
+    #[test]
+    fn build_openai_provider_reads_upstream_api_param() {
+        let params: HashMap<String, String> = HashMap::from([
+            ("api_key".to_string(), "key".to_string()),
+            ("upstream_api".to_string(), "responses".to_string()),
+        ]);
+
+        let provider = build_openai_provider(&params).expect("provider builds");
+
+        assert_eq!(provider.upstream_api, UpstreamApiMode::Responses);
+    }
+
+    #[test]
+    fn build_openai_provider_defaults_upstream_api_to_auto() {
+        let params: HashMap<String, String> =
+            HashMap::from([("api_key".to_string(), "key".to_string())]);
+
+        let provider = build_openai_provider(&params).expect("provider builds");
+
+        assert_eq!(provider.upstream_api, UpstreamApiMode::Auto);
+    }
+
+    #[test]
+    fn build_openai_provider_rejects_invalid_upstream_api() {
+        let params: HashMap<String, String> = HashMap::from([
+            ("api_key".to_string(), "key".to_string()),
+            ("upstream_api".to_string(), "grpc".to_string()),
+        ]);
+
+        let error = match build_openai_provider(&params) {
+            Ok(_) => panic!("expected invalid upstream_api to be rejected"),
+            Err(error) => error,
+        };
+
+        assert!(error.to_string().contains("invalid upstream_api"));
     }
 }

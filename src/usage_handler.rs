@@ -30,6 +30,17 @@ impl EndpointUsage {
     pub fn from_endpoint_payload(endpoint: &str, payload: Value) -> Result<Self, String> {
         match endpoint {
             "/chat/completions" => {
+                if payload.is_null() {
+                    // An upstream that does not report usage must not break
+                    // the request: report zero consumed tokens instead.
+                    return Ok(Self::ChatCompletions(OpenAIUsage {
+                        prompt_tokens: 0,
+                        completion_tokens: 0,
+                        total_tokens: 0,
+                        prompt_tokens_details: None,
+                        completion_tokens_details: None,
+                    }));
+                }
                 if let Ok(usage) = serde_json::from_value::<OpenAIUsage>(payload.clone()) {
                     return Ok(Self::ChatCompletions(usage));
                 }
@@ -676,6 +687,7 @@ mod tests {
         GenerateContentUsage, MessagesUsage, ResponsesUsage, SystemOneUsage, TrafficType,
     };
     use crate::openai_types::{PromptTokensDetails, Usage as OpenAIUsage};
+    use serde_json::Value;
 
     #[test]
     fn from_endpoint_payload_rejects_invalid_chat_completions_shape() {
@@ -689,6 +701,38 @@ mod tests {
         );
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn chat_completions_usage_round_trips_when_upstream_reports_no_usage() {
+        let usage = EndpointUsage::Responses(ResponsesUsage {
+            input_tokens: None,
+            input_tokens_details: None,
+            output_tokens: None,
+            output_tokens_details: None,
+            total_tokens: None,
+        });
+
+        let payload = usage.into_payload("/chat/completions");
+        let parsed = EndpointUsage::from_endpoint_payload("/chat/completions", payload.clone());
+
+        assert!(
+            parsed.is_ok(),
+            "usage payload must round trip, got payload={payload}"
+        );
+    }
+
+    #[test]
+    fn from_endpoint_payload_accepts_missing_chat_completions_usage() {
+        let parsed = EndpointUsage::from_endpoint_payload("/chat/completions", Value::Null)
+            .expect("missing usage must not fail the request");
+
+        let EndpointUsage::ChatCompletions(usage) = parsed else {
+            panic!("expected chat completions usage");
+        };
+        assert_eq!(usage.prompt_tokens, 0);
+        assert_eq!(usage.completion_tokens, 0);
+        assert_eq!(usage.total_tokens, 0);
     }
 
     #[test]

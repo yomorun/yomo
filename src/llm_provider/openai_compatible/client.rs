@@ -10,6 +10,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use tokio::time::timeout;
 
+use crate::llm_provider::openai_responses::{ResponsesRequest, ResponsesResponse};
 use crate::openai_types::{
     ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, ErrorDetail,
 };
@@ -256,7 +257,7 @@ impl Client {
         let parse_error = self.config.error_parser.clone();
 
         Ok(try_stream! {
-            let mut buffer = String::new();
+            let mut reader = SseDataReader::default();
             loop {
                 let chunk = timeout(self.config.stream_idle_timeout, stream.next())
                     .await
@@ -269,42 +270,127 @@ impl Client {
                     let payload = build_debug_response_payload("stream_chunk", None, &chunk);
                     debug!("{}", payload);
                 }
-                let text = String::from_utf8_lossy(&chunk);
-                buffer.push_str(&text);
 
-                while let Some(pos) = buffer.find('\n') {
-                    let line = buffer[..pos].trim().to_string();
-                    buffer.drain(..=pos);
-
-                    if line.is_empty() {
-                        continue;
+                for data in reader.push(&chunk) {
+                    if log_enabled!(Level::Debug) {
+                        let payload = build_debug_stream_event_payload(&data);
+                        debug!("{}", payload);
+                    }
+                    if data == "[DONE]" {
+                        return;
                     }
 
-                    if let Some(data) = line.strip_prefix("data: ") {
-                        if log_enabled!(Level::Debug) {
-                            let payload = build_debug_stream_event_payload(data);
-                            debug!("{}", payload);
-                        }
-                        if data == "[DONE]" {
-                            return;
-                        }
-
-                        match serde_json::from_str::<ChatCompletionChunk>(data) {
-                            Ok(chunk) => yield chunk,
-                            Err(err) => {
-                                let raw = data.as_bytes();
-                                if let Some(parser) = &parse_error {
-                                    if let Some(custom) = (parser)(raw) {
-                                        Err(ClientError::Api(ApiError::Custom {
-                                            status: None,
-                                            value: custom,
-                                        }))?;
-                                    }
+                    match serde_json::from_str::<ChatCompletionChunk>(&data) {
+                        Ok(chunk) => yield chunk,
+                        Err(err) => {
+                            let raw = data.as_bytes();
+                            if let Some(parser) = &parse_error {
+                                if let Some(custom) = (parser)(raw) {
+                                    Err(ClientError::Api(ApiError::Custom {
+                                        status: None,
+                                        value: custom,
+                                    }))?;
                                 }
-                                Err(ClientError::InvalidResponse(err.to_string()))?;
                             }
+                            Err(ClientError::InvalidResponse(err.to_string()))?;
                         }
                     }
+                }
+            }
+        })
+    }
+
+    pub async fn responses_completions(
+        &self,
+        mut request: ResponsesRequest,
+    ) -> Result<ResponsesResponse, ClientError> {
+        request.stream = None;
+        let url = format!("{}/responses", trimmed_base_url(&self.config.base_url));
+        debug!(
+            "upstream.request; url={} body={}",
+            url,
+            json_value_for_log(&request)
+        );
+        let response = self
+            .client
+            .post(url)
+            .bearer_auth(&self.config.api_key)
+            .json(&request)
+            .send()
+            .await?;
+
+        let status = response.status();
+        let bytes = response.bytes().await?;
+        if log_enabled!(Level::Debug) {
+            let payload =
+                build_debug_response_payload("responses_non_stream", Some(status), &bytes);
+            debug!("{}", payload);
+        }
+
+        if !status.is_success() {
+            return Err(self.parse_error(status, &bytes));
+        }
+
+        let parsed: ResponsesResponse = serde_json::from_slice(&bytes)
+            .map_err(|err| ClientError::InvalidResponse(err.to_string()))?;
+        Ok(parsed)
+    }
+
+    pub async fn responses_completions_stream(
+        &self,
+        mut request: ResponsesRequest,
+    ) -> Result<impl Stream<Item = Result<String, ClientError>>, ClientError> {
+        request.stream = Some(true);
+        let url = format!("{}/responses", trimmed_base_url(&self.config.base_url));
+        debug!(
+            "upstream.request; url={} body={}",
+            url,
+            json_value_for_log(&request)
+        );
+        let response = timeout(
+            self.config.stream_first_byte_timeout,
+            self.client
+                .post(url)
+                .bearer_auth(&self.config.api_key)
+                .json(&request)
+                .send(),
+        )
+        .await
+        .map_err(|_| ClientError::Timeout("stream first byte timeout".to_string()))??;
+
+        let status = response.status();
+        if !status.is_success() {
+            let bytes = response.bytes().await?;
+            if log_enabled!(Level::Debug) {
+                let payload =
+                    build_debug_response_payload("responses_stream", Some(status), &bytes);
+                debug!("{}", payload);
+            }
+            return Err(self.parse_error(status, &bytes));
+        }
+
+        let mut stream = response.bytes_stream();
+
+        Ok(try_stream! {
+            let mut reader = SseDataReader::default();
+            loop {
+                let chunk = timeout(self.config.stream_idle_timeout, stream.next())
+                    .await
+                    .map_err(|_| ClientError::Timeout("stream idle timeout".to_string()))?;
+                let Some(chunk) = chunk else {
+                    break;
+                };
+                let chunk = chunk.map_err(ClientError::Http)?;
+
+                for data in reader.push(&chunk) {
+                    if log_enabled!(Level::Debug) {
+                        let payload = build_debug_stream_event_payload(&data);
+                        debug!("{}", payload);
+                    }
+                    if data == "[DONE]" {
+                        return;
+                    }
+                    yield data;
                 }
             }
         })
@@ -409,6 +495,38 @@ fn clear_agent_context(request: &mut ChatCompletionRequest) {
     request.agent_context = None;
 }
 
+/// Splits an SSE byte stream into `data:` payload strings.
+///
+/// The reader buffers raw bytes because upstream chunk boundaries can split a
+/// multi-byte UTF-8 character, so only complete lines are decoded.
+#[derive(Debug, Default)]
+struct SseDataReader {
+    buffer: Vec<u8>,
+}
+
+impl SseDataReader {
+    /// Feeds a chunk and returns the payloads of all complete lines it holds.
+    fn push(&mut self, chunk: &[u8]) -> Vec<String> {
+        self.buffer.extend_from_slice(chunk);
+        let mut payloads = Vec::new();
+        while let Some(position) = self.buffer.iter().position(|byte| *byte == b'\n') {
+            let line = self.buffer.drain(..=position).collect::<Vec<u8>>();
+            if let Some(payload) = parse_sse_data_line(&line) {
+                payloads.push(payload);
+            }
+        }
+        payloads
+    }
+}
+
+/// Extracts the payload of an SSE `data:` line.
+fn parse_sse_data_line(line: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(line);
+    let trimmed = text.trim();
+    let payload = trimmed.strip_prefix("data:")?;
+    Some(payload.strip_prefix(' ').unwrap_or(payload).to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -498,5 +616,25 @@ mod tests {
         };
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(error.r#type, "internal_error");
+    }
+
+    #[test]
+    fn sse_reader_keeps_multibyte_characters_split_across_chunks() {
+        let mut reader = SseDataReader::default();
+        let payload = "data: {\"text\":\"你好\"}\n";
+
+        let mut payloads = reader.push(&payload.as_bytes()[..12]);
+        payloads.extend(reader.push(&payload.as_bytes()[12..]));
+
+        assert_eq!(payloads, vec!["{\"text\":\"你好\"}".to_string()]);
+    }
+
+    #[test]
+    fn sse_reader_ignores_non_data_lines() {
+        let mut reader = SseDataReader::default();
+
+        let payloads = reader.push(b"event: message\ndata: {\"a\":1}\n\n");
+
+        assert_eq!(payloads, vec!["{\"a\":1}".to_string()]);
     }
 }
