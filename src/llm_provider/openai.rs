@@ -149,19 +149,33 @@ fn normalize_gpt5_request(request: &mut ChatCompletionRequest) {
     request.logprobs = None;
     request.top_logprobs = None;
 
-    if request.reasoning_effort.is_some() && has_tool_usage(request) {
-        request.reasoning_effort = None;
+    if !has_tool_usage(request) {
+        return;
     }
 
-    if is_gpt6_sol_luna(&request.model) && has_tool_usage(request) {
+    if requires_none_reasoning_with_tools(&request.model) {
+        // GPT-5.6 and later only accept function calling on Chat Completions
+        // with `reasoning_effort: "none"`. The API defaults to `medium`, so
+        // always set it explicitly, even when the caller omitted it.
         request.reasoning_effort = Some("none".to_string());
+    } else if request.reasoning_effort.is_some() {
+        // Earlier models reject an explicit reasoning effort together with
+        // tools, so omit it and let the provider use its default.
+        request.reasoning_effort = None;
     }
 }
 
-/// gpt-6-sol / gpt-6-luna only support function calling in Chat Completions
-/// with `reasoning_effort: "none"`, so force it explicitly when tools are used.
-fn is_gpt6_sol_luna(model: &str) -> bool {
-    matches!(model, "gpt-6-sol" | "gpt-6-luna")
+/// GPT-5.6 and later models that only support function calling on Chat
+/// Completions with `reasoning_effort: "none"`.
+///
+/// `gpt-6-astra` and `gpt-6.1-sol` are intentionally excluded: they do not
+/// support the `none` effort, and Chat Completions does not support function
+/// calling for them at all, so sending `none` would not make the request valid.
+fn requires_none_reasoning_with_tools(model: &str) -> bool {
+    matches!(
+        model,
+        "gpt-5.6" | "gpt-5.6-sol" | "gpt-5.6-luna" | "gpt-5.6-terra" | "gpt-6-sol" | "gpt-6-luna"
+    )
 }
 
 fn is_target_gpt5_model(model: &str) -> bool {
@@ -172,10 +186,12 @@ fn is_target_gpt5_model(model: &str) -> bool {
             | "gpt-5.4"
             | "gpt-5.4-mini"
             | "gpt-5.4-nano"
+            | "gpt-5.6"
             | "gpt-5.6-sol"
             | "gpt-5.6-luna"
             | "gpt-5.6-terra"
             | "gpt-6-astra"
+            | "gpt-6.1-sol"
             | "gpt-6-sol"
             | "gpt-6-luna"
     )
@@ -290,8 +306,15 @@ mod tests {
     }
 
     #[test]
-    fn normalize_gpt6_sol_luna_forces_reasoning_effort_none_with_tools() {
-        for model in ["gpt-6-sol", "gpt-6-luna"] {
+    fn normalize_gpt56_and_later_forces_reasoning_effort_none_with_tools() {
+        for model in [
+            "gpt-5.6",
+            "gpt-5.6-sol",
+            "gpt-5.6-luna",
+            "gpt-5.6-terra",
+            "gpt-6-sol",
+            "gpt-6-luna",
+        ] {
             let mut request = base_request(model);
             request.reasoning_effort = Some("medium".to_string());
             request.tools = Some(vec![ToolDefinition {
@@ -306,13 +329,79 @@ mod tests {
 
             normalize_gpt5_request(&mut request);
 
-            assert_eq!(request.reasoning_effort.as_deref(), Some("none"));
+            assert_eq!(
+                request.reasoning_effort.as_deref(),
+                Some("none"),
+                "expected {model} to force reasoning_effort none"
+            );
         }
     }
 
     #[test]
-    fn normalize_gpt6_sol_luna_keeps_reasoning_effort_without_tools() {
-        for model in ["gpt-6-sol", "gpt-6-luna"] {
+    fn normalize_gpt56_and_later_forces_none_when_effort_is_omitted() {
+        for model in [
+            "gpt-5.6-sol",
+            "gpt-5.6-luna",
+            "gpt-5.6-terra",
+            "gpt-6-sol",
+            "gpt-6-luna",
+        ] {
+            let mut request = base_request(model);
+            request.tools = Some(vec![ToolDefinition {
+                r#type: "function".to_string(),
+                function: FunctionDefinition {
+                    name: "test_tool".to_string(),
+                    description: None,
+                    strict: None,
+                    parameters: json!({}),
+                },
+            }]);
+
+            normalize_gpt5_request(&mut request);
+
+            assert_eq!(
+                request.reasoning_effort.as_deref(),
+                Some("none"),
+                "expected {model} to default to none with tools"
+            );
+        }
+    }
+
+    #[test]
+    fn normalize_gpt6_astra_and_gpt61_sol_do_not_force_none_with_tools() {
+        for model in ["gpt-6-astra", "gpt-6.1-sol"] {
+            let mut request = base_request(model);
+            request.reasoning_effort = Some("medium".to_string());
+            request.tools = Some(vec![ToolDefinition {
+                r#type: "function".to_string(),
+                function: FunctionDefinition {
+                    name: "test_tool".to_string(),
+                    description: None,
+                    strict: None,
+                    parameters: json!({}),
+                },
+            }]);
+
+            normalize_gpt5_request(&mut request);
+
+            // `none` is not supported by these models, so the effort is
+            // dropped rather than forced.
+            assert!(
+                request.reasoning_effort.is_none(),
+                "expected {model} not to force reasoning_effort none"
+            );
+        }
+    }
+
+    #[test]
+    fn normalize_gpt56_and_later_keeps_reasoning_effort_without_tools() {
+        for model in [
+            "gpt-5.6-sol",
+            "gpt-5.6-luna",
+            "gpt-5.6-terra",
+            "gpt-6-sol",
+            "gpt-6-luna",
+        ] {
             let mut request = base_request(model);
             request.reasoning_effort = Some("medium".to_string());
 
@@ -344,6 +433,7 @@ mod tests {
     #[test]
     fn is_target_gpt5_model_includes_gpt56_and_gpt6_astra() {
         for model in [
+            "gpt-5.6",
             "gpt-5.6-sol",
             "gpt-5.6-luna",
             "gpt-5.6-terra",
@@ -357,6 +447,7 @@ mod tests {
         }
 
         assert!(is_target_gpt5_model("gpt-6-astra"));
+        assert!(is_target_gpt5_model("gpt-6.1-sol"));
 
         assert!(!is_target_gpt5_model("gpt-5.6-unknown"));
         assert!(!is_target_gpt5_model("gpt-6-astra-plus"));
