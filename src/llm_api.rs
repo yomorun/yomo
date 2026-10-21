@@ -32,7 +32,7 @@ use crate::openai_http_mapping::{
 };
 use crate::openai_types::ErrorDetail;
 use crate::provider::{
-    Provider, ProviderError, UnifiedEventKind, UnifiedRequest, UnifiedResponse,
+    Provider, ProviderError, UnifiedEvent, UnifiedEventKind, UnifiedRequest, UnifiedResponse,
     UnifiedResponseError,
 };
 use crate::provider_registry::{ProviderRegistry, SelectionError};
@@ -206,7 +206,20 @@ where
                 response_model_for_mode(&state.response_model_mode, &model_id, response.model);
             Ok(AgentLoopResult::NonStream(response))
         }
-        other => other,
+        Ok(AgentLoopResult::Stream { events }) => {
+            let mode = state.response_model_mode.clone();
+            let routed_model = model_id;
+            let events = events.map(move |item| {
+                item.map(|mut event| {
+                    apply_response_model_to_event(&mut event, &mode, &routed_model);
+                    event
+                })
+            });
+            Ok(AgentLoopResult::Stream {
+                events: Box::pin(events),
+            })
+        }
+        Err(err) => Err(err),
     }
 }
 
@@ -1646,8 +1659,46 @@ fn response_model_for_mode(
                 upstream_model
             }
         }
-        ResponseModelMode::Routed => routed_model.to_string(),
         ResponseModelMode::Fixed(model) => model.clone(),
+    }
+}
+
+fn apply_response_model_to_event(
+    event: &mut UnifiedEvent,
+    mode: &ResponseModelMode,
+    routed_model: &str,
+) {
+    fn apply(response: &mut UnifiedResponse, mode: &ResponseModelMode, routed_model: &str) {
+        let upstream_model = std::mem::take(&mut response.model);
+        response.model = response_model_for_mode(mode, routed_model, upstream_model);
+    }
+
+    match &mut event.kind {
+        UnifiedEventKind::ResponseCreated { response } => {
+            apply(response, mode, routed_model);
+        }
+        UnifiedEventKind::ResponseQueued {
+            response: Some(response),
+        }
+        | UnifiedEventKind::ResponseInProgress {
+            response: Some(response),
+        }
+        | UnifiedEventKind::Completed {
+            response: Some(response),
+        }
+        | UnifiedEventKind::Incomplete {
+            response: Some(response),
+            ..
+        }
+        | UnifiedEventKind::Failed {
+            response: Some(response),
+            ..
+        }
+        | UnifiedEventKind::Cancelled {
+            response: Some(response),
+            ..
+        } => apply(response, mode, routed_model),
+        _ => {}
     }
 }
 
@@ -1731,16 +1782,17 @@ mod tests {
 
     use super::{
         DefaultLlmErrorResponsePolicy, LlmErrorResponsePolicy, ModelEndpointState,
-        body_preview_for_log, build_llm_api, build_model_endpoint_api, decode_payload_for_log,
-        extract_request_model, full_response_error_for_log, provider_error_status,
-        response_model_for_mode, selection_model_endpoint_not_supported_message,
-        selection_model_not_supported_message, selection_model_required_message,
+        apply_response_model_to_event, body_preview_for_log, build_llm_api,
+        build_model_endpoint_api, decode_payload_for_log, extract_request_model,
+        full_response_error_for_log, provider_error_status, response_model_for_mode,
+        selection_model_endpoint_not_supported_message, selection_model_not_supported_message,
+        selection_model_required_message,
     };
     use crate::agent_loop::AgentLoopConfig;
     use crate::connector::TcpConnector;
     use crate::metadata_mgr::MetadataMgrImpl;
     use crate::openai_types::ErrorDetail;
-    use crate::provider::ProviderError;
+    use crate::provider::{ProviderError, UnifiedEvent, UnifiedEventKind, UnifiedResponse};
     use crate::provider_registry::{ByEndpointModel, ConfigProviderRegistry, build_registry};
     use crate::serve_config::{
         DefaultsConfig, ProviderConfig, ResponseModelMode, derive_endpoints_from_typed,
@@ -2315,20 +2367,32 @@ mod tests {
     }
 
     #[test]
-    fn response_model_for_mode_supports_routed_and_fixed() {
-        let routed = response_model_for_mode(
-            &ResponseModelMode::Routed,
-            "routed-model",
-            "upstream-model".to_string(),
-        );
+    fn response_model_for_mode_supports_explicit_model() {
         let fixed = response_model_for_mode(
             &ResponseModelMode::Fixed("fixed-model".to_string()),
             "routed-model",
             "upstream-model".to_string(),
         );
 
-        assert_eq!(routed, "routed-model");
         assert_eq!(fixed, "fixed-model");
+    }
+
+    #[test]
+    fn response_model_override_applies_to_stream_events() {
+        let mut event = UnifiedEvent::new(UnifiedEventKind::ResponseCreated {
+            response: UnifiedResponse::new("resp-1".to_string(), "upstream-model".to_string()),
+        });
+
+        apply_response_model_to_event(
+            &mut event,
+            &ResponseModelMode::Fixed("fixed-model".to_string()),
+            "routed-model",
+        );
+
+        let UnifiedEventKind::ResponseCreated { response } = event.kind else {
+            panic!("expected response created event");
+        };
+        assert_eq!(response.model, "fixed-model");
     }
 
     fn apply_max_tokens(body: serde_json::Value) -> Option<i32> {
@@ -2466,13 +2530,13 @@ mod execute_tests {
         let provider = Arc::new(StaticProvider {
             response: unified_response(),
         });
-        // routed mode: the exit model is rewritten to the routed model_id
+        // fixed mode: the exit model is rewritten to the configured model
         let result = execute(
             provider.clone(),
             "routed-model".to_string(),
             None,
             chat_request(),
-            &engine_state(ResponseModelMode::Routed),
+            &engine_state(ResponseModelMode::Fixed("fixed-model".to_string())),
             (),
             "trace-1".to_string(),
         )
@@ -2481,7 +2545,7 @@ mod execute_tests {
         let AgentLoopResult::NonStream(response) = result else {
             panic!("expected non-stream");
         };
-        assert_eq!(response.model, "routed-model");
+        assert_eq!(response.model, "fixed-model");
 
         // upstream mode: keep the upstream model
         let result = execute(

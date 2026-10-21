@@ -1010,13 +1010,17 @@ impl ProviderConfig {
     }
 }
 
+/// How the `model` field in responses is chosen.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResponseModelMode {
+    /// Preserve the upstream model name, falling back to the routed model.
     Upstream,
-    Routed,
+    /// Always return the configured model name.
     Fixed(String),
 }
 
+/// Parse `response_model`: unset preserves the upstream name, and any
+/// non-empty string fixes the returned name.
 pub fn parse_response_model_mode(value: Option<&str>) -> Result<ResponseModelMode, String> {
     let Some(value) = value else {
         return Ok(ResponseModelMode::Upstream);
@@ -1025,20 +1029,7 @@ pub fn parse_response_model_mode(value: Option<&str>) -> Result<ResponseModelMod
     if value.is_empty() {
         return Err("response_model cannot be empty".to_string());
     }
-    match value {
-        "upstream" => Ok(ResponseModelMode::Upstream),
-        "routed" => Ok(ResponseModelMode::Routed),
-        _ => {
-            if let Some(fixed_value) = value.strip_prefix("fixed:") {
-                let fixed_value = fixed_value.trim();
-                if fixed_value.is_empty() {
-                    return Err("response_model fixed target cannot be empty".to_string());
-                }
-                return Ok(ResponseModelMode::Fixed(fixed_value.to_string()));
-            }
-            Err("response_model must be one of: upstream, routed, fixed:<model_name>".to_string())
-        }
-    }
+    Ok(ResponseModelMode::Fixed(value.to_string()))
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -1459,21 +1450,15 @@ mod tests {
     }
 
     #[test]
-    fn parse_response_model_mode_parses_routed_and_fixed() {
-        let routed = parse_response_model_mode(Some("routed")).expect("routed mode");
-        let fixed = parse_response_model_mode(Some("fixed:gpt-4.1")).expect("fixed mode");
+    fn parse_response_model_mode_parses_plain_string() {
+        let fixed = parse_response_model_mode(Some("gpt-4.1")).expect("fixed model");
 
-        assert_eq!(routed, ResponseModelMode::Routed);
         assert_eq!(fixed, ResponseModelMode::Fixed("gpt-4.1".to_string()));
     }
 
     #[test]
-    fn parse_response_model_mode_rejects_invalid_values() {
-        let empty_fixed = parse_response_model_mode(Some("fixed:   "));
-        let unknown = parse_response_model_mode(Some("something-else"));
-
-        assert!(empty_fixed.is_err());
-        assert!(unknown.is_err());
+    fn parse_response_model_mode_rejects_empty_values() {
+        assert!(parse_response_model_mode(Some("   ")).is_err());
     }
 }
 

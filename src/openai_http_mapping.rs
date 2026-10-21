@@ -45,7 +45,6 @@ fn response_model_for_mode(
                 upstream_model
             }
         }
-        ResponseModelMode::Routed => routed_model.to_string(),
         ResponseModelMode::Fixed(model) => model.clone(),
     }
 }
@@ -1844,51 +1843,6 @@ mod tests {
             });
 
         assert!(has_reasoning_chunk);
-    }
-
-    #[tokio::test]
-    async fn stream_openai_chunks_uses_routed_response_model_mode() {
-        let events = vec![
-            Ok(created(
-                "req-1".into(),
-                "upstream-model".into(),
-                "2026-01-01T00:00:00Z".into(),
-            )),
-            Ok(text("req-1".into(), "hello".into(), false)),
-            Ok(completed(Some("stop".into()))),
-        ];
-
-        let stream = stream_openai_chunks(
-            Box::pin(futures_util::stream::iter(events)),
-            "trace-1".to_string(),
-            "routed-model".to_string(),
-            ResponseModelMode::Routed,
-            Span::none(),
-        );
-
-        let mut payloads = Vec::new();
-        futures_util::pin_mut!(stream);
-        while let Some(item) = stream.next().await {
-            payloads.push(item.expect("stream chunk"));
-        }
-
-        let model_values = payloads
-            .into_iter()
-            .filter_map(|payload| String::from_utf8(payload.to_vec()).ok())
-            .filter_map(|text| text.strip_prefix("data: ").map(str::to_string))
-            .filter(|json| json.trim() != "[DONE]")
-            .filter_map(|json| serde_json::from_str::<Value>(json.trim()).ok())
-            .filter_map(|value| {
-                value
-                    .get("model")
-                    .and_then(Value::as_str)
-                    .map(str::to_string)
-            })
-            .filter(|model| !model.is_empty())
-            .collect::<Vec<_>>();
-
-        assert!(!model_values.is_empty());
-        assert!(model_values.iter().all(|model| model == "routed-model"));
     }
 
     #[tokio::test]

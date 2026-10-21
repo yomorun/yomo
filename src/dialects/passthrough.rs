@@ -347,11 +347,10 @@ pub fn apply_mode_to_json_bytes(
 pub fn apply_response_model_mode_to_json(
     payload_json: &mut Value,
     mode: &ResponseModelMode,
-    routed_model: &str,
+    _routed_model: &str,
 ) -> bool {
     let replacement = match mode {
         ResponseModelMode::Upstream => return false,
-        ResponseModelMode::Routed => routed_model.to_string(),
         ResponseModelMode::Fixed(model) => model.clone(),
     };
 
@@ -658,15 +657,6 @@ mod tests {
         assert_eq!(payload["model"], "fixed-model");
         assert_eq!(payload["response"]["model"], "fixed-model");
         assert_eq!(payload["message"]["model"], "fixed-model");
-
-        // routed mode
-        let mut payload = serde_json::json!({"model": "upstream"});
-        assert!(apply_response_model_mode_to_json(
-            &mut payload,
-            &ResponseModelMode::Routed,
-            "routed-model"
-        ));
-        assert_eq!(payload["model"], "routed-model");
 
         // upstream mode: no rewrite
         let mut payload = serde_json::json!({"model": "upstream"});

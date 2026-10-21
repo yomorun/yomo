@@ -461,7 +461,7 @@ mod tests {
             r#"{"type": "openai-chat-completions", "model_id": "enabled-model",
                 "params": {"base_url": "https://api.example.com/v1",
                 "auth": {"scheme": "bearer", "api_key": "sk-test"},
-                "model": "enabled-model", "response_model": "fixed:masked-model"}}"#,
+                "model": "enabled-model", "response_model": "masked-model"}}"#,
         )];
         let strategy = Arc::new(ByEndpointModel::new(HashMap::from([(
             EndpointKind::ChatCompletions,
