@@ -4,7 +4,7 @@ use crate::models::{Ctx, Profile, generic_profile};
 use crate::provider::{ProviderError, UnifiedRequest};
 use crate::upstreams::Upstream;
 
-mod glm_5_3_flash;
+mod glm_5_3;
 
 const MODELS: &[&str] = &["glm-5.1", "glm-5.2", "glm-5.3", "glm-5.3-flash"];
 
@@ -14,7 +14,7 @@ pub(super) fn profile(id: &str, upstream: Upstream) -> Option<Profile> {
         return None;
     }
     match (id, upstream) {
-        ("glm-5.3-flash", Upstream::Tokenhub) => Some(glm_5_3_flash::tokenhub_profile()),
+        ("glm-5.3-flash", Upstream::Tokenhub) => Some(glm_5_3::flash_tokenhub_profile()),
         (_, Upstream::Tokenhub | Upstream::VolcengineArk) => Some(Profile::chat()),
         (_, other) => generic_profile(other),
     }
@@ -27,7 +27,7 @@ pub(super) fn adapt_request(
     request: &mut UnifiedRequest,
 ) -> Result<(), ProviderError> {
     match id {
-        "glm-5.3-flash" => glm_5_3_flash::adapt_request(ctx, request),
+        "glm-5.3" | "glm-5.3-flash" => glm_5_3::adapt_request(ctx, request),
         _ => Ok(()),
     }
 }

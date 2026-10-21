@@ -117,7 +117,7 @@ pub(crate) async fn build_unified_vertex_request(
             } => {
                 for part in content {
                     let UnifiedContentPartKind::Text { text, .. } = &part.kind else {
-                        return Err(invalid("Vertex system instruction requires text"));
+                        return Err(invalid("system instruction requires text"));
                     };
                     system_parts.push(VertexPart {
                         text: Some(text.clone()),
@@ -209,7 +209,7 @@ pub(crate) async fn build_unified_vertex_request(
                     }],
                 )
             }
-            _ => return Err(invalid("input item has no Vertex representation")),
+            _ => return Err(invalid("input item has no supported representation")),
         };
         let same_message = boundary.is_some()
             && current_boundary == boundary
@@ -232,7 +232,7 @@ pub(crate) async fn build_unified_vertex_request(
         current_boundary = boundary;
     }
     if contents.is_empty() {
-        return Err(invalid("Vertex request requires content"));
+        return Err(invalid("request requires content"));
     }
     let mut generation = VertexGenerationConfig {
         temperature: request.options.temperature.map(|value| value as f32),
@@ -264,9 +264,7 @@ pub(crate) async fn build_unified_vertex_request(
                 generation.response_schema = Some(sanitize_vertex_schema(schema));
             }
             _ => {
-                return Err(invalid(
-                    "output format has no verified Vertex representation",
-                ));
+                return Err(invalid("output format has no verified representation"));
             }
         }
     }
@@ -279,9 +277,7 @@ pub(crate) async fn build_unified_vertex_request(
             ..
         } = &tool.kind
         else {
-            return Err(invalid(
-                "Vertex only supports function tools in this adapter",
-            ));
+            return Err(invalid("only function tools are supported in this adapter"));
         };
         declarations.push(VertexFunctionDeclaration {
             name: name.clone(),
@@ -300,7 +296,7 @@ pub(crate) async fn build_unified_vertex_request(
                 UnifiedToolChoice::None => ("NONE", None),
                 UnifiedToolChoice::Required => ("ANY", None),
                 UnifiedToolChoice::Function(name) => ("ANY", Some(vec![name.clone()])),
-                _ => return Err(invalid("tool choice has no verified Vertex representation")),
+                _ => return Err(invalid("tool choice has no verified representation")),
             };
             Some(VertexToolConfig {
                 function_calling_config: VertexFunctionCallingConfig {
@@ -355,7 +351,7 @@ async fn unified_vertex_part(
                 }
                 _ => {
                     return Err(ProviderError::internal(
-                        "media source has no verified Vertex representation",
+                        "media source has no verified representation",
                     ));
                 }
             };
@@ -365,7 +361,7 @@ async fn unified_vertex_part(
             })
         }
         _ => Err(ProviderError::internal(
-            "content part has no verified Vertex representation",
+            "content part has no verified representation",
         )),
     }
 }
@@ -1270,7 +1266,7 @@ fn map_vertex_thinking_config(
         (Some(_), Some(_)) => Err(ProviderError::Public {
             status: StatusCode::BAD_REQUEST,
             error: ErrorDetail {
-                message: "conflicting reasoning controls reached the Vertex encoder".into(),
+                message: "conflicting reasoning controls reached the encoder".into(),
                 r#type: "invalid_request_error".into(),
                 code: Some("unsupported_conversion".into()),
                 param: Some("reasoning/thinking".into()),
@@ -1306,7 +1302,7 @@ fn map_vertex_thinking_config(
                 _ => Err(ProviderError::Public {
                     status: StatusCode::BAD_REQUEST,
                     error: ErrorDetail {
-                        message: "unknown thinking type reached the Vertex encoder".into(),
+                        message: "unknown thinking type reached the encoder".into(),
                         r#type: "invalid_request_error".into(),
                         code: Some("unsupported_conversion".into()),
                         param: Some("thinking.type".into()),
@@ -1328,7 +1324,7 @@ fn vertex_thinking_level(level: &str) -> Result<VertexThinkingLevel, ProviderErr
             return Err(ProviderError::Public {
                 status: StatusCode::BAD_REQUEST,
                 error: ErrorDetail {
-                    message: format!("unknown thinking level reached the Vertex encoder: {other}"),
+                    message: format!("unknown thinking level reached the encoder: {other}"),
                     r#type: "invalid_request_error".into(),
                     code: Some("unsupported_conversion".into()),
                     param: Some("reasoning_effort".into()),
@@ -2605,6 +2601,20 @@ mod tests {
             function_response_parts[1].response,
             serde_json::json!({"temp": "12C"})
         );
+    }
+
+    #[test]
+    fn encoder_rejection_messages_do_not_name_the_platform() {
+        let mut request = UnifiedRequest::default();
+        request.options.reasoning_effort = Some("high".into());
+        request.options.thinking = Some(serde_json::json!({"type": "enabled"}));
+
+        match map_vertex_thinking_config(&request) {
+            Err(ProviderError::Public { error, .. }) => {
+                assert!(!error.message.contains("Vertex"), "{}", error.message);
+            }
+            other => panic!("expected public bad request, got {other:?}"),
+        }
     }
 
     #[test]

@@ -1,15 +1,14 @@
-//! Claude Sonnet 5 on Bedrock Converse: adaptive and disabled thinking;
+//! Claude Sonnet 5: adaptive and disabled thinking;
 //! budget-style `enabled` and `between_tools` are rejected.
 //! `output_config.effort` accepts low/medium/high/xhigh/max; `none` and
-//! `minimal` are rejected. `display` accepts only summarized/omitted,
-//! block_binding is rejected, and temperature must be 1 while thinking is
+//! `minimal` are rejected. Temperature must be 1 while thinking is
 //! adaptive.
 
 use crate::models::{Ctx, Profile, ReasoningEffort, ThinkingMode};
 use crate::provider::{ProviderError, UnifiedRequest};
 use crate::upstreams::EffortField;
 
-const RULE: &str = "bedrock-sonnet-5-reasoning-controls-only";
+const RULE: &str = "claude-sonnet-5-reasoning-controls";
 
 pub(super) fn bedrock_profile() -> Profile {
     Profile {
@@ -20,10 +19,7 @@ pub(super) fn bedrock_profile() -> Profile {
 
 /// Reject controls outside this model's rule set; nothing is silently dropped
 /// or mapped.
-pub(super) fn adapt_bedrock_request(
-    _ctx: &Ctx,
-    request: &UnifiedRequest,
-) -> Result<(), ProviderError> {
+pub(super) fn adapt_request(_ctx: &Ctx, request: &UnifiedRequest) -> Result<(), ProviderError> {
     super::require_thinking(
         RULE,
         request,
@@ -41,6 +37,14 @@ pub(super) fn adapt_bedrock_request(
         ],
     )?;
     super::reject_modified_sampling_with_active_thinking(request)
+}
+
+/// Bedrock Converse rejects client-only thinking keys.
+pub(super) fn adapt_bedrock_request(
+    _ctx: &Ctx,
+    request: &UnifiedRequest,
+) -> Result<(), ProviderError> {
+    super::reject_client_only_thinking_keys(request)
 }
 
 #[cfg(test)]

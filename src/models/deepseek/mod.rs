@@ -10,7 +10,6 @@ const MODELS: &[&str] = &[
     "deepseek-v4-flash",
     "deepseek-v4.1-flash",
     "deepseek-v4-flash-vision-exp",
-    "deepseek-v4-flash-image-exp",
 ];
 
 pub(super) fn profile(id: &str, upstream: Upstream) -> Option<Profile> {

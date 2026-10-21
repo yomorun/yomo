@@ -6,8 +6,8 @@ use crate::provider::{ProviderError, UnifiedRequest};
 use serde_json::json;
 
 use super::{
-    RULE_2_5_EFFORT, RULE_BUDGET_RANGE, RULE_CONFLICT, RULE_PRO_CANNOT_DISABLE, RULE_TYPE,
-    budget_to_level, effort_tier, level_to_budget, thinking_budget_i64,
+    RULE_2_5_EFFORT_UNSUPPORTED, RULE_BUDGET_RANGE, RULE_CONFLICT, RULE_PRO_CANNOT_DISABLE,
+    RULE_TYPE, budget_to_level, effort_tier, level_to_budget, thinking_budget_i64,
 };
 
 /// Thinking budget bounds for a 2.5 model: `(min, max, can disable with 0)`.
@@ -52,7 +52,7 @@ pub(super) fn adapt(
     let Some(mode) = mode else {
         let Some(tier) = tier else {
             return Err(unsupported(
-                RULE_2_5_EFFORT,
+                RULE_2_5_EFFORT_UNSUPPORTED,
                 "reasoning_effort",
                 "2.5 models express reasoning only through thinking.budget_tokens; only minimal/low/medium/high map onto it",
             ));
@@ -71,7 +71,7 @@ pub(super) fn adapt(
             return Err(unsupported(
                 RULE_TYPE,
                 "thinking.type",
-                "between_tools is not a Vertex thinking mode",
+                "between_tools is not a supported thinking mode",
             ));
         }
         ThinkingMode::Disabled => {
@@ -99,7 +99,7 @@ pub(super) fn adapt(
                 }
                 if ReasoningEffort::parse(effort) != Some(ReasoningEffort::None) {
                     return Err(unsupported(
-                        RULE_2_5_EFFORT,
+                        RULE_2_5_EFFORT_UNSUPPORTED,
                         "reasoning_effort",
                         "only minimal/low/medium/high map onto thinking.budget_tokens",
                     ));
@@ -172,7 +172,7 @@ pub(super) fn adapt(
                         ));
                     }
                     return Err(unsupported(
-                        RULE_2_5_EFFORT,
+                        RULE_2_5_EFFORT_UNSUPPORTED,
                         "reasoning_effort",
                         "only minimal/low/medium/high map onto thinking.budget_tokens",
                     ));
@@ -299,7 +299,16 @@ mod tests {
         let mut request = UnifiedRequest::default();
         for value in ["none", "xhigh", "max"] {
             request.options.reasoning_effort = Some(value.into());
-            assert!(adapt(&vertex("gemini-2.5-flash"), &mut request).is_err());
+            match adapt(&vertex("gemini-2.5-flash"), &mut request) {
+                Err(ProviderError::Public { error, .. }) => {
+                    assert!(
+                        error.message.contains("gemini-2-5-effort-unsupported"),
+                        "{}",
+                        error.message
+                    );
+                }
+                other => panic!("expected a public denial for {value}, got {other:?}"),
+            }
         }
         // none contradicts an enabled request; it only merges with disabled.
         request.options.reasoning_effort = Some("none".into());

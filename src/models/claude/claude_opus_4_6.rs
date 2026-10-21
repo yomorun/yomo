@@ -1,16 +1,15 @@
-//! Claude Opus 4.6 on Bedrock Converse: budget-style `enabled` (budget floor
+//! Claude Opus 4.6: budget-style `enabled` (budget floor
 //! 1024, below `max_tokens`), `adaptive` and `disabled` thinking;
 //! `between_tools` is rejected. `output_config.effort` accepts
 //! low/medium/high/max and also works next to budget thinking; `xhigh`, `none`
-//! and `minimal` are rejected. `display` accepts only summarized/omitted,
-//! block_binding is rejected, and temperature must be 1 while thinking is
+//! and `minimal` are rejected. Temperature must be 1 while thinking is
 //! enabled or adaptive.
 
 use crate::models::{Ctx, Profile, ReasoningEffort, ThinkingMode};
 use crate::provider::{ProviderError, UnifiedRequest};
 use crate::upstreams::EffortField;
 
-const RULE: &str = "bedrock-opus-4-6-reasoning-controls-only";
+const RULE: &str = "claude-opus-4-6-reasoning-controls";
 
 pub(super) fn bedrock_profile() -> Profile {
     Profile {
@@ -21,10 +20,7 @@ pub(super) fn bedrock_profile() -> Profile {
 
 /// Reject controls outside this model's rule set; nothing is silently dropped
 /// or mapped.
-pub(super) fn adapt_bedrock_request(
-    _ctx: &Ctx,
-    request: &UnifiedRequest,
-) -> Result<(), ProviderError> {
+pub(super) fn adapt_request(_ctx: &Ctx, request: &UnifiedRequest) -> Result<(), ProviderError> {
     super::require_thinking(
         RULE,
         request,
@@ -45,6 +41,14 @@ pub(super) fn adapt_bedrock_request(
         ],
     )?;
     super::reject_modified_sampling_with_active_thinking(request)
+}
+
+/// Bedrock Converse rejects client-only thinking keys.
+pub(super) fn adapt_bedrock_request(
+    _ctx: &Ctx,
+    request: &UnifiedRequest,
+) -> Result<(), ProviderError> {
+    super::reject_client_only_thinking_keys(request)
 }
 
 #[cfg(test)]

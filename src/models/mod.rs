@@ -176,6 +176,10 @@ pub fn adapt_request(ctx: &Ctx, request: &mut UnifiedRequest) -> Result<(), Prov
         claude::adapt_request(&id, ctx, request)
     } else if id.starts_with("gemini-") {
         gemini::adapt_request(&id, ctx, request)
+    } else if id.starts_with("kimi-") {
+        kimi::adapt_request(&id, ctx, request)
+    } else if id.starts_with("minimax-") {
+        minimax::adapt_request(&id, ctx, request)
     } else {
         Ok(())
     }
@@ -209,7 +213,10 @@ pub(crate) fn generic_profile(upstream: Upstream) -> Option<Profile> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Profile, ReasoningEffort, ThinkingMode, Upstream, profile};
+    use super::{
+        Ctx, Dialect, Profile, ReasoningEffort, ThinkingMode, UnifiedRequest, Upstream,
+        adapt_request, profile,
+    };
 
     #[test]
     fn native_values_are_not_normalized_to_another_effort_or_thinking_mode() {
@@ -245,6 +252,11 @@ mod tests {
             ("minimax-m3", Upstream::Vllm, true),
             ("minimax-m3", Upstream::Custom, false),
             ("deepseek-v9", Upstream::Tokenhub, false),
+            (
+                "deepseek-v4-flash-image-exp",
+                Upstream::VolcengineArk,
+                false,
+            ),
         ] {
             assert_eq!(
                 profile(model, upstream).is_some(),
@@ -256,5 +268,18 @@ mod tests {
             profile("kimi-k3", Upstream::Vllm),
             Some(Profile::vllm_chat())
         );
+    }
+
+    #[test]
+    fn glm_5_1_effort_passes_through() {
+        let mut request = UnifiedRequest::default();
+        request.options.reasoning_effort = Some("high".into());
+        let ctx = Ctx {
+            model: "glm-5.1",
+            upstream: Upstream::Tokenhub,
+            dialect: Dialect::OpenAiChatCompletions,
+        };
+        assert!(adapt_request(&ctx, &mut request).is_ok());
+        assert_eq!(request.options.reasoning_effort.as_deref(), Some("high"));
     }
 }

@@ -6,6 +6,7 @@
 //! (0 turns thinking off), 2.5-pro 128–32,768 (cannot be turned off), `-1`
 //! means an explicit dynamic budget.
 
+use crate::models::compat::thinking_mode;
 use crate::models::{Ctx, Profile, ReasoningEffort, ThinkingMode, generic_profile, unsupported};
 use crate::provider::{ProviderError, UnifiedRequest};
 use crate::upstreams::{Dialect, EffortField, Upstream};
@@ -27,14 +28,14 @@ const MODELS: &[&str] = &[
 ];
 
 /// Stable rule names cited in errors and tests.
-const RULE_TYPE: &str = "vertex-gemini-thinking-type";
-const RULE_FIELDS: &str = "vertex-gemini-thinking-fields";
-const RULE_2_5_EFFORT: &str = "vertex-gemini-2-5-effort-unmapped";
-const RULE_3_CANNOT_DISABLE: &str = "vertex-gemini-thinking-cannot-be-disabled";
-const RULE_PRO_CANNOT_DISABLE: &str = "vertex-gemini-2-5-pro-thinking-cannot-be-disabled";
-const RULE_BUDGET_RANGE: &str = "vertex-gemini-thinking-budget-range";
-const RULE_LEVEL_UNSUPPORTED: &str = "vertex-gemini-effort-level-unsupported";
-const RULE_CONFLICT: &str = "vertex-gemini-thinking-effort-conflict";
+const RULE_TYPE: &str = "gemini-thinking-type";
+const RULE_FIELDS: &str = "gemini-thinking-fields";
+const RULE_2_5_EFFORT_UNSUPPORTED: &str = "gemini-2-5-effort-unsupported";
+const RULE_3_CANNOT_DISABLE: &str = "gemini-3-thinking-cannot-be-disabled";
+const RULE_PRO_CANNOT_DISABLE: &str = "gemini-2-5-pro-thinking-cannot-be-disabled";
+const RULE_BUDGET_RANGE: &str = "gemini-thinking-budget-range";
+const RULE_LEVEL_UNSUPPORTED: &str = "gemini-effort-level-unsupported";
+const RULE_CONFLICT: &str = "gemini-thinking-effort-conflict";
 
 pub(super) fn profile(id: &str, upstream: Upstream) -> Option<Profile> {
     if !MODELS.contains(&id) {
@@ -128,7 +129,7 @@ fn validate_thinking_shape(request: &UnifiedRequest) -> Result<ThinkingMode, Pro
         return Err(unsupported(
             RULE_FIELDS,
             "thinking",
-            "only type and budget_tokens are mapped for Vertex Gemini",
+            "only type and budget_tokens are supported",
         ));
     }
     match thinking.get("type").and_then(Value::as_str) {
@@ -143,6 +144,30 @@ fn validate_thinking_shape(request: &UnifiedRequest) -> Result<ThinkingMode, Pro
     }
 }
 
+/// Model-level fact: Gemini 3+ and Gemini 2.5 Pro cannot turn thinking off.
+/// This runs before the Vertex-specific field mapping so it applies to every
+/// upstream that serves the model.
+fn reject_disabled_thinking(id: &str, request: &UnifiedRequest) -> Result<(), ProviderError> {
+    if thinking_mode(request) != Some(ThinkingMode::Disabled) {
+        return Ok(());
+    }
+    if gemini_2_5::budget_facts(id).is_none() {
+        return Err(unsupported(
+            RULE_3_CANNOT_DISABLE,
+            "thinking",
+            "Gemini 3 models have no thinking level that turns thinking off",
+        ));
+    }
+    if id == "gemini-2.5-pro" {
+        return Err(unsupported(
+            RULE_PRO_CANNOT_DISABLE,
+            "thinking",
+            "this model cannot turn thinking off",
+        ));
+    }
+    Ok(())
+}
+
 /// Adapt a request for Vertex: validate per-model facts, merge thinking and
 /// effort into one control, and apply the user-licensed lossy budget→level
 /// rewrite for Gemini 3 models. Rejections never modify the request; merges
@@ -152,6 +177,10 @@ pub(super) fn adapt_request(
     ctx: &Ctx,
     request: &mut UnifiedRequest,
 ) -> Result<(), ProviderError> {
+    if !MODELS.contains(&id) {
+        return Ok(());
+    }
+    reject_disabled_thinking(id, request)?;
     if ctx.upstream != Upstream::GoogleVertex {
         return Ok(());
     }
@@ -191,6 +220,23 @@ mod tests {
         assert_eq!(found.effort_field, EffortField::ThinkingLevel);
         assert_eq!(profile("gemini-2.5-pro", Upstream::Tokenhub), None);
         assert_eq!(profile("gemini-unreleased", Upstream::GoogleVertex), None);
+    }
+
+    #[test]
+    fn cannot_disable_is_a_model_rule_outside_vertex() {
+        let chat = |model: &'static str| Ctx {
+            model,
+            upstream: Upstream::Vllm,
+            dialect: Dialect::OpenAiChatCompletions,
+        };
+        for model in ["gemini-3.5-flash", "gemini-4-argon", "gemini-2.5-pro"] {
+            let mut request = UnifiedRequest::default();
+            request.options.thinking = Some(json!({"type": "disabled"}));
+            assert!(adapt(&chat(model), &mut request).is_err(), "{model}");
+        }
+        let mut request = UnifiedRequest::default();
+        request.options.thinking = Some(json!({"type": "disabled"}));
+        assert!(adapt(&chat("gemini-2.5-flash"), &mut request).is_ok());
     }
 
     #[test]

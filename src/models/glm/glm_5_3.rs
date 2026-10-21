@@ -1,15 +1,17 @@
-//! GLM-5.3-Flash: profile and request rules.
+//! GLM-5.3 family: profile and request rules.
+//!
+//! GLM-5.3 and GLM-5.3-Flash always think; the model cannot disable thinking.
 
 use serde_json::Value;
 
 use crate::models::{Ctx, Profile, ThinkingMode, unsupported};
 use crate::provider::{ProviderError, UnifiedRequest};
-use crate::upstreams::{Dialect, Upstream};
+use crate::upstreams::Dialect;
 
-const THINKING_CANNOT_BE_DISABLED: &str = "tokenhub-glm-flash-thinking-cannot-be-disabled";
+const THINKING_CANNOT_BE_DISABLED: &str = "glm-5-3-thinking-cannot-be-disabled";
 
-/// TokenHub serves this model over Chat, Responses and Messages; Chat is the default.
-pub(super) fn tokenhub_profile() -> Profile {
+/// TokenHub serves GLM-5.3-Flash over Chat, Responses and Messages; Chat is the default.
+pub(super) fn flash_tokenhub_profile() -> Profile {
     Profile {
         dialects: &[
             Dialect::OpenAiChatCompletions,
@@ -20,15 +22,12 @@ pub(super) fn tokenhub_profile() -> Profile {
     }
 }
 
-/// On TokenHub, thinking cannot be disabled.
+/// GLM-5.3 and GLM-5.3-Flash always think, regardless of the serving upstream.
 ///
 /// Forced tool choice together with thinking is not established either way, so
 /// it is passed through untouched. Effort is never rewritten: the evidence for
 /// an exhaustive effort list or a max->high mapping conflicts.
-pub(super) fn adapt_request(ctx: &Ctx, request: &mut UnifiedRequest) -> Result<(), ProviderError> {
-    if ctx.upstream != Upstream::Tokenhub {
-        return Ok(());
-    }
+pub(super) fn adapt_request(_ctx: &Ctx, request: &mut UnifiedRequest) -> Result<(), ProviderError> {
     let mode = request
         .options
         .thinking
@@ -40,7 +39,7 @@ pub(super) fn adapt_request(ctx: &Ctx, request: &mut UnifiedRequest) -> Result<(
         return Err(unsupported(
             THINKING_CANNOT_BE_DISABLED,
             "thinking",
-            "this endpoint scope does not allow disabling thinking",
+            "this model always thinks and cannot be disabled",
         ));
     }
     Ok(())
@@ -52,10 +51,11 @@ mod tests {
 
     use super::*;
     use crate::models::{adapt_request as adapt, profile};
+    use crate::upstreams::Upstream;
 
-    fn ctx(upstream: Upstream) -> Ctx<'static> {
+    fn ctx(upstream: Upstream, model: &'static str) -> Ctx<'static> {
         Ctx {
-            model: "GLM-5.3-Flash",
+            model,
             upstream,
             dialect: Dialect::OpenAiChatCompletions,
         }
@@ -69,26 +69,30 @@ mod tests {
     }
 
     #[test]
-    fn tokenhub_rejects_disabled_thinking_and_keeps_effort() {
-        let mut request = with_thinking("disabled");
-        match adapt(&ctx(Upstream::Tokenhub), &mut request) {
-            Err(ProviderError::Public { error, .. }) => {
-                assert_eq!(error.code.as_deref(), Some("unsupported_capability"));
-                assert_eq!(error.param.as_deref(), Some("thinking"));
-                assert!(error.message.contains(THINKING_CANNOT_BE_DISABLED));
+    fn rejects_disabled_thinking_on_every_upstream_and_keeps_effort() {
+        for model in ["GLM-5.3", "GLM-5.3-Flash"] {
+            for upstream in [Upstream::Tokenhub, Upstream::VolcengineArk, Upstream::Vllm] {
+                let mut request = with_thinking("disabled");
+                match adapt(&ctx(upstream, model), &mut request) {
+                    Err(ProviderError::Public { error, .. }) => {
+                        assert_eq!(error.code.as_deref(), Some("unsupported_capability"));
+                        assert_eq!(error.param.as_deref(), Some("thinking"));
+                        assert!(error.message.contains(THINKING_CANNOT_BE_DISABLED));
+                    }
+                    other => panic!("expected a public denial, got {other:?}"),
+                }
             }
-            other => panic!("expected a public denial, got {other:?}"),
         }
-        let mut request = with_thinking("enabled");
-        assert!(adapt(&ctx(Upstream::Tokenhub), &mut request).is_ok());
-        assert_eq!(request.options.reasoning_effort.as_deref(), Some("max"));
-        assert_eq!(request.options.thinking, Some(json!({ "type": "enabled" })));
-    }
-
-    #[test]
-    fn disabled_thinking_is_only_rejected_on_tokenhub() {
-        let mut request = with_thinking("disabled");
-        assert!(adapt(&ctx(Upstream::VolcengineArk), &mut request).is_ok());
+        for (upstream, model) in [
+            (Upstream::Tokenhub, "GLM-5.3"),
+            (Upstream::VolcengineArk, "GLM-5.3-Flash"),
+            (Upstream::Vllm, "GLM-5.3"),
+        ] {
+            let mut request = with_thinking("enabled");
+            assert!(adapt(&ctx(upstream, model), &mut request).is_ok());
+            assert_eq!(request.options.reasoning_effort.as_deref(), Some("max"));
+            assert_eq!(request.options.thinking, Some(json!({ "type": "enabled" })));
+        }
     }
 
     #[test]

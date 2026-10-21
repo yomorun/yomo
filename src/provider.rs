@@ -1670,10 +1670,7 @@ pub fn adapt_bound_request(
     let invalid = |param: &str| ProviderError::Public {
         status: StatusCode::BAD_REQUEST,
         error: ErrorDetail {
-            message: format!(
-                "{param} is not supported by {} on {:?}",
-                binding.model, binding.upstream
-            ),
+            message: format!("{param} is not supported by {}", binding.model),
             r#type: "invalid_request_error".into(),
             code: Some("unsupported_capability".into()),
             param: Some(param.into()),
@@ -1736,7 +1733,7 @@ pub fn adapt_bound_request(
                     }
             )
         }) {
-            return Err(invalid("upstream reasoning/reference state"));
+            return Err(invalid("reasoning/reference state"));
         }
     }
     // Messages output_config.format and OpenAI response_format have different
@@ -1845,7 +1842,7 @@ mod tests {
     }
 
     #[test]
-    fn bedrock_haiku55_allows_only_supported_adaptive_effort_controls() {
+    fn bedrock_haiku55_applies_its_model_reasoning_matrix() {
         let binding = ResolvedBinding {
             public_model: "claude-haiku-5-5".into(),
             model: "claude-haiku-5-5".into(),
@@ -1860,6 +1857,15 @@ mod tests {
         request.options.thinking = Some(json!({"type": "adaptive"}));
         assert!(adapt_bound_request(&mut request, &binding).is_ok());
 
+        request.options.thinking = Some(json!({"type": "disabled"}));
+        assert!(adapt_bound_request(&mut request, &binding).is_ok());
+        request.options.reasoning_effort = Some("xhigh".into());
+        assert!(matches!(
+            adapt_bound_request(&mut request, &binding),
+            Err(ProviderError::Public { .. })
+        ));
+
+        request.options.reasoning_effort = Some("high".into());
         request.options.thinking = Some(json!({"type": "enabled"}));
         assert!(matches!(
             adapt_bound_request(&mut request, &binding),
@@ -1929,10 +1935,11 @@ mod tests {
                 assert!(
                     error
                         .message
-                        .contains("azure-gpt56-chat-tools-require-effort-none"),
+                        .contains("gpt56-chat-tools-require-effort-none"),
                     "{}",
                     error.message
                 );
+                assert!(!error.message.contains("AzureOpenai"), "{}", error.message);
                 assert_eq!(error.param.as_deref(), Some("reasoning_effort"));
             }
             other => panic!("expected a public denial, got {other:?}"),
@@ -2045,7 +2052,34 @@ mod tests {
                 assert!(
                     error
                         .message
-                        .contains("tokenhub-glm-flash-thinking-cannot-be-disabled"),
+                        .contains("glm-5-3-thinking-cannot-be-disabled"),
+                    "{}",
+                    error.message
+                );
+            }
+            other => panic!("expected a public denial, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ark_flash_binding_rejects_disabled_thinking() {
+        let binding = ResolvedBinding {
+            public_model: "viv-fast".into(),
+            model: "glm-5.3-flash".into(),
+            provider: "volcengine.cn".into(),
+            upstream: Upstream::VolcengineArk,
+            upstream_model: "glm-5-3-flash-260828".into(),
+            dialect: Some(Dialect::OpenAiChatCompletions),
+            label: "volcengine.cn.glm-5.3-flash".into(),
+        };
+        let mut request = UnifiedRequest::default();
+        request.options.thinking = Some(json!({"type": "disabled"}));
+        match adapt_bound_request(&mut request, &binding) {
+            Err(ProviderError::Public { error, .. }) => {
+                assert!(
+                    error
+                        .message
+                        .contains("glm-5-3-thinking-cannot-be-disabled"),
                     "{}",
                     error.message
                 );

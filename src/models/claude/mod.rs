@@ -1,6 +1,7 @@
-//! Claude family: Bedrock Converse profiles and per-model request rules.
+//! Claude family: Bedrock Converse profiles, model-level request rules, and
+//! Bedrock-only client-key checks.
 
-use crate::models::compat::{reasoning_effort, thinking_budget, thinking_mode};
+use crate::models::compat::{require_effort_values, thinking_budget, thinking_mode};
 use crate::models::{Ctx, Profile, ReasoningEffort, ThinkingMode, generic_profile, unsupported};
 use crate::provider::{ProviderError, UnifiedRequest};
 use crate::upstreams::{Dialect, EffortField, Upstream};
@@ -68,14 +69,32 @@ pub(super) fn profile(id: &str, upstream: Upstream) -> Option<Profile> {
     }
 }
 
-/// Each configured model has its own rules. A Claude model without a
-/// dedicated file is passed through untouched: the mapper forwards its
+/// Each configured model has its own model-level rules. A Claude model without
+/// a dedicated file is passed through untouched: the mapper forwards its
 /// reasoning controls and the upstream decides what it supports.
+///
+/// Bedrock Converse additionally rejects client-only thinking keys. Those
+/// checks stay platform-specific and run after the model-level rules.
 pub(super) fn adapt_request(
     id: &str,
     ctx: &Ctx,
     request: &mut UnifiedRequest,
 ) -> Result<(), ProviderError> {
+    match id {
+        "claude-haiku-4-5" => claude_haiku_4_5::adapt_request(ctx, request)?,
+        "claude-haiku-5-5" => claude_haiku_5_5::adapt_request(ctx, request)?,
+        "claude-sonnet-4-6" => claude_sonnet_4_6::adapt_request(ctx, request)?,
+        "claude-sonnet-5" => claude_sonnet_5::adapt_request(ctx, request)?,
+        "claude-sonnet-5-5" => claude_sonnet_5_5::adapt_request(ctx, request)?,
+        "claude-opus-4-6" => claude_opus_4_6::adapt_request(ctx, request)?,
+        "claude-opus-4-7" => claude_opus_4_7::adapt_request(ctx, request)?,
+        "claude-opus-4-8" => claude_opus_4_8::adapt_request(ctx, request)?,
+        "claude-opus-5" => claude_opus_5::adapt_request(ctx, request)?,
+        "claude-opus-5-5" => claude_opus_5_5::adapt_request(ctx, request)?,
+        "claude-fable-5" => claude_fable_5::adapt_request(ctx, request)?,
+        "claude-fable-5-1" => claude_fable_5_1::adapt_request(ctx, request)?,
+        _ => return Ok(()),
+    }
     if ctx.upstream != Upstream::AwsBedrock {
         return Ok(());
     }
@@ -112,26 +131,26 @@ pub(super) fn reject_client_only_thinking_keys(
     };
     if thinking.contains_key("block_binding") {
         return Err(unsupported(
-            "bedrock-claude-client-only-thinking-keys",
+            "claude-client-only-thinking-keys",
             "thinking.block_binding",
-            "Bedrock Converse rejects block_binding inputs",
+            "block_binding inputs are not supported",
         ));
     }
-    if let Some(display) = thinking.get("display").and_then(serde_json::Value::as_str) {
-        if display != "summarized" && display != "omitted" {
-            return Err(unsupported(
-                "bedrock-claude-client-only-thinking-keys",
-                "thinking.display",
-                "Bedrock only accepts 'summarized' or 'omitted'",
-            ));
-        }
+    if let Some(display) = thinking.get("display").and_then(serde_json::Value::as_str)
+        && display != "summarized"
+        && display != "omitted"
+    {
+        return Err(unsupported(
+            "claude-client-only-thinking-keys",
+            "thinking.display",
+            "only 'summarized' or 'omitted' are supported",
+        ));
     }
     Ok(())
 }
 
-/// Reject a temperature other than 1 whenever thinking is requested. Bedrock
-/// only accepts temperature 1 with enabled or adaptive thinking and deprecates
-/// it under between_tools.
+/// Reject a temperature other than 1 whenever thinking is requested. Claude
+/// models do not accept modified sampling while thinking is configured.
 pub(super) fn reject_modified_sampling_with_thinking(
     request: &UnifiedRequest,
 ) -> Result<(), ProviderError> {
@@ -142,7 +161,7 @@ pub(super) fn reject_modified_sampling_with_thinking(
             .is_some_and(|value| value != 1.0)
     {
         return Err(unsupported(
-            "bedrock-claude-thinking-requires-temperature-1",
+            "claude-thinking-requires-temperature-1",
             "temperature",
             "temperature may only be 1 while thinking is enabled or adaptive",
         ));
@@ -166,7 +185,7 @@ pub(super) fn reject_modified_sampling_with_active_thinking(
             .is_some_and(|value| value != 1.0)
     {
         return Err(unsupported(
-            "bedrock-claude-thinking-requires-temperature-1",
+            "claude-thinking-requires-temperature-1",
             "temperature",
             "temperature may only be 1 while thinking is enabled or adaptive",
         ));
@@ -231,7 +250,7 @@ pub(super) fn require_thinking(
             "no thinking budget is accepted",
         ));
     }
-    reject_client_only_thinking_keys(request)
+    Ok(())
 }
 
 /// Reject effort values outside the set accepted by one Claude model.
@@ -240,29 +259,7 @@ pub(super) fn require_effort(
     request: &UnifiedRequest,
     efforts: &[ReasoningEffort],
 ) -> Result<(), ProviderError> {
-    let Some(effort) = reasoning_effort(request) else {
-        return Ok(());
-    };
-    if efforts.is_empty() {
-        return Err(unsupported(
-            rule,
-            "reasoning_effort",
-            "this model does not support the effort parameter",
-        ));
-    }
-    if !efforts.contains(&effort) {
-        let supported = efforts
-            .iter()
-            .map(|value| effort_name(*value))
-            .collect::<Vec<_>>()
-            .join("/");
-        return Err(unsupported(
-            rule,
-            "reasoning_effort",
-            &format!("this model accepts effort {supported}"),
-        ));
-    }
-    Ok(())
+    require_effort_values(rule, request, efforts)
 }
 
 fn thinking_name(mode: ThinkingMode) -> &'static str {
@@ -271,18 +268,6 @@ fn thinking_name(mode: ThinkingMode) -> &'static str {
         ThinkingMode::Enabled => "enabled",
         ThinkingMode::Adaptive => "adaptive",
         ThinkingMode::BetweenTools => "between_tools",
-    }
-}
-
-fn effort_name(effort: ReasoningEffort) -> &'static str {
-    match effort {
-        ReasoningEffort::None => "none",
-        ReasoningEffort::Minimal => "minimal",
-        ReasoningEffort::Low => "low",
-        ReasoningEffort::Medium => "medium",
-        ReasoningEffort::High => "high",
-        ReasoningEffort::XHigh => "xhigh",
-        ReasoningEffort::Max => "max",
     }
 }
 
@@ -313,6 +298,21 @@ mod tests {
     }
 
     #[test]
+    fn client_only_thinking_rejection_is_not_platform_specific() {
+        let mut request = UnifiedRequest::default();
+        request.options.thinking = Some(json!({"type": "adaptive", "block_binding": {}}));
+
+        match reject_client_only_thinking_keys(&request) {
+            Err(ProviderError::Public { error, .. }) => {
+                assert!(error.message.contains("claude-client-only-thinking-keys"));
+                assert!(!error.message.contains("Bedrock"));
+                assert!(!error.message.contains("Converse"));
+            }
+            other => panic!("expected a public denial, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn bedrock_models_without_rules_pass_controls_through() {
         let mut request = UnifiedRequest::default();
         request.options.reasoning_effort = Some("high".into());
@@ -323,6 +323,36 @@ mod tests {
         assert_eq!(request.options.reasoning_effort.as_deref(), Some("high"));
         assert_eq!(request.options.thinking, Some(json!({"type": "adaptive"})));
         assert_eq!(request.options.temperature, Some(0.7));
+    }
+
+    #[test]
+    fn model_rules_apply_outside_bedrock() {
+        let chat = |model: &'static str| Ctx {
+            model,
+            upstream: Upstream::Vllm,
+            dialect: Dialect::OpenAiChatCompletions,
+        };
+        for (model, thinking, effort) in [
+            ("claude-sonnet-5", json!({"type": "enabled"}), None),
+            ("claude-opus-5-5", json!({"type": "disabled"}), None),
+            ("claude-haiku-4-5", json!({"type": "adaptive"}), None),
+            (
+                "claude-sonnet-4-6",
+                json!({"type": "adaptive"}),
+                Some("xhigh"),
+            ),
+            ("claude-sonnet-5-5", json!({"type": "disabled"}), None),
+        ] {
+            let mut request = UnifiedRequest::default();
+            request.options.thinking = Some(thinking);
+            request.options.reasoning_effort = effort.map(Into::into);
+            assert!(adapt(&chat(model), &mut request).is_err(), "{model}");
+        }
+
+        let mut request = UnifiedRequest::default();
+        request.options.thinking = Some(json!({"type": "disabled"}));
+        request.options.reasoning_effort = Some("high".into());
+        assert!(adapt(&chat("claude-opus-4-6"), &mut request).is_ok());
     }
 
     #[test]

@@ -47,7 +47,7 @@ const AZURE_CHAT_AND_RESPONSES: &[&str] = &[
 
 /// Azure Chat Completions function tools on GPT-5.6 require effort `none`.
 const AZURE_GPT_56: &[&str] = &["gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.6-terra"];
-const AZURE_GPT_56_CHAT_TOOLS: &str = "azure-gpt56-chat-tools-require-effort-none";
+const AZURE_GPT_56_CHAT_TOOLS: &str = "gpt56-chat-tools-require-effort-none";
 
 fn azure_profile(id: &str) -> Profile {
     if AZURE_RESPONSES_ONLY.contains(&id) {

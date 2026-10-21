@@ -24,7 +24,7 @@ fn adaptive_carried_by_effort(dialect: Dialect, request: &UnifiedRequest) -> boo
             })
 }
 
-const THINKING_UNSUPPORTED: &str = "azure-gpt-6-luna-thinking-unsupported";
+const THINKING_UNSUPPORTED: &str = "gpt-6-luna-thinking-unsupported";
 
 /// Drop redundant adaptive thinking; reject every other thinking mode.
 pub(super) fn adapt_azure_request(
@@ -37,7 +37,7 @@ pub(super) fn adapt_azure_request(
         return Err(unsupported(
             THINKING_UNSUPPORTED,
             "thinking.type",
-            "Azure Responses rejects the thinking parameter; only adaptive carried by an explicit effort is mapped",
+            "the thinking parameter is not supported; only adaptive carried by an explicit effort is mapped",
         ));
     }
     Ok(())

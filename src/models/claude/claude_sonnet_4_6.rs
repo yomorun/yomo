@@ -1,16 +1,15 @@
-//! Claude Sonnet 4.6 on Bedrock Converse: budget-style `enabled` (budget floor
+//! Claude Sonnet 4.6: budget-style `enabled` (budget floor
 //! 1024, below `max_output_tokens`), `adaptive` and `disabled` thinking;
 //! `between_tools` is rejected. `output_config.effort` accepts
-//! low/medium/high/max; `xhigh`, `none` and `minimal` are rejected. `display`
-//! accepts only summarized/omitted, block_binding is rejected, and temperature
-//! must be 1 while thinking is enabled or adaptive.
+//! low/medium/high/max; `xhigh`, `none` and `minimal` are rejected.
+//! Temperature must be 1 while thinking is enabled or adaptive.
 
 use crate::models::compat::{reasoning_effort, thinking_budget, thinking_mode};
 use crate::models::{Ctx, Profile, ReasoningEffort, ThinkingMode, unsupported};
 use crate::provider::{ProviderError, UnifiedRequest};
 use crate::upstreams::EffortField;
 
-const RULE: &str = "bedrock-sonnet-4-6-reasoning-controls-only";
+const RULE: &str = "claude-sonnet-4-6-reasoning-controls";
 /// Upstream floor: `budget_tokens >= 1024`.
 const BUDGET_FLOOR: u64 = 1024;
 
@@ -23,10 +22,7 @@ pub(super) fn bedrock_profile() -> Profile {
 
 /// Reject controls outside this model's rule set; nothing is silently dropped
 /// or mapped.
-pub(super) fn adapt_bedrock_request(
-    _ctx: &Ctx,
-    request: &UnifiedRequest,
-) -> Result<(), ProviderError> {
+pub(super) fn adapt_request(_ctx: &Ctx, request: &UnifiedRequest) -> Result<(), ProviderError> {
     if request.options.thinking.is_some() {
         match thinking_mode(request) {
             Some(ThinkingMode::Enabled) => {
@@ -68,7 +64,6 @@ pub(super) fn adapt_bedrock_request(
                 return Err(unsupported(RULE, "thinking.type", "unknown thinking type"));
             }
         }
-        super::reject_client_only_thinking_keys(request)?;
     }
     if let Some(effort) = reasoning_effort(request) {
         match effort {
@@ -80,19 +75,27 @@ pub(super) fn adapt_bedrock_request(
                 return Err(unsupported(
                     RULE,
                     "reasoning_effort",
-                    "upstream rejects xhigh for this model; supported levels are low/medium/high/max",
+                    "xhigh is not supported for this model; supported levels are low/medium/high/max",
                 ));
             }
             ReasoningEffort::None | ReasoningEffort::Minimal => {
                 return Err(unsupported(
                     RULE,
                     "reasoning_effort",
-                    "upstream effort enum is low/medium/high/xhigh/max; none/minimal do not exist",
+                    "supported effort levels are low/medium/high/xhigh/max",
                 ));
             }
         }
     }
     super::reject_modified_sampling_with_thinking(request)
+}
+
+/// Bedrock Converse rejects client-only thinking keys.
+pub(super) fn adapt_bedrock_request(
+    _ctx: &Ctx,
+    request: &UnifiedRequest,
+) -> Result<(), ProviderError> {
+    super::reject_client_only_thinking_keys(request)
 }
 
 #[cfg(test)]

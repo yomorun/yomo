@@ -3,8 +3,8 @@
 
 use serde_json::Value;
 
-use super::{ReasoningEffort, ThinkingMode};
-use crate::provider::{UnifiedRequest, UnifiedToolKind};
+use super::{ReasoningEffort, ThinkingMode, unsupported};
+use crate::provider::{ProviderError, UnifiedRequest, UnifiedToolKind};
 
 /// Reasoning effort when it is set to a recognized native value.
 pub(super) fn reasoning_effort(request: &UnifiedRequest) -> Option<ReasoningEffort> {
@@ -44,4 +44,50 @@ pub(super) fn has_function_tools(request: &UnifiedRequest) -> bool {
             .iter()
             .any(|tool| matches!(tool.kind, UnifiedToolKind::Function { .. }))
     })
+}
+
+/// Reject a recognized effort value outside `efforts`.
+///
+/// An empty set means the model has no effort parameter. Unrecognized strings
+/// are left to the upstream, so a new native tier is never guessed.
+pub(super) fn require_effort_values(
+    rule: &str,
+    request: &UnifiedRequest,
+    efforts: &[ReasoningEffort],
+) -> Result<(), ProviderError> {
+    let Some(effort) = reasoning_effort(request) else {
+        return Ok(());
+    };
+    if efforts.is_empty() {
+        return Err(unsupported(
+            rule,
+            "reasoning_effort",
+            "this model does not support the effort parameter",
+        ));
+    }
+    if !efforts.contains(&effort) {
+        let supported = efforts
+            .iter()
+            .map(|value| effort_name(*value))
+            .collect::<Vec<_>>()
+            .join("/");
+        return Err(unsupported(
+            rule,
+            "reasoning_effort",
+            &format!("this model accepts effort {supported}"),
+        ));
+    }
+    Ok(())
+}
+
+fn effort_name(effort: ReasoningEffort) -> &'static str {
+    match effort {
+        ReasoningEffort::None => "none",
+        ReasoningEffort::Minimal => "minimal",
+        ReasoningEffort::Low => "low",
+        ReasoningEffort::Medium => "medium",
+        ReasoningEffort::High => "high",
+        ReasoningEffort::XHigh => "xhigh",
+        ReasoningEffort::Max => "max",
+    }
 }

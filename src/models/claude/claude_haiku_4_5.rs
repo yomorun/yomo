@@ -1,15 +1,14 @@
-//! Claude Haiku 4.5 on Bedrock Converse: budget-style `enabled` (budget floor
+//! Claude Haiku 4.5: budget-style `enabled` (budget floor
 //! 1024, below `max_tokens`) and `disabled` thinking; `adaptive` and
-//! `between_tools` are rejected. The model has no effort parameter, so the
-//! profile keeps `EffortField::Unknown` and the binding check rejects any
-//! reasoning_effort. `display` accepts only summarized/omitted, block_binding
-//! is rejected, and temperature must be 1 only while thinking is enabled.
+//! `between_tools` are rejected. The model has no effort parameter, so any
+//! recognized `reasoning_effort` is rejected. Temperature must be 1 only while
+//! thinking is enabled.
 
 use crate::models::{Ctx, Profile, ThinkingMode};
 use crate::provider::{ProviderError, UnifiedRequest};
 use crate::upstreams::EffortField;
 
-const RULE: &str = "bedrock-haiku-4-5-reasoning-controls-only";
+const RULE: &str = "claude-haiku-4-5-reasoning-controls";
 
 pub(super) fn bedrock_profile() -> Profile {
     Profile {
@@ -21,16 +20,21 @@ pub(super) fn bedrock_profile() -> Profile {
 
 /// Reject controls outside this model's rule set; nothing is silently dropped
 /// or mapped.
-pub(super) fn adapt_bedrock_request(
-    _ctx: &Ctx,
-    request: &UnifiedRequest,
-) -> Result<(), ProviderError> {
+pub(super) fn adapt_request(_ctx: &Ctx, request: &UnifiedRequest) -> Result<(), ProviderError> {
     super::require_thinking(
         RULE,
         request,
         &[ThinkingMode::Enabled, ThinkingMode::Disabled],
     )?;
     super::reject_modified_sampling_with_active_thinking(request)
+}
+
+/// Bedrock Converse rejects client-only thinking keys.
+pub(super) fn adapt_bedrock_request(
+    _ctx: &Ctx,
+    request: &UnifiedRequest,
+) -> Result<(), ProviderError> {
+    super::reject_client_only_thinking_keys(request)
 }
 
 #[cfg(test)]

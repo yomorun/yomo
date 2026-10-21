@@ -150,6 +150,15 @@ fn reasoning_controls(model: &str) -> Option<(&'static str, ReasoningControls)> 
             },
         ));
     }
+    if model.contains(CLAUDE_HAIKU_55_BEDROCK_MODEL) {
+        return Some((
+            "Haiku 5.5",
+            ReasoningControls {
+                thinking_modes: THINKING_ADAPTIVE_DISABLED,
+                efforts: EFFORT_LOW_TO_MAX,
+            },
+        ));
+    }
     if model.contains(CLAUDE_HAIKU_45_BEDROCK_MODEL) {
         return Some((
             "Haiku 4.5",
@@ -178,56 +187,7 @@ pub(super) fn additional_model_request_fields(
     if let Some((label, controls)) = reasoning_controls(&model) {
         return encode_claude_fields(request, &controls, label);
     }
-    if !model.contains(CLAUDE_HAIKU_55_BEDROCK_MODEL) {
-        return passthrough_claude_fields(request);
-    }
-
-    let mut fields = Map::new();
-    if let Some(effort) = request.options.reasoning_effort.as_deref() {
-        if effort != "high" {
-            return Err("Bedrock Claude Haiku 5.5 only maps reasoning_effort high".into());
-        }
-        fields.insert("output_config".into(), json!({"effort": effort}));
-    }
-    if let Some(thinking) = &request.options.thinking {
-        let Some(thinking) = thinking.as_object() else {
-            return Err("Bedrock Claude Haiku 5.5 requires a thinking object".into());
-        };
-        if thinking
-            .keys()
-            .any(|key| key != "type" && key != "block_binding" && key != "display")
-            || thinking.get("type").and_then(Value::as_str) != Some("adaptive")
-            || thinking
-                .get("display")
-                .is_some_and(|display| display.as_str() != Some("updates"))
-        {
-            return Err(
-                "Bedrock Haiku 5.5 maps adaptive thinking with optional updates display".into(),
-            );
-        }
-        if let Some(block_binding) = thinking.get("block_binding") {
-            let supported = block_binding.as_object().is_some_and(|binding| {
-                binding.len() == 1
-                    && binding
-                        .get("prefix_mismatch_behavior")
-                        .and_then(Value::as_str)
-                        .is_some_and(|value| matches!(value, "error" | "drop_block"))
-            });
-            if !supported || has_reasoning_history(request) {
-                return Err(
-                    "Bedrock cannot apply thinking.block_binding to existing reasoning history"
-                        .into(),
-                );
-            }
-        }
-        fields.insert("thinking".into(), json!({"type": "adaptive"}));
-    }
-
-    if fields.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(json_value_to_document(&Value::Object(fields))))
-    }
+    passthrough_claude_fields(request)
 }
 
 /// Claude Sonnet 5.5: adaptive-only; forward adaptive/between_tools thinking
@@ -237,12 +197,15 @@ fn sonnet_5_5_fields(request: &UnifiedRequest) -> Result<Option<Document>, Strin
     if let Some(effort) = request.options.reasoning_effort.as_deref() {
         if !matches!(effort, "low" | "medium" | "high" | "xhigh" | "max") {
             return Err(format!(
-                "Bedrock Claude Sonnet 5.5 does not map reasoning_effort {effort}"
+                "Claude Sonnet 5.5 does not map reasoning_effort {effort}"
             ));
         }
         fields.insert("output_config".into(), json!({"effort": effort}));
     }
     if let Some(thinking) = &request.options.thinking {
+        if thinking.get("block_binding").is_some() {
+            return Err("Claude Sonnet 5.5 rejects thinking.block_binding".into());
+        }
         let type_name = claude_thinking_type(thinking, &["adaptive", "between_tools"])?;
         let mut value = json!({"type": type_name});
         if let Some(display) = claude_thinking_display(thinking)? {
@@ -277,12 +240,15 @@ fn encode_claude_fields(
     if let Some(effort) = request.options.reasoning_effort.as_deref() {
         if !controls.efforts.contains(&effort) {
             return Err(format!(
-                "Bedrock Claude {label} does not map reasoning_effort {effort}"
+                "Claude {label} does not map reasoning_effort {effort}"
             ));
         }
         fields.insert("output_config".into(), json!({"effort": effort}));
     }
     if let Some(thinking) = &request.options.thinking {
+        if thinking.get("block_binding").is_some() {
+            return Err(format!("Claude {label} rejects thinking.block_binding"));
+        }
         let type_name = claude_thinking_type(thinking, controls.thinking_modes)?;
         let mut value = json!({"type": type_name});
         if type_name == "enabled" {
@@ -290,12 +256,10 @@ fn encode_claude_fields(
                 .get("budget_tokens")
                 .and_then(Value::as_u64)
                 .ok_or_else(|| {
-                    format!("Bedrock Claude {label} requires thinking.budget_tokens for enabled")
+                    format!("Claude {label} requires thinking.budget_tokens for enabled")
                 })?;
             if budget < 1024 {
-                return Err(format!(
-                    "Bedrock Claude {label} requires budget_tokens >= 1024"
-                ));
+                return Err(format!("Claude {label} requires budget_tokens >= 1024"));
             }
             if let Some(max) = request
                 .options
@@ -303,13 +267,13 @@ fn encode_claude_fields(
                 .filter(|max| budget >= *max as u64)
             {
                 return Err(format!(
-                    "Bedrock Claude {label} requires budget_tokens below max_output_tokens ({max})"
+                    "Claude {label} requires budget_tokens below max_output_tokens ({max})"
                 ));
             }
             value["budget_tokens"] = json!(budget);
         } else if thinking.get("budget_tokens").is_some() {
             return Err(format!(
-                "Bedrock Claude {label} accepts no thinking budget for {type_name} thinking"
+                "Claude {label} accepts no thinking budget for {type_name} thinking"
             ));
         }
         if let Some(display) = claude_thinking_display(thinking)? {
@@ -326,10 +290,10 @@ fn claude_thinking_type<'a>(thinking: &'a Value, supported: &[&str]) -> Result<&
     let type_name = thinking
         .get("type")
         .and_then(Value::as_str)
-        .ok_or("Bedrock Claude thinking requires a type")?;
+        .ok_or("Claude thinking requires a type")?;
     if !supported.contains(&type_name) {
         return Err(format!(
-            "Bedrock Claude thinking type {type_name} is not mapped for this model"
+            "Claude thinking type {type_name} is not mapped for this model"
         ));
     }
     Ok(type_name)
@@ -342,7 +306,7 @@ fn claude_thinking_display(thinking: &Value) -> Result<Option<&str>, String> {
         None => Ok(None),
         Some(display @ ("summarized" | "omitted")) => Ok(Some(display)),
         Some(other) => Err(format!(
-            "Bedrock Claude thinking display {other} is not accepted; only summarized/omitted"
+            "Claude thinking display {other} is not accepted; only summarized/omitted"
         )),
     }
 }
@@ -367,39 +331,10 @@ pub(super) fn validate_model_conversation(
             .is_some_and(|message| *message.role() == ConversationRole::Assistant)
     {
         return Err(
-            "Bedrock Claude Haiku 5.5 does not support assistant message prefill; conversation must end with a user message".into(),
+            "Claude Haiku 5.5 does not support assistant message prefill; conversation must end with a user message".into(),
         );
     }
     Ok(())
-}
-
-fn has_reasoning_history(request: &UnifiedRequest) -> bool {
-    request
-        .instructions
-        .iter()
-        .flatten()
-        .chain(&request.input)
-        .any(|item| match &item.kind {
-            UnifiedInputItemKind::Reasoning {
-                summary,
-                content,
-                encrypted_content,
-            } => !is_empty_reasoning_placeholder(
-                summary,
-                content.as_deref(),
-                encrypted_content.as_deref(),
-            ),
-            UnifiedInputItemKind::Message { content, .. } => content.iter().any(|part| {
-                matches!(
-                    &part.kind,
-                    UnifiedContentPartKind::Thinking {
-                        text,
-                        signature: Some(_)
-                    } if !text.is_empty()
-                ) || matches!(&part.kind, UnifiedContentPartKind::RedactedThinking { .. })
-            }),
-            _ => false,
-        })
 }
 
 fn is_empty_reasoning_placeholder(
@@ -449,7 +384,7 @@ pub fn unified_to_converse_request(
             ) {
                 continue;
             }
-            return Err("Bedrock Converse cannot represent provider reasoning history".into());
+            return Err("provider reasoning history cannot be represented".into());
         }
         let (role, blocks) = match &item.kind {
             UnifiedInputItemKind::Message {
@@ -459,7 +394,7 @@ pub fn unified_to_converse_request(
             } => {
                 for part in content {
                     let UnifiedContentPartKind::Text { text, .. } = &part.kind else {
-                        return Err("Converse system content requires text".into());
+                        return Err("system content requires text".into());
                     };
                     if !text.is_empty() {
                         system.push(SystemContentBlock::Text(text.clone()));
@@ -472,9 +407,7 @@ pub fn unified_to_converse_request(
                     UnifiedRole::Assistant => ConversationRole::Assistant,
                     UnifiedRole::User => ConversationRole::User,
                     _ => {
-                        return Err(
-                            "Converse tool results require function_call_output items".into()
-                        );
+                        return Err("tool results require function_call_output items".into());
                     }
                 };
                 (
@@ -535,12 +468,11 @@ pub fn unified_to_converse_request(
                             UnifiedContentPartKind::Text { text, .. } => {
                                 Ok(ToolResultContentBlock::Text(text.clone()))
                             }
-                            _ => Err("Converse tool-result content mapping is not established"
-                                .to_owned()),
+                            _ => Err("tool-result content mapping is not established".to_owned()),
                         })
                         .collect::<Result<Vec<_>, _>>()?,
                     UnifiedToolOutput::Missing => {
-                        return Err("Converse tool output is required".into());
+                        return Err("tool output is required".into());
                     }
                 };
                 let block = ToolResultBlock::builder()
@@ -560,7 +492,7 @@ pub fn unified_to_converse_request(
                     vec![ContentBlock::ToolResult(block)],
                 )
             }
-            _ => return Err("input item cannot be represented in Converse".into()),
+            _ => return Err("input item cannot be represented".into()),
         };
         let same_message = current
             .as_ref()
@@ -598,7 +530,7 @@ pub fn unified_to_converse_request(
             ..
         } = &tool.kind
         else {
-            return Err("Converse cannot encode non-function tools".into());
+            return Err("cannot encode non-function tools".into());
         };
         let spec = ToolSpecification::builder()
             .name(name)
@@ -625,7 +557,7 @@ pub fn unified_to_converse_request(
                         .build()
                         .map_err(|error| error.to_string())?,
                 ),
-                _ => return Err("Converse tool-choice mapping is not established".into()),
+                _ => return Err("tool-choice mapping is not established".into()),
             };
             Some(
                 ToolConfiguration::builder()
@@ -673,7 +605,7 @@ fn unified_content_block(part: &UnifiedContentPart) -> Result<ContentBlock, Stri
         }
         UnifiedContentPartKind::Thinking {
             signature: None, ..
-        } => Err("Bedrock Converse reasoning history requires a signature".into()),
+        } => Err("reasoning history requires a signature".into()),
         UnifiedContentPartKind::RedactedThinking { data } => {
             let bytes = base64::engine::general_purpose::STANDARD
                 .decode(data)
@@ -694,7 +626,7 @@ fn unified_content_block(part: &UnifiedContentPart) -> Result<ContentBlock, Stri
             source: UnifiedMediaSource::Base64 { data, media_type },
             ..
         } => image_url_to_block(&format!("data:{media_type};base64,{data}")),
-        _ => Err("content part cannot be represented in Converse".into()),
+        _ => Err("content part cannot be represented".into()),
     }
 }
 
@@ -1399,11 +1331,24 @@ mod tests {
                 .expect("additional fields");
         assert_eq!(document_to_json_value(&fields), expected);
 
-        request.options.thinking = Some(json!({"type":"adaptive", "display":"updates"}));
+        request.options.reasoning_effort = Some("medium".into());
+        request.options.thinking = Some(json!({"type": "disabled"}));
         let fields = additional_model_request_fields(&request, "global.anthropic.claude-haiku-5-5")
-            .expect("Bedrock ConverseStream handles incremental display")
+            .expect("disabled thinking")
             .expect("additional fields");
-        assert_eq!(document_to_json_value(&fields), expected);
+        assert_eq!(
+            document_to_json_value(&fields),
+            json!({"thinking":{"type":"disabled"}, "output_config":{"effort":"medium"}})
+        );
+
+        request.options.thinking = Some(json!({"type":"adaptive", "display":"omitted"}));
+        let fields = additional_model_request_fields(&request, "global.anthropic.claude-haiku-5-5")
+            .expect("Bedrock accepts omitted display")
+            .expect("additional fields");
+        assert_eq!(
+            document_to_json_value(&fields),
+            json!({"thinking":{"type":"adaptive", "display":"omitted"}, "output_config":{"effort":"medium"}})
+        );
     }
 
     #[test]
@@ -1411,7 +1356,9 @@ mod tests {
         for thinking in [
             json!({"type":"enabled"}),
             json!({"type":"adaptive", "budget_tokens":4096}),
-            json!({"type":"adaptive", "display":"omitted"}),
+            json!({"type":"disabled", "budget_tokens":0}),
+            json!({"type":"adaptive", "display":"updates"}),
+            json!({"type":"between_tools"}),
         ] {
             let mut request = UnifiedRequest::default();
             request.options.thinking = Some(thinking);
@@ -1420,37 +1367,21 @@ mod tests {
                     .is_err()
             );
         }
+        let mut request = UnifiedRequest::default();
+        request.options.reasoning_effort = Some("none".into());
+        assert!(
+            additional_model_request_fields(&request, "global.anthropic.claude-haiku-5-5",)
+                .is_err()
+        );
     }
 
     #[test]
-    fn haiku_55_omits_block_binding_only_without_reasoning_history() {
+    fn haiku_55_rejects_block_binding() {
         let mut request = UnifiedRequest::default();
         request.options.thinking = Some(json!({
             "type":"adaptive",
             "block_binding":{"prefix_mismatch_behavior":"drop_block"}
         }));
-        let fields = additional_model_request_fields(&request, "global.anthropic.claude-haiku-5-5")
-            .expect("block binding is client-side without thinking history")
-            .expect("adaptive thinking field");
-        assert_eq!(
-            document_to_json_value(&fields),
-            json!({"thinking":{"type":"adaptive"}})
-        );
-
-        request
-            .input
-            .push(UnifiedInputItem::new(UnifiedInputItemKind::Message {
-                role: UnifiedRole::Assistant,
-                content: vec![UnifiedContentPart {
-                    kind: UnifiedContentPartKind::Thinking {
-                        text: "previous thought".into(),
-                        signature: Some("signature".into()),
-                    },
-                    cache_control: None,
-                    source_extensions: None,
-                }],
-                phase: None,
-            }));
         assert!(
             additional_model_request_fields(&request, "global.anthropic.claude-haiku-5-5",)
                 .is_err()
@@ -1749,11 +1680,11 @@ mod tests {
             ],
             ..Default::default()
         };
-        assert!(
-            unified_to_converse_request(&request)
-                .expect_err("unsigned thought cannot be replayed")
-                .contains("requires a signature")
-        );
+        let error =
+            unified_to_converse_request(&request).expect_err("unsigned thought cannot be replayed");
+        assert!(error.contains("requires a signature"));
+        assert!(!error.contains("Bedrock"));
+        assert!(!error.contains("Converse"));
     }
 
     #[test]
