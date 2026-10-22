@@ -232,9 +232,7 @@ fn default_dialect(upstream: Upstream) -> Option<Dialect> {
         Upstream::Tokenhub
         | Upstream::AzureOpenai
         | Upstream::VolcengineArk
-        | Upstream::Vivgrid
-        | Upstream::OpenaiCompatible
-        | Upstream::Vllm => Some(Dialect::OpenAiChatCompletions),
+        | Upstream::OpenaiCompatible => Some(Dialect::OpenAiChatCompletions),
         Upstream::AwsBedrock => Some(Dialect::BedrockConverse),
         Upstream::GoogleVertex => Some(Dialect::GeminiGenerateContent),
         Upstream::Custom => None,
@@ -247,9 +245,7 @@ fn upstream_supports_dialect(upstream: Upstream, dialect: Dialect) -> bool {
             dialect,
             Dialect::OpenAiChatCompletions | Dialect::OpenAiResponses
         ),
-        Upstream::Vivgrid | Upstream::OpenaiCompatible | Upstream::Vllm => {
-            dialect == Dialect::OpenAiChatCompletions
-        }
+        Upstream::OpenaiCompatible => dialect == Dialect::OpenAiChatCompletions,
         Upstream::AwsBedrock => dialect == Dialect::BedrockConverse,
         Upstream::GoogleVertex => dialect == Dialect::GeminiGenerateContent,
         Upstream::Custom => false,

@@ -1767,7 +1767,7 @@ mod tests {
             public_model: "public-model".into(),
             model: "upstream-model".into(),
             provider: "connection".into(),
-            upstream: Upstream::Vivgrid,
+            upstream: Upstream::OpenaiCompatible,
             upstream_model: "deployment-id".into(),
             dialect: Some(dialect),
             label: "connection.deployment-id".into(),

@@ -624,8 +624,6 @@ pub fn error_response(
 }
 
 /// Stream serialization: `OpenAiSseStreamMapper` (IR events -> SSE bytes).
-///
-/// The handler keeps this pluggable via `StreamMapperSelector` (e.g. BYOC vivgrid).
 pub fn stream_mapper() -> OpenAiSseStreamMapper {
     OpenAiSseStreamMapper
 }

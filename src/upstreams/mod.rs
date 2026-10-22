@@ -10,7 +10,6 @@ pub mod aws_bedrock;
 pub mod azure_openai;
 pub mod google_vertex;
 pub mod tokenhub;
-pub mod vivgrid;
 pub mod volcengine_ark;
 
 /// Service integration selected by a configured connection.
@@ -27,12 +26,8 @@ pub enum Upstream {
     AwsBedrock,
     /// Google Vertex AI.
     GoogleVertex,
-    /// Vivgrid API.
-    Vivgrid,
     /// Explicit OpenAI-compatible integration for custom services.
     OpenaiCompatible,
-    /// Explicit self-hosted vLLM integration.
-    Vllm,
     /// Opaque forwarding without a conversation dialect.
     Custom,
 }
@@ -159,7 +154,6 @@ pub fn parse_error(
         Upstream::VolcengineArk => volcengine_ark::parse_error(status, headers, body),
         Upstream::AwsBedrock => aws_bedrock::parse_error(status, headers, body),
         Upstream::GoogleVertex => google_vertex::parse_error(status, headers, body),
-        Upstream::Vivgrid => vivgrid::parse_error(status, headers, body),
         _ => fallback_error(status, headers, body),
     }
 }

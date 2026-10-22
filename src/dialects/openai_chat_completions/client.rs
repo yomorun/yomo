@@ -461,7 +461,7 @@ mod tests {
             public_model: "deepseek-v4-flash".into(),
             model: "deepseek-v4-flash".into(),
             provider: "allegro.cn.local".into(),
-            upstream: Upstream::Vllm,
+            upstream: Upstream::OpenaiCompatible,
             upstream_model: "DeepSeek-V4-Flash".into(),
             dialect: Some(Dialect::OpenAiChatCompletions),
             label: "allegro.cn.DeepSeek-V4-Flash".into(),
