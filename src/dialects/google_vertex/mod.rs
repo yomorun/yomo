@@ -27,6 +27,7 @@ use crate::provider::UpstreamLog;
 use crate::provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
 use crate::provider::{UnifiedEventKind, UnifiedRequest};
 use crate::serve_config::GoogleVertexParams;
+use crate::utils::SseDataReader;
 
 const CLOUD_PLATFORM_SCOPE: &str = "https://www.googleapis.com/auth/cloud-platform";
 
@@ -230,38 +231,26 @@ impl<M> Provider<M> for GoogleVertexProvider {
             let mut state = VertexStreamState::default();
             state.model = model_id;
 
-            let mut buffer = String::new();
+            let mut reader = SseDataReader::default();
             while let Some(item) = stream.next().await {
                 let chunk = item.map_err(|err| ProviderError::internal(err.to_string()))?;
-                let text = String::from_utf8_lossy(&chunk);
-                buffer.push_str(&text);
 
-                while let Some(pos) = buffer.find('\n') {
-                    let line = buffer[..pos].trim().to_string();
-                    buffer.drain(..=pos);
-                    if line.is_empty() {
-                        continue;
+                for data in reader.push(&chunk) {
+                    diagnostics.bytes("upstream.stream_event", data.as_bytes());
+                    if data.trim() == "[DONE]" {
+                        if !state.completed {
+                            yield UnifiedEvent::new(UnifiedEventKind::Completed { response: None });
+                        }
+                        return;
                     }
-                    if let Some(data) = line
-                        .strip_prefix("data: ")
-                        .or_else(|| line.strip_prefix("data:"))
+
+                    let value: VertexGenerateContentResponse = serde_json::from_str(&data)
+                        .map_err(|err| ProviderError::internal(format!("parse vertex stream event: {err}")))?;
+
+                    for event in
+                        map_vertex_stream_chunk(&value, &mut state, &self.thought_signatures)
                     {
-                        diagnostics.bytes("upstream.stream_event", data.as_bytes());
-                        if data.trim() == "[DONE]" {
-                            if !state.completed {
-                                yield UnifiedEvent::new(UnifiedEventKind::Completed { response: None });
-                            }
-                            return;
-                        }
-
-                        let value: VertexGenerateContentResponse = serde_json::from_str(data)
-                            .map_err(|err| ProviderError::internal(format!("parse vertex stream event: {err}")))?;
-
-                        for event in
-                            map_vertex_stream_chunk(&value, &mut state, &self.thought_signatures)
-                        {
-                            yield event;
-                        }
+                        yield event;
                     }
                 }
             }

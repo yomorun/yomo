@@ -30,6 +30,17 @@ impl EndpointUsage {
     pub fn from_endpoint_payload(endpoint: &str, payload: Value) -> Result<Self, String> {
         match endpoint {
             "/chat/completions" => {
+                if payload.is_null() {
+                    // An upstream that does not report usage must not break
+                    // the request: report zero consumed tokens instead.
+                    return Ok(Self::ChatCompletions(OpenAIUsage {
+                        prompt_tokens: 0,
+                        completion_tokens: 0,
+                        total_tokens: 0,
+                        prompt_tokens_details: None,
+                        completion_tokens_details: None,
+                    }));
+                }
                 if let Ok(usage) = serde_json::from_value::<OpenAIUsage>(payload.clone()) {
                     return Ok(Self::ChatCompletions(usage));
                 }
@@ -689,6 +700,20 @@ mod tests {
         );
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn from_endpoint_payload_maps_null_chat_usage_to_zero() {
+        let usage =
+            EndpointUsage::from_endpoint_payload("/chat/completions", serde_json::Value::Null)
+                .expect("null usage must map to zero usage");
+
+        let EndpointUsage::ChatCompletions(usage) = usage else {
+            panic!("expected chat/completions usage");
+        };
+        assert_eq!(usage.prompt_tokens, 0);
+        assert_eq!(usage.completion_tokens, 0);
+        assert_eq!(usage.total_tokens, 0);
     }
 
     #[test]

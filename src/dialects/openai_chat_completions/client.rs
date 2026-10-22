@@ -17,6 +17,7 @@ use crate::serve_config::{AuthScheme, ResolvedBinding};
 use crate::upstreams::{
     Dialect, EffortField, MaxTokensField, UpstreamError, parse_error, request_path,
 };
+use crate::utils::SseDataReader;
 use axum::http::HeaderMap;
 use reqwest::RequestBuilder;
 
@@ -320,7 +321,7 @@ impl Client {
         let binding = self.config.binding.clone();
 
         Ok(try_stream! {
-            let mut buffer = String::new();
+            let mut reader = SseDataReader::default();
             loop {
                 let chunk = timeout(self.config.stream_idle_timeout, stream.next())
                     .await
@@ -329,42 +330,31 @@ impl Client {
                     break;
                 };
                 let chunk = chunk.map_err(ClientError::Http)?;
-                let text = String::from_utf8_lossy(&chunk);
-                buffer.push_str(&text);
 
-                while let Some(pos) = buffer.find('\n') {
-                    let line = buffer[..pos].trim().to_string();
-                    buffer.drain(..=pos);
-
-                    if line.is_empty() {
-                        continue;
+                for data in reader.push(&chunk) {
+                    diagnostics.bytes("upstream.stream_event", data.as_bytes());
+                    if data == "[DONE]" {
+                        return;
                     }
 
-                    if let Some(data) = line.strip_prefix("data: ") {
-                        diagnostics.bytes("upstream.stream_event", data.as_bytes());
-                        if data == "[DONE]" {
-                            return;
-                        }
-
-                        match serde_json::from_str::<ChatCompletionChunk>(data) {
-                            Ok(chunk) => yield chunk,
-                            Err(err) => {
-                                let raw = data.as_bytes();
-                                if let Some(binding) = &binding {
-                                    Err(ClientError::Api(ApiError::Upstream(Box::new(parse_error(
-                                        binding.upstream, StatusCode::BAD_GATEWAY, &HeaderMap::new(), raw,
-                                    )))))?;
-                                }
-                                if let Some(parser) = &custom_error_parser {
-                                    if let Some(custom) = (parser)(raw) {
-                                        Err(ClientError::Api(ApiError::Custom {
-                                            status: None,
-                                            value: custom,
-                                        }))?;
-                                    }
-                                }
-                                Err(ClientError::InvalidResponse(err.to_string()))?;
+                    match serde_json::from_str::<ChatCompletionChunk>(&data) {
+                        Ok(chunk) => yield chunk,
+                        Err(err) => {
+                            let raw = data.as_bytes();
+                            if let Some(binding) = &binding {
+                                Err(ClientError::Api(ApiError::Upstream(Box::new(parse_error(
+                                    binding.upstream, StatusCode::BAD_GATEWAY, &HeaderMap::new(), raw,
+                                )))))?;
                             }
+                            if let Some(parser) = &custom_error_parser {
+                                if let Some(custom) = (parser)(raw) {
+                                    Err(ClientError::Api(ApiError::Custom {
+                                        status: None,
+                                        value: custom,
+                                    }))?;
+                                }
+                            }
+                            Err(ClientError::InvalidResponse(err.to_string()))?;
                         }
                     }
                 }

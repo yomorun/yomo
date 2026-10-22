@@ -25,6 +25,7 @@ use crate::provider::UpstreamLog;
 use crate::provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
 use crate::serve_config::{AuthScheme, OpenAiParams, ResolvedBinding};
 use crate::upstreams::{Dialect, parse_error, request_path};
+use crate::utils::SseDataReader;
 use axum::http::{HeaderMap, StatusCode};
 use reqwest::RequestBuilder;
 use serde_json::{Value, json};
@@ -187,7 +188,7 @@ impl<M> Provider<M> for OpenAiResponsesProvider {
 
         let byte_stream = response.bytes_stream();
         let output = try_stream! {
-            let mut buffer = String::new();
+            let mut reader = SseDataReader::default();
             let mut state = StreamMapState::default();
             let mut stream = byte_stream;
             loop {
@@ -199,22 +200,13 @@ impl<M> Provider<M> for OpenAiResponsesProvider {
                 .map_err(|_| ProviderError::internal("stream idle timeout".to_string()))?;
                 let Some(chunk) = chunk else { break };
                 let chunk = chunk.map_err(|err| ProviderError::internal(err.to_string()))?;
-                buffer.push_str(&String::from_utf8_lossy(&chunk));
 
-                while let Some(pos) = buffer.find('\n') {
-                    let line = buffer[..pos].trim().to_string();
-                    buffer.drain(..=pos);
-                    if line.is_empty() {
-                        continue;
-                    }
-                    let Some(data) = line.strip_prefix("data: ") else {
-                        continue;
-                    };
+                for data in reader.push(&chunk) {
                     diagnostics.bytes("upstream.stream_event", data.as_bytes());
                     if data == "[DONE]" {
                         return;
                     }
-                    let event: Value = serde_json::from_str(data)
+                    let event: Value = serde_json::from_str(&data)
                         .map_err(|err| {
                             ProviderError::internal(format!(
                                 "invalid responses stream event: {err}"

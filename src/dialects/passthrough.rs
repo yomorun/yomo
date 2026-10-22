@@ -23,6 +23,7 @@ use url::Url;
 use crate::dialects::credential::StaticHeaderCredential;
 use crate::dialects::credential::shared_http_client;
 use crate::serve_config::{EndpointKind, PassthroughParams, ResponseModelMode};
+use crate::utils::SseFrameReader;
 
 /// Forwarded response body: full bytes or a stream of byte frames.
 pub enum ForwardBody {
@@ -84,7 +85,7 @@ pub struct PassthroughForwarder {
     model: String,
 }
 
-const FORWARD_HEADER_BLACKLIST: [&str; 12] = [
+const FORWARD_HEADER_BLACKLIST: [&str; 21] = [
     "host",
     "content-length",
     "transfer-encoding",
@@ -97,6 +98,15 @@ const FORWARD_HEADER_BLACKLIST: [&str; 12] = [
     "proxy-authorization",
     "authorization",
     "cookie",
+    "expect",
+    "forwarded",
+    "x-app-id",
+    "x-org-id",
+    "x-app-type",
+    "x-account-state",
+    "x-trace-id",
+    "x-viv-meta",
+    "x-via",
 ];
 
 impl PassthroughForwarder {
@@ -266,9 +276,10 @@ impl PassthroughForwarder {
 fn filter_forward_headers(headers: &HeaderMap) -> HeaderMap {
     let mut filtered = HeaderMap::new();
     for (name, value) in headers {
-        if FORWARD_HEADER_BLACKLIST
-            .iter()
-            .any(|blocked| name.as_str().eq_ignore_ascii_case(blocked))
+        if name.as_str().starts_with("x-forwarded-")
+            || FORWARD_HEADER_BLACKLIST
+                .iter()
+                .any(|blocked| name.as_str().eq_ignore_ascii_case(blocked))
         {
             continue;
         }
@@ -442,14 +453,17 @@ fn apply_mode_to_sse_stream(
     use futures_util::StreamExt;
     Box::pin(async_stream::try_stream! {
         futures_util::pin_mut!(stream);
-        let mut buffer = String::new();
+        let mut reader = SseFrameReader::default();
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|err| std::io::Error::other(err.to_string()))?;
-            buffer.push_str(&String::from_utf8_lossy(&chunk));
 
-            while let Some(pos) = buffer.find("\n\n") {
-                let frame = buffer[..pos + 2].to_string();
-                if let Some(mut payload) = parse_sse_data_json(&frame) {
+            for frame_bytes in reader.push(&chunk) {
+                let Ok(frame) = std::str::from_utf8(&frame_bytes) else {
+                    // Invalid UTF-8 is not ours to rewrite: forward the exact bytes.
+                    yield Bytes::from(frame_bytes);
+                    continue;
+                };
+                if let Some(mut payload) = parse_sse_data_json(frame) {
                     let changed =
                         apply_response_model_mode_to_json(&mut payload, &mode, &routed_model);
                     if let Some(sink) = &usage_sink {
@@ -464,19 +478,18 @@ fn apply_mode_to_sse_stream(
                     }
                     if changed {
                         let json_payload = payload.to_string();
-                        yield Bytes::from(rebuild_sse_frame_with_data(&frame, &json_payload));
-                        buffer.drain(..pos + 2);
+                        yield Bytes::from(rebuild_sse_frame_with_data(frame, &json_payload));
                         continue;
                     }
                 }
                 // forward the frame unchanged
-                yield Bytes::from(frame.to_string());
-                buffer.drain(..pos + 2);
+                yield Bytes::from(frame_bytes);
             }
         }
         // forward remaining non-frame data unchanged
-        if !buffer.is_empty() {
-            yield Bytes::from(buffer);
+        let remainder = reader.finish();
+        if !remainder.is_empty() {
+            yield Bytes::from(remainder);
         }
     })
 }
@@ -746,5 +759,136 @@ mod tests {
             usages[0],
             crate::usage_handler::EndpointUsage::Embeddings(_)
         ));
+    }
+
+    fn sse_stream_from_chunks(
+        chunks: Vec<Vec<u8>>,
+    ) -> impl futures_util::Stream<Item = Result<Bytes, reqwest::Error>> + Send + 'static {
+        futures_util::stream::iter(
+            chunks
+                .into_iter()
+                .map(|chunk| Ok::<Bytes, reqwest::Error>(Bytes::from(chunk))),
+        )
+    }
+
+    async fn collect_sse_stream(
+        stream: impl futures_util::Stream<Item = Result<Bytes, reqwest::Error>> + Send + 'static,
+        mode: ResponseModelMode,
+    ) -> Vec<u8> {
+        use futures_util::StreamExt;
+        let mut stream = apply_mode_to_sse_stream(
+            stream,
+            mode,
+            "routed".to_string(),
+            None,
+            "/embeddings".to_string(),
+        );
+        let mut output = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            output.extend_from_slice(&chunk.expect("chunk"));
+        }
+        output
+    }
+
+    #[tokio::test]
+    async fn sse_stream_preserves_multibyte_characters_across_chunk_sizes() {
+        let wire = concat!(
+            "data: {\"model\":\"up\",\"text\":\"你好，世界\"}\n\n",
+            "data: {\"text\":\"再见\"}\n\n",
+        );
+        let bytes = wire.as_bytes();
+
+        for chunk_size in [1, 7, 4096, 16384] {
+            let chunks = bytes
+                .chunks(chunk_size)
+                .map(|chunk| chunk.to_vec())
+                .collect::<Vec<_>>();
+            let output =
+                collect_sse_stream(sse_stream_from_chunks(chunks), ResponseModelMode::Upstream)
+                    .await;
+            assert_eq!(output, bytes, "chunk size {chunk_size}");
+        }
+    }
+
+    #[tokio::test]
+    async fn sse_stream_reports_usage_once_when_frame_is_split() {
+        use futures_util::StreamExt;
+        let wire = concat!(
+            "data: {\"model\":\"up\",\"usage\":{\"total_tokens\":7},\"text\":\"你好\"}\n\n",
+            "data: [DONE]\n\n",
+        );
+        let chunks = wire
+            .as_bytes()
+            .chunks(3)
+            .map(|chunk| chunk.to_vec())
+            .collect::<Vec<_>>();
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen_sink = seen.clone();
+        let sink: UsageSink = Arc::new(move |usage| {
+            seen_sink.lock().expect("lock").push(usage);
+        });
+
+        let mut stream = apply_mode_to_sse_stream(
+            sse_stream_from_chunks(chunks),
+            ResponseModelMode::Upstream,
+            "routed".to_string(),
+            Some(sink),
+            "/embeddings".to_string(),
+        );
+        let mut output = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            output.extend_from_slice(&chunk.expect("chunk"));
+        }
+
+        assert_eq!(output, wire.as_bytes());
+        let usages = seen.lock().expect("lock");
+        assert_eq!(usages.len(), 1);
+        assert!(matches!(
+            usages[0],
+            crate::usage_handler::EndpointUsage::Embeddings(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn sse_stream_passes_invalid_utf8_bytes_through() {
+        let mut wire = vec![0xff, 0xfe, b'\n', b'\n'];
+        wire.extend_from_slice("data: {\"text\":\"你好\"}\n\n".as_bytes());
+        wire.extend_from_slice(&[0x80, 0x81]);
+        let chunks = wire
+            .chunks(2)
+            .map(|chunk| chunk.to_vec())
+            .collect::<Vec<_>>();
+
+        let output =
+            collect_sse_stream(sse_stream_from_chunks(chunks), ResponseModelMode::Upstream).await;
+
+        assert_eq!(output, wire);
+    }
+
+    #[test]
+    fn forward_headers_drop_gateway_and_server_controlled_values() {
+        let mut headers = HeaderMap::new();
+        for name in [
+            "authorization",
+            "cookie",
+            "expect",
+            "forwarded",
+            "x-forwarded-for",
+            "x-app-id",
+            "x-org-id",
+            "x-app-type",
+            "x-account-state",
+            "x-trace-id",
+            "x-viv-meta",
+            "x-via",
+        ] {
+            headers.append(name, HeaderValue::from_static("blocked"));
+        }
+        headers.append("x-request-id", HeaderValue::from_static("kept"));
+
+        let filtered = filter_forward_headers(&headers);
+
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered.get("x-request-id").expect("kept"), "kept");
     }
 }

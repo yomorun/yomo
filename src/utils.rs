@@ -9,6 +9,78 @@ pub const MAX_LOG_BODY_BYTES: usize = 8 * 1024;
 const LOG_HEAD_BYTES: usize = 2 * 1024;
 const MAX_LOG_JSON_STRING_CHARS: usize = 256;
 
+/// Splits a raw SSE byte stream into `data:` payload strings.
+///
+/// Raw bytes are buffered because a chunk boundary can split a multi-byte
+/// UTF-8 character; only complete lines are decoded.
+#[derive(Debug, Default)]
+pub struct SseDataReader {
+    buffer: Vec<u8>,
+}
+
+impl SseDataReader {
+    /// Feeds a chunk and returns the payloads of all complete lines it now holds.
+    pub fn push(&mut self, chunk: &[u8]) -> Vec<String> {
+        self.buffer.extend_from_slice(chunk);
+        let mut payloads = Vec::new();
+        while let Some(position) = self.buffer.iter().position(|byte| *byte == b'\n') {
+            let line = self.buffer.drain(..=position).collect::<Vec<u8>>();
+            if let Some(payload) = parse_sse_data_line(&line) {
+                payloads.push(payload);
+            }
+        }
+        payloads
+    }
+}
+
+/// Extracts the payload of an SSE `data:` line.
+fn parse_sse_data_line(line: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(line);
+    let trimmed = text.trim();
+    let payload = trimmed.strip_prefix("data:")?;
+    Some(payload.strip_prefix(' ').unwrap_or(payload).to_string())
+}
+
+/// Splits a raw SSE byte stream into complete frames ending with `\n\n`.
+///
+/// The frame delimiter is searched across chunk boundaries, and frames are
+/// returned as raw bytes so callers can pass invalid UTF-8 through unchanged.
+#[derive(Debug, Default)]
+pub struct SseFrameReader {
+    buffer: Vec<u8>,
+}
+
+impl SseFrameReader {
+    /// Feeds a chunk and returns every complete frame it now holds.
+    pub fn push(&mut self, chunk: &[u8]) -> Vec<Vec<u8>> {
+        let search_from = self.buffer.len().saturating_sub(1);
+        self.buffer.extend_from_slice(chunk);
+        let mut frames = Vec::new();
+        let mut search = search_from;
+        while let Some(offset) = find_bytes(&self.buffer[search..], b"\n\n") {
+            let end = search + offset + 2;
+            frames.push(self.buffer[..end].to_vec());
+            self.buffer.drain(..end);
+            search = 0;
+        }
+        frames
+    }
+
+    /// Returns the bytes left after the last complete frame.
+    pub fn finish(self) -> Vec<u8> {
+        self.buffer
+    }
+}
+
+fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() {
+        return Some(0);
+    }
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
+}
+
 /// Build a deterministic tool-call ID from a request prefix and call index.
 pub fn ensure_tool_call_id(prefix: &str, index: usize) -> String {
     format!("{prefix}-tool-{index}")
@@ -148,9 +220,9 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::{
-        LOG_HEAD_BYTES, MAX_LOG_BODY_BYTES, MAX_LOG_JSON_STRING_CHARS, ensure_tool_call_id,
-        json_body_for_log, json_value_for_log, sanitize_name, truncate_bytes_for_log,
-        truncate_for_log,
+        LOG_HEAD_BYTES, MAX_LOG_BODY_BYTES, MAX_LOG_JSON_STRING_CHARS, SseDataReader,
+        SseFrameReader, ensure_tool_call_id, json_body_for_log, json_value_for_log, sanitize_name,
+        truncate_bytes_for_log, truncate_for_log,
     };
 
     #[test]
@@ -242,5 +314,52 @@ mod tests {
                 .expect("string")
                 .ends_with("...[1 more chars]")
         );
+    }
+
+    #[test]
+    fn sse_data_reader_keeps_multibyte_characters_split_across_chunks() {
+        let payload = "data: {\"text\":\"你好\"}\n";
+        let bytes = payload.as_bytes();
+        let split = payload.find('你').expect("chinese character") + 1;
+
+        let mut reader = SseDataReader::default();
+        let mut payloads = reader.push(&bytes[..split]);
+        payloads.extend(reader.push(&bytes[split..]));
+
+        assert_eq!(payloads, vec!["{\"text\":\"你好\"}".to_string()]);
+    }
+
+    #[test]
+    fn sse_data_reader_ignores_non_data_lines() {
+        let mut reader = SseDataReader::default();
+
+        let payloads = reader.push(b"event: message\ndata: {\"a\":1}\n\n");
+
+        assert_eq!(payloads, vec!["{\"a\":1}".to_string()]);
+    }
+
+    #[test]
+    fn sse_frame_reader_finds_delimiter_split_across_chunks() {
+        let mut reader = SseFrameReader::default();
+
+        assert!(reader.push(b"data: {\"a\":1}\n").is_empty());
+        let frames = reader.push(b"\ndata: [DONE]\n\n");
+
+        assert_eq!(
+            frames,
+            vec![
+                b"data: {\"a\":1}\n\n".to_vec(),
+                b"data: [DONE]\n\n".to_vec()
+            ]
+        );
+        assert!(reader.finish().is_empty());
+    }
+
+    #[test]
+    fn sse_frame_reader_keeps_invalid_utf8_bytes() {
+        let mut reader = SseFrameReader::default();
+        let frame = [0xff, 0xfe, b'\n', b'\n'];
+
+        assert_eq!(reader.push(&frame), vec![frame.to_vec()]);
     }
 }
