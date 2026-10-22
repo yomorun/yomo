@@ -27,7 +27,7 @@ use std::sync::Arc;
 /// Returns `Arc<dyn Provider<M>>`; params are already serde-validated, so this only
 /// performs fail-fast validation and assembly.
 pub fn build_client<M: Send + Sync + 'static>(
-    kind: ProviderKind,
+    _kind: ProviderKind,
     params: &ProviderKindParams,
 ) -> Result<Arc<dyn Provider<M>>, String> {
     // fail-fast: only kinds requiring mandatory credentials are rejected here.
@@ -40,11 +40,6 @@ pub fn build_client<M: Send + Sync + 'static>(
             Ok(Arc::new(OpenAiChatCompletionsProvider::new(p)))
         }
         ProviderKindParams::OpenAiResponses(p) => Ok(Arc::new(OpenAiResponsesProvider::new(p))),
-        // The kind remains in the config schema but is not implemented.
-        ProviderKindParams::AnthropicMessages(_) => Err(format!(
-            "provider kind {} is not implemented (see §3 decision 2)",
-            kind.as_config_type()
-        )),
         ProviderKindParams::BedrockConverse(p) => Ok(Arc::new(BedrockConverseProvider::new(p))),
         ProviderKindParams::GoogleVertex(p) => Ok(Arc::new(GoogleVertexProvider::new(p))),
         ProviderKindParams::Passthrough(_) => {
@@ -84,9 +79,6 @@ fn validate_credentials(params: &ProviderKindParams) -> Option<String> {
     match params {
         ProviderKindParams::OpenAiChatCompletions(_) => None,
         ProviderKindParams::OpenAiResponses(_) => None,
-        ProviderKindParams::AnthropicMessages(p) => {
-            empty_key("anthropic-messages", &p.auth.api_key)
-        }
         ProviderKindParams::BedrockConverse(p) => p
             .aws_bearer_token
             .expose_secret()
@@ -114,8 +106,7 @@ fn validate_credentials(params: &ProviderKindParams) -> Option<String> {
 mod tests {
     use super::*;
     use crate::serve_config::{
-        AnthropicParams, AuthConfig, AuthScheme, BedrockParams, GoogleVertexParams, OpenAiParams,
-        PassthroughParams,
+        AuthConfig, AuthScheme, BedrockParams, GoogleVertexParams, OpenAiParams, PassthroughParams,
     };
     use secrecy::SecretString;
     use std::path::PathBuf;
@@ -157,26 +148,6 @@ mod tests {
     }
 
     #[test]
-    fn build_client_rejects_empty_api_key_for_anthropic_messages() {
-        let params = AnthropicParams {
-            base_url: "https://api.anthropic.com".parse().expect("url"),
-            auth: AuthConfig {
-                scheme: AuthScheme::Bearer,
-                api_key: SecretString::from(" "),
-            },
-            model: "claude-opus-5".to_string(),
-        };
-        let err = match build_client::<()>(
-            ProviderKind::AnthropicMessages,
-            &ProviderKindParams::AnthropicMessages(params),
-        ) {
-            Ok(_) => panic!("empty anthropic api_key must be rejected"),
-            Err(err) => err,
-        };
-        assert!(err.contains("api_key is empty"));
-    }
-
-    #[test]
     fn build_client_rejects_missing_google_credentials_file() {
         let params = GoogleVertexParams {
             model: "gemini".to_string(),
@@ -209,26 +180,6 @@ mod tests {
             Err(err) => err,
         };
         assert!(err.contains("aws_bearer_token is empty"));
-    }
-
-    #[test]
-    fn anthropic_messages_returns_unimplemented_per_decision_2() {
-        let params = AnthropicParams {
-            base_url: "https://api.anthropic.com".parse().expect("url"),
-            auth: AuthConfig {
-                scheme: AuthScheme::Bearer,
-                api_key: SecretString::from("k"),
-            },
-            model: "claude-opus-5".to_string(),
-        };
-        let err = match build_client::<()>(
-            ProviderKind::AnthropicMessages,
-            &ProviderKindParams::AnthropicMessages(params),
-        ) {
-            Ok(_) => panic!("anthropic-messages must be unimplemented"),
-            Err(err) => err,
-        };
-        assert!(err.contains("not implemented"));
     }
 
     #[test]

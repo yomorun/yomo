@@ -275,11 +275,10 @@ pub fn compile_model_entries(
                 }
             }
             ProviderKind::AnthropicMessages => {
-                ProviderKindParams::AnthropicMessages(AnthropicParams {
-                    base_url: base_url()?,
-                    auth: connection.auth.clone().ok_or_else(|| missing("auth"))?,
-                    model: binding.upstream_model.clone(),
-                })
+                return Err(ConfigError::InvalidProvider(format!(
+                    "anthropic-messages dialect is not available for {}",
+                    binding.public_model
+                )));
             }
             ProviderKind::BedrockConverse => ProviderKindParams::BedrockConverse(BedrockParams {
                 model: binding.upstream_model.clone(),
@@ -789,14 +788,6 @@ pub struct OpenAiParams {
     pub response_model: Option<String>,
 }
 
-/// anthropic-messages connection params. This provider kind is not currently implemented.
-#[derive(Debug, Clone, Deserialize)]
-pub struct AnthropicParams {
-    pub base_url: Url,
-    pub auth: AuthConfig,
-    pub model: String,
-}
-
 /// bedrock-converse connection params.
 #[derive(Debug, Clone, Deserialize)]
 pub struct BedrockParams {
@@ -851,8 +842,6 @@ pub struct DefaultsConfig {
 pub enum ProviderKindParams {
     OpenAiChatCompletions(OpenAiParams),
     OpenAiResponses(OpenAiParams),
-    /// This provider kind is not currently implemented; `build_client` returns an error.
-    AnthropicMessages(AnthropicParams),
     BedrockConverse(BedrockParams),
     GoogleVertex(GoogleVertexParams),
     Passthrough(PassthroughParams),
@@ -915,9 +904,11 @@ impl<'de> Deserialize<'de> for ProviderConfig {
             ProviderKind::OpenAiResponses => ProviderKindParams::OpenAiResponses(
                 serde_json::from_value(params_value).map_err(DeError::custom)?,
             ),
-            ProviderKind::AnthropicMessages => ProviderKindParams::AnthropicMessages(
-                serde_json::from_value(params_value).map_err(DeError::custom)?,
-            ),
+            ProviderKind::AnthropicMessages => {
+                return Err(DeError::custom(
+                    "provider type anthropic-messages is not available",
+                ));
+            }
             ProviderKind::BedrockConverse => ProviderKindParams::BedrockConverse(
                 serde_json::from_value(params_value).map_err(DeError::custom)?,
             ),
@@ -1235,9 +1226,6 @@ mod typed_provider_schema_tests {
                 {"type": "openai-responses", "model_id": "gpt-5.3-codex",
                  "params": {"base_url": "https://vgllm.example.com/openai/v1",
                             "auth": {"scheme": "api-key", "api_key": "k"}, "model": "gpt-5.3-codex"}},
-                {"type": "anthropic-messages", "model_id": "claude-direct",
-                 "params": {"base_url": "https://api.anthropic.com",
-                            "auth": {"scheme": "bearer", "api_key": "k"}, "model": "claude-opus-5"}},
                 {"type": "bedrock-converse", "model_id": "claude-opus-5",
                  "params": {"model": "global.anthropic.claude-opus-5", "aws_region": "ap-northeast-3",
                             "aws_bearer_token": "tok"}},
@@ -1250,7 +1238,7 @@ mod typed_provider_schema_tests {
         )
         .expect("all kinds must parse");
 
-        assert_eq!(entries.len(), 6);
+        assert_eq!(entries.len(), 5);
     }
 
     #[test]
@@ -1340,6 +1328,16 @@ mod typed_provider_schema_tests {
         )
         .expect_err("unknown type must be rejected");
         assert!(err.to_string().contains("unknown provider type"));
+    }
+
+    #[test]
+    fn anthropic_messages_provider_kind_is_rejected() {
+        let err = parse_typed(r#"{"type":"anthropic-messages","model_id":"claude","params":{}}"#)
+            .expect_err("removed provider kind must be rejected");
+        assert!(
+            err.to_string()
+                .contains("anthropic-messages is not available")
+        );
     }
 
     #[test]
