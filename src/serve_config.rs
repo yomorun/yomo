@@ -9,7 +9,6 @@ use std::marker::PhantomData;
 use std::path::PathBuf;
 use url::Url;
 
-use crate::models;
 use crate::tls::TlsConfig;
 use crate::upstreams::{Dialect, Upstream};
 
@@ -111,10 +110,10 @@ impl ModelRegistryConfig {
 
 /// Model identity and stable connection resolved without inspecting a request.
 #[derive(Debug, Clone)]
-pub struct ResolvedBinding {
+pub struct ModelBinding {
     /// Public API model identity.
     pub public_model: String,
-    /// Canonical model identity used for capability lookup.
+    /// Canonical model identity, independent of the public alias and deployment ID.
     pub model: String,
     /// Connection key.
     pub provider: String,
@@ -132,7 +131,7 @@ pub struct ResolvedBinding {
 pub fn resolve_model_bindings(
     providers: &BTreeMap<String, ConnectionConfig>,
     models: &BTreeMap<String, ModelConfig>,
-) -> Result<Vec<ResolvedBinding>, ConfigError> {
+) -> Result<Vec<ModelBinding>, ConfigError> {
     for name in providers.keys() {
         if name.trim().is_empty() {
             return Err(ConfigError::InvalidProvider(
@@ -194,21 +193,17 @@ pub fn resolve_model_bindings(
             }
             None
         } else {
-            let integration = models::profile(canonical, provider.upstream).ok_or_else(|| {
-                ConfigError::InvalidProvider(format!(
-                    "no model profile for {:?}: {canonical}",
-                    provider.upstream
-                ))
-            })?;
-            if integration.requires_explicit_dialect && model.dialect.is_none() {
+            let selected = model
+                .dialect
+                .or_else(|| default_dialect(provider.upstream))
+                .ok_or_else(|| {
+                    ConfigError::InvalidProvider(format!(
+                        "dialect must be explicitly declared for model route {public_model}"
+                    ))
+                })?;
+            if !upstream_supports_dialect(provider.upstream, selected) {
                 return Err(ConfigError::InvalidProvider(format!(
-                    "dialect must be explicitly declared for model route {public_model}"
-                )));
-            }
-            let selected = model.dialect.unwrap_or(integration.default_dialect);
-            if !integration.dialects.contains(&selected) {
-                return Err(ConfigError::InvalidProvider(format!(
-                    "dialect {selected:?} is not supported for {canonical} on {:?}",
+                    "dialect {selected:?} is not supported by {:?} for {canonical}",
                     provider.upstream
                 )));
             }
@@ -219,7 +214,7 @@ pub fn resolve_model_bindings(
             .label
             .clone()
             .unwrap_or_else(|| format!("{}.{}", model.upstream.provider, upstream_model));
-        bindings.push(ResolvedBinding {
+        bindings.push(ModelBinding {
             public_model: public_model.clone(),
             model: canonical.to_owned(),
             provider: model.upstream.provider.clone(),
@@ -230,6 +225,35 @@ pub fn resolve_model_bindings(
         });
     }
     Ok(bindings)
+}
+
+fn default_dialect(upstream: Upstream) -> Option<Dialect> {
+    match upstream {
+        Upstream::Tokenhub
+        | Upstream::AzureOpenai
+        | Upstream::VolcengineArk
+        | Upstream::Vivgrid
+        | Upstream::OpenaiCompatible
+        | Upstream::Vllm => Some(Dialect::OpenAiChatCompletions),
+        Upstream::AwsBedrock => Some(Dialect::BedrockConverse),
+        Upstream::GoogleVertex => Some(Dialect::GeminiGenerateContent),
+        Upstream::Custom => None,
+    }
+}
+
+fn upstream_supports_dialect(upstream: Upstream, dialect: Dialect) -> bool {
+    match upstream {
+        Upstream::Tokenhub | Upstream::AzureOpenai | Upstream::VolcengineArk => matches!(
+            dialect,
+            Dialect::OpenAiChatCompletions | Dialect::OpenAiResponses
+        ),
+        Upstream::Vivgrid | Upstream::OpenaiCompatible | Upstream::Vllm => {
+            dialect == Dialect::OpenAiChatCompletions
+        }
+        Upstream::AwsBedrock => dialect == Dialect::BedrockConverse,
+        Upstream::GoogleVertex => dialect == Dialect::GeminiGenerateContent,
+        Upstream::Custom => false,
+    }
 }
 
 /// Compile the new connection/model maps into startup-resolved clients.
@@ -380,7 +404,7 @@ mod binding_tests {
     }
 
     #[test]
-    fn alias_and_vendor_model_resolve_without_affecting_capability_identity() {
+    fn alias_canonical_model_and_deployment_id_remain_distinct() {
         let providers = BTreeMap::from([("qcloud.cn".to_owned(), connection())]);
         let models = serde_json::from_value(serde_json::json!({
             "fast": {"model":"glm-5.3-flash", "upstream": {
@@ -411,15 +435,19 @@ mod binding_tests {
     }
 
     #[test]
-    fn unregistered_models_and_missing_connections_are_rejected() {
+    fn unknown_models_are_allowed_but_missing_connections_are_rejected() {
         let providers = BTreeMap::from([("qcloud.cn".to_owned(), connection())]);
-        for value in [
-            serde_json::json!({"unknown-model":{"upstream":{"provider":"qcloud.cn"}}}),
-            serde_json::json!({"glm-5.3-flash":{"upstream":{"provider":"missing"}}}),
-        ] {
-            let models = serde_json::from_value(value).expect("model schema");
-            assert!(resolve_model_bindings(&providers, &models).is_err());
-        }
+        let unknown = serde_json::from_value(serde_json::json!({
+            "private-model":{"upstream":{"provider":"qcloud.cn"}}
+        }))
+        .expect("model schema");
+        assert!(resolve_model_bindings(&providers, &unknown).is_ok());
+
+        let missing = serde_json::from_value(serde_json::json!({
+            "glm-5.3-flash":{"upstream":{"provider":"missing"}}
+        }))
+        .expect("model schema");
+        assert!(resolve_model_bindings(&providers, &missing).is_err());
     }
 
     #[test]
@@ -434,7 +462,7 @@ mod binding_tests {
     }
 
     #[test]
-    fn explicit_route_dialect_is_selected_and_checked_against_model_upstream_support() {
+    fn route_dialect_defaults_by_upstream_and_checks_protocol_compatibility() {
         let azure = serde_json::from_value(serde_json::json!({
             "upstream": "azure-openai",
             "base_url": "https://example.test/v1"
@@ -459,7 +487,7 @@ mod binding_tests {
         .expect("models");
         let bindings =
             resolve_model_bindings(&providers, &defaulted_dialect).expect("default binding");
-        assert_eq!(bindings[0].dialect, Some(Dialect::OpenAiResponses));
+        assert_eq!(bindings[0].dialect, Some(Dialect::OpenAiChatCompletions));
 
         let unsupported_chat = serde_json::from_value(serde_json::json!({
             "gpt-5.6-sol": {
@@ -468,7 +496,7 @@ mod binding_tests {
             }
         }))
         .expect("models");
-        assert!(resolve_model_bindings(&providers, &unsupported_chat).is_err());
+        assert!(resolve_model_bindings(&providers, &unsupported_chat).is_ok());
 
         let unsupported_models = serde_json::from_value(serde_json::json!({
             "gpt-5.5": {
@@ -477,7 +505,24 @@ mod binding_tests {
             }
         }))
         .expect("models");
-        assert!(resolve_model_bindings(&providers, &unsupported_models).is_err());
+        assert!(resolve_model_bindings(&providers, &unsupported_models).is_ok());
+
+        let vertex = serde_json::from_value(serde_json::json!({
+            "upstream": "google-vertex",
+            "project_id": "project",
+            "location": "global",
+            "credentials_file": "/tmp/credentials.json"
+        }))
+        .expect("Vertex connection");
+        let vertex_providers = BTreeMap::from([("vertex".to_owned(), vertex)]);
+        let mismatched_dialect = serde_json::from_value(serde_json::json!({
+            "private-model": {
+                "upstream":{"provider":"vertex"},
+                "dialect":"openai-chat-completions"
+            }
+        }))
+        .expect("model");
+        assert!(resolve_model_bindings(&vertex_providers, &mismatched_dialect).is_err());
         assert!(
             serde_json::from_value::<ModelConfig>(serde_json::json!({
                 "upstream":{"provider":"azure"},
@@ -861,7 +906,7 @@ pub struct ProviderConfig {
     pub serve: Option<Vec<String>>,
     pub params: ProviderKindParams,
     /// Explicit vendor/model identity retained after startup compilation.
-    pub binding: Option<ResolvedBinding>,
+    pub binding: Option<ModelBinding>,
 }
 
 impl<'de> Deserialize<'de> for ProviderConfig {

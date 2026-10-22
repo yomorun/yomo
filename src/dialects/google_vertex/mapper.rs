@@ -1246,12 +1246,7 @@ fn extract_text_from_parts(candidate: &VertexCandidate, thought: bool) -> Option
     if text.is_empty() { None } else { Some(text) }
 }
 
-/// Encode the single thinking control that survived model adaptation.
-///
-/// The model layer (`models::gemini`) guarantees exactly one of: a validated
-/// effort level (Gemini 3+), or a thinking object with no effort (2.5 budget
-/// requests, or dynamic defaults that omit the config). Anything else here is
-/// a bug in that contract and fails closed.
+/// Encode thinking controls using Vertex's native request shape.
 fn map_vertex_thinking_config(
     request: &UnifiedRequest,
 ) -> Result<Option<VertexThinkingConfig>, ProviderError> {
@@ -1839,7 +1834,7 @@ mod tests {
     }
 
     #[test]
-    fn vertex_encodes_the_single_control_that_survived_adaptation() {
+    fn vertex_encodes_a_single_thinking_control() {
         // Effort-only requests encode a thinking level (Gemini 3).
         let level_only = UnifiedRequest {
             options: crate::provider::UnifiedRequestOptions {

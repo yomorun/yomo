@@ -18,7 +18,7 @@ use crate::openai_http_mapping::{
 };
 use crate::openai_types::{ChatCompletionRequest, ErrorDetail};
 use crate::provider::{Provider, ProviderError, UnifiedEvent, UnifiedRequest, UnifiedResponse};
-use crate::serve_config::{OpenAiParams, ResolvedBinding};
+use crate::serve_config::{ModelBinding, OpenAiParams};
 use client::{ApiError, ClientError, Config};
 
 /// Chat dialect client with an optional explicit upstream binding.
@@ -35,11 +35,11 @@ impl OpenAiChatCompletionsProvider {
     }
 
     /// Construct a startup-bound Chat client using vendor rules.
-    pub fn new_bound(params: &OpenAiParams, binding: ResolvedBinding) -> Self {
+    pub fn new_bound(params: &OpenAiParams, binding: ModelBinding) -> Self {
         Self::construct(params, Some(binding))
     }
 
-    fn construct(params: &OpenAiParams, binding: Option<ResolvedBinding>) -> Self {
+    fn construct(params: &OpenAiParams, binding: Option<ModelBinding>) -> Self {
         let api_key = params
             .auth
             .as_ref()
@@ -101,7 +101,7 @@ impl<M> Provider<M> for OpenAiChatCompletionsProvider {
     fn model_id(&self) -> &str {
         &self.model
     }
-    fn binding(&self) -> Option<&ResolvedBinding> {
+    fn binding(&self) -> Option<&ModelBinding> {
         self.client.config.binding.as_ref()
     }
 

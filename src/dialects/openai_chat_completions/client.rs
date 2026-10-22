@@ -8,15 +8,12 @@ use reqwest::StatusCode;
 use serde_json::Value;
 use tokio::time::timeout;
 
-use crate::models::{self, Profile};
 use crate::openai_types::{
     ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, ErrorDetail,
 };
 use crate::provider::UpstreamLog;
-use crate::serve_config::{AuthScheme, ResolvedBinding};
-use crate::upstreams::{
-    Dialect, EffortField, MaxTokensField, UpstreamError, parse_error, request_path,
-};
+use crate::serve_config::{AuthScheme, ModelBinding};
+use crate::upstreams::{Dialect, UpstreamError, parse_error, request_path};
 use crate::utils::SseDataReader;
 use axum::http::HeaderMap;
 use reqwest::RequestBuilder;
@@ -90,7 +87,7 @@ pub struct Config {
     pub stream_idle_timeout: Duration,
     pub error_parser: Option<Arc<dyn Fn(&[u8]) -> Option<Value> + Send + Sync>>,
     /// Fixed vendor integration; no URL or model-prefix inference.
-    pub binding: Option<ResolvedBinding>,
+    pub binding: Option<ModelBinding>,
     /// Authentication scheme for both streaming and complete calls.
     pub auth_scheme: AuthScheme,
 }
@@ -146,23 +143,6 @@ impl Config {
 pub struct Client {
     pub(crate) client: reqwest::Client,
     pub(crate) config: Config,
-    /// Model profile resolved once from the binding; `None` without a binding.
-    profile: Option<Profile>,
-}
-
-/// Resolve the profile of a bound model once, instead of on every request.
-fn resolve_profile(config: &Config) -> Result<Option<Profile>, ClientError> {
-    let Some(binding) = &config.binding else {
-        return Ok(None);
-    };
-    models::profile(&binding.model, binding.upstream)
-        .map(Some)
-        .ok_or_else(|| {
-            ClientError::InvalidRequest(format!(
-                "no model profile for {:?}: {}",
-                binding.upstream, binding.model
-            ))
-        })
 }
 
 impl Client {
@@ -177,66 +157,20 @@ impl Client {
     }
 
     fn request_body(&self, request: &ChatCompletionRequest) -> Result<Value, ClientError> {
-        let mut body = serde_json::to_value(request)
-            .map_err(|error| ClientError::InvalidRequest(error.to_string()))?;
-        if let Some(profile) = &self.profile {
-            if profile.max_tokens_field == Some(MaxTokensField::MaxTokens) {
-                if let Some(value) = body
-                    .as_object_mut()
-                    .and_then(|object| object.remove("max_completion_tokens"))
-                {
-                    body["max_tokens"] = value;
-                }
-            }
-            if profile.effort_field == EffortField::ChatTemplate {
-                if let Some(value) = body
-                    .as_object_mut()
-                    .and_then(|object| object.remove("reasoning_effort"))
-                {
-                    if !value.is_null() {
-                        let object = body.as_object_mut().ok_or_else(|| {
-                            ClientError::InvalidRequest("request must be an object".into())
-                        })?;
-                        let kwargs = object
-                            .entry("chat_template_kwargs")
-                            .or_insert_with(|| serde_json::json!({}));
-                        if kwargs.is_null() {
-                            *kwargs = serde_json::json!({});
-                        }
-                        let kwargs = kwargs.as_object_mut().ok_or_else(|| {
-                            ClientError::InvalidRequest(
-                                "chat_template_kwargs must be an object".into(),
-                            )
-                        })?;
-                        kwargs.insert("reasoning_effort".into(), value);
-                    }
-                }
-            }
-        }
-        Ok(body)
+        serde_json::to_value(request)
+            .map_err(|error| ClientError::InvalidRequest(error.to_string()))
     }
     pub fn new(config: Config) -> Result<Self, ClientError> {
         let client = reqwest::Client::builder()
             .timeout(config.request_timeout)
             .build()?;
-        let profile = resolve_profile(&config)?;
-        Ok(Self {
-            client,
-            config,
-            profile,
-        })
+        Ok(Self { client, config })
     }
 
-    /// Build a client around a shared HTTP client. An unresolvable binding is
-    /// rejected at startup by configuration validation; without a profile the
-    /// request body is sent unchanged.
+    /// Build a client around a shared HTTP client. Request bodies are sent
+    /// without model-specific rewriting.
     pub fn with_client(config: Config, client: reqwest::Client) -> Self {
-        let profile = resolve_profile(&config).unwrap_or(None);
-        Self {
-            client,
-            config,
-            profile,
-        }
+        Self { client, config }
     }
 
     pub async fn chat_completions(
@@ -478,7 +412,7 @@ mod tests {
     #[test]
     fn bound_chat_encoding_keeps_unknown_extensions_and_exact_effort() {
         let mut config = Config::new("test-key");
-        config.binding = Some(ResolvedBinding {
+        config.binding = Some(ModelBinding {
             public_model: "fast".into(),
             model: "glm-5.3-flash".into(),
             provider: "qcloud.cn".into(),
@@ -521,9 +455,9 @@ mod tests {
     }
 
     #[test]
-    fn vllm_effort_binding_preserves_existing_template_arguments() {
+    fn chat_body_is_not_rewritten_based_on_upstream_or_model() {
         let mut config = Config::new("");
-        config.binding = Some(ResolvedBinding {
+        config.binding = Some(ModelBinding {
             public_model: "deepseek-v4-flash".into(),
             model: "deepseek-v4-flash".into(),
             provider: "allegro.cn.local".into(),
@@ -542,8 +476,7 @@ mod tests {
             ..Default::default()
         };
         let body = client.request_body(&request).expect("encoded");
-        assert!(body.get("reasoning_effort").is_none());
-        assert_eq!(body["chat_template_kwargs"]["reasoning_effort"], "high");
+        assert_eq!(body["reasoning_effort"], "high");
         assert_eq!(body["chat_template_kwargs"]["existing"], true);
     }
 

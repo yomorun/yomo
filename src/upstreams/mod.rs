@@ -1,7 +1,7 @@
 //! Explicit upstream vendor selection, wire vocabulary and error interpretation.
 //!
 //! This layer knows how to talk to a vendor (authentication, paths, error
-//! envelopes). What a particular model supports lives in `crate::models`.
+//! envelopes). Model-specific capabilities are not inferred by this layer.
 
 use axum::http::{HeaderMap, StatusCode};
 use serde::Deserialize;
@@ -55,33 +55,6 @@ pub enum Dialect {
     /// Gemini generateContent.
     #[serde(rename = "gemini-generate-content")]
     GeminiGenerateContent,
-}
-
-/// Target field used for a Chat output-token budget.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MaxTokensField {
-    /// Legacy max_tokens field.
-    MaxTokens,
-    /// max_completion_tokens field.
-    MaxCompletionTokens,
-}
-
-/// Native reasoning-effort field binding, without value conversion.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EffortField {
-    /// reasoning_effort at the request root.
-    ReasoningEffort,
-    /// reasoning.effort.
-    Reasoning,
-    /// output_config.effort.
-    OutputConfig,
-    /// generationConfig.thinkingConfig.thinkingLevel; whether a concrete
-    /// model accepts a given level is decided by the model file.
-    ThinkingLevel,
-    /// vLLM chat_template_kwargs.reasoning_effort.
-    ChatTemplate,
-    /// Model-specific fields require further evidence.
-    Unknown,
 }
 
 /// Endpoint path owned by the upstream integration; dialect clients encode the body.

@@ -23,7 +23,7 @@ use crate::provider::UnifiedRequest;
 use crate::provider::UnifiedSourceProtocol;
 use crate::provider::UpstreamLog;
 use crate::provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
-use crate::serve_config::{AuthScheme, OpenAiParams, ResolvedBinding};
+use crate::serve_config::{AuthScheme, ModelBinding, OpenAiParams};
 use crate::upstreams::{Dialect, parse_error, request_path};
 use crate::utils::SseDataReader;
 use axum::http::{HeaderMap, StatusCode};
@@ -41,7 +41,7 @@ pub struct OpenAiResponsesProvider {
     api_key: Option<SecretString>,
     /// Upstream model / deployment name (params.model).
     model: String,
-    binding: Option<ResolvedBinding>,
+    binding: Option<ModelBinding>,
     auth_scheme: AuthScheme,
 }
 
@@ -62,7 +62,7 @@ impl OpenAiResponsesProvider {
     }
 
     /// Create a fixed integration with no URL-based reasoning normalization.
-    pub fn new_bound(params: &OpenAiParams, binding: ResolvedBinding) -> Self {
+    pub fn new_bound(params: &OpenAiParams, binding: ModelBinding) -> Self {
         let mut provider = Self::new(params);
         provider.binding = Some(binding);
         provider
@@ -108,7 +108,7 @@ impl<M> Provider<M> for OpenAiResponsesProvider {
         &self.model
     }
 
-    fn binding(&self) -> Option<&ResolvedBinding> {
+    fn binding(&self) -> Option<&ModelBinding> {
         self.binding.as_ref()
     }
 

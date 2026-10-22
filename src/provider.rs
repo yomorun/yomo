@@ -12,10 +12,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tracing::Span;
 
-use crate::models::{self, Ctx};
 use crate::openai_types::ErrorDetail;
-use crate::serve_config::ResolvedBinding;
-use crate::upstreams::{Dialect, EffortField};
+use crate::serve_config::ModelBinding;
+use crate::upstreams::Dialect;
 use crate::usage_handler::EndpointUsage;
 
 /// Diagnostic context retained across asynchronous response streaming.
@@ -1581,7 +1580,7 @@ impl std::error::Error for ProviderError {}
 pub trait Provider<M>: Send + Sync {
     fn model_id(&self) -> &str;
     /// Return the fixed integration identity, if assembled from model maps.
-    fn binding(&self) -> Option<&ResolvedBinding> {
+    fn binding(&self) -> Option<&ModelBinding> {
         None
     }
     async fn complete(
@@ -1602,12 +1601,12 @@ pub trait Provider<M>: Send + Sync {
 /// Fixed identity decorator; capability checking is performed by the engine.
 pub struct BoundProvider<M> {
     inner: Arc<dyn Provider<M>>,
-    binding: ResolvedBinding,
+    binding: ModelBinding,
 }
 
 impl<M> BoundProvider<M> {
     /// Attach the startup-resolved identity without amending requests.
-    pub fn new(inner: Arc<dyn Provider<M>>, binding: ResolvedBinding) -> Self {
+    pub fn new(inner: Arc<dyn Provider<M>>, binding: ModelBinding) -> Self {
         Self { inner, binding }
     }
 }
@@ -1617,7 +1616,7 @@ impl<M: Send + Sync + 'static> Provider<M> for BoundProvider<M> {
     fn model_id(&self) -> &str {
         self.inner.model_id()
     }
-    fn binding(&self) -> Option<&ResolvedBinding> {
+    fn binding(&self) -> Option<&ModelBinding> {
         Some(&self.binding)
     }
     async fn complete(
@@ -1642,31 +1641,15 @@ impl<M: Send + Sync + 'static> Provider<M> for BoundProvider<M> {
 /// Validate and adapt a request immediately before an upstream call.
 ///
 /// Dialect-level rules (state that a dialect cannot carry, malformed numeric
-/// options) live here. Everything that depends on the model is decided by
-/// [`models::adapt_request`], which may also rewrite the request.
+/// options) live here. Model-specific capability checks and rewrites are not
+/// performed; unsupported options are passed through to the upstream.
 pub fn adapt_bound_request(
     request: &mut UnifiedRequest,
-    binding: &ResolvedBinding,
+    binding: &ModelBinding,
 ) -> Result<(), ProviderError> {
-    let profile = models::profile(&binding.model, binding.upstream).ok_or_else(|| {
-        ProviderError::internal(format!(
-            "no model profile for {:?}: {}",
-            binding.upstream, binding.model
-        ))
-    })?;
     let dialect = binding
         .dialect
         .ok_or_else(|| ProviderError::internal("conversation binding has no dialect"))?;
-    if !profile.dialects.contains(&dialect) {
-        return Err(ProviderError::internal(
-            "resolved binding dialect is not supported by the model profile",
-        ));
-    }
-    let effort_field = if dialect == Dialect::OpenAiResponses {
-        EffortField::Reasoning
-    } else {
-        profile.effort_field
-    };
     let invalid = |param: &str| ProviderError::Public {
         status: StatusCode::BAD_REQUEST,
         error: ErrorDetail {
@@ -1676,9 +1659,6 @@ pub fn adapt_bound_request(
             param: Some(param.into()),
         },
     };
-    if effort_field == EffortField::Unknown && request.options.reasoning_effort.is_some() {
-        return Err(invalid("reasoning_effort mapping"));
-    }
     if dialect != Dialect::OpenAiResponses {
         // "auto" requests no specific summary shape and reasoning summaries
         // reach the client through the response mapping, so it is a no-op for
@@ -1774,14 +1754,7 @@ pub fn adapt_bound_request(
     if request.options.top_k.is_some_and(|value| value < 0) {
         return Err(invalid("top_k"));
     }
-    models::adapt_request(
-        &Ctx {
-            model: &binding.model,
-            upstream: binding.upstream,
-            dialect,
-        },
-        request,
-    )
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1789,286 +1762,60 @@ mod tests {
     use super::*;
     use crate::upstreams::Upstream;
 
-    #[test]
-    fn fixed_tokenhub_binding_rejects_disabled_thinking_without_mutating_effort() {
-        let binding = ResolvedBinding {
-            public_model: "fast".into(),
-            model: "glm-5.3-flash".into(),
-            provider: "qcloud.cn".into(),
-            upstream: Upstream::Tokenhub,
-            upstream_model: "vendor-id".into(),
-            dialect: Some(Dialect::OpenAiChatCompletions),
-            label: "qcloud.cn.vendor-id".into(),
-        };
-        let mut request = UnifiedRequest::default();
-        request.options.reasoning_effort = Some("max".into());
-        request.options.thinking = Some(json!({"type":"disabled"}));
-        assert!(matches!(
-            adapt_bound_request(&mut request, &binding),
-            Err(ProviderError::Public {
-                status: StatusCode::BAD_REQUEST,
-                ..
-            })
-        ));
-        request.options.thinking = Some(json!({"type":"enabled"}));
-        assert!(adapt_bound_request(&mut request, &binding).is_ok());
-        assert_eq!(request.options.reasoning_effort.as_deref(), Some("max"));
+    fn binding(dialect: Dialect) -> ModelBinding {
+        ModelBinding {
+            public_model: "public-model".into(),
+            model: "upstream-model".into(),
+            provider: "connection".into(),
+            upstream: Upstream::Vivgrid,
+            upstream_model: "deployment-id".into(),
+            dialect: Some(dialect),
+            label: "connection.deployment-id".into(),
+        }
     }
 
     #[test]
-    fn responses_state_cannot_be_discarded_by_a_fixed_chat_binding() {
-        let binding = ResolvedBinding {
-            public_model: "glm-5.3-flash".into(),
-            model: "glm-5.3-flash".into(),
-            provider: "qcloud.cn".into(),
-            upstream: Upstream::Tokenhub,
-            upstream_model: "glm-5.3-flash".into(),
-            dialect: Some(Dialect::OpenAiChatCompletions),
-            label: "qcloud.cn.glm-5.3-flash".into(),
-        };
+    fn chat_dialect_rejects_responses_only_state() {
+        let binding = binding(Dialect::OpenAiChatCompletions);
         let mut request = UnifiedRequest::default();
-        request.context.previous_response_id = Some("upstream-response-id".into());
+        request.context.previous_response_id = Some("response-id".into());
         assert!(matches!(
             adapt_bound_request(&mut request, &binding),
             Err(ProviderError::Public { .. })
         ));
         assert_eq!(
             request.context.previous_response_id.as_deref(),
-            Some("upstream-response-id")
+            Some("response-id")
         );
-        request.context.previous_response_id = None;
-        request.controls.background = Some(true);
-        assert!(adapt_bound_request(&mut request, &binding).is_err());
     }
 
     #[test]
-    fn bedrock_haiku55_applies_its_model_reasoning_matrix() {
-        let binding = ResolvedBinding {
-            public_model: "claude-haiku-5-5".into(),
-            model: "claude-haiku-5-5".into(),
-            provider: "aws.jpn".into(),
-            upstream: Upstream::AwsBedrock,
-            upstream_model: "global.anthropic.claude-haiku-5-5".into(),
-            dialect: Some(Dialect::BedrockConverse),
-            label: "aws.jpn.global.anthropic.claude-haiku-5-5".into(),
-        };
+    fn responses_dialect_passes_model_specific_controls_through() {
+        let binding = binding(Dialect::OpenAiResponses);
         let mut request = UnifiedRequest::default();
-        request.options.reasoning_effort = Some("high".into());
-        request.options.thinking = Some(json!({"type": "adaptive"}));
+        request.options.reasoning_effort = Some("vendor-specific-level".into());
+        request.options.thinking = Some(json!({"type":"vendor-specific-mode"}));
+        request.context.previous_response_id = Some("response-id".into());
         assert!(adapt_bound_request(&mut request, &binding).is_ok());
+        assert_eq!(
+            request.options.reasoning_effort.as_deref(),
+            Some("vendor-specific-level")
+        );
+        assert_eq!(
+            request.options.thinking,
+            Some(json!({"type":"vendor-specific-mode"}))
+        );
+    }
 
-        request.options.thinking = Some(json!({"type": "disabled"}));
-        assert!(adapt_bound_request(&mut request, &binding).is_ok());
-        request.options.reasoning_effort = Some("xhigh".into());
+    #[test]
+    fn malformed_numeric_options_are_rejected_without_model_profiles() {
+        let binding = binding(Dialect::OpenAiChatCompletions);
+        let mut request = UnifiedRequest::default();
+        request.options.temperature = Some(f64::NAN);
         assert!(matches!(
             adapt_bound_request(&mut request, &binding),
             Err(ProviderError::Public { .. })
         ));
-
-        request.options.reasoning_effort = Some("high".into());
-        request.options.thinking = Some(json!({"type": "enabled"}));
-        assert!(matches!(
-            adapt_bound_request(&mut request, &binding),
-            Err(ProviderError::Public { .. })
-        ));
-        request.options.thinking = Some(json!({"type": "adaptive", "budget_tokens": 4096}));
-        assert!(matches!(
-            adapt_bound_request(&mut request, &binding),
-            Err(ProviderError::Public { .. })
-        ));
-    }
-
-    #[test]
-    fn bedrock_models_map_reasoning_controls() {
-        let binding = ResolvedBinding {
-            public_model: "claude-sonnet-4-6".into(),
-            model: "claude-sonnet-4-6".into(),
-            provider: "aws.jpn".into(),
-            upstream: Upstream::AwsBedrock,
-            upstream_model: "global.anthropic.claude-sonnet-4-6".into(),
-            dialect: Some(Dialect::BedrockConverse),
-            label: "aws.jpn.global.anthropic.claude-sonnet-4-6".into(),
-        };
-        let mut request = UnifiedRequest::default();
-        request.options.reasoning_effort = Some("high".into());
-        request.options.thinking = Some(json!({"type": "adaptive"}));
-        assert!(adapt_bound_request(&mut request, &binding).is_ok());
-
-        request.options.max_output_tokens = Some(2048);
-        request.options.thinking = Some(json!({"type": "enabled", "budget_tokens": 1024}));
-        assert!(adapt_bound_request(&mut request, &binding).is_ok());
-
-        // The model layer still rejects combinations outside its rule set.
-        request.options.thinking = Some(json!({"type": "between_tools"}));
-        assert!(matches!(
-            adapt_bound_request(&mut request, &binding),
-            Err(ProviderError::Public { .. })
-        ));
-    }
-
-    #[test]
-    fn azure_gpt6_luna_maps_only_adaptive_thinking_with_explicit_effort() {
-        let binding = ResolvedBinding {
-            public_model: "gpt-6-luna".into(),
-            model: "gpt-6-luna".into(),
-            provider: "azure.jpn".into(),
-            upstream: Upstream::AzureOpenai,
-            upstream_model: "gpt-6-luna".into(),
-            dialect: Some(Dialect::OpenAiResponses),
-            label: "azure.jpn.gpt-6-luna".into(),
-        };
-        let mut request = UnifiedRequest::default();
-        request.options.reasoning_effort = Some("high".into());
-        request.options.thinking = Some(json!({"type": "adaptive"}));
-        assert!(adapt_bound_request(&mut request, &binding).is_ok());
-
-        request.options.thinking = Some(json!({"type": "enabled"}));
-        assert!(matches!(
-            adapt_bound_request(&mut request, &binding),
-            Err(ProviderError::Public { .. })
-        ));
-        request.options.thinking = Some(json!({"type": "adaptive"}));
-        request.options.reasoning_effort = None;
-        assert!(matches!(
-            adapt_bound_request(&mut request, &binding),
-            Err(ProviderError::Public { .. })
-        ));
-    }
-
-    #[test]
-    fn azure_gpt56_responses_allows_reasoning_with_tools() {
-        let binding = ResolvedBinding {
-            public_model: "gpt-5.6-sol".into(),
-            model: "gpt-5.6-sol".into(),
-            provider: "azure.eastus".into(),
-            upstream: Upstream::AzureOpenai,
-            upstream_model: "gpt-5.6-sol".into(),
-            dialect: Some(Dialect::OpenAiResponses),
-            label: "azure.eastus.gpt-5.6-sol".into(),
-        };
-        let mut request = UnifiedRequest::default();
-        request.tools = Some(vec![UnifiedTool {
-            cache_control: None,
-            source_extensions: None,
-            kind: UnifiedToolKind::Function {
-                name: "read".into(),
-                description: None,
-                parameters: json!({"type": "object"}),
-                strict: None,
-                allowed_callers: None,
-            },
-        }]);
-        request.options.reasoning_effort = Some("high".into());
-        assert!(adapt_bound_request(&mut request, &binding).is_ok());
-    }
-
-    #[test]
-    fn glm_forced_tool_choice_with_thinking_stays_unknown_without_error() {
-        let binding = ResolvedBinding {
-            public_model: "glm-5.3-flash".into(),
-            model: "glm-5.3-flash".into(),
-            provider: "qcloud.cn".into(),
-            upstream: Upstream::Tokenhub,
-            upstream_model: "glm-5.3-flash".into(),
-            dialect: Some(Dialect::OpenAiChatCompletions),
-            label: "qcloud.cn.glm-5.3-flash".into(),
-        };
-        let mut request = UnifiedRequest::default();
-        request.tools = Some(vec![UnifiedTool {
-            cache_control: None,
-            source_extensions: None,
-            kind: UnifiedToolKind::Function {
-                name: "read".into(),
-                description: None,
-                parameters: json!({"type": "object"}),
-                strict: None,
-                allowed_callers: None,
-            },
-        }]);
-        request.tool_choice = Some(UnifiedToolChoice::Required);
-        request.options.thinking = Some(json!({"type": "enabled"}));
-        assert!(adapt_bound_request(&mut request, &binding).is_ok());
-        assert!(matches!(
-            request.tool_choice,
-            Some(UnifiedToolChoice::Required)
-        ));
-        assert_eq!(request.options.thinking, Some(json!({"type": "enabled"})));
-        request.options.thinking = Some(json!({"type": "disabled"}));
-        match adapt_bound_request(&mut request, &binding) {
-            Err(ProviderError::Public { error, .. }) => {
-                assert!(
-                    error
-                        .message
-                        .contains("glm-5-3-thinking-cannot-be-disabled"),
-                    "{}",
-                    error.message
-                );
-            }
-            other => panic!("expected a public denial, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn ark_flash_binding_rejects_disabled_thinking() {
-        let binding = ResolvedBinding {
-            public_model: "viv-fast".into(),
-            model: "glm-5.3-flash".into(),
-            provider: "volcengine.cn".into(),
-            upstream: Upstream::VolcengineArk,
-            upstream_model: "glm-5-3-flash-260828".into(),
-            dialect: Some(Dialect::OpenAiChatCompletions),
-            label: "volcengine.cn.glm-5.3-flash".into(),
-        };
-        let mut request = UnifiedRequest::default();
-        request.options.thinking = Some(json!({"type": "disabled"}));
-        match adapt_bound_request(&mut request, &binding) {
-            Err(ProviderError::Public { error, .. }) => {
-                assert!(
-                    error
-                        .message
-                        .contains("glm-5-3-thinking-cannot-be-disabled"),
-                    "{}",
-                    error.message
-                );
-            }
-            other => panic!("expected a public denial, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn reasoning_summary_auto_passes_chat_binding_but_explicit_stays_rejected() {
-        let binding = ResolvedBinding {
-            public_model: "glm-5.3-flash".into(),
-            model: "glm-5.3-flash".into(),
-            provider: "qcloud.cn".into(),
-            upstream: Upstream::Tokenhub,
-            upstream_model: "glm-5.3-flash".into(),
-            dialect: Some(Dialect::OpenAiChatCompletions),
-            label: "qcloud.cn.glm-5.3-flash".into(),
-        };
-        let mut request = UnifiedRequest::default();
-        request.options.reasoning_summary = Some(json!("auto"));
-        assert!(adapt_bound_request(&mut request, &binding).is_ok());
-        request.options.reasoning_summary = Some(json!("concise"));
-        match adapt_bound_request(&mut request, &binding) {
-            Err(ProviderError::Public { error, .. }) => {
-                assert_eq!(
-                    error.param.as_deref(),
-                    Some("reasoning summary/extensions mapping")
-                );
-            }
-            other => panic!("expected a public denial, got {other:?}"),
-        }
-        request.options.reasoning_summary = None;
-        request.controls.include = Some(vec!["reasoning.encrypted_content".into()]);
-        assert!(adapt_bound_request(&mut request, &binding).is_ok());
-        request.controls.include = Some(vec!["message.logprobs".into()]);
-        match adapt_bound_request(&mut request, &binding) {
-            Err(ProviderError::Public { error, .. }) => {
-                assert_eq!(error.param.as_deref(), Some("include mapping"));
-            }
-            other => panic!("expected a public denial, got {other:?}"),
-        }
     }
 
     #[test]

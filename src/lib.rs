@@ -33,8 +33,6 @@ pub mod metadata_mgr;
 /// Model API providers.
 /// Models list HTTP API.
 pub mod model_list;
-/// Model identities and declared capabilities.
-pub mod models;
 /// OpenAI request/response mapping to Events.
 pub mod openai_http_mapping;
 /// OpenAI Responses native protocol types (request / response object / stream events).

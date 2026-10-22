@@ -9,8 +9,8 @@ use crate::provider::UnifiedRequest;
 use crate::provider::{BoundProvider, Provider, ProviderError, UnifiedEvent, UnifiedResponse};
 use crate::provider_error_notifier::{ProviderErrorEvent, ProviderErrorNotifier};
 use crate::serve_config::{
-    ConfigError, EndpointConfig, EndpointKind, ProviderConfig, ProviderKind, ProviderKindParams,
-    ResolvedBinding, ResponseModelMode, parse_response_model_mode,
+    ConfigError, EndpointConfig, EndpointKind, ModelBinding, ProviderConfig, ProviderKind,
+    ProviderKindParams, ResponseModelMode, parse_response_model_mode,
 };
 
 #[derive(Clone, Debug)]
@@ -258,7 +258,7 @@ where
         self.inner.model_id()
     }
 
-    fn binding(&self) -> Option<&ResolvedBinding> {
+    fn binding(&self) -> Option<&ModelBinding> {
         self.inner.binding()
     }
 

@@ -230,7 +230,7 @@ fn passthrough_claude_fields(request: &UnifiedRequest) -> Result<Option<Document
 }
 
 /// Encode the controls accepted by one Bedrock Claude route. Budget bounds are
-/// re-checked defensively; the model layer already rejects out-of-scope input.
+/// validated here before constructing the native request.
 fn encode_claude_fields(
     request: &UnifiedRequest,
     controls: &ReasoningControls,
