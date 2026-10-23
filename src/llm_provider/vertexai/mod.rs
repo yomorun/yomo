@@ -1189,7 +1189,7 @@ fn gemini_max_output_tokens_limit(model: &str) -> Option<i32> {
         "gemini-2.5-pro" => Some(GEMINI_MAX_OUTPUT_TOKENS_65K),
         "gemini-3-pro-image" => Some(GEMINI_MAX_OUTPUT_TOKENS_32K),
         "gemini-3.1-flash-image" => Some(GEMINI_MAX_OUTPUT_TOKENS_32K),
-        _ => None,
+        _ => Some(GEMINI_MAX_OUTPUT_TOKENS_65K),
     }
 }
 
@@ -1748,9 +1748,9 @@ mod tests {
     }
 
     #[test]
-    fn clamp_gemini_max_output_tokens_keeps_non_gemini_models_unchanged() {
-        let clamped = clamp_gemini_max_output_tokens("claude-opus-4-6", Some(128_000));
-        assert_eq!(clamped, Some(128_000));
+    fn clamp_gemini_max_output_tokens_clamps_unlisted_gemini_models_to_65k() {
+        let clamped = clamp_gemini_max_output_tokens("gemini-5-preview", Some(128_000));
+        assert_eq!(clamped, Some(65_536));
     }
 
     #[test]
