@@ -369,7 +369,8 @@ pub fn request_from_value(value: &Value) -> Result<UnifiedRequest, String> {
     request.options.top_p = value["top_p"].as_f64();
     request.options.max_output_tokens = value["max_output_tokens"].as_i64();
     request.options.parallel_tool_calls = value["parallel_tool_calls"].as_bool();
-    request.options.reasoning_effort = value_string(&value["reasoning"], "effort");
+    request.options.reasoning_effort =
+        serde_json::from_value(value["reasoning"]["effort"].clone()).ok();
     request.options.reasoning_summary = value["reasoning"].get("summary").cloned();
     request.options.reasoning_extensions =
         source_extensions(&value["reasoning"], &["effort", "summary"], PROTOCOL);
@@ -1826,7 +1827,14 @@ mod tests {
             Some(&serde_json::json!(1))
         );
         // reasoning effort
-        assert_eq!(request.options.reasoning_effort.as_deref(), Some("high"));
+        assert_eq!(
+            request
+                .options
+                .reasoning_effort
+                .as_ref()
+                .and_then(|effort| effort.as_str()),
+            Some("high")
+        );
         assert_eq!(request.options.parallel_tool_calls, Some(false));
         assert_eq!(request.controls.stream, Some(true));
         // unmodeled fields stashed into extra

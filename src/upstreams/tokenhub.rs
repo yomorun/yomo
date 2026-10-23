@@ -2,7 +2,7 @@
 
 use axum::http::{HeaderMap, StatusCode};
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use super::{UpstreamError, UpstreamErrorClass, fallback_error};
 
@@ -56,6 +56,45 @@ pub fn parse_error(status: StatusCode, headers: &HeaderMap, body: &[u8]) -> Upst
         }
     }
     error
+}
+
+/// Encode TokenHub Chat's separate reasoning-effort and thinking controls.
+pub(crate) fn encode_chat_reasoning(body: &mut Value) {
+    encode_platform_reasoning(body);
+}
+
+fn encode_platform_reasoning(body: &mut Value) {
+    if body["reasoning_effort"].as_str() == Some("none") && body.get("thinking").is_none() {
+        body["thinking"] = json!({"type":"disabled"});
+    }
+    let mode = thinking_mode(body.get("thinking"));
+    if (mode == Some(false) && body["reasoning_effort"].as_str() != Some("none"))
+        || (mode == Some(true) && body["reasoning_effort"].as_str() == Some("none"))
+    {
+        if let Some(object) = body.as_object_mut() {
+            object.remove("reasoning_effort");
+        }
+    }
+    if mode == Some(false) {
+        if let Some(thinking) = body.get_mut("thinking").and_then(Value::as_object_mut) {
+            thinking.remove("budget_tokens");
+        }
+    }
+    if let Some(object) = body.as_object_mut() {
+        object.remove("chat_template_kwargs");
+    }
+}
+
+fn thinking_mode(value: Option<&Value>) -> Option<bool> {
+    match value? {
+        Value::Object(object) => match object.get("type").and_then(Value::as_str) {
+            Some("enabled" | "adaptive") => Some(true),
+            Some("disabled") => Some(false),
+            _ => None,
+        },
+        Value::Bool(enabled) => Some(*enabled),
+        _ => None,
+    }
 }
 
 #[cfg(test)]

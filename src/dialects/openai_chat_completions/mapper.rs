@@ -34,8 +34,10 @@ pub fn request_to_chat(request: &UnifiedRequest) -> Result<ChatCompletionRequest
     serde_json::from_value(value).map_err(|err| ProviderError::internal(err.to_string()))
 }
 pub fn request_from_chat(request: &ChatCompletionRequest) -> Result<UnifiedRequest, ProviderError> {
+    let mut request = request.clone();
+    request.normalize_reasoning_compat_fields();
     let value =
-        serde_json::to_value(request).map_err(|err| ProviderError::internal(err.to_string()))?;
+        serde_json::to_value(&request).map_err(|err| ProviderError::internal(err.to_string()))?;
     crate::api::request_from_value(&value, UnifiedSourceProtocol::ChatCompletions)
         .map_err(ProviderError::internal)
 }
@@ -381,13 +383,71 @@ fn extract_text(content: Option<OpenAIContent>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{StreamMapState, map_response, map_stream_chunk};
+    use super::{StreamMapState, map_response, map_stream_chunk, request_from_chat};
     use crate::openai_types::{
         ChatCompletionChoice, ChatCompletionChunk, ChatCompletionChunkChoice,
         ChatCompletionChunkDelta, ChatCompletionChunkToolCall, ChatCompletionChunkToolCallFunction,
-        ChatCompletionMessage, ChatCompletionResponse, Usage,
+        ChatCompletionMessage, ChatCompletionRequest, ChatCompletionResponse, Usage,
     };
     use crate::provider::{UnifiedContentDelta, UnifiedEventKind, UnifiedOutputItemKind};
+
+    #[test]
+    fn azure_effort_takes_precedence_and_template_controls_are_fallbacks() {
+        let request: ChatCompletionRequest = serde_json::from_value(serde_json::json!({
+            "model":"m",
+            "messages":[],
+            "reasoning_effort":"high",
+            "thinking":{"type":"disabled","budget_tokens":2048},
+            "chat_template_kwargs":{"thinking":false,"reasoning_effort":60}
+        }))
+        .expect("chat request");
+
+        let unified = request_from_chat(&request).expect("unified request");
+        assert_eq!(
+            unified.options.thinking,
+            Some(serde_json::json!({"type":"enabled","budget_tokens":2048}))
+        );
+        assert_eq!(
+            unified.options.reasoning_effort,
+            Some(crate::provider::ReasoningEffort::from("high"))
+        );
+        assert!(unified.options.chat_template_kwargs.is_none());
+
+        let request: ChatCompletionRequest = serde_json::from_value(serde_json::json!({
+            "model":"m",
+            "messages":[],
+            "reasoning_effort":"none",
+            "thinking":{"type":"enabled"}
+        }))
+        .expect("conflicting controls are accepted");
+        let unified = request_from_chat(&request).expect("normalized request");
+        assert_eq!(
+            unified.options.reasoning_effort,
+            Some(crate::provider::ReasoningEffort::from("none"))
+        );
+        assert_eq!(
+            unified.options.thinking,
+            Some(serde_json::json!({"type":"disabled"}))
+        );
+
+        let request: ChatCompletionRequest = serde_json::from_value(serde_json::json!({
+            "model":"m",
+            "messages":[],
+            "chat_template_kwargs":{"thinking":true,"reasoning_effort":60}
+        }))
+        .expect("template-style chat request");
+        let unified = request_from_chat(&request).expect("unified request");
+        assert_eq!(
+            unified.options.reasoning_effort,
+            Some(crate::provider::ReasoningEffort::Numeric(
+                serde_json::Number::from(60)
+            ))
+        );
+        assert_eq!(
+            unified.options.thinking,
+            Some(serde_json::json!({"type":"enabled"}))
+        );
+    }
 
     #[test]
     fn map_response_maps_reasoning_content() {

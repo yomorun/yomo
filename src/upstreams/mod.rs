@@ -10,6 +10,7 @@ pub mod aws_bedrock;
 pub mod azure_openai;
 pub mod google_vertex;
 pub mod tokenhub;
+pub mod vllm;
 pub mod volcengine_ark;
 
 /// Service integration selected by a configured connection.
@@ -28,6 +29,8 @@ pub enum Upstream {
     GoogleVertex,
     /// Explicit OpenAI-compatible integration for custom services.
     OpenaiCompatible,
+    /// Self-hosted vLLM or SGLang using OpenAI-compatible chat completions.
+    Vllm,
     /// Opaque forwarding without a conversation dialect.
     Custom,
 }
@@ -152,6 +155,7 @@ pub fn parse_error(
         Upstream::Tokenhub => tokenhub::parse_error(status, headers, body),
         Upstream::AzureOpenai => azure_openai::parse_error(status, headers, body),
         Upstream::VolcengineArk => volcengine_ark::parse_error(status, headers, body),
+        Upstream::Vllm => vllm::parse_error(status, headers, body),
         Upstream::AwsBedrock => aws_bedrock::parse_error(status, headers, body),
         Upstream::GoogleVertex => google_vertex::parse_error(status, headers, body),
         _ => fallback_error(status, headers, body),

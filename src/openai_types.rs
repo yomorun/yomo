@@ -3,6 +3,8 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
+use crate::provider::ReasoningEffort;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Usage {
     pub prompt_tokens: i64,
@@ -70,7 +72,7 @@ pub struct ChatCompletionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thinking: Option<ThinkingConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub reasoning_effort: Option<String>,
+    pub reasoning_effort: Option<ReasoningEffort>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chat_template_kwargs: Option<HashMap<String, Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -112,6 +114,9 @@ pub struct ThinkingConfig {
     /// - https://cloud.tencent.com/document/product/1823/130079
     #[serde(rename = "type")]
     pub kind: ThinkingType,
+    /// Optional maximum thinking-token budget supported by some providers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget_tokens: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -579,8 +584,8 @@ pub struct ErrorDetail {
 impl ChatCompletionRequest {
     /// Normalize cross-vendor reasoning/thinking request fields into IR modeled fields.
     ///
-    /// Explicit IR fields keep priority. Unmodeled top-level vendor fields may still be
-    /// present in `extra` and are used as fallback sources.
+    /// Top-level `reasoning_effort` takes priority, followed by top-level
+    /// `thinking`, then `chat_template_kwargs`.
     pub fn normalize_reasoning_compat_fields(&mut self) {
         if self.thinking.is_none()
             && let Some(kind) = self
@@ -588,39 +593,61 @@ impl ChatCompletionRequest {
                 .get("thinking")
                 .and_then(parse_thinking_type_from_value)
         {
-            self.thinking = Some(ThinkingConfig { kind });
+            self.thinking = Some(ThinkingConfig {
+                kind,
+                budget_tokens: self
+                    .extra
+                    .get("thinking")
+                    .and_then(|thinking| thinking.get("budget_tokens"))
+                    .and_then(Value::as_u64)
+                    .and_then(|budget| u32::try_from(budget).ok()),
+            });
         }
 
         if self.reasoning_effort.is_none() {
-            let effort = self
+            self.reasoning_effort = self
                 .extra
                 .get("reasoning_effort")
-                .and_then(parse_effort_string)
+                .and_then(parse_effort)
                 .or_else(|| {
                     self.extra
                         .get("reasoning")
                         .and_then(extract_reasoning_effort)
                 });
-            if let Some(effort) = effort {
-                self.reasoning_effort = Some(effort);
-            }
         }
+
+        let thinking = self
+            .thinking
+            .as_ref()
+            .and_then(|thinking| serde_json::to_value(thinking).ok());
+        let mut options = crate::provider::UnifiedRequestOptions {
+            reasoning_effort: self.reasoning_effort.clone(),
+            thinking,
+            chat_template_kwargs: self.chat_template_kwargs.clone(),
+            ..Default::default()
+        };
+        options.normalize_reasoning_controls();
+        self.reasoning_effort = options.reasoning_effort;
+        self.thinking = options
+            .thinking
+            .and_then(|thinking| serde_json::from_value(thinking).ok());
+        self.chat_template_kwargs = options.chat_template_kwargs;
     }
 }
 
-fn parse_effort_string(value: &Value) -> Option<String> {
-    value
-        .as_str()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
+fn parse_effort(value: &Value) -> Option<ReasoningEffort> {
+    match value {
+        Value::String(value) if !value.trim().is_empty() => Some(value.as_str().into()),
+        Value::Number(_) => serde_json::from_value(value.clone()).ok(),
+        _ => None,
+    }
 }
 
-fn extract_reasoning_effort(value: &Value) -> Option<String> {
+fn extract_reasoning_effort(value: &Value) -> Option<ReasoningEffort> {
     value
         .as_object()
         .and_then(|object| object.get("effort"))
-        .and_then(parse_effort_string)
+        .and_then(parse_effort)
 }
 
 fn parse_thinking_type_from_value(value: &Value) -> Option<ThinkingType> {
@@ -959,18 +986,25 @@ mod tests {
                 .map(|thinking| thinking.kind.clone()),
             Some(ThinkingType::Enabled)
         );
-        assert_eq!(request.reasoning_effort.as_deref(), Some("max"));
+        assert_eq!(
+            request
+                .reasoning_effort
+                .as_ref()
+                .and_then(ReasoningEffort::as_str),
+            Some("max")
+        );
     }
 
     #[test]
-    fn normalize_reasoning_compat_preserves_explicit_modeled_fields() {
+    fn normalize_reasoning_compat_prefers_top_level_effort_over_conflicting_mode() {
         let mut request = ChatCompletionRequest {
             model: "glm-5.3-flash".to_string(),
             messages: vec![],
             thinking: Some(ThinkingConfig {
                 kind: ThinkingType::Disabled,
+                budget_tokens: None,
             }),
-            reasoning_effort: Some("high".to_string()),
+            reasoning_effort: Some("high".into()),
             extra: HashMap::from([
                 (
                     "thinking".to_string(),
@@ -991,9 +1025,15 @@ mod tests {
                 .thinking
                 .as_ref()
                 .map(|thinking| thinking.kind.clone()),
-            Some(ThinkingType::Disabled)
+            Some(ThinkingType::Enabled)
         );
-        assert_eq!(request.reasoning_effort.as_deref(), Some("high"));
+        assert_eq!(
+            request
+                .reasoning_effort
+                .as_ref()
+                .and_then(ReasoningEffort::as_str),
+            Some("high")
+        );
     }
 }
 

@@ -459,10 +459,11 @@ pub struct UnifiedRequestOptions {
     pub top_logprobs: Option<u32>,
     pub seed: Option<i64>,
     pub modalities: Option<Vec<String>>,
-    pub reasoning_effort: Option<String>,
+    pub reasoning_effort: Option<ReasoningEffort>,
     pub reasoning_summary: Option<Value>,
     pub reasoning_extensions: Option<UnifiedSourceExtensions>,
     pub thinking: Option<Value>,
+    pub chat_template_kwargs: Option<HashMap<String, Value>>,
     pub response_format: Option<Value>,
     pub verbosity: Option<String>,
     pub truncation: Option<String>,
@@ -470,6 +471,212 @@ pub struct UnifiedRequestOptions {
     pub prediction: Option<Value>,
     pub metadata: Option<Value>,
     pub audio: Option<Value>,
+}
+
+impl UnifiedRequestOptions {
+    /// Normalize reasoning controls, preferring Azure's top-level effort field.
+    pub fn normalize_reasoning_controls(&mut self) {
+        let top_effort = self.reasoning_effort.clone();
+        let top_thinking = self.thinking.clone();
+        let template_effort: Option<ReasoningEffort> = self
+            .chat_template_kwargs
+            .as_ref()
+            .and_then(|kwargs| kwargs.get("reasoning_effort"))
+            .and_then(|value| serde_json::from_value(value.clone()).ok());
+        let template_thinking = self
+            .chat_template_kwargs
+            .as_ref()
+            .and_then(|kwargs| kwargs.get("thinking"))
+            .and_then(normalize_template_thinking);
+        let template_budget = self
+            .chat_template_kwargs
+            .as_ref()
+            .and_then(|kwargs| kwargs.get("thinking"))
+            .and_then(|thinking| thinking.get("budget_tokens"))
+            .cloned();
+        let top_budget = top_thinking
+            .as_ref()
+            .and_then(|thinking| thinking.get("budget_tokens"))
+            .cloned();
+        let budget = top_budget.or(template_budget);
+
+        match top_effort {
+            Some(effort) => {
+                let requested_thinking = top_thinking.or(template_thinking);
+                let requested_mode = requested_thinking
+                    .as_ref()
+                    .and_then(|thinking| thinking.get("type"))
+                    .and_then(Value::as_str);
+                let known_mode =
+                    matches!(requested_mode, Some("disabled" | "enabled" | "adaptive"));
+                let mode = if effort.is_none() {
+                    Some("disabled")
+                } else if known_mode {
+                    Some("enabled")
+                } else {
+                    None
+                };
+                self.reasoning_effort = Some(effort);
+                self.thinking = mode
+                    .map(|mode| thinking_with_budget(mode, budget.clone()))
+                    .or_else(|| requested_thinking.map(|thinking| with_budget(thinking, budget)));
+            }
+            None => match top_thinking {
+                Some(thinking) => {
+                    let mode = thinking.get("type").and_then(Value::as_str);
+                    let effort = template_effort.filter(|effort| match mode {
+                        Some("disabled") => false,
+                        Some("enabled" | "adaptive") => !effort.is_none(),
+                        _ => true,
+                    });
+                    self.reasoning_effort = effort;
+                    self.thinking = Some(with_budget(thinking, budget));
+                }
+                None => {
+                    self.reasoning_effort = template_effort;
+                    self.thinking =
+                        template_thinking.map(|thinking| with_budget(thinking, budget.clone()));
+                    match (self.thinking.as_ref(), self.reasoning_effort.as_ref()) {
+                        (_, Some(effort)) if effort.is_none() => {
+                            self.thinking = Some(thinking_with_budget("disabled", budget));
+                        }
+                        (Some(thinking), Some(_))
+                            if thinking.get("type").and_then(Value::as_str) == Some("disabled") =>
+                        {
+                            self.reasoning_effort = None;
+                        }
+                        (None, Some(_)) => {
+                            self.thinking = Some(thinking_with_budget("enabled", budget));
+                        }
+                        _ => {}
+                    }
+                }
+            },
+        }
+
+        if let Some(kwargs) = &mut self.chat_template_kwargs {
+            kwargs.remove("thinking");
+            kwargs.remove("reasoning_effort");
+            if kwargs.is_empty() {
+                self.chat_template_kwargs = None;
+            }
+        }
+    }
+}
+
+fn normalize_template_thinking(value: &Value) -> Option<Value> {
+    let mode = match value {
+        Value::Bool(true) => "enabled",
+        Value::Bool(false) => "disabled",
+        Value::Object(object) => object.get("type")?.as_str()?,
+        Value::String(mode) => mode.as_str(),
+        _ => return None,
+    };
+    Some(thinking_with_budget(
+        mode,
+        value.get("budget_tokens").cloned(),
+    ))
+}
+
+fn thinking_with_budget(mode: &str, budget: Option<Value>) -> Value {
+    let mut thinking = serde_json::json!({"type": mode});
+    if let Some(budget) = budget {
+        thinking["budget_tokens"] = budget;
+    }
+    thinking
+}
+
+fn with_budget(mut thinking: Value, budget: Option<Value>) -> Value {
+    if thinking.get("budget_tokens").is_none()
+        && let Some(budget) = budget
+    {
+        thinking["budget_tokens"] = budget;
+    }
+    thinking
+}
+
+/// A named reasoning-effort level or a backend-specific numeric effort value.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ReasoningEffort {
+    /// A standard named reasoning-effort level.
+    Named(ReasoningEffortLevel),
+    /// A numeric effort value accepted by some self-hosted backends.
+    Numeric(serde_json::Number),
+    /// A future or provider-specific string value retained losslessly.
+    Other(String),
+}
+
+impl ReasoningEffort {
+    /// Return the wire string for named or provider-specific string values.
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            Self::Named(level) => Some(level.as_str()),
+            Self::Other(value) => Some(value),
+            Self::Numeric(_) => None,
+        }
+    }
+
+    /// Whether this value requests thinking to be disabled.
+    pub fn is_none(&self) -> bool {
+        matches!(self, Self::Named(ReasoningEffortLevel::None))
+    }
+}
+
+impl From<&str> for ReasoningEffort {
+    fn from(value: &str) -> Self {
+        let level = match value {
+            "none" => Some(ReasoningEffortLevel::None),
+            "minimal" => Some(ReasoningEffortLevel::Minimal),
+            "low" => Some(ReasoningEffortLevel::Low),
+            "medium" => Some(ReasoningEffortLevel::Medium),
+            "high" => Some(ReasoningEffortLevel::High),
+            "xhigh" => Some(ReasoningEffortLevel::XHigh),
+            "max" => Some(ReasoningEffortLevel::Max),
+            _ => None,
+        };
+        level.map_or_else(|| Self::Other(value.to_owned()), Self::Named)
+    }
+}
+
+/// Named reasoning-effort values shared by the public request formats.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ReasoningEffortLevel {
+    /// Disable reasoning.
+    #[serde(rename = "none")]
+    None,
+    /// Minimal effort.
+    #[serde(rename = "minimal")]
+    Minimal,
+    /// Low effort.
+    #[serde(rename = "low")]
+    Low,
+    /// Medium effort.
+    #[serde(rename = "medium")]
+    Medium,
+    /// High effort.
+    #[serde(rename = "high")]
+    High,
+    /// Extra-high effort.
+    #[serde(rename = "xhigh")]
+    XHigh,
+    /// Maximum effort.
+    #[serde(rename = "max")]
+    Max,
+}
+
+impl ReasoningEffortLevel {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Minimal => "minimal",
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::XHigh => "xhigh",
+            Self::Max => "max",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1647,6 +1854,7 @@ pub fn adapt_bound_request(
     request: &mut UnifiedRequest,
     binding: &ModelBinding,
 ) -> Result<(), ProviderError> {
+    request.options.normalize_reasoning_controls();
     let dialect = binding
         .dialect
         .ok_or_else(|| ProviderError::internal("conversation binding has no dialect"))?;
@@ -1775,6 +1983,28 @@ mod tests {
     }
 
     #[test]
+    fn reasoning_effort_declares_all_named_levels_and_numeric_values() {
+        for level in ["none", "minimal", "low", "medium", "high", "xhigh", "max"] {
+            let effort: ReasoningEffort =
+                serde_json::from_value(Value::String(level.to_owned())).expect("effort level");
+            assert_eq!(effort.as_str(), Some(level));
+            assert_eq!(
+                serde_json::to_value(effort).expect("serialize effort"),
+                level
+            );
+        }
+        let effort: ReasoningEffort = serde_json::from_value(json!(60)).expect("numeric effort");
+        assert_eq!(
+            effort,
+            ReasoningEffort::Numeric(serde_json::Number::from(60))
+        );
+        assert_eq!(
+            serde_json::to_value(effort).expect("serialize numeric effort"),
+            json!(60)
+        );
+    }
+
+    #[test]
     fn chat_dialect_rejects_responses_only_state() {
         let binding = binding(Dialect::OpenAiChatCompletions);
         let mut request = UnifiedRequest::default();
@@ -1798,7 +2028,11 @@ mod tests {
         request.context.previous_response_id = Some("response-id".into());
         assert!(adapt_bound_request(&mut request, &binding).is_ok());
         assert_eq!(
-            request.options.reasoning_effort.as_deref(),
+            request
+                .options
+                .reasoning_effort
+                .as_ref()
+                .and_then(ReasoningEffort::as_str),
             Some("vendor-specific-level")
         );
         assert_eq!(

@@ -4,7 +4,7 @@ use super::{UpstreamError, fallback_error};
 use crate::openai_types::ErrorDetail as PublicErrorDetail;
 use axum::http::{HeaderMap, StatusCode};
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 #[derive(Deserialize)]
 struct ErrorEnvelope {
@@ -42,6 +42,32 @@ pub(crate) fn parse_compatible_error(status: StatusCode, body: &[u8]) -> Option<
         }),
         param: payload.error.param,
     })
+}
+
+/// Encode Azure reasoning controls: only top-level `reasoning_effort` is sent.
+pub(crate) fn encode_chat_reasoning(body: &mut Value) {
+    let has_effort = body.get("reasoning_effort").is_some();
+    let disabled = body["reasoning_effort"].as_str() == Some("none")
+        || (!has_effort && thinking_mode(body.get("thinking")) == Some(false));
+    if disabled {
+        body["reasoning_effort"] = json!("none");
+    }
+    if let Some(object) = body.as_object_mut() {
+        object.remove("thinking");
+        object.remove("chat_template_kwargs");
+    }
+}
+
+fn thinking_mode(value: Option<&Value>) -> Option<bool> {
+    match value? {
+        Value::Object(object) => match object.get("type").and_then(Value::as_str) {
+            Some("enabled" | "adaptive") => Some(true),
+            Some("disabled") => Some(false),
+            _ => None,
+        },
+        Value::Bool(enabled) => Some(*enabled),
+        _ => None,
+    }
 }
 
 /// Parse Azure's nullable error fields without trusting a nested status value.

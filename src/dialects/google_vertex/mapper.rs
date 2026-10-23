@@ -1250,8 +1250,29 @@ fn extract_text_from_parts(candidate: &VertexCandidate, thought: bool) -> Option
 fn map_vertex_thinking_config(
     request: &UnifiedRequest,
 ) -> Result<Option<VertexThinkingConfig>, ProviderError> {
-    let effort = request.options.reasoning_effort.as_deref();
+    let effort = request
+        .options
+        .reasoning_effort
+        .as_ref()
+        .map(|effort| {
+            effort.as_str().ok_or_else(|| ProviderError::Public {
+                status: StatusCode::BAD_REQUEST,
+                error: ErrorDetail {
+                    message: "numeric reasoning_effort is not supported by Google Vertex".into(),
+                    r#type: "invalid_request_error".into(),
+                    code: Some("unsupported_conversion".into()),
+                    param: Some("reasoning_effort".into()),
+                },
+            })
+        })
+        .transpose()?;
     let thinking = request.options.thinking.as_ref();
+    if effort == Some("none") {
+        return Ok(Some(VertexThinkingConfig {
+            thinking_budget: Some(0),
+            thinking_level: None,
+        }));
+    }
     match (effort, thinking) {
         (None, None) => Ok(None),
         (Some(level), None) => Ok(Some(VertexThinkingConfig {

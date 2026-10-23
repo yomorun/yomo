@@ -232,7 +232,8 @@ fn default_dialect(upstream: Upstream) -> Option<Dialect> {
         Upstream::Tokenhub
         | Upstream::AzureOpenai
         | Upstream::VolcengineArk
-        | Upstream::OpenaiCompatible => Some(Dialect::OpenAiChatCompletions),
+        | Upstream::OpenaiCompatible
+        | Upstream::Vllm => Some(Dialect::OpenAiChatCompletions),
         Upstream::AwsBedrock => Some(Dialect::BedrockConverse),
         Upstream::GoogleVertex => Some(Dialect::GeminiGenerateContent),
         Upstream::Custom => None,
@@ -245,7 +246,7 @@ fn upstream_supports_dialect(upstream: Upstream, dialect: Dialect) -> bool {
             dialect,
             Dialect::OpenAiChatCompletions | Dialect::OpenAiResponses
         ),
-        Upstream::OpenaiCompatible => dialect == Dialect::OpenAiChatCompletions,
+        Upstream::OpenaiCompatible | Upstream::Vllm => dialect == Dialect::OpenAiChatCompletions,
         Upstream::AwsBedrock => dialect == Dialect::BedrockConverse,
         Upstream::GoogleVertex => dialect == Dialect::GeminiGenerateContent,
         Upstream::Custom => false,
@@ -397,6 +398,27 @@ mod binding_tests {
             "upstream": "tokenhub", "base_url": "https://example.test/v1"
         }))
         .expect("connection")
+    }
+
+    #[test]
+    fn vllm_upstream_compiles_as_openai_chat_for_vllm_and_sglang() {
+        let connection = serde_json::from_value(serde_json::json!({
+            "upstream": "vllm",
+            "base_url": "http://localhost:8000/v1"
+        }))
+        .expect("self-hosted connection");
+        let providers = BTreeMap::from([("local".to_owned(), connection)]);
+        let models = serde_json::from_value(serde_json::json!({
+            "deepseek": {"upstream":{"provider":"local"}}
+        }))
+        .expect("model map");
+
+        let entries = compile_model_entries(&providers, &models).expect("compiled entry");
+        assert_eq!(entries[0].kind, ProviderKind::OpenAiChatCompletions);
+        assert_eq!(
+            entries[0].binding.as_ref().expect("model binding").upstream,
+            Upstream::Vllm
+        );
     }
 
     #[test]

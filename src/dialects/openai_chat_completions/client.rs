@@ -13,7 +13,7 @@ use crate::openai_types::{
 };
 use crate::provider::UpstreamLog;
 use crate::serve_config::{AuthScheme, ModelBinding};
-use crate::upstreams::{Dialect, UpstreamError, parse_error, request_path};
+use crate::upstreams::{Dialect, Upstream, UpstreamError, parse_error, request_path};
 use crate::utils::SseDataReader;
 use axum::http::HeaderMap;
 use reqwest::RequestBuilder;
@@ -157,8 +157,24 @@ impl Client {
     }
 
     fn request_body(&self, request: &ChatCompletionRequest) -> Result<Value, ClientError> {
-        serde_json::to_value(request)
-            .map_err(|error| ClientError::InvalidRequest(error.to_string()))
+        let mut request = request.clone();
+        request.normalize_reasoning_compat_fields();
+        let mut body = serde_json::to_value(&request)
+            .map_err(|error| ClientError::InvalidRequest(error.to_string()))?;
+        if let Some(upstream) = self.config.binding.as_ref().map(|binding| binding.upstream) {
+            match upstream {
+                Upstream::AzureOpenai => {
+                    crate::upstreams::azure_openai::encode_chat_reasoning(&mut body)
+                }
+                Upstream::Tokenhub => crate::upstreams::tokenhub::encode_chat_reasoning(&mut body),
+                Upstream::VolcengineArk => {
+                    crate::upstreams::volcengine_ark::encode_chat_reasoning(&mut body)
+                }
+                Upstream::Vllm => crate::upstreams::vllm::encode_chat_reasoning(&mut body),
+                _ => {}
+            }
+        }
+        Ok(body)
     }
     pub fn new(config: Config) -> Result<Self, ClientError> {
         let client = reqwest::Client::builder()
@@ -167,8 +183,8 @@ impl Client {
         Ok(Self { client, config })
     }
 
-    /// Build a client around a shared HTTP client. Request bodies are sent
-    /// without model-specific rewriting.
+    /// Build a client around a shared HTTP client. Explicit upstream bindings
+    /// select reasoning-control encoding for each chat backend.
     pub fn with_client(config: Config, client: reqwest::Client) -> Self {
         Self { client, config }
     }
@@ -478,6 +494,100 @@ mod tests {
         let body = client.request_body(&request).expect("encoded");
         assert_eq!(body["reasoning_effort"], "high");
         assert_eq!(body["chat_template_kwargs"]["existing"], true);
+    }
+
+    fn bound_reasoning_client(upstream: Upstream) -> Client {
+        let mut config = Config::new("");
+        config.binding = Some(ModelBinding {
+            public_model: "public-model".into(),
+            model: "model".into(),
+            provider: "connection".into(),
+            upstream,
+            upstream_model: "deployment".into(),
+            dialect: Some(Dialect::OpenAiChatCompletions),
+            label: "connection.deployment".into(),
+        });
+        Client::new(config).expect("client")
+    }
+
+    #[test]
+    fn reasoning_controls_encode_for_all_chat_upstreams() {
+        let request = ChatCompletionRequest {
+            thinking: Some(crate::openai_types::ThinkingConfig {
+                kind: crate::openai_types::ThinkingType::Enabled,
+                budget_tokens: Some(2048),
+            }),
+            reasoning_effort: Some("high".into()),
+            ..Default::default()
+        };
+
+        let azure = bound_reasoning_client(Upstream::AzureOpenai)
+            .request_body(&request)
+            .expect("Azure body");
+        assert_eq!(azure["reasoning_effort"], "high");
+        assert!(azure.get("thinking").is_none());
+        assert!(azure.get("chat_template_kwargs").is_none());
+
+        for upstream in [Upstream::Tokenhub, Upstream::VolcengineArk] {
+            let body = bound_reasoning_client(upstream)
+                .request_body(&request)
+                .expect("vendor body");
+            assert_eq!(body["reasoning_effort"], "high");
+            assert_eq!(body["thinking"]["type"], "enabled");
+            assert_eq!(body["thinking"]["budget_tokens"], 2048);
+            assert!(body.get("chat_template_kwargs").is_none());
+        }
+
+        let vllm = bound_reasoning_client(Upstream::Vllm)
+            .request_body(&request)
+            .expect("vLLM/SGLang body");
+        assert!(vllm.get("thinking").is_none());
+        assert!(vllm.get("reasoning_effort").is_none());
+        assert_eq!(vllm["chat_template_kwargs"]["thinking"], true);
+        assert_eq!(vllm["chat_template_kwargs"]["reasoning_effort"], "high");
+        assert_eq!(vllm["thinking_token_budget"], 2048);
+    }
+
+    #[test]
+    fn reasoning_effort_none_disables_thinking_per_upstream() {
+        let request = ChatCompletionRequest {
+            reasoning_effort: Some("none".into()),
+            ..Default::default()
+        };
+
+        let azure = bound_reasoning_client(Upstream::AzureOpenai)
+            .request_body(&request)
+            .expect("Azure body");
+        assert_eq!(azure["reasoning_effort"], "none");
+
+        let tokenhub = bound_reasoning_client(Upstream::Tokenhub)
+            .request_body(&request)
+            .expect("TokenHub body");
+        assert_eq!(tokenhub["thinking"]["type"], "disabled");
+
+        let vllm = bound_reasoning_client(Upstream::Vllm)
+            .request_body(&request)
+            .expect("vLLM body");
+        assert_eq!(vllm["chat_template_kwargs"]["thinking"], false);
+        assert!(
+            vllm["chat_template_kwargs"]
+                .get("reasoning_effort")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn numeric_effort_is_nested_for_self_hosted_backends() {
+        let request = ChatCompletionRequest {
+            reasoning_effort: Some(crate::provider::ReasoningEffort::Numeric(
+                serde_json::Number::from(60),
+            )),
+            ..Default::default()
+        };
+        let body = bound_reasoning_client(Upstream::Vllm)
+            .request_body(&request)
+            .expect("vLLM body");
+        assert_eq!(body["chat_template_kwargs"]["reasoning_effort"], 60);
     }
 
     #[test]

@@ -194,7 +194,17 @@ pub(super) fn additional_model_request_fields(
 /// with an optional Bedrock display, plus output_config.effort.
 fn sonnet_5_5_fields(request: &UnifiedRequest) -> Result<Option<Document>, String> {
     let mut fields = Map::new();
-    if let Some(effort) = request.options.reasoning_effort.as_deref() {
+    if let Some(effort) = request
+        .options
+        .reasoning_effort
+        .as_ref()
+        .map(|effort| {
+            effort.as_str().ok_or_else(|| {
+                "numeric reasoning_effort is not supported by Bedrock Converse".to_owned()
+            })
+        })
+        .transpose()?
+    {
         if !matches!(effort, "low" | "medium" | "high" | "xhigh" | "max") {
             return Err(format!(
                 "Claude Sonnet 5.5 does not map reasoning_effort {effort}"
@@ -220,7 +230,17 @@ fn sonnet_5_5_fields(request: &UnifiedRequest) -> Result<Option<Document>, Strin
 /// dropping or rewriting them; the upstream reports what it rejects.
 fn passthrough_claude_fields(request: &UnifiedRequest) -> Result<Option<Document>, String> {
     let mut fields = Map::new();
-    if let Some(effort) = request.options.reasoning_effort.as_deref() {
+    if let Some(effort) = request
+        .options
+        .reasoning_effort
+        .as_ref()
+        .map(|effort| {
+            effort.as_str().ok_or_else(|| {
+                "numeric reasoning_effort is not supported by Bedrock Converse".to_owned()
+            })
+        })
+        .transpose()?
+    {
         fields.insert("output_config".into(), json!({"effort": effort}));
     }
     if let Some(thinking) = &request.options.thinking {
@@ -237,7 +257,17 @@ fn encode_claude_fields(
     label: &str,
 ) -> Result<Option<Document>, String> {
     let mut fields = Map::new();
-    if let Some(effort) = request.options.reasoning_effort.as_deref() {
+    if let Some(effort) = request
+        .options
+        .reasoning_effort
+        .as_ref()
+        .map(|effort| {
+            effort.as_str().ok_or_else(|| {
+                "numeric reasoning_effort is not supported by Bedrock Converse".to_owned()
+            })
+        })
+        .transpose()?
+    {
         if !controls.efforts.contains(&effort) {
             return Err(format!(
                 "Claude {label} does not map reasoning_effort {effort}"

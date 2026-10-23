@@ -287,6 +287,7 @@ pub fn request_from_value(value: &Value) -> Result<UnifiedRequest, String> {
         .unwrap_or(Value::Null);
     request.options =
         serde_json::from_value::<UnifiedRequestOptions>(options).map_err(|err| err.to_string())?;
+    request.options.normalize_reasoning_controls();
     request.controls.stream = value["stream"].as_bool();
     request.controls.stream_options = value.get("stream_options").cloned();
     request.controls.store = value["store"].as_bool();
@@ -315,6 +316,7 @@ pub fn request_from_value(value: &Value) -> Result<UnifiedRequest, String> {
             "response_format",
             "reasoning_effort",
             "thinking",
+            "chat_template_kwargs",
             "verbosity",
             "metadata",
             "service_tier",

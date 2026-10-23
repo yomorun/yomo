@@ -176,7 +176,13 @@ mod tests {
             .extra
             .insert("tool_stream".into(), Value::Bool(true));
         let prepared = provider.prepare_request(request).expect("prepared");
-        assert_eq!(prepared.reasoning_effort.as_deref(), Some("max"));
+        assert_eq!(
+            prepared
+                .reasoning_effort
+                .as_ref()
+                .and_then(|effort| effort.as_str()),
+            Some("max")
+        );
         assert_eq!(prepared.temperature, Some(0.7));
         assert_eq!(prepared.extra.get("tool_stream"), Some(&Value::Bool(true)));
         assert_eq!(prepared.model, "gpt-5.6-sol");

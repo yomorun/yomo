@@ -431,7 +431,8 @@ pub fn request_from_value(value: &Value) -> Result<UnifiedRequest, String> {
         .as_bool()
         .map(|disable| !disable);
     request.options.thinking = value.get("thinking").cloned();
-    request.options.reasoning_effort = value["output_config"]["effort"].as_str().map(str::to_owned);
+    request.options.reasoning_effort =
+        serde_json::from_value(value["output_config"]["effort"].clone()).ok();
     request.options.response_format = value["output_config"].get("format").cloned();
     request.options.metadata = value.get("metadata").cloned();
     request.options.service_tier = value_string(value, "service_tier");
@@ -1193,7 +1194,14 @@ mod tests {
             "output_config":{"effort":"max","format":{"type":"json_schema","schema":{"type":"object"}}}
         });
         let request = request_from_value(&raw).expect("request");
-        assert_eq!(request.options.reasoning_effort.as_deref(), Some("max"));
+        assert_eq!(
+            request
+                .options
+                .reasoning_effort
+                .as_ref()
+                .and_then(|effort| effort.as_str()),
+            Some("max")
+        );
         assert_eq!(
             request_to_value(&request).expect("native")["output_config"],
             raw["output_config"]
