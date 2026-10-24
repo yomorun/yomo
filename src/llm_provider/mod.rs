@@ -3,6 +3,7 @@ pub mod openai;
 pub mod openai_compatible;
 pub mod openai_responses;
 pub mod provider;
+pub(crate) mod sse;
 pub mod tokenhub;
 pub mod vertexai;
 pub mod vllm_deepseek;

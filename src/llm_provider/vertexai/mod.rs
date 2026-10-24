@@ -25,6 +25,7 @@ use self::types::{
     VertexToolConfig, VertexUsageMetadata,
 };
 use crate::llm_provider::openai_compatible::mapper::ensure_tool_call_id;
+use crate::llm_provider::sse::SseDataReader;
 use crate::llm_provider::{
     FinishReason, Provider, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse,
 };
@@ -150,39 +151,27 @@ impl<M> Provider<M> for VertexAIProvider {
             let mut state = VertexStreamState::default();
             state.model = model_id;
 
-            let mut buffer = String::new();
+            let mut reader = SseDataReader::default();
             while let Some(item) = stream.next().await {
                 let chunk = item.map_err(|err| ProviderError::internal(err.to_string()))?;
                 debug_response_json("stream_chunk", None, &chunk);
-                let text = String::from_utf8_lossy(&chunk);
-                buffer.push_str(&text);
 
-                while let Some(pos) = buffer.find('\n') {
-                    let line = buffer[..pos].trim().to_string();
-                    buffer.drain(..=pos);
-                    if line.is_empty() {
-                        continue;
+                for data in reader.push(&chunk) {
+                    debug_stream_event_json(&data);
+                    if data.trim() == "[DONE]" {
+                        if !state.completed {
+                            yield UnifiedEvent::Completed {
+                                finish_reason: Some("stop".to_string()),
+                            };
+                        }
+                        return;
                     }
-                    if let Some(data) = line
-                        .strip_prefix("data: ")
-                        .or_else(|| line.strip_prefix("data:"))
-                    {
-                        debug_stream_event_json(data);
-                        if data.trim() == "[DONE]" {
-                            if !state.completed {
-                                yield UnifiedEvent::Completed {
-                                    finish_reason: Some("stop".to_string()),
-                                };
-                            }
-                            return;
-                        }
 
-                        let value: VertexGenerateContentResponse = serde_json::from_str(data)
-                            .map_err(|err| ProviderError::internal(format!("parse vertex stream event: {err}")))?;
+                    let value: VertexGenerateContentResponse = serde_json::from_str(&data)
+                        .map_err(|err| ProviderError::internal(format!("parse vertex stream event: {err}")))?;
 
-                        for event in map_vertex_stream_chunk(&value, &mut state, &self.thought_signatures) {
-                            yield event;
-                        }
+                    for event in map_vertex_stream_chunk(&value, &mut state, &self.thought_signatures) {
+                        yield event;
                     }
                 }
             }
@@ -1657,6 +1646,52 @@ mod tests {
                 .iter()
                 .any(|event| matches!(event, UnifiedEvent::Usage { .. }))
         );
+    }
+
+    #[test]
+    fn stream_keeps_cjk_text_when_chunks_split_utf8_characters() {
+        let mut state = VertexStreamState {
+            model: "gemini-3.7-flash".to_string(),
+            ..Default::default()
+        };
+        let thought_signatures = Arc::new(Mutex::new(ThoughtSignatureStore::new(16)));
+        let body = concat!(
+            "data: {\"responseId\":\"resp-cjk\",\"candidates\":[{\"content\":{\"role\":\"model\",",
+            "\"parts\":[{\"text\":\"先想一想\",\"thought\":true}]}}]}\r\n\r\n",
+            "data: {\"responseId\":\"resp-cjk\",\"candidates\":[{\"content\":{\"role\":\"model\",",
+            "\"parts\":[{\"text\":\"中文回答🙂\"}]},\"finishReason\":\"STOP\"}]}\r\n\r\n",
+        );
+
+        let mut reader = SseDataReader::default();
+        let mut events = Vec::new();
+        for byte in body.as_bytes() {
+            for data in reader.push(std::slice::from_ref(byte)) {
+                let value: VertexGenerateContentResponse =
+                    serde_json::from_str(&data).expect("event must parse");
+                events.extend(map_vertex_stream_chunk(
+                    &value,
+                    &mut state,
+                    &thought_signatures,
+                ));
+            }
+        }
+
+        let text = events
+            .iter()
+            .filter_map(|event| match event {
+                UnifiedEvent::MessageDelta { delta, .. } => Some(delta.as_str()),
+                _ => None,
+            })
+            .collect::<String>();
+        let reasoning = events
+            .iter()
+            .filter_map(|event| match event {
+                UnifiedEvent::ThinkingDelta { delta, .. } => Some(delta.as_str()),
+                _ => None,
+            })
+            .collect::<String>();
+        assert_eq!(text, "中文回答🙂");
+        assert_eq!(reasoning, "先想一想");
     }
 
     #[test]
