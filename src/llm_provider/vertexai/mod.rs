@@ -1154,6 +1154,7 @@ fn map_vertex_thinking_config(request: &ChatCompletionRequest) -> Option<VertexT
     Some(VertexThinkingConfig {
         thinking_budget: None,
         thinking_level: Some(thinking_level),
+        include_thoughts: Some(true),
     })
 }
 
@@ -1181,12 +1182,14 @@ fn gemini_max_output_tokens_limit(model: &str) -> Option<i32> {
         "gemini-3.5-flash" => Some(GEMINI_MAX_OUTPUT_TOKENS_65K),
         "gemini-3.6-flash" => Some(GEMINI_MAX_OUTPUT_TOKENS_65K),
         "gemini-3.7-flash" => Some(GEMINI_MAX_OUTPUT_TOKENS_65K),
+        "gemini-3.8-flash" => Some(GEMINI_MAX_OUTPUT_TOKENS_65K),
+        "gemini-4-argon" => Some(GEMINI_MAX_OUTPUT_TOKENS_65K),
         "gemini-3-flash-preview" => Some(GEMINI_MAX_OUTPUT_TOKENS_65K),
         "gemini-2.5-flash" => Some(GEMINI_MAX_OUTPUT_TOKENS_65K),
         "gemini-2.5-pro" => Some(GEMINI_MAX_OUTPUT_TOKENS_65K),
         "gemini-3-pro-image" => Some(GEMINI_MAX_OUTPUT_TOKENS_32K),
         "gemini-3.1-flash-image" => Some(GEMINI_MAX_OUTPUT_TOKENS_32K),
-        _ => None,
+        _ => Some(GEMINI_MAX_OUTPUT_TOKENS_65K),
     }
 }
 
@@ -1721,6 +1724,18 @@ mod tests {
     }
 
     #[test]
+    fn clamp_gemini_3_8_flash_max_output_tokens_to_65k() {
+        let clamped = clamp_gemini_max_output_tokens("gemini-3.8-flash", Some(128_000));
+        assert_eq!(clamped, Some(65_536));
+    }
+
+    #[test]
+    fn clamp_gemini_4_argon_max_output_tokens_to_65k() {
+        let clamped = clamp_gemini_max_output_tokens("gemini-4-argon", Some(128_000));
+        assert_eq!(clamped, Some(65_536));
+    }
+
+    #[test]
     fn clamp_gemini_max_output_tokens_clamps_image_models_to_32k() {
         let clamped = clamp_gemini_max_output_tokens("gemini-3-pro-image", Some(65_536));
         assert_eq!(clamped, Some(32_768));
@@ -1733,9 +1748,9 @@ mod tests {
     }
 
     #[test]
-    fn clamp_gemini_max_output_tokens_keeps_non_gemini_models_unchanged() {
-        let clamped = clamp_gemini_max_output_tokens("claude-opus-4-6", Some(128_000));
-        assert_eq!(clamped, Some(128_000));
+    fn clamp_gemini_max_output_tokens_clamps_unlisted_gemini_models_to_65k() {
+        let clamped = clamp_gemini_max_output_tokens("gemini-5-preview", Some(128_000));
+        assert_eq!(clamped, Some(65_536));
     }
 
     #[test]
@@ -1759,6 +1774,7 @@ mod tests {
             map_vertex_thinking_config(&high_effort_other_model).expect("config must exist");
         assert_eq!(config.thinking_budget, None);
         assert_eq!(config.thinking_level, Some(VertexThinkingLevel::High));
+        assert_eq!(config.include_thoughts, Some(true));
     }
 
     #[test]

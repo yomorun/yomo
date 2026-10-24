@@ -48,6 +48,8 @@ pub struct VertexThinkingConfig {
     pub thinking_budget: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thinking_level: Option<VertexThinkingLevel>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub include_thoughts: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -289,14 +291,16 @@ mod tests {
     }
 
     #[test]
-    fn vertex_thinking_config_serializes_level_and_budget() {
+    fn vertex_thinking_config_serializes_level_budget_and_include_thoughts() {
         let config = VertexThinkingConfig {
             thinking_budget: Some(2048),
             thinking_level: Some(VertexThinkingLevel::Medium),
+            include_thoughts: Some(true),
         };
 
         let value = serde_json::to_value(config).expect("must serialize thinking config");
         assert_eq!(value["thinkingBudget"], 2048);
         assert_eq!(value["thinkingLevel"], "MEDIUM");
+        assert_eq!(value["includeThoughts"], true);
     }
 }
