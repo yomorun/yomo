@@ -12,6 +12,7 @@ use log::debug;
 use serde_json::Value;
 
 use crate::llm_provider::ProviderError;
+use crate::llm_provider::sse::SseDataReader;
 use crate::openai_types::ErrorDetail;
 use crate::serve_config::ConfigError;
 use crate::utils::{json_body_for_log, json_value_for_log};
@@ -165,29 +166,19 @@ impl DirectClient {
         let stream = response.bytes_stream();
         Ok(Box::pin(try_stream! {
             futures_util::pin_mut!(stream);
-            let mut buffer = String::new();
+            let mut reader = SseDataReader::default();
             while let Some(item) = stream.next().await {
                 let chunk = item.map_err(ClientError::from).map_err(map_client_error)?;
-                let text = String::from_utf8_lossy(&chunk);
-                buffer.push_str(&text);
 
-                while let Some(pos) = buffer.find('\n') {
-                    let line = buffer[..pos].trim().to_string();
-                    buffer.drain(..=pos);
-
-                    if line.is_empty() || line.starts_with("event:") {
+                for data in reader.push(&chunk) {
+                    let payload = data.trim();
+                    if payload.is_empty() || payload == "[DONE]" {
                         continue;
                     }
-                    if let Some(data) = line.strip_prefix("data:") {
-                        let payload = data.trim();
-                        if payload.is_empty() || payload == "[DONE]" {
-                            continue;
-                        }
-                        let event: StreamEvent = serde_json::from_str(payload).map_err(|err| {
-                            ProviderError::internal(format!("parse anthropic stream event: {err}"))
-                        })?;
-                        yield event;
-                    }
+                    let event: StreamEvent = serde_json::from_str(payload).map_err(|err| {
+                        ProviderError::internal(format!("parse anthropic stream event: {err}"))
+                    })?;
+                    yield event;
                 }
             }
         }))
