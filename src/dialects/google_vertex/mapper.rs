@@ -36,6 +36,8 @@ use crate::utils::ensure_tool_call_id;
 const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
 // Gemini inline data limit for non-image file parts (e.g. PDF).
 const MAX_FILE_BYTES: usize = 20 * 1024 * 1024;
+const GEMINI_MAX_OUTPUT_TOKENS_65K: i32 = 65_536;
+const GEMINI_MAX_OUTPUT_TOKENS_32K: i32 = 32_768;
 
 #[derive(Default)]
 pub(crate) struct ThoughtSignatureStore {
@@ -237,12 +239,15 @@ pub(crate) async fn build_unified_vertex_request(
     let mut generation = VertexGenerationConfig {
         temperature: request.options.temperature.map(|value| value as f32),
         top_p: request.options.top_p.map(|value| value as f32),
-        max_output_tokens: request
-            .options
-            .max_output_tokens
-            .map(i32::try_from)
-            .transpose()
-            .map_err(|_| invalid("output budget exceeds supported integer range"))?,
+        max_output_tokens: clamp_gemini_max_output_tokens(
+            &request.model,
+            request
+                .options
+                .max_output_tokens
+                .map(i32::try_from)
+                .transpose()
+                .map_err(|_| invalid("output budget exceeds supported integer range"))?,
+        ),
         candidate_count: request
             .options
             .n
@@ -1271,6 +1276,7 @@ fn map_vertex_thinking_config(
         return Ok(Some(VertexThinkingConfig {
             thinking_budget: Some(0),
             thinking_level: None,
+            include_thoughts: None,
         }));
     }
     match (effort, thinking) {
@@ -1278,6 +1284,7 @@ fn map_vertex_thinking_config(
         (Some(level), None) => Ok(Some(VertexThinkingConfig {
             thinking_level: Some(vertex_thinking_level(level)?),
             thinking_budget: None,
+            include_thoughts: Some(true),
         })),
         (Some(_), Some(_)) => Err(ProviderError::Public {
             status: StatusCode::BAD_REQUEST,
@@ -1304,6 +1311,7 @@ fn map_vertex_thinking_config(
                 Some("disabled") => Ok(Some(VertexThinkingConfig {
                     thinking_budget: Some(0),
                     thinking_level: None,
+                    include_thoughts: None,
                 })),
                 Some("enabled" | "adaptive") => {
                     let budget = thinking
@@ -1313,6 +1321,7 @@ fn map_vertex_thinking_config(
                     Ok(budget.map(|thinking_budget| VertexThinkingConfig {
                         thinking_budget: Some(thinking_budget),
                         thinking_level: None,
+                        include_thoughts: None,
                     }))
                 }
                 _ => Err(ProviderError::Public {
@@ -1327,6 +1336,19 @@ fn map_vertex_thinking_config(
             }
         }
     }
+}
+
+fn clamp_gemini_max_output_tokens(model: &str, max_output_tokens: Option<i32>) -> Option<i32> {
+    let requested = max_output_tokens?;
+    let model = model.strip_prefix("google/").unwrap_or(model);
+    if !model.starts_with("gemini-") {
+        return Some(requested);
+    }
+    let limit = match model {
+        "gemini-3-pro-image" | "gemini-3.1-flash-image" => GEMINI_MAX_OUTPUT_TOKENS_32K,
+        _ => GEMINI_MAX_OUTPUT_TOKENS_65K,
+    };
+    Some(requested.min(limit))
 }
 
 /// Map a validated effort level string onto the Vertex enum.
@@ -1923,6 +1945,26 @@ mod tests {
             map_vertex_thinking_config(&UnifiedRequest::default())
                 .expect("no reasoning selection")
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn gemini_output_tokens_are_clamped_to_model_limits() {
+        assert_eq!(
+            clamp_gemini_max_output_tokens("google/gemini-3.8-flash", Some(128_000)),
+            Some(GEMINI_MAX_OUTPUT_TOKENS_65K)
+        );
+        assert_eq!(
+            clamp_gemini_max_output_tokens("gemini-3-pro-image", Some(65_536)),
+            Some(GEMINI_MAX_OUTPUT_TOKENS_32K)
+        );
+        assert_eq!(
+            clamp_gemini_max_output_tokens("claude-opus-4-6", Some(128_000)),
+            Some(128_000)
+        );
+        assert_eq!(
+            clamp_gemini_max_output_tokens("gemini-5-preview", None),
+            None
         );
     }
 
