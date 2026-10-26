@@ -26,6 +26,7 @@ use crate::api;
 use crate::api::hosted_tools::strip_hosted_tools;
 use crate::llm_stream_mapper::{DefaultStreamMapperSelector, StreamMapperSelector};
 use crate::metadata_mgr::{MetadataMgr, MetadataMgrImpl};
+use crate::models::{ClientApi, ModelRequestNormalizerMap};
 use crate::openai_http_mapping::{
     INTERNAL_SERVER_ERROR_MESSAGE, empty_usage, map_usage_to_openai, openai_error_response,
     validate_unified_request,
@@ -58,6 +59,7 @@ use crate::utils::{
 #[derive(Clone)]
 pub struct LlmHandlerState<A, M> {
     pub provider_registry: Arc<dyn ProviderRegistry<M>>,
+    pub request_normalizers: Arc<ModelRequestNormalizerMap>,
     pub tool_mgr: Arc<dyn ToolMgr<A, M>>,
     pub tool_invoker: Arc<dyn ToolInvoker>,
     pub metadata_mgr: Arc<dyn MetadataMgr<A, M>>,
@@ -315,25 +317,33 @@ where
             Some("invalid_request_error"),
         )
     };
-    let request: UnifiedRequest = match api::chat_completions::parse_request(&body) {
-        Ok(request) => request,
+    let request_value: Value = match serde_json::from_slice(&body) {
+        Ok(value) => value,
         Err(err) => {
             let request_body = truncate_bytes_for_log(&body);
+            let message = format!("invalid request body: {err}");
             error!(
                 "chat request invalid json: {} status_code=400 trace_id={trace_id} body={request_body}",
-                err.message
+                message
             );
-            let response =
-                openai_error_response(err.status(), &err.message, Some("invalid_request_error"));
-            set_http_span_status(&root_span, response.status(), Some(&err.message));
+            let response = openai_error_response(
+                StatusCode::BAD_REQUEST,
+                &message,
+                Some("invalid_request_error"),
+            );
+            set_http_span_status(&root_span, response.status(), Some(&message));
             return Ok(response);
         }
     };
 
-    let request_model_id = if request.model.trim().is_empty() || request.model.trim() == "auto" {
+    let request_model = request_value
+        .get("model")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let request_model_id = if request_model.trim().is_empty() || request_model.trim() == "auto" {
         None
     } else {
-        Some(request.model.clone())
+        Some(request_model.to_owned())
     };
     let provider_entry = match state.provider_registry.select_chat(
         EndpointKind::ChatCompletions,
@@ -383,6 +393,15 @@ where
             set_http_span_status(&root_span, response.status(), Some(&message));
             return Ok(response);
         }
+    };
+
+    let request = match state.request_normalizers.normalize(
+        ClientApi::ChatCompletions,
+        &provider_entry.model_id,
+        &request_value,
+    ) {
+        Ok(request) => request,
+        Err(message) => return Ok(bad_request_response(&message)),
     };
 
     let stream = request.controls.stream.unwrap_or(false);
@@ -603,19 +622,26 @@ where
         }
     };
 
-    let request = match messages::parse_request(&body) {
-        Ok(request) => request,
+    let request_value: Value = match serde_json::from_slice(&body) {
+        Ok(value) => value,
         Err(err) => {
-            let response = bad_request_response(err.message, "invalid_request_error");
+            let response = bad_request_response(
+                format!("invalid request body: {err}"),
+                "invalid_request_error",
+            );
             set_http_span_status(&root_span, response.status(), Some("invalid_request"));
             return Ok(response);
         }
     };
 
-    let request_model_id = if request.model.trim().is_empty() || request.model.trim() == "auto" {
+    let request_model = request_value
+        .get("model")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let request_model_id = if request_model.trim().is_empty() || request_model.trim() == "auto" {
         None
     } else {
-        Some(request.model.clone())
+        Some(request_model.to_owned())
     };
     let provider_entry = match state.provider_registry.select_chat(
         EndpointKind::Messages,
@@ -662,6 +688,15 @@ where
             set_http_span_status(&root_span, response.status(), Some("invalid_request"));
             return Ok(response);
         }
+    };
+
+    let request = match state.request_normalizers.normalize(
+        ClientApi::Messages,
+        &provider_entry.model_id,
+        &request_value,
+    ) {
+        Ok(request) => request,
+        Err(message) => return Ok(bad_request_response(message, "invalid_request_error")),
     };
 
     let stream = request.controls.stream.unwrap_or(false);
@@ -934,19 +969,24 @@ where
         }
     };
 
-    let request = match responses::parse_request(&body) {
-        Ok(request) => request,
+    let request_value: Value = match serde_json::from_slice(&body) {
+        Ok(value) => value,
         Err(err) => {
-            let response = bad_request_response(&err.message);
+            let message = format!("invalid request body: {err}");
+            let response = bad_request_response(&message);
             set_http_span_status(&root_span, response.status(), Some("invalid_request"));
             return Ok(response);
         }
     };
 
-    let request_model_id = if request.model.trim().is_empty() || request.model.trim() == "auto" {
+    let request_model = request_value
+        .get("model")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let request_model_id = if request_model.trim().is_empty() || request_model.trim() == "auto" {
         None
     } else {
-        Some(request.model.clone())
+        Some(request_model.to_owned())
     };
     let provider_entry = match state.provider_registry.select_chat(
         EndpointKind::Responses,
@@ -996,6 +1036,15 @@ where
             set_http_span_status(&root_span, response.status(), Some(&message));
             return Ok(response);
         }
+    };
+
+    let request = match state.request_normalizers.normalize(
+        ClientApi::Responses,
+        &provider_entry.model_id,
+        &request_value,
+    ) {
+        Ok(request) => request,
+        Err(message) => return Ok(bad_request_response(&message)),
     };
 
     let stream = request.controls.stream.unwrap_or(false);
@@ -1737,8 +1786,48 @@ pub async fn build_llm_api_with_error_policy(
     agent_loop_config: AgentLoopConfig<()>,
     error_response_policy: Arc<dyn LlmErrorResponsePolicy<()>>,
 ) -> anyhow::Result<Router> {
+    build_llm_api_with_normalizers(
+        tool_mgr,
+        provider_registry,
+        tool_invoker,
+        agent_loop_config,
+        error_response_policy,
+        Arc::new(ModelRequestNormalizerMap::default()),
+    )
+    .await
+}
+
+/// Build the conversation API with caller-provided model request normalizers.
+pub async fn build_llm_api_with_request_normalizers(
+    tool_mgr: Arc<dyn ToolMgr<(), ()>>,
+    provider_registry: Arc<dyn crate::provider_registry::ProviderRegistry<()>>,
+    tool_invoker: Arc<dyn ToolInvoker>,
+    agent_loop_config: AgentLoopConfig<()>,
+    request_normalizers: Arc<ModelRequestNormalizerMap>,
+) -> anyhow::Result<Router> {
+    build_llm_api_with_normalizers(
+        tool_mgr,
+        provider_registry,
+        tool_invoker,
+        agent_loop_config,
+        Arc::new(DefaultLlmErrorResponsePolicy),
+        request_normalizers,
+    )
+    .await
+}
+
+/// Build the conversation API with caller-provided model request normalizers.
+pub async fn build_llm_api_with_normalizers(
+    tool_mgr: Arc<dyn ToolMgr<(), ()>>,
+    provider_registry: Arc<dyn crate::provider_registry::ProviderRegistry<()>>,
+    tool_invoker: Arc<dyn ToolInvoker>,
+    agent_loop_config: AgentLoopConfig<()>,
+    error_response_policy: Arc<dyn LlmErrorResponsePolicy<()>>,
+    request_normalizers: Arc<ModelRequestNormalizerMap>,
+) -> anyhow::Result<Router> {
     let state = LlmHandlerState {
         provider_registry,
+        request_normalizers,
         tool_mgr,
         tool_invoker,
         metadata_mgr: Arc::new(MetadataMgrImpl::new()),
