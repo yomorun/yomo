@@ -8,13 +8,14 @@ use reqwest::StatusCode;
 use serde_json::Value;
 use tokio::time::timeout;
 
+use crate::dialects::Dialect;
 use crate::dialects::credential::sanitized_transport_headers;
 use crate::openai_types::{
     ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, ErrorDetail,
 };
 use crate::provider::UpstreamLog;
 use crate::serve_config::{AuthScheme, ModelBinding};
-use crate::upstreams::{Dialect, Upstream, UpstreamError, parse_error, request_path};
+use crate::upstreams::{Upstream, UpstreamError, parse_error, request_path};
 use crate::utils::SseDataReader;
 use axum::http::HeaderMap;
 use reqwest::RequestBuilder;

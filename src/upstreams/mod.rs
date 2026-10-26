@@ -6,6 +6,8 @@
 use axum::http::{HeaderMap, StatusCode};
 use serde::Deserialize;
 
+use crate::dialects::Dialect;
+
 pub mod aws_bedrock;
 pub mod azure_openai;
 pub mod google_vertex;
@@ -33,26 +35,6 @@ pub enum Upstream {
     Vllm,
     /// Opaque forwarding without a conversation dialect.
     Custom,
-}
-
-/// Format used to communicate with the selected upstream.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-pub enum Dialect {
-    /// OpenAI Chat Completions.
-    #[serde(rename = "openai-chat-completions")]
-    OpenAiChatCompletions,
-    /// OpenAI Responses.
-    #[serde(rename = "openai-responses")]
-    OpenAiResponses,
-    /// Anthropic Messages.
-    #[serde(rename = "anthropic-messages")]
-    AnthropicMessages,
-    /// Bedrock Converse.
-    #[serde(rename = "bedrock-converse")]
-    BedrockConverse,
-    /// Gemini generateContent.
-    #[serde(rename = "gemini-generate-content")]
-    GeminiGenerateContent,
 }
 
 /// Endpoint path owned by the upstream integration; dialect clients encode the body.

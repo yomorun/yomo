@@ -17,6 +17,7 @@ use tokio::time::timeout;
 use url::Url;
 
 use crate::api::{request_to_value, response_from_value};
+use crate::dialects::Dialect;
 use crate::dialects::credential::sanitized_transport_headers;
 use crate::dialects::credential::shared_http_client;
 use crate::openai_types::ErrorDetail;
@@ -25,7 +26,7 @@ use crate::provider::UnifiedSourceProtocol;
 use crate::provider::UpstreamLog;
 use crate::provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
 use crate::serve_config::{AuthScheme, ModelBinding, OpenAiParams};
-use crate::upstreams::{Dialect, parse_error, request_path};
+use crate::upstreams::{parse_error, request_path};
 use crate::utils::SseDataReader;
 use axum::http::{HeaderMap, StatusCode};
 use reqwest::RequestBuilder;

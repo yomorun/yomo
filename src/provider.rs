@@ -12,9 +12,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tracing::Span;
 
+use crate::dialects::Dialect;
 use crate::openai_types::ErrorDetail;
 use crate::serve_config::ModelBinding;
-use crate::upstreams::Dialect;
 use crate::usage_handler::EndpointUsage;
 
 /// Diagnostic context retained across asynchronous response streaming.

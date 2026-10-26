@@ -9,8 +9,9 @@ use std::marker::PhantomData;
 use std::path::PathBuf;
 use url::Url;
 
+use crate::dialects::Dialect;
 use crate::tls::TlsConfig;
-use crate::upstreams::{Dialect, Upstream};
+use crate::upstreams::Upstream;
 
 /// Environment-specific connection instance, independent of a model.
 #[derive(Debug, Clone, Deserialize)]

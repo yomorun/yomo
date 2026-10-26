@@ -17,7 +17,7 @@ pub mod bridge;
 pub mod client;
 /// Connector abstractions for opening downstream streams.
 pub mod connector;
-/// Upstream API formats, transport clients and credentials.
+/// Upstream protocol dialects and their client implementations.
 pub mod dialects;
 /// HTTP authentication middleware.
 pub mod http_auth;
@@ -65,7 +65,7 @@ pub mod tool_mgr;
 pub mod trace;
 /// Shared protocol types.
 pub mod types;
-/// Vendor integrations, fixed dialect bindings and error interpretation.
+/// Vendor integrations and upstream error interpretation.
 pub mod upstreams;
 /// Usage handler interfaces.
 pub mod usage_handler;

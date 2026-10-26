@@ -20,7 +20,28 @@ use crate::dialects::openai_responses::OpenAiResponsesProvider;
 use crate::provider::Provider;
 use crate::serve_config::{ProviderConfig, ProviderKind, ProviderKindParams};
 use secrecy::ExposeSecret;
+use serde::Deserialize;
 use std::sync::Arc;
+
+/// Wire protocol used to communicate with an upstream integration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+pub enum Dialect {
+    /// OpenAI Chat Completions.
+    #[serde(rename = "openai-chat-completions")]
+    OpenAiChatCompletions,
+    /// OpenAI Responses.
+    #[serde(rename = "openai-responses")]
+    OpenAiResponses,
+    /// Anthropic Messages.
+    #[serde(rename = "anthropic-messages")]
+    AnthropicMessages,
+    /// Bedrock Converse.
+    #[serde(rename = "bedrock-converse")]
+    BedrockConverse,
+    /// Gemini generateContent.
+    #[serde(rename = "gemini-generate-content")]
+    GeminiGenerateContent,
+}
 
 /// Dispatch dialect client construction.
 ///
