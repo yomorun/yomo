@@ -184,8 +184,12 @@ impl<M> ConfigProviderRegistry<M> {
                 model: entry.model_id.clone(),
                 endpoint,
             })?;
-        let provider =
-            self.wrap_chat_provider(endpoint, Arc::clone(&chat.provider), &chat.model_id);
+        let provider = self.wrap_chat_provider(
+            endpoint,
+            Arc::clone(&chat.provider),
+            &chat.model_id,
+            metadata,
+        );
         Ok(ChatProviderEntry {
             model_id: chat.model_id.clone(),
             label: chat.label.clone(),
@@ -199,6 +203,7 @@ impl<M> ConfigProviderRegistry<M> {
         endpoint: EndpointKind,
         provider: Arc<dyn Provider<M>>,
         model_id: &str,
+        metadata: &M,
     ) -> Arc<dyn Provider<M>>
     where
         M: Clone + Send + Sync + 'static,
@@ -209,6 +214,7 @@ impl<M> ConfigProviderRegistry<M> {
                 error_notifier: Arc::clone(notifier),
                 model_id: model_id.to_string(),
                 endpoint: format!("/v1{}", endpoint.as_path()),
+                metadata: metadata.clone(),
             });
         }
         provider
@@ -247,6 +253,7 @@ struct HookedChatProvider<M> {
     error_notifier: Arc<dyn ProviderErrorNotifier<M>>,
     model_id: String,
     endpoint: String,
+    metadata: M,
 }
 
 #[async_trait]
@@ -262,29 +269,24 @@ where
         self.inner.binding()
     }
 
-    async fn complete(
-        &self,
-        request: UnifiedRequest,
-        metadata: &M,
-    ) -> Result<UnifiedResponse, ProviderError> {
+    async fn complete(&self, request: UnifiedRequest) -> Result<UnifiedResponse, ProviderError> {
         self.inner
-            .complete(request, metadata)
+            .complete(request)
             .await
-            .map_err(|err| self.notify_error(metadata, err))
+            .map_err(|err| self.notify_error(err))
     }
 
     async fn stream<'a>(
         &'a self,
         request: UnifiedRequest,
-        metadata: &M,
     ) -> Result<
         std::pin::Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
         ProviderError,
     > {
         self.inner
-            .stream(request, metadata)
+            .stream(request)
             .await
-            .map_err(|err| self.notify_error(metadata, err))
+            .map_err(|err| self.notify_error(err))
     }
 }
 
@@ -292,7 +294,7 @@ impl<M> HookedChatProvider<M>
 where
     M: Clone + Send + Sync + 'static,
 {
-    fn notify_error(&self, metadata: &M, err: ProviderError) -> ProviderError {
+    fn notify_error(&self, err: ProviderError) -> ProviderError {
         let http_status = match &err {
             ProviderError::Public { status, .. } => Some(status.as_u16()),
             ProviderError::Internal {
@@ -303,7 +305,7 @@ where
         self.error_notifier
             .notify_provider_error(ProviderErrorEvent {
                 model: Some(self.model_id.clone()),
-                metadata: metadata.clone(),
+                metadata: self.metadata.clone(),
                 http_status,
                 error: err.to_string(),
                 endpoint: Some(self.endpoint.clone()),

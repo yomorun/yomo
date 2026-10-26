@@ -149,11 +149,7 @@ impl<M> Provider<M> for GoogleVertexProvider {
         &self.model
     }
 
-    async fn complete(
-        &self,
-        request: UnifiedRequest,
-        _metadata: &M,
-    ) -> Result<UnifiedResponse, ProviderError> {
+    async fn complete(&self, request: UnifiedRequest) -> Result<UnifiedResponse, ProviderError> {
         let body =
             build_unified_vertex_request(&request, &shared_http_client(), &self.thought_signatures)
                 .await?;
@@ -190,7 +186,6 @@ impl<M> Provider<M> for GoogleVertexProvider {
     async fn stream<'a>(
         &'a self,
         request: UnifiedRequest,
-        _metadata: &M,
     ) -> Result<
         Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
         ProviderError,

@@ -1794,15 +1794,10 @@ pub trait Provider<M>: Send + Sync {
     fn binding(&self) -> Option<&ModelBinding> {
         None
     }
-    async fn complete(
-        &self,
-        request: UnifiedRequest,
-        metadata: &M,
-    ) -> Result<UnifiedResponse, ProviderError>;
+    async fn complete(&self, request: UnifiedRequest) -> Result<UnifiedResponse, ProviderError>;
     async fn stream<'a>(
         &'a self,
         request: UnifiedRequest,
-        metadata: &M,
     ) -> Result<
         Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
         ProviderError,
@@ -1830,22 +1825,17 @@ impl<M: Send + Sync + 'static> Provider<M> for BoundProvider<M> {
     fn binding(&self) -> Option<&ModelBinding> {
         Some(&self.binding)
     }
-    async fn complete(
-        &self,
-        request: UnifiedRequest,
-        metadata: &M,
-    ) -> Result<UnifiedResponse, ProviderError> {
-        self.inner.complete(request, metadata).await
+    async fn complete(&self, request: UnifiedRequest) -> Result<UnifiedResponse, ProviderError> {
+        self.inner.complete(request).await
     }
     async fn stream<'a>(
         &'a self,
         request: UnifiedRequest,
-        metadata: &M,
     ) -> Result<
         Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
         ProviderError,
     > {
-        self.inner.stream(request, metadata).await
+        self.inner.stream(request).await
     }
 }
 

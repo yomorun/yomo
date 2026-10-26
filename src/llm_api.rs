@@ -2562,7 +2562,6 @@ mod execute_tests {
         async fn complete(
             &self,
             _request: UnifiedRequest,
-            _metadata: &(),
         ) -> Result<UnifiedResponse, ProviderError> {
             Ok(self.response.clone())
         }
@@ -2570,7 +2569,6 @@ mod execute_tests {
         async fn stream<'a>(
             &'a self,
             _request: UnifiedRequest,
-            _metadata: &(),
         ) -> Result<
             Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
             ProviderError,
@@ -2700,7 +2698,6 @@ mod execute_tests {
             async fn complete(
                 &self,
                 request: UnifiedRequest,
-                _metadata: &(),
             ) -> Result<UnifiedResponse, ProviderError> {
                 *self.0.lock().await = Some(request);
                 Ok(unified_response())
@@ -2709,7 +2706,6 @@ mod execute_tests {
             async fn stream<'a>(
                 &'a self,
                 request: UnifiedRequest,
-                _metadata: &(),
             ) -> Result<
                 Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
                 ProviderError,

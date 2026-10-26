@@ -242,7 +242,7 @@ where
             adapt_bound_request(&mut request, binding)?;
         }
         let mut response = provider
-            .complete(request.clone(), &metadata)
+            .complete(request.clone())
             .instrument(llm_chat_span.clone())
             .await?;
         log_unified(
@@ -431,7 +431,7 @@ where
                 adapt_bound_request(&mut request, binding)?;
             }
             let mut provider_stream = provider
-                .stream(request.clone(), &metadata)
+                .stream(request.clone())
                 .instrument(llm_chat_span.clone())
                 .await?;
 
@@ -1468,7 +1468,6 @@ mod tests {
         async fn complete(
             &self,
             _request: UnifiedRequest,
-            _metadata: &(),
         ) -> Result<UnifiedResponse, ProviderError> {
             Err(ProviderError::internal("unused in stream test"))
         }
@@ -1476,7 +1475,6 @@ mod tests {
         async fn stream<'a>(
             &'a self,
             _request: UnifiedRequest,
-            _metadata: &(),
         ) -> Result<
             Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
             ProviderError,
@@ -1500,7 +1498,6 @@ mod tests {
         async fn complete(
             &self,
             _request: UnifiedRequest,
-            _metadata: &(),
         ) -> Result<UnifiedResponse, ProviderError> {
             Ok(self.response.clone())
         }
@@ -1508,7 +1505,6 @@ mod tests {
         async fn stream<'a>(
             &'a self,
             _request: UnifiedRequest,
-            _metadata: &(),
         ) -> Result<
             Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
             ProviderError,
@@ -1526,7 +1522,6 @@ mod tests {
         async fn complete(
             &self,
             _request: UnifiedRequest,
-            _metadata: &(),
         ) -> Result<UnifiedResponse, ProviderError> {
             Err(ProviderError::internal("unused in stream test"))
         }
@@ -1534,7 +1529,6 @@ mod tests {
         async fn stream<'a>(
             &'a self,
             _request: UnifiedRequest,
-            _metadata: &(),
         ) -> Result<
             Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
             ProviderError,
@@ -1563,7 +1557,6 @@ mod tests {
         async fn complete(
             &self,
             _request: UnifiedRequest,
-            _metadata: &(),
         ) -> Result<UnifiedResponse, ProviderError> {
             let mut guard = self.next_round.lock().expect("next round lock");
             let index = *guard;
@@ -1578,7 +1571,6 @@ mod tests {
         async fn stream<'a>(
             &'a self,
             _request: UnifiedRequest,
-            _metadata: &(),
         ) -> Result<
             Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
             ProviderError,

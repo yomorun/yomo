@@ -81,11 +81,7 @@ impl<M> Provider<M> for BedrockConverseProvider {
         &self.bedrock_model
     }
 
-    async fn complete(
-        &self,
-        request: UnifiedRequest,
-        _metadata: &M,
-    ) -> Result<UnifiedResponse, ProviderError> {
+    async fn complete(&self, request: UnifiedRequest) -> Result<UnifiedResponse, ProviderError> {
         let additional_model_request_fields =
             mapper::additional_model_request_fields(&request, &self.bedrock_model)
                 .map_err(Self::invalid_request)?;
@@ -137,7 +133,6 @@ impl<M> Provider<M> for BedrockConverseProvider {
     async fn stream<'a>(
         &'a self,
         request: UnifiedRequest,
-        _metadata: &M,
     ) -> Result<
         Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
         ProviderError,

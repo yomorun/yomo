@@ -113,11 +113,7 @@ impl<M> Provider<M> for OpenAiResponsesProvider {
         self.binding.as_ref()
     }
 
-    async fn complete(
-        &self,
-        request: UnifiedRequest,
-        _metadata: &M,
-    ) -> Result<UnifiedResponse, ProviderError> {
+    async fn complete(&self, request: UnifiedRequest) -> Result<UnifiedResponse, ProviderError> {
         let mut body = request_to_value(&request, UnifiedSourceProtocol::Responses)
             .map_err(ProviderError::internal)?;
         body["model"] = json!(self.model);
@@ -153,7 +149,6 @@ impl<M> Provider<M> for OpenAiResponsesProvider {
     async fn stream<'a>(
         &'a self,
         request: UnifiedRequest,
-        _metadata: &M,
     ) -> Result<
         Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
         ProviderError,
