@@ -8,6 +8,7 @@ use reqwest::StatusCode;
 use serde_json::Value;
 use tokio::time::timeout;
 
+use crate::dialects::credential::sanitized_transport_headers;
 use crate::openai_types::{
     ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, ErrorDetail,
 };
@@ -192,6 +193,7 @@ impl Client {
     pub async fn chat_completions(
         &self,
         mut request: ChatCompletionRequest,
+        transport_headers: &HeaderMap,
     ) -> Result<ChatCompletionResponse, ClientError> {
         clear_agent_context(&mut request);
         let url = format!(
@@ -202,7 +204,7 @@ impl Client {
         let diagnostics = UpstreamLog::new("openai-chat-completions", &request.model);
         let body = self.request_body(&request)?;
         diagnostics.json("upstream.request", Some(&url), &body);
-        let request_builder = self.client.post(url);
+        let request_builder = apply_transport_headers(self.client.post(url), transport_headers);
         let response = self.apply_auth(request_builder).json(&body).send().await?;
 
         let status = response.status();
@@ -231,7 +233,9 @@ impl Client {
     pub async fn chat_completions_stream(
         &self,
         mut request: ChatCompletionRequest,
-    ) -> Result<impl Stream<Item = Result<ChatCompletionChunk, ClientError>>, ClientError> {
+        transport_headers: &HeaderMap,
+    ) -> Result<impl Stream<Item = Result<ChatCompletionChunk, ClientError>> + use<'_>, ClientError>
+    {
         clear_agent_context(&mut request);
         request.stream = Some(true);
         let url = format!(
@@ -244,7 +248,12 @@ impl Client {
         diagnostics.json("upstream.request", Some(&url), &body);
         let response = timeout(
             self.config.stream_first_byte_timeout,
-            self.apply_auth(self.client.post(url)).json(&body).send(),
+            self.apply_auth(apply_transport_headers(
+                self.client.post(url),
+                transport_headers,
+            ))
+            .json(&body)
+            .send(),
         )
         .await
         .map_err(|_| ClientError::Timeout("stream first byte timeout".to_string()))??;
@@ -348,6 +357,16 @@ pub(crate) fn trimmed_base_url(base_url: &str) -> &str {
 
 fn clear_agent_context(request: &mut ChatCompletionRequest) {
     request.agent_context = None;
+}
+
+/// Apply application-supplied transport headers before authentication so that
+/// provider credentials always win over client-supplied values.
+fn apply_transport_headers(builder: RequestBuilder, headers: &HeaderMap) -> RequestBuilder {
+    let headers = sanitized_transport_headers(headers);
+    if headers.is_empty() {
+        return builder;
+    }
+    builder.headers(headers)
 }
 
 #[cfg(test)]
@@ -468,6 +487,44 @@ mod tests {
             "test-key"
         );
         assert!(request.headers().get("authorization").is_none());
+    }
+
+    #[test]
+    fn transport_headers_are_applied_before_authentication() {
+        let client = Client::new(Config::new("server-key")).expect("build client");
+        let mut transport = HeaderMap::new();
+        transport.insert("x-client-header", "client-value".parse().unwrap());
+        transport.insert(header::AUTHORIZATION, "Bearer client-key".parse().unwrap());
+
+        let request = client
+            .apply_auth(apply_transport_headers(
+                client
+                    .client
+                    .post("https://example.test/v1/chat/completions"),
+                &transport,
+            ))
+            .build()
+            .expect("request");
+
+        assert_eq!(request.headers()["x-client-header"], "client-value");
+        assert_eq!(
+            request.headers()[header::AUTHORIZATION],
+            "Bearer server-key"
+        );
+    }
+
+    #[test]
+    fn transport_headers_are_optional() {
+        let client = Client::new(Config::new("server-key")).expect("build client");
+        let request = apply_transport_headers(
+            client
+                .client
+                .post("https://example.test/v1/chat/completions"),
+            &HeaderMap::new(),
+        )
+        .build()
+        .expect("request");
+        assert!(request.headers().is_empty());
     }
 
     #[test]

@@ -110,10 +110,11 @@ impl<M> Provider<M> for OpenAiChatCompletionsProvider {
         request: UnifiedRequest,
         _metadata: &M,
     ) -> Result<UnifiedResponse, ProviderError> {
+        let transport_headers = request.transport_headers.clone();
         let request = self.prepare_request(mapper::request_to_chat(&request)?)?;
         mapper::map_response(
             self.client
-                .chat_completions(request)
+                .chat_completions(request, &transport_headers)
                 .await
                 .map_err(map_error)?,
         )
@@ -127,10 +128,11 @@ impl<M> Provider<M> for OpenAiChatCompletionsProvider {
         Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
         ProviderError,
     > {
+        let transport_headers = request.transport_headers.clone();
         let request = self.prepare_request(mapper::request_to_chat(&request)?)?;
         let stream = self
             .client
-            .chat_completions_stream(request)
+            .chat_completions_stream(request, &transport_headers)
             .await
             .map_err(map_error)?;
         Ok(Box::pin(try_stream! {

@@ -17,6 +17,7 @@ use tokio::time::timeout;
 use url::Url;
 
 use crate::api::{request_to_value, response_from_value};
+use crate::dialects::credential::sanitized_transport_headers;
 use crate::dialects::credential::shared_http_client;
 use crate::openai_types::ErrorDetail;
 use crate::provider::UnifiedRequest;
@@ -125,7 +126,7 @@ impl<M> Provider<M> for OpenAiResponsesProvider {
 
         let response = self.http.post(self.url());
         let response = self
-            .apply_auth(response)
+            .apply_auth(response.headers(sanitized_transport_headers(&request.transport_headers)))
             .json(&body)
             .send()
             .await
@@ -166,9 +167,13 @@ impl<M> Provider<M> for OpenAiResponsesProvider {
 
         let response = timeout(
             Duration::from_secs(STREAM_FIRST_BYTE_TIMEOUT_SECS),
-            self.apply_auth(self.http.post(self.url()))
-                .json(&body)
-                .send(),
+            self.apply_auth(
+                self.http
+                    .post(self.url())
+                    .headers(sanitized_transport_headers(&request.transport_headers)),
+            )
+            .json(&body)
+            .send(),
         )
         .await
         .map_err(|_| ProviderError::internal("stream first byte timeout".to_string()))?

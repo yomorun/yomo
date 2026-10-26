@@ -215,6 +215,10 @@ pub struct UnifiedRequest {
     /// Local tool context. Native serializers must never forward this upstream.
     pub execution_context: Option<Value>,
     pub source_extensions: Option<UnifiedSourceExtensions>,
+    /// Application-supplied HTTP headers for the concrete upstream call.
+    /// Never serialized into a client or upstream request body.
+    #[serde(skip)]
+    pub transport_headers: HeaderMap,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1969,6 +1973,18 @@ pub fn adapt_bound_request(
 mod tests {
     use super::*;
     use crate::upstreams::Upstream;
+
+    #[test]
+    fn transport_headers_are_not_serialized_with_the_request() {
+        let mut request = UnifiedRequest::default();
+        request
+            .transport_headers
+            .insert("x-client-header", "client-value".parse().unwrap());
+
+        let value = serde_json::to_value(&request).expect("serialize request");
+
+        assert!(value.get("transport_headers").is_none());
+    }
 
     fn binding(dialect: Dialect) -> ModelBinding {
         ModelBinding {

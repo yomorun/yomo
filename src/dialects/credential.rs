@@ -8,11 +8,21 @@ use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use axum::http::{HeaderMap, header};
 use secrecy::ExposeSecret;
 use tokio::sync::Mutex;
 
 use crate::provider::ProviderError;
 use crate::serve_config::AuthScheme;
+
+/// Remove credential headers from application-supplied transport headers.
+/// Provider authentication is attached afterwards and must always win.
+pub fn sanitized_transport_headers(headers: &HeaderMap) -> HeaderMap {
+    let mut headers = headers.clone();
+    headers.remove(header::AUTHORIZATION);
+    headers.remove("api-key");
+    headers
+}
 
 /// Shared HTTP client: unified timeouts, connection pool, User-Agent.
 pub fn shared_http_client() -> reqwest::Client {
@@ -277,6 +287,20 @@ mod tests {
         assert_eq!(first, "token-0");
         assert_eq!(second, "token-1");
         assert_eq!(fetcher.calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn sanitized_transport_headers_drop_credentials_and_keep_app_headers() {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::AUTHORIZATION, "Bearer client-key".parse().unwrap());
+        headers.insert("api-key", "client-key".parse().unwrap());
+        headers.insert("x-client-header", "client-value".parse().unwrap());
+
+        let sanitized = sanitized_transport_headers(&headers);
+
+        assert!(sanitized.get(header::AUTHORIZATION).is_none());
+        assert!(sanitized.get("api-key").is_none());
+        assert_eq!(sanitized["x-client-header"], "client-value");
     }
 
     #[tokio::test]

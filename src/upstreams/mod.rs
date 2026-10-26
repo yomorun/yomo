@@ -153,11 +153,42 @@ pub fn parse_error(
 ) -> UpstreamError {
     match upstream {
         Upstream::Tokenhub => tokenhub::parse_error(status, headers, body),
+        // OpenAI-compatible services use the standard OpenAI error envelope.
+        Upstream::OpenaiCompatible => tokenhub::parse_error(status, headers, body),
         Upstream::AzureOpenai => azure_openai::parse_error(status, headers, body),
         Upstream::VolcengineArk => volcengine_ark::parse_error(status, headers, body),
         Upstream::Vllm => vllm::parse_error(status, headers, body),
         Upstream::AwsBedrock => aws_bedrock::parse_error(status, headers, body),
         Upstream::GoogleVertex => google_vertex::parse_error(status, headers, body),
         _ => fallback_error(status, headers, body),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn openai_compatible_errors_use_the_openai_envelope() {
+        let body = br#"{
+            "error": {
+                "message": "bad model",
+                "type": "invalid_request_error",
+                "code": "bad_request",
+                "param": "model"
+            }
+        }"#;
+
+        let error = parse_error(
+            Upstream::OpenaiCompatible,
+            StatusCode::BAD_REQUEST,
+            &HeaderMap::new(),
+            body,
+        );
+
+        assert_eq!(error.message, "bad model");
+        assert_eq!(error.error_type.as_deref(), Some("invalid_request_error"));
+        assert_eq!(error.code.as_deref(), Some("bad_request"));
+        assert_eq!(error.param.as_deref(), Some("model"));
     }
 }
