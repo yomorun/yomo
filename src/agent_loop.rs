@@ -19,7 +19,7 @@ use tracing_opentelemetry::OpenTelemetrySpanExt;
 use crate::openai_types::{Content, FunctionDefinition, Message, Role, ToolDefinition, Usage};
 use crate::provider::{
     FinishReason, Provider, ProviderError, ToolCall as ProviderToolCall, UnifiedEvent,
-    UnifiedResponse, adapt_bound_request, diagnostic_call_id, log_unified,
+    UnifiedResponse, adapt_bound_request, log_unified,
 };
 use crate::provider::{
     UnifiedContentDelta, UnifiedEventKind, UnifiedInputItem, UnifiedInputItemKind,
@@ -228,10 +228,8 @@ where
             request.tool_choice = None;
         }
 
-        let call_id = diagnostic_call_id(&llm_chat_span);
         log_unified(
             "unified.request",
-            &call_id,
             &trace_id,
             call_count + 1,
             provider.model_id(),
@@ -247,7 +245,6 @@ where
             .await?;
         log_unified(
             "unified.response",
-            &call_id,
             &trace_id,
             call_count + 1,
             provider.model_id(),
@@ -424,8 +421,7 @@ where
                 request.tool_choice = None;
             }
 
-            let call_id = diagnostic_call_id(&llm_chat_span);
-            log_unified("unified.request", &call_id, &trace_id, loop_state.call_count + 1, provider.model_id(), &request);
+            log_unified("unified.request", &trace_id, loop_state.call_count + 1, provider.model_id(), &request);
 
             if let Some(binding) = provider.binding() {
                 adapt_bound_request(&mut request, binding)?;
@@ -439,7 +435,7 @@ where
 
             while let Some(item) = provider_stream.next().await {
                 let event = item?;
-                log_unified("unified.event", &call_id, &trace_id, loop_state.call_count + 1, provider.model_id(), &event);
+                log_unified("unified.event", &trace_id, loop_state.call_count + 1, provider.model_id(), &event);
                 apply_event(&mut round_state.response, &event).map_err(ProviderError::internal)?;
                 if !round_state.response.id.is_empty() { round_state.request_id = Some(round_state.response.id.clone()); }
                 match &event.kind {
@@ -588,7 +584,7 @@ where
                 }
             }
 
-            log_unified("unified.response", &call_id, &trace_id, loop_state.call_count + 1, provider.model_id(), &round_state.response);
+            log_unified("unified.response", &trace_id, loop_state.call_count + 1, provider.model_id(), &round_state.response);
             loop_state.call_count += 1;
             if let Some(id) = round_state.request_id.as_deref() {
                 llm_chat_span.record("request_id", id);

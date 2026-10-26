@@ -9,8 +9,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::fmt::Debug;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
-use tracing::Span;
 
 use crate::dialects::Dialect;
 use crate::openai_types::ErrorDetail;
@@ -19,23 +17,13 @@ use crate::usage_handler::EndpointUsage;
 
 /// Diagnostic context retained across asynchronous response streaming.
 pub struct UpstreamLog {
-    call_id: String,
     provider: &'static str,
     model: String,
-}
-
-/// Correlate provider diagnostics with the current engine call span.
-pub fn diagnostic_call_id(span: &Span) -> String {
-    static NEXT_CALL: AtomicU64 = AtomicU64::new(1);
-    span.id()
-        .map(|id| format!("span-{}", id.into_u64()))
-        .unwrap_or_else(|| format!("call-{}", NEXT_CALL.fetch_add(1, Ordering::Relaxed)))
 }
 
 impl UpstreamLog {
     pub fn new(provider: &'static str, model: &str) -> Self {
         Self {
-            call_id: diagnostic_call_id(&Span::current()),
             provider,
             model: model.into(),
         }
@@ -87,7 +75,7 @@ impl UpstreamLog {
     }
 
     fn record(&self, url: Option<&str>, body: Value) -> Value {
-        json!({"call_id":self.call_id,"provider":self.provider,"model":self.model,"url":url,"body":body})
+        json!({"provider":self.provider,"model":self.model,"url":url,"body":body})
     }
 }
 
@@ -109,10 +97,9 @@ fn diagnostic_response_headers(headers: &HeaderMap) -> HashMap<String, String> {
     .collect()
 }
 
-/// Full unified data with explicit engine correlation, before billing or filtering.
+/// Full unified data with trace and round context, before billing or filtering.
 pub fn log_unified<T: Serialize + ?Sized>(
     event: &str,
-    call_id: &str,
     trace_id: &str,
     round: usize,
     model: &str,
@@ -125,7 +112,7 @@ pub fn log_unified<T: Serialize + ?Sized>(
         Ok(body) => debug!(
             "{} {}",
             event,
-            json!({"call_id":call_id,"trace_id":trace_id,"round":round,"model":model,"body":body})
+            json!({"trace_id":trace_id,"round":round,"model":model,"body":body})
         ),
         Err(error) => debug!("{} serialization_error={}", event, error),
     }
@@ -2059,21 +2046,7 @@ mod tests {
     }
 
     #[test]
-    fn upstream_diagnostics_use_the_engine_call_span() {
-        tracing::subscriber::with_default(tracing_subscriber::registry(), || {
-            let first = tracing::info_span!("llm.chat", round = 1);
-            let second = tracing::info_span!("llm.chat", round = 2);
-            let first_id = diagnostic_call_id(&first);
-            let second_id = diagnostic_call_id(&second);
-            assert_ne!(first_id, second_id);
-            let _entered = first.enter();
-            let diagnostics = UpstreamLog::new("openai-responses", "m");
-            assert_eq!(diagnostics.call_id, first_id);
-        });
-    }
-
-    #[test]
-    fn diagnostic_record_preserves_long_and_multiline_payloads() {
+    fn diagnostic_record_preserves_payload_without_call_id() {
         let diagnostics = UpstreamLog::new("openai-responses", "m");
         let body = format!("{}\ninvalid JSON\n[DONE]", "x".repeat(16384));
         let encoded = diagnostics
@@ -2083,7 +2056,8 @@ mod tests {
         let decoded: Value = serde_json::from_str(&encoded).expect("record");
         assert_eq!(decoded["body"], body);
         assert_eq!(decoded["model"], "m");
-        assert_eq!(decoded["call_id"], diagnostics.call_id);
+        assert_eq!(decoded["provider"], "openai-responses");
+        assert!(decoded.get("call_id").is_none());
     }
 
     #[test]
