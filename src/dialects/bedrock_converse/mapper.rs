@@ -329,12 +329,13 @@ fn claude_thinking_type<'a>(thinking: &'a Value, supported: &[&str]) -> Result<&
     Ok(type_name)
 }
 
-/// Read and defensively validate `thinking.display` (Bedrock only accepts
-/// summarized/omitted; updates is a client-only value).
+/// Read `thinking.display`; Bedrock does not support the Anthropic-only updates
+/// mode, so use Bedrock's default omitted behavior for that value.
 fn claude_thinking_display(thinking: &Value) -> Result<Option<&str>, String> {
     match thinking.get("display").and_then(Value::as_str) {
         None => Ok(None),
         Some(display @ ("summarized" | "omitted")) => Ok(Some(display)),
+        Some("updates") => Ok(None),
         Some(other) => Err(format!(
             "Claude thinking display {other} is not accepted; only summarized/omitted"
         )),
@@ -1387,7 +1388,7 @@ mod tests {
             json!({"type":"enabled"}),
             json!({"type":"adaptive", "budget_tokens":4096}),
             json!({"type":"disabled", "budget_tokens":0}),
-            json!({"type":"adaptive", "display":"updates"}),
+            json!({"type":"adaptive", "display":"unsupported"}),
             json!({"type":"between_tools"}),
         ] {
             let mut request = UnifiedRequest::default();
@@ -1459,6 +1460,22 @@ mod tests {
             document_to_json_value(&fields),
             json!({"thinking": {"type": "enabled", "budget_tokens": 1024, "display": "summarized"}})
         );
+
+        budget.options.thinking = Some(json!({
+            "type": "enabled",
+            "budget_tokens": 1024,
+            "display": "updates"
+        }));
+        let fields = additional_model_request_fields(
+            &budget,
+            "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+        )
+        .expect("updates display falls back to Bedrock's omitted behavior")
+        .expect("additional fields");
+        assert_eq!(
+            document_to_json_value(&fields),
+            json!({"thinking": {"type": "enabled", "budget_tokens": 1024}})
+        );
     }
 
     #[test]
@@ -1486,7 +1503,7 @@ mod tests {
             ),
             (
                 "global.anthropic.claude-opus-4-6",
-                json!({"type": "adaptive", "display": "updates"}),
+                json!({"type": "adaptive", "display": "unsupported"}),
             ),
         ];
         for (model, thinking) in cases {
