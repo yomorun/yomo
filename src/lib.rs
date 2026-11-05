@@ -23,17 +23,15 @@ pub mod dialects;
 pub mod http_auth;
 /// Framed IO helpers.
 pub mod io;
-/// LLM-facing HTTP APIs.
+/// Agent-facing LLM HTTP request and response handling.
 pub mod llm_api;
 /// Stream mapper abstractions for LLM streaming output.
 pub mod llm_stream_mapper;
 /// Manage user-defined metadata extension.
 pub mod metadata_mgr;
-/// Model API HTTP APIs.
-/// Model API providers.
-/// Models list HTTP API.
+/// Model list API for Agent model selection.
 pub mod model_list;
-/// Model-specific request normalizers.
+/// Model-specific request normalizers for Agent requests.
 pub mod models;
 /// OpenAI request/response mapping to Events.
 pub mod openai_http_mapping;

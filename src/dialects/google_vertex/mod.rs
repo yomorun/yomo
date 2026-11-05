@@ -1,8 +1,8 @@
 //! `google-vertex` dialect: Vertex AI Gemini chat text models.
 //!
 //! SA JSON -> `Credential::Oauth2Token` (`GcpTokenCache` caching + early refresh);
-//! URLs are built from project/location; generateContent image traffic is handled
-//! by passthrough. Gemini requests and responses are translated to and from the shared IR.
+//! URLs are built from project/location. Gemini chat requests and responses are
+//! translated to and from the shared IR; image generation is outside this dialect.
 
 pub mod mapper;
 pub mod types;

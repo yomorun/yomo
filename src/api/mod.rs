@@ -8,7 +8,6 @@ pub mod responses;
 use crate::provider::{
     UnifiedContentPart, UnifiedOutputItem, UnifiedRequest, UnifiedResponse, UnifiedSourceProtocol,
 };
-use crate::serve_config::EndpointKind;
 use serde_json::Value;
 
 /// Dispatch request parsing to the originating protocol.
@@ -92,14 +91,40 @@ pub enum Api {
     Messages,
 }
 
-impl Api {
-    /// Select a conversation API; other endpoints use their own handlers.
-    pub fn from_endpoint(kind: EndpointKind) -> Option<Self> {
-        match kind {
-            EndpointKind::ChatCompletions => Some(Self::ChatCompletions),
-            EndpointKind::Responses => Some(Self::Responses),
-            EndpointKind::Messages => Some(Self::Messages),
+/// Agent-facing conversation endpoint; proxy-only endpoints are not part of the Agent API.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum EndpointKind {
+    ChatCompletions,
+    Responses,
+    Messages,
+}
+
+impl EndpointKind {
+    pub const fn as_path(self) -> &'static str {
+        match self {
+            Self::ChatCompletions => "/chat/completions",
+            Self::Responses => "/responses",
+            Self::Messages => "/messages",
+        }
+    }
+
+    pub fn from_path(path: &str) -> Option<Self> {
+        match path {
+            "/chat/completions" => Some(Self::ChatCompletions),
+            "/responses" => Some(Self::Responses),
+            "/messages" => Some(Self::Messages),
             _ => None,
+        }
+    }
+}
+
+impl Api {
+    /// Select a conversation API; proxy-only endpoints use their own handlers.
+    pub fn from_endpoint(kind: EndpointKind) -> Self {
+        match kind {
+            EndpointKind::ChatCompletions => Self::ChatCompletions,
+            EndpointKind::Responses => Self::Responses,
+            EndpointKind::Messages => Self::Messages,
         }
     }
 }
@@ -115,19 +140,7 @@ mod tests {
             (EndpointKind::Responses, Api::Responses),
             (EndpointKind::Messages, Api::Messages),
         ] {
-            assert_eq!(Api::from_endpoint(endpoint), Some(expected));
-        }
-        for endpoint in [
-            EndpointKind::SystemOne,
-            EndpointKind::Embeddings,
-            EndpointKind::Rerank,
-            EndpointKind::AudioSpeech,
-            EndpointKind::AudioTranscriptions,
-            EndpointKind::ImagesGenerations,
-            EndpointKind::ImagesEdits,
-            EndpointKind::ModelsGenerateContent,
-        ] {
-            assert_eq!(Api::from_endpoint(endpoint), None);
+            assert_eq!(Api::from_endpoint(endpoint), expected);
         }
     }
 }

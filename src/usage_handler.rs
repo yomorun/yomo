@@ -5,25 +5,16 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 
 use crate::openai_types::{CompletionTokensDetails, PromptTokensDetails, Usage as OpenAIUsage};
-use crate::usage_types::{
-    AudioSpeechUsage, AudioTranscriptionsUsage, EmbeddingsUsage, GenerateContentUsage, ImagesUsage,
-    MessagesUsage, RerankUsage, ResponsesUsage, SystemOneUsage,
-};
+use crate::usage_types::{GenerateContentUsage, MessagesUsage, ResponsesUsage};
 use crate::utils::truncate_for_log;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload", rename_all = "snake_case")]
 pub enum EndpointUsage {
     ChatCompletions(OpenAIUsage),
-    SystemOne(SystemOneUsage),
     Messages(MessagesUsage),
     Responses(ResponsesUsage),
     GenerateContent(GenerateContentUsage),
-    Embeddings(EmbeddingsUsage),
-    Rerank(RerankUsage),
-    AudioSpeech(AudioSpeechUsage),
-    AudioTranscriptions(AudioTranscriptionsUsage),
-    Images(ImagesUsage),
 }
 
 impl EndpointUsage {
@@ -45,11 +36,6 @@ impl EndpointUsage {
                     return Ok(Self::ChatCompletions(usage));
                 }
             }
-            "/systemone" => {
-                if let Ok(usage) = serde_json::from_value::<SystemOneUsage>(payload.clone()) {
-                    return Ok(Self::SystemOne(usage));
-                }
-            }
             "/messages" => {
                 if let Ok(usage) = serde_json::from_value::<MessagesUsage>(payload.clone()) {
                     return Ok(Self::Messages(usage));
@@ -58,33 +44,6 @@ impl EndpointUsage {
             "/responses" => {
                 if let Ok(usage) = serde_json::from_value::<ResponsesUsage>(payload.clone()) {
                     return Ok(Self::Responses(usage));
-                }
-            }
-            "/embeddings" => {
-                if let Ok(usage) = serde_json::from_value::<EmbeddingsUsage>(payload.clone()) {
-                    return Ok(Self::Embeddings(usage));
-                }
-            }
-            "/rerank" => {
-                if let Ok(usage) = serde_json::from_value::<RerankUsage>(payload.clone()) {
-                    return Ok(Self::Rerank(usage));
-                }
-            }
-            "/audio/speech" => {
-                if let Ok(usage) = serde_json::from_value::<AudioSpeechUsage>(payload.clone()) {
-                    return Ok(Self::AudioSpeech(usage));
-                }
-            }
-            "/audio/transcriptions" => {
-                if let Ok(usage) =
-                    serde_json::from_value::<AudioTranscriptionsUsage>(payload.clone())
-                {
-                    return Ok(Self::AudioTranscriptions(usage));
-                }
-            }
-            "/images/generations" | "/images/edits" => {
-                if let Ok(usage) = serde_json::from_value::<ImagesUsage>(payload.clone()) {
-                    return Ok(Self::Images(usage));
                 }
             }
             _ => {
@@ -113,58 +72,24 @@ impl EndpointUsage {
 
         match self {
             Self::ChatCompletions(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
-            Self::SystemOne(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
             Self::Messages(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
             Self::Responses(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
             Self::GenerateContent(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
-            Self::Embeddings(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
-            Self::Rerank(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
-            Self::AudioSpeech(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
-            Self::AudioTranscriptions(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
-            Self::Images(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
         }
     }
 
     pub fn raw_payload(&self) -> Value {
         match self {
             Self::ChatCompletions(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
-            Self::SystemOne(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
             Self::Messages(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
             Self::Responses(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
             Self::GenerateContent(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
-            Self::Embeddings(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
-            Self::Rerank(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
-            Self::AudioSpeech(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
-            Self::AudioTranscriptions(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
-            Self::Images(usage) => serde_json::to_value(usage).unwrap_or(Value::Null),
         }
     }
 
     pub(crate) fn to_openai_usage(&self) -> Option<OpenAIUsage> {
         match self {
             Self::ChatCompletions(usage) => Some(usage.clone()),
-            Self::SystemOne(usage) => {
-                if usage.input_tokens.is_none() && usage.output_tokens.is_none() {
-                    return None;
-                }
-                let input_tokens = usage.input_tokens.unwrap_or(0);
-                let output_tokens = usage.output_tokens.unwrap_or(0);
-                Some(OpenAIUsage {
-                    prompt_tokens: input_tokens,
-                    completion_tokens: output_tokens,
-                    total_tokens: input_tokens.saturating_add(output_tokens),
-                    prompt_tokens_details: Some(PromptTokensDetails {
-                        audio_tokens: 0,
-                        cached_tokens: 0,
-                    }),
-                    completion_tokens_details: Some(CompletionTokensDetails {
-                        accepted_prediction_tokens: 0,
-                        audio_tokens: 0,
-                        reasoning_tokens: 0,
-                        rejected_prediction_tokens: 0,
-                    }),
-                })
-            }
             Self::Messages(usage) => {
                 if usage.input_tokens.is_none()
                     && usage.output_tokens.is_none()
@@ -288,150 +213,6 @@ impl EndpointUsage {
                         accepted_prediction_tokens: 0,
                         audio_tokens: 0,
                         reasoning_tokens: usage.thoughts_token_count.unwrap_or(0),
-                        rejected_prediction_tokens: 0,
-                    }),
-                })
-            }
-            Self::Embeddings(usage) => {
-                if usage.prompt_tokens.is_none() && usage.total_tokens.is_none() {
-                    return None;
-                }
-                let input_tokens = usage.prompt_tokens.unwrap_or(0);
-                let total_tokens = usage.total_tokens.unwrap_or(input_tokens);
-                Some(OpenAIUsage {
-                    prompt_tokens: input_tokens,
-                    completion_tokens: 0,
-                    total_tokens,
-                    prompt_tokens_details: Some(PromptTokensDetails {
-                        audio_tokens: 0,
-                        cached_tokens: 0,
-                    }),
-                    completion_tokens_details: Some(CompletionTokensDetails {
-                        accepted_prediction_tokens: 0,
-                        audio_tokens: 0,
-                        reasoning_tokens: 0,
-                        rejected_prediction_tokens: 0,
-                    }),
-                })
-            }
-            Self::Rerank(usage) => {
-                if usage.input_tokens.is_none()
-                    && usage.output_tokens.is_none()
-                    && usage.cached_tokens.is_none()
-                    && usage.billed_units.is_none()
-                {
-                    return None;
-                }
-                let input_tokens = ceil_f64_to_i64(usage.input_tokens).unwrap_or(0);
-                let output_tokens = ceil_f64_to_i64(usage.output_tokens).unwrap_or(0);
-                Some(OpenAIUsage {
-                    prompt_tokens: input_tokens,
-                    completion_tokens: output_tokens,
-                    total_tokens: input_tokens.saturating_add(output_tokens),
-                    prompt_tokens_details: Some(PromptTokensDetails {
-                        audio_tokens: 0,
-                        cached_tokens: ceil_f64_to_i64(usage.cached_tokens).unwrap_or(0),
-                    }),
-                    completion_tokens_details: Some(CompletionTokensDetails {
-                        accepted_prediction_tokens: 0,
-                        audio_tokens: 0,
-                        reasoning_tokens: 0,
-                        rejected_prediction_tokens: 0,
-                    }),
-                })
-            }
-            Self::AudioSpeech(usage) => {
-                if usage.input_tokens.is_none()
-                    && usage.output_tokens.is_none()
-                    && usage.total_tokens.is_none()
-                {
-                    return None;
-                }
-                let input_tokens = usage.input_tokens.unwrap_or(0);
-                let output_tokens = usage.output_tokens.unwrap_or(0);
-                let total_tokens = usage
-                    .total_tokens
-                    .or_else(|| input_tokens.checked_add(output_tokens))
-                    .unwrap_or(input_tokens.saturating_add(output_tokens));
-                Some(OpenAIUsage {
-                    prompt_tokens: input_tokens,
-                    completion_tokens: output_tokens,
-                    total_tokens,
-                    prompt_tokens_details: Some(PromptTokensDetails {
-                        audio_tokens: 0,
-                        cached_tokens: 0,
-                    }),
-                    completion_tokens_details: Some(CompletionTokensDetails {
-                        accepted_prediction_tokens: 0,
-                        audio_tokens: 0,
-                        reasoning_tokens: 0,
-                        rejected_prediction_tokens: 0,
-                    }),
-                })
-            }
-            Self::AudioTranscriptions(usage) => {
-                if usage.input_tokens.is_none()
-                    && usage.output_tokens.is_none()
-                    && usage.total_tokens.is_none()
-                    && usage.input_token_details.is_none()
-                    && usage.seconds.is_none()
-                    && usage.usage_type.is_none()
-                {
-                    return None;
-                }
-                let input_tokens = usage.input_tokens.unwrap_or(0);
-                let output_tokens = usage.output_tokens.unwrap_or(0);
-                let total_tokens = usage
-                    .total_tokens
-                    .or_else(|| input_tokens.checked_add(output_tokens))
-                    .unwrap_or(input_tokens.saturating_add(output_tokens));
-                Some(OpenAIUsage {
-                    prompt_tokens: input_tokens,
-                    completion_tokens: output_tokens,
-                    total_tokens,
-                    prompt_tokens_details: Some(PromptTokensDetails {
-                        audio_tokens: usage
-                            .input_token_details
-                            .as_ref()
-                            .and_then(|details| details.audio_tokens)
-                            .unwrap_or(0),
-                        cached_tokens: 0,
-                    }),
-                    completion_tokens_details: Some(CompletionTokensDetails {
-                        accepted_prediction_tokens: 0,
-                        audio_tokens: 0,
-                        reasoning_tokens: 0,
-                        rejected_prediction_tokens: 0,
-                    }),
-                })
-            }
-            Self::Images(usage) => {
-                if usage.input_tokens.is_none()
-                    && usage.output_tokens.is_none()
-                    && usage.total_tokens.is_none()
-                    && usage.input_tokens_details.is_none()
-                    && usage.output_tokens_details.is_none()
-                {
-                    return None;
-                }
-                let input_tokens = usage.input_tokens.unwrap_or(0);
-                let output_tokens = usage.output_tokens.unwrap_or(0);
-                let total_tokens = usage
-                    .total_tokens
-                    .or_else(|| input_tokens.checked_add(output_tokens))
-                    .unwrap_or(input_tokens.saturating_add(output_tokens));
-                Some(OpenAIUsage {
-                    prompt_tokens: input_tokens,
-                    completion_tokens: output_tokens,
-                    total_tokens,
-                    prompt_tokens_details: Some(PromptTokensDetails {
-                        audio_tokens: 0,
-                        cached_tokens: 0,
-                    }),
-                    completion_tokens_details: Some(CompletionTokensDetails {
-                        accepted_prediction_tokens: 0,
-                        audio_tokens: 0,
-                        reasoning_tokens: 0,
                         rejected_prediction_tokens: 0,
                     }),
                 })
@@ -594,18 +375,6 @@ pub(crate) fn aggregate_to_openai(endpoint: &str, usages: &[Value]) -> OpenAIUsa
     total
 }
 
-fn ceil_f64_to_i64(value: Option<f64>) -> Option<i64> {
-    let value = value?;
-    if !value.is_finite() {
-        return None;
-    }
-    if value < 0.0 {
-        warn!("negative usage token value received; clamped to zero");
-        return Some(0);
-    }
-    Some(value.ceil() as i64)
-}
-
 fn format_payload_for_log(payload: &Value) -> String {
     let payload = payload.to_string();
     truncate_for_log(&payload)
@@ -684,9 +453,7 @@ where
 mod tests {
     use super::{EndpointUsage, flatten_usage_quantities_for_usage};
     use crate::openai_types::{PromptTokensDetails, Usage as OpenAIUsage};
-    use crate::usage_types::{
-        GenerateContentUsage, MessagesUsage, ResponsesUsage, SystemOneUsage, TrafficType,
-    };
+    use crate::usage_types::{GenerateContentUsage, MessagesUsage, ResponsesUsage, TrafficType};
 
     #[test]
     fn from_endpoint_payload_rejects_invalid_chat_completions_shape() {
@@ -726,50 +493,6 @@ mod tests {
         );
 
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn systemone_usage_parses_endpoint_payload() {
-        let usage = EndpointUsage::from_endpoint_payload(
-            "/systemone",
-            serde_json::json!({
-                "input_tokens": 123,
-                "output_tokens": 45
-            }),
-        )
-        .expect("expected systemone usage");
-
-        let EndpointUsage::SystemOne(systemone) = usage else {
-            panic!("expected systemone usage");
-        };
-        assert_eq!(systemone.input_tokens, Some(123));
-        assert_eq!(systemone.output_tokens, Some(45));
-    }
-
-    #[test]
-    fn to_openai_usage_for_systemone_maps_input_and_output() {
-        let usage = EndpointUsage::SystemOne(SystemOneUsage {
-            input_tokens: Some(12),
-            output_tokens: Some(8),
-        });
-
-        let mapped = usage.to_openai_usage().expect("usage must map");
-
-        assert_eq!(mapped.prompt_tokens, 12);
-        assert_eq!(mapped.completion_tokens, 8);
-        assert_eq!(mapped.total_tokens, 20);
-    }
-
-    #[test]
-    fn systemone_usage_into_payload_preserves_fields() {
-        let payload = EndpointUsage::SystemOne(SystemOneUsage {
-            input_tokens: Some(9),
-            output_tokens: Some(6),
-        })
-        .into_payload("/systemone");
-
-        assert_eq!(payload["input_tokens"], 9);
-        assert_eq!(payload["output_tokens"], 6);
     }
 
     #[test]

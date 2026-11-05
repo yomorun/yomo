@@ -226,7 +226,7 @@ async fn serve(opt: ServeOptions) -> Result<()> {
 
     app = app.nest(
         "/v1",
-        build_model_list_api(Arc::new(provider_registry.clone())).await?,
+        build_model_list_api(Arc::new(provider_registry)).await?,
     );
 
     let mut tool_api_prefix = String::new();
@@ -246,9 +246,7 @@ async fn serve(opt: ServeOptions) -> Result<()> {
         "start HTTP API server on {}:{}",
         config.http_api.host, config.http_api.port,
     );
-
-    info!("LLM API enabled at /v1");
-    info!("Model API enabled at /v1");
+    info!("Agent API enabled at /v1");
 
     if !tool_api_prefix.is_empty() {
         info!("Tool API enabled at {}", tool_api_prefix);

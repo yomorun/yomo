@@ -9,7 +9,6 @@ pub mod credential;
 pub mod google_vertex;
 pub mod openai_chat_completions;
 pub mod openai_responses;
-pub mod passthrough;
 
 pub use credential::{Credential, GcpTokenCache, TokenFetcher};
 
@@ -63,9 +62,6 @@ pub fn build_client<M: Send + Sync + 'static>(
         ProviderKindParams::OpenAiResponses(p) => Ok(Arc::new(OpenAiResponsesProvider::new(p))),
         ProviderKindParams::BedrockConverse(p) => Ok(Arc::new(BedrockConverseProvider::new(p))),
         ProviderKindParams::GoogleVertex(p) => Ok(Arc::new(GoogleVertexProvider::new(p))),
-        ProviderKindParams::Passthrough(_) => {
-            Err(crate::dialects::passthrough::PASSTHROUGH_NOT_A_CHAT_KIND.to_string())
-        }
     }
 }
 
@@ -90,13 +86,6 @@ pub fn build_bound_client<M: Send + Sync + 'static>(
 /// Common credential fail-fast validation.
 /// Kind-specific checks (credentials file existence, region validity) live in each dialect's build_client.
 fn validate_credentials(params: &ProviderKindParams) -> Option<String> {
-    let empty_key = |label: &str, key: &secrecy::SecretString| {
-        key.expose_secret()
-            .trim()
-            .is_empty()
-            .then(|| format!("credential validation failed: {} api_key is empty", label))
-    };
-
     match params {
         ProviderKindParams::OpenAiChatCompletions(_) => None,
         ProviderKindParams::OpenAiResponses(_) => None,
@@ -116,10 +105,6 @@ fn validate_credentials(params: &ProviderKindParams) -> Option<String> {
             }
             None
         }
-        ProviderKindParams::Passthrough(p) => p
-            .auth
-            .as_ref()
-            .and_then(|auth| empty_key("passthrough", &auth.api_key)),
     }
 }
 
@@ -127,7 +112,7 @@ fn validate_credentials(params: &ProviderKindParams) -> Option<String> {
 mod tests {
     use super::*;
     use crate::serve_config::{
-        AuthConfig, AuthScheme, BedrockParams, GoogleVertexParams, OpenAiParams, PassthroughParams,
+        AuthConfig, AuthScheme, BedrockParams, GoogleVertexParams, OpenAiParams,
     };
     use secrecy::SecretString;
     use std::path::PathBuf;
@@ -201,24 +186,5 @@ mod tests {
             Err(err) => err,
         };
         assert!(err.contains("aws_bearer_token is empty"));
-    }
-
-    #[test]
-    fn passthrough_is_never_a_chat_kind() {
-        let params = PassthroughParams {
-            base_url: Some("http://127.0.0.1:8001/v1".parse().expect("url")),
-            auth: None,
-            google_vertex: None,
-            model: "bge".to_string(),
-        };
-        // passthrough never serves chat endpoints.
-        let err = match build_client::<()>(
-            ProviderKind::Passthrough,
-            &ProviderKindParams::Passthrough(params),
-        ) {
-            Ok(_) => panic!("passthrough must not build a chat provider"),
-            Err(err) => err,
-        };
-        assert!(err.contains("does not serve chat endpoints"));
     }
 }

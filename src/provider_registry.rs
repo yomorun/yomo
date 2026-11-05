@@ -4,13 +4,14 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use futures_core::Stream;
 
+use crate::api::EndpointKind;
 use crate::dialects::build_bound_client;
 use crate::provider::UnifiedRequest;
 use crate::provider::{BoundProvider, Provider, ProviderError, UnifiedEvent, UnifiedResponse};
 use crate::provider_error_notifier::{ProviderErrorEvent, ProviderErrorNotifier};
 use crate::serve_config::{
-    ConfigError, EndpointConfig, EndpointKind, ModelBinding, ProviderConfig, ProviderKind,
-    ProviderKindParams, ResponseModelMode, parse_response_model_mode,
+    ConfigError, EndpointConfig, ModelBinding, ProviderConfig, ProviderKind, ProviderKindParams,
+    ResponseModelMode, parse_response_model_mode,
 };
 
 #[derive(Clone, Debug)]
@@ -21,13 +22,8 @@ pub struct SelectionResult {
 #[derive(Debug)]
 pub enum SelectionError {
     ModelRequired,
-    ModelNotSupported {
-        model: String,
-    },
-    ModelEndpointNotSupported {
-        model: String,
-        endpoint: EndpointKind,
-    },
+    ModelNotSupported { model: String },
+    ModelEndpointNotSupported { model: String, endpoint: String },
     OutstandingBalance,
     AccessDenied,
 }
@@ -129,10 +125,6 @@ impl<M> ConfigProviderRegistry<M> {
         let mut chats = HashMap::new();
 
         for typed in entries {
-            if matches!(typed.params, ProviderKindParams::Passthrough(_)) {
-                continue;
-            }
-
             let provider = build_dialect_chat_provider(typed)?;
             chats.insert(
                 typed.model_id.to_ascii_lowercase(),
@@ -174,7 +166,7 @@ impl<M> ConfigProviderRegistry<M> {
         if !entry.serves_endpoint(endpoint) {
             return Err(SelectionError::ModelEndpointNotSupported {
                 model: entry.model_id.clone(),
-                endpoint,
+                endpoint: endpoint.as_path().to_string(),
             });
         }
         let chat = self
@@ -182,7 +174,7 @@ impl<M> ConfigProviderRegistry<M> {
             .get(&entry.model_id.to_ascii_lowercase())
             .ok_or_else(|| SelectionError::ModelEndpointNotSupported {
                 model: entry.model_id.clone(),
-                endpoint,
+                endpoint: endpoint.as_path().to_string(),
             })?;
         let provider = self.wrap_chat_provider(
             endpoint,
@@ -350,7 +342,8 @@ mod tests {
         ByEndpointModel, ConfigProviderRegistry, Registry, SelectionError, SelectionResult,
         SelectionStrategy,
     };
-    use crate::serve_config::{EndpointConfig, EndpointKind, ProviderConfig, ResponseModelMode};
+    use crate::api::EndpointKind;
+    use crate::serve_config::{EndpointConfig, ProviderConfig, ResponseModelMode};
 
     fn typed_entry(json: &str) -> ProviderConfig {
         serde_json::from_str(json).expect("typed entry")
@@ -433,28 +426,19 @@ mod tests {
 
     #[test]
     fn model_list_returns_registry_models() {
-        let providers = vec![
-            typed_entry(
-                r#"{"type": "openai-chat-completions", "model_id": "enabled-model",
+        let providers = vec![typed_entry(
+            r#"{"type": "openai-chat-completions", "model_id": "enabled-model",
                     "params": {"base_url": "https://api.example.com/v1",
                     "auth": {"scheme": "bearer", "api_key": "sk-test"},
                     "model": "enabled-model"}}"#,
-            ),
-            typed_entry(
-                r#"{"type": "passthrough", "model_id": "embed-model", "serve": ["/embeddings"],
-                    "params": {"base_url": "https://api.example.com/v1", "model": "embed-model"}}"#,
-            ),
-        ];
+        )];
         let strategy = Arc::new(ByEndpointModel::new(HashMap::new()));
 
         let mut models = ConfigProviderRegistry::<()>::from_entries(&providers, strategy)
             .expect("registry should be created")
             .model_list();
         models.sort();
-        assert_eq!(
-            models,
-            vec!["embed-model".to_string(), "enabled-model".to_string()]
-        );
+        assert_eq!(models, vec!["enabled-model".to_string()]);
     }
 
     #[test]
@@ -488,17 +472,8 @@ mod tests {
 }
 
 // ---------------------------------------------------------------------------
-// Registry and execution mode
+// Agent provider registry
 // ---------------------------------------------------------------------------
-
-/// Execution mode, derived in code rather than configured.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExecutionMode {
-    /// Dialect kind x chat endpoint: goes through the single run_agent_loop engine.
-    AgentLoop,
-    /// passthrough / non-chat endpoint: forwarded as-is.
-    Passthrough,
-}
 
 /// Chat endpoints (the three a dialect kind may bind to).
 fn is_chat_endpoint(endpoint: EndpointKind) -> bool {
@@ -508,20 +483,6 @@ fn is_chat_endpoint(endpoint: EndpointKind) -> bool {
     )
 }
 
-/// Determine the execution mode.
-pub fn execution_mode(endpoint_kind: EndpointKind, kind: ProviderKind) -> ExecutionMode {
-    match kind {
-        ProviderKind::Passthrough => ExecutionMode::Passthrough,
-        _ => {
-            if is_chat_endpoint(endpoint_kind) {
-                ExecutionMode::AgentLoop
-            } else {
-                ExecutionMode::Passthrough
-            }
-        }
-    }
-}
-
 /// One entry in the registry, available for lookup at request time.
 #[derive(Clone)]
 pub struct RegistryEntry {
@@ -529,19 +490,12 @@ pub struct RegistryEntry {
     pub kind: ProviderKind,
     /// Display label (o11y / agent loop).
     pub label: Option<String>,
-    /// passthrough serve list (already resolved to EndpointKind); always empty for dialect kinds.
-    pub serves: Vec<EndpointKind>,
-    /// passthrough only: forwarder built at startup (zero construction at request time).
-    pub forwarder: Option<crate::dialects::passthrough::PassthroughForwarder>,
 }
 
 impl RegistryEntry {
     /// Whether this model serves an endpoint (part of the existence check).
     pub fn serves_endpoint(&self, endpoint: EndpointKind) -> bool {
-        match self.kind {
-            ProviderKind::Passthrough => self.serves.iter().any(|served| *served == endpoint),
-            _ => is_chat_endpoint(endpoint),
-        }
+        is_chat_endpoint(endpoint)
     }
 }
 
@@ -568,7 +522,7 @@ impl Registry {
     }
 }
 
-/// Build the registry, validating provider entries and preparing their forwarders.
+/// Build the provider registry, validating model and endpoint bindings.
 pub fn build_registry(entries: &[ProviderConfig]) -> Result<Registry, ConfigError> {
     let mut model_ids = HashSet::new();
     let mut registry_entries = HashMap::new();
@@ -583,91 +537,12 @@ pub fn build_registry(entries: &[ProviderConfig]) -> Result<Registry, ConfigErro
             )));
         }
 
-        // serve is a passthrough-only endpoint binding declaration.
-        // Dialect kinds appear on the three chat endpoints automatically; declaring serve is rejected.
-        // passthrough must declare a non-empty serve explicitly and must not hijack chat endpoints.
-        // GoogleVertex entries additionally bind /models/:generateContent
-        // using the native protocol with service-account authentication.
-        let (serves, forwarder) = match &typed.params {
-            ProviderKindParams::Passthrough(p) => {
-                let serves = match &typed.serve {
-                    Some(serve) if !serve.is_empty() => {
-                        let mut endpoint_kinds = Vec::new();
-                        for path in serve {
-                            // Reject serve paths that do not map to a known endpoint.
-                            let endpoint_kind = EndpointKind::from_config_path(path)?;
-                            if is_chat_endpoint(endpoint_kind) {
-                                return Err(ConfigError::InvalidProvider(format!(
-                                    "passthrough cannot serve chat endpoint: {path}"
-                                )));
-                            }
-                            endpoint_kinds.push(endpoint_kind);
-                        }
-                        endpoint_kinds
-                    }
-                    Some(_) => {
-                        return Err(ConfigError::InvalidProvider(format!(
-                            "passthrough provider {} has empty serve list",
-                            typed.model_id
-                        )));
-                    }
-                    None => {
-                        return Err(ConfigError::InvalidProvider(format!(
-                            "passthrough provider {} requires a serve list",
-                            typed.model_id
-                        )));
-                    }
-                };
-                let forwarder = Some(
-                    crate::dialects::passthrough::PassthroughForwarder::new(
-                        &crate::serve_config::PassthroughParams {
-                            base_url: p.base_url.clone(),
-                            auth: p.auth.clone(),
-                            google_vertex: p.google_vertex.clone(),
-                            model: p.model.clone(),
-                        },
-                    )
-                    .map_err(ConfigError::InvalidProvider)?,
-                );
-                (serves, forwarder)
-            }
-            ProviderKindParams::GoogleVertex(google) => {
-                let forwarder = Some(
-                    crate::dialects::passthrough::PassthroughForwarder::new(
-                        &crate::serve_config::PassthroughParams {
-                            base_url: None,
-                            auth: None,
-                            google_vertex: Some(crate::serve_config::GoogleVertexPassthroughAuth {
-                                project_id: google.project_id.clone(),
-                                location: google.location.clone(),
-                                credentials_file: google.credentials_file.clone(),
-                            }),
-                            model: google.model.clone(),
-                        },
-                    )
-                    .map_err(ConfigError::InvalidProvider)?,
-                );
-                (vec![EndpointKind::ModelsGenerateContent], forwarder)
-            }
-            _ => {
-                if typed.serve.is_some() {
-                    return Err(ConfigError::InvalidProvider(format!(
-                        "dialect provider {} cannot declare serve (chat endpoints are automatic)",
-                        typed.model_id
-                    )));
-                }
-                (Vec::new(), None)
-            }
-        };
-
         registry_entries.insert(
             normalized,
             RegistryEntry {
                 model_id: typed.model_id.clone(),
                 kind: typed.kind,
                 label: typed.label.clone(),
-                serves,
-                forwarder,
             },
         );
     }
@@ -679,8 +554,9 @@ pub fn build_registry(entries: &[ProviderConfig]) -> Result<Registry, ConfigErro
 
 #[cfg(test)]
 mod registry_tests {
-    use super::{ExecutionMode, Registry, build_registry, execution_mode};
-    use crate::serve_config::{EndpointKind, ProviderConfig, ProviderKind};
+    use super::{Registry, build_registry};
+    use crate::api::EndpointKind;
+    use crate::serve_config::ProviderConfig;
 
     fn typed_entry(json: &str) -> ProviderConfig {
         serde_json::from_str(json).expect("typed entry json")
@@ -694,17 +570,13 @@ mod registry_tests {
     }
 
     #[test]
-    fn build_registry_accepts_chat_and_passthrough_entries() {
+    fn build_registry_accepts_agent_provider_entries() {
         let entries = vec![
             chat_kind_entry("glm-5.3-flash", "openai-chat-completions"),
             chat_kind_entry("gpt-5.3-codex", "openai-responses"),
-            typed_entry(
-                r#"{"type": "passthrough", "model_id": "BAAI/bge-m3", "serve": ["/embeddings"],
-                    "params": {"base_url": "http://127.0.0.1:8001/v1", "model": "BAAI/bge-m3"}}"#,
-            ),
         ];
         let registry = build_registry(&entries).expect("registry");
-        assert_eq!(registry.entry_count(), 3);
+        assert_eq!(registry.entry_count(), 2);
     }
 
     #[test]
@@ -720,58 +592,6 @@ mod registry_tests {
     }
 
     #[test]
-    fn build_registry_rejects_unknown_serve_path() {
-        let entries = vec![typed_entry(
-            r#"{"type": "passthrough", "model_id": "x", "serve": ["/nope"],
-                "params": {"base_url": "http://127.0.0.1:8001/v1", "model": "x"}}"#,
-        )];
-        let err = build_registry(&entries)
-            .err()
-            .expect("unknown serve path must be rejected");
-        assert!(err.to_string().contains("unknown endpoint path"));
-    }
-
-    #[test]
-    fn build_registry_rejects_passthrough_serving_chat_endpoint() {
-        let entries = vec![typed_entry(
-            r#"{"type": "passthrough", "model_id": "x", "serve": ["/messages"],
-                "params": {"base_url": "http://127.0.0.1:8001/v1", "model": "x"}}"#,
-        )];
-        let err = build_registry(&entries)
-            .err()
-            .expect("chat endpoint hijack must be rejected");
-        assert!(
-            err.to_string()
-                .contains("passthrough cannot serve chat endpoint")
-        );
-    }
-
-    #[test]
-    fn build_registry_rejects_passthrough_without_serve() {
-        let entries = vec![typed_entry(
-            r#"{"type": "passthrough", "model_id": "x",
-                "params": {"base_url": "http://127.0.0.1:8001/v1", "model": "x"}}"#,
-        )];
-        let err = build_registry(&entries)
-            .err()
-            .expect("passthrough without serve must be rejected");
-        assert!(err.to_string().contains("requires a serve list"));
-    }
-
-    #[test]
-    fn build_registry_rejects_dialect_kind_with_serve() {
-        let entries = vec![typed_entry(
-            r#"{"type": "openai-chat-completions", "model_id": "glm", "serve": ["/embeddings"],
-                "params": {"base_url": "https://x.example.com/v1",
-                           "auth": {"scheme": "bearer", "api_key": "k"}, "model": "glm"}}"#,
-        )];
-        let err = build_registry(&entries)
-            .err()
-            .expect("dialect kind with serve must be rejected");
-        assert!(err.to_string().contains("cannot declare serve"));
-    }
-
-    #[test]
     fn registry_entry_serves_chat_endpoints_for_dialects() {
         let entries = vec![chat_kind_entry("glm", "openai-chat-completions")];
         let registry = build_registry(&entries).expect("registry");
@@ -779,63 +599,6 @@ mod registry_tests {
         assert!(entry.serves_endpoint(EndpointKind::ChatCompletions));
         assert!(entry.serves_endpoint(EndpointKind::Responses));
         assert!(entry.serves_endpoint(EndpointKind::Messages));
-        assert!(!entry.serves_endpoint(EndpointKind::Embeddings));
-        assert!(!entry.serves_endpoint(EndpointKind::SystemOne));
-    }
-
-    #[test]
-    fn registry_entry_serves_only_listed_paths_for_passthrough() {
-        let entries = vec![typed_entry(
-            r#"{"type": "passthrough", "model_id": "bge", "serve": ["/embeddings", "/rerank"],
-                "params": {"base_url": "http://127.0.0.1:8001/v1", "model": "bge"}}"#,
-        )];
-        let registry = build_registry(&entries).expect("registry");
-        let entry = registry.get("bge").expect("entry");
-        assert!(entry.serves_endpoint(EndpointKind::Embeddings));
-        assert!(entry.serves_endpoint(EndpointKind::Rerank));
-        assert!(!entry.serves_endpoint(EndpointKind::ChatCompletions));
-        assert!(!entry.serves_endpoint(EndpointKind::ImagesEdits));
-        assert_eq!(entry.kind, ProviderKind::Passthrough);
-    }
-
-    #[test]
-    fn execution_mode_routes_by_kind_and_endpoint() {
-        // dialect x chat endpoint -> AgentLoop
-        assert_eq!(
-            execution_mode(
-                EndpointKind::ChatCompletions,
-                ProviderKind::OpenAiChatCompletions
-            ),
-            ExecutionMode::AgentLoop
-        );
-        assert_eq!(
-            execution_mode(EndpointKind::Responses, ProviderKind::OpenAiResponses),
-            ExecutionMode::AgentLoop
-        );
-        assert_eq!(
-            execution_mode(EndpointKind::Messages, ProviderKind::BedrockConverse),
-            ExecutionMode::AgentLoop
-        );
-        // passthrough → Passthrough
-        assert_eq!(
-            execution_mode(EndpointKind::Embeddings, ProviderKind::Passthrough),
-            ExecutionMode::Passthrough
-        );
-        // dialect x non-chat endpoint -> Passthrough
-        assert_eq!(
-            execution_mode(
-                EndpointKind::Embeddings,
-                ProviderKind::OpenAiChatCompletions
-            ),
-            ExecutionMode::Passthrough
-        );
-        assert_eq!(
-            execution_mode(
-                EndpointKind::ModelsGenerateContent,
-                ProviderKind::GoogleVertex
-            ),
-            ExecutionMode::Passthrough
-        );
     }
 
     #[test]

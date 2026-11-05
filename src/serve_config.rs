@@ -9,6 +9,7 @@ use std::marker::PhantomData;
 use std::path::PathBuf;
 use url::Url;
 
+use crate::api::EndpointKind;
 use crate::dialects::Dialect;
 use crate::tls::TlsConfig;
 use crate::upstreams::Upstream;
@@ -184,14 +185,6 @@ pub fn resolve_model_bindings(
                     "empty forwarding paths for {public_model}"
                 )));
             }
-            for path in paths {
-                EndpointKind::from_config_path(path)?;
-                if is_chat_endpoint_path(path) {
-                    return Err(ConfigError::InvalidProvider(format!(
-                        "opaque forwarding cannot serve {path}"
-                    )));
-                }
-            }
             None
         } else {
             let selected = model
@@ -274,13 +267,15 @@ pub fn compile_model_entries(
                 .clone()
                 .ok_or_else(|| missing("base_url"))
         };
-        let kind = match binding.dialect {
-            Some(Dialect::OpenAiChatCompletions) => ProviderKind::OpenAiChatCompletions,
-            Some(Dialect::OpenAiResponses) => ProviderKind::OpenAiResponses,
-            Some(Dialect::AnthropicMessages) => ProviderKind::AnthropicMessages,
-            Some(Dialect::BedrockConverse) => ProviderKind::BedrockConverse,
-            Some(Dialect::GeminiGenerateContent) => ProviderKind::GoogleVertex,
-            None => ProviderKind::Passthrough,
+        let Some(dialect) = binding.dialect else {
+            continue;
+        };
+        let kind = match dialect {
+            Dialect::OpenAiChatCompletions => ProviderKind::OpenAiChatCompletions,
+            Dialect::OpenAiResponses => ProviderKind::OpenAiResponses,
+            Dialect::AnthropicMessages => ProviderKind::AnthropicMessages,
+            Dialect::BedrockConverse => ProviderKind::BedrockConverse,
+            Dialect::GeminiGenerateContent => ProviderKind::GoogleVertex,
         };
         let params = match kind {
             ProviderKind::OpenAiChatCompletions | ProviderKind::OpenAiResponses => {
@@ -328,38 +323,11 @@ pub fn compile_model_entries(
                     .clone()
                     .ok_or_else(|| missing("credentials_file"))?,
             }),
-            ProviderKind::Passthrough => {
-                let google_vertex = if connection.upstream == Upstream::GoogleVertex {
-                    Some(GoogleVertexPassthroughAuth {
-                        project_id: connection
-                            .project_id
-                            .clone()
-                            .ok_or_else(|| missing("project_id"))?,
-                        location: connection
-                            .location
-                            .clone()
-                            .ok_or_else(|| missing("location"))?,
-                        credentials_file: connection
-                            .credentials_file
-                            .clone()
-                            .ok_or_else(|| missing("credentials_file"))?,
-                    })
-                } else {
-                    None
-                };
-                ProviderKindParams::Passthrough(PassthroughParams {
-                    base_url: connection.base_url.clone(),
-                    auth: connection.auth.clone(),
-                    google_vertex,
-                    model: binding.upstream_model.clone(),
-                })
-            }
         };
         entries.push(ProviderConfig {
             model_id: binding.public_model.clone(),
             kind,
             label: Some(binding.label.clone()),
-            serve: model.serve.clone(),
             params,
             binding: Some(binding),
         });
@@ -614,67 +582,6 @@ impl fmt::Display for ConfigError {
 
 impl Error for ConfigError {}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum EndpointKind {
-    ChatCompletions,
-    SystemOne,
-    Messages,
-    Responses,
-    Embeddings,
-    Rerank,
-    AudioSpeech,
-    AudioTranscriptions,
-    ImagesGenerations,
-    ImagesEdits,
-    ModelsGenerateContent,
-}
-
-impl EndpointKind {
-    pub fn as_path(&self) -> &'static str {
-        match self {
-            EndpointKind::ChatCompletions => "/chat/completions",
-            EndpointKind::SystemOne => "/systemone",
-            EndpointKind::Messages => "/messages",
-            EndpointKind::Responses => "/responses",
-            EndpointKind::Embeddings => "/embeddings",
-            EndpointKind::Rerank => "/rerank",
-            EndpointKind::AudioSpeech => "/audio/speech",
-            EndpointKind::AudioTranscriptions => "/audio/transcriptions",
-            EndpointKind::ImagesGenerations => "/images/generations",
-            EndpointKind::ImagesEdits => "/images/edits",
-            EndpointKind::ModelsGenerateContent => "/models/:generateContent",
-        }
-    }
-
-    pub fn from_config_path(path: &str) -> Result<Self, ConfigError> {
-        Self::from_path(path)
-            .ok_or_else(|| ConfigError::InvalidProvider(format!("unknown endpoint path: {path}")))
-    }
-
-    pub fn from_request_path(path: &str) -> Option<Self> {
-        if parse_generate_content_model(path).is_some() {
-            return Some(Self::ModelsGenerateContent);
-        }
-        Self::from_path(path)
-    }
-
-    fn from_path(path: &str) -> Option<Self> {
-        match path {
-            "/chat/completions" => Some(Self::ChatCompletions),
-            "/systemone" => Some(Self::SystemOne),
-            "/messages" => Some(Self::Messages),
-            "/responses" => Some(Self::Responses),
-            "/embeddings" => Some(Self::Embeddings),
-            "/rerank" => Some(Self::Rerank),
-            "/audio/speech" => Some(Self::AudioSpeech),
-            "/audio/transcriptions" => Some(Self::AudioTranscriptions),
-            "/images/generations" => Some(Self::ImagesGenerations),
-            "/images/edits" => Some(Self::ImagesEdits),
-            "/models/:generateContent" => Some(Self::ModelsGenerateContent),
-            _ => None,
-        }
-    }
-}
 #[derive(Debug, Clone)]
 pub struct ServeConfig {
     pub auth_token: Option<String>,
@@ -749,7 +656,6 @@ pub enum ProviderKind {
     AnthropicMessages,
     BedrockConverse,
     GoogleVertex,
-    Passthrough,
 }
 
 impl ProviderKind {
@@ -761,7 +667,6 @@ impl ProviderKind {
             ProviderKind::AnthropicMessages => "anthropic-messages",
             ProviderKind::BedrockConverse => "bedrock-converse",
             ProviderKind::GoogleVertex => "google-vertex",
-            ProviderKind::Passthrough => "passthrough",
         }
     }
 
@@ -773,20 +678,9 @@ impl ProviderKind {
             "anthropic-messages" => Some(ProviderKind::AnthropicMessages),
             "bedrock-converse" | "bedrock-converse-stream" => Some(ProviderKind::BedrockConverse),
             "google-vertex" => Some(ProviderKind::GoogleVertex),
-            "passthrough" => Some(ProviderKind::Passthrough),
             _ => None,
         }
     }
-
-    /// Whether this kind may bind to the chat endpoints.
-    pub fn is_chat_kind(&self) -> bool {
-        !matches!(self, ProviderKind::Passthrough)
-    }
-}
-
-/// Chat endpoint predicate (used by registry validation).
-pub fn is_chat_endpoint_path(path: &str) -> bool {
-    matches!(path, "/chat/completions" | "/responses" | "/messages")
 }
 
 /// Authentication scheme.
@@ -869,30 +763,6 @@ pub struct GoogleVertexParams {
     pub credentials_file: PathBuf,
 }
 
-/// passthrough connection params.
-///
-/// Exactly one of `base_url` / `google_vertex` must be present:
-/// `base_url` for static-forward upstreams, `google_vertex` for GCP
-/// generateContent passthrough (SA OAuth + URL assembly).
-#[derive(Debug, Clone, Deserialize)]
-pub struct PassthroughParams {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub base_url: Option<Url>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub auth: Option<AuthConfig>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub google_vertex: Option<GoogleVertexPassthroughAuth>,
-    pub model: String,
-}
-
-/// GCP generateContent passthrough auth (SA OAuth).
-#[derive(Debug, Clone, Deserialize)]
-pub struct GoogleVertexPassthroughAuth {
-    pub project_id: String,
-    pub location: String,
-    pub credentials_file: PathBuf,
-}
-
 /// Global defaults: `defaults.model` is the single fallback model
 /// used when a chat request omits `model`.
 #[derive(Debug, Clone, Deserialize, Default, PartialEq)]
@@ -908,12 +778,11 @@ pub enum ProviderKindParams {
     OpenAiResponses(OpenAiParams),
     BedrockConverse(BedrockParams),
     GoogleVertex(GoogleVertexParams),
-    Passthrough(PassthroughParams),
 }
 
 /// Strongly typed provider connection configuration.
 ///
-/// `type`/`model_id`/`serve` sit at the entry top level with connection params nested under `params`;
+/// `type`/`model_id` sit at the entry top level with connection params nested under `params`;
 /// the concrete params struct is decided by kind and mismatches error with field names.
 #[derive(Debug, Clone)]
 pub struct ProviderConfig {
@@ -921,8 +790,6 @@ pub struct ProviderConfig {
     pub kind: ProviderKind,
     /// Display label (o11y / agent-loop), optional.
     pub label: Option<String>,
-    /// Used by passthrough only.
-    pub serve: Option<Vec<String>>,
     pub params: ProviderKindParams,
     /// Explicit vendor/model identity retained after startup compilation.
     pub binding: Option<ModelBinding>,
@@ -951,12 +818,6 @@ impl<'de> Deserialize<'de> for ProviderConfig {
             .ok_or_else(|| DeError::missing_field("type"))?;
         let kind = ProviderKind::from_config_type(type_name)
             .ok_or_else(|| DeError::custom(format!("unknown provider type: {type_name}")))?;
-        let serve = match object.get("serve") {
-            Some(serve) => Some(
-                serde_json::from_value::<Vec<String>>(serve.clone()).map_err(DeError::custom)?,
-            ),
-            None => None,
-        };
         let params_value = object
             .get("params")
             .cloned()
@@ -979,9 +840,6 @@ impl<'de> Deserialize<'de> for ProviderConfig {
             ProviderKind::GoogleVertex => ProviderKindParams::GoogleVertex(
                 serde_json::from_value(params_value).map_err(DeError::custom)?,
             ),
-            ProviderKind::Passthrough => ProviderKindParams::Passthrough(
-                serde_json::from_value(params_value).map_err(DeError::custom)?,
-            ),
         };
 
         let label = object
@@ -992,7 +850,6 @@ impl<'de> Deserialize<'de> for ProviderConfig {
             model_id,
             kind,
             label,
-            serve,
             params,
             binding: None,
         })
@@ -1001,8 +858,7 @@ impl<'de> Deserialize<'de> for ProviderConfig {
 
 /// Derive the endpoint table from typed entries.
 ///
-/// Dialect kinds automatically serve the three chat endpoints; passthrough
-/// serves only its `serve` list. `defaults.model` becomes the default model
+/// Dialect kinds automatically serve the three chat endpoints. `defaults.model` becomes the default model
 /// of the three chat endpoints (the single global fallback).
 pub fn derive_endpoints_from_typed(
     typed: &[ProviderConfig],
@@ -1031,23 +887,10 @@ pub fn derive_endpoints_from_typed(
     ];
 
     for provider in typed {
-        match &provider.params {
-            ProviderKindParams::Passthrough(_) => {
-                for path in provider.serve.iter().flatten() {
-                    if EndpointKind::from_config_path(path).is_ok() {
-                        ensure(&mut by_path, path)
-                            .models
-                            .push(provider.model_id.clone());
-                    }
-                }
-            }
-            _ => {
-                for path in chat_paths {
-                    ensure(&mut by_path, path)
-                        .models
-                        .push(provider.model_id.clone());
-                }
-            }
+        for path in chat_paths {
+            ensure(&mut by_path, path)
+                .models
+                .push(provider.model_id.clone());
         }
     }
 
@@ -1108,17 +951,10 @@ pub struct EndpointConfig {
 
 impl EndpointConfig {
     pub fn endpoint(&self) -> Result<EndpointKind, ConfigError> {
-        EndpointKind::from_config_path(self.path.as_str())
+        EndpointKind::from_path(&self.path).ok_or_else(|| {
+            ConfigError::InvalidProvider(format!("unknown Agent endpoint path: {}", self.path))
+        })
     }
-}
-
-pub fn parse_generate_content_model(endpoint: &str) -> Option<String> {
-    endpoint
-        .strip_prefix("/models/")
-        .and_then(|value| value.strip_suffix(":generateContent"))
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
 }
 
 /// Default host address
@@ -1293,16 +1129,14 @@ mod typed_provider_schema_tests {
                 {"type": "bedrock-converse", "model_id": "claude-opus-5",
                  "params": {"model": "global.anthropic.claude-opus-5", "aws_region": "ap-northeast-3",
                             "aws_bearer_token": "tok"}},
-                {"type": "google-vertex", "model_id": "gemini-3.5-flash",
-                 "params": {"model": "gemini-3.5-flash", "project_id": "pc-1", "location": "global",
-                            "credentials_file": "/path/sa.json"}},
-                {"type": "passthrough", "model_id": "BAAI/bge-m3", "serve": ["/embeddings"],
-                 "params": {"base_url": "http://127.0.0.1:8001/v1", "model": "BAAI/bge-m3"}}
+                 {"type": "google-vertex", "model_id": "gemini-3.5-flash",
+                  "params": {"model": "gemini-3.5-flash", "project_id": "pc-1", "location": "global",
+                             "credentials_file": "/path/sa.json"}}
             ]"#,
         )
         .expect("all kinds must parse");
 
-        assert_eq!(entries.len(), 5);
+        assert_eq!(entries.len(), 4);
     }
 
     #[test]
@@ -1321,32 +1155,6 @@ mod typed_provider_schema_tests {
                 assert_eq!(auth.scheme, AuthScheme::Bearer);
                 assert_eq!(params.model, "m");
                 assert!(params.response_model.is_none());
-            }
-            other => panic!("unexpected kind: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn passthrough_parses_serve_list_and_optional_auth() {
-        let typed: ProviderConfig = parse_typed(
-            r#"{"type": "passthrough", "model_id": "img", "serve": ["/images/generations", "/images/edits"],
-                "params": {"base_url": "https://x.example.com",
-                           "auth": {"scheme": "api-key", "api_key": "k"}, "model": "gpt-image-1"}}"#,
-        )
-        .expect("parse");
-        assert_eq!(
-            typed.serve.as_deref(),
-            Some(
-                &[
-                    "/images/generations".to_string(),
-                    "/images/edits".to_string()
-                ][..]
-            )
-        );
-        match &typed.params {
-            ProviderKindParams::Passthrough(params) => {
-                let auth = params.auth.as_ref().expect("auth");
-                assert_eq!(auth.scheme, AuthScheme::ApiKey);
             }
             other => panic!("unexpected kind: {other:?}"),
         }
@@ -1431,7 +1239,6 @@ mod typed_provider_schema_tests {
             ProviderKind::AnthropicMessages,
             ProviderKind::BedrockConverse,
             ProviderKind::GoogleVertex,
-            ProviderKind::Passthrough,
         ] {
             assert_eq!(
                 ProviderKind::from_config_type(kind.as_config_type()),
@@ -1505,15 +1312,7 @@ mod defaults_tests {
 
 #[cfg(test)]
 mod tests {
-    use super::{EndpointKind, ResponseModelMode, parse_response_model_mode};
-
-    #[test]
-    fn endpoint_kind_maps_systemone_path() {
-        let endpoint = EndpointKind::from_request_path("/systemone");
-
-        assert_eq!(endpoint, Some(EndpointKind::SystemOne));
-        assert_eq!(EndpointKind::SystemOne.as_path(), "/systemone");
-    }
+    use super::{ResponseModelMode, parse_response_model_mode};
 
     #[test]
     fn parse_response_model_mode_defaults_to_upstream() {
@@ -1562,32 +1361,11 @@ mod derive_endpoints_tests {
         for path in ["/chat/completions", "/responses", "/messages"] {
             assert_eq!(find(&endpoints, path).models, vec!["glm".to_string()]);
         }
-        // passthrough paths are only derived when a passthrough entry declares them
+        // Non-chat ModelAPI paths are not part of Yomo's Agent endpoint table.
         assert!(
             !endpoints
                 .iter()
                 .any(|endpoint| endpoint.path == "/embeddings")
-        );
-    }
-
-    #[test]
-    fn passthrough_models_serve_only_their_list() {
-        let typed = vec![parse_typed(
-            r#"{"type": "passthrough", "model_id": "bge", "serve": ["/embeddings", "/rerank"],
-                "params": {"base_url": "http://127.0.0.1:8001/v1", "model": "BAAI/bge-m3"}}"#,
-        )];
-        let endpoints = derive_endpoints_from_typed(&typed, &DefaultsConfig::default());
-
-        assert_eq!(
-            find(&endpoints, "/embeddings").models,
-            vec!["bge".to_string()]
-        );
-        assert_eq!(find(&endpoints, "/rerank").models, vec!["bge".to_string()]);
-        // chat endpoints are only derived for dialect entries
-        assert!(
-            !endpoints
-                .iter()
-                .any(|endpoint| endpoint.path == "/chat/completions")
         );
     }
 

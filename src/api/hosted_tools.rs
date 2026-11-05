@@ -16,7 +16,7 @@
 use axum::body::Bytes;
 use serde_json::{Map, Value};
 
-use crate::serve_config::EndpointKind;
+use crate::api::EndpointKind;
 
 /// `/responses` tool types executed by the client. `namespace`, `tool_search`
 /// and `shell` are checked further in [`is_client_responses_tool`].
@@ -38,10 +38,6 @@ const MESSAGES_CLIENT_TOOL_TYPE_PREFIXES: [&str; 4] =
 /// run a code execution container.
 const MESSAGES_HOSTED_FIELDS: [&str; 2] = ["mcp_servers", "container"];
 
-/// generateContent `Tool` fields executed by the client, normalized by
-/// [`normalize_field_name`].
-const GENERATE_CONTENT_CLIENT_TOOL_FIELDS: [&str; 2] = ["functiondeclarations", "computeruse"];
-
 /// Removes upstream-executed tools from a request object, recording what was removed.
 type StripFn = fn(&mut Map<String, Value>, &mut Vec<String>) -> Result<(), String>;
 
@@ -52,14 +48,13 @@ type StripFn = fn(&mut Map<String, Value>, &mut Vec<String>) -> Result<(), Strin
 /// the request content type, so upstream parses exactly the JSON checked here
 /// (e.g. a duplicated `tools` key cannot slip past the check). Bodies of other
 /// endpoints are returned unchanged.
-pub(crate) fn strip_hosted_tools(
+pub fn strip_hosted_tools(
     endpoint: EndpointKind,
     body: Bytes,
 ) -> Result<(Bytes, Vec<String>), String> {
     let strip: StripFn = match endpoint {
         EndpointKind::Responses => strip_responses,
         EndpointKind::Messages => strip_messages,
-        EndpointKind::ModelsGenerateContent => strip_generate_content,
         _ => return Ok((body, Vec::new())),
     };
     let mut payload: Value =
@@ -153,32 +148,6 @@ fn strip_messages(
     })
 }
 
-fn strip_generate_content(
-    request: &mut Map<String, Value>,
-    removed: &mut Vec<String>,
-) -> Result<(), String> {
-    strip_tools(request, &["toolConfig", "tool_config"], |tools| {
-        if tools.iter().any(|tool| !tool.is_object()) {
-            return Err("each entry in `tools` must be an object".to_string());
-        }
-        tools.retain_mut(|tool| {
-            let Some(fields) = tool.as_object_mut().filter(|fields| !fields.is_empty()) else {
-                return true;
-            };
-            fields.retain(|field, _| {
-                let keep = GENERATE_CONTENT_CLIENT_TOOL_FIELDS
-                    .contains(&normalize_field_name(field).as_str());
-                if !keep {
-                    removed.push(field.clone());
-                }
-                keep
-            });
-            !fields.is_empty()
-        });
-        Ok(())
-    })
-}
-
 /// Filters the `tools` array of `request` with `filter`. When that leaves a
 /// non-empty array empty, `tools` is removed together with
 /// `tool_choice_fields`, so the request reads as one sent without tools.
@@ -211,19 +180,10 @@ fn tool_label(tool_type: String) -> String {
     }
 }
 
-/// Vertex accepts both the camelCase and snake_case spelling of proto fields.
-fn normalize_field_name(field: &str) -> String {
-    field
-        .chars()
-        .filter(|ch| *ch != '_')
-        .map(|ch| ch.to_ascii_lowercase())
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::strip_hosted_tools;
-    use crate::serve_config::EndpointKind;
+    use crate::api::EndpointKind;
     use axum::body::Bytes;
     use serde_json::{Value, json};
 
@@ -397,17 +357,6 @@ mod tests {
         )
         .expect("request should be accepted");
         assert_eq!(stripped, json!({"input": "hi"}));
-
-        let (stripped, _) = strip(
-            EndpointKind::ModelsGenerateContent,
-            json!({
-                "contents": [],
-                "tools": [{"googleSearch": {}}],
-                "toolConfig": {"retrievalConfig": {"latLng": {"latitude": 1, "longitude": 2}}}
-            }),
-        )
-        .expect("request should be accepted");
-        assert_eq!(stripped, json!({"contents": []}));
     }
 
     /// Verifies tools sent empty by the client are forwarded as sent.
@@ -422,77 +371,10 @@ mod tests {
         assert!(removed.is_empty());
     }
 
-    /// Verifies generateContent keeps function declarations and computer use in either spelling.
-    #[test]
-    fn generate_content_keeps_only_client_executed_tools() {
-        let request = json!({
-            "contents": [{"role": "user", "parts": [{"text": "hi"}]}],
-            "tools": [
-                {"functionDeclarations": [{"name": "lookup", "parameters": {"type": "object"}}]},
-                {"function_declarations": []},
-                {"computerUse": {"environment": "ENVIRONMENT_BROWSER"}},
-                {"googleSearch": {}},
-                {"google_search": {}},
-                {"googleSearchRetrieval": {}},
-                {"enterpriseWebSearch": {}},
-                {"googleMaps": {}},
-                {"retrieval": {"vertexAiSearch": {"datastore": "ds"}}},
-                {"codeExecution": {}},
-                {"url_context": {}},
-                {"someFutureTool": {}}
-            ]
-        });
-
-        let (stripped, removed) = strip(EndpointKind::ModelsGenerateContent, request)
-            .expect("request should be accepted");
-
-        assert_eq!(
-            stripped["tools"],
-            json!([
-                {"functionDeclarations": [{"name": "lookup", "parameters": {"type": "object"}}]},
-                {"function_declarations": []},
-                {"computerUse": {"environment": "ENVIRONMENT_BROWSER"}}
-            ])
-        );
-        assert_eq!(
-            removed,
-            [
-                "googleSearch",
-                "google_search",
-                "googleSearchRetrieval",
-                "enterpriseWebSearch",
-                "googleMaps",
-                "retrieval",
-                "codeExecution",
-                "url_context",
-                "someFutureTool"
-            ]
-        );
-    }
-
-    /// Verifies a hosted tool sharing a `Tool` object with function declarations is removed alone.
-    #[test]
-    fn generate_content_strips_hosted_field_from_mixed_entry() {
-        let request = json!({
-            "contents": [],
-            "tools": [{"functionDeclarations": [], "googleSearch": {}}]
-        });
-
-        let (stripped, removed) = strip(EndpointKind::ModelsGenerateContent, request)
-            .expect("request should be accepted");
-
-        assert_eq!(stripped["tools"], json!([{"functionDeclarations": []}]));
-        assert_eq!(removed, ["googleSearch"]);
-    }
-
     /// Verifies requests without tools are forwarded unchanged.
     #[test]
     fn requests_without_tools_are_unchanged() {
-        for endpoint in [
-            EndpointKind::Responses,
-            EndpointKind::Messages,
-            EndpointKind::ModelsGenerateContent,
-        ] {
+        for endpoint in [EndpointKind::Responses, EndpointKind::Messages] {
             let request = json!({"model": "m", "input": "hi"});
             assert_eq!(strip(endpoint, request.clone()), Ok((request, Vec::new())));
 
@@ -504,11 +386,7 @@ mod tests {
     /// Verifies malformed bodies are rejected instead of forwarded unchecked.
     #[test]
     fn malformed_bodies_are_rejected() {
-        for endpoint in [
-            EndpointKind::Responses,
-            EndpointKind::Messages,
-            EndpointKind::ModelsGenerateContent,
-        ] {
+        for endpoint in [EndpointKind::Responses, EndpointKind::Messages] {
             assert_eq!(
                 strip(endpoint, json!({"tools": {"type": "web_search"}})),
                 Err("`tools` must be an array".to_string())
@@ -519,13 +397,6 @@ mod tests {
             );
             assert!(strip_hosted_tools(endpoint, Bytes::from_static(b"not json")).is_err());
         }
-        assert_eq!(
-            strip(
-                EndpointKind::ModelsGenerateContent,
-                json!({"tools": ["googleSearch"]})
-            ),
-            Err("each entry in `tools` must be an object".to_string())
-        );
     }
 
     /// Verifies a duplicated `tools` key forwards only the value that was checked.
@@ -546,8 +417,8 @@ mod tests {
     fn other_endpoints_are_untouched() {
         let body = Bytes::from_static(b"not json");
 
-        let (forwarded, removed) = strip_hosted_tools(EndpointKind::Embeddings, body.clone())
-            .expect("other endpoints are not checked");
+        let (forwarded, removed) = strip_hosted_tools(EndpointKind::ChatCompletions, body.clone())
+            .expect("chat completions does not strip hosted tools");
 
         assert_eq!(forwarded, body);
         assert!(removed.is_empty());

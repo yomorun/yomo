@@ -135,7 +135,8 @@ where
     (root_span, trace_id)
 }
 
-pub(crate) fn set_http_span_status(span: &Span, status_code: StatusCode, message: Option<&str>) {
+/// Record the HTTP response status and corresponding OpenTelemetry status on a span.
+pub fn set_http_span_status(span: &Span, status_code: StatusCode, message: Option<&str>) {
     span.record("http.response.status_code", i64::from(status_code.as_u16()));
     let (otel_status_code, otel_status_message) = http_status_to_otel_status(status_code, message);
     span.record("otel.status_code", otel_status_code);
@@ -164,7 +165,8 @@ fn http_status_to_otel_status(
     }
 }
 
-pub(crate) fn record_usage_attributes(span: &Span, prefix: &str, usage: &EndpointUsage) {
+/// Record flattened endpoint usage quantities as span attributes.
+pub fn record_usage_attributes(span: &Span, prefix: &str, usage: &EndpointUsage) {
     for (path, quantity) in flatten_usage_quantities_for_usage(usage) {
         span.set_attribute(format!("{prefix}.{path}"), quantity);
     }
