@@ -1,3 +1,9 @@
+use std::time::Duration;
+
+use futures_core::Stream;
+use futures_util::StreamExt;
+use tokio::time::timeout;
+
 /// Splits an SSE byte stream into `data:` payload strings.
 ///
 /// The reader buffers raw bytes because upstream chunk boundaries can split a
@@ -28,6 +34,33 @@ fn parse_sse_data_line(line: &[u8]) -> Option<String> {
     let trimmed = text.trim();
     let payload = trimmed.strip_prefix("data:")?;
     Some(payload.strip_prefix(' ').unwrap_or(payload).to_string())
+}
+
+/// Upper bound for reading the rest of a stream body after its `[DONE]` event.
+pub(crate) const BODY_DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Reads `body` to its end, discarding the data, for at most `limit`.
+///
+/// An HTTP/1.1 connection goes back to the pool only once its response body has
+/// been read to the end. Upstreams send the terminating chunk after `[DONE]`,
+/// often in a later packet, so dropping the body at `[DONE]` closes the
+/// connection and costs the next request a new TCP and TLS handshake. Callers
+/// spawn this so the wait stays out of their own stream. Returns `true` when
+/// the body reached its end.
+pub(crate) async fn drain_body<S, B, E>(mut body: S, limit: Duration) -> bool
+where
+    S: Stream<Item = Result<B, E>> + Unpin,
+{
+    let drained = timeout(limit, async {
+        while let Some(chunk) = body.next().await {
+            if chunk.is_err() {
+                return false;
+            }
+        }
+        true
+    })
+    .await;
+    drained.unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -72,5 +105,23 @@ mod tests {
         let payloads = reader.push(b"event: message\ndata: {\"a\":1}\n\n");
 
         assert_eq!(payloads, vec!["{\"a\":1}".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn drain_body_reads_finite_body_to_end() {
+        let body = futures_util::stream::iter(vec![Ok::<_, ()>(b"a".to_vec()), Ok(b"b".to_vec())]);
+        assert!(drain_body(body, Duration::from_secs(1)).await);
+    }
+
+    #[tokio::test]
+    async fn drain_body_stops_at_body_error() {
+        let body = futures_util::stream::iter(vec![Ok(b"a".to_vec()), Err(())]);
+        assert!(!drain_body(body, Duration::from_secs(1)).await);
+    }
+
+    #[tokio::test]
+    async fn drain_body_gives_up_after_limit() {
+        let body = futures_util::stream::pending::<Result<Vec<u8>, ()>>();
+        assert!(!drain_body(body, Duration::from_millis(10)).await);
     }
 }

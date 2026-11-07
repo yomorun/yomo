@@ -25,7 +25,7 @@ use self::types::{
     VertexToolConfig, VertexUsageMetadata,
 };
 use crate::llm_provider::openai_compatible::mapper::ensure_tool_call_id;
-use crate::llm_provider::sse::SseDataReader;
+use crate::llm_provider::sse::{BODY_DRAIN_TIMEOUT, SseDataReader, drain_body};
 use crate::llm_provider::{
     FinishReason, Provider, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse,
 };
@@ -144,10 +144,9 @@ impl<M> Provider<M> for VertexAIProvider {
             return Err(map_http_error(status, &bytes));
         }
 
-        let stream = response.bytes_stream();
+        let mut stream = response.bytes_stream();
         let model_id = self.model_id.clone();
         let output = try_stream! {
-            futures_util::pin_mut!(stream);
             let mut state = VertexStreamState::default();
             state.model = model_id;
 
@@ -164,6 +163,7 @@ impl<M> Provider<M> for VertexAIProvider {
                                 finish_reason: Some("stop".to_string()),
                             };
                         }
+                        tokio::spawn(drain_body(stream, BODY_DRAIN_TIMEOUT));
                         return;
                     }
 
