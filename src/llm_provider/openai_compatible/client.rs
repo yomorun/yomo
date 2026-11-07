@@ -11,7 +11,7 @@ use serde_json::Value;
 use tokio::time::timeout;
 
 use crate::llm_provider::openai_responses::{ResponsesRequest, ResponsesResponse};
-use crate::llm_provider::sse::SseDataReader;
+use crate::llm_provider::sse::{BODY_DRAIN_TIMEOUT, SseDataReader, drain_body};
 use crate::openai_types::{
     ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, ErrorDetail,
 };
@@ -278,6 +278,7 @@ impl Client {
                         debug!("{}", payload);
                     }
                     if data == "[DONE]" {
+                        tokio::spawn(drain_body(stream, BODY_DRAIN_TIMEOUT));
                         return;
                     }
 
@@ -389,6 +390,7 @@ impl Client {
                         debug!("{}", payload);
                     }
                     if data == "[DONE]" {
+                        tokio::spawn(drain_body(stream, BODY_DRAIN_TIMEOUT));
                         return;
                     }
                     yield data;
@@ -499,6 +501,9 @@ fn clear_agent_context(request: &mut ChatCompletionRequest) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     #[test]
     fn clear_agent_context_removes_agent_context() {
@@ -585,5 +590,88 @@ mod tests {
         };
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(error.r#type, "internal_error");
+    }
+
+    /// Serves every request on `listener` with one SSE chunk and `[DONE]`, then
+    /// sends the terminating HTTP/1.1 chunk only after `tail_delay`. Returns the
+    /// number of accepted TCP connections.
+    async fn serve_sse_with_delayed_tail(
+        listener: tokio::net::TcpListener,
+        tail_delay: Duration,
+    ) -> Arc<AtomicUsize> {
+        let accepted = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&accepted);
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                counter.fetch_add(1, Ordering::SeqCst);
+                tokio::spawn(async move {
+                    let event = concat!(
+                        "data: {\"id\":\"c\",\"model\":\"m\",\"object\":\"chat.completion.chunk\",",
+                        "\"choices\":[]}\n\ndata: [DONE]\n\n"
+                    );
+                    while read_http_request(&mut socket).await.is_some() {
+                        let head = "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\n\
+                                    transfer-encoding: chunked\r\n\r\n";
+                        let chunk = format!("{head}{:x}\r\n{event}\r\n", event.len());
+                        if socket.write_all(chunk.as_bytes()).await.is_err() {
+                            return;
+                        }
+                        tokio::time::sleep(tail_delay).await;
+                        if socket.write_all(b"0\r\n\r\n").await.is_err() {
+                            return;
+                        }
+                    }
+                });
+            }
+        });
+        accepted
+    }
+
+    /// Reads one HTTP/1.1 request (head plus `content-length` body); returns
+    /// `None` once the peer closes the connection.
+    async fn read_http_request(socket: &mut tokio::net::TcpStream) -> Option<()> {
+        let mut buffer = Vec::new();
+        let mut byte = [0u8; 1];
+        while !buffer.ends_with(b"\r\n\r\n") {
+            if socket.read(&mut byte).await.ok()? == 0 {
+                return None;
+            }
+            buffer.push(byte[0]);
+        }
+        let head = String::from_utf8_lossy(&buffer).to_ascii_lowercase();
+        let length = head
+            .lines()
+            .find_map(|line| line.strip_prefix("content-length:"))
+            .and_then(|value| value.trim().parse::<usize>().ok())
+            .unwrap_or(0);
+        let mut body = vec![0u8; length];
+        socket.read_exact(&mut body).await.ok()?;
+        Some(())
+    }
+
+    #[tokio::test]
+    async fn chat_stream_returns_http1_connection_to_pool_after_done() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        let accepted = serve_sse_with_delayed_tail(listener, Duration::from_millis(50)).await;
+        let client = Client::new(Config::new("test-key").base_url(base_url)).unwrap();
+
+        for _ in 0..2 {
+            let stream = client
+                .chat_completions_stream(ChatCompletionRequest::default())
+                .await
+                .unwrap();
+            futures_util::pin_mut!(stream);
+            let mut chunks = 0;
+            while let Some(chunk) = stream.next().await {
+                chunk.unwrap();
+                chunks += 1;
+            }
+            assert_eq!(chunks, 1);
+            // Leave time for the terminating chunk to arrive.
+            tokio::time::sleep(Duration::from_millis(300)).await;
+        }
+
+        assert_eq!(accepted.load(Ordering::SeqCst), 1);
     }
 }
