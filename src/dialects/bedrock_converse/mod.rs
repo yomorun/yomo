@@ -2,8 +2,11 @@
 
 pub mod mapper;
 
-pub use mapper::ir_to_converse_request;
-use mapper::{ConverseStreamState, converse_output_to_unified, unified_to_converse_request};
+pub use mapper::{BedrockConverseRequest, ir_to_converse_request};
+use mapper::{
+    ConverseRequestParts, ConverseStreamState, converse_output_to_unified,
+    unified_to_converse_request,
+};
 
 use std::pin::Pin;
 use std::sync::Arc;
@@ -16,12 +19,13 @@ use futures_core::Stream;
 use secrecy::{ExposeSecret, SecretString};
 use tokio::sync::OnceCell;
 
+use crate::models::{ModelProfile, default_model_profile};
 use crate::openai_types::ErrorDetail;
 use crate::provider::UpstreamLog;
 use crate::provider::{
     Provider, ProviderError, UnifiedEvent, UnifiedEventKind, UnifiedRequest, UnifiedResponse,
 };
-use crate::serve_config::BedrockParams;
+use crate::serve_config::{BedrockParams, ModelBinding};
 
 /// `bedrock-converse` dialect client.
 #[derive(Clone)]
@@ -30,16 +34,66 @@ pub struct BedrockConverseProvider {
     region: String,
     bearer_token: SecretString,
     client: Arc<OnceCell<aws_sdk_bedrockruntime::Client>>,
+    binding: Option<ModelBinding>,
+    profile: Arc<dyn ModelProfile>,
 }
 
 impl BedrockConverseProvider {
     pub fn new(params: &BedrockParams) -> Self {
+        Self::construct(params, None, default_model_profile())
+    }
+
+    /// Create a fixed Bedrock integration with a caller-provided model profile.
+    pub fn new_bound_with_profile(
+        params: &BedrockParams,
+        binding: ModelBinding,
+        profile: Arc<dyn ModelProfile>,
+    ) -> Self {
+        Self::construct(params, Some(binding), profile)
+    }
+
+    fn construct(
+        params: &BedrockParams,
+        binding: Option<ModelBinding>,
+        profile: Arc<dyn ModelProfile>,
+    ) -> Self {
         Self {
             bedrock_model: params.model.clone(),
             region: params.aws_region.clone(),
             bearer_token: params.aws_bearer_token.clone(),
             client: Arc::new(OnceCell::new()),
+            binding,
+            profile,
         }
+    }
+
+    fn unified_to_request(
+        &self,
+        request: &UnifiedRequest,
+    ) -> Result<ConverseRequestParts, ProviderError> {
+        if let Some(binding) = &self.binding {
+            if let Some(request) = self.profile.to_bedrock_converse_request(request, binding)? {
+                let request =
+                    mapper::bedrock_request_to_sdk_parts(request).map_err(Self::invalid_request)?;
+                mapper::validate_model_conversation(&binding.public_model, &request.messages)
+                    .map_err(Self::invalid_request)?;
+                return Ok(request);
+            }
+        }
+
+        let mut bedrock_request =
+            unified_to_converse_request(request).map_err(Self::invalid_request)?;
+        let profile_model = self
+            .binding
+            .as_ref()
+            .map(|binding| binding.public_model.as_str())
+            .unwrap_or(&self.bedrock_model);
+        bedrock_request.additional_model_request_fields =
+            mapper::additional_model_request_fields(request, profile_model)
+                .map_err(Self::invalid_request)?;
+        mapper::validate_model_conversation(profile_model, &bedrock_request.messages)
+            .map_err(Self::invalid_request)?;
+        Ok(bedrock_request)
     }
 
     async fn client(&self) -> Result<&aws_sdk_bedrockruntime::Client, ProviderError> {
@@ -81,14 +135,19 @@ impl<M> Provider<M> for BedrockConverseProvider {
         &self.bedrock_model
     }
 
+    fn binding(&self) -> Option<&ModelBinding> {
+        self.binding.as_ref()
+    }
+
     async fn complete(&self, request: UnifiedRequest) -> Result<UnifiedResponse, ProviderError> {
-        let additional_model_request_fields =
-            mapper::additional_model_request_fields(&request, &self.bedrock_model)
-                .map_err(Self::invalid_request)?;
-        let (messages, system, tool_config, inference) =
-            unified_to_converse_request(&request).map_err(Self::invalid_request)?;
-        mapper::validate_model_conversation(&self.bedrock_model, &messages)
-            .map_err(Self::invalid_request)?;
+        let bedrock_request = self.unified_to_request(&request)?;
+        let ConverseRequestParts {
+            messages,
+            system,
+            tool_config,
+            inference,
+            additional_model_request_fields,
+        } = bedrock_request;
         let client = self.client().await?;
 
         let diagnostics = UpstreamLog::new("bedrock-converse", &self.bedrock_model);
@@ -137,13 +196,14 @@ impl<M> Provider<M> for BedrockConverseProvider {
         Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
         ProviderError,
     > {
-        let additional_model_request_fields =
-            mapper::additional_model_request_fields(&request, &self.bedrock_model)
-                .map_err(Self::invalid_request)?;
-        let (messages, system, tool_config, inference) =
-            unified_to_converse_request(&request).map_err(Self::invalid_request)?;
-        mapper::validate_model_conversation(&self.bedrock_model, &messages)
-            .map_err(Self::invalid_request)?;
+        let bedrock_request = self.unified_to_request(&request)?;
+        let ConverseRequestParts {
+            messages,
+            system,
+            tool_config,
+            inference,
+            additional_model_request_fields,
+        } = bedrock_request;
         let client = self.client().await?;
 
         let diagnostics = UpstreamLog::new("bedrock-converse", &self.bedrock_model);

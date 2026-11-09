@@ -19,14 +19,15 @@ use self::mapper::{
     ThoughtSignatureStore, VertexStreamState, build_unified_vertex_request,
     map_http_error_with_headers, map_vertex_response, map_vertex_stream_chunk,
 };
-use self::types::VertexGenerateContentResponse;
+use self::types::{VertexGenerateContentRequest, VertexGenerateContentResponse};
 use crate::dialects::credential::{
     CredentialError, GcpTokenCache, TokenFetcher, shared_http_client,
 };
+use crate::models::{ModelProfile, default_model_profile};
 use crate::provider::UpstreamLog;
 use crate::provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
 use crate::provider::{UnifiedEventKind, UnifiedRequest};
-use crate::serve_config::GoogleVertexParams;
+use crate::serve_config::{GoogleVertexParams, ModelBinding};
 use crate::utils::{BODY_DRAIN_TIMEOUT, SseDataReader, drain_body};
 
 const CLOUD_PLATFORM_SCOPE: &str = "https://www.googleapis.com/auth/cloud-platform";
@@ -40,10 +41,29 @@ pub struct GoogleVertexProvider {
     location: String,
     token_cache: Arc<GcpTokenCache>,
     thought_signatures: Arc<Mutex<ThoughtSignatureStore>>,
+    binding: Option<ModelBinding>,
+    profile: Arc<dyn ModelProfile>,
 }
 
 impl GoogleVertexProvider {
     pub fn new(params: &GoogleVertexParams) -> Self {
+        Self::construct(params, None, default_model_profile())
+    }
+
+    /// Create a fixed Vertex integration with a caller-provided model profile.
+    pub fn new_bound_with_profile(
+        params: &GoogleVertexParams,
+        binding: ModelBinding,
+        profile: Arc<dyn ModelProfile>,
+    ) -> Self {
+        Self::construct(params, Some(binding), profile)
+    }
+
+    fn construct(
+        params: &GoogleVertexParams,
+        binding: Option<ModelBinding>,
+        profile: Arc<dyn ModelProfile>,
+    ) -> Self {
         let fetcher = YupOauth2TokenFetcher::new(params.credentials_file.clone());
         Self {
             model: params.model.clone(),
@@ -53,7 +73,24 @@ impl GoogleVertexProvider {
             thought_signatures: Arc::new(Mutex::new(ThoughtSignatureStore::new(
                 MAX_THOUGHT_SIGNATURES,
             ))),
+            binding,
+            profile,
         }
+    }
+
+    fn adapt_model_profile(
+        &self,
+        request: &UnifiedRequest,
+        dialect_request: &mut VertexGenerateContentRequest,
+    ) -> Result<(), ProviderError> {
+        if let Some(binding) = self.binding.as_ref() {
+            self.profile.adapt_gemini_generate_content_request(
+                request,
+                binding,
+                dialect_request,
+            )?;
+        }
+        Ok(())
     }
 
     async fn access_token(&self) -> Result<String, ProviderError> {
@@ -149,10 +186,15 @@ impl<M> Provider<M> for GoogleVertexProvider {
         &self.model
     }
 
+    fn binding(&self) -> Option<&ModelBinding> {
+        self.binding.as_ref()
+    }
+
     async fn complete(&self, request: UnifiedRequest) -> Result<UnifiedResponse, ProviderError> {
-        let body =
+        let mut body =
             build_unified_vertex_request(&request, &shared_http_client(), &self.thought_signatures)
                 .await?;
+        self.adapt_model_profile(&request, &mut body)?;
         let url = generate_content_url(&self.location, &self.project_id, &self.model, false);
         let diagnostics = UpstreamLog::new("google-vertex", &self.model);
         diagnostics.json("upstream.request", Some(&url), &body);
@@ -190,9 +232,10 @@ impl<M> Provider<M> for GoogleVertexProvider {
         Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
         ProviderError,
     > {
-        let body =
+        let mut body =
             build_unified_vertex_request(&request, &shared_http_client(), &self.thought_signatures)
                 .await?;
+        self.adapt_model_profile(&request, &mut body)?;
         let url = generate_content_url(&self.location, &self.project_id, &self.model, true);
         let diagnostics = UpstreamLog::new("google-vertex", &self.model);
         diagnostics.json("upstream.request", Some(&url), &body);

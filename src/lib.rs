@@ -31,7 +31,7 @@ pub mod llm_stream_mapper;
 pub mod metadata_mgr;
 /// Model list API for Agent model selection.
 pub mod model_list;
-/// Model-specific request normalizers for Agent requests.
+/// Model-specific request profiles for upstream dialect conversion.
 pub mod models;
 /// OpenAI request/response mapping to Events.
 pub mod openai_http_mapping;

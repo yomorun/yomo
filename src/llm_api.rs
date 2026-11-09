@@ -20,7 +20,6 @@ use crate::api::hosted_tools::strip_hosted_tools;
 use crate::api::{self, EndpointKind};
 use crate::llm_stream_mapper::{DefaultStreamMapperSelector, StreamMapperSelector};
 use crate::metadata_mgr::{MetadataMgr, MetadataMgrImpl};
-use crate::models::{ClientApi, ModelRequestNormalizerMap};
 use crate::openai_http_mapping::{
     INTERNAL_SERVER_ERROR_MESSAGE, empty_usage, map_usage_to_openai, openai_error_response,
     validate_unified_request,
@@ -28,7 +27,7 @@ use crate::openai_http_mapping::{
 use crate::openai_types::ErrorDetail;
 use crate::provider::{
     Provider, ProviderError, UnifiedEvent, UnifiedEventKind, UnifiedRequest, UnifiedResponse,
-    UnifiedResponseError,
+    UnifiedResponseError, UnifiedSourceProtocol,
 };
 use crate::provider_registry::{ProviderRegistry, SelectionError};
 use crate::serve_config::ResponseModelMode;
@@ -42,7 +41,6 @@ use crate::utils::{json_body_for_log, truncate_bytes_for_log};
 #[derive(Clone)]
 pub struct LlmHandlerState<A, M> {
     pub provider_registry: Arc<dyn ProviderRegistry<M>>,
-    pub request_normalizers: Arc<ModelRequestNormalizerMap>,
     pub tool_mgr: Arc<dyn ToolMgr<A, M>>,
     pub tool_invoker: Arc<dyn ToolInvoker>,
     pub metadata_mgr: Arc<dyn MetadataMgr<A, M>>,
@@ -378,14 +376,11 @@ where
         }
     };
 
-    let request = match state.request_normalizers.normalize(
-        ClientApi::ChatCompletions,
-        &provider_entry.model_id,
-        &request_value,
-    ) {
-        Ok(request) => request,
-        Err(message) => return Ok(bad_request_response(&message)),
-    };
+    let request =
+        match api::request_from_value(&request_value, UnifiedSourceProtocol::ChatCompletions) {
+            Ok(request) => request,
+            Err(message) => return Ok(bad_request_response(&message)),
+        };
 
     let stream = request.controls.stream.unwrap_or(false);
     info!(
@@ -673,11 +668,7 @@ where
         }
     };
 
-    let request = match state.request_normalizers.normalize(
-        ClientApi::Messages,
-        &provider_entry.model_id,
-        &request_value,
-    ) {
+    let request = match api::request_from_value(&request_value, UnifiedSourceProtocol::Messages) {
         Ok(request) => request,
         Err(message) => return Ok(bad_request_response(message, "invalid_request_error")),
     };
@@ -1021,11 +1012,7 @@ where
         }
     };
 
-    let request = match state.request_normalizers.normalize(
-        ClientApi::Responses,
-        &provider_entry.model_id,
-        &request_value,
-    ) {
+    let request = match api::request_from_value(&request_value, UnifiedSourceProtocol::Responses) {
         Ok(request) => request,
         Err(message) => return Ok(bad_request_response(&message)),
     };
@@ -1341,48 +1328,8 @@ pub async fn build_llm_api_with_error_policy(
     agent_loop_config: AgentLoopConfig<()>,
     error_response_policy: Arc<dyn LlmErrorResponsePolicy<()>>,
 ) -> anyhow::Result<Router> {
-    build_llm_api_with_normalizers(
-        tool_mgr,
-        provider_registry,
-        tool_invoker,
-        agent_loop_config,
-        error_response_policy,
-        Arc::new(ModelRequestNormalizerMap::default()),
-    )
-    .await
-}
-
-/// Build the conversation API with caller-provided model request normalizers.
-pub async fn build_llm_api_with_request_normalizers(
-    tool_mgr: Arc<dyn ToolMgr<(), ()>>,
-    provider_registry: Arc<dyn crate::provider_registry::ProviderRegistry<()>>,
-    tool_invoker: Arc<dyn ToolInvoker>,
-    agent_loop_config: AgentLoopConfig<()>,
-    request_normalizers: Arc<ModelRequestNormalizerMap>,
-) -> anyhow::Result<Router> {
-    build_llm_api_with_normalizers(
-        tool_mgr,
-        provider_registry,
-        tool_invoker,
-        agent_loop_config,
-        Arc::new(DefaultLlmErrorResponsePolicy),
-        request_normalizers,
-    )
-    .await
-}
-
-/// Build the conversation API with caller-provided model request normalizers.
-pub async fn build_llm_api_with_normalizers(
-    tool_mgr: Arc<dyn ToolMgr<(), ()>>,
-    provider_registry: Arc<dyn crate::provider_registry::ProviderRegistry<()>>,
-    tool_invoker: Arc<dyn ToolInvoker>,
-    agent_loop_config: AgentLoopConfig<()>,
-    error_response_policy: Arc<dyn LlmErrorResponsePolicy<()>>,
-    request_normalizers: Arc<ModelRequestNormalizerMap>,
-) -> anyhow::Result<Router> {
     let state = LlmHandlerState {
         provider_registry,
-        request_normalizers,
         tool_mgr,
         tool_invoker,
         metadata_mgr: Arc::new(MetadataMgrImpl::new()),

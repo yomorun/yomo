@@ -26,6 +26,7 @@ use yomo::{
     llm_api::build_llm_api,
     metadata_mgr::MetadataMgrImpl,
     model_list::build_model_list_api,
+    models::ModelProfileRegistry,
     openai_http_mapping::openai_error_response,
     provider_registry,
     router::RouterImpl,
@@ -207,10 +208,13 @@ async fn serve(opt: ServeOptions) -> Result<()> {
         endpoint_map.insert(endpoint.endpoint()?, endpoint.clone());
     }
     let selection_strategy = Arc::new(provider_registry::ByEndpointModel::new(endpoint_map));
-    let provider_registry = provider_registry::ConfigProviderRegistry::from_entries(
-        &config.providers,
-        selection_strategy,
-    )?;
+    let model_profiles = ModelProfileRegistry::default();
+    let provider_registry =
+        provider_registry::ConfigProviderRegistry::from_entries_with_model_profiles(
+            &config.providers,
+            selection_strategy,
+            &model_profiles,
+        )?;
 
     let tool_invoker = Arc::new(ConnToolInvoker::new(Arc::new(connector.to_owned())));
     app = app.nest(

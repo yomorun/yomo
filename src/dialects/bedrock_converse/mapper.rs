@@ -32,12 +32,297 @@ use crate::usage_handler::EndpointUsage;
 // IR -> Converse request
 // ---------------------------------------------------------------------------
 
-pub type ConverseRequestParts = (
-    Vec<ConverseMessage>,
-    Option<Vec<SystemContentBlock>>,
-    Option<ToolConfiguration>,
-    InferenceConfiguration,
-);
+/// Yomo-owned Bedrock Converse request shape exposed to model profiles.
+#[derive(Debug, Clone, Default)]
+pub struct BedrockConverseRequest {
+    /// Bedrock `messages` array in wire-compatible JSON form.
+    pub messages: Vec<Value>,
+    /// Optional Bedrock `system` blocks in wire-compatible JSON form.
+    pub system: Option<Vec<Value>>,
+    /// Optional Bedrock `toolConfig` object in wire-compatible JSON form.
+    pub tool_config: Option<Value>,
+    /// Bedrock `inferenceConfig` object in wire-compatible JSON form.
+    pub inference_config: Value,
+    /// Optional additional model-specific fields in wire-compatible JSON form.
+    pub additional_model_request_fields: Option<Value>,
+}
+
+/// SDK request values used only inside the Bedrock dialect implementation.
+#[derive(Debug)]
+pub struct ConverseRequestParts {
+    pub(super) messages: Vec<ConverseMessage>,
+    pub(super) system: Option<Vec<SystemContentBlock>>,
+    pub(super) tool_config: Option<ToolConfiguration>,
+    pub(super) inference: InferenceConfiguration,
+    pub(super) additional_model_request_fields: Option<Document>,
+}
+
+/// Convert a public yomo Bedrock request shape to AWS SDK structures.
+pub(crate) fn bedrock_request_to_sdk_parts(
+    request: BedrockConverseRequest,
+) -> Result<ConverseRequestParts, String> {
+    let messages = request
+        .messages
+        .iter()
+        .map(bedrock_message_from_value)
+        .collect::<Result<Vec<_>, _>>()?;
+    if messages.is_empty() {
+        return Err("Bedrock Converse requires at least one message".into());
+    }
+    let system = request
+        .system
+        .map(|blocks| {
+            blocks
+                .iter()
+                .map(|block| {
+                    block["text"]
+                        .as_str()
+                        .map(|text| SystemContentBlock::Text(text.to_owned()))
+                        .ok_or_else(|| "Bedrock system block requires text".to_owned())
+                })
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .transpose()?;
+    let tool_config = request
+        .tool_config
+        .as_ref()
+        .map(bedrock_tool_config_from_value)
+        .transpose()?;
+    let inference = bedrock_inference_from_value(&request.inference_config)?;
+    let additional_model_request_fields = request
+        .additional_model_request_fields
+        .as_ref()
+        .map(json_value_to_document);
+
+    Ok(ConverseRequestParts {
+        messages,
+        system,
+        tool_config,
+        inference,
+        additional_model_request_fields,
+    })
+}
+
+fn bedrock_message_from_value(value: &Value) -> Result<ConverseMessage, String> {
+    let role = match value["role"].as_str() {
+        Some("user") => ConversationRole::User,
+        Some("assistant") => ConversationRole::Assistant,
+        _ => return Err("Bedrock message role must be user or assistant".into()),
+    };
+    let content = value["content"]
+        .as_array()
+        .ok_or_else(|| "Bedrock message requires a content array".to_owned())?
+        .iter()
+        .map(bedrock_content_block_from_value)
+        .collect::<Result<Vec<_>, _>>()?;
+    converse_message(role, content)
+}
+
+fn bedrock_content_block_from_value(value: &Value) -> Result<ContentBlock, String> {
+    if let Some(text) = value.get("text").and_then(Value::as_str) {
+        return Ok(ContentBlock::Text(text.to_owned()));
+    }
+    if let Some(image) = value.get("image") {
+        let format = image["format"]
+            .as_str()
+            .ok_or_else(|| "Bedrock image requires a format".to_owned())?;
+        let data = image["source"]["bytes"]
+            .as_str()
+            .ok_or_else(|| "Bedrock image requires base64 source bytes".to_owned())?;
+        return image_url_to_block(&format!("data:image/{format};base64,{data}"));
+    }
+    if let Some(reasoning) = value.get("reasoningContent") {
+        if let Some(text) = reasoning.get("reasoningText") {
+            let reasoning_text = text["text"]
+                .as_str()
+                .ok_or_else(|| "Bedrock reasoningText requires text".to_owned())?;
+            let signature = text_value(text, "signature")
+                .ok_or_else(|| "Bedrock reasoningText requires signature".to_owned())?;
+            let block = ReasoningTextBlock::builder()
+                .text(reasoning_text)
+                .signature(signature)
+                .build()
+                .map_err(|error| error.to_string())?;
+            return Ok(ContentBlock::ReasoningContent(
+                ReasoningContentBlock::ReasoningText(block),
+            ));
+        }
+        if let Some(data) = reasoning.get("redactedContent").and_then(Value::as_str) {
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(data)
+                .map_err(|error| error.to_string())?;
+            return Ok(ContentBlock::ReasoningContent(
+                ReasoningContentBlock::RedactedContent(Blob::new(bytes)),
+            ));
+        }
+        return Err("Bedrock reasoningContent has no supported block".into());
+    }
+    if let Some(tool_use) = value.get("toolUse") {
+        let call_id = text_value(tool_use, "toolUseId")
+            .ok_or_else(|| "Bedrock toolUse requires toolUseId".to_owned())?;
+        let name = text_value(tool_use, "name")
+            .ok_or_else(|| "Bedrock toolUse requires name".to_owned())?;
+        let input = tool_use.get("input").cloned().unwrap_or_else(|| json!({}));
+        let block = ToolUseBlock::builder()
+            .tool_use_id(call_id)
+            .name(name)
+            .input(json_value_to_document(&input))
+            .build()
+            .map_err(|error| error.to_string())?;
+        return Ok(ContentBlock::ToolUse(block));
+    }
+    if let Some(tool_result) = value.get("toolResult") {
+        let tool_use_id = text_value(tool_result, "toolUseId")
+            .ok_or_else(|| "Bedrock toolResult requires toolUseId".to_owned())?;
+        let content = tool_result["content"]
+            .as_array()
+            .ok_or_else(|| "Bedrock toolResult requires a content array".to_owned())?
+            .iter()
+            .map(|part| {
+                if let Some(text) = part.get("text").and_then(Value::as_str) {
+                    Ok(ToolResultContentBlock::Text(text.to_owned()))
+                } else if let Some(value) = part.get("json") {
+                    Ok(ToolResultContentBlock::Json(json_value_to_document(value)))
+                } else {
+                    Err("Bedrock toolResult supports text and json content".to_owned())
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let status = match tool_result.get("status") {
+            None | Some(Value::Null) => Some(ToolResultStatus::Success),
+            Some(value) => match value.as_str() {
+                Some("error") => Some(ToolResultStatus::Error),
+                Some("success") => Some(ToolResultStatus::Success),
+                _ => return Err("Bedrock toolResult status must be error or success".into()),
+            },
+        };
+        let block = ToolResultBlock::builder()
+            .tool_use_id(tool_use_id)
+            .set_content(Some(content))
+            .set_status(status)
+            .build()
+            .map_err(|error| error.to_string())?;
+        return Ok(ContentBlock::ToolResult(block));
+    }
+    Err("unsupported Bedrock content block".into())
+}
+
+fn bedrock_tool_config_from_value(value: &Value) -> Result<ToolConfiguration, String> {
+    let tools = value["tools"]
+        .as_array()
+        .ok_or_else(|| "Bedrock toolConfig requires tools".to_owned())?
+        .iter()
+        .map(|tool| {
+            let spec = &tool["toolSpec"];
+            let name = text_value(spec, "name")
+                .ok_or_else(|| "Bedrock toolSpec requires name".to_owned())?;
+            let input = spec
+                .get("inputSchema")
+                .and_then(|schema| schema.get("json"))
+                .cloned()
+                .unwrap_or_else(|| json!({}));
+            let description = match spec.get("description") {
+                None | Some(Value::Null) => None,
+                Some(value) => Some(
+                    value
+                        .as_str()
+                        .ok_or_else(|| "Bedrock toolSpec description must be a string".to_owned())?
+                        .to_owned(),
+                ),
+            };
+            let specification = ToolSpecification::builder()
+                .name(name)
+                .set_description(description)
+                .input_schema(ToolInputSchema::Json(json_value_to_document(&input)))
+                .build()
+                .map_err(|error| error.to_string())?;
+            Ok(ConverseTool::ToolSpec(specification))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let choice = value
+        .get("toolChoice")
+        .map(bedrock_tool_choice_from_value)
+        .transpose()?;
+    let mut builder = ToolConfiguration::builder().set_tools(Some(tools));
+    if let Some(choice) = choice {
+        builder = builder.tool_choice(choice);
+    }
+    builder.build().map_err(|error| error.to_string())
+}
+
+fn bedrock_tool_choice_from_value(value: &Value) -> Result<ConverseToolChoice, String> {
+    if value.get("auto").is_some() {
+        return Ok(ConverseToolChoice::Auto(AutoToolChoice::builder().build()));
+    }
+    if value.get("any").is_some() {
+        return Ok(ConverseToolChoice::Any(AnyToolChoice::builder().build()));
+    }
+    if let Some(tool) = value.get("tool") {
+        let name = text_value(tool, "name")
+            .ok_or_else(|| "Bedrock toolChoice.tool requires name".to_owned())?;
+        return SpecificToolChoice::builder()
+            .name(name)
+            .build()
+            .map(ConverseToolChoice::Tool)
+            .map_err(|error| error.to_string());
+    }
+    Err("unsupported Bedrock toolChoice".into())
+}
+
+fn bedrock_inference_from_value(value: &Value) -> Result<InferenceConfiguration, String> {
+    let max_tokens = match value.get("maxTokens") {
+        None | Some(Value::Null) => None,
+        Some(value) => {
+            let value = value
+                .as_i64()
+                .ok_or_else(|| "Bedrock maxTokens must be an integer".to_owned())?;
+            Some(i32::try_from(value).map_err(|error| error.to_string())?)
+        }
+    };
+    let temperature = optional_bedrock_float(value, "temperature")?;
+    let top_p = optional_bedrock_float(value, "topP")?;
+    let stop_sequences = value
+        .get("stopSequences")
+        .map(|value| {
+            value
+                .as_array()
+                .ok_or_else(|| "Bedrock stopSequences must be an array".to_owned())?
+                .iter()
+                .map(|item| {
+                    item.as_str()
+                        .map(str::to_owned)
+                        .ok_or_else(|| "Bedrock stopSequences values must be strings".to_owned())
+                })
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .transpose()?;
+    Ok(InferenceConfiguration::builder()
+        .set_max_tokens(max_tokens)
+        .set_temperature(temperature)
+        .set_top_p(top_p)
+        .set_stop_sequences(stop_sequences)
+        .build())
+}
+
+fn optional_bedrock_float(value: &Value, key: &str) -> Result<Option<f32>, String> {
+    let Some(value) = value.get(key) else {
+        return Ok(None);
+    };
+    if value.is_null() {
+        return Ok(None);
+    }
+    let value = value
+        .as_f64()
+        .ok_or_else(|| format!("Bedrock {key} must be a number"))? as f32;
+    if !value.is_finite() {
+        return Err(format!("Bedrock {key} must be finite"));
+    }
+    Ok(Some(value))
+}
+
+fn text_value(value: &Value, key: &str) -> Option<String> {
+    value.get(key).and_then(Value::as_str).map(str::to_owned)
+}
 
 const CLAUDE_HAIKU_55_BEDROCK_MODEL: &str = "claude-haiku-5-5";
 const CLAUDE_SONNET_55_BEDROCK_MODEL: &str = "claude-sonnet-5-5";
@@ -176,7 +461,8 @@ fn reasoning_controls(model: &str) -> Option<(&'static str, ReasoningControls)> 
 /// Each configured model has its own rule set. Any other Claude model id passes
 /// its reasoning controls through unchanged and lets the upstream decide what
 /// it supports.
-pub(super) fn additional_model_request_fields(
+/// Build model-specific Bedrock extension fields from the request and profile key.
+pub fn additional_model_request_fields(
     request: &UnifiedRequest,
     bedrock_model: &str,
 ) -> Result<Option<Document>, String> {
@@ -350,7 +636,8 @@ fn claude_fields_to_document(fields: Map<String, Value>) -> Result<Option<Docume
     }
 }
 
-pub(super) fn validate_model_conversation(
+/// Validate model-specific conversation restrictions for Bedrock Converse.
+pub fn validate_model_conversation(
     bedrock_model: &str,
     messages: &[ConverseMessage],
 ) -> Result<(), String> {
@@ -610,12 +897,13 @@ pub fn unified_to_converse_request(
         .set_top_p(request.options.top_p.map(|value| value as f32))
         .set_stop_sequences(request.options.stop_sequences.clone())
         .build();
-    Ok((
+    Ok(ConverseRequestParts {
         messages,
-        (!system.is_empty()).then_some(system),
+        system: (!system.is_empty()).then_some(system),
         tool_config,
         inference,
-    ))
+        additional_model_request_fields: None,
+    })
 }
 
 fn unified_content_block(part: &UnifiedContentPart) -> Result<ContentBlock, String> {
@@ -790,7 +1078,13 @@ pub fn ir_to_converse_request(
         .build();
 
     let system = (!system_blocks.is_empty()).then_some(system_blocks);
-    Ok((messages, system, tool_config, inference))
+    Ok(ConverseRequestParts {
+        messages,
+        system,
+        tool_config,
+        inference,
+        additional_model_request_fields: None,
+    })
 }
 
 fn converse_message(
@@ -925,7 +1219,7 @@ fn json_value_to_document(value: &Value) -> Document {
     }
 }
 
-fn document_to_json_value(document: &Document) -> Value {
+pub(crate) fn document_to_json_value(document: &Document) -> Value {
     match document {
         Document::Null => Value::Null,
         Document::Bool(flag) => Value::Bool(*flag),
@@ -1647,7 +1941,9 @@ mod tests {
             tool_call,
         ];
 
-        let (messages, system, _, _) = unified_to_converse_request(&request).expect("Converse");
+        let bedrock_request = unified_to_converse_request(&request).expect("Converse");
+        let messages = bedrock_request.messages;
+        let system = bedrock_request.system;
         assert!(system.is_none());
         assert_eq!(messages.len(), 2);
         let blocks = messages[1].content();
@@ -1689,7 +1985,9 @@ mod tests {
             ..Default::default()
         };
 
-        let (messages, _, _, _) = unified_to_converse_request(&request).expect("Converse");
+        let messages = unified_to_converse_request(&request)
+            .expect("Converse")
+            .messages;
         assert_eq!(messages.len(), 3);
         let assistant_blocks = messages[1].content();
         assert_eq!(assistant_blocks.len(), 2);
@@ -1773,7 +2071,9 @@ mod tests {
                 {"role":"user","content":[{"type":"tool_result","tool_use_id":"call-1","content":"done"}]}
             ]
         }), crate::provider::UnifiedSourceProtocol::Messages).expect("unified request");
-        let (messages, _, _, inference) = unified_to_converse_request(&request).expect("Converse");
+        let bedrock_request = unified_to_converse_request(&request).expect("Converse");
+        let messages = bedrock_request.messages;
+        let inference = bedrock_request.inference;
         assert_eq!(messages.len(), 2);
         let blocks = &messages[0].content;
         assert_eq!(blocks.len(), 4);
@@ -1881,8 +2181,11 @@ mod tests {
 
     #[test]
     fn ir_to_converse_maps_roles_tools_and_inference() {
-        let (messages, system, tool_config, inference) =
-            ir_to_converse_request(&ir_request()).expect("convert");
+        let bedrock_request = ir_to_converse_request(&ir_request()).expect("convert");
+        let messages = bedrock_request.messages;
+        let system = bedrock_request.system;
+        let tool_config = bedrock_request.tool_config;
+        let inference = bedrock_request.inference;
 
         assert_eq!(messages.len(), 3);
         // user message text
@@ -1931,6 +2234,49 @@ mod tests {
         let value = json!({"a": 1, "b": [true, "x", 1.5], "c": null});
         let document = json_value_to_document(&value);
         assert_eq!(document_to_json_value(&document), value);
+    }
+
+    #[test]
+    fn public_bedrock_request_converts_json_to_sdk_parts() {
+        let request = BedrockConverseRequest {
+            messages: vec![json!({
+                "role":"user",
+                "content":[{"text":"hello"}]
+            })],
+            system: Some(vec![json!({"text":"be concise"})]),
+            tool_config: Some(json!({
+                "tools":[{
+                    "toolSpec": {
+                        "name":"lookup",
+                        "inputSchema":{"json":{"type":"object"}}
+                    }
+                }],
+                "toolChoice":{"auto":{}}
+            })),
+            inference_config: json!({
+                "maxTokens": 256,
+                "temperature": 0.2,
+                "stopSequences": ["END"]
+            }),
+            additional_model_request_fields: Some(json!({"thinking":{"type":"adaptive"}})),
+        };
+
+        let parts = bedrock_request_to_sdk_parts(request).expect("SDK conversion");
+        assert_eq!(parts.messages.len(), 1);
+        assert_eq!(*parts.messages[0].role(), ConversationRole::User);
+        assert!(matches!(
+            parts.messages[0].content().first(),
+            Some(ContentBlock::Text(text)) if text == "hello"
+        ));
+        assert_eq!(parts.inference.max_tokens(), Some(256));
+        assert_eq!(parts.inference.temperature(), Some(0.2));
+        assert_eq!(
+            parts
+                .additional_model_request_fields
+                .as_ref()
+                .map(document_to_json_value),
+            Some(json!({"thinking":{"type":"adaptive"}}))
+        );
     }
 
     #[test]

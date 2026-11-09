@@ -6,6 +6,7 @@ use mapper::upstream_error;
 pub use mapper::{StreamMapState, ir_to_responses_request, map_stream_event, responses_to_unified};
 
 use std::pin::Pin;
+use std::sync::Arc;
 use std::time::Duration;
 
 use async_stream::try_stream;
@@ -16,10 +17,11 @@ use secrecy::SecretString;
 use tokio::time::timeout;
 use url::Url;
 
-use crate::api::{request_to_value, response_from_value};
+use crate::api::response_from_value;
 use crate::dialects::Dialect;
 use crate::dialects::credential::sanitized_transport_headers;
 use crate::dialects::credential::{shared_http_client, shared_http1_client};
+use crate::models::{ModelProfile, default_model_profile};
 use crate::openai_types::ErrorDetail;
 use crate::provider::UnifiedRequest;
 use crate::provider::UnifiedSourceProtocol;
@@ -44,6 +46,7 @@ pub struct OpenAiResponsesProvider {
     /// Upstream model / deployment name (params.model).
     model: String,
     binding: Option<ModelBinding>,
+    profile: Arc<dyn ModelProfile>,
     auth_scheme: AuthScheme,
 }
 
@@ -58,6 +61,7 @@ impl OpenAiResponsesProvider {
             api_key: params.auth.as_ref().map(|auth| auth.api_key.clone()),
             model: params.model.clone(),
             binding: None,
+            profile: default_model_profile(),
             auth_scheme: params
                 .auth
                 .as_ref()
@@ -68,9 +72,40 @@ impl OpenAiResponsesProvider {
 
     /// Create a fixed integration with no URL-based reasoning normalization.
     pub fn new_bound(params: &OpenAiParams, binding: ModelBinding) -> Self {
+        Self::new_bound_with_profile(params, binding, default_model_profile())
+    }
+
+    /// Create a fixed integration with a caller-provided model profile.
+    pub fn new_bound_with_profile(
+        params: &OpenAiParams,
+        binding: ModelBinding,
+        profile: Arc<dyn ModelProfile>,
+    ) -> Self {
         let mut provider = Self::new(params);
         provider.binding = Some(binding);
+        provider.profile = profile;
         provider
+    }
+
+    fn unified_to_request_value(
+        &self,
+        request: &UnifiedRequest,
+        stream: bool,
+    ) -> Result<Value, ProviderError> {
+        let native = match self.binding.as_ref() {
+            Some(binding) => match self.profile.to_openai_responses_request(request, binding)? {
+                Some(request) => request,
+                None => mapper::ir_to_responses_request(request, &self.model)?,
+            },
+            None => mapper::ir_to_responses_request(request, &self.model)?,
+        };
+        let mut value =
+            serde_json::to_value(native).map_err(|err| ProviderError::internal(err.to_string()))?;
+        value["model"] = json!(self.model);
+        if stream {
+            value["stream"] = json!(true);
+        }
+        Ok(value)
     }
 
     fn apply_auth(&self, request: RequestBuilder) -> RequestBuilder {
@@ -118,9 +153,7 @@ impl<M> Provider<M> for OpenAiResponsesProvider {
     }
 
     async fn complete(&self, request: UnifiedRequest) -> Result<UnifiedResponse, ProviderError> {
-        let mut body = request_to_value(&request, UnifiedSourceProtocol::Responses)
-            .map_err(ProviderError::internal)?;
-        body["model"] = json!(self.model);
+        let body = self.unified_to_request_value(&request, false)?;
         let diagnostics = UpstreamLog::new("openai-responses", &self.model);
         diagnostics.json("upstream.request", Some(&self.url()), &body);
 
@@ -157,10 +190,7 @@ impl<M> Provider<M> for OpenAiResponsesProvider {
         Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
         ProviderError,
     > {
-        let mut body = request_to_value(&request, UnifiedSourceProtocol::Responses)
-            .map_err(ProviderError::internal)?;
-        body["model"] = json!(self.model);
-        body["stream"] = json!(true);
+        let body = self.unified_to_request_value(&request, true)?;
         let diagnostics = UpstreamLog::new("openai-responses", &self.model);
         diagnostics.json("upstream.request", Some(&self.url()), &body);
 

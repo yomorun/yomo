@@ -16,6 +16,7 @@ use crate::dialects::bedrock_converse::BedrockConverseProvider;
 use crate::dialects::google_vertex::GoogleVertexProvider;
 use crate::dialects::openai_chat_completions::OpenAiChatCompletionsProvider;
 use crate::dialects::openai_responses::OpenAiResponsesProvider;
+use crate::models::ModelProfileRegistry;
 use crate::provider::Provider;
 use crate::serve_config::{ProviderConfig, ProviderKind, ProviderKindParams};
 use secrecy::ExposeSecret;
@@ -69,18 +70,36 @@ pub fn build_client<M: Send + Sync + 'static>(
 pub fn build_bound_client<M: Send + Sync + 'static>(
     entry: &ProviderConfig,
 ) -> Result<Arc<dyn Provider<M>>, String> {
+    build_bound_client_with_model_profiles(entry, &ModelProfileRegistry::default())
+}
+
+/// Build an explicitly resolved integration with caller-provided model profiles.
+pub fn build_bound_client_with_model_profiles<M: Send + Sync + 'static>(
+    entry: &ProviderConfig,
+    model_profiles: &ModelProfileRegistry,
+) -> Result<Arc<dyn Provider<M>>, String> {
     if let Some(message) = validate_credentials(&entry.params) {
         return Err(message);
     }
-    match (&entry.params, &entry.binding) {
-        (ProviderKindParams::OpenAiChatCompletions(params), Some(binding)) => Ok(Arc::new(
-            OpenAiChatCompletionsProvider::new_bound(params, binding.clone()),
-        )),
-        (ProviderKindParams::OpenAiResponses(params), Some(binding)) => Ok(Arc::new(
-            OpenAiResponsesProvider::new_bound(params, binding.clone()),
-        )),
-        _ => build_client(entry.kind, &entry.params),
-    }
+    let Some(binding) = &entry.binding else {
+        return build_client(entry.kind, &entry.params);
+    };
+    let profile = model_profiles.resolve(&binding.public_model);
+    let provider: Arc<dyn Provider<M>> = match &entry.params {
+        ProviderKindParams::OpenAiChatCompletions(params) => Arc::new(
+            OpenAiChatCompletionsProvider::new_bound_with_profile(params, binding.clone(), profile),
+        ),
+        ProviderKindParams::OpenAiResponses(params) => Arc::new(
+            OpenAiResponsesProvider::new_bound_with_profile(params, binding.clone(), profile),
+        ),
+        ProviderKindParams::BedrockConverse(params) => Arc::new(
+            BedrockConverseProvider::new_bound_with_profile(params, binding.clone(), profile),
+        ),
+        ProviderKindParams::GoogleVertex(params) => Arc::new(
+            GoogleVertexProvider::new_bound_with_profile(params, binding.clone(), profile),
+        ),
+    };
+    Ok(provider)
 }
 
 /// Common credential fail-fast validation.

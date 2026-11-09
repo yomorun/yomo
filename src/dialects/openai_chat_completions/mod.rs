@@ -5,6 +5,7 @@ pub mod client;
 pub mod mapper;
 
 use std::pin::Pin;
+use std::sync::Arc;
 
 use async_stream::try_stream;
 use async_trait::async_trait;
@@ -13,6 +14,7 @@ use futures_util::StreamExt;
 use secrecy::ExposeSecret;
 
 use crate::dialects::credential::{shared_http_client, shared_http1_client};
+use crate::models::{ModelProfile, default_model_profile};
 use crate::openai_http_mapping::{
     RESPONSES_NORMALIZE_NON_FUNCTION_TOOLS_MARKER, validate_openai_request,
 };
@@ -26,20 +28,34 @@ use client::{ApiError, ClientError, Config};
 pub struct OpenAiChatCompletionsProvider {
     client: client::Client,
     model: String,
+    profile: Arc<dyn ModelProfile>,
 }
 
 impl OpenAiChatCompletionsProvider {
     /// Construct a generic Chat client without vendor inference or normalization.
     pub fn new(params: &OpenAiParams) -> Self {
-        Self::construct(params, None)
+        Self::construct(params, None, default_model_profile())
     }
 
     /// Construct a startup-bound Chat client using vendor rules.
     pub fn new_bound(params: &OpenAiParams, binding: ModelBinding) -> Self {
-        Self::construct(params, Some(binding))
+        Self::new_bound_with_profile(params, binding, default_model_profile())
     }
 
-    fn construct(params: &OpenAiParams, binding: Option<ModelBinding>) -> Self {
+    /// Construct a startup-bound Chat client with a caller-provided model profile.
+    pub fn new_bound_with_profile(
+        params: &OpenAiParams,
+        binding: ModelBinding,
+        profile: Arc<dyn ModelProfile>,
+    ) -> Self {
+        Self::construct(params, Some(binding), profile)
+    }
+
+    fn construct(
+        params: &OpenAiParams,
+        binding: Option<ModelBinding>,
+        profile: Arc<dyn ModelProfile>,
+    ) -> Self {
         let api_key = params
             .auth
             .as_ref()
@@ -57,7 +73,22 @@ impl OpenAiChatCompletionsProvider {
         Self {
             client: client::Client::with_client(config, http),
             model: params.model.clone(),
+            profile,
         }
+    }
+
+    fn unified_to_request(
+        &self,
+        request: &UnifiedRequest,
+    ) -> Result<ChatCompletionRequest, ProviderError> {
+        let request = match self.client.config.binding.as_ref() {
+            Some(binding) => match self.profile.to_openai_chat_request(request, binding)? {
+                Some(request) => request,
+                None => mapper::request_to_chat(request)?,
+            },
+            None => mapper::request_to_chat(request)?,
+        };
+        self.prepare_request(request)
     }
 
     fn prepare_request(
@@ -111,7 +142,7 @@ impl<M> Provider<M> for OpenAiChatCompletionsProvider {
 
     async fn complete(&self, request: UnifiedRequest) -> Result<UnifiedResponse, ProviderError> {
         let transport_headers = request.transport_headers.clone();
-        let request = self.prepare_request(mapper::request_to_chat(&request)?)?;
+        let request = self.unified_to_request(&request)?;
         mapper::map_response(
             self.client
                 .chat_completions(request, &transport_headers)
@@ -128,7 +159,7 @@ impl<M> Provider<M> for OpenAiChatCompletionsProvider {
         ProviderError,
     > {
         let transport_headers = request.transport_headers.clone();
-        let request = self.prepare_request(mapper::request_to_chat(&request)?)?;
+        let request = self.unified_to_request(&request)?;
         let stream = self
             .client
             .chat_completions_stream(request, &transport_headers)

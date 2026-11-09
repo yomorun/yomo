@@ -5,7 +5,8 @@ use async_trait::async_trait;
 use futures_core::Stream;
 
 use crate::api::EndpointKind;
-use crate::dialects::build_bound_client;
+use crate::dialects::build_bound_client_with_model_profiles;
+use crate::models::ModelProfileRegistry;
 use crate::provider::UnifiedRequest;
 use crate::provider::{BoundProvider, Provider, ProviderError, UnifiedEvent, UnifiedResponse};
 use crate::provider_error_notifier::{ProviderErrorEvent, ProviderErrorNotifier};
@@ -121,11 +122,23 @@ impl<M> ConfigProviderRegistry<M> {
     where
         M: Send + Sync + 'static,
     {
+        Self::from_entries_with_model_profiles(entries, strategy, &ModelProfileRegistry::default())
+    }
+
+    /// Build providers with profiles selected by each binding's public model.
+    pub fn from_entries_with_model_profiles(
+        entries: &[ProviderConfig],
+        strategy: Arc<dyn SelectionStrategy<M>>,
+        model_profiles: &ModelProfileRegistry,
+    ) -> Result<Self, ConfigError>
+    where
+        M: Send + Sync + 'static,
+    {
         let registry = build_registry(entries)?;
         let mut chats = HashMap::new();
 
         for typed in entries {
-            let provider = build_dialect_chat_provider(typed)?;
+            let provider = build_dialect_chat_provider(typed, model_profiles)?;
             chats.insert(
                 typed.model_id.to_ascii_lowercase(),
                 RuntimeChatProvider {
@@ -308,11 +321,13 @@ where
 
 fn build_dialect_chat_provider<M>(
     provider: &ProviderConfig,
+    model_profiles: &ModelProfileRegistry,
 ) -> Result<Arc<dyn Provider<M>>, ConfigError>
 where
     M: Send + Sync + 'static,
 {
-    let client = build_bound_client::<M>(provider).map_err(ConfigError::InvalidProvider)?;
+    let client = build_bound_client_with_model_profiles::<M>(provider, model_profiles)
+        .map_err(ConfigError::InvalidProvider)?;
     match &provider.binding {
         Some(binding) => Ok(Arc::new(BoundProvider::new(client, binding.clone()))),
         None => Ok(client),
