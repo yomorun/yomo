@@ -12,13 +12,13 @@ use futures_core::Stream;
 use futures_util::StreamExt;
 use secrecy::ExposeSecret;
 
-use crate::dialects::credential::shared_http_client;
+use crate::dialects::credential::{shared_http_client, shared_http1_client};
 use crate::openai_http_mapping::{
     RESPONSES_NORMALIZE_NON_FUNCTION_TOOLS_MARKER, validate_openai_request,
 };
 use crate::openai_types::{ChatCompletionRequest, ErrorDetail};
 use crate::provider::{Provider, ProviderError, UnifiedEvent, UnifiedRequest, UnifiedResponse};
-use crate::serve_config::{ModelBinding, OpenAiParams};
+use crate::serve_config::{HttpVersion, ModelBinding, OpenAiParams};
 use client::{ApiError, ClientError, Config};
 
 /// Chat dialect client with an optional explicit upstream binding.
@@ -50,8 +50,12 @@ impl OpenAiChatCompletionsProvider {
         if let Some(auth) = &params.auth {
             config.auth_scheme = auth.scheme;
         }
+        let http = match params.http_version {
+            Some(HttpVersion::Http11) => shared_http1_client(),
+            None => shared_http_client(),
+        };
         Self {
-            client: client::Client::with_client(config, shared_http_client()),
+            client: client::Client::with_client(config, http),
             model: params.model.clone(),
         }
     }
@@ -159,6 +163,7 @@ mod tests {
             }),
             model: "gpt-5.6-sol".into(),
             response_model: None,
+            http_version: None,
         });
         let mut request = ChatCompletionRequest {
             messages: serde_json::from_value(

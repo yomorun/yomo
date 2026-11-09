@@ -22,6 +22,9 @@ pub struct ConnectionConfig {
     pub upstream: Upstream,
     /// Base API endpoint for HTTP integrations.
     pub base_url: Option<Url>,
+    /// Optional HTTP version override for OpenAI-compatible HTTP connections.
+    #[serde(default)]
+    pub http_version: Option<HttpVersion>,
     /// Authentication configuration.
     pub auth: Option<AuthConfig>,
     /// AWS region for Bedrock.
@@ -34,6 +37,14 @@ pub struct ConnectionConfig {
     pub location: Option<String>,
     /// Vertex service-account credentials path.
     pub credentials_file: Option<PathBuf>,
+}
+
+/// HTTP version supported for OpenAI-compatible upstream connections.
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+pub enum HttpVersion {
+    /// Force HTTP/1.1 instead of negotiating HTTP/2.
+    #[serde(rename = "1.1")]
+    Http11,
 }
 
 /// One logical model and its unique upstream connection.
@@ -155,6 +166,21 @@ pub fn resolve_model_bindings(
                 model.upstream.provider
             ))
         })?;
+        if provider.http_version.is_some()
+            && !matches!(
+                provider.upstream,
+                Upstream::Tokenhub
+                    | Upstream::AzureOpenai
+                    | Upstream::VolcengineArk
+                    | Upstream::OpenaiCompatible
+                    | Upstream::Vllm
+            )
+        {
+            return Err(ConfigError::InvalidProvider(format!(
+                "http_version is only supported for OpenAI-compatible upstreams: {}",
+                model.upstream.provider
+            )));
+        }
         let canonical = model.model.as_deref().unwrap_or(public_model);
         let upstream_model = model.upstream.model.as_deref().unwrap_or(canonical);
         if canonical.trim().is_empty() || upstream_model.trim().is_empty() {
@@ -284,6 +310,7 @@ pub fn compile_model_entries(
                     auth: connection.auth.clone(),
                     model: binding.upstream_model.clone(),
                     response_model: model.response_model.clone(),
+                    http_version: connection.http_version,
                 };
                 if kind == ProviderKind::OpenAiChatCompletions {
                     ProviderKindParams::OpenAiChatCompletions(params)
@@ -388,6 +415,64 @@ mod binding_tests {
             entries[0].binding.as_ref().expect("model binding").upstream,
             Upstream::Vllm
         );
+    }
+
+    #[test]
+    fn http_version_is_carried_to_openai_provider_params() {
+        let providers = serde_json::from_value(serde_json::json!({
+            "volcengine.cn": {
+                "upstream": "volcengine-ark",
+                "base_url": "https://ark.example.com/v1",
+                "http_version": "1.1"
+            }
+        }))
+        .expect("provider map");
+        let models = serde_json::from_value(serde_json::json!({
+            "glm-5.3": {"upstream": {"provider": "volcengine.cn", "model": "glm-5-3-260814"}}
+        }))
+        .expect("model map");
+
+        let entries = compile_model_entries(&providers, &models).expect("compiled entry");
+        let ProviderKindParams::OpenAiChatCompletions(params) = &entries[0].params else {
+            panic!("expected chat completion params");
+        };
+        assert_eq!(params.http_version, Some(HttpVersion::Http11));
+    }
+
+    #[test]
+    fn http_version_rejects_non_openai_upstream() {
+        let providers = serde_json::from_value(serde_json::json!({
+            "google.global": {
+                "upstream": "google-vertex",
+                "http_version": "1.1",
+                "project_id": "project",
+                "location": "global",
+                "credentials_file": "/not-read-during-binding"
+            }
+        }))
+        .expect("provider map");
+        let models = serde_json::from_value(serde_json::json!({
+            "gemini": {"upstream": {"provider": "google.global"}}
+        }))
+        .expect("model map");
+
+        let error = resolve_model_bindings(&providers, &models).expect_err("invalid protocol");
+        assert!(
+            error
+                .to_string()
+                .contains("only supported for OpenAI-compatible")
+        );
+    }
+
+    #[test]
+    fn http_version_rejects_unsupported_value() {
+        let error = serde_json::from_value::<ConnectionConfig>(serde_json::json!({
+            "upstream": "volcengine-ark",
+            "http_version": "2"
+        }))
+        .expect_err("HTTP/2 is not an override supported by this setting");
+
+        assert!(error.to_string().contains("unknown variant"));
     }
 
     #[test]
@@ -744,6 +829,8 @@ pub struct OpenAiParams {
     pub model: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub http_version: Option<HttpVersion>,
 }
 
 /// bedrock-converse connection params.

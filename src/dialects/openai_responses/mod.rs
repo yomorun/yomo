@@ -19,13 +19,13 @@ use url::Url;
 use crate::api::{request_to_value, response_from_value};
 use crate::dialects::Dialect;
 use crate::dialects::credential::sanitized_transport_headers;
-use crate::dialects::credential::shared_http_client;
+use crate::dialects::credential::{shared_http_client, shared_http1_client};
 use crate::openai_types::ErrorDetail;
 use crate::provider::UnifiedRequest;
 use crate::provider::UnifiedSourceProtocol;
 use crate::provider::UpstreamLog;
 use crate::provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
-use crate::serve_config::{AuthScheme, ModelBinding, OpenAiParams};
+use crate::serve_config::{AuthScheme, HttpVersion, ModelBinding, OpenAiParams};
 use crate::upstreams::{parse_error, request_path};
 use crate::utils::{BODY_DRAIN_TIMEOUT, SseDataReader, drain_body};
 use axum::http::{HeaderMap, StatusCode};
@@ -50,7 +50,10 @@ pub struct OpenAiResponsesProvider {
 impl OpenAiResponsesProvider {
     pub fn new(params: &OpenAiParams) -> Self {
         Self {
-            http: shared_http_client(),
+            http: match params.http_version {
+                Some(HttpVersion::Http11) => shared_http1_client(),
+                None => shared_http_client(),
+            },
             base_url: params.base_url.clone(),
             api_key: params.auth.as_ref().map(|auth| auth.api_key.clone()),
             model: params.model.clone(),

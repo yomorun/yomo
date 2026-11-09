@@ -28,16 +28,30 @@ pub fn sanitized_transport_headers(headers: &HeaderMap) -> HeaderMap {
 pub fn shared_http_client() -> reqwest::Client {
     static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
     CLIENT
-        .get_or_init(|| {
-            reqwest::Client::builder()
-                .connect_timeout(Duration::from_secs(10))
-                .timeout(Duration::from_secs(DEFAULT_REQUEST_TIMEOUT_SECS))
-                .pool_idle_timeout(Duration::from_secs(90))
-                .user_agent(concat!("yomo-zipper/", env!("CARGO_PKG_VERSION")))
-                .build()
-                .expect("shared http client must build")
-        })
+        .get_or_init(|| build_shared_http_client(false))
         .clone()
+}
+
+/// Shared HTTP/1.1-only client for upstreams that require explicit protocol pinning.
+pub fn shared_http1_client() -> reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT
+        .get_or_init(|| build_shared_http_client(true))
+        .clone()
+}
+
+fn build_shared_http_client(http1_only: bool) -> reqwest::Client {
+    let builder = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(DEFAULT_REQUEST_TIMEOUT_SECS))
+        .pool_idle_timeout(Duration::from_secs(90))
+        .user_agent(concat!("yomo-zipper/", env!("CARGO_PKG_VERSION")));
+    let builder = if http1_only {
+        builder.http1_only()
+    } else {
+        builder
+    };
+    builder.build().expect("shared http client must build")
 }
 
 pub const DEFAULT_REQUEST_TIMEOUT_SECS: u64 = 600;

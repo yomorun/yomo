@@ -126,6 +126,7 @@ mod tests {
             }),
             model: "m".to_string(),
             response_model: None,
+            http_version: None,
         }
     }
 
