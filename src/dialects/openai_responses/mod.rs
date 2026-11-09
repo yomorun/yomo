@@ -27,7 +27,7 @@ use crate::provider::UpstreamLog;
 use crate::provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
 use crate::serve_config::{AuthScheme, ModelBinding, OpenAiParams};
 use crate::upstreams::{parse_error, request_path};
-use crate::utils::SseDataReader;
+use crate::utils::{BODY_DRAIN_TIMEOUT, SseDataReader, drain_body};
 use axum::http::{HeaderMap, StatusCode};
 use reqwest::RequestBuilder;
 use serde_json::{Value, json};
@@ -205,6 +205,7 @@ impl<M> Provider<M> for OpenAiResponsesProvider {
                 for data in reader.push(&chunk) {
                     diagnostics.bytes("upstream.stream_event", data.as_bytes());
                     if data == "[DONE]" {
+                        tokio::spawn(drain_body(stream, BODY_DRAIN_TIMEOUT));
                         return;
                     }
                     let event: Value = serde_json::from_str(&data)

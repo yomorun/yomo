@@ -27,7 +27,7 @@ use crate::provider::UpstreamLog;
 use crate::provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
 use crate::provider::{UnifiedEventKind, UnifiedRequest};
 use crate::serve_config::GoogleVertexParams;
-use crate::utils::SseDataReader;
+use crate::utils::{BODY_DRAIN_TIMEOUT, SseDataReader, drain_body};
 
 const CLOUD_PLATFORM_SCOPE: &str = "https://www.googleapis.com/auth/cloud-platform";
 
@@ -219,10 +219,9 @@ impl<M> Provider<M> for GoogleVertexProvider {
             return Err(map_http_error_with_headers(status, &headers, &bytes));
         }
 
-        let stream = response.bytes_stream();
+        let mut stream = response.bytes_stream();
         let model_id = self.model.clone();
         let output = async_stream::try_stream! {
-            futures_util::pin_mut!(stream);
             let mut state = VertexStreamState::default();
             state.model = model_id;
 
@@ -236,6 +235,7 @@ impl<M> Provider<M> for GoogleVertexProvider {
                         if !state.completed {
                             yield UnifiedEvent::new(UnifiedEventKind::Completed { response: None });
                         }
+                        tokio::spawn(drain_body(stream, BODY_DRAIN_TIMEOUT));
                         return;
                     }
 

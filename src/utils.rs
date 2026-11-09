@@ -1,9 +1,13 @@
 use std::path::Path;
+use std::time::Duration;
 
 use anyhow::{Result, bail};
+use futures_core::Stream;
+use futures_util::StreamExt;
 use serde::Serialize;
 use serde_json::Value;
 use tokio::fs;
+use tokio::time::timeout;
 
 pub const MAX_LOG_BODY_BYTES: usize = 8 * 1024;
 const LOG_HEAD_BYTES: usize = 2 * 1024;
@@ -39,6 +43,30 @@ fn parse_sse_data_line(line: &[u8]) -> Option<String> {
     let trimmed = text.trim();
     let payload = trimmed.strip_prefix("data:")?;
     Some(payload.strip_prefix(' ').unwrap_or(payload).to_string())
+}
+
+/// Upper bound for reading the rest of an upstream stream body after `[DONE]`.
+pub(crate) const BODY_DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Reads an upstream body to its end, discarding chunks, for at most `limit`.
+///
+/// HTTP/1.1 connections return to the pool only after the response body is
+/// consumed. Some upstreams send the terminating chunk after the SSE `[DONE]`
+/// event, so callers spawn this operation to keep the wait out of their stream.
+pub(crate) async fn drain_body<S, B, E>(mut body: S, limit: Duration) -> bool
+where
+    S: Stream<Item = Result<B, E>> + Unpin,
+{
+    timeout(limit, async {
+        while let Some(chunk) = body.next().await {
+            if chunk.is_err() {
+                return false;
+            }
+        }
+        true
+    })
+    .await
+    .unwrap_or(false)
 }
 
 /// Splits a raw SSE byte stream into complete frames ending with `\n\n`.
@@ -217,12 +245,15 @@ pub async fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
+    use futures_util::stream;
     use serde_json::{Value, json};
 
     use super::{
-        LOG_HEAD_BYTES, MAX_LOG_BODY_BYTES, MAX_LOG_JSON_STRING_CHARS, SseDataReader,
-        SseFrameReader, ensure_tool_call_id, json_body_for_log, json_value_for_log, sanitize_name,
-        truncate_bytes_for_log, truncate_for_log,
+        BODY_DRAIN_TIMEOUT, LOG_HEAD_BYTES, MAX_LOG_BODY_BYTES, MAX_LOG_JSON_STRING_CHARS,
+        SseDataReader, SseFrameReader, drain_body, ensure_tool_call_id, json_body_for_log,
+        json_value_for_log, sanitize_name, truncate_bytes_for_log, truncate_for_log,
     };
 
     #[test]
@@ -361,5 +392,26 @@ mod tests {
         let frame = [0xff, 0xfe, b'\n', b'\n'];
 
         assert_eq!(reader.push(&frame), vec![frame.to_vec()]);
+    }
+
+    #[tokio::test]
+    async fn drain_body_reads_finite_body_to_end() {
+        let body = stream::iter(vec![Ok::<_, ()>(b"a".to_vec()), Ok(b"b".to_vec())]);
+
+        assert!(drain_body(body, BODY_DRAIN_TIMEOUT).await);
+    }
+
+    #[tokio::test]
+    async fn drain_body_stops_at_body_error() {
+        let body = stream::iter(vec![Ok(b"a".to_vec()), Err(())]);
+
+        assert!(!drain_body(body, BODY_DRAIN_TIMEOUT).await);
+    }
+
+    #[tokio::test]
+    async fn drain_body_gives_up_after_limit() {
+        let body = stream::pending::<Result<Vec<u8>, ()>>();
+
+        assert!(!drain_body(body, Duration::from_millis(1)).await);
     }
 }
