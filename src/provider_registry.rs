@@ -300,20 +300,18 @@ where
     M: Clone + Send + Sync + 'static,
 {
     fn notify_error(&self, err: ProviderError) -> ProviderError {
-        let http_status = match &err {
-            ProviderError::Public { status, .. } => Some(status.as_u16()),
-            ProviderError::Internal {
-                upstream_http_status,
-                ..
-            } => Some(upstream_http_status.as_u16()),
-        };
+        let upstream = err.upstream_error();
         self.error_notifier
             .notify_provider_error(ProviderErrorEvent {
                 model: Some(self.model_id.clone()),
                 metadata: self.metadata.clone(),
-                http_status,
+                http_status: Some(err.status().as_u16()),
                 error: err.to_string(),
                 endpoint: Some(self.endpoint.clone()),
+                origin: Some(err.origin().to_owned()),
+                upstream_class: upstream.map(|error| error.class.as_str().to_owned()),
+                upstream_code: upstream.and_then(|error| error.code.clone()),
+                upstream_request_id: upstream.and_then(|error| error.request_id.clone()),
             });
         err
     }

@@ -11,8 +11,10 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 use crate::dialects::Dialect;
+use crate::models::ModelProfileError;
 use crate::openai_types::ErrorDetail;
 use crate::serve_config::ModelBinding;
+use crate::upstreams::UpstreamError;
 use crate::usage_handler::EndpointUsage;
 
 /// Diagnostic context retained across asynchronous response streaming.
@@ -1743,10 +1745,16 @@ pub fn response_envelope(
 
 #[derive(Debug)]
 pub enum ProviderError {
+    /// A client-facing error already normalized to an HTTP status and API detail.
     Public {
         status: StatusCode,
         error: ErrorDetail,
     },
+    /// A model-profile conversion failure with its original classification.
+    ModelProfile(ModelProfileError),
+    /// A vendor-parsed upstream error with diagnostics retained.
+    Upstream(UpstreamError),
+    /// An internal failure that should not be exposed to API clients.
     Internal {
         upstream_http_status: StatusCode,
         message: String,
@@ -1756,6 +1764,8 @@ impl std::fmt::Display for ProviderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Public { error, .. } => write!(f, "provider error: {}", error.message),
+            Self::ModelProfile(error) => write!(f, "model profile error: {error}"),
+            Self::Upstream(error) => write!(f, "upstream error: {}", error.message),
             Self::Internal { message, .. } => write!(f, "provider error: {message}"),
         }
     }
@@ -1769,6 +1779,66 @@ impl ProviderError {
             upstream_http_status: status,
             message: message.into(),
         }
+    }
+
+    /// Return the HTTP status associated with this provider failure.
+    pub fn status(&self) -> StatusCode {
+        match self {
+            Self::Public { status, .. } => *status,
+            Self::ModelProfile(error) => error
+                .public_error()
+                .map_or(StatusCode::INTERNAL_SERVER_ERROR, |(status, _)| status),
+            Self::Upstream(error) => error.status,
+            Self::Internal {
+                upstream_http_status,
+                ..
+            } => *upstream_http_status,
+        }
+    }
+
+    /// Convert a client-visible error into its public HTTP details when possible.
+    pub fn public_error(&self) -> Option<(StatusCode, ErrorDetail)> {
+        match self {
+            Self::Public { status, error } => Some((*status, error.clone())),
+            Self::ModelProfile(error) => error.public_error(),
+            Self::Upstream(error) => Some((
+                error.status,
+                ErrorDetail {
+                    message: error.message.clone(),
+                    r#type: error
+                        .error_type
+                        .clone()
+                        .unwrap_or_else(|| "upstream_error".into()),
+                    code: error.code.clone(),
+                    param: error.param.clone(),
+                },
+            )),
+            Self::Internal { .. } => None,
+        }
+    }
+
+    /// Return a stable source label for logs and error notifications.
+    pub fn origin(&self) -> &'static str {
+        match self {
+            Self::Public { .. } => "public",
+            Self::ModelProfile(_) => "model_profile",
+            Self::Upstream(_) => "upstream",
+            Self::Internal { .. } => "internal",
+        }
+    }
+
+    /// Return vendor diagnostics when this failure came from a parsed upstream response.
+    pub fn upstream_error(&self) -> Option<&UpstreamError> {
+        match self {
+            Self::Upstream(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
+impl From<ModelProfileError> for ProviderError {
+    fn from(error: ModelProfileError) -> Self {
+        Self::ModelProfile(error)
     }
 }
 impl std::error::Error for ProviderError {}
@@ -1949,7 +2019,44 @@ pub fn adapt_bound_request(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::upstreams::Upstream;
+    use crate::models::ModelProfileError;
+    use crate::upstreams::{Upstream, UpstreamError, UpstreamErrorClass};
+
+    #[test]
+    fn provider_error_keeps_model_profile_and_upstream_origins() {
+        let profile_error = ProviderError::from(ModelProfileError::UnsupportedCapability {
+            message: "thinking mode is unsupported".into(),
+            param: Some("thinking.type".into()),
+        });
+        assert_eq!(profile_error.origin(), "model_profile");
+        let (status, public_error) = profile_error.public_error().expect("public profile error");
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(public_error.code.as_deref(), Some("unsupported_capability"));
+        assert_eq!(public_error.param.as_deref(), Some("thinking.type"));
+
+        let upstream_error = ProviderError::Upstream(UpstreamError {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            code: Some("quota_exceeded".into()),
+            error_type: Some("rate_limit_error".into()),
+            message: "quota exceeded".into(),
+            param: None,
+            request_id: Some("upstream-request-1".into()),
+            class: UpstreamErrorClass::Quota,
+            raw_body: b"raw vendor body".to_vec(),
+        });
+        assert_eq!(upstream_error.origin(), "upstream");
+        assert_eq!(upstream_error.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(
+            upstream_error
+                .upstream_error()
+                .and_then(|error| error.request_id.as_deref()),
+            Some("upstream-request-1")
+        );
+        assert_eq!(
+            upstream_error.public_error().map(|(_, error)| error.code),
+            Some(Some("quota_exceeded".into()))
+        );
+    }
 
     #[test]
     fn transport_headers_are_not_serialized_with_the_request() {

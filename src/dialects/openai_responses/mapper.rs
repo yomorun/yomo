@@ -3,6 +3,8 @@ use crate::api::responses::{error_from_value, output_item_from_value, parse_cont
 use crate::api::{request_to_value, response_from_value};
 use crate::openai_responses_types::{ResponsesRequest, ResponsesResponse, ResponsesStreamEvent};
 use crate::provider::*;
+use crate::upstreams::{Upstream, parse_error};
+use axum::http::HeaderMap;
 use secrecy::{ExposeSecret, SecretString};
 use serde_json::{Value, json};
 pub(super) fn apply_optional_bearer_auth(
@@ -17,16 +19,27 @@ pub(super) fn apply_optional_bearer_auth(
         None => builder,
     }
 }
-pub(super) fn upstream_error(status: reqwest::StatusCode, body: &[u8]) -> ProviderError {
-    if let Some(error) = crate::upstreams::azure_openai::parse_compatible_error(status, body) {
-        return ProviderError::Public { status, error };
+pub(super) fn upstream_error(
+    status: reqwest::StatusCode,
+    headers: &HeaderMap,
+    body: &[u8],
+) -> ProviderError {
+    let mut error = parse_error(Upstream::OpenaiCompatible, status, headers, body);
+    if let Some(compatible_error) =
+        crate::upstreams::azure_openai::parse_compatible_error(status, body)
+    {
+        error.message = compatible_error.message;
+        error.error_type = Some(compatible_error.r#type);
+        error.code = compatible_error.code;
+        error.param = compatible_error.param;
     }
-    ProviderError::internal_with_upstream_status(status, String::from_utf8_lossy(body).into_owned())
+    ProviderError::Upstream(error)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use reqwest::StatusCode;
     use reqwest::header;
 
     #[test]
@@ -42,6 +55,28 @@ mod tests {
         assert_eq!(value["reasoning"]["effort"], "high");
         assert_eq!(value["max_output_tokens"], 1024);
         assert_eq!(value["stream"], true);
+    }
+
+    #[test]
+    fn unbound_responses_error_keeps_upstream_diagnostics() {
+        let body =
+            br#"{"error":{"message":"bad request","code":"invalid_parameter","param":"input"}}"#;
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-request-id",
+            "upstream-req-1".parse().expect("header value"),
+        );
+
+        let error = upstream_error(StatusCode::BAD_REQUEST, &headers, body);
+        let ProviderError::Upstream(error) = error else {
+            panic!("expected normalized upstream error");
+        };
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.error_type.as_deref(), Some("invalid_request_error"));
+        assert_eq!(error.code.as_deref(), Some("invalid_parameter"));
+        assert_eq!(error.param.as_deref(), Some("input"));
+        assert_eq!(error.request_id.as_deref(), Some("upstream-req-1"));
+        assert_eq!(error.raw_body, body);
     }
 
     #[test]

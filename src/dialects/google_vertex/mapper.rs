@@ -1505,16 +1505,9 @@ pub(crate) fn map_http_error_with_headers(
     headers: &HeaderMap,
     body: &[u8],
 ) -> ProviderError {
-    let error = crate::upstreams::google_vertex::parse_error(status, headers, body);
-    ProviderError::Public {
-        status: error.status,
-        error: ErrorDetail {
-            message: error.message,
-            r#type: error.error_type.unwrap_or_else(|| "upstream_error".into()),
-            code: error.code,
-            param: error.param,
-        },
-    }
+    ProviderError::Upstream(crate::upstreams::google_vertex::parse_error(
+        status, headers, body,
+    ))
 }
 
 fn new_response_id() -> String {
@@ -2687,13 +2680,16 @@ mod tests {
 
         let err = map_http_error(StatusCode::BAD_REQUEST, body.as_bytes());
         match err {
-            ProviderError::Public { status, error } => {
-                assert_eq!(status, StatusCode::BAD_REQUEST);
-                assert_eq!(error.r#type, "missing_thought_signature_error");
+            ProviderError::Upstream(error) => {
+                assert_eq!(error.status, StatusCode::BAD_REQUEST);
+                assert_eq!(
+                    error.error_type.as_deref(),
+                    Some("missing_thought_signature_error")
+                );
                 assert_eq!(error.code.as_deref(), Some("missing_thought_signature"));
                 assert!(error.message.contains("missing a thought_signature"));
             }
-            other => panic!("expected public bad request, got {other:?}"),
+            other => panic!("expected normalized upstream error, got {other:?}"),
         }
     }
 
@@ -2709,13 +2705,13 @@ mod tests {
 
         let err = map_http_error(StatusCode::BAD_REQUEST, body.as_bytes());
         match err {
-            ProviderError::Public { status, error } => {
-                assert_eq!(status, StatusCode::BAD_REQUEST);
-                assert_eq!(error.r#type, "invalid_argument_error");
+            ProviderError::Upstream(error) => {
+                assert_eq!(error.status, StatusCode::BAD_REQUEST);
+                assert_eq!(error.error_type.as_deref(), Some("invalid_argument_error"));
                 assert_eq!(error.code.as_deref(), Some("INVALID_ARGUMENT"));
                 assert_eq!(error.message, "Unsupported parameter.");
             }
-            other => panic!("expected public bad request, got {other:?}"),
+            other => panic!("expected normalized upstream error, got {other:?}"),
         }
     }
 }

@@ -18,7 +18,7 @@ use crate::models::{ModelProfile, default_model_profile};
 use crate::openai_http_mapping::{
     RESPONSES_NORMALIZE_NON_FUNCTION_TOOLS_MARKER, validate_openai_request,
 };
-use crate::openai_types::{ChatCompletionRequest, ErrorDetail};
+use crate::openai_types::ChatCompletionRequest;
 use crate::provider::{Provider, ProviderError, UnifiedEvent, UnifiedRequest, UnifiedResponse};
 use crate::serve_config::{HttpVersion, ModelBinding, OpenAiParams};
 use client::{ApiError, ClientError, Config};
@@ -106,15 +106,7 @@ impl OpenAiChatCompletionsProvider {
 
 fn map_error(error: ClientError) -> ProviderError {
     match error {
-        ClientError::Api(ApiError::Upstream(error)) => ProviderError::Public {
-            status: error.status,
-            error: ErrorDetail {
-                message: error.message,
-                r#type: error.error_type.unwrap_or_else(|| "upstream_error".into()),
-                code: error.code,
-                param: error.param,
-            },
-        },
+        ClientError::Api(ApiError::Upstream(error)) => ProviderError::Upstream(*error),
         ClientError::Api(ApiError::OpenAI { status, error }) => {
             ProviderError::Public { status, error }
         }

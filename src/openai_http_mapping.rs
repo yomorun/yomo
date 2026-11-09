@@ -541,12 +541,24 @@ pub fn stream_openai_chunks(
                     completed_finish_reason = finish_reason;
                 }
                 UnifiedEventKind::Failed { error, .. } => {
-                    let code = error.code.unwrap_or_default(); let message = error.message;
+                    let code = error.code.clone().unwrap_or_default();
+                    let message = error.message.clone();
                     error!(
                         "chat stream failed: model={}, code={}, message={} trace_id={trace_id}",
                         model, code, message
                     );
                     finalizer.set_failure(model.clone(), format!("code={code} message={message}"));
+                    let error_response = ErrorResponse {
+                        error: ErrorDetail {
+                            message,
+                            r#type: error.error_type.unwrap_or_else(|| "api_error".into()),
+                            code: error.code,
+                            param: error.param,
+                        },
+                    };
+                    let payload = serde_json::to_string(&error_response)
+                        .unwrap_or_else(|_| "{}".to_string());
+                    yield Bytes::from(format!("data: {payload}\n\n"));
                     break;
                 }
                 UnifiedEventKind::Cancelled { reason, .. } => {
@@ -812,16 +824,54 @@ mod tests {
     use crate::openai_types::{
         ChatCompletionRequest, FunctionDefinition, ToolCall, ToolCallFunction, ToolDefinition,
     };
-    use crate::provider::{FinishReason, UnifiedEvent, UnifiedResponse};
+    use crate::provider::{FinishReason, ProviderError, UnifiedEvent, UnifiedResponse};
     use crate::provider::{
         UnifiedCandidate, UnifiedContentDelta, UnifiedEnding, UnifiedEventKind, UnifiedItemDelta,
-        UnifiedOutputItem, UnifiedOutputItemKind, UnifiedUsageUpdate,
+        UnifiedOutputItem, UnifiedOutputItemKind, UnifiedResponseError, UnifiedUsageUpdate,
     };
     use crate::usage_handler::EndpointUsage;
     use futures_util::StreamExt;
     use serde_json::Value;
     use std::collections::HashMap;
     use tracing::Span;
+
+    #[tokio::test]
+    async fn failed_stream_event_renders_an_openai_error_frame() {
+        let event = UnifiedEvent::new(UnifiedEventKind::Failed {
+            error: UnifiedResponseError {
+                code: Some("unsupported_conversion".into()),
+                message: "encrypted reasoning cannot be converted".into(),
+                error_type: Some("invalid_request_error".into()),
+                param: Some("input".into()),
+                source_extensions: None,
+            },
+            response: None,
+        });
+        let stream = Box::pin(futures_util::stream::iter([Ok::<_, ProviderError>(event)]));
+        let output = stream_openai_chunks(
+            stream,
+            "trace".into(),
+            "model".into(),
+            ResponseModelMode::Upstream,
+            Span::none(),
+        );
+        futures_util::pin_mut!(output);
+        let mut body = String::new();
+        while let Some(frame) = output.next().await {
+            body.push_str(std::str::from_utf8(&frame.expect("frame")).expect("utf8"));
+        }
+
+        let error_line = body
+            .lines()
+            .find(|line| line.starts_with("data: {\"error\":"))
+            .expect("error frame");
+        let error: Value =
+            serde_json::from_str(error_line.trim_start_matches("data: ")).expect("error JSON");
+        assert_eq!(error["error"]["type"], "invalid_request_error");
+        assert_eq!(error["error"]["code"], "unsupported_conversion");
+        assert_eq!(error["error"]["param"], "input");
+        assert!(body.ends_with("data: [DONE]\n\n"));
+    }
 
     fn created(id: String, model: String, time: String) -> UnifiedEvent {
         let mut response = UnifiedResponse::new(id, model);

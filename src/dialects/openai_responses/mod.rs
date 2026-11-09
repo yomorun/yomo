@@ -22,7 +22,6 @@ use crate::dialects::Dialect;
 use crate::dialects::credential::sanitized_transport_headers;
 use crate::dialects::credential::{shared_http_client, shared_http1_client};
 use crate::models::{ModelProfile, default_model_profile};
-use crate::openai_types::ErrorDetail;
 use crate::provider::UnifiedRequest;
 use crate::provider::UnifiedSourceProtocol;
 use crate::provider::UpstreamLog;
@@ -119,17 +118,9 @@ impl OpenAiResponsesProvider {
     fn parse_failure(&self, status: StatusCode, headers: &HeaderMap, body: &[u8]) -> ProviderError {
         if let Some(binding) = &self.binding {
             let error = parse_error(binding.upstream, status, headers, body);
-            ProviderError::Public {
-                status: error.status,
-                error: ErrorDetail {
-                    message: error.message,
-                    r#type: error.error_type.unwrap_or_else(|| "upstream_error".into()),
-                    code: error.code,
-                    param: error.param,
-                },
-            }
+            ProviderError::Upstream(error)
         } else {
-            upstream_error(status, body)
+            upstream_error(status, headers, body)
         }
     }
 

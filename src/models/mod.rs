@@ -10,9 +10,106 @@ use std::sync::Arc;
 use crate::dialects::bedrock_converse::BedrockConverseRequest;
 use crate::dialects::google_vertex::types::VertexGenerateContentRequest;
 use crate::openai_responses_types::ResponsesRequest;
-use crate::openai_types::ChatCompletionRequest;
+use crate::openai_types::{ChatCompletionRequest, ErrorDetail};
 use crate::provider::{ProviderError, UnifiedRequest};
 use crate::serve_config::ModelBinding;
+use axum::http::StatusCode;
+
+/// A model-profile conversion failure, independent of an HTTP response format.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModelProfileError {
+    /// The input request is invalid for the selected profile.
+    InvalidRequest {
+        /// Human-readable reason safe to return to the caller.
+        message: String,
+        /// Client request field associated with the error.
+        param: Option<String>,
+    },
+    /// The requested semantics cannot be represented by the target dialect.
+    UnsupportedConversion {
+        /// Human-readable reason safe to return to the caller.
+        message: String,
+        /// Client request field associated with the conversion failure.
+        param: Option<String>,
+    },
+    /// The selected model or upstream does not support the requested capability.
+    UnsupportedCapability {
+        /// Human-readable reason safe to return to the caller.
+        message: String,
+        /// Client request field associated with the capability failure.
+        param: Option<String>,
+    },
+    /// The profile failed unexpectedly while constructing the dialect request.
+    Internal {
+        /// Internal diagnostic message; do not expose to API clients.
+        message: String,
+    },
+}
+
+impl std::fmt::Display for ModelProfileError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidRequest { message, .. }
+            | Self::UnsupportedConversion { message, .. }
+            | Self::UnsupportedCapability { message, .. }
+            | Self::Internal { message } => formatter.write_str(message),
+        }
+    }
+}
+
+impl std::error::Error for ModelProfileError {}
+
+impl ModelProfileError {
+    pub(crate) fn public_error(&self) -> Option<(StatusCode, ErrorDetail)> {
+        let (message, code, param) = match self {
+            Self::InvalidRequest { message, param } => {
+                (message, "invalid_request", param.as_deref())
+            }
+            Self::UnsupportedConversion { message, param } => {
+                (message, "unsupported_conversion", param.as_deref())
+            }
+            Self::UnsupportedCapability { message, param } => {
+                (message, "unsupported_capability", param.as_deref())
+            }
+            Self::Internal { .. } => return None,
+        };
+        Some((
+            StatusCode::BAD_REQUEST,
+            ErrorDetail {
+                message: message.clone(),
+                r#type: "invalid_request_error".into(),
+                code: Some(code.into()),
+                param: param.map(str::to_owned),
+            },
+        ))
+    }
+}
+
+/// Adapt errors emitted by yomo's built-in Unified-to-dialect converters.
+pub(crate) fn from_dialect_conversion_error(error: ProviderError) -> ModelProfileError {
+    match error {
+        ProviderError::Public { status, error } if status == StatusCode::BAD_REQUEST => {
+            match error.code.as_deref() {
+                Some("unsupported_conversion") => ModelProfileError::UnsupportedConversion {
+                    message: error.message,
+                    param: error.param,
+                },
+                Some("unsupported_capability") => ModelProfileError::UnsupportedCapability {
+                    message: error.message,
+                    param: error.param,
+                },
+                _ => ModelProfileError::InvalidRequest {
+                    message: error.message,
+                    param: error.param,
+                },
+            }
+        }
+        ProviderError::ModelProfile(error) => error,
+        other => ModelProfileError::Internal {
+            message: other.to_string(),
+        },
+    }
+}
 
 /// Converts or adapts a unified request at the upstream dialect boundary.
 ///
@@ -26,7 +123,7 @@ pub trait ModelProfile: Send + Sync {
         &self,
         _request: &UnifiedRequest,
         _binding: &ModelBinding,
-    ) -> Result<Option<ChatCompletionRequest>, ProviderError> {
+    ) -> Result<Option<ChatCompletionRequest>, ModelProfileError> {
         Ok(None)
     }
 
@@ -35,7 +132,7 @@ pub trait ModelProfile: Send + Sync {
         &self,
         _request: &UnifiedRequest,
         _binding: &ModelBinding,
-    ) -> Result<Option<ResponsesRequest>, ProviderError> {
+    ) -> Result<Option<ResponsesRequest>, ModelProfileError> {
         Ok(None)
     }
 
@@ -44,7 +141,7 @@ pub trait ModelProfile: Send + Sync {
         &self,
         _request: &UnifiedRequest,
         _binding: &ModelBinding,
-    ) -> Result<Option<BedrockConverseRequest>, ProviderError> {
+    ) -> Result<Option<BedrockConverseRequest>, ModelProfileError> {
         Ok(None)
     }
 
@@ -57,7 +154,7 @@ pub trait ModelProfile: Send + Sync {
         _request: &UnifiedRequest,
         _binding: &ModelBinding,
         _dialect_request: &mut VertexGenerateContentRequest,
-    ) -> Result<(), ProviderError> {
+    ) -> Result<(), ModelProfileError> {
         Ok(())
     }
 }
@@ -121,20 +218,23 @@ impl ModelProfile for DefaultModelProfile {
         &self,
         request: &UnifiedRequest,
         _binding: &ModelBinding,
-    ) -> Result<Option<ChatCompletionRequest>, ProviderError> {
-        crate::dialects::openai_chat_completions::mapper::request_to_chat(request).map(Some)
+    ) -> Result<Option<ChatCompletionRequest>, ModelProfileError> {
+        crate::dialects::openai_chat_completions::mapper::request_to_chat(request)
+            .map(Some)
+            .map_err(from_dialect_conversion_error)
     }
 
     fn to_openai_responses_request(
         &self,
         request: &UnifiedRequest,
         binding: &ModelBinding,
-    ) -> Result<Option<ResponsesRequest>, ProviderError> {
+    ) -> Result<Option<ResponsesRequest>, ModelProfileError> {
         crate::dialects::openai_responses::mapper::ir_to_responses_request(
             request,
             &binding.upstream_model,
         )
         .map(Some)
+        .map_err(from_dialect_conversion_error)
     }
 }
 
@@ -148,7 +248,7 @@ impl ModelProfile for ResolvedModelProfile {
         &self,
         request: &UnifiedRequest,
         binding: &ModelBinding,
-    ) -> Result<Option<ChatCompletionRequest>, ProviderError> {
+    ) -> Result<Option<ChatCompletionRequest>, ModelProfileError> {
         match self.profile.to_openai_chat_request(request, binding)? {
             Some(request) => Ok(Some(request)),
             None => self.fallback.to_openai_chat_request(request, binding),
@@ -159,7 +259,7 @@ impl ModelProfile for ResolvedModelProfile {
         &self,
         request: &UnifiedRequest,
         binding: &ModelBinding,
-    ) -> Result<Option<ResponsesRequest>, ProviderError> {
+    ) -> Result<Option<ResponsesRequest>, ModelProfileError> {
         match self.profile.to_openai_responses_request(request, binding)? {
             Some(request) => Ok(Some(request)),
             None => self.fallback.to_openai_responses_request(request, binding),
@@ -170,7 +270,7 @@ impl ModelProfile for ResolvedModelProfile {
         &self,
         request: &UnifiedRequest,
         binding: &ModelBinding,
-    ) -> Result<Option<BedrockConverseRequest>, ProviderError> {
+    ) -> Result<Option<BedrockConverseRequest>, ModelProfileError> {
         match self.profile.to_bedrock_converse_request(request, binding)? {
             Some(request) => Ok(Some(request)),
             None => self.fallback.to_bedrock_converse_request(request, binding),
@@ -182,7 +282,7 @@ impl ModelProfile for ResolvedModelProfile {
         request: &UnifiedRequest,
         binding: &ModelBinding,
         dialect_request: &mut VertexGenerateContentRequest,
-    ) -> Result<(), ProviderError> {
+    ) -> Result<(), ModelProfileError> {
         self.fallback
             .adapt_gemini_generate_content_request(request, binding, dialect_request)?;
         self.profile
@@ -194,6 +294,7 @@ impl ModelProfile for ResolvedModelProfile {
 mod tests {
     use std::sync::Arc;
 
+    use super::ModelProfileError;
     use super::{ModelProfile, ModelProfileRegistry};
     use crate::dialects::Dialect;
     use crate::dialects::bedrock_converse::BedrockConverseRequest;
@@ -201,7 +302,7 @@ mod tests {
         VertexContent, VertexFunctionCall, VertexGenerateContentRequest, VertexPart,
     };
     use crate::openai_types::ChatCompletionRequest;
-    use crate::provider::{ProviderError, UnifiedRequest};
+    use crate::provider::UnifiedRequest;
     use crate::serve_config::ModelBinding;
     use crate::upstreams::Upstream;
     use serde_json::json;
@@ -213,7 +314,7 @@ mod tests {
             &self,
             _request: &UnifiedRequest,
             binding: &ModelBinding,
-        ) -> Result<Option<ChatCompletionRequest>, ProviderError> {
+        ) -> Result<Option<ChatCompletionRequest>, ModelProfileError> {
             assert_eq!(binding.upstream, Upstream::AwsBedrock);
             Ok(Some(ChatCompletionRequest {
                 model: binding.public_model.clone(),
@@ -268,7 +369,7 @@ mod tests {
             &self,
             _request: &UnifiedRequest,
             binding: &ModelBinding,
-        ) -> Result<Option<BedrockConverseRequest>, ProviderError> {
+        ) -> Result<Option<BedrockConverseRequest>, ModelProfileError> {
             assert_eq!(binding.upstream, Upstream::AwsBedrock);
             Ok(Some(BedrockConverseRequest {
                 messages: vec![json!({
@@ -305,7 +406,7 @@ mod tests {
             _request: &UnifiedRequest,
             _binding: &ModelBinding,
             dialect_request: &mut VertexGenerateContentRequest,
-        ) -> Result<(), ProviderError> {
+        ) -> Result<(), ModelProfileError> {
             dialect_request.generation_config = Some(Default::default());
             Ok(())
         }

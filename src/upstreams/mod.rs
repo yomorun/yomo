@@ -67,6 +67,21 @@ pub enum UpstreamErrorClass {
     Unknown,
 }
 
+impl UpstreamErrorClass {
+    /// Stable lowercase label suitable for logs and notification payloads.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::InvalidRequest => "invalid_request",
+            Self::Authentication => "authentication",
+            Self::Permission => "permission",
+            Self::RateLimit => "rate_limit",
+            Self::Quota => "quota",
+            Self::Service => "service",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
 /// Normalized error with original response retained for internal diagnostics.
 #[derive(Debug, Clone)]
 pub struct UpstreamError {

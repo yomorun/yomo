@@ -1,7 +1,6 @@
 //! AWS error interpretation.
 
-use super::{UpstreamError, fallback_error};
-use crate::openai_types::ErrorDetail;
+use super::{UpstreamError, UpstreamErrorClass, fallback_error};
 use crate::provider::ProviderError;
 use aws_sdk_bedrockruntime::error::ProvideErrorMetadata;
 use axum::http::{HeaderMap, StatusCode};
@@ -33,22 +32,25 @@ pub fn parse_error(status: StatusCode, headers: &HeaderMap, body: &[u8]) -> Upst
 /// Interpret SDK service metadata independently of the dialect transport.
 pub(crate) fn sdk_service_error(error: &impl ProvideErrorMetadata) -> ProviderError {
     let code = error.code().unwrap_or("UnknownBedrockError");
-    let status = match code {
-        "ValidationException" => StatusCode::BAD_REQUEST,
-        "AccessDeniedException" => StatusCode::FORBIDDEN,
-        "ThrottlingException" => StatusCode::TOO_MANY_REQUESTS,
-        "ServiceUnavailableException" => StatusCode::SERVICE_UNAVAILABLE,
-        _ => StatusCode::BAD_GATEWAY,
+    let (status, class) = match code {
+        "ValidationException" => (StatusCode::BAD_REQUEST, UpstreamErrorClass::InvalidRequest),
+        "AccessDeniedException" => (StatusCode::FORBIDDEN, UpstreamErrorClass::Permission),
+        "ThrottlingException" => (StatusCode::TOO_MANY_REQUESTS, UpstreamErrorClass::RateLimit),
+        "ServiceUnavailableException" => {
+            (StatusCode::SERVICE_UNAVAILABLE, UpstreamErrorClass::Service)
+        }
+        _ => (StatusCode::BAD_GATEWAY, UpstreamErrorClass::Unknown),
     };
-    ProviderError::Public {
+    ProviderError::Upstream(UpstreamError {
         status,
-        error: ErrorDetail {
-            message: error.message().unwrap_or(code).to_owned(),
-            r#type: "upstream_error".into(),
-            code: Some(code.to_owned()),
-            param: None,
-        },
-    }
+        code: Some(code.to_owned()),
+        error_type: Some("upstream_error".into()),
+        message: error.message().unwrap_or(code).to_owned(),
+        param: None,
+        request_id: None,
+        class,
+        raw_body: Vec::new(),
+    })
 }
 
 #[cfg(test)]
@@ -62,11 +64,12 @@ mod tests {
             .code("ThrottlingException")
             .message("rate exceeded")
             .build();
-        let ProviderError::Public { status, error } = sdk_service_error(&metadata) else {
-            panic!("public upstream error");
+        let ProviderError::Upstream(error) = sdk_service_error(&metadata) else {
+            panic!("normalized upstream error");
         };
-        assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(error.status, StatusCode::TOO_MANY_REQUESTS);
         assert_eq!(error.code.as_deref(), Some("ThrottlingException"));
         assert_eq!(error.message, "rate exceeded");
+        assert_eq!(error.class, UpstreamErrorClass::RateLimit);
     }
 }

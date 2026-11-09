@@ -18,7 +18,9 @@ use tracing::{Instrument, Span};
 use crate::agent_loop::{AgentLoopConfig, AgentLoopResult, run_agent_loop};
 use crate::api::hosted_tools::strip_hosted_tools;
 use crate::api::{self, EndpointKind};
-use crate::llm_stream_mapper::{DefaultStreamMapperSelector, StreamMapperSelector};
+use crate::llm_stream_mapper::{
+    DefaultStreamMapperSelector, StreamMapperSelector, UnifiedEventStream,
+};
 use crate::metadata_mgr::{MetadataMgr, MetadataMgrImpl};
 use crate::openai_http_mapping::{
     INTERNAL_SERVER_ERROR_MESSAGE, empty_usage, map_usage_to_openai, openai_error_response,
@@ -50,15 +52,56 @@ pub struct LlmHandlerState<A, M> {
     pub error_response_policy: Arc<dyn LlmErrorResponsePolicy<M>>,
 }
 
-/// Decides how provider errors are converted to chat-completions HTTP responses.
+/// Decides how provider errors are presented to API clients.
 pub trait LlmErrorResponsePolicy<M>: Send + Sync {
+    /// Map an execution failure to a protocol-neutral client error decision.
     fn handle_provider_error(
         &self,
         endpoint: EndpointKind,
         model_id: &str,
         metadata: &M,
         err: ProviderError,
-    ) -> Response;
+    ) -> LlmErrorResponse;
+}
+
+/// Map provider errors in a stream to unified failed events using one response policy.
+pub fn map_provider_stream_errors<M>(
+    events: UnifiedEventStream,
+    error_response_policy: Arc<dyn LlmErrorResponsePolicy<M>>,
+    endpoint: EndpointKind,
+    model_id: String,
+    metadata: M,
+) -> UnifiedEventStream
+where
+    M: Send + Sync + 'static,
+{
+    let events = events.map(move |item| match item {
+        Ok(event) => Ok(event),
+        Err(err) => {
+            let error =
+                error_response_policy.handle_provider_error(endpoint, &model_id, &metadata, err);
+            Ok(UnifiedEvent::new(UnifiedEventKind::Failed {
+                error: UnifiedResponseError {
+                    code: error.error.code,
+                    message: error.error.message,
+                    error_type: Some(error.error.r#type),
+                    param: error.error.param,
+                    source_extensions: None,
+                },
+                response: None,
+            }))
+        }
+    });
+    Box::pin(events)
+}
+
+/// Client-safe error details before endpoint-specific HTTP/SSE rendering.
+#[derive(Debug, Clone)]
+pub struct LlmErrorResponse {
+    /// HTTP status selected by the error policy.
+    pub status: StatusCode,
+    /// Error payload fields shared by JSON and streaming renderers.
+    pub error: ErrorDetail,
 }
 
 pub struct DefaultLlmErrorResponsePolicy;
@@ -70,31 +113,35 @@ impl<M> LlmErrorResponsePolicy<M> for DefaultLlmErrorResponsePolicy {
         _model_id: &str,
         _metadata: &M,
         err: ProviderError,
-    ) -> Response {
-        if matches!(&err, ProviderError::Public { status, .. } if *status == StatusCode::BAD_REQUEST)
+    ) -> LlmErrorResponse {
+        if let Some((status, error)) = err.public_error()
+            && status == StatusCode::BAD_REQUEST
         {
-            return map_public_provider_error(err);
+            return LlmErrorResponse { status, error };
         }
-        openai_error_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            INTERNAL_SERVER_ERROR_MESSAGE,
-            Some("internal_error"),
-        )
+        internal_error_response()
     }
 }
 
-fn map_public_provider_error(err: ProviderError) -> Response {
-    let ProviderError::Public { status, error } = err else {
-        return openai_error_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            INTERNAL_SERVER_ERROR_MESSAGE,
-            Some("internal_error"),
-        );
-    };
-    let response = crate::openai_types::ErrorResponse { error };
-    let payload = serde_json::to_vec(&response).unwrap_or_else(|_| b"{}".to_vec());
+fn internal_error_response() -> LlmErrorResponse {
+    LlmErrorResponse {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: ErrorDetail {
+            message: INTERNAL_SERVER_ERROR_MESSAGE.into(),
+            r#type: "internal_error".into(),
+            code: None,
+            param: None,
+        },
+    }
+}
+
+fn render_openai_error_response(error_response: LlmErrorResponse) -> Response {
+    let payload = serde_json::to_vec(&crate::openai_types::ErrorResponse {
+        error: error_response.error,
+    })
+    .unwrap_or_else(|_| b"{}".to_vec());
     Response::builder()
-        .status(status)
+        .status(error_response.status)
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(payload))
         .expect("build error response")
@@ -454,13 +501,14 @@ where
                 Err(err) => {
                     let upstream_status = provider_error_status(&err);
                     let error_message = err.to_string();
-                    let response = state.error_response_policy.handle_provider_error(
+                    let error_response = state.error_response_policy.handle_provider_error(
                         EndpointKind::ChatCompletions,
                         &model_id,
                         &metadata,
                         err,
                     );
-                    let final_status = response.status();
+                    let final_status = error_response.status;
+                    let response = render_openai_error_response(error_response);
                     error!(
                         "http.request.end; status_code={} upstream_status_code={} model_id={} error={} trace_id={} metadata={:?}",
                         final_status.as_u16(),
@@ -475,6 +523,13 @@ where
                 }
             };
             let events = Box::pin(stream::once(async move { Ok(first_event) }).chain(events));
+            let events = map_provider_stream_errors(
+                events,
+                Arc::clone(&state.error_response_policy),
+                EndpointKind::ChatCompletions,
+                model_id.clone(),
+                metadata.clone(),
+            );
             let mapper = state.mapper_selector.select(&headers);
             let response_model_mode = provider_entry.response_model_mode.clone();
             let sse = mapper.map_stream(events, trace_id, model_id, response_model_mode, root_span);
@@ -490,13 +545,14 @@ where
         Err(err) => {
             let upstream_status = provider_error_status(&err);
             let error_message = err.to_string();
-            let response = state.error_response_policy.handle_provider_error(
+            let error_response = state.error_response_policy.handle_provider_error(
                 EndpointKind::ChatCompletions,
                 &model_id,
                 &metadata,
                 err,
             );
-            let final_status = response.status();
+            let final_status = error_response.status;
+            let response = render_openai_error_response(error_response);
             error!(
                 "http.request.end; status_code={} upstream_status_code={} model_id={} error={} trace_id={} metadata={:?}",
                 final_status.as_u16(),
@@ -761,6 +817,10 @@ where
                     return Ok(response);
                 }
             }
+            let stream_error_policy = Arc::clone(&state.error_response_policy);
+            let stream_error_model = model_id.clone();
+            let stream_error_metadata = metadata.clone();
+            let stream_error_trace_id = trace_id.clone();
             let body_stream: Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send>> =
                 Box::pin(async_stream::try_stream! {
                     while let Some(item) = events.next().await {
@@ -771,7 +831,21 @@ where
                                 }
                             }
                             Err(err) => {
-                                for frame in render_messages_provider_error_frames(&err) {
+                                error!(
+                                    "messages stream provider error; model_id={} status={} error={} trace_id={} metadata={:?}",
+                                    stream_error_model,
+                                    provider_error_status(&err).as_u16(),
+                                    err,
+                                    stream_error_trace_id,
+                                    stream_error_metadata
+                                );
+                                let error_response = stream_error_policy.handle_provider_error(
+                                    EndpointKind::Messages,
+                                    &stream_error_model,
+                                    &stream_error_metadata,
+                                    err,
+                                );
+                                for frame in render_messages_error_frames(&error_response) {
                                     yield Bytes::from(frame);
                                 }
                                 return;
@@ -817,17 +891,17 @@ where
     use crate::api::messages;
     let upstream_status = provider_error_status(&err);
     let error_message = err.to_string();
-    let response = match &err {
-        ProviderError::Public { status, error } if *status == StatusCode::BAD_REQUEST => {
-            messages::error_response(*status, &error.r#type, &error.message)
-        }
-        _ => state.error_response_policy.handle_provider_error(
-            EndpointKind::Messages,
-            model_id,
-            metadata,
-            err,
-        ),
-    };
+    let error_response = state.error_response_policy.handle_provider_error(
+        EndpointKind::Messages,
+        model_id,
+        metadata,
+        err,
+    );
+    let response = messages::error_response(
+        error_response.status,
+        &error_response.error.r#type,
+        &error_response.error.message,
+    );
     let final_status = response.status();
     error!(
         "http.request.end; status_code={} upstream_status_code={} model_id={} error={} trace_id={} metadata={:?}",
@@ -842,16 +916,12 @@ where
     response
 }
 
-/// Mid-stream error rendering: same as above but emits an SSE error frame.
-fn render_messages_provider_error_frames(err: &ProviderError) -> Vec<String> {
+/// Render a mapped profile/provider error as an Anthropic Messages SSE frame.
+fn render_messages_error_frames(error_response: &LlmErrorResponse) -> Vec<String> {
     use crate::api::messages;
-    let (error_type, message) = match &err {
-        ProviderError::Public { error, .. } => (error.r#type.clone(), error.message.clone()),
-        _ => ("api_error".to_string(), err.to_string()),
-    };
     vec![messages::AnthropicSseState::error_frame(
-        &error_type,
-        &message,
+        &error_response.error.r#type,
+        &error_response.error.message,
     )]
 }
 
@@ -1101,13 +1171,14 @@ where
                 Err(err) => {
                     let upstream_status = provider_error_status(&err);
                     let error_message = err.to_string();
-                    let response = state.error_response_policy.handle_provider_error(
+                    let error_response = state.error_response_policy.handle_provider_error(
                         EndpointKind::Responses,
                         &model_id,
                         &metadata,
                         err,
                     );
-                    let final_status = response.status();
+                    let final_status = error_response.status;
+                    let response = render_openai_error_response(error_response);
                     error!(
                         "http.request.end; status_code={} upstream_status_code={} model_id={} error={} trace_id={} metadata={:?}",
                         final_status.as_u16(),
@@ -1121,6 +1192,9 @@ where
                     return Ok(response);
                 }
             }
+            let stream_error_policy = Arc::clone(&state.error_response_policy);
+            let stream_error_model = model_id.clone();
+            let stream_error_metadata = metadata.clone();
             // Errors are delivered as response.failed SSE frames, never via the transport error channel.
             let body_stream = async_stream::stream! {
                 while let Some(item) = events.next().await {
@@ -1131,7 +1205,13 @@ where
                             }
                         }
                         Err(err) => {
-                            for frame in render_responses_error_frames(&err) {
+                            let error_response = stream_error_policy.handle_provider_error(
+                                EndpointKind::Responses,
+                                &stream_error_model,
+                                &stream_error_metadata,
+                                err,
+                            );
+                            for frame in render_responses_error_frames(&error_response) {
                                 yield Ok(Bytes::from(frame));
                             }
                             return;
@@ -1155,13 +1235,14 @@ where
         Err(err) => {
             let upstream_status = provider_error_status(&err);
             let error_message = err.to_string();
-            let response = state.error_response_policy.handle_provider_error(
+            let error_response = state.error_response_policy.handle_provider_error(
                 EndpointKind::Responses,
                 &model_id,
                 &metadata,
                 err,
             );
-            let final_status = response.status();
+            let final_status = error_response.status;
+            let response = render_openai_error_response(error_response);
             error!(
                 "http.request.end; status_code={} upstream_status_code={} model_id={} error={} trace_id={} metadata={:?}",
                 final_status.as_u16(),
@@ -1177,16 +1258,15 @@ where
     }
 }
 
-fn render_responses_error_frames(err: &ProviderError) -> Vec<String> {
+fn render_responses_error_frames(error_response: &LlmErrorResponse) -> Vec<String> {
     use crate::api::responses;
     use crate::provider::UnifiedEvent;
-    let (code, message) = match err {
-        ProviderError::Public { error, .. } => (
-            error.code.clone().unwrap_or_else(|| error.r#type.clone()),
-            error.message.clone(),
-        ),
-        _ => ("server_error".to_string(), err.to_string()),
-    };
+    let code = error_response
+        .error
+        .code
+        .clone()
+        .unwrap_or_else(|| error_response.error.r#type.clone());
+    let message = error_response.error.message.clone();
     // Mid-stream errors go through the response.failed frame (same channel as normal events).
     let mut state = responses::ResponsesSseState::new();
     state.on_event(&UnifiedEvent::new(UnifiedEventKind::ResponseCreated {
@@ -1196,8 +1276,8 @@ fn render_responses_error_frames(err: &ProviderError) -> Vec<String> {
         error: UnifiedResponseError {
             code: Some(code),
             message,
-            error_type: None,
-            param: None,
+            error_type: Some(error_response.error.r#type.clone()),
+            param: error_response.error.param.clone(),
             source_extensions: None,
         },
         response: None,
@@ -1228,13 +1308,7 @@ fn finish_reason_to_str(response: &UnifiedResponse) -> &str {
 }
 
 fn provider_error_status(err: &ProviderError) -> StatusCode {
-    match err {
-        ProviderError::Public { status, .. } => *status,
-        ProviderError::Internal {
-            upstream_http_status,
-            ..
-        } => *upstream_http_status,
-    }
+    err.status()
 }
 
 fn response_model_for_mode(
