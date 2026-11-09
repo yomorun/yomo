@@ -7,7 +7,6 @@
 
 use crate::llm_stream_mapper::OpenAiSseStreamMapper;
 use crate::openai_http_mapping::{map_openai_response, map_usage_to_openai, openai_error_response};
-use crate::openai_types::ChatCompletionRequest;
 use crate::provider::{
     UnifiedCandidate, UnifiedContentPart, UnifiedContentPartKind, UnifiedEnding, UnifiedInputItem,
     UnifiedInputItemKind, UnifiedMediaSource, UnifiedMessageBoundary, UnifiedRequestOptions,
@@ -593,16 +592,10 @@ impl OpenAiParseError {
 
 /// parse: request bytes -> IR.
 pub fn parse_request(body: &[u8]) -> Result<UnifiedRequest, OpenAiParseError> {
-    let mut request: ChatCompletionRequest =
-        serde_json::from_slice(body).map_err(|err| OpenAiParseError {
-            message: format!("invalid request body: {err}"),
-        })?;
-    request.normalize_reasoning_compat_fields();
-    crate::dialects::openai_chat_completions::mapper::request_from_chat(&request).map_err(|err| {
-        OpenAiParseError {
-            message: err.to_string(),
-        }
-    })
+    let value: Value = serde_json::from_slice(body).map_err(|err| OpenAiParseError {
+        message: format!("invalid request body: {err}"),
+    })?;
+    request_from_value(&value).map_err(|message| OpenAiParseError { message })
 }
 
 /// serialize: non-stream IR response -> chat.completion JSON bytes.
@@ -633,7 +626,7 @@ pub fn stream_mapper() -> OpenAiSseStreamMapper {
 #[cfg(test)]
 mod golden_tests {
     use super::*;
-    use crate::openai_types::ErrorDetail;
+    use crate::openai_types::{ChatCompletionRequest, ErrorDetail};
     use crate::provider::{FinishReason, ToolCall, UnifiedEvent};
     use crate::provider::{
         UnifiedCandidate, UnifiedContentDelta, UnifiedEnding, UnifiedEventKind, UnifiedInputItem,
@@ -969,6 +962,25 @@ mod golden_tests {
             Some("invalid_request_error"),
         );
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn byte_parser_delegates_to_value_parser() {
+        let body = br#"{
+            "model":"m",
+            "messages":[{"role":"assistant","content":"answer","reasoning":"thinking"}],
+            "reasoning_effort":"high",
+            "thinking":{"type":"enabled","budget_tokens":128},
+            "chat_template_kwargs":{"reasoning_effort":"low","preserve":true}
+        }"#;
+        let value: Value = serde_json::from_slice(body).expect("valid body");
+        let expected = request_from_value(&value).expect("value parser");
+        let parsed = parse_request(body).expect("byte parser");
+
+        assert_eq!(
+            serde_json::to_value(parsed).expect("serialize byte parser result"),
+            serde_json::to_value(expected).expect("serialize value parser result")
+        );
     }
 
     #[test]
