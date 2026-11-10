@@ -643,6 +643,16 @@ async fn content_to_vertex_parts(
                             "model does not support input_audio yet".to_string(),
                         ));
                     }
+                    ContentPart::VideoUrl { .. } => {
+                        return Err(ProviderError::internal(
+                            "model does not support video_url content in chat messages".to_string(),
+                        ));
+                    }
+                    ContentPart::FileUrl { .. } => {
+                        return Err(ProviderError::internal(
+                            "model does not support file_url content in chat messages".to_string(),
+                        ));
+                    }
                 }
             }
             Ok(out)

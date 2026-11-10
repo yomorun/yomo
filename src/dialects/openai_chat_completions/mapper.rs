@@ -387,9 +387,13 @@ mod tests {
     use crate::openai_types::{
         ChatCompletionChoice, ChatCompletionChunk, ChatCompletionChunkChoice,
         ChatCompletionChunkDelta, ChatCompletionChunkToolCall, ChatCompletionChunkToolCallFunction,
-        ChatCompletionMessage, ChatCompletionRequest, ChatCompletionResponse, Usage,
+        ChatCompletionMessage, ChatCompletionRequest, ChatCompletionResponse, Content, ContentPart,
+        Usage,
     };
-    use crate::provider::{UnifiedContentDelta, UnifiedEventKind, UnifiedOutputItemKind};
+    use crate::provider::{
+        UnifiedContentDelta, UnifiedEventKind, UnifiedOutputItemKind, UnifiedSourceProtocol,
+    };
+    use serde_json::json;
 
     #[test]
     fn azure_effort_takes_precedence_and_template_controls_are_fallbacks() {
@@ -446,6 +450,42 @@ mod tests {
         assert_eq!(
             unified.options.thinking,
             Some(serde_json::json!({"type":"enabled"}))
+        );
+    }
+
+    #[test]
+    fn request_to_chat_preserves_model_specific_multimodal_content_parts() {
+        let request = crate::api::request_from_value(
+            &json!({
+                "model":"viv-fast",
+                "messages":[{
+                    "role":"user",
+                    "content":[
+                        {"type":"video_url", "video_url":{"url":"https://example.com/clip.mp4"}},
+                        {"type":"file_url", "file_url":{"url":"https://example.com/report.pdf"}}
+                    ]
+                }]
+            }),
+            UnifiedSourceProtocol::ChatCompletions,
+        )
+        .expect("parse Chat request");
+
+        let converted = super::request_to_chat(&request).expect("video content survives");
+        let Content::Parts(parts) = &converted.messages[0].content else {
+            panic!("expected content parts");
+        };
+        assert_eq!(parts.len(), 2);
+        assert_eq!(
+            parts[0],
+            ContentPart::VideoUrl {
+                video_url: json!({"url":"https://example.com/clip.mp4"})
+            }
+        );
+        assert_eq!(
+            parts[1],
+            ContentPart::FileUrl {
+                file_url: json!({"url":"https://example.com/report.pdf"})
+            }
         );
     }
 

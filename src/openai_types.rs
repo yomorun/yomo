@@ -117,6 +117,9 @@ pub struct ThinkingConfig {
     /// Optional maximum thinking-token budget supported by some providers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub budget_tokens: Option<u32>,
+    /// GLM extension recommending whether to clear previous thinking state.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clear_thinking: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -280,6 +283,16 @@ pub enum ContentPart {
     },
     InputAudio {
         input_audio: InputAudio,
+    },
+    /// Provider-specific video URL block preserved by OpenAI-compatible chat requests.
+    #[serde(rename = "video_url")]
+    VideoUrl {
+        video_url: Value,
+    },
+    /// Provider-specific remote file URL block preserved by OpenAI-compatible chat requests.
+    #[serde(rename = "file_url")]
+    FileUrl {
+        file_url: Value,
     },
     File {
         #[serde(default)]
@@ -601,6 +614,11 @@ impl ChatCompletionRequest {
                     .and_then(|thinking| thinking.get("budget_tokens"))
                     .and_then(Value::as_u64)
                     .and_then(|budget| u32::try_from(budget).ok()),
+                clear_thinking: self
+                    .extra
+                    .get("thinking")
+                    .and_then(|thinking| thinking.get("clear_thinking"))
+                    .and_then(Value::as_bool),
             });
         }
 
@@ -666,6 +684,8 @@ fn parse_thinking_type_from_value(value: &Value) -> Option<ThinkingType> {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
 
     fn parse_stop(stop: &str) -> Option<Vec<String>> {
@@ -913,6 +933,80 @@ mod tests {
     }
 
     #[test]
+    fn message_content_parts_preserve_video_url_payload() {
+        let message = r#"{
+            "role":"user",
+            "content":[
+                {"type":"video_url","video_url":{"url":"https://example.com/clip.mp4"}}
+            ]
+        }"#;
+
+        let parsed: Message = serde_json::from_str(message).expect("parse video message");
+        let Content::Parts(parts) = parsed.content else {
+            panic!("expected content parts");
+        };
+        let ContentPart::VideoUrl { video_url } = &parts[0] else {
+            panic!("expected video_url content part");
+        };
+        assert_eq!(video_url["url"], "https://example.com/clip.mp4");
+        assert_eq!(
+            serde_json::to_value(parts[0].clone()).expect("serialize video part"),
+            json!({
+                "type":"video_url",
+                "video_url":{"url":"https://example.com/clip.mp4"}
+            })
+        );
+    }
+
+    #[test]
+    fn message_content_parts_preserve_file_url_payload() {
+        let message = r#"{
+            "role":"user",
+            "content":[
+                {"type":"file_url","file_url":{"url":"https://example.com/report.pdf"}}
+            ]
+        }"#;
+
+        let parsed: Message = serde_json::from_str(message).expect("parse file_url message");
+        let Content::Parts(parts) = parsed.content else {
+            panic!("expected content parts");
+        };
+        let ContentPart::FileUrl { file_url } = &parts[0] else {
+            panic!("expected file_url content part");
+        };
+        assert_eq!(file_url["url"], "https://example.com/report.pdf");
+        assert_eq!(
+            serde_json::to_value(parts[0].clone()).expect("serialize file_url part"),
+            json!({
+                "type":"file_url",
+                "file_url":{"url":"https://example.com/report.pdf"}
+            })
+        );
+    }
+
+    #[test]
+    fn thinking_config_preserves_clear_thinking() {
+        let request: ChatCompletionRequest = serde_json::from_value(json!({
+            "model":"glm-5.3-flash",
+            "messages":[],
+            "thinking":{"type":"enabled", "clear_thinking":false}
+        }))
+        .expect("parse thinking config");
+
+        assert_eq!(
+            request
+                .thinking
+                .as_ref()
+                .and_then(|thinking| thinking.clear_thinking),
+            Some(false)
+        );
+        assert_eq!(
+            serde_json::to_value(request).expect("serialize request")["thinking"]["clear_thinking"],
+            false
+        );
+    }
+
+    #[test]
     fn message_content_parts_accept_nested_file_object() {
         let message = r#"{
             "role":"user",
@@ -1003,6 +1097,7 @@ mod tests {
             thinking: Some(ThinkingConfig {
                 kind: ThinkingType::Disabled,
                 budget_tokens: None,
+                clear_thinking: None,
             }),
             reasoning_effort: Some("high".into()),
             extra: HashMap::from([

@@ -201,6 +201,24 @@ pub fn validate_openai_request(request: &ChatCompletionRequest) -> Result<(), St
                                 return Err("input_audio format is empty".to_string());
                             }
                         }
+                        ContentPart::VideoUrl { video_url } => {
+                            if video_url
+                                .get("url")
+                                .and_then(|url| url.as_str())
+                                .is_none_or(|url| url.trim().is_empty())
+                            {
+                                return Err("video_url is empty".to_string());
+                            }
+                        }
+                        ContentPart::FileUrl { file_url } => {
+                            if file_url
+                                .get("url")
+                                .and_then(|url| url.as_str())
+                                .is_none_or(|url| url.trim().is_empty())
+                            {
+                                return Err("file_url is empty".to_string());
+                            }
+                        }
                         ContentPart::File { .. } => {}
                     }
                 }

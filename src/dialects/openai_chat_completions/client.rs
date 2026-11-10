@@ -577,6 +577,7 @@ mod tests {
             thinking: Some(crate::openai_types::ThinkingConfig {
                 kind: crate::openai_types::ThinkingType::Enabled,
                 budget_tokens: Some(2048),
+                clear_thinking: None,
             }),
             reasoning_effort: Some("high".into()),
             ..Default::default()

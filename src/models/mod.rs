@@ -15,6 +15,9 @@ use crate::provider::{ProviderError, UnifiedRequest};
 use crate::serve_config::ModelBinding;
 use axum::http::StatusCode;
 
+/// GLM-5.3-Flash request profile.
+pub mod glm_5_3_flash;
+
 /// A model-profile conversion failure, independent of an HTTP response format.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModelProfileError {
@@ -167,10 +170,15 @@ pub struct ModelProfileRegistry {
 }
 
 impl ModelProfileRegistry {
-    /// Create a registry with the built-in default conversion behavior.
+    /// Create a registry with built-in model profiles and default conversion behavior.
     pub fn new() -> Self {
+        let mut profiles: HashMap<String, Arc<dyn ModelProfile>> = HashMap::new();
+        profiles.insert(
+            "glm-5.3-flash".to_owned(),
+            Arc::new(glm_5_3_flash::Glm53FlashProfile),
+        );
         Self {
-            profiles: HashMap::new(),
+            profiles,
             default: Arc::new(DefaultModelProfile),
         }
     }
