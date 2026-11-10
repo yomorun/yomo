@@ -597,8 +597,8 @@ pub struct ErrorDetail {
 impl ChatCompletionRequest {
     /// Normalize cross-vendor reasoning/thinking request fields into IR modeled fields.
     ///
-    /// Top-level `reasoning_effort` takes priority, followed by top-level
-    /// `thinking`, then `chat_template_kwargs`.
+    /// Top-level effort and thinking values take priority over their matching
+    /// compatibility values in `chat_template_kwargs` and unknown fields.
     pub fn normalize_reasoning_compat_fields(&mut self) {
         if self.thinking.is_none()
             && let Some(kind) = self
@@ -1090,7 +1090,7 @@ mod tests {
     }
 
     #[test]
-    fn normalize_reasoning_compat_prefers_top_level_effort_over_conflicting_mode() {
+    fn normalize_reasoning_compat_preserves_conflicting_client_controls() {
         let mut request = ChatCompletionRequest {
             model: "glm-5.3-flash".to_string(),
             messages: vec![],
@@ -1120,7 +1120,7 @@ mod tests {
                 .thinking
                 .as_ref()
                 .map(|thinking| thinking.kind.clone()),
-            Some(ThinkingType::Enabled)
+            Some(ThinkingType::Disabled)
         );
         assert_eq!(
             request

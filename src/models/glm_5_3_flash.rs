@@ -59,19 +59,34 @@ impl ModelProfile for Glm53FlashProfile {
             return Ok(None);
         }
 
-        validate_request(request)?;
         let mut normalized_request = request.clone();
+        normalize_glm_options(&mut normalized_request)?;
+        validate_request(&normalized_request)?;
+        let clear_thinking = clear_thinking_requested(&normalized_request);
         if let Some(instructions) = &mut normalized_request.instructions {
-            normalize_items(instructions)?;
+            normalize_items(instructions, clear_thinking)?;
         }
-        normalize_items(&mut normalized_request.input)?;
+        normalize_items(&mut normalized_request.input, clear_thinking)?;
+        let thinking = normalized_request.options.thinking.take();
 
         let mut chat_request =
             request_to_chat(&normalized_request).map_err(from_dialect_conversion_error)?;
+        if let Some(Value::Object(fields)) = thinking {
+            if fields.get("type").and_then(Value::as_str) == Some("enabled") {
+                chat_request.thinking = Some(ThinkingConfig {
+                    kind: ThinkingType::Enabled,
+                    budget_tokens: None,
+                    clear_thinking: fields.get("clear_thinking").and_then(Value::as_bool),
+                });
+            } else {
+                chat_request
+                    .extra
+                    .insert("thinking".to_owned(), Value::Object(fields));
+            }
+        }
         if let Some(top_k) = normalized_request.options.top_k {
             chat_request.extra.insert("top_k".to_owned(), json!(top_k));
         }
-        apply_glm_defaults(&mut chat_request);
         validate_serialized_request_size(&chat_request)?;
         Ok(Some(chat_request))
     }
@@ -106,7 +121,6 @@ fn validate_request(request: &UnifiedRequest) -> Result<(), ModelProfileError> {
         ));
     }
 
-    validate_reasoning_controls(request)?;
     let mut input_modality = None;
     if let Some(instructions) = &request.instructions {
         validate_items(instructions, &mut input_modality)?;
@@ -114,68 +128,71 @@ fn validate_request(request: &UnifiedRequest) -> Result<(), ModelProfileError> {
     validate_items(&request.input, &mut input_modality)
 }
 
-fn validate_reasoning_controls(request: &UnifiedRequest) -> Result<(), ModelProfileError> {
-    if let Some(effort) = &request.options.reasoning_effort {
-        match effort.as_str() {
-            Some("low" | "high" | "max") => {}
-            Some(value) => {
-                return Err(unsupported_capability(
-                    format!("glm-5.3-flash does not support reasoning_effort `{value}`"),
-                    "reasoning_effort",
-                ));
-            }
-            None => {
-                return Err(unsupported_capability(
-                    "glm-5.3-flash requires a named reasoning_effort value",
-                    "reasoning_effort",
-                ));
-            }
-        }
-    }
+fn normalize_glm_options(request: &mut UnifiedRequest) -> Result<(), ModelProfileError> {
+    request.options.reasoning_effort = request
+        .options
+        .reasoning_effort
+        .take()
+        .and_then(nearest_reasoning_effort);
 
-    let Some(thinking) = &request.options.thinking else {
+    let Some(thinking) = request.options.thinking.take() else {
         return Ok(());
     };
-    let Some(fields) = thinking.as_object() else {
+    let Value::Object(mut fields) = thinking else {
         return Err(ModelProfileError::InvalidRequest {
             message: "thinking must be an object".to_owned(),
             param: Some("thinking".to_owned()),
         });
     };
-    if fields
-        .keys()
-        .any(|field| !matches!(field.as_str(), "type" | "clear_thinking"))
-    {
-        return Err(unsupported_capability(
-            "glm-5.3-flash only supports thinking.type and thinking.clear_thinking",
-            "thinking",
-        ));
-    }
-    match fields.get("type").and_then(Value::as_str) {
-        None | Some("enabled") => {}
-        Some("disabled") => {
-            return Err(unsupported_capability(
-                "glm-5.3-flash does not support disabling thinking",
-                "thinking.type",
-            ));
-        }
-        Some(value) => {
+
+    match fields.get("type") {
+        None => {}
+        Some(Value::String(value)) if value == "enabled" => {}
+        Some(Value::String(value)) => {
             return Err(unsupported_capability(
                 format!("glm-5.3-flash does not support thinking.type `{value}`"),
                 "thinking.type",
             ));
         }
+        Some(_) => {
+            return Err(unsupported_capability(
+                "glm-5.3-flash requires thinking.type to be `enabled` when specified",
+                "thinking.type",
+            ));
+        }
     }
-    if fields
-        .get("clear_thinking")
-        .is_some_and(|clear_thinking| !clear_thinking.is_boolean())
-    {
-        return Err(ModelProfileError::InvalidRequest {
-            message: "thinking.clear_thinking must be a boolean".to_owned(),
-            param: Some("thinking.clear_thinking".to_owned()),
-        });
-    }
+
+    // Optional provider-specific thinking extensions have no GLM mapping.
+    // Keep only the supported controls; an invalid optional clear flag is ignored.
+    fields.retain(|key, value| match key.as_str() {
+        "type" => true,
+        "clear_thinking" => value.is_boolean(),
+        _ => false,
+    });
+    request.options.thinking = (!fields.is_empty()).then_some(Value::Object(fields));
     Ok(())
+}
+
+fn nearest_reasoning_effort(effort: ReasoningEffort) -> Option<ReasoningEffort> {
+    match effort.as_str()? {
+        "low" => Some(ReasoningEffort::from("low")),
+        "high" => Some(ReasoningEffort::from("high")),
+        "max" => Some(ReasoningEffort::from("max")),
+        "none" | "minimal" => Some(ReasoningEffort::from("low")),
+        "medium" => Some(ReasoningEffort::from("high")),
+        "xhigh" => Some(ReasoningEffort::from("max")),
+        _ => None,
+    }
+}
+
+fn clear_thinking_requested(request: &UnifiedRequest) -> bool {
+    request
+        .options
+        .thinking
+        .as_ref()
+        .and_then(|thinking| thinking.get("clear_thinking"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
 }
 
 fn validate_items(
@@ -475,26 +492,6 @@ fn normalize_mime(value: &str) -> String {
         .to_ascii_lowercase()
 }
 
-fn apply_glm_defaults(request: &mut ChatCompletionRequest) {
-    request.temperature.get_or_insert(1.0);
-    request.top_p.get_or_insert(0.95);
-    if request.reasoning_effort.is_none() {
-        request.reasoning_effort = Some(ReasoningEffort::from("max"));
-    }
-    match &mut request.thinking {
-        Some(thinking) => {
-            thinking.clear_thinking.get_or_insert(false);
-        }
-        None => {
-            request.thinking = Some(ThinkingConfig {
-                kind: ThinkingType::Enabled,
-                budget_tokens: None,
-                clear_thinking: Some(false),
-            });
-        }
-    }
-}
-
 fn validate_serialized_request_size(
     request: &ChatCompletionRequest,
 ) -> Result<(), ModelProfileError> {
@@ -534,11 +531,14 @@ impl Write for JsonByteCounter {
     }
 }
 
-fn normalize_items(items: &mut Vec<UnifiedInputItem>) -> Result<(), ModelProfileError> {
+fn normalize_items(
+    items: &mut Vec<UnifiedInputItem>,
+    clear_thinking: bool,
+) -> Result<(), ModelProfileError> {
     for item in items.iter_mut() {
         match &mut item.kind {
             UnifiedInputItemKind::Message { role, content, .. } => {
-                if *role == UnifiedRole::Assistant {
+                if clear_thinking && *role == UnifiedRole::Assistant {
                     content.retain(|part| {
                         !matches!(
                             &part.kind,
@@ -556,15 +556,17 @@ fn normalize_items(items: &mut Vec<UnifiedInputItem>) -> Result<(), ModelProfile
             _ => {}
         }
     }
-    items.retain(|item| match &item.kind {
-        UnifiedInputItemKind::Reasoning { .. } => false,
-        UnifiedInputItemKind::Message {
-            role: UnifiedRole::Assistant,
-            content,
-            ..
-        } => !content.is_empty(),
-        _ => true,
-    });
+    if clear_thinking {
+        items.retain(|item| match &item.kind {
+            UnifiedInputItemKind::Reasoning { .. } => false,
+            UnifiedInputItemKind::Message {
+                role: UnifiedRole::Assistant,
+                content,
+                ..
+            } => !content.is_empty(),
+            _ => true,
+        });
+    }
     Ok(())
 }
 
@@ -685,7 +687,7 @@ mod tests {
     use crate::api;
     use crate::dialects::Dialect;
     use crate::models::{ModelProfile, ModelProfileError, ModelProfileRegistry};
-    use crate::openai_types::{Content, ContentPart};
+    use crate::openai_types::{Content, ContentPart, ThinkingType};
     use crate::provider::{ReasoningEffort, UnifiedSourceProtocol};
     use crate::serve_config::ModelBinding;
     use crate::upstreams::Upstream;
@@ -735,7 +737,7 @@ mod tests {
     }
 
     #[test]
-    fn injects_glm_defaults_and_preserves_supported_sampling_tools_and_extensions() {
+    fn leaves_unspecified_controls_unset_and_preserves_tools_and_extensions() {
         let request = json!({
             "model":"glm-5.3-flash",
             "messages":[{"role":"user", "content":"hello"}],
@@ -746,29 +748,10 @@ mod tests {
             .expect("convert request")
             .expect("TokenHub profile handles request");
 
-        assert_eq!(converted.temperature, Some(1.0));
-        assert_eq!(converted.top_p, Some(0.95));
-        assert_eq!(
-            converted
-                .reasoning_effort
-                .as_ref()
-                .and_then(ReasoningEffort::as_str),
-            Some("max")
-        );
-        assert_eq!(
-            converted
-                .thinking
-                .as_ref()
-                .map(|thinking| thinking.kind.clone()),
-            Some(crate::openai_types::ThinkingType::Enabled)
-        );
-        assert_eq!(
-            converted
-                .thinking
-                .as_ref()
-                .and_then(|thinking| thinking.clear_thinking),
-            Some(false)
-        );
+        assert_eq!(converted.temperature, None);
+        assert_eq!(converted.top_p, None);
+        assert_eq!(converted.reasoning_effort, None);
+        assert!(converted.thinking.is_none());
         assert_eq!(converted.tools.as_ref().map(Vec::len), Some(1));
         assert_eq!(converted.extra.get("tool_stream"), Some(&json!(true)));
     }
@@ -799,11 +782,47 @@ mod tests {
     }
 
     #[test]
-    fn rejects_disabled_thinking_and_efforts_outside_glm_values() {
+    fn maps_nearest_effort_ignores_unknown_effort_and_rejects_unsupported_thinking() {
+        for (input, expected) in [
+            ("none", "low"),
+            ("minimal", "low"),
+            ("low", "low"),
+            ("medium", "high"),
+            ("high", "high"),
+            ("xhigh", "max"),
+            ("max", "max"),
+        ] {
+            let request = json!({
+                "model":"glm-5.3-flash",
+                "messages":[{"role":"user", "content":"hi"}],
+                "reasoning_effort":input
+            });
+            let converted = convert(&request)
+                .expect("map supported effort")
+                .expect("profile handles request");
+            assert_eq!(
+                converted
+                    .reasoning_effort
+                    .as_ref()
+                    .and_then(ReasoningEffort::as_str),
+                Some(expected)
+            );
+            assert!(converted.thinking.is_none());
+        }
+
+        for request in [
+            json!({"model":"glm-5.3-flash", "messages":[{"role":"user", "content":"hi"}], "reasoning_effort":"vendor-effort"}),
+            json!({"model":"glm-5.3-flash", "messages":[{"role":"user", "content":"hi"}], "reasoning_effort":42}),
+        ] {
+            let converted = convert(&request)
+                .expect("ignore unsupported optional effort")
+                .expect("profile handles request");
+            assert_eq!(converted.reasoning_effort, None);
+        }
+
         for value in [
             json!({"model":"glm-5.3-flash", "messages":[{"role":"user", "content":"hi"}], "thinking":{"type":"disabled"}}),
-            json!({"model":"glm-5.3-flash", "messages":[{"role":"user", "content":"hi"}], "reasoning_effort":"medium"}),
-            json!({"model":"glm-5.3-flash", "messages":[{"role":"user", "content":"hi"}], "reasoning_effort":"none"}),
+            json!({"model":"glm-5.3-flash", "messages":[{"role":"user", "content":"hi"}], "thinking":{"type":"adaptive"}}),
         ] {
             assert!(matches!(
                 convert(&value),
@@ -813,12 +832,12 @@ mod tests {
     }
 
     #[test]
-    fn removes_prior_assistant_reasoning_and_reasoning_items() {
+    fn preserves_reasoning_history_unless_clear_thinking_is_requested() {
         let request = api::request_from_value(
             &json!({
                 "model":"glm-5.3-flash",
                 "input":[
-                    {"type":"reasoning", "id":"rs_1", "summary":[{"type":"summary_text", "text":"private"}], "content":[{"type":"reasoning_text", "text":"private"}]},
+                    {"type":"reasoning", "id":"rs_1", "summary":[], "content":[{"type":"reasoning_text", "text":"private"}]},
                     {"type":"message", "role":"assistant", "content":[{"type":"reasoning_text", "text":"private"}, {"type":"output_text", "text":"previous answer"}]},
                     {"type":"message", "role":"user", "content":[{"type":"input_text", "text":"continue"}]}
                 ]
@@ -831,12 +850,91 @@ mod tests {
             .expect("convert history")
             .expect("profile handles request");
 
-        assert_eq!(converted.messages.len(), 2);
-        let Content::Parts(parts) = &converted.messages[0].content else {
+        assert_eq!(converted.messages.len(), 3);
+        assert_eq!(
+            converted.messages[0].reasoning_content.as_deref(),
+            Some("private")
+        );
+        assert_eq!(
+            converted.messages[1].reasoning_content.as_deref(),
+            Some("private")
+        );
+
+        let mut keep_request = request.clone();
+        keep_request.options.thinking = Some(json!({"clear_thinking":false}));
+        let kept = Glm53FlashProfile
+            .to_openai_chat_request(&keep_request, &binding(Upstream::Tokenhub))
+            .expect("convert retained history")
+            .expect("profile handles request");
+        assert_eq!(kept.messages.len(), 3);
+        assert_eq!(
+            kept.messages[0].reasoning_content.as_deref(),
+            Some("private")
+        );
+
+        let clear_request = api::request_from_value(
+            &json!({
+                "model":"glm-5.3-flash",
+                "thinking":{"type":"enabled", "clear_thinking":true},
+                "input":[
+                    {"type":"reasoning", "id":"rs_1", "summary":[], "content":[{"type":"reasoning_text", "text":"private"}], "encrypted_content":"opaque"},
+                    {"type":"message", "role":"assistant", "content":[{"type":"reasoning_text", "text":"private"}, {"type":"output_text", "text":"previous answer"}]},
+                    {"type":"message", "role":"user", "content":[{"type":"input_text", "text":"continue"}]}
+                ]
+            }),
+            UnifiedSourceProtocol::Responses,
+        )
+        .expect("parse clear-thinking history");
+        let cleared = Glm53FlashProfile
+            .to_openai_chat_request(&clear_request, &binding(Upstream::Tokenhub))
+            .expect("convert cleared history")
+            .expect("profile handles request");
+        assert_eq!(cleared.messages.len(), 2);
+        assert_eq!(cleared.messages[0].reasoning_content, None);
+        let Content::Parts(parts) = &cleared.messages[0].content else {
             panic!("expected assistant message parts");
         };
-        assert_eq!(parts.len(), 1);
         assert!(matches!(&parts[0], ContentPart::Text { text } if text == "previous answer"));
+    }
+
+    #[test]
+    fn preserves_omitted_thinking_type_and_ignores_unsupported_optional_fields() {
+        let request = json!({
+            "model":"glm-5.3-flash",
+            "messages":[{"role":"user", "content":"hello"}],
+            "thinking":{"clear_thinking":true, "budget_tokens":2048, "future_option":true}
+        });
+        let converted = convert(&request)
+            .expect("convert thinking config")
+            .expect("profile handles request");
+
+        assert_eq!(
+            converted.extra.get("thinking"),
+            Some(&json!({"clear_thinking":true}))
+        );
+        assert_eq!(
+            serde_json::to_value(&converted).expect("serialize converted request")["thinking"],
+            json!({"clear_thinking":true})
+        );
+
+        let request = json!({
+            "model":"glm-5.3-flash",
+            "messages":[{"role":"user", "content":"hello"}],
+            "thinking":{"type":"enabled", "clear_thinking":"invalid"}
+        });
+        let converted = convert(&request)
+            .expect("ignore invalid optional clear flag")
+            .expect("profile handles request");
+        let thinking = converted
+            .thinking
+            .as_ref()
+            .expect("enabled thinking is retained");
+        assert_eq!(thinking.kind, ThinkingType::Enabled);
+        assert_eq!(thinking.clear_thinking, None);
+        assert_eq!(
+            serde_json::to_value(&converted).expect("serialize converted request")["thinking"],
+            json!({"type":"enabled"})
+        );
     }
 
     #[test]

@@ -396,7 +396,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn azure_effort_takes_precedence_and_template_controls_are_fallbacks() {
+    fn reasoning_controls_preserve_top_level_values_and_template_fallbacks() {
         let request: ChatCompletionRequest = serde_json::from_value(serde_json::json!({
             "model":"m",
             "messages":[],
@@ -409,7 +409,7 @@ mod tests {
         let unified = request_from_chat(&request).expect("unified request");
         assert_eq!(
             unified.options.thinking,
-            Some(serde_json::json!({"type":"enabled","budget_tokens":2048}))
+            Some(serde_json::json!({"type":"disabled","budget_tokens":2048}))
         );
         assert_eq!(
             unified.options.reasoning_effort,
@@ -431,7 +431,7 @@ mod tests {
         );
         assert_eq!(
             unified.options.thinking,
-            Some(serde_json::json!({"type":"disabled"}))
+            Some(serde_json::json!({"type":"enabled"}))
         );
 
         let request: ChatCompletionRequest = serde_json::from_value(serde_json::json!({

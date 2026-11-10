@@ -467,9 +467,9 @@ pub struct UnifiedRequestOptions {
 }
 
 impl UnifiedRequestOptions {
-    /// Normalize reasoning controls, preferring Azure's top-level effort field.
+    /// Promote compatibility fields without rewriting the client's effort or thinking mode.
     pub fn normalize_reasoning_controls(&mut self) {
-        let top_effort = self.reasoning_effort.clone();
+        let top_effort = self.reasoning_effort.take();
         let top_thinking = self.thinking.clone();
         let template_effort: Option<ReasoningEffort> = self
             .chat_template_kwargs
@@ -493,59 +493,10 @@ impl UnifiedRequestOptions {
             .cloned();
         let budget = top_budget.or(template_budget);
 
-        match top_effort {
-            Some(effort) => {
-                let requested_thinking = top_thinking.or(template_thinking);
-                let requested_mode = requested_thinking
-                    .as_ref()
-                    .and_then(|thinking| thinking.get("type"))
-                    .and_then(Value::as_str);
-                let known_mode =
-                    matches!(requested_mode, Some("disabled" | "enabled" | "adaptive"));
-                let mode = if effort.is_none() {
-                    Some("disabled")
-                } else if known_mode {
-                    Some("enabled")
-                } else {
-                    None
-                };
-                self.reasoning_effort = Some(effort);
-                self.thinking = mode
-                    .map(|mode| thinking_with_budget(mode, budget.clone()))
-                    .or_else(|| requested_thinking.map(|thinking| with_budget(thinking, budget)));
-            }
-            None => match top_thinking {
-                Some(thinking) => {
-                    let mode = thinking.get("type").and_then(Value::as_str);
-                    let effort = template_effort.filter(|effort| match mode {
-                        Some("disabled") => false,
-                        Some("enabled" | "adaptive") => !effort.is_none(),
-                        _ => true,
-                    });
-                    self.reasoning_effort = effort;
-                    self.thinking = Some(with_budget(thinking, budget));
-                }
-                None => {
-                    self.reasoning_effort = template_effort;
-                    self.thinking =
-                        template_thinking.map(|thinking| with_budget(thinking, budget.clone()));
-                    match (self.thinking.as_ref(), self.reasoning_effort.as_ref()) {
-                        (_, Some(effort)) if effort.is_none() => {
-                            self.thinking = Some(thinking_with_budget("disabled", budget));
-                        }
-                        (Some(thinking), Some(_))
-                            if thinking.get("type").and_then(Value::as_str) == Some("disabled") =>
-                        {
-                            self.reasoning_effort = None;
-                        }
-                        (None, Some(_)) => {
-                            self.thinking = Some(thinking_with_budget("enabled", budget));
-                        }
-                        _ => {}
-                    }
-                }
-            },
-        }
+        self.reasoning_effort = top_effort.or(template_effort);
+        self.thinking = top_thinking
+            .or(template_thinking)
+            .map(|thinking| with_budget(thinking, budget));
 
         if let Some(kwargs) = &mut self.chat_template_kwargs {
             kwargs.remove("thinking");
@@ -580,10 +531,10 @@ fn thinking_with_budget(mode: &str, budget: Option<Value>) -> Value {
 }
 
 fn with_budget(mut thinking: Value, budget: Option<Value>) -> Value {
-    if thinking.get("budget_tokens").is_none()
-        && let Some(budget) = budget
+    if let (Value::Object(fields), Some(budget)) = (&mut thinking, budget)
+        && !fields.contains_key("budget_tokens")
     {
-        thinking["budget_tokens"] = budget;
+        fields.insert("budget_tokens".to_owned(), budget);
     }
     thinking
 }
@@ -1962,15 +1913,23 @@ pub fn adapt_bound_request(
         if request.controls.background == Some(true) {
             return Err(invalid("background"));
         }
+        let clear_thinking = request
+            .options
+            .thinking
+            .as_ref()
+            .and_then(|thinking| thinking.get("clear_thinking"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
         if request.input.iter().any(|item| {
-            matches!(
-                &item.kind,
-                UnifiedInputItemKind::ItemReference { .. }
-                    | UnifiedInputItemKind::Reasoning {
-                        encrypted_content: Some(_),
-                        ..
-                    }
-            )
+            matches!(&item.kind, UnifiedInputItemKind::ItemReference { .. })
+                || (!clear_thinking
+                    && matches!(
+                        &item.kind,
+                        UnifiedInputItemKind::Reasoning {
+                            encrypted_content: Some(_),
+                            ..
+                        }
+                    ))
         }) {
             return Err(invalid("reasoning/reference state"));
         }
@@ -2105,6 +2064,33 @@ mod tests {
     }
 
     #[test]
+    fn reasoning_control_normalization_preserves_effort_and_optional_thinking_shape() {
+        let mut effort_only = UnifiedRequestOptions {
+            reasoning_effort: Some("none".into()),
+            ..Default::default()
+        };
+        effort_only.normalize_reasoning_controls();
+        assert_eq!(
+            effort_only
+                .reasoning_effort
+                .as_ref()
+                .and_then(ReasoningEffort::as_str),
+            Some("none")
+        );
+        assert_eq!(effort_only.thinking, None);
+
+        let mut partial_thinking = UnifiedRequestOptions {
+            thinking: Some(json!({"clear_thinking":true,"provider_extra":1})),
+            ..Default::default()
+        };
+        partial_thinking.normalize_reasoning_controls();
+        assert_eq!(
+            partial_thinking.thinking,
+            Some(json!({"clear_thinking":true,"provider_extra":1}))
+        );
+    }
+
+    #[test]
     fn chat_dialect_rejects_responses_only_state() {
         let binding = binding(Dialect::OpenAiChatCompletions);
         let mut request = UnifiedRequest::default();
@@ -2117,6 +2103,34 @@ mod tests {
             request.context.previous_response_id.as_deref(),
             Some("response-id")
         );
+    }
+
+    #[test]
+    fn encrypted_reasoning_reaches_profiles_only_when_clear_thinking_is_requested() {
+        let binding = binding(Dialect::OpenAiChatCompletions);
+        let reasoning = || {
+            UnifiedInputItem::new(UnifiedInputItemKind::Reasoning {
+                summary: Vec::new(),
+                content: None,
+                encrypted_content: Some("opaque".to_owned()),
+            })
+        };
+
+        let mut clear_request = UnifiedRequest {
+            input: vec![reasoning()],
+            ..Default::default()
+        };
+        clear_request.options.thinking = Some(json!({"clear_thinking":true}));
+        assert!(adapt_bound_request(&mut clear_request, &binding).is_ok());
+
+        let mut preserve_request = UnifiedRequest {
+            input: vec![reasoning()],
+            ..Default::default()
+        };
+        assert!(matches!(
+            adapt_bound_request(&mut preserve_request, &binding),
+            Err(ProviderError::Public { .. })
+        ));
     }
 
     #[test]
