@@ -15,8 +15,65 @@ use crate::provider::{ProviderError, UnifiedRequest};
 use crate::serve_config::ModelBinding;
 use axum::http::StatusCode;
 
+/// GLM-5.3 request profile.
+pub mod glm_5_3;
 /// GLM-5.3-Flash request profile.
 pub mod glm_5_3_flash;
+/// GPT-5.1 Codex Responses profile.
+pub mod gpt_5_1_codex;
+/// GPT-5.1 Codex-Max Responses profile.
+pub mod gpt_5_1_codex_max;
+/// GPT-5.2 Codex Responses profile.
+pub mod gpt_5_2_codex;
+/// GPT-5.3 Codex Responses profile.
+pub mod gpt_5_3_codex;
+/// GPT-5.4 Chat Completions profile.
+pub mod gpt_5_4;
+/// GPT-5.4 Mini Chat Completions profile.
+pub mod gpt_5_4_mini;
+/// GPT-5.4 Nano Chat Completions profile.
+pub mod gpt_5_4_nano;
+/// GPT-5.5 Chat Completions profile.
+pub mod gpt_5_5;
+/// GPT-5.6 Luna Responses profile.
+pub mod gpt_5_6_luna;
+/// GPT-5.6 Sol Responses profile.
+pub mod gpt_5_6_sol;
+/// GPT-5.6 Terra Responses profile.
+pub mod gpt_5_6_terra;
+/// GPT-6.1 Sol Responses profile.
+pub mod gpt_6_1_sol;
+/// GPT-6.1 Terra Responses profile.
+pub mod gpt_6_1_terra;
+/// GPT-6 Astra Responses profile.
+pub mod gpt_6_astra;
+/// GPT-6 Luna Responses profile.
+pub mod gpt_6_luna;
+/// GPT-6 Sol Responses profile.
+pub mod gpt_6_sol;
+
+/// DeepSeek V4.1 Flash profile.
+pub mod deepseek_v4_1_flash;
+/// DeepSeek V4 Flash profile.
+pub mod deepseek_v4_flash;
+/// DeepSeek V4 Flash Vision profile.
+pub mod deepseek_v4_flash_vision_exp;
+/// DeepSeek V4 Pro profile and its public aliases.
+pub mod deepseek_v4_pro;
+/// GLM-5.2 profile.
+pub mod glm_5_2;
+/// Kimi K2.6 profile.
+pub mod kimi_k2_6;
+/// Kimi K2.8 Preview profile.
+pub mod kimi_k2_8_preview;
+/// Kimi K3 profile.
+pub mod kimi_k3;
+/// MiniMax M2.7 profile.
+pub mod minimax_m2_7;
+/// MiniMax M3 profile.
+pub mod minimax_m3;
+/// Shared helpers used by model-specific profiles.
+mod profile_support;
 
 /// A model-profile conversion failure, independent of an HTTP response format.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -177,6 +234,93 @@ impl ModelProfileRegistry {
             "glm-5.3-flash".to_owned(),
             Arc::new(glm_5_3_flash::Glm53FlashProfile),
         );
+        profiles.insert("glm-5.3".to_owned(), Arc::new(glm_5_3::Glm53Profile));
+        profiles.insert("gpt-5.5".to_owned(), Arc::new(gpt_5_5::Gpt55Profile));
+        profiles.insert("gpt-5.4".to_owned(), Arc::new(gpt_5_4::Gpt54Profile));
+        profiles.insert(
+            "gpt-5.4-mini".to_owned(),
+            Arc::new(gpt_5_4_mini::Gpt54MiniProfile),
+        );
+        profiles.insert(
+            "gpt-5.4-nano".to_owned(),
+            Arc::new(gpt_5_4_nano::Gpt54NanoProfile),
+        );
+        profiles.insert(
+            "gpt-5.3-codex".to_owned(),
+            Arc::new(gpt_5_3_codex::Gpt53CodexProfile),
+        );
+        profiles.insert(
+            "gpt-5.2-codex".to_owned(),
+            Arc::new(gpt_5_2_codex::Gpt52CodexProfile),
+        );
+        profiles.insert(
+            "gpt-5.1-codex".to_owned(),
+            Arc::new(gpt_5_1_codex::Gpt51CodexProfile),
+        );
+        profiles.insert(
+            "gpt-5.1-codex-max".to_owned(),
+            Arc::new(gpt_5_1_codex_max::Gpt51CodexMaxProfile),
+        );
+        profiles.insert(
+            "gpt-5.6-sol".to_owned(),
+            Arc::new(gpt_5_6_sol::Gpt56SolProfile),
+        );
+        profiles.insert(
+            "gpt-5.6-luna".to_owned(),
+            Arc::new(gpt_5_6_luna::Gpt56LunaProfile),
+        );
+        profiles.insert(
+            "gpt-5.6-terra".to_owned(),
+            Arc::new(gpt_5_6_terra::Gpt56TerraProfile),
+        );
+        profiles.insert(
+            "gpt-6-astra".to_owned(),
+            Arc::new(gpt_6_astra::Gpt6AstraProfile),
+        );
+        profiles.insert("gpt-6-sol".to_owned(), Arc::new(gpt_6_sol::Gpt6SolProfile));
+        profiles.insert(
+            "gpt-6-luna".to_owned(),
+            Arc::new(gpt_6_luna::Gpt6LunaProfile),
+        );
+        profiles.insert(
+            "gpt-6.1-sol".to_owned(),
+            Arc::new(gpt_6_1_sol::Gpt61SolProfile),
+        );
+        profiles.insert(
+            "gpt-6.1-terra".to_owned(),
+            Arc::new(gpt_6_1_terra::Gpt61TerraProfile),
+        );
+        profiles.insert(
+            "deepseek-v4.1-flash".to_owned(),
+            Arc::new(deepseek_v4_1_flash::DeepseekV41FlashProfile),
+        );
+        profiles.insert(
+            "deepseek-v4-flash".to_owned(),
+            Arc::new(deepseek_v4_flash::DeepseekV4FlashProfile),
+        );
+        let deepseek_v4_pro: Arc<dyn ModelProfile> =
+            Arc::new(deepseek_v4_pro::DeepseekV4ProProfile);
+        profiles.insert("deepseek-v4-pro".to_owned(), Arc::clone(&deepseek_v4_pro));
+        profiles.insert("deepseek-v4-pro-0813".to_owned(), deepseek_v4_pro);
+        profiles.insert("glm-5.2".to_owned(), Arc::new(glm_5_2::Glm52Profile));
+        profiles.insert(
+            "deepseek-v4-flash-vision-exp".to_owned(),
+            Arc::new(deepseek_v4_flash_vision_exp::DeepseekV4FlashVisionExpProfile),
+        );
+        profiles.insert("kimi-k3".to_owned(), Arc::new(kimi_k3::KimiK3Profile));
+        profiles.insert(
+            "kimi-k2.8-preview".to_owned(),
+            Arc::new(kimi_k2_8_preview::KimiK28PreviewProfile),
+        );
+        profiles.insert("kimi-k2.6".to_owned(), Arc::new(kimi_k2_6::KimiK26Profile));
+        profiles.insert(
+            "minimax-m3".to_owned(),
+            Arc::new(minimax_m3::MinimaxM3Profile),
+        );
+        profiles.insert(
+            "minimax-m2.7".to_owned(),
+            Arc::new(minimax_m2_7::MinimaxM27Profile),
+        );
         Self {
             profiles,
             default: Arc::new(DefaultModelProfile),
@@ -311,6 +455,7 @@ mod tests {
     };
     use crate::openai_types::ChatCompletionRequest;
     use crate::provider::UnifiedRequest;
+    use crate::provider::UnifiedSourceProtocol;
     use crate::serve_config::ModelBinding;
     use crate::upstreams::Upstream;
     use serde_json::json;
@@ -368,6 +513,290 @@ mod tests {
             .expect("default Responses conversion")
             .expect("registered profile falls back for Responses");
         assert_eq!(fallback.model, "deployment-model");
+    }
+
+    #[test]
+    fn builtin_registry_resolves_both_deepseek_v4_pro_public_names() {
+        let profiles = ModelProfileRegistry::default();
+        for public_model in ["deepseek-v4-pro", "deepseek-v4-pro-0813"] {
+            let request = crate::api::request_from_value(
+                &json!({
+                    "model": public_model,
+                    "messages": [{"role": "user", "content": "hello"}],
+                    "reasoning_effort": "medium"
+                }),
+                UnifiedSourceProtocol::ChatCompletions,
+            )
+            .expect("parse Chat request");
+            let binding = ModelBinding {
+                public_model: public_model.to_owned(),
+                model: public_model.to_owned(),
+                provider: "volcengine.cn".into(),
+                upstream: Upstream::VolcengineArk,
+                upstream_model: "deepseek-v4-pro-ga-260813".into(),
+                dialect: Some(Dialect::OpenAiChatCompletions),
+                label: "volcengine.cn.deepseek-v4-pro-0813".into(),
+            };
+            let converted = profiles
+                .resolve(public_model)
+                .to_openai_chat_request(&request, &binding)
+                .expect("convert profile request")
+                .expect("built-in model profile handles this public name");
+            assert_eq!(
+                converted
+                    .reasoning_effort
+                    .as_ref()
+                    .and_then(|effort| effort.as_str()),
+                Some("low")
+            );
+        }
+    }
+
+    #[test]
+    fn builtin_gpt_responses_profiles_map_effort_and_fall_back_by_binding() {
+        let profiles = ModelProfileRegistry::default();
+        let models = [
+            ("gpt-5.6-sol", true),
+            ("gpt-5.6-luna", true),
+            ("gpt-5.6-terra", true),
+            ("gpt-6-astra", false),
+            ("gpt-6-sol", true),
+            ("gpt-6-luna", true),
+            ("gpt-6.1-sol", false),
+            ("gpt-6.1-terra", true),
+        ];
+
+        for (public_model, supports_none) in models {
+            let binding = ModelBinding {
+                public_model: public_model.to_owned(),
+                model: public_model.to_owned(),
+                provider: "azure.usa".to_owned(),
+                upstream: Upstream::AzureOpenai,
+                upstream_model: public_model.to_owned(),
+                dialect: Some(Dialect::OpenAiResponses),
+                label: format!("azure.usa.{public_model}"),
+            };
+
+            for (input_effort, expected_effort) in [
+                ("minimal", "low"),
+                ("none", if supports_none { "none" } else { "low" }),
+                ("low", "low"),
+                ("medium", "medium"),
+                ("high", "high"),
+                ("xhigh", "xhigh"),
+                ("max", "max"),
+            ] {
+                let request = crate::api::request_from_value(
+                    &json!({
+                        "model": public_model,
+                        "input": "hello",
+                        "reasoning": {"effort": input_effort}
+                    }),
+                    UnifiedSourceProtocol::Responses,
+                )
+                .expect("parse Responses request");
+                let converted = profiles
+                    .resolve(public_model)
+                    .to_openai_responses_request(&request, &binding)
+                    .expect("convert GPT Responses request")
+                    .expect("registered profile converts Responses");
+                assert_eq!(
+                    converted
+                        .reasoning
+                        .as_ref()
+                        .and_then(|reasoning| reasoning.effort.as_deref()),
+                    Some(expected_effort),
+                    "unexpected effort for {public_model} from {input_effort}"
+                );
+            }
+
+            let no_effort_request = crate::api::request_from_value(
+                &json!({"model": public_model, "input": "hello"}),
+                UnifiedSourceProtocol::Responses,
+            )
+            .expect("parse Responses request without an effort");
+            let converted = profiles
+                .resolve(public_model)
+                .to_openai_responses_request(&no_effort_request, &binding)
+                .expect("convert Responses request without an effort")
+                .expect("registered profile converts Responses");
+            assert!(converted.reasoning.is_none());
+
+            let mut mismatched_upstream = binding.clone();
+            mismatched_upstream.upstream = Upstream::OpenaiCompatible;
+            let effort_request = crate::api::request_from_value(
+                &json!({
+                    "model": public_model,
+                    "input": "hello",
+                    "reasoning": {"effort": "minimal"}
+                }),
+                UnifiedSourceProtocol::Responses,
+            )
+            .expect("parse Responses request");
+            let fallback = profiles
+                .resolve(public_model)
+                .to_openai_responses_request(&effort_request, &mismatched_upstream)
+                .expect("fallback for a different upstream")
+                .expect("default Responses converter handles other upstreams");
+            assert_eq!(
+                fallback
+                    .reasoning
+                    .as_ref()
+                    .and_then(|reasoning| reasoning.effort.as_deref()),
+                Some("minimal")
+            );
+
+            let mut mismatched_dialect = binding.clone();
+            mismatched_dialect.dialect = Some(Dialect::OpenAiChatCompletions);
+            let fallback = profiles
+                .resolve(public_model)
+                .to_openai_responses_request(&effort_request, &mismatched_dialect)
+                .expect("fallback for a different dialect")
+                .expect("default Responses converter handles other dialects");
+            assert_eq!(
+                fallback
+                    .reasoning
+                    .as_ref()
+                    .and_then(|reasoning| reasoning.effort.as_deref()),
+                Some("minimal")
+            );
+        }
+    }
+
+    fn gpt_binding(public_model: &str, dialect: Dialect) -> ModelBinding {
+        ModelBinding {
+            public_model: public_model.to_owned(),
+            model: public_model.to_owned(),
+            provider: "azure.usa".to_owned(),
+            upstream: Upstream::AzureOpenai,
+            upstream_model: public_model.to_owned(),
+            dialect: Some(dialect),
+            label: format!("azure.usa.{public_model}"),
+        }
+    }
+
+    fn gpt_request(public_model: &str, dialect: Dialect, effort: Option<&str>) -> UnifiedRequest {
+        let (value, source) = match (dialect, effort) {
+            (Dialect::OpenAiChatCompletions, Some(effort)) => (
+                json!({
+                    "model": public_model,
+                    "messages": [{"role": "user", "content": "hello"}],
+                    "reasoning_effort": effort
+                }),
+                UnifiedSourceProtocol::ChatCompletions,
+            ),
+            (Dialect::OpenAiChatCompletions, None) => (
+                json!({
+                    "model": public_model,
+                    "messages": [{"role": "user", "content": "hello"}]
+                }),
+                UnifiedSourceProtocol::ChatCompletions,
+            ),
+            (Dialect::OpenAiResponses, Some(effort)) => (
+                json!({
+                    "model": public_model,
+                    "input": "hello",
+                    "reasoning": {"effort": effort}
+                }),
+                UnifiedSourceProtocol::Responses,
+            ),
+            (Dialect::OpenAiResponses, None) => (
+                json!({"model": public_model, "input": "hello"}),
+                UnifiedSourceProtocol::Responses,
+            ),
+            _ => panic!("GPT profile test requires a Chat or Responses dialect"),
+        };
+        crate::api::request_from_value(&value, source).expect("parse GPT request")
+    }
+
+    fn converted_gpt_effort(
+        profiles: &ModelProfileRegistry,
+        request: &UnifiedRequest,
+        binding: &ModelBinding,
+        dialect: Dialect,
+    ) -> Option<String> {
+        let profile = profiles.resolve(&binding.public_model);
+        match dialect {
+            Dialect::OpenAiChatCompletions => profile
+                .to_openai_chat_request(request, binding)
+                .expect("convert GPT Chat request")
+                .expect("default or model profile converts Chat")
+                .reasoning_effort
+                .as_ref()
+                .and_then(|effort| effort.as_str())
+                .map(str::to_owned),
+            Dialect::OpenAiResponses => profile
+                .to_openai_responses_request(request, binding)
+                .expect("convert GPT Responses request")
+                .expect("default or model profile converts Responses")
+                .reasoning
+                .and_then(|reasoning| reasoning.effort),
+            _ => panic!("GPT profile test requires a Chat or Responses dialect"),
+        }
+    }
+
+    #[test]
+    fn builtin_gpt_chat_and_codex_profiles_map_effort_and_respect_bindings() {
+        let profiles = ModelProfileRegistry::default();
+        let models = [
+            ("gpt-5.5", Dialect::OpenAiChatCompletions, true, true),
+            ("gpt-5.4", Dialect::OpenAiChatCompletions, true, true),
+            ("gpt-5.4-mini", Dialect::OpenAiChatCompletions, true, true),
+            ("gpt-5.4-nano", Dialect::OpenAiChatCompletions, true, true),
+            ("gpt-5.3-codex", Dialect::OpenAiResponses, false, true),
+            ("gpt-5.2-codex", Dialect::OpenAiResponses, false, true),
+            ("gpt-5.1-codex", Dialect::OpenAiResponses, true, false),
+            ("gpt-5.1-codex-max", Dialect::OpenAiResponses, true, true),
+        ];
+
+        for (public_model, dialect, supports_none, supports_xhigh) in models {
+            let binding = gpt_binding(public_model, dialect);
+            let max_effort = if supports_xhigh { "xhigh" } else { "high" };
+            for (input, expected) in [
+                ("minimal", "low"),
+                ("none", if supports_none { "none" } else { "low" }),
+                ("low", "low"),
+                ("medium", "medium"),
+                ("high", "high"),
+                ("xhigh", if supports_xhigh { "xhigh" } else { "high" }),
+                ("max", max_effort),
+            ] {
+                let request = gpt_request(public_model, dialect, Some(input));
+                assert_eq!(
+                    converted_gpt_effort(&profiles, &request, &binding, dialect).as_deref(),
+                    Some(expected),
+                    "unexpected effort for {public_model} from {input}"
+                );
+            }
+
+            let request = gpt_request(public_model, dialect, None);
+            assert_eq!(
+                converted_gpt_effort(&profiles, &request, &binding, dialect),
+                None,
+                "omitted effort must remain unset for {public_model}"
+            );
+
+            let request = gpt_request(public_model, dialect, Some("minimal"));
+            let mut other_upstream = binding.clone();
+            other_upstream.upstream = Upstream::OpenaiCompatible;
+            assert_eq!(
+                converted_gpt_effort(&profiles, &request, &other_upstream, dialect).as_deref(),
+                Some("minimal"),
+                "other upstream must use default conversion for {public_model}"
+            );
+
+            let mut other_dialect = binding.clone();
+            other_dialect.dialect = Some(match dialect {
+                Dialect::OpenAiChatCompletions => Dialect::OpenAiResponses,
+                Dialect::OpenAiResponses => Dialect::OpenAiChatCompletions,
+                _ => unreachable!(),
+            });
+            assert_eq!(
+                converted_gpt_effort(&profiles, &request, &other_dialect, dialect).as_deref(),
+                Some("minimal"),
+                "other dialect must use default conversion for {public_model}"
+            );
+        }
     }
 
     struct BedrockAliasProfile;
