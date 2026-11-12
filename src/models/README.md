@@ -8,6 +8,7 @@ The registry selects a profile by the exact `ModelBinding.public_model`. A profi
 
 - Add a profile only for evidence-backed behavior specific to a model. Put API-, dialect-, or upstream-wide behavior in its corresponding layer; do not infer capabilities or add empty profiles.
 - Keep one model's behavior in one model-named file. Register exact public model names; aliases may share an implementation when their behavior is identical.
+- Models whose only behavior is effort normalization declare a shared `EffortProfile` constant instead of duplicating the conversion.
 - Check the binding's upstream and dialect. Return `None` for bindings the profile does not handle.
 - Prefer the default dialect converter and make the smallest necessary changes. Preserve unrelated fields, extensions, and caller intent; do not inject unspecified options without a documented reason.
 - Report documented constraints clearly. Do not silently discard request semantics.

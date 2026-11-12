@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use crate::dialects::Dialect;
 use crate::dialects::openai_chat_completions::mapper::request_to_chat;
 use crate::dialects::openai_responses::mapper::ir_to_responses_request;
-use crate::models::{ModelProfileError, from_dialect_conversion_error};
+use crate::models::{ModelProfile, ModelProfileError, from_dialect_conversion_error};
 use crate::openai_responses_types::{ResponsesReasoningConfig, ResponsesRequest};
 use crate::openai_types::ChatCompletionRequest;
 use crate::provider::{
@@ -76,6 +76,72 @@ pub(super) fn to_responses_request_with_supported_effort(
             .effort = Some(value.to_owned());
     }
     Ok(responses_request)
+}
+
+/// A profile whose only request behavior is effort normalization.
+#[derive(Clone, Copy)]
+pub(super) struct EffortProfile {
+    endpoint: EffortEndpoint,
+    upstream: Upstream,
+    supported: &'static [ReasoningEffortLevel],
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum EffortEndpoint {
+    Chat,
+    Responses,
+}
+
+impl EffortProfile {
+    /// Profile for a model served through Chat Completions.
+    pub(super) const fn chat(
+        upstream: Upstream,
+        supported: &'static [ReasoningEffortLevel],
+    ) -> Self {
+        Self {
+            endpoint: EffortEndpoint::Chat,
+            upstream,
+            supported,
+        }
+    }
+
+    /// Profile for a model served through the Responses API.
+    pub(super) const fn responses(
+        upstream: Upstream,
+        supported: &'static [ReasoningEffortLevel],
+    ) -> Self {
+        Self {
+            endpoint: EffortEndpoint::Responses,
+            upstream,
+            supported,
+        }
+    }
+}
+
+impl ModelProfile for EffortProfile {
+    fn to_openai_chat_request(
+        &self,
+        request: &UnifiedRequest,
+        binding: &ModelBinding,
+    ) -> Result<Option<ChatCompletionRequest>, ModelProfileError> {
+        if self.endpoint != EffortEndpoint::Chat || !is_chat_binding(binding, self.upstream) {
+            return Ok(None);
+        }
+        to_chat_request_with_supported_effort(request, self.supported).map(Some)
+    }
+
+    fn to_openai_responses_request(
+        &self,
+        request: &UnifiedRequest,
+        binding: &ModelBinding,
+    ) -> Result<Option<ResponsesRequest>, ModelProfileError> {
+        if self.endpoint != EffortEndpoint::Responses
+            || !is_responses_binding(binding, self.upstream)
+        {
+            return Ok(None);
+        }
+        to_responses_request_with_supported_effort(request, binding, self.supported).map(Some)
+    }
 }
 
 /// Resolve the effort a request should send for a model with `supported` levels.

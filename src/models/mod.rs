@@ -235,61 +235,25 @@ impl ModelProfileRegistry {
             Arc::new(glm_5_3_flash::Glm53FlashProfile),
         );
         profiles.insert("glm-5.3".to_owned(), Arc::new(glm_5_3::Glm53Profile));
-        profiles.insert("gpt-5.5".to_owned(), Arc::new(gpt_5_5::Gpt55Profile));
-        profiles.insert("gpt-5.4".to_owned(), Arc::new(gpt_5_4::Gpt54Profile));
-        profiles.insert(
-            "gpt-5.4-mini".to_owned(),
-            Arc::new(gpt_5_4_mini::Gpt54MiniProfile),
-        );
-        profiles.insert(
-            "gpt-5.4-nano".to_owned(),
-            Arc::new(gpt_5_4_nano::Gpt54NanoProfile),
-        );
-        profiles.insert(
-            "gpt-5.3-codex".to_owned(),
-            Arc::new(gpt_5_3_codex::Gpt53CodexProfile),
-        );
-        profiles.insert(
-            "gpt-5.2-codex".to_owned(),
-            Arc::new(gpt_5_2_codex::Gpt52CodexProfile),
-        );
-        profiles.insert(
-            "gpt-5.1-codex".to_owned(),
-            Arc::new(gpt_5_1_codex::Gpt51CodexProfile),
-        );
+        profiles.insert("gpt-5.5".to_owned(), Arc::new(gpt_5_5::PROFILE));
+        profiles.insert("gpt-5.4".to_owned(), Arc::new(gpt_5_4::PROFILE));
+        profiles.insert("gpt-5.4-mini".to_owned(), Arc::new(gpt_5_4_mini::PROFILE));
+        profiles.insert("gpt-5.4-nano".to_owned(), Arc::new(gpt_5_4_nano::PROFILE));
+        profiles.insert("gpt-5.3-codex".to_owned(), Arc::new(gpt_5_3_codex::PROFILE));
+        profiles.insert("gpt-5.2-codex".to_owned(), Arc::new(gpt_5_2_codex::PROFILE));
+        profiles.insert("gpt-5.1-codex".to_owned(), Arc::new(gpt_5_1_codex::PROFILE));
         profiles.insert(
             "gpt-5.1-codex-max".to_owned(),
-            Arc::new(gpt_5_1_codex_max::Gpt51CodexMaxProfile),
+            Arc::new(gpt_5_1_codex_max::PROFILE),
         );
-        profiles.insert(
-            "gpt-5.6-sol".to_owned(),
-            Arc::new(gpt_5_6_sol::Gpt56SolProfile),
-        );
-        profiles.insert(
-            "gpt-5.6-luna".to_owned(),
-            Arc::new(gpt_5_6_luna::Gpt56LunaProfile),
-        );
-        profiles.insert(
-            "gpt-5.6-terra".to_owned(),
-            Arc::new(gpt_5_6_terra::Gpt56TerraProfile),
-        );
-        profiles.insert(
-            "gpt-6-astra".to_owned(),
-            Arc::new(gpt_6_astra::Gpt6AstraProfile),
-        );
-        profiles.insert("gpt-6-sol".to_owned(), Arc::new(gpt_6_sol::Gpt6SolProfile));
-        profiles.insert(
-            "gpt-6-luna".to_owned(),
-            Arc::new(gpt_6_luna::Gpt6LunaProfile),
-        );
-        profiles.insert(
-            "gpt-6.1-sol".to_owned(),
-            Arc::new(gpt_6_1_sol::Gpt61SolProfile),
-        );
-        profiles.insert(
-            "gpt-6.1-terra".to_owned(),
-            Arc::new(gpt_6_1_terra::Gpt61TerraProfile),
-        );
+        profiles.insert("gpt-5.6-sol".to_owned(), Arc::new(gpt_5_6_sol::PROFILE));
+        profiles.insert("gpt-5.6-luna".to_owned(), Arc::new(gpt_5_6_luna::PROFILE));
+        profiles.insert("gpt-5.6-terra".to_owned(), Arc::new(gpt_5_6_terra::PROFILE));
+        profiles.insert("gpt-6-astra".to_owned(), Arc::new(gpt_6_astra::PROFILE));
+        profiles.insert("gpt-6-sol".to_owned(), Arc::new(gpt_6_sol::PROFILE));
+        profiles.insert("gpt-6-luna".to_owned(), Arc::new(gpt_6_luna::PROFILE));
+        profiles.insert("gpt-6.1-sol".to_owned(), Arc::new(gpt_6_1_sol::PROFILE));
+        profiles.insert("gpt-6.1-terra".to_owned(), Arc::new(gpt_6_1_terra::PROFILE));
         profiles.insert(
             "deepseek-v4.1-flash".to_owned(),
             Arc::new(deepseek_v4_1_flash::DeepseekV41FlashProfile),
