@@ -31,6 +31,9 @@ rule:
 - A model that does not accept `reasoning_effort` at all reports an error instead
   of being silently adjusted.
 
+Every rewrite is logged at `debug` with the model and the requested/forwarded
+values so cost or quality anomalies can be traced without changing the response.
+
 Derive supported sets from the model's documentation; do not infer a set from a
 sibling model. Keep exceptions documented next to the profile and in this table.
 

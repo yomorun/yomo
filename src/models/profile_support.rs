@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use log::debug;
 use serde_json::{Value, json};
 
 use crate::dialects::Dialect;
@@ -163,7 +164,11 @@ pub(super) fn supported_effort(
     if supported.contains(requested) {
         return Some(ReasoningEffort::Named(*requested));
     }
-    nearest_effort(*requested, supported).map(|nearest| ReasoningEffort::from(effort_name(nearest)))
+    nearest_effort(*requested, supported).map(|nearest| {
+        let forwarded = ReasoningEffort::from(effort_name(nearest));
+        log_rewritten_effort(request, effort, &forwarded);
+        forwarded
+    })
 }
 
 /// Resolve the effort after applying a model's documented spellings.
@@ -182,9 +187,26 @@ pub(super) fn aliased_supported_effort(
         .and_then(ReasoningEffort::as_str)
         && let Some((_, level)) = aliases.iter().find(|(alias, _)| *alias == value)
     {
-        return Some(ReasoningEffort::Named(*level));
+        let forwarded = ReasoningEffort::Named(*level);
+        if let Some(requested) = request.options.reasoning_effort.as_ref() {
+            log_rewritten_effort(request, requested, &forwarded);
+        }
+        return Some(forwarded);
     }
     supported_effort(request, supported)
+}
+
+fn log_rewritten_effort(
+    request: &UnifiedRequest,
+    requested: &ReasoningEffort,
+    forwarded: &ReasoningEffort,
+) {
+    if requested != forwarded {
+        debug!(
+            "reasoning_effort normalized for model `{}`: {requested:?} -> {forwarded:?}",
+            request.model
+        );
+    }
 }
 
 fn nearest_effort(
