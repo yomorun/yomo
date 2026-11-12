@@ -422,6 +422,7 @@ mod tests {
     use crate::provider::UnifiedSourceProtocol;
     use crate::serve_config::ModelBinding;
     use crate::upstreams::Upstream;
+    use serde_json::Value;
     use serde_json::json;
 
     struct AliasProfile;
@@ -852,5 +853,201 @@ mod tests {
             Some("signature-from-default-converter")
         );
         assert!(dialect_request.generation_config.is_some());
+    }
+
+    enum Expected {
+        Effort(&'static str),
+        Rejected,
+    }
+
+    fn chat_binding(public_model: &str, upstream: Upstream) -> ModelBinding {
+        ModelBinding {
+            public_model: public_model.to_owned(),
+            model: public_model.to_owned(),
+            provider: "test".to_owned(),
+            upstream,
+            upstream_model: public_model.to_owned(),
+            dialect: Some(Dialect::OpenAiChatCompletions),
+            label: format!("test.{public_model}"),
+        }
+    }
+
+    #[test]
+    fn builtin_chat_profiles_are_registered_and_scope_their_bindings() {
+        use super::deepseek_v4_1_flash::DeepseekV41FlashProfile;
+        use super::deepseek_v4_flash::DeepseekV4FlashProfile;
+        use super::deepseek_v4_flash_vision_exp::DeepseekV4FlashVisionExpProfile;
+        use super::deepseek_v4_pro::DeepseekV4ProProfile;
+        use super::glm_5_2::Glm52Profile;
+        use super::kimi_k2_6::KimiK26Profile;
+        use super::kimi_k2_8_preview::KimiK28PreviewProfile;
+        use super::kimi_k3::KimiK3Profile;
+        use super::minimax_m2_7::MinimaxM27Profile;
+        use super::minimax_m3::MinimaxM3Profile;
+
+        let profiles = ModelProfileRegistry::default();
+        let cases: Vec<(
+            &str,
+            Arc<dyn ModelProfile>,
+            Upstream,
+            Upstream,
+            Value,
+            Expected,
+        )> = vec![
+            (
+                "glm-5.2",
+                Arc::new(Glm52Profile),
+                Upstream::Tokenhub,
+                Upstream::VolcengineArk,
+                json!({"reasoning_effort": "medium"}),
+                Expected::Effort("high"),
+            ),
+            (
+                "deepseek-v4-flash",
+                Arc::new(DeepseekV4FlashProfile),
+                Upstream::VolcengineArk,
+                Upstream::Tokenhub,
+                json!({"reasoning_effort": "medium"}),
+                Expected::Effort("high"),
+            ),
+            (
+                "deepseek-v4-pro",
+                Arc::new(DeepseekV4ProProfile),
+                Upstream::VolcengineArk,
+                Upstream::Tokenhub,
+                json!({"reasoning_effort": "medium"}),
+                Expected::Effort("high"),
+            ),
+            (
+                "deepseek-v4-pro-0813",
+                Arc::new(DeepseekV4ProProfile),
+                Upstream::VolcengineArk,
+                Upstream::Tokenhub,
+                json!({"reasoning_effort": "medium"}),
+                Expected::Effort("high"),
+            ),
+            (
+                "deepseek-v4.1-flash",
+                Arc::new(DeepseekV41FlashProfile),
+                Upstream::VolcengineArk,
+                Upstream::Tokenhub,
+                json!({"reasoning_effort": "xhigh"}),
+                Expected::Effort("max"),
+            ),
+            (
+                "deepseek-v4-flash-vision-exp",
+                Arc::new(DeepseekV4FlashVisionExpProfile),
+                Upstream::Tokenhub,
+                Upstream::VolcengineArk,
+                json!({"reasoning_effort": "minimal"}),
+                Expected::Effort("low"),
+            ),
+            (
+                "kimi-k2.6",
+                Arc::new(KimiK26Profile),
+                Upstream::Tokenhub,
+                Upstream::VolcengineArk,
+                json!({"reasoning_effort": "high"}),
+                Expected::Rejected,
+            ),
+            (
+                "kimi-k2.8-preview",
+                Arc::new(KimiK28PreviewProfile),
+                Upstream::Tokenhub,
+                Upstream::VolcengineArk,
+                json!({"thinking": {"type": "enabled"}}),
+                Expected::Rejected,
+            ),
+            (
+                "kimi-k3",
+                Arc::new(KimiK3Profile),
+                Upstream::Tokenhub,
+                Upstream::VolcengineArk,
+                json!({"thinking": {"type": "enabled"}}),
+                Expected::Rejected,
+            ),
+            (
+                "minimax-m2.7",
+                Arc::new(MinimaxM27Profile),
+                Upstream::Tokenhub,
+                Upstream::VolcengineArk,
+                json!({"thinking": {"type": "disabled"}}),
+                Expected::Rejected,
+            ),
+            (
+                "minimax-m3",
+                Arc::new(MinimaxM3Profile),
+                Upstream::Tokenhub,
+                Upstream::VolcengineArk,
+                json!({"thinking": {"type": "enabled"}}),
+                Expected::Rejected,
+            ),
+        ];
+
+        for (model, profile, handled, foreign, probe, expected) in cases {
+            let mut value = json!({
+                "model": model,
+                "messages": [{"role": "user", "content": "hello"}]
+            });
+            let Value::Object(probe) = probe else {
+                panic!("{model} probe must be an object");
+            };
+            value
+                .as_object_mut()
+                .expect("base request must be an object")
+                .extend(probe);
+            let request =
+                crate::api::request_from_value(&value, UnifiedSourceProtocol::ChatCompletions)
+                    .expect("parse probe request");
+
+            let handled_binding = chat_binding(model, handled);
+            let direct = profile.to_openai_chat_request(&request, &handled_binding);
+            let resolved = profiles
+                .resolve(model)
+                .to_openai_chat_request(&request, &handled_binding);
+
+            match expected {
+                Expected::Effort(expected_effort) => {
+                    let direct = direct
+                        .expect("direct profile conversion")
+                        .expect("profile handles its binding");
+                    let resolved = resolved
+                        .expect("registered profile conversion")
+                        .expect("registered profile handles its binding");
+                    assert_eq!(
+                        direct
+                            .reasoning_effort
+                            .as_ref()
+                            .and_then(|effort| effort.as_str()),
+                        Some(expected_effort),
+                        "{model} should normalize the probe effort"
+                    );
+                    assert_eq!(
+                        serde_json::to_value(&direct).expect("serialize direct request"),
+                        serde_json::to_value(&resolved).expect("serialize resolved request"),
+                        "{model} registry entry does not use the expected profile"
+                    );
+                }
+                Expected::Rejected => {
+                    assert!(
+                        direct.is_err(),
+                        "{model} profile must reject the probe request"
+                    );
+                    assert!(
+                        resolved.is_err(),
+                        "{model} registry entry must reject the probe request"
+                    );
+                }
+            }
+
+            let foreign_binding = chat_binding(model, foreign);
+            assert!(
+                profile
+                    .to_openai_chat_request(&request, &foreign_binding)
+                    .expect("foreign binding conversion")
+                    .is_none(),
+                "{model} profile must not claim a foreign upstream"
+            );
+        }
     }
 }
