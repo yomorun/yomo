@@ -12,7 +12,7 @@ use crate::serve_config::ModelBinding;
 use crate::upstreams::Upstream;
 
 use super::profile_support::{
-    is_chat_binding, map_reasoning_effort, preserve_raw_thinking, to_chat_request,
+    is_chat_binding, preserve_raw_thinking, to_chat_request_with_mapped_effort,
     unsupported_capability, validate_thinking_modes,
 };
 
@@ -29,20 +29,19 @@ impl ModelProfile for Glm52Profile {
             return Ok(None);
         }
 
-        let normalized = map_reasoning_effort(request, map_glm52_effort);
         validate_thinking_modes(
-            normalized.options.thinking.as_ref(),
+            request.options.thinking.as_ref(),
             &["enabled", "disabled"],
             "GLM-5.2",
         )?;
-        if has_non_text_content(&normalized) {
+        if has_non_text_content(request) {
             return Err(unsupported_capability(
                 "GLM-5.2 accepts text-only input",
                 "messages",
             ));
         }
-        if normalized.options.audio.is_some()
-            || normalized
+        if request.options.audio.is_some()
+            || request
                 .options
                 .modalities
                 .as_ref()
@@ -58,8 +57,8 @@ impl ModelProfile for Glm52Profile {
             ));
         }
 
-        let mut chat_request = to_chat_request(&normalized)?;
-        preserve_raw_thinking(&normalized, &mut chat_request);
+        let mut chat_request = to_chat_request_with_mapped_effort(request, map_glm52_effort)?;
+        preserve_raw_thinking(request, &mut chat_request);
         Ok(Some(chat_request))
     }
 }

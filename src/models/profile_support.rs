@@ -1,10 +1,12 @@
+use std::collections::HashMap;
+
 use serde_json::{Value, json};
 
 use crate::dialects::Dialect;
 use crate::dialects::openai_chat_completions::mapper::request_to_chat;
 use crate::dialects::openai_responses::mapper::ir_to_responses_request;
 use crate::models::{ModelProfileError, from_dialect_conversion_error};
-use crate::openai_responses_types::ResponsesRequest;
+use crate::openai_responses_types::{ResponsesReasoningConfig, ResponsesRequest};
 use crate::openai_types::ChatCompletionRequest;
 use crate::provider::{ReasoningEffort, ReasoningEffortLevel, UnifiedRequest};
 use crate::serve_config::ModelBinding;
@@ -24,6 +26,36 @@ pub(super) fn to_chat_request(
     request_to_chat(request).map_err(from_dialect_conversion_error)
 }
 
+pub(super) fn to_chat_request_with_effort(
+    request: &UnifiedRequest,
+    effort: Option<ReasoningEffort>,
+) -> Result<ChatCompletionRequest, ModelProfileError> {
+    let mut chat_request = to_chat_request(request)?;
+    if let Some(effort) = effort {
+        chat_request.reasoning_effort = Some(effort);
+    }
+    Ok(chat_request)
+}
+
+/// Convert to Chat and apply a model-specific `reasoning_effort` mapping.
+pub(super) fn to_chat_request_with_mapped_effort<F>(
+    request: &UnifiedRequest,
+    map: F,
+) -> Result<ChatCompletionRequest, ModelProfileError>
+where
+    F: Fn(&str) -> Option<&'static str>,
+{
+    to_chat_request_with_effort(request, mapped_effort(request, map))
+}
+
+/// Convert to Chat and map the effort onto the model's supported levels.
+pub(super) fn to_chat_request_with_supported_effort(
+    request: &UnifiedRequest,
+    supported: &[ReasoningEffortLevel],
+) -> Result<ChatCompletionRequest, ModelProfileError> {
+    to_chat_request_with_effort(request, supported_effort(request, supported))
+}
+
 pub(super) fn to_responses_request(
     request: &UnifiedRequest,
     binding: &ModelBinding,
@@ -31,35 +63,58 @@ pub(super) fn to_responses_request(
     ir_to_responses_request(request, &binding.upstream_model).map_err(from_dialect_conversion_error)
 }
 
-pub(super) fn map_reasoning_effort<F>(request: &UnifiedRequest, map: F) -> UnifiedRequest
+/// Convert to Responses and map the effort onto the model's supported levels.
+pub(super) fn to_responses_request_with_supported_effort(
+    request: &UnifiedRequest,
+    binding: &ModelBinding,
+    supported: &[ReasoningEffortLevel],
+) -> Result<ResponsesRequest, ModelProfileError> {
+    let mut responses_request = to_responses_request(request, binding)?;
+    if let Some(effort) = supported_effort(request, supported)
+        && let Some(value) = effort.as_str()
+    {
+        responses_request
+            .reasoning
+            .get_or_insert_with(|| ResponsesReasoningConfig {
+                effort: None,
+                summary: None,
+                extra: HashMap::new(),
+            })
+            .effort = Some(value.to_owned());
+    }
+    Ok(responses_request)
+}
+
+/// Resolve the effort a request should send after applying `map`.
+///
+/// Returns `None` when the request has no effort, otherwise the mapped value or
+/// the original value when `map` leaves it unchanged, without copying the request.
+pub(super) fn mapped_effort<F>(request: &UnifiedRequest, map: F) -> Option<ReasoningEffort>
 where
     F: Fn(&str) -> Option<&'static str>,
 {
-    let mut normalized = request.clone();
-    if let Some(effort) = request.options.reasoning_effort.as_ref()
-        && let Some(value) = effort.as_str()
-        && let Some(mapped) = map(value)
-    {
-        normalized.options.reasoning_effort = Some(ReasoningEffort::from(mapped));
-    }
-    normalized
+    let effort = request.options.reasoning_effort.as_ref()?;
+    Some(match effort.as_str() {
+        Some(value) => map(value)
+            .map(ReasoningEffort::from)
+            .unwrap_or_else(|| effort.clone()),
+        None => effort.clone(),
+    })
 }
 
-pub(super) fn map_effort_to_supported(
+/// Resolve the effort a request should send after mapping onto `supported` levels.
+pub(super) fn supported_effort(
     request: &UnifiedRequest,
     supported: &[ReasoningEffortLevel],
-) -> UnifiedRequest {
-    let mut normalized = request.clone();
-    let Some(ReasoningEffort::Named(requested)) = request.options.reasoning_effort.as_ref() else {
-        return normalized;
+) -> Option<ReasoningEffort> {
+    let effort = request.options.reasoning_effort.as_ref()?;
+    let ReasoningEffort::Named(requested) = effort else {
+        return Some(effort.clone());
     };
     if supported.contains(requested) {
-        return normalized;
+        return Some(ReasoningEffort::Named(*requested));
     }
-    if let Some(nearest) = nearest_effort(*requested, supported) {
-        normalized.options.reasoning_effort = Some(ReasoningEffort::from(effort_name(nearest)));
-    }
-    normalized
+    nearest_effort(*requested, supported).map(|nearest| ReasoningEffort::from(effort_name(nearest)))
 }
 
 fn nearest_effort(
@@ -171,10 +226,10 @@ pub(super) fn validate_thinking_modes(
 mod tests {
     use crate::provider::{ReasoningEffort, ReasoningEffortLevel, UnifiedRequest};
 
-    use super::map_effort_to_supported;
+    use super::{mapped_effort, supported_effort};
 
     #[test]
-    fn maps_unsupported_named_effort_to_nearest_and_breaks_ties_upward() {
+    fn supported_effort_maps_unsupported_names_to_nearest_and_breaks_ties_upward() {
         let supported = [
             ReasoningEffortLevel::None,
             ReasoningEffortLevel::Low,
@@ -186,15 +241,8 @@ mod tests {
         let mut request = UnifiedRequest::default();
         request.options.reasoning_effort = Some("minimal".into());
 
-        let normalized = map_effort_to_supported(&request, &supported);
-        assert_eq!(
-            normalized
-                .options
-                .reasoning_effort
-                .as_ref()
-                .and_then(ReasoningEffort::as_str),
-            Some("low")
-        );
+        let effort = supported_effort(&request, &supported).expect("effort present");
+        assert_eq!(effort.as_str(), Some("low"));
     }
 
     #[test]
@@ -202,21 +250,31 @@ mod tests {
         let supported = [ReasoningEffortLevel::Low, ReasoningEffortLevel::High];
         let mut request = UnifiedRequest::default();
         request.options.reasoning_effort = Some("provider-specific".into());
-        let normalized = map_effort_to_supported(&request, &supported);
-        assert_eq!(
-            normalized
-                .options
-                .reasoning_effort
-                .as_ref()
-                .and_then(ReasoningEffort::as_str),
-            Some("provider-specific")
-        );
+        let effort = supported_effort(&request, &supported).expect("effort present");
+        assert_eq!(effort.as_str(), Some("provider-specific"));
 
         request.options.reasoning_effort = Some(ReasoningEffort::Numeric(7.into()));
-        let normalized = map_effort_to_supported(&request, &supported);
         assert_eq!(
-            normalized.options.reasoning_effort,
+            supported_effort(&request, &supported),
             Some(ReasoningEffort::Numeric(7.into()))
+        );
+    }
+
+    #[test]
+    fn mapped_effort_leaves_absent_and_unlisted_values_unchanged() {
+        let request = UnifiedRequest::default();
+        assert_eq!(mapped_effort(&request, |_| Some("high")), None);
+
+        let mut request = UnifiedRequest::default();
+        request.options.reasoning_effort = Some("vendor".into());
+        assert_eq!(
+            mapped_effort(&request, |_| None).and_then(|effort| effort.as_str().map(str::to_owned)),
+            Some("vendor".to_owned())
+        );
+        assert_eq!(
+            mapped_effort(&request, |value| (value == "vendor").then_some("high"))
+                .and_then(|effort| effort.as_str().map(str::to_owned)),
+            Some("high".to_owned())
         );
     }
 }

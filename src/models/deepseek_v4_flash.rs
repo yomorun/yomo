@@ -9,7 +9,7 @@ use crate::serve_config::ModelBinding;
 use crate::upstreams::Upstream;
 
 use super::profile_support::{
-    is_chat_binding, map_reasoning_effort, preserve_raw_thinking, to_chat_request,
+    is_chat_binding, preserve_raw_thinking, to_chat_request_with_mapped_effort,
     validate_thinking_modes,
 };
 
@@ -26,14 +26,13 @@ impl ModelProfile for DeepseekV4FlashProfile {
             return Ok(None);
         }
 
-        let normalized = map_reasoning_effort(request, map_v4_effort);
         validate_thinking_modes(
-            normalized.options.thinking.as_ref(),
+            request.options.thinking.as_ref(),
             &["enabled", "disabled"],
             "DeepSeek V4 Flash",
         )?;
-        let mut chat_request = to_chat_request(&normalized)?;
-        preserve_raw_thinking(&normalized, &mut chat_request);
+        let mut chat_request = to_chat_request_with_mapped_effort(request, map_v4_effort)?;
+        preserve_raw_thinking(request, &mut chat_request);
         Ok(Some(chat_request))
     }
 }

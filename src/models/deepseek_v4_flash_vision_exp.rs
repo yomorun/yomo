@@ -11,8 +11,8 @@ use crate::upstreams::Upstream;
 use serde_json::json;
 
 use super::profile_support::{
-    is_chat_binding, map_reasoning_effort, preserve_raw_thinking, to_chat_request,
-    unsupported_capability, validate_thinking_modes,
+    is_chat_binding, mapped_effort, preserve_raw_thinking, to_chat_request, unsupported_capability,
+    validate_thinking_modes,
 };
 
 /// DeepSeek V4 Flash Vision profile for its exact public model name.
@@ -28,38 +28,31 @@ impl ModelProfile for DeepseekV4FlashVisionExpProfile {
             return Ok(None);
         }
 
-        let mut normalized = map_reasoning_effort(request, map_deepseek_v4_effort);
-        if normalized
-            .options
-            .reasoning_effort
-            .as_ref()
-            .and_then(|effort| effort.as_str())
-            == Some("none")
-        {
-            normalized.options.reasoning_effort = None;
-            if normalized.options.thinking.is_none() {
-                normalized.options.thinking = Some(json!({"type":"disabled"}));
-            }
-        } else if normalized
-            .options
-            .reasoning_effort
-            .as_ref()
-            .and_then(|effort| effort.as_str())
-            == Some("minimal")
-        {
+        let effort = mapped_effort(request, map_deepseek_v4_effort);
+        if effort.as_ref().and_then(|effort| effort.as_str()) == Some("minimal") {
             return Err(unsupported_capability(
                 "DeepSeek V4 does not document `minimal`; use `low`, `high`, `max`, or thinking.type",
                 "reasoning_effort",
             ));
         }
-
         validate_thinking_modes(
-            normalized.options.thinking.as_ref(),
+            request.options.thinking.as_ref(),
             &["enabled", "disabled"],
             "DeepSeek V4 Flash Vision",
         )?;
-        let mut chat_request = to_chat_request(&normalized)?;
-        preserve_raw_thinking(&normalized, &mut chat_request);
+        let mut chat_request = to_chat_request(request)?;
+        preserve_raw_thinking(request, &mut chat_request);
+        if effort.as_ref().and_then(|effort| effort.as_str()) == Some("none") {
+            chat_request.reasoning_effort = None;
+            if request.options.thinking.is_none() {
+                chat_request.thinking = None;
+                chat_request
+                    .extra
+                    .insert("thinking".to_owned(), json!({"type": "disabled"}));
+            }
+        } else if let Some(effort) = effort {
+            chat_request.reasoning_effort = Some(effort);
+        }
         Ok(Some(chat_request))
     }
 }

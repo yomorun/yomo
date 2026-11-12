@@ -8,7 +8,7 @@ use crate::provider::{ReasoningEffortLevel, UnifiedRequest};
 use crate::serve_config::ModelBinding;
 use crate::upstreams::Upstream;
 
-use super::profile_support::{is_chat_binding, map_effort_to_supported, to_chat_request};
+use super::profile_support::{is_chat_binding, to_chat_request_with_supported_effort};
 
 const SUPPORTED_EFFORTS: &[ReasoningEffortLevel] = &[
     ReasoningEffortLevel::None,
@@ -30,7 +30,6 @@ impl ModelProfile for Gpt54MiniProfile {
         if !is_chat_binding(binding, Upstream::AzureOpenai) {
             return Ok(None);
         }
-        let normalized = map_effort_to_supported(request, SUPPORTED_EFFORTS);
-        to_chat_request(&normalized).map(Some)
+        to_chat_request_with_supported_effort(request, SUPPORTED_EFFORTS).map(Some)
     }
 }

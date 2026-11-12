@@ -8,7 +8,7 @@ use crate::provider::{ReasoningEffortLevel, UnifiedRequest};
 use crate::serve_config::ModelBinding;
 use crate::upstreams::Upstream;
 
-use super::profile_support::{is_responses_binding, map_effort_to_supported, to_responses_request};
+use super::profile_support::{is_responses_binding, to_responses_request_with_supported_effort};
 
 const SUPPORTED_EFFORTS: &[ReasoningEffortLevel] = &[
     ReasoningEffortLevel::None,
@@ -31,7 +31,6 @@ impl ModelProfile for Gpt56SolProfile {
         if !is_responses_binding(binding, Upstream::AzureOpenai) {
             return Ok(None);
         }
-        let normalized = map_effort_to_supported(request, SUPPORTED_EFFORTS);
-        to_responses_request(&normalized, binding).map(Some)
+        to_responses_request_with_supported_effort(request, binding, SUPPORTED_EFFORTS).map(Some)
     }
 }
