@@ -5,16 +5,23 @@
 use crate::models::{ModelProfile, ModelProfileError};
 use crate::openai_types::ChatCompletionRequest;
 use crate::provider::{
-    UnifiedContentPart, UnifiedContentPartKind, UnifiedInputItemKind, UnifiedRequest,
-    UnifiedToolOutput,
+    ReasoningEffortLevel, UnifiedContentPart, UnifiedContentPartKind, UnifiedInputItemKind,
+    UnifiedRequest, UnifiedToolOutput,
 };
 use crate::serve_config::ModelBinding;
 use crate::upstreams::Upstream;
 
 use super::profile_support::{
-    is_chat_binding, preserve_raw_thinking, set_top_k_field, to_chat_request_with_mapped_effort,
+    is_chat_binding, preserve_raw_thinking, set_top_k_field, to_chat_request_with_supported_effort,
     unsupported_capability, validate_thinking_modes,
 };
+
+/// GLM-5.2 documents `none`, `high`, and `max` reasoning effort.
+const SUPPORTED_EFFORTS: &[ReasoningEffortLevel] = &[
+    ReasoningEffortLevel::None,
+    ReasoningEffortLevel::High,
+    ReasoningEffortLevel::Max,
+];
 
 /// GLM-5.2 profile for its exact public model name.
 pub struct Glm52Profile;
@@ -57,19 +64,10 @@ impl ModelProfile for Glm52Profile {
             ));
         }
 
-        let mut chat_request = to_chat_request_with_mapped_effort(request, map_glm52_effort)?;
+        let mut chat_request = to_chat_request_with_supported_effort(request, SUPPORTED_EFFORTS)?;
         preserve_raw_thinking(request, &mut chat_request);
         set_top_k_field(&mut chat_request, request.options.top_k);
         Ok(Some(chat_request))
-    }
-}
-
-fn map_glm52_effort(value: &str) -> Option<&'static str> {
-    match value {
-        "minimal" => Some("none"),
-        "low" | "medium" => Some("high"),
-        "xhigh" => Some("max"),
-        _ => None,
     }
 }
 
@@ -140,10 +138,13 @@ mod tests {
     #[test]
     fn maps_glm52_effort_values_without_changing_unlisted_values() {
         for (input, expected) in [
+            ("none", "none"),
+            ("minimal", "none"),
             ("low", "high"),
             ("medium", "high"),
+            ("high", "high"),
             ("xhigh", "max"),
-            ("none", "none"),
+            ("max", "max"),
         ] {
             let converted = convert(&json!({
                 "model":"glm-5.2",

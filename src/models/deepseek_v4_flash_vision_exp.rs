@@ -4,16 +4,24 @@
 
 use crate::models::{ModelProfile, ModelProfileError};
 use crate::openai_types::ChatCompletionRequest;
-use crate::provider::UnifiedRequest;
+use crate::provider::{ReasoningEffort, ReasoningEffortLevel, UnifiedRequest};
 use crate::serve_config::ModelBinding;
 use crate::upstreams::Upstream;
 
 use serde_json::json;
 
 use super::profile_support::{
-    is_chat_binding, mapped_effort, preserve_raw_thinking, to_chat_request, unsupported_capability,
+    is_chat_binding, preserve_raw_thinking, supported_effort, to_chat_request_with_effort,
     validate_thinking_modes,
 };
+
+/// DeepSeek V4 documents `none`, `low`, `high`, and `max` reasoning effort.
+const SUPPORTED_EFFORTS: &[ReasoningEffortLevel] = &[
+    ReasoningEffortLevel::None,
+    ReasoningEffortLevel::Low,
+    ReasoningEffortLevel::High,
+    ReasoningEffortLevel::Max,
+];
 
 /// DeepSeek V4 Flash Vision profile for its exact public model name.
 pub struct DeepseekV4FlashVisionExpProfile;
@@ -28,21 +36,15 @@ impl ModelProfile for DeepseekV4FlashVisionExpProfile {
             return Ok(None);
         }
 
-        let effort = mapped_effort(request, map_deepseek_v4_effort);
-        if effort.as_ref().and_then(|effort| effort.as_str()) == Some("minimal") {
-            return Err(unsupported_capability(
-                "DeepSeek V4 does not document `minimal`; use `low`, `high`, `max`, or thinking.type",
-                "reasoning_effort",
-            ));
-        }
+        let effort = supported_effort(request, SUPPORTED_EFFORTS);
         validate_thinking_modes(
             request.options.thinking.as_ref(),
             &["enabled", "disabled"],
             "DeepSeek V4 Flash Vision",
         )?;
-        let mut chat_request = to_chat_request(request)?;
+        let mut chat_request = to_chat_request_with_effort(request, effort.clone())?;
         preserve_raw_thinking(request, &mut chat_request);
-        if effort.as_ref().and_then(|effort| effort.as_str()) == Some("none") {
+        if effort.as_ref().is_some_and(ReasoningEffort::is_none) {
             chat_request.reasoning_effort = None;
             if request.options.thinking.is_none() {
                 chat_request.thinking = None;
@@ -50,17 +52,8 @@ impl ModelProfile for DeepseekV4FlashVisionExpProfile {
                     .extra
                     .insert("thinking".to_owned(), json!({"type": "disabled"}));
             }
-        } else if let Some(effort) = effort {
-            chat_request.reasoning_effort = Some(effort);
         }
         Ok(Some(chat_request))
-    }
-}
-
-fn map_deepseek_v4_effort(value: &str) -> Option<&'static str> {
-    match value {
-        "medium" | "xhigh" => Some("high"),
-        _ => None,
     }
 }
 
@@ -88,26 +81,36 @@ mod tests {
             label: "qcloud.cn.deepseek-v4-flash-vision-exp".to_owned(),
         };
 
-        let medium = api::request_from_value(
-            &json!({
-                "model":"deepseek-v4-flash-vision-exp",
-                "messages":[{"role":"user","content":"hello"}],
-                "reasoning_effort":"medium"
-            }),
-            UnifiedSourceProtocol::ChatCompletions,
-        )
-        .expect("parse medium request");
-        let converted = DeepseekV4FlashVisionExpProfile
-            .to_openai_chat_request(&medium, &binding)
-            .expect("convert medium request")
-            .expect("profile handles Chat");
-        assert_eq!(
-            converted
-                .reasoning_effort
-                .as_ref()
-                .and_then(|effort| effort.as_str()),
-            Some("high")
-        );
+        for (input, expected) in [
+            ("minimal", "low"),
+            ("low", "low"),
+            ("medium", "high"),
+            ("high", "high"),
+            ("xhigh", "max"),
+            ("max", "max"),
+        ] {
+            let request = api::request_from_value(
+                &json!({
+                    "model":"deepseek-v4-flash-vision-exp",
+                    "messages":[{"role":"user","content":"hello"}],
+                    "reasoning_effort":input
+                }),
+                UnifiedSourceProtocol::ChatCompletions,
+            )
+            .expect("parse effort request");
+            let converted = DeepseekV4FlashVisionExpProfile
+                .to_openai_chat_request(&request, &binding)
+                .expect("convert effort request")
+                .expect("profile handles Chat");
+            assert_eq!(
+                converted
+                    .reasoning_effort
+                    .as_ref()
+                    .and_then(|effort| effort.as_str()),
+                Some(expected),
+                "unexpected effort for {input}"
+            );
+        }
 
         let none = api::request_from_value(
             &json!({

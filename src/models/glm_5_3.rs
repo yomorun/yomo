@@ -11,14 +11,21 @@ use crate::dialects::Dialect;
 use crate::models::{ModelProfile, ModelProfileError};
 use crate::openai_types::ChatCompletionRequest;
 use crate::provider::{
-    UnifiedContentPart, UnifiedContentPartKind, UnifiedInputItemKind, UnifiedRequest,
-    UnifiedToolOutput,
+    ReasoningEffortLevel, UnifiedContentPart, UnifiedContentPartKind, UnifiedInputItemKind,
+    UnifiedRequest, UnifiedToolOutput,
 };
 use crate::serve_config::ModelBinding;
 use crate::upstreams::Upstream;
 use serde_json::Value;
 
-use super::profile_support::to_chat_request_with_mapped_effort;
+use super::profile_support::to_chat_request_with_supported_effort;
+
+/// GLM-5.3 documents `low`, `high`, and `max` reasoning effort.
+const SUPPORTED_EFFORTS: &[ReasoningEffortLevel] = &[
+    ReasoningEffortLevel::Low,
+    ReasoningEffortLevel::High,
+    ReasoningEffortLevel::Max,
+];
 
 /// GLM-5.3 profile for its exact public model name.
 pub struct Glm53Profile;
@@ -59,7 +66,7 @@ impl ModelProfile for Glm53Profile {
             ));
         }
 
-        let mut chat_request = to_chat_request_with_mapped_effort(request, map_glm53_effort)?;
+        let mut chat_request = to_chat_request_with_supported_effort(request, SUPPORTED_EFFORTS)?;
         if let Some(thinking) = &request.options.thinking {
             chat_request.thinking = None;
             chat_request
@@ -70,18 +77,6 @@ impl ModelProfile for Glm53Profile {
         // merges it back, so remove it explicitly for this model.
         chat_request.extra.remove("top_k");
         Ok(Some(chat_request))
-    }
-}
-
-/// Map caller effort levels onto the values GLM-5.3 documents (`low`/`high`/`max`).
-///
-/// GLM-5.3 always enables thinking, so lower unsupported levels map up to `low`.
-fn map_glm53_effort(value: &str) -> Option<&'static str> {
-    match value {
-        "none" | "minimal" => Some("low"),
-        "medium" => Some("high"),
-        "xhigh" => Some("max"),
-        _ => None,
     }
 }
 

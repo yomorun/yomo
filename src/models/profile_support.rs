@@ -26,6 +26,7 @@ pub(super) fn to_chat_request(
     request_to_chat(request).map_err(from_dialect_conversion_error)
 }
 
+/// Convert to Chat and apply an already resolved effort override.
 pub(super) fn to_chat_request_with_effort(
     request: &UnifiedRequest,
     effort: Option<ReasoningEffort>,
@@ -37,18 +38,7 @@ pub(super) fn to_chat_request_with_effort(
     Ok(chat_request)
 }
 
-/// Convert to Chat and apply a model-specific `reasoning_effort` mapping.
-pub(super) fn to_chat_request_with_mapped_effort<F>(
-    request: &UnifiedRequest,
-    map: F,
-) -> Result<ChatCompletionRequest, ModelProfileError>
-where
-    F: Fn(&str) -> Option<&'static str>,
-{
-    to_chat_request_with_effort(request, mapped_effort(request, map))
-}
-
-/// Convert to Chat and map the effort onto the model's supported levels.
+/// Convert to Chat and normalize the effort onto the model's supported levels.
 pub(super) fn to_chat_request_with_supported_effort(
     request: &UnifiedRequest,
     supported: &[ReasoningEffortLevel],
@@ -85,24 +75,14 @@ pub(super) fn to_responses_request_with_supported_effort(
     Ok(responses_request)
 }
 
-/// Resolve the effort a request should send after applying `map`.
+/// Resolve the effort a request should send for a model with `supported` levels.
 ///
-/// Returns `None` when the request has no effort, otherwise the mapped value or
-/// the original value when `map` leaves it unchanged, without copying the request.
-pub(super) fn mapped_effort<F>(request: &UnifiedRequest, map: F) -> Option<ReasoningEffort>
-where
-    F: Fn(&str) -> Option<&'static str>,
-{
-    let effort = request.options.reasoning_effort.as_ref()?;
-    Some(match effort.as_str() {
-        Some(value) => map(value)
-            .map(ReasoningEffort::from)
-            .unwrap_or_else(|| effort.clone()),
-        None => effort.clone(),
-    })
-}
-
-/// Resolve the effort a request should send after mapping onto `supported` levels.
+/// The policy is documented in `src/models/README.md`:
+/// - supported named levels pass through unchanged;
+/// - other named levels are rewritten to the nearest supported level, with ties
+///   going to the higher level so normalization never silently weakens quality;
+/// - unknown strings and numeric values pass through for the upstream to validate;
+/// - omitted efforts stay omitted.
 pub(super) fn supported_effort(
     request: &UnifiedRequest,
     supported: &[ReasoningEffortLevel],
@@ -115,6 +95,27 @@ pub(super) fn supported_effort(
         return Some(ReasoningEffort::Named(*requested));
     }
     nearest_effort(*requested, supported).map(|nearest| ReasoningEffort::from(effort_name(nearest)))
+}
+
+/// Resolve the effort after applying a model's documented spellings.
+///
+/// `aliases` map provider-specific spellings onto a supported level before the
+/// [`supported_effort`] policy is applied.
+pub(super) fn aliased_supported_effort(
+    request: &UnifiedRequest,
+    supported: &[ReasoningEffortLevel],
+    aliases: &[(&str, ReasoningEffortLevel)],
+) -> Option<ReasoningEffort> {
+    if let Some(value) = request
+        .options
+        .reasoning_effort
+        .as_ref()
+        .and_then(ReasoningEffort::as_str)
+        && let Some((_, level)) = aliases.iter().find(|(alias, _)| *alias == value)
+    {
+        return Some(ReasoningEffort::Named(*level));
+    }
+    supported_effort(request, supported)
 }
 
 fn nearest_effort(
@@ -232,7 +233,7 @@ pub(super) fn validate_thinking_modes(
 mod tests {
     use crate::provider::{ReasoningEffort, ReasoningEffortLevel, UnifiedRequest};
 
-    use super::{mapped_effort, supported_effort};
+    use super::{aliased_supported_effort, supported_effort};
 
     #[test]
     fn supported_effort_maps_unsupported_names_to_nearest_and_breaks_ties_upward() {
@@ -267,20 +268,35 @@ mod tests {
     }
 
     #[test]
-    fn mapped_effort_leaves_absent_and_unlisted_values_unchanged() {
-        let request = UnifiedRequest::default();
-        assert_eq!(mapped_effort(&request, |_| Some("high")), None);
-
+    fn aliases_resolve_before_nearest_effort_mapping() {
+        let supported = [
+            ReasoningEffortLevel::Low,
+            ReasoningEffortLevel::High,
+            ReasoningEffortLevel::Max,
+        ];
+        let aliases = [("ultra", ReasoningEffortLevel::Max)];
         let mut request = UnifiedRequest::default();
-        request.options.reasoning_effort = Some("vendor".into());
+        request.options.reasoning_effort = Some("ultra".into());
+        let effort =
+            aliased_supported_effort(&request, &supported, &aliases).expect("effort present");
+        assert_eq!(effort.as_str(), Some("max"));
+
+        request.options.reasoning_effort = Some("minimal".into());
+        let effort =
+            aliased_supported_effort(&request, &supported, &aliases).expect("effort present");
+        assert_eq!(effort.as_str(), Some("low"));
+    }
+
+    #[test]
+    fn omitted_effort_stays_omitted() {
+        let supported = [ReasoningEffortLevel::Low, ReasoningEffortLevel::High];
         assert_eq!(
-            mapped_effort(&request, |_| None).and_then(|effort| effort.as_str().map(str::to_owned)),
-            Some("vendor".to_owned())
+            supported_effort(&UnifiedRequest::default(), &supported),
+            None
         );
         assert_eq!(
-            mapped_effort(&request, |value| (value == "vendor").then_some("high"))
-                .and_then(|effort| effort.as_str().map(str::to_owned)),
-            Some("high".to_owned())
+            aliased_supported_effort(&UnifiedRequest::default(), &supported, &[]),
+            None
         );
     }
 }

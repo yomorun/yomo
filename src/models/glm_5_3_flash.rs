@@ -7,12 +7,14 @@ use crate::dialects::openai_chat_completions::mapper::request_to_chat;
 use crate::models::{ModelProfile, ModelProfileError, from_dialect_conversion_error};
 use crate::openai_types::{ChatCompletionRequest, ThinkingConfig, ThinkingType};
 use crate::provider::{
-    ReasoningEffort, UnifiedContentPart, UnifiedContentPartKind, UnifiedDocumentSource,
+    ReasoningEffortLevel, UnifiedContentPart, UnifiedContentPartKind, UnifiedDocumentSource,
     UnifiedInputItem, UnifiedInputItemKind, UnifiedMediaSource, UnifiedRequest, UnifiedRole,
     UnifiedToolOutput,
 };
 use crate::serve_config::ModelBinding;
 use crate::upstreams::Upstream;
+
+use super::profile_support::supported_effort;
 
 // This profile follows Tencent Cloud's GLM guide for the TokenHub Chat route:
 // https://cloud.tencent.com/document/product/1823/132061#62f5454e-cb70-4280-8c28-5a4b6a2f181b
@@ -34,6 +36,12 @@ const SUPPORTED_VIDEO_EXTENSIONS: &[&str] = &[
 ];
 const SUPPORTED_FILE_MIMES: &[&str] = &["application/pdf", "text/plain", "application/msword"];
 const SUPPORTED_FILE_EXTENSIONS: &[&str] = &["pdf", "txt", "doc"];
+/// GLM-5.3-Flash documents `low`, `high`, and `max` reasoning effort.
+const SUPPORTED_EFFORTS: &[ReasoningEffortLevel] = &[
+    ReasoningEffortLevel::Low,
+    ReasoningEffortLevel::High,
+    ReasoningEffortLevel::Max,
+];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum InputMediaKind {
@@ -129,11 +137,7 @@ fn validate_request(request: &UnifiedRequest) -> Result<(), ModelProfileError> {
 }
 
 fn normalize_glm_options(request: &mut UnifiedRequest) -> Result<(), ModelProfileError> {
-    request.options.reasoning_effort = request
-        .options
-        .reasoning_effort
-        .take()
-        .and_then(nearest_reasoning_effort);
+    request.options.reasoning_effort = supported_effort(request, SUPPORTED_EFFORTS);
 
     let Some(thinking) = request.options.thinking.take() else {
         return Ok(());
@@ -171,18 +175,6 @@ fn normalize_glm_options(request: &mut UnifiedRequest) -> Result<(), ModelProfil
     });
     request.options.thinking = (!fields.is_empty()).then_some(Value::Object(fields));
     Ok(())
-}
-
-fn nearest_reasoning_effort(effort: ReasoningEffort) -> Option<ReasoningEffort> {
-    match effort.as_str()? {
-        "low" => Some(ReasoningEffort::from("low")),
-        "high" => Some(ReasoningEffort::from("high")),
-        "max" => Some(ReasoningEffort::from("max")),
-        "none" | "minimal" => Some(ReasoningEffort::from("low")),
-        "medium" => Some(ReasoningEffort::from("high")),
-        "xhigh" => Some(ReasoningEffort::from("max")),
-        _ => None,
-    }
 }
 
 fn clear_thinking_requested(request: &UnifiedRequest) -> bool {
@@ -782,7 +774,7 @@ mod tests {
     }
 
     #[test]
-    fn maps_nearest_effort_ignores_unknown_effort_and_rejects_unsupported_thinking() {
+    fn maps_nearest_effort_and_rejects_unsupported_thinking() {
         for (input, expected) in [
             ("none", "low"),
             ("minimal", "low"),
@@ -810,15 +802,32 @@ mod tests {
             assert!(converted.thinking.is_none());
         }
 
-        for request in [
-            json!({"model":"glm-5.3-flash", "messages":[{"role":"user", "content":"hi"}], "reasoning_effort":"vendor-effort"}),
-            json!({"model":"glm-5.3-flash", "messages":[{"role":"user", "content":"hi"}], "reasoning_effort":42}),
-        ] {
-            let converted = convert(&request)
-                .expect("ignore unsupported optional effort")
-                .expect("profile handles request");
-            assert_eq!(converted.reasoning_effort, None);
-        }
+        let unknown = convert(&json!({
+            "model":"glm-5.3-flash",
+            "messages":[{"role":"user", "content":"hi"}],
+            "reasoning_effort":"vendor-effort"
+        }))
+        .expect("preserve unknown effort")
+        .expect("profile handles request");
+        assert_eq!(
+            unknown
+                .reasoning_effort
+                .as_ref()
+                .and_then(ReasoningEffort::as_str),
+            Some("vendor-effort")
+        );
+
+        let numeric = convert(&json!({
+            "model":"glm-5.3-flash",
+            "messages":[{"role":"user", "content":"hi"}],
+            "reasoning_effort":42
+        }))
+        .expect("preserve numeric effort")
+        .expect("profile handles request");
+        assert_eq!(
+            numeric.reasoning_effort,
+            Some(ReasoningEffort::Numeric(42.into()))
+        );
 
         for value in [
             json!({"model":"glm-5.3-flash", "messages":[{"role":"user", "content":"hi"}], "thinking":{"type":"disabled"}}),

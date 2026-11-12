@@ -4,14 +4,24 @@
 
 use crate::models::{ModelProfile, ModelProfileError};
 use crate::openai_types::ChatCompletionRequest;
-use crate::provider::UnifiedRequest;
+use crate::provider::{ReasoningEffortLevel, UnifiedRequest};
 use crate::serve_config::ModelBinding;
 use crate::upstreams::Upstream;
 
 use super::profile_support::{
-    is_chat_binding, preserve_raw_thinking, to_chat_request_with_mapped_effort,
+    aliased_supported_effort, is_chat_binding, preserve_raw_thinking, to_chat_request_with_effort,
     validate_thinking_modes,
 };
+
+/// DeepSeek V4.1 documents `low`, `high`, and `max` reasoning effort.
+const SUPPORTED_EFFORTS: &[ReasoningEffortLevel] = &[
+    ReasoningEffortLevel::Low,
+    ReasoningEffortLevel::High,
+    ReasoningEffortLevel::Max,
+];
+
+/// Provider-specific spellings accepted for this model.
+const EFFORT_ALIASES: &[(&str, ReasoningEffortLevel)] = &[("ultra", ReasoningEffortLevel::Max)];
 
 /// DeepSeek V4.1 Flash profile for its exact public model name.
 pub struct DeepseekV41FlashProfile;
@@ -31,18 +41,10 @@ impl ModelProfile for DeepseekV41FlashProfile {
             &["enabled", "disabled"],
             "DeepSeek V4.1 Flash",
         )?;
-        let mut chat_request = to_chat_request_with_mapped_effort(request, map_v41_effort)?;
+        let effort = aliased_supported_effort(request, SUPPORTED_EFFORTS, EFFORT_ALIASES);
+        let mut chat_request = to_chat_request_with_effort(request, effort)?;
         preserve_raw_thinking(request, &mut chat_request);
         Ok(Some(chat_request))
-    }
-}
-
-fn map_v41_effort(value: &str) -> Option<&'static str> {
-    match value {
-        "minimal" => Some("low"),
-        "medium" | "xhigh" => Some("high"),
-        "ultra" => Some("max"),
-        _ => None,
     }
 }
 
@@ -70,10 +72,15 @@ mod tests {
             label: "volcengine.cn.deepseek-v4.1-flash".to_owned(),
         };
         for (input, expected) in [
+            ("none", "low"),
             ("minimal", "low"),
+            ("low", "low"),
             ("medium", "high"),
-            ("xhigh", "high"),
+            ("high", "high"),
+            ("xhigh", "max"),
+            ("max", "max"),
             ("ultra", "max"),
+            ("vendor-specific", "vendor-specific"),
         ] {
             let request = api::request_from_value(
                 &json!({

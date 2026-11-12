@@ -4,14 +4,22 @@
 
 use crate::models::{ModelProfile, ModelProfileError};
 use crate::openai_types::ChatCompletionRequest;
-use crate::provider::UnifiedRequest;
+use crate::provider::{ReasoningEffortLevel, UnifiedRequest};
 use crate::serve_config::ModelBinding;
 use crate::upstreams::Upstream;
 
 use super::profile_support::{
-    is_chat_binding, preserve_raw_thinking, to_chat_request_with_mapped_effort,
+    is_chat_binding, preserve_raw_thinking, to_chat_request_with_supported_effort,
     validate_thinking_modes,
 };
+
+/// DeepSeek V4 documents `none`, `low`, `high`, and `max` reasoning effort.
+const SUPPORTED_EFFORTS: &[ReasoningEffortLevel] = &[
+    ReasoningEffortLevel::None,
+    ReasoningEffortLevel::Low,
+    ReasoningEffortLevel::High,
+    ReasoningEffortLevel::Max,
+];
 
 /// DeepSeek V4 Flash profile for its exact public model name.
 pub struct DeepseekV4FlashProfile;
@@ -31,18 +39,9 @@ impl ModelProfile for DeepseekV4FlashProfile {
             &["enabled", "disabled"],
             "DeepSeek V4 Flash",
         )?;
-        let mut chat_request = to_chat_request_with_mapped_effort(request, map_v4_effort)?;
+        let mut chat_request = to_chat_request_with_supported_effort(request, SUPPORTED_EFFORTS)?;
         preserve_raw_thinking(request, &mut chat_request);
         Ok(Some(chat_request))
-    }
-}
-
-fn map_v4_effort(value: &str) -> Option<&'static str> {
-    match value {
-        "none" | "minimal" => Some("none"),
-        "medium" => Some("low"),
-        "xhigh" => Some("high"),
-        _ => None,
     }
 }
 
@@ -70,9 +69,12 @@ mod tests {
             label: "volcengine.cn.deepseek-v4-flash".to_owned(),
         };
         for (input, expected) in [
-            ("minimal", "none"),
-            ("medium", "low"),
-            ("xhigh", "high"),
+            ("none", "none"),
+            ("minimal", "low"),
+            ("low", "low"),
+            ("medium", "high"),
+            ("high", "high"),
+            ("xhigh", "max"),
             ("max", "max"),
         ] {
             let request = api::request_from_value(

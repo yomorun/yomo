@@ -547,7 +547,7 @@ mod tests {
                     .reasoning_effort
                     .as_ref()
                     .and_then(|effort| effort.as_str()),
-                Some("low")
+                Some("high")
             );
         }
     }
