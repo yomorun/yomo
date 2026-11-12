@@ -46,7 +46,7 @@ sibling model. Keep exceptions documented next to the profile and in this table.
 | `gpt-5.6-sol`, `gpt-5.6-luna`, `gpt-5.6-terra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-6.1-terra` | none, low, medium, high, xhigh, max | |
 | `gpt-6-astra`, `gpt-6.1-sol` | low, medium, high, xhigh, max | |
 | `glm-5.2` | none, high, max | |
-| `glm-5.3`, `glm-5.3-flash` | low, high, max | Always-on thinking; `glm-5.3` removed `top_k` |
+| `glm-5.3`, `glm-5.3-flash` | low, high, max | Always-on thinking; both removed `top_k` |
 | `deepseek-v4-flash`, `deepseek-v4-pro`, `deepseek-v4-pro-0813` | none, low, high, max | |
 | `deepseek-v4.1-flash` | low, high, max | `ultra` is an alias for `max` |
 | `deepseek-v4-flash-vision-exp` | none, low, high, max | `none` is encoded as `thinking.type=disabled` |

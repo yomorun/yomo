@@ -18,6 +18,7 @@ use super::profile_support::supported_effort;
 
 // This profile follows Tencent Cloud's GLM guide for the TokenHub Chat route:
 // https://cloud.tencent.com/document/product/1823/132061#62f5454e-cb70-4280-8c28-5a4b6a2f181b
+// GLM-5.3-Flash does not support the `top_k` parameter, so it is never forwarded.
 const MAX_OUTPUT_TOKENS: i64 = 131_072;
 const MAX_REQUEST_BODY_BYTES: usize = 100_000_000;
 const SUPPORTED_IMAGE_MIMES: &[&str] = &["image/jpeg", "image/jpg", "image/png", "image/webp"];
@@ -92,9 +93,9 @@ impl ModelProfile for Glm53FlashProfile {
                     .insert("thinking".to_owned(), Value::Object(fields));
             }
         }
-        if let Some(top_k) = normalized_request.options.top_k {
-            chat_request.extra.insert("top_k".to_owned(), json!(top_k));
-        }
+        // Chat sources keep `top_k` as a source extension and the conversion
+        // merges it back, so remove it explicitly for this model.
+        chat_request.extra.remove("top_k");
         validate_serialized_request_size(&chat_request)?;
         Ok(Some(chat_request))
     }
@@ -749,7 +750,7 @@ mod tests {
     }
 
     #[test]
-    fn preserves_supported_top_k_sampling_and_reasoning_effort() {
+    fn preserves_sampling_and_reasoning_effort_without_top_k() {
         let request = json!({
             "model":"glm-5.3-flash",
             "messages":[{"role":"user", "content":"hello"}],
@@ -763,7 +764,7 @@ mod tests {
             .expect("TokenHub profile handles request");
         assert_eq!(converted.temperature, Some(0.8));
         assert_eq!(converted.top_p, Some(0.9));
-        assert_eq!(converted.extra.get("top_k"), Some(&json!(40)));
+        assert_eq!(converted.extra.get("top_k"), None);
         assert_eq!(
             converted
                 .reasoning_effort
