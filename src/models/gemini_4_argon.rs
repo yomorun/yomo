@@ -19,7 +19,7 @@ use crate::serve_config::ModelBinding;
 use crate::upstreams::Upstream;
 
 use super::profile_support::{
-    gemini_clamp_output_tokens, gemini_ends_with_assistant_prefill, gemini_level_for_effort,
+    ends_with_assistant_prefill, gemini_clamp_output_tokens, gemini_level_for_effort,
     gemini_thinking_config, gemini_thinking_config_for_level,
 };
 
@@ -40,7 +40,7 @@ impl ModelProfile for Gemini4ArgonProfile {
         if !is_gemini_binding(binding) {
             return Ok(());
         }
-        if gemini_ends_with_assistant_prefill(request) {
+        if ends_with_assistant_prefill(request) {
             return Err(ModelProfileError::InvalidRequest {
                 message: format!(
                     "{GEMINI_4_ARGON_MODEL} does not support prefilled model turns; the conversation must end with a user or tool-result turn"

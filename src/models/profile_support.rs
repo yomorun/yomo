@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use log::debug;
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use crate::dialects::Dialect;
 use crate::dialects::google_vertex::types::{
@@ -14,7 +14,7 @@ use crate::openai_responses_types::{ResponsesReasoningConfig, ResponsesRequest};
 use crate::openai_types::ChatCompletionRequest;
 use crate::provider::{
     ReasoningEffort, ReasoningEffortLevel, UnifiedContentPart, UnifiedContentPartKind,
-    UnifiedInputItemKind, UnifiedRequest, UnifiedRole, UnifiedToolOutput,
+    UnifiedInputItemKind, UnifiedRequest, UnifiedRole, UnifiedToolChoice, UnifiedToolOutput,
 };
 use crate::serve_config::ModelBinding;
 use crate::upstreams::Upstream;
@@ -480,7 +480,7 @@ pub(super) fn gemini_clamp_output_tokens(
 }
 
 /// Whether the conversation ends with a prefilled assistant message.
-pub(super) fn gemini_ends_with_assistant_prefill(request: &UnifiedRequest) -> bool {
+pub(super) fn ends_with_assistant_prefill(request: &UnifiedRequest) -> bool {
     let Some(last) = request.input.last() else {
         return false;
     };
@@ -496,6 +496,339 @@ pub(super) fn gemini_ends_with_assistant_prefill(request: &UnifiedRequest) -> bo
         UnifiedContentPartKind::Text { text, .. } => !text.trim().is_empty(),
         _ => false,
     })
+}
+
+/// Thinking modes supported by a Claude Bedrock route.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum ClaudeThinking {
+    /// Budget-based extended thinking only (Haiku 4.5).
+    ExtendedOnly,
+    /// Extended thinking (deprecated) or adaptive thinking (Claude 4.6).
+    AdaptiveExtended,
+    /// Adaptive thinking only (Claude 4.7 and later).
+    AdaptiveOnly,
+}
+
+/// Effort levels accepted by a Claude Bedrock route.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum ClaudeEffort {
+    /// The model does not support `output_config.effort` (Haiku 4.5).
+    None,
+    /// low / medium / high / max (Claude 4.6).
+    UpToMax,
+    /// low / medium / high / xhigh / max (Claude 4.7 and later).
+    Full,
+}
+
+/// Model-specific Claude rules applied before Bedrock Converse encoding.
+pub(super) struct ClaudeRules {
+    /// Exact public model name used for registry selection and diagnostics.
+    pub model: &'static str,
+    /// Thinking modes the model accepts.
+    pub thinking: ClaudeThinking,
+    /// Effort levels the model accepts.
+    pub effort: ClaudeEffort,
+    /// Whether `thinking.type=disabled` is accepted.
+    pub allow_disabled: bool,
+    /// Whether disabled thinking is accepted only at effort high or below.
+    pub disabled_effort_high_only: bool,
+    /// Whether `thinking.type=between_tools` is accepted.
+    pub allow_between_tools: bool,
+    /// Whether `disabled` is represented as `between_tools` (Sonnet 5.5).
+    pub between_tools_replaces_disabled: bool,
+    /// Whether forced tool choice is accepted while thinking is active.
+    pub allow_forced_tool_choice: bool,
+    /// Whether assistant-message prefill is rejected.
+    pub reject_prefill: bool,
+    /// Whether temperature and top-p must be removed from the request.
+    pub drop_sampling: bool,
+}
+
+/// Apply model-specific Claude rules to a unified request before encoding.
+pub(super) fn apply_claude_rules(
+    request: &mut UnifiedRequest,
+    binding: &ModelBinding,
+    rules: &ClaudeRules,
+) -> Result<(), ModelProfileError> {
+    if binding.upstream != Upstream::AwsBedrock
+        || binding.dialect != Some(Dialect::BedrockConverse)
+        || binding.public_model != rules.model
+    {
+        return Ok(());
+    }
+
+    if rules.reject_prefill && ends_with_assistant_prefill(request) {
+        return Err(claude_unsupported(
+            format!(
+                "{} does not support assistant message prefill; the conversation must end with a user turn",
+                rules.model
+            ),
+            "messages",
+        ));
+    }
+
+    normalize_claude_effort(request, rules)?;
+    normalize_claude_thinking(request, rules)?;
+    normalize_claude_sampling(request, rules);
+    normalize_claude_tool_choice(request, rules)?;
+    Ok(())
+}
+
+fn normalize_claude_effort(
+    request: &mut UnifiedRequest,
+    rules: &ClaudeRules,
+) -> Result<(), ModelProfileError> {
+    let mapped: &'static str = {
+        let Some(effort) = request.options.reasoning_effort.as_ref() else {
+            return Ok(());
+        };
+        if rules.effort == ClaudeEffort::None {
+            return Err(claude_unsupported(
+                format!("{} does not support reasoning_effort", rules.model),
+                "reasoning_effort",
+            ));
+        }
+        let Some(effort) = effort.as_str() else {
+            return Err(claude_invalid(
+                "numeric reasoning_effort is not supported by Bedrock Converse",
+                "reasoning_effort",
+            ));
+        };
+        match effort {
+            "none" | "minimal" | "low" => "low",
+            "medium" => "medium",
+            "high" => "high",
+            "xhigh" if rules.effort == ClaudeEffort::Full => "xhigh",
+            "xhigh" => "max",
+            "max" => "max",
+            other => {
+                return Err(claude_invalid(
+                    format!("unsupported reasoning_effort {other} for {}", rules.model),
+                    "reasoning_effort",
+                ));
+            }
+        }
+    };
+
+    debug!(
+        "claude profile: model={} reasoning_effort -> {mapped}",
+        rules.model
+    );
+    request.options.reasoning_effort = Some(mapped.into());
+    Ok(())
+}
+
+fn normalize_claude_thinking(
+    request: &mut UnifiedRequest,
+    rules: &ClaudeRules,
+) -> Result<(), ModelProfileError> {
+    let Some(thinking) = request.options.thinking.clone() else {
+        return Ok(());
+    };
+    let Some(fields) = thinking.as_object() else {
+        return Err(claude_invalid("thinking must be an object", "thinking"));
+    };
+    if fields.get("block_binding").is_some() {
+        return Err(claude_unsupported(
+            format!("{} rejects thinking.block_binding", rules.model),
+            "thinking.block_binding",
+        ));
+    }
+    let Some(type_name) = fields.get("type").and_then(Value::as_str) else {
+        return Err(claude_invalid("thinking.type is required", "thinking.type"));
+    };
+    let display = claude_display(fields)?;
+    let mut normalized = json!({"type": type_name});
+
+    match type_name {
+        "enabled" => {
+            if rules.thinking == ClaudeThinking::AdaptiveOnly {
+                debug!(
+                    "claude profile: model={} thinking.type enabled -> adaptive",
+                    rules.model
+                );
+                normalized = json!({"type": "adaptive"});
+            } else {
+                let budget = claude_budget(fields, request.options.max_output_tokens)?;
+                normalized["budget_tokens"] = json!(budget);
+            }
+        }
+        "adaptive" => {
+            if rules.thinking == ClaudeThinking::ExtendedOnly {
+                return Err(claude_unsupported(
+                    format!("{} does not support adaptive thinking", rules.model),
+                    "thinking.type",
+                ));
+            }
+            reject_claude_budget(fields, rules)?;
+        }
+        "disabled" => {
+            if rules.between_tools_replaces_disabled {
+                reject_claude_budget(fields, rules)?;
+                normalized = json!({"type": "between_tools"});
+            } else if !rules.allow_disabled {
+                return Err(claude_unsupported(
+                    format!("{} cannot disable thinking", rules.model),
+                    "thinking.type",
+                ));
+            } else {
+                reject_claude_budget(fields, rules)?;
+                if rules.disabled_effort_high_only && claude_effort_is_high_or_above(request) {
+                    return Err(claude_unsupported(
+                        format!(
+                            "{} accepts thinking.type=disabled only at effort high or below",
+                            rules.model
+                        ),
+                        "thinking.type",
+                    ));
+                }
+            }
+        }
+        "between_tools" => {
+            if !rules.allow_between_tools {
+                return Err(claude_unsupported(
+                    format!(
+                        "{} does not support thinking.type=between_tools",
+                        rules.model
+                    ),
+                    "thinking.type",
+                ));
+            }
+            reject_claude_budget(fields, rules)?;
+        }
+        other => {
+            return Err(claude_invalid(
+                format!("unsupported thinking.type {other} for {}", rules.model),
+                "thinking.type",
+            ));
+        }
+    }
+
+    if matches!(type_name, "enabled" | "adaptive")
+        && let Some(display) = display
+    {
+        normalized["display"] = json!(display);
+    }
+    request.options.thinking = Some(normalized);
+    Ok(())
+}
+
+fn normalize_claude_sampling(request: &mut UnifiedRequest, rules: &ClaudeRules) {
+    let thinking_active = request
+        .options
+        .thinking
+        .as_ref()
+        .and_then(|thinking| thinking.get("type"))
+        .and_then(Value::as_str)
+        .is_some_and(|kind| matches!(kind, "enabled" | "adaptive" | "between_tools"));
+
+    if rules.drop_sampling {
+        request.options.temperature = None;
+        request.options.top_p = None;
+        request.options.top_k = None;
+    } else if thinking_active {
+        request.options.temperature = Some(1.0);
+        request.options.top_p = None;
+        request.options.top_k = None;
+    }
+}
+
+fn normalize_claude_tool_choice(
+    request: &UnifiedRequest,
+    rules: &ClaudeRules,
+) -> Result<(), ModelProfileError> {
+    if rules.allow_forced_tool_choice {
+        return Ok(());
+    }
+    if matches!(
+        request.tool_choice.as_ref(),
+        Some(UnifiedToolChoice::Required | UnifiedToolChoice::Function(_))
+    ) {
+        return Err(claude_unsupported(
+            format!("{} rejects forced tool_choice", rules.model),
+            "tool_choice",
+        ));
+    }
+    Ok(())
+}
+
+fn claude_display(fields: &Map<String, Value>) -> Result<Option<String>, ModelProfileError> {
+    match fields.get("display").and_then(Value::as_str) {
+        None => Ok(None),
+        Some(display @ ("summarized" | "omitted")) => Ok(Some(display.to_owned())),
+        Some("updates") => Ok(None),
+        Some(other) => Err(claude_invalid(
+            format!("thinking.display {other} is not accepted; only summarized/omitted"),
+            "thinking.display",
+        )),
+    }
+}
+
+fn claude_budget(
+    fields: &Map<String, Value>,
+    max_output_tokens: Option<i64>,
+) -> Result<u64, ModelProfileError> {
+    let budget = fields
+        .get("budget_tokens")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| {
+            claude_invalid(
+                "thinking.budget_tokens is required for enabled thinking",
+                "thinking.budget_tokens",
+            )
+        })?;
+    if budget < 1024 {
+        return Err(claude_invalid(
+            "thinking.budget_tokens must be at least 1024",
+            "thinking.budget_tokens",
+        ));
+    }
+    if let Some(max) = max_output_tokens.filter(|max| budget >= *max as u64) {
+        return Err(claude_invalid(
+            format!("thinking.budget_tokens must be below max_tokens ({max})"),
+            "thinking.budget_tokens",
+        ));
+    }
+    Ok(budget)
+}
+
+fn reject_claude_budget(
+    fields: &Map<String, Value>,
+    rules: &ClaudeRules,
+) -> Result<(), ModelProfileError> {
+    if fields.get("budget_tokens").is_some() {
+        return Err(claude_invalid(
+            format!(
+                "{} accepts no thinking budget for this thinking type",
+                rules.model
+            ),
+            "thinking.budget_tokens",
+        ));
+    }
+    Ok(())
+}
+
+fn claude_effort_is_high_or_above(request: &UnifiedRequest) -> bool {
+    request
+        .options
+        .reasoning_effort
+        .as_ref()
+        .and_then(|effort| effort.as_str())
+        .is_some_and(|effort| matches!(effort, "xhigh" | "max"))
+}
+
+fn claude_invalid(message: impl Into<String>, param: &str) -> ModelProfileError {
+    ModelProfileError::InvalidRequest {
+        message: message.into(),
+        param: Some(param.to_owned()),
+    }
+}
+
+fn claude_unsupported(message: impl Into<String>, param: &str) -> ModelProfileError {
+    ModelProfileError::UnsupportedCapability {
+        message: message.into(),
+        param: Some(param.to_owned()),
+    }
 }
 
 #[cfg(test)]

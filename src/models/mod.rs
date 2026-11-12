@@ -57,6 +57,31 @@ pub mod gemini_3_8_flash;
 /// Gemini 4 Argon request profile.
 pub mod gemini_4_argon;
 
+/// Claude Fable 5 profile.
+pub mod claude_fable_5;
+/// Claude Fable 5.1 profile.
+pub mod claude_fable_5_1;
+/// Claude Haiku 4.5 profile.
+pub mod claude_haiku_4_5;
+/// Claude Haiku 5.5 profile.
+pub mod claude_haiku_5_5;
+/// Claude Opus 4.6 profile.
+pub mod claude_opus_4_6;
+/// Claude Opus 4.7 profile.
+pub mod claude_opus_4_7;
+/// Claude Opus 4.8 profile.
+pub mod claude_opus_4_8;
+/// Claude Opus 5 profile.
+pub mod claude_opus_5;
+/// Claude Opus 5.5 profile.
+pub mod claude_opus_5_5;
+/// Claude Sonnet 4.6 profile.
+pub mod claude_sonnet_4_6;
+/// Claude Sonnet 5 profile.
+pub mod claude_sonnet_5;
+/// Claude Sonnet 5.5 profile.
+pub mod claude_sonnet_5_5;
+
 /// DeepSeek V4.1 Flash profile.
 pub mod deepseek_v4_1_flash;
 /// DeepSeek V4 Flash profile.
@@ -210,6 +235,21 @@ pub trait ModelProfile: Send + Sync {
         Ok(None)
     }
 
+    /// Adapt a unified request immediately before Bedrock Converse encoding.
+    ///
+    /// The hook runs after generic reasoning normalization and before the
+    /// dialect builds messages, tools, and inference settings. Profiles may
+    /// normalize model-specific thinking modes, remove deprecated sampling
+    /// parameters, validate tool-choice restrictions, and reject conversation
+    /// shapes the model does not accept.
+    fn adapt_bedrock_request(
+        &self,
+        _request: &mut UnifiedRequest,
+        _binding: &ModelBinding,
+    ) -> Result<(), ModelProfileError> {
+        Ok(())
+    }
+
     /// Adapt yomo's generated Gemini request in place.
     ///
     /// The provider completes its default conversion, including thought
@@ -277,6 +317,56 @@ impl ModelProfileRegistry {
             "gemini-4-argon".to_owned(),
             Arc::new(gemini_4_argon::Gemini4ArgonProfile),
         );
+        let claude_profiles: [(&str, Arc<dyn ModelProfile>); 12] = [
+            (
+                "claude-fable-5",
+                Arc::new(claude_fable_5::ClaudeFable5Profile),
+            ),
+            (
+                "claude-fable-5-1",
+                Arc::new(claude_fable_5_1::ClaudeFable51Profile),
+            ),
+            (
+                "claude-haiku-4-5",
+                Arc::new(claude_haiku_4_5::ClaudeHaiku45Profile),
+            ),
+            (
+                "claude-haiku-5-5",
+                Arc::new(claude_haiku_5_5::ClaudeHaiku55Profile),
+            ),
+            (
+                "claude-opus-4-6",
+                Arc::new(claude_opus_4_6::ClaudeOpus46Profile),
+            ),
+            (
+                "claude-opus-4-7",
+                Arc::new(claude_opus_4_7::ClaudeOpus47Profile),
+            ),
+            (
+                "claude-opus-4-8",
+                Arc::new(claude_opus_4_8::ClaudeOpus48Profile),
+            ),
+            ("claude-opus-5", Arc::new(claude_opus_5::ClaudeOpus5Profile)),
+            (
+                "claude-opus-5-5",
+                Arc::new(claude_opus_5_5::ClaudeOpus55Profile),
+            ),
+            (
+                "claude-sonnet-4-6",
+                Arc::new(claude_sonnet_4_6::ClaudeSonnet46Profile),
+            ),
+            (
+                "claude-sonnet-5",
+                Arc::new(claude_sonnet_5::ClaudeSonnet5Profile),
+            ),
+            (
+                "claude-sonnet-5-5",
+                Arc::new(claude_sonnet_5_5::ClaudeSonnet55Profile),
+            ),
+        ];
+        for (public_model, profile) in claude_profiles {
+            profiles.insert(public_model.to_owned(), profile);
+        }
         profiles.insert(
             "deepseek-v4.1-flash".to_owned(),
             Arc::new(deepseek_v4_1_flash::DeepseekV41FlashProfile),
@@ -427,6 +517,15 @@ impl ModelProfile for ResolvedModelProfile {
         self.profile
             .adapt_gemini_generate_content_request(request, binding, dialect_request)
     }
+
+    fn adapt_bedrock_request(
+        &self,
+        request: &mut UnifiedRequest,
+        binding: &ModelBinding,
+    ) -> Result<(), ModelProfileError> {
+        self.fallback.adapt_bedrock_request(request, binding)?;
+        self.profile.adapt_bedrock_request(request, binding)
+    }
 }
 
 #[cfg(test)]
@@ -443,6 +542,7 @@ mod tests {
     use crate::openai_types::ChatCompletionRequest;
     use crate::provider::UnifiedRequest;
     use crate::provider::UnifiedSourceProtocol;
+    use crate::provider::UnifiedToolChoice;
     use crate::serve_config::ModelBinding;
     use crate::upstreams::Upstream;
     use serde_json::Value;
@@ -1166,5 +1266,231 @@ mod tests {
             .thinking_config
             .expect("thinking config");
         assert_eq!(config.thinking_level, Some(VertexThinkingLevel::High));
+    }
+
+    fn claude_binding(public_model: &str) -> ModelBinding {
+        ModelBinding {
+            public_model: public_model.to_owned(),
+            model: public_model.to_owned(),
+            provider: "aws.usa".to_owned(),
+            upstream: Upstream::AwsBedrock,
+            upstream_model: format!("global.anthropic.{public_model}"),
+            dialect: Some(Dialect::BedrockConverse),
+            label: format!("aws.usa.global.anthropic.{public_model}"),
+        }
+    }
+
+    fn adapt_claude(
+        profiles: &ModelProfileRegistry,
+        public_model: &str,
+        request: &mut UnifiedRequest,
+    ) -> Result<(), ModelProfileError> {
+        profiles
+            .resolve(public_model)
+            .adapt_bedrock_request(request, &claude_binding(public_model))
+    }
+
+    #[test]
+    fn claude_47_plus_profiles_drop_sampling_and_map_enabled_to_adaptive() {
+        let profiles = ModelProfileRegistry::default();
+        for model in [
+            "claude-fable-5",
+            "claude-fable-5-1",
+            "claude-opus-5",
+            "claude-opus-5-5",
+            "claude-sonnet-5",
+            "claude-sonnet-5-5",
+            "claude-haiku-5-5",
+            "claude-opus-4-7",
+            "claude-opus-4-8",
+        ] {
+            let mut request = UnifiedRequest::default();
+            request.options.temperature = Some(0.7);
+            request.options.top_p = Some(0.9);
+            request.options.max_output_tokens = Some(8192);
+            request.options.thinking = Some(json!({"type":"enabled","budget_tokens":4096}));
+            request.options.reasoning_effort = Some("high".into());
+            adapt_claude(&profiles, model, &mut request).expect(model);
+            assert_eq!(request.options.temperature, None, "{model}");
+            assert_eq!(request.options.top_p, None, "{model}");
+            assert_eq!(
+                request.options.thinking,
+                Some(json!({"type":"adaptive"})),
+                "{model}"
+            );
+            assert_eq!(
+                request
+                    .options
+                    .reasoning_effort
+                    .as_ref()
+                    .and_then(|effort| effort.as_str()),
+                Some("high"),
+                "{model}"
+            );
+        }
+    }
+
+    #[test]
+    fn claude_46_profiles_keep_extended_thinking_and_force_temperature_one() {
+        let profiles = ModelProfileRegistry::default();
+        for model in ["claude-opus-4-6", "claude-sonnet-4-6"] {
+            let mut request = UnifiedRequest::default();
+            request.options.temperature = Some(0.7);
+            request.options.top_p = Some(0.9);
+            request.options.max_output_tokens = Some(8192);
+            request.options.thinking = Some(json!({
+                "type":"enabled",
+                "budget_tokens":4096,
+                "display":"summarized"
+            }));
+            request.options.reasoning_effort = Some("xhigh".into());
+            adapt_claude(&profiles, model, &mut request).expect(model);
+            assert_eq!(request.options.temperature, Some(1.0), "{model}");
+            assert_eq!(request.options.top_p, None, "{model}");
+            assert_eq!(
+                request.options.thinking,
+                Some(json!({
+                    "type":"enabled",
+                    "budget_tokens":4096,
+                    "display":"summarized"
+                })),
+                "{model}"
+            );
+            assert_eq!(
+                request
+                    .options
+                    .reasoning_effort
+                    .as_ref()
+                    .and_then(|effort| effort.as_str()),
+                Some("max"),
+                "{model}"
+            );
+        }
+    }
+
+    #[test]
+    fn claude_haiku_45_requires_extended_thinking_and_rejects_effort() {
+        let profiles = ModelProfileRegistry::default();
+
+        let mut adaptive = UnifiedRequest::default();
+        adaptive.options.thinking = Some(json!({"type":"adaptive"}));
+        assert!(
+            adapt_claude(&profiles, "claude-haiku-4-5", &mut adaptive).is_err(),
+            "Haiku 4.5 is extended-only"
+        );
+
+        let mut effort = UnifiedRequest::default();
+        effort.options.reasoning_effort = Some("high".into());
+        assert!(
+            adapt_claude(&profiles, "claude-haiku-4-5", &mut effort).is_err(),
+            "Haiku 4.5 does not support effort"
+        );
+
+        let mut disabled = UnifiedRequest::default();
+        disabled.options.temperature = Some(0.7);
+        disabled.options.top_p = Some(0.9);
+        disabled.options.thinking = Some(json!({"type":"disabled"}));
+        adapt_claude(&profiles, "claude-haiku-4-5", &mut disabled).expect("disabled thinking");
+        assert_eq!(disabled.options.temperature, Some(0.7));
+        assert_eq!(disabled.options.top_p, Some(0.9));
+
+        let mut enabled = UnifiedRequest::default();
+        enabled.options.temperature = Some(0.7);
+        enabled.options.top_p = Some(0.9);
+        enabled.options.max_output_tokens = Some(8192);
+        enabled.options.thinking = Some(json!({"type":"enabled","budget_tokens":4096}));
+        adapt_claude(&profiles, "claude-haiku-4-5", &mut enabled).expect("enabled thinking");
+        assert_eq!(enabled.options.temperature, Some(1.0));
+        assert_eq!(enabled.options.top_p, None);
+    }
+
+    #[test]
+    fn claude_disabled_thinking_respects_each_route() {
+        let profiles = ModelProfileRegistry::default();
+        for model in ["claude-fable-5", "claude-fable-5-1", "claude-opus-5-5"] {
+            let mut request = UnifiedRequest::default();
+            request.options.thinking = Some(json!({"type":"disabled"}));
+            assert!(
+                adapt_claude(&profiles, model, &mut request).is_err(),
+                "{model} is always on"
+            );
+        }
+
+        let mut between_tools = UnifiedRequest::default();
+        between_tools.options.thinking = Some(json!({"type":"disabled"}));
+        adapt_claude(&profiles, "claude-sonnet-5-5", &mut between_tools)
+            .expect("Sonnet 5.5 maps disabled to between_tools");
+        assert_eq!(
+            between_tools.options.thinking,
+            Some(json!({"type":"between_tools"}))
+        );
+
+        for model in ["claude-opus-5", "claude-haiku-5-5"] {
+            let mut disabled = UnifiedRequest::default();
+            disabled.options.thinking = Some(json!({"type":"disabled"}));
+            disabled.options.reasoning_effort = Some("high".into());
+            adapt_claude(&profiles, model, &mut disabled).expect("disabled at high effort");
+
+            let mut too_high = UnifiedRequest::default();
+            too_high.options.thinking = Some(json!({"type":"disabled"}));
+            too_high.options.reasoning_effort = Some("max".into());
+            assert!(
+                adapt_claude(&profiles, model, &mut too_high).is_err(),
+                "{model} rejects disabled at max effort"
+            );
+        }
+
+        for model in ["claude-sonnet-5", "claude-opus-4-7", "claude-opus-4-8"] {
+            let mut request = UnifiedRequest::default();
+            request.options.thinking = Some(json!({"type":"disabled"}));
+            request.options.reasoning_effort = Some("max".into());
+            adapt_claude(&profiles, model, &mut request).expect(model);
+            assert_eq!(
+                request.options.thinking,
+                Some(json!({"type":"disabled"})),
+                "{model}"
+            );
+        }
+    }
+
+    #[test]
+    fn claude_forced_tool_choice_is_rejected_only_where_unsupported() {
+        let profiles = ModelProfileRegistry::default();
+        for model in ["claude-opus-5-5", "claude-fable-5-1", "claude-sonnet-5-5"] {
+            let mut request = UnifiedRequest::default();
+            request.options.thinking = Some(json!({"type":"adaptive"}));
+            request.tool_choice = Some(UnifiedToolChoice::Function("lookup".into()));
+            assert!(
+                adapt_claude(&profiles, model, &mut request).is_err(),
+                "{model} rejects forced tool choice"
+            );
+        }
+
+        for model in ["claude-fable-5", "claude-opus-5"] {
+            let mut request = UnifiedRequest::default();
+            request.options.thinking = Some(json!({"type":"adaptive"}));
+            request.tool_choice = Some(UnifiedToolChoice::Function("lookup".into()));
+            adapt_claude(&profiles, model, &mut request).expect(model);
+        }
+    }
+
+    #[test]
+    fn claude_prefill_is_rejected_only_for_haiku_55() {
+        let profiles = ModelProfileRegistry::default();
+        for (model, expected_error) in [("claude-haiku-5-5", true), ("claude-opus-5-5", false)] {
+            let mut request = crate::api::request_from_value(
+                &json!({
+                    "model": model,
+                    "messages": [
+                        {"role": "user", "content": "hello"},
+                        {"role": "assistant", "content": "prefill"}
+                    ]
+                }),
+                UnifiedSourceProtocol::ChatCompletions,
+            )
+            .expect("parse prefill request");
+            let result = adapt_claude(&profiles, model, &mut request);
+            assert_eq!(result.is_err(), expected_error, "{model}");
+        }
     }
 }

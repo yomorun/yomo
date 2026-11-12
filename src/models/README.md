@@ -55,6 +55,28 @@ sibling model. Keep exceptions documented next to the profile and in this table.
 | `kimi-k2.6` | — | Rejects `reasoning_effort`; use `thinking` |
 | `kimi-k3`, `kimi-k2.8-preview`, `minimax-m3`, `minimax-m2.7` | not documented | Forwarded unchanged |
 
+### Claude thinking modes
+
+Claude profiles adapt the unified request before Bedrock Converse encoding. They
+normalize thinking types and effort, remove deprecated sampling parameters, and
+validate forced tool choice.
+
+| Public model | Thinking | Effort | Sampling |
+| --- | --- | --- | --- |
+| `claude-fable-5`, `claude-fable-5-1`, `claude-opus-5-5` | Adaptive only, always on | low, medium, high, xhigh, max | Removed |
+| `claude-sonnet-5-5` | Adaptive and `between_tools` | low, medium, high, xhigh, max | Removed |
+| `claude-opus-5`, `claude-haiku-5-5` | Adaptive only; `disabled` accepted only at effort high or below | low, medium, high, xhigh, max | Removed |
+| `claude-sonnet-5`, `claude-opus-4-7`, `claude-opus-4-8` | Adaptive only; `disabled` accepted | low, medium, high, xhigh, max | Removed |
+| `claude-opus-4-6`, `claude-sonnet-4-6` | Adaptive and extended (deprecated) | low, medium, high, max (`xhigh` → max) | `temperature=1` when thinking is active |
+| `claude-haiku-4-5` | Extended only | — | `temperature=1` when thinking is active |
+
+- `enabled` is converted to `adaptive` on adaptive-only models.
+- `disabled` is converted to `between_tools` on `claude-sonnet-5-5`; always-on
+  models reject it.
+- `claude-opus-5-5`, `claude-fable-5-1`, and `claude-sonnet-5-5` reject forced
+  `tool_choice`; `claude-fable-5` and `claude-opus-5` allow it.
+- `claude-haiku-5-5` rejects assistant-message prefill.
+
 Except for `gemini-4-argon`, the Gemini text public names are deployment aliases
 routed to `gemini-3.8-flash`. The 3.8 profile is registered for those exact
 names and only claims a binding whose `upstream_model` is `gemini-3.8-flash`;

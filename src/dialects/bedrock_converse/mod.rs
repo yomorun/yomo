@@ -69,16 +69,14 @@ impl BedrockConverseProvider {
 
     fn unified_to_request(
         &self,
-        request: &UnifiedRequest,
+        request: &mut UnifiedRequest,
     ) -> Result<ConverseRequestParts, ProviderError> {
         if let Some(binding) = &self.binding {
             if let Some(request) = self.profile.to_bedrock_converse_request(request, binding)? {
-                let request =
-                    mapper::bedrock_request_to_sdk_parts(request).map_err(Self::invalid_request)?;
-                mapper::validate_model_conversation(&binding.public_model, &request.messages)
-                    .map_err(Self::invalid_request)?;
-                return Ok(request);
+                return mapper::bedrock_request_to_sdk_parts(request)
+                    .map_err(Self::invalid_request);
             }
+            self.profile.adapt_bedrock_request(request, binding)?;
         }
 
         let mut bedrock_request =
@@ -91,8 +89,6 @@ impl BedrockConverseProvider {
         bedrock_request.additional_model_request_fields =
             mapper::additional_model_request_fields(request, profile_model)
                 .map_err(Self::invalid_request)?;
-        mapper::validate_model_conversation(profile_model, &bedrock_request.messages)
-            .map_err(Self::invalid_request)?;
         Ok(bedrock_request)
     }
 
@@ -139,8 +135,11 @@ impl<M> Provider<M> for BedrockConverseProvider {
         self.binding.as_ref()
     }
 
-    async fn complete(&self, request: UnifiedRequest) -> Result<UnifiedResponse, ProviderError> {
-        let bedrock_request = self.unified_to_request(&request)?;
+    async fn complete(
+        &self,
+        mut request: UnifiedRequest,
+    ) -> Result<UnifiedResponse, ProviderError> {
+        let bedrock_request = self.unified_to_request(&mut request)?;
         let ConverseRequestParts {
             messages,
             system,
@@ -191,12 +190,12 @@ impl<M> Provider<M> for BedrockConverseProvider {
 
     async fn stream<'a>(
         &'a self,
-        request: UnifiedRequest,
+        mut request: UnifiedRequest,
     ) -> Result<
         Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
         ProviderError,
     > {
-        let bedrock_request = self.unified_to_request(&request)?;
+        let bedrock_request = self.unified_to_request(&mut request)?;
         let ConverseRequestParts {
             messages,
             system,
