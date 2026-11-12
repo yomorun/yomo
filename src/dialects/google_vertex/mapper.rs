@@ -1367,7 +1367,7 @@ fn vertex_thinking_level(level: &str) -> Result<VertexThinkingLevel, ProviderErr
         "minimal" => VertexThinkingLevel::Minimal,
         "low" => VertexThinkingLevel::Low,
         "medium" => VertexThinkingLevel::Medium,
-        "high" => VertexThinkingLevel::High,
+        "high" | "xhigh" | "max" => VertexThinkingLevel::High,
         other => {
             return Err(ProviderError::Public {
                 status: StatusCode::BAD_REQUEST,
@@ -1894,6 +1894,20 @@ mod tests {
             .expect("effort carries a level");
         assert_eq!(config.thinking_level, Some(VertexThinkingLevel::High));
         assert_eq!(config.thinking_budget, None);
+
+        for effort in ["xhigh", "max"] {
+            let request = UnifiedRequest {
+                options: crate::provider::UnifiedRequestOptions {
+                    reasoning_effort: Some(effort.into()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let config = map_vertex_thinking_config(&request)
+                .expect("named effort encodes")
+                .expect("effort carries a level");
+            assert_eq!(config.thinking_level, Some(VertexThinkingLevel::High));
+        }
 
         // Budget requests encode thinkingBudget (2.5); dynamic budgets omit.
         let budget = UnifiedRequest {

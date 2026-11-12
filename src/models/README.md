@@ -45,6 +45,8 @@ sibling model. Keep exceptions documented next to the profile and in this table.
 | `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`, `gpt-5.5` | none, low, medium, high, xhigh | |
 | `gpt-5.6-sol`, `gpt-5.6-luna`, `gpt-5.6-terra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-6.1-terra` | none, low, medium, high, xhigh, max | |
 | `gpt-6-astra`, `gpt-6.1-sol` | low, medium, high, xhigh, max | |
+| `gemini-3.8-flash` | low, medium, high | `none`/`minimal`/`thinking.type=disabled` → low; `xhigh`/`max` → high; `thinking_budget` mapped to a level; also registered for its routed aliases |
+| `gemini-4-argon` | low, medium, high | Same level policy; non-streaming `max_output_tokens` capped at 32,768 |
 | `glm-5.2` | none, high, max | |
 | `glm-5.3`, `glm-5.3-flash` | low, high, max | Always-on thinking; both removed `top_k` |
 | `deepseek-v4-flash`, `deepseek-v4-pro`, `deepseek-v4-pro-0813` | none, low, high, max | |
@@ -52,6 +54,11 @@ sibling model. Keep exceptions documented next to the profile and in this table.
 | `deepseek-v4-flash-vision-exp` | none, low, high, max | `none` is encoded as `thinking.type=disabled` |
 | `kimi-k2.6` | — | Rejects `reasoning_effort`; use `thinking` |
 | `kimi-k3`, `kimi-k2.8-preview`, `minimax-m3`, `minimax-m2.7` | not documented | Forwarded unchanged |
+
+Except for `gemini-4-argon`, the Gemini text public names are deployment aliases
+routed to `gemini-3.8-flash`. The 3.8 profile is registered for those exact
+names and only claims a binding whose `upstream_model` is `gemini-3.8-flash`;
+other Gemini bindings fall back to the default conversion.
 
 ## Tests
 

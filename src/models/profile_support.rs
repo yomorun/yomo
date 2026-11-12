@@ -4,6 +4,9 @@ use log::debug;
 use serde_json::{Value, json};
 
 use crate::dialects::Dialect;
+use crate::dialects::google_vertex::types::{
+    VertexGenerationConfig, VertexThinkingConfig, VertexThinkingLevel,
+};
 use crate::dialects::openai_chat_completions::mapper::request_to_chat;
 use crate::dialects::openai_responses::mapper::ir_to_responses_request;
 use crate::models::{ModelProfile, ModelProfileError, from_dialect_conversion_error};
@@ -11,7 +14,7 @@ use crate::openai_responses_types::{ResponsesReasoningConfig, ResponsesRequest};
 use crate::openai_types::ChatCompletionRequest;
 use crate::provider::{
     ReasoningEffort, ReasoningEffortLevel, UnifiedContentPart, UnifiedContentPartKind,
-    UnifiedInputItemKind, UnifiedRequest, UnifiedToolOutput,
+    UnifiedInputItemKind, UnifiedRequest, UnifiedRole, UnifiedToolOutput,
 };
 use crate::serve_config::ModelBinding;
 use crate::upstreams::Upstream;
@@ -352,6 +355,147 @@ pub(super) fn has_non_text_content(request: &UnifiedRequest) -> bool {
             UnifiedInputItemKind::Other { .. } => true,
             _ => false,
         })
+}
+
+/// Map a unified reasoning effort onto the Gemini level supported by 3.8/4.
+pub(super) fn gemini_level_for_effort(
+    effort: &ReasoningEffort,
+) -> Result<VertexThinkingLevel, ModelProfileError> {
+    match effort.as_str() {
+        Some("none" | "minimal" | "low") => Ok(VertexThinkingLevel::Low),
+        Some("medium") => Ok(VertexThinkingLevel::Medium),
+        Some("high" | "xhigh" | "max") => Ok(VertexThinkingLevel::High),
+        Some(other) => Err(ModelProfileError::InvalidRequest {
+            message: format!("unsupported reasoning_effort {other} for Gemini"),
+            param: Some("reasoning_effort".to_owned()),
+        }),
+        None => Err(ModelProfileError::InvalidRequest {
+            message: "numeric reasoning_effort is not supported by Google Vertex".to_owned(),
+            param: Some("reasoning_effort".to_owned()),
+        }),
+    }
+}
+
+/// Build a Gemini thinking config for a resolved level.
+pub(super) fn gemini_thinking_config_for_level(
+    level: VertexThinkingLevel,
+    include_thoughts: Option<bool>,
+) -> VertexThinkingConfig {
+    VertexThinkingConfig {
+        thinking_budget: None,
+        thinking_level: Some(level),
+        include_thoughts: include_thoughts.or(Some(true)),
+    }
+}
+
+/// Translate a unified `thinking` object into a Gemini 3/4 thinking config.
+pub(super) fn gemini_thinking_config(
+    thinking: &Value,
+    existing_include_thoughts: Option<bool>,
+) -> Result<Option<VertexThinkingConfig>, ModelProfileError> {
+    let Some(fields) = thinking.as_object() else {
+        return Err(ModelProfileError::InvalidRequest {
+            message: "thinking must be an object".to_owned(),
+            param: Some("thinking".to_owned()),
+        });
+    };
+    let type_name = fields.get("type").and_then(Value::as_str).ok_or_else(|| {
+        ModelProfileError::InvalidRequest {
+            message: "thinking.type is required".to_owned(),
+            param: Some("thinking.type".to_owned()),
+        }
+    })?;
+    let include_thoughts = fields
+        .get("include_thoughts")
+        .or_else(|| fields.get("includeThoughts"))
+        .and_then(Value::as_bool)
+        .or(existing_include_thoughts);
+
+    let level = match type_name {
+        "enabled" => match fields.get("budget_tokens") {
+            Some(value) => {
+                let budget = value
+                    .as_i64()
+                    .ok_or_else(|| ModelProfileError::InvalidRequest {
+                        message: "thinking.budget_tokens must be an integer".to_owned(),
+                        param: Some("thinking.budget_tokens".to_owned()),
+                    })?;
+                gemini_level_for_budget(budget)?
+            }
+            None => None,
+        },
+        // Gemini has no adaptive mode; leave the model default untouched.
+        "adaptive" => None,
+        // Gemini 3+ cannot turn thinking off; low is the closest supported level.
+        "disabled" => Some(VertexThinkingLevel::Low),
+        other => {
+            return Err(ModelProfileError::InvalidRequest {
+                message: format!("unsupported thinking.type {other} for Gemini"),
+                param: Some("thinking.type".to_owned()),
+            });
+        }
+    };
+
+    if level.is_none() && include_thoughts.is_none() {
+        return Ok(None);
+    }
+    Ok(Some(VertexThinkingConfig {
+        thinking_budget: None,
+        thinking_level: level,
+        include_thoughts,
+    }))
+}
+
+fn gemini_level_for_budget(budget: i64) -> Result<Option<VertexThinkingLevel>, ModelProfileError> {
+    match budget {
+        // Dynamic thinking is the model default; do not emit a level.
+        -1 => Ok(None),
+        // Gemini 3+ cannot disable thinking, so zero maps to the lowest level.
+        0..=1024 => Ok(Some(VertexThinkingLevel::Low)),
+        1025..=8192 => Ok(Some(VertexThinkingLevel::Medium)),
+        budget if budget > 8192 => Ok(Some(VertexThinkingLevel::High)),
+        other => Err(ModelProfileError::InvalidRequest {
+            message: format!("thinking.budget_tokens {other} is not valid for Gemini 3 or later"),
+            param: Some("thinking.budget_tokens".to_owned()),
+        }),
+    }
+}
+
+/// Clamp a Gemini output budget to the request-specific model cap.
+pub(super) fn gemini_clamp_output_tokens(
+    generation: &mut VertexGenerationConfig,
+    cap: i32,
+    model: &str,
+) {
+    if let Some(tokens) = generation.max_output_tokens {
+        let clamped = tokens.min(cap);
+        if clamped != tokens {
+            debug!(
+                "gemini profile: model={} max_output_tokens {} -> {}",
+                model, tokens, clamped
+            );
+        }
+        generation.max_output_tokens = Some(clamped);
+    }
+}
+
+/// Whether the conversation ends with a prefilled assistant message.
+pub(super) fn gemini_ends_with_assistant_prefill(request: &UnifiedRequest) -> bool {
+    let Some(last) = request.input.last() else {
+        return false;
+    };
+    let UnifiedInputItemKind::Message {
+        role: UnifiedRole::Assistant,
+        content,
+        ..
+    } = &last.kind
+    else {
+        return false;
+    };
+    content.iter().any(|part| match &part.kind {
+        UnifiedContentPartKind::Text { text, .. } => !text.trim().is_empty(),
+        _ => false,
+    })
 }
 
 #[cfg(test)]

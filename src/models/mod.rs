@@ -52,6 +52,11 @@ pub mod gpt_6_luna;
 /// GPT-6 Sol Responses profile.
 pub mod gpt_6_sol;
 
+/// Gemini 3.8 Flash request profile.
+pub mod gemini_3_8_flash;
+/// Gemini 4 Argon request profile.
+pub mod gemini_4_argon;
+
 /// DeepSeek V4.1 Flash profile.
 pub mod deepseek_v4_1_flash;
 /// DeepSeek V4 Flash profile.
@@ -254,6 +259,24 @@ impl ModelProfileRegistry {
         profiles.insert("gpt-6-luna".to_owned(), Arc::new(gpt_6_luna::PROFILE));
         profiles.insert("gpt-6.1-sol".to_owned(), Arc::new(gpt_6_1_sol::PROFILE));
         profiles.insert("gpt-6.1-terra".to_owned(), Arc::new(gpt_6_1_terra::PROFILE));
+        let gemini_38_flash: Arc<dyn ModelProfile> =
+            Arc::new(gemini_3_8_flash::Gemini38FlashProfile);
+        for public_model in [
+            "gemini-3.8-flash",
+            "gemini-2.5-flash",
+            "gemini-2.5-pro",
+            "gemini-3.1-pro-preview",
+            "gemini-3.5-flash",
+            "gemini-3.6-flash",
+            "gemini-3.7-flash",
+            "gemini-3-flash-preview",
+        ] {
+            profiles.insert(public_model.to_owned(), Arc::clone(&gemini_38_flash));
+        }
+        profiles.insert(
+            "gemini-4-argon".to_owned(),
+            Arc::new(gemini_4_argon::Gemini4ArgonProfile),
+        );
         profiles.insert(
             "deepseek-v4.1-flash".to_owned(),
             Arc::new(deepseek_v4_1_flash::DeepseekV41FlashProfile),
@@ -1049,5 +1072,99 @@ mod tests {
                 "{model} profile must not claim a foreign upstream"
             );
         }
+    }
+
+    #[test]
+    fn builtin_gemini_aliases_share_the_38_profile_and_argon_stays_separate() {
+        use crate::dialects::google_vertex::types::{VertexGenerationConfig, VertexThinkingLevel};
+
+        let profiles = ModelProfileRegistry::default();
+        let aliases = [
+            "gemini-3.8-flash",
+            "gemini-2.5-flash",
+            "gemini-2.5-pro",
+            "gemini-3.1-pro-preview",
+            "gemini-3.5-flash",
+            "gemini-3.6-flash",
+            "gemini-3.7-flash",
+            "gemini-3-flash-preview",
+        ];
+        for public_model in aliases {
+            let request = crate::api::request_from_value(
+                &json!({
+                    "model": public_model,
+                    "messages": [{"role": "user", "content": "hello"}],
+                    "reasoning_effort": "minimal"
+                }),
+                UnifiedSourceProtocol::ChatCompletions,
+            )
+            .expect("parse Gemini alias request");
+            let binding = ModelBinding {
+                public_model: public_model.to_owned(),
+                model: public_model.to_owned(),
+                provider: "google.global".to_owned(),
+                upstream: Upstream::GoogleVertex,
+                upstream_model: "gemini-3.8-flash".to_owned(),
+                dialect: Some(Dialect::GeminiGenerateContent),
+                label: "google.global.gemini-3.8-flash".to_owned(),
+            };
+            let mut body = VertexGenerateContentRequest {
+                contents: Vec::new(),
+                system_instruction: None,
+                generation_config: Some(VertexGenerationConfig::default()),
+                tools: None,
+                tool_config: None,
+            };
+            profiles
+                .resolve(public_model)
+                .adapt_gemini_generate_content_request(&request, &binding, &mut body)
+                .expect("adapt Gemini alias");
+            let config = body
+                .generation_config
+                .expect("generation config")
+                .thinking_config
+                .expect("thinking config");
+            assert_eq!(
+                config.thinking_level,
+                Some(VertexThinkingLevel::Low),
+                "{public_model} must use the 3.8 profile"
+            );
+        }
+
+        let request = crate::api::request_from_value(
+            &json!({
+                "model": "gemini-4-argon",
+                "messages": [{"role": "user", "content": "hello"}],
+                "reasoning_effort": "max"
+            }),
+            UnifiedSourceProtocol::ChatCompletions,
+        )
+        .expect("parse Argon request");
+        let binding = ModelBinding {
+            public_model: "gemini-4-argon".to_owned(),
+            model: "gemini-4-argon".to_owned(),
+            provider: "google.global".to_owned(),
+            upstream: Upstream::GoogleVertex,
+            upstream_model: "gemini-4-argon".to_owned(),
+            dialect: Some(Dialect::GeminiGenerateContent),
+            label: "google.global.gemini-4-argon".to_owned(),
+        };
+        let mut body = VertexGenerateContentRequest {
+            contents: Vec::new(),
+            system_instruction: None,
+            generation_config: Some(VertexGenerationConfig::default()),
+            tools: None,
+            tool_config: None,
+        };
+        profiles
+            .resolve("gemini-4-argon")
+            .adapt_gemini_generate_content_request(&request, &binding, &mut body)
+            .expect("adapt Argon");
+        let config = body
+            .generation_config
+            .expect("generation config")
+            .thinking_config
+            .expect("thinking config");
+        assert_eq!(config.thinking_level, Some(VertexThinkingLevel::High));
     }
 }
