@@ -10,15 +10,14 @@
 use crate::dialects::Dialect;
 use crate::models::{ModelProfile, ModelProfileError};
 use crate::openai_types::ChatCompletionRequest;
-use crate::provider::{
-    ReasoningEffortLevel, UnifiedContentPart, UnifiedContentPartKind, UnifiedInputItemKind,
-    UnifiedRequest, UnifiedToolOutput,
-};
+use crate::provider::{ReasoningEffortLevel, UnifiedRequest};
 use crate::serve_config::ModelBinding;
 use crate::upstreams::Upstream;
 use serde_json::Value;
 
-use super::profile_support::to_chat_request_with_supported_effort;
+use super::profile_support::{
+    has_non_text_content, to_chat_request_with_supported_effort, unsupported_capability,
+};
 
 /// GLM-5.3 documents `low`, `high`, and `max` reasoning effort.
 const SUPPORTED_EFFORTS: &[ReasoningEffortLevel] = &[
@@ -103,46 +102,6 @@ fn validate_thinking(thinking: Option<&Value>) -> Result<(), ModelProfileError> 
         "GLM-5.3 always enables thinking and does not support disabling it",
         "thinking.type",
     ))
-}
-
-fn has_non_text_content(request: &UnifiedRequest) -> bool {
-    let has_non_text_part = |parts: &[UnifiedContentPart]| {
-        parts.iter().any(|part| {
-            !matches!(
-                &part.kind,
-                UnifiedContentPartKind::Text { .. }
-                    | UnifiedContentPartKind::Refusal { .. }
-                    | UnifiedContentPartKind::Thinking { .. }
-                    | UnifiedContentPartKind::RedactedThinking { .. }
-            )
-        })
-    };
-
-    request
-        .instructions
-        .iter()
-        .flatten()
-        .chain(&request.input)
-        .any(|item| match &item.kind {
-            UnifiedInputItemKind::Message { content, .. } => has_non_text_part(content),
-            UnifiedInputItemKind::FunctionCallOutput {
-                output: UnifiedToolOutput::Content(content),
-                ..
-            } => has_non_text_part(content),
-            UnifiedInputItemKind::Reasoning {
-                content: Some(content),
-                ..
-            } => has_non_text_part(content),
-            UnifiedInputItemKind::Other { .. } => true,
-            _ => false,
-        })
-}
-
-fn unsupported_capability(message: impl Into<String>, parameter: &str) -> ModelProfileError {
-    ModelProfileError::UnsupportedCapability {
-        message: message.into(),
-        param: Some(parameter.to_owned()),
-    }
 }
 
 #[cfg(test)]

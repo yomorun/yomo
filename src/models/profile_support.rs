@@ -8,7 +8,10 @@ use crate::dialects::openai_responses::mapper::ir_to_responses_request;
 use crate::models::{ModelProfileError, from_dialect_conversion_error};
 use crate::openai_responses_types::{ResponsesReasoningConfig, ResponsesRequest};
 use crate::openai_types::ChatCompletionRequest;
-use crate::provider::{ReasoningEffort, ReasoningEffortLevel, UnifiedRequest};
+use crate::provider::{
+    ReasoningEffort, ReasoningEffortLevel, UnifiedContentPart, UnifiedContentPartKind,
+    UnifiedInputItemKind, UnifiedRequest, UnifiedToolOutput,
+};
 use crate::serve_config::ModelBinding;
 use crate::upstreams::Upstream;
 
@@ -227,6 +230,40 @@ pub(super) fn validate_thinking_modes(
         format!("{model_name} does not support thinking.type `{mode}`"),
         "thinking.type",
     ))
+}
+
+/// Whether any request item carries a non-text content part.
+pub(super) fn has_non_text_content(request: &UnifiedRequest) -> bool {
+    let has_non_text_part = |parts: &[UnifiedContentPart]| {
+        parts.iter().any(|part| {
+            !matches!(
+                &part.kind,
+                UnifiedContentPartKind::Text { .. }
+                    | UnifiedContentPartKind::Refusal { .. }
+                    | UnifiedContentPartKind::Thinking { .. }
+                    | UnifiedContentPartKind::RedactedThinking { .. }
+            )
+        })
+    };
+
+    request
+        .instructions
+        .iter()
+        .flatten()
+        .chain(&request.input)
+        .any(|item| match &item.kind {
+            UnifiedInputItemKind::Message { content, .. } => has_non_text_part(content),
+            UnifiedInputItemKind::FunctionCallOutput {
+                output: UnifiedToolOutput::Content(content),
+                ..
+            } => has_non_text_part(content),
+            UnifiedInputItemKind::Reasoning {
+                content: Some(content),
+                ..
+            } => has_non_text_part(content),
+            UnifiedInputItemKind::Other { .. } => true,
+            _ => false,
+        })
 }
 
 #[cfg(test)]
