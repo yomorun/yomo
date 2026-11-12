@@ -1,11 +1,13 @@
 //! GLM-5.3 request behavior.
 //!
-//! GLM-5.3 removed the `top_k` sampling parameter; requests that set it are
-//! dropped explicitly instead of being forwarded.
-//!
 //! Sources:
 //! - <https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3>
 //! - <https://ark.volcengine.com/region:cn-beijing/docs/chat-api>
+//!
+//! Binding: Volcengine Ark / Chat Completions.
+//! Reasoning effort: low, high, max.
+//! Thinking: always on; only `enabled` is accepted.
+//! Sampling: top-k is removed before forwarding; text-only input and output.
 
 use crate::dialects::Dialect;
 use crate::models::{ModelProfile, ModelProfileError};

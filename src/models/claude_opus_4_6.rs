@@ -1,6 +1,12 @@
 //! Claude Opus 4.6 request behavior.
 //!
 //! Source: <https://platform.claude.com/docs/en/build-with-claude/thinking-troubleshooting>
+//!
+//! Binding: AWS Bedrock / Bedrock Converse, exact public model `claude-opus-4-6`.
+//! Thinking: adaptive or extended (deprecated); `enabled` keeps its budget.
+//! Reasoning effort: low, medium, high, max; `xhigh` maps to max.
+//! Sampling: temperature is forced to 1 and top-p is removed when thinking is active.
+//! Tool choice: forced `tool_choice` is accepted.
 
 use crate::models::{ModelProfile, ModelProfileError};
 use crate::provider::UnifiedRequest;

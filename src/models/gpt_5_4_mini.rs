@@ -1,6 +1,9 @@
 //! GPT-5.4 Mini Chat Completions request behavior.
 //!
 //! Source: <https://developers.openai.com/api/docs/models/gpt-5.4-mini>
+//!
+//! Binding: Azure OpenAI / Chat Completions.
+//! Reasoning effort: none, low, medium, high, xhigh; other named levels map to the nearest supported level.
 
 use crate::provider::ReasoningEffortLevel;
 use crate::upstreams::Upstream;

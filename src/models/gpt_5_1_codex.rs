@@ -3,6 +3,9 @@
 //! Sources:
 //! - <https://developers.openai.com/api/docs/models/gpt-5.1-codex>
 //! - <https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/reasoning>
+//!
+//! Binding: Azure OpenAI / Responses.
+//! Reasoning effort: none, low, medium, high; other named levels map to the nearest supported level.
 
 use crate::provider::ReasoningEffortLevel;
 use crate::upstreams::Upstream;

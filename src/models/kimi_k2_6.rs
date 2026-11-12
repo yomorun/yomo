@@ -1,6 +1,11 @@
 //! Kimi K2.6 request behavior.
 //!
 //! Source: <https://cloud.tencent.com/document/product/1823/132232>
+//!
+//! Binding: TokenHub / Chat Completions.
+//! Reasoning effort: not supported; named effort is rejected.
+//! Thinking: enabled or disabled; `thinking.keep` accepts only `all`.
+//! Sampling: `max_tokens` is encoded through the model-specific extension field.
 
 use crate::models::{ModelProfile, ModelProfileError};
 use crate::openai_types::ChatCompletionRequest;

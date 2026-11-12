@@ -1,12 +1,15 @@
 //! Gemini 3.8 Flash request behavior.
 //!
-//! Gemini 3.8 Flash accepts only `thinkingLevel` (`low`, `medium`, `high`);
-//! `minimal` is documented as unsupported and `thinkingBudget` is deprecated
-//! for Gemini 3 and later.
-//!
 //! Sources:
 //! - <https://cloud.google.com/vertex-ai/generative-ai/docs/thinking>
 //! - <https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/3-8-flash>
+//!
+//! Binding: Google Vertex / Gemini generateContent.
+//! Reasoning effort: low, medium, high; `none`/`minimal` map to low, `xhigh`/`max` to high.
+//! Thinking: only `thinkingLevel`; `enabled`/budget values map to a level.
+//! Output: capped at 65,536 tokens.
+//! Conversation: assistant-message prefill is rejected.
+//! Aliases: registered for every Gemini text alias routed to `gemini-3.8-flash`.
 
 use log::debug;
 

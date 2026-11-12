@@ -1,13 +1,14 @@
 //! Gemini 4 Argon request behavior.
 //!
-//! Gemini 4 Argon accepts only `thinkingLevel` (`low`, `medium`, `high`);
-//! `thinkingBudget` is deprecated for Gemini 4 and rejected by Vertex. The
-//! non-streaming endpoint caps output at 32,768 tokens while streaming accepts
-//! up to 65,536.
-//!
 //! Sources:
 //! - <https://cloud.google.com/vertex-ai/generative-ai/docs/thinking>
 //! - <https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/4-argon>
+//!
+//! Binding: Google Vertex / Gemini generateContent.
+//! Reasoning effort: low, medium, high; `none`/`minimal` map to low, `xhigh`/`max` to high.
+//! Thinking: only `thinkingLevel`; `enabled`/budget values map to a level.
+//! Output: capped at 65,536 tokens streaming and 32,768 tokens non-streaming.
+//! Conversation: assistant-message prefill is rejected.
 
 use log::debug;
 

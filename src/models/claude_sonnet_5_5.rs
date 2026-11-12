@@ -1,6 +1,13 @@
 //! Claude Sonnet 5.5 request behavior.
 //!
 //! Source: <https://platform.claude.com/docs/en/build-with-claude/thinking-troubleshooting>
+//!
+//! Binding: AWS Bedrock / Bedrock Converse, exact public model `claude-sonnet-5-5`.
+//! Thinking: adaptive or `between_tools`; `enabled` is converted to `adaptive`,
+//! `disabled` is converted to `between_tools`.
+//! Reasoning effort: low, medium, high, xhigh, max; `none`/`minimal` map to low.
+//! Sampling: temperature, top-p, and top-k are removed.
+//! Tool choice: forced `tool_choice` is rejected.
 
 use crate::models::{ModelProfile, ModelProfileError};
 use crate::provider::UnifiedRequest;

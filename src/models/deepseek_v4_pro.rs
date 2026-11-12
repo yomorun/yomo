@@ -1,6 +1,10 @@
 //! DeepSeek V4 Pro request behavior.
 //!
 //! Source: <https://ark.volcengine.com/region:cn-beijing/docs/deep-thinking>
+//!
+//! Binding: Volcengine Ark / Chat Completions.
+//! Reasoning effort: none, low, high, max; shared by the `deepseek-v4-pro` aliases.
+//! Thinking: enabled or disabled; raw thinking options are preserved.
 
 use crate::models::{ModelProfile, ModelProfileError};
 use crate::openai_types::ChatCompletionRequest;

@@ -1,6 +1,12 @@
 //! Claude Haiku 4.5 request behavior.
 //!
 //! Source: <https://platform.claude.com/docs/en/build-with-claude/thinking-troubleshooting>
+//!
+//! Binding: AWS Bedrock / Bedrock Converse, exact public model `claude-haiku-4-5`.
+//! Thinking: extended only; `adaptive` is rejected; `enabled` keeps its budget.
+//! Reasoning effort: not supported.
+//! Sampling: temperature is forced to 1 and top-p is removed when thinking is active.
+//! Tool choice: forced `tool_choice` is accepted.
 
 use crate::models::{ModelProfile, ModelProfileError};
 use crate::provider::UnifiedRequest;

@@ -1,6 +1,11 @@
 //! GLM-5.2 request behavior.
 //!
 //! Source: <https://cloud.tencent.com/document/product/1823/132061>
+//!
+//! Binding: TokenHub / Chat Completions.
+//! Reasoning effort: none, high, max.
+//! Thinking: enabled or disabled; text-only input and output.
+//! Sampling: top-k is forwarded as a source extension.
 
 use crate::models::{ModelProfile, ModelProfileError};
 use crate::openai_types::ChatCompletionRequest;

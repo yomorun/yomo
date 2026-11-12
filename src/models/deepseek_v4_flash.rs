@@ -1,6 +1,10 @@
 //! DeepSeek V4 Flash request behavior.
 //!
 //! Source: <https://ark.volcengine.com/region:cn-beijing/docs/deep-thinking>
+//!
+//! Binding: Volcengine Ark / Chat Completions.
+//! Reasoning effort: none, low, high, max; other named levels map to the nearest level.
+//! Thinking: enabled or disabled; raw thinking options are preserved.
 
 use crate::models::{ModelProfile, ModelProfileError};
 use crate::openai_types::ChatCompletionRequest;

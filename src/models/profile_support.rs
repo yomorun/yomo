@@ -1,3 +1,8 @@
+//! Shared helpers for model-specific profiles.
+//!
+//! General normalization policy lives in `src/models/README.md`; each model's
+//! supported set and constraints live in its own `src/models/<model>.rs` header.
+
 use std::collections::HashMap;
 
 use log::debug;
@@ -150,7 +155,8 @@ impl ModelProfile for EffortProfile {
 
 /// Resolve the effort a request should send for a model with `supported` levels.
 ///
-/// The policy is documented in `src/models/README.md`:
+/// The general policy is documented in `src/models/README.md`; the supported
+/// set is declared by the model's profile module:
 /// - supported named levels pass through unchanged;
 /// - other named levels are rewritten to the nearest supported level, with ties
 ///   going to the higher level so normalization never silently weakens quality;

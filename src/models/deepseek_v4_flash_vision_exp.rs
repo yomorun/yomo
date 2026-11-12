@@ -1,6 +1,10 @@
 //! DeepSeek V4 Flash Vision request behavior.
 //!
 //! Source: <https://cloud.tencent.com/document/product/1823/132248>
+//!
+//! Binding: TokenHub / Chat Completions.
+//! Reasoning effort: none, low, high, max.
+//! Thinking: enabled or disabled; `none` is encoded as `thinking.type=disabled`.
 
 use crate::models::{ModelProfile, ModelProfileError};
 use crate::openai_types::ChatCompletionRequest;

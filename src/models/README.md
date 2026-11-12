@@ -1,87 +1,152 @@
 # Model Profiles
 
-Model profiles adapt a `UnifiedRequest` for documented, model-specific request behavior before it is sent upstream.
+Model profiles adapt a `UnifiedRequest` for documented, model-specific request
+behavior before it is sent upstream. The registry selects a profile by the exact
+`ModelBinding.public_model`; a profile may inspect `upstream`, `upstream_model`,
+and `dialect`, and returns `None` or a no-op when it does not handle the binding.
 
-The registry selects a profile by the exact `ModelBinding.public_model`. A profile may inspect `upstream`, `upstream_model`, and `dialect`. It returns a dialect request when it handles the binding, or `None` to use Yomo's default conversion.
+## Where model-specific policy lives
 
-## Guidelines
+- **Per-model policy is in the model file.** Every `src/models/<model>.rs` starts
+  with a `//!` header that records its official source, binding scope, supported
+  reasoning controls, sampling rules, and any model-specific validation.
+- **This document defines the general policy and the process.** It intentionally
+  does not enumerate each model's supported values.
+- **Vendor evidence lives outside this repository's model code.** Official API
+  facts, probe records, and model lifecycle notes belong in allegro's
+  `docs/provider-feature-compatibility.md`.
+- **The registry is `src/models/mod.rs`.** Register an exact public model name
+  there; aliases are separate registrations, not wildcard matches.
 
-- Add a profile only for evidence-backed behavior specific to a model. Put API-, dialect-, or upstream-wide behavior in its corresponding layer; do not infer capabilities or add empty profiles.
-- Keep one model's behavior in one model-named file. Register exact public model names; aliases may share an implementation when their behavior is identical.
-- Models whose only behavior is effort normalization declare a shared `EffortProfile` constant instead of duplicating the conversion.
-- Check the binding's upstream and dialect. Return `None` for bindings the profile does not handle.
-- Prefer the default dialect converter and make the smallest necessary changes. Preserve unrelated fields, extensions, and caller intent; do not inject unspecified options without a documented reason.
-- Report documented constraints clearly. Do not silently discard request semantics.
-- Keep routing, authentication, transport, and response parsing outside model profiles.
+## Selection and scope
+
+- Register profiles by exact public model name. A profile must not claim a
+  binding it does not handle: return `None` for conversion hooks and do nothing
+  in adaptation hooks.
+- Check `binding.upstream` and `binding.dialect` before applying rules.
+- A profile may share an implementation with an alias only when both names have
+  identical behavior; otherwise use one model-named file per model.
+- Keep routing, authentication, transport, HTTP diagnostics, and response
+  parsing outside model profiles.
 
 ## Reasoning effort policy
 
-Profiles normalize `reasoning_effort` only for models with a documented supported
-set. Levels are ordered
-`none < minimal < low < medium < high < xhigh < max`, and normalization follows one
-rule:
+Levels are ordered `none < minimal < low < medium < high < xhigh < max`.
+Normalization follows one rule:
 
 - A supported named level passes through unchanged.
 - Any other named level is rewritten to the nearest supported level.
 - Ties go to the higher level, so normalization never silently weakens reasoning
   quality; the cost of a tie is at most one level.
 - Provider-specific strings and numeric values pass through unchanged for the
-  upstream to validate.
+  upstream to validate, unless the target dialect cannot represent them; in that
+  case report an error instead of guessing.
 - An omitted effort stays omitted; profiles never inject one.
-- A model that does not accept `reasoning_effort` at all reports an error instead
-  of being silently adjusted.
+- A model that does not accept `reasoning_effort` at all reports an error
+  instead of being silently adjusted.
 
 Every rewrite is logged at `debug` with the model and the requested/forwarded
 values so cost or quality anomalies can be traced without changing the response.
 
-Derive supported sets from the model's documentation; do not infer a set from a
-sibling model. Keep exceptions documented next to the profile and in this table.
+## Thinking, sampling, and validation policy
 
-| Public model | Supported levels | Notes |
-| --- | --- | --- |
-| `gpt-5.1-codex` | none, low, medium, high | |
-| `gpt-5.1-codex-max` | none, low, medium, high, xhigh | |
-| `gpt-5.2-codex`, `gpt-5.3-codex` | low, medium, high, xhigh | |
-| `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`, `gpt-5.5` | none, low, medium, high, xhigh | |
-| `gpt-5.6-sol`, `gpt-5.6-luna`, `gpt-5.6-terra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-6.1-terra` | none, low, medium, high, xhigh, max | |
-| `gpt-6-astra`, `gpt-6.1-sol` | low, medium, high, xhigh, max | |
-| `gemini-3.8-flash` | low, medium, high | `none`/`minimal`/`thinking.type=disabled` → low; `xhigh`/`max` → high; `thinking_budget` mapped to a level; also registered for its routed aliases |
-| `gemini-4-argon` | low, medium, high | Same level policy; non-streaming `max_output_tokens` capped at 32,768 |
-| `glm-5.2` | none, high, max | |
-| `glm-5.3`, `glm-5.3-flash` | low, high, max | Always-on thinking; both removed `top_k` |
-| `deepseek-v4-flash`, `deepseek-v4-pro`, `deepseek-v4-pro-0813` | none, low, high, max | |
-| `deepseek-v4.1-flash` | low, high, max | `ultra` is an alias for `max` |
-| `deepseek-v4-flash-vision-exp` | none, low, high, max | `none` is encoded as `thinking.type=disabled` |
-| `kimi-k2.6` | — | Rejects `reasoning_effort`; use `thinking` |
-| `kimi-k3`, `kimi-k2.8-preview`, `minimax-m3`, `minimax-m2.7` | not documented | Forwarded unchanged |
+- Normalize `thinking.type` only when the target control has a documented
+  equivalent. For example, a mode that is unsupported but has a documented
+  replacement may be converted; a mode with no equivalent must report an error.
+- Do not silently drop request semantics. When the target dialect or model
+  cannot represent a control, prefer a clear `InvalidRequest` or
+  `UnsupportedCapability` error over guessing.
+- Remove a sampling parameter only when the model documentation says it is
+  ignored, deprecated, or no longer supported. Log the removal at `debug`.
+- When thinking is active and a model requires a fixed sampling value, set that
+  value explicitly rather than forwarding an incompatible client value.
+- Validate model-specific conversation constraints (for example, a rejected
+  prefill or an invalid tool choice) before encoding the upstream request.
+- Derive supported sets from the model's documentation; never infer a set from a
+  sibling model.
+- Prefer the default dialect converter and make the smallest necessary change.
+  Preserve unrelated fields, extensions, and caller intent.
 
-### Claude thinking modes
+## Adding a model profile
 
-Claude profiles adapt the unified request before Bedrock Converse encoding. They
-normalize thinking types and effort, remove deprecated sampling parameters, and
-validate forced tool choice.
+1. **Collect evidence.** Find the official model documentation, including
+   supported thinking modes, effort levels, sampling rules, tool-choice limits,
+   and conversation constraints. Record the URL in the model file header.
+2. **Create one model-named file.** Use `src/models/<model>.rs`; do not add a
+   family-wide file unless a documented shared behavior genuinely applies.
+3. **Write the `//!` policy header** using the template below. This header is
+   the normative per-model policy; do not duplicate it in this README.
+4. **Implement the smallest hook.** Use `to_openai_chat_request`,
+   `to_openai_responses_request`, `to_bedrock_converse_request`,
+   `adapt_bedrock_request`, or `adapt_gemini_generate_content_request` as
+   appropriate. Models whose only behavior is effort normalization should use
+   the shared `EffortProfile` constant instead of duplicating conversion code.
+5. **Scope the binding.** Check `public_model`, `upstream`, and `dialect`; return
+   `None`/no-op for foreign bindings so the default converter still works.
+6. **Register the exact public name** in `src/models/mod.rs`.
+7. **Add tests** covering exact-name registration, binding scope, the
+   model-specific transformation, fallback for other bindings, and preservation
+   of omitted or unrelated options. Do not use mocked providers.
+8. **Run `cargo fmt`, `cargo check --all-targets`, and `cargo test --lib`.**
 
-| Public model | Thinking | Effort | Sampling |
-| --- | --- | --- | --- |
-| `claude-fable-5`, `claude-fable-5-1`, `claude-opus-5-5` | Adaptive only, always on | low, medium, high, xhigh, max | Removed |
-| `claude-sonnet-5-5` | Adaptive and `between_tools` | low, medium, high, xhigh, max | Removed |
-| `claude-opus-5`, `claude-haiku-5-5` | Adaptive only; `disabled` accepted only at effort high or below | low, medium, high, xhigh, max | Removed |
-| `claude-sonnet-5`, `claude-opus-4-7`, `claude-opus-4-8` | Adaptive only; `disabled` accepted | low, medium, high, xhigh, max | Removed |
-| `claude-opus-4-6`, `claude-sonnet-4-6` | Adaptive and extended (deprecated) | low, medium, high, max (`xhigh` → max) | `temperature=1` when thinking is active |
-| `claude-haiku-4-5` | Extended only | — | `temperature=1` when thinking is active |
+## Profile skeleton
 
-- `enabled` is converted to `adaptive` on adaptive-only models.
-- `disabled` is converted to `between_tools` on `claude-sonnet-5-5`; always-on
-  models reject it.
-- `claude-opus-5-5`, `claude-fable-5-1`, and `claude-sonnet-5-5` reject forced
-  `tool_choice`; `claude-fable-5` and `claude-opus-5` allow it.
-- `claude-haiku-5-5` rejects assistant-message prefill.
+```rust
+//! <Model> request behavior.
+//!
+//! Source: <https://official.example/model>
+//!
+//! Binding: <upstream> / <dialect>, exact public model `<model>`.
+//! Reasoning effort: <supported levels or "not documented">; <normalization>.
+//! Thinking: <supported modes and constraints>.
+//! Sampling: <supported/removed/forced values>.
+//! Other: <tool choice, prefill, output limits, media limits>.
 
-Except for `gemini-4-argon`, the Gemini text public names are deployment aliases
-routed to `gemini-3.8-flash`. The 3.8 profile is registered for those exact
-names and only claims a binding whose `upstream_model` is `gemini-3.8-flash`;
-other Gemini bindings fall back to the default conversion.
+use crate::models::{ModelProfile, ModelProfileError};
+use crate::provider::UnifiedRequest;
+use crate::serve_config::ModelBinding;
+
+use super::profile_support::/* shared helpers */;
+
+/// <Model> profile for its exact public model name.
+pub struct ModelProfileImpl;
+
+impl ModelProfile for ModelProfileImpl {
+    fn adapt_bedrock_request(
+        &self,
+        request: &mut UnifiedRequest,
+        binding: &ModelBinding,
+    ) -> Result<(), ModelProfileError> {
+        // Check binding first; return Ok(()) for a foreign binding.
+        todo!()
+    }
+}
+```
 
 ## Tests
 
-Test exact-name registration, applicable bindings, fallback for other bindings, the model-specific transformation, and preservation of unrelated or omitted options.
+Test exact-name registration, applicable bindings, fallback for other bindings,
+the model-specific transformation, and preservation of unrelated or omitted
+options. Keep transformation tests table-driven when they cover a matrix of
+levels or modes.
+
+## Anti-patterns
+
+- Do not add an empty profile for a model with no documented special behavior.
+- Do not build a model capability table in this README or infer support from a
+  model family.
+- Do not handle routing, authentication, transport, headers, or response
+  parsing in a profile.
+- Do not silently discard a client control that the target cannot represent.
+- Do not rely on a sibling model's rules when the model documentation differs.
+
+## Definition of done
+
+A profile change is complete when:
+
+- the model file has a source-backed `//!` policy header;
+- the exact public name is registered in `src/models/mod.rs`;
+- the profile no-ops for foreign bindings;
+- unit tests cover registration, binding scope, transformation, fallback, and
+  omitted controls;
+- `cargo fmt`, `cargo check --all-targets`, and `cargo test --lib` pass.

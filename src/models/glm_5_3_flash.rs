@@ -1,3 +1,14 @@
+//! GLM-5.3-Flash request behavior.
+//!
+//! Source: <https://cloud.tencent.com/document/product/1823/132061>
+//!
+//! Binding: TokenHub / Chat Completions.
+//! Reasoning effort: low, high, max.
+//! Thinking: always on; only `enabled` is accepted.
+//! Sampling: top-k is removed before forwarding.
+//! Input: text, image, video, and file parts with documented MIME/extension limits.
+//! Output: capped at 131,072 tokens; request bodies capped at 100 MB.
+
 use std::io::{self, Write};
 
 use serde_json::{Value, json};

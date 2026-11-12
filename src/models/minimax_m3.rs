@@ -1,6 +1,11 @@
 //! MiniMax M3 request behavior.
 //!
 //! Source: <https://cloud.tencent.com/document/product/1823/132246>
+//!
+//! Binding: TokenHub / Chat Completions.
+//! Reasoning effort: not documented; forwarded unchanged.
+//! Thinking: `adaptive` or `disabled`.
+//! Sampling: `reasoning_split` is preserved as a source extension.
 
 use crate::models::{ModelProfile, ModelProfileError};
 use crate::openai_types::ChatCompletionRequest;
