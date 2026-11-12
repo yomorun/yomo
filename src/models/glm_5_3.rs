@@ -1,20 +1,24 @@
 //! GLM-5.3 request behavior.
 //!
+//! GLM-5.3 removed the `top_k` sampling parameter; requests that set it are
+//! dropped explicitly instead of being forwarded.
+//!
 //! Sources:
 //! - <https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3>
 //! - <https://ark.volcengine.com/region:cn-beijing/docs/chat-api>
 
 use crate::dialects::Dialect;
-use crate::dialects::openai_chat_completions::mapper::request_to_chat;
-use crate::models::{ModelProfile, ModelProfileError, from_dialect_conversion_error};
+use crate::models::{ModelProfile, ModelProfileError};
 use crate::openai_types::ChatCompletionRequest;
 use crate::provider::{
-    ReasoningEffort, ReasoningEffortLevel, UnifiedContentPart, UnifiedContentPartKind,
-    UnifiedInputItemKind, UnifiedRequest, UnifiedToolOutput,
+    UnifiedContentPart, UnifiedContentPartKind, UnifiedInputItemKind, UnifiedRequest,
+    UnifiedToolOutput,
 };
 use crate::serve_config::ModelBinding;
 use crate::upstreams::Upstream;
 use serde_json::Value;
+
+use super::profile_support::to_chat_request_with_mapped_effort;
 
 /// GLM-5.3 profile for its exact public model name.
 pub struct Glm53Profile;
@@ -31,7 +35,6 @@ impl ModelProfile for Glm53Profile {
             return Ok(None);
         }
 
-        validate_reasoning_effort(request.options.reasoning_effort.as_ref())?;
         validate_thinking(request.options.thinking.as_ref())?;
         if has_non_text_content(request) {
             return Err(unsupported_capability(
@@ -56,31 +59,30 @@ impl ModelProfile for Glm53Profile {
             ));
         }
 
-        let mut chat_request = request_to_chat(request).map_err(from_dialect_conversion_error)?;
+        let mut chat_request = to_chat_request_with_mapped_effort(request, map_glm53_effort)?;
         if let Some(thinking) = &request.options.thinking {
             chat_request.thinking = None;
             chat_request
                 .extra
                 .insert("thinking".to_owned(), thinking.clone());
         }
+        // Chat sources keep `top_k` as a source extension and the conversion
+        // merges it back, so remove it explicitly for this model.
+        chat_request.extra.remove("top_k");
         Ok(Some(chat_request))
     }
 }
 
-fn validate_reasoning_effort(effort: Option<&ReasoningEffort>) -> Result<(), ModelProfileError> {
-    let Some(ReasoningEffort::Named(level)) = effort else {
-        return Ok(());
-    };
-    if matches!(
-        level,
-        ReasoningEffortLevel::Low | ReasoningEffortLevel::High | ReasoningEffortLevel::Max
-    ) {
-        return Ok(());
+/// Map caller effort levels onto the values GLM-5.3 documents (`low`/`high`/`max`).
+///
+/// GLM-5.3 always enables thinking, so lower unsupported levels map up to `low`.
+fn map_glm53_effort(value: &str) -> Option<&'static str> {
+    match value {
+        "none" | "minimal" => Some("low"),
+        "medium" => Some("high"),
+        "xhigh" => Some("max"),
+        _ => None,
     }
-    Err(unsupported_capability(
-        "GLM-5.3 documents reasoning_effort values `low`, `high`, and `max`",
-        "reasoning_effort",
-    ))
 }
 
 fn validate_thinking(thinking: Option<&Value>) -> Result<(), ModelProfileError> {
@@ -255,5 +257,79 @@ mod tests {
             Glm53Profile.to_openai_chat_request(&image, &binding(Upstream::VolcengineArk)),
             Err(ModelProfileError::UnsupportedCapability { .. })
         ));
+    }
+
+    #[test]
+    fn rewrites_reasoning_effort_to_documented_levels() {
+        for (input, expected) in [
+            ("none", "low"),
+            ("minimal", "low"),
+            ("low", "low"),
+            ("medium", "high"),
+            ("high", "high"),
+            ("xhigh", "max"),
+            ("max", "max"),
+            ("vendor-specific", "vendor-specific"),
+        ] {
+            let request = api::request_from_value(
+                &json!({
+                    "model":"glm-5.3",
+                    "messages":[{"role":"user","content":"hello"}],
+                    "thinking":{"type":"enabled"},
+                    "reasoning_effort":input
+                }),
+                UnifiedSourceProtocol::ChatCompletions,
+            )
+            .expect("parse GLM-5.3 request");
+            let converted = Glm53Profile
+                .to_openai_chat_request(&request, &binding(Upstream::VolcengineArk))
+                .expect("convert GLM-5.3 request")
+                .expect("profile handles Chat");
+            assert_eq!(
+                converted
+                    .reasoning_effort
+                    .as_ref()
+                    .and_then(|effort| effort.as_str()),
+                Some(expected),
+                "unexpected effort for {input}"
+            );
+        }
+    }
+
+    #[test]
+    fn does_not_forward_the_removed_top_k_parameter() {
+        for (protocol, value) in [
+            (
+                UnifiedSourceProtocol::ChatCompletions,
+                json!({
+                    "model":"glm-5.3",
+                    "messages":[{"role":"user","content":"hello"}],
+                    "thinking":{"type":"enabled"},
+                    "top_k":40
+                }),
+            ),
+            (
+                UnifiedSourceProtocol::Messages,
+                json!({
+                    "model":"glm-5.3",
+                    "max_tokens":100,
+                    "messages":[{"role":"user","content":"hello"}],
+                    "thinking":{"type":"enabled"},
+                    "top_k":40
+                }),
+            ),
+        ] {
+            let request =
+                api::request_from_value(&value, protocol).expect("parse GLM-5.3 client request");
+            let converted = Glm53Profile
+                .to_openai_chat_request(&request, &binding(Upstream::VolcengineArk))
+                .expect("convert GLM-5.3 request")
+                .expect("profile handles Chat");
+            assert_eq!(
+                converted.extra.get("top_k"),
+                None,
+                "top_k must not reach GLM-5.3"
+            );
+        }
     }
 }

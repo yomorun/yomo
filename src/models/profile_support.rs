@@ -183,6 +183,12 @@ pub(super) fn set_max_tokens_field(chat_request: &mut ChatCompletionRequest) {
     }
 }
 
+pub(super) fn set_top_k_field(chat_request: &mut ChatCompletionRequest, top_k: Option<i64>) {
+    if let Some(top_k) = top_k {
+        chat_request.extra.insert("top_k".to_owned(), json!(top_k));
+    }
+}
+
 pub(super) fn unsupported_capability(
     message: impl Into<String>,
     parameter: &str,

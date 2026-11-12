@@ -12,7 +12,7 @@ use crate::serve_config::ModelBinding;
 use crate::upstreams::Upstream;
 
 use super::profile_support::{
-    is_chat_binding, preserve_raw_thinking, to_chat_request_with_mapped_effort,
+    is_chat_binding, preserve_raw_thinking, set_top_k_field, to_chat_request_with_mapped_effort,
     unsupported_capability, validate_thinking_modes,
 };
 
@@ -59,6 +59,7 @@ impl ModelProfile for Glm52Profile {
 
         let mut chat_request = to_chat_request_with_mapped_effort(request, map_glm52_effort)?;
         preserve_raw_thinking(request, &mut chat_request);
+        set_top_k_field(&mut chat_request, request.options.top_k);
         Ok(Some(chat_request))
     }
 }
@@ -192,5 +193,24 @@ mod tests {
             result,
             Err(ModelProfileError::UnsupportedCapability { .. })
         ));
+    }
+
+    #[test]
+    fn preserves_supported_top_k_sampling() {
+        let request = api::request_from_value(
+            &json!({
+                "model":"glm-5.2",
+                "max_tokens":100,
+                "messages":[{"role":"user","content":"hello"}],
+                "top_k":40
+            }),
+            UnifiedSourceProtocol::Messages,
+        )
+        .expect("parse Messages request");
+        let converted = Glm52Profile
+            .to_openai_chat_request(&request, &binding())
+            .expect("convert GLM-5.2 request")
+            .expect("profile handles Chat");
+        assert_eq!(converted.extra.get("top_k"), Some(&json!(40)));
     }
 }
