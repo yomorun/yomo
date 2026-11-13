@@ -1032,10 +1032,50 @@ impl AnthropicSseState {
             UnifiedEventKind::OutputItemDone { item }
                 if matches!(item.kind, UnifiedOutputItemKind::FunctionCall { .. }) =>
             {
-                let UnifiedOutputItemKind::FunctionCall { call_id: id, .. } = &item.kind else {
+                let UnifiedOutputItemKind::FunctionCall {
+                    call_id,
+                    name,
+                    arguments,
+                    ..
+                } = &item.kind
+                else {
                     unreachable!()
                 };
+                let id = if call_id.is_empty() {
+                    item.identity.internal_id.as_str()
+                } else {
+                    call_id.as_str()
+                };
                 if let Some(index) = self.close_block(&BlockKind::ToolUse, id) {
+                    frames.push(Self::frame(&AnthropicStreamEvent::ContentBlockStop {
+                        index,
+                        extra: Default::default(),
+                    }));
+                } else {
+                    // Providers such as Vertex deliver a complete call without
+                    // argument deltas; still emit the tool_use block.
+                    let index = self.next_index;
+                    self.next_index += 1;
+                    frames.push(Self::frame(&AnthropicStreamEvent::ContentBlockStart {
+                        index,
+                        content_block: AnthropicResponseContentBlock::ToolUse {
+                            id: id.to_string(),
+                            name: name.clone(),
+                            input: Value::Object(Default::default()),
+                            caller: None,
+                            extra: Default::default(),
+                        },
+                        extra: Default::default(),
+                    }));
+                    if !arguments.is_empty() {
+                        frames.push(Self::frame(&AnthropicStreamEvent::ContentBlockDelta {
+                            index,
+                            delta: crate::anthropic_messages_types::AnthropicContentDelta::InputJsonDelta {
+                                partial_json: arguments.clone(),
+                            },
+                            extra: Default::default(),
+                        }));
+                    }
                     frames.push(Self::frame(&AnthropicStreamEvent::ContentBlockStop {
                         index,
                         extra: Default::default(),
@@ -1538,6 +1578,52 @@ mod tests {
                 .on_event(&text_event("msg_1", "late", false))
                 .is_empty()
         );
+    }
+
+    /// Vertex-style providers deliver a complete function call without argument deltas.
+    #[test]
+    fn stream_state_machine_emits_tool_use_for_one_shot_calls() {
+        let item = || {
+            crate::provider::UnifiedOutputItem::new(
+                "toolu_1".into(),
+                UnifiedOutputItemKind::FunctionCall {
+                    call_id: "toolu_1".into(),
+                    name: "read".into(),
+                    arguments: r#"{"path":"a.txt"}"#.into(),
+                    caller: None,
+                },
+            )
+        };
+        let mut state = AnthropicSseState::new();
+        let mut frames = Vec::new();
+        frames.extend(state.on_event(
+            &UnifiedEvent::new(UnifiedEventKind::OutputItemAdded { item: item() }).located(
+                0,
+                "toolu_1".into(),
+                1,
+                None,
+            ),
+        ));
+        frames.extend(state.on_event(
+            &UnifiedEvent::new(UnifiedEventKind::OutputItemDone { item: item() }).located(
+                0,
+                "toolu_1".into(),
+                1,
+                None,
+            ),
+        ));
+        let joined = frames.join("");
+
+        assert_eq!(joined.matches("event: content_block_start\n").count(), 1);
+        assert!(joined.contains(r#""type":"tool_use""#));
+        assert!(joined.contains(r#""id":"toolu_1""#));
+        assert!(joined.contains(r#""name":"read""#));
+        assert!(joined.contains("input_json_delta"));
+        assert!(joined.contains(r#"{\"path\":\"a.txt\"}"#));
+        let start = joined.find("content_block_start").expect("start");
+        let delta = joined.find("input_json_delta").expect("delta");
+        let stop = joined.find("content_block_stop").expect("stop");
+        assert!(start < delta && delta < stop, "block order");
     }
 
     /// Tool loop: parse(tool_use) -> IR tool_calls; parse(tool_result) -> IR tool message.
