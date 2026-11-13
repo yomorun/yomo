@@ -12,9 +12,6 @@ and `dialect`, and returns `None` or a no-op when it does not handle the binding
   reasoning controls, sampling rules, and any model-specific validation.
 - **This document defines the general policy and the process.** It intentionally
   does not enumerate each model's supported values.
-- **Vendor evidence lives outside this repository's model code.** Official API
-  facts, probe records, and model lifecycle notes belong in allegro's
-  `docs/provider-feature-compatibility.md`.
 - **The registry is `src/models/mod.rs`.** Register an exact public model name
   there; aliases are separate registrations, not wildcard matches.
 
