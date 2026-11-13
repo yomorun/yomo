@@ -21,7 +21,7 @@ use self::mapper::{
 };
 use self::types::{VertexGenerateContentRequest, VertexGenerateContentResponse};
 use crate::dialects::credential::{
-    CredentialError, GcpTokenCache, TokenFetcher, shared_http_client,
+    CredentialError, GcpTokenCache, TokenFetcher, oauth2_token_hyper_client, shared_http_client,
 };
 use crate::models::{ModelProfile, default_model_profile};
 use crate::provider::UpstreamLog;
@@ -127,19 +127,19 @@ impl YupOauth2TokenFetcher {
 #[async_trait]
 impl TokenFetcher for YupOauth2TokenFetcher {
     async fn fetch(&self) -> Result<(String, std::time::Duration), CredentialError> {
-        use yup_oauth2::authenticator::DefaultAuthenticator;
         use yup_oauth2::{ServiceAccountAuthenticator, read_service_account_key};
 
         let service_account_key = read_service_account_key(&self.credentials_file)
             .await
             .map_err(|err| CredentialError::TokenFetch(format!("read SA key: {err}")))?;
-        let authenticator: DefaultAuthenticator =
-            ServiceAccountAuthenticator::builder(service_account_key)
-                .build()
-                .await
-                .map_err(|err| {
-                    CredentialError::TokenFetch(format!("build authenticator: {err}"))
-                })?;
+        // Use the proxy-aware transport so token refresh works behind a proxy too.
+        let authenticator = ServiceAccountAuthenticator::with_client(
+            service_account_key,
+            oauth2_token_hyper_client(),
+        )
+        .build()
+        .await
+        .map_err(|err| CredentialError::TokenFetch(format!("build authenticator: {err}")))?;
         let token = authenticator
             .token(&[CLOUD_PLATFORM_SCOPE])
             .await

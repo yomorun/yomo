@@ -39,6 +39,13 @@ reqwest = { version = "0.13", default-features = false, features = [
     "gzip",
     "rustls",
 ] }
+hyper-util = { version = "0.1", features = [
+    "client-legacy",
+    "client-proxy",
+    "client-proxy-system",
+    "tokio",
+] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 aws-config = "1"
 aws-smithy-types = "1"
 aws-sdk-bedrockruntime = "1"

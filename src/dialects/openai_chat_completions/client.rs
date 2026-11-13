@@ -756,8 +756,14 @@ mod tests {
         );
         let accepted =
             serve_sse_with_delayed_tail(listener, std::time::Duration::from_millis(50)).await;
-        let client =
-            Client::new(Config::new("test-key").base_url(base_url)).expect("build provider client");
+        // A system proxy would route the loopback connection and defeat the pool assertion.
+        let client = Client::with_client(
+            Config::new("test-key").base_url(base_url),
+            reqwest::Client::builder()
+                .no_proxy()
+                .build()
+                .expect("build direct provider client"),
+        );
 
         for _ in 0..2 {
             let stream = client
