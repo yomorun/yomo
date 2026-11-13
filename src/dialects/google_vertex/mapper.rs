@@ -213,6 +213,12 @@ pub(crate) async fn build_unified_vertex_request(
             }
             _ => return Err(invalid("input item has no supported representation")),
         };
+        // Assistant messages can arrive without content, for example the
+        // placeholder an agent loop materialises for a tool-only turn. Vertex
+        // rejects contents without parts, so empty contents are dropped.
+        if parts.is_empty() {
+            continue;
+        }
         let same_message = boundary.is_some()
             && current_boundary == boundary
             && contents
@@ -1581,6 +1587,99 @@ mod tests {
             body.contents[3].parts[0].text.as_deref(),
             Some("Explain the difference")
         );
+    }
+
+    #[tokio::test]
+    async fn unified_vertex_drops_assistant_messages_without_parts() {
+        use crate::provider::{
+            UnifiedContentPart, UnifiedInputItem, UnifiedInputItemKind, UnifiedRole,
+            UnifiedToolOutput,
+        };
+
+        let request = UnifiedRequest {
+            model: "gemini-3.8-flash".to_string(),
+            input: vec![
+                UnifiedInputItem::new(UnifiedInputItemKind::Message {
+                    role: UnifiedRole::User,
+                    content: vec![UnifiedContentPart::text("read the file".to_string())],
+                    phase: None,
+                }),
+                // Agent loop placeholder: empty assistant message without a boundary.
+                UnifiedInputItem::new(UnifiedInputItemKind::Message {
+                    role: UnifiedRole::Assistant,
+                    content: Vec::new(),
+                    phase: None,
+                }),
+                UnifiedInputItem::new(UnifiedInputItemKind::FunctionCall {
+                    call_id: "call-1".to_string(),
+                    name: "read".to_string(),
+                    arguments: "{\"path\":\"a.txt\"}".to_string(),
+                    caller: None,
+                    cache_control: None,
+                }),
+                UnifiedInputItem::new(UnifiedInputItemKind::FunctionCallOutput {
+                    call_id: "call-1".to_string(),
+                    output: UnifiedToolOutput::Text("hello".to_string()),
+                    is_error: None,
+                    cache_control: None,
+                }),
+            ],
+            ..Default::default()
+        };
+        let signatures = Arc::new(Mutex::new(ThoughtSignatureStore::new(16)));
+
+        let body = build_unified_vertex_request(&request, &reqwest::Client::new(), &signatures)
+            .await
+            .expect("Vertex request");
+
+        assert!(
+            body.contents
+                .iter()
+                .all(|content| !content.parts.is_empty()),
+            "Vertex rejects contents without parts"
+        );
+        assert_eq!(body.contents.len(), 3);
+        assert_eq!(body.contents[0].role.as_deref(), Some("user"));
+        assert_eq!(body.contents[1].role.as_deref(), Some("model"));
+        assert_eq!(body.contents[1].parts.len(), 1);
+        let call = body.contents[1].parts[0]
+            .function_call
+            .as_ref()
+            .expect("function call");
+        assert_eq!(call.name, "read");
+        assert_eq!(body.contents[2].role.as_deref(), Some("user"));
+        let response = body.contents[2].parts[0]
+            .function_response
+            .as_ref()
+            .expect("function response");
+        assert_eq!(response.name, "read");
+    }
+
+    #[tokio::test]
+    async fn unified_vertex_still_requires_content_after_dropping_empty_messages() {
+        use crate::provider::{UnifiedInputItem, UnifiedInputItemKind, UnifiedRole};
+
+        let request = UnifiedRequest {
+            model: "gemini-3.8-flash".to_string(),
+            input: vec![UnifiedInputItem::new(UnifiedInputItemKind::Message {
+                role: UnifiedRole::Assistant,
+                content: Vec::new(),
+                phase: None,
+            })],
+            ..Default::default()
+        };
+        let signatures = Arc::new(Mutex::new(ThoughtSignatureStore::new(16)));
+
+        let error = build_unified_vertex_request(&request, &reqwest::Client::new(), &signatures)
+            .await
+            .expect_err("request without content must fail");
+
+        match error {
+            ProviderError::Public { error, .. } => {
+                assert_eq!(error.message, "request requires content");
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
     }
 
     #[tokio::test]
