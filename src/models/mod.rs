@@ -1369,6 +1369,26 @@ mod tests {
     }
 
     #[test]
+    fn claude_profiles_ignore_block_binding_policy() {
+        let profiles = ModelProfileRegistry::default();
+        for model in ["claude-opus-5", "claude-haiku-5-5"] {
+            let mut request = UnifiedRequest::default();
+            request.options.thinking = Some(json!({
+                "type": "adaptive",
+                "block_binding": {"prefix_mismatch_behavior": "drop_block"}
+            }));
+
+            adapt_claude(&profiles, model, &mut request).expect(model);
+
+            assert_eq!(
+                request.options.thinking,
+                Some(json!({"type":"adaptive"})),
+                "{model} drops the unsupported binding policy"
+            );
+        }
+    }
+
+    #[test]
     fn claude_haiku_45_requires_extended_thinking_and_rejects_effort() {
         let profiles = ModelProfileRegistry::default();
 
