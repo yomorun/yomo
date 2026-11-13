@@ -1460,6 +1460,26 @@ mod tests {
         );
     }
 
+    /// Later agent-loop rounds repeat ResponseCreated; only one message_start is allowed.
+    #[test]
+    fn message_start_is_emitted_once_across_rounds() {
+        let mut state = AnthropicSseState::new();
+        let created = |id: &str| {
+            UnifiedEvent::new(UnifiedEventKind::ResponseCreated {
+                response: UnifiedResponse::new(id.into(), "claude-haiku-5-5".into()),
+            })
+        };
+
+        let first = state.on_event(&created("msg_1")).join("");
+        assert!(first.contains("event: message_start\n"));
+
+        let second = state.on_event(&created("msg_2")).join("");
+        assert!(
+            second.is_empty(),
+            "second round must not restart the message"
+        );
+    }
+
     /// golden: stream events -> SSE frame sequence (message_start -> text deltas -> message_delta -> message_stop).
     #[test]
     fn stream_state_machine_golden() {

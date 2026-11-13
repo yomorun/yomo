@@ -823,6 +823,9 @@ where
             let stream_error_trace_id = trace_id.clone();
             let body_stream: Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send>> =
                 Box::pin(async_stream::try_stream! {
+                    if !sse.is_empty() {
+                        yield Bytes::from(sse);
+                    }
                     while let Some(item) = events.next().await {
                         match item {
                             Ok(event) => {
@@ -1197,6 +1200,9 @@ where
             let stream_error_metadata = metadata.clone();
             // Errors are delivered as response.failed SSE frames, never via the transport error channel.
             let body_stream = async_stream::stream! {
+                if !sse.is_empty() {
+                    yield Ok::<Bytes, std::io::Error>(Bytes::from(sse));
+                }
                 while let Some(item) = events.next().await {
                     match item {
                         Ok(event) => {
@@ -1737,6 +1743,60 @@ mod messages_golden_tests {
         .expect("app")
     }
 
+    async fn streaming_messages_app() -> axum::Router {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind upstream");
+        let address = listener.local_addr().expect("upstream address");
+        tokio::spawn(async move {
+            let upstream = axum::Router::new().route(
+                "/v1/chat/completions",
+                axum::routing::post(|| async {
+                    let body = concat!(
+                        "data: {\"id\":\"msg_stream\",\"object\":\"chat.completion.chunk\",\"created\":1767225600,\"model\":\"claude-golden\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"hi\"}}]}\n\n",
+                        "data: {\"id\":\"msg_stream\",\"object\":\"chat.completion.chunk\",\"created\":1767225600,\"model\":\"claude-golden\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2,\"total_tokens\":3}}\n\n",
+                        "data: [DONE]\n\n"
+                    );
+                    (
+                        [(axum::http::header::CONTENT_TYPE, "text/event-stream")],
+                        body,
+                    )
+                }),
+            );
+            axum::serve(listener, upstream)
+                .await
+                .expect("serve upstream");
+        });
+        let providers = vec![typed_entry(&format!(
+            r#"{{"type": "openai-chat-completions", "model_id": "claude-golden",
+                "params": {{"base_url": "http://{address}/v1",
+                "model": "claude-golden"}}}}"#
+        ))];
+        let endpoints = derive_endpoints_from_typed(
+            &providers,
+            &DefaultsConfig {
+                model: Some("claude-golden".to_string()),
+            },
+        );
+        let strategy = Arc::new(ByEndpointModel::new(
+            endpoints
+                .into_iter()
+                .map(|endpoint| (endpoint.endpoint().expect("endpoint"), endpoint))
+                .collect(),
+        ));
+        let registry =
+            ConfigProviderRegistry::<()>::from_entries(&providers, strategy).expect("registry");
+        build_llm_api_with_error_policy(
+            Arc::new(EmptyToolMgr),
+            Arc::new(registry),
+            Arc::new(NoopInvoker),
+            AgentLoopConfig::default(),
+            Arc::new(DefaultLlmErrorResponsePolicy),
+        )
+        .await
+        .expect("app")
+    }
+
     struct EmptyToolMgr;
 
     #[async_trait]
@@ -1772,6 +1832,42 @@ mod messages_golden_tests {
                 error_msg: None,
             }
         }
+    }
+
+    /// The first event's frames must reach the body: a Messages stream must open
+    /// with message_start instead of starting at the first content block.
+    #[tokio::test]
+    async fn messages_stream_starts_with_message_start() {
+        let app = streaming_messages_app().await;
+        let request_body = serde_json::json!({
+            "model": "claude-golden",
+            "max_tokens": 100,
+            "stream": true,
+            "messages": [{"role": "user", "content": "hi"}]
+        });
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/messages")
+                    .header("content-type", "application/json")
+                    .body(Body::from(request_body.to_string()))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let body = String::from_utf8_lossy(&bytes);
+
+        assert!(
+            body.starts_with("event: message_start\n"),
+            "stream must start with message_start: {body}"
+        );
+        assert_eq!(body.matches("event: message_start\n").count(), 1);
+        assert!(body.contains("event: message_stop\n"), "{body}");
     }
 
     /// Client tool loop golden: tool_result goes in and tool_use comes out on /messages.

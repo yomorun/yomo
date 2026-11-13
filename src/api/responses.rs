@@ -885,6 +885,11 @@ pub struct ResponsesSseState {
     /// function call state keyed by call_id.
     function_call_states: std::collections::HashMap<String, FunctionCallStreamState>,
     next_output_index: i64,
+    /// Whether response.created / response.in_progress were already emitted.
+    created_emitted: bool,
+    progress_emitted: bool,
+    /// Function calls already closed because a following item started.
+    closed_calls: std::collections::HashSet<String>,
     usage: Option<Value>,
     finished: bool,
     tool_items: std::collections::HashMap<String, crate::provider::UnifiedOutputItem>,
@@ -976,35 +981,31 @@ impl ResponsesSseState {
             .unwrap_or_default();
         match &event.kind {
             UnifiedEventKind::ResponseCreated { response } => {
-                let id = &response.id;
-                let model = &response.model;
-                self.started = true;
-                self.request_id = id.clone();
-                self.model = model.clone();
-                self.created_at = response
-                    .created_at
-                    .unwrap_or_else(|| chrono::Utc::now().timestamp());
-                frames.push(Self::frame(&ResponsesStreamEvent::ResponseCreated {
-                    response: serde_json::from_value(self.response_skeleton()).expect("skeleton"),
-                    sequence_number: self.next_sequence(),
-                    extra: Default::default(),
-                }));
+                if !self.created_emitted {
+                    self.started = true;
+                    self.request_id = response.id.clone();
+                    self.model = response.model.clone();
+                    self.created_at = response
+                        .created_at
+                        .unwrap_or_else(|| chrono::Utc::now().timestamp());
+                    self.ensure_started(&mut frames);
+                }
             }
             UnifiedEventKind::ResponseInProgress { .. } => {
-                frames.push(Self::frame(&ResponsesStreamEvent::ResponseInProgress {
-                    response: serde_json::from_value(self.response_skeleton()).expect("skeleton"),
-                    sequence_number: self.next_sequence(),
-                    extra: Default::default(),
-                }));
+                self.ensure_started(&mut frames);
+                if !self.progress_emitted {
+                    self.emit_in_progress(&mut frames);
+                }
             }
             UnifiedEventKind::OutputItemAdded { item }
                 if matches!(item.kind, UnifiedOutputItemKind::Message { .. }) =>
             {
                 let id = &item.identity.internal_id;
-                if !self.started {
-                    self.started = true;
+                if self.request_id.is_empty() {
                     self.request_id = id.clone();
                 }
+                self.ensure_started(&mut frames);
+                self.close_open_items(&mut frames);
                 let output_index = self.next_output_index;
                 self.next_output_index += 1;
                 self.items.insert(
@@ -1036,6 +1037,7 @@ impl ResponsesSseState {
                 delta: UnifiedContentDelta::TextWithLogprobs { text: delta, .. },
             } => {
                 let id = &id;
+                self.ensure_started(&mut frames);
                 let output_index = self.items.get(id).map(|(_, _, index)| *index).unwrap_or(0);
                 let mut emit_content_part_added = false;
                 let output_index = {
@@ -1086,6 +1088,10 @@ impl ResponsesSseState {
             }
             | UnifiedEventKind::ReasoningSummaryTextDelta { delta } => {
                 let id = &id;
+                // The Responses client requires sequential item lifecycles, so a
+                // reasoning item is buffered while the message item stays open
+                // and emitted once that message item is closed.
+                let message_open = self.message_states.contains_key(id);
                 let mut emit_reasoning_item_added = false;
                 let mut emit_reasoning_part_added = false;
                 let (reasoning_item_id, output_index) = {
@@ -1099,21 +1105,24 @@ impl ResponsesSseState {
                                 ..Default::default()
                             }
                         });
-                    if !reasoning_state.item_added {
-                        reasoning_state.item_added = true;
-                        emit_reasoning_item_added = true;
-                    }
-                    if !reasoning_state.part_started {
-                        reasoning_state.part_started = true;
-                        emit_reasoning_part_added = true;
-                    }
                     reasoning_state.text.push_str(delta);
+                    if !message_open {
+                        if !reasoning_state.item_added {
+                            reasoning_state.item_added = true;
+                            emit_reasoning_item_added = true;
+                        }
+                        if !reasoning_state.part_started {
+                            reasoning_state.part_started = true;
+                            emit_reasoning_part_added = true;
+                        }
+                    }
                     (
                         reasoning_state.item_id.clone(),
                         reasoning_state.output_index,
                     )
                 };
                 if emit_reasoning_item_added {
+                    self.ensure_started(&mut frames);
                     frames.push(Self::frame(&ResponsesStreamEvent::OutputItemAdded {
                         output_index,
                         item: serde_json::from_value(json!({
@@ -1141,16 +1150,18 @@ impl ResponsesSseState {
                         },
                     ));
                 }
-                frames.push(Self::frame(
-                    &ResponsesStreamEvent::ReasoningSummaryTextDelta {
-                        item_id: reasoning_item_id,
-                        output_index,
-                        summary_index: 0,
-                        delta: delta.clone(),
-                        sequence_number: self.next_sequence(),
-                        extra: Default::default(),
-                    },
-                ));
+                if !message_open {
+                    frames.push(Self::frame(
+                        &ResponsesStreamEvent::ReasoningSummaryTextDelta {
+                            item_id: reasoning_item_id,
+                            output_index,
+                            summary_index: 0,
+                            delta: delta.clone(),
+                            sequence_number: self.next_sequence(),
+                            extra: Default::default(),
+                        },
+                    ));
+                }
             }
             UnifiedEventKind::OutputItemAdded { item }
                 if matches!(item.kind, UnifiedOutputItemKind::FunctionCall { .. }) =>
@@ -1195,6 +1206,8 @@ impl ResponsesSseState {
                     output_index
                 };
                 if emit_added {
+                    self.ensure_started(&mut frames);
+                    self.close_open_content_items(&mut frames);
                     frames.push(Self::frame(&ResponsesStreamEvent::OutputItemAdded {
                         output_index,
                         item: serde_json::from_value(json!({
@@ -1220,84 +1233,12 @@ impl ResponsesSseState {
             UnifiedEventKind::OutputItemDone { item }
                 if matches!(item.kind, UnifiedOutputItemKind::FunctionCall { .. }) =>
             {
-                let UnifiedOutputItemKind::FunctionCall {
-                    call_id: id,
-                    name,
-                    arguments,
-                    ..
-                } = &item.kind
-                else {
+                let UnifiedOutputItemKind::FunctionCall { call_id, .. } = &item.kind else {
                     unreachable!()
                 };
-                let mut created_from_done = false;
-                let (output_index, final_name, final_arguments) =
-                    if let Some(state) = self.function_call_states.remove(id) {
-                        let final_arguments = if arguments.is_empty() {
-                            state.arguments
-                        } else {
-                            arguments.clone()
-                        };
-                        let final_name = if name.is_empty() {
-                            state.name
-                        } else {
-                            name.clone()
-                        };
-                        (state.output_index, final_name, final_arguments)
-                    } else {
-                        let output_index = self
-                            .items
-                            .get(id)
-                            .map(|(_, _, index)| *index)
-                            .unwrap_or_else(|| {
-                                let index = self.next_output_index;
-                                self.next_output_index += 1;
-                                index
-                            });
-                        created_from_done = !self.items.contains_key(id);
-                        let final_name = name.clone();
-                        let final_arguments = arguments.clone();
-                        (output_index, final_name, final_arguments)
-                    };
-                if created_from_done {
-                    self.items.insert(
-                        id.clone(),
-                        (
-                            "function_call".to_string(),
-                            final_name.clone(),
-                            output_index,
-                        ),
-                    );
-                    frames.push(Self::frame(&ResponsesStreamEvent::OutputItemAdded {
-                        output_index,
-                        item: serde_json::from_value(json!({
-                            "id": format!("fc_{id}"), "type": "function_call",
-                            "call_id": id, "name": final_name, "arguments": "", "status": "in_progress"
-                        }))
-                        .expect("function call item"),
-                        sequence_number: self.next_sequence(),
-                        extra: Default::default(),
-                    }));
+                if !self.closed_calls.remove(call_id) {
+                    frames.extend(self.complete_function_call(item));
                 }
-                frames.push(Self::frame(
-                    &ResponsesStreamEvent::FunctionCallArgumentsDone {
-                        item_id: id.clone(),
-                        output_index,
-                        content_index: None,
-                        arguments: final_arguments.clone(),
-                        sequence_number: self.next_sequence(),
-                        extra: Default::default(),
-                    },
-                ));
-                frames.push(Self::frame(&ResponsesStreamEvent::OutputItemDone {
-                    output_index,
-                    item: serde_json::from_value(json!({
-                        "id": format!("fc_{id}"), "type": "function_call",
-                        "call_id": id, "name": final_name, "arguments": final_arguments, "status": "completed"
-                    }))
-                    .expect("function call item"),
-                    sequence_number: self.next_sequence(),
-                    extra: Default::default(),
-                }));
             }
             UnifiedEventKind::Usage { usage, .. } => {
                 let openai = crate::openai_http_mapping::map_usage_to_openai(usage);
@@ -1313,98 +1254,15 @@ impl ResponsesSseState {
                 if matches!(item.kind, UnifiedOutputItemKind::Message { .. }) =>
             {
                 let id = &item.identity.internal_id;
-                let output_index = self.items.get(id).map(|(_, _, index)| *index).unwrap_or(0);
-                if let Some(reasoning_state) = self.reasoning_states.remove(id) {
-                    if reasoning_state.part_started {
-                        let reasoning_item_id = reasoning_state.item_id;
-                        let text = reasoning_state.text;
-                        frames.push(Self::frame(
-                            &ResponsesStreamEvent::ReasoningSummaryTextDone {
-                                item_id: reasoning_item_id.clone(),
-                                output_index: reasoning_state.output_index,
-                                summary_index: 0,
-                                text: text.clone(),
-                                sequence_number: self.next_sequence(),
-                                extra: Default::default(),
-                            },
-                        ));
-                        frames.push(Self::frame(
-                            &ResponsesStreamEvent::ReasoningSummaryPartDone {
-                                item_id: reasoning_item_id.clone(),
-                                output_index: reasoning_state.output_index,
-                                summary_index: 0,
-                                part: serde_json::from_value(
-                                    json!({"type": "summary_text", "text": text}),
-                                )
-                                .expect("reasoning summary part"),
-                                sequence_number: self.next_sequence(),
-                                extra: Default::default(),
-                            },
-                        ));
-                        frames.push(Self::frame(&ResponsesStreamEvent::OutputItemDone {
-                            output_index: reasoning_state.output_index,
-                            item: serde_json::from_value(json!({
-                                "id": reasoning_item_id,
-                                "type": "reasoning",
-                                "summary": [{"type": "summary_text", "text": text}]
-                            }))
-                            .expect("reasoning item"),
-                            sequence_number: self.next_sequence(),
-                            extra: Default::default(),
-                        }));
-                    }
-                }
-
-                let message_state = self.message_states.remove(id);
-                let (content_part_started, text) = match message_state {
-                    Some(state) => (state.content_part_started, state.text),
-                    None => (false, String::new()),
-                };
-                let content = if content_part_started {
-                    json!([{"type": "output_text", "text": text.clone(), "annotations": []}])
-                } else {
-                    json!([])
-                };
-
-                if content_part_started {
-                    frames.push(Self::frame(&ResponsesStreamEvent::OutputTextDone {
-                        item_id: id.clone(),
-                        output_index,
-                        content_index: 0,
-                        text: text.clone(),
-                        sequence_number: self.next_sequence(),
-                        logprobs: None,
-                        extra: Default::default(),
-                    }));
-                    frames.push(Self::frame(&ResponsesStreamEvent::ContentPartDone {
-                        item_id: id.clone(),
-                        output_index,
-                        content_index: 0,
-                        part: serde_json::from_value(
-                            json!({"type": "output_text", "text": text, "annotations": []}),
-                        )
-                        .expect("output text part"),
-                        sequence_number: self.next_sequence(),
-                        extra: Default::default(),
-                    }));
-                }
-
-                frames.push(Self::frame(&ResponsesStreamEvent::OutputItemDone {
-                    output_index,
-                    item: serde_json::from_value(json!({
-                        "id": id, "type": "message", "status": "completed",
-                        "role": "assistant", "content": content
-                    }))
-                    .expect("message item"),
-                    sequence_number: self.next_sequence(),
-                    extra: Default::default(),
-                }));
+                self.close_message_item(id, &mut frames);
+                self.close_reasoning_item(id, &mut frames);
             }
             UnifiedEventKind::CandidateDone { ending } => {
                 self.finish_reason = Some(ending.to_chat().to_string());
             }
             UnifiedEventKind::Incomplete { reason, .. } => {
                 self.incomplete_reason = reason.clone();
+                self.ensure_started(&mut frames);
                 frames.extend(self.close_pending_messages());
                 frames.extend(self.finish_frames(Some("length")));
             }
@@ -1415,6 +1273,7 @@ impl ResponsesSseState {
                     .and_then(|candidate| candidate.ending.as_ref())
                     .map(|ending| ending.to_chat().to_string())
                     .or_else(|| self.finish_reason.clone());
+                self.ensure_started(&mut frames);
                 frames.extend(self.close_pending_messages());
                 frames.extend(self.finish_frames(reason.as_deref()));
             }
@@ -1436,28 +1295,313 @@ impl ResponsesSseState {
         frames
     }
 
-    fn close_pending_messages(&mut self) -> Vec<String> {
-        let mut pending: Vec<_> = self
-            .message_states
-            .iter()
-            .map(|(id, state)| (state.output_index, id.clone()))
-            .collect();
-        pending.sort_by_key(|(index, _)| *index);
-        let mut frames = Vec::new();
-        for (_, id) in pending {
-            frames.extend(
-                self.on_event(&UnifiedEvent::new(UnifiedEventKind::OutputItemDone {
-                    item: UnifiedOutputItem::new(
-                        id,
-                        UnifiedOutputItemKind::Message {
-                            role: UnifiedRole::Assistant,
-                            content: vec![],
-                            phase: None,
-                        },
-                    ),
-                })),
-            );
+    /// Emit response.created / response.in_progress exactly once, even when the
+    /// provider stream starts with an item event.
+    fn ensure_started(&mut self, frames: &mut Vec<String>) {
+        if self.created_emitted {
+            return;
         }
+        self.created_emitted = true;
+        self.started = true;
+        if self.request_id.is_empty() {
+            self.request_id = "response".to_string();
+        }
+        frames.push(Self::frame(&ResponsesStreamEvent::ResponseCreated {
+            response: serde_json::from_value(self.response_skeleton()).expect("skeleton"),
+            sequence_number: self.next_sequence(),
+            extra: Default::default(),
+        }));
+        self.emit_in_progress(frames);
+    }
+
+    fn emit_in_progress(&mut self, frames: &mut Vec<String>) {
+        self.progress_emitted = true;
+        frames.push(Self::frame(&ResponsesStreamEvent::ResponseInProgress {
+            response: serde_json::from_value(self.response_skeleton()).expect("skeleton"),
+            sequence_number: self.next_sequence(),
+            extra: Default::default(),
+        }));
+    }
+
+    /// Close every open item in output-index order.
+    fn close_open_items(&mut self, frames: &mut Vec<String>) {
+        let mut open: Vec<(i64, String, u8)> = Vec::new();
+        for (id, state) in &self.message_states {
+            open.push((state.output_index, id.clone(), 0));
+        }
+        for (id, state) in &self.reasoning_states {
+            open.push((state.output_index, id.clone(), 1));
+        }
+        for (id, state) in &self.function_call_states {
+            open.push((state.output_index, id.clone(), 2));
+        }
+        open.sort_by_key(|(index, _, _)| *index);
+        for (_, id, kind) in open {
+            match kind {
+                0 => {
+                    self.close_message_item(&id, frames);
+                    self.close_reasoning_item(&id, frames);
+                }
+                1 => self.close_reasoning_item(&id, frames),
+                _ => self.close_function_call_item(&id, frames),
+            }
+        }
+    }
+
+    /// Close open message and reasoning items, leaving streaming calls untouched.
+    fn close_open_content_items(&mut self, frames: &mut Vec<String>) {
+        let mut open: Vec<(i64, String, u8)> = Vec::new();
+        for (id, state) in &self.message_states {
+            open.push((state.output_index, id.clone(), 0));
+        }
+        for (id, state) in &self.reasoning_states {
+            open.push((state.output_index, id.clone(), 1));
+        }
+        open.sort_by_key(|(index, _, _)| *index);
+        for (_, id, kind) in open {
+            match kind {
+                0 => {
+                    self.close_message_item(&id, frames);
+                    self.close_reasoning_item(&id, frames);
+                }
+                _ => self.close_reasoning_item(&id, frames),
+            }
+        }
+    }
+
+    fn close_message_item(&mut self, id: &str, frames: &mut Vec<String>) {
+        let Some(state) = self.message_states.remove(id) else {
+            return;
+        };
+        let output_index = state.output_index;
+        let content = if state.content_part_started {
+            json!([{"type": "output_text", "text": state.text, "annotations": []}])
+        } else {
+            json!([])
+        };
+        if state.content_part_started {
+            frames.push(Self::frame(&ResponsesStreamEvent::OutputTextDone {
+                item_id: id.to_string(),
+                output_index,
+                content_index: 0,
+                text: state.text.clone(),
+                sequence_number: self.next_sequence(),
+                logprobs: None,
+                extra: Default::default(),
+            }));
+            frames.push(Self::frame(&ResponsesStreamEvent::ContentPartDone {
+                item_id: id.to_string(),
+                output_index,
+                content_index: 0,
+                part: serde_json::from_value(
+                    json!({"type": "output_text", "text": state.text, "annotations": []}),
+                )
+                .expect("output text part"),
+                sequence_number: self.next_sequence(),
+                extra: Default::default(),
+            }));
+        }
+        frames.push(Self::frame(&ResponsesStreamEvent::OutputItemDone {
+            output_index,
+            item: serde_json::from_value(json!({
+                "id": id, "type": "message", "status": "completed",
+                "role": "assistant", "content": content
+            }))
+            .expect("message item"),
+            sequence_number: self.next_sequence(),
+            extra: Default::default(),
+        }));
+    }
+
+    fn close_reasoning_item(&mut self, id: &str, frames: &mut Vec<String>) {
+        let Some(state) = self.reasoning_states.remove(id) else {
+            return;
+        };
+        let output_index = state.output_index;
+        let item_id = state.item_id;
+        let text = state.text;
+        if !state.item_added {
+            frames.push(Self::frame(&ResponsesStreamEvent::OutputItemAdded {
+                output_index,
+                item: serde_json::from_value(json!({
+                    "id": item_id, "type": "reasoning", "summary": []
+                }))
+                .expect("reasoning item"),
+                sequence_number: self.next_sequence(),
+                extra: Default::default(),
+            }));
+            frames.push(Self::frame(
+                &ResponsesStreamEvent::ReasoningSummaryPartAdded {
+                    item_id: item_id.clone(),
+                    output_index,
+                    summary_index: 0,
+                    part: serde_json::from_value(json!({"type": "summary_text", "text": ""}))
+                        .expect("reasoning summary part"),
+                    sequence_number: self.next_sequence(),
+                    extra: Default::default(),
+                },
+            ));
+            if !text.is_empty() {
+                frames.push(Self::frame(
+                    &ResponsesStreamEvent::ReasoningSummaryTextDelta {
+                        item_id: item_id.clone(),
+                        output_index,
+                        summary_index: 0,
+                        delta: text.clone(),
+                        sequence_number: self.next_sequence(),
+                        extra: Default::default(),
+                    },
+                ));
+            }
+        }
+        frames.push(Self::frame(
+            &ResponsesStreamEvent::ReasoningSummaryTextDone {
+                item_id: item_id.clone(),
+                output_index,
+                summary_index: 0,
+                text: text.clone(),
+                sequence_number: self.next_sequence(),
+                extra: Default::default(),
+            },
+        ));
+        frames.push(Self::frame(
+            &ResponsesStreamEvent::ReasoningSummaryPartDone {
+                item_id: item_id.clone(),
+                output_index,
+                summary_index: 0,
+                part: serde_json::from_value(json!({"type": "summary_text", "text": text}))
+                    .expect("reasoning summary part"),
+                sequence_number: self.next_sequence(),
+                extra: Default::default(),
+            },
+        ));
+        frames.push(Self::frame(&ResponsesStreamEvent::OutputItemDone {
+            output_index,
+            item: serde_json::from_value(json!({
+                "id": item_id, "type": "reasoning",
+                "summary": [{"type": "summary_text", "text": text}]
+            }))
+            .expect("reasoning item"),
+            sequence_number: self.next_sequence(),
+            extra: Default::default(),
+        }));
+    }
+
+    fn close_function_call_item(&mut self, id: &str, frames: &mut Vec<String>) {
+        let Some(state) = self.function_call_states.remove(id) else {
+            return;
+        };
+        self.closed_calls.insert(id.to_string());
+        let output_index = state.output_index;
+        frames.push(Self::frame(
+            &ResponsesStreamEvent::FunctionCallArgumentsDone {
+                item_id: id.to_string(),
+                output_index,
+                content_index: None,
+                arguments: state.arguments.clone(),
+                sequence_number: self.next_sequence(),
+                extra: Default::default(),
+            },
+        ));
+        frames.push(Self::frame(&ResponsesStreamEvent::OutputItemDone {
+            output_index,
+            item: serde_json::from_value(json!({
+                "id": format!("fc_{id}"), "type": "function_call",
+                "call_id": id, "name": state.name, "arguments": state.arguments,
+                "status": "completed"
+            }))
+            .expect("function call item"),
+            sequence_number: self.next_sequence(),
+            extra: Default::default(),
+        }));
+    }
+
+    fn complete_function_call(&mut self, item: &crate::provider::UnifiedOutputItem) -> Vec<String> {
+        let mut frames = Vec::new();
+        let UnifiedOutputItemKind::FunctionCall {
+            call_id: id,
+            name,
+            arguments,
+            ..
+        } = &item.kind
+        else {
+            return frames;
+        };
+        let mut created_from_done = false;
+        let (output_index, final_name, final_arguments) =
+            if let Some(state) = self.function_call_states.remove(id) {
+                let final_arguments = if arguments.is_empty() {
+                    state.arguments
+                } else {
+                    arguments.clone()
+                };
+                let final_name = if name.is_empty() {
+                    state.name
+                } else {
+                    name.clone()
+                };
+                (state.output_index, final_name, final_arguments)
+            } else {
+                let output_index = self
+                    .items
+                    .get(id)
+                    .map(|(_, _, index)| *index)
+                    .unwrap_or_else(|| {
+                        let index = self.next_output_index;
+                        self.next_output_index += 1;
+                        index
+                    });
+                created_from_done = !self.items.contains_key(id);
+                (output_index, name.clone(), arguments.clone())
+            };
+        if created_from_done {
+            self.items.insert(
+                id.clone(),
+                (
+                    "function_call".to_string(),
+                    final_name.clone(),
+                    output_index,
+                ),
+            );
+            frames.push(Self::frame(&ResponsesStreamEvent::OutputItemAdded {
+                output_index,
+                item: serde_json::from_value(json!({
+                    "id": format!("fc_{id}"), "type": "function_call",
+                    "call_id": id, "name": final_name, "arguments": "", "status": "in_progress"
+                }))
+                .expect("function call item"),
+                sequence_number: self.next_sequence(),
+                extra: Default::default(),
+            }));
+        }
+        frames.push(Self::frame(
+            &ResponsesStreamEvent::FunctionCallArgumentsDone {
+                item_id: id.clone(),
+                output_index,
+                content_index: None,
+                arguments: final_arguments.clone(),
+                sequence_number: self.next_sequence(),
+                extra: Default::default(),
+            },
+        ));
+        frames.push(Self::frame(&ResponsesStreamEvent::OutputItemDone {
+            output_index,
+            item: serde_json::from_value(json!({
+                "id": format!("fc_{id}"), "type": "function_call",
+                "call_id": id, "name": final_name, "arguments": final_arguments,
+                "status": "completed"
+            }))
+            .expect("function call item"),
+            sequence_number: self.next_sequence(),
+            extra: Default::default(),
+        }));
+        frames
+    }
+
+    /// Close every open item; used by completion and stream teardown.
+    fn close_pending_messages(&mut self) -> Vec<String> {
+        let mut frames = Vec::new();
+        self.close_open_items(&mut frames);
         frames
     }
 
@@ -1492,7 +1636,12 @@ impl ResponsesSseState {
 
     /// Stream teardown fallback.
     pub fn finish(&mut self) -> Vec<String> {
-        let mut frames = self.close_pending_messages();
+        if self.finished {
+            return Vec::new();
+        }
+        let mut frames = Vec::new();
+        self.ensure_started(&mut frames);
+        frames.extend(self.close_pending_messages());
         frames.extend(self.finish_frames(Some("stop")));
         frames
     }
@@ -1949,6 +2098,54 @@ mod tests {
 
         // nothing emitted after completion
         assert!(state.on_event(&text("msg_1", "late", false)).is_empty());
+    }
+
+    /// Two agent-loop rounds in one response: the client requires every item to be
+    /// done before the next one is added, including interleaved thinking.
+    #[test]
+    fn stream_item_lifecycles_stay_sequential_across_rounds() {
+        let mut state = ResponsesSseState::new();
+        let mut frames = Vec::new();
+        // The agent loop suppresses the round's Completed event on tool rounds,
+        // so the next round starts while the previous items are still open.
+        for id in ["msg_1", "msg_2"] {
+            for event in [
+                created("resp_1", "claude-haiku-5-5"),
+                message(id, false),
+                text(id, "answer", false),
+                text(id, "thinking", true),
+            ] {
+                frames.extend(state.on_event(&event));
+            }
+        }
+        frames.extend(state.finish());
+
+        // response.created appears once, first.
+        assert_eq!(
+            frames
+                .iter()
+                .filter(|frame| frame.contains("event: response.created\n"))
+                .count(),
+            1
+        );
+        assert!(frames[0].contains("event: response.created\n"));
+
+        // Every item is closed before the next one starts.
+        let mut open = false;
+        for frame in &frames {
+            if frame.contains("event: response.output_item.added\n") {
+                assert!(!open, "added while another item is still open: {frame}");
+                open = true;
+            }
+            if frame.contains("event: response.output_item.done\n") {
+                assert!(open, "done without an open item: {frame}");
+                open = false;
+            }
+        }
+        assert!(!open, "stream ended with an open item");
+        let joined = frames.join("");
+        assert!(joined.contains("reasoning_summary_text.delta"));
+        assert!(joined.contains("\"text\":\"thinking\""));
     }
 
     /// Mid-stream function_call event order: output_item.added -> arguments.delta* -> arguments.done -> output_item.done.
