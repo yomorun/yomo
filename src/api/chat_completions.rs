@@ -362,8 +362,15 @@ pub fn request_to_value(request: &UnifiedRequest) -> Result<Value, String> {
                             }
                         }
                         UnifiedContentPartKind::Refusal { text } => refusal = Some(text.clone()),
+                        // An empty text block carries no information and is
+                        // rejected by some Chat upstreams.
+                        UnifiedContentPartKind::Text { text, .. } if text.is_empty() => {}
                         _ => parts.push(content_value(part)?),
                     }
+                }
+                // A message with no text, reasoning or refusal carries nothing.
+                if parts.is_empty() && reasoning.is_empty() && refusal.is_none() {
+                    continue;
                 }
                 let content = if parts.is_empty() {
                     Value::Null
@@ -806,6 +813,47 @@ mod golden_tests {
         assert_eq!(native["messages"][0]["content"], Value::Null);
         assert_eq!(native["messages"][0]["reasoning_content"], "thought");
         serde_json::from_value::<ChatCompletionRequest>(native).expect("deserialize chat request");
+    }
+
+    #[test]
+    fn empty_text_parts_and_contentless_messages_are_dropped() {
+        let request = UnifiedRequest {
+            model: "m".into(),
+            input: vec![
+                UnifiedInputItem::new(UnifiedInputItemKind::Message {
+                    role: UnifiedRole::User,
+                    content: vec![UnifiedContentPart::text("hello".to_string())],
+                    phase: None,
+                }),
+                UnifiedInputItem::new(UnifiedInputItemKind::Message {
+                    role: UnifiedRole::Assistant,
+                    content: vec![UnifiedContentPart::text(String::new())],
+                    phase: None,
+                }),
+                UnifiedInputItem::new(UnifiedInputItemKind::Message {
+                    role: UnifiedRole::Assistant,
+                    content: vec![
+                        UnifiedContentPart::text(String::new()),
+                        UnifiedContentPart::text("answer".to_string()),
+                    ],
+                    phase: None,
+                }),
+            ],
+            ..Default::default()
+        };
+
+        let native = request_to_value(&request).expect("serialize request");
+        let messages = native["messages"].as_array().expect("messages");
+        assert_eq!(
+            messages.len(),
+            2,
+            "a message without text, reasoning or refusal must be dropped: {native}"
+        );
+        assert_eq!(messages[0]["role"], "user");
+        assert_eq!(messages[1]["role"], "assistant");
+        let parts = messages[1]["content"].as_array().expect("parts");
+        assert_eq!(parts.len(), 1, "empty text parts are filtered: {native}");
+        assert_eq!(parts[0]["text"], "answer");
     }
 
     /// golden: request parse -> serialize -> deep Value comparison (zero known-field loss).

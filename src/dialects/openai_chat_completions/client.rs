@@ -141,6 +141,45 @@ impl Config {
     }
 }
 
+/// Drop meaningless empty assistant content from the upstream body.
+///
+/// Tool-call-only assistant messages are encoded with `content: null`, and the
+/// typed round-trip turns that null into `Text("")`. An empty text block is
+/// rejected by some Chat upstreams, and none of these shapes carry information,
+/// so the field is omitted; messages with nothing left are removed.
+fn prune_empty_assistant_content(body: &mut Value) {
+    let Some(messages) = body.get_mut("messages").and_then(Value::as_array_mut) else {
+        return;
+    };
+    messages.retain_mut(|message| {
+        if message.get("role").and_then(Value::as_str) != Some("assistant") {
+            return true;
+        }
+        let mut has_content = false;
+        match message.get_mut("content") {
+            Some(Value::String(text)) if text.is_empty() => {}
+            Some(Value::Null) => {}
+            Some(Value::Array(parts)) => {
+                parts.retain(|part| {
+                    !(part.get("type").and_then(Value::as_str) == Some("text")
+                        && part.get("text").and_then(Value::as_str) == Some(""))
+                });
+                has_content = !parts.is_empty();
+            }
+            Some(_) => has_content = true,
+            None => {}
+        }
+        if !has_content && let Some(object) = message.as_object_mut() {
+            object.remove("content");
+        }
+        let has_tool_calls = message
+            .get("tool_calls")
+            .and_then(Value::as_array)
+            .is_some_and(|calls| !calls.is_empty());
+        has_content || has_tool_calls
+    });
+}
+
 #[derive(Clone)]
 pub struct Client {
     pub(crate) client: reqwest::Client,
@@ -176,6 +215,7 @@ impl Client {
                 _ => {}
             }
         }
+        prune_empty_assistant_content(&mut body);
         Ok(body)
     }
     pub fn new(config: Config) -> Result<Self, ClientError> {
@@ -378,6 +418,42 @@ mod tests {
     use reqwest::header;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    #[test]
+    fn request_body_omits_empty_assistant_content() {
+        let client = Client::new(Config::new("test-key")).expect("build client");
+        let request: ChatCompletionRequest = serde_json::from_value(serde_json::json!({
+            "model": "m",
+            "messages": [
+                {"role": "user", "content": "hi"},
+                {"role": "assistant", "content": "", "tool_calls": [
+                    {"id": "c1", "type": "function",
+                     "function": {"name": "read", "arguments": "{}"}}
+                ]},
+                {"role": "tool", "tool_call_id": "c1", "content": "ok"},
+                {"role": "assistant", "content": [{"type": "text", "text": ""}]},
+                {"role": "assistant", "content": [{"type": "text", "text": ""},
+                                                   {"type": "text", "text": "answer"}]}
+            ]
+        }))
+        .expect("parse request");
+
+        let body = client.request_body(&request).expect("encode request");
+        let messages = body["messages"].as_array().expect("messages");
+
+        assert_eq!(
+            messages.len(),
+            4,
+            "contentless assistant message is dropped: {body}"
+        );
+        assert!(
+            messages[1].get("content").is_none(),
+            "tool-call message must not carry empty content: {body}"
+        );
+        assert_eq!(messages[1]["tool_calls"][0]["id"], "c1");
+        assert_eq!(messages[3]["content"].as_array().expect("parts").len(), 1);
+        assert_eq!(messages[3]["content"][0]["text"], "answer");
+    }
 
     #[test]
     fn clear_agent_context_removes_agent_context() {
